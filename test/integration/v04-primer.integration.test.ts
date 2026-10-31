@@ -71,7 +71,8 @@ describe('the window primer in jantard', () => {
     const claude = await claudeCalls(d.home);
     expect(claude.map((c) => [c.account, c.via, c.args.slice(0, 2)])).toEqual([[2, 'cswap', ['-p', 'Reply with only: ok']]]);
 
-    const primed = await stat(join(d.ctx.paths.home, 'primer', 'primed.json'));
+    // The primer shows the prime first and then writes primed.json.
+    const primed = await eventually(() => stat(join(d.ctx.paths.home, 'primer', 'primed.json')).catch(() => null), 5_000, 'primed.json');
     expect(primed.mode & 0o777).toBe(0o600);
     expect((await stat(join(d.ctx.paths.home, 'primer', 'work'))).mode & 0o777).toBe(0o700);
 
