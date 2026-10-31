@@ -6,7 +6,9 @@
  *   folders.sessionRoots is on (an `ended` session is not live).
  *
  * Refused as roots whatever settings say: `/`, `/Users`, `/Volumes`,
- * `/private`, `/System`, `/Library`, anything the denylist protects (which
+ * `/private`, `/System`, `/Library`, `/tmp`, `/var`, `/etc`, `/home` (on a
+ * Mac the first three are links into `/private`; elsewhere they are real
+ * folders), anything the denylist protects (which
  * covers `~/Library`, home dot dirs and the system prefixes) and anything
  * that is not a directory. Realpaths are cached for 5 s.
  *
@@ -22,7 +24,7 @@ import { expandHome, segsOf, type DenyRules } from './deny.js';
 export const ROOT_CACHE_MS = 5_000;
 
 /** Never a root, by realpath (normalised segments). */
-const NEVER_ROOTS: ReadonlySet<string> = new Set(['', 'users', 'volumes', 'private', 'system', 'library']);
+const NEVER_ROOTS: ReadonlySet<string> = new Set(['', 'users', 'volumes', 'private', 'system', 'library', 'tmp', 'var', 'etc', 'home']);
 
 /**
  * Why an absolute path cannot be a root, or null when it can: a system

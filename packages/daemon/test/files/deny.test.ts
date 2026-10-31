@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { DenyRules, deniedName, holdsPrivateKey, looksSecret, normSeg } from '../../src/files/deny.js';
+import { rootRefusal } from '../../src/files/roots.js';
 import { AWS_LIKE, KEY_BEGIN, KEY_END } from './fp-helpers.js';
 
 const HOME = '/Users/me';
@@ -331,5 +332,16 @@ describe('content rules', () => {
     expect(looksSecret('xo' + 'xb-123')).toBe(true);
     expect(looksSecret('xo' + 'xp-123')).toBe(true);
     expect(looksSecret('nothing to see')).toBe(false);
+  });
+});
+
+describe('system folders are never roots, by name, on any platform', () => {
+  // On a Mac /tmp, /var and /etc are links into /private; on Linux they are real folders, and /home holds the users.
+  it.each(['/', '/Users', '/Volumes', '/private', '/System', '/Library', '/tmp', '/var', '/etc', '/home'])('%s', (path) => {
+    expect(rootRefusal(path, rules())).toBe('a system folder');
+  });
+
+  it('a project folder below them is still a root', () => {
+    expect(rootRefusal(P, rules())).toBeNull();
   });
 });
