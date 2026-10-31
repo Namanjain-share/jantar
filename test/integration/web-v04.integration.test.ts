@@ -469,22 +469,29 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
 
   it('on the phone the day and month chips and the category rows are 44 px touch targets', async () => {
     const { page } = pages.phone!;
-    await page.emulateMedia({ colorScheme: 'light' });
+    // Sizes are read on a still screen. Each Life screen slides in (translateY 8px to 0), and a box read part
+    // way sits at a fractional offset where Chromium's float corners give 44 px as 43.99997. With reduced
+    // motion the screen only fades in.
+    await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
     const tall = async (target: Locator, what: string) => {
       await target.waitFor();
       expect((await target.boundingBox())?.height ?? 0, what).toBeGreaterThanOrEqual(44);
     };
-    for (const path of [`/food?day=${day(-1)}`, `/meds?day=${day(-1)}`]) {
-      await page.goto(`http://127.0.0.1:${d.port}${path}`);
-      await tall(page.getByRole('button', { name: 'Today', exact: true }), `the Today chip on ${path}`);
+    try {
+      for (const path of [`/food?day=${day(-1)}`, `/meds?day=${day(-1)}`]) {
+        await page.goto(`http://127.0.0.1:${d.port}${path}`);
+        await tall(page.getByRole('button', { name: 'Today', exact: true }), `the Today chip on ${path}`);
+      }
+      const month = new Date(Date.UTC(Number(TODAY.slice(0, 4)), Number(TODAY.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
+      await page.goto(`http://127.0.0.1:${d.port}/money?month=${month}`);
+      await tall(page.getByRole('button', { name: 'This month' }), 'the This month chip');
+      await page.goto(`http://127.0.0.1:${d.port}/money`);
+      const rows = page.getByRole('region', { name: 'By category' }).getByRole('button');
+      await rows.first().waitFor();
+      for (let i = 0; i < (await rows.count()); i++) await tall(rows.nth(i), `category row ${i}`);
+    } finally {
+      await page.emulateMedia({ reducedMotion: null });
     }
-    const month = new Date(Date.UTC(Number(TODAY.slice(0, 4)), Number(TODAY.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
-    await page.goto(`http://127.0.0.1:${d.port}/money?month=${month}`);
-    await tall(page.getByRole('button', { name: 'This month' }), 'the This month chip');
-    await page.goto(`http://127.0.0.1:${d.port}/money`);
-    const rows = page.getByRole('region', { name: 'By category' }).getByRole('button');
-    await rows.first().waitFor();
-    for (let i = 0; i < (await rows.count()); i++) await tall(rows.nth(i), `category row ${i}`);
   });
 
   it('Intel with a hostile item: its title is text, nothing runs, no javascript: link', async () => {
