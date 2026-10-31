@@ -12,7 +12,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LifeStatus, ProjectView, Todo, TodosResponse } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { FLASH_MS } from '../src/ui/screens/life/todos/Todos.js';
-import { fakeApi, iso, renderApp, session, stateWith } from './helpers.js';
+import { fakeApi, iso, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+preloadPlaces('todos');
 
 const DAY = '2026-01-15';
 const id = (n: number) => `01JFZ8X8Y3T0V5G9WQK2M4N${String(n).padStart(3, '0')}`;

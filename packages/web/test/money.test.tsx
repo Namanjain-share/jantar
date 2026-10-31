@@ -15,7 +15,9 @@ import { ApiError } from '../src/lib/api.js';
 import { formatAmount } from '../src/lib/money.js';
 import { AMOUNT_HINT, categoriesFor } from '../src/ui/screens/life/money/fields.js';
 import { NO_CURRENCY } from '../src/ui/screens/life/money/Money.js';
-import { fakeApi, iso, renderApp, stateWith } from './helpers.js';
+import { fakeApi, iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+preloadPlaces('money');
 
 afterEach(() => vi.useRealTimers());
 

@@ -16,8 +16,10 @@ import { LaunchStartBodySchema, type LaunchPreview, type LaunchStartBody, type P
 import { ApiError, type Api } from '../src/lib/api.js';
 import { NO_PAST, PAST_UNREAD, pastLine, pastWhen } from '../src/ui/screens/new/data.js';
 import { EFFORT_NOTE } from '../src/ui/screens/new/StartForm.js';
-import { NOW, iso, renderApp, stateWith } from './helpers.js';
+import { NOW, iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
 import { ACCOUNTS, acct, job, launchApi, previewFake } from './launch-fixtures.js';
+
+preloadPlaces('new');
 
 const FORM = '/new?root=r.1&path=api&start=1';
 const NEWEST = '0b4e7c4e-1111-4111-8111-000000000001';

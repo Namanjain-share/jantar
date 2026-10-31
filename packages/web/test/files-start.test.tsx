@@ -13,7 +13,9 @@ import type { Features } from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { clearFilesCache } from '../src/ui/screens/files/data.js';
 import { FILES_ON, listing, pendingForever, root, viewport } from './files-helpers.js';
-import { fakeApi, renderApp, stateWith } from './helpers.js';
+import { fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+preloadPlaces('files');
 
 const ROOTS = [root('r.work', { label: 'work', display: '~/Desktop/work' }), root('s.a', { kind: 'session', sid: 'a', label: 'a', display: '~/work/a' })];
 const LAUNCH_ON: Partial<Features> = { ...FILES_ON, launch: true };

@@ -12,8 +12,10 @@ import { ApiError } from '../src/lib/api.js';
 import type { AppStore } from '../src/store.js';
 import { ghostWord, hms, stepWord } from '../src/ui/screens/launch/stages.js';
 import { keepPrompt, takePrompt } from '../src/ui/screens/new/data.js';
-import { emit, iso, renderApp, session, stateWith } from './helpers.js';
+import { emit, iso, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 import { job, launchApi, steps, viewport } from './launch-fixtures.js';
+
+preloadPlaces('new');
 
 const ON = { launch: true } as const;
 const RECEIPT = '/new?root=r.1&path=api&launch=L1';

@@ -14,7 +14,9 @@ import { ApiError } from '../src/lib/api.js';
 import { NO_PUSH, NO_PUSH_DEVICES, NO_PUSH_SWITCH, PushWarning, pushProblem } from '../src/ui/screens/life/shared/PushWarning.js';
 import { CommandSentence, LifeError, NO_CONTROL } from '../src/ui/screens/life/shared/states.js';
 import { dayLabel, monthLabel, shiftDayKey, shiftMonthKey } from '../src/ui/screens/life/shared/DayNav.js';
-import { renderApp, session, stateWith } from './helpers.js';
+import { preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+preloadPlaces('today', 'todos', 'meds', 'food', 'places', 'money', 'intel');
 
 function viewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {

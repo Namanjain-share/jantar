@@ -27,7 +27,9 @@ import { DELETE_WARNING, REFILL_ASK, STOP_WARNING } from '../src/ui/screens/life
 import { MedsToday } from '../src/ui/screens/life/meds/MedsToday.js';
 import { NO_MEDS_TODAY, instantIn, lifeNow, parseDoseKey } from '../src/ui/screens/life/meds/data.js';
 import { OFFLINE_WRITE } from '../src/ui/screens/life/shared/states.js';
-import { NOW, fakeApi, renderApp, stateWith } from './helpers.js';
+import { NOW, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+preloadPlaces('meds');
 
 // NOW is 2026-01-15 10:05 UTC: 15:35 in Asia/Kolkata, the Life zone here.
 const TZ = 'Asia/Kolkata';

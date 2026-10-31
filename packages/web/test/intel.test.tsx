@@ -13,7 +13,9 @@ import type { IntelItem, IntelListItem, IntelListResponse, IntelSource } from '@
 import { ApiError, type Api } from '../src/lib/api.js';
 import { FieldValue } from '../src/ui/screens/intel/ItemPage.js';
 import { ADD_SOURCE_COMMAND, hasFilters, httpHref, itemsWord, shelfDate, shelfPath, shelfTime, tagsFrom } from '../src/ui/screens/intel/model.js';
-import { emit, fakeApi, renderApp, stateWith } from './helpers.js';
+import { emit, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+preloadPlaces('intel');
 
 afterEach(() => vi.unstubAllGlobals());
 

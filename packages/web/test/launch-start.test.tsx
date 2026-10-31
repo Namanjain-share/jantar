@@ -10,8 +10,10 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { V03_LAUNCH_FLAGS, LaunchStartBodySchema, type LaunchFlags, type LaunchStartBody } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
-import { renderApp, stateWith } from './helpers.js';
+import { preloadPlaces, renderApp, stateWith } from './helpers.js';
 import { commandFor, job, launchApi, previewFake, viewport } from './launch-fixtures.js';
+
+preloadPlaces('new');
 
 const ON = { launch: true } as const;
 const state = () => stateWith({ features: ON });

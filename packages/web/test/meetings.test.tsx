@@ -20,7 +20,9 @@ import { ROUTES, type LifeStatus, type Meeting, type MeetingDetail, type Meeting
 import { meetingDetail } from '@jantar/fixtures';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { EXPORTED_MS, POLL_MS } from '../src/ui/screens/meetings/model.js';
-import { NOW, fakeApi, renderApp, stateWith } from './helpers.js';
+import { NOW, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+preloadPlaces('meetings');
 
 const D = meetingDetail();
 const ID = D.meeting.id;

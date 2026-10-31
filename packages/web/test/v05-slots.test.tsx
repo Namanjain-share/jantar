@@ -9,7 +9,9 @@
 import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseRoute, routePath, type Route } from '../src/lib/router.js';
-import { fakeApi, renderApp, session, stateWith } from './helpers.js';
+import { fakeApi, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+preloadPlaces('meetings');
 
 function viewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {

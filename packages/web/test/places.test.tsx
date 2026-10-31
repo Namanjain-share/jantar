@@ -14,7 +14,9 @@ import type { Place } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { safeHref } from '../src/ui/screens/life/places/PlaceSheet.js';
 import { bestDish } from '../src/ui/screens/life/places/Places.js';
-import { fakeApi, iso, renderApp, stateWith } from './helpers.js';
+import { fakeApi, iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+preloadPlaces('places');
 
 afterEach(() => vi.useRealTimers());
 

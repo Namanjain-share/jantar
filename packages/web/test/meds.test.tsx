@@ -15,7 +15,9 @@ import { ApiError } from '../src/lib/api.js';
 import { NO_PUSH, NO_PUSH_DEVICES, NO_PUSH_SWITCH } from '../src/ui/screens/life/shared/PushWarning.js';
 import { EMPTY, NO_CONTROL, OFFLINE, OFFLINE_WRITE } from '../src/ui/screens/life/shared/states.js';
 import { NOTHING_DUE, NO_MEDS_TODAY, zoneNote } from '../src/ui/screens/life/meds/data.js';
-import { fakeApi, renderApp, stateWith } from './helpers.js';
+import { fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+preloadPlaces('meds');
 
 // The app's clock (helpers NOW) is 2026-01-15 10:05 UTC; the Life zone here is UTC.
 const TODAY = '2026-01-15';

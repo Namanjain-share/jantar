@@ -12,7 +12,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FoodDay, LifeStatus, WeightSummary } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { kgChange, kgText, parseKg, weightLine } from '../src/ui/screens/life/food/format.js';
-import { fakeApi, renderApp, stateWith } from './helpers.js';
+import { fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+preloadPlaces('food', 'today');
 
 afterEach(() => vi.useRealTimers());
 

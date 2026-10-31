@@ -10,7 +10,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { LifeStatus, Todo } from '@jantar/protocol';
 import { nextFullHour, remindersOf } from '../src/ui/screens/life/todos/model.js';
 import { clockIn } from '../src/ui/screens/life/today/parts.js';
-import { fakeApi, iso, renderApp, stateWith } from './helpers.js';
+import { fakeApi, iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+preloadPlaces('todos');
 
 const DAY = '2026-01-15';
 const id = (n: number) => `01JFZ8X8Y3T0V5G9WQK2M4N${String(n).padStart(3, '0')}`;

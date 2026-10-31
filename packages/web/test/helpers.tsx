@@ -3,7 +3,7 @@
  * and address here is made up.
  */
 import { render } from '@testing-library/react';
-import { vi } from 'vitest';
+import { beforeAll, vi } from 'vitest';
 import {
   NO_FEATURES,
   PROTOCOL_VERSION,
@@ -28,6 +28,34 @@ import { createToastStore } from '../src/ui/context.js';
 
 export const T0 = '2026-01-15T10:00:00.000Z';
 export const NOW = Date.parse('2026-01-15T10:05:00.000Z');
+
+/** The places Shell loads on first visit (React.lazy), by route name. */
+const LAZY_PLACES = {
+  files: () => import('../src/ui/screens/files/FilesPlace.js'),
+  new: () => import('../src/ui/screens/new/NewSession.js'),
+  today: () => import('../src/ui/screens/life/today/Today.js'),
+  todos: () => import('../src/ui/screens/life/todos/Todos.js'),
+  meds: () => import('../src/ui/screens/life/meds/Meds.js'),
+  food: () => import('../src/ui/screens/life/food/Food.js'),
+  places: () => import('../src/ui/screens/life/places/Places.js'),
+  money: () => import('../src/ui/screens/life/money/Money.js'),
+  intel: () => import('../src/ui/screens/intel/Intel.js'),
+  meetings: () => import('../src/ui/screens/meetings/Meetings.js'),
+};
+
+/**
+ * Load these lazy places before the file's tests run. A place's first import
+ * (transform and evaluation) takes a few hundred ms here and can take
+ * seconds on a busy runner, more than a findBy waits for the screen; done in
+ * beforeAll it has the hook's own time, and every test's wait is for the
+ * screen alone. Call it at the top of a test file.
+ */
+export function preloadPlaces(...names: Array<keyof typeof LAZY_PLACES>): void {
+  beforeAll(async () => {
+    await Promise.all(names.map((name) => LAZY_PLACES[name]()));
+  });
+}
+
 export const iso = (msFromT0: number) => new Date(Date.parse(T0) + msFromT0).toISOString();
 
 export function session(sid: string, over: Partial<Session> = {}): Session {

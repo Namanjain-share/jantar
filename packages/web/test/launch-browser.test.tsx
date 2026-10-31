@@ -8,8 +8,10 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/lib/api.js';
 import { entryLine, showingLine } from '../src/ui/screens/new/FolderBrowser.js';
-import { iso, renderApp, stateWith } from './helpers.js';
+import { iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
 import { ROOTS, entry, launchApi, listing, viewport } from './launch-fixtures.js';
+
+preloadPlaces('new');
 
 const ON = { launch: true } as const;
 const state = () => stateWith({ features: ON });

@@ -41,7 +41,9 @@ import { parseNotebook } from '../src/ui/screens/files/notebook.js';
 import { clearFilesCache } from '../src/ui/screens/files/data.js';
 import { FilesTab } from '../src/ui/screens/session/FilesTab.js';
 import { FILES_ON, change, layout, listing, objectUrls, pendingForever, renderViewer, renderWith, root, stat, text, viewport } from './files-helpers.js';
-import { NOW, emit, fakeApi, iso, pending, renderApp, session, stateWith } from './helpers.js';
+import { NOW, emit, fakeApi, iso, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+preloadPlaces('files');
 
 beforeEach(() => clearFilesCache());
 afterEach(() => vi.unstubAllGlobals());

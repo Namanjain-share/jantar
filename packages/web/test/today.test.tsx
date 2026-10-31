@@ -15,7 +15,9 @@ import { ApiError } from '../src/lib/api.js';
 import { formatAmount } from '../src/lib/money.js';
 import { NO_PUSH, NO_PUSH_DEVICES, NO_PUSH_SWITCH } from '../src/ui/screens/life/shared/PushWarning.js';
 import { lifeClockAt } from '../src/ui/screens/life/today/parts.js';
-import { fakeApi, iso, pending, renderApp, session, stateWith } from './helpers.js';
+import { fakeApi, iso, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+preloadPlaces('today');
 
 const seen = vi.hoisted(() => ({ meds: [] as unknown[], dose: [] as unknown[] }));
 

@@ -11,7 +11,9 @@ import type { DaemonEvent } from '@jantar/protocol';
 import type { AppStore } from '../src/store.js';
 import { TICK_RELOAD_MS, clearFilesCache } from '../src/ui/screens/files/data.js';
 import { FILES_ON, change, stat, text } from './files-helpers.js';
-import { emit, fakeApi, iso, renderApp, session, stateWith } from './helpers.js';
+import { emit, fakeApi, iso, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+preloadPlaces('files');
 
 beforeEach(() => clearFilesCache());
 afterEach(() => {
