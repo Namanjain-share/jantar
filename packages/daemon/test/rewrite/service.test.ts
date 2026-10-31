@@ -66,7 +66,9 @@ describe('submit', () => {
     try {
       const jobs = [await start(rig, 'a'), await start(rig, 'b'), await start(rig, 'c')];
       await untilState(rig, jobs[1]!.id, ['writing']);
-      await new Promise((r) => setTimeout(r, 20));
+      // Both runs start, then a moment later the third job still waits: wait for the runs, not for a fixed 20 ms.
+      await vi.waitFor(() => expect(runCalls(rig)).toHaveLength(2), { timeout: 5_000 });
+      await new Promise((r) => setTimeout(r, 50));
       expect(runCalls(rig)).toHaveLength(2);
       expect(rig.svc.get(jobs[2]!.id, PHONE)?.state).toBe('queued');
       rig.svc.cancel(jobs[0]!.id, PHONE);

@@ -58,6 +58,12 @@ export const T0 = '2026-01-15T10:00:00.000Z';
 
 export async function flush(): Promise<void> {
   for (let i = 0; i < 4; i++) await new Promise<void>((r) => setImmediate(r));
+  // Fake time must not run ahead of a real fs call still in flight (a realpath or stat on a slow machine).
+  const end = Date.now() + 2_000;
+  while (Date.now() < end && process.getActiveResourcesInfo().some((t) => t.startsWith('FSReq'))) {
+    await new Promise<void>((r) => setTimeout(r, 1));
+    for (let i = 0; i < 4; i++) await new Promise<void>((r) => setImmediate(r));
+  }
 }
 
 /** Move the fake clock forward in steps, letting async work (and real fs calls) run between them. */
