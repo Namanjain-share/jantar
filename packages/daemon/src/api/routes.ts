@@ -36,6 +36,8 @@ import {
   type AlertsQuery,
   type AuditQuery,
   type MacOnlySettingGroup,
+  type Pane,
+  type Session,
   type Settings,
 } from '@jantar/protocol';
 import { DEVICE_COOKIE, publicDevice } from '../auth/devices.js';
@@ -151,6 +153,17 @@ async function withAttachments(s: ApiServices, sid: string, text: string, refs: 
   return composed.text;
 }
 
+/** Said when Terminal takes longer than the pane lookup waits (the backend's own sentence for a slow osascript). */
+const PANE_LOOKUP_SLOW = 'Terminal did not answer in time';
+
+/** The session's tab for a read or a focus: 404 when there is none, 503 when Terminal was too slow to say. */
+async function paneOr404(s: ApiServices, session: Session): Promise<Pane> {
+  const pane = await s.panes.find(session);
+  if (pane === 'timeout') throw terminalError('timeout', PANE_LOOKUP_SLOW);
+  if (!pane) throw new ApiError('not_found', 'no terminal tab found for this session');
+  return pane;
+}
+
 const CORE_ROUTE_IMPLS: RouteTable = {
   getState: {
     handle: (_c, s) => {
@@ -166,7 +179,9 @@ const CORE_ROUTE_IMPLS: RouteTable = {
   getSession: {
     handle: async (c: Call<Sid>, s) => {
       const session = sessionOr404(s, c.params.sid);
-      const pane = await s.panes.find(session);
+      // A Terminal too slow to answer leaves the session readable, without its pane.
+      const found = await s.panes.find(session);
+      const pane = found === 'timeout' ? null : found;
       return { session, pending: pendingFor(s.ctx.store.getState() as never, session.sid), pane };
     },
   },
@@ -188,8 +203,7 @@ const CORE_ROUTE_IMPLS: RouteTable = {
   getScreen: {
     handle: async (c: Call<Sid, ScreenQuery>, s) => {
       const session = sessionOr404(s, c.params.sid);
-      const pane = await s.panes.find(session);
-      if (!pane) throw new ApiError('not_found', 'no terminal tab found for this session');
+      const pane = await paneOr404(s, session);
       // v0.4.2: at least the lines the dialog parser reads; the reply still shows only the lines asked for.
       const r = await s.deps.terminal.readScreen(pane, { lines: Math.max(c.query.lines, SCREEN_DIALOG_LINES) });
       if (!r.ok) {
@@ -280,8 +294,7 @@ const CORE_ROUTE_IMPLS: RouteTable = {
   focusSession: {
     handle: async (c: Call<Sid>, s) => {
       const session = sessionOr404(s, c.params.sid);
-      const pane = await s.panes.find(session);
-      if (!pane) throw new ApiError('not_found', 'no terminal tab found for this session');
+      const pane = await paneOr404(s, session);
       const r = await s.deps.terminal.focus(pane);
       if (!r.ok) {
         s.panes.forget(session.sid);

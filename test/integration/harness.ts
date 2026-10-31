@@ -43,9 +43,10 @@ import {
   type Parts,
   type TerminalBackend,
 } from '@jantar/daemon';
+import { PANE_LOOKUP_TIMEOUT_MS } from '@jantar/daemon/api/services';
 import { startDaemon, type RunningDaemon } from '@jantar/daemon/daemon';
 import { TerminalAppBackend } from '@jantar/daemon/terminal/terminal-app/index';
-import { makeFakeHome, type FakeHome, type FakeHomeOptions } from '@jantar/fixtures';
+import { makeFakeHome, perfBudgetMs, type FakeHome, type FakeHomeOptions } from '@jantar/fixtures';
 import { ScriptedTerminal } from './scripted-terminal.js';
 
 const DAEMON_SRC = fileURLToPath(new URL('../../packages/daemon/src/', import.meta.url));
@@ -228,6 +229,9 @@ export async function bootDaemon(opts: BootOptions = {}): Promise<Daemon> {
         },
         ...(opts.openDb ? { openDb: opts.openDb } : {}),
         ...(opts.clock ? { clock: opts.clock } : {}),
+        // The fake osascript and ps are node scripts: on a busy CI runner the pair can take longer than a Mac's
+        // real Terminal gets to find a tab.
+        ...(opts.terminalApp ? { api: { paneLookupTimeoutMs: perfBudgetMs(PANE_LOOKUP_TIMEOUT_MS) } } : {}),
       });
     const running = await start();
     const d: Daemon = {

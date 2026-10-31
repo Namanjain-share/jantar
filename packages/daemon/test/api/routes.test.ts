@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AccountsResponseSchema,
   AlertsResponseSchema,
@@ -76,6 +76,67 @@ describe('read routes', () => {
     api.ctx.clock.advance(6000);
     await get('/v1/sessions/sess-aaaa-1111');
     expect(api.fakes.terminal.calls.filter((c) => c.startsWith('findPane'))).toHaveLength(2);
+  });
+
+  it('a Terminal slow to find the tab: 503 "did not answer in time", never cached as no tab; its late answer is kept; asked once', async () => {
+    const terminal = api.fakes.terminal;
+    const findPane = terminal.findPane.bind(terminal);
+    let asked = 0;
+    let answer = () => {};
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    terminal.findPane = async (target) => {
+      asked++;
+      await answered;
+      return findPane(target);
+    };
+    const screen = '/v1/sessions/sess-aaaa-1111/screen';
+    const timers = () => api.ctx.clock.pending();
+    const idle = timers();
+
+    const first = get(screen);
+    const focus = post('/v1/sessions/sess-aaaa-1111/focus');
+    await vi.waitFor(() => expect(timers()).toBe(idle + 2)); // both wait on the one lookup
+    expect(asked).toBe(1);
+    api.ctx.clock.advance(4000);
+    for (const late of [await first, await focus]) {
+      expect(late.statusCode).toBe(503);
+      expect(late.json().error.message).toBe('Terminal did not answer in time');
+    }
+    // The session itself still reads, without a pane.
+    const one = get('/v1/sessions/sess-aaaa-1111');
+    await vi.waitFor(() => expect(timers()).toBe(idle + 1));
+    api.ctx.clock.advance(4000);
+    expect(SessionResponseSchema.parse((await one).json()).pane).toBeNull();
+
+    // A read while the lookup still runs waits on it, and the answer, when it comes, is the tab.
+    const again = get(screen);
+    await vi.waitFor(() => expect(timers()).toBe(idle + 1));
+    answer();
+    expect(ScreenResponseSchema.parse((await again).json())).toMatchObject({ backend: 'terminal-app' });
+    expect((await get(screen)).statusCode).toBe(200);
+    expect(OkSchema.parse((await post('/v1/sessions/sess-aaaa-1111/focus')).json())).toEqual({ ok: true });
+    expect(asked).toBe(1);
+  });
+
+  it('a lookup that answers after every caller gave up is kept for the next one', async () => {
+    const terminal = api.fakes.terminal;
+    const findPane = terminal.findPane.bind(terminal);
+    let asked = 0;
+    let answer = () => {};
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    terminal.findPane = async (target) => {
+      asked++;
+      await answered;
+      return findPane(target);
+    };
+    const idle = api.ctx.clock.pending();
+    const first = get('/v1/sessions/sess-aaaa-1111/screen');
+    await vi.waitFor(() => expect(api.ctx.clock.pending()).toBe(idle + 1));
+    api.ctx.clock.advance(4000);
+    expect((await first).statusCode).toBe(503);
+    answer();
+    await vi.waitFor(async () => expect((await get('/v1/sessions/sess-aaaa-1111/screen')).statusCode).toBe(200));
+    expect(asked).toBe(1);
   });
 
   it('GET transcript and screen', async () => {

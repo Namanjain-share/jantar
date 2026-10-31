@@ -19,6 +19,9 @@ What changed for people who use Jantar, newest first. Versions before
 - `jantar doctor` shows no ccw row on a Mac without ccw, and tells a port
   held by another Jantar (a different `JANTAR_HOME`) apart from this one's.
 - The Chrome extension has its own 16, 32 and 48 px icons.
+- When Terminal is slow to find a session's tab, the screen's next read
+  finds it. Before, one slow answer made the phone say no terminal tab was
+  found for the next five seconds.
 
 ## 0.5.1 (31 October 2026)
 

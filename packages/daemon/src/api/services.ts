@@ -5,7 +5,7 @@
  * their limits.
  */
 import { DEFAULT_HOST, UPLOADS_IN_FLIGHT, V042_LIMITS, type Pane, type Session } from '@jantar/protocol';
-import type { DaemonContext, Logger, Parts, TerminalBackend, TimerId, UploadStore } from '../contracts.js';
+import type { DaemonContext, Logger, PaneTarget, Parts, TerminalBackend, TimerId, UploadStore } from '../contracts.js';
 import { DeviceAuth } from '../auth/devices.js';
 import { ExtensionAuth } from '../auth/extensions.js';
 import { OriginPolicy } from '../auth/origin.js';
@@ -104,6 +104,12 @@ export interface ApiOptions {
   v05Limits?: Partial<V05Limits>;
   /** v0.4.2: where uploads go (tests pass a fake). Default: uploads/store.ts on paths.uploadsDir. */
   uploads?: UploadStore;
+  /**
+   * How long a read waits for the terminal to find a session's tab (default
+   * PANE_LOOKUP_TIMEOUT_MS). Tests only: the end-to-end tests' osascript and
+   * ps are node scripts, far slower to start than the real ones on a busy CI runner.
+   */
+  paneLookupTimeoutMs?: number;
 }
 
 /**
@@ -188,50 +194,69 @@ export class SocketRegistry {
   }
 }
 
+/** How long a read waits for Terminal to find a session's tab before it says Terminal did not answer in time. */
+export const PANE_LOOKUP_TIMEOUT_MS = 4000;
+
 /**
  * Finds a session's terminal pane, cached briefly per session: the
  * Terminal.app lookup runs osascript, which is too slow to repeat on every
- * request. Lookups give up after `timeoutMs` (null = no pane).
+ * request. One lookup runs per session at a time, and callers meanwhile wait
+ * on it. A caller waits at most `timeoutMs` and then hears 'timeout'; the
+ * lookup runs on, and its answer is cached whenever it comes, so a slow
+ * Terminal is never remembered as "no tab".
  */
 export class PaneLookup {
   private readonly cache = new Map<string, { pane: Pane | null; at: number }>();
+  private readonly running = new Map<string, Promise<Pane | null>>();
 
   constructor(
     private readonly terminal: TerminalBackend,
     private readonly ctx: Pick<DaemonContext, 'clock' | 'log'>,
     private readonly ttlMs = 5000,
-    private readonly timeoutMs = 4000,
+    private readonly timeoutMs = PANE_LOOKUP_TIMEOUT_MS,
   ) {}
 
-  async find(session: Session): Promise<Pane | null> {
-    const now = this.ctx.clock.now();
+  /** The session's pane, null when the terminal has no tab for it, or 'timeout' when it did not answer in time. */
+  async find(session: Session): Promise<Pane | null | 'timeout'> {
     const hit = this.cache.get(session.sid);
-    if (hit && now - hit.at < this.ttlMs) return hit.pane;
+    if (hit && this.ctx.clock.now() - hit.at < this.ttlMs) return hit.pane;
+    const lookup = this.running.get(session.sid) ?? this.lookup(session);
     let timer: TimerId | undefined;
-    const timeout = new Promise<null>((resolve) => {
-      timer = this.ctx.clock.setTimeout(() => resolve(null), this.timeoutMs);
+    const timeout = new Promise<'timeout'>((resolve) => {
+      timer = this.ctx.clock.setTimeout(() => resolve('timeout'), this.timeoutMs);
     });
-    let pane: Pane | null;
     try {
-      const target: { tty?: string; pid?: number; sid?: string } = { pid: session.pid, sid: session.sid };
-      if (session.tty) target.tty = session.tty;
-      pane = await Promise.race([this.terminal.findPane(target), timeout]);
-    } catch (e) {
-      this.ctx.log.warn('pane lookup failed', { sid: session.sid, error: String(e) });
-      pane = null;
+      return await Promise.race([lookup, timeout]);
     } finally {
       this.ctx.clock.clearTimeout(timer);
     }
-    this.cache.set(session.sid, { pane, at: this.ctx.clock.now() });
-    if (this.cache.size > 500) {
-      const first = this.cache.keys().next().value;
-      if (first !== undefined) this.cache.delete(first);
-    }
-    return pane;
   }
 
   forget(sid: string): void {
     this.cache.delete(sid);
+  }
+
+  /** Ask the terminal once; the answer is cached when it comes, even after every caller stopped waiting. */
+  private lookup(session: Session): Promise<Pane | null> {
+    const target: PaneTarget = { pid: session.pid, sid: session.sid };
+    if (session.tty) target.tty = session.tty;
+    const run = Promise.resolve()
+      .then(() => this.terminal.findPane(target))
+      .catch((e: unknown) => {
+        this.ctx.log.warn('pane lookup failed', { sid: session.sid, error: String(e) });
+        return null;
+      })
+      .then((pane) => {
+        this.running.delete(session.sid);
+        this.cache.set(session.sid, { pane, at: this.ctx.clock.now() });
+        if (this.cache.size > 500) {
+          const first = this.cache.keys().next().value;
+          if (first !== undefined) this.cache.delete(first);
+        }
+        return pane;
+      });
+    this.running.set(session.sid, run);
+    return run;
   }
 }
 
@@ -333,7 +358,7 @@ export class ApiServices {
     const v05 = { ...V05_LIMITS, ...opts.v05Limits };
     this.extRequestLimiter = per(v05.extRequest);
     this.extShotBytes = new SlidingWindowBudget({ ...v05.extShotBytes, clock: ctx.clock });
-    this.panes = new PaneLookup(deps.terminal, ctx);
+    this.panes = new PaneLookup(deps.terminal, ctx, undefined, opts.paneLookupTimeoutMs);
     this.webDist = opts.webDist === undefined ? ctx.paths.webDist : opts.webDist;
     this.webAvailable = !!this.webDist && webIndexExists(this.webDist);
     this.webHash = this.webAvailable && this.webDist ? computeWebHash(this.webDist) : null;
