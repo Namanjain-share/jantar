@@ -65,7 +65,7 @@ const htmlFiles = () => listFiles(dist).filter((f) => f.endsWith('.html'));
 // the build
 
 test('the build passes its own checks: files, relative links, anchors, CSP, images', () => {
-  assert.deepEqual(checkDist(dist, { siteUrl: (process.env.SITE_URL || '').replace(/\/+$/, '') || null }), []);
+  assert.deepEqual(checkDist(dist, { siteUrl: (process.env.SITE_URL || '').replace(/\/+$/, '').replace(/^http:\/\//, 'https://') || null }), []);
 });
 
 test('every figure slot is on the page, framed, in both themes', () => {

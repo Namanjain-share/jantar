@@ -144,7 +144,9 @@ export function readValues(opts = {}) {
   const license = read(join(ROOT, 'LICENSE'));
   const m = /^## Notice\s*\n+([^\n]+)/m.exec(license);
   if (!m) fail('LICENSE has no "## Notice" line to take the copyright from');
-  const siteUrl = (process.env.SITE_URL || '').trim().replace(/\/+$/, '') || null;
+  // GitHub Pages reports a custom domain as http:// until its certificate is ready and HTTPS is enforced;
+  // the site is served over https, so its canonical and Open Graph links use https from the first deploy.
+  const siteUrl = (process.env.SITE_URL || '').trim().replace(/\/+$/, '').replace(/^http:\/\//, 'https://') || null;
   if (siteUrl && !/^https:\/\//.test(siteUrl)) fail(`SITE_URL must start with https:// (got ${siteUrl})`);
   return { version: pkg.version, extVersion: manifest.version, repo, copyright: m[1].trim(), siteUrl };
 }
