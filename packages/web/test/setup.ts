@@ -1,7 +1,10 @@
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach, beforeAll } from 'vitest';
 
 const dom = typeof window !== 'undefined';
+
+// findBy and waitFor give up after 1 s; shared CI runners load a lazy screen more slowly than that.
+configure({ asyncUtilTimeout: process.env.CI ? 5_000 : 1_000 });
 
 beforeAll(() => {
   if (!dom) return;

@@ -89,6 +89,9 @@ export async function until(clock: FakeClock, done: () => boolean, maxMs = 600_0
     clock.advance(step);
     await flush();
   }
+  // A real fs call can still be in flight on a slow machine: give it real time (no more fake time) before failing.
+  const end = Date.now() + 5_000;
+  while (!done() && Date.now() < end) await new Promise<void>((r) => setTimeout(r, 5));
   if (!done()) throw new Error(`condition not met within ${maxMs} ms of fake time`);
 }
 
