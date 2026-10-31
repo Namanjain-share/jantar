@@ -1,0 +1,19 @@
+/*
+ * Style entry. Tailwind v4 compiles everything here into ONE static CSS file
+ * (the CSP is style-src 'self': nothing may inject <style> at runtime).
+ *
+ * Tailwind's default theme is never imported, and tokens.css starts its
+ * @theme with `--*: initial`, so only our tokens exist as utilities.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './tokens.css';
+@import './fonts.css';
+@import './base.css';
+@import './kit.css';
+/* v0.3 Files viewer: syntax token classes. */
+@import './code.css';
+
+/* Touch screens: 44 px minimum targets (rule 28), e.g. coarse:min-h-44. */
+@custom-variant coarse (@media (pointer: coarse));

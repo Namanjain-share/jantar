@@ -1,0 +1,54 @@
+{
+  "name": "@jantar/cli",
+  "version": "0.5.1",
+  "private": true,
+  "license": "FSL-1.1-MIT",
+  "description": "jantar: the command line client for jantard (init, install, doctor, accounts, pair, remote, hooks, status, send, open, new, devices, files, folders, launch, rewrite, controls, screenshots, life, intel, meetings).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Namanjain-share/jantar.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/Namanjain-share/jantar/tree/main/packages/cli#readme",
+  "bugs": "https://github.com/Namanjain-share/jantar/issues",
+  "keywords": ["claude-code", "cli", "macos", "launchd"],
+  "type": "module",
+  "bin": {
+    "jantar": "./bin/jantar.mjs"
+  },
+  "exports": {
+    ".": {
+      "@jantar/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p ../../test/integration/tsconfig.json",
+    "test": "vitest run && vitest run -c vitest.integration.config.ts",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@jantar/daemon": "workspace:*",
+    "@jantar/hook": "workspace:*",
+    "@jantar/protocol": "workspace:*",
+    "qrcode": "^1.5.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@jantar/fixtures": "workspace:*",
+    "@types/node": "^22.20.5",
+    "@types/qrcode": "^1.5.6",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

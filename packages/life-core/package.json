@@ -1,0 +1,41 @@
+{
+  "name": "@jantar/life-core",
+  "version": "0.5.1",
+  "private": true,
+  "license": "FSL-1.1-MIT",
+  "description": "Pure Life logic for Jantar: dose schedules and adherence, pill supply, repeats, day keys and snoozes in a time zone.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Namanjain-share/jantar.git",
+    "directory": "packages/life-core"
+  },
+  "homepage": "https://github.com/Namanjain-share/jantar/tree/main/packages/life-core#readme",
+  "bugs": "https://github.com/Namanjain-share/jantar/issues",
+  "keywords": ["medicines", "reminders", "recurrence", "time-zones"],
+  "type": "module",
+  "exports": {
+    ".": {
+      "@jantar/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@date-fns/tz": "1.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

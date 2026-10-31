@@ -1,0 +1,63 @@
+{
+  "name": "@jantar/daemon",
+  "version": "0.5.1",
+  "private": true,
+  "license": "FSL-1.1-MIT",
+  "description": "jantard: the long-running daemon that owns sessions, accounts, approvals and every terminal write.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Namanjain-share/jantar.git",
+    "directory": "packages/daemon"
+  },
+  "homepage": "https://github.com/Namanjain-share/jantar/tree/main/packages/daemon#readme",
+  "bugs": "https://github.com/Namanjain-share/jantar/issues",
+  "keywords": ["claude-code", "daemon", "terminal", "macos", "hooks"],
+  "type": "module",
+  "bin": {
+    "jantard": "./bin/jantard.mjs"
+  },
+  "exports": {
+    ".": {
+      "@jantar/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "@jantar/source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "assets"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@jantar/hook": "workspace:*",
+    "@jantar/life-core": "workspace:*",
+    "@jantar/protocol": "workspace:*",
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/static": "^10.1.8",
+    "@fastify/websocket": "^11.3.4",
+    "fastify": "^5.12.7",
+    "ulid": "^3.0.2",
+    "web-push": "^3.6.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@jantar/fixtures": "workspace:*",
+    "@types/node": "^22.20.5",
+    "@types/web-push": "^3.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

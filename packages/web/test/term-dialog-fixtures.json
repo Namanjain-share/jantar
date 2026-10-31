@@ -1,0 +1,1235 @@
+{
+  "PERM_OVERWRITE_3": {
+    "dialog": null,
+    "note": "Jantar can't read this dialog's options with certainty. Use the keys, or answer it at the Mac."
+  },
+  "PERM_OVERWRITE_3_TOP": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Overwrite file",
+      "question": "Do you want to overwrite notes.md?",
+      "body": [
+        "/tmp/demo/notes.md",
+        "1 -# Notes",
+        "1 +# Notes for the demo",
+        "2",
+        "3 -- first point",
+        "3 +- first point, revised",
+        "4 +- second point",
+        "5",
+        "6  ## Next steps",
+        "7 -- old step one",
+        "7 +- new step one",
+        "8 -- old step two",
+        "8 +- new step two",
+        "9 +- check with velvet-quokka-5521"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "locked",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Yes, and allow access to /tmp/demo/workspace-alpha/notes/plans, /tmp/demo/workspace-beta/plans for this session (shift+tab)",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 1,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000003"
+    },
+    "note": null
+  },
+  "PERM_OVERWRITE_3_TOP.open": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Overwrite file",
+      "question": "Do you want to overwrite notes.md?",
+      "body": [
+        "/tmp/demo/notes.md",
+        "1 -# Notes",
+        "1 +# Notes for the demo",
+        "2",
+        "3 -- first point",
+        "3 +- first point, revised",
+        "4 +- second point",
+        "5",
+        "6  ## Next steps",
+        "7 -- old step one",
+        "7 +- new step one",
+        "8 -- old step two",
+        "8 +- new step two",
+        "9 +- check with velvet-quokka-5521"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "Yes, and allow access to /tmp/demo/workspace-alpha/notes/plans, /tmp/demo/workspace-beta/plans for this session (shift+tab)",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 1,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000004"
+    },
+    "note": null
+  },
+  "PERM_CREATE_2": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Create file",
+      "question": "Do you want to create b.txt?",
+      "body": [
+        "/tmp/demo/b.txt",
+        "This will modify /tmp/demo/b.txt (outside working directory) via a symlink",
+        " 1 +hello velvet-quokka-5521"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000005"
+    },
+    "note": null
+  },
+  "PERM_CREATE_ALWAYS": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Create file",
+      "question": "Do you want to create b.txt?",
+      "body": [
+        "/tmp/demo/b.txt",
+        "This will modify /tmp/demo/b.txt (outside working directory) via a symlink",
+        " 1 +hello velvet-quokka-5521"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "Yes, and always allow access to /tmp/demo/plans for this session (shift+tab)",
+          "role": "pick",
+          "hold": "rule"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000006"
+    },
+    "note": null
+  },
+  "PERM_BASH_PREFIX": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Tip: auto mode handles these prompts for you — choose \"switch to auto mode\"",
+        "below",
+        "Write the date to a.txt (velvet-quokka-5521)",
+        "date > a.txt"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "Yes, and always allow access to /tmp/demo/projects/sample-service from this project",
+          "role": "pick",
+          "hold": "rule"
+        },
+        {
+          "label": "Yes, and switch to auto mode · auto mode handles these prompts for you",
+          "role": "pick",
+          "hold": "mode"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000007"
+    },
+    "note": null
+  },
+  "PERM_BASH_TWIN": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Tip: auto mode handles these prompts for you — choose \"switch to auto mode\"",
+        "below",
+        "Write the date to b.txt (velvet-quokka-5521)",
+        "date > b.txt"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "Yes, and always allow access to /tmp/demo/projects/sample-service from this project",
+          "role": "pick",
+          "hold": "rule"
+        },
+        {
+          "label": "Yes, and switch to auto mode · auto mode handles these prompts for you",
+          "role": "pick",
+          "hold": "mode"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000008"
+    },
+    "note": null
+  },
+  "PERM_BASH_LONG": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Reset the folder and write the notes (velvet-quokka-5521)",
+        "rm -rf ./build-cache && cat > notes.txt <<'EOF'",
+        "  line 1 of the notes",
+        "  line 2 of the notes",
+        "  line 3 of the notes",
+        "  line 4 of the notes",
+        "  line 5 of the notes",
+        "  line 6 of the notes",
+        "  line 7 of the notes",
+        "  line 8 of the notes",
+        "  line 9 of the notes",
+        "  line 10 of the notes",
+        "  line 11 of the notes",
+        "  line 12 of the notes",
+        "  line 13 of the notes",
+        "  line 14 of the notes",
+        "  line 15 of the notes",
+        "  line 16 of the notes",
+        "  line 17 of the notes",
+        "… 5 more lines on the Mac …",
+        "  line 23 of the notes",
+        "  line 24 of the notes",
+        "  line 25 of the notes",
+        "  line 26 of the notes",
+        "  line 27 of the notes",
+        "  line 28 of the notes",
+        "  line 29 of the notes",
+        "  line 30 of the notes",
+        "  line 31 of the notes",
+        "  line 32 of the notes",
+        "  line 33 of the notes",
+        "  line 34 of the notes",
+        "  line 35 of the notes",
+        "  line 36 of the notes",
+        "  line 37 of the notes",
+        "  line 38 of the notes",
+        "  line 39 of the notes",
+        "  line 40 of the notes",
+        "  line 41 of the notes",
+        "EOF"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "note": null
+  },
+  "PERM_BASH_TALL": {
+    "dialog": null,
+    "note": "Jantar can't read this dialog's options with certainty. Use the keys, or answer it at the Mac."
+  },
+  "PERM_BASH_DONT_ASK": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command",
+      "question": "This command requires approval Do you want to proceed?",
+      "body": [
+        "Run the tests (velvet-quokka-5521)",
+        "npm test"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "Yes, and don’t ask again for: npm test *",
+          "role": "pick",
+          "hold": "rule"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000009"
+    },
+    "note": null
+  },
+  "PERM_READ_OUTSIDE": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Read file",
+      "question": "Do you want to proceed?",
+      "body": [
+        "/tmp/demo/uploads/photo.jpg",
+        "A read outside the working directories (velvet-quokka-5521)"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "Yes, and keep allowing any reads outside the working directories",
+          "role": "pick",
+          "hold": "reads"
+        },
+        {
+          "label": "No, and block reads outside the working directories from now on",
+          "role": "pick",
+          "hold": "block"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000000a"
+    },
+    "note": null
+  },
+  "PERM_FETCH": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Fetch",
+      "question": "Do you want to allow Claude to fetch this content?",
+      "body": [
+        "Fetch the release notes",
+        "url: https://example.com/notes",
+        "prompt: Summarise the changes (velvet-quokka-5521)"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "Yes, and don’t ask again for example.com",
+          "role": "pick",
+          "hold": "rule"
+        },
+        {
+          "label": "No, and tell Claude what to do differently (esc)",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000000b"
+    },
+    "note": null
+  },
+  "PERM_TICKING_A": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Create file",
+      "question": "Do you want to create b.txt?",
+      "body": [
+        "/tmp/demo/b.txt",
+        "This will modify /tmp/demo/b.txt (outside working directory) via a symlink",
+        " 1 +hello velvet-quokka-5521"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000000c"
+    },
+    "note": null
+  },
+  "PERM_TICKING_B": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Create file",
+      "question": "Do you want to create b.txt?",
+      "body": [
+        "/tmp/demo/b.txt",
+        "This will modify /tmp/demo/b.txt (outside working directory) via a symlink",
+        " 1 +hello velvet-quokka-5521"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000000d"
+    },
+    "note": null
+  },
+  "PERM_RAW_SPACES": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Create file",
+      "question": "Do you want to create b.txt?",
+      "body": [
+        "/tmp/demo/b.txt",
+        "This will modify /tmp/demo/b.txt (outside working directory) via a symlink",
+        " 1 +hello velvet-quokka-5521"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000000e"
+    },
+    "note": null
+  },
+  "PERM_LONE_SUBMIT": {
+    "dialog": null,
+    "note": "Jantar can't read this dialog's options with certainty. Use the keys, or answer it at the Mac."
+  },
+  "PERM_DEFAULT_NO": {
+    "dialog": null,
+    "note": "This dialog's layout (No first, no numbers) isn't confirmed on this Mac yet. Use the keys, or answer it at the Mac."
+  },
+  "PERM_DEFAULT_NO.open": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Fetch the page title (velvet-quokka-5521)",
+        "curl -s https://example.com | head -1"
+      ],
+      "options": [
+        {
+          "label": "No",
+          "role": "pick"
+        },
+        {
+          "label": "Yes",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000000f"
+    },
+    "note": null
+  },
+  "PLAN_FULLSCREEN": {
+    "dialog": {
+      "kind": "plan",
+      "title": "Ready to code?",
+      "question": "Claude has written up a plan and is ready to execute. Would you like to proceed?",
+      "body": [
+        "Plan: Notes page for the demo app",
+        "Context",
+        "The demo app needs a notes page that lists notes and lets you add one.",
+        "Keep the current routes as they are (velvet-quokka-5521).",
+        "Steps",
+        "- Add a notes list at /notes.",
+        "- Add a form to write a new note.",
+        "  The form saves on Enter.",
+        "- Add tests for both.",
+        "                                                                                          ↓"
+      ],
+      "options": [
+        {
+          "label": "Yes, and use auto mode",
+          "role": "pick",
+          "hold": "mode"
+        },
+        {
+          "label": "Yes, manually approve edits",
+          "role": "locked",
+          "note": "This dialog is taller than the Mac's window, and moving the choice there isn't confirmed yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Tell Claude what to change",
+          "role": "locked",
+          "note": "This dialog is taller than the Mac's window, and moving the choice there isn't confirmed yet. Choose this one at the Mac."
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000010"
+    },
+    "note": null
+  },
+  "PLAN_FULLSCREEN.open": {
+    "dialog": {
+      "kind": "plan",
+      "title": "Ready to code?",
+      "question": "Claude has written up a plan and is ready to execute. Would you like to proceed?",
+      "body": [
+        "Plan: Notes page for the demo app",
+        "Context",
+        "The demo app needs a notes page that lists notes and lets you add one.",
+        "Keep the current routes as they are (velvet-quokka-5521).",
+        "Steps",
+        "- Add a notes list at /notes.",
+        "- Add a form to write a new note.",
+        "  The form saves on Enter.",
+        "- Add tests for both.",
+        "                                                                                          ↓"
+      ],
+      "options": [
+        {
+          "label": "Yes, and use auto mode",
+          "role": "pick",
+          "hold": "mode"
+        },
+        {
+          "label": "Yes, manually approve edits",
+          "role": "pick"
+        },
+        {
+          "label": "Tell Claude what to change",
+          "role": "text"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000011"
+    },
+    "note": null
+  },
+  "PLAN_80COL": {
+    "dialog": {
+      "kind": "plan",
+      "title": "Ready to code?",
+      "question": "Claude has written up a plan and is ready to execute. Would you like to proceed?",
+      "body": [
+        "Create b.txt with one line.",
+        "Keep a.txt as it is (velvet-quokka-5521)."
+      ],
+      "options": [
+        {
+          "label": "Yes, and use auto mode",
+          "role": "pick",
+          "hold": "mode"
+        },
+        {
+          "label": "Yes, manually approve edits",
+          "role": "pick"
+        },
+        {
+          "label": "Tell Claude what to change",
+          "role": "text"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000012"
+    },
+    "note": null
+  },
+  "PLAN_CLEAR": {
+    "dialog": {
+      "kind": "plan",
+      "title": "Ready to code?",
+      "question": "Claude has written up a plan and is ready to execute. Would you like to proceed?",
+      "body": [
+        "Create b.txt with one line.",
+        "Keep a.txt as it is (velvet-quokka-5521)."
+      ],
+      "options": [
+        {
+          "label": "Yes, clear context (23% used) and use auto mode",
+          "role": "pick",
+          "hold": "context"
+        },
+        {
+          "label": "Yes, and use auto mode",
+          "role": "pick",
+          "hold": "mode"
+        },
+        {
+          "label": "Yes, manually approve edits",
+          "role": "pick"
+        },
+        {
+          "label": "Tell Claude what to change",
+          "role": "text"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000013"
+    },
+    "note": null
+  },
+  "PLAN_FEEDBACK_TYPED": {
+    "dialog": {
+      "kind": "plan",
+      "title": "Ready to code?",
+      "question": "Claude has written up a plan and is ready to execute. Would you like to proceed?",
+      "body": [
+        "Create b.txt with one line.",
+        "Keep a.txt as it is (velvet-quokka-5521)."
+      ],
+      "options": [
+        {
+          "label": "Yes, and use auto mode",
+          "role": "pick",
+          "hold": "mode"
+        },
+        {
+          "label": "Yes, manually approve edits",
+          "role": "pick"
+        },
+        {
+          "label": "use b.txt instead",
+          "role": "locked",
+          "note": "Text typed at the Mac is already in this row; finish it there."
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000014"
+    },
+    "note": null
+  },
+  "PLAN_TEXT_PENDING": {
+    "dialog": {
+      "kind": "plan",
+      "title": "Ready to code?",
+      "question": "Claude has written up a plan and is ready to execute. Would you like to proceed?",
+      "body": [
+        "Create b.txt with one line.",
+        "Keep a.txt as it is (velvet-quokka-5521)."
+      ],
+      "options": [
+        {
+          "label": "Yes, and use auto mode",
+          "role": "locked",
+          "hold": "mode",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Yes, manually approve edits",
+          "role": "locked",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Please keep the old file as a backup, write the new one beside it with the date in its name, and add a short line to the readme that says where the backup lives and how to restore it later on",
+          "role": "locked",
+          "note": "Text typed at the Mac is already in this row; finish it there."
+        }
+      ],
+      "current": 2,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000015"
+    },
+    "note": null
+  },
+  "PLAN_TEXT_PENDING.open": {
+    "dialog": {
+      "kind": "plan",
+      "title": "Ready to code?",
+      "question": "Claude has written up a plan and is ready to execute. Would you like to proceed?",
+      "body": [
+        "Create b.txt with one line.",
+        "Keep a.txt as it is (velvet-quokka-5521)."
+      ],
+      "options": [
+        {
+          "label": "Yes, and use auto mode",
+          "role": "locked",
+          "hold": "mode",
+          "note": "Moving off or past a row that holds typed text isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Yes, manually approve edits",
+          "role": "locked",
+          "note": "Moving off or past a row that holds typed text isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Please keep the old file as a backup, write the new one beside it with the date in its name, and add a short line to the readme that says where the backup lives and how to restore it later on",
+          "role": "locked",
+          "note": "Text typed at the Mac is already in this row; finish it there."
+        }
+      ],
+      "current": 2,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000016"
+    },
+    "note": null
+  },
+  "Q_SINGLE": {
+    "dialog": {
+      "kind": "question",
+      "title": "Colour",
+      "question": "Pick a colour",
+      "body": [],
+      "options": [
+        {
+          "label": "Red",
+          "role": "pick",
+          "detail": "Choose red"
+        },
+        {
+          "label": "Green",
+          "role": "pick",
+          "detail": "Choose green"
+        },
+        {
+          "label": "Blue",
+          "role": "pick",
+          "detail": "Choose blue (velvet-quokka-5521)"
+        },
+        {
+          "label": "Type something.",
+          "role": "text"
+        },
+        {
+          "label": "Chat about this",
+          "role": "chat"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000017"
+    },
+    "note": null
+  },
+  "Q_TEXT_PENDING": {
+    "dialog": {
+      "kind": "question",
+      "title": "Colour",
+      "question": "Pick a colour",
+      "body": [],
+      "options": [
+        {
+          "label": "Red",
+          "role": "locked",
+          "detail": "Choose red",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Green",
+          "role": "locked",
+          "detail": "Choose green",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Blue",
+          "role": "locked",
+          "detail": "Choose blue (velvet-quokka-5521)",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Teal for the header and the buttons, a soft grey for the body text, and",
+          "detail": "white cards with a thin border around each card.",
+          "role": "locked",
+          "note": "Text typed at the Mac is already in this row; finish it there."
+        },
+        {
+          "label": "Chat about this",
+          "role": "locked",
+          "note": "Moving off or past a row that holds typed text isn't confirmed on this Mac yet. Choose this one at the Mac."
+        }
+      ],
+      "current": 3,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000018"
+    },
+    "note": null
+  },
+  "Q_TEXT_PENDING.open": {
+    "dialog": {
+      "kind": "question",
+      "title": "Colour",
+      "question": "Pick a colour",
+      "body": [],
+      "options": [
+        {
+          "label": "Red",
+          "role": "locked",
+          "detail": "Choose red",
+          "note": "Moving off or past a row that holds typed text isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Green",
+          "role": "locked",
+          "detail": "Choose green",
+          "note": "Moving off or past a row that holds typed text isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Blue",
+          "role": "locked",
+          "detail": "Choose blue (velvet-quokka-5521)",
+          "note": "Moving off or past a row that holds typed text isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Teal for the header and the buttons, a soft grey for the body text, and",
+          "detail": "white cards with a thin border around each card.",
+          "role": "locked",
+          "note": "Text typed at the Mac is already in this row; finish it there."
+        },
+        {
+          "label": "Chat about this",
+          "role": "locked",
+          "note": "Moving off or past a row that holds typed text isn't confirmed on this Mac yet. Choose this one at the Mac."
+        }
+      ],
+      "current": 3,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000019"
+    },
+    "note": null
+  },
+  "Q_TYPED": {
+    "dialog": {
+      "kind": "question",
+      "title": "Colour",
+      "question": "Pick a colour",
+      "body": [],
+      "options": [
+        {
+          "label": "Red",
+          "role": "pick",
+          "detail": "Choose red"
+        },
+        {
+          "label": "Green",
+          "role": "pick",
+          "detail": "Choose green"
+        },
+        {
+          "label": "Blue",
+          "role": "pick",
+          "detail": "Choose blue (velvet-quokka-5521)"
+        },
+        {
+          "label": "teal and grey",
+          "role": "locked",
+          "note": "Text typed at the Mac is already in this row; finish it there."
+        },
+        {
+          "label": "Chat about this",
+          "role": "locked",
+          "note": "Moving off or past a row that holds typed text isn't confirmed on this Mac yet. Choose this one at the Mac."
+        }
+      ],
+      "current": 0,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000001a"
+    },
+    "note": null
+  },
+  "Q_ON_CHAT": {
+    "dialog": {
+      "kind": "question",
+      "title": "Colour",
+      "question": "Pick a colour",
+      "body": [],
+      "options": [
+        {
+          "label": "Red",
+          "role": "locked",
+          "detail": "Choose red",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Green",
+          "role": "locked",
+          "detail": "Choose green",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Blue",
+          "role": "locked",
+          "detail": "Choose blue (velvet-quokka-5521)",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Type something.",
+          "role": "locked",
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Chat about this",
+          "role": "chat"
+        }
+      ],
+      "current": 4,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000001b"
+    },
+    "note": null
+  },
+  "Q_ON_CHAT.open": {
+    "dialog": {
+      "kind": "question",
+      "title": "Colour",
+      "question": "Pick a colour",
+      "body": [],
+      "options": [
+        {
+          "label": "Red",
+          "role": "pick",
+          "detail": "Choose red"
+        },
+        {
+          "label": "Green",
+          "role": "pick",
+          "detail": "Choose green"
+        },
+        {
+          "label": "Blue",
+          "role": "pick",
+          "detail": "Choose blue (velvet-quokka-5521)"
+        },
+        {
+          "label": "Type something.",
+          "role": "text"
+        },
+        {
+          "label": "Chat about this",
+          "role": "chat"
+        }
+      ],
+      "current": 4,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000001c"
+    },
+    "note": null
+  },
+  "Q_LONE_NEXT": {
+    "dialog": null,
+    "note": "Jantar can't read this dialog's options with certainty. Use the keys, or answer it at the Mac."
+  },
+  "Q_NUM_GAP": {
+    "dialog": null,
+    "note": "Jantar can't read this dialog's options with certainty. Use the keys, or answer it at the Mac."
+  },
+  "Q_TABS": {
+    "dialog": {
+      "kind": "question",
+      "title": "",
+      "question": "What level should the role be?",
+      "body": [],
+      "tabs": [
+        {
+          "label": "Level",
+          "answered": true
+        },
+        {
+          "label": "Scope",
+          "answered": false
+        },
+        {
+          "label": "Setup",
+          "answered": false
+        }
+      ],
+      "options": [
+        {
+          "label": "Junior, 0-1 yrs",
+          "role": "pick",
+          "detail": "Lowest cost; needs the most direction and review from the team on every change."
+        },
+        {
+          "label": "Junior-mid, 1-3 yrs",
+          "role": "pick",
+          "detail": "Close to the current team's level. Cheaper, but needs more direction from you."
+        },
+        {
+          "label": "Senior, 3+ yrs",
+          "role": "pick",
+          "detail": "Can own a surface end to end (velvet-quokka-5521)."
+        },
+        {
+          "label": "Type something.",
+          "role": "text"
+        },
+        {
+          "label": "Chat about this",
+          "role": "chat"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000001d"
+    },
+    "note": null
+  },
+  "Q_MULTI": {
+    "dialog": {
+      "kind": "multi",
+      "title": "",
+      "question": "Pick fruits",
+      "body": [],
+      "tabs": [
+        {
+          "label": "Fruits",
+          "answered": false
+        }
+      ],
+      "options": [
+        {
+          "label": "Apple",
+          "detail": "Crisp and sweet",
+          "role": "toggle",
+          "checked": false
+        },
+        {
+          "label": "Banana",
+          "detail": "Soft (velvet-quokka-5521)",
+          "role": "toggle",
+          "checked": false
+        },
+        {
+          "label": "Cherry",
+          "detail": "Small and dark",
+          "role": "toggle",
+          "checked": false
+        },
+        {
+          "label": "Type something",
+          "role": "locked",
+          "checked": false,
+          "note": "Type extra answers at the Mac."
+        },
+        {
+          "label": "Submit",
+          "role": "submit"
+        },
+        {
+          "label": "Chat about this",
+          "role": "chat"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000001e"
+    },
+    "note": null
+  },
+  "Q_MULTI_TICKED": {
+    "dialog": {
+      "kind": "multi",
+      "title": "",
+      "question": "Pick fruits",
+      "body": [],
+      "tabs": [
+        {
+          "label": "Fruits",
+          "answered": false
+        }
+      ],
+      "options": [
+        {
+          "label": "Apple",
+          "detail": "Crisp and sweet",
+          "role": "locked",
+          "checked": true,
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Banana",
+          "detail": "Soft (velvet-quokka-5521)",
+          "role": "locked",
+          "checked": false,
+          "note": "Moving up in a dialog isn't confirmed on this Mac yet. Choose this one at the Mac."
+        },
+        {
+          "label": "Cherry",
+          "detail": "Small and dark",
+          "role": "toggle",
+          "checked": true
+        },
+        {
+          "label": "Type something",
+          "role": "locked",
+          "checked": false,
+          "note": "Type extra answers at the Mac."
+        },
+        {
+          "label": "Submit",
+          "role": "submit"
+        },
+        {
+          "label": "Chat about this",
+          "role": "chat"
+        }
+      ],
+      "current": 2,
+      "fingerprint": "000000000000000000000000000000000000000000000000000000000000001f"
+    },
+    "note": null
+  },
+  "Q_MULTI_TICKED.open": {
+    "dialog": {
+      "kind": "multi",
+      "title": "",
+      "question": "Pick fruits",
+      "body": [],
+      "tabs": [
+        {
+          "label": "Fruits",
+          "answered": false
+        }
+      ],
+      "options": [
+        {
+          "label": "Apple",
+          "detail": "Crisp and sweet",
+          "role": "toggle",
+          "checked": true
+        },
+        {
+          "label": "Banana",
+          "detail": "Soft (velvet-quokka-5521)",
+          "role": "toggle",
+          "checked": false
+        },
+        {
+          "label": "Cherry",
+          "detail": "Small and dark",
+          "role": "toggle",
+          "checked": true
+        },
+        {
+          "label": "Type something",
+          "role": "locked",
+          "checked": false,
+          "note": "Type extra answers at the Mac."
+        },
+        {
+          "label": "Submit",
+          "role": "submit"
+        },
+        {
+          "label": "Chat about this",
+          "role": "chat"
+        }
+      ],
+      "current": 2,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000020"
+    },
+    "note": null
+  },
+  "Q_REVIEW": {
+    "dialog": {
+      "kind": "review",
+      "title": "Review your answers",
+      "question": "Ready to submit your answers?",
+      "body": [
+        "● Pick a colour",
+        "  → purple",
+        "● Pick a size",
+        "  → Large (velvet-quokka-5521)"
+      ],
+      "tabs": [
+        {
+          "label": "Colour",
+          "answered": true
+        },
+        {
+          "label": "Size",
+          "answered": true
+        }
+      ],
+      "options": [
+        {
+          "label": "Submit answers",
+          "role": "pick"
+        },
+        {
+          "label": "Cancel",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000021"
+    },
+    "note": null
+  },
+  "Q_REVIEW_WARN": {
+    "dialog": {
+      "kind": "review",
+      "title": "Review your answers",
+      "question": "Ready to submit your answers?",
+      "body": [
+        "⚠ You have not answered all questions",
+        "● Pick a colour",
+        "  → purple (velvet-quokka-5521)"
+      ],
+      "tabs": [
+        {
+          "label": "Colour",
+          "answered": true
+        },
+        {
+          "label": "Size",
+          "answered": false
+        }
+      ],
+      "options": [
+        {
+          "label": "Submit answers",
+          "role": "pick"
+        },
+        {
+          "label": "Cancel",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000022"
+    },
+    "note": null
+  },
+  "Q_PREVIEW": {
+    "dialog": null,
+    "note": "This question shows previews the app can't lay out. Use the keys, or answer it at the Mac."
+  },
+  "Q_SCROLLED": {
+    "dialog": null,
+    "note": "Some of this dialog's options are scrolled out of view. Use the keys, or answer it at the Mac."
+  }
+}

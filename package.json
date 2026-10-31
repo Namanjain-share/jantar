@@ -1,0 +1,40 @@
+{
+  "name": "jantar",
+  "version": "0.5.1",
+  "private": true,
+  "license": "FSL-1.1-MIT",
+  "description": "See and control every Claude Code terminal session, on one Claude account or many, from your Mac or your phone. Source-available (fair source).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Namanjain-share/jantar.git"
+  },
+  "homepage": "https://github.com/Namanjain-share/jantar#readme",
+  "bugs": "https://github.com/Namanjain-share/jantar/issues",
+  "keywords": ["claude-code", "terminal", "macos", "pwa", "hooks", "cswap", "source-available", "fair-source"],
+  "type": "module",
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test && pnpm test:scripts",
+    "typecheck": "pnpm -r typecheck",
+    "lint:secrets": "node scripts/check-secrets.mjs",
+    "lint:history": "node scripts/check-secrets.mjs --history",
+    "check": "pnpm build && pnpm typecheck && pnpm test && pnpm lint:secrets && pnpm lint:provenance && pnpm lint:oss",
+    "test:scripts": "node --test \"scripts/*.test.mjs\"",
+    "lint:provenance": "node scripts/check-provenance.mjs",
+    "lint:oss": "node scripts/check-oss.mjs",
+    "export:public": "node scripts/export-public.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
+    "brand": "node scripts/brand.mjs",
+    "perf:web": "node scripts/perf-chunks.mjs",
+    "perf:memory": "node scripts/perf-memory.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "playwright-core": "1.63.0",
+    "typescript": "^5.9.3"
+  }
+}

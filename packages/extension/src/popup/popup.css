@@ -1,0 +1,216 @@
+/*
+ * The popup's look: 320 px wide, system fonts (counts and commands in
+ * ui-monospace), the six colour properties the camera button uses too, for
+ * light and dark (values from the web app's styles/tokens.css). The
+ * primary button is ink on the page's ground, as in the app.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: #f7f5ef;
+  --surface: #fcfbf7;
+  --line-strong: #878b9b;
+  --ink: #16203a;
+  --ink-2: #3d4660;
+  --jup: #a67a0c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1527;
+    --surface: #141b2f;
+    --line-strong: #717a98;
+    --ink: #efebe1;
+    --ink-2: #bcbfcd;
+    --jup: #e8b84a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  width: 320px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.4 system-ui, sans-serif;
+}
+
+main {
+  padding: 14px 16px 12px;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* The screen reader's line (what the view says first); not shown. */
+.live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lead {
+  font-weight: 600;
+}
+
+.quiet {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.mono {
+  color: var(--ink-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+
+.error {
+  border-left: 3px solid var(--line-strong);
+  padding-left: 8px;
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 6px 2px 0;
+  border-radius: 50%;
+  background: var(--jup);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+label {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.stack label:not(:first-child) {
+  margin-top: 4px;
+}
+
+input[type='text'],
+select {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.switch input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+button {
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--ink-2);
+}
+
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-weight: 400;
+  text-decoration: underline;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.actions button {
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-strong);
+}

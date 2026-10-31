@@ -1,0 +1,479 @@
+/*
+ * Design tokens: "B+ Ledger in Kundali colours". The ONLY file in src/ that
+ * may hold colour literals or font sizes (direction.md section 7, rules 1 and
+ * 11). Everything else uses the Tailwind utilities generated from @theme below
+ * (bg-surface, text-ink-3, border-line, rounded-btn, type-row, ease-out, ...).
+ *
+ * Themes: day (cream and navy) is the default on :root. Night (deep navy,
+ * never black) applies with [data-theme="dark"], or with the OS dark setting
+ * while no explicit theme is chosen. lib/theme.ts sets or clears data-theme.
+ *
+ * Hue rules: coral/brick red (--signal*) means "needs you" and nothing else.
+ * Mustard (--jup*, Jupiter) marks time and luck only: the live dot, "now"
+ * marks and the next-account tag. No green, no neon, no colour blends.
+ *
+ * ---------------------------------------------------------------------------
+ * Contrast, computed with
+ *   python3 ~/.claude/skills/tastemaker/scripts/check_contrast.py --matrix <role=hex ...>
+ * over both themes (22 roles, 231 pairs each). The pairings the UI uses:
+ *
+ *   pairing (fg on bg)              day     night   floor
+ *   ink on bg                       14.80   15.25   text 4.5
+ *   ink on surface                  15.58   14.37   text
+ *   ink on hover / select           14.04   13.50 / 13.06 12.67  text
+ *   ink-2 on bg                      8.59    9.92   text
+ *   ink-2 on surface / raised        9.04    9.35 / 9.36 8.27  text
+ *   ink-3 on bg                      5.71    6.11   text
+ *   ink-3 on surface                 6.01    5.76   text
+ *   ink-3 on raised                  6.22    5.10   text
+ *   ink-3 on hover                   5.42    5.41   text
+ *   ink-3 on select                  5.04    5.08   text
+ *   signal-text on bg                6.42    7.74   text
+ *   signal-text on surface           6.76    7.29   text
+ *   signal-text on raised            7.00    6.45   text
+ *   signal-text on select / hover    5.67    6.43 / 6.09 6.85  text
+ *   on-signal on badge               7.00    6.48   text (count numerals)
+ *   signal on bg (glyph)             4.69    6.48   UI 3.0
+ *   signal on select (glyph)         4.14    5.38   UI
+ *   bg on ink (primary button)      14.80   15.25   text
+ *   bg on ink-2 (primary hover)      8.59    9.92   text
+ *   line-strong on bg (outlines)     3.11    4.27   UI
+ *   line-strong on raised            3.39    3.56   UI
+ *   jup-text on bg                   5.55    9.84   text
+ *   jup on bg (live dot)             3.56    9.84   UI
+ *   on-jup on jup-fill (next tag)    8.29    9.84   text
+ *   term-ink on term                13.36   13.54   text
+ *   term-dim on term                 6.51    6.44   text
+ *   ink-4 on bg                      2.13    2.52   decorative: NEVER text
+ *   line on bg                       1.23    1.40   decorative: hairlines only
+ *   ink-3 on line (disabled button)  4.63    4.38   disabled controls are exempt
+ *
+ * Text-safe (>=4.5) pairs reported by --matrix, day:
+ *   raised/term, surface/term, raised/ink, surface/ink, bg/term, hover/term,
+ *   bg/ink, hover/ink, select/ink, term/term-ink, raised/ink-2, surface/ink-2,
+ *   bg/ink-2, hover/ink-2, select/ink-2, raised/signal-text, raised/badge,
+ *   badge/on-signal, surface/signal-text, term/term-dim, bg/signal-text,
+ *   raised/ink-3, surface/ink-3, bg/ink-3, hover/signal-text, hover/ink-3,
+ *   raised/jup-text, surface/jup-text, bg/jup-text, select/signal-text,
+ *   select/ink-3, raised/signal, surface/signal, bg/signal, line-strong/ink,
+ *   jup-fill/on-jup, line/ink-3, line/signal-text
+ * UI-safe (>=3.0) day: hover/signal, select/signal, raised/jup, surface/jup,
+ *   bg/jup, raised/line-strong, surface/line-strong, bg/line-strong
+ * Text-safe night: every ink, ink-2, ink-3, signal, signal-text, jup and
+ *   jup-text pairing on bg, surface, hover, select and raised; term/term-ink,
+ *   term/term-dim; badge/on-signal; jup-fill/on-jup; ink/on-jup.
+ * UI-safe night: line-strong on bg 4.27, on raised 3.56; line-strong/ink 3.57.
+ * Decorative in both: ink-4 and line on any ground (never text).
+ * ---------------------------------------------------------------------------
+ */
+
+/* ========================= colour: day (default) ========================= */
+:root {
+  --page: #ebe8df;
+  --bg: #f7f5ef;
+  --surface: #fcfbf7;
+  --hover: #f2efe7;
+  --select: #ebe7dc;
+  --raised: #ffffff;
+  --line: #e2ded3;
+  --line-strong: #878b9b;
+  --ink: #16203a;
+  --ink-2: #3d4660;
+  --ink-3: #596079;
+  --ink-4: #a6aab8; /* never text */
+  --signal: #c63d2c; /* needs-you glyph and fills */
+  --signal-text: #a3301f; /* needs-you words */
+  --badge: #a3301f;
+  --on-signal: #ffffff;
+  --term: #131b2f; /* the terminal stays dark in day: it is the real thing */
+  --term-ink: #e7e3d8;
+  --term-dim: #9a9fb3;
+  --scrim: rgb(22 32 58 / 0.34);
+  --jup: #a67a0c;
+  --jup-text: #7f5d00;
+  --jup-fill: #e3b341;
+  --on-jup: #16203a;
+  --shadow-float-v: 0 0 0 1px var(--line), 0 24px 48px -16px rgb(27 25 22 / 0.22);
+  color-scheme: light;
+}
+
+/* ========================= colour: night ========================= */
+:root[data-theme='dark'] {
+  --page: #0a0f1d;
+  --bg: #0f1527;
+  --surface: #141b2f;
+  --hover: #18203a;
+  --select: #1c2542;
+  --raised: #1c2540;
+  --line: #28304b;
+  --line-strong: #717a98;
+  --ink: #efebe1;
+  --ink-2: #bcbfcd;
+  --ink-3: #9095ab;
+  --ink-4: #4e5675;
+  --signal: #ff6b57;
+  --signal-text: #ff8770;
+  --badge: #ff6b57;
+  --on-signal: #0f1527;
+  --term: #0a0f1d;
+  --term-ink: #ddd9cd;
+  --term-dim: #9095ab;
+  --scrim: rgb(5 8 18 / 0.6);
+  --jup: #e8b84a;
+  --jup-text: #e8b84a;
+  --jup-fill: #e8b84a;
+  --on-jup: #0f1527;
+  --shadow-float-v: 0 0 0 1px var(--line), 0 24px 48px -16px rgb(0 0 0 / 0.45);
+  color-scheme: dark;
+}
+
+/* "System": follow the OS while lib/theme.ts has not set data-theme. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --page: #0a0f1d;
+    --bg: #0f1527;
+    --surface: #141b2f;
+    --hover: #18203a;
+    --select: #1c2542;
+    --raised: #1c2540;
+    --line: #28304b;
+    --line-strong: #717a98;
+    --ink: #efebe1;
+    --ink-2: #bcbfcd;
+    --ink-3: #9095ab;
+    --ink-4: #4e5675;
+    --signal: #ff6b57;
+    --signal-text: #ff8770;
+    --badge: #ff6b57;
+    --on-signal: #0f1527;
+    --term: #0a0f1d;
+    --term-ink: #ddd9cd;
+    --term-dim: #9095ab;
+    --scrim: rgb(5 8 18 / 0.6);
+    --jup: #e8b84a;
+    --jup-text: #e8b84a;
+    --jup-fill: #e8b84a;
+    --on-jup: #0f1527;
+    --shadow-float-v: 0 0 0 1px var(--line), 0 24px 48px -16px rgb(0 0 0 / 0.45);
+    color-scheme: dark;
+  }
+}
+
+/* ========================= type scale =========================
+ * Phone values by default; desktop from 768px (the phone frame ends there).
+ * Exactly these sizes: 11, 12, 14, 15, 16, 17, 28 on phone, plus 11.5, 12.5,
+ * 13 and 22 on desktop (direction.md 5.0 and dir-k.html).
+ */
+:root {
+  --fs-display: 28px;
+  --lh-display: 32px;
+  --fs-title: 17px;
+  --lh-title: 22px;
+  --fs-body: 15px;
+  --lh-body: 23px;
+  --fs-row: 15px;
+  --lh-row: 20px;
+  --fs-small: 14px;
+  --lh-small: 19px;
+  --fs-mono: 12px;
+  --lh-mono: 16px;
+  --fs-code: 12px;
+  --lh-code: 19px;
+  --fs-rail: 11px;
+  --lh-rail: 14px;
+  --fs-input: 16px;
+  --lh-input: 22px;
+  --fs-word: 15px;
+  --lh-word: 20px;
+}
+@media (min-width: 768px) {
+  :root {
+    --fs-display: 22px;
+    --lh-display: 28px;
+    --fs-body: 14px;
+    --lh-body: 21px;
+    --fs-row: 14px;
+    --lh-row: 18px;
+    --fs-small: 13px;
+    --lh-small: 18px;
+    --fs-mono: 11.5px;
+    --lh-mono: 16px;
+    --fs-code: 12.5px;
+    --lh-code: 20px;
+  }
+}
+
+/* ========================= Tailwind theme =========================
+ * The default theme is wiped first, so zinc-900, indigo-500, rounded-xl,
+ * shadow-lg and text-sm cannot exist. Only the names below do.
+ */
+@theme {
+  --*: initial;
+
+  /* 1 unit = 1 px, so classes read like the spec: h-48, w-440, px-16, gap-8.
+     Use the 4 px grid (4, 8, 12, 16, 24, 32, 48); odd values only for the
+     1 px hairline compensation the mockup uses (py-7 next to a border). */
+  --spacing: 1px;
+
+  --breakpoint-md: 768px; /* rail + full-width ledger */
+  --breakpoint-lg: 1024px; /* ledger column 360 + detail pane */
+  --breakpoint-xl: 1280px; /* ledger column 440 */
+  --breakpoint-2xl: 1360px; /* session property column */
+
+  --font-sans: 'Archivo Variable', 'Archivo Fallback', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --default-font-family: var(--font-sans);
+  --default-mono-font-family: var(--font-mono);
+
+  --font-weight-regular: 420;
+  --font-weight-medium: 560;
+  --font-weight-strong: 680;
+  --font-weight-wide: 600;
+  --font-weight-data: 450; /* mono data, tags */
+  --font-weight-key: 500; /* keycaps, rails, account ids */
+
+  /* The pairing QR is black on white in both themes, so phones can scan it. */
+  --color-qr-ink: #000000;
+  --color-qr-paper: #ffffff;
+
+  --radius-chip: 3px; /* chips, tags, keycaps */
+  --radius-btn: 6px; /* buttons, inputs, segmented, terminal boxes */
+  --radius-dock: 10px; /* dock, sheets, palette, QR card */
+  --radius-badge: 999px; /* count badges only */
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-ui: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-hover: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --default-transition-duration: 120ms;
+  --default-transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  --animate-enter: ccw-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) 50ms both;
+  --animate-rise: ccw-rise 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  --animate-fade: ccw-fade 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  --animate-pop: ccw-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-dim: ccw-dim 140ms cubic-bezier(0.4, 0, 0.2, 1) 1;
+  --animate-blink: ccw-blink 140ms cubic-bezier(0.4, 0, 0.2, 1) 2 alternate;
+  --animate-num: ccw-num 150ms cubic-bezier(0.4, 0, 0.2, 1) 1;
+  --animate-wash: ccw-wash 600ms linear 180ms both;
+
+  @keyframes ccw-enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ccw-rise {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ccw-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes ccw-dim {
+    0% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes ccw-blink {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0.2;
+    }
+  }
+  @keyframes ccw-num {
+    from {
+      opacity: 0.4;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes ccw-wash {
+    from {
+      opacity: 0.14;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+}
+
+/* Theme-dependent values: `inline` makes the utilities read the :root
+   variables, so a theme switch is one attribute and no dark: variants. */
+@theme inline {
+  --color-page: var(--page);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-hover: var(--hover);
+  --color-select: var(--select);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-signal: var(--signal);
+  --color-signal-text: var(--signal-text);
+  --color-badge: var(--badge);
+  --color-on-signal: var(--on-signal);
+  --color-term: var(--term);
+  --color-term-ink: var(--term-ink);
+  --color-term-dim: var(--term-dim);
+  --color-scrim: var(--scrim);
+  --color-jup: var(--jup);
+  --color-jup-text: var(--jup-text);
+  --color-jup-fill: var(--jup-fill);
+  --color-on-jup: var(--on-jup);
+
+  /* The one shadow: the Cmd-K palette and desktop popovers only. */
+  --shadow-float: var(--shadow-float-v);
+
+  /* Size-only utilities (text-small, text-mono, ...); prefer type-* below. */
+  --text-display: var(--fs-display);
+  --text-display--line-height: var(--lh-display);
+  --text-title: var(--fs-title);
+  --text-title--line-height: var(--lh-title);
+  --text-body: var(--fs-body);
+  --text-body--line-height: var(--lh-body);
+  --text-row: var(--fs-row);
+  --text-row--line-height: var(--lh-row);
+  --text-small: var(--fs-small);
+  --text-small--line-height: var(--lh-small);
+  --text-mono: var(--fs-mono);
+  --text-mono--line-height: var(--lh-mono);
+  --text-code: var(--fs-code);
+  --text-code--line-height: var(--lh-code);
+  --text-rail: var(--fs-rail);
+  --text-rail--line-height: var(--lh-rail);
+  --text-input: var(--fs-input);
+  --text-input--line-height: var(--lh-input);
+}
+
+/* ========================= type styles =========================
+ * One utility per role in direction.md 5.0. Numbers are always tabular.
+ */
+@utility type-display {
+  font-family: var(--font-sans);
+  font-size: var(--fs-display);
+  line-height: var(--lh-display);
+  font-weight: 600;
+  font-stretch: 125%;
+  letter-spacing: -0.02em;
+  /* The longhand: the shorthand would also reset text-wrap-mode, and `truncate` beside it would stop truncating. */
+  text-wrap-style: balance;
+  font-variant-numeric: tabular-nums;
+}
+@utility type-word {
+  font-family: var(--font-sans);
+  font-size: var(--fs-word);
+  line-height: var(--lh-word);
+  font-weight: 600;
+  font-stretch: 125%;
+  letter-spacing: -0.01em;
+}
+@utility type-title {
+  font-family: var(--font-sans);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  /* The longhand: the shorthand would also reset text-wrap-mode, and `truncate` beside it would stop truncating. */
+  text-wrap-style: balance;
+}
+@utility type-body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 420;
+  letter-spacing: -0.006em;
+}
+@utility type-row {
+  font-family: var(--font-sans);
+  font-size: var(--fs-row);
+  line-height: var(--lh-row);
+  font-weight: 420;
+  letter-spacing: -0.006em;
+}
+@utility type-small {
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  font-weight: 420;
+  letter-spacing: 0;
+}
+@utility type-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  line-height: var(--lh-mono);
+  font-weight: 450;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+@utility type-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: var(--lh-code);
+  font-weight: 450;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+/* Rails and keycap labels ONLY. The DOM keeps sentence case ("Your turn"),
+   so accessible names and tests read normally. */
+@utility type-rail {
+  font-family: var(--font-mono);
+  font-size: var(--fs-rail);
+  line-height: var(--lh-rail);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+@utility type-key {
+  font-family: var(--font-mono);
+  font-size: var(--fs-rail);
+  line-height: var(--lh-rail);
+  font-weight: 500;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+@utility type-input {
+  font-family: var(--font-sans);
+  font-size: var(--fs-input);
+  line-height: var(--lh-input);
+  font-weight: 420;
+  letter-spacing: 0;
+}
+
+/* Root typography: body text on the ground colour. */
+html {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 420;
+  letter-spacing: -0.006em;
+}

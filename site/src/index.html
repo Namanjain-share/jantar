@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{csp}}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jantar: every Claude Code session on your Mac, on your phone</title>
+<meta name="description" content="Jantar shows every Claude Code session in Terminal on your Mac and lets you answer the ones waiting on you from your phone. Free, source-available, Mac only.">
+<meta name="color-scheme" content="light dark">
+{{theme-color}}
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="{{root}}favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{root}}apple-touch-icon.png">
+<link rel="preload" href="{{root}}assets/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{root}}{{css}}">
+{{theme-init}}
+<script src="{{root}}{{js}}" defer></script>
+{{social}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<x-header></x-header>
+
+<main id="main">
+
+<!-- ============================== hero ============================== -->
+<section class="hero" id="top" aria-labelledby="hero-h">
+  <div class="frame hero-in">
+    <div class="hero-text">
+      <p class="lbl">for people who run many Claude Code sessions in Terminal on a Mac</p>
+      <h1 class="h1" id="hero-h">Every Claude Code session on your Mac, <span class="h1-2">on your phone.</span></h1>
+      <p class="sub">A small daemon on your Mac and a web app on your phone. See which session is waiting on you, then approve, answer or send the next prompt from wherever you are.</p>
+      <div class="actions">
+        <a class="btn btn-pri" href="#install">Install on your Mac<x-icon name="arrow-right"></x-icon></a>
+        <a class="btn btn-sec" href="{{repo}}" rel="noopener">Read the source<x-icon name="arrow-up-right"></x-icon></a>
+      </div>
+      <p class="micro"><span class="nw">Free ·</span> <span class="nw">source-available, FSL-1.1-MIT ·</span> <span class="nw">v{{version}}, early</span><br><span class="nw">Runs on your Mac ·</span> <span class="nw">no Jantar server or account ·</span> <span class="nw">macOS and Terminal.app</span></p>
+    </div>
+
+    <figure class="panel hero-panel">
+      <p class="lbl panel-lbl">infra · terraform plan · waiting 4m</p>
+      <x-dial></x-dial>
+      <div class="hero-comp">
+        <div class="hero-phone">
+          <x-figure slot="hero"></x-figure>
+          <p class="chip chip--hero"><b>Same dialog, as buttons</b><span class="rail">typed only while the Mac shows it</span></p>
+        </div>
+        <div class="hero-term">
+          <p class="term-cap">Terminal.app · infra</p>
+          <div class="term term--hero" aria-hidden="true">
+            <div class="ln"><i class="dot"></i>The plan is ready.</div>
+            <div class="rule"></div>
+            <div class="ln"> Ready to code?</div>
+            <div class="ln wide"> </div>
+            <div class="ln wide"> Here is Claude's plan:</div>
+            <div class="rule rule--dash wide"></div>
+            <div class="ln wide"> 3 to add, 1 to change, 0 to</div>
+            <div class="ln wide"> destroy.</div>
+            <div class="ln wide"> 1. Add a bucket for build</div>
+            <div class="ln wide">    artifacts</div>
+            <div class="ln wide"> 2. Add a lifecycle rule (30 days)</div>
+            <div class="ln wide"> 3. Add a role for CI</div>
+            <div class="ln wide"> 4. Point the CDN origin at the</div>
+            <div class="ln wide">    new bucket</div>
+            <div class="rule"></div>
+            <div class="ln"> Claude has written up a plan and</div>
+            <div class="ln"> is ready to execute. Would you</div>
+            <div class="ln"> like to proceed?</div>
+            <div class="ln"> </div>
+            <div class="ln hl"> <i class="ptr"></i> 1. Yes, and use auto mode</div>
+            <div class="ln dim">   2. Yes, manually approve edits</div>
+            <div class="ln dim">   3. Tell Claude what to change</div>
+          </div>
+        </div>
+      </div>
+      <figcaption class="vh">Example: a Terraform plan waiting in Terminal on the Mac, and the same plan on the phone with its three options as buttons.</figcaption>
+      <p class="rail ex">Example data</p>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================== doctor strip ============================== -->
+<section class="strip" aria-label="An example jantar doctor run">
+  <div class="frame strip-in">
+    <p class="strip-head"><span class="rail">Example data</span><span class="strip-note"><code>jantar doctor</code>'s output, written out for a synthetic Mac: 7 of its 15 checks</span></p>
+    <div class="doc">
+      <p class="doc-title">jantar doctor</p>
+      <ul class="doc-lines">
+        <li><span class="st">ok</span><span class="ti">macOS</span><span class="de">macOS (launchd, Terminal.app)</span></li>
+        <li><span class="st">ok</span><span class="ti">Daemon</span><span class="de">jantard {{version}} answers on /Users/you/.jantar/run/ctl.sock; LaunchAgent at /Users/you/Library/<wbr>LaunchAgents/<wbr>com.jantar.daemon.plist</span></li>
+        <li><span class="st">ok</span><span class="ti">Port</span><span class="de">127.0.0.1:7420 (jantard)</span></li>
+        <li><span class="st">ok</span><span class="ti">cswap</span><span class="de">0.26.4 (/Users/you/.local/bin/<wbr>cswap <span class="nw">--version)</span>; 11 profile dirs, usage cache 2m old</span></li>
+        <li><span class="st">ok</span><span class="ti">Claude Code</span><span class="de">/Users/you/.local/bin/<wbr>claude (2.1.314)</span></li>
+        <li><span class="st">ok</span><span class="ti">Claude hooks</span><span class="de">installed (/Users/you/.jantar/bin/<wbr><span class="nw">jantar-hook)</span></span></li>
+        <li><span class="st">ok</span><span class="ti">Tailscale</span><span class="de">Serve: https://mac.example.ts.net -&gt; 127.0.0.1:7420 (tailnet only)</span></li>
+        <li class="doc-sum"><i class="live" aria-hidden="true"></i>13 ok, 0 warnings, 0 failures, 2 notes</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== why ============================== -->
+<section class="sec g-bg" id="why" aria-labelledby="why-h">
+  <div class="frame">
+    <div class="head">
+      <p class="lbl">why it exists</p>
+      <h2 class="h2" id="why-h">Claude stops to ask. <span class="dim">The tab it is waiting in sits behind eleven others.</span></h2>
+    </div>
+
+    <figure class="panel tabs-panel">
+      <p class="lbl panel-lbl">twelve tabs in Terminal.app</p>
+      <div class="win" aria-hidden="true">
+        <div class="tabbar">
+          <span class="tab">jantar</span><span class="tab tab--need">web-app</span><span class="tab">docs-site</span><span class="tab">mobile</span><span class="tab">landing</span><span class="tab tab--need">infra</span><span class="tab">design-system</span><span class="tab">payments</span><span class="tab">search</span><span class="tab">crm-sync</span><span class="tab tab--need">api-server</span><span class="tab">analytics</span>
+        </div>
+        <div class="winbody"><i class="cursor"></i></div>
+      </div>
+      <figcaption class="tabs-cap">Three of these are waiting on you.</figcaption>
+      <p class="rail ex">Example data</p>
+    </figure>
+
+    <div class="why-grid">
+      <ol class="ledger ledger--num">
+        <li><span class="k">01</span><p>A dozen sessions in a dozen tabs. Which are working, which are done, and which are waiting on you?</p></li>
+        <li><span class="k">02</span><p>A permission prompt, a plan or a question stops a session until you answer it. If you are away from the Mac, it waits.</p></li>
+        <li><span class="k">03</span><p>With several Claude accounts, each <span class="nw">5-hour</span> window fills at its own pace. You find out when a session stalls.</p></li>
+      </ol>
+      <p class="turn">Jantar puts every session on one board, on the Mac and on your phone, and lets you answer from either.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== board ============================== -->
+<section class="sec g-page" id="board" aria-labelledby="board-h">
+  <div class="frame">
+    <div class="head head--split">
+      <div>
+        <p class="lbl">jantar open</p>
+        <h2 class="h2" id="board-h">See every session. <span class="dim">Answer the ones waiting on you.</span></h2>
+      </div>
+      <p class="lede">The board lists every Claude Code session in Terminal.app, the ones that need you first. Each row says what it waits on: the question, the plan or the command. Open one and answer with the same options the Mac shows.</p>
+    </div>
+    <p class="exnote">Every screen on this page is synthetic example data.</p>
+
+    <figure class="panel board-panel">
+      <p class="lbl panel-lbl">jantar open · 15 sessions · 3 need you</p>
+      <div class="board-comp">
+        <x-figure slot="board-narrow"></x-figure>
+        <x-figure slot="board-wide"></x-figure>
+        <div class="board-phone">
+          <x-figure slot="board-card"></x-figure>
+          <p class="chip chip--board"><b>2 s hold</b><span class="rail">to save a rule</span></p>
+        </div>
+      </div>
+      <p class="rail ex">Example data</p>
+    </figure>
+
+    <dl class="ledger ledger--keys ledger--2col">
+      <div><dt>cards</dt><dd>With Claude Code's hooks installed (opt-in: <code>jantar hooks install <span class="nw">--apply</span></code>), a permission prompt, a question or a plan becomes a card that answers through Claude Code itself. The hooks fail open: with Jantar stopped, Claude behaves as usual.</dd></div>
+      <div><dt>hold</dt><dd>Rows that save a rule or switch to a mode that doesn't ask need a 2-second hold.</dd></div>
+      <div><dt>send</dt><dd>A prompt counts as sent only when the session's transcript shows it arrived. If it doesn't, the phone says Not delivered and offers Retry.</dd></div>
+      <div><dt>attach</dt><dd>Photos and files from the phone go to the Mac, and Claude reads them from there. Photos are drawn again as JPEG, which drops their location data. Up to 10 files a prompt.</dd></div>
+      <div><dt>start</dt><dd>Start a new session in any folder you allow, or resume the last one. The sheet shows the exact command line before you hold to start. It needs both <code>jantar launch on</code> at the Mac and a phone granted launch: <code>jantar devices grant &lt;device&gt; launch</code>.</dd></div>
+    </dl>
+    <p class="more">More: <a href="{{doc docs/phone-app.md}}" rel="noopener">The app, screen by screen<x-icon name="arrow-up-right"></x-icon></a></p>
+  </div>
+</section>
+
+<!-- ============================== terminal ============================== -->
+<section class="sec g-page" id="terminal" aria-labelledby="terminal-h">
+  <div class="frame">
+    <div class="head">
+      <p class="lbl">jantar controls · on by default</p>
+      <h2 class="h2" id="terminal-h">Without the hooks, Jantar reads the dialog off the screen. <span class="dim">It types only while that dialog is still there.</span></h2>
+    </div>
+
+    <div class="band band--vl">
+      <figure class="panel term-panel">
+        <p class="lbl panel-lbl">api-server · Bash command</p>
+        <div class="duo">
+          <div class="duo-term">
+            <p class="term-cap">Terminal.app · api-server</p>
+            <div class="term term--bash" aria-hidden="true">
+              <div class="ln"><i class="dot"></i>I will reset the billing database</div>
+              <div class="ln">  before the migration.</div>
+              <div class="rule"></div>
+              <div class="ln"> Bash command</div>
+              <div class="ln"> Reset the billing database</div>
+              <div class="rule rule--dash"></div>
+              <div class="ln"> pnpm prisma migrate reset --force</div>
+              <div class="rule rule--dash"></div>
+              <div class="ln"> Do you want to proceed?</div>
+              <div class="ln hl"> <i class="ptr"></i> 1. Yes</div>
+              <div class="ln dim">   2. Yes, and don’t ask again for:</div>
+              <div class="ln dim">      pnpm prisma migrate *</div>
+              <div class="ln dim">   3. Yes, and switch to auto mode</div>
+              <div class="ln dim">   4. No</div>
+              <div class="ln"> </div>
+              <div class="ln dim"> Esc to cancel · Tab to amend</div>
+            </div>
+          </div>
+          <div class="duo-phone">
+            <x-figure slot="terminal-lead"></x-figure>
+            <p class="chip chip--term"><b>Typed only if unchanged</b><span class="rail">checked in the run that types</span></p>
+          </div>
+        </div>
+        <figcaption class="vh">Example: a Bash permission prompt in Terminal on the Mac, and the same prompt on the phone as buttons.</figcaption>
+        <p class="rail ex">Example data</p>
+      </figure>
+
+      <div class="band-text">
+        <p class="lede">A session that started before the hooks, or a subagent asking, still waits on a dialog in Terminal. The phone shows that dialog's question and Claude's own options as buttons.</p>
+        <p class="rail seq-head">Before and after it types</p>
+        <ol class="seq">
+          <li>Reads the screen again, under the session's lock, and compares it with what you tapped.</li>
+          <li>Checks the dialog once more in the same AppleScript run that types, and types nothing if it changed.</li>
+          <li>Sends only arrow keys; Terminal adds the one Return. Never a digit, Tab or Shift+Tab.</li>
+          <li>Reads the screen until the dialog has closed or changed.</li>
+        </ol>
+        <div class="keypad">
+          <x-figure slot="terminal-keypad"></x-figure>
+          <p>A screen Jantar can't turn into buttons gets a keypad: ↓, ↑ and Enter, sent in one write and only while the lines you counted on are unchanged. Rows it can't answer safely stay greyed, with one line saying why. Show on Mac is on every dock.</p>
+        </div>
+        <p class="more">More: <a href="{{doc docs/phone-control.md}}" rel="noopener">Every dialog, and what each button types<x-icon name="arrow-up-right"></x-icon></a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== accounts ============================== -->
+<section class="sec g-page" id="accounts" aria-labelledby="accounts-h">
+  <div class="frame">
+    <div class="head">
+      <p class="lbl">jantar accounts · cswap optional</p>
+      <h2 class="h2" id="accounts-h">One Claude login is enough. <span class="dim">With cswap, every account's <span class="nw">5-hour</span> window on one screen.</span></h2>
+    </div>
+
+    <div class="band band--vr">
+      <div class="band-text">
+        <p class="lede">Jantar decides at start. On one login it runs on that login. With <a href="https://github.com/realiti4/claude-swap" rel="noopener">cswap<x-icon name="arrow-up-right"></x-icon></a> and several accounts it shows each one's <span class="nw">5-hour</span> and weekly use, when it resets, and which sessions run on it.</p>
+        <table class="spec">
+          <caption class="vh">What Jantar does with accounts in v{{version}}</caption>
+          <thead><tr><th scope="col">What</th><th scope="col">Status</th></tr></thead>
+          <tbody>
+            <tr><td>Each account's <span class="nw">5-hour</span> and weekly use, against the ceiling</td><td>with cswap</td></tr>
+            <tr><td>When each <span class="nw">5-hour</span> window resets, and the sessions on each account</td><td>with cswap</td></tr>
+            <tr><td>New sessions on Auto start on the account with the most <span class="nw">5-hour</span> room</td><td>yes</td></tr>
+            <tr><td>Accounts kept for other work: Auto, Rewrite and Ask Claude never pick them</td><td><code>jantar accounts keep</code></td></tr>
+            <tr><td>Start an idle account's <span class="nw">5-hour</span> window early with one tiny message</td><td>opt-in: <code>jantar accounts prime on</code></td></tr>
+            <tr><td>Move a running session to another account when one fills up (autoswitch)</td><td class="not">not yet · on the roadmap</td></tr>
+          </tbody>
+        </table>
+        <p class="more">More: <a href="{{doc docs/accounts.md}}" rel="noopener">One account or many<x-icon name="arrow-up-right"></x-icon></a> · <a href="{{doc docs/primer.md}}" rel="noopener">The primer<x-icon name="arrow-up-right"></x-icon></a></p>
+      </div>
+
+      <div class="band-vis">
+        <figure class="panel acct-panel">
+          <p class="lbl panel-lbl">11 accounts · next resets</p>
+          <div class="solo"><div class="pw">
+            <x-figure slot="accounts"></x-figure>
+            <p class="chip chip--acct"><b>When each window resets</b><span class="rail">read from cswap's cache</span></p>
+          </div></div>
+          <p class="rail ex">Example data</p>
+        </figure>
+        <p class="figcap">Jantar shows each account's use. It does not move a session from one account to another.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== meetings ============================== -->
+<section class="sec g-page" id="meetings" aria-labelledby="meetings-h">
+  <div class="frame">
+    <div class="head">
+      <p class="lbl">jantar meetings on · Chrome extension</p>
+      <h2 class="h2" id="meetings-h">Your Meet and Teams calls, kept on your Mac. <span class="dim">Captions and a summary. No recording.</span></h2>
+    </div>
+
+    <div class="band band--vl">
+      <div class="band-vis">
+        <figure class="panel meet-panel">
+          <p class="lbl panel-lbl">launch review · 38 min</p>
+          <div class="solo"><div class="pw">
+            <x-figure slot="meetings"></x-figure>
+            <p class="chip chip--meet"><b>No audio · no bot</b><span class="rail">the call's own captions</span></p>
+          </div></div>
+          <p class="rail ex">Example data</p>
+        </figure>
+      </div>
+
+      <div class="band-text">
+        <p class="lede">A Chrome extension keeps the call's live captions, the words Google or Microsoft already show you. After the call, one Claude run writes the summary, the decisions and the action items.</p>
+        <div class="kn">
+          <div class="kn-col">
+            <p class="rail">Keeps</p>
+            <ul>
+              <li>Caption lines with the speaker and the time, from when you press Start notes.</li>
+              <li>A summary, decisions and action items. One tap puts an item in a project's todos.</li>
+              <li>The screenshots you click: the camera button, Option+Shift+S or the toolbar. Not yet seen working on a real call.</li>
+            </ul>
+          </div>
+          <div class="kn-col">
+            <p class="rail">Never</p>
+            <ul>
+              <li>Audio or video, or a bot in the call.</li>
+              <li>Anything before you press Start notes, beyond whether you are in a call and the page title.</li>
+              <li>Your screenshots, off the Mac. Only the transcript text goes to Claude, for the summary, through Claude Code on your account.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="notes">Chrome 120 or newer, Meet and Teams on the web. Loaded unpacked for now; it is not in the Chrome Web Store yet. Screenshots have not yet reached Jantar on a real call; captions and the summary have (<a href="{{doc docs/real-mac-checks.md#meetings-v05}}" rel="noopener">the Meetings checks<x-icon name="arrow-up-right"></x-icon></a>). Captions show only on your screen, so say at the start of the call that you keep notes.</p>
+        <p class="more">More: <a href="{{doc docs/extension.md}}" rel="noopener">The extension guide<x-icon name="arrow-up-right"></x-icon></a> · <a href="privacy/">Extension privacy</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== life ============================== -->
+<section class="sec g-page" id="life" aria-labelledby="life-h">
+  <div class="frame">
+    <div class="head head--split">
+      <div>
+        <p class="lbl">jantar life on &lt;module&gt;</p>
+        <h2 class="h2" id="life-h">A small life list beside the board. <span class="dim">Each part stays off until you switch it on.</span></h2>
+      </div>
+      <p class="lede">Today puts medicines due, todos, bills and calories on one screen, next to the sessions that need you. Turn on only the parts you want, at the Mac.</p>
+    </div>
+
+    <figure class="panel life-panel">
+      <p class="lbl panel-lbl">five screens · Life and the Intel shelf</p>
+      <div class="life-strip" tabindex="0" role="group" aria-label="Life screens">
+        <div class="life-item"><x-figure slot="life-today"></x-figure><p class="rail">Today</p></div>
+        <div class="life-item"><x-figure slot="life-meds"></x-figure><p class="rail">Medicines</p></div>
+        <div class="life-item"><x-figure slot="life-food"></x-figure><p class="rail">Food</p></div>
+        <div class="life-item"><x-figure slot="life-money"></x-figure><p class="rail">Finance</p></div>
+        <div class="life-item"><x-figure slot="life-intel"></x-figure><p class="rail">Intel</p></div>
+      </div>
+      <p class="rail ex">Example data</p>
+    </figure>
+
+    <div class="life-grid">
+      <dl class="ledger ledger--keys">
+        <div><dt>todos</dt><dd>Reminders that ping your phone, daily to monthly repeats, and small projects linked to a folder. The board shows a project on that folder's sessions.</dd></div>
+        <div><dt>medicines</dt><dd>Dose times, Taken or Skip, a pill count with a refill warning. The lock screen says Medicine due, without the name, by default.</dd></div>
+        <div><dt>food</dt><dd>Calories and saved foods. Ask Claude estimates a meal you type, and you edit it before it is saved.</dd></div>
+        <div><dt>places</dt><dd>Cafés and their best dishes.</dd></div>
+        <div><dt>finance</dt><dd>Spending by category against budgets, and bills that remind you.</dd></div>
+        <div><dt>intel</dt><dd>A read-only shelf over JSONL files your scripts append to. <code>jantar intel on</code>.</dd></div>
+      </dl>
+      <div class="life-side">
+        <p class="notes">Pings need the Mac awake. Keep your phone's own alarm for a dose you must not miss.</p>
+        <p class="more">More: <a href="{{doc docs/life.md}}" rel="noopener">Life<x-icon name="arrow-up-right"></x-icon></a> · <a href="{{doc docs/intel.md}}" rel="noopener">Intel shelf<x-icon name="arrow-up-right"></x-icon></a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== how it works ============================== -->
+<section class="sec g-bg" id="how" aria-labelledby="how-h">
+  <div class="frame">
+    <div class="head">
+      <p class="lbl">127.0.0.1 only</p>
+      <h2 class="h2" id="how-h">Your Mac, your tunnel, your phone. <span class="dim">Nothing goes to a server of ours. There isn't one.</span></h2>
+    </div>
+
+    <div class="diagram">
+      <x-dial></x-dial>
+      <div class="bound">
+        <p class="rail bound-lbl">Your machines</p>
+        <div class="flow">
+          <div class="node node--mac">
+            <p class="rail">Your Mac</p>
+            <p>jantard, a small daemon under launchd, listening on 127.0.0.1 only. It reads Claude Code's session files and transcripts and Terminal's text, and types only what you send or answer.</p>
+            <ul class="inputs">
+              <li><span>Claude Code hooks (optional)</span><span class="via">a local socket</span></li>
+              <li><span>the <code>jantar</code> CLI</span><span class="via">a local socket</span></li>
+              <li><span>the Chrome extension</span><span class="via">127.0.0.1, with its own key</span></li>
+            </ul>
+          </div>
+          <div class="link"><span>127.0.0.1:7420</span></div>
+          <div class="node node--door">
+            <p class="rail">Your front door</p>
+            <p>Tailscale Serve, private to your tailnet (recommended), or a Cloudflare Tunnel on your own domain with Access in front.</p>
+          </div>
+          <div class="link"><span>HTTPS and WebSocket</span></div>
+          <div class="node node--phone">
+            <p class="rail">Your phone</p>
+            <p>The web app on your Home Screen, paired once with a QR code that works once, for 10 minutes. Every write carries the device's secret.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="leaves">
+        <p class="rail">Leaves your machines</p>
+        <dl class="ledger ledger--keys ledger--tight">
+          <div><dt>Anthropic</dt><dd>What Claude Code sends anyway, plus the text of Jantar's own Claude runs when you turn them on: Rewrite, Ask Claude, meeting summaries and the primer's one-line message. All on your account. When Jantar is the <code>cswap list --json</code> poller, cswap asks Anthropic for usage on Jantar's schedule.</dd></div>
+          <div><dt>Apple or Google</dt><dd>Push notifications, encrypted to your device.</dd></div>
+          <div><dt>Cloudflare, if you pick it</dt><dd>Your traffic to the phone. TLS ends at Cloudflare, so Cloudflare can read it.</dd></div>
+        </dl>
+      </div>
+    </div>
+    <p class="turn turn--small">No telemetry, and no account with this project.</p>
+    <p class="more">More: <a href="{{doc docs/security.md#what-leaves-the-mac}}" rel="noopener">What leaves the Mac<x-icon name="arrow-up-right"></x-icon></a> · <a href="{{doc docs/architecture.md}}" rel="noopener">How it is put together<x-icon name="arrow-up-right"></x-icon></a></p>
+  </div>
+</section>
+
+<!-- ============================== privacy and security ============================== -->
+<section class="sec g-bg" id="privacy" aria-labelledby="privacy-h">
+  <div class="frame">
+    <div class="head">
+      <p class="lbl">privacy and security</p>
+      <h2 class="h2" id="privacy-h">A phone that can approve can run commands. <span class="dim">So Jantar is reachable by as little as possible.</span></h2>
+    </div>
+
+    <div class="cc">
+      <div class="cc-col">
+        <p class="rail">A paired phone can</p>
+        <ul>
+          <li>See the board, the transcripts and what each session waits on.</li>
+          <li>Answer cards and terminal dialogs, and send prompts and files.</li>
+          <li>Start sessions, once the Mac turns launching on and grants it that (<code>jantar devices grant</code>).</li>
+        </ul>
+      </div>
+      <div class="cc-col">
+        <p class="rail">No phone can</p>
+        <ul>
+          <li>Turn a feature on, add a folder or grant itself a scope. Every switch is set at the Mac.</li>
+          <li>Start a session with a flag that isn't on a fixed list. There is no free-text flag.</li>
+          <li>Read or write a session without being paired. Over the network, every /v1 route but the pairing claim needs a paired device.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sec-grid">
+      <ul class="ledger ledger--plain">
+        <li>A dialog answer is typed only if the dialog is still exactly what you tapped, checked in the same AppleScript run that types it. A key pressed at the Mac in those few milliseconds can still come first: <a href="{{doc SECURITY.md#compare-and-type-and-what-it-cant-close}}" rel="noopener">what compare-and-type can't close<x-icon name="arrow-up-right"></x-icon></a>.</li>
+        <li>Treat a paired phone like your Mac's keyboard. Anything running as you on the Mac can reach Jantar's local sockets too, and could pair itself as a device; <a href="{{doc SECURITY.md#threat-model-summary}}" rel="noopener">SECURITY.md says what that means<x-icon name="arrow-up-right"></x-icon></a>.</li>
+        <li>Logs carry no prompt text by default. Life, Intel and Meetings text never goes into events, logs or audit rows.</li>
+        <li>Every test runs against a synthetic Mac: a fake Terminal, <code>claude</code> and <code>cswap</code>. The dialog and privacy suites record every keystroke Jantar would type. What has been tried on a real Mac is <a href="{{doc docs/real-mac-checks.md}}" rel="noopener">listed, with dates<x-icon name="arrow-up-right"></x-icon></a>.</li>
+      </ul>
+
+      <div class="try">
+        <p class="try-h">In the cloned, built repo, try it read-only first, with a throwaway state folder:</p>
+        <div class="code">
+          <button class="copy" type="button" data-copy="try-code" hidden><x-icon name="copy"></x-icon><span>Copy</span></button>
+          <pre tabindex="0" aria-label="Commands to try Jantar read-only"><code id="try-code">export JANTAR_HOME=/tmp/jantar-try
+node packages/daemon/bin/jantard.mjs \
+  --read-only --no-terminal --port 7491</code></pre>
+        </div>
+        <p class="more"><a href="{{doc docs/install.md#try-it-without-touching-anything}}" rel="noopener">Try it without touching anything<x-icon name="arrow-up-right"></x-icon></a></p>
+        <p class="report">Found a problem? Report it privately through GitHub's private vulnerability reporting, not in a public issue. <a href="{{doc SECURITY.md#reporting-a-problem}}" rel="noopener">How to report<x-icon name="arrow-up-right"></x-icon></a> · <a href="{{doc SECURITY.md}}" rel="noopener">The threat model<x-icon name="arrow-up-right"></x-icon></a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== limits ============================== -->
+<section class="sec g-page" id="limits" aria-labelledby="limits-h">
+  <div class="frame limits-in">
+    <div class="head">
+      <p class="lbl">v{{version}} · early</p>
+      <h2 class="h2" id="limits-h">What doesn't work yet.</h2>
+      <p class="lede">An early release, tested on a synthetic Mac and tried on a real one. These are the limits today.</p>
+    </div>
+    <dl class="ledger ledger--keys ledger--limits">
+      <div><dt>terminals</dt><dd>Terminal.app only today. Linux servers with tmux come next (v0.6, being built now); iTerm2 and Ghostty after.</dd></div>
+      <div><dt>sleep</dt><dd>Medicine and reminder pings come from the daemon, so they need the Mac awake.</dd></div>
+      <div><dt>dialogs</dt><dd>Some dialog rows stay at the Mac until their real-Mac check passes.</dd></div>
+      <div><dt>meetings</dt><dd>Screenshots from the extension have not yet worked on a real call, and the extension is loaded unpacked: it is not in the Chrome Web Store.</dd></div>
+      <div><dt>accounts</dt><dd>Jantar does not move sessions between accounts, and sends no Telegram messages or Mac banners.</dd></div>
+      <div><dt>safari</dt><dd>Safari may refuse the daemon's cookie on plain http://127.0.0.1. On the Mac, use Chrome for <code>jantar open</code>, or your front door's HTTPS address.</dd></div>
+    </dl>
+    <p class="more">More: <a href="{{doc docs/real-mac-checks.md}}" rel="noopener">Real-Mac checks<x-icon name="arrow-up-right"></x-icon></a> · <a href="{{doc docs/roadmap.md}}" rel="noopener">Roadmap<x-icon name="arrow-up-right"></x-icon></a> · <a href="{{doc docs/faq.md#known-limits}}" rel="noopener">Known limits<x-icon name="arrow-up-right"></x-icon></a></p>
+  </div>
+</section>
+
+<!-- ============================== install ============================== -->
+<section class="sec g-bg sec--pivot" id="install" aria-labelledby="install-h">
+  <div class="frame">
+    <div class="head">
+      <p class="lbl">macOS · Terminal.app · Node 22.13 or newer</p>
+      <h2 class="h2" id="install-h">Clone, build, install, pair.</h2>
+    </div>
+    <div class="install-grid">
+      <div class="req">
+        <p class="rail">You need</p>
+        <ul class="ledger ledger--plain">
+          <li>A Mac with Terminal.app (the only terminal so far)</li>
+          <li>Node.js 22.13 or newer, and pnpm 10</li>
+          <li>Claude Code, signed in (one account is enough)</li>
+          <li>For the phone: Tailscale (recommended) or a Cloudflare Tunnel</li>
+          <li>Optional: cswap for several Claude accounts; Chrome 120 or newer for Meetings</li>
+        </ul>
+      </div>
+      <div class="install-code">
+        <div class="code code--big">
+          <button class="copy" type="button" data-copy="qs-code" hidden><x-icon name="copy"></x-icon><span>Copy</span></button>
+          <pre tabindex="0" aria-label="Install commands"><code id="qs-code"><x-quickstart></x-quickstart></code></pre>
+        </div>
+        <p class="small">The alias lasts for this Terminal window. To keep the <code>jantar</code> command, put the CLI on your PATH, for example with <code>cd packages/cli &amp;&amp; pnpm link <span class="nw">--global</span></code>.</p>
+      </div>
+    </div>
+    <div class="next">
+      <div class="next-cell">
+        <p class="rail">Approval cards</p>
+        <p><code>jantar hooks install <span class="nw">--apply</span></code></p>
+        <p>Opt-in. A dry run first shows the change to Claude's settings.json; <code>--apply</code> asks, keeps a backup, and the hooks fail open.</p>
+      </div>
+      <div class="next-cell">
+        <p class="rail">Your phone</p>
+        <p><code>jantar remote setup</code></p>
+        <p>Tailscale Serve, or a Cloudflare Tunnel with Access. Open the link on the phone and Add to Home Screen; on iPhone that is needed for notifications.</p>
+      </div>
+      <div class="next-cell">
+        <p class="rail">Nothing changed</p>
+        <p><a href="{{doc docs/install.md#try-it-without-touching-anything}}" rel="noopener">Try it read-only<x-icon name="arrow-up-right"></x-icon></a></p>
+        <p>With a throwaway state folder: no typing, no AppleScript, nothing written outside it.</p>
+      </div>
+    </div>
+    <p class="more">More: <a href="{{doc docs/install.md}}" rel="noopener">Install, step by step<x-icon name="arrow-up-right"></x-icon></a> · <a href="{{doc docs/install.md#reach-it-from-your-phone}}" rel="noopener">Reach it from your phone<x-icon name="arrow-up-right"></x-icon></a></p>
+  </div>
+</section>
+
+<!-- ============================== license ============================== -->
+<section class="sec g-page" id="license" aria-labelledby="license-h">
+  <div class="frame">
+    <div class="head">
+      <p class="lbl">FSL-1.1-MIT</p>
+      <h2 class="h2" id="license-h">Free to use, read and change.</h2>
+    </div>
+    <div class="license-grid">
+      <div class="plain">
+        <p>Jantar is free: there is no paid plan and no account with this project. Claude Code runs on your own Claude login, as it does without Jantar, and so do the parts that run Claude for you.</p>
+        <p>It is source-available (fair source), under the Functional Source License with the MIT future license. You may use it, change it, self-host it and share it for any purpose except offering it to others as a competing commercial product or service. Your own use, at home or at work, is fine.</p>
+        <p>Two years after each version is released, that version is also available under the MIT license.</p>
+        <p class="small">This is a summary, not legal advice. The LICENSE file is what counts.</p>
+      </div>
+      <dl class="ledger ledger--keys">
+        <div><dt>license</dt><dd>FSL-1.1-MIT, in <a href="{{doc LICENSE}}" rel="noopener">LICENSE<x-icon name="arrow-up-right"></x-icon></a></dd></div>
+        <div><dt>contributions</dt><dd>Under <a href="{{doc CLA.md}}" rel="noopener">CLA.md<x-icon name="arrow-up-right"></x-icon></a>; a bot asks you to sign it on your first pull request. <a href="{{doc CONTRIBUTING.md}}" rel="noopener">Contributing<x-icon name="arrow-up-right"></x-icon></a></dd></div>
+        <div><dt>other code</dt><dd><a href="{{doc THIRD_PARTY_NOTICES.md}}" rel="noopener">THIRD_PARTY_NOTICES.md<x-icon name="arrow-up-right"></x-icon></a> and <a href="{{doc docs/PROVENANCE.md}}" rel="noopener">docs/PROVENANCE.md<x-icon name="arrow-up-right"></x-icon></a></dd></div>
+        <div><dt>this site</dt><dd>Archivo and JetBrains Mono, SIL Open Font License 1.1 (<a href="assets/fonts/">font licences</a>)</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== faq ============================== -->
+<section class="sec g-page" id="faq" aria-labelledby="faq-h">
+  <div class="frame">
+    <div class="head">
+      <p class="lbl">before you install</p>
+      <h2 class="h2" id="faq-h">Questions worth asking first.</h2>
+    </div>
+    <div class="faq">
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">Do I need cswap?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>No. One Claude login is enough, and Jantar finds it. cswap adds usage bars, several accounts and the primer.</p></div></details>
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">Can I run it on my server?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>Not yet, and it is next. v0.6 runs Jantar on a Linux server with Claude Code in tmux, as a systemd service, so you can run everything there and control it entirely from your phone. It is being built now; see the <a href="{{doc docs/roadmap.md}}" rel="noopener">roadmap<x-icon name="arrow-up-right"></x-icon></a>. iTerm2 and Ghostty come after.</p></div></details>
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">Do I need an API key?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>No. Jantar uses Claude Code's own login. Its own Claude runs (Rewrite, Ask Claude, the primer, meeting summaries) run <code>claude</code>, or <code>cswap run</code>, with any API key or token taken out of the environment, so they use your subscription login.</p></div></details>
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">Is my data sent anywhere?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>Not to us: there is no Jantar server and no telemetry. Your phone reaches your Mac through your own tailnet or tunnel. What goes to Anthropic is what Claude Code sends anyway, plus the text of Jantar's own Claude runs when you turn them on. Notifications go through Apple's or Google's push service, encrypted to your device. A meeting's screenshots never leave the Mac.</p></div></details>
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">Can a phone turn a feature on or widen its own reach?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>No. If a lost or borrowed phone could turn on Files or starting sessions, pairing would protect much less. Every switch, folder, scope grant and the programs the daemon runs are set with the <code>jantar</code> command on the Mac. While a part is off, the phone shows the command that turns it on.</p></div></details>
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">What does Jantar type into my terminal?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>Only what you send or answer, and the control keys you press (Shift+Tab, Interrupt, Clear draft, Escape). A prompt counts as sent only when the transcript shows it. Inside a dialog it never sends a digit, Tab or Shift+Tab.</p></div></details>
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">What happens to Claude when Jantar is not running?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>Nothing changes. The hooks fail open: with the daemon down, Claude behaves as if they were not there. <code>JANTAR_SKIP_HOOKS=1</code> turns them off for one session.</p></div></details>
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">Does Meetings record the call?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>No audio, no video and no bot. After you press Start notes it keeps the call's live captions, the words Google or Microsoft already show you, and the screenshots you click. Those screenshots have not yet reached Jantar on a real call.</p></div></details>
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">What if my Mac is asleep?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>Then the phone can't reach it, and medicine and reminder pings wait. Keep your phone's own alarm for anything you must not miss.</p></div></details>
+      <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">Is it made by Anthropic?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>No. Jantar is independent, and not affiliated with or endorsed by Anthropic. It works with the files and hooks Claude Code exposes.</p></div></details>
+    </div>
+    <p class="more">More: <a href="{{doc docs/faq.md}}" rel="noopener">All questions and known limits<x-icon name="arrow-up-right"></x-icon></a></p>
+  </div>
+</section>
+
+<!-- ============================== closing band ============================== -->
+<section class="closing" aria-labelledby="close-h">
+  <div class="frame closing-in">
+    <h2 class="h2 h2--close" id="close-h">Leave the desk. <span class="dim">The board comes with you.</span></h2>
+    <div class="actions actions--center">
+      <a class="btn btn-pri" href="#install">Install on your Mac<x-icon name="arrow-right"></x-icon></a>
+      <a class="btn btn-sec" href="{{repo}}" rel="noopener">Read the source<x-icon name="arrow-up-right"></x-icon></a>
+    </div>
+    <p class="micro"><span class="nw">v{{version}} ·</span> <span class="nw">macOS and Terminal.app ·</span> <span class="nw">FSL-1.1-MIT ·</span> <span class="nw">not affiliated with Anthropic</span></p>
+  </div>
+</section>
+
+</main>
+
+<x-footer></x-footer>
+<p class="vh" id="live" aria-live="polite"></p>
+</body>
+</html>

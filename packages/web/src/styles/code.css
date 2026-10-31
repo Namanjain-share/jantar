@@ -1,0 +1,43 @@
+/*
+ * Code view tokens (v0.3 Files viewer, spec 5.2.3): the classes the
+ * highlighter puts on slices of a file's text. Token variables only (no
+ * colour literals: design rule 27), no inline styles (style-src 'self').
+ * Ink first: weight and the three inks carry the structure, no hues.
+ *
+ *   keywords, types, functions     --ink, 560
+ *   strings, numbers, tags, attrs  --ink-2
+ *   comments (italic), punctuation --ink-3
+ *   hidden characters              ⟨U+202E⟩ in a 1 px --line-strong box
+ */
+@layer components {
+  .tk-kw,
+  .tk-type,
+  .tk-fn {
+    color: var(--ink);
+    font-weight: 560;
+  }
+  .tk-str,
+  .tk-num,
+  .tk-tag,
+  .tk-attr {
+    color: var(--ink-2);
+  }
+  .tk-com {
+    color: var(--ink-3);
+    font-style: italic;
+  }
+  .tk-punct {
+    color: var(--ink-3);
+  }
+  .tk-hidden {
+    display: inline-block;
+    margin: 0 1px;
+    padding: 0 2px;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    color: var(--ink-2);
+    font-style: normal;
+    font-weight: 450;
+    line-height: 1;
+  }
+}

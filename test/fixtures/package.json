@@ -1,0 +1,42 @@
+{
+  "name": "@jantar/fixtures",
+  "version": "0.5.1",
+  "private": true,
+  "license": "FSL-1.1-MIT",
+  "description": "Synthetic HOME builder and fake executables for Jantar tests. Every value here is made up.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Namanjain-share/jantar.git",
+    "directory": "test/fixtures"
+  },
+  "homepage": "https://github.com/Namanjain-share/jantar/tree/main/test/fixtures#readme",
+  "bugs": "https://github.com/Namanjain-share/jantar/issues",
+  "keywords": ["testing", "fixtures", "synthetic-data"],
+  "type": "module",
+  "exports": {
+    ".": {
+      "@jantar/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "runtime"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@jantar/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

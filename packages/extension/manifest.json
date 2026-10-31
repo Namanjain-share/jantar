@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Jantar",
+  "version": "0.5.1",
+  "description": "Saves Meet and Teams captions and your screenshots to Jantar on your Mac. Summaries send the transcript text to Claude.",
+  "homepage_url": "https://github.com/Namanjain-share/jantar/blob/main/docs/extension.md",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwfVgu6Y3YOnNEaVRKzNNmE8TrO091D9VY+P5I1r4VsqslBbnT1SNIK5yFuO1/UNxXonVMw/9ZcG+3aeNk4IlUMGoeLoS/Byrbwft42BTQrEMI70x4M/qVX5+Yap7cVSd1Na0z9RHnkdfBYD4E4VM1YNap2J1RcfoB/EwdstDNt7qcbKYMgL9RrO6Mc/W4xxoL6E24zJYcJ8aYvxJstMeFf5+WhcLmMePAtJNrRQmyyLV6bZwZtMydZiNYACGVMpRYepZJlxql3AF83ZjRDqtljdIsTlPW65qPFlYXBud9HaQN84G6Tt6AlCYLBjjuaDO3c8W7uFxM6Z3VDaksdVgSQIDAQAB",
+  "minimum_chrome_version": "120",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "optional_host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*", "https://teams.microsoft.com/*", "https://teams.live.com/*", "https://teams.cloud.microsoft/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": { "default_popup": "popup.html", "default_title": "Jantar", "default_icon": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon.png" } },
+  "commands": {
+    "take-screenshot": {
+      "suggested_key": { "default": "Alt+Shift+S", "mac": "Alt+Shift+S" },
+      "description": "Take a screenshot of the meeting"
+    }
+  },
+  "icons": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon.png" }
+}

@@ -1,0 +1,221 @@
+// Portions adapted from Shed (c) Sukhad Anand, MIT. See THIRD_PARTY_NOTICES.md
+//
+// Jantar service worker: caches the app shell, shows Web Push notifications
+// and opens the right session when one is tapped.
+//
+// It never touches /v1 or /healthz (live, private data: network only) and
+// never caches anything from another origin. The build (build/pwa-plugin.ts)
+// replaces the marker line below with the precache list and a version.
+/* __CCW_BUILD__ */
+
+const BUILD = self.__CCW_BUILD__ || { version: 'dev', precache: [] };
+const CACHE_PREFIX = 'jantar-shell-';
+/** Shell caches ccw-v2 (the old name) left; removed on activate. */
+const LEGACY_CACHE_PREFIX = 'ccw-v2-shell-';
+const CACHE = `${CACHE_PREFIX}${BUILD.version}`;
+const SHELL = '/index.html';
+const APP_NAME = 'Jantar';
+/** Kinds that stay on screen until the user acts (desktop browsers honour it). */
+// v0.4: a medicine stays on the lock screen until tapped, like a card.
+const NEEDS_YOU = new Set(['permission', 'question', 'plan', 'send-failed', 'med']);
+
+function isPrivatePath(pathname) {
+  return pathname === '/v1' || pathname.startsWith('/v1/') || pathname === '/healthz';
+}
+
+function str(v, max = 1000) {
+  return typeof v === 'string' ? v.slice(0, max) : '';
+}
+
+/** A same-origin path for a notification's target; anything else becomes "/". */
+function targetPath(data) {
+  const origin = self.location.origin;
+  if (typeof data.url === 'string' && data.url) {
+    try {
+      const u = new URL(data.url, origin);
+      if (u.origin === origin) return `${u.pathname}${u.search}${u.hash}`;
+    } catch {
+      // fall through
+    }
+    return '/';
+  }
+  if (typeof data.sid === 'string' && data.sid) {
+    const p = typeof data.pendingId === 'string' && data.pendingId ? `?p=${encodeURIComponent(data.pendingId)}` : '';
+    return `/s/${encodeURIComponent(data.sid)}${p}`;
+  }
+  return '/';
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    (async () => {
+      if (BUILD.precache.length) {
+        const cache = await self.caches.open(CACHE);
+        // One missing file must not block the install.
+        await Promise.all(
+          BUILD.precache.map((u) => cache.add(new Request(u, { cache: 'reload' })).catch(() => undefined)),
+        );
+      }
+      await self.skipWaiting();
+    })(),
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      const keys = await self.caches.keys();
+      await Promise.all(
+        keys
+          .filter((k) => (k.startsWith(CACHE_PREFIX) && k !== CACHE) || k.startsWith(LEGACY_CACHE_PREFIX))
+          .map((k) => self.caches.delete(k)),
+      );
+      await self.clients.claim();
+    })(),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Fetch: shell network-first (offline fallback), static assets cache-first.
+
+async function shellFallback() {
+  const cache = await self.caches.open(CACHE);
+  return (await cache.match(SHELL)) || (await cache.match('/')) || null;
+}
+
+async function navigate(request) {
+  try {
+    const res = await self.fetch(request);
+    const html = (res.headers.get('content-type') || '').includes('text/html');
+    if (res.ok && html) {
+      const cache = await self.caches.open(CACHE);
+      await cache.put(SHELL, res.clone());
+      return res;
+    }
+    // An app route the server does not know (no SPA fallback): serve the shell.
+    if (res.status === 404) return (await shellFallback()) || res;
+    return res;
+  } catch {
+    const cached = await shellFallback();
+    return (
+      cached ||
+      new Response('Jantar is offline: the Mac could not be reached.', {
+        status: 503,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      })
+    );
+  }
+}
+
+async function cacheFirst(request) {
+  const cache = await self.caches.open(CACHE);
+  const hit = await cache.match(request);
+  if (hit) return hit;
+  const res = await self.fetch(request);
+  if (res.ok && res.type === 'basic') await cache.put(request, res.clone());
+  return res;
+}
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  if (isPrivatePath(url.pathname)) return;
+  if (url.pathname === '/sw.js') return;
+  if (req.mode === 'navigate') {
+    event.respondWith(navigate(req));
+    return;
+  }
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/') || BUILD.precache.includes(url.pathname)) {
+    event.respondWith(cacheFirst(req));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Push
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : '' };
+  }
+  if (!data || typeof data !== 'object') data = {};
+  const tag = str(data.tag, 200);
+  const options = {
+    body: str(data.body, 1000),
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
+    renotify: Boolean(tag),
+    requireInteraction: NEEDS_YOU.has(data.kind),
+    timestamp: typeof data.ts === 'number' ? data.ts : Date.now(),
+    data: { url: targetPath(data), kind: str(data.kind, 40) },
+  };
+  if (tag) options.tag = tag;
+  // Every push must show a notification (iOS revokes silent subscriptions).
+  event.waitUntil(self.registration.showNotification(str(data.title, 200) || APP_NAME, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const path = targetPath({ url: (event.notification.data && event.notification.data.url) || '/' });
+  event.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const same = wins.filter((c) => {
+        try {
+          return new URL(c.url).origin === self.location.origin;
+        } catch {
+          return false;
+        }
+      });
+      const client = same.find((c) => c.focused) || same[0];
+      if (client) {
+        try {
+          await client.focus();
+        } catch {
+          // focus can be refused; still route the page
+        }
+        client.postMessage({ type: 'jantar:navigate', url: path });
+        return;
+      }
+      await self.clients.openWindow(path);
+    })(),
+  );
+});
+
+// The browser rotated the subscription: register the new one with the daemon.
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      const old = event.oldSubscription || null;
+      let sub = event.newSubscription || null;
+      const key = old && old.options ? old.options.applicationServerKey : null;
+      if (!sub && key) {
+        sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      }
+      if (!sub) return;
+      await self.fetch('/v1/push/subscribe', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      });
+      if (old && old.endpoint && old.endpoint !== sub.endpoint) {
+        await self
+          .fetch('/v1/push/subscribe', {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ endpoint: old.endpoint }),
+          })
+          .catch(() => undefined);
+      }
+    })().catch(() => undefined),
+  );
+});

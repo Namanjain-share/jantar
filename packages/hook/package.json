@@ -1,0 +1,44 @@
+{
+  "name": "@jantar/hook",
+  "version": "0.5.1",
+  "private": true,
+  "license": "FSL-1.1-MIT",
+  "description": "jantar-hook: a zero-dependency, fail-open Claude Code hook client that forwards hook events to jantard.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Namanjain-share/jantar.git",
+    "directory": "packages/hook"
+  },
+  "homepage": "https://github.com/Namanjain-share/jantar/tree/main/packages/hook#readme",
+  "bugs": "https://github.com/Namanjain-share/jantar/issues",
+  "keywords": ["claude-code", "hooks", "fail-open"],
+  "type": "module",
+  "bin": {
+    "jantar-hook": "./bin/jantar-hook.mjs"
+  },
+  "exports": {
+    ".": {
+      "@jantar/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./bin/jantar-hook.mjs": "./bin/jantar-hook.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "node --check bin/jantar-hook.mjs && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@jantar/protocol": "workspace:*",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

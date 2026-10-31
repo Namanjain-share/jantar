@@ -1,0 +1,50 @@
+name: Idea or feature request
+description: Something Jantar could do, or do better.
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The roadmap (docs/roadmap.md) lists ideas already on the list; saying which one you need, and why, helps too. Use synthetic examples only.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The situation and what gets in the way today. Plain words are best.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: What you would see on the phone or the Mac, or the command you would run.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Board and sessions
+        - Answering from the phone
+        - Sending prompts and attachments
+        - New session and Resume
+        - Files, Rewrite or Controls
+        - Accounts or the primer
+        - Life
+        - Intel shelf
+        - Meetings (the Chrome extension)
+        - Terminals other than Terminal.app
+        - Install and setup
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: Every example here is synthetic (no real names, paths, accounts or transcripts).
+          required: true

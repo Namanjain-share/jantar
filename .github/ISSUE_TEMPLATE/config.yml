@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/Namanjain-share/jantar/security/advisories/new
+    about: Privately, through GitHub's vulnerability reporting, never in a public issue. SECURITY.md says what to include.
+  - name: Read the docs and the FAQ
+    url: https://github.com/Namanjain-share/jantar/blob/main/docs/README.md
+    about: Install, the phone app, answering prompts, accounts, Life, Meetings, configuration and known limits.

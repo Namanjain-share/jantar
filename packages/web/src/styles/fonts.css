@@ -1,0 +1,43 @@
+/*
+ * Self-hosted variable fonts (Fontsource, OFL-1.1). Vite emits the woff2
+ * files into /assets (assetsInlineLimit: 0, so never data: URIs) and the CSP
+ * keeps font-src 'self'. Only the latin subset ships: anything outside it
+ * falls back to the system face, and the PWA precache stays small.
+ *
+ * Archivo carries the wdth axis (62 to 125) used by type-display and
+ * type-word through font-stretch. pwa-plugin.ts preloads its woff2.
+ */
+@font-face {
+  font-family: 'Archivo Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url('@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Metric-matched local fallback while Archivo loads, so swapping in the web
+   font does not shift the ledger. Archivo: upm 1000, ascender 878,
+   descender 210, no line gap. size-adjust is Archivo's width over Arial's for
+   a ledger-like line at weight 420, measured in Chromium (98.9%); the
+   overrides are the metrics divided by it. */
+@font-face {
+  font-family: 'Archivo Fallback';
+  src: local('Arial'), local('ArialMT'), local('Helvetica');
+  size-adjust: 98.9%;
+  ascent-override: 88.8%;
+  descent-override: 21.2%;
+  line-gap-override: 0%;
+}

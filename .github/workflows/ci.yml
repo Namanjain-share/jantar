@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  push:
+    branches: [main, 'v0.*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      # Chromium for the browser checks of the built web app (test/integration/web*.integration.test.ts).
+      - run: pnpm exec playwright-core install --with-deps --only-shell chromium
+      # The full Chromium on Ubuntu for the Chrome extension's end-to-end suites
+      # (test/integration/ext-*.integration.test.ts: the headless shell loads no
+      # extension). macOS keeps the shell and skips them with a warning.
+      - if: runner.os == 'Linux'
+        run: pnpm exec playwright-core install --with-deps chromium
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm test
+        env:
+          JANTAR_EXT_E2E: ${{ runner.os == 'Linux' && '1' || '' }}
+      # The maintainers' personal terms are a repository secret, never in the tree
+      # (CONTRIBUTING, Privacy rules). Without it (a fork) the generic checks still run.
+      - run: printf '%s\n' "$SECRETS_DENYLIST" > .secrets-denylist.local
+        env:
+          SECRETS_DENYLIST: ${{ secrets.SECRETS_DENYLIST }}
+      - run: pnpm lint:secrets
+      - run: pnpm lint:provenance
+      # No kept-account constants or account-number lists in code, and the community files in place.
+      - run: pnpm lint:oss
+
+  secrets:
+    name: secrets in history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - run: printf '%s\n' "$SECRETS_DENYLIST" > .secrets-denylist.local
+        env:
+          SECRETS_DENYLIST: ${{ secrets.SECRETS_DENYLIST }}
+      # Every commit's added lines, message and author and committer address,
+      # against the same patterns and personal terms as lint:secrets (no
+      # dependencies needed).
+      - run: node scripts/check-secrets.mjs --history

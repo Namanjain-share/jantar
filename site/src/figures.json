@@ -1,0 +1,110 @@
+{
+  "about": "Every picture the site shows. Each slot names one file in docs/img/ (plus its -dark sibling), the device frame it sits in, the widths the build writes as WebP, the sizes attribute and the alt text. Every slot is required: the build stops when a file is missing.",
+  "slots": {
+    "hero": {
+      "file": "dialog-plan-phone",
+      "frame": "phone",
+      "cls": "phone--hero",
+      "widths": [200, 220, 440, 660],
+      "sizes": "(min-width: 1280px) 220px, (min-width: 1024px) 200px, (min-width: 768px) 220px, 240px",
+      "eager": true,
+      "alt": "A plan waiting in the terminal, answered from the phone: Yes and use auto mode (hold), Yes and approve edits by hand, Tell Claude what to change."
+    },
+    "board-narrow": {
+      "file": "board-phone",
+      "frame": "phone",
+      "cls": "board-narrow",
+      "widths": [240, 480, 720],
+      "sizes": "240px",
+      "alt": "The Board on the phone: 3 need you (a question in web-app, a plan in infra, a Bash command in api-server), then your turn and working."
+    },
+    "board-wide": {
+      "file": "board-desktop",
+      "frame": "mac",
+      "cls": "mac--board",
+      "widths": [720, 1100, 1440],
+      "sizes": "(min-width: 1280px) 1000px, (min-width: 1024px) calc(86vw - 96px), calc(100vw - 64px)",
+      "alt": "The Board on a Mac: three sessions need you, then your turn and working; the Desk shows a question, a plan and a Bash command to answer, and the next resets."
+    },
+    "board-card": {
+      "file": "card-phone",
+      "frame": "phone",
+      "cls": "phone--card",
+      "widths": [220, 440, 660],
+      "sizes": "220px",
+      "alt": "A permission card on the phone: run pnpm prisma migrate reset --force in api-server? Yes, Always allow (a 2-second hold that saves the rule), No, and No and stop Claude."
+    },
+    "terminal-lead": {
+      "file": "dialog-permission-phone",
+      "frame": "phone",
+      "cls": "phone--lead",
+      "widths": [240, 480, 720],
+      "sizes": "240px",
+      "alt": "A Bash prompt read off the terminal: Yes, two rows that need a hold and say what they change, and No."
+    },
+    "terminal-keypad": {
+      "file": "keypad-phone",
+      "frame": "phone",
+      "cls": "phone--small",
+      "widths": [160, 320, 480],
+      "sizes": "160px",
+      "alt": "The keypad under Claude's model list, which Jantar can't turn into buttons: the screen's lines, two moves down counted, and Enter."
+    },
+    "accounts": {
+      "file": "accounts-phone",
+      "frame": "phone",
+      "cls": "phone--lead",
+      "widths": [240, 480, 720],
+      "sizes": "240px",
+      "alt": "Accounts with cswap: each account's 5-hour use against the ceiling, and when its window resets."
+    },
+    "meetings": {
+      "file": "meeting-phone",
+      "frame": "phone",
+      "cls": "phone--lead",
+      "widths": [240, 480, 720],
+      "sizes": "240px",
+      "alt": "A meeting: its summary, decisions and action items, one already in the project's todos."
+    },
+    "life-today": {
+      "file": "today-phone",
+      "frame": "phone",
+      "cls": "phone--life",
+      "widths": [200, 400, 600],
+      "sizes": "(min-width: 1280px) 196px, (min-width: 1024px) calc((100vw - 256px) / 5), 196px",
+      "alt": "Today: two medicines due at 13:00, then the todos due."
+    },
+    "life-meds": {
+      "file": "meds-phone",
+      "frame": "phone",
+      "cls": "phone--life",
+      "widths": [200, 400, 600],
+      "sizes": "(min-width: 1280px) 196px, (min-width: 1024px) calc((100vw - 256px) / 5), 196px",
+      "alt": "Medicines: the day's doses and each medicine's supply."
+    },
+    "life-food": {
+      "file": "food-phone",
+      "frame": "phone",
+      "cls": "phone--life",
+      "widths": [200, 400, 600],
+      "sizes": "(min-width: 1280px) 196px, (min-width: 1024px) calc((100vw - 256px) / 5), 196px",
+      "alt": "Food: 1,240 of 2,000 kcal and the weight line."
+    },
+    "life-money": {
+      "file": "money-phone",
+      "frame": "phone",
+      "cls": "phone--life",
+      "widths": [200, 400, 600],
+      "sizes": "(min-width: 1280px) 196px, (min-width: 1024px) calc((100vw - 256px) / 5), 196px",
+      "alt": "Finance: spending by category against budgets, and bills."
+    },
+    "life-intel": {
+      "file": "intel-phone",
+      "frame": "phone",
+      "cls": "phone--life",
+      "widths": [200, 400, 600],
+      "sizes": "(min-width: 1280px) 196px, (min-width: 1024px) calc((100vw - 256px) / 5), 196px",
+      "alt": "The Intel shelf: saved links with type filters."
+    }
+  }
+}

@@ -1,0 +1,20 @@
+# gitleaks: the default rules, plus the synthetic values this repo plants on
+# purpose. Read by CI's "secrets in history" job and scripts/export-public.mjs.
+# Path-based, never fingerprints: a fingerprint holds the commit hash and
+# breaks when the public history is cut.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Made-up marker strings and deny-list file names in tests and fixtures"
+targetRules = ["generic-api-key"]
+paths = ['''(^|/)test/''']
+
+[[allowlists]]
+description = "The extension's public key (it fixes the extension ID; no private key was kept)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)packages/extension/manifest\.json$''']
+regexTarget = "line"
+regexes = ['''^\s*"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA[A-Za-z0-9+/]+={0,2}",?\s*$''']

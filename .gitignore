@@ -1,0 +1,30 @@
+# dependencies and build output
+node_modules/
+dist/
+# the extension's test build (packages/extension: <all_urls> granted at install)
+dist-test/
+*.tsbuildinfo
+coverage/
+
+# test scratch dirs and local databases
+.jantar-test-*
+*.db
+*.db-wal
+*.db-shm
+
+# local-only secret denylist (plain-text terms, never committed)
+.secrets-denylist.local
+
+# maintainers' local notes, never committed (lint:oss fails if they are)
+docs/design-brief.md
+docs/research/
+
+# editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.log
+.env
+.env.*
+.vitest/

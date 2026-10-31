@@ -1,0 +1,100 @@
+/* Element defaults on top of Tailwind's preflight. No font sizes here (tokens.css owns them). */
+@layer base {
+  /* The outline colour is set before focus too, so the focus ring appears at
+     once instead of fading in with a button's colour transition. */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--line);
+    outline-color: var(--ink);
+  }
+
+  html {
+    background-color: var(--bg);
+    color: var(--ink);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 160ms var(--ease-ui);
+  }
+
+  /* Base UI: backdrops must cover the whole visual viewport on iOS 26. */
+  body {
+    position: relative;
+    min-height: 100dvh;
+    background-color: var(--bg);
+  }
+
+  /* Base UI portals stack above the app. */
+  #root {
+    isolation: isolate;
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  summary {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--select);
+    color: var(--ink);
+  }
+
+  ::placeholder {
+    color: var(--ink-3);
+    opacity: 1;
+  }
+
+  /* Numbers line up everywhere data is shown. */
+  code,
+  kbd,
+  pre,
+  samp {
+    font-variant-numeric: tabular-nums;
+  }
+
+  [hidden]:where(:not([hidden='until-found'])) {
+    display: none !important;
+  }
+
+  /* CSPProvider disableStyleElements: the rule Base UI would have injected. */
+  .base-ui-disable-scrollbar {
+    scrollbar-width: none;
+  }
+  .base-ui-disable-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Reduced motion: entrances become a 150 ms fade; liveness blinks stop. The
+   hold-to-commit timer (kit.css) is a safety timer and is kept. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --animate-enter: ccw-fade 150ms linear both;
+    --animate-rise: ccw-fade 150ms linear both;
+    --animate-pop: ccw-fade 150ms linear both;
+    --animate-fade: ccw-fade 150ms linear both;
+    --animate-dim: none;
+    --animate-blink: none;
+  }
+  html {
+    transition: none;
+  }
+  /* Colour and opacity may still change; nothing slides or grows (rule 22).
+     Unlayered, so it wins over the transition utilities. The hold fill is the
+     one movement kept. */
+  *:not(.hold-fill),
+  ::before,
+  ::after {
+    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, opacity;
+  }
+}

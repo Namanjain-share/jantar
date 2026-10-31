@@ -1,0 +1,207 @@
+/*
+ * The few kit rules that are clearer as CSS than as utilities: pseudo-element
+ * ticks, the hold fill, the spinner step, the sheet's swipe transforms, grid
+ * templates. Colours and sizes still come from tokens.css variables.
+ */
+
+/* ---------- utilities ---------- */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@utility pb-safe-16 {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+/* Desktop frame: rail 56 | content; top bar 48, content, status bar 24. */
+@utility grid-shell {
+  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr) 24px;
+}
+/* Ledger column 360 (1024-1279) or 440 (>= 1280), then the detail pane. */
+@utility grid-ledger {
+  grid-template-columns: 360px minmax(0, 1fr);
+  @media (min-width: 1280px) {
+    grid-template-columns: 440px minmax(0, 1fr);
+  }
+}
+@utility grid-cols-legend {
+  grid-template-columns: 16px 96px minmax(0, 1fr);
+}
+@utility grid-cols-legend-stacked {
+  grid-template-columns: 16px minmax(0, 1fr);
+}
+
+@layer components {
+  /* Status glyphs, strip cells, meters: colour changes ease over 160 ms. */
+  .glyph rect {
+    transition: fill 160ms var(--ease-ui);
+  }
+
+  /* The 2 px --ink tick: current rail item, selected ledger row / option.
+     The only left-edge marks in the app (rule 10). */
+  .rail-tick::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: var(--ink);
+  }
+  .row-tick::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--ink);
+  }
+
+  /* ---------- HoldButton ---------- */
+  .hold {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  .hold-fill {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--hold-fill, var(--ink));
+    opacity: 0.16;
+    /* Slides in from the left edge; the button clips it (overflow hidden). */
+    transform: translateX(-100%);
+    transition: transform 180ms var(--ease-out);
+    pointer-events: none;
+  }
+  .hold[data-holding='true'] .hold-fill {
+    transform: translateX(0);
+    transition: transform var(--hold-ms, 2000ms) linear;
+  }
+  .hold-label,
+  .hold-label-2 {
+    transition: opacity 120ms var(--ease-ui);
+  }
+  .hold-label-2 {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+  }
+  .hold[data-holding='true'] .hold-label {
+    opacity: 0;
+  }
+  .hold[data-holding='true'] .hold-label-2 {
+    opacity: 1;
+  }
+
+  /* ---------- Spinner: the only infinite animation (rule 21) ---------- */
+  .spinner-step {
+    animation: ccw-step 600ms steps(3, end) infinite;
+  }
+
+  /* ---------- Sheet (Base UI Drawer) ---------- */
+  .sheet-backdrop {
+    opacity: calc(1 - var(--drawer-swipe-progress, 0));
+    transition: opacity 420ms var(--ease-sheet);
+  }
+  .sheet-backdrop[data-starting-style],
+  .sheet-backdrop[data-ending-style] {
+    opacity: 0;
+  }
+  .sheet-backdrop[data-ending-style] {
+    transition-duration: 260ms;
+  }
+  .sheet-backdrop[data-swiping] {
+    transition-duration: 0ms;
+  }
+  @supports (-webkit-touch-callout: none) {
+    .sheet-backdrop {
+      position: absolute;
+    }
+  }
+  .sheet-popup {
+    max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    transform: translateY(var(--drawer-swipe-movement-y, 0px));
+    transition: transform 420ms var(--ease-sheet);
+    will-change: transform;
+  }
+  .sheet-popup[data-swiping] {
+    transition-duration: 0ms;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .sheet-popup[data-starting-style],
+  .sheet-popup[data-ending-style] {
+    transform: translateY(100%);
+  }
+  .sheet-popup[data-ending-style] {
+    transition-duration: calc(var(--drawer-swipe-strength, 0.62) * 420ms);
+  }
+
+  /* ---------- Cmd-K palette (cmdk renders its own group headings) ---------- */
+  .palette [cmdk-group-heading] {
+    padding: 8px 20px 4px;
+    font-family: var(--font-mono);
+    font-weight: var(--font-weight-key);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    @apply text-rail;
+  }
+
+  /* ---------- Toasts: above the tab bar (phone) or the status bar ---------- */
+  .toasts {
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 16px);
+  }
+  @media (min-width: 768px) {
+    .toasts {
+      bottom: 40px;
+    }
+  }
+}
+
+@keyframes ccw-step {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(18px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner-step {
+    animation: none;
+  }
+  .hold-label,
+  .hold-label-2 {
+    transition: none;
+  }
+  .sheet-popup {
+    transition: opacity 150ms linear;
+  }
+  .sheet-popup[data-starting-style],
+  .sheet-popup[data-ending-style] {
+    opacity: 0;
+    transform: none;
+  }
+  .sheet-backdrop {
+    transition-duration: 150ms;
+  }
+}

@@ -1,0 +1,91 @@
+name: Bug report
+description: Something in Jantar does not work as the docs say.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Two things first:
+
+        - **A security problem goes to Security > Report a vulnerability**, never here. See SECURITY.md.
+        - **Use synthetic examples only.** Leave out your transcripts, prompts, tokens, account names or numbers, e-mail addresses, home paths and session or folder names. Write `/Users/you/project` and `example.com` instead.
+  - type: input
+    id: version
+    attributes:
+      label: Jantar version
+      description: The output of `jantar version`.
+      placeholder: jantar 0.5.1 (protocol 3)
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: macOS, Claude Code and Node versions
+      description: For example from `sw_vers -productVersion`, `claude --version` and `node --version`.
+      placeholder: macOS 26.6, Claude Code 2.1.314, Node 22.13.0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Board and sessions
+        - Answering from the phone (cards, terminal dialogs, keypad)
+        - Sending prompts and attachments
+        - New session and Resume
+        - Files, Rewrite or Controls
+        - Accounts or the primer
+        - Life
+        - Intel shelf
+        - Meetings (the Chrome extension)
+        - Install, pairing or phone access
+        - Something else
+    validations:
+      required: true
+  - type: dropdown
+    id: setup
+    attributes:
+      label: Accounts
+      options:
+        - One Claude login
+        - cswap with several accounts
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start a session with `--permission-mode manual` in a scratch folder
+        2. Ask it to write a file
+        3. Tap Yes on the phone
+        4. ...
+  - type: textarea
+    id: doctor
+    attributes:
+      label: jantar doctor
+      description: The output of `jantar doctor`, with paths and names removed.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Lines from `~/.jantar/logs/daemon.err.log` around the problem, with paths and names removed.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: I removed real names, paths, account details, transcripts and tokens; every example is synthetic.
+          required: true
+        - label: This is not a security problem (those go to Security > Report a vulnerability).
+          required: true
