@@ -4,6 +4,7 @@
  */
 import { request } from 'node:http';
 import { connect } from 'node:net';
+import { perfBudgetMs } from '@jantar/fixtures';
 import { DEVICE_SECRET_HEADER } from '@jantar/protocol';
 
 /** Device secrets of the cookies paired in this run: `http()` sends one with its cookie, like the web app. */
@@ -119,9 +120,13 @@ export function hookTag(ppid: number, wait: boolean, claudeConfigDir?: string): 
   };
 }
 
-/** Poll `fn` until it returns a truthy value or `ms` passes. */
+/**
+ * Poll `fn` until it returns a truthy value or `ms` passes. Every wait here
+ * is on real processes (the daemon, a fake binary, Chromium), so on CI it
+ * gets the shared allowance (perfBudgetMs).
+ */
 export async function eventually<T>(fn: () => Promise<T | null | undefined | false>, ms = 10_000, what = 'condition'): Promise<T> {
-  const deadline = Date.now() + ms;
+  const deadline = Date.now() + perfBudgetMs(ms);
   let last: unknown;
   for (;;) {
     try {

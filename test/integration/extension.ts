@@ -19,6 +19,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { perfBudgetMs } from '@jantar/fixtures';
 import { chromium, type BrowserContext, type Page, type Worker } from 'playwright-core';
 
 /** The extension as you load it (optional <all_urls>), and the test build (granted at install). */
@@ -120,7 +121,7 @@ export async function tabIdOf(ext: LoadedExtension, url: string): Promise<number
  * under a real toolbar popup. Opening it this way grants no activeTab.
  */
 export async function openPopup(ext: LoadedExtension, tabId: number, front?: Page): Promise<Page> {
-  const opened = ext.context.waitForEvent('page', { predicate: (p) => p.url().includes('/popup.html'), timeout: 10_000 });
+  const opened = ext.context.waitForEvent('page', { predicate: (p) => p.url().includes('/popup.html'), timeout: perfBudgetMs(10_000) });
   await ext.worker.evaluate(async (id) => {
     const c = (globalThis as unknown as { chrome: ChromeLike }).chrome;
     await c.windows.create({ url: c.runtime.getURL(`popup.html?tab=${id}`), type: 'popup' });

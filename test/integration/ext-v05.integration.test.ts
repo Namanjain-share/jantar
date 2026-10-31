@@ -105,10 +105,15 @@ const step = (page: Page, name: string, ...args: unknown[]) =>
 /** Waits until the camera button's view passes `ok` (polled through the DevTools protocol). */
 async function cameraUntil(page: Page, ok: (v: CameraView) => boolean, what: string, ms = 10_000): Promise<CameraView> {
   let last: CameraView | null = null;
-  return eventually(async () => {
-    last = await cameraView(page);
-    return ok(last) ? last : null;
-  }, ms, `${what} (last: ${JSON.stringify(last)})`);
+  try {
+    return await eventually(async () => {
+      last = await cameraView(page);
+      return ok(last) ? last : null;
+    }, ms, what);
+  } catch (e) {
+    // The last view read, not the one before the first read.
+    throw new Error(`${e instanceof Error ? e.message : String(e)} (last: ${JSON.stringify(last)})`);
+  }
 }
 
 /** The colour of the picture at (x, y) CSS pixels of a `cssWidth`-wide page, decoded by the browser (on a blank page: a meeting page's CSP may refuse a data: image). */
