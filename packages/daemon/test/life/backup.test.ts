@@ -93,6 +93,11 @@ function service(opts: { settings?: Settings; at?: string; tz?: string; builders
   return svc;
 }
 
+/** Set the backups folder's mtime (and atime) to `ms`, the way a filesystem would stamp a change then. */
+function folderTimeAt(ms: number): void {
+  utimesSync(backups, ms / 1000, ms / 1000);
+}
+
 /** A backup file the way the service writes one, with `todo` titles in it and its mtime set. */
 function seedBackup(name: string, titles: string[], mtimeMs: number): string {
   const tmp = join(dir, `seed-${name}`);
@@ -223,13 +228,31 @@ describe('LD3: backups', () => {
     expect(life.status().backups.count).toBe(2);
     rmSync(join(backups, 'life-2026-10-01.db'));
     expect(life.status().backups).toEqual({ last: expect.any(String), count: 1 });
-    // Unchanged, the folder is not listed again: a listing now would find nothing.
+    // Unchanged since well before the last listing, the folder is not listed again: a listing now would find nothing.
+    folderTimeAt(Date.now() - MIN);
+    expect(life.status().backups.count).toBe(1);
     chmodSync(backups, 0o300);
     try {
       expect(life.status().backups.count).toBe(1);
     } finally {
       chmodSync(backups, 0o700);
     }
+  });
+
+  it('status sees a change the folder time missed: a create and a delete in one tick of a coarse clock', async () => {
+    const life = service();
+    await life.start();
+    await ctx.clock.tick(0);
+    expect(life.status().backups.count).toBe(1);
+    // Linux stamps a folder from a coarse clock, and some filesystems keep whole seconds: a file made and
+    // removed within one step leaves the folder's mtime where it was. Here that time is put back by hand.
+    const tick = Date.now();
+    seedBackup('life-2026-10-01.db', [], Date.parse('2026-10-01T03:30:00.000Z'));
+    folderTimeAt(tick);
+    expect(life.status().backups.count).toBe(2);
+    rmSync(join(backups, 'life-2026-10-01.db'));
+    folderTimeAt(tick);
+    expect(life.status().backups).toEqual({ last: expect.any(String), count: 1 });
   });
 
   it('a failure to write answers a fixed sentence and logs a code', async () => {

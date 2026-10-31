@@ -138,6 +138,12 @@ function macZoneOf(env: Readonly<Record<string, string | undefined>>): string {
   return intl && isValidTimeZone(intl) ? intl : 'UTC';
 }
 
+/**
+ * How long after the backups folder's mtime a listing must be read to be trusted while that mtime stays put:
+ * two seconds covers a coarse kernel clock, whole-second stamps and FAT's two-second ones.
+ */
+const BACKUPS_RACY_MS = 2_000;
+
 /** Which ping kinds belong to each module. */
 const MODULE_KINDS = new Map<LifeModuleName, PingKind[]>();
 for (const k of PING_KINDS) MODULE_KINDS.set(KIND_MODULE[k], [...(MODULE_KINDS.get(KIND_MODULE[k]) ?? []), k]);
@@ -151,8 +157,8 @@ class LifeServiceImpl implements LifeService {
   private zone: string;
   private noticeSent = false;
   private backupFailedOn: string | null = null;
-  /** LifeStatus.backups as last read, with the backups folder's mtime then. */
-  private backupsSeen: { mtimeMs: number; value: LifeStatus['backups'] } | null = null;
+  /** LifeStatus.backups as last read, with the backups folder's mtime then and when (real time) it was read. */
+  private backupsSeen: { mtimeMs: number; readAtMs: number; value: LifeStatus['backups'] } | null = null;
   private readonly macZone: string;
   private readonly log: Logger;
   private readonly send: LifeSend;
@@ -371,16 +377,25 @@ class LifeServiceImpl implements LifeService {
     }
   }
 
-  /** LifeStatus.backups: listed again only when the folder's mtime moved, or after a backup or restore of ours. */
+  /**
+   * LifeStatus.backups: listed again when the folder's mtime moved, after a backup or restore of ours, and while
+   * the last listing was read within BACKUPS_RACY_MS of that mtime. A folder stamps its time in steps (a coarse
+   * clock on Linux, whole seconds on some filesystems), so a file made and removed in the step of the listing
+   * leaves the mtime as it was: only a listing read clearly after the mtime is trusted (git's "racily clean").
+   */
   private backupsStatus(): LifeStatus['backups'] {
     const dir = this.ctx.paths.backupsDir;
+    // The real time, not ctx.clock: it is compared with the time the filesystem stamped.
+    const readAtMs = Date.now();
     let mtimeMs = -1;
     try {
       mtimeMs = statSync(dir).mtimeMs;
     } catch {
       // No folder yet: no backups.
     }
-    if (this.backupsSeen?.mtimeMs !== mtimeMs) this.backupsSeen = { mtimeMs, value: backupSummary(dir) };
+    const seen = this.backupsSeen;
+    if (seen?.mtimeMs === mtimeMs && seen.readAtMs - mtimeMs > BACKUPS_RACY_MS) return seen.value;
+    this.backupsSeen = { mtimeMs, readAtMs, value: backupSummary(dir) };
     return this.backupsSeen.value;
   }
 
