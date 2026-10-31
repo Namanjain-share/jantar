@@ -3,8 +3,18 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## Unreleased
+## 0.5.2 (1 November 2026)
 
+The first public release.
+
+- **Prompts from unattended agents answer from the phone.** Claude Code draws
+  a ticking "will automatically block this request in 1:33" line in an
+  unattended agent's prompt, and every tap on it was refused as "The dialog
+  on the Mac changed". Jantar now leaves out only the time of Claude's own
+  countdown when it checks the prompt before typing: the command, the
+  question and every option must still match exactly. The phone shows the
+  deadline and counts it down, and refuses a tap with under 5 seconds left
+  ("Answer it at the Mac").
 - On a phone the Board's **+** for a new session is the icon alone, so
   "3 need you" and Start fit a 390 px screen.
 - `jantar open` links to the port the daemon really listens on (a daemon
