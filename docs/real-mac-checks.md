@@ -221,6 +221,7 @@ row takes a lone Return as on any other (SP15 tried Down there).
 | SP12 | "describe these" with a photo and a PDF to a manual-mode session: the composed text proven, Claude's one Read prompt for the uploads folder answered from the phone, both files described | Claude reading uploads |
 | SP13 | A 15 MB PDF from the phone on cellular through the front door | uploads through a tunnel (no 413 on the way) |
 | SP16 | With text typed into "Type something." at the Mac (one line, then wrapped over two): Down from that row, and Down twice from row 1 across it to "Chat about this". Does each Down move the highlight, or move the cursor inside the text (so the Return would submit the text)? | the rows past a row holding text (off: answered at the Mac) |
+| SP17 (v0.5.2): partly done 31 Oct | A workflow agent's Bash prompt with Claude's countdown (`… will automatically block this request in 1:33 …`): tap No on the phone while it ticks, a queued twin's stale tap (409), a tap with under 5 s left (409, nothing typed). Done on the real Mac: the `typeif` parts around the time against a real tab (same screen and a tick type; text in place of the time, an empty gap, swapped parts and one character off type nothing). Not yet: a live countdown prompt, which Claude raises only for some safety prompts in bypass mode | answering an unattended agent's prompt before Claude blocks it |
 
 ### Meetings (v0.5)
 

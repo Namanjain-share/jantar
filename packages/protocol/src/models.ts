@@ -8,7 +8,7 @@
  * - An `AccountId` is the cswap slot number.
  */
 import { z } from 'zod';
-import { SLASH_ARGS_MAX } from './constants.js';
+import { DIALOG_COUNTDOWN_TIME, SLASH_ARGS_MAX } from './constants.js';
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -1075,10 +1075,27 @@ export const TerminalDialogSchema = z.object({
   options: z.array(DialogOptionSchema).min(2).max(12),
   /** The highlighted row (❯). */
   current: z.number().int().min(0).max(11),
-  /** sha256 hex of everything above; the answer route compares it. */
+  /**
+   * v0.5.2: how long until Claude blocks the request by itself, as its
+   * countdown inside the dialog showed it at this read ("1:33", "about 2
+   * minutes"; DIALOG_COUNTDOWN_TIME): an unattended agent's ask (a
+   * workflow's, a subagent's) waits about two minutes. The countdown's line
+   * is not in `body`, and this field is not in the fingerprint: it ticks
+   * every second, so a tap made at 1:33 still answers at 1:32.
+   */
+  blocksIn: z.string().max(32).regex(DIALOG_COUNTDOWN_TIME).optional(),
+  /** sha256 hex of everything above but `blocksIn`; the answer route compares it. */
   fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
 });
 export type TerminalDialog = z.infer<typeof TerminalDialogSchema>;
+
+/** v0.5.2: a `blocksIn` time in seconds ("1:33" is 93, "about 2 minutes" 120), or null for any other text. */
+export function countdownSeconds(time: string): number | null {
+  const clock = /^(\d{1,2}):(\d{2})$/u.exec(time);
+  if (clock) return Number(clock[1]) * 60 + Number(clock[2]);
+  const about = /^about (\d{1,3}) (minute|second)s?$/u.exec(time);
+  return about ? Number(about[1]) * (about[2] === 'minute' ? 60 : 1) : null;
+}
 
 // ---------------------------------------------------------------------------
 // Attachments: files from the phone, stored on the Mac and named in a prompt

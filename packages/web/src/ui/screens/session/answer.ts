@@ -21,7 +21,8 @@
  *   never reads as a tap that didn't take. A multi-select toggle that took
  *   is the same dialog with its ticks changed, not a new one.
  * - 409: the screen is read again and the fresh dialog shows with "The
- *   dialog on the Mac changed".
+ *   dialog on the Mac changed", or, when the daemon said Claude's countdown
+ *   had too little left (v0.5.2), with that.
  * - "No, and tell Claude …" (2.7): the No row is answered with no text; on
  *   `done` the note goes into the composer's draft for one tap on Send.
  *
@@ -52,6 +53,22 @@ export const CHANGED = 'The dialog on the Mac changed. Check it again.';
 export const NOTE_IN_BOX = 'Your note is in the box. Send it when Claude is ready.';
 export const CONTROLS_OFF = `Controls are off. Turn them on at your Mac: ${CLI_NAME} controls on`;
 export const NO_CONTROL_SCOPE = 'This device can read sessions only. Answering needs control access: pair it again from your Mac.';
+
+// v0.5.2, Claude's auto-block countdown: the protocol's DIALOG_COUNTDOWN_MIN_S, DIALOG_COUNTDOWN_LATE and
+// countdownSeconds, copied into the dock's lazy chunk so the app's first load doesn't carry them
+// (scripts/perf-chunks.mjs); term-dialog.test.tsx holds them equal.
+
+/** Under this many seconds left on Claude's countdown the rows are off (twice that for a text row). */
+export const COUNTDOWN_MIN_S = 5;
+/** The daemon's 409 reason under that margin, and the dock's line there. */
+export const COUNTDOWN_LATE = 'Claude blocks this at the Mac in a moment. Answer it there.';
+/** A `blocksIn` time in seconds ("1:33" is 93, "about 2 minutes" 120), or null for any other text. */
+export function countdownSecondsOf(time: string): number | null {
+  const clock = /^(\d{1,2}):(\d{2})$/u.exec(time);
+  if (clock) return Number(clock[1]) * 60 + Number(clock[2]);
+  const about = /^about (\d{1,3}) (minute|second)s?$/u.exec(time);
+  return about ? Number(about[1]) * (about[2] === 'minute' ? 60 : 1) : null;
+}
 
 /** A tap this soon after the content under it appeared was aimed at what was there before. */
 export const TAP_GUARD_MS = 500;
@@ -102,7 +119,7 @@ export function identity(d: TerminalDialog): string {
 /**
  * What the dock shows of a dialog but its ticks and pointer: the same rows under another title,
  * body, tab bar or description (a queued twin, a dialog scrolled into view, the next question
- * drawn alike) look new.
+ * drawn alike) look new. Never Claude's countdown (`blocksIn`): it changes every second.
  */
 export function whole(d: TerminalDialog): string {
   const tabs = (d.tabs ?? []).map((t) => `${t.answered ? '☒' : '☐'} ${t.label}`).join('\t');
@@ -115,7 +132,8 @@ function ticks(d: TerminalDialog): string {
 }
 
 /**
- * Everything the dock draws of a dialog, the pointer included. A new fingerprint under the same
+ * Everything the dock draws of a dialog, the pointer included, but Claude's countdown (`blocksIn`,
+ * which ticks; the daemon's fingerprint leaves it out too). A new fingerprint under the same
  * drawing means something the phone doesn't show changed (the middle of a body over 40 lines, a
  * clipped title or label): the dock treats it as another dialog.
  */
@@ -219,7 +237,7 @@ export function useDialogAnswer(sid: string, read: SessionScreenRead, sends: Pic
         if (isApiError(e, 'network')) kept.current = { sig, key };
         if (isApiError(e, 'conflict')) {
           const fresh = await load();
-          setLine({ text: CHANGED, error: false, for: fresh?.dialog?.fingerprint ?? null });
+          setLine({ text: e.message === COUNTDOWN_LATE ? COUNTDOWN_LATE : CHANGED, error: false, for: fresh?.dialog?.fingerprint ?? null });
         } else {
           setLine({ text: errorText(e), error: true, for: dialog.fingerprint });
         }

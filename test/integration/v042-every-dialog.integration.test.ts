@@ -29,7 +29,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DIALOG_FIXTURES, DIALOG_SECRET, NOT_DIALOG_SCREENS, SAMPLE_TEXT, withGates, type DialogFixture } from '@jantar/fixtures';
-import { dialogOfScreen, rawSlice } from '@jantar/daemon/terminal/dialog';
+import { rawExpect, readDialog } from '@jantar/daemon/terminal/dialog';
 import {
   DEVICE_COOKIE,
   DIALOG_GATES,
@@ -57,11 +57,11 @@ const withoutPrint = (d: TerminalDialog | null | undefined) => {
   return rest;
 };
 
-/** The raw text the compare-and-type write must find: the dialog from its top through its last line. */
-function blockOf(screen: string): string {
-  const read = dialogOfScreen(screen);
-  if (!read.block) throw new Error('no dialog block on this screen');
-  return rawSlice(screen, read.block.from, read.block.to);
+/** The raw text the compare-and-type write must find: the dialog from its top through its last line (around its countdown's time, its two parts). */
+function blockOf(screen: string): string | string[] {
+  const read = readDialog(screen);
+  if (!read.dialog || !read.block) throw new Error('no dialog block on this screen');
+  return rawExpect(screen, read.block.from, read.block.to, read.countdown);
 }
 
 /** Phones paired with read and control (the pairing limit is 8 claims a minute). */
@@ -223,7 +223,8 @@ describe('v0.4.2: every dialog fixture answered through the daemon, with the gua
       const w = writes().slice(before);
       expect(w.map((x) => [x.mode, x.bytes, x.out])).toEqual([['typeif', ESC_B, 'ok']]);
       // Compare-and-type over the lines the phone was shown.
-      expect(f.screen).toContain(w[0]?.expected ?? '\u0000');
+      expect(typeof w[0]?.expected).toBe('string');
+      expect(f.screen).toContain((w[0]?.expected as string | undefined) ?? '\u0000');
       expect(w[0]?.expected).toMatch(/[❯›]/u);
     });
   }

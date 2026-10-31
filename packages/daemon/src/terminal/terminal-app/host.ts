@@ -21,12 +21,13 @@ export interface TerminalAppHost {
   /**
    * v0.4.2: the same write through the script's `typeif` mode
    * (compare-and-type): typed only if the tab's text, read in that same
-   * run, still contains `expect` exactly; otherwise nothing is typed and the
+   * run, still contains `expect` exactly (v0.5.2: with several parts, each
+   * in order, script.ts `inOrder`); otherwise nothing is typed and the
    * result is `{ok: false, code: 'changed'}`. Only keys.ts calls it, with
-   * its own bytes. Optional: a host without it can't check, so keys.ts
-   * refuses.
+   * its own bytes and checked parts. Optional: a host without it can't
+   * check, so keys.ts refuses.
    */
-  typeBytesIf?(pane: Pane, payload: string, expect: string): Promise<OpResult>;
+  typeBytesIf?(pane: Pane, payload: string, expect: readonly string[]): Promise<OpResult>;
   /**
    * Run another constant AppleScript: `osascript - <args...>` with `script`
    * on stdin and every value in argv (nothing interpolated, as script.ts).

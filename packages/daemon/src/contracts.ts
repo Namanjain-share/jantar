@@ -764,8 +764,15 @@ export interface PressKeyOptions {
    * nothing is typed and the result is `{ok: false, code: 'changed'}`. The
    * caller passes the raw lines it parsed (terminal/dialog.ts rawSlice). An
    * empty value or one holding NUL is refused before osascript runs.
+   *
+   * v0.5.2: or the two parts of those lines around the time in Claude's
+   * auto-block countdown (terminal/dialog.ts rawExpect), the second found
+   * right after the first with only a time (1 to TYPEIF_GAP_CHARS digits and
+   * colons) between them. Up to EXPECT_PARTS_MAX parts, each with at least
+   * EXPECT_PART_MIN characters other than white space (terminal-app/keys.ts),
+   * or nothing runs.
    */
-  expect?: string;
+  expect?: string | readonly string[];
 }
 
 /** v0.3: what `getScreenshot` is asked for. */

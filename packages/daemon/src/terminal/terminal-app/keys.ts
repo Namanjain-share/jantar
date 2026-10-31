@@ -43,7 +43,14 @@
  * v0.4.2, compare-and-type: with `opts.expect` the write goes through
  * `host.typeBytesIf` (the script's `typeif` mode), so it lands only while the
  * tab still shows that exact text; `changed` otherwise, nothing typed. An
- * empty `expect`, or one holding NUL, is refused before anything runs. With
+ * empty `expect`, or one holding NUL, is refused before anything runs.
+ * v0.5.2: `expect` may be the parts of a dialog around the time in Claude's
+ * ticking countdown (terminal/dialog.ts rawExpect, script.ts
+ * TYPEIF_GAP_CHARS): 1 to EXPECT_PARTS_MAX of them,
+ * none empty or holding NUL, and, when there are several, each with at
+ * least EXPECT_PART_MIN characters other than white space, so that no part
+ * can be found on a screen by accident; refused before anything runs
+ * otherwise. With
  * `opts.text` (up, down and enter only, and only with `expect`) the text is
  * typed after the arrows in the same write, for a dialog's input row: 2 to
  * 700 characters on one line, no control characters, no leading or trailing
@@ -110,6 +117,28 @@ export function clearInputBytes(rows: number | undefined): string | null {
  */
 export const CLEAR_ONE_ROW = clearWrite(1);
 
+/** The most parts one compare-and-type write checks (a dialog shows one countdown). */
+export const EXPECT_PARTS_MAX = 8;
+/** Each of several parts holds at least this many characters other than white space. */
+export const EXPECT_PART_MIN = 16;
+
+/** `expect` as the texts the script checks in order, or why it can't be checked (nothing is typed then). */
+function expectParts(expect: unknown): { parts: readonly string[] } | { problem: string } {
+  if (typeof expect === 'string') {
+    return expect === '' || expect.includes('\u0000') ? { problem: 'the text to compare is empty or holds NUL; nothing was typed' } : { parts: [expect] };
+  }
+  if (!Array.isArray(expect) || expect.length === 0 || expect.length > EXPECT_PARTS_MAX) {
+    return { problem: `the text to compare comes in 1 to ${EXPECT_PARTS_MAX} parts; nothing was typed` };
+  }
+  for (const p of expect as unknown[]) {
+    if (typeof p !== 'string' || p === '' || p.includes('\u0000')) return { problem: 'a part of the text to compare is empty or holds NUL; nothing was typed' };
+    if (expect.length > 1 && p.replace(/\s+/gu, '').length < EXPECT_PART_MIN) {
+      return { problem: `a part of the text to compare is under ${EXPECT_PART_MIN} characters; nothing was typed` };
+    }
+  }
+  return { parts: expect as string[] };
+}
+
 /** Keys that may be pressed several times in one write (menus). */
 const REPEATABLE: ReadonlySet<ControlKey> = new Set(['up', 'down']);
 
@@ -155,13 +184,12 @@ export async function pressKeyImpl(host: TerminalAppHost, pane: Pane, key: Contr
     if (problem) return { ok: false, code: 'unsupported', reason: problem };
   }
   if (opts.expect !== undefined) {
-    if (typeof opts.expect !== 'string' || opts.expect === '' || opts.expect.includes('\u0000')) {
-      return { ok: false, code: 'unsupported', reason: 'the text to compare is empty or holds NUL; nothing was typed' };
-    }
+    const expect = expectParts(opts.expect);
+    if ('problem' in expect) return { ok: false, code: 'unsupported', reason: expect.problem };
     if (!host.typeBytesIf) return { ok: false, code: 'unsupported', reason: "this terminal can't compare the screen as it types" };
     const bytes = key === 'clearInput' ? clearInputBytes(opts.rows) : KEY_BYTES[key].repeat(repeat) + (opts.text ?? '');
     if (bytes === null) return { ok: false, code: 'unsupported', reason: CLEAR_ROWS_REASON };
-    return host.typeBytesIf(pane, bytes, opts.expect);
+    return host.typeBytesIf(pane, bytes, expect.parts);
   }
   if (key === 'clearInput') {
     const bytes = clearInputBytes(opts.rows);

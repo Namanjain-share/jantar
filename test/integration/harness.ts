@@ -276,8 +276,8 @@ export interface FakeTabWrite {
   mode: 'type' | 'typeif';
   /** The bytes before Terminal's Return. */
   bytes: string;
-  /** typeif only: the text the tab had to still show. */
-  expected?: string;
+  /** typeif only: the text the tab had to still show (v0.5.2: around Claude's countdown, its parts in order). */
+  expected?: string | string[];
   /** What the fake printed: `ok`, or `__JANTAR_CHANGED__` when the tab no longer showed `expected`. */
   out: string;
 }
@@ -335,7 +335,8 @@ export class FakeTabs {
       const mode = args[2];
       const tty = args[1] ?? '';
       if (!file.endsWith('/osascript') || (mode !== 'type' && mode !== 'typeif')) return exec(file, args, opts);
-      const w = { tty, mode, bytes: args[3] ?? '', ...(mode === 'typeif' ? { expected: args[4] ?? '' } : {}) } as const;
+      const expected = args.length > 5 ? args.slice(4) : (args[4] ?? '');
+      const w = { tty, mode, bytes: args[3] ?? '', ...(mode === 'typeif' ? { expected } : {}) } as const;
       const hooks = this.hooks.get(tty);
       await hooks?.before?.(w);
       const r = await exec(file, args, opts);

@@ -473,6 +473,277 @@
     },
     "note": null
   },
+  "PERM_WORKFLOW_133": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command · from the \"night-check\" workflow",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Check the rebuilt trees in bash (velvet-quokka-5521)",
+        "│ bash -c '",
+        "│ SP=/tmp/demo/scratchpad/final-verify; C=$SP/clone; G=/usr/local/bin/git",
+        "│ for t in \"alpha DEMO-101/demo-safety\" \"beta DEMO-102/demo-pages\"; do set -- $t;",
+        "│ T=$(mktemp -d $SP/chk.XXXX); $G -C $C archive $2 | tar -x -C $T; rm -rf $T/out/*; done'",
+        "│ Dangerous rm operation on statically-unresolvable target: $T/out/*"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "blocksIn": "1:33",
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000023"
+    },
+    "note": null
+  },
+  "PERM_WORKFLOW_132": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command · from the \"night-check\" workflow",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Check the rebuilt trees in bash (velvet-quokka-5521)",
+        "│ bash -c '",
+        "│ SP=/tmp/demo/scratchpad/final-verify; C=$SP/clone; G=/usr/local/bin/git",
+        "│ for t in \"alpha DEMO-101/demo-safety\" \"beta DEMO-102/demo-pages\"; do set -- $t;",
+        "│ T=$(mktemp -d $SP/chk.XXXX); $G -C $C archive $2 | tar -x -C $T; rm -rf $T/out/*; done'",
+        "│ Dangerous rm operation on statically-unresolvable target: $T/out/*"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "blocksIn": "1:32",
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000024"
+    },
+    "note": null
+  },
+  "PERM_WORKFLOW_005": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command · from the \"night-check\" workflow",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Check the rebuilt trees in bash (velvet-quokka-5521)",
+        "│ bash -c '",
+        "│ SP=/tmp/demo/scratchpad/final-verify; C=$SP/clone; G=/usr/local/bin/git",
+        "│ for t in \"alpha DEMO-101/demo-safety\" \"beta DEMO-102/demo-pages\"; do set -- $t;",
+        "│ T=$(mktemp -d $SP/chk.XXXX); $G -C $C archive $2 | tar -x -C $T; rm -rf $T/out/*; done'",
+        "│ Dangerous rm operation on statically-unresolvable target: $T/out/*"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "blocksIn": "0:05",
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000025"
+    },
+    "note": null
+  },
+  "PERM_WORKFLOW_LONG_133": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command · from the \"night-check\" workflow",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Check the rebuilt trees in bash (velvet-quokka-5521)",
+        "│ T=$(mktemp -d /tmp/demo/scratchpad/chk.XXXX) && cat > $T/notes.txt <<'EOF'",
+        "│   line 1 of the notes",
+        "│   line 2 of the notes",
+        "│   line 3 of the notes",
+        "│   line 4 of the notes",
+        "│   line 5 of the notes",
+        "│   line 6 of the notes",
+        "│   line 7 of the notes",
+        "│   line 8 of the notes",
+        "│   line 9 of the notes",
+        "│   line 10 of the notes",
+        "│   line 11 of the notes",
+        "│   line 12 of the notes",
+        "│   line 13 of the notes",
+        "│   line 14 of the notes",
+        "│   line 15 of the notes",
+        "│   line 16 of the notes",
+        "│   line 17 of the notes",
+        "… 3 more lines on the Mac …",
+        "│   line 21 of the notes",
+        "│   line 22 of the notes",
+        "│   line 23 of the notes",
+        "│   line 24 of the notes",
+        "│   line 25 of the notes",
+        "│   line 26 of the notes",
+        "│   line 27 of the notes",
+        "│   line 28 of the notes",
+        "│   line 29 of the notes",
+        "│   line 30 of the notes",
+        "│   line 31 of the notes",
+        "│   line 32 of the notes",
+        "│   line 33 of the notes",
+        "│   line 34 of the notes",
+        "│   line 35 of the notes",
+        "│   line 36 of the notes",
+        "│   line 37 of the notes",
+        "│ EOF",
+        "│ rm -rf $T/out/*",
+        "│ Dangerous rm operation on statically-unresolvable target: $T/out/*"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "blocksIn": "1:33",
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000026"
+    },
+    "note": null
+  },
+  "PERM_WORKFLOW_LONG_132": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command · from the \"night-check\" workflow",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Check the rebuilt trees in bash (velvet-quokka-5521)",
+        "│ T=$(mktemp -d /tmp/demo/scratchpad/chk.XXXX) && cat > $T/notes.txt <<'EOF'",
+        "│   line 1 of the notes",
+        "│   line 2 of the notes",
+        "│   line 3 of the notes",
+        "│   line 4 of the notes",
+        "│   line 5 of the notes",
+        "│   line 6 of the notes",
+        "│   line 7 of the notes",
+        "│   line 8 of the notes",
+        "│   line 9 of the notes",
+        "│   line 10 of the notes",
+        "│   line 11 of the notes",
+        "│   line 12 of the notes",
+        "│   line 13 of the notes",
+        "│   line 14 of the notes",
+        "│   line 15 of the notes",
+        "│   line 16 of the notes",
+        "│   line 17 of the notes",
+        "… 3 more lines on the Mac …",
+        "│   line 21 of the notes",
+        "│   line 22 of the notes",
+        "│   line 23 of the notes",
+        "│   line 24 of the notes",
+        "│   line 25 of the notes",
+        "│   line 26 of the notes",
+        "│   line 27 of the notes",
+        "│   line 28 of the notes",
+        "│   line 29 of the notes",
+        "│   line 30 of the notes",
+        "│   line 31 of the notes",
+        "│   line 32 of the notes",
+        "│   line 33 of the notes",
+        "│   line 34 of the notes",
+        "│   line 35 of the notes",
+        "│   line 36 of the notes",
+        "│   line 37 of the notes",
+        "│ EOF",
+        "│ rm -rf $T/out/*",
+        "│ Dangerous rm operation on statically-unresolvable target: $T/out/*"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "blocksIn": "1:32",
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000027"
+    },
+    "note": null
+  },
+  "PERM_WORKFLOW_TWIN_A": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command · from the \"night-check\" workflow",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Check the rebuilt trees in bash (velvet-quokka-5521)",
+        "│ bash -c '",
+        "│ SP=/tmp/demo/scratchpad/final-verify; C=$SP/clone; G=/usr/local/bin/git",
+        "│ for t in \"alpha DEMO-101/demo-safety\" \"beta DEMO-102/demo-pages\"; do set -- $t;",
+        "│ T=$(mktemp -d $SP/chk.XXXX); $G -C $C archive $2 | tar -x -C $T; rm -rf $T/out/*; done'",
+        "│ Dangerous rm operation on statically-unresolvable target: $T/out/*"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "blocksIn": "1:58",
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000028"
+    },
+    "note": null
+  },
+  "PERM_WORKFLOW_TWIN_B": {
+    "dialog": {
+      "kind": "permission",
+      "title": "Bash command · from the \"night-check\" workflow",
+      "question": "Do you want to proceed?",
+      "body": [
+        "Check the rebuilt trees in bash (velvet-quokka-5521)",
+        "│ bash -c '",
+        "│ SP=/tmp/demo/scratchpad/final-verify; C=$SP/clone; G=/usr/local/bin/git",
+        "│ for t in \"gamma DEMO-103/demo-search\" \"delta DEMO-104/demo-login\"; do set -- $t;",
+        "│ T=$(mktemp -d $SP/chk.XXXX); $G -C $C archive $2 | tar -x -C $T; rm -rf $T/out/*; done'",
+        "│ Dangerous rm operation on statically-unresolvable target: $T/out/*"
+      ],
+      "options": [
+        {
+          "label": "Yes",
+          "role": "pick"
+        },
+        {
+          "label": "No",
+          "role": "pick"
+        }
+      ],
+      "current": 0,
+      "blocksIn": "1:58",
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000029"
+    },
+    "note": null
+  },
   "PLAN_FULLSCREEN": {
     "dialog": {
       "kind": "plan",

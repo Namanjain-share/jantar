@@ -1,6 +1,6 @@
 {
   "name": "@jantar/fixtures",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "Synthetic HOME builder and fake executables for Jantar tests. Every value here is made up.",

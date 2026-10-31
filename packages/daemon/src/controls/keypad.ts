@@ -8,7 +8,8 @@
  * two switches); `dialogGate`; then under the pane's writer lock: the gate
  * again, Claude in front, a fresh read with `raw`, `screenKey(raw,
  * body.lines)` against the phone's (409 `conflict`), no parsed dialog (it
- * has buttons), not Claude's prompt box (its bash-mode `!` box included), a
+ * has buttons), Claude's auto-block countdown too close to its end (409,
+ * below), not Claude's prompt box (its bash-mode `!` box included), a
  * visible ❯ or › in the hashed lines whose list ends them (only blank lines
  * and edges under it, as under a live dialog), then one compare-and-type
  * write with `expect` = those lines' raw text.
@@ -21,14 +22,21 @@
  * (the key is the same: both hash the last `lines` lines). Each check reads
  * only lines the phone was shown (screenKeyRange). If they never hold still
  * (something on screen ticks), every send is a 409 and the phone says so.
+ * The one exception is the dialog's own auto-block countdown, as readDialog
+ * finds it (v0.5.2, terminal/dialog.ts step 8; the same sentence anywhere
+ * else counts like any line): the key hashes it as one fixed line, and the
+ * write's `expect` is the lines in two parts around its time alone
+ * (`rawExpect`). With under DIALOG_COUNTDOWN_MIN_S seconds on it nothing is
+ * typed (`conflict`, controls/dialog.ts COUNTDOWN_LATE): Claude blocks the
+ * ask by itself at 0:00 and draws the next one at once.
  *
  * The API audits { sid, move, key }, never screen text.
  */
-import { DIALOG_GATES, KEYPAD_ESCAPE, type DialogGates, type SessionKeypadBody } from '@jantar/protocol';
+import { DIALOG_COUNTDOWN_MIN_S, DIALOG_GATES, KEYPAD_ESCAPE, type DialogGates, type SessionKeypadBody } from '@jantar/protocol';
 import type { Actor, ControlResult, DaemonContext } from '../contracts.js';
-import { dialogOfScreen, pointerListEnds, rawSlice, screenKey, screenKeyRange } from '../terminal/dialog.js';
+import { pointerListEnds, rawExpect, readDialog, screenKey, screenKeyRange } from '../terminal/dialog.js';
 import { isBoxEdge, screenLines } from '../terminal/screen.js';
-import { CANT_CHECK } from './dialog.js';
+import { CANT_CHECK, COUNTDOWN_LATE, secondsLeft } from './dialog.js';
 import { ESCAPE_UNVERIFIED } from './keys.js';
 import { SCREEN_LINES, controlsOn, dialogGate, foregroundGate, locate, readState, refuse, withLock, type ControlsDeps } from './common.js';
 
@@ -84,9 +92,12 @@ export async function pressKeypad(
     if (!read.ok) return read;
     const { raw, state } = read;
     if (raw === null) return refuse('unsupported', CANT_CHECK);
-    if (screenKey(raw, body.lines) !== body.screen) return refuse('conflict', SCREEN_CHANGED);
+    const parsed = readDialog(raw, gates);
+    if (screenKey(raw, body.lines, parsed.countdown) !== body.screen) return refuse('conflict', SCREEN_CHANGED);
     // A dialog with buttons first: the pointer on "Chat about this" also looks like a prompt box to readScreenState.
-    if (dialogOfScreen(raw, gates).dialog) return refuse('refused', HAS_BUTTONS);
+    if (parsed.dialog) return refuse('refused', HAS_BUTTONS);
+    const left = secondsLeft(parsed.countdown);
+    if (left !== null && left < DIALOG_COUNTDOWN_MIN_S) return refuse('conflict', COUNTDOWN_LATE);
     const range = screenKeyRange(raw, body.lines);
     const below = screenLines(raw).slice(range.from);
     const shown = below.slice(0, range.to - range.from + 1);
@@ -95,7 +106,7 @@ export async function pressKeypad(
     // A ❯ in Claude's output (a saved screen printed) above a live screen without one is not the live pointer.
     // Checked to the screen's end: the hashed lines stop at the last box edge, and a form's own top rule is one.
     if (!pointerListEnds(below)) return refuse('refused', POINTER_NOT_LAST);
-    const expect = rawSlice(raw, range.from, range.to);
+    const expect = rawExpect(raw, range.from, range.to, parsed.countdown);
     const r =
       body.key === 'escape'
         ? await pressKey(pane, 'escape', { expect })

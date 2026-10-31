@@ -27,6 +27,22 @@
  *   daemon's line saying how many more the Mac shows). A plan's starts
  *   folded; a plan box that scrolls on the Mac (↓ or ↑ on its last line)
  *   says the Mac shows only part of it.
+ * - A workflow's or a subagent's ask that Claude blocks by itself when
+ *   nobody answers (v0.5.2, `dialog.blocksIn`) says so under its question
+ *   ("Claude blocks this at the Mac in 1 min 33 s if nobody answers"), and
+ *   the folded sheet's peek starts with the time left. The phone counts it
+ *   down each second from the read that showed it, a second off for the
+ *   read's own way here, and every read starts it again, so it never shows
+ *   more time than is left, offline, after a failed read or back from the
+ *   background included; at 0 it says Claude has blocked it by now. Under
+ *   COUNTDOWN_MIN_S seconds (twice that for a text row) the rows are
+ *   off and the line says to answer at the Mac (the daemon refuses such a
+ *   tap anyway). The time is in no fingerprint and in none of what the dock
+ *   compares (`whole`, `drawn`, the tap guard's key), so a tick never starts
+ *   the view afresh nor drops a tap; it is not a live region, but the
+ *   Choices name it. A countdown that goes up under the same fingerprint is
+ *   another ask (an agent asking the same again after Claude blocked the
+ *   first): the view starts afresh, as for a `renewed` one.
  * - With no dialog: why there are no buttons (`screen.dialogNote`, or
  *   "Jantar can't read this dialog's options"), the screen's lines (every
  *   line the keypad's check covers), and the keypad; with Claude's prompt
@@ -76,6 +92,9 @@ import { HOLD_MS, useHold } from '../../kit/hold.js';
 import { Spinner } from '../../kit/Spinner.js';
 import {
   CHANGED,
+  COUNTDOWN_LATE,
+  COUNTDOWN_MIN_S,
+  countdownSecondsOf,
   drawn,
   identity,
   shownLabel,
@@ -119,6 +138,57 @@ export const TICK_DOWN = 'Tick from top to bottom.';
 export const PLAN_PARTIAL = 'The Mac shows only part of this plan. Read the rest at the Mac before you approve.';
 /** Under an answer that can't go yet for being too short. */
 export const TEXT_SHORT = `At least ${DIALOG_TEXT_MIN} characters here.`;
+
+/** Under the question of an ask Claude blocks by itself (`blocksIn`): the time left ("1 min 33 s", "about 2 minutes"). */
+export function blocksLine(left: string): string {
+  return `Claude blocks this at the Mac in ${left} if nobody answers`;
+}
+/** Under that question once its countdown has run out on the phone's count. */
+export const BLOCKED = 'Claude has blocked this at the Mac by now, unless someone answered there.';
+/** "1 min 33 s", "2 min", "33 s": the seconds left, never read as a clock time. */
+export function leftWords(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return m ? (s ? `${m} min ${s} s` : `${m} min`) : `${s} s`;
+}
+/** Taken off a read's time for its way to the phone: the countdown never shows more time than is left. */
+const READ_LATENCY_MS = 1_000;
+
+/** The `M:SS` of a ticking countdown in seconds; null for "about N minutes" (not counted down) or none. */
+function tickingSeconds(blocksIn: string | undefined): number | null {
+  return blocksIn && /^\d{1,2}:\d{2}$/u.test(blocksIn) ? countdownSecondsOf(blocksIn) : null;
+}
+
+/**
+ * Seconds left on Claude's ticking countdown: `blocksIn` as the read named `read` showed it, counted down each
+ * second from when that read landed (less READ_LATENCY_MS), and started again by every read that shows one.
+ * The larger of the page's monotonic clock and the wall clock counts, so a phone that slept never shows the old
+ * time. Null without a ticking one.
+ */
+function useCountdown(read: number, blocksIn: string | undefined): number | null {
+  const secs = tickingSeconds(blocksIn);
+  const key = secs === null ? null : `${read}|${blocksIn}`;
+  const [from, setFrom] = useState<{ key: string; secs: number; mono: number; wall: number } | null>(null);
+  if (key !== null && secs !== null && from?.key !== key) {
+    setFrom({ key, secs, mono: performance.now() - READ_LATENCY_MS, wall: Date.now() - READ_LATENCY_MS });
+  }
+  const [, tick] = useState(0);
+  const at = key !== null && from?.key === key ? from : null;
+  const left = at ? Math.max(0, at.secs - Math.floor(Math.max(performance.now() - at.mono, Date.now() - at.wall) / 1_000)) : secs;
+  const counting = left !== null && left > 0;
+  useEffect(() => {
+    if (!counting) return;
+    const id = setInterval(() => tick((n) => n + 1), 1_000);
+    // Back from the background: count at once, before the next read lands.
+    const onVisible = () => tick((n) => n + 1);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [counting]);
+  return left;
+}
 /** The composer's limit (PromptBodySchema): a "No, and tell Claude …" note is sent from there. */
 const NOTE_MAX = 16_000;
 /** A plan this short shows open; a longer one starts folded. A permission's body always shows open. */
@@ -506,6 +576,7 @@ function DialogView({
   onTap,
   showBody,
   focusQuestion,
+  left,
 }: {
   d: TerminalDialog;
   phone: boolean;
@@ -516,6 +587,8 @@ function DialogView({
   showBody: boolean;
   /** Take focus on the question as it shows (a tap brought this dialog; focus would fall to the page). */
   focusQuestion: boolean;
+  /** Seconds left on Claude's countdown (counted down, or "about N" as drawn); null without one. */
+  left: number | null;
 }) {
   const [bodyOpen, setBodyOpen] = useState(showBody || d.kind === 'permission' || d.body.length <= OPEN_BODY_LINES);
   const bodyText = d.body.join('\n');
@@ -524,6 +597,17 @@ function DialogView({
     if (focusQuestion) question.current?.focus();
   }, [focusQuestion]);
   const notes = useId();
+  const deadline = useId();
+  // Too late for a write and its after-reads (a text row's lone Return takes about as long again).
+  const late = (o: DialogOption) => left !== null && left < COUNTDOWN_MIN_S * (o.role === 'text' ? 2 : 1);
+  const blocks =
+    d.blocksIn === undefined
+      ? null
+      : left === 0
+        ? BLOCKED
+        : left !== null && left < COUNTDOWN_MIN_S
+          ? COUNTDOWN_LATE
+          : blocksLine(tickingSeconds(d.blocksIn) === null || left === null ? d.blocksIn : leftWords(left));
   // A run of locked rows with one note shows it once, under the run's last row.
   const runEnd = d.options.map((o, i) => {
     let j = i;
@@ -547,6 +631,11 @@ function DialogView({
       <p ref={question} tabIndex={-1} className="mt-8 type-title text-ink wrap-break-word focus-visible:outline-offset-2">
         {d.question}
       </p>
+      {blocks ? (
+        <p id={deadline} className="mt-4 type-small font-medium text-ink">
+          {blocks}
+        </p>
+      ) : null}
       {d.body.length && d.kind === 'review' ? (
         <TermBox text={bodyText} label="Your answers" top className="mt-12 max-h-240" />
       ) : d.body.length ? (
@@ -559,7 +648,7 @@ function DialogView({
         </div>
       ) : null}
       {d.kind === 'multi' && !DIALOG_GATES.up ? <p className="mt-8 type-small text-ink-2">{TICK_DOWN}</p> : null}
-      <div role="group" aria-label="Choices" className="mt-12 flex flex-col gap-8">
+      <div role="group" aria-label="Choices" aria-describedby={blocks ? deadline : undefined} className="mt-12 flex flex-col gap-8">
         {d.options.map((o, i) => (
           <OptionRow
             key={i}
@@ -567,7 +656,7 @@ function DialogView({
             o={o}
             i={i}
             phone={phone}
-            off={off}
+            off={off || late(o)}
             busy={busy}
             onTap={onTap}
             noteId={`${notes}-${runEnd[i] ?? i}`}
@@ -577,6 +666,13 @@ function DialogView({
       </div>
     </>
   );
+}
+
+/** The folded sheet's one line: the question, after the time left on Claude's countdown when there is one. */
+function peekOf(d: TerminalDialog, ticking: number | null): string {
+  if (d.blocksIn === undefined) return d.question;
+  const left = ticking === null ? (tickingSeconds(d.blocksIn) === null ? d.blocksIn : null) : ticking > 0 ? leftWords(ticking) : null;
+  return left === null ? `Blocked at the Mac by now · ${d.question}` : `${left} left · ${d.question}`;
 }
 
 /** A line about the last tap: what the Mac showed after it (ink), or an error (InlineError). */
@@ -595,11 +691,16 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
   const block = useAnswerBlock();
   const { busy, line, renewed, answer } = useDialogAnswer(sid, read, sends);
   const dialog = read.screen?.dialog ?? null;
+  const ticking = useCountdown(read.seq, dialog?.blocksIn);
+  const left = ticking ?? (dialog?.blocksIn ? countdownSecondsOf(dialog.blocksIn) : null);
+  /** The countdown as the read showed it, when it ticks: one that goes up is another ask. */
+  const clock = tickingSeconds(dialog?.blocksIn);
   const lineFor = (fingerprint: string | null) => (line && line.for === fingerprint ? line : null);
   // The last dialog shown. Another title, body, tab bar or description under the same rows (`twin`),
   // a new fingerprint under the very same drawing (something off the phone changed), or a next
   // dialog an answer reported that looks just like the one answered (`renewed`) starts the view
-  // afresh (`n`), body open, with a line saying so until the next tap. Ticks and the pointer moving
+  // afresh (`n`), body open, with a line saying so until the next tap; so does Claude's countdown
+  // going up under the same fingerprint (only another ask counts up). Ticks and the pointer moving
   // keep the view. Set while rendering, so no frame shows the new dialog in the old view.
   const full = dialog ? whole(dialog) : null;
   const [seen, setSeen] = useState<{
@@ -611,17 +712,21 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
     twin: boolean;
     note: boolean;
     renewed: string | null;
+    clock: number | null;
   } | null>(null);
   if (dialog && full !== null && seen?.full !== full) {
     const id = identity(dialog);
     const twin = seen !== null && seen.id === id;
-    setSeen({ id, full, fp: dialog.fingerprint, drawn: drawn(dialog), n: (seen?.n ?? 0) + (twin ? 1 : 0), twin, note: twin, renewed: null });
+    setSeen({ id, full, fp: dialog.fingerprint, drawn: drawn(dialog), n: (seen?.n ?? 0) + (twin ? 1 : 0), twin, note: twin, renewed: null, clock });
   } else if (dialog && seen !== null && renewed === dialog.fingerprint && seen.renewed !== renewed) {
-    setSeen({ ...seen, fp: dialog.fingerprint, drawn: drawn(dialog), n: seen.n + 1, twin: true, note: true, renewed });
+    setSeen({ ...seen, fp: dialog.fingerprint, drawn: drawn(dialog), n: seen.n + 1, twin: true, note: true, renewed, clock });
   } else if (dialog && seen !== null && seen.fp !== dialog.fingerprint) {
     const now = drawn(dialog);
     const hidden = now === seen.drawn;
-    setSeen(hidden ? { ...seen, fp: dialog.fingerprint, n: seen.n + 1, twin: true, note: true } : { ...seen, fp: dialog.fingerprint, drawn: now });
+    setSeen(hidden ? { ...seen, fp: dialog.fingerprint, n: seen.n + 1, twin: true, note: true, clock } : { ...seen, fp: dialog.fingerprint, drawn: now, clock });
+  } else if (dialog && seen !== null && seen.clock !== clock) {
+    const up = seen.clock !== null && clock !== null && clock > seen.clock;
+    setSeen(up ? { ...seen, n: seen.n + 1, twin: true, note: true, clock } : { ...seen, clock });
   }
   const changed = seen !== null && seen.full === full;
   // A row that appeared (or changed, a tick or the fingerprint included) under the finger a moment
@@ -644,7 +749,7 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
   if (dialog) {
     const asker = askedBy(dialog, subagent);
     return (
-      <DockFrame phone={phone} title={asker ? subagentTitle(asker) : `Claude asks · ${headWord(dialog)}`} age={age} late={late} peek={dialog.question}>
+      <DockFrame phone={phone} title={asker ? subagentTitle(asker) : `Claude asks · ${headWord(dialog)}`} age={age} late={late} peek={peekOf(dialog, ticking)}>
         <div className={scroll}>
           <DialogView
             key={`${identity(dialog)}\n${seen?.n ?? 0}`}
@@ -654,6 +759,7 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
             busy={busy}
             showBody={changed && Boolean(seen?.twin)}
             focusQuestion={tappedOn !== null && tappedOn !== dialog.fingerprint}
+            left={left}
             onTap={(tap) => {
               if (guard.check()) {
                 setDropped(dialog.fingerprint);

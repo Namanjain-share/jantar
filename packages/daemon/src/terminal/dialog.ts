@@ -13,9 +13,16 @@
  *   guard, a hash of exactly the lines the phone was shown (lastLines), the
  *   ones under the last box edge left out unless a pointer row comes after
  *   it (Claude's mode and status lines change on their own; a picker drawn
- *   under a lone rule keeps its rows), and where those lines are.
+ *   under a lone rule keeps its rows), and where those lines are. The
+ *   dialog's own auto-block countdown among them (readDialog's) is hashed as
+ *   one fixed line.
  * - `rawSlice(raw, from, to)`: lines `from..to` of the terminal's own text,
- *   separators and trailing spaces kept, for `PressKeyOptions.expect`.
+ *   separators and trailing spaces kept; `rawExpect(raw, from, to,
+ *   countdown)`: the same, or its two parts around the countdown's time, for
+ *   `PressKeyOptions.expect`.
+ * - `countdownEndingAt(lines, end, after)`: Claude Code's auto-block
+ *   countdown sentence (v0.5.2), the one text Jantar knows to change by
+ *   itself inside a dialog (step 8).
  *
  * How a dialog is read (each step decided from the rows' structure; fixed
  * strings only say which kind it is):
@@ -63,8 +70,28 @@
  * 7. The phone gets at most 40 body lines: past that, the first 19, a line
  *    saying how many more the Mac shows, and the last 20 (what a command
  *    runs is at its start; the fingerprint covers every line).
+ * 8. Claude's auto-block countdown (v0.5.2; Claude Code 2.1.316 draws it in
+ *    an unattended agent's ask, a workflow's or a subagent's: `⚠ Claude Code
+ *    will automatically block this request in 1:33, to avoid holding up an
+ *    unattended session`) ticks every second, so a fingerprint over it never
+ *    matched by the time a tap arrived. Only the one Claude draws counts: a
+ *    permission's, its last lines above the question with at least one blank
+ *    line between (Claude's margin), under the dialog's first line, the
+ *    sentence matched whole (COUNTDOWN: every word, the order, the
+ *    punctuation and the case; the `⚠` aside; only a time DIALOG_COUNTDOWN_TIME
+ *    allows), wrapped over at most COUNTDOWN_LINES lines. Its lines are left
+ *    out of the body (the phone's, the fingerprint's and the after-reads'),
+ *    so out of screenId too; its time goes to the phone as `blocksIn`, in no
+ *    hash, and its place to the answer route as `countdown`. That sentence
+ *    anywhere else (a line of a plan, a question's text, a Bash command's
+ *    description: all written by the model, none in a box) is the dialog's
+ *    own text and counts like any other line, as do a line inside the
+ *    command's box (`│ ...`) and everything around it, so two queued prompts
+ *    that differ only in their command still differ. The compare-and-type
+ *    write leaves out only the time itself (`rawExpect`).
  */
 import {
+  DIALOG_COUNTDOWN_TIME,
   DIALOG_GATES,
   DIALOG_NOTES,
   type DialogGates,
@@ -113,6 +140,11 @@ export interface DialogDetail extends DialogRead {
    * which must tell the dialog answered, scrolled out of view, from another one.
    */
   topOnScreen: boolean;
+  /**
+   * Claude's own auto-block countdown in this dialog (step 8): its lines, as indices into
+   * `screenLines(text)`, and its time; null without one. Read whether or not the top is on screen.
+   */
+  countdown: Countdown | null;
 }
 
 /** The lines the parser reads: the bottom of the screen (getScreen reads at least as many). */
@@ -128,6 +160,7 @@ const NONE: DialogDetail = Object.freeze({
   rowText: [],
   bodyLines: [],
   topOnScreen: false,
+  countdown: null,
 }) as DialogDetail;
 
 /** Claude's full-width rule: 20 or more of ─/━ and nothing else. Dashed runs are inner edges. */
@@ -147,6 +180,30 @@ const CHAT = 'Chat about this';
 /** A box that scrolls marks it at the end of a line: `↓` (more below) or `↑`, alone or after a space. */
 const SCROLL_MARK = /(?:^|\s)[↓↑]$/u;
 
+/** The countdown's time (DIALOG_COUNTDOWN_TIME without its anchors). */
+const COUNTDOWN_TIME = DIALOG_COUNTDOWN_TIME.source.replace(/^\^|\$$/gu, '');
+/**
+ * Claude Code's auto-block countdown, whole (its wrapped lines trimmed and
+ * joined with one space): the sentence from 2.1.316's own source, case
+ * considered, `⚠` optional (with or without its emoji selector), and the
+ * time captured. Nothing may come before or after it on its lines (so never
+ * a command box's `│ ...` line).
+ */
+const COUNTDOWN = new RegExp(
+  `^(?:⚠\\uFE0F?\\s*)?Claude Code will automatically block this request in (${COUNTDOWN_TIME}), to avoid holding up an unattended session$`,
+  'u',
+);
+/** The most lines one countdown wraps over (four in a 30-column window). */
+export const COUNTDOWN_LINES = 4;
+/**
+ * The time inside a countdown's own text, as the terminal has it (`rawExpect`): `M:SS` (the comma after it
+ * is the sentence's), or the N of "about N minutes", a line end and an indent allowed around it. The
+ * sentence holds no other digit or colon.
+ */
+const COUNTDOWN_TIME_RAW = /\d{1,2}:\d{2}(?=,)|(?<=\babout\s+)\d{1,3}(?=\s+(?:minute|second)s?,)/gu;
+/** What the keypad's screen key hashes in place of a countdown's lines: one fixed line, never screen text. */
+const COUNTDOWN_KEY = '\u0000countdown';
+
 /** An edge that may carry the session's name, drawn solid or dashed (mac-1's bottom line: `╌╌╌ name ─`). */
 const NAMED_EDGE = /^[─━╌┄┈]{3,}(?:\s+[^─━╌┄┈]+?\s+[─━╌┄┈]{1,8})?$/u;
 
@@ -155,6 +212,30 @@ const isEdge = (line: string) => EDGE.test(line.trim());
 /** What may come under a live dialog's last line: nothing, or the box's and the window's edges. */
 const isTail = (line: string) => !line.trim() || isBoxEdge(line) || NAMED_EDGE.test(line.trim());
 const textAt = (line: string) => line.length - line.trimStart().length;
+
+/** Claude's countdown: the lines its sentence takes, and the time it showed. */
+export interface Countdown extends LineRange {
+  time: string;
+}
+
+/**
+ * The countdown sentence whose last line is `end` (an index into `lines`, as
+ * screenLines gives them), all of it below line `after`: a run of 1 to
+ * COUNTDOWN_LINES non-blank lines that, trimmed and joined with one space,
+ * read exactly as COUNTDOWN; null when there is none. Where such a run is
+ * Claude's own, not the dialog's text, is readLines' call (step 8).
+ */
+export function countdownEndingAt(lines: readonly string[], end: number, after: number): Countdown | null {
+  let joined = '';
+  for (let from = end; from > after && from >= 0 && end - from < COUNTDOWN_LINES; from--) {
+    const t = (lines[from] ?? '').trim();
+    if (!t) return null;
+    joined = joined ? `${t} ${joined}` : t;
+    const m = COUNTDOWN.exec(joined);
+    if (m) return { from, to: end, time: m[1] as string };
+  }
+  return null;
+}
 
 function clip(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
@@ -195,7 +276,8 @@ export function screenId(key: string, title: string, body: readonly string[]): s
  * The fingerprint the phone answers with: what it was shown, the pointer and
  * the gates' locks included, hashed from the model before it is clipped, so
  * two dialogs that differ only past the clip (the middle of a body over 40
- * lines, a label past 400 characters) never share one.
+ * lines, a label past 400 characters) never share one. `blocksIn` is left
+ * out (step 8): it ticks every second.
  */
 function fingerprintOf(d: DialogModel): string {
   return sha256Hex(
@@ -247,6 +329,17 @@ function paragraphAbove(lines: readonly string[], row: number): LineRange | null
     i--;
   }
   return i === to ? null : { from: i + 1, to };
+}
+
+/**
+ * Claude's own countdown in a permission (step 8): the sentence whose last line is the last non-blank line
+ * above the question (`paraFrom`), at least one blank line between (Claude's margin), and all of it under the
+ * dialog's first line (`head`, its title). Null otherwise: such a sentence anywhere else is the dialog's text.
+ */
+function ownCountdown(lines: readonly string[], head: number, paraFrom: number): Countdown | null {
+  let end = paraFrom - 1;
+  while (end > head && !(lines[end] as string).trim()) end--;
+  return end > head && end < paraFrom - 1 ? countdownEndingAt(lines, end, head) : null;
 }
 
 /** The dialog's last line: its hint and the hint's wrapped lines, else the plan's footer and its wrap, else the last row's. */
@@ -496,6 +589,10 @@ function readLines(all: readonly string[], gates: Readonly<DialogGates>): Dialog
     top = 0;
     onScreen = false;
   }
+  // Claude's own countdown (step 8): in no part of the model but `blocksIn`. Never the title: it starts under
+  // `head`, which a permission's top (or the first line read, its top off screen) always is.
+  const countdown = kind === 'permission' && head >= 0 ? ownCountdown(lines, head, paraFrom) : null;
+  const ticking = (i: number) => countdown !== null && i >= countdown.from && i <= countdown.to;
   let title = '';
   let bodyFrom = top;
   if (onScreen && kind === 'plan') {
@@ -531,7 +628,7 @@ function readLines(all: readonly string[], gates: Readonly<DialogGates>): Dialog
   const bodyLines: string[] = [];
   for (let i = bodyFrom; i < bodyTo; i++) {
     const line = lines[i] as string;
-    if (!line.trim() || isEdge(line) || isBoxEdge(line) || (i === head && bar)) continue;
+    if (!line.trim() || isEdge(line) || isBoxEdge(line) || (i === head && bar) || ticking(i)) continue;
     bodyLines.push(line);
   }
   const indent = Math.min(...bodyLines.map(textAt));
@@ -545,6 +642,7 @@ function readLines(all: readonly string[], gates: Readonly<DialogGates>): Dialog
     ...(bar?.bar ? { tabs: bar.tabs } : {}),
     options: optionsOf(kind, rows),
     current: menu.current,
+    ...(countdown ? { blocksIn: countdown.time } : {}),
   };
 
   // The gates, last: a row already locked keeps its own note. A body that scrolls (any kind: a plan box, a
@@ -578,6 +676,7 @@ function readLines(all: readonly string[], gates: Readonly<DialogGates>): Dialog
     screenId: screenId(key, title, body),
     rowText: rows.map((r, i) => (kind === 'plan' && i === rows.length - 1 ? [r.text, ...r.more.filter((m) => !FEEDBACK_HINT.test(m))] : [r.text, ...r.more]).join(' ')),
     bodyLines,
+    countdown: countdown ? { from: base + countdown.from, to: base + countdown.to, time: countdown.time } : null,
   };
   // The top off screen (step 5): no buttons. The rest stays for the after-reads (the dialog answered,
   // scrolled out of view, is not gone).
@@ -654,10 +753,37 @@ export function screenKeyRange(text: string, lines: number): LineRange {
   return { from, to };
 }
 
-/** sha256 hex of the lines `screenKeyRange` names, joined with "\n". */
-export function screenKey(text: string, lines: number): string {
+/**
+ * sha256 hex of the lines `screenKeyRange` names, joined with "\n", the
+ * dialog's own countdown among them (`countdown`, readDialog's by default;
+ * step 8) as one fixed line: its time changes on its own, that it is there
+ * does not. Only that one: the same sentence in a dialog's text, or in the
+ * transcript above it, is hashed as it is.
+ */
+export function screenKey(text: string, lines: number, countdown: Countdown | null = readDialog(text).countdown): string {
   const { from, to } = screenKeyRange(text, lines);
-  return sha256Hex(screenLines(text).slice(from, to + 1).join('\n'));
+  const all = screenLines(text);
+  const run = countdown && countdown.from >= from && countdown.to <= to ? countdown : null;
+  const hashed: string[] = [];
+  for (let i = from; i <= to; i++) {
+    if (!run || i < run.from || i > run.to) hashed.push(all[i] as string);
+    else if (i === run.from) hashed.push(COUNTDOWN_KEY);
+  }
+  return sha256Hex(hashed.join('\n'));
+}
+
+/** Where lines `from..to` of `raw` start and end in it (rawSlice), split where `screenLines` splits; 0..0 for none. */
+function rawSpan(raw: string, from: number, to: number): { start: number; end: number } {
+  const parts = raw.split(/(\r\n|\r|\n)/u);
+  const count = Math.ceil(parts.length / 2);
+  const first = Math.max(0, from);
+  const last = Math.min(to, count - 1);
+  if (last < first) return { start: 0, end: 0 };
+  let start = 0;
+  for (let i = 0; i < first * 2; i++) start += (parts[i] as string).length;
+  let end = start;
+  for (let i = first * 2; i <= last * 2; i++) end += (parts[i] as string).length;
+  return { start, end };
 }
 
 /**
@@ -668,14 +794,30 @@ export function screenKey(text: string, lines: number): string {
  * Always a substring of `raw` ('' when the range is empty).
  */
 export function rawSlice(raw: string, from: number, to: number): string {
-  const parts = raw.split(/(\r\n|\r|\n)/u);
-  const count = Math.ceil(parts.length / 2);
-  const first = Math.max(0, from);
-  const last = Math.min(to, count - 1);
-  if (last < first) return '';
-  let start = 0;
-  for (let i = 0; i < first * 2; i++) start += (parts[i] as string).length;
-  let end = start;
-  for (let i = first * 2; i <= last * 2; i++) end += (parts[i] as string).length;
+  const { start, end } = rawSpan(raw, from, to);
   return raw.slice(start, end);
+}
+
+/**
+ * What a compare-and-type write must still find of lines `from..to` of
+ * `raw` (`PressKeyOptions.expect`): `rawSlice`'s text, or, when the dialog's
+ * own countdown (`countdown`, readDialog's; step 8) lies among those lines,
+ * the two parts around its time alone: from the first line to just before
+ * the time, and from just after it to the last line. The `⚠`, every word,
+ * the indent and the line ends of the countdown stay in the parts, so the
+ * script's typeif finds them only with a time (1 to TYPEIF_GAP_CHARS digits
+ * and colons) between them. `M:SS` keeps its four characters for the
+ * countdown's two minutes, so the sentence never wraps anew. Both parts are
+ * substrings of `raw`. When the time can't be told apart (not exactly one
+ * in the countdown's text), the whole slice: a tick is then a 409.
+ */
+export function rawExpect(raw: string, from: number, to: number, countdown: Countdown | null): string | string[] {
+  const block = rawSpan(raw, from, to);
+  if (!countdown || countdown.from < from || countdown.to > to) return raw.slice(block.start, block.end);
+  const run = rawSpan(raw, countdown.from, countdown.to);
+  const times = [...raw.slice(run.start, run.end).matchAll(COUNTDOWN_TIME_RAW)];
+  const time = times.length === 1 ? times[0] : undefined;
+  if (!time) return raw.slice(block.start, block.end);
+  const at = run.start + time.index;
+  return [raw.slice(block.start, at), raw.slice(at + time[0].length, block.end)];
 }

@@ -7,7 +7,8 @@
  * field; Escape only with KEYPAD_ESCAPE, never with moves. After a send the
  * screen is read again (`onSent`) and the moves are cleared; after a refusal
  * they are kept. A 409 clears them and reads the screen again; two in a row
- * say the terminal keeps changing.
+ * say the terminal keeps changing (v0.5.2: one because Claude's auto-block
+ * countdown had too little left says that instead).
  *
  * Moves belong to the screen they were counted on. When a read brings
  * another screen before Enter, Enter sends nothing, clears the moves and
@@ -27,7 +28,7 @@ import { newIdempotencyKey } from '../../../lib/ids.js';
 import { useDeps } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Spinner } from '../../kit/Spinner.js';
-import { useAnswerBlock, useTapGuard } from './answer.js';
+import { COUNTDOWN_LATE, useAnswerBlock, useTapGuard } from './answer.js';
 import { InlineError, OfflineLine } from './Fields.js';
 import type { SessionScreenRead } from './screen.js';
 
@@ -116,7 +117,8 @@ export function Keypad({ sid, screen: read, phone, offline, onSent }: KeypadProp
         conflicts.current += 1;
         clear();
         guard.restart();
-        setLine({ text: conflicts.current >= 2 ? KEYPAD_UNSTEADY : body.move ? KEYPAD_CLEARED : KEYPAD_CHANGED, error: false });
+        const text = e.message === COUNTDOWN_LATE ? COUNTDOWN_LATE : conflicts.current >= 2 ? KEYPAD_UNSTEADY : body.move ? KEYPAD_CLEARED : KEYPAD_CHANGED;
+        setLine({ text, error: false });
         onSent();
       } else {
         conflicts.current = 0;

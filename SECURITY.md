@@ -617,14 +617,16 @@ answer its own dialogs), and is refused under `--read-only` (403) and
   `/resume` inside it), the screen path and the keypad are refused: the
   dialog on screen could be either's.
 - The phone answers with the fingerprint of the dialog it showed, a sha256
-  over all of the above, the highlighted row included. Under the session's
-  writer lock (a task still waiting after 8 s types nothing), the daemon
-  reads the screen again and answers 409, typing nothing, when anything
-  differs. The phone is shown at most 40 body lines, each cut at 300
-  characters: a longer body keeps its first 19 (a command's start, what it
-  runs), then a fixed line counting the lines left out ("… 5 more lines on
-  the Mac …", never screen text), then its last 20, and the dock shows a
-  permission's body open whatever its length. The fingerprint covers the
+  over all of the above, the highlighted row included (all but the lines
+  of Claude's own auto-block countdown: "Compare-and-type" below). Under
+  the session's writer lock (a task still waiting after 8 s types
+  nothing), the daemon reads the screen again and answers 409, typing
+  nothing, when anything differs. The phone is shown at most 40 body
+  lines, each cut at 300 characters: a longer body keeps its first 19 (a
+  command's start, what it runs), then a fixed line counting the lines
+  left out ("… 5 more lines on the Mac …", never screen text), then its
+  last 20, and the dock shows a permission's body open whatever its
+  length. The fingerprint covers the
   whole dialog as read, body and labels before any cut, so two prompts
   that differ only in what the phone isn't shown never share one.
 - Keys: Down or Up arrows counted from the highlighted row it just read,
@@ -698,6 +700,67 @@ line ends; for the keypad, the lines the phone showed) is still on screen,
 case and white space included. Otherwise it types nothing and the route
 answers 409. That text travels in argv like everything else; the script
 stays a constant.
+
+One piece of text inside a dialog changes by itself (v0.5.2): Claude Code
+2.1.316 draws `⚠ Claude Code will automatically block this request in 1:33,
+to avoid holding up an unattended session` in a workflow agent's or a
+subagent's prompt and redraws it every second. Hooks can't answer those
+prompts (a subagent's hook returns at once), and with that line in the
+checks every tap was refused. So the checks leave out its time, and
+nothing else:
+
+- Which line is the countdown: only the one Claude draws. The dialog must
+  be a permission, the sentence must be its last lines above the question
+  with at least one blank line between (Claude's margin), under the
+  dialog's title, matched whole on its own lines (every word, the order,
+  the punctuation and the case; the `⚠` aside; only a time 2.1.316 prints
+  there, `M:SS` or "about N minutes"/"about N seconds"), on one line or
+  wrapped over at most four. The same sentence anywhere else (a line of a
+  plan, a question's text, a command's description, a line inside the
+  command's box, the transcript) is the dialog's or Claude's text and
+  counts like any other line.
+- The fingerprint, the answer key and the screen id leave the countdown's
+  lines out of the body; so do the after-reads that decide `done`, so a
+  tick alone is never an answer. Their presence is not hashed either: a
+  dialog that gains or loses its countdown asks the same thing. The phone
+  gets the time as `blocksIn`, in no hash, and counts it down. The
+  command, the title, the warning, the question, the rows, the pointer,
+  the ticks and the tabs still count, so two queued prompts that differ
+  only in their command never share a fingerprint.
+- The compare-and-type write leaves out only the time: it sends the
+  dialog's raw block in two argv items, up to just before the time and
+  from just after it, so the countdown's words, indent and line ends are
+  checked like the rest. With one item the script checks `contains` as
+  before; with two, a handler outside the `tell` block finds the first,
+  then the second in the text left after it (`contains`, then `offset`,
+  then the text found compared with the item again, all under the same
+  `considering`, so an `offset` that ignored case could only refuse), and
+  types nothing unless what lies between them is 1 to 5 characters, each a
+  digit or a colon by its Unicode id (no `considering` clause can widen
+  that): a time, never a line, a word or nothing. The time keeps its four
+  characters for the countdown's two minutes, so the sentence never wraps
+  anew; a countdown that vanishes, re-wraps or turns into anything but
+  another time is a 409. Several items are sent only when each holds at
+  least 16 characters other than white space, at most 8 of them, none
+  empty or holding NUL (`keys.ts` refuses before osascript runs).
+- Under 5 seconds left on the read under the lock (`DIALOG_COUNTDOWN_MIN_S`;
+  twice that for a row that takes text) the daemon types nothing and
+  answers 409 ("Claude blocks this at the Mac in a moment. Answer it
+  there."): at 0:00 Claude blocks the request by itself and draws the next
+  queued ask at once, where a Return still on its way would land. For the
+  same reason an after-read that lands within a second of the countdown
+  running out ends the reads `unchanged`, never `done`. The phone locks the
+  rows under that margin too, on its own count.
+- The keypad's screen key hashes the dialog's own countdown (the one the
+  rules above find) as one fixed line, its write leaves out only the time
+  the same way, and it refuses under the same margin. The same sentence
+  anywhere else on screen is hashed as it is.
+- What a model could still do: a permission whose own text ends with that
+  exact sentence, right above the question with a blank line between (a
+  long fetch prompt wrapped just so, an MCP tool's description), is read as
+  the countdown. The phone then shows that time as Claude's deadline and
+  leaves the sentence out of the body; nothing else is hidden, as the
+  sentence is fixed and only its time is left out of the checks.
 
 What remains open is the few milliseconds between Terminal's `contents` and
 its `do script` inside that one run, plus the moment Claude takes to read

@@ -26,6 +26,7 @@ import { createTestContext, type TestContext, type TestContextOptions } from '..
 import { buildControlsService } from '../../src/controls/service.js';
 import type { ScreenMode } from '../../src/controls/modes.js';
 import { findInputBox, screenLines } from '../../src/terminal/screen.js';
+import { typeifFinds } from '../../src/terminal/terminal-app/script.js';
 import { KeyedQueue } from '../../src/writer/queue.js';
 
 export const T0 = '2026-01-15T10:00:00.000Z';
@@ -158,8 +159,8 @@ export class ScriptedTerminal implements TerminalBackend {
     return this.foreground;
   }
   async pressKey(_pane: Pane, key: ControlKey, opts?: PressKeyOptions): Promise<OpResult> {
-    // v0.4.2 compare-and-type: typed only while the screen still holds `expect`, like the script's typeif.
-    if (opts?.expect !== undefined && !this.screen.includes(opts.expect)) {
+    // v0.4.2 compare-and-type: typed only while the screen still holds `expect` (v0.5.2: its parts in order), like the script's typeif.
+    if (opts?.expect !== undefined && !typeifFinds(this.screen, opts.expect)) {
       return { ok: false, code: 'changed', reason: 'the terminal changed before Jantar typed' };
     }
     this.pressed.push(key);

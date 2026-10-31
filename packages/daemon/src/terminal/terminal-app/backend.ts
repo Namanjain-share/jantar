@@ -41,6 +41,8 @@
  * gave it (its line ends and trailing spaces), and the host lends keys.ts
  * `typeBytesIf`, the script's `typeif` mode: the write happens only while
  * the tab still shows the text the caller cut from `raw`, else `changed`.
+ * v0.5.2: that text may come in two parts (around the time in Claude's
+ * countdown), each its own argv item after the bytes.
  */
 import type { ControlKey, Pane, PaneForeground } from '@jantar/protocol';
 import type {
@@ -294,8 +296,8 @@ export class TerminalAppBackend implements TerminalBackend {
     return r.ok ? { ok: true } : r;
   }
 
-  private async keysIf(pane: Pane, payload: string, expect: string): Promise<OpResult> {
-    const r = await this.osa(pane.tty, 'typeif', payload, expect);
+  private async keysIf(pane: Pane, payload: string, expect: readonly string[]): Promise<OpResult> {
+    const r = await this.osa(pane.tty, 'typeif', payload, ...expect);
     return r.ok ? { ok: true } : r;
   }
 

@@ -105,13 +105,74 @@ next), Tab, Shift+Tab, Left, Right or Ctrl+G.
 
 The phone answers with the fingerprint of the dialog it showed: a sha256 of
 its kind, title, question, whole body, tab bar, rows, ticks and highlighted
-row. Under the session's writer lock the daemon reads the screen again and
-types nothing (409, "The dialog on the Mac changed") if anything differs.
+row (all but Claude's own countdown, below). Under the session's writer
+lock the daemon reads the screen again and types nothing (409, "The dialog
+on the Mac changed") if anything differs.
 The write itself is compare-and-type: in the same AppleScript run, Terminal
 types only if the dialog's own lines, exactly as the daemon read them, are
 still on the tab. Two queued Bash prompts that differ only in their command
 have different fingerprints and different lines, so a stale tap meant for
 the first never answers the second.
+
+### Claude's own countdown (v0.5.2)
+
+A workflow agent's or a subagent's prompt (Claude Code 2.1.316) carries a
+line Claude redraws every second:
+
+```text
+⚠ Claude Code will automatically block this request in 1:33, to avoid holding up an unattended session
+```
+
+When it reaches 0:00, Claude blocks the request by itself, about two
+minutes after asking. Hooks can't answer these prompts (a subagent's hook
+returns at once: `docs/hook-protocol.md`), so the screen path is the only
+way to answer one from the phone in that time. Before v0.5.2 the guard
+covered that line too, so the fingerprint changed every second and every
+tap was refused with "The dialog on the Mac changed".
+
+Now the guard leaves out that line's time, and nothing else:
+
+- Only Claude's own countdown counts as one: in a permission prompt, its
+  last lines above the question with a blank line between, under the
+  title, word for word as Claude prints it (same case; a time `M:SS` or
+  "about N minutes"; the ⚠ optional), on one line or wrapped over up to
+  four. The same sentence in a plan, a question, a command's description
+  or anywhere else on screen is text like any other: it stays in the body
+  and the fingerprint.
+- The countdown is in no fingerprint, and not in the body the phone shows.
+  The dock says "Claude blocks this at the Mac in 1 min 33 s if nobody
+  answers" under the question instead (and the folded sheet's peek starts
+  with "1 min 33 s left"). The phone counts it down each second from the
+  read that showed it, a second off for the read's way to the phone, and
+  each screen read (every 3 s while Claude waits or a subagent card is
+  open, every 5 s while the main session works) starts the count again.
+  So it never shows more time than is left, offline, after a failed read
+  or back from the background included; at 0 it says Claude has blocked it
+  by now. A new time neither starts the dock afresh nor drops a tap; a time
+  that goes up under the same dialog is another ask, and the dock starts
+  afresh with "The dialog on the Mac changed".
+- With under 5 seconds left the rows are off, the dock says "Claude blocks
+  this at the Mac in a moment. Answer it there.", and the daemon refuses a
+  tap that gets there anyway (409, nothing typed): at 0:00 Claude blocks
+  the request by itself and draws the next queued ask at once, where a
+  Return still on its way would land.
+- The write is compare-and-type on the dialog's own lines with only the
+  time left out: everything up to the time and everything after it, the
+  countdown's words included, must still be on the tab, with nothing but a
+  time (1 to 5 digits and colons) between them. The countdown gone, wrapped
+  anew, or anything else in its place is a 409. A part shorter than 16
+  characters is never sent, so no part can match by accident.
+- After the write, a countdown that only ticked is not an answer: the
+  result is "no change", never "done". A read that lands within a second
+  of the countdown running out is "no change" too: the dialog going away
+  then may be Claude's own block.
+- The keypad's screen key counts that countdown as one fixed line, so keys
+  counted at 1:33 still go at 1:32, under the same 5-second margin.
+
+The command, the title, the warning above the countdown, the question, the
+rows, the highlight, the ticks and the tabs all still count, so two queued
+prompts that differ only in their command are still two dialogs, and a
+stale tap for the first is still refused on the second.
 
 ### After a tap
 

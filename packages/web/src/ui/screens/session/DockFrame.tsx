@@ -7,6 +7,9 @@
  * Phone: a bottom sheet with a grabber. Tapping or dragging the grabber down
  * folds it to a 56 px peek ("■ Question · waiting 4m · Which module…") so the
  * transcript stays readable; it cannot be dismissed while the card is open.
+ * A title too long for the row (a workflow agent's "Claude asks · Bash
+ * command · from the "…" workflow") is cut with an ellipsis, so the age and
+ * the peek stay in view.
  */
 import clsx from 'clsx';
 import { useId, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
@@ -44,7 +47,7 @@ function Head({ id, title, glyph, age, late, aside, hints }: Pick<DockFrameProps
   return (
     <div className="flex h-20 min-w-0 items-center">
       <StatusGlyph state={glyph ?? 'needs'} className="-ml-4 mr-4" />
-      <h2 id={id} className="flex-none type-small font-medium text-ink">
+      <h2 id={id} className="min-w-0 truncate type-small font-medium text-ink">
         {title}
       </h2>
       {age ? <span className={clsx('ml-8 flex-none type-mono', late ? 'text-signal-text' : 'text-ink-3')}>{age}</span> : null}
@@ -138,7 +141,7 @@ export function DockFrame({ phone, title, glyph, age, late, aside, hints, peek, 
           onClick={() => setFolded(false)}
         >
           <StatusGlyph state={glyph ?? 'needs'} className="-ml-4 mr-4" />
-          <span id={id} className="flex-none type-small font-medium text-ink">
+          <span id={id} className="min-w-0 truncate type-small font-medium text-ink">
             {title}
           </span>
           {age ? <span className={clsx('ml-8 flex-none type-mono', late ? 'text-signal-text' : 'text-ink-3')}>{age}</span> : null}

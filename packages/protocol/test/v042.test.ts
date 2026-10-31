@@ -8,6 +8,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  DIALOG_COUNTDOWN_MIN_S,
+  DIALOG_COUNTDOWN_TIME,
   AttachmentRefSchema,
   CLARIFY_MESSAGE,
   DIALOG_GATES,
@@ -39,6 +41,7 @@ import {
   UploadResponseSchema,
   V042_LIMITS,
   buildPath,
+  countdownSeconds,
   type RouteDef,
   type RouteName,
   type TerminalDialog,
@@ -143,6 +146,27 @@ describe('the dialog model', () => {
       ],
     });
     expect(TerminalDialogSchema.parse(multi)).toEqual(multi);
+  });
+
+  it("v0.5.2: blocksIn, the time in Claude's auto-block countdown, is optional and only a time 2.1.316 draws", () => {
+    for (const blocksIn of ['1:33', '0:05', '0:00', '12:00', 'about 2 minutes', 'about 1 minute', 'about 40 seconds', 'about 1 second']) {
+      expect(DIALOG_COUNTDOWN_TIME.test(blocksIn), blocksIn).toBe(true);
+      expect(TerminalDialogSchema.parse(dialog({ blocksIn }))).toEqual(dialog({ blocksIn }));
+    }
+    // No bare count, no capitals, no three-digit minutes: Claude prints none of them.
+    for (const blocksIn of ['', 'soon', '1:3', '100:00', '45', '45s', '5', 'About 1 Minute', '1:33, to avoid', '1:33\n', 'about two minutes', 'a'.repeat(33)]) {
+      expect(DIALOG_COUNTDOWN_TIME.test(blocksIn), blocksIn).toBe(false);
+      expect(TerminalDialogSchema.safeParse(dialog({ blocksIn })).success, blocksIn).toBe(false);
+    }
+    expect(TerminalDialogSchema.parse(dialog())).not.toHaveProperty('blocksIn');
+  });
+
+  it('v0.5.2: countdownSeconds reads a blocksIn time as seconds, and DIALOG_COUNTDOWN_MIN_S is the late margin', () => {
+    expect(['1:33', '0:05', '0:04', '0:00', '10:00', 'about 2 minutes', 'about 1 minute', 'about 40 seconds', 'about 1 second'].map(countdownSeconds)).toEqual([
+      93, 5, 4, 0, 600, 120, 60, 40, 1,
+    ]);
+    for (const time of ['', 'soon', '45', '1:3', 'About 1 Minute', 'about 2 hours']) expect(countdownSeconds(time), time).toBeNull();
+    expect(DIALOG_COUNTDOWN_MIN_S).toBe(5);
   });
 
   it('has one hold sentence per hold kind, and fixed notes', () => {

@@ -17,7 +17,7 @@ import { DIALOG_FIXTURES, SAMPLE_TEXT, dialogFixture, withGates, type DialogFixt
 import { DIALOG_GATES, SettingsSchema, type DialogGates, type Pane, type SessionDialogBody } from '@jantar/protocol';
 import { createFakeExec, createTestContext, type ExecCall } from '../../src/core/testing.js';
 import { answerPress, rowProblem } from '../../src/controls/dialog.js';
-import { dialogOfScreen, rawSlice } from '../../src/terminal/dialog.js';
+import { dialogOfScreen, rawExpect, readDialog } from '../../src/terminal/dialog.js';
 import { TERMINAL_APP_SCRIPT, TerminalAppBackend } from '../../src/terminal/terminal-app/index.js';
 
 const TTY = '/dev/ttys003';
@@ -45,10 +45,10 @@ function bodyFor(fingerprint: string, i: number, o: { role: string; hold?: strin
 }
 
 /** Run every option of `f` read with `gates`; the write each one made, or null when it was refused. */
-async function writesOf(f: DialogFixture, gates: DialogGates): Promise<{ writes: (string | null)[]; block: string | null }> {
+async function writesOf(f: DialogFixture, gates: DialogGates): Promise<{ writes: (string | null)[]; block: string | string[] | null }> {
   const { dialog, block } = dialogOfScreen(f.screen, gates);
   if (!dialog || !block) return { writes: [], block: null };
-  const raw = rawSlice(f.screen, block.from, block.to);
+  const raw = rawExpect(f.screen, block.from, block.to, readDialog(f.screen, gates).countdown);
   const writes: (string | null)[] = [];
   for (const [i, o] of dialog.options.entries()) {
     const { b, exec } = rig();
@@ -60,9 +60,10 @@ async function writesOf(f: DialogFixture, gates: DialogGates): Promise<{ writes:
     const press = answerPress(dialog, body, raw);
     expect(await b.pressKey(pane, press.key, press.opts), `${f.name} ${i}`).toEqual({ ok: true });
     const calls = exec.calls.filter((c) => c.file.endsWith('/osascript'));
-    // One write, through typeif, with the dialog's raw block as the text it must still find.
+    // One write, through typeif, with the dialog's raw block as the text it must still find (around Claude's
+    // countdown, its parts, each its own argv item).
     expect(calls.map((c) => c.args.slice(0, 3)), `${f.name} ${i}`).toEqual([['-', TTY, 'typeif']]);
-    expect(calls[0]?.args[4], `${f.name} ${i}`).toBe(raw);
+    expect(calls[0]?.args.slice(4), `${f.name} ${i}`).toEqual(typeof raw === 'string' ? [raw] : raw);
     writes.push(calls[0]?.args[3] as string);
   }
   return { writes, block: raw };

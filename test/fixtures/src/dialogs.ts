@@ -17,6 +17,14 @@
  * an option's description where a question draws no body), for the privacy
  * tests. 80 or 96 columns; PERM_RAW_SPACES keeps trailing spaces and CRLF.
  *
+ * v0.5.2 adds a workflow agent's Bash prompt as Claude Code 2.1.316 draws
+ * it (neutral names): the command in a `│` box, the removal warning, and
+ * Claude's auto-block countdown (`autoBlockLine`) at 1:33, 1:32 and 0:05,
+ * with a long command box too, and two queued prompts, both counting down,
+ * that differ only in their command. The countdown is in no model's body;
+ * its time is the model's `blocksIn`. `workflowBashScreen` draws the same
+ * prompt at other widths and times.
+ *
  * How spec 2.3's rules were applied by hand:
  * - top: plan, the `Ready to code?` line right under the plan box's own
  *   rule; else the line after the nearest solid rule (20+ of ─/━ only) at
@@ -253,6 +261,82 @@ const bashModel = (file: 'a.txt' | 'b.txt'): Model => ({
     pick('No'),
   ],
   current: 0,
+});
+
+// ---------------------------------------------------------------------------
+// v0.5.2: a workflow agent's Bash prompt with Claude's auto-block countdown
+
+/**
+ * The line Claude Code 2.1.316 draws inside an unattended agent's ask (a
+ * workflow's, a subagent's), worded as its own source has it (`⚠`, then the
+ * time as `M:SS`, ticking every second). It sits in its own box with a blank
+ * line under it, and wraps like any of Claude's text.
+ */
+export const autoBlockLine = (time: string): string =>
+  `⚠ Claude Code will automatically block this request in ${time}, to avoid holding up an unattended session`;
+
+/** The workflow agent's title line (screenshots 58-60: `Bash command · from the "<workflow>" workflow`). */
+export const WORKFLOW_TITLE = 'Bash command · from the "night-check" workflow';
+/** The line Claude adds for a removal whose target it can't resolve (screenshot 59), drawn in the command's box. */
+const WORKFLOW_WARNING = '│ Dangerous rm operation on statically-unresolvable target: $T/out/*';
+/** The command, each line with the box's `│` (screenshots 58 and 59). Its twin checks other trees and removes the same target. */
+const workflowCommand = (trees: string): string[] => [
+  "│ bash -c '",
+  '│ SP=/tmp/demo/scratchpad/final-verify; C=$SP/clone; G=/usr/local/bin/git',
+  `│ for t in ${trees}; do set -- $t;`,
+  '│ T=$(mktemp -d $SP/chk.XXXX); $G -C $C archive $2 | tar -x -C $T; rm -rf $T/out/*; done\'',
+];
+export const WORKFLOW_TREES_A = '"alpha DEMO-101/demo-safety" "beta DEMO-102/demo-pages"';
+export const WORKFLOW_TREES_B = '"gamma DEMO-103/demo-search" "delta DEMO-104/demo-login"';
+/** A long command box (screenshot 60): a heredoc, then the removal, 40 lines, so the body runs past the phone's 40. */
+const WORKFLOW_LONG = [
+  "│ T=$(mktemp -d /tmp/demo/scratchpad/chk.XXXX) && cat > $T/notes.txt <<'EOF'",
+  ...Array.from({ length: 37 }, (_, i) => `│   line ${i + 1} of the notes`),
+  '│ EOF',
+  '│ rm -rf $T/out/*',
+];
+
+/**
+ * A workflow agent's Bash prompt as Terminal's `contents` gives it, `cols`
+ * wide (the shared fixtures stay at 96: the countdown wraps there, `session`
+ * alone on its second line; at 152, screenshot 59's width, it fits one
+ * line). Under the rule at column 0: the title, the description, the
+ * command's box, a dashed edge, the warning, the countdown, two blank lines,
+ * the question, the rows, the hint, and the window's edge with the
+ * session's name.
+ */
+export function workflowBashScreen(time: string, opts: { command?: readonly string[]; cols?: number } = {}): string {
+  const cols = opts.cols ?? 96;
+  return join([
+    '● The night-check workflow is checking the rebuilt trees.',
+    '',
+    '─'.repeat(cols),
+    ` ${WORKFLOW_TITLE}`,
+    ` Check the rebuilt trees in bash (${DIALOG_SECRET})`,
+    ...(opts.command ?? workflowCommand(WORKFLOW_TREES_A)).map((l) => ` ${l}`),
+    '╌'.repeat(cols),
+    ` ${WORKFLOW_WARNING}`,
+    ...wrap(autoBlockLine(time), cols - 2).map((l) => ` ${l}`),
+    '',
+    '',
+    ' Do you want to proceed?',
+    ' ❯ 1. Yes',
+    '   2. No',
+    '',
+    ' Esc to cancel · Tab to amend',
+    `${'─'.repeat(cols - 14)} night-check ─`,
+  ]);
+}
+
+/** What the phone gets for a workflow prompt: no countdown line in the body; the time beside it, in no fingerprint. */
+const workflowModel = (time: string, command: readonly string[] = workflowCommand(WORKFLOW_TREES_A)): Model => ({
+  kind: 'permission',
+  title: WORKFLOW_TITLE,
+  question: 'Do you want to proceed?',
+  body: [`Check the rebuilt trees in bash (${DIALOG_SECRET})`, ...command, WORKFLOW_WARNING],
+  options: [pick('Yes'), pick('No')],
+  current: 0,
+  blocksIn: time,
 });
 
 // ---------------------------------------------------------------------------
@@ -660,6 +744,61 @@ export const DIALOG_FIXTURES: readonly DialogFixture[] = [
     },
     bytes: [],
     bytesOpen: ['', down(1)],
+  },
+  {
+    name: 'PERM_WORKFLOW_133',
+    // v0.5.2, screenshots 58-60: a workflow agent's Bash prompt, which Claude blocks by itself when its countdown
+    // runs out. The countdown ticks every second, so it is neither in the body nor in the fingerprint.
+    screen: workflowBashScreen('1:33'),
+    expected: { dialog: workflowModel('1:33'), note: null },
+    bytes: ['', down(1)],
+  },
+  {
+    name: 'PERM_WORKFLOW_132',
+    // One second later: the same dialog, the same fingerprint (a tap made at 1:33 answers at 1:32).
+    screen: workflowBashScreen('1:32'),
+    expected: { dialog: workflowModel('1:32'), note: null },
+    bytes: ['', down(1)],
+  },
+  {
+    name: 'PERM_WORKFLOW_005',
+    screen: workflowBashScreen('0:05'),
+    expected: { dialog: workflowModel('0:05'), note: null },
+    bytes: ['', down(1)],
+  },
+  {
+    name: 'PERM_WORKFLOW_LONG_133',
+    // Screenshot 60: a long command box. 42 body lines: the phone gets the first 19, a line saying 3 more are on
+    // the Mac, and the last 20; the fingerprint covers all 42, and never the countdown.
+    screen: workflowBashScreen('1:33', { command: WORKFLOW_LONG }),
+    expected: {
+      dialog: { ...workflowModel('1:33', WORKFLOW_LONG), body: [`Check the rebuilt trees in bash (${DIALOG_SECRET})`, ...WORKFLOW_LONG.slice(0, 18), '… 3 more lines on the Mac …', ...WORKFLOW_LONG.slice(21), WORKFLOW_WARNING] },
+      note: null,
+    },
+    bytes: ['', down(1)],
+  },
+  {
+    name: 'PERM_WORKFLOW_LONG_132',
+    screen: workflowBashScreen('1:32', { command: WORKFLOW_LONG }),
+    expected: {
+      dialog: { ...workflowModel('1:32', WORKFLOW_LONG), body: [`Check the rebuilt trees in bash (${DIALOG_SECRET})`, ...WORKFLOW_LONG.slice(0, 18), '… 3 more lines on the Mac …', ...WORKFLOW_LONG.slice(21), WORKFLOW_WARNING] },
+      note: null,
+    },
+    bytes: ['', down(1)],
+  },
+  {
+    name: 'PERM_WORKFLOW_TWIN_A',
+    // Two queued workflow prompts, both counting down, that differ only in the trees their command checks:
+    // two dialogs, two fingerprints, so a stale tap meant for one never answers the other.
+    screen: workflowBashScreen('1:58', { command: workflowCommand(WORKFLOW_TREES_A) }),
+    expected: { dialog: workflowModel('1:58', workflowCommand(WORKFLOW_TREES_A)), note: null },
+    bytes: ['', down(1)],
+  },
+  {
+    name: 'PERM_WORKFLOW_TWIN_B',
+    screen: workflowBashScreen('1:58', { command: workflowCommand(WORKFLOW_TREES_B) }),
+    expected: { dialog: workflowModel('1:58', workflowCommand(WORKFLOW_TREES_B)), note: null },
+    bytes: ['', down(1)],
   },
 
   // --- Plan approval

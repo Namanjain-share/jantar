@@ -11,13 +11,36 @@
  */
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DIALOG_GATES, DIALOG_HOLD_COPY, DIALOG_NOTES, type Features, type PendingRequest, type ScreenResponse, type TerminalDialog } from '@jantar/protocol';
+import {
+  DIALOG_COUNTDOWN_LATE,
+  DIALOG_COUNTDOWN_MIN_S,
+  DIALOG_GATES,
+  DIALOG_HOLD_COPY,
+  DIALOG_NOTES,
+  countdownSeconds,
+  type Features,
+  type PendingRequest,
+  type ScreenResponse,
+  type TerminalDialog,
+} from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { writeLocal } from '../src/lib/storage.js';
 import { LOCAL_DEVICE_KEY } from '../src/ui/screens/devices/local.js';
-import { CANT_TELL, CHANGED, CONTROLS_OFF, NO_CHANGE, NO_CONTROL_SCOPE, NOTE_IN_BOX, TAP_DROPPED, TAP_GUARD_MS } from '../src/ui/screens/session/answer.js';
+import {
+  CANT_TELL,
+  CHANGED,
+  CONTROLS_OFF,
+  COUNTDOWN_LATE,
+  COUNTDOWN_MIN_S,
+  NO_CHANGE,
+  NO_CONTROL_SCOPE,
+  NOTE_IN_BOX,
+  TAP_DROPPED,
+  TAP_GUARD_MS,
+  countdownSecondsOf,
+} from '../src/ui/screens/session/answer.js';
 import { UNREADABLE } from '../src/ui/screens/session/screen.js';
-import { PLAN_PARTIAL, TEXT_SHORT } from '../src/ui/screens/session/TermDialog.js';
+import { BLOCKED, PLAN_PARTIAL, TEXT_SHORT, blocksLine, leftWords } from '../src/ui/screens/session/TermDialog.js';
 import fixtures from './term-dialog-fixtures.json';
 import { emit, fakeApi, iso, pending, renderApp, session, stateWith } from './helpers.js';
 
@@ -112,6 +135,8 @@ describe('each dialog model renders as Claude draws it (gated and .open)', () =>
     expect(within(card()).getByText(d.question)).toBeTruthy();
     const rows = rowsOf();
     expect(rows).toHaveLength(d.options.length);
+    // Claude's countdown under the margin on the phone's count (a 0:05 read is 4 s left): every row is off.
+    const left = d.blocksIn ? (countdownSeconds(d.blocksIn) ?? Number.POSITIVE_INFINITY) - 1 : Number.POSITIVE_INFINITY;
     d.options.forEach((o, i) => {
       const row = rows[i] as HTMLElement;
       const button = buttonOf(row);
@@ -127,7 +152,7 @@ describe('each dialog model renders as Claude draws it (gated and .open)', () =>
         expect(document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent, what).toBe(o.note);
         return;
       }
-      expect(button.disabled, what).toBe(false);
+      expect(button.disabled, what).toBe(left < DIALOG_COUNTDOWN_MIN_S);
       if (o.role === 'text') {
         expect(button.textContent, what).toBe(`${label.replace(/\.$/, '')}…${o.detail ?? ''}`);
         expect(button.getAttribute('aria-expanded'), what).toBe('false');
@@ -847,5 +872,168 @@ describe('the dock while it reads, on the prompt box, and for focus', () => {
     const described = (row.getAttribute('aria-describedby') ?? '').split(' ').map((id) => document.getElementById(id)?.textContent ?? '');
     expect(described[0]).toBe('Choose red');
     expect(described[1]).toContain(DIALOG_HOLD_COPY.rule);
+  });
+});
+
+describe("v0.5.2: an ask Claude blocks by itself (a workflow agent's Bash prompt)", () => {
+  /** The line under the question at `left` (the read's time less a second for its way here). */
+  const blocksAt = (left: string) => `Claude blocks this at the Mac in ${left} if nobody answers`;
+  const rows = () => rowsOf().map((r) => buttonOf(r));
+
+  it('counts down from the read, a second off for its way here; a tick refreshes it without starting afresh, and a tap right after it goes', async () => {
+    const d = dialogOf('PERM_WORKFLOW_133');
+    // The daemon gives every second of the countdown the same fingerprint: the countdown is in none.
+    const getScreen = vi.fn().mockResolvedValueOnce(readOf('PERM_WORKFLOW_133')).mockResolvedValue(readWith({ ...d, blocksIn: '1:30' }));
+    const sessionDialog = vi.fn(async () => ({ outcome: 'done' as const, dialog: null }));
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen, sessionDialog } });
+    // 1:33 read, TAP_GUARD_MS since: 1 min 32 s.
+    expect(within(card()).getByText(blocksAt('1 min 32 s'))).toBeTruthy();
+    await pass(1_000);
+    expect(within(card()).getByText(blocksAt('1 min 31 s'))).toBeTruthy();
+    // What the Mac shows, the command and its warning, but not the countdown's own line.
+    const body = within(card()).getByLabelText('What the dialog shows').textContent ?? '';
+    expect(body).toContain('rm -rf $T/out/*');
+    expect(body).not.toContain('automatically block');
+    // The next read (1:30) starts the count again from itself.
+    readAgain();
+    expect(await within(card()).findByText(blocksAt('1 min 29 s'))).toBeTruthy();
+    expect(within(card()).queryByText(CHANGED)).toBeNull();
+    // Not a live region; the Choices name it, so a screen reader moving to Yes or No hears it.
+    const line = within(card()).getByText(blocksAt('1 min 29 s'));
+    expect(line.closest('[aria-live]')).toBeNull();
+    expect(choices().getAttribute('aria-describedby')).toBe(line.id);
+    // No settle: a tick is not a change under the finger, so the tap goes, with the one fingerprint.
+    fireEvent.click(buttonOf(rowsOf()[1] as HTMLElement));
+    await waitFor(() => expect(sessionDialog).toHaveBeenCalledWith('a', { fingerprint: d.fingerprint, option: 1 }, expect.any(String)));
+    expect(within(card()).queryByText(TAP_DROPPED)).toBeNull();
+    // The dialog went with the answer: so did the line.
+    expect(await within(card()).findByText('Answered · No')).toBeTruthy();
+    expect(within(card()).queryByText(/Claude blocks this|Claude has blocked this/u)).toBeNull();
+  });
+
+  it('keeps counting while reads fail (10 s on: 1 min 22 s), and says Claude has blocked it once the time is up', async () => {
+    const getScreen = vi.fn().mockResolvedValueOnce(readOf('PERM_WORKFLOW_133')).mockRejectedValue(new ApiError('network', 'offline', 0));
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen }, settled: false });
+    await pass(10_000);
+    expect(getScreen.mock.calls.length).toBeGreaterThan(1);
+    expect(within(card()).getByText(blocksAt('1 min 22 s'))).toBeTruthy();
+    expect(within(card()).queryByText(blocksAt('1 min 32 s'))).toBeNull();
+    // 88 s in all: 4 s left, under the margin: the rows are off and the line says to answer at the Mac.
+    await pass(78_000);
+    expect(within(card()).getByText(DIALOG_COUNTDOWN_LATE)).toBeTruthy();
+    expect(rows().every((b) => b.disabled)).toBe(true);
+    await pass(12_000);
+    expect(within(card()).getByText(BLOCKED)).toBeTruthy();
+    expect(within(card()).queryByText(/Claude blocks this at the Mac in \d/u)).toBeNull();
+    expect(rows().every((b) => b.disabled)).toBe(true);
+  });
+
+  it('back from 3 minutes in the background, never the old time, before or after the read lands', async () => {
+    let hidden = false;
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });
+    let land: (r: ScreenResponse) => void = () => undefined;
+    const getScreen = vi
+      .fn()
+      .mockResolvedValueOnce(readOf('PERM_WORKFLOW_133'))
+      .mockImplementation(() => new Promise<ScreenResponse>((r) => (land = r)));
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen } });
+    expect(within(card()).getByText(blocksAt('1 min 32 s'))).toBeTruthy();
+    hidden = true;
+    act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    await pass(180_000);
+    // The poll stays paused while hidden.
+    expect(getScreen).toHaveBeenCalledTimes(1);
+    hidden = false;
+    readAgain();
+    expect(within(card()).getByText(BLOCKED)).toBeTruthy();
+    expect(within(card()).queryByText(/1 min|1:33/u)).toBeNull();
+    // The read lands: Claude blocked it, no dialog.
+    await act(async () => land({ ...readOf('PERM_WORKFLOW_133'), dialog: undefined }));
+    expect(within(card()).queryByText(/Claude blocks this|Claude has blocked this/u)).toBeNull();
+    Reflect.deleteProperty(document, 'visibilityState');
+  });
+
+  it('a read under the margin locks the rows and says to answer at the Mac', async () => {
+    const d = dialogOf('PERM_WORKFLOW_133');
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: vi.fn(async () => readWith({ ...d, blocksIn: '0:05' })) } });
+    // 0:05 read: 4 s left on the phone's count.
+    expect(within(card()).getByText(DIALOG_COUNTDOWN_LATE)).toBeTruthy();
+    expect(rows().every((b) => b.disabled)).toBe(true);
+  });
+
+  it("a 409 because the Mac's countdown had too little left says so, not that the dialog changed", async () => {
+    const d = dialogOf('PERM_WORKFLOW_133');
+    // The phone's count is the daemon's guide, not its guard: a tap that gets there late is a 409 that says why.
+    const getScreen = vi.fn().mockResolvedValueOnce(readOf('PERM_WORKFLOW_133')).mockResolvedValue(readWith({ ...d, blocksIn: '0:04' }));
+    const sessionDialog = vi.fn(async () => {
+      throw new ApiError('conflict', DIALOG_COUNTDOWN_LATE, 409);
+    });
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen, sessionDialog } });
+    fireEvent.click(buttonOf(rowsOf()[1] as HTMLElement));
+    await waitFor(() => expect(sessionDialog).toHaveBeenCalled());
+    expect((await within(card()).findByRole('status')).textContent).toBe(DIALOG_COUNTDOWN_LATE);
+    expect(within(card()).queryByText(CHANGED)).toBeNull();
+  });
+
+  it('a countdown that goes up under the same fingerprint is another ask: starts afresh, body open, says so, and drops a tap right after', async () => {
+    const d = dialogOf('PERM_WORKFLOW_133');
+    const getScreen = vi.fn().mockResolvedValueOnce(readWith({ ...d, blocksIn: '0:40' })).mockResolvedValue(readWith({ ...d, blocksIn: '1:59' }));
+    const sessionDialog = vi.fn(async () => ({ outcome: 'done' as const, dialog: null }));
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen, sessionDialog } });
+    expect(within(card()).queryByText(CHANGED)).toBeNull();
+    readAgain();
+    expect(await within(card()).findByText(CHANGED)).toBeTruthy();
+    expect(within(card()).getByText(blocksAt('1 min 58 s'))).toBeTruthy();
+    expect(within(card()).getByLabelText('What the dialog shows')).toBeTruthy();
+    // The tap guard starts again: a tap at once is dropped (the CHANGED line stays), one after it goes.
+    fireEvent.click(buttonOf(rowsOf()[1] as HTMLElement));
+    await landed();
+    expect(sessionDialog).not.toHaveBeenCalled();
+    expect(within(card()).getByText(CHANGED)).toBeTruthy();
+    await settle();
+    fireEvent.click(buttonOf(rowsOf()[1] as HTMLElement));
+    await waitFor(() => expect(sessionDialog).toHaveBeenCalledWith('a', { fingerprint: d.fingerprint, option: 1 }, expect.any(String)));
+  });
+
+  it('the queued twin (another command, its own countdown) starts afresh, body open, and says so', async () => {
+    const getScreen = vi.fn().mockResolvedValueOnce(readOf('PERM_WORKFLOW_TWIN_A')).mockResolvedValue(readOf('PERM_WORKFLOW_TWIN_B'));
+    await openDock('PERM_WORKFLOW_TWIN_A', { api: { getScreen } });
+    expect(within(card()).queryByText(CHANGED)).toBeNull();
+    readAgain();
+    expect(await within(card()).findByText(CHANGED)).toBeTruthy();
+    expect(within(card()).getByLabelText('What the dialog shows').textContent).toContain('gamma DEMO-103/demo-search');
+    expect(within(card()).getByText(blocksAt('1 min 57 s'))).toBeTruthy();
+  });
+
+  it('"about N minutes" shows as drawn, not counted down; the folded sheet starts its peek with the time left', async () => {
+    const d = dialogOf('PERM_WORKFLOW_133');
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: vi.fn(async () => readWith({ ...d, blocksIn: 'about 2 minutes' })) } });
+    expect(within(card()).getByText(blocksAt('about 2 minutes'))).toBeTruthy();
+    await pass(1_000);
+    expect(within(card()).getByText(blocksAt('about 2 minutes'))).toBeTruthy();
+    fireEvent.click(within(card()).getByRole('button', { name: 'Fold the panel' }));
+    expect(within(card()).getByText('about 2 minutes left · Do you want to proceed?')).toBeTruthy();
+  });
+
+  it('a dialog without a countdown says nothing of one', async () => {
+    await openDock('PERM_BASH_PREFIX');
+    expect(within(card()).queryByText(/Claude blocks this|Claude has blocked this/u)).toBeNull();
+    expect(choices().getAttribute('aria-describedby')).toBeNull();
+  });
+
+  it("the dock's copies of the margin, the late sentence and the seconds are the protocol's own", () => {
+    expect(COUNTDOWN_MIN_S).toBe(DIALOG_COUNTDOWN_MIN_S);
+    expect(COUNTDOWN_LATE).toBe(DIALOG_COUNTDOWN_LATE);
+    for (const time of ['1:33', '0:05', '0:00', '12:00', 'about 2 minutes', 'about 1 minute', 'about 40 seconds', 'about 1 second', '45', 'soon', 'About 1 Minute']) {
+      expect(countdownSecondsOf(time), time).toBe(countdownSeconds(time));
+    }
+  });
+
+  it('blocksLine and leftWords: minutes and seconds in words, never a clock time', () => {
+    expect(blocksLine(leftWords(93))).toBe('Claude blocks this at the Mac in 1 min 33 s if nobody answers');
+    expect(leftWords(120)).toBe('2 min');
+    expect(leftWords(59)).toBe('59 s');
+    expect(leftWords(0)).toBe('0 s');
+    expect(blocksLine('about 2 minutes')).toBe('Claude blocks this at the Mac in about 2 minutes if nobody answers');
   });
 });

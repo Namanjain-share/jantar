@@ -18,6 +18,11 @@
  *    when even that leaves the row as it was, no third write: `unchanged`.
  * 2c. Queued twin: the next Bash prompt with the same rows and another
  *    command is a new dialog (`done`), never the same one.
+ * 2e. v0.5.2, a workflow agent's prompt with Claude's auto-block countdown:
+ *    the phone reads it at 1:33, the daemon at 1:32, the tab shows 1:31 at
+ *    the write; one typeif with the two parts around the countdown's time,
+ *    `done`. Its queued twin (another command, counting down too) refuses a
+ *    stale tap, and a tap with 4 s left is refused, nothing typed.
  * 3. Three questions, in the order Claude draws them (each answer ticks its
  *    tab), then the review of all three, then Submit.
  * 4. Multi-select: two ticks, a third above the pointer with ESC[A (SP14,
@@ -34,7 +39,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DIALOG_SECRET, NOT_DIALOG_SCREENS, TYPED_ANSWER, dialogFixture, withGates } from '@jantar/fixtures';
-import { dialogOfScreen, rawSlice } from '@jantar/daemon/terminal/dialog';
+import { dialogOfScreen, rawExpect, rawSlice, readDialog } from '@jantar/daemon/terminal/dialog';
 import {
   DEVICE_COOKIE,
   DIALOG_GATES,
@@ -287,6 +292,57 @@ describe('v0.4.2 dialogs: the screen path and the keypad through the fake osascr
     // A second tap on the first dialog's fingerprint: 409, nothing typed.
     expect((await tap(dialog, 0)).status).toBe(409);
     expect(writes().length).toBe(before + 1);
+  });
+
+  it("2e. a workflow agent's prompt whose countdown ticks between the phone's read, the daemon's and the write: answered, its twin not", async () => {
+    const at = (time: string) => screenOf('PERM_WORKFLOW_133').replace('in 1:33,', `in ${time},`);
+    const dialog = await shown(at('1:33'));
+    expect(withoutPrint(dialog)).toEqual(modelOf('PERM_WORKFLOW_133'));
+    expect(dialog.blocksIn).toBe('1:33');
+    // A second later the phone's next read: the same fingerprint, the new time.
+    await tabs.show(TTY, at('1:32'));
+    const next = await read();
+    expect(next.dialog?.fingerprint).toBe(dialog.fingerprint);
+    expect(next.dialog?.blocksIn).toBe('1:32');
+    // The tap made at 1:33: the daemon reads 1:32, and the tab has ticked again when the write runs.
+    tabs.on(TTY, {
+      before: () => tabs.show(TTY, at('1:31')),
+      after: () => tabs.show(TTY, WORKING),
+    });
+    const before = writes().length;
+    expect(await answered(dialog, 1)).toEqual({ outcome: 'done', dialog: null });
+    const live = readDialog(at('1:32'));
+    const parts = rawExpect(at('1:32'), live.block?.from ?? 0, live.block?.to ?? 0, live.countdown);
+    expect(Array.isArray(parts) && parts.length).toBe(2);
+    expect(JSON.stringify(parts)).not.toContain('1:32');
+    expect(writes().slice(before)).toEqual([{ tty: TTY, mode: 'typeif', bytes: ESC_B, expected: parts, out: 'ok' }]);
+    const call = (await d.home.calls('osascript')).filter((c) => c.args[2] === 'typeif').at(-1);
+    expect(call?.args).toEqual(['-', TTY, 'typeif', ESC_B, ...(parts as string[])]);
+    // The audit row says what kind and which row, never the screen or the time.
+    const row = d.ctx.db.audit.list({ after: 0, limit: 1000 }).filter((e) => e.action === 'sessionDialog').at(-1);
+    expect(row?.params).toEqual({ sid: SID, option: 1, kind: 'permission', options: 2, role: 'pick', outcome: 'done' });
+    expect(JSON.stringify(row)).not.toMatch(/1:3\d|automatically block/u);
+
+    // Two queued workflow prompts that differ only in their command: a tap for the first never answers the second.
+    const first = await shown(screenOf('PERM_WORKFLOW_TWIN_A'));
+    tabs.on(TTY, {});
+    await tabs.show(TTY, screenOf('PERM_WORKFLOW_TWIN_B').replace('in 1:58,', 'in 1:57,'));
+    const stale = writes().length;
+    const r = await tap(first, 0);
+    expect(r.status).toBe(409);
+    expect((r.body as { error: { code: string } }).error.code).toBe('conflict');
+    expect(writes().length).toBe(stale);
+
+    // Four seconds left: Claude blocks it by itself in a moment and draws the next ask, so nothing is typed.
+    const late = await shown(at('0:04'));
+    expect(late.blocksIn).toBe('0:04');
+    const tooLate = await tap(late, 1);
+    expect(tooLate.status).toBe(409);
+    expect((tooLate.body as { error: { code: string; message: string } }).error).toMatchObject({
+      code: 'conflict',
+      message: 'Claude blocks this at the Mac in a moment. Answer it there.',
+    });
+    expect(writes().length).toBe(stale);
   });
 
   it('3. three questions, then the review, then Submit', async () => {

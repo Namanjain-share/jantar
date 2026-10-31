@@ -9,10 +9,11 @@ import { describe, expect, it } from 'vitest';
 import { NOT_DIALOG_SCREENS, dialogFixture } from '@jantar/fixtures';
 import { DIALOG_GATES, KEYPAD_ESCAPE, SettingsSchema, type DialogGates, type PendingRequest, type SessionKeypadBody } from '@jantar/protocol';
 import type { ControlResult } from '../../src/contracts.js';
-import { CANT_CHECK } from '../../src/controls/dialog.js';
+import { CANT_CHECK, COUNTDOWN_LATE } from '../../src/controls/dialog.js';
 import { ESCAPE_UNVERIFIED } from '../../src/controls/keys.js';
 import { HAS_BUTTONS, KEYPAD_ESCAPE_OFF, KEYPAD_UP_OFF, NO_POINTER, POINTER_NOT_LAST, PROMPT_BOX, SCREEN_CHANGED } from '../../src/controls/keypad.js';
-import { rawSlice, screenKey, screenKeyRange } from '../../src/terminal/dialog.js';
+import { rawExpect, rawSlice, readDialog, screenKey, screenKeyRange } from '../../src/terminal/dialog.js';
+import { lastLines } from '../../src/terminal/screen.js';
 import { PHONE, SID, T0, claudeScreen, drive, makeRig, type Rig } from './helpers.js';
 
 const PICKER = NOT_DIALOG_SCREENS.MODEL_PICKER as string;
@@ -218,5 +219,66 @@ describe('the keypad', () => {
     const answered = NOT_DIALOG_SCREENS.ANSWERED_ABOVE_BOX as string;
     const rig = keypadRig(answered, { status: 'idle' });
     expect(await send(rig, bodyFor(answered, { move: 1 }))).toEqual({ ok: false, code: 'refused', reason: PROMPT_BOX });
+  });
+});
+
+describe("v0.5.2: the keypad under Claude's auto-block countdown", () => {
+  // The long workflow prompt in an 80x24 Terminal: its top is off screen, so the phone gets the keys.
+  const tallAt = (time: string) => lastLines(dialogFixture('PERM_WORKFLOW_LONG_133').screen.replace('in 1:33,', `in ${time},`), 24).join('\n');
+
+  it('keys counted at 1:33 are typed at 1:32, compare-and-type on the lines around the countdown', async () => {
+    const shown = tallAt('1:33');
+    const now = tallAt('1:32');
+    const rig = keypadRig(now);
+    expect(await send(rig, bodyFor(shown, { move: 1 }))).toEqual({ ok: true });
+    expect(rig.terminal.pressed).toEqual(['down']);
+    const range = screenKeyRange(now, LINES);
+    const parts = rig.terminal.keyOpts[0]?.expect;
+    expect(parts).toEqual(rawExpect(now, range.from, range.to, readDialog(now).countdown));
+    expect(Array.isArray(parts) && parts.length).toBe(2);
+    // Only the time is left out: the countdown's words stay in the parts.
+    expect((parts as string[])[0]?.endsWith('automatically block this request in ')).toBe(true);
+    expect((parts as string[])[1]?.startsWith(', to avoid holding up an')).toBe(true);
+    expect(JSON.stringify(parts)).not.toContain('1:32');
+    // And while it ticks between the read and the write.
+    const ticking = keypadRig(shown);
+    const read = ticking.terminal.readScreen.bind(ticking.terminal);
+    ticking.terminal.readScreen = async () => {
+      const r = await read();
+      ticking.terminal.screen = tallAt('1:31');
+      return r;
+    };
+    expect(await send(ticking, bodyFor(shown))).toEqual({ ok: true });
+    expect(ticking.terminal.pressed).toEqual(['enter']);
+  });
+
+  it('under 5 s left on the countdown nothing is typed, and the 409 names Claude\'s own block; at 0:05 the keys go', async () => {
+    for (const time of ['0:04', '0:00']) {
+      const rig = keypadRig(tallAt(time));
+      expect(await send(rig, bodyFor(tallAt(time), { move: 1 })), time).toEqual({ ok: false, code: 'conflict', reason: COUNTDOWN_LATE });
+      expect(rig.terminal.pressed, time).toEqual([]);
+    }
+    const rig = keypadRig(tallAt('0:05'));
+    expect(await send(rig, bodyFor(tallAt('0:05'), { move: 1 }))).toEqual({ ok: true });
+    expect(rig.terminal.pressed).toEqual(['down']);
+  });
+
+  it('the same sentence in the transcript above a picker is hashed as it is: its tick is a 409', async () => {
+    const shown = [`● Output: ${'x'.repeat(4)}`, ' ⚠ Claude Code will automatically block this request in 1:33, to avoid holding up an unattended session', '', PICKER].join('\n');
+    const rig = keypadRig(shown.replace('in 1:33,', 'in 1:32,'));
+    expect(await send(rig, bodyFor(shown))).toEqual({ ok: false, code: 'conflict', reason: SCREEN_CHANGED });
+    expect(rig.terminal.pressed).toEqual([]);
+  });
+
+  it('a changed line of the command or a moved pointer is still a 409, ticking or not, nothing typed', async () => {
+    const shown = tallAt('1:33');
+    for (const now of [
+      tallAt('1:32').replace('line 30 of the notes', 'line 30 of the note'),
+      tallAt('1:32').replace(' ❯ 1. Yes', '   1. Yes').replace('   2. No', ' ❯ 2. No'),
+    ]) {
+      const rig = keypadRig(now);
+      expect(await send(rig, bodyFor(shown, { move: 1 }))).toEqual({ ok: false, code: 'conflict', reason: SCREEN_CHANGED });
+      expect(rig.terminal.pressed).toEqual([]);
+    }
   });
 });

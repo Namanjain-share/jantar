@@ -10,13 +10,23 @@
  */
 import { describe, expect, it } from 'vitest';
 import { DIALOG_FIXTURES, TYPED_ANSWER, TYPED_PLAN_NOTE, dialogFixture, withGates, type DialogFixture } from '@jantar/fixtures';
-import { DIALOG_GATES, DIALOG_NOTES, SettingsSchema, type DialogGates, type PendingRequest, type SessionDialogBody, type TerminalDialog } from '@jantar/protocol';
+import {
+  DIALOG_COUNTDOWN_MIN_S,
+  DIALOG_GATES,
+  DIALOG_NOTES,
+  SettingsSchema,
+  type DialogGates,
+  type PendingRequest,
+  type SessionDialogBody,
+  type TerminalDialog,
+} from '@jantar/protocol';
 import type { ControlResult, DialogAnswer } from '../../src/contracts.js';
 import { BUSY_REASON, LOCK_WAIT_MS, SHARED_PROCESS } from '../../src/controls/common.js';
 import {
   AFTER_READ_MS,
   AFTER_READ_STEP_MS,
   CANT_CHECK,
+  COUNTDOWN_LATE,
   DIALOG_CHANGED,
   DIALOG_GONE,
   HOLD_TO_CONFIRM,
@@ -26,7 +36,7 @@ import {
   TEXT_ELSEWHERE,
   rowProblem,
 } from '../../src/controls/dialog.js';
-import { dialogOfScreen, rawSlice } from '../../src/terminal/dialog.js';
+import { dialogOfScreen, rawExpect, readDialog } from '../../src/terminal/dialog.js';
 import { lastLines, screenLines } from '../../src/terminal/screen.js';
 import { PHONE, SID, T0, TTY, drive, flush, makeRig, type Rig } from './helpers.js';
 
@@ -44,11 +54,11 @@ function shownOn(screen: string, gates: DialogGates = DIALOG_GATES): TerminalDia
   if (!d) throw new Error('no dialog on that screen');
   return d;
 }
-/** The raw text the write must find: the dialog from its top through its last line. */
-function blockOf(screen: string): string {
+/** The raw text the write must find: the dialog from its top through its last line (around Claude's countdown's time, its parts). */
+function blockOf(screen: string): string | string[] {
   const { block } = dialogOfScreen(screen);
   if (!block) throw new Error('no block');
-  return rawSlice(screen, block.from, block.to);
+  return rawExpect(screen, block.from, block.to, readDialog(screen).countdown);
 }
 
 function waitingRig(screen: string, settings?: Parameters<typeof SettingsSchema.parse>[0], gates?: DialogGates): Rig {
@@ -96,7 +106,7 @@ describe('answering a dialog', () => {
     expect(rig.terminal.pressed).toEqual(['down']);
     expect(rig.terminal.keyOpts).toEqual([{ expect: blockOf(screen), repeat: 1 }]);
     // The block starts at "Ready to code?": the transcript above it is not compared.
-    expect(blockOf(screen).startsWith('   Ready to code?')).toBe(true);
+    expect((blockOf(screen) as string).startsWith('   Ready to code?')).toBe(true);
   });
 
   it('the highlighted row is Return alone (an empty write); a hold row needs confirm: true', async () => {
@@ -227,7 +237,7 @@ describe('answering a dialog', () => {
       const [key] = rig.terminal.pressed;
       const opts = rig.terminal.keyOpts[0] ?? {};
       const arrow = key === 'down' ? '\u001b[B' : key === 'up' ? '\u001b[A' : '';
-      expect(opts.expect, `${f.name} ${i}`).toBe(blockOf(f.screen));
+      expect(opts.expect, `${f.name} ${i}`).toEqual(blockOf(f.screen));
       bytes.push(arrow.repeat(opts.repeat ?? 1) + (opts.text ?? ''));
     }
     return bytes;
@@ -720,5 +730,186 @@ describe('long text: the one guarded lone Return (D14)', () => {
     };
     expect(await answer(rig, { fingerprint: shownOn(screenOf('Q_SINGLE')).fingerprint, option: 3, text: TYPED_ANSWER })).toMatchObject({ ok: true, outcome: 'unchanged' });
     expect(rig.terminal.pressed).toEqual(['down']);
+  });
+});
+
+describe("v0.5.2: a workflow agent's prompt and Claude's auto-block countdown", () => {
+  const at133 = screenOf('PERM_WORKFLOW_133');
+  const at132 = screenOf('PERM_WORKFLOW_132');
+  /** The same prompt at another second of its countdown. */
+  const tick = (time: string) => at133.replace('in 1:33,', `in ${time},`);
+
+  it("a tap made at 1:33 is answered at 1:32: compare-and-type on the parts around the countdown's time, then done", async () => {
+    const rig = waitingRig(at132);
+    thenShow(rig, WORKING);
+    const r = await answer(rig, { fingerprint: shownOn(at133).fingerprint, option: 1 });
+    expect(r).toEqual({ ok: true, outcome: 'done', dialog: null, kind: 'permission', role: 'pick', options: 2 });
+    expect(rig.terminal.pressed).toEqual(['down']);
+    // The parts of the block read at 1:32: the title through "… request in ", then ", to avoid …" through the hint.
+    const parts = rig.terminal.keyOpts[0]?.expect;
+    expect(parts).toEqual(blockOf(at132));
+    expect(Array.isArray(parts) && parts.length).toBe(2);
+    expect((parts as string[])[0]?.endsWith('⚠ Claude Code will automatically block this request in ')).toBe(true);
+    expect((parts as string[])[1]?.startsWith(', to avoid holding up an')).toBe(true);
+    expect(JSON.stringify(parts)).not.toMatch(/1:3\d/u);
+    // The Yes row is the highlighted one: Return alone.
+    const yes = waitingRig(screenOf('PERM_WORKFLOW_005'));
+    thenShow(yes, WORKING);
+    expect(await answer(yes, { fingerprint: shownOn(at133).fingerprint, option: 0 })).toMatchObject({ ok: true, outcome: 'done' });
+    expect(yes.terminal.pressed).toEqual(['enter']);
+  });
+
+  it('the countdown ticks between the guarded read and the write: still typed (only the countdown changed)', async () => {
+    const rig = waitingRig(at133);
+    thenShow(rig, WORKING);
+    const read = rig.terminal.readScreen.bind(rig.terminal);
+    let first = true;
+    rig.terminal.readScreen = async () => {
+      const r = await read();
+      if (first) rig.terminal.screen = tick('1:32'); // the Mac's countdown moved on right after Jantar read it
+      first = false;
+      return r;
+    };
+    expect(await answer(rig, { fingerprint: shownOn(at133).fingerprint, option: 1 })).toMatchObject({ ok: true, outcome: 'done' });
+    expect(rig.terminal.pressed).toEqual(['down']);
+  });
+
+  it('only the countdown ticking after the write is no answer: unchanged with the live dialog, never done', async () => {
+    const rig = waitingRig(at133);
+    const read = rig.terminal.readScreen.bind(rig.terminal);
+    let typed = false;
+    let reads = 0;
+    // The write didn't take: the dialog stays, its countdown ticking about every third read.
+    const times = ['1:32', '1:32', '1:32', '1:31', '1:31', '1:31'];
+    rig.terminal.onKey = () => {
+      typed = true;
+    };
+    rig.terminal.readScreen = async () => {
+      if (typed) rig.terminal.screen = tick(times[Math.min(reads++, times.length - 1)] as string);
+      return read();
+    };
+    const r = await answer(rig, { fingerprint: shownOn(at133).fingerprint, option: 1 });
+    expect(r).toMatchObject({ ok: true, outcome: 'unchanged' });
+    expect(r.ok && r.dialog?.fingerprint).toBe(shownOn(at133).fingerprint);
+    expect(r.ok && r.dialog?.blocksIn).toBe('1:31');
+    expect(rig.terminal.pressed).toEqual(['down']);
+  });
+
+  it('two queued workflow prompts that differ only in their command: a stale tap for the first is refused on the second, nothing typed', async () => {
+    const a = screenOf('PERM_WORKFLOW_TWIN_A');
+    const b = screenOf('PERM_WORKFLOW_TWIN_B');
+    const rig = waitingRig(b);
+    for (const option of [0, 1]) {
+      expect(await answer(rig, { fingerprint: shownOn(a).fingerprint, option }), `${option}`).toEqual({ ok: false, code: 'conflict', reason: DIALOG_CHANGED });
+    }
+    // The same at any second of either countdown.
+    rig.terminal.screen = b.replace('in 1:58,', 'in 0:31,');
+    expect(await answer(rig, { fingerprint: shownOn(a.replace('in 1:58,', 'in 1:40,')).fingerprint, option: 0 })).toEqual({ ok: false, code: 'conflict', reason: DIALOG_CHANGED });
+    expect(rig.terminal.pressed).toEqual([]);
+    // Answered, the first gives way to its twin: done, with the twin.
+    const first = waitingRig(a);
+    thenShow(first, b);
+    const r = await answer(first, { fingerprint: shownOn(a).fingerprint, option: 0 });
+    expect(r).toMatchObject({ ok: true, outcome: 'done' });
+    expect(r.ok && r.dialog?.fingerprint).toBe(shownOn(b).fingerprint);
+  });
+
+  it('the twin taking its place between the guarded read and the write: 409, nothing typed', async () => {
+    const a = screenOf('PERM_WORKFLOW_TWIN_A');
+    const rig = waitingRig(a);
+    const read = rig.terminal.readScreen.bind(rig.terminal);
+    rig.terminal.readScreen = async () => {
+      const r = await read();
+      rig.terminal.screen = screenOf('PERM_WORKFLOW_TWIN_B').replace('in 1:58,', 'in 1:57,');
+      return r;
+    };
+    expect(await answer(rig, { fingerprint: shownOn(a).fingerprint, option: 1 })).toEqual({ ok: false, code: 'conflict', reason: DIALOG_CHANGED });
+    expect(rig.terminal.pressed).toEqual([]);
+  });
+
+  it('the countdown gone, or anything but a time in its place, between the guarded read and the write: 409, nothing typed', async () => {
+    const lines = screenLines(at133);
+    const at = lines.findIndex((l) => l.includes('automatically block'));
+    const drawn = lines.slice(at, at + 2).join('\n');
+    const swaps = {
+      gone: at133.replace(`${drawn}\n`, ''),
+      line: at133.replace('in 1:33,', 'in 1:33\n │ rm -rf $HOME/demo\n,'),
+      word: at133.replace('in 1:33,', 'in soon,'),
+      longer: at133.replace('in 1:33,', 'in 101:33,'),
+      empty: at133.replace('in 1:33,', 'in ,'),
+    };
+    for (const [what, swapped] of Object.entries(swaps)) {
+      const rig = waitingRig(at133);
+      const read = rig.terminal.readScreen.bind(rig.terminal);
+      rig.terminal.readScreen = async () => {
+        const r = await read();
+        rig.terminal.screen = swapped;
+        return r;
+      };
+      expect(await answer(rig, { fingerprint: shownOn(at133).fingerprint, option: 1 }), what).toEqual({ ok: false, code: 'conflict', reason: DIALOG_CHANGED });
+      expect(rig.terminal.pressed, what).toEqual([]);
+    }
+  });
+
+  it(`under ${DIALOG_COUNTDOWN_MIN_S} s left (0:04) nothing is typed and Claude's own block is named; at 0:05 the tap goes`, async () => {
+    for (const time of ['0:04', '0:01', '0:00']) {
+      const rig = waitingRig(tick(time));
+      for (const option of [0, 1]) {
+        expect(await answer(rig, { fingerprint: shownOn(at133).fingerprint, option }), `${time} ${option}`).toEqual({ ok: false, code: 'conflict', reason: COUNTDOWN_LATE });
+      }
+      expect(rig.terminal.pressed, time).toEqual([]);
+    }
+    const rig = waitingRig(screenOf('PERM_WORKFLOW_005'));
+    thenShow(rig, WORKING);
+    expect(await answer(rig, { fingerprint: shownOn(at133).fingerprint, option: 1 })).toMatchObject({ ok: true, outcome: 'done' });
+    expect(rig.terminal.pressed).toEqual(['down']);
+    // "about N seconds" counts as N, "about N minutes" as 60 N.
+    expect(await answer(waitingRig(tick('about 3 seconds')), { fingerprint: shownOn(at133).fingerprint, option: 1 })).toEqual({ ok: false, code: 'conflict', reason: COUNTDOWN_LATE });
+    const minutes = waitingRig(tick('about 1 minute'));
+    thenShow(minutes, WORKING);
+    expect(await answer(minutes, { fingerprint: shownOn(at133).fingerprint, option: 1 })).toMatchObject({ ok: true, outcome: 'done' });
+  });
+
+  it('Claude blocking the ask by itself during the after-reads is never taken for this answer: unchanged, with what the Mac shows', async () => {
+    // The write is slow (an osascript run stalled for 4 s) and doesn't take; Claude blocks the ask at 0:00 and
+    // the next queued prompt (or none) shows. Two reads of it would otherwise make `done`.
+    const run = async (time: string, next: string) => {
+      const rig = waitingRig(tick(time));
+      const press = rig.terminal.pressKey.bind(rig.terminal);
+      let blocksAt = Number.POSITIVE_INFINITY;
+      rig.terminal.pressKey = async (...args) => {
+        blocksAt = rig.clock.now() + 4_000;
+        await rig.clock.sleep(4_000);
+        return press(...args);
+      };
+      const read = rig.terminal.readScreen.bind(rig.terminal);
+      rig.terminal.readScreen = async () => {
+        if (rig.clock.now() >= blocksAt) rig.terminal.screen = next;
+        return read();
+      };
+      const r = await answer(rig, { fingerprint: shownOn(at133).fingerprint, option: 1 });
+      expect(rig.terminal.pressed).toEqual(['down']);
+      return r;
+    };
+    const twin = screenOf('PERM_WORKFLOW_TWIN_B');
+    expect(await run('0:05', WORKING)).toEqual({ ok: true, outcome: 'unchanged', dialog: null, kind: 'permission', role: 'pick', options: 2 });
+    expect(await run('0:05', twin)).toEqual({ ok: true, outcome: 'unchanged', dialog: shownOn(twin), kind: 'permission', role: 'pick', options: 2 });
+    // Far from the countdown's end the same screens are the answer taking (nothing else could have closed it).
+    expect(await run('1:33', WORKING)).toMatchObject({ ok: true, outcome: 'done', dialog: null });
+    expect(await run('1:33', twin)).toMatchObject({ ok: true, outcome: 'done', dialog: shownOn(twin) });
+  });
+
+  it('a changed command, question, label or pointer under a ticking countdown still refuses, nothing typed', async () => {
+    const changed = {
+      command: tick('1:20').replace('rm -rf $T/out/*; done', 'rm -rf $T/*; done'),
+      question: tick('1:20').replace(' Do you want to proceed?', ' Do you want to run it?'),
+      label: tick('1:20').replace('   2. No', '   2. No, and tell Claude what to do differently (esc)'),
+      pointer: tick('1:20').replace(' ❯ 1. Yes', '   1. Yes').replace('   2. No', ' ❯ 2. No'),
+    };
+    for (const [what, screen] of Object.entries(changed)) {
+      const rig = waitingRig(screen);
+      expect(await answer(rig, { fingerprint: shownOn(at133).fingerprint, option: 1 }), what).toEqual({ ok: false, code: 'conflict', reason: DIALOG_CHANGED });
+      expect(rig.terminal.pressed, what).toEqual([]);
+    }
   });
 });

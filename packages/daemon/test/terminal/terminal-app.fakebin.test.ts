@@ -13,7 +13,7 @@ import { systemClock } from '../../src/core/clock.js';
 import { createExecFile } from '../../src/core/exec.js';
 import { createTestContext, fixedProbe } from '../../src/core/testing.js';
 import { buildControlsService } from '../../src/controls/service.js';
-import { dialogOfScreen, rawSlice } from '../../src/terminal/dialog.js';
+import { dialogOfScreen, rawExpect, rawSlice, readDialog } from '../../src/terminal/dialog.js';
 import { TERMINAL_APP_SCRIPT, TerminalAppBackend } from '../../src/terminal/index.js';
 import { createWriterWith } from '../../src/writer/index.js';
 import { LockingWriter } from '../controls/helpers.js';
@@ -209,5 +209,67 @@ describe('compare-and-type through the fake osascript (v0.4.2, D10)', () => {
     const typeAt = calls.findIndex((c) => c.args[2] === 'typeif');
     expect(calls.slice(0, typeAt).some((c) => c.args[2] === 'contents')).toBe(true);
     expect(calls.slice(typeAt + 1).filter((c) => c.args[2] === 'contents').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("compare-and-type in parts through the fake osascript (v0.5.2, Claude's auto-block countdown)", () => {
+  const AT_133 = dialogFixture('PERM_WORKFLOW_133').screen;
+  const AT_132 = dialogFixture('PERM_WORKFLOW_132').screen;
+  const WORKING = ['● Checking the trees.', '', RULE, '❯ ', RULE, '  ⏸ manual mode on · ? for shortcuts'].join('\n');
+  const partsOf = (screen: string) => {
+    const { block, countdown } = readDialog(screen);
+    return rawExpect(screen, block?.from ?? 0, block?.to ?? 0, countdown) as string[];
+  };
+
+  it('typeif takes several expected parts in argv: typed while each is on the tab in order, the countdown between them ticking', async () => {
+    const { home: h, ctx } = await setup();
+    await h.setRules('osascript', osascriptRules(AT_132), MISSING);
+    const backend = new TerminalAppBackend(ctx, { platform: 'darwin' });
+    const pane = await backend.findPane({ tty: 'ttys003', pid: PID });
+    const parts = partsOf(AT_133);
+    expect(parts).toHaveLength(2);
+    expect(await backend.pressKey(pane!, 'down', { expect: parts })).toEqual({ ok: true });
+    // Out of order, a part of the twin, or a line in place of the countdown's time: nothing typed.
+    const twin = partsOf(dialogFixture('PERM_WORKFLOW_TWIN_B').screen);
+    const changed = { ok: false, code: 'changed', reason: 'the terminal changed before Jantar typed' };
+    expect(await backend.pressKey(pane!, 'enter', { expect: [parts[1] as string, parts[0] as string] })).toEqual(changed);
+    expect(await backend.pressKey(pane!, 'enter', { expect: [twin[0] as string, parts[1] as string] })).toEqual(changed);
+    await h.setRules('osascript', osascriptRules(AT_132.replace('in 1:32,', 'in 1:32\n │ rm -rf $HOME/demo\n,')), MISSING);
+    expect(await backend.pressKey(pane!, 'enter', { expect: parts })).toEqual(changed);
+    const calls = (await h.calls('osascript')).filter((c) => c.args[2] === 'typeif');
+    expect(calls[0]?.args).toEqual(['-', TTY, 'typeif', '\u001b[B', ...parts]);
+    for (const c of calls) expect(c.stdin).toBe(TERMINAL_APP_SCRIPT);
+    expect((await h.calls('osascript')).some((c) => c.args[2] === 'type')).toBe(false);
+  });
+
+  it('a whole answer: the phone read 1:33, the daemon reads 1:32, the tab shows 1:31 at the write; typed, then done', async () => {
+    const { home: h, ctx, realExec, startMs } = await setup();
+    await h.setRules('osascript', osascriptRules(AT_132), MISSING);
+    const exec: ExecFile = async (file, args, opts) => {
+      const typeif = file.endsWith('/osascript') && args[2] === 'typeif';
+      if (typeif) await h.setRules('osascript', osascriptRules(AT_132.replace('in 1:32,', 'in 1:31,')), MISSING);
+      const r = await realExec(file, args, opts);
+      if (typeif && r.stdout.startsWith('ok')) await h.setRules('osascript', osascriptRules(WORKING), MISSING);
+      return r;
+    };
+    const live = { ...ctx, exec, clock: systemClock };
+    live.store.emit({
+      type: 'session.added',
+      sid: SID,
+      data: { session: makeSession({ sid: SID, pid: PID, procStart: formatLstart(startMs), tty: TTY, status: 'waiting', cwd: CWD }) },
+    });
+    const controls = buildControlsService(live, {
+      sessions: new FakeSessions(),
+      terminal: new TerminalAppBackend(live, { platform: 'darwin' }),
+      writer: new LockingWriter(),
+      hooks: new FakeHooks(),
+      transcripts: new FakeTranscripts(),
+      ccwLegacy: new FakeCcw(),
+    });
+    const shown = dialogOfScreen(AT_133).dialog!;
+    const r = await controls.answerDialog(SID, { fingerprint: shown.fingerprint, option: 1 }, { kind: 'device', deviceId: 'dev-1', scopes: ['read', 'control'] });
+    expect(r).toEqual({ ok: true, outcome: 'done', dialog: null, kind: 'permission', role: 'pick', options: 2 });
+    const writes = (await h.calls('osascript')).filter((c) => c.args[2] === 'typeif' || c.args[2] === 'type');
+    expect(writes.map((c) => c.args)).toEqual([['-', TTY, 'typeif', '\u001b[B', ...partsOf(AT_132)]]);
   });
 });

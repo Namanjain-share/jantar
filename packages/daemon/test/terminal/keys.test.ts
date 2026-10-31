@@ -12,6 +12,8 @@ import { createFakeExec, createTestContext, type ExecCall } from '../../src/core
 import {
   CLEAR_MAX_ROWS,
   CLEAR_ROWS_REASON,
+  EXPECT_PARTS_MAX,
+  EXPECT_PART_MIN,
   KEY_BYTES,
   MAX_KEY_REPEAT,
   clearCtrlUCount,
@@ -20,7 +22,7 @@ import {
   pressKeyImpl,
 } from '../../src/terminal/terminal-app/keys.js';
 import { TERMINAL_APP_SCRIPT, TerminalAppBackend, type TerminalAppHost } from '../../src/terminal/terminal-app/index.js';
-import { CHANGED } from '../../src/terminal/terminal-app/script.js';
+import { CHANGED, TYPEIF_GAP_CHARS, typeifFinds } from '../../src/terminal/terminal-app/script.js';
 
 const TTY = '/dev/ttys003';
 const pane: Pane = { id: 'terminal-app:ttys003', backend: 'terminal-app', handle: '4013:2', tty: TTY, foreground: 'claude' };
@@ -277,5 +279,77 @@ describe('pressKey text rules (v0.4.2, D4)', () => {
       `${'\u001b[B'.repeat(3)}${'w'.repeat(700)}`,
       `${'\u001b[B'.repeat(3)}red, then blue. 3 coats; mail me@home is fine`,
     ]);
+  });
+});
+
+describe("compare-and-type in parts (v0.5.2: around the time in the countdown Claude draws in an unattended ask)", () => {
+  const ABOVE = ' Bash command · from the "night-check" workflow\n │ rm -rf $T/out/*\n ⚠ Claude Code will automatically block this request in ';
+  const BELOW = ', to avoid holding up an\n unattended session\n\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. No';
+
+  it('several parts go after the bytes in argv, in order, in one typeif write; a list of one is the single text', async () => {
+    const { b, exec, typed } = ifRig();
+    expect(await b.pressKey(pane, 'down', { expect: [ABOVE, BELOW] })).toEqual({ ok: true });
+    expect(await b.pressKey(pane, 'enter', { expect: [BLOCK] })).toEqual({ ok: true });
+    const osa = exec.calls.filter((c) => c.file.endsWith('/osascript'));
+    expect(osa.map((c) => c.args)).toEqual([
+      ['-', TTY, 'typeif', '\u001b[B', ABOVE, BELOW],
+      ['-', TTY, 'typeif', '', BLOCK],
+    ]);
+    for (const c of osa) expect(c.opts.input).toBe(TERMINAL_APP_SCRIPT);
+    expect(typed).toEqual([]);
+  });
+
+  it(`refuses before osascript runs: no part, an empty part, a part holding NUL, more than ${EXPECT_PARTS_MAX} parts, or one of several with fewer than ${EXPECT_PART_MIN} characters but white space`, async () => {
+    const { b, exec } = ifRig();
+    const short = ` ${'x'.repeat(EXPECT_PART_MIN - 1)}\n\n`;
+    const bad: unknown[] = [[], [ABOVE, ''], [ABOVE, 'a\u0000b'.repeat(EXPECT_PART_MIN)], Array.from({ length: EXPECT_PARTS_MAX + 1 }, () => ABOVE), [ABOVE, short], [short, BELOW], [ABOVE, 42]];
+    for (const expectParts of bad) {
+      expect(await b.pressKey(pane, 'down', { expect: expectParts as string[] }), JSON.stringify(expectParts)).toMatchObject({ ok: false, code: 'unsupported' });
+    }
+    expect(exec.calls).toEqual([]);
+    // A single text keeps the old rule (any length but empty): the dialog's whole block, the keypad's lines.
+    expect(await b.pressKey(pane, 'enter', { expect: 'x' })).toEqual({ ok: true });
+    expect(await b.pressKey(pane, 'enter', { expect: [ABOVE, ` ${'x'.repeat(EXPECT_PART_MIN)}`] })).toEqual({ ok: true });
+  });
+
+  it(`typeifFinds decides as the script does: one text anywhere; several in order, only 1 to ${TYPEIF_GAP_CHARS} digits and colons between two`, () => {
+    const tab = `older output\n${ABOVE}1:33${BELOW}\n────`;
+    expect(typeifFinds(tab, BLOCK)).toBe(false);
+    expect(typeifFinds(tab, ABOVE)).toBe(true);
+    expect(typeifFinds(tab, [ABOVE, BELOW])).toBe(true);
+    expect(typeifFinds(tab, [BELOW, ABOVE])).toBe(false);
+    expect(typeifFinds(tab, [ABOVE.toUpperCase(), BELOW])).toBe(false);
+    expect(typeifFinds(tab, [ABOVE, BELOW.replace('❯ 1.', '❯  1.')])).toBe(false);
+    // A time between two parts: any M:SS, 10:00, the N of "about N minutes".
+    for (const time of ['1:32', '0:05', '0:00', '10:00', '2', '45']) expect(typeifFinds(`${ABOVE}${time}${BELOW}`, [ABOVE, BELOW]), time).toBe(true);
+    // Nothing between them, more than the gap holds, or anything but digits and colons: refused.
+    const not = ['', '101:33', '1:33:00', '1 33', '1:3a', ' 1:33', '1:33\n', '１:33', '1：33', 'soon', '1:33\n │ rm -rf $HOME/demo\n', 'line 1\nline 2'];
+    for (const gap of not) expect(typeifFinds(`${ABOVE}${gap}${BELOW}`, [ABOVE, BELOW]), JSON.stringify(gap)).toBe(false);
+    // CRLF line ends stay inside the parts, as Terminal gave them.
+    expect(typeifFinds(`${ABOVE}1:32${BELOW}`.replace(/\n/gu, '\r\n'), [ABOVE.replace(/\n/gu, '\r\n'), BELOW.replace(/\n/gu, '\r\n')])).toBe(true);
+    // The first part's earliest place counts; a later copy of it does not move the search back.
+    expect(typeifFinds(`${BELOW}\n${ABOVE}x`, [ABOVE, BELOW])).toBe(false);
+  });
+
+  it('the script: one text is checked with `contains` as before; several go through its own handler, outside the tell block', () => {
+    expect(TERMINAL_APP_SCRIPT).toContain('set stillThere to (seen contains (item 4 of argv))');
+    expect(TERMINAL_APP_SCRIPT).toContain('set stillThere to my inOrder(seen, items 4 thru -1 of argv)');
+    expect(TERMINAL_APP_SCRIPT).toMatch(/^on inOrder\(seen, parts\)$/mu);
+    // The gap between two parts: 1 to TYPEIF_GAP_CHARS characters (`pos` is 2 to that plus one), each a digit or
+    // a colon by its Unicode id (48 to 58), never a count of paragraphs.
+    expect(TERMINAL_APP_SCRIPT).toContain(`if pos < 2 or pos > ${TYPEIF_GAP_CHARS + 1} then return false`);
+    expect(TERMINAL_APP_SCRIPT).toContain('if not my isTime(text 1 thru (pos - 1) of restText) then return false');
+    expect(TERMINAL_APP_SCRIPT).toMatch(/^on isTime\(gap\)$/mu);
+    expect(TERMINAL_APP_SCRIPT).toContain('set ids to id of gap');
+    expect(TERMINAL_APP_SCRIPT).toContain('if n < 48 or n > 58 then return false');
+    expect('0123456789:'.split('').map((c) => c.charCodeAt(0))).toEqual(Array.from({ length: 11 }, (_, i) => 48 + i));
+    expect(TERMINAL_APP_SCRIPT).not.toContain('paragraphs');
+    // What `offset` found is compared with the part again: an `offset` that ignored case could only refuse.
+    expect(TERMINAL_APP_SCRIPT).toContain('if (text pos thru (pos + (length of want) - 1) of restText) is not want then set pos to 0');
+    // The handler compares with the same considering clause, and the script stays a constant.
+    expect(TERMINAL_APP_SCRIPT.match(/considering case, diacriticals, hyphens, punctuation and white space/gu)).toHaveLength(2);
+    expect(TERMINAL_APP_SCRIPT).not.toContain('${');
+    expect(TERMINAL_APP_SCRIPT.indexOf('on inOrder')).toBeGreaterThan(TERMINAL_APP_SCRIPT.indexOf('end run'));
+    expect(TERMINAL_APP_SCRIPT.indexOf('on isTime')).toBeGreaterThan(TERMINAL_APP_SCRIPT.indexOf('end inOrder'));
   });
 });

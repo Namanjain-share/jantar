@@ -207,6 +207,31 @@ export const V042_LIMITS = Object.freeze({
 export const DIALOG_TEXT_MIN = 2;
 export const DIALOG_TEXT_MAX = 700;
 
+/**
+ * v0.5.2: the time in Claude Code's auto-block countdown, drawn inside an
+ * unattended agent's ask (a workflow's or a subagent's): `⚠ Claude Code will
+ * automatically block this request in 1:33, to avoid holding up an
+ * unattended session`. Only what 2.1.316's source draws there, case
+ * considered: `M:SS` while it ticks every second, or its display that
+ * doesn't tick, "about N minute(s)" and "about N second(s)".
+ * TerminalDialog.blocksIn carries it, as drawn.
+ */
+export const DIALOG_COUNTDOWN_TIME = /^(?:\d{1,2}:\d{2}|about \d{1,3} (?:minute|second)s?)$/u;
+
+/**
+ * v0.5.2: under this many seconds left on that countdown the daemon answers
+ * no tap (409, nothing typed) and the phone locks the rows. At 0:00 Claude
+ * blocks the request by itself and draws the next queued ask at once, and
+ * one write plus the after-reads take about this long (a row that takes
+ * text, about twice: its guarded lone Return starts them again). The dock
+ * keeps a copy of this and of DIALOG_COUNTDOWN_LATE in its own lazy chunk
+ * (TermDialog.tsx), so the web app's first load doesn't carry them; a test
+ * holds them equal.
+ */
+export const DIALOG_COUNTDOWN_MIN_S = 5;
+/** The 409's reason under that margin (the dialog and keypad routes); the dock says the same. */
+export const DIALOG_COUNTDOWN_LATE = 'Claude blocks this at the Mac in a moment. Answer it there.';
+
 /** Paths of the screen path that wait for a real-Mac spike; each stays off until its spike passes. */
 export interface DialogGates {
   /** A row above the highlighted one (spike SP14). */

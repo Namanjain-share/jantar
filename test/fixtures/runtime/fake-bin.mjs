@@ -15,7 +15,7 @@
 //   2. `cswap run [flags] [<N>] -- ... -p ...` hands over to fake-claude.mjs (it logs to
 //      calls/claude.jsonl), the way cswap 0.26 hands over (cswapHandover below);
 //   3. the built-in behaviour for cswap, ps, lsof, screencapture and sips, and osascript's
-//      `typeif` mode (below);
+//      `typeif` mode, one expected text or several in order (below);
 //   4. exit 0 with no output.
 // The `claude` wrapper goes straight to fake-claude.mjs, which has its own rules.
 import { createHash } from 'node:crypto';
@@ -310,24 +310,49 @@ function builtinSips(root, args) {
 
 const BUILTINS = { cswap: builtinCswap, ps: builtinPs, lsof: builtinLsof, screencapture: builtinScreencapture, sips: builtinSips };
 
+/** typeif in parts: what may lie between two, 1 to 5 digits and colons (script.ts TYPEIF_GAP_CHARS, `isTime`). */
+const TYPEIF_GAP = /^[0-9:]{1,5}$/u;
+
 /**
- * osascript `- <tty> typeif <bytes> <expected>` (v0.4.2 compare-and-type,
- * packages/daemon/src/terminal/terminal-app/script.ts), when no rule names it:
- * decided the way the script decides it. The tab's text is what the
- * `contents` rule answers for that tty at this moment (a `seq` moves on, as
- * for any read); it must still contain `expected` exactly (case, spaces and
- * line ends count), or the answer is __JANTAR_CHANGED__ and nothing is typed.
+ * The script's typeif decision for the tab's text `seen` (script.ts
+ * `typeifFinds`): one expected text anywhere in it; several (v0.5.2, the
+ * two parts of a dialog around the time in Claude's ticking countdown), each
+ * found after the one before, with only a time (TYPEIF_GAP) between two. An
+ * empty part is never found.
+ */
+function typeifFinds(seen, parts) {
+  if (!parts.length || parts.some((p) => !p)) return false;
+  if (parts.length === 1) return seen.includes(parts[0]);
+  let rest = seen;
+  for (const [k, want] of parts.entries()) {
+    const at = rest.indexOf(want);
+    if (at < 0) return false;
+    if (k > 0 && !TYPEIF_GAP.test(rest.slice(0, at))) return false;
+    rest = rest.slice(at + want.length);
+  }
+  return true;
+}
+
+/**
+ * osascript `- <tty> typeif <bytes> <expected> [<expected> ...]` (v0.4.2
+ * compare-and-type, packages/daemon/src/terminal/terminal-app/script.ts),
+ * when no rule names it: decided the way the script decides it. The tab's
+ * text is what the `contents` rule answers for that tty at this moment (a
+ * `seq` moves on, as for any read); it must still contain `expected` exactly
+ * (case, spaces and line ends count), or with several each in order
+ * (typeifFinds), or the answer is __JANTAR_CHANGED__ and nothing is typed.
  * Otherwise the `type` rule answers for the bytes (default "ok"). A missing
  * tab, or a `contents` rule that answers something else, is passed on.
  */
 async function osascriptTypeif(root, config, args, stdin) {
-  const [dash, tty, , bytes = '', expected = ''] = args;
+  const [dash, tty, , bytes = ''] = args;
+  const expected = args.slice(4);
   const read = await answerFromRules(root, 'osascript', config, [dash, tty, 'contents'], stdin);
   const out = read?.stdout ?? '';
   if (!read || (read.code ?? 0) !== 0 || !out.startsWith('ok\n')) return read || config.default || {};
   const afterRows = out.indexOf('\n', 3);
   const seen = afterRows < 0 ? '' : out.slice(afterRows + 1);
-  if (!expected || !seen.includes(expected)) return { stdout: '__JANTAR_CHANGED__\n' };
+  if (!typeifFinds(seen, expected)) return { stdout: '__JANTAR_CHANGED__\n' };
   return (await answerFromRules(root, 'osascript', config, [dash, tty, 'type', bytes], stdin)) || { stdout: 'ok\n' };
 }
 
