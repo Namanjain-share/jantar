@@ -5,7 +5,7 @@ import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as protocol from '@jantar/protocol';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ASYNC_EXIT_BUDGET_MS,
   HOOK_CLIENT_PATH,
@@ -80,6 +80,12 @@ interface TestServer {
   /** Resolves when a connection closes from the client side; value = whether a line came first. */
   closed: Promise<void>;
   onLine?: (line: string, sock: Socket) => void;
+  /**
+   * Resolves once `n` lines have come in. A client that does not wait for a
+   * reply writes its line and exits; the line is already in the socket, but
+   * this process may read it after the child's 'close' event.
+   */
+  received(n: number): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -92,6 +98,13 @@ async function startServer(handler: (line: string, sock: Socket) => void = (_l, 
     lines: [],
     connections: 0,
     closed: new Promise<void>((r) => (resolveClosed = r)),
+    received: (n) =>
+      vi.waitFor(
+        () => {
+          if (ts.lines.length < n) throw new Error(`${ts.lines.length} of ${n} lines came in`);
+        },
+        { timeout: 5000, interval: 5 },
+      ),
     async close() {
       for (const s of sockets) s.destroy();
       await new Promise<void>((r) => ts.server.close(() => r()));
@@ -202,6 +215,7 @@ describe('forwarding async events', () => {
       });
       expect(r.code).toBe(0);
       expect(r.stdout).toBe('');
+      await srv.received(1);
       expect(srv.lines).toHaveLength(1);
       const sent = JSON.parse(srv.lines[0] as string);
       const parsed = protocol.HookPayloadSchema.parse(sent);
@@ -235,6 +249,7 @@ describe('forwarding async events', () => {
     try {
       const r = await runHook([], stopEvent());
       expect(r.code).toBe(0);
+      await srv.received(1);
       const tag = JSON.parse(srv.lines[0] as string)[HOOK_TAG];
       expect(Object.keys(tag).sort()).toEqual(['hookVersion', 'mono', 'ppid', 'ts', 'v', 'wait']);
     } finally {
@@ -246,7 +261,9 @@ describe('forwarding async events', () => {
     const srv = await startServer();
     try {
       await runHook([], stopEvent({ n: 1 }));
+      await srv.received(1);
       await runHook([], stopEvent({ n: 2 }));
+      await srv.received(2);
       const [a, b] = srv.lines.map((l) => JSON.parse(l));
       expect(BigInt(a[HOOK_TAG].mono) < BigInt(b[HOOK_TAG].mono)).toBe(true);
     } finally {
@@ -260,6 +277,7 @@ describe('forwarding async events', () => {
       const big = 'x'.repeat(MAX_HOOK_LINE_BYTES + 1000);
       const r1 = await runHook([], JSON.stringify({ hook_event_name: 'PostToolUse', session_id: 's', tool_name: 'Read', tool_input: { file_path: '/a' }, tool_response: { content: big } }));
       expect(r1.code).toBe(0);
+      await srv.received(1);
       expect(srv.lines).toHaveLength(1);
       const sent = JSON.parse(srv.lines[0] as string);
       expect(sent.tool_response).toBeUndefined();
@@ -336,6 +354,7 @@ describe('blocking PermissionRequest (--wait)', () => {
       expect(r.code).toBe(0);
       expect(r.stdout).toBe('');
       expect(r.ms).toBeLessThan(perfBudgetMs(ASYNC_EXIT_BUDGET_MS));
+      await srv.received(1);
       const sent = JSON.parse(srv.lines[0] as string);
       expect(sent.agent_id).toBe('agent-synthetic-1');
       expect(sent[HOOK_TAG].wait).toBe(true);
@@ -444,6 +463,7 @@ describe('the installed, extensionless copy', () => {
         child.stdin.end(stopEvent());
       });
       expect(code).toBe(0);
+      await own.received(1);
       expect(own.lines).toHaveLength(1);
       expect(fallback.lines).toHaveLength(0);
     } finally {
@@ -463,6 +483,7 @@ describe('the installed, extensionless copy', () => {
         child.stdin.end(stopEvent());
       });
       expect(code).toBe(0);
+      await srv.received(1);
       expect(srv.lines).toHaveLength(1);
     } finally {
       await srv.close();
