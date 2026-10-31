@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { chmod, lstat, mkdir, readFile, readdir, realpath, stat, symlink, writeFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
+import { perfBudgetMs } from '@jantar/fixtures';
 import { HOOK_CLIENT_PATH } from '@jantar/hook';
 import { HOOK_EVENT_NAMES } from '@jantar/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -403,7 +404,7 @@ describe('status and the client file', () => {
       child.stdin.end('{"hook_event_name":"Stop","session_id":"s"}');
     });
     expect(code).toBe(0);
-    expect(Date.now() - started).toBeLessThan(1500);
+    expect(Date.now() - started).toBeLessThan(perfBudgetMs(1500));
   });
 });
 

@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MEETING_MARKER, MEETING_T0, extLinesBody, extOpenBody, extShotBody, makeJpeg, markerJpeg, transcriptLines } from '@jantar/fixtures';
+import { MEETING_MARKER, MEETING_T0, extLinesBody, extOpenBody, extShotBody, makeJpeg, markerJpeg, perfBudgetMs, transcriptLines } from '@jantar/fixtures';
 import {
   ExtInfoSchema,
   IdReplySchema,
@@ -375,6 +375,7 @@ describe('MF7: ceilings', () => {
 });
 
 describe('performance gates (spec 9.5): server time through the pipeline, body parsing, checks and the reply included', () => {
+  // Each limit is for a person's Mac; perfBudgetMs gives shared CI runners the one CI allowance.
   /** The median of five requests, in ms; each must answer 200. */
   async function median(send: (i: number) => Promise<{ statusCode: number; body: string }>): Promise<number> {
     const times: number[] = [];
@@ -397,7 +398,7 @@ describe('performance gates (spec 9.5): server time through the pipeline, body p
     expect((await post('', extOpenBody())).statusCode).toBe(200);
     const bodies = Array.from({ length: 5 }, (_, i) => JSON.stringify({ lines: transcriptLines(200, { nonce: `p${i}`, chars: 240 }) }));
     expect(Math.max(...bodies.map((b) => b.length))).toBeGreaterThan(60 * 1024);
-    expect(await median((i) => postJson(ext.key, '/lines', bodies[i] ?? ''))).toBeLessThanOrEqual(20);
+    expect(await median((i) => postJson(ext.key, '/lines', bodies[i] ?? ''))).toBeLessThanOrEqual(perfBudgetMs(20));
   });
 
   it('extMeetingShot with a 1 MB JPEG: at most 80 ms', async () => {
@@ -405,7 +406,7 @@ describe('performance gates (spec 9.5): server time through the pipeline, body p
     expect((await post('', extOpenBody())).statusCode).toBe(200);
     const jpeg = makeJpeg(640, 480, { padBytes: 1024 * 1024 });
     const bodies = Array.from({ length: 5 }, () => JSON.stringify(extShotBody(jpeg)));
-    expect(await median((i) => postJson(ext.key, '/shots', bodies[i] ?? ''))).toBeLessThanOrEqual(80);
+    expect(await median((i) => postJson(ext.key, '/shots', bodies[i] ?? ''))).toBeLessThanOrEqual(perfBudgetMs(80));
   });
 
   it('GET /v1/meetings/:id with 5,000 lines of 400 characters and 100 shots: at most 80 ms', async () => {
@@ -416,7 +417,7 @@ describe('performance gates (spec 9.5): server time through the pipeline, body p
     const get = () => api.tcp.inject({ method: 'GET', url: `/v1/meetings/${id}`, headers: h(phone.cookie) });
     const detail = MeetingDetailSchema.parse((await get()).json());
     expect([detail.lines.length, detail.shots.length]).toEqual([5_000, 100]);
-    expect(await median(get)).toBeLessThanOrEqual(80);
+    expect(await median(get)).toBeLessThanOrEqual(perfBudgetMs(80));
   });
 
   it('GET /v1/meetings?q= over 1,000 meetings and 200,000 lines of 400 characters: at most 200 ms', async () => {
@@ -428,6 +429,6 @@ describe('performance gates (spec 9.5): server time through the pipeline, body p
     }
     const search = () => api.tcp.inject({ method: 'GET', url: '/v1/meetings?q=zebra-crossing', headers: h(phone.cookie) });
     expect(MeetingsListSchema.parse((await search()).json()).meetings).toEqual([]);
-    expect(await median(search)).toBeLessThanOrEqual(200);
+    expect(await median(search)).toBeLessThanOrEqual(perfBudgetMs(200));
   }, 300_000);
 });

@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { lstat, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
+import { perfBudgetMs } from '@jantar/fixtures';
 import { HOOK_CLIENT_PATH } from '@jantar/hook';
 import type { Actor } from '../../src/contracts.js';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -636,7 +637,7 @@ describe('end to end with the real hook client', () => {
     const sub = await runClient(['--wait'], { hook_event_name: 'PermissionRequest', session_id: SID, tool_name: 'Bash', tool_input: BASH_INPUT, agent_id: 'agent-1' }, h.ctx.paths.home);
     expect(sub.code).toBe(0);
     expect(sub.stdout).toBe('');
-    expect(sub.ms).toBeLessThan(1000);
+    expect(sub.ms).toBeLessThan(perfBudgetMs(1000));
     await waitFor(() => h!.of('pending.opened').length === 1, 3000, 'subagent card');
     expect(h.of('pending.opened')[0]?.data.pending.kind).toBe('subagent-info');
 

@@ -54,7 +54,7 @@ import { rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { BrowserContext, Page } from 'playwright-core';
-import { MEETING_MARKER, projectBody } from '@jantar/fixtures';
+import { MEETING_MARKER, perfBudgetMs, projectBody } from '@jantar/fixtures';
 import { DEVICE_COOKIE, EXTENSION_ID, type MeetingDetail, type MeetingsList, type MeetingsStatus, type PairStartResponse, type TodosResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, defaultDeps, main, memoryIo, type CtlClient } from '../../packages/cli/src/index.js';
 import { FIXTURE_SCRIPT_PATH, PAGE_BACKGROUND, STRICT_CSP, fixtureDriverScript, fixturePageHtml, type FixturePageName } from '../../packages/extension/test/fixtures/pages.js';
@@ -305,7 +305,7 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
     // Their times: when each was first seen, in order, within this test.
     const times = m.lines.map((l) => Date.parse(l.at));
     expect(times[0]!).toBeLessThanOrEqual(times[1]!);
-    expect(Date.now() - times[0]!).toBeLessThan(60_000);
+    expect(Date.now() - times[0]!).toBeLessThan(perfBudgetMs(60_000));
     // Settled: nothing more arrives, and no line came twice.
     await meet.waitForTimeout(2_000);
     expect(said(await detail(first))).toEqual(want);

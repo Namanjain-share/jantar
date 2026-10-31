@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LIFE_MARKER, foodBody } from '@jantar/fixtures';
+import { LIFE_MARKER, foodBody, perfBudgetMs } from '@jantar/fixtures';
 import { shiftDay } from '@jantar/life-core';
 import { FoodDaySchema, KCAL_TARGET_DEFAULT, LIFE_LIMITS, LifeIdSchema } from '@jantar/protocol';
 import type { Actor, FoodModule, LifeCore, LifeService } from '../../src/contracts.js';
@@ -243,7 +243,7 @@ describe('GET /v1/food at size (spec 9.6)', () => {
       expect(value(food.day()).entries).toHaveLength(50);
       times.push(performance.now() - t0);
     }
-    expect(times.sort((a, b) => a - b)[2]).toBeLessThanOrEqual(30);
+    expect(times.sort((a, b) => a - b)[2]).toBeLessThanOrEqual(perfBudgetMs(30));
   });
 });
 

@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { perfBudgetMs } from '@jantar/fixtures';
 import type { FileRefusal, OpenedFile } from '../../src/contracts.js';
 import { REL_MAX_BYTES, inside, isRefusal, parseRel } from '../../src/files/policy.js';
 import { fsx } from '../../src/sources/lib/fsx.js';
@@ -304,7 +305,7 @@ describe('F4: the swap race', () => {
 });
 
 describe('F5: FIFOs and devices never hang the daemon', () => {
-  it('a FIFO returns at once with not_file', { timeout: 2000 }, async () => {
+  it('a FIFO returns at once with not_file', { timeout: perfBudgetMs(2000) }, async () => {
     env = fpEnv();
     const fifo = join(env.proj, 'pipe');
     execFileSync('/usr/bin/mkfifo', [fifo]);
@@ -313,13 +314,13 @@ describe('F5: FIFOs and devices never hang the daemon', () => {
     expect(refusedWith(await env.files.text({ root: 'r.proj', path: 'pipe', offset: 0, max: 1024 }, { kind: 'cli' }))).toBe('not_file');
     expect(refusedWith(await env.files.raw({ root: 'r.proj', path: 'pipe' }, { kind: 'cli' }))).toBe('not_file');
     expect(refusedWith(await env.files.stat({ root: 'r.proj', path: 'pipe' }, { kind: 'cli' }))).toBe('not_file');
-    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(Date.now() - t0).toBeLessThan(perfBudgetMs(1000));
     const dir = await env.files.policy.openDir('r.proj', '');
     if (isRefusal(dir)) throw new Error(dir.refused);
     expect(dir.entries.find((e) => e.name === 'pipe')?.type).toBe('other');
   });
 
-  it('a link to /dev/zero is refused', { timeout: 2000 }, async () => {
+  it('a link to /dev/zero is refused', { timeout: perfBudgetMs(2000) }, async () => {
     env = fpEnv();
     env.link('/dev/zero', join(env.proj, 'zero'));
     env.link('/dev/random', join(env.proj, 'random.txt'));

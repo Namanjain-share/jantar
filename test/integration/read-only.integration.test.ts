@@ -5,7 +5,7 @@
  * scripted terminal and the fake osascript must never be touched.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DEFAULT_LIVE_SIDS } from '@jantar/fixtures';
+import { DEFAULT_LIVE_SIDS, perfBudgetMs } from '@jantar/fixtures';
 import {
   DEVICE_COOKIE,
   type PairStartResponse,
@@ -119,7 +119,7 @@ describe('jantard --read-only --no-terminal', () => {
     try {
       // "no decision" at once: Claude falls back to asking in the terminal
       expect(await conn.reply).toEqual({ v: 1, output: null });
-      expect(Date.now() - t0).toBeLessThan(5000);
+      expect(Date.now() - t0).toBeLessThan(perfBudgetMs(5000));
       const session = await eventually(async () => {
         const r = await callDaemon<SessionsResponse>(ctl, 'GET', '/v1/sessions');
         const x = r.sessions.find((y) => y.sid === s.sid);

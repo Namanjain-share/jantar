@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { INTEL_MAX_ITEMS, IntelListResponseSchema, type IntelListQuery } from '@jantar/protocol';
-import { intelRecord } from '@jantar/fixtures';
+import { intelRecord, perfBudgetMs } from '@jantar/fixtures';
 import { mapRecord, type MappedRecord } from '../../src/intel/map.js';
 import { Shelf, urlKey } from '../../src/intel/shelf.js';
 
@@ -193,6 +193,6 @@ describe('spec 9.6: a full shelf (INTEL_MAX_ITEMS)', () => {
       times.push(performance.now() - t0);
       expect(r.items.length).toBeLessThanOrEqual(100);
     }
-    expect(Math.max(...times), times.map((t) => t.toFixed(1)).join(' ')).toBeLessThan(100);
+    expect(Math.max(...times), times.map((t) => t.toFixed(1)).join(' ')).toBeLessThan(perfBudgetMs(100));
   });
 });

@@ -8,6 +8,7 @@
  */
 import type { LineUpsert } from '@jantar/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { perfBudgetMs } from '@jantar/fixtures';
 import { meetAdapter } from '../../src/content/adapters/meet.js';
 import { teamsAdapter } from '../../src/content/adapters/teams.js';
 import type { Block } from '../../src/content/adapters/types.js';
@@ -18,8 +19,8 @@ import { buildMeet, meetUrl } from '../fixtures/meet.js';
 import { SCRIPTS, type MutationScript } from '../fixtures/scripts.js';
 import { MEETING_MARKER, goTo, watchConsole } from './chrome.js';
 
-/** Spec 9.5's median budget is for a person's Mac; shared CI runners are slower and noisier, so CI allows four times as much. */
-const SCAN_BUDGET_MS = process.env.CI ? 12 : 3;
+/** Spec 9.5's median budget, 3 ms on a person's Mac; perfBudgetMs gives shared CI runners the one CI allowance. */
+const SCAN_BUDGET_MS = perfBudgetMs(3);
 
 const T0 = Date.parse('2026-10-30T10:00:00.000Z');
 const LINE_ID = /^[A-Za-z0-9_-]{1,40}$/;

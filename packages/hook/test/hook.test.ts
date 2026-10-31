@@ -19,6 +19,7 @@ import {
   SKIP_HOOKS_ENV,
   WAIT_FLAG,
 } from '../src/index.js';
+import { perfBudgetMs } from './perf.js';
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -334,7 +335,7 @@ describe('blocking PermissionRequest (--wait)', () => {
       const r = await runHook([WAIT_FLAG], permissionRequest({ agent_id: 'agent-synthetic-1', agent_type: 'general-purpose' }));
       expect(r.code).toBe(0);
       expect(r.stdout).toBe('');
-      expect(r.ms).toBeLessThan(ASYNC_EXIT_BUDGET_MS);
+      expect(r.ms).toBeLessThan(perfBudgetMs(ASYNC_EXIT_BUDGET_MS));
       const sent = JSON.parse(srv.lines[0] as string);
       expect(sent.agent_id).toBe('agent-synthetic-1');
       expect(sent[HOOK_TAG].wait).toBe(true);
@@ -365,7 +366,7 @@ describe('failing open', () => {
       expect(r.code).toBe(0);
       expect(r.stdout).toBe('');
       expect(r.stderr).toBe('');
-      expect(r.ms).toBeLessThan(ASYNC_EXIT_BUDGET_MS);
+      expect(r.ms).toBeLessThan(perfBudgetMs(ASYNC_EXIT_BUDGET_MS));
     }
   });
 
@@ -376,7 +377,7 @@ describe('failing open', () => {
       const r = await runHook(args, permissionRequest());
       expect(r.code).toBe(0);
       expect(r.stdout).toBe('');
-      expect(r.ms).toBeLessThan(ASYNC_EXIT_BUDGET_MS);
+      expect(r.ms).toBeLessThan(perfBudgetMs(ASYNC_EXIT_BUDGET_MS));
     }
   });
 
@@ -387,7 +388,7 @@ describe('failing open', () => {
         const r = await runHook(args, stopEvent(), {}, { keepStdinOpen: true });
         expect(r.code).toBe(0);
         expect(r.stdout).toBe('');
-        expect(r.ms).toBeLessThan(ASYNC_EXIT_BUDGET_MS + 200);
+        expect(r.ms).toBeLessThan(perfBudgetMs(ASYNC_EXIT_BUDGET_MS + 200));
       }
       expect(srv.connections).toBe(0);
     } finally {
@@ -485,7 +486,7 @@ describe('the installed, extensionless copy', () => {
         expect(JSON.parse(r.stdout)).toEqual(ALLOW);
         const down = await runHook([], stopEvent(), { JANTAR_HOME: join(dir, 'missing') }, { client });
         expect(down.code).toBe(0);
-        expect(down.ms).toBeLessThan(ASYNC_EXIT_BUDGET_MS);
+        expect(down.ms).toBeLessThan(perfBudgetMs(ASYNC_EXIT_BUDGET_MS));
       } finally {
         await srv.close();
       }
