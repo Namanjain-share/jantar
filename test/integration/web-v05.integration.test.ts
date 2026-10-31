@@ -188,8 +188,15 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
 
     const { page, watch } = pages.phone!;
     await open(page, '/meetings');
-    await page.getByRole('button', { name: 'Show more' }).click();
-    await page.getByText(`Example older call ${EXTRA}`).waitFor();
+    // The daemon holds an open's time to the last five minutes, so the older calls list in the order they were
+    // made: call 1 is the oldest, past the first page. Exact: the name's own text, not a row's name and time run
+    // together ("Example older call 1" + "12:05" reads "Example older call 112:05").
+    const oldest = page.getByText('Example older call 1', { exact: true });
+    const more = page.getByRole('button', { name: 'Show more' });
+    await more.waitFor();
+    expect(await oldest.count()).toBe(0);
+    await more.click();
+    await oldest.waitFor();
     await check(page, watch, 'after Show more');
 
     await page.getByRole('group', { name: 'Filter by project' }).getByRole('button', { name: 'Example launch' }).click();
