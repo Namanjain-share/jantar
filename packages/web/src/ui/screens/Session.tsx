@@ -494,6 +494,8 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       onShowOnMac={() => void showOnMac()}
       showOnMacBusy={focusing}
       canShowOnMac={!ended && raisable}
+      // v0.6: a Mac server's window is shown there ("Show on mini-1"); a tmux or Windows server has none to show.
+      {...(machine !== null ? { showOn: raisable ? machine : null } : {})}
       onBack={() => navigate('/')}
       back={frame === 'tablet'}
       files={filesTab}
@@ -525,6 +527,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       sid={sid}
       phone={phone}
       {...(raisable ? { onShowOnMac: () => void showOnMac() } : {})}
+      {...(raisable && machine ? { showOn: machine } : {})}
       read={screenRead}
       onShown={setPeek}
       keys={features.controls && typable && !gone && !ended && !target && !dock}

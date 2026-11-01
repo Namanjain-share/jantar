@@ -26,7 +26,7 @@
 import { ArrowRightIcon, CheckIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { LaunchJob } from '@jantar/protocol';
+import { machineName, machineOf, type LaunchJob } from '@jantar/protocol';
 import { errorText, isApiError } from '../../../lib/api.js';
 import { sessionViewPath } from '../../../lib/router.js';
 import { useApp, useDeps, useNavigate, useToast } from '../../context.js';
@@ -109,6 +109,10 @@ export function Receipt({ id, phone, retryTo, aside }: ReceiptProps) {
   const live = useApp((s) => (Object.hasOwn(s.state.launches, id) ? s.state.launches[id] : undefined));
   const sessions = useApp((s) => s.state.sessions);
   const offline = useApp((s) => s.conn.status === 'offline');
+  // v0.6: a launch on a paired server shows its window there (a Mac server), or has none to show (tmux, Windows).
+  const node = live?.node;
+  const where = useApp((s) => (node === undefined ? undefined : machineName(s.state, node)));
+  const raisable = useApp((s) => node === undefined || machineOf(s.state, node)?.backend === 'terminal-app');
   const got = useRequest(id, () => api.launchGet(id));
   const [focusing, setFocusing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -162,19 +166,20 @@ export function Receipt({ id, phone, retryTo, aside }: ReceiptProps) {
     setActionError(null);
     try {
       await api.focus(job.sid);
-      toast('Brought the window to the front on the Mac', 'ok');
+      toast(`Brought the window to the front on ${where ?? 'the Mac'}`, 'ok');
     } catch (e) {
       setActionError(errorText(e));
     } finally {
       setFocusing(false);
     }
   };
-  const showButton = (variant: 'primary' | 'outline') => (
-    <Button key="show" variant={variant} size={size} disabled={offline || focusing} onClick={() => void showOnMac()}>
-      {focusing ? <Spinner label="Asking the Mac" /> : null}
-      Show on Mac
-    </Button>
-  );
+  const showButton = (variant: 'primary' | 'outline') =>
+    raisable ? (
+      <Button key="show" variant={variant} size={size} disabled={offline || focusing} onClick={() => void showOnMac()}>
+        {focusing ? <Spinner label={`Asking ${where ?? 'the Mac'}`} /> : null}
+        Show on {where ?? 'Mac'}
+      </Button>
+    ) : null;
   const openButton = (variant: 'primary' | 'outline') => (
     <Button key="open" variant={variant} size={size} onClick={() => navigate(sessionPath)}>
       Open session

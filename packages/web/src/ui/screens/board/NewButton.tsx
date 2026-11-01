@@ -14,7 +14,7 @@ import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { useNavigate } from '../../context.js';
 import { Button } from '../../kit/Button.js';
-import { useFeatures } from '../../shell/data.js';
+import { useCanStart } from '../new/machines.js';
 import { useFrame } from '../../shell/layout.js';
 
 export function NewButton({
@@ -27,7 +27,7 @@ export function NewButton({
 }) {
   const navigate = useNavigate();
   const phone = useFrame() === 'phone';
-  const on = useFeatures().launch;
+  const on = useCanStart();
   if (!on) return null;
   return (
     <Button size={phone ? 'lg' : 'md'} className={className} aria-label="New session" onClick={() => navigate('/new')}>
@@ -38,7 +38,7 @@ export function NewButton({
 }
 
 export function WithNewButton({ ground, children }: { ground: 'surface' | 'bg'; children: ReactNode }) {
-  const on = useFeatures().launch;
+  const on = useCanStart();
   if (!on) return <>{children}</>;
   return (
     <div className="flex flex-none">

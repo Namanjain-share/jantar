@@ -50,8 +50,8 @@ describe("a server's session", () => {
     expect(screen.queryByRole('button', { name: /Clear draft/ })).toBeNull();
     // Its account is its own: "work", not the Mac's.
     expect(document.body.textContent).toContain('work');
-    // No window to raise for a tmux pane.
-    expect((screen.getByRole('button', { name: 'Show on Mac' }) as HTMLButtonElement).disabled).toBe(true);
+    // No window to raise for a tmux pane: no Show on button at all.
+    expect(screen.queryByRole('button', { name: /^Show on/ })).toBeNull();
 
     // Sends stay keyed by the session: the Mac knows where it runs.
     fireEvent.change(prompt()!, { target: { value: 'run the tests' } });
@@ -111,12 +111,13 @@ describe("a server's session", () => {
     expect(api.getScreen).not.toHaveBeenCalled();
   });
 
-  it('on a Mac server: types there, and Show on Mac raises its window', async () => {
+  it('on a Mac server: types there, and Show on mini-1 raises its window', async () => {
     const api = fakeApi();
     open(SID.mac, api);
     expect(where()?.textContent).toBe('mini-1 · macOS · Terminal');
     expect(prompt()).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Show on Mac' }));
+    expect(screen.queryByRole('button', { name: 'Show on Mac' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show on mini-1' }));
     await waitFor(() => expect(api.focus).toHaveBeenCalledWith(SID.mac));
     expect(await screen.findByText('Brought the tab to the front on mini-1')).toBeTruthy();
   });

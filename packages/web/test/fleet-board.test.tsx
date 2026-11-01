@@ -110,6 +110,12 @@ describe('alerts from a machine', () => {
     const empty = emptyState();
     expect(deskAlerts({ ...empty, alerts: [alert('y')] }, '')[0]?.subject).toBe('web-app · fix login');
   });
+
+  it('the Alerts screen names the machine too', async () => {
+    renderApp({ path: '/alerts', state: fleetState({ alerts: [alert('x', { sid: SID.tmux, node: IDS.build1 }), alert('y')] }) });
+    expect(await screen.findByText('build-1 · api-server · fix-tests')).toBeTruthy();
+    expect(screen.getByText('web-app · fix login')).toBeTruthy();
+  });
 });
 
 describe('the Desk', () => {

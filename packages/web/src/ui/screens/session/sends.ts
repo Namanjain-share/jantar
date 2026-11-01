@@ -269,17 +269,19 @@ const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u;
  * or hold control characters (packages/daemon/src/writer/text.ts): say so
  * before sending, not after.
  */
-export function promptProblem(raw: string): string | null {
+export function promptProblem(raw: string, machine?: string | null): string | null {
+  // v0.6: a paired machine's session is run at that machine.
+  const at = machine ?? 'the Mac';
   const text = raw.trim();
   // As the daemon reads it (writer/text.ts): line ends made \n, then no other control character.
   if (CONTROL.test(text.replace(/\r\n?/g, '\n'))) return 'This text holds control characters, which could press keys of their own in the terminal. Take them out and try again.';
   if (text.startsWith('!')) {
-    return "A prompt that starts with ! runs as a shell command in Claude's bash mode, so it can't be proven sent from here. Run it at the Mac.";
+    return `A prompt that starts with ! runs as a shell command in Claude's bash mode, so it can't be proven sent from here. Run it at ${at}.`;
   }
   const m = /^(\/[A-Za-z][\w:.-]*)(?:\s|$)/.exec(text);
   const name = m?.[1];
   if (name === '/clear' || name === '/reset' || name === '/new') {
-    return `${name} starts a new transcript, so it can't be proven sent from here. Run it at the Mac.`;
+    return `${name} starts a new transcript, so it can't be proven sent from here. Run it at ${at}.`;
   }
   return null;
 }

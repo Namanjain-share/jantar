@@ -240,7 +240,7 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
   const accountReady = pinned === null && account === 'auto' ? autoId !== null : chosen?.selectable === true && !needsHeldOk;
   const nameTaken = fresh ? p.warnings.find((w) => w.kind === 'name') : undefined;
   // What the daemon would refuse at start (a leading !, /clear, control characters): said before the hold.
-  const promptBad = prompt.trim() ? promptProblem(prompt) : null;
+  const promptBad = prompt.trim() ? promptProblem(prompt, where?.name) : null;
   const ready = fresh && accountReady && nameOk && !nameTaken && !promptBad && !offline && !starting;
   const warnings = p.warnings.filter((w) => w.kind !== 'effort' && w.kind !== 'name' && !(w.kind === 'held' && chosen?.held));
 

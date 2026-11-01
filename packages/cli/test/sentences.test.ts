@@ -111,6 +111,8 @@ describe('the commands the daemon and the web app name', () => {
   beforeEach(async () => {
     home = await makeFakeHome({ sessions: [] });
     await mkdir(join(home.home, 'Desktop'));
+    // v0.6: New session's sentence for a paired server names ~/code.
+    await mkdir(join(home.home, 'code'));
   });
   afterEach(async () => {
     await home.cleanup();

@@ -21,7 +21,8 @@ import { routePath } from '../../lib/router.js';
 import { EmptyState } from '../kit/EmptyState.js';
 import { SkeletonRows } from '../kit/Skeleton.js';
 import { useApp, useDeps, useNavigate, useNow, useRoute } from '../context.js';
-import { launchesNeedingYou, useCeiling, useFeatures } from '../shell/data.js';
+import { launchesNeedingYou, useCeiling } from '../shell/data.js';
+import { useCanStart } from './new/machines.js';
 import { isSplit, useFrame } from '../shell/layout.js';
 import { wireStateCache } from './board/cache.js';
 import { DisplayLine } from './board/DisplayLine.js';
@@ -101,8 +102,9 @@ export function Board() {
   const ground = isSplit(frame) ? 'surface' : 'bg';
   const needs = groupRows(groups, 'needs');
   // A launch waiting on its trust card needs you too (U8): counted with the sessions, after them.
-  const { launch } = useFeatures();
-  const waitingLaunches = useMemo(() => (launch ? launchesNeedingYou(state) : []), [launch, state]);
+  // v0.6: a launch on a server needs you as one on the Mac does (each machine keeps its own starting switch).
+  const canStart = useCanStart();
+  const waitingLaunches = useMemo(() => (canStart ? launchesNeedingYou(state) : []), [canStart, state]);
   const working = groupRows(groups, 'working').length;
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
 

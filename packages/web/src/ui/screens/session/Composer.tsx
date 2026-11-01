@@ -91,7 +91,7 @@ export function Composer({
   const [mixed, setMixed] = useState<MixedPaste | null>(null);
   // Only while one of its chips is still in the composer and free (not sent, removed or taken by a send).
   const mixedShown = mixed && attachments.some((a) => mixed.keys.includes(a.key) && !a.sending) ? mixed : null;
-  const problem = promptProblem(draft);
+  const problem = promptProblem(draft, machine);
   const withFiles = problem ? null : filesProblem(draft, attachments);
   const canSend = (Boolean(draft.trim()) || attachments.length > 0) && !chipsWaiting(attachments) && !problem && !withFiles && !offline;
 

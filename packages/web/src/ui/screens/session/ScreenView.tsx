@@ -117,6 +117,7 @@ export function ScreenView({
   sid,
   phone,
   onShowOnMac,
+  showOn,
   labelledBy,
   id,
   read,
@@ -127,6 +128,8 @@ export function ScreenView({
   sid: string;
   phone: boolean;
   onShowOnMac?: () => void;
+  /** v0.6: the Mac server the link raises a window on ("Show on mini-1"); absent for the Mac. */
+  showOn?: string;
   labelledBy?: string;
   id?: string;
   /** v0.4.2: the session screen's one read; without it the tab reads on its own. */
@@ -166,7 +169,7 @@ export function ScreenView({
           <>
             <span aria-hidden="true">·</span>
             <button type="button" className={LINK} onClick={onShowOnMac}>
-              Show on Mac
+              Show on {showOn ?? 'Mac'}
             </button>
           </>
         ) : null}

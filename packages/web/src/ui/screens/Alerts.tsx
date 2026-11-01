@@ -31,6 +31,8 @@ const EMPTY_LINE = 'Limits, API errors, blocked tools and rejected prompts show 
 export function Alerts() {
   const alerts = useApp((s) => s.state.alerts);
   const sessions = useApp((s) => s.state.sessions);
+  // v0.6: a paired machine's alert names its machine first, as on the Board.
+  const nodes = useApp((s) => s.state.nodes);
   // First load with nothing cached yet: skeleton rows, not "No alerts".
   const first = useApp((s) => s.state.seq === 0 && s.conn.status !== 'offline');
   const navigate = useNavigate();
@@ -112,7 +114,7 @@ export function Alerts() {
             <Row
               key={a.id}
               alert={a}
-              subject={subjectOf(a, sessions)}
+              subject={subjectOf(a, sessions, nodes)}
               sentence={sentenceOf(a)}
               action={actionOf(a, sessions)}
               unseen={a.ts > seenAtOpen}

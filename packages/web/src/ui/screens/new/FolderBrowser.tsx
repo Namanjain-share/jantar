@@ -274,7 +274,12 @@ export function FolderBrowser(props: FolderBrowserProps) {
         {header}
         <EmptyState title="No folders to start in">
           <p>
-            Add folders on {where ? where.name : 'your Mac'}: <code className="type-mono text-ink">{CLI_NAME} folders add-root {where ? '~/code' : '~/Desktop'}</code>
+            Add folders on {where ? where.name : 'your Mac'}:{' '}
+            {where ? (
+              <code className="type-mono text-ink">{CLI_NAME} folders add-root ~/code</code>
+            ) : (
+              <code className="type-mono text-ink">{CLI_NAME} folders add-root ~/Desktop</code>
+            )}
           </p>
         </EmptyState>
       </div>

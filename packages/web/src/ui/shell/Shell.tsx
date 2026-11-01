@@ -26,6 +26,7 @@ import { Alerts } from '../screens/Alerts.js';
 import { Board } from '../screens/Board.js';
 import { Desk } from '../screens/Desk.js';
 import { Devices } from '../screens/Devices.js';
+import { useCanStart } from '../screens/new/machines.js';
 import { NotFound } from '../screens/NotFound.js';
 import { NotPaired, PairScreen } from '../screens/Pair.js';
 import { SessionScreen } from '../screens/Session.js';
@@ -75,6 +76,8 @@ export function Shell() {
   const ceiling = useCeiling();
   const newAlerts = useNewAlerts(route.name === 'alerts');
   const features = useFeatures();
+  // v0.6: New session is there while a session can start somewhere (the Mac, or a paired server).
+  const canStart = useCanStart();
   const single = useAccountsMode() === 'single';
   const [palette, setPalette] = useState(false);
   const [legend, setLegend] = useState(false);
@@ -181,7 +184,7 @@ export function Shell() {
       }
       case 'new': {
         const { name: _name, ...props } = route;
-        screen = features.launch ? (
+        screen = canStart ? (
           <Suspense fallback={<SkeletonRows count={5} caption="Opening New session…" />}>
             <NewSession {...props} />
           </Suspense>

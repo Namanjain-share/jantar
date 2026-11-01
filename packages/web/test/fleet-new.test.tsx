@@ -204,6 +204,20 @@ describe("with the Mac's own starting off", () => {
     for (const [q] of (api.foldersList as ReturnType<typeof vi.fn>).mock.calls) expect(q).toEqual({ root: 'r.1', node: IDS.build1 });
   });
 
+  it('the shell mounts New session for it, and the Board offers New and each server row its own "New session here"', async () => {
+    const api = launchApi({}, { 'r.1:': work });
+    const app = renderApp({ path: '/new', api, state: startingOn(IDS.build1) });
+    expect(await choices()).toEqual(['build-1']);
+    expect(screen.queryByText(/launch on/)).toBeNull();
+    app.unmount();
+    // Nowhere to start: the shell's "launch on" page, and no New on the Board.
+    const none = renderApp({ path: '/new', api: launchApi(), state: startingOn() });
+    expect(await screen.findByText(/launch on/)).toBeTruthy();
+    none.unmount();
+    renderApp({ path: '/', api: launchApi(), state: startingOn(IDS.build1) });
+    expect((await screen.findAllByRole('button', { name: 'New session' })).length).toBeGreaterThan(0);
+  });
+
   it('offers each machine that can start but never the Mac, the first one picked', async () => {
     const api = launchApi();
     renderNew(fleetState({ features: {} }), api);

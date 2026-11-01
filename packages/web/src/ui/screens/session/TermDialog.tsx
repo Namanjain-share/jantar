@@ -85,15 +85,12 @@
 import clsx from 'clsx';
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import {
-  CLI_NAME,
   DIALOG_GATES,
   DIALOG_HOLD_COPY,
   DIALOG_NOTES,
   DIALOG_TEXT_MAX,
   DIALOG_TEXT_MIN,
   DialogTextSchema,
-  machineName,
-  sessionFeatures,
   type DialogOption,
   type PendingRequest,
   type Session,
@@ -107,13 +104,13 @@ import { Spinner } from '../../kit/Spinner.js';
 import {
   CANT_TELL,
   CHANGED,
+  controlsOffOn,
   COUNTDOWN_LATE,
   COUNTDOWN_MIN_S,
   countdownSecondsOf,
   drawn,
   identity,
   NO_CHANGE,
-  NO_CONTROL_SCOPE,
   shownLabel,
   TAP_DROPPED,
   useAnswerBlock,
@@ -167,10 +164,8 @@ export function atMachine(text: string, machine: string | null | undefined): str
 /** v0.6: the tap lines atMachine may rewrite, the dock's own sentences; never an error the Mac sends (errorText). */
 const MACHINE_LINES: ReadonlySet<string> = new Set([CHANGED, NO_CHANGE, CANT_TELL, COUNTDOWN_LATE]);
 
-/** v0.6: a server's dialog with Controls off there (its own switch: the Mac's says nothing about it). */
-export function controlsOffOn(machine: string): string {
-  return `Controls are off on ${machine}. Turn them on there: ${CLI_NAME} controls on`;
-}
+/** v0.6: a server's dialog with Controls off there (answer.ts, shared with the keypad). */
+export { controlsOffOn };
 
 /** Under the question of an ask Claude blocks by itself (`blocksIn`): the time left ("1 min 33 s", "about 2 minutes"). */
 export function blocksLine(left: string): string {
@@ -728,12 +723,8 @@ function TapLine({ line, at }: { line: AnswerLine | null; at: (text: string) => 
 
 export function TermDialogDock({ sid, session, subagent, screen: read, phone, age, late, sends, onShowOnMac, machine }: TermDialogDockProps) {
   const offline = useApp((s) => s.conn.status === 'offline');
-  const hubBlock = useAnswerBlock();
   // v0.6: a server's dialog is answered there, under its own Controls switch; this device's scope still counts.
-  const nodeBlock = useApp((s) =>
-    session.node === undefined || sessionFeatures(s.state, session).controls ? null : controlsOffOn(machineName(s.state, session.node)),
-  );
-  const block = session.node === undefined || hubBlock === NO_CONTROL_SCOPE ? hubBlock : nodeBlock;
+  const block = useAnswerBlock(sid);
   const { busy, line, renewed, answer } = useDialogAnswer(sid, read, sends);
   const dialog = read.screen?.dialog ?? null;
   const ticking = useCountdown(read.seq, dialog?.blocksIn);

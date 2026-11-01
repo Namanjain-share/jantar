@@ -57,7 +57,8 @@ const DROPS = new Set([KEYPAD_CHANGED, KEYPAD_CLEARED, KEYPAD_LOOK, KEYPAD_UNSTE
 
 export function Keypad({ sid, screen: read, phone, offline, onSent }: KeypadProps) {
   const { api } = useDeps();
-  const block = useAnswerBlock();
+  // v0.6: a server's session answers to that server's own Controls switch.
+  const block = useAnswerBlock(sid);
   const [move, setMove] = useState(0);
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<Line>(null);
