@@ -4,7 +4,8 @@
  * own chunks (wave 2), and v0.4.2's dialog dock and keypad, v0.5's
  * Meetings, (v0.5.1) a picked file's preparation and the attachment
  * glyphs, and v0.5.3's Ask, the Screen tab's picture, the pairing QR and
- * the tones and voice with their Sounds section too, and v0.7's Posts:
+ * the tones and voice with their Sounds section too, and v0.7's Posts,
+ * and v0.8's Add post, Reading strip and thumbnails (the Intel chunk):
  * nothing the app's
  * entry imports statically reaches them, so Vite cannot fold them back into
  * the main chunk. A static import is
@@ -96,6 +97,14 @@ describe('code splitting', () => {
       'ui/screens/life/posts/PostSheet.tsx',
       'ui/screens/life/posts/GoalsSheet.tsx',
       'ui/screens/life/posts/model.ts',
+      // v0.8: Add post, the Reading strip, the depths and the thumbnails load with the shelf only.
+      'ui/screens/intel/Intel.tsx',
+      'ui/screens/intel/AddPostSheet.tsx',
+      'ui/screens/intel/Reading.tsx',
+      'ui/screens/intel/Depth.tsx',
+      'ui/screens/intel/Frames.tsx',
+      'ui/screens/intel/ItemPage.tsx',
+      'ui/screens/intel/IntelRow.tsx',
     ];
     for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
     expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
@@ -143,6 +152,7 @@ describe('code splitting', () => {
     expect(shell).toContain("import('../screens/meetings/Meetings.js')");
     expect(shell).toContain("import('../screens/ask/Ask.js')");
     expect(shell).toContain("import('../screens/life/posts/Posts.js')");
+    expect(shell).toContain("import('../screens/intel/Intel.js')");
     const tab = readFileSync(join(src, 'ui/screens/session/FilesTab.tsx'), 'utf8');
     expect(tab).toContain("import('../files/SessionFiles.js')");
     for (const text of [shell, tab]) expect(text).not.toMatch(/import\(\s*['"`](blob|data):/);

@@ -1,10 +1,20 @@
 /**
  * The Intel shelf's small rules (v0.4 spec 5.8): which values are links,
  * how dates read, how typed tags split, and where each view lives; v0.5.3
- * which words a search marks in a row. Pure, so the screens stay thin and
- * the rules are tested on their own.
+ * which words a search marks in a row; v0.8 (Add post) the words for a
+ * read's depth, platform and state, and which jobs the Reading strip shows.
+ * Pure, so the screens stay thin and the rules are tested on their own.
  */
-import { CLI_NAME, searchTerms } from '@jantar/protocol';
+import {
+  CLI_NAME,
+  searchTerms,
+  type IntelDepth,
+  type IntelItem,
+  type IntelJob,
+  type IntelPlatform,
+  type IntelReadState,
+  type IntelTier,
+} from '@jantar/protocol';
 import { routePath } from '../../../lib/router.js';
 
 /** Items per page: the first load and each Show more. */
@@ -131,4 +141,123 @@ export function marks(text: string, terms: readonly string[]): Piece[] {
   }
   if (at < text.length || out.length === 0) out.push({ text: text.slice(at), hit: false });
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// v0.8: reading links (Add post)
+
+/** The fixed words of Add post, the Reading strip and a read item (spec 8). */
+export const READ_COPY = {
+  sheet: 'Add post',
+  lead: 'A reel, video, post, article, PDF or any link, or just text.',
+  box: 'Link or text',
+  saved: 'Saved. Reading it on your Mac.',
+  already: 'Already saved.',
+  again: 'Reading it again on your Mac.',
+  byHand: 'Add by hand',
+  sent: 'The page, pictures and what is said go to Claude.',
+  /** Under "What's sent" (docs/intel.md and SECURITY.md list the same). */
+  sentAll:
+    "The Mac fetches the link itself, with no cookies; with Read saved links on in Jantar's Chrome extension, your Chrome opens the post as you. " +
+    "Sent to Claude on your account: the caption or text, the page's details and top comments, the text read from frames, what is said (Full), " +
+    'the text of links in your note (Full), your note, and the frames as pictures. Speech is turned into text on the Mac: no audio leaves it.',
+  reading: 'Reading',
+  failed: "Couldn't read",
+  deleted: 'Deleted from the shelf.',
+  background: 'From Claude, not from the post',
+} as const;
+
+/** A depth as the phone names it. */
+export const DEPTH_LABEL: Readonly<Record<IntelDepth, string>> = { light: 'Light', standard: 'Standard', full: 'Full' };
+
+/** What each depth does, in one line (under the depth control). */
+export const DEPTH_LINE: Readonly<Record<IntelDepth, string>> = {
+  light: 'The page, caption and a summary',
+  standard: 'Also looks at frames and the text on screen',
+  full: 'Also listens, and reads links in your note',
+};
+
+export const PLATFORM_LABEL: Readonly<Record<IntelPlatform, string>> = {
+  instagram: 'Instagram',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+  x: 'X',
+  reddit: 'Reddit',
+  linkedin: 'LinkedIn',
+  web: 'Web',
+  pdf: 'PDF',
+  note: 'Note',
+};
+
+/** A read still on its way: waiting, or one of the steps the Mac is in. */
+export function unfinished(state: IntelReadState): boolean {
+  return state !== 'saved' && state !== 'failed';
+}
+
+/** A read's state in words; while fetching, where the page comes from. */
+export function stateWord(state: IntelReadState, tier?: IntelTier): string {
+  switch (state) {
+    case 'queued':
+      return 'Waiting';
+    case 'fetching':
+      return tier === 'chrome' ? 'Opening in Chrome' : tier === 'download' || tier === 'ytdlp' ? 'Downloading' : 'Opening the page';
+    case 'preparing':
+      return 'Getting the Mac ready (once)';
+    case 'frames':
+      return 'Looking at frames';
+    case 'transcribing':
+      return 'Listening';
+    case 'summarising':
+      return 'Summarising';
+    case 'saved':
+      return 'Saved';
+    case 'failed':
+      return READ_COPY.failed;
+  }
+}
+
+/** A saved job stays in the strip this long after it ended; one still on its way or failed stays while the Mac lists it. */
+export const SAVED_SHOWN_MS = 60 * 60_000;
+
+/** The jobs the Reading strip shows, in the Mac's order. */
+export function stripJobs(jobs: readonly IntelJob[], now: number): IntelJob[] {
+  return jobs.filter((j) => {
+    if (j.state !== 'saved') return true;
+    const end = Date.parse(j.endedAt ?? j.queuedAt);
+    return Number.isFinite(end) && now - end <= SAVED_SHOWN_MS;
+  });
+}
+
+/** "www.example.com", or '' when `url` is not a link. */
+export function hostOf(url: string | undefined | null): string {
+  if (!url) return '';
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
+}
+
+/** A job's name in the strip: its title, else its link's host. */
+export function jobName(j: Pick<IntelJob, 'title' | 'url'>): string {
+  return j.title.trim() || hostOf(j.url) || 'A note';
+}
+
+/**
+ * Open original: only an https address (a read item's link is always one;
+ * anything else, a `javascript:` or `http:` value included, gets no button).
+ */
+export function httpsHref(value: string | undefined | null): string | null {
+  const href = httpHref(value);
+  return href && href.startsWith('https://') ? href : null;
+}
+
+/** An item read from a link (Add post, the Shortcut, Ask): it carries a read or a platform. */
+export function isRead(item: Pick<IntelItem, 'read' | 'platform'>): boolean {
+  return item.read !== undefined || item.platform !== undefined;
+}
+
+/** "@example_cook · Instagram · 30 Oct": who, where and when, as the page gave them. */
+export function bylineOf(item: Pick<IntelItem, 'creator' | 'platform' | 'postedAt'>, now: number): string {
+  return [item.creator, item.platform ? PLATFORM_LABEL[item.platform] : null, item.postedAt ? shelfDate(item.postedAt, now) : null].filter(Boolean).join(' · ');
 }

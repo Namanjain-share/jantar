@@ -289,6 +289,12 @@ export function fakeApi(over: Partial<Api> = {}) {
     intelGet: notBuilt(),
     intelCapture: notBuilt(),
     intelSources: notBuilt(),
+    // v0.8 Intel reads links: each answers 501 (a part not built yet) unless the test passes its own.
+    intelRead: notBuilt(),
+    intelReread: notBuilt(),
+    intelJobs: notBuilt(),
+    intelDelete: notBuilt(),
+    intelFrame: notBuilt(),
     launchHistory: notBuilt(),
     // v0.4.2: each answers 501 (a part not built yet) unless the test passes its own.
     sessionDialog: notBuilt(),

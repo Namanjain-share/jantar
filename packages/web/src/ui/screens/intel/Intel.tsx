@@ -22,6 +22,12 @@
  * until it has them). Every state keeps the `<h1>`; while a new view loads,
  * the chips keep the last answer, so the one just pressed stays (with its
  * focus) and only the list waits.
+ *
+ * v0.8: while the Mac reads links (features.intelRead), Add opens Add post
+ * (a link or text and a depth; "Add by hand" is the 0.7 form), and the
+ * unfiltered shelf starts with the Reading strip (the Mac's jobs, loaded
+ * again on every life.changed). With reading off, Add is the 0.7 sheet and
+ * no jobs are asked for.
  */
 import { CaretRightIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -30,8 +36,10 @@ import { INTEL_PAGE_MAX, type IntelListItem, type IntelListResponse } from '@jan
 import { useApp, useDeps, useNavigate, useNow, useToast } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Spinner } from '../../kit/Spinner.js';
+import { useFeatures } from '../../shell/data.js';
 import { EMPTY, LifeEmpty, LifeError, LifeLoading, OFFLINE_WRITE } from '../life/shared/states.js';
 import { useLifeLoad } from '../life/shared/useLife.js';
+import { AddPostSheet } from './AddPostSheet.js';
 import { AddSheet } from './AddSheet.js';
 import { IntelRow } from './IntelRow.js';
 import { ItemPage } from './ItemPage.js';
@@ -49,6 +57,7 @@ import {
   termsOf,
   type ShelfFilters,
 } from './model.js';
+import { Reading } from './Reading.js';
 import { TagSheet } from './TagSheet.js';
 
 export interface IntelProps {
@@ -141,10 +150,14 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
     return items.length === first.items.length ? first : { ...first, items, next };
   });
   const sources = useLifeLoad('sources', () => api.intelSources());
+  const { intelRead } = useFeatures();
+  // v0.8: the Mac's reads; a failure (an older Mac, a part not built) shows no strip.
+  const jobs = useLifeLoad(intelRead ? 'jobs' : null, () => api.intelJobs());
   const [more, setMore] = useState<More | null>(null);
   const [moreBusy, setMoreBusy] = useState(false);
   const [moreError, setMoreError] = useState<unknown>(null);
-  const [adding, setAdding] = useState(false);
+  /** Which add sheet is open: Add post (reading on), or the 0.7 form. */
+  const [adding, setAdding] = useState<'post' | 'hand' | null>(null);
   const [picking, setPicking] = useState(false);
 
   const data = list.data;
@@ -216,7 +229,7 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
   const noSources = sources.data ? !sources.data.sources.some((s) => s.id !== 'captures') : false;
 
   const addButton = (
-    <Button variant="outline" onClick={() => setAdding(true)} disabled={offline}>
+    <Button variant="outline" onClick={() => setAdding(intelRead ? 'post' : 'hand')} disabled={offline}>
       <PlusIcon size={16} aria-hidden="true" />
       Add
     </Button>
@@ -333,6 +346,18 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
         </div>
       ) : null}
       {data && list.error ? <LifeError error={list.error} offline={offline} onRetry={list.reload} /> : null}
+      {jobs.data && !hasFilters(filters) ? (
+        <Reading
+          data={jobs.data}
+          now={now}
+          filters={filters}
+          offline={offline}
+          onChanged={() => {
+            jobs.reload();
+            list.reload();
+          }}
+        />
+      ) : null}
       {body}
       {refused.length ? (
         <ul aria-label="Sources not read" className="mt-16 px-16">
@@ -343,9 +368,21 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
           ))}
         </ul>
       ) : null}
+      <AddPostSheet
+        open={adding === 'post'}
+        onOpenChange={(o) => setAdding(o ? 'post' : null)}
+        offline={offline}
+        onSaved={(sentence) => {
+          toast(sentence, 'ok');
+          list.reload();
+          jobs.reload();
+          sources.reload();
+        }}
+        onByHand={() => setAdding('hand')}
+      />
       <AddSheet
-        open={adding}
-        onOpenChange={setAdding}
+        open={adding === 'hand'}
+        onOpenChange={(o) => setAdding(o ? 'hand' : null)}
         offline={offline}
         onAdded={() => {
           toast(ADDED, 'ok');

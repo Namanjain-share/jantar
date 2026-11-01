@@ -15,6 +15,7 @@ import {
   type AskShowWhat,
   type AskTodoAction,
   type AskTurn,
+  type IntelDepth,
 } from '@jantar/protocol';
 import { dayLabel, shiftDayKey } from '../life/shared/DayNav.js';
 
@@ -88,13 +89,18 @@ export function kindLabel(a: AskAction): string {
       return a.kind === 'income' ? 'Income' : 'Expense';
     case 'post':
       return postKindLabel(a);
-    // v0.8 (wave 0): a save to Intel; lane B draws its card.
+    // v0.8: a link to save to Intel and read on the Mac (the typed fast path only).
     case 'save':
       return 'Save to Intel';
     case 'show':
       return 'Now';
   }
 }
+
+/** v0.8: a save card's depth, as Intel's Add post names it (Standard when the message named none). */
+export const SAVE_DEPTH: Readonly<Record<IntelDepth, string>> = { light: 'Light', standard: 'Standard', full: 'Full' };
+/** v0.8: an added save card: the link is on the shelf and the Mac is reading it. */
+export const SAVED_TO_INTEL = 'Saved to Intel · Reading';
 
 /** "Today", "Tomorrow, Mon 2 Nov", "Yesterday, Sat 31 Oct", else "Sat 7 Nov". */
 export function dayWords(day: string, today: string): string {

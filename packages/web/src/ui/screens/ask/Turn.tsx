@@ -12,6 +12,11 @@
  *
  * Ink only, with ember (design rule 3) for a failure alone: a turn that
  * failed, and a refused Send, Cancel, Add, Skip, Undo or Clear.
+ *
+ * v0.8: a save card ("save this: <link>", or a message that is just a
+ * link, while the Mac reads links) names the link's host and the depth, with
+ * Add and Skip (no Edit). Added, it says "Saved to Intel · Reading" with
+ * Open (the item on the shelf) and Undo, which deletes that item.
  */
 import { CheckIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -20,13 +25,15 @@ import type { AskCard, AskTurn, AskWriteAction, ProjectView } from '@jantar/prot
 import { errorText, isApiError } from '../../../lib/api.js';
 import { newIdempotencyKey } from '../../../lib/ids.js';
 import { formatAmount } from '../../../lib/money.js';
+import { routePath } from '../../../lib/router.js';
 import { useDeps } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Spinner } from '../../kit/Spinner.js';
+import { Link } from '../../shell/Link.js';
 import { kcalText } from '../life/food/format.js';
 import { projectLabel } from '../life/todos/model.js';
 import { CardEdit } from './Edit.js';
-import { ASK_COPY, FLAG_TEXT, REPEAT_TEXT, addAllCards, dayWords, droppedText, dueWords, fresh, kindLabel } from './model.js';
+import { ASK_COPY, FLAG_TEXT, REPEAT_TEXT, SAVED_TO_INTEL, SAVE_DEPTH, addAllCards, dayWords, droppedText, dueWords, fresh, kindLabel } from './model.js';
 import { ShowBody } from './Show.js';
 
 /** A failure, in ember: the Mac's sentence for a refused tap, or a failed turn's reason. */
@@ -265,7 +272,7 @@ function cardTitle(card: AskCard, currency: string | null): string {
       return formatAmount(a.amount, currency);
     case 'post':
       return a.title ?? '';
-    // v0.8 (wave 0): the link's host; lane B draws the save card.
+    // v0.8: the link's host (the whole link stays with the card; never a link here).
     case 'save':
       try {
         return new URL(a.url).host;
@@ -293,9 +300,9 @@ function metaOf(card: AskCard, today: string, projects: readonly ProjectView[]):
       return [a.category, ...(a.note ? [a.note] : []), ...(a.day === today ? [] : [dayWords(a.day, today)])];
     case 'post':
       return [...(a.where ? [a.where] : []), ...(a.due ? [dueWords(a.due, today)] : [])];
-    // v0.8 (wave 0): the depth; lane B words it.
+    // v0.8: the depth the read will use.
     case 'save':
-      return [a.depth ?? 'standard'];
+      return [SAVE_DEPTH[a.depth ?? 'standard']];
     case 'show':
       return [];
   }
@@ -340,8 +347,21 @@ function Card({ card, today, currency, projects, fresh: canApply, editing, onEdi
       <div className="mt-4 flex flex-wrap items-center justify-end gap-x-8">
         <span className="inline-flex items-center gap-4 type-small text-ink-2">
           <CheckIcon size={14} aria-hidden="true" />
-          Added
+          {a.type === 'save' ? SAVED_TO_INTEL : 'Added'}
         </span>
+        {a.type === 'save' && card.ref ? (
+          <>
+            <span aria-hidden="true" className="type-small text-ink-3">
+              ·
+            </span>
+            <Link
+              href={routePath({ name: 'intel', item: card.ref })}
+              className="inline-flex items-center rounded-chip type-small font-medium text-ink-2 underline underline-offset-2 transition-colors duration-120 ease-hover hover:text-ink coarse:min-h-44"
+            >
+              Open
+            </Link>
+          </>
+        ) : null}
         {canApply ? (
           <>
             <span aria-hidden="true" className="type-small text-ink-3">
@@ -380,9 +400,11 @@ function Card({ card, today, currency, projects, fresh: canApply, editing, onEdi
             {busy === 'add' ? <Spinner label="Adding" /> : null}
             Add
           </Button>
-          <Button size="sm" aria-label={`Edit: ${named}`} disabled={disabled || !canApply} onClick={() => onEditing(true)}>
-            Edit
-          </Button>
+          {a.type === 'save' ? null : (
+            <Button size="sm" aria-label={`Edit: ${named}`} disabled={disabled || !canApply} onClick={() => onEditing(true)}>
+              Edit
+            </Button>
+          )}
           <Button variant="text" size="sm" aria-label={`Skip: ${named}`} disabled={disabled} onClick={onSkip}>
             {busy === 'skip' ? <Spinner label="Skipping" /> : null}
             Skip

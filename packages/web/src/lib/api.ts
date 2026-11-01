@@ -41,6 +41,13 @@
  * launches stay keyed by their own ids (the Mac knows which server has
  * them). The Machines list and Remove are the admin's /v1/machines calls;
  * pairing a server happens at the Mac only.
+ *
+ * v0.8 (Intel reads links): `intelRead` saves a link or a note and queues
+ * its read, `intelReread` is Retry and Read again, `intelJobs` the reads
+ * waiting, running and just finished, `intelDelete` removes a captures
+ * item, and `intelFrame` is one of a read item's thumbnails as a Blob (like
+ * a meeting's screenshot). The capture door and the capture keys are the
+ * Shortcut's and the Mac's: never called here.
  */
 import {
   DEVICE_SECRET_HEADER,
@@ -67,8 +74,12 @@ import {
   type IdReply,
   type IntelCaptureBody,
   type IntelCaptureReply,
+  type IntelDepth,
   type IntelItemResponse,
+  type IntelJobsResponse,
   type IntelListResponse,
+  type IntelReadBody,
+  type IntelReadReply,
   type IntelSourcesResponse,
   type LaunchHistoryResponse,
   type LifeStatus,
@@ -352,6 +363,18 @@ export interface Api {
   intelGet(id: string): Promise<IntelItemResponse>;
   intelCapture(body: IntelCaptureBody, idempotencyKey?: string): Promise<IntelCaptureReply>;
   intelSources(): Promise<IntelSourcesResponse>;
+
+  // --- v0.8 Intel reads links (Add post)
+  /** Save a link (or a note) and read it on the Mac; `duplicate` when the link was already saved (nothing written). */
+  intelRead(body: IntelReadBody, idempotencyKey?: string): Promise<IntelReadReply>;
+  /** Retry, Read again as another depth, or Read it (a plain capture). */
+  intelReread(id: string, depth?: IntelDepth, idempotencyKey?: string): Promise<{ id: string }>;
+  /** Reads waiting and running, oldest first, then those finished in the last day. */
+  intelJobs(): Promise<IntelJobsResponse>;
+  /** Delete a captures item and its thumbnails. */
+  intelDelete(id: string, idempotencyKey?: string): Promise<OkReply>;
+  /** A read item's thumbnail `n` (image/jpeg), shown through an object URL and revoked on unmount. */
+  intelFrame(id: string, n: number, opts?: { signal?: AbortSignal }): Promise<Blob>;
 
   // --- v0.4 Resume: a folder's past conversations (launchPreview and launchStart take `resume`)
   launchHistory(q: { root: string; path?: string } & NodeOpt): Promise<LaunchHistoryResponse>;
@@ -706,6 +729,11 @@ export function createApi(opts: ApiOptions = {}): Api {
     intelGet: (id) => call(ROUTES.intelGet, { params: { id } }),
     intelCapture: (body, k) => call(ROUTES.intelCapture, { body, ...key(k) }),
     intelSources: () => call(ROUTES.intelSources),
+    intelRead: (body, k) => call(ROUTES.intelRead, { body, ...key(k) }),
+    intelReread: (id, depth, k) => call(ROUTES.intelReread, { params: { id }, body: depth ? { depth } : {}, ...key(k) }),
+    intelJobs: () => call(ROUTES.intelJobs),
+    intelDelete: (id, k) => call(ROUTES.intelDelete, { params: { id }, ...key(k) }),
+    intelFrame: async (id, n, o = {}) => (await bytes(ROUTES.intelFrame, { params: { id, n: String(n) }, ...(o.signal ? { signal: o.signal } : {}) })).blob,
 
     launchHistory: (q) => call(ROUTES.launchHistory, { query: { root: q.root, path: q.path, node: q.node } }),
 
