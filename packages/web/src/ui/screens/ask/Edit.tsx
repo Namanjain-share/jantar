@@ -23,7 +23,7 @@ import { parseKcal } from '../life/food/format.js';
 import { AmountField } from '../life/money/fields.js';
 import { Field, INPUT, SheetActions } from '../life/today/parts.js';
 import { projectLabel } from '../life/todos/model.js';
-import { REPEAT_TEXT } from './model.js';
+import { ASK_COPY, REPEAT_TEXT } from './model.js';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const CHIP = 'h-32 rounded-chip border px-10 type-small transition-colors duration-120 ease-hover coarse:h-44';
@@ -81,8 +81,9 @@ function TodoEdit({ action, project, busy, disabled, onSave, onCancel }: { actio
   const [title, setTitle] = useState(action.title);
   const [day, setDay] = useState(action.due?.day ?? '');
   const [time, setTime] = useState(action.due?.time ?? '');
-  // A repeat needs a day (Life refuses one without).
-  const ok = title.trim().length > 0 && (day === '' || DAY.test(day)) && (!action.repeat || day !== '');
+  // A repeat needs a day (Life refuses one without), and the form says so.
+  const noDay = Boolean(action.repeat) && day === '';
+  const ok = title.trim().length > 0 && (day === '' || DAY.test(day)) && !noDay;
 
   const save = (e: FormEvent) => {
     e.preventDefault();
@@ -115,6 +116,7 @@ function TodoEdit({ action, project, busy, disabled, onSave, onCancel }: { actio
             </Button>
           ) : null}
         </div>
+        {noDay ? <p className="mt-4 type-small text-ink-3">{ASK_COPY.repeatNeedsDay}</p> : null}
       </Field>
       {action.repeat ? <Kept label="Repeat">{REPEAT_TEXT[action.repeat]}</Kept> : null}
       {action.priority === 'high' ? <Kept label="Priority">High</Kept> : null}

@@ -5,9 +5,10 @@
  * nothing until Add. Edit changes it first (web only), Skip sets it aside,
  * and an added card keeps "✓ Added · Undo" while its turn is at most a day
  * old. "Add all N" adds the proposed todo and food cards one at a time (one
- * askAdd each, never money), stopping at the first refusal. Every tap has
- * its own Idempotency-Key: a refusal the Mac kept for one tap never
- * answers the next.
+ * askAdd each, never money), stopping at the first refusal; it waits while
+ * a card of the turn is open in Edit, so it never adds the suggestion the
+ * user is changing. Every tap has its own Idempotency-Key: a refusal the
+ * Mac kept for one tap never answers the next.
  *
  * Ink only, with ember (design rule 3) for a failure alone: a turn that
  * failed, and a refused Send, Cancel, Add, Skip, Undo or Clear.
@@ -46,7 +47,7 @@ export function refusalText(e: unknown): string {
   return isApiError(e, 'rate_limited') && e.message ? e.message : errorText(e);
 }
 
-/** One write at a time with a new Idempotency-Key for every tap, and its failure kept to show. */
+/** One write at a time with a new Idempotency-Key for every tap, and its failure kept to show until the next run or reset. */
 export function useTap() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -63,7 +64,8 @@ export function useTap() {
       setBusy(false);
     }
   }, []);
-  return { busy, error, run };
+  const reset = useCallback(() => setError(null), []);
+  return { busy, error, run, reset };
 }
 
 type Op = 'add' | 'skip' | 'undo';
@@ -121,6 +123,17 @@ export function Turn({ turn, nowMs, today, currency, projects, offline, canSend,
   const { api } = useDeps();
   const cancel = useTap();
   const cards = useCardWrites(onChanged);
+  // The cards open in Edit, by index. A card shows its form only while proposed.
+  const [editing, setEditing] = useState<ReadonlySet<number>>(() => new Set());
+  const edit = (n: number, on: boolean) =>
+    setEditing((s) => {
+      if (s.has(n) === on) return s;
+      const next = new Set(s);
+      if (on) next.add(n);
+      else next.delete(n);
+      return next;
+    });
+  const editOpen = turn.cards.some((c, n) => c.state === 'proposed' && editing.has(n));
   const ok = fresh(turn, nowMs);
   const all = addAllCards(turn, nowMs);
 
@@ -176,6 +189,8 @@ export function Turn({ turn, nowMs, today, currency, projects, offline, canSend,
                   currency={currency}
                   projects={projects}
                   fresh={ok}
+                  editing={editing.has(n)}
+                  onEditing={(on) => edit(n, on)}
                   disabled={offline || cards.busy !== null}
                   busy={cards.busy && cards.busy.n === n ? cards.busy.op : null}
                   error={cards.errors.get(n)}
@@ -191,7 +206,7 @@ export function Turn({ turn, nowMs, today, currency, projects, offline, canSend,
               <Button
                 variant="text"
                 size="sm"
-                disabled={offline || cards.busy !== null}
+                disabled={offline || cards.busy !== null || editOpen}
                 onClick={() => void cards.all(all, (n, key) => api.askAdd(turn.id, n, undefined, key))}
               >
                 {cards.busy?.n === 'all' ? <Spinner label="Adding" /> : null}
@@ -225,6 +240,9 @@ interface CardProps {
   projects: readonly ProjectView[];
   /** The turn is at most a day old: Add, Edit and Undo work. */
   fresh: boolean;
+  /** Open in Edit (kept by the turn, so Add all waits for it). */
+  editing: boolean;
+  onEditing: (on: boolean) => void;
   /** Offline, or a tap on this turn is in flight. */
   disabled: boolean;
   /** This card's tap in flight. */
@@ -269,8 +287,7 @@ function metaOf(card: AskCard, today: string, projects: readonly ProjectView[]):
   }
 }
 
-function Card({ card, today, currency, projects, fresh: canApply, disabled, busy, error, onAdd, onSkip, onUndo }: CardProps) {
-  const [editing, setEditing] = useState(false);
+function Card({ card, today, currency, projects, fresh: canApply, editing, onEditing, disabled, busy, error, onAdd, onSkip, onUndo }: CardProps) {
   const a = card.action;
   const title = cardTitle(card, currency);
   const named = title || kindLabel(a);
@@ -335,10 +352,10 @@ function Card({ card, today, currency, projects, fresh: canApply, disabled, busy
         disabled={disabled}
         onSave={(edit) =>
           void onAdd(edit).then((ok) => {
-            if (ok) setEditing(false);
+            if (ok) onEditing(false);
           })
         }
-        onCancel={() => setEditing(false)}
+        onCancel={() => onEditing(false)}
       />
     );
   } else {
@@ -349,7 +366,7 @@ function Card({ card, today, currency, projects, fresh: canApply, disabled, busy
             {busy === 'add' ? <Spinner label="Adding" /> : null}
             Add
           </Button>
-          <Button size="sm" aria-label={`Edit: ${named}`} disabled={disabled || !canApply} onClick={() => setEditing(true)}>
+          <Button size="sm" aria-label={`Edit: ${named}`} disabled={disabled || !canApply} onClick={() => onEditing(true)}>
             Edit
           </Button>
           <Button variant="text" size="sm" aria-label={`Skip: ${named}`} disabled={disabled} onClick={onSkip}>

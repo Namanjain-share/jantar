@@ -19,7 +19,10 @@
  * The box grows from one line to six (as the session composer does);
  * Cmd/Ctrl+Enter sends. One turn waits at a time: Send waits for it, and
  * Try again sends a failed turn's words as a new turn. While Ask can't run
- * the Mac's sentence takes the box's place and the history stays.
+ * the Mac's sentence takes the box's place and the history stays (the
+ * empty page's line and chips go, as they only fill the box). A refused
+ * Send's sentence goes when the words change or the newest turn does; the
+ * Clear sheet opens without its last refusal.
  */
 import { ArrowUpIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -78,16 +81,28 @@ export function Ask() {
     load.reload();
   };
 
-  // The newest turn in view: when one is added and when its answer comes.
+  // The newest turn in view: when one is added and when its answer comes. A refused Send's sentence is old news then.
   const last = turns.at(-1);
   const newest = last ? `${turns.length}:${last.id}:${last.state}` : '';
+  const resetSend = send.reset;
   useEffect(() => {
-    if (newest) end.current?.scrollIntoView({ block: 'end' });
-  }, [newest]);
+    if (!newest) return;
+    end.current?.scrollIntoView({ block: 'end' });
+    resetSend();
+  }, [newest, resetSend]);
 
-  const fill = (text: string) => {
+  const onDraft = (text: string) => {
     setDraft(text);
+    resetSend();
+  };
+  const fill = (text: string) => {
+    onDraft(text);
     requestAnimationFrame(() => area.current?.focus());
+  };
+
+  const openClear = () => {
+    clear.reset();
+    setConfirm(true);
   };
 
   const doClear = async () => {
@@ -103,7 +118,7 @@ export function Ask() {
           <h1 data-display className="min-w-0 flex-1 truncate type-display text-ink">
             Ask
           </h1>
-          <RowMenu label="Ask history" disabled={offline || !load.data?.turns.length} groups={[{ items: [{ label: 'Clear history', onSelect: () => setConfirm(true) }] }]} />
+          <RowMenu label="Ask history" disabled={offline || !load.data?.turns.length} groups={[{ items: [{ label: 'Clear history', onSelect: openClear }] }]} />
         </header>
         {offline ? <OfflineLine className="px-16 pb-8" /> : null}
 
@@ -111,16 +126,19 @@ export function Ask() {
           <Loaded load={load} count={3}>
             {(list) =>
               list.turns.length === 0 ? (
-                <div className="px-16 py-8">
-                  <p className="type-small text-ink-2">{ASK_COPY.empty}</p>
-                  <div role="group" aria-label="Examples" className="mt-12 flex flex-wrap gap-6">
-                    {EXAMPLES.map((x) => (
-                      <button key={x} type="button" className={CHIP} onClick={() => fill(x)}>
-                        {x}
-                      </button>
-                    ))}
+                // While Ask can't run the chips would fill a box that isn't there: the Mac's sentence below says why.
+                list.ready ? (
+                  <div className="px-16 py-8">
+                    <p className="type-small text-ink-2">{ASK_COPY.empty}</p>
+                    <div role="group" aria-label="Examples" className="mt-12 flex flex-wrap gap-6">
+                      {EXAMPLES.map((x) => (
+                        <button key={x} type="button" className={CHIP} onClick={() => fill(x)}>
+                          {x}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                ) : null
               ) : (
                 <ol aria-label="Messages">
                   {list.turns.map((turn) => (
@@ -148,7 +166,7 @@ export function Ask() {
           {load.data && !load.data.ready ? (
             <CommandSentence sentence={load.data.reason ?? ASK_COPY.notReady} />
           ) : (
-            <Box area={area} draft={draft} setDraft={setDraft} sending={send.busy} canSend={canSend} onSend={() => void ask(draft, true)} />
+            <Box area={area} draft={draft} setDraft={onDraft} sending={send.busy} canSend={canSend} onSend={() => void ask(draft, true)} />
           )}
           {waiting ? <p className="mt-8 type-small text-ink-2">{ASK_COPY.wait}</p> : null}
           {send.error ? <Refused className="mt-8">{refusalText(send.error)}</Refused> : null}

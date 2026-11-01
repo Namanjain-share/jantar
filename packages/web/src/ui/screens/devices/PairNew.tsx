@@ -50,7 +50,7 @@ function PairCode({ pair, scopes, busy, onRenew, onDone }: { pair: PairStartResp
       </Dialog.Description>
 
       <div className="mt-20 flex flex-col gap-24 md:flex-row md:items-start">
-        <Suspense fallback={<div aria-hidden="true" className="size-244 flex-none rounded-dock bg-qr-paper" />}>
+        <Suspense fallback={<div aria-hidden="true" className={expired ? 'size-244 flex-none rounded-dock bg-qr-paper opacity-20' : 'size-244 flex-none rounded-dock bg-qr-paper'} />}>
           <QrCard text={pair.url} label={expired ? 'Expired pairing QR code' : 'Pairing QR code'} dim={expired} />
         </Suspense>
         <div className="min-w-0 flex-1">

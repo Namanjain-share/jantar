@@ -2,16 +2,20 @@
  * Ask (v0.5.3 spec 1 and 12.3) against the fake API: every page state
  * (not ready, empty, sending, waiting, done, failed, cancelled, offline, a
  * load error), every card state (proposed, too old, editing, added, Undo
- * gone after a day, skipped, a refused Add), one Idempotency-Key per tap,
- * Add all (todo and food only, in order, stopping at the first refusal),
- * money through formatAmount, a reply that stays text, the show cards read
- * from `GET /v1/life/today` alone (the served target, a part that is off),
- * the example chips, Clear, the privacy line, and Ask in the places.
+ * gone after a day, skipped, a refused Add, Skip, Undo or Save and add),
+ * one Idempotency-Key per tap, Add all (todo and food only, in order,
+ * stopping at the first refusal, every card off while it runs, waiting
+ * while a card is open in Edit), money through formatAmount, a reply that
+ * stays text, the show cards read from `GET /v1/life/today` alone (the
+ * served target, a part that is off, the doses, a failed read), the
+ * example chips (gone while Ask can't run), Clear, a refused Send, Cancel
+ * or Clear and when its sentence goes, Try again's wait, the privacy line,
+ * and Ask in the places.
  * Every name and amount here is made up.
  */
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NO_FEATURES, type AskCard, type AskList, type AskTurn, type LifeStatus, type ProjectView, type Today, type Todo } from '@jantar/protocol';
+import { NO_FEATURES, type AskCard, type AskList, type AskTurn, type LifeStatus, type MedsDay, type ProjectView, type Today, type Todo } from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { parseRoute, routePath } from '../src/lib/router.js';
 import { writeLocal } from '../src/lib/storage.js';
@@ -162,6 +166,57 @@ describe('the page', () => {
     expect(screen.getByText(PRIVACY)).toBeTruthy();
   });
 
+  it('not ready with no history: no empty line and no examples, as there is no box for them to fill', async () => {
+    open(list([], { ready: false, reason: 'Turn a Life part on first: jantar life on todos' }));
+    expect(await screen.findByText('jantar life on todos')).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Examples' })).toBeNull();
+    expect(screen.queryByText('Tell Ask what to add, or ask about today.')).toBeNull();
+    expect(screen.getByText(PRIVACY)).toBeTruthy();
+  });
+
+  it("a refused Send's sentence goes when the words change, and when the newest turn does", async () => {
+    const LIMIT = 'Too many messages from this device; try again in a minute.';
+    const askSend = vi.fn().mockRejectedValue(new ApiError('rate_limited', LIMIT, 429));
+    const { set } = open(list([turn(1)]), { askSend });
+    await screen.findByText('Reply 1.');
+    fireEvent.change(box(), { target: { value: 'todo add milk' } });
+    fireEvent.click(sendButton());
+    expect(await screen.findByText(LIMIT)).toBeTruthy();
+    fireEvent.change(box(), { target: { value: 'todo add oat milk' } });
+    expect(screen.queryByText(LIMIT)).toBeNull();
+    fireEvent.click(sendButton());
+    expect(await screen.findByText(LIMIT)).toBeTruthy();
+    // The list read after the refusal changes nothing, so the sentence stays until the newest turn changes.
+    await waitFor(() => expect(askSend).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(LIMIT)).toBeTruthy();
+    set(list([turn(1), turn(2)]));
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    expect(await screen.findByText('Reply 2.')).toBeTruthy();
+    expect(screen.queryByText(LIMIT)).toBeNull();
+  });
+
+  it('a refused Cancel shows in ember under the waiting turn', async () => {
+    const askCancel = vi.fn().mockRejectedValue(new ApiError('conflict', 'That answer already came.', 409));
+    open(list([turn(1, { state: 'running', reply: undefined })]), { askCancel });
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('That answer already came.');
+    expect(alert.closest('li')?.textContent).toContain('message 1');
+  });
+
+  it('Try again waits while another turn is waiting, and is off offline', async () => {
+    const failed = turn(1, { state: 'failed', reply: undefined, reason: 'Claude took too long to answer. Try again.' });
+    const askSend = vi.fn(async () => ({ id: tid(3) }));
+    const { unmount } = open(list([failed, turn(2, { state: 'running', reply: undefined })]), { askSend });
+    const retry = (await screen.findByRole('button', { name: 'Try again' })) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    fireEvent.click(retry);
+    unmount();
+    open(list([failed]), { askSend }, { status: 'offline' });
+    expect(((await screen.findByRole('button', { name: 'Try again' })) as HTMLButtonElement).disabled).toBe(true);
+    expect(askSend).not.toHaveBeenCalled();
+  });
+
   it('a waiting turn: "Asking Claude…" with Cancel; Send waits for it while the box still takes words', async () => {
     const askCancel = vi.fn(async (_id: string, _key?: string) => ({ ok: true as const }));
     const { set } = open(list([turn(1, { state: 'running', reply: undefined })]), { askCancel });
@@ -219,6 +274,28 @@ describe('the page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     await waitFor(() => expect(askClear).toHaveBeenCalledWith(expect.any(String)));
     expect(await screen.findByText('Tell Ask what to add, or ask about today.')).toBeTruthy();
+  });
+
+  it('a refused Clear shows in the sheet and keeps the list; the sheet opens again without it', async () => {
+    const askClear = vi.fn().mockRejectedValue(new ApiError('internal', 'boom', 500));
+    open(list([turn(1)]), { askClear });
+    await screen.findByText('Reply 1.');
+    const confirm = "Forget this phone's Ask history? Items you added stay in Life.";
+    const openSheet = async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Ask history' }));
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Clear history' }));
+      expect(await screen.findByText(confirm)).toBeTruthy();
+    };
+    await openSheet();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('boom');
+    expect(alert.className).toMatch(/text-signal-text/);
+    expect(screen.getByText('Reply 1.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByText(confirm)).toBeNull());
+    await openSheet();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it("Claude's reply is plain text: a Markdown link stays words, never an <a>", async () => {
@@ -323,6 +400,23 @@ describe('cards', () => {
     expect(button('Add: Roti').disabled).toBe(false);
   });
 
+  it('a refused Skip or Undo shows in ember under its own card, which keeps its state', async () => {
+    const askSkip = vi.fn().mockRejectedValue(new ApiError('internal', 'boom', 500));
+    const askUndo = vi.fn().mockRejectedValue(new ApiError('conflict', 'That was changed in Life since. Undo it there.', 409));
+    open(list([turn(1, { cards: [todoCard('Call the bank'), foodCard('Roti', 240, { state: 'added', ref: tid(61) })] })]), { askSkip, askUndo });
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip: Call the bank' }));
+    const skipped = await screen.findByRole('alert');
+    expect(skipped.textContent).toBe('boom');
+    expect(skipped.closest('li')?.textContent).toContain('Call the bank');
+    expect(button('Add: Call the bank')).toBeTruthy();
+    fireEvent.click(button('Undo: Roti'));
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2));
+    const undone = screen.getByText('That was changed in Life since. Undo it there.');
+    expect(undone.className).toMatch(/text-signal-text/);
+    expect(undone.closest('li')?.textContent).toContain('Roti');
+    expect(undone.closest('li')?.textContent).toContain('Added');
+  });
+
   it('a turn over a day old: Add and Edit are off with why; an added card keeps "Added" but loses Undo', async () => {
     const old = turn(1, { at: ago(DAY_MS + 60_000), cards: [todoCard('Call the bank'), foodCard('Roti', 240, { state: 'added', ref: tid(61) }), foodCard('Dal', 180), foodCard('Rice', 200)] });
     open(list([old]));
@@ -362,6 +456,21 @@ describe('cards', () => {
       ),
     );
     await waitFor(() => expect(screen.queryByRole('form', { name: 'Edit the suggestion' })).toBeNull());
+  });
+
+  it('Edit a repeating todo: clearing its day stops Save and says why', async () => {
+    open(list([turn(1, { cards: [todoCard('Stretch', { due: { day: TODAY, time: '17:00' }, repeat: 'daily' })] })]));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit: Stretch' }));
+    const form = screen.getByRole('form', { name: 'Edit the suggestion' });
+    const save = within(form).getByRole('button', { name: 'Save and add' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    expect(within(form).queryByText('A repeat needs a day.')).toBeNull();
+    fireEvent.change(within(form).getByLabelText('Due day'), { target: { value: '' } });
+    expect(save.disabled).toBe(true);
+    expect(within(form).getByText('A repeat needs a day.').className).toMatch(/text-ink-3/);
+    fireEvent.change(within(form).getByLabelText('Due day'), { target: { value: '2026-01-16' } });
+    expect(save.disabled).toBe(false);
+    expect(within(form).queryByText('A repeat needs a day.')).toBeNull();
   });
 
   it('Edit food: a day after today or a bad kcal stops Save; Cancel leaves the card as it was', async () => {
@@ -435,6 +544,48 @@ describe('Add all', () => {
     ]);
     expect(askAdd.mock.calls[0]![3]).not.toBe(askAdd.mock.calls[1]![3]);
   });
+
+  it("turns every card's buttons off while it runs", async () => {
+    const pending: Array<(v: { id: string }) => void> = [];
+    const askAdd = vi.fn(() => new Promise<{ id: string }>((res) => pending.push(res)));
+    open(list([turn(1, { cards: [foodCard('Roti', 240), moneyCard(25000), todoCard('Buy rice')] })]), { askAdd });
+    await screen.findByRole('button', { name: 'Skip: ₹250' });
+    fireEvent.click(button(/Add all 2/));
+    await waitFor(() => expect(askAdd).toHaveBeenCalledTimes(1));
+    const names = ['Add: Roti', 'Edit: Roti', 'Skip: Roti', 'Add: ₹250', 'Edit: ₹250', 'Skip: ₹250', 'Add: Buy rice', 'Edit: Buy rice', 'Skip: Buy rice'];
+    for (const name of [...names, /Add all 2/]) expect(button(name).disabled, String(name)).toBe(true);
+    await act(async () => pending[0]!({ id: tid(73) }));
+    await waitFor(() => expect(askAdd).toHaveBeenCalledTimes(2));
+    for (const name of names) expect(button(name).disabled, name).toBe(true);
+    await act(async () => pending[1]!({ id: tid(74) }));
+    await waitFor(() => expect(button('Skip: ₹250').disabled).toBe(false));
+    expect(askAdd.mock.calls.map((c) => (c as unknown[])[1])).toEqual([0, 2]);
+  });
+
+  it('waits while a card is open in Edit, so it never adds the suggestion being changed', async () => {
+    const askAdd = vi.fn().mockRejectedValueOnce(new ApiError('internal', 'boom', 500)).mockResolvedValue({ id: tid(75) });
+    open(list([turn(1, { cards: [foodCard('Roti', 240), foodCard('Dal', 180)] })]), { askAdd });
+    expect(((await screen.findByRole('button', { name: 'Add all 2' })) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(button('Edit: Roti'));
+    const form = screen.getByRole('form', { name: 'Edit the suggestion' });
+    fireEvent.change(within(form).getByLabelText('kcal'), { target: { value: '90' } });
+    expect(button('Add all 2').disabled).toBe(true);
+    fireEvent.click(button('Add all 2'));
+    expect(askAdd).not.toHaveBeenCalled();
+    // A refused Save and add keeps the form and its words, and Add all still waits.
+    fireEvent.click(within(form).getByRole('button', { name: 'Save and add' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('boom');
+    expect(screen.getByRole('form', { name: 'Edit the suggestion' })).toBe(form);
+    expect((within(form).getByLabelText('kcal') as HTMLInputElement).value).toBe('90');
+    await waitFor(() => expect(within(form).getByRole('button', { name: 'Save and add' }).hasAttribute('disabled')).toBe(false));
+    expect(button('Add all 2').disabled).toBe(true);
+    expect(askAdd.mock.calls.map((c) => [c[0], c[1], c[2]])).toEqual([[tid(1), 0, { type: 'food', day: TODAY, name: 'Roti', kcal: 90 }]]);
+    // Cancel closes the form and the card shows the suggestion again, so Add all may add it.
+    fireEvent.click(within(form).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('form', { name: 'Edit the suggestion' })).toBeNull();
+    expect(button('Add all 2').disabled).toBe(false);
+  });
 });
 
 describe('show cards', () => {
@@ -475,6 +626,33 @@ describe('show cards', () => {
     expect(await screen.findByText('Food is off.')).toBeTruthy();
     expect(screen.getByText('Medicines are off.')).toBeTruthy();
     expect(screen.getByText('Todos are off.')).toBeTruthy();
+  });
+
+  it("meds: the day's doses from today; Taken logs that dose with its own key, then today is read again", async () => {
+    const MED = tid(85);
+    const meds: MedsDay = {
+      day: TODAY,
+      today: TODAY,
+      groups: [{ period: 'morning', items: [{ medId: MED, name: 'Placebin', dose: '10 mg', slot: '08:00', status: 'pending', overdue: true }] }],
+    };
+    const lifeToday = vi.fn(async () => today({ meds }));
+    const doseLog = vi.fn(async () => ({ id: tid(86) }));
+    const { api } = open(list([turn(1, { cards: [showCard('meds')] })]), { lifeToday, doseLog });
+    fireEvent.click(await screen.findByRole('button', { name: 'Taken: Placebin 10 mg at 08:00' }));
+    await waitFor(() => expect(doseLog).toHaveBeenCalledWith(MED, { day: TODAY, slot: '08:00', status: 'taken' }, expect.any(String)));
+    await waitFor(() => expect(lifeToday).toHaveBeenCalledTimes(2));
+    expect(api.medsGet).not.toHaveBeenCalled();
+    expect(api.askAdd).not.toHaveBeenCalled();
+  });
+
+  it('a failed today read shows in the card with Try again, which reads it again', async () => {
+    const lifeToday = vi.fn().mockRejectedValueOnce(new ApiError('internal', 'boom', 500)).mockResolvedValue(today({ food: { kcal: 1100, target: 1500, weight: null } }));
+    open(list([turn(1, { reply: 'Here is today.', cards: [showCard('calories')] })]), { lifeToday });
+    expect(await screen.findByText('boom')).toBeTruthy();
+    expect(screen.getByText('Here is today.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('1,100 / 1,500 kcal')).toBeTruthy();
+    expect(lifeToday).toHaveBeenCalledTimes(2);
   });
 
   it('nothing is read from today while no show card is on screen', async () => {

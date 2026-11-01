@@ -26,6 +26,8 @@ export const ASK_COPY = {
   stale: 'Over a day old. Ask again.',
   clear: "Forget this phone's Ask history? Items you added stay in Life.",
   nothingDue: 'Nothing due today.',
+  /** Under a repeating todo's Due in Edit while its day is cleared (Save waits for one). */
+  repeatNeedsDay: 'A repeat needs a day.',
 } as const;
 
 /** A card's flag, worded on the phone (the daemon sends only the code). */
