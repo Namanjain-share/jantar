@@ -12,8 +12,9 @@
  *   buffers deleted on both branches; refusals named.
  * - findPane binds by tty, or by pid ancestry with no tty; a pane id alone
  *   never names a pane (S22).
- * - type, pressEnter, clearInput, pressKey (through Terminal.app's keys.ts),
- *   compare-and-type, openWindow, foregroundOf, focus.
+ * - type (its Enter only into Claude's box still showing the text, never
+ *   into a dialog), pressEnter, clearInput, pressKey (through Terminal.app's
+ *   keys.ts), compare-and-type, openWindow, foregroundOf, focus.
  */
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -104,6 +105,15 @@ function session(over: Partial<Session> & Pick<Session, 'sid'>): Session {
 const DO_RE = /^(?:send-keys -t %\d+ -H(?: [0-9a-f]{2})+|paste-buffer(?: -p)? -d -r -b jantar-[0-9A-Z]{26} -t %\d+|send-keys -t %\d+ Enter)(?: ; (?:send-keys -t %\d+ -H(?: [0-9a-f]{2})+|paste-buffer(?: -p)? -d -r -b jantar-[0-9A-Z]{26} -t %\d+|send-keys -t %\d+ Enter))*$/u;
 const ELSE_RE = /^(?:delete-buffer -b jantar-[0-9A-Z]{26} ; )?display-message -p JANTAR-CHANGED$/u;
 
+/** Claude's screen with `text` in its input box (findInputBox's shape). */
+function claudeBox(text: string): string {
+  const rule = '─'.repeat(60);
+  return `✻ Welcome to Claude Code\n\n> an earlier prompt\n\n${rule}\n❯ ${text}\n${rule}\n  ? for shortcuts`;
+}
+
+/** A permission dialog: Claude hides its input box while one is open. */
+const DIALOG_SCREEN = `${'─'.repeat(60)}\n Bash command\n\n   npm test\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel`;
+
 describe('tmuxGate (spec 4.2)', () => {
   it('checks the tty and the four mode flags, nested two by two', () => {
     expect(tmuxGate(undefined, TTY)).toBe(`#{&&:#{==:#{pane_tty},${TTY}},${MODES}}`);
@@ -182,8 +192,9 @@ describe('tmuxWrite: the one write primitive (S21)', () => {
     }
   });
 
-  it('every call passes the private socket first, and never TMUX or TMUX_PANE', async () => {
-    const { fake, ctx, exec } = rig({ env: { HOME: '/home/sam', TMUX: '/tmp/tmux-1000/default,1,0', TMUX_PANE: '%9', LC_ALL: 'C' } });
+  it('every call passes the private socket first, and never TMUX, TMUX_PANE or CLAUDE_CONFIG_DIR', async () => {
+    const env = { HOME: '/home/sam', TMUX: '/tmp/tmux-1000/default,1,0', TMUX_PANE: '%9', LC_ALL: 'C', CLAUDE_CONFIG_DIR: '/home/sam/.claude-work' };
+    const { fake, ctx, exec } = rig({ env });
     fake.addPane({ id: '%3', tty: TTY });
     expect(await tmuxWrite(ctx, { socket: SOCKET }, paneOf(fake), { text: 'hi', enter: true })).toEqual({ ok: true });
     const calls = exec.calls.filter((c) => c.file === TMUX_BIN);
@@ -192,6 +203,8 @@ describe('tmuxWrite: the one write primitive (S21)', () => {
       expect(c.args.slice(0, 2)).toEqual(['-S', SOCKET]);
       expect(c.opts.env?.TMUX).toBeUndefined();
       expect(c.opts.env?.TMUX_PANE).toBeUndefined();
+      // a server jantard starts would hand it to every pane, and a ~/.claude start would run in another dir
+      expect(c.opts.env?.CLAUDE_CONFIG_DIR).toBeUndefined();
       expect(c.opts.env?.HOME).toBe('/home/sam');
     }
   });
@@ -422,9 +435,9 @@ describe('the tmux backend', () => {
     expect(await b.readInputBox(paneOf(fake))).toEqual({ ok: true, text: 'draft text', styled: false });
   });
 
-  it('type: the text, then 250 ms later one gated Enter in its own call', async () => {
+  it('type: the text, then 250 ms later one Enter in its own call, gated on Claude\'s box as captured', async () => {
     const { fake, b, ctx } = rig();
-    const p = fake.addPane({ id: '%3', tty: TTY });
+    const p = fake.addPane({ id: '%3', tty: TTY, screen: claudeBox('fix the tests;') });
     const typing = b.type(paneOf(fake), 'fix the tests;');
     for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
     expect(p.input).toBe('fix the tests;');
@@ -435,6 +448,54 @@ describe('the tmux backend', () => {
     expect(await settle(ctx, typing)).toEqual({ ok: true });
     expect(p.input).toBe('fix the tests;\r');
     expect(gated(fake).map((g) => g[1].replace(/jantar-[0-9A-Z]{26}/u, 'B'))).toEqual(['paste-buffer -d -r -b B -t %3', 'send-keys -t %3 Enter']);
+    // the Enter's gate: the tty and modes, and the box's row as the capture just before showed it
+    expect(gated(fake)[1]?.[0]).toBe(tmuxGate('❯ fix the tests;', TTY));
+    expect(fake.calls.map((c) => c[0])).toEqual(['load-buffer', 'if-shell', 'display-message', 'if-shell']);
+  });
+
+  it('type: a dialog that opens during the 250 ms gets no Enter (it would answer it)', async () => {
+    const { fake, b, ctx } = rig();
+    const p = fake.addPane({ id: '%3', tty: TTY, screen: claudeBox('') });
+    const typing = b.type(paneOf(fake), 'fix the tests');
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+    expect(p.input).toBe('fix the tests');
+    // Claude asks while it works: the box is hidden, the dialog's first row is highlighted
+    p.screen = DIALOG_SCREEN;
+    expect(await settle(ctx, typing)).toEqual({ ok: true });
+    expect(p.input).toBe('fix the tests');
+    expect(gated(fake).length).toBe(1);
+  });
+
+  it('type: a dialog that opens between the capture and the Enter: the gate refuses, nothing more reaches the pane', async () => {
+    const { fake, b, ctx } = rig();
+    const p = fake.addPane({ id: '%3', tty: TTY, screen: claudeBox('fix the tests') });
+    let gates = 0;
+    fake.beforeGate = () => {
+      if (++gates === 2) p.screen = DIALOG_SCREEN;
+    };
+    expect(await settle(ctx, b.type(paneOf(fake), 'fix the tests'))).toEqual({ ok: true });
+    expect(p.input).toBe('fix the tests');
+    expect(gates).toBe(2);
+    expect(ctx.log.records.some((l) => l.msg === 'tmux Enter after text failed' && l.fields?.code === 'changed')).toBe(true);
+  });
+
+  it('type: no Enter unless the box shows the text (a collapsed paste, a box not drawn, an unknown screen)', async () => {
+    for (const screen of [claudeBox('[Pasted text #1 +2 lines]'), claudeBox(''), 'user@build-1:~$ ', '']) {
+      const { fake, b, ctx } = rig();
+      const p = fake.addPane({ id: '%3', tty: TTY, screen });
+      expect(await settle(ctx, b.type(paneOf(fake), 'fix the tests')), screen).toEqual({ ok: true });
+      expect(p.input, screen).toBe('fix the tests');
+      expect(gated(fake).length, screen).toBe(1);
+    }
+  });
+
+  it('type: a draft before the text and a box that wraps it still get the Enter', async () => {
+    const { fake, b, ctx } = rig();
+    const rule = '─'.repeat(40);
+    const p = fake.addPane({ id: '%3', tty: TTY, screen: `Claude\n${rule}\n❯ earlier draft then fix the te\n  sts in api/\n${rule}\n  ? for shortcuts` });
+    expect(await settle(ctx, b.type(paneOf(fake), 'then fix the tests in api/'))).toEqual({ ok: true });
+    expect(p.input).toBe('then fix the tests in api/\r');
+    expect(gated(fake)[1]?.[0]).toBe(tmuxGate('❯ earlier draft then fix the te\n  sts in api/', TTY));
   });
 
   it('type refuses control characters as Terminal.app does', async () => {
@@ -540,6 +601,17 @@ describe('the tmux backend', () => {
     for (const c of fake.calls) for (const a of c) expect(a).not.toContain(FLEET_SECRET);
   });
 
+  it('openWindow: a line that could not be typed takes its new session with it', async () => {
+    const { fake, b } = rig();
+    fake.beforeGate = () => {
+      fake.pane('%0').inMode = true;
+    };
+    expect(await b.openWindow('echo hi')).toMatchObject({ ok: false, code: 'unsupported' });
+    const name = (fake.calls.find((c) => c[0] === 'new-session') as string[])[3] as string;
+    expect(fake.calls[fake.calls.length - 1]).toEqual(['kill-session', '-t', `=${name}`]);
+    expect(fake.panes).toEqual([]);
+  });
+
   it('openWindow refuses control characters, an empty or too long line, and no tmux', async () => {
     const { fake, b } = rig();
     expect(await b.openWindow('echo a\necho b')).toMatchObject({ ok: false, code: 'unsupported' });
@@ -579,6 +651,18 @@ describe('S21 across every operation: no prompt, dialog-row or launch text in an
       }
     }
     expect(p.input).toContain(`answer ${FLEET_SECRET}`);
+    expect(fake.shellRuns).toEqual([]);
+  });
+
+  it('type\'s Enter: the prompt reaches an argv item only as the box row the capture showed, inside #{C:}, # and all as ?', async () => {
+    const { fake, b, ctx } = rig();
+    const text = `prompt #(touch x) ${FLEET_SECRET};`;
+    const p = fake.addPane({ id: '%3', tty: TTY, screen: claudeBox(text) });
+    expect(await settle(ctx, b.type(paneOf(fake), text))).toEqual({ ok: true });
+    expect(p.input).toBe(`${text}\r`);
+    const holding = fake.calls.filter((c) => c.some((a) => a.includes(FLEET_SECRET)));
+    expect(holding.map((c) => c.findIndex((a) => a.includes(FLEET_SECRET)))).toEqual([4]);
+    expect(holding[0]?.[4]).toContain(`#{C:❯ prompt ?(touch x) ${FLEET_SECRET};}`);
     expect(fake.shellRuns).toEqual([]);
   });
 });

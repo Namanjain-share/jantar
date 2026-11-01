@@ -15,8 +15,11 @@
  *   (CLEAR_ONE_ROW and its Return), pressEnter (one Enter).
  * - type() pastes the text, then ENTER_AFTER_TEXT_MS later presses one gated
  *   Enter in its own call: Claude collects input for about 100 ms and an
- *   Enter inside that window becomes a newline. The writer keeps pressing
- *   Enter until the transcript proves the prompt, as on the Mac.
+ *   Enter inside that window becomes a newline. Terminal's Return has no
+ *   such gap, so this Enter goes only into Claude's box still showing the
+ *   text with no dialog, gated on the box's rows (enterAfterText): a dialog
+ *   that opened meanwhile never gets it. The writer keeps pressing guarded
+ *   Enters until the transcript proves the prompt, as on the Mac.
  * - compare-and-type: under the writer's pane lock, a capture checked with
  *   typeifFinds (the exact check the Terminal fakes use), then the gated
  *   write whose `#{C:}` lines re-check inside tmux.
@@ -25,7 +28,8 @@
  *   `#{pane_current_command}` (a name) could not be.
  * - openWindow makes a detached 200x50 session with the user's shell and
  *   types the launch line into it (the shell outlives Claude, as the
- *   launcher requires). focus has nothing to show; no screenshots.
+ *   launcher requires); a line that could not be typed takes its session
+ *   with it. focus has nothing to show; no screenshots.
  * - The pane tick: every TICK_MS (and when a session appears) one
  *   `list-panes -a` ties this machine's own live sessions to panes and sets
  *   `session.paneId` (what the phone's canType reads), or unsets it when the
@@ -39,7 +43,7 @@ import type { DaemonContext, OpResult, PaneTarget, PressKeyOptions, TerminalBack
 import { cLocale } from '../../core/exec.js';
 import { newId } from '../../core/ids.js';
 import { classifyForeground, foregroundPsArgs, parsePsRows } from '../foreground.js';
-import { findInputBox, lastLines, screenLines } from '../screen.js';
+import { findInputBox, lastLines, readScreenState, screenLines } from '../screen.js';
 import type { TerminalAppHost } from '../terminal-app/host.js';
 import { CLEAR_ONE_ROW, pressKeyImpl } from '../terminal-app/keys.js';
 import { OPEN_COMMAND_MAX } from '../terminal-app/open-window.js';
@@ -180,9 +184,9 @@ export class TmuxBackend implements TerminalBackend {
     if (!typed.ok) return typed;
     // Terminal's `do script` ends the text with a Return; here it comes in its own call, past the paste window.
     await this.ctx.clock.sleep(ENTER_AFTER_TEXT_MS);
-    const entered = await this.write(pane, { enter: true });
-    // The text is in: the writer's own Enters (and their refusals) take it from here.
-    if (!entered.ok) this.ctx.log.warn('tmux Enter after text failed', { code: entered.code });
+    const entered = await this.enterAfterText(pane, text);
+    // The text is in: the writer's own guarded Enters (and their refusals) take it from here.
+    if (entered && !entered.ok) this.ctx.log.warn('tmux Enter after text failed', { code: entered.code });
     return { ok: true };
   }
 
@@ -253,7 +257,11 @@ export class TmuxBackend implements TerminalBackend {
     const pane: Pane = { id: `tmux:${id}`, backend: 'tmux', handle: id, tty, foreground: 'shell' };
     // A shell, then the line typed into it with its Return (no paste window in a shell).
     const typed = await this.write(pane, { text: command, enter: true });
-    if (!typed.ok) return typed;
+    if (!typed.ok) {
+      // Best effort: no idle `jantar-…` session left on the user's server for a launch that failed.
+      await runTmux(this.ctx, this.opts, ['kill-session', '-t', `=${name}`]).catch(() => undefined);
+      return typed;
+    }
     return { ok: true, tty, windowId: id };
   }
 
@@ -337,6 +345,26 @@ export class TmuxBackend implements TerminalBackend {
 
   private write(pane: Pane, write: TmuxWrite): Promise<OpResult> {
     return tmuxWrite(this.ctx, this.opts, pane, write);
+  }
+
+  /**
+   * The Enter after a prompt's text. Terminal's Return comes in the same write
+   * as the text; this one comes ENTER_AFTER_TEXT_MS later, and a dialog that
+   * opened in between (sends go on while Claude works) would take it as its
+   * answer. So it is pressed only when a capture shows no dialog and Claude's
+   * input box ending with the text, gated on the box's rows as captured:
+   * Claude hides the box while a dialog is open, so one that opens after the
+   * capture gets nothing (`changed`). Null: not pressed (a long paste Claude
+   * shows as "[Pasted text #1 …]", a box not drawn yet); the writer's guarded
+   * Enters take over, as after any refusal.
+   */
+  private async enterAfterText(pane: Pane, text: string): Promise<OpResult | null> {
+    const screen = await this.readScreen(pane, { lines: 60 });
+    if (!screen.ok) return screen;
+    const { lines, inputBox: box, dialog } = readScreenState(screen.text);
+    const want = text.replace(/\s+/gu, '');
+    if (dialog || !box || !want || !box.text.replace(/\s+/gu, '').endsWith(want)) return null;
+    return this.write(pane, { enter: true, expect: lines.slice(box.row, box.closed ? box.end : box.end + 1).join('\n') });
   }
 
   /** Compare-and-type: the exact check on a capture, then the gated write that re-checks inside tmux. */

@@ -7,6 +7,7 @@
  *   cswap-run:  cd -- <folder> && [<preLaunchArgv> &&] <cswap> run [--share-history] <N> -- <same tail>
  *   claude:     cd -- <folder> && <bins.claude> <flags> --session-id <uuid> --name <name>
  *   dirs:       cd -- <folder> && env CLAUDE_CONFIG_DIR=<dir> <bins.claude> <same tail as claude>
+ *               (~/.claude: env -u CLAUDE_CONFIG_DIR <bins.claude> ...)
  *   a resume:   any of these with `--resume <uuid>` in place of `--session-id <uuid>`
  *
  * - Built only here, from checked parts: the folder's realpath, an account
@@ -34,7 +35,10 @@
  *   claude mode only. An account other than ~/.claude is its config dir,
  *   given to claude as `env CLAUDE_CONFIG_DIR=<dir>` (an absolute path,
  *   quoted like every word; `env` works in every shell, where older fish
- *   refuses a bare `VAR=x` prefix). Still no `--`.
+ *   refuses a bare `VAR=x` prefix). ~/.claude is `env -u CLAUDE_CONFIG_DIR`
+ *   (GNU, BusyBox and BSD env all take -u): a CLAUDE_CONFIG_DIR the user's
+ *   shell exports would start it in another dir while the job says 0. Still
+ *   no `--`.
  */
 import { LaunchNameSchema, type AccountsMode, type Settings } from '@jantar/protocol';
 
@@ -111,6 +115,8 @@ export interface CommandParts {
    * ~/.claude (and in every other mode).
    */
   configDir?: string | null;
+  /** v0.6: accountsMode "dirs". With no configDir (~/.claude), `env -u CLAUDE_CONFIG_DIR` comes first. */
+  dirs?: boolean;
 }
 
 /** `setup`: the Mac's launch settings or tools are at fault (cswap missing, a bad launch.csCommand), not the folder. */
@@ -127,7 +133,7 @@ export function launchCommand(p: CommandParts): CommandResult {
   if (p.args.some((a) => !/^(?:--[a-z][a-z-]*|[A-Za-z]+)$/u.test(a))) return { ok: false, reason: 'unexpected claude flag' };
   const configDir = p.configDir ?? null;
   if (configDir !== null && !configDir.startsWith('/')) return { ok: false, reason: 'the config dir is not an absolute path' };
-  if (configDir !== null && p.launch.mode !== 'claude') return { ok: false, reason: CONFIG_DIR_CLAUDE_ONLY, setup: true };
+  if ((configDir !== null || p.dirs) && p.launch.mode !== 'claude') return { ok: false, reason: CONFIG_DIR_CLAUDE_ONLY, setup: true };
   const n = p.account === null ? ACCOUNT_PLACEHOLDER : String(p.account);
   const session = p.resume
     ? ['--resume', p.sid as string, ...(RESUME_KEEPS_NAME ? ['--name', q(p.name)] : [])]
@@ -136,7 +142,8 @@ export function launchCommand(p: CommandParts): CommandResult {
   let run: string;
   if (p.launch.mode === 'claude') {
     if (!p.claude || !p.claude.startsWith('/')) return { ok: false, reason: CLAUDE_MISSING, setup: true };
-    run = [...(configDir !== null ? ['env', q(`CLAUDE_CONFIG_DIR=${configDir}`)] : []), q(p.claude), ...p.args.map(q), ...session].join(' ');
+    const env = configDir !== null ? ['env', q(`CLAUDE_CONFIG_DIR=${configDir}`)] : p.dirs ? ['env', '-u', 'CLAUDE_CONFIG_DIR'] : [];
+    run = [...env, q(p.claude), ...p.args.map(q), ...session].join(' ');
   } else if (p.launch.mode === 'cs-shell') {
     if (!COMMAND_WORD_RE.test(p.launch.csCommand)) return { ok: false, reason: 'launch.csCommand must be a plain command name', setup: true };
     run = `${p.launch.csCommand} ${n} ${tail}`;

@@ -27,6 +27,8 @@ export interface FakePane {
   bracketed?: boolean;
   /** Every byte the pane got, in order. */
   input: string;
+  /** The tmux session the pane is in (new-session's -s). */
+  session?: string;
 }
 
 export interface FakeTmux {
@@ -248,8 +250,16 @@ export function createFakeTmux(opts: { version?: string } = {}): FakeTmux {
         }
         case 'new-session': {
           const id = `%${fake.panes.length}`;
-          const p = fake.addPane({ id, tty: `/dev/pts/${20 + fake.panes.length}`, height: Number(args[args.indexOf('-y') + 1]) });
+          const p = fake.addPane({ id, tty: `/dev/pts/${20 + fake.panes.length}`, height: Number(args[args.indexOf('-y') + 1]), session: args[args.indexOf('-s') + 1] as string });
           return res({ stdout: `${printed(expand(args[args.indexOf('-F') + 1] as string, p))}\n` });
+        }
+        case 'kill-session': {
+          // Only an exact-name target (`=name`), as the backend gives it.
+          const m = args.length === 3 && args[1] === '-t' ? /^=(jantar-[0-9a-z]{10})$/u.exec(args[2] as string) : null;
+          if (!m) throw new Error('kill-session shape');
+          if (!fake.panes.some((p) => p.session === m[1])) return res({ code: 1, stderr: `can't find session: ${m[1]}` });
+          fake.panes = fake.panes.filter((p) => p.session !== m[1]);
+          return res({});
         }
         default:
           throw new Error(`unexpected tmux command ${args[0]}`);

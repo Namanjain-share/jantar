@@ -13,13 +13,16 @@
  * - The usage source lists the dirs at start and every DIRS_LIST_MS, and
  *   emits usage.updated with the roster only (usageStatus "unknown", no
  *   windows, activeAccount 0: the plain `claude` login); fetchedAt is when
- *   the dirs were listed. A refresh is refused with FLEET_COPY.noUsage. It
- *   never runs a command.
+ *   the dirs were listed. It lists them again at once when a session of
+ *   this machine's comes up on an account the roster lacks (claude-files
+ *   numbers a new dir on its 2 s scan), so the phone never shows a session
+ *   on an account it can't pick. A refresh is refused with
+ *   FLEET_COPY.noUsage. It never runs a command.
  */
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { EVENT, FLEET_COPY, type Account } from '@jantar/protocol';
-import type { DaemonContext, KvStore, Paths, TimerId, UsageSnapshot, UsageSource } from '../../contracts.js';
+import type { DaemonContext, KvStore, Paths, TimerId, Unsubscribe, UsageSnapshot, UsageSource } from '../../contracts.js';
 import { SINGLE_ACCOUNT } from '../../rewrite/account.js';
 
 /** One config dir as an account. */
@@ -132,6 +135,7 @@ export function dirAccount(a: DirAccount): Account {
 export class DirsUsageSource implements UsageSource {
   private snap: UsageSnapshot | null = null;
   private timer: TimerId | undefined;
+  private unsubscribe: Unsubscribe | null = null;
   private started = false;
 
   constructor(private readonly ctx: DaemonContext) {}
@@ -141,12 +145,19 @@ export class DirsUsageSource implements UsageSource {
     this.started = true;
     this.publish();
     this.timer = this.ctx.clock.setInterval(() => this.publish(), DIRS_LIST_MS);
+    this.unsubscribe = this.ctx.store.subscribe((ev) => {
+      if (ev.type !== EVENT.SESSION_ADDED || ev.data.session.node !== undefined) return;
+      const id = ev.data.session.account;
+      if (id !== null && !this.snap?.accounts.some((a) => a.id === id)) this.publish();
+    });
   }
 
   async stop(): Promise<void> {
     this.started = false;
     this.ctx.clock.clearInterval(this.timer);
     this.timer = undefined;
+    this.unsubscribe?.();
+    this.unsubscribe = null;
   }
 
   async read(): Promise<UsageSnapshot> {

@@ -4,11 +4,13 @@
  * session is bound to its pane).
  *
  * It copies Terminal.app's one semantic: every key write ends with one
- * Return. One write primitive (`tmuxWrite`): text only ever enters tmux on
- * stdin (`load-buffer -b jantar-<ulid> -`), then one `if-shell -F -t %N
- * '<gate>' '<do>' '<else>'` whose gate checks the pane's tty, its modes
- * (copy mode, synchronized, input off, dead) and, for compare-and-type, the
- * expected lines (`#{C:}` with every character of GLOB_SPECIALS as `?`), and
+ * Return (type()'s comes only into Claude's box still showing the text with
+ * no dialog: backend.ts enterAfterText). One write primitive (`tmuxWrite`):
+ * text only ever enters tmux on stdin (`load-buffer -b jantar-<ulid> -`),
+ * then one `if-shell -F -t %N '<gate>' '<do>' '<else>'` whose gate checks
+ * the pane's tty, its modes (copy mode, synchronized, input off, dead) and,
+ * for compare-and-type and type()'s Enter, the expected screen lines
+ * (`#{C:}` with every character of GLOB_SPECIALS as `?`), and
  * whose command string holds only a validated `%N`, the buffer name, key
  * names and `send-keys -H` hex. No user, prompt or screen text is ever an
  * argv item or part of a tmux command string (tmux eats a trailing `;` and

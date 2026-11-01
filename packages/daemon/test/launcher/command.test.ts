@@ -14,7 +14,8 @@
  *
  * v0.6 (a server whose accounts are config dirs): claude mode only, and
  * `env CLAUDE_CONFIG_DIR=<dir>` before claude for any dir but ~/.claude,
- * still with no `--`; sh and zsh hand the dir to claude intact.
+ * still with no `--`; sh and zsh hand the dir to claude intact. ~/.claude
+ * is `env -u CLAUDE_CONFIG_DIR`, so an exported one never reaches claude.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -392,6 +393,16 @@ describe('v0.6: config dirs (accountsMode "dirs", spec 5)', () => {
     expect(launchCommand(absent)).toEqual({ ok: true, command: plain });
   });
 
+  it('~/.claude in dirs mode: env -u CLAUDE_CONFIG_DIR first, so one the shell exports cannot move it', () => {
+    expect(launchCommand(dirs({ configDir: null, dirs: true }))).toEqual({
+      ok: true,
+      command: `cd -- ${FOLDER} && env -u CLAUDE_CONFIG_DIR ${LINUX_CLAUDE} --dangerously-skip-permissions --chrome --effort ultracode --session-id ${SID} --name api-server`,
+    });
+    // another dir sets its own
+    expect(launchCommand(dirs({ dirs: true }))).toMatchObject({ command: expect.stringContaining(`&& env CLAUDE_CONFIG_DIR=${WORK} ${LINUX_CLAUDE} `) });
+    expect(launchCommand(dirs({ configDir: null, dirs: true, launch: launch({ mode: 'cs-shell' }) }))).toEqual({ ok: false, reason: CONFIG_DIR_CLAUDE_ONLY, setup: true });
+  });
+
   it('a resume and the preview carry the same prefix', () => {
     expect(launchCommand(dirs({ sid: PAST, resume: true }))).toMatchObject({
       command: `cd -- ${FOLDER} && env CLAUDE_CONFIG_DIR=${WORK} ${LINUX_CLAUDE} --dangerously-skip-permissions --chrome --effort ultracode --resume ${PAST} --name api-server`,
@@ -437,5 +448,15 @@ describe('v0.6 shell test: the config dir reaches claude as CLAUDE_CONFIG_DIR, i
       expect(args, shell).toEqual(['--dangerously-skip-permissions', '--chrome', '--effort', 'ultracode', '--session-id', SID, '--name', 'alpha-app']);
     }
     expect((await readdir(tmp)).filter((f) => f.startsWith('PWNED'))).toEqual([]);
+  });
+
+  it('~/.claude: a CLAUDE_CONFIG_DIR the shell exports does not reach claude', async () => {
+    const claude = join(tmp, 'claude-env');
+    await writeFile(claude, '#!/bin/sh\nprintf \'[%s]\\n\' "${CLAUDE_CONFIG_DIR-unset}"\n', { mode: 0o755 });
+    const cmd = built({ folder: tmp, account: 0, launch: launch({ mode: 'claude' }), claude, configDir: null, dirs: true });
+    for (const shell of ['/bin/sh', ZSH].filter((s) => existsSync(s))) {
+      const env = { PATH: '/usr/bin:/bin', HOME: tmp, LC_ALL: 'C', CLAUDE_CONFIG_DIR: join(tmp, '.claude-work') };
+      expect(execFileSync(shell, ['-c', cmd], { cwd: tmp, env, encoding: 'utf8', timeout: SHELL_MS }), shell).toBe('[unset]\n');
+    }
   });
 });

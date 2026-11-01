@@ -9,15 +9,16 @@
  *   .claude.json: one that can't be read still counts, and nothing from a
  *   dir's other files reaches kv or an event.
  * - The usage source: the roster at start and every 10 minutes (no usage
- *   numbers, activeAccount 0), a refresh refused with FLEET_COPY.noUsage,
- *   no command run; the usage factory builds it in dirs mode.
+ *   numbers, activeAccount 0), again at once when a session comes up on an
+ *   account it lacks, a refresh refused with FLEET_COPY.noUsage, no command
+ *   run; the usage factory builds it in dirs mode.
  */
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FLEET_COPY } from '@jantar/protocol';
-import { FLEET_SECRET, linuxHome, windowsHome, writeHomeLayout } from '@jantar/fixtures';
+import { FLEET_SECRET, NODE_IDS, linuxHome, windowsHome, writeHomeLayout } from '@jantar/fixtures';
 import { createFakeExec, createTestContext } from '../../src/core/testing.js';
 import { createUsageSource } from '../../src/sources/cswap/index.js';
 import {
@@ -196,6 +197,44 @@ describe('the dirs usage source', () => {
     }
     ctx.clock.advance(DIRS_LIST_MS * 3);
     expect(events.filter((e) => e.type === 'usage.updated')).toHaveLength(2);
+  });
+
+  it('a session on an account the roster lacks lists the dirs again at once; one it has does not', async () => {
+    await writeHomeLayout(home, linuxHome());
+    const { ctx, events } = rig();
+    const src = createDirsUsageSource(ctx);
+    await src.start();
+    const listed = () => events.filter((e) => e.type === 'usage.updated').length;
+    const added = (sid: string, account: number, node?: string) =>
+      ctx.store.emit({
+        type: 'session.added',
+        sid,
+        account,
+        data: {
+          session: {
+            sid, pid: 4000 + account, procStart: 'Sun Nov  1 09:00:00 2026', account, configDir: join(home, '.claude-ops'), cwd: home, folder: 'sam',
+            entrypoint: 'cli', status: 'idle', statusSource: 'session-file', statusSince: ctx.clock.iso(), subagentsRunning: 0, ...(node ? { node } : {}),
+          },
+        },
+      });
+    try {
+      added('on-work', 1);
+      expect(listed()).toBe(1);
+      // claude-files numbered ~/.claude-ops on its scan, before the next 10-minute listing
+      await addDir('.claude-ops');
+      dirsAccounts(paths(), ctx.db.kv);
+      added('on-ops', 2);
+      expect(listed()).toBe(2);
+      expect(Object.values(ctx.store.getState().accounts).map((a) => `${a.id}:${a.alias}`)).toEqual(['0:claude', '1:work', '2:ops']);
+      added('on-ops-again', 2);
+      // another machine's session is not this roster's
+      added('remote', 9, NODE_IDS.build1);
+      expect(listed()).toBe(2);
+    } finally {
+      await src.stop();
+    }
+    added('after-stop', 7);
+    expect(listed()).toBe(2);
   });
 
   it('read() lists without emitting; dirAccount shapes one dir', async () => {

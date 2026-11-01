@@ -6,8 +6,10 @@
  * and its panes run keylog.mjs, which logs every byte it gets.
  *
  * - S21: `echo hi;`, a lone `;`, `a\;`, quotes and `#{` arrive byte for
- *   byte, then one Return 250 ms later in its own chunk; a two-line prompt
- *   arrives bracketed; a checked line `#(touch <file>)` runs nothing while
+ *   byte, then one Return 250 ms later in its own chunk (the pane shows
+ *   Claude's box holding the text); a two-line prompt arrives bracketed; a
+ *   dialog on screen gets the text but no Return; a checked line
+ *   `#(touch <file>)` runs nothing while
  *   tmux itself would run it in a format; copy mode entered between the
  *   capture and the write types nothing; a screen that changed between the
  *   capture and the write gives `changed`, nothing typed.
@@ -94,6 +96,13 @@ interface Server {
 let dir: string;
 let n = 0;
 
+/** Claude's input box holding `text` (what type() checks before its Return), as keylog's banner. */
+function claudeBox(text: string): string {
+  const rule = '─'.repeat(60);
+  const rows = text.split('\n').map((l, i) => (i === 0 ? `❯ ${l}` : `  ${l}`));
+  return `${rule}\n${rows.join('\n')}\n${rule}\n`;
+}
+
 /** A private server whose first pane runs keylog with `banner` on screen. */
 async function server(name: string, banner = '', opts: { bracketed?: boolean; sock?: string } = {}): Promise<Server> {
   const sock = opts.sock ?? join(dir, `${name}.sock`);
@@ -141,7 +150,7 @@ describe.skipIf(!REAL)('real tmux (JANTAR_REAL_TMUX=1, in a container)', () => {
   describe('S21: text arrives byte for byte, never through argv', () => {
     for (const text of ['echo hi;', ';', 'a\\;', `it's "quoted" and \`ticked\``, 'x #{pane_id} y', 'tab\tinside', 'naïve 漢字 ❯']) {
       it(JSON.stringify(text), async () => {
-        const s = await server('main');
+        const s = await server('main', claudeBox(text));
         const { b } = backendFor(s.sock);
         expect(await b.type(s.pane, text)).toEqual({ ok: true });
         const want = `${asBytes(text)}\r`;
@@ -155,11 +164,19 @@ describe.skipIf(!REAL)('real tmux (JANTAR_REAL_TMUX=1, in a container)', () => {
     }
 
     it('a two-line prompt arrives as one bracketed paste, its line feed kept, then the Return', async () => {
-      const s = await server('main', '', { bracketed: true });
+      const s = await server('main', claudeBox('line one\nline two'), { bracketed: true });
       const { b } = backendFor(s.sock);
       expect(await b.type(s.pane, 'line one\nline two')).toEqual({ ok: true });
       const want = '\u001b[200~line one\nline two\u001b[201~\r';
       expect(await until(s.log, want)).toBe(want);
+    });
+
+    it('a dialog on screen gets the text but no Return after it (the Return would answer it)', async () => {
+      const s = await server('main', 'Bash command\n\n  npm test\n\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n\nEsc to cancel\n');
+      const { b } = backendFor(s.sock);
+      expect(await b.type(s.pane, 'fix the tests')).toEqual({ ok: true });
+      await wait(500);
+      expect(await bytesOf(s.log)).toBe('fix the tests');
     });
 
     it('premise: tmux eats a trailing ; in an argv item (why text never goes there)', async () => {
@@ -173,10 +190,13 @@ describe.skipIf(!REAL)('real tmux (JANTAR_REAL_TMUX=1, in a container)', () => {
       const premise = join(dir, 'premise');
       const line = `  #(touch ${pwned}) {a,b} [x] *y? \\z`;
       const s = await server('main', `Run this?\n${line}\n❯ 1. Yes\n  2. No\n`);
-      // the hazard is real: a format with #() runs a shell command
-      tmux(s.sock, 'display-message', '-p', '-t', s.pane.handle, `#(touch ${premise})`);
+      // the hazard is real: a format with #() runs a shell command (as a job tied to the client, which exits at
+      // once, so it may not get to run: asked again until it has)
       const end = Date.now() + 3000;
-      while (!existsSync(premise) && Date.now() < end) await wait(50);
+      while (!existsSync(premise) && Date.now() < end) {
+        tmux(s.sock, 'display-message', '-p', '-t', s.pane.handle, `#(touch ${premise})`);
+        await wait(50);
+      }
       expect(existsSync(premise)).toBe(true);
       const { b } = backendFor(s.sock);
       const screen = await b.readScreen(s.pane);
@@ -234,6 +254,10 @@ describe.skipIf(!REAL)('real tmux (JANTAR_REAL_TMUX=1, in a container)', () => {
     });
 
     it('a pane id reused after a server restart: refused, nothing typed', async () => {
+      // Here the restarted %0 gets another tty. The natural case, the same %0 on the same /dev/pts/N, passes
+      // the tmux gate (the tty is all it can check): it is safe only because Claude holds its pty while it
+      // lives (so a live session's tty is never handed to a new pane) and the writer refuses unless the
+      // session's own pid is in that tty's foreground (foregroundOf, writer/preconditions.ts).
       const first = await server('a');
       tmux(first.sock, 'kill-server');
       await wait(300);

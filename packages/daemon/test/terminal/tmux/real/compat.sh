@@ -113,6 +113,10 @@ np=$(printf '%s' "$new" | cut -d ' ' -f1)
 size=$(t display-message -p -t "$np" '#{pane_width}x#{pane_height}')
 case "$new" in %*" /dev/pts/"*) [ "$size" = "200x50" ] && ok "new-session -d -x 200 -y 50 -P -F: $new $size" || no "size $size" ;; *) no "new-session: $new" ;; esac
 
+# A line that could not be typed takes its session with it: kill-session by exact name, the other session kept.
+t kill-session -t =jantar-compat0001
+if t has-session -t =jantar-compat0001 2>/dev/null; then no "kill-session -t =name left it"; else t has-session -t compat && ok "kill-session -t =jantar-compat0001: gone, compat kept" || no "kill-session took compat"; fi
+
 t kill-server
 rm -rf "$dir"
 if [ "$fails" -eq 0 ]; then echo "compat: all checks passed on $(tmux -V)"; else echo "compat: $fails check(s) failed on $(tmux -V)"; exit 1; fi

@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createFakeExec, createTestContext, fixedProbe, onCommand } from '../../src/core/testing.js';
-import { PROC_START_UNREAD, checkSessionProcess } from '../../src/writer/proc-start.js';
+import { PROC_START_UNREAD, checkSessionProcess, procStartCandidates } from '../../src/writer/proc-start.js';
 
 const PID = 4242;
 const CLAUDE_WROTE = 'Sun Nov  1 09:00:00 2026';
@@ -33,6 +33,19 @@ describe('D7: an unparseable start time fails closed with the fixed sentence', (
       expect(await checkSessionProcess(ctx, PID, odd), odd).toEqual({ ok: false, reason: PROC_START_UNREAD });
     }
     expect(exec.calls).toEqual([]);
+  });
+
+  it('a bare number that is no time since 2000 (a tick count since boot, before 2000 or after now): refused before ps runs', async () => {
+    const { ctx, exec } = ctxWith(`${CLAUDE_WROTE}\n`);
+    // 12 days of 100 Hz ticks; 300 days of them read as seconds is after now; 1999 in ms
+    for (const odd of ['103680000', '2592000000', '915148800000']) {
+      expect(await checkSessionProcess(ctx, PID, odd), odd).toEqual({ ok: false, reason: PROC_START_UNREAD });
+    }
+    expect(exec.calls).toEqual([]);
+    // epoch seconds and ms up to now still read
+    const now = ctx.clock.now();
+    expect(procStartCandidates(String(Math.floor(now / 1000)), now)).toEqual([Math.floor(now / 1000) * 1000]);
+    expect(procStartCandidates(String(now), now)).toEqual([now]);
   });
 
   it('busybox ps (Alpine) prints a time, not lstart: refused', async () => {

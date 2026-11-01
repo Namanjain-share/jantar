@@ -36,7 +36,7 @@
  */
 import type { Pane } from '@jantar/protocol';
 import type { DaemonContext, ExecResult, OpResult, TerminalErrorCode } from '../../contracts.js';
-import { scrubEnv } from '../../core/exec.js';
+import { CSWAP_SCRUB_ENV, scrubEnv } from '../../core/exec.js';
 import { newId } from '../../core/ids.js';
 import type { TmuxBackendOptions } from './index.js';
 
@@ -94,10 +94,12 @@ export function fail(code: TerminalErrorCode, reason: string): Failure {
 /**
  * The daemon's env without TMUX and TMUX_PANE: every call reaches the user's
  * default server (`/tmp/tmux-<uid>/default`), also when jantard itself was
- * started inside tmux.
+ * started inside tmux. Nor CLAUDE_CONFIG_DIR (CSWAP_SCRUB_ENV): a server
+ * jantard starts passes its env to every pane, where it would move a
+ * ~/.claude start into another config dir.
  */
 export function tmuxEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string | undefined> {
-  return scrubEnv(env, ['TMUX', 'TMUX_PANE']);
+  return scrubEnv(env, ['TMUX', 'TMUX_PANE', ...CSWAP_SCRUB_ENV]);
 }
 
 /** One tmux call: `-S <socket>` first when a test gave one, then `args`. Null when tmux was not found. */
