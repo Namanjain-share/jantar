@@ -25,7 +25,7 @@ import { contextFor, fail, fakeCtl, ok, testDeps, type CtlCall, type Handler } f
 const FOLDER = '/synthetic/home/work/web-app';
 const PROJECT_ID = '01JSYNTHPR0JECT00000000000';
 const TODO_ID = '01JSYNTHT0D000000000000000';
-const ENV = { HOME: '/synthetic/home', JANTAR_HOME: undefined };
+const ENV: Record<string, string> = { HOME: '/synthetic/home' };
 
 let rpcId = 0;
 const req = (method: string, params?: unknown) => JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method, ...(params === undefined ? {} : { params }) });
@@ -452,9 +452,9 @@ function host(lines: readonly string[], opts: { tty?: boolean; cwd?: string } = 
 const BIN = '/synthetic/repo/packages/cli/bin/jantar.mjs';
 const NODE = '/opt/synthetic/node/bin/node';
 
-async function runMcp(args: string[], opts: { lines?: string[]; tty?: boolean; env?: Record<string, string | undefined>; ctl?: ReturnType<typeof fakeCtl>; nodePath?: string; bin?: string } = {}) {
+async function runMcp(args: string[], opts: { lines?: string[]; tty?: boolean; env?: Record<string, string>; ctl?: ReturnType<typeof fakeCtl>; nodePath?: string; bin?: string } = {}) {
   const env = { ...ENV, ...opts.env };
-  const { ctx, io } = contextFor({ env: env as Record<string, string> }, { ctl: opts.ctl ?? daemon(), deps: testDeps({ nodePath: opts.nodePath ?? NODE }) });
+  const { ctx, io } = contextFor({ env }, { ctl: opts.ctl ?? daemon(), deps: testDeps({ nodePath: opts.nodePath ?? NODE }) });
   const cmd = mcpCommand({ host: host(opts.lines ?? [], { tty: opts.tty ?? false }), bin: opts.bin ?? BIN });
   const code = await cmd.run(args, ctx);
   return { code, out: io.stdout, err: io.stderr, paths: ctx.paths };

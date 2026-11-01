@@ -131,7 +131,7 @@ const tool = <S extends z.ZodType>(t: Tool<S>): Tool => t as unknown as Tool;
 const READ_ONLY = { readOnlyHint: true } as const;
 const APPEND_ONLY = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;
 
-/** `value` as compact JSON, dropping items from the end of `list` until it fits MCP_RESULT_MAX; `left` names what was dropped. */
+/** What `build` makes of `list`, as compact JSON, with items dropped from its end until it fits MCP_RESULT_MAX (`left` counts them). */
 function fitted<T>(list: T[], build: (kept: T[], left: number) => unknown): string {
   let kept = list.length;
   for (;;) {
