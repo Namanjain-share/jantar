@@ -1,9 +1,10 @@
 /**
  * The Intel shelf's small rules (v0.4 spec 5.8): which values are links,
- * how dates read, how typed tags split, and where each view lives. Pure,
- * so the screens stay thin and the rules are tested on their own.
+ * how dates read, how typed tags split, and where each view lives; v0.5.3
+ * which words a search marks in a row. Pure, so the screens stay thin and
+ * the rules are tested on their own.
  */
-import { CLI_NAME } from '@jantar/protocol';
+import { CLI_NAME, searchTerms } from '@jantar/protocol';
 import { routePath } from '../../../lib/router.js';
 
 /** Items per page: the first load and each Show more. */
@@ -82,4 +83,52 @@ export function shelfTime(iso: string | null): string {
 /** "1 item", "612 items". */
 export function itemsWord(n: number): string {
   return `${new Intl.NumberFormat().format(n)} ${n === 1 ? 'item' : 'items'}`;
+}
+
+/** "1 match", "12 matches": the count line while a search has words. */
+export function matchesWord(n: number): string {
+  return `${new Intl.NumberFormat().format(n)} ${n === 1 ? 'match' : 'matches'}`;
+}
+
+/** The words of a shelf search, as the daemon matches them (protocol searchTerms); none without a search. */
+export function termsOf(q: string | undefined): string[] {
+  return q ? searchTerms(q) : [];
+}
+
+export interface Piece {
+  text: string;
+  /** One of the search's words (or two touching): the row shows it in a <mark>. */
+  hit: boolean;
+}
+
+/**
+ * `text` in pieces, the places any of `terms` (lowercased) appears marked,
+ * without case. When lowercasing changes the text's length (an `İ` grows),
+ * offsets would drift, so nothing is marked. The pieces always join back to
+ * `text`.
+ */
+export function marks(text: string, terms: readonly string[]): Piece[] {
+  const lower = text.toLowerCase();
+  const spans: [number, number][] = [];
+  if (lower.length === text.length) {
+    for (const t of terms) for (let i = lower.indexOf(t); i >= 0; i = lower.indexOf(t, i + t.length)) spans.push([i, i + t.length]);
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const out: Piece[] = [];
+  let at = 0;
+  for (const [from, to] of spans) {
+    if (to <= at) continue;
+    const last = out.at(-1);
+    if (from > at) out.push({ text: text.slice(at, from), hit: false });
+    else if (last?.hit) {
+      // Overlapping or touching the last mark: one mark.
+      last.text += text.slice(at, to);
+      at = to;
+      continue;
+    }
+    out.push({ text: text.slice(Math.max(from, at), to), hit: true });
+    at = to;
+  }
+  if (at < text.length || out.length === 0) out.push({ text: text.slice(at), hit: false });
+  return out;
 }

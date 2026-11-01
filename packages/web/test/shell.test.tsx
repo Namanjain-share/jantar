@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { account, alert, fakeApi, pending, renderApp, session, stateWith } from './helpers.js';
+import { account, alert, fakeApi, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */
 function viewport(width: number) {
@@ -103,6 +103,12 @@ describe('desktop shell', () => {
     expect(screen.getByText('3 sessions · 2 accounts')).toBeTruthy();
   });
 
+  it('v0.5.3: has no header magnifier (the rail lists Intel)', () => {
+    renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: true } }) });
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Intel' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Search the Intel shelf' })).toBeNull();
+  });
+
   it('shows the offline line and a dashed strip', () => {
     renderApp({ state: busy(), status: 'offline' });
     expect(screen.getByRole('alert').textContent).toMatch(/Can't reach the Mac/);
@@ -124,6 +130,8 @@ describe('tablet shell', () => {
 });
 
 describe('phone shell', () => {
+  preloadPlaces('intel');
+
   it('has a header strip that opens the legend, and tabs', async () => {
     renderApp({ state: busy() });
     expect(screen.queryByRole('listbox')).toBeNull();
@@ -137,6 +145,32 @@ describe('phone shell', () => {
     renderApp({ state: stateWith({ accounts: [account(1)] }) });
     expect(screen.getByText('No Claude sessions running')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Tap for the legend/ })).toBeNull();
+  });
+
+  it('v0.5.3: a magnifier in the header while the shelf is on opens it with the search box focused', async () => {
+    const intelList = vi.fn(async () => ({ items: [], next: null, total: 0, types: [], tags: [] }));
+    const api = fakeApi({ intelList, intelSources: vi.fn(async () => ({ sources: [] })) });
+    const { router } = renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: true } }), api });
+    const header = screen.getByRole('banner');
+    const glass = within(header).getByRole('link', { name: 'Search the Intel shelf' });
+    expect(glass.getAttribute('href')).toBe('/intel?focus=search');
+    // After the strip, a 44 px target.
+    expect(glass.previousElementSibling?.getAttribute('aria-label')).toMatch(/Tap for the legend/);
+    expect(glass.className).toContain('size-44');
+    fireEvent.click(glass);
+    const box = await screen.findByLabelText('Search the shelf');
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    // The word leaves the address once used.
+    await waitFor(() => expect(router.getState().route).toEqual({ name: 'intel' }));
+    expect(intelList).toHaveBeenCalled();
+  });
+
+  it('v0.5.3: no magnifier while the shelf is off, nor on an open session', () => {
+    const a = renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: false } }) });
+    expect(screen.queryByRole('link', { name: 'Search the Intel shelf' })).toBeNull();
+    a.unmount();
+    renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: true } }), path: '/s/web-app' });
+    expect(screen.queryByRole('link', { name: 'Search the Intel shelf' })).toBeNull();
   });
 
   it('gives an open session the whole screen', () => {
