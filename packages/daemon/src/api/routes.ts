@@ -5,7 +5,7 @@
  * route's zod schemas before a handler runs. Handlers throw ApiError for
  * expected failures.
  *
- * The v0.1 / v0.2 handlers live here; each v0.3, v0.4 and v0.5 feature has
+ * The v0.1 / v0.2 handlers live here; each v0.3, v0.4, v0.5 and v0.5.3 feature has
  * its own file in routes/ (owned by its work package) whose table is spread
  * into ROUTE_IMPLS below.
  *
@@ -74,6 +74,7 @@ import { EXT_PAIR_ROUTE_IMPLS } from './routes/ext-pair.js';
 import { EXT_ROUTE_IMPLS } from './routes/ext.js';
 import { MEETING_ITEMS_ROUTE_IMPLS } from './routes/meeting-items.js';
 import { MEETINGS_ROUTE_IMPLS } from './routes/meetings.js';
+import { ASK_ROUTE_IMPLS } from './routes/ask.js';
 import type { ApiServices } from './services.js';
 
 export { isRawReply, notImplementedRoute, type Call, type RawReply, type RouteImpl, type RouteTable } from './route-kit.js';
@@ -95,6 +96,7 @@ const MAC_COMMAND: Record<MacOnlySettingGroup, string> = {
   intel: 'jantar intel',
   accounts: 'jantar accounts',
   meetings: 'jantar meetings',
+  ask: 'jantar ask',
 };
 
 /**
@@ -606,4 +608,6 @@ export const ROUTE_IMPLS: RouteTable = {
   ...EXT_ROUTE_IMPLS,
   ...MEETINGS_ROUTE_IMPLS,
   ...MEETING_ITEMS_ROUTE_IMPLS,
+  // v0.5.3
+  ...ASK_ROUTE_IMPLS,
 };

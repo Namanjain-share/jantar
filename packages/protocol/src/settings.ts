@@ -291,6 +291,15 @@ export const MeetingsSettingsSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+/**
+ * v0.5.3 Ask: a chat page that suggests Life items through one headless
+ * Claude run (Rewrite's model). Off until turned on at the Mac
+ * (`jantar ask on`); only the switch lives here.
+ */
+export const AskSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
 export const AccountsSettingsSchema = z.object({
   /**
    * Accounts kept for other work: Auto, Rewrite and Ask Claude never pick one (a manual
@@ -349,6 +358,8 @@ export const SettingsSchema = z.object({
   accounts: AccountsSettingsSchema.prefault({}),
   /** v0.5 (no version bump: an older daemon drops the unknown group) */
   meetings: MeetingsSettingsSchema.prefault({}),
+  /** v0.5.3, no version bump: an older daemon drops the unknown group */
+  ask: AskSettingsSchema.prefault({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -373,6 +384,8 @@ export const MAC_ONLY_SETTING_GROUPS = [
   'accounts',
   // v0.5: the Meetings switch.
   'meetings',
+  // v0.5.3: the Ask switch.
+  'ask',
 ] as const;
 export type MacOnlySettingGroup = (typeof MAC_ONLY_SETTING_GROUPS)[number];
 
@@ -474,6 +487,7 @@ export function settingsFeatures(s: Settings): Features {
     life: lifeOn(s),
     intel: s.intel.enabled,
     meetings: s.meetings.enabled,
+    ask: s.ask.enabled,
   };
 }
 

@@ -86,7 +86,7 @@ const ProjectNameSchema = z.string().trim().min(1).max(60);
 export const ProjectStatusSchema = z.enum(['active', 'paused', 'done']);
 export type ProjectStatus = z.infer<typeof ProjectStatusSchema>;
 const EmojiSchema = z.string().max(16);
-const LongNotesSchema = z.string().max(2000);
+export const LongNotesSchema = z.string().max(2000);
 
 export const ProjectSchema = z.object({
   id: LifeIdSchema,
@@ -130,7 +130,7 @@ export const DueSchema = z.strictObject({ day: DayKeySchema, time: HhMmSchema.op
 export type Due = z.infer<typeof DueSchema>;
 export const TodoPrioritySchema = z.enum(['normal', 'high']);
 export type TodoPriority = z.infer<typeof TodoPrioritySchema>;
-const TodoTitleSchema = z.string().trim().min(1).max(200);
+export const TodoTitleSchema = z.string().trim().min(1).max(200);
 
 export const TodoSchema = z.object({
   id: LifeIdSchema,
@@ -326,8 +326,8 @@ export type MedicinesResponse = z.infer<typeof MedicinesResponseSchema>;
 // ---------------------------------------------------------------------------
 // Food, calories and weight
 
-const FoodNameSchema = z.string().trim().min(1).max(80);
-const KcalSchema = z.number().int().min(0).max(10_000);
+export const FoodNameSchema = z.string().trim().min(1).max(80);
+export const KcalSchema = z.number().int().min(0).max(10_000);
 
 export const FoodEntrySchema = z.object({
   id: LifeIdSchema,
@@ -464,7 +464,7 @@ export const DEFAULT_CATEGORIES = {
 export const AmountSchema = z.number().int().min(1).max(1e12);
 export const MoneyKindSchema = z.enum(['expense', 'income']);
 export type MoneyKind = z.infer<typeof MoneyKindSchema>;
-const MoneyNoteSchema = z.string().max(200);
+export const MoneyNoteSchema = z.string().max(200);
 
 export const MoneyEntrySchema = z.object({
   id: LifeIdSchema,

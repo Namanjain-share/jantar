@@ -85,8 +85,8 @@ describe('life.changed (LP8, protocol part)', () => {
 
   it('gives clients life and intel only, never a per-module flag', () => {
     expect(Object.keys(NO_FEATURES).sort()).toEqual(
-      // v0.5 adds meetings (v05.test.ts).
-      ['clearDraft', 'controls', 'escape', 'files', 'intel', 'launch', 'life', 'meetings', 'rewrite', 'screenshotSelect', 'screenshots'].sort(),
+      // v0.5 adds meetings (v05.test.ts), v0.5.3 ask (v053.test.ts).
+      ['ask', 'clearDraft', 'controls', 'escape', 'files', 'intel', 'launch', 'life', 'meetings', 'rewrite', 'screenshotSelect', 'screenshots'].sort(),
     );
     for (const m of ['todos', 'medicines', 'food', 'places', 'finance']) expect(Object.keys(FeaturesSchema.shape)).not.toContain(m);
     // An older daemon sends neither: both off.

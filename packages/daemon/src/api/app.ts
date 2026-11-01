@@ -153,6 +153,8 @@ export const FEATURE_OFF: Readonly<Record<FeatureSwitch, { code: ErrorCode; mess
   intel: { code: 'forbidden', message: 'The Intel shelf is off. Turn it on at your Mac: jantar intel on' },
   // v0.5
   meetings: { code: 'forbidden', message: 'Meetings are off. Turn them on at your Mac: jantar meetings on' },
+  // v0.5.3
+  ask: { code: 'forbidden', message: 'Ask is off. Turn it on at your Mac: jantar ask on' },
 };
 
 /** The switches of Life's routes: while life.db is broken they answer 503 (lifeStatus, lifeBackup and lifeRestore have none). */
@@ -213,6 +215,8 @@ export function featureOn(def: Pick<RouteDef, 'feature'>, settings: Settings): b
       return settings.intel.enabled;
     case 'meetings':
       return settings.meetings.enabled;
+    case 'ask':
+      return settings.ask.enabled;
     default:
       return settingsFeatures(settings)[f];
   }
