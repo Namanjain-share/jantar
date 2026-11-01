@@ -12,6 +12,10 @@ account, the way [Rewrite](phone-app.md#rewrite) works. The answer is
 data: Claude can only propose items from a fixed list, and only your tap
 adds one.
 
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="img/ask-phone-dark.png"><img src="img/ask-phone.png" width="260" alt="Ask: a reminder added, calories left against the 1,500 kcal target, and two foods to add."></picture>
+</p>
+
 ## Turn it on
 
 At the Mac, with the Life parts you want Ask to use:
@@ -24,9 +28,13 @@ jantar ask off                      # hides it, stops an answer being written, f
 ```
 
 Ask is off until you turn it on, and only the Mac can turn it on. The
-phone needs the `control` scope. While Ask is off its page doesn't show.
+phone needs the `control` scope: a device paired without it has no Ask
+tab. While Ask is off its page doesn't show.
 
 ## What you can say
+
+Type in the box and tap the arrow, or press Enter (a phone keyboard's
+Send key); Shift+Enter starts a new line.
 
 | You type | Ask suggests |
 |---|---|
@@ -97,8 +105,9 @@ nothing.
 Only what you type on the page (medicine names or amounts you type do
 go), the date, time and time zone, the days around today, which Life
 parts are on, the currency code and the fixed category names. Your saved
-lists, medicines and money stay on the Mac. The page says this under the
-box, and `jantar ask on` says it at the Mac.
+lists, medicines and money stay on the Mac. The line under the box says
+your words go to Claude, and its **What's sent** opens this list;
+`jantar ask on` says it at the Mac.
 
 ## History
 

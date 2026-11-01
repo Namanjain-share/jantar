@@ -217,7 +217,7 @@ jantar ask off                      # hides it and forgets its history
   after you asked.
 - Questions about today never send your lists to Claude: the phone fills
   the answer card from Today.
-- **What goes to Claude** (the page says it under the box): only what you
+- **What goes to Claude** (**What's sent**, under the box): only what you
   type there (medicine names or amounts you type do go), the date, time
   and time zone, which Life parts are on, the currency code and the fixed
   category names.

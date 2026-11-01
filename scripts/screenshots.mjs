@@ -22,7 +22,8 @@
 // Each shot names its fixture: `accounts` (cswap, the default, or one Claude
 // login) and `variant` (web-fixture-v051.ts: 'phone-control' has sessions
 // waiting in the terminal with no hook card, 'keypad' a screen with no
-// buttons). One fixture is built per accounts and variant pair. With cswap
+// buttons, 'ask' Ask on with a history). One fixture is built per accounts
+// and variant pair. With cswap
 // the fixture shows Jantar without the legacy ccw tool, as anyone else runs
 // it: no `next →`, burn, moves or hold list.
 //
@@ -185,6 +186,21 @@ export const SHOTS = [
   { name: 'accounts', path: '/accounts' },
   { name: 'accounts-single', path: '/accounts', accounts: 'single', sizes: PHONE },
   { name: 'today', path: '/today', sizes: PHONE },
+  // Ask on in its own variant, so no other picture gains its tab: a reminder added, "calories left?", a meal to add.
+  // The page opens on its newest turn; the picture shows it from the top.
+  {
+    name: 'ask',
+    path: '/ask',
+    sizes: PHONE,
+    variant: 'ask',
+    steps: async (page) => {
+      await page.getByRole('button', { name: 'Add all 2' }).waitFor();
+      await page.evaluate(() => {
+        for (const el of document.querySelectorAll('*')) if (el.scrollHeight > el.clientHeight + 1 && el.scrollTop > 0) el.scrollTop = 0;
+        window.scrollTo(0, 0);
+      });
+    },
+  },
   { name: 'todos', path: '/todos', sizes: PHONE },
   { name: 'reminders', path: '/todos?tab=reminders', sizes: PHONE },
   { name: 'projects', path: '/todos?tab=projects', sizes: PHONE },

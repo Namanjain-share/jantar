@@ -1054,7 +1054,8 @@ sends anything it reads from Life: no todo titles, project names,
 medicines, doses, calories, weights, amounts, bills, cafés or earlier
 messages. A question about today ("calories left?") gets a card that the
 phone fills from its own read of Today; Claude never sees the numbers. The
-page says this under the box, and `jantar ask on` says it at the Mac.
+line under the box says the words go to Claude and its "What's sent" opens
+this list; `jantar ask on` says it at the Mac.
 
 ### The run
 

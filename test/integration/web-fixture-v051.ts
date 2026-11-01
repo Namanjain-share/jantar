@@ -28,13 +28,26 @@
  *   The board still says "3 need you".
  * - 'keypad': session 2 waits on a model list Jantar can't turn into
  *   buttons, so its dock shows the screen and the keypad.
+ * - 'ask': Ask on (v0.5.3), with this phone's history on GET /v1/ask: a
+ *   reminder added, "calories left?" (its card filled from Today) and a
+ *   meal of two foods still to add.
  *
  * The screens copy the layouts of test/fixtures/src/dialogs.ts (rules, the
  * pointer, numbering, the hints) with the board's own words, and none of
  * its planted marker or /tmp paths.
  */
 import { createHash } from 'node:crypto';
-import { DIALOG_NOTES, MeetingDetailSchema, type Account, type PendingRequest, type PlanResponse, type Session, type TranscriptItem } from '@jantar/protocol';
+import {
+  AskListSchema,
+  DIALOG_NOTES,
+  MeetingDetailSchema,
+  type Account,
+  type AskList,
+  type PendingRequest,
+  type PlanResponse,
+  type Session,
+  type TranscriptItem,
+} from '@jantar/protocol';
 import { dialogOfScreen, screenKey } from '@jantar/daemon/terminal/dialog';
 import { readScreenState } from '@jantar/daemon/terminal/screen';
 import { makePng } from '../fixtures/runtime/images.mjs';
@@ -45,7 +58,7 @@ import { webFixtureV05, type V05Reply, type WebFixtureV05 } from './web-fixture-
 
 const MIN = 60_000;
 
-export type V051Variant = 'default' | 'phone-control' | 'keypad';
+export type V051Variant = 'default' | 'phone-control' | 'keypad' | 'ask';
 
 /** The pictures the script draws in Chromium before it builds the fixture (see SCREENSHOT_ART). */
 export type V051ArtName = 'slide' | 'slide2' | 'photo';
@@ -244,6 +257,7 @@ const SCREENS: Record<V051Variant, Record<number, { text: string; kind: 'questio
   keypad: {
     2: { text: MODEL_SCREEN, kind: 'keypad' },
   },
+  ask: {},
 };
 
 /** What GET /v1/sessions/:sid/screen answers for `text`, as the daemon builds it (api/routes.ts getScreen). */
@@ -315,6 +329,53 @@ function transcripts(now: number): Record<string, { items: TranscriptItem[]; nex
 }
 
 // ---------------------------------------------------------------------------
+// Ask (the 'ask' variant)
+
+/**
+ * This phone's Ask history, oldest first: a reminder added a quarter of an
+ * hour ago (its Undo still shows), "calories left?" (the phone fills the
+ * card from Today: 1,240 of 1,500 kcal) and a meal of two foods to add.
+ */
+function askHistory(now: number, today: string): AskList {
+  const iso = (minutesAgo: number) => new Date(now - minutesAgo * MIN).toISOString();
+  return AskListSchema.parse({
+    ready: true,
+    turns: [
+      {
+        id: lid(1101),
+        at: iso(15),
+        text: 'remind me at 6 to call the bank',
+        state: 'done',
+        reply: 'A reminder at 18:00 today.',
+        cards: [{ action: { type: 'todo', title: 'Call the bank', due: { day: today, time: '18:00' } }, state: 'added', ref: lid(1151) }],
+        dropped: 0,
+      },
+      {
+        id: lid(1102),
+        at: iso(6),
+        text: 'calories left?',
+        state: 'done',
+        reply: 'Here is today so far.',
+        cards: [{ action: { type: 'show', what: 'calories' }, state: 'proposed' }],
+        dropped: 0,
+      },
+      {
+        id: lid(1103),
+        at: iso(1),
+        text: 'had 2 rotis and dal',
+        state: 'done',
+        reply: 'Assumed 2 medium rotis and 1 bowl of dal.',
+        cards: [
+          { action: { type: 'food', day: today, name: 'Roti', kcal: 240 }, state: 'proposed' },
+          { action: { type: 'food', day: today, name: 'Dal', kcal: 180 }, state: 'proposed' },
+        ],
+        dropped: 0,
+      },
+    ],
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Jantar without the legacy ccw tool
 
 /**
@@ -354,6 +415,13 @@ export function webFixtureV051(opts: WebFixtureV051Options = {}): WebFixtureV051
 
   // ----- No legacy ccw tool: cswap's usage and resets only -----
   if (base.accountsMode === 'cswap' && !opts.ccw) withoutCcw(base);
+
+  // ----- Ask: on in its own variant only (it is off until the Mac turns it on) -----
+  const ask = variant === 'ask' ? askHistory(now, base.v04.today.day) : null;
+  if (ask) {
+    const daemon = (base.state.state as unknown as { daemon: { features: Record<string, unknown> } }).daemon;
+    daemon.features = { ...daemon.features, ask: true };
+  }
 
   // ----- The variant: sessions waiting in the terminal, their hook cards gone -----
   const screens: Record<string, string> = {};
@@ -421,6 +489,7 @@ export function webFixtureV051(opts: WebFixtureV051Options = {}): WebFixtureV051
       return { status: 201, body: { upload: { id, kind, bytes: body?.length ?? 0 } } };
     }
     if (method === 'DELETE' && /^\/v1\/sessions\/[^/]+\/uploads\/[^/]+$/.test(path)) return { status: 200, body: { ok: true } };
+    if (ask && method === 'GET' && path === '/v1/ask') return { status: 200, body: ask };
     if (method === 'GET' && (m = /^\/v1\/meetings\/([^/]+)\/shots\/([^/]+)$/.exec(path))) {
       const pic = shotArt[decodeURIComponent(m[2]!)];
       if (pic) return { status: 200, body: null, bytes: pic.bytes, type: pic.type };
