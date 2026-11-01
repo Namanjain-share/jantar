@@ -2,7 +2,8 @@
 // The README's and docs' pictures (spec O12), from synthetic data only:
 // serves the BUILT web app (packages/web/dist) with the daemon's real headers
 // and a synthetic fixture (test/integration/web-server.ts and, by default,
-// test/integration/web-fixture-v051.ts: v0.5's data with the v0.4.2 screens),
+// test/integration/web-fixture-v08.ts: web-fixture-v051.ts's data, v0.5's with
+// the v0.4.2 screens, and v0.8's Intel reading links in its own variant),
 // opens it in headless Chromium (playwright-core) and writes, for every
 // screen in SHOTS and every size it asks for:
 //
@@ -23,8 +24,9 @@
 // login) and `variant` (web-fixture-v051.ts: 'phone-control' has sessions
 // waiting in the terminal with no hook card, 'keypad' a screen with no
 // buttons, 'ask' Ask on with a history, 'posts' v0.7's Posts on with a
-// week of made-up posts). One fixture is built per accounts
-// and variant pair. With cswap
+// week of made-up posts; web-fixture-v08.ts: 'intel-read' the Mac reading
+// links, with "@example_cook"'s reel and its pictures). One fixture is built
+// per accounts and variant pair. With cswap
 // the fixture shows Jantar without the legacy ccw tool, as anyone else runs
 // it: no `next →`, burn, moves or hold list.
 //
@@ -80,6 +82,21 @@ export function sidOf(n) {
 const choices = (page) => page.getByRole('group', { name: 'Choices' });
 /** A tap within 500 ms of the rows showing is dropped (TAP_GUARD_MS): wait past it, as a person would. */
 const LOOK_MS = 800;
+
+/** web-fixture-v08.ts READ_IDS.dal: "@example_cook"'s reel, read at Full with four pictures. */
+export const DAL_ITEM = 'captures:01JV08READ00000000000000D1';
+
+/** Wait until `n` pictures inside `selector` have their bytes (decoded, with a size). */
+async function picturesLoaded(page, selector, n) {
+  await page.waitForFunction(
+    ([sel, want]) => {
+      const imgs = [...document.querySelectorAll(`${sel} img`)];
+      return imgs.length >= want && imgs.every((i) => i.complete && i.naturalWidth > 0);
+    },
+    [selector, n],
+    { timeout: 10_000 },
+  );
+}
 
 /**
  * The screens, in README order. `sizes`: which of SIZES (default both);
@@ -222,6 +239,41 @@ export const SHOTS = [
   { name: 'posts', path: '/posts', sizes: PHONE, variant: 'posts' },
   { name: 'money', path: '/money', sizes: PHONE },
   { name: 'intel', path: '/intel', sizes: PHONE },
+  // v0.8: Intel reading links, in its own variant (the shelf above keeps its look): Add post with a link typed,
+  // the shelf with the Reading strip and the rows' pictures, and "@example_cook"'s reel read at Full.
+  {
+    name: 'intel-add',
+    path: '/intel',
+    sizes: PHONE,
+    variant: 'intel-read',
+    steps: async (page) => {
+      await page.getByRole('region', { name: 'Reading' }).waitFor();
+      await page.getByRole('button', { name: 'Add', exact: true }).click();
+      const sheet = page.getByRole('dialog', { name: 'Add post' });
+      await sheet.waitFor();
+      await sheet.getByLabel('Link or text').fill('https://www.example.com/reel/Qw3rTy12345/ the paneer one, for Sunday');
+    },
+  },
+  {
+    name: 'intel-reading',
+    path: '/intel',
+    sizes: PHONE,
+    variant: 'intel-read',
+    steps: async (page) => {
+      await page.getByRole('region', { name: 'Reading' }).waitFor();
+      // The reel's row is on screen (rows further down ask for theirs as they come into view).
+      await picturesLoaded(page, 'main [data-thumb]', 1);
+    },
+  },
+  {
+    name: 'intel-item',
+    path: `/intel?item=${encodeURIComponent(DAL_ITEM)}`,
+    sizes: PHONE,
+    variant: 'intel-read',
+    steps: async (page) => {
+      await picturesLoaded(page, '[aria-label="Pictures"]', 4);
+    },
+  },
   { name: 'meetings', path: '/meetings', sizes: PHONE },
   // "Launch review" (web-fixture-v05.ts): the summary, decisions and action items.
   { name: 'meeting', path: '/meetings?id=01JV0000000000000000000501', sizes: PHONE },
@@ -275,8 +327,8 @@ function parseArgs(argv) {
   const out = {
     out: join(root, 'docs', 'img'),
     dist: join(root, 'packages', 'web', 'dist'),
-    fixture: join(root, 'test', 'integration', 'web-fixture-v051.ts'),
-    exportName: 'webFixtureV051',
+    fixture: join(root, 'test', 'integration', 'web-fixture-v08.ts'),
+    exportName: 'webFixtureV08',
     only: null,
     list: false,
   };
