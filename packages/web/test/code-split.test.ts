@@ -4,7 +4,8 @@
  * own chunks (wave 2), and v0.4.2's dialog dock and keypad, v0.5's
  * Meetings, (v0.5.1) a picked file's preparation and the attachment
  * glyphs, and v0.5.3's Ask, the Screen tab's picture, the pairing QR and
- * the tones and voice with their Sounds section too: nothing the app's
+ * the tones and voice with their Sounds section too, and v0.7's Posts:
+ * nothing the app's
  * entry imports statically reaches them, so Vite cannot fold them back into
  * the main chunk. A static import is
  * `import ... from` or `export ... from` without `type`; `import()` is the
@@ -89,6 +90,12 @@ describe('code splitting', () => {
       'ui/screens/ask/Turn.tsx',
       'ui/screens/ask/Edit.tsx',
       'ui/screens/ask/Show.tsx',
+      // v0.7: Posts loads only when it opens (a Life screen).
+      'ui/screens/life/posts/Posts.tsx',
+      'ui/screens/life/posts/PostRow.tsx',
+      'ui/screens/life/posts/PostSheet.tsx',
+      'ui/screens/life/posts/GoalsSheet.tsx',
+      'ui/screens/life/posts/model.ts',
     ];
     for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
     expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
@@ -135,6 +142,7 @@ describe('code splitting', () => {
     expect(shell).toContain("import('../screens/new/NewSession.js')");
     expect(shell).toContain("import('../screens/meetings/Meetings.js')");
     expect(shell).toContain("import('../screens/ask/Ask.js')");
+    expect(shell).toContain("import('../screens/life/posts/Posts.js')");
     const tab = readFileSync(join(src, 'ui/screens/session/FilesTab.tsx'), 'utf8');
     expect(tab).toContain("import('../files/SessionFiles.js')");
     for (const text of [shell, tab]) expect(text).not.toMatch(/import\(\s*['"`](blob|data):/);

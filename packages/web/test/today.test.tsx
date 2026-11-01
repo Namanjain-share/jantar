@@ -289,6 +289,39 @@ describe('Today: sections', () => {
   });
 });
 
+describe('Today: posts (v0.7)', () => {
+  const on = () => status({ modules: { todos: true, medicines: true, food: true, places: false, finance: true, posts: true } });
+
+  it('says in one line what there is to post today and what is late; the line opens Posts', async () => {
+    const { router } = render({ status: on(), today: today({ posts: { today: 2, late: 1 } }) });
+    const posts = await section('Posts');
+    const link = within(posts).getByRole('link', { name: '2 to post today · 1 late' });
+    // One line: no rows, no goal line.
+    expect(within(posts).queryAllByRole('listitem')).toHaveLength(0);
+    fireEvent.click(link);
+    expect(router.getState().route).toEqual({ name: 'posts' });
+  });
+
+  it('says when there is nothing to post today, and still says what is late', async () => {
+    const a = render({ status: on(), today: today({ posts: { today: 0, late: 0 } }) });
+    expect(within(await section('Posts')).getByRole('link', { name: 'Nothing to post today' })).toBeTruthy();
+    a.unmount();
+    render({ status: on(), today: today({ posts: { today: 0, late: 3 } }) });
+    expect(within(await section('Posts')).getByRole('link', { name: 'Nothing to post today · 3 late' })).toBeTruthy();
+  });
+
+  it('has no Posts line while posts are off, and lists Posts under Life while they are on', async () => {
+    const a = render();
+    await section('Claude');
+    expect(screen.queryByRole('region', { name: 'Posts' })).toBeNull();
+    a.unmount();
+    render({ status: on(), today: today({ posts: { today: 1, late: 0 } }) });
+    const life = await section('Life');
+    await waitFor(() => expect(within(life).getAllByRole('link').map((l) => l.textContent)).toEqual(['Todos', 'Medicines', 'Food', 'Finance', 'Posts']));
+    expect(within(life).getByRole('link', { name: 'Posts' }).getAttribute('href')).toBe('/posts');
+  });
+});
+
 describe('Today: quick adds (v0.5.3)', () => {
   it('Add todo opens the todo sheet due today with no time; saving adds it and reloads Today', async () => {
     const todoCreate = vi.fn(async () => ({ id: id(70) }));

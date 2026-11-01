@@ -16,7 +16,7 @@ import {
   windowLabel,
 } from '../src/lib/format.js';
 import { describeSuggestion, questionsOf, summarizeTool } from '../src/lib/describe.js';
-import { createRouter, memoryHistory, parseRoute, routePath } from '../src/lib/router.js';
+import { createRouter, LIFE_ROUTES, memoryHistory, parseRoute, routePath } from '../src/lib/router.js';
 import { closeNotificationsFor, disablePush, enablePush, getPushState, isIOS, urlBase64ToBytes } from '../src/lib/push.js';
 import { newIdempotencyKey } from '../src/lib/ids.js';
 import { readLocal, writeLocal } from '../src/lib/storage.js';
@@ -149,6 +149,20 @@ describe('router', () => {
     expect(parseRoute('/pair', '', '#c=<script>alert(1)</script>xxxxxxxx')).toEqual({ name: 'pair', code: null });
     expect(parseRoute('/x/y')).toEqual({ name: 'notFound', path: '/x/y' });
     expect(routePath({ name: 'session', sid: 'a/b', pendingId: 'p 1' })).toBe('/s/a%2Fb?p=p%201');
+  });
+
+  it('v0.7: parses /posts and gives it back (a push opens /posts?id=)', () => {
+    const id = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
+    expect(parseRoute('/posts', `?id=${id}&filter=done`)).toEqual({ name: 'posts', filter: 'done', id });
+    expect(routePath({ name: 'posts', filter: 'done', id })).toBe(`/posts?filter=done&id=${id}`);
+    for (const r of [{ name: 'posts' }, { name: 'posts', filter: 'open' }, { name: 'posts', id }, { name: 'posts', filter: 'done', id }] as const) {
+      const u = new URL(routePath(r), 'http://x');
+      expect(parseRoute(u.pathname, u.search), routePath(r)).toEqual(r);
+    }
+    // Only ids and filters that match their patterns are read.
+    expect(parseRoute('/posts', '?id=../x&filter=all')).toEqual({ name: 'posts' });
+    expect(parseRoute('/posts/')).toEqual({ name: 'posts' });
+    expect(LIFE_ROUTES).toContain('posts');
   });
 
   it('navigates, replaces and goes back', () => {

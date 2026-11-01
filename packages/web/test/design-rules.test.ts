@@ -90,6 +90,8 @@ describe('design rules (direction.md 7)', () => {
         'ui/screens/life/shared/PushWarning.tsx',
         // v0.5.3 (spec 1): an Ask turn that failed, and a refused Send, Cancel, Add, Skip, Undo or Clear.
         'ui/screens/ask/Turn.tsx',
+        // v0.7 (spec 5.6): the check of a post due today or before.
+        'ui/screens/life/posts/PostRow.tsx',
       ]),
     ).toEqual([]);
     // Never a border, an outline or a focus ring.

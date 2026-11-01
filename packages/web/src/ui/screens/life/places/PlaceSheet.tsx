@@ -5,10 +5,10 @@
  * it closes the sheet and the list holds it back under a 5 s Undo.
  *
  * A link is an <a target="_blank" rel="noopener noreferrer"> only when it
- * is http(s) (gate LW2); anything else stays text. No map and no request
- * to any maps service.
+ * is http(s) (gate LW2, shared/links.tsx); anything else stays text. No map
+ * and no request to any maps service.
  */
-import { ArrowSquareOutIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
+import { PlusIcon, XIcon } from '@phosphor-icons/react';
 import { useId, useRef, useState, type FormEvent } from 'react';
 import type { Dish, Place, PlaceBody, PlacePatch } from '@jantar/protocol';
 import { useDeps } from '../../../context.js';
@@ -17,42 +17,13 @@ import { IconButton } from '../../../kit/IconButton.js';
 import { Sheet } from '../../../kit/Sheet.js';
 import { Spinner } from '../../../kit/Spinner.js';
 import { Switch } from '../../devices/parts.js';
+import { linkOk, OpenLink } from '../shared/links.js';
 import { NotSaved } from '../shared/states.js';
 import { Field, INPUT, OfflineLine, SheetActions, TEXTAREA, useOffline, useWrite } from '../today/parts.js';
 import { StarPicker } from './Stars.js';
 
-/** `url` when it is an http(s) URL a link may open, else null (javascript:, data:, relative...). */
-export function safeHref(url: string | undefined | null): string | null {
-  if (!url) return null;
-  try {
-    const u = new URL(url);
-    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null;
-  } catch {
-    return null;
-  }
-}
-
-/** What the daemon takes for a place's link: https, 500 characters at most. */
-export function linkOk(url: string): boolean {
-  if (url.length > 500) return false;
-  try {
-    return new URL(url).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-/** "Open link": a new tab with no opener and no referrer, or nothing for a link that is not http(s). */
-export function OpenLink({ url, className }: { url: string | undefined; className?: string }) {
-  const href = safeHref(url);
-  if (!href) return null;
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={className ?? 'inline-flex items-center gap-4 type-small text-ink-2 underline underline-offset-2 hover:text-ink'}>
-      Open link
-      <ArrowSquareOutIcon size={12} aria-hidden="true" />
-    </a>
-  );
-}
+/** A café's link: https, 500 characters at most. */
+const LINK_MAX = 500;
 
 export interface PlaceSheetProps {
   open: boolean;
@@ -95,7 +66,7 @@ function PlaceForm({ place, onSaved, onDelete, onDone }: { place: Place | null; 
 
   const named = dishes.filter((d) => d.name.trim());
   const unrated = named.some((d) => d.rating < 1);
-  const badLink = link.trim() !== '' && !linkOk(link.trim());
+  const badLink = link.trim() !== '' && !linkOk(link.trim(), LINK_MAX);
   const ok = name.trim().length > 0 && !unrated && !badLink;
   const setDish = (key: number, patch: Partial<DishRow>) => setDishes((ds) => ds.map((d) => (d.key === key ? { ...d, ...patch } : d)));
 

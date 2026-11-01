@@ -12,7 +12,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Place } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
-import { safeHref } from '../src/ui/screens/life/places/PlaceSheet.js';
+import { safeHref } from '../src/ui/screens/life/shared/links.js';
 import { bestDish } from '../src/ui/screens/life/places/Places.js';
 import { fakeApi, iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
 

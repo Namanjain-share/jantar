@@ -24,6 +24,7 @@
  *   /food           Food, calories and weight (?day=)
  *   /places         Cafés (?filter=all|tried|want, ?id=)
  *   /money          Finance (?month=YYYY-MM, ?bill=<id>)
+ *   /posts          v0.7 Posts (?filter=open|done, ?id=<post id> opens one, from a post's push)
  *   /intel          The Intel shelf (?q=, ?type=, ?tag=, ?item=<shelf id>; v0.5.3
  *                   ?focus=search, from the header's magnifier, focuses the search box)
  *   /more           The places past the fifth tab
@@ -63,6 +64,8 @@ export type Route =
   | { name: 'food'; day?: string }
   | { name: 'places'; filter?: PlacesFilter; id?: string }
   | { name: 'money'; month?: string; bill?: string }
+  // v0.7, a Life screen too
+  | { name: 'posts'; filter?: PostsFilter; id?: string }
   | { name: 'intel'; q?: string; type?: string; tag?: string; item?: string; focus?: 'search' }
   | { name: 'more' }
   // v0.5
@@ -73,9 +76,11 @@ export type Route =
 
 export type TodosTab = 'todos' | 'reminders' | 'projects';
 export type PlacesFilter = 'all' | 'tried' | 'want';
+/** Posts to make (idea and ready), or the posted and skipped ones. */
+export type PostsFilter = 'open' | 'done';
 
 /** The Life screens (v0.4): Today's place in the tabs stands for all of them. */
-export const LIFE_ROUTES: readonly Route['name'][] = ['today', 'todos', 'meds', 'food', 'places', 'money'];
+export const LIFE_ROUTES: readonly Route['name'][] = ['today', 'todos', 'meds', 'food', 'places', 'money', 'posts'];
 
 const LIFE_ID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const DAY_KEY = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -124,6 +129,11 @@ function lifeRoute(path: string, q: URLSearchParams): Route | null {
     }
     case '/money':
       return defined({ name: 'money' as const, month: matching(q, 'month', MONTH_KEY), bill: matching(q, 'bill', LIFE_ID) });
+    case '/posts': {
+      const f = q.get('filter');
+      const filter = (f === 'open' || f === 'done' ? f : undefined) as PostsFilter | undefined;
+      return defined({ name: 'posts' as const, filter, id: matching(q, 'id', LIFE_ID) });
+    }
     case '/intel':
       return defined({
         name: 'intel' as const,
@@ -287,6 +297,8 @@ export function routePath(r: Route): string {
       return withQuery('/places', queryOf({ filter: r.filter, id: r.id }));
     case 'money':
       return withQuery('/money', queryOf({ month: r.month, bill: r.bill }));
+    case 'posts':
+      return withQuery('/posts', queryOf({ filter: r.filter, id: r.id }));
     case 'intel':
       return withQuery('/intel', queryOf({ q: r.q, type: r.type, tag: r.tag, item: r.item, focus: r.focus }));
     case 'more':

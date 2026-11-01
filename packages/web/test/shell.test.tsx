@@ -195,3 +195,26 @@ describe('phone shell', () => {
     expect(screen.getByRole('button', { name: 'Back to the board' })).toBeTruthy();
   });
 });
+
+describe('v0.7: Posts in the shell', () => {
+  preloadPlaces('posts');
+  const ID = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
+  const week = { from: '2026-01-12', to: '2026-01-18', posted: 0, goals: [] };
+
+  it('renders Posts at /posts while Life is on (a push lands on /posts?id=), under the Today tab', async () => {
+    const postsList = vi.fn(async () => ({ today: '2026-01-15', week, posts: [] }));
+    renderApp({ path: `/posts?id=${ID}`, state: stateWith({ sessions: [session('a')], features: { life: true } }), api: fakeApi({ postsList }) });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Posts' })).toBeTruthy();
+    expect(await screen.findByText('Nothing to post yet.')).toBeTruthy();
+    expect(postsList).toHaveBeenCalledWith('open');
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(nav).getByRole('link', { name: /Today/ }).getAttribute('aria-current')).toBe('page');
+  });
+
+  it('says it is off at the Mac while Life is off', async () => {
+    renderApp({ path: '/posts', state: stateWith({ sessions: [session('a')], features: { files: true } }) });
+    expect(await screen.findByText('That is off on this Mac.')).toBeTruthy();
+    expect(screen.getByText('jantar life on <module>')).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Posts' })).toBeNull();
+  });
+});

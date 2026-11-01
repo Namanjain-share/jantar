@@ -88,6 +88,10 @@ import {
   type PlaceBody,
   type PlacePatch,
   type PlacesResponse,
+  type PostBody,
+  type PostGoalsBody,
+  type PostPatch,
+  type PostsResponse,
   type ProjectBody,
   type ProjectPatch,
   type ProjectsResponse,
@@ -331,6 +335,16 @@ export interface Api {
   /** The reply's id is the expense it logged. */
   billPaid(id: string, body?: BillPaidBody, idempotencyKey?: string): Promise<IdReply>;
   billDelete(id: string, idempotencyKey?: string): Promise<OkReply>;
+
+  // --- v0.7 Posts, a Life module (control scope, reads included). Jantar never posts: these keep the plan.
+  /** Posts to make (idea and ready), or with 'done' the newest posted and skipped; and this week against the goals. */
+  postsList(filter?: 'open' | 'done'): Promise<PostsResponse>;
+  postCreate(body: PostBody, idempotencyKey?: string): Promise<IdReply>;
+  /** A field, or the status: Posted stamps the time on the Mac; null clears a field. */
+  postUpdate(id: string, patch: PostPatch, idempotencyKey?: string): Promise<OkReply>;
+  postDelete(id: string, idempotencyKey?: string): Promise<OkReply>;
+  /** The whole list of weekly goals ([] removes them). */
+  postGoalsSet(body: PostGoalsBody, idempotencyKey?: string): Promise<OkReply>;
 
   // --- v0.4 Intel shelf
   /** v0.5.3 `sort`: best (the daemon's default with a search) or new. */
@@ -682,6 +696,11 @@ export function createApi(opts: ApiOptions = {}): Api {
     billUpdate: (id, patch, k) => call(ROUTES.billUpdate, { params: { id }, body: patch, ...key(k) }),
     billPaid: (id, body = {}, k) => call(ROUTES.billPaid, { params: { id }, body, ...key(k) }),
     billDelete: (id, k) => call(ROUTES.billDelete, { params: { id }, ...key(k) }),
+    postsList: (filter) => call(ROUTES.postsList, { query: { done: filter === 'done' ? flag(true) : undefined } }),
+    postCreate: (body, k) => call(ROUTES.postCreate, { body, ...key(k) }),
+    postUpdate: (id, patch, k) => call(ROUTES.postUpdate, { params: { id }, body: patch, ...key(k) }),
+    postDelete: (id, k) => call(ROUTES.postDelete, { params: { id }, ...key(k) }),
+    postGoalsSet: (body, k) => call(ROUTES.postGoalsSet, { body, ...key(k) }),
 
     intelList: (q = {}) => call(ROUTES.intelList, { query: { q: q.q, type: q.type, tag: q.tag, before: q.before, limit: q.limit, sort: q.sort } }),
     intelGet: (id) => call(ROUTES.intelGet, { params: { id } }),

@@ -13,8 +13,8 @@
  * neither; the service worker precaches them like every other file. So are
  * v0.4's Life screens and the Intel shelf, each shown only while its switch
  * is on (Life: any module; which modules are on is the screen's to ask),
- * v0.5's Meetings, shown only while Meetings are on, and v0.5.3's Ask,
- * shown only while Ask is on.
+ * v0.5's Meetings, shown only while Meetings are on, v0.5.3's Ask,
+ * shown only while Ask is on, and v0.7's Posts, a Life screen.
  */
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { boardOrder, needsYou } from '@jantar/protocol';
@@ -58,6 +58,8 @@ const Meds = lazy(() => import('../screens/life/meds/Meds.js').then((m) => ({ de
 const Food = lazy(() => import('../screens/life/food/Food.js').then((m) => ({ default: m.Food })));
 const Places = lazy(() => import('../screens/life/places/Places.js').then((m) => ({ default: m.Places })));
 const Money = lazy(() => import('../screens/life/money/Money.js').then((m) => ({ default: m.Money })));
+// v0.7, a Life screen in its own chunk.
+const Posts = lazy(() => import('../screens/life/posts/Posts.js').then((m) => ({ default: m.Posts })));
 const Intel = lazy(() => import('../screens/intel/Intel.js').then((m) => ({ default: m.Intel })));
 // v0.5, its own chunk.
 const Meetings = lazy(() => import('../screens/meetings/Meetings.js').then((m) => ({ default: m.Meetings })));
@@ -198,13 +200,14 @@ export function Shell() {
         );
         break;
       }
-      // v0.4 places: Life's screens while any module is on, the shelf while it is on.
+      // v0.4 places: Life's screens while any module is on, the shelf while it is on (v0.7: Posts is a Life screen).
       case 'today':
       case 'todos':
       case 'meds':
       case 'food':
       case 'places':
       case 'money':
+      case 'posts':
       case 'intel': {
         const on = route.name === 'intel' ? features.intel : features.life;
         const caption = route.name === 'intel' ? 'Opening the shelf…' : 'Opening Life…';
@@ -360,6 +363,8 @@ function lifeScreen(route: Route): ReactNode {
       return <Places filter={route.filter} id={route.id} />;
     case 'money':
       return <Money month={route.month} bill={route.bill} />;
+    case 'posts':
+      return <Posts filter={route.filter} id={route.id} />;
     case 'intel':
       return <Intel q={route.q} type={route.type} tag={route.tag} item={route.item} focus={route.focus} />;
     default:

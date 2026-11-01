@@ -8,6 +8,7 @@
  *   DUE         overdue todos, then today's    "Nothing due today." with none
  *               [+] Add todo                   always (v0.5.3): the todo sheet, due today
  *   BILLS       due within 3 days or overdue   only when there are some
+ *   POSTS       2 to post today · 1 late  ›    v0.7, while posts are on: one line, a link to Posts
  *   FOOD        1,240 / 1,500 kcal  [+]        always, while food is on
  *               72.4 kg | Log weight           v0.5.3: opens the weight sheet over Today
  *   CLAUDE      2 sessions need you  ›         always; a tap opens the Board
@@ -28,6 +29,7 @@ import {
   CheckSquareIcon,
   CoffeeIcon,
   ForkKnifeIcon,
+  MegaphoneIcon,
   PillIcon,
   WalletIcon,
   type Icon,
@@ -68,7 +70,14 @@ const MODULES: readonly { module: LifeModule; label: string; href: string; icon:
   { module: 'food', label: 'Food', href: '/food', icon: ForkKnifeIcon },
   { module: 'places', label: 'Cafés', href: '/places', icon: CoffeeIcon },
   { module: 'finance', label: 'Finance', href: '/money', icon: WalletIcon },
+  { module: 'posts', label: 'Posts', href: '/posts', icon: MegaphoneIcon },
 ];
+
+/** Today's one Posts line (v0.7): "2 to post today · 1 late", or "Nothing to post today". */
+export function postsLine(p: { today: number; late: number }): string {
+  const first = p.today > 0 ? `${p.today} to post today` : 'Nothing to post today';
+  return p.late > 0 ? `${first} · ${p.late} late` : first;
+}
 
 function Section({ label, count, children }: { label: string; count?: number; children: ReactNode }) {
   return (
@@ -175,6 +184,15 @@ export function Today({ dose }: TodayProps) {
               {t.bills && t.bills.length > 0 ? (
                 <Section label="Bills" count={t.bills.length}>
                   <BillsToday bills={t.bills} />
+                </Section>
+              ) : null}
+
+              {t.posts ? (
+                <Section label="Posts">
+                  <Link href="/posts" className="flex h-48 items-center gap-8 border-b border-line px-16 transition-colors duration-120 ease-hover hover:bg-hover">
+                    <span className="flex-1 type-row text-ink">{postsLine(t.posts)}</span>
+                    <CaretRightIcon size={16} aria-hidden="true" className="flex-none text-ink-3" />
+                  </Link>
                 </Section>
               ) : null}
 
