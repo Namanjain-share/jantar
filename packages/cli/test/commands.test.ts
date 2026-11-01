@@ -16,7 +16,7 @@ import remote from '../src/commands/remote.js';
 import send from '../src/commands/send.js';
 import status from '../src/commands/status.js';
 import { EXIT } from '../src/command.js';
-import { contextFor, fail, fakeCtl, fakePackages, ok, testDeps, type CtlCall } from './helpers.js';
+import { T0, contextFor, fail, fakeCtl, fakePackages, ok, testDeps, type CtlCall } from './helpers.js';
 
 const SID_A = '11111111-1111-4111-8111-111111111111';
 const SID_B = '22222222-2222-4222-8222-222222222222';
@@ -71,6 +71,29 @@ describe('jantar status', () => {
     expect(out).not.toContain('\u001b');
     expect(out).not.toContain('\u0007');
     expect(out).toContain('All green. Done');
+  });
+
+  it('says what a session runs in the background (v0.6.1): working with a workflow, a quiet tag with shells only', async () => {
+    const st = emptyState();
+    st.seq = 7;
+    st.sessions[SID_A] = makeSession({
+      sid: SID_A,
+      account: 3,
+      folder: 'web-app',
+      name: 'fix-login',
+      status: 'idle',
+      statusSource: 'hook',
+      subagentsRunning: 1,
+      background: { workflows: 1, shells: 6, since: new Date(T0 - 52 * 60_000).toISOString(), names: ['demo-sweep'] },
+    });
+    st.sessions[SID_B] = makeSession({ sid: SID_B, account: 3, folder: 'docs', name: 'typo', status: 'idle', background: { shells: 6 } });
+    const ctl = fakeCtl({ 'GET /v1/state': ok({ seq: 7, epoch: 'e', state: st }) });
+    const { ctx, io } = contextFor({ env: ENV }, { ctl });
+    expect(await status.run([], ctx)).toBe(EXIT.ok);
+    expect(io.stdout).toContain(`  * Working · web-app · fix-login  (acct 3, ${SID_A.slice(0, 8)})\n      1 workflow running · demo-sweep · 52m · 6 shells\n`);
+    expect(io.stdout).toContain(`  > Done · docs · typo  (acct 3, ${SID_B.slice(0, 8)})  [6 shells]`);
+    // the Done session comes first ("your turn"), the one waiting on its workflow with the working ones
+    expect(io.stdout.indexOf('Done · docs')).toBeLessThan(io.stdout.indexOf('Working · web-app'));
   });
 
   it('--json prints the state response', async () => {
