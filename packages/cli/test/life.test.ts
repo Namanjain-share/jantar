@@ -58,7 +58,7 @@ describe('jantar life status', () => {
     expect(out).toContain('Life modules on: todos, medicines; off: food, places, finance');
     expect(out).toContain('Time zone: Asia/Kolkata (today is 2026-01-15)');
     expect(out).toContain('Currency: INR');
-    expect(out).toContain('Lock screen details: off (pushes say "Medicine due" and "Bill due", no names)');
+    expect(out).toContain('Lock screen details: off (pushes say "Medicine due", "Bill due" and "Post due", no names)');
     expect(out).toContain('Medicine pings: 1 device with notifications on');
     expect(out).toContain('Backups: 3 in /synthetic/state/backups, the newest 3h ago');
     expect(out).not.toContain('Ask Claude');
@@ -173,7 +173,10 @@ describe('jantar life set', () => {
     const c = contextFor({ env: ENV }, { ctl });
     expect(await life.run(['set', 'lock-screen-details', 'on'], c.ctx)).toBe(EXIT.ok);
     expect(s.settings.life.lockScreenDetails).toBe(true);
-    expect(c.io.stdout).toContain('name the medicine, the bill and its amount');
+    expect(c.io.stdout).toContain('name the medicine, the bill and its amount, and where a post goes');
+    const off = contextFor({ env: ENV }, { ctl });
+    expect(await life.run(['set', 'lock-screen-details', 'off'], off.ctx)).toBe(EXIT.ok);
+    expect(off.io.stdout).toBe('Lock screen details: off. Pushes say "Medicine due", "Bill due" and "Post due", no names.\n');
     expect(await life.run(['set', 'lock-screen-details', 'maybe'], contextFor({ env: ENV }, { ctl }).ctx)).toBe(EXIT.usage);
   });
 

@@ -81,7 +81,7 @@ function settingsLines(zone: string, life: Pick<Settings['life'], 'currency' | '
   return (
     `Time zone: ${zone}\n` +
     `Currency: ${life.currency ?? 'none (amounts show as plain numbers)'}\n` +
-    `Lock screen details: ${onOff(life.lockScreenDetails)} (${life.lockScreenDetails ? 'medicine and bill names on the lock screen' : 'pushes say "Medicine due" and "Bill due", no names'})\n`
+    `Lock screen details: ${onOff(life.lockScreenDetails)} (${life.lockScreenDetails ? 'medicine and bill names and where a post goes on the lock screen' : 'pushes say "Medicine due", "Bill due" and "Post due", no names'})\n`
   );
 }
 
@@ -145,8 +145,8 @@ async function set(ctx: CliContext, key: string | undefined, value: string | und
       const on = parseOnOff(value, 'lock-screen-details');
       await changeSettings(ctx, { life: { lockScreenDetails: on } }, (s) =>
         s.life.lockScreenDetails
-          ? 'Lock screen details: on. Medicine and bill pushes name the medicine, the bill and its amount.\n'
-          : 'Lock screen details: off. Pushes say "Medicine due" and "Bill due", no names.\n',
+          ? 'Lock screen details: on. Medicine, bill and post pushes name the medicine, the bill and its amount, and where a post goes.\n'
+          : 'Lock screen details: off. Pushes say "Medicine due", "Bill due" and "Post due", no names.\n',
       );
       return EXIT.ok;
     }
@@ -218,7 +218,7 @@ export default defineCommand(
       '  life off <module...> | all            turn modules off (their data stays in life.db)\n' +
       "  life set timezone <IANA>|none         the zone days and ping times follow (none: the Mac's)\n" +
       '  life set currency <XXX>|none          a label for amounts (none: plain numbers)\n' +
-      '  life set lock-screen-details on|off   medicine and bill names on the lock screen (off: "Medicine due")\n' +
+      '  life set lock-screen-details on|off   medicine and bill names and where a post goes on the lock screen (off: "Medicine due")\n' +
       '  life backup                           copy life.db into the backups folder now (nightly at 03:30)\n' +
       '  life restore <file> [--yes]           put a backup back; asks first, and keeps the current life.db\n' +
       'The switches, zone, currency and lock-screen details change only here, at the Mac.',
