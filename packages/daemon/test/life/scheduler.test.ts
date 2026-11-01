@@ -22,7 +22,9 @@
  * - LS8 a sender that never answers ends the send at 30 s as a failure, and
  *   the sweeps at 30 s, 60 s and 150 s never claim that row again.
  * - v0.5.3: a sweep whose read fails still arms the exact timer, so the
- *   next row rings on time, not at the next sweep.
+ *   next row rings on time, not at the next sweep; one that cannot read the
+ *   earliest row either keeps the timer it had. A producer's new time for a
+ *   waiting row is a new wait (logged again; sent with none, not `waited`).
  * Plus: rows due in the same minute with one group key go out as one push;
  * a muted reminder waits, and a pile of them never keeps a medicine row
  * from being read; cancel deletes, skip moves on; a module that is off
@@ -523,6 +525,26 @@ describe('LS6: a push that never left the Mac waits for the network (v0.5.3)', (
     expect(r.repo.get('todo', 'T1')?.failures).toBe(1);
     expect(waitingLines(r)).toHaveLength(1);
   });
+
+  it("a producer's new time is a new wait, logged again; sent there with no wait, it is not marked waited", async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:00:00.000Z'));
+    r.rec.result = { delivered: 0, failed: 1, offline: 1 };
+    r.sched.start();
+    await r.settle();
+    // Snoozed to 08:02 (the todo's set): still no network there.
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:02:00.000Z'));
+    await r.settle(2 * MIN);
+    expect(waitingLines(r)).toHaveLength(2);
+    // Snoozed again to 08:05, and the network is back by then.
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:05:00.000Z'));
+    r.rec.result = { delivered: 1, failed: 0 };
+    await r.settle(3 * MIN);
+    const sent = r.log.records.filter((e) => e.msg === 'life push sent');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.fields).not.toHaveProperty('waited');
+  });
 });
 
 describe('the near timer after a failed read (v0.5.3)', () => {
@@ -544,6 +566,23 @@ describe('the near timer after a failed read (v0.5.3)', () => {
       ['2026-01-15T08:00:00.000Z', 'life:todo:T1'],
       ['2026-01-15T08:00:00.000Z', 'life:todo:T2'],
     ]);
+  });
+
+  it('a sweep that cannot find the earliest row either keeps the timer it had: that row still rings on time', async () => {
+    const r = make('2026-01-15T07:59:00.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T07:59:50.000Z'));
+    r.sched.start(); // the near timer for 07:59:50; the interval sweeps at 07:59:30 and 08:00:00
+    const locked = (): never => {
+      throw new Error('database is locked');
+    };
+    vi.spyOn(PingsRepo.prototype, 'due').mockImplementationOnce(locked);
+    const earliest = vi.spyOn(PingsRepo.prototype, 'earliest').mockImplementationOnce(locked);
+    await r.settle(30_000); // 07:59:30: neither read works
+    expect(earliest).toHaveBeenCalled();
+    expect(r.rec.sent).toHaveLength(0);
+    await r.settle(20_000); // 07:59:50
+    expect(r.rec.sent.map((x) => [x.at, x.push.tag])).toEqual([['2026-01-15T07:59:50.000Z', 'life:todo:T1']]);
   });
 });
 
