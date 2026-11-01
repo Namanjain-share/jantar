@@ -191,6 +191,18 @@ describe('v0.5.3: words, more places, best first', () => {
     expect(ids(s, { q: 'नमस्ते' })).toEqual(['a:hi']);
     expect(ids(s, { q: 'दुनिया' })).toEqual(['a:hi']);
   });
+
+  it('a Devanagari word inside another word scores 4, after a word start (6); a vowel sign is no word break', () => {
+    const s = new Shelf();
+    s.replace('a', [
+      rec('a', { id: 'start', title: 'नमस्ते दुनिया', at: '2026-10-29T01:00:00Z' }),
+      // After a letter (ई) and after a vowel sign (ी): inside a word both times. Equal scores: newest first.
+      rec('a', { id: 'letter', title: 'नईदुनिया', at: '2026-10-29T02:00:00Z' }),
+      rec('a', { id: 'sign', title: 'कीदुनिया', at: '2026-10-29T03:00:00Z' }),
+      rec('a', { id: 'note', title: 'Other', what_it_is: 'दुनिया', at: '2026-10-29T04:00:00Z' }),
+    ]);
+    expect(ids(s, { q: 'दुनिया' })).toEqual(['a:start', 'a:sign', 'a:letter', 'a:note']);
+  });
 });
 
 describe('paging', () => {
@@ -256,6 +268,8 @@ describe('paging', () => {
     expect(s.list(q({ q: 'hooks', limit: 2, before: '2026-10-29T04:00:00.000Z|a|n2' })).items.map((i) => i.id)).toEqual(['a:t2', 'a:t1']);
     expect(s.list(q({ limit: 2, before: '#2|a|t1' })).items.map((i) => i.id)).toEqual(['a:n2', 'a:t2']);
     expect(s.list(q({ q: 'hooks', limit: 2, before: '#x|a|gone' })).items.map((i) => i.id)).toEqual(['a:t2', 'a:t1']);
+    // A `best` cursor short of its two pipes starts from the top too, whatever its offset says.
+    for (const before of ['#3', '#3|a']) expect(s.list(q({ q: 'hooks', limit: 2, before })).items.map((i) => i.id), before).toEqual(['a:t2', 'a:t1']);
     // sort: 'new' under a search pages by time, as before.
     const n1 = s.list(q({ q: 'hooks', sort: 'new', limit: 2 }));
     expect(n1.items.map((i) => i.id)).toEqual(['a:n2', 'a:t2']);

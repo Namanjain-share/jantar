@@ -3,7 +3,8 @@
  * left, the strip on the right (one tap opens the legend sheet). With no
  * sessions there is no strip to tap: the empty board shows the legend itself.
  * v0.5.3: while the Intel shelf is on, a magnifier after the strip opens
- * the shelf with its search box focused (/intel?focus=search).
+ * the shelf with its search box focused (/intel?focus=search). On a
+ * filtered shelf that is a new search: Back returns to the filtered one.
  */
 import { MagnifyingGlassIcon } from '@phosphor-icons/react';
 import { PRODUCT_NAME } from '../../brand.js';

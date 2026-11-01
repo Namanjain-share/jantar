@@ -165,6 +165,22 @@ describe('phone shell', () => {
     expect(intelList).toHaveBeenCalled();
   });
 
+  it('v0.5.3: on a filtered shelf the magnifier starts a new search (empty box, no type or tag); Back returns to the filtered view', async () => {
+    const intelList = vi.fn(async () => ({ items: [], next: null, total: 0, types: [], tags: [] }));
+    const api = fakeApi({ intelList, intelSources: vi.fn(async () => ({ sources: [] })) });
+    const { router } = renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: true } }), api, path: '/intel?q=hooks&type=tool&tag=cli' });
+    const box = (await screen.findByLabelText('Search the shelf')) as HTMLInputElement;
+    expect(box.value).toBe('hooks');
+    fireEvent.click(screen.getByRole('link', { name: 'Search the Intel shelf' }));
+    await waitFor(() => expect(router.getState().route).toEqual({ name: 'intel' }));
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    expect(box.value).toBe('');
+    // The magnifier pushed one entry (its focus word then left it in place): Back is the search the user had.
+    act(() => router.getState().back());
+    await waitFor(() => expect(router.getState().route).toEqual({ name: 'intel', q: 'hooks', type: 'tool', tag: 'cli' }));
+    await waitFor(() => expect(box.value).toBe('hooks'));
+  });
+
   it('v0.5.3: no magnifier while the shelf is off, nor on an open session', () => {
     const a = renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: false } }) });
     expect(screen.queryByRole('link', { name: 'Search the Intel shelf' })).toBeNull();
