@@ -4,9 +4,10 @@
  *
  * - every stage's state, and session 3's transcript, parse with the
  *   protocol's own schemas;
- * - 'before' has three sessions that need you and the Bash card; 'answered'
- *   and 'done' two, with session 3 working on that command, then idle with
- *   the reply;
+ * - 'before' has three sessions that need you and the Bash card; 'answered',
+ *   'migrating', 'testing' and 'done' two, with session 3 working on each
+ *   command of the run in turn, then idle with the reply; its transcript
+ *   keeps the same history at every stage and grows by the run;
  * - the push the film draws is what the daemon's notify/format.ts writes for
  *   that card, with full bodies (the default);
  * - api-server's Terminal screen is read by the daemon's dialogOfScreen as
@@ -18,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { StateResponseSchema, TranscriptResponseSchema, needsYou, type Session } from '@jantar/protocol';
 import { dialogOfScreen } from '@jantar/daemon/terminal/dialog';
 import { cardNotification } from '@jantar/daemon/notify/format';
-import { FILM_COMMAND, FILM_REPLY, FILM_SID, FILM_STAGES, FILM_TERMINAL, webFixtureFilm } from './web-fixture-film.js';
+import { FILM_COMMAND, FILM_HISTORY, FILM_REPLY, FILM_RUN, FILM_SID, FILM_STAGES, FILM_TERMINAL, webFixtureFilm } from './web-fixture-film.js';
 
 const BASE = 'http://127.0.0.1:1';
 
@@ -40,18 +41,21 @@ describe('webFixtureFilm', () => {
       const st = stages[stage].state.state;
       return Object.values(st.sessions).filter((s) => needsYou(st, s.sid)).length;
     };
-    expect([need('before'), need('answered'), need('done')]).toEqual([3, 2, 2]);
+    expect(FILM_STAGES.map(need)).toEqual([3, 2, 2, 2, 2]);
 
     const card = Object.values(stages.before.state.state.pending).find((p) => p.sid === FILM_SID);
     expect(card?.tool).toBe('Bash');
     expect((card?.input as { command?: string }).command).toBe(FILM_COMMAND);
-    for (const stage of ['answered', 'done'] as const) {
+    for (const stage of ['answered', 'migrating', 'testing', 'done'] as const) {
       expect(Object.values(stages[stage].state.state.pending).some((p) => p.sid === FILM_SID), stage).toBe(false);
     }
 
     const s3 = (stage: keyof typeof stages) => stages[stage].state.state.sessions[FILM_SID] as Session;
-    expect(s3('answered').status).toBe('working');
-    expect(s3('answered').now).toEqual({ kind: 'tool', tool: 'Bash', text: FILM_COMMAND });
+    for (const [i, stage] of (['answered', 'migrating', 'testing'] as const).entries()) {
+      expect(s3(stage).status, stage).toBe('working');
+      expect(s3(stage).now, stage).toEqual({ kind: 'tool', tool: FILM_RUN[i]![0], text: FILM_RUN[i]![1] });
+    }
+    expect(s3('answered').now?.text).toBe(FILM_COMMAND);
     expect(s3('done').status).toBe('idle');
     expect(s3('done').now).toBeUndefined();
     expect(s3('done').lastReply?.text).toBe(FILM_REPLY);
@@ -59,7 +63,14 @@ describe('webFixtureFilm', () => {
     const talk = (stage: keyof typeof stages) =>
       (stages[stage].v04.answer('GET', new URL(`/v1/sessions/${FILM_SID}/transcript`, BASE))!.body as { items: Array<{ kind: string; text: string }> }).items;
     expect(talk('answered')[0]).toMatchObject({ kind: 'tool_use', text: FILM_COMMAND });
+    expect(talk('migrating')[0]).toMatchObject({ kind: 'tool_use', text: FILM_RUN[1]![1] });
+    expect(talk('testing')[0]).toMatchObject({ kind: 'tool_use', text: FILM_RUN[2]![1] });
     expect(talk('done')[0]).toMatchObject({ kind: 'text', text: FILM_REPLY });
+    // The same history under every stage, oldest last; the run only adds to the top.
+    const oldest = FILM_HISTORY.map((h) => h[3]).reverse();
+    for (const stage of FILM_STAGES) expect(talk(stage).slice(-FILM_HISTORY.length).map((i) => i.text), stage).toEqual(oldest);
+    expect(talk('before')).toHaveLength(5 + FILM_HISTORY.length);
+    expect(talk('done')).toHaveLength(5 + FILM_HISTORY.length + FILM_RUN.length + 1);
   });
 
   it('pushes what the daemon writes for the card', () => {

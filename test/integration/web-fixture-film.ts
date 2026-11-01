@@ -12,8 +12,13 @@
  * - 'answered': Yes was tapped on card 3. The card is gone from the state,
  *   session 3 is working on that command (status since now), its transcript
  *   ends with the tool call, and the board says 2 need you.
+ * - 'migrating', 'testing': the same, session 3 on the run's second and
+ *   third command (FILM_RUN), so the board can follow the Terminal.
  * - 'done': session 3 ran the reset, the migration and the tests, then
  *   stopped with FILM_REPLY: your turn. Still 2 need you.
+ *
+ * Session 3's transcript starts with an earlier exchange (FILM_HISTORY), so
+ * its page has no empty band at the top once the card is gone.
  *
  * FILM_TERMINAL is what the drawn Terminal window shows: the twelve tabs and
  * a few lines per tab. api-server's dialog is BASH_SCREEN, the same text the
@@ -31,8 +36,10 @@ export { SCREENSHOT_ART } from './web-fixture-v051.js';
 
 const MIN = 60_000;
 
-export type FilmStage = 'before' | 'answered' | 'done';
-export const FILM_STAGES: readonly FilmStage[] = ['before', 'answered', 'done'];
+export type FilmStage = 'before' | 'answered' | 'migrating' | 'testing' | 'done';
+export const FILM_STAGES: readonly FilmStage[] = ['before', 'answered', 'migrating', 'testing', 'done'];
+/** Which of FILM_RUN's commands session 3 is on, at the stages where it works. */
+export const FILM_RUNNING: Readonly<Partial<Record<FilmStage, number>>> = { answered: 0, migrating: 1, testing: 2 };
 
 /** The session the film follows: api-server, "migrate billing tables", with the Bash card. */
 export const FILM_SID = sidOf(3);
@@ -45,6 +52,13 @@ export const FILM_RUN: ReadonlyArray<readonly [tool: string, input: string, out:
   ['Bash', FILM_COMMAND, ['Billing database reset', 'Applied 14 migrations']],
   ['Bash', 'pnpm prisma migrate dev --name billing-v2', ['Applied 1 migration: billing-v2']],
   ['Bash', 'pnpm vitest run src/billing', ['48 passed (6 files)']],
+];
+
+/** Session 3's exchange before the migration prompt, oldest first: [minutes ago, role, kind, text, tool]. */
+export const FILM_HISTORY: ReadonlyArray<readonly [minutesAgo: number, role: 'user' | 'assistant', kind: 'text' | 'tool_use', text: string, tool?: string]> = [
+  [12, 'user', 'text', 'Which tables does the new billing schema change?'],
+  [11, 'assistant', 'tool_use', 'invoices src/billing', 'Grep'],
+  [10, 'assistant', 'text', 'Two. `invoices` loses two columns and `invoice_lines` is new. Only src/billing reads them.'],
 ];
 
 export interface WebFixtureFilmOptions extends WebFixtureV051Options {
@@ -141,29 +155,30 @@ export const FILM_TERMINAL: {
 
 // ---------------------------------------------------------------------------
 
-/** Session 3's transcript once the card is answered (newest first, as the route pages them). */
-function transcript(now: number, stage: Exclude<FilmStage, 'before'>): { items: TranscriptItem[]; nextBefore: null } {
+/** Session 3's transcript at `stage` (newest first, as the route pages them). */
+function transcript(now: number, stage: FilmStage): { items: TranscriptItem[]; nextBefore: null } {
   const iso = (minutesAgo: number) => new Date(now - minutesAgo * MIN).toISOString();
-  const item = (n: number, at: number, role: TranscriptItem['role'], kind: TranscriptItem['kind'], text: string, tool?: string): TranscriptItem => ({
-    id: `t${n}`,
+  const item = (id: string, at: number, role: TranscriptItem['role'], kind: TranscriptItem['kind'], text: string, tool?: string): TranscriptItem => ({
+    id,
     at: iso(at),
     role,
     kind,
     text,
     ...(tool ? { tool } : {}),
   });
+  const history = FILM_HISTORY.map(([at, role, kind, text, tool], i) => item(`h${i + 1}`, at, role, kind, text, tool)).reverse();
   // The v0.5.1 fixture's five items for session 3 (web-fixture-v051.ts), unchanged.
   const before = [
-    item(5, 1, 'assistant', 'text', 'The migration drops two columns from `invoices`. I need to reset the billing database before I apply it.'),
-    item(4, 2, 'assistant', 'tool_use', 'pnpm prisma migrate diff', 'Bash'),
-    item(3, 3, 'assistant', 'tool_use', 'prisma/schema.prisma', 'Read'),
-    item(2, 4, 'assistant', 'text', 'I will compare the schema with the migrations first.'),
-    item(1, 5, 'user', 'text', 'Migrate the billing tables to the new schema. Reset the dev database if you have to.'),
+    item('t5', 1, 'assistant', 'text', 'The migration drops two columns from `invoices`. I need to reset the billing database before I apply it.'),
+    item('t4', 2, 'assistant', 'tool_use', 'pnpm prisma migrate diff', 'Bash'),
+    item('t3', 3, 'assistant', 'tool_use', 'prisma/schema.prisma', 'Read'),
+    item('t2', 4, 'assistant', 'text', 'I will compare the schema with the migrations first.'),
+    item('t1', 5, 'user', 'text', 'Migrate the billing tables to the new schema. Reset the dev database if you have to.'),
   ];
-  const run = stage === 'answered' ? FILM_RUN.slice(0, 1) : FILM_RUN;
-  const calls = run.map(([tool, input], i) => item(6 + i, 0, 'assistant', 'tool_use', input, tool)).reverse();
-  const reply = stage === 'done' ? [item(6 + run.length, 0, 'assistant', 'text', FILM_REPLY)] : [];
-  return { items: [...reply, ...calls, ...before], nextBefore: null };
+  const run = stage === 'before' ? [] : stage === 'done' ? FILM_RUN : FILM_RUN.slice(0, (FILM_RUNNING[stage] ?? 0) + 1);
+  const calls = run.map(([tool, input], i) => item(`t${6 + i}`, 0, 'assistant', 'tool_use', input, tool)).reverse();
+  const reply = stage === 'done' ? [item(`t${6 + run.length}`, 0, 'assistant', 'text', FILM_REPLY)] : [];
+  return { items: [...reply, ...calls, ...before, ...history], nextBefore: null };
 }
 
 export function webFixtureFilm(opts: WebFixtureFilmOptions = {}): WebFixtureFilm {
@@ -175,25 +190,28 @@ export function webFixtureFilm(opts: WebFixtureFilmOptions = {}): WebFixtureFilm
   if (!session) throw new Error('webFixtureFilm: no session 3');
   // A session that asks before a command runs in Claude's default mode (the phone says Manual).
   session.mode = 'default';
-  if (stage === 'before') return { ...base, stage };
 
   const now = base.now;
-  const at = new Date(now).toISOString();
-  const cards = Object.entries(st.pending).filter(([, p]) => p.sid === FILM_SID);
-  if (cards.length !== 1 || cards[0]![1].tool !== 'Bash') throw new Error('webFixtureFilm: session 3 should hold one Bash card');
-  for (const [id] of cards) delete st.pending[id];
+  if (stage !== 'before') {
+    const at = new Date(now).toISOString();
+    const cards = Object.entries(st.pending).filter(([, p]) => p.sid === FILM_SID);
+    if (cards.length !== 1 || cards[0]![1].tool !== 'Bash') throw new Error('webFixtureFilm: session 3 should hold one Bash card');
+    for (const [id] of cards) delete st.pending[id];
 
-  if (stage === 'answered') {
-    session.status = 'working';
-    session.now = { kind: 'tool', tool: 'Bash', text: FILM_COMMAND };
-  } else {
-    session.status = 'idle';
-    delete session.now;
-    session.lastReply = { text: FILM_REPLY, at };
+    const running = FILM_RUNNING[stage];
+    if (running !== undefined) {
+      const [tool, input] = FILM_RUN[running]!;
+      session.status = 'working';
+      session.now = { kind: 'tool', tool, text: input };
+    } else {
+      session.status = 'idle';
+      delete session.now;
+      session.lastReply = { text: FILM_REPLY, at };
+    }
+    session.statusSince = at;
+    session.statusAt = at;
+    base.state.seq += 1;
   }
-  session.statusSince = at;
-  session.statusAt = at;
-  base.state.seq += 1;
 
   const talk = transcript(now, stage);
   const path = `/v1/sessions/${encodeURIComponent(FILM_SID)}/transcript`;
