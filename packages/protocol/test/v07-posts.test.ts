@@ -25,6 +25,7 @@ import {
   SettingsSchema,
   TodaySchema,
   postGoalLabel,
+  postGoalLabels,
   settingsFeatures,
   type RouteDef,
   type RouteName,
@@ -161,6 +162,17 @@ describe('weekly goals', () => {
     expect(postGoalLabel({ platform: 'reddit' })).toBe('Reddit');
     expect(postGoalLabel({ platform: 'hn' })).toBe('Hacker News');
     expect(postGoalLabel({ platform: 'reddit', kind: 'story' })).toBe('Stories');
+  });
+
+  it('name the platform too, in a list where two would read the same', () => {
+    expect(postGoalLabels([{ platform: 'instagram', kind: 'reel' }, { platform: 'reddit' }])).toEqual(['Reels', 'Reddit']);
+    expect(postGoalLabels([{ platform: 'x', kind: 'thread' }, { platform: 'threads' }])).toEqual(['X threads', 'Threads']);
+    expect(postGoalLabels([{ platform: 'instagram', kind: 'reel' }, { platform: 'facebook', kind: 'reel' }, { platform: 'youtube', kind: 'short' }])).toEqual([
+      'Instagram reels',
+      'Facebook reels',
+      'Shorts',
+    ]);
+    expect(postGoalLabels([])).toEqual([]);
   });
 });
 

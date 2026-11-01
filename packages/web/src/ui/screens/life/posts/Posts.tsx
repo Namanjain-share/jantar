@@ -4,7 +4,8 @@
  * keeps the text, rings, gives Copy and Open, and counts what is marked
  * Posted.
  *
- *   Posts                       This week: Reels 1/3 · Reddit 2/6   (opens the goals)
+ *   Posts                       This week: Reels 1/3 · Reddit 2/6   (opens the goals;
+ *                                                 wraps between goals, never cut)
  *   No device gets post reminders.             PushWarning, while posts are on
  *   [ To post | Done ]
  *   LATE / TODAY / TOMORROW / LATER / NO DATE  PostRow
@@ -17,7 +18,7 @@
  * title is the page's <h1> in every state.
  */
 import { PlusIcon } from '@phosphor-icons/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Post, PostPatch } from '@jantar/protocol';
 import { routePath, type PostsFilter } from '../../../../lib/router.js';
 import { useDeps, useNavigate } from '../../../context.js';
@@ -29,7 +30,7 @@ import { EMPTY, LifeEmpty, NotSaved } from '../shared/states.js';
 import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
 import { Loaded, Page, useHeldDeletes, useLifeClock, useOffline, useSheet, useUndo } from '../today/parts.js';
 import { GoalsSheet } from './GoalsSheet.js';
-import { byGroup, GROUP_LABEL, GROUP_ORDER, postLabel, weekLine } from './model.js';
+import { byGroup, GROUP_LABEL, GROUP_ORDER, postLabel, weekGoals } from './model.js';
 import { DonePostRow, PostRow } from './PostRow.js';
 import { PostSheet } from './PostSheet.js';
 
@@ -119,14 +120,27 @@ export function Posts({ filter = 'open', id }: PostsProps) {
 
   const add = () => sheet.show(null);
   const week = load.data?.week;
-  const line = week ? weekLine(week) : null;
+  const counts = week ? weekGoals(week) : [];
+  // It wraps between goals (never inside one), so every goal's count shows at any width.
   const weekButton = week ? (
     <button
       type="button"
       onClick={() => goals.show()}
-      className="min-w-0 max-w-[70%] truncate rounded-btn type-mono text-ink-2 underline-offset-2 hover:text-ink hover:underline coarse:min-h-44"
+      className="min-w-0 max-w-[70%] rounded-btn text-right type-mono text-ink-2 underline-offset-2 hover:text-ink hover:underline coarse:min-h-44"
     >
-      {line ?? 'Set a weekly goal'}
+      {counts.length ? (
+        <>
+          This week:
+          {counts.map((c, i) => (
+            <Fragment key={i}>
+              {' '}
+              <span className="whitespace-nowrap">{i < counts.length - 1 ? `${c} ·` : c}</span>
+            </Fragment>
+          ))}
+        </>
+      ) : (
+        'Set a weekly goal'
+      )}
     </button>
   ) : null;
   const addButton = (

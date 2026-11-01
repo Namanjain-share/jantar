@@ -128,6 +128,9 @@ describe('Posts: the model', () => {
   it('says the week against the goals, and when a done post went', () => {
     expect(weekLine(WEEK)).toBe('This week: Reels 1/3 · Reddit 2/6');
     expect(weekLine({ ...WEEK, goals: [] })).toBeNull();
+    expect(weekLine({ ...WEEK, goals: [{ platform: 'instagram', kind: 'reel', perWeek: 3, done: 1 }, { platform: 'facebook', kind: 'reel', perWeek: 2, done: 0 }] })).toBe(
+      'This week: Instagram reels 1/3 · Facebook reels 0/2',
+    );
     expect(doneText(DONE[0]!, 'Asia/Kolkata')).toBe('Posted Thu 15 Jan 01:11');
     expect(doneText(DONE[0]!, 'UTC')).toBe('Posted Wed 14 Jan 19:41');
     expect(doneText(DONE[1]!)).toBe('Skipped');
@@ -225,6 +228,23 @@ describe('Posts: the list', () => {
     expect(screen.getByText('Posted this week: 2')).toBeTruthy();
     fireEvent.click(week);
     expect(await screen.findByRole('dialog', { name: 'Weekly goals' })).toBeTruthy();
+  });
+
+  it('shows every goal in the header, wrapping between goals and never cutting one', async () => {
+    const goals: PostsResponse['week']['goals'] = [
+      { platform: 'instagram', kind: 'reel', perWeek: 3, done: 1 },
+      { platform: 'reddit', perWeek: 6, done: 2 },
+      { platform: 'x', kind: 'thread', perWeek: 2, done: 0 },
+      { platform: 'threads', perWeek: 3, done: 1 },
+      { platform: 'hn', perWeek: 1, done: 0 },
+    ];
+    render({ week: { ...WEEK, goals } });
+    const line = 'This week: Reels 1/3 · Reddit 2/6 · X threads 0/2 · Threads 1/3 · Hacker News 0/1';
+    const week = await screen.findByRole('button', { name: line });
+    expect(week.textContent).toBe(line);
+    expect(week.className).not.toContain('truncate');
+    // Each goal stays whole on its line; the line may break only between them.
+    expect([...week.querySelectorAll('span.whitespace-nowrap')].map((x) => x.textContent)).toEqual(['Reels 1/3 ·', 'Reddit 2/6 ·', 'X threads 0/2 ·', 'Threads 1/3 ·', 'Hacker News 0/1']);
   });
 
   it('asks for a goal when there is none', async () => {
@@ -529,6 +549,16 @@ describe('Posts: the weekly goals', () => {
     expect((within(sheet).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     expect(postGoalsSet).not.toHaveBeenCalled();
+  });
+
+  it('names the platform too when two goals would read the same', async () => {
+    render({ week: { ...WEEK, goals: [{ platform: 'x', kind: 'thread', perWeek: 2, done: 0 }, { platform: 'threads', perWeek: 3, done: 1 }] } });
+    const sheet = await openGoals();
+    expect(within(sheet).getByLabelText('X threads a week').textContent).toBe('2');
+    expect(within(sheet).getByLabelText('Threads a week').textContent).toBe('3');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Remove Threads' }));
+    // Alone, the X goal is Threads again.
+    expect(within(sheet).getByLabelText('Threads a week').textContent).toBe('2');
   });
 
   it('keeps a goal between 1 and 50 a week, and at most 10 goals', async () => {

@@ -5,7 +5,7 @@
  * daemon's own day and zone). Jantar never posts: these only describe the
  * plan the user posts by hand.
  */
-import { POST_KIND_LABEL, POST_PLATFORM_LABEL, postGoalLabel, type Post, type PostsResponse } from '@jantar/protocol';
+import { POST_KIND_LABEL, POST_PLATFORM_LABEL, postGoalLabels, type Post, type PostsResponse } from '@jantar/protocol';
 import { dayLabel, shiftDayKey } from '../shared/DayNav.js';
 import { clockIn } from '../today/parts.js';
 
@@ -59,10 +59,16 @@ export function copyOf(post: Pick<Post, 'title' | 'text'>): string | undefined {
   return post.text ?? post.title;
 }
 
+/** Each goal against the week: ["Reels 1/3", "Reddit 2/6"]. */
+export function weekGoals(week: PostsResponse['week']): string[] {
+  const names = postGoalLabels(week.goals);
+  return week.goals.map((g, i) => `${names[i]} ${g.done}/${g.perWeek}`);
+}
+
 /** "This week: Reels 1/3 · Reddit 2/6", or null with no goal. */
 export function weekLine(week: PostsResponse['week']): string | null {
-  if (week.goals.length === 0) return null;
-  return `This week: ${week.goals.map((g) => `${postGoalLabel(g)} ${g.done}/${g.perWeek}`).join(' · ')}`;
+  const goals = weekGoals(week);
+  return goals.length ? `This week: ${goals.join(' · ')}` : null;
 }
 
 /** "Posted Mon 2 Nov 19:41" on the Life clock, or "Skipped". */

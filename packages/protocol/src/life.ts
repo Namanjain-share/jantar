@@ -760,6 +760,20 @@ export function postGoalLabel(g: Pick<PostGoal, 'platform' | 'kind'>): string {
   return g.kind ? POST_KIND_LABEL[g.kind][1] : POST_PLATFORM_LABEL[g.platform];
 }
 
+/**
+ * Each goal's name in a list: postGoalLabel, with the platform first when
+ * two goals would read the same ("X threads" beside "Threads", "Instagram
+ * reels" beside "Facebook reels").
+ */
+export function postGoalLabels(goals: readonly Pick<PostGoal, 'platform' | 'kind'>[]): string[] {
+  const names = goals.map(postGoalLabel);
+  return goals.map((g, i) => {
+    const name = names[i] as string;
+    const twice = names.indexOf(name) !== names.lastIndexOf(name);
+    return g.kind && twice ? `${POST_PLATFORM_LABEL[g.platform]} ${POST_KIND_LABEL[g.kind][1].toLowerCase()}` : name;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Status, Today, backups
 

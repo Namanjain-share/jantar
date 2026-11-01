@@ -15,7 +15,7 @@ import {
   POST_PER_WEEK_MAX,
   POST_PLATFORM_LABEL,
   POST_PLATFORMS,
-  postGoalLabel,
+  postGoalLabels,
   type PostGoal,
   type PostKind,
   type PostPlatform,
@@ -61,6 +61,7 @@ function GoalsForm({ goals, onSaved, onDone }: { goals: readonly PostGoal[]; onS
   const [rows, setRows] = useState<Row[]>(() => goals.map((g, i) => ({ key: i, platform: g.platform, kind: g.kind ?? '', perWeek: g.perWeek })));
   const set = (key: number, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const twice = new Set(rows.map(goalKey)).size !== rows.length;
+  const names = postGoalLabels(rows.map((r) => ({ platform: r.platform, ...(r.kind ? { kind: r.kind } : {}) })));
 
   const add = () => {
     // The first platform with no "any kind" goal yet, 3 a week.
@@ -85,8 +86,8 @@ function GoalsForm({ goals, onSaved, onDone }: { goals: readonly PostGoal[]; onS
       <p className="type-small text-ink-2">How many to post each week, Monday to Sunday. Posts marked Posted count.</p>
       {rows.length ? (
         <ul aria-label="Goals" className="mt-8 border-t border-line">
-          {rows.map((r) => {
-            const name = postGoalLabel({ platform: r.platform, ...(r.kind ? { kind: r.kind } : {}) });
+          {rows.map((r, i) => {
+            const name = names[i] as string;
             return (
               <li key={r.key} className="flex flex-wrap items-center gap-x-8 gap-y-4 border-b border-line py-6">
                 <select className={`${INPUT} flex-1 basis-120`} aria-label="Platform" value={r.platform} onChange={(e) => set(r.key, { platform: e.target.value as PostPlatform })}>
