@@ -151,7 +151,7 @@ export const LIFE_LIMITS = Object.freeze({
   bills: 100,
 });
 /** The daily calorie target until one is set on the phone. */
-export const KCAL_TARGET_DEFAULT = 2000;
+export const KCAL_TARGET_DEFAULT = 1500;
 /** A Life push that has not finished by then counts as failed (the claim lease is 120 s). */
 export const LIFE_PUSH_DEADLINE_MS = 30_000;
 /** A late medicine ping is skipped when that medicine's next time is closer than this. */
