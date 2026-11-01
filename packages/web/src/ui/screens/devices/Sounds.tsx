@@ -6,8 +6,8 @@
  * On by default on a touch screen only: the Mac's microphone would pick up a
  * chime during a captured meeting.
  *
- * Its own chunk (ThisDevice loads it with import()), so the first load stays
- * as it was.
+ * Its own chunk (Notifications.tsx loads it with import()), so the first
+ * load stays as it was.
  */
 import { useId, useState } from 'react';
 import type { AlertGroup, AlertTone } from '@jantar/protocol';
@@ -36,14 +36,18 @@ export const PLAY_SOUNDS = `Play sounds while ${PRODUCT_NAME} is open`;
 export const SPEAK_NOTE =
   'Says only "Answer soon", "Claude needs you", "Done", "Reminder" or "Something needs a look". Never what Claude asked, a folder or a medicine.';
 export const LOCK_SCREEN_LINE = `Tones and the voice play only while ${PRODUCT_NAME} is open on screen, and follow the silent switch. On the lock screen your iPhone plays its own alert sound for every app (Settings › Sounds & Haptics).`;
-/** Under Done while the kinds list above shows Done off here (a phone can't change the Mac's kinds). */
+/** Under Done whenever the kinds list shows above: a phone can't read or change the Mac's kinds. */
 export const DONE_COMMAND = 'jantar notify done on';
 
 const SELECT =
   'h-32 rounded-btn border border-line-strong bg-bg px-8 type-small text-ink outline-none ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink coarse:h-44';
 
-export function SoundsRow({ doneOff }: { doneOff: boolean }) {
+/**
+ * `doneHere`: whether the kinds list above shows Done on for this device;
+ * null with no kinds list (push can't be switched on here), and no hint.
+ */
+export function SoundsRow({ doneHere }: { doneHere: boolean | null }) {
   const [prefs, setPrefs] = useState<AlertSoundsPrefs>(readSoundPrefs);
   const noteId = useId();
   const save = (p: AlertSoundsPrefs) => setPrefs(writeSoundPrefs(p));
@@ -72,9 +76,15 @@ export function SoundsRow({ doneOff }: { doneOff: boolean }) {
                 <span className="flex min-w-0 flex-1 basis-160 flex-col">
                   <span className="type-small font-medium text-ink">{r.label}</span>
                   <span className="type-small text-ink-3">{r.hint}</span>
-                  {r.group === 'done' && doneOff ? (
+                  {r.group === 'done' && doneHere === false ? (
                     <span className="type-small text-ink-2">
                       Turn on Done above, and on the Mac: <span className="type-mono text-ink">{DONE_COMMAND}</span>
+                    </span>
+                  ) : null}
+                  {/* The phone can't tell what the Mac sends: its half stays. */}
+                  {r.group === 'done' && doneHere === true ? (
+                    <span className="type-small text-ink-3">
+                      Done pushes also need the Mac: <span className="type-mono text-ink">{DONE_COMMAND}</span> (off by default)
                     </span>
                   ) : null}
                 </span>
@@ -90,7 +100,8 @@ export function SoundsRow({ doneOff }: { doneOff: boolean }) {
                     </option>
                   ))}
                 </select>
-                <Button aria-label={`Test ${r.label}`} onClick={() => test(r.group)}>
+                {/* None with Speak off: a Test would do nothing at all. */}
+                <Button aria-label={`Test ${r.label}`} disabled={prefs.tones[r.group] === 'none' && !prefs.speak} onClick={() => test(r.group)}>
                   Test
                 </Button>
               </div>

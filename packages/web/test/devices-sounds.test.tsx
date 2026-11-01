@@ -1,8 +1,9 @@
 /**
  * v0.5.3 Devices › Notifications › Sounds (spec 1.6; devices/Sounds.tsx):
  * the exact words, a tone and a Test per group, the Speak switch saying
- * "Done" inside its tap, the Done hint while the kinds list shows Done off, the
- * lock-screen line, and on by default only on a touch screen. The chimes are
+ * "Done" inside its tap, the Done hint under the kinds list (the Mac's half
+ * stays once Done is on here), the lock-screen line, and on by default only
+ * on a touch screen. The chimes are
  * a fake that records what it was asked (lib/sounds.ts setAppChimes).
  */
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -153,15 +154,22 @@ describe('Devices › Notifications › Sounds (v0.5.3)', () => {
     expect(saved()?.speak).toBe(false);
   });
 
-  it('the Done hint goes once Done is on for this device, and comes back when it is turned off', async () => {
+  const HINT = 'Turn on Done above, and on the Mac: jantar notify done on';
+  const MAC_LINE = 'Done pushes also need the Mac: jantar notify done on (off by default)';
+  const line = (text: string) => (_: string, el: Element | null) => el?.textContent === text && el.tagName === 'SPAN';
+
+  it("the Done hint's device half goes once Done is on for this device, the Mac's half stays, and it comes back when turned off", async () => {
     await openSounds({ pushEnv: offEnv() });
-    const hint = 'Turn on Done above, and on the Mac: jantar notify done on';
     const kinds = await screen.findByRole('group', { name: 'Notification kinds' });
-    expect(screen.getByText((_, el) => el?.textContent === hint && el.tagName === 'SPAN')).toBeTruthy();
+    expect(screen.getByText(line(HINT))).toBeTruthy();
+    expect(screen.queryByText(line(MAC_LINE))).toBeNull();
     fireEvent.click(within(kinds).getByRole('switch', { name: /^Done/ }));
-    await waitFor(() => expect(screen.queryByText((_, el) => el?.textContent === hint && el.tagName === 'SPAN')).toBeNull());
+    await waitFor(() => expect(screen.queryByText(line(HINT))).toBeNull());
+    // The phone can't read the Mac's kinds: the Mac step stays on screen.
+    expect(screen.getByText(line(MAC_LINE))).toBeTruthy();
     fireEvent.click(within(kinds).getByRole('switch', { name: /^Done/ }));
-    expect(await screen.findByText((_, el) => el?.textContent === hint && el.tagName === 'SPAN')).toBeTruthy();
+    expect(await screen.findByText(line(HINT))).toBeTruthy();
+    expect(screen.queryByText(line(MAC_LINE))).toBeNull();
   });
 
   it('no hint while push cannot be switched on here: there is no kinds list above to point at', async () => {
@@ -171,11 +179,29 @@ describe('Devices › Notifications › Sounds (v0.5.3)', () => {
     expect(within(tones).queryByText(/jantar notify done on/)).toBeNull();
   });
 
-  it('no hint when this device already has Done on', async () => {
+  it('with Done already on for this device, the Mac line still shows (and only it)', async () => {
     localStorage.setItem('jantar:push-kinds', JSON.stringify(['question', 'permission', 'plan', 'done', 'send-failed']));
     const { tones } = await openSounds({ pushEnv: offEnv() });
     expect(await screen.findByRole('group', { name: 'Notification kinds' })).toBeTruthy();
-    expect(within(tones).queryByText(/jantar notify done on/)).toBeNull();
+    expect(within(tones).getByText(line(MAC_LINE))).toBeTruthy();
+    expect(within(tones).queryByText(line(HINT))).toBeNull();
+    expect(within(tones).getAllByText(/jantar notify done on/)).toHaveLength(1);
+  });
+
+  it('Test is off for a row whose tone is None while Speak is off: it would do nothing', async () => {
+    const { c, tones } = await openSounds();
+    const test = () => within(tones).getByRole('button', { name: 'Test Problems' }) as HTMLButtonElement;
+    expect(test().disabled).toBe(false);
+    fireEvent.change(within(tones).getByRole('combobox', { name: 'Tone for Problems' }), { target: { value: 'none' } });
+    expect(test().disabled).toBe(true);
+    fireEvent.click(test());
+    expect(c.tones).toEqual([]);
+    // With Speak on, Test says the phrase: on again.
+    fireEvent.click(speakSwitch());
+    expect(test().disabled).toBe(false);
+    c.said.length = 0;
+    fireEvent.click(test());
+    expect(c.said).toEqual(['problem']);
   });
 
   it('works without storage: the defaults, and a choice still shows', async () => {
