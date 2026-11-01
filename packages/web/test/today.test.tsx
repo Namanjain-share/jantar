@@ -6,7 +6,10 @@
  * dose; the push warning shows when no device would get a medicine ping.
  * v0.5.3 quick adds: Due's Add todo opens the todo sheet due today (with
  * nothing due too), and the weight line opens the weight sheet over Today
- * ("Log weight" while none is logged today); both are off while offline.
+ * ("Log weight" while none is logged today, "Weight today, 72.4 kg" once it
+ * is), asking for Food's day at each opening and never once it has closed,
+ * with the spinner meanwhile and Try again after a failure; both adds are
+ * off while offline.
  *
  * WP-MD's MedsToday and DoseSheet are stand-ins here, so the test pins
  * what Today hands them whatever WP-MD's real ones render.
@@ -343,9 +346,49 @@ describe('Today: quick adds (v0.5.3)', () => {
     const foodDay = vi.fn(async () => ({ day: DAY, today: DAY, target: 2000, kcal: 1240, entries: [], saved: [], weight }));
     render({ today: today({ food: { kcal: 1240, target: 2000, weight: { day: DAY, kg: 72.4 } } }), api: { foodDay } });
     const food = await section('Food');
-    fireEvent.click(within(food).getByRole('button', { name: '72.4 kg' }));
+    fireEvent.click(within(food).getByRole('button', { name: 'Weight today, 72.4 kg' }));
     const sheet = await screen.findByRole('dialog', { name: 'Weight' });
     expect((within(sheet).getByLabelText('Weight today, kg') as HTMLInputElement).value).toBe('72.4');
+  });
+
+  it("asks for Food's day afresh at each opening, and not on a life tick once the sheet has closed", async () => {
+    const weight = { latest: { day: DAY, kg: 72.4 }, change7: null, change30: null, goalKg: null, recent: [{ day: DAY, kg: 72.4 }] };
+    const foodDay = vi.fn(async () => ({ day: DAY, today: DAY, target: 2000, kcal: 1240, entries: [], saved: [], weight }));
+    const { api, store } = render({ api: { foodDay } });
+    const food = await section('Food');
+    fireEvent.click(within(food).getByRole('button', { name: 'Log weight' }));
+    fireEvent.keyDown(await screen.findByRole('dialog', { name: 'Weight' }), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Weight' })).toBeNull());
+    expect(foodDay).toHaveBeenCalledTimes(1);
+    act(() => store.setState((s) => ({ state: { ...s.state, lifeTick: (s.state.lifeTick ?? 0) + 1 } })));
+    await waitFor(() => expect(api.lifeToday).toHaveBeenCalledTimes(2));
+    expect(foodDay).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(food).getByRole('button', { name: 'Log weight' }));
+    await screen.findByRole('dialog', { name: 'Weight' });
+    expect(foodDay).toHaveBeenCalledTimes(2);
+  });
+
+  it("while Food's day is on its way the line shows the spinner; a failure says so under it, and Try again opens the sheet", async () => {
+    const weight = { latest: null, change7: null, change30: null, goalKg: null, recent: [] };
+    let fail: (e: unknown) => void = () => {};
+    let calls = 0;
+    const foodDay = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) return new Promise<never>((_, rej) => (fail = rej));
+      return { day: DAY, today: DAY, target: 2000, kcal: 1240, entries: [], saved: [], weight };
+    });
+    render({ api: { foodDay } });
+    const food = await section('Food');
+    fireEvent.click(within(food).getByRole('button', { name: 'Log weight' }));
+    expect(await within(food).findByRole('status', { name: 'Loading' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Weight' })).toBeNull();
+    await act(async () => fail(new ApiError('internal', 'Something broke on the Mac.', 500)));
+    expect(await within(food).findByText('Something broke on the Mac.')).toBeTruthy();
+    fireEvent.click(within(food).getByRole('button', { name: 'Try again' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Weight' });
+    expect(within(sheet).getByLabelText('Weight today, kg')).toBeTruthy();
+    expect(within(food).queryByText('Something broke on the Mac.')).toBeNull();
+    expect(foodDay).toHaveBeenCalledTimes(2);
   });
 });
 

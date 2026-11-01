@@ -272,14 +272,14 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await check(page, watch, `the dose sheet from a push (${who})`);
       await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'detached' });
-      // v0.5.3: Due's Add todo starts a todo due today; the weight line (72.4 kg, logged today) opens the weight sheet.
+      // v0.5.3: Due's Add todo starts a todo due today; the weight line ("Weight today, 72.4 kg") opens the weight sheet.
       await page.goto(`http://127.0.0.1:${d.port}/today`);
       await sheet(page, watch, `the todo sheet from Today (${who})`, () => page.getByRole('region', { name: 'Due' }).getByRole('button', { name: 'Add todo' }).click(), async (form) => {
         expect(await form.getByLabel('Due day').inputValue()).toBe(TODAY);
         expect(await form.getByLabel('Due time').inputValue()).toBe('');
         await form.getByRole('group', { name: 'Repeat' }).getByRole('button', { name: 'Year' }).waitFor();
       });
-      await sheet(page, watch, `the weight sheet from Today (${who})`, () => page.getByRole('region', { name: 'Food' }).getByRole('button', { name: '72.4 kg' }).click(), async (form) => {
+      await sheet(page, watch, `the weight sheet from Today (${who})`, () => page.getByRole('region', { name: 'Food' }).getByRole('button', { name: 'Weight today, 72.4 kg' }).click(), async (form) => {
         await form.getByText('Weight today, kg').waitFor();
       });
     }

@@ -7,12 +7,14 @@
  * ember. Today comes from the shared LifeStatus.
  *
  * v0.5.3, with `onWeight` (Today): the weight line is its own button that
- * opens the weight sheet, reading today's weight, or "Log weight" while
- * none is logged today; off while offline, like Add food. The calories
- * still open Food.
+ * opens the weight sheet, reading today's weight (named "Weight today,
+ * 72.4 kg"), or "Log weight" while none is logged today; off while offline,
+ * like Add food. `weightBusy`: the sheet's data is on its way (the spinner
+ * after 150 ms). The calories still open Food.
  */
 import { ScalesIcon } from '@phosphor-icons/react';
 import type { Weight } from '@jantar/protocol';
+import { Spinner } from '../../../kit/Spinner.js';
 import { Link } from '../../../shell/Link.js';
 import { dayLabel } from '../shared/DayNav.js';
 import { useLifeStatus } from '../shared/useLife.js';
@@ -25,9 +27,11 @@ export interface FoodTodayProps {
   weight: Weight | null;
   /** v0.5.3: the weight line opens the weight sheet (Today). */
   onWeight?: () => void;
+  /** v0.5.3: the weight sheet's data is on its way. */
+  weightBusy?: boolean;
 }
 
-export function FoodToday({ kcal, target, weight, onWeight }: FoodTodayProps) {
+export function FoodToday({ kcal, target, weight, onWeight, weightBusy = false }: FoodTodayProps) {
   const { status } = useLifeStatus();
   const offline = useOffline();
   const over = kcal - target;
@@ -53,10 +57,13 @@ export function FoodToday({ kcal, target, weight, onWeight }: FoodTodayProps) {
           type="button"
           onClick={onWeight}
           disabled={offline}
+          // Named outright, so the spinner inside never joins the name.
+          aria-label={today ? `Weight today, ${kgText(weight.kg)} kg` : 'Log weight'}
           className="flex min-h-44 w-full items-center gap-8 px-16 text-left transition-colors duration-120 ease-hover hover:bg-hover disabled:text-ink-3 disabled:hover:bg-transparent"
         >
           <ScalesIcon size={16} aria-hidden="true" className="flex-none text-ink-3" />
           {today ? <span className="type-mono text-ink-2">{kgText(weight.kg)} kg</span> : <span className="type-small text-ink-2">Log weight</span>}
+          <Spinner active={weightBusy} className="ml-auto" />
         </button>
       </>
     );

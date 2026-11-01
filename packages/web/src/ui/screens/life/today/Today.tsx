@@ -16,7 +16,9 @@
  * A section shows only while its module is on. `dose` (`<medId>@<HHMM>`,
  * from a medicine push) opens WP-MD's DoseSheet over Today for that dose.
  * The adds are off while offline, like Add food. The weight sheet needs the
- * recent weights and the goal, so it asks for Food's day when it opens.
+ * recent weights and the goal, so it asks for Food's day each time it opens,
+ * and only while it is open (the weight line shows the spinner meanwhile;
+ * a failure says so under it, with Try again).
  * Today's own rows carry no ember: the rows that may (TodoRow, BillRow)
  * come from their modules. The title is the page's <h1> in every state.
  */
@@ -30,8 +32,8 @@ import {
   WalletIcon,
   type Icon,
 } from '@phosphor-icons/react';
-import { useMemo, useState, type ReactNode } from 'react';
-import type { LifeModule, Todo } from '@jantar/protocol';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { FoodDay, LifeModule, Todo } from '@jantar/protocol';
 import { routePath } from '../../../../lib/router.js';
 import { useDeps, useNavigate } from '../../../context.js';
 import { RailLabel } from '../../../kit/RailLabel.js';
@@ -98,8 +100,15 @@ export function Today({ dose }: TodayProps) {
   const now = useLifeClock(status, day);
   const foodSheet = useSheet();
   const weightSheet = useSheet();
-  // Today's food day, for the weight sheet (its recent weights and goal), asked for once the sheet opens.
-  const weightLoad = useLifeLoad(weightSheet.key ? `food:${now.day}` : null, () => api.foodDay(now.day));
+  // Today's food day, for the weight sheet (its recent weights and goal): asked for afresh at each opening, and only
+  // while the sheet is open, so a life tick on Today never fetches it once the sheet has closed.
+  const weightLoad = useLifeLoad(weightSheet.open ? `food:${now.day}:${weightSheet.key}` : null, () => api.foodDay(now.day));
+  // The last answer stays while the sheet closes, so it slides away rather than vanishing.
+  const [weightLast, setWeightLast] = useState<FoodDay | null>(null);
+  useEffect(() => {
+    if (weightLoad.data) setWeightLast(weightLoad.data);
+  }, [weightLoad.data]);
+  const weightDay = weightLoad.data ?? weightLast;
   const addTodo = () => {
     setTodoStart({ day: now.day });
     todoSheet.show(null);
@@ -173,7 +182,13 @@ export function Today({ dose }: TodayProps) {
                 <Section label="Food">
                   <div className="flex items-center gap-4 border-b border-line pr-8">
                     <div className="min-w-0 flex-1">
-                      <FoodToday kcal={t.food.kcal} target={t.food.target} weight={t.food.weight} onWeight={() => weightSheet.show()} />
+                      <FoodToday
+                        kcal={t.food.kcal}
+                        target={t.food.target}
+                        weight={t.food.weight}
+                        onWeight={() => weightSheet.show()}
+                        weightBusy={weightSheet.open && !weightLoad.data && !weightLoad.error}
+                      />
                     </div>
                     <AddButton label="Add food" disabled={offline} onClick={() => foodSheet.show()} />
                   </div>
@@ -215,14 +230,14 @@ export function Today({ dose }: TodayProps) {
         start={todoStart}
         onSaved={load.reload}
       />
-      {weightLoad.data ? (
+      {weightDay ? (
         <WeightSheet
-          open={weightSheet.open}
+          open={weightSheet.open && weightLoad.data !== null}
           onOpenChange={weightSheet.onOpenChange}
           sheetKey={weightSheet.key}
-          day={weightLoad.data.day}
-          today={weightLoad.data.today}
-          weight={weightLoad.data.weight}
+          day={weightDay.day}
+          today={weightDay.today}
+          weight={weightDay.weight}
           onSaved={savedWeight}
         />
       ) : null}

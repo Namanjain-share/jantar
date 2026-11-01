@@ -5,9 +5,10 @@
  * with the next full hour; one from Today (v0.5.3) starts due today, with
  * no time. Editing sends only what changed (null clears), except that a
  * repeating todo whose due changed sends its repeat too (v0.5.3): the Mac
- * takes the series' time from such a save, so editing the time moves it,
- * while Undo's due alone never does. The repeat goes as the phone chose it
- * (freq and days): the Mac sets its date and time itself.
+ * takes the series' time, and a monthly or yearly one's date, from such a
+ * save, so editing the due moves them, while Undo's due alone never does.
+ * The repeat goes as the phone chose it (freq and days): the Mac sets its
+ * date and time itself.
  */
 import { useId, useState, type FormEvent } from 'react';
 import type { ProjectView, Repeat, Todo, TodoBody, TodoPatch, TodoPriority } from '@jantar/protocol';
@@ -65,7 +66,8 @@ function TodoForm({ todo, projects, now, start, onDone, onSaved }: { todo: Todo 
   const first = !todo && start?.reminder ? nextFullHour(now) : null;
   const [title, setTitle] = useState(todo?.title ?? '');
   const [notes, setNotes] = useState(todo?.notes ?? '');
-  const [day, setDay] = useState(todo?.due?.day ?? first?.day ?? start?.day ?? '');
+  // `start` is for a new todo only: an edit opens on the todo's own due, or none.
+  const [day, setDay] = useState(todo ? (todo.due?.day ?? '') : (first?.day ?? start?.day ?? ''));
   const [time, setTime] = useState(todo?.due?.time ?? first?.time ?? '');
   const [repeat, setRepeat] = useState<Repeat | undefined>(todo?.repeat);
   const [priority, setPriority] = useState<TodoPriority>(todo?.priority ?? 'normal');
@@ -97,7 +99,7 @@ function TodoForm({ todo, projects, now, start, onDone, onSaved }: { todo: Todo 
       if (dueChanged) patch.due = due;
       if (priority !== todo.priority) patch.priority = priority;
       if (projectId !== (todo.projectId ?? '')) patch.projectId = projectId || null;
-      // A changed due on a repeating todo carries its repeat, so the Mac moves the series' time with it.
+      // A changed due on a repeating todo carries its repeat, so the Mac moves the series' time (and date) with it.
       if (!sameRepeat(rep, todo.repeat ?? null) || (dueChanged && rep)) patch.repeat = rep ? chosen(rep) : null;
       if (Object.keys(patch).length) {
         const r = await w.run(JSON.stringify(patch), (key) => api.todoUpdate(todo.id, patch, key));
