@@ -108,7 +108,14 @@ export function SoundsRow({ doneOff }: { doneOff: boolean }) {
       }
     >
       <label className="flex min-h-32 cursor-pointer items-center gap-12 coarse:min-h-44">
-        <Switch checked={prefs.on} onChange={(on) => save({ ...prefs, on })} />
+        <Switch
+          checked={prefs.on}
+          onChange={(on) => {
+            save({ ...prefs, on });
+            // Taps unlock audio only with sounds on: this one too.
+            if (on) void appChimes().unlock();
+          }}
+        />
         <span className="type-small font-medium text-ink">{PLAY_SOUNDS}</span>
       </label>
     </PropRow>

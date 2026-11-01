@@ -163,13 +163,16 @@ export function setAppChimes(c: Chimes | null): void {
 }
 
 /**
- * main.tsx, once: every tap unlocks audio (iOS may need a tap again after the
- * app was in the background). pointerup too: on a touch screen the browser
- * lets a tap start audio from its end, not its start. Back on screen it tries
- * a resume, without counting on it.
+ * main.tsx, once: with Sounds on, every tap unlocks audio (iOS may need a tap
+ * again after the app was in the background); with them off no tap opens
+ * audio at all. pointerup too: on a touch screen the browser lets a tap start
+ * audio from its end, not its start. Back on screen it tries a resume,
+ * without counting on it.
  */
 export function listenForTaps(win: Window = window): void {
-  const tap = () => void appChimes().unlock();
+  const tap = () => {
+    if (readSoundPrefs().on) void appChimes().unlock();
+  };
   win.addEventListener('pointerdown', tap, { passive: true });
   win.addEventListener('pointerup', tap, { passive: true });
   win.document.addEventListener('visibilitychange', () => {

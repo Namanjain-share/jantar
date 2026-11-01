@@ -475,10 +475,15 @@ describe('lib/pwa.ts answers the service worker on its port', () => {
 });
 
 describe('a tap unlocks audio, every time (main.tsx: listenForTaps)', () => {
-  it('unlocks on every pointerdown and pointerup, and tries a wake when the page shows again', () => {
+  it('with Sounds on, unlocks on every pointerdown and pointerup; off, opens no audio; tries a wake when the page shows again', () => {
     const c = recorder();
     setAppChimes(c);
     listenForTaps(window);
+    // Off (the default without a touch screen): a tap makes no AudioContext.
+    window.dispatchEvent(new Event('pointerdown'));
+    window.dispatchEvent(new Event('pointerup'));
+    expect(c.unlocks).toBe(0);
+    writeSoundPrefs({ ...defaultSoundPrefs(), on: true });
     for (let i = 0; i < 3; i++) window.dispatchEvent(new Event('pointerdown'));
     expect(c.unlocks).toBe(3);
     window.dispatchEvent(new Event('pointerup'));

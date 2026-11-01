@@ -100,7 +100,7 @@ describe('Devices › Notifications › Sounds (v0.5.3)', () => {
     expect(document.getElementById(speakSwitch().getAttribute('aria-describedby') ?? '')?.textContent).toMatch(/^Says only "Answer soon"/);
   });
 
-  it('is off by default on the Mac dashboard, on by default on a touch screen; Speak off on both', async () => {
+  it('is off by default on the Mac dashboard, Speak off', async () => {
     await openSounds();
     expect(playSwitch().checked).toBe(false);
     expect(speakSwitch().checked).toBe(false);
@@ -113,15 +113,17 @@ describe('Devices › Notifications › Sounds (v0.5.3)', () => {
     expect(saved()).toBeNull();
   });
 
-  it('keeps each choice on this device', async () => {
-    const { tones } = await openSounds();
+  it('keeps each choice on this device; turning sounds on unlocks audio inside that tap', async () => {
+    const { c, tones } = await openSounds();
     fireEvent.click(playSwitch());
     expect(playSwitch().checked).toBe(true);
+    expect(c.unlocks).toBe(1);
     fireEvent.change(within(tones).getByRole('combobox', { name: 'Tone for Done' }), { target: { value: 'bell' } });
     fireEvent.change(within(tones).getByRole('combobox', { name: 'Tone for Problems' }), { target: { value: 'none' } });
     expect(saved()).toEqual({ v: 1, on: true, speak: false, tones: { ...DEFAULT_TONES, done: 'bell', problem: 'none' } });
     fireEvent.click(playSwitch());
     expect(saved()?.on).toBe(false);
+    expect(c.unlocks).toBe(1);
   });
 
   it("Test unlocks audio and plays that group's chosen tone, sounds on or off; with Speak on, its phrase too", async () => {
