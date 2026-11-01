@@ -18,7 +18,11 @@ export interface HookClientInstall {
 
 export const HOOK_CLIENT_MODE = 0o700;
 
-export async function installHookClient(paths: Pick<Paths, 'binDir' | 'hookBin'>, source: string): Promise<HookClientInstall> {
+export async function installHookClient(
+  paths: Pick<Paths, 'binDir' | 'hookBin'>,
+  source: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<HookClientInstall> {
   guardRealPath(paths.hookBin, 'the hook client');
   const code = await readFile(source);
   await mkdir(paths.binDir, { recursive: true, mode: 0o700 });
@@ -26,7 +30,8 @@ export async function installHookClient(paths: Pick<Paths, 'binDir' | 'hookBin'>
   try {
     const current = await readFile(paths.hookBin);
     const mode = (await stat(paths.hookBin)).mode & 0o777;
-    if (current.equals(code) && mode === HOOK_CLIENT_MODE) return { path: paths.hookBin, changed: false };
+    // v0.6: Windows has no file modes (it reports 0666; the profile's ACL protects the state dir).
+    if (current.equals(code) && (mode === HOOK_CLIENT_MODE || platform === 'win32')) return { path: paths.hookBin, changed: false };
   } catch {
     // not installed yet
   }

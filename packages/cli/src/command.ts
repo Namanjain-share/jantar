@@ -8,7 +8,7 @@ import { createBinFinder, type BinFinder } from './lib/which.js';
 
 /** The context's executable finder (injected in tests). */
 export function binFinder(ctx: CliContext): BinFinder {
-  return ctx.deps.findBin ?? createBinFinder({ env: ctx.io.env, userHome: ctx.paths.userHome });
+  return ctx.deps.findBin ?? createBinFinder({ env: ctx.io.env, userHome: ctx.paths.userHome, platform: ctx.deps.platform });
 }
 
 export interface CliContext {

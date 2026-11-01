@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -141,6 +141,22 @@ describe('hook client copy', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('v0.6: on Windows (no file modes) the same bytes are left alone', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'jantar-test-hook-'));
+    try {
+      const src = join(dir, 'src.mjs');
+      await writeFile(src, 'import os from "node:os";\n');
+      const paths = resolvePaths({ env: {}, home: join(dir, 'state'), userHome: dir });
+      expect(await installHookClient(paths, src)).toEqual({ path: paths.hookBin, changed: true });
+      // What Windows reports for every file.
+      await chmod(paths.hookBin, 0o666);
+      expect(await installHookClient(paths, src, 'win32')).toEqual({ path: paths.hookBin, changed: false });
+      expect(await installHookClient(paths, src, 'darwin')).toEqual({ path: paths.hookBin, changed: true });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('binary finder', () => {
@@ -161,6 +177,12 @@ describe('binary finder', () => {
       await mkdir(join(dir, '.claude', 'local'), { recursive: true });
       await writeFile(join(dir, '.claude', 'local', 'claude'), '#!/bin/sh\n', { mode: 0o755 });
       expect(await local('claude')).toBe(join(dir, '.claude', 'local', 'claude'));
+      // v0.6, Windows: claude.exe before npm's extensionless shim (which cannot be started there).
+      await writeFile(join(dir, 'bin', 'claude'), '#!/bin/sh\n', { mode: 0o755 });
+      await writeFile(join(dir, 'bin', 'claude.exe'), 'MZ', { mode: 0o755 });
+      const win = createBinFinder({ env: { PATH: join(dir, 'bin') }, userHome: dir, platform: 'win32' });
+      expect(await win('claude')).toBe(join(dir, 'bin', 'claude.exe'));
+      expect(await find('claude')).toBe(join(dir, 'bin', 'claude'));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

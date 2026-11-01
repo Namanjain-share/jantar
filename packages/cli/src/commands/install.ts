@@ -101,7 +101,7 @@ export async function prepareStateDir(ctx: CliContext, out: (text: string) => vo
     out(`Recorded binaries (${r.via === 'daemon' ? 'through the daemon' : 'config.json'}): ${Object.keys(patch).join(', ')}\n`);
   }
 
-  const hook = await installHookClient(ctx.paths, ctx.deps.locations.hookClient);
+  const hook = await installHookClient(ctx.paths, ctx.deps.locations.hookClient, ctx.deps.platform);
   out(`Hook client: ${hook.path}${hook.changed ? '' : ' (unchanged)'}\n`);
 }
 
