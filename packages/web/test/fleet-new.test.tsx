@@ -5,17 +5,24 @@
  * folder, start-sheet and start call carries its `node` (as `?node=`), the
  * title and the hold name it ("Start in api on build-2"), and the receipt
  * says where the launch runs. "New session here" on a server's row stays on
- * that server. While no machine can start sessions the screen is v0.5's
- * and sends no `node` at all.
+ * that server, and so does "Try again" on its failed launch. Each machine
+ * keeps its own switches: with the Mac's own starting off, New session
+ * offers only the machines that can start and picks the first. While no
+ * machine can start sessions the screen is v0.5's and sends no `node` at
+ * all.
  */
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ROUTES, type LaunchStartBody, type RouteDef } from '@jantar/protocol';
-import { createApi } from '../src/lib/api.js';
+import { ROUTES, type LaunchStartBody, type RouteDef, type State } from '@jantar/protocol';
+import { createApi, type Api } from '../src/lib/api.js';
 import type { CredentialStore } from '../src/lib/credential.js';
+import { createRouter, memoryHistory } from '../src/lib/router.js';
+import { createAppStore } from '../src/store.js';
+import { AppProvider, createToastStore } from '../src/ui/context.js';
 import { onMachine } from '../src/ui/screens/new/data.js';
-import { startMachines } from '../src/ui/screens/new/NewSession.js';
-import { preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+import { canStartAnywhere, canStartOn, startMachines } from '../src/ui/screens/new/machines.js';
+import { NewSession } from '../src/ui/screens/new/NewSession.js';
+import { NOW, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 import { fleetNodes, fleetState, IDS, SID } from './fleet-helpers.js';
 import { entry, job, launchApi, listing, viewport } from './launch-fixtures.js';
 
@@ -114,6 +121,16 @@ describe('the Where row', () => {
     await waitFor(() => expect(api2.launchPreview).toHaveBeenCalledWith(expect.objectContaining({ root: `s.${SID.cswap}`, node: IDS.build2 })));
   });
 
+  it('keeps "Try again" on the machine whose launch failed', async () => {
+    const s = fleetState({ features: ON });
+    s.launches.L8 = job('L8', { node: IDS.mini1, stage: 'failed' });
+    const api = launchApi();
+    renderApp({ path: '/new?root=r.1&path=api&start=1&from=L8', api, state: s });
+    expect(await pressed()).toBe('mini-1');
+    await waitFor(() => expect(api.launchPreview).toHaveBeenCalledWith(expect.objectContaining({ root: 'r.1', path: 'api', node: IDS.mini1 })));
+    for (const [q] of (api.launchPreview as ReturnType<typeof vi.fn>).mock.calls) expect(q.node).toBe(IDS.mini1);
+  });
+
   it('sits under the title in the split layout too', async () => {
     viewport(1280);
     renderApp({ path: '/new', api: launchApi(), state: fleetState({ features: ON }) });
@@ -152,11 +169,79 @@ describe('with no machine to start on', () => {
   });
 });
 
-describe('startMachines', () => {
-  it('takes the online machines with starting on, never a watch-only one, by name', () => {
+/**
+ * New session as the shell mounts it while a session can start anywhere (canStartAnywhere, below):
+ * the screen itself, so these hold whatever the Mac's own switch says.
+ */
+function renderNew(state: State, api: Api) {
+  const store = createAppStore(state);
+  store.getState().setConn({ status: 'live', lastOkAt: NOW });
+  const router = createRouter(memoryHistory('/new'));
+  return render(
+    <AppProvider deps={{ store, api, router, toasts: createToastStore(), now: () => NOW }}>
+      <NewSession />
+    </AppProvider>,
+  );
+}
+
+/** The fleet with starting on only where `on` says. */
+function startingOn(...on: string[]): State {
+  const s = fleetState({ features: {} });
+  for (const n of Object.values(s.nodes!)) n.features = { ...n.features, launch: on.includes(n.id) };
+  return s;
+}
+
+describe("with the Mac's own starting off", () => {
+  it('starts on a server that has it on: only that machine is offered, and every call carries its node', async () => {
+    // `jantar launch on` on build-1 only.
+    const api = launchApi({}, { 'r.1:': work });
+    renderNew(startingOn(IDS.build1), api);
+    expect(await choices()).toEqual(['build-1']);
+    expect(await pressed()).toBe('build-1');
+    await waitFor(() => expect(rows()).toEqual(['api', 'notes']), { timeout: 10_000 });
+    for (const call of (api.foldersRoots as ReturnType<typeof vi.fn>).mock.calls) expect(call).toEqual([{ node: IDS.build1 }]);
+    for (const call of (api.foldersRecent as ReturnType<typeof vi.fn>).mock.calls) expect(call).toEqual([{ node: IDS.build1 }]);
+    for (const [q] of (api.foldersList as ReturnType<typeof vi.fn>).mock.calls) expect(q).toEqual({ root: 'r.1', node: IDS.build1 });
+  });
+
+  it('offers each machine that can start but never the Mac, the first one picked', async () => {
+    const api = launchApi();
+    renderNew(fleetState({ features: {} }), api);
+    expect(await choices()).toEqual(['build-2', 'mini-1']);
+    expect(await pressed()).toBe('build-2');
+    await waitFor(() => expect(api.foldersRoots).toHaveBeenCalledWith({ node: IDS.build2 }));
+  });
+});
+
+describe('where a session can start', () => {
+  it('startMachines: the online machines with starting on, never a watch-only one, by name', () => {
     expect(startMachines(fleetNodes()).map((n) => n.name)).toEqual(['build-2', 'mini-1']);
     expect(startMachines(undefined)).toEqual([]);
     expect(startMachines({})).toEqual([]);
+  });
+
+  it("canStartOn: each machine by its own switch (the Mac by the Mac's)", () => {
+    const off = fleetState({ features: {} });
+    expect(canStartOn(off, undefined)).toBe(false);
+    expect(canStartOn(off, IDS.build2)).toBe(true);
+    expect(canStartOn(off, IDS.build1)).toBe(false);
+    // Offline, watch-only, unknown.
+    expect(canStartOn(off, IDS.build3)).toBe(false);
+    expect(canStartOn(off, IDS.ro1)).toBe(false);
+    expect(canStartOn(off, 'unknown')).toBe(false);
+    expect(canStartOn(fleetState({ features: ON }), undefined)).toBe(true);
+  });
+
+  it('canStartAnywhere: the Mac, or any machine that can start (New session exists while it holds)', () => {
+    expect(canStartAnywhere(stateWith({ features: {} }))).toBe(false);
+    expect(canStartAnywhere(stateWith({ features: ON }))).toBe(true);
+    expect(canStartAnywhere(startingOn())).toBe(false);
+    expect(canStartAnywhere(startingOn(IDS.build1))).toBe(true);
+    // An offline or watch-only machine with starting on is no place to start.
+    expect(canStartAnywhere(startingOn(IDS.build3, IDS.ro1))).toBe(false);
+    const older = stateWith({ features: {} });
+    delete older.nodes;
+    expect(canStartAnywhere(older)).toBe(false);
   });
 });
 

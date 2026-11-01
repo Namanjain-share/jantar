@@ -77,17 +77,23 @@
  *   with the Mac's name for the machine, as its hook cards are ("build-1
  *   asks · Permission"), and its own lines name that machine where they
  *   say "the Mac" (`atMachine`): "Claude blocks this at build-1 in 1 min
- *   33 s if nobody answers".
+ *   33 s if nobody answers". Only the dock's own fixed sentences are
+ *   rewritten, never what the machine's terminal shows (the question) or
+ *   an error the Mac sends. Answering there follows that machine's own
+ *   Controls switch, not the Mac's.
  */
 import clsx from 'clsx';
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import {
+  CLI_NAME,
   DIALOG_GATES,
   DIALOG_HOLD_COPY,
   DIALOG_NOTES,
   DIALOG_TEXT_MAX,
   DIALOG_TEXT_MIN,
   DialogTextSchema,
+  machineName,
+  sessionFeatures,
   type DialogOption,
   type PendingRequest,
   type Session,
@@ -99,12 +105,15 @@ import { BUTTON_VARIANT, Button } from '../../kit/Button.js';
 import { HOLD_MS, useHold } from '../../kit/hold.js';
 import { Spinner } from '../../kit/Spinner.js';
 import {
+  CANT_TELL,
   CHANGED,
   COUNTDOWN_LATE,
   COUNTDOWN_MIN_S,
   countdownSecondsOf,
   drawn,
   identity,
+  NO_CHANGE,
+  NO_CONTROL_SCOPE,
   shownLabel,
   TAP_DROPPED,
   useAnswerBlock,
@@ -153,6 +162,14 @@ export const TEXT_SHORT = `At least ${DIALOG_TEXT_MIN} characters here.`;
 /** v0.6: a dock line for a paired machine's session, its name where the line says "the Mac" (the Mac's own: unchanged). */
 export function atMachine(text: string, machine: string | null | undefined): string {
   return machine ? text.replace(/\b[Tt]he Mac\b/gu, machine) : text;
+}
+
+/** v0.6: the tap lines atMachine may rewrite, the dock's own sentences; never an error the Mac sends (errorText). */
+const MACHINE_LINES: ReadonlySet<string> = new Set([CHANGED, NO_CHANGE, CANT_TELL, COUNTDOWN_LATE]);
+
+/** v0.6: a server's dialog with Controls off there (its own switch: the Mac's says nothing about it). */
+export function controlsOffOn(machine: string): string {
+  return `Controls are off on ${machine}. Turn them on there: ${CLI_NAME} controls on`;
 }
 
 /** Under the question of an ask Claude blocks by itself (`blocksIn`): the time left ("1 min 33 s", "about 2 minutes"). */
@@ -688,27 +705,35 @@ function DialogView({
   );
 }
 
-/** The folded sheet's one line: the question, after the time left on Claude's countdown when there is one. */
-function peekOf(d: TerminalDialog, ticking: number | null): string {
+/**
+ * The folded sheet's one line: the question, after the time left on Claude's countdown when there is
+ * one. The question is the terminal's own text: only the fixed words before it name the machine (`at`).
+ */
+export function peekOf(d: TerminalDialog, ticking: number | null, at: (text: string) => string = (t) => t): string {
   if (d.blocksIn === undefined) return d.question;
   const left = ticking === null ? (tickingSeconds(d.blocksIn) === null ? d.blocksIn : null) : ticking > 0 ? leftWords(ticking) : null;
-  return left === null ? `Blocked at the Mac by now · ${d.question}` : `${left} left · ${d.question}`;
+  return left === null ? `${at('Blocked at the Mac by now')} · ${d.question}` : `${left} left · ${d.question}`;
 }
 
-/** A line about the last tap: what the Mac showed after it (ink), or an error (InlineError). */
+/** A line about the last tap: what the Mac showed after it (ink), or an error (InlineError, as the Mac said it). */
 function TapLine({ line, at }: { line: AnswerLine | null; at: (text: string) => string }) {
   if (!line) return null;
-  if (line.error) return <InlineError error={at(line.text)} />;
+  if (line.error) return <InlineError error={line.text} />;
   return (
     <p role="status" className="mt-12 type-small text-ink-2">
-      {at(line.text)}
+      {MACHINE_LINES.has(line.text) ? at(line.text) : line.text}
     </p>
   );
 }
 
-export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, sends, onShowOnMac, machine }: TermDialogDockProps) {
+export function TermDialogDock({ sid, session, subagent, screen: read, phone, age, late, sends, onShowOnMac, machine }: TermDialogDockProps) {
   const offline = useApp((s) => s.conn.status === 'offline');
-  const block = useAnswerBlock();
+  const hubBlock = useAnswerBlock();
+  // v0.6: a server's dialog is answered there, under its own Controls switch; this device's scope still counts.
+  const nodeBlock = useApp((s) =>
+    session.node === undefined || sessionFeatures(s.state, session).controls ? null : controlsOffOn(machineName(s.state, session.node)),
+  );
+  const block = session.node === undefined || hubBlock === NO_CONTROL_SCOPE ? hubBlock : nodeBlock;
   const { busy, line, renewed, answer } = useDialogAnswer(sid, read, sends);
   const dialog = read.screen?.dialog ?? null;
   const ticking = useCountdown(read.seq, dialog?.blocksIn);
@@ -775,7 +800,7 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
         title={asker ? subagentTitle(asker) : `${machine ?? 'Claude'} asks · ${headWord(dialog)}`}
         age={age}
         late={late}
-        peek={at(peekOf(dialog, ticking))}
+        peek={peekOf(dialog, ticking, at)}
       >
         <div className={scroll}>
           <DialogView

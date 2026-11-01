@@ -38,9 +38,12 @@
  *
  * The hook cards (session/Permission.tsx, Plan.tsx, Question.tsx) load
  * with import() the first time one shows (v0.6: the first load's room for
- * Fleet); until one arrives the dock says what it is with a spinner.
+ * Fleet); until one arrives the dock says what it is with a spinner. A
+ * card or dialog dock whose chunk is gone (a page left open across an
+ * update: the new service worker drops the old build's files) says so,
+ * with Reload, instead of leaving the screen blank.
  */
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { machineName, machineOf, pendingFor, sessionAccount, sessionFeatures, typeRefusalText, type Session } from '@jantar/protocol';
 import { errorText } from '../../lib/api.js';
 import { screenTitle } from '../../lib/favicon.js';
@@ -96,6 +99,34 @@ const PermissionCard = lazy(() => import('./session/Permission.js').then((m) => 
 const QuestionCard = lazy(() => import('./session/Question.js').then((m) => ({ default: m.QuestionCard })));
 const PlanCard = lazy(() => import('./session/Plan.js').then((m) => ({ default: m.PlanCard })));
 const CARD_WORD = { permission: 'Permission', question: 'Question', plan: 'Plan' } as const;
+
+/** Under a card or dialog dock that could not load (most often a chunk an update dropped). */
+export const RELOAD_LINE = "This didn't load: Jantar may have been updated since the page opened. Reload to answer here.";
+
+/** Shows `failed` in place of a lazy part that could not load (React.lazy throws), not a blank screen. */
+class ChunkBoundary extends Component<{ failed: ReactNode; children: ReactNode }, { error: boolean }> {
+  override state = { error: false };
+  static getDerivedStateFromError(): { error: boolean } {
+    return { error: true };
+  }
+  override render(): ReactNode {
+    return this.state.error ? this.props.failed : this.props.children;
+  }
+}
+
+/** The dock a card or dialog would have been: what waits, and Reload. */
+function ReloadDock({ phone, title, age, late }: { phone: boolean; title: string; age: string; late: boolean }) {
+  return (
+    <DockFrame phone={phone} title={title} age={age} late={late} peek={RELOAD_LINE}>
+      <p role="alert" className="mt-8 type-small text-ink-2">
+        {RELOAD_LINE}
+      </p>
+      <Button className="mt-12" onClick={() => window.location.reload()}>
+        Reload
+      </Button>
+    </DockFrame>
+  );
+}
 
 /** ?view=screen (and ?view=files&root=&path=&tab=) survive a reload (the router keeps only ?p= for sessions). */
 function viewFromUrl(): { view: View; files: FilesLocation } {
@@ -322,23 +353,25 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
     };
     const word = target.kind === 'permission' ? `${CARD_WORD.permission} · ${target.tool}` : CARD_WORD[target.kind === 'question' ? 'question' : 'plan'];
     bottom = (
-      <Suspense
-        fallback={
-          <DockFrame phone={phone} title={word} age={props.age} late={props.late} peek={word}>
-            <div data-card-loading className="mt-12 flex h-40 items-center">
-              <Spinner label="Loading the card" />
-            </div>
-          </DockFrame>
-        }
-      >
-        {target.kind === 'permission' ? (
-          <PermissionCard key={target.id} {...props} />
-        ) : target.kind === 'question' ? (
-          <QuestionCard key={target.id} {...props} />
-        ) : (
-          <PlanCard key={target.id} {...props} />
-        )}
-      </Suspense>
+      <ChunkBoundary key={target.id} failed={<ReloadDock phone={phone} title={word} age={props.age} late={props.late} />}>
+        <Suspense
+          fallback={
+            <DockFrame phone={phone} title={word} age={props.age} late={props.late} peek={word}>
+              <div data-card-loading className="mt-12 flex h-40 items-center">
+                <Spinner label="Loading the card" />
+              </div>
+            </DockFrame>
+          }
+        >
+          {target.kind === 'permission' ? (
+            <PermissionCard key={target.id} {...props} />
+          ) : target.kind === 'question' ? (
+            <QuestionCard key={target.id} {...props} />
+          ) : (
+            <PlanCard key={target.id} {...props} />
+          )}
+        </Suspense>
+      </ChunkBoundary>
     );
   } else if (receipt && showReceipt) {
     const withComposer = phase === 'picked' && !ended && session.status !== 'waiting';
@@ -382,28 +415,30 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
     const age = ago(since, now) || 'now';
     const title = subagent ? subagentTitle(subagent) : 'Claude is waiting in the terminal';
     bottom = (
-      <Suspense
-        fallback={
-          <DockFrame phone={phone} title={title} age={age} late={isLate(since, now)} peek="Reading the screen">
-            <div className="mt-12 flex h-40 items-center">
-              <Spinner label="Reading the screen" />
-            </div>
-          </DockFrame>
-        }
-      >
-        <TermDialogDock
-          sid={sid}
-          session={session}
-          subagent={subagent}
-          screen={screenRead}
-          phone={phone}
-          age={age}
-          late={isLate(since, now)}
-          sends={sends}
-          {...(raisable ? { onShowOnMac: () => void showOnMac() } : {})}
-          {...(machine ? { machine } : {})}
-        />
-      </Suspense>
+      <ChunkBoundary failed={<ReloadDock phone={phone} title={title} age={age} late={isLate(since, now)} />}>
+        <Suspense
+          fallback={
+            <DockFrame phone={phone} title={title} age={age} late={isLate(since, now)} peek="Reading the screen">
+              <div className="mt-12 flex h-40 items-center">
+                <Spinner label="Reading the screen" />
+              </div>
+            </DockFrame>
+          }
+        >
+          <TermDialogDock
+            sid={sid}
+            session={session}
+            subagent={subagent}
+            screen={screenRead}
+            phone={phone}
+            age={age}
+            late={isLate(since, now)}
+            sends={sends}
+            {...(raisable ? { onShowOnMac: () => void showOnMac() } : {})}
+            {...(machine ? { machine } : {})}
+          />
+        </Suspense>
+      </ChunkBoundary>
     );
   } else if (ended) {
     bottom = (

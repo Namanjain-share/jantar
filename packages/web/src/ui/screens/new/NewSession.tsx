@@ -16,33 +16,39 @@
  * the detail pane. While the form is open the browser stays where you were
  * when you chose Start (a deep link opens it at the folder's parent).
  *
- * The shell mounts this only while launching is switched on (features.launch).
+ * The shell mounts this only while a session can start somewhere: the Mac
+ * has launching switched on (features.launch), or a paired machine has
+ * (machines.ts `canStartAnywhere`).
  *
  * v0.6 (Fleet): a Where row above the folder browser picks the machine,
- * the Mac or a paired one that is online with starting on there:
+ * the Mac (while its own starting is on) or a paired one that is online
+ * with starting on there:
  *
  *   Where     [ Mac ] [ build-1 ] [ build-2 ]
  *
  * Every folder and start call below then goes to that machine (`node` on
  * each call, through `onMachine`), and the browser, the Resume list, the
  * start form and the receipt are that machine's own. A launch's receipt and
- * a session's folder (a Board row's "New session here") stay on the machine
- * they belong to. The row shows only while some machine can start sessions;
- * until then this screen is as before.
+ * a session's folder (a Board row's "New session here", "Try again") stay
+ * on the machine they belong to. With the Mac's starting off the first
+ * machine that can start is picked. The row shows only while some paired
+ * machine can start sessions; until then this screen is as before.
  */
 import { XIcon } from '@phosphor-icons/react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { HUB_MACHINE_NAME, type LaunchJob, type NodeView, type State } from '@jantar/protocol';
+import { HUB_MACHINE_NAME, type LaunchJob, type State } from '@jantar/protocol';
 import { errorText } from '../../../lib/api.js';
 import { routePath } from '../../../lib/router.js';
 import { AppProvider, useApp, useDeps, useNavigate, useToast } from '../../context.js';
 import { IconButton } from '../../kit/IconButton.js';
 import { Sheet } from '../../kit/Sheet.js';
+import { useFeatures } from '../../shell/data.js';
 import { isSplit, useFrame } from '../../shell/layout.js';
 import { Segmented } from '../accounts/Segmented.js';
 import { Receipt } from '../launch/Receipt.js';
 import { SESSIONS_VIEW, WhereContext, basename, dirname, onMachine, peekPrompt, relUnder, useRequest, useWhere, type Where } from './data.js';
 import { FolderBrowser, sessionRootsOf } from './FolderBrowser.js';
+import { startMachines } from './machines.js';
 import { StartForm } from './StartForm.js';
 
 export interface NewSessionProps {
@@ -66,13 +72,6 @@ interface Place {
 /** The machine last picked in the Where row, while the app runs (never stored). */
 let lastPicked: string | undefined;
 
-/** The paired machines a session can start on now: online, not watch-only, with starting on there; by name. */
-export function startMachines(nodes: State['nodes']): NodeView[] {
-  return Object.values(nodes ?? {})
-    .filter((n) => n.online && !n.readOnly && n.features.launch)
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
 const MAC = 'mac';
 
 /**
@@ -93,9 +92,11 @@ export function NewSession(props: NewSessionProps) {
   const navigate = useNavigate();
   const nodes = useApp((s) => s.state.nodes);
   const pinNode = useApp((s) => pinnedTo(s.state, props.root, props.launch, props.from));
+  // Each machine keeps its own switches: the Mac is offered only while its own starting is on.
+  const macOn = useFeatures().launch;
   const choices = useMemo(() => startMachines(nodes), [nodes]);
   const [picked, setPicked] = useState<string | undefined>(lastPicked);
-  const chosen = picked !== undefined && choices.some((n) => n.id === picked) ? picked : undefined;
+  const chosen = picked !== undefined && choices.some((n) => n.id === picked) ? picked : macOn ? undefined : choices[0]?.id;
   const node = pinNode === null ? chosen : pinNode === MAC ? undefined : pinNode;
   const view = node !== undefined && nodes && Object.hasOwn(nodes, node) ? nodes[node] : undefined;
   const where = useMemo<Where | null>(
@@ -122,7 +123,7 @@ export function NewSession(props: NewSessionProps) {
         <div className="no-scrollbar min-w-0 overflow-x-auto">
           <Segmented
             label="Where"
-            segments={[{ key: MAC, label: HUB_MACHINE_NAME }, ...shown.map((n) => ({ key: n.id, label: n.name }))]}
+            segments={[...(macOn || node === undefined ? [{ key: MAC, label: HUB_MACHINE_NAME }] : []), ...shown.map((n) => ({ key: n.id, label: n.name }))]}
             value={node ?? MAC}
             onChange={pick}
           />

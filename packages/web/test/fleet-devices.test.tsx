@@ -7,13 +7,13 @@
  * /v1/machines/:id with this device's secret. Pairing stays at the Mac. With
  * no machine paired Devices is v0.5's.
  */
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { DEVICE_SECRET_HEADER, FLEET_COPY, type State } from '@jantar/protocol';
-import { createApi } from '../src/lib/api.js';
+import { DEVICE_SECRET_HEADER, FLEET_COPY, type DaemonEvent, type State } from '@jantar/protocol';
+import { createApi, type Api } from '../src/lib/api.js';
 import type { CredentialStore } from '../src/lib/credential.js';
 import { PAIR_LINE, presenceText, versionText } from '../src/ui/screens/devices/Machines.js';
-import { fakeApi, NOW, renderApp, stateWith } from './helpers.js';
+import { emit, fakeApi, iso, NOW, renderApp, stateWith } from './helpers.js';
 import { fleetNodes, fleetState, IDS } from './fleet-helpers.js';
 
 beforeAll(async () => {
@@ -90,6 +90,27 @@ describe('Machines', () => {
     expect((init?.headers as Record<string, string>)[DEVICE_SECRET_HEADER]).toBe('S'.repeat(43));
     expect((init?.headers as Record<string, string>)['idempotency-key']).toBeTruthy();
     expect(await screen.findByText('build-3 is removed. Pair it again at the Mac to bring it back.')).toBeTruthy();
+  });
+
+  it('shows the receipt after removing the last machine too', async () => {
+    admin();
+    const s = fleet();
+    s.nodes = { [IDS.build3]: s.nodes![IDS.build3]! };
+    // The Mac's reply, held until the test lets it go (its body is not read).
+    let reply = () => {};
+    const machineRevoke = vi.fn(
+      (_id: string, _key?: string) => new Promise<Awaited<ReturnType<Api['machineRevoke']>>>((r) => (reply = () => r({ machine: {} } as never))),
+    );
+    const { store } = renderApp({ path: '/devices', api: fakeApi({ machineRevoke }), state: s });
+    const row = rowOf(await machines(), 'build-3');
+    fireEvent.click(within(row).getByRole('button', { name: 'Remove…' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Tap again to remove build-3' }));
+    // The Mac's node.removed can come before its reply: the machine goes, the section stays.
+    const removed: DaemonEvent = { seq: store.getState().state.seq + 1, ts: iso(0), type: 'node.removed', data: { id: IDS.build3 } };
+    act(() => emit(store, [removed]));
+    await act(async () => reply());
+    expect(await screen.findByText('build-3 is removed. Pair it again at the Mac to bring it back.')).toBeTruthy();
+    expect(within(await machines()).queryByRole('listitem')).toBeNull();
   });
 
   it("says why a Remove failed, on that machine's row", async () => {

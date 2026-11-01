@@ -103,10 +103,21 @@ export function cardTitle(title: string, m: CardMachine | undefined): string {
   return m ? `${m.name} asks · ${title}` : title;
 }
 
-/** A machine's card whose input was too large to send to the phone: the Mac cut it to `{}`. */
-export function tooLarge(p: Pick<PendingRequest, 'input'>, m: CardMachine | undefined): boolean {
+/**
+ * A machine's permission card whose input was too large to send to the phone: the Mac cut it to `{}`
+ * (a tool that takes no input reads the same). A plan or question card that lacks its plan or options
+ * says so in its own words, right either way: read or answer it at that machine.
+ */
+export function tooLarge(p: Pick<PendingRequest, 'kind' | 'input'>, m: CardMachine | undefined): boolean {
   const input = p.input;
-  return m !== undefined && typeof input === 'object' && input !== null && !Array.isArray(input) && Object.keys(input).length === 0;
+  return (
+    m !== undefined &&
+    p.kind === 'permission' &&
+    typeof input === 'object' &&
+    input !== null &&
+    !Array.isArray(input) &&
+    Object.keys(input).length === 0
+  );
 }
 
 /** The lines a machine's card adds: its input was too large to show (`tooLarge`), and why it is off. */

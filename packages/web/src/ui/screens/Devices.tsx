@@ -5,9 +5,10 @@
  * style: group rails, hairline rows, no cards.
  *
  * v0.6 (Fleet): once a machine is paired, Machines (devices/Machines.tsx,
- * its own chunk) follows the paired devices.
+ * its own chunk) follows the paired devices. It stays for the rest of the
+ * visit once shown, so removing the last machine still shows its receipt.
  */
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { PRODUCT_NAME } from '../../brand.js';
 import { useApp } from '../context.js';
 import { readLocalDevice } from './devices/local.js';
@@ -29,6 +30,8 @@ export function Devices() {
   const me = readLocalDevice();
   const daemon = useApp((s) => s.state.daemon);
   const machines = useApp((s) => hasMachines(s.state));
+  const machinesShown = useRef(false);
+  if (machines) machinesShown.current = true;
   const [paired, setPaired] = useState<number | null>(null);
   return (
     <div className="px-16 pb-48 pt-16 animate-enter md:px-32 md:pt-24">
@@ -55,7 +58,7 @@ export function Devices() {
         </p>
         <ThisDevice me={me} />
         <PairedDevices onCount={setPaired} />
-        {machines ? (
+        {machinesShown.current ? (
           <Suspense fallback={null}>
             <Machines />
           </Suspense>

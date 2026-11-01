@@ -7,19 +7,25 @@
  * machine, offline. Its cards carry the Mac's name for the machine, say
  * when their input was too large, and are off while it is offline. Show on
  * Mac shows where there is a Terminal window to raise. Every call stays
- * keyed by the session or card. The Mac's own sessions are as before.
+ * keyed by the session or card. Its terminal dialog follows the server's
+ * own Controls switch, and names the machine in the dock's own words only.
+ * The Mac's own sessions are as before.
  */
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FLEET_COPY, type TerminalDialog } from '@jantar/protocol';
 import { nodeCard } from '@jantar/fixtures';
-import { cardMachine, machineLine, screenReadable } from '../src/ui/screens/session/Info.js';
-import { BLOCKED, PLAN_PARTIAL, atMachine, blocksLine } from '../src/ui/screens/session/TermDialog.js';
+import { ApiError, type Api } from '../src/lib/api.js';
+import { TAP_GUARD_MS } from '../src/ui/screens/session/answer.js';
+import { cardMachine, machineLine, screenReadable, tooLarge } from '../src/ui/screens/session/Info.js';
+import { BLOCKED, PLAN_PARTIAL, atMachine, blocksLine, controlsOffOn, peekOf } from '../src/ui/screens/session/TermDialog.js';
 import fixtures from './term-dialog-fixtures.json';
 import { account, fakeApi, iso, NOW, pending, renderApp, session } from './helpers.js';
 import { fleetState, IDS, preloadCards, SID } from './fleet-helpers.js';
 
 preloadCards();
+
+afterEach(() => vi.useRealTimers());
 
 /** Every v0.3 to v0.5 switch on at the Mac: none of them may reach a server's session. */
 const MAC_ON = { controls: true, clearDraft: true, escape: true, files: true, rewrite: true, screenshots: true, launch: true } as const;
@@ -84,6 +90,27 @@ describe("a server's session", () => {
     });
   }
 
+  it('waiting where nothing can be typed or read: the dock says what waits, and why', () => {
+    const api = fakeApi();
+    const s = fleetState({ features: MAC_ON });
+    s.sessions[SID.noPane] = { ...s.sessions[SID.noPane]!, status: 'waiting', statusSince: iso(0) };
+    const { unmount } = renderApp({ path: `/s/${SID.noPane}`, api, state: s });
+    expect(within(card()).getByRole('heading').textContent).toBe('Claude is waiting in the terminal');
+    expect(within(card()).getByText(FLEET_COPY.notInTmux('build-1'))).toBeTruthy();
+    expect(prompt()).toBeNull();
+    expect(screen.queryByRole('group', { name: /Keypad|Keys/ })).toBeNull();
+    unmount();
+
+    // A subagent's ask on native Windows: which tool waits, and that it is answered there.
+    const w = fleetState({ features: MAC_ON, pending: [pending(SID.windows, { kind: 'subagent-info', tool: 'Bash', agentId: 'agent-1' })] });
+    renderApp({ path: `/s/${SID.windows}`, api, state: w });
+    expect(within(card()).getByRole('heading').textContent).toBe('A subagent asks · Bash');
+    expect(within(card()).getByText('A subagent is waiting in the terminal (Bash).')).toBeTruthy();
+    expect(within(card()).getByText(FLEET_COPY.watchOnlyWindows('win-1'))).toBeTruthy();
+    expect(prompt()).toBeNull();
+    expect(api.getScreen).not.toHaveBeenCalled();
+  });
+
   it('on a Mac server: types there, and Show on Mac raises its window', async () => {
     const api = fakeApi();
     open(SID.mac, api);
@@ -109,6 +136,27 @@ describe("a server's cards", () => {
     const big = nodeCard({ sid: SID.work, id: '01JF1EETCARDB1G000000000AAbbCCddEEffGGhh01', input: {} });
     open(SID.work, fakeApi(), { pending: [big] });
     expect(within(card()).getByText(FLEET_COPY.cardTooLarge('build-1'))).toBeTruthy();
+  });
+
+  it('a plan with no plan text sends you to read it on that machine, cut or not', async () => {
+    const plan = nodeCard({ sid: SID.mac, id: '01JF1EETCARDP1AN00000000AAbbCCddEEffGGhh05', kind: 'plan', tool: 'ExitPlanMode', input: {} });
+    const api = fakeApi();
+    open(SID.mac, api, { pending: [plan] });
+    expect(within(card()).getByRole('heading').textContent).toBe('mini-1 asks · Plan');
+    expect(within(card()).getByText(/doesn't carry the plan\. Read it at mini-1 before you approve\./u)).toBeTruthy();
+    expect(within(card()).queryByText(FLEET_COPY.cardTooLarge('mini-1'))).toBeNull();
+    fireEvent.click(within(card()).getByRole('button', { name: 'Show on mini-1' }));
+    await waitFor(() => expect(api.focus).toHaveBeenCalledWith(SID.mac));
+  });
+
+  it('only a permission reads an empty input as cut: a plan or question says what it lacks itself', () => {
+    const m = { name: 'build-1', blocked: null };
+    expect(tooLarge({ kind: 'permission', input: {} }, m)).toBe(true);
+    expect(tooLarge({ kind: 'permission', input: { command: 'ls' } }, m)).toBe(false);
+    expect(tooLarge({ kind: 'plan', input: {} }, m)).toBe(false);
+    expect(tooLarge({ kind: 'question', input: {} }, m)).toBe(false);
+    // The Mac's own cards are never cut.
+    expect(tooLarge({ kind: 'permission', input: {} }, undefined)).toBe(false);
   });
 
   it('are off while the machine is offline, and say so', () => {
@@ -204,6 +252,59 @@ describe("a server's terminal dialog", () => {
     expect(dock.textContent).not.toMatch(/the Mac/u);
     expect(within(dock).queryByRole('button', { name: /^Show on/u })).toBeNull();
     expect(getScreen.mock.calls[0]?.[0]).toBe(SID.work);
+  });
+
+  /** build-1's work session waiting on `dialog`, with these switches on the Mac and on build-1. */
+  const openDialog = (dialog: TerminalDialog, opts: { macControls?: boolean; serverControls?: boolean; sessionDialog?: Api['sessionDialog'] } = {}) => {
+    const getScreen = vi.fn(async (_sid: string, _lines?: number) => ({ text: 'synthetic terminal text', lines: 40, at: iso(0), backend: 'tmux', screenKey: 'a'.repeat(64), dialog }));
+    const s = fleetState({ features: { ...MAC_ON, controls: opts.macControls ?? true } });
+    s.sessions[SID.work] = { ...s.sessions[SID.work]!, status: 'waiting' };
+    s.nodes![IDS.build1] = { ...s.nodes![IDS.build1]!, features: { ...s.nodes![IDS.build1]!.features, controls: opts.serverControls ?? true } };
+    const api = fakeApi({ getScreen, ...(opts.sessionDialog ? { sessionDialog: opts.sessionDialog } : {}) });
+    return renderApp({ path: `/s/${SID.work}`, api, state: s });
+  };
+  const dockOf = async () => (await screen.findByRole('group', { name: 'Choices' }, { timeout: 10_000 })).closest('article') as HTMLElement;
+  const rowButtons = (dock: HTMLElement) => within(within(dock).getByRole('group', { name: 'Choices' })).getAllByRole('button') as HTMLButtonElement[];
+
+  it("leaves the terminal's own text and the Mac's errors as they were said", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const sessionDialog = vi.fn().mockRejectedValue(new ApiError('network', 'offline', 0));
+    openDialog({ ...PERM, question: 'Edit the Mac build script?' }, { sessionDialog });
+    const dock = await dockOf();
+    expect(within(dock).getByText('Edit the Mac build script?')).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TAP_GUARD_MS);
+    });
+    fireEvent.click(rowButtons(dock)[0]!);
+    // The phone can't reach the Mac: that error is the Mac's, never the server's.
+    expect((await within(dock).findByRole('alert')).textContent).toBe('Could not reach the Mac. Check the connection and try again.');
+    expect(sessionDialog.mock.calls[0]?.[0]).toBe(SID.work);
+  });
+
+  it("is answered under the server's own Controls switch, not the Mac's", async () => {
+    // Controls off on build-1, on at the Mac: the server would refuse, so the rows are off and say why.
+    const { unmount } = openDialog(PERM, { serverControls: false });
+    let dock = await dockOf();
+    expect(within(dock).getByText(controlsOffOn('build-1'))).toBeTruthy();
+    expect(rowButtons(dock).every((b) => b.disabled)).toBe(true);
+    unmount();
+
+    // Off at the Mac, on at build-1: nothing stops the answer here.
+    openDialog(PERM, { macControls: false });
+    dock = await dockOf();
+    expect(within(dock).queryByText(/Controls are off/u)).toBeNull();
+    await waitFor(() => expect(rowButtons(dock).some((b) => !b.disabled)).toBe(true));
+  });
+
+  it('names the machine in the folded peek before the question, never inside it', () => {
+    const at = (t: string) => atMachine(t, 'build-1');
+    const { blocksIn: _blocksIn, ...still } = PERM;
+    const asked = { ...still, question: 'Edit the Mac build script?' };
+    expect(peekOf({ ...asked, blocksIn: '1:30' }, 0, at)).toBe('Blocked at build-1 by now · Edit the Mac build script?');
+    expect(peekOf({ ...asked, blocksIn: '1:30' }, 0)).toBe('Blocked at the Mac by now · Edit the Mac build script?');
+    expect(peekOf({ ...asked, blocksIn: '1:30' }, 75, at)).toBe('1 min 15 s left · Edit the Mac build script?');
+    expect(peekOf(asked, null, at)).toBe('Edit the Mac build script?');
+    expect(controlsOffOn('build-1')).toBe('Controls are off on build-1. Turn them on there: jantar controls on');
   });
 
   it("keeps the Mac's own words for the Mac's sessions", () => {

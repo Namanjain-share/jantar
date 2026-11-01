@@ -17,8 +17,9 @@
  * whole plan (with Show on Mac), not the Transcript.
  *
  * v0.6: a paired machine's card is headed with the Mac's name for it, says
- * when its input was too large to send here, and is off while the machine
- * is offline or watch-only.
+ * where to read a plan it doesn't carry (that machine; the Mac cuts one too
+ * large to send here), and is off while the machine is offline or
+ * watch-only.
  */
 import clsx from 'clsx';
 import { m } from 'motion/react';
@@ -32,7 +33,7 @@ import { KeyHints } from '../../kit/Keycap.js';
 import { useDecide } from './decide.js';
 import { DockFrame } from './DockFrame.js';
 import { Actions, InlineError, OfflineLine } from './Fields.js';
-import { CardMachineLines, cardTitle, tooLarge } from './Info.js';
+import { CardMachineLines, cardTitle } from './Info.js';
 import { usePaneKeys } from './keys.js';
 import type { CardProps } from './Permission.js';
 import { Prose } from './Prose.js';
@@ -97,7 +98,7 @@ export function PlanCard({ p, phone, offline, age, late, aside, onDecided, onSho
         >
           <Prose text={plan} variant="plan" foldAt={12_000} />
         </div>
-      ) : tooLarge(p, machine) ? null : (
+      ) : (
         <>
           <p className="mt-8 type-body text-pretty text-ink-2">
             Claude is ready to leave plan mode, but this request doesn't carry the plan. Read it at {machine?.name ?? 'the Mac'} before you approve.

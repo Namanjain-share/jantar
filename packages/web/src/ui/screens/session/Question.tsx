@@ -9,8 +9,9 @@
  * sentence (CLARIFY_MESSAGE) and Claude asks what to clarify.
  *
  * v0.6: a paired machine's card is headed with the Mac's name for it, says
- * when its input was too large to send here, and is off while the machine
- * is offline or watch-only.
+ * where to answer questions it doesn't carry (that machine; the Mac cuts
+ * ones too large to send here), and is off while the machine is offline or
+ * watch-only.
  */
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -23,7 +24,7 @@ import { Keycap } from '../../kit/Keycap.js';
 import { useDecide } from './decide.js';
 import { DockFrame } from './DockFrame.js';
 import { Actions, InlineError, OfflineLine } from './Fields.js';
-import { CardMachineLines, cardTitle, tooLarge } from './Info.js';
+import { CardMachineLines, cardTitle } from './Info.js';
 import { usePaneKeys } from './keys.js';
 import type { CardProps } from './Permission.js';
 
@@ -118,11 +119,9 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
   if (!questions.length || !q) {
     return (
       <DockFrame phone={phone} title={cardTitle('Question', machine)} age={age} late={late} aside={aside} peek={`Answer it at ${machine?.name ?? 'the Mac'}.`}>
-        {tooLarge(p, machine) ? null : (
-          <p className="mt-8 type-body text-ink-2">
-            This question has no options the app can show. Answer it at {machine?.name ?? 'the Mac'}, or decline it here.
-          </p>
-        )}
+        <p className="mt-8 type-body text-ink-2">
+          This question has no options the app can show. Answer it at {machine?.name ?? 'the Mac'}, or decline it here.
+        </p>
         <CardMachineLines p={p} m={machine} />
         <Actions phone={phone}>
           <Button size={size} disabled={disabled} onClick={decline}>
