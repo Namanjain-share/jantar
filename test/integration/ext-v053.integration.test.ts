@@ -191,7 +191,11 @@ describe.skipIf(!ready)('ext-v053: screenshots through the toolbar icon on the b
     await eventually(async () => (await shots()) === 3, 10_000, "the popup's screenshot");
     await popup.close();
     expect(uploads()).toEqual([200, 200, 200]);
-    const last = await lastShot();
+    // The worker keeps the record once the upload's answer is back, a moment after jantard holds the shot.
+    const last = await eventually(async () => {
+      const seen = await lastShot();
+      return seen?.from === 'popup' ? seen : null;
+    }, 5_000, "the popup try's record");
     expect(last).toMatchObject({ from: 'popup', ok: true, step: 'saved' });
 
     const shortcut = await ext.worker.evaluate(async () => (await (globalThis as unknown as { chrome: WithStorage }).chrome.commands.getAll()).find((c) => c.name === 'take-screenshot')?.shortcut ?? '');

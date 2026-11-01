@@ -262,7 +262,7 @@ export interface ActionPopup {
   close(): Promise<void>;
 }
 
-/** The open action popup (`popup.html` with no `?tab=`), once Chrome shows it; its session lives until `close()` or the popup goes. */
+/** The open action popup (`popup.html` with no `?tab=`), once Chrome shows it; its session lives until `close()` or the popup goes, and a call fails then (or after `ms` with no answer). */
 export async function actionPopup(ext: LoadedExtension, ms = 10_000): Promise<ActionPopup> {
   const browser = ext.context.browser();
   if (!browser) throw new Error('no browser behind the persistent context');
@@ -283,19 +283,40 @@ export async function actionPopup(ext: LoadedExtension, ms = 10_000): Promise<Ac
   const popupTarget = targetId;
   // flatten: false, so the popup's protocol messages ride on this browser session (Playwright has no handle for the popup).
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: popupTarget, flatten: false });
+  // A popup that went (closed itself, or Chrome closed it) fails every call at once, and one that stops answering after `ms`: never a hang.
+  const GONE = 'the action popup went away';
+  let gone = false;
+  const waiting = new Set<(why: string) => void>();
+  cdp.on('Target.detachedFromTarget', (e) => {
+    if (e.sessionId !== sessionId) return;
+    gone = true;
+    for (const fail of [...waiting]) fail(GONE);
+  });
   let next = 0;
   const call = (method: string, params: Record<string, unknown>): Promise<{ result?: unknown; error?: { message: string } }> =>
-    new Promise((resolve) => {
+    new Promise((resolve, reject) => {
+      if (gone) return reject(new Error(`${GONE} (${method})`));
       const id = ++next;
+      const done = () => {
+        clearTimeout(timer);
+        waiting.delete(fail);
+        cdp.off('Target.receivedMessageFromTarget', on);
+      };
+      const fail = (why: string) => {
+        done();
+        reject(new Error(`${why} (${method})`));
+      };
       const on = (e: { sessionId?: string; message: string }) => {
         if (e.sessionId !== sessionId) return;
         const m = JSON.parse(e.message) as { id?: number; result?: unknown; error?: { message: string } };
         if (m.id !== id) return;
-        cdp.off('Target.receivedMessageFromTarget', on);
+        done();
         resolve(m);
       };
+      const timer = setTimeout(() => fail('the action popup did not answer'), perfBudgetMs(ms));
+      waiting.add(fail);
       cdp.on('Target.receivedMessageFromTarget', on);
-      void cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id, method, params }) }).catch(() => undefined);
+      cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id, method, params }) }).catch(() => fail(GONE));
     });
   return {
     async evaluate<T>(expression: string): Promise<T> {
@@ -305,7 +326,8 @@ export async function actionPopup(ext: LoadedExtension, ms = 10_000): Promise<Ac
     },
     async click(x, y) {
       await call('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-      void call('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+      // The click may close the popup before the release is answered.
+      void call('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }).catch(() => undefined);
     },
     async close() {
       await cdp.send('Target.closeTarget', { targetId: popupTarget }).catch(() => undefined);
