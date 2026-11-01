@@ -85,7 +85,9 @@ seconds down and the rows answer the ask
 What the read does: at most one screen read per session every 10 seconds,
 the repeat and a retry after a failed read included. It never types, and
 nothing it reads is kept, logged or sent. With the terminal off
-(`--no-terminal`) there is no urgent alert.
+(`--no-terminal`) there is no urgent alert. Only the Mac's own sessions
+get it: with [Fleet](fleet.md), a paired server's screen is never read for
+it, and its unattended asks get the plain "needs you" push.
 Turn it off with `jantar notify urgent off`; such asks then get the plain
 "needs you" push. The daemon remembers which asks it pushed only while it
 runs: restarted during a countdown, it may push that ask once more.

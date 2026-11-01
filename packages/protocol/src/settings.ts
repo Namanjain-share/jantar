@@ -306,6 +306,17 @@ export const AskSettingsSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+/**
+ * v0.6 Fleet: paired servers (Linux, Windows, other Macs) link to this Mac
+ * through its front door, and the phone sees and controls their sessions.
+ * Off until turned on at the Mac (`jantar fleet on`); only the switch lives
+ * here (pairings are in jantar.db, the hub's key in <state dir>/fleet). A
+ * server's own watch-only switch is its service's --read-only, not a setting.
+ */
+export const FleetSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
 export const AccountsSettingsSchema = z.object({
   /**
    * Accounts kept for other work: Auto, Rewrite, Ask Claude and Ask never pick one (a manual
@@ -366,6 +377,8 @@ export const SettingsSchema = z.object({
   meetings: MeetingsSettingsSchema.prefault({}),
   /** v0.5.3, no version bump: an older daemon drops the unknown group */
   ask: AskSettingsSchema.prefault({}),
+  /** v0.6 (no version bump either) */
+  fleet: FleetSettingsSchema.prefault({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -392,6 +405,8 @@ export const MAC_ONLY_SETTING_GROUPS = [
   'meetings',
   // v0.5.3: the Ask switch.
   'ask',
+  // v0.6: the Fleet switch (a phone must never let servers in).
+  'fleet',
 ] as const;
 export type MacOnlySettingGroup = (typeof MAC_ONLY_SETTING_GROUPS)[number];
 
@@ -494,6 +509,7 @@ export function settingsFeatures(s: Settings): Features {
     intel: s.intel.enabled,
     meetings: s.meetings.enabled,
     ask: s.ask.enabled,
+    fleet: s.fleet.enabled,
   };
 }
 

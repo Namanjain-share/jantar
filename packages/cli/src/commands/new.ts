@@ -20,8 +20,14 @@
  *   the conversation is kept on.
  * - v0.4 claude mode starts only with one Claude login (the daemon refuses
  *   it with cswap), so in that mode no account is printed: there is one.
+ * - v0.6 `--node <name>`: start on a paired server instead (Fleet). The
+ *   folder is that server's absolute path, matched against the roots the
+ *   server serves (`?node=` on every folders and launch call, which the Mac
+ *   forwards); picks left out come from the server's own defaults, and its
+ *   own switches (`jantar launch on` there) decide.
  */
 import { stat } from 'node:fs/promises';
+import { posix } from 'node:path';
 import {
   LAUNCH_FINAL_STAGES,
   LAUNCH_PROMPT_MAX,
@@ -47,6 +53,7 @@ import { DaemonError, callDaemon } from '../ctl.js';
 import { DANGEROUS_SENTENCE, FLAG_PICKS, flagsText, locateIn, picksFrom, realFolder } from '../lib/launch.js';
 import { displayPath, expandPath } from '../lib/roots.js';
 import { clip } from '../lib/text.js';
+import { findMachine } from './node.js';
 
 const FLAGS = {
   ...FLAG_PICKS,
@@ -59,6 +66,7 @@ const FLAGS = {
   wait: { type: 'boolean', help: 'wait until the session is ready (default; --no-wait returns once queued)' },
   timeout: { type: 'number', help: 'seconds to wait (default 300)' },
   json: { type: 'boolean', help: 'print the final launch as JSON' },
+  node: { type: 'string', help: "v0.6: start on this paired server (jantar node list); the folder is its absolute path there" },
 } as const;
 
 const POLL_MS = 1000;
@@ -138,13 +146,15 @@ export default defineCommand(
     name: 'new',
     summary: 'Start a session in a new Terminal window, as the phone does (account, flag picks, startup dialogs).',
     usage:
-      'jantar new <folder> [--account N|auto] [--permission P] [--chrome|--no-chrome] [--effort E] [--model M] [--name NAME] [--prompt TEXT|-] [--resume ID|last] [--preview] [--no-wait]',
+      'jantar new <folder> [--account N|auto] [--permission P] [--chrome|--no-chrome] [--effort E] [--model M] [--name NAME] [--prompt TEXT|-] [--resume ID|last] [--preview] [--no-wait] [--node NAME]',
     owner: 'T2',
     help:
       '<folder> must lie under a root (jantar folders list) or a live session\'s folder; starting must be on (jantar launch on).\n' +
       'Picks left out come from the defaults (jantar launch defaults). There is no way to pass other claude flags.\n' +
       '--resume opens a past conversation of the folder instead of a new one (last: the newest not running now); a\n' +
       'conversation kept on one account starts there.\n' +
+      '--node NAME starts on a paired server (Fleet): the folder is its absolute path there, under a root that\n' +
+      'server serves, and starting must be on at that server.\n' +
       'Exit status: 0 started (and the first prompt proven), 1 not started or the prompt not sent, 3 daemon not running.',
   },
   async (argv, ctx) => {
@@ -166,28 +176,53 @@ export default defineCommand(
     if (timeoutS <= 0) throw new UsageError('--timeout must be positive');
 
     const input = positionals[0] as string;
-    const real = await realFolder(input, ctx.paths.userHome);
-    if (!real || !(await stat(real)).isDirectory()) throw new Error(`no such folder: ${expandPath(input, ctx.paths.userHome)}`);
-    const { roots } = await callDaemon<FilesRootsResponse>(ctx.ctl, 'GET', ROUTES.foldersRoots.path);
+    // v0.6: on a server, every folders and launch call carries ?node= (the Mac forwards it).
+    let node: { id: string; name: string } | null = null;
+    if (flags.node !== undefined) {
+      const row = await findMachine(ctx, flags.node);
+      if (!row) throw new Error(`no paired server named "${clip(flags.node, 40)}" (see: jantar node list)`);
+      node = { id: row.id, name: row.name };
+    }
+    const onNode = (q: URLSearchParams) => {
+      if (node) q.set('node', node.id);
+      return q;
+    };
+    let real: string;
+    let shown: string;
+    if (node) {
+      if (!posix.isAbsolute(input)) throw new UsageError(`with --node, give the folder's absolute path on ${node.name} (e.g. /home/sam/code/api)`);
+      real = posix.normalize(input).replace(/(.)\/+$/, '$1');
+      shown = real;
+    } else {
+      const local = await realFolder(input, ctx.paths.userHome);
+      if (!local || !(await stat(local)).isDirectory()) throw new Error(`no such folder: ${expandPath(input, ctx.paths.userHome)}`);
+      real = local;
+      shown = displayPath(real, ctx.paths.userHome);
+    }
+    const rootsQuery = onNode(new URLSearchParams()).toString();
+    const { roots } = await callDaemon<FilesRootsResponse>(ctx.ctl, 'GET', `${ROUTES.foldersRoots.path}${rootsQuery ? `?${rootsQuery}` : ''}`);
     const at = locateIn(roots, real);
     if (!at) {
       throw new Error(
-        `${displayPath(real, ctx.paths.userHome)} is not under a folder the phone may use. Add one first: jantar folders add-root <folder>`,
+        node
+          ? `${shown} is not under a folder ${node.name} lets the phone use. Add one there first: jantar folders add-root <folder>`
+          : `${shown} is not under a folder the phone may use. Add one first: jantar folders add-root <folder>`,
       );
     }
-    const { settings } = await callDaemon<SettingsResponse>(ctx.ctl, 'GET', ROUTES.getSettings.path);
-    const picked: LaunchFlags = { ...settings.launch.defaultFlags, ...picks };
+    // A server's own defaults fill the picks left out there (its preview says which); the Mac's here.
+    const settings = node ? null : (await callDaemon<SettingsResponse>(ctx.ctl, 'GET', ROUTES.getSettings.path)).settings;
+    const picked: LaunchFlags | Partial<LaunchFlags> = settings ? { ...settings.launch.defaultFlags, ...picks } : picks;
     // One Claude login (the only way claude mode starts): no account to name.
-    const single = settings.launch.mode === 'claude';
+    const single = settings?.launch.mode === 'claude';
 
     // The folder's past conversations, as the start sheet lists them: "last" is the newest not running.
     let resume: PastSession | string | undefined;
     if (wanted !== undefined) {
-      const where = new URLSearchParams({ root: at.root.id, path: at.rel });
+      const where = onNode(new URLSearchParams({ root: at.root.id, path: at.rel }));
       const { sessions } = await callDaemon<LaunchHistoryResponse>(ctx.ctl, 'GET', `${ROUTES.launchHistory.path}?${where.toString()}`);
       resume = wanted === 'last' ? sessions.find((x) => !x.live) : (sessions.find((x) => x.id === wanted) ?? wanted);
       if (resume === undefined) {
-        const folder = displayPath(real, ctx.paths.userHome);
+        const folder = shown;
         ctx.io.err(
           sessions.length
             ? `Session NOT started: every past conversation in ${folder} is running now.\n`
@@ -198,18 +233,15 @@ export default defineCommand(
     }
     const resumeId = typeof resume === 'string' ? resume : resume?.id;
 
-    const query = new URLSearchParams({
-      root: at.root.id,
-      path: at.rel,
-      account: String(account),
-      permission: picked.permission,
-      chrome: picked.chrome ? '1' : '0',
-      effort: picked.effort,
-      model: picked.model,
-    });
+    const query = new URLSearchParams({ root: at.root.id, path: at.rel, account: String(account) });
+    if (picked.permission !== undefined) query.set('permission', picked.permission);
+    if (picked.chrome !== undefined) query.set('chrome', picked.chrome ? '1' : '0');
+    if (picked.effort !== undefined) query.set('effort', picked.effort);
+    if (picked.model !== undefined) query.set('model', picked.model);
     // The name the start will send, so the preview's command and its "name taken" warning are the start's.
     if (flags.name !== undefined) query.set('name', flags.name);
     if (resumeId) query.set('resume', resumeId);
+    onNode(query);
     const preview = await callDaemon<LaunchPreview>(ctx.ctl, 'GET', `${ROUTES.launchPreview.path}?${query.toString()}`);
     ctx.io.out(previewText(preview, resume, single));
     if (flags.preview) return EXIT.ok;
@@ -218,15 +250,16 @@ export default defineCommand(
       return EXIT.failed;
     }
 
-    const body: LaunchStartBody = { root: at.root.id, path: at.rel, account, flags: picked };
+    const body: LaunchStartBody = { root: at.root.id, path: at.rel, account, flags: node ? { ...preview.flags, ...picks } : (picked as LaunchFlags) };
     if (flags.name !== undefined) body.name = flags.name;
     if (prompt !== undefined) body.prompt = prompt;
     if (flags['confirm-held']) body.confirmHeld = true;
     if (resumeId) body.resume = resumeId;
     let job: LaunchJob;
     try {
+      const startQuery = onNode(new URLSearchParams()).toString();
       job = (
-        await callDaemon<LaunchJobResponse>(ctx.ctl, 'POST', ROUTES.launchStart.path, body, {
+        await callDaemon<LaunchJobResponse>(ctx.ctl, 'POST', `${ROUTES.launchStart.path}${startQuery ? `?${startQuery}` : ''}`, body, {
           idempotencyKey: ctx.deps.randomId(),
           timeoutMs: 30_000,
         })
@@ -240,7 +273,7 @@ export default defineCommand(
       throw e;
     }
 
-    const label = `${job.name} in ${job.display}${single ? '' : ` on account ${job.account}`}`;
+    const label = `${job.name} in ${job.display}${single ? '' : ` on account ${job.account}`}${node ? ` on ${node.name}` : ''}`;
     ctx.io.err(`${job.resumed ? `Resuming conversation ${job.sid} as` : 'Starting'} ${label} (launch ${job.id})\n`);
     if (flags.wait === false && !isFinal(job)) {
       if (flags.json) ctx.io.out(`${JSON.stringify({ job }, null, 2)}\n`);

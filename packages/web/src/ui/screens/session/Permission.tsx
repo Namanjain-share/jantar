@@ -15,6 +15,10 @@
  *
  * If the daemon still answers needs_confirm, the choice turns into a
  * "Tap again to confirm" button (the server-forced arm, kept from v0.1).
+ *
+ * v0.6: a paired machine's card is headed with the Mac's name for it
+ * ("build-1 asks · Permission · Bash"), says when its input was too large
+ * to send here, and is off while the machine is offline or watch-only.
  */
 import clsx from 'clsx';
 import { m } from 'motion/react';
@@ -27,6 +31,7 @@ import { KeyHints } from '../../kit/Keycap.js';
 import { useDecide, type OnDecided } from './decide.js';
 import { DockFrame } from './DockFrame.js';
 import { Actions, FieldView, InlineError, OfflineLine } from './Fields.js';
+import { CardMachineLines, cardTitle, type CardMachine } from './Info.js';
 import { usePaneKeys } from './keys.js';
 import { TwoTap } from './TwoTap.js';
 
@@ -54,12 +59,14 @@ export interface CardProps {
   onDecided: OnDecided;
   /** Bring the session's tab to the front on the Mac (the plan card's link when the request carries no plan). */
   onShowOnMac?: () => void;
+  /** v0.6: the paired machine the card came from (absent: the Mac's own). */
+  machine?: CardMachine;
 }
 
 /** The session row's arm key (suggestion rows arm by index). */
 const SESSION = 'session';
 
-export function PermissionCard({ p, folder, phone, offline, age, late, aside, onDecided }: CardProps) {
+export function PermissionCard({ p, folder, phone, offline, age, late, aside, onDecided, machine }: CardProps) {
   const { busy, error, decide } = useDecide(p, onDecided);
   const [armed, setArmed] = useState<number | typeof SESSION | null>(null);
   const [denyOpen, setDenyOpen] = useState(false);
@@ -67,7 +74,7 @@ export function PermissionCard({ p, folder, phone, offline, age, late, aside, on
   const noteRef = useRef<HTMLInputElement>(null);
   const noteId = useId();
   const summary = summarizeTool(p.tool, p.input);
-  const disabled = busy || p.state !== 'open' || offline;
+  const disabled = busy || p.state !== 'open' || offline || Boolean(machine?.blocked);
   const sugs = p.suggestions.map((s) => describeSuggestion(s, p.tool));
   const session = sessionRow(p.suggestions, p.tool);
   // Suggestions saved beyond this session keep their own rows, as before.
@@ -185,7 +192,7 @@ export function PermissionCard({ p, folder, phone, offline, age, late, aside, on
   return (
     <DockFrame
       phone={phone}
-      title={`Permission · ${p.tool}`}
+      title={cardTitle(`Permission · ${p.tool}`, machine)}
       age={age}
       late={late}
       aside={aside}
@@ -265,6 +272,7 @@ export function PermissionCard({ p, folder, phone, offline, age, late, aside, on
           </Button>
         </m.div>
       ) : null}
+      <CardMachineLines p={p} m={machine} />
       <InlineError error={error} />
       <OfflineLine offline={offline} />
     </DockFrame>

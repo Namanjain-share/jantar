@@ -16,7 +16,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { DIALOG_SECRET, workflowBashScreen } from '@jantar/fixtures';
-import type { DaemonEvent, Pane, PendingRequest, Settings } from '@jantar/protocol';
+import { NO_FEATURES, type DaemonEvent, type NodeView, type Pane, type PendingRequest, type Settings } from '@jantar/protocol';
 import type { OpResult, PaneFinder, TerminalBackend } from '../../src/contracts.js';
 import { createTestContext, fakePanes, type TestContext } from '../../src/core/testing.js';
 import { NullTerminalBackend } from '../../src/modes.js';
@@ -706,5 +706,56 @@ describe('the probe', () => {
     const before = ctx.clock.now();
     const probe = createCountdownProbe(ctx, { terminal, panes: fakePanes(PANE) });
     expect(await probe(SID)).toMatchObject({ left: 110, at: before });
+  });
+});
+
+describe("v0.6: a paired server's session (Fleet) is never read for the countdown", () => {
+  const BUILD1 = '01JF1EETN0DEBV11D1000000A1';
+  const SERVER_SID = '7a1c0000-0000-4000-8000-a00000000001';
+
+  /** A paired server named build-1, and one of its sessions on the hub's board, waiting since now. */
+  function serverSession(r: Rig): void {
+    const node: NodeView = {
+      id: BUILD1,
+      name: 'build-1',
+      os: 'linux',
+      backend: 'tmux',
+      online: true,
+      since: r.ctx.clock.iso(),
+      version: '0.6.0',
+      readOnly: false,
+      accessRefused: 0,
+      features: { ...NO_FEATURES },
+      accountsMode: 'dirs',
+      accounts: {},
+      activeAccount: null,
+      usage: { fetchedAt: null, source: null },
+    };
+    r.ctx.store.emit({ type: 'node.updated', data: { node } });
+    const s = makeSession({ sid: SERVER_SID, folder: 'api-server', node: BUILD1, status: 'waiting', statusSince: r.ctx.clock.iso(), waitingFor: 'permission' });
+    r.ctx.store.emit({ type: 'session.added', sid: s.sid, data: { session: s } });
+  }
+
+  it('a waiting server session gets its plain waiting push, naming the server; nothing is read', async () => {
+    const r = await rig();
+    r.ask(118); // what the Mac's own tab shows: never this session's screen
+    serverSession(r);
+    await r.tick(3 * S);
+    expect(r.panes.asked).not.toContain(SERVER_SID);
+    expect(r.terminal.reads).toBe(0);
+    expect(r.sent.map((x) => `${String(x.payload.group)}|${String(x.payload.title)}`)).toEqual(['needs|build-1 · api-server needs you']);
+  });
+
+  it("a server's subagent card is not read either; the probe itself finds no server session", async () => {
+    const r = await rig();
+    r.ask(110);
+    serverSession(r);
+    subagentCard(r, { sid: SERVER_SID });
+    await r.tick(URGENT_PROBE_GAP_MS * 2);
+    expect(r.terminal.reads).toBe(0);
+    expect(r.urgent()).toEqual([]);
+    const probe = createCountdownProbe(r.ctx, { terminal: r.terminal, panes: r.panes });
+    expect(await probe(SERVER_SID)).toBeNull();
+    expect(r.panes.asked).not.toContain(SERVER_SID);
   });
 });

@@ -12,7 +12,7 @@ import {
   type PendingRequest,
   type PushSubscriptionRecord,
 } from '@jantar/protocol';
-import type { Db, ExtensionRecord, FolderPin, FolderSeen, RewriteRun } from '../contracts.js';
+import type { Db, ExtensionRecord, FolderPin, FolderSeen, NodeRecord, RewriteRun } from '../contracts.js';
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -29,6 +29,7 @@ export function createMemoryDb(): Db & { closed: boolean } {
   const flags = new Map<string, LaunchFlags>();
   const runs = new Map<string, RewriteRun>();
   const exts = new Map<string, ExtensionRecord>();
+  const nodeRows = new Map<string, NodeRecord>();
   let auditSeq = 0;
 
   const db: Db & { closed: boolean } = {
@@ -228,6 +229,39 @@ export function createMemoryDb(): Db & { closed: boolean } {
         if (!e) return null;
         if (!e.revokedAt) e.revokedAt = at;
         return clone(e);
+      },
+    },
+    nodes: {
+      insert(n) {
+        if (nodeRows.has(n.id)) throw new Error(`node ${n.id} exists`);
+        // The SQLite table's unique index: one live node per name.
+        for (const x of nodeRows.values()) if (x.name === n.name && x.revokedAt === null) throw new Error('node name exists');
+        nodeRows.set(n.id, clone(n));
+      },
+      get(id) {
+        const n = nodeRows.get(id);
+        return n ? clone(n) : null;
+      },
+      byName(name) {
+        for (const n of nodeRows.values()) if (n.name === name && n.revokedAt === null) return clone(n);
+        return null;
+      },
+      list() {
+        return clone([...nodeRows.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
+      },
+      touch(id, at) {
+        const n = nodeRows.get(id);
+        if (n) n.lastSeenAt = at;
+      },
+      setInfo(id, info) {
+        const n = nodeRows.get(id);
+        if (n) Object.assign(n, { os: info.os, version: info.version });
+      },
+      revoke(id, at) {
+        const n = nodeRows.get(id);
+        if (!n) return null;
+        if (!n.revokedAt) n.revokedAt = at;
+        return clone(n);
       },
     },
     close() {

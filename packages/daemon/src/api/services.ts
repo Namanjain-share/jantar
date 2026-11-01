@@ -2,10 +2,12 @@
  * State shared by the TCP listener and the control socket: device auth,
  * pairing, Origin policy, rate limits, idempotency, audit, open WebSockets,
  * the pane lookup cache and the web app hash; v0.5's extension keys and
- * their limits; v0.5.3 Ask's limits and the folder-todo limit.
+ * their limits; v0.5.3 Ask's limits and the folder-todo limit; v0.6's Fleet
+ * part (the hub's forwarder and link, or an inert stand-in) and, on a node,
+ * the in-process calls of the `link` transport.
  */
 import { DEFAULT_HOST, UPLOADS_IN_FLIGHT, V042_LIMITS, type Pane, type Session } from '@jantar/protocol';
-import type { DaemonContext, Logger, PaneTarget, Parts, TerminalBackend, TimerId, UploadStore } from '../contracts.js';
+import type { DaemonContext, FleetService, Logger, NodeLinkService, PaneTarget, Parts, TerminalBackend, TimerId, UploadStore } from '../contracts.js';
 import { DeviceAuth } from '../auth/devices.js';
 import { ExtensionAuth } from '../auth/extensions.js';
 import { OriginPolicy } from '../auth/origin.js';
@@ -14,11 +16,16 @@ import { SlidingWindowBudget, SlidingWindowLimiter } from '../auth/rate-limit.js
 import { Auditor } from './audit.js';
 import { IdempotencyCache } from './idempotency.js';
 import { computeWebHash, webIndexExists } from './static.js';
-import type { DaemonMode } from '../modes.js';
+import { offFleet, offNodeLink, type DaemonMode } from '../modes.js';
+import type { RequestAuth } from './request.js';
 import { UploadStore as FileUploadStore } from '../uploads/store.js';
 
-/** v0.5.3 `panes`: daemon.ts's one PaneLookup, shared with the notification router (else the API builds its own). */
-export type ApiDeps = Omit<Parts, 'api' | 'notifications'> & { panes?: PaneLookup };
+/**
+ * v0.5.3 `panes`: daemon.ts's one PaneLookup, shared with the notification router (else the API builds its own).
+ * v0.6: `fleet` and `nodeLink` may be left out (tests): the inert stand-ins of modes.ts take their place.
+ */
+export type ApiDeps = Omit<Parts, 'api' | 'notifications' | 'fleet' | 'nodeLink'> &
+  Partial<Pick<Parts, 'fleet' | 'nodeLink'>> & { panes?: PaneLookup };
 
 /**
  * Audit rows one device may add per window for refused or failed writes and
@@ -337,6 +344,16 @@ export class ApiServices {
   /** v0.5.3 (V053_LIMITS): test pushes (notifyTest). */
   readonly notifyTestLimiter: SlidingWindowLimiter;
   readonly sockets = new SocketRegistry();
+  /** v0.6: the hub's Fleet part (inert while Fleet is off), or a stand-in that targets nothing. */
+  readonly fleet: FleetService;
+  /** v0.6: a node's link to its hub (state `off` on the hub). */
+  readonly nodeLink: NodeLinkService;
+  /**
+   * v0.6: the `link` transport's callers, by a random per-call token the
+   * server's injector sets in LINK_CALL_HEADER (api/server.ts). The link app
+   * has no listener, so nothing outside this process can name one.
+   */
+  readonly linkCalls = new Map<string, RequestAuth>();
   readonly panes: PaneLookup;
   readonly log: Logger;
   readonly webDist: string | null;
@@ -394,6 +411,8 @@ export class ApiServices {
     this.folderTodoLimiter = per(V053_LIMITS.folderTodo);
     this.notifyTestLimiter = per(V053_LIMITS.notifyTest);
     this.panes = deps.panes ?? new PaneLookup(deps.terminal, ctx, undefined, opts.paneLookupTimeoutMs);
+    this.fleet = deps.fleet ?? offFleet();
+    this.nodeLink = deps.nodeLink ?? offNodeLink();
     this.webDist = opts.webDist === undefined ? ctx.paths.webDist : opts.webDist;
     this.webAvailable = !!this.webDist && webIndexExists(this.webDist);
     this.webHash = this.webAvailable && this.webDist ? computeWebHash(this.webDist) : null;

@@ -309,6 +309,26 @@ its events); otherwise `~/.jantar`.
   none on `ctl.sock`: approvals come only from paired devices through the
   HTTP API (self-approval guard, see SECURITY.md).
 
+### v0.6: a named pipe on Windows
+
+On Windows the socket is the named pipe `\\.\pipe\jantar-<hash>-hooks`
+(`<hash>`: the first 16 hex of sha256 of the state dir's lower-cased full
+path). Pipe names are machine-wide, so before anything else the daemon
+proves it is the daemon:
+
+1. At each start the daemon makes a fresh 32-byte key and, once the pipe is
+   its own, writes it as hex to `<state dir>\run\hooks.key` (in the user's
+   profile).
+2. The client reads that key (none, or not 64 hex: it sends nothing and
+   exits 0), then writes `{"v":1,"hello":"<64 hex nonce>"}` as its first
+   line.
+3. The daemon answers `{"v":1,"mac":"<hex HMAC-SHA256 of 'jantar-hooks-v1 <nonce>' under the key>"}`.
+4. Only when that matches does the client write the event, as above, on the
+   same connection. A pipe that answers anything else gets the nonce and
+   nothing more: Claude asks in its own terminal.
+
+A Unix socket path has no key and no hello: the bytes are as before.
+
 ## 7. Daemon behaviour
 
 ### Ordering and identity

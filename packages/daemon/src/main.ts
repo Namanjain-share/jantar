@@ -1,14 +1,15 @@
 /**
  * jantard entry point (bin/jantard.mjs).
  *
- *   jantard [--port <n>] [--home <dir>] [--no-terminal] [--read-only]
+ *   jantard [--port <n>] [--home <dir>] [--no-terminal] [--read-only] [--log-files]
  *
  * Builds the daemon with daemon.ts (context, db, every source, the hooks
  * socket, writer, notifications, API and control socket), then runs until
  * SIGINT or SIGTERM and stops everything in reverse order. Normally started
  * by launchd (`jantar install`); it can also be run by hand in a terminal.
  */
-import { resolve } from 'node:path';
+import { createWriteStream, mkdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { DAEMON_NAME, HOME_ENV } from '@jantar/protocol';
 import { legacyHomeWarning, legacyStateDirRefusal, resolvePaths, socketPathOk, type Env } from './config.js';
 import type { RunningDaemon, DaemonOptions } from './daemon.js';
@@ -26,6 +27,8 @@ Options:
   --read-only     only observe: refuse sending, focus, answering cards, the
                   cswap poller, primes, Ask Claude, Ask's messages and
                   settings changes (Life writes still work)
+  --log-files     write stdout and stderr to <home>/logs/daemon.{out,err}.log
+                  (for a service manager that keeps no output)
   -v, --version   print the version and exit
   -h, --help      print this help and exit
 `;
@@ -35,6 +38,8 @@ export interface DaemonFlags {
   home?: string;
   noTerminal: boolean;
   readOnly: boolean;
+  /** v0.6: the daemon writes its own log files (Windows' Scheduled Task keeps no output). */
+  logFiles: boolean;
   help: boolean;
   version: boolean;
 }
@@ -43,7 +48,7 @@ export type ParsedFlags = { ok: true; flags: DaemonFlags } | { ok: false; error:
 
 /** Parse jantard's argv. Pure. */
 export function parseDaemonArgs(argv: readonly string[]): ParsedFlags {
-  const flags: DaemonFlags = { noTerminal: false, readOnly: false, help: false, version: false };
+  const flags: DaemonFlags = { noTerminal: false, readOnly: false, logFiles: false, help: false, version: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
     const eq = arg.startsWith('--') ? arg.indexOf('=') : -1;
@@ -73,6 +78,10 @@ export function parseDaemonArgs(argv: readonly string[]): ParsedFlags {
       case '--read-only':
         if (!noValue()) return { ok: false, error: '--read-only takes no value' };
         flags.readOnly = true;
+        break;
+      case '--log-files':
+        if (!noValue()) return { ok: false, error: '--log-files takes no value' };
+        flags.logFiles = true;
         break;
       case '--port': {
         const v = value();
@@ -111,6 +120,25 @@ export interface MainDeps {
   start?: (opts: DaemonOptions) => Promise<RunningDaemon>;
   /** How long a graceful stop may take before main gives up. Default 15 s. */
   stopTimeoutMs?: number;
+  /** v0.6, --log-files: default sendOutputToLogFiles (tests pass their own). */
+  logFiles?: (logsDir: string) => void;
+}
+
+/**
+ * v0.6, --log-files: from here on everything the process writes to stdout
+ * and stderr is appended to <logsDir>/daemon.out.log and daemon.err.log
+ * (0600, in a 0700 dir), the files launchd fills on a Mac and
+ * log-rotate.ts keeps bounded. For a service manager that keeps no output
+ * (the Scheduled Task `jantar node join` prints on native Windows).
+ */
+export function sendOutputToLogFiles(logsDir: string): void {
+  mkdirSync(logsDir, { recursive: true, mode: 0o700 });
+  const to = (stream: NodeJS.WriteStream, file: string) => {
+    const sink = createWriteStream(join(logsDir, file), { flags: 'a', mode: 0o600 });
+    stream.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => sink.write(chunk, ...(rest as []))) as typeof stream.write;
+  };
+  to(process.stdout, 'daemon.out.log');
+  to(process.stderr, 'daemon.err.log');
 }
 
 /** Exit codes. */
@@ -154,6 +182,7 @@ export async function main(argv: readonly string[], deps: MainDeps = {}): Promis
     err(`${DAEMON_NAME}: ${legacyDir}\n`);
     return EXIT.usage;
   }
+  if (flags.logFiles) (deps.logFiles ?? sendOutputToLogFiles)(paths.logsDir);
 
   const start = deps.start ?? (await import('./daemon.js')).startDaemon;
   const opts: DaemonOptions = { env, readOnly: flags.readOnly };

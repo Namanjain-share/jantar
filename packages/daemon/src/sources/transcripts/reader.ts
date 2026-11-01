@@ -11,6 +11,7 @@
  */
 import type { FileHandle } from 'node:fs/promises';
 import { basename, join, resolve, sep } from 'node:path';
+import { localSession } from '@jantar/protocol';
 import type { TranscriptItem } from '@jantar/protocol';
 import type { DaemonContext, Factories, TranscriptEntry, TranscriptReader, TranscriptTail } from '../../contracts.js';
 import { listConfigDirs } from '../claude-files/discover.js';
@@ -247,7 +248,8 @@ export class FileTranscriptReader implements TranscriptReader {
     opts: { before?: string; limit: number },
   ): Promise<{ items: TranscriptItem[]; nextBefore: string | null }> {
     const limit = Math.max(1, Math.min(500, Math.floor(opts.limit) || 1));
-    const s = this.ctx.store.getState().sessions[sid];
+    // v0.6: a paired server's transcript is read there, never here.
+    const s = localSession(this.ctx.store.getState(), sid);
     const hint: { cwd?: string; configDir?: string; transcriptPath?: string } = {};
     if (s?.cwd) hint.cwd = s.cwd;
     if (s?.configDir) hint.configDir = s.configDir;

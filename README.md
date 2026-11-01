@@ -96,6 +96,19 @@ account's 5-hour window early. Jantar does not switch accounts by itself.
 
 More: [accounts](docs/accounts.md).
 
+### Your servers too (v0.6)
+
+Pair your Linux servers, Windows machines and other Macs with the Mac, and
+their Claude Code sessions join the same board, each on its own Claude
+accounts. Every server dials out to your Mac through the front door your
+phone already uses, so servers open no port. On Linux (and Windows with
+WSL2) Claude runs in tmux and the phone can answer, prompt and start
+sessions there; native Windows shows sessions and their cards only, as a
+preview. Fleet is off until you run `jantar fleet on` at the Mac, and parts
+of it are not yet checked on real servers.
+
+More: [servers](docs/fleet.md).
+
 ### Off until you want them
 
 A small life list (todos, reminders, medicines, food, cafés, money), a
@@ -127,6 +140,10 @@ More: [Life](docs/life.md), [Ask](docs/assistant.md),
   Cloudflare Tunnel
 - Optional: cswap for several Claude accounts; Chrome 120 or newer for
   Meetings
+- Optional, for servers (v0.6): Linux with tmux 3.2 or newer and systemd,
+  Windows with WSL2, or another Mac, each with Node.js 22.13 or newer and
+  Claude Code signed in; native Windows as a preview
+  ([servers](docs/fleet.md#before-you-start))
 
 ## Quickstart
 
@@ -171,6 +188,10 @@ has the steps to bring your phones and settings along.
   and you pair it once with a QR code.
 - Claude Code hooks are optional. They carry the approval cards, and Claude
   behaves as usual when the daemon is not running.
+- With Fleet on (v0.6), each paired server runs `jantard` too. It opens no
+  port: it keeps one WebSocket to the Mac's front door, with keys pinned
+  both ways when it joins, and runs the phone's calls through its own
+  checks. More in [servers](docs/fleet.md#how-it-works).
 
 What leaves the Mac: your phone's requests travel through the tunnel you
 set up (with Cloudflare, TLS ends at Cloudflare). Notifications go through
@@ -185,6 +206,9 @@ by this project. More in [How it is put together](docs/architecture.md).
   secret.
 - An answer is typed only while the Mac still shows exactly the dialog you
   tapped.
+- Pairing a server (v0.6) extends your phone's reach to it: a paired phone
+  can prompt it. Join a server with `--read-only` to make it watch-only
+  ([SECURITY.md](SECURITY.md#v06-fleet-paired-servers)).
 - Tests run against a synthetic Mac (fake Terminal, `claude` and `cswap`).
   Every picture here is synthetic data.
 - Report problems privately through GitHub's security advisories (see
@@ -192,8 +216,13 @@ by this project. More in [How it is put together](docs/architecture.md).
 
 ## Status and limits
 
-- v0.5.3. Terminal.app only; tmux and iTerm2 come later
+- v0.5.3. On the Mac, Terminal.app only; iTerm2 comes later
   ([roadmap](docs/roadmap.md)).
+- Servers (v0.6, Fleet): Linux and WSL2 with Claude in tmux, and other
+  Macs; native Windows shows sessions and cards only. The Mac is the hub:
+  while it sleeps, no server is reachable from the phone. Sending prompts
+  on Linux, real Claude Code in tmux and native Windows are not yet checked
+  on real machines ([what is not verified yet](docs/fleet.md#not-verified-yet)).
 - A few answers stay at the Mac until a real Mac confirms them:
   [real-Mac checks](docs/real-mac-checks.md).
 - Jantar does not switch accounts on its own. Medicine and reminder pings
@@ -212,6 +241,7 @@ by this project. More in [How it is put together](docs/architecture.md).
 | [Alerts and sounds](docs/alerts.md) | A tone per kind of alert, the 2-minute countdown alert, what the lock screen can do, `jantar notify` |
 | [Intel shelf](docs/intel.md) | The shelf, its search, its JSONL line format, and `jantar mcp` for Claude Code |
 | [Meetings](docs/extension.md) | The Chrome extension for Meet and Teams |
+| [Servers](docs/fleet.md) | v0.6 Fleet: pairing Linux, Windows and other Macs, each OS, the front door, updating ten servers, limits |
 | [Configuration](docs/configuration.md) | Every command, `jantard` flags, environment, `config.json`, the state folder |
 | [Security overview](docs/security.md) | What Jantar can reach, in plain words; the full model is [SECURITY.md](SECURITY.md) |
 | [FAQ](docs/faq.md) | Common questions and known limits |

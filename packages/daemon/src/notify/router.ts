@@ -30,8 +30,16 @@
  *   URGENT_ANSWER_MS lets the waiting push go. It goes through the same
  *   filters as every push (kinds, mute, channels, each device's kinds).
  *   Without `terminal` and `panes` there is no urgent alert.
+ * - v0.6 Fleet: a paired server's pushes name it (format.ts, the name the
+ *   Mac gave it), and each server gets at most NODE_LIMITS.pushesPerMin a
+ *   minute, on top of the mute (a server cannot flood the phone); the Mac's
+ *   own pushes never count against it. The urgent alert is the Mac's own
+ *   sessions' only: a server's screen is never read for it (the Mac's
+ *   terminal can't show it), so a server's unattended ask gets its plain
+ *   waiting push.
  */
-import type { Alert, DaemonEvent, NotifyKind, PendingRequest, State } from '@jantar/protocol';
+import { accountsOf, machineName, type Alert, type DaemonEvent, type NotifyKind, type PendingRequest, type Session, type State } from '@jantar/protocol';
+import { NODE_LIMITS } from '@jantar/protocol/node-link';
 import type { DaemonContext, NotificationRouter, Notifier, PaneFinder, TerminalBackend, TimerId, Unsubscribe } from '../contracts.js';
 import { CountdownWatch, createCountdownProbe, type UrgentPush } from './countdown.js';
 import {
@@ -47,6 +55,7 @@ import {
   waitingNotification,
   type LimitContext,
   type RoutedNotification,
+  type TextContext,
   type UsageContext,
 } from './format.js';
 import { channelOn, isMuted } from './direct.js';
@@ -56,6 +65,8 @@ const TOLD_KEY = 'notify.reminders.told';
 const TOLD_TTL_MS = 48 * 60 * 60 * 1000;
 /** Dedupe memory for one-shot pushes (failed sends, waiting episodes). */
 const SENT_CAP = 2000;
+/** v0.6: the window of a server's push budget. */
+const PUSH_WINDOW_MS = 60_000;
 
 interface Waiting {
   since: string;
@@ -82,11 +93,18 @@ export interface RouterDeps {
 
 export type RouterContext = Pick<DaemonContext, 'store' | 'settings' | 'clock' | 'log' | 'db'>;
 
-/** For a limit push: which window ran out, when it resets, and the folders on that account. */
+/**
+ * For a limit push: which window ran out, when it resets, and the folders on that account.
+ * v0.6: on the alert's own machine (a server's account 1 is not the Mac's): its accounts
+ * (accountsOf) and its sessions only.
+ */
 export function limitContext(state: Readonly<State>, alert: Alert): LimitContext {
-  const account = alert.account ?? (alert.sid ? state.sessions[alert.sid]?.account : undefined) ?? undefined;
+  const session = alert.sid && Object.hasOwn(state.sessions, alert.sid) ? state.sessions[alert.sid] : undefined;
+  const account = alert.account ?? session?.account ?? undefined;
   if (account === undefined || account === null) return {};
-  const a = state.accounts[String(account)];
+  const node = alert.node ?? session?.node;
+  const accounts = accountsOf(state, node);
+  const a = Object.hasOwn(accounts, String(account)) ? accounts[String(account)] : undefined;
   const ctx: LimitContext = {};
   const full = a?.windows.find((w) => w.pct >= 100) ?? a?.windows.find((w) => w.kind === 'five_hour');
   if (full) {
@@ -95,7 +113,7 @@ export function limitContext(state: Readonly<State>, alert: Alert): LimitContext
     if (full.resetsAt) ctx.resetsAt = full.resetsAt;
   }
   const folders = Object.values(state.sessions)
-    .filter((s) => s.account === account && s.status !== 'ended')
+    .filter((s) => s.node === node && s.account === account && s.status !== 'ended')
     .map((s) => s.folder)
     .filter(Boolean);
   if (folders.length) ctx.folders = [...new Set(folders)];
@@ -111,6 +129,16 @@ export function usageContext(state: Readonly<State>, account: number, window: st
   if (w?.projectedExhaustionAt) ctx.fullAt = w.projectedExhaustionAt;
   else if (window === 'five_hour' && a?.projection?.fullInMin !== undefined) ctx.fullAt = new Date(nowMs + a.projection.fullInMin * 60_000).toISOString();
   return ctx;
+}
+
+/** v0.6: the paired server a session runs on (undefined: the Mac's own). */
+export function nodeOf(state: Readonly<State>, sid: string | undefined): string | undefined {
+  return sid !== undefined && Object.hasOwn(state.sessions, sid) ? state.sessions[sid]?.node : undefined;
+}
+
+/** v0.6: the machine word for a push: a server's name as the Mac gave it; nothing for the Mac. */
+export function machineContext(state: Readonly<State>, node: string | undefined): TextContext {
+  return node === undefined ? {} : { machine: machineName(state, node) };
 }
 
 /** The oldest open card (not subagent info) of a session, or Claude's own "waiting". */
@@ -137,6 +165,8 @@ export class NotificationRouterImpl implements NotificationRouter {
   private readonly inflight = new Set<Promise<void>>();
   /** v0.5.3: Claude's countdown episodes (null without a terminal, or while stopped). */
   private countdown: CountdownWatch | null = null;
+  /** v0.6: node id -> when its recent pushes went out (the last PUSH_WINDOW_MS). */
+  private readonly nodePushes = new Map<string, number[]>();
   private readonly log;
 
   constructor(
@@ -219,23 +249,27 @@ export class NotificationRouterImpl implements NotificationRouter {
         this.reevaluate(ev.data.session.sid);
         return;
       case 'session.removed':
-        if (ev.sid) {
-          this.workStart.delete(ev.sid);
-          this.ranFor.delete(ev.sid);
-          this.clearReminder(ev.sid);
-          this.countdown?.drop(ev.sid);
-          for (const [k, t] of [...this.settle]) {
-            if (!k.startsWith(`wait:${ev.sid}:`)) continue;
-            this.ctx.clock.clearTimeout(t);
-            this.settle.delete(k);
-          }
+        if (ev.sid) this.forget(ev.sid);
+        return;
+      case 'node.removed': {
+        // v0.6: its sessions and cards left the board with it; nothing more is timed or pushed for them.
+        this.nodePushes.delete(ev.data.id);
+        const sids = new Set([...this.workStart.keys(), ...this.ranFor.keys(), ...this.reminders.keys()]);
+        for (const k of this.settle.keys()) if (k.startsWith('wait:')) sids.add(k.slice('wait:'.length).split(':')[0] ?? '');
+        for (const sid of sids) if (!Object.hasOwn(state.sessions, sid)) this.forget(sid);
+        for (const [k, t] of [...this.settle]) {
+          if (!k.startsWith('card:') || Object.hasOwn(state.pending, k.slice('card:'.length))) continue;
+          this.ctx.clock.clearTimeout(t);
+          this.settle.delete(k);
         }
         return;
+      }
       case 'session.done': {
         if (!ev.sid) return;
         const s = state.sessions[ev.sid];
         const ts = this.ctx.clock.iso();
-        this.dispatch(doneNotification(ev.sid, s, ev.data.lastReply, this.bodies(), ts, this.takeRan(ev.sid, ts)));
+        const node = nodeOf(state, ev.sid);
+        this.dispatch(doneNotification(ev.sid, s, ev.data.lastReply, this.bodies(), ts, this.takeRan(ev.sid, ts), machineContext(state, node)), node);
         return;
       }
       case 'session.reminder':
@@ -246,7 +280,9 @@ export class NotificationRouterImpl implements NotificationRouter {
       case 'alert.limit':
       case 'alert.error': {
         const a = ev.data.alert;
-        this.dispatch(alertNotification(a, a.sid ? state.sessions[a.sid] : null, this.bodies(), this.ctx.clock.iso(), limitContext(state, a)));
+        const node = a.node ?? nodeOf(state, a.sid);
+        const ctx = { ...limitContext(state, a), ...machineContext(state, node) };
+        this.dispatch(alertNotification(a, a.sid ? state.sessions[a.sid] : null, this.bodies(), this.ctx.clock.iso(), ctx), node);
         return;
       }
       case 'usage.threshold':
@@ -259,7 +295,8 @@ export class NotificationRouterImpl implements NotificationRouter {
         const job = ev.data.job;
         if (job.stage !== 'failed') return;
         if (!this.once(`send-failed:${job.id}`)) return;
-        this.dispatch(sendFailedNotification(job, state.sessions[job.sid], this.bodies(), this.ctx.clock.iso()));
+        const node = nodeOf(state, job.sid);
+        this.dispatch(sendFailedNotification(job, state.sessions[job.sid], this.bodies(), this.ctx.clock.iso(), machineContext(state, node)), node);
         return;
       }
       default:
@@ -312,7 +349,10 @@ export class NotificationRouterImpl implements NotificationRouter {
   private onCardOpened(p: PendingRequest): void {
     if (cardKind(p) === null) {
       // Subagent info: shown in the app, never pushed. Hooks can't answer it, so it may be Claude's countdown.
-      if (this.urgentOn()) this.countdown?.check(p.sid, p.createdAt, { retry: () => this.ctx.store.getState().pending[p.id]?.state === 'open' });
+      const session = this.ctx.store.getState().sessions[p.sid];
+      if (session && this.urgentFor(session)) {
+        this.countdown?.check(p.sid, p.createdAt, { retry: () => this.ctx.store.getState().pending[p.id]?.state === 'open' });
+      }
       return;
     }
     const now = this.ctx.clock.now();
@@ -328,8 +368,9 @@ export class NotificationRouterImpl implements NotificationRouter {
       const card = state.pending[p.id];
       if (!card || card.state !== 'open') return;
       if (!this.once(key)) return;
-      const n = cardNotification(card, state.sessions[card.sid], this.bodies(), this.ctx.clock.iso());
-      if (n) this.dispatch(n);
+      const node = nodeOf(state, card.sid);
+      const n = cardNotification(card, state.sessions[card.sid], this.bodies(), this.ctx.clock.iso(), machineContext(state, node));
+      if (n) this.dispatch(n, node);
     };
     if (delay <= 0) fire();
     else this.settle.set(key, this.ctx.clock.setTimeout(fire, delay));
@@ -350,13 +391,14 @@ export class NotificationRouterImpl implements NotificationRouter {
     };
     const send = () => {
       const s = still();
-      if (s) this.dispatch(waitingNotification(s, this.bodies(), this.ctx.clock.iso()));
+      if (s) this.dispatch(waitingNotification(s, this.bodies(), this.ctx.clock.iso(), machineContext(this.ctx.store.getState(), s.node)), s.node);
     };
     const fire = () => {
       this.settle.delete(key);
-      if (!still() || !this.once(key)) return;
+      const s = still();
+      if (!s || !this.once(key)) return;
       // v0.5.3: Claude's countdown on screen sends the urgent push instead.
-      if (this.countdown && this.urgentOn()) {
+      if (this.countdown && this.urgentFor(s)) {
         this.countdown.check(sid, since, {
           then: (open) => {
             if (!open) send();
@@ -367,6 +409,19 @@ export class NotificationRouterImpl implements NotificationRouter {
     const settleMs = this.ctx.settings.get().notify.settle_ms;
     if (settleMs <= 0) fire();
     else this.settle.set(key, this.ctx.clock.setTimeout(fire, settleMs));
+  }
+
+  /** A session gone from the board: its timers and what was tracked for it. */
+  private forget(sid: string): void {
+    this.workStart.delete(sid);
+    this.ranFor.delete(sid);
+    this.clearReminder(sid);
+    this.countdown?.drop(sid);
+    for (const [k, t] of [...this.settle]) {
+      if (!k.startsWith(`wait:${sid}:`)) continue;
+      this.ctx.clock.clearTimeout(t);
+      this.settle.delete(k);
+    }
   }
 
   // ---- reminders -----------------------------------------------------------
@@ -439,9 +494,10 @@ export class NotificationRouterImpl implements NotificationRouter {
     if (!w || !session) return;
     const mode = this.bodies();
     const ts = this.ctx.clock.iso();
-    const base = w.card ? cardNotification(w.card, session, mode, ts) : waitingNotification(session, mode, ts);
+    const ctx = machineContext(state, session.node);
+    const base = w.card ? cardNotification(w.card, session, mode, ts, ctx) : waitingNotification(session, mode, ts, ctx);
     if (!base) return;
-    this.dispatch(reminderNotification(base, afterMin, mode, ts));
+    this.dispatch(reminderNotification(base, afterMin, mode, ts), session.node);
   }
 
   private toldMap(): ToldMap {
@@ -475,11 +531,16 @@ export class NotificationRouterImpl implements NotificationRouter {
     return this.deps.notifiers.some((x) => this.channelOn(x));
   }
 
+  /** v0.6: the urgent alert reads the Mac's own sessions only (a server's screen is not the Mac's to read). */
+  private urgentFor(session: Session): boolean {
+    return session.node === undefined && this.urgentOn();
+  }
+
   private onUrgent(u: UrgentPush): void {
     const session = this.ctx.store.getState().sessions[u.sid];
     if (!session) return;
     const n = urgentNotification(session, u.left, u.deadline, this.bodies(), this.ctx.clock.iso());
-    this.dispatch(n, { urgent: true, left: u.left, repeat: u.repeat });
+    this.dispatch(n, session.node, { urgent: true, left: u.left, repeat: u.repeat });
   }
 
   // ---- fan-out ---------------------------------------------------------------
@@ -496,9 +557,32 @@ export class NotificationRouterImpl implements NotificationRouter {
     return channelOn(this.ctx.settings.get().notify, n);
   }
 
-  /** `extra`: more fields for the log line (the urgent alert's `urgent`, `left` and `repeat`; never text). */
-  private dispatch(n: RoutedNotification, extra: Record<string, unknown> = {}): void {
+  /**
+   * v0.6: whether a server still has push budget this minute (and spend one).
+   * Only pushes that would go out count; the Mac's own never do.
+   */
+  private nodeBudget(node: string): boolean {
+    const now = this.ctx.clock.now();
+    const recent = (this.nodePushes.get(node) ?? []).filter((t) => t > now - PUSH_WINDOW_MS);
+    if (recent.length >= NODE_LIMITS.pushesPerMin) {
+      this.nodePushes.set(node, recent);
+      return false;
+    }
+    recent.push(now);
+    this.nodePushes.set(node, recent);
+    return true;
+  }
+
+  /**
+   * `node`: the paired server the push is about (v0.6), undefined for the Mac's own.
+   * `extra`: more fields for the log line (the urgent alert's `urgent`, `left` and `repeat`; never text).
+   */
+  private dispatch(n: RoutedNotification, node?: string, extra: Record<string, unknown> = {}): void {
     if (!this.allowed(n)) return;
+    if (node !== undefined && !this.nodeBudget(node)) {
+      this.log.info('server push budget spent', { node, kind: n.kind });
+      return;
+    }
     for (const notifier of this.deps.notifiers) {
       if (!this.channelOn(notifier)) continue;
       this.track(

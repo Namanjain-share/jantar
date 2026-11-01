@@ -99,7 +99,9 @@ describe('models', () => {
   });
 
   it('lists exactly the optional session fields as unsettable', () => {
+    // v0.6's `node` is optional but never unset (a session never changes machine).
     const optional = Object.entries(SessionSchema.shape)
+      .filter(([k]) => k !== 'node')
       .filter(([, schema]) => (schema as { safeParse(v: unknown): { success: boolean } }).safeParse(undefined).success)
       .map(([k]) => k)
       .sort();
@@ -160,6 +162,10 @@ describe('selectors', () => {
     expect(folderOf('/a/b/my-app/')).toBe('my-app');
     expect(folderOf('/')).toBe('/');
     expect(folderOf('rel')).toBe('rel');
+    // A native Windows node's cwd.
+    expect(folderOf('C:\\Users\\sam\\code\\api')).toBe('api');
+    expect(folderOf('C:\\Users\\sam\\code\\api\\')).toBe('api');
+    expect(folderOf('C:/work/code/web/\\')).toBe('web');
   });
 
   it('labels sessions as "status · folder · session"', () => {

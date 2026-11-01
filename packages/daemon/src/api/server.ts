@@ -3,15 +3,25 @@
  * and the CLI's control socket, sharing one ApiServices. v0.4.2: it also
  * sweeps old uploads (ApiServices.uploads) at start and every
  * UPLOAD_SWEEP_EVERY_MS while it runs.
+ *
+ * v0.6 Fleet: on the hub the TCP server's upgrades pass through
+ * api/node-upgrade.ts (the node link never reaches Fastify). On a node there
+ * is no TCP listener at all: the control socket, and the in-process `link`
+ * app the hub's calls run through (`link()`). On Windows the control socket
+ * is a named pipe (config.ts pipePath): no lstat, chmod or unlink.
  */
 import { chmod, lstat, unlink } from 'node:fs/promises';
 import { connect } from 'node:net';
-import { DEFAULT_HOST, settingsFeatures, type Features } from '@jantar/protocol';
+import { DEFAULT_HOST, IDEMPOTENCY_HEADER, errorBody, settingsFeatures, type Features, type Settings } from '@jantar/protocol';
 import type { FastifyInstance } from 'fastify';
-import type { ApiServer, DaemonContext, TimerId, Unsubscribe } from '../contracts.js';
-import { socketPathOk } from '../config.js';
+import type { ApiServer, DaemonContext, LinkInjector, TimerId, Unsubscribe } from '../contracts.js';
+import { isPipePath, socketPathOk } from '../config.js';
+import { randomToken } from '../core/ids.js';
+import type { DaemonMode } from '../modes.js';
 import { buildApp } from './app.js';
 import { CLOSE_SHUTDOWN } from './events-ws.js';
+import { installNodeUpgrade } from './node-upgrade.js';
+import { LINK_CALL_HEADER, linkAuth } from './request.js';
 import { ApiServices, type ApiDeps, type ApiOptions } from './services.js';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
@@ -61,10 +71,78 @@ async function clearStaleSocket(path: string): Promise<void> {
   await unlink(path);
 }
 
+/**
+ * v0.6: the switches a daemon reports in daemon.version. A node never offers
+ * Files, Rewrite, screenshots, Life, Intel, Meetings, Ask or Fleet (they are
+ * the Mac's), and with no backend it can type with, no Controls or starting
+ * sessions either.
+ */
+export function reportedFeatures(settings: Settings, mode: Pick<DaemonMode, 'role' | 'terminal'>): Features {
+  const f = settingsFeatures(settings);
+  if (mode.role !== 'node') return f;
+  const typing = mode.terminal !== 'none' && mode.terminal !== 'off';
+  return {
+    ...f,
+    files: false,
+    rewrite: false,
+    screenshots: false,
+    screenshotSelect: false,
+    life: false,
+    intel: false,
+    meetings: false,
+    ask: false,
+    fleet: false,
+    controls: f.controls && typing,
+    launch: f.launch && typing,
+    escape: f.escape && typing,
+    clearDraft: f.clearDraft && typing,
+  };
+}
+
+/** v0.6: one call into the node's own API on the `link` transport, as the phone the hub forwarded. */
+export function linkInjector(app: FastifyInstance, s: ApiServices): LinkInjector {
+  return {
+    async inject(r) {
+      const token = randomToken(16);
+      s.linkCalls.set(token, linkAuth(r.actor, s.ctx.clock.iso()));
+      try {
+        const headers: Record<string, string> = { [LINK_CALL_HEADER]: token };
+        if (r.idem !== undefined) headers[IDEMPOTENCY_HEADER] = r.idem;
+        let payload: string | Buffer | undefined;
+        if (r.raw) {
+          headers['content-type'] = 'application/octet-stream';
+          payload = r.raw;
+        } else if (r.body !== undefined) {
+          headers['content-type'] = 'application/json';
+          payload = JSON.stringify(r.body);
+        }
+        const res = await app.inject({ method: r.method, url: r.url, headers, ...(payload !== undefined ? { payload } : {}) });
+        let body: unknown = null;
+        if (res.body !== '') {
+          try {
+            body = JSON.parse(res.body) as unknown;
+          } catch {
+            // Raw-response routes are never forwarded; an unreadable reply is the node's own bug.
+            return { status: 500, body: errorBody('internal', 'internal error') };
+          }
+        }
+        return { status: res.statusCode, body };
+      } finally {
+        s.linkCalls.delete(token);
+      }
+    },
+  };
+}
+
 export class ApiServerImpl implements ApiServer {
   readonly services: ApiServices;
   private tcp: FastifyInstance | null = null;
   private ctl: FastifyInstance | null = null;
+  /** v0.6, a node: the in-process app the hub's calls run through. */
+  private linkApp: FastifyInstance | null = null;
+  private injector: LinkInjector | null = null;
+  private dropUpgrade: (() => void) | null = null;
+  private started = false;
   private addr: { host: string; port: number } | null = null;
   private unsubSettings: Unsubscribe | null = null;
   private sweepTimer: TimerId | undefined;
@@ -86,8 +164,13 @@ export class ApiServerImpl implements ApiServer {
     return this.tcp;
   }
 
+  link(): LinkInjector | null {
+    return this.injector;
+  }
+
   async start(): Promise<void> {
-    if (this.tcp) return;
+    if (this.started) return;
+    this.started = true;
     const s = this.services;
     const log = s.log;
     this.emitVersion();
@@ -96,22 +179,32 @@ export class ApiServerImpl implements ApiServer {
     // Feature switches ride on daemon.version: re-send it when one changes.
     this.unsubSettings ??= this.ctx.settings.subscribe(() => this.emitVersion());
 
-    const tcp = await buildApp(s, 'tcp');
-    const host = bindHost(this.ctx, this.opts.host);
-    const port = this.opts.port ?? this.ctx.settings.get().remote.port;
-    try {
-      await tcp.listen({ host, port, listenTextResolver: () => '' });
-    } catch (e) {
-      await tcp.close();
-      throw e;
+    if (s.mode.role === 'node') {
+      // v0.6: a node binds no TCP port; the hub's calls come over its own link, in-process.
+      const link = await buildApp(s, 'link');
+      this.linkApp = link;
+      this.injector = linkInjector(link, s);
+      log.info('api ready for the hub (no TCP listener on a node)');
+    } else {
+      const tcp = await buildApp(s, 'tcp');
+      this.dropUpgrade = installNodeUpgrade(tcp.server, s);
+      const host = bindHost(this.ctx, this.opts.host);
+      const port = this.opts.port ?? this.ctx.settings.get().remote.port;
+      try {
+        await tcp.listen({ host, port, listenTextResolver: () => '' });
+      } catch (e) {
+        this.started = false;
+        await tcp.close();
+        throw e;
+      }
+      this.tcp = tcp;
+      const a = tcp.server.address();
+      if (a && typeof a === 'object') {
+        this.addr = { host: a.address, port: a.port };
+        s.boundPort = a.port;
+      }
+      log.info('api listening', { host: this.addr?.host, port: this.addr?.port, web: s.webAvailable });
     }
-    this.tcp = tcp;
-    const a = tcp.server.address();
-    if (a && typeof a === 'object') {
-      this.addr = { host: a.address, port: a.port };
-      s.boundPort = a.port;
-    }
-    log.info('api listening', { host: this.addr?.host, port: this.addr?.port, web: s.webAvailable });
 
     const sock = this.opts.ctlSocket === undefined ? this.ctx.paths.ctlSock : this.opts.ctlSocket;
     if (sock) {
@@ -119,15 +212,21 @@ export class ApiServerImpl implements ApiServer {
         log.error('control socket path is too long for macOS (104 bytes); the CLI will not reach the daemon', { path: sock });
       } else {
         try {
-          await clearStaleSocket(sock);
+          // v0.6: a Windows named pipe is no file: nothing stale to clear, no mode to set.
+          const pipe = isPipePath(sock);
+          if (!pipe) await clearStaleSocket(sock);
           const ctl = await buildApp(s, 'ctl', { address: () => this.addr });
           await ctl.listen({ path: sock, listenTextResolver: () => '' });
-          await chmod(sock, 0o600);
+          if (!pipe) await chmod(sock, 0o600);
           this.ctl = ctl;
           s.ctlSocketPath = sock;
           log.info('control socket listening', { path: sock });
         } catch (e) {
           await this.stop();
+          // v0.6: pipe names are machine-wide, so a taken one may be another user's process posing as Jantar.
+          if (isPipePath(sock) && (e as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+            throw new Error(`another process is already listening on ${sock}: another jantard on this state dir, or a process (perhaps another user's) posing as one`);
+          }
           throw e;
         }
       }
@@ -143,16 +242,23 @@ export class ApiServerImpl implements ApiServer {
     s.sockets.closeAll(CLOSE_SHUTDOWN, 'daemon stopping');
     const ctl = this.ctl;
     const tcp = this.tcp;
+    const link = this.linkApp;
     this.ctl = null;
     this.tcp = null;
+    this.linkApp = null;
+    this.injector = null;
     this.addr = null;
+    this.started = false;
+    this.dropUpgrade?.();
+    this.dropUpgrade = null;
     if (ctl) {
       await ctl.close().catch((e: unknown) => s.log.warn('control socket close failed', { error: String(e) }));
       if (s.ctlSocketPath) {
-        await unlink(s.ctlSocketPath).catch(() => undefined);
+        if (!isPipePath(s.ctlSocketPath)) await unlink(s.ctlSocketPath).catch(() => undefined);
         s.ctlSocketPath = null;
       }
     }
+    if (link) await link.close().catch((e: unknown) => s.log.warn('link app close failed', { error: String(e) }));
     if (tcp) await tcp.close().catch((e: unknown) => s.log.warn('api close failed', { error: String(e) }));
   }
 
@@ -171,7 +277,7 @@ export class ApiServerImpl implements ApiServer {
   private emitVersion(): void {
     const { ctx } = this;
     const cur = ctx.store.getState().daemon;
-    const features = settingsFeatures(ctx.settings.get());
+    const features = reportedFeatures(ctx.settings.get(), this.services.mode);
     const accountsMode = ctx.accountsMode();
     const next = { protocol: ctx.version.protocol, daemonVersion: ctx.version.daemon, webHash: this.services.webHash, features, accountsMode };
     if (

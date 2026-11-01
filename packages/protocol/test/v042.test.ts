@@ -310,6 +310,8 @@ describe('P1: no new events', () => {
         'usage.updated', 'usage.threshold', 'move.switching', 'move.saving', 'move.restarting', 'move.continuing',
         'move.switched', 'move.parked', 'move.resumed', 'move.stuck', 'move.cleared', 'planner.no_room', 'send.progress', 'device.pending',
         'daemon.version', 'rewrite.progress', 'launch.progress', 'files.changed', 'life.changed', 'primer.status',
+        // v0.6 (v06.test.ts): a paired machine's view, and its removal.
+        'node.updated', 'node.removed',
       ].sort(),
     );
   });

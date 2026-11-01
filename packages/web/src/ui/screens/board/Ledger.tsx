@@ -16,7 +16,8 @@ import { m } from 'motion/react';
 import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@jantar/protocol';
 import { RailLabel } from '../../kit/RailLabel.js';
-import { useFeatures } from '../../shell/data.js';
+import { useApp } from '../../context.js';
+import { canStartAnywhere, canStartOn } from '../new/machines.js';
 import { GhostRows } from './GhostRow.js';
 import { orderSignature, type GroupModel, type RowModel } from './model.js';
 import { FLIP, Row, type RowMenuHook } from './Row.js';
@@ -64,13 +65,17 @@ export function Ledger({
   const sig = orderSignature(groups);
   const wash = useWash(groups);
   const list = useRef<HTMLDivElement>(null);
-  const launch = useFeatures().launch;
+  // v0.6: each row's own machine decides "New session here" (the Mac's starting switch, or that server's).
+  const daemon = useApp((s) => s.state.daemon);
+  const nodes = useApp((s) => s.state.nodes);
+  const startsHere = (r: RowModel) => r.glyph !== 'ended' && canStartOn({ daemon, nodes }, r.machine?.node);
+  const launch = canStartAnywhere({ daemon, nodes });
   const hintId = useId();
   const guard = useRef({ at: -Infinity }).current;
   const [menu, setMenu] = useState<{ sid: string; anchor: HTMLElement } | null>(null);
   const rowMenu: RowMenuHook = { open: (row, anchor) => setMenu({ sid: row.sid, anchor }), guard, hintId };
   // The row as it is now; the menu goes with it when the row leaves or ends, or launching is switched off.
-  const menuRow = menu && launch ? groups.flatMap((g) => g.rows).find((r) => r.sid === menu.sid && r.glyph !== 'ended') : undefined;
+  const menuRow = menu ? groups.flatMap((g) => g.rows).find((r) => r.sid === menu.sid && startsHere(r)) : undefined;
   useEffect(() => {
     if (menu && !menuRow) setMenu(null);
   }, [menu, menuRow]);
@@ -107,7 +112,7 @@ export function Ledger({
           wash={wash[r.sid] ?? 0}
           layoutSig={sig}
           onOpen={onOpen}
-          {...(launch && r.glyph !== 'ended' ? { menu: rowMenu } : {})}
+          {...(startsHere(r) ? { menu: rowMenu } : {})}
         />,
       );
     }

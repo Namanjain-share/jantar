@@ -1,6 +1,7 @@
 /**
- * jantar uninstall: unload and remove the LaunchAgent. Keeps ~/.jantar
- * (devices, audit log, settings) unless --purge is given.
+ * jantar uninstall: stop and remove the daemon's service (the LaunchAgent;
+ * v0.6, on a server: the systemd user unit, or the Windows task's lines).
+ * Keeps ~/.jantar (devices, audit log, settings) unless --purge is given.
  */
 import { rm } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
@@ -9,7 +10,7 @@ import { parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { guardRealPath } from '../lib/guard.js';
 import { settingsMentionHook } from '../lib/hooks-files.js';
-import { bootoutAgent, plistPath, removePlist } from '../lib/launchd.js';
+import { removeService } from '../lib/service.js';
 
 const FLAGS = {
   purge: { type: 'boolean', help: 'also delete the state dir (~/.jantar: settings, devices, audit log)' },
@@ -34,7 +35,7 @@ export function purgeTargetOk(ctx: Pick<CliContext, 'paths' | 'io'>): { ok: true
 export default defineCommand(
   {
     name: 'uninstall',
-    summary: 'Stop the daemon and remove its LaunchAgent (keeps ~/.jantar).',
+    summary: 'Stop the daemon and remove its service (LaunchAgent, systemd unit; keeps ~/.jantar).',
     usage: 'jantar uninstall [--purge [--yes] [--force]]',
     owner: 'G',
   },
@@ -57,16 +58,12 @@ export default defineCommand(
       }
     }
 
-    if (ctx.deps.platform === 'darwin') {
-      const out = await bootoutAgent(ctx.deps.exec, ctx.deps.uid);
-      if (!out.ok) {
-        ctx.io.err(`jantar uninstall: launchctl bootout failed: ${out.reason}\n`);
-        return EXIT.failed;
-      }
-      ctx.io.out(`Daemon: ${out.detail ?? 'stopped'}\n`);
+    const removed = await removeService(ctx);
+    if (!removed.ok) {
+      ctx.io.err(`jantar uninstall: ${removed.reason}\n`);
+      return EXIT.failed;
     }
-    const plist = plistPath(ctx.paths);
-    ctx.io.out(`LaunchAgent: ${(await removePlist(plist)) ? `removed ${plist}` : 'not installed'}\n`);
+    ctx.io.out(removed.text);
 
     if (flags.purge) {
       if (!flags.yes) {

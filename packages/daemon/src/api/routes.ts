@@ -7,7 +7,10 @@
  *
  * The v0.1 / v0.2 handlers live here; each v0.3, v0.4, v0.5 and v0.5.3 feature has
  * its own file in routes/ (owned by its work package) whose table is spread
- * into ROUTE_IMPLS below.
+ * into ROUTE_IMPLS below. v0.6: routes/machines.ts (Fleet); every route a
+ * hub forwards to a server (NODE_ROUTES) is forwarded by the pipeline
+ * before its handler here runs, and getSession answers a server's session
+ * from the hub's state.
  *
  * v0.4.2: getScreen also returns the dialog the screen shows (terminal/
  * dialog.ts), why a dialog-looking screen gets no buttons (or that Claude's
@@ -76,6 +79,7 @@ import { MEETING_ITEMS_ROUTE_IMPLS } from './routes/meeting-items.js';
 import { MEETINGS_ROUTE_IMPLS } from './routes/meetings.js';
 import { ASK_ROUTE_IMPLS } from './routes/ask.js';
 import { NOTIFY_ROUTE_IMPLS } from './routes/notify.js';
+import { MACHINES_ROUTE_IMPLS } from './routes/machines.js';
 import type { ApiServices } from './services.js';
 
 export { isRawReply, notImplementedRoute, type Call, type RawReply, type RouteImpl, type RouteTable } from './route-kit.js';
@@ -98,6 +102,7 @@ const MAC_COMMAND: Record<MacOnlySettingGroup, string> = {
   accounts: 'jantar accounts',
   meetings: 'jantar meetings',
   ask: 'jantar ask',
+  fleet: 'jantar fleet',
 };
 
 /**
@@ -181,9 +186,10 @@ const CORE_ROUTE_IMPLS: RouteTable = {
 
   getSession: {
     handle: async (c: Call<Sid>, s) => {
-      const session = sessionOr404(s, c.params.sid);
+      // v0.6: a paired server's session is answered from the hub's state too (its pane is the server's own).
+      const session = sessionOr404(s, c.params.sid, { nodeOk: true });
       // A Terminal too slow to answer leaves the session readable, without its pane.
-      const found = await s.panes.find(session);
+      const found = session.node !== undefined ? null : await s.panes.find(session);
       const pane = found === 'timeout' ? null : found;
       return { session, pending: pendingFor(s.ctx.store.getState() as never, session.sid), pane };
     },
@@ -612,4 +618,6 @@ export const ROUTE_IMPLS: RouteTable = {
   // v0.5.3 (the folder todos are in TODOS_ROUTE_IMPLS)
   ...ASK_ROUTE_IMPLS,
   ...NOTIFY_ROUTE_IMPLS,
+  // v0.6
+  ...MACHINES_ROUTE_IMPLS,
 };

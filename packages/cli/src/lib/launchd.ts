@@ -27,6 +27,8 @@ export interface PlistOptions {
   stderrPath: string;
   /** Extra environment for the daemon (JANTAR_HOME when it is not the default, ...). */
   env?: Record<string, string>;
+  /** v0.6: run the daemon with --read-only (a watch-only server, `jantar install --read-only`). */
+  readOnly?: boolean;
 }
 
 export function xmlEscape(s: string): string {
@@ -62,6 +64,7 @@ export function renderPlist(o: PlistOptions): string {
     '  <array>',
     `    ${str(o.nodePath)}`,
     `    ${str(o.daemonBin)}`,
+    ...(o.readOnly ? [`    ${str('--read-only')}`] : []),
     '  </array>',
     '  <key>WorkingDirectory</key>',
     `  ${str(o.workingDirectory)}`,
@@ -108,6 +111,8 @@ export function plistFor(input: {
   nodePath: string;
   daemonBin: string;
   env: Readonly<Record<string, string | undefined>>;
+  /** v0.6: --read-only in the program arguments. */
+  readOnly?: boolean;
 }): string {
   const logs = daemonLogPaths(input.paths);
   const env: Record<string, string> = {
@@ -128,6 +133,7 @@ export function plistFor(input: {
     stdoutPath: logs.stdout,
     stderrPath: logs.stderr,
     env,
+    ...(input.readOnly ? { readOnly: true } : {}),
   });
 }
 

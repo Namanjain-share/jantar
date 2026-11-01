@@ -5,7 +5,7 @@
  */
 import { constants as fsConstants } from 'node:fs';
 import { access } from 'node:fs/promises';
-import { delimiter, join } from 'node:path';
+import { delimiter, extname, join } from 'node:path';
 
 export async function isExecutable(path: string): Promise<boolean> {
   try {
@@ -39,16 +39,29 @@ export interface FindOptions {
   userHome: string;
   /** Skip $PATH (only well-known locations). */
   noPath?: boolean;
+  /** v0.6: on win32 a bare name is looked for as `<name>.exe` first (default: this machine's). */
+  platform?: NodeJS.Platform;
 }
 
 export type BinFinder = (name: string) => Promise<string | null>;
 
+/**
+ * The file names a command may have. v0.6, Windows: `claude.exe` before
+ * `claude` (npm's extensionless sh shim there can be found but not started).
+ */
+function namesOf(name: string, platform: NodeJS.Platform): string[] {
+  return platform === 'win32' && extname(name) === '' ? [`${name}.exe`, name] : [name];
+}
+
 export function createBinFinder(opts: FindOptions): BinFinder {
+  const platform = opts.platform ?? process.platform;
   return async (name) => {
     const dirs = opts.noPath ? [] : (opts.env.PATH ?? '').split(delimiter).filter(Boolean);
-    for (const dir of dirs) {
-      const p = join(dir, name);
-      if (await isExecutable(p)) return p;
+    for (const file of namesOf(name, platform)) {
+      for (const dir of dirs) {
+        const p = join(dir, file);
+        if (await isExecutable(p)) return p;
+      }
     }
     for (const p of EXTRA_LOCATIONS[name]?.(opts.userHome) ?? []) if (await isExecutable(p)) return p;
     return null;

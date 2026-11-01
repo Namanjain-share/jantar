@@ -11,6 +11,10 @@ import { CLARIFY_MESSAGE, DIALOG_HOLD_COPY } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { sessionRow, sessionRowLabel } from '../src/lib/describe.js';
 import { fakeApi, pending, renderApp, session, stateWith } from './helpers.js';
+import { preloadCards } from './fleet-helpers.js';
+
+// v0.6: the hook cards load with import(); every test here meets them loaded.
+preloadCards();
 
 const card = () => screen.getByRole('article');
 /** The card's answer buttons, by name (the sheet's own fold control left out). */

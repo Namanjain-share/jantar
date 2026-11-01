@@ -15,7 +15,7 @@
  * Nothing in ~/.config/ccw is ever created, written, locked or deleted.
  */
 import { join } from 'node:path';
-import { EVENT, type Move, type PlanResponse } from '@jantar/protocol';
+import { EVENT, localSessions, type Move, type PlanResponse } from '@jantar/protocol';
 import type { AccountId } from '@jantar/protocol';
 import type { CcwBurn, CcwLegacySource, DaemonContext, Factories, TimerId } from '../../contracts.js';
 import { cLocale } from '../../core/exec.js';
@@ -162,7 +162,8 @@ export class CcwLegacy implements CcwLegacySource {
     const out = computePlan({
       nowMs: this.ctx.clock.now(),
       accounts: Object.values(state.accounts),
-      sessions: Object.values(state.sessions),
+      // v0.6: the planner moves this Mac's own sessions between this Mac's accounts only.
+      sessions: Object.values(localSessions(state)),
       moves: await this.moves(),
       burn: burnFile.ok ? parseBurn(burnFile.value) : [],
       active: activeFile.ok ? parseActive(activeFile.value) : new Map(),

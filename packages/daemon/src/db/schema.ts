@@ -163,6 +163,26 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 5,
+    name: 'v0.6 nodes',
+    // Additive: v0.5.2 opens a file at this schema, warns, and carries on with the tables it knows.
+    sql: `
+      -- Paired servers (Fleet). Only each node's public key is kept; its
+      -- name is the hub's, unique among live rows. A revoked row stays.
+      CREATE TABLE IF NOT EXISTS nodes (
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        public_key   TEXT NOT NULL,
+        os           TEXT NOT NULL,
+        version      TEXT NOT NULL,
+        created_at   TEXT NOT NULL,
+        last_seen_at TEXT,
+        revoked_at   TEXT
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS nodes_live_name ON nodes (name) WHERE revoked_at IS NULL;
+    `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

@@ -26,6 +26,7 @@ import { SequenceReader } from '../lib/cswap-files.js';
 import { fileSig, readJsonFile } from '../lib/fsx.js';
 import { Serial } from '../lib/serial.js';
 import { firstLine, isObj, str } from '../lib/values.js';
+import { createDirsUsageSource } from './dirs.js';
 import { createSingleUsageSource } from './single.js';
 import { accountsFromCache, overlayCli, parseCliList, parseUsageCache, snapshotKey, type CliUsage } from './usage.js';
 
@@ -319,9 +320,18 @@ export class CswapUsageSource implements UsageSource {
 /**
  * Factories['usage']: cswap's accounts, or, on a Mac with one Claude login
  * (accountsMode "single", spec 4.11), the one account 0 and no cswap at all.
+ * v0.6: on a node without cswap (accountsMode "dirs"), its config dirs.
  */
-export const createUsageSource: Factories['usage'] = (ctx, deps) =>
-  ctx.accountsMode() === 'single' ? createSingleUsageSource(ctx) : new CswapUsageSource(ctx, deps);
+export const createUsageSource: Factories['usage'] = (ctx, deps) => {
+  switch (ctx.accountsMode()) {
+    case 'single':
+      return createSingleUsageSource(ctx);
+    case 'dirs':
+      return createDirsUsageSource(ctx);
+    case 'cswap':
+      return new CswapUsageSource(ctx, deps);
+  }
+};
 
 export function createCswapUsageSource(
   ctx: DaemonContext,
@@ -331,5 +341,6 @@ export function createCswapUsageSource(
   return new CswapUsageSource(ctx, deps, opts);
 }
 
+export * from './dirs.js';
 export * from './single.js';
 export * from './usage.js';

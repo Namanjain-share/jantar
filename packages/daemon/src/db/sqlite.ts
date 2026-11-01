@@ -26,6 +26,7 @@ import {
   type EventType,
   type LaunchFlags,
   type LaunchJob,
+  type NodeOs,
   type PendingRequest,
   type PushSubscriptionRecord,
   type Scope,
@@ -44,6 +45,8 @@ import type {
   LaunchFlagsRepo,
   LaunchRepo,
   Logger,
+  NodeRecord,
+  NodesRepo,
   PendingHistory,
   PushSubRepo,
   RewriteRun,
@@ -65,6 +68,16 @@ export const REWRITE_RUNS_CAP = 5000;
 export const PRUNE_EVERY = 100;
 
 const ALERT_TYPES: ReadonlySet<string> = new Set(ALERT_EVENT_TYPES);
+
+/**
+ * Whether an event counts toward the alert history (ALERT_HISTORY_CAP): the
+ * Mac's own alerts only. A server's (v0.6, `alert.node` set) stay in the
+ * replay ring, which grows per server, so no server can push the Mac's
+ * alert history out.
+ */
+function isAlertRow(ev: DaemonEvent): boolean {
+  return ALERT_TYPES.has(ev.type) && (ev.data as { alert?: { node?: string } }).alert?.node === undefined;
+}
 const HIGH_WATER_KEY = 'events.high_water';
 
 type SqliteModule = typeof import('node:sqlite');
@@ -323,7 +336,7 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
         `INSERT INTO events (seq, ts, type, sid, account, is_alert, json) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(seq) DO UPDATE SET ts = excluded.ts, type = excluded.type, sid = excluded.sid,
            account = excluded.account, is_alert = excluded.is_alert, json = excluded.json`,
-      ).run(ev.seq, ev.ts, ev.type, ev.sid ?? null, ev.account ?? null, ALERT_TYPES.has(ev.type) ? 1 : 0, json(ev));
+      ).run(ev.seq, ev.ts, ev.type, ev.sid ?? null, ev.account ?? null, isAlertRow(ev) ? 1 : 0, json(ev));
       const hw = Number(metaGet(HIGH_WATER_KEY) ?? 0);
       if (ev.seq > hw) metaSet(HIGH_WATER_KEY, String(ev.seq));
       wrote();
@@ -696,6 +709,57 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
     },
   };
 
+  type NodeRow = {
+    id: string;
+    name: string;
+    public_key: string;
+    os: string;
+    version: string;
+    created_at: string;
+    last_seen_at: string | null;
+    revoked_at: string | null;
+  };
+  const nodeFrom = (r: NodeRow): NodeRecord => ({
+    id: r.id,
+    name: r.name,
+    publicKey: r.public_key,
+    os: r.os as NodeOs,
+    version: r.version,
+    createdAt: r.created_at,
+    lastSeenAt: r.last_seen_at,
+    revokedAt: r.revoked_at,
+  });
+  const nodes: NodesRepo = {
+    insert(n) {
+      stmt(
+        'INSERT INTO nodes (id, name, public_key, os, version, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).run(n.id, n.name, n.publicKey, n.os, n.version, n.createdAt, n.lastSeenAt, n.revokedAt);
+      wrote();
+    },
+    get(id) {
+      const r = stmt('SELECT * FROM nodes WHERE id = ?').get(id) as NodeRow | undefined;
+      return r ? nodeFrom(r) : null;
+    },
+    byName(name) {
+      const r = stmt('SELECT * FROM nodes WHERE name = ? AND revoked_at IS NULL').get(name) as NodeRow | undefined;
+      return r ? nodeFrom(r) : null;
+    },
+    list() {
+      return (stmt('SELECT * FROM nodes ORDER BY created_at ASC, id ASC').all() as NodeRow[]).map(nodeFrom);
+    },
+    touch(id, at) {
+      stmt('UPDATE nodes SET last_seen_at = ? WHERE id = ?').run(at, id);
+    },
+    setInfo(id, info) {
+      stmt('UPDATE nodes SET os = ?, version = ? WHERE id = ?').run(info.os, info.version, id);
+    },
+    revoke(id, at) {
+      stmt('UPDATE nodes SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ?').run(at, id);
+      wrote();
+      return nodes.get(id);
+    },
+  };
+
   pruneNow();
 
   return {
@@ -712,6 +776,7 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
     launchFlags,
     rewriteRuns,
     extensions,
+    nodes,
     pruneNow,
     schemaVersion() {
       const row = db.prepare('SELECT MAX(version) AS v FROM migrations').get() as { v: number | null } | undefined;

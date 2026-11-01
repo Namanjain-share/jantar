@@ -54,7 +54,7 @@
  *   session's waiting checks) and on `stop()`. They live in memory only: an
  *   ask still counting down when the daemon restarts may be pushed again.
  */
-import { DIALOG_GATES, URGENT_MIN_S, URGENT_REPEAT_AT_S, countdownSeconds } from '@jantar/protocol';
+import { DIALOG_GATES, URGENT_MIN_S, URGENT_REPEAT_AT_S, countdownSeconds, localSession } from '@jantar/protocol';
 import type { Clock, DaemonContext, PaneFinder, TerminalBackend, TimerId } from '../contracts.js';
 import { canonicalJson, sha256Hex } from '../core/hash.js';
 import { readDialog, type DialogModel } from '../terminal/dialog.js';
@@ -115,8 +115,8 @@ function errorKind(e: unknown): string {
 export function createCountdownProbe(ctx: Pick<DaemonContext, 'store' | 'clock' | 'log'>, deps: { panes: PaneFinder; terminal: TerminalBackend }): CountdownProbe {
   return async (sid) => {
     try {
-      const sessions = ctx.store.getState().sessions;
-      const session = Object.hasOwn(sessions, sid) ? sessions[sid] : undefined;
+      // v0.6: the Mac's own sessions only (a paired server's screen is never read here).
+      const session = localSession(ctx.store.getState(), sid);
       if (!session || session.status === 'ended') return null;
       const pane = await deps.panes.find(session);
       if (pane === null || pane === 'timeout') return null;

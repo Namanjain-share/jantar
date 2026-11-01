@@ -89,6 +89,13 @@ export const SETTLE_MS = 3000;
 export const ALERTS_CAP = 200;
 /** The reducer keeps at most this many send jobs. */
 export const SENDS_CAP = 100;
+/**
+ * v0.6: what each paired machine keeps beside the Mac's own: its newest
+ * alerts, and its finished sends. Each has a share of its own, so no server
+ * can push the Mac's (or another server's) out.
+ */
+export const NODE_ALERTS_CAP = 20;
+export const NODE_SENDS_CAP = 20;
 
 /** Transcript backfill cap for alert detection on first read. */
 export const ALERT_BACKFILL_BYTES = 256 * 1024;
@@ -327,3 +334,42 @@ export const MEETING_SUMMARY_MIN_CHARS = 200;
 export const MEETING_SUMMARY_INPUT_MAX = 120_000;
 /** An extension key unused this long stops working (it is then revoked). */
 export const EXTENSION_IDLE_MS = 90 * 24 * 60 * 60_000;
+
+// ---------------------------------------------------------------------------
+// v0.6: Fleet (paired servers, each with its own Claude sessions)
+
+/**
+ * The paths a paired server uses on the hub (its link and its pairing
+ * claim). The node's key is read here only, and these paths read no device
+ * cookie, secret or extension key; the phone's and the admin's routes are
+ * `/v1/machines/*`, so no path rule for this prefix can cover them.
+ */
+export const NODE_PREFIX = '/v1/node/';
+
+/** What the hub calls itself wherever a machine is named (the board's chip, a push, a card's header). */
+export const HUB_MACHINE_NAME = 'Mac';
+
+/**
+ * The fixed sentences of Fleet, shared by the daemon's refusals and the
+ * phone. Each takes the machine's name as the hub knows it (never a name a
+ * server gave itself) and never quotes a screen, a prompt or a path.
+ */
+export const FLEET_COPY = Object.freeze({
+  /** A Linux session outside tmux: its cards and transcript work, typing does not. */
+  notInTmux: (machine: string) => `Not in tmux, so Jantar can't type into it. Start Claude inside tmux on ${machine} to send prompts.`,
+  /** A native Windows session (preview): watch and cards only. */
+  watchOnlyWindows: (_machine: string) => "Windows Terminal can't be typed into from outside. Answer this session's cards here; to send prompts, run Claude in WSL.",
+  /** A server joined with --read-only. */
+  readOnlyNode: (machine: string) => `${machine} is watch-only: Jantar doesn't send anything there.`,
+  /** A write to a server whose link is down (the 503 node_offline says the same). */
+  offline: (machine: string) => `${machine} is offline. Nothing was sent.`,
+  /** A machine whose accounts are config dirs, or one login: nothing reads usage there. */
+  noUsage: (_machine: string) => 'No usage numbers on this machine',
+  /** Picture, Files, Rewrite and the change list on a server's session (the 409 node_unsupported says the same). */
+  unsupportedOnNode: (_machine: string) => "This works for the Mac's own sessions only.",
+  /** A card whose input was too large to send to the phone. */
+  cardTooLarge: (machine: string) => `Too large to show here: answer at ${machine} or open its Screen`,
+  /** A server whose link version is older than the Mac's. */
+  versionProblem: (machine: string) => `${machine} runs an older link version: update Jantar there`,
+});
+export type FleetCopyKey = keyof typeof FLEET_COPY;

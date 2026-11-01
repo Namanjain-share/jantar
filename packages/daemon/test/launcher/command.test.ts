@@ -11,6 +11,11 @@
  * or relative claude), and the accounts-mode check behind LL6. The fixtures'
  * parseLaunchCommand, completeLaunch and "resume" flow (what wave 2's
  * fake-osascript runs build on) read back exactly these lines.
+ *
+ * v0.6 (a server whose accounts are config dirs): claude mode only, and
+ * `env CLAUDE_CONFIG_DIR=<dir>` before claude for any dir but ~/.claude,
+ * still with no `--`; sh and zsh hand the dir to claude intact. ~/.claude
+ * is `env -u CLAUDE_CONFIG_DIR`, so an exported one never reaches claude.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -22,7 +27,9 @@ import { LAUNCH_PID, LaunchScreenScript, completeLaunch, launchAccounts, makeFak
 import { V03_LAUNCH_FLAGS, SettingsSchema, launchFlagArgs, type LaunchFlags, type Settings } from '@jantar/protocol';
 import {
   CLAUDE_MISSING,
+  CONFIG_DIR_CLAUDE_ONLY,
   CSWAP_MODE,
+  NO_CSWAP_DIRS,
   NO_CSWAP_MODE,
   RESUME_KEEPS_NAME,
   accountsModeProblem,
@@ -352,5 +359,104 @@ describe.skipIf(!existsSync(ZSH))('L1 shell test: zsh reads hostile folder names
   it('a newline in a folder name is refused, never typed', async () => {
     const r = launchCommand(parts({ folder: join(tmp, 'two\nlines') }));
     expect(r).toEqual({ ok: false, reason: 'the folder or a setting holds a control character' });
+  });
+});
+
+describe('v0.6: config dirs (accountsMode "dirs", spec 5)', () => {
+  const HOME_DIR = '/home/sam';
+  const WORK = `${HOME_DIR}/.claude-work`;
+  const FOLDER = `${HOME_DIR}/code/api-server`;
+  const LINUX_CLAUDE = `${HOME_DIR}/.local/bin/claude`;
+  const dirs = (over: Partial<CommandParts> = {}) =>
+    parts({ folder: FOLDER, account: 1, name: 'api-server', claude: LINUX_CLAUDE, cswap: null, launch: launch({ mode: 'claude' }), configDir: WORK, ...over });
+
+  it('starts in claude mode only: cs-shell and cswap-run say what to run', () => {
+    expect(accountsModeProblem('dirs', 'claude')).toBeNull();
+    expect(accountsModeProblem('dirs', 'cs-shell')).toBe(NO_CSWAP_DIRS);
+    expect(accountsModeProblem('dirs', 'cswap-run')).toBe(NO_CSWAP_DIRS);
+    expect(NO_CSWAP_DIRS).toBe('This machine has no cswap: its accounts are config dirs. Run: jantar launch mode claude');
+  });
+
+  it('~/.claude-work: env CLAUDE_CONFIG_DIR=<dir> before the absolute claude, and still no --', () => {
+    const r = launchCommand(dirs());
+    expect(r).toEqual({
+      ok: true,
+      command: `cd -- ${FOLDER} && env CLAUDE_CONFIG_DIR=${WORK} ${LINUX_CLAUDE} --dangerously-skip-permissions --chrome --effort ultracode --session-id ${SID} --name api-server`,
+    });
+    expect(r.ok && r.command.split(' && ')[1]).not.toMatch(/(?:^| )--(?: |$)/);
+  });
+
+  it('~/.claude (no config dir) is the plain claude line', () => {
+    const plain = `cd -- ${FOLDER} && ${LINUX_CLAUDE} --dangerously-skip-permissions --chrome --effort ultracode --session-id ${SID} --name api-server`;
+    expect(launchCommand(dirs({ configDir: null }))).toEqual({ ok: true, command: plain });
+    const { configDir: _gone, ...absent } = dirs();
+    expect(launchCommand(absent)).toEqual({ ok: true, command: plain });
+  });
+
+  it('~/.claude in dirs mode: env -u CLAUDE_CONFIG_DIR first, so one the shell exports cannot move it', () => {
+    expect(launchCommand(dirs({ configDir: null, dirs: true }))).toEqual({
+      ok: true,
+      command: `cd -- ${FOLDER} && env -u CLAUDE_CONFIG_DIR ${LINUX_CLAUDE} --dangerously-skip-permissions --chrome --effort ultracode --session-id ${SID} --name api-server`,
+    });
+    // another dir sets its own
+    expect(launchCommand(dirs({ dirs: true }))).toMatchObject({ command: expect.stringContaining(`&& env CLAUDE_CONFIG_DIR=${WORK} ${LINUX_CLAUDE} `) });
+    expect(launchCommand(dirs({ configDir: null, dirs: true, launch: launch({ mode: 'cs-shell' }) }))).toEqual({ ok: false, reason: CONFIG_DIR_CLAUDE_ONLY, setup: true });
+  });
+
+  it('a resume and the preview carry the same prefix', () => {
+    expect(launchCommand(dirs({ sid: PAST, resume: true }))).toMatchObject({
+      command: `cd -- ${FOLDER} && env CLAUDE_CONFIG_DIR=${WORK} ${LINUX_CLAUDE} --dangerously-skip-permissions --chrome --effort ultracode --resume ${PAST} --name api-server`,
+    });
+    expect(launchCommand(dirs({ sid: null, account: null }))).toMatchObject({ command: expect.stringContaining(`env CLAUDE_CONFIG_DIR=${WORK} ${LINUX_CLAUDE} `) });
+  });
+
+  it('a dir with a space or a quote is one quoted word; a relative dir, a control character or another mode is refused', () => {
+    expect(launchCommand(dirs({ configDir: `${HOME_DIR}/.claude-it's mine` }))).toMatchObject({
+      command: expect.stringContaining(`&& env 'CLAUDE_CONFIG_DIR=${HOME_DIR}/.claude-it'\\''s mine' ${LINUX_CLAUDE} `),
+    });
+    expect(launchCommand(dirs({ configDir: '.claude-work' }))).toEqual({ ok: false, reason: 'the config dir is not an absolute path' });
+    expect(launchCommand(dirs({ configDir: `${WORK}\nrm -rf ~` }))).toEqual({ ok: false, reason: 'the folder or a setting holds a control character' });
+    for (const mode of ['cs-shell', 'cswap-run'] as const) {
+      expect(launchCommand(dirs({ launch: launch({ mode }), cswap: '/usr/local/bin/cswap' })), mode).toEqual({ ok: false, reason: CONFIG_DIR_CLAUDE_ONLY, setup: true });
+    }
+  });
+});
+
+describe('v0.6 shell test: the config dir reaches claude as CLAUDE_CONFIG_DIR, in sh and zsh', { timeout: SHELL_TEST_MS }, () => {
+  let tmp: string;
+  beforeAll(async () => {
+    tmp = await realpath(await mkdtemp(join(tmpdir(), 'jantar-dirs-cmd-')));
+  });
+  afterAll(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  it('cd lands in the folder; claude gets the dir in its env and the args intact; nothing in a name runs', async () => {
+    const claude = join(tmp, 'bin dir', 'claude');
+    await mkdir(join(tmp, 'bin dir'), { recursive: true });
+    await writeFile(claude, '#!/bin/sh\nprintf \'%s\\n\' "$PWD" "$CLAUDE_CONFIG_DIR" "$@"\n', { mode: 0o755 });
+    const folder = join(tmp, 'a;b');
+    const configDir = join(tmp, ".claude-it's $(touch PWNED)");
+    await mkdir(folder);
+    await mkdir(configDir);
+    const cmd = built({ folder, account: 1, launch: launch({ mode: 'claude' }), claude, configDir });
+    for (const shell of ['/bin/sh', ZSH].filter((s) => existsSync(s))) {
+      const out = execFileSync(shell, ['-c', cmd], { cwd: tmp, env: { PATH: '/usr/bin:/bin', HOME: tmp, LC_ALL: 'C' }, encoding: 'utf8', timeout: SHELL_MS });
+      const [pwd, dir, ...args] = out.replace(/\n$/, '').split('\n');
+      expect(pwd, shell).toBe(folder);
+      expect(dir, shell).toBe(configDir);
+      expect(args, shell).toEqual(['--dangerously-skip-permissions', '--chrome', '--effort', 'ultracode', '--session-id', SID, '--name', 'alpha-app']);
+    }
+    expect((await readdir(tmp)).filter((f) => f.startsWith('PWNED'))).toEqual([]);
+  });
+
+  it('~/.claude: a CLAUDE_CONFIG_DIR the shell exports does not reach claude', async () => {
+    const claude = join(tmp, 'claude-env');
+    await writeFile(claude, '#!/bin/sh\nprintf \'[%s]\\n\' "${CLAUDE_CONFIG_DIR-unset}"\n', { mode: 0o755 });
+    const cmd = built({ folder: tmp, account: 0, launch: launch({ mode: 'claude' }), claude, configDir: null, dirs: true });
+    for (const shell of ['/bin/sh', ZSH].filter((s) => existsSync(s))) {
+      const env = { PATH: '/usr/bin:/bin', HOME: tmp, LC_ALL: 'C', CLAUDE_CONFIG_DIR: join(tmp, '.claude-work') };
+      expect(execFileSync(shell, ['-c', cmd], { cwd: tmp, env, encoding: 'utf8', timeout: SHELL_MS }), shell).toBe('[unset]\n');
+    }
   });
 });

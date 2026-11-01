@@ -73,6 +73,17 @@
  * - A subagent's prompt is titled "A subagent asks · <tool>" when the dialog
  *   is a permission for that tool; any other dialog is Claude's.
  * - Show on Mac stays, as a secondary button.
+ * - v0.6: on a paired machine's session (one Jantar can type into: the
+ *   session screen shows this dock for no other) the dialog is answered on
+ *   that machine; Show on Mac shows only where there is a Terminal window
+ *   to raise ("Show on mini-1"), not for a tmux pane. The dock is headed
+ *   with the Mac's name for the machine, as its hook cards are ("build-1
+ *   asks · Permission"), and its own lines name that machine where they
+ *   say "the Mac" (`atMachine`): "Claude blocks this at build-1 in 1 min
+ *   33 s if nobody answers". Only the dock's own fixed sentences are
+ *   rewritten, never what the machine's terminal shows (the question) or
+ *   an error the Mac sends. Answering there follows that machine's own
+ *   Controls switch, not the Mac's.
  */
 import clsx from 'clsx';
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
@@ -95,12 +106,15 @@ import { BUTTON_VARIANT, Button } from '../../kit/Button.js';
 import { HOLD_MS, useHold } from '../../kit/hold.js';
 import { Spinner } from '../../kit/Spinner.js';
 import {
+  CANT_TELL,
   CHANGED,
+  controlsOffOn,
   COUNTDOWN_LATE,
   COUNTDOWN_MIN_S,
   countdownSecondsOf,
   drawn,
   identity,
+  NO_CHANGE,
   shownLabel,
   TAP_DROPPED,
   useAnswerBlock,
@@ -132,7 +146,10 @@ export interface TermDialogDockProps {
   late: boolean;
   /** The composer's sends: "No, and tell Claude …" puts its note in the draft (`sends.setDraft`). */
   sends: Sends;
-  onShowOnMac: () => void;
+  /** Absent where there is no window to raise (a server's tmux pane). */
+  onShowOnMac?: () => void;
+  /** v0.6: the paired machine the session runs on (absent: the Mac). */
+  machine?: string;
 }
 
 export const CANT_READ = "Jantar can't read this dialog's options. Use the keys, or answer it at the Mac.";
@@ -142,6 +159,17 @@ export const TICK_DOWN = 'Tick from top to bottom.';
 export const PLAN_PARTIAL = 'The Mac shows only part of this plan. Read the rest at the Mac before you approve.';
 /** Under an answer that can't go yet for being too short. */
 export const TEXT_SHORT = `At least ${DIALOG_TEXT_MIN} characters here.`;
+
+/** v0.6: a dock line for a paired machine's session, its name where the line says "the Mac" (the Mac's own: unchanged). */
+export function atMachine(text: string, machine: string | null | undefined): string {
+  return machine ? text.replace(/\b[Tt]he Mac\b/gu, machine) : text;
+}
+
+/** v0.6: the tap lines atMachine may rewrite, the dock's own sentences; never an error the Mac sends (errorText). */
+const MACHINE_LINES: ReadonlySet<string> = new Set([CHANGED, NO_CHANGE, CANT_TELL, COUNTDOWN_LATE]);
+
+/** v0.6: a server's dialog with Controls off there (answer.ts, shared with the keypad). */
+export { controlsOffOn };
 
 /** Under the question of an ask Claude blocks by itself (`blocksIn`): the time left ("1 min 33 s", "about 2 minutes"). */
 export function blocksLine(left: string): string {
@@ -600,6 +628,7 @@ function DialogView({
   showBody,
   focusQuestion,
   left,
+  at,
 }: {
   d: TerminalDialog;
   phone: boolean;
@@ -612,6 +641,8 @@ function DialogView({
   focusQuestion: boolean;
   /** Seconds left on Claude's countdown (counted down, or "about N" as drawn); null without one. */
   left: number | null;
+  /** The session's machine where a line says "the Mac" (atMachine). */
+  at: (text: string) => string;
 }) {
   const [bodyOpen, setBodyOpen] = useState(showBody || d.kind === 'permission' || d.body.length <= OPEN_BODY_LINES);
   const bodyText = d.body.join('\n');
@@ -631,6 +662,7 @@ function DialogView({
         : left !== null && left < COUNTDOWN_MIN_S
           ? COUNTDOWN_LATE
           : blocksLine(tickingSeconds(d.blocksIn) === null || left === null ? d.blocksIn : leftWords(left));
+  const blocksText = blocks === null ? null : at(blocks);
   // A run of locked rows with one note shows it once, under the run's last row.
   const runEnd = d.options.map((o, i) => {
     let j = i;
@@ -654,9 +686,9 @@ function DialogView({
       <p ref={question} tabIndex={-1} className="mt-8 type-title text-ink wrap-break-word focus-visible:outline-offset-2">
         {d.question}
       </p>
-      {blocks ? (
+      {blocksText ? (
         <p id={deadline} className="mt-4 type-small font-medium text-ink">
-          {blocks}
+          {blocksText}
         </p>
       ) : null}
       {d.body.length && d.kind === 'review' ? (
@@ -664,14 +696,14 @@ function DialogView({
       ) : d.body.length ? (
         <div className="mt-8">
           <Button variant="text" size="sm" className="-ml-8" aria-expanded={bodyOpen} onClick={() => setBodyOpen(!bodyOpen)}>
-            {bodyOpen ? '▾' : '▸'} {d.kind === 'plan' ? 'Read the plan' : 'What the Mac shows'}
+            {bodyOpen ? '▾' : '▸'} {d.kind === 'plan' ? 'Read the plan' : at('What the Mac shows')}
           </Button>
           {bodyOpen ? <TermBox text={bodyText} label={d.kind === 'plan' ? 'The plan' : 'What the dialog shows'} top className="mt-4 max-h-240" /> : null}
-          {partial ? <p className="mt-4 type-small text-ink-2">{PLAN_PARTIAL}</p> : null}
+          {partial ? <p className="mt-4 type-small text-ink-2">{at(PLAN_PARTIAL)}</p> : null}
         </div>
       ) : null}
       {d.kind === 'multi' && !DIALOG_GATES.up ? <p className="mt-8 type-small text-ink-2">{TICK_DOWN}</p> : null}
-      <div role="group" aria-label="Choices" aria-describedby={blocks ? deadline : undefined} className="mt-12 flex flex-col gap-8">
+      <div role="group" aria-label="Choices" aria-describedby={blocksText ? deadline : undefined} className="mt-12 flex flex-col gap-8">
         {d.options.map((o, i) => (
           <OptionRow
             key={i}
@@ -691,27 +723,31 @@ function DialogView({
   );
 }
 
-/** The folded sheet's one line: the question, after the time left on Claude's countdown when there is one. */
-function peekOf(d: TerminalDialog, ticking: number | null): string {
+/**
+ * The folded sheet's one line: the question, after the time left on Claude's countdown when there is
+ * one. The question is the terminal's own text: only the fixed words before it name the machine (`at`).
+ */
+export function peekOf(d: TerminalDialog, ticking: number | null, at: (text: string) => string = (t) => t): string {
   if (d.blocksIn === undefined) return d.question;
   const left = ticking === null ? (tickingSeconds(d.blocksIn) === null ? d.blocksIn : null) : ticking > 0 ? leftWords(ticking) : null;
-  return left === null ? `Blocked at the Mac by now · ${d.question}` : `${left} left · ${d.question}`;
+  return left === null ? `${at('Blocked at the Mac by now')} · ${d.question}` : `${left} left · ${d.question}`;
 }
 
-/** A line about the last tap: what the Mac showed after it (ink), or an error (InlineError). */
-function TapLine({ line }: { line: AnswerLine | null }) {
+/** A line about the last tap: what the Mac showed after it (ink), or an error (InlineError, as the Mac said it). */
+function TapLine({ line, at }: { line: AnswerLine | null; at: (text: string) => string }) {
   if (!line) return null;
   if (line.error) return <InlineError error={line.text} />;
   return (
     <p role="status" className="mt-12 type-small text-ink-2">
-      {line.text}
+      {MACHINE_LINES.has(line.text) ? at(line.text) : line.text}
     </p>
   );
 }
 
-export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, sends, onShowOnMac }: TermDialogDockProps) {
+export function TermDialogDock({ sid, session, subagent, screen: read, phone, age, late, sends, onShowOnMac, machine }: TermDialogDockProps) {
   const offline = useApp((s) => s.conn.status === 'offline');
-  const block = useAnswerBlock();
+  // v0.6: a server's dialog is answered there, under its own Controls switch; this device's scope still counts.
+  const block = useAnswerBlock(sid);
   const { busy, line, renewed, answer } = useDialogAnswer(sid, read, sends);
   const dialog = read.screen?.dialog ?? null;
   const ticking = useCountdown(read.seq, dialog?.blocksIn);
@@ -719,6 +755,7 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
   /** The countdown as the read showed it, when it ticks: one that goes up is another ask. */
   const clock = tickingSeconds(dialog?.blocksIn);
   const lineFor = (fingerprint: string | null) => (line && line.for === fingerprint ? line : null);
+  const at = (text: string) => atMachine(text, machine);
   // The last dialog shown. Another title, body, tab bar or description under the same rows (`twin`),
   // a new fingerprint under the very same drawing (something off the phone changed), or a next
   // dialog an answer reported that looks just like the one answered (`renewed`) starts the view
@@ -760,20 +797,26 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
   const [dropped, setDropped] = useState<string | null>(null);
   /** The fingerprint of the dialog last tapped: any other dialog shown after it takes focus on its question. */
   const [tappedOn, setTappedOn] = useState<string | null>(null);
-  const actions = (
+  const actions = onShowOnMac ? (
     <Actions phone={phone}>
       <Button size={phone ? 'xl' : 'lg'} className={phone ? 'flex-1' : undefined} onClick={onShowOnMac}>
-        Show on Mac
+        Show on {machine ?? 'Mac'}
       </Button>
     </Actions>
-  );
+  ) : null;
   // A tall dialog scrolls inside the phone sheet, so the transcript above keeps some room.
   const scroll = phone ? 'max-h-480 overflow-y-auto overscroll-contain' : undefined;
 
   if (dialog) {
     const asker = askedBy(dialog, subagent);
     return (
-      <DockFrame phone={phone} title={asker ? subagentTitle(asker) : `Claude asks · ${headWord(dialog)}`} age={age} late={late} peek={peekOf(dialog, ticking)}>
+      <DockFrame
+        phone={phone}
+        title={asker ? subagentTitle(asker) : `${machine ?? 'Claude'} asks · ${headWord(dialog)}`}
+        age={age}
+        late={late}
+        peek={peekOf(dialog, ticking, at)}
+      >
         <div className={scroll}>
           <DialogView
             key={`${identity(dialog)}\n${seen?.n ?? 0}`}
@@ -784,6 +827,7 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
             showBody={changed && Boolean(seen?.twin)}
             focusQuestion={tappedOn !== null && tappedOn !== dialog.fingerprint}
             left={left}
+            at={at}
             onTap={(tap) => {
               if (guard.check()) {
                 setDropped(dialog.fingerprint);
@@ -796,6 +840,7 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
             }}
           />
           <TapLine
+            at={at}
             line={
               lineFor(dialog.fingerprint) ??
               (changed && seen?.note ? { text: CHANGED, error: false, for: dialog.fingerprint } : null) ??
@@ -831,11 +876,11 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
       title={subagent ? subagentTitle(subagent) : 'Claude is waiting in the terminal'}
       age={age}
       late={late}
-      peek={ready ? DIALOG_NOTES.promptBox : 'Use the keys, or answer it at the Mac'}
+      peek={ready ? DIALOG_NOTES.promptBox : at('Use the keys, or answer it at the Mac')}
     >
       <div className={scroll}>
         {subagent ? <SubagentAsk p={subagent} /> : null}
-        {screen ? <p className="mt-8 type-small text-ink-2">{screen.dialogNote ?? CANT_READ}</p> : null}
+        {screen ? <p className="mt-8 type-small text-ink-2">{screen.dialogNote ?? at(CANT_READ)}</p> : null}
         {screen ? (
           <TermBox text={boxText(screen.text)} label="Last lines of the terminal" className="mt-12 max-h-240" />
         ) : (
@@ -844,7 +889,7 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
           </div>
         )}
         {read.error ? <p className="mt-8 type-small text-ink-2">{read.error}</p> : null}
-        <TapLine line={lineFor(null)} />
+        <TapLine at={at} line={lineFor(null)} />
         {screen && !ready ? <Keypad sid={sid} screen={read} phone={phone} offline={offline} onSent={() => void read.load()} /> : null}
         {actions}
       </div>

@@ -42,6 +42,8 @@ import {
   LaunchNameSchema,
   launchFlagArgs,
   launchFlagsDangerous,
+  localSession,
+  localSessions,
   type AccountId,
   type LaunchAccount,
   type LaunchAnswerBody,
@@ -74,11 +76,12 @@ import {
   usageLine,
   type AccountInputs,
 } from './account.js';
+import { dirsAccounts } from '../sources/cswap/dirs.js';
 import { accountsModeProblem, launchCommand, nameFromFolder, uniqueName } from './command.js';
 import { startingFlags } from './flags.js';
 import { Folders, fail, isRefusal, refusalResult, type Failure } from './folders.js';
 import { NOT_IN_HISTORY, RESUME_RUNNING, RESUME_STARTING, isLive, pastFile, type PastFile } from './history.js';
-import { LaunchRun, RESTART_REASON, RUN_TIMINGS, isFinal, isPreReady, type RunDeps, type RunTimings } from './launcher.js';
+import { LaunchRun, RESTART_REASON, RUN_TIMINGS, isFinal, isPreReady, noWindows, type RunDeps, type RunTimings } from './launcher.js';
 
 export type LauncherDeps = Parameters<Factories['launcher']>[1];
 
@@ -117,10 +120,13 @@ type IdemEntry = { jobId: string; bodyHash: string; at: number };
 type CcwView = { hold: readonly number[]; groups: string[][]; ceiling: number; weeklyCeiling: number };
 
 const nameTaken = (name: string) => `A session named ${name} is already running or starting`;
+/** v0.6, config dirs: the account's ~/.claude-<name> lost its .claude.json since the roster was listed. */
+const dirGone = (id: AccountId) => `${acct(id)}'s config dir is no longer on this machine (no .claude.json in it)`;
 
-/** Why the command line can't be built: the Mac's launch setup, or something about this folder. */
+/** Why the command line can't be built: this machine's launch setup, or something about this folder. */
 function commandFailure(cmd: { reason: string; setup?: true }): Failure {
-  if (cmd.setup) return fail('unavailable', `This Mac isn't set up to start sessions from the phone: ${cmd.reason}`);
+  // v0.6: said on a server too, so "this machine" (the phone names which).
+  if (cmd.setup) return fail('unavailable', `This machine isn't set up to start sessions from the phone: ${cmd.reason}`);
   return fail('invalid_request', `This folder can't be started from the phone: ${cmd.reason}`);
 }
 
@@ -160,8 +166,11 @@ export class LauncherService implements Launcher {
   async start(): Promise<void> {
     // Folders sessions run in are noted (a realpath each) only while launching is on: a switched-off
     // feature touches no disk, and a path outside the roots may raise a macOS privacy prompt.
+    // v0.6: never a paired server's session (its folder is no path here; folders_seen is the Mac's).
     this.unsubscribe = this.ctx.store.subscribe((ev) => {
-      if (ev.type === 'session.added' && this.ctx.settings.get().launch.enabled) this.track(this.folders.noteSession(ev.data.session));
+      if (ev.type === 'session.added' && ev.data.session.node === undefined && this.ctx.settings.get().launch.enabled) {
+        this.track(this.folders.noteSession(ev.data.session));
+      }
     });
     this.unsettings = this.ctx.settings.subscribe((next, prev) => {
       if (!prev.launch.enabled && next.launch.enabled) this.noteLive();
@@ -210,8 +219,8 @@ export class LauncherService implements Launcher {
     if (!choice.ok) return choice;
     const warnings = [...choice.warnings];
     if (q.name !== undefined && taken.has(q.name)) warnings.push({ kind: 'name', text: nameTaken(q.name) });
-    // Single mode reads no usage and has no account moves.
-    if (!single) {
+    // Single mode reads no usage and has no account moves; nor do config dirs (fetchedAt is when they were listed).
+    if (!single && inputs.mode !== 'dirs') {
       const fetchedAt = Date.parse(this.ctx.store.getState().usage.fetchedAt ?? '');
       if (Number.isFinite(fetchedAt) && inputs.nowMs - fetchedAt > STALE_MS) {
         warnings.push({ kind: 'stale', text: `Based on usage readings ${dur(inputs.nowMs - fetchedAt)} old` });
@@ -222,6 +231,8 @@ export class LauncherService implements Launcher {
       }
     }
     const args = launchFlagArgs(flags);
+    const configDir = this.configDirFor(choice.pick);
+    if (configDir === undefined && choice.pick !== null) return fail('refused', dirGone(choice.pick));
     const cmd = launchCommand({
       folder: dir.real,
       account: choice.pick,
@@ -232,6 +243,8 @@ export class LauncherService implements Launcher {
       launch: s.launch,
       cswap: this.ctx.bins.cswap,
       claude: this.ctx.bins.claude,
+      configDir,
+      dirs: inputs.mode === 'dirs',
     });
     if (!cmd.ok) return commandFailure(cmd);
     let accounts: LaunchAccount[] = single ? singleRows(inputs.sessions) : accountRows(inputs);
@@ -291,7 +304,7 @@ export class LauncherService implements Launcher {
     const folderName = basename(dir.real);
     const view = await this.ccwView();
     if (!this.deps.terminal.openWindow || !(await this.deps.terminal.available())) {
-      return fail('unavailable', "This Mac's terminal can't open new windows");
+      return fail('unavailable', noWindows(this.deps.terminal));
     }
 
     // Nothing below waits, so two starts cannot both pass the checks for one account or one name.
@@ -323,7 +336,7 @@ export class LauncherService implements Launcher {
       if (!account) return fail('invalid_request', `There is no account ${acct(choice.pick)}`);
       // A resume's pinned account is checked as a manual pick is.
       if (body.account !== 'auto' || choice.source === 'resume') {
-        const why = notSelectable(account);
+        const why = notSelectable(account, inputs);
         if (why) {
           const relogin = account.usageStatus === 'relogin_required' || account.usageStatus === 'token_expired';
           return fail('refused', relogin ? `${acct(account.id)} needs a re-login on the Mac (cswap)` : `${acct(account.id)} can't be used: ${why}`);
@@ -338,6 +351,9 @@ export class LauncherService implements Launcher {
 
     // A resume expects the session under the conversation's own id (launcher.ts matches it, or falls back by window).
     const sid = past ? past.file.id : randomUUID();
+    // A config dir that lost its .claude.json since the roster was listed: never start it on ~/.claude instead.
+    const configDir = this.configDirFor(accountId);
+    if (configDir === undefined) return fail('refused', dirGone(accountId));
     const cmd = launchCommand({
       folder: dir.real,
       account: accountId,
@@ -348,6 +364,8 @@ export class LauncherService implements Launcher {
       launch: s.launch,
       cswap: this.ctx.bins.cswap,
       claude: this.ctx.bins.claude,
+      configDir,
+      dirs: inputs.mode === 'dirs',
     });
     if (!cmd.ok) return commandFailure(cmd);
     const at = this.ctx.clock.iso();
@@ -412,7 +430,7 @@ export class LauncherService implements Launcher {
   }
 
   private noteLive(): void {
-    for (const s of Object.values(this.ctx.store.getState().sessions)) this.track(this.folders.noteSession(s));
+    for (const s of Object.values(localSessions(this.ctx.store.getState()))) this.track(this.folders.noteSession(s));
   }
 
   /**
@@ -463,7 +481,7 @@ export class LauncherService implements Launcher {
     const now = this.ctx.clock.now();
     for (const job of this.ctx.db.launches.list({ unfinished: true, limit: 100 })) {
       if (this.runs.has(job.id)) continue;
-      const running = Boolean(this.ctx.store.getState().sessions[job.sid]);
+      const running = Boolean(localSession(this.ctx.store.getState(), job.sid));
       const run = new LaunchRun(this.runDeps, job, { kind: 'resume' });
       const age = now - Date.parse(job.updatedAt);
       const live = launch.enabled && Number.isFinite(age) && age <= maxAgeMs;
@@ -515,6 +533,16 @@ export class LauncherService implements Launcher {
   }
 
   /**
+   * v0.6, accountsMode "dirs": the config dir an account stands for (null for
+   * ~/.claude, and in every other mode); undefined when it is no longer listed
+   * (its .claude.json went since the roster was), so the start is refused.
+   */
+  private configDirFor(account: AccountId | null): string | null | undefined {
+    if (account === null || account === SINGLE_ACCOUNT || this.ctx.accountsMode() !== 'dirs') return null;
+    return dirsAccounts(this.ctx.paths, this.ctx.db.kv).find((a) => a.id === account)?.dir;
+  }
+
+  /**
    * A resume's conversation, checked against `folder`'s history (a realpath):
    * one of its transcripts (else 404; looked up by id, so an entry pushed
    * past the newest 20 since it was listed still starts) and not running
@@ -562,7 +590,8 @@ export class LauncherService implements Launcher {
     }
     return {
       accounts: Object.values(st.accounts),
-      sessions: Object.values(st.sessions),
+      // v0.6: Auto counts this Mac's own sessions on its own accounts.
+      sessions: Object.values(localSessions(st)),
       nowMs: now,
       hold: new Set([...s.autoswitch.hold, ...view.hold]),
       kept: keptAccounts(s),
@@ -572,6 +601,7 @@ export class LauncherService implements Launcher {
       bookings,
       busy,
       timeZone: this.ctx.env.TZ,
+      mode: this.ctx.accountsMode(),
     };
   }
 
@@ -603,7 +633,7 @@ export class LauncherService implements Launcher {
       if (isHeld(a, inputs)) {
         warnings.push({ kind: 'held', text: `Held for other work. ccw will never move this session, even when ${acct(a.id)} fills up.`, account: a.id });
       }
-      const why = notSelectable(a);
+      const why = notSelectable(a, inputs);
       return { ok: true, pick: a.id, source: 'resume', reason: why ? `${pinnedReason(a.id)} · ${why}` : pinnedReason(a.id), warnings };
     }
     const group = groupAccount(folderName, name, groups, inputs.sessions);
@@ -628,7 +658,7 @@ export class LauncherService implements Launcher {
     }
     groupWarning(a.id);
     const joins = group !== null && group.account === a.id;
-    const why = notSelectable(a);
+    const why = notSelectable(a, inputs);
     const reason = why
       ? `${acct(a.id)} · ${why}`
       : joins
@@ -640,7 +670,7 @@ export class LauncherService implements Launcher {
   /** Names a new session may not take: live sessions' and those of launches still going. */
   private takenNames(jobs: readonly LaunchJob[]): Set<string> {
     const out = new Set<string>();
-    for (const s of Object.values(this.ctx.store.getState().sessions)) if (s.name && s.status !== 'ended') out.add(s.name);
+    for (const s of Object.values(localSessions(this.ctx.store.getState()))) if (s.name && s.status !== 'ended') out.add(s.name);
     for (const j of jobs) if (!isFinal(j.stage)) out.add(j.name);
     return out;
   }

@@ -53,6 +53,29 @@ jobs:
       # No kept-account constants or account-number lists in code, and the community files in place.
       - run: pnpm lint:oss
 
+  # v0.6 native Windows (preview): the named pipes, the exec-form hooks, a node
+  # on a Windows profile and the printed schtasks lines (test/windows, W1-W8).
+  # Not the whole suite: the rest assumes POSIX.
+  windows:
+    name: windows preview (windows-latest)
+    runs-on: windows-latest
+    steps:
+      # Byte-exact files (the hook client, the fixtures), not CRLF.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @jantar/cli test:windows
+
   secrets:
     name: secrets in history
     runs-on: ubuntu-latest

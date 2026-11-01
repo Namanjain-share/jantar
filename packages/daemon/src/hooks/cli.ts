@@ -19,6 +19,7 @@ import {
   planInstall,
   planUninstall,
   uninstallHooks,
+  windowsClaudeLine,
   type HooksPlan,
   type HooksStatus,
   type ProfileLink,
@@ -319,6 +320,8 @@ async function status(deps: HooksCliDeps, settingsPath: string, flags: Flags): P
   io.out(`Settings file: ${st.realPath ?? st.settingsPath}${st.isSymlink ? ` (linked from ${st.settingsPath})` : ''}${st.exists ? '' : ' (does not exist yet)'}\n`);
   if (st.error) io.out(`  ${st.error.message}\n`);
   io.out(`Hooks: ${STATE_TEXT[st.state]}\n`);
+  // v0.6, Windows: the exec-form hooks need a recent Claude Code (doctor names the one installed).
+  if (st.minClaude) io.out(`  ${windowsClaudeLine()}\n`);
   if (st.state !== 'installed' && st.state !== 'not-installed' && st.state !== 'unreadable') {
     for (const e of st.events) if (e.state !== 'ok') io.out(`  ${e.event.padEnd(20)} ${e.state}\n`);
     if (st.strayEntries) io.out(`  ${st.strayEntries} entr${st.strayEntries === 1 ? 'y' : 'ies'} under events Jantar no longer uses\n`);

@@ -19,9 +19,11 @@ export interface RailLabelProps {
   /** Horizontal padding: 16 in the ledger, 0 inside padded pages. */
   inset?: boolean;
   className?: string;
+  /** The heading's id, for a section's aria-labelledby. */
+  id?: string;
 }
 
-export function RailLabel({ children, count, tone = 'plain', ground = 'surface', sticky = true, aside, inset = true, className }: RailLabelProps) {
+export function RailLabel({ children, count, tone = 'plain', ground = 'surface', sticky = true, aside, inset = true, className, id }: RailLabelProps) {
   return (
     <div
       className={clsx(
@@ -32,7 +34,7 @@ export function RailLabel({ children, count, tone = 'plain', ground = 'surface',
         className,
       )}
     >
-      <h2 className="flex items-center gap-8 type-rail text-ink-3">
+      <h2 id={id} className="flex items-center gap-8 type-rail text-ink-3">
         <span>{children}</span>
         {count !== undefined ? <span className={tone === 'needs' ? 'text-signal-text' : 'text-ink-2'}>{count}</span> : null}
       </h2>

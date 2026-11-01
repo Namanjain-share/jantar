@@ -15,6 +15,11 @@
  * The first row is the primary one, as Claude highlights it. A request that
  * carries no plan text says where to read it first: the Mac, which shows the
  * whole plan (with Show on Mac), not the Transcript.
+ *
+ * v0.6: a paired machine's card is headed with the Mac's name for it, says
+ * where to read a plan it doesn't carry (that machine; the Mac cuts one too
+ * large to send here), and is off while the machine is offline or
+ * watch-only.
  */
 import clsx from 'clsx';
 import { m } from 'motion/react';
@@ -28,6 +33,7 @@ import { KeyHints } from '../../kit/Keycap.js';
 import { useDecide } from './decide.js';
 import { DockFrame } from './DockFrame.js';
 import { Actions, InlineError, OfflineLine } from './Fields.js';
+import { CardMachineLines, cardTitle } from './Info.js';
 import { usePaneKeys } from './keys.js';
 import type { CardProps } from './Permission.js';
 import { Prose } from './Prose.js';
@@ -44,7 +50,7 @@ const ROW: Record<PlanMode, { label: string; receipt: string }> = {
   default: { label: 'Yes, manually approve edits', receipt: 'Approved, ask before each edit' },
 };
 
-export function PlanCard({ p, phone, offline, age, late, aside, onDecided, onShowOnMac }: CardProps) {
+export function PlanCard({ p, phone, offline, age, late, aside, onDecided, onShowOnMac, machine }: CardProps) {
   const { busy, error, decide } = useDecide(p, onDecided);
   const [revise, setRevise] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -53,7 +59,7 @@ export function PlanCard({ p, phone, offline, age, late, aside, onDecided, onSho
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const plan = planOf(p);
   const modes = p.planModes?.length ? p.planModes : DEFAULT_MODES;
-  const disabled = busy || p.state !== 'open' || offline;
+  const disabled = busy || p.state !== 'open' || offline || Boolean(machine?.blocked);
   const fbId = useId();
   const size = phone ? 'xl' : 'lg';
 
@@ -74,7 +80,7 @@ export function PlanCard({ p, phone, offline, age, late, aside, onDecided, onSho
   return (
     <DockFrame
       phone={phone}
-      title="Plan"
+      title={cardTitle('Plan', machine)}
       age={age}
       late={late}
       aside={aside}
@@ -95,11 +101,11 @@ export function PlanCard({ p, phone, offline, age, late, aside, onDecided, onSho
       ) : (
         <>
           <p className="mt-8 type-body text-pretty text-ink-2">
-            Claude is ready to leave plan mode, but this request doesn't carry the plan. Read it at the Mac before you approve.
+            Claude is ready to leave plan mode, but this request doesn't carry the plan. Read it at {machine?.name ?? 'the Mac'} before you approve.
           </p>
           {onShowOnMac ? (
             <Button variant="text" size={size} className="-ml-8 mt-4" onClick={onShowOnMac}>
-              Show on Mac
+              Show on {machine?.name ?? 'Mac'}
             </Button>
           ) : null}
         </>
@@ -154,6 +160,7 @@ export function PlanCard({ p, phone, offline, age, late, aside, onDecided, onSho
           </Button>
         </m.div>
       ) : null}
+      <CardMachineLines p={p} m={machine} />
       <InlineError error={error} />
       <OfflineLine offline={offline} />
     </DockFrame>

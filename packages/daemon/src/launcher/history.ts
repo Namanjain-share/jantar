@@ -7,7 +7,9 @@
  *   enc     = encodeProjectDir(folder)
  *   dirs    = ~/.claude/projects, plus <profile>/projects of each cswap profile
  *             whose realpath is not that one (cswap mode only: single mode
- *             starts claude on ~/.claude, whose --resume sees nothing else)
+ *             starts claude on ~/.claude, whose --resume sees nothing else);
+ *             v0.6, config dirs (a server): <dir>/projects of each, ~/.claude's
+ *             pinned to account 0
  *   files   = <dir>/<enc>/<uuid>.jsonl, regular files only (lstat: a symlink
  *             is skipped), named by a UUID the schemas take (RFC variant),
  *             the newest LAUNCH_HISTORY_LIMIT by mtime
@@ -34,9 +36,10 @@
  * would not find them.
  */
 import { join } from 'node:path';
-import { LAUNCH_HISTORY_LIMIT, PastSessionSchema, type AccountId, type LaunchHistoryQuery, type PastSession } from '@jantar/protocol';
+import { LAUNCH_HISTORY_LIMIT, PastSessionSchema, localSession, type AccountId, type LaunchHistoryQuery, type PastSession } from '@jantar/protocol';
 import type { Actor, DaemonContext, FilesService, LaunchResult, SessionSource } from '../contracts.js';
 import { fsx, isDirEntry, listDir, readRange } from '../sources/lib/fsx.js';
+import { dirsAccounts } from '../sources/cswap/dirs.js';
 import { encodeProjectDir } from '../sources/transcripts/reader.js';
 import { maskScreen } from './dialogs.js';
 import { isRefusal, refusalResult } from './folders.js';
@@ -91,6 +94,9 @@ async function projectDirs(d: HistoryDeps): Promise<{ dir: string; account: Acco
   const shared = d.ctx.paths.claudeProjects;
   const out: { dir: string; account: AccountId | null }[] = [{ dir: shared, account: null }];
   if (d.ctx.accountsMode() === 'single') return out;
+  // v0.6, a server's config dirs: each keeps its own projects/, so a conversation is resumed under the dir it was
+  // recorded in (~/.claude's pinned to 0), never under another CLAUDE_CONFIG_DIR where its transcript isn't.
+  if (d.ctx.accountsMode() === 'dirs') return dirsAccounts(d.ctx.paths, d.ctx.db.kv).map((a) => ({ dir: join(a.dir, 'projects'), account: a.id }));
   const sharedReal = await realOr(shared);
   const profilesDir = d.ctx.paths.cswapProfiles;
   for (const e of await listDir(profilesDir)) {
@@ -254,8 +260,9 @@ async function readHead(path: string): Promise<string | null> {
 
 /** A running session has this id. */
 export function isLive(ctx: DaemonContext, id: string): boolean {
-  const sessions = ctx.store.getState().sessions;
-  return Object.hasOwn(sessions, id) && sessions[id]?.status !== 'ended';
+  // v0.6: the Mac's own sessions (a server's conversation is resumed there).
+  const s = localSession(ctx.store.getState(), id);
+  return s !== undefined && s.status !== 'ended';
 }
 
 /** `folder`'s past conversations (a realpath), newest first, with their first lines; only those recorded in it. */

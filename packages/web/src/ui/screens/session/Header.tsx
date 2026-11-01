@@ -98,6 +98,12 @@ export interface HeaderProps {
   onShowOnMac: () => void;
   showOnMacBusy: boolean;
   canShowOnMac: boolean;
+  /**
+   * v0.6: the machine Show on raises a window on: absent for the Mac, a Mac
+   * server's name ("Show on mini-1"), null for a server with no window to
+   * raise (tmux, Windows): the button is not there.
+   */
+  showOn?: string | null;
   onBack: () => void;
   /** Tablet: the session is full width, so it needs its own way back. */
   back?: boolean;
@@ -106,8 +112,9 @@ export interface HeaderProps {
 }
 
 export function Header(props: HeaderProps) {
-  const { sid, folder, name, glyph, dashed, phone, view, onView, step, onStep, onShowOnMac, showOnMacBusy, canShowOnMac, onBack, back, files } = props;
+  const { sid, folder, name, glyph, dashed, phone, view, onView, step, onStep, onShowOnMac, showOnMacBusy, canShowOnMac, showOn, onBack, back, files } = props;
   const word = GLYPH_WORD[glyph];
+  const showLabel = `Show on ${showOn ?? 'Mac'}`;
   if (phone) {
     return (
       <header className="flex h-52 flex-none items-center pl-4 pr-8">
@@ -124,9 +131,11 @@ export function Header(props: HeaderProps) {
             {step.at} / {step.of}
           </span>
         ) : null}
-        <IconButton aria-label="Show on Mac" className="ml-4 size-44" onClick={onShowOnMac} disabled={showOnMacBusy || !canShowOnMac}>
-          <MonitorIcon size={20} />
-        </IconButton>
+        {showOn === null ? null : (
+          <IconButton aria-label={showLabel} className="ml-4 size-44" onClick={onShowOnMac} disabled={showOnMacBusy || !canShowOnMac}>
+            <MonitorIcon size={20} />
+          </IconButton>
+        )}
       </header>
     );
   }
@@ -155,9 +164,11 @@ export function Header(props: HeaderProps) {
           </IconButton>
         </span>
       ) : null}
-      <Button className="ml-12" onClick={onShowOnMac} disabled={showOnMacBusy || !canShowOnMac}>
-        Show on Mac
-      </Button>
+      {showOn === null ? null : (
+        <Button className="ml-12" onClick={onShowOnMac} disabled={showOnMacBusy || !canShowOnMac}>
+          {showLabel}
+        </Button>
+      )}
     </header>
   );
 }

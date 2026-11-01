@@ -1276,3 +1276,187 @@ data addresses replaced, at most 200 characters) and the daemon's status.
 Never a URL, a title or the picture. The daemon logs one
 `meetings: screenshot upload` line per upload, refusals included, with the
 status and the size only.
+
+## v0.6: Fleet, paired servers
+
+Fleet lets the phone reach Claude sessions on other machines (Linux
+servers, Windows machines, other Macs) through the Mac. It starts **off**
+and only the Mac turns it on (`jantar fleet on`); while it is off,
+`/v1/node/*` does not exist and nothing below applies. How to set it up is
+in [docs/fleet.md](docs/fleet.md).
+
+### What pairing a server means
+
+- **Pairing a server extends your phone's reach to that server**, as far as
+  that server's own switches allow. With the default (Controls on, starting
+  sessions off), a stolen paired phone or a compromised Mac can send prompts
+  and answer cards on **every** paired server, and a prompt to a session
+  with broad Bash permissions is code execution on that server.
+  `jantar node join --read-only` (or `jantar install --read-only` later)
+  makes a server watch-only: cards, prompts, keys and starts are all
+  refused there.
+- The trust boundary grows by each server's user account: the threat model
+  above now holds on every paired machine, for the user Jantar runs as
+  there.
+- **The Mac is a single point of failure.** Every server is reached through
+  it; while it sleeps or is off, no server is reachable from the phone.
+- A server can't widen its own reach either. Its switches (`controls`,
+  `launch` and its folder roots, `--read-only`) are set only on that
+  server, by its own CLI over its own control socket or its service's
+  arguments; the Mac's switches govern only the Mac's sessions. Fleet
+  itself is a Mac-only setting: a TCP request touching it is refused, an
+  admin phone's included.
+
+### The link
+
+- **Servers dial out.** A server's daemon opens no TCP port at all. Its
+  only ways in are the WebSocket it opens to the Mac's front door
+  (`<front door>/v1/node/link`) and its own 0600 sockets. The Mac gets no
+  new listener, port or hostname: the link arrives through the phone's own
+  Tailscale Serve or Cloudflare Tunnel. Over Cloudflare, servers pass Access
+  with a service token on an application that covers `/v1/node/*` only,
+  with a single Service Auth policy (never Bypass).
+- **Its own credential, on its own path.** Under `/v1/node/` the daemon
+  reads no device cookie, device secret or extension key, refuses any
+  request with an `Origin`, and serves the link from its own WebSocket
+  server (1 MiB frames); the phone's event stream keeps its 4096-byte
+  limit. A server's key is never read anywhere else.
+- **Keys pinned both ways, Ed25519.** `jantar node pair` (control socket
+  only) makes one-time lines: a 128-bit code, single use, 10 minutes,
+  stored only as a hash, plus the Mac's public key. Every bad claim gets the
+  same refusal, and claims are rate-limited. The server makes its own key
+  pair, and saves nothing unless the Mac's signature checks against the key
+  in the line. Every connect is a challenge and response in both
+  directions, with fresh nonces and distinct labels per side, so a recorded
+  handshake can't be replayed or reflected; there are no timestamps to
+  trust. The Mac stores only public keys; its own private key is
+  `fleet/hub-key.pem`, 0600 in a 0700 folder. The server's key and the
+  Access token are in `node/node.json`, 0600 in a 0700 folder (on Windows,
+  where these modes mean nothing, your user profile's permissions protect
+  them). The join line carries no long-lived secret, and the Access secret
+  is never a command-line flag and never printed or logged.
+- **Revocation is immediate.** `jantar node revoke` (or Remove on an admin
+  phone) closes the link, drops the server's sessions and cards from the
+  phone, and refuses its next handshake. A server unseen for 90 days is
+  revoked when it next connects. `jantar fleet off` closes every link.
+- **TLS.** Servers check the front door's certificate against Node's
+  bundled CA list plus `NODE_EXTRA_CA_CERTS`, not the operating system's
+  store (Jantar does not pass `--use-system-ca`). The Mac makes join lines
+  for an `https://` door only; a server accepts `http://` only on loopback
+  (the tests' door), redirects are refused, and there is no switch to skip
+  certificate checks.
+
+### What the handshake does and does not stop
+
+The handshake stops anyone who controls only the **hostname** (a DNS or
+account takeover, a mistyped address) from posing as the Mac: they can't
+sign as the Mac's key, so no server links to them, and they never get a
+server's key. They do get the Cloudflare Access service token (its id and
+secret): a server sends it with its join and with every link attempt,
+before any signature is checked. On its own that token gets no further
+than the pairing and link handshakes at the real Mac, which still need a
+fresh join line or a paired server's key. A join line claimed through them
+is the exception: they can pass the claim on to the real Mac with a key of
+their own. The server then sees a signature that doesn't check and saves
+nothing, but the Mac has paired their key under that line's name, so
+`jantar node join` says to run `jantar node revoke <name>` at the Mac. If
+you think the hostname was taken, revoke any such server and
+[rotate the token](docs/fleet.md#rotate-the-access-token).
+
+It does **not** stop anything that terminates TLS in the path. Cloudflare,
+or a TLS-inspecting proxy whose CA a server trusts through
+`NODE_EXTRA_CA_CERTS`, can let a real handshake through and then inject
+frames of its own, because frames are not bound to the handshake. Such a
+party could then send calls to a server as if from your phone. Cloudflare
+already holds that position for the phone's own traffic. Tailscale has no
+such middle party: use it if that matters to you.
+
+### A server is untrusted on the Mac
+
+- A server reports only its own sessions, cards, sends, launches and
+  alerts. An event about the Mac's sessions or another server's is dropped,
+  and a server that keeps trying is disconnected. Nothing a server sends
+  reaches another server.
+- The Mac checks every message against its schema and clips the text a
+  server sends to the limits the Mac's own sessions have (a card's input
+  over 64 KiB arrives empty, with its tool name), under a 4 MiB budget per
+  server: at most 64 sessions, 32 open cards and 10 notifications a minute
+  per server, on top of the global mute.
+- A server's alerts, sends and starts have a share of their own beside the
+  Mac's (its newest 20 alerts and finished sends), and its alerts and cards
+  never go into the Mac's alert and card history in `jantar.db` (they stay
+  in the replay ring, which grows per server). However much a server sends,
+  it can't push the Mac's alerts, card history or send receipts out.
+- Every card and row names the server by the name **the Mac** gave it. A
+  server can show its own sessions and cards with any content, but it can
+  never look like the Mac.
+- The Mac fetches nothing a server names; notification endpoints still come
+  only from phones.
+- A server's sessions never reach the Mac's own parts: Files, folder
+  history, Auto pick, limit pushes and the Mac's controls see only the
+  Mac's own sessions. Nor does v0.5.3's urgent alert: the Mac reads only
+  its own sessions' screens for Claude's countdown, so a server's
+  unattended ask sends the plain waiting push, within that server's 10 a
+  minute. Ask, folder todos (`jantar mcp`) and Life run on the Mac only; a
+  server runs none of them.
+
+### What a server runs
+
+- The Mac forwards a phone's call only after its own checks (device,
+  scope, Origin, secret, schema). The server runs it through **its own**
+  API, as the device `hub.<phone's device id>` with the phone's scopes, so
+  its own switches, scope checks, idempotency, audit log and terminal
+  guards apply as on a Mac. A read phone can't write; starting a session
+  needs the phone's `launch` scope and the server's own switch and folder
+  roots.
+- A server runs only an allowlisted set of routes, chosen by route name,
+  never by a path the Mac sends; anything else is a 404 there. A server
+  can't send the Mac calls of its own.
+- Card answers come only from paired control devices; the server's control
+  socket still has no approve verb.
+- Nothing is queued across a disconnect: a write to an offline server is
+  refused at once, and a retried write types once.
+- **On Linux, text never becomes a tmux command.** It enters tmux only on
+  stdin (`load-buffer -`); every write is one `if-shell -F` step whose
+  format checks the session's own terminal, its modes and (for a dialog
+  answer) the expected screen lines, with every character tmux would
+  interpret replaced, so a screen line can't run a tmux command. A write is
+  bound to the session's terminal, never to a pane id alone.
+- **On native Windows** (a preview, not yet checked on a real Windows
+  machine), the hooks and control sockets are named pipes with Node's
+  default access list (you, administrators and SYSTEM; others may only
+  read), and Jantar never types into a terminal there. Pipe names are
+  machine-wide, so another user of the machine could create Jantar's pipe
+  before the daemon does. The hook client therefore sends an event only
+  after the pipe's owner proves it holds the key the daemon writes to
+  `run\hooks.key` in your profile at each start; a pipe someone else made
+  gets a random nonce and nothing else, and Claude asks in its own
+  terminal. Not covered yet: the control pipe (the `jantar` command trusts
+  whoever answers on it), and another user holding the pipes' connections
+  open so the cards fail open. Keep Jantar's folder in your profile (the
+  default) and use native Windows only on a machine nobody else logs on
+  to; on a shared server use WSL2 or Linux.
+
+### Privacy
+
+No transcript, screen, prompt or file text goes into a log line, an audit
+row, a link error or a close reason, on either side. Link logs carry a
+message's kind, size, the server's id and close codes only. Transcript
+pages and screens fetched from a server are passed to the phone and never
+stored on the Mac; a server's events carry what the same events carry on a
+Mac, and are stored in `jantar.db` as any event is. The Mac keeps no other
+copy of a server's state on disk.
+
+### What Fleet does not protect against
+
+- A compromised Mac, or a stolen paired phone with control, can prompt every
+  server that is not `--read-only` (above).
+- A party that terminates TLS between a server and the Mac can inject
+  calls after the handshake (above).
+- The Cloudflare service token is shared by every server by default.
+  Stolen alone, it reaches only the handshake; but its expiry takes every
+  server offline at once, and only renewing it on each server
+  (`jantar node access`) brings them back.
+- A server can fill its own share of the phone (its 64 sessions and 32
+  cards, its 20 alerts and finished sends, its 10 notifications a minute)
+  with any text. `jantar node revoke` stops it.

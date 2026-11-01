@@ -16,6 +16,7 @@
 | [Ask](assistant.md) | The chat page: plain words in, todos, reminders, meals and expenses out as cards you add with a tap; what goes to Claude |
 | [Intel shelf](intel.md) | The shelf, its search, its sources and the JSONL line format, and `jantar mcp` for Claude Code |
 | [Meetings](extension.md) | The Chrome extension for Google Meet and Microsoft Teams: setup, captions, screenshots, summaries, export, deleting everything |
+| [Servers](fleet.md) | v0.6 Fleet: pairing Linux servers, Windows machines and other Macs with the Mac; the front door (Cloudflare Access or Tailscale), each OS, accounts, tmux, updating ten servers, rotating the Access token, limits and what is not verified yet |
 | [Configuration](configuration.md) | Every command, the daemon's flags, environment variables, `config.json`, the state folder |
 | [Security, in plain words](security.md) | What Jantar can reach, what a phone can do, what leaves the Mac; the full model is [SECURITY.md](../SECURITY.md) |
 | [Questions](faq.md) | Common questions and known limits |

@@ -16,12 +16,16 @@
  *   `<file>.jantar-backup-<timestamp>` (0600) is made first.
  * - plan*() functions only read; install/uninstall write when something
  *   changes and the file is still what the plan saw.
+ * - v0.6: on Windows the hooks are written in exec form (the program and its
+ *   arguments as JSON, no shell, `onFailure: "continue"`), which needs
+ *   Claude Code 2.1.310 or later there; macOS and Linux keep the shell form
+ *   byte for byte. Either form is recognised as ours on every platform.
  */
 import { realpathSync } from 'node:fs';
 import { constants as fsConstants } from 'node:fs';
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { userInfo } from 'node:os';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, win32 } from 'node:path';
 import { HOOK_CLIENT_PATH, WAIT_FLAG } from '@jantar/hook';
 import { HOOK_EVENT_NAMES, HOOK_NAME, LEGACY_HOOK_NAME, type HookEventName } from '@jantar/protocol';
 import { writeFileAtomic } from '../config.js';
@@ -47,6 +51,8 @@ export interface HookCommandSpec {
   node: string;
   /** Absolute path of the installed client, normally <state dir>/bin/jantar-hook. */
   hookBin: string;
+  /** v0.6: the platform Claude runs on: exec form on win32, else shell form. Default: process.platform. */
+  platform?: NodeJS.Platform;
 }
 
 export interface HookCommand {
@@ -58,7 +64,7 @@ export interface HookCommand {
 
 export interface HookGroup {
   matcher?: string;
-  hooks: HookCommand[];
+  hooks: Array<HookCommand | ExecHookCommand>;
 }
 
 const UNSAFE_IN_COMMAND = /["$`\\\n\r]/;
@@ -70,6 +76,85 @@ function checkPath(label: string, p: string): void {
   if (UNSAFE_IN_COMMAND.test(p)) throw new UnsafePathError(`${label} contains a character that is unsafe in a hook command: ${p}`);
 }
 
+/**
+ * v0.6 Fleet: the oldest Claude Code whose exec-form hooks, with
+ * `onFailure: "continue"`, work on native Windows (`jantar hooks status`
+ * and `jantar doctor` name it there).
+ */
+export const MIN_CLAUDE_WINDOWS = '2.1.310';
+
+/**
+ * v0.6: a hook in exec form (Windows): the program and its arguments as
+ * JSON, never parsed by a shell; a hook that fails lets Claude go on with
+ * its own dialog.
+ */
+export interface ExecHookCommand {
+  type: 'command';
+  command: string;
+  args: string[];
+  onFailure: 'continue';
+  async?: boolean;
+  timeout: number;
+}
+
+/** v0.6: control characters and quotes never belong in a Windows path, so a path holding one is refused. */
+const UNSAFE_IN_EXEC_PATH = /["\u0000-\u001f]/;
+/** A fully qualified Windows path: a drive (`C:\\` or `C:/`) or a UNC share. */
+const WINDOWS_FULL_PATH = /^(?:[A-Za-z]:[\\/]|\\\\[^\\/])/;
+
+function checkExecPath(label: string, p: string): void {
+  if (!WINDOWS_FULL_PATH.test(p) || !win32.isAbsolute(p)) throw new UnsafePathError(`${label} must be a full Windows path: ${p}`);
+  if (UNSAFE_IN_EXEC_PATH.test(p)) throw new UnsafePathError(`${label} contains a character that is unsafe in a hook: ${p}`);
+}
+
+/**
+ * v0.6: the exec-form hook for win32 (`--wait` for PermissionRequest).
+ * Claude starts `command` itself with `args`, no shell (PowerShell would
+ * print a line of two quoted paths instead of running it), so the paths
+ * need no quoting; `command` must be the real node.exe (a .cmd shim does
+ * not start that way). `onFailure: "continue"`: a hook that fails leaves
+ * Claude's own dialog in charge instead of blocking the tool call.
+ */
+export function execFormHook(spec: HookCommandSpec, wait: boolean): ExecHookCommand {
+  checkExecPath('node path', spec.node);
+  if (!/\.exe$/i.test(win32.basename(spec.node))) throw new UnsafePathError(`node path must be the node.exe program on Windows: ${spec.node}`);
+  checkExecPath('hook client path', spec.hookBin);
+  const base = { type: 'command' as const, command: spec.node };
+  return wait
+    ? { ...base, args: [spec.hookBin, WAIT_FLAG], onFailure: 'continue', timeout: BLOCKING_TIMEOUT_S }
+    : { ...base, args: [spec.hookBin], onFailure: 'continue', async: true, timeout: ASYNC_TIMEOUT_S };
+}
+
+/** v0.6: the hooks for `spec` are exec form (Windows). */
+function execForm(spec: Pick<HookCommandSpec, 'platform'>): boolean {
+  return (spec.platform ?? process.platform) === 'win32';
+}
+
+/** Check the paths for the form `spec` gets; throws UnsafePathError. */
+function checkSpec(spec: HookCommandSpec): void {
+  if (execForm(spec)) execFormHook(spec, false);
+  else hookCommandLine(spec);
+}
+
+/**
+ * v0.6: the oldest Claude Code a Windows machine needs for the cards, as
+ * one line for `jantar hooks status` and `jantar doctor`; `version` is what
+ * `claude --version` printed, when known.
+ */
+export function windowsClaudeLine(version?: string | null): string {
+  const have = version?.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (have && olderThan(have.slice(1, 4).map(Number), MIN_CLAUDE_WINDOWS.split('.').map(Number))) {
+    return `Claude Code ${have[0]} is too old for the cards on Windows: they need ${MIN_CLAUDE_WINDOWS} or later (claude update).`;
+  }
+  return `On Windows the cards need Claude Code ${MIN_CLAUDE_WINDOWS} or later.`;
+}
+
+/** Version parts `a` come before `b` (major, minor, patch). */
+function olderThan(a: number[], b: number[]): boolean {
+  const i = a.findIndex((n, k) => n !== b[k]);
+  return i !== -1 && (a[i] as number) < (b[i] as number);
+}
+
 /** `"<node>" "<hookBin>"` (+ ` --wait`). Claude runs hook commands through a shell. */
 export function hookCommandLine(spec: HookCommandSpec, wait = false): string {
   checkPath('node path', spec.node);
@@ -79,10 +164,12 @@ export function hookCommandLine(spec: HookCommandSpec, wait = false): string {
 
 /** The group Jantar registers for `event`. */
 export function desiredGroup(event: HookEventName, spec: HookCommandSpec): HookGroup {
+  const exec = execForm(spec);
   if (event === 'PermissionRequest') {
-    return { matcher: '*', hooks: [{ type: 'command', command: hookCommandLine(spec, true), timeout: BLOCKING_TIMEOUT_S }] };
+    const hook = exec ? execFormHook(spec, true) : { type: 'command' as const, command: hookCommandLine(spec, true), timeout: BLOCKING_TIMEOUT_S };
+    return { matcher: '*', hooks: [hook] };
   }
-  const hook: HookCommand = { type: 'command', command: hookCommandLine(spec), async: true, timeout: ASYNC_TIMEOUT_S };
+  const hook = exec ? execFormHook(spec, false) : { type: 'command' as const, command: hookCommandLine(spec), async: true, timeout: ASYNC_TIMEOUT_S };
   return MATCHER_EVENTS.has(event) ? { matcher: '*', hooks: [hook] } : { hooks: [hook] };
 }
 
@@ -101,8 +188,15 @@ export function isOurCommand(command: string): boolean {
   return OUR_COMMAND_RE.test(command);
 }
 
+/** v0.6: an exec-form entry (Windows) runs jantar-hook (or ccw-v2-hook) as its first argument. */
+function isOurExecArgs(args: unknown): boolean {
+  if (!Array.isArray(args) || typeof args[0] !== 'string') return false;
+  const name = win32.basename(args[0]);
+  return name === HOOK_NAME || name === LEGACY_HOOK_NAME;
+}
+
 function isOurHook(h: unknown): boolean {
-  return isPlainObject(h) && typeof h.command === 'string' && isOurCommand(h.command);
+  return isPlainObject(h) && ((typeof h.command === 'string' && isOurCommand(h.command)) || isOurExecArgs(h.args));
 }
 
 // ---------------------------------------------------------------------------
@@ -372,7 +466,7 @@ function makePlan(action: 'install' | 'uninstall', loaded: LoadedSettings, edit:
 
 export async function planInstall(opts: HooksTarget & HookCommandSpec): Promise<HooksPlan | HooksFailure> {
   try {
-    hookCommandLine(opts);
+    checkSpec(opts);
   } catch (e) {
     return failure(resolve(opts.settingsPath), 'unsafe_path', (e as Error).message);
   }
@@ -412,7 +506,8 @@ export function guardRealFilesForTests(path: string, what: string): void {
     }
   });
   for (const root of [...real, ...resolved]) {
-    if (path === root || path.startsWith(`${root}/`)) {
+    // v0.6: Windows paths use backslashes.
+    if (path === root || path.startsWith(`${root}/`) || path.startsWith(`${root}\\`)) {
       throw new Error(`refusing to write ${what} under the real ${root} from a test run`);
     }
   }
@@ -510,8 +605,10 @@ export interface HooksStatus {
   events: Array<{ event: HookEventName; state: EventInstallState }>;
   /** Our entries under events Jantar does not register. */
   strayEntries: number;
-  /** The command the installer would register (without --wait). */
+  /** The command the installer would register (without --wait); on Windows (exec form) the program and the client, each quoted. */
   command: string;
+  /** v0.6: on Windows, the oldest Claude Code whose exec-form hooks work there (windowsClaudeLine says it). */
+  minClaude?: string;
   hookBin: string;
   hookBinPresent: boolean;
   /** The installed client is byte-equal to the one shipped with this version. */
@@ -554,7 +651,8 @@ async function profileLinks(profilesDir: string, target: string): Promise<Profil
 export async function hooksStatus(opts: HooksStatusOptions): Promise<HooksStatus> {
   let command = '';
   try {
-    command = hookCommandLine(opts);
+    checkSpec(opts);
+    command = execForm(opts) ? `"${opts.node}" "${opts.hookBin}"` : hookCommandLine(opts);
   } catch {
     command = '';
   }
@@ -568,7 +666,7 @@ export async function hooksStatus(opts: HooksStatusOptions): Promise<HooksStatus
   } catch {
     // not installed
   }
-  const base = { command, hookBin: opts.hookBin, hookBinPresent, hookBinCurrent };
+  const base = { command, hookBin: opts.hookBin, hookBinPresent, hookBinCurrent, ...(execForm(opts) ? { minClaude: MIN_CLAUDE_WINDOWS } : {}) };
   const loaded = await loadSettingsFile(opts.settingsPath);
   if (!('raw' in loaded)) {
     return {
@@ -630,14 +728,15 @@ export async function hooksStatus(opts: HooksStatusOptions): Promise<HooksStatus
  * Copy the shipped hook client to `hookBin` (atomic, 0700). The copy has no
  * file extension; the client is written to run as CommonJS or ES module.
  */
-export async function installHookClient(opts: { hookBin: string; source?: string }): Promise<{ changed: boolean; path: string }> {
+export async function installHookClient(opts: { hookBin: string; source?: string; platform?: NodeJS.Platform }): Promise<{ changed: boolean; path: string }> {
   const target = resolve(opts.hookBin);
   guardRealFilesForTests(target, 'the hook client');
   const src = await readFile(opts.source ?? HOOK_CLIENT_PATH);
   try {
     const cur = await readFile(target);
     const mode = (await stat(target)).mode & 0o777;
-    if (cur.equals(src) && mode === 0o700) return { changed: false, path: target };
+    // v0.6: Windows has no file modes (the profile's ACL protects the state dir).
+    if (cur.equals(src) && (mode === 0o700 || execForm(opts))) return { changed: false, path: target };
   } catch {
     // not there yet
   }

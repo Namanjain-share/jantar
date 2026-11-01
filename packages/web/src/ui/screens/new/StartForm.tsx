@@ -46,6 +46,11 @@
  * changed (a held one still asks first). With one Claude login (accounts
  * mode "single") there is no Account row at all: Auto is that login, even
  * when the URL asked for an account.
+ *
+ * v0.6: on a paired machine (NewSession's Where row) the title and the hold
+ * name it ("Start in api-server on build-1", "Hold to start on build-1"),
+ * the preview, history and start go there, and its accounts are its own
+ * (config dirs show by their alias); nothing moves a server's session.
  */
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -75,7 +80,7 @@ import { NO_ASK_SENTENCE } from '../session/controls/modes.js';
 import { promptProblem } from '../session/sends.js';
 import { folderName } from '../launch/stages.js';
 import { AccountList, AccountPopover, HeldConfirm, type AccountChoice, type AutoPick } from './AccountPicker.js';
-import { NO_PAST, PAST_UNREAD, basename, chosenPast, isNoScope, keepPrompt, lastPast, pastLine, takePrompt, useRequest, type ResumeMode } from './data.js';
+import { NO_PAST, PAST_UNREAD, basename, chosenPast, isNoScope, keepPrompt, lastPast, pastLine, takePrompt, useRequest, useWhere, type ResumeMode } from './data.js';
 import { NoScopeNote, OfflineNote, Prop } from './parts.js';
 import { CHROME_OPTIONS, Choice, EFFORT_OPTIONS, MODEL_OPTIONS, PERMISSION_OPTIONS } from './Pickers.js';
 import { ResumeChoice, ResumePicker } from './ResumePicker.js';
@@ -126,9 +131,13 @@ export interface StartFormProps {
 export function StartForm({ root, path, entry, initialAccount = 'auto', initialName = '', initialPrompt = '', retryOf, phone, aside, onStarted }: StartFormProps) {
   const { api } = useDeps();
   const offline = useApp((s) => s.conn.status === 'offline');
-  const single = useAccountsMode() === 'single';
-  // Account moves come only from the legacy ccw tool, which restarts a moved session with ultracode effort.
-  const moves = usePlan()?.source === 'ccw-legacy';
+  const where = useWhere();
+  const hubMode = useAccountsMode();
+  const single = (where?.accountsMode ?? hubMode) === 'single';
+  // Account moves come only from the legacy ccw tool, which restarts a moved session with ultracode effort (on the Mac only).
+  const legacy = usePlan()?.source === 'ccw-legacy';
+  const moves = legacy && !where;
+  const on = where ? ` on ${where.name}` : '';
   const now = useNow(60_000);
   const ids = useId();
   const [accountPick, setAccount] = useState<AccountChoice>(initialAccount);
@@ -198,7 +207,7 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
   if (!p) {
     return (
       <section aria-label="Start a session" aria-busy={preview.loading}>
-        <Title phone={phone} text={`Start in ${basename(path) || 'this folder'}`} aside={aside} />
+        <Title phone={phone} text={`Start in ${basename(path) || 'this folder'}${on}`} aside={aside} />
         {preview.error ? (
           <div className="mt-12">
             {isNoScope(preview.error) ? <NoScopeNote /> : <p role="alert" className="type-small text-ink-2">{errorText(preview.error)}</p>}
@@ -231,8 +240,10 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
   const accountReady = pinned === null && account === 'auto' ? autoId !== null : chosen?.selectable === true && !needsHeldOk;
   const nameTaken = fresh ? p.warnings.find((w) => w.kind === 'name') : undefined;
   // What the daemon would refuse at start (a leading !, /clear, control characters): said before the hold.
-  const promptBad = prompt.trim() ? promptProblem(prompt) : null;
-  const ready = fresh && accountReady && nameOk && !nameTaken && !promptBad && !offline && !starting;
+  const promptBad = prompt.trim() ? promptProblem(prompt, where?.name) : null;
+  // v0.6: the machine's link is down for now; the form (and what was typed) stays until it is back.
+  const away = where !== null && !where.online;
+  const ready = fresh && accountReady && nameOk && !nameTaken && !promptBad && !offline && !away && !starting;
   const warnings = p.warnings.filter((w) => w.kind !== 'effort' && w.kind !== 'name' && !(w.kind === 'held' && chosen?.held));
 
   const pick = (v: AccountChoice, confirmHeld: boolean) => {
@@ -352,7 +363,7 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
 
   return (
     <section aria-label="Start a session">
-      <Title phone={phone} text={`Start in ${folderName(p.display)}`} aside={aside} />
+      <Title phone={phone} text={`Start in ${folderName(p.display)}${on}`} aside={aside} />
       <div className="mt-8 border-t border-line">
         <Prop label="Folder">
           <div className="flex flex-wrap items-center gap-x-8 gap-y-4 pt-4">
@@ -522,11 +533,12 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
           className={phone ? 'w-full' : undefined}
           onCommit={() => void start()}
         >
-          Hold to start
+          {`Hold to start${on}`}
         </HoldButton>
         {starting ? <Spinner label="Starting" /> : null}
       </div>
       {offline ? <OfflineNote what="start" className="mt-12" /> : null}
+      {!offline && away ? <p className="mt-12 type-small text-ink-2">{`${where.name} is offline`}</p> : null}
       {!offline && fresh && !accountReady && !needsHeldOk && !single && pinned === null ? <p className="mt-12 type-small text-ink-2">Pick an account to start.</p> : null}
       {preview.error && !preview.fresh ? (
         <p role="alert" className="mt-12 type-small text-ink-2">

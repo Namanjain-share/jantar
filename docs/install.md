@@ -18,6 +18,9 @@ short version of this page.
   [primer](primer.md).
 - Optional: Tailscale, or a Cloudflare Tunnel, for the phone.
 - Optional: Chrome 120 or newer for [Meetings](extension.md).
+- Optional, v0.6: Linux servers, Windows machines and other Macs paired
+  with this Mac. Each needs its own install; [Servers](fleet.md#before-you-start)
+  lists what.
 
 ## Install in one line
 
@@ -126,11 +129,15 @@ jantar open
 (KeepAlive, an absolute node path) and loads it with launchctl. It does not
 install Claude Code's hooks and leaves the legacy ccw tool alone.
 `--no-start` only writes the files; `--no-doctor` skips the health check at
-the end. Running it again reloads the daemon.
+the end. Running it again reloads the daemon. `--read-only` runs the daemon
+watch-only (the flag goes into the LaunchAgent); running install again
+keeps that choice, and `--no-read-only` drops it.
 
 `jantar doctor` changes nothing and exits 1 when a check fails. `--json`
 prints the checks as JSON. It checks Node, cswap, `claude`, Terminal
-access, the daemon, coexistence with ccw and remote access.
+access, the daemon, coexistence with ccw and remote access, and, with
+[Fleet](fleet.md) on, the door servers use and whether this Mac sleeps on
+power.
 
 `jantar open` opens the dashboard in this Mac's browser with a one-time
 link; one tap on **Pair this browser** pairs it as an admin device.
@@ -148,6 +155,7 @@ Or run the daemon in the foreground instead of under launchd:
 | `--home <dir>` | state dir (default `$JANTAR_HOME`, then `~/.jantar`) |
 | `--no-terminal` | Terminal.app backend off: no screen peek, focus or sending |
 | `--read-only` | observe only: refuse sending, focus, answering cards, the cswap poller, primes, Ask Claude, Ask's messages and settings changes (Life writes still work) |
+| `--log-files` | v0.6: append its own output to `<state dir>/logs/daemon.{out,err}.log` (the Windows task for a server uses it) |
 | `-v`, `--version` | print the version and exit |
 | `-h`, `--help` | print the help and exit |
 
@@ -293,6 +301,8 @@ jantar install                    # reloads the daemon on the new build
 
 Reopen the app on the phone to load the new build. With Meetings, reload
 the extension too ([Updating the extension](extension.md#updating-the-extension)).
+Paired servers update on their own, one by one or in a loop over SSH
+([Update a server](fleet.md#update-a-server)).
 The [changelog](../CHANGELOG.md) says what changed. Coming from the old
 name, see the README's Quickstart.
 

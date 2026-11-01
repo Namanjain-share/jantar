@@ -25,6 +25,7 @@ import { basename, dirname, join } from 'node:path';
 import {
   ALERT_BACKFILL_BYTES,
   EVENT,
+  localSession,
   type Alert,
   type AlertKind,
   type Session,
@@ -204,7 +205,7 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
   }
 
   private async pollSession(r: SessionRecord): Promise<void> {
-    const s = this.ctx.store.getState().sessions[r.sid];
+    const s = localSession(this.ctx.store.getState(), r.sid);
     if (!s) return; // not published yet
     let w = this.watched.get(r.sid);
     if (!w) {
@@ -256,7 +257,7 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
   // ---------------------------------------------------------------- tail -> session
 
   private publishTail(w: Watched): void {
-    const s = this.ctx.store.getState().sessions[w.sid];
+    const s = localSession(this.ctx.store.getState(), w.sid);
     const tail = w.tail;
     if (!s || !tail) return;
     const prev = w.published;
@@ -294,7 +295,7 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
   // ---------------------------------------------------------------- Done (no hooks)
 
   private checkDone(w: Watched): void {
-    const s = this.ctx.store.getState().sessions[w.sid];
+    const s = localSession(this.ctx.store.getState(), w.sid);
     const tail = w.tail;
     if (!s || !tail) return;
     const key = tail.lastUserPromptAt ?? tail.lastReply?.at ?? null;
@@ -430,7 +431,7 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
       }
     }
     this.rememberAlert(id);
-    const s = this.ctx.store.getState().sessions[sid];
+    const s = localSession(this.ctx.store.getState(), sid);
     const name = s?.name?.trim() || sid.slice(0, 8);
     const alert: Alert = {
       id,

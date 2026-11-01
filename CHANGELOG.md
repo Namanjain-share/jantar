@@ -3,6 +3,50 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.6.0 (unreleased)
+
+**Fleet**: your servers on the same phone. It is off until you run
+`jantar fleet on` at the Mac; with it off, nothing changes but the last
+line below.
+
+- **Your servers on the same board.** Pair Linux servers, Windows machines
+  and other Macs with the Mac (`jantar node pair` there, `jantar node join`
+  on the server), and their Claude Code sessions, cards and accounts show
+  on the phone beside the Mac's, each row naming its machine. Each server
+  dials out to the Mac through the front door the phone already uses
+  (Cloudflare with an Access service token, or Tailscale), so it opens no
+  port. Keys are pinned at join and every link is a fresh challenge both
+  ways; `jantar node revoke` ends a server's link at once.
+- **On Linux (and Windows with WSL2), Claude in tmux** can be answered,
+  prompted and started from the phone, on the server's own Claude accounts
+  (cswap if it has it, else each `~/.claude-<name>` config dir). A session
+  started outside tmux shows its cards and transcript, and the phone says
+  why it can't type there.
+- **Native Windows is a preview**, not yet checked on a real Windows
+  machine: sessions and their hook cards only (no typing or starting
+  sessions), with Claude Code 2.1.310 or newer, on a machine nobody else
+  logs on to.
+- A server's pushes name it ("build-1 · api-server needs you"), at most 10
+  a minute per server, and a busy server can't push the Mac's own alerts,
+  sends or starts off the phone's lists. **Answer soon** stays with the
+  Mac's own sessions: the Mac never reads a server's screen for Claude's
+  countdown, so a server's unattended ask sends the usual "needs you" push.
+  Ask, Life, Intel and Meetings stay on the Mac.
+- A server that goes offline keeps its sessions on the board, muted
+  ("offline since 14:02"), and nothing is sent there until it is back.
+  `jantar fleet status` and `jantar node list` say how each link last
+  closed.
+- New setting: `fleet.enabled` (off). The protocol version stays 3 and the
+  settings version 2; Jantar's database gets one new table, for paired
+  servers, which 0.5.3 opens and leaves alone.
+- Not yet checked on real machines: sending prompts on Linux, real Claude
+  Code in tmux, the Access path for the link, native Windows and WSL2's
+  keep-alive ([what is not verified yet](docs/fleet.md#not-verified-yet)).
+- On every Mac, Fleet or not: the hook cards now load as their own part of
+  the app, so the first card after the app opens may show "Loading the
+  card" for a moment (well under a second; that part is kept for offline
+  use like the rest). It keeps the app's first load small.
+
 ## 0.5.3 (1 November 2026)
 
 - **Ask**, a chat page on the phone, right after Today. Tell it what to

@@ -14,14 +14,24 @@
  * With one Claude login (accountsMode "single", spec 4.11) every session is
  * account 0, whatever config dir it runs under, and nothing is pinned.
  *
+ * v0.6, on a paired server:
+ * - accountsMode "dirs" (no cswap): a session's account is its config dir's
+ *   kept number (sources/cswap/dirs.ts: ~/.claude is 0, each
+ *   ~/.claude-<name> keeps the number it was first given); nothing is pinned.
+ * - Linux `ps` prints `?` for a process with no terminal: no tty.
+ * - Windows has no `ps`: it is never run there, so liveness rests on
+ *   kill(pid, 0) alone and a session has no tty.
+ *
  * Sessions are watched with FSEvents (fs.watch) plus a 2 s poll, which also
  * catches crashed processes (no file event when a pid dies).
  */
-import { EVENT, folderOf, type AccountId, type Session, type SessionOptionalKey, type SessionPatch } from '@jantar/protocol';
+import { EVENT, folderOf, localSession, type AccountId, type Session, type SessionOptionalKey, type SessionPatch } from '@jantar/protocol';
 import type { DaemonContext, Factories, SessionRecord, SessionSource, TimerId, Unsubscribe } from '../../contracts.js';
 import { cLocale } from '../../core/exec.js';
 import { initialStatus, mapRawStatus, mergeStatus, type StatusObservation } from '../../core/status.js';
 import { SINGLE_ACCOUNT } from '../../rewrite/account.js';
+import { normalizeTty } from '../../terminal/tty.js';
+import { dirsAccountFor, dirsAccounts, type DirAccount } from '../cswap/dirs.js';
 import { SequenceReader, accountForProfileDir, classifyConfigDir, type SequenceInfo } from '../lib/cswap-files.js';
 import { DirWatcher } from '../lib/dir-watch.js';
 import { fileSig, fsx } from '../lib/fsx.js';
@@ -56,6 +66,8 @@ export interface ClaudeFilesOptions {
    * emitted, so a hook-driven card for the same moment wins (default 1500 ms).
    */
   waitingSettleMs?: number;
+  /** v0.6: the OS (default process.platform); on win32 `ps` is never run. */
+  platform?: NodeJS.Platform;
 }
 
 /** kv key: default-login sessions' fixed accounts, `<sid>|<pid>` -> account. */
@@ -93,6 +105,8 @@ export class ClaudeFilesSource implements SessionSource {
   private readonly sequence: SequenceReader;
   private pinned = new Map<string, AccountId>();
   private dirs: ConfigDirs | null = null;
+  /** accountsMode "dirs": the numbered config dirs, as of the last scan. */
+  private dirAccounts: DirAccount[] | null = null;
   private started = false;
   private timer: TimerId | undefined;
   private watcher: DirWatcher | null = null;
@@ -118,6 +132,7 @@ export class ClaudeFilesSource implements SessionSource {
       retryMs: opts.retryMs ?? 250,
       psTimeoutMs: opts.psTimeoutMs ?? 5000,
       waitingSettleMs: opts.waitingSettleMs ?? 1500,
+      platform: opts.platform ?? process.platform,
     };
     this.sequence = new SequenceReader(ctx.paths.cswapSequence);
     this.serial = new Serial(() => this.runScan());
@@ -177,6 +192,7 @@ export class ClaudeFilesSource implements SessionSource {
   accountForConfigDir(configDir: string): AccountId | null {
     if (!configDir) return null;
     if (this.ctx.accountsMode() === 'single') return SINGLE_ACCOUNT;
+    if (this.ctx.accountsMode() === 'dirs') return dirsAccountFor(configDir, this.dirAccounts ?? dirsAccounts(this.ctx.paths, this.ctx.db.kv));
     const seq = this.sequence.last;
     const c = classifyConfigDir(configDir, this.ctx.paths);
     if (c.kind === 'default-login') return seq?.active ?? null;
@@ -213,6 +229,7 @@ export class ClaudeFilesSource implements SessionSource {
     const seq = await this.sequence.read();
     const dirs = await listConfigDirs(this.ctx.paths);
     this.dirs = dirs;
+    this.dirAccounts = this.ctx.accountsMode() === 'dirs' ? dirsAccounts(this.ctx.paths, this.ctx.db.kv) : null;
     const refs = await listSessionFiles(dirs.configDirs);
 
     const present = new Set<string>();
@@ -250,7 +267,8 @@ export class ClaudeFilesSource implements SessionSource {
         reasons.set(c.file.sid, 'pid-reused');
         continue;
       }
-      live.push(info?.tty ? { ...c, tty: info.tty } : c);
+      // Linux `ps` prints `?` (macOS `??`) for a process with no terminal.
+      live.push(info?.tty && normalizeTty(info.tty) ? { ...c, tty: info.tty } : c);
     }
 
     // one record per sid: the most recently updated file wins (a stale copy can linger after a move)
@@ -314,6 +332,11 @@ export class ClaudeFilesSource implements SessionSource {
       else ask.push(pid);
     }
     if (!ask.length) return out;
+    if (this.opts.platform === 'win32') {
+      // No ps on Windows: liveness rests on kill(pid, 0), and pid reuse is not checked.
+      for (const pid of ask) out.set(pid, undefined);
+      return out;
+    }
     const res = await this.ctx.exec(this.ctx.bins.ps, ['-o', 'pid=,tty=,lstart=', '-p', ask.join(',')], {
       env: { ...cLocale(this.ctx.env), TZ: 'UTC' },
       timeoutMs: this.opts.psTimeoutMs,
@@ -371,10 +394,11 @@ export class ClaudeFilesSource implements SessionSource {
 
   /**
    * Profiles map by directory name; the default login is pinned to the account active when first seen.
-   * One Claude login: every session is account 0.
+   * One Claude login: every session is account 0. Config dirs ("dirs"): the dir's kept number.
    */
   private accountOf(configDir: string, sid: string, pid: number, seq: SequenceInfo | null): AccountId | null {
     if (this.ctx.accountsMode() === 'single') return SINGLE_ACCOUNT;
+    if (this.ctx.accountsMode() === 'dirs') return dirsAccountFor(configDir, this.dirAccounts ?? []);
     const c = classifyConfigDir(configDir, this.ctx.paths);
     if (c.kind === 'profile') return accountForProfileDir(c.name, seq);
     if (c.kind !== 'default-login') return null;
@@ -396,7 +420,7 @@ export class ClaudeFilesSource implements SessionSource {
     for (const r of records) {
       seen.add(r.sid);
       try {
-        const cur = this.ctx.store.getState().sessions[r.sid];
+        const cur = localSession(this.ctx.store.getState(), r.sid);
         if (cur) this.emitUpdated(cur, r, this.emitted.get(r.sid));
         else this.emitAdded(r);
         this.emitted.set(r.sid, r);
@@ -410,7 +434,7 @@ export class ClaudeFilesSource implements SessionSource {
       this.ttys.delete(sid);
       this.clearWaiting(sid);
       this.unpin(sid, prev.pid);
-      if (!this.ctx.store.getState().sessions[sid]) continue;
+      if (!localSession(this.ctx.store.getState(), sid)) continue;
       try {
         this.ctx.store.emit({
           type: EVENT.SESSION_REMOVED,
@@ -524,7 +548,7 @@ export class ClaudeFilesSource implements SessionSource {
       this.waitTimers.delete(sid);
       if (!this.started) return;
       const state = this.ctx.store.getState();
-      const s = state.sessions[sid];
+      const s = localSession(state, sid);
       if (!s || s.status !== 'waiting' || s.statusSource === 'hook') return;
       if ((this.waitMarks.get(sid) ?? 0) !== mark) return;
       if (Object.values(state.pending).some((p) => p.sid === sid && p.state === 'open')) return;

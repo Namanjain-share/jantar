@@ -63,7 +63,7 @@ prompt was not sent or not proven), `2` usage error, `3` daemon not running.
 | `install` | `~/.jantar/` (0700), `config.json` (`bins`: absolute paths found now), `~/.jantar/bin/jantar-hook`, `~/Library/LaunchAgents/com.jantar.daemon.plist`; refuses while ccw-v2's LaunchAgent is installed | `launchctl bootout` / `bootstrap` for `com.jantar.daemon` only |
 | `install --print` | nothing | nothing |
 | `uninstall [--purge]` | removes the plist (and `~/.jantar` with `--purge`, after a y/N) | `launchctl bootout` for `com.jantar.daemon` only |
-| `doctor` | nothing | `cswap --version` (profile env stripped), `pgrep -f "ccw --telegram"`, `tailscale status --json`, `tailscale serve status --json` |
+| `doctor` | nothing | `cswap --version` (profile env stripped), `pgrep -f "ccw --telegram"`, `tailscale status --json`, `tailscale serve status --json`; v0.6, with Fleet: `/usr/bin/pmset -g custom` at the Mac, and on a server `tmux -V`, `ps --version`, `loginctl show-user` (Linux) or `systeminfo` and `claude --version` (Windows) |
 | `hooks install` / `uninstall` | nothing, unless `--apply` (asks y/N) or `--yes`; then Claude's settings file, with a backup | nothing |
 | `remote setup --apply` | settings (`remote.publicUrl`, `allowedOrigins`) | `tailscale serve --bg --https=443 http://127.0.0.1:7420` |
 | `open` | nothing | `/usr/bin/open <one-time local link>` |
@@ -81,6 +81,13 @@ prompt was not sent or not proven), `2` usage error, `3` daemon not running.
 | `devices grant` / `revoke-scope` / `revoke` | the device's scopes, through the daemon | nothing |
 | `new` | nothing itself; the daemon opens one Terminal window | nothing |
 | `import-ccw-v2 [--from DIR] [--dry-run]` | an empty `~/.jantar` (built beside it, then renamed into place); never anything in the old dir, which it only reads; refuses while ccw-v2's daemon or LaunchAgent is still there | nothing |
+| `fleet on` / `off` (v0.6, at the Mac) | settings `fleet.enabled`, through the daemon (or `config.json` while it is down) | `/usr/bin/pmset -g custom` (read only, on `on`) |
+| `fleet status`, `node list` | nothing | nothing |
+| `node pair` / `node revoke` | one-time join lines in the daemon / the server's pairing revoked, through the daemon | nothing |
+| `node join` (on a server) | `~/.jantar/node/node.json` (0600 in a 0700 folder), only after the Mac's signature checks; `config.json` (`bins`; on Linux `controls.escapeVerified` and `clearVerified` false); the hook client; the service (as `install`); with `--hooks`, each config dir's `settings.json` | `systemctl --user daemon-reload` / `enable` / `restart jantar.service` and `loginctl enable-linger <user>` (Linux); `launchctl` (a Mac); nothing on Windows (it prints the `schtasks` lines) |
+| `node access` | `node.json`'s Access token | restarts the service |
+| `node leave` | removes the service and `~/.jantar/node/` | `systemctl --user disable --now jantar.service`, `daemon-reload` (Linux) |
+| `install` on a Linux server | `~/.config/systemd/user/jantar.service` | `systemctl --user ...`, `loginctl enable-linger <user>` |
 
 It never reads cswap's credentials or configs, Claude's `.key` files or the
 legacy ccw tool's Telegram config, and never edits ccw's files or its

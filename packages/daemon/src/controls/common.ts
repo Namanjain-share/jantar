@@ -10,6 +10,7 @@
  * (a dialog's title is screen text): a reason goes to the phone, into the
  * audit row's detail and into logs.
  */
+import { localSession, localSessions } from '@jantar/protocol';
 import type { Pane, Session } from '@jantar/protocol';
 import type { ControlResult, DaemonContext, Factories, TimerId } from '../contracts.js';
 import { DIALOG_OPEN, readScreenState, type ScreenState } from '../terminal/screen.js';
@@ -41,7 +42,7 @@ export interface Located {
 
 /** The running session and its terminal pane. */
 export async function locate(ctx: DaemonContext, deps: ControlsDeps, sid: string): Promise<ControlResult<Located>> {
-  const session = ctx.store.getState().sessions[sid];
+  const session = localSession(ctx.store.getState(), sid);
   if (!session) return refuse('not_found', 'no such session is running');
   if (session.status === 'ended') return refuse('refused', 'the session has ended');
   const pane = await deps.terminal.findPane({ ...(session.tty ? { tty: session.tty } : {}), pid: session.pid, sid });
@@ -97,7 +98,7 @@ const CARD_WORD: Record<string, string> = {
  * session waiting in the terminal is refused too (a dialog is up).
  */
 export async function stateGate(ctx: DaemonContext, deps: ControlsDeps, sid: string, opts: { waiting: boolean }): Promise<Refusal | null> {
-  const session = ctx.store.getState().sessions[sid];
+  const session = localSession(ctx.store.getState(), sid);
   if (!session) return refuse('not_found', 'no such session is running');
   if (session.status === 'ended') return refuse('refused', 'the session has ended');
   if (!opts.waiting && session.status === 'waiting') return refuse('dialog_open', WAITING_REASON);
@@ -145,7 +146,8 @@ export const SHARED_PROCESS =
  * session is allowed: answering it is the point.
  */
 export async function dialogGate(ctx: DaemonContext, deps: ControlsDeps, sid: string): Promise<Refusal | null> {
-  const sessions = ctx.store.getState().sessions;
+  // v0.6: the Mac's own sessions only: pids repeat across machines.
+  const sessions = localSessions(ctx.store.getState());
   const session = sessions[sid];
   if (!session) return refuse('not_found', 'no such session is running');
   if (session.status === 'ended') return refuse('refused', 'the session has ended');

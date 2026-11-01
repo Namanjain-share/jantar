@@ -5,17 +5,23 @@ which of these you need, and why, helps decide.
 
 ## Terminals
 
-- **Servers, next (v0.6):** Jantar on a Linux server, with Claude Code in
-  tmux, run as a systemd service and controlled entirely from the phone over
-  Tailscale or your own Cloudflare tunnel. Being built now.
-- Then iTerm2 and Ghostty. Terminal.app only is the biggest limit today.
+- **Servers (v0.6, built):** Linux servers with Claude Code in tmux,
+  Windows with WSL2 and other Macs, paired with the Mac and answered from
+  the phone ([servers](fleet.md)). What comes next there: the
+  [checks on real servers](fleet.md#not-verified-yet), then Escape and
+  Clear draft on tmux once they pass.
+- Typing into native Windows sessions, if a tmux-compatible terminal for
+  Windows answers the same commands tmux does. Today native Windows is
+  watch and cards only.
+- Then iTerm2 and Ghostty on the Mac.
 - A live terminal view on the phone, beside the Text and Picture views.
 
 ## Getting started
 
 - Install without a build: a Homebrew tap, or an npm package with the web
   app already built. The [one-line install](install.md#install-in-one-line)
-  still clones the release and builds it with pnpm.
+  still clones the release and builds it with pnpm. It matters most on
+  servers, where today each one builds Jantar itself.
 - `jantar demo`: the daemon serving the synthetic data the screenshots use,
   read-only, so you can see the whole app with no sessions, cswap or phone.
 - Signed releases.

@@ -27,9 +27,11 @@
  * Security: the socket accepts hook events only. Decisions come exclusively
  * through decide(), which only accepts paired devices with the control scope.
  */
+import { join } from 'node:path';
 import {
   DecisionBodySchema,
   HookPayloadSchema,
+  localSession,
   type DaemonEvent,
   type DecisionBody,
   type EventInput,
@@ -67,7 +69,7 @@ import {
   toolSummary,
 } from './keys.js';
 import { compareKeys, parseMono, ReorderBuffer, type OrderKey } from './ordering.js';
-import { listenHookSocket, type HookConn, type HookSocketServer } from './socket.js';
+import { HOOKS_KEY_FILE, listenHookSocket, type HookConn, type HookSocketServer } from './socket.js';
 import { notificationKind, statusForEvent, type HookStatus } from './status-map.js';
 import { ToolResultWatcher } from './transcript-check.js';
 
@@ -228,6 +230,8 @@ export class HooksBridgeImpl implements HooksBridge {
       this.server = await listenHookSocket({
         path: this.socketPath,
         log: this.log,
+        // v0.6, a Windows pipe: the key the hook client checks the pipe's owner with (ignored on a Unix socket).
+        keyFile: join(this.ctx.paths.runDir, HOOKS_KEY_FILE),
         onLine: (conn, line) => this.onLine(conn, line),
       });
     } catch (e) {
@@ -497,7 +501,7 @@ export class HooksBridgeImpl implements HooksBridge {
     // A SessionEnd older than the session's latest status comes from a process
     // that is gone: the session lives on in another one (resumed elsewhere).
     if (status?.status === 'ended') {
-      const s = this.ctx.store.getState().sessions[sid];
+      const s = localSession(this.ctx.store.getState(), sid);
       if (s && s.status !== 'ended' && at < Date.parse(s.statusAt ?? s.statusSince)) status = null;
     }
 
@@ -771,7 +775,7 @@ export class HooksBridgeImpl implements HooksBridge {
   }
 
   private accountFor(sid: string): number | undefined {
-    const s = this.ctx.store.getState().sessions[sid];
+    const s = localSession(this.ctx.store.getState(), sid);
     if (s && s.account !== null) return s.account;
     const dir = this.sess.get(sid)?.configDir ?? this.ctx.paths.claudeHome;
     try {
@@ -783,7 +787,7 @@ export class HooksBridgeImpl implements HooksBridge {
 
   /** Apply a change to a known session, or keep it until the session appears. */
   private patchSession(sid: string, change: SessionChange): void {
-    const s = this.ctx.store.getState().sessions[sid];
+    const s = localSession(this.ctx.store.getState(), sid);
     if (!s) {
       this.defer(sid, change);
       return;
@@ -834,6 +838,8 @@ export class HooksBridgeImpl implements HooksBridge {
 
   private onStoreEvent(ev: DaemonEvent): void {
     if (this.stopped || !ev.sid) return;
+    // v0.6: a paired server's sessions have their own bridge, there.
+    if (ev.type === 'session.added' && ev.data.session.node !== undefined) return;
     if (ev.type === 'session.added') {
       const d = this.deferred.get(ev.sid);
       if (d) {
@@ -877,12 +883,12 @@ export class HooksBridgeImpl implements HooksBridge {
    * the phone answers; discovery drops them, so a session the store doesn't know gets "no decision" at once.
    */
   private interactive(sid: string): boolean {
-    const s = this.ctx.store.getState().sessions[sid];
+    const s = localSession(this.ctx.store.getState(), sid);
     return s !== undefined && s.entrypoint === 'cli' && s.status !== 'ended';
   }
 
   private maybeScan(sid: string): void {
-    if (this.ctx.store.getState().sessions[sid] || this.scanTimer !== undefined) return;
+    if (localSession(this.ctx.store.getState(), sid) || this.scanTimer !== undefined) return;
     this.scanTimer = this.ctx.clock.setTimeout(() => {
       this.scanTimer = undefined;
       if (this.stopped) return;
@@ -897,7 +903,7 @@ export class HooksBridgeImpl implements HooksBridge {
   private maybeResolveTty(sid: string): void {
     if (!this.resolveTty) return;
     const st = this.sess.get(sid);
-    const s = this.ctx.store.getState().sessions[sid];
+    const s = localSession(this.ctx.store.getState(), sid);
     if (!st || st.ttyTried || !s || s.tty || s.status === 'ended' || !(s.pid > 0)) return;
     st.ttyTried = true;
     void this.lookupTty(sid, s.pid);
@@ -911,7 +917,7 @@ export class HooksBridgeImpl implements HooksBridge {
     if (this.stopped || r.code !== 0) return;
     const tty = r.stdout.trim();
     if (!/^[A-Za-z0-9._/-]{1,64}$/.test(tty) || tty === '??' || tty === '-') return;
-    const s = this.ctx.store.getState().sessions[sid];
+    const s = localSession(this.ctx.store.getState(), sid);
     if (!s || s.tty || s.pid !== pid) return;
     this.patchSession(sid, { patch: { tty } });
   }

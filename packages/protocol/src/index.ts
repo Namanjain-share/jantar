@@ -17,6 +17,10 @@
  * - meetings (v0.5): the Chrome extension's captions and screenshots, the meeting library, the Markdown export
  * - ask (v0.5.3): the Ask page's turns, cards and limits
  * - alerts (v0.5.3): the five alert groups, their tones and fixed phrases, the urgent countdown push
+ * - v0.6 Fleet (in models, state, events, selectors, settings, api, constants): paired machines
+ *   (NodeView, state.nodes, node.updated / node.removed, the fleet switch, the /v1/machines routes,
+ *   FLEET_COPY). The link between a server and the hub is the subpath `@jantar/protocol/node-link`,
+ *   never exported here: none of it belongs in the phone's bundle.
  */
 export * from './constants.js';
 export * from './models.js';

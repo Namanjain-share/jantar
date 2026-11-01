@@ -27,14 +27,14 @@ export function sessionsText(n: number): string {
   return n === 0 ? 'No sessions right now' : `${n} session${n === 1 ? '' : 's'}`;
 }
 
-export function SingleAccount() {
+export function SingleAccount({ machines = false }: { machines?: boolean } = {}) {
   const frame = useFrame();
   const now = useNow(30_000);
   const state = useApp((s) => s.state);
   const conn = useApp((s) => s.conn);
   const phone = frame === 'phone';
-  // One login: every session is on it.
-  const cells = useMemo(() => sessionCells(state, boardOrder(state), now), [state, now]);
+  // One login: every session of this Mac is on it (a paired machine's are on its own accounts).
+  const cells = useMemo(() => sessionCells(state, boardOrder(state).filter((s) => s.node === undefined), now), [state, now]);
   const name = Object.values(state.accounts)[0]?.alias ?? FALLBACK_NAME;
 
   const heading = (
@@ -55,6 +55,8 @@ export function SingleAccount() {
       {heading}
       <div className={phone ? '' : 'max-w-640'}>
         <header className={phone ? 'border-b border-line px-16 pb-16 pt-4' : 'border-b border-line pb-16'}>
+          {/* v0.6: once a machine is paired, this is the Mac's section. */}
+          {machines ? <p className="mb-4 type-rail text-ink-3">Mac · 1 login</p> : null}
           <p data-display className="type-display text-ink">
             {SINGLE_DISPLAY}
           </p>

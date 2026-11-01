@@ -1,0 +1,126 @@
+# v0.6 Fleet: the Docker Linux end-to-end stack (README.md here). One image,
+# jantar-fleet-test; every service runs it as the `node` user. No published
+# ports, and the network is internal: nothing in it reaches the internet, so
+# no push, no Claude, nothing real ever leaves.
+#
+#   ca     once: the test CA and certificates (the certs volume)
+#   door   TLS for hub.fleet.test, Cloudflare Access on /v1/node/*; owns the
+#          network namespace the hub runs in, so a hub restart keeps the door
+#   hub    jantard, Fleet on, on 127.0.0.1:7431 behind the door
+#   node1  a Linux server with tmux; the fake Claude is /usr/local/bin/claude
+#   node2  a Linux server whose daemon has no tmux (Claude in a plain pty)
+#   phone  a paired phone's calls (phone.mjs), and the push service stand-in
+#          (fcm.googleapis.com on this network)
+#
+# The Access token below is synthetic and the door is the only thing that
+# checks it; stack.ts holds the same two values.
+name: jantar-fleet-e2e
+
+x-service: &service
+  image: jantar-fleet-test
+  # Built by the ca service (run.mjs builds first); never looked for in a registry.
+  pull_policy: never
+  user: node
+  init: true
+  volumes:
+    - certs:/certs:ro
+
+x-node: &node
+  <<: *service
+  command: ['sh', '/repo/test/docker/boot.sh', 'node']
+  depends_on:
+    door:
+      condition: service_started
+
+services:
+  ca:
+    image: jantar-fleet-test
+    build:
+      context: ../..
+      dockerfile: test/docker/Dockerfile
+    user: node
+    network_mode: none
+    command: ['sh', '/repo/test/docker/boot.sh', 'ca']
+    volumes:
+      - certs:/certs
+
+  door:
+    <<: *service
+    command: ['node', '/repo/test/docker/door.mjs']
+    depends_on:
+      ca:
+        condition: service_completed_successfully
+    environment:
+      DOOR_ACCESS_ID: jantar-nodes-test.access
+      DOOR_ACCESS_SECRET: synthetic-access-secret-for-the-test-door
+      DOOR_UPSTREAM_PORT: '7431'
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: '0'
+    networks:
+      fleet:
+        aliases: [hub.fleet.test]
+
+  hub:
+    <<: *service
+    command: ['sh', '/repo/test/docker/boot.sh', 'hub']
+    network_mode: service:door
+    depends_on:
+      door:
+        condition: service_started
+    environment:
+      HOME: /home/node
+      JANTAR_HOME: /data/hub
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:7431/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 90
+
+  node1:
+    <<: *node
+    hostname: node1
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+      FAKE_CLAUDE_CTL: /tmp/fake-claude
+      # Fleet off and Access refusals retry every 10 minutes, a removed server
+      # hourly; the suite waits seconds (the dialler's cap for tests).
+      JANTAR_NODE_RETRY_CAP_MS: '3000'
+    networks: [fleet]
+
+  node2:
+    <<: *node
+    hostname: node2
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+      FAKE_CLAUDE_CTL: /tmp/fake-claude
+      JANTAR_NODE_RETRY_CAP_MS: '3000'
+      FLEET_NO_TMUX: '1'
+    networks: [fleet]
+
+  phone:
+    <<: *service
+    command: ['node', '/repo/test/docker/phone.mjs', 'serve']
+    depends_on:
+      door:
+        condition: service_started
+    environment:
+      HOME: /home/node
+      HUB_URL: https://hub.fleet.test
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: '0'
+    networks:
+      fleet:
+        aliases: [fcm.googleapis.com]
+
+networks:
+  fleet:
+    internal: true
+
+volumes:
+  certs:

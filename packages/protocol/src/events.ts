@@ -11,7 +11,9 @@
  *   daemon.version, and alert.* (appended to the alerts feed). files.changed
  *   only moves its session's counter in `fileTicks` (no path, no tool);
  *   life.changed (v0.4) only moves `lifeTick`; primer.status (v0.4) sets
- *   `primer`.
+ *   `primer`; node.updated / node.removed (v0.6) set or drop a paired
+ *   machine (`nodes`), node.removed with its sessions, their cards and
+ *   sends, and its launches.
  * - moment events: session.done / waiting / reminder, usage.threshold,
  *   planner.no_room, device.pending. They drive notifications and never
  *   change state, so an emitter that changes a session also emits
@@ -30,6 +32,8 @@ import {
   IsoDateSchema,
   LaunchJobSchema,
   MoveSchema,
+  NodeIdSchema,
+  NodeViewSchema,
   PendingRequestSchema,
   PendingStateSchema,
   RewriteJobSchema,
@@ -83,6 +87,13 @@ export const EVENT = {
   LIFE_CHANGED: 'life.changed',
   /** v0.4: who primes free 5-hour windows, and Jantar's last prime (no push; the Accounts screen shows it). */
   PRIMER_STATUS: 'primer.status',
+  /**
+   * v0.6: a paired machine's view (online or not, its features, accounts
+   * and usage), replacing `state.nodes[id]`. Emitted by the hub only.
+   */
+  NODE_UPDATED: 'node.updated',
+  /** v0.6: a machine was removed (revoked, or Fleet turned off): its view, sessions, cards, sends and launches go. */
+  NODE_REMOVED: 'node.removed',
 } as const;
 
 export type EventType = (typeof EVENT)[keyof typeof EVENT];
@@ -210,6 +221,8 @@ export const EventDataSchemas = {
   }),
   'life.changed': z.strictObject({}),
   'primer.status': z.object({ status: PrimerStatusSchema }),
+  'node.updated': z.object({ node: NodeViewSchema }),
+  'node.removed': z.object({ id: NodeIdSchema }),
 } as const satisfies Record<EventType, z.ZodType>;
 
 export type EventDataMap = { [K in EventType]: z.infer<(typeof EventDataSchemas)[K]> };

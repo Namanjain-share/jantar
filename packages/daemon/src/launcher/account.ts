@@ -23,9 +23,16 @@
  *   be resumed on that account, so a resume pins it; every other account
  *   says "This conversation is on 03" and cannot be picked.
  *
+ * v0.6, config dirs (accountsMode "dirs", a paired server without cswap,
+ * spec 5; the inputs say so with `mode`): nothing reads usage there, so an
+ * account is usable unless it is disabled, and Auto is ~/.claude (account
+ * 0) unless it is kept (or held), else the lowest-numbered account that is
+ * not. Auto never moves past its pick because the pick is starting another
+ * session: it says so, as on the Mac.
+ *
  * Pure functions: the service gathers the inputs.
  */
-import type { Account, AccountId, LaunchAccount, Session } from '@jantar/protocol';
+import type { Account, AccountId, AccountsMode, LaunchAccount, Session } from '@jantar/protocol';
 import { acct, dur, hhmm } from '../notify/format.js';
 import { SINGLE_ACCOUNT } from '../rewrite/account.js';
 
@@ -55,6 +62,8 @@ export interface AccountInputs {
   busy: ReadonlySet<number>;
   /** IANA zone for "14:20" (the Mac's own when omitted). */
   timeZone?: string | undefined;
+  /** v0.6: ctx.accountsMode(); "dirs" switches to the config-dir rules (no usage). Absent: cswap's rules. */
+  mode?: AccountsMode | undefined;
 }
 
 export interface AutoPick {
@@ -82,19 +91,20 @@ export function isHeld(a: Account, inp: Pick<AccountInputs, 'hold' | 'kept'>): b
   return a.held || inp.hold.has(a.id) || inp.kept.has(a.id);
 }
 
-/** Why the account cannot be started on at all (a manual pick is refused), or null. */
-export function notSelectable(a: Account): string | null {
+/** Why the account cannot be started on at all (a manual pick is refused), or null. Config dirs read no usage: only disabled counts. */
+export function notSelectable(a: Account, inp?: Pick<AccountInputs, 'mode'>): string | null {
   if (a.disabled) return 'disabled';
-  if (a.usageStatus === 'ok') return null;
+  if (a.usageStatus === 'ok' || inp?.mode === 'dirs') return null;
   return STATUS_WHY[a.usageStatus] ?? a.usageStatus.replace(/_/gu, ' ');
 }
 
 /** Why Auto passes the account over, or null when it is usable. */
 export function autoSkip(a: Account, inp: AccountInputs): string | null {
-  const why = notSelectable(a);
+  const why = notSelectable(a, inp);
   if (why) return why;
   if (isHeld(a, inp)) return 'held';
   if (inp.busy.has(a.id)) return 'starting another session';
+  if (inp.mode === 'dirs') return null;
   const five = fiveHour(a);
   if (!five) return 'no usage reading';
   if (five.pct >= inp.ceiling) return 'past the ceiling';
@@ -116,7 +126,8 @@ export function liveOn(id: AccountId, sessions: readonly Session[]): number {
 }
 
 /** "5h 12% · resets in 3h40 · 14:20" (as much of it as is known). */
-export function usageLine(a: Account, inp: Pick<AccountInputs, 'nowMs' | 'timeZone'>): string {
+export function usageLine(a: Account, inp: Pick<AccountInputs, 'nowMs' | 'timeZone' | 'mode'>): string {
+  if (inp.mode === 'dirs') return DIRS_NO_USAGE;
   const five = fiveHour(a);
   if (!five) return 'no usage reading';
   const parts = [`5h ${Math.round(five.pct)}%`];
@@ -129,6 +140,7 @@ export function usageLine(a: Account, inp: Pick<AccountInputs, 'nowMs' | 'timeZo
 
 /** Auto: the usable account with the most room, or null with the sentence for the sheet. */
 export function pickAuto(inp: AccountInputs): AutoPick {
+  if (inp.mode === 'dirs') return pickDirs(inp);
   const usable = inp.accounts.filter((a) => autoSkip(a, inp) === null);
   if (usable.length === 0) return { pick: null, reason: noRoomReason(inp) };
   const ranked = usable
@@ -161,6 +173,7 @@ export function noRoomReason(inp: AccountInputs): string {
 
 /** The account picker's rows, by id. */
 export function accountRows(inp: AccountInputs): LaunchAccount[] {
+  if (inp.mode === 'dirs') return dirsRows(inp);
   return [...inp.accounts]
     .sort((a, b) => a.id - b.id)
     .map((a) => {
@@ -226,4 +239,40 @@ export function pinnedReason(id: AccountId): string {
 /** The picker's rows for a resume pinned to `id`: every other account cannot be picked, and says why. */
 export function pinRows(rows: readonly LaunchAccount[], id: AccountId): LaunchAccount[] {
   return rows.map((r) => (r.id === id ? r : { ...r, selectable: false, why: pinnedReason(id) }));
+}
+
+// ---- v0.6: config dirs ------------------------------------------------------
+
+/** What a config dir's usage reads as (nothing reads usage there). */
+export const DIRS_NO_USAGE = 'no usage numbers here';
+/** Auto's reason when it picks ~/.claude. */
+export const DIRS_DEFAULT_REASON = 'the default login (~/.claude)';
+/** Auto has no pick: every account is kept, held or disabled. */
+export const DIRS_ALL_KEPT = 'Every account on this machine is kept or held: pick one';
+
+/** Config dirs: ~/.claude (0) unless it is kept, held or disabled, else the lowest-numbered account that is not. */
+export function pickDirs(inp: AccountInputs): AutoPick {
+  const usable = [...inp.accounts].sort((a, b) => a.id - b.id).filter((a) => !a.disabled && !isHeld(a, inp));
+  const first = usable[0];
+  if (!first) return { pick: null, reason: DIRS_ALL_KEPT };
+  if (inp.busy.has(first.id)) return { pick: null, reason: `A session is already starting on ${acct(first.id)}. Try again once it is ready.` };
+  if (first.id === SINGLE_ACCOUNT) return { pick: first.id, reason: DIRS_DEFAULT_REASON };
+  return { pick: first.id, reason: `the first account not kept (${first.alias?.trim() || acct(first.id)})` };
+}
+
+/** Config dirs' picker: every account selectable unless disabled, held when kept or held; no usage fields. */
+export function dirsRows(inp: AccountInputs): LaunchAccount[] {
+  return [...inp.accounts]
+    .sort((a, b) => a.id - b.id)
+    .map((a) => {
+      const row: LaunchAccount = {
+        id: a.id,
+        label: a.alias?.trim() || acct(a.id),
+        live: liveOn(a.id, inp.sessions),
+        selectable: !a.disabled,
+        held: isHeld(a, inp),
+      };
+      if (a.disabled) row.why = 'disabled';
+      return row;
+    });
 }

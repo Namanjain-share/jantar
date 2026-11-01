@@ -9,6 +9,9 @@
  *          in past tense. Then the next three 5-hour resets as runways.
  *   side   (>= 1360 px, where the cards keep their width) the newest
  *          alerts and the legend.
+ *
+ * v0.6: once a machine is paired, each card names its machine after the
+ * session ("build-1"), and an alert from a machine starts with its name.
  */
 import { ArrowRightIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -108,6 +111,11 @@ function QueueCard({ item, index }: { item: DeskItem; index: number }) {
           {r.folder}
           <span className="ml-6 font-regular text-ink-3">{r.name}</span>
         </span>
+        {r.machine ? (
+          <span data-machine className="ml-12 flex-none type-mono text-ink-3">
+            {r.machine.offline ? `${r.machine.name} · offline` : r.machine.name}
+          </span>
+        ) : null}
         {index < 9 ? (
           <span className="ml-auto flex-none" aria-hidden="true">
             <Keycap>{index + 1}</Keycap>

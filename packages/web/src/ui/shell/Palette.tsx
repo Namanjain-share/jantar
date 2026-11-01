@@ -6,18 +6,21 @@
 import { Dialog } from '@base-ui/react/dialog';
 import { Command } from 'cmdk';
 import { useMemo } from 'react';
-import { boardOrder } from '@jantar/protocol';
+import { boardOrder, machineName } from '@jantar/protocol';
 import { accountId, accountName, ago, primaryWindow } from '../../lib/format.js';
 import { useApp, useNavigate } from '../context.js';
 import { Keycap } from '../kit/Keycap.js';
 import { StatusGlyph } from '../kit/StatusGlyph.js';
 import { glyphStateOf } from '../kit/glyph.js';
 import { NewSessionItem } from '../screens/new/PaletteItem.js';
+import { hasMachines } from '../screens/session/Info.js';
 
 export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChange: (o: boolean) => void; now: number }) {
   const state = useApp((s) => s.state);
   const navigate = useNavigate();
   const sessions = useMemo(() => boardOrder(state), [state]);
+  // v0.6: once a machine is paired, each session names its machine, and a machine's name finds its sessions.
+  const machines = hasMachines(state);
   const accounts = useMemo(() => Object.values(state.accounts).sort((a, b) => a.id - b.id), [state]);
   const go = (to: string) => {
     onOpenChange(false);
@@ -42,14 +45,15 @@ export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChan
                   {sessions.map((s) => (
                     <Command.Item
                       key={s.sid}
-                      value={`${s.folder} ${s.name ?? ''} ${s.sid}`}
+                      value={`${s.folder} ${s.name ?? ''} ${machines ? machineName(state, s.node) : ''} ${s.sid}`}
                       onSelect={() => go(`/s/${encodeURIComponent(s.sid)}`)}
                       className="flex h-40 cursor-pointer items-center gap-8 pl-16 pr-20 aria-selected:bg-select"
                     >
                       <StatusGlyph state={glyphStateOf(state, s, now)} />
                       <span className="type-row font-medium">{s.folder}</span>
                       <span className="min-w-0 truncate type-row text-ink-2">{s.name}</span>
-                      <span className="ml-auto pl-12 type-mono text-ink-3">{ago(s.statusSince, now)}</span>
+                      {machines ? <span className="ml-auto flex-none pl-12 type-mono text-ink-3">{machineName(state, s.node)}</span> : null}
+                      <span className={machines ? 'flex-none pl-12 type-mono text-ink-3' : 'ml-auto pl-12 type-mono text-ink-3'}>{ago(s.statusSince, now)}</span>
                     </Command.Item>
                   ))}
                 </Command.Group>

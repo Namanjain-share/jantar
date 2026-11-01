@@ -9,6 +9,7 @@
       "vitest": ["../../packages/cli/node_modules/vitest/dist/index.d.ts"],
       "@jantar/fixtures": ["../../test/fixtures/src/index.ts"],
       "@jantar/protocol": ["../../packages/protocol/src/index.ts"],
+      "@jantar/protocol/node-link": ["../../packages/protocol/src/node-link.ts"],
       "@jantar/hook": ["../../packages/hook/src/index.ts"],
       "@jantar/daemon": ["../../packages/daemon/src/index.ts"],
       "@jantar/daemon/*": ["../../packages/daemon/src/*", "../../packages/daemon/src/*.ts"]

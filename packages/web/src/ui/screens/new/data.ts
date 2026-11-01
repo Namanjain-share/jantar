@@ -11,10 +11,14 @@
  * past conversations (GET /v1/launch/history). A resume is a choice per
  * start, never remembered: Off, Last (the newest one not running) or one
  * picked from the list.
+ *
+ * v0.6 (Fleet): where the session starts (`Where`, the Mac or a paired
+ * machine), and the API every folder and start call goes through there
+ * (`onMachine`): each one carries `node` for a machine, nothing for the Mac.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { CLI_NAME, LAUNCH_CAP, type PastSession } from '@jantar/protocol';
-import { isApiError } from '../../../lib/api.js';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { CLI_NAME, LAUNCH_CAP, type AccountsMode, type PastSession } from '@jantar/protocol';
+import { isApiError, type Api } from '../../../lib/api.js';
 import { accountId } from '../../../lib/format.js';
 import { deviceNoun, readLocalDevice, userAgent } from '../devices/local.js';
 
@@ -226,4 +230,43 @@ export function chosenPast(sessions: readonly PastSession[], mode: ResumeMode, p
   if (mode === 'last') return lastPast(sessions);
   if (mode === 'pick' && picked !== null) return sessions.find((s) => s.id === picked);
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Where (v0.6): the Mac or a paired machine
+
+export interface Where {
+  /** The machine's id; undefined for the Mac. */
+  node?: string;
+  /** "Mac", "build-1". */
+  name: string;
+  /** How that machine reads its accounts (a server: cswap or config dirs). */
+  accountsMode: AccountsMode;
+  /** Its link is up: while it is not, nothing can start there ("build-1 is offline"). */
+  online: boolean;
+}
+
+/** Where New session starts; null (no provider): the Mac, as before Fleet. */
+export const WhereContext = createContext<Where | null>(null);
+
+export function useWhere(): Where | null {
+  return useContext(WhereContext);
+}
+
+/** The API with every folder, start-sheet and usage call sent to `node` (`?node=`); the Mac's own unchanged. */
+export function onMachine(api: Api, node: string | undefined): Api {
+  if (node === undefined) return api;
+  const n = { node };
+  return {
+    ...api,
+    foldersRoots: () => api.foldersRoots(n),
+    foldersList: (q) => api.foldersList({ ...q, node }),
+    foldersRecent: () => api.foldersRecent(n),
+    foldersPin: (body) => api.foldersPin(body, n),
+    foldersCreate: (body, key) => api.foldersCreate(body, key, n),
+    launchPreview: (q) => api.launchPreview({ ...q, node }),
+    launchStart: (body, key) => api.launchStart(body, key, n),
+    launchHistory: (q) => api.launchHistory({ ...q, node }),
+    refreshUsage: () => api.refreshUsage(n),
+  };
 }

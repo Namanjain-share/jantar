@@ -39,6 +39,7 @@
  */
 import {
   LAUNCH_FINAL_STAGES,
+  localSessions,
   type LaunchAnswerBody,
   type LaunchJob,
   type LaunchStage,
@@ -68,6 +69,10 @@ import { ccwCheck } from '../writer/preconditions.js';
 import { answerKeys, dialogAction, dialogQuestion, readStartupScreen, screenTail, type StartupDialog } from './dialogs.js';
 import { fail, isRefusal } from './folders.js';
 import { auditAnswer, auditLaunch, launchNotification, pushLaunch, type LaunchPushKind } from './report.js';
+
+/** No window can open: the Mac's Terminal, or (v0.6, a Linux server) no usable tmux there. */
+export const noWindows = (terminal: Pick<TerminalBackend, 'kind'>) =>
+  terminal.kind === 'tmux' ? "This server has no tmux 3.2 or later, so Jantar can't open a new window there" : "This Mac's terminal can't open new windows";
 
 export interface RunTimings {
   /** Screen, foreground and session checks while starting. */
@@ -383,7 +388,7 @@ export class LaunchRun {
     this.setStage('opening', 'Opening a window');
     const open = this.d.terminal.openWindow?.bind(this.d.terminal);
     if (!open) {
-      this.finish('failed', "This Mac's terminal can't open new windows");
+      this.finish('failed', noWindows(this.d.terminal));
       return false;
     }
     const r = await open(command);
@@ -423,7 +428,7 @@ export class LaunchRun {
    * window opened and, on the first poll, the pane is in that window.
    */
   private async resume(): Promise<boolean> {
-    const session = this.byId(this.ctx.store.getState().sessions);
+    const session = this.byId(localSessions(this.ctx.store.getState()));
     const tty = normalizeTty(session?.tty) ?? normalizeTty(this.job.tty);
     if (!tty) {
       this.finish('failed', RESTART_REASON);
@@ -582,7 +587,8 @@ export class LaunchRun {
 
   /** Our session in the store, by --session-id; after 20 s of Claude in front, by tty, start time and folder. */
   private async detect(now: number): Promise<Session | null> {
-    const sessions = this.ctx.store.getState().sessions;
+    // v0.6: this Mac's own sessions (a launch on a server runs on that server).
+    const sessions = localSessions(this.ctx.store.getState());
     let found: Session | null = this.byId(sessions) ?? null;
     if (!found && this.job.tty && this.claudeAt !== null && now - this.claudeAt >= this.t.fallbackAfterMs) {
       const floor = Date.parse(this.job.createdAt) - 5_000;

@@ -20,7 +20,9 @@
  */
 import type { Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
+import type { IncomingMessage } from 'node:http';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
+import type { Duplex } from 'node:stream';
 import type {
   Account,
   AskList,
@@ -137,7 +139,16 @@ import type {
   TerminalDialog,
   TranscriptItem,
   UploadInfo,
+  MachinesPairBody,
+  MachinesPairReply,
+  NodeBackend,
+  NodeOs,
+  NodePairBody,
+  NodePairReply,
+  NodeRow,
+  RouteName,
 } from '@jantar/protocol';
+import type { NodeCallActor, NodeCallReply, NodeCallRequest, NodeRouteName, NodeSnapshot } from '@jantar/protocol/node-link';
 
 export type Unsubscribe = () => void;
 
@@ -276,6 +287,18 @@ export interface Paths {
   meetingsDir: string;
   /** v0.5: the summary run's dir (the empty cwd, the system prompt copy), <home>/meeting-summary (0700, created on demand). */
   meetingSummaryDir: string;
+  /** v0.6: the hub's Fleet files, <home>/fleet (0700, made by the first `jantar fleet on`). */
+  fleetDir: string;
+  /** v0.6: the hub's Ed25519 key, <home>/fleet/hub-key.pem (PKCS8, 0600). Only its public half ever leaves the Mac (in join lines). */
+  hubKeyFile: string;
+  /** v0.6: a paired server's own files, <home>/node (0700). */
+  nodeDir: string;
+  /**
+   * v0.6: <home>/node/node.json (0600): written by `jantar node join` once the
+   * hub's signature checks, deleted by `jantar node leave`. Its presence makes
+   * the daemon a node (config.ts roleOf).
+   */
+  nodeFile: string;
 
   /** Read-only inputs, all under the (possibly synthetic) user home. */
   userHome: string;
@@ -482,6 +505,42 @@ export interface ExtensionRecord {
   revokedAt: string | null;
 }
 
+/**
+ * v0.6: a paired server (migration 5, table `nodes`). The hub keeps its
+ * public key only; the name is the hub's (unique among live nodes). A
+ * revoked row stays, for the audit log.
+ */
+export interface NodeRecord {
+  /** A ulid. */
+  id: string;
+  name: string;
+  /** Ed25519 public key: 32 raw bytes, base64url. */
+  publicKey: string;
+  os: NodeOs;
+  /** Its Jantar version at pairing, then at each handshake. */
+  version: string;
+  createdAt: string;
+  /** Written at most every 5 minutes while linked. */
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+}
+
+/** v0.6: table `nodes` (auth/nodes.ts is its only writer). */
+export interface NodesRepo {
+  /** Throws when a live node already has the name (a unique index): the caller checks first. */
+  insert(rec: NodeRecord): void;
+  get(id: string): NodeRecord | null;
+  /** The live (not revoked) node with this name, if any. */
+  byName(name: string): NodeRecord | null;
+  /** Oldest first, revoked ones included. */
+  list(): NodeRecord[];
+  touch(id: string, at: string): void;
+  /** The OS and version a node reported on its latest handshake. */
+  setInfo(id: string, info: { os: NodeOs; version: string }): void;
+  /** Sets revokedAt (once); null for an unknown id. */
+  revoke(id: string, at: string): NodeRecord | null;
+}
+
 /** v0.5: table `extensions` (auth/extensions.ts is its only user). */
 export interface ExtensionsRepo {
   insert(rec: ExtensionRecord): void;
@@ -508,6 +567,8 @@ export interface Db {
   readonly rewriteRuns: RewriteRunRepo;
   /** v0.5 */
   readonly extensions: ExtensionsRepo;
+  /** v0.6 */
+  readonly nodes: NodesRepo;
   close(): void;
 }
 
@@ -855,6 +916,14 @@ export interface TerminalBackend {
   pressKey?(pane: Pane, key: ControlKey, opts?: PressKeyOptions): Promise<OpResult>;
   /** v0.3 (WP-C, terminal-app/shot.ts): an image of the pane's window (`screencapture -l`, never by focusing it). */
   getScreenshot?(pane: Pane, opts?: ScreenshotRequest): Promise<OpResult<TerminalShot>>;
+  /**
+   * v0.6: a backend with work of its own between calls (tmux's 10 s tick that
+   * ties live sessions to panes and sets `session.paneId`). daemon.ts starts
+   * it with the other services, after the writer, and stops it in reverse;
+   * the --read-only wrapper passes both through.
+   */
+  start?(): Promise<void>;
+  stop?(): Promise<void>;
 }
 
 export interface SubmitRequest {
@@ -943,9 +1012,15 @@ export interface PaneFinder {
 /** Subscribes to the bus; applies kinds, mute, settle delay and 10/30 min reminders; fans out. */
 export type NotificationRouter = Service;
 
-/** Fastify on 127.0.0.1:<port> plus the same API on paths.ctlSock for the CLI. */
+/**
+ * Fastify on 127.0.0.1:<port> plus the same API on paths.ctlSock for the CLI.
+ * v0.6: on a node there is no TCP listener at all; the API is the control
+ * socket plus the in-process `link` app the hub's calls run through.
+ */
 export interface ApiServer extends Service {
   address(): { host: string; port: number } | null;
+  /** v0.6: the link app on a node (null on the hub, and before start). */
+  link(): LinkInjector | null;
 }
 
 // ===========================================================================
@@ -1838,6 +1913,221 @@ export interface AskService extends Service {
 }
 
 // ===========================================================================
+// v0.6: Fleet
+//
+// One codebase, two roles (config.ts roleOf): a daemon with
+// <state dir>/node/node.json is a node (a paired server: no TCP listener, no
+// Life, Intel, Meetings, primer, Rewrite or pushes), else the hub. On the hub
+// the `fleet` part serves the link while settings fleet.enabled is on, keeps
+// each node's view and re-emits its checked, clipped events into the hub's
+// own store, and forwards the phone's calls for a node's sessions. On a node
+// the `nodeLink` part dials the hub, sends its snapshot and events, and runs
+// the hub's calls through the node's own API (the `link` transport). Each
+// side has an inert stand-in for the other's part (modes.ts).
+
+/** v0.6: what this daemon is. */
+export type DaemonRole = 'hub' | 'node';
+
+/**
+ * v0.6: <state dir>/node/node.json (0600 in a 0700 dir; on Windows the
+ * profile's ACL). Written by `jantar node join` only once the hub's
+ * signature checks; `jantar node access` rewrites `cfAccess`; read again
+ * before every reconnect. Never logged; `jantar node status` shows the hub's
+ * host and the Access client id only.
+ */
+export interface NodeFile {
+  v: 1;
+  /** The hub's front door (an origin). */
+  url: string;
+  nodeId: string;
+  /** The name the hub gave this node. */
+  name: string;
+  /** The hub's public key, pinned at join (base64url, 32 bytes). */
+  hubKey: string;
+  /** This node's Ed25519 private key, PKCS8 PEM. */
+  privateKey: string;
+  /** Cloudflare Access service token headers, sent on the pairing POST and every upgrade. */
+  cfAccess: { clientId: string; clientSecret: string } | null;
+}
+
+/** v0.6: the paired machine a forwarded call goes to (FleetService.target). */
+export interface FleetTarget {
+  nodeId: string;
+  name: string;
+}
+
+/** v0.6: why a Fleet call said no; the API answers with the same code (node_version: 426, the link versions differ). */
+export type FleetErrorCode = Extract<
+  ErrorCode,
+  'unauthorized' | 'forbidden' | 'not_found' | 'invalid_request' | 'conflict' | 'rate_limited' | 'unavailable' | 'not_implemented' | 'node_version'
+>;
+
+/** v0.6: a Fleet answer, or an API error code and a fixed sentence (`headers`: retry-after on rate_limited). */
+export type FleetResult<T extends object = Record<never, never>> =
+  | ({ ok: true } & T)
+  | { ok: false; code: FleetErrorCode; reason: string; headers?: Record<string, string> };
+
+/** v0.6: one phone call the hub forwards, after its own device, scope, Origin, secret and schema checks (api/app.ts). */
+export interface ForwardCall {
+  route: NodeRouteName;
+  params: Record<string, string>;
+  query: Record<string, string>;
+  /** The JSON body as the hub validated it. */
+  body?: unknown;
+  /** `<deviceId>:<Idempotency-Key>`: only the node's cache replays (the hub caches nothing for a forwarded call). */
+  idem?: string;
+  /** The phone as the hub knows it (scopes without admin), or `cli` for the hub's own CLI. */
+  actor: NodeCallActor;
+  /** An upload's bytes (uploadCreate), sent as the call's bulk. */
+  raw?: Buffer;
+}
+
+/**
+ * v0.6: the hub's Fleet part (fleet/index.ts). Always built on the hub, and
+ * inert (no listener, no timer, no file) while settings fleet.enabled is off;
+ * it follows the switch itself (on: the hub key, the link server; off: every
+ * link closes 4403 and each node's sessions leave the board).
+ */
+export interface FleetService extends Service {
+  /**
+   * Where a route goes: null for the Mac itself, or the node that owns the
+   * session, card or launch the route names, or the live node `?node=`
+   * names. Never throws; never a node for a route outside NODE_ROUTES. (The
+   * API answers 404 itself when `?node=` is given and this is null.)
+   */
+  target(route: RouteName, params: Readonly<Record<string, string>>, query: Readonly<Record<string, unknown>>): FleetTarget | null;
+  /** Forward one call; never rejects. node_offline (503) and node_timeout (504) come back as replies. */
+  forward(target: FleetTarget, call: ForwardCall): Promise<NodeCallReply>;
+  /**
+   * The link's upgrade, after api/node-upgrade.ts checked Fleet, the Host and
+   * that no Origin came. Takes over the socket (answers it, or upgrades it).
+   */
+  acceptLink(req: IncomingMessage, socket: Duplex, head: Buffer): void;
+  /** POST /v1/node/pair: claim a join line's code (one generic 401 for every bad code). */
+  pair(body: NodePairBody, meta: { rateKey: string }): Promise<FleetResult<{ reply: NodePairReply; nodeId: string }>>;
+  /** POST /v1/machines/pair (the Mac only): one join line per server. */
+  makeTokens(body: MachinesPairBody, actor: Actor): Promise<FleetResult<{ tokens: MachinesPairReply['tokens'] }>>;
+  /** GET /v1/machines: every pairing, revoked ones included. */
+  list(): NodeRow[];
+  /** DELETE /v1/machines/:id: revoke, close its link 4401, drop it from the board. */
+  revoke(id: string, actor: Actor): Promise<FleetResult<{ machine: NodeRow }>>;
+}
+
+/** v0.6: what the hub knows of a linked node from its `auth` frame. */
+export interface HubLinkInfo {
+  os: NodeOs;
+  version: string;
+  backend: NodeBackend;
+  readOnly: boolean;
+  accessRefused: number;
+}
+
+/** v0.6: one authenticated node link on the hub (fleet/socket.ts makes it; the registry uses it). */
+export interface HubLink {
+  readonly nodeId: string;
+  readonly info: HubLinkInfo;
+  /** Called exactly once per link, first; a second snapshot is a protocol error the socket handles. */
+  onSnapshot(fn: (snap: NodeSnapshot) => void): void;
+  /** Each `event` frame's event, unparsed past its `type` (the registry checks the rest). */
+  onEvent(fn: (event: unknown) => void): void;
+  onClose(fn: (code: number) => void): void;
+  /** One call; never rejects: node_offline / node_timeout come back as values. `bulk`: an upload's bytes. */
+  call(req: NodeCallRequest, bulk?: Buffer): Promise<NodeCallReply>;
+  close(code: number, reason: string): void;
+}
+
+/** v0.6: the hub's link server (fleet/socket.ts createLinkServer). */
+export interface LinkServer {
+  /** Handshake limiter, unauthenticated-socket cap, upgrade, handshake; a verified link goes to `hooks.onLink`. */
+  accept(req: IncomingMessage, socket: Duplex, head: Buffer): void;
+  /** Close one node's link (revoked: 4401). */
+  closeNode(nodeId: string, code: number, reason: string): void;
+  /** Close every link (Fleet off: 4403; shutdown: 1001). */
+  closeAll(code: number, reason: string): void;
+  /** Links up now. */
+  linked(): string[];
+  stop(): Promise<void>;
+}
+
+/** v0.6: what the link server tells its owner. */
+export interface LinkServerHooks {
+  /** A link passed the handshake: wire its handlers before returning (its snapshot comes next). */
+  onLink(link: HubLink): void;
+}
+
+/** v0.6: the node's side of a verified link (node/dialer.ts makes it; the feed and the executor use it). */
+export interface NodeLink {
+  sendSnapshot(snap: NodeSnapshot): void;
+  sendEvent(event: DaemonEvent): void;
+  onCall(fn: (req: NodeCallRequest, bulk?: Buffer) => Promise<NodeCallReply>): void;
+  onClose(fn: (code: number) => void): void;
+}
+
+/** v0.6: the node's link as `jantar node status` and /ctl/status tell it. Never a secret, a URL path or a key. */
+export interface NodeLinkStatus {
+  /** off: not a node (or stopped); connecting; linked; waiting: backing off until `retryAt`. */
+  state: 'off' | 'connecting' | 'linked' | 'waiting';
+  /** The name the hub gave this node. */
+  name: string | null;
+  /** The hub's host name only. */
+  hubHost: string | null;
+  /** How the last link or attempt ended: a close code, or the upgrade's HTTP status (403 from Access, 404 with Fleet off). */
+  lastClose: { code: number; at: string } | null;
+  /** Cloudflare Access refusals since the last good link. */
+  accessRefused: number;
+  retryAt: string | null;
+}
+
+/** v0.6: the node's dialler (node/dialer.ts): dial, handshake, redial with backoff, re-reading node.json each time. */
+export interface Dialer {
+  /** `onLink` gets each verified link. */
+  start(onLink: (link: NodeLink) => void): void;
+  stop(): Promise<void>;
+  status(): NodeLinkStatus;
+}
+
+/** v0.6: the node's feed (node/feed.ts): the snapshot, then its own events, clipped, under the rate budget. */
+export interface NodeFeed {
+  /** Send the snapshot and then live events on this link until it closes; the returned function detaches. */
+  attach(link: NodeLink): Unsubscribe;
+}
+
+/** v0.6: runs the hub's calls on a node (node/executor.ts): NODE_ROUTES only, through the node's own API. */
+export interface CallExecutor {
+  run(req: NodeCallRequest, bulk?: Buffer): Promise<NodeCallReply>;
+}
+
+/** v0.6: one call into the node's own API on the `link` transport (api/server.ts makes it on a node). */
+export interface LinkRequest {
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  /** Path and query string, built from the route name (buildPath), never a path from the hub. */
+  url: string;
+  /** Becomes the device `hub.<deviceId>` with these scopes, never stored. */
+  actor: NodeCallActor;
+  /** Sent as the Idempotency-Key: the node's own cache replays it. */
+  idem?: string;
+  /** A JSON body. */
+  body?: unknown;
+  /** An upload's bytes (application/octet-stream), instead of `body`. */
+  raw?: Buffer;
+}
+
+/** v0.6: the node API's answer: its status and parsed JSON body. */
+export interface LinkResponse {
+  status: number;
+  body: unknown;
+}
+
+export interface LinkInjector {
+  inject(req: LinkRequest): Promise<LinkResponse>;
+}
+
+/** v0.6: the node's link part (node/index.ts). On the hub an inert one (state off). */
+export interface NodeLinkService extends Service {
+  status(): NodeLinkStatus;
+}
+
+// ===========================================================================
 // Factories (the integration step wires these in main.ts)
 
 export type Factory<T, D = Record<never, never>> = (ctx: DaemonContext, deps: D) => T;
@@ -1866,6 +2156,10 @@ export interface Parts {
   /** v0.5.3 */
   ask: AskService;
   notifications: NotificationRouter;
+  /** v0.6: the hub's Fleet part (inert while Fleet is off; an inert stand-in on a node). */
+  fleet: FleetService;
+  /** v0.6: a node's link to the hub (an inert stand-in on the hub). */
+  nodeLink: NodeLinkService;
   api: ApiServer;
 }
 
@@ -1944,5 +2238,10 @@ export interface Factories {
    * reads (never types, no writer lock).
    */
   notifications: Factory<NotificationRouter, { notifiers: Notifier[]; terminal: TerminalBackend; panes: PaneFinder }>;
-  api: Factory<ApiServer, Omit<Parts, 'api' | 'notifications'>>;
+  /** v0.6 (L4's fleet/index.ts, wiring L1's link server and NodeAuth): the hub only. */
+  fleet: Factory<FleetService>;
+  /** v0.6 (L1's node/index.ts, with L4's feed): a node only. `executor` runs the hub's calls through the node's own API. */
+  nodeLink: Factory<NodeLinkService, { executor: CallExecutor }>;
+  /** v0.6: `fleet` and `nodeLink` may be left out (tests): inert stand-ins take their place. */
+  api: Factory<ApiServer, Omit<Parts, 'api' | 'notifications' | 'fleet' | 'nodeLink'> & Partial<Pick<Parts, 'fleet' | 'nodeLink'>>>;
 }

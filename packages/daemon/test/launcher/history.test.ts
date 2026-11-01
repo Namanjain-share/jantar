@@ -7,7 +7,7 @@
  * written by the fixtures' writePastSessions on a synthetic home.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PAST_SECRET_EMAIL, PAST_SECRET_TOKEN, PAST_SESSIONS, makeFakeHome, writePastSessions, type FakeHome } from '@jantar/fixtures';
@@ -102,6 +102,21 @@ describe('a folder\'s past conversations', () => {
     await writePastSessions(home, folder, [{ id, first: 'shared copy', at: '2026-01-10T10:00:00.000Z' }]);
     await writePastSessions(home, folder, [{ id, first: 'profile copy', at: '2026-01-12T10:00:00.000Z', account: 3 }]);
     expect(await pastSessions(deps(), folder)).toEqual([{ id, account: 3, lastAt: '2026-01-12T10:00:00.000Z', first: 'profile copy', live: false }]);
+  });
+
+  it("v0.6, config dirs (a server): each dir's own projects, ~/.claude's pinned to 0 and ~/.claude-work's to its number; cswap profiles are not read", async () => {
+    await writePastSessions(home, folder, PAST_SESSIONS);
+    // ON_TWO was recorded under ~/.claude-work on this server.
+    const work = join(home.home, '.claude-work');
+    await mkdir(join(work, 'projects', encodeProjectDir(folder)), { recursive: true });
+    await writeFile(join(work, '.claude.json'), '{}\n');
+    await rename(join(profileDir(2), `${ON_TWO}.jsonl`), join(work, 'projects', encodeProjectDir(folder), `${ON_TWO}.jsonl`));
+    const list = await pastSessions(deps('dirs'), folder);
+    expect(list.map((s) => [s.id, s.account])).toEqual([
+      [NEWEST, 0],
+      [ON_TWO, 1],
+      [SECRET, 0],
+    ]);
   });
 
   it('a folder with no history, or no projects dir at all, is an empty list', async () => {

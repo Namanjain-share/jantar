@@ -1,0 +1,3 @@
+# Every text file is checked out with LF, Git for Windows included (its
+# default is CRLF): the byte-exact test fixtures depend on it.
+* text=auto eol=lf

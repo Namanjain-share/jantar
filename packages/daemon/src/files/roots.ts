@@ -17,6 +17,7 @@
  * resolves, so a session's Files tab can always ask for `s.<sid>`.
  */
 import { basename, isAbsolute, normalize } from 'node:path';
+import { localSession, localSessions } from '@jantar/protocol';
 import type { DaemonContext, ResolvedRoot } from '../contracts.js';
 import { fsx } from '../sources/lib/fsx.js';
 import { expandHome, segsOf, type DenyRules } from './deny.js';
@@ -71,7 +72,8 @@ export class Roots {
     const folders = this.env.ctx.settings.get().folders;
     for (const c of folders.roots) add(await this.configured(c.id));
     if (folders.sessionRoots) {
-      for (const sid of Object.keys(this.env.ctx.store.getState().sessions)) add(await this.session(sid));
+      // v0.6: the Mac's own sessions only: a server's folder is no path on this Mac.
+      for (const sid of Object.keys(localSessions(this.env.ctx.store.getState()))) add(await this.session(sid));
     }
     return out;
   }
@@ -133,10 +135,8 @@ export class Roots {
 
   private async session(sid: string): Promise<ResolvedRoot | null> {
     if (!this.env.ctx.settings.get().folders.sessionRoots) return null;
-    // An own key only: the sessions map is a plain object, and "s.constructor" names Object.prototype's.
-    const sessions = this.env.ctx.store.getState().sessions;
-    if (!Object.hasOwn(sessions, sid)) return null;
-    const s = sessions[sid];
+    // An own key only: the sessions map is a plain object, and "s.constructor" names Object.prototype's. v0.6: never a server's.
+    const s = localSession(this.env.ctx.store.getState(), sid);
     if (!s || s.status === 'ended' || typeof s.cwd !== 'string' || !isAbsolute(s.cwd) || this.refusal(s.cwd)) return null;
     const real = await this.realDir(s.cwd);
     if (!real || this.refusal(real)) return null;

@@ -24,6 +24,7 @@
  * returns and publishes it as session.mode when it changed (noteScreenMode):
  * the mode chip follows. Only the mode goes out, never the screen's text.
  */
+import { localSession } from '@jantar/protocol';
 import type { PermissionModeName } from '@jantar/protocol';
 import type { ControlResult, DaemonContext } from '../contracts.js';
 import type { ScreenState } from '../terminal/screen.js';
@@ -94,8 +95,7 @@ function stepGate(state: ScreenState, requireBox: boolean): Refusal | null {
 /** Tell every client the mode the screen showed last (the next hook would, later). */
 function publishMode(ctx: DaemonContext, sid: string, mode: ScreenMode | null): void {
   if (!mode) return;
-  const sessions = ctx.store.getState().sessions;
-  const s = Object.hasOwn(sessions, sid) ? sessions[sid] : undefined;
+  const s = localSession(ctx.store.getState(), sid);
   if (!s || s.mode === mode) return;
   ctx.store.emit({ type: 'session.updated', sid, data: { patch: { mode } } });
 }

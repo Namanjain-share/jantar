@@ -1,14 +1,15 @@
 /**
  * The ⌘K entry "New session in…" (spec 5.3.1): opens the folder browser.
- * Rendered inside the palette's Command.List, and only while the Mac has
- * launching switched on.
+ * Rendered inside the palette's Command.List, and only while a session can
+ * start somewhere: the Mac has launching switched on, or (v0.6) a paired
+ * machine has (machines.ts).
  */
 import { PlusIcon } from '@phosphor-icons/react';
 import { Command } from 'cmdk';
-import { useFeatures } from '../../shell/data.js';
+import { useCanStart } from './machines.js';
 
 export function NewSessionItem({ onSelect }: { onSelect: () => void }) {
-  const on = useFeatures().launch;
+  const on = useCanStart();
   if (!on) return null;
   return (
     <Command.Group heading="Start">

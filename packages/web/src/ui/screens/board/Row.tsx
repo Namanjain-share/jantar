@@ -17,6 +17,12 @@
  * Selected: --select fill and the 2 px --ink tick, never ember. Unseen
  * your-turn rows: folder at 680. Status is the glyph plus the rail word.
  *
+ * v0.6: once a machine is paired, the machine ("Mac", "build-1") comes
+ * before the account (on line 1 of an ended row, which has no line 2); a
+ * server's config-dir account shows by its alias. An offline machine's
+ * rows are muted (their text in ink-3, still 4.5:1 or more, and only the
+ * glyph dimmed), with "offline since 14:02" for the age in ink-2.
+ *
  * The row's menu (spec 5.3.1, while launching is on, live sessions only):
  * long press, right click or the menu key opens it (`menu`; the Ledger holds
  * the one menu); the click that follows a long press is dropped.
@@ -64,7 +70,7 @@ function useEventCount(s: Session, glyph: GlyphState): number {
   return n;
 }
 
-function Line2({ row, ceiling }: { row: RowModel; ceiling: number }) {
+function Line2({ row, ceiling, muted }: { row: RowModel; ceiling: number; muted: boolean }) {
   const l = row.line2;
   let body = null;
   if (l.kind === 'needs') {
@@ -88,17 +94,19 @@ function Line2({ row, ceiling }: { row: RowModel; ceiling: number }) {
   }
   const a = row.account;
   const { life } = useFeatures();
-  const single = useAccountsMode() === 'single';
+  // One login on the Mac: no account to tell apart there (a server's rows keep theirs).
+  const single = useAccountsMode() === 'single' && row.machine?.node === undefined;
   return (
     <span data-line2 className="mt-4 flex h-20 min-w-0 items-center pl-24 text-small md:mt-0 md:h-18">
-      <span className={clsx('min-w-0 flex-1 truncate', l.kind === 'needs' ? 'text-ink' : 'text-ink-2')}>{body}</span>
-      {/* v0.4: the project whose folder holds this session (WP-W's chip; nothing while Life is off). */}
-      {life ? <ProjectChip cwd={row.session.cwd} /> : null}
+      <span className={clsx('min-w-0 flex-1 truncate', muted ? 'text-ink-3' : l.kind === 'needs' ? 'text-ink' : 'text-ink-2')}>{body}</span>
+      {/* v0.4: the project whose folder holds this session (WP-W's chip; nothing while Life is off, nor for a server's folder). */}
+      {life && row.machine?.node === undefined ? <ProjectChip cwd={row.session.cwd} /> : null}
       {row.files !== null ? (
         <span data-files className="ml-12 flex-none type-mono text-ink-3">
           {filesText(row.files)}
         </span>
       ) : null}
+      {row.machine ? <MachineChip name={row.machine.name} /> : null}
       {single ? null : row.move ? (
         <span data-acct className="ml-12 flex-none type-mono text-ink-3">
           {row.move}
@@ -118,29 +126,47 @@ function Line2({ row, ceiling }: { row: RowModel; ceiling: number }) {
   );
 }
 
-/** The inside of a row, shared by the real rows and the empty board's example. */
+/** v0.6: the machine a row runs on, before its account. */
+function MachineChip({ name }: { name: string }) {
+  return (
+    <span data-machine className="ml-12 max-w-1/3 flex-none truncate type-mono text-ink-3">
+      {name}
+    </span>
+  );
+}
+
+/**
+ * The inside of a row, shared by the real rows and the empty board's example.
+ * An offline machine's row is `data-offline`: its text in ink-3 and the age
+ * ("offline since 14:02") in ink-2, never faded (text keeps 4.5:1); only the
+ * glyph is dimmed.
+ */
 export function RowBody({ row, ceiling, unseen = false, events = 0 }: { row: RowModel; ceiling: number; unseen?: boolean; events?: number }) {
   const ended = row.glyph === 'ended';
+  const muted = row.machine?.offline === true;
   return (
     <>
-      <span className="flex h-20 min-w-0 items-center md:h-18">
-        <span key={events} className={clsx('mr-8 flex-none', events > 0 && 'animate-dim')}>
+      <span data-offline={muted ? '' : undefined} className="flex h-20 min-w-0 items-center md:h-18">
+        <span key={events} className={clsx('mr-8 flex-none', events > 0 && 'animate-dim', muted && 'opacity-60')}>
           <StatusGlyph state={row.glyph} />
         </span>
         <span
           className={clsx(
             'min-w-0 max-w-3/5 flex-initial truncate type-row',
-            ended ? 'text-ink-2' : 'text-ink',
+            muted ? 'text-ink-3' : ended ? 'text-ink-2' : 'text-ink',
             unseen ? 'font-strong' : ended ? 'font-regular' : 'font-medium',
           )}
         >
           {row.folder}
         </span>
-        <span className={clsx('ml-8 min-w-0 flex-initial truncate type-row', ended ? 'text-ink-3' : 'text-ink-2')}>{row.name}</span>
+        <span className={clsx('ml-8 min-w-0 flex-initial truncate type-row', ended || muted ? 'text-ink-3' : 'text-ink-2')}>{row.name}</span>
         {row.tag ? <span className="ml-8 hidden flex-none type-mono text-ink-3 md:inline">{row.tag}</span> : null}
-        <span className={clsx('ml-auto flex-none pl-12 type-mono', row.ageEmber ? 'text-signal-text' : 'text-ink-3')}>{row.age}</span>
+        {ended && row.machine ? <MachineChip name={row.machine.name} /> : null}
+        <span className={clsx('ml-auto flex-none pl-12 type-mono', muted ? 'text-ink-2' : row.ageEmber ? 'text-signal-text' : 'text-ink-3')}>
+          {row.age}
+        </span>
       </span>
-      {ended ? null : <Line2 row={row} ceiling={ceiling} />}
+      {ended ? null : <Line2 row={row} ceiling={ceiling} muted={muted} />}
     </>
   );
 }

@@ -37,10 +37,10 @@
  * straddles its end is dropped too.
  */
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { CLI_NAME, type SessionDialogBody, type TerminalDialog } from '@jantar/protocol';
+import { CLI_NAME, machineName, sessionFeatures, type SessionDialogBody, type TerminalDialog } from '@jantar/protocol';
 import { errorText, isApiError } from '../../../lib/api.js';
 import { newIdempotencyKey } from '../../../lib/ids.js';
-import { useDeps, useToast } from '../../context.js';
+import { useApp, useDeps, useToast } from '../../context.js';
 import { useFeatures } from '../../shell/data.js';
 import { readLocalDevice } from '../devices/local.js';
 import type { SessionScreenRead } from './screen.js';
@@ -53,6 +53,11 @@ export const CHANGED = 'The dialog on the Mac changed. Check it again.';
 export const NOTE_IN_BOX = 'Your note is in the box. Send it when Claude is ready.';
 export const CONTROLS_OFF = `Controls are off. Turn them on at your Mac: ${CLI_NAME} controls on`;
 export const NO_CONTROL_SCOPE = 'This device can read sessions only. Answering needs control access: pair it again from your Mac.';
+
+/** v0.6: a server's session with Controls off there (its own switch: the Mac's says nothing about it). */
+export function controlsOffOn(machine: string): string {
+  return `Controls are off on ${machine}. Turn them on there: ${CLI_NAME} controls on`;
+}
 
 // v0.5.2, Claude's auto-block countdown: the protocol's DIALOG_COUNTDOWN_MIN_S, DIALOG_COUNTDOWN_LATE and
 // countdownSeconds, copied into the dock's lazy chunk so the app's first load doesn't carry them
@@ -173,11 +178,20 @@ export interface AnswerLine {
 /**
  * Why this device can't answer from here, or null when it can: the Controls switch is off,
  * or it was paired without the control scope (a browser with no pairing record may have it).
+ * v0.6: a paired server's session (`sid`) answers to that server's own Controls switch; calls
+ * forwarded there skip the Mac's.
  */
-export function useAnswerBlock(): string | null {
+export function useAnswerBlock(sid?: string): string | null {
   const { controls } = useFeatures();
   const [scoped] = useState(() => readLocalDevice()?.scopes.includes('control') !== false);
+  // undefined: the Mac's own session (or none); else the server's block, null when it allows.
+  const nodeBlock = useApp((s) => {
+    const session = sid !== undefined && Object.hasOwn(s.state.sessions, sid) ? s.state.sessions[sid] : undefined;
+    if (session?.node === undefined) return undefined;
+    return sessionFeatures(s.state, session).controls ? null : controlsOffOn(machineName(s.state, session.node));
+  });
   if (!scoped) return NO_CONTROL_SCOPE;
+  if (nodeBlock !== undefined) return nodeBlock;
   if (!controls) return CONTROLS_OFF;
   return null;
 }

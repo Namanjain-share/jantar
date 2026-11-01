@@ -19,6 +19,10 @@ export type IsoDate = z.infer<typeof IsoDateSchema>;
 export const AccountIdSchema = z.number().int().nonnegative();
 export type AccountId = z.infer<typeof AccountIdSchema>;
 
+/** v0.6: a paired machine's id (a ulid the hub gives it when it pairs). */
+export const NodeIdSchema = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+export type NodeId = z.infer<typeof NodeIdSchema>;
+
 /**
  * Device scopes, a chain: admin ⊃ launch ⊃ control ⊃ read. `launch` (v0.3)
  * starts new sessions and creates folders; no pairing grants it by default.
@@ -135,6 +139,12 @@ export const SessionSchema = z.object({
   burn: z.object({ pctPerMin: z.number(), updatedAt: IsoDateSchema }).optional(),
   /** v0.3: how many files Claude created or changed in this session (from its transcript), while Files is on. */
   filesChanged: z.number().int().nonnegative().optional(),
+  /**
+   * v0.6: the paired machine (node id) this session runs on; absent = the
+   * hub's own session. Stamped by the hub when a node reports it, never
+   * patched or unset (a session never changes machine).
+   */
+  node: NodeIdSchema.optional(),
 });
 export type Session = z.infer<typeof SessionSchema>;
 
@@ -164,8 +174,8 @@ export const SessionOptionalKeySchema = z.enum([
 ]);
 export type SessionOptionalKey = z.infer<typeof SessionOptionalKeySchema>;
 
-/** Fields to merge into a session. `sid` comes from the event envelope. */
-export const SessionPatchSchema = SessionSchema.omit({ sid: true }).partial();
+/** Fields to merge into a session. `sid` comes from the event envelope; v0.6's `node` is never patched (a patch carrying it loses it). */
+export const SessionPatchSchema = SessionSchema.omit({ sid: true, node: true }).partial();
 export type SessionPatch = z.infer<typeof SessionPatchSchema>;
 
 // ---------------------------------------------------------------------------
@@ -418,6 +428,8 @@ export const AlertSchema = z.object({
   why: z.string().optional(),
   /** Longer text (the transcript line it came from). */
   full: z.string().optional(),
+  /** v0.6: the paired machine the alert came from (stamped by the hub); absent = the hub. */
+  node: NodeIdSchema.optional(),
 });
 export type Alert = z.infer<typeof AlertSchema>;
 
@@ -762,6 +774,8 @@ export const LaunchJobSchema = z.object({
   steps: z.array(z.object({ at: IsoDateSchema, stage: LaunchStageSchema, detail: z.string().max(120) })).max(20),
   /** User-facing sentence on failed, refused or stalled. */
   reason: z.string().optional(),
+  /** v0.6: the paired machine the session starts on (stamped by the hub); absent = the hub. */
+  node: NodeIdSchema.optional(),
 });
 export type LaunchJob = z.infer<typeof LaunchJobSchema>;
 
@@ -969,9 +983,12 @@ export type FolderEntry = z.infer<typeof FolderEntrySchema>;
  * v0.4: how the daemon found Claude accounts at start. "cswap" when cswap
  * and its profiles are there (many accounts, usage, holds, autoswitch);
  * "single" otherwise (one Claude login, account 0). JANTAR_ACCOUNTS=single
- * forces single (tests).
+ * forces single (tests). v0.6 "dirs", on a paired Linux or Windows machine
+ * without cswap only: `~/.claude` and every `~/.claude-<name>` dir holding a
+ * `.claude.json` is an account, numbered once per dir and never renumbered;
+ * no usage numbers.
  */
-export const AccountsModeSchema = z.enum(['single', 'cswap']);
+export const AccountsModeSchema = z.enum(['single', 'cswap', 'dirs']);
 export type AccountsMode = z.infer<typeof AccountsModeSchema>;
 
 // ---------------------------------------------------------------------------
@@ -1007,6 +1024,8 @@ export const FeaturesSchema = z.object({
   meetings: z.boolean().default(false),
   /** v0.5.3: Ask is on (settings ask.enabled). Why it can't run is in `GET /v1/ask`, a control read. */
   ask: z.boolean().default(false),
+  /** v0.6: Fleet is on at the Mac (settings fleet.enabled): paired servers may link. */
+  fleet: z.boolean().default(false),
 });
 export type Features = z.infer<typeof FeaturesSchema>;
 
@@ -1024,6 +1043,7 @@ export const NO_FEATURES: Readonly<Features> = Object.freeze({
   intel: false,
   meetings: false,
   ask: false,
+  fleet: false,
 });
 
 // ===========================================================================
@@ -1118,3 +1138,74 @@ export const AttachmentRefSchema = z.strictObject({
   label: z.string().min(1).max(200),
 });
 export type AttachmentRef = z.infer<typeof AttachmentRefSchema>;
+
+// ===========================================================================
+// v0.6: Fleet (paired machines, each with its own Claude sessions)
+
+/** The machine a node runs on (`wsl`: Linux inside Windows' WSL2, read from /proc/sys/kernel/osrelease). */
+export const NodeOsSchema = z.enum(['macos', 'linux', 'wsl', 'windows']);
+export type NodeOs = z.infer<typeof NodeOsSchema>;
+
+/** How a node reaches its Claude terminals: Terminal.app, tmux, or none (native Windows: watch and cards only). */
+export const NodeBackendSchema = z.enum(['terminal-app', 'tmux', 'none']);
+export type NodeBackend = z.infer<typeof NodeBackendSchema>;
+
+/** Something the phone says about a node: `version`, its link version differs from the Mac's. */
+export const NodeProblemSchema = z.enum(['version']);
+export type NodeProblem = z.infer<typeof NodeProblemSchema>;
+
+/**
+ * A paired machine as the phone sees it (`state.nodes[id]`), replaced whole
+ * by every `node.updated`. The name is the hub's (`jantar node pair --name`),
+ * never the node's own. Its accounts are its own: they never go into
+ * `state.accounts` (every server has an account 0).
+ */
+export const NodeViewSchema = z.object({
+  id: NodeIdSchema,
+  name: z.string().min(1).max(24),
+  os: NodeOsSchema,
+  backend: NodeBackendSchema,
+  online: z.boolean(),
+  /** When `online` last changed (the link opened or closed). */
+  since: IsoDateSchema,
+  /** The node's Jantar version (the Machines screen shows it when it differs from the Mac's). */
+  version: z.string().max(64),
+  /** The node runs with --read-only: every write is refused there. */
+  readOnly: z.boolean(),
+  /** Cloudflare Access refusals the node counted while it was away (reported on its next link). */
+  accessRefused: z.number().int().nonnegative(),
+  /** The node's own switches (controls, launch, ...); Files, Rewrite, screenshots, Life, Intel, Meetings and Fleet are always off there. */
+  features: FeaturesSchema,
+  accountsMode: AccountsModeSchema,
+  /** String(account id) -> account, as state.accounts is. */
+  accounts: z.record(z.string(), AccountSchema),
+  activeAccount: AccountIdSchema.nullable(),
+  usage: z.object({
+    fetchedAt: IsoDateSchema.nullable(),
+    source: z.enum(['cache', 'cli']).nullable(),
+  }),
+  problem: NodeProblemSchema.optional(),
+});
+export type NodeView = z.infer<typeof NodeViewSchema>;
+
+/** One pairing as the Mac keeps it (GET /v1/machines, admin): no key, ever. */
+export const NodeRowSchema = z.object({
+  id: NodeIdSchema,
+  name: z.string().min(1).max(24),
+  os: NodeOsSchema,
+  /** Unknown (null) until the node's first link. */
+  backend: NodeBackendSchema.nullable(),
+  version: z.string().max(64),
+  createdAt: IsoDateSchema,
+  lastSeenAt: IsoDateSchema.nullable(),
+  revokedAt: IsoDateSchema.nullable(),
+  online: z.boolean(),
+  /** Its sessions on the board now. */
+  sessions: z.number().int().nonnegative(),
+  readOnly: z.boolean(),
+  accessRefused: z.number().int().nonnegative(),
+  /** How its last link ended (a NODE_CLOSE code or a WebSocket one), since the hub started; null when none has. */
+  lastClose: z.object({ code: z.number().int(), at: IsoDateSchema }).nullable(),
+  problem: NodeProblemSchema.optional(),
+});
+export type NodeRow = z.infer<typeof NodeRowSchema>;

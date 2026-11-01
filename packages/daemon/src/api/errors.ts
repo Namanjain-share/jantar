@@ -2,7 +2,8 @@
  * API errors. Every error leaves the daemon as `{error:{code,message}}` with
  * the status from ERROR_STATUS; raw internal errors never reach a client.
  */
-import { ERROR_STATUS, MAX_BODY_BYTES, errorBody, type ErrorBody, type ErrorCode } from '@jantar/protocol';
+import { ERROR_STATUS, FLEET_COPY, MAX_BODY_BYTES, errorBody, type ErrorBody, type ErrorCode } from '@jantar/protocol';
+import type { NodeCallReply } from '@jantar/protocol/node-link';
 import type { TerminalErrorCode } from '../contracts.js';
 import { NotImplementedError } from '../core/not-implemented.js';
 
@@ -143,4 +144,24 @@ export function zodMessage(where: string, issues: readonly { path: PropertyKey[]
   if (!issue) return `invalid ${where}`;
   const path = issue.path.map(String).join('.');
   return `invalid ${where}${path ? ` at ${path}` : ''}: ${issue.message}`;
+}
+
+// ---------------------------------------------------------------------------
+// v0.6 Fleet: a forwarded call that never reached its server, or never came back. Fixed sentences with the
+// name the hub gave the machine.
+
+/** 504's sentence: a write's outcome is then unknown, and the transcript settles it. */
+export function nodeTimeoutText(machine: string): string {
+  return `${machine} didn't answer in time. Check the session before trying again.`;
+}
+
+/** The reply a forward gives without the node: 503 node_offline (nothing was sent) or 504 node_timeout. */
+export function nodeFailureReply(code: 'node_offline' | 'node_timeout', machine: string): NodeCallReply {
+  const message = code === 'node_offline' ? FLEET_COPY.offline(machine) : nodeTimeoutText(machine);
+  return { status: ERROR_STATUS[code], body: errorBody(code, message) };
+}
+
+/** 409: Picture, Files, Rewrite and the change list are for the Mac's own sessions (route-kit's sessionOr404). */
+export function nodeUnsupported(): ApiError {
+  return new ApiError('node_unsupported', FLEET_COPY.unsupportedOnNode('Mac'));
 }

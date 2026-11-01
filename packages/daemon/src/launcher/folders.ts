@@ -19,6 +19,7 @@ import { lstat, mkdir, realpath, rmdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   FolderNameSchema,
+  localSessions,
   type AccountId,
   type FileRoot,
   type FolderCreateBody,
@@ -323,7 +324,8 @@ export class Folders implements FolderBrowser {
   private async liveByFolder(): Promise<Map<string, number>> {
     const now = this.ctx.clock.now();
     const out = new Map<string, number>();
-    const sessions = Object.values(this.ctx.store.getState().sessions).filter((s) => s.status !== 'ended');
+    // v0.6: the Mac's own sessions only: a server's folder is never realpathed here.
+    const sessions = Object.values(localSessions(this.ctx.store.getState())).filter((s) => s.status !== 'ended');
     for (const s of sessions) {
       let hit = this.liveCache.get(s.cwd);
       if (!hit || now - hit.at > LIVE_TTL_MS) {

@@ -53,6 +53,14 @@ jantar/
       src/auth/extensions.ts  v0.5 the paired Chrome extension's key (its own kind, not a device)
       src/ask/           v0.5.3 Ask: the message's stdin (input.ts), the answer's checks and the
                          card rules (answer.ts), the turns in memory, the queue and Add/Undo (service.ts)
+      src/link/          v0.6 the node link's library: Ed25519 keys and node.json (keys.ts), the
+                         handshake, frames and bulks (codec.ts), backoff, join (pairWithHub), ws
+      src/fleet/         v0.6 the hub's Fleet part: the link server (socket.ts), the registry of
+                         each node's view, ingest and clipping of its events, forwarding calls
+      src/node/          v0.6 a node's link to its hub: the dialler, the feed (snapshot, events),
+                         the executor (the hub's calls through the node's own API)
+      src/auth/nodes.ts  v0.6 pairing claims, revokes and the handshake's verdicts for nodes
+      src/terminal/tmux/ v0.6 the tmux backend a Linux node types with (terminal/pick.ts picks it)
     hook/          jantar-hook (bin/jantar-hook.mjs, zero dependencies)
     cli/           jantar (src/commands/<name>.ts, one file per command)
     web/           Vite + React 19 PWA
@@ -62,7 +70,13 @@ jantar/
                    constants (src/shared); scripts/build.mjs -> dist/ (load unpacked) and
                    dist-test/ (the e2e build)
   test/fixtures/   @jantar/fixtures: makeFakeHome(), fake binaries, transcript/model builders,
-                   Life and Intel bodies (life.ts, intel.ts), past conversations (history.ts)
+                   Life and Intel bodies (life.ts, intel.ts), past conversations (history.ts);
+                   v0.6: memoryLinkPair() (link.ts), synthetic servers (node.ts) and the fake
+                   interactive Claude (runtime/fake-claude-tui.mjs)
+  test/docker/     v0.6 the Docker Linux end to end (a hub, a door playing Cloudflare Access,
+                   two Linux nodes, a phone; `node test/docker/run.mjs`, JANTAR_FLEET_E2E=1)
+  test/windows/    v0.6 the native Windows checks W1-W8 (`pnpm --filter @jantar/cli
+                   test:windows`, the ci workflow's windows-latest job)
   test/integration/ end-to-end suites (run from packages/cli: vitest.integration.config.ts);
                    the browser checks of the built app (web*.integration.test.ts) and their
                    synthetic data: web-fixture.ts (the board), web-fixture-v03.ts,
@@ -103,6 +117,8 @@ the wiring in `daemon.ts` is mechanical. Tests sit beside each in
 | Life, Intel, the primer (v0.4) | `packages/life-core/**`, `packages/daemon/src/{life,intel,primer}/**` | `createLifeService: Factories['life']` (life/index.ts, with `LIFE_MODULE_BUILDERS`); `createIntelService: Factories['intel']` (intel/index.ts); the primer service (primer/index.ts) |
 | Meetings (v0.5) | `packages/extension/**`, `packages/daemon/src/meetings/**`, `packages/daemon/src/auth/extensions.ts`, `packages/web/src/ui/screens/meetings/**` | `createMeetingsService: Factories['meetings']` (meetings/index.ts, with `MEETINGS_BUILDERS`; daemon.ts passes `{ readOnly }`); the built extension in `packages/extension/dist` |
 | Ask (v0.5.3) | `packages/protocol/src/ask.ts`, `packages/daemon/src/ask/**`, `packages/daemon/src/api/routes/ask.ts`, `packages/daemon/assets/ask/**`, `packages/web/src/ui/screens/ask/**`, `packages/cli/src/commands/ask.ts` | `createAskService: Factories['ask']` (ask/index.ts; daemon.ts passes `{ life, usage, ccwLegacy }` and `{ readOnly }`) |
+| Fleet, the hub (v0.6) | `packages/daemon/src/{fleet,link}/**`, `packages/daemon/src/auth/nodes.ts`, `packages/cli/src/commands/{fleet,node}.ts` | `createFleet: Factories['fleet']` (fleet/index.ts; L1's `createLinkServer` and `NodeAuth` inside) |
+| Fleet, a node (v0.6) | `packages/daemon/src/node/**`, `packages/daemon/src/terminal/{pick.ts,tmux/**}`, `packages/daemon/src/sources/cswap/dirs.ts`, `packages/cli/src/lib/{systemd,service}.ts` | `createNodeLink: Factories['nodeLink']` (node/index.ts; daemon.ts passes `{ executor, self }`); `createTmuxBackend` (terminal/tmux/index.ts, picked by `pickTerminal`) |
 
 Rules of thumb:
 
@@ -143,6 +159,17 @@ Implemented in `packages/daemon/src/daemon.ts`:
    `--no-terminal` swaps in `NullTerminalBackend`; see modes.ts)
 4. `startServices([...])` in that order (log rotator first); stop in reverse
    on SIGINT / SIGTERM, then close the db.
+
+v0.6: the role decides (`roleOf`: a `node/node.json` in the state dir makes
+a node). The hub builds `fleet` (inert while `fleet.enabled` is off) and
+starts it after `notifications`, before `api`. A node starts ccwLegacy (an
+inert stand-in) → sessions → transcriptWatcher → usage → hooks → terminal
+(the tmux backend's 10-second pane tick, when it has one) → writer → files
+→ launcher → controls → api (no TCP port: only the control socket and the
+link app) → nodeLink (the dialler, last, so the hub's first call finds the
+API); Changes, Rewrite, Life, Intel, Meetings, the primer and pushes are
+stand-ins that open no file and start no timer (`nodeOffParts()` in
+modes.ts).
 
 The window primer (v0.4, `primer/`) reads usage and ccwLegacy, so it
 starts after them. It never primes under `--read-only` (it is told so, not
@@ -320,3 +347,45 @@ Screen tab's picture, `lib/sounds.ts` and the Sounds section behind
 `import()`. Together, the release's first load is 269.0 kB in 8 chunks, and
 the Ask chunk 57.3 kB with what it pulls in. `code-split.test.ts` keeps all
 of them out of the first load; the hook cards remain the next split to try.
+
+### v0.6.0
+
+Fleet: servers (Linux, WSL2, other Macs, and native Windows as a preview)
+paired with the Mac, each running its own Claude sessions on its own
+accounts, all on the one phone. Off until `jantar fleet on` at the Mac
+(`fleet.enabled`, a Mac-only switch); with it off the Mac behaves as v0.5.3.
+One codebase, two roles: a daemon whose state dir holds `node/node.json`
+is a node (`roleOf` in `config.ts`), else the hub. A node binds no TCP port,
+runs no Life, Intel, Meetings, primer, Rewrite or pushes (stand-ins in
+`modes.ts`), and dials the hub's own front door over one WebSocket
+(`@jantar/protocol/node-link`, a subpath the phone's bundle never imports;
+`ws` 8.22.0 in the daemon). The hub keeps each node's view in
+`state.nodes`, re-emits its checked and clipped events into its own store
+(`session.node` stamped), and forwards the phone's calls for a node's
+sessions through the node's own API (the `link` transport). The node link's
+upgrade is taken before Fastify (`api/node-upgrade.ts`), so the phone's
+event stream keeps its 4096-byte frames. jantar.db gains migration 5
+(`nodes`: public keys only). Every daemon reader of sessions goes through
+`localSessions` / `localSession`, so a server's session never reaches the
+Mac's own parts (`test/arch/v06-local-sessions.test.ts`). The parts `fleet`
+(hub) and `nodeLink` (node) sit on the `link/` library; a Linux node types
+through the tmux backend (`terminal/tmux/`, text only on stdin, every write
+one gated `if-shell -F` step) and reads its accounts from cswap or its
+config dirs (`sources/cswap/dirs.ts`). On native Windows the hooks and
+control sockets are named pipes (`pipePath` in config.ts; the hooks pipe
+proves its owner with `run\hooks.key`) and the hooks use Claude Code's
+exec form. The Screen tab's picture and the hook cards load lazily to make
+room in the first load. Tests: `test/integration` is unchanged for a single
+Mac; the link and both roles are tested over real `ws` on port 0
+(`packages/daemon/test/{link,fleet,node}`), end to end in Docker
+(`test/docker`, E1-E15) and on `windows-latest` (`test/windows`, W1-W8).
+
+Merged onto 0.5.3: a node runs no Ask either (an Ask stand-in in
+`nodeOffParts`, `ask: false` in its daemon.version), and the urgent alert
+reads the Mac's own sessions only (`urgentFor` in `notify/router.ts`, and the probe's `localSession`): a
+server's unattended ask gets its plain waiting push, under the server's push
+budget. Fleet's migration 5 is jantar.db's only new one (0.5.3 added none).
+The first load holds both without raising `MAIN_JS_MAX` (280.0 kB): 0.5.3
+alone was 269.0 kB and Fleet alone 277.8 kB; merged, with the Screen tab's
+picture, the pairing QR, the sounds and the hook cards each behind
+`import()`, it is 271.2 kB in 14 chunks.
