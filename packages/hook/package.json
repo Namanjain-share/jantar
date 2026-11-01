@@ -1,6 +1,6 @@
 {
   "name": "@jantar/hook",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "jantar-hook: a zero-dependency, fail-open Claude Code hook client that forwards hook events to jantard.",

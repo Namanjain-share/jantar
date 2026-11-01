@@ -19,7 +19,7 @@ once in Terminal on a Mac, on one Claude account or many. Jantar runs on
 your Mac and your phone reaches it through your own tunnel: there is no
 Jantar server and no Jantar account.
 
-**v0.5.3, early** · macOS and Terminal.app · source-available
+**v0.6.0, early** · macOS and Terminal.app · source-available
 (FSL-1.1-MIT) · not affiliated with Anthropic
 
 [Install](docs/install.md) · [Your phone](docs/install.md#reach-it-from-your-phone) ·
@@ -216,10 +216,11 @@ by this project. More in [How it is put together](docs/architecture.md).
 
 ## Status and limits
 
-- v0.5.3. On the Mac, Terminal.app only; iTerm2 comes later
+- v0.6.0. On the Mac, Terminal.app only; iTerm2 comes later
   ([roadmap](docs/roadmap.md)).
-- Servers (v0.6, Fleet): Linux and WSL2 with Claude in tmux, and other
-  Macs; native Windows shows sessions and cards only. The Mac is the hub:
+- Servers (v0.6, Fleet, off until `jantar fleet on`): Linux and WSL2 with
+  Claude in tmux, and other Macs; native Windows is a preview that shows
+  sessions and cards only. The Mac is the hub:
   while it sleeps, no server is reachable from the phone. Sending prompts
   on Linux, real Claude Code in tmux and native Windows are not yet checked
   on real machines ([what is not verified yet](docs/fleet.md#not-verified-yet)).

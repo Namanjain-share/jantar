@@ -1,6 +1,6 @@
 {
   "name": "@jantar/protocol",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "Shared zod schemas, event types, reducer and REST types for Jantar.",

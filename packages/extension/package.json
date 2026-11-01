@@ -1,6 +1,6 @@
 {
   "name": "@jantar/extension",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "The Jantar Chrome extension: keeps a Google Meet or Microsoft Teams call's live captions and your screenshots in Jantar on your Mac.",
