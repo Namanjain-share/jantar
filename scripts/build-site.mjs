@@ -39,7 +39,8 @@
 // not yet committed).
 // The repository URL comes from GITHUB_SERVER_URL and GITHUB_REPOSITORY (CI),
 // else package.json's repository; SITE_URL (CI: actions/configure-pages)
-// adds the canonical, Open Graph tags and sitemap.xml.
+// adds the canonical, Open Graph tags and sitemap.xml, and needs a released
+// version: package.json's version with a dated heading in CHANGELOG.md.
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, copyFileSync, realpathSync } from 'node:fs';
@@ -194,13 +195,16 @@ export function readValues(opts = {}) {
   if (siteUrl && !/^https:\/\//.test(siteUrl)) fail(`SITE_URL must start with https:// (got ${siteUrl})`);
   const pnpm = /^pnpm@(\d+\.\d+\.\d+)$/.exec(pkg.packageManager ?? '')?.[1];
   if (!pnpm) fail('package.json "packageManager" is not pnpm@<x.y.z>');
-  return { version: pkg.version, extVersion: manifest.version, repo, copyright: m[1].trim(), siteUrl, pnpm, released: releaseDate(pkg.version) };
+  const released = releaseDate(pkg.version);
+  // A deploy shows a released version only: its pages say so, and its install.sh fetches that tag.
+  if (siteUrl && !released) fail(`SITE_URL is set, and CHANGELOG.md's "## ${pkg.version}" heading has no date ("## 0.5.2 (1 November 2026)"): date it in the release commit`);
+  return { version: pkg.version, extVersion: manifest.version, repo, copyright: m[1].trim(), siteUrl, pnpm, released };
 }
 
-/** The date of the version's CHANGELOG.md heading ("## 0.5.2 (1 November 2026)"), or null. */
+/** The date of the version's CHANGELOG.md heading ("## 0.5.2 (1 November 2026)"), or null ("## 0.5.3 (unreleased)"). */
 export function releaseDate(version, text = existsSync(join(ROOT, 'CHANGELOG.md')) ? read(join(ROOT, 'CHANGELOG.md')) : '') {
   const v = version.replace(/[.]/g, '\\.');
-  return new RegExp(`^## ${v} \\(([^)]+)\\)\\s*$`, 'm').exec(text)?.[1] ?? null;
+  return new RegExp(`^## ${v} \\((\\d{1,2} [A-Z][a-z]+ \\d{4})[^)]*\\)\\s*$`, 'm').exec(text)?.[1] ?? null;
 }
 
 // ---------------------------------------------------------------------------

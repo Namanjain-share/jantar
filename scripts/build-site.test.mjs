@@ -394,6 +394,23 @@ test("the README's status lines name package.json's version", () => {
   assert.match(readme, new RegExp(`^- v${v}\\. `, 'm'), 'Status and limits');
   assert.equal(releaseDate('0.5.2', '## 0.5.2 (1 November 2026)\n'), '1 November 2026');
   assert.equal(releaseDate('0.5.20', '## 0.5.2 (1 November 2026)\n'), null);
+  assert.equal(releaseDate('0.4.2', '## 0.4.2 (31 October 2026, shipped in 0.5.1)\n'), '31 October 2026');
+  assert.equal(releaseDate('0.5.3', '## 0.5.3 (unreleased)\n'), null);
+});
+
+test('a deploy (SITE_URL set) builds only a released version: one with a dated CHANGELOG.md heading', () => {
+  const was = process.env.SITE_URL;
+  try {
+    process.env.SITE_URL = 'https://site.example';
+    const { version } = JSON.parse(read(join(ROOT, 'package.json')));
+    if (releaseDate(version)) assert.equal(readValues().released, releaseDate(version));
+    else assert.throws(() => readValues(), new RegExp(`"## ${version.replace(/[.]/g, '\\.')}" heading has no date`));
+    delete process.env.SITE_URL;
+    assert.equal(readValues().released, releaseDate(version), 'a local build takes any version');
+  } finally {
+    if (was === undefined) delete process.env.SITE_URL;
+    else process.env.SITE_URL = was;
+  }
 });
 
 test('the answers: one per page under answers/, each linked from the index and llms.txt', () => {
