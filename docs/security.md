@@ -50,9 +50,34 @@ point below links to its section there.
   ([the summary](../SECURITY.md#the-summary-what-leaves-the-mac)).
 - There is no Jantar server, no telemetry and no account with this project.
 
+## Servers (v0.6, Fleet)
+
+Off until you run `jantar fleet on` at the Mac
+([SECURITY.md](../SECURITY.md#v06-fleet-paired-servers) has the full
+model).
+
+- Pairing a server extends your phone's reach to it, as far as that
+  server's own switches allow. With the default, a paired phone, or anyone
+  who takes over the Mac, can send prompts to every server; a server joined
+  with `--read-only` is watch-only.
+- Servers open no port. Each keeps one connection to the Mac's front door,
+  with keys checked in both directions every time it connects; a server
+  saves nothing unless the Mac that made its join line signs the answer.
+- Each server's switches are set on that server only. Your phone's calls
+  run there through the same checks as on the Mac.
+- A server is untrusted on the Mac: it reports only its own sessions, and
+  its text is checked, cut to size and labelled with the name the Mac gave
+  it.
+- The connection is protected by TLS and that handshake. Anything that ends
+  TLS in the middle (Cloudflare, or a proxy a server trusts) could inject
+  calls after a real handshake; Tailscale has no such middle party.
+- The Mac is a single point of failure: while it sleeps, no server is
+  reachable from the phone.
+
 ## What a session can do
 
-The trust boundary is your macOS user. Any process running as you,
+The trust boundary is your macOS user (and, with Fleet, the user Jantar
+runs as on each paired server). Any process running as you,
 including a Claude session with general Bash access, can reach Jantar's
 local sockets and could pair itself as a device. That is no more than such
 a process can already do, but treat card approvals as coming from

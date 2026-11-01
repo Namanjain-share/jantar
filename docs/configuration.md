@@ -17,7 +17,7 @@ and never approves anything: approvals come only from paired devices.
 |---|---|
 | `jantar status [--json] [--alerts N]` | the board: your turn first, then cards, accounts and the last N alerts (default 3) |
 | `jantar send <session> <text...\|-> [--replace] [--no-wait] [--timeout S] [--json]` | send a prompt and wait until the transcript proves it arrived ([details](phone-app.md#sending-a-prompt)) |
-| `jantar new <folder> [options]` | start a session in a new Terminal window, as the phone does ([options](phone-app.md#new-session-and-resume)) |
+| `jantar new <folder> [options]` | start a session in a new Terminal window, as the phone does ([options](phone-app.md#new-session-and-resume)); `--node NAME` starts it on a paired server instead, in its absolute folder there |
 | `jantar open [--print] [--no-admin]` | open the dashboard in this Mac's browser, one tap to pair |
 | `jantar pair [--name NAME] [--admin \| --read-only] [--json] [--no-qr]` | a QR code that pairs a phone or browser, once, within 10 minutes ([options](install.md#pair-the-phone)) |
 | `jantar pair --extension` | a line to paste into the Chrome extension's popup; waits until it pairs |
@@ -72,13 +72,34 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar meetings export <id> \| last \| --all [--out DIR]` | a folder per meeting: `meeting.md` and `shots/*.jpg` |
 | `jantar meetings unpair` | revoke every paired extension |
 
+### Servers (v0.6, Fleet)
+
+At the Mac (the hub). Fleet is a Mac-only setting, off by default
+([Servers](fleet.md)).
+
+| Command | What it does |
+|---|---|
+| `jantar fleet on \| off \| status [--json]` | let servers pair and link through this Mac's front door; close every link (pairings stay); the door, servers online, why each last dropped |
+| `jantar node pair [--name N] [--count K] [--json]` | one single-use join line per server, good for 10 minutes (`<name>-1` .. `<name>-K`, K up to 20) |
+| `jantar node list [--all] [--json]` | the paired servers: OS, terminal, online or since when, Jantar version, sessions |
+| `jantar node revoke <name>` | remove a server: its link closes and its sessions leave the board |
+
+On a server (Linux, WSL2, native Windows, another Mac):
+
+| Command | What it does |
+|---|---|
+| `jantar node join <line> [--cf-access-client-id ID] [--hooks] [--no-service] [--read-only] [--replace-hub]` | pair with the Mac, install and start the service, wait for the link ([details](fleet.md#install-and-join)); the Access secret is asked without echo or read from `JANTAR_CF_ACCESS_CLIENT_SECRET` |
+| `jantar node access [--cf-access-client-id ID]` | replace the Cloudflare Access token and restart; no new join line |
+| `jantar node status [--json]` | the link and why it last closed, the terminal, accounts, hooks per config dir, read-only, starting |
+| `jantar node leave [--yes]` | stop and remove the service and delete this server's key (hooks stay) |
+
 ### Setup
 
 | Command | What it does |
 |---|---|
 | `jantar init [--yes]` | first-run setup: find Claude Code and cswap, write the settings this Mac needs |
-| `jantar install [--print] [--no-start] [--no-doctor]` | set up `~/.jantar` and the LaunchAgent, start the daemon, run doctor |
-| `jantar uninstall [--purge [--yes] [--force]]` | stop the daemon and remove the LaunchAgent (keeps `~/.jantar` unless `--purge`) |
+| `jantar install [--print] [--no-start] [--no-doctor] [--read-only \| --no-read-only]` | set up `~/.jantar` and the LaunchAgent (on a Linux server, a systemd user unit; on a Windows server, the task's lines to run), start the daemon, run doctor; `--read-only` runs it watch-only, and a later install keeps that choice |
+| `jantar uninstall [--purge [--yes] [--force]]` | stop the daemon and remove its service (keeps `~/.jantar` unless `--purge`) |
 | `jantar doctor [--json]` | read-only health check |
 | `jantar remote status [--json]` | what is set up for the phone |
 | `jantar remote setup [--tailscale \| --cloudflare] [--apply]` | the steps for Tailscale Serve (or a Cloudflare quick tunnel); `--apply` runs the Serve command |
@@ -104,6 +125,7 @@ usage error, `3` daemon not running.
 | `--home <dir>` | state dir (default `$JANTAR_HOME`, then `~/.jantar`) |
 | `--no-terminal` | Terminal.app backend off: no screen peek, focus or sending |
 | `--read-only` | observe only: refuse sending, focus, answering cards, the cswap poller, primes, Ask Claude and settings changes (Life writes still work) |
+| `--log-files` | v0.6: append its own output to `<state dir>/logs/daemon.{out,err}.log` (for the Windows task) |
 | `-v`, `--version` | print the version |
 | `-h`, `--help` | print the help |
 
@@ -117,6 +139,8 @@ usage error, `3` daemon not running.
 | `JANTAR_LOG_LEVEL=debug` | more daemon logging; `jantar install` passes it to the LaunchAgent |
 | `JANTAR_WEB_DIST` | serve the web app from another build folder; `jantar install` passes it on |
 | `JANTAR_VAPID_SUBJECT` | the contact sent to push services (a `mailto:` or `https:` URL of yours) |
+| `JANTAR_CF_ACCESS_CLIENT_SECRET` | v0.6, on a server: the Cloudflare Access token's secret for `jantar node join` and `node access`, instead of the hidden prompt |
+| `NODE_EXTRA_CA_CERTS` | v0.6, on a server: extra CA certificates Node trusts for the Mac's front door (Node's own; servers never use the system store) |
 
 ## Settings
 
@@ -136,6 +160,7 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 | `life` | one switch per module (off), `timezone`, `currency`, `lockScreenDetails` | the Mac |
 | `intel` | `enabled` (off), `sources` (up to 10 files) | the Mac |
 | `accounts` | `kept`, `prime`, `primeKept` | the Mac |
+| `fleet` | v0.6: `enabled` (off); the pairings themselves are in `jantar.db` | the Mac (`jantar fleet`) |
 | `bins` | absolute paths to `claude`, `cswap`, `osascript` and the rest, found by `jantar install` (launchd's `PATH` is minimal) | the Mac |
 | `autoswitch` | the ceilings Jantar shows (`ceiling` 97 %, `weekly_ceiling` 95 %) and the hold list; Jantar itself does not switch accounts | the Mac, or an admin device |
 | `notify`, `usage` | push bodies and kinds, and a mute; the cswap poller (`auto`: only while the legacy ccw tool's bot is not running) | the Mac, or an admin device |
@@ -147,7 +172,7 @@ Everything Jantar keeps is in `~/.jantar` (or `JANTAR_HOME`), mode 0700:
 | Path | What |
 |---|---|
 | `config.json` | the settings |
-| `jantar.db` | events, the audit log, devices, push subscriptions, paired extensions |
+| `jantar.db` | events, the audit log, devices, push subscriptions, paired extensions, paired servers (their public keys only) |
 | `life.db`, `backups/` | Life, and its nightly copies (the newest 30) |
 | `meetings.db`, `meetings/` | Meetings' text, and the screenshots, a folder per meeting |
 | `uploads/<session>/` | files sent from the phone, removed after 7 days |
@@ -158,5 +183,7 @@ Everything Jantar keeps is in `~/.jantar` (or `JANTAR_HOME`), mode 0700:
 | `logs/` | the daemon's logs |
 | `run/` | `ctl.sock`, `hooks.sock` and screenshots in flight |
 | `rewrite/`, `food-estimate/`, `meeting-summary/` | working folders for Rewrite, Ask Claude and meeting summaries |
+| `fleet/hub-key.pem` | v0.6, on the Mac: its Fleet key (0600), made by the first `jantar fleet on` |
+| `node/node.json` | v0.6, on a server: the Mac's address and key, this server's name and key, the Access token (0600); its presence makes the daemon a server |
 
 `jantar uninstall --purge` deletes the whole folder after a y/N.

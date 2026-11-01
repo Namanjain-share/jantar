@@ -8,7 +8,9 @@ tailnet) or a Cloudflare Tunnel (TLS ends at Cloudflare, so Cloudflare can
 read that traffic). There is no Jantar server and no telemetry. Rewrite,
 Ask Claude and meeting summaries run Claude Code on your account, the same
 way any Claude Code use does. Notifications go through Apple's or Google's
-push service. See [Security, in plain words](security.md).
+push service. With [Fleet](fleet.md), a paired server's sessions, screens
+and transcripts travel to your Mac through the same front door. See
+[Security, in plain words](security.md).
 
 ## Do I need an API key?
 
@@ -30,10 +32,29 @@ It is not affiliated with Google or Microsoft either.
 
 ## iTerm2, tmux, Ghostty, Linux?
 
-Not yet. Jantar drives Terminal.app on macOS only. Linux servers with Claude
-Code in tmux come next (v0.6, being built now): run everything on your server
-and answer it from your phone. iTerm2 and Ghostty follow; see the
-[roadmap](roadmap.md).
+On the Mac, Jantar drives Terminal.app only; iTerm2 and Ghostty come later
+([roadmap](roadmap.md)). From v0.6, Linux servers (and Windows with WSL2)
+can join your Mac with Claude Code in tmux: see the next question.
+
+## Can I see the Claude sessions on my servers?
+
+Yes, from v0.6, with Fleet. Turn it on at the Mac (`jantar fleet on`), make
+a join line per server (`jantar node pair --count 10`), and run one line on
+each server. Their sessions join the board, each server with its own Claude
+accounts. Each server dials out to your Mac through the front door your
+phone uses, so nothing opens on the servers. The Mac must stay awake: while
+it sleeps, no server is reachable. Native Windows (without WSL2) shows
+sessions and their cards only. Some parts are not yet checked on real
+servers. See [Servers](fleet.md).
+
+## Can a paired server reach my Mac?
+
+Only as far as its own sessions. A server reports its own sessions and
+cards, which the Mac checks, clips and labels with the name the Mac gave
+it; it can't touch the Mac's sessions or another server's, or start
+anything on the Mac. The other way round, a paired phone can prompt every
+server that is not joined with `--read-only`. See
+[SECURITY.md](../SECURITY.md#v06-fleet-paired-servers).
 
 ## Why can switches only be changed at the Mac?
 
@@ -91,7 +112,11 @@ your phone's own alarm for a dose you must not miss.
 
 ## Known limits
 
-- Terminal.app only (tmux, iTerm2 and a live terminal view come later).
+- On the Mac, Terminal.app only (iTerm2 and a live terminal view come
+  later). Servers use tmux; native Windows is watch and cards only
+  ([servers](fleet.md#limits)).
+- With Fleet, the Mac is the hub: while it sleeps, the phone reaches no
+  server.
 - Safari may refuse the daemon's `Secure` cookie on plain
   `http://127.0.0.1`; on the Mac use Chrome for `jantar open`, or the HTTPS
   address of your front door.
