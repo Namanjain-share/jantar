@@ -33,6 +33,7 @@ import {
   launchAccounts,
   markersIn,
   parseLaunchCommand,
+  perfBudgetMs,
   todoBody,
   writePastSessions,
   type FakeHome,
@@ -198,12 +199,12 @@ describe('single-account mode with no cswap, and Resume Last', () => {
       ws.once('open', () => resolve());
       ws.on('error', reject);
     });
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     ws?.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. finds single mode by itself: one account 0, the live session on it, cswap never run', async () => {
     expect(d.ctx.accountsMode()).toBe('single');
@@ -234,7 +235,7 @@ describe('single-account mode with no cswap, and Resume Last', () => {
     const audit = d.ctx.db.audit.list().find((a) => a.action === 'food.estimate');
     expect(audit?.params).toMatchObject({ account: 0, ok: true });
     expect(await d.home.calls('cswap')).toEqual([]);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('3. Resume Last: the history newest first and masked, then --resume <newest id> typed in claude mode, ready on account 0', async () => {
     folder = join(d.home.home, 'Desktop', 'work', 'foo');
@@ -266,7 +267,7 @@ describe('single-account mode with no cswap, and Resume Last', () => {
     // That conversation is open now: starting it again is refused.
     const again = await call('POST', '/v1/launches', { root: 'r.work', path: 'foo', account: 'auto', flags: DEFAULT_LAUNCH_FLAGS, resume: PAST[0]?.id });
     expect(again.status, again.text).toBe(409);
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it("4. a past conversation's first line reaches no frame, event, audit row, log line, launch row or write reply", async () => {
     const replay = d.ctx.store.replay(0);

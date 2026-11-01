@@ -3,9 +3,9 @@
  * captures hold, newest first.
  *
  *   Intel                         [+ Add]
- *   [ Search the shelf            ]        300 ms after typing stops
+ *   [ Search the shelf          × ]        300 ms after typing stops; × clears it
  *   All  tool 214  repo 98 …  Tags ›       type chips, scrolling sideways
- *   612 items
+ *   612 items                              "12 matches" while searching
  *   Claude Code hooks cookbook             a row opens the item page
  *   tool · intel · 29 Oct
  *   What a hook can block and how …
@@ -14,7 +14,9 @@
  *
  * The search, type and tag live in the address (`/intel?q=&type=&tag=`),
  * so back and a shared link land on the same view; `item=` opens one item
- * over it. Data comes over REST and again whenever `lifeTick` moves (the
+ * over it. v0.5.3: the daemon ranks a search best match first, and each row
+ * marks the search's words; `focus=search` (the phone header's magnifier)
+ * focuses the box and leaves the address. Data comes over REST and again whenever `lifeTick` moves (the
  * shelf ticks while a bot appends); a reload brings back as many rows as
  * were shown, past 100 too (a page holds at most 100, so it follows `next`
  * until it has them). Every state keeps the `<h1>`; while a new view loads,
@@ -33,7 +35,20 @@ import { useLifeLoad } from '../life/shared/useLife.js';
 import { AddSheet } from './AddSheet.js';
 import { IntelRow } from './IntelRow.js';
 import { ItemPage } from './ItemPage.js';
-import { ADDED, ADD_SOURCE_COMMAND, NOTHING_MATCHES, NO_SOURCES, PAGE, SEARCH_DEBOUNCE_MS, hasFilters, itemsWord, shelfPath, type ShelfFilters } from './model.js';
+import {
+  ADDED,
+  ADD_SOURCE_COMMAND,
+  NOTHING_MATCHES,
+  NO_SOURCES,
+  PAGE,
+  SEARCH_DEBOUNCE_MS,
+  hasFilters,
+  itemsWord,
+  matchesWord,
+  shelfPath,
+  termsOf,
+  type ShelfFilters,
+} from './model.js';
 import { TagSheet } from './TagSheet.js';
 
 export interface IntelProps {
@@ -41,18 +56,22 @@ export interface IntelProps {
   type?: string | undefined;
   tag?: string | undefined;
   item?: string | undefined;
+  /** v0.5.3: from the header's magnifier: focus the search box. */
+  focus?: 'search' | undefined;
 }
 
-export function Intel({ q, type, tag, item }: IntelProps) {
+export function Intel({ q, type, tag, item, focus }: IntelProps) {
   const offline = useApp((s) => s.conn.status === 'offline');
   const filters: ShelfFilters = { q, type, tag };
   if (item) return <ItemPage id={item} filters={filters} offline={offline} />;
-  return <Shelf filters={filters} offline={offline} />;
+  return <Shelf filters={filters} offline={offline} focus={focus === 'search'} />;
 }
 
+// Room on the right for the clear button; WebKit's own clear button hidden, so there is one.
 const INPUT =
-  'h-40 w-full min-w-0 rounded-btn border border-line-strong bg-bg px-12 type-input text-ink outline-none ' +
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink coarse:h-44';
+  'h-40 w-full min-w-0 rounded-btn border border-line-strong bg-bg pl-12 pr-40 type-input text-ink outline-none ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink coarse:h-44 coarse:pr-44 ' +
+  '[&::-webkit-search-cancel-button]:appearance-none';
 
 function Chip({ pressed, onClick, label, children }: { pressed?: boolean; onClick: () => void; label?: string; children: ReactNode }) {
   return (
@@ -90,12 +109,14 @@ interface More {
   next: string | null;
 }
 
-function Shelf({ filters, offline }: { filters: ShelfFilters; offline: boolean }) {
+function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: boolean; focus: boolean }) {
   const { api } = useDeps();
   const navigate = useNavigate();
   const toast = useToast();
   const now = useNow(60_000);
   const searchId = useId();
+  const searchBox = useRef<HTMLInputElement>(null);
+  const terms = termsOf(filters.q);
   const key = JSON.stringify([filters.q ?? '', filters.type ?? '', filters.tag ?? '']);
   // How many rows were on screen for this view, so a reload brings back as many.
   const shown = useRef({ key, n: PAGE });
@@ -158,6 +179,19 @@ function Shelf({ filters, offline }: { filters: ShelfFilters; offline: boolean }
 
   const go = (f: ShelfFilters) => navigate(shelfPath(f), { replace: true });
 
+  // The header's magnifier: focus the box, then drop the word from the address (a reload or Back should not jump there again).
+  useEffect(() => {
+    if (!focus) return;
+    searchBox.current?.focus();
+    navigate(shelfPath(filtersRef.current), { replace: true });
+  }, [focus, navigate]);
+
+  const clearSearch = () => {
+    setText('');
+    if (filtersRef.current.q) go({ ...filtersRef.current, q: undefined });
+    searchBox.current?.focus();
+  };
+
   const showMore = async () => {
     if (!data || !next || moreBusy) return;
     const base = data;
@@ -216,10 +250,10 @@ function Shelf({ filters, offline }: { filters: ShelfFilters; offline: boolean }
   } else {
     body = (
       <>
-        <p className="px-16 pb-8 pt-12 type-mono text-ink-3">{itemsWord(data.total)}</p>
+        <p className="px-16 pb-8 pt-12 type-mono text-ink-3">{terms.length ? matchesWord(data.total) : itemsWord(data.total)}</p>
         <ul className="border-t border-line">
           {items.map((i) => (
-            <IntelRow key={i.id} item={i} filters={filters} now={now} />
+            <IntelRow key={i.id} item={i} filters={filters} terms={terms} now={now} />
           ))}
         </ul>
         {next ? (
@@ -244,11 +278,12 @@ function Shelf({ filters, offline }: { filters: ShelfFilters; offline: boolean }
         {addButton}
       </header>
       {offline ? <p className="px-16 pb-8 type-mono text-ink-3">{OFFLINE_WRITE}</p> : null}
-      <div className="px-16">
+      <div className="relative mx-16">
         <label htmlFor={searchId} className="sr-only">
           Search the shelf
         </label>
         <input
+          ref={searchBox}
           id={searchId}
           type="search"
           value={text}
@@ -260,6 +295,16 @@ function Shelf({ filters, offline }: { filters: ShelfFilters; offline: boolean }
           autoCorrect="off"
           className={INPUT}
         />
+        {text ? (
+          <button
+            type="button"
+            aria-label="Clear the search"
+            onClick={clearSearch}
+            className="absolute inset-y-0 right-0 flex w-40 items-center justify-center rounded-btn text-ink-3 transition-colors duration-120 ease-hover hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink coarse:w-44"
+          >
+            <XIcon size={16} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       {chipsFrom && (typeChips.length > 0 || chipsFrom.tags.length > 0 || filters.tag) ? (
         // The tag filter comes right after All, so it is on screen however many types the shelf has; the row wraps from md up.

@@ -30,6 +30,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright-core';
+import { perfBudgetMs } from '@jantar/fixtures';
 import { DESK, DIST, PHONE, browserReady, clean, grayscale, grayscaleKey, overflow, pageOpener, type Viewport, type Watch } from './browser.js';
 import { PATHS, webFixtureV03, type WebFixtureV03 } from './web-fixture-v03.js';
 import { serveWebApp, type WebServer } from './web-server.js';
@@ -58,13 +59,13 @@ describe.skipIf(!ready)('the v0.3 screens in Chromium', () => {
     fixture = webFixtureV03(png);
     server = await serveWebApp(DIST, () => fixture);
     pages = pageOpener(browser, () => server.base);
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   afterAll(async () => {
     await pages?.close();
     await browser?.close().catch(() => undefined);
     await server?.close();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   /** Clean console, no <style>, nothing ran, nothing past the sides of the viewport. */
   async function check(page: Page, watch: Watch) {

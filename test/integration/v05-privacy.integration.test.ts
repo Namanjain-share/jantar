@@ -25,7 +25,7 @@
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MEETING_MARKER, claudeCalls, extLinesBody, extOpenBody, extShotBody, markerJpeg, projectBody, setFakeClaude } from '@jantar/fixtures';
+import { MEETING_MARKER, claudeCalls, extLinesBody, extOpenBody, extShotBody, markerJpeg, perfBudgetMs, projectBody, setFakeClaude } from '@jantar/fixtures';
 import {
   DEVICE_COOKIE,
   EXTENSION_ID,
@@ -131,12 +131,12 @@ describe('v0.5 privacy sweep: no meeting text, name or picture leaves the daemon
     key = (claim.body as { key: string }).key;
     const made = await phone('POST', '/v1/projects', projectBody({ name: 'Example launch' }));
     projectId = (made.body as { id: string }).id;
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     for (const dv of Object.values(devices)) dv?.ws.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. a marked call: its summary, items as todos, the phone reading and editing it', async () => {
     const id = await call(clients.kept);
@@ -168,7 +168,7 @@ describe('v0.5 privacy sweep: no meeting text, name or picture leaves the daemon
     expect((await extension('POST', `/v1/ext/meetings/${other}`, extOpenBody({ at: Date.now() }, { marked: true }))).status).toBe(200);
     expect((await extension('POST', `/v1/ext/meetings/${other}/shots`, { key: randomUUID(), at: Date.now(), image: png })).status).toBe(400);
     expect((await phone('POST', `/v1/meetings/${id}/summary`)).status).toBe(409);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('2. MP5: a summary that fails with the marker on stderr leaves only codes and counts in the log', async () => {
     await setFakeClaude(d.home, { mode: 'meeting-bad-json' });
@@ -186,7 +186,7 @@ describe('v0.5 privacy sweep: no meeting text, name or picture leaves the daemon
     expect(d.log.records.filter((r) => r.msg === 'meetings: a summary did not work')).toHaveLength(2);
     const calls = await claudeCalls(d.home);
     expect(calls.filter((c) => c.stdin.includes(MEETING_MARKER)).length).toBeGreaterThanOrEqual(3);
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('3. MP4: the shared screen reads no meeting, and its stream names none', async () => {
     for (const path of ['/v1/meetings', `/v1/meetings/${meetings[0]}`, `/v1/meetings/${meetings[0]}/shots/00000000000000000000000000`]) {

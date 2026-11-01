@@ -13,7 +13,9 @@
  * hides itself and waits two animation frames (one frame still left the
  * button in a shot, research 4.6) before asking the worker. A hide the
  * worker asked for (a shortcut or popup shot) ends with its `show`, or by
- * itself after HIDE_GIVE_UP_MS should that never come.
+ * itself after HIDE_GIVE_UP_MS should that never come. A page-button shot
+ * the worker has not answered within PAGE_SHOT_LIMIT_MS shows the button
+ * again with NO_ANSWER: the button is never left hidden.
  */
 import type { ShotAnswer } from '../shared/messages.js';
 import type { SiteAdapter } from './adapters/types.js';
@@ -27,15 +29,26 @@ export const FLASH_MS = 1_200;
 export const BUBBLE_MS = 8_000;
 /** The page-button shot when the worker gave no answer at all. */
 export const NO_ANSWER = 'Not saved: the Jantar extension did not answer.';
+/**
+ * The page button waits this long for the worker's answer, then shows again
+ * with NO_ANSWER. Above the longest one shot takes in the worker (62.3 s):
+ * two captures (the smaller retake), each after the 550-ms gap and with its
+ * quota retry (5 s, 600 ms, 5 s), then the open (5 s) and the upload (15 s)
+ * twice (a 404 opens a new meeting). A shot queued behind other shots or the
+ * tab's End can still take longer; Settings › Last screenshot then says how
+ * it ended.
+ */
+export const PAGE_SHOT_LIMIT_MS = 65_000;
 /** A hide answers after two frames, or after this long when frames stop (a hidden tab). */
 const HIDE_MAX_MS = 500;
 /**
  * A hide the worker asked for shows the button again by itself after this
  * long, should its `show` never come (the tab navigated, the worker
- * restarted mid-shot). Its capture is done well before: it waits at most
- * shotGapMs and one 600-ms retry.
+ * restarted mid-shot). Above the longest capture after a hide (22.6 s): the
+ * 300 ms the worker gives the hide, then two captures, each after the gap
+ * and with its quota retry. The upload may still be going on then.
  */
-export const HIDE_GIVE_UP_MS = 5_000;
+export const HIDE_GIVE_UP_MS = 25_000;
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -173,11 +186,17 @@ export function createCameraButton(o: CameraButtonOptions): CameraButton {
   const shoot = async () => {
     await hide();
     let answer: ShotAnswer | undefined;
+    let limit: ReturnType<typeof setTimeout> | undefined;
     try {
-      answer = await o.shoot();
+      const late = new Promise<undefined>((resolve) => {
+        limit = setTimeout(() => resolve(undefined), PAGE_SHOT_LIMIT_MS);
+      });
+      // An answer after the limit is dropped (the popup's Settings › Last screenshot says how the try ended).
+      answer = await Promise.race([o.shoot(), late]);
     } catch {
       answer = undefined;
     } finally {
+      clearTimeout(limit);
       reveal();
     }
     if (answer && typeof answer.text === 'string') flash(answer.text, answer.ok === true);

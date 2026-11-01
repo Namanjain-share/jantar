@@ -13,11 +13,16 @@
  *  2. Ask Claude (the fake claude through the fake cswap): two editable rows,
  *     nothing saved; broken JSON is 502 with the sentence.
  *  3. Tomorrow 06:00: a project with a folder, todos, two reminders, two
- *     medicines and a bill due today; Today lists them.
+ *     medicines and a bill due today; Today lists them. v0.5.3: over
+ *     ctl.sock (`jantar mcp`'s routes) a todo added by a folder inside the
+ *     project's lands in it, and the folder's open todos list it.
  *  4. 08:00: one reminder push and one "Medicines due · 2", no names.
  *  5. Today with the medicines due: Taken leaves 9 pills, Skip; Today agrees.
  *  6. 09:00: one "Bill due" push with no name or amount; Paid logs it.
  *  7. The daemon down across 10:00: one "Missed at 10:00" push after restart.
+ *     In 4, 6 and 7 a wait that runs out names the scheduler's rows (kind,
+ *     due time, failures, claimed or not; no ids) and its push lines, so a
+ *     late push says which path it took (v0.5.3, the Ubuntu CI timeout).
  *  8. Food: the estimated rows confirmed (420 kcal), weights with their 7 and
  *     30 day changes, the target; Today shows 420 / 1,800 and 72.4.
  *  9. Cafés: the best dish first; Want to try filters.
@@ -36,6 +41,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   LAUNCH_HELD,
@@ -51,6 +57,7 @@ import {
   markersIn,
   medBody,
   moneyBody,
+  perfBudgetMs,
   placeBody,
   projectBody,
   setFakeClaude,
@@ -61,6 +68,7 @@ import {
   DEVICE_COOKIE,
   eventsSocketProtocols,
   type Features,
+  type FolderTodosResponse,
   type FoodDay,
   type FoodEstimate,
   type IntelListResponse,
@@ -146,6 +154,41 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
       .slice(-20)
       .map((r) => `${r.level} ${r.msg} ${JSON.stringify(r.fields)}`)
       .join('\n');
+
+  /**
+   * The scheduler as it stands: its rows from life.db (read-only; kind, the
+   * dose time, next_at, failures, claimed or not, never a ref) and its
+   * `life push`, `life ping` and `life sweep` lines at every level.
+   */
+  function schedulerDump(): string {
+    let rows: string;
+    try {
+      const db = new DatabaseSync(d.ctx.paths.lifeDb, { readOnly: true });
+      try {
+        const all = db.prepare('SELECT kind, sub, next_at, failures, claimed_at FROM pings ORDER BY next_at').all() as { kind: string; sub: string; next_at: string | null; failures: number; claimed_at: string | null }[];
+        rows = all.map((r) => `${r.kind}${r.sub ? ` ${r.sub}` : ''} next=${r.next_at} failures=${r.failures} claimed=${r.claimed_at !== null}`).join('\n');
+      } finally {
+        db.close();
+      }
+    } catch (e) {
+      rows = `(unreadable: ${String(e)})`;
+    }
+    const lines = d.log.records
+      .filter((r) => /^life (push|ping|sweep)/.test(r.msg))
+      .slice(-30)
+      .map((r) => `${r.level} ${r.msg} ${JSON.stringify(r.fields)}`)
+      .join('\n');
+    return `now ${new Date(clock.now()).toISOString()}\nscheduler rows:\n${rows || '(none)'}\nlife push lines:\n${lines || '(none)'}\n${dumpLog()}`;
+  }
+
+  /** Waits for `n` Life pushes in all; running out says what the scheduler holds. */
+  async function pushesReach(n: number, what: string): Promise<void> {
+    try {
+      await eventually(async () => lifePushes().length >= n, 15_000, what);
+    } catch (e) {
+      throw new Error(`${(e as Error).message}\n${schedulerDump()}`);
+    }
+  }
 
   async function call(method: string, path: string, body?: unknown, cookie = phone): Promise<HttpResult> {
     // Every write keeps one key, as the web does; Ask Claude goes without one (LP3: never cached).
@@ -239,12 +282,12 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
       const sub = await http(d.port, 'POST', '/v1/push/subscribe', { cookie, body: { subscription: { endpoint, keys: KEYS } } });
       expect(sub.status, sub.text).toBe(200);
     }
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     for (const ws of sockets) ws.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. switches: everything off says so; jantar life on over ctl.sock turns the modules on', async () => {
     const off = await call('GET', '/v1/life/today');
@@ -290,7 +333,7 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     expect(bad.status).toBe(502);
     expect((bad.body as { error: { message: string } }).error.message).toBe("Claude couldn't estimate that. Type the calories instead.");
     await setFakeClaude(d.home, { mode: 'food-ok' });
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('3. tomorrow 06:00: a project, todos, two reminders, two medicines and a bill; Today lists them', async () => {
     clock.jumpTo(at(D1, '06:00'));
@@ -314,19 +357,34 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     );
     expect(today.bills?.map((b) => b.id)).toEqual([ids.bill]);
     expect(lifePushes()).toEqual([]);
+
+    // v0.5.3: jantar mcp's routes, over the real ctl.sock: a folder inside the project's is the project's.
+    const inside = join(d.home.session(SID).cwd, 'src');
+    const folderBody = { folder: inside, title: `Example folder todo ${LIFE_MARKER}`, notes: `Synthetic ${LIFE_MARKER}` };
+    const added = await callDaemon<{ id: string }>(ctl, 'POST', '/v1/folder/todos', folderBody);
+    writes.push({ what: 'POST /v1/folder/todos (ctl)', text: JSON.stringify(added) });
+    expect(Object.keys(added)).toEqual(['id']);
+    ids.folderTodo = added.id;
+    const here = await callDaemon<FolderTodosResponse>(ctl, 'GET', `/v1/folder/todos?folder=${encodeURIComponent(inside)}`);
+    reads.push({ what: 'GET /v1/folder/todos (ctl)', text: JSON.stringify(here) });
+    expect(here.project?.id).toBe(ids.project);
+    expect(here.todos.map((t) => t.id).sort()).toEqual([ids.todo, ids.folderTodo].sort());
+    expect(here.todos.find((t) => t.id === ids.folderTodo)).toMatchObject({ projectId: ids.project, title: folderBody.title });
+    // Not over TCP, even for the admin phone.
+    expect((await call('GET', `/v1/folder/todos?folder=${encodeURIComponent(inside)}`)).status).toBe(403);
   });
 
   it('4. 08:00: one reminder push and one "Medicines due · 2", with no names on the lock screen', async () => {
     clock.jumpTo(at(D1, '07:59', 57));
-    await eventually(async () => lifePushes().length >= 2, 15_000, 'the 08:00 pushes');
+    await pushesReach(2, 'the 08:00 pushes');
     await settle();
     const pushes = lifePushes();
-    expect(pushes).toHaveLength(2);
+    expect(pushes, schedulerDump()).toHaveLength(2);
     expect(pushes.find((p) => p.kind === 'life')).toEqual(
       expect.objectContaining({ endpoint: PHONE_PUSH, title: 'Todo due', body: 'Tap to open · 08:00', url: `/todos?id=${ids.remind8}`, tag: `life:todo:${ids.remind8}` }),
     );
     expect(pushes.find((p) => p.kind === 'med')).toEqual(expect.objectContaining({ endpoint: PHONE_PUSH, title: 'Medicines due · 2', body: 'Tap to log · 08:00', url: '/today', tag: 'med:08:00' }));
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('5. Today with the medicines due: Taken leaves 9 pills, Skip; Today and the checklist agree', async () => {
     clock.jumpTo(at(D1, '08:05'));
@@ -348,16 +406,16 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
 
   it('6. 09:00: one "Bill due" push with no name or amount; Paid logs the expense and moves the due day a month', async () => {
     clock.jumpTo(at(D1, '08:59', 57));
-    await eventually(async () => lifePushes().length >= 3, 15_000, 'the 09:00 bill push');
+    await pushesReach(3, 'the 09:00 bill push');
     await settle();
     const pushes = lifePushes();
-    expect(pushes).toHaveLength(3);
+    expect(pushes, schedulerDump()).toHaveLength(3);
     expect(pushes[2]).toEqual(expect.objectContaining({ endpoint: PHONE_PUSH, kind: 'life', title: 'Bill due', body: 'Due today', url: `/money?bill=${ids.bill}`, tag: `life:bill:${ids.bill}` }));
     await made('billPaid', 'POST', `/v1/bills/${ids.bill}/paid`, {});
     const month = await get<MoneyMonth>(`/v1/money?month=${D1.slice(0, 7)}`);
     expect(month.entries.find((e) => e.id === ids.billPaid)).toMatchObject({ billId: ids.bill, amount: 64900, day: D1 });
     expect(month.bills.find((b) => b.id === ids.bill)?.nextDue).toBe(nextMonthOf(D1));
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('7. the daemon down across 10:00: after the restart the reminder and the refill (10 pills, 5 days) each ring once, "Missed at 10:00"', async () => {
     for (const ws of sockets.splice(0)) ws.close();
@@ -365,17 +423,17 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     await eventually(() => callDaemon(ctl, 'GET', '/healthz'), 10_000, 'the control socket after the restart');
     await listen('phone');
     await listen('reader');
-    await eventually(async () => lifePushes().length >= 5, 15_000, 'the catch-up pushes');
+    await pushesReach(5, 'the catch-up pushes');
     await settle();
     const caught = lifePushes().slice(3);
-    expect(caught).toHaveLength(2);
+    expect(caught, schedulerDump()).toHaveLength(2);
     expect(caught.find((p) => p.kind === 'life')).toEqual(
       expect.objectContaining({ endpoint: PHONE_PUSH, title: 'Todo due', body: 'Missed at 10:00 · Tap to open · 10:00', url: `/todos?id=${ids.remind10}` }),
     );
     expect(caught.find((p) => p.kind === 'med')).toEqual(
       expect.objectContaining({ endpoint: PHONE_PUSH, title: 'Medicine running low', body: 'Missed at 10:00 · Refill soon', url: `/meds?med=${ids.testamol}` }),
     );
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('8. food and weight: the estimate confirmed is 420 kcal, the changes over 7 and 30 days, the target; Today shows them', async () => {
     for (const item of estimated?.items ?? []) await made(`food:${item.name}`, 'POST', '/v1/food', { day: D1, name: item.name, kcal: item.kcal });
@@ -474,7 +532,7 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     const wire = JSON.stringify(await get<IntelSourcesResponse>('/v1/intel/sources'));
     expect(wire).not.toContain(intelPath);
     expect(wire).not.toContain(d.home.home);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('12. a broken life.db: 503 with the sentence, the file untouched, the Board up; jantar life restore brings Life back', async () => {
     const backup = await cli('life', 'backup');
@@ -510,7 +568,7 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     const back = await get<Today>('/v1/life/today');
     expect(back.food?.kcal).toBe(420);
     expect((await readdir(d.ctx.paths.home)).some((f) => f.startsWith('life.db.before-restore-'))).toBe(true);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('13. everything off again: nothing new is visible, Life status still answers', async () => {
     expect((await cli('life', 'off', 'all')).code).toBe(0);

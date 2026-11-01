@@ -6,13 +6,19 @@
  *   No device gets medicine pings.             PushWarning, while medicines are on
  *   MEDICINES   WP-MD's MedsToday              "No medicines today." with none
  *   DUE         overdue todos, then today's    "Nothing due today." with none
+ *               [+] Add todo                   always (v0.5.3): the todo sheet, due today
  *   BILLS       due within 3 days or overdue   only when there are some
  *   FOOD        1,240 / 1,500 kcal  [+]        always, while food is on
+ *               72.4 kg | Log weight           v0.5.3: opens the weight sheet over Today
  *   CLAUDE      2 sessions need you  ›         always; a tap opens the Board
  *   LIFE        one row per module that is on, and the shelf
  *
  * A section shows only while its module is on. `dose` (`<medId>@<HHMM>`,
  * from a medicine push) opens WP-MD's DoseSheet over Today for that dose.
+ * The adds are off while offline, like Add food. The weight sheet needs the
+ * recent weights and the goal, so it asks for Food's day each time it opens,
+ * and only while it is open (the weight line shows the spinner meanwhile;
+ * a failure says so under it, with Try again).
  * Today's own rows carry no ember: the rows that may (TodoRow, BillRow)
  * come from their modules. The title is the page's <h1> in every state.
  */
@@ -26,8 +32,8 @@ import {
   WalletIcon,
   type Icon,
 } from '@phosphor-icons/react';
-import { useMemo, type ReactNode } from 'react';
-import type { LifeModule, Todo } from '@jantar/protocol';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { FoodDay, LifeModule, Todo } from '@jantar/protocol';
 import { routePath } from '../../../../lib/router.js';
 import { useDeps, useNavigate } from '../../../context.js';
 import { RailLabel } from '../../../kit/RailLabel.js';
@@ -35,18 +41,19 @@ import { useFeatures, useNeedsCount } from '../../../shell/data.js';
 import { Link } from '../../../shell/Link.js';
 import { AddFoodSheet } from '../food/AddFoodSheet.js';
 import { FoodToday } from '../food/FoodToday.js';
+import { WeightSheet } from '../food/WeightSheet.js';
 import { DoseSheet } from '../meds/DoseSheet.js';
 import { parseDoseKey } from '../meds/data.js';
 import { MedsToday } from '../meds/MedsToday.js';
 import { BillsToday } from '../money/BillsToday.js';
 import { dayLabel } from '../shared/DayNav.js';
 import { PushWarning } from '../shared/PushWarning.js';
-import { LifeEmpty, NotSaved } from '../shared/states.js';
+import { LifeEmpty, LifeError, NotSaved } from '../shared/states.js';
 import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
 import { useTodoActions } from '../todos/actions.js';
 import { projectLabel } from '../todos/model.js';
 import { TodoRow } from '../todos/TodoRow.js';
-import { TodoSheet } from '../todos/TodoSheet.js';
+import { TodoSheet, type TodoStart } from '../todos/TodoSheet.js';
 import { useProjects } from '../todos/useProjects.js';
 import { AddButton, Loaded, Page, useLifeClock, useOffline, useSheet } from './parts.js';
 
@@ -85,12 +92,35 @@ export function Today({ dose }: TodayProps) {
   const projects = useProjects();
   const pmap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const todoSheet = useSheet<Todo>();
+  const [todoStart, setTodoStart] = useState<TodoStart | undefined>(undefined);
   // The sheet's Project list comes from the Mac once a todo is opened (the chips' cache is empty without a stored control scope or after a refusal).
   const sheetProjects = useLifeLoad(todoSheet.key ? 'projects' : null, () => api.projectsList());
   const actions = useTodoActions(load.reload);
   const day = load.data?.day ?? status?.today;
   const now = useLifeClock(status, day);
   const foodSheet = useSheet();
+  const weightSheet = useSheet();
+  // Today's food day, for the weight sheet (its recent weights and goal): asked for afresh at each opening, and only
+  // while the sheet is open, so a life tick on Today never fetches it once the sheet has closed.
+  const weightLoad = useLifeLoad(weightSheet.open ? `food:${now.day}:${weightSheet.key}` : null, () => api.foodDay(now.day));
+  // The last answer stays while the sheet closes, so it slides away rather than vanishing.
+  const [weightLast, setWeightLast] = useState<FoodDay | null>(null);
+  useEffect(() => {
+    if (weightLoad.data) setWeightLast(weightLoad.data);
+  }, [weightLoad.data]);
+  const weightDay = weightLoad.data ?? weightLast;
+  const addTodo = () => {
+    setTodoStart({ day: now.day });
+    todoSheet.show(null);
+  };
+  const editTodo = (x: Todo) => {
+    setTodoStart(undefined);
+    todoSheet.show(x);
+  };
+  const savedWeight = () => {
+    load.reload();
+    weightLoad.reload();
+  };
   // The push's key has no day: a 23:00 dose opened after midnight is last night's.
   const doseOf = dose ? parseDoseKey(dose, now) : null;
 
@@ -124,19 +154,21 @@ export function Today({ dose }: TodayProps) {
                       <NotSaved error={actions.error} />
                     </div>
                   ) : null}
-                  {overdue.length + due.length === 0 ? (
-                    <LifeEmpty>Nothing due today.</LifeEmpty>
-                  ) : (
+                  {overdue.length + due.length === 0 ? null : (
                     <ul>
                       {overdue.map((todo) => (
-                        <TodoRow key={todo.id} todo={todo} now={now} project={label(todo)} overdue offline={offline} actions={actions} onEdit={(x) => todoSheet.show(x)} />
+                        <TodoRow key={todo.id} todo={todo} now={now} project={label(todo)} overdue offline={offline} actions={actions} onEdit={editTodo} />
                       ))}
                       {due.map((todo) => (
                         // The clock decides: a time that passes while Today stays open turns the row overdue.
-                        <TodoRow key={todo.id} todo={todo} now={now} project={label(todo)} showDay={false} offline={offline} actions={actions} onEdit={(x) => todoSheet.show(x)} />
+                        <TodoRow key={todo.id} todo={todo} now={now} project={label(todo)} showDay={false} offline={offline} actions={actions} onEdit={editTodo} />
                       ))}
                     </ul>
                   )}
+                  <div className="flex items-center gap-4 border-b border-line pr-8">
+                    <div className="min-w-0 flex-1">{overdue.length + due.length === 0 ? <LifeEmpty>Nothing due today.</LifeEmpty> : null}</div>
+                    <AddButton label="Add todo" disabled={offline} onClick={addTodo} />
+                  </div>
                 </Section>
               ) : null}
 
@@ -150,10 +182,17 @@ export function Today({ dose }: TodayProps) {
                 <Section label="Food">
                   <div className="flex items-center gap-4 border-b border-line pr-8">
                     <div className="min-w-0 flex-1">
-                      <FoodToday kcal={t.food.kcal} target={t.food.target} weight={t.food.weight} />
+                      <FoodToday
+                        kcal={t.food.kcal}
+                        target={t.food.target}
+                        weight={t.food.weight}
+                        onWeight={() => weightSheet.show()}
+                        weightBusy={weightSheet.open && !weightLoad.data && !weightLoad.error}
+                      />
                     </div>
                     <AddButton label="Add food" disabled={offline} onClick={() => foodSheet.show()} />
                   </div>
+                  {weightSheet.open && !weightLoad.data && weightLoad.error ? <LifeError error={weightLoad.error} onRetry={weightLoad.reload} /> : null}
                 </Section>
               ) : null}
 
@@ -188,8 +227,20 @@ export function Today({ dose }: TodayProps) {
         todo={todoSheet.item}
         projects={sheetProjects.data?.projects ?? projects}
         now={now}
+        start={todoStart}
         onSaved={load.reload}
       />
+      {weightDay ? (
+        <WeightSheet
+          open={weightSheet.open && weightLoad.data !== null}
+          onOpenChange={weightSheet.onOpenChange}
+          sheetKey={weightSheet.key}
+          day={weightDay.day}
+          today={weightDay.today}
+          weight={weightDay.weight}
+          onSaved={savedWeight}
+        />
+      ) : null}
       {doseOf && day ? (
         <DoseSheet
           medId={doseOf.medId}

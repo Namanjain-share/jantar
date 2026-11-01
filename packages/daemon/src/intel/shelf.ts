@@ -6,17 +6,27 @@
  *
  * Order: `at` descending, then file order descending (items with no time
  * last). Past INTEL_MAX_ITEMS in total the oldest are dropped and counted.
- * Search is a case-insensitive substring over the title, summary, why, tags
- * and field values; `type` filters exactly and `tag` case-insensitively.
- * `types` is counted over the items the search and tag let through, and
- * the top 30 `tags` over those the search and type let through, so the
- * chips still offer the other choices while one is picked.
+ * `type` filters exactly and `tag` case-insensitively. `types` is counted
+ * over the items the search and tag let through, and the top 30 `tags` over
+ * those the search and type let through, so the chips still offer the other
+ * choices while one is picked.
+ *
+ * v0.5.3 search (one implementation for the phone, the CLI's list and
+ * `jantar mcp`): the query's words (protocol searchTerms: a "quoted phrase"
+ * is one) must every one appear, without case, in the title, what it is,
+ * why it matters, the type, a tag, the link or a field value. Under `best`
+ * (the default with words) each word scores the best place it was found:
+ * a word start in the title 6, elsewhere in the title 4, equal to a tag or
+ * the type 3, inside one 2, anywhere else 1; the sum ranks the list, newest
+ * first within a score. `new` (the default without words) keeps the order
+ * above. Each entry keeps its lowercased text from the first search on (a
+ * changed record is a new entry, so it is never stale).
  *
  * A capture made from the CLI keeps the folder it ran in (`cwd`) in the
  * captures file; the shelf leaves that field out, so no Mac path reaches a
  * phone or a search.
  */
-import { INTEL_MAX_ITEMS, type IntelItem, type IntelListQuery, type IntelListResponse } from '@jantar/protocol';
+import { INTEL_MAX_ITEMS, searchTerms, type IntelItem, type IntelListQuery, type IntelListResponse } from '@jantar/protocol';
 import { listItem, type MappedRecord } from './map.js';
 import { CAPTURES_SOURCE } from './sources.js';
 
@@ -29,6 +39,22 @@ interface Entry {
   atMs: number;
   /** Arrival order: file order within a source. */
   seq: number;
+  /** What a search reads, lowercased; built the first time one does (textOf). */
+  text?: SearchText;
+}
+
+interface SearchText {
+  /** Every searched field, one per line (a word never spans two). */
+  all: string;
+  title: string;
+  type: string;
+  tags: string[];
+}
+
+/** A search word, with its "starts a word in the title" test. */
+interface Term {
+  word: string;
+  start: RegExp;
 }
 
 /** The item as the shelf holds it: a capture without its CLI folder. */
@@ -54,14 +80,46 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function matches(item: IntelItem, re: RegExp): boolean {
-  return (
-    re.test(item.title) ||
-    (item.summary !== undefined && re.test(item.summary)) ||
-    (item.why !== undefined && re.test(item.why)) ||
-    item.tags.some((t) => re.test(t)) ||
-    item.fields.some((f) => re.test(f.value))
-  );
+function textOf(e: Entry): SearchText {
+  if (!e.text) {
+    const { item } = e;
+    const tags = item.tags.map((t) => t.toLowerCase());
+    const type = item.type?.toLowerCase() ?? '';
+    const title = item.title.toLowerCase();
+    const rest = [item.summary, item.why, item.url, ...item.fields.map((f) => f.value)].filter((v) => v !== undefined);
+    e.text = { all: [title, type, ...tags, ...rest.map((v) => v.toLowerCase())].join('\n'), title, type, tags };
+  }
+  return e.text;
+}
+
+/**
+ * The query's words. A word start is the title's start or a place after
+ * anything but a letter, a mark or a digit (a Devanagari vowel sign is no
+ * word break).
+ */
+function termsOf(q: string | undefined): Term[] {
+  return searchTerms(q ?? '').map((word) => ({ word, start: new RegExp(`(?:^|[^\\p{L}\\p{M}\\p{N}])${escapeRegExp(word)}`, 'u') }));
+}
+
+/** The sum over the words of the best place each was found (the module comment's points). */
+function scoreOf(t: SearchText, terms: readonly Term[]): number {
+  let score = 0;
+  for (const { word, start } of terms) {
+    if (start.test(t.title)) score += 6;
+    else if (t.title.includes(word)) score += 4;
+    else if (t.type === word || t.tags.includes(word)) score += 3;
+    else if (t.type.includes(word) || t.tags.some((x) => x.includes(word))) score += 2;
+    else score += 1;
+  }
+  return score;
+}
+
+/** Best score first; the order given (newest first) within a score. */
+function ranked(items: readonly Entry[], terms: readonly Term[]): Entry[] {
+  return items
+    .map((e, i) => ({ e, i, score: scoreOf(textOf(e), terms) }))
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .map((x) => x.e);
 }
 
 /** The `next` cursor after `e`: `<at>|<source>|<record id>`. */
@@ -69,8 +127,32 @@ function cursorOf(e: Entry): string {
   return `${e.item.at ?? ''}|${e.source}|${e.rid}`;
 }
 
+/** The `next` cursor under `best`: `#<where the next page starts>|<source>|<record id of the last item>`. */
+function bestCursorOf(e: Entry, offset: number): string {
+  return `#${offset}|${e.source}|${e.rid}`;
+}
+
+/**
+ * Where the page after a `best` cursor starts: right after its item while
+ * that is still in the list, else at its offset. A cursor of the other kind
+ * starts from the top.
+ */
+function startAfterBest(items: readonly Entry[], cursor: string): number {
+  const i = cursor.indexOf('|');
+  const j = cursor.indexOf('|', i + 1);
+  if (!cursor.startsWith('#') || i < 0 || j < 0) return 0;
+  const source = cursor.slice(i + 1, j);
+  const rid = cursor.slice(j + 1);
+  const hit = items.findIndex((e) => e.source === source && e.rid === rid);
+  if (hit >= 0) return hit + 1;
+  const offset = Number(cursor.slice(1, i));
+  return Number.isSafeInteger(offset) && offset >= 0 ? Math.min(offset, items.length) : 0;
+}
+
 /** Where the page after `cursor` starts in `items` (newest first). */
 function startAfter(items: readonly Entry[], cursor: string): number {
+  // A `best` cursor (startAfterBest) starts from the top.
+  if (cursor.startsWith('#')) return 0;
   const i = cursor.indexOf('|');
   const j = cursor.indexOf('|', i + 1);
   if (i < 0 || j < 0) return 0;
@@ -158,14 +240,14 @@ export class Shelf {
   }
 
   list(q: IntelListQuery): IntelListResponse {
-    const needle = q.q?.trim();
-    const re = needle ? new RegExp(escapeRegExp(needle), 'i') : null;
+    const terms = termsOf(q.q);
+    const best = terms.length > 0 && q.sort !== 'new';
     const tag = q.tag?.toLowerCase();
-    const shown: Entry[] = [];
+    let shown: Entry[] = [];
     const types = new Map<string, number>();
     const tags = new Map<string, { tag: string; n: number }>();
     for (const e of this.order()) {
-      if (re && !matches(e.item, re)) continue;
+      if (terms.length && !terms.every((t) => textOf(e).all.includes(t.word))) continue;
       const typeOk = q.type === undefined || e.item.type === q.type;
       const tagOk = tag === undefined || e.item.tags.some((t) => t.toLowerCase() === tag);
       if (tagOk && e.item.type !== undefined) types.set(e.item.type, (types.get(e.item.type) ?? 0) + 1);
@@ -178,12 +260,14 @@ export class Shelf {
       }
       if (typeOk && tagOk) shown.push(e);
     }
-    const start = q.before ? startAfter(shown, q.before) : 0;
+    if (best) shown = ranked(shown, terms);
+    const start = q.before ? (best ? startAfterBest(shown, q.before) : startAfter(shown, q.before)) : 0;
     const page = shown.slice(start, start + q.limit);
     const last = page.at(-1);
+    const end = start + page.length;
     return {
       items: page.map((e) => listItem(e.item)),
-      next: last && start + page.length < shown.length ? cursorOf(last) : null,
+      next: last && end < shown.length ? (best ? bestCursorOf(last, end) : cursorOf(last)) : null,
       total: shown.length,
       types: [...types].map(([type, n]) => ({ type, n })).sort((a, b) => b.n - a.n || a.type.localeCompare(b.type)),
       tags: [...tags.values()].sort((a, b) => b.n - a.n || a.tag.localeCompare(b.tag)).slice(0, TAGS_SHOWN),

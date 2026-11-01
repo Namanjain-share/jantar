@@ -17,6 +17,7 @@ import {
   claudeCalls,
   claudeSignals,
   launchAccounts,
+  perfBudgetMs,
   processAlive,
   setFakeClaude,
   type ClaudeCall,
@@ -85,11 +86,11 @@ describe('R8: no orphaned claude after a Rewrite run ends early (real processes)
 
   beforeAll(async () => {
     ({ d, phone } = await boot());
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('a cancel from the phone: SIGTERM, the process is gone, the job cancelled', async () => {
     await setFakeClaude(d.home, { mode: 'slow', slowMs: 120_000 });
@@ -101,7 +102,7 @@ describe('R8: no orphaned claude after a Rewrite run ends early (real processes)
     expect((await claudeSignals(d.home)).filter((s) => s.pid === claude.pid)).toEqual([{ signal: 'SIGTERM', pid: claude.pid, ts: expect.any(Number) }]);
     expect(runsLeft(d.home)).toEqual([]);
     expect((await job(d, phone, jobId)).state).toBe('cancelled');
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it(`the run's timeout (${TIMEOUT_S} s): SIGTERM, the process is gone, the job failed with timeout`, async () => {
     await setFakeClaude(d.home, { mode: 'slow', slowMs: 120_000 });
@@ -120,7 +121,7 @@ describe('R8: no orphaned claude after a Rewrite run ends early (real processes)
     // never a retry after a timeout
     expect((await claudeCalls(d.home)).filter((c) => c.pid === claude.pid)).toHaveLength(1);
     expect(runsLeft(d.home)).toEqual([]);
-  }, 40_000);
+  }, perfBudgetMs(40_000));
 
   it('a claude that ignores SIGTERM is killed a second later all the same', async () => {
     await setFakeClaude(d.home, { mode: 'slow', slowMs: 120_000, ignoreSignals: ['SIGINT', 'SIGTERM'] });
@@ -133,7 +134,7 @@ describe('R8: no orphaned claude after a Rewrite run ends early (real processes)
     await eventually(async () => !processAlive(claude.pid), 5_000, 'the SIGKILL');
     expect((await claudeSignals(d.home)).filter((s) => s.pid === claude.pid)).toEqual([{ signal: 'SIGTERM', pid: claude.pid, ts: expect.any(Number), ignored: true }]);
     expect(runsLeft(d.home)).toEqual([]);
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 });
 
 describe('R8: a daemon stop with a Rewrite run going', () => {
@@ -153,5 +154,5 @@ describe('R8: a daemon stop with a Rewrite run going', () => {
       if (stopped) await d.home.cleanup();
       else await d.stop();
     }
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 });

@@ -11,19 +11,27 @@
  *   6 hours sends nothing and moves on.
  * - LS4 a medicine check that throws still sends; a todo's does not.
  * - LS6 every device failing: retried each sweep, given up after 5 with the
- *   row moved on; no device to send to counts as sent.
+ *   row moved on; no device to send to counts as sent. v0.5.3: a push that
+ *   never left the Mac (offline) waits for the network, counting nothing
+ *   and logged once, then goes once, late (`waited`); more than 6 hours of
+ *   it moves the row on unsent; one device offline and another refused
+ *   counts a failure.
  * - LS7 (scheduler part) a daily 01:30 timed todo in America/New_York rings
  *   once on the day clocks go back, a 02:30 one once at 03:30 on the day
  *   they go forward; Asia/Kolkata is unchanged.
  * - LS8 a sender that never answers ends the send at 30 s as a failure, and
  *   the sweeps at 30 s, 60 s and 150 s never claim that row again.
+ * - v0.5.3: a sweep whose read fails still arms the exact timer, so the
+ *   next row rings on time, not at the next sweep; one that cannot read the
+ *   earliest row either keeps the timer it had. A producer's new time for a
+ *   waiting row is a new wait (logged again; sent with none, not `waited`).
  * Plus: rows due in the same minute with one group key go out as one push;
  * a muted reminder waits, and a pile of them never keeps a medicine row
  * from being read; cancel deletes, skip moves on; a module that is off
  * rings nothing.
  */
 import { dayKeyOf, hhmmOf, instantAt, shiftDay } from '@jantar/life-core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Clock, LifeCore, LifePush, PingHandler, PingKind, PingRow } from '../../src/contracts.js';
 import { FakeClock } from '../../src/core/clock.js';
 import { memoryLogger } from '../../src/core/log.js';
@@ -440,6 +448,159 @@ describe('LS6: failures', () => {
   });
 });
 
+describe('LS6: a push that never left the Mac waits for the network (v0.5.3)', () => {
+  const waitingLines = (r: Rig) => r.log.records.filter((e) => e.msg === 'life push waiting for the network');
+
+  it('offline for more sweeps than MAX_FAILURES: still due, nothing counted, one log line; then it goes once, late', async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:00:00.000Z'));
+    r.rec.result = { delivered: 0, failed: 1, offline: 1 };
+    r.sched.start();
+    await r.settle();
+    for (let i = 0; i < MAX_FAILURES + 2; i++) await r.settle(30_000);
+    expect(r.rec.sent).toHaveLength(MAX_FAILURES + 3);
+    expect(r.repo.get('todo', 'T1')).toMatchObject({ nextAt: '2026-01-15T08:00:00.000Z', claimedAt: null, failures: 0, lastSentAt: null });
+    expect(r.log.records.some((e) => e.fields.event === 'life.ping.gave_up')).toBe(false);
+    expect(r.log.records.some((e) => e.msg === 'life push not delivered')).toBe(false);
+    expect(waitingLines(r).map((e) => e.fields)).toEqual([{ kind: 'todo', rows: 1 }]);
+    // The network is back: one push, marked late, and the row moves on.
+    r.rec.result = { delivered: 1, failed: 0 };
+    await r.settle(30_000);
+    expect(r.rec.sent).toHaveLength(MAX_FAILURES + 4);
+    expect(r.rec.sent.at(-1)?.push.body).toBe('Missed at 08:00 · Tap to open · 08:00');
+    expect(r.repo.get('todo', 'T1')).toMatchObject({ nextAt: '2026-01-16T08:00:00.000Z', failures: 0, lastSentAt: r.clock.iso() });
+    expect(r.log.records.find((e) => e.msg === 'life push sent')?.fields).toMatchObject({ kind: 'todo', late: true, waited: true });
+    await r.settle(5 * MIN);
+    expect(r.rec.sent).toHaveLength(MAX_FAILURES + 4);
+  });
+
+  it('a Mac asleep with no network: each dark wake waits; once more than 6 hours behind, the row moves on unsent', async () => {
+    const r = make('2026-01-15T07:59:00.000Z');
+    r.sched.register(daily('med', '08:00', { group: (row) => row.sub }));
+    r.sched.set('med', 'M1', '08:00', at('2026-01-15T08:00:00.000Z'));
+    r.rec.result = { delivered: 0, failed: 1, offline: 1 };
+    r.sched.start();
+    await r.settle(MIN);
+    // Dark wakes, each one sweep, from 08:00 to 13:50.
+    for (let i = 0; i < 7; i++) {
+      r.sleepy.sleep(50 * MIN);
+      await r.settle(30_000);
+    }
+    expect(r.repo.get('med', 'M1', '08:00')).toMatchObject({ nextAt: '2026-01-15T08:00:00.000Z', failures: 0 });
+    const tries = r.rec.sent.length;
+    expect(tries).toBeGreaterThan(MAX_FAILURES);
+    r.sleepy.sleep(30 * MIN); // 14:21: more than 6 hours behind
+    await r.settle(30_000);
+    expect(r.rec.sent).toHaveLength(tries);
+    expect(r.repo.get('med', 'M1', '08:00')).toMatchObject({ nextAt: '2026-01-16T08:00:00.000Z', failures: 0, lastSentAt: null });
+    expect(r.log.records.some((e) => e.msg === 'life ping too late to send' && e.fields.kind === 'med')).toBe(true);
+    expect(waitingLines(r)).toHaveLength(1);
+  });
+
+  it('one device offline and another refusing counts a failure, as before', async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:00:00.000Z'));
+    r.rec.result = { delivered: 0, failed: 2, offline: 1 };
+    r.sched.start();
+    await r.settle();
+    expect(r.repo.get('todo', 'T1')).toMatchObject({ nextAt: '2026-01-15T08:00:00.000Z', failures: 1 });
+    expect(waitingLines(r)).toEqual([]);
+    expect(r.log.records.some((e) => e.msg === 'life push not delivered')).toBe(true);
+  });
+
+  it('a row that waited, then failed for real, counts from there; a second wait is not logged again', async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:00:00.000Z'));
+    r.rec.result = { delivered: 0, failed: 1, offline: 1 };
+    r.sched.start();
+    await r.settle();
+    r.rec.result = { delivered: 0, failed: 1 };
+    await r.settle(30_000);
+    expect(r.repo.get('todo', 'T1')?.failures).toBe(1);
+    r.rec.result = { delivered: 0, failed: 1, offline: 1 };
+    await r.settle(30_000);
+    expect(r.repo.get('todo', 'T1')?.failures).toBe(1);
+    expect(waitingLines(r)).toHaveLength(1);
+  });
+
+  it("a producer's new time is a new wait, logged again; sent there with no wait, it is not marked waited", async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:00:00.000Z'));
+    r.rec.result = { delivered: 0, failed: 1, offline: 1 };
+    r.sched.start();
+    await r.settle();
+    // Snoozed to 08:02 (the todo's set): still no network there.
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:02:00.000Z'));
+    await r.settle(2 * MIN);
+    expect(waitingLines(r)).toHaveLength(2);
+    // Snoozed again to 08:05, and the network is back by then.
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:05:00.000Z'));
+    r.rec.result = { delivered: 1, failed: 0 };
+    await r.settle(3 * MIN);
+    const sent = r.log.records.filter((e) => e.msg === 'life push sent');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.fields).not.toHaveProperty('waited');
+  });
+
+  it('a waiting row its producer clears (a todo done or deleted offline) waits no more; another row still does', async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:00:00.000Z'));
+    r.sched.set('todo', 'T2', '', at('2026-01-15T08:00:00.000Z'));
+    r.rec.result = { delivered: 0, failed: 1, offline: 1 };
+    r.sched.start();
+    await r.settle();
+    const waiting = (r.sched as unknown as { waiting: Map<string, string> }).waiting;
+    const t2 = r.repo.get('todo', 'T2')?.id;
+    expect(waiting.size).toBe(2);
+    r.sched.clear('todo', 'T1');
+    expect([...waiting.keys()]).toEqual([t2]);
+  });
+});
+
+describe('the near timer after a failed read (v0.5.3)', () => {
+  it('a sweep whose read throws still arms the timer: the next row rings on time, not at the next sweep', async () => {
+    const r = make('2026-01-15T07:59:40.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T07:59:57.000Z'));
+    r.sched.set('todo', 'T2', '', at('2026-01-15T08:00:00.000Z'));
+    r.sched.start(); // the near timer for 07:59:57; the interval sweeps at 08:00:10 and 08:00:40
+    const due = vi.spyOn(PingsRepo.prototype, 'due').mockImplementationOnce(() => {
+      throw new Error('database is locked');
+    });
+    await r.settle(17_000); // 07:59:57: the timer's sweep cannot read
+    expect(due).toHaveBeenCalled();
+    expect(r.log.records.some((e) => e.msg === 'life sweep failed')).toBe(true);
+    expect(r.rec.sent).toHaveLength(0);
+    await r.settle(3_000); // 08:00:00
+    expect(r.rec.sent.map((x) => [x.at, x.push.tag])).toEqual([
+      ['2026-01-15T08:00:00.000Z', 'life:todo:T1'],
+      ['2026-01-15T08:00:00.000Z', 'life:todo:T2'],
+    ]);
+  });
+
+  it('a sweep that cannot find the earliest row either keeps the timer it had: that row still rings on time', async () => {
+    const r = make('2026-01-15T07:59:00.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T07:59:50.000Z'));
+    r.sched.start(); // the near timer for 07:59:50; the interval sweeps at 07:59:30 and 08:00:00
+    const locked = (): never => {
+      throw new Error('database is locked');
+    };
+    vi.spyOn(PingsRepo.prototype, 'due').mockImplementationOnce(locked);
+    const earliest = vi.spyOn(PingsRepo.prototype, 'earliest').mockImplementationOnce(locked);
+    await r.settle(30_000); // 07:59:30: neither read works
+    expect(earliest).toHaveBeenCalled();
+    expect(r.rec.sent).toHaveLength(0);
+    await r.settle(20_000); // 07:59:50
+    expect(r.rec.sent.map((x) => [x.at, x.push.tag])).toEqual([['2026-01-15T07:59:50.000Z', 'life:todo:T1']]);
+  });
+});
+
 describe('stop and detach', () => {
   it('a send in flight across stop() and start() (the last module off, then on) rings once', async () => {
     const r = make('2026-01-15T08:00:00.000Z');
@@ -550,6 +711,48 @@ describe('LS8: the send deadline', () => {
     await sched.settled();
     expect(calls).toBe(2);
     expect(r.repo.get('med', 'M1', '08:00')?.nextAt).toBe('2026-01-16T08:00:00.000Z');
+    sched.stop();
+  });
+
+  it('a slow send that ends past the deadline but delivered moves the row on then: the next sweep never sends it twice', async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    let release: (v: LifeSendResult) => void = () => {};
+    let calls = 0;
+    const sched = new LifeScheduler(r.clock, r.log, () => r.db, {
+      send: () => {
+        calls += 1;
+        return calls === 1 ? new Promise<LifeSendResult>((res) => (release = res)) : Promise.resolve({ delivered: 1, failed: 0 });
+      },
+    });
+    sched.register(daily('med', '08:00'));
+    sched.set('med', 'M1', '08:00', at('2026-01-15T08:00:00.000Z'));
+    sched.start();
+    await r.sleepy.tick(40_000);
+    // The deadline passed: counted as a failure, next_at kept.
+    expect(r.repo.get('med', 'M1', '08:00')).toMatchObject({ failures: 1, claimedAt: null, nextAt: '2026-01-15T08:00:00.000Z' });
+    release({ delivered: 1, failed: 0 });
+    await r.sleepy.tick(0);
+    expect(r.repo.get('med', 'M1', '08:00')).toMatchObject({ nextAt: '2026-01-16T08:00:00.000Z', claimedAt: null, failures: 0, lastSentAt: r.clock.iso() });
+    expect(r.log.records.find((e) => e.msg === 'life push sent after its deadline')?.fields).toEqual({ kind: 'med', rows: 1, delivered: 1 });
+    await r.sleepy.tick(5 * MIN);
+    await sched.settled();
+    expect(calls).toBe(1);
+    sched.stop();
+  });
+
+  it('a late end that delivered leaves alone a row its producer moved meanwhile', async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    let release: (v: LifeSendResult) => void = () => {};
+    const sched = new LifeScheduler(r.clock, r.log, () => r.db, { send: () => new Promise<LifeSendResult>((res) => (release = res)) });
+    sched.register(daily('todo', '08:00'));
+    sched.set('todo', 'T1', '', at('2026-01-15T08:00:00.000Z'));
+    sched.start();
+    await r.sleepy.tick(40_000);
+    sched.set('todo', 'T1', '', at('2026-01-15T09:00:00.000Z')); // snoozed after the deadline, before the send ended
+    release({ delivered: 1, failed: 0 });
+    await r.sleepy.tick(0);
+    expect(r.repo.get('todo', 'T1')).toMatchObject({ nextAt: '2026-01-15T09:00:00.000Z', lastSentAt: null });
+    expect(r.log.records.some((e) => e.msg === 'life push sent after its deadline')).toBe(false);
     sched.stop();
   });
 });

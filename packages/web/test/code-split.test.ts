@@ -3,9 +3,10 @@
  * The Files place, the session's Files tab body and New session are their
  * own chunks (wave 2), and v0.4.2's dialog dock and keypad, v0.5's
  * Meetings, (v0.5.1) a picked file's preparation and the attachment
- * glyphs, and v0.5.3's Ask, the Screen tab's picture and the pairing QR
- * too: nothing the app's entry imports statically reaches them, so
- * Vite cannot fold them back into the main chunk. A static import is
+ * glyphs, and v0.5.3's Ask, the Screen tab's picture, the pairing QR and
+ * the tones and voice with their Sounds section too: nothing the app's
+ * entry imports statically reaches them, so Vite cannot fold them back into
+ * the main chunk. A static import is
  * `import ... from` or `export ... from` without `type`; `import()` is the
  * split point. The check walks src/ from main.tsx.
  */
@@ -118,6 +119,14 @@ describe('code splitting', () => {
     expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
     expect(readFileSync(join(src, 'ui/screens/session/sends.ts'), 'utf8')).toContain("import('./attach/convert.js')");
     expect(readFileSync(join(src, 'ui/screens/session/attach/glyph.tsx'), 'utf8')).toContain("import('./glyph-icons.js')");
+  });
+
+  it('keeps the tones, the voice and the Sounds section out of the main chunk (v0.5.3: loaded as the first screen renders)', () => {
+    const lazyOnly = ['lib/sounds.ts', 'ui/screens/devices/Sounds.tsx'];
+    for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
+    expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
+    expect(readFileSync(join(src, 'main.tsx'), 'utf8')).toContain("import('./lib/sounds.js')");
+    expect(readFileSync(join(src, 'ui/screens/devices/Notifications.tsx'), 'utf8')).toContain("import('./Sounds.js')");
   });
 
   it('loads them with import(), never a blob: or data: URL', () => {

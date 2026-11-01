@@ -1,6 +1,6 @@
 /**
  * Small pure helpers every client uses the same way: labels, board order,
- * "needs you", e-mail masking.
+ * "needs you", a session's project by folder, e-mail masking.
  */
 import type { PendingRequest, Session } from './models.js';
 import type { State } from './state.js';
@@ -102,6 +102,26 @@ export function boardOrder(state: State): Session[] {
     return a.s.sid.localeCompare(b.s.sid);
   });
   return keyed.map((k) => k.s);
+}
+
+/**
+ * A project's folder holds `cwd` (the folder itself or anything under it).
+ * v0.5.3: moved here from the web, so the Board's chip and the daemon's
+ * folder todos agree.
+ */
+export function inFolder(cwd: string, folder: string): boolean {
+  if (!folder.startsWith('/')) return false;
+  const base = folder.length > 1 ? folder.replace(/\/+$/, '') : folder;
+  return cwd === base || cwd.startsWith(base === '/' ? '/' : `${base}/`);
+}
+
+/** The project whose folder holds `cwd`; the deepest folder wins when two do. */
+export function projectFor<P extends { folder?: string | null }>(cwd: string, projects: readonly P[]): P | null {
+  let best: P | null = null;
+  for (const p of projects) {
+    if (p.folder && inFolder(cwd, p.folder) && (!best || (best.folder?.length ?? 0) < p.folder.length)) best = p;
+  }
+  return best;
 }
 
 /**

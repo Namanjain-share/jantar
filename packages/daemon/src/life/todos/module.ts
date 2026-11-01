@@ -10,19 +10,56 @@
  * - Repeat needs a due day. Done on a repeating todo moves `due.day` to
  *   `nextRepeat(repeat, due.day, max(due.day, today))`, keeping the time;
  *   it never gets `doneAt`, and Undo is the phone's toast PATCHing the old
- *   due back (done=false is a conflict). A monthly repeat keeps its date in
- *   `byMonthDay`, set from the due day on create, when a PATCH sets `due`
- *   and when a PATCH gives a monthly repeat the todo did not have; Done and
- *   Snooze never change it (31 Jan, 28 Feb, 31 Mar). A PATCHed due day that
- *   is the stored date cut short by its month keeps it: Undo of Done on a
- *   todo on the 31st sends 28 Feb back, and the 31st stays.
+ *   due back (done=false is a conflict). A monthly or (v0.5.3) yearly
+ *   repeat keeps its date in `byMonthDay`, set from the due day on create,
+ *   by a PATCH carrying `repeat` and a due on another date (the sheet), and
+ *   by a PATCH giving it a repeat of that freq the todo did not have. Done,
+ *   Snooze and a PATCH of `due` alone (Undo of Done, an older phone) never
+ *   change it (31 Jan, 28 Feb, 31 Mar; a yearly 29 Feb, 28 Feb, 29 Feb), so
+ *   Snooze, Done, Undo keeps the date as it keeps the time. A due day that
+ *   is the stored date cut short by its month (30 Apr for the 31st) keeps
+ *   it. A yearly todo snoozed past its date into the next month still
+ *   repeats in its own month; the month lives in the due day only, so one
+ *   snoozed later than that (over a month late) moves to the snooze's month.
+ * - v0.5.3 `repeat.at`, the series' time: set from the due time on create,
+ *   by a PATCH carrying `repeat` and `due` (removed with no time), and by a
+ *   PATCH carrying `repeat` alone while the series has no time yet. Nothing
+ *   else: a PATCH of `due` alone (Undo of Done, an older phone), one of
+ *   `repeat` alone (new weekdays for a snoozed reminder) and Snooze keep
+ *   it. Done puts the due time back to it, so a daily 11:00 snoozed an hour
+ *   still rings at 11:00 the next day. A todo from before 0.5.3, and a
+ *   repeating todo with no time, have none and keep their due time on Done
+ *   (one with no time, snoozed and then done, keeps the snoozed time).
  * - Snooze moves `due` to life-core's `snoozeTarget` (1h, 20:00 tonight or
  *   tomorrow once 20:00 has passed, 09:00 tomorrow, Monday 09:00); 1h rings
  *   an hour on even inside the hour the clocks repeat (pings.ts).
+ * - v0.5.3 folder todos (`jantar mcp` over ctl.sock): the project whose
+ *   folder holds the given folder, the deepest winning (protocol
+ *   projectFor, the Board's rule), among the projects left once a project
+ *   linked to `/`, `/Users` or the home folder is dropped unless the folder
+ *   is exactly that one: such a project holds every repo below it. Its open
+ *   todos, or a todo added to it (no repeat, no other project).
  * - Every write saves, re-arms its ping (pings.ts), then emits life.changed.
  *   Replies carry ids only; refusals are the fixed sentences below.
  */
-import { LIFE_LIMITS, type Project, type ProjectBody, type ProjectPatch, type ProjectView, type Repeat, type SnoozePreset, type Todo, type TodoBody, type TodoPatch, type TodosQuery } from '@jantar/protocol';
+import { posix } from 'node:path';
+import {
+  LIFE_LIMITS,
+  projectFor,
+  type Due,
+  type FolderTodoBody,
+  type FolderTodosResponse,
+  type Project,
+  type ProjectBody,
+  type ProjectPatch,
+  type ProjectView,
+  type Repeat,
+  type SnoozePreset,
+  type Todo,
+  type TodoBody,
+  type TodoPatch,
+  type TodosQuery,
+} from '@jantar/protocol';
 import { hhmmOf, nextRepeat, shiftMonths, snoozeTarget } from '@jantar/life-core';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule } from '../../contracts.js';
 import { armTodo, todoPingHandler } from './pings.js';
@@ -42,6 +79,7 @@ export const TODO_REASONS = {
   repeatNeedsDue: 'A repeating todo needs a due day.',
   undoRepeating: 'Undo a repeating todo by setting its date back.',
   snoozeDone: 'This todo is done. Undo it first.',
+  noFolderProject: 'No project is linked to this folder. On the phone: Projects › a project › Folder.',
 } as const;
 
 type Refusal = Extract<LifeResult, { ok: false }>;
@@ -76,10 +114,38 @@ export function isOverdue(t: Todo, today: string, nowHhmm: string): boolean {
 
 const STATUS_ORDER: Record<Project['status'], number> = { active: 0, paused: 1, done: 2 };
 
-/** A monthly repeat's date from `day`; the other repeats keep none. */
+/** A repeat that keeps its date in byMonthDay. */
+const datedFreq = (r: Repeat | undefined): boolean => r?.freq === 'monthly' || r?.freq === 'yearly';
+
+/** A monthly or yearly repeat's date from `day`; the other repeats keep none. */
 function withMonthDay(repeat: Repeat, day: string): Repeat {
-  return repeat.freq === 'monthly' ? { ...repeat, byMonthDay: Number(day.slice(8, 10)) } : repeat;
+  return datedFreq(repeat) ? { ...repeat, byMonthDay: Number(day.slice(8, 10)) } : repeat;
 }
+
+/** v0.5.3: the repeat with the series' time from `due` (none without a time). Only create and a PATCH carrying repeat call it. */
+function withAt(repeat: Repeat, due: Due | undefined): Repeat {
+  const { at: _given, ...rest } = repeat;
+  return due?.time !== undefined ? { ...rest, at: due.time } : rest;
+}
+
+/**
+ * The day a yearly series is counted from: its due day, or, when a Snooze
+ * carried the due day past its date into the next month (31 Dec to 2 Jan),
+ * that date in the month before, so Done still lands in its own month.
+ */
+function yearlyAnchor(day: string, byMonthDay: number | undefined): string {
+  if (byMonthDay === undefined || shiftMonths(day, 0, byMonthDay) <= day) return day;
+  return shiftMonths(day, -1, byMonthDay);
+}
+
+/** A folder as compared: normalized, without a trailing slash. */
+function folderKey(path: string): string {
+  const n = posix.normalize(path);
+  return n.length > 1 ? n.replace(/\/+$/, '') : n;
+}
+
+/** Folders that hold every repo below them: a project linked to one counts only for exactly that folder. Compared lower-cased (APFS ignores case: `/users/<name>` is home too). */
+const BROAD_FOLDERS = ['/', '/users'];
 
 class Todos implements TodosModule {
   readonly name = 'todos' as const;
@@ -87,6 +153,8 @@ class Todos implements TodosModule {
   constructor(
     private readonly core: LifeCore,
     private readonly repo: TodosRepo,
+    /** The user's home folder (ctx.paths.userHome): a broad folder. */
+    private readonly home: string,
   ) {}
 
   private nowHhmm(): string {
@@ -170,8 +238,8 @@ class Todos implements TodosModule {
     if (body.due !== undefined) t.due = body.due;
     if (body.projectId !== undefined) t.projectId = body.projectId;
     if (body.repeat !== undefined && body.due !== undefined) {
-      // A monthly date the client named stays; otherwise the due day's.
-      t.repeat = body.repeat.byMonthDay !== undefined ? body.repeat : withMonthDay(body.repeat, body.due.day);
+      // A monthly or yearly date the client named stays; otherwise the due day's. The series' time is the due time.
+      t.repeat = withAt(body.repeat.byMonthDay !== undefined ? body.repeat : withMonthDay(body.repeat, body.due.day), body.due);
     }
     this.saved(t, null);
     return { ok: true, value: { id: t.id } };
@@ -196,13 +264,21 @@ class Todos implements TodosModule {
     else if (patch.repeat !== undefined) next.repeat = patch.repeat;
     if (next.repeat && !next.due) return refuse('invalid_request', TODO_REASONS.repeatNeedsDue);
 
-    if (next.repeat?.freq === 'monthly' && next.due) {
+    if (next.repeat && datedFreq(next.repeat) && next.due) {
       const given = patch.repeat?.byMonthDay;
-      const stored = t.repeat?.freq === 'monthly' ? t.repeat.byMonthDay : undefined;
+      const sameFreq = t.repeat?.freq === next.repeat.freq;
+      const stored = sameFreq ? t.repeat?.byMonthDay : undefined;
       if (given !== undefined) next.repeat = { ...next.repeat, byMonthDay: given };
-      // The stored date stays without a new due day, and with one that is that date in its month (28 Feb for the 31st).
-      else if (stored !== undefined && (patch.due === undefined || shiftMonths(next.due.day, 0, stored) === next.due.day)) next.repeat = { ...next.repeat, byMonthDay: stored };
-      else if (patch.due !== undefined || t.repeat?.freq !== 'monthly') next.repeat = withMonthDay(next.repeat, next.due.day);
+      // The stored date stays unless a PATCH carrying repeat moves the due to another date (28 Feb is the 31st in its month):
+      // one carrying due alone (Undo of Done after a snooze across the date, an older phone) keeps it, as it keeps the time.
+      else if (stored !== undefined && (patch.repeat === undefined || patch.due === undefined || shiftMonths(next.due.day, 0, stored) === next.due.day)) next.repeat = { ...next.repeat, byMonthDay: stored };
+      else if (patch.due !== undefined || !sameFreq) next.repeat = withMonthDay(next.repeat, next.due.day);
+    }
+    // Only a PATCH carrying repeat sets the series' time: from the due it carries (the sheet's edit), or, carrying no due,
+    // only while the series has none (a snoozed reminder's new weekdays keep 11:00). One carrying due alone keeps it.
+    if (patch.repeat && next.repeat) {
+      const kept = patch.due === undefined ? t.repeat?.at : undefined;
+      next.repeat = kept !== undefined ? { ...next.repeat, at: kept } : withAt(next.repeat, next.due);
     }
     if (next.repeat && next.doneAt) {
       // A repeating todo is never done: making a done one repeat opens it again.
@@ -221,7 +297,10 @@ class Todos implements TodosModule {
       if (!done) return refuse('conflict', TODO_REASONS.undoRepeating);
       const today = this.core.today();
       const after = t.due.day > today ? t.due.day : today;
-      next.due = { ...t.due, day: nextRepeat(t.repeat, t.due.day, after) };
+      const anchor = t.repeat.freq === 'yearly' ? yearlyAnchor(t.due.day, t.repeat.byMonthDay) : t.due.day;
+      const day = nextRepeat(t.repeat, anchor, after);
+      // Back to the series' time (a snooze moved it); a todo from before v0.5.3 keeps its due time.
+      next.due = t.repeat.at !== undefined ? { day, time: t.repeat.at } : { ...t.due, day };
     } else if (done) {
       if (t.doneAt) return OK;
       next.doneAt = next.updatedAt;
@@ -254,6 +333,35 @@ class Todos implements TodosModule {
     return OK;
   }
 
+  // --- v0.5.3 folder todos (jantar mcp) ----------------------------------------
+
+  /** The project linked to `folder`: the deepest folder holding it, a broad folder only when it is exactly that one. */
+  private projectAt(folder: string): Project | null {
+    const at = folderKey(folder);
+    const broad = new Set([...BROAD_FOLDERS, folderKey(this.home).toLowerCase()]);
+    const linked: { p: Project; folder: string }[] = [];
+    for (const p of this.repo.projects()) {
+      if (!p.folder) continue;
+      const key = folderKey(p.folder);
+      if (!broad.has(key.toLowerCase()) || key === at) linked.push({ p, folder: key });
+    }
+    return projectFor(at, linked)?.p ?? null;
+  }
+
+  forFolder(folder: string): FolderTodosResponse {
+    const today = this.core.today();
+    const p = this.projectAt(folder);
+    if (!p) return { today, project: null, todos: [] };
+    return { today, project: { id: p.id, name: p.name, ...(p.emoji !== undefined ? { emoji: p.emoji } : {}) }, todos: this.repo.open(p.id).sort(byDue) };
+  }
+
+  createInFolder(body: FolderTodoBody, actor: Actor): LifeResult<{ id: string }> {
+    const p = this.projectAt(body.folder);
+    if (!p) return refuse('not_found', TODO_REASONS.noFolderProject);
+    const { folder: _folder, ...todo } = body;
+    return this.createTodo({ ...todo, projectId: p.id }, actor);
+  }
+
   /** Today's part: open todos overdue on `day`, and due that day (repeating ones included). */
   today(day: string): { todos: { overdue: Todo[]; today: Todo[] } } {
     const isToday = day === this.core.today();
@@ -276,5 +384,5 @@ class Todos implements TodosModule {
 export function buildTodosModule(core: LifeCore, deps: LifeModuleDeps): TodosModule {
   const repo = new TodosRepo(core, deps.ctx.log.child({ part: 'life', module: 'todos' }));
   core.scheduler.register(todoPingHandler(core, deps, repo));
-  return new Todos(core, repo);
+  return new Todos(core, repo, deps.ctx.paths.userHome);
 }

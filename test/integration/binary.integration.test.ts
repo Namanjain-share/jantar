@@ -11,7 +11,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { makeFakeHome, type FakeHome } from '@jantar/fixtures';
+import { makeFakeHome, perfBudgetMs, type FakeHome } from '@jantar/fixtures';
 import { callDaemon, createCtlClient } from '../../packages/cli/src/index.js';
 import { fakeBinsSettings, freePort } from './harness.js';
 import { eventually, http } from './http.js';
@@ -96,5 +96,5 @@ describe.skipIf(!built)('the jantard binary', () => {
     expect(stderr).not.toContain('uncaught exception');
     expect(stderr).not.toContain('unhandled rejection');
     expect(await home.calls('osascript')).toEqual([]);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 });

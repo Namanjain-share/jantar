@@ -8,7 +8,9 @@
  *            pings.ts `due`), drop the ones this process is still sending,
  *            group them by (kind, the handler's group or the row, the
  *            minute) and deliver each group; then arm one timer for the
- *            earliest row due within NEAR_MS.
+ *            earliest row due within NEAR_MS, even after a read that
+ *            failed (v0.5.3), so the next row still rings on time (one
+ *            that fails to find the earliest keeps the timer it had).
  *   start    sweep once (the catch-up after a restart), resync() every
  *            handler, then the loop.
  *   deliver  1 claim each row (pings.ts claim: still due at the time seen,
@@ -23,14 +25,23 @@
  *              (push.ts withDeadline). Every device failing, or the
  *              deadline passing, keeps next_at and counts a failure (the next
  *              sweep retries; after MAX_FAILURES the row moves on). Muted
- *              (a reminder) keeps next_at and counts nothing. Delivered, or
- *              no device to send to, moves the row on.
+ *              (a reminder) keeps next_at and counts nothing. v0.5.3: so does
+ *              every failure being one where the push never left the Mac
+ *              (`offline`: no DNS or no connect, a Mac asleep or off Wi-Fi):
+ *              the row waits for the network, logged once while it waits,
+ *              and goes out marked late once a sweep can send it, within
+ *              CATCH_UP_MAX_MS and after its check (step 2 and 3) again. A
+ *              push that may have reached the push service is never sent
+ *              twice: any other failure counts. Delivered, or no device to
+ *              send to, moves the row on.
  *            5 move on: next_at = handler.next(row, max(now, due)), claim and
  *              failures cleared, only while the claim is still ours (a
  *              producer's set in between wins).
  *            Rows leave `sending` when the send itself ends, which after a
  *            timeout is later than the decision: no sweep claims a row
- *            whose push is still on its way.
+ *            whose push is still on its way. One that ends past the
+ *            deadline yet reached a device moves its rows on then (claimed
+ *            again first), so the next sweep never sends it twice.
  *
  * stop() only stops sweeping: a send in flight still writes its step 5, so
  * turning the last module off and on again never repeats a push. detach()
@@ -69,6 +80,12 @@ export class LifeScheduler implements Scheduler {
   private readonly repo: PingsRepo;
   /** Row ids whose push this process is still sending. */
   private readonly sending = new Set<string>();
+  /**
+   * v0.5.3: rows waiting for the network, id to the next_at they wait at (logged once each). A row leaves when it
+   * is sent, moves on or is cleared; a producer's set gives it another next_at, which counts as a new wait.
+   * detach() clears it.
+   */
+  private readonly waiting = new Map<string, string>();
   /** Deliveries not yet decided (settled() waits on them). */
   private readonly deciding = new Set<Promise<void>>();
   private running = false;
@@ -96,6 +113,10 @@ export class LifeScheduler implements Scheduler {
   }
 
   clear(kind: PingKind, ref: string, sub?: string): void {
+    // A row waiting for the network that its producer removed (a todo done or deleted offline) waits no more.
+    if (this.waiting.size > 0) {
+      for (const row of this.repo.list(kind)) if (row.ref === ref && (sub === undefined || row.sub === sub)) this.waiting.delete(row.id);
+    }
     this.repo.clear(kind, ref, sub);
   }
 
@@ -136,6 +157,7 @@ export class LifeScheduler implements Scheduler {
   /** The handle is about to close or be swapped: a delivery still in flight writes nothing back. */
   detach(): void {
     this.generation += 1;
+    this.waiting.clear();
   }
 
   /** Rebuild every handler's rows from its source (start, a time zone change, a restore). */
@@ -185,6 +207,17 @@ export class LifeScheduler implements Scheduler {
   /** One pass over the due rows. Synchronous up to the sends, so two sweeps never interleave a claim. */
   sweep(): void {
     if (!this.running) return;
+    try {
+      this.deliverDue();
+    } finally {
+      // A read that failed still arms the near timer: the next row rings on time, not at the next sweep.
+      this.arm();
+    }
+  }
+
+  // -------------------------------------------------------------------------
+
+  private deliverDue(): void {
     const started = this.clock.now();
     const now = new Date(started);
     let rows: PingRow[];
@@ -221,10 +254,7 @@ export class LifeScheduler implements Scheduler {
       }
     }
     if (delivering > 0) this.log.debug('life sweep', { due: rows.length, groups: delivering, ms: this.clock.now() - started });
-    this.arm();
   }
-
-  // -------------------------------------------------------------------------
 
   private activeKinds(): readonly PingKind[] {
     const on = this.opts.kinds?.() ?? PING_KINDS;
@@ -279,7 +309,9 @@ export class LifeScheduler implements Scheduler {
         this.log.error('life ping update failed', { kind: handler.kind, error: errorKind(e) });
       }
     };
-    const advance = (d: Due, sent: boolean) =>
+    /** `claimedAt`: the claim it holds (a send that ended past its deadline claims again). */
+    const advance = (d: Due, sent: boolean, claimedAt = nowIso) => {
+      this.waiting.delete(d.row.id);
       write(() => {
         const after = new Date(Math.max(now.getTime(), d.dueAt.getTime()));
         let next: Date | null = null;
@@ -288,8 +320,9 @@ export class LifeScheduler implements Scheduler {
         } catch (e) {
           this.log.error('life ping next failed', { kind: d.row.kind, error: errorKind(e) });
         }
-        this.repo.advance(d.row.id, nowIso, next ? next.toISOString() : null, sent ? nowIso : null);
+        this.repo.advance(d.row.id, claimedAt, next ? next.toISOString() : null, sent ? claimedAt : null);
       });
+    };
 
     if (late && behind > CATCH_UP_MAX_MS) {
       for (const d of claimed) advance(d, false);
@@ -308,8 +341,10 @@ export class LifeScheduler implements Scheduler {
         this.log.warn('life ping check failed', { kind: d.row.kind, verdict, error: errorKind(e) });
       }
       if (verdict === 'send') send.push(d);
-      else if (verdict === 'cancel') write(() => this.repo.remove(d.row.id, nowIso));
-      else advance(d, false);
+      else if (verdict === 'cancel') {
+        this.waiting.delete(d.row.id);
+        write(() => this.repo.remove(d.row.id, nowIso));
+      } else advance(d, false);
     }
     const unsent = claimed.filter((d) => !send.includes(d)).map((d) => d.row.id);
     done(unsent);
@@ -335,23 +370,61 @@ export class LifeScheduler implements Scheduler {
     } catch (e) {
       sending = Promise.reject(e);
     }
+    let pastDeadline = false;
+    /**
+     * A send that ended past its deadline but reached a device: its rows were
+     * left due (a failure), so move them on now, while no sweep can claim them,
+     * or the next sweep sends them twice. A row moved on since keeps its time.
+     */
+    const sentLate = (res: LifeSendResult) => {
+      if (!pastDeadline || !(res.delivered > 0)) return;
+      const at = this.clock.now();
+      const atIso = new Date(at).toISOString();
+      const leaseIso = new Date(at - CLAIM_LEASE_MS).toISOString();
+      let moved = 0;
+      for (const d of send) {
+        let ours = false;
+        write(() => {
+          ours = this.repo.claim(d.row.id, d.row.nextAt as string, atIso, leaseIso);
+        });
+        if (!ours) continue;
+        advance(d, true, atIso);
+        moved += 1;
+      }
+      if (moved > 0) this.log.info('life push sent after its deadline', { kind: handler.kind, rows: moved, delivered: res.delivered });
+    };
     // The rows stay in `sending` until the send itself ends, even after the deadline.
     void sending.then(
-      () => done(ids),
+      (res) => {
+        done(ids);
+        sentLate(res);
+      },
       () => done(ids),
     );
     const t0 = this.clock.now();
     return withDeadline(this.clock, sending, this.opts.deadlineMs ?? LIFE_PUSH_DEADLINE_MS).then(
       (r) => {
-        if (r.timedOut) return failure('deadline');
+        if (r.timedOut) {
+          pastDeadline = true;
+          return failure('deadline');
+        }
         const res = r.value;
         if (res.muted) {
           for (const d of send) write(() => this.repo.release(d.row.id, nowIso));
           return;
         }
+        if (res.delivered === 0 && res.failed > 0 && (res.offline ?? 0) === res.failed) {
+          // The push never left the Mac: keep next_at, count nothing, and retry on the next sweep.
+          for (const d of send) write(() => this.repo.release(d.row.id, nowIso));
+          const fresh = send.filter((d) => this.waiting.get(d.row.id) !== d.row.nextAt);
+          for (const d of fresh) this.waiting.set(d.row.id, d.row.nextAt as string);
+          if (fresh.length > 0) this.log.info('life push waiting for the network', { kind: handler.kind, rows: fresh.length });
+          return;
+        }
         if (res.failed > 0 && res.delivered === 0) return failure('every device failed');
+        const waited = send.some((d) => this.waiting.get(d.row.id) === d.row.nextAt);
         for (const d of send) advance(d, true);
-        this.log.info('life push sent', { kind: handler.kind, rows: send.length, delivered: res.delivered, late, ms: this.clock.now() - t0 });
+        this.log.info('life push sent', { kind: handler.kind, rows: send.length, delivered: res.delivered, late, ...(waited ? { waited: true } : {}), ms: this.clock.now() - t0 });
       },
       (e: unknown) => failure(errorKind(e)),
     );
@@ -365,12 +438,13 @@ export class LifeScheduler implements Scheduler {
   private arm(): void {
     if (!this.running) return;
     const now = this.clock.now();
-    let at: number | null = null;
+    let at: number | null;
     try {
       const iso = this.repo.earliest(this.activeKinds(), new Date(now).toISOString());
       at = iso ? Date.parse(iso) : null;
     } catch {
-      at = null;
+      // A read that failed (the database busy) keeps the timer a good read armed; the next sweep reads again.
+      return;
     }
     if (at === null || at - now > NEAR_MS) {
       this.clock.clearTimeout(this.nearTimer);

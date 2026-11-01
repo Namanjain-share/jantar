@@ -61,7 +61,7 @@ describe('appendCapture', () => {
     expect(readFileSync(file, 'utf8')).toBe('{"id":"old","title":"Old"}\n{"id":"torn","title":"To\n{"id":"new","title":"New"}\n{"id":"next","title":"Next"}\n');
   });
 
-  it('the record: id, time, title, url, type, tags, the note as what_it_is, via, and cwd from the CLI only', () => {
+  it('the record: id, time, title, url, type, tags, the note as what_it_is, via, and cwd from the Mac only', () => {
     const body = captureBody({ tags: [' example ', 'example', 'tool'] });
     expect(captureRecord('01J', '2026-10-30T10:00:00.000Z', { ...body, cwd: '/synthetic/home/work' }, { via: 'phone' })).toEqual({
       id: '01J',
@@ -79,6 +79,14 @@ describe('appendCapture', () => {
       title: 'Bare',
       via: 'cli',
       cwd: '/synthetic/home/work',
+    });
+    // v0.5.3: what `jantar mcp` saved for a Claude session, with that session's folder.
+    expect(captureRecord('01J', '2026-10-30T10:00:00.000Z', { title: 'From Claude' }, { via: 'claude', cwd: '/synthetic/home/work/app' })).toEqual({
+      id: '01J',
+      captured_at: '2026-10-30T10:00:00.000Z',
+      title: 'From Claude',
+      via: 'claude',
+      cwd: '/synthetic/home/work/app',
     });
   });
 });
@@ -125,6 +133,16 @@ describe('capturing onto the shelf', () => {
     // The CLI's folder is kept in the file on the Mac, never on the shelf.
     expect(JSON.parse(readFileSync(file, 'utf8').trim())).toMatchObject({ via: 'cli', cwd: '/synthetic/home/work' });
     expect(env.intel.get(first.ok ? first.value.id : '')?.fields).toEqual([{ key: 'via', value: 'cli' }]);
+  });
+
+  it('v0.5.3: a capture via claude shows "via claude" on the shelf; its folder stays in the file', async () => {
+    env = await intelEnv();
+    const r = await env.intel.capture(captureBody({ title: 'Saved by a session' }), { via: 'claude', cwd: '/synthetic/home/work/zz-session' });
+    const id = r.ok ? r.value.id : '';
+    expect(env.intel.get(id)?.fields).toEqual([{ key: 'via', value: 'claude' }]);
+    expect(env.intel.list({ q: 'zz-session', limit: 50 }).total).toBe(0);
+    expect(env.intel.list({ q: 'claude', limit: 50 }).items.map((i) => i.id)).toEqual([id]);
+    expect(JSON.parse(readFileSync(join(env.home, '.jantar', 'intel', 'captures.jsonl'), 'utf8').trim())).toMatchObject({ via: 'claude', cwd: '/synthetic/home/work/zz-session' });
   });
 
   it("a CLI capture's folder is no field on the shelf and no search finds it; another source's cwd field stays", async () => {

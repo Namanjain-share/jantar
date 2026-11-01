@@ -38,7 +38,7 @@
  *    it; Escape waits for SP1.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DIALOG_SECRET, NOT_DIALOG_SCREENS, TYPED_ANSWER, dialogFixture, withGates } from '@jantar/fixtures';
+import { DIALOG_SECRET, NOT_DIALOG_SCREENS, TYPED_ANSWER, dialogFixture, perfBudgetMs, withGates } from '@jantar/fixtures';
 import { dialogOfScreen, rawExpect, rawSlice, readDialog } from '@jantar/daemon/terminal/dialog';
 import {
   DEVICE_COOKIE,
@@ -183,11 +183,11 @@ describe('v0.4.2 dialogs: the screen path and the keypad through the fake osascr
     expect(claim.status, claim.text).toBe(200);
     phone = cookieFrom(claim, DEVICE_COOKIE) as string;
     rememberSecret(phone, claim.body);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. a plan with no hook card: option 1 is one ESC[B, the plan closes, done', async () => {
     const screen = screenOf('PLAN_80COL');

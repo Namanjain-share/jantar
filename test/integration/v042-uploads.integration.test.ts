@@ -30,6 +30,7 @@ import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEVICE_COOKIE, DEVICE_SECRET_HEADER, UPLOAD_MAX_BYTES, type PairStartResponse, type SessionsResponse, type UploadResponse } from '@jantar/protocol';
+import { perfBudgetMs } from '@jantar/fixtures';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret, type HttpResult } from './http.js';
@@ -200,11 +201,11 @@ describe('v0.4.2 attachments: upload, send with proof, refusals, remove, sweep',
     }, 15_000, 'the live sessions');
     ({ cookie: phone, secret } = await pair('uploads phone', ['read', 'control']));
     ({ cookie: viewer, secret: viewerSecret } = await pair('shared screen', ['read']));
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. a PNG and a text file go up, and "look at these" is typed with both and proven', async () => {
     const png = await uploaded(tinyPng(), 'png');
@@ -246,7 +247,7 @@ describe('v0.4.2 attachments: upload, send with proof, refusals, remove, sweep',
     const job2 = (r2.body as { jobId: string }).jobId;
     await eventually(async () => d.parts.writer.get(job2)?.stage === 'proven', 30_000, 'the files-only send');
     expect(d.terminal.events.typed.at(-1)?.text).toBe(['Please look at these files:', `- "readme": ${join(dir, `${only.id}.txt`)}`].join('\n'));
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('1b. a photo and a PDF go up and are named in the prompt by absolute path, proven', async () => {
     // The ext is the phone's guess; the bytes decide (a PDF named .png is a PDF).
@@ -273,7 +274,7 @@ describe('v0.4.2 attachments: upload, send with proof, refusals, remove, sweep',
     ].join('\n');
     expect(d.terminal.events.typed.slice(before).map((t) => t.text)).toEqual([composed]);
     for (const line of composed.split('\n').slice(3)) expect(line.split(': ')[1]?.startsWith('/')).toBe(true);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('2. refused before the body is read: secret, scope, content type, Content-Length, size, two in flight', async () => {
     const path = `/v1/sessions/${SID}/uploads?ext=png`;
@@ -312,7 +313,7 @@ describe('v0.4.2 attachments: upload, send with proof, refusals, remove, sweep',
     const ids = (await readdir(sessionDir())).map((n) => n.split('.')[0]);
     expect(ids).toContain((after.body as UploadResponse).upload.id);
     expect(ids.every((id) => ULID.test(id ?? ''))).toBe(true);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('3. refused once read: HEIC, an empty file, a zip that is no office file, an unknown session', async () => {
     const before = (await readdir(sessionDir())).length;
@@ -386,5 +387,5 @@ describe('v0.4.2 attachments: upload, send with proof, refusals, remove, sweep',
     await eventually(async () => !(await readdir(d.ctx.paths.uploadsDir)).includes('77777777-7777-4777-8777-777777777777'), 5_000, 'the empty folder to go');
     // The sweep logs a count, never a name.
     expect(JSON.stringify(d.log.records)).not.toContain(old.id);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 });

@@ -15,6 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EXTENSION_ID, EXTENSION_KEY_HEADER, type ExtPairStartReply } from '@jantar/protocol';
+import { perfBudgetMs } from '@jantar/fixtures';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
 import { extensionReady, launchExtension, type LoadedExtension } from './extension.js';
 import { bootDaemon, type Daemon } from './harness.js';
@@ -32,12 +33,12 @@ describe.skipIf(!ready)('X0: the extension reaches jantard', () => {
     ctl = createCtlClient(d.ctx.paths.ctlSock);
     await eventually(() => callDaemon(ctl, 'GET', '/healthz'), 10_000, 'the control socket');
     ext = await launchExtension();
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     await ext?.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   const startCode = async () => (await callDaemon<ExtPairStartReply>(ctl, 'POST', '/v1/ext/pair/start')).code;
 

@@ -5,7 +5,8 @@
  * decimal from a decimal keyboard, the last 30 with Delete (no confirm: a
  * 5 s Undo, the delete sent once it goes or the sheet closes, and never
  * after a new weight for that day), the goal with Clear), and the parsing
- * and formatting behind them. No BMI, no chart.
+ * and formatting behind them. No BMI, no chart. On Today (v0.5.3) the
+ * line reads today's weight or "Log weight" and opens the same sheet.
  */
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -196,14 +197,18 @@ describe('the weight sheet', () => {
     await waitFor(() => expect(foodTargets).toHaveBeenLastCalledWith({ goalKg: null }, expect.any(String)));
   });
 
-  it('Today shows the latest weight with its day', async () => {
+  it("Today reads Log weight while today's is not logged (v0.5.3), and the line opens this sheet", async () => {
+    const foodDay = vi.fn(async (d?: string) => day(WEIGHT, d ?? DAY));
     renderApp({
       path: '/today',
-      api: fakeApi({ lifeStatus: vi.fn(async () => status), lifeToday: vi.fn(async () => ({ day: DAY, food: { kcal: 300, target: 1800, weight: { day: '2026-01-14', kg: 72.4 } } })) }),
+      api: fakeApi({ lifeStatus: vi.fn(async () => status), foodDay, lifeToday: vi.fn(async () => ({ day: DAY, food: { kcal: 300, target: 1800, weight: { day: '2026-01-14', kg: 72.4 } } })) }),
       state: stateWith({ features: { life: true } }),
     });
-    expect(await screen.findByText('72.4 kg · Wed 14 Jan')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log weight' }));
     expect(screen.getByText('300 / 1,800 kcal')).toBeTruthy();
+    const sheet = await screen.findByRole('dialog', { name: 'Weight' });
+    expect(within(sheet).getByLabelText('Weight today, kg')).toBeTruthy();
+    expect(foodDay).toHaveBeenCalledWith(DAY);
   });
 
   it("Today leaves out the day of today's weight: the header already says it", async () => {

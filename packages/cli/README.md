@@ -16,6 +16,8 @@ jantar pair --extension   a line to paste into the Jantar Chrome extension; wait
 jantar hooks install      optional: approval / question / plan cards on the phone
 jantar status             the board: "your turn" first, then accounts and alerts
 jantar send <s> <text>    send a prompt and wait until the transcript proves it arrived
+jantar notify             alerts: Web Push, the kinds the Mac sends, the urgent alert, the mute (urgent, done, test)
+jantar mcp                the MCP server for Claude Code sessions: the Intel shelf and this folder's todos
 jantar uninstall          stop the daemon and remove the LaunchAgent (keeps ~/.jantar)
 jantar import-ccw-v2      copy a ccw-v2 state dir (the old name, ~/.ccw-v2) into an empty ~/.jantar
 ```
@@ -73,6 +75,9 @@ prompt was not sent or not proven), `2` usage error, `3` daemon not running.
 | `pair --extension` | a one-time code in the daemon, printed as `jantar-ext:<port>:<code>` | nothing |
 | `life backup` / `restore` | a copy of `life.db` in `~/.jantar/backups` / `life.db` from a backup (the old one kept beside it), through the daemon | nothing |
 | `intel add` | one line in `~/.jantar/intel/captures.jsonl`, through the daemon | nothing |
+| `notify urgent` / `done` | settings (`notify.urgent`, `notify.kinds`), through the daemon (or `config.json` while it is down) | nothing |
+| `notify test` | nothing itself; the daemon sends one test push to your paired devices | nothing |
+| `mcp` | through the daemon only: `intel_add` appends one line to `~/.jantar/intel/captures.jsonl`, `todo_add` adds a todo to the Life project linked to the session's folder (at most 20 an hour) | nothing; on a terminal it prints the `claude mcp add` line for you to paste, and never runs `claude` |
 | `devices grant` / `revoke-scope` / `revoke` | the device's scopes, through the daemon | nothing |
 | `new` | nothing itself; the daemon opens one Terminal window | nothing |
 | `import-ccw-v2 [--from DIR] [--dry-run]` | an empty `~/.jantar` (built beside it, then renamed into place); never anything in the old dir, which it only reads; refuses while ccw-v2's daemon or LaunchAgent is still there | nothing |

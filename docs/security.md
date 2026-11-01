@@ -53,6 +53,11 @@ point below links to its section there.
   currency code and the fixed category names; your saved lists, medicines
   and money stay on the Mac, and nothing is added until you tap Add
   ([Ask](../SECURITY.md#v053-ask)).
+- With `jantar mcp` added, what its tools return (shelf items, and the
+  titles and notes of the open todos of the project linked to the
+  session's folder) goes into that Claude session and reaches Anthropic
+  like any tool output
+  ([the MCP server](../SECURITY.md#folder-todos-and-the-mcp-server)).
 - There is no Jantar server, no telemetry and no account with this project.
 
 ## What a session can do
@@ -63,6 +68,15 @@ local sockets and could pair itself as a device. That is no more than such
 a process can already do, but treat card approvals as coming from
 "anything running as you", not only your phone
 ([threat model](../SECURITY.md#threat-model-summary)).
+
+With `jantar mcp` added to Claude Code, a session can search the Intel
+shelf, save notes to it, and list and add todos of the Life project linked
+to its folder (at most 20 an hour), never complete, edit or delete one.
+Any process running as you could do the same for any linked folder
+([folder todos and the MCP server](../SECURITY.md#folder-todos-and-the-mcp-server)).
+When a session's ask shows Claude's 2-minute countdown, the daemon reads
+that screen to warn your phone, and keeps nothing it reads
+([the countdown read](../SECURITY.md#the-countdown-read)).
 
 ## Reporting a problem
 

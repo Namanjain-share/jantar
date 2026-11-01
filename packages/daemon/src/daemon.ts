@@ -15,6 +15,10 @@
  *      while a switch is off)
  *   4. startServices() in that order; stop() runs them down in reverse.
  *
+ * v0.5.3: one PaneLookup (api/services.ts) is built on the terminal before
+ * the notifications part, and both the router (Claude's countdown, read off
+ * an unattended ask's screen) and the API use it, so they share its cache.
+ *
  * main.ts calls startDaemon() with the command-line flags; the end-to-end
  * tests call it with a synthetic HOME and a scripted terminal, so both run
  * exactly this wiring.
@@ -65,7 +69,7 @@ import { createMeetingsService } from './meetings/index.js';
 import { createAskService } from './ask/index.js';
 import { createPrimer } from './primer/index.js';
 import { WebPushNotifier, createNotificationRouter, createNotifiers, type PushSender } from './notify/index.js';
-import { createApiServerWith, type ApiOptions } from './api/index.js';
+import { PaneLookup, createApiServerWith, type ApiOptions } from './api/index.js';
 
 export interface DaemonOptions {
   /** Environment (HOME, JANTAR_HOME, ...). Default process.env. */
@@ -182,7 +186,8 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     const ask = createAskService(ctx, { life, usage, ccwLegacy }, { readOnly });
     // v0.4. Primes free 5-hour windows while accounts.prime is on; never under --read-only (it runs cswap).
     const primer = createPrimer(ctx, { usage, ccwLegacy }, { readOnly });
-    const notifications = createNotificationRouter(ctx, { notifiers });
+    const panes = new PaneLookup(terminal, ctx, undefined, opts.api?.paneLookupTimeoutMs);
+    const notifications = createNotificationRouter(ctx, { notifiers, terminal, panes });
     const apiOpts: ApiOptions = { ...opts.api, mode };
     if (opts.port !== undefined) apiOpts.port = opts.port;
     const api = createApiServerWith(
@@ -206,6 +211,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
         intel,
         meetings,
         ask,
+        panes,
       },
       apiOpts,
     );

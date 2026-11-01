@@ -11,7 +11,7 @@ export const HOOK_CLIENT_PATH: string = fileURLToPath(new URL('../bin/jantar-hoo
 export const WAIT_FLAG = '--wait';
 
 /** Version the client reports in `_jantar.hookVersion` (kept equal to package.json by the tests). */
-export const HOOK_CLIENT_VERSION = '0.5.2';
+export const HOOK_CLIENT_VERSION = '0.5.3';
 
 /** Keep in sync with @jantar/protocol (checked by this package's tests). */
 export const HOOK_TAG = '_jantar';

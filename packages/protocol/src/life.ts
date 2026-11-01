@@ -46,21 +46,35 @@ export const FolderPathSchema = z
 /** A day of the month, 1 to 31; in a shorter month the 29th to 31st fall on its last day. */
 const MonthDaySchema = z.number().int().min(1).max(31);
 
-/** A strict subset of Noblot's recurrence rule (same field names, interval always 1): life-core's computeNextRunAt reads it as is. */
+/**
+ * A strict subset of Noblot's recurrence rule (same field names, interval always 1): life-core's computeNextRunAt reads it as is.
+ * v0.5.3: `yearly` (birthdays, renewals), on the due day's month and `byMonthDay`; `at`, the series' own time.
+ */
 export const RepeatSchema = z
   .strictObject({
-    freq: z.enum(['daily', 'weekly', 'monthly']),
+    freq: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
     /** Weekly only; 0 = Sunday. Absent = the due day's weekday. */
     byWeekday: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
     /**
-     * Monthly only: the date it repeats on. The daemon sets it from the due
-     * day whenever a todo gets a monthly repeat or a new due day, so Done
-     * after a short month comes back to the 31st (31 Jan, 28 Feb, 31 Mar)
-     * instead of staying on the 28th. Absent = the due day's date.
+     * Monthly or yearly only: the date it repeats on. The daemon sets it from
+     * the due day whenever a todo gets a monthly (yearly) repeat or a new due
+     * day, so Done after a short month comes back to the 31st (31 Jan, 28 Feb,
+     * 31 Mar), and a yearly 29 Feb to the 29th in a leap year, instead of
+     * staying on the 28th. Absent = the due day's date.
      */
     byMonthDay: MonthDaySchema.optional(),
+    /**
+     * v0.5.3: the series' time of day; the daemon sets it on create and on a
+     * PATCH that carries repeat; Snooze and Undo never change it. Done moves
+     * the due time back to it, so a snoozed daily 11:00 rings at 11:00 the
+     * next day. A value a client sends is replaced.
+     */
+    at: HhMmSchema.optional(),
   })
-  .refine((r) => r.byMonthDay === undefined || r.freq === 'monthly', { message: 'byMonthDay is for a monthly repeat', path: ['byMonthDay'] });
+  .refine((r) => r.byMonthDay === undefined || r.freq === 'monthly' || r.freq === 'yearly', {
+    message: 'byMonthDay is for a monthly or yearly repeat',
+    path: ['byMonthDay'],
+  });
 export type Repeat = z.infer<typeof RepeatSchema>;
 
 /** now + 1 h / 20:00 today / 09:00 tomorrow / Monday 09:00 (life-core snoozeTarget). */
@@ -191,6 +205,33 @@ export type TodosQuery = z.infer<typeof TodosQuerySchema>;
 /** Open todos by due (day, then time, undated last), then createdAt; with done=1 the newest 100 done. */
 export const TodosResponseSchema = z.object({ today: DayKeySchema, todos: z.array(TodoSchema) });
 export type TodosResponse = z.infer<typeof TodosResponseSchema>;
+
+/**
+ * v0.5.3 folder todos (ctl.sock only: `jantar mcp`'s todos_here and todo_add).
+ * The daemon picks the project whose folder holds `folder` (the deepest wins,
+ * selectors.ts projectFor); a project linked to `/`, `/Users` or the home
+ * folder counts only for exactly that folder. The folder is the caller's
+ * word: the "this session's folder" rule binds the MCP tools, not ctl.sock.
+ */
+export const FolderTodosQuerySchema = z.object({ folder: FolderPathSchema });
+export type FolderTodosQuery = z.infer<typeof FolderTodosQuerySchema>;
+export const FolderTodosResponseSchema = z.object({
+  today: DayKeySchema,
+  /** The project whose folder holds `folder` (the deepest wins), as the Board shows it; null when none. */
+  project: ProjectSchema.pick({ id: true, name: true, emoji: true }).nullable(),
+  /** Its open todos, by due (TodosResponse order); [] when project is null. */
+  todos: z.array(TodoSchema),
+});
+export type FolderTodosResponse = z.infer<typeof FolderTodosResponseSchema>;
+/** POST /v1/folder/todos: no projectId (the folder picks it) and no repeat. */
+export const FolderTodoBodySchema = z.strictObject({
+  folder: FolderPathSchema,
+  title: TodoTitleSchema,
+  notes: LongNotesSchema.optional(),
+  due: DueSchema.optional(),
+  priority: TodoPrioritySchema.optional(),
+});
+export type FolderTodoBody = z.infer<typeof FolderTodoBodySchema>;
 
 // ---------------------------------------------------------------------------
 // Medicines

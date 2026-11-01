@@ -75,6 +75,7 @@ import { EXT_ROUTE_IMPLS } from './routes/ext.js';
 import { MEETING_ITEMS_ROUTE_IMPLS } from './routes/meeting-items.js';
 import { MEETINGS_ROUTE_IMPLS } from './routes/meetings.js';
 import { ASK_ROUTE_IMPLS } from './routes/ask.js';
+import { NOTIFY_ROUTE_IMPLS } from './routes/notify.js';
 import type { ApiServices } from './services.js';
 
 export { isRawReply, notImplementedRoute, type Call, type RawReply, type RouteImpl, type RouteTable } from './route-kit.js';
@@ -584,7 +585,7 @@ const CORE_ROUTE_IMPLS: RouteTable = {
   },
 };
 
-/** Every route's handler: the core table plus one table per v0.3, v0.4 and v0.5 feature (routes/*.ts). */
+/** Every route's handler: the core table plus one table per v0.3, v0.4, v0.5 and v0.5.3 feature (routes/*.ts). */
 export const ROUTE_IMPLS: RouteTable = {
   ...CORE_ROUTE_IMPLS,
   ...REWRITE_ROUTE_IMPLS,
@@ -608,6 +609,7 @@ export const ROUTE_IMPLS: RouteTable = {
   ...EXT_ROUTE_IMPLS,
   ...MEETINGS_ROUTE_IMPLS,
   ...MEETING_ITEMS_ROUTE_IMPLS,
-  // v0.5.3
+  // v0.5.3 (the folder todos are in TODOS_ROUTE_IMPLS)
   ...ASK_ROUTE_IMPLS,
+  ...NOTIFY_ROUTE_IMPLS,
 };

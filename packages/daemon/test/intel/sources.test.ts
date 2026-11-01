@@ -119,7 +119,8 @@ describe('the shelf shows refusals, never paths', () => {
     const intel = (Object.entries(ROUTES) as [string, RouteDef][]).filter(([, d]) => d.feature === 'intel');
     expect(intel.map(([n]) => n).sort()).toEqual(['intelCapture', 'intelGet', 'intelList', 'intelSources']);
     const keys = intel.flatMap(([, d]) => [d.body, d.query].flatMap((s) => (s && 'shape' in s ? Object.keys((s as { shape: object }).shape) : [])));
-    expect(keys.sort()).toEqual(['before', 'cwd', 'limit', 'note', 'q', 'tag', 'tags', 'title', 'type', 'type', 'url'].sort());
+    // v0.5.3: the list's sort, and a capture's ctl-only via.
+    expect(keys.sort()).toEqual(['before', 'cwd', 'limit', 'note', 'q', 'sort', 'tag', 'tags', 'title', 'type', 'type', 'url', 'via'].sort());
     expect(Object.keys(IntelSourceSchema.shape).sort()).toEqual(['error', 'id', 'items', 'label', 'skipped', 'updatedAt']);
   });
 });

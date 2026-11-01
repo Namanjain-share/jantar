@@ -49,6 +49,24 @@ describe('nextRepeat', () => {
     expect(nextRepeat({ freq: 'monthly', byMonthDay: 29 }, '2028-01-29', '2028-01-29')).toBe('2028-02-29');
   });
 
+  it('every year (v0.5.3): the same month and date, a year on', () => {
+    expect(nextRepeat({ freq: 'yearly' }, '2026-03-14', '2026-03-14')).toBe('2027-03-14');
+    expect(nextRepeat({ freq: 'yearly', byMonthDay: 14 }, '2026-03-14', '2026-11-01')).toBe('2027-03-14');
+    // Done before the day comes: this year's.
+    expect(nextRepeat({ freq: 'yearly' }, '2026-12-25', '2026-11-01')).toBe('2026-12-25');
+  });
+
+  it('every year on 29 Feb (v0.5.3): 28 Feb in other years, the 29th again in a leap year', () => {
+    const leap = { freq: 'yearly' as const, byMonthDay: 29 };
+    let due = '2028-02-29';
+    const seen: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      due = nextRepeat(leap, due, due);
+      seen.push(due);
+    }
+    expect(seen).toEqual(['2029-02-28', '2030-02-28', '2031-02-28', '2032-02-29']);
+  });
+
   it('skips past days: an overdue todo done today moves after today, not after its old due day', () => {
     // Due Monday the 26th, done on Friday the 30th: the next weekly Monday after the 30th.
     expect(nextRepeat({ freq: 'weekly' }, '2026-10-26', '2026-10-30')).toBe('2026-11-02');

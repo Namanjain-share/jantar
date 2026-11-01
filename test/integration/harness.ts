@@ -16,6 +16,8 @@
  *   terminal is left unwired (its event lists must stay empty).
  * - The TCP port is a free random one on 127.0.0.1; the cswap poller is off.
  * - Web Push sends nothing: its sender records each payload (`webPushes`).
+ *   v0.5.3: while `pushOffline()` says so, it fails the way a Mac with no
+ *   network does (getaddrinfo ENOTFOUND) and records nothing.
  * - v0.4: a test may pass a clock it moves forward (warp-clock.ts) and
  *   `restart()` the daemon on the same home (a Life catch-up).
  * - v0.4.2: with `terminalApp` the daemon runs the real Terminal.app
@@ -116,8 +118,8 @@ export interface Daemon {
   log: ReturnType<typeof memoryLogger>;
   /** Every notification the router fanned out (a recording channel next to Web Push). */
   pushed: Notification[];
-  /** Every push Web Push sent: the subscription's endpoint and the payload as it would leave the Mac (JSON, before encryption). */
-  webPushes: Array<{ endpoint: string; payload: string }>;
+  /** Every push Web Push sent: the subscription's endpoint, the payload as it would leave the Mac (JSON, before encryption) and its TTL in seconds. */
+  webPushes: Array<{ endpoint: string; payload: string; ttl: number }>;
   /**
    * Stop the daemon and start it again on the same home, settings and clock
    * (ctx, parts and running change); `between` runs while it is down (move
@@ -154,6 +156,17 @@ export interface BootOptions {
    * daemon's own tests.
    */
   terminalApp?: { wrapExec?: (exec: ExecFile, home: FakeHome) => ExecFile };
+  /**
+   * v0.5.3: no network while this answers true. Web Push then fails as on a
+   * Mac asleep or off Wi-Fi (the DNS lookup of the push service), records
+   * nothing, and the push counts as one that never left the Mac.
+   */
+  pushOffline?: () => boolean;
+}
+
+/** What Node's fetch of a push service throws with no network: the DNS lookup failed, no HTTP status. */
+export function noNetworkError(host = 'fcm.googleapis.com'): Error {
+  return Object.assign(new Error(`getaddrinfo ENOTFOUND ${host}`), { code: 'ENOTFOUND', syscall: 'getaddrinfo', hostname: host });
 }
 
 /**
@@ -224,14 +237,15 @@ export async function bootDaemon(opts: BootOptions = {}): Promise<Daemon> {
         terminal: opts.noTerminal ? false : opts.terminalApp ? (ctx) => fakeTerminalApp(ctx, home, opts.terminalApp!) : () => terminal,
         rotateLogs: false,
         extraNotifiers: () => [recorder],
-        pushSender: async (subscription, payload) => {
-          webPushes.push({ endpoint: subscription.endpoint, payload });
+        pushSender: async (subscription, payload, options) => {
+          if (opts.pushOffline?.()) throw noNetworkError();
+          webPushes.push({ endpoint: subscription.endpoint, payload, ttl: options.TTL });
         },
         ...(opts.openDb ? { openDb: opts.openDb } : {}),
         ...(opts.clock ? { clock: opts.clock } : {}),
-        // The fake osascript and ps are node scripts: on a busy CI runner the pair can take longer than a Mac's
-        // real Terminal gets to find a tab.
-        ...(opts.terminalApp ? { api: { paneLookupTimeoutMs: perfBudgetMs(PANE_LOOKUP_TIMEOUT_MS) } } : {}),
+        // The fake osascript and ps are node scripts: on a busy CI runner, or a Mac running the whole suite at
+        // once, the pair can take longer than a Mac's real Terminal gets to find a tab.
+        ...(opts.terminalApp ? { api: { paneLookupTimeoutMs: Math.max(perfBudgetMs(PANE_LOOKUP_TIMEOUT_MS), 3 * PANE_LOOKUP_TIMEOUT_MS) } } : {}),
       });
     const running = await start();
     const d: Daemon = {

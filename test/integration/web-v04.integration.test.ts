@@ -15,7 +15,8 @@
  *   project and its screen, Medicines, Food with weight, Cafés, Finance,
  *   Intel with a hostile item, More and the start sheet with Resume.
  * - The sheets: todo, project, medicine, food (Type, Saved, Ask Claude with
- *   its rows), weight, target, café, expense, budget, bill, Intel's add.
+ *   its rows), weight, target, café, expense, budget, bill, Intel's add;
+ *   v0.5.3: Today's Add todo (due today) and its weight line's sheet.
  * - Done shows the 5 s Undo line and Undo takes it back; a saved food's
  *   "Added" Undo too; Ask Claude's rows save nothing until added. Delete
  *   asks nothing: Undo keeps the todo, and a delete left alone reaches the
@@ -23,6 +24,9 @@
  *   done, is a bar inside the visible area.
  * - The phone's tabs: Today is current on every Life screen, More holds
  *   the places past the fifth tab and opens them.
+ * - v0.5.3: the phone header's magnifier opens the shelf with its search box
+ *   focused; words list the best match first with the words marked, and ×
+ *   clears the search. Devices with its Sounds section (a lazy chunk).
  * - In grayscale, the five dose states (taken, skipped, overdue, due,
  *   pending) still read apart by glyph and words.
  * - Focus: Tab walks each screen in document order over visible, named
@@ -44,6 +48,7 @@ import {
   launchAccounts,
   medBody,
   moneyBody,
+  perfBudgetMs,
   placeBody,
   projectBody,
   todoBody,
@@ -234,15 +239,15 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     browser = await chromium.launch();
     pages.phone = await paired(PHONE, 'Example phone');
     pages.desk = await paired(DESK, 'Example Mac browser');
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   afterAll(async () => {
     for (const p of Object.values(pages)) await p?.ctx.close().catch(() => undefined);
     await browser?.close().catch(() => undefined);
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
-  it('Today: every section and the push warning; the dose sheet from a row and from a push', async () => {
+  it('Today: every section and the push warning; the dose sheet from a row and from a push; the quick adds', async () => {
     await inEachView('/today', async (page) => {
       await page.getByRole('heading', { name: 'Today', level: 1 }).waitFor();
       for (const section of ['Medicines', 'Due', 'Bills', 'Food', 'Claude', 'Life']) await page.getByRole('region', { name: section }).waitFor();
@@ -270,6 +275,16 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await check(page, watch, `the dose sheet from a push (${who})`);
       await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'detached' });
+      // v0.5.3: Due's Add todo starts a todo due today; the weight line ("Weight today, 72.4 kg") opens the weight sheet.
+      await page.goto(`http://127.0.0.1:${d.port}/today`);
+      await sheet(page, watch, `the todo sheet from Today (${who})`, () => page.getByRole('region', { name: 'Due' }).getByRole('button', { name: 'Add todo' }).click(), async (form) => {
+        expect(await form.getByLabel('Due day').inputValue()).toBe(TODAY);
+        expect(await form.getByLabel('Due time').inputValue()).toBe('');
+        await form.getByRole('group', { name: 'Repeat' }).getByRole('button', { name: 'Year' }).waitFor();
+      });
+      await sheet(page, watch, `the weight sheet from Today (${who})`, () => page.getByRole('region', { name: 'Food' }).getByRole('button', { name: 'Weight today, 72.4 kg' }).click(), async (form) => {
+        await form.getByText('Weight today, kg').waitFor();
+      });
     }
     // Looking is not logging.
     const meds = (await call('GET', `/v1/medicines?day=${TODAY}`)).body as MedicinesResponse;
@@ -438,7 +453,7 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     expect(((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length).toBe(before);
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached' });
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('Cafés and Finance, with their sheets', async () => {
     await inEachView('/places', async (page, what) => {
@@ -512,6 +527,43 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     await page.getByText('<script>window.__pwned=1</script>').first().waitFor();
     await sheet(page, watch, "Intel's add sheet", () => page.getByRole('button', { name: 'Add', exact: true }).first().click());
     expect(await page.evaluate(() => document.querySelectorAll('script:not([src])').length)).toBe(0);
+  });
+
+  it("v0.5.3: the phone header's magnifier opens the shelf's search; words find the best match first, marked; × clears", async () => {
+    const { page, watch } = pages.phone!;
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto(`http://127.0.0.1:${d.port}/today`);
+    await page.getByText('Example overdue todo').first().waitFor();
+    await page.getByRole('link', { name: 'Search the Intel shelf' }).click();
+    const box = page.getByRole('searchbox', { name: 'Search the shelf' });
+    await box.waitFor();
+    // The box is ready to type in, and the magnifier's word leaves the address.
+    await expect.poll(() => box.evaluate((el) => el === document.activeElement)).toBe(true);
+    await page.waitForURL(/\/intel$/);
+
+    await page.keyboard.type('tool 7');
+    await page.waitForURL(/\/intel\?q=tool(\+|%20)7$/);
+    const count = page.getByText(/^\d+ match(es)?$/);
+    await count.waitFor();
+    const rows = count.locator('xpath=following-sibling::ul[1]').locator('li');
+    // Both words at a word's start in its title first; then a word inside one (newest first among equals).
+    await expect.poll(() => rows.evaluateAll((els) => els.slice(0, 3).map((li) => li.querySelector('p')?.textContent))).toEqual(['Example tool 7', 'Example tool 27', 'Example tool 17']);
+    expect(await rows.first().locator('p').first().locator('mark').allTextContents()).toEqual(['tool', '7']);
+    await check(page, watch, 'Intel search');
+
+    await page.getByRole('button', { name: 'Clear the search' }).click();
+    await page.waitForURL(/\/intel$/);
+    await page.getByText(/^\d+ items$/).waitFor();
+    expect(await box.inputValue()).toBe('');
+    expect(await box.evaluate((el) => el === document.activeElement)).toBe(true);
+    expect(await page.locator('mark').count()).toBe(0);
+  });
+
+  it('v0.5.3: Devices with the Sounds section, its own chunk, in each view', async () => {
+    await inEachView('/devices', async (page) => {
+      await page.getByRole('group', { name: 'Tones' }).waitFor();
+      await page.getByRole('combobox', { name: 'Tone for Answer soon' }).waitFor();
+    });
   });
 
   it("the phone's tabs: Today is current on a Life screen, and More holds the rest and opens them", async () => {

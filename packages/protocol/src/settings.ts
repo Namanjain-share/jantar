@@ -68,6 +68,12 @@ export const NotifySettingsSchema = z.object({
   kinds: z.array(NotifyKindSchema).default(() => [...DEFAULT_NOTIFY_KINDS]),
   /** Permission cards wait this long before a push (auto-approvals land first). */
   settle_ms: z.number().int().min(0).max(60_000).default(SETTLE_MS),
+  /**
+   * v0.5.3: an urgent push when Claude's 2-minute auto-block countdown is on
+   * an unattended ask's screen (jantar notify urgent on|off). It goes out as
+   * a `permission` push, so `kinds` must hold permission.
+   */
+  urgent: z.boolean().default(true),
 });
 
 /** A root id: "desktop", "work". The API names it "r.<id>". */

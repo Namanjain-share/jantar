@@ -24,6 +24,7 @@ import {
   type TerminalDialog,
 } from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
+import { chime, setAppChimes, type Chimes } from '../src/lib/sounds.js';
 import { writeLocal } from '../src/lib/storage.js';
 import { LOCAL_DEVICE_KEY } from '../src/ui/screens/devices/local.js';
 import {
@@ -40,7 +41,7 @@ import {
   countdownSecondsOf,
 } from '../src/ui/screens/session/answer.js';
 import { UNREADABLE } from '../src/ui/screens/session/screen.js';
-import { BLOCKED, PLAN_PARTIAL, TEXT_SHORT, blocksLine, leftWords } from '../src/ui/screens/session/TermDialog.js';
+import { BLOCKED, PLAN_PARTIAL, TEXT_SHORT, TONE_AT_S, blocksLine, leftWords } from '../src/ui/screens/session/TermDialog.js';
 import fixtures from './term-dialog-fixtures.json';
 import { emit, fakeApi, iso, pending, renderApp, session, stateWith } from './helpers.js';
 
@@ -1035,5 +1036,176 @@ describe("v0.5.2: an ask Claude blocks by itself (a workflow agent's Bash prompt
     expect(leftWords(59)).toBe('59 s');
     expect(leftWords(0)).toBe('0 s');
     expect(blocksLine('about 2 minutes')).toBe('Claude blocks this at the Mac in about 2 minutes if nobody answers');
+  });
+});
+
+describe("v0.5.3: the Answer soon tone as Claude's countdown crosses 60, 30 and 10 s left", () => {
+  /** Fake chimes that record each tone and phrase (lib/sounds.ts). */
+  function recorder() {
+    const r = {
+      tones: [] as string[],
+      said: [] as string[],
+      unlock: () => Promise.resolve(),
+      wake: () => undefined,
+      primeSpeech: () => undefined,
+      play: (tone: string) => (r.tones.push(tone), true),
+      speak: (group: string) => void r.said.push(group),
+    };
+    setAppChimes(r as unknown as Chimes);
+    return r;
+  }
+  const sounds = (over: { on?: boolean; speak?: boolean; urgent?: string } = {}) =>
+    writeLocal('alert-sounds', { v: 1, on: over.on ?? true, speak: over.speak ?? false, tones: { urgent: over.urgent ?? 'alarm', needs: 'ding', done: 'success', care: 'bell', problem: 'low' } });
+  /** The first read, then reads that fail: the phone keeps counting from the first. */
+  const onlyFirst = (blocksIn: string) =>
+    vi.fn().mockResolvedValueOnce(readWith({ ...dialogOf('PERM_WORKFLOW_133'), blocksIn })).mockRejectedValue(new ApiError('network', 'offline', 0));
+
+  afterEach(() => setAppChimes(null));
+  const blocksAt = (left: string) => `Claude blocks this at the Mac in ${left} if nobody answers`;
+
+  it('plays the urgent tone once at each mark, none at 0', async () => {
+    expect(TONE_AT_S).toEqual([60, 30, 10]);
+    const r = recorder();
+    sounds();
+    // 1:33 read: 92 s left on the phone's count.
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('1:33') } });
+    await pass(29_000);
+    expect(r.tones).toEqual([]);
+    await pass(5_000);
+    expect(r.tones).toEqual(['alarm']);
+    await pass(25_000);
+    expect(r.tones).toEqual(['alarm']);
+    await pass(5_000);
+    expect(r.tones).toEqual(['alarm', 'alarm']);
+    await pass(15_000);
+    expect(r.tones).toEqual(['alarm', 'alarm']);
+    await pass(5_000);
+    expect(r.tones).toEqual(['alarm', 'alarm', 'alarm']);
+    await pass(15_000);
+    expect(within(card()).getByText(BLOCKED)).toBeTruthy();
+    expect(r.tones).toEqual(['alarm', 'alarm', 'alarm']);
+    expect(r.said).toEqual([]);
+  });
+
+  it('a read every 3 s that starts the count again never plays a mark twice', async () => {
+    const r = recorder();
+    sounds({ urgent: 'bell' });
+    const d = dialogOf('PERM_WORKFLOW_133');
+    const t0 = Date.now();
+    // The Mac's countdown as the reads find it: 1:33 at the first, a second less each second.
+    const getScreen = vi.fn(async () => {
+      const left = Math.max(0, 93 - Math.floor((Date.now() - t0) / 1000));
+      return readWith({ ...d, blocksIn: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` });
+    });
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen } });
+    for (let i = 0; i < 90; i++) await pass(1_000);
+    expect(getScreen.mock.calls.length).toBeGreaterThan(20);
+    expect(r.tones).toEqual(['bell', 'bell', 'bell']);
+  });
+
+  it('the urgent repeat push chimed at about 61 s left: the dock crossing 60 a moment later plays nothing more', async () => {
+    const r = recorder();
+    sounds({ speak: true });
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('1:02') } });
+    expect(within(card()).getByText(blocksAt('1 min 1 s'))).toBeTruthy();
+    // The push reaches the open app (sw.js asks, main.tsx answers with chime): the alarm, "Answer soon", shown silent.
+    expect(chime('urgent')).toBe(true);
+    await pass(1_500);
+    expect(within(card()).getByText(blocksAt('59 s'))).toBeTruthy();
+    expect(r.tones).toEqual(['alarm']);
+    expect(r.said).toEqual(['urgent']);
+    await pass(30_000);
+    expect(r.tones).toEqual(['alarm', 'alarm']);
+    expect(r.said).toEqual(['urgent', 'urgent']);
+  });
+
+  it('a hidden tab (the Mac dashboard in the background) plays no mark; on screen again, the next one plays', async () => {
+    let hidden = false;
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });
+    try {
+      const r = recorder();
+      sounds({ speak: true });
+      await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('0:35') } });
+      hidden = true;
+      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+      await pass(10_000);
+      expect(within(card()).getByText(blocksAt('24 s'))).toBeTruthy();
+      expect(r.tones).toEqual([]);
+      expect(r.said).toEqual([]);
+      hidden = false;
+      readAgain();
+      await pass(15_000);
+      expect(r.tones).toEqual(['alarm']);
+      expect(r.said).toEqual(['urgent']);
+    } finally {
+      Reflect.deleteProperty(document, 'visibilityState');
+    }
+  });
+
+  it('a dock that opens with 45 s left plays at 30 and 10 only', async () => {
+    const r = recorder();
+    sounds();
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('0:45') } });
+    await pass(20_000);
+    expect(r.tones).toEqual(['alarm']);
+    await pass(20_000);
+    expect(r.tones).toEqual(['alarm', 'alarm']);
+  });
+
+  it('back from the background past two marks at once (60 and 30): one tone, then 10 as usual', async () => {
+    const r = recorder();
+    sounds();
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('1:33') } });
+    expect(within(card()).getByText(blocksAt('1 min 32 s'))).toBeTruthy();
+    // The phone slept 70 s: no tick ran, the wall clock moved on; the page shows again.
+    vi.setSystemTime(Date.now() + 70_000);
+    act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    expect(within(card()).getByText(blocksAt('22 s'))).toBeTruthy();
+    expect(r.tones).toEqual(['alarm']);
+    await pass(5_000);
+    expect(r.tones).toEqual(['alarm']);
+    await pass(10_000);
+    expect(r.tones).toEqual(['alarm', 'alarm']);
+  });
+
+  it('stops once the ask is answered', async () => {
+    const r = recorder();
+    sounds();
+    const sessionDialog = vi.fn(async () => ({ outcome: 'done' as const, dialog: null }));
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('1:33'), sessionDialog } });
+    await pass(34_000);
+    expect(r.tones).toEqual(['alarm']);
+    fireEvent.click(buttonOf(rowsOf()[1] as HTMLElement));
+    expect(await within(card()).findByText('Answered · No')).toBeTruthy();
+    await pass(60_000);
+    expect(r.tones).toEqual(['alarm']);
+  });
+
+  it("follows this device's Sounds: off plays nothing", async () => {
+    const off = recorder();
+    sounds({ on: false });
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('0:35') } });
+    await pass(10_000);
+    expect(within(card()).getByText(blocksAt('24 s'))).toBeTruthy();
+    expect(off.tones).toEqual([]);
+    expect(off.said).toEqual([]);
+  });
+
+  it('with Speak on, says "Answer soon" with the tone', async () => {
+    const speaking = recorder();
+    sounds({ speak: true });
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('0:35') } });
+    await pass(10_000);
+    expect(speaking.tones).toEqual(['alarm']);
+    expect(speaking.said).toEqual(['urgent']);
+  });
+
+  it('an "about 1 minute" countdown (not counted down) plays nothing', async () => {
+    const about = recorder();
+    sounds();
+    const d = dialogOf('PERM_WORKFLOW_133');
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: vi.fn(async () => readWith({ ...d, blocksIn: 'about 1 minute' })) } });
+    await pass(70_000);
+    expect(about.tones).toEqual([]);
   });
 });

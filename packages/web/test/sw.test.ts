@@ -17,6 +17,15 @@ type Handler = (ev: Record<string, unknown>) => void;
 
 function loadSw(build: { version: string; precache: string[] } | null, fetchImpl?: (req: unknown) => Promise<Response>) {
   const handlers: Record<string, Handler> = {};
+  /** Every MessageChannel the worker opened, its port1's close() spied on. */
+  const channels: MessageChannel[] = [];
+  class SpyChannel extends MessageChannel {
+    constructor() {
+      super();
+      vi.spyOn(this.port1, 'close');
+      channels.push(this);
+    }
+  }
   const store = new Map<string, Map<string, Response>>();
   const key = (r: unknown) => (typeof r === 'string' ? r : (r as { url: string }).url).replace(ORIGIN, '');
   const caches = {
@@ -61,7 +70,7 @@ function loadSw(build: { version: string; precache: string[] } | null, fetchImpl
   };
   const code = build ? renderServiceWorker(TEMPLATE, build) : TEMPLATE;
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
-  new Function('self', 'Request', 'Response', code)(self, FakeRequest, Response);
+  new Function('self', 'Request', 'Response', 'MessageChannel', code)(self, FakeRequest, Response, SpyChannel);
 
   async function fire(type: string, ev: Record<string, unknown> = {}) {
     const waits: Promise<unknown>[] = [];
@@ -70,7 +79,7 @@ function loadSw(build: { version: string; precache: string[] } | null, fetchImpl
     await Promise.all(waits);
     return responded ? await responded : undefined;
   }
-  return { self, handlers, store, fire };
+  return { self, handlers, store, fire, channels };
 }
 
 const req = (path: string, mode = 'cors', method = 'GET') => ({ url: `${ORIGIN}${path}`, method, mode });
@@ -235,5 +244,167 @@ describe('service worker', () => {
     expect(calls[0]![0]).toBe('/v1/push/subscribe');
     expect(JSON.parse((calls[0]![1] as RequestInit).body as string)).toEqual({ subscription: fresh.toJSON() });
     expect((calls[1]![1] as RequestInit).method).toBe('DELETE');
+  });
+
+  it('v0.5.3: takes the push\'s own time from its ISO `ts`', async () => {
+    const { fire, self } = loadSw({ version: 'v', precache: [] });
+    await fire('push', { data: { json: () => ({ title: 'x', ts: '2026-11-01T06:30:00.000Z' }) } });
+    await fire('push', { data: { json: () => ({ title: 'y', ts: 'not a time' }) } });
+    const calls = self.registration.showNotification.mock.calls as unknown[][];
+    expect((calls[0]![1] as { timestamp: number }).timestamp).toBe(Date.parse('2026-11-01T06:30:00.000Z'));
+    expect(Math.abs((calls[1]![1] as { timestamp: number }).timestamp - Date.now())).toBeLessThan(5_000);
+  });
+});
+
+/** A window the worker can see: visible on this origin unless told otherwise; `answer` is what the page posts back on the port. */
+function windowClient(over: { url?: string; visibilityState?: string; answer?: unknown } = {}) {
+  return {
+    url: over.url ?? `${ORIGIN}/s/abc`,
+    visibilityState: over.visibilityState ?? 'visible',
+    focused: true,
+    postMessage: vi.fn((_msg: unknown, transfer?: MessagePort[]) => {
+      if ('answer' in over) transfer?.[0]?.postMessage(over.answer);
+    }),
+  };
+}
+
+describe('v0.5.3: the chime from a push (S4, S5)', () => {
+  const push = (group?: string, kind = 'permission') => ({
+    data: { json: () => ({ title: 'web-app · Permission', body: 'Bash: pnpm test', tag: 's:abc', kind, sid: 'abc', ...(group ? { group } : {}) }) },
+  });
+  /** The one notification shown: always exactly one. */
+  async function shown(sw: ReturnType<typeof loadSw>, ev: Record<string, unknown>) {
+    sw.self.registration.showNotification.mockClear();
+    await sw.fire('push', ev);
+    expect(sw.self.registration.showNotification).toHaveBeenCalledTimes(1);
+    return (sw.self.registration.showNotification.mock.calls[0] as unknown[])[1] as { silent?: boolean };
+  }
+
+  it('silent only when the visible app answers { played: true }; the message is the group name only, the port closed', async () => {
+    const sw = loadSw({ version: 'v', precache: [] });
+    const client = windowClient({ answer: { played: true } });
+    sw.self.clients.matchAll.mockResolvedValue([client]);
+    expect((await shown(sw, push('needs'))).silent).toBe(true);
+    expect(sw.self.clients.matchAll).toHaveBeenCalledWith({ type: 'window', includeUncontrolled: true });
+    expect(client.postMessage).toHaveBeenCalledTimes(1);
+    const [msg, transfer] = client.postMessage.mock.calls[0] as [unknown, MessagePort[]];
+    expect(msg).toEqual({ type: 'jantar:chime', group: 'needs' });
+    expect(transfer).toEqual([sw.channels[0]!.port2]);
+    expect(sw.channels[0]!.port1.close).toHaveBeenCalled();
+    // done and problem the same way.
+    for (const g of ['done', 'problem']) expect((await shown(sw, push(g))).silent, g).toBe(true);
+  });
+
+  it('keeps the sound for { played: false } or any other answer', async () => {
+    for (const answer of [{ played: false }, { played: 'yes' }, { played: 1 }, 'played', null, {}]) {
+      const sw = loadSw({ version: 'v', precache: [] });
+      sw.self.clients.matchAll.mockResolvedValue([windowClient({ answer })]);
+      expect((await shown(sw, push('done'))).silent, JSON.stringify(answer)).toBeUndefined();
+      expect(sw.channels[0]!.port1.close).toHaveBeenCalled();
+    }
+  });
+
+  it('keeps the sound when the app never answers, after waiting 300 ms', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const sw = loadSw({ version: 'v', precache: [] });
+      const client = windowClient();
+      sw.self.clients.matchAll.mockResolvedValue([client]);
+      let settled = false;
+      const options = shown(sw, push('needs')).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(299);
+      expect(settled).toBe(false);
+      expect(sw.self.registration.showNotification).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect((await options).silent).toBeUndefined();
+      expect(client.postMessage).toHaveBeenCalledTimes(1);
+      expect(sw.channels[0]!.port1.close).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('asks no window that is hidden or on another origin, and shows the push as usual', async () => {
+    const sw = loadSw({ version: 'v', precache: [] });
+    const hidden = windowClient({ visibilityState: 'hidden', answer: { played: true } });
+    const other = windowClient({ url: 'https://other.example/s/abc', answer: { played: true } });
+    const bad = windowClient({ url: 'not a url', answer: { played: true } });
+    sw.self.clients.matchAll.mockResolvedValue([hidden, other, bad]);
+    expect((await shown(sw, push('needs'))).silent).toBeUndefined();
+    for (const c of [hidden, other, bad]) expect(c.postMessage).not.toHaveBeenCalled();
+    expect(sw.channels).toEqual([]);
+    // No window at all.
+    sw.self.clients.matchAll.mockResolvedValue([]);
+    expect((await shown(sw, push('needs'))).silent).toBeUndefined();
+    // The first visible one on this origin is the one asked.
+    const first = windowClient({ answer: { played: true } });
+    const second = windowClient({ answer: { played: false } });
+    sw.self.clients.matchAll.mockResolvedValue([hidden, first, second]);
+    expect((await shown(sw, push('needs'))).silent).toBe(true);
+    expect(second.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('never silences medicines and Life (care): the bell is posted without a port, the push keeps its sound', async () => {
+    const sw = loadSw({ version: 'v', precache: [] });
+    const client = windowClient({ answer: { played: true } });
+    sw.self.clients.matchAll.mockResolvedValue([client]);
+    // It does not wait for an answer: shown with no time passing, no timer left.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settled = false;
+      const options = shown(sw, push('care', 'med')).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      expect((await options).silent).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(client.postMessage.mock.calls).toEqual([[{ type: 'jantar:chime', group: 'care' }]]);
+    expect(sw.channels).toEqual([]);
+  });
+
+  it('never silences Answer soon (urgent): the alarm is posted without a port, the push keeps its sound or buzz', async () => {
+    // iOS Web Audio follows the silent switch while the context still runs: a "played" alarm may be unheard.
+    const sw = loadSw({ version: 'v', precache: [] });
+    const client = windowClient({ answer: { played: true } });
+    sw.self.clients.matchAll.mockResolvedValue([client]);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settled = false;
+      const options = shown(sw, push('urgent')).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      expect((await options).silent).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(client.postMessage.mock.calls).toEqual([[{ type: 'jantar:chime', group: 'urgent' }]]);
+    expect(sw.channels).toEqual([]);
+  });
+
+  it('no group, an unknown one or a plain-text push: no chime, shown as usual', async () => {
+    const sw = loadSw({ version: 'v', precache: [] });
+    const client = windowClient({ answer: { played: true } });
+    sw.self.clients.matchAll.mockResolvedValue([client]);
+    expect((await shown(sw, push())).silent).toBeUndefined();
+    expect((await shown(sw, push('loud'))).silent).toBeUndefined();
+    expect((await shown(sw, { data: { json: () => ({ title: 'x', group: ['needs'] }) } })).silent).toBeUndefined();
+    const plain = { data: { json: () => { throw new SyntaxError('bad'); }, text: () => 'plain words' } };
+    expect((await shown(sw, plain)).silent).toBeUndefined();
+    expect(client.postMessage).not.toHaveBeenCalled();
+    expect(sw.self.clients.matchAll).not.toHaveBeenCalled();
+  });
+
+  it('shows the push once with its sound when asking the window fails', async () => {
+    const sw = loadSw({ version: 'v', precache: [] });
+    sw.self.clients.matchAll.mockRejectedValue(new Error('gone'));
+    expect((await shown(sw, push('needs'))).silent).toBeUndefined();
+    const throwing = { ...windowClient(), postMessage: vi.fn(() => { throw new Error('detached'); }) };
+    sw.self.clients.matchAll.mockResolvedValue([throwing]);
+    expect((await shown(sw, push('needs'))).silent).toBeUndefined();
+    expect(sw.channels[0]!.port1.close).toHaveBeenCalled();
+    expect((await shown(sw, push('care'))).silent).toBeUndefined();
   });
 });

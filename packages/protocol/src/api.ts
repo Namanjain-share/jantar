@@ -89,6 +89,9 @@ import {
   FoodEstimateSchema,
   FoodPatchSchema,
   FoodTargetsBodySchema,
+  FolderTodoBodySchema,
+  FolderTodosQuerySchema,
+  FolderTodosResponseSchema,
   IdReplySchema,
   LifeBackupResponseSchema,
   LifeIdParamsSchema,
@@ -128,6 +131,7 @@ import {
   IntelParamsSchema,
   IntelSourcesResponseSchema,
 } from './intel.js';
+import { NotifyTestBodySchema, NotifyTestResponseSchema } from './alerts.js';
 import {
   ClientIdParamsSchema,
   ExtEndBodySchema,
@@ -1416,6 +1420,24 @@ export const ROUTES = {
   askUndo: route({
     method: 'DELETE', path: '/v1/ask/turns/:id/actions/:n', scope: 'control', phase: 'v0.5.3', ctl: false, feature: 'ask',
     params: AskCardParamsSchema, response: OkReplySchema, summary: 'Undo an Add within a day: delete the item as it is now.',
+  }),
+
+  // --- v0.5.3 The Mac only (localOnly): folder todos for `jantar mcp` (the Life project linked to a
+  // session's folder; todo routes were never on ctl.sock before), and a test push per alert group.
+  folderTodos: route({
+    method: 'GET', path: '/v1/folder/todos', scope: 'control', phase: 'v0.5.3', ctl: true, localOnly: true, feature: 'todos',
+    query: FolderTodosQuerySchema, response: FolderTodosResponseSchema,
+    summary: "The open todos of the project linked to a folder (the deepest wins), or project null.",
+  }),
+  folderTodoCreate: route({
+    method: 'POST', path: '/v1/folder/todos', scope: 'control', phase: 'v0.5.3', ctl: true, localOnly: true, feature: 'todos',
+    body: FolderTodoBodySchema, response: IdReplySchema,
+    summary: 'Add a todo to the project linked to a folder (20 an hour from Claude sessions).',
+  }),
+  notifyTest: route({
+    method: 'POST', path: '/v1/notify/test', scope: 'admin', phase: 'v0.5.3', ctl: true, localOnly: true,
+    body: NotifyTestBodySchema, response: NotifyTestResponseSchema,
+    summary: 'One test push of an alert group to every device (jantar notify test [group]).',
   }),
 } as const satisfies Record<string, RouteDef>;
 

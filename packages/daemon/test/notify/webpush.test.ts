@@ -2,19 +2,26 @@ import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Notification } from '../../src/contracts.js';
+import { ALERT_GROUP_OF, type NotifyKind } from '@jantar/protocol';
+import type { Notification, Notifier } from '../../src/contracts.js';
 import { createTestContext, type TestContext } from '../../src/core/testing.js';
 import {
   DEFAULT_VAPID_SUBJECT,
   MAX_PAYLOAD_BYTES,
   PUSH_CONCURRENCY,
   VapidError,
+  PUSH_TTL_S,
   WebPushNotifier,
+  buildPushPayload,
   createNotifiers,
   encodePayload,
   findWebPush,
   loadOrCreateVapidKeys,
+  lookupFirst,
+  neverLeft,
+  sendDirect,
   topicFor,
+  ttlFor,
   type PushSendOptions,
 } from '../../src/notify/index.js';
 import { TEST_VAPID } from '../api/fakes.js';
@@ -90,10 +97,10 @@ describe('WebPushNotifier', () => {
     addSub('https://fcm.googleapis.com/fcm/send/b', 'd2', ['permission']);
     addSub('https://fcm.googleapis.com/fcm/send/c', 'd2', ['question']);
 
-    expect(await wp.send(N)).toEqual({ delivered: 2, failed: 0 });
+    expect(await wp.send(N)).toEqual({ delivered: 2, failed: 0, offline: 0 });
     expect(sent.map((s) => s.endpoint).sort()).toEqual(['https://fcm.googleapis.com/fcm/send/a', 'https://fcm.googleapis.com/fcm/send/c']);
     const payload = JSON.parse(sent[0]?.payload ?? '{}');
-    expect(payload).toEqual({ v: 1, title: N.title, body: N.body, kind: 'question', url: N.url, tag: N.tag, sid: N.sid, pendingId: 'p1', ts: N.ts });
+    expect(payload).toEqual({ v: 1, title: N.title, body: N.body, kind: 'question', group: 'needs', url: N.url, tag: N.tag, sid: N.sid, pendingId: 'p1', ts: N.ts });
     expect(sent[0]?.options).toMatchObject({
       TTL: 3600,
       urgency: 'high',
@@ -128,7 +135,7 @@ describe('WebPushNotifier', () => {
     addSub('https://fcm.googleapis.com/fcm/send/flaky', 'd1');
     addSub('https://fcm.googleapis.com/fcm/send/revoked', 'd2');
     addSub('https://fcm.googleapis.com/fcm/send/orphan', 'nobody');
-    expect(await wp.send(N)).toEqual({ delivered: 1, failed: 2 });
+    expect(await wp.send(N)).toEqual({ delivered: 1, failed: 2, offline: 0 });
     expect(ctx.db.pushSubs.list().map((r) => r.subscription.endpoint).sort()).toEqual(['https://fcm.googleapis.com/fcm/send/flaky', 'https://fcm.googleapis.com/fcm/send/ok']);
     const logged = JSON.stringify(ctx.log.records);
     expect(logged).not.toContain('/flaky'); // endpoints are capabilities: only the host is logged
@@ -144,7 +151,7 @@ describe('WebPushNotifier', () => {
     addSub('https://169.254.169.254/latest', 'd1');
     addSub('https://mac.tailnet-example.ts.net/x', 'd1');
     addSub('https://web.push.apple.com/ok', 'd1');
-    expect(await wp.send(N)).toEqual({ delivered: 1, failed: 0 });
+    expect(await wp.send(N)).toEqual({ delivered: 1, failed: 0, offline: 0 });
     expect(sent).toEqual(['https://web.push.apple.com/ok']);
     expect(ctx.db.pushSubs.list().map((r) => r.subscription.endpoint)).toEqual(['https://web.push.apple.com/ok']);
   });
@@ -162,7 +169,7 @@ describe('WebPushNotifier', () => {
       });
     }
     addSub('https://web.push.apple.com/d2', 'd2');
-    expect(await wp.send(N)).toEqual({ delivered: 6, failed: 0 });
+    expect(await wp.send(N)).toEqual({ delivered: 6, failed: 0, offline: 0 });
     expect(sent.filter((e) => e.includes('/old')).sort()).toEqual([4, 5, 6, 7, 8].map((i) => `https://fcm.googleapis.com/fcm/send/old${i}`));
     expect(sent).toContain('https://web.push.apple.com/d2');
   });
@@ -186,7 +193,7 @@ describe('WebPushNotifier', () => {
       addDevice(`d${d}`);
       for (let i = 0; i < 5; i++) addSub(`https://fcm.googleapis.com/fcm/send/d${d}/x${i}`, `d${d}`);
     }
-    expect(await wp.send(N)).toEqual({ delivered: 16, failed: 4 });
+    expect(await wp.send(N)).toEqual({ delivered: 16, failed: 4, offline: 0 });
     expect(peak).toBeLessThanOrEqual(PUSH_CONCURRENCY);
     expect(peak).toBeGreaterThan(1);
     expect(done).toHaveLength(16);
@@ -207,7 +214,7 @@ describe('WebPushNotifier', () => {
     c.db.pushSubs.upsert({ subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/1', keys: { p256dh: 'p', auth: 'a' } }, deviceId: 'd1', createdAt: N.ts });
     expect(wp.publicKey()).toBeNull();
     expect(wp.vapidError()).toMatch(/not valid JSON/);
-    expect(await wp.send(N)).toEqual({ delivered: 0, failed: 1 });
+    expect(await wp.send(N)).toEqual({ delivered: 0, failed: 1, offline: 0 });
     expect(sends).toBe(0);
   });
 
@@ -217,5 +224,135 @@ describe('WebPushNotifier', () => {
     const wp = findWebPush(notifiers);
     expect(wp?.publicKey()).toMatch(/^[A-Za-z0-9_-]+$/);
     expect((await stat(ctx.paths.vapidFile)).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe('v0.5.3: the alert group, the deadline and its TTL', () => {
+  it('every payload names its group; a permission with a deadline is urgent and carries it', () => {
+    for (const kind of Object.keys(ALERT_GROUP_OF) as NotifyKind[]) {
+      expect(buildPushPayload({ ...N, kind }).group, kind).toBe(ALERT_GROUP_OF[kind]);
+    }
+    const deadline = '2026-01-15T10:01:50.000Z';
+    expect(buildPushPayload({ ...N, kind: 'permission', deadline })).toMatchObject({ kind: 'permission', group: 'urgent', deadline });
+    // A deadline on any other kind changes nothing but the field.
+    expect(buildPushPayload({ ...N, kind: 'question', deadline }).group).toBe('needs');
+    expect(buildPushPayload(N)).not.toHaveProperty('deadline');
+  });
+
+  it('TTL: the seconds until the deadline (at least 1, at most PUSH_TTL_S); PUSH_TTL_S without one', async () => {
+    const now = Date.parse('2026-01-15T10:00:00.000Z');
+    expect(ttlFor('2026-01-15T10:01:50.000Z', now)).toBe(110);
+    expect(ttlFor('2026-01-15T10:01:49.200Z', now)).toBe(110);
+    expect(ttlFor('2026-01-15T09:59:00.000Z', now)).toBe(1);
+    expect(ttlFor('2026-01-16T10:00:00.000Z', now)).toBe(PUSH_TTL_S);
+    expect(ttlFor('not a date', now)).toBe(PUSH_TTL_S);
+    expect(ttlFor(undefined, now)).toBe(PUSH_TTL_S);
+
+    const sent: PushSendOptions[] = [];
+    const wp = new WebPushNotifier(ctx, { vapid: TEST_VAPID, sender: async (_sub, _payload, options) => void sent.push(options) });
+    addDevice('d1');
+    addSub('https://web.push.apple.com/d1', 'd1');
+    await wp.send({ ...N, kind: 'permission', deadline: ctx.clock.iso(ctx.clock.now() + 95_500) });
+    await wp.send({ ...N, kind: 'permission' });
+    expect(sent.map((o) => [o.TTL, o.urgency])).toEqual([
+      [96, 'high'],
+      [3600, 'high'],
+    ]);
+  });
+});
+
+describe('v0.5.3: pushes that never left the Mac (S7)', () => {
+  const dns = () => Object.assign(new Error('getaddrinfo ENOTFOUND web.push.apple.com'), { code: 'ENOTFOUND', syscall: 'getaddrinfo', hostname: 'web.push.apple.com' });
+  const refused = (address: string) => Object.assign(new Error(`connect ECONNREFUSED ${address}:443`), { code: 'ECONNREFUSED', syscall: 'connect', address, port: 443 });
+  const happyEyeballs = () => Object.assign(new AggregateError([refused('17.188.0.1'), refused('2620:149::1')]), { code: 'ECONNREFUSED' });
+
+  it('neverLeft: DNS and connect failures, also as an AggregateError; never an HTTP answer, a timeout or a reset', () => {
+    expect(neverLeft(dns())).toBe(true);
+    expect(neverLeft(Object.assign(new Error('getaddrinfo EAI_AGAIN web.push.apple.com'), { code: 'EAI_AGAIN', syscall: 'getaddrinfo' }))).toBe(true);
+    expect(neverLeft(refused('17.188.0.1'))).toBe(true);
+    expect(neverLeft(Object.assign(new Error('connect ETIMEDOUT 17.188.0.1:443'), { code: 'ETIMEDOUT', syscall: 'connect' }))).toBe(true);
+    expect(neverLeft(happyEyeballs())).toBe(true);
+
+    expect(neverLeft(Object.assign(new Error('Received unexpected response code'), { statusCode: 500 }))).toBe(false);
+    expect(neverLeft(Object.assign(new Error('connect'), { statusCode: 503, syscall: 'connect' }))).toBe(false);
+    expect(neverLeft(new Error('Socket timeout'))).toBe(false);
+    expect(neverLeft(Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET', syscall: 'read' }))).toBe(false);
+    expect(neverLeft(new AggregateError([refused('17.188.0.1'), new Error('Socket timeout')]))).toBe(false);
+    expect(neverLeft(new AggregateError([]))).toBe(false);
+    expect(neverLeft(null)).toBe(false);
+    expect(neverLeft('getaddrinfo')).toBe(false);
+  });
+
+  it("lookupFirst: the host's address within the timeout; a DNS failure or a lookup past it is a getaddrinfo error (offline)", async () => {
+    const asked: string[] = [];
+    await expect(lookupFirst('web.push.apple.com', 1_000, async (h) => void asked.push(h))).resolves.toBeUndefined();
+    expect(asked).toEqual(['web.push.apple.com']);
+    const failed = await lookupFirst('web.push.apple.com', 1_000, async () => Promise.reject(dns())).catch((e: unknown) => e);
+    expect(neverLeft(failed)).toBe(true);
+    // A resolver that never answers (a Mac waking): no network, not a push that may have reached Apple.
+    const slow = await lookupFirst('web.push.apple.com', 20, () => new Promise(() => {})).catch((e: unknown) => e);
+    expect(slow).toMatchObject({ code: 'ETIMEOUT', syscall: 'getaddrinfo', hostname: 'web.push.apple.com' });
+    expect(neverLeft(slow)).toBe(true);
+  });
+
+  it('send counts them as offline; anything that may have reached the push service does not', async () => {
+    const answers = new Map<string, () => Error>([
+      ['/dns', dns],
+      ['/eyeballs', happyEyeballs],
+      ['/500', () => Object.assign(new Error('Server error'), { statusCode: 500 })],
+      ['/timeout', () => new Error('Socket timeout')],
+      ['/reset', () => Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET', syscall: 'read' })],
+    ]);
+    const wp = new WebPushNotifier(ctx, {
+      vapid: TEST_VAPID,
+      sender: async (sub) => {
+        const make = answers.get(new URL(sub.endpoint).pathname);
+        if (make) throw make();
+      },
+    });
+    for (const path of [...answers.keys(), '/ok']) {
+      addDevice(path);
+      addSub(`https://web.push.apple.com${path}`, path);
+    }
+    expect(await wp.send(N)).toEqual({ delivered: 1, failed: 5, offline: 2 });
+  });
+
+  it('logs the first offline failure as a warning, the next ones at debug, and says when a push gets through again', async () => {
+    let down = true;
+    const wp = new WebPushNotifier(ctx, {
+      vapid: TEST_VAPID,
+      sender: async () => {
+        if (down) throw dns();
+      },
+    });
+    addDevice('d1');
+    addSub('https://web.push.apple.com/d1', 'd1');
+    const lines = () => ctx.log.records.filter((r) => r.msg === 'push failed' || r.msg === 'push service reachable again').map((r) => `${r.level} ${r.msg}`);
+
+    expect(await wp.send(N)).toEqual({ delivered: 0, failed: 1, offline: 1 });
+    expect(await wp.send(N)).toEqual({ delivered: 0, failed: 1, offline: 1 });
+    expect(await wp.send(N)).toEqual({ delivered: 0, failed: 1, offline: 1 });
+    expect(lines()).toEqual(['warn push failed', 'debug push failed', 'debug push failed']);
+    expect(ctx.log.records.find((r) => r.msg === 'push failed')?.fields).toMatchObject({
+      deviceId: 'd1',
+      pushHost: 'web.push.apple.com',
+      status: null,
+      error: 'getaddrinfo ENOTFOUND web.push.apple.com',
+      offline: true,
+    });
+    down = false;
+    expect(await wp.send(N)).toEqual({ delivered: 1, failed: 0, offline: 0 });
+    expect(await wp.send(N)).toEqual({ delivered: 1, failed: 0, offline: 0 });
+    down = true;
+    await wp.send(N);
+    expect(lines()).toEqual(['warn push failed', 'debug push failed', 'debug push failed', 'info push service reachable again', 'warn push failed']);
+    expect(JSON.stringify(ctx.log.records)).not.toContain('/d1'); // the host only
+  });
+
+  it('sendDirect adds offline up across notifiers, and leaves it out when there is none', async () => {
+    const answer = (r: Awaited<ReturnType<Notifier['send']>>): Notifier => ({ channel: 'webpush', send: async () => r });
+    const n: Notification = { ...N, kind: 'med', minScope: 'control' };
+    expect(await sendDirect(ctx, [answer({ delivered: 0, failed: 2, offline: 2 }), answer({ delivered: 0, failed: 1, offline: 1 })], n)).toEqual({ delivered: 0, failed: 3, offline: 3, muted: false });
+    expect(await sendDirect(ctx, [answer({ delivered: 1, failed: 1, offline: 0 }), answer({ delivered: 1, failed: 0 })], n)).toEqual({ delivered: 2, failed: 1, muted: false });
   });
 });

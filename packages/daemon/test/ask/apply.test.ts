@@ -78,7 +78,8 @@ describe('the due rules (FakeClock at 14:05 in the Life zone)', () => {
     expect(added.ok).toBe(true);
     const todoId = added.ok ? added.value.id : '';
     const listed = r.todos.listTodos({ done: false });
-    expect(listed.ok && listed.value.todos).toEqual([expect.objectContaining({ id: todoId, title: 'Stretch', due: { day: TOMORROW, time: '09:00' }, repeat: { freq: 'daily' } })]);
+    // Life keeps the series' own time beside the repeat (v0.5.3), as for a todo made on the Todos screen.
+    expect(listed.ok && listed.value.todos).toEqual([expect.objectContaining({ id: todoId, title: 'Stretch', due: { day: TOMORROW, time: '09:00' }, repeat: { freq: 'daily', at: '09:00' } })]);
     expect(todoRow(r, todoId)).toBe(ring(TOMORROW, '09:00'));
     expect(todoRow(r, todoId)).toBe('2026-11-02T03:30:00.000Z');
     expect(r.turn(id)?.cards[2]).toMatchObject({ state: 'added', ref: todoId });

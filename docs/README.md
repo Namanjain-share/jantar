@@ -9,6 +9,7 @@
 | [Install and run](install.md) | Requirements, a read-only trial, running under launchd, macOS prompts, reaching it from your phone (Tailscale, Cloudflare), pairing, updating, uninstalling |
 | [The app](phone-app.md) | Every screen on the phone and the Mac, sending prompts with proof, new sessions and Resume, Files, Rewrite, Ask, Controls, devices and scopes |
 | [Answering from the phone](phone-control.md) | Hook cards, terminal dialogs as buttons, the keypad, attachments, what stays at the Mac and why |
+| [Alerts and sounds](alerts.md) | The five alert groups and their tones, Answer soon for Claude's 2-minute countdown, what the lock screen can and cannot do, `jantar notify` |
 | [Accounts](accounts.md) | One login or cswap, usage and resets, accounts kept for other work |
 | [The primer](primer.md) | Starting an idle account's 5-hour window early |
 | [Life](life.md) | Today, todos, reminders, projects, medicines, food and weight, cafés, finance; backup and restore |

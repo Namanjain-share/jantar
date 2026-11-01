@@ -34,7 +34,7 @@ import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
 import { createRequire } from 'node:module';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DIALOG_SECRET, NOT_DIALOG_SCREENS, dialogFixture, userPrompt } from '@jantar/fixtures';
+import { DIALOG_SECRET, NOT_DIALOG_SCREENS, dialogFixture, perfBudgetMs, userPrompt } from '@jantar/fixtures';
 import {
   DEVICE_COOKIE,
   DEVICE_SECRET_HEADER,
@@ -208,12 +208,12 @@ describe('v0.4.2 privacy sweep: no dialog text, typed answer, label, file byte o
       ws.on('error', reject);
     });
     await eventually(async () => frames.some((f) => f.includes('"kind":"snapshot"')), 5_000, 'the snapshot');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     ws?.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. dialogs: read, answered, refused, changed, held', async () => {
     // Every screen read carries its dialog: the phone asked for it.
@@ -335,7 +335,7 @@ describe('v0.4.2 privacy sweep: no dialog text, typed answer, label, file byte o
       return t.text.includes(LABEL_MARKER) ? t : null;
     }, 10_000, 'the prompt in the transcript');
     expect(transcript.text).toContain(d.ctx.paths.uploadsDir);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it("3b. a send that meets a dialog: refused with a fixed sentence, never the dialog's title (screen text)", async () => {
     tabs.on(TTY_S, {});
@@ -358,7 +358,7 @@ describe('v0.4.2 privacy sweep: no dialog text, typed answer, label, file byte o
     expect(reason).not.toContain(TITLE_MARKER);
     expect(tabs.writesTo(TTY_S).length).toBe(typed);
     await tabs.show(TTY_S, idle(''));
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('4. a hook card answered "for this session": Claude gets its own rules, the audit and the log only indices', async () => {
     const s = d.home.session(SID_D);

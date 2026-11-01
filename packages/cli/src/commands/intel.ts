@@ -46,7 +46,7 @@ const FLAGS = {
   type: { type: 'string', help: 'add: its type (tool, repo, ...); list: only this type' },
   tag: { type: 'string', multiple: true, help: 'add: a tag (again for more); list: only items with this tag' },
   note: { type: 'string', help: 'add: a note, shown as "what it is"' },
-  q: { type: 'string', help: 'list: search titles, notes, tags and fields' },
+  q: { type: 'string', help: 'list: search by words (titles, notes, type, tags, link, fields), best match first' },
   limit: { type: 'number', help: `list: how many (default ${LIST_DEFAULT}, at most ${INTEL_PAGE_MAX})` },
 } as const;
 
@@ -253,7 +253,7 @@ export default defineCommand(
       '  intel add "<title>" [--url <u>] [--type <t>] [--tag <t>]... [--note <n>]\n' +
       '                                 put an item on the shelf (a link already there is not added twice)\n' +
       '  intel list [--q <text>] [--type <t>] [--tag <t>] [--limit <n>]\n' +
-      '                                 what is on the shelf, newest first\n' +
+      '                                 what is on the shelf: best match first with --q, else newest first\n' +
       'A source is named by its file name: ~/bot/intel.jsonl shows as "intel" on the phone.',
   },
   async (argv, ctx) => {

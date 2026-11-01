@@ -6,13 +6,16 @@
  * duplicate, not saved), and the gates: LI4 (a `<script>` title is text)
  * and LW2 (the url and field values are links only when they are one whole
  * http(s) address, with target _blank and rel noopener noreferrer).
+ * v0.5.3: "12 matches" while searching, the search's words marked in each
+ * row (case, Devanagari whole, the `İ` skip; S13: text nodes only), the
+ * clear button, and `focus=search` from the header's magnifier.
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IntelItem, IntelListItem, IntelListResponse, IntelSource } from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { FieldValue } from '../src/ui/screens/intel/ItemPage.js';
-import { ADD_SOURCE_COMMAND, hasFilters, httpHref, itemsWord, shelfDate, shelfPath, shelfTime, tagsFrom } from '../src/ui/screens/intel/model.js';
+import { ADD_SOURCE_COMMAND, hasFilters, httpHref, itemsWord, marks, matchesWord, shelfDate, shelfPath, shelfTime, tagsFrom, termsOf } from '../src/ui/screens/intel/model.js';
 import { emit, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('intel');
@@ -110,6 +113,27 @@ describe('the model', () => {
     expect(hasFilters({ tag: 'x' })).toBe(true);
     expect([itemsWord(1), itemsWord(612)]).toEqual(['1 item', '612 items']);
     expect(ADD_SOURCE_COMMAND).toBe('jantar intel source add <file.jsonl>');
+    expect([matchesWord(1), matchesWord(12), matchesWord(1200)]).toEqual(['1 match', '12 matches', '1,200 matches']);
+  });
+
+  it('v0.5.3: marks the search words without case, joins back to the text, and skips a text lowercasing would lengthen', () => {
+    const joined = (text: string, terms: string[]) => marks(text, terms).map((p) => p.text).join('');
+    const shown = (text: string, q: string) => marks(text, termsOf(q)).map((p) => (p.hit ? `[${p.text}]` : p.text)).join('');
+    expect(termsOf(undefined)).toEqual([]);
+    expect(termsOf('Prisma "DB migrate"')).toEqual(['prisma', 'db migrate']);
+    expect(shown('Claude Code hooks cookbook', 'HOOK code')).toBe('Claude [Code] [hook]s cookbook');
+    expect(shown('Prisma DB Migrate guide', '"db migrate"')).toBe('Prisma [DB Migrate] guide');
+    // Overlapping and touching words make one mark; every place a word is, is marked.
+    expect(shown('hooks and hooks', 'hook ooks')).toBe('[hooks] and [hooks]');
+    expect(shown('abc', 'a b c')).toBe('[abc]');
+    expect(shown('Nothing here', 'zzz')).toBe('Nothing here');
+    expect(marks('', ['a'])).toEqual([{ text: '', hit: false }]);
+    // Devanagari: a word with its vowel signs is marked whole, never split at a sign.
+    expect(shown('नमस्ते दुनिया', 'दुनिया')).toBe('नमस्ते [दुनिया]');
+    expect(shown('नमस्ते दुनिया', 'नमस्ते')).toBe('[नमस्ते] दुनिया');
+    // "İ" lowercases to two characters: the offsets would drift, so nothing is marked.
+    expect(marks('İstanbul guide', ['guide'])).toEqual([{ text: 'İstanbul guide', hit: false }]);
+    for (const [text, q] of [['Claude Code hooks', 'o'], ['a<b>c</b>', 'b'], ['x', '']] as const) expect(joined(text, termsOf(q))).toBe(text);
   });
 });
 
@@ -289,6 +313,79 @@ describe('the shelf', () => {
     open('/intel', api);
     const foot = await screen.findByRole('list', { name: 'Sources not read' });
     expect(foot.textContent).toBe("intel Can't be read");
+  });
+});
+
+describe('v0.5.3: searching', () => {
+  const found = () =>
+    page(
+      [
+        row(2, { title: 'Claude Code hooks cookbook', summary: 'What a HOOK can block.' }),
+        row(1, { title: 'Something else', summary: 'Mentions hooks in passing.' }),
+      ],
+      { total: 12 },
+    );
+  const rowTexts = () =>
+    screen.getAllByRole('listitem').flatMap((li) => (li.querySelector('a[href^="/intel?"]') ? [li.querySelector('p')?.textContent ?? ''] : []));
+
+  it('the count line says matches while the search has words, items otherwise; rows mark the words in the title and summary', async () => {
+    const api = shelfApi({ intelList: vi.fn(async () => found()) });
+    const a = open('/intel?q=hook', api);
+    expect(await screen.findByText('12 matches')).toBeTruthy();
+    expect(rowTexts()).toEqual(['Claude Code hooks cookbook', 'Something else']);
+    expect([...document.querySelectorAll('main mark')].map((m) => m.textContent)).toEqual(['hook', 'HOOK', 'hook']);
+    const mark = document.querySelector('main mark') as HTMLElement;
+    expect(mark.className).toContain('bg-select');
+    expect(mark.className).toContain('text-ink');
+    // The calm background alone hardly shows (about 1.1:1): an underline does.
+    expect(mark.className).toContain('underline');
+    // The daemon ranks: the phone asks with no sort of its own.
+    expect(api.intelList).toHaveBeenCalledWith({ q: 'hook', type: undefined, tag: undefined, limit: 50 });
+    a.unmount();
+    open('/intel?type=tool', shelfApi({ intelList: vi.fn(async () => found()) }));
+    expect(await screen.findByText('12 items')).toBeTruthy();
+    expect(document.querySelector('main mark')).toBeNull();
+    expect(screen.queryByText(/matches$/)).toBeNull();
+  });
+
+  it('S13: a hostile title stays text with its match marked; nothing runs', async () => {
+    const hostile = '<img src=x onerror="window.__pwned=3">';
+    const api = shelfApi({ intelList: vi.fn(async () => page([row(1, { id: 'intel:ex-img', title: hostile, summary: '<b>img</b> in bold' })])) });
+    open('/intel?q=img', api);
+    await screen.findByText('1 match');
+    expect(rowTexts()).toEqual([hostile]);
+    expect([...document.querySelectorAll('main mark')].map((m) => m.textContent)).toEqual(['img', 'img']);
+    expect(document.querySelector('main img, main b, script')).toBeNull();
+    expect((window as unknown as { __pwned?: unknown }).__pwned).toBeUndefined();
+  });
+
+  it('the clear button shows with text, clears the box and the address at once, and keeps the focus there', async () => {
+    const api = shelfApi();
+    const { router } = open('/intel?q=hooks&type=tool', api);
+    await screen.findByText('Example tool 2');
+    const box = screen.getByLabelText('Search the shelf') as HTMLInputElement;
+    const clear = screen.getByRole('button', { name: 'Clear the search' });
+    expect(clear.querySelector('svg')).toBeTruthy();
+    fireEvent.click(clear);
+    expect(box.value).toBe('');
+    expect(router.getState().route).toEqual({ name: 'intel', type: 'tool' });
+    expect(document.activeElement).toBe(box);
+    expect(screen.queryByRole('button', { name: 'Clear the search' })).toBeNull();
+    // Typed but not yet searched: the button clears the box only.
+    fireEvent.change(box, { target: { value: 'half' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear the search' }));
+    expect(box.value).toBe('');
+    await new Promise((r) => setTimeout(r, 350));
+    expect(router.getState().route).toEqual({ name: 'intel', type: 'tool' });
+  });
+
+  it('focus=search focuses the box and leaves the address; the filters stay', async () => {
+    const api = shelfApi();
+    const { router } = open('/intel?q=hooks&focus=search', api);
+    const box = (await screen.findByLabelText('Search the shelf')) as HTMLInputElement;
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    await waitFor(() => expect(router.getState().route).toEqual({ name: 'intel', q: 'hooks' }));
+    expect(box.value).toBe('hooks');
   });
 });
 

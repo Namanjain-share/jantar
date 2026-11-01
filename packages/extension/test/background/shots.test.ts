@@ -7,12 +7,17 @@
  * capture comes first, so a failed one makes no meeting; one queue, at
  * least 550 ms apart, holding a shot only until its capture; the quota
  * error waits 600 ms and tries once more; too large tries quality 60.
+ * v0.5.3: Chrome's own words kept (cut, no web address), a capture Chrome
+ * never answers fails after 5 s and frees the queue, and one LastShot
+ * record for every try, whatever step it ended at.
  */
-import { markerJpeg } from '@jantar/fixtures';
-import { afterEach, describe, expect, it } from 'vitest';
+import { MEETING_MARKER, markerJpeg } from '@jantar/fixtures';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MISMATCH, NOT_OPEN, SHOT } from '../../src/background/sentences.js';
-import { HIDE_WAIT_MS, POPUP_CLOSE_MS, QUOTA_WAIT_MS } from '../../src/background/shots.js';
+import { CAPTURE_TIMEOUT_MS, CHROME_SAID_MAX, HIDE_WAIT_MS, LAST_SHOT_KEY, NO_CAPTURE_ANSWER, POPUP_CLOSE_MS, QUOTA_WAIT_MS, chromeSaid, readLastShot } from '../../src/background/shots.js';
+import type { LastShot, ShotStep } from '../../src/shared/messages.js';
 import { MEETING_SHOT_MAX_BYTES, TIMING } from '../../src/shared/wire.js';
+import { CAPTURE_PERMISSION_ERROR, CAPTURE_QUOTA_ERROR } from '../helpers/chrome-fake.js';
 import { MEET_URL, UUID, daemonError, markerIn, setupWorker, watchConsole, type WorkerUnderTest } from './chrome.js';
 
 /** Another site, in front of the meeting's window or in the meeting's own tab. */
@@ -159,7 +164,7 @@ describe('a screenshot before Start', () => {
 });
 
 describe('capture first: a failed capture makes no meeting', () => {
-  it('without a grant here: "Click the Jantar icon once to allow screenshots here."', async () => {
+  it('without a grant here: "Not saved: click the Jantar icon once in this tab, then try again."', async () => {
     w = setupWorker();
     await w.meetTab(7);
     w.model.failCapture('permission');
@@ -251,6 +256,7 @@ describe('the upload', () => {
     w.daemon.on('shot', daemonError(404, NOT_OPEN));
     expect(await shot(7)).toEqual({ ok: false, text: `Not saved: ${NOT_OPEN}` });
     expect(w.daemon.of('shot')).toHaveLength(2);
+    expect(w.model.session.get(LAST_SHOT_KEY)).toMatchObject({ ok: false, text: `Not saved: ${NOT_OPEN}`, step: 'daemon', status: 404 });
   });
 
   it("MX8: Meetings off flashes the daemon's sentence and makes no meeting", async () => {
@@ -486,5 +492,198 @@ describe('the queue', () => {
     w.clock.t += 5_000;
     await shot(7);
     expect(w.clock.slept).toEqual([]);
+  });
+});
+
+/** The record the last try left in storage.session. */
+const last = () => w.model.session.get(LAST_SHOT_KEY) as LastShot | undefined;
+const big = `data:image/jpeg;base64,${Buffer.alloc(MEETING_SHOT_MAX_BYTES + 3, 0xff).toString('base64')}`;
+
+describe("v0.5.3: Chrome's own words", () => {
+  it('the allow-here sentence reads as a failure', () => {
+    expect(SHOT.allowHere).toBe('Not saved: click the Jantar icon once in this tab, then try again.');
+  });
+
+  it('are kept on one line, with no web or data address, cut to 200 characters', () => {
+    expect(chromeSaid(new Error(CAPTURE_PERMISSION_ERROR))).toBe(CAPTURE_PERMISSION_ERROR);
+    expect(chromeSaid(new Error('Cannot access contents of url "https://meet.google.com/abc-defg-hij?authuser=1".\nExtension manifest must request permission.'))).toBe(
+      'Cannot access contents of url "[url] Extension manifest must request permission.',
+    );
+    expect(chromeSaid(new Error('Cannot access a chrome:// URL'))).toBe('Cannot access a [url] URL');
+    expect(chromeSaid('Bad image data:image/png;base64,iVBORw0KGgo= here')).toBe('Bad image [url] here');
+    const long = chromeSaid(new Error(`Taking screenshots has been disabled ${'x'.repeat(400)}`));
+    expect(long.length).toBe(CHROME_SAID_MAX);
+    expect(long.startsWith('Taking screenshots has been disabled')).toBe(true);
+    expect(chromeSaid(new Error(''))).toBe('no message');
+  });
+
+  it('a refused capture keeps them in the record, never in the flash', async () => {
+    w = setupWorker();
+    await w.meetTab(7);
+    w.model.failCapture(`Taking screenshots has been disabled by https://admin.example.com/policy ${'x'.repeat(300)}`);
+    expect(await shot(7)).toEqual({ ok: false, text: SHOT.chromeFailed });
+    const record = last();
+    expect(record).toMatchObject({ ok: false, step: 'chrome', text: SHOT.chromeFailed });
+    expect(record?.chrome?.startsWith('Taking screenshots has been disabled by [url] xxx')).toBe(true);
+    expect(record?.chrome).toHaveLength(CHROME_SAID_MAX);
+  });
+});
+
+describe('v0.5.3: a capture Chrome never answers', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('fails after 5 s with "Chrome did not answer", and the next shot is taken', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    w = setupWorker();
+    await w.meetTab(7);
+    const capture = w.chrome.tabs.captureVisibleTab.bind(w.chrome.tabs);
+    w.chrome.tabs.captureVisibleTab = () => new Promise<string>(() => undefined);
+    let answer: unknown;
+    void shot(7).then((a) => (answer = a));
+    await vi.advanceTimersByTimeAsync(CAPTURE_TIMEOUT_MS - 1);
+    expect(answer).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(answer).toEqual({ ok: false, text: SHOT.chromeFailed });
+    expect(last()).toMatchObject({ ok: false, step: 'chrome', chrome: NO_CAPTURE_ANSWER });
+    expect(w.daemon.calls).toEqual([]);
+    // The queue is free again.
+    w.chrome.tabs.captureVisibleTab = capture;
+    expect(await shot(7)).toEqual({ ok: true, text: SHOT.saved });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('from the shortcut: the page gets its button back with the flash', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    w = setupWorker();
+    await w.meetTab(7);
+    w.chrome.tabs.captureVisibleTab = () => new Promise<string>(() => undefined);
+    w.chrome.commands.onCommand.dispatch('take-screenshot', w.model.tab(7));
+    await vi.advanceTimersByTimeAsync(CAPTURE_TIMEOUT_MS);
+    await vi.waitFor(() => expect(w.toPage(7)).toEqual([{ t: 'hide' }, { t: 'show', flash: SHOT.chromeFailed }]));
+    expect(last()).toMatchObject({ from: 'command', step: 'chrome', chrome: NO_CAPTURE_ANSWER });
+  });
+
+  it('the same for the retry after the quota error and for the smaller retake', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    w = setupWorker();
+    await w.meetTab(7);
+    for (const first of [() => Promise.reject(new Error(CAPTURE_QUOTA_ERROR)), () => Promise.resolve(big)]) {
+      let calls = 0;
+      w.chrome.tabs.captureVisibleTab = () => (++calls === 1 ? first() : new Promise<string>(() => undefined));
+      let answer: unknown;
+      void shot(7).then((a) => (answer = a));
+      await vi.advanceTimersByTimeAsync(CAPTURE_TIMEOUT_MS - 1);
+      expect(answer).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(answer).toEqual({ ok: false, text: SHOT.chromeFailed });
+      expect(calls).toBe(2);
+      expect(last()).toMatchObject({ ok: false, step: 'chrome', chrome: NO_CAPTURE_ANSWER });
+    }
+    expect(w.daemon.calls).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('v0.5.3: one LastShot record for every try', () => {
+  /** Run one try after `arrange`, and say what it answered and recorded. */
+  async function tryOnce(arrange: (w: WorkerUnderTest) => unknown, from: 'page' | 'popup' | 'command' = 'page', tabId = 7) {
+    w?.close();
+    w = setupWorker();
+    await w.meetTab(7, { title: `Weekly sync ${MEETING_MARKER}` });
+    await arrange(w);
+    const at = w.clock.t;
+    let answer: unknown;
+    if (from === 'page') answer = await shot(tabId);
+    else if (from === 'popup') answer = await w.popup({ t: 'shot', tabId });
+    else {
+      w.chrome.commands.onCommand.dispatch('take-screenshot', w.model.tab(tabId));
+      await expect.poll(() => last()).toBeDefined();
+    }
+    return { at, answer, record: last() };
+  }
+
+  /** The step, the flash, what makes the try end there, and what else the record holds. */
+  type Case = [ShotStep, string, (u: WorkerUnderTest) => unknown, Partial<LastShot>];
+  const cases: Case[] = [
+    ['saved', SHOT.saved, () => undefined, {}],
+    ['not-front', SHOT.openTabFirst, (u: WorkerUnderTest) => void u.model.addTab({ id: 9, windowId: 1, url: 'https://example.com/', active: true }), {}],
+    ['grant', SHOT.allowHere, (u: WorkerUnderTest) => u.model.failCapture('permission'), { chrome: CAPTURE_PERMISSION_ERROR }],
+    ['chrome', SHOT.chromeFailed, (u: WorkerUnderTest) => u.model.failCapture('Failed to capture tab: view is invisible'), { chrome: 'Failed to capture tab: view is invisible' }],
+    ['too-large', SHOT.tooLarge, (u: WorkerUnderTest) => void (u.chrome.tabs.captureVisibleTab = async () => big), {}],
+    ['down', SHOT.notRunning, (u: WorkerUnderTest) => u.daemon.on('open', 'down'), {}],
+    ['down', SHOT.notRunning, (u: WorkerUnderTest) => u.daemon.on('shot', 'down'), {}],
+    ['daemon', `Not saved: ${'This meeting has 500 screenshots.'}`, (u: WorkerUnderTest) => u.daemon.on('shot', daemonError(409, 'This meeting has 500 screenshots.')), { status: 409 }],
+    ['daemon', SHOT.notRunning, (u: WorkerUnderTest) => u.daemon.on('shot', daemonError(503, 'Meetings data could not be opened.')), { status: 503 }],
+    ['daemon', MISMATCH, (u: WorkerUnderTest) => u.daemon.on('open', daemonError(400, 'bad')), { status: 400 }],
+    ['unpaired', SHOT.pairAgain, (u: WorkerUnderTest) => u.daemon.on('open', daemonError(401, 'The Jantar extension is not paired.')), { status: 401 }],
+    ['unpaired', SHOT.pairAgain, (u: WorkerUnderTest) => u.keys.clear(), {}],
+  ];
+
+  it.each(cases)('%s: "%s"', async (step, text, arrange, extra) => {
+    const { at, answer, record } = await tryOnce(arrange);
+    expect(answer).toEqual({ ok: step === 'saved', text });
+    expect(record).toEqual({ at, from: 'page', tabId: 7, ok: step === 'saved', text, step, ...extra });
+  });
+
+  it('not-meeting and not-in-call, from the popup', async () => {
+    let got = await tryOnce(() => undefined, 'popup', 99);
+    expect(got.record).toEqual({ at: got.at, from: 'popup', tabId: 99, ok: false, text: SHOT.openTabFirst, step: 'not-meeting' });
+    got = await tryOnce((u) => u.page(7, { t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync' }).then(() => undefined), 'popup');
+    expect(got.record).toEqual({ at: got.at, from: 'popup', tabId: 7, ok: false, text: SHOT.joinFirst, step: 'not-in-call' });
+  });
+
+  it('the shortcut, saved', async () => {
+    const got = await tryOnce(() => undefined, 'command');
+    expect(got.record).toEqual({ at: got.at, from: 'command', tabId: 7, ok: true, text: SHOT.saved, step: 'saved' });
+  });
+
+  it('a try that fails in a way it never should keeps the words it failed with', async () => {
+    const got = await tryOnce((u) => {
+      u.keys.get = async () => {
+        throw new Error('Extension context invalidated.');
+      };
+    });
+    expect(got.answer).toEqual({ ok: false, text: SHOT.tryAgain });
+    expect(got.record).toMatchObject({ ok: false, text: SHOT.tryAgain, step: 'chrome', chrome: 'Extension context invalidated.' });
+  });
+
+  it('the newest try replaces the one before; never a URL, a title or an image in it', async () => {
+    w = setupWorker();
+    w.model.captureImage = markerJpeg();
+    await w.meetTab(7, { title: `Weekly sync ${MEETING_MARKER}` });
+    await shot(7);
+    w.model.failCapture('permission');
+    await shot(7);
+    expect(last()).toMatchObject({ step: 'grant' });
+    const kept = JSON.stringify(last());
+    for (const never of [MEETING_MARKER, 'base64', 'meet.google.com', 'Weekly sync']) expect(kept).not.toContain(never);
+  });
+
+  it('a storage that will not keep the record still answers', async () => {
+    w = setupWorker();
+    await w.meetTab(7);
+    const set = w.chrome.storage.session.set.bind(w.chrome.storage.session);
+    w.chrome.storage.session.set = async (items) => {
+      if (LAST_SHOT_KEY in items) throw new Error('QUOTA_BYTES quota exceeded');
+      return set(items);
+    };
+    expect(await shot(7)).toEqual({ ok: true, text: SHOT.saved });
+    expect(last()).toBeUndefined();
+  });
+
+  it('a storage that cannot be read gives no record, and the popup state still comes', async () => {
+    w = setupWorker();
+    await w.meetTab(7);
+    await shot(7);
+    expect(await readLastShot()).toMatchObject({ ok: true, step: 'saved' });
+    const get = w.chrome.storage.session.get.bind(w.chrome.storage.session);
+    w.chrome.storage.session.get = async (keys) => {
+      if (keys === LAST_SHOT_KEY) throw new Error('Extension context invalidated.');
+      return get(keys);
+    };
+    expect(await readLastShot()).toBeNull();
+    expect(await w.popup({ t: 'state', tabId: 7 })).toMatchObject({ connection: 'ok', tab: { shots: 1 }, lastShot: null });
   });
 });

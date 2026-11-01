@@ -9,7 +9,18 @@
  * - repeat: Done moves the due day on (never `doneAt`), Undo of a
  *   repeating todo is a conflict, one left undone stays overdue and rings no
  *   more; a monthly repeat keeps its date (31 Jan, 28 Feb, 31 Mar) under the
- *   byMonthDay rules, through the phone's Undo in a short month too;
+ *   byMonthDay rules, through the phone's Undo in a short month too; a
+ *   PATCH of `due` alone keeps the date, one carrying repeat moves it;
+ * - v0.5.3 yearly: a year on at the same time, 29 Feb to 28 Feb and back,
+ *   the byMonthDay rules as monthly's, a snooze past its date into the
+ *   next month still lands in its own month, and Snooze across the date,
+ *   Done, Undo keeps the date (yearly and monthly);
+ * - v0.5.3 repeat.at (the series' time): create sets it, Snooze and a PATCH
+ *   of `due` alone keep it, Snooze then Done then Undo keeps it (Done lands
+ *   on the next day at the original time), a PATCH carrying repeat and due
+ *   moves or removes it, one carrying repeat alone keeps it (or sets it when
+ *   there is none), a client's own value is replaced, and a todo from
+ *   before 0.5.3 keeps its due time;
  * - snooze presets land where life-core says;
  * - pings: a timed todo has a row at its due instant, a past or untimed one
  *   none; LS3 (todo part): a done or deleted todo's ping is not sent;
@@ -264,7 +275,7 @@ describe('repeating todos', () => {
     expect(get(id).repeat?.byMonthDay).toBe(31);
   });
 
-  it('byMonthDay: a PATCH setting due takes its date; giving a monthly repeat takes the due date; repeating the stored one keeps it', () => {
+  it('byMonthDay: a PATCH of due with its repeat (the sheet) takes its date, due alone keeps it; giving a monthly repeat takes the due date; repeating the stored one keeps it', () => {
     build('UTC', '2027-02-01T09:00:00.000Z');
     const id = add({ title: 'Monthly', due: { day: '2027-01-31' }, repeat: { freq: 'monthly' } });
     ok(todos.setDone(id, true, CLI)); // 28 Feb, still the 31st
@@ -275,7 +286,10 @@ describe('repeating todos', () => {
     // Undo by PATCHing the old due back keeps the 31st.
     ok(todos.updateTodo(id, { due: { day: '2027-01-31' } }, CLI));
     expect(get(id).repeat?.byMonthDay).toBe(31);
+    // A due alone (Undo, an older phone) never moves the date; the sheet sends the repeat with a changed due, and that does.
     ok(todos.updateTodo(id, { due: { day: '2027-02-15' } }, CLI));
+    expect(get(id).repeat?.byMonthDay).toBe(31);
+    ok(todos.updateTodo(id, { due: { day: '2027-02-15' }, repeat: { freq: 'monthly' } }, CLI));
     expect(get(id).repeat?.byMonthDay).toBe(15);
     const weekly = add({ title: 'Weekly', due: { day: '2027-02-10' }, repeat: { freq: 'weekly' } });
     ok(todos.updateTodo(weekly, { repeat: { freq: 'monthly' } }, CLI));
@@ -302,7 +316,7 @@ describe('repeating todos', () => {
     // 30 April is the 31st cut short too; 27 February is a new date.
     ok(todos.updateTodo(id, { due: { day: '2027-04-30' }, repeat: { freq: 'monthly' } }, CLI));
     expect(get(id).repeat?.byMonthDay).toBe(31);
-    ok(todos.updateTodo(id, { due: { day: '2027-02-27' } }, CLI));
+    ok(todos.updateTodo(id, { due: { day: '2027-02-27' }, repeat: { freq: 'monthly' } }, CLI));
     expect(get(id).repeat?.byMonthDay).toBe(27);
   });
 
@@ -312,6 +326,169 @@ describe('repeating todos', () => {
     ok(todos.setDone(id, true, CLI));
     ok(todos.updateTodo(id, { repeat: { freq: 'daily' } }, CLI));
     expect(get(id)).not.toHaveProperty('doneAt');
+  });
+});
+
+describe('yearly repeats (v0.5.3)', () => {
+  it('Done moves it a year on, keeping the time; the date is kept in byMonthDay', () => {
+    build('UTC', '2026-10-30T09:00:00.000Z');
+    const id = add({ title: 'Birthday', due: { day: '2026-11-04', time: '09:00' }, repeat: { freq: 'yearly' } });
+    expect(get(id).repeat).toEqual({ freq: 'yearly', byMonthDay: 4, at: '09:00' });
+    ok(todos.setDone(id, true, CLI));
+    expect(get(id).due).toEqual({ day: '2027-11-04', time: '09:00' });
+    expect(get(id)).not.toHaveProperty('doneAt');
+    expect(core.scheduler.row('todo', id)?.nextAt).toBe('2027-11-04T09:00:00.000Z');
+  });
+
+  it('29 Feb: 28 Feb in the years between, and back to the 29th in a leap year', () => {
+    build('UTC', '2028-02-29T09:00:00.000Z');
+    const id = add({ title: 'Leap day', due: { day: '2028-02-29' }, repeat: { freq: 'yearly' } });
+    const days: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      ok(todos.setDone(id, true, CLI));
+      days.push(get(id).due?.day ?? '');
+    }
+    expect(days).toEqual(['2029-02-28', '2030-02-28', '2031-02-28', '2032-02-29']);
+    expect(get(id).repeat?.byMonthDay).toBe(29);
+  });
+
+  it('byMonthDay as monthly: a PATCH of due with its repeat takes its date, due alone keeps it; Undo of Done in a short year keeps the 29th; a yearly from monthly takes the due date', () => {
+    build('UTC', '2028-03-01T09:00:00.000Z');
+    const id = add({ title: 'Leap day', due: { day: '2028-02-29' }, repeat: { freq: 'yearly' } });
+    ok(todos.setDone(id, true, CLI)); // 28 Feb 2029
+    const before = get(id).due;
+    ok(todos.setDone(id, true, CLI)); // 28 Feb 2030
+    ok(todos.updateTodo(id, { due: before ?? null }, CLI)); // Undo
+    expect(get(id)).toMatchObject({ due: { day: '2029-02-28' }, repeat: { freq: 'yearly', byMonthDay: 29 } });
+    ok(todos.updateTodo(id, { due: { day: '2029-03-10' } }, CLI));
+    expect(get(id).repeat?.byMonthDay).toBe(29);
+    ok(todos.updateTodo(id, { due: { day: '2029-03-10' }, repeat: { freq: 'yearly' } }, CLI));
+    expect(get(id).repeat?.byMonthDay).toBe(10);
+    // Monthly on the 31st, made yearly on a 30 April due day: the 30th, not the monthly 31st.
+    const m = add({ title: 'Monthly', due: { day: '2028-03-31' }, repeat: { freq: 'monthly' } });
+    ok(todos.updateTodo(m, { due: { day: '2028-04-30' }, repeat: { freq: 'yearly' } }, CLI));
+    expect(get(m).repeat).toEqual({ freq: 'yearly', byMonthDay: 30 });
+    ok(todos.setDone(m, true, CLI));
+    expect(get(m).due).toEqual({ day: '2029-04-30' });
+  });
+
+  it('snoozed past its date into the next month, Done still lands on its own date next year', () => {
+    build('UTC', '2026-12-31T09:30:00.000Z');
+    const id = add({ title: 'Year end', due: { day: '2026-12-31', time: '09:00' }, repeat: { freq: 'yearly' } });
+    ok(todos.snooze(id, 'tomorrow', CLI));
+    expect(get(id).due).toEqual({ day: '2027-01-01', time: '09:00' });
+    ok(todos.setDone(id, true, CLI));
+    expect(get(id).due).toEqual({ day: '2027-12-31', time: '09:00' });
+  });
+
+  it("Snooze across its date, Done, then Undo (the phone's PATCH of the old due alone) keeps the date: the next Done lands on it", () => {
+    build('UTC', '2026-12-31T09:30:00.000Z');
+    const yearEnd = add({ title: 'Year end', due: { day: '2026-12-31', time: '09:00' }, repeat: { freq: 'yearly' } });
+    ok(todos.snooze(yearEnd, 'tomorrow', CLI)); // 1 Jan 2027, 09:00
+    const snoozed = get(yearEnd).due;
+    ok(todos.setDone(yearEnd, true, CLI));
+    ok(todos.updateTodo(yearEnd, { due: snoozed ?? null }, CLI)); // Undo
+    expect(get(yearEnd)).toMatchObject({ due: { day: '2027-01-01', time: '09:00' }, repeat: { freq: 'yearly', byMonthDay: 31, at: '09:00' } });
+    ok(todos.setDone(yearEnd, true, CLI));
+    expect(get(yearEnd).due).toEqual({ day: '2027-12-31', time: '09:00' });
+
+    // Inside one month: a yearly and a monthly on 15 March, snoozed to the 16th.
+    core.clock.set('2027-03-15T09:30:00.000Z');
+    for (const [freq, next] of [
+      ['yearly', '2028-03-15'],
+      ['monthly', '2027-04-15'],
+    ] as const) {
+      const id = add({ title: 'Birthday', due: { day: '2027-03-15', time: '09:00' }, repeat: { freq } });
+      ok(todos.snooze(id, 'tomorrow', CLI));
+      const back = get(id).due;
+      expect(back).toEqual({ day: '2027-03-16', time: '09:00' });
+      ok(todos.setDone(id, true, CLI));
+      expect(get(id).due).toEqual({ day: next, time: '09:00' });
+      ok(todos.updateTodo(id, { due: back ?? null }, CLI)); // Undo
+      expect(get(id).repeat?.byMonthDay).toBe(15);
+      ok(todos.setDone(id, true, CLI));
+      expect(get(id).due).toEqual({ day: next, time: '09:00' });
+    }
+  });
+});
+
+describe('the series time, repeat.at (v0.5.3)', () => {
+  beforeEach(() => build('UTC', '2026-10-30T09:00:00.000Z'));
+  const daily = () => add({ title: 'Daily', due: { day: '2026-10-30', time: '11:00' }, repeat: { freq: 'daily' } });
+
+  it('create sets it from the due time; a repeat without a time has none; a value the client sends is replaced', () => {
+    expect(get(daily()).repeat).toEqual({ freq: 'daily', at: '11:00' });
+    const untimed = add({ title: 'Untimed', due: { day: '2026-10-30' }, repeat: { freq: 'weekly', at: '07:00' } });
+    expect(get(untimed).repeat).toEqual({ freq: 'weekly' });
+    const sent = add({ title: 'Sent', due: { day: '2026-10-30', time: '18:00' }, repeat: { freq: 'daily', at: '07:00' } });
+    expect(get(sent).repeat?.at).toBe('18:00');
+  });
+
+  it('Snooze leaves it; Done then puts the due time back to it', () => {
+    const id = daily();
+    core.clock.set('2026-10-30T11:01:00.000Z');
+    ok(todos.snooze(id, '1h', CLI));
+    expect(get(id)).toMatchObject({ due: { day: '2026-10-30', time: '12:01' }, repeat: { freq: 'daily', at: '11:00' } });
+    ok(todos.setDone(id, true, CLI));
+    expect(get(id).due).toEqual({ day: '2026-10-31', time: '11:00' });
+    expect(core.scheduler.row('todo', id)?.nextAt).toBe('2026-10-31T11:00:00.000Z');
+  });
+
+  it("Snooze, Done, Undo (the phone's PATCH of the old due alone) keeps it, and the next Done lands at 11:00", () => {
+    const id = daily();
+    core.clock.set('2026-10-30T11:01:00.000Z');
+    ok(todos.snooze(id, '1h', CLI));
+    const snoozed = get(id).due;
+    ok(todos.setDone(id, true, CLI));
+    ok(todos.updateTodo(id, { due: snoozed ?? null }, CLI)); // Undo
+    expect(get(id)).toMatchObject({ due: { day: '2026-10-30', time: '12:01' }, repeat: { freq: 'daily', at: '11:00' } });
+    ok(todos.setDone(id, true, CLI));
+    expect(get(id).due).toEqual({ day: '2026-10-31', time: '11:00' });
+  });
+
+  it('a PATCH of due alone never moves it; one carrying repeat (the sheet) moves it, or removes it with the time', () => {
+    const id = daily();
+    ok(todos.updateTodo(id, { due: { day: '2026-10-30', time: '15:00' } }, CLI));
+    expect(get(id).repeat?.at).toBe('11:00');
+    ok(todos.updateTodo(id, { due: { day: '2026-10-30', time: '15:00' }, repeat: { freq: 'daily' } }, CLI));
+    expect(get(id).repeat).toEqual({ freq: 'daily', at: '15:00' });
+    ok(todos.setDone(id, true, CLI));
+    expect(get(id).due).toEqual({ day: '2026-10-31', time: '15:00' });
+    ok(todos.updateTodo(id, { due: { day: '2026-10-31' }, repeat: { freq: 'daily', at: '15:00' } }, CLI));
+    expect(get(id).repeat).toEqual({ freq: 'daily' });
+    ok(todos.updateTodo(id, { title: 'Renamed', repeat: null }, CLI));
+    expect(get(id)).not.toHaveProperty('repeat');
+  });
+
+  it('a PATCH of repeat alone (new weekdays for a snoozed reminder) keeps it; a series with no time yet takes the due time', () => {
+    const id = daily();
+    core.clock.set('2026-10-30T11:01:00.000Z'); // a Friday
+    ok(todos.snooze(id, '1h', CLI));
+    ok(todos.updateTodo(id, { repeat: { freq: 'weekly', byWeekday: [1, 5], at: '12:01' } }, CLI));
+    expect(get(id)).toMatchObject({ due: { day: '2026-10-30', time: '12:01' }, repeat: { freq: 'weekly', byWeekday: [1, 5], at: '11:00' } });
+    ok(todos.setDone(id, true, CLI));
+    expect(get(id).due).toEqual({ day: '2026-11-02', time: '11:00' });
+    const once = add({ title: 'Once', due: { day: '2026-10-31', time: '07:30' } });
+    ok(todos.updateTodo(once, { repeat: { freq: 'daily' } }, CLI));
+    expect(get(once).repeat).toEqual({ freq: 'daily', at: '07:30' });
+  });
+
+  it('a monthly repeat keeps its date and its time through a PATCH that carries it', () => {
+    build('UTC', '2027-01-31T09:00:00.000Z');
+    const id = add({ title: 'Monthly', due: { day: '2027-01-31', time: '10:00' }, repeat: { freq: 'monthly' } });
+    expect(get(id).repeat).toEqual({ freq: 'monthly', byMonthDay: 31, at: '10:00' });
+    ok(todos.updateTodo(id, { due: { day: '2027-01-31', time: '10:30' }, repeat: { freq: 'monthly' } }, CLI));
+    expect(get(id).repeat).toEqual({ freq: 'monthly', byMonthDay: 31, at: '10:30' });
+  });
+
+  it('a todo from before v0.5.3 (no at) keeps its due time on Done, as before', () => {
+    const id = daily();
+    const stored = get(id);
+    const { at: _at, ...old } = stored.repeat ?? { freq: 'daily' as const };
+    core.db.prepare('UPDATE todos SET json = ? WHERE id = ?').run(JSON.stringify({ ...stored, repeat: old }), id);
+    ok(todos.snooze(id, 'tonight', CLI));
+    ok(todos.setDone(id, true, CLI));
+    expect(get(id).due).toEqual({ day: '2026-10-31', time: '20:00' });
   });
 });
 
@@ -650,6 +827,18 @@ describe('the todo routes', () => {
     const undo = await call('POST', `/v1/todos/${tid}/done`, { done: false });
     expect(undo.statusCode).toBe(409);
     expect(undo.json().error).toEqual({ code: 'conflict', message: 'Undo a repeating todo by setting its date back.' });
+  });
+
+  it('v0.5.3: a yearly repeat with a time; Done moves it a year at its time; the Undo PATCH keeps repeat.at', async () => {
+    const tid = (await call('POST', '/v1/todos', { title: 'Renewal', due: { day: '2026-10-30', time: '08:00' }, repeat: { freq: 'yearly', at: '06:00' } })).json().id as string;
+    const one = async () => ((await call('GET', '/v1/todos')).json().todos as Todo[]).find((x) => x.id === tid);
+    expect((await one())?.repeat).toEqual({ freq: 'yearly', byMonthDay: 30, at: '08:00' });
+    expect((await call('POST', `/v1/todos/${tid}/snooze`, { preset: '1h' })).statusCode).toBe(200);
+    const snoozed = (await one())?.due;
+    expect((await call('POST', `/v1/todos/${tid}/done`, { done: true })).statusCode).toBe(200);
+    expect((await one())?.due).toEqual({ day: '2027-10-30', time: '08:00' });
+    expect((await call('PATCH', `/v1/todos/${tid}`, { due: snoozed })).statusCode).toBe(200);
+    expect(await one()).toMatchObject({ due: snoozed, repeat: { freq: 'yearly', byMonthDay: 30, at: '08:00' } });
   });
 
   it('a repeat with no due day is 400 before the module; a bad id is 400', async () => {

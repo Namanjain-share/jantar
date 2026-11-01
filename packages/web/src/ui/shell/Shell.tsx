@@ -265,7 +265,7 @@ export function Shell() {
     const fullScreen = route.name === 'session';
     return (
       <div className="flex h-dvh flex-col bg-bg">
-        {fullScreen ? <div className="pt-safe flex-none" /> : <PhoneHeader needs={needs} items={items} dashed={dashed} onLegend={() => setLegend(true)} onHome={() => connection?.kick()} />}
+        {fullScreen ? <div className="pt-safe flex-none" /> : <PhoneHeader needs={needs} items={items} dashed={dashed} search={features.intel} onLegend={() => setLegend(true)} onHome={() => connection?.kick()} />}
         {offline ? <OfflineNotice /> : null}
         {updateAvailable ? <UpdateNotice /> : null}
         <main id="main" key={scrollKey} className={fullScreen ? 'pb-safe min-h-0 flex-1 overflow-y-auto' : 'min-h-0 flex-1 overflow-y-auto'}>
@@ -358,7 +358,7 @@ function lifeScreen(route: Route): ReactNode {
     case 'money':
       return <Money month={route.month} bill={route.bill} />;
     case 'intel':
-      return <Intel q={route.q} type={route.type} tag={route.tag} item={route.item} />;
+      return <Intel q={route.q} type={route.type} tag={route.tag} item={route.item} focus={route.focus} />;
     default:
       return null;
   }

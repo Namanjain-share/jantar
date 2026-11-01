@@ -76,10 +76,10 @@ function call(name: RouteName, headers: Record<string, string>) {
 describe('which routes need the device secret', () => {
   it('every control, launch and admin write, and the event stream; never reads, push subscriptions or the pairing claim', () => {
     // v0.4's writes (every one at control scope) are swept in v04-auth.test.ts, v0.4.2's in v042-routes.test.ts,
-    // v0.5's in v05-auth.test.ts, v0.5.3's in ask/routes.test.ts.
+    // v0.5's in v05-auth.test.ts, v0.5.3 Ask's in ask/routes.test.ts.
     expect(
       secretWrites
-        .filter(([, d]) => d.phase !== 'v0.4' && d.phase !== 'v0.4.2' && d.phase !== 'v0.5' && d.phase !== 'v0.5.3')
+        .filter(([, d]) => d.phase !== 'v0.4' && d.phase !== 'v0.4.2' && d.phase !== 'v0.5' && d.feature !== 'ask')
         .map(([n]) => n)
         .sort(),
     ).toEqual(
@@ -103,6 +103,9 @@ describe('which routes need the device secret', () => {
         'sessionCommand',
         'sessionKey',
         'sessionMode',
+        // v0.5.3 (localOnly: over TCP they are refused anyway, after this check)
+        'folderTodoCreate',
+        'notifyTest',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);

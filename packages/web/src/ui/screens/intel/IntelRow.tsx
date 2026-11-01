@@ -1,13 +1,32 @@
 /**
  * One row of the shelf (v0.4 spec 5.8): the title, then "type · source ·
  * date" in mono --ink-3, then two lines of what it is in --ink-2. The whole
- * row opens the item page; links open only from there.
+ * row opens the item page; links open only from there. v0.5.3: while
+ * searching, the search's words are marked in the title and the summary,
+ * as React text (never HTML).
  */
 import type { IntelListItem } from '@jantar/protocol';
 import { Link } from '../../shell/Link.js';
-import { shelfDate, shelfPath, type ShelfFilters } from './model.js';
+import { marks, shelfDate, shelfPath, type ShelfFilters } from './model.js';
 
-export function IntelRow({ item, filters, now }: { item: IntelListItem; filters: ShelfFilters; now: number }) {
+/** --select alone is about 1.1:1 on the page: the underline is what shows. */
+function Marked({ text, terms }: { text: string; terms: readonly string[] }) {
+  return (
+    <>
+      {marks(text, terms).map((p, i) =>
+        p.hit ? (
+          <mark key={i} className="rounded-chip bg-select text-ink underline decoration-line-strong decoration-2 underline-offset-2">
+            {p.text}
+          </mark>
+        ) : (
+          p.text
+        ),
+      )}
+    </>
+  );
+}
+
+export function IntelRow({ item, filters, terms, now }: { item: IntelListItem; filters: ShelfFilters; terms: readonly string[]; now: number }) {
   const meta = [item.type, item.source, shelfDate(item.at, now)].filter(Boolean).join(' · ');
   return (
     <li className="border-b border-line">
@@ -15,9 +34,15 @@ export function IntelRow({ item, filters, now }: { item: IntelListItem; filters:
         href={shelfPath(filters, item.id)}
         className="block px-16 py-10 transition-colors duration-120 ease-hover hover:bg-hover focus-visible:-outline-offset-2"
       >
-        <p className="line-clamp-3 break-words type-row font-medium text-ink">{item.title}</p>
+        <p className="line-clamp-3 break-words type-row font-medium text-ink">
+          <Marked text={item.title} terms={terms} />
+        </p>
         <p className="mt-2 truncate type-mono text-ink-3">{meta}</p>
-        {item.summary ? <p className="mt-2 line-clamp-2 break-words type-small text-ink-2">{item.summary}</p> : null}
+        {item.summary ? (
+          <p className="mt-2 line-clamp-2 break-words type-small text-ink-2">
+            <Marked text={item.summary} terms={terms} />
+          </p>
+        ) : null}
       </Link>
     </li>
   );

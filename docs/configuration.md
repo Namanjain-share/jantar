@@ -64,7 +64,8 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar intel on \| off \| sources` | the shelf and the files it follows ([Intel](intel.md)) |
 | `jantar intel source add <file.jsonl>` / `source rm <id>` | follow a file, or stop |
 | `jantar intel add "<title>" [--url U] [--type T] [--tag T]... [--note N]` | put an item on the shelf |
-| `jantar intel list [--q TEXT] [--type T] [--tag T] [--limit N]` | what is on the shelf, newest first |
+| `jantar intel list [--q TEXT] [--type T] [--tag T] [--limit N]` | what is on the shelf: best match first with `--q`, else newest first ([search](intel.md#search)) |
+| `jantar mcp` | the MCP server Claude Code sessions use for the shelf and their folder's todos; in a terminal it prints the `claude mcp add` line to paste ([MCP](intel.md#from-claude-code-mcp)) |
 | `jantar accounts` | one login or cswap, the kept accounts and the legacy ccw tool's hold list ([Accounts](accounts.md)) |
 | `jantar accounts keep <n...>` / `keep --none` | the accounts kept for other work |
 | `jantar accounts prime [on [--kept] \| off]` | prime idle 5-hour windows ([the primer](primer.md)) |
@@ -72,6 +73,17 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar meetings export <id> \| last \| --all [--out DIR]` | a folder per meeting: `meeting.md` and `shots/*.jpg` |
 | `jantar meetings unpair` | revoke every paired extension |
 | `jantar ask on \| off \| status` | Ask, a chat page that suggests todos, reminders, food and money ([Ask](assistant.md)); `off` forgets its history; `status` names the model (Rewrite's) |
+
+### Alerts
+
+| Command | What it does |
+|---|---|
+| `jantar notify` (or `notify status`) | Web Push on or off, the kinds the Mac sends, the urgent alert, the mute |
+| `jantar notify urgent on \| off` | the Answer soon push for Claude's 2-minute countdown (`notify.urgent`, on by default) |
+| `jantar notify done on \| off` | adds or removes `done` in `notify.kinds` (the success tune needs it) |
+| `jantar notify test [urgent \| needs \| done \| care \| problem]` | one test push of that group to your devices (default `needs`), past the Mac's kinds and the mute |
+
+[Alerts and sounds](alerts.md) has the groups, their tones and what the lock screen can do.
 
 ### Setup
 
@@ -139,7 +151,7 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 | `accounts` | `kept`, `prime`, `primeKept` | the Mac |
 | `bins` | absolute paths to `claude`, `cswap`, `osascript` and the rest, found by `jantar install` (launchd's `PATH` is minimal) | the Mac |
 | `autoswitch` | the ceilings Jantar shows (`ceiling` 97 %, `weekly_ceiling` 95 %) and the hold list; Jantar itself does not switch accounts | the Mac, or an admin device |
-| `notify`, `usage` | push bodies and kinds, and a mute; the cswap poller (`auto`: only while the legacy ccw tool's bot is not running) | the Mac, or an admin device |
+| `notify`, `usage` | push bodies and kinds, a mute, and `urgent` (the Answer soon push, on); the cswap poller (`auto`: only while the legacy ccw tool's bot is not running) | the Mac, or an admin device |
 
 ## The state folder
 

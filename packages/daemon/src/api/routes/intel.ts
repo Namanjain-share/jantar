@@ -6,9 +6,10 @@
  *
  * The pipeline has already checked control scope and the switch (a broken
  * life.db never closes the shelf), validated the strict bodies, and refused
- * a TCP capture carrying `cwd` (CTL_ONLY_FIELDS): a capture from ctl.sock
- * is `{ via: 'cli', cwd: body.cwd }`, from a device `{ via: 'phone' }`. The
- * capture's audit is its id and whether it was a duplicate, nothing else.
+ * a TCP capture carrying `cwd` or `via` (CTL_ONLY_FIELDS): a capture from
+ * ctl.sock is `{ via: 'cli', cwd: body.cwd }` (v0.5.3: `via: 'claude'` when
+ * `jantar mcp` sent it so), from a device `{ via: 'phone' }`. The capture's
+ * audit is its id and whether it was a duplicate, nothing else.
  */
 import type { IntelCaptureBody, IntelListQuery } from '@jantar/protocol';
 import type { CaptureFrom } from '../../intel/capture.js';
@@ -38,8 +39,8 @@ export const INTEL_ROUTE_IMPLS: RouteTable = {
       if (!limited.ok) {
         throw new ApiError('rate_limited', TOO_MANY_CAPTURES, { 'retry-after': String(Math.ceil(limited.retryAfterMs / 1000)) });
       }
-      const { cwd, ...body } = c.body;
-      const from: CaptureFrom = c.auth.transport === 'ctl' ? { via: 'cli', ...(cwd !== undefined ? { cwd } : {}) } : { via: 'phone' };
+      const { cwd, via, ...body } = c.body;
+      const from: CaptureFrom = c.auth.transport === 'ctl' ? { via: via ?? 'cli', ...(cwd !== undefined ? { cwd } : {}) } : { via: 'phone' };
       const out = lifeValue(await s.deps.intel.capture(body, from));
       c.scratch.duplicate = out.duplicate;
       return out;

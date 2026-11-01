@@ -24,7 +24,7 @@ import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { extLinesBody, extOpenBody, extShotBody, makeJpeg, projectBody } from '@jantar/fixtures';
+import { extLinesBody, extOpenBody, extShotBody, makeJpeg, perfBudgetMs, projectBody } from '@jantar/fixtures';
 import {
   DEVICE_COOKIE,
   EXTENSION_ID,
@@ -97,12 +97,12 @@ describe('v0.5 Meetings through jantard: the phone, the CLI and a broken meeting
     expect(made.status, made.text).toBe(200);
     projectA = (made.body as { id: string }).id;
     out = await mkdtemp(join(tmpdir(), 'jantar-export-'));
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     await rm(out, { recursive: true, force: true });
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('9. the phone reads, filters, searches, edits and deletes; a read-only device reads nothing', async () => {
     const phoneCall = as(phone);
@@ -176,7 +176,7 @@ describe('v0.5 Meetings through jantard: the phone, the CLI and a broken meeting
     expect(existsSync(folder)).toBe(false);
     expect((await phoneCall('GET', `/v1/meetings/${ids.launch}`)).status).toBe(404);
     expect((await fromExtension('POST', `/v1/ext/meetings/${clients.launch}/lines`, linesNow(1, { nonce: 'launchAA' }))).status).toBe(404);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('9. `jantar meetings` and `jantar meetings export` read it back over ctl.sock', async () => {
     const st = await cli('meetings');
@@ -237,5 +237,5 @@ describe('v0.5 Meetings through jantard: the phone, the CLI and a broken meeting
     expect((await phoneCall('GET', '/v1/todos')).status).toBe(200);
     const code = (await callDaemon<ExtPairStartReply>(ctl, 'POST', '/v1/ext/pair/start')).code;
     expect((await http(d.port, 'POST', '/v1/ext/pair', { body: { code }, origin: EXT_ORIGIN })).status).toBe(200);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 });

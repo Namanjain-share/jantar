@@ -19,9 +19,21 @@
  *   `notify.webpush|mac|telegram`. Life pushes do not come through here
  *   (life/push.ts sends them with direct.ts), but if one ever did, mute
  *   still could not silence a medicine.
+ * - v0.5.3, the urgent alert (countdown.ts, while `notify.urgent` is on,
+ *   `notify.kinds` holds permission, the kind it goes out as, nothing is
+ *   muted and a channel is on): when a subagent-info card opens (once more
+ *   while it is open if the read failed), and before a waiting push, the
+ *   session's screen is read once for Claude's 2-minute auto-block
+ *   countdown. One ask gets one urgent `permission` push with its deadline
+ *   (and at most one repeat); while that read shows it open the session's
+ *   plain waiting push is not sent. A read that failed or took over
+ *   URGENT_ANSWER_MS lets the waiting push go. It goes through the same
+ *   filters as every push (kinds, mute, channels, each device's kinds).
+ *   Without `terminal` and `panes` there is no urgent alert.
  */
 import type { Alert, DaemonEvent, NotifyKind, PendingRequest, State } from '@jantar/protocol';
-import type { DaemonContext, NotificationRouter, Notifier, TimerId, Unsubscribe } from '../contracts.js';
+import type { DaemonContext, NotificationRouter, Notifier, PaneFinder, TerminalBackend, TimerId, Unsubscribe } from '../contracts.js';
+import { CountdownWatch, createCountdownProbe, type UrgentPush } from './countdown.js';
 import {
   alertNotification,
   cardKind,
@@ -29,6 +41,7 @@ import {
   doneNotification,
   reminderNotification,
   sendFailedNotification,
+  urgentNotification,
   usageNotification,
   waitingKind,
   waitingNotification,
@@ -59,6 +72,12 @@ type ToldMap = Record<string, { at: number; mins: number[] }>;
 
 export interface RouterDeps {
   notifiers: Notifier[];
+  /**
+   * v0.5.3: the terminal and daemon.ts's shared PaneLookup, for the urgent
+   * alert's screen read (countdown.ts). Without both there is none.
+   */
+  terminal?: TerminalBackend;
+  panes?: PaneFinder;
 }
 
 export type RouterContext = Pick<DaemonContext, 'store' | 'settings' | 'clock' | 'log' | 'db'>;
@@ -116,6 +135,8 @@ export class NotificationRouterImpl implements NotificationRouter {
   private readonly workStart = new Map<string, string>();
   private readonly ranFor = new Map<string, number>();
   private readonly inflight = new Set<Promise<void>>();
+  /** v0.5.3: Claude's countdown episodes (null without a terminal, or while stopped). */
+  private countdown: CountdownWatch | null = null;
   private readonly log;
 
   constructor(
@@ -127,6 +148,16 @@ export class NotificationRouterImpl implements NotificationRouter {
 
   async start(): Promise<void> {
     if (this.unsub) return;
+    const { terminal, panes } = this.deps;
+    if (terminal && panes) {
+      this.countdown = new CountdownWatch({
+        clock: this.ctx.clock,
+        probe: createCountdownProbe({ store: this.ctx.store, clock: this.ctx.clock, log: this.log }, { terminal, panes }),
+        enabled: () => this.urgentOn(),
+        push: (u) => this.onUrgent(u),
+        track: (p) => this.track(p),
+      });
+    }
     this.unsub = this.ctx.store.subscribe((ev) => this.onEvent(ev));
     this.unsubSettings = this.ctx.settings.subscribe((next, prev) => {
       if (JSON.stringify(next.notify.reminders_min) !== JSON.stringify(prev.notify.reminders_min)) this.rescanReminders(true);
@@ -143,6 +174,8 @@ export class NotificationRouterImpl implements NotificationRouter {
     this.settle.clear();
     for (const r of this.reminders.values()) for (const t of r.timers) this.ctx.clock.clearTimeout(t);
     this.reminders.clear();
+    this.countdown?.stop();
+    this.countdown = null;
     await this.whenIdle();
   }
 
@@ -190,6 +223,7 @@ export class NotificationRouterImpl implements NotificationRouter {
           this.workStart.delete(ev.sid);
           this.ranFor.delete(ev.sid);
           this.clearReminder(ev.sid);
+          this.countdown?.drop(ev.sid);
           for (const [k, t] of [...this.settle]) {
             if (!k.startsWith(`wait:${ev.sid}:`)) continue;
             this.ctx.clock.clearTimeout(t);
@@ -276,7 +310,11 @@ export class NotificationRouterImpl implements NotificationRouter {
   }
 
   private onCardOpened(p: PendingRequest): void {
-    if (cardKind(p) === null) return; // subagent info: shown in the app, never pushed
+    if (cardKind(p) === null) {
+      // Subagent info: shown in the app, never pushed. Hooks can't answer it, so it may be Claude's countdown.
+      if (this.urgentOn()) this.countdown?.check(p.sid, p.createdAt, { retry: () => this.ctx.store.getState().pending[p.id]?.state === 'open' });
+      return;
+    }
     const now = this.ctx.clock.now();
     let delay = Math.max(0, Date.parse(p.settleUntil) - now);
     if (p.kind === 'permission') {
@@ -303,15 +341,28 @@ export class NotificationRouterImpl implements NotificationRouter {
     const since = s0.statusSince;
     const key = `wait:${sid}:${since}`;
     if (this.settle.has(key) || this.sent.has(key)) return;
-    const fire = () => {
-      this.settle.delete(key);
+    /** The session still waits since `since`, with no card of its own (whose push covers it). */
+    const still = () => {
       const state = this.ctx.store.getState();
       const s = state.sessions[sid];
-      if (!s || s.status !== 'waiting' || s.statusSince !== since) return;
-      const w = waitingOf(state, sid);
-      if (w?.card) return; // the card's own push covers it
-      if (!this.once(key)) return;
-      this.dispatch(waitingNotification(s, this.bodies(), this.ctx.clock.iso()));
+      if (!s || s.status !== 'waiting' || s.statusSince !== since) return null;
+      return waitingOf(state, sid)?.card ? null : s;
+    };
+    const send = () => {
+      const s = still();
+      if (s) this.dispatch(waitingNotification(s, this.bodies(), this.ctx.clock.iso()));
+    };
+    const fire = () => {
+      this.settle.delete(key);
+      if (!still() || !this.once(key)) return;
+      // v0.5.3: Claude's countdown on screen sends the urgent push instead.
+      if (this.countdown && this.urgentOn()) {
+        this.countdown.check(sid, since, {
+          then: (open) => {
+            if (!open) send();
+          },
+        });
+      } else send();
     };
     const settleMs = this.ctx.settings.get().notify.settle_ms;
     if (settleMs <= 0) fire();
@@ -411,6 +462,26 @@ export class NotificationRouterImpl implements NotificationRouter {
     this.ctx.db.kv.set(TOLD_KEY, map);
   }
 
+  // ---- the urgent alert (v0.5.3) ------------------------------------------------
+
+  /**
+   * notify.urgent, permission in notify.kinds, no mute and a channel on:
+   * without them the urgent push could never go out, so nothing is read.
+   * The waiting push is held the same way (allowed()), so none goes instead.
+   */
+  private urgentOn(): boolean {
+    const n = this.ctx.settings.get().notify;
+    if (!n.urgent || !n.kinds.includes('permission') || isMuted(n, this.ctx.clock.now())) return false;
+    return this.deps.notifiers.some((x) => this.channelOn(x));
+  }
+
+  private onUrgent(u: UrgentPush): void {
+    const session = this.ctx.store.getState().sessions[u.sid];
+    if (!session) return;
+    const n = urgentNotification(session, u.left, u.deadline, this.bodies(), this.ctx.clock.iso());
+    this.dispatch(n, { urgent: true, left: u.left, repeat: u.repeat });
+  }
+
   // ---- fan-out ---------------------------------------------------------------
 
   /** Whether settings let this notification out at all. */
@@ -425,20 +496,31 @@ export class NotificationRouterImpl implements NotificationRouter {
     return channelOn(this.ctx.settings.get().notify, n);
   }
 
-  private dispatch(n: RoutedNotification): void {
+  /** `extra`: more fields for the log line (the urgent alert's `urgent`, `left` and `repeat`; never text). */
+  private dispatch(n: RoutedNotification, extra: Record<string, unknown> = {}): void {
     if (!this.allowed(n)) return;
     for (const notifier of this.deps.notifiers) {
       if (!this.channelOn(notifier)) continue;
-      const p = (async () => {
-        try {
-          const r = await notifier.send(n);
-          this.log.info('notification sent', { channel: notifier.channel, kind: n.kind, sid: n.sid, ...r });
-        } catch (e) {
-          this.log.error('notifier failed', { channel: notifier.channel, kind: n.kind, error: String(e) });
-        }
-      })();
-      this.inflight.add(p);
-      void p.finally(() => this.inflight.delete(p));
+      this.track(
+        (async () => {
+          try {
+            const r = await notifier.send(n);
+            this.log.info('notification sent', { channel: notifier.channel, kind: n.kind, sid: n.sid, ...extra, ...r });
+          } catch (e) {
+            this.log.error('notifier failed', { channel: notifier.channel, kind: n.kind, error: String(e) });
+          }
+        })(),
+      );
     }
+  }
+
+  /** Keep `p` until it settles (whenIdle and stop wait for it); a rejection is logged, never thrown. */
+  private track(p: Promise<unknown>): void {
+    const q = p.then(
+      () => undefined,
+      (e: unknown) => this.log.error('notify task failed', { error: e instanceof Error ? e.name : typeof e }),
+    );
+    this.inflight.add(q);
+    void q.finally(() => this.inflight.delete(q));
   }
 }

@@ -70,7 +70,6 @@ const WIDE = '(min-width: 1360px)';
  * arrives the dock says what it says before its first screen read.
  */
 const TermDialogDock = lazy(() => import('./session/TermDialog.js').then((m) => ({ default: m.TermDialogDock })));
-
 /**
  * v0.5.3: the Screen tab's picture (with useShot.ts) is its own chunk too, shown only while
  * screenshots are on, so the first load has room for Ask. The tab panel stays here, and a

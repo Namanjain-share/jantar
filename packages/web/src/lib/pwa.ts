@@ -3,6 +3,7 @@
  * "Add to Home Screen" hint.
  */
 import { createStore } from 'zustand/vanilla';
+import { ALERT_GROUPS, type AlertGroup } from '@jantar/protocol';
 import { isIOS } from './push.js';
 import { readLocal, writeLocal } from './storage.js';
 
@@ -63,6 +64,13 @@ export interface SwHandlers {
   onNavigate(path: string): void;
   /** A new version of the app took over: offer a reload. */
   onUpdate(): void;
+  /**
+   * v0.5.3: a push came while this page is on screen (sw.js): play its group's
+   * chime. True only when a tone played: the service worker then shows the
+   * push silently; anything else leaves the phone's own sound. Answer soon,
+   * medicine and Life pings are never silent: their tone plays on top.
+   */
+  onChime(group: AlertGroup): boolean;
 }
 
 export function registerServiceWorker(h: SwHandlers): void {
@@ -70,8 +78,18 @@ export function registerServiceWorker(h: SwHandlers): void {
   const sw = navigator.serviceWorker;
   let hadController = Boolean(sw.controller);
   sw.addEventListener('message', (e: MessageEvent) => {
-    const d = e.data as { type?: unknown; url?: unknown } | null;
+    const d = e.data as { type?: unknown; url?: unknown; group?: unknown } | null;
     if (d && d.type === 'jantar:navigate' && typeof d.url === 'string' && d.url.startsWith('/')) h.onNavigate(d.url);
+    if (d && d.type === 'jantar:chime') {
+      let played = false;
+      try {
+        played = ALERT_GROUPS.includes(d.group as AlertGroup) && h.onChime(d.group as AlertGroup) === true;
+      } catch {
+        // no chime: the push keeps its sound
+      }
+      // The worker waits on this port for the answer (none for Answer soon, a medicine or a Life ping).
+      e.ports[0]?.postMessage({ played });
+    }
   });
   sw.addEventListener('controllerchange', () => {
     if (hadController) h.onUpdate();

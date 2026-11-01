@@ -20,6 +20,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser } from 'playwright-core';
+import { perfBudgetMs } from '@jantar/fixtures';
 import { DIST, browserReady, clean, grayscale, grayscaleKey, pageOpener } from './browser.js';
 import { webFixture } from './web-fixture.js';
 import { serveWebApp, type WebServer } from './web-server.js';
@@ -37,13 +38,13 @@ describe.skipIf(!ready)('the built web app in Chromium', () => {
     server = await serveWebApp(DIST, () => fixture);
     browser = await chromium.launch();
     pages = pageOpener(browser, () => server.base);
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   afterAll(async () => {
     await pages?.close();
     await browser?.close().catch(() => undefined);
     await server?.close();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('Board: no CSP violation, and 12+ full ledger rows at 1440x900', async () => {
     const { page, watch } = await open('/', { width: 1440, height: 900 });

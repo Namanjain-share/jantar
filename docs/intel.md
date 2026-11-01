@@ -2,8 +2,8 @@
 
 A read-only shelf of links and notes that your bots, scripts or sessions
 append to JSONL files. On the phone: newest first, search, type and tag
-filters, each item's page with its link. Off until you turn it on at the
-Mac.
+filters, each item's page with its link. Claude Code sessions reach it
+through `jantar mcp` (below). Off until you turn it on at the Mac.
 
 ```sh
 jantar intel source add ~/bots/intel.jsonl
@@ -50,7 +50,7 @@ shelf follows like any other source. A capture from the Mac keeps the
 folder it ran in, in that file only; the shelf never shows it.
 
 ```sh
-jantar intel list --q prisma --type tool --tag tools --limit 50   # newest first; default 20, at most 100
+jantar intel list --q prisma --type tool --tag tools --limit 50   # best match first (newest first without --q); default 20, at most 100
 ```
 
 ## The line format
@@ -77,5 +77,70 @@ For example:
 {"id":"t-104","title":"A tool worth a look","url":"https://example.com/tool","type":"tool","tags":["cli","search"],"what_it_is":"A fast file finder.","why_it_matters":"Replaces two scripts.","captured_at":"2026-10-30T09:12:00Z","stars":1200}
 ```
 
-Search looks at the title, "what it is", "why it matters", tags and field
-values, without case.
+## Search
+
+The phone, `jantar intel list --q` and `jantar mcp` share one search:
+
+- It matches words. Every word must appear somewhere in the item, without
+  case: the title, "what it is", "why it matters", the type, a tag, the
+  link or a field value. `prisma migrate` finds an item with "Prisma" in
+  its title and "migrate" in its note. Put a phrase in double quotes to
+  match it whole: `"prisma migrate"`. At most 8 words.
+- Best matches come first: a word at the start of a word in the title
+  counts most, then elsewhere in the title, then a tag or the type equal
+  to it, then inside a tag or the type, then anywhere else. Newest first
+  among equals. Without words the shelf stays newest first.
+- On the phone the count line says "12 matches", the words are marked in
+  each row, and × clears the search. The magnifier in the phone's header
+  opens the shelf with the search box ready, for a new search (Back returns
+  to the one before).
+
+## From Claude Code (MCP)
+
+`jantar mcp` is an MCP server for Claude Code. It gives every session five
+tools, each a call to the daemon on this Mac:
+
+| Tool | What it does |
+|---|---|
+| `intel_search` | search the shelf (words, type, tag; newest first on request) |
+| `intel_get` | one item in full |
+| `intel_add` | save a link or a note; it shows on the phone as "via claude" |
+| `todos_here` | the open todos of the Life project linked to the session's folder |
+| `todo_add` | add a todo there; a day and a time make it a reminder that pings the phone |
+
+Add it once. On the Mac, run `jantar mcp` in a terminal: it prints the line
+to paste, with the absolute paths of node and Jantar, for example:
+
+```sh
+claude mcp add --scope user jantar -- "/opt/homebrew/bin/node" "/path/to/jantar/packages/cli/bin/jantar.mjs" mcp
+```
+
+With cswap, run that once in each profile you use. Jantar never runs
+`claude` itself. To skip the permission prompt for the three read-only
+tools, add `"mcp__jantar__intel_search"`, `"mcp__jantar__intel_get"` and
+`"mcp__jantar__todos_here"` to `permissions.allow` in
+`~/.claude/settings.json`. The two that add stay behind Claude's prompt.
+
+What a session can and cannot reach:
+
+- **Every session can read the whole shelf.** The shelf is global on
+  purpose: one reading list, including the phone's captures and notes a
+  session saved from another folder. Any session with Bash could already
+  read it with `jantar intel list`.
+- **Todos are only those of the session's folder.** The folder comes from
+  Claude Code (`CLAUDE_PROJECT_DIR`, else the folder the server runs in),
+  never from the model. The deepest project folder that holds it wins, and
+  a project linked to your home folder, `/Users` or `/` counts only for
+  exactly that folder. No project linked: the tools say so and add nothing.
+  Link one on the phone: Projects › a project › Folder.
+- Adding only: no tool completes, edits, repeats or deletes anything, or
+  reaches medicines, food, weight, money, cafés, meetings or sessions.
+  Sessions add at most 20 todos an hour.
+- Shelf text comes from saved pages and bots, so the server tells Claude to
+  treat it as data, never as instructions.
+- What the tools return (shelf items, the todos' titles and notes) goes
+  into the session and reaches Anthropic like any tool output.
+- A switch you turned off, or a stopped daemon, is yours to change: the
+  tools tell Claude so, with the command for you to run. A daemon too busy
+  to answer within 10 seconds is reported as slow, not stopped, and Claude
+  is told to check before adding the same todo or note again.

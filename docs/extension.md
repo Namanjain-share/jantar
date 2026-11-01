@@ -55,7 +55,9 @@ jantar meetings export last   # a folder with meeting.md and the screenshots
 
 Status: on the first real calls, captions and a summary worked, but no
 screenshot from the extension reached Jantar, and the cause is not known
-yet. See [the Meetings checks](real-mac-checks.md#meetings-v05).
+yet. Since 0.5.3 the popup's **Settings › Last screenshot** says how each
+try ended ([When a screenshot is not saved](#when-a-screenshot-is-not-saved)).
+See [the Meetings checks](real-mac-checks.md#meetings-v05).
 
 ## What it keeps, and what it never does
 
@@ -171,8 +173,9 @@ page script still runs only on Meet and Teams pages, and it photographs only
 the meeting tab, only when you click.
 
 Without it, the page's camera button works in a tab once you have used the
-Jantar icon or the shortcut there (starting notes from the popup counts).
-Before that it says "Click the Jantar icon once to allow screenshots here."
+Jantar icon or the shortcut there (starting notes from the popup counts),
+until that tab goes to another site. Before that, and after such a trip, it
+says "Not saved: click the Jantar icon once in this tab, then try again."
 To take the permission back, open `chrome://extensions` > Jantar >
 **Details** > **Site access**, choose **On specific sites** and keep
 `meet.google.com`, `teams.microsoft.com`, `teams.live.com`,
@@ -206,7 +209,51 @@ picture-in-picture window is not the tab and is not photographed.
 
 Option+Shift+S is the suggested key. Change it, or set it if another
 extension already holds that key (Chrome then leaves it empty), at
-`chrome://extensions/shortcuts`.
+`chrome://extensions/shortcuts`. The popup's **Settings** shows the key
+Chrome holds ("Shortcut: ⌥⇧S", or "Shortcut: not set"), and its **Change**
+or **Set** opens that page. The shortcut works only while Chrome is the app
+in front.
+
+### When a screenshot is not saved
+
+The bubble beside the camera button says why. The popup keeps the last
+try, whichever control took it: open **Settings** and read **Last
+screenshot**, for example "Last screenshot: 12:41 · camera button · Not
+saved: click the Jantar icon once in this tab, then try again." A second
+line gives Chrome's own words when Chrome refused ("Chrome said: …"), or
+the status Jantar answered with ("Jantar answered 409"). When the last try
+in the tab you are on failed in the last ten minutes, the popup's first
+view says so too, and its **Screenshot** takes the tab from there (opening
+the popup lets Chrome take that tab). The record stays in Chrome's memory
+only: it is gone when Chrome quits and when the extension is reloaded or
+updated, so read it before either. It holds no page address, title or
+image, and is never sent to Jantar. Its time tells you which try it is:
+when it is older than your click (or says "none yet"), the extension never
+got that click.
+
+- **"Not saved: click the Jantar icon once in this tab, then try again."**
+  Chrome lets the extension take a tab only once the toolbar icon or the
+  shortcut was used in it (until the tab goes to another site), or after
+  **Allow** in Settings. Click the icon and try again, or use the popup's
+  **Screenshot**.
+- **"Not saved: Chrome could not take it."** Read "Chrome said" in
+  Settings. "Chrome did not answer" means no picture came within 5
+  seconds: a minimized or covered window can do that. A Chrome managed by
+  an organisation may forbid screenshots (`chrome://policy`).
+- **"Not saved: open the meeting tab first."** The meeting tab was not the
+  one in front of its window when the shot was taken (another tab, or
+  Meet's picture-in-picture window).
+- **"Not saved: the Jantar extension did not answer."** The camera button
+  heard nothing back, at once or within 65 seconds, and shows again. When
+  Settings › Last screenshot has the time of that click, it says how the
+  try ended (a slow one may still have saved); when its time is older, the
+  extension never got the click: try the popup's **Screenshot**.
+- **Last screenshot does not change after the shortcut:** Chrome never ran
+  it. Check Settings › Shortcut, and that Chrome was in front.
+
+At the Mac, every screenshot upload that reaches Jantar, saved or refused,
+leaves one line in `~/.jantar/logs/daemon.err.log`: `meetings: screenshot
+upload` with its status and size, nothing else.
 
 ### Leaving, and the one-minute grace
 

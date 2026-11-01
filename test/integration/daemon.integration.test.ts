@@ -18,7 +18,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DEFAULT_LIVE_SIDS, SECRET_MARKER } from '@jantar/fixtures';
+import { DEFAULT_LIVE_SIDS, SECRET_MARKER, perfBudgetMs } from '@jantar/fixtures';
 import { HOOK_CLIENT_PATH } from '@jantar/hook';
 import {
   DEVICE_COOKIE,
@@ -64,11 +64,11 @@ describe('jantard end to end on a synthetic HOME', () => {
     d = await bootDaemon();
     ctl = createCtlClient(d.ctx.paths.ctlSock);
     await eventually(() => callDaemon(ctl, 'GET', '/healthz'), 10_000, 'the control socket');
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   async function pairDevice(): Promise<string> {
     const start = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name: 'integration', scopes: ['read', 'control'] });
@@ -210,7 +210,7 @@ describe('jantard end to end on a synthetic HOME', () => {
     } finally {
       conn.close();
     }
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('answers an AskUserQuestion through the real hook client', async () => {
     cookie ??= await pairDevice();
@@ -266,7 +266,7 @@ describe('jantard end to end on a synthetic HOME', () => {
     } finally {
       child.kill();
     }
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('sends a prompt with `jantar send` and proves it from the transcript', async () => {
     const s = d.home.session(SID_BRAVO);
@@ -291,7 +291,7 @@ describe('jantard end to end on a synthetic HOME', () => {
     // the send job keeps a hash and a length, never the prompt itself
     expect(JSON.stringify(job)).not.toContain(text);
     expect(job?.textHash).toMatch(/^[0-9a-f]{64}$/);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('`jantar status` reads the live daemon', async () => {
     const io = memoryIo(d.home.env);

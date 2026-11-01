@@ -31,7 +31,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
-import { extLinesBody, extOpenBody, extShotBody, makeJpeg, projectBody, setFakeClaude } from '@jantar/fixtures';
+import { extLinesBody, extOpenBody, extShotBody, makeJpeg, perfBudgetMs, projectBody, setFakeClaude } from '@jantar/fixtures';
 import { DEVICE_COOKIE, EXTENSION_ID, EXTENSION_KEY_HEADER, type ExtPairStartReply, type LineUpsert, type MeetingDetail, type PairStartResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
 import { DESK, PHONE, browserReady, clean, overflow, watchConsole, type Viewport, type Watch } from './browser.js';
@@ -170,13 +170,13 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     browser = await chromium.launch();
     pages.phone = await paired(PHONE, 'Example phone');
     pages.desk = await paired(DESK, 'Example Mac browser');
-  }, 120_000);
+  }, perfBudgetMs(120_000));
 
   afterAll(async () => {
     for (const p of Object.values(pages)) await p?.ctx.close().catch(() => undefined);
     await browser?.close().catch(() => undefined);
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('the list: the running line, the chips, search, Show more, and a Delete held under Undo', async () => {
     await inEachView('/meetings', async (page) => {
@@ -220,7 +220,7 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     await page.locator(`li[data-meeting="${ids.none}"]`).waitFor();
     await page.waitForTimeout(5_500);
     expect((await http(d.port, 'GET', `/v1/meetings/${ids.none}`, { cookie: seed })).status).toBe(200);
-  }, 120_000);
+  }, perfBudgetMs(120_000));
 
   it('a meeting done: summary, decisions, items in todos, the transcript with its screenshots, the viewer', async () => {
     await inEachView(`/meetings?id=${ids.done}`, async (page) => {
@@ -247,7 +247,7 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     await check(page, watch, 'the viewer');
     await viewer.getByRole('button', { name: 'Close' }).click();
     await viewer.waitFor({ state: 'detached' });
-  }, 120_000);
+  }, perfBudgetMs(120_000));
 
   it('action items: Remove waits under Undo, Undo keeps the todo, a Remove sent can be Added again', async () => {
     const { page, watch } = pages.phone!;
@@ -268,7 +268,7 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     await eventually(async () => Boolean((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId), 10_000, 'the Add');
     await items.getByRole('button', { name: `Remove from todos: ${first.title}` }).waitFor();
     await check(page, watch, 'after Add');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('Export text downloads the Markdown and shows the CLI line; Edit saves a new name', async () => {
     const { page, watch } = pages.phone!;
@@ -291,7 +291,7 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     await sheet.getByRole('button', { name: 'Save' }).click();
     await page.getByRole('heading', { name: 'Launch review, renamed', level: 1 }).waitFor();
     expect((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).meeting.name).toBe('Launch review, renamed');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('the other summary states: failed with Try again, none with Summarize, and a running meeting', async () => {
     const { page, watch } = pages.phone!;
@@ -311,7 +311,7 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     await page.getByRole('button', { name: 'Try again' }).click();
     await page.getByRole('region', { name: 'Decisions' }).waitFor({ timeout: 30_000 });
     await check(page, watch, 'after Try again');
-  }, 120_000);
+  }, perfBudgetMs(120_000));
 
   it('switched off at the Mac, nothing of Meetings shows', async () => {
     await callDaemon(ctl, 'PATCH', '/v1/settings', { meetings: { enabled: false } });
@@ -325,5 +325,5 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
       expect(await page.getByText('Meeting running').count()).toBe(0);
       await check(page, watch, `Meetings off (${who})`);
     }
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 });
