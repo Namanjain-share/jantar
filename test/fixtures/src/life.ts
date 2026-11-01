@@ -1,12 +1,13 @@
 /**
  * Life fixtures (v0.4): request bodies for every Life write, with names that
  * are obviously made up (Testamol, Placebin, Example Café, Sample Dosa,
- * Example Stream), and a marker to plant in every text field for the
+ * Example Stream; v0.7: r/exampletools and www.example.com for a post), and a marker to plant in every text field for the
  * privacy sweep (LP1): `projectBody({}, { marked: true })` puts LIFE_MARKER
  * in the name and the notes. MARKER_KG is the marked weight and goal.
  *
  *   await post('/v1/medicines', medBody());                 // Testamol 500 mg at 08:00 and 21:00
  *   await post('/v1/todos', todoBody({}, { timed: { day, time: '11:00' } }));   // a reminder
+ *   await post('/v1/posts', postBody({}, { timed: { day, time: '19:30' } }));   // a post that rings
  */
 import type {
   BillBody,
@@ -15,6 +16,7 @@ import type {
   MedicineBody,
   MoneyBody,
   PlaceBody,
+  PostBody,
   ProjectBody,
   TodoBody,
   WeightBody,
@@ -108,4 +110,24 @@ export function moneyBody(over: Partial<MoneyBody> = {}, opts: MarkOptions = {})
 /** Example Stream, ₹649.00 a month, due on the 3rd. */
 export function billBody(over: Partial<BillBody> = {}, opts: MarkOptions = {}): BillBody {
   return { name: mark('Example Stream', opts), amount: 64900, category: opts.marked ? `C ${LIFE_MARKER}` : 'Bills', repeat: 'monthly', nextDue: '2026-11-03', ...over };
+}
+
+/**
+ * v0.7: a Reddit post to make in r/exampletools, an idea; `timed` gives it a
+ * day and a time, which makes it ring. Marked: LIFE_MARKER in where, title,
+ * text, notes and the link.
+ */
+export function postBody(over: Partial<PostBody> = {}, opts: MarkOptions & { timed?: { day?: string; time: string } } = {}): PostBody {
+  const body: PostBody = {
+    platform: 'reddit',
+    kind: 'post',
+    where: mark('r/exampletools', opts),
+    title: mark('Typing into Terminal from a phone', opts),
+    text: mark('Synthetic post text.\n\nA second paragraph.', opts),
+    notes: mark('Synthetic notes: flair Example, attach one screenshot', opts),
+    link: opts.marked ? `https://www.example.com/submit?m=${LIFE_MARKER}` : 'https://www.example.com/submit',
+    status: 'idea',
+  };
+  if (opts.timed) body.due = { day: opts.timed.day ?? LIFE_DAY, time: opts.timed.time };
+  return { ...body, ...over };
 }

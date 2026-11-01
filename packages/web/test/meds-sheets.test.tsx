@@ -44,7 +44,7 @@ const status = (over: Partial<LifeStatus> = {}): LifeStatus => ({
   today: TODAY,
   currency: null,
   lockScreenDetails: false,
-  modules: { todos: false, medicines: true, food: false, places: false, finance: false },
+  modules: { todos: false, medicines: true, food: false, places: false, finance: false, posts: false },
   estimate: { available: false },
   backups: { last: null, count: 0 },
   push: { devices: 1, webpush: true },

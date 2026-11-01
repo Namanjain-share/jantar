@@ -121,7 +121,7 @@ describe('shared Life pieces', () => {
     today: '2026-10-30',
     currency: null,
     lockScreenDetails: false,
-    modules: { todos: false, medicines: true, food: false, places: false, finance: false },
+    modules: { todos: false, medicines: true, food: false, places: false, finance: false, posts: false },
     estimate: { available: false },
     backups: { last: null, count: 0 },
     push: { devices: 1, webpush: true },
@@ -132,7 +132,7 @@ describe('shared Life pieces', () => {
     expect(pushProblem(status())).toBeNull();
     expect(pushProblem(status({ push: { devices: 0, webpush: true } }))).toBe(NO_PUSH_DEVICES);
     expect(pushProblem(status({ push: { devices: 2, webpush: false } }))).toBe(NO_PUSH_SWITCH);
-    expect(pushProblem(status({ push: { devices: 0, webpush: true }, modules: { todos: true, medicines: false, food: false, places: false, finance: false } }))).toBeNull();
+    expect(pushProblem(status({ push: { devices: 0, webpush: true }, modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false } }))).toBeNull();
     expect(pushProblem(null)).toBeNull();
     render(<PushWarning status={status({ push: { devices: 0, webpush: true } })} />);
     expect(screen.getByText(NO_PUSH)).toBeTruthy();

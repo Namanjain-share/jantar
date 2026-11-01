@@ -252,8 +252,8 @@ const ZONE_SHAPE = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){0,2}$/;
 const ZONE_MESSAGE = 'an IANA time zone, e.g. Asia/Kolkata';
 
 /**
- * v0.4 Life: five small modules, each off until turned on at the Mac
- * (`jantar life on <module>`). Mac only: the switches, the time zone, the
+ * v0.4 Life: six small modules (v0.7 added posts), each off until turned on
+ * at the Mac (`jantar life on <module>`). Mac only: the switches, the time zone, the
  * currency and the lock-screen details change only there. The calorie target
  * and goal weight are values the phone sets; they live in life.db.
  */
@@ -266,6 +266,8 @@ export const LifeSettingsSchema = z.object({
   /** Cafés. */
   places: z.boolean().default(false),
   finance: z.boolean().default(false),
+  /** v0.7: Social posts: a plan, a ring at the time, Copy and Open. Jantar never posts. */
+  posts: z.boolean().default(false),
   /**
    * IANA zone for day keys and ping times; null = the Mac's zone at daemon
    * start. The file only needs a zone's shape: one this Node's ICU does not
@@ -277,7 +279,10 @@ export const LifeSettingsSchema = z.object({
   timezone: z.string().max(64).regex(ZONE_SHAPE, { message: ZONE_MESSAGE }).nullable().default(null),
   /** ISO 4217 code, a label only (amounts are hundredths whatever it is); null = plain numbers. */
   currency: z.string().regex(/^[A-Z]{3}$/).nullable().default(null),
-  /** Medicine names and bill names and amounts on the lock screen. Off: "Medicine due", "Bill due". */
+  /**
+   * Medicine names, bill names and amounts, and where a post goes, on the
+   * lock screen. Off: "Medicine due", "Bill due", "Post due" with no names.
+   */
   lockScreenDetails: z.boolean().default(false),
 });
 
@@ -513,8 +518,8 @@ export function settingsFeatures(s: Settings): Features {
   };
 }
 
-/** The five Life modules, in the order the phone lists them. */
-export const LIFE_MODULES = ['todos', 'medicines', 'food', 'places', 'finance'] as const;
+/** The six Life modules, in the order the phone lists them (v0.7's posts last). */
+export const LIFE_MODULES = ['todos', 'medicines', 'food', 'places', 'finance', 'posts'] as const;
 
 /** Whether any Life module is on. */
 export function lifeOn(s: Pick<Settings, 'life'>): boolean {

@@ -1,9 +1,9 @@
 /**
- * The Life service (WP-LS, spec 4.1): life.db, the five modules, the one
+ * The Life service (WP-LS, spec 4.1): life.db, the six modules, the one
  * scheduler and the nightly backup, in one daemon part.
  *
  * - Start: when any module is on, open life.db (db.ts openLifeDb), build
- *   the five modules on one LifeCore (each builder registers its ping
+ *   the six modules on one LifeCore (each builder registers its ping
  *   handlers), start the scheduler (a catch-up sweep, then every handler's
  *   resync) and the nightly backup. With every module off nothing opens.
  * - Settings (ctx.settings.subscribe): the first module turned on opens
@@ -57,6 +57,7 @@ import type {
   MedicinesModule,
   PingKind,
   PlacesModule,
+  PostsModule,
   TodosModule,
   Unsubscribe,
 } from '../contracts.js';
@@ -115,7 +116,7 @@ export function pushDevices(db: Pick<Db, 'devices' | 'pushSubs'>): number {
   return n;
 }
 
-type Modules = { todos: TodosModule; medicines: MedicinesModule; food: FoodModule; places: PlacesModule; finance: FinanceModule };
+type Modules = { todos: TodosModule; medicines: MedicinesModule; food: FoodModule; places: PlacesModule; finance: FinanceModule; posts: PostsModule };
 
 /** A module stand-in while life.db is not open: every call answers `unavailable`. */
 function closedModule<M extends LifeModule>(name: LifeModuleName, extra: Record<string, unknown> = {}): M {
@@ -171,6 +172,7 @@ class LifeServiceImpl implements LifeService {
     food: closedModule<FoodModule>('food', { estimateStatus: () => ({ available: false, reason: LIFE_CLOSED }) }),
     places: closedModule<PlacesModule>('places'),
     finance: closedModule<FinanceModule>('finance'),
+    posts: closedModule<PostsModule>('posts'),
   };
 
   constructor(
@@ -218,6 +220,9 @@ class LifeServiceImpl implements LifeService {
   }
   get finance(): FinanceModule {
     return this.live()?.finance ?? this.closed.finance;
+  }
+  get posts(): PostsModule {
+    return this.live()?.posts ?? this.closed.posts;
   }
 
   async start(): Promise<void> {
@@ -467,6 +472,7 @@ class LifeServiceImpl implements LifeService {
       food: this.builders.food(this.core, deps),
       places: this.builders.places(this.core, deps),
       finance: this.builders.finance(this.core, deps),
+      posts: this.builders.posts(this.core, deps),
     };
     for (const m of Object.values(mods) as LifeModule[]) m.start?.();
     return mods;

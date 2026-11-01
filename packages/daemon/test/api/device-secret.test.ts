@@ -106,6 +106,11 @@ describe('which routes need the device secret', () => {
         // v0.5.3 (localOnly: over TCP they are refused anyway, after this check)
         'folderTodoCreate',
         'notifyTest',
+        // v0.7 Posts, a Life module (control scope)
+        'postCreate',
+        'postDelete',
+        'postGoalsSet',
+        'postUpdate',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);

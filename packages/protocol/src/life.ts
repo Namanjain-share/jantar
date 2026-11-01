@@ -1,6 +1,7 @@
 /**
  * v0.4 Life: projects and todos (a reminder is a todo with a time),
- * medicines, food with calories and weight, cafés, and finance.
+ * medicines, food with calories and weight, cafés, and finance. v0.7:
+ * posts, plans for what the user posts on social media by hand.
  *
  * Rules every shape here follows:
  * - Ids are ulids (LifeId). Days are `YYYY-MM-DD` keys in the Life time zone
@@ -14,7 +15,15 @@
  * - Bodies are strict: an unknown key is a 400.
  */
 import { z } from 'zod';
-import { FOOD_ESTIMATE_TEXT_MAX } from './constants.js';
+import {
+  FOOD_ESTIMATE_TEXT_MAX,
+  POST_GOALS_MAX,
+  POST_LINK_MAX,
+  POST_PER_WEEK_MAX,
+  POST_TEXT_MAX,
+  POST_TITLE_MAX,
+  POST_WHERE_MAX,
+} from './constants.js';
 import { IsoDateSchema } from './models.js';
 import { LIFE_MODULES } from './settings.js';
 
@@ -600,6 +609,158 @@ export const MoneyMonthSchema = z.object({
 export type MoneyMonth = z.infer<typeof MoneyMonthSchema>;
 
 // ---------------------------------------------------------------------------
+// Posts (v0.7): a plan for one thing the user posts by hand. Jantar never
+// posts, never fetches a link and calls no network: it keeps the text, rings
+// at the time, gives Copy and Open, and counts what is marked Posted.
+
+/**
+ * One line: no C0 or C1 control, DEL, or bidi embedding, override or
+ * isolate. The class of meetings.ts NO_CONTROL (a copy: meetings.ts imports
+ * this file), so a newline or a bidi override never reaches a lock screen or
+ * a CLI list line.
+ */
+const POST_LINE = /^[^\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]+$/;
+const ONE_LINE = { message: 'one line, with no control characters' };
+
+export const POST_PLATFORMS = ['reddit', 'instagram', 'x', 'linkedin', 'youtube', 'tiktok', 'threads', 'facebook', 'hn', 'other'] as const;
+export const POST_KINDS = ['post', 'comment', 'reel', 'story', 'thread', 'short', 'video', 'link'] as const;
+export const PostPlatformSchema = z.enum(POST_PLATFORMS);
+export type PostPlatform = z.infer<typeof PostPlatformSchema>;
+export const PostKindSchema = z.enum(POST_KINDS);
+export type PostKind = z.infer<typeof PostKindSchema>;
+/** Idea, then Ready, then Posted (or Skipped). A new post is an idea or ready. */
+export const PostStatusSchema = z.enum(['idea', 'ready', 'posted', 'skipped']);
+export type PostStatus = z.infer<typeof PostStatusSchema>;
+/** A subreddit, an account or a handle ("r/exampletools", "@example.studio"). */
+export const PostWhereSchema = z.string().trim().min(1).max(POST_WHERE_MAX).regex(POST_LINE, ONE_LINE);
+export const PostTitleSchema = z.string().trim().min(1).max(POST_TITLE_MAX).regex(POST_LINE, ONE_LINE);
+/** The body or caption: Copy copies it. Ends trimmed, newlines kept. Never in a push, log, event or reply but the owner's GET. */
+export const PostTextSchema = z.string().trim().min(1).max(POST_TEXT_MAX);
+/** Where it gets posted, or the posted post: https only, opened by the user's tap, never requested by the daemon. */
+export const PostLinkSchema = z.url({ protocol: /^https$/ }).max(POST_LINK_MAX);
+
+/** The platform names the push, the CLI and the phone show. */
+export const POST_PLATFORM_LABEL: Readonly<Record<PostPlatform, string>> = {
+  reddit: 'Reddit',
+  instagram: 'Instagram',
+  x: 'X',
+  linkedin: 'LinkedIn',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+  threads: 'Threads',
+  facebook: 'Facebook',
+  hn: 'Hacker News',
+  other: 'Other',
+};
+/** Each kind's name, one and many ("Reel", "Reels"). */
+export const POST_KIND_LABEL: Readonly<Record<PostKind, readonly [one: string, many: string]>> = {
+  post: ['Post', 'Posts'],
+  comment: ['Comment', 'Comments'],
+  reel: ['Reel', 'Reels'],
+  story: ['Story', 'Stories'],
+  thread: ['Thread', 'Threads'],
+  short: ['Short', 'Shorts'],
+  video: ['Video', 'Videos'],
+  link: ['Link', 'Links'],
+};
+
+export const PostSchema = z.object({
+  id: LifeIdSchema,
+  platform: PostPlatformSchema,
+  kind: PostKindSchema,
+  where: PostWhereSchema.optional(),
+  title: PostTitleSchema.optional(),
+  text: PostTextSchema.optional(),
+  /** Flair, media to attach, the sub's rules: shown only in the sheet, never copied, never in a push. */
+  notes: LongNotesSchema.optional(),
+  link: PostLinkSchema.optional(),
+  /** With a time it rings, like a todo; a day alone lists it under that day. */
+  due: DueSchema.optional(),
+  status: PostStatusSchema,
+  /** Set by the daemon when it becomes posted; cleared when it stops being posted. */
+  postedAt: IsoDateSchema.optional(),
+  /** The posted post's link; only while posted. */
+  postedUrl: PostLinkSchema.optional(),
+  ...stamps,
+});
+export type Post = z.infer<typeof PostSchema>;
+/** POST /v1/posts (kind defaults to post, status to idea; never posted or skipped). */
+export const PostBodySchema = z.strictObject({
+  platform: PostPlatformSchema,
+  kind: PostKindSchema.optional(),
+  where: PostWhereSchema.optional(),
+  title: PostTitleSchema.optional(),
+  text: PostTextSchema.optional(),
+  notes: LongNotesSchema.optional(),
+  link: PostLinkSchema.optional(),
+  due: DueSchema.optional(),
+  status: z.enum(['idea', 'ready']).optional(),
+});
+export type PostBody = z.infer<typeof PostBodySchema>;
+/**
+ * PATCH /v1/posts/:id: every field optional; null clears where, title, text,
+ * notes, link, due and the posted link. Any status may follow any other; the
+ * daemon stamps postedAt, clears it and the posted link out of posted, and
+ * refuses a posted link unless the result is posted.
+ */
+export const PostPatchSchema = z.strictObject({
+  platform: PostPlatformSchema.optional(),
+  kind: PostKindSchema.optional(),
+  where: PostWhereSchema.nullable().optional(),
+  title: PostTitleSchema.nullable().optional(),
+  text: PostTextSchema.nullable().optional(),
+  notes: LongNotesSchema.nullable().optional(),
+  link: PostLinkSchema.nullable().optional(),
+  due: DueSchema.nullable().optional(),
+  status: PostStatusSchema.optional(),
+  postedUrl: PostLinkSchema.nullable().optional(),
+});
+export type PostPatch = z.infer<typeof PostPatchSchema>;
+
+const postGoalFields = {
+  platform: PostPlatformSchema,
+  /** Absent: any kind on that platform. */
+  kind: PostKindSchema.optional(),
+  perWeek: z.number().int().min(1).max(POST_PER_WEEK_MAX),
+};
+/** "Reels 3 a week" is { instagram, reel, 3 }; "Reddit 6 a week" is { reddit, 6 }. */
+export const PostGoalSchema = z.strictObject(postGoalFields);
+export type PostGoal = z.infer<typeof PostGoalSchema>;
+/** PUT /v1/posts/goals: the whole list ([] removes every goal), one per platform and kind. */
+export const PostGoalsBodySchema = z
+  .strictObject({ goals: z.array(PostGoalSchema).max(POST_GOALS_MAX) })
+  .refine((b) => new Set(b.goals.map((g) => `${g.platform}/${g.kind ?? ''}`)).size === b.goals.length, {
+    message: 'one goal per platform and kind',
+    path: ['goals'],
+  });
+export type PostGoalsBody = z.infer<typeof PostGoalsBodySchema>;
+/** `?done=0|1`. */
+export const PostsQuerySchema = z.object({ done: flag01.default(false) });
+export type PostsQuery = z.infer<typeof PostsQuerySchema>;
+/**
+ * GET /v1/posts: open posts (idea and ready) by due (day, then time, untimed
+ * after timed, undated last), then createdAt; with done=1 the newest 100
+ * posted or skipped. `week` runs Monday to Sunday in the Life zone and counts
+ * what was posted in it, against each goal.
+ */
+export const PostsResponseSchema = z.object({
+  today: DayKeySchema,
+  week: z.object({
+    from: DayKeySchema,
+    to: DayKeySchema,
+    posted: z.number().int().nonnegative(),
+    goals: z.array(z.object({ ...postGoalFields, done: z.number().int().nonnegative() })),
+  }),
+  posts: z.array(PostSchema),
+});
+export type PostsResponse = z.infer<typeof PostsResponseSchema>;
+
+/** A goal's name: the kind's plural with a kind ("Reels"), else the platform ("Reddit"). */
+export function postGoalLabel(g: Pick<PostGoal, 'platform' | 'kind'>): string {
+  return g.kind ? POST_KIND_LABEL[g.kind][1] : POST_PLATFORM_LABEL[g.platform];
+}
+
+// ---------------------------------------------------------------------------
 // Status, Today, backups
 
 export const LifeStatusSchema = z.object({
@@ -628,6 +789,8 @@ export const TodaySchema = z.object({
   food: z.object({ kcal: z.number().int(), target: z.number().int(), weight: WeightSchema.nullable() }).optional(),
   /** nextDue <= today + 3 days. */
   bills: z.array(BillSchema).optional(),
+  /** v0.7: open posts due today, and due before today. */
+  posts: z.object({ today: z.number().int().nonnegative(), late: z.number().int().nonnegative() }).optional(),
 });
 export type Today = z.infer<typeof TodaySchema>;
 

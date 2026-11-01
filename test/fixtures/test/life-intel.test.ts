@@ -1,6 +1,7 @@
 /**
  * The v0.4 fixtures: every Life body passes its schema, marked or not, and a
- * marked one carries LIFE_MARKER in every text field; the intel writer's
+ * marked one carries LIFE_MARKER in every text field (v0.7: a post's where,
+ * title, text, notes and link too); the intel writer's
  * lines and counts are what the follower should end up with.
  */
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -16,6 +17,7 @@ import {
   MedicineBodySchema,
   MoneyBodySchema,
   PlaceBodySchema,
+  PostBodySchema,
   ProjectBodySchema,
   TodoBodySchema,
   WeightBodySchema,
@@ -36,6 +38,7 @@ import {
   medBody,
   moneyBody,
   placeBody,
+  postBody,
   projectBody,
   todoBody,
   weightBody,
@@ -51,6 +54,7 @@ describe('Life bodies', () => {
     ['place', PlaceBodySchema, placeBody],
     ['money', MoneyBodySchema, moneyBody],
     ['bill', BillBodySchema, billBody],
+    ['post', PostBodySchema, postBody],
   ] as const;
 
   it('pass their schemas, marked or not', () => {
@@ -67,7 +71,7 @@ describe('Life bodies', () => {
   it('a marked body carries the marker in every text field, an unmarked one in none', () => {
     const strings = (v: unknown): string[] =>
       typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(strings) : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : [];
-    const TEXT_KEYS = /^(name|title|notes?|dose|area|category)$/;
+    const TEXT_KEYS = /^(name|title|notes?|dose|area|category|where|text)$/;
     for (const [what, , make] of cases) {
       const marked = (make as (o: object, m: object) => Record<string, unknown>)({}, { marked: true });
       for (const [k, v] of Object.entries(marked)) if (TEXT_KEYS.test(k)) expect(String(v), `${what}.${k}`).toContain(LIFE_MARKER);
@@ -76,6 +80,9 @@ describe('Life bodies', () => {
     }
     expect(placeBody({}, { marked: true }).dishes?.every((d) => d.name.includes(LIFE_MARKER))).toBe(true);
     expect(todoBody({}, { timed: { time: '11:00' } }).due).toEqual({ day: '2026-10-30', time: '11:00' });
+    expect(postBody({}, { marked: true }).link).toContain(LIFE_MARKER);
+    expect(postBody({}, { timed: { day: '2026-11-02', time: '19:30' } }).due).toEqual({ day: '2026-11-02', time: '19:30' });
+    expect(postBody().due).toBeUndefined();
   });
 });
 

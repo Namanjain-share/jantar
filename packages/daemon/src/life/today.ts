@@ -15,6 +15,7 @@ export const TODAY_PARTS: Readonly<Record<LifeModuleName, readonly Exclude<keyof
   food: ['food'],
   places: [],
   finance: ['bills'],
+  posts: ['posts'],
 };
 
 export function buildToday(day: string, on: Settings['life'], modules: Readonly<Record<LifeModuleName, LifeModule>>, log: Logger): Today {

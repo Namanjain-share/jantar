@@ -113,6 +113,11 @@ import {
   PlacePatchSchema,
   PlacesQuerySchema,
   PlacesResponseSchema,
+  PostBodySchema,
+  PostGoalsBodySchema,
+  PostPatchSchema,
+  PostsQuerySchema,
+  PostsResponseSchema,
   ProjectBodySchema,
   ProjectPatchSchema,
   ProjectsResponseSchema,
@@ -817,7 +822,7 @@ export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
  * v0.4: 'life' is on while any Life module is; each module name reads
  * `life.<module>`; 'intel' reads `intel.enabled`. v0.5: 'meetings' reads
  * `meetings.enabled`. v0.5.3: 'ask' reads `ask.enabled`. v0.6: 'fleet' reads
- * `fleet.enabled`.
+ * `fleet.enabled`. v0.7: 'posts', a sixth Life module, reads `life.posts`.
  */
 export type FeatureSwitch =
   | 'files'
@@ -834,7 +839,8 @@ export type FeatureSwitch =
   | 'intel'
   | 'meetings'
   | 'ask'
-  | 'fleet';
+  | 'fleet'
+  | 'posts';
 
 export interface RouteDef {
   method: HttpMethod | 'WS';
@@ -851,7 +857,7 @@ export interface RouteDef {
    * handshake).
    */
   scope: Scope | 'public' | 'extension' | 'node';
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6';
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7';
   /**
    * While this switch is off the route answers 403 with the sentence that
    * turns it on (screenshots: 403 screenshots_off), before validation and
@@ -1534,6 +1540,33 @@ export const ROUTES = {
     method: 'DELETE', path: '/v1/machines/:id', scope: 'admin', phase: 'v0.6', ctl: true,
     params: MachineParamsSchema, response: MachineResponseSchema,
     summary: 'Remove a machine: its link closes and its sessions leave the board (jantar node revoke).',
+  }),
+
+  // --- v0.7 Posts, a Life module: plans for what the user posts by hand (Jantar never posts). Control
+  // scope, reads included. Only the list and an add are on ctl.sock (`jantar post list`, `jantar post add`;
+  // scripts and Claude sessions add at most 30 an hour); changing, deleting and the weekly goals are the
+  // phone's. Writes answer ids only.
+  postsList: route({
+    method: 'GET', path: '/v1/posts', scope: 'control', phase: 'v0.7', ctl: true, feature: 'posts',
+    query: PostsQuerySchema, response: PostsResponseSchema,
+    summary: 'Posts to make by day and time, or the newest posted and skipped (?done=1), and this week against the goals.',
+  }),
+  postCreate: route({
+    method: 'POST', path: '/v1/posts', scope: 'control', phase: 'v0.7', ctl: true, feature: 'posts',
+    body: PostBodySchema, response: IdReplySchema, summary: 'Add a post to make, an idea or ready (a day and time make it ring).',
+  }),
+  postUpdate: route({
+    method: 'PATCH', path: '/v1/posts/:id', scope: 'control', phase: 'v0.7', ctl: false, feature: 'posts',
+    params: LifeIdParamsSchema, body: PostPatchSchema, response: OkReplySchema,
+    summary: 'Change a post or its status (Posted stamps the time; null clears a field).',
+  }),
+  postDelete: route({
+    method: 'DELETE', path: '/v1/posts/:id', scope: 'control', phase: 'v0.7', ctl: false, feature: 'posts',
+    params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete a post.',
+  }),
+  postGoalsSet: route({
+    method: 'PUT', path: '/v1/posts/goals', scope: 'control', phase: 'v0.7', ctl: false, feature: 'posts',
+    body: PostGoalsBodySchema, response: OkReplySchema, summary: 'Replace the weekly goals, one per platform and kind ([] removes them).',
   }),
 } as const satisfies Record<string, RouteDef>;
 

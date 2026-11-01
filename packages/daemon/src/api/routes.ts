@@ -10,7 +10,7 @@
  * into ROUTE_IMPLS below. v0.6: routes/machines.ts (Fleet); every route a
  * hub forwards to a server (NODE_ROUTES) is forwarded by the pipeline
  * before its handler here runs, and getSession answers a server's session
- * from the hub's state.
+ * from the hub's state. v0.7: routes/posts.ts (Posts, a Life module).
  *
  * v0.4.2: getScreen also returns the dialog the screen shows (terminal/
  * dialog.ts), why a dialog-looking screen gets no buttons (or that Claude's
@@ -71,6 +71,7 @@ import { INTEL_ROUTE_IMPLS } from './routes/intel.js';
 import { LIFE_ROUTE_IMPLS } from './routes/life.js';
 import { MEDICINES_ROUTE_IMPLS } from './routes/medicines.js';
 import { PLACES_ROUTE_IMPLS } from './routes/places.js';
+import { POSTS_ROUTE_IMPLS } from './routes/posts.js';
 import { TODOS_ROUTE_IMPLS } from './routes/todos.js';
 import { UPLOADS_ROUTE_IMPLS } from './routes/uploads.js';
 import { EXT_PAIR_ROUTE_IMPLS } from './routes/ext-pair.js';
@@ -591,7 +592,7 @@ const CORE_ROUTE_IMPLS: RouteTable = {
   },
 };
 
-/** Every route's handler: the core table plus one table per v0.3, v0.4, v0.5 and v0.5.3 feature (routes/*.ts). */
+/** Every route's handler: the core table plus one table per v0.3, v0.4, v0.5, v0.5.3, v0.6 and v0.7 feature (routes/*.ts). */
 export const ROUTE_IMPLS: RouteTable = {
   ...CORE_ROUTE_IMPLS,
   ...REWRITE_ROUTE_IMPLS,
@@ -620,4 +621,6 @@ export const ROUTE_IMPLS: RouteTable = {
   ...NOTIFY_ROUTE_IMPLS,
   // v0.6
   ...MACHINES_ROUTE_IMPLS,
+  // v0.7
+  ...POSTS_ROUTE_IMPLS,
 };

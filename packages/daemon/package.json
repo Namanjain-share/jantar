@@ -1,6 +1,6 @@
 {
   "name": "@jantar/daemon",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "jantard: the long-running daemon that owns sessions, accounts, approvals and every terminal write.",

@@ -152,7 +152,7 @@ export function askOn(ctx: TestContext, opts: { readOnly?: boolean } = {}): AskP
       today: core.today(),
       currency: s.currency,
       lockScreenDetails: false,
-      modules: { todos: s.todos, medicines: s.medicines, food: s.food, places: s.places, finance: s.finance },
+      modules: { todos: s.todos, medicines: s.medicines, food: s.food, places: s.places, finance: s.finance, posts: s.posts },
       estimate: { available: false },
       backups: { last: null, count: 0 },
       push: { devices: 0, webpush: true },

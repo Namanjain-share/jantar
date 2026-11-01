@@ -4,7 +4,7 @@
  * daemon's "turn it on at your Mac" sentences name, then v0.4's Life, Intel
  * (v0.5.3: the alert switches and the MCP server after it) and kept
  * accounts, v0.5's Meetings, v0.5.3's Ask, v0.6's Fleet (fleet, node), then
- * setup.
+ * setup. v0.7's post sits right after life: Posts are a Life module.
  */
 import type { Command } from '../command.js';
 import accounts from './accounts.js';
@@ -29,6 +29,7 @@ import notify from './notify.js';
 import node from './node.js';
 import open from './open.js';
 import pair from './pair.js';
+import post from './post.js';
 import remote from './remote.js';
 import rewrite from './rewrite.js';
 import screenshots from './screenshots.js';
@@ -52,6 +53,8 @@ export const COMMANDS: readonly Command[] = [
   screenshots,
   // v0.4
   life,
+  // v0.7 (a Life module's own command, after life)
+  post,
   intel,
   // v0.5.3
   notify,

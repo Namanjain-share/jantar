@@ -47,6 +47,7 @@ import type {
   PingKind,
   PingRow,
   PlacesModule,
+  PostsModule,
   ProcessProbe,
   Scheduler,
   TodosModule,
@@ -229,6 +230,7 @@ export function notBuiltParts(): NotBuiltParts {
       food: notBuilt<FoodModule>('Life', { estimateStatus: () => ({ available: false, reason: 'Ask Claude is not built yet.' }) }),
       places: notBuilt<PlacesModule>('Life'),
       finance: notBuilt<FinanceModule>('Life'),
+      posts: notBuilt<PostsModule>('Life'),
     }),
     intel: notBuilt<IntelService>('The Intel shelf', { ...life }),
     meetings: notBuilt<MeetingsService>('Meetings', {

@@ -3,6 +3,13 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.7.0 (unreleased)
+
+Posts, a sixth part of Life, off until you run `jantar life on posts` at the
+Mac: plan what you post on social media, get a reminder at the time, copy
+the text and open the place to post it. Jantar never posts anything itself.
+The protocol stays at version 3, and settings don't change version.
+
 ## 0.6.1 (1 November 2026)
 
 - **A session waiting on a dynamic workflow or a background agent shows as

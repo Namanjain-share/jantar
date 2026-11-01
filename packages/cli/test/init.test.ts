@@ -283,6 +283,6 @@ describe('init plan', () => {
     expect(nextSteps({ launchOn: false })).not.toContain('devices grant');
     // The window primer is offered only with cswap's accounts.
     expect(nextSteps({ launchOn: false })).not.toContain('accounts prime');
-    expect(nextSteps({ launchOn: false }, true)).toContain('  jantar accounts prime on                              start idle 5-hour windows early (kept and held accounts left out)\n');
+    expect(nextSteps({ launchOn: false }, true)).toContain('  jantar accounts prime on                                    start idle 5-hour windows early (kept and held accounts left out)\n');
   });
 });

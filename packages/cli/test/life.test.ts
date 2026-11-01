@@ -24,7 +24,7 @@ function status(over: Partial<LifeStatus> = {}): LifeStatus {
     today: '2026-01-15',
     currency: 'INR',
     lockScreenDetails: false,
-    modules: { todos: true, medicines: true, food: false, places: false, finance: false },
+    modules: { todos: true, medicines: true, food: false, places: false, finance: false, posts: false },
     estimate: { available: false },
     backups: { last: '2026-01-15T07:00:00.000Z', count: 3 },
     push: { devices: 1, webpush: true },
@@ -73,7 +73,7 @@ describe('jantar life status', () => {
     const b = contextFor({ env: ENV }, { ctl: off.ctl });
     await life.run(['status'], b.ctx);
     expect(b.io.stdout).toContain('Medicine pings: none go out, because Web Push is off');
-    const broken = daemon({}, status({ open: false, broken: 'Life data could not be opened.', modules: { todos: true, medicines: false, food: true, places: false, finance: false }, estimate: { available: false, reason: 'No runner.' }, backups: { last: null, count: 0 } }));
+    const broken = daemon({}, status({ open: false, broken: 'Life data could not be opened.', modules: { todos: true, medicines: false, food: true, places: false, finance: false, posts: false }, estimate: { available: false, reason: 'No runner.' }, backups: { last: null, count: 0 } }));
     const c = contextFor({ env: ENV }, { ctl: broken.ctl });
     await life.run(['status'], c.ctx);
     expect(c.io.stdout).toContain('Life data: broken: Life data could not be opened.');
@@ -111,7 +111,7 @@ describe('jantar life on and off', () => {
     expect(await life.run(['on', 'todos', 'medicines', 'todos'], on.ctx)).toBe(EXIT.ok);
     expect(s.patches).toEqual([{ life: { todos: true, medicines: true } }]);
     expect(on.io.stdout).toContain('On: todos (projects, todos and reminders), medicines (medicines and their pings).');
-    expect(on.io.stdout).toContain('Life modules on: todos, medicines; off: food, places, finance');
+    expect(on.io.stdout).toContain('Life modules on: todos, medicines; off: food, places, finance, posts');
     const off = contextFor({ env: ENV }, { ctl });
     expect(await life.run(['off', 'medicines'], off.ctx)).toBe(EXIT.ok);
     expect(s.settings.life.medicines).toBe(false);
@@ -120,9 +120,19 @@ describe('jantar life on and off', () => {
   it('all names every module', async () => {
     const { s, ctl } = daemon();
     expect(await life.run(['on', 'all'], contextFor({ env: ENV }, { ctl }).ctx)).toBe(EXIT.ok);
-    expect(s.settings.life).toMatchObject({ todos: true, medicines: true, food: true, places: true, finance: true });
+    expect(s.settings.life).toMatchObject({ todos: true, medicines: true, food: true, places: true, finance: true, posts: true });
     expect(await life.run(['off', 'all'], contextFor({ env: ENV }, { ctl }).ctx)).toBe(EXIT.ok);
-    expect(s.settings.life).toMatchObject({ todos: false, medicines: false, food: false, places: false, finance: false });
+    expect(s.settings.life).toMatchObject({ todos: false, medicines: false, food: false, places: false, finance: false, posts: false });
+  });
+
+  it('v0.7: turns posts on and off by name', async () => {
+    const { s, ctl } = daemon();
+    const on = contextFor({ env: ENV }, { ctl });
+    expect(await life.run(['on', 'posts'], on.ctx)).toBe(EXIT.ok);
+    expect(s.patches).toEqual([{ life: { posts: true } }]);
+    expect(on.io.stdout).toContain('On: posts (social posts and their reminders).');
+    expect(await life.run(['off', 'posts'], contextFor({ env: ENV }, { ctl }).ctx)).toBe(EXIT.ok);
+    expect(s.settings.life.posts).toBe(false);
   });
 
   it('refuses no module, an unknown one, and all with others', async () => {

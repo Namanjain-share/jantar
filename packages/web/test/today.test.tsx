@@ -56,7 +56,7 @@ function status(over: Partial<LifeStatus> = {}): LifeStatus {
     today: DAY,
     currency: 'INR',
     lockScreenDetails: false,
-    modules: { todos: true, medicines: true, food: true, places: false, finance: true },
+    modules: { todos: true, medicines: true, food: true, places: false, finance: true, posts: false },
     estimate: { available: false },
     backups: { last: null, count: 0 },
     push: { devices: 1, webpush: true },
@@ -153,7 +153,7 @@ describe('Today: the push warning (LW5)', () => {
     await screen.findByText('Example todo 1');
     expect(screen.queryByText(NO_PUSH)).toBeNull();
     a.unmount();
-    render({ status: status({ push: { devices: 0, webpush: true }, modules: { todos: true, medicines: false, food: false, places: false, finance: false } }), today: today({ meds: undefined }) });
+    render({ status: status({ push: { devices: 0, webpush: true }, modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false } }), today: today({ meds: undefined }) });
     await screen.findByText('Example todo 1');
     expect(screen.queryByText(NO_PUSH)).toBeNull();
   });
@@ -260,7 +260,7 @@ describe('Today: sections', () => {
 
   it('leaves out the sections of modules that are off', async () => {
     render({
-      status: status({ modules: { todos: false, medicines: false, food: false, places: true, finance: false } }),
+      status: status({ modules: { todos: false, medicines: false, food: false, places: true, finance: false, posts: false } }),
       today: { day: DAY },
     });
     await heading();

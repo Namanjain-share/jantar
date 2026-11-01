@@ -27,7 +27,7 @@ const status: LifeStatus = {
   today: DAY,
   currency: null,
   lockScreenDetails: false,
-  modules: { todos: false, medicines: false, food: true, places: false, finance: false },
+  modules: { todos: false, medicines: false, food: true, places: false, finance: false, posts: false },
   estimate: { available: false },
   backups: { last: null, count: 0 },
   push: { devices: 1, webpush: true },

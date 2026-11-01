@@ -23,6 +23,9 @@
  *   never exported here: none of it belongs in the phone's bundle.
  * - v0.6.1 (in models, selectors, constants): `Session.background`, the work Claude Code still
  *   runs in the background, and `backgroundRunning`, `shownStatus` and `backgroundText`
+ * - v0.7 Posts (in life, settings, api, constants): a sixth Life module, `posts`, plans for what
+ *   the user posts on social media by hand, with a ring at the time and weekly goals; the
+ *   /v1/posts routes; the platform and kind labels
  */
 export * from './constants.js';
 export * from './models.js';

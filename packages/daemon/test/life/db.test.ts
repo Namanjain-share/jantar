@@ -5,6 +5,10 @@
  * (LD1, unit part): `ok: false` with the fixed sentence, the file
  * byte-identical and nothing renamed or created beside it. A file a crash
  * left with its WAL still holding pages is not "cut short".
+ *
+ * v0.7: migration 2 (posts), Life's first schema change. A file 0.6.1 wrote
+ * (migration 1 only) opens, moves to schema 2 and keeps every row; one
+ * whose migration 2 fails is left at schema 1 with its rows.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -12,7 +16,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, LIFE_SCHEMA_VERSION, openLifeDb } from '../../src/life/db.js';
+import { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, LIFE_SCHEMA_VERSION, openCheckedDb, openLifeDb } from '../../src/life/db.js';
 import type { LifeDb } from '../../src/contracts.js';
 
 let dir: string;
@@ -102,7 +106,7 @@ describe('openLifeDb', () => {
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(statSync(dir).mode & 0o777).toBe(0o700);
     const tables = (db.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map((t) => t.name);
-    expect(tables).toEqual(['bills', 'budgets', 'doses', 'food', 'foods_saved', 'medicines', 'meta', 'money', 'pings', 'places', 'projects', 'todos', 'weights']);
+    expect(tables).toEqual(['bills', 'budgets', 'doses', 'food', 'foods_saved', 'medicines', 'meta', 'money', 'pings', 'places', 'posts', 'projects', 'todos', 'weights']);
     expect(db.meta('schema')).toBe(String(LIFE_SCHEMA_VERSION));
     expect(LIFE_SCHEMA_VERSION).toBe(LIFE_MIGRATIONS.length);
     for (const f of readdirSync(dir)) expect(statSync(join(dir, f)).mode & 0o777, f).toBe(0o600);
@@ -112,7 +116,7 @@ describe('openLifeDb', () => {
     seeded();
     const db = openOk();
     expect((db.prepare('SELECT count(*) AS n FROM food').get() as { n: number }).n).toBe(200);
-    expect(db.meta('schema')).toBe('1');
+    expect(db.meta('schema')).toBe('2');
   });
 
   it('keeps the unique dose slot and the weight range in the schema', () => {
@@ -151,6 +155,81 @@ describe('openLifeDb', () => {
     const r = openLifeDb(':memory:');
     expect(r.ok).toBe(true);
     if (r.ok) r.db.close();
+  });
+});
+
+/** A life.db as 0.6.1 left it: migration 1 only, with a todo, a pending ping and a calorie target, closed. */
+function schemaOneFile(): void {
+  const r = openCheckedDb(file, { migrations: LIFE_MIGRATIONS.slice(0, 1), brokenReason: LIFE_BROKEN_REASON });
+  if (!r.ok) throw new Error(`refused: ${r.code}`);
+  const db = r.db;
+  db.tx(() => {
+    const todo = { id: '01JFZ8X8Y3T0V5G9WQK2M4N6PR', title: 'Example todo', priority: 'normal', due: { day: '2026-11-02', time: '19:30' }, createdAt: '2026-11-01T10:00:00.000Z', updatedAt: '2026-11-01T10:00:00.000Z' };
+    db.prepare('INSERT INTO todos (id, project_id, due_day, done_at, updated_at, json) VALUES (?, NULL, ?, NULL, ?, ?)').run(todo.id, todo.due.day, todo.updatedAt, JSON.stringify(todo));
+    db.prepare("INSERT INTO pings (id, kind, ref, sub, next_at, failures) VALUES ('p1', 'todo', ?, '', '2026-11-02T14:00:00.000Z', 0)").run(todo.id);
+    db.setMeta('kcal_target', '1800');
+  });
+  expect(db.meta('schema')).toBe('1');
+  db.close();
+}
+
+describe('v0.7: migration 2, posts (Life\'s first schema change)', () => {
+  it('is schema 2: a posts table with one index, posts_open; migration 1 is unchanged', () => {
+    expect(LIFE_SCHEMA_VERSION).toBe(2);
+    expect(LIFE_MIGRATIONS.map((m) => [m.version, m.name])).toEqual([
+      [1, 'life'],
+      [2, 'posts'],
+    ]);
+    expect(LIFE_MIGRATIONS[0]?.sql).not.toMatch(/posts/);
+    const db = openOk();
+    const cols = (db.raw.prepare('PRAGMA table_info(posts)').all() as { name: string }[]).map((c) => c.name);
+    expect(cols).toEqual(['id', 'status', 'due_day', 'posted_at', 'updated_at', 'json']);
+    const indexes = (db.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'posts' AND sql IS NOT NULL").all() as { name: string }[]).map((i) => i.name);
+    expect(indexes).toEqual(['posts_open']);
+  });
+
+  it('a 0.6.1 file opens, moves to schema 2 and keeps every row', () => {
+    schemaOneFile();
+    const db = openOk();
+    expect(db.meta('schema')).toBe('2');
+    expect(db.meta('kcal_target')).toBe('1800');
+    const todo = db.prepare('SELECT due_day, json FROM todos').all() as { due_day: string; json: string }[];
+    expect(todo).toHaveLength(1);
+    expect(todo[0]?.due_day).toBe('2026-11-02');
+    expect(JSON.parse(todo[0]?.json ?? '{}').title).toBe('Example todo');
+    expect(db.prepare('SELECT kind, ref, next_at FROM pings').all()).toEqual([{ kind: 'todo', ref: '01JFZ8X8Y3T0V5G9WQK2M4N6PR', next_at: '2026-11-02T14:00:00.000Z' }]);
+    expect((db.prepare('SELECT count(*) AS n FROM posts').get() as { n: number }).n).toBe(0);
+    // A post rings as kind 'post': the pings table takes it with no change.
+    db.prepare("INSERT INTO pings (id, kind, ref, sub, next_at, failures) VALUES ('p2', 'post', 'x', '', NULL, 0)").run();
+    expect(Object.values(db.raw.prepare('PRAGMA quick_check').get() as object)[0]).toBe('ok');
+    for (const f of readdirSync(dir)) expect(statSync(join(dir, f)).mode & 0o777, f).toBe(0o600);
+    db.close();
+    open.splice(open.indexOf(db), 1);
+    // Opened again: nothing migrates twice.
+    expect(openOk().meta('schema')).toBe('2');
+  });
+
+  it('a 0.6.1 file whose migration 2 fails is refused, and stays at schema 1 with its rows', () => {
+    schemaOneFile();
+    const raw = new DatabaseSync(file);
+    raw.exec('CREATE TABLE posts (x)');
+    raw.close();
+    const r = openLifeDb(file);
+    expect(r).toEqual({ ok: false, code: 'migration_failed', reason: LIFE_BROKEN_REASON });
+    const again = openCheckedDb(file, { migrations: LIFE_MIGRATIONS.slice(0, 1), brokenReason: LIFE_BROKEN_REASON });
+    if (!again.ok) throw new Error(`refused: ${again.code}`);
+    open.push(again.db);
+    expect(again.db.meta('schema')).toBe('1');
+    expect((again.db.prepare('SELECT count(*) AS n FROM todos').get() as { n: number }).n).toBe(1);
+    expect(again.db.meta('kcal_target')).toBe('1800');
+  });
+
+  it('a schema-3 file (from a later build) is refused untouched', () => {
+    const db = openOk();
+    db.setMeta('schema', '3');
+    db.close();
+    open.splice(open.indexOf(db), 1);
+    expectRefusedUntouched('newer_schema');
   });
 });
 
@@ -251,7 +330,7 @@ describe('createTestLifeCore (core/testing.ts)', () => {
     try {
       core.clock.set('2026-10-30T20:00:00.000Z');
       expect(core.today()).toBe('2026-10-31');
-      expect(core.db.meta('schema')).toBe('1');
+      expect(core.db.meta('schema')).toBe('2');
       expect(core.settings().medicines).toBe(true);
       expect(core.newId()).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
       core.scheduler.set('med', 'm1', '08:00', new Date('2026-10-31T02:30:00.000Z'));

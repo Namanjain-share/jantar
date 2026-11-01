@@ -1,6 +1,6 @@
 /**
  * jantar life (v0.4): the Mac-only side of Life (settings life.*; a phone can
- * never change them). Turn the five modules on or off, set the Life time
+ * never change them). Turn the six modules on or off, set the Life time
  * zone, the currency label and whether names reach the lock screen, back
  * life.db up and put a backup back.
  *
@@ -41,6 +41,7 @@ const MODULE_WORDS: Readonly<Record<LifeModule, string>> = {
   food: 'food, calories and weight',
   places: 'cafés',
   finance: 'money and bills',
+  posts: 'social posts and their reminders',
 };
 
 const ISO_4217 = /^[A-Z]{3}$/;

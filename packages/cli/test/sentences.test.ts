@@ -77,7 +77,7 @@ function lifeStatus(life: ReturnType<typeof fakeSettings>['settings']['life']): 
     today: '2026-01-15',
     currency: life.currency,
     lockScreenDetails: life.lockScreenDetails,
-    modules: { todos: life.todos, medicines: life.medicines, food: life.food, places: life.places, finance: life.finance },
+    modules: { todos: life.todos, medicines: life.medicines, food: life.food, places: life.places, finance: life.finance, posts: life.posts },
     estimate: { available: false },
     backups: { last: null, count: 0 },
     push: { devices: 1, webpush: true },

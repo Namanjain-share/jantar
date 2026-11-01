@@ -61,7 +61,7 @@ const STATUS: LifeStatus = {
   today: '2026-01-15',
   currency: null,
   lockScreenDetails: false,
-  modules: { todos: true, medicines: false, food: false, places: false, finance: false },
+  modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false },
   estimate: { available: false },
   backups: { last: null, count: 0 },
   push: { devices: 0, webpush: false },

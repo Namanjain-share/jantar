@@ -100,6 +100,17 @@ export const LIFE_MIGRATIONS: readonly LifeMigration[] = [
       CREATE INDEX pings_next ON pings (next_at) WHERE next_at IS NOT NULL;
     `,
   },
+  {
+    // v0.7: life.db's first schema change. A 0.6.1 daemon refuses a schema-2 file (newer_schema), so going
+    // back means restoring a backup taken before the upgrade (docs/upgrading.md). Pings need no change:
+    // `kind` has no CHECK, and a post rings as kind 'post'. Weekly goals live in meta('post_goals').
+    version: 2,
+    name: 'posts',
+    sql: `
+      CREATE TABLE posts (id TEXT PRIMARY KEY, status TEXT NOT NULL, due_day TEXT, posted_at TEXT, updated_at TEXT NOT NULL, json TEXT NOT NULL);
+      CREATE INDEX posts_open ON posts (status, due_day);
+    `,
+  },
 ];
 
 /** The schema this build writes and reads. A file with a newer one is refused, never downgraded. */

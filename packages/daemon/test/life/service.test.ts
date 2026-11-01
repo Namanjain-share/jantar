@@ -62,7 +62,7 @@ function settings(life: Partial<Settings['life']> = {}, more: Record<string, unk
   return SettingsSchema.parse({ life, ...more });
 }
 
-/** The real todos module, and stand-ins for the other four (`over` replaces any). */
+/** The real todos module, and stand-ins for the other five (`over` replaces any). */
 function builders(over: Partial<LifeModuleBuilders> = {}): LifeModuleBuilders {
   const stub = (name: string, extra: Record<string, unknown> = {}) => () =>
     notBuilt<LifeModule>(name, { name, today: () => ({}), start: undefined, stop: undefined, ...extra } as unknown as Partial<LifeModule>);
@@ -72,6 +72,7 @@ function builders(over: Partial<LifeModuleBuilders> = {}): LifeModuleBuilders {
     food: stub('food', { estimateStatus: () => ({ available: false, reason: 'Synthetic: no runner.' }) }),
     places: stub('places'),
     finance: stub('finance'),
+    posts: stub('posts'),
     ...over,
   } as LifeModuleBuilders;
 }
@@ -351,7 +352,7 @@ describe('status', () => {
       today: '2026-10-30',
       currency: 'INR',
       lockScreenDetails: true,
-      modules: { todos: true, medicines: false, food: false, places: false, finance: false },
+      modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false },
       estimate: { available: false },
       backups: expect.objectContaining({ count: expect.any(Number) }),
       push: { devices: 0, webpush: true },

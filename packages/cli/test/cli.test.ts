@@ -83,6 +83,21 @@ describe('jantar command line', () => {
     }
   });
 
+  it('registers v0.7 post right after life, with its help; a stub until its package lands', async () => {
+    const names = COMMANDS.map((c) => c.name);
+    expect(names.indexOf('post')).toBe(names.indexOf('life') + 1);
+    const cmd = COMMANDS.find((c) => c.name === 'post');
+    expect(cmd?.owner).toBe('WP-POSTS');
+    const help = memoryIo({ HOME: '/nonexistent/jantar-test-home' });
+    expect(await main(['post', '--help'], { io: help })).toBe(EXIT.ok);
+    expect(help.stdout).toContain('usage: jantar post <add --platform <p> [options]|list [--done] [--json]>');
+    expect(help.stdout).toContain('reddit, instagram, x, linkedin, youtube, tiktok, threads, facebook, hn, other');
+    if (!cmd?.stub) return;
+    const run = memoryIo({ HOME: '/nonexistent/jantar-test-home' });
+    expect(await main(['post', 'list'], { io: run })).toBe(EXIT.usage);
+    expect(run.stderr).toBe('Not built yet.\n');
+  });
+
   it('rejects unknown commands with usage', async () => {
     const io = memoryIo();
     expect(await main(['frobnicate'], { io })).toBe(EXIT.usage);

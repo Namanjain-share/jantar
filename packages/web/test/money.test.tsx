@@ -31,7 +31,7 @@ function status(over: Partial<LifeStatus> = {}): LifeStatus {
     today: DAY,
     currency: 'INR',
     lockScreenDetails: false,
-    modules: { todos: false, medicines: false, food: false, places: false, finance: true },
+    modules: { todos: false, medicines: false, food: false, places: false, finance: true, posts: false },
     estimate: { available: false },
     backups: { last: null, count: 0 },
     push: { devices: 1, webpush: true },

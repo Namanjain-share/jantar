@@ -87,10 +87,10 @@ export function nextSteps(a: Pick<InitAnswers, 'launchOn'>, multi = false): stri
   if (a.launchOn) lines.push('  jantar devices grant <device> launch   let that phone start sessions');
   lines.push(
     'When you want them:',
-    '  jantar life on todos medicines food places finance   (any of them)',
-    '  jantar life set currency <code>                       e.g. INR, EUR, USD',
-    '  jantar intel source add <file.jsonl>                  then: jantar intel on',
+    '  jantar life on todos medicines food places finance posts   (any of them)',
+    '  jantar life set currency <code>                             e.g. INR, EUR, USD',
+    '  jantar intel source add <file.jsonl>                        then: jantar intel on',
   );
-  if (multi) lines.push('  jantar accounts prime on                              start idle 5-hour windows early (kept and held accounts left out)');
+  if (multi) lines.push('  jantar accounts prime on                                    start idle 5-hour windows early (kept and held accounts left out)');
   return `${lines.join('\n')}\n`;
 }

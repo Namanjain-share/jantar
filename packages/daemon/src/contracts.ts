@@ -57,6 +57,11 @@ import type {
   PlacePatch,
   PlacesQuery,
   PlacesResponse,
+  PostBody,
+  PostGoalsBody,
+  PostPatch,
+  PostsQuery,
+  PostsResponse,
   ProjectBody,
   ProjectPatch,
   ProjectsResponse,
@@ -1395,13 +1400,14 @@ export interface UploadStore {
 // ===========================================================================
 // v0.4: Life and the Intel shelf
 //
-// One daemon part, `life`, with five modules in their own folders
-// (life/{todos,medicines,food,places,finance}/), one database (life.db, its
-// own migrations, refused when corrupt rather than reset) and one scheduler
-// that sends every Life push. Nothing here logs or emits Life text: the only
-// event is `life.changed {}`, and audit rows carry route names and ids.
+// One daemon part, `life`, with six modules in their own folders
+// (life/{todos,medicines,food,places,finance,posts}/; posts since v0.7), one
+// database (life.db, its own migrations, refused when corrupt rather than
+// reset) and one scheduler that sends every Life push. Nothing here logs or
+// emits Life text: the only event is `life.changed {}`, and audit rows carry
+// route names and ids.
 
-export type LifeModuleName = 'todos' | 'medicines' | 'food' | 'places' | 'finance';
+export type LifeModuleName = 'todos' | 'medicines' | 'food' | 'places' | 'finance' | 'posts';
 
 /**
  * Why a Life, Intel or Meetings call said no. The route turns it into the API
@@ -1438,20 +1444,21 @@ export interface LifeDb {
   prepare(sql: string): StatementSync;
   /** Run `fn` in one transaction (BEGIN IMMEDIATE, COMMIT, ROLLBACK on a throw); a nested call joins the outer one. */
   tx<T>(fn: () => T): T;
-  /** The `meta` table: schema, kcal_target, goal_kg10. */
+  /** The `meta` table: schema, kcal_target, goal_kg10, post_goals (v0.7). */
   meta(key: string): string | undefined;
   setMeta(key: string, value: string): void;
   deleteMeta(key: string): void;
   close(): void;
 }
 
-export type PingKind = 'todo' | 'med' | 'refill' | 'bill';
+/** v0.7: `post`, a post with a day and a time (one row per open timed post, `sub` ''). */
+export type PingKind = 'todo' | 'med' | 'refill' | 'bill' | 'post';
 
 /** One row of the `pings` table: what the scheduler sends next for one source. */
 export interface PingRow {
   id: string;
   kind: PingKind;
-  /** The source's id (a todo, a medicine, a bill). */
+  /** The source's id (a todo, a medicine, a bill, a post). */
   ref: string;
   /** A medicine's dose time ("08:00"); '' for the rest. */
   sub: string;
@@ -1462,14 +1469,14 @@ export interface PingRow {
   lastSentAt: string | null;
 }
 
-/** What one Life push says. `kind` is the NotifyKind: med (medicines, refills) or life (todos, bills). */
+/** What one Life push says. `kind` is the NotifyKind: med (medicines, refills) or life (todos, bills, posts). */
 export interface LifePush {
   kind: 'med' | 'life';
   title: string;
   body: string;
-  /** A same-origin app path with ids only: /today?dose=<medId>@<HHMM>, /meds?med=, /todos?id=, /money?bill=. */
+  /** A same-origin app path with ids only: /today?dose=<medId>@<HHMM>, /meds?med=, /todos?id=, /money?bill=, /posts?id=, /posts. */
   url: string;
-  /** life:<kind>:<ref>, or med:<HH:MM> for a group: a repeat replaces the notification. */
+  /** life:<kind>:<ref>, or med:<HH:MM> (posts:<HH:MM>) for a group: a repeat replaces the notification. */
   tag: string;
 }
 
@@ -1610,6 +1617,26 @@ export interface PlacesModule extends LifeModule {
   remove(id: string, actor: Actor): LifeResult;
 }
 
+/**
+ * Posts (v0.7): plans for what the user posts on social media by hand.
+ * Jantar never posts, never fetches a link and calls no network. A post with
+ * a day and a time rings like a todo (PingKind 'post'); the module owns
+ * postedAt (stamped into posted, cleared out of it). Logs, events and audit
+ * rows carry ids only: no text, title, notes, where or link.
+ */
+export interface PostsModule extends LifeModule {
+  readonly name: 'posts';
+  /** Open (idea and ready) by due, or the newest posted and skipped (`done`), with this week against the goals. */
+  list(q: PostsQuery): LifeResult<PostsResponse>;
+  /** An idea or ready post; past LIFE_LIMITS.openPosts it is conflict. */
+  create(body: PostBody, actor: Actor): LifeResult<{ id: string }>;
+  /** Any status to any other; a posted link only while posted (else invalid_request). */
+  update(id: string, patch: PostPatch, actor: Actor): LifeResult;
+  remove(id: string, actor: Actor): LifeResult;
+  /** Replaces the weekly goals (meta 'post_goals'; [] removes the key). */
+  setGoals(body: PostGoalsBody, actor: Actor): LifeResult;
+}
+
 /** Finance and bills (WP-FF). */
 export interface FinanceModule extends LifeModule {
   readonly name: 'finance';
@@ -1646,6 +1673,8 @@ export interface LifeService extends Service {
   readonly food: FoodModule;
   readonly places: PlacesModule;
   readonly finance: FinanceModule;
+  /** v0.7. */
+  readonly posts: PostsModule;
   /** VACUUM INTO <backupsDir>/life-YYYY-MM-DD.db (0600). Refused while broken or closed: there is nothing open to copy. */
   backup(): Promise<LifeResult<{ file: string; at: string }>>;
   /** Put a backup (a `life-*.db` name inside backupsDir) back; the current file is kept beside it. Allowed while broken. */
@@ -1661,6 +1690,7 @@ export interface LifeModuleBuilders {
   food: LifeModuleBuilder<FoodModule>;
   places: LifeModuleBuilder<PlacesModule>;
   finance: LifeModuleBuilder<FinanceModule>;
+  posts: LifeModuleBuilder<PostsModule>;
 }
 
 /**

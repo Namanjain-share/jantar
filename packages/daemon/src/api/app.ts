@@ -175,6 +175,8 @@ export const FEATURE_OFF: Readonly<Record<FeatureSwitch, { code: ErrorCode; mess
   food: { code: 'forbidden', message: 'Food is off. Turn it on at your Mac: jantar life on food' },
   places: { code: 'forbidden', message: 'Cafés are off. Turn them on at your Mac: jantar life on places' },
   finance: { code: 'forbidden', message: 'Finance is off. Turn it on at your Mac: jantar life on finance' },
+  // v0.7
+  posts: { code: 'forbidden', message: 'Posts are off. Turn them on at your Mac: jantar life on posts' },
   intel: { code: 'forbidden', message: 'The Intel shelf is off. Turn it on at your Mac: jantar intel on' },
   // v0.5
   meetings: { code: 'forbidden', message: 'Meetings are off. Turn them on at your Mac: jantar meetings on' },
@@ -185,7 +187,7 @@ export const FEATURE_OFF: Readonly<Record<FeatureSwitch, { code: ErrorCode; mess
 };
 
 /** The switches of Life's routes: while life.db is broken they answer 503 (lifeStatus, lifeBackup and lifeRestore have none). */
-export const LIFE_FEATURES: ReadonlySet<FeatureSwitch> = new Set<FeatureSwitch>(['life', 'todos', 'medicines', 'food', 'places', 'finance']);
+export const LIFE_FEATURES: ReadonlySet<FeatureSwitch> = new Set<FeatureSwitch>(['life', 'todos', 'medicines', 'food', 'places', 'finance', 'posts']);
 
 /**
  * What a `localOnly` route answers over TCP, an admin device included (v0.3,
@@ -242,7 +244,7 @@ export const SHOT_UPLOAD_LOG = 'meetings: screenshot upload';
 /**
  * Whether a route's switch is on (routes without one are always on). Read
  * from settings, never from state: v0.4's `life` is any module on, a module
- * name reads `life.<module>`, `intel` reads `intel.enabled`.
+ * name (v0.7's `posts` too) reads `life.<module>`, `intel` reads `intel.enabled`.
  */
 export function featureOn(def: Pick<RouteDef, 'feature'>, settings: Settings): boolean {
   const f = def.feature;
@@ -256,6 +258,7 @@ export function featureOn(def: Pick<RouteDef, 'feature'>, settings: Settings): b
     case 'food':
     case 'places':
     case 'finance':
+    case 'posts':
       return settings.life[f];
     case 'intel':
       return settings.intel.enabled;

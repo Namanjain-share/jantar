@@ -4,8 +4,8 @@
  * by the scheduler (scheduler.ts).
  *
  * A row is (kind, ref, sub), unique: a todo, a medicine's dose time ("08:00"
- * in `sub`), a medicine's refill, a bill. `next_at` is the next time it
- * rings (null: parked until its producer sets it again), `claimed_at` the
+ * in `sub`), a medicine's refill, a bill, a post (v0.7). `next_at` is the
+ * next time it rings (null: parked until its producer sets it again), `claimed_at` the
  * claim of the sweep sending it. Every statement reads the database through
  * `db()` on each call, so a restore that swaps the handle is picked up.
  *
@@ -35,6 +35,7 @@ export const KIND_MODULE = {
   med: 'medicines',
   refill: 'medicines',
   bill: 'finance',
+  post: 'posts',
 } as const satisfies Record<PingKind, string>;
 
 export const PING_KINDS = Object.keys(KIND_MODULE) as PingKind[];

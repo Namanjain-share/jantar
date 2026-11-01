@@ -163,6 +163,12 @@ export const LIFE_LIMITS = Object.freeze({
   places: 1_000,
   moneyPerMonth: 2_000,
   bills: 100,
+  /**
+   * v0.7: posts still to make (idea and ready). The open list carries every
+   * open post's text and the phone reloads it on every lifeTick, so this
+   * keeps its worst case near todos'. Posted and skipped ones are history.
+   */
+  openPosts: 200,
 });
 /** The daily calorie target until one is set on the phone. */
 export const KCAL_TARGET_DEFAULT = 1500;
@@ -170,6 +176,18 @@ export const KCAL_TARGET_DEFAULT = 1500;
 export const LIFE_PUSH_DEADLINE_MS = 30_000;
 /** A late medicine ping is skipped when that medicine's next time is closer than this. */
 export const MED_CATCH_UP_GAP_MS = 3 * 60 * 60_000;
+/**
+ * v0.7 Posts: a post's text or caption, title (Reddit's cap) and where
+ * (a subreddit, an account or a handle); its link and posted link; the
+ * weekly goals; one page of posted and skipped posts.
+ */
+export const POST_TEXT_MAX = 20_000;
+export const POST_TITLE_MAX = 300;
+export const POST_WHERE_MAX = 80;
+export const POST_LINK_MAX = 2_000;
+export const POST_GOALS_MAX = 10;
+export const POST_PER_WEEK_MAX = 50;
+export const POSTS_DONE_PAGE = 100;
 /** What Ask Claude may be given to estimate ("2 rotis and dal"). */
 export const FOOD_ESTIMATE_TEXT_MAX = 500;
 /**

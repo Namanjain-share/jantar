@@ -68,6 +68,7 @@ function builders(over: Partial<LifeModuleBuilders> = {}): LifeModuleBuilders {
     food: stub('food'),
     places: stub('places'),
     finance: stub('finance'),
+    posts: stub('posts'),
     ...over,
   } as unknown as LifeModuleBuilders;
 }

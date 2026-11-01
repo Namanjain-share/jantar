@@ -41,7 +41,7 @@ const STATUS: LifeStatus = {
   today: TODAY,
   currency: 'INR',
   lockScreenDetails: false,
-  modules: { todos: true, medicines: true, food: true, places: false, finance: true },
+  modules: { todos: true, medicines: true, food: true, places: false, finance: true, posts: false },
   estimate: { available: true },
   backups: { last: null, count: 0 },
   push: { devices: 1, webpush: true },
