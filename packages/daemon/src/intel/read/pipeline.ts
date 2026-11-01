@@ -787,15 +787,14 @@ function readOf(r: Run, state: 'saved' | 'failed', reason?: string): Record<stri
  * summary, tags and thumbnails), with what this read found over it.
  */
 function failed(r: Run, reason: string, frames = baseFrames(r)): CaptureLine {
-  const { read: before, ...keep } = r.job.base;
+  const { read: _queued, ...keep } = r.job.base;
   const found = common(r, frames);
   const line: CaptureLine = { ...keep, id: r.job.rid };
   for (const [k, v] of Object.entries(found)) {
     if (k === 'title' || k === 'tags' || v === undefined) continue;
     line[k] = v;
   }
-  const wasSaved = (before as { state?: unknown } | undefined)?.state === 'saved';
-  if (!wasSaved && r.fields.title && r.kind.platform !== 'note') line.title = r.fields.title.slice(0, 300);
+  if (!r.job.keepTitle && r.fields.title && r.kind.platform !== 'note') line.title = r.fields.title.slice(0, 300);
   line.read = readOf(r, 'failed', reason);
   return line;
 }

@@ -11,7 +11,8 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:https';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createServer, type Server } from 'node:https';
 import type { AddressInfo, LookupFunction } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

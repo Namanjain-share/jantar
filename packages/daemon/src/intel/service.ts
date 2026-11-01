@@ -269,7 +269,9 @@ export class IntelShelfService implements IntelService {
     const base = recordOf(rid, item, this.ctx.clock.iso());
     const note = item.note ?? (!item.read && item.summary ? item.summary : null);
     const queued: CaptureLine = { ...base, ...(note ? { note } : {}), depth: d, read: { state: 'queued', depth: d } };
-    this.queue.push({ rid, link, kind, depth: d, title: item.title, note, base: queued, userTags: item.read ? [] : item.tags });
+    // A saved item, or a plain capture the user titled (0.7's: no platform), keeps its title when this read fails.
+    const keepTitle = item.read?.state === 'saved' || (!item.read && item.platform === undefined);
+    this.queue.push({ rid, link, kind, depth: d, title: item.title, note, base: queued, userTags: item.read ? [] : item.tags, keepTitle });
     // Written through the store's lock, so it lands before the job's own last line.
     void this.store
       .append([queued])

@@ -68,7 +68,8 @@ function fromMeta(f: PageFields, meta: { k: string; v: string }[]): PageFields {
   const handle = f.handle ?? desc.handle ?? handleOfUrl(metaOf(meta, 'og:url'));
   if (handle) f.handle = handle.startsWith('@') ? handle : `@${handle}`;
   if (!f.postedAt && desc.date) {
-    const at = isoOf(desc.date);
+    // "October 30, 2026" has no zone: noon UTC keeps the day the same everywhere.
+    const at = isoOf(`${desc.date} 12:00 UTC`);
     if (at) f.postedAt = at;
   }
   if (!f.cover) f.cover = onCdn(httpsUrl(metaOf(meta, 'og:image')));

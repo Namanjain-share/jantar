@@ -374,19 +374,23 @@ export function jsonAfter(text: string, marker: string, max: number = INTEL_READ
   return parseJson(cutJson(text, i, max));
 }
 
-/** The ld+json objects of a page, @graph entries flattened (at most 40). */
+/** The ld+json objects of a page, @graph entries flattened (at most 40, never deeper than 4 levels). */
 export function ldObjects(blocks: readonly string[]): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
-  const push = (v: unknown) => {
-    if (out.length >= 40) return;
-    if (Array.isArray(v)) for (const x of v) push(x);
-    else if (v && typeof v === 'object') {
+  const push = (v: unknown, depth: number) => {
+    if (out.length >= 40 || depth > 4) return;
+    if (Array.isArray(v)) {
+      for (const x of v) {
+        if (out.length >= 40) return;
+        push(x, depth + 1);
+      }
+    } else if (v && typeof v === 'object') {
       const o = v as Record<string, unknown>;
       out.push(o);
-      if (Array.isArray(o['@graph'])) push(o['@graph']);
+      if (Array.isArray(o['@graph'])) push(o['@graph'], depth + 1);
     }
   };
-  for (const b of blocks) push(parseJson(b));
+  for (const b of blocks) push(parseJson(b), 0);
   return out;
 }
 

@@ -91,7 +91,9 @@ export function isoOf(v: unknown): string | undefined {
     return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
   }
   if (typeof v !== 'string' || v.length > 100) return undefined;
-  const d = new Date(v.trim());
+  const t = v.trim();
+  // A date with no time is that day everywhere: noon UTC, never the Mac's own midnight.
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(t) ? `${t}T12:00:00Z` : t);
   if (Number.isNaN(d.getTime())) return undefined;
   const y = d.getUTCFullYear();
   return y < 1990 || y > 2100 ? undefined : d.toISOString();

@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readPage } from '@jantar/protocol/page-read';
 import { createFakeExec, createTestContext, onCommand, type ExecCall } from '../../src/core/testing.js';
 import { HELPER_PROFILE, MediaHelper, checkMagic, insideJob, speechMs } from '../../src/intel/read/media.js';
-import { BrowserTier, CONTEXT_OPTIONS, SYSTEM_CHROME, browserEnv, launchOptions, type PwModule } from '../../src/intel/read/tiers/browser.js';
+import { BrowserTier, CONTEXT_OPTIONS, SYSTEM_CHROME, browserEnv, launchOptions, type PwModule, type PwPage } from '../../src/intel/read/tiers/browser.js';
 import { AUDIO_FORMAT, VIDEO_FORMAT, YtDlp, json3Lines, stamp, ytdlpArgv } from '../../src/intel/read/ytdlp.js';
 import { TINY_JPEG } from './read-helpers.js';
 
@@ -55,10 +55,10 @@ describe('G7: the headless browser tier', () => {
                     return null;
                   },
                   waitForTimeout: async () => {},
-                  evaluate: async (fn: unknown, arg: unknown) => {
+                  evaluate: (async (fn: unknown, arg: unknown) => {
                     calls.evaluated = { fn, arg };
                     return { finalUrl: 'https://www.example.test/a', meta: [], jsonld: [], text: 'hello', media: [], frames: [] };
-                  },
+                  }) as PwPage['evaluate'],
                 }),
               };
             },

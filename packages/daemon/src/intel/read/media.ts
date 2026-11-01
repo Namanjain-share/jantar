@@ -23,7 +23,7 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, lstat, mkdtemp, open, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
-import { join, sep } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 import { z } from 'zod';
 import { INTEL_READ_LIMITS } from '@jantar/protocol';
 import type { DaemonContext } from '../../contracts.js';
@@ -89,6 +89,18 @@ export async function insideJob(jobDir: string, file: string): Promise<string | 
     if (!real.startsWith(`${realJob}${sep}`)) return null;
     const st = await lstat(file);
     return st.isFile() && !st.isSymbolicLink() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
+/** An output path for the helper: its folder's real path inside the job dir (the name is the daemon's), else null. */
+export async function outputIn(jobDir: string, output: string): Promise<string | null> {
+  try {
+    const job = await realpath(jobDir);
+    const dir = await realpath(dirname(output));
+    if (dir !== job && !dir.startsWith(`${job}${sep}`)) return null;
+    return join(dir, basename(output));
   } catch {
     return null;
   }
@@ -306,9 +318,9 @@ export class MediaHelper {
   async image(jobDir: string, input: string, output: string, edge: number, signal?: AbortSignal): Promise<HelperRun<{ w: number; h: number }>> {
     const [f] = (await this.inputs(jobDir, [input])) ?? [];
     if (!f || (await checkMagic(f, 'image')) !== 'ok') return { ok: false, why: 'failed' };
-    const job = await realpath(jobDir);
-    if (!output.startsWith(`${job}${sep}`)) return { ok: false, why: 'failed' };
-    return this.run(jobDir, 'image', [f, output, String(edge)], ImageSchema, HELPER_MS.image, signal);
+    const out = await outputIn(jobDir, output);
+    if (!out) return { ok: false, why: 'failed' };
+    return this.run(jobDir, 'image', [f, out, String(edge)], ImageSchema, HELPER_MS.image, signal);
   }
 
   /** On-screen text of each image (≤ 20), in order. */
@@ -334,7 +346,9 @@ export class MediaHelper {
   async pdf(jobDir: string, file: string, out: string, edge: number, signal?: AbortSignal): Promise<HelperRun<z.infer<typeof PdfSchema>>> {
     const [f] = (await this.inputs(jobDir, [file])) ?? [];
     if (!f || (await checkMagic(f, 'pdf')) !== 'ok') return { ok: false, why: 'failed' };
-    return this.run(jobDir, 'pdf', [f, out, String(edge), '30', String(INTEL_READ_LIMITS.pageTextMax)], PdfSchema, HELPER_MS.pdf, signal);
+    const o = await outputIn(jobDir, out);
+    if (!o) return { ok: false, why: 'failed' };
+    return this.run(jobDir, 'pdf', [f, o, String(edge), '30', String(INTEL_READ_LIMITS.pageTextMax)], PdfSchema, HELPER_MS.pdf, signal);
   }
 
   /** On-device speech locales (status). */

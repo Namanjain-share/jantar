@@ -212,16 +212,18 @@ export class CapturesStore {
   }
 
   /**
-   * Append records (each an object with its `id`). `fresh`: a new item, refused
-   * past the 50 MB cap after a compaction. Compacts afterwards when the dead
-   * lines are more than half of a file over 1 MB.
+   * Append records (each an object with its `id`). Over the 50 MB cap the
+   * file is compacted first; `fresh` (a new item) is then refused if it is
+   * still over. Compacts afterwards when the dead lines are more than half
+   * of a file over 1 MB.
    */
   append(records: readonly CaptureLine[], opts: { fresh?: boolean } = {}): Promise<AppendResult> {
     return this.locked(async () => {
       await this.sync();
-      if (opts.fresh && this.size > INTEL_SOURCE_MAX_BYTES) {
+      // Over the cap: compact first (a Retry's lines too), then refuse a new item if it is still over.
+      if (this.size > INTEL_SOURCE_MAX_BYTES) {
         if (this.deadLines() > 0) await this.compactNow();
-        if (this.size > INTEL_SOURCE_MAX_BYTES) return 'full';
+        if (opts.fresh && this.size > INTEL_SOURCE_MAX_BYTES) return 'full';
       }
       await this.write(records);
       if (this.size > INTEL_READ_LIMITS.compactMinBytes && this.deadLines() > this.lines * INTEL_READ_LIMITS.compactDeadShare) await this.compactNow();

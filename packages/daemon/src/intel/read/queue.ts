@@ -36,6 +36,8 @@ export interface JobSpec {
   base: CaptureLine;
   /** The user's own tags (a plain capture's), kept before Claude's. */
   userTags: string[];
+  /** Read again of a saved item, or of a plain capture the user titled: a failed read keeps its title. */
+  keepTitle?: boolean;
 }
 
 export type AbortWhy = 'stopped' | 'tooLong' | 'deleted';
