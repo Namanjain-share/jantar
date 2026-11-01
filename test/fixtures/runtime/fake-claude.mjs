@@ -81,6 +81,25 @@
 //   ask-refuse-option  "error: unknown option '--permission-prompts'" while that flag
 //                      is in argv (claude's own words), else ask-ok
 // plus slow, auth-error and empty as above. It is logged like every run.
+// Read mode (v0.8 Intel reads links): when --system-prompt-file ends in
+// read-v1.md it reads stream-json stdin (one user message with text blocks
+// and base64 image blocks), the daemon's tags with their escapes undone,
+// and answers with READ_MODES, picked the same way (default read-ok):
+//   read-ok             {title, summary, tags, points, why, background}: the title is
+//                       the first eight words of <caption> (else <page_text>, else
+//                       <user_note>, else "A saved link"), the summary says how many
+//                       pictures it was shown and quotes the caption's first 200
+//                       characters (so a marker there reaches the saved item)
+//   read-fence          the read-ok JSON inside a ```json code fence
+//   read-bad-json       JSON cut short, and the caption on stderr
+//   read-no-title       a summary and no title
+//   read-hostile        a title with a link and a bidi override, a summary with a
+//                       Markdown link, tags with a line break and repeats, 9 points,
+//                       a creator not in the input, an unknown key
+//   read-refuse-input   "error: unknown option '--input-format'" while that flag is in
+//                       argv (claude's own words), else read-ok on the text stdin
+//   read-init-tools     read-ok, but the init line lists tools and an MCP server
+// plus slow, auth-error and empty as above. It is logged like every run.
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -133,6 +152,9 @@ export const ASK_MODES = [
   'auth-error',
   'empty',
 ];
+
+/** v0.8: Intel's read modes (the read mode, see the file comment). */
+export const READ_MODES = ['read-ok', 'read-fence', 'read-bad-json', 'read-no-title', 'read-hostile', 'read-refuse-input', 'read-init-tools', 'slow', 'auth-error', 'empty'];
 
 const VERSION = '2.1.300';
 /** Long enough to pass rewrite.timeoutS (120 s); tests cut it short with their own timeout. */
@@ -435,6 +457,69 @@ function askResultFor(mode, stdin) {
   }
 }
 
+/** v0.8: the image blocks in stream-json stdin. */
+export function streamJsonImages(stdin) {
+  let n = 0;
+  for (const line of stdin.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const c = JSON.parse(line)?.message?.content;
+      if (Array.isArray(c)) for (const b of c) if (b?.type === 'image' && b?.source?.type === 'base64') n += 1;
+    } catch {
+      // not JSON
+    }
+  }
+  return n;
+}
+
+/** v0.8: the last <tag> block's text in the read's input, the daemon's tag escapes undone; '' when absent. */
+export function readTag(input, tag) {
+  const re = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, 'g');
+  let last = '';
+  for (const m of input.matchAll(re)) last = m[1];
+  return last.replace(/<\\(\/?)/g, '<$1').trim();
+}
+
+/** v0.8: Intel's read answer for a mode. */
+function readResultFor(mode, input, images) {
+  if (mode === 'auth-error' || mode === 'empty') return resultFor(mode, '');
+  const source = readTag(input, 'caption') || readTag(input, 'page_text') || readTag(input, 'user_note');
+  const words = source.split(/\s+/).filter(Boolean);
+  const answer = {
+    title: words.length ? words.slice(0, 8).join(' ') : 'A saved link',
+    summary: `Shown ${images} picture${images === 1 ? '' : 's'}. ${source.slice(0, 200) || 'Nothing was said about it.'}`,
+    tags: ['saved', 'synthetic'],
+    points: ['A first synthetic point', 'A second synthetic point'],
+    why: 'A synthetic reason it matters.',
+    background: 'Synthetic background knowledge, from Claude.',
+  };
+  const json = JSON.stringify(answer);
+  switch (mode) {
+    case 'read-fence':
+      return { result: `\`\`\`json\n${json}\n\`\`\`` };
+    case 'read-bad-json':
+      return { result: json.slice(0, -5), stderr: `fake claude: read cut short after: ${source}\n` };
+    case 'read-no-title': {
+      const { title: _t, ...rest } = answer;
+      return { result: JSON.stringify(rest) };
+    }
+    case 'read-hostile':
+      return {
+        result: JSON.stringify({
+          title: 'Open https://evil.example/now \u202Egnp.exe',
+          summary: 'See [this](https://evil.example/x) and <script>alert(1)</script>. \u0007',
+          tags: ['line\nbreak', 'Dup', 'dup', 'ok'],
+          points: Array.from({ length: 9 }, (_, i) => `Point ${i + 1}`),
+          creator: 'Someone Not In The Input',
+          background: 'b'.repeat(900),
+          extra: 'dropped',
+        }),
+      };
+    default:
+      return { result: json };
+  }
+}
+
 function resultFor(mode, text) {
   const clean = cleanText(text);
   switch (mode) {
@@ -515,13 +600,16 @@ export async function runClaude({ root, args, stdin, account = null, via = 'clau
   const food = promptFile !== undefined && promptFile.endsWith('estimate-v1.md');
   const meeting = promptFile !== undefined && promptFile.endsWith('summary-v1.md');
   const ask = promptFile !== undefined && /assistant-v\d+\.md$/.test(promptFile);
+  const read = promptFile !== undefined && promptFile.endsWith('read-v1.md');
   const [modes, fallbackMode] = food
     ? [FOOD_MODES, 'food-ok']
     : meeting
       ? [MEETING_MODES, 'meeting-ok']
       : ask
         ? [ASK_MODES, 'ask-ok']
-        : [MODES, 'clean'];
+        : read
+          ? [READ_MODES, 'read-ok']
+          : [MODES, 'clean'];
   const picked = pickMode(config, args, stdin, account, modes, fallbackMode);
   const delayMs = picked.rule?.delayMs ?? config.delayMs ?? 0;
   if (picked.rule && picked.rule.mode === undefined) {
@@ -536,12 +624,24 @@ export async function runClaude({ root, args, stdin, account = null, via = 'clau
     process.stderr.write("error: unknown option '--permission-prompts'\n");
     return 1;
   }
+  if (mode === 'read-refuse-input' && args.includes('--input-format')) {
+    process.stderr.write("error: unknown option '--input-format'\n");
+    return 1;
+  }
   if (delayMs) await sleep(delayMs);
   if (mode === 'slow') await sleep(Number(process.env.FAKE_CLAUDE_SLOW_MS) || config.slowMs || DEFAULT_SLOW_MS);
 
   const input = optionValue(args, '--input-format') === 'stream-json' ? streamJsonText(stdin) : stdin;
   const text = dictatedText(input);
-  const out = food ? foodResultFor(mode, mealText(input)) : meeting ? meetingResultFor(mode, input) : ask ? askResultFor(mode, input) : resultFor(mode, text);
+  const out = food
+    ? foodResultFor(mode, mealText(input))
+    : meeting
+      ? meetingResultFor(mode, input)
+      : ask
+        ? askResultFor(mode, input)
+        : read
+          ? readResultFor(mode === 'read-refuse-input' || mode === 'read-init-tools' ? 'read-ok' : mode, input, streamJsonImages(stdin))
+          : resultFor(mode, text);
   if (out.stderr) process.stderr.write(out.stderr);
   const modelName = model ?? 'default';
   const sessionId = optionValue(args, '--session-id') ?? randomUUID();
@@ -571,7 +671,9 @@ export async function runClaude({ root, args, stdin, account = null, via = 'clau
     uuid: randomUUID(),
   };
   const messages = [
-    { type: 'system', subtype: 'init', session_id: sessionId, model: modelName, tools: [], mcp_servers: [], cwd: process.cwd() },
+    mode === 'read-init-tools'
+      ? { type: 'system', subtype: 'init', session_id: sessionId, model: modelName, tools: ['Bash', 'Read', 'WebFetch'], mcp_servers: [{ name: 'synthetic', status: 'connected' }], cwd: process.cwd() }
+      : { type: 'system', subtype: 'init', session_id: sessionId, model: modelName, tools: [], mcp_servers: [], cwd: process.cwd() },
     ...(mode === 'rate-limit'
       ? [{ type: 'system', subtype: 'api_retry', attempt: 1, max_retries: 10, retry_delay_ms: 500, error_status: 429, error: 'rate_limit', session_id: sessionId }]
       : []),

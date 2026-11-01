@@ -14,6 +14,10 @@
  *   const dom = new JSDOM(page.html, { url: page.url });
  */
 
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 /** The signed-in user's name, as the page shows it outside the post. Never in a read. */
 export const SIGNED_IN_MARKER = 'SYNTHETIC-SIGNED-IN-USER-9271';
 /** Put in captions, links and transcripts that must never reach logs, audit, events or error sentences. */
@@ -175,3 +179,18 @@ export const POST_PAGES: Readonly<Record<PostPageName, PostPage>> = Object.freez
     html: head('Page not found • Instagram') + "<body><main><div><h2>Sorry, this page isn't available.</h2></div></main></body></html>",
   },
 });
+
+/**
+ * v0.8: a fake `yt-dlp` (runtime/fake-bin.mjs `builtinYtDlp`) written as
+ * `<dir>/yt-dlp` for the fake home at `root`; calls go to
+ * <root>/calls/yt-dlp.jsonl and <root>/fake/yt-dlp.json answers first. Put
+ * it in `<home>/.local/bin`, where Jantar looks first. Returns its path.
+ */
+export async function writeFakeYtDlp(root: string, dir: string): Promise<string> {
+  const runtime = fileURLToPath(new URL('../runtime/fake-bin.mjs', import.meta.url));
+  await mkdir(dir, { recursive: true });
+  const path = join(dir, 'yt-dlp');
+  await writeFile(path, `#!${process.execPath}\nimport { run } from ${JSON.stringify(runtime)};\nawait run({ name: 'yt-dlp', root: ${JSON.stringify(root)} });\n`, { mode: 0o755 });
+  await chmod(path, 0o755);
+  return path;
+}

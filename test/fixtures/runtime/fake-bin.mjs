@@ -308,7 +308,73 @@ function builtinSips(root, args) {
   return { stdout: `${abs}\n  ${resolve(target)}\n` };
 }
 
-const BUILTINS = { cswap: builtinCswap, ps: builtinPs, lsof: builtinLsof, screencapture: builtinScreencapture, sips: builtinSips };
+/** v0.8: what Jantar must never pass yt-dlp (spec 3.6). */
+const YTDLP_FORBIDDEN = ['--cookies', '--cookies-from-browser', '--exec', '--remote-components', '--js-runtimes', '--impersonate', '--ffmpeg-location', '-x', '--extract-audio', '--remux-video', '--recode-video', '--embed-subs', '--embed-thumbnail', '--embed-metadata'];
+
+/** A tiny file with an mp4's `ftyp` box (synthetic, unplayable): enough for a magic-byte check. */
+function ftypFile(brand) {
+  const box = Buffer.alloc(32);
+  box.writeUInt32BE(32, 0);
+  box.write('ftyp', 4, 'latin1');
+  box.write(brand, 8, 'latin1');
+  box.write('isomiso2mp41', 16, 'latin1');
+  return box;
+}
+
+/**
+ * v0.8 Intel: yt-dlp, single-file only (spec 3.6). Refuses (exit 2, saying
+ * which) any forbidden option, a `+` merge in a format, or the generic
+ * extractor; then:
+ *   --version                               2026.10.01
+ *   --skip-download -J                       synthetic metadata JSON (title, uploader,
+ *                                            duration 42, language en, subtitles en)
+ *   --skip-download --write-subs ...         <-P dir>/media.en.json3 with two captions
+ *   -f b[ext=mp4]...                         <-P dir>/media.mp4 (an ftyp header), its
+ *                                            path printed (--print after_move:filepath)
+ *   -f ba[ext=m4a]...                        <-P dir>/media.m4a, the same
+ * <root>/fake/yt-dlp.json rules answer first, as for every fake binary.
+ */
+function builtinYtDlp(root, args) {
+  if (args.includes('--version')) return { stdout: '2026.10.01\n' };
+  for (const a of args) {
+    const flag = a.split('=')[0];
+    if (YTDLP_FORBIDDEN.includes(flag) || (flag.startsWith('--cookies') && flag !== '--no-cookies' && flag !== '--no-cookies-from-browser')) return { code: 2, stderr: `fake yt-dlp: forbidden option ${flag}\n` };
+  }
+  const value = (name) => {
+    const i = args.indexOf(name);
+    return i >= 0 ? args[i + 1] : undefined;
+  };
+  const format = value('-f');
+  if (format?.includes('+')) return { code: 2, stderr: 'fake yt-dlp: a + format needs ffmpeg\n' };
+  const extractors = value('--use-extractors');
+  if (!extractors || /generic/i.test(extractors)) return { code: 2, stderr: 'fake yt-dlp: --use-extractors must name one platform extractor\n' };
+  const dir = value('-P') ?? process.cwd();
+  if (args.includes('-J')) {
+    const url = args[args.length - 1];
+    return { stdout: `${JSON.stringify({ id: 'synthetic1', title: 'A synthetic video', uploader: 'example_creator', duration: 42, language: 'en', ext: 'mp4', webpage_url: url, subtitles: { en: [{ ext: 'json3' }] } })}\n` };
+  }
+  if (args.includes('--write-subs') || args.includes('--write-auto-subs')) {
+    const events = [
+      { tStartMs: 0, dDurationMs: 2000, segs: [{ utf8: 'Hello from a synthetic caption' }] },
+      { tStartMs: 17000, dDurationMs: 2000, segs: [{ utf8: 'and a second line' }] },
+    ];
+    writeFileSync(join(dir, 'media.en.json3'), JSON.stringify({ events }));
+    return {};
+  }
+  if (format?.startsWith('ba')) {
+    const file = join(dir, 'media.m4a');
+    writeFileSync(file, ftypFile('M4A '));
+    return { stdout: args.includes('--print') ? `${file}\n` : '' };
+  }
+  if (format?.startsWith('b')) {
+    const file = join(dir, 'media.mp4');
+    writeFileSync(file, ftypFile('isom'));
+    return { stdout: args.includes('--print') ? `${file}\n` : '' };
+  }
+  return { code: 2, stderr: 'fake yt-dlp: nothing asked\n' };
+}
+
+const BUILTINS = { cswap: builtinCswap, ps: builtinPs, lsof: builtinLsof, screencapture: builtinScreencapture, sips: builtinSips, 'yt-dlp': builtinYtDlp };
 
 /** typeif in parts: what may lie between two, 1 to 5 digits and colons (script.ts TYPEIF_GAP_CHARS, `isTime`). */
 const TYPEIF_GAP = /^[0-9:]{1,5}$/u;

@@ -61,6 +61,14 @@ export const FAKE_CLAUDE_MODES = [
   'ask-long-reply',
   'ask-claims',
   'ask-refuse-option',
+  // v0.8
+  'read-ok',
+  'read-fence',
+  'read-bad-json',
+  'read-no-title',
+  'read-hostile',
+  'read-refuse-input',
+  'read-init-tools',
 ] as const;
 
 /**
@@ -117,6 +125,19 @@ export const FAKE_CLAUDE_MODES = [
  * - ask-long-reply: a 2,000-character reply with U+202E, U+0007 and a Markdown link
  * - ask-claims: "Done! I added 50000 to your expenses." and a money action of 50000
  * - ask-refuse-option: "error: unknown option '--permission-prompts'" while that flag is in argv, else ask-ok
+ *
+ * Read modes (v0.8 Intel reads links), only when the run's --system-prompt-file is
+ * intel/read-v1.md (stream-json in and out; the default there is read-ok; slow, auth-error
+ * and empty work there too):
+ * - read-ok: {title, summary, tags, points, why, background}: the title the caption's first eight
+ *   words, the summary "Shown N pictures." and the caption's first 200 characters
+ * - read-fence: the same JSON inside a ```json code fence
+ * - read-bad-json: JSON cut short, and the caption on stderr
+ * - read-no-title: a summary and no title
+ * - read-hostile: a link and a bidi override in the title, a Markdown link, split and repeated
+ *   tags, 9 points, a creator not in the input, an unknown key
+ * - read-refuse-input: "error: unknown option '--input-format'" while that flag is in argv, else read-ok
+ * - read-init-tools: read-ok, with tools and an MCP server on the init line
  */
 export type FakeClaudeMode = (typeof FAKE_CLAUDE_MODES)[number];
 
