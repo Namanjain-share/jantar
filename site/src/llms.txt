@@ -4,7 +4,8 @@
 
 - Needs: macOS with Terminal.app, Node.js 22.13 or newer, pnpm 10, Claude Code signed in (one account is enough).
 - Optional: cswap for several Claude accounts; Chrome 120 or newer for Meetings.
-- Not yet: Linux servers with tmux (v0.6, being built), iTerm2, Ghostty; moving a session between accounts.
+- Optional, off by default: servers (Fleet, v0.6, `jantar fleet on` at the Mac). Linux servers and WSL2 with Claude Code in tmux, and other Macs, join the Mac's board; the Mac is always the hub. Native Windows is a preview. Parts are not yet checked on real servers.
+- Not yet: iTerm2, Ghostty; moving a session between accounts.
 - No Jantar server, no account with the project, no telemetry.
 - Install in one line on a Mac: `{{one-line}}` (read the script first at {{install-url}}).
 
@@ -28,6 +29,7 @@
 
 - [Configuration]({{raw}}/docs/configuration.md): every command, flags, environment, config.json
 - [Life]({{raw}}/docs/life.md), [Meetings]({{raw}}/docs/extension.md), [the Intel shelf]({{raw}}/docs/intel.md)
+- [Servers (Fleet)]({{raw}}/docs/fleet.md): pairing Linux servers, WSL2, Windows and other Macs with the Mac
 - [The threat model]({{raw}}/SECURITY.md)
 - [Changelog]({{raw}}/CHANGELOG.md), [Roadmap]({{raw}}/docs/roadmap.md)
 - [Source]({{repo}})

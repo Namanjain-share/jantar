@@ -222,15 +222,19 @@ test('the site source keeps the copy rules', () => {
   const files = srcFiles().filter((f) => f.endsWith('.html'));
   assert.ok(files.length >= 9);
   assert.ok(files.filter((f) => f.startsWith('answers/')).length >= 5, 'the answers are checked too');
+  // Servers shipped in 0.6.0 (Fleet, docs/fleet.md): no page says they are still to come.
+  const notYet = /being built|\bcomes? (?:next \()?(?:in )?v0\.6\b/i;
   for (const f of srcFiles().filter((x) => /\.(?:txt|sh|js)$/.test(x))) {
     const text = read(join(SRC, f));
     assert.doesNotMatch(text, /[\u2013\u2014]/, `${f}: an en or em dash`);
     assert.doesNotMatch(text, /\bopen[- ]source\b/i, `${f}: say source-available`);
+    assert.doesNotMatch(text, notYet, `${f}: servers are in 0.6.0`);
   }
   for (const f of files) {
     const text = read(join(SRC, f));
     assert.doesNotMatch(text, /[\u2013\u2014]/, `${f}: an en or em dash`);
     assert.doesNotMatch(text, /\bopen[- ]source\b/i, `${f}: say source-available`);
+    assert.doesNotMatch(text, notYet, `${f}: servers are in 0.6.0`);
     assert.doesNotMatch(text, /\bccw\b/i, `${f}: the legacy tool stays in docs/upgrading.md`);
     assert.doesNotMatch(text, /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/, `${f}: an e-mail address`);
     assert.doesNotMatch(text, /\sstyle="/, `${f}: a style attribute`);

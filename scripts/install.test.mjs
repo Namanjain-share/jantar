@@ -139,7 +139,8 @@ test('refuses root, Linux and a Node older than 22.13; takes 22.13 and 24', () =
   assert.match(r.err, /not with sudo or as root/);
   r = run([], { env: { FAKE_UNAME: 'Linux' } });
   assert.equal(r.code, 1);
-  assert.match(r.err, /Mac with Terminal\.app today\. Linux servers come in v0\.6/);
+  assert.match(r.err, /This installer is for a Mac\. A Linux server joins a Mac with Fleet: see https:\/\/\S+\/blob\/main\/docs\/fleet\.md\n/);
+  assert.doesNotMatch(r.err, /v0\.6/);
   r = run([], { env: { FAKE_NODE: '22.12.0' } });
   assert.equal(r.code, 1);
   assert.match(r.err, /Node\.js 22\.12\.0 is too old/);

@@ -37,6 +37,7 @@ DEFAULT_VERSION='{{version}}'
 DEFAULT_REPO='{{repo}}.git'
 PNPM_VERSION='{{pnpm}}'
 DOCS='{{repo}}/blob/main/docs/install.md'
+FLEET_DOCS='{{repo}}/blob/main/docs/fleet.md'
 
 VERSION="${JANTAR_VERSION:-$DEFAULT_VERSION}"
 REPO="${JANTAR_REPO:-$DEFAULT_REPO}"
@@ -105,7 +106,7 @@ usage() {
 
 check() {
   step 'Checking this Mac'
-  [ "$(uname -s)" = Darwin ] || die 'Jantar runs on a Mac with Terminal.app today. Linux servers come in v0.6.'
+  [ "$(uname -s)" = Darwin ] || die "This installer is for a Mac. A Linux server joins a Mac with Fleet: see $FLEET_DOCS"
   [ "$(id -u)" != 0 ] || die 'run it as yourself, not with sudo or as root.'
   ok 'macOS'
 
