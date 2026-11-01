@@ -14,10 +14,10 @@
 import { MEETING_MARKER, markerJpeg } from '@jantar/fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MISMATCH, NOT_OPEN, SHOT } from '../../src/background/sentences.js';
-import { CAPTURE_TIMEOUT_MS, CHROME_SAID_MAX, HIDE_WAIT_MS, LAST_SHOT_KEY, NO_CAPTURE_ANSWER, POPUP_CLOSE_MS, QUOTA_WAIT_MS, chromeSaid } from '../../src/background/shots.js';
+import { CAPTURE_TIMEOUT_MS, CHROME_SAID_MAX, HIDE_WAIT_MS, LAST_SHOT_KEY, NO_CAPTURE_ANSWER, POPUP_CLOSE_MS, QUOTA_WAIT_MS, chromeSaid, readLastShot } from '../../src/background/shots.js';
 import type { LastShot, ShotStep } from '../../src/shared/messages.js';
 import { MEETING_SHOT_MAX_BYTES, TIMING } from '../../src/shared/wire.js';
-import { CAPTURE_PERMISSION_ERROR } from '../helpers/chrome-fake.js';
+import { CAPTURE_PERMISSION_ERROR, CAPTURE_QUOTA_ERROR } from '../helpers/chrome-fake.js';
 import { MEET_URL, UUID, daemonError, markerIn, setupWorker, watchConsole, type WorkerUnderTest } from './chrome.js';
 
 /** Another site, in front of the meeting's window or in the meeting's own tab. */
@@ -256,6 +256,7 @@ describe('the upload', () => {
     w.daemon.on('shot', daemonError(404, NOT_OPEN));
     expect(await shot(7)).toEqual({ ok: false, text: `Not saved: ${NOT_OPEN}` });
     expect(w.daemon.of('shot')).toHaveLength(2);
+    expect(w.model.session.get(LAST_SHOT_KEY)).toMatchObject({ ok: false, text: `Not saved: ${NOT_OPEN}`, step: 'daemon', status: 404 });
   });
 
   it("MX8: Meetings off flashes the daemon's sentence and makes no meeting", async () => {
@@ -563,6 +564,26 @@ describe('v0.5.3: a capture Chrome never answers', () => {
     await vi.waitFor(() => expect(w.toPage(7)).toEqual([{ t: 'hide' }, { t: 'show', flash: SHOT.chromeFailed }]));
     expect(last()).toMatchObject({ from: 'command', step: 'chrome', chrome: NO_CAPTURE_ANSWER });
   });
+
+  it('the same for the retry after the quota error and for the smaller retake', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    w = setupWorker();
+    await w.meetTab(7);
+    for (const first of [() => Promise.reject(new Error(CAPTURE_QUOTA_ERROR)), () => Promise.resolve(big)]) {
+      let calls = 0;
+      w.chrome.tabs.captureVisibleTab = () => (++calls === 1 ? first() : new Promise<string>(() => undefined));
+      let answer: unknown;
+      void shot(7).then((a) => (answer = a));
+      await vi.advanceTimersByTimeAsync(CAPTURE_TIMEOUT_MS - 1);
+      expect(answer).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(answer).toEqual({ ok: false, text: SHOT.chromeFailed });
+      expect(calls).toBe(2);
+      expect(last()).toMatchObject({ ok: false, step: 'chrome', chrome: NO_CAPTURE_ANSWER });
+    }
+    expect(w.daemon.calls).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 describe('v0.5.3: one LastShot record for every try', () => {
@@ -592,6 +613,7 @@ describe('v0.5.3: one LastShot record for every try', () => {
     ['chrome', SHOT.chromeFailed, (u: WorkerUnderTest) => u.model.failCapture('Failed to capture tab: view is invisible'), { chrome: 'Failed to capture tab: view is invisible' }],
     ['too-large', SHOT.tooLarge, (u: WorkerUnderTest) => void (u.chrome.tabs.captureVisibleTab = async () => big), {}],
     ['down', SHOT.notRunning, (u: WorkerUnderTest) => u.daemon.on('open', 'down'), {}],
+    ['down', SHOT.notRunning, (u: WorkerUnderTest) => u.daemon.on('shot', 'down'), {}],
     ['daemon', `Not saved: ${'This meeting has 500 screenshots.'}`, (u: WorkerUnderTest) => u.daemon.on('shot', daemonError(409, 'This meeting has 500 screenshots.')), { status: 409 }],
     ['daemon', SHOT.notRunning, (u: WorkerUnderTest) => u.daemon.on('shot', daemonError(503, 'Meetings data could not be opened.')), { status: 503 }],
     ['daemon', MISMATCH, (u: WorkerUnderTest) => u.daemon.on('open', daemonError(400, 'bad')), { status: 400 }],
@@ -649,5 +671,19 @@ describe('v0.5.3: one LastShot record for every try', () => {
     };
     expect(await shot(7)).toEqual({ ok: true, text: SHOT.saved });
     expect(last()).toBeUndefined();
+  });
+
+  it('a storage that cannot be read gives no record, and the popup state still comes', async () => {
+    w = setupWorker();
+    await w.meetTab(7);
+    await shot(7);
+    expect(await readLastShot()).toMatchObject({ ok: true, step: 'saved' });
+    const get = w.chrome.storage.session.get.bind(w.chrome.storage.session);
+    w.chrome.storage.session.get = async (keys) => {
+      if (keys === LAST_SHOT_KEY) throw new Error('Extension context invalidated.');
+      return get(keys);
+    };
+    expect(await readLastShot()).toBeNull();
+    expect(await w.popup({ t: 'state', tabId: 7 })).toMatchObject({ connection: 'ok', tab: { shots: 1 }, lastShot: null });
   });
 });

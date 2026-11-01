@@ -136,8 +136,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<Record
 
 const para = (text: string, cls?: string) => el('p', cls ? { class: cls } : {}, text);
 
-function button(label: string, onClick: (ev: MouseEvent) => void, opts: { primary?: boolean; link?: boolean; type?: 'button' | 'submit' } = {}): HTMLButtonElement {
-  const b = el('button', { type: opts.type ?? 'button', class: opts.primary ? 'primary' : opts.link ? 'link' : undefined }, label);
+/** `name`: what a screen reader says when the label alone says too little ("Change"). */
+function button(label: string, onClick: (ev: MouseEvent) => void, opts: { primary?: boolean; link?: boolean; type?: 'button' | 'submit'; name?: string } = {}): HTMLButtonElement {
+  const b = el('button', { type: opts.type ?? 'button', class: opts.primary ? 'primary' : opts.link ? 'link' : undefined, 'aria-label': opts.name }, label);
   b.addEventListener('click', onClick);
   return b;
 }
@@ -369,7 +370,12 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     return [
       el('h2', {}, 'Settings'),
       el('div', { class: 'row' }, el('span', {}, 'Screenshot button on meeting pages'), allowed),
-      el('div', { class: 'row quiet' }, el('span', {}, shortcutLine(s.shortcut)), button(s.shortcut ? 'Change' : 'Set', openShortcuts, { link: true })),
+      el(
+        'div',
+        { class: 'row quiet' },
+        el('span', {}, shortcutLine(s.shortcut)),
+        button(s.shortcut ? 'Change' : 'Set', openShortcuts, { link: true, name: s.shortcut ? 'Change the screenshot shortcut' : 'Set the screenshot shortcut' }),
+      ),
       el('div', { class: 'stack quiet' }, el('p', {}, lastShotLine(s.lastShot)), detail && el('p', { class: 'mono' }, detail)),
       el('div', { class: 'row' }, el('span', {}, 'Paired with Jantar on this Mac'), button('Unpair', () => void unpair())),
     ];
@@ -385,7 +391,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     const out = tab.notes ? notesView(tab) : sheetView(tab, s.projects);
     // The popup holds this tab's grant now, so its Screenshot takes it.
     const missed = missedLine(s.lastShot, tabId, Date.now());
-    if (missed) out.push(para(missed, 'quiet'));
+    if (missed) out.push(para(missed, 'quiet missed'));
     return out;
   }
 
@@ -402,8 +408,8 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     }
     view.replaceChildren(el('header', {}, el('h1', {}, 'Jantar')), ...body);
     for (const b of view.querySelectorAll('button')) b.disabled = busy && !b.classList.contains('link');
-    // The view's first line (its lead, or the Settings heading), read out once when it changes.
-    const said = view.querySelector('.lead, h2')?.textContent ?? '';
+    // The view's first line (its lead, or the Settings heading) and a failed try in this tab, read out once when they change.
+    const said = [view.querySelector('.lead, h2'), view.querySelector('.missed')].map((n) => n?.textContent ?? '').filter(Boolean).join(' ');
     if (live.textContent !== said) live.textContent = said;
   }
 

@@ -382,6 +382,8 @@ describe('v0.5.3: Settings › Shortcut', () => {
     await open();
     buttonNamed('Settings').click();
     expect(settingsLines()).toContain('Shortcut: ⌥⇧SChange');
+    // A screen reader hears what it changes.
+    expect(buttonNamed('Change').getAttribute('aria-label')).toBe('Change the screenshot shortcut');
     buttonNamed('Change').click();
     await vi.waitFor(() => expect(model.opened).toEqual([SHORTCUTS_URL]));
     expect(SHORTCUTS_URL).toBe('chrome://extensions/shortcuts');
@@ -393,6 +395,7 @@ describe('v0.5.3: Settings › Shortcut', () => {
     await open();
     buttonNamed('Settings').click();
     expect(settingsLines()).toContain('Shortcut: not setSet');
+    expect(buttonNamed('Set').getAttribute('aria-label')).toBe('Set the screenshot shortcut');
     buttonNamed('Set').click();
     await vi.waitFor(() => expect(model.opened).toEqual([SHORTCUTS_URL]));
   });
@@ -440,7 +443,8 @@ describe('v0.5.3: the main view after a failed try in this tab', () => {
     answers.state = state({ pageButton: false, lastShot: recent(), tab: meetTab() });
     await open();
     expect([...root.querySelectorAll('.view p.quiet')].at(-1)?.textContent).toBe(MISSED);
-    expect(text().split(MISSED)).toHaveLength(2);
+    // Once in the view (the live line beside it reads it out too).
+    expect((root.querySelector('.view')?.textContent ?? '').split(MISSED)).toHaveLength(2);
     expect(buttonNamed('Screenshot')).toBeTruthy();
     answers.state = state({ pageButton: false, lastShot: recent({ from: 'popup', text: 'Not saved: Chrome could not take it.', step: 'chrome' }), tab: meetTab({ name: 'Weekly sync', notes: true }) });
     await open();
@@ -518,6 +522,21 @@ describe('for a screen reader', () => {
     expect(node.textContent).toBe('Keeping notes · Weekly sync');
     expect(changes).toBe(2);
     expect(root.querySelector('[aria-live]')).toBe(node);
+  });
+
+  it('v0.5.3: a failed try in this tab is read out after the first line', async () => {
+    const missed = shotRecord({ at: Date.now() - 60_000, ok: false, text: 'Not saved: Chrome could not take it.', step: 'chrome' });
+    answers.state = state({ lastShot: missed, tab: meetTab({ name: 'Weekly sync', notes: true }) });
+    await open();
+    const live = () => root.querySelector('[aria-live]')?.textContent;
+    expect(live()).toBe('Keeping notes · Weekly sync Last screenshot not saved: Chrome could not take it.');
+    // The sheet has no lead: the line alone.
+    answers.state = state({ lastShot: missed, tab: meetTab() });
+    await open();
+    expect(live()).toBe('Last screenshot not saved: Chrome could not take it.');
+    buttonNamed('Settings').click();
+    await Promise.resolve();
+    expect(live()).toBe('Settings');
   });
 });
 

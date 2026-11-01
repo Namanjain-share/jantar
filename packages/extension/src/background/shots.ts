@@ -54,7 +54,12 @@ export const QUOTA_WAIT_MS = 600;
 export const POPUP_CLOSE_MS = 150;
 /** How long the page has to hide its button. */
 export const HIDE_WAIT_MS = 300;
-/** How long Chrome has to answer one captureVisibleTab call. */
+/**
+ * How long Chrome has to answer one captureVisibleTab call. Longer, should
+ * real tries on a busy Mac say "Chrome did not answer" (real-mac-checks R3);
+ * the page's PAGE_SHOT_LIMIT_MS and HIDE_GIVE_UP_MS stay above it
+ * (test/content/button.test.ts checks).
+ */
 export const CAPTURE_TIMEOUT_MS = 5_000;
 /** The raw words for a capture Chrome never answered. */
 export const NO_CAPTURE_ANSWER = 'Chrome did not answer';

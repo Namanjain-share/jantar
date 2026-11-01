@@ -224,9 +224,12 @@ line gives Chrome's own words when Chrome refused ("Chrome said: …"), or
 the status Jantar answered with ("Jantar answered 409"). When the last try
 in the tab you are on failed in the last ten minutes, the popup's first
 view says so too, and its **Screenshot** takes the tab from there (opening
-the popup lets Chrome take that tab). The record stays in Chrome until
-Chrome quits; it holds no page address, title or image, and is never sent
-to Jantar.
+the popup lets Chrome take that tab). The record stays in Chrome's memory
+only: it is gone when Chrome quits and when the extension is reloaded or
+updated, so read it before either. It holds no page address, title or
+image, and is never sent to Jantar. Its time tells you which try it is:
+when it is older than your click (or says "none yet"), the extension never
+got that click.
 
 - **"Not saved: click the Jantar icon once in this tab, then try again."**
   Chrome lets the extension take a tab only once the toolbar icon or the
@@ -241,8 +244,10 @@ to Jantar.
   one in front of its window when the shot was taken (another tab, or
   Meet's picture-in-picture window).
 - **"Not saved: the Jantar extension did not answer."** The camera button
-  heard nothing back within 25 seconds and shows again; Settings › Last
-  screenshot says how that try ended.
+  heard nothing back, at once or within 65 seconds, and shows again. When
+  Settings › Last screenshot has the time of that click, it says how the
+  try ended (a slow one may still have saved); when its time is older, the
+  extension never got the click: try the popup's **Screenshot**.
 - **Last screenshot does not change after the shortcut:** Chrome never ran
   it. Check Settings › Shortcut, and that Chrome was in front.
 
