@@ -10,7 +10,9 @@
  * - Any status may follow any other (the phone). The daemon owns postedAt:
  *   stamped on the way into posted (kept while it stays posted), cleared
  *   with the posted link on the way out. A posted link only while posted.
- * - Empty optional text (only spaces) is left out, never stored.
+ * - Empty optional text (only spaces) is left out, never stored. A due day
+ *   that does not exist (2026-11-31: the key's pattern lets it through) is
+ *   refused.
  * - The open list sorts as todos do (byDue); the done list is the newest
  *   POSTS_DONE_PAGE posted or skipped.
  * - The week runs Monday 00:00 to the next Monday 00:00 in the Life zone. A
@@ -33,6 +35,7 @@ import {
   type PostsResponse,
 } from '@jantar/protocol';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, PostsModule } from '../../contracts.js';
+import { isRealDay } from '../food/module.js';
 import { byDue } from '../todos/module.js';
 import { armPost, isOpen, postPingHandler } from './pings.js';
 import { PostsRepo } from './repo.js';
@@ -44,6 +47,7 @@ export const POSTS_SENTENCES = {
   invalid: 'That post is not valid.',
   postedLink: 'Mark it posted before adding the posted link.',
   goals: 'Those weekly goals are not valid.',
+  noDay: 'That date does not exist.',
 } as const;
 
 type Refusal = Extract<LifeResult, { ok: false }>;
@@ -98,6 +102,7 @@ class Posts implements PostsModule {
   }
 
   create(body: PostBody, _actor: Actor): LifeResult<{ id: string }> {
+    if (body.due && !isRealDay(body.due.day)) return refuse('invalid_request', POSTS_SENTENCES.noDay);
     if (this.repo.countOpen() >= LIFE_LIMITS.openPosts) return refuse('conflict', POSTS_SENTENCES.full);
     const at = this.stamp();
     const p: Post = { id: this.core.newId(), platform: body.platform, kind: body.kind ?? 'post', status: body.status ?? 'idea', createdAt: at, updatedAt: at };
@@ -114,6 +119,7 @@ class Posts implements PostsModule {
   update(id: string, patch: PostPatch, _actor: Actor): LifeResult {
     const p = this.repo.get(id);
     if (!p) return refuse('not_found', POSTS_SENTENCES.none);
+    if (patch.due && !isRealDay(patch.due.day)) return refuse('invalid_request', POSTS_SENTENCES.noDay);
     const at = this.stamp();
     const next: Post = { ...p, updatedAt: at };
     if (patch.platform !== undefined) next.platform = patch.platform;

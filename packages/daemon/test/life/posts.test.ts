@@ -117,6 +117,20 @@ describe('posts', () => {
     expect(open(posts).posts).toEqual([]);
   });
 
+  it('a due day that does not exist (31 Nov, 29 Feb 2027) is refused on create and on edit, and nothing is stored', () => {
+    const { posts } = rig();
+    for (const day of ['2026-11-31', '2027-02-29']) {
+      expect(posts.create({ platform: 'reddit', due: { day, time: '19:30' } }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: POSTS_SENTENCES.noDay });
+    }
+    expect(open(posts).posts).toEqual([]);
+    const id = add(posts, { due: { day: '2026-11-30', time: '19:30' } });
+    expect(posts.update(id, { due: { day: '2026-11-31', time: '19:30' } }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: POSTS_SENTENCES.noDay });
+    expect(find(posts, id).due).toEqual({ day: '2026-11-30', time: '19:30' });
+    // A leap day that exists is fine.
+    ok(posts.update(id, { due: { day: '2028-02-29' } }, PHONE));
+    expect(POSTS_SENTENCES.noDay).toBe('That date does not exist.');
+  });
+
   it('status rules: postedAt stamped once into posted, cleared with the posted link out of it; a posted link only while posted', () => {
     const { posts, core } = rig();
     const id = add(posts);
