@@ -6,8 +6,10 @@
  * it open), mode 0600, in a 0700 dir. A last line left with no newline (a
  * crash mid-write, a hand edit) is ended first, so the new line is never
  * glued to it. The record is shaped like a bot's, so the mapping needs
- * nothing special: the note is its "what it is" and `via` shows as a field.
- * The CLI's `cwd` stays in the file on the Mac: the shelf leaves it out.
+ * nothing special: the note is its "what it is" and `via` shows as a field
+ * (v0.5.3: "via claude" for what `jantar mcp` saved). The `cwd` of a
+ * capture from the Mac (the CLI's, or the Claude session's) stays in the
+ * file on the Mac: the shelf leaves it out.
  */
 import { constants } from 'node:fs';
 import { chmod, mkdir, open } from 'node:fs/promises';
@@ -20,8 +22,9 @@ import { CAPTURES_FILE } from './sources.js';
 export const CAPTURE_OPEN_FLAGS = constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
 
 export interface CaptureFrom {
-  via: 'phone' | 'cli';
-  /** The folder `jantar intel` ran in (ctl.sock only). */
+  /** v0.5.3: `claude` when `jantar mcp` saved it for a Claude session. */
+  via: 'phone' | 'cli' | 'claude';
+  /** The folder `jantar intel` ran in, or the session's (ctl.sock only). */
   cwd?: string;
 }
 
@@ -36,7 +39,7 @@ export function captureRecord(id: string, at: string, body: IntelCaptureBody, fr
   const note = body.note?.trim();
   if (note) rec.what_it_is = note;
   rec.via = from.via;
-  if (from.via === 'cli' && from.cwd) rec.cwd = from.cwd;
+  if (from.via !== 'phone' && from.cwd) rec.cwd = from.cwd;
   return rec;
 }
 

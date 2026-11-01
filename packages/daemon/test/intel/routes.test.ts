@@ -1,7 +1,8 @@
 /**
  * The shelf's routes over the real pipeline: list, item, sources and
  * capture from a phone and from ctl.sock. A phone's capture is `via:
- * phone`, the CLI's keeps its folder; 30 captures a minute per device or
+ * phone`, the CLI's keeps its folder (v0.5.3: `via: claude` from ctl.sock
+ * when `jantar mcp` says so); 30 captures a minute per device or
  * CLI; the audit holds the id and whether it was a duplicate, never text;
  * no reply carries a source path; an item id with any printable character
  * round-trips through the URL.
@@ -116,6 +117,27 @@ describe('capturing', () => {
     const item = await api.tcp.inject({ method: 'GET', url: `/v1/intel/items/${encodeURIComponent(cli.json().id)}`, headers: h(cookie) });
     expect(item.json().item.fields).toEqual([{ key: 'via', value: 'cli' }]);
     expect(item.body).not.toContain('/synthetic/home/work/bot');
+  });
+
+  it("v0.5.3: ctl.sock's via claude is written and shown; a search ranks the title first", async () => {
+    const { home } = await shelfApi();
+    const { cookie } = await pairCookie(api, ['read', 'control']);
+    const r = await api.ctl.inject({ method: 'POST', url: '/v1/intel/captures', payload: { title: 'Saved from a session', url: 'https://example.com/mcp', cwd: '/synthetic/home/work/app', via: 'claude' } });
+    expect(r.statusCode, r.body).toBe(200);
+    const records = readFileSync(join(home, '.jantar', 'intel', 'captures.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(records.map((x) => [x.via, x.cwd])).toEqual([['claude', '/synthetic/home/work/app']]);
+    const item = await api.tcp.inject({ method: 'GET', url: `/v1/intel/items/${encodeURIComponent(r.json().id)}`, headers: h(cookie) });
+    expect(item.json().item.fields).toEqual([{ key: 'via', value: 'claude' }]);
+    // "session" is in its title only; "example" in every item: the title match comes first, then newest first.
+    const list = await api.tcp.inject({ method: 'GET', url: `/v1/intel?q=${encodeURIComponent('session example')}`, headers: h(cookie) });
+    expect(list.json().items.map((i: { id: string }) => i.id)).toEqual([r.json().id]);
+    const best = await api.tcp.inject({ method: 'GET', url: '/v1/intel?q=example&limit=2', headers: h(cookie) });
+    expect(best.json().next).toMatch(/^#2\|/);
+    const older = await api.ctl.inject({ method: 'GET', url: `/v1/intel?q=example&limit=2&before=${encodeURIComponent(best.json().next)}` });
+    expect(older.statusCode).toBe(200);
+    expect(older.json().items.map((i: { id: string }) => i.id)).not.toContain(best.json().items[0].id);
+    expect((await api.tcp.inject({ method: 'GET', url: '/v1/intel?q=example&sort=new&limit=2', headers: h(cookie) })).json().next).toMatch(/^2026-/);
+    expect((await api.tcp.inject({ method: 'GET', url: '/v1/intel?sort=newest', headers: h(cookie) })).statusCode).toBe(400);
   });
 
   it('audits the id and duplicate only, never the text', async () => {

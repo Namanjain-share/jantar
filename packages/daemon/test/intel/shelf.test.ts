@@ -2,7 +2,9 @@
  * The shelf in memory: newest first (no time last), ids per source, search
  * over every text, type and tag filters, chip counts, paging by cursor, the
  * cap, the url lookup captures use, and the 100 ms answer over a full
- * shelf (spec 9.6, at INTEL_MAX_ITEMS).
+ * shelf (spec 9.6, at INTEL_MAX_ITEMS). v0.5.3: search by words (every one,
+ * in the type and the link too), best place first, a `best` cursor that
+ * holds while a source appends, and `sort: 'new'` for the old order.
  */
 import { describe, expect, it } from 'vitest';
 import { INTEL_MAX_ITEMS, IntelListResponseSchema, type IntelListQuery } from '@jantar/protocol';
@@ -70,11 +72,14 @@ describe('search and filters', () => {
     return s;
   };
 
-  it('searches title, summary, why, tags and field values, case-insensitively, as plain text', () => {
+  it('searches title, summary, why, tags and field values, case-insensitively, as plain text, best place first', () => {
     const s = shelf();
-    expect(ids(s, { q: 'hook' })).toEqual(['intel:h', 'intel:s', 'intel:w', 'intel:f']);
+    // The title (h), then a tag (w), then the summary (s) and a field (f), newest first within a score.
+    expect(ids(s, { q: 'hook' })).toEqual(['intel:h', 'intel:w', 'intel:s', 'intel:f']);
+    // sort: 'new' keeps the old order: newest first.
+    expect(ids(s, { q: 'hook', sort: 'new' })).toEqual(['intel:h', 'intel:s', 'intel:w', 'intel:f']);
     // A tag counts: w's "hooks" matches, f's "@hook-maker" does not.
-    expect(ids(s, { q: 'HOOKS' })).toEqual(['intel:h', 'intel:s', 'intel:w']);
+    expect(ids(s, { q: 'HOOKS' })).toEqual(['intel:h', 'intel:w', 'intel:s']);
     expect(ids(s, { q: '(a.b)*' })).toEqual(['intel:n']);
     expect(ids(s, { q: '   ' })).toHaveLength(5);
     expect(ids(s, { q: 'no match anywhere' })).toEqual([]);
@@ -122,6 +127,72 @@ describe('search and filters', () => {
   });
 });
 
+describe('v0.5.3: words, more places, best first', () => {
+  const shelf = () => {
+    const s = new Shelf();
+    s.replace('intel', [
+      rec('intel', { id: 'note', title: 'Notes on a database', what_it_is: 'How prisma handles a migrate step', at: '2026-10-29T10:00:00Z' }),
+      rec('intel', { id: 'title', title: 'Prisma migrate in practice', at: '2026-10-29T08:00:00Z' }),
+      rec('intel', { id: 'mid', title: 'Using xprisma to migrate', at: '2026-10-29T09:00:00Z' }),
+      rec('intel', { id: 'one', title: 'Prisma only', at: '2026-10-29T11:00:00Z' }),
+      rec('intel', { id: 'link', title: 'A plain page', url: 'https://example.com/zebra-crossing', at: '2026-10-29T07:00:00Z' }),
+      rec('intel', { id: 'typed', title: 'Another page', type: 'Teardown', tags: ['teardown-notes'], at: '2026-10-29T06:00:00Z' }),
+      rec('intel', { id: 'tagged', title: 'Third page', type: 'tool', tags: ['Teardown'], at: '2026-10-29T05:00:00Z' }),
+    ]);
+    return s;
+  };
+
+  it('every word must appear somewhere: "prisma migrate" finds the word in the title and the other in the note', () => {
+    const s = shelf();
+    // Today's phrase search found only the exact phrase; now each word is enough, in any field.
+    expect(ids(s, { q: 'prisma migrate' }).sort()).toEqual(['intel:mid', 'intel:note', 'intel:title']);
+    expect(ids(s, { q: 'prisma nothing-like-this' })).toEqual([]);
+    // A quoted phrase is one word.
+    expect(ids(s, { q: '"prisma migrate"' })).toEqual(['intel:title']);
+  });
+
+  it('scores the best place of each word: a word start in the title, then inside the title, then a tag or the type, then anywhere', () => {
+    const s = shelf();
+    // title: 6 + 6; mid: "xprisma" inside the title 4 + "migrate" a word start 6; note: 1 + 1.
+    expect(ids(s, { q: 'prisma migrate' })).toEqual(['intel:title', 'intel:mid', 'intel:note']);
+    // Equal to the type (typed) or a tag (tagged) is 3, inside a tag is 2, and newest first breaks the tie.
+    expect(ids(s, { q: 'teardown' })).toEqual(['intel:typed', 'intel:tagged']);
+    expect(ids(s, { q: 'notes' })).toEqual(['intel:note', 'intel:typed']);
+  });
+
+  it('matches the type and the link too, which the v0.4 search did not', () => {
+    const s = shelf();
+    expect(ids(s, { q: 'zebra' })).toEqual(['intel:link']);
+    expect(ids(s, { q: 'EXAMPLE.COM/ZEBRA' })).toEqual(['intel:link']);
+    expect(ids(s, { q: 'tool' })).toEqual(['intel:tagged']);
+  });
+
+  it('no words keeps newest first, whatever sort asks for', () => {
+    const s = shelf();
+    const newest = ['intel:one', 'intel:note', 'intel:mid', 'intel:title', 'intel:link', 'intel:typed', 'intel:tagged'];
+    expect(ids(s)).toEqual(newest);
+    expect(ids(s, { sort: 'best' })).toEqual(newest);
+    expect(ids(s, { q: '  ', sort: 'best' })).toEqual(newest);
+  });
+
+  it('the chips count what the words let through, in any order', () => {
+    const s = shelf();
+    const r = s.list(q({ q: 'page' }));
+    expect(r.total).toBe(3);
+    expect(r.types).toEqual([
+      { type: 'Teardown', n: 1 },
+      { type: 'tool', n: 1 },
+    ]);
+  });
+
+  it('keeps Devanagari words whole: no accent folding', () => {
+    const s = new Shelf();
+    s.replace('a', [rec('a', { id: 'hi', title: 'नमस्ते दुनिया' }), rec('a', { id: 'other', title: 'नमस्त' })]);
+    expect(ids(s, { q: 'नमस्ते' })).toEqual(['a:hi']);
+    expect(ids(s, { q: 'दुनिया' })).toEqual(['a:hi']);
+  });
+});
+
 describe('paging', () => {
   it('pages by the cursor until next is null, and carries on after an item that went away', () => {
     const s = new Shelf();
@@ -156,6 +227,40 @@ describe('paging', () => {
     expect(p2.items.map((i) => i.id)).toEqual(['a:u4', 'a:u2', 'a:u1']);
     expect(p2.next).toBeNull();
   });
+
+  it('v0.5.3: under best the cursor is #<offset>|<source>|<id>; it holds while a source appends, and a cursor of the other kind starts again', () => {
+    const s = new Shelf();
+    // Six matches: two with the word in the title, four in the note only.
+    const make = (id: string, at: string, inTitle: boolean) => rec('a', { id, title: inTitle ? `Hooks ${id}` : `Item ${id}`, what_it_is: 'about hooks', at });
+    s.replace('a', [
+      make('t1', '2026-10-29T01:00:00Z', true),
+      make('n1', '2026-10-29T02:00:00Z', false),
+      make('t2', '2026-10-29T03:00:00Z', true),
+      make('n2', '2026-10-29T04:00:00Z', false),
+      make('n3', '2026-10-29T05:00:00Z', false),
+      make('n4', '2026-10-29T06:00:00Z', false),
+    ]);
+    const p1 = s.list(q({ q: 'hooks', limit: 3 }));
+    expect(p1.items.map((i) => i.id)).toEqual(['a:t2', 'a:t1', 'a:n4']);
+    expect(p1.next).toBe('#3|a|n4');
+    // A bot appends a better match and a newer note-only one: the next page goes on right after n4, nothing twice.
+    s.add('a', [make('t3', '2026-10-29T07:00:00Z', true), make('n5', '2026-10-29T08:00:00Z', false)]);
+    const p2 = s.list(q({ q: 'hooks', limit: 3, before: p1.next ?? '' }));
+    expect(p2.items.map((i) => i.id)).toEqual(['a:n3', 'a:n2', 'a:n1']);
+    expect(p2.next).toBeNull();
+    // n4 left the shelf: the page starts at the cursor's offset.
+    s.replace('a', [make('t1', '2026-10-29T01:00:00Z', true), make('n1', '2026-10-29T02:00:00Z', false), make('t2', '2026-10-29T03:00:00Z', true), make('n2', '2026-10-29T04:00:00Z', false)]);
+    expect(s.list(q({ q: 'hooks', limit: 3, before: '#3|a|n4' })).items.map((i) => i.id)).toEqual(['a:n1']);
+    expect(s.list(q({ q: 'hooks', limit: 3, before: '#99|a|gone' })).items).toEqual([]);
+    // The other kind of cursor, either way round, starts from the top.
+    expect(s.list(q({ q: 'hooks', limit: 2, before: '2026-10-29T04:00:00.000Z|a|n2' })).items.map((i) => i.id)).toEqual(['a:t2', 'a:t1']);
+    expect(s.list(q({ limit: 2, before: '#2|a|t1' })).items.map((i) => i.id)).toEqual(['a:n2', 'a:t2']);
+    expect(s.list(q({ q: 'hooks', limit: 2, before: '#x|a|gone' })).items.map((i) => i.id)).toEqual(['a:t2', 'a:t1']);
+    // sort: 'new' under a search pages by time, as before.
+    const n1 = s.list(q({ q: 'hooks', sort: 'new', limit: 2 }));
+    expect(n1.items.map((i) => i.id)).toEqual(['a:n2', 'a:t2']);
+    expect(n1.next).toMatch(/^2026-.*\|a\|t2$/);
+  });
 });
 
 describe('the cap and the url lookup', () => {
@@ -187,12 +292,15 @@ describe('spec 9.6: a full shelf (INTEL_MAX_ITEMS)', () => {
     s.replace('intel', Array.from({ length: INTEL_MAX_ITEMS }, (_, i) => rec('intel', intelRecord(i))));
     s.list(q());
     const times: number[] = [];
-    for (const query of [q({ q: 'example 19' }), q({ q: 'nothing like this', type: 'tool' }), q({ tag: 'example', limit: 100 }), q({ q: 'sentence', tag: 'repo' })]) {
+    // v0.5.3: an 8-word search, every word in every item, so all 5,000 are matched and ranked.
+    const eight = q({ q: 'example sentence "what example" matters synthetic com quick new', limit: 100 });
+    for (const query of [q({ q: 'example 19' }), q({ q: 'nothing like this', type: 'tool' }), q({ tag: 'example', limit: 100 }), q({ q: 'sentence', tag: 'repo' }), eight]) {
       const t0 = performance.now();
       const r = s.list(query);
       times.push(performance.now() - t0);
       expect(r.items.length).toBeLessThanOrEqual(100);
     }
+    expect(s.list(eight).total).toBe(INTEL_MAX_ITEMS);
     expect(Math.max(...times), times.map((t) => t.toFixed(1)).join(' ')).toBeLessThan(perfBudgetMs(100));
   });
 });
