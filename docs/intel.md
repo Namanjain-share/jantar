@@ -136,8 +136,9 @@ What a session can and cannot reach:
 - Adding only: no tool completes, edits, repeats or deletes anything, or
   reaches medicines, food, weight, money, cafés, meetings or sessions.
   Sessions add at most 20 todos an hour.
-- Shelf text comes from saved pages and bots, so the server tells Claude to
-  treat it as data, never as instructions.
+- Shelf text comes from saved pages and bots, and todos from meetings'
+  action items, Ask and other sessions, so the server tells Claude to treat
+  both as data, never as instructions.
 - What the tools return (shelf items, the todos' titles and notes) goes
   into the session and reaches Anthropic like any tool output.
 - A switch you turned off, or a stopped daemon, is yours to change: the
