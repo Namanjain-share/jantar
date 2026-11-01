@@ -27,7 +27,12 @@ jantar life status
   month or year (birthdays, renewals; a 29 February one falls on the 28th
   in other years), and snooze. A repeating reminder keeps its own time: a
   daily 11:00 snoozed an hour still rings at 11:00 the next day. Change
-  the time in the todo sheet to move it.
+  the time in the todo sheet to move it. Three limits: a reminder made
+  before 0.5.3 learns its time once you change it in the todo sheet (until
+  then a snooze still moves it); a repeating todo with no time keeps a
+  snooze's time after Done, and rings, until you clear the time in the
+  sheet; a yearly one snoozed more than a month after its date moves to
+  the snooze's month, so set its date back in the sheet.
 - **Medicines** (`medicines`): dose times, every day or chosen weekdays or
   every N days; Taken, Skip or "Took it at…"; a pill count with a refill
   warning and 30 days of adherence. The lock screen says "Medicine due",
@@ -68,7 +73,9 @@ jantar life status
   never a medicine's. A ping the Mac could not send for lack of network
   (asleep, Wi-Fi off) goes out, marked late, as soon as it has network
   again, up to 6 hours late. A medicine's is skipped when its next dose is
-  under 3 hours away.
+  under 3 hours away. On Wi-Fi that reaches nothing (a hotel's sign-in
+  page), a ping is tried five times over a few minutes, then dropped,
+  never sent twice.
 - **Todos from Claude sessions.** `jantar mcp` lets a Claude session list
   and add todos of the project linked to its folder (the deepest linked
   folder wins). A project linked to your home folder, `/Users` or `/`
