@@ -1,7 +1,7 @@
 /**
  * The Mac's media helper, `jantar-media` (spec 5.1): one Swift program
  * (assets/intel/jantar-media.swift) built once on the Mac and run under
- * sandbox-exec for every untrusted file. No ffmpeg, no avconvert: Apple's
+ * sandbox-exec for every untrusted file. No ffmpeg and no audio converter: Apple's
  * AVFoundation, Speech, Vision and PDFKit inside the helper.
  *
  * Build (state `preparing`, once): only when /usr/bin/xcode-select -p exits

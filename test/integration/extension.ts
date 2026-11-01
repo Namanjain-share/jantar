@@ -59,9 +59,12 @@ export interface LoadedExtension {
   close(): Promise<void>;
 }
 
-/** Launch Chromium headless with a fresh temp profile and only the extension (dist-test by default) loaded. */
-export async function launchExtension(opts: { build?: 'test' | 'dist' } = {}): Promise<LoadedExtension> {
-  const dir = opts.build === 'dist' ? EXT_DIST : EXT_DIST_TEST;
+/**
+ * Launch Chromium headless with a fresh temp profile and only the extension (dist-test by default) loaded.
+ * v0.8: `dir` loads a build the suite made itself (ext-v08-reads builds its own, so it never races a rebuild of dist-test).
+ */
+export async function launchExtension(opts: { build?: 'test' | 'dist'; dir?: string } = {}): Promise<LoadedExtension> {
+  const dir = opts.dir ?? (opts.build === 'dist' ? EXT_DIST : EXT_DIST_TEST);
   const profile = await mkdtemp(join(tmpdir(), 'jantar-ext-profile-'));
   let context: BrowserContext | undefined;
   try {
