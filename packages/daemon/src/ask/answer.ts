@@ -85,7 +85,7 @@ export const ASK_SENTENCES = {
   skipped: 'Skipped.',
   old: 'Over a day old. Ask again.',
   nothingToUndo: 'Nothing to undo.',
-  oldUndo: 'Over a day old. Delete it in Todos, Food or Money instead.',
+  oldUndo: 'Over a day old. Delete it in Todos, Food or Finance instead.',
   editType: "An edit can't change what kind of item it is.",
   editProject: 'An edit can keep the suggested project or leave it out, nothing else.',
   badDay: 'Pick a day from a week ago to a year ahead.',
