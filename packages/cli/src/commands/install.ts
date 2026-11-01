@@ -114,6 +114,9 @@ export async function readOnlyChoice(ctx: CliContext, flag: boolean | undefined)
 const NOT_A_SERVER =
   'jantar install sets up a macOS LaunchAgent here only on a Mac. On a Linux or Windows server, run jantar node join <line from the Mac> first (it installs the service), or run jantard yourself.';
 
+const NOT_JOINED_WINDOWS =
+  'This machine has not joined a Mac yet: jantar node join <line from the Mac> pairs it and prints these lines too.';
+
 export default defineCommand(
   {
     name: 'install',
@@ -131,11 +134,13 @@ export default defineCommand(
     const { flags } = parseArgs(argv, FLAGS, { max: 0 });
     const kind = serviceKindOf(ctx.deps.platform);
     const role = roleOf(ctx.paths);
-    // The hub is a Mac: on Linux and Windows the service is a server's, made by `jantar node join`.
-    if (!kind || (kind !== 'launchd' && role !== 'node')) {
+    // The hub is a Mac: on Linux the service is a server's, made by `jantar node join`.
+    // On Windows install only prints lines (nothing runs), so it says so and goes on.
+    if (!kind || (kind === 'systemd' && role !== 'node')) {
       ctx.io.err(`${NOT_A_SERVER}\n`);
       return EXIT.failed;
     }
+    if (kind === 'schtasks' && role !== 'node') ctx.io.err(`${NOT_JOINED_WINDOWS}\n`);
     const { readOnly, kept } = await readOnlyChoice(ctx, flags['read-only']);
 
     if (flags.print) {
@@ -176,7 +181,10 @@ export default defineCommand(
     }
 
     let ok = true;
-    if (flags.doctor !== false) {
+    if (kind === 'schtasks') {
+      // Nothing runs until the user runs the task's lines, so doctor would only say the daemon is down.
+      if (flags.doctor !== false) ctx.io.out('\nThen: jantar doctor, to see what this machine still needs.\n');
+    } else if (flags.doctor !== false) {
       ctx.io.out('\n');
       const report = await doctorReport(ctx);
       ctx.io.out(formatReport(report));
@@ -188,6 +196,8 @@ export default defineCommand(
           '  jantar node status     the link to the Mac, the terminal, accounts and hooks here\n' +
           '  jantar doctor          what this server still needs\n',
       );
+    } else if (kind === 'schtasks') {
+      ctx.io.out('\nNext: jantar node join <line from jantar node pair at the Mac>\n');
     } else {
       ctx.io.out(
         '\nNext:\n' +

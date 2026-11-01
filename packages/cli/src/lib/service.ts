@@ -170,7 +170,11 @@ async function loginctlOf(ctx: CliContext): Promise<string | undefined> {
 const NO_SYSTEMD_HINT =
   'Inside WSL, turn systemd on ([boot] systemd=true in /etc/wsl.conf, then wsl --shutdown); elsewhere run jantard yourself (jantar node join --no-service)';
 
-/** The Windows lines, as `install` and `node join` print them. */
+/**
+ * The Windows lines, as `install` and `node join` print them: each command
+ * on its own line, so it can be pasted as printed (the windows-latest job
+ * runs them exactly so).
+ */
 export function schtasksText(ctx: CliContext, readOnly: boolean): string {
   const l = schtasksLines(specOf(ctx, readOnly));
   let text =
@@ -178,7 +182,9 @@ export function schtasksText(ctx: CliContext, readOnly: boolean): string {
     `  ${l.create}\n` +
     `  ${l.run}\n` +
     'It runs while you are logged on (an unattended server needs auto-logon or a kept session).\n' +
-    `To stop it: ${l.end}   To remove it: ${l.remove}\n`;
+    'To stop it, then remove it:\n' +
+    `  ${l.end}\n` +
+    `  ${l.remove}\n`;
   if (storedTr(l.tr).length > SCHTASKS_TR_MAX) {
     text += `Note: the task's command is ${storedTr(l.tr).length} characters and schtasks takes ${SCHTASKS_TR_MAX} at most: move the repository to a shorter path.\n`;
   }

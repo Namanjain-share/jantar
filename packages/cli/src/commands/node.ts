@@ -450,7 +450,7 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
   // 2. The line, and the Access token for the door.
   const t = decodeJoinToken(line);
   if (!t.ok) {
-    ctx.io.err(`Not joined: ${t.reason}. Make a new line at the Mac: jantar node pair\n`);
+    ctx.io.err(`Not joined: ${t.reason}. Nothing was saved on this machine. Make a new line at the Mac: jantar node pair\n`);
     return EXIT.failed;
   }
   const url = t.token.url;
@@ -460,7 +460,10 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
   const os = nodeOsOf(ctx.deps.platform, await deps.readText(OSRELEASE));
   const res = await deps.pairWithHub(line, { os, version: CLI_VERSION, cfAccess });
   if (!res.ok) {
-    ctx.io.err(`Not joined: ${res.reason}. Nothing was saved on this machine.\n`);
+    // L1's sentences end in a period, and some already say nothing was saved.
+    const saved = /nothing was saved/i.test(res.reason) ? '' : ' Nothing was saved on this machine.';
+    const noToken = res.status === 403 && !cfAccess ? ' If the Mac\'s door has Cloudflare Access, pass --cf-access-client-id.' : '';
+    ctx.io.err(`Not joined. ${res.reason}${saved}${noToken}\n`);
     return EXIT.failed;
   }
   await ensureStateDirs(ctx.paths, ctx.deps.platform);
@@ -505,6 +508,8 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
   }
   const hooks = flags.hooks ? await installHooksInDirs(ctx, deps, dirs) : null;
 
+  // What the link says about the sessions here, printed after the hooks line.
+  const notes: string[] = [];
   if (started) {
     const st = await waitForLink(ctx, deps.linkWaitMs);
     if (st?.node?.link === 'linked') {
@@ -518,8 +523,8 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
       const inTmux = sessions.filter((s) => s.paneId !== undefined).length;
       const accounts = accountsText(ctx, state?.daemon?.accountsMode, dirs, Object.keys(state?.accounts ?? {}).length);
       ctx.io.out(`Linked. ${plural(sessions.length, 'Claude session')} here${tmux ? ` (${inTmux} in tmux)` : ''} on ${accounts}.\n`);
-      if (tmux && sessions.length > inTmux) ctx.io.out("Sessions outside tmux show on the phone with their cards, but Jantar can't type into them.\n");
-      if (tmux && sessions.length === 0) ctx.io.out('Run Claude inside tmux here, so the phone can send it prompts.\n');
+      if (tmux && sessions.length > inTmux) notes.push("Sessions outside tmux show on the phone with their cards, but Jantar can't type into them.\n");
+      if (tmux && sessions.length === 0) notes.push('Run Claude inside tmux here, so the phone can send it prompts.\n');
     } else {
       const node = st?.node;
       const fix = node?.lastClose ? closeFix(node.lastClose.code) : undefined;
@@ -528,6 +533,7 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
   }
   if (hooks) ctx.io.out(hooksLine(hooks));
   else if (dirs.length) ctx.io.out('Hooks: not installed here (cards need them): jantar hooks install --apply, with --settings <dir>/settings.json for each other config dir.\n');
+  for (const n of notes) ctx.io.out(n);
   if (ctx.deps.platform === 'win32') {
     ctx.io.out("Windows: the phone shows these sessions and answers their cards; prompts and the screen need WSL2 (jantar doctor).\n");
   } else if (readOnly) {

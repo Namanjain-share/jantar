@@ -10,6 +10,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { onCommand, type ExecHandler } from '@jantar/daemon/core/testing';
+import { generateKeyPair, privateKeyPem } from '@jantar/daemon/link/keys';
 import { FLEET_HUB_URL, linuxHome, makeFakeHome, writeHomeLayout, type FakeHome } from '@jantar/fixtures';
 import type { NodeFile } from '@jantar/daemon';
 import { doctorReport } from '../src/commands/doctor.js';
@@ -198,7 +199,7 @@ const NODE: NodeFile = {
   nodeId: '01JF1EETN0DEBV11D1000000A1',
   name: 'build-1',
   hubKey: 'A'.repeat(43),
-  privateKey: `${'-----'}BEGIN PRIVATE KEY-----\nsynthetic\n${'-----'}END PRIVATE KEY-----\n`,
+  privateKey: privateKeyPem(generateKeyPair().privateKey),
   cfAccess: { clientId: '3f2a0000000000000000000000000000.access', clientSecret: 'synthetic-secret-never-printed' },
 };
 

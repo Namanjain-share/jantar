@@ -151,7 +151,7 @@ describe('jantar fleet', () => {
       'Fleet:   on\n' +
         'Door:    https://jantar.example.com/v1/node/link (Cloudflare)\n' +
         'Servers: 1 of 3 online\n' +
-        '  build-1  online since 1m ago · 3 sessions\n' +
+        '  build-1  online · 3 sessions\n' +
         '  build-2  offline for 12m · last: the connection dropped (1006) · 4 Cloudflare Access refusals while away\n' +
         '  win-1    never linked\n',
     );

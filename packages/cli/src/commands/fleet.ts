@@ -132,7 +132,8 @@ async function status(ctx: CliContext, json: boolean): Promise<number> {
     const w = Math.max(0, ...live.map((r) => r.name.length));
     for (const r of live) {
       const parts: string[] = [];
-      if (r.online) parts.push(`online since ${ago(r.lastSeenAt, now)} · ${plural(r.sessions, 'session')}`);
+      // lastSeenAt is refreshed every few minutes while linked: it says nothing about since when.
+      if (r.online) parts.push(`online · ${plural(r.sessions, 'session')}`);
       else if (r.lastClose) parts.push(`offline for ${duration(now - Date.parse(r.lastClose.at))} · last: ${closeWords(r.lastClose.code)}`);
       else parts.push(r.lastSeenAt ? `offline, last seen ${ago(r.lastSeenAt, now)}` : 'never linked');
       if (r.accessRefused > 0) parts.push(`${plural(r.accessRefused, 'Cloudflare Access refusal')} while away`);

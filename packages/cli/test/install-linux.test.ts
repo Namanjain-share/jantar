@@ -17,6 +17,7 @@ import { linuxHome, makeFakeHome, writeHomeLayout, type FakeHome } from '@jantar
 import install from '../src/commands/install.js';
 import uninstall from '../src/commands/uninstall.js';
 import { EXIT } from '../src/command.js';
+import type { CtlClient } from '../src/ctl.js';
 import { plistFor } from '../src/lib/launchd.js';
 import { schtasksLines, schtasksText } from '../src/lib/service.js';
 import { renderUnit, serviceIsReadOnly, unitFor, unitPath, writeUnit } from '../src/lib/systemd.js';
@@ -163,9 +164,9 @@ describe('jantar install / uninstall on a Linux server (fake systemctl and login
       ],
     });
     const health = fakeCtl({ 'GET /healthz': ok({ ok: true, protocol: 3, daemonVersion: '0.6.0' }) });
-    const ctl = {
+    const ctl: CtlClient = {
       ...health,
-      request: (...a: Parameters<typeof health.request>) => (daemon.up ? health.request(...a) : fakeCtl({}, { down: true }).request(...a)),
+      request: <T>(...a: Parameters<CtlClient['request']>) => (daemon.up ? health : fakeCtl({}, { down: true })).request<T>(...a),
     };
     const { ctx, io } = contextFor({ env: { ...home.env, USER: 'sam' } }, { deps, ctl });
     return { ctx, io, deps, daemon, locations, unit: unitPath(ctx.paths) };
@@ -296,7 +297,30 @@ describe('jantar install on a Windows server (preview: lines printed, nothing ru
     expect(io.stdout).toContain(`In Command Prompt (cmd.exe), run:\n  ${l.create}\n  ${l.run}\n`);
     expect(l.create).toContain('--log-files');
     expect(l.create).toContain('--read-only');
-    expect(io.stdout).toContain(`To stop it: ${l.end}   To remove it: ${l.remove}\n`);
+    expect(io.stdout).toContain(`To stop it, then remove it:\n  ${l.end}\n  ${l.remove}\n`);
+  });
+
+  it('as the windows-latest job runs it (no node.json, no flags): each line at a line start, exit 0, doctor left for later', async () => {
+    const fresh = await makeFakeHome({ sessions: [] });
+    try {
+      const locations = await fakePackages(fresh.root);
+      const deps = testDeps({ platform: 'win32', locations });
+      const { ctx, io } = contextFor(fresh, { deps });
+      expect(await install.run([], ctx), io.stderr).toBe(EXIT.ok);
+      expect(deps.exec.calls).toHaveLength(0);
+      expect(io.stderr).toContain('This machine has not joined a Mac yet: jantar node join <line from the Mac> pairs it and prints these lines too.\n');
+      // What the job does: trim each printed line, find the one that starts with each verb.
+      const printed = `${io.stdout}${io.stderr}`.split(/\r?\n/).map((x) => x.trim());
+      for (const verb of ['Create', 'Run', 'End', 'Delete']) expect(printed.filter((x) => x.startsWith(`schtasks /${verb} `))).toHaveLength(1);
+      expect(printed.find((x) => x.startsWith('schtasks /Create '))).toMatch(/\/SC ONLOGON .*\/TR ".*jantard.*--log-files.*"$/);
+      // The daemon can't be up before the lines run: doctor is left for later, not failed.
+      expect(io.stdout).not.toContain('Daemon:');
+      expect(io.stdout).toContain('Then: jantar doctor, to see what this machine still needs.\n');
+      expect(io.stdout).toContain('Next: jantar node join <line from jantar node pair at the Mac>\n');
+      expect(io.stdout).not.toContain('jantar remote setup');
+    } finally {
+      await fresh.cleanup();
+    }
   });
 
   it('notes a task command over the 261 characters schtasks takes', async () => {
