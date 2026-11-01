@@ -40,7 +40,7 @@ import { dayLabel } from '../shared/DayNav.js';
 import { linkOk, OpenLink } from '../shared/links.js';
 import { NotSaved } from '../shared/states.js';
 import { clockIn, Field, INPUT, OfflineLine, SheetActions, TEXTAREA, useOffline, useWrite, type LifeClock } from '../today/parts.js';
-import { CopyButton } from './PostRow.js';
+import { CopyButton, OPEN } from './PostRow.js';
 
 /** The text's count shows past this. */
 const COUNT_FROM = 18_000;
@@ -215,7 +215,7 @@ function PostForm({
               Not posted
             </Button>
           </div>
-          <Field label="Posted link" htmlFor={`${id}-posted`} aside={badPosted ? null : <OpenLink url={postedUrl.trim()} />}>
+          <Field label="Posted link" htmlFor={`${id}-posted`} aside={badPosted ? null : <OpenLink url={postedUrl.trim()} label="Open" name="Open the posted link" className={OPEN} />}>
             <input
               id={`${id}-posted`}
               className={INPUT}
@@ -298,7 +298,7 @@ function PostForm({
       <Field label="Notes" htmlFor={`${id}-notes`}>
         <textarea id={`${id}-notes`} className={TEXTAREA} value={notes} maxLength={2000} rows={2} placeholder="Flair, media, rules: never copied" onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <Field label="Link" htmlFor={`${id}-link`} aside={badLink ? null : <OpenLink url={link.trim()} label="Open" />}>
+      <Field label="Link" htmlFor={`${id}-link`} aside={badLink ? null : <OpenLink url={link.trim()} label="Open" name="Open the link" className={OPEN} />}>
         <input
           id={`${id}-link`}
           className={INPUT}

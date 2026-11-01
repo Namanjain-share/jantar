@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LifeStatus, Post, PostsResponse } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { byGroup, doneText, groupOf, postLabel, postLine, weekLine } from '../src/ui/screens/life/posts/model.js';
+import { OPEN } from '../src/ui/screens/life/posts/PostRow.js';
 import { fakeApi, iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('posts');
@@ -304,7 +305,12 @@ describe('Posts: the sheet', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Copy the text' }));
     expect(await within(sheet).findByRole('button', { name: 'Could not copy' })).toBeTruthy();
     expect(clipboard.writeText).toHaveBeenLastCalledWith('First line of the body\nand a second line');
-    expect(within(sheet).getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(SUBMIT);
+    // Open is a text button like Copy: 44 px under a coarse pointer, not an inline link.
+    const openLink = within(sheet).getByRole('link', { name: 'Open the link' });
+    expect(openLink.getAttribute('href')).toBe(SUBMIT);
+    expect(openLink.textContent).toBe('Open');
+    expect(openLink.className).toBe(OPEN);
+    expect(OPEN).toContain('coarse:min-h-44');
   });
 
   it('adds a post: platform, kind, where, title, text, notes, link, day and time, as an idea or ready', async () => {
@@ -397,7 +403,10 @@ describe('Posts: the sheet', () => {
     expect(within(sheet).queryByRole('button', { name: 'Mark posted' })).toBeNull();
     expect(within(sheet).queryByRole('group', { name: 'Status' })).toBeNull();
     fireEvent.change(within(sheet).getByLabelText('Posted link'), { target: { value: 'https://www.example.com/r/examplecode/comments/9' } });
-    expect(within(sheet).getByRole('link', { name: 'Open link' }).getAttribute('href')).toBe('https://www.example.com/r/examplecode/comments/9');
+    const posted = within(sheet).getByRole('link', { name: 'Open the posted link' });
+    expect(posted.getAttribute('href')).toBe('https://www.example.com/r/examplecode/comments/9');
+    expect(posted.textContent).toBe('Open');
+    expect(posted.className).toBe(OPEN);
     fireEvent.click(within(sheet).getByRole('button', { name: 'Not posted' }));
     await waitFor(() => expect(postUpdate).toHaveBeenLastCalledWith(id(3), { status: 'ready' }, expect.any(String)));
     expect(await within(sheet).findByRole('button', { name: 'Mark posted' })).toBeTruthy();

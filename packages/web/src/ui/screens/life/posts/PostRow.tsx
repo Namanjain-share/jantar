@@ -44,7 +44,8 @@ export function CopyButton({ value, name, className }: { value: string | undefin
   );
 }
 
-const OPEN = buttonClass('text', 'sm');
+/** Open as a text button, 44 px under a coarse pointer like Copy (an inline link would be 19 px). */
+export const OPEN = buttonClass('text', 'sm');
 
 export interface PostRowProps {
   post: Post;
