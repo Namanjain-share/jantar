@@ -170,7 +170,8 @@ describe('devices screen', () => {
   it('a code made here gives read and control; an admin device is paired with the CLI', () => {
     renderApp({ path: '/devices', state: stateWith({}) });
     expect(screen.queryByLabelText(/Also allow admin/)).toBeNull();
-    expect(screen.queryByRole('switch')).toBeNull();
+    // v0.5.3: This device has Sounds switches; the pairing section has none.
+    expect(within(screen.getByRole('region', { name: 'Pair a device' })).queryByRole('switch')).toBeNull();
     expect(screen.getByText('jantar pair --admin')).toBeTruthy();
   });
 

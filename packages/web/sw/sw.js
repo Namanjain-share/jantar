@@ -1,7 +1,8 @@
 // Portions adapted from Shed (c) Sukhad Anand, MIT. See THIRD_PARTY_NOTICES.md
 //
 // Jantar service worker: caches the app shell, shows Web Push notifications
-// and opens the right session when one is tapped.
+// (silently only when the app on screen played its own chime, v0.5.3) and
+// opens the right session when one is tapped.
 //
 // It never touches /v1 or /healthz (live, private data: network only) and
 // never caches anything from another origin. The build (build/pwa-plugin.ts)
@@ -18,6 +19,10 @@ const APP_NAME = 'Jantar';
 /** Kinds that stay on screen until the user acts (desktop browsers honour it). */
 // v0.4: a medicine stays on the lock screen until tapped, like a card.
 const NEEDS_YOU = new Set(['permission', 'question', 'plan', 'send-failed', 'med']);
+/** v0.5.3: the alert groups (protocol alerts.ts) whose chime the open app plays. */
+const GROUPS = new Set(['urgent', 'needs', 'done', 'care', 'problem']);
+/** How long a push waits for the open app to say it played its chime; then it sounds as usual. */
+const CHIME_WAIT_MS = 300;
 
 function isPrivatePath(pathname) {
   return pathname === '/v1' || pathname.startsWith('/v1/') || pathname === '/healthz';
@@ -28,6 +33,20 @@ function str(v, max = 1000) {
 }
 
 /** A same-origin path for a notification's target; anything else becomes "/". */
+function sameOrigin(url) {
+  try {
+    return new URL(url).origin === self.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/** The push's own time (the daemon sends an ISO string), else now. */
+function timeOf(ts) {
+  const t = typeof ts === 'string' ? Date.parse(ts) : ts;
+  return typeof t === 'number' && Number.isFinite(t) ? t : Date.now();
+}
+
 function targetPath(data) {
   const origin = self.location.origin;
   if (typeof data.url === 'string' && data.url) {
@@ -153,13 +172,55 @@ self.addEventListener('push', (event) => {
     badge: '/icons/badge-96.png',
     renotify: Boolean(tag),
     requireInteraction: NEEDS_YOU.has(data.kind),
-    timestamp: typeof data.ts === 'number' ? data.ts : Date.now(),
+    timestamp: timeOf(data.ts),
     data: { url: targetPath(data), kind: str(data.kind, 40) },
   };
   if (tag) options.tag = tag;
-  // Every push must show a notification (iOS revokes silent subscriptions).
-  event.waitUntil(self.registration.showNotification(str(data.title, 200) || APP_NAME, options));
+  const title = str(data.title, 200) || APP_NAME;
+  // Every push must show a notification (iOS revokes silent subscriptions): exactly one, on every path.
+  event.waitUntil(
+    (async () => {
+      if (await chimed(data.group).catch(() => false)) options.silent = true;
+      await self.registration.showNotification(title, options);
+    })(),
+  );
 });
+
+/** The first same-origin window on screen, or null. */
+async function visibleClient() {
+  const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  return wins.find((c) => c.visibilityState === 'visible' && sameOrigin(c.url)) || null;
+}
+
+/**
+ * v0.5.3: a push while Jantar is open on screen. The app plays the group's
+ * own tone (chosen on that device, kept where this worker can't read it), and
+ * the push goes silent only when the app answers { played: true } within
+ * CHIME_WAIT_MS. Any other answer, none, or an error: the phone's own sound.
+ * Medicines and Life (`care`) are never silent: the app's bell plays on top,
+ * unasked. The message holds the group's name and nothing else.
+ */
+async function chimed(group) {
+  if (typeof group !== 'string' || !GROUPS.has(group)) return false;
+  const client = await visibleClient();
+  if (!client) return false;
+  if (group === 'care') {
+    client.postMessage({ type: 'jantar:chime', group });
+    return false;
+  }
+  const channel = new MessageChannel();
+  let timer;
+  try {
+    return await new Promise((resolve) => {
+      timer = setTimeout(() => resolve(false), CHIME_WAIT_MS);
+      channel.port1.onmessage = (e) => resolve(Boolean(e.data && e.data.played === true));
+      client.postMessage({ type: 'jantar:chime', group }, [channel.port2]);
+    });
+  } finally {
+    clearTimeout(timer);
+    channel.port1.close();
+  }
+}
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
@@ -167,13 +228,7 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     (async () => {
       const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      const same = wins.filter((c) => {
-        try {
-          return new URL(c.url).origin === self.location.origin;
-        } catch {
-          return false;
-        }
-      });
+      const same = wins.filter((c) => sameOrigin(c.url));
       const client = same.find((c) => c.focused) || same[0];
       if (client) {
         try {

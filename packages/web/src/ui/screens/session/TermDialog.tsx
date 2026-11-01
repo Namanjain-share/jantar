@@ -42,7 +42,10 @@
  *   the view afresh nor drops a tap; it is not a live region, but the
  *   Choices name it. A countdown that goes up under the same fingerprint is
  *   another ask (an agent asking the same again after Claude blocked the
- *   first): the view starts afresh, as for a `renewed` one.
+ *   first): the view starts afresh, as for a `renewed` one. As the count
+ *   crosses 60, 30 and 10 seconds left, the Answer soon tone plays once each
+ *   (v0.5.3, Devices › Sounds), kept per ask, so a re-render or a read never
+ *   repeats one; none once it is answered or gone.
  * - With no dialog: why there are no buttons (`screen.dialogNote`, or
  *   "Jantar can't read this dialog's options"), the screen's lines (every
  *   line the keypad's check covers), and the keypad; with Claude's prompt
@@ -86,6 +89,7 @@ import {
   type TerminalDialog,
 } from '@jantar/protocol';
 import { cleanScreen } from '../../../lib/format.js';
+import { chime } from '../../../lib/sounds.js';
 import { useApp } from '../../context.js';
 import { BUTTON_VARIANT, Button } from '../../kit/Button.js';
 import { HOLD_MS, useHold } from '../../kit/hold.js';
@@ -188,6 +192,24 @@ function useCountdown(read: number, blocksIn: string | undefined): number | null
     };
   }, [counting]);
   return left;
+}
+/** v0.5.3: the urgent group's tone plays as Claude's countdown crosses these seconds left. */
+export const TONE_AT_S: readonly number[] = [60, 30, 10];
+
+/**
+ * The urgent group's tone (and phrase, with Speak on) once as the seconds left cross each of TONE_AT_S,
+ * kept per ask (`ask`: the dialog's fingerprint and its view), so a re-render or a read that counts a
+ * second up never plays one again. Marks crossed together (back from the background) play once. None at 0.
+ */
+function useCountdownTones(ask: string | null, left: number | null): void {
+  const last = useRef<{ ask: string; left: number; done: readonly number[] } | null>(null);
+  useEffect(() => {
+    if (ask === null || left === null) return;
+    const was = last.current?.ask === ask ? last.current : null;
+    const crossed = was ? TONE_AT_S.filter((s) => was.left > s && left <= s && left > 0 && !was.done.includes(s)) : [];
+    last.current = { ask, left, done: [...(was?.done ?? []), ...crossed] };
+    if (crossed.length) chime('urgent');
+  }, [ask, left]);
 }
 /** The composer's limit (PromptBodySchema): a "No, and tell Claude …" note is sent from there. */
 const NOTE_MAX = 16_000;
@@ -729,6 +751,7 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
     setSeen(up ? { ...seen, n: seen.n + 1, twin: true, note: true, clock } : { ...seen, clock });
   }
   const changed = seen !== null && seen.full === full;
+  useCountdownTones(dialog ? `${dialog.fingerprint}\n${seen?.n ?? 0}` : null, ticking);
   // A row that appeared (or changed, a tick or the fingerprint included) under the finger a moment
   // ago was not the one the user chose.
   const guard = useTapGuard(dialog && full !== null ? `${seen?.n ?? 0}\n${full}\n${dialog.fingerprint}` : null);

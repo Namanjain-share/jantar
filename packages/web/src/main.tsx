@@ -20,11 +20,15 @@ const api = createApi();
 const router = createRouter(browserHistory());
 const toasts = createToastStore();
 const connection = createConnection({ store, api });
+// v0.5.3: the tones and the voice (lib/sounds.ts), loaded after the first screen.
+let sounds: typeof import('./lib/sounds.js') | undefined;
 
 listenForInstallPrompt();
 registerServiceWorker({
   onNavigate: (path) => router.getState().navigate(path),
   onUpdate: () => store.getState().setUpdateAvailable(true),
+  // Before they load, no tap has unlocked audio either: the push keeps its sound.
+  onChime: (group) => sounds?.chime(group) ?? false,
 });
 connection.start();
 
@@ -36,3 +40,12 @@ if (root) {
     </StrictMode>,
   );
 }
+
+void import('./lib/sounds.js').then(
+  (m) => {
+    sounds = m;
+    // Every tap from here on unlocks audio (iOS may need one again after the background).
+    m.listenForTaps();
+  },
+  () => undefined,
+);

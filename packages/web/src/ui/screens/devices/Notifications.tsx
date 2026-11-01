@@ -1,10 +1,12 @@
 /**
  * This device's notifications: on or off, mute, and which kinds reach it
  * (direction.md 5.5). The kinds are a switch list; "Not delivered" is locked
- * on because a prompt that was not sent must reach you.
+ * on because a prompt that was not sent must reach you. Under it, v0.5.3's
+ * Sounds row (Sounds.tsx, its own chunk), which needs to know whether Done
+ * is on here.
  */
 import { LockSimpleIcon } from '@phosphor-icons/react';
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useId, useState, type ReactNode } from 'react';
 import type { NotifyKind } from '@jantar/protocol';
 import { PRODUCT_NAME } from '../../../brand.js';
 import { errorText } from '../../../lib/api.js';
@@ -16,6 +18,8 @@ import { KINDS, readKinds, registerKinds, writeKinds } from './kinds.js';
 import { InlineError, PropRow, Receipt, Switch, shortTime } from './parts.js';
 
 export type Blocked = Exclude<PushState, 'on' | 'off'>;
+
+const SoundsRow = lazy(() => import('./Sounds.js').then((m) => ({ default: m.SoundsRow })));
 
 /** Why push cannot be turned on here (kept from v0.1; tests pin them). */
 export const PUSH_TEXT: Record<Blocked, string> = {
@@ -155,50 +159,55 @@ export function NotificationsRow() {
     ) : undefined;
 
   return (
-    <PropRow
-      label="Notifications"
-      aside={aside}
-      below={
-        <>
-          {isBlocked(state) ? <p className="max-w-560 type-small text-ink-2">{PUSH_TEXT[state]}</p> : null}
-          {state === 'off' ? (
-            <p className="mb-12 max-w-560 type-small text-ink-2">
-              Get a push on this device when a session needs you. Pick which kinds below.
-            </p>
-          ) : null}
-          {switchable ? (
-            <>
-              <div role="group" aria-label="Notification kinds" className="grid border-t border-line md:grid-cols-2 md:gap-x-24">
-                {KINDS.map((k) => (
-                  <label
-                    key={k.kind}
-                    className="flex min-h-40 cursor-pointer items-center gap-12 border-b border-line py-8 has-disabled:cursor-default coarse:min-h-44"
-                  >
-                    <Switch
-                      checked={k.locked ? true : kinds.includes(k.kind)}
-                      disabled={k.locked}
-                      describedBy={k.locked ? reasonId : undefined}
-                      onChange={(on) => toggle(k.kind, on)}
-                    />
-                    <span className="flex w-112 flex-none items-center gap-4 type-small font-medium text-ink">
-                      {k.word}
-                      {k.locked ? <LockSimpleIcon size={16} aria-hidden="true" className="flex-none text-ink-3" /> : null}
-                    </span>
-                    <span id={k.locked ? reasonId : undefined} className="min-w-0 flex-1 type-small text-ink-3">
-                      {k.text}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <p className="mt-12 max-w-560 type-small text-ink-3">These pick what reaches this device. A kind arrives only when the Mac sends it too.</p>
-            </>
-          ) : null}
-          {note?.tone === 'ok' ? <Receipt className="mt-12">{note.text}</Receipt> : null}
-          {note?.tone === 'error' ? <InlineError className="mt-12">{note.text}</InlineError> : null}
-        </>
-      }
-    >
-      {value}
-    </PropRow>
+    <>
+      <PropRow
+        label="Notifications"
+        aside={aside}
+        below={
+          <>
+            {isBlocked(state) ? <p className="max-w-560 type-small text-ink-2">{PUSH_TEXT[state]}</p> : null}
+            {state === 'off' ? (
+              <p className="mb-12 max-w-560 type-small text-ink-2">
+                Get a push on this device when a session needs you. Pick which kinds below.
+              </p>
+            ) : null}
+            {switchable ? (
+              <>
+                <div role="group" aria-label="Notification kinds" className="grid border-t border-line md:grid-cols-2 md:gap-x-24">
+                  {KINDS.map((k) => (
+                    <label
+                      key={k.kind}
+                      className="flex min-h-40 cursor-pointer items-center gap-12 border-b border-line py-8 has-disabled:cursor-default coarse:min-h-44"
+                    >
+                      <Switch
+                        checked={k.locked ? true : kinds.includes(k.kind)}
+                        disabled={k.locked}
+                        describedBy={k.locked ? reasonId : undefined}
+                        onChange={(on) => toggle(k.kind, on)}
+                      />
+                      <span className="flex w-112 flex-none items-center gap-4 type-small font-medium text-ink">
+                        {k.word}
+                        {k.locked ? <LockSimpleIcon size={16} aria-hidden="true" className="flex-none text-ink-3" /> : null}
+                      </span>
+                      <span id={k.locked ? reasonId : undefined} className="min-w-0 flex-1 type-small text-ink-3">
+                        {k.text}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-12 max-w-560 type-small text-ink-3">These pick what reaches this device. A kind arrives only when the Mac sends it too.</p>
+              </>
+            ) : null}
+            {note?.tone === 'ok' ? <Receipt className="mt-12">{note.text}</Receipt> : null}
+            {note?.tone === 'error' ? <InlineError className="mt-12">{note.text}</InlineError> : null}
+          </>
+        }
+      >
+        {value}
+      </PropRow>
+      <Suspense fallback={null}>
+        <SoundsRow doneOff={!kinds.includes('done')} />
+      </Suspense>
+    </>
   );
 }
