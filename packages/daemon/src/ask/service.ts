@@ -41,6 +41,15 @@
  * part holds only `life`, `usage` and `ccwLegacy`, so an answer reaches
  * nothing else (sessions, files, the shell, settings or other devices).
  *
+ * v0.8 (Intel's Add post), the typed fast path only: while reading links
+ * is on (`intel.enabled` and `intel.read`), a message that is just one link
+ * or "save this: <link>" (answer.ts saveFastPath) runs no Claude: its turn
+ * is done at once with one `save` card and the reply "Save this to Intel?".
+ * Add calls Intel's `read` (via `ask`; the card's ref is the item's id),
+ * Undo Intel's `remove` (never of an item that was already on the shelf
+ * before Add: that Undo only puts the card back). Ask holds only Intel's
+ * `read` and `remove`. Claude never proposes a save (answer.ts).
+ *
  * No text anywhere but the owner's list: events are `life.changed {}` on
  * each turn state change, Skip, Clear and the switch turning off (Add and
  * Undo tick through Life); one `ask.run` audit row per run with counts
@@ -55,12 +64,14 @@ import {
   ASK_TEXT_MAX,
   ASK_TURNS_KEPT,
   FoodBodySchema,
+  INTEL_READ_REASONS,
   MoneyBodySchema,
   PostBodySchema,
   TodoBodySchema,
   type AccountId,
   type AskCard,
   type AskList,
+  type AskSaveAction,
   type AskTurn,
   type AskWriteAction,
   type RewriteModel,
@@ -68,10 +79,9 @@ import {
 import type { Actor, AskService, CcwLegacySource, DaemonContext, IntelService, LifeResult, LifeService, Logger, TimerId, Unsubscribe, UsageSource } from '../contracts.js';
 import { actorId } from '../core/actor.js';
 import { newId } from '../core/ids.js';
-import { NotImplementedError } from '../core/not-implemented.js';
 import { pickSharedRunAccount, runVia } from '../rewrite/pick.js';
 import { DROPPABLE_OPTIONS, execRewrite, prepareRunDir, runDroppingRefused, type RunOutcome } from '../rewrite/run.js';
-import { ASK_SENTENCES, asksReminder, checkWrite, parseAnswer, type AskProject, type AskScope, type ParsedAnswer } from './answer.js';
+import { ASK_SENTENCES, asksReminder, checkWrite, parseAnswer, saveFastPath, type AskProject, type AskScope, type ParsedAnswer } from './answer.js';
 import { askInput } from './input.js';
 
 /** Low effort: a short answer from a short input. */
@@ -103,9 +113,6 @@ export interface AskDeps {
 
 /** The write cards Life applies (every one but v0.8's save, which goes to Intel). */
 type LifeWriteAction = Exclude<AskWriteAction, { type: 'save' }>;
-
-/** What a save card's Add and Undo say until lane C builds them (NotImplementedError: the API's 501). */
-const SAVING = 'Saving links from Ask';
 
 export interface AskOptions {
   /** jantard --read-only: told, not wrapped (the list says why; send is refused). */
@@ -183,6 +190,8 @@ class AskServiceImpl implements AskService {
   private sweep: TimerId | undefined;
   private readonly log: Logger;
   private readonly readOnly: boolean;
+  /** v0.8: save cards whose Add found the link already on the shelf: their Undo deletes nothing. */
+  private readonly alreadySaved = new WeakSet<AskCard>();
 
   constructor(
     private readonly ctx: DaemonContext,
@@ -231,11 +240,15 @@ class AskServiceImpl implements AskService {
     this.pruneAll();
     const list = this.turns.get(owner) ?? [];
     if (list.some(unfinished)) return refuse('conflict', ASK_SENTENCES.busy);
-    const turn: AskTurn = { id: newId(), at: this.ctx.clock.iso(), text: message, state: 'queued', cards: [], dropped: 0 };
+    // v0.8: the typed fast path: no Claude run, one save card at once.
+    const save = this.readingLinks() ? saveFastPath(message) : null;
+    const turn: AskTurn = save
+      ? { id: newId(), at: this.ctx.clock.iso(), text: message, state: 'done', reply: ASK_SENTENCES.saveAsk, cards: [{ action: save, state: 'proposed' }], dropped: 0 }
+      : { id: newId(), at: this.ctx.clock.iso(), text: message, state: 'queued', cards: [], dropped: 0 };
     list.push(turn);
     this.turns.set(owner, list);
     this.prune(owner);
-    this.queue.push({ owner, turnId: turn.id });
+    if (!save) this.queue.push({ owner, turnId: turn.id });
     this.changed();
     this.kick();
     return { ok: true, value: { id: turn.id } };
@@ -276,7 +289,7 @@ class AskServiceImpl implements AskService {
     const checked = checkWrite(wanted, this.now(), { noTime: card.flag === 'no_time', noProject: card.flag === 'no_project' });
     if (!checked.ok) return refuse('invalid_request', checked.reason);
     // v0.8: a save card goes to Intel, never to Life.
-    if (checked.action.type === 'save') throw new NotImplementedError(SAVING);
+    if (checked.action.type === 'save') return this.addSave(card, action, checked.action);
     const off = this.moduleOff(checked.action);
     if (off) return off;
     const made = this.apply(checked.action, actor);
@@ -308,7 +321,7 @@ class AskServiceImpl implements AskService {
     if (action.type === 'show' || card.state !== 'added' || !card.ref) return refuse('conflict', ASK_SENTENCES.nothingToUndo);
     if (this.tooOld(turn)) return refuse('conflict', ASK_SENTENCES.oldUndo);
     // v0.8: a save card's item is Intel's.
-    if (action.type === 'save') throw new NotImplementedError(SAVING);
+    if (action.type === 'save') return this.undoSave(card, card.ref);
     // While the part is off Life's own delete is refused too (403): Undo is no way around a switch.
     const off = this.moduleOff(action);
     if (off) return off;
@@ -319,6 +332,48 @@ class AskServiceImpl implements AskService {
     delete card.ref;
     // Life ticked for an item it deleted; one already gone wrote nothing there.
     if (!gone.ok) this.changed();
+    return OK;
+  }
+
+  // -------------------------------------------------------------------------
+  // v0.8: the save card (Intel)
+
+  /** Reading links is on: the shelf and its reads (the fast path's switch, and Add's). */
+  private readingLinks(): boolean {
+    const s = this.ctx.settings.get();
+    return s.intel.enabled && s.intel.read;
+  }
+
+  /** Add: Intel saves the link and queues its read; an edit may change the depth only. */
+  private async addSave(card: AskCard, proposed: AskWriteAction, wanted: AskSaveAction): Promise<LifeResult<{ id: string }>> {
+    if (proposed.type !== 'save' || wanted.url !== proposed.url) return refuse('invalid_request', ASK_SENTENCES.editLink);
+    if (!this.readingLinks()) {
+      return refuse('forbidden', this.ctx.settings.get().intel.enabled ? INTEL_READ_REASONS.off : ASK_SENTENCES.intelOff);
+    }
+    const r = await this.deps.intel.read({ text: wanted.url, ...(wanted.depth ? { depth: wanted.depth } : {}) }, { via: 'ask' });
+    if (!r.ok) return r;
+    // The card may have been taken meanwhile (a second tap): the first one's item stands.
+    if (card.state !== 'proposed') return refuse('conflict', card.state === 'added' ? ASK_SENTENCES.added : ASK_SENTENCES.skipped);
+    card.action = wanted;
+    card.state = 'added';
+    card.ref = r.value.id;
+    if (r.value.duplicate) this.alreadySaved.add(card);
+    else this.alreadySaved.delete(card);
+    this.changed();
+    return { ok: true, value: { id: r.value.id } };
+  }
+
+  /** Undo: Intel deletes the item Add saved (one already gone counts as removed); a link that was on the shelf before stays. */
+  private async undoSave(card: AskCard, ref: string): Promise<LifeResult> {
+    if (!this.alreadySaved.has(card)) {
+      if (!this.ctx.settings.get().intel.enabled) return refuse('forbidden', ASK_SENTENCES.intelOff);
+      const gone = await this.deps.intel.remove(ref);
+      if (!gone.ok && gone.code !== 'not_found') return gone;
+    }
+    this.alreadySaved.delete(card);
+    card.state = 'proposed';
+    delete card.ref;
+    this.changed();
     return OK;
   }
 

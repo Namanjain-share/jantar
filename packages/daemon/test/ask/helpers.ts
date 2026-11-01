@@ -59,6 +59,8 @@ export interface RigOptions {
   clock?: FakeClock;
   bins?: Partial<Bins>;
   accounts?: Account[];
+  /** v0.8: Intel's read and remove for the save card (default: not built, the API's 501). */
+  intel?: Pick<IntelService, 'read' | 'remove'>;
 }
 
 /** A claude run the fake exec holds until the test answers it (an abort ends it as a killed process). */
@@ -178,7 +180,7 @@ export interface AskParts {
  * on an in-memory life.db in ctx's Life zone, behind a stand-in LifeService
  * (`broken()` as set, `status()` from the core and ctx's settings).
  */
-export function askOn(ctx: TestContext, opts: { readOnly?: boolean } = {}): AskParts {
+export function askOn(ctx: TestContext, opts: { readOnly?: boolean; intel?: Pick<IntelService, 'read' | 'remove'> } = {}): AskParts {
   const core = createTestLifeCore({ clock: ctx.clock, settings: ctx.settings.get().life });
   const f = makeFakes(ctx);
   const deps = { ctx, sessions: f.sessions, usage: f.usage, ccwLegacy: f.ccwLegacy };
@@ -202,8 +204,8 @@ export function askOn(ctx: TestContext, opts: { readOnly?: boolean } = {}): AskP
     };
   };
   const life = notBuilt<LifeService>('Life', { start: async () => {}, stop: async () => {}, broken: () => broken, status, todos, food, finance, posts });
-  // v0.8: Intel's read and remove for the save card (wave 0: not built, the API's 501).
-  const intel = notBuilt<Pick<IntelService, 'read' | 'remove'>>('Reading links');
+  // v0.8: Intel's read and remove for the save card (a test's own, else not built: the API's 501).
+  const intel = opts.intel ?? notBuilt<Pick<IntelService, 'read' | 'remove'>>('Reading links');
   const ask = buildAskService(ctx, { life, usage: f.usage, ccwLegacy: f.ccwLegacy, intel }, { readOnly: opts.readOnly === true });
   return {
     core,
@@ -265,7 +267,7 @@ export async function makeAskRig(opts: RigOptions = {}): Promise<AskRig> {
     ctx = createTestContext({ home: state, exec: fakeExec, accountsMode: opts.mode ?? 'single', settings, clock, ...(opts.bins ? { bins: opts.bins } : {}) });
   }
   if (opts.accounts) ctx.store.emit({ type: 'usage.updated', data: { accounts: opts.accounts, activeAccount: null, fetchedAt: NOW, source: 'cache' } });
-  const parts = askOn(ctx, { readOnly: opts.readOnly === true });
+  const parts = askOn(ctx, { readOnly: opts.readOnly === true, ...(opts.intel ? { intel: opts.intel } : {}) });
   const { core, life, todos, food, finance, posts, ask, usage, ccwLegacy } = parts;
   await ask.start();
   const turn = (id: string, actor: Actor = PHONE) => {

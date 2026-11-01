@@ -47,9 +47,17 @@
  *
  * `checkWrite` runs the same rules on a card's action (or the phone's edit
  * of it) again at Add, against the time then. Nothing here logs.
+ *
+ * v0.8: Claude never proposes a save (Intel's Add post): `readAction` has no
+ * `save` case, so one in an answer is dropped like any unknown type. A save
+ * card comes only from the daemon's typed fast path (`saveFastPath`): a
+ * message that is just one http(s) link, or "save this: <link>" (save, keep
+ * or add; "this" or "it"; "to intel"; a `:` or `-`), with an optional depth
+ * word after it (light, standard, full), in any case.
  */
 import { nextRepeat, shiftDay } from '@jantar/life-core';
 import {
+  AskSaveActionSchema,
   ASK_CARDS_MAX,
   ASK_REPLY_MAX,
   ASK_TEXT_MAX,
@@ -67,6 +75,7 @@ import {
   type AskCard,
   type AskFlag,
   type AskPostAction,
+  type AskSaveAction,
   type AskTodoAction,
   type AskWriteAction,
   type Due,
@@ -108,7 +117,31 @@ export const ASK_SENTENCES = {
   badDay: 'Pick a day from a week ago to a year ahead.',
   futureDay: 'Food and money go on today or an earlier day.',
   badItem: "That can't be added as it is. Edit it and try again.",
+  // v0.8: the save card (the typed fast path)
+  saveAsk: 'Save this to Intel?',
+  editLink: 'An edit can change how deeply it is read, not the link.',
+  intelOff: 'The Intel shelf is off. Turn it on at your Mac: jantar intel on',
 } as const;
+
+/**
+ * v0.8: the typed fast path. An optional "save|keep|add [this|it] [to
+ * intel] [:|-]", one http(s) link, an optional depth word; nothing else.
+ * Linear: no two quantifiers here can match the same characters.
+ */
+const SAVE_FAST = /^(?:(?:save|keep|add)(?: this| it)?(?: to intel)?\s*(?:[:-]\s*)?)?(https?:\/\/\S+)(?:\s+(light|standard|full))?$/i;
+/** What a pasted link often ends with that is not part of it. */
+const LINK_TAIL = /[)\].,;!?'"]+$/;
+
+/** The save card a message asks for, or null when it is anything but the fast path's shape (then Claude reads it as before). */
+export function saveFastPath(text: string): AskSaveAction | null {
+  const m = SAVE_FAST.exec(text.trim());
+  if (!m) return null;
+  const url = (m[1] ?? '').replace(LINK_TAIL, '');
+  const depth = m[2]?.toLowerCase();
+  const action = { type: 'save' as const, url, ...(depth ? { depth } : {}) };
+  const ok = AskSaveActionSchema.safeParse(action);
+  return ok.success ? ok.data : null;
+}
 
 /** A project as the name match sees it. */
 export interface AskProject {
