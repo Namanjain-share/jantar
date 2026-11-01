@@ -1084,7 +1084,9 @@ async function windowsCheck(i: DoctorInput): Promise<DoctorCheck> {
 
 async function claudeWindowsCheck(i: DoctorInput): Promise<DoctorCheck> {
   const base = { id: 'claude-windows', title: 'Claude on Windows' } as const;
-  const bin = i.settings.settings.bins.claude ?? (await i.findBin('claude'));
+  // The finder knows no PATHEXT: the native installer's claude.exe is looked for by its full
+  // name first (npm's extensionless sh shim can be found, but not run).
+  const bin = i.settings.settings.bins.claude ?? (await i.findBin('claude.exe')) ?? (await i.findBin('claude'));
   if (!bin) return { ...base, status: 'warn', detail: `claude not found; cards need Claude Code ${MIN_CLAUDE_WINDOWS} or newer here` };
   const r = await i.exec(bin, ['--version'], { timeoutMs: 15_000 });
   const v = r.code === 0 ? parseVersion(r.stdout) : null;

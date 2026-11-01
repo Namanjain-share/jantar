@@ -7,13 +7,13 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { onCommand } from '@jantar/daemon/core/testing';
-import { FLEET_HUB_URL, NODE_IDS, makeFakeHome, nodeViewFixture, type FakeHome } from '@jantar/fixtures';
+import { FLEET_HUB_URL, NODE_IDS, makeFakeHome, nodeCard, nodeSession, nodeViewFixture, type FakeHome } from '@jantar/fixtures';
 import { emptyState, type NodeRow, type State } from '@jantar/protocol';
 import fleet, { DROPPED_HINT, droppedTogether } from '../src/commands/fleet.js';
-import status, { machineLines } from '../src/commands/status.js';
+import status, { boardState, machineLines } from '../src/commands/status.js';
 import { EXIT } from '../src/command.js';
 import { FIXED_DOOR } from '../src/lib/doctor.js';
-import { contextFor, fakeCtl, fakeSettings, ok, testDeps, T0 } from './helpers.js';
+import { contextFor, fail, fakeCtl, fakeSettings, ok, testDeps, T0 } from './helpers.js';
 
 const PMSET = '/usr/bin/pmset';
 const pmset = (ac: number) => onCommand(PMSET, { stdout: `Battery Power:\n sleep                1\nAC Power:\n sleep                ${ac}\n` }, ['-g', 'custom']);
@@ -49,7 +49,10 @@ describe('jantar fleet', () => {
     await home.cleanup();
   });
 
-  function hub(settings: Record<string, unknown> = CLOUDFLARE, o: { sleep?: number; machines?: NodeRow[]; down?: boolean; platform?: NodeJS.Platform } = {}) {
+  function hub(
+    settings: Record<string, unknown> = CLOUDFLARE,
+    o: { sleep?: number; machines?: NodeRow[]; down?: boolean; platform?: NodeJS.Platform; listFails?: boolean } = {},
+  ) {
     const s = fakeSettings(settings);
     const deps = testDeps({ handlers: [pmset(o.sleep ?? 0)], ...(o.platform ? { platform: o.platform } : {}) });
     const ctl = o.down
@@ -57,7 +60,7 @@ describe('jantar fleet', () => {
       : fakeCtl({
           ...s.routes,
           'GET /ctl/status': ok({ role: 'hub', daemonVersion: '0.6.0', nodes: { paired: (o.machines ?? []).length, online: 0 } }),
-          'GET /v1/machines': () => ok({ machines: o.machines ?? [] }),
+          'GET /v1/machines': () => (o.listFails ? fail('internal', 'Something went wrong in jantard.', 500) : ok({ machines: o.machines ?? [] })),
         });
     const { ctx, io } = contextFor(home, { deps, ctl });
     return { ctx, io, deps, s, ctl };
@@ -174,6 +177,25 @@ describe('jantar fleet', () => {
     );
   });
 
+  it('status: no Access hint on a Tailscale door (it has no token to expire)', async () => {
+    const machines = [
+      row({ online: false, lastClose: { code: 1006, at: iso(30 * 60_000) } }),
+      row({ id: NODE_IDS.build2, name: 'build-2', online: false, lastClose: { code: 1006, at: iso(29 * 60_000) } }),
+    ];
+    const ts = { remote: { mode: 'tailscale', publicUrl: 'https://mac.tailnet-0000.ts.net', allowedOrigins: ['https://mac.tailnet-0000.ts.net'] }, fleet: { enabled: true } };
+    const { ctx, io } = hub(ts, { machines });
+    expect(await fleet.run(['status'], ctx), io.stderr).toBe(EXIT.ok);
+    expect(io.stdout).toContain('(Tailscale Serve)');
+    expect(io.stdout).not.toContain(DROPPED_HINT);
+    expect(io.stdout).not.toContain('Cloudflare');
+  });
+
+  it('status: the daemon failing to list the servers is one line, not a crash', async () => {
+    const { ctx, io } = hub({ ...CLOUDFLARE, fleet: { enabled: true } }, { listFails: true });
+    expect(await fleet.run(['status'], ctx), io.stderr).toBe(EXIT.ok);
+    expect(io.stdout).toContain('Servers: the daemon did not list them (Something went wrong in jantard.)\n');
+  });
+
   it('the hint needs every live server down, closed within 2 minutes, and not by the Mac itself', () => {
     const a = row({ online: false, lastClose: { code: 1006, at: iso(10 * 60_000) } });
     const b = row({ name: 'build-2', online: false, lastClose: { code: 1006, at: iso(9 * 60_000) } });
@@ -204,7 +226,7 @@ describe('jantar status with Fleet', () => {
     const state = emptyState();
     state.sessions = {
       a: { sid: 'a', status: 'idle' } as State['sessions'][string],
-      b: { sid: 'b', status: 'working', node: NODE_IDS.build1 } as State['sessions'][string],
+      'b0000000-synthetic': nodeSession({ sid: 'b0000000-synthetic', node: NODE_IDS.build1, account: 2 }),
       c: { sid: 'c', status: 'ended', node: NODE_IDS.build1 } as State['sessions'][string],
     };
     state.nodes = {
@@ -214,10 +236,24 @@ describe('jantar status with Fleet', () => {
     return state;
   }
 
-  it('adds one line per machine, the Mac first', () => {
+  it('adds one line per machine, the Mac first, with each server\'s sessions under it (its own account numbers, named)', () => {
     expect(machineLines(fleetState(), null, T0)).toBe(
-      '\nMachines: 3\n  Mac      this Mac · 1 session\n  build-1  Linux · tmux · online · 1 session\n  win-1    Windows · watch · offline for 5m\n',
+      '\nMachines: 3\n' +
+        '  Mac      this Mac · 1 session\n' +
+        '  build-1  Linux · tmux · online · 1 session\n' +
+        '      - Working · api-server · fix-tests  (build-1 acct 2, b0000000)\n' +
+        '  win-1    Windows · watch · offline for 5m\n',
     );
+    const waiting = fleetState();
+    waiting.pending = { p1: nodeCard({ sid: 'b0000000-synthetic' }) };
+    expect(machineLines(waiting, null, T0)).toMatch(/build-1 {2}Linux · tmux · online · 1 session · 1 needs you\n {6}! .*\(build-1 acct 2, b0000000\)\n/);
+  });
+
+  it("the board above holds the Mac's own sessions once servers are paired; without servers it is the v0.5 board", () => {
+    expect(Object.keys(boardState(fleetState()).sessions)).toEqual(['a']);
+    const mac = emptyState();
+    mac.sessions = { a: { sid: 'a', status: 'idle' } as State['sessions'][string] };
+    expect(boardState(mac)).toBe(mac);
   });
 
   it('adds nothing without servers (the v0.5 board), and on a server says whose it is', () => {

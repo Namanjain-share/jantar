@@ -1095,8 +1095,14 @@ in [docs/fleet.md](docs/fleet.md).
 ### What the handshake does and does not stop
 
 The handshake stops anyone who controls only the **hostname** (a DNS or
-account takeover, a mistyped address) from posing as the Mac or collecting
-servers' credentials: they can't sign as the Mac's key.
+account takeover, a mistyped address) from posing as the Mac: they can't
+sign as the Mac's key, so no server links to them, and they never get a
+server's key. They do get the Cloudflare Access service token (its id and
+secret): a server sends it with its join and with every link attempt,
+before any signature is checked. On its own that token gets no further
+than the pairing and link handshakes at the real Mac, which still need a
+fresh join line or a paired server's key. If you think the hostname was
+taken, [rotate the token](docs/fleet.md#rotate-the-access-token).
 
 It does **not** stop anything that terminates TLS in the path. Cloudflare,
 or a TLS-inspecting proxy whose CA a server trusts through

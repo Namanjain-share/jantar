@@ -13,7 +13,9 @@
  * It only runs when the user runs it. `--print` shows the service file and
  * changes nothing. `--read-only` makes the daemon watch-only (the flag goes
  * into the service's argv); run again without it, install keeps what the
- * installed service has (`--no-read-only` drops it). It never touches
+ * installed service has (`--no-read-only` drops it). Where no service file
+ * says (Windows, a server joined with --no-service), the running daemon's
+ * mode decides; on a server with neither, install refuses to guess. It never touches
  * Claude's settings (hooks are a separate, opt-in `jantar hooks install`),
  * ccw's files or ccw's own LaunchAgent. It refuses while ccw-v2's
  * LaunchAgent is installed: the old daemon would hold the port and jantard
@@ -27,7 +29,7 @@ import { LAUNCHD_LABEL, ROUTES, type HealthResponse } from '@jantar/protocol';
 import { parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { CtlUnavailableError, callDaemon } from '../ctl.js';
-import { formatReport } from '../lib/doctor.js';
+import { formatReport, readCtlStatus } from '../lib/doctor.js';
 import { guardRealPath } from '../lib/guard.js';
 import { installHookClient } from '../lib/hook-client.js';
 import { legacyAgentProblem, plistPath } from '../lib/launchd.js';
@@ -103,13 +105,32 @@ export async function prepareStateDir(ctx: CliContext, out: (text: string) => vo
   out(`Hook client: ${hook.path}${hook.changed ? '' : ' (unchanged)'}\n`);
 }
 
-/** --read-only, --no-read-only, or (neither) what the installed service has. */
-export async function readOnlyChoice(ctx: CliContext, flag: boolean | undefined): Promise<{ readOnly: boolean; kept: boolean }> {
-  if (flag !== undefined) return { readOnly: flag, kept: false };
-  const kind = serviceKindOf(ctx.deps.platform);
-  const kept = kind ? await installedReadOnly(kind, ctx) : false;
-  return { readOnly: kept, kept };
+export interface ReadOnlyChoice {
+  readOnly: boolean;
+  /** Where a kept --read-only came from (null: the flag, or not read-only). */
+  keptFrom: 'the installed service' | 'the running daemon' | null;
 }
+
+/**
+ * --read-only, --no-read-only, or (neither) what the installed service has;
+ * with no service file to read, what the running daemon runs with. Null on
+ * a server where nothing can tell (Windows or --no-service, daemon down): a
+ * guess could widen a watch-only server. A Mac's first install is not
+ * read-only, as before v0.6.
+ */
+export async function readOnlyChoice(ctx: CliContext, flag: boolean | undefined): Promise<ReadOnlyChoice | null> {
+  if (flag !== undefined) return { readOnly: flag, keptFrom: null };
+  const kind = serviceKindOf(ctx.deps.platform);
+  const installed = kind ? await installedReadOnly(kind, ctx) : null;
+  if (installed !== null) return { readOnly: installed, keptFrom: installed ? 'the installed service' : null };
+  if (roleOf(ctx.paths) !== 'node') return { readOnly: false, keptFrom: null };
+  const running = (await readCtlStatus(ctx.ctl))?.mode?.readOnly;
+  if (typeof running !== 'boolean') return null;
+  return { readOnly: running, keptFrom: running ? 'the running daemon' : null };
+}
+
+export const READ_ONLY_UNKNOWN =
+  "can't tell whether this server is watch-only: no service file says, and its daemon is not running. Run jantar install --read-only (watch only) or jantar install --no-read-only.";
 
 const NOT_A_SERVER =
   'jantar install sets up a macOS LaunchAgent here only on a Mac. On a Linux or Windows server, run jantar node join <line from the Mac> first (it installs the service), or run jantard yourself.';
@@ -127,7 +148,8 @@ export default defineCommand(
       `On a Mac: writes ~/Library/LaunchAgents/${LAUNCHD_LABEL}.plist (KeepAlive, absolute node path) and loads it with\n` +
       'launchctl. On a Linux server (after jantar node join): ~/.config/systemd/user/jantar.service, started with\n' +
       'systemctl --user, and lingering. On a Windows server: prints the Scheduled Task lines to run.\n' +
-      '--read-only makes the daemon watch-only; running install again keeps the installed choice.\n' +
+      '--read-only makes the daemon watch-only; running install again keeps the installed choice (on a server\n' +
+      'with no service file to read, the running daemon\'s; with that down too, say --read-only or --no-read-only).\n' +
       'It does not install Claude Code hooks (see: jantar hooks install) and leaves ccw alone.',
   },
   async (argv, ctx) => {
@@ -141,7 +163,12 @@ export default defineCommand(
       return EXIT.failed;
     }
     if (kind === 'schtasks' && role !== 'node') ctx.io.err(`${NOT_JOINED_WINDOWS}\n`);
-    const { readOnly, kept } = await readOnlyChoice(ctx, flags['read-only']);
+    const choice = await readOnlyChoice(ctx, flags['read-only']);
+    if (!choice) {
+      ctx.io.err(`jantar install: ${READ_ONLY_UNKNOWN}\n`);
+      return EXIT.failed;
+    }
+    const { readOnly, keptFrom } = choice;
 
     if (flags.print) {
       ctx.io.out(serviceText(kind, ctx, readOnly));
@@ -164,11 +191,11 @@ export default defineCommand(
     }
 
     await prepareStateDir(ctx);
-    if (kept) ctx.io.out('Read-only: kept from the installed service (jantar install --no-read-only allows writes again).\n');
+    if (keptFrom) ctx.io.out(`Read-only: kept from ${keptFrom} (jantar install --no-read-only allows writes again).\n`);
 
     const svc = await installService(ctx, { readOnly, start: flags.start !== false });
     if (!svc.ok) {
-      ctx.io.err(`jantar install: ${svc.reason}\n`);
+      ctx.io.err(`jantar install: ${svc.reason}\n${svc.next ? `${svc.next}\n` : ''}`);
       return EXIT.failed;
     }
     ctx.io.out(svc.text);

@@ -98,7 +98,7 @@ On a server (Linux, WSL2, native Windows, another Mac):
 | Command | What it does |
 |---|---|
 | `jantar init [--yes]` | first-run setup: find Claude Code and cswap, write the settings this Mac needs |
-| `jantar install [--print] [--no-start] [--no-doctor] [--read-only \| --no-read-only]` | set up `~/.jantar` and the LaunchAgent (on a Linux server, a systemd user unit; on a Windows server, the task's lines to run), start the daemon, run doctor; `--read-only` runs it watch-only, and a later install keeps that choice |
+| `jantar install [--print] [--no-start] [--no-doctor] [--read-only \| --no-read-only]` | set up `~/.jantar` and the LaunchAgent (on a Linux server, a systemd user unit; on a Windows server, the task's lines to run), start the daemon, run doctor; `--read-only` runs it watch-only, and a later install keeps that choice (from the service file, else the running daemon; on a server with neither, it asks for `--read-only` or `--no-read-only`) |
 | `jantar uninstall [--purge [--yes] [--force]]` | stop the daemon and remove its service (keeps `~/.jantar` unless `--purge`) |
 | `jantar doctor [--json]` | read-only health check |
 | `jantar remote status [--json]` | what is set up for the phone |

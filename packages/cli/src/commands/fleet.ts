@@ -13,14 +13,15 @@
  * - off: every link closes (4403) and the servers' sessions leave the board;
  *   the pairings stay, so `fleet on` brings them back without joining again.
  * - status: on or off, the door, servers online; per server its last close
- *   and the Access refusals it counted while away; and one hint when every
- *   server dropped within two minutes of each other while the Mac stayed up.
+ *   and the Access refusals it counted while away; and, on a Cloudflare
+ *   door, one hint when every server dropped within two minutes of each
+ *   other while the Mac stayed up (an expired Access token).
  */
 import { NODE_CLOSE, NODE_LINK_PATH } from '@jantar/protocol/node-link';
 import { ROUTES, type MachinesResponse, type NodeRow } from '@jantar/protocol';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
-import { callDaemon } from '../ctl.js';
+import { CtlUnavailableError, DaemonError, callDaemon } from '../ctl.js';
 import { FIXED_DOOR, TAILSCALE_GRANT, closeWords, fleetDoor, macSleepMinutes, readCtlStatus } from '../lib/doctor.js';
 import { readSettings, updateSettings } from '../lib/settings.js';
 import { SAVED_TO_FILE, changeSettings } from '../lib/switches.js';
@@ -101,9 +102,18 @@ async function status(ctx: CliContext, json: boolean): Promise<number> {
   const door = fleetDoor(settings);
   const st = await readCtlStatus(ctx.ctl);
   let rows: NodeRow[] | null = null;
-  if (st) rows = (await callDaemon<MachinesResponse>(ctx.ctl, 'GET', ROUTES.machinesList.path)).machines;
+  let listError: string | null = null;
+  if (st) {
+    try {
+      rows = (await callDaemon<MachinesResponse>(ctx.ctl, 'GET', ROUTES.machinesList.path)).machines;
+    } catch (e) {
+      if (!(e instanceof DaemonError || e instanceof CtlUnavailableError)) throw e;
+      listError = e.message;
+    }
+  }
   const live = (rows ?? []).filter((r) => r.revokedAt === null);
-  const hint = settings.fleet.enabled && droppedTogether(live);
+  // The hint names the Access token: only a Cloudflare door has one.
+  const hint = settings.fleet.enabled && door.ok && door.kind === 'cloudflare' && droppedTogether(live);
   if (json) {
     ctx.io.out(
       `${JSON.stringify(
@@ -126,6 +136,8 @@ async function status(ctx: CliContext, json: boolean): Promise<number> {
   out.push(`Door:    ${door.ok ? `${door.url}${NODE_LINK_PATH} (${door.kind === 'tailscale' ? 'Tailscale Serve' : 'Cloudflare'})` : `none for servers: ${door.why}`}`);
   if (!st) {
     out.push('Servers: the daemon is not running (start it: jantar install)');
+  } else if (listError !== null) {
+    out.push(`Servers: the daemon did not list them (${listError})`);
   } else {
     const online = live.filter((r) => r.online).length;
     out.push(`Servers: ${live.length ? `${online} of ${live.length} online` : 'none paired (jantar node pair --name <name>)'}`);

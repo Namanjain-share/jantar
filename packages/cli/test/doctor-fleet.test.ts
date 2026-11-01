@@ -223,6 +223,8 @@ describe('jantar doctor on a server', () => {
     linger?: string | null;
     systeminfo?: string;
     claude?: string;
+    /** Only `claude.exe` is on PATH (the native installer), as a finder with no PATHEXT sees it. */
+    exeOnly?: boolean;
     link?: CtlStatusView['node'] | 'down';
     over?: Partial<DoctorInput>;
   };
@@ -244,7 +246,8 @@ describe('jantar doctor on a server', () => {
         tmux: o.tmux === null ? null : TMUX,
         ps: o.ps === null ? null : PS,
         loginctl: LOGINCTL,
-        claude: platform === 'win32' ? CLAUDE_WIN : null,
+        claude: platform === 'win32' && !o.exeOnly ? CLAUDE_WIN : null,
+        ...(o.exeOnly ? { 'claude.exe': CLAUDE_WIN } : {}),
       },
       handlers,
     });
@@ -335,5 +338,8 @@ describe('jantar doctor on a server', () => {
     const good = await run({ platform: 'win32' });
     expect(check(good.report, 'windows')).toMatchObject({ status: 'info', detail: expect.stringContaining('WSL2 can run here') });
     expect(check(good.report, 'claude-windows').status).toBe('ok');
+    // The finder adds no .exe: claude.exe is looked for by its own name.
+    const exe = await run({ platform: 'win32', exeOnly: true });
+    expect(check(exe.report, 'claude-windows')).toMatchObject({ status: 'ok', detail: expect.stringContaining('Claude Code 2.1.316') });
   });
 });

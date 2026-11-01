@@ -150,6 +150,7 @@ export async function readUnit(path: string): Promise<string | null> {
   }
 }
 
+/** Delete the unit and its enable link (what `disable` removes), so nothing starts it at boot even when systemctl could not run. */
 export async function removeUnit(path: string): Promise<boolean> {
   guardRealPath(path, 'the systemd unit');
   const existed = await stat(path).then(
@@ -157,6 +158,7 @@ export async function removeUnit(path: string): Promise<boolean> {
     () => false,
   );
   await rm(path, { force: true });
+  await rm(join(dirname(path), 'default.target.wants', UNIT_NAME), { force: true });
   return existed;
 }
 
@@ -172,7 +174,13 @@ function describe(r: ExecResult): string {
   return (r.stderr || r.stdout).trim().split('\n')[0] || `exit ${r.code}`;
 }
 
-export type SystemdResult = { ok: true; detail?: string } | { ok: false; reason: string };
+/** `absent`: systemd is not running here at all (no systemctl, or not the init system), so no unit of ours can be running under it. */
+export type SystemdResult = { ok: true; detail?: string } | { ok: false; reason: string; absent?: boolean };
+
+/** systemctl can't run, or systemd is not this machine's init (a container, OpenRC, WSL without systemd=true). */
+export function noSystemd(r: ExecResult): boolean {
+  return r.spawnError !== undefined || /not been booted with systemd/i.test(`${r.stderr}\n${r.stdout}`);
+}
 
 /** The systemd version `systemctl --version` names, or null. */
 export function parseSystemdVersion(text: string): number | null {
@@ -204,9 +212,15 @@ export async function restartUnit(exec: ExecFile, systemctl = SYSTEMCTL): Promis
   return r.code === 0 ? { ok: true } : { ok: false, reason: `systemctl --user restart ${UNIT_NAME}: ${describe(r)}` };
 }
 
-/** "Not loaded" / "does not exist" answers from `systemctl --user disable --now` (nothing to stop). */
+/**
+ * "Not loaded" / "does not exist" answers from `systemctl --user disable
+ * --now` (nothing to stop). Never "Failed to connect to bus: No such file or
+ * directory": that is a user manager this shell can't reach, which may well
+ * be running the unit.
+ */
 export function isNotInstalled(r: ExecResult): boolean {
-  return /not loaded|does not exist|no such file|not found/i.test(`${r.stderr}\n${r.stdout}`);
+  const text = `${r.stderr}\n${r.stdout}`;
+  return !/connect to bus/i.test(text) && /not loaded|does not exist|no such file|not found/i.test(text);
 }
 
 /** `systemctl --user disable --now jantar.service`; a unit that is not there counts as success. */
@@ -214,7 +228,7 @@ export async function stopUnit(exec: ExecFile, systemctl = SYSTEMCTL): Promise<S
   const r = await user(exec, ['disable', '--now', UNIT_NAME], systemctl);
   if (r.code === 0) return { ok: true, detail: 'stopped' };
   if (isNotInstalled(r)) return { ok: true, detail: 'was not installed' };
-  return { ok: false, reason: describe(r) };
+  return { ok: false, reason: describe(r), ...(noSystemd(r) ? { absent: true } : {}) };
 }
 
 export async function reloadUnits(exec: ExecFile, systemctl = SYSTEMCTL): Promise<void> {

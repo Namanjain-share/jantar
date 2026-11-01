@@ -1,4 +1,4 @@
-import { localSessions, ROUTES, type NodeView, type StateResponse } from '@jantar/protocol';
+import { boardOrder, localSessions, needsYou, pendingFor, ROUTES, sessionLabel, type NodeView, type StateResponse } from '@jantar/protocol';
 import { parseArgs } from '../args.js';
 import { EXIT, defineCommand } from '../command.js';
 import { callDaemon } from '../ctl.js';
@@ -12,9 +12,16 @@ const FLAGS = {
   alerts: { type: 'number', help: 'how many recent alerts to show (default 3)' },
 } as const;
 
+/** The board `jantar status` prints: with servers, the Mac's own sessions (theirs are listed per machine). */
+export function boardState(state: StateResponse['state']): StateResponse['state'] {
+  return Object.keys(state.nodes ?? {}).length ? { ...state, sessions: localSessions(state) } : state;
+}
+
 /**
  * v0.6: one line per machine once a server is paired (the Mac first, then
- * the servers by name), and on a server the line that says whose it is.
+ * the servers by name), each server's live sessions under it (their account
+ * numbers are that server's own, not the Mac's list above), and on a server
+ * the line that says whose it is.
  */
 export function machineLines(state: StateResponse['state'], st: CtlStatusView | null, now: number): string {
   if (st?.role === 'node' && st.node) {
@@ -22,16 +29,28 @@ export function machineLines(state: StateResponse['state'], st: CtlStatusView | 
   }
   const views = Object.values(state.nodes ?? {}).sort((a, b) => a.name.localeCompare(b.name));
   if (!views.length) return '';
-  const live = (node?: string) =>
-    Object.values(state.sessions).filter((s) => s.node === node && s.status !== 'ended').length;
   const mac = Object.values(localSessions(state)).filter((s) => s.status !== 'ended').length;
   const rows: [string, string][] = [['Mac', `this Mac · ${plural(mac, 'session')}`]];
+  const under: string[][] = [[]];
+  const order = boardOrder(state);
   for (const v of views as NodeView[]) {
-    const where = v.online ? `online · ${plural(live(v.id), 'session')}` : `offline for ${duration(now - Date.parse(v.since))}`;
-    rows.push([clip(v.name, 24), `${machineKind(v)} · ${where}${v.readOnly ? ' · read-only' : ''}`]);
+    const name = clip(v.name, 24);
+    const live = order.filter((s) => s.node === v.id && s.status !== 'ended');
+    const waiting = live.filter((s) => needsYou(state, s.sid)).length;
+    const needs = waiting ? ` · ${waiting} need${waiting === 1 ? 's' : ''} you` : '';
+    const where = v.online ? `online · ${plural(live.length, 'session')}${needs}` : `offline for ${duration(now - Date.parse(v.since))}`;
+    rows.push([name, `${machineKind(v)} · ${where}${v.readOnly ? ' · read-only' : ''}`]);
+    under.push(
+      live.map((s) => {
+        const open = pendingFor(state, s.sid).find((p) => p.state === 'open') ?? null;
+        const acct = s.account === null ? 'acct ?' : `acct ${s.account}`;
+        return `      ${needsYou(state, s.sid) ? '!' : '-'} ${clip(sessionLabel(s, open), 60)}  (${name} ${acct}, ${s.sid.slice(0, 8)})`;
+      }),
+    );
   }
   const w = Math.max(...rows.map(([n]) => n.length));
-  return `\nMachines: ${views.length + 1}\n${rows.map(([n, d]) => `  ${n.padEnd(w)}  ${d}`).join('\n')}\n`;
+  const lines = rows.flatMap(([n, d], i) => [`  ${n.padEnd(w)}  ${d}`, ...(under[i] ?? [])]);
+  return `\nMachines: ${views.length + 1}\n${lines.join('\n')}\n`;
 }
 
 export default defineCommand(
@@ -58,7 +77,7 @@ export default defineCommand(
     }
     const mode = st?.mode;
     ctx.io.out(
-      renderStatus(res.state, {
+      renderStatus(boardState(res.state), {
         now: ctx.deps.now(),
         ...(flags.alerts !== undefined ? { alerts: flags.alerts } : {}),
         ...(mode ? { mode } : {}),

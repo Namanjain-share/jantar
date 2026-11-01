@@ -3,11 +3,13 @@
  * the systemd user unit (exact text, with and without --read-only;
  * KillMode=process), systemctl and loginctl by absolute path through a fake
  * exec (never the real systemd), lingering refused, an old systemd, the
- * read-only choice kept across an update, the printed Windows task lines,
- * the LaunchAgent's --read-only, and the guard on the real unit's folder.
+ * read-only choice kept across an update (from the unit, else the running
+ * daemon, else refused on a server), uninstall where systemctl can't run,
+ * the printed Windows task lines, the LaunchAgent's --read-only, and the
+ * guard on the real unit's folder.
  */
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -19,9 +21,10 @@ import uninstall from '../src/commands/uninstall.js';
 import { EXIT } from '../src/command.js';
 import type { CtlClient } from '../src/ctl.js';
 import { plistFor } from '../src/lib/launchd.js';
+import { READ_ONLY_UNKNOWN } from '../src/commands/install.js';
 import { schtasksLines, schtasksText } from '../src/lib/service.js';
-import { renderUnit, serviceIsReadOnly, unitFor, unitPath, writeUnit } from '../src/lib/systemd.js';
-import { argsOf, contextFor, fakeCtl, fakePackages, ok, testDeps } from './helpers.js';
+import { isNotInstalled, renderUnit, serviceIsReadOnly, unitFor, unitPath, writeUnit } from '../src/lib/systemd.js';
+import { argsOf, contextFor, fakeCtl, fakePackages, fakeSettings, ok, testDeps } from './helpers.js';
 
 const SYSTEMCTL = '/usr/bin/systemctl';
 const LOGINCTL = '/usr/bin/loginctl';
@@ -122,7 +125,16 @@ describe('the Windows task lines', () => {
     );
     expect(l.run).toBe('schtasks /Run /TN Jantar-CI-42');
     expect(() => schtasksLines({ ...win, task: 'Jantar & calc' })).toThrow(/task name/);
-    expect(() => schtasksLines({ ...win, nodePath: 'C:\\a"b\\node.exe' })).toThrow(/quote/);
+    expect(() => schtasksLines({ ...win, nodePath: 'C:\\a"b\\node.exe' })).toThrow(/cmd\.exe can't take there/);
+  });
+
+  it("refuse a path cmd.exe would split or expand outside its quotes: & | ^ < > and %", () => {
+    for (const bad of ['C:\\R&D\\jantar.mjs', 'C:\\a|b\\jantar.mjs', 'C:\\a^b\\jantar.mjs', 'C:\\a<b>\\jantar.mjs', 'C:\\%TEMP%\\jantar.mjs']) {
+      expect(() => schtasksLines({ ...win, daemonBin: bad })).toThrow(/cmd\.exe can't take there/);
+    }
+    expect(() => schtasksLines({ ...win, env: { JANTAR_HOME: 'D:\\100%\\jantar' } })).toThrow(/cmd\.exe can't take there/);
+    // Parentheses, spaces and an apostrophe are fine there.
+    expect(schtasksLines({ ...win, nodePath: "C:\\Program Files (x86)\\Sam's node\\node.exe" }).create).toContain("Program Files (x86)\\Sam's node");
   });
 });
 
@@ -172,9 +184,10 @@ describe('jantar install / uninstall on a Linux server (fake systemctl and login
     return { ctx, io, deps, daemon, locations, unit: unitPath(ctx.paths) };
   }
 
+  // A first install on a server says --read-only or --no-read-only (the join's hints do): with no unit and the daemon down, nothing else can tell.
   it('writes the unit, starts it with systemctl --user, turns lingering on, and waits for the daemon', async () => {
     const { ctx, io, deps, unit, locations } = await setup();
-    expect(await install.run(['--no-doctor'], ctx), io.stderr).toBe(EXIT.ok);
+    expect(await install.run(['--no-doctor', '--no-read-only'], ctx), io.stderr).toBe(EXIT.ok);
     const text = await readFile(unit, 'utf8');
     expect(text).toBe(unitFor({ paths: ctx.paths, nodePath: deps.nodePath, daemonBin: locations.daemonBin, env: ctx.io.env }));
     expect(text).toContain('KillMode=process\n');
@@ -200,22 +213,27 @@ describe('jantar install / uninstall on a Linux server (fake systemctl and login
 
   it('prints the sudo line when lingering is refused', async () => {
     const { ctx, io } = await setup({ linger: 1 });
-    expect(await install.run(['--no-doctor'], ctx)).toBe(EXIT.ok);
+    expect(await install.run(['--no-doctor', '--no-read-only'], ctx)).toBe(EXIT.ok);
     expect(io.stdout).toContain('Lingering is off, so it stops when you log out. Turn it on: sudo loginctl enable-linger sam\n');
   });
 
-  it('refuses systemd older than 240 and writes no unit', async () => {
-    const { ctx, io, unit } = await setup({ systemd: 'systemd 237\n' });
-    expect(await install.run(['--no-doctor'], ctx)).toBe(EXIT.failed);
-    expect(io.stderr).toContain('systemd 237 is older than 240');
+  it('refuses systemd older than 240, writes no unit, and gives the daemon\'s own line', async () => {
+    const { ctx, io, unit, deps, locations } = await setup({ systemd: 'systemd 237\n' });
+    expect(await install.run(['--no-doctor', '--read-only'], ctx)).toBe(EXIT.failed);
+    expect(io.stderr).toBe(
+      "jantar install: systemd 237 is older than 240, which the unit's log files need\n" +
+        `Run the daemon yourself instead: ${deps.nodePath} ${locations.daemonBin} --read-only\n`,
+    );
     expect(existsSync(unit)).toBe(false);
   });
 
-  it('says how to turn systemd on when systemctl --user fails (WSL without systemd)', async () => {
-    const { ctx, io } = await setup({ restart: 1 });
-    expect(await install.run(['--no-doctor'], ctx)).toBe(EXIT.failed);
+  it('says how to turn systemd on when systemctl --user fails (WSL without systemd), never to join again', async () => {
+    const { ctx, io, deps, locations } = await setup({ restart: 1 });
+    expect(await install.run(['--no-doctor', '--no-read-only'], ctx)).toBe(EXIT.failed);
     expect(io.stderr).toContain('Failed to connect to bus');
     expect(io.stderr).toContain('[boot] systemd=true in /etc/wsl.conf');
+    expect(io.stderr).toContain(`Elsewhere, run the daemon yourself: ${deps.nodePath} ${locations.daemonBin}\n`);
+    expect(io.stderr).not.toContain('node join');
   });
 
   it('--read-only goes into ExecStart, and an update without the flag keeps it; --no-read-only drops it', async () => {
@@ -244,7 +262,7 @@ describe('jantar install / uninstall on a Linux server (fake systemctl and login
     expect(deps.exec.calls).toHaveLength(0);
 
     const quiet = await setup();
-    expect(await install.run(['--no-start', '--no-doctor'], quiet.ctx)).toBe(EXIT.ok);
+    expect(await install.run(['--no-start', '--no-doctor', '--no-read-only'], quiet.ctx)).toBe(EXIT.ok);
     expect(existsSync(unit)).toBe(true);
     expect(argsOf(quiet.deps.exec.calls, SYSTEMCTL)).toEqual([['--version']]);
     expect(quiet.io.stdout).toContain('Start it: systemctl --user enable --now jantar.service');
@@ -252,7 +270,7 @@ describe('jantar install / uninstall on a Linux server (fake systemctl and login
 
   it('uninstall disables and stops the unit, removes it, and keeps the state dir', async () => {
     const { ctx, deps, unit } = await setup();
-    expect(await install.run(['--no-doctor'], ctx)).toBe(EXIT.ok);
+    expect(await install.run(['--no-doctor', '--no-read-only'], ctx)).toBe(EXIT.ok);
     const un = contextFor({ env: { ...home.env, USER: 'sam' } }, { deps });
     expect(await uninstall.run([], un.ctx)).toBe(EXIT.ok);
     expect(existsSync(unit)).toBe(false);
@@ -264,16 +282,82 @@ describe('jantar install / uninstall on a Linux server (fake systemctl and login
     expect(un.io.stdout).toContain(`Service: removed ${unit}`);
   });
 
-  it('uninstall is fine when no unit was ever installed', async () => {
+  it('uninstall is fine when no unit was ever installed, and does not ask systemctl (it may not run here)', async () => {
+    const locations = await fakePackages(home.root);
+    const deps = testDeps({ platform: 'linux', locations, handlers: [onCommand(SYSTEMCTL, { code: null, spawnError: 'spawn /usr/bin/systemctl ENOENT' })] });
+    const { ctx, io } = contextFor({ env: home.env }, { deps });
+    expect(await uninstall.run([], ctx), io.stderr).toBe(EXIT.ok);
+    expect(io.stdout).toMatch(/^Service: not installed\nKept /);
+    expect(deps.exec.calls).toEqual([]);
+  });
+
+  /** A unit on disk (and its enable link), and systemctl answering `result` to everything. */
+  async function unitWith(result: Parameters<typeof onCommand>[1]) {
+    const locations = await fakePackages(home.root);
+    const deps = testDeps({ platform: 'linux', locations, handlers: [onCommand(SYSTEMCTL, result)] });
+    const { ctx, io } = contextFor({ env: { ...home.env, USER: 'sam' } }, { deps });
+    const unit = unitPath(ctx.paths);
+    const wants = join(unit, '..', 'default.target.wants', 'jantar.service');
+    await mkdir(join(unit, '..', 'default.target.wants'), { recursive: true });
+    await writeFile(unit, unitFor({ paths: ctx.paths, nodePath: deps.nodePath, daemonBin: locations.daemonBin, env: ctx.io.env }));
+    await symlink(unit, wants);
+    return { ctx, io, deps, unit, wants };
+  }
+
+  it('uninstall where systemctl can\'t run (no binary, or WSL without systemd): the unit and its enable link go, exit 0', async () => {
+    const results = [
+      [{ code: null, spawnError: 'spawn /usr/bin/systemctl ENOENT' }, 'spawn /usr/bin/systemctl ENOENT'],
+      [{ code: 1, stderr: "System has not been booted with systemd as init system (PID 1). Can't operate.\nFailed to connect to bus: Host is down\n" }, 'System has not been booted with systemd as init system (PID 1). Can\'t operate.'],
+    ] as const;
+    for (const [result, said] of results) {
+      const t = await unitWith(result);
+      expect(await uninstall.run([], t.ctx), t.io.stderr).toBe(EXIT.ok);
+      expect(t.io.stdout).toContain(`Daemon: systemd does not run here (${said}), so the unit never ran; stop a jantard you started yourself.\nService: removed ${t.unit}\n`);
+      expect(existsSync(t.unit)).toBe(false);
+      expect(await lstat(t.wants).then(() => true, () => false)).toBe(false);
+      // No daemon-reload after a disable that never ran.
+      expect(argsOf(t.deps.exec.calls, SYSTEMCTL)).toEqual([['--user', 'disable', '--now', 'jantar.service']]);
+    }
+  });
+
+  it('uninstall from a shell without the user\'s bus (sudo -iu): the unit goes, and the line to stop it is printed', async () => {
+    const t = await unitWith({ code: 1, stderr: 'Failed to connect to bus: No such file or directory\n' });
+    expect(await uninstall.run([], t.ctx), t.io.stderr).toBe(EXIT.ok);
+    expect(t.io.stdout).toContain(
+      'Daemon: not stopped (systemctl --user: Failed to connect to bus: No such file or directory). If it still runs, stop it as sam in a login shell: systemctl --user stop jantar.service\n',
+    );
+    expect(existsSync(t.unit)).toBe(false);
+  });
+
+  it('"not loaded" answers count as nothing to stop; a bus that is not there never does', () => {
+    const r = (stderr: string) => ({ code: 5, signal: null, stdout: '', stderr, timedOut: false, truncated: false, durationMs: 0 });
+    expect(isNotInstalled(r('Failed to disable unit: Unit file jantar.service does not exist.\n'))).toBe(true);
+    expect(isNotInstalled(r('Unit jantar.service not loaded.\n'))).toBe(true);
+    expect(isNotInstalled(r('Failed to connect to bus: No such file or directory\n'))).toBe(false);
+  });
+
+  it('with no unit and the daemon down, a server must say --read-only or --no-read-only: nothing is written or run', async () => {
+    const { ctx, io, deps, unit } = await setup();
+    expect(await install.run(['--no-doctor'], ctx)).toBe(EXIT.failed);
+    expect(io.stderr).toBe(`jantar install: ${READ_ONLY_UNKNOWN}\n`);
+    expect(existsSync(unit)).toBe(false);
+    expect(deps.exec.calls).toEqual([]);
+    const print = await setup();
+    expect(await install.run(['--print'], print.ctx)).toBe(EXIT.failed);
+  });
+
+  it('joined --read-only --no-service: with the daemon running read-only, install keeps --read-only in the unit', async () => {
     const locations = await fakePackages(home.root);
     const deps = testDeps({
       platform: 'linux',
       locations,
-      handlers: [onCommand(SYSTEMCTL, { code: 5, stderr: 'Failed to disable unit: Unit file jantar.service does not exist.\n' })],
+      handlers: [onCommand(SYSTEMCTL, { stdout: 'systemd 252\n' }, ['--version']), onCommand(SYSTEMCTL, { code: 0 }, ['--user']), onCommand(LOGINCTL, { code: 0 })],
     });
-    const { ctx, io } = contextFor({ env: home.env }, { deps });
-    expect(await uninstall.run([], ctx)).toBe(EXIT.ok);
-    expect(io.stdout).toContain('Daemon: was not installed\nService: not installed\n');
+    const ctl = fakeCtl({ ...fakeSettings().routes, 'GET /ctl/status': ok({ role: 'node', mode: { readOnly: true } }), 'GET /healthz': ok({ ok: true, protocol: 3, daemonVersion: '0.6.0' }) });
+    const { ctx, io } = contextFor({ env: { ...home.env, USER: 'sam' } }, { deps, ctl });
+    expect(await install.run(['--no-doctor'], ctx), io.stderr).toBe(EXIT.ok);
+    expect(await readFile(unitPath(ctx.paths), 'utf8')).toMatch(/^ExecStart=.* --read-only$/m);
+    expect(io.stdout).toContain('Read-only: kept from the running daemon (jantar install --no-read-only allows writes again).\n');
   });
 });
 
@@ -284,6 +368,22 @@ describe('jantar install on a Windows server (preview: lines printed, nothing ru
   });
   afterEach(async () => {
     await home.cleanup();
+  });
+
+  it('a server: the running daemon says read-only, so the printed task keeps --read-only; with it down, install asks', async () => {
+    const locations = await fakePackages(home.root);
+    const deps = testDeps({ platform: 'win32', locations });
+    const ctl = fakeCtl({ ...fakeSettings().routes, 'GET /ctl/status': ok({ role: 'node', mode: { readOnly: true } }) });
+    const up = contextFor({ env: home.env }, { deps, ctl });
+    expect(await install.run(['--no-doctor'], up.ctx), up.io.stderr).toBe(EXIT.ok);
+    const l = schtasksLines({ nodePath: deps.nodePath, daemonBin: locations.daemonBin, env: home.env, readOnly: true });
+    expect(up.io.stdout).toContain(`  ${l.create}\n`);
+    expect(up.io.stdout).toContain('Read-only: kept from the running daemon');
+
+    const down = contextFor({ env: home.env }, { deps: testDeps({ platform: 'win32', locations }) });
+    expect(await install.run(['--no-doctor'], down.ctx)).toBe(EXIT.failed);
+    expect(down.io.stderr).toBe(`jantar install: ${READ_ONLY_UNKNOWN}\n`);
+    expect(down.io.stdout).not.toContain('schtasks');
   });
 
   it('prints the task lines to run in Command Prompt and runs nothing', async () => {

@@ -226,10 +226,11 @@ Starting sessions from the phone is off here: jantar launch on, then jantar fold
 The join, in order:
 
 1. Refuses if this machine already looks like a hub: it has paired phones,
-   push subscriptions, paired servers or a front door of its own, or (with
-   its daemon stopped) Jantar's database. Joining would make it a server and
-   its phones would lose it. `--replace-hub` goes on anyway, after one
-   warning line.
+   push subscriptions, paired servers or a front door of its own. With its
+   daemon stopped, join reads Jantar's database without changing it (a
+   server's own database holds none of these, so leaving and joining again
+   just works). Joining would make it a server and its phones would lose
+   it. `--replace-hub` goes on anyway, after one warning line.
 2. Asks for the Access token (not on Tailscale). The secret is asked
    without echo, or read from `JANTAR_CF_ACCESS_CLIENT_SECRET`; it is never
    a flag, so it never lands in your shell history, and it is never
@@ -249,6 +250,10 @@ The join, in order:
 | `--no-service` | install no service; run `jantard` yourself (the join prints the line) |
 | `--cf-access-client-id ID` | the Access token's id |
 | `--replace-hub` | join even though this machine has phones of its own |
+
+Where the service can't start (no systemd: a container, OpenRC, WSL
+without systemd), the join still pairs and prints the daemon's own line to
+run yourself, as `--no-service` does; `jantar node leave` works there too.
 
 **The service on Linux** is a systemd user unit,
 `~/.config/systemd/user/jantar.service`, with `KillMode=process`: restarting
@@ -326,7 +331,10 @@ schtasks /Run /TN Jantar
 
 It runs while you are logged on; an unattended server needs auto-logon or
 a kept session. `schtasks /End /TN Jantar` stops it and
-`schtasks /Delete /TN Jantar /F` removes it. On Windows the 0600 and 0700
+`schtasks /Delete /TN Jantar /F` removes it. `jantar install` prints the
+lines again (to update): it keeps `--read-only` when the running daemon has
+it, and with the daemon stopped it asks you to say `--read-only` or
+`--no-read-only`. On Windows the 0600 and 0700
 file modes mean nothing; your user profile's permissions protect the
 Jantar folder.
 
@@ -410,7 +418,10 @@ node packages/cli/bin/jantar.mjs install
 ```
 
 `jantar install` rewrites and restarts the service (a server installed with
-`--read-only` stays read-only), and the link comes back by itself. On
+`--read-only` stays read-only), and the link comes back by itself. With no
+service file to read (native Windows, or a server joined with
+`--no-service`), install asks the running daemon; if that is stopped too,
+it refuses until you add `--read-only` or `--no-read-only`. On
 native Windows it prints the task's lines again; run
 `schtasks /End /TN Jantar` and `schtasks /Run /TN Jantar` to restart it on
 the new build.
@@ -462,7 +473,9 @@ sessions and cards leave the board, and it can't link again. The row stays
 in the Mac's records for the audit log.
 
 On the server, `jantar node leave` stops and removes the service and
-deletes its key. Claude's hooks stay (they fail open):
+deletes its key. Where `systemctl --user` can't run (no systemd, or a
+shell without your login session, such as `sudo -iu`), it still removes the
+unit and the key, and prints how to stop a `jantard` still running. Claude's hooks stay (they fail open):
 `jantar hooks uninstall --apply` removes them. To pair it again, make a new
 line at the Mac and join with it.
 
@@ -538,7 +551,9 @@ behaviour holds: a refusal you can see, never a guess.
 - **The Cloudflare Access path application for the WebSocket.** If it
   fails, the server reports "Access refused"; Tailscale is the other door.
 - **Native Windows** (hooks through a named pipe, the printed task): see
-  [Windows](#windows).
+  [Windows](#windows). Also whether a standard user can create the logon
+  task without an elevated Command Prompt on every Windows edition (the
+  automated check runs elevated).
 - **WSL2 keep-alive** over hours, and a second Mac as a server.
 
 The security side of Fleet, including what it does not protect against,

@@ -12,7 +12,9 @@
  * `--read-only` goes into the service's argv. When `jantar install` is run
  * again without --read-only or --no-read-only (an update), the installed
  * service's choice is kept, so updating a watch-only server never widens
- * what it allows.
+ * what it allows. Where no service file can be read (Windows, a server
+ * joined with --no-service), install.ts asks the running daemon, and on a
+ * server refuses to guess when that is down too.
  */
 import { userInfo } from 'node:os';
 import { stateDirFromEnv } from '@jantar/daemon';
@@ -60,6 +62,9 @@ export interface SchtasksLines {
   tr: string;
 }
 
+/** What a path in the task's line may not hold. */
+const CMD_UNSAFE = /["&|^<>%\u0000-\u001f]/;
+
 /**
  * The lines for cmd.exe (Command Prompt), not PowerShell: `\"` inside the
  * /TR value is how schtasks takes a quoted path. Pure.
@@ -73,17 +78,15 @@ export function schtasksLines(input: {
 }): SchtasksLines {
   const task = input.task ?? TASK_NAME;
   if (!/^[A-Za-z0-9_-]+$/.test(task)) throw new Error(`bad task name "${task}"`);
-  for (const p of [input.nodePath, input.daemonBin]) {
-    if (/["\u0000-\u001f]/.test(p)) throw new Error(`a path in the task holds a character cmd.exe can't quote: ${p}`);
+  const home = stateDirFromEnv(input.env);
+  // `\"` keeps each path outside cmd.exe's own quotes, so & | ^ < > and %VAR% there would split or change the pasted line.
+  for (const p of [input.nodePath, input.daemonBin, ...(home ? [home] : [])]) {
+    if (CMD_UNSAFE.test(p)) throw new Error(`a path in the task holds a character cmd.exe can't take there (" & | ^ < > % or a control character): ${p}`);
   }
   const q = (p: string) => `\\"${p}\\"`;
   const words = [q(input.nodePath), q(input.daemonBin), '--log-files'];
   // As the LaunchAgent pins a non-default JANTAR_HOME: the task has no environment of its own, so --home.
-  const home = stateDirFromEnv(input.env);
-  if (home) {
-    if (/["\u0000-\u001f]/.test(home)) throw new Error(`the state dir holds a character cmd.exe can't quote: ${home}`);
-    words.push('--home', q(home));
-  }
+  if (home) words.push('--home', q(home));
   if (input.readOnly) words.push('--read-only');
   const tr = words.join(' ');
   return {
@@ -130,11 +133,17 @@ export function serviceText(kind: ServiceKind, ctx: CliContext, readOnly: boolea
   return `${l.create}\n${l.run}\n`;
 }
 
-/** Whether the installed service already runs the daemon with --read-only. */
-export async function installedReadOnly(kind: ServiceKind, ctx: Pick<CliContext, 'paths' | 'io'>): Promise<boolean> {
+/** Whether the installed service runs the daemon with --read-only; null when there is no service file to read (Windows, --no-service). */
+export async function installedReadOnly(kind: ServiceKind, ctx: Pick<CliContext, 'paths' | 'io'>): Promise<boolean | null> {
   const path = servicePath(kind, ctx);
-  if (!path) return false;
-  return serviceIsReadOnly(kind === 'launchd' ? await readPlist(path) : await readUnit(path));
+  if (!path) return null;
+  const text = kind === 'launchd' ? await readPlist(path) : await readUnit(path);
+  return text === null ? null : serviceIsReadOnly(text);
+}
+
+/** The line that runs the daemon by hand, as --no-service prints it. */
+export function daemonLine(ctx: Pick<CliContext, 'deps'>, readOnly: boolean): string {
+  return `${ctx.deps.nodePath} ${ctx.deps.locations.daemonBin}${readOnly ? ' --read-only' : ''}`;
 }
 
 /** The user lingering is turned on for. */
@@ -157,7 +166,8 @@ export type ServiceOutcome =
       /** The daemon was (re)started and should answer soon. */
       started: boolean;
     }
-  | { ok: false; reason: string };
+  /** `next`: what to do instead, when the caller's usual "then jantar install" would not help. */
+  | { ok: false; reason: string; next?: string };
 
 async function systemctlOf(ctx: CliContext): Promise<string> {
   return (await binFinder(ctx)('systemctl')) ?? SYSTEMCTL;
@@ -167,8 +177,10 @@ async function loginctlOf(ctx: CliContext): Promise<string | undefined> {
   return (await binFinder(ctx)('loginctl')) ?? undefined;
 }
 
-const NO_SYSTEMD_HINT =
-  'Inside WSL, turn systemd on ([boot] systemd=true in /etc/wsl.conf, then wsl --shutdown); elsewhere run jantard yourself (jantar node join --no-service)';
+/** After a failed `systemctl --user` start: this machine is already paired, so never "join again", but the daemon's own line. */
+function noSystemdNext(line: string): string {
+  return `Inside WSL, turn systemd on ([boot] systemd=true in /etc/wsl.conf, then wsl --shutdown) and run jantar install again. Elsewhere, run the daemon yourself: ${line}`;
+}
 
 /**
  * The Windows lines, as `install` and `node join` print them: each command
@@ -223,7 +235,8 @@ export async function installService(ctx: CliContext, input: ServiceInput & { st
     if (version !== null && version < MIN_SYSTEMD) {
       return {
         ok: false,
-        reason: `systemd ${version} is older than ${MIN_SYSTEMD}, which the unit's log files need. Run jantard yourself instead (jantar node join --no-service)`,
+        reason: `systemd ${version} is older than ${MIN_SYSTEMD}, which the unit's log files need`,
+        next: `Run the daemon yourself instead: ${daemonLine(ctx, input.readOnly)}`,
       };
     }
     const path = unitPath(ctx.paths, ctx.io.env);
@@ -240,7 +253,7 @@ export async function installService(ctx: CliContext, input: ServiceInput & { st
       };
     }
     const started = await startUnit(ctx.deps.exec, systemctl);
-    if (!started.ok) return { ok: false, reason: `${started.reason}. ${NO_SYSTEMD_HINT}` };
+    if (!started.ok) return { ok: false, reason: started.reason, next: noSystemdNext(daemonLine(ctx, input.readOnly)) };
     const user = userNameOf(ctx.io.env);
     const loginctl = await loginctlOf(ctx);
     const linger = await enableLinger(ctx.deps.exec, user, loginctl);
@@ -276,7 +289,11 @@ export async function restartService(ctx: CliContext): Promise<ServiceOutcome> {
   return { ok: true, kind, text: `Restart the task in Command Prompt: ${l.end}, then ${l.run}\n`, started: false };
 }
 
-/** Stop and remove the service. Removing one that is not there is fine. */
+/**
+ * Stop and remove the service. Removing one that is not there is fine; where
+ * systemctl can't run, the unit still goes and the text says how to stop a
+ * jantard still running.
+ */
 export async function removeService(ctx: CliContext): Promise<ServiceOutcome> {
   const kind = serviceKindOf(ctx.deps.platform);
   if (!kind) return { ok: false, reason: `Jantar has no service for ${ctx.deps.platform}` };
@@ -292,13 +309,21 @@ export async function removeService(ctx: CliContext): Promise<ServiceOutcome> {
     return { ok: true, kind, text, started: false };
   }
   if (kind === 'systemd') {
+    const path = unitPath(ctx.paths, ctx.io.env);
+    // No unit, nothing systemd could be running: systemctl is not asked (it may not even run here).
+    if ((await readUnit(path)) === null) return { ok: true, kind, text: 'Service: not installed\n', started: false };
     const systemctl = await systemctlOf(ctx);
     const stop = await stopUnit(ctx.deps.exec, systemctl);
-    if (!stop.ok) return { ok: false, reason: `systemctl --user disable --now ${UNIT_NAME} failed: ${stop.reason}` };
-    const path = unitPath(ctx.paths, ctx.io.env);
-    const removed = await removeUnit(path);
-    if (removed) await reloadUnits(ctx.deps.exec, systemctl);
-    return { ok: true, kind, text: `Daemon: ${stop.detail ?? 'stopped'}\nService: ${removed ? `removed ${path}` : 'not installed'}\n`, started: false };
+    // The unit goes either way: a systemctl that can't run here must not stop a leave or an uninstall.
+    await removeUnit(path);
+    if (stop.ok) {
+      await reloadUnits(ctx.deps.exec, systemctl);
+      return { ok: true, kind, text: `Daemon: ${stop.detail ?? 'stopped'}\nService: removed ${path}\n`, started: false };
+    }
+    const daemon = stop.absent
+      ? `Daemon: systemd does not run here (${stop.reason}), so the unit never ran; stop a jantard you started yourself.`
+      : `Daemon: not stopped (systemctl --user: ${stop.reason}). If it still runs, stop it as ${userNameOf(ctx.io.env)} in a login shell: systemctl --user stop ${UNIT_NAME}`;
+    return { ok: true, kind, text: `${daemon}\nService: removed ${path}\n`, started: false };
   }
   const l = schtasksLines(specOf(ctx, false));
   return { ok: true, kind, text: `Stop and remove the task in Command Prompt: ${l.end}, then ${l.remove}\n`, started: false };

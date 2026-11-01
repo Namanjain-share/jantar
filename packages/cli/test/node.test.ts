@@ -4,27 +4,31 @@
  * first; L1's real pairWithHub checks a real Ed25519 signature through a
  * fake fetch, so a wrong key or a refusal leaves nothing behind), access,
  * status and leave, with systemctl and loginctl as fakes (never the real
- * systemd) and the real hooks installer writing into the fake config dirs.
- * Also `jantar new --node`. No network, no real daemon, no real Claude.
+ * systemd, and also a systemctl that can't run), leave then join again over
+ * a stopped daemon's real jantar.db, and the real hooks installer writing
+ * into the fake config dirs. Also `jantar new --node`. No network, no real
+ * daemon, no real Claude.
  */
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onCommand } from '@jantar/daemon/core/testing';
+import { onCommand, type ExecHandler } from '@jantar/daemon/core/testing';
+import { openSqliteFile } from '@jantar/daemon/db/sqlite';
 import { pairWithHub } from '@jantar/daemon/link/join';
 import { generateKeyPair, privateKeyPem, readNodeFile, signPair, writeNodeFile } from '@jantar/daemon/link/keys';
 import type { NodeFile } from '@jantar/daemon';
 import { FLEET_HUB_URL, FLEET_SECRET, NODE_IDS, linuxHome, makeFakeHome, nodeSession, writeHomeLayout, type FakeHome } from '@jantar/fixtures';
 import { V03_LAUNCH_FLAGS, emptyState, errorBody, launchFlagArgs, type FileRoot, type LaunchJob, type LaunchPreview, type NodeRow, type State } from '@jantar/protocol';
 import { encodeJoinToken } from '@jantar/protocol/node-link';
-import { createNodeCommand, type NodeCommandDeps } from '../src/commands/node.js';
+import { createNodeCommand, hubRecordsIn, type NodeCommandDeps } from '../src/commands/node.js';
 import newSession from '../src/commands/new.js';
 import { EXIT } from '../src/command.js';
 import type { CtlClient } from '../src/ctl.js';
 import { loadHooksCli } from '../src/commands/hooks.js';
 import type { CtlStatusView } from '../src/lib/doctor.js';
+import { plistPath } from '../src/lib/launchd.js';
 import { unitPath } from '../src/lib/systemd.js';
 import { argsOf, contextFor, fail, fakeCtl, fakePackages, fakeSettings, ok, testDeps, T0, type CtlCall, type Handler } from './helpers.js';
 
@@ -103,6 +107,25 @@ function serverState(): State {
 }
 
 const LINKED: NonNullable<CtlStatusView['node']> = { name: 'build-1', hubHost: 'jantar.example.com', link: 'linked', lastClose: null, accessRefused: 0 };
+
+/**
+ * A stopped daemon's jantar.db, made by the daemon's own module: `devices`
+ * live phones, `pushes` push subscriptions and `servers` live servers, plus a
+ * revoked phone and a removed server (which never count).
+ */
+function stoppedDb(file: string, o: { devices?: number; pushes?: number; servers?: number } = {}): void {
+  const db = openSqliteFile(file);
+  const at = iso(0);
+  const device = db.raw.prepare('INSERT INTO devices (id, name, key_hash, scopes, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  device.run('dev-revoked', 'old phone', 'hash-revoked', '[]', at, at, at);
+  for (let n = 0; n < (o.devices ?? 0); n++) device.run(`dev-${n}`, `phone ${n}`, `hash-${n}`, '[]', at, at, null);
+  const push = db.raw.prepare('INSERT INTO push_subs (endpoint, device_id, json, created_at) VALUES (?, ?, ?, ?)');
+  for (let n = 0; n < (o.pushes ?? 0); n++) push.run(`https://push.example.com/${n}`, 'dev-0', '{}', at);
+  const node = db.raw.prepare('INSERT INTO nodes (id, name, public_key, os, version, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  node.run('01JF1EETN0DEREV0KED0000000', 'old-1', 'A'.repeat(43), 'linux', '0.6.0', at, null, at);
+  for (let n = 0; n < (o.servers ?? 0); n++) node.run(`01JF1EETN0DE0000000000000${n}`, `build-${n}`, 'B'.repeat(43), 'linux', '0.6.0', at, null, null);
+  db.close();
+}
 
 // ---------------------------------------------------------------------------
 
@@ -263,6 +286,9 @@ describe('jantar node join on a Linux server', () => {
       env?: Record<string, string>;
       platform?: NodeJS.Platform;
       deps?: Partial<NodeCommandDeps>;
+      /** Tried before the usual systemctl and loginctl fakes. */
+      handlers?: ExecHandler[];
+      bins?: Record<string, string | null>;
     } = {},
   ) {
     const hub = o.hub ?? fakeHub();
@@ -278,7 +304,9 @@ describe('jantar node join on a Linux server', () => {
       platform: o.platform ?? 'linux',
       uid: 1000,
       locations,
+      ...(o.bins ? { bins: o.bins } : {}),
       handlers: [
+        ...(o.handlers ?? []),
         onCommand(SYSTEMCTL, { stdout: 'systemd 252 (252.22-1~deb12u1)\n' }, ['--version']),
         onCommand(
           SYSTEMCTL,
@@ -311,7 +339,7 @@ describe('jantar node join on a Linux server', () => {
       ...o.deps,
     });
     const { ctx, io } = contextFor({ env: { ...home.env, USER: 'sam', ...o.env } }, { deps, ctl, ioOptions: o.answers ? { answers: o.answers } : {} });
-    return { ctx, io, deps, hub, node, live, s, secretQuestions, unit: unitPath(ctx.paths) };
+    return { ctx, io, deps, hub, node, live, s, secretQuestions, daemon, unit: unitPath(ctx.paths) };
   }
 
   /** Nothing of a join is on disk: no key, no unit, no settings, no systemctl. */
@@ -423,6 +451,10 @@ describe('jantar node join on a Linux server', () => {
     expect(typo.io.stderr).toBe('Not joined: the join line is mistyped. Nothing was saved on this machine. Make a new line at the Mac: jantar node pair\n');
     expect(typo.hub.claims).toEqual([]);
     await nothingWritten(typo);
+
+    const pasted = await server();
+    expect(await pasted.node.run(['join', 'node join'], pasted.ctx)).toBe(EXIT.failed);
+    expect(pasted.io.stderr).toBe('Not joined: a join line starts with jn1. Nothing was saved on this machine. Make a new line at the Mac: jantar node pair\n');
   });
 
   it('S24: refuses a machine with phones, push subscriptions, servers or a front door of its own, before claiming anything', async () => {
@@ -443,13 +475,32 @@ describe('jantar node join on a Linux server', () => {
     }
   });
 
-  it('S24: with the daemon down, a jantar.db or a publicUrl in config.json counts as a hub', async () => {
+  it('S24: with the daemon down, its jantar.db (read-only) with phones, push subscriptions or servers, one it can\'t read, or a publicUrl counts as a hub', async () => {
+    const cases: [{ devices?: number; pushes?: number; servers?: number }, string][] = [
+      [{ devices: 2 }, 'This machine already has 2 paired phones: it looks like a hub.'],
+      [{ devices: 1, pushes: 1 }, 'This machine already has 1 paired phone and 1 push subscription: it looks like a hub.'],
+      [{ servers: 3 }, 'This machine already has 3 paired servers: it looks like a hub.'],
+    ];
+    for (const [records, sentence] of cases) {
+      const t = await server();
+      stoppedDb(t.ctx.paths.dbFile, records);
+      const before = await readdir(t.ctx.paths.home);
+      expect(await t.node.run(['join', t.hub.line], t.ctx)).toBe(EXIT.failed);
+      expect(t.io.stderr).toBe(`${sentence} Joining makes it a server and its phones lose it. Pass --replace-hub to do it anyway.\n`);
+      expect(t.hub.claims).toEqual([]);
+      // Read only: no -wal or -shm left beside it, the database as it was.
+      expect(await readdir(t.ctx.paths.home)).toEqual(before);
+      expect(hubRecordsIn(t.ctx.paths.dbFile)).toEqual({ devices: records.devices ?? 0, pushes: records.pushes ?? 0, servers: records.servers ?? 0 });
+      await home.cleanup();
+      home = await makeFakeHome({ sessions: [] });
+    }
+
     const db = await server();
     await mkdir(db.ctx.paths.home, { recursive: true });
     await writeFile(db.ctx.paths.dbFile, 'synthetic');
     expect(await db.node.run(['join', db.hub.line], db.ctx)).toBe(EXIT.failed);
     expect(db.io.stderr).toBe(
-      `This machine has Jantar's database (${db.ctx.paths.dbFile}) but its daemon is not running, so join can't check whether phones use it. Start Jantar first so join can check, or pass --replace-hub.\n`,
+      `This machine has Jantar's database (${db.ctx.paths.dbFile}), join can't read it, and its daemon is not running, so join can't tell whether phones use this machine. Joining makes it a server and its phones lose it. Pass --replace-hub to do it anyway.\n`,
     );
     expect(db.hub.claims).toEqual([]);
 
@@ -481,9 +532,82 @@ describe('jantar node join on a Linux server', () => {
 
     await home.cleanup();
     home = await makeFakeHome({ sessions: [] });
+    // node.json gone (by hand, or a Windows task still running) while the daemon runs as a server: stop it, not "leave" (which says "not a server yet").
     const d = await server({ before: { role: 'node' } });
     expect(await d.node.run(['join', d.hub.line], d.ctx)).toBe(EXIT.failed);
-    expect(d.io.stderr).toBe('This machine is already a server (its daemon says so): jantar node leave first.\n');
+    expect(d.io.stderr).toBe(
+      "This machine's daemon still runs as a server, though its key is gone: stop it (jantar uninstall, or end the jantard you started), then join again.\n",
+    );
+  });
+
+  it('leave, then join with a new line (revoke\'s and closeFix\'s path): the stopped daemon\'s jantar.db holds no phones, so the join goes on', async () => {
+    const t = await server({ answers: [''] });
+    await writeNodeFile(t.ctx.paths, nodeFile());
+    await mkdir(join(home.home, '.config', 'systemd', 'user'), { recursive: true });
+    await writeFile(t.unit, '[Service]\n');
+    // A server's daemon keeps a jantar.db too (no phones, pushes or servers in it).
+    stoppedDb(t.ctx.paths.dbFile);
+    expect(await t.node.run(['leave', '--yes'], t.ctx), t.io.stderr).toBe(EXIT.ok);
+    expect(existsSync(t.ctx.paths.nodeDir)).toBe(false);
+    expect(existsSync(t.ctx.paths.dbFile)).toBe(true);
+
+    expect(await t.node.run(['join', t.hub.line], t.ctx), t.io.stderr).toBe(EXIT.ok);
+    expect(t.io.stderr).toBe('');
+    expect(t.hub.claims).toHaveLength(1);
+    expect(await readNodeFile(t.ctx.paths.nodeFile)).toMatchObject({ name: 'build-1', hubKey: t.hub.hub.publicKey });
+  });
+
+  it('with no systemctl here: pairs, gives the daemon\'s own line (never join --no-service), and leave, then a new join, still work', async () => {
+    const missing = onCommand(SYSTEMCTL, { code: null, spawnError: 'spawn /usr/bin/systemctl ENOENT' });
+    const t = await server({ answers: [''], handlers: [missing] });
+    expect(await t.node.run(['join', t.hub.line, '--read-only'], t.ctx)).toBe(EXIT.failed);
+    expect(t.io.stdout).toContain('Paired with https://jantar.example.com as build-1.\n');
+    expect(t.io.stderr).toBe(
+      'Service: not started: systemctl --user daemon-reload: spawn /usr/bin/systemctl ENOENT\n' +
+        `Inside WSL, turn systemd on ([boot] systemd=true in /etc/wsl.conf, then wsl --shutdown) and run jantar install again. Elsewhere, run the daemon yourself: ${t.deps.nodePath} ${t.deps.locations.daemonBin} --read-only\n`,
+    );
+    expect(t.io.stderr).not.toContain('--no-service');
+    // The hinted next step is the daemon's line (run by hand, so not here); this machine is a server now.
+    expect(await t.node.run(['status'], t.ctx)).toBe(EXIT.ok);
+
+    const out = t.io.stdout.length;
+    expect(await t.node.run(['leave', '--yes'], t.ctx), t.io.stderr).toBe(EXIT.ok);
+    expect(t.io.stdout.slice(out)).toMatch(
+      /^Daemon: systemd does not run here \(spawn \/usr\/bin\/systemctl ENOENT\), so the unit never ran; stop a jantard you started yourself\.\nService: removed .*jantar\.service\nLeft: this machine is no longer build-1 of jantar\.example\.com/,
+    );
+    expect(existsSync(t.ctx.paths.nodeDir)).toBe(false);
+    expect(existsSync(t.unit)).toBe(false);
+
+    const again = fakeHub();
+    const t2 = await server({ answers: [''], handlers: [missing], hub: again });
+    expect(await t2.node.run(['join', again.line, '--no-service'], t2.ctx), t2.io.stderr).toBe(EXIT.ok);
+    expect(again.claims).toHaveLength(1);
+  });
+
+  it('WSL without systemd (systemctl there, systemd not the init): the same next step', async () => {
+    const wsl = onCommand(SYSTEMCTL, { code: 1, stderr: "System has not been booted with systemd as init system (PID 1). Can't operate.\nFailed to connect to bus: Host is down\n" }, ['--user']);
+    const t = await server({ answers: [''], handlers: [wsl] });
+    expect(await t.node.run(['join', t.hub.line], t.ctx)).toBe(EXIT.failed);
+    expect(t.io.stderr).toContain('[boot] systemd=true in /etc/wsl.conf');
+    expect(t.io.stderr).toContain(`Elsewhere, run the daemon yourself: ${t.deps.nodePath} ${t.deps.locations.daemonBin}\n`);
+    expect(await t.node.run(['leave', '--yes'], t.ctx), t.io.stderr).toBe(EXIT.ok);
+    expect(t.io.stdout).toContain("Daemon: systemd does not run here (System has not been booted with systemd as init system (PID 1). Can't operate.)");
+    expect(existsSync(t.ctx.paths.nodeDir)).toBe(false);
+  });
+
+  it('an unbuilt daemon: the hint names the read-only choice, so the install it suggests can\'t be refused', async () => {
+    const t = await server({ answers: [''] });
+    await rm(join(t.deps.locations.daemonBin, '..', '..', 'dist'), { recursive: true });
+    expect(await t.node.run(['join', t.hub.line], t.ctx)).toBe(EXIT.failed);
+    expect(t.io.stderr).toMatch(/^Service: not installed: the daemon is not built .* Then: jantar install --no-read-only\n$/);
+  });
+
+  it('counts a session in tmux by its pane\'s tty before the daemon\'s tick gives it a paneId', async () => {
+    const tmux = onCommand('/usr/bin/tmux', { stdout: '/dev/pts/3\n/dev/pts/4\n' }, ['list-panes', '-a', '-F', '#{pane_tty}']);
+    const t = await server({ answers: [''], bins: { tmux: '/usr/bin/tmux' }, handlers: [tmux] });
+    expect(await t.node.run(['join', t.hub.line], t.ctx), t.io.stderr).toBe(EXIT.ok);
+    expect(t.io.stdout).toContain('Linked. 2 Claude sessions here (2 in tmux) on 2 accounts');
+    expect(t.io.stdout).not.toContain('outside tmux');
   });
 
   it('without a terminal: no secret prompt, so a token id needs the secret from the environment', async () => {
@@ -542,14 +666,14 @@ describe('jantar node access, status and leave on a server', () => {
     await home.cleanup();
   });
 
-  async function joined(o: { link?: CtlStatusView['node'] | 'down'; answers?: string[]; env?: Record<string, string> } = {}) {
+  async function joined(o: { link?: CtlStatusView['node'] | 'down'; answers?: string[]; env?: Record<string, string>; systemctl?: Parameters<typeof onCommand>[1] } = {}) {
     const locations = await fakePackages(home.root);
     const deps = testDeps({
       platform: 'linux',
       uid: 1000,
       locations,
       bins: { tmux: '/usr/bin/tmux' },
-      handlers: [onCommand('/usr/bin/tmux', { stdout: 'tmux 3.3a\n' }, ['-V']), onCommand(SYSTEMCTL, { code: 0 }, ['--user'])],
+      handlers: [onCommand('/usr/bin/tmux', { stdout: 'tmux 3.3a\n' }, ['-V']), onCommand(SYSTEMCTL, o.systemctl ?? { code: 0 }, ['--user'])],
     });
     const s = fakeSettings();
     const ctl =
@@ -641,6 +765,37 @@ describe('jantar node access, status and leave on a server', () => {
         'The Mac still lists build-1 until you remove it there: jantar node revoke build-1 (or Remove under Devices on an admin phone).\n' +
         "Claude's hooks here still call Jantar (they fail open): ~/.claude/settings.json. Remove them with jantar hooks uninstall --apply (--settings <file> for each other config dir).\n",
     );
+  });
+
+  it('leave: with no unit, systemctl is not asked; with one systemctl can\'t reach, the key is still deleted and the stop line printed', async () => {
+    const none = await joined({ systemctl: { code: null, spawnError: 'spawn /usr/bin/systemctl ENOENT' } });
+    expect(await none.node.run(['leave', '--yes'], none.ctx), none.io.stderr).toBe(EXIT.ok);
+    expect(none.deps.exec.calls).toEqual([]);
+    expect(none.io.stdout).toMatch(/^Service: not installed\nLeft: /);
+    expect(existsSync(none.ctx.paths.nodeDir)).toBe(false);
+
+    const bus = await joined({ systemctl: { code: 1, stderr: 'Failed to connect to bus: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined\n' } });
+    await mkdir(join(home.home, '.config', 'systemd', 'user'), { recursive: true });
+    await writeFile(bus.unit, '[Service]\n');
+    expect(await bus.node.run(['leave', '--yes'], bus.ctx), bus.io.stderr).toBe(EXIT.ok);
+    expect(bus.io.stdout).toContain(
+      'Daemon: not stopped (systemctl --user: Failed to connect to bus: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined). If it still runs, stop it as sam in a login shell: systemctl --user stop jantar.service\n',
+    );
+    expect(existsSync(bus.unit)).toBe(false);
+    expect(existsSync(bus.ctx.paths.nodeDir)).toBe(false);
+  });
+
+  it('access on a Mac server: the LaunchAgent is restarted (bootout, then bootstrap)', async () => {
+    const LAUNCHCTL = '/bin/launchctl';
+    const deps = testDeps({ platform: 'darwin', uid: 501, handlers: [onCommand(LAUNCHCTL, { code: 0 })] });
+    const { ctx, io } = contextFor({ env: home.env }, { deps, ioOptions: { answers: [''] } });
+    await writeNodeFile(ctx.paths, nodeFile());
+    await mkdir(join(ctx.paths.userHome, 'Library', 'LaunchAgents'), { recursive: true });
+    await writeFile(plistPath(ctx.paths), '<plist/>\n');
+    const node = createNodeCommand({ askSecret: async () => 'synthetic-new-secret-4', readText: async () => null });
+    expect(await node.run(['access'], ctx), io.stderr).toBe(EXIT.ok);
+    expect(argsOf(deps.exec.calls, LAUNCHCTL).map((a) => a[0])).toEqual(['bootout', 'bootstrap']);
+    expect(io.stdout).toContain('Restarted the LaunchAgent.\nThe link comes back on its own: jantar node status.\n');
   });
 
   it('leave: asks first, and without a terminal or a yes changes nothing', async () => {

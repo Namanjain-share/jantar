@@ -13,7 +13,7 @@
  *   node leave [--yes]                          stop the service and delete this server's key
  *
  * `join` checks first that this machine is not a hub with phones of its own
- * (`/ctl/status`; with the daemon down, a jantar.db counts as one), then
+ * (`/ctl/status`; with the daemon down, its jantar.db read read-only), then
  * claims the line's code (link/join.ts pairWithHub, lane L1), and writes
  * node.json only once the hub's signature checks against the key in the
  * line: a line answered by anything but the Mac that made it leaves nothing
@@ -21,8 +21,9 @@
  * JANTAR_CF_ACCESS_CLIENT_SECRET, never a flag (so never shell history), and
  * is never printed: status shows the hub's host and the client id only.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { ensureStateDirs, type NodeFile } from '@jantar/daemon';
 import { roleOf } from '@jantar/daemon/config';
@@ -60,7 +61,7 @@ import {
   type CtlStatusView,
 } from '../lib/doctor.js';
 import { guardRealPath } from '../lib/guard.js';
-import { installService, removeService, restartService, serviceKindOf } from '../lib/service.js';
+import { daemonLine, installService, removeService, restartService, serviceKindOf } from '../lib/service.js';
 import { readSettings, readSettingsFile, updateSettings } from '../lib/settings.js';
 import { ago, clip, duration, plural } from '../lib/text.js';
 import { CLI_VERSION } from '../version.js';
@@ -282,29 +283,100 @@ async function revoke(ctx: CliContext, query: string): Promise<number> {
 // ---------------------------------------------------------------------------
 // On a server
 
-/** Why this machine must not become a server, or null. S24: a machine with phones (or servers) of its own is a hub. */
+/** What makes a machine a hub: live phones, push subscriptions, live servers. */
+export interface HubRecords {
+  devices: number;
+  pushes: number;
+  servers: number;
+}
+
+type SqliteModule = typeof import('node:sqlite');
+let sqliteModule: SqliteModule | undefined;
+
+/** node:sqlite, without Node 22's one ExperimentalWarning on stderr (as the daemon loads it). */
+function quietSqlite(): SqliteModule {
+  if (sqliteModule) return sqliteModule;
+  const original = process.emitWarning;
+  process.emitWarning = function (this: unknown, warning: string | Error, ...rest: unknown[]) {
+    const text = typeof warning === 'string' ? warning : warning?.message;
+    if (typeof text === 'string' && text.startsWith('SQLite is an experimental feature')) return;
+    return (original as (...a: unknown[]) => void).call(process, warning, ...rest);
+  } as typeof process.emitWarning;
+  try {
+    sqliteModule = createRequire(import.meta.url)('node:sqlite') as SqliteModule;
+  } finally {
+    process.emitWarning = original;
+  }
+  return sqliteModule;
+}
+
+/**
+ * A stopped daemon's records, read from its database read-only (a server's
+ * daemon keeps a jantar.db too, with none of them), or null when it can't be
+ * read. SQLite needs a -wal and -shm beside a WAL file to read it: the ones
+ * made here are removed again, so the folder is left as it was.
+ */
+export function hubRecordsIn(file: string): HubRecords | null {
+  const made = ['-wal', '-shm'].filter((suffix) => !existsSync(file + suffix));
+  let db: InstanceType<SqliteModule['DatabaseSync']> | undefined;
+  try {
+    db = new (quietSqlite().DatabaseSync)(file, { readOnly: true });
+    const open = db;
+    const rows = open.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[];
+    const tables = new Set(rows.map((r) => r.name));
+    // An older database has no nodes table: none paired.
+    const count = (table: string, where = '') =>
+      tables.has(table) ? Number((open.prepare(`SELECT count(*) AS n FROM ${table}${where}`).get() as { n: number }).n) : 0;
+    return { devices: count('devices', ' WHERE revoked_at IS NULL'), pushes: count('push_subs'), servers: count('nodes', ' WHERE revoked_at IS NULL') };
+  } catch {
+    return null;
+  } finally {
+    try {
+      db?.close();
+      for (const suffix of made) rmSync(file + suffix, { force: true });
+    } catch {
+      // Left beside the file: they hold no data.
+    }
+  }
+}
+
+const REPLACE_HUB = ' Joining makes it a server and its phones lose it. Pass --replace-hub to do it anyway.';
+
+/**
+ * Why this machine must not become a server, or null. S24: a machine with
+ * phones (or servers) of its own is a hub. The running daemon says; with it
+ * down, its database (read-only) and config.json do.
+ */
 export async function hubGuard(ctx: CliContext): Promise<string | null> {
   const st = await readCtlStatus(ctx.ctl);
-  const replace = ' Joining makes it a server and its phones lose it. Pass --replace-hub to do it anyway.';
+  if (st?.role === 'node') {
+    // node.json is gone (join checked), but a daemon still runs as a server: leave would say "not a server yet".
+    return "This machine's daemon still runs as a server, though its key is gone: stop it (jantar uninstall, or end the jantard you started), then join again.";
+  }
+  let records: HubRecords | null = null;
+  let door: string | null;
   if (st) {
-    if (st.role === 'node') return 'This machine is already a server (its daemon says so): jantar node leave first.';
-    const devices = st.pairedDevices ?? st.counts?.devices ?? 0;
-    const pushes = st.pushSubscriptions ?? st.counts?.pushSubscriptions ?? 0;
-    const servers = st.nodes?.paired ?? 0;
-    const found: string[] = [];
-    if (devices) found.push(plural(devices, 'paired phone'));
-    if (pushes) found.push(plural(pushes, 'push subscription'));
-    if (servers) found.push(plural(servers, 'paired server'));
-    if (st.publicUrl) found.push(`a front door for phones (${st.publicUrl})`);
-    if (found.length) return `This machine already has ${andList(found)}: it looks like a hub.${replace}`;
-    return null;
+    records = {
+      devices: st.pairedDevices ?? st.counts?.devices ?? 0,
+      pushes: st.pushSubscriptions ?? st.counts?.pushSubscriptions ?? 0,
+      servers: st.nodes?.paired ?? 0,
+    };
+    door = st.publicUrl ?? null;
+  } else {
+    if (existsSync(ctx.paths.dbFile)) {
+      records = hubRecordsIn(ctx.paths.dbFile);
+      if (!records) {
+        return `This machine has Jantar's database (${ctx.paths.dbFile}), join can't read it, and its daemon is not running, so join can't tell whether phones use this machine.${REPLACE_HUB}`;
+      }
+    }
+    door = (await readSettingsFile(ctx)).settings.remote.publicUrl;
   }
-  if (existsSync(ctx.paths.dbFile)) {
-    return `This machine has Jantar's database (${ctx.paths.dbFile}) but its daemon is not running, so join can't check whether phones use it. Start Jantar first so join can check, or pass --replace-hub.`;
-  }
-  const { settings } = await readSettingsFile(ctx);
-  if (settings.remote.publicUrl) return `This machine already has a front door for phones (${settings.remote.publicUrl}): it looks like a hub.${replace}`;
-  return null;
+  const found: string[] = [];
+  if (records?.devices) found.push(plural(records.devices, 'paired phone'));
+  if (records?.pushes) found.push(plural(records.pushes, 'push subscription'));
+  if (records?.servers) found.push(plural(records.servers, 'paired server'));
+  if (door) found.push(`a front door for phones (${door})`);
+  return found.length ? `This machine already has ${andList(found)}: it looks like a hub.${REPLACE_HUB}` : null;
 }
 
 function andList(items: readonly string[]): string {
@@ -419,6 +491,14 @@ function accountsText(ctx: CliContext, mode: string | undefined, dirs: readonly 
   return `${plural(dirs.length, 'account')}: ${dirs.map((d) => `${d.alias} (${tilde(d.dir, ctx.paths.userHome)})`).join(', ')}`;
 }
 
+/** The ttys of tmux's panes here (its default server, as the daemon's), or none. */
+async function paneTtys(ctx: CliContext): Promise<Set<string>> {
+  const bin = await binFinder(ctx)('tmux');
+  if (!bin) return new Set();
+  const r = await ctx.deps.exec(bin, ['list-panes', '-a', '-F', '#{pane_tty}'], { timeoutMs: 5000 });
+  return new Set(r.code === 0 ? r.stdout.split('\n').map((l) => l.trim()).filter(Boolean) : []);
+}
+
 /** Poll the daemon until its link is up, or `ms` passes. */
 async function waitForLink(ctx: CliContext, ms: number): Promise<CtlStatusView | null> {
   const deadline = ctx.deps.now() + ms;
@@ -444,13 +524,13 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
       ctx.io.err(`${hub}\n`);
       return EXIT.failed;
     }
-    ctx.io.err(`Warning: ${hub.replace(/ Pass --replace-hub.*$| Start Jantar first.*$/, '')} Going on (--replace-hub).\n`);
+    ctx.io.err(`Warning: ${hub.replace(/ Pass --replace-hub.*$/, '')} Going on (--replace-hub).\n`);
   }
 
   // 2. The line, and the Access token for the door.
   const t = decodeJoinToken(line);
   if (!t.ok) {
-    ctx.io.err(`Not joined: ${t.reason}. Nothing was saved on this machine. Make a new line at the Mac: jantar node pair\n`);
+    ctx.io.err(`Not joined: ${t.reason.replace(/\.$/, '')}. Nothing was saved on this machine. Make a new line at the Mac: jantar node pair\n`);
     return EXIT.failed;
   }
   const url = t.token.url;
@@ -481,18 +561,20 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
   const dirs = await claudeConfigDirs(ctx.paths);
   const kind = serviceKindOf(ctx.deps.platform);
   const readOnly = flags['read-only'] === true;
+  // Explicit: with no service file written, a bare install could not tell which this server is.
+  const installLine = `jantar install ${readOnly ? '--read-only' : '--no-read-only'}`;
   let started = false;
   let failed = false;
   if (flags.service === false || !kind) {
     await prepareStateDir(ctx, quiet);
     ctx.io.out(
-      `Service: not installed (--no-service). Start the daemon yourself: ${ctx.deps.nodePath} ${ctx.deps.locations.daemonBin}${readOnly ? ' --read-only' : ''}\n` +
+      `Service: not installed (--no-service). Start the daemon yourself: ${daemonLine(ctx, readOnly)}\n` +
         '(A jantard already running keeps running as before until it restarts.)\n',
     );
   } else {
     const unbuilt = await buildProblem(ctx);
     if (unbuilt) {
-      ctx.io.err(`Service: not installed: ${unbuilt} Then: jantar install${readOnly ? ' --read-only' : ''}\n`);
+      ctx.io.err(`Service: not installed: ${unbuilt} Then: ${installLine}\n`);
       failed = true;
     } else {
       await prepareStateDir(ctx, quiet);
@@ -501,7 +583,7 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
         ctx.io.out(svc.text);
         started = svc.started;
       } else {
-        ctx.io.err(`Service: not started: ${svc.reason}\nThen: jantar install${readOnly ? ' --read-only' : ''}\n`);
+        ctx.io.err(`Service: not started: ${svc.reason}\n${svc.next ?? `Then: ${installLine}`}\n`);
         failed = true;
       }
     }
@@ -520,7 +602,9 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
         state = null;
       }
       const sessions = state ? Object.values(state.sessions).filter((s) => s.status !== 'ended') : [];
-      const inTmux = sessions.filter((s) => s.paneId !== undefined).length;
+      // paneId comes on the daemon's 10-second tick, so just after the link the panes' own ttys say it too.
+      const panes = tmux ? await paneTtys(ctx) : new Set<string>();
+      const inTmux = sessions.filter((s) => s.paneId !== undefined || (s.tty !== undefined && panes.has(s.tty))).length;
       const accounts = accountsText(ctx, state?.daemon?.accountsMode, dirs, Object.keys(state?.accounts ?? {}).length);
       ctx.io.out(`Linked. ${plural(sessions.length, 'Claude session')} here${tmux ? ` (${inTmux} in tmux)` : ''} on ${accounts}.\n`);
       if (tmux && sessions.length > inTmux) notes.push("Sessions outside tmux show on the phone with their cards, but Jantar can't type into them.\n");
