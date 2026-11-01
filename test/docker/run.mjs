@@ -15,13 +15,16 @@
 //
 // Every docker call is argv, never a shell. Needs Docker with compose v2 and
 // the repo's node_modules (pnpm install) for vitest on this side.
+// JANTAR_E2E_PROJECT names the compose project (default jantar-fleet-e2e):
+// a second run at the same time (another worktree) needs its own, or each
+// run's `down` takes the other's stack with it.
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const COMPOSE = fileURLToPath(new URL('./compose.yaml', import.meta.url));
-const PROJECT = 'jantar-fleet-e2e';
+const PROJECT = process.env.JANTAR_E2E_PROJECT || 'jantar-fleet-e2e';
 const IMAGE = 'jantar-fleet-test';
 const VITEST = fileURLToPath(new URL('../../packages/cli/node_modules/.bin/vitest', import.meta.url));
 

@@ -293,6 +293,24 @@ describe('fake interactive Claude: typing', () => {
     t.type('\u0003');
     expect(await t.exit()).toBe(0);
   });
+
+  it('holds a turn open for replyMs, and Ctrl+C with its Return (Interrupt as Jantar types it) ends it with no reply', async () => {
+    const t = new Tui([]);
+    await t.started();
+    await t.control({ replyMs: 60_000 });
+    expect(await t.waitFor('reply-delay')).toMatchObject({ ms: 60_000 });
+    await t.prompt('a long one');
+    await t.waitFor('prompt');
+    t.type('\u0003\r');
+    await t.waitFor('interrupted');
+    const entries = await transcript(join(home, '.claude'), t.sid);
+    expect(userTexts(entries)).toEqual(['a long one', [{ type: 'text', text: '[Request interrupted by user]' }]]);
+    expect(entries.some((e) => e.type === 'assistant')).toBe(false);
+    // The Return after it sent nothing: the box is empty.
+    await t.screenWith((l) => inputBox(l)?.rows.join('|') === '❯ ', 'an empty box');
+    expect((await t.records()).filter((r) => r.event === 'prompt')).toHaveLength(1);
+    await t.close();
+  });
 });
 
 describe('fake interactive Claude: dialogs from DIALOG_FIXTURES', () => {

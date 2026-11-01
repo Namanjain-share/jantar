@@ -5,10 +5,29 @@ name: fleet-e2e
 # and a phone, each a container on an internal network, with the repo's fake
 # interactive Claude (never the real one). E1-E15.
 
+# About ten minutes of Docker, so only for changes that can change its result.
 on:
   push:
     branches: [main, 'v0.*']
+    paths:
+      - 'packages/**'
+      - 'test/docker/**'
+      - 'test/fixtures/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.nvmrc'
+      - '.github/workflows/fleet-e2e.yml'
   pull_request:
+    paths:
+      - 'packages/**'
+      - 'test/docker/**'
+      - 'test/fixtures/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.nvmrc'
+      - '.github/workflows/fleet-e2e.yml'
   workflow_dispatch:
 
 permissions:

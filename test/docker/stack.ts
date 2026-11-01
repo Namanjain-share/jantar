@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 import type { NodeRow, State } from '@jantar/protocol';
 
 export const COMPOSE_FILE = fileURLToPath(new URL('./compose.yaml', import.meta.url));
-export const PROJECT = 'jantar-fleet-e2e';
+/** The compose project; JANTAR_E2E_PROJECT gives another, so two runs (two worktrees) never take down each other's stack. */
+export const PROJECT = process.env.JANTAR_E2E_PROJECT || 'jantar-fleet-e2e';
 /** The door's Access service token (compose.yaml, service door): synthetic. */
 export const ACCESS = { id: 'jantar-nodes-test.access', secret: 'synthetic-access-secret-for-the-test-door' } as const;
 export const HUB_URL = 'https://hub.fleet.test';
@@ -177,6 +178,12 @@ export async function fakeRecords(service: Service, sid: string): Promise<FakeRe
     .map((l) => JSON.parse(l) as FakeRecord);
 }
 
+/** The screen the fake Claude of session `sid` last drew, one line per row (none before its first). */
+export async function fakeScreen(service: Service, sid: string): Promise<string[]> {
+  const r = await exec(service, ['cat', `${FAKE_CTL}/${sid}.screen.txt`]);
+  return r.code === 0 ? r.stdout.replace(/\n$/, '').split('\n') : [];
+}
+
 /** The transcript lines of session `sid` on a node (`configDir` ~/.claude unless given), parsed. */
 export async function transcriptOn(service: Service, sid: string, cwd: string, configDir = '/home/node/.claude'): Promise<Array<Record<string, any>>> {
   const r = await exec(service, ['cat', `${configDir}/projects/${cwd.replace(/[^A-Za-z0-9]/g, '-')}/${sid}.jsonl`]);
@@ -192,7 +199,16 @@ export function userTexts(entries: Array<Record<string, any>>): string[] {
   return entries.filter((e) => e.type === 'user' && typeof e.message?.content === 'string').map((e) => e.message.content as string);
 }
 
-/** Everything the services printed (jantard's logs, the door's request lines), optionally within a time window (RFC 3339). */
+/**
+ * Now on Docker's clock (RFC 3339 with nanoseconds), for a logs() window:
+ * log lines carry the times of Docker's VM, and the host's clock may drift
+ * from it (Docker Desktop).
+ */
+export async function clock(): Promise<string> {
+  return (await run('door', ['date', '-u', '+%Y-%m-%dT%H:%M:%S.%NZ'])).trim();
+}
+
+/** Everything the services printed (jantard's logs, the door's request lines), optionally within a time window (clock()'s times). */
 export async function logs(services: readonly Service[], window: { since?: string; until?: string } = {}): Promise<string> {
   const args = ['logs', '--no-color', '--no-log-prefix'];
   if (window.since) args.push('--since', window.since);

@@ -15,7 +15,12 @@ JANTAR_DOCKER_E2E=1 pnpm --filter @jantar/cli test:docker   # the suite alone, i
 
 Without `JANTAR_DOCKER_E2E=1` every case skips itself, so `pnpm test` never
 needs Docker. The `fleet-e2e` workflow runs `node test/docker/run.mjs` on
-`ubuntu-latest`.
+`ubuntu-latest` when a change touches the code, the tests or the lockfile.
+
+Each run starts and ends with `docker compose down -v` on its project,
+`jantar-fleet-e2e`. Two runs at once (two worktrees) need two projects, or
+each takes the other's stack down: `JANTAR_E2E_PROJECT=fleet-b node
+test/docker/run.mjs`.
 
 ## The stack (`compose.yaml`, one image: `jantar-fleet-test`)
 
@@ -44,23 +49,33 @@ step's anonymous memory from cgroup v2, all processes together):
 | Step | Machine | Time | Peak |
 |---|---|---|---|
 | `pnpm install --frozen-lockfile` | 12 CPUs, no limit | 14 s | 845 MiB |
-| `pnpm install --frozen-lockfile` (store removed) | 1 CPU, 1 GiB, no swap | 6 s | 259 MiB |
+| `pnpm install --frozen-lockfile` (store removed, metadata maybe cached) | 1 CPU, 1 GiB, no swap | 6 s | 259 MiB |
 | `pnpm -r build` | 12 CPUs, no limit | 21-60 s | 1.4 GiB |
 | `pnpm -r build` | 2 CPUs, 2 GiB, no swap | 42 s | 1.1 GiB |
 | `pnpm -r build` | 1 CPU, 1 GiB, no swap | 51 s | 718 MiB |
 
-So a 1 GiB server builds Jantar without swap; the build takes what memory
-it finds. To repeat one limited row:
+The build takes what memory it finds, and fit in a 1 GiB container with
+nothing else in it. A real 1 GB server also runs its system, jantard and
+Claude, so the install notes' advice stands (docs/fleet.md): give a 1 GB
+server swap for the build. To repeat one limited row:
 `docker run --rm --network none --cpus 1 --memory 1g --memory-swap 1g -w /repo jantar-fleet-test jantar-measure build pnpm -r build`.
 
 ## The scenarios (`fleet.e2e.test.ts`)
 
 One story on one stack, in this order: the door; E1 node1 joins; E2 node2
-joins past Access refusals; E3 a Claude on each; E4 a hook card; E5 a dialog
-on the screen; E6 a screen that changes under the answer; E7 prompts; E8 a
-photo; E9 a start from the phone; E14 the privacy sweep; E15 the session
-outside tmux; E10 a hub restart; E11 node1 paused; E12 node1 removed; E13
-Fleet off and on.
+joins past Access refusals; E3 a Claude on each, and one outside tmux on
+node1 beside its tmux pane; E4 a hook card; E5 a dialog on the screen; E6 a
+screen that changes under the answer; E7 prompts, then Shift+Tab and
+Interrupt from the phone; E8 a photo; E9 a start from the phone; E14 the
+privacy sweep; E15 the sessions outside tmux; E10 a hub restart; E11 node1
+paused; E12 node1 removed; E13 Fleet off and on; last, E14's sweep again
+over everything the story printed and stored.
+
+The sweep looks for the planted text, the door's Access secret and the join
+lines (and their pairing codes) in every log of hub, door and nodes, every
+row of the three databases (the sent prompt's Board line, in the events
+table's json column, is the one place the planted text may be) and every
+other file under the hub's state dir.
 
 Two steps differ from a Mac hub: Fleet goes back on through the control
 socket (`jantar fleet on` is the Mac's command), and `jantar node access`

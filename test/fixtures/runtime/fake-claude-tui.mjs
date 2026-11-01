@@ -41,6 +41,9 @@
 //                                          raise a PermissionRequest (its dialog: the
 //                                          one given, else a two-row Bash prompt)
 //   {"say": "text"}                        a line on the screen only (never in the transcript)
+//   {"replyMs": n}                         later turns reply n ms after their prompt
+//                                          (FAKE_CLAUDE_REPLY_MS until then): a turn
+//                                          held open, to interrupt
 //   {"close": true}                        drop the dialog on screen
 //   {"exit": true}                         quit
 // What happened goes to `$FAKE_CLAUDE_CTL/<sid>.events.jsonl` (start, the
@@ -144,7 +147,7 @@ process.title = 'claude';
 const env = process.env;
 const configDir = resolve(env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'));
 const ctlDir = env.FAKE_CLAUDE_CTL ? resolve(env.FAKE_CLAUDE_CTL) : null;
-const replyMs = Number(env.FAKE_CLAUDE_REPLY_MS) || 300;
+let replyMs = Number(env.FAKE_CLAUDE_REPLY_MS) || 300;
 const sid = args.sessionId || args.resume || randomUUID();
 const cwd = process.cwd();
 const tty = process.stdin.isTTY === true && process.stdout.isTTY === true;
@@ -793,6 +796,10 @@ function feed(chunk) {
 let acting = false;
 
 async function act(cmd) {
+  if (typeof cmd?.replyMs === 'number' && cmd.replyMs >= 0) {
+    replyMs = cmd.replyMs;
+    record('reply-delay', { ms: replyMs });
+  }
   if (typeof cmd?.say === 'string') {
     say(`● ${cmd.say}`);
     record('said');

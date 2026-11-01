@@ -71,8 +71,9 @@ async function dump() {
     out[name] = db.prepare(`SELECT * FROM "${String(name).replaceAll('"', '""')}"`).all();
   }
   db.close();
-  // Blobs as hex, so a planted text inside one is still found.
-  process.stdout.write(`${JSON.stringify(out, (_k, v) => (v instanceof Uint8Array ? Buffer.from(v).toString('hex') : typeof v === 'bigint' ? String(v) : v))}\n`);
+  // Blobs as latin1, one character per byte, so a planted text inside one is
+  // still found as it was written (hex would hide it).
+  process.stdout.write(`${JSON.stringify(out, (_k, v) => (v instanceof Uint8Array ? Buffer.from(v).toString('latin1') : typeof v === 'bigint' ? String(v) : v))}\n`);
 }
 
 const COMMANDS = { ctl, dump };
