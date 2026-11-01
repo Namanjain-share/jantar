@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.5.3 (unreleased)
+## Unreleased
 
 - **Ask**, a chat page on the phone, right after Today. Tell it what to
   add in plain words ("todo add call the bank", "remind me at 6 to take my
@@ -13,14 +13,21 @@ What changed for people who use Jantar, newest first. Versions before
   money), each added card has **Undo** until a day after you asked, and
   **Edit** changes a card before it is added. Ask "calories left?" or
   "what's due?" and the answer is filled in on the phone from Today, with
-  your own calorie target. Off until `jantar ask on`.
+  your own calorie target. Off until `jantar ask on`. The guide:
+  [docs/assistant.md](docs/assistant.md).
 - Ask runs Claude Code on your account the way Rewrite does, on Rewrite's
   model: only what you type goes to Claude (with the date, time and time
   zone, which Life parts are on, the currency code and the fixed category
-  names), never your saved lists, medicines or money. Its history stays in
-  the daemon's memory, the last 30 messages per phone for up to 7 days;
-  Clear history, `jantar ask off` and a restart forget it.
+  names), never your saved lists, medicines or money. Claude can only
+  propose the four kinds of card; anything else in its answer is left out
+  and the page says how many. Its history stays in the daemon's memory,
+  the last 30 messages per phone (and an older one while Undo still works
+  on what it added) for up to 7 days; Clear history, `jantar ask off` and
+  a restart forget it. A message refused because one is still waiting
+  doesn't count against the 10 a minute and 100 a day.
   [SECURITY.md](SECURITY.md#v053-ask) lists what it can't do.
+- The daily calorie target starts at **1,500 kcal** (it was 2,000). A
+  target you already set on the phone stays as it is.
 
 ## 0.5.2 (1 November 2026)
 

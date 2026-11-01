@@ -71,7 +71,7 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar meetings [on \| off]` | Meetings from the Chrome extension ([Meetings](extension.md)) |
 | `jantar meetings export <id> \| last \| --all [--out DIR]` | a folder per meeting: `meeting.md` and `shots/*.jpg` |
 | `jantar meetings unpair` | revoke every paired extension |
-| `jantar ask on \| off \| status` | Ask, a chat page that suggests todos, reminders, food and money ([Ask](phone-app.md#ask)); `off` forgets its history; `status` names the model (Rewrite's) |
+| `jantar ask on \| off \| status` | Ask, a chat page that suggests todos, reminders, food and money ([Ask](assistant.md)); `off` forgets its history; `status` names the model (Rewrite's) |
 
 ### Setup
 

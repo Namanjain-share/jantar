@@ -28,7 +28,7 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Today** and **Life** | Today, Todos (with Reminders and Projects), Medicines, Food, Cafés and Finance; on a phone they sit behind Today and More ([Life](life.md)) |
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
-| **Ask** | Right after Today: tell it what to add in plain words, and add its suggestions with a tap ([Ask](#ask)) |
+| **Ask** | Right after Today: tell it what to add in plain words, and add its suggestions with a tap ([Ask](assistant.md)) |
 
 On a phone the tab bar holds Board, Today, Files, Accounts and More. With
 Ask on it holds Board, Today, Ask, Files and More, and Accounts moves into
@@ -209,49 +209,23 @@ added until you tap Add.**
 ```sh
 jantar life on todos food finance   # Ask suggests only for Life parts that are on
 jantar ask on                       # says what goes to Claude
-jantar ask status                   # the switch, and the model (Rewrite's: jantar rewrite model <m>)
 jantar ask off                      # hides it and forgets its history
 ```
 
-| Card | What it adds |
-|---|---|
-| **Todo** or **Reminder** | a todo, with its day, time, repeat, priority and project when you said them (a todo with a time is a reminder and rings) |
-| **Food** | what you ate with its calories, today or up to 7 days back |
-| **Expense** or **Income** | a money entry in one of the usual categories, today or up to 7 days back |
-| **Now** | nothing: what is due today, calories against your target, or today's medicines, filled in on the phone |
+- **Add**, **Edit** or **Skip** each card; **Add all** adds the todo and
+  food cards of one answer (never money). **Undo** works until a day
+  after you asked.
+- Questions about today never send your lists to Claude: the phone fills
+  the answer card from Today.
+- **What goes to Claude** (the page says it under the box): only what you
+  type there (medicine names or amounts you type do go), the date, time
+  and time zone, which Life parts are on, the currency code and the fixed
+  category names.
+- **History** lives in the daemon's memory only; Clear history, `jantar
+  ask off` and a restart forget it. Items you added stay in Life.
 
-- **Add**, **Edit** (change the fields, then Save and add) or **Skip** each
-  card. **Add all** adds the todo and food cards of one answer in one tap
-  (a meal is often several cards); a money card always needs its own Add.
-  A card over a day old can't be added: ask again.
-- **Undo** on an added card works until a day after you asked. It deletes
-  the item **as it is now**, with any change made since (an edit, Done, a
-  repeating todo moved on to its next day). After that, delete it in
-  Todos, Food or Finance.
-- **Times.** A time with no day is the next time it comes: "at 6" is 06:00
-  or 18:00 today, else 06:00 tomorrow. A repeating reminder whose time has
-  passed today starts on its next day. A one-off reminder for a time
-  already gone says it won't ring.
-- **Questions about today** never send your lists to Claude. Claude only
-  picks a Now card, and the phone fills it from Today: the calories card
-  uses your own target. Tapping a dose on the medicines card is the only
-  way Ask logs one.
-- **What it can't do:** change, finish or delete items you already have,
-  log a dose or change a medicine, or touch sessions, files, settings or
-  the shelf. It says so in the reply and suggests nothing.
-- **What goes to Claude** (the page sums it up under the box): only what
-  you type there (medicine names or amounts you type do go), the date,
-  time and time zone, which Life parts are on, the currency code and the
-  fixed category names. Your saved lists, medicines and money stay on the
-  Mac.
-- **History** lives in the daemon's memory only: the last 30 messages per
-  phone, for up to 7 days. **Clear history** forgets this phone's, `jantar
-  ask off` forgets everyone's, and a restart of the daemon forgets it too.
-  Items you added stay in Life.
-- One answer at a time per phone (Cancel stops it), 10 messages a minute
-  and 100 a day. Ask needs the `control` scope, runs on an account with
-  room (never one kept or held for other work), and is refused while
-  Jantar runs `--read-only`.
+Every phrase it understands, the cards, times, limits and what each
+message on the page means: [Ask](assistant.md).
 
 ## Controls and screenshots
 

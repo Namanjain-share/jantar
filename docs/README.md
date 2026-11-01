@@ -12,6 +12,7 @@
 | [Accounts](accounts.md) | One login or cswap, usage and resets, accounts kept for other work |
 | [The primer](primer.md) | Starting an idle account's 5-hour window early |
 | [Life](life.md) | Today, todos, reminders, projects, medicines, food and weight, cafés, finance; backup and restore |
+| [Ask](assistant.md) | The chat page: plain words in, todos, reminders, meals and expenses out as cards you add with a tap; what goes to Claude |
 | [Intel shelf](intel.md) | The shelf, its sources and the JSONL line format |
 | [Meetings](extension.md) | The Chrome extension for Google Meet and Microsoft Teams: setup, captions, screenshots, summaries, export, deleting everything |
 | [Configuration](configuration.md) | Every command, the daemon's flags, environment variables, `config.json`, the state folder |

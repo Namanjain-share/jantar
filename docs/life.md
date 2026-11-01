@@ -30,7 +30,8 @@ jantar life status
 - **Food** (`food`): what you ate with calories, saved foods for one tap,
   "Ask Claude" to estimate a meal you type (you edit before it is saved),
   and your weight with its change over 7 and 30 days. The calorie target
-  and the goal weight are set on the phone.
+  (1,500 kcal until you change it) and the goal weight are set on the
+  phone.
 - **Cafés** (`places`): your places and their best dishes, rated, tried or
   want to try.
 - **Finance** (`finance`): expenses and income by category, monthly
@@ -42,7 +43,7 @@ jantar life status
   <picture><source media="(prefers-color-scheme: dark)" srcset="img/dose-phone-dark.png"><img src="img/dose-phone.png" width="240" alt="The dose sheet: Taken, Skip or Took it at."></picture>
 </p>
 <p align="center">
-  <picture><source media="(prefers-color-scheme: dark)" srcset="img/food-phone-dark.png"><img src="img/food-phone.png" width="240" alt="Food: 1,240 of 2,000 kcal and the weight line."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="img/food-phone-dark.png"><img src="img/food-phone.png" width="240" alt="Food: 1,240 of 1,500 kcal and the weight line."></picture>
   <picture><source media="(prefers-color-scheme: dark)" srcset="img/places-phone-dark.png"><img src="img/places-phone.png" width="240" alt="Cafés, best rated first."></picture>
   <picture><source media="(prefers-color-scheme: dark)" srcset="img/money-phone-dark.png"><img src="img/money-phone.png" width="240" alt="Finance: spending by category against budgets, and bills."></picture>
 </p>
@@ -65,7 +66,7 @@ jantar life status
   kept one) and is refused while Jantar runs read-only.
 - **Ask** (its own switch, `jantar ask on`) turns plain words into todos,
   reminders, meals and money entries, each added only by your tap, with
-  Undo until a day after you asked ([Ask](phone-app.md#ask)).
+  Undo until a day after you asked ([Ask](assistant.md)).
 
 ## Settings
 

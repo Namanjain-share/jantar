@@ -74,7 +74,8 @@ jantar/
                    extension in a fresh temp profile and drives it (openPopup, tabIdOf, the
                    camera's closed shadow root): ext-smoke and ext-v05 (synthetic Meet and
                    Teams pages at the real URLs); v05-meetings, v05-privacy, web-v05;
-                   v0.5.3: v053-ask (Ask through the daemon, the CLI and the fake claude)
+                   v0.5.3: v053-ask (Ask through the daemon, the CLI and the fake claude) and
+                   web-v053-ask (the built Ask page in Chromium against jantard)
 ```
 
 ## The daemon's parts
@@ -269,8 +270,10 @@ feature flag; protocol version 3 and settings version 2 unchanged, no
 jantar.db migration), the daemon part (`ask/`, its turns in memory only, so
 no file of its own), its prompt (`assets/ask/assistant-v1.md`), the page
 (`screens/ask/`, a lazy chunk), `jantar ask`, the fake claude's Ask modes
-and `ASK_MARKER` (`test/fixtures/src/ask.ts`), and the end-to-end suite
-`v053-ask`.
+and `ASK_MARKER` (`test/fixtures/src/ask.ts`), and the end-to-end suites
+`v053-ask` (over HTTP, with the privacy sweep) and `web-v053-ask` (the built
+page in Chromium: each phrase to its cards, Add, Undo, hostile answers, the
+switch). The user's guide is `docs/assistant.md`.
 
 The Ask routes' schemas ride in `ROUTES`, which the first load holds, so it
 needed room first (gzip, `MAIN_JS_MAX` 280.0 kB, unchanged): 279.8 kB

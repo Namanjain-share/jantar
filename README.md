@@ -96,7 +96,7 @@ reminders, meals and expenses, each added only when you tap it.
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/intel-phone-dark.png"><img src="docs/img/intel-phone.png" width="240" alt="The Intel shelf: saved links with type filters."></picture>
 </p>
 
-More: [Life](docs/life.md), [Ask](docs/phone-app.md#ask),
+More: [Life](docs/life.md), [Ask](docs/assistant.md),
 [Meetings](docs/extension.md), [the Intel shelf](docs/intel.md).
 
 ## Requirements

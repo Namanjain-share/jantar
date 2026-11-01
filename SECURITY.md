@@ -1106,7 +1106,9 @@ never used.
 ### History and privacy
 
 - Messages, replies and cards live in the daemon's memory only, per
-  device: the newest 30 and none older than 7 days. Nothing is written to
+  device: the newest 30, plus an older one while Undo still works on an
+  item it added (a day at most), and none older than 7 days; an hourly
+  sweep drops them even when nobody opens Ask. Nothing is written to
   disk, not even `life.db` (so Life's backups hold no chat text);
   `<state dir>/ask/` holds only the prompt copy and the empty run folder.
   **Clear history** forgets one phone's, `jantar ask off` forgets
@@ -1121,9 +1123,10 @@ never used.
   suite plants a marker in messages and checks that none of these, nor any
   file under the state folder, carries it.
 - Limits per device: 10 messages a minute and 100 a day, one unanswered
-  message at a time; one run at a time for the whole daemon. Every Ask
-  write (sending, Add, Skip, Undo, Cancel, Clear) also counts against
-  Life's 240 writes a minute.
+  message at a time; one run at a time for the whole daemon. A message
+  refused because one is still waiting, or because Ask can't run, counts
+  against neither limit. Every Ask write (sending, Add, Skip, Undo,
+  Cancel, Clear) also counts against Life's 240 writes a minute.
 
 ### Residual risks
 
