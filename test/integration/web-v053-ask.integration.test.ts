@@ -42,7 +42,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
-import { setFakeClaude } from '@jantar/fixtures';
+import { perfBudgetMs, setFakeClaude } from '@jantar/fixtures';
 import { DEVICE_COOKIE, type MoneyMonth, type PairStartResponse, type SettingsResponse, type Today, type TodosResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
 import { PHONE, browserReady, clean, overflow, watchConsole, type Watch } from './browser.js';
@@ -99,7 +99,7 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     const turn = page.locator('li[data-turn]').last();
     await turn.getByText(text, { exact: true }).waitFor();
     await until(turn)
-      .waitFor({ timeout: 30_000 })
+      .waitFor({ timeout: perfBudgetMs(30_000) })
       .catch((e: unknown) => {
         throw new Error(`no answer to "${text}": ${String(e)}\n${dumpLog()}`);
       });
@@ -137,13 +137,13 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await page.getByRole('heading', { name: 'Paired' }).waitFor();
     // Before the claim the app's first calls answer 401: expected, and over now.
     watch.errors.length = 0;
-  }, 120_000);
+  }, perfBudgetMs(120_000));
 
   afterAll(async () => {
     await ctx?.close().catch(() => undefined);
     await browser?.close().catch(() => undefined);
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it("1. Ask sits right after Today; a chip fills the box and sends nothing; one line under the box, and What's sent says what goes", async () => {
     await open('/today');
@@ -181,7 +181,7 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await page.waitForTimeout(500);
     expect(await page.locator('li[data-turn]').count()).toBe(0);
     await check('the empty page');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('2. "todo add call the bank": a Todo card; Add puts it in Todos; Undo takes it out', async () => {
     const text = 'todo add call the bank';
@@ -205,7 +205,7 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await turn.getByRole('button', { name: 'Add: call the bank' }).waitFor();
     expect((await todos()).some((t) => t.id === added?.id)).toBe(false);
     await check('the todo undone');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('3. "remind me at 6 to take Examplocin": a Reminder at the next 6 o\'clock; Add makes it with that time; Undo', async () => {
     const text = 'remind me at 6 to take Examplocin';
@@ -230,7 +230,7 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await turn.getByRole('button', { name: 'Add: Take Examplocin' }).waitFor();
     expect((await todos()).some((t) => t.id === added?.id)).toBe(false);
     await check('the reminder undone');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('4. "had 2 rotis and dal": two Food cards; Add all 2 adds 420 kcal to Today; Undo on each takes it back', async () => {
     const before = await kcal();
@@ -254,7 +254,7 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await turn.getByRole('button', { name: 'Add: Dal' }).waitFor();
     expect(await kcal()).toBe(before);
     await check('the meal undone');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('5. "spent 250 on lunch", sent with Enter: an Expense of ₹250 in Food, never in Add all; Add puts 25000 in the month; Undo', async () => {
     const before = await month();
@@ -282,7 +282,7 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     expect(undone.spent).toBe(before.spent);
     expect(undone.entries.some((e) => e.id === entry?.id)).toBe(false);
     await check('the expense undone');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('6. "calories left?": a Now card the phone fills from Today, against the 1,500 kcal target', async () => {
     expect((await get<Today>('/v1/life/today')).food).toMatchObject({ kcal: 0, target: 1500 });
@@ -294,7 +294,7 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await card.getByText('1,500 kcal left', { exact: true }).waitFor();
     expect(await card.getByRole('button', { name: /^Add/ }).count()).toBe(0);
     await check('the calories card');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('7. hostile answers: other actions are left out, nothing is added without a tap, a link is text, prose is unreadable', async () => {
     const todosBefore = (await todos()).length;
@@ -344,7 +344,7 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     expect(moneyAfter.spent).toBe(moneyBefore.spent);
     expect(moneyAfter.entries.length).toBe(moneyBefore.entries.length);
     expect(await settings()).toEqual(settingsBefore);
-  }, 120_000);
+  }, perfBudgetMs(120_000));
 
   it('8. switched off at the Mac: no Ask tab, /ask is off, no message shows, the API refuses; on again, the history is gone', async () => {
     // Off the page first, so no read of the list is in flight when the switch turns.
@@ -370,5 +370,5 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await page.getByText('Tell Ask what to add, or ask about today.').waitFor();
     expect(await page.locator('li[data-turn]').count()).toBe(0);
     await check('Ask on again, its history forgotten');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 });

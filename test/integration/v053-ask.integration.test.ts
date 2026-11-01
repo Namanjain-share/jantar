@@ -44,7 +44,7 @@ import { basename, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ASK_SENTENCES } from '@jantar/daemon/ask/answer';
 import { rewriteArgv } from '@jantar/daemon/rewrite/run';
-import { ASK_MARKER, claudeCalls, setFakeClaude, type ClaudeCall } from '@jantar/fixtures';
+import { ASK_MARKER, claudeCalls, perfBudgetMs, setFakeClaude, type ClaudeCall } from '@jantar/fixtures';
 import {
   DEVICE_COOKIE,
   eventsSocketProtocols,
@@ -173,12 +173,12 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
     });
     ws = socket;
     await eventually(async () => frames.some((f) => f.includes('"kind":"snapshot"')), 5_000, 'the snapshot');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     ws?.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('0. off, the phone is told the command; jantar ask on turns Ask on; a read-only device reads nothing', async () => {
     expect((await features()).ask).toBe(false);
@@ -242,7 +242,7 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
     const undone = await turnNow(id);
     expect(undone?.cards[0]?.state).toBe('proposed');
     expect(undone?.cards[0]?.ref).toBeUndefined();
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('2. "remind me at 6 to take Examplocin": one reminder at the next 6 o\'clock, added with that time', async () => {
     const turn = await ask(SAY.reminder);
@@ -267,7 +267,7 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
     const todo = (await ok<TodosResponse>('GET', '/v1/todos')).todos.find((t) => t.id === id);
     expect(todo?.title).toContain('Examplocin');
     expect(todo?.due).toEqual(expected);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('3. "spent 250 on lunch": Add puts 25000 hundredths in this month', async () => {
     const before = await ok<MoneyMonth>('GET', '/v1/money');
@@ -282,7 +282,7 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
     const after = await ok<MoneyMonth>('GET', '/v1/money');
     expect(after.entries.find((e) => e.id === id)).toMatchObject({ kind: 'expense', amount: 25000, category: 'Food' });
     expect(after.spent).toBe(before.spent + 25000);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('4. "had 2 rotis and dal": two food cards, added one after the other as Add all does; Today counts them', async () => {
     const before = await ok<Today>('GET', '/v1/life/today');
@@ -298,7 +298,7 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
     expect((await turnNow(turn.id))?.cards.map((c) => c.state)).toEqual(['added', 'added']);
     const after = await ok<Today>('GET', '/v1/life/today');
     expect(after.food?.kcal).toBe((before.food?.kcal ?? 0) + sum);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('5. a run that fails with the marker on claude\'s stderr ends in a fixed sentence', async () => {
     await setFakeClaude(d.home, { mode: 'ask-bad-json' });
@@ -320,7 +320,7 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
     neverAdded.push(SAY.chat);
     expect(chat.cards).toEqual([]);
     expect(chat.reply ?? '').not.toBe('');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('6. Clear forgets this phone\'s history; what was added stays in Life', async () => {
     const todos = (await ok<TodosResponse>('GET', '/v1/todos')).todos.length;
@@ -341,7 +341,7 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
     expect((await fromPhone('POST', `/v1/ask/turns/${turn.id}/actions/0`, {})).status).toBe(403);
     expect((await cli('ask', 'on')).code).toBe(0);
     expect(await ok<AskList>('GET', '/v1/ask')).toEqual({ ready: true, turns: [] });
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('8. each run had the isolation argv, Rewrite\'s model at low effort, and the message on stdin only', async () => {
     const runs = await askRuns();
@@ -432,11 +432,11 @@ describe('v0.5.3 Ask under jantard --read-only', () => {
     expect(claim.status, claim.text).toBe(200);
     phone = cookieFrom(claim, DEVICE_COOKIE) as string;
     rememberSecret(phone, claim.body);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('10. refuses sending with 403, says why, and runs nothing', async () => {
     const sent = await http(d.port, 'POST', '/v1/ask', { cookie: phone, body: { text: 'todo add buy milk' }, headers: { 'idempotency-key': 'k-ro-1' } });
