@@ -558,6 +558,9 @@ The whole picture is in
 - Native Windows is a preview: watch and cards only (see [Windows](#windows)).
 - No Picture view, Files or Rewrite for servers' sessions; Life, Intel,
   Meetings, Ask and notifications live on the Mac.
+- `jantar mcp` and `jantar notify test` are for the Mac. On a server they
+  reach that server's own daemon, which holds no Life or Intel and sends
+  no pushes (a server's pushes go out from the Mac).
 - Answer soon (the push for Claude's 2-minute countdown) is for the Mac's
   own sessions: the Mac never reads a server's screen for it, so a
   server's unattended ask sends the usual "needs you" push.

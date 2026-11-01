@@ -45,9 +45,10 @@ a join line per server (`jantar node pair --count 10`), and run one line on
 each server. Their sessions join the board, each server with its own Claude
 accounts. Each server dials out to your Mac through the front door your
 phone uses, so nothing opens on the servers. The Mac must stay awake: while
-it sleeps, no server is reachable. Native Windows (without WSL2) shows
-sessions and their cards only. Some parts are not yet checked on real
-servers. See [Servers](fleet.md).
+it sleeps, no server is reachable. Native Windows (without WSL2) is a
+preview, not yet checked on a real Windows machine: sessions and their
+cards only. Some parts are not yet checked on real servers. See
+[Servers](fleet.md).
 
 ## Can a paired server reach my Mac?
 

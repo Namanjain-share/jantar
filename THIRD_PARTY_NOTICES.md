@@ -78,6 +78,7 @@ Installed from npm and not modified. Their licenses ship inside each package.
 | @tanstack/react-virtual, @tanstack/virtual-core (v0.3: long files and lists) | MIT |
 | pdfjs-dist (v0.3 Files viewer: PDFs, loaded on demand, with its worker) | Apache-2.0 |
 | @date-fns/tz (v0.4 Life: wall-clock times in a time zone; by Sasha Koss) | MIT |
+| ws (v0.6 Fleet: a server's link to the Mac) | MIT |
 
 ### pdf.js's standard fonts
 

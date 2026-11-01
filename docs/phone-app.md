@@ -18,13 +18,13 @@ the live dot, `next →`). The name shown in the app is one constant,
 
 | Screen | What you see |
 |---|---|
-| **Board** | "3 need you" and **Start**, then every session in rails: NEEDS YOU (oldest wait first), YOUR TURN, WORKING, ENDED. Each row: what it is waiting on (the question, the command, the plan), the tool it is running, or its last reply, with its account and that account's 5-hour % (with cswap) and its project (with Life). On a Mac the **Desk** beside it shows up to three cards to answer, the next resets and new alerts |
+| **Board** | "3 need you" and **Start**, then every session in rails: NEEDS YOU (oldest wait first), YOUR TURN, WORKING, ENDED. Each row: what it is waiting on (the question, the command, the plan), the tool it is running, or its last reply, with its account and that account's 5-hour % (with cswap), its project (with Life) and, with [Fleet](fleet.md), the server it runs on. On a Mac the **Desk** beside it shows up to three cards to answer, the next resets and new alerts |
 | **Session** | The transcript (or the terminal screen), and a dock for whatever is waiting, in Claude's own words. After you answer, "Next: infra · Plan". With no card, the dialog on the terminal as buttons, or the keypad ([details](phone-control.md)). Otherwise a box to send a prompt, with **+** for photos and files, which says "delivered" only when the transcript proves it |
 | **Accounts** | With cswap: every account's 5-hour bar against the ceiling, a runway to the reset, weekly %, its sessions, its flags and the primer's line; with the legacy ccw tool also burn rates, red dashes where an account fills up before its reset, `next →`, held flags and moves in progress. On one login: that login and its sessions ([Accounts](accounts.md)) |
 | **Alerts** | Limits, API errors, blocked tools and prompts that were not delivered, by day; mute pushes for 1 or 8 hours (medicine pings still come) |
-| **Devices** | This device (theme, install, which notifications), paired devices, and **Show pairing code** for a phone |
+| **Devices** | This device (theme, install, which notifications), paired devices, and **Show pairing code** for a phone; with Fleet, **Machines**: each paired server, online or not, and its version |
 | **Files** | Which files the live sessions created or changed, newest first; a browser over the folders set on the Mac; a read-only viewer |
-| **New session** | A folder, an account (with cswap) and the flags, the exact command line it will type, Resume, then hold to start |
+| **New session** | A folder, an account (with cswap) and the flags, the exact command line it will type, Resume, then hold to start; with Fleet, a **Where** row picks the Mac or a server |
 | **Today** and **Life** | Today, Todos (with Reminders and Projects), Medicines, Food, Cafés and Finance; on a phone they sit behind Today and More ([Life](life.md)) |
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |

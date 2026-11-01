@@ -284,6 +284,13 @@ can show:
 | LF1 | A medicine or reminder due while Wi-Fi is off: the ping goes out, marked late, when Wi-Fi comes back. On Wi-Fi that reaches nothing past DNS (a hotel's sign-in page) it is tried five times over a few minutes, then dropped, never sent twice: the wait for the network covers only a push that never left (no DNS answer within 10 s, no connection). After a wake, does the log show `getaddrinfo` (waits) or `Socket timeout` (counted)? | the missed-push retry |
 | LF2 | A daily reminder at 11:00 snoozed an hour rings at 12:00 that day and at 11:00 the next | a repeating todo's own time |
 
+### Servers (v0.6)
+
+Fleet's checks need servers as well as a Mac: real Claude Code in tmux,
+sending prompts on Linux, the Access path for the link, native Windows and
+WSL2's keep-alive. They are listed in
+[Servers: not verified yet](fleet.md#not-verified-yet).
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear

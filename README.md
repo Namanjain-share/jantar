@@ -140,8 +140,8 @@ More: [Life](docs/life.md), [Ask](docs/assistant.md),
   Cloudflare Tunnel
 - Optional: cswap for several Claude accounts; Chrome 120 or newer for
   Meetings
-- Optional, for servers (v0.6): Linux with tmux 3.2 or newer and systemd,
-  Windows with WSL2, or another Mac, each with Node.js 22.13 or newer and
+- Optional, for servers (v0.6): Linux with tmux 3.2 or newer, procps and
+  systemd 240 or newer, Windows with WSL2, or another Mac, each with Node.js 22.13 or newer and
   Claude Code signed in; native Windows as a preview
   ([servers](docs/fleet.md#before-you-start))
 
