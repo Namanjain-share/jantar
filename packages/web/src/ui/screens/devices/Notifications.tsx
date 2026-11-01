@@ -2,8 +2,8 @@
  * This device's notifications: on or off, mute, and which kinds reach it
  * (direction.md 5.5). The kinds are a switch list; "Not delivered" is locked
  * on because a prompt that was not sent must reach you. Under it, v0.5.3's
- * Sounds row (Sounds.tsx, its own chunk), which needs to know whether Done
- * is on here.
+ * Sounds row (Sounds.tsx, its own chunk), which needs to know whether the
+ * kinds list above shows Done off.
  */
 import { LockSimpleIcon } from '@phosphor-icons/react';
 import { Suspense, lazy, useEffect, useId, useState, type ReactNode } from 'react';
@@ -206,7 +206,7 @@ export function NotificationsRow() {
         {value}
       </PropRow>
       <Suspense fallback={null}>
-        <SoundsRow doneOff={!kinds.includes('done')} />
+        <SoundsRow doneOff={switchable && !kinds.includes('done')} />
       </Suspense>
     </>
   );

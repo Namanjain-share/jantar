@@ -200,6 +200,7 @@ export const TONE_AT_S: readonly number[] = [60, 30, 10];
  * The urgent group's tone (and phrase, with Speak on) once as the seconds left cross each of TONE_AT_S,
  * kept per ask (`ask`: the dialog's fingerprint and its view), so a re-render or a read that counts a
  * second up never plays one again. Marks crossed together (back from the background) play once. None at 0.
+ * chime() plays nothing in a hidden tab, nor at 60 s just after the urgent repeat push played its own.
  */
 function useCountdownTones(ask: string | null, left: number | null): void {
   const last = useRef<{ ask: string; left: number; done: readonly number[] } | null>(null);

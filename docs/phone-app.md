@@ -251,14 +251,18 @@ Alarm, Ding, Success, Bell, Low or None, with a Test button. "Speak a few
 words" adds one fixed phrase ("Answer soon", "Claude needs you", "Done",
 "Reminder" or "Something needs a look"), never what Claude asked, a folder
 or a medicine. Tones and the voice play only while Jantar is open on
-screen, after a tap, and follow the silent switch. On the lock screen the
+screen, after a tap, and follow the silent switch; each time the app
+starts again, its first tap lets the voice speak. On the lock screen the
 iPhone plays its one alert sound for every web app, whatever you pick here.
 When the open app plays a push's tone, that push arrives without the
 phone's sound, so you hear one, not two; if the app can't play it in time,
 the push sounds as usual. Medicine and Life pings always keep the phone's
 sound, with the app's tone on top. On a session's countdown, Answer soon
-also plays at 60, 30 and 10 seconds left. Sounds are on by default on a
-phone and off on the Mac's dashboard, where the microphone could pick up a
-chime during a meeting you are capturing. The choices stay in that
-browser. The success tune needs Done pushes: the Done kind on for that
-device, and on the Mac, which sends none by default, `jantar notify done on`.
+also plays at 60, 30 and 10 seconds left. The same alert twice within 3
+seconds (the countdown's repeat push and its 60-second mark, or several
+pings at once) plays once. Sounds are on by default on a phone and off on
+the Mac's dashboard, where the microphone could pick up a chime during a
+meeting you are capturing; a Mac tab in the background plays none. The
+choices stay in that browser. The success tune needs Done pushes: the Done
+kind on for that device, and on the Mac, which sends none by default,
+`jantar notify done on`.

@@ -36,7 +36,7 @@ export const PLAY_SOUNDS = `Play sounds while ${PRODUCT_NAME} is open`;
 export const SPEAK_NOTE =
   'Says only "Answer soon", "Claude needs you", "Done", "Reminder" or "Something needs a look". Never what Claude asked, a folder or a medicine.';
 export const LOCK_SCREEN_LINE = `Tones and the voice play only while ${PRODUCT_NAME} is open on screen, and follow the silent switch. On the lock screen your iPhone plays its own alert sound for every app (Settings › Sounds & Haptics).`;
-/** Under Done while this device has the Done kind off (a phone can't change the Mac's kinds). */
+/** Under Done while the kinds list above shows Done off here (a phone can't change the Mac's kinds). */
 export const DONE_COMMAND = 'jantar notify done on';
 
 const SELECT =

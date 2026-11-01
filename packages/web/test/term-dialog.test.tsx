@@ -24,7 +24,7 @@ import {
   type TerminalDialog,
 } from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
-import { setAppChimes, type Chimes } from '../src/lib/sounds.js';
+import { chime, setAppChimes, type Chimes } from '../src/lib/sounds.js';
 import { writeLocal } from '../src/lib/storage.js';
 import { LOCAL_DEVICE_KEY } from '../src/ui/screens/devices/local.js';
 import {
@@ -1047,6 +1047,7 @@ describe("v0.5.3: the Answer soon tone as Claude's countdown crosses 60, 30 and 
       said: [] as string[],
       unlock: () => Promise.resolve(),
       wake: () => undefined,
+      primeSpeech: () => undefined,
       play: (tone: string) => (r.tones.push(tone), true),
       speak: (group: string) => void r.said.push(group),
     };
@@ -1100,6 +1101,45 @@ describe("v0.5.3: the Answer soon tone as Claude's countdown crosses 60, 30 and 
     for (let i = 0; i < 90; i++) await pass(1_000);
     expect(getScreen.mock.calls.length).toBeGreaterThan(20);
     expect(r.tones).toEqual(['bell', 'bell', 'bell']);
+  });
+
+  it('the urgent repeat push chimed at about 61 s left: the dock crossing 60 a moment later plays nothing more', async () => {
+    const r = recorder();
+    sounds({ speak: true });
+    await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('1:02') } });
+    expect(within(card()).getByText(blocksAt('1 min 1 s'))).toBeTruthy();
+    // The push reaches the open app (sw.js asks, main.tsx answers with chime): the alarm, "Answer soon", shown silent.
+    expect(chime('urgent')).toBe(true);
+    await pass(1_500);
+    expect(within(card()).getByText(blocksAt('59 s'))).toBeTruthy();
+    expect(r.tones).toEqual(['alarm']);
+    expect(r.said).toEqual(['urgent']);
+    await pass(30_000);
+    expect(r.tones).toEqual(['alarm', 'alarm']);
+    expect(r.said).toEqual(['urgent', 'urgent']);
+  });
+
+  it('a hidden tab (the Mac dashboard in the background) plays no mark; on screen again, the next one plays', async () => {
+    let hidden = false;
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });
+    try {
+      const r = recorder();
+      sounds({ speak: true });
+      await openDock('PERM_WORKFLOW_133', { api: { getScreen: onlyFirst('0:35') } });
+      hidden = true;
+      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+      await pass(10_000);
+      expect(within(card()).getByText(blocksAt('24 s'))).toBeTruthy();
+      expect(r.tones).toEqual([]);
+      expect(r.said).toEqual([]);
+      hidden = false;
+      readAgain();
+      await pass(15_000);
+      expect(r.tones).toEqual(['alarm']);
+      expect(r.said).toEqual(['urgent']);
+    } finally {
+      Reflect.deleteProperty(document, 'visibilityState');
+    }
   });
 
   it('a dock that opens with 45 s left plays at 30 and 10 only', async () => {

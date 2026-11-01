@@ -10,13 +10,17 @@
  * - `play()` is true only when notes were scheduled on a running
  *   AudioContext: the service worker silences a push only then.
  * - Speech says ALERT_PHRASES and nothing else: `speak()` takes a group,
- *   never a string.
+ *   never a string. iOS speaks a page's phrases only after one began inside
+ *   a tap, and asks again on every load, so the first tap with Speak on
+ *   starts a silent, empty one (`primeSpeech()`).
+ * - The same group again within REPEAT_MS plays and says nothing more: a
+ *   push and the dock's own mark at 60 s, or a burst of pings, sound once.
  * - No AudioContext, no speechSynthesis or no storage: nothing plays and
  *   nothing fails.
  *
- * main.tsx loads this with import() after the first screen, so the first
- * load stays as it was; the Sounds section and the dialog dock are lazy
- * chunks that import it.
+ * main.tsx starts loading this with import() as it renders the first
+ * screen, in its own chunk, so the first load stays as it was; the Sounds
+ * section and the dialog dock are lazy chunks that import it.
  */
 import { ALERT_GROUPS, ALERT_PHRASES, AlertToneSchema, DEFAULT_TONES, type AlertGroup, type AlertTone } from '@jantar/protocol';
 import { readLocal, writeLocal } from './storage.js';
@@ -79,10 +83,18 @@ export interface Chimes {
   play(tone: AlertTone): boolean;
   /** Say the group's fixed phrase, after cancelling one still speaking. */
   speak(group: AlertGroup): void;
+  /**
+   * Inside a tap: start one silent, empty phrase, until the engine takes one
+   * (then never again on this page). WebKit on iOS drops a page's speak()
+   * calls until one ran inside a tap, and sets that again on every load.
+   * Nothing is cancelled: a phrase already speaking goes on.
+   */
+  primeSpeech(): void;
 }
 
 export function createChimes(env: ChimeEnv): Chimes {
   let ctx: AudioContext | null = null;
+  let primed = false;
   const resume = (c: AudioContext) => c.resume().catch(() => undefined);
   return {
     unlock() {
@@ -138,6 +150,19 @@ export function createChimes(env: ChimeEnv): Chimes {
         // no voice here
       }
     },
+    primeSpeech() {
+      const s = env.speech;
+      if (primed || !s || typeof SpeechSynthesisUtterance !== 'function') return;
+      try {
+        const u = new SpeechSynthesisUtterance('');
+        u.volume = 0;
+        s.speak(u);
+        // Taken only inside a tap (WebKit drops it quietly otherwise): the next tap tries again.
+        primed = s.speaking || s.pending;
+      } catch {
+        // no voice here
+      }
+    },
   };
 }
 
@@ -165,16 +190,20 @@ export function setAppChimes(c: Chimes | null): void {
 /**
  * main.tsx, once: with Sounds on, every tap unlocks audio (iOS may need a tap
  * again after the app was in the background); with them off no tap opens
- * audio at all. pointerup too: on a touch screen the browser lets a tap start
- * audio from its end, not its start. Back on screen it tries a resume,
- * without counting on it.
+ * audio at all. With Speak on, the first taps after a load prime speech
+ * until it takes (iOS asks for a tap on every load, a relaunch from the Home
+ * Screen included). pointerup too: on a touch screen the browser lets a tap
+ * start audio from its end, not its start; click as well, in case iOS does
+ * not count pointerup. Back on screen it tries a resume, without counting on
+ * it.
  */
 export function listenForTaps(win: Window = window): void {
   const tap = () => {
-    if (readSoundPrefs().on) void appChimes().unlock();
+    const p = readSoundPrefs();
+    if (p.on) void appChimes().unlock();
+    if (p.speak) appChimes().primeSpeech();
   };
-  win.addEventListener('pointerdown', tap, { passive: true });
-  win.addEventListener('pointerup', tap, { passive: true });
+  for (const type of ['pointerdown', 'pointerup', 'click']) win.addEventListener(type, tap, { passive: true });
   win.document.addEventListener('visibilitychange', () => {
     if (win.document.visibilityState === 'visible') appChimes().wake();
   });
@@ -226,16 +255,34 @@ export function writeSoundPrefs(p: AlertSoundsPrefs): AlertSoundsPrefs {
   return p;
 }
 
+/** The same group again within this long plays and says nothing more. */
+export const REPEAT_MS = 3_000;
+/** Per set of chimes: when each group last played or spoke, and whether its tone played. */
+const lastChimes = new WeakMap<Chimes, Map<AlertGroup, { at: number; played: boolean }>>();
+/** Jantar on screen: a hidden tab plays nothing. */
+const onScreen = () => typeof document === 'undefined' || document.visibilityState === 'visible';
+
 /**
  * A push arrived while this page is on screen (sw.js asks, lib/pwa.ts
  * answers), or the dock's countdown crossed a mark: the group's tone, and
  * its phrase with Speak on. True only when a tone played, so the push goes
- * silent only then; speech never counts.
+ * silent only then; speech never counts. Nothing while the page is hidden (a
+ * Mac tab in the background). The same group again within REPEAT_MS (the
+ * urgent repeat push and the dock's 60 s mark, a burst of pings) plays and
+ * says nothing and answers as the first did: its push is silent only if the
+ * first one's was.
  */
 export function chime(group: AlertGroup, chimes: Chimes = appChimes(), prefs: AlertSoundsPrefs = readSoundPrefs()): boolean {
-  if (!ALERT_GROUPS.includes(group)) return false;
+  if (!ALERT_GROUPS.includes(group) || !onScreen()) return false;
+  let last = lastChimes.get(chimes);
+  if (!last) lastChimes.set(chimes, (last = new Map()));
+  const now = Date.now();
+  const was = last.get(group);
+  if (was && now >= was.at && now - was.at < REPEAT_MS) return was.played;
   const tone = prefs.tones[group];
   const played = prefs.on && tone !== 'none' && chimes.play(tone);
   if (prefs.speak) chimes.speak(group);
+  // One that did nothing is no repeat: the next may play.
+  if (played || prefs.speak) last.set(group, { at: now, played });
   return played;
 }

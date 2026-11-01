@@ -2,17 +2,21 @@
  * v0.5.3 in-app alerts (spec 1.5, 1.6; lib/sounds.ts and lib/pwa.ts): the
  * tone scheduler against a fake AudioContext (the exact notes and envelope,
  * nothing for `none`, false unless the context runs), unlock and wake, the
- * five fixed phrases only (S5), the per-device prefs, the page's `{ played }`
- * answer to the service worker, and a tap unlocking audio every time.
+ * five fixed phrases only (S5), speech primed by the first tap after a load
+ * (iOS), the per-device prefs, the page's `{ played }` answer to the service
+ * worker (once per group within REPEAT_MS, nothing while hidden), and a tap
+ * unlocking audio every time.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ALERT_GROUPS, ALERT_PHRASES, DEFAULT_TONES, type AlertGroup, type AlertTone } from '@jantar/protocol';
 import { registerServiceWorker } from '../src/lib/pwa.js';
 import {
   PEAK_GAIN,
+  REPEAT_MS,
   SOUNDS_KEY,
   TONE_NOTES,
   appChimes,
+  browserEnv,
   chime,
   createChimes,
   defaultSoundPrefs,
@@ -88,9 +92,36 @@ class FakeCtx {
 
 class FakeSpeech {
   said: string[] = [];
-  cancel = vi.fn();
-  speak(u: { text: string }) {
+  volumes: number[] = [];
+  /** Phrases taken and not yet ended or cancelled. */
+  queued = 0;
+  get speaking() {
+    return this.queued > 0;
+  }
+  get pending() {
+    return this.queued > 1;
+  }
+  cancel = vi.fn(() => {
+    this.queued = 0;
+  });
+  speak(u: { text: string; volume?: number }) {
     this.said.push(u.text);
+    this.volumes.push(u.volume ?? 1);
+    this.queued++;
+  }
+}
+
+/**
+ * WebKit on iOS (RequireUserGestureForSpeechStart): each new page drops
+ * speak() quietly until one ran inside a tap; `gesture` says whether the
+ * event being handled counts as one.
+ */
+class LockedSpeech extends FakeSpeech {
+  gesture = false;
+  open = false;
+  override speak(u: { text: string; volume?: number }) {
+    if (this.gesture) this.open = true;
+    if (this.open) super.speak(u);
   }
 }
 
@@ -111,6 +142,7 @@ function stubUtterance() {
   vi.stubGlobal(
     'SpeechSynthesisUtterance',
     class {
+      volume = 1;
       constructor(public text: string) {}
     },
   );
@@ -119,6 +151,7 @@ function stubUtterance() {
 const close = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   setAppChimes(null);
 });
@@ -295,6 +328,47 @@ describe('speech says the five fixed phrases only (S5)', () => {
   });
 });
 
+describe('speech after a reload: primed inside a tap (iOS asks again on every load)', () => {
+  it('starts one empty phrase at volume 0, cancels nothing, and never again once the engine took it', () => {
+    stubUtterance();
+    const { chimes, speech } = chimesWith();
+    // A phrase still speaking goes on: the empty one waits behind it.
+    speech!.queued = 1;
+    chimes.primeSpeech();
+    chimes.primeSpeech();
+    expect(speech!.said).toEqual(['']);
+    expect(speech!.volumes).toEqual([0]);
+    expect(speech!.cancel).not.toHaveBeenCalled();
+  });
+
+  it('a prime WebKit dropped (not a tap) is tried again on the next', () => {
+    stubUtterance();
+    const speech = new LockedSpeech();
+    const chimes = createChimes({ audio: () => null, speech: speech as unknown as SpeechSynthesis });
+    chimes.primeSpeech();
+    expect(speech.said).toEqual([]);
+    speech.gesture = true;
+    chimes.primeSpeech();
+    speech.gesture = false;
+    chimes.primeSpeech();
+    expect(speech.said).toEqual(['']);
+    chimes.speak('urgent');
+    expect(speech.said).toEqual(['', 'Answer soon']);
+  });
+
+  it('nothing, and no error, without speechSynthesis, utterances, or a working speak()', () => {
+    expect(() => chimesWith('running', null).chimes.primeSpeech()).not.toThrow();
+    const { chimes, speech } = chimesWith();
+    chimes.primeSpeech();
+    expect(speech!.said).toEqual([]);
+    stubUtterance();
+    speech!.speak = () => {
+      throw new Error('synthesis-failed');
+    };
+    expect(() => chimes.primeSpeech()).not.toThrow();
+  });
+});
+
 describe('this device\'s prefs (localStorage alert-sounds, spec 1.6)', () => {
   const save = (v: unknown) => localStorage.setItem(`jantar:${SOUNDS_KEY}`, typeof v === 'string' ? v : JSON.stringify(v));
 
@@ -345,12 +419,16 @@ describe('this device\'s prefs (localStorage alert-sounds, spec 1.6)', () => {
 });
 
 /** Fake chimes that record what they were asked. */
-function recorder(played = true): Chimes & { tones: AlertTone[]; said: AlertGroup[]; unlocks: number; wakes: number } {
+function recorder(played = true): Chimes & { tones: AlertTone[]; said: AlertGroup[]; unlocks: number; wakes: number; primes: number } {
   const r = {
     tones: [] as AlertTone[],
     said: [] as AlertGroup[],
     unlocks: 0,
     wakes: 0,
+    primes: 0,
+    primeSpeech() {
+      r.primes++;
+    },
     unlock() {
       r.unlocks++;
       return Promise.resolve();
@@ -407,12 +485,66 @@ describe("the page's answer to a push (chime)", () => {
   });
 
   it('a real scheduler: true on a running context, false while suspended (S4, the page side)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     const { chimes, made } = chimesWith('running');
     expect(chime('needs', chimes, prefs())).toBe(false);
     await chimes.unlock();
     expect(chime('needs', chimes, prefs())).toBe(true);
     made[0]!.state = 'suspended';
+    vi.advanceTimersByTime(REPEAT_MS);
     expect(chime('needs', chimes, prefs())).toBe(false);
+  });
+
+  it('the same group again within 3 s plays and says nothing more, and answers as the first did', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    expect(REPEAT_MS).toBe(3_000);
+    const c = recorder();
+    // The urgent repeat push, then the dock's 60 s mark a second later: one alarm, one "Answer soon".
+    expect(chime('urgent', c, prefs({ speak: true }))).toBe(true);
+    vi.advanceTimersByTime(1_000);
+    expect(chime('urgent', c, prefs({ speak: true }))).toBe(true);
+    expect(c.tones).toEqual(['alarm']);
+    expect(c.said).toEqual(['urgent']);
+    // Another group is not a repeat.
+    expect(chime('needs', c, prefs())).toBe(true);
+    expect(c.tones).toEqual(['alarm', 'ding']);
+    vi.advanceTimersByTime(REPEAT_MS - 1_000);
+    expect(chime('urgent', c, prefs())).toBe(true);
+    expect(c.tones).toEqual(['alarm', 'ding', 'alarm']);
+    // Spoken but not played: a repeat keeps its push's sound, as the first did.
+    const quiet = recorder(false);
+    expect(chime('done', quiet, prefs({ speak: true }))).toBe(false);
+    expect(chime('done', quiet, prefs({ speak: true }))).toBe(false);
+    expect(quiet.said).toEqual(['done']);
+    expect(quiet.tones).toEqual(['success']);
+    // One that did nothing (Sounds off) is no repeat.
+    const off = recorder();
+    expect(chime('done', off, prefs({ on: false }))).toBe(false);
+    expect(chime('done', off, prefs())).toBe(true);
+    expect(off.tones).toEqual(['success']);
+  });
+
+  it('a burst of three care pings (sent together once the Mac is back online) rings one bell', () => {
+    const c = recorder();
+    expect([chime('care', c, prefs()), chime('care', c, prefs()), chime('care', c, prefs())]).toEqual([true, true, true]);
+    expect(c.tones).toEqual(['bell']);
+  });
+
+  it('plays and says nothing in a hidden tab (the Mac dashboard in the background), and keeps no repeat from it', () => {
+    let state = 'hidden';
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+    try {
+      const c = recorder();
+      expect(chime('urgent', c, prefs({ speak: true }))).toBe(false);
+      expect(c.tones).toEqual([]);
+      expect(c.said).toEqual([]);
+      state = 'visible';
+      expect(chime('urgent', c, prefs({ speak: true }))).toBe(true);
+      expect(c.tones).toEqual(['alarm']);
+      expect(c.said).toEqual(['urgent']);
+    } finally {
+      Reflect.deleteProperty(document, 'visibilityState');
+    }
   });
 });
 
@@ -475,19 +607,39 @@ describe('lib/pwa.ts answers the service worker on its port', () => {
 });
 
 describe('a tap unlocks audio, every time (main.tsx: listenForTaps)', () => {
-  it('with Sounds on, unlocks on every pointerdown and pointerup; off, opens no audio; tries a wake when the page shows again', () => {
+  /** listenForTaps adds listeners for good: each test gets its own window-like target. */
+  function page() {
+    const win = new EventTarget() as unknown as Window;
+    Object.defineProperty(win, 'document', { value: document });
+    return win;
+  }
+  const tap = (win: Window, gesture?: (on: boolean) => void) => {
+    // On iOS a tap's start does not count as one; its end and the click do.
+    gesture?.(false);
+    win.dispatchEvent(new Event('pointerdown'));
+    gesture?.(true);
+    win.dispatchEvent(new Event('pointerup'));
+    win.dispatchEvent(new Event('click'));
+    gesture?.(false);
+  };
+
+  it('with Sounds on, unlocks on every pointerdown, pointerup and click; off, opens no audio; tries a wake when the page shows again', () => {
     const c = recorder();
     setAppChimes(c);
-    listenForTaps(window);
+    const win = page();
+    listenForTaps(win);
     // Off (the default without a touch screen): a tap makes no AudioContext.
-    window.dispatchEvent(new Event('pointerdown'));
-    window.dispatchEvent(new Event('pointerup'));
+    tap(win);
     expect(c.unlocks).toBe(0);
     writeSoundPrefs({ ...defaultSoundPrefs(), on: true });
-    for (let i = 0; i < 3; i++) window.dispatchEvent(new Event('pointerdown'));
+    for (let i = 0; i < 3; i++) win.dispatchEvent(new Event('pointerdown'));
     expect(c.unlocks).toBe(3);
-    window.dispatchEvent(new Event('pointerup'));
+    win.dispatchEvent(new Event('pointerup'));
     expect(c.unlocks).toBe(4);
+    win.dispatchEvent(new Event('click'));
+    expect(c.unlocks).toBe(5);
+    // Speak off: no phrase is primed.
+    expect(c.primes).toBe(0);
     let state = 'hidden';
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
     document.dispatchEvent(new Event('visibilitychange'));
@@ -495,7 +647,62 @@ describe('a tap unlocks audio, every time (main.tsx: listenForTaps)', () => {
     state = 'visible';
     document.dispatchEvent(new Event('visibilitychange'));
     expect(c.wakes).toBe(1);
-    expect(c.unlocks).toBe(4);
+    expect(c.unlocks).toBe(5);
     Reflect.deleteProperty(document, 'visibilityState');
+  });
+
+  it('a fresh page with Speak on and Sounds off: one tap primes speech once, and a push then speaks', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    stubUtterance();
+    const speech = new LockedSpeech();
+    const audio = vi.fn(() => null);
+    setAppChimes(createChimes({ audio, speech: speech as unknown as SpeechSynthesis }));
+    writeSoundPrefs({ ...defaultSoundPrefs(), on: false, speak: true });
+    const win = page();
+    listenForTaps(win);
+    // Relaunched from the Home Screen: before any tap a push's phrase is dropped.
+    expect(chime('done')).toBe(false);
+    expect(speech.said).toEqual([]);
+    tap(win, (on) => (speech.gesture = on));
+    expect(speech.said).toEqual(['']);
+    expect(speech.volumes).toEqual([0]);
+    tap(win, (on) => (speech.gesture = on));
+    expect(speech.said).toEqual(['']);
+    // Sounds off: no tap opened audio.
+    expect(audio).not.toHaveBeenCalled();
+    // (A new push: the first one's phrase is REPEAT_MS behind.)
+    vi.advanceTimersByTime(REPEAT_MS);
+    expect(chime('done')).toBe(false);
+    expect(speech.said).toEqual(['', 'Done']);
+  });
+});
+
+describe("the browser's chimes (browserEnv, appChimes)", () => {
+  it('no AudioContext or speechSynthesis here: none, and no error', () => {
+    vi.stubGlobal('AudioContext', undefined);
+    vi.stubGlobal('speechSynthesis', undefined);
+    const env = browserEnv();
+    expect(env.audio()).toBeNull();
+    expect(env.speech).toBeNull();
+  });
+
+  it("uses the page's AudioContext and speechSynthesis; appChimes is one set for the page", () => {
+    const made: unknown[] = [];
+    vi.stubGlobal(
+      'AudioContext',
+      class {
+        constructor() {
+          made.push(this);
+        }
+      },
+    );
+    const synth = new FakeSpeech();
+    vi.stubGlobal('speechSynthesis', synth);
+    const env = browserEnv();
+    expect(made).toEqual([]);
+    const ctx = env.audio();
+    expect(made).toEqual([ctx]);
+    expect(env.speech).toBe(synth);
+    expect(appChimes()).toBe(appChimes());
   });
 });

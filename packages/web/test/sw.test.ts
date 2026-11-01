@@ -304,17 +304,24 @@ describe('v0.5.3: the chime from a push (S4, S5)', () => {
     }
   });
 
-  it('keeps the sound when the app never answers, after waiting about 300 ms', async () => {
-    const sw = loadSw({ version: 'v', precache: [] });
-    const client = windowClient();
-    sw.self.clients.matchAll.mockResolvedValue([client]);
-    const t0 = performance.now();
-    expect((await shown(sw, push('needs'))).silent).toBeUndefined();
-    const waited = performance.now() - t0;
-    expect(waited).toBeGreaterThanOrEqual(280);
-    expect(waited).toBeLessThan(2_000);
-    expect(client.postMessage).toHaveBeenCalledTimes(1);
-    expect(sw.channels[0]!.port1.close).toHaveBeenCalled();
+  it('keeps the sound when the app never answers, after waiting 300 ms', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const sw = loadSw({ version: 'v', precache: [] });
+      const client = windowClient();
+      sw.self.clients.matchAll.mockResolvedValue([client]);
+      let settled = false;
+      const options = shown(sw, push('needs')).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(299);
+      expect(settled).toBe(false);
+      expect(sw.self.registration.showNotification).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect((await options).silent).toBeUndefined();
+      expect(client.postMessage).toHaveBeenCalledTimes(1);
+      expect(sw.channels[0]!.port1.close).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('asks no window that is hidden or on another origin, and shows the push as usual', async () => {
@@ -341,10 +348,18 @@ describe('v0.5.3: the chime from a push (S4, S5)', () => {
     const sw = loadSw({ version: 'v', precache: [] });
     const client = windowClient({ answer: { played: true } });
     sw.self.clients.matchAll.mockResolvedValue([client]);
-    const t0 = performance.now();
-    expect((await shown(sw, push('care', 'med'))).silent).toBeUndefined();
-    // It does not wait for an answer.
-    expect(performance.now() - t0).toBeLessThan(250);
+    // It does not wait for an answer: shown with no time passing, no timer left.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settled = false;
+      const options = shown(sw, push('care', 'med')).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      expect((await options).silent).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
     expect(client.postMessage.mock.calls).toEqual([[{ type: 'jantar:chime', group: 'care' }]]);
     expect(sw.channels).toEqual([]);
   });

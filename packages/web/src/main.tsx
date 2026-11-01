@@ -20,7 +20,7 @@ const api = createApi();
 const router = createRouter(browserHistory());
 const toasts = createToastStore();
 const connection = createConnection({ store, api });
-// v0.5.3: the tones and the voice (lib/sounds.ts), loaded after the first screen.
+// v0.5.3: the tones and the voice (lib/sounds.ts), its own chunk: import() below, as the first screen renders.
 let sounds: typeof import('./lib/sounds.js') | undefined;
 
 listenForInstallPrompt();
@@ -44,7 +44,7 @@ if (root) {
 void import('./lib/sounds.js').then(
   (m) => {
     sounds = m;
-    // Every tap from here on unlocks audio (iOS may need one again after the background).
+    // Every tap from here on unlocks audio (iOS may need one again after the background) and primes speech.
     m.listenForTaps();
   },
   () => undefined,

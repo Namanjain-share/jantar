@@ -1,7 +1,7 @@
 /**
  * v0.5.3 Devices › Notifications › Sounds (spec 1.6; devices/Sounds.tsx):
  * the exact words, a tone and a Test per group, the Speak switch saying
- * "Done" inside its tap, the Done hint while this device has Done off, the
+ * "Done" inside its tap, the Done hint while the kinds list shows Done off, the
  * lock-screen line, and on by default only on a touch screen. The chimes are
  * a fake that records what it was asked (lib/sounds.ts setAppChimes).
  */
@@ -21,6 +21,7 @@ function recorder(): Chimes & { tones: AlertTone[]; said: AlertGroup[]; unlocks:
       return Promise.resolve();
     },
     wake() {},
+    primeSpeech() {},
     play(tone: AlertTone) {
       r.tones.push(tone);
       return tone !== 'none';
@@ -61,8 +62,8 @@ describe('Devices › Notifications › Sounds (v0.5.3)', () => {
     expect(rows.map((r) => r.querySelector('span')?.textContent)).toEqual([
       "Answer soonClaude's 2-minute countdown",
       'Needs youPermission, question, plan, still waiting',
-      // The Done kind is off on this device by default: the hint under it.
-      'DoneA session finished its turnTurn on Done above, and on the Mac: jantar notify done on',
+      // No push here, so no kinds list above: no hint under Done (the next tests have one).
+      'DoneA session finished its turn',
       'Medicines and remindersMedicine due, todo due, bill due',
       'ProblemsNot delivered, blocked, limit, API error, usage',
     ]);
@@ -163,9 +164,17 @@ describe('Devices › Notifications › Sounds (v0.5.3)', () => {
     expect(await screen.findByText((_, el) => el?.textContent === hint && el.tagName === 'SPAN')).toBeTruthy();
   });
 
+  it('no hint while push cannot be switched on here: there is no kinds list above to point at', async () => {
+    const { tones } = await openSounds();
+    expect(await screen.findByText('This browser cannot show web notifications.')).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Notification kinds' })).toBeNull();
+    expect(within(tones).queryByText(/jantar notify done on/)).toBeNull();
+  });
+
   it('no hint when this device already has Done on', async () => {
     localStorage.setItem('jantar:push-kinds', JSON.stringify(['question', 'permission', 'plan', 'done', 'send-failed']));
-    const { tones } = await openSounds();
+    const { tones } = await openSounds({ pushEnv: offEnv() });
+    expect(await screen.findByRole('group', { name: 'Notification kinds' })).toBeTruthy();
     expect(within(tones).queryByText(/jantar notify done on/)).toBeNull();
   });
 
