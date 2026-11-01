@@ -7,11 +7,11 @@
  */
 import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionBackground } from '@jantar/protocol';
+import { boardOrder, type SessionBackground } from '@jantar/protocol';
 import { glyphStateOf } from '../src/ui/kit/glyph.js';
 import { backgroundLine, lastFinished, rowOf } from '../src/ui/screens/board/model.js';
 import { isUnseen } from '../src/ui/screens/board/seen.js';
-import { NOW, renderApp, session, stateWith } from './helpers.js';
+import { NOW, pending, renderApp, session, stateWith } from './helpers.js';
 
 const MIN = 60_000;
 const ago = (min: number) => new Date(NOW - min * MIN).toISOString();
@@ -68,6 +68,22 @@ describe('the row', () => {
     expect(glyphStateOf(state, bg, NOW)).toBe('working');
     expect(rowOf(state, bg, NOW).tag).toBe('+1 agent · 1 monitor');
     expect(rowOf(state, bg, NOW).age).toBe('6m');
+  });
+
+  it('needs you beats it: an open card, or Claude waiting, on a session with a workflow running', () => {
+    const card = session('a', { status: 'idle', statusSince: ago(3), background: WORKFLOW });
+    const waits = session('b', { status: 'waiting', statusSince: ago(2), waitingFor: 'a synthetic dialog', background: WORKFLOW });
+    const done = session('c', { status: 'idle', statusSince: ago(1) });
+    const state = stateWith({ sessions: [done, card, waits], pending: [pending('a')] });
+    for (const s of [card, waits]) {
+      const r = rowOf(state, s, NOW);
+      expect(r.glyph, s.sid).toBe('needs');
+      expect(r.group, s.sid).toBe('needs');
+      expect(r.line2.kind, s.sid).toBe('needs');
+    }
+    expect(rowOf(state, card, NOW).line2).toMatchObject({ text: 'npm test' });
+    expect(rowOf(state, waits, NOW).line2).toMatchObject({ text: 'a synthetic dialog' });
+    expect(boardOrder(state).at(-1)?.sid).toBe('c'); // both rank before a Done session
   });
 
   it('an ended session ignores a stale field', () => {
