@@ -3,6 +3,28 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.6.1 (unreleased)
+
+- **A session waiting on a dynamic workflow or a background agent shows as
+  working.** Between turns Claude Code can wait on work it started in the
+  background ("Waiting for 1 dynamic workflow to finish"). The board called
+  that session Done. It now sits under Working with "1 workflow running ·
+  demo-sweep" and how long, and the session's header says the same, until
+  the last one finishes. Background shells and monitors only add a quiet
+  count ("6 shells"), because a long-lived monitor would keep a session
+  looking busy forever.
+- It is read from the session's transcript, so it works without hooks and
+  comes back after Jantar restarts. Only counts, a workflow's name and when
+  it started reach the phone: never a task's prompt, description, command
+  or summary.
+- Pushes, cards and typing are unchanged: the Done push still comes when
+  the turn that started the workflow ends.
+- `jantar status` says it too: `* Working · web-app · fix-login`, then
+  `1 workflow running · demo-sweep · 52m`.
+- The protocol version stays 3 (one optional session field), there is no
+  settings or database change, and a Mac and its servers on 0.6.0 and 0.6.1
+  still pair either way.
+
 ## 0.6.0 (1 November 2026)
 
 **Fleet**: your servers on the same phone. It is off until you run

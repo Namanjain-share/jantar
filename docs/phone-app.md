@@ -18,7 +18,7 @@ the live dot, `next →`). The name shown in the app is one constant,
 
 | Screen | What you see |
 |---|---|
-| **Board** | "3 need you" and **Start**, then every session in rails: NEEDS YOU (oldest wait first), YOUR TURN, WORKING, ENDED. Each row: what it is waiting on (the question, the command, the plan), the tool it is running, or its last reply, with its account and that account's 5-hour % (with cswap), its project (with Life) and, with [Fleet](fleet.md), the server it runs on. On a Mac the **Desk** beside it shows up to three cards to answer, the next resets and new alerts |
+| **Board** | "3 need you" and **Start**, then every session in rails: NEEDS YOU (oldest wait first), YOUR TURN, WORKING, ENDED. Each row: what it is waiting on (the question, the command, the plan), the tool it is running or what it is running in the background, or its last reply, with its account and that account's 5-hour % (with cswap), its project (with Life) and, with [Fleet](fleet.md), the server it runs on. On a Mac the **Desk** beside it shows up to three cards to answer, the next resets and new alerts |
 | **Session** | The transcript (or the terminal screen), and a dock for whatever is waiting, in Claude's own words. After you answer, "Next: infra · Plan". With no card, the dialog on the terminal as buttons, or the keypad ([details](phone-control.md)). Otherwise a box to send a prompt, with **+** for photos and files, which says "delivered" only when the transcript proves it |
 | **Accounts** | With cswap: every account's 5-hour bar against the ceiling, a runway to the reset, weekly %, its sessions, its flags and the primer's line; with the legacy ccw tool also burn rates, red dashes where an account fills up before its reset, `next →`, held flags and moves in progress. On one login: that login and its sessions ([Accounts](accounts.md)) |
 | **Alerts** | Limits, API errors, blocked tools and prompts that were not delivered, by day; mute pushes for 1 or 8 hours (medicine pings still come) |
@@ -29,6 +29,12 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
 | **Ask** | Right after Today: tell it what to add in plain words, and add its suggestions with a tap ([Ask](assistant.md)) |
+
+A session waiting on a dynamic workflow or a background agent it started
+shows under Working ("1 workflow running · demo-sweep", and how long), even
+though its turn is over. Its header says the same, with the quiet count of
+background shells and monitors ("6 shells"), and it returns to Your turn
+when the last one finishes.
 
 On a phone the tab bar holds Board, Today, Files, Accounts and More. With
 Ask on it holds Board, Today, Ask, Files and More, and Accounts moves into

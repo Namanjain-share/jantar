@@ -391,3 +391,22 @@ The first load holds both without raising `MAIN_JS_MAX` (280.0 kB): 0.5.3
 alone was 269.0 kB and Fleet alone 277.8 kB; merged, with the Screen tab's
 picture, the pairing QR, the sounds and the hook cards each behind
 `import()`, it is 271.2 kB in 14 chunks.
+
+### v0.6.1
+
+Background work: a session idle between turns while a dynamic workflow or
+background agent it started still runs. `sources/transcripts/background.ts`
+(`BackgroundScanner`, pure) replays the main transcript's launches and ends
+(main chain only, rows older than the claude process ignored) and checks
+them against Claude's own count in each `turn_duration` row; the watcher
+feeds it the bytes it already reads and publishes the optional
+`Session.background` (`SessionBackgroundSchema`: counts of workflows,
+agents, shells and monitors, `since`, up to three workflow names) on every
+poll. The protocol's `backgroundRunning`, `shownStatus` and
+`backgroundText` let the web (`glyphStateOf`, the row, the session header's
+line) and `jantar status` show such a session as working; `status` and
+`statusSource` are unchanged, and so are pushes, cards and typing. The field
+is cleared by a patch to `{}`, never `unset`, so a 0.6.0 hub (which refuses
+an unset key it does not know) keeps its link to a 0.6.1 node. No migration,
+no settings change and no protocol bump (`PROTOCOL_VERSION` 3, `NODE_PROTO`
+1). The first load stays under `MAIN_JS_MAX` at 271.7 kB.
