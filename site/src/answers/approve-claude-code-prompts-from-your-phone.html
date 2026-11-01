@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{csp}}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Approve Claude Code permission prompts from your phone: Jantar</title>
+<meta name="description" content="Run Jantar on your Mac and pair your phone: a Claude Code permission prompt, plan or question in Terminal shows on the phone with Claude's own options, and your tap answers it.">
+<meta name="color-scheme" content="light dark">
+{{theme-color}}
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="{{root}}favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{root}}apple-touch-icon.png">
+<link rel="preload" href="{{root}}assets/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{root}}{{css}}">
+{{theme-init}}
+<script src="{{root}}{{js}}" defer></script>
+{{social}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<x-header></x-header>
+
+<main id="main">
+<article class="sec g-bg doc-page">
+  <div class="frame">
+    <div class="prose">
+      <p class="crumb"><a href="../">Answers</a></p>
+      <h1 class="h1 h1--page">How do I approve a Claude Code permission prompt from my phone?</h1>
+      <p class="lbl">answered for v{{version}}{{release-on}}</p>
+
+      <div class="summary">
+        <p>Run Jantar on your Mac and pair your phone with it. When a Claude Code session in Terminal stops on a permission prompt, a plan or a question, the phone shows it in Claude's own words, with Claude's own options as buttons. With Jantar's hooks installed, your tap goes back through Claude Code itself. Without them, Jantar types your choice into Terminal, and only while the Mac still shows exactly the dialog you tapped.</p>
+      </div>
+
+      <section aria-labelledby="a-steps">
+        <h2 class="h3" id="a-steps">Steps</h2>
+        <p>On the Mac, once Jantar is installed (<a href="{{root}}#install">one line, or by hand</a>), give your phone a way in through Tailscale or a Cloudflare Tunnel, pair it, and install Claude Code's hooks:</p>
+        <div class="code">
+          <button class="copy" type="button" data-copy="a-code" hidden><x-icon name="copy"></x-icon><span>Copy</span></button>
+          <pre tabindex="0" aria-label="Commands"><code id="a-code">jantar remote setup           <span class="c"># how the phone reaches this Mac</span>
+jantar pair                   <span class="c"># a QR code, good once, for 10 minutes</span>
+jantar hooks install          <span class="c"># a dry run: what it would change</span>
+jantar hooks install --apply  <span class="c"># asks, then keeps a backup</span></code></pre>
+        </div>
+        <p>On the phone, open the paired link, choose Add to Home Screen and turn notifications on under Devices. On an iPhone, notifications need the Home Screen app, on iOS 16.4 or newer.</p>
+        <p>A session picks up the hooks when it next starts. One that was already running keeps going without cards, and the phone answers its dialogs through the screen instead.</p>
+      </section>
+
+      <section aria-labelledby="a-not">
+        <h2 class="h3" id="a-not">What it does not do</h2>
+        <ul class="ledger ledger--plain">
+          <li>Answer for you. Every answer is a tap. Rows that save a rule or switch Claude to a mode that doesn't ask take a 2-second hold.</li>
+          <li>Answer every screen. Forms and lists it can't turn into buttons get a keypad, and a dialog taller than the Terminal window gets no buttons at all. Each case that stays at the Mac says why.</li>
+          <li>Change Claude when it is stopped. The hooks fail open: with Jantar not running, Claude behaves as usual.</li>
+          <li>Run anywhere but a Mac with Terminal.app, today. Linux servers with tmux come in v0.6.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="a-more">
+        <h2 class="h3" id="a-more">More</h2>
+        <ul class="ledger ledger--plain">
+          <li><a href="{{doc docs/phone-control.md}}" rel="noopener">Answering Claude Code from the phone<x-icon name="arrow-up-right"></x-icon></a></li>
+          <li><a href="{{doc docs/phone-control.md#what-stays-at-the-mac}}" rel="noopener">What stays at the Mac, and why<x-icon name="arrow-up-right"></x-icon></a></li>
+          <li><a href="{{doc docs/install.md#reach-it-from-your-phone}}" rel="noopener">Reach it from your phone<x-icon name="arrow-up-right"></x-icon></a></li>
+          <li><a href="../is-it-safe-to-answer-claude-code-from-a-phone/">Is it safe to answer Claude Code prompts from a phone?</a></li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</article>
+</main>
+
+<x-footer></x-footer>
+<p class="vh" id="live" aria-live="polite"></p>
+</body>
+</html>

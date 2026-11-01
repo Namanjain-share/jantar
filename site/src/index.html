@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="{{root}}{{css}}">
 {{theme-init}}
 <script src="{{root}}{{js}}" defer></script>
+<script src="{{root}}{{motion-js}}" defer></script>
 {{social}}
 </head>
 <body>
@@ -34,6 +35,7 @@
         <a class="btn btn-pri" href="#install">Install on your Mac<x-icon name="arrow-right"></x-icon></a>
         <a class="btn btn-sec" href="{{repo}}" rel="noopener">Read the source<x-icon name="arrow-up-right"></x-icon></a>
       </div>
+      <x-film-link></x-film-link>
       <p class="micro"><span class="nw">Free ·</span> <span class="nw">source-available, FSL-1.1-MIT ·</span> <span class="nw">v{{version}}, early</span><br><span class="nw">Runs on your Mac ·</span> <span class="nw">no Jantar server or account ·</span> <span class="nw">macOS and Terminal.app</span></p>
     </div>
 
@@ -79,6 +81,24 @@
   </div>
 </section>
 
+<!-- ============================== film ============================== -->
+<!-- The build fills <x-film> from docs/brand/launch.mp4, launch.webm and
+     launch-poster.jpg (FILM in scripts/build-site.mjs), or with the banner
+     while the film is not there. motion.js plays it muted, looped and
+     inline when it is in view, never under reduced motion or Save-Data. -->
+<section class="sec g-page film" id="film" aria-labelledby="film-h">
+  <div class="frame">
+    <div class="head head--split">
+      <div>
+        <p class="lbl">{{film-lbl}}</p>
+        <h2 class="h2" id="film-h">One waiting tab, answered from your phone. <span class="dim">Example data throughout.</span></h2>
+      </div>
+      <p class="lede">A session in one of a dozen Terminal tabs stops to ask. Your phone shows the question in Claude's own words, one tap answers it, and the session carries on.</p>
+    </div>
+    <x-film></x-film>
+  </div>
+</section>
+
 <!-- ============================== doctor strip ============================== -->
 <section class="strip" aria-label="An example jantar doctor run">
   <div class="frame strip-in">
@@ -107,7 +127,7 @@
       <h2 class="h2" id="why-h">Claude stops to ask. <span class="dim">The tab it is waiting in sits behind eleven others.</span></h2>
     </div>
 
-    <figure class="panel tabs-panel">
+    <figure class="panel tabs-panel" data-play>
       <p class="lbl panel-lbl">twelve tabs in Terminal.app</p>
       <div class="win" aria-hidden="true">
         <div class="tabbar">
@@ -149,7 +169,7 @@
         <x-figure slot="board-wide"></x-figure>
         <div class="board-phone">
           <x-figure slot="board-card"></x-figure>
-          <p class="chip chip--board"><b>2 s hold</b><span class="rail">to save a rule</span></p>
+          <p class="chip chip--board" data-play><b>2 s hold</b><span class="rail">to save a rule</span></p>
         </div>
       </div>
       <p class="rail ex">Example data</p>
@@ -479,7 +499,7 @@ node packages/daemon/bin/jantard.mjs \
   <div class="frame">
     <div class="head">
       <p class="lbl">macOS · Terminal.app · Node 22.13 or newer</p>
-      <h2 class="h2" id="install-h">Clone, build, install, pair.</h2>
+      <h2 class="h2" id="install-h">One line, or clone and build. <span class="dim">Then pair your phone.</span></h2>
     </div>
     <div class="install-grid">
       <div class="req">
@@ -493,6 +513,13 @@ node packages/daemon/bin/jantard.mjs \
         </ul>
       </div>
       <div class="install-code">
+        <p class="rail install-sub">In one line</p>
+        <div class="code code--big">
+          <button class="copy" type="button" data-copy="one-code" hidden><x-icon name="copy"></x-icon><span>Copy</span></button>
+          <pre tabindex="0" aria-label="The one-line install"><code id="one-code"><x-install-line></x-install-line></code></pre>
+        </div>
+        <p class="small">It checks for macOS, Node and pnpm, clones release v{{version}} into <code>~/jantar</code>, builds it and runs <code>jantar init</code>, then asks before <code>jantar install</code>. No sudo. <a href="install.sh">Read the script</a> first, or run it with <code><span class="nw">--dry-run</span></code> to see the plan.</p>
+        <p class="rail install-sub">Or step by step</p>
         <div class="code code--big">
           <button class="copy" type="button" data-copy="qs-code" hidden><x-icon name="copy"></x-icon><span>Copy</span></button>
           <pre tabindex="0" aria-label="Install commands"><code id="qs-code"><x-quickstart></x-quickstart></code></pre>
@@ -564,7 +591,7 @@ node packages/daemon/bin/jantard.mjs \
       <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">What if my Mac is asleep?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>Then the phone can't reach it, and medicine and reminder pings wait. Keep your phone's own alarm for anything you must not miss.</p></div></details>
       <details><summary><span class="pr" aria-hidden="true">&gt;</span><span class="q">Is it made by Anthropic?</span><span class="pm" aria-hidden="true"></span></summary><div class="a"><p>No. Jantar is independent, and not affiliated with or endorsed by Anthropic. It works with the files and hooks Claude Code exposes.</p></div></details>
     </div>
-    <p class="more">More: <a href="{{doc docs/faq.md}}" rel="noopener">All questions and known limits<x-icon name="arrow-up-right"></x-icon></a></p>
+    <p class="more">More: <a href="answers/">Answers, one question a page</a> · <a href="{{doc docs/faq.md}}" rel="noopener">All questions and known limits<x-icon name="arrow-up-right"></x-icon></a></p>
   </div>
 </section>
 

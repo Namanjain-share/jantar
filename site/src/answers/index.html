@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{csp}}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Answers: Jantar</title>
+<meta name="description" content="Short answers about Jantar and Claude Code: approving prompts from a phone, finding the session that waits on you, usage across accounts, and safety.">
+<meta name="color-scheme" content="light dark">
+{{theme-color}}
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="{{root}}favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{root}}apple-touch-icon.png">
+<link rel="preload" href="{{root}}assets/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{root}}{{css}}">
+{{theme-init}}
+<script src="{{root}}{{js}}" defer></script>
+{{social}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<x-header></x-header>
+
+<main id="main">
+<article class="sec g-bg doc-page">
+  <div class="frame">
+    <div class="prose">
+      <h1 class="h1 h1--page">Answers</h1>
+      <p class="lbl">answered for v{{version}}{{release-on}}</p>
+      <p class="answer-lede">One question a page, answered first in a few sentences, then the commands. Each answer is about Jantar {{version}} on a Mac with Terminal.app.</p>
+      <ul class="ledger ledger--plain answer-list">
+        <li><a href="approve-claude-code-prompts-from-your-phone/">How do I approve a Claude Code permission prompt from my phone?</a></li>
+        <li><a href="which-claude-code-session-is-waiting/">How do I see which Claude Code session is waiting for me when I run many in Terminal?</a></li>
+        <li><a href="claude-code-usage-across-accounts/">How do I see usage and reset times for several Claude accounts at once?</a></li>
+        <li><a href="is-it-safe-to-answer-claude-code-from-a-phone/">Is it safe to answer Claude Code prompts from a phone?</a></li>
+      </ul>
+      <p class="more"><a href="{{root}}#faq">More questions on the home page</a> · <a href="{{doc docs/faq.md}}" rel="noopener">The FAQ and known limits<x-icon name="arrow-up-right"></x-icon></a></p>
+    </div>
+  </div>
+</article>
+</main>
+
+<x-footer></x-footer>
+<p class="vh" id="live" aria-live="polite"></p>
+</body>
+</html>

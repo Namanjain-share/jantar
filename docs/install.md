@@ -19,6 +19,43 @@ short version of this page.
 - Optional: Tailscale, or a Cloudflare Tunnel, for the phone.
 - Optional: Chrome 120 or newer for [Meetings](extension.md).
 
+## Install in one line
+
+On a Mac with Node.js 22.13 or newer:
+
+```sh
+curl -fsSL https://jantar.namanbuilt.com/install.sh | bash
+```
+
+To read it first, and to see its plan without changing anything:
+
+```sh
+curl -fsSLO https://jantar.namanbuilt.com/install.sh
+bash install.sh --dry-run
+bash install.sh
+```
+
+The script ([site/src/install.sh](../site/src/install.sh), served by the
+website) checks for macOS, Node.js 22.13 or newer, git and pnpm 10 (or runs
+pnpm through corepack or npx), clones the release tag into `~/jantar`,
+builds it and writes `~/.local/bin/jantar`, a two-line launcher for the CLI.
+With a terminal it then runs `jantar init`, which asks its own questions,
+and asks before it runs `jantar install`. It prints each command before it
+runs it, never uses sudo, installs no Node and edits no shell file; when
+`~/.local/bin` is not on your PATH it prints the line to add.
+
+| Option | Effect |
+|---|---|
+| `--dry-run` | the checks and the plan; nothing is changed |
+| `--yes` | `jantar init --yes`, then `jantar install`, without asking |
+| `--no-setup` | stop after the build |
+
+Through the pipe, put them after `bash -s --`:
+`curl -fsSL https://jantar.namanbuilt.com/install.sh | bash -s -- --dry-run`.
+`JANTAR_DIR` puts the clone somewhere else and `JANTAR_VERSION` picks
+another release; a clean clone already in that folder is moved to the
+release and built again. The rest of this page is the same install by hand.
+
 ## Install
 
 Clone the repository (the exact line is in the

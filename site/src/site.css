@@ -880,6 +880,152 @@ a.hdr-cta:hover {
   }
 }
 
+.watch {
+  margin-top: 20px;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--ink-3);
+}
+.watch .rail {
+  margin-left: 6px;
+}
+
+/* ------------------------------------------------------------ film */
+/* The poster sits in the flow and sets the box's shape; motion.js lays the
+   <video> over it. The play link covers the poster until the film plays;
+   the pause button shows only while it plays. */
+.film-fig {
+  display: grid;
+  gap: 12px;
+}
+.film-box {
+  position: relative;
+  overflow: hidden;
+  background: var(--term);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-dock);
+}
+.film-box img {
+  width: 100%;
+  height: auto;
+}
+.film-box video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--term);
+}
+.film-play {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--term-ink);
+  text-decoration: none;
+}
+.film-btn {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--term-ink);
+  color: var(--term);
+  transition: background-color 120ms;
+}
+.film-btn .ic {
+  width: 26px;
+  height: 26px;
+  margin: 0 0 0 3px;
+}
+.film-play:hover .film-btn {
+  background: var(--term-dim);
+}
+.film-act,
+.film-play .rail {
+  padding: 2px 8px;
+  border-radius: var(--radius-chip);
+  background: var(--term);
+}
+.film-act {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 560;
+}
+.film-play .rail {
+  color: var(--term-dim);
+}
+.film-ctl {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 1;
+  display: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--term-dim);
+  border-radius: 50%;
+  background: var(--term);
+  color: var(--term-ink);
+  cursor: pointer;
+}
+.film-ctl:hover {
+  border-color: var(--term-ink);
+}
+.film-ctl .ic {
+  width: 16px;
+  height: 16px;
+}
+.film-box.on .film-ctl {
+  display: grid;
+}
+.film-box.on .film-play,
+.film-box.auto .film-play {
+  display: none;
+}
+.film-box :focus-visible {
+  outline-color: var(--term-ink);
+  outline-offset: -4px;
+}
+.film-box--still {
+  background: none;
+  border: 0;
+}
+.film-cap {
+  max-width: 62em;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+.film-cap .rail {
+  margin-right: 6px;
+}
+@media (min-width: 768px) {
+  .film-btn {
+    width: 80px;
+    height: 80px;
+  }
+  .film-btn .ic {
+    width: 32px;
+    height: 32px;
+  }
+  .film-ctl {
+    right: 16px;
+    bottom: 16px;
+    width: 44px;
+    height: 44px;
+  }
+}
+
 /* ------------------------------------------------------------ doctor strip */
 .strip {
   background: var(--term);
@@ -1934,6 +2080,12 @@ a.hdr-cta:hover {
 .install-code .small {
   margin-top: 12px;
 }
+.install-sub {
+  margin-bottom: 10px;
+}
+.install-sub:not(:first-child) {
+  margin-top: 32px;
+}
 .next {
   display: grid;
   margin-top: 48px;
@@ -2273,12 +2425,204 @@ a.hdr-cta:hover {
   }
 }
 
+/* the answers */
+.crumb {
+  margin-bottom: 16px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+.prose section > .code {
+  margin-top: 12px;
+}
+.answer-lede {
+  margin-top: 24px;
+  font-size: 17px;
+  line-height: 27px;
+  text-wrap: pretty;
+}
+.answer-list {
+  margin-top: 24px;
+}
+.answer-list li {
+  font-size: 17px;
+  line-height: 26px;
+}
+
+/* ------------------------------------------------------------ motion */
+/* Every part shows its finished state unless the reader allows motion. A
+   start state that hides something applies only then and, for the parts
+   motion.js starts when they come into view, once it has set
+   :root[data-motion]. Opacity, translate, scale and colour only. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes flash {
+  from {
+    background-color: var(--line);
+  }
+}
+@keyframes need {
+  from {
+    color: var(--ink-2);
+  }
+}
+@keyframes pop {
+  from {
+    transform: scale(0);
+  }
+}
+@keyframes fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes settle {
+  to {
+    opacity: 0;
+  }
+}
+/* the 2-second hold, drawn under the Board's chip */
+.chip--board {
+  position: relative;
+}
+.chip--board::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 4px;
+  height: 2px;
+  background: var(--jup-fill);
+  transform-origin: left;
+}
+.chip--board .rail {
+  padding-bottom: 4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* the hero: the dialog prints, then the phone's chip arrives */
+  @media (min-width: 768px) {
+    .term--hero > :nth-last-child(-n + 7) {
+      animation: rise 180ms var(--ease-out) both;
+    }
+    .term--hero > :nth-last-child(7) { animation-delay: 300ms; }
+    .term--hero > :nth-last-child(6) { animation-delay: 360ms; }
+    .term--hero > :nth-last-child(5) { animation-delay: 420ms; }
+    .term--hero > :nth-last-child(4) { animation-delay: 480ms; }
+    .term--hero > :nth-last-child(3) { animation-delay: 540ms; }
+    .term--hero > :nth-last-child(2) { animation-delay: 600ms; }
+    .term--hero > :nth-last-child(1) { animation-delay: 660ms; }
+    .chip--hero {
+      animation: rise 240ms var(--ease-out) 900ms both;
+    }
+  }
+
+  /* the doctor strip: each check shows .. until its line has printed */
+  .doc-lines .st {
+    position: relative;
+  }
+  .doc-lines .st::after {
+    content: '..';
+    content: '..' / '';
+    position: absolute;
+    inset: 0;
+    background: var(--term);
+    color: var(--term-dim);
+    animation: settle 120ms linear both;
+  }
+  .doc-lines li:nth-child(1) .st::after { animation-delay: 410ms; }
+  .doc-lines li:nth-child(2) .st::after { animation-delay: 500ms; }
+  .doc-lines li:nth-child(3) .st::after { animation-delay: 590ms; }
+  .doc-lines li:nth-child(4) .st::after { animation-delay: 680ms; }
+  .doc-lines li:nth-child(5) .st::after { animation-delay: 770ms; }
+  .doc-lines li:nth-child(6) .st::after { animation-delay: 860ms; }
+  .doc-lines li:nth-child(7) .st::after { animation-delay: 950ms; }
+  @supports (animation-timeline: view()) {
+    .doc-lines .st::after {
+      animation-timeline: --strip;
+      animation-delay: 0s;
+    }
+    .doc-lines li:nth-child(1) .st::after { animation-range: entry 44% entry 50%; }
+    .doc-lines li:nth-child(2) .st::after { animation-range: entry 48% entry 54%; }
+    .doc-lines li:nth-child(3) .st::after { animation-range: entry 52% entry 58%; }
+    .doc-lines li:nth-child(4) .st::after { animation-range: entry 56% entry 62%; }
+    .doc-lines li:nth-child(5) .st::after { animation-range: entry 60% entry 66%; }
+    .doc-lines li:nth-child(6) .st::after { animation-range: entry 64% entry 70%; }
+    .doc-lines li:nth-child(7) .st::after { animation-range: entry 68% entry 74%; }
+  }
+  .strip.idle .live {
+    animation-play-state: paused;
+  }
+
+  /* why: the twelve tabs are scanned and three light up */
+  :root[data-motion] .tabs-panel:not(.play) .tab--need {
+    color: var(--ink-2);
+  }
+  :root[data-motion] .tabs-panel:not(.play) .tab--need::before {
+    transform: scale(0);
+  }
+  :root[data-motion] .tabs-panel:not(.play) .tabs-cap {
+    opacity: 0;
+  }
+  .tabs-panel.play .tab {
+    animation: flash 220ms var(--ease-out) both;
+  }
+  .tabs-panel.play .tab--need {
+    animation: flash 220ms var(--ease-out) both, need 160ms var(--ease-out) both;
+  }
+  .tabs-panel.play .tab--need::before {
+    animation: pop 160ms var(--ease-out) both;
+  }
+  .tabs-panel.play .tab:nth-child(2),
+  .tabs-panel.play .tab:nth-child(2)::before { animation-delay: 70ms; }
+  .tabs-panel.play .tab:nth-child(3) { animation-delay: 140ms; }
+  .tabs-panel.play .tab:nth-child(4) { animation-delay: 210ms; }
+  .tabs-panel.play .tab:nth-child(5) { animation-delay: 280ms; }
+  .tabs-panel.play .tab:nth-child(6),
+  .tabs-panel.play .tab:nth-child(6)::before { animation-delay: 350ms; }
+  .tabs-panel.play .tab:nth-child(7) { animation-delay: 420ms; }
+  .tabs-panel.play .tab:nth-child(8) { animation-delay: 490ms; }
+  .tabs-panel.play .tab:nth-child(9) { animation-delay: 560ms; }
+  .tabs-panel.play .tab:nth-child(10) { animation-delay: 630ms; }
+  .tabs-panel.play .tab:nth-child(11),
+  .tabs-panel.play .tab:nth-child(11)::before { animation-delay: 700ms; }
+  .tabs-panel.play .tab:nth-child(12) { animation-delay: 770ms; }
+  .tabs-panel.play .tabs-cap {
+    animation: rise 280ms var(--ease-out) 900ms both;
+  }
+  .tabs-panel.play .cursor {
+    animation: blink 1.06s steps(1) 1.2s 6;
+  }
+
+  /* the Board's chip: the hold takes exactly 2 seconds */
+  :root[data-motion] .chip--board:not(.play)::after {
+    transform: scaleX(0);
+  }
+  .chip--board.play::after {
+    animation: fill 2000ms linear both;
+  }
+}
+
 /* ------------------------------------------------------------ preferences */
 @media print {
   .doc-title,
   .doc-lines li,
   .live {
     animation: none;
+  }
+  .doc-lines .st::after,
+  .film-play,
+  .film-ctl,
+  .film-box video {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2299,10 +2643,17 @@ a.hdr-cta:hover {
   .chip,
   .win,
   .mac,
-  .phone {
+  .phone,
+  .film-box,
+  .film-btn,
+  .film-ctl {
     border: 1px solid CanvasText;
   }
-  .live {
+  .live,
+  .chip--board::after {
     background: CanvasText;
+  }
+  .doc-lines .st::after {
+    content: none;
   }
 }

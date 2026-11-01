@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{csp}}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Answering Claude Code from a phone, safely: Jantar</title>
+<meta name="description" content="A phone that can approve can run commands. How Jantar keeps that small: 127.0.0.1 only, your own tunnel, one-time pairing, switches set at the Mac, and compare and type.">
+<meta name="color-scheme" content="light dark">
+{{theme-color}}
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="{{root}}favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{root}}apple-touch-icon.png">
+<link rel="preload" href="{{root}}assets/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{root}}{{css}}">
+{{theme-init}}
+<script src="{{root}}{{js}}" defer></script>
+{{social}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<x-header></x-header>
+
+<main id="main">
+<article class="sec g-bg doc-page">
+  <div class="frame">
+    <div class="prose">
+      <p class="crumb"><a href="../">Answers</a></p>
+      <h1 class="h1 h1--page">Is it safe to answer Claude Code prompts from a phone?</h1>
+      <p class="lbl">answered for v{{version}}{{release-on}}</p>
+
+      <div class="summary">
+        <p>A phone that can approve can run commands, so treat a paired phone like your Mac's keyboard. Jantar keeps what can reach it small: it listens only on 127.0.0.1, your phone comes in through your own Tailscale or Cloudflare tunnel, pairing is a one-time QR code, every switch is set at the Mac, and a terminal answer is typed only if the dialog is still exactly what you tapped.</p>
+      </div>
+
+      <section aria-labelledby="a-guard">
+        <h2 class="h3" id="a-guard">What keeps it small</h2>
+        <dl class="ledger ledger--keys">
+          <div><dt>network</dt><dd>The daemon listens on 127.0.0.1 only. The phone reaches it through Tailscale Serve, private to your tailnet, or a Cloudflare Tunnel with Access in front; with Cloudflare, TLS ends at Cloudflare.</dd></div>
+          <div><dt>pairing</dt><dd>A QR code that works once, for 10 minutes. Every write carries the device's secret, and over the network every /v1 route but the pairing claim needs a paired device.</dd></div>
+          <div><dt>scopes</dt><dd>Read, control, launch and admin, in that order. Only the Mac grants launch, which starts sessions.</dd></div>
+          <div><dt>switches</dt><dd>No phone can turn a feature on, add a folder or grant itself a scope, not even an admin device.</dd></div>
+          <div><dt>typing</dt><dd>A dialog answer is typed only if the screen still shows exactly what you tapped, checked again in the same AppleScript run that types it. Rows that save a rule or switch mode take a 2-second hold.</dd></div>
+          <div><dt>hooks</dt><dd>Opt-in, and they fail open: with Jantar stopped, Claude behaves as usual.</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="a-not">
+        <h2 class="h3" id="a-not">What it can't close</h2>
+        <ul class="ledger ledger--plain">
+          <li>A key pressed at the Mac in the few milliseconds before Jantar types can still come first.</li>
+          <li>Anything running as you on the Mac, a Claude session with Bash included, can reach Jantar's local sockets and could pair itself as a device. Treat a card approval as coming from anything running as you, not only your phone.</li>
+          <li>A lost phone stays paired until you sign it out at the Mac: <code>jantar devices revoke &lt;device&gt;</code>.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="a-more">
+        <h2 class="h3" id="a-more">More</h2>
+        <ul class="ledger ledger--plain">
+          <li><a href="{{doc docs/security.md}}" rel="noopener">Security, in plain words<x-icon name="arrow-up-right"></x-icon></a></li>
+          <li><a href="{{doc SECURITY.md#threat-model-summary}}" rel="noopener">The threat model<x-icon name="arrow-up-right"></x-icon></a></li>
+          <li><a href="{{doc SECURITY.md#compare-and-type-and-what-it-cant-close}}" rel="noopener">Compare and type, and what it can't close<x-icon name="arrow-up-right"></x-icon></a></li>
+          <li><a href="../approve-claude-code-prompts-from-your-phone/">How do I approve a Claude Code permission prompt from my phone?</a></li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</article>
+</main>
+
+<x-footer></x-footer>
+<p class="vh" id="live" aria-live="polite"></p>
+</body>
+</html>

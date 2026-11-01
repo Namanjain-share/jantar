@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{csp}}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>See which Claude Code session is waiting on you: Jantar</title>
+<meta name="description" content="Jantar's board lists every Claude Code session in Terminal on your Mac, the ones that need you first, and says what each waits on. On the Mac and on your phone.">
+<meta name="color-scheme" content="light dark">
+{{theme-color}}
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="{{root}}favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{root}}apple-touch-icon.png">
+<link rel="preload" href="{{root}}assets/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{root}}{{css}}">
+{{theme-init}}
+<script src="{{root}}{{js}}" defer></script>
+{{social}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<x-header></x-header>
+
+<main id="main">
+<article class="sec g-bg doc-page">
+  <div class="frame">
+    <div class="prose">
+      <p class="crumb"><a href="../">Answers</a></p>
+      <h1 class="h1 h1--page">How do I see which Claude Code session is waiting for me when I run many in Terminal?</h1>
+      <p class="lbl">answered for v{{version}}{{release-on}}</p>
+
+      <div class="summary">
+        <p>Jantar's board lists every Claude Code session in Terminal.app, the ones that need you first, and each row says what it waits on: the question, the plan or the command. The same board is on the Mac and on your phone, and the phone can get a push when a session needs you.</p>
+      </div>
+
+      <section aria-labelledby="a-steps">
+        <h2 class="h3" id="a-steps">Steps</h2>
+        <p>On the Mac, once Jantar is installed (<a href="{{root}}#install">one line, or by hand</a>):</p>
+        <div class="code">
+          <button class="copy" type="button" data-copy="a-code" hidden><x-icon name="copy"></x-icon><span>Copy</span></button>
+          <pre tabindex="0" aria-label="Commands"><code id="a-code">jantar status    <span class="c"># the board in this Terminal: your turn first</span>
+jantar open      <span class="c"># the board in this Mac's browser</span>
+jantar pair      <span class="c"># the same board on your phone</span></code></pre>
+        </div>
+        <p>The board has four rails: needs you (the oldest wait first), your turn, working and ended. Each row shows what the session waits on, the tool it is running or its last reply. On a Mac, the Desk beside the board holds up to three cards to answer, and the keys 1 to 9 open the nth session that needs you.</p>
+      </section>
+
+      <section aria-labelledby="a-not">
+        <h2 class="h3" id="a-not">What it does not do</h2>
+        <ul class="ledger ledger--plain">
+          <li>Read other terminals. Terminal.app only today; Linux servers with tmux come in v0.6, iTerm2 and Ghostty after.</li>
+          <li>Type on its own. It reads Claude Code's session files and Terminal's text, and types only what you send or answer.</li>
+          <li>Push to a phone that has not turned notifications on under Devices. On an iPhone they need the Home Screen app.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="a-more">
+        <h2 class="h3" id="a-more">More</h2>
+        <ul class="ledger ledger--plain">
+          <li><a href="{{doc docs/phone-app.md}}" rel="noopener">The app, screen by screen<x-icon name="arrow-up-right"></x-icon></a></li>
+          <li><a href="{{doc docs/phone-app.md#notifications}}" rel="noopener">Notifications<x-icon name="arrow-up-right"></x-icon></a></li>
+          <li><a href="../approve-claude-code-prompts-from-your-phone/">How do I approve a Claude Code permission prompt from my phone?</a></li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</article>
+</main>
+
+<x-footer></x-footer>
+<p class="vh" id="live" aria-live="polite"></p>
+</body>
+</html>

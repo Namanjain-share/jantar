@@ -11,19 +11,29 @@
 //             playwright-core's own Chromium (offline, every request refused)
 //   brand     docs/brand/logo.svg and logo-dark.svg (the header mark and
 //             favicon.svg), docs/brand/social-preview.png
-//   copy      the Quickstart block from README.md, the copyright line from
-//             LICENSE, the version from package.json and the extension's
-//             manifest.json
+//   film      docs/brand/launch.mp4, launch.webm and launch-poster.jpg (FILM, as
+//             scripts/launch-video.mjs writes them), copied to media/ with the
+//             poster made into WebP; demo.gif beside them. Until all three
+//             are there, the band shows the night banner
+//   copy      the Quickstart block from README.md, the one-line install from
+//             docs/install.md, the copyright line from LICENSE, the version
+//             from package.json (and its date from CHANGELOG.md) and the
+//             extension's manifest.json
+//   pages     site/src/index.html, privacy.html and answers/*.html (served at
+//             answers/<name>/); llms.txt and install.sh, with the version and
+//             repository filled in
 //
 // Nothing is fetched. The pages load nothing from another server: a CSP meta
 // allows 'self' only, and the inline theme script by its hash.
 //
 // Usage:
-//   node scripts/build-site.mjs [--out DIR] [--no-resize] [--repo URL]
+//   node scripts/build-site.mjs [--out DIR] [--no-resize] [--repo URL] [--film DIR]
 //   node scripts/build-site.mjs --serve [--base /jantar/] [--port N]   build, then serve on 127.0.0.1
 //
 // --out must be inside site/ or the OS temp folder (it is emptied first).
 // --no-resize copies the PNGs instead of making WebP (quick, for tests).
+// --film takes FILM's files (launch.mp4, launch.webm, launch-poster.jpg,
+// demo.gif) from DIR instead of docs/brand/ (a render not yet committed).
 // The repository URL comes from GITHUB_SERVER_URL and GITHUB_REPOSITORY (CI),
 // else package.json's repository; SITE_URL (CI: actions/configure-pages)
 // adds the canonical, Open Graph tags and sitemap.xml.
@@ -32,7 +42,7 @@ import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, copyFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, extname, join, relative, resolve, sep, posix } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve, sep, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -60,6 +70,26 @@ export const ALLOWED_ABSOLUTE = /^https:\/\/(?:github\.com|docs\.github\.com)\//
 
 const WEBP_QUALITY = 0.82;
 
+/**
+ * The launch film and the README's GIF, where scripts/launch-video.mjs writes
+ * them. The site plays the film (WebM first, then the H.264 MP4) over its
+ * poster; with any of the three missing it shows the night banner, still,
+ * and no play control. Each is served under media/ by its own name.
+ */
+export const FILM = {
+  mp4: 'docs/brand/launch.mp4',
+  webm: 'docs/brand/launch.webm',
+  poster: 'docs/brand/launch-poster.jpg',
+  gif: 'docs/brand/demo.gif',
+};
+/** Where each is served. */
+export const FILM_SERVED = Object.fromEntries(Object.entries(FILM).map(([k, f]) => [k, `media/${basename(f)}`]));
+const FILM_WIDTHS = [960, 1440, 1920];
+const FILM_SIZES = '(min-width: 1280px) 1184px, (min-width: 1024px) calc(100vw - 96px), (min-width: 768px) calc(100vw - 64px), calc(100vw - 32px)';
+const FILM_ALT = "A frame from the film, with example data: a Bash prompt waiting in Terminal on the Mac, and the same prompt on the phone with Claude's options as buttons.";
+const BANNER_ALT =
+  "Jantar: every Claude Code session on your Mac, on your phone. Three phone screens with example data: the board, a plan waiting for approval, and a meeting's summary.";
+
 // ---------------------------------------------------------------------------
 // small helpers
 
@@ -80,7 +110,7 @@ function shown(p) {
 }
 
 export function parseArgs(argv) {
-  const out = { out: join(ROOT, 'site', 'dist'), resize: true, serve: false, base: '/jantar/', port: 0, repo: null };
+  const out = { out: join(ROOT, 'site', 'dist'), resize: true, serve: false, base: '/jantar/', port: 0, repo: null, film: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => {
@@ -94,6 +124,7 @@ export function parseArgs(argv) {
     else if (a === '--base') out.base = next();
     else if (a === '--port') out.port = Number(next());
     else if (a === '--repo') out.repo = next();
+    else if (a === '--film') out.film = resolve(next());
     else fail(`unknown argument ${a} (see the usage at the top of scripts/build-site.mjs)`);
   }
   if (!out.base.startsWith('/')) out.base = `/${out.base}`;
@@ -148,7 +179,15 @@ export function readValues(opts = {}) {
   // the site is served over https, so its canonical and Open Graph links use https from the first deploy.
   const siteUrl = (process.env.SITE_URL || '').trim().replace(/\/+$/, '').replace(/^http:\/\//, 'https://') || null;
   if (siteUrl && !/^https:\/\//.test(siteUrl)) fail(`SITE_URL must start with https:// (got ${siteUrl})`);
-  return { version: pkg.version, extVersion: manifest.version, repo, copyright: m[1].trim(), siteUrl };
+  const pnpm = /^pnpm@(\d+\.\d+\.\d+)$/.exec(pkg.packageManager ?? '')?.[1];
+  if (!pnpm) fail('package.json "packageManager" is not pnpm@<x.y.z>');
+  return { version: pkg.version, extVersion: manifest.version, repo, copyright: m[1].trim(), siteUrl, pnpm, released: releaseDate(pkg.version) };
+}
+
+/** The date of the version's CHANGELOG.md heading ("## 0.5.2 (1 November 2026)"), or null. */
+export function releaseDate(version, text = existsSync(join(ROOT, 'CHANGELOG.md')) ? read(join(ROOT, 'CHANGELOG.md')) : '') {
+  const v = version.replace(/[.]/g, '\\.');
+  return new RegExp(`^## ${v} \\(([^)]+)\\)\\s*$`, 'm').exec(text)?.[1] ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +285,31 @@ export function pngSize(path) {
   return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
 }
 
+/** Width and height from a JPEG's frame header (SOFn). */
+export function jpegSize(path) {
+  const b = readFileSync(path);
+  if (b[0] !== 0xff || b[1] !== 0xd8) fail(`${shown(path)} is not a JPEG`);
+  let at = 2;
+  while (at + 9 <= b.length) {
+    if (b[at] !== 0xff) fail(`${shown(path)}: a broken JPEG segment at byte ${at}`);
+    const m = b[at + 1];
+    if (m === 0xff) {
+      at += 1;
+      continue;
+    }
+    if (m === 0x01 || (m >= 0xd0 && m <= 0xd7)) {
+      at += 2;
+      continue;
+    }
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { width: b.readUInt16BE(at + 7), height: b.readUInt16BE(at + 5) };
+    at += 2 + b.readUInt16BE(at + 2);
+  }
+  fail(`${shown(path)}: no JPEG frame header`);
+}
+
+/** PNG or JPEG, by the file's name. */
+export const imageSize = (path) => (/\.jpe?g$/i.test(path) ? jpegSize(path) : pngSize(path));
+
 async function makeWebp(jobs) {
   let chromium;
   try {
@@ -267,12 +331,13 @@ async function makeWebp(jobs) {
     await page.setContent('<!doctype html><title>resize</title>');
     for (const job of jobs) {
       const b64 = readFileSync(job.src).toString('base64');
+      const type = /\.jpe?g$/i.test(job.src) ? 'image/jpeg' : 'image/png';
       const out = await page.evaluate(
-        async ({ b64, outs, q }) => {
+        async ({ b64, outs, q, type }) => {
           const bin = atob(b64);
           const bytes = new Uint8Array(bin.length);
           for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          const blob = new Blob([bytes], { type: 'image/png' });
+          const blob = new Blob([bytes], { type });
           const res = [];
           for (const o of outs) {
             const bmp = await createImageBitmap(blob, { resizeWidth: o.w, resizeHeight: o.h, resizeQuality: 'high' });
@@ -287,7 +352,7 @@ async function makeWebp(jobs) {
           }
           return res;
         },
-        { b64, outs: job.outs.map(({ w, h }) => ({ w, h })), q: WEBP_QUALITY },
+        { b64, outs: job.outs.map(({ w, h }) => ({ w, h })), q: WEBP_QUALITY, type },
       );
       job.outs.forEach((o, i) => writeFileSync(o.path, Buffer.from(out[i], 'base64')));
     }
@@ -297,12 +362,21 @@ async function makeWebp(jobs) {
   return true;
 }
 
-/** Writes dist/img/* and returns, per slot, what the <picture> needs. */
-async function buildImages(figs, dist, resize, log) {
+/**
+ * Writes dist/img/* and returns, per slot, what the <picture> needs. `still`
+ * (the film's poster, or the banner) is made into WebP in the same pass and
+ * gets its list of files.
+ */
+async function buildImages(figs, dist, resize, log, still = null) {
   const imgDir = join(dist, 'img');
   mkdirSync(imgDir, { recursive: true });
   const plan = {};
   const jobs = [];
+  if (still) {
+    const widths = [...new Set(still.widths.map((w) => Math.min(w, still.size.width)))].sort((a, b) => a - b);
+    const outs = widths.map((w) => ({ w, h: Math.round((w * still.size.height) / still.size.width), path: join(imgDir, `${still.name}-${w}.webp`), rel: `img/${still.name}-${w}.webp` }));
+    jobs.push({ src: still.src, outs, still: true, name: still.name, ext: extname(still.src) });
+  }
   for (const [slot, f] of Object.entries(figs)) {
     const size = pngSize(join(IMG, `${f.file}.png`));
     const dark = pngSize(join(IMG, `${f.file}-dark.png`));
@@ -318,7 +392,11 @@ async function buildImages(figs, dist, resize, log) {
   const done = resize ? await makeWebp(jobs) : false;
   if (resize && !done) log('warning: no Chromium to resize with; the pages use the PNGs as they are (slower to load)');
   for (const job of jobs) {
-    if (done) {
+    if (job.still) {
+      const rel = `img/${job.name}${job.ext}`;
+      if (!done) copyFileSync(job.src, join(dist, rel));
+      still.list = done ? job.outs.map((o) => ({ w: o.w, rel: o.rel })) : [{ w: still.size.width, rel }];
+    } else if (done) {
       plan[job.slot][job.variant] = job.outs.map((o) => ({ w: o.w, rel: o.rel }));
     } else {
       const rel = `img/${job.name}.png`;
@@ -339,6 +417,92 @@ function pictureHtml(slot, p, root) {
   const pic = `<picture><source media="(prefers-color-scheme: dark)" data-dark srcset="${set(p.dark)}" sizes="${esc(p.sizes)}">${img}</picture>`;
   const cls = [p.frame === 'mac' ? 'mac' : 'phone', p.cls].filter(Boolean).join(' ');
   return `<div class="${cls}" data-slot="${slot}">${pic}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// the film
+
+/** Length, codec and layout from an MP4's boxes: the movie header (mvhd), an H.264 track, moov before mdat. */
+export function mp4Info(path) {
+  const b = readFileSync(path);
+  const boxes = (start, end) => {
+    const out = [];
+    let at = start;
+    while (at + 8 <= end) {
+      let size = b.readUInt32BE(at);
+      let head = 8;
+      if (size === 1) {
+        size = Number(b.readBigUInt64BE(at + 8));
+        head = 16;
+      } else if (size === 0) size = end - at;
+      if (size < head || at + size > end) break;
+      out.push({ type: b.toString('latin1', at + 4, at + 8), start: at + head, end: at + size });
+      at += size;
+    }
+    return out;
+  };
+  const top = boxes(0, b.length);
+  if (top[0]?.type !== 'ftyp') fail(`${shown(path)} is not an MP4 (no ftyp box first)`);
+  const moov = top.find((x) => x.type === 'moov');
+  const mvhd = moov && boxes(moov.start, moov.end).find((x) => x.type === 'mvhd');
+  if (!mvhd) fail(`${shown(path)} has no movie header (moov/mvhd)`);
+  const v1 = b[mvhd.start] === 1;
+  const scale = b.readUInt32BE(mvhd.start + (v1 ? 20 : 12));
+  const length = v1 ? Number(b.readBigUInt64BE(mvhd.start + 24)) : b.readUInt32BE(mvhd.start + 16);
+  if (!scale) fail(`${shown(path)}: a movie header with no timescale`);
+  const mdat = top.findIndex((x) => x.type === 'mdat');
+  return {
+    seconds: length / scale,
+    h264: b.subarray(moov.start, moov.end).includes('avc1'),
+    faststart: mdat < 0 || top.indexOf(moov) < mdat,
+  };
+}
+
+/** "0:53" */
+export function clock(seconds) {
+  const t = Math.round(seconds);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Which film the build has: { video, files: {mp4, webm, poster, gif}, info, still }.
+ * The video needs all three of the MP4, the WebM and the poster; without them
+ * the band shows the night banner, still.
+ */
+export function filmFiles(dir = null) {
+  const at = (rel) => (dir ? join(dir, basename(rel)) : join(ROOT, rel));
+  const files = Object.fromEntries(Object.entries(FILM).map(([k, rel]) => [k, existsSync(at(rel)) ? at(rel) : null]));
+  const video = Boolean(files.mp4 && files.webm && files.poster);
+  let info = null;
+  if (video) {
+    info = mp4Info(files.mp4);
+    if (!info.h264) fail(`${shown(files.mp4)} has no H.264 (avc1) track, which Safari needs`);
+    if (!info.faststart) fail(`${shown(files.mp4)}: the movie header comes after the media; encode it with -movflags +faststart`);
+    if (readFileSync(files.webm).readUInt32BE(0) !== 0x1a45dfa3) fail(`${shown(files.webm)} is not a WebM`);
+  }
+  const src = video ? files.poster : join(BRAND, 'banner-dark.png');
+  const still = { src, name: basename(src).replace(/\.[a-z]+$/i, ''), size: imageSize(src), widths: FILM_WIDTHS, alt: video ? FILM_ALT : BANNER_ALT };
+  return { video, files, info, still };
+}
+
+/** The band's figure: the poster with a play link and a pause button, or the still alone. */
+function filmHtml(film, root) {
+  const s = film.still;
+  const set = s.list.map((i) => `${root}${i.rel} ${i.w}w`).join(', ');
+  const img =
+    `<img src="${root}${s.list[0].rel}" srcset="${set}" sizes="${FILM_SIZES}" width="${s.size.width}" height="${s.size.height}" ` +
+    `alt="${esc(s.alt)}" loading="lazy" decoding="async">`;
+  const gif = film.files.gif ? ` <a href="${root}${FILM_SERVED.gif}">A shorter cut, as a GIF</a>` : '';
+  if (!film.video) {
+    return `<figure class="film-fig"><div class="film-box film-box--still">${img}</div><figcaption class="film-cap"><span class="rail">Example data</span> The board, a plan waiting for approval and a meeting's summary, on the phone.${gif}</figcaption></figure>`;
+  }
+  const secs = Math.round(film.info.seconds);
+  return (
+    `<figure class="film-fig"><div class="film-box" data-film data-webm="${root}${FILM_SERVED.webm}" data-mp4="${root}${FILM_SERVED.mp4}">${img}` +
+    `<a class="film-play" href="${root}${FILM_SERVED.mp4}"><span class="film-btn"><x-icon name="play"></x-icon></span><span class="film-act">Play the film</span><span class="rail">${clock(secs)} · no sound</span></a>` +
+    '<button class="film-ctl" type="button" aria-label="Pause the film"><x-icon name="pause"></x-icon></button></div>' +
+    `<figcaption class="film-cap"><span class="rail">Example data</span> A ${secs}-second film with captions and no sound: a session waits in Terminal, your phone gets the question, one tap answers it, and the session carries on.${gif}</figcaption></figure>`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -427,6 +591,16 @@ export function quickstartBlock() {
   return m[1];
 }
 
+/** The first ```sh block under docs/install.md's "## Install in one line", verbatim. */
+export function oneLineBlock(text = read(join(ROOT, 'docs', 'install.md'))) {
+  const at = text.search(/^## Install in one line\s*$/m);
+  if (at < 0) fail('docs/install.md has no "## Install in one line" heading');
+  const m = /```sh\n([\s\S]*?)\n```/.exec(text.slice(at));
+  if (!m) fail('docs/install.md: no ```sh block under "Install in one line"');
+  if (!/^curl -fsSL https:\/\/\S+\/install\.sh \| bash$/m.test(m[1])) fail('docs/install.md: the one-line block has no "curl -fsSL https://.../install.sh | bash" line');
+  return m[1];
+}
+
 /** HTML for the quickstart: escaped, each shell comment in a dim span. */
 export function quickstartHtml(text) {
   return text
@@ -504,6 +678,7 @@ export function cspFor(inlineScripts) {
     "img-src 'self'",
     "style-src 'self'",
     "font-src 'self'",
+    "media-src 'self'",
     `script-src 'self' ${hashes}`.trim(),
     "connect-src 'none'",
     "base-uri 'none'",
@@ -551,13 +726,30 @@ export function keepDots(html) {
   return html.replace(/>([^<]+)</g, (_, text) => `>${text.replace(/ \u00b7 /g, '&nbsp;\u00b7 ')}<`);
 }
 
+/** Where a page in site/src is served: index.html at the root, privacy.html at privacy/, answers/x.html at answers/x/. */
+export function pagePath(name) {
+  if (name === 'index.html') return '';
+  const base = name.replace(/\.html$/, '');
+  return base.endsWith('/index') ? base.slice(0, -'index'.length) : `${base}/`;
+}
+
 export function renderPage(name, ctx) {
-  const root = name === 'index.html' ? '' : '../';
-  const home = name === 'index.html' ? './' : '../';
+  const path = pagePath(name);
+  const depth = path.split('/').length - 1;
+  const root = '../'.repeat(depth);
+  const home = depth ? root : './';
   let html = read(join(SRC, name));
   html = html
     .replace('<x-header></x-header>', read(join(SRC, 'header.html')).trim())
     .replace('<x-footer></x-footer>', read(join(SRC, 'footer.html')).trim());
+  if (ctx.film) {
+    html = html.replace('<x-film></x-film>', filmHtml(ctx.film, root)).replace(
+      '<x-film-link></x-film-link>',
+      ctx.film.video
+        ? `<p class="watch"><a href="#film">Watch the film<x-icon name="play"></x-icon></a> <span class="rail">${clock(ctx.film.info.seconds)} · no sound</span></p>`
+        : '',
+    );
+  }
   const changelog = existsSync(join(ROOT, 'CHANGELOG.md'));
   if (!changelog) html = html.replace(/\s*<a href="\{\{doc CHANGELOG\.md\}\}"[^>]*>Changelog<\/a>/, '');
   html = keepDots(nowrapArrows(html));
@@ -572,9 +764,10 @@ export function renderPage(name, ctx) {
     .replace(/<x-mark><\/x-mark>/g, ctx.mark)
     .replace(/<x-dial><\/x-dial>/g, ctx.dial)
     .replace(/<x-theme><\/x-theme>/g, themeSwitch())
-    .replace('<x-quickstart></x-quickstart>', ctx.quickstart);
+    .replace('<x-quickstart></x-quickstart>', ctx.quickstart)
+    .replace('<x-install-line></x-install-line>', ctx.oneLine);
   html = html.replace(/\{\{doc ([^}]+)\}\}/g, (_, target) => docUrl(target.trim(), ctx.values.repo) ?? fail(`{{doc ${target}}}: ${target.split('#')[0]} does not exist`));
-  const page = { path: name === 'index.html' ? '' : 'privacy/', html };
+  const page = { path, html };
   const vars = {
     csp: ctx.csp,
     'theme-color': [
@@ -587,6 +780,10 @@ export function renderPage(name, ctx) {
     home,
     css: ctx.cssPath,
     js: ctx.jsPath,
+    'motion-js': ctx.motionPath,
+    // filled after keepDots, so its dots carry their no-break spaces already
+    'film-lbl': ctx.film?.video ? `the film&nbsp;· ${clock(ctx.film.info.seconds)}&nbsp;· no sound` : 'three screens&nbsp;· example data',
+    'release-on': ctx.values.released ? `, ${esc(ctx.values.released)}` : '',
     repo: ctx.values.repo,
     version: esc(ctx.values.version),
     'ext-version': esc(ctx.values.extVersion),
@@ -596,6 +793,40 @@ export function renderPage(name, ctx) {
   // Comments in the source are notes for whoever edits it; the page doesn't need them.
   html = html.replace(/\n?<!--[\s\S]*?-->\n?/g, '\n').replace(/\n{3,}/g, '\n\n');
   return html;
+}
+
+/** Fills a text file's {{placeholders}} from `vars`; any other one stops the build. */
+function fillText(name, text, vars) {
+  return text.replace(/\{\{([a-z-]+)\}\}/g, (all, k) => (k in vars ? vars[k] : fail(`${name}: unknown placeholder ${all}`)));
+}
+
+/** install.sh, served at the site's root, for the release in package.json. */
+export function installSh(values = readValues()) {
+  return fillText('site/src/install.sh', read(join(SRC, 'install.sh')), { version: values.version, repo: values.repo, pnpm: values.pnpm });
+}
+
+/**
+ * llms.txt: the site's own pages by its address (or relative, with no
+ * SITE_URL), the docs as raw Markdown from the repository's main branch. Every
+ * file it names must exist.
+ */
+export function llmsTxt(values = readValues()) {
+  const raw = values.repo.replace(/^https:\/\/github\.com\//, 'https://raw.githubusercontent.com/') + '/main';
+  const oneLine = /^curl -fsSL (https:\/\/\S+\/install\.sh) \| bash$/m.exec(oneLineBlock());
+  const text = fillText('site/src/llms.txt', read(join(SRC, 'llms.txt')), {
+    version: values.version,
+    repo: values.repo,
+    raw,
+    site: values.siteUrl ? `${values.siteUrl}/` : '',
+    'one-line': oneLine[0],
+    'install-url': oneLine[1],
+  });
+  for (const m of text.matchAll(/\]\(([^)]+)\)/g)) {
+    if (!m[1].startsWith(`${raw}/`)) continue;
+    const file = m[1].slice(raw.length + 1);
+    if (!existsSync(join(ROOT, file))) fail(`site/src/llms.txt names ${file}, which does not exist`);
+  }
+  return text;
 }
 
 function fontsIndex(ctx) {
@@ -641,6 +872,11 @@ export async function build(opts, log = (s) => process.stdout.write(`${s}\n`)) {
   }
   const appleIcon = join(WEB, 'public', 'icons', 'apple-touch-icon.png');
   if (!existsSync(appleIcon)) fail(`${shown(appleIcon)} is missing`);
+  const film = filmFiles(opts.film ?? null);
+  const answers = readdirSync(join(SRC, 'answers'))
+    .filter((f) => f.endsWith('.html'))
+    .sort()
+    .map((f) => `answers/${f}`);
 
   rmSync(out, { recursive: true, force: true });
   mkdirSync(join(out, 'assets', 'fonts'), { recursive: true });
@@ -668,9 +904,21 @@ export async function build(opts, log = (s) => process.stdout.write(`${s}\n`)) {
   const js = read(join(SRC, 'site.js'));
   const jsPath = `assets/site.${sha256(js).toString('hex').slice(0, 8)}.js`;
   writeFileSync(join(out, jsPath), js);
+  const motion = read(join(SRC, 'motion.js'));
+  const motionPath = `assets/motion.${sha256(motion).toString('hex').slice(0, 8)}.js`;
+  writeFileSync(join(out, motionPath), motion);
   const themeInit = read(join(SRC, 'theme-init.js')).trim();
 
-  const images = await buildImages(figs, out, opts.resize, log);
+  const images = await buildImages(figs, out, opts.resize, log, film.still);
+  if (film.video || film.files.gif) mkdirSync(join(out, 'media'), { recursive: true });
+  if (film.video) {
+    copyFileSync(film.files.mp4, join(out, FILM_SERVED.mp4));
+    copyFileSync(film.files.webm, join(out, FILM_SERVED.webm));
+  } else {
+    const have = Object.entries(film.files).filter(([k, f]) => f && k !== 'gif');
+    if (have.length) log(`note: the film needs ${FILM.mp4}, ${FILM.webm} and ${FILM.poster}; with only ${have.map(([k]) => k).join(', ')} the site shows the banner`);
+  }
+  if (film.files.gif) copyFileSync(film.files.gif, join(out, FILM_SERVED.gif));
 
   const social = join(BRAND, 'social-preview.png');
   copyFileSync(social, join(out, 'social-preview.png'));
@@ -686,24 +934,34 @@ export async function build(opts, log = (s) => process.stdout.write(`${s}\n`)) {
     mark: markSvg(tokens),
     dial: dialSvg(),
     quickstart: quickstartHtml(quickstartBlock()),
+    oneLine: quickstartHtml(oneLineBlock()),
+    film,
     themeInit,
     csp: cspFor([themeInit]),
     cssPath,
     jsPath,
+    motionPath,
     ogImage: { name: 'social-preview.png', ...pngSize(social) },
   };
-  writeFileSync(join(out, 'index.html'), renderPage('index.html', ctx));
-  writeFileSync(join(out, 'privacy', 'index.html'), renderPage('privacy.html', ctx));
+  const pages = ['index.html', 'privacy.html', ...answers];
+  for (const name of pages) {
+    const dir = join(out, pagePath(name));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'index.html'), renderPage(name, ctx));
+  }
   writeFileSync(join(out, 'assets', 'fonts', 'index.html'), keepDots(fontsIndex(ctx)));
   const unused = Object.keys(figs).filter((s) => !ctx.usedSlots.has(s));
   if (unused.length) fail(`figures.json slots no page uses: ${unused.join(', ')}`);
 
+  writeFileSync(join(out, 'llms.txt'), llmsTxt(values));
+  writeFileSync(join(out, 'install.sh'), installSh(values));
   writeFileSync(join(out, 'robots.txt'), `User-agent: *\nAllow: /\n${values.siteUrl ? `Sitemap: ${values.siteUrl}/sitemap.xml\n` : ''}`);
   if (values.siteUrl) {
     writeFileSync(
       join(out, 'sitemap.xml'),
       `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-        `  <url><loc>${values.siteUrl}/</loc></url>\n  <url><loc>${values.siteUrl}/privacy/</loc></url>\n</urlset>\n`,
+        pages.map((name) => `  <url><loc>${values.siteUrl}/${pagePath(name)}</loc></url>\n`).join('') +
+        '</urlset>\n',
     );
   }
 
@@ -717,10 +975,12 @@ export async function build(opts, log = (s) => process.stdout.write(`${s}\n`)) {
   const heroLight = images.hero.light.find((i) => i.w >= 400) ?? images.hero.light.at(-1);
   const firstView = size('index.html') + size(cssPath) + size('assets/fonts/archivo-latin-wdth-normal.woff2') + size(heroLight.rel);
   log(`built ${shown(out)}: ${files.length} files, ${kb(total)}`);
-  log(`  index.html ${kb(size('index.html'))} · ${cssPath} ${kb(size(cssPath))} · ${jsPath} ${kb(size(jsPath))}`);
+  log(`  index.html ${kb(size('index.html'))} · ${cssPath} ${kb(size(cssPath))} · ${jsPath} ${kb(size(jsPath))} · ${motionPath} ${kb(size(motionPath))}`);
   log(`  first view (html, css, Archivo, the hero phone at 2x): ${kb(firstView)}`);
+  const filmBytes = files.filter((f) => f === FILM_SERVED.mp4 || f === FILM_SERVED.webm || f.startsWith(`img/${film.still.name}`)).reduce((n, f) => n + size(f), 0);
+  log(film.video ? `  the film (${clock(film.info.seconds)}): MP4, WebM and poster ${kb(filmBytes)}` : `  no film yet (${FILM.mp4}, ${FILM.webm}, ${FILM.poster}): the band shows the banner`);
   log(`  repository ${values.repo}${values.siteUrl ? ` · site ${values.siteUrl}` : ' · no SITE_URL: no canonical or Open Graph tags'}`);
-  return { out, cssPath, jsPath, values, files };
+  return { out, cssPath, jsPath, motionPath, values, files, film };
 }
 
 // ---------------------------------------------------------------------------
@@ -798,6 +1058,8 @@ export function checkDist(dist, { siteUrl = null } = {}) {
       const srcset = attr(tag, 'srcset');
       if (srcset) for (const part of srcset.split(',')) resources.push(part.trim().split(/\s+/)[0]);
     }
+    // the film's sources, which motion.js puts in a <video>
+    for (const m of text.matchAll(/\sdata-(?:webm|mp4)="([^"]*)"/g)) resources.push(m[1]);
     for (const v of resources) {
       if (/^(?:[a-z]+:|\/\/|\/)/i.test(v)) p(`a resource that is not relative: ${v}`);
       else if (!resolveIn(dist, f, v)) p(`a resource that is not in the build: ${v}`);
@@ -835,7 +1097,7 @@ export function checkDist(dist, { siteUrl = null } = {}) {
     }
     if (/@import/.test(text)) problems.push(`${f}: @import`);
   }
-  for (const need of ['index.html', 'privacy/index.html', 'favicon.svg', 'apple-touch-icon.png', 'social-preview.png', 'robots.txt']) {
+  for (const need of ['index.html', 'privacy/index.html', 'answers/index.html', 'favicon.svg', 'apple-touch-icon.png', 'social-preview.png', 'robots.txt', 'llms.txt', 'install.sh']) {
     if (!files.includes(need)) problems.push(`missing ${need}`);
   }
   for (const f of FONTS) {
@@ -853,10 +1115,15 @@ const TYPES = {
   '.js': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
   '.webp': 'image/webp',
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
+  '.sh': 'text/plain; charset=utf-8',
   '.xml': 'application/xml',
+  '.gif': 'image/gif',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
 };
 
 /** Serves `dir` at http://127.0.0.1:<port><base>, as Pages would under a project sub-path. */

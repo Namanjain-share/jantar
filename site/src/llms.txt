@@ -1,0 +1,33 @@
+# Jantar
+
+> Jantar shows every Claude Code session running in Terminal.app on your Mac on one board, on the Mac and on your phone, and lets you answer the ones waiting on you (permission prompts, plans and questions) from the phone. It runs on your Mac as a small daemon on 127.0.0.1; your phone reaches it through your own Tailscale or Cloudflare tunnel. Free, source-available (FSL-1.1-MIT), v{{version}}. Not affiliated with Anthropic.
+
+- Needs: macOS with Terminal.app, Node.js 22.13 or newer, pnpm 10, Claude Code signed in (one account is enough).
+- Optional: cswap for several Claude accounts; Chrome 120 or newer for Meetings.
+- Not yet: Linux servers with tmux (v0.6, being built), iTerm2, Ghostty; moving a session between accounts.
+- No Jantar server, no account with the project, no telemetry.
+- Install in one line on a Mac: `{{one-line}}` (read the script first at {{install-url}}).
+
+## Answers
+
+- [How do I approve a Claude Code permission prompt from my phone?]({{site}}answers/approve-claude-code-prompts-from-your-phone/)
+- [How do I see which Claude Code session is waiting for me when I run many in Terminal?]({{site}}answers/which-claude-code-session-is-waiting/)
+- [How do I see usage and reset times for several Claude accounts at once?]({{site}}answers/claude-code-usage-across-accounts/)
+- [Is it safe to answer Claude Code prompts from a phone?]({{site}}answers/is-it-safe-to-answer-claude-code-from-a-phone/)
+
+## Docs
+
+- [Install and run]({{raw}}/docs/install.md): requirements, a read-only trial, launchd, reaching it from your phone, updating
+- [Answering from the phone]({{raw}}/docs/phone-control.md): hook cards, terminal dialogs, the keypad, what stays at the Mac
+- [The app, screen by screen]({{raw}}/docs/phone-app.md)
+- [One account or many]({{raw}}/docs/accounts.md)
+- [Security, in plain words]({{raw}}/docs/security.md)
+- [Questions and known limits]({{raw}}/docs/faq.md)
+
+## Optional
+
+- [Configuration]({{raw}}/docs/configuration.md): every command, flags, environment, config.json
+- [Life]({{raw}}/docs/life.md), [Meetings]({{raw}}/docs/extension.md), [the Intel shelf]({{raw}}/docs/intel.md)
+- [The threat model]({{raw}}/SECURITY.md)
+- [Changelog]({{raw}}/CHANGELOG.md), [Roadmap]({{raw}}/docs/roadmap.md)
+- [Source]({{repo}})
