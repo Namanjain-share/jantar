@@ -7,7 +7,8 @@
  *   project null and no todos; its open todos only, by due; a folder
  *   compared normalized and without a trailing slash;
  * - the broad-folder rule: a project linked to the home folder, `/Users`
- *   or `/` counts only for exactly that folder, never for a folder below;
+ *   or `/` (in any case) counts only for exactly that folder, never for a
+ *   folder below;
  * - a todo added there lands in that project (and rings when timed); with
  *   no project linked, not_found with the sentence;
  * - over ctl.sock: ids-only replies, a strict body (no projectId, no
@@ -109,6 +110,16 @@ describe('the module', () => {
     expect(at('/Users/example').project).toBeNull();
     expect(at('/opt/tools').project).toBeNull();
     expect(at(`${HOME}/work`).project).toBeNull();
+  });
+
+  it('the broad folders in any case (APFS ignores it): home or /Users linked in lower case still holds nothing below', () => {
+    const home = project('Example home', HOME.toUpperCase());
+    const users = project('Example users', '/users');
+    expect(at(`${HOME.toUpperCase()}/work/demo-app`).project).toBeNull();
+    expect(at('/users/example').project).toBeNull();
+    // Exactly that folder, as written, still counts.
+    expect(at(HOME.toUpperCase()).project?.id).toBe(home);
+    expect(at('/users').project?.id).toBe(users);
   });
 
   it('adds a todo to that project (a timed one rings); with none linked, not_found with the sentence and nothing added', () => {

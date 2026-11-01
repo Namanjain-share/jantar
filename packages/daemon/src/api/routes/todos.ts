@@ -101,7 +101,7 @@ export const TODOS_ROUTE_IMPLS: RouteTable = {
   folderTodoCreate: {
     handle: (c: Call<Id, unknown, FolderTodoBody>, s) => {
       const limited = s.folderTodoLimiter.hit(actorName(c.auth));
-      if (!limited.ok) throw new ApiError('rate_limited', FOLDER_TODOS_LIMITED, { 'retry-after': String(Math.ceil(limited.retryAfterMs / 1000)) });
+      if (!limited.ok) throw new ApiError('rate_limited', FOLDER_TODOS_LIMITED, { 'retry-after': String(Math.max(1, Math.ceil(limited.retryAfterMs / 1000))) });
       return lifeValue(s.deps.life.todos.createInFolder(c.body, needActor(c.auth)));
     },
     audit: lifeAudit,
