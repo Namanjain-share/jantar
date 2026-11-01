@@ -51,11 +51,11 @@ function inputSummary(p: PendingRequest): string {
   return p.tool;
 }
 
-/** v0.6.1: "1 workflow running · demo-sweep · 52m", then the quiet count. */
+/** v0.6.1: "1 workflow running · 52m · demo-sweep", then the quiet count. */
 function backgroundDetail(s: Session, now: number): string {
   const t = backgroundText(s);
   const since = s.background?.since ? Date.parse(s.background.since) : Number.NaN;
-  const run = [t.running, t.name, Number.isFinite(since) ? duration(now - since) : null].filter(Boolean).join(' · ');
+  const run = [t.running, Number.isFinite(since) ? duration(now - since) : null, t.name].filter(Boolean).join(' · ');
   return t.quiet ? `${run} · ${t.quiet}` : run;
 }
 

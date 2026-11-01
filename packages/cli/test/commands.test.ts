@@ -90,7 +90,7 @@ describe('jantar status', () => {
     const ctl = fakeCtl({ 'GET /v1/state': ok({ seq: 7, epoch: 'e', state: st }) });
     const { ctx, io } = contextFor({ env: ENV }, { ctl });
     expect(await status.run([], ctx)).toBe(EXIT.ok);
-    expect(io.stdout).toContain(`  * Working · web-app · fix-login  (acct 3, ${SID_A.slice(0, 8)})\n      1 workflow running · demo-sweep · 52m · 6 shells\n`);
+    expect(io.stdout).toContain(`  * Working · web-app · fix-login  (acct 3, ${SID_A.slice(0, 8)})\n      1 workflow running · 52m · demo-sweep · 6 shells\n`);
     expect(io.stdout).toContain(`  > Done · docs · typo  (acct 3, ${SID_B.slice(0, 8)})  [6 shells]`);
     // the Done session comes first ("your turn"), the one waiting on its workflow with the working ones
     expect(io.stdout.indexOf('Done · docs')).toBeLessThan(io.stdout.indexOf('Working · web-app'));

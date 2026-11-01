@@ -31,10 +31,10 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Ask** | Right after Today: tell it what to add in plain words, and add its suggestions with a tap ([Ask](assistant.md)) |
 
 A session waiting on a dynamic workflow or a background agent it started
-shows under Working ("1 workflow running · demo-sweep", and how long), even
-though its turn is over. Its header says the same, with the quiet count of
-background shells and monitors ("6 shells"), and it returns to Your turn
-when the last one finishes.
+shows under Working ("1 workflow running", the workflow's name and how
+long), even though its turn is over. Its header says "1 workflow running ·
+52m · demo-sweep", with the quiet count of background shells and monitors
+("6 shells"), and it returns to Your turn when the last one finishes.
 
 On a phone the tab bar holds Board, Today, Files, Accounts and More. With
 Ask on it holds Board, Today, Ask, Files and More, and Accounts moves into

@@ -142,8 +142,7 @@ describe('v0.6.1: background work end to end', () => {
 
     const out = await status();
     expect(out).toContain(`  * Working · alpha-app · `);
-    expect(out).toContain('1 workflow running · demo-sweep · ');
-    expect(out).toContain(' · 1 shell');
+    expect(out).toMatch(/1 workflow running · \S+ · demo-sweep · 1 shell/);
   }, perfBudgetMs(60_000));
 
   it("3. a stranger's notification changes nothing; the workflow's own ends it, leaving the quiet shell", async () => {

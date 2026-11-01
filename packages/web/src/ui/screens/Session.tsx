@@ -37,7 +37,7 @@
  * session of the Mac's own looks as before.
  *
  * v0.6.1: a session waiting on work it started in the background says so in
- * one mono line under the header ("1 workflow running · demo-sweep · 52m",
+ * one mono line under the header ("1 workflow running · 52m · demo-sweep",
  * then the quiet "6 shells"), and its glyph reads working until it ends.
  *
  * The hook cards (session/Permission.tsx, Plan.tsx, Question.tsx) load

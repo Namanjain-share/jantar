@@ -89,7 +89,7 @@ describe('the row', () => {
 
   it('words the header line: what runs, its name and how long, then the quiet count', () => {
     expect(backgroundLine(session('a', { status: 'idle', background: { ...WORKFLOW, shells: 6 } }), NOW)).toEqual({
-      running: '1 workflow running · demo-sweep · 52m',
+      running: '1 workflow running · 52m · demo-sweep',
       quiet: '6 shells',
     });
     expect(backgroundLine(session('a', { status: 'idle', background: { workflows: 2, agents: 1, since: ago(130) } }), NOW)).toEqual({
@@ -132,8 +132,8 @@ describe('the session header', () => {
 
   it('says what runs on a phone, with the glyph working', () => {
     open({ ...WORKFLOW, shells: 6 });
-    expect(line()!.textContent).toBe('1 workflow running · demo-sweep · 52m · 6 shells');
-    expect(line()!.querySelector('.text-ink-2')!.textContent).toBe('1 workflow running · demo-sweep · 52m');
+    expect(line()!.textContent).toBe('1 workflow running · 52m · demo-sweep · 6 shells');
+    expect(line()!.querySelector('.text-ink-2')!.textContent).toBe('1 workflow running · 52m · demo-sweep');
     expect(line()!.querySelector('.text-ink-3')!.textContent).toBe(' · 6 shells');
     expect(line()!.getAttribute('role')).toBeNull();
     expect(screen.getByRole('img', { name: 'Working' })).toBeTruthy();
@@ -142,7 +142,7 @@ describe('the session header', () => {
   it('says the same on a desktop', () => {
     viewport(1440);
     open({ ...WORKFLOW, shells: 6 });
-    expect(line()!.textContent).toBe('1 workflow running · demo-sweep · 52m · 6 shells');
+    expect(line()!.textContent).toBe('1 workflow running · 52m · demo-sweep · 6 shells');
     expect(line()!.className).toContain('px-32');
   });
 

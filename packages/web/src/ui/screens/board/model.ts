@@ -69,14 +69,15 @@ export function span(ms: number): string {
 }
 
 /**
- * v0.6.1: a session's background work in words: what runs, the newest
- * workflow's name and how long ("1 workflow running · demo-sweep · 52m"),
- * and the quiet count ("6 shells · 1 monitor"). Null parts are left out.
+ * v0.6.1: a session's background work in words: what runs, how long, then
+ * the newest workflow's name ("1 workflow running · 52m · demo-sweep"; the
+ * name last, so a narrow line cuts only the name), and the quiet count
+ * ("6 shells · 1 monitor"). Null parts are left out.
  */
 export function backgroundLine(s: Pick<Session, 'status' | 'background'>, now: number): { running: string | null; quiet: string | null } {
   const t = backgroundText(s);
   const since = parse(s.background?.since);
-  const running = t.running ? [t.running, t.name, since === null ? null : span(now - since)].filter(Boolean).join(' · ') : null;
+  const running = t.running ? [t.running, since === null ? null : span(now - since), t.name].filter(Boolean).join(' · ') : null;
   return { running, quiet: t.quiet };
 }
 
