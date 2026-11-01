@@ -175,7 +175,7 @@ export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<RouteName, string>>> = 
   extPairStart: 'Pair the extension on the Mac: jantar pair --extension',
   extUnpair: 'Unpair on the Mac: jantar meetings unpair',
   // v0.5.3
-  folderTodos: "Only the Mac's CLI adds a todo by folder",
+  folderTodos: "Only the Mac's CLI lists a folder's todos",
   folderTodoCreate: "Only the Mac's CLI adds a todo by folder",
   notifyTest: 'Test alerts on the Mac: jantar notify test',
 };

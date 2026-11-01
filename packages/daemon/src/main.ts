@@ -24,7 +24,8 @@ Options:
   --no-terminal   turn the Terminal.app backend off (no osascript; no screen
                   peek, focus or sending)
   --read-only     only observe: refuse sending, focus, answering cards, the
-                  cswap poller and settings changes
+                  cswap poller, primes, Ask Claude, Ask's messages and
+                  settings changes (Life writes still work)
   -v, --version   print the version and exit
   -h, --help      print this help and exit
 `;

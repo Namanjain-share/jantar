@@ -54,7 +54,7 @@ describe('S6: the v0.5.3 routes are the Mac only', () => {
       expect(ErrorBodySchema.parse(res.json()).error).toEqual({ code: 'forbidden', message: LOCAL_ONLY_REFUSED[name] });
     }
     for (const spy of spies) expect(spy).not.toHaveBeenCalled();
-    expect(LOCAL_ONLY_REFUSED.folderTodos).toBe("Only the Mac's CLI adds a todo by folder");
+    expect(LOCAL_ONLY_REFUSED.folderTodos).toBe("Only the Mac's CLI lists a folder's todos");
     expect(LOCAL_ONLY_REFUSED.folderTodoCreate).toBe("Only the Mac's CLI adds a todo by folder");
     expect(LOCAL_ONLY_REFUSED.notifyTest).toBe('Test alerts on the Mac: jantar notify test');
   });
