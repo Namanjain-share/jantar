@@ -85,8 +85,9 @@ services:
       TERM: xterm-256color
       NODE_EXTRA_CA_CERTS: /certs/ca.pem
       FAKE_CLAUDE_CTL: /tmp/fake-claude
-      # Fleet off and Access refusals retry every 10 minutes; the suite waits seconds.
-      JANTAR_TEST_SLOW_RETRY_MS: '3000'
+      # Fleet off and Access refusals retry every 10 minutes, a removed server
+      # hourly; the suite waits seconds (the dialler's cap for tests).
+      JANTAR_NODE_RETRY_CAP_MS: '3000'
     networks: [fleet]
 
   node2:
@@ -97,7 +98,7 @@ services:
       TERM: xterm-256color
       NODE_EXTRA_CA_CERTS: /certs/ca.pem
       FAKE_CLAUDE_CTL: /tmp/fake-claude
-      JANTAR_TEST_SLOW_RETRY_MS: '3000'
+      JANTAR_NODE_RETRY_CAP_MS: '3000'
       FLEET_NO_TMUX: '1'
     networks: [fleet]
 

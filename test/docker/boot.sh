@@ -10,6 +10,8 @@
 #         each with its .claude.json) and folders in /work; jantard starts
 #         once `jantar node join` has written ~/.jantar/node/node.json.
 #         FLEET_NO_TMUX=1: the daemon is told tmux is not installed.
+# Each config.json written here says version 2, so no settings migration
+# runs (a version-less file reads as v0.3's, with its launch defaults).
 set -eu
 
 case "${1:-}" in
@@ -38,7 +40,7 @@ hub)
   mkdir -p "$JANTAR_HOME"
   chmod 700 "$JANTAR_HOME"
   if [ ! -f "$JANTAR_HOME/config.json" ]; then
-    printf '%s\n' '{"remote":{"mode":"cloudflare","publicUrl":"https://hub.fleet.test","port":7431},"fleet":{"enabled":true},"usage":{"poller":"off"}}' \
+    printf '%s\n' '{"version":2,"remote":{"mode":"cloudflare","publicUrl":"https://hub.fleet.test","port":7431},"fleet":{"enabled":true},"usage":{"poller":"off"}}' \
       > "$JANTAR_HOME/config.json"
     chmod 600 "$JANTAR_HOME/config.json"
   fi
@@ -52,7 +54,7 @@ node)
   if [ "${FLEET_NO_TMUX:-}" = 1 ] && [ ! -f "$state/config.json" ]; then
     mkdir -p "$state"
     chmod 700 "$state"
-    printf '%s\n' '{"bins":{"tmux":"/nonexistent/tmux"}}' > "$state/config.json"
+    printf '%s\n' '{"version":2,"bins":{"tmux":"/nonexistent/tmux"}}' > "$state/config.json"
   fi
   until [ -f "$state/node/node.json" ]; do sleep 0.5; done
   exec jantard

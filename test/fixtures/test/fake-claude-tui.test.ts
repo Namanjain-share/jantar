@@ -310,7 +310,8 @@ describe('fake interactive Claude: dialogs from DIALOG_FIXTURES', () => {
     expect(chosen).toMatchObject({ dialog: 'PERM_CREATE_2', row: 1, label: 'No' });
     const keys = (await t.records()).filter((r) => r.event === 'keys');
     expect(keys.map((k) => k.bytes)).toEqual([`${DOWN}\r`]);
-    expect(inputBox(await t.screen())).not.toBeNull();
+    // The record comes a moment before the redraw: wait for the box.
+    await t.screenWith((l) => inputBox(l) !== null, 'the input box back');
     await t.close();
   });
 
@@ -457,8 +458,9 @@ describe.skipIf(!HAS_SCRIPT)('fake interactive Claude under a pseudo-terminal (L
     expect(t.output).toContain('❯ hello');
     await sleep(AFTER_PASTE_MS);
     t.type('\r');
-    await until(async () => userTexts(await transcript(configDir, t.sid)).length === 1, 'the prompt');
+    await until(async () => (await transcript(configDir, t.sid)).some((e) => e.type === 'assistant'), 'the reply');
     expect(userTexts(await transcript(configDir, t.sid))).toEqual(['hello']);
+    // Idle again (a Ctrl+C during the turn would interrupt it instead): twice quits.
     t.type('\u0003\u0003');
     await until(async () => (await sessionFiles(configDir)).length === 0, 'the session file to go');
     await t.close();
