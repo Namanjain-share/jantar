@@ -22,6 +22,7 @@ import { createTestContext, fakePanes, type TestContext } from '../../src/core/t
 import { NullTerminalBackend } from '../../src/modes.js';
 import { PaneLookup } from '../../src/api/services.js';
 import {
+  URGENT_ANSWER_MS,
   URGENT_BODY,
   URGENT_DRAW_MS,
   URGENT_PROBE_GAP_MS,
@@ -39,6 +40,9 @@ const S = 1000;
 
 /** The other ask's command (a queued twin that checks other trees). */
 const OTHER = ["│ bash -c 'ls /tmp/demo/other'"];
+/** One command on one line, and as a narrower window wraps it (the box's `│` on each line). */
+const LONG = ["│ bash -c 'ls /tmp/demo/first-tree /tmp/demo/second-tree /tmp/demo/third-tree'"];
+const LONG_WRAPPED = ["│ bash -c 'ls /tmp/demo/first-tree /tmp/demo/second-tree", "│ /tmp/demo/third-tree'"];
 
 /**
  * A terminal that can only read the screen (S2): every write, the input box
@@ -50,6 +54,8 @@ class ReadOnlyTerminal implements TerminalBackend {
   reads = 0;
   screen: () => string = () => 'demo $ ';
   fail: Error | null = null;
+  /** While set, a read waits for it (a slow osascript). */
+  hold: Promise<void> | null = null;
   constructor(private readonly ctx: TestContext) {}
   async available() {
     return true;
@@ -60,6 +66,7 @@ class ReadOnlyTerminal implements TerminalBackend {
   async readScreen(_pane: Pane, opts?: { lines?: number }): Promise<OpResult<{ text: string; at: string; raw?: string }>> {
     this.reads += 1;
     expect(opts?.lines).toBe(60);
+    if (this.hold) await this.hold;
     if (this.fail) throw this.fail;
     const text = this.screen();
     return { ok: true, text, raw: text, at: this.ctx.clock.iso() };
@@ -93,6 +100,13 @@ class ReadOnlyTerminal implements TerminalBackend {
   }
 }
 
+/** How the ask is drawn: its command's lines, the window's columns, the pointer on the second row. */
+interface Look {
+  command?: readonly string[];
+  cols?: number;
+  down?: boolean;
+}
+
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 interface Sent {
@@ -110,6 +124,8 @@ interface Rig {
   events: DaemonEvent[];
   /** Claude's ask on screen with `left` seconds on its countdown now, ticking with the clock. */
   ask(left: number, command?: readonly string[]): void;
+  /** The same ask drawn anew, its countdown running on: another command's lines, window width or pointer row. */
+  redraw(look: Look): void;
   tick(ms: number): Promise<void>;
   /** The urgent pushes (those with a deadline). */
   urgent(): Sent[];
@@ -138,6 +154,13 @@ async function rig(opts: { notify?: Partial<Settings['notify']>; panes?: PaneFin
   const events: DaemonEvent[] = [];
   ctx.store.subscribe((ev) => events.push(ev));
   await router.start();
+  let ends = 0;
+  const draw = ({ down, ...look }: Look) => {
+    terminal.screen = () => {
+      const screen = workflowBashScreen(mmss(Math.max(0, Math.ceil((ends - ctx.clock.now()) / S))), look);
+      return down ? screen.replace(' ❯ 1. Yes\n   2. No', '   1. Yes\n ❯ 2. No') : screen;
+    };
+  };
   const r: Rig = {
     ctx,
     router,
@@ -146,9 +169,10 @@ async function rig(opts: { notify?: Partial<Settings['notify']>; panes?: PaneFin
     sent,
     events,
     ask(left, command) {
-      const ends = ctx.clock.now() + left * S;
-      terminal.screen = () => workflowBashScreen(mmss(Math.max(0, Math.ceil((ends - ctx.clock.now()) / S))), command ? { command } : {});
+      ends = ctx.clock.now() + left * S;
+      draw(command ? { command } : {});
     },
+    redraw: draw,
     async tick(ms) {
       ctx.clock.advance(ms);
       await router.whenIdle();
@@ -176,9 +200,14 @@ function subagentCard(r: Rig, over: Partial<PendingRequest> = {}): PendingReques
 }
 
 /** Claude says the session waits (the session file), since now. */
-function waiting(r: Rig) {
-  r.ctx.store.emit({ type: 'session.updated', sid: SID, data: { patch: { status: 'waiting', statusSince: r.ctx.clock.iso(), waitingFor: 'permission' } } });
-  r.ctx.store.emit({ type: 'session.waiting', sid: SID, data: { waitingFor: 'permission' } });
+function waiting(r: Rig, waitingFor = 'permission') {
+  r.ctx.store.emit({ type: 'session.updated', sid: SID, data: { patch: { status: 'waiting', statusSince: r.ctx.clock.iso(), waitingFor } } });
+  r.ctx.store.emit({ type: 'session.waiting', sid: SID, data: { waitingFor } });
+}
+
+/** Lets promise callbacks and the fake sender run, without waiting for a read that hangs. */
+async function settle() {
+  for (let i = 0; i < 3; i++) await new Promise((done) => setImmediate(done));
 }
 
 const logsOf = (r: Rig, msg: string) => r.ctx.log.records.filter((l) => l.msg === msg);
@@ -297,6 +326,31 @@ describe('S3: one ask, one episode', () => {
     expect(r.terminal.reads).toBe(2);
   });
 
+  it('the same ask with its pointer moved and its window resized is still one ask: two pushes in all, the second the repeat', async () => {
+    const r = await rig();
+    r.ask(110, LONG);
+    subagentCard(r);
+    await r.tick(URGENT_DRAW_MS);
+    expect(r.urgent()).toHaveLength(1);
+    // Arrow keys at the Mac, no answer; a parallel subagent's card for the session 12 s after the first read.
+    r.redraw({ command: LONG, down: true });
+    await r.tick(10.5 * S);
+    subagentCard(r, { agentId: 'agent-2' });
+    await r.tick(URGENT_DRAW_MS);
+    expect(r.terminal.reads).toBe(2);
+    expect(r.urgent()).toHaveLength(1);
+    // The window made narrower: the command's line and the countdown wrap anew. The repeat still sees the ask.
+    r.redraw({ command: LONG_WRAPPED, cols: 72, down: true });
+    await r.tick(49.5 * S - 13.5 * S);
+    expect(r.terminal.reads).toBe(3);
+    expect(logsOf(r, 'notification sent').map((l) => [l.fields.left, l.fields.repeat])).toEqual([
+      [109, false],
+      [61, true],
+    ]);
+    await r.tick(2 * 60 * S);
+    expect(r.urgent()).toHaveLength(2);
+  });
+
   it('a session waiting with the countdown and no card: the urgent push instead of the waiting one', async () => {
     const r = await rig();
     r.ask(118);
@@ -358,7 +412,7 @@ describe('S3: one ask, one episode', () => {
     expect(r.sent.map((x) => `${String(x.payload.group)}|${String(x.payload.title)}`)).toEqual(['urgent|demo-app · about 2 min to answer', 'needs|demo-app needs you']);
   });
 
-  it('two asks with the same countdown text read inside 10 s share the first answer; after that a new read', async () => {
+  it('a card opened after the last read never takes its answer: it reads again once 10 s allow; the same ask, still one push', async () => {
     const r = await rig();
     r.ask(110);
     subagentCard(r);
@@ -366,12 +420,70 @@ describe('S3: one ask, one episode', () => {
     subagentCard(r);
     await r.tick(URGENT_DRAW_MS);
     expect(r.terminal.reads).toBe(1);
-    await r.tick(URGENT_PROBE_GAP_MS);
+    await r.tick(URGENT_PROBE_GAP_MS - URGENT_DRAW_MS - 1);
+    expect(r.terminal.reads).toBe(1);
+    await r.tick(1); // 10 s after the first read
+    expect(r.terminal.reads).toBe(2);
+    expect(r.urgent()).toHaveLength(1);
+  });
+
+  it('the next ask inside 10 s of the last read gets its own read and push (the first had no repeat)', async () => {
+    const r = await rig();
+    r.ask(70); // 75 s or less: no repeat timer
     subagentCard(r);
     await r.tick(URGENT_DRAW_MS);
-    expect(r.terminal.reads).toBe(2);
-    // The same ask (one fingerprint): still one urgent push.
     expect(r.urgent()).toHaveLength(1);
+    // Answered at 4 s; the next subagent's ask shows at 5 s with its card.
+    await r.tick(2.5 * S);
+    r.terminal.screen = () => 'demo $ ';
+    await r.tick(S);
+    r.ask(115, OTHER);
+    subagentCard(r, { agentId: 'agent-2' });
+    await r.tick(URGENT_PROBE_GAP_MS - 5 * S + URGENT_DRAW_MS - 1);
+    expect(r.terminal.reads).toBe(1);
+    await r.tick(1); // 10 s after the first read
+    expect(r.terminal.reads).toBe(2);
+    expect(logsOf(r, 'notification sent').map((l) => [l.fields.left, l.fields.repeat])).toEqual([
+      [69, false],
+      [109, false],
+    ]);
+  });
+
+  it('a read that fails never leaves an answered ask hiding the next wait: the waiting push goes', async () => {
+    const r = await rig();
+    r.ask(110);
+    subagentCard(r);
+    waiting(r);
+    await r.tick(3 * S);
+    expect(r.sent).toHaveLength(1);
+    // Answered; nothing reads the screen. The session waits again with no card; its read fails.
+    r.ctx.store.emit({ type: 'session.updated', sid: SID, data: { patch: { status: 'working', statusSince: r.ctx.clock.iso() } } });
+    await r.tick(20 * S);
+    r.terminal.fail = Object.assign(new Error('read failed'), { code: 'ETIMEDOUT' });
+    waiting(r);
+    await r.tick(3 * S);
+    expect(r.terminal.reads).toBe(2);
+    expect(r.sent.map((x) => x.payload.group)).toEqual(['urgent', 'needs']);
+  });
+
+  it('a read still running after 3 s lets the waiting push go; the urgent one follows when the read comes in', async () => {
+    const r = await rig();
+    r.ask(110);
+    let release = () => {};
+    r.terminal.hold = new Promise<void>((done) => {
+      release = done;
+    });
+    waiting(r);
+    r.ctx.clock.advance(3 * S); // the settle: the read starts and hangs
+    await settle();
+    expect(r.terminal.reads).toBe(1);
+    expect(r.sent).toEqual([]);
+    r.ctx.clock.advance(URGENT_ANSWER_MS);
+    await settle();
+    expect(r.sent.map((x) => x.payload.group)).toEqual(['needs']);
+    release();
+    await r.router.whenIdle();
+    expect(r.sent.map((x) => x.payload.group)).toEqual(['needs', 'urgent']);
   });
 });
 
@@ -419,11 +531,65 @@ describe('what holds it', () => {
     expect(r.terminal.reads).toBe(1);
     expect(r.sent).toEqual([]);
 
+    // Without permission in the kinds the urgent push could never go: no read, and a question's wait is pushed.
     const k = await rig({ notify: { kinds: ['question', 'send-failed'] } });
     k.ask(110);
     subagentCard(k);
-    await k.tick(URGENT_DRAW_MS);
-    expect(k.sent).toEqual([]);
+    waiting(k, 'question');
+    await k.tick(3 * S);
+    expect(k.terminal.reads).toBe(0);
+    expect(k.sent.map((x) => `${String(x.payload.kind)}|${String(x.payload.group)}`)).toEqual(['question|needs']);
+  });
+
+  it('turned off during the draw wait: no read', async () => {
+    const r = await rig();
+    r.ask(110);
+    subagentCard(r);
+    await r.tick(URGENT_DRAW_MS - 1);
+    await r.ctx.settings.patch({ notify: { urgent: false } });
+    await r.tick(URGENT_PROBE_GAP_MS);
+    expect(r.terminal.reads).toBe(0);
+    expect(r.panes.asked).toEqual([]);
+    expect(r.sent).toEqual([]);
+  });
+
+  it("a card's read that failed is tried once more 10 s later while the card is open", async () => {
+    const r = await rig();
+    r.ask(110);
+    r.panes.pane = 'timeout';
+    subagentCard(r);
+    await r.tick(URGENT_DRAW_MS);
+    expect(r.panes.asked).toEqual([SID]);
+    r.panes.pane = PANE;
+    await r.tick(URGENT_PROBE_GAP_MS);
+    expect(r.terminal.reads).toBe(1);
+    expect(logsOf(r, 'notification sent').map((l) => l.fields.left)).toEqual([99]);
+    // Once only: a second failure is left alone.
+    const twice = await rig({ panes: fakePanes('timeout') });
+    twice.ask(110);
+    subagentCard(twice);
+    await twice.tick(URGENT_DRAW_MS);
+    await twice.tick(3 * URGENT_PROBE_GAP_MS);
+    expect(twice.panes.asked).toEqual([SID, SID]);
+    // The card answered (resolved) before the retry: no second read.
+    const done = await rig({ panes: fakePanes('timeout') });
+    done.ask(110);
+    const card = subagentCard(done);
+    await done.tick(URGENT_DRAW_MS);
+    done.ctx.store.emit({ type: 'pending.resolved', sid: SID, data: { id: card.id, state: 'closed' } });
+    await done.tick(2 * URGENT_PROBE_GAP_MS);
+    expect(done.panes.asked).toEqual([SID]);
+  });
+
+  it('a repeat whose read fails sends nothing more', async () => {
+    const r = await rig();
+    r.ask(110);
+    subagentCard(r);
+    await r.tick(URGENT_DRAW_MS);
+    r.terminal.fail = Object.assign(new Error('read failed'), { code: 'ETIMEDOUT' });
+    await r.tick(2 * 60 * S);
+    expect(r.terminal.reads).toBe(2);
+    expect(r.urgent()).toHaveLength(1);
   });
 
   it("each device's kinds apply: a phone that chose questions only gets none", async () => {
@@ -486,5 +652,48 @@ describe('what holds it', () => {
     subagentCard(s); // its draw wait is pending
     await s.router.stop();
     expect(s.ctx.clock.pending()).toBe(0);
+
+    // A card's draw wait goes with its session: no read after session.removed.
+    const w = await rig();
+    await w.ctx.settings.patch({ notify: { reminders_min: [] } });
+    w.ask(110);
+    subagentCard(w);
+    expect(w.ctx.clock.pending()).toBe(1);
+    w.ctx.store.emit({ type: 'session.removed', sid: SID, data: {} });
+    expect(w.ctx.clock.pending()).toBe(0);
+    await w.tick(URGENT_PROBE_GAP_MS);
+    expect(w.panes.asked).toEqual([]);
+  });
+});
+
+describe('the probe', () => {
+  it("keys the ask by what it asks: the pointer and the window's width don't change it, another command does", async () => {
+    const ctx = createTestContext();
+    ctx.store.emit({ type: 'session.added', sid: SID, data: { session: makeSession() } });
+    const terminal = new ReadOnlyTerminal(ctx);
+    const probe = createCountdownProbe(ctx, { terminal, panes: fakePanes(PANE) });
+    const keyOf = async (screen: string) => {
+      terminal.screen = () => screen;
+      const a = await probe(SID);
+      if (a === null || a === 'none') throw new Error('no countdown');
+      return a.ask;
+    };
+    const first = await keyOf(workflowBashScreen('1:50', { command: LONG }));
+    expect(await keyOf(workflowBashScreen('1:20', { command: LONG }).replace(' ❯ 1. Yes\n   2. No', '   1. Yes\n ❯ 2. No'))).toBe(first);
+    expect(await keyOf(workflowBashScreen('1:10', { command: LONG_WRAPPED, cols: 72 }))).toBe(first);
+    expect(await keyOf(workflowBashScreen('1:50', { command: OTHER }))).not.toBe(first);
+  });
+
+  it('times the read from before it: a slow read errs early on the deadline', async () => {
+    const ctx = createTestContext();
+    ctx.store.emit({ type: 'session.added', sid: SID, data: { session: makeSession() } });
+    const terminal = new ReadOnlyTerminal(ctx);
+    terminal.screen = () => {
+      ctx.clock.advance(2 * S); // the read takes 2 s; the screen is what it saw at its end
+      return workflowBashScreen('1:50');
+    };
+    const before = ctx.clock.now();
+    const probe = createCountdownProbe(ctx, { terminal, panes: fakePanes(PANE) });
+    expect(await probe(SID)).toMatchObject({ left: 110, at: before });
   });
 });

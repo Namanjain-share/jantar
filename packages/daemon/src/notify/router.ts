@@ -19,14 +19,17 @@
  *   `notify.webpush|mac|telegram`. Life pushes do not come through here
  *   (life/push.ts sends them with direct.ts), but if one ever did, mute
  *   still could not silence a medicine.
- * - v0.5.3, the urgent alert (countdown.ts, while `notify.urgent` is on):
- *   when a subagent-info card opens, and before a waiting push, the
- *   session's screen is read once for Claude's 2-minute auto-block
- *   countdown. One ask gets one urgent `permission` push with its deadline
- *   (and at most one repeat); while it is open the session's plain waiting
- *   push is not sent. It goes through the same filters as every push
- *   (kinds, mute, channels, each device's kinds). Without `terminal` and
- *   `panes` there is no urgent alert.
+ * - v0.5.3, the urgent alert (countdown.ts, while `notify.urgent` is on and
+ *   `notify.kinds` holds permission, the kind it goes out as): when a
+ *   subagent-info card opens (once more while it is open if the read
+ *   failed), and before a waiting push, the session's screen is read once
+ *   for Claude's 2-minute auto-block countdown. One ask gets one urgent
+ *   `permission` push with its deadline (and at most one repeat); while that
+ *   read shows it open the session's plain waiting push is not sent. A read
+ *   that failed or took over URGENT_ANSWER_MS lets the waiting push go. It
+ *   goes through the same filters as every push (kinds, mute, channels,
+ *   each device's kinds). Without `terminal` and `panes` there is no urgent
+ *   alert.
  */
 import type { Alert, DaemonEvent, NotifyKind, PendingRequest, State } from '@jantar/protocol';
 import type { DaemonContext, NotificationRouter, Notifier, PaneFinder, TerminalBackend, TimerId, Unsubscribe } from '../contracts.js';
@@ -150,7 +153,7 @@ export class NotificationRouterImpl implements NotificationRouter {
       this.countdown = new CountdownWatch({
         clock: this.ctx.clock,
         probe: createCountdownProbe({ store: this.ctx.store, clock: this.ctx.clock, log: this.log }, { terminal, panes }),
-        enabled: () => this.ctx.settings.get().notify.urgent,
+        enabled: () => this.urgentOn(),
         push: (u) => this.onUrgent(u),
         track: (p) => this.track(p),
       });
@@ -309,7 +312,7 @@ export class NotificationRouterImpl implements NotificationRouter {
   private onCardOpened(p: PendingRequest): void {
     if (cardKind(p) === null) {
       // Subagent info: shown in the app, never pushed. Hooks can't answer it, so it may be Claude's countdown.
-      if (this.urgentOn()) this.countdown?.check(p.sid, p.createdAt);
+      if (this.urgentOn()) this.countdown?.check(p.sid, p.createdAt, { retry: () => this.ctx.store.getState().pending[p.id]?.state === 'open' });
       return;
     }
     const now = this.ctx.clock.now();
@@ -353,8 +356,13 @@ export class NotificationRouterImpl implements NotificationRouter {
       this.settle.delete(key);
       if (!still() || !this.once(key)) return;
       // v0.5.3: Claude's countdown on screen sends the urgent push instead.
-      if (this.countdown && this.urgentOn()) this.countdown.check(sid, since, (open) => open || send());
-      else send();
+      if (this.countdown && this.urgentOn()) {
+        this.countdown.check(sid, since, {
+          then: (open) => {
+            if (!open) send();
+          },
+        });
+      } else send();
     };
     const settleMs = this.ctx.settings.get().notify.settle_ms;
     if (settleMs <= 0) fire();
@@ -456,8 +464,10 @@ export class NotificationRouterImpl implements NotificationRouter {
 
   // ---- the urgent alert (v0.5.3) ------------------------------------------------
 
+  /** notify.urgent, and permission in notify.kinds: without it the urgent push could never go out, so nothing is read. */
   private urgentOn(): boolean {
-    return this.ctx.settings.get().notify.urgent;
+    const n = this.ctx.settings.get().notify;
+    return n.urgent && n.kinds.includes('permission');
   }
 
   private onUrgent(u: UrgentPush): void {

@@ -62,19 +62,26 @@ running with at least 20 seconds left, your phone gets one push:
   tick on the lock screen. It expires with the countdown, so a late push
   never arrives saying "answer now".
 - **One repeat** at about a minute left, only if the same ask is still on
-  screen. Never a third.
-- No separate "needs you" push for that ask: the urgent one covers it.
+  screen. Never a third. Moving the arrow keys at the Mac or resizing the
+  window doesn't make it a new ask.
+- No separate "needs you" push for that ask: the urgent one covers it. If
+  the read fails, or takes longer than 3 seconds, the "needs you" push goes
+  anyway: two pushes rather than none.
 
 It goes out as a permission push, so the mute holds it, and a device that
-turned permission pushes off gets none. Tap it to open the session; the
-dock counts the seconds down and the rows answer the ask
+turned permission pushes off gets none. With permission off in the Mac's
+kinds there is no urgent alert at all: nothing is read, and the session's
+own push goes as before. Tap it to open the session; the dock counts the
+seconds down and the rows answer the ask
 ([Answering from the phone](phone-control.md)).
 
 What the read does: at most one screen read per session every 10 seconds,
-plus one for the repeat. It never types, and nothing it reads is kept,
-logged or sent. With the terminal off (`--no-terminal`) there is no urgent
-alert. Turn it off with `jantar notify urgent off`; such asks then get the
-plain "needs you" push.
+plus one for the repeat, and one more 10 seconds later if a read for an
+ask's card failed. It never types, and nothing it reads is kept, logged or
+sent. With the terminal off (`--no-terminal`) there is no urgent alert.
+Turn it off with `jantar notify urgent off`; such asks then get the plain
+"needs you" push. The daemon remembers which asks it pushed only while it
+runs: restarted during a countdown, it may push that ask once more.
 
 ## jantar notify
 
@@ -96,9 +103,9 @@ Muted: no
 A test push goes to every device by Web Push, past the Mac's kinds and the
 mute (you asked for it at the Mac). Each device keeps its own kinds: one
 that turned Done off in Devices › Notifications gets no Done test. It says
-"Sent to 1 device." or "No device got it." With Jantar open on the phone,
-a test plays that group's tone. The test runs on the Mac only: a phone
-cannot send one.
+"Sent to 1 device." or "No device got it." and why (Web Push off, or no
+device for it). With Jantar open on the phone, a test plays that group's
+tone. The test runs on the Mac only: a phone cannot send one.
 
 The switches change only at the Mac (or from an admin device), like every
 `notify` setting ([Configuration](configuration.md)).
