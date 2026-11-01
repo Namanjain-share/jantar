@@ -26,7 +26,7 @@
   <div class="frame">
     <div class="prose">
       <h1 class="h1 h1--page">Privacy: the Jantar Meetings extension</h1>
-      <p class="lbl">extension v{{ext-version}} · last updated 31 October 2026</p>
+      <p class="lbl">extension v{{ext-version}} · last updated 1 November 2026</p>
 
       <div class="summary">
         <p>The extension sends nothing to us: there is no Jantar server. It talks only to Jantar on your own Mac, at <code>http://127.0.0.1</code>. One thing leaves your Mac, and only so the summary can be written: a meeting's transcript text goes to Anthropic through Claude Code on your own account. Screenshots never leave the Mac.</p>
@@ -44,7 +44,7 @@
 
       <section aria-labelledby="p-keeps">
         <h2 class="h3" id="p-keeps">What it keeps, and where</h2>
-        <p>For each meeting, Jantar on your Mac keeps: its name, the site, the project and people you gave it, when it started and ended, every caption line with its speaker and time, your screenshots (JPEG), and the summary with its decisions and action items. The text is in <code>meetings.db</code> and the images in <code>meetings/</code> inside your Jantar state folder (<code>~/.jantar</code>). The extension itself keeps only its pairing key and its settings, in Chrome's storage for the extension.</p>
+        <p>For each meeting, Jantar on your Mac keeps: its name, the site, the project and people you gave it, when it started and ended, every caption line with its speaker and time, your screenshots (JPEG), and the summary with its decisions and action items. The text is in <code>meetings.db</code> and the images in <code>meetings/</code> inside your Jantar state folder (<code>~/.jantar</code>). The extension itself keeps its pairing key and its settings in Chrome's storage for the extension and, until Chrome closes, a record of the last screenshot try for the popup's Settings: when, which control and tab, the step it ended at, Chrome's own message and the status Jantar answered. That record holds no page address, title or picture, and is never sent.</p>
       </section>
 
       <section aria-labelledby="p-leaves">
@@ -56,7 +56,7 @@
         <h2 class="h3" id="p-perms">Permissions, and why each is there</h2>
         <dl class="ledger ledger--keys ledger--perm">
           <div><dt><code>activeTab</code></dt><dd>To take a screenshot of the meeting tab when you click the Jantar icon or press the shortcut.</dd></div>
-          <div><dt><code>storage</code></dt><dd>To keep the pairing key and settings.</dd></div>
+          <div><dt><code>storage</code></dt><dd>To keep the pairing key and settings, and the last screenshot try until Chrome closes.</dd></div>
           <div><dt>Access to <code>http://127.0.0.1</code></dt><dd>To send captions and screenshots to Jantar on your Mac.</dd></div>
           <div><dt>Page script on Meet and Teams</dt><dd>To read the captions after Start notes, and to show the camera button.</dd></div>
           <div><dt>Optional: all sites</dt><dd>Asked once, only if you allow it, so the camera button can take a screenshot without a click on the toolbar icon first. Chrome words the prompt for the widest case ("Read and change all your data on all websites"); the page script still runs only on Meet and Teams, and the extension photographs only the meeting tab, only when you ask. You can narrow it again in Chrome's Site access settings.</dd></div>
