@@ -15,7 +15,8 @@
  *   project and its screen, Medicines, Food with weight, Cafés, Finance,
  *   Intel with a hostile item, More and the start sheet with Resume.
  * - The sheets: todo, project, medicine, food (Type, Saved, Ask Claude with
- *   its rows), weight, target, café, expense, budget, bill, Intel's add.
+ *   its rows), weight, target, café, expense, budget, bill, Intel's add;
+ *   v0.5.3: Today's Add todo (due today) and its weight line's sheet.
  * - Done shows the 5 s Undo line and Undo takes it back; a saved food's
  *   "Added" Undo too; Ask Claude's rows save nothing until added. Delete
  *   asks nothing: Undo keeps the todo, and a delete left alone reaches the
@@ -243,7 +244,7 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     await d?.stop();
   }, perfBudgetMs(30_000));
 
-  it('Today: every section and the push warning; the dose sheet from a row and from a push', async () => {
+  it('Today: every section and the push warning; the dose sheet from a row and from a push; the quick adds', async () => {
     await inEachView('/today', async (page) => {
       await page.getByRole('heading', { name: 'Today', level: 1 }).waitFor();
       for (const section of ['Medicines', 'Due', 'Bills', 'Food', 'Claude', 'Life']) await page.getByRole('region', { name: section }).waitFor();
@@ -271,6 +272,16 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await check(page, watch, `the dose sheet from a push (${who})`);
       await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'detached' });
+      // v0.5.3: Due's Add todo starts a todo due today; the weight line (72.4 kg, logged today) opens the weight sheet.
+      await page.goto(`http://127.0.0.1:${d.port}/today`);
+      await sheet(page, watch, `the todo sheet from Today (${who})`, () => page.getByRole('region', { name: 'Due' }).getByRole('button', { name: 'Add todo' }).click(), async (form) => {
+        expect(await form.getByLabel('Due day').inputValue()).toBe(TODAY);
+        expect(await form.getByLabel('Due time').inputValue()).toBe('');
+        await form.getByRole('group', { name: 'Repeat' }).getByRole('button', { name: 'Year' }).waitFor();
+      });
+      await sheet(page, watch, `the weight sheet from Today (${who})`, () => page.getByRole('region', { name: 'Food' }).getByRole('button', { name: '72.4 kg' }).click(), async (form) => {
+        await form.getByText('Weight today, kg').waitFor();
+      });
     }
     // Looking is not logging.
     const meds = (await call('GET', `/v1/medicines?day=${TODAY}`)).body as MedicinesResponse;
