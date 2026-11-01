@@ -41,10 +41,12 @@
  *   secret or extension key: 404 while Fleet is off, 403 with any Origin.
  *
  * v0.8: `capture` routes (CAPTURE_PREFIX: the iOS Shortcut's door) read no
- * device cookie either; only a capture key, read on those paths alone. Wave
- * 0: the door answers 404 (it does not exist) until its gate is built: the
- * mode (tailscale or cloudflare), Intel on, an active key, no Origin, the
- * key checked before the body is read.
+ * device cookie either; only a capture key, read on those routes alone, in
+ * onRequest before any body is read (captureCaller): 404 (the route does not
+ * exist) unless `remote.mode` is tailscale or cloudflare, Intel is on and an
+ * active key exists; 403 with any Origin; 429 after too many wrong keys from
+ * the caller; 401 for a missing or bad key; 429 past the key's saves an hour
+ * or a day.
  *   The node link's upgrade never reaches Fastify (api/node-upgrade.ts).
  * - On a node, the `link` transport runs the hub's calls in-process (no
  *   listener): NODE_ROUTES only, as the device `hub.<phone's id>` with the
@@ -57,6 +59,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 import {
+  CAPTURE_KEY_HEADER,
   CAPTURE_PREFIX,
   DEVICE_COOKIE,
   DEVICE_SECRET_HEADER,
@@ -84,6 +87,7 @@ import {
 } from '@jantar/protocol';
 import { NODE_ROUTES, isNodeRoute, type NodeCallActor } from '@jantar/protocol/node-link';
 import type { FleetTarget, ForwardCall } from '../contracts.js';
+import { captureModeOk } from '../auth/capture-keys.js';
 import { proxyHeaderFor, rateLimitKey } from '../auth/client-ip.js';
 import { deviceSecretMatches } from '../auth/devices.js';
 import { hasScope } from '../auth/scopes.js';
@@ -363,6 +367,68 @@ function extensionCaller(
   return auth.extension;
 }
 
+/** v0.8: what the capture door answers without a working capture key (401). */
+export const CAPTURE_KEY_REFUSED = 'This needs a Jantar Shortcut key. Make one at the Mac: jantar intel shortcut add';
+/** v0.8: past a key's saves an hour or a day (429). */
+export const CAPTURE_LIMITED = 'Too many saves from this Shortcut; try again later';
+/** v0.8: past the wrong keys one caller may send in a window (429). */
+export const CAPTURE_BAD_KEYS = 'Too many wrong Shortcut keys; try again later';
+
+/**
+ * v0.8: the capture door exists: `remote.mode` puts TLS in front of the
+ * daemon (tailscale or cloudflare: loopback can't be reached from the
+ * iPhone and lan is plain http), the Intel shelf is on, and a capture key
+ * that works now exists.
+ */
+export function captureDoorOpen(s: Pick<ApiServices, 'ctx' | 'captureKeys'>): boolean {
+  const settings = s.ctx.settings.get();
+  return captureModeOk(settings) && settings.intel.enabled && s.captureKeys.activeCount() > 0;
+}
+
+function retryAfter(ms: number): Record<string, string> {
+  return { 'retry-after': String(Math.max(1, Math.ceil(ms / 1000))) };
+}
+
+/**
+ * v0.8: the capture door's gate. `first` (onRequest, before Fastify reads
+ * the body): the door exists (else 404), no Origin (403), the caller has not
+ * sent too many wrong keys (429), the key in CAPTURE_KEY_HEADER works (401,
+ * counted against the caller's `rateKey`: CF-Connecting-IP only in
+ * cloudflare mode), and the key's saves an hour and a day (429, counted on
+ * the key). The key is read here and nowhere else. Not `first` (the
+ * handler's pass): the same door and Origin checks, and the key already
+ * taken, counting nothing. Throws ApiError.
+ */
+export function captureCaller(auth: RequestAuth, req: FastifyRequest, s: ApiServices, first: boolean): void {
+  if (!captureDoorOpen(s)) throw new ApiError('not_found', 'not found');
+  if (req.headers.origin !== undefined) throw new ApiError('forbidden', 'browsers cannot call this');
+  if (!first) {
+    if (!auth.capture) throw new ApiError('unauthorized', CAPTURE_KEY_REFUSED);
+    return;
+  }
+  const bad = s.captureBadKeyLimiter.check(auth.rateKey);
+  if (!bad.ok) throw new ApiError('rate_limited', CAPTURE_BAD_KEYS, retryAfter(bad.retryAfterMs));
+  const r = s.captureKeys.authenticate(headerValue(req.headers[CAPTURE_KEY_HEADER]));
+  if (!r.ok) {
+    s.captureBadKeyLimiter.hit(auth.rateKey);
+    throw new ApiError('unauthorized', CAPTURE_KEY_REFUSED);
+  }
+  auth.capture = { id: r.key.id };
+  auth.actor = { kind: 'capture', keyId: r.key.id };
+  const who = actorName(auth);
+  for (const limiter of [s.captureHourLimiter, s.captureDayLimiter]) {
+    const left = limiter.check(who);
+    if (!left.ok) throw new ApiError('rate_limited', CAPTURE_LIMITED, retryAfter(left.retryAfterMs));
+  }
+  s.captureHourLimiter.hit(who);
+  s.captureDayLimiter.hit(who);
+}
+
+/** v0.8: the routes captureCaller gates, by `<method> <path pattern>` as Fastify matched them. */
+const CAPTURE_GATED: ReadonlySet<string> = new Set(
+  (Object.values(ROUTES) as RouteDef[]).filter((def) => def.scope === 'capture').map((def) => `${def.method} ${def.path}`),
+);
+
 /** The routes extensionCaller gates, by `<method> <path pattern>` as Fastify matched them. */
 const EXTENSION_GATED: ReadonlyMap<string, RouteDef> = new Map(
   (Object.entries(ROUTES) as [RouteName, RouteDef][])
@@ -390,8 +456,9 @@ export function gate(def: Pick<RouteDef, 'scope' | 'method'>, auth: RequestAuth,
     return;
   }
   if (def.scope === 'capture') {
-    // v0.8: the iOS Shortcut's door. Wave 0: it does not exist until its gate is built (lane C).
-    throw new ApiError('not_found', 'not found');
+    // v0.8: the iOS Shortcut's door; onRequest already took the key (captureCaller), before the body.
+    captureCaller(auth, req, s, false);
+    return;
   }
   if (def.scope === 'extension') {
     const bound = extensionCaller(def, auth, req, s)?.origin;
@@ -889,8 +956,9 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
       ),
     };
     const path = pathOf(req);
+    const capture = CAPTURE_GATED.has(`${req.routeOptions.method} ${req.routeOptions.url}`);
     // v0.6: a server's own paths read no device cookie (and no secret, nor the extension's key); v0.8: nor the capture door's.
-    if (isApiPath(path) && !path.startsWith(NODE_PREFIX) && !path.startsWith(CAPTURE_PREFIX)) {
+    if (isApiPath(path) && !path.startsWith(NODE_PREFIX) && !path.startsWith(CAPTURE_PREFIX) && !capture) {
       // A phone paired with ccw-v2 (imported with `jantar import-ccw-v2`) still sends the old cookie.
       const current = req.cookies?.[DEVICE_COOKIE];
       const key = current ?? req.cookies?.[LEGACY_DEVICE_COOKIE];
@@ -918,6 +986,17 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
       }
     }
     req.ccw = auth;
+    // v0.8: the capture door takes its key here, before Fastify reads the body; every refusal is answered now.
+    if (capture) {
+      try {
+        captureCaller(auth, req, s, true);
+      } catch (e) {
+        const r = toErrorReply(e);
+        await reply.code(r.status).headers(r.headers).send(r.body);
+        return reply;
+      }
+      return;
+    }
     // v0.5: a caller the extension's gate refuses anyway (from off this Mac, or without the key) is
     // refused here, before Fastify reads and parses its body: the screenshot route takes 6 MB. Matched
     // on the route Fastify found, so an encoded path cannot skip it. A device cookie goes on to the
