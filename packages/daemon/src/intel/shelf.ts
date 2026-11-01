@@ -11,7 +11,7 @@
  * those the search and type let through, so the chips still offer the other
  * choices while one is picked.
  *
- * v0.5.3 search (one implementation for the phone, `jantar intel list` and
+ * v0.5.3 search (one implementation for the phone, the CLI's list and
  * `jantar mcp`): the query's words (protocol searchTerms: a "quoted phrase"
  * is one) must every one appear, without case, in the title, what it is,
  * why it matters, the type, a tag, the link or a field value. Under `best`
