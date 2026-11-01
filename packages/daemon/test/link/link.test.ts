@@ -10,13 +10,13 @@
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FLEET_SECRET, linuxNodeSnapshot, nodeEvents, nodeSession, oversizedNodeSnapshot } from '@jantar/fixtures';
-import { NODE_CLOSE, NODE_LIMITS, type NodeCallReply, type NodeCallRequest } from '@jantar/protocol/node-link';
+import { NODE_CLOSE, NODE_LIMITS, NodeSnapshotSchema, type NodeCallReply, type NodeCallRequest } from '@jantar/protocol/node-link';
 import type { NodeFile, NodeLink } from '../../src/contracts.js';
 import type { FakeClock } from '../../src/core/clock.js';
 import type { TestContext } from '../../src/core/testing.js';
 import type { NodeSelf } from '../../src/link/handshake.js';
 import { createDialer } from '../../src/node/dialer.js';
-import { cleanup, joinNode, onCleanup, startHub, type TestHub } from './harness.js';
+import { cleanup, joinNode, onCleanup, pass, startHub, type TestHub } from './harness.js';
 
 afterEach(cleanup);
 
@@ -94,7 +94,8 @@ describe('a paired node links', () => {
     const r = hub.links[0]!;
     await vi.waitFor(() => expect(r.events).toHaveLength(1));
     expect(r.snapshots).toHaveLength(1);
-    expect(JSON.stringify(r.snapshots[0])).toBe(JSON.stringify(big));
+    // The hub hands on what its schema parsed: the same value, keys in schema order.
+    expect(sha256(Buffer.from(JSON.stringify(r.snapshots[0])))).toBe(sha256(Buffer.from(JSON.stringify(NodeSnapshotSchema.parse(big)))));
     // A second snapshot is never sent on one link.
     n.links[0]!.sendSnapshot(big);
     await new Promise((res) => setTimeout(res, 30));
@@ -158,9 +159,9 @@ describe('HubLink.call never rejects', () => {
     const slow = link.call(call('c1', 'getScreen'));
     const upload = link.call(call('u1', 'uploadCreate'), Buffer.from('tiny'));
     await vi.waitFor(() => expect(answers).toHaveLength(2));
-    hub.ctx.clock.advance(NODE_LIMITS.callTimeoutMs);
+    await pass(hub.ctx.clock, NODE_LIMITS.callTimeoutMs);
     expect(await slow).toEqual({ status: 504, body: { error: { code: 'node_timeout', message: expect.stringMatching(/^build-1|^node-1/) } } });
-    hub.ctx.clock.advance(NODE_LIMITS.longCallTimeoutMs - NODE_LIMITS.callTimeoutMs);
+    await pass(hub.ctx.clock, NODE_LIMITS.longCallTimeoutMs - NODE_LIMITS.callTimeoutMs);
     expect((await upload).status).toBe(504);
     // The node answers late: dropped, the link stays.
     answers[0]!({ status: 200, body: {} });

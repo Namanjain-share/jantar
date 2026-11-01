@@ -20,6 +20,9 @@ import { NODE_LIMITS } from '@jantar/protocol/node-link';
 /** WebSocket.OPEN. */
 export const WS_OPEN = 1;
 
+/** The error code `ws` gives a frame over maxPayload (it then closes 1009). Other `WS_ERR_*` codes are malformed frames. */
+export const WS_TOO_BIG = 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH';
+
 /** A WebSocket as `ws` gives it (client or server side). */
 export interface WsSocket {
   readonly readyState: number;

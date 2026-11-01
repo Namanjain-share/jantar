@@ -186,6 +186,8 @@ export interface RawPeer {
   closed: Promise<number>;
   send(frame: NodeFrame | Record<string, unknown>): void;
   sendText(text: string): void;
+  /** A binary frame (the link takes text only). */
+  sendBinary(bytes: Buffer): void;
   /** The next frame of kind `k` (already received or still to come). */
   next(k: NodeFrame['k']): Promise<NodeFrame>;
 }
@@ -210,6 +212,7 @@ function rawPeer(ws: WsSocket): RawPeer {
     closed,
     send: (frame) => ws.send(JSON.stringify(frame)),
     sendText: (text) => ws.send(text),
+    sendBinary: (bytes) => (ws as unknown as { send(b: Buffer): void }).send(bytes),
     next: (k) => {
       const seen = frames.find((f) => f.k === k);
       if (seen) return Promise.resolve(seen);
@@ -232,7 +235,32 @@ export async function rawSocket(url: string, headers: Record<string, string> = {
   return peer;
 }
 
-/** A raw node that answers the challenge with `node`'s key: resolves once welcomed. */
+/** How an upgrade to the link path was answered: open (101), or refused with a status, its headers and body. */
+export type Upgrade =
+  | { open: true; status: 101; peer: RawPeer }
+  | { open: false; status: number; headers: Record<string, string | string[] | undefined>; body: string };
+
+/** Try one upgrade to the hub's link path (for the budgets: a refusal is a value, not a throw). */
+export async function upgrade(url: string, headers: Record<string, string> = {}): Promise<Upgrade> {
+  const { WebSocket } = loadWs();
+  const ws = new WebSocket(linkUrl(url), { headers, followRedirects: false, perMessageDeflate: false });
+  cleanups.push(async () => ws.terminate());
+  return new Promise<Upgrade>((resolve, reject) => {
+    const peer = rawPeer(ws);
+    ws.on('open', () => resolve({ open: true, status: 101, peer }));
+    ws.on('unexpected-response', (_req, res) => {
+      const parts: Buffer[] = [];
+      res.on('data', (c: Buffer) => parts.push(c));
+      res.on('end', () => {
+        resolve({ open: false, status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(parts).toString('utf8') });
+        ws.terminate();
+      });
+    });
+    ws.on('error', reject);
+  });
+}
+
+/** A raw node that answers the challenge with `node`'s key (its `auth` sent; `next('welcome')` for the hub's answer). */
 export async function rawNode(
   url: string,
   node: NodeFile,
@@ -248,8 +276,33 @@ export async function rawNode(
   return { ...peer, hubNonce: challenge.nonce, nodeNonce, auth };
 }
 
-/** A hand-made hub: an http server whose link upgrades `onSocket` handles (no checks at all). */
-export async function rawHub(onSocket: (peer: RawPeer, req: IncomingMessage) => void): Promise<{ url: string; port: number; server: Server; upgrades: IncomingMessage[] }> {
+/** How a door answers an upgrade instead of opening it. */
+export interface Refusal {
+  status: number;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+function refuseRaw(socket: Duplex, a: Refusal): void {
+  const body = a.body ?? '';
+  const lines = [
+    `HTTP/1.1 ${a.status} Refused`,
+    `Content-Length: ${Buffer.byteLength(body)}`,
+    'Connection: close',
+    ...Object.entries(a.headers ?? {}).map(([k, v]) => `${k}: ${v}`),
+  ];
+  socket.end(`${lines.join('\r\n')}\r\n\r\n${body}`);
+}
+
+/**
+ * A hand-made hub: an http server whose link upgrades `onSocket` handles (no
+ * checks at all). `refuse` (the n-th upgrade, from 0) may answer one with a
+ * status instead, as a door in front of a hub would.
+ */
+export async function rawHub(
+  onSocket: (peer: RawPeer, req: IncomingMessage) => void,
+  opts: { refuse?: (req: IncomingMessage, n: number) => Refusal | null } = {},
+): Promise<{ url: string; port: number; server: Server; upgrades: IncomingMessage[] }> {
   const { WebSocketServer } = loadWs();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 * 1024 });
   const upgrades: IncomingMessage[] = [];
@@ -257,6 +310,8 @@ export async function rawHub(onSocket: (peer: RawPeer, req: IncomingMessage) => 
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     upgrades.push(req);
     if ((req.url ?? '').split('?')[0] !== NODE_LINK_PATH) return socket.destroy();
+    const refusal = opts.refuse?.(req, upgrades.length - 1);
+    if (refusal) return refuseRaw(socket, refusal);
     wss.handleUpgrade(req, socket, head, (ws) => {
       cleanups.push(async () => ws.terminate());
       onSocket(rawPeer(ws), req);
@@ -272,20 +327,12 @@ export async function rawHub(onSocket: (peer: RawPeer, req: IncomingMessage) => 
 }
 
 /** A plain http server answering every upgrade with `status`, `headers` and `body` (a door that refuses). */
-export async function refusingDoor(answer: (req: IncomingMessage) => { status: number; headers?: Record<string, string>; body?: string }): Promise<{ url: string; seen: IncomingMessage[] }> {
+export async function refusingDoor(answer: (req: IncomingMessage) => Refusal): Promise<{ url: string; seen: IncomingMessage[] }> {
   const seen: IncomingMessage[] = [];
   const server = createHttpServer((_req, res) => json(res, 404, errorBody('not_found', 'not found')));
   server.on('upgrade', (req: IncomingMessage, socket: Duplex) => {
     seen.push(req);
-    const a = answer(req);
-    const body = a.body ?? '';
-    const lines = [
-      `HTTP/1.1 ${a.status} Refused`,
-      `Content-Length: ${Buffer.byteLength(body)}`,
-      'Connection: close',
-      ...Object.entries(a.headers ?? {}).map(([k, v]) => `${k}: ${v}`),
-    ];
-    socket.end(`${lines.join('\r\n')}\r\n\r\n${body}`);
+    refuseRaw(socket, answer(req));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as AddressInfo).port;
@@ -294,6 +341,18 @@ export async function refusingDoor(answer: (req: IncomingMessage) => { status: n
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
   return { url: `http://127.0.0.1:${port}`, seen };
+}
+
+/**
+ * Move fake time on in 5 s steps with a little real time between them, so a
+ * ping's pong (or any frame in flight) arrives as it would in real time and
+ * the liveness checks never drop a healthy link.
+ */
+export async function pass(clock: FakeClock, ms: number): Promise<void> {
+  for (let left = ms; left > 0; left -= 5000) {
+    clock.advance(Math.min(5000, left));
+    await new Promise((r) => setTimeout(r, 15));
+  }
 }
 
 /** The hub key a join line pins. */

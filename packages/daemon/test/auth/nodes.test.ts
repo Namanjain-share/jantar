@@ -10,7 +10,7 @@ import { stat } from 'node:fs/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EXTENSION_IDLE_MS, PAIR_CODE_TTL_MS, type NodePairBody } from '@jantar/protocol';
 import { NODE_PROTO, decodeJoinToken } from '@jantar/protocol/node-link';
-import { JOIN_LINE_INVALID, NODE_CLAIMS_PER_MIN, NodeAuth } from '../../src/auth/nodes.js';
+import { JOIN_LINE_INVALID, MAX_OPEN_JOIN_LINES, NODE_CLAIMS_PER_MIN, NodeAuth } from '../../src/auth/nodes.js';
 import { FakeClock } from '../../src/core/clock.js';
 import { generateKeyPair, verifyPair } from '../../src/link/keys.js';
 import { cleanup, testCtx } from '../link/harness.js';
@@ -85,6 +85,22 @@ describe('NodeAuth.makeTokens', () => {
     }
     // Loopback http is the tests' door.
     expect(await auth.makeTokens({}, { hubUrl: 'http://127.0.0.1:7431', createdBy: 'cli' })).toMatchObject({ ok: true });
+  });
+
+  it('"mac" is never a server name', async () => {
+    const { auth } = await setup();
+    expect(await auth.makeTokens({ name: 'mac' }, { hubUrl: HUB_URL, createdBy: 'cli' })).toMatchObject({ ok: false, code: 'invalid_request' });
+  });
+
+  it('a printed line is never dropped for a newer one: past the lines waiting at once, new ones are refused', async () => {
+    const { auth, clock } = await setup();
+    const first = await lines(auth, { name: 'build', count: 20 });
+    await lines(auth, { name: 'web', count: MAX_OPEN_JOIN_LINES - 20 });
+    expect(await auth.makeTokens({ name: 'late' }, { hubUrl: HUB_URL, createdBy: 'cli' })).toMatchObject({ ok: false, code: 'conflict', reason: /^Too many join lines are waiting/ });
+    // The first line still pairs.
+    expect(await auth.pair(claimBody(first[0]!.token), { rateKey: 'k' })).toMatchObject({ ok: true });
+    clock.advance(PAIR_CODE_TTL_MS + 1);
+    expect((await lines(auth, { name: 'late' })).map((t) => t.name)).toEqual(['late']);
   });
 
   it('logs names and counts, never a code or a token', async () => {

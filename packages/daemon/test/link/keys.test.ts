@@ -91,6 +91,7 @@ describe("the hub's key", () => {
     const again = await loadOrCreateHubKey(p);
     expect(again.publicKey).toBe(first.publicKey);
     const pem = await readFile(p.hubKeyFile, 'utf8');
+    // Split, so the secrets scan never reads a key header in this file.
     expect(pem.startsWith(`${'-----'}BEGIN PRIVATE KEY-----`)).toBe(true);
     if (posix) {
       expect((await stat(p.hubKeyFile)).mode & 0o777).toBe(0o600);

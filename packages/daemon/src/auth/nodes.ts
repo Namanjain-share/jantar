@@ -3,8 +3,10 @@
  * these methods into the FleetService).
  *
  * - Join lines: one pairing code each (PairingService kind `node`: 128 bits,
- *   10 minutes, single use, only its sha256 kept, in memory), with the name
- *   the Mac gave it reserved beside the code's hash. Names
+ *   10 minutes, single use, only its sha256 kept, in memory; at most
+ *   MAX_OPEN_JOIN_LINES waiting, so a line once printed is never dropped for
+ *   a newer one), with the name the Mac gave it reserved beside the code's
+ *   hash. Names
  *   `^[a-z0-9][a-z0-9-]{0,23}$`, unique among live nodes and open join
  *   lines, never `mac`; default `node-<n>` (the lowest free n); `--count K`
  *   gives `<name>-1..K` (K <= 20; without a name, the K lowest free
@@ -46,6 +48,9 @@ export const JOIN_LINE_INVALID = 'this join line is not valid (used, expired or 
 /** Join lines per `jantar node pair --count`. */
 export const MAX_JOIN_LINES = 20;
 
+/** Join lines waiting at once (two full `--count 20`); past it a new one is refused, never an older one dropped. */
+export const MAX_OPEN_JOIN_LINES = 2 * MAX_JOIN_LINES;
+
 /** Pairing claims per caller per minute. */
 export const NODE_CLAIMS_PER_MIN = NODE_LIMITS.handshakesPerMin;
 
@@ -61,7 +66,7 @@ export class NodeAuth {
 
   constructor(private readonly ctx: Pick<DaemonContext, 'db' | 'clock' | 'log' | 'paths'>) {
     this.log = ctx.log.child({ part: 'fleet' });
-    this.pairing = new PairingService({ clock: ctx.clock, log: this.log, maxOpen: MAX_JOIN_LINES });
+    this.pairing = new PairingService({ clock: ctx.clock, log: this.log, maxOpen: MAX_OPEN_JOIN_LINES });
     this.claims = new SlidingWindowLimiter({ limit: NODE_CLAIMS_PER_MIN, windowMs: 60_000, clock: ctx.clock });
   }
 
@@ -115,6 +120,9 @@ export class NodeAuth {
     if (!url) return { ok: false, code: 'conflict', reason: 'Servers need a fixed front door. Set one up with jantar remote setup.' };
     const names = this.namesFor(body);
     if (!names.ok) return names;
+    if (this.pairing.openCount() + names.names.length > MAX_OPEN_JOIN_LINES) {
+      return { ok: false, code: 'conflict', reason: 'Too many join lines are waiting: use them, or make more once they run out (10 minutes).' };
+    }
     const key = await this.hubKey();
     const tokens: MachinesPairReply['tokens'] = names.names.map((name) => {
       const start = this.pairing.start({ kind: 'node', name, createdBy: opts.createdBy });

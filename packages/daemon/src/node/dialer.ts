@@ -47,7 +47,7 @@ import { BulkAssembler, bulkLane, decodeFrame, encodeFrame, sendWithBulk } from 
 import { authFrame, newNonce, thisNodeOs, welcomeValid, type NodeSelf } from '../link/handshake.js';
 import { accessHeaders, isJantarError, isTlsError } from '../link/join.js';
 import { privateKeyOf, readNodeFile } from '../link/keys.js';
-import { WS_OPEN, openLinkSocket, type WsSocket } from '../link/ws-client.js';
+import { WS_OPEN, WS_TOO_BIG, openLinkSocket, type WsSocket } from '../link/ws-client.js';
 
 /** Events held while the snapshot is still going out, at most (then the link is dropped and the next one starts with a snapshot). */
 const HELD_EVENTS_MAX = 10_000;
@@ -227,7 +227,10 @@ class Attempt {
     ws.on('unexpected-response', (_req, res) => this.refused(res.statusCode ?? 0, res));
     ws.on('error', (err: Error & { code?: string }) => {
       const code = typeof err.code === 'string' ? err.code : 'NETWORK';
-      this.ending ??= isTlsError(code) ? { kind: 'tls', error: code } : { kind: 'network', error: code };
+      // `ws` closes 1009 on a frame over maxPayload, 1002 on a malformed one; its own close then says 1006.
+      if (code === WS_TOO_BIG) this.ending ??= { kind: 'closed', code: NODE_CLOSE.tooBig };
+      else if (code.startsWith('WS_ERR_')) this.ending ??= { kind: 'protocol' };
+      else this.ending ??= isTlsError(code) ? { kind: 'tls', error: code } : { kind: 'network', error: code };
     });
     ws.on('ping', () => this.alive());
     ws.on('message', (data, isBinary) => this.onFrame(data, isBinary));

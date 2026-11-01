@@ -61,7 +61,7 @@ import type { NodeAuth } from '../auth/nodes.js';
 import { SlidingWindowLimiter, type RateLimitOptions } from '../auth/rate-limit.js';
 import { BulkAssembler, SNAPSHOT_BULK_ID, bulkLane, decodeFrame, encodeFrame, sendWithBulk } from '../link/codec.js';
 import { authValid, challengeFrame, newNonce, welcomeFrame } from '../link/handshake.js';
-import { WS_OPEN, linkServer, type WsServer, type WsSocket } from '../link/ws-client.js';
+import { WS_OPEN, WS_TOO_BIG, linkServer, type WsServer, type WsSocket } from '../link/ws-client.js';
 
 /** Late results remembered per link (a call that timed out may still be answered, its bulk included). */
 const LATE_KEPT = 64;
@@ -227,6 +227,11 @@ class LiveLink implements HubLink {
     private readonly gone: () => void,
   ) {
     ws.on('message', (data, isBinary) => this.onFrame(data, isBinary));
+    // `ws` refuses a frame over maxPayload (it closes 1009 and stops reading, so its own close says 1006).
+    ws.on('error', (err: Error & { code?: unknown }) => {
+      if (err.code === WS_TOO_BIG) this.protocol(NODE_CLOSE.tooBig, 'a frame over the size limit');
+      else if (typeof err.code === 'string' && err.code.startsWith('WS_ERR_')) this.protocol(NODE_CLOSE.protocol, 'a bad WebSocket frame');
+    });
     ws.on('pong', () => {
       this.alive = true;
     });

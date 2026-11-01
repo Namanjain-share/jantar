@@ -13,7 +13,7 @@
  * read-only node still refuses every write itself.
  */
 import type { NodeBackend } from '@jantar/protocol';
-import type { CallExecutor, Factories, NodeLinkService } from '../contracts.js';
+import type { CallExecutor, DaemonContext, Factories, NodeLinkService } from '../contracts.js';
 import { thisNodeOs } from '../link/handshake.js';
 import { createDialer, defaultSelf } from './dialer.js';
 import { createNodeFeed } from './feed.js';
@@ -24,7 +24,8 @@ export interface NodeLinkDeps {
   self?: { backend: NodeBackend; readOnly: boolean };
 }
 
-export const createNodeLink: Factories['nodeLink'] = (ctx, deps: NodeLinkDeps): NodeLinkService => {
+// Its own type, so a caller may pass `self`; still the factory daemon.ts wires.
+export const createNodeLink = ((ctx: DaemonContext, deps: NodeLinkDeps): NodeLinkService => {
   const os = thisNodeOs();
   const self = () => ({ ...defaultSelf(ctx, os), ...deps.self });
   const dialer = createDialer(ctx, ctx.paths.nodeFile, self);
@@ -40,4 +41,4 @@ export const createNodeLink: Factories['nodeLink'] = (ctx, deps: NodeLinkDeps): 
     stop: () => dialer.stop(),
     status: () => dialer.status(),
   };
-};
+}) satisfies Factories['nodeLink'];
