@@ -12,14 +12,19 @@
  *   `extension`). It reaches the extension's capture routes and nothing
  *   else; anywhere else the header is never read. The loopback peer and
  *   Host the gate also asks for there are extra conditions, never a grant.
+ * - v0.6: on a node, the `link` transport is the hub's calls, run in-process
+ *   (no listener): the caller is the phone as the hub forwarded it, a device
+ *   `hub.<device id>` with the phone's scopes, never stored. Nothing outside
+ *   the process can reach it.
  */
 import type { Device, Scope } from '@jantar/protocol';
+import type { NodeCallActor } from '@jantar/protocol/node-link';
 import type { Actor } from '../contracts.js';
 import type { AuthFailure } from '../auth/devices.js';
 import { actorId } from '../core/actor.js';
 import { ALL_SCOPES } from '../auth/scopes.js';
 
-export type Transport = 'tcp' | 'ctl';
+export type Transport = 'tcp' | 'ctl' | 'link';
 
 export interface RequestAuth {
   transport: Transport;
@@ -59,4 +64,25 @@ export function scopesOf(auth: RequestAuth): readonly Scope[] {
 /** Audit / decidedBy name of the caller. */
 export function actorName(auth: RequestAuth): string {
   return auth.actor ? actorId(auth.actor) : 'anonymous';
+}
+
+/**
+ * v0.6: the header that names one in-process `link` call (a random token the
+ * server's injector maps to its RequestAuth for that call only).
+ */
+export const LINK_CALL_HEADER = 'x-jantar-link-call';
+
+/** The device a forwarded call becomes on a node: `hub.<phone's id>`, the phone's scopes, never stored. */
+export function linkAuth(actor: NodeCallActor, at: string): RequestAuth {
+  const deviceId = `hub.${actor.deviceId}`;
+  const scopes = [...actor.scopes];
+  const device: Device = { id: deviceId, name: actor.deviceName, keyHash: '', scopes, createdAt: at, lastSeenAt: at };
+  return {
+    transport: 'link',
+    actor: { kind: 'device', deviceId, scopes },
+    device,
+    touched: false,
+    secretOk: true,
+    rateKey: `link:${deviceId}`,
+  };
 }

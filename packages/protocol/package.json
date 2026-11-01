@@ -19,6 +19,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./node-link": {
+      "@jantar/source": "./src/node-link.ts",
+      "types": "./dist/node-link.d.ts",
+      "default": "./dist/node-link.js"
+    },
     "./package.json": "./package.json"
   },
   "files": ["dist"],

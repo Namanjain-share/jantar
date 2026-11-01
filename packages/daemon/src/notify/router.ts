@@ -20,7 +20,7 @@
  *   (life/push.ts sends them with direct.ts), but if one ever did, mute
  *   still could not silence a medicine.
  */
-import type { Alert, DaemonEvent, NotifyKind, PendingRequest, State } from '@jantar/protocol';
+import { accountsOf, type Alert, type DaemonEvent, type NotifyKind, type PendingRequest, type State } from '@jantar/protocol';
 import type { DaemonContext, NotificationRouter, Notifier, TimerId, Unsubscribe } from '../contracts.js';
 import {
   alertNotification,
@@ -63,11 +63,18 @@ export interface RouterDeps {
 
 export type RouterContext = Pick<DaemonContext, 'store' | 'settings' | 'clock' | 'log' | 'db'>;
 
-/** For a limit push: which window ran out, when it resets, and the folders on that account. */
+/**
+ * For a limit push: which window ran out, when it resets, and the folders on that account.
+ * v0.6: on the alert's own machine (a server's account 1 is not the Mac's): its accounts
+ * (accountsOf) and its sessions only.
+ */
 export function limitContext(state: Readonly<State>, alert: Alert): LimitContext {
-  const account = alert.account ?? (alert.sid ? state.sessions[alert.sid]?.account : undefined) ?? undefined;
+  const session = alert.sid && Object.hasOwn(state.sessions, alert.sid) ? state.sessions[alert.sid] : undefined;
+  const account = alert.account ?? session?.account ?? undefined;
   if (account === undefined || account === null) return {};
-  const a = state.accounts[String(account)];
+  const node = alert.node ?? session?.node;
+  const accounts = accountsOf(state, node);
+  const a = Object.hasOwn(accounts, String(account)) ? accounts[String(account)] : undefined;
   const ctx: LimitContext = {};
   const full = a?.windows.find((w) => w.pct >= 100) ?? a?.windows.find((w) => w.kind === 'five_hour');
   if (full) {
@@ -76,7 +83,7 @@ export function limitContext(state: Readonly<State>, alert: Alert): LimitContext
     if (full.resetsAt) ctx.resetsAt = full.resetsAt;
   }
   const folders = Object.values(state.sessions)
-    .filter((s) => s.account === account && s.status !== 'ended')
+    .filter((s) => s.node === node && s.account === account && s.status !== 'ended')
     .map((s) => s.folder)
     .filter(Boolean);
   if (folders.length) ctx.folders = [...new Set(folders)];

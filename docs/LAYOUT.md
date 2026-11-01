@@ -244,3 +244,29 @@ only with screenshots on) and the hook cards (`session/Question.tsx`,
 `Permission.tsx`, `Plan.tsx`, 4.4 kB; a card would wait for its chunk the
 first time one opens). Raising `MAIN_JS_MAX` is a decision to record, not
 a fix.
+
+### v0.6 (in progress)
+
+Fleet: servers (Linux, WSL2, other Macs, and native Windows as a preview)
+paired with the Mac, each running its own Claude sessions on its own
+accounts, all on the one phone. Off until `jantar fleet on` at the Mac
+(`fleet.enabled`, a Mac-only switch); with it off the Mac behaves as v0.5.2.
+One codebase, two roles: a daemon whose state dir holds `node/node.json`
+is a node (`roleOf` in `config.ts`), else the hub. A node binds no TCP port,
+runs no Life, Intel, Meetings, primer, Rewrite or pushes (stand-ins in
+`modes.ts`), and dials the hub's own front door over one WebSocket
+(`@jantar/protocol/node-link`, a subpath the phone's bundle never imports;
+`ws` 8.22.0 in the daemon). The hub keeps each node's view in
+`state.nodes`, re-emits its checked and clipped events into its own store
+(`session.node` stamped), and forwards the phone's calls for a node's
+sessions through the node's own API (the `link` transport). The node link's
+upgrade is taken before Fastify (`api/node-upgrade.ts`), so the phone's
+event stream keeps its 4096-byte frames. jantar.db gains migration 5
+(`nodes`: public keys only). Every daemon reader of sessions goes through
+`localSessions` / `localSession`, so a server's session never reaches the
+Mac's own parts (`test/arch/v06-local-sessions.test.ts`). The parts `fleet`
+(hub) and `nodeLink` (node), the `link/` library, the tmux backend
+(`terminal/tmux/`, picked by `terminal/pick.ts` on a Linux node) and the
+config-dir accounts (`sources/cswap/dirs.ts`) start as inert stubs and fill
+in through the release; the Screen tab's picture loads lazily to make room
+in the first load.

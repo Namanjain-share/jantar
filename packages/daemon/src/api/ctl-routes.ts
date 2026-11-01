@@ -12,7 +12,9 @@
  * user and can reach this socket, so approvals come only from paired devices.
  */
 import { z } from 'zod';
+import { localSessions } from '@jantar/protocol';
 import type { FastifyInstance } from 'fastify';
+import type { DaemonRole, NodeLinkStatus } from '../contracts.js';
 import { ApiError, zodMessage } from './errors.js';
 import type { ApiServices } from './services.js';
 import type { DaemonMode } from '../modes.js';
@@ -45,13 +47,31 @@ export interface CtlStatus {
   notify: { webpush: boolean; mutedUntil: string | null; kinds: string[] };
   /** --read-only / --no-terminal (daemon.ts). */
   mode: DaemonMode;
+  /**
+   * v0.6: hub or node, and what `jantar node join` checks before it turns a
+   * machine into a node (paired phones, push subscriptions; a hub's paired
+   * servers). The counts above are the Mac's own sessions only.
+   */
+  role: DaemonRole;
+  pairedDevices: number;
+  pushSubscriptions: number;
+  /** Live pairings and those linked now (the hub's own view). */
+  nodes: { paired: number; online: number };
+  /** v0.6, on a node: its link to the hub (never a URL path, a secret or a key). */
+  node?: { name: string | null; hubHost: string | null; link: NodeLinkStatus['state']; lastClose: NodeLinkStatus['lastClose']; accessRefused: number };
 }
 
 export function ctlStatus(s: ApiServices, address: () => { host: string; port: number } | null): CtlStatus {
   const { ctx, deps } = s;
   const state = ctx.store.getState();
   const settings = ctx.settings.get();
-  const sids = Object.keys(state.sessions);
+  // v0.6: the Mac's own line; a server's sessions are its own (state.nodes).
+  const sids = Object.keys(localSessions(state));
+  const role: DaemonRole = s.mode.role ?? 'hub';
+  const devices = s.devices.list().filter((d) => !d.revokedAt).length;
+  const pushSubscriptions = ctx.db.pushSubs.list().length;
+  const views = Object.values(state.nodes ?? {});
+  const link = s.nodeLink.status();
   return {
     daemonVersion: ctx.version.daemon,
     protocol: ctx.version.protocol,
@@ -65,8 +85,8 @@ export function ctlStatus(s: ApiServices, address: () => { host: string; port: n
     counts: {
       sessions: sids.length,
       pending: Object.keys(state.pending).length,
-      devices: s.devices.list().filter((d) => !d.revokedAt).length,
-      pushSubscriptions: ctx.db.pushSubs.list().length,
+      devices,
+      pushSubscriptions,
       eventStreams: s.sockets.count(),
       pairingCodes: s.pairing.openCount(),
     },
@@ -74,7 +94,15 @@ export function ctlStatus(s: ApiServices, address: () => { host: string; port: n
     ccwLegacy: { present: deps.ccwLegacy.present() },
     web: { available: s.webAvailable, webHash: s.webHash },
     notify: { webpush: settings.notify.webpush, mutedUntil: settings.notify.muted_until, kinds: [...settings.notify.kinds] },
-    mode: { ...s.mode },
+    // As before v0.6: the role has its own field.
+    mode: { readOnly: s.mode.readOnly, terminal: s.mode.terminal },
+    role,
+    pairedDevices: devices,
+    pushSubscriptions,
+    nodes: { paired: ctx.db.nodes.list().filter((n) => n.revokedAt === null).length, online: views.filter((v) => v.online).length },
+    ...(role === 'node'
+      ? { node: { name: link.name, hubHost: link.hubHost, link: link.state, lastClose: link.lastClose, accessRefused: link.accessRefused } }
+      : {}),
   };
 }
 
@@ -86,7 +114,7 @@ export function registerCtlRoutes(app: FastifyInstance, s: ApiServices, address:
     return {
       socketPath: s.deps.hooks.socketPath,
       open: s.deps.hooks.open().length,
-      sessions: Object.values(state.sessions).map((x) => ({ sid: x.sid, folder: x.folder, hooks: s.deps.hooks.hasHooks(x.sid) })),
+      sessions: Object.values(localSessions(state)).map((x) => ({ sid: x.sid, folder: x.folder, hooks: s.deps.hooks.hasHooks(x.sid) })),
     };
   });
 

@@ -297,6 +297,9 @@ export function fakeApi(over: Partial<Api> = {}) {
     meetingSummarize: notBuilt(),
     meetingItemTodo: notBuilt(),
     meetingItemUntodo: notBuilt(),
+    // v0.6 Fleet: no paired machines unless the test passes its own.
+    machinesList: vi.fn(async () => ({ machines: [] })),
+    machineRevoke: notBuilt(),
   };
   return Object.assign(base, over) as typeof base & Api;
 }

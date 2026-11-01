@@ -93,6 +93,13 @@ export interface CommandParts {
   cswap: string | null;
   /** ctx.bins.claude (claude mode). */
   claude: string | null;
+  /**
+   * v0.6, accountsMode "dirs" (a paired Linux or Windows server without
+   * cswap): the picked account's config dir, typed as `env
+   * CLAUDE_CONFIG_DIR=<dir>` before claude, with no `--`; null or absent for
+   * ~/.claude (and in every other mode). Lane L2 builds that line.
+   */
+  configDir?: string | null;
 }
 
 /** `setup`: the Mac's launch settings or tools are at fault (cswap missing, a bad launch.csCommand), not the folder. */

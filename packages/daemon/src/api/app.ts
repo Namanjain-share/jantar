@@ -27,6 +27,24 @@
  * Control socket (0600 Unix socket, the CLI): the same REST API for routes
  * marked `ctl: true` (never approvals), as actor "cli" with every scope, plus
  * the /ctl/* routes. No cookies, no Origin.
+ *
+ * v0.6 Fleet:
+ * - On the hub, a route in NODE_ROUTES whose session, card, launch or
+ *   `?node=` names a paired server is forwarded there after the device,
+ *   scope, Origin, secret and localOnly checks: then a read-only hub refuses
+ *   writes, the body is validated and the Idempotency-Key checked but not
+ *   cached (the node's own cache decides replays), the call goes through
+ *   `s.fleet.forward`, and a write is audited with its node. The hub's own
+ *   switches and --no-terminal apply to its own sessions only. A `?node=`
+ *   naming no paired machine is 404, never run on the Mac instead.
+ * - `node` routes (NODE_PREFIX: a server's pairing claim) read no cookie,
+ *   secret or extension key: 404 while Fleet is off, 403 with any Origin.
+ *   The node link's upgrade never reaches Fastify (api/node-upgrade.ts).
+ * - On a node, the `link` transport runs the hub's calls in-process (no
+ *   listener): NODE_ROUTES only, as the device `hub.<phone's id>` with the
+ *   phone's scopes; no Host, cookie, Origin or secret (no browser); scope,
+ *   switches, read-only, zod, the node's own idempotency cache, handlers
+ *   and audit as on a Mac.
  */
 import fastifyCookie from '@fastify/cookie';
 import fastifyWebsocket from '@fastify/websocket';
@@ -39,9 +57,11 @@ import {
   EXTENSION_ID,
   EXTENSION_KEY_HEADER,
   EventsQuerySchema,
+  FLEET_COPY,
   IDEMPOTENCY_HEADER,
   LEGACY_DEVICE_COOKIE,
   MAX_BODY_BYTES,
+  NODE_PREFIX,
   ROUTES,
   errorBody,
   lifeOn,
@@ -53,6 +73,8 @@ import {
   type RouteName,
   type Settings,
 } from '@jantar/protocol';
+import { NODE_ROUTES, isNodeRoute, type NodeCallActor } from '@jantar/protocol/node-link';
+import type { FleetTarget, ForwardCall } from '../contracts.js';
 import { proxyHeaderFor, rateLimitKey } from '../auth/client-ip.js';
 import { deviceSecretMatches } from '../auth/devices.js';
 import { hasScope } from '../auth/scopes.js';
@@ -71,7 +93,7 @@ import {
   type ErrorReply,
 } from './errors.js';
 import { openEventStream } from './events-ws.js';
-import { actorName, cliAuth, type RequestAuth, type Transport } from './request.js';
+import { LINK_CALL_HEADER, actorName, cliAuth, type RequestAuth, type Transport } from './request.js';
 import { sessionOr404 } from './route-kit.js';
 import { ROUTE_IMPLS, isRawReply, type Call, type RouteImpl } from './routes.js';
 import { securityHeaders } from './security.js';
@@ -153,6 +175,8 @@ export const FEATURE_OFF: Readonly<Record<FeatureSwitch, { code: ErrorCode; mess
   intel: { code: 'forbidden', message: 'The Intel shelf is off. Turn it on at your Mac: jantar intel on' },
   // v0.5
   meetings: { code: 'forbidden', message: 'Meetings are off. Turn them on at your Mac: jantar meetings on' },
+  // v0.6
+  fleet: { code: 'forbidden', message: 'Fleet is off. Turn it on at your Mac: jantar fleet on' },
 };
 
 /** The switches of Life's routes: while life.db is broken they answer 503 (lifeStatus, lifeBackup and lifeRestore have none). */
@@ -170,6 +194,8 @@ export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<RouteName, string>>> = 
   lifeRestore: 'Restore Life on the Mac: jantar life restore <file>',
   extPairStart: 'Pair the extension on the Mac: jantar pair --extension',
   extUnpair: 'Unpair on the Mac: jantar meetings unpair',
+  // v0.6
+  machinesPair: 'Pair servers at the Mac: jantar node pair',
 };
 
 /** What an `extension` route answers without a valid extension key (401). */
@@ -306,6 +332,18 @@ const EXTENSION_GATED: ReadonlyMap<string, RouteDef> = new Map(
  */
 export function gate(def: Pick<RouteDef, 'scope' | 'method'>, auth: RequestAuth, req: FastifyRequest, s: ApiServices, name?: RouteName): void {
   if (auth.transport === 'ctl') return;
+  if (auth.transport === 'link') {
+    // v0.6: the hub's call, as the phone it forwarded: its scopes again; no browser is in the way here.
+    if (def.scope === 'public' || def.scope === 'extension' || def.scope === 'node') throw new ApiError('forbidden', 'not over the link');
+    if (!auth.device || !hasScope(auth.device.scopes, def.scope)) throw new ApiError('forbidden', `this device does not have the ${def.scope} scope`);
+    return;
+  }
+  if (def.scope === 'node') {
+    // v0.6: a server's own route. While Fleet is off it does not exist; a browser never gets here.
+    if (!s.ctx.settings.get().fleet.enabled) throw new ApiError('not_found', 'not found');
+    if (req.headers.origin !== undefined) throw new ApiError('forbidden', 'browsers cannot call this');
+    return;
+  }
   if (def.scope === 'extension') {
     const bound = extensionCaller(def, auth, req, s)?.origin;
     // The worker's GET carries no Origin; its POST carries the extension's.
@@ -398,17 +436,39 @@ function jsonParser(_req: FastifyRequest, body: string | Buffer, done: (err: Err
 }
 
 /**
+ * v0.6: the paired server a route goes to, or null for the Mac itself. Only
+ * NODE_ROUTES, never on the `link` transport (that is the node itself). A
+ * `?node=` that names no paired machine (or comes while Fleet is off) is
+ * 404: it never runs on the Mac instead.
+ */
+function forwardTarget(s: ApiServices, name: RouteName, transport: Transport, req: FastifyRequest): FleetTarget | null {
+  if (transport === 'link' || !isNodeRoute(name)) return null;
+  const query = (req.query ?? {}) as Record<string, unknown>;
+  const target = s.fleet.target(name, (req.params ?? {}) as Record<string, string>, query);
+  if (target) return target;
+  if (NODE_ROUTES[name] === 'query' && query.node !== undefined) throw new ApiError('not_found', 'no such machine');
+  return null;
+}
+
+/**
  * The pipeline's refusals that need no body: authentication, scope, Origin
  * and the device secret (gate, the extension's own gate included), `localOnly`,
  * the route's switch, a broken life.db or meetings.db, --read-only and
  * --no-terminal. Throws ApiError. A `rawBody` route runs it in `preParsing`
  * (before its body is read) and again in the handler; every other route in
- * the handler.
+ * the handler. v0.6: returns the paired server the route goes to, or null:
+ * a forwarded route skips the Mac's own switch, database and terminal
+ * checks (the node runs its own), and a read-only hub forwards no write.
  */
-function preBodyChecks(name: RouteName, def: RouteDef, auth: RequestAuth, req: FastifyRequest, s: ApiServices, transport: Transport): void {
+function preBodyChecks(name: RouteName, def: RouteDef, auth: RequestAuth, req: FastifyRequest, s: ApiServices, transport: Transport): FleetTarget | null {
   gate(def, auth, req, s, name);
-  if (def.localOnly && transport === 'tcp') {
+  if (def.localOnly && transport !== 'ctl') {
     throw new ApiError('forbidden', LOCAL_ONLY_REFUSED[name] ?? 'only the Mac (the jantar CLI) can do this');
+  }
+  const target = forwardTarget(s, name, transport, req);
+  if (target) {
+    if (s.mode.readOnly && def.method !== 'GET') throw new ApiError('forbidden', READ_ONLY_REASON);
+    return target;
   }
   if (!featureOn(def, s.ctx.settings.get())) {
     const off = FEATURE_OFF[def.feature as FeatureSwitch];
@@ -425,6 +485,28 @@ function preBodyChecks(name: RouteName, def: RouteDef, auth: RequestAuth, req: F
   }
   if (s.mode.readOnly && READ_ONLY_REFUSED.has(name)) throw new ApiError('forbidden', READ_ONLY_REASON);
   if (s.mode.terminal === 'off' && NO_TERMINAL_REFUSED.has(name)) throw new ApiError('not_implemented', NO_TERMINAL_REASON);
+  // v0.6: a node with no backend it can type with (native Windows): watch and cards only.
+  if (s.mode.terminal === 'none' && NO_TERMINAL_REFUSED.has(name)) throw new ApiError('not_implemented', FLEET_COPY.watchOnlyWindows(''));
+  return null;
+}
+
+/** v0.6: who a forwarded call is for: the phone (its scopes, never admin), or the hub's CLI. */
+function forwardActor(auth: RequestAuth): NodeCallActor {
+  if (auth.transport === 'ctl' || !auth.device) return { deviceId: 'cli', deviceName: 'cli', scopes: ['read', 'control', 'launch'] };
+  return { deviceId: auth.device.id, deviceName: auth.device.name, scopes: auth.device.scopes.filter((x) => x !== 'admin') };
+}
+
+/** v0.6: an Idempotency-Key a forwarded call may carry (it travels in the link's frame). */
+const FORWARD_IDEM_KEY = /^[\x21-\x7e]{1,128}$/;
+
+/** The first value of each query field, as the phone sent it (the node parses them again); `node` stays on the hub. */
+function forwardQuery(query: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries((query ?? {}) as Record<string, unknown>)) {
+    const first = Array.isArray(v) ? v[0] : v;
+    if (k !== 'node' && typeof first === 'string') out[k] = first;
+  }
+  return out;
 }
 
 /** The audit writers of one request: every row, and a refusal's row (writes from a paired device). */
@@ -504,9 +586,12 @@ function rawBodyHooks(s: ApiServices, transport: Transport, name: RouteName, def
     const auth = req.ccw;
     const rawParams = (req.params ?? {}) as Record<string, string>;
     try {
-      preBodyChecks(name, def, auth, req, s, transport);
+      const target = preBodyChecks(name, def, auth, req, s, transport);
       // An unknown or ended session never makes the daemon read a body (the store would refuse it after).
-      if (rawParams.sid !== undefined && sessionOr404(s, rawParams.sid).status === 'ended') throw new ApiError('not_found', 'no such session');
+      // v0.6: a paired server's session too, before its upload is forwarded.
+      if (rawParams.sid !== undefined && sessionOr404(s, rawParams.sid, { nodeOk: target !== null }).status === 'ended') {
+        throw new ApiError('not_found', 'no such session');
+      }
       // Nor does a bad query (the upload's ?ext=); the handler parses it again.
       parseWith(def.query, req.query ?? {}, 'query');
       if (mediaType(req.headers['content-type']) !== 'application/octet-stream') throw new ApiError('unsupported_media_type', UPLOAD_MEDIA_TYPE);
@@ -551,8 +636,9 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
       const { audit, auditRefusal } = auditorFor(s, transport, name, def, impl, auth, rawParams);
 
       let call: Call;
+      let target: FleetTarget | null;
       try {
-        preBodyChecks(name, def, auth, req, s, transport);
+        target = preBodyChecks(name, def, auth, req, s, transport);
         const idemHeader = req.headers[IDEMPOTENCY_HEADER];
         call = {
           params: parseWith(def.params, rawParams, 'path'),
@@ -565,7 +651,10 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
         } as Call;
         if (raw) call.raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
         if (typeof idemHeader === 'string' && idemHeader !== '') call.idempotencyKey = idemHeader;
-        if (transport === 'tcp') {
+        if (target && call.idempotencyKey !== undefined && !FORWARD_IDEM_KEY.test(call.idempotencyKey)) {
+          throw new ApiError('invalid_request', 'invalid Idempotency-Key: 1 to 128 visible characters');
+        }
+        if (transport !== 'ctl') {
           const body = call.body;
           const field = CTL_ONLY_FIELDS[name]?.find((f) => typeof body === 'object' && body !== null && Object.hasOwn(body, f));
           if (field) throw new ApiError('invalid_request', `invalid body at ${field}: only the Mac's CLI sends it`);
@@ -589,6 +678,30 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
       } catch (e) {
         auditRefusal(e);
         throw e;
+      }
+
+      if (target) {
+        // v0.6: the node runs it, behind its own switches and guards; only its idempotency cache replays.
+        const fwd: ForwardCall = { route: name as ForwardCall['route'], params: { ...rawParams }, query: forwardQuery(req.query), actor: forwardActor(auth) };
+        if (raw) fwd.raw = call.raw ?? Buffer.alloc(0);
+        else if (call.body !== undefined) fwd.body = call.body;
+        if (call.idempotencyKey !== undefined) fwd.idem = `${fwd.actor.deviceId}:${call.idempotencyKey}`;
+        const out = await s.fleet.forward(target, fwd);
+        if (isWrite) {
+          const err = (out.body as { error?: { code: string; message: string } } | null)?.error;
+          audit({
+            actor: actorName(auth),
+            action: name,
+            target: rawParams.sid ?? rawParams.id,
+            params: { node: target.nodeId },
+            result: auditResult(out.status),
+            detail: err ? `${err.code}: ${err.message}` : undefined,
+          });
+        }
+        if (auth.transport === 'tcp' && (auth.touched || auth.legacyCookie) && auth.deviceKey && out.status < 400) {
+          reply.setCookie(DEVICE_COOKIE, auth.deviceKey, s.cookieOptions());
+        }
+        return reply.code(out.status).send(out.body);
       }
 
       const run = async (): Promise<{ status: number; body: unknown }> => {
@@ -673,7 +786,8 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
   app.addContentTypeParser('application/json', { parseAs: 'string', bodyLimit: MAX_BODY_BYTES }, jsonParser);
 
   if (transport === 'tcp') await app.register(fastifyCookie);
-  await app.register(fastifyWebsocket, {
+  // v0.6: the link app has no sockets of its own (the node link is the hub's, api/node-upgrade.ts).
+  if (transport !== 'link') await app.register(fastifyWebsocket, {
     options: { maxPayload: 4096, handleProtocols: selectSocketProtocol },
     errorHandler: (error: Error, socket: WsLike) => {
       s.log.warn('event stream error', { error: error.message });
@@ -688,6 +802,18 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
   app.addHook('onRequest', async (req, reply) => {
     if (transport === 'ctl') {
       req.ccw = cliAuth();
+      return;
+    }
+    if (transport === 'link') {
+      // v0.6: the caller the server's injector registered for this one call (api/server.ts).
+      const token = headerValue(req.headers[LINK_CALL_HEADER]);
+      const auth = token === undefined ? undefined : s.linkCalls.get(token);
+      if (!auth) {
+        req.ccw = { transport: 'link', actor: null, device: null, touched: false, rateKey: 'link' };
+        await reply.code(401).send(errorBody('unauthorized', 'unknown link call'));
+        return reply;
+      }
+      req.ccw = auth;
       return;
     }
     if (!s.origin.hostAllowed(req.headers.host)) {
@@ -707,7 +833,8 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
       ),
     };
     const path = pathOf(req);
-    if (isApiPath(path)) {
+    // v0.6: a server's own paths read no device cookie (and no secret, nor the extension's key).
+    if (isApiPath(path) && !path.startsWith(NODE_PREFIX)) {
       // A phone paired with ccw-v2 (imported with `jantar import-ccw-v2`) still sends the old cookie.
       const current = req.cookies?.[DEVICE_COOKIE];
       const key = current ?? req.cookies?.[LEGACY_DEVICE_COOKIE];
@@ -786,11 +913,11 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
   });
 
   // GET /healthz: public liveness (no data).
-  app.get(ROUTES.health.path, async () => ({ ok: true, protocol: s.ctx.version.protocol, daemonVersion: s.ctx.version.daemon }));
+  if (transport !== 'link') app.get(ROUTES.health.path, async () => ({ ok: true, protocol: s.ctx.version.protocol, daemonVersion: s.ctx.version.daemon }));
 
   // WS /v1/events
   const ev = ROUTES.events;
-  app.get(
+  if (transport !== 'link') app.get(
     ev.path,
     {
       websocket: true,
@@ -813,10 +940,12 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
 
   for (const [name, def] of Object.entries(ROUTES) as [RouteName, RouteDef][]) {
     if (name === 'health' || name === 'events') continue;
+    // v0.6: the link serves the routes a hub forwards, and nothing else.
+    if (transport === 'link' && !isNodeRoute(name)) continue;
     const impl = ROUTE_IMPLS[name];
     if (!impl) throw new Error(`no handler for route ${name}`);
     const raw = def.rawBody;
-    if (raw && (transport === 'tcp' || def.ctl)) {
+    if (raw && (transport !== 'ctl' || def.ctl)) {
       // v0.4.2: its own scope, so its parser and error words reach no other route.
       await app.register(async (scope) => {
         scope.removeAllContentTypeParsers();

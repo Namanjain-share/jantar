@@ -105,6 +105,13 @@ describe('code splitting', () => {
     expect(readFileSync(join(src, 'ui/screens/session/attach/glyph.tsx'), 'utf8')).toContain("import('./glyph-icons.js')");
   });
 
+  it("keeps the Screen tab's picture out of the main chunk (v0.6: room for Fleet; screenshots on loads it)", () => {
+    const lazyOnly = ['ui/screens/session/controls/ShotView.tsx', 'ui/screens/session/controls/useShot.ts'];
+    for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
+    expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
+    expect(readFileSync(join(src, 'ui/screens/Session.tsx'), 'utf8')).toContain("import('./session/controls/ShotView.js')");
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");

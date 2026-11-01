@@ -30,6 +30,13 @@
  * v0.5 adds a call per phone Meetings route. The `/v1/ext/` routes are the
  * Chrome extension's (its own key, from the Mac itself): never called here.
  * A meeting's screenshot comes back as a Blob, like a file.
+ *
+ * v0.6 (Fleet): every folder, start-sheet and usage call takes an optional
+ * `node` (a paired server's id), sent as `?node=`: the Mac forwards it there.
+ * Absent, the call is the Mac's own, exactly as before. Sessions, cards and
+ * launches stay keyed by their own ids (the Mac knows which server has
+ * them). The Machines list and Remove are the admin's /v1/machines calls;
+ * pairing a server happens at the Mac only.
  */
 import {
   DEVICE_SECRET_HEADER,
@@ -63,6 +70,8 @@ import {
   type MeetingPatch,
   type MeetingsList,
   type MeetingsStatus,
+  type MachineResponse,
+  type MachinesResponse,
   type MedicineBody,
   type MedicinePatch,
   type MedicinesResponse,
@@ -208,7 +217,8 @@ export interface Api {
   decide(id: string, body: DecisionBody, idempotencyKey?: string): Promise<DecisionResponse>;
   getAccounts(): Promise<AccountsResponse>;
   getPlan(): Promise<PlanResponse>;
-  refreshUsage(): Promise<UsageRefreshResponse>;
+  /** `node` (v0.6): a paired server's cswap, asked there. */
+  refreshUsage(opts?: NodeOpt): Promise<UsageRefreshResponse>;
   mute(minutes: number): Promise<MuteResponse>;
   pairStart(body: PairStartBody): Promise<PairStartResponse>;
   /** Pair this browser. The device secret in the reply is stored (credential.ts), not returned. */
@@ -241,16 +251,18 @@ export interface Api {
   sessionChanges(sid: string): Promise<SessionChangesResponse>;
   sessionChange(sid: string, changeId: string): Promise<SessionChangeResponse>;
 
-  // --- v0.3 Folders and new sessions
-  foldersRoots(): Promise<FilesRootsResponse>;
-  foldersList(q: { root: string; path?: string; after?: string; showHidden?: boolean }): Promise<FoldersListResponse>;
-  foldersRecent(): Promise<FoldersRecentResponse>;
-  foldersPin(body: FolderPinBody): Promise<void>;
-  foldersCreate(body: FolderCreateBody, idempotencyKey?: string): Promise<FolderCreateResponse>;
+  // --- v0.3 Folders and new sessions (v0.6: `node` runs each on a paired server)
+  foldersRoots(opts?: NodeOpt): Promise<FilesRootsResponse>;
+  foldersList(q: { root: string; path?: string; after?: string; showHidden?: boolean } & NodeOpt): Promise<FoldersListResponse>;
+  foldersRecent(opts?: NodeOpt): Promise<FoldersRecentResponse>;
+  foldersPin(body: FolderPinBody, opts?: NodeOpt): Promise<void>;
+  foldersCreate(body: FolderCreateBody, idempotencyKey?: string, opts?: NodeOpt): Promise<FolderCreateResponse>;
   /** `flags`: only the picks the sheet changed; the daemon fills the rest (last used, then launch.defaultFlags). `resume` (v0.4): a past conversation's id. */
-  launchPreview(q: { root: string; path?: string; account?: number | 'auto'; flags?: Partial<LaunchFlags>; name?: string; resume?: string }): Promise<LaunchPreview>;
+  launchPreview(
+    q: { root: string; path?: string; account?: number | 'auto'; flags?: Partial<LaunchFlags>; name?: string; resume?: string } & NodeOpt,
+  ): Promise<LaunchPreview>;
   /** The Idempotency-Key is required: keep one per hold, so a retry never opens a second window. */
-  launchStart(body: LaunchStartBody, idempotencyKey: string): Promise<LaunchJobResponse>;
+  launchStart(body: LaunchStartBody, idempotencyKey: string, opts?: NodeOpt): Promise<LaunchJobResponse>;
   launchGet(id: string): Promise<LaunchGetResponse>;
   launchList(opts?: { active?: boolean }): Promise<LaunchListResponse>;
   launchAnswer(id: string, body: LaunchAnswerBody, idempotencyKey?: string): Promise<LaunchJobResponse>;
@@ -321,7 +333,7 @@ export interface Api {
   intelSources(): Promise<IntelSourcesResponse>;
 
   // --- v0.4 Resume: a folder's past conversations (launchPreview and launchStart take `resume`)
-  launchHistory(q: { root: string; path?: string }): Promise<LaunchHistoryResponse>;
+  launchHistory(q: { root: string; path?: string } & NodeOpt): Promise<LaunchHistoryResponse>;
 
   // --- v0.4.2 The screen path and attachments. `idempotencyKey`: one per tap, kept only to retry after a network failure.
   /** Answer the terminal dialog the phone showed (its fingerprint); 409 conflict when the Mac shows another. */
@@ -347,6 +359,15 @@ export interface Api {
   /** Add action item `n` to its project's todos: the reply is the todo's id. */
   meetingItemTodo(id: string, n: number, idempotencyKey?: string): Promise<IdReply>;
   meetingItemUntodo(id: string, n: number, idempotencyKey?: string): Promise<OkReply>;
+
+  // --- v0.6 Fleet (admin): the paired machines, and Remove (two taps). Pairing is at the Mac only.
+  machinesList(): Promise<MachinesResponse>;
+  machineRevoke(id: string, idempotencyKey?: string): Promise<MachineResponse>;
+}
+
+/** v0.6: which machine a folder, start-sheet or usage call is for (absent: the Mac). */
+export interface NodeOpt {
+  node?: string;
 }
 
 /** What pairClaim returns: the claim reply without its device secret. */
@@ -503,7 +524,7 @@ export function createApi(opts: ApiOptions = {}): Api {
     decide: (id, body, idempotencyKey) => call(ROUTES.decidePending, { params: { id }, body, idempotencyKey }),
     getAccounts: () => call(ROUTES.listAccounts),
     getPlan: () => call(ROUTES.getPlan),
-    refreshUsage: () => call(ROUTES.refreshUsage, { body: {} }),
+    refreshUsage: (o = {}) => call(ROUTES.refreshUsage, { body: {}, ...nodeQuery(o) }),
     mute: (minutes) => call(ROUTES.muteNotify, { body: { minutes } }),
     pairStart: (body) => call(ROUTES.pairStart, { body }),
     pairClaim: async (body) => {
@@ -548,13 +569,13 @@ export function createApi(opts: ApiOptions = {}): Api {
     sessionChanges: (sid) => call(ROUTES.sessionChanges, { params: { sid } }),
     sessionChange: (sid, changeId) => call(ROUTES.sessionChange, { params: { sid, changeId } }),
 
-    foldersRoots: () => call(ROUTES.foldersRoots),
-    foldersList: (q) => call(ROUTES.foldersList, { query: { root: q.root, path: q.path, after: q.after, showHidden: flag(q.showHidden) } }),
-    foldersRecent: () => call(ROUTES.foldersRecent),
-    foldersPin: async (body) => {
-      await call(ROUTES.foldersPin, { body });
+    foldersRoots: (o = {}) => call(ROUTES.foldersRoots, nodeQuery(o)),
+    foldersList: (q) => call(ROUTES.foldersList, { query: { root: q.root, path: q.path, after: q.after, showHidden: flag(q.showHidden), node: q.node } }),
+    foldersRecent: (o = {}) => call(ROUTES.foldersRecent, nodeQuery(o)),
+    foldersPin: async (body, o = {}) => {
+      await call(ROUTES.foldersPin, { body, ...nodeQuery(o) });
     },
-    foldersCreate: (body, idempotencyKey) => call(ROUTES.foldersCreate, { body, ...(idempotencyKey ? { idempotencyKey } : {}) }),
+    foldersCreate: (body, idempotencyKey, o = {}) => call(ROUTES.foldersCreate, { body, ...(idempotencyKey ? { idempotencyKey } : {}), ...nodeQuery(o) }),
     launchPreview: (q) =>
       call(ROUTES.launchPreview, {
         query: {
@@ -567,9 +588,10 @@ export function createApi(opts: ApiOptions = {}): Api {
           model: q.flags?.model,
           name: q.name,
           resume: q.resume,
+          node: q.node,
         },
       }),
-    launchStart: (body, idempotencyKey) => call(ROUTES.launchStart, { body, idempotencyKey }),
+    launchStart: (body, idempotencyKey, o = {}) => call(ROUTES.launchStart, { body, idempotencyKey, ...nodeQuery(o) }),
     launchGet: (id) => call(ROUTES.launchGet, { params: { id } }),
     launchList: (o = {}) => call(ROUTES.launchList, { query: { active: flag(o.active) } }),
     launchAnswer: (id, body, idempotencyKey) => call(ROUTES.launchAnswer, { params: { id }, body, ...(idempotencyKey ? { idempotencyKey } : {}) }),
@@ -644,7 +666,7 @@ export function createApi(opts: ApiOptions = {}): Api {
     intelCapture: (body, k) => call(ROUTES.intelCapture, { body, ...key(k) }),
     intelSources: () => call(ROUTES.intelSources),
 
-    launchHistory: (q) => call(ROUTES.launchHistory, { query: { root: q.root, path: q.path } }),
+    launchHistory: (q) => call(ROUTES.launchHistory, { query: { root: q.root, path: q.path, node: q.node } }),
 
     sessionDialog: (sid, body, k) => call(ROUTES.sessionDialog, { params: { sid }, body, ...key(k) }),
     sessionKeypad: async (sid, body, k) => {
@@ -670,7 +692,15 @@ export function createApi(opts: ApiOptions = {}): Api {
     meetingSummarize: (id, k) => call(ROUTES.meetingSummarize, { params: { id }, ...key(k) }),
     meetingItemTodo: (id, n, k) => call(ROUTES.meetingItemTodo, { params: { id, n: String(n) }, ...key(k) }),
     meetingItemUntodo: (id, n, k) => call(ROUTES.meetingItemUntodo, { params: { id, n: String(n) }, ...key(k) }),
+
+    machinesList: () => call(ROUTES.machinesList),
+    machineRevoke: (id, k) => call(ROUTES.machineRevoke, { params: { id }, ...key(k) }),
   };
+}
+
+/** v0.6: `?node=` when the call is for a paired server; nothing for the Mac's own. */
+function nodeQuery(o: NodeOpt): { query?: Query } {
+  return o.node ? { query: { node: o.node } } : {};
 }
 
 /** An Idempotency-Key the caller kept, if any (call() makes a new one otherwise). */

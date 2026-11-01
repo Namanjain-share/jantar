@@ -34,7 +34,7 @@
  * would not find them.
  */
 import { join } from 'node:path';
-import { LAUNCH_HISTORY_LIMIT, PastSessionSchema, type AccountId, type LaunchHistoryQuery, type PastSession } from '@jantar/protocol';
+import { LAUNCH_HISTORY_LIMIT, PastSessionSchema, localSession, type AccountId, type LaunchHistoryQuery, type PastSession } from '@jantar/protocol';
 import type { Actor, DaemonContext, FilesService, LaunchResult, SessionSource } from '../contracts.js';
 import { fsx, isDirEntry, listDir, readRange } from '../sources/lib/fsx.js';
 import { encodeProjectDir } from '../sources/transcripts/reader.js';
@@ -254,8 +254,9 @@ async function readHead(path: string): Promise<string | null> {
 
 /** A running session has this id. */
 export function isLive(ctx: DaemonContext, id: string): boolean {
-  const sessions = ctx.store.getState().sessions;
-  return Object.hasOwn(sessions, id) && sessions[id]?.status !== 'ended';
+  // v0.6: the Mac's own sessions (a server's conversation is resumed there).
+  const s = localSession(ctx.store.getState(), id);
+  return s !== undefined && s.status !== 'ended';
 }
 
 /** `folder`'s past conversations (a realpath), newest first, with their first lines; only those recorded in it. */

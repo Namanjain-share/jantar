@@ -33,6 +33,7 @@
  */
 import {
   REWRITE_TEXT_MAX,
+  localSession,
   type Account,
   type AccountId,
   type Alert,
@@ -181,7 +182,8 @@ export class RewriteServiceImpl implements RewriteService {
     if (this.stopped) return { ok: false, code: 'unavailable', reason: 'Rewrite is not running' };
     const settings = this.ctx.settings.get().rewrite;
     if (!settings.enabled) return { ok: false, code: 'refused', reason: REWRITE_OFF_REASON };
-    const session = this.ctx.store.getState().sessions[req.sid];
+    // v0.6: Rewrite reads the session's transcript here and spends this Mac's account: its own sessions only.
+    const session = localSession(this.ctx.store.getState(), req.sid);
     if (!session) return { ok: false, code: 'not_found', reason: 'no such session' };
     const text = req.text.trim();
     if (!text) return { ok: false, code: 'refused', reason: 'There is nothing to rewrite.' };
@@ -375,7 +377,7 @@ export class RewriteServiceImpl implements RewriteService {
       } else {
         // Built once, and only once an account is there to run it.
         if (!built) {
-          const session = this.ctx.store.getState().sessions[rec.job.sid] ?? rec.session;
+          const session = localSession(this.ctx.store.getState(), rec.job.sid) ?? rec.session;
           built = await this.context.build(rec.job.sid, session, rec.input ?? '');
         }
         if (signal.aborted) return { ok: false, failure: 'cancelled' };

@@ -44,6 +44,7 @@
  * v0.5.2: that text may come in two parts (around the time in Claude's
  * countdown), each its own argv item after the bytes.
  */
+import { localSession } from '@jantar/protocol';
 import type { ControlKey, Pane, PaneForeground } from '@jantar/protocol';
 import type {
   DaemonContext,
@@ -170,7 +171,7 @@ export class TerminalAppBackend implements TerminalBackend {
     let tty = normalizeTty(target.tty);
     let pid = target.pid;
     if (target.sid && (!tty || pid === undefined)) {
-      const s = this.ctx.store.getState().sessions[target.sid];
+      const s = localSession(this.ctx.store.getState(), target.sid);
       if (s) {
         tty ??= normalizeTty(s.tty);
         pid ??= s.pid;

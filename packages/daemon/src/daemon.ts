@@ -15,26 +15,52 @@
  *      is off)
  *   4. startServices() in that order; stop() runs them down in reverse.
  *
+ * v0.6 Fleet: the role decides the wiring (config.ts roleOf: a node when
+ * <state dir>/node/node.json exists).
+ * - hub: as above, plus `fleet` after notifications and before api (inert
+ *   while settings fleet.enabled is off). The terminal is Terminal.app.
+ * - node: ccwLegacy (inert) -> sessions -> transcripts -> transcriptWatcher
+ *   -> usage -> hooks -> terminal (terminal/pick.ts: tmux on Linux, none on
+ *   Windows) -> writer -> files (policy only) -> launcher -> controls -> api
+ *   (the control socket and the link app, no TCP) -> nodeLink. No Changes,
+ *   Rewrite, Life, Intel, Meetings, primer or pushes (modes.ts stand-ins,
+ *   which open no file and start no timer); `notifiers` is [].
+ *
  * main.ts calls startDaemon() with the command-line flags; the end-to-end
  * tests call it with a synthetic HOME and a scripted terminal, so both run
  * exactly this wiring.
  */
+import { errorBody } from '@jantar/protocol';
 import type {
+  ChangesService,
   Clock,
   DaemonContext,
   DbOpener,
+  FilesService,
+  IntelService,
+  LifeService,
+  LinkInjector,
   Logger,
+  MeetingsService,
+  NodeLinkService,
   Notifier,
+  NotificationRouter,
   Parts,
   ProcessProbe,
+  RewriteService,
+  Service,
   TerminalBackend,
 } from './contracts.js';
-import type { Env } from './config.js';
+import { roleOf, type Env } from './config.js';
 import { createDaemonContext } from './context.js';
 import { startServices, type NamedService } from './lifecycle.js';
 import { DAEMON_LOG_FILES, LogRotator } from './log-rotate.js';
 import {
   NullTerminalBackend,
+  inertCcwLegacy,
+  nodeOffParts,
+  offFleet,
+  offNodeLink,
   readOnlyHooks,
   readOnlyLauncher,
   readOnlyLifeBuilders,
@@ -52,7 +78,7 @@ import { createSessionSource } from './sources/claude-files/index.js';
 import { createUsageSource } from './sources/cswap/index.js';
 import { createTranscriptReader, createTranscriptWatcher } from './sources/transcripts/index.js';
 import { createHooksBridge } from './hooks/index.js';
-import { createTerminalAppBackend } from './terminal/terminal-app/index.js';
+import { pickTerminal } from './terminal/pick.js';
 import { createWriter } from './writer/index.js';
 import { createChangesService, createFilesService } from './files/index.js';
 import { createRewriteService } from './rewrite/index.js';
@@ -64,7 +90,10 @@ import { createIntelService } from './intel/index.js';
 import { createMeetingsService } from './meetings/index.js';
 import { createPrimer } from './primer/index.js';
 import { WebPushNotifier, createNotificationRouter, createNotifiers, type PushSender } from './notify/index.js';
-import { createApiServerWith, type ApiOptions } from './api/index.js';
+import { createApiServerWith, type ApiOptions, type ApiServerImpl } from './api/index.js';
+import { createFleet } from './fleet/index.js';
+import { createNodeLink } from './node/index.js';
+import { createExecutor } from './node/executor.js';
 
 export interface DaemonOptions {
   /** Environment (HOME, JANTAR_HOME, ...). Default process.env. */
@@ -74,8 +103,9 @@ export interface DaemonOptions {
   /** Refuse every action on sessions, terminals, cards, cswap and settings (see modes.ts). */
   readOnly?: boolean;
   /**
-   * Terminal backend. Default: Terminal.app. `false` turns terminal access off
-   * (--no-terminal); a function injects another backend (tests).
+   * Terminal backend. Default: Terminal.app (v0.6: on a node, by platform:
+   * terminal/pick.ts). `false` turns terminal access off (--no-terminal); a
+   * function injects another backend (tests).
    */
   terminal?: false | ((ctx: DaemonContext) => TerminalBackend);
   log?: Logger;
@@ -110,8 +140,6 @@ export interface RunningDaemon {
 /** Create every part, start the services in order, and return the running daemon. */
 export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaemon> {
   const readOnly = opts.readOnly === true;
-  const terminalMode: TerminalMode = opts.terminal === false ? 'off' : opts.terminal ? 'injected' : 'terminal-app';
-  const mode: DaemonMode = { readOnly, terminal: terminalMode };
 
   const ctxOpts: Parameters<typeof createDaemonContext>[0] = { openDb: opts.openDb ?? openSqliteDb };
   if (opts.env) ctxOpts.env = opts.env;
@@ -124,6 +152,12 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
   if (opts.proc) ctx = { ...ctx, proc: opts.proc };
   if (readOnly) ctx = { ...ctx, settings: readOnlySettings(ctx.settings) };
   const log = ctx.log;
+  // v0.6: a hub, or a node (a paired server) when node.json is there.
+  const role = roleOf(ctx.paths);
+  const picked = opts.terminal === undefined ? pickTerminal(ctx, role) : null;
+  const terminalMode: TerminalMode = opts.terminal === false ? 'off' : opts.terminal ? 'injected' : (picked?.mode ?? 'terminal-app');
+  const mode: DaemonMode = { readOnly, terminal: terminalMode, role };
+  const node = role === 'node';
 
   // 2. Persistence, before any part can emit.
   const unpersist = [persistEvents(ctx.store, ctx.db, log), persistPendingHistory(ctx.store, ctx.db, log)];
@@ -140,7 +174,8 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
   let stopServices: () => Promise<void>;
   try {
     // 3. Parts.
-    const ccwLegacy = createCcwLegacySource(ctx, {});
+    // v0.6: ccw is the Mac's legacy tool; a node never reads for it.
+    const ccwLegacy = node ? inertCcwLegacy() : createCcwLegacySource(ctx, {});
     const sessions = createSessionSource(ctx, {});
     const transcripts = createTranscriptReader(ctx, {});
     const transcriptWatcher = createTranscriptWatcher(ctx, { sessions, transcripts });
@@ -155,31 +190,46 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
         ? new NullTerminalBackend()
         : opts.terminal
           ? opts.terminal(ctx)
-          : createTerminalAppBackend(ctx, {});
+          : (picked?.backend ?? new NullTerminalBackend());
     const terminal = readOnly ? readOnlyTerminal(rawTerminal) : rawTerminal;
     const rawWriter = createWriter(ctx, { sessions, terminal, transcripts, hooks, ccwLegacy });
     const writer = readOnly ? readOnlyWriter(rawWriter) : rawWriter;
-    const webPush = opts.pushSender ? [new WebPushNotifier(ctx, { sender: opts.pushSender })] : createNotifiers(ctx, {});
-    const notifiers = [...webPush, ...(opts.extraNotifiers?.(ctx) ?? [])];
+    // v0.6: a node pushes nothing (the hub pushes for it, from the events it re-emits).
+    const webPush = node ? [] : opts.pushSender ? [new WebPushNotifier(ctx, { sender: opts.pushSender })] : createNotifiers(ctx, {});
+    const notifiers = node ? [] : [...webPush, ...(opts.extraNotifiers?.(ctx) ?? [])];
     // v0.3. Files only read, so --read-only leaves them be; the terminal and
     // writer wrappers above already cover keys, windows and slash commands.
-    const files = createFilesService(ctx, { sessions, notifiers });
-    const changes = createChangesService(ctx, { sessions, transcripts, files });
-    const rawRewrite = createRewriteService(ctx, { sessions, transcripts, hooks, usage, ccwLegacy, files, changes });
-    const rewrite = readOnly ? readOnlyRewrite(rawRewrite) : rawRewrite;
+    // v0.6: on a node only the path policy is used (the launcher's folders); its routes are never served there.
+    const files: FilesService = createFilesService(ctx, { sessions, notifiers });
+    const off = node ? nodeOffParts() : null;
+    const changes: ChangesService = off ? off.changes : createChangesService(ctx, { sessions, transcripts, files });
+    const rawRewrite: RewriteService = off ? off.rewrite : createRewriteService(ctx, { sessions, transcripts, hooks, usage, ccwLegacy, files, changes });
+    const rewrite = readOnly && !off ? readOnlyRewrite(rawRewrite) : rawRewrite;
     const rawLauncher = createLauncher(ctx, { sessions, terminal, writer, usage, ccwLegacy, files, notifiers });
     const launcher = readOnly ? readOnlyLauncher(rawLauncher) : rawLauncher;
     const controls = createControlsService(ctx, { sessions, terminal, writer, hooks, transcripts, ccwLegacy });
     // v0.4. Life writes are allowed under --read-only (it is about sessions), but not Ask Claude (it spends quota);
     // Life catches its own start errors.
     const lifeDeps = { sessions, usage, ccwLegacy, notifiers };
-    const life = readOnly ? buildLifeService(ctx, lifeDeps, readOnlyLifeBuilders(LIFE_MODULE_BUILDERS)) : createLifeService(ctx, lifeDeps);
-    const intel = createIntelService(ctx, { files });
+    const life: LifeService = off
+      ? off.life
+      : readOnly
+        ? buildLifeService(ctx, lifeDeps, readOnlyLifeBuilders(LIFE_MODULE_BUILDERS))
+        : createLifeService(ctx, lifeDeps);
+    const intel: IntelService = off ? off.intel : createIntelService(ctx, { files });
     // v0.5. Meetings are told --read-only, not wrapped: capture and edits are Jantar's own files, summaries spend quota.
-    const meetings = createMeetingsService(ctx, { life, usage, ccwLegacy }, { readOnly });
+    const meetings: MeetingsService = off ? off.meetings : createMeetingsService(ctx, { life, usage, ccwLegacy }, { readOnly });
     // v0.4. Primes free 5-hour windows while accounts.prime is on; never under --read-only (it runs cswap).
-    const primer = createPrimer(ctx, { usage, ccwLegacy }, { readOnly });
-    const notifications = createNotificationRouter(ctx, { notifiers });
+    const primer: Service | null = off ? null : createPrimer(ctx, { usage, ccwLegacy }, { readOnly });
+    const notifications: NotificationRouter = off ? off.notifications : createNotificationRouter(ctx, { notifiers });
+    // v0.6: the hub's Fleet part (inert while Fleet is off), or a node's link to its hub. The node's
+    // executor runs the hub's calls through the api's link app, which exists once the api has started.
+    const fleet = node ? offFleet() : createFleet(ctx, {});
+    let apiRef: ApiServerImpl | null = null;
+    const injector: LinkInjector = {
+      inject: (req) => apiRef?.link()?.inject(req) ?? Promise.resolve({ status: 503, body: errorBody('unavailable', 'jantard is starting') }),
+    };
+    const nodeLink: NodeLinkService = node ? createNodeLink(ctx, { executor: createExecutor(ctx, injector) }) : offNodeLink();
     const apiOpts: ApiOptions = { ...opts.api, mode };
     if (opts.port !== undefined) apiOpts.port = opts.port;
     const api = createApiServerWith(
@@ -202,9 +252,12 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
         life,
         intel,
         meetings,
+        fleet,
+        nodeLink,
       },
       apiOpts,
     );
+    apiRef = api;
     parts = {
       sessions,
       transcripts,
@@ -224,6 +277,8 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
       intel,
       meetings,
       notifications,
+      fleet,
+      nodeLink,
       api,
     };
 
@@ -232,25 +287,29 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     if (opts.rotateLogs !== false) {
       services.push(['logRotator', new LogRotator({ logsDir: ctx.paths.logsDir, clock: ctx.clock, log, files: DAEMON_LOG_FILES })]);
     }
-    services.push(
-      ['ccwLegacy', ccwLegacy],
-      ['sessions', sessions],
-      ['transcriptWatcher', transcriptWatcher],
-      ['usage', usage],
-      ['hooks', hooks],
-      ['writer', writer],
-      ['files', files],
-      ['changes', changes],
-      ['rewrite', rewrite],
-      ['launcher', launcher],
-      ['controls', controls],
-      ['life', life],
-      ['intel', intel],
-      ['meetings', meetings],
-      ['primer', primer],
-      ['notifications', notifications],
-      ['api', api],
-    );
+    services.push(['ccwLegacy', ccwLegacy], ['sessions', sessions], ['transcriptWatcher', transcriptWatcher], ['usage', usage], ['hooks', hooks]);
+    // v0.6: a backend with work of its own (tmux's pane tick) runs between the hooks and the writer.
+    const start = terminal.start?.bind(terminal);
+    const stop = terminal.stop?.bind(terminal);
+    if (start && stop) services.push(['terminal', { start, stop }]);
+    services.push(['writer', writer], ['files', files]);
+    if (node) {
+      services.push(['launcher', launcher], ['controls', controls], ['api', api], ['nodeLink', nodeLink]);
+    } else {
+      services.push(
+        ['changes', changes],
+        ['rewrite', rewrite],
+        ['launcher', launcher],
+        ['controls', controls],
+        ['life', life],
+        ['intel', intel],
+        ['meetings', meetings],
+        ...(primer ? ([['primer', primer]] as NamedService[]) : []),
+        ['notifications', notifications],
+        ['fleet', fleet],
+        ['api', api],
+      );
+    }
     stopServices = await startServices(services, log);
   } catch (e) {
     closeDb();
@@ -263,6 +322,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     port: parts.api.address()?.port,
     readOnly,
     terminal: terminalMode,
+    role,
     home: ctx.paths.home,
   });
 

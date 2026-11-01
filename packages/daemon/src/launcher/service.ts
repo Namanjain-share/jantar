@@ -42,6 +42,8 @@ import {
   LaunchNameSchema,
   launchFlagArgs,
   launchFlagsDangerous,
+  localSession,
+  localSessions,
   type AccountId,
   type LaunchAccount,
   type LaunchAnswerBody,
@@ -74,6 +76,7 @@ import {
   usageLine,
   type AccountInputs,
 } from './account.js';
+import { dirsAccounts } from '../sources/cswap/dirs.js';
 import { accountsModeProblem, launchCommand, nameFromFolder, uniqueName } from './command.js';
 import { startingFlags } from './flags.js';
 import { Folders, fail, isRefusal, refusalResult, type Failure } from './folders.js';
@@ -160,8 +163,11 @@ export class LauncherService implements Launcher {
   async start(): Promise<void> {
     // Folders sessions run in are noted (a realpath each) only while launching is on: a switched-off
     // feature touches no disk, and a path outside the roots may raise a macOS privacy prompt.
+    // v0.6: never a paired server's session (its folder is no path here; folders_seen is the Mac's).
     this.unsubscribe = this.ctx.store.subscribe((ev) => {
-      if (ev.type === 'session.added' && this.ctx.settings.get().launch.enabled) this.track(this.folders.noteSession(ev.data.session));
+      if (ev.type === 'session.added' && ev.data.session.node === undefined && this.ctx.settings.get().launch.enabled) {
+        this.track(this.folders.noteSession(ev.data.session));
+      }
     });
     this.unsettings = this.ctx.settings.subscribe((next, prev) => {
       if (!prev.launch.enabled && next.launch.enabled) this.noteLive();
@@ -232,6 +238,7 @@ export class LauncherService implements Launcher {
       launch: s.launch,
       cswap: this.ctx.bins.cswap,
       claude: this.ctx.bins.claude,
+      configDir: this.configDirFor(choice.pick),
     });
     if (!cmd.ok) return commandFailure(cmd);
     let accounts: LaunchAccount[] = single ? singleRows(inputs.sessions) : accountRows(inputs);
@@ -348,6 +355,7 @@ export class LauncherService implements Launcher {
       launch: s.launch,
       cswap: this.ctx.bins.cswap,
       claude: this.ctx.bins.claude,
+      configDir: this.configDirFor(accountId),
     });
     if (!cmd.ok) return commandFailure(cmd);
     const at = this.ctx.clock.iso();
@@ -412,7 +420,7 @@ export class LauncherService implements Launcher {
   }
 
   private noteLive(): void {
-    for (const s of Object.values(this.ctx.store.getState().sessions)) this.track(this.folders.noteSession(s));
+    for (const s of Object.values(localSessions(this.ctx.store.getState()))) this.track(this.folders.noteSession(s));
   }
 
   /**
@@ -463,7 +471,7 @@ export class LauncherService implements Launcher {
     const now = this.ctx.clock.now();
     for (const job of this.ctx.db.launches.list({ unfinished: true, limit: 100 })) {
       if (this.runs.has(job.id)) continue;
-      const running = Boolean(this.ctx.store.getState().sessions[job.sid]);
+      const running = Boolean(localSession(this.ctx.store.getState(), job.sid));
       const run = new LaunchRun(this.runDeps, job, { kind: 'resume' });
       const age = now - Date.parse(job.updatedAt);
       const live = launch.enabled && Number.isFinite(age) && age <= maxAgeMs;
@@ -514,6 +522,13 @@ export class LauncherService implements Launcher {
     return this.ctx.accountsMode() === 'single';
   }
 
+  /** v0.6, accountsMode "dirs": the config dir an account stands for (null for ~/.claude, and in every other mode). */
+  private configDirFor(account: AccountId | null): string | null {
+    if (account === null || this.ctx.accountsMode() !== 'dirs') return null;
+    const dir = dirsAccounts(this.ctx.paths, this.ctx.db.kv).find((a) => a.id === account)?.dir ?? null;
+    return dir === this.ctx.paths.claudeHome ? null : dir;
+  }
+
   /**
    * A resume's conversation, checked against `folder`'s history (a realpath):
    * one of its transcripts (else 404; looked up by id, so an entry pushed
@@ -562,7 +577,8 @@ export class LauncherService implements Launcher {
     }
     return {
       accounts: Object.values(st.accounts),
-      sessions: Object.values(st.sessions),
+      // v0.6: Auto counts this Mac's own sessions on its own accounts.
+      sessions: Object.values(localSessions(st)),
       nowMs: now,
       hold: new Set([...s.autoswitch.hold, ...view.hold]),
       kept: keptAccounts(s),
@@ -640,7 +656,7 @@ export class LauncherService implements Launcher {
   /** Names a new session may not take: live sessions' and those of launches still going. */
   private takenNames(jobs: readonly LaunchJob[]): Set<string> {
     const out = new Set<string>();
-    for (const s of Object.values(this.ctx.store.getState().sessions)) if (s.name && s.status !== 'ended') out.add(s.name);
+    for (const s of Object.values(localSessions(this.ctx.store.getState()))) if (s.name && s.status !== 'ended') out.add(s.name);
     for (const j of jobs) if (!isFinal(j.stage)) out.add(j.name);
     return out;
   }

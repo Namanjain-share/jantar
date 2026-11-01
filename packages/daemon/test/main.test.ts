@@ -36,11 +36,14 @@ const io = () => {
 
 describe('parseDaemonArgs', () => {
   it('parses every flag, in both --flag value and --flag=value forms', () => {
-    expect(parseDaemonArgs([])).toEqual({ ok: true, flags: { noTerminal: false, readOnly: false, help: false, version: false } });
+    expect(parseDaemonArgs([])).toEqual({ ok: true, flags: { noTerminal: false, readOnly: false, logFiles: false, help: false, version: false } });
     expect(parseDaemonArgs(['--port', '7491', '--home', '/tmp/x', '--no-terminal', '--read-only'])).toEqual({
       ok: true,
-      flags: { port: 7491, home: '/tmp/x', noTerminal: true, readOnly: true, help: false, version: false },
+      flags: { port: 7491, home: '/tmp/x', noTerminal: true, readOnly: true, logFiles: false, help: false, version: false },
     });
+    // v0.6: the daemon writes its own log files.
+    expect(parseDaemonArgs(['--log-files'])).toMatchObject({ ok: true, flags: { logFiles: true } });
+    expect(parseDaemonArgs(['--log-files=1']).ok).toBe(false);
     expect(parseDaemonArgs(['--port=0', '--home=/a b'])).toMatchObject({ ok: true, flags: { port: 0, home: '/a b' } });
     expect(parseDaemonArgs(['-h'])).toMatchObject({ ok: true, flags: { help: true } });
     expect(parseDaemonArgs(['-v'])).toMatchObject({ ok: true, flags: { version: true } });

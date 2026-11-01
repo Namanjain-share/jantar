@@ -11,6 +11,7 @@
  *   restarting or continuing, and ccw does not hold its move lock. A parked
  *   session only gets a note (the prompt un-parks it).
  */
+import { localSession } from '@jantar/protocol';
 import type { Move, PendingRequest, Session } from '@jantar/protocol';
 import type { CcwLegacySource, DaemonContext, HooksBridge, TerminalBackend } from '../contracts.js';
 import type { Pane } from '@jantar/protocol';
@@ -27,9 +28,8 @@ const CARD_WORD: Record<PendingRequest['kind'], string> = {
 };
 
 export function lookupSession(ctx: DaemonContext, sid: string): Session | null {
-  // An own key only: "constructor" or "__proto__" from a URL is no session.
-  const sessions = ctx.store.getState().sessions;
-  return Object.hasOwn(sessions, sid) ? (sessions[sid] ?? null) : null;
+  // An own key only: "constructor" or "__proto__" from a URL is no session. v0.6: nor a server's.
+  return localSession(ctx.store.getState(), sid) ?? null;
 }
 
 /** Open cards for a session, from the store and from the hooks bridge. */

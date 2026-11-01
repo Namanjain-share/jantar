@@ -13,6 +13,7 @@ import {
   LaunchJobSchema,
   MoveSchema,
   NO_FEATURES,
+  NodeViewSchema,
   PendingRequestSchema,
   RewriteJobSchema,
   SendJobSchema,
@@ -76,6 +77,12 @@ export const StateSchema = z.object({
   /** newest first, capped at ALERTS_CAP */
   alerts: z.array(AlertSchema),
   daemon: DaemonInfoSchema.nullable(),
+  /**
+   * v0.6: node id -> paired machine (Fleet). Empty, or absent from older
+   * daemons, while no server is paired: the phone then shows exactly what
+   * v0.5 showed. Its sessions sit in `sessions` with `node` set.
+   */
+  nodes: z.record(z.string(), NodeViewSchema).optional(),
 });
 export type State = z.infer<typeof StateSchema>;
 
@@ -95,6 +102,7 @@ export function emptyState(): State {
     lifeTick: 0,
     alerts: [],
     daemon: null,
+    nodes: {},
   };
 }
 

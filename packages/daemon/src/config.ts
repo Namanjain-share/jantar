@@ -7,11 +7,12 @@
  * - Read-only inputs (Claude's and cswap's files, ccw's files) are derived
  *   from the user home, which tests replace with a synthetic one.
  */
+import { createHash } from 'node:crypto';
 import { constants as fsConstants, existsSync } from 'node:fs';
 import { access, chmod, copyFile, mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { homedir } from 'node:os';
-import { basename, delimiter, dirname, join, resolve } from 'node:path';
+import { basename, delimiter, dirname, isAbsolute, join, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CLI_NAME,
@@ -32,7 +33,7 @@ import {
   type PatchResult,
   type Settings,
 } from '@jantar/protocol';
-import type { Bins, Logger, Paths, SettingsStore, Unsubscribe } from './contracts.js';
+import type { Bins, DaemonRole, Logger, Paths, SettingsStore, Unsubscribe } from './contracts.js';
 import { silentLogger } from './core/log.js';
 
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -50,6 +51,40 @@ export interface ResolvePathsOptions {
   userHome?: string;
   /** The Jantar state dir. Default: $JANTAR_HOME, then the old $CCW_V2_HOME, then <userHome>/.jantar. */
   home?: string;
+  /** v0.6: the platform the paths are for (cswap's folder, the sockets as named pipes on win32). Default: process.platform. */
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * v0.6: where cswap keeps its files. `~/.claude-swap-backup` on macOS and
+ * Windows; on Linux (and WSL) `${XDG_DATA_HOME:-~/.local/share}/claude-swap`,
+ * read only while that folder exists, so a Linux machine with no cswap there
+ * (and the test homes, which lay cswap out the macOS way) reads as before.
+ */
+export function cswapRootFor(userHome: string, env: Env, platform: NodeJS.Platform): string {
+  const legacy = join(userHome, '.claude-swap-backup');
+  if (platform !== 'linux') return legacy;
+  const xdg = env.XDG_DATA_HOME && isAbsolute(env.XDG_DATA_HOME) ? env.XDG_DATA_HOME : join(userHome, '.local', 'share');
+  const linux = join(xdg, 'claude-swap');
+  return existsSync(linux) ? linux : legacy;
+}
+
+/**
+ * v0.6: the named pipe that stands for a Unix socket on Windows:
+ * `\\.\pipe\jantar-<first 16 hex of sha256(norm(stateDir))>-<kind>`, where
+ * norm resolves the path, writes it with backslashes, drops a trailing one
+ * and lower-cases it, so every spelling of one state dir gives one name.
+ * The hook client (packages/hook/bin/jantar-hook.mjs) repeats these lines.
+ */
+export function pipePath(stateDir: string, kind: 'hooks' | 'ctl'): string {
+  const norm = win32.resolve(stateDir).replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+  const hash = createHash('sha256').update(norm).digest('hex').slice(0, 16);
+  return `\\\\.\\pipe\\jantar-${hash}-${kind}`;
+}
+
+/** v0.6: a node when `<state dir>/node/node.json` exists (written by `jantar node join`), else the hub. */
+export function roleOf(paths: Pick<Paths, 'nodeFile'>): DaemonRole {
+  return existsSync(paths.nodeFile) ? 'node' : 'hub';
 }
 
 /** The state dir the environment names: $JANTAR_HOME, else the old $CCW_V2_HOME, else none. */
@@ -77,11 +112,12 @@ export function legacyStateDirRefusal(paths: Pick<Paths, 'home' | 'dbFile'>): st
 
 export function resolvePaths(opts: ResolvePathsOptions = {}): Paths {
   const env = opts.env ?? process.env;
+  const platform = opts.platform ?? process.platform;
   const userHome = resolve(opts.userHome ?? (env.HOME || homedir()));
   const home = resolve(opts.home ?? (stateDirFromEnv(env) || join(userHome, STATE_DIR_NAME)));
   const runDir = join(home, 'run');
   const claudeHome = join(userHome, '.claude');
-  const cswapRoot = join(userHome, '.claude-swap-backup');
+  const cswapRoot = cswapRootFor(userHome, env, platform);
   const ccwDir = join(userHome, '.config', 'ccw');
   const ccwSwitchDir = join(ccwDir, 'switch');
   return {
@@ -89,8 +125,9 @@ export function resolvePaths(opts: ResolvePathsOptions = {}): Paths {
     configFile: join(home, 'config.json'),
     dbFile: join(home, 'jantar.db'),
     runDir,
-    hooksSock: join(runDir, 'hooks.sock'),
-    ctlSock: join(runDir, 'ctl.sock'),
+    // v0.6: Windows has no Unix sockets; the daemon and its clients meet on named pipes.
+    hooksSock: platform === 'win32' ? pipePath(home, 'hooks') : join(runDir, 'hooks.sock'),
+    ctlSock: platform === 'win32' ? pipePath(home, 'ctl') : join(runDir, 'ctl.sock'),
     logsDir: join(home, 'logs'),
     pushDir: join(home, 'push'),
     vapidFile: join(home, 'push', 'vapid.json'),
@@ -108,6 +145,10 @@ export function resolvePaths(opts: ResolvePathsOptions = {}): Paths {
     meetingsDb: join(home, MEETINGS_DB_FILE),
     meetingsDir: join(home, 'meetings'),
     meetingSummaryDir: join(home, 'meeting-summary'),
+    fleetDir: join(home, 'fleet'),
+    hubKeyFile: join(home, 'fleet', 'hub-key.pem'),
+    nodeDir: join(home, 'node'),
+    nodeFile: join(home, 'node', 'node.json'),
 
     userHome,
     claudeHome,
@@ -129,14 +170,28 @@ export function resolvePaths(opts: ResolvePathsOptions = {}): Paths {
 export const MAX_SOCKET_PATH = 103;
 
 export function socketPathOk(path: string): boolean {
-  return Buffer.byteLength(path) <= MAX_SOCKET_PATH;
+  // v0.6: a Windows named pipe has no such limit.
+  return isPipePath(path) || Buffer.byteLength(path) <= MAX_SOCKET_PATH;
 }
 
-/** Create the state dirs (0700). Never touches anything outside `paths.home`. */
-export async function ensureStateDirs(paths: Paths): Promise<void> {
+/** v0.6: a Windows named pipe (`\\.\pipe\...`), not a socket file: no lstat, chmod or unlink. */
+export function isPipePath(path: string): boolean {
+  return path.startsWith('\\\\.\\pipe\\');
+}
+
+/**
+ * Create the state dirs (0700). Never touches anything outside `paths.home`.
+ * v0.6: on Windows the modes do nothing and a failed chmod is not an error
+ * (the profile's ACL protects the folder).
+ */
+export async function ensureStateDirs(paths: Paths, platform: NodeJS.Platform = process.platform): Promise<void> {
   for (const dir of [paths.home, paths.runDir, paths.logsDir, paths.pushDir, paths.binDir]) {
     await mkdir(dir, { recursive: true, mode: 0o700 });
-    await chmod(dir, 0o700);
+    try {
+      await chmod(dir, 0o700);
+    } catch (e) {
+      if (platform !== 'win32') throw e;
+    }
   }
 }
 
@@ -340,10 +395,22 @@ export const ACCOUNTS_ENV = 'JANTAR_ACCOUNTS';
  * One Claude login or many, decided once at start: "cswap" when cswap is
  * there (bins.cswap) and so are its profiles (paths.cswapProfiles), else
  * "single". No setting: the environment variable forces single.
+ *
+ * v0.6, on a node: Windows has no cswap, so its config dirs are its accounts
+ * ("dirs"); Linux with no cswap is "dirs" too. A Mac node, and every hub,
+ * keeps the rule above.
  */
-export function resolveAccountsMode(bins: Pick<Bins, 'cswap'>, paths: Pick<Paths, 'cswapProfiles'>, env: Env): AccountsMode {
+export function resolveAccountsMode(
+  bins: Pick<Bins, 'cswap'>,
+  paths: Pick<Paths, 'cswapProfiles'>,
+  env: Env,
+  where: { role?: DaemonRole; platform?: NodeJS.Platform } = {},
+): AccountsMode {
+  const platform = where.platform ?? process.platform;
+  if (where.role === 'node' && platform === 'win32') return 'dirs';
   if (env[ACCOUNTS_ENV] === 'single') return 'single';
-  return bins.cswap && existsSync(paths.cswapProfiles) ? 'cswap' : 'single';
+  if (bins.cswap && existsSync(paths.cswapProfiles)) return 'cswap';
+  return where.role === 'node' && platform === 'linux' ? 'dirs' : 'single';
 }
 
 /**

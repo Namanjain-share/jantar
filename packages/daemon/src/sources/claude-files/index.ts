@@ -17,7 +17,7 @@
  * Sessions are watched with FSEvents (fs.watch) plus a 2 s poll, which also
  * catches crashed processes (no file event when a pid dies).
  */
-import { EVENT, folderOf, type AccountId, type Session, type SessionOptionalKey, type SessionPatch } from '@jantar/protocol';
+import { EVENT, folderOf, localSession, type AccountId, type Session, type SessionOptionalKey, type SessionPatch } from '@jantar/protocol';
 import type { DaemonContext, Factories, SessionRecord, SessionSource, TimerId, Unsubscribe } from '../../contracts.js';
 import { cLocale } from '../../core/exec.js';
 import { initialStatus, mapRawStatus, mergeStatus, type StatusObservation } from '../../core/status.js';
@@ -396,7 +396,7 @@ export class ClaudeFilesSource implements SessionSource {
     for (const r of records) {
       seen.add(r.sid);
       try {
-        const cur = this.ctx.store.getState().sessions[r.sid];
+        const cur = localSession(this.ctx.store.getState(), r.sid);
         if (cur) this.emitUpdated(cur, r, this.emitted.get(r.sid));
         else this.emitAdded(r);
         this.emitted.set(r.sid, r);
@@ -410,7 +410,7 @@ export class ClaudeFilesSource implements SessionSource {
       this.ttys.delete(sid);
       this.clearWaiting(sid);
       this.unpin(sid, prev.pid);
-      if (!this.ctx.store.getState().sessions[sid]) continue;
+      if (!localSession(this.ctx.store.getState(), sid)) continue;
       try {
         this.ctx.store.emit({
           type: EVENT.SESSION_REMOVED,
@@ -524,7 +524,7 @@ export class ClaudeFilesSource implements SessionSource {
       this.waitTimers.delete(sid);
       if (!this.started) return;
       const state = this.ctx.store.getState();
-      const s = state.sessions[sid];
+      const s = localSession(state, sid);
       if (!s || s.status !== 'waiting' || s.statusSource === 'hook') return;
       if ((this.waitMarks.get(sid) ?? 0) !== mark) return;
       if (Object.values(state.pending).some((p) => p.sid === sid && p.state === 'open')) return;

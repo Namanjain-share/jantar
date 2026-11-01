@@ -139,8 +139,8 @@ describe('v0.3 settings', () => {
   });
 
   it('names the Mac-only groups and finds them in a patch however large', () => {
-    // v0.4 added life, intel and accounts (settings-v2.test.ts); v0.5 meetings (v05.test.ts).
-    expect([...MAC_ONLY_SETTING_GROUPS].sort()).toEqual(['accounts', 'bins', 'controls', 'files', 'folders', 'intel', 'launch', 'life', 'meetings', 'remote', 'rewrite', 'screenshots']);
+    // v0.4 added life, intel and accounts (settings-v2.test.ts); v0.5 meetings (v05.test.ts); v0.6 fleet (v06.test.ts).
+    expect([...MAC_ONLY_SETTING_GROUPS].sort()).toEqual(['accounts', 'bins', 'controls', 'files', 'fleet', 'folders', 'intel', 'launch', 'life', 'meetings', 'remote', 'rewrite', 'screenshots']);
     const many: Record<string, unknown> = {};
     for (let i = 0; i < 80; i++) many[`k${i}`] = i;
     expect(macOnlyGroupIn({ ...many, files: { enabled: true } })).toBe('files');
@@ -161,8 +161,8 @@ describe('v0.3 settings', () => {
       screenshots: { enabled: true, allowSelect: true },
       controls: { escapeVerified: true, clearVerified: true },
     });
-    // v0.4's life and intel stay off here (v04.test.ts), and v0.5's meetings (v05.test.ts).
-    expect(settingsFeatures(on)).toEqual({ files: true, launch: true, rewrite: true, controls: true, screenshots: true, screenshotSelect: true, escape: true, clearDraft: true, life: false, intel: false, meetings: false });
+    // v0.4's life and intel stay off here (v04.test.ts), v0.5's meetings (v05.test.ts) and v0.6's fleet (v06.test.ts).
+    expect(settingsFeatures(on)).toEqual({ files: true, launch: true, rewrite: true, controls: true, screenshots: true, screenshotSelect: true, escape: true, clearDraft: true, life: false, intel: false, meetings: false, fleet: false });
     // Neither key while controls are off.
     expect(settingsFeatures(SettingsSchema.parse({ controls: { enabled: false, escapeVerified: true, clearVerified: true } }))).toMatchObject({ escape: false, clearDraft: false });
     // A daemon from before clearDraft existed sends no such key: off.

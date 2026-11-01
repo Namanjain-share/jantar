@@ -76,10 +76,10 @@ function call(name: RouteName, headers: Record<string, string>) {
 describe('which routes need the device secret', () => {
   it('every control, launch and admin write, and the event stream; never reads, push subscriptions or the pairing claim', () => {
     // v0.4's writes (every one at control scope) are swept in v04-auth.test.ts, v0.4.2's in v042-routes.test.ts,
-    // v0.5's in v05-auth.test.ts.
+    // v0.5's in v05-auth.test.ts, v0.6's in v06-gate.test.ts.
     expect(
       secretWrites
-        .filter(([, d]) => d.phase !== 'v0.4' && d.phase !== 'v0.4.2' && d.phase !== 'v0.5')
+        .filter(([, d]) => d.phase !== 'v0.4' && d.phase !== 'v0.4.2' && d.phase !== 'v0.5' && d.phase !== 'v0.6')
         .map(([n]) => n)
         .sort(),
     ).toEqual(

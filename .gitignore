@@ -18,6 +18,7 @@ coverage/
 # maintainers' local notes, never committed (lint:oss fails if they are)
 docs/design-brief.md
 docs/research/
+docs/v*-notes.md
 
 # editors and OS
 .DS_Store

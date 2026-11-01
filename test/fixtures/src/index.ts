@@ -22,3 +22,6 @@ export * from './history.js';
 export * from './dialogs.js';
 export * from './meetings.js';
 export * from './perf.js';
+// v0.6 Fleet
+export * from './link.js';
+export * from './node.js';

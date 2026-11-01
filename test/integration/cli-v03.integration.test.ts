@@ -189,8 +189,8 @@ describe('v0.3 CLI commands over the real control socket', () => {
     expect(await follow(`/v1/sessions/${SID}/keys`, 'POST', { key: 'clearInput' })).toEqual(['controls', 'on']);
 
     // Escape and Clear draft are on by default (verified on a real Mac, 30 Oct 2026).
-    // v0.4's life and intel and v0.5's meetings stay off here.
-    expect(await features()).toEqual({ files: true, launch: true, rewrite: true, controls: true, screenshots: true, screenshotSelect: true, escape: true, clearDraft: true, life: false, intel: false, meetings: false });
+    // v0.4's life and intel, v0.5's meetings and v0.6's fleet stay off here.
+    expect(await features()).toEqual({ files: true, launch: true, rewrite: true, controls: true, screenshots: true, screenshotSelect: true, escape: true, clearDraft: true, life: false, intel: false, meetings: false, fleet: false });
 
     // A config.json saved by 0.4.0 holds both off; the Mac switches them, and the phone sees it.
     expect((await cli('controls', 'escape', 'off')).code).toBe(0);

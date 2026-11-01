@@ -36,6 +36,9 @@ import {
   LaunchPermissionSchema,
   LaunchPreviewSchema,
   MoveSchema,
+  NodeIdSchema,
+  NodeOsSchema,
+  NodeRowSchema,
   PastSessionSchema,
   NotifyKindSchema,
   PaneSchema,
@@ -182,6 +185,11 @@ export const ErrorCodeSchema = z.enum([
   'length_required', // 411: an upload without a Content-Length (its size is checked before the body is read)
   // v0.5
   'meetings_unavailable', // 503: meetings.db would not open (the file is untouched; move it aside at the Mac)
+  // v0.6
+  'node_offline', // 503: the session's server is not linked; nothing was sent
+  'node_timeout', // 504: the server did not answer in time (a write's outcome is unknown: check the session)
+  'node_unsupported', // 409: Picture, Files, Rewrite and the change list are for the Mac's own sessions
+  'node_version', // 426: a server's link version differs from the Mac's (update Jantar there)
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 
@@ -209,6 +217,10 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   estimate_failed: 502,
   length_required: 411,
   meetings_unavailable: 503,
+  node_offline: 503,
+  node_timeout: 504,
+  node_unsupported: 409,
+  node_version: 426,
 };
 
 export const ErrorBodySchema = z.object({
@@ -228,6 +240,13 @@ export const OkSchema = z.object({ ok: z.literal(true) });
 const limit = (def: number, max: number) => z.coerce.number().int().min(1).max(max).default(def);
 
 export const SidParamsSchema = z.object({ sid: z.string().min(1).max(128) });
+/**
+ * v0.6: `?node=<id>` on the start-sheet, folder and usage routes: run it on
+ * that paired machine (the hub forwards it; an unknown or removed machine is
+ * 404). Absent: the Mac itself.
+ */
+export const NodeQuerySchema = z.object({ node: NodeIdSchema.optional() });
+export type NodeQuery = z.infer<typeof NodeQuerySchema>;
 export const IdParamsSchema = z.object({ id: z.string().min(1).max(128) });
 export const JobParamsSchema = z.object({ jobId: z.string().min(1).max(128) });
 
@@ -535,6 +554,7 @@ export const FoldersListQuerySchema = z.object({
   path: RelPathSchema.default(''),
   after: z.string().max(1024).optional(),
   showHidden: flag01.default(false),
+  ...NodeQuerySchema.shape,
 });
 export type FoldersListQuery = z.infer<typeof FoldersListQuerySchema>;
 export const FoldersListResponseSchema = z.object({
@@ -590,6 +610,7 @@ export const LaunchPreviewQuerySchema = z.object({
   name: LaunchNameSchema.optional(),
   /** v0.4: resume this past conversation of the folder (an id from GET /v1/launch/history). */
   resume: z.uuid().optional(),
+  ...NodeQuerySchema.shape,
 });
 export type LaunchPreviewQuery = z.infer<typeof LaunchPreviewQuerySchema>;
 
@@ -614,7 +635,7 @@ export const LaunchStartBodySchema = z.strictObject({
 });
 export type LaunchStartBody = z.infer<typeof LaunchStartBodySchema>;
 /** GET /v1/launch/history: a folder's past conversations, newest first. */
-export const LaunchHistoryQuerySchema = z.object({ root: RootParamSchema, path: RelPathSchema.default('') });
+export const LaunchHistoryQuerySchema = z.object({ root: RootParamSchema, path: RelPathSchema.default(''), ...NodeQuerySchema.shape });
 export type LaunchHistoryQuery = z.infer<typeof LaunchHistoryQuerySchema>;
 export const LaunchHistoryResponseSchema = z.object({ sessions: z.array(PastSessionSchema).max(LAUNCH_HISTORY_LIMIT) });
 export type LaunchHistoryResponse = z.infer<typeof LaunchHistoryResponseSchema>;
@@ -736,6 +757,52 @@ export const UploadParamsSchema = z.object({ sid: z.string().min(1).max(128), id
 export type UploadParams = z.infer<typeof UploadParamsSchema>;
 
 // ---------------------------------------------------------------------------
+// v0.6 payloads: Fleet (pairing a server, the Mac's list of machines)
+
+/** A machine's name, set at the Mac (`jantar node pair --name`): never a server's own, and never "mac". */
+export const NodeNameSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]{0,23}$/)
+  .refine((n) => n !== 'mac', { message: '"mac" is the hub\'s own name' });
+
+/** POST /v1/node/pair: a server claims its join line's one-time code with its own new public key. */
+export const NodePairBodySchema = z.strictObject({
+  code: z.string().min(16).max(128),
+  /** The node's Ed25519 public key: 32 raw bytes, base64url. */
+  publicKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  os: NodeOsSchema,
+  version: z.string().min(1).max(64),
+  /** The node's link version (NODE_PROTO); a different one is 426. */
+  proto: z.number().int().positive(),
+});
+export type NodePairBody = z.infer<typeof NodePairBodySchema>;
+/** 201: the node's id and name, and the hub's signature over them (checked against the key in the join line). */
+export const NodePairReplySchema = z.object({
+  nodeId: NodeIdSchema,
+  name: NodeNameSchema,
+  /** Ed25519 over pairSigText(nodeId, publicKey): 64 bytes, base64url. */
+  sig: z.string().regex(/^[A-Za-z0-9_-]{86}$/),
+});
+export type NodePairReply = z.infer<typeof NodePairReplySchema>;
+
+/** POST /v1/machines/pair (the Mac only): join lines for one server, or `count` of them named `<name>-1..K`. */
+export const MachinesPairBodySchema = z.strictObject({
+  name: NodeNameSchema.optional(),
+  count: z.number().int().min(1).max(20).optional(),
+});
+export type MachinesPairBody = z.infer<typeof MachinesPairBodySchema>;
+export const MachinesPairReplySchema = z.object({
+  /** One `jantar node join <token>` line per server, each single use. */
+  tokens: z.array(z.object({ name: NodeNameSchema, token: z.string().min(1).max(2048), expiresAt: IsoDateSchema })).min(1).max(20),
+});
+export type MachinesPairReply = z.infer<typeof MachinesPairReplySchema>;
+export const MachinesResponseSchema = z.object({ machines: z.array(NodeRowSchema) });
+export type MachinesResponse = z.infer<typeof MachinesResponseSchema>;
+export const MachineParamsSchema = z.object({ id: NodeIdSchema });
+export const MachineResponseSchema = z.object({ machine: NodeRowSchema });
+export type MachineResponse = z.infer<typeof MachineResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // Route table
 
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
@@ -744,7 +811,7 @@ export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
  * The switch a route sits behind (Mac only). v0.3: settings `<feature>.enabled`.
  * v0.4: 'life' is on while any Life module is; each module name reads
  * `life.<module>`; 'intel' reads `intel.enabled`. v0.5: 'meetings' reads
- * `meetings.enabled`.
+ * `meetings.enabled`. v0.6: 'fleet' reads `fleet.enabled`.
  */
 export type FeatureSwitch =
   | 'files'
@@ -759,7 +826,8 @@ export type FeatureSwitch =
   | 'places'
   | 'finance'
   | 'intel'
-  | 'meetings';
+  | 'meetings'
+  | 'fleet';
 
 export interface RouteDef {
   method: HttpMethod | 'WS';
@@ -769,10 +837,14 @@ export interface RouteDef {
    * Scope a device needs. "public" routes need no cookie (/healthz and the
    * two pairing claims). v0.5: "extension" routes take no device at all,
    * only the paired Chrome extension's key (EXTENSION_KEY_HEADER), from
-   * loopback, with its bound Origin (daemon api/app.ts gate).
+   * loopback, with its bound Origin (daemon api/app.ts gate). v0.6:
+   * "node" routes (under NODE_PREFIX) take no device either: only while
+   * Fleet is on (404 otherwise), never with an Origin, and the caller
+   * proves itself with its own key (the pairing code, then the link's
+   * handshake).
    */
-  scope: Scope | 'public' | 'extension';
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5';
+  scope: Scope | 'public' | 'extension' | 'node';
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.6';
   /**
    * While this switch is off the route answers 403 with the sentence that
    * turns it on (screenshots: 403 screenshots_off), before validation and
@@ -894,7 +966,7 @@ export const ROUTES = {
   }),
   refreshUsage: route({
     method: 'POST', path: '/v1/usage/refresh', scope: 'control', phase: 'v0.1', ctl: true, status: 202,
-    response: UsageRefreshResponseSchema, summary: 'Ask the single cswap poller for a refresh (debounced).',
+    query: NodeQuerySchema, response: UsageRefreshResponseSchema, summary: 'Ask the single cswap poller for a refresh (debounced).',
   }),
   getSettings: route({
     method: 'GET', path: '/v1/settings', scope: 'admin', phase: 'v0.1', ctl: true,
@@ -1003,7 +1075,7 @@ export const ROUTES = {
   // --- v0.3 Folders and new sessions (U7: allowlisted flags, no free-text argv)
   foldersRoots: route({
     method: 'GET', path: '/v1/folders/roots', scope: 'control', phase: 'v0.3', ctl: true, feature: 'launch',
-    response: FilesRootsResponseSchema, summary: 'The same roots as Files, for the new-session browser.',
+    query: NodeQuerySchema, response: FilesRootsResponseSchema, summary: 'The same roots as Files, for the new-session browser.',
   }),
   foldersList: route({
     method: 'GET', path: '/v1/folders', scope: 'control', phase: 'v0.3', ctl: true, feature: 'launch',
@@ -1011,15 +1083,15 @@ export const ROUTES = {
   }),
   foldersRecent: route({
     method: 'GET', path: '/v1/folders/recent', scope: 'control', phase: 'v0.3', ctl: true, feature: 'launch',
-    response: FoldersRecentResponseSchema, summary: 'Folders sessions ran in lately (at most 8).',
+    query: NodeQuerySchema, response: FoldersRecentResponseSchema, summary: 'Folders sessions ran in lately (at most 8).',
   }),
   foldersPin: route({
     method: 'PUT', path: '/v1/folders/pins', scope: 'control', phase: 'v0.3', ctl: false, feature: 'launch',
-    body: FolderPinBodySchema, response: OkSchema, summary: 'Pin or unpin a folder in the browser.',
+    query: NodeQuerySchema, body: FolderPinBodySchema, response: OkSchema, summary: 'Pin or unpin a folder in the browser.',
   }),
   foldersCreate: route({
     method: 'POST', path: '/v1/folders', scope: 'launch', phase: 'v0.3', ctl: true, status: 201, feature: 'launch',
-    body: FolderCreateBodySchema, response: FolderCreateResponseSchema, summary: 'Create one folder (not recursive; 409 if it exists).',
+    query: NodeQuerySchema, body: FolderCreateBodySchema, response: FolderCreateResponseSchema, summary: 'Create one folder (not recursive; 409 if it exists).',
   }),
   launchPreview: route({
     method: 'GET', path: '/v1/launch/preview', scope: 'control', phase: 'v0.3', ctl: true, feature: 'launch',
@@ -1027,7 +1099,7 @@ export const ROUTES = {
   }),
   launchStart: route({
     method: 'POST', path: '/v1/launches', scope: 'launch', phase: 'v0.3', ctl: true, status: 202, feature: 'launch',
-    body: LaunchStartBodySchema, response: LaunchJobResponseSchema,
+    query: NodeQuerySchema, body: LaunchStartBodySchema, response: LaunchJobResponseSchema,
     summary: 'Start a session in a new Terminal window (Idempotency-Key required); progress arrives as launch.progress.',
   }),
   launchGet: route({
@@ -1383,6 +1455,29 @@ export const ROUTES = {
   meetingItemUntodo: route({
     method: 'DELETE', path: '/v1/meetings/:id/items/:n/todo', scope: 'control', phase: 'v0.5', ctl: false, feature: 'meetings',
     params: MeetingItemParamsSchema, response: OkReplySchema, summary: 'Remove the todo an action item made (a todo already gone is fine).',
+  }),
+
+  // --- v0.6 Fleet. A server's own route (NODE_PREFIX: its pairing claim; its link, WS /v1/node/link, is
+  // served beside the API, never by a route here), and the Mac's list of machines. Pairing is the Mac's
+  // only (localOnly); an admin phone may list and remove a machine (removing only narrows access).
+  nodePair: route({
+    method: 'POST', path: '/v1/node/pair', scope: 'node', phase: 'v0.6', ctl: false, status: 201,
+    body: NodePairBodySchema, response: NodePairReplySchema,
+    summary: "A server claims its join line's code with its public key (Fleet on, no Origin; rate limited per caller).",
+  }),
+  machinesList: route({
+    method: 'GET', path: '/v1/machines', scope: 'admin', phase: 'v0.6', ctl: true,
+    response: MachinesResponseSchema, summary: 'Paired machines, revoked ones included (never a key).',
+  }),
+  machinesPair: route({
+    method: 'POST', path: '/v1/machines/pair', scope: 'admin', phase: 'v0.6', ctl: true, localOnly: true, feature: 'fleet',
+    body: MachinesPairBodySchema, response: MachinesPairReplySchema,
+    summary: 'Join lines for new servers, each single use for 10 minutes (the Mac only: jantar node pair).',
+  }),
+  machineRevoke: route({
+    method: 'DELETE', path: '/v1/machines/:id', scope: 'admin', phase: 'v0.6', ctl: true,
+    params: MachineParamsSchema, response: MachineResponseSchema,
+    summary: 'Remove a machine: its link closes and its sessions leave the board (jantar node revoke).',
   }),
 } as const satisfies Record<string, RouteDef>;
 

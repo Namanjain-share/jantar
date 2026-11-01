@@ -130,6 +130,12 @@ function apply(s: State, ev: DaemonEvent): State {
       return { ...s, lifeTick: (s.lifeTick ?? 0) + 1 };
     case 'primer.status':
       return { ...s, primer: ev.data.status };
+    case 'node.updated': {
+      const node = ev.data.node;
+      return { ...s, nodes: { ...(s.nodes ?? {}), [node.id]: node } };
+    }
+    case 'node.removed':
+      return removeNode(s, ev.data.id);
 
     // Moment events: no state change.
     case 'session.done':
@@ -166,11 +172,33 @@ function applyMove(s: State, ev: DaemonEvent): State {
   return { ...s, moves: { ...s.moves, [sid]: move }, sessions };
 }
 
-function omitWhere<T>(rec: Record<string, T>, pred: (v: T) => boolean): Record<string, T> {
+/** v0.6: a paired machine goes, with its sessions, their cards, sends and file ticks, and its launches. */
+function removeNode(s: State, id: string): State {
+  const sids = new Set(Object.values(s.sessions).filter((x) => x.node === id).map((x) => x.sid));
+  const known = s.nodes !== undefined && Object.hasOwn(s.nodes, id);
+  const launches = omitWhere(s.launches, (l) => l.node === id);
+  if (!known && sids.size === 0 && launches === s.launches) return s;
+  const out: State = {
+    ...s,
+    sessions: omitWhere(s.sessions, (x) => sids.has(x.sid)),
+    pending: omitWhere(s.pending, (p) => sids.has(p.sid)),
+    sends: omitWhere(s.sends, (j) => sids.has(j.sid)),
+    launches,
+  };
+  if (known) {
+    const nodes = { ...s.nodes };
+    delete nodes[id];
+    out.nodes = nodes;
+  }
+  if (s.fileTicks) out.fileTicks = omitWhere(s.fileTicks, (_n, sid) => sids.has(sid));
+  return out;
+}
+
+function omitWhere<T>(rec: Record<string, T>, pred: (v: T, k: string) => boolean): Record<string, T> {
   let changed = false;
   const out: Record<string, T> = {};
   for (const [k, v] of Object.entries(rec)) {
-    if (pred(v)) changed = true;
+    if (pred(v, k)) changed = true;
     else out[k] = v;
   }
   return changed ? out : rec;

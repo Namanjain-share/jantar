@@ -15,6 +15,10 @@
  *   (TerminalDialog), the dialog, keypad and upload routes, attachments on a
  *   prompt, DIALOG_GATES and the fixed sentences the phone shows
  * - meetings (v0.5): the Chrome extension's captions and screenshots, the meeting library, the Markdown export
+ * - v0.6 Fleet (in models, state, events, selectors, settings, api, constants): paired machines
+ *   (NodeView, state.nodes, node.updated / node.removed, the fleet switch, the /v1/machines routes,
+ *   FLEET_COPY). The link between a server and the hub is the subpath `@jantar/protocol/node-link`,
+ *   never exported here: none of it belongs in the phone's bundle.
  */
 export * from './constants.js';
 export * from './models.js';

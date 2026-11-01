@@ -23,7 +23,7 @@
  * carries file content: paths, ids, times, counts and statuses only.
  */
 import { posix } from 'node:path';
-import { EVENT, type FileOp, type FileTool } from '@jantar/protocol';
+import { EVENT, localSession, type FileOp, type FileTool } from '@jantar/protocol';
 import type { DaemonContext, TranscriptEntry } from '../../contracts.js';
 import { sha256Hex } from '../../core/hash.js';
 import { fsx, readRange } from '../lib/fsx.js';
@@ -276,7 +276,7 @@ export class FileChangeScanner {
 export function publishFileOps(ctx: DaemonContext, sid: string, ops: readonly ScannedOp[], quietBefore: number): void {
   if (!ops.length || !ctx.settings.get().files.enabled) return;
   const fresh = ops.filter((op) => op.at >= quietBefore).slice(-FILE_EVENTS_PER_READ);
-  const account = ctx.store.getState().sessions[sid]?.account ?? null;
+  const account = localSession(ctx.store.getState(), sid)?.account ?? null;
   for (const op of fresh) {
     try {
       ctx.store.emit({

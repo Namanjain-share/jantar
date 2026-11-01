@@ -39,7 +39,7 @@
  *   most once per 2 s per session, once its backfill is done.
  */
 import { posix } from 'node:path';
-import { EVENT, type FileChange, type FileOp, type FileTool, type Session } from '@jantar/protocol';
+import { EVENT, localSession, localSessions, type FileChange, type FileOp, type FileTool, type Session } from '@jantar/protocol';
 import type { ChangeDetail, ChangesService, DaemonContext, Factories, FileRefusalCode, SessionChanges, TimerId, Unsubscribe } from '../contracts.js';
 import { fileSig, fsx, listDir } from '../sources/lib/fsx.js';
 import { privateSpelling } from './policy.js';
@@ -216,7 +216,8 @@ export class ChangesIndex implements ChangesService {
         if (!ev.sid) return;
         if (ev.type === EVENT.SESSION_REMOVED) this.drop(ev.sid);
         if (!this.enabled) return;
-        if (ev.type === EVENT.SESSION_ADDED) this.queueSession(ev.sid);
+        // v0.6: a paired server's session is never scanned on the Mac.
+        if (ev.type === EVENT.SESSION_ADDED && ev.data.session.node === undefined) this.queueSession(ev.sid);
         if (ev.type === EVENT.FILES_CHANGED) this.nudge(ev.sid, ev.data.byAgent);
       }),
     );
@@ -306,14 +307,14 @@ export class ChangesIndex implements ChangesService {
 
   private enable(): void {
     this.enabled = true;
-    for (const sid of Object.keys(this.ctx.store.getState().sessions)) this.queueSession(sid);
+    for (const sid of Object.keys(localSessions(this.ctx.store.getState()))) this.queueSession(sid);
   }
 
   private disable(): void {
     this.enabled = false;
     this.clearTimers();
     this.sessions.clear();
-    for (const s of Object.values(this.ctx.store.getState().sessions)) {
+    for (const s of Object.values(localSessions(this.ctx.store.getState()))) {
       if (s.filesChanged === undefined) continue;
       this.emitSafe(s.sid, s.account, { patch: {}, unset: ['filesChanged'] });
     }
@@ -328,10 +329,9 @@ export class ChangesIndex implements ChangesService {
     this.retries.clear();
   }
 
-  /** A live session (an own key: the sessions map is a plain object, and "constructor" names Object.prototype's). */
+  /** A live session (an own key: the sessions map is a plain object, and "constructor" names Object.prototype's). v0.6: the Mac's own only. */
   private live(sid: string): Session | undefined {
-    const sessions = this.ctx.store.getState().sessions;
-    return Object.hasOwn(sessions, sid) ? sessions[sid] : undefined;
+    return localSession(this.ctx.store.getState(), sid);
   }
 
   private ensure(sid: string): Index {

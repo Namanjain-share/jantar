@@ -160,9 +160,9 @@ describe('migration 3', () => {
 
     const db = openSqliteFile(file);
     try {
-      // v0.5 added migration 4 (extension keys); a v0.2 file still migrates through every one.
-      expect(LATEST_SCHEMA_VERSION).toBe(4);
-      expect(db.schemaVersion()).toBe(4);
+      // v0.5 added migration 4 (extension keys), v0.6 5 (nodes); a v0.2 file still migrates through every one.
+      expect(LATEST_SCHEMA_VERSION).toBe(5);
+      expect(db.schemaVersion()).toBe(5);
       expect(db.devices.get('old')?.name).toBe('Old phone');
       db.launches.save(launch('l1', 1));
       expect(db.launches.list()).toHaveLength(1);

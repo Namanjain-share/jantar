@@ -25,6 +25,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { HOOK_CLIENT_PATH, WAIT_FLAG } from '@jantar/hook';
 import { HOOK_EVENT_NAMES, HOOK_NAME, LEGACY_HOOK_NAME, type HookEventName } from '@jantar/protocol';
 import { writeFileAtomic } from '../config.js';
+import { NotImplementedError } from '../core/not-implemented.js';
 import { canonicalJson } from '../core/hash.js';
 import { unifiedDiff } from './diff.js';
 import { isPlainObject } from './keys.js';
@@ -68,6 +69,36 @@ export class UnsafePathError extends Error {}
 function checkPath(label: string, p: string): void {
   if (!isAbsolute(p)) throw new UnsafePathError(`${label} must be an absolute path: ${p}`);
   if (UNSAFE_IN_COMMAND.test(p)) throw new UnsafePathError(`${label} contains a character that is unsafe in a hook command: ${p}`);
+}
+
+/**
+ * v0.6 Fleet (lane L3): the oldest Claude Code whose exec-form hooks, with
+ * `onFailure: "continue"`, work on native Windows (`jantar hooks status`
+ * and `jantar doctor` name it there).
+ */
+export const MIN_CLAUDE_WINDOWS = '2.1.310';
+
+/**
+ * v0.6: a hook in exec form (Windows): the program and its arguments as
+ * JSON, never parsed by a shell; a hook that fails lets Claude go on with
+ * its own dialog.
+ */
+export interface ExecHookCommand {
+  type: 'command';
+  command: string;
+  args: string[];
+  onFailure: 'continue';
+  async?: boolean;
+  timeout: number;
+}
+
+/**
+ * v0.6 (lane L3): the exec-form hook for win32 (`--wait` for
+ * PermissionRequest). STUB from wave 0: L3 replaces it, keeping the name and
+ * signature; until then the shell form below is the only one written.
+ */
+export function execFormHook(_spec: HookCommandSpec, _wait: boolean): ExecHookCommand {
+  throw new NotImplementedError('Exec-form hooks for Windows');
 }
 
 /** `"<node>" "<hookBin>"` (+ ` --wait`). Claude runs hook commands through a shell. */

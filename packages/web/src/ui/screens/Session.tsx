@@ -44,7 +44,6 @@ import { useFrame } from '../shell/layout.js';
 import { Composer, carriesFiles } from './session/Composer.js';
 import { ControlBar } from './session/controls/ControlBar.js';
 import { ModeChip } from './session/controls/ModeChip.js';
-import { ShotView } from './session/controls/ShotView.js';
 import { FilesTab } from './session/FilesTab.js';
 import { takeAsk } from './session/ask.js';
 import { answeredBy, type Receipt } from './session/decide.js';
@@ -71,6 +70,13 @@ const WIDE = '(min-width: 1360px)';
  * arrives the dock says what it says before its first screen read.
  */
 const TermDialogDock = lazy(() => import('./session/TermDialog.js').then((m) => ({ default: m.TermDialogDock })));
+
+/**
+ * v0.6: the Screen tab's picture (with its capture hook) is its own chunk too: it shows only while
+ * screenshots are on, and the room it leaves in the first load is Fleet's. Until it arrives the
+ * tab shows a spinner (never a text read the picture would make needless).
+ */
+const ShotView = lazy(() => import('./session/controls/ShotView.js').then((m) => ({ default: m.ShotView })));
 
 /** ?view=screen (and ?view=files&root=&path=&tab=) survive a reload (the router keeps only ?p= for sessions). */
 function viewFromUrl(): { view: View; files: FilesLocation } {
@@ -417,14 +423,22 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
         onAsk={onAsk}
       />
     ) : view === 'screen' && features.screenshots ? (
-      <ShotView
-        sid={sid}
-        phone={phone}
-        onShowOnMac={() => void showOnMac()}
-        id={PANEL_ID(sid, 'screen')}
-        labelledBy={TAB_ID(sid, 'screen')}
-        text={screenText}
-      />
+      <Suspense
+        fallback={
+          <div role="tabpanel" id={PANEL_ID(sid, 'screen')} aria-labelledby={TAB_ID(sid, 'screen')} className="flex h-40 items-center justify-center">
+            <Spinner label="Loading the picture" />
+          </div>
+        }
+      >
+        <ShotView
+          sid={sid}
+          phone={phone}
+          onShowOnMac={() => void showOnMac()}
+          id={PANEL_ID(sid, 'screen')}
+          labelledBy={TAB_ID(sid, 'screen')}
+          text={screenText}
+        />
+      </Suspense>
     ) : view === 'screen' ? (
       screenText({ id: PANEL_ID(sid, 'screen'), labelledBy: TAB_ID(sid, 'screen') })
     ) : (

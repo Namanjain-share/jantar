@@ -7,7 +7,7 @@ import type { Readable } from 'node:stream';
 import type { RouteName, Session } from '@jantar/protocol';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { LifeResult } from '../contracts.js';
-import { ApiError } from './errors.js';
+import { ApiError, nodeUnsupported } from './errors.js';
 import type { RequestAuth } from './request.js';
 import type { ApiServices } from './services.js';
 
@@ -73,12 +73,21 @@ export function notImplementedRoute(feature: string): RouteImpl {
   };
 }
 
-export function sessionOr404(s: ApiServices, sid: string): Session {
+/**
+ * The session a route names, or 404. v0.6: a paired server's session (it
+ * carries `node`) is refused with 409 node_unsupported, unless `nodeOk`:
+ * the routes the hub answers from its own state (getSession, and the
+ * pipeline's pre-checks of a route it forwards). Every route that acts on a
+ * server's session is forwarded before its handler runs, so a handler that
+ * reaches here with one is a route that works for the Mac's sessions only.
+ */
+export function sessionOr404(s: ApiServices, sid: string, opts: { nodeOk?: boolean } = {}): Session {
   // An own key only: state.sessions is a plain object, so "constructor" or
   // "__proto__" from a URL would otherwise find Object.prototype's members.
   const sessions = s.ctx.store.getState().sessions;
   const session = Object.hasOwn(sessions, sid) ? sessions[sid] : undefined;
   if (!session) throw new ApiError('not_found', 'no such session');
+  if (session.node !== undefined && !opts.nodeOk) throw nodeUnsupported();
   return session;
 }
 

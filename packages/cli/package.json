@@ -30,10 +30,12 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p ../../test/integration/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p ../../test/integration/tsconfig.json && tsc -p ../../test/windows/tsconfig.json && tsc -p ../../test/docker/tsconfig.json",
     "test": "vitest run && vitest run -c vitest.integration.config.ts",
     "test:unit": "vitest run",
     "test:integration": "vitest run -c vitest.integration.config.ts",
+    "test:windows": "vitest run -c vitest.windows.config.ts",
+    "test:docker": "vitest run -c vitest.docker.config.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {

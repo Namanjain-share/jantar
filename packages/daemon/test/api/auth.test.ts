@@ -33,7 +33,8 @@ function urlOf(def: RouteDef): string {
   return def.path.replace(/:([A-Za-z]+)/g, (_m, n: string) => PARAMS[n] ?? 'x');
 }
 
-const httpRoutes = (Object.entries(ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.method !== 'WS');
+// v0.6's `node` routes read no device at all: 404 while Fleet is off, 403 with any Origin (v06-gate.test.ts).
+const httpRoutes = (Object.entries(ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.method !== 'WS' && d.scope !== 'node');
 const protectedRoutes = httpRoutes.filter(([, d]) => d.scope !== 'public');
 const writeRoutes = httpRoutes.filter(([, d]) => d.method !== 'GET');
 

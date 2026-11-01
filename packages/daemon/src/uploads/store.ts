@@ -16,7 +16,7 @@
  */
 import { chmod, lstat, mkdir, open, readdir, unlink } from 'node:fs/promises';
 import { join, sep } from 'node:path';
-import { UPLOADS_TOTAL_MAX_BYTES, UploadIdSchema, type AttachmentRef, type UploadInfo } from '@jantar/protocol';
+import { UPLOADS_TOTAL_MAX_BYTES, UploadIdSchema, localSession, type AttachmentRef, type UploadInfo } from '@jantar/protocol';
 import type { DaemonContext, UploadErrorCode, UploadResult, UploadStore as Store, ResolvedUpload } from '../contracts.js';
 import { newId } from '../core/ids.js';
 import { sniffUpload } from './sniff.js';
@@ -65,9 +65,8 @@ export class UploadStore implements Store {
   /** A session-shaped id of a session the daemon knows and that has not ended. */
   private live(sid: string): boolean {
     if (!UPLOAD_SID_RE.test(sid)) return false;
-    const sessions = this.ctx.store.getState().sessions;
-    // An own key only: "constructor" must not find Object.prototype's.
-    const session = Object.hasOwn(sessions, sid) ? sessions[sid] : undefined;
+    // An own key only: "constructor" must not find Object.prototype's. v0.6: a server's session stores its uploads there.
+    const session = localSession(this.ctx.store.getState(), sid);
     return session !== undefined && session.status !== 'ended';
   }
 

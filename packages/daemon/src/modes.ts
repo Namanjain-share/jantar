@@ -32,16 +32,35 @@
  *                run (they spend quota). The meetings part is told
  *                `readOnly`, not wrapped, and meetingSummarize is refused up
  *                front (api/app.ts READ_ONLY_REFUSED).
+ *
+ * v0.6 Fleet adds the stand-ins each role puts where the other role's part
+ * goes (offFleet on a node, offNodeLink on the hub), and on a node the
+ * hub-only parts the API's type still asks for (nodeOffParts: Changes,
+ * Rewrite, Life, Intel, Meetings, the push router, an inert ccw reader):
+ * none opens a file or starts a timer, and each answers 501 with the
+ * sentence that it lives on the Mac. A node's `--read-only` is the same
+ * wrappers as the hub's: its NodeView says readOnly, and every write there
+ * is refused on the node itself.
  */
-import type { Pane, PaneForeground, PatchResult, Settings } from '@jantar/protocol';
+import { errorBody, type Pane, type PaneForeground, type PatchResult, type Settings } from '@jantar/protocol';
 import type {
+  CcwLegacySource,
+  ChangesService,
+  DaemonRole,
   DecideResult,
+  FleetService,
   FolderBrowser,
   FoodModule,
   HooksBridge,
+  IntelService,
   LaunchResult,
   Launcher,
   LifeModuleBuilders,
+  LifeService,
+  MeetingsService,
+  NodeLinkService,
+  NodeLinkStatus,
+  NotificationRouter,
   OpResult,
   RewriteService,
   RewriteSubmitResult,
@@ -53,18 +72,25 @@ import type {
   UsageSource,
   Writer,
 } from './contracts.js';
+import { ApiError } from './api/errors.js';
 
 export const READ_ONLY_REASON = 'jantard is running read-only (--read-only): this action is turned off';
 /** v0.5: what the meetings status and a meeting's summary say under --read-only (WP-SU uses it). */
 export const READ_ONLY_SUMMARIES = 'Summaries are off while Jantar is read-only.';
 export const NO_TERMINAL_REASON = 'the terminal backend is turned off (jantard --no-terminal)';
 
-/** Which terminal backend the daemon runs with (reported on /ctl/status). */
-export type TerminalMode = 'terminal-app' | 'off' | 'injected';
+/**
+ * Which terminal backend the daemon runs with (reported on /ctl/status).
+ * v0.6: `tmux` on Linux (terminal/pick.ts), and `none` where this platform
+ * has no backend Jantar can type with (native Windows: watch and cards only).
+ */
+export type TerminalMode = 'terminal-app' | 'tmux' | 'none' | 'off' | 'injected';
 
 export interface DaemonMode {
   readOnly: boolean;
   terminal: TerminalMode;
+  /** v0.6: hub or node (config.ts roleOf); absent means the hub. */
+  role?: DaemonRole;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +157,12 @@ const refusedOp = async (): Promise<OpResult> => ({ ok: false, code: 'unsupporte
 /** Reads pass through (a screenshot never selects a tab); type, Enter, Ctrl-U, keys, new windows and focus are refused. */
 export function readOnlyTerminal(inner: TerminalBackend): TerminalBackend {
   const shot = inner.getScreenshot?.bind(inner);
+  const start = inner.start?.bind(inner);
+  const stop = inner.stop?.bind(inner);
   return {
+    // v0.6: a backend's own tick (tmux ties sessions to panes) only reads.
+    ...(start ? { start } : {}),
+    ...(stop ? { stop } : {}),
     kind: inner.kind,
     available: () => inner.available(),
     findPane: (target) => inner.findPane(target),
@@ -249,5 +280,106 @@ export function readOnlyLifeBuilders(inner: LifeModuleBuilders): LifeModuleBuild
         estimateStatus: () => ({ available: false, reason: READ_ONLY_REASON }),
       };
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// v0.6 Fleet: each role's stand-ins for the other role's parts
+
+/** On a node, what a hub-only part answers (the API's 501). */
+export const NODE_PART_OFF = 'This machine is a server paired with a Mac: that lives on the Mac.';
+/** What the hub's Fleet stand-in answers on a node. */
+export const NOT_A_HUB = 'This machine is a server: pair servers at the Mac (jantar node pair there).';
+
+const idle = { start: async () => {}, stop: async () => {} };
+
+/** A stand-in part: start and stop do nothing, `fixed` answers as given, every other method throws `refusal` (an ApiError). */
+function standIn<T extends object>(fixed: Partial<T>, refusal: () => never): T {
+  const base = { ...idle, ...fixed };
+  return new Proxy(base as T, {
+    get(target, prop, receiver) {
+      if (Reflect.has(target, prop)) return Reflect.get(target, prop, receiver);
+      // Not a thenable: `await standIn(...)` must not call `then`.
+      if (prop === 'then' || typeof prop === 'symbol') return undefined;
+      return refusal;
+    },
+  });
+}
+
+const nodeOff = (): never => {
+  throw new ApiError('not_implemented', NODE_PART_OFF);
+};
+
+/** On a node: Fleet is the hub's (no targets, nothing to pair or list). */
+export function offFleet(): FleetService {
+  return {
+    ...idle,
+    target: () => null,
+    forward: async () => ({ status: 501, body: errorBody('not_implemented', NOT_A_HUB) }),
+    acceptLink: (_req, socket) => {
+      socket.destroy();
+    },
+    pair: async () => ({ ok: false, code: 'not_found', reason: 'not found' }),
+    makeTokens: async () => ({ ok: false, code: 'forbidden', reason: NOT_A_HUB }),
+    list: () => [],
+    revoke: async () => ({ ok: false, code: 'not_found', reason: 'no such machine' }),
+  };
+}
+
+/** The node link's status while there is none (the hub, or a node not started yet). */
+export const NODE_LINK_OFF: Readonly<NodeLinkStatus> = Object.freeze({
+  state: 'off',
+  name: null,
+  hubHost: null,
+  lastClose: null,
+  accessRefused: 0,
+  retryAt: null,
+});
+
+/** On the hub: no link to dial. */
+export function offNodeLink(): NodeLinkService {
+  return { ...idle, status: () => ({ ...NODE_LINK_OFF }) };
+}
+
+/** On a node: ccw is the Mac's legacy tool, never read there (no watchers, no `ps` or `lsof`). */
+export function inertCcwLegacy(): CcwLegacySource {
+  return {
+    ...idle,
+    present: () => false,
+    botRunning: async () => false,
+    moves: async () => [],
+    moveFor: async () => null,
+    moveLocked: async () => false,
+    burn: async () => [],
+    plan: async () => ({ source: 'none', next: null, accounts: [], updatedAt: null }),
+    switchConfig: async () => null,
+  };
+}
+
+/** The hub-only parts a node does not run, as the API's type still asks for them. */
+export interface NodeOffParts {
+  changes: ChangesService;
+  rewrite: RewriteService;
+  life: LifeService;
+  intel: IntelService;
+  meetings: MeetingsService;
+  notifications: NotificationRouter;
+}
+
+/**
+ * On a node: Changes, Rewrite, Life, Intel, Meetings and the push router.
+ * Their switches are off in the node's daemon.version and the link serves
+ * none of their routes; a CLI call on the node's own socket gets the 501
+ * that says they live on the Mac. Nothing here opens a file or starts a timer.
+ */
+export function nodeOffParts(): NodeOffParts {
+  return {
+    changes: standIn<ChangesService>({ forSession: async () => null, change: async () => null, recent: () => [], changedPathsFor: () => [] }, nodeOff),
+    // A prompt naming a rewrite job finds none (404), as on a Mac whose job expired.
+    rewrite: standIn<RewriteService>({ get: () => null, cancel: () => null, originFor: () => null, markSent: () => {}, releaseOrigin: () => {} }, nodeOff),
+    life: standIn<LifeService>({ broken: () => null }, nodeOff),
+    intel: standIn<IntelService>({ sources: () => [] }, nodeOff),
+    meetings: standIn<MeetingsService>({ broken: () => null }, nodeOff),
+    notifications: { ...idle },
   };
 }

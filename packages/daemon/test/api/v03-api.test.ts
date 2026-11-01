@@ -254,6 +254,8 @@ describe('Mac-only settings', () => {
       accounts: { kept: [3] },
       // v0.5's (v05-settings.test.ts covers it on its own).
       meetings: { enabled: true },
+      // v0.6's Fleet switch (v06-gate.test.ts).
+      fleet: { enabled: true },
     };
     for (const [group, value] of Object.entries(samples)) {
       const patch = { notify: { bodies: 'short' }, [group]: value };
