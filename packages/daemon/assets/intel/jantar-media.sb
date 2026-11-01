@@ -19,6 +19,13 @@
 (allow process-exec (literal (param "HELPER")))
 (deny file-read* (subpath (param "HOME")))
 (allow file-read* (literal (param "HELPER")) (subpath (param "JOB")))
+;; realpath(3), which the helper runs on every path it is given (and Apple's
+;; frameworks on the files they open), reads the metadata of each folder above
+;; the job dir; under the HOME rule alone it fails ("Operation not permitted",
+;; checked with /bin/realpath under this profile). So: the metadata, never the
+;; contents or a listing, of the job dir's own ancestors, and nothing else
+;; under HOME (a file beside them stays unreadable, even by stat).
+(allow file-read-metadata (path-ancestors (param "JOB")))
 (deny file-write*)
 (allow file-write* (subpath (param "JOB")) (literal "/dev/null"))
 (deny mach-lookup (global-name "com.apple.pasteboard.1")

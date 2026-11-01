@@ -347,6 +347,11 @@ describe('G9: the media helper', () => {
       expect(rules).toContain(rule);
     }
     expect(rules).not.toContain('/private/var/folders');
+    // The one rule added for realpath(3): the metadata of the job dir's own ancestors, nothing wider under HOME.
+    expect(rules.match(/\(allow [^)]*file-read[^\n]*/g)).toEqual([
+      '(allow file-read* (literal (param "HELPER")) (subpath (param "JOB")))',
+      '(allow file-read-metadata (path-ancestors (param "JOB")))',
+    ]);
     for (const f of [...walk(join(SRC, 'intel')), ...walk(join(ASSETS, 'intel'))]) {
       const text = readFileSync(f, 'utf8').toLowerCase();
       expect(text, f).not.toMatch(/avconvert|afconvert/);
