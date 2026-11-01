@@ -434,6 +434,33 @@ describe('offline, reconnect and the snapshot diff', () => {
     expect(stateOf().pending[CARD]).toBeUndefined();
   });
 
+  it('a card decided while the link was down is settled, not re-opened; after a hub restart a decided card is kept, so its confirmation counts', async () => {
+    const first = await linked();
+    first.drop(1006);
+    const events = record(ctx);
+    const snap = linuxNodeSnapshot();
+    snap.pending[CARD] = { ...(snap.pending[CARD] as PendingRequest), state: 'decided', decidedBy: 'device:hub.dev-1', decision: { behavior: 'allow' } };
+    const second = linkTo(reg);
+    second.node.sendSnapshot(snap);
+    await settle();
+    expect(events.filter((e) => e.type.startsWith('pending.')).map((e) => e.type === 'pending.resolved' && e.data)).toEqual([
+      { id: CARD, state: 'decided', decidedBy: 'device:hub.dev-1', decision: { behavior: 'allow' } },
+    ]);
+    expect(stateOf().pending[CARD]?.state).toBe('decided');
+
+    // A new hub (restarted): the decided card is kept as it is, never pushed, and its later confirmation is the node's own.
+    ctx = hubContext();
+    reg = new NodeRegistry(ctx);
+    const fresh = linkTo(reg);
+    fresh.node.sendSnapshot(snap);
+    await settle();
+    expect(stateOf().pending[CARD]?.state).toBe('decided');
+    fresh.node.sendEvent(nodeWireEvent({ type: 'pending.resolved', sid: S1, data: { id: CARD, state: 'confirmed' } }));
+    await settle();
+    expect(stateOf().pending[CARD]).toBeUndefined();
+    expect(warnings(ctx)).toEqual([]);
+  });
+
   it('sends: an unfinished one is caught up, one that finished while away is too, an old finished one is not news', async () => {
     const first = await linked();
     const job = (id: string, stage: 'typed' | 'failed' | 'proven') => ({ id, sid: S1, textHash: 'h', textLength: 1, stage, attempts: 0, createdAt: '2026-01-15T10:00:00.000Z', updatedAt: '2026-01-15T10:00:00.000Z' });

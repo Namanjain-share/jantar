@@ -14,9 +14,11 @@
  *
  * A snapshot is diffed against the hub's last view of the node: cards gone
  * are closed, sessions gone removed, new ones added, changed ones patched,
- * and only cards the hub does not have are opened (a card it already has is
- * never re-opened, so a dropped link never pushes it twice). Its view goes
- * first, so a push fired by a card already names the machine.
+ * and only live cards (open, or decided and waiting for their tool) the hub
+ * does not have are opened (a card it already has is never re-opened, so a
+ * dropped link never pushes it twice; one decided while the link was down
+ * is settled). Its view goes first, so a push fired by a card already names
+ * the machine.
  */
 import {
   LAUNCH_FINAL_STAGES,
@@ -259,7 +261,8 @@ export function ingestSnapshot(reg: NodeRegistry, nodeId: string, snap: NodeSnap
   }
   const cards = new Map<string, PendingRequest>();
   for (const raw of Object.values(s.pending)) {
-    if (raw.state !== 'open') continue;
+    // Live cards only: open, or decided and waiting for the tool to run (its `confirmed` comes later).
+    if (raw.state !== 'open' && raw.state !== 'decided') continue;
     const known = idOk(raw.id) ? own(st.pending, raw.id) : undefined;
     if (!idOk(raw.id) || !sessions.has(raw.sid) || (known && !ownSession(st, nodeId, known.sid)) || cards.size >= NODE_LIMITS.openCards) {
       bad += 1;
@@ -336,7 +339,16 @@ export function ingestSnapshot(reg: NodeRegistry, nodeId: string, snap: NodeSnap
     reg.emit({ type: 'session.updated', sid: next.sid, data: { patch, ...(unset.length ? { unset } : {}) } });
   }
   // Only cards the hub does not have: one it already has (a dropped link) is never opened, or pushed, again.
-  for (const p of cards.values()) if (!Object.hasOwn(reg.state().pending, p.id)) reg.emit({ type: 'pending.opened', sid: p.sid, data: { pending: p } });
+  // One the hub has open and the node decided while the link was down is settled.
+  for (const p of cards.values()) {
+    const had = own(reg.state().pending, p.id);
+    if (!had) reg.emit({ type: 'pending.opened', sid: p.sid, data: { pending: p } });
+    else if (had.state === 'open' && p.state === 'decided') {
+      const by = p.decidedBy !== undefined ? { decidedBy: p.decidedBy } : {};
+      const decision = p.decision !== undefined ? { decision: p.decision } : {};
+      reg.emit({ type: 'pending.resolved', sid: p.sid, data: { id: p.id, state: 'decided', ...by, ...decision } });
+    }
+  }
   for (const job of sends) if (jobNews(job, own(now.sends, job.id), sendDone)) reg.emit({ type: 'send.progress', sid: job.sid, data: { job } });
   for (const job of launches) if (jobNews(job, own(now.launches, job.id), launchDone)) reg.emit({ type: 'launch.progress', data: { job } });
   // Alerts only on a reconnect (what happened while the link was down); after a hub restart they are old news.

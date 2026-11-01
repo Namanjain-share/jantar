@@ -62,7 +62,14 @@ export class NodeRegistry {
   private readonly sizes = new WeakMap<object, number>();
   private readonly log: Logger;
 
-  constructor(protected readonly ctx: DaemonContext) {
+  /**
+   * `refusalOf`: the last handshake the link server refused for a node since
+   * its last good link (auth/nodes.ts lastRefusal), for the Machines list.
+   */
+  constructor(
+    protected readonly ctx: DaemonContext,
+    private readonly refusalOf: (nodeId: string) => { code: number; at: string } | null = () => null,
+  ) {
     this.log = ctx.log.child({ part: 'fleet' });
   }
 
@@ -81,6 +88,8 @@ export class NodeRegistry {
   rowOf(rec: NodeRecord): NodeRow {
     const view = this.view(rec.id);
     const rt = this.nodes.get(rec.id);
+    const closed = rt?.lastClose ?? null;
+    const refused = this.refusalOf(rec.id);
     const row: NodeRow = {
       id: rec.id,
       name: rec.name,
@@ -94,9 +103,11 @@ export class NodeRegistry {
       sessions: Object.values(this.state().sessions).filter((s) => s.node === rec.id).length,
       readOnly: view?.readOnly ?? rt?.info?.readOnly ?? false,
       accessRefused: view?.accessRefused ?? rt?.info?.accessRefused ?? 0,
-      lastClose: rt?.lastClose ?? null,
+      // A refused handshake (4426: update Jantar there) is newer than the link it could not replace.
+      lastClose: refused && (!closed || refused.at >= closed.at) ? refused : closed,
     };
     if (view?.problem) row.problem = view.problem;
+    if (refused?.code === NODE_CLOSE.version) row.problem = 'version';
     return row;
   }
 

@@ -6,7 +6,7 @@
  *
  * Built on every hub and inert while settings fleet.enabled is off: no
  * listener, no timer, no file. It follows the switch itself: on, the hub key
- * (link/keys.ts loadOrCreateHubKey) and the link server (fleet/socket.ts);
+ * (NodeAuth.hubKey, link/keys.ts) and the link server (fleet/socket.ts);
  * off, every link closes 4403 and each node's view and sessions leave the
  * board (node.removed; the pairings stay, so turning it on again needs no
  * re-join). Started after `notifications`, before `api`.
@@ -17,7 +17,6 @@ import type { Actor, Factories, FleetResult, FleetService, FleetTarget, LinkServ
 import { NodeAuth } from '../auth/nodes.js';
 import { actorId } from '../core/actor.js';
 import { refuseUpgrade } from '../api/node-upgrade.js';
-import { loadOrCreateHubKey } from '../link/keys.js';
 import { createLinkServer } from './socket.js';
 import { forwardCall, targetOf } from './forward.js';
 import { NodeRegistry } from './registry.js';
@@ -29,7 +28,7 @@ const QUICK_TUNNEL = /\.trycloudflare\.com$/i;
 export const createFleet: Factories['fleet'] = (ctx): FleetService => {
   const log = ctx.log.child({ part: 'fleet' });
   const auth = new NodeAuth(ctx);
-  const registry = new NodeRegistry(ctx);
+  const registry = new NodeRegistry(ctx, (id) => auth.lastRefusal(id));
   let server: LinkServer | null = null;
   let unsubSettings: Unsubscribe | null = null;
   // Switch changes apply one at a time, in order.
@@ -40,16 +39,13 @@ export const createFleet: Factories['fleet'] = (ctx): FleetService => {
   const turnOn = async (): Promise<void> => {
     if (server) return;
     try {
-      await loadOrCreateHubKey(ctx.paths);
+      // Made now, so the first join line and the first link find it (NodeAuth loads it once at a time).
+      await auth.hubKey();
     } catch (e) {
       log.error('cannot load the hub key', { error: String(e).slice(0, 200) });
     }
-    server = createLinkServer(ctx, auth, {
-      onLink: (link) => {
-        auth.touch(link.nodeId, { os: link.info.os, version: link.info.version });
-        registry.attach(link);
-      },
-    });
+    // The link server touches the pairing (lastSeenAt, os, version) itself.
+    server = createLinkServer(ctx, auth, { onLink: (link) => registry.attach(link) });
     log.info('fleet on');
   };
 

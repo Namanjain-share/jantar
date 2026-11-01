@@ -52,7 +52,8 @@ export function createExecutor(ctx: DaemonContext, link: LinkInjector): CallExec
       try {
         reply = await link.inject(call);
       } catch (e) {
-        log.error('a call from the hub failed', { route: req.route, error: String(e).slice(0, 200) });
+        // The error's kind only: its message could quote what the call carried.
+        log.error('a call from the hub failed', { route: req.route, error: e instanceof Error ? e.name : 'unknown' });
         return fail(500, 'internal', 'internal error');
       }
       if (jsonBytes(reply.body) > NODE_LIMITS.bulkToHubBytes) {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { DaemonEvent, SendJob } from '@jantar/protocol';
+import { NO_FEATURES, type DaemonEvent, type NodeView, type SendJob } from '@jantar/protocol';
 import type { Notification, Notifier } from '../../src/contracts.js';
 import { createTestContext, type TestContext } from '../../src/core/testing.js';
 import { NotificationRouterImpl, createNotificationRouter, type RoutedNotification } from '../../src/notify/index.js';
@@ -305,5 +305,88 @@ describe('reminders', () => {
     expect(ctx.clock.pending()).toBeGreaterThan(0);
     await router.stop();
     expect(ctx.clock.pending()).toBe(0);
+  });
+});
+
+describe('v0.6: a paired server cannot flood the phone (S25)', () => {
+  const BUILD1 = '01JF1EETN0DEBV11D1000000A1';
+  const BUILD2 = '01JF1EETN0DEBV11D2000000A2';
+  const view = (id: string, name: string): NodeView => ({
+    id,
+    name,
+    os: 'linux',
+    backend: 'tmux',
+    online: true,
+    since: ctx.clock.iso(),
+    version: '0.6.0',
+    readOnly: false,
+    accessRefused: 0,
+    features: { ...NO_FEATURES },
+    accountsMode: 'dirs',
+    accounts: {},
+    activeAccount: null,
+    usage: { fetchedAt: null, source: null },
+  });
+
+  /** A server's session (its sid, folder and machine), on the hub's board. */
+  function serverSession(node: string, i: number) {
+    const s = makeSession({ sid: `7a1c0000-0000-4000-8000-${node === BUILD1 ? 'a' : 'b'}${String(i).padStart(11, '0')}`, folder: `app-${i}`, node });
+    ctx.store.emit({ type: 'session.added', sid: s.sid, data: { session: s } });
+    return s;
+  }
+
+  beforeEach(async () => {
+    await ctx.settings.patch({ notify: { kinds: ['permission', 'question', 'plan', 'send-failed', 'done'] } });
+    ctx.store.emit({ type: 'node.updated', data: { node: view(BUILD1, 'build-1') } });
+    ctx.store.emit({ type: 'node.updated', data: { node: view(BUILD2, 'build-2') } });
+  });
+
+  const done = (sid: string) => ctx.store.emit({ type: 'session.done', sid, data: {} });
+
+  it('at most 10 pushes a minute per server, each naming it; the Mac and other servers keep their own', async () => {
+    const a = Array.from({ length: 15 }, (_, i) => serverSession(BUILD1, i));
+    const b = serverSession(BUILD2, 0);
+    for (const s of a) done(s.sid);
+    await router.whenIdle();
+    expect(push.sent).toHaveLength(10);
+    expect(push.sent[0]?.title).toBe('build-1 · app-0 finished');
+    // The Mac's own pushes never count against a server, and another server has its own budget.
+    done('sess-aaaa-1111');
+    done(b.sid);
+    await router.whenIdle();
+    expect(push.sent.slice(10).map((n) => n.title)).toEqual(['demo-app finished', 'build-2 · app-0 finished']);
+    // A minute on, build-1 has room again.
+    await tick(60_000);
+    done(a[0]!.sid);
+    await router.whenIdle();
+    expect(push.sent.at(-1)?.title).toBe('build-1 · app-0 finished');
+  });
+
+  it('on top of the mute: muted pushes neither go nor spend the budget', async () => {
+    const a = Array.from({ length: 12 }, (_, i) => serverSession(BUILD1, i));
+    await ctx.settings.patch({ notify: { muted_until: ctx.clock.iso(ctx.clock.now() + 30 * MIN) } });
+    for (const s of a) done(s.sid);
+    await router.whenIdle();
+    expect(push.sent).toHaveLength(0);
+    await ctx.settings.patch({ notify: { muted_until: null } });
+    for (const s of a) done(s.sid);
+    await router.whenIdle();
+    expect(push.sent).toHaveLength(10);
+  });
+
+  it("a server's card, waiting session and failed send are pushed with its name and spend its budget", async () => {
+    const s = serverSession(BUILD1, 1);
+    openCard({ sid: s.sid });
+    await tick(3000);
+    ctx.store.emit({
+      type: 'send.progress',
+      sid: s.sid,
+      data: { job: { id: 'job-n1', sid: s.sid, textHash: 'h', textLength: 1, stage: 'failed', attempts: 1, createdAt: ctx.clock.iso(), updatedAt: ctx.clock.iso() } },
+    });
+    await router.whenIdle();
+    expect(push.sent.map((n) => n.title)).toEqual(['build-1 · app-1 needs you', 'Not delivered to build-1 · app-1']);
+    for (let i = 0; i < 12; i++) done(s.sid);
+    await router.whenIdle();
+    expect(push.sent).toHaveLength(10);
   });
 });

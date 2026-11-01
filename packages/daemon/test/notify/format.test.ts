@@ -244,3 +244,45 @@ describe('notification text (web direction.md 5.8)', () => {
     expect(JSON.stringify(all)).not.toMatch(/—|\p{Extended_Pictographic}/u);
   });
 });
+
+describe('v0.6: the machine word (a paired server names itself as the Mac named it)', () => {
+  const MACHINE = { machine: 'build-1' };
+
+  it("a server's push leads with its name; the Mac's own carries none", () => {
+    const s = makeSession({ folder: 'api-server' });
+    expect(cardNotification(makeCard(), s, 'full', TS, MACHINE)?.title).toBe('build-1 · api-server needs you');
+    expect(cardNotification(makeCard(), s, 'full', TS)?.title).toBe('api-server needs you');
+    expect(waitingNotification({ ...s, status: 'waiting', waitingFor: 'input' }, 'full', TS, MACHINE).title).toBe('build-1 · api-server needs you');
+    expect(doneNotification(s.sid, s, { text: 'All green.' }, 'full', TS, undefined, MACHINE).title).toBe('build-1 · api-server finished');
+    const job: SendJob = { id: 'job1', sid: s.sid, textHash: 'h', textLength: 3, stage: 'failed', attempts: 1, createdAt: TS, updatedAt: TS, reason: 'a dialog was open' };
+    expect(sendFailedNotification(job, s, 'full', TS, MACHINE).title).toBe('Not delivered to build-1 · api-server');
+    expect(alertNotification({ id: 'a', ts: TS, kind: 'error', sid: s.sid, label: 'x', what: 'API error' }, s, 'full', TS, MACHINE).title).toBe(
+      'build-1 · api-server hit an API error',
+    );
+  });
+
+  it("a server's account 01 is not the Mac's: its limit push names the server first", () => {
+    const s = makeSession({ folder: 'api-server', account: 1 });
+    const alert = { id: 'l', ts: TS, kind: 'limit' as const, sid: s.sid, account: 1, label: 'x', what: 'limit' };
+    expect(alertNotification(alert, s, 'full', TS, { ...MACHINE, window: '5-hour' }).title).toBe('build-1 · acct 01 hit its 5-hour limit');
+    expect(alertNotification(alert, s, 'full', TS, { window: '5-hour' }).title).toBe('acct 01 hit its 5-hour limit');
+  });
+
+  it('the folder gives way to the name and the words after it, within the title cap', () => {
+    const s = makeSession({ folder: 'a-very-long-folder-name-for-the-api-server' });
+    const title = cardNotification(makeCard(), s, 'full', TS, MACHINE)?.title ?? '';
+    expect(title.startsWith('build-1 · a-very')).toBe(true);
+    expect(title.endsWith('… needs you')).toBe(true);
+    expect([...title].length).toBeLessThanOrEqual(MAX_TITLE);
+  });
+
+  it('generic bodies name no machine', () => {
+    const s = makeSession();
+    const all = [
+      cardNotification(makeCard(), s, 'generic', TS, MACHINE),
+      doneNotification(s.sid, s, { text: 'x' }, 'generic', TS, undefined, MACHINE),
+      alertNotification({ id: 'a', ts: TS, kind: 'error', sid: s.sid, label: 'x', what: 'w' }, s, 'generic', TS, MACHINE),
+    ];
+    expect(JSON.stringify(all)).not.toContain('build-1');
+  });
+});
