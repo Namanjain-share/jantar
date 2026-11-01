@@ -12,8 +12,8 @@
 | [Alerts and sounds](alerts.md) | The five alert groups and their tones, Answer soon for Claude's 2-minute countdown, what the lock screen can and cannot do, `jantar notify` |
 | [Accounts](accounts.md) | One login or cswap, usage and resets, accounts kept for other work |
 | [The primer](primer.md) | Starting an idle account's 5-hour window early |
-| [Life](life.md) | Today, todos, reminders, projects, medicines, food and weight, cafés, finance; backup and restore |
-| [Ask](assistant.md) | The chat page: plain words in, todos, reminders, meals and expenses out as cards you add with a tap; what goes to Claude |
+| [Life](life.md) | Today, todos, reminders, projects, medicines, food and weight, cafés, finance, posts; backup and restore |
+| [Ask](assistant.md) | The chat page: plain words in, todos, reminders, meals, expenses and post ideas out as cards you add with a tap; what goes to Claude |
 | [Intel shelf](intel.md) | The shelf, its search, its sources and the JSONL line format, and `jantar mcp` for Claude Code |
 | [Meetings](extension.md) | The Chrome extension for Google Meet and Microsoft Teams: setup, captions, screenshots, summaries, export, deleting everything |
 | [Servers](fleet.md) | v0.6 Fleet: pairing Linux servers, Windows machines and other Macs with the Mac; the front door (Cloudflare Access or Tailscale), each OS, accounts, tmux, updating ten servers, rotating the Access token, limits and what is not verified yet |
@@ -21,7 +21,7 @@
 | [Security, in plain words](security.md) | What Jantar can reach, what a phone can do, what leaves the Mac; the full model is [SECURITY.md](../SECURITY.md) |
 | [Questions](faq.md) | Common questions and known limits |
 | [Roadmap](roadmap.md) | Ideas for later, with no dates |
-| [Upgrading](upgrading.md) | Updating Jantar, and running it beside the legacy ccw tool |
+| [Upgrading](upgrading.md) | Updating Jantar (0.7.0: keep a copy of life.db first), and running it beside the legacy ccw tool |
 | [Real-Mac checks](real-mac-checks.md) | What has been tried on a real Mac, what is still open, and how to try one safely |
 
 The [changelog](../CHANGELOG.md) lists what each version changed.
