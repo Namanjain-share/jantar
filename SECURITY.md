@@ -37,6 +37,9 @@ commands directly), but it means the "no approve verb on the sockets" rule
 only protects you from sessions that do **not** have unrestricted Bash. If you
 run sessions with general Bash access, treat card approvals as coming from
 "anything running as you", not only from your phone.
+From v0.5.3 such a process can also list and add todos of any Life project
+linked to a folder, over the control socket
+([folder todos and the MCP server](#folder-todos-and-the-mcp-server)).
 
 ### Network exposure
 
@@ -1023,3 +1026,102 @@ Each needs someone already running code on this Mac.
   extension or a stolen key could grow `meetings.db` by up to 300 posts a
   minute; `jantar meetings unpair` stops it.
 
+## v0.5.3: alerts, folder todos and the MCP server
+
+Nothing here sends anything to a new service: pushes still go only through
+Apple's or Google's push service, and nothing new is switched on that
+reaches outside the Mac.
+
+### The countdown read
+
+The daemon now reads a session's Terminal screen by itself, the way the
+Screen tab does, to see whether Claude's 2-minute auto-block countdown is
+running: when an unattended ask turns up (a subagent's card) or a session
+waits with no card. It reads at most once per session every 10 seconds,
+plus one read for the repeat and one more 10 seconds later when a card's
+read failed. It never types and takes no writer lock, and nothing it reads
+is kept: no screen text is logged, stored, emitted or pushed. With the
+terminal off (`--no-terminal`), with `notify.urgent` off
+(`jantar notify urgent off`) or without `permission` in `notify.kinds`,
+nothing is read.
+
+The Answer soon push it sends holds the folder's name, the time left and a
+fixed sentence (with `generic` bodies, the time left only), never the
+command or the question, in every `notify.bodies` mode: stricter than the
+other pushes. It goes out as a permission push, so the mute and each
+device's kinds hold it, and it expires with the countdown (its TTL is the
+seconds left).
+
+### Pushes and sound
+
+- Each push names its alert group (`urgent`, `needs`, `done`, `care`,
+  `problem`). The service worker hands the group's name, and nothing else,
+  to a visible window of the app on the same origin. A push is shown
+  silent only when that window answers within 300 ms that it played its
+  own tone; medicine and Life pings never are.
+- The app speaks only five fixed phrases ("Answer soon", "Claude needs
+  you", "Done", "Reminder", "Something needs a look"): never a prompt, a
+  folder, a medicine or a name. Its speech call takes a group, not text.
+- `jantar notify test` (`POST /v1/notify/test`) needs admin and answers
+  only over the control socket (TCP: 403). It skips `notify.kinds` and the
+  mute because you asked for it at the Mac; each device's own kinds still
+  apply, and `notify.webpush` off stops it.
+
+### The missed-push retry
+
+A Life ping whose push never left the Mac (no DNS answer or no connection,
+with no HTTP status) waits for the network and goes out when it is back,
+marked late, up to 6 hours late; a medicine's is skipped once its next dose
+is under 3 hours away. Anything that may have reached the push service (an
+HTTP status, a reset connection, a timeout) still counts as a failure and
+is never sent again, so a ping can be late but never arrives twice. Session
+pushes are never retried: a "needs you" from before the Mac slept would be
+wrong by now.
+
+### Folder todos and the MCP server
+
+`jantar mcp` is an MCP server that Claude Code runs over stdio, and a
+client of the control socket like the rest of the CLI. It calls five
+routes: the shelf's list and one item, a capture (marked `via: 'claude'`,
+a field only the control socket may send; over TCP it is 400), and two new
+routes, `GET` and `POST /v1/folder/todos`, which answer only over the
+control socket (TCP: 403).
+
+What the daemon enforces, and what it does not. The daemon maps a folder to
+a project: the deepest linked folder that holds it, where a project linked
+to `/`, `/Users` or your home folder counts only for exactly that folder.
+The folder is a field the caller chooses on the control socket. So any
+process running as you, a session with Bash included, can read the open
+todos of **any** folder-linked project and add todos to it, at most 20 an
+hour. Todo routes were never on the control socket before: this is new
+reach, kept narrow. It is the open todos of folder-linked projects, and
+adding only: never done, edit or delete, and never medicines, food, weight,
+money or cafés. The "this session's folder only" rule binds the MCP tools,
+which take the folder from Claude Code (`CLAUDE_PROJECT_DIR`, else the
+folder the server runs in), never from the model.
+
+An added todo goes through the Life write limiter, the open-todo cap and
+the audit log (ids only), and one with a time pings the phone like any
+reminder. The server never runs `claude` or anything else. A switch that is
+off, or a stopped daemon, is reported to Claude as yours to change, with
+the command for you to run, not as a command for the session.
+
+### The shelf is global
+
+Every session with the MCP server can read the whole Intel shelf, including
+the phone's captures and notes saved from other folders; with Bash it could
+already, through `jantar intel list`. Shelf text comes from saved pages and
+bots, so it is a prompt-injection channel: the tools only read and append,
+and the server tells Claude to treat shelf text as data, never as
+instructions. The folder a capture came from stays in the captures file on
+the Mac; no route or tool returns it.
+
+### Meetings: why a screenshot was not saved
+
+The extension keeps one record of the last screenshot try in Chrome's
+session storage (gone when Chrome quits): when, which control, the tab's
+number, the step it ended at, Chrome's own message (one line, with web and
+data addresses replaced, at most 200 characters) and the daemon's status.
+Never a URL, a title or the picture. The daemon logs one
+`meetings: screenshot upload` line per upload, refusals included, with the
+status and the size only.

@@ -32,8 +32,8 @@ const DEFAULT_DIST = join(here, '..', 'packages', 'web', 'dist');
 /**
  * v0.3 loaded 252 kB of JavaScript first; v0.4 265 kB; v0.4.2 279 kB, its dialog dock and keypad loaded
  * lazily; v0.5.1 (v0.4.2 with v0.5's Meetings) 279.6 kB, a picked file's preparation and the attachment
- * glyphs loaded lazily too. That leaves about 0.4 kB: the next split to try is in docs/LAYOUT.md's v0.5.1
- * section. Raise this only as a decision recorded there.
+ * glyphs loaded lazily too; v0.5.3 277.1 kB, the Screen tab's picture and the tones with their Sounds
+ * section loaded lazily (docs/LAYOUT.md's v0.5.3 section). Raise this only as a decision recorded there.
  */
 export const MAIN_JS_MAX = 280_000;
 export const MAIN_CSS_MAX = 16_000;

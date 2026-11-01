@@ -17,7 +17,10 @@ jantar notify test urgent      # one test push of a group to your devices
 - **While Jantar is open on screen**, it plays the group's tone (made in
   code, no sound files) and, if you turn it on, says a few fixed words.
   Both follow the ring/silent switch. After Jantar was in the background,
-  iOS may need one tap before sound plays again.
+  iOS may need one tap before sound plays again, and after Jantar starts
+  again its first tap anywhere lets the voice speak. The same alert twice
+  within 3 seconds (the countdown's repeat push and its 60-second mark, or
+  several pings at once) plays once.
 - **On the lock screen** (or with Jantar in the background) the iPhone
   plays its own alert sound, the same for every web app (Settings › Sounds
   & Haptics). Jantar can change the words of a push and send a repeat, not

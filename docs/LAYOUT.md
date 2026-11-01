@@ -17,7 +17,7 @@ jantar/
   LICENSE (FSL-1.1-MIT)  THIRD_PARTY_NOTICES.md
   CHANGELOG.md
   docs/            README.md (the index), the user guides (install, phone-app, phone-control,
-                   accounts, primer, life, intel, extension, configuration, security, faq,
+                   alerts, accounts, primer, life, intel, extension, configuration, security, faq,
                    roadmap, upgrading, real-mac-checks), and for contributors: LAYOUT.md (this
                    file), architecture.md, hook-protocol.md, PROVENANCE.md
   docs/img/        the screenshots the README and docs show (scripts/screenshots.mjs writes them)
@@ -71,7 +71,10 @@ jantar/
                    v0.5: extension.ts launches playwright-core's own Chromium with the built
                    extension in a fresh temp profile and drives it (openPopup, tabIdOf, the
                    camera's closed shadow root): ext-smoke and ext-v05 (synthetic Meet and
-                   Teams pages at the real URLs); v05-meetings, v05-privacy, web-v05
+                   Teams pages at the real URLs); v05-meetings, v05-privacy, web-v05;
+                   v0.5.3: v053-alerts (the alert groups, the countdown and the missed-push
+                   retry, through the built app's service worker), ext-v053 (the toolbar
+                   icon's activeTab path) and mcp (the built `jantar mcp` over stdio)
 ```
 
 ## The daemon's parts
@@ -244,3 +247,37 @@ only with screenshots on) and the hook cards (`session/Question.tsx`,
 `Permission.tsx`, `Plan.tsx`, 4.4 kB; a card would wait for its chunk the
 first time one opens). Raising `MAIN_JS_MAX` is a decision to record, not
 a fix.
+
+### v0.5.3
+
+Alerts with a tone per group, the urgent alert for Claude's 2-minute
+countdown, Life's yearly repeat and missed-push retry, todos and the shelf
+for Claude Code through `jantar mcp`, search on the phone, and the Meetings
+screenshot diagnostics. Protocol version 3 and settings version 2 are
+unchanged (one new setting, `notify.urgent`), and nothing adds a migration
+to jantar.db or life.db: a repeat's own time (`repeat.at`) rides in the
+todo's stored repeat.
+
+- Protocol: `alerts.ts` (the five groups, `alertGroupOf`, the tones and the
+  only phrases ever spoken); `RepeatSchema` takes `yearly` and `at`; the
+  folder-todo shapes; `intel.ts`'s `searchTerms` and the list's `sort`; and
+  three routes that answer only over ctl.sock: `folderTodos`,
+  `folderTodoCreate` and `notifyTest` (`api/routes/notify.ts`).
+- Daemon: `notify/countdown.ts`, the read-only countdown probe and its
+  episodes (one urgent push per ask, one repeat), wired into the router
+  with the shared `PaneLookup` that `daemon.ts` builds before the
+  notifications part; Web Push counts a push that never left the Mac
+  (`offline`), and the Life scheduler waits for the network on it.
+- CLI: `commands/notify.ts` and `commands/mcp.ts` (a stdio MCP server with
+  no new dependency, a ctl.sock client like the rest).
+- Web: `lib/sounds.ts` (tones made with Web Audio, the phrases, the tap
+  that opens audio) and `ui/screens/devices/Sounds.tsx`; the service
+  worker hands a push's group to an open window and shows it silent only
+  when that window played it.
+- Extension: the last screenshot try (`LastShot`, in Chrome's session
+  storage) and the shortcut in the popup's Settings.
+
+The first load is 277.1 kB in 9 chunks. The Screen tab's picture
+(`session/controls/ShotView.tsx` with `useShot.ts`), `lib/sounds.ts` and
+the Sounds section load with `import()`, and `code-split.test.ts` keeps
+them out of it; the hook cards remain the next split to try.

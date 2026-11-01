@@ -59,6 +59,15 @@ a process can already do, but treat card approvals as coming from
 "anything running as you", not only your phone
 ([threat model](../SECURITY.md#threat-model-summary)).
 
+With `jantar mcp` added to Claude Code, a session can search the Intel
+shelf, save notes to it, and list and add todos of the Life project linked
+to its folder (at most 20 an hour), never complete, edit or delete one.
+Any process running as you could do the same for any linked folder
+([folder todos and the MCP server](../SECURITY.md#folder-todos-and-the-mcp-server)).
+When a session's ask shows Claude's 2-minute countdown, the daemon reads
+that screen to warn your phone, and keeps nothing it reads
+([the countdown read](../SECURITY.md#the-countdown-read)).
+
 ## Reporting a problem
 
 Use GitHub's private vulnerability reporting on this repository

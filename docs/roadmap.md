@@ -27,6 +27,12 @@ which of these you need, and why, helps decide.
 - Search across session transcripts on the phone: "which session did I ask
   about X".
 
+## Alerts
+
+- A different sound per alert on the locked iPhone, through the Pushover
+  app, if wanted. A web app's push can't choose its sound
+  ([Alerts and sounds](alerts.md)).
+
 ## Accounts
 
 - Moving a session to another account inside Jantar, with alerts on
@@ -35,14 +41,16 @@ which of these you need, and why, helps decide.
 
 ## Life
 
-- `jantar todo add "…" [--due] [--project]`, so sessions and scripts can
-  drop a todo in Life the way `jantar intel add` feeds the shelf.
+- `jantar todo add "…" [--due] [--project]`, so scripts can drop a todo in
+  Life the way `jantar intel add` feeds the shelf. Claude sessions already
+  can, through `jantar mcp`.
 - Medicine pings that don't need the Mac awake (a copy in Apple Reminders
   or a calendar).
 
 ## Meetings
 
-- Why a screenshot failed, shown in the popup and in `jantar meetings`.
+- The extension's site access in the popup, once an experiment shows
+  Chrome reports it truly for Meet and the three Teams addresses.
 - A daily cap on meeting summaries.
 - The official transcripts (Google Meet's and Microsoft Graph's) as an
   opt-in for accounts that have them. They would also cover the Teams

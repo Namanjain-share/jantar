@@ -247,6 +247,25 @@ rest is open:
 | R10 | Chrome minimized and the shortcut pressed from another app: nothing is captured, or the flash says why | `captureVisibleTab` on macOS |
 | R11 | Quit Chrome during a call with notes on: the meeting ends within about 15 minutes and gets its summary | the keep-alive and the stale end |
 
+### Alerts, the MCP server and Life (v0.5.3)
+
+The suites cover these with fakes: a push channel that records what would
+leave the Mac, the fake terminal's countdown, playwright's Chromium with the
+built app and its service worker, and `jantar mcp` against a daemon on a
+synthetic home. What only an iPhone, a real countdown or a real Claude Code
+can show:
+
+| Check | Question | What depends on it |
+|---|---|---|
+| AL1 | iPhone, iOS 26, Jantar on the Home Screen and open: `jantar notify test needs` plays one sound, not two (the app answered in time and the push came silent). Two means `silent` is not honoured, or the answer was late. Then the same with the silent switch on: does the push still buzz? (The app answers that it played, so the push comes silent; if iOS honours that, an open app in silent mode loses the buzz too.) | the chime from a push |
+| AL2 | With Speak on, does the voice speak in the Home Screen app, and with the silent switch on? After Jantar is closed and opened again from the Home Screen, tap once anywhere (not a button), then `jantar notify test needs`: does it speak, with no visit to Devices? Note whether one plain tap was enough | the voice; whether iOS counts a tap's pointerup |
+| AL3 | After Jantar was in the background, does a push's tone play without a tap (the audio resumed by itself), or only after the next tap? Does a second push with the same tag sound again? | sounds after the background; the urgent repeat |
+| AL4 | A real countdown ask (a workflow agent's prompt in bypass mode): one Answer soon push within a few seconds, "about 2 min to answer", no separate "needs you" push, and the repeat at about a minute left. Then two parallel subagent asks at once, the first left to time out (and once with the first answered): does the second ask get its own push? Once an ask's alert ends nothing reads the screen again, so a queued ask whose card opened earlier may get none | the urgent alert |
+| MCP1 | `jantar mcp` in a terminal, then the `claude mcp add` line it prints: `/mcp` shows `jantar` with 5 tools (once per cswap profile). In a session started in a folder linked to a project, `todos_here` names that project; from home, with no project linked to home, it names none. This checks that Claude Code gives a user-scope server `CLAUDE_PROJECT_DIR` (without it, the folder the server runs in decides) | todos from Claude sessions |
+| IN1 | On an iPhone, in Safari and in the Home Screen app, tap the header's magnifier: does the keyboard open with the Intel search box focused? (The focus happens once the shelf's code has loaded, after the tap.) If not, a tap on the box opens it | search from the header |
+| LF1 | A medicine or reminder due while Wi-Fi is off: the ping goes out, marked late, when Wi-Fi comes back. On Wi-Fi that reaches nothing (a hotel's sign-in page, DNS that times out) it is tried five times over a few minutes, then dropped, never sent twice: the wait for the network covers only a push that fails at once (no DNS answer, no connection) | the missed-push retry |
+| LF2 | A daily reminder at 11:00 snoozed an hour rings at 12:00 that day and at 11:00 the next | a repeating todo's own time |
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear
