@@ -555,7 +555,7 @@ The whole picture is in
   userspace mode, no quick tunnel.
 - tmux's default server only; no GNU screen, iTerm2 or other terminals on
   servers.
-- Native Windows: watch and cards only (see [Windows](#windows)).
+- Native Windows is a preview: watch and cards only (see [Windows](#windows)).
 - No Picture view, Files or Rewrite for servers' sessions; Life, Intel,
   Meetings, Ask and notifications live on the Mac.
 - Answer soon (the push for Claude's 2-minute countdown) is for the Mac's

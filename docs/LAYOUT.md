@@ -167,8 +167,8 @@ inert stand-in) → sessions → transcriptWatcher → usage → hooks → termi
 (the tmux backend's 10-second pane tick, when it has one) → writer → files
 → launcher → controls → api (no TCP port: only the control socket and the
 link app) → nodeLink (the dialler, last, so the hub's first call finds the
-API); Changes, Rewrite, Life, Intel, Meetings, the primer and pushes are
-stand-ins that open no file and start no timer (`nodeOffParts()` in
+API); Changes, Rewrite, Life, Intel, Meetings, Ask, the primer and pushes
+are stand-ins that open no file and start no timer (`nodeOffParts()` in
 modes.ts).
 
 The window primer (v0.4, `primer/`) reads usage and ccwLegacy, so it
