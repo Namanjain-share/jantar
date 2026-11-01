@@ -67,6 +67,12 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar intel source add <file.jsonl>` / `source rm <id>` | follow a file, or stop |
 | `jantar intel add "<title>" [--url U] [--type T] [--tag T]... [--note N]` | put an item on the shelf |
 | `jantar intel list [--q TEXT] [--type T] [--tag T] [--limit N]` | what is on the shelf: best match first with `--q`, else newest first ([search](intel.md#search)) |
+| `jantar intel read on \| off \| status` | 0.8: let the Mac read saved links (`on` says what leaves the Mac and builds the frames and speech helper once); `status` lists what it can use: your Chrome, the headless browser, yt-dlp, Apple's tools, the speech locale, today's reads, the queue, Shortcut keys and the door ([Add post](intel.md#add-post-reading-links)) |
+| `jantar intel read speech <locale>` | 0.8: the language of on-device speech-to-text (`en-IN` by default); refused unless this Mac has it on device |
+| `jantar intel save <link\|text> [--depth light\|standard\|full]` | 0.8: save a link (or a note) and read it on the Mac |
+| `jantar intel jobs` | 0.8: the reads waiting, running and finished in the last day |
+| `jantar intel retry <id> [--depth D]` / `delete <id>` | 0.8: read an item again; delete a saved item and its pictures |
+| `jantar intel shortcut add [--name N] \| list \| revoke <id\|--all>` | 0.8: keys for the iOS Shortcut "Save to Jantar", made at the Mac only and shown once ([Shortcut](shortcut.md)) |
 | `jantar mcp` | the MCP server Claude Code sessions use for the shelf and their folder's todos; in a terminal it prints the `claude mcp add` line to paste ([MCP](intel.md#from-claude-code-mcp)) |
 | `jantar accounts` | one login or cswap, the kept accounts and the legacy ccw tool's hold list ([Accounts](accounts.md)) |
 | `jantar accounts keep <n...>` / `keep --none` | the accounts kept for other work |
@@ -173,10 +179,10 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 | `launch` | `enabled` (off), `mode` (`claude`), `defaultFlags`, `preLaunchArgv`, `csCommand`, rate limits | the Mac |
 | `controls` | `enabled`, `escapeVerified`, `clearVerified` (all on), `interruptKey` (`interrupt` or `escape`) | the Mac |
 | `life` | one switch per module (off), `timezone`, `currency`, `lockScreenDetails` | the Mac |
-| `intel` | `enabled` (off), `sources` (up to 10 files) | the Mac |
+| `intel` | `enabled` (off), `sources` (up to 10 files); 0.8: `read` (off: reading saved links), `speechLocale` (`en-IN`) | the Mac |
 | `accounts` | `kept`, `prime`, `primeKept` | the Mac |
 | `fleet` | v0.6: `enabled` (off); the pairings themselves are in `jantar.db` | the Mac (`jantar fleet`) |
-| `bins` | absolute paths to `claude`, `cswap`, `osascript` and the rest, found by `jantar install` (launchd's `PATH` is minimal) | the Mac |
+| `bins` | absolute paths to `claude`, `cswap`, `osascript` and the rest, found by `jantar install` (launchd's `PATH` is minimal); 0.8: `ytDlp` (optional) | the Mac |
 | `autoswitch` | the ceilings Jantar shows (`ceiling` 97 %, `weekly_ceiling` 95 %) and the hold list; Jantar itself does not switch accounts | the Mac, or an admin device |
 | `notify`, `usage` | push bodies and kinds, a mute, and `urgent` (the Answer soon push, on); the cswap poller (`auto`: only while the legacy ccw tool's bot is not running) | the Mac, or an admin device |
 
@@ -191,7 +197,10 @@ Everything Jantar keeps is in `~/.jantar` (or `JANTAR_HOME`), mode 0700:
 | `life.db`, `backups/` | Life, and its nightly copies (the newest 30) |
 | `meetings.db`, `meetings/` | Meetings' text, and the screenshots, a folder per meeting |
 | `uploads/<session>/` | files sent from the phone, removed after 7 days |
-| `intel/captures.jsonl` | items added with `jantar intel add` or the phone |
+| `intel/captures.jsonl` | items added with `jantar intel add`, the phone, Add post, the Shortcut and Ask. 0.8: a read item's lines too (a later line with the same id replaces the earlier one); compacted on Delete and when most of the file is old lines; new saves refused past 50 MB |
+| `intel/bin/` | 0.8: `jantar-media`, the frames and speech helper built once from `assets/intel/jantar-media.swift` with Apple's Command Line Tools, and its cache key |
+| `intel/media/<item>/` | 0.8: a read item's small thumbnails (at most 7, 1 GiB for all items) |
+| `intel/run/`, `intel/jobs/` | 0.8: the Claude run's empty folder and prompt copy; one folder per read while it runs, deleted when it ends |
 | `primer/` | `primed.json` and the empty folder primes run in |
 | `push/` | the Web Push keys |
 | `bin/jantar-hook` | the hook client Claude's settings call |

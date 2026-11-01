@@ -79,6 +79,7 @@ Installed from npm and not modified. Their licenses ship inside each package.
 | pdfjs-dist (v0.3 Files viewer: PDFs, loaded on demand, with its worker) | Apache-2.0 |
 | @date-fns/tz (v0.4 Life: wall-clock times in a time zone; by Sasha Koss) | MIT |
 | ws (v0.6 Fleet: a server's link to the Mac) | MIT |
+| playwright-core 1.63.0 (v0.8 Intel: the headless browser tier drives the Mac's own Chrome; imported only when that tier runs; it downloads no browser for Jantar) | Apache-2.0 |
 
 ### pdf.js's standard fonts
 
@@ -110,7 +111,10 @@ their licenses are in their packages. esbuild (MIT) bundles the Chrome
 extension's own code only: the extension ships no third-party code.
 playwright-core (Apache-2.0) drives a headless Chromium in the browser checks
 of `test/integration`; the browser is downloaded by its installer and is not
-part of this repository.
+part of this repository. Since 0.8 playwright-core is also a runtime
+dependency of the daemon (above), where it drives only the system Chrome.
+yt-dlp (Unlicense), which 0.8 can use when you installed it yourself, is
+not bundled or installed by Jantar.
 
 ## License texts
 

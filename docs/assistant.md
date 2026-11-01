@@ -66,6 +66,7 @@ reminder, yesterday for a meal or money), *subah*, *shaam*, *raat*.
 | **Expense** or **Income** | a money entry in one of the usual categories, today or up to 7 days back |
 | **Reddit post**, **Instagram reel**, … | an idea in [Posts](life.md#posts): the platform, the kind, where, a title and its day and time (with a time it rings). Ask never writes a post's text: you write it in Posts, and post it yourself |
 | **Now** | nothing: it shows what is due today, calories against your target, or today's medicines |
+| **Save to Intel** (0.8) | the link saved to the [Intel shelf](intel.md#add-post-reading-links) and read on the Mac at the depth on the card |
 
 - **Add**, **Edit** (change the fields, then Save and add) or **Skip**
   each card. **Add all** adds the todo, food and post cards of one answer
@@ -80,6 +81,21 @@ reminder, yesterday for a meal or money), *subah*, *shaam*, *raat*.
   one-off reminder or a post for a time already gone), "No time, so it
   won't ring. Edit to add one." (you asked for a reminder and gave no
   time), or "No project by that name. It will be added without one."
+
+### Saving a link (0.8)
+
+While the Mac reads links (`jantar intel on`, then `jantar intel read
+on`), a message that is just one link, or "save this: <link>" (also
+"keep it", "add this to intel", with a `:` or a `-`), optionally with
+`light`, `standard` or `full` after it, gets one **Save to Intel** card at
+once: "Save this to Intel?" with the link's host and the depth. **No
+Claude run** for that: Ask's model never proposes a save, and anything
+else you type goes to Claude as before.
+
+**Add** saves the link and starts its read: "Saved to Intel · Reading", with
+a link to the item. **Edit** can change the depth, not the link. **Undo**
+deletes the item again, unless the link was already on the shelf before
+(then Undo only puts the card back). It is not part of **Add all**.
 
 ## Times
 
@@ -102,7 +118,7 @@ Food). Tapping a dose on the medicines card is the only way Ask logs one.
 Change, finish or delete items you already have; log a dose or change a
 medicine; save foods, bills or cafés; write a post's text or caption, mark
 one posted or post anything anywhere; or touch sessions, files, settings,
-the shelf or another device. Ask says so in the reply and suggests
+the shelf (beyond the typed save above) or another device. Ask says so in the reply and suggests
 nothing.
 
 It suggests a repeat every day, week or month, never every year: for a

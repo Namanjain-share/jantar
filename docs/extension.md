@@ -53,6 +53,10 @@ jantar meetings               # on, open, the extension paired
 jantar meetings export last   # a folder with meeting.md and the screenshots
 ```
 
+Since 0.8 the extension can also **read posts you save to Intel** in your
+own Chrome, as you, when you turn on **Read saved links** in its popup:
+[Read saved links](#read-saved-links). Off by default.
+
 Status: on the first real calls, captions and a summary worked, but no
 screenshot from the extension reached Jantar, and the cause is not known
 yet. Since 0.5.3 the popup's **Settings › Last screenshot** says how each
@@ -80,7 +84,9 @@ The extension never:
 - talks to anything but Jantar on this Mac (`http://127.0.0.1:<port>`);
 - loads code or images from anywhere, or runs on pages other than Google
   Meet (`meet.google.com`) and Teams on the web (`teams.microsoft.com`,
-  `teams.live.com`, `teams.cloud.microsoft`).
+  `teams.live.com`, `teams.cloud.microsoft`); with **Read saved links** on,
+  it also opens one post at a time in a tab of its own
+  ([below](#read-saved-links)) and reads that post once it has loaded.
 
 ## What leaves the Mac
 
@@ -388,7 +394,73 @@ command with the meeting's id filled in.
 - Export needs Meetings on (while off, Jantar shows no meeting), so export
   before `jantar meetings off`.
 
+## Read saved links
+
+Since 0.8 the Mac reads links you save to Intel
+([Add post](intel.md#add-post-reading-links)). Some posts only show
+everything to a signed-in person (an Instagram reel's caption behind a
+login wall, a Reddit thread Reddit won't serve the Mac). With **Read saved
+links** on, the Mac asks this extension to open such a post in **your own
+Chrome**, as you, read it, and close it.
+
+Turn it on in the popup: **Settings › Read saved links**. Chrome then asks,
+once, for six sites, exactly:
+
+- `https://www.instagram.com/*`
+- `https://www.youtube.com/*`
+- `https://www.tiktok.com/*`
+- `https://x.com/*`
+- `https://www.reddit.com/*`
+- `https://www.linkedin.com/*`
+
+No other site, no subdomain (not `l.instagram.com`, not
+`m.youtube.com`), and no Threads or Facebook (those links are read
+without your Chrome). The extension's new permissions for this are
+`alarms` (to ask the Mac every 30 seconds while the switch is on) and
+`scripting` (to run the reader in the post's tab); Chrome shows neither at
+install. It still has no `tabs`, `cookies`, `webRequest`, `debugger`,
+`history` or `downloads` permission.
+
+How one read goes:
+
+1. Every 30 seconds while the switch is on, the extension asks Jantar on
+   this Mac for the next post. Jantar uses your Chrome only while it asked
+   in the last 90 seconds; otherwise it reads the link another way.
+2. The post's address comes from Jantar, **rebuilt from the post's id** on
+   the platform's own host (`https://www.instagram.com/reel/<id>/`,
+   `https://x.com/i/status/<id>`, ...): never the link as you typed or
+   shared it. The extension checks its shape again and refuses anything
+   that is not a post: a profile, a login page, a link shim
+   (`l.instagram.com`, `out.reddit.com`, `youtube.com/redirect`), another
+   site.
+3. It opens its own tab in the background (never in front, never your
+   tab), muted, and watches it: the moment the tab goes anywhere that is
+   not that post (another site, a sign-in page, a profile), it closes it.
+4. Loaded, and 2.5 seconds later, it checks the address once more, reads
+   **the post, not the page** (the caption or text, the creator, the time,
+   the post's own pictures, top comments on Reddit and LinkedIn, and up to 4
+   frames of the video when Chrome draws them), and closes the tab. Always,
+   within 45 seconds.
+
+It never clicks, types, scrolls, likes, follows or posts, and never reads
+your feed, your notifications, the page's header or menus, or anything with
+your own name. Your cookies stay in Chrome: the extension never reads or
+copies them and never fetches the post's media; the Mac fetches any picture
+or video the post names, without cookies.
+
+What it means for you: the platform sees you open that post, as if you had
+clicked it (a YouTube video read this way joins your watch history). With
+Chrome closed, or the switch off, the Mac reads the public page instead.
+
+To turn it off: the same switch. To take the six sites back as well:
+`chrome://extensions` > Jantar > **Details** > **Site access**.
+
 ## Updating the extension
+
+**0.8.0**: build again and press the reload arrow on the Jantar card. Chrome
+grants the new `alarms` and `scripting` permissions on that reload without
+asking; the six post sites are asked only when you turn on Read saved
+links.
 
 After pulling a new version of Jantar: build again (`pnpm -r build`), then
 in `chrome://extensions` press the reload arrow on the Jantar card, then

@@ -122,7 +122,10 @@ A fresh install shows only Board, Accounts, Alerts and Devices. **Ask**
 Life's todos, reminders, meals, expenses and post ideas, each added only
 when you tap it. With `jantar mcp` added to Claude Code, a session can
 search the shelf, save to it, and add todos to the project linked to its
-folder.
+folder. **Add post** (`jantar intel read on`) has the Mac read a reel,
+video, post, article or PDF you send from the phone or the iPhone's Share
+sheet, and keep its caption, frames, transcript and a summary on the
+shelf, so you can find it later by what it said.
 
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/today-phone-dark.png"><img src="docs/img/today-phone.png" width="240" alt="Today: two medicines due at 13:00, then the todos due."></picture>
@@ -131,7 +134,8 @@ folder.
 </p>
 
 More: [Life](docs/life.md), [Ask](docs/assistant.md),
-[Meetings](docs/extension.md), [the Intel shelf](docs/intel.md).
+[Meetings](docs/extension.md), [the Intel shelf](docs/intel.md),
+[Save to Jantar from the iPhone](docs/shortcut.md).
 
 ## Requirements
 

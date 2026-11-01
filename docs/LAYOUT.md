@@ -122,6 +122,7 @@ the wiring in `daemon.ts` is mechanical. Tests sit beside each in
 | Meetings (v0.5) | `packages/extension/**`, `packages/daemon/src/meetings/**`, `packages/daemon/src/auth/extensions.ts`, `packages/web/src/ui/screens/meetings/**` | `createMeetingsService: Factories['meetings']` (meetings/index.ts, with `MEETINGS_BUILDERS`; daemon.ts passes `{ readOnly }`); the built extension in `packages/extension/dist` |
 | Ask (v0.5.3) | `packages/protocol/src/ask.ts`, `packages/daemon/src/ask/**`, `packages/daemon/src/api/routes/ask.ts`, `packages/daemon/assets/ask/**`, `packages/web/src/ui/screens/ask/**`, `packages/cli/src/commands/ask.ts` | `createAskService: Factories['ask']` (ask/index.ts; daemon.ts passes `{ life, usage, ccwLegacy }` and `{ readOnly }`) |
 | Fleet, the hub (v0.6) | `packages/daemon/src/{fleet,link}/**`, `packages/daemon/src/auth/nodes.ts`, `packages/cli/src/commands/{fleet,node}.ts` | `createFleet: Factories['fleet']` (fleet/index.ts; L1's `createLinkServer` and `NodeAuth` inside) |
+| Intel reads links (v0.8) | `packages/protocol/src/{post-url,page-read}.ts`, `packages/daemon/src/intel/read/**`, `packages/daemon/assets/intel/**`, `packages/daemon/src/auth/capture-keys.ts`, `packages/daemon/src/api/routes/{capture,capture-keys,ext-reads}.ts`, `packages/extension/src/background/reads.ts`, `packages/web/src/ui/screens/intel/**`, `packages/cli/src/commands/intel{,-shortcut}.ts` | still `createIntelService: Factories['intel']` (daemon.ts passes `{ files, usage, ccwLegacy }` and `{ readOnly }`); Ask gets Intel's `read` and `remove` only |
 | Fleet, a node (v0.6) | `packages/daemon/src/node/**`, `packages/daemon/src/terminal/{pick.ts,tmux/**}`, `packages/daemon/src/sources/cswap/dirs.ts`, `packages/cli/src/lib/{systemd,service}.ts` | `createNodeLink: Factories['nodeLink']` (node/index.ts; daemon.ts passes `{ executor, self }`); `createTmuxBackend` (terminal/tmux/index.ts, picked by `pickTerminal`) |
 
 Rules of thumb:
@@ -448,3 +449,41 @@ jantar.db migration, no settings version and no protocol bump
 Ask's post card in `packages/daemon/test/ask/` and
 `packages/web/test/ask.test.tsx`, end to end in
 `test/integration/v07-posts.integration.test.ts`.
+
+### v0.8.0
+
+Intel reads links (Add post): a saved link (a reel, a video, a post, an
+article, a PDF, any https page) or text is kept on the shelf at once and
+read on the Mac one job at a time. The protocol: the depths, platforms,
+job states and tiers, the rich fields of a read item (captures only), the
+jobs, thumbnails and status shapes, the page read's zod mirror
+(`PageReadSchema`), the extension's read job and result, the capture door
+and its keys, `INTEL_READ_LIMITS`, `INTEL_READ_REASONS` and the notes
+(`intel.ts`, `constants.ts`); twelve routes in phase `v0.8`, the `capture`
+scope and the `intelRead` switch (`api.ts`); and two zod-free subpaths the
+extension bundles: `@jantar/protocol/post-url` (the six platforms' post
+shapes, the rebuilt Chrome path, the sign-in paths) and
+`@jantar/protocol/page-read` (`readPage`, the in-page reader both page
+tiers run, self-contained, returning a promise). The daemon:
+`intel/read/**` (the store, the queue, the guard and its CONNECT proxy,
+the three page tiers, yt-dlp, the per-platform adapters, the media helper
+and its sandbox profile, the Claude run with `rewrite/run.ts`'s additive
+stream-json io, the answer); `auth/capture-keys.ts` and the door's gate
+in `api/app.ts` (`captureCaller`, before any body); `routes/{capture,
+capture-keys,ext-reads}.ts`; Ask's typed fast path (`ask/answer.ts`
+`saveFastPath`). jantar.db migration 6 (`capture_keys`). The extension:
+`background/reads.ts` (the alarm, the read loop, the shape checks),
+`shared/post-sites.ts`, and the popup's Read saved links; `alarms` and
+`scripting`, six optional post origins. The CLI: `jantar intel save |
+jobs | retry | delete | read`, `jantar intel shortcut`, and a doctor check
+of the Shortcut's door. The phone: Add post, the Reading strip and read
+items under `screens/intel/` (the Intel chunk), and Ask's save card.
+`playwright-core` 1.63.0 moves from the root's dev dependencies into the
+daemon's dependencies (the headless browser tier, imported lazily). No
+settings version and no protocol bump (`PROTOCOL_VERSION` 3). Tests: G1 to
+G18 across `packages/daemon/test/{intel,api,ask,arch}/`,
+`packages/protocol/test/{post-url,v08-intel-read}.test.ts`,
+`packages/extension/test/{page-read,background/reads}.test.ts`,
+`packages/cli/test/doctor-capture.test.ts`, the fake claude's read modes
+and the fake yt-dlp in `test/fixtures/test/intel-read.test.ts`, and end to
+end in `test/integration/`.

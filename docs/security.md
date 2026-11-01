@@ -58,6 +58,11 @@ point below links to its section there.
   session's folder) goes into that Claude session and reaches Anthropic
   like any tool output
   ([the MCP server](../SECURITY.md#folder-todos-and-the-mcp-server)).
+- With reading links on (0.8), a saved link's caption, page text, top
+  comments, on-screen text, transcript, your note, and its frames as
+  pictures go to Claude to write the item's summary; requests go to the
+  platform from the Mac, and with Read saved links your Chrome visits the
+  post as you ([reading links](../SECURITY.md#v08-intel-reads-links)).
 - There is no Jantar server, no telemetry and no account with this project.
 
 ## Servers (v0.6, Fleet)
@@ -83,6 +88,30 @@ model).
   calls after a real handshake; Tailscale has no such middle party.
 - The Mac is a single point of failure: while it sleeps, no server is
   reachable from the phone.
+
+## Reading links (v0.8, Add post)
+
+Off until you run `jantar intel read on` at the Mac
+([SECURITY.md](../SECURITY.md#v08-intel-reads-links) has the full model).
+
+- The Mac fetches the links you save, with an honest User-Agent and no
+  cookies, and only public https addresses: it refuses local and private
+  addresses, `.local` names and cloud metadata addresses, checked after DNS
+  and again on every redirect, with size and time caps. A headless browser
+  and yt-dlp go through the same check.
+- Your own Chrome (the extension's **Read saved links**, off by default)
+  opens only a post link the Mac rebuilt from the post's id, on one of six
+  platforms' own host, in a muted background tab that closes the moment it
+  goes anywhere else. Your cookies never leave Chrome.
+- What a page says is data: Claude reads it in one run with no tools, no
+  MCP and an empty folder, inside tags it can't close, and its answer is
+  checked (no links, no Markdown) before it is kept.
+- Frames and speech run in a small helper, under a macOS sandbox that
+  can't reach the network, your files outside its job folder, other
+  programs or the pasteboard. Audio never leaves the Mac.
+- The iOS Shortcut's door exists only over Tailscale or Cloudflare, with a
+  key made at the Mac; it can only save, and says the same sentence
+  whatever happened ([the Shortcut](shortcut.md)).
 
 ## What a session can do
 

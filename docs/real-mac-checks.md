@@ -291,6 +291,45 @@ sending prompts on Linux, the Access path for the link, native Windows and
 WSL2's keep-alive. They are listed in
 [Servers: not verified yet](fleet.md#not-verified-yet).
 
+### Reading links (v0.8, Add post)
+
+The tests run the reader against synthetic pages in jsdom and in
+playwright-core's own Chromium, a fake `claude` and a fake `yt-dlp`, and
+fake the media helper's answers; Swift is never compiled in a test. On a
+real Mac, still open:
+
+1. **One real `claude -p` stream-json run** with a synthetic JPEG: the line
+   shapes, that `--verbose` is needed with `--output-format stream-json`,
+   the init line's `tools: []`, and that the run ends when stdin closes.
+2. **`jantar-media` built from the repository's source** (its own module
+   cache), and `probe`, `frames`, `image`, `ocr`, `speech`, `pdf` and
+   `locales` on a synthetic mp4 (`say` and the generator in the research
+   notes) **under `assets/intel/jantar-media.sb` exactly**, also as a
+   launchd child (speech authorisation stays "not determined" and on-device
+   recognition still works). Inside the profile, proven refused: reading a
+   file under HOME outside the job folder, running `/usr/bin/open`, a
+   pasteboard write, a write to `/private/var/folders`. Any rule a framework
+   needs on top is recorded here with its reason.
+3. **`speech … 60`** on a 3-minute synthetic file stops near 60 seconds and
+   says `cut: true`.
+4. **The extension**: reloading the unpacked 0.8.0 build grants `alarms`
+   and `scripting` without a prompt; turning on Read saved links prompts
+   for exactly the six post sites; a muted background tab renders an
+   Instagram reel enough to read its caption; whether a never-shown tab
+   draws canvas frames (if not, none, by design: the headless pass reads
+   Instagram's frames).
+5. **The headless system Chrome** through playwright-core 1.63
+   (`channel: 'chrome'`, a temporary profile): no Keychain prompt, your
+   running Chrome untouched, a public reel's canvas frames through the
+   frames-only pass.
+6. **A logged-in Instagram page** carries `video_versions` in its embedded
+   JSON (if not, frames come from the headless pass or yt-dlp).
+7. **The Shortcut** on iOS 26, through Tailscale and through a Cloudflare
+   service token ([docs/shortcut.md](shortcut.md)).
+8. **yt-dlp**: the extractor names (`yt-dlp --list-extractors`) and the
+   single-file format selectors on a public reel, with no ffmpeg on the
+   `PATH`.
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear

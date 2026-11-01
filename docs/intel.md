@@ -5,6 +5,11 @@ append to JSONL files. On the phone: newest first, search, type and tag
 filters, each item's page with its link. Claude Code sessions reach it
 through `jantar mcp` (below). Off until you turn it on at the Mac.
 
+Since 0.8 the Mac can also **read a link you save** (an Instagram reel, a
+YouTube video, an X post, an article, a PDF, any https page) and keep what
+it found on the shelf, so you can search it later by what the post said:
+[Add post](#add-post-reading-links).
+
 ```sh
 jantar intel source add ~/bots/intel.jsonl
 jantar intel on
@@ -13,6 +18,141 @@ jantar intel on
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="img/intel-phone-dark.png"><img src="img/intel-phone.png" width="260" alt="The Intel shelf: saved links with type filters."></picture>
 </p>
+
+## Add post: reading links
+
+Send a link from the phone and the Mac saves it on the shelf at once, then
+reads it in the background: the page, the caption, the creator, a few
+frames, what is said in it, and a short summary from Claude. Later the
+phone, `jantar intel list --q` and `jantar mcp` find it by any of that.
+
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="img/intel-add-phone-dark.png"><img src="img/intel-add-phone.png" width="240" alt="Add post: a link pasted, the depth Standard picked."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="img/intel-reading-phone-dark.png"><img src="img/intel-reading-phone.png" width="240" alt="The shelf with the Reading strip: one read waiting, one looking at frames."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="img/intel-item-phone-dark.png"><img src="img/intel-item-phone.png" width="240" alt="A read reel: its pictures, Open original, what it is, key points, on screen, the transcript."></picture>
+</p>
+
+It is off until you turn it on at the Mac (the shelf first):
+
+```sh
+jantar intel on
+jantar intel read on        # says what leaves the Mac, and gets the Mac ready for frames and speech
+jantar intel read status    # what it can use here: Chrome, the headless browser, yt-dlp, the tools, the queue
+```
+
+### Sending a link
+
+- **The phone**: Intel › Add post. Paste a link, or a link and your own
+  words (they become the item's note), or just text. Pick the depth and
+  Save: "Saved. Reading it on your Mac." A link already on the shelf says
+  "Already saved." with Open and Read again. **Add by hand** keeps the old
+  form (title, link, type, tags, note), which reads nothing.
+- **The iPhone's Share sheet**: the "Save to Jantar" Shortcut
+  ([docs/shortcut.md](shortcut.md)). It needs Tailscale or Cloudflare.
+- **Ask**: "save this: <link>" (or just the link, or "keep it to intel -
+  <link> full") gives one card, Add saves it. No Claude run for that.
+- **The Mac**: `jantar intel save <link|text> [--depth light|standard|full]`.
+  `jantar intel add` stays a plain capture that reads nothing.
+
+### Depth
+
+Each item is read at the depth you pick; **Standard** is the default.
+
+| Depth | What the Mac does |
+|---|---|
+| **Light** | The page: the caption or text, the creator, the time, the cover picture (kept as a thumbnail). Claude writes a title, a summary, tags and key points from the text. |
+| **Standard** | Light, plus up to 4 key frames (or the post's own pictures) and the cover shown to Claude, plus the text on screen read from up to 20 frames (one every 2 seconds), so burnt-in subtitles are searchable. |
+| **Full** | Standard with up to 6 frames, plus speech-to-text on the Mac (or YouTube's own captions), up to 3 links from your own note read too, and Claude's own background knowledge, shown apart as "From Claude, not from the post". |
+
+A note with no link is never fetched: Light and Standard give the same,
+Full adds Claude's background.
+
+### What each kind of link gives
+
+The Mac tries, in your order, **your own Chrome** (through the Jantar
+extension, as you, post links only), then **a headless browser** (Chrome
+on this Mac with a fresh empty profile, never logged in), then **a
+download** (Jantar's own guarded fetch of the public page, then
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) if it is installed). A way known
+not to work for a platform is skipped.
+
+| Link | Tried in this order | Notes |
+|---|---|---|
+| Instagram reel or post | your Chrome, headless browser, download, yt-dlp | the public page carries the whole caption; frames come from a headless pass over the reel |
+| YouTube video or Short | your Chrome, download, yt-dlp | the tab is muted; the public player data gives the title, channel, description and caption tracks |
+| TikTok | your Chrome, download, yt-dlp | TikTok sends this Mac to its region page from India: then it stays a saved link, with that reason |
+| X post | your Chrome, download, yt-dlp | the public post data gives the text, photos and video |
+| Reddit thread | your Chrome, download | Reddit blocks the Mac: without your Chrome only the title and author |
+| LinkedIn post | your Chrome, download | the public page gives the whole post and its top comments |
+| Article, blog, Threads, Facebook, any https page | headless browser, download | never in your Chrome |
+| PDF | download | the text of the first 30 pages and page 1 as the picture |
+
+Read in your Chrome only with the extension's **Read saved links** on
+([docs/extension.md](extension.md#read-saved-links)). It opens only a post
+link the Mac rebuilt from the post's id, on the platform's own www host,
+in a muted background tab, and closes it as soon as the tab goes anywhere
+else. A YouTube video read there joins your watch history.
+
+### Reading, Retry, Delete
+
+The Mac reads one link at a time. At the top of the shelf, the **Reading**
+strip shows each one: Waiting, Opening in Chrome, Opening the page,
+Downloading, Getting the Mac ready (once), Looking at frames, Listening,
+Summarising, Saved, or Couldn't read with the reason in plain words, and
+**Retry** or **Change depth**. A read item's row shows its first picture
+and "platform · creator".
+
+The item's page: the pictures (tap for a larger one), the title, the
+creator, platform and date, **Open original**, what it is, the key points,
+what was on screen, why it matters, the tags, the transcript (folded), your
+note, and **Read again as** another depth. **Delete** removes a saved item
+and its pictures (only items saved here; a bot's file is the bot's).
+
+Nothing is lost when a step fails: the link is saved at once, a step that
+fails keeps what the steps before it found and says what was left out
+("Frames: only the cover image", "No speech in this video"). A read that
+did not finish when the daemon stopped is marked "Stopped before it
+finished. Retry." and never restarts on its own.
+
+### What leaves the Mac
+
+- Requests to the platform (and to links in your note, at Full) from the
+  Mac's own address, with an honest User-Agent and no cookies; through
+  yt-dlp when it is used.
+- With **Read saved links** on: your Chrome visits the post as you, with
+  your session, as when you open it yourself.
+- To Claude (Anthropic, through Claude Code on your account): the caption
+  or text, the page's description, top comments, the text read on screen,
+  the transcript, the linked pages' text, your note, and the frames and
+  pictures as images.
+- Never: audio (speech-to-text runs on the Mac, never Apple's servers),
+  cookies, the Shortcut's key.
+
+### Limits
+
+| What | Limit |
+|---|---|
+| Reads | one at a time; 100 waiting at most; 100 a day, of which 30 Full |
+| A read | 8 minutes at most, whatever it is doing |
+| Pages and JSON | 5 MB and 20 s each; a PDF 25 MB; a video 150 MB |
+| Speech | the first 30 minutes; English and Indian names on device (`intel.speechLocale`, default `en-IN`) |
+| Pictures | 7 small thumbnails per item, 1 GiB for all of them |
+| Kept text | caption 2,000 characters, on-screen text 1,000, transcript 8,000 (its start and end) |
+
+Frames and speech use one small helper the Mac builds once from Apple's
+Command Line Tools (`xcode-select --install`) and runs in a sandbox that
+cannot reach the network or your files. Without the tools, Standard and
+Full read like Light and say why.
+
+### Search and MCP
+
+Search covers the creator, the platform, the caption, the text on screen,
+the transcript, the key points, Claude's background and your note, besides
+everything above; a word equal to the creator counts like a tag.
+`intel_search` rows add the platform and creator, and `intel_get` adds the
+caption, the text on screen, the key points and the transcript, each
+labelled as text read from a saved web page. `intel_add` still saves
+without reading.
 
 ## Sources
 
@@ -51,7 +191,17 @@ folder it ran in, in that file only; the shelf never shows it.
 
 ```sh
 jantar intel list --q prisma --type tool --tag tools --limit 50   # best match first (newest first without --q); default 20, at most 100
+jantar intel save https://www.instagram.com/reel/AbC123xyz/ --depth full   # save and read it (reading on)
+jantar intel jobs                     # the reads waiting, running and finished today
+jantar intel retry <id> --depth light # read an item again
+jantar intel delete <id>              # delete a saved item and its pictures
 ```
+
+Since 0.8 the captures file is also where read items live: a later line
+with the same id replaces the earlier one, and Delete writes a line that
+removes the item, then compacts the file so a deleted item's text is gone
+from disk. The file is compacted too when most of it is old lines, and new
+saves are refused past 50 MB.
 
 ## The line format
 

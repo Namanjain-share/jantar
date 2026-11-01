@@ -13,9 +13,10 @@
 | [Accounts](accounts.md) | One login or cswap, usage and resets, accounts kept for other work |
 | [The primer](primer.md) | Starting an idle account's 5-hour window early |
 | [Life](life.md) | Today, todos, reminders, projects, medicines, food and weight, cafés, finance, posts; backup and restore |
-| [Ask](assistant.md) | The chat page: plain words in, todos, reminders, meals, expenses and post ideas out as cards you add with a tap; what goes to Claude |
-| [Intel shelf](intel.md) | The shelf, its search, its sources and the JSONL line format, and `jantar mcp` for Claude Code |
-| [Meetings](extension.md) | The Chrome extension for Google Meet and Microsoft Teams: setup, captions, screenshots, summaries, export, deleting everything |
+| [Ask](assistant.md) | The chat page: plain words in, todos, reminders, meals, expenses and post ideas out as cards you add with a tap; "save this: <link>" to Intel; what goes to Claude |
+| [Intel shelf](intel.md) | The shelf, its search, its sources and the JSONL line format, `jantar mcp` for Claude Code, and Add post: the Mac reads a reel, video, post, article or PDF you save (depths, sources, Retry, what leaves the Mac) |
+| [Save to Jantar](shortcut.md) | The iOS Share-sheet Shortcut for Add post: a key made at the Mac, the steps, the Tailscale and Cloudflare doors, troubleshooting |
+| [Meetings](extension.md) | The Chrome extension for Google Meet and Microsoft Teams: setup, captions, screenshots, summaries, export, deleting everything; and Read saved links, posts read in your own Chrome |
 | [Servers](fleet.md) | v0.6 Fleet: pairing Linux servers, Windows machines and other Macs with the Mac; the front door (Cloudflare Access or Tailscale), each OS, accounts, tmux, updating ten servers, rotating the Access token, limits and what is not verified yet |
 | [Configuration](configuration.md) | Every command, the daemon's flags, environment variables, `config.json`, the state folder |
 | [Security, in plain words](security.md) | What Jantar can reach, what a phone can do, what leaves the Mac; the full model is [SECURITY.md](../SECURITY.md) |

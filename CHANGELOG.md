@@ -14,6 +14,58 @@ what it said. jantar.db gains a table (migration 6; 0.7 opens it and
 carries on). Rebuild and reload the Chrome extension. The protocol stays at
 version 3, and settings don't change version.
 
+- **Add post** (Intel's header, with reading on): paste a link, a link and
+  your own words (they become its note), or just text; pick **Light**,
+  **Standard** (the default) or **Full**; Save says "Saved. Reading it on
+  your Mac.", or "Already saved." with Open and Read again. **Add by hand**
+  keeps the old form, which reads nothing.
+- **What a read keeps**: a title, a short summary, tags and key points from
+  Claude; the creator, platform and date; the caption or text; the text on
+  screen read from up to 20 frames (Standard and Full), so burnt-in
+  subtitles are searchable; at Full the transcript (YouTube's captions, else
+  speech-to-text on the Mac, the first 30 minutes), up to 3 links from your
+  note read too, and Claude's own background, labelled apart; up to 7 small
+  pictures kept on the Mac; the link, when it was saved and the depth.
+  **Open original** opens the post.
+- **Where it reads from**, in your order: your own Chrome through the
+  extension (Read saved links, off by default; post links only, rebuilt by
+  the Mac, in a muted background tab that closes on any other page), then a
+  headless Chrome with an empty profile, then a guarded download of the
+  public page, then yt-dlp if you installed it (single-file, no ffmpeg).
+  Ways known not to work for a platform are skipped ([docs/intel.md](docs/intel.md#what-each-kind-of-link-gives)).
+- **The Reading strip** shows each read as it goes (Waiting, Opening in
+  Chrome, Looking at frames, Listening, Summarising, Saved, or Couldn't
+  read with a plain reason) with **Retry** and **Change depth**; an item's
+  page has **Read again as** and **Delete**, which also removes its
+  pictures and compacts the shelf's file. A read that was running when the
+  daemon stopped is marked "Stopped before it finished. Retry." and never
+  restarts by itself.
+- **Search** covers the creator, platform, caption, text on screen,
+  transcript, key points and your note; `jantar mcp`'s `intel_search` shows
+  platform and creator, and `intel_get` the caption, on-screen text, points
+  and transcript, labelled as text read from a web page.
+- **The iOS Shortcut "Save to Jantar"** from the Share sheet, through
+  Tailscale or Cloudflare only: `jantar intel shortcut add` makes its key at
+  the Mac and prints the steps ([docs/shortcut.md](docs/shortcut.md)). Its
+  reply is always "Saved to Jantar.". `jantar doctor` checks the door.
+- **Ask**: "save this: <link>" (or just a link) gives a Save to Intel card
+  at once, with no Claude run; Add saves it, Undo deletes it.
+- **At the Mac**: `jantar intel read on | off | status`, `jantar intel read
+  speech <locale>`, `jantar intel save`, `jobs`, `retry` and `delete`.
+  `jantar intel add` is unchanged.
+- **What leaves the Mac**: requests to the platforms (honest User-Agent, no
+  cookies; local and private addresses refused after DNS and on every
+  redirect); with Read saved links, your Chrome visits the post as you; to
+  Claude, the post's text, your note and its frames as pictures. Audio never
+  leaves the Mac. Frames and speech run in a small helper the Mac builds
+  once with Apple's Command Line Tools, in a sandbox with no network
+  ([SECURITY.md](SECURITY.md#v08-intel-reads-links)).
+- **The extension** asks for two new permissions, `alarms` and `scripting`,
+  which Chrome grants on reload without a prompt; the six post sites are
+  asked only when you turn Read saved links on.
+- playwright-core 1.63.0 becomes a runtime dependency of the daemon (it was
+  already used by the tests); no other new package.
+
 ## 0.7.0 (2 November 2026)
 
 Posts, a sixth part of Life, off until you run `jantar life on posts` at the
