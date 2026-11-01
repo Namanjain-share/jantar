@@ -70,6 +70,9 @@ export const FACTORY_MODULES = {
   controls: ['controls/index.ts', 'createControlsService'],
   notifications: ['notify/index.ts', 'createNotificationRouter'],
   api: ['api/index.ts', 'createApiServer'],
+  // v0.6: the hub's Fleet part and a node's link to its hub.
+  fleet: ['fleet/index.ts', 'createFleet'],
+  nodeLink: ['node/index.ts', 'createNodeLink'],
 } as const satisfies Record<string, readonly [string, string]>;
 
 type FactoryName = keyof typeof FACTORY_MODULES;

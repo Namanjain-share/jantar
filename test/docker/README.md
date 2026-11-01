@@ -10,12 +10,15 @@ in it reaches the internet), and nothing outside the containers is touched.
 node test/docker/run.mjs              # build, the fake's own test, E1-E15, take down
 node test/docker/run.mjs --keep       # leave the stack up afterwards, to look around
 node test/docker/run.mjs --no-build   # reuse the image as it is
-JANTAR_DOCKER_E2E=1 pnpm --filter @jantar/cli test:docker   # the suite alone, image built
+JANTAR_FLEET_E2E=1 pnpm --filter @jantar/cli test:docker   # the suite alone, image built
 ```
 
-Without `JANTAR_DOCKER_E2E=1` every case skips itself, so `pnpm test` never
-needs Docker. The `fleet-e2e` workflow runs `node test/docker/run.mjs` on
-`ubuntu-latest` when a change touches the code, the tests or the lockfile.
+Without `JANTAR_FLEET_E2E=1` (or its first name, `JANTAR_DOCKER_E2E=1`)
+every case skips itself, so `pnpm test` never needs Docker. In CI, the
+`fleet-e2e` workflow (`.github/workflows/fleet-e2e.yml`) runs `node
+test/docker/run.mjs` on `ubuntu-latest`, which has Docker with compose v2,
+when a change touches the code, the tests or the lockfile (about ten
+minutes, the image build included); `workflow_dispatch` runs it by hand.
 
 Each run starts and ends with `docker compose down -v` on its project,
 `jantar-fleet-e2e`. Two runs at once (two worktrees) need two projects, or

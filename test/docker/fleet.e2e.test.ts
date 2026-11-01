@@ -2,7 +2,7 @@
  * v0.6 Fleet, Docker Linux end to end: E1-E15 on a hub, the door in front of
  * it (Cloudflare Access on /v1/node/*), a node with tmux (node1), a node
  * whose daemon has no tmux (node2) and a phone, with the fake interactive
- * Claude on the nodes. Runs only with JANTAR_DOCKER_E2E=1 (`node
+ * Claude on the nodes. Runs only with JANTAR_FLEET_E2E=1 (`node
  * test/docker/run.mjs`, or `pnpm --filter @jantar/cli test:docker` once the
  * image is built); skipped everywhere else, `pnpm test` included.
  *
@@ -55,7 +55,8 @@ import {
   type Service,
 } from './stack.js';
 
-const ON = process.env.JANTAR_DOCKER_E2E === '1';
+// JANTAR_DOCKER_E2E=1, its first name, still works.
+const ON = process.env.JANTAR_FLEET_E2E === '1' || process.env.JANTAR_DOCKER_E2E === '1';
 const ACCESS_ENV = { JANTAR_CF_ACCESS_CLIENT_SECRET: ACCESS.secret };
 const ACCESS_FLAG = `${ACCESS.id}:${ACCESS.secret}`;
 /** For the steps whose waits add up past the config's 180 s (a restart, a pause). */
@@ -481,7 +482,7 @@ describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
     );
     expect(job.stage, job.reason).toBe('done');
     expect((await state()).launches[id]?.node).toBe(t.build1);
-    expect.soft(job.node, 'the forwarded reply names its machine too').toBe(t.build1);
+    expect(job.node, 'the forwarded reply names its machine too').toBe(t.build1);
 
     const sessions = (await run('node1', ['tmux', 'list-sessions', '-F', '#{session_name} #{window_width}x#{window_height}'])).trim().split('\n');
     const opened = sessions.filter((l) => !before.has(l.split(' ')[0]!));
@@ -527,7 +528,7 @@ describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
       // And a prompt sent anyway.
       const r = await call('POST', `/v1/sessions/${sid}/prompt`, { body: { text: 'hello from the phone' } });
       expect(r.status, sid).toBeGreaterThanOrEqual(400);
-      expect.soft(r.body.error.message, 'the refusal says what the phone shows').toBe(sentence);
+      expect(r.body.error.message, 'the refusal says what the phone shows').toBe(sentence);
       expect((await fakeRecords(service, sid)).filter((x) => x.event === 'prompt')).toEqual([]);
     }
     // Nothing went to the tmux pane beside it on node1 either: no prompt, an empty box.
@@ -630,7 +631,7 @@ describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
     expect((await machine('build-1'))?.online).toBe(false);
     expect(await logs(['hub'], { since })).not.toMatch(new RegExp(`"server linked"[^\\n]*${t.build1}`));
     // The Mac's list keeps why it closed (`jantar fleet status`, `node list` read it).
-    expect.soft((await machine('build-1'))?.lastClose?.code, "the hub's row keeps the 4401").toBe(NODE_CLOSE.unknown);
+    expect((await machine('build-1'))?.lastClose?.code, "the hub's row keeps the 4401").toBe(NODE_CLOSE.unknown);
   });
 
   it("E13: `jantar fleet off` closes the links 4403 and /v1/node/* is 404; the phone can't turn it on (403); Fleet on at the hub brings node2 back without a new join", async () => {
@@ -638,13 +639,14 @@ describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
     const off = await jantar('hub', ['fleet', 'off']);
     expect(off.code, off.stderr).toBe(0);
     await eventually(async () => (await machine('build-2'))?.online === false, 30_000, 'build-2 offline');
-    // node2 heard 4403 (its next tries get 404): one line for each, never the code alone (the log redacts it).
+    // node2 heard 4403 (its next tries get 404): one line for each, with the close code (S14).
     const said = await eventually(async () => {
       const l = await logs(['node2'], { since });
       return /"msg":"Fleet is off at the Mac \(the hub answered 404\)"/.test(l) ? l : null;
     }, 30_000, "node2's 404 line");
     expect(said).toMatch(/"msg":"Fleet is off at the Mac"/);
-    expect.soft((await machine('build-2'))?.lastClose?.code, "the hub's row keeps the 4403").toBe(NODE_CLOSE.fleetOff);
+    expect(said).toContain(`"closeCode":${NODE_CLOSE.fleetOff}`);
+    expect((await machine('build-2'))?.lastClose?.code, "the hub's row keeps the 4403").toBe(NODE_CLOSE.fleetOff);
     // Only the Mac turns Fleet on: an admin phone through the door is refused (S7), and Fleet stays off.
     const fromPhone = await call('PATCH', '/v1/settings', { body: { fleet: { enabled: true } } });
     expect(fromPhone.status, JSON.stringify(fromPhone.body)).toBe(403);

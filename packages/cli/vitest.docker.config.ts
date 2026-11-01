@@ -2,7 +2,7 @@
  * v0.6: the Docker Linux end-to-end suite in test/docker/ (E1-E15: a hub, a
  * door that plays Cloudflare Access, a tmux node and a no-tmux node, a
  * phone). It asserts on a stack `node test/docker/run.mjs` brings up and
- * runs only with JANTAR_DOCKER_E2E=1 (`pnpm --filter @jantar/cli
+ * runs only with JANTAR_FLEET_E2E=1 (`pnpm --filter @jantar/cli
  * test:docker`); without it every case skips itself. Never part of `pnpm
  * test`.
  */

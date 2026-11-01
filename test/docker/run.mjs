@@ -7,7 +7,7 @@
 //    and build inside it are timed, with their peak memory, and printed).
 // 2. Runs the fake interactive Claude's own test in the image, where its
 //    pseudo-terminal case runs (Linux, util-linux script), with no network.
-// 3. Runs fleet.e2e.test.ts (E1-E15) with JANTAR_DOCKER_E2E=1: it brings the
+// 3. Runs fleet.e2e.test.ts (E1-E15) with JANTAR_FLEET_E2E=1: it brings the
 //    stack in compose.yaml up fresh (ca, door, hub, node1, node2, phone; no
 //    published ports) and drives it.
 // 4. On a failure prints the end of every service's log, then takes the
@@ -88,7 +88,7 @@ async function main() {
   if (tui.code !== 0) return tui.code;
 
   step('E1-E15 on the stack (fleet.e2e.test.ts)');
-  const env = { ...process.env, JANTAR_DOCKER_E2E: '1' };
+  const env = { ...process.env, JANTAR_FLEET_E2E: '1' };
   const suite = await sh(VITEST, ['run', '-c', 'vitest.docker.config.ts'], { cwd: fileURLToPath(new URL('../../packages/cli/', import.meta.url)), env });
   if (suite.code !== 0) {
     step('the end of every log (the run failed)');
