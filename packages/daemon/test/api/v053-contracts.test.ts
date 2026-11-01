@@ -2,7 +2,8 @@
  * v0.5.3 wave 0, the pipeline's part:
  * - S6: notifyTest, folderTodos and folderTodoCreate are the Mac's only:
  *   over TCP, an admin device included, 403 with their sentence and no
- *   handler runs; over ctl.sock they reach their stubs (501), the folder
+ *   handler runs; over ctl.sock they reach their handlers (the folder
+ *   routes' real behaviour: test/life/folder-todos.test.ts), the folder
  *   routes behind the Todos switch.
  * - S10 (pipeline part): a capture's `via` is ctl-only, like its `cwd`.
  * - S12 (daemon part, spec 3.2): every screenshot upload logs exactly one
@@ -58,14 +59,14 @@ describe('S6: the v0.5.3 routes are the Mac only', () => {
     expect(LOCAL_ONLY_REFUSED.notifyTest).toBe('Test alerts on the Mac: jantar notify test');
   });
 
-  it('over ctl.sock they reach their handlers (wave 0: 501 until their packages land)', async () => {
+  it('over ctl.sock they reach their handlers (the fakes here have no Life: the folder routes answer its 501)', async () => {
     api = await makeApi({ ctx: { settings: TODOS_ON } });
     for (const name of NAMES) {
       const res = await call(api, 'ctl', name);
       expect([403, 401, 404, 400], `${name} ${res.body}`).not.toContain(res.statusCode);
     }
-    // The test push is a stub until the alerts package builds it.
-    if (ROUTE_IMPLS.notifyTest?.stub) expect((await call(api, 'ctl', 'notifyTest')).statusCode).toBe(501);
+    expect(ROUTE_IMPLS.notifyTest?.stub).toBeFalsy();
+    expect((await call(api, 'ctl', 'notifyTest')).statusCode).not.toBe(501);
   });
 
   it('the folder routes sit behind the Todos switch; the test push behind none', async () => {

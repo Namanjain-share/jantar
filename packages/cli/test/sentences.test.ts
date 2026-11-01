@@ -1,9 +1,10 @@
 /**
- * Every sentence the daemon or the web app shows that names a v0.3, v0.4 or
- * v0.5 jantar command ("Turn it on at your Mac: jantar files on", "On your
- * Mac run: jantar devices grant <device> launch", MAC_COMMAND's "jantar
- * folders", "jantar life on medicines", "jantar meetings on", "jantar pair
- * --extension") names one that exists and does its job. The sentences are
+ * Every sentence the daemon or the web app shows that names a v0.3, v0.4,
+ * v0.5 or v0.5.3 jantar command ("Turn it on at your Mac: jantar files on",
+ * "On your Mac run: jantar devices grant <device> launch", MAC_COMMAND's
+ * "jantar folders", "jantar life on medicines", "jantar meetings on",
+ * "jantar pair --extension", "jantar notify test", "jantar mcp") names one
+ * that exists and does its job. The sentences are
  * read from the source, so a new one is checked as soon as it is written. A
  * command still a WP0 stub (`stub: true`) has its sentences skipped; they
  * are checked once its package drops the flag (`pair --extension` goes with
@@ -25,13 +26,15 @@ import { COMMANDS, EXIT, main, memoryIo } from '../src/index.js';
 import { contextFor, fakeCtl, fakeSettings, ok } from './helpers.js';
 
 const PACKAGES = fileURLToPath(new URL('../../', import.meta.url));
-const COMMAND = '(?:files|folders|launch|devices|rewrite|controls|screenshots|new|life|intel|accounts|init|meetings|pair(?= --extension))\\b';
+const COMMAND = '(?:files|folders|launch|devices|rewrite|controls|screenshots|new|life|intel|accounts|init|meetings|notify|mcp|pair(?= --extension))\\b';
 /** Commands WP0 registered as stubs, until their packages build them. */
 const STUBS = new Set(COMMANDS.filter((c) => c.stub).map((c) => c.name));
 /** A sentence's command when another command's package builds it (v0.5: WP-MC builds `pair --extension` with `meetings`). */
 const BUILT_WITH: Readonly<Record<string, string>> = { pair: 'meetings' };
 /** Sentences that name a command whose argument the screen fills in (the phone's "jantar meetings export {id}"). */
 const FILLED: Readonly<Record<string, string>> = { 'meetings export': 'meetings export <id>' };
+/** Commands whose --help prints their own text, not the usage line (v0.5.3: `jantar mcp` prints the line that adds it to Claude Code). */
+const OWN_HELP: Readonly<Record<string, string>> = { mcp: 'claude mcp add ' };
 /** Commands that only read from the daemon and write files on the Mac: they get `--out` and must write something. */
 const WRITES_FILES = /^meetings export\b/;
 /** Words after the command: a <placeholder>, or a plain word (paths like ~/Desktop included). */
@@ -48,6 +51,8 @@ const PLACEHOLDERS: Readonly<Record<string, string>> = {
   '<title>': 'Example',
   // v0.5: the fixtures' meeting.
   '<id>': meetingDetail().meeting.id,
+  // v0.5.3
+  '<group>': 'needs',
 };
 
 /**
@@ -145,6 +150,11 @@ describe('the commands the daemon and the web app name', () => {
         'meetings unpair',
         'meetings',
         'pair --extension',
+        // v0.5.3
+        'notify test',
+        'notify done on',
+        'notify urgent on',
+        'mcp',
       ]),
     );
   });
@@ -164,7 +174,7 @@ describe('the commands the daemon and the web app name', () => {
         // A pointer to the command ("change this on the Mac: jantar files"): it exists and explains itself.
         const io = memoryIo(home.env);
         expect(await main([...words, '--help'], { io }), io.stderr).toBe(EXIT.ok);
-        expect(io.stdout).toContain(`usage: jantar ${words[0]} `);
+        expect(io.stdout).toContain(OWN_HELP[words[0] as string] ?? `usage: jantar ${words[0]} `);
         return;
       }
       const s = fakeSettings();
@@ -188,6 +198,8 @@ describe('the commands the daemon and the web app name', () => {
         'GET /v1/meetings': ok({ meetings: [meetingDetail().meeting], next: null, running: null }),
         [`GET /v1/meetings/${meetingDetail().meeting.id}`]: ok(meetingDetail()),
         [`GET /v1/meetings/${meetingDetail().meeting.id}/shots/${meetingDetail().shots[0]?.id}`]: ok(Buffer.from([0xff, 0xd8, 0xff, 0xd9])),
+        // v0.5.3: the test push.
+        'POST /v1/notify/test': () => ok({ delivered: 1, failed: 0 }),
       });
       // A person at the Mac answers yes when a command asks (life restore asks before it replaces life.db).
       const { ctx, io } = contextFor(home, { ctl, ioOptions: { answers: ['y', 'y', 'y'] } });
