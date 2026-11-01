@@ -488,7 +488,8 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
     today,
     currency: V04_CURRENCY,
     lockScreenDetails: false,
-    modules: { todos: true, medicines: true, food: true, places: true, finance: true },
+    // v0.7's Posts stay off here, as on a Mac that has not turned them on (web-fixture-v051.ts's 'posts' variant shows them).
+    modules: { todos: true, medicines: true, food: true, places: true, finance: true, posts: false },
     estimate: { available: true },
     backups: { last: at(today, '03:30'), count: 30 },
     push: { devices: 2, webpush: true },

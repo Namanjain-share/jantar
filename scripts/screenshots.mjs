@@ -22,7 +22,8 @@
 // Each shot names its fixture: `accounts` (cswap, the default, or one Claude
 // login) and `variant` (web-fixture-v051.ts: 'phone-control' has sessions
 // waiting in the terminal with no hook card, 'keypad' a screen with no
-// buttons, 'ask' Ask on with a history). One fixture is built per accounts
+// buttons, 'ask' Ask on with a history, 'posts' v0.7's Posts on with a
+// week of made-up posts). One fixture is built per accounts
 // and variant pair. With cswap
 // the fixture shows Jantar without the legacy ccw tool, as anyone else runs
 // it: no `next →`, burn, moves or hold list.
@@ -217,6 +218,8 @@ export const SHOTS = [
   },
   { name: 'food', path: '/food', sizes: PHONE },
   { name: 'places', path: '/places', sizes: PHONE },
+  // v0.7: Posts on in its own variant, so no other picture changes (Today keeps its sections).
+  { name: 'posts', path: '/posts', sizes: PHONE, variant: 'posts' },
   { name: 'money', path: '/money', sizes: PHONE },
   { name: 'intel', path: '/intel', sizes: PHONE },
   { name: 'meetings', path: '/meetings', sizes: PHONE },

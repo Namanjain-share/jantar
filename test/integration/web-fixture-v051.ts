@@ -31,6 +31,10 @@
  * - 'ask': Ask on (v0.5.3), with this phone's history on GET /v1/ask: a
  *   reminder added, "calories left?" (its card filled from Today) and a
  *   meal of two foods still to add.
+ * - 'posts': Posts on (v0.7), on GET /v1/posts: a made-up Reddit post due
+ *   tonight, two for tomorrow, a thread next week and one with no date,
+ *   and this week against two goals (Reels 1/3, Reddit 2/6). The accounts,
+ *   subreddits and links are made up; nothing is posted anywhere.
  *
  * The screens copy the layouts of test/fixtures/src/dialogs.ts (rules, the
  * pointer, numbering, the hints) with the board's own words, and none of
@@ -41,10 +45,13 @@ import {
   AskListSchema,
   DIALOG_NOTES,
   MeetingDetailSchema,
+  PostsResponseSchema,
   type Account,
   type AskList,
   type PendingRequest,
   type PlanResponse,
+  type Post,
+  type PostsResponse,
   type Session,
   type TranscriptItem,
 } from '@jantar/protocol';
@@ -53,12 +60,13 @@ import { readScreenState } from '@jantar/daemon/terminal/screen';
 import { makePng } from '../fixtures/runtime/images.mjs';
 import { sidOf, transcriptFixture } from './web-fixture.js';
 import { syntheticPdf } from './web-fixture-v03.js';
-import { lid, type WebFixtureV04Options } from './web-fixture-v04.js';
+import { instantAt, shiftDay } from '../../packages/life-core/src/index.js';
+import { lid, V04_TZ, type WebFixtureV04Options } from './web-fixture-v04.js';
 import { webFixtureV05, type V05Reply, type WebFixtureV05 } from './web-fixture-v05.js';
 
 const MIN = 60_000;
 
-export type V051Variant = 'default' | 'phone-control' | 'keypad' | 'ask';
+export type V051Variant = 'default' | 'phone-control' | 'keypad' | 'ask' | 'posts';
 
 /** The pictures the script draws in Chromium before it builds the fixture (see SCREENSHOT_ART). */
 export type V051ArtName = 'slide' | 'slide2' | 'photo';
@@ -258,6 +266,7 @@ const SCREENS: Record<V051Variant, Record<number, { text: string; kind: 'questio
     2: { text: MODEL_SCREEN, kind: 'keypad' },
   },
   ask: {},
+  posts: {},
 };
 
 /** What GET /v1/sessions/:sid/screen answers for `text`, as the daemon builds it (api/routes.ts getScreen). */
@@ -376,6 +385,66 @@ function askHistory(now: number, today: string): AskList {
 }
 
 // ---------------------------------------------------------------------------
+// Posts (the 'posts' variant)
+
+/**
+ * The posts to make, as GET /v1/posts sends them (by day and time, undated
+ * last), on Friday: a Reddit post ready for tonight (its row has Copy and
+ * Open), a reel and a Reddit post for tomorrow, a thread next Thursday and a
+ * note with no date; this week (Monday to Sunday) two posted against the
+ * Reddit goal and one reel. Every account, subreddit and link is made up.
+ */
+function postsOf(today: string, tz: string): PostsResponse {
+  const day = (n: number) => shiftDay(today, n);
+  const made = instantAt(day(-2), '21:10', tz).toISOString();
+  const post = (n: number, over: Partial<Post> & Pick<Post, 'platform'>): Post => ({ id: lid(1200 + n), kind: 'post', status: 'idea', createdAt: made, updatedAt: made, ...over });
+  const submit = (sub: string) => `https://www.example.com/r/${sub}/submit`;
+  return PostsResponseSchema.parse({
+    today,
+    // Friday 30 October: the week began on Monday the 26th.
+    week: {
+      from: day(-4),
+      to: day(2),
+      posted: 3,
+      goals: [
+        { platform: 'instagram', kind: 'reel', perWeek: 3, done: 1 },
+        { platform: 'reddit', perWeek: 6, done: 2 },
+      ],
+    },
+    posts: [
+      post(1, {
+        platform: 'reddit',
+        where: 'r/exampletools',
+        title: 'Typing into Terminal from a phone, without the wrong window',
+        text: 'I run a few coding sessions at once and kept missing the one that was waiting on me. So I made a small phone page for them.',
+        notes: 'Flair: Show and tell. Re-read the sidebar first.',
+        link: submit('exampletools'),
+        due: { day: today, time: '19:30' },
+        status: 'ready',
+      }),
+      post(2, {
+        platform: 'instagram',
+        kind: 'reel',
+        text: '30s: approve a prompt from the phone\nOpen on the lock screen, tap Allow, back to the desk.',
+        notes: 'Shot list: lock screen, the tap, the desk. Captions on.',
+        due: { day: day(1), time: '19:00' },
+      }),
+      post(3, {
+        platform: 'reddit',
+        where: 'r/examplecode',
+        title: 'Approving a prompt from the lock screen',
+        text: 'A short write-up of how the phone page answers a waiting session.',
+        link: submit('examplecode'),
+        due: { day: day(1), time: '19:30' },
+        status: 'ready',
+      }),
+      post(4, { platform: 'x', kind: 'thread', where: '@example.studio', title: 'Five small things I learned shipping a phone app', due: { day: day(6) } }),
+      post(5, { platform: 'linkedin', title: 'A short note on the launch' }),
+    ],
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Jantar without the legacy ccw tool
 
 /**
@@ -422,6 +491,10 @@ export function webFixtureV051(opts: WebFixtureV051Options = {}): WebFixtureV051
     const daemon = (base.state.state as unknown as { daemon: { features: Record<string, unknown> } }).daemon;
     daemon.features = { ...daemon.features, ask: true };
   }
+
+  // ----- Posts: on in their own variant only (they are off until the Mac turns them on) -----
+  const posts = variant === 'posts' ? postsOf(base.v04.today.day, V04_TZ) : null;
+  if (posts) base.v04.status.modules.posts = true;
 
   // ----- The variant: sessions waiting in the terminal, their hook cards gone -----
   const screens: Record<string, string> = {};
@@ -490,6 +563,9 @@ export function webFixtureV051(opts: WebFixtureV051Options = {}): WebFixtureV051
     }
     if (method === 'DELETE' && /^\/v1\/sessions\/[^/]+\/uploads\/[^/]+$/.test(path)) return { status: 200, body: { ok: true } };
     if (ask && method === 'GET' && path === '/v1/ask') return { status: 200, body: ask };
+    if (posts && method === 'GET' && path === '/v1/posts') {
+      return { status: 200, body: url.searchParams.get('done') === '1' ? { ...posts, posts: [] } : posts };
+    }
     if (method === 'GET' && (m = /^\/v1\/meetings\/([^/]+)\/shots\/([^/]+)$/.exec(path))) {
       const pic = shotArt[decodeURIComponent(m[2]!)];
       if (pic) return { status: 200, body: null, bytes: pic.bytes, type: pic.type };

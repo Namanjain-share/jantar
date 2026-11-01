@@ -114,8 +114,11 @@ function GoalsForm({ goals, onSaved, onDone }: { goals: readonly PostGoal[]; onS
                   <IconButton aria-label={`More ${name} a week`} disabled={r.perWeek >= POST_PER_WEEK_MAX} onClick={() => set(r.key, { perWeek: r.perWeek + 1 })}>
                     <PlusIcon size={16} aria-hidden="true" />
                   </IconButton>
+                  <span aria-hidden="true" className="type-small text-ink-2">
+                    a week
+                  </span>
                 </span>
-                <IconButton aria-label={`Remove ${name}`} onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>
+                <IconButton aria-label={`Remove ${name}`} className="ml-auto" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>
                   <XIcon size={16} aria-hidden="true" />
                 </IconButton>
               </li>

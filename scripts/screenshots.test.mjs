@@ -15,7 +15,7 @@ const repo = join(dirname(script), '..');
 const img = join(repo, 'docs', 'img');
 
 /** The variants web-fixture-v051.ts knows. */
-const FIXTURE_VARIANTS = ['phone-control', 'keypad', 'ask'];
+const FIXTURE_VARIANTS = ['phone-control', 'keypad', 'ask', 'posts'];
 
 test('every screen has a unique name, a path in the app, and two themes for each size it asks for', () => {
   const names = SHOTS.map((s) => s.name);
@@ -65,6 +65,7 @@ test('the screens the README and the docs promise are all taken, at the sizes th
     'dose',
     'food',
     'places',
+    'posts',
     'money',
     'intel',
     'meetings',
@@ -79,6 +80,9 @@ test('the screens the README and the docs promise are all taken, at the sizes th
   assert.equal(byName.get('keypad')?.variant, 'keypad');
   // Ask is off until the Mac turns it on: only its own picture shows it.
   assert.equal(byName.get('ask')?.variant, 'ask');
+  // v0.7: Posts is off until the Mac turns it on, like Ask.
+  assert.equal(byName.get('posts')?.variant, 'posts');
+  assert.equal(byName.get('posts')?.path, '/posts');
   // The hook card is the same session as the Bash dialog, with its card: the default fixture.
   assert.equal(byName.get('card')?.variant, undefined);
   assert.equal(byName.get('card')?.path, byName.get('dialog-permission')?.path);
@@ -86,7 +90,7 @@ test('the screens the README and the docs promise are all taken, at the sizes th
 
 test('shots share one fixture per accounts mode and variant', () => {
   const keys = new Set(SHOTS.map(fixtureKey));
-  assert.deepEqual([...keys].sort(), ['cswap:ask', 'cswap:default', 'cswap:keypad', 'cswap:phone-control', 'single:default']);
+  assert.deepEqual([...keys].sort(), ['cswap:ask', 'cswap:default', 'cswap:keypad', 'cswap:phone-control', 'cswap:posts', 'single:default']);
   assert.equal(fixtureKey({ name: 'x', path: '/' }), 'cswap:default');
 });
 
