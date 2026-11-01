@@ -49,9 +49,10 @@ point below links to its section there.
   A meeting's screenshots never leave the Mac
   ([the summary](../SECURITY.md#the-summary-what-leaves-the-mac)). Ask
   sends only what you type there (medicine names or amounts you type
-  included), the date and time, and which Life parts are on; your saved
-  lists, medicines and money stay on the Mac, and nothing is added until
-  you tap Add ([Ask](../SECURITY.md#v053-ask)).
+  included), the date, time and time zone, which Life parts are on, the
+  currency code and the fixed category names; your saved lists, medicines
+  and money stay on the Mac, and nothing is added until you tap Add
+  ([Ask](../SECURITY.md#v053-ask)).
 - There is no Jantar server, no telemetry and no account with this project.
 
 ## What a session can do

@@ -69,7 +69,7 @@ More: [the app](docs/phone-app.md#new-session-and-resume).
 One Claude login is enough. With [cswap](https://github.com/realiti4/claude-swap)
 and several accounts, Jantar shows each account's 5-hour and weekly usage
 and when it resets. Accounts you keep for other work are never picked by
-Auto, Rewrite or Ask Claude, and an opt-in primer can start an idle
+Auto, Rewrite, Ask Claude or Ask, and an opt-in primer can start an idle
 account's 5-hour window early. Jantar does not switch accounts by itself.
 
 <p align="center">

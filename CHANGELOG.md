@@ -10,15 +10,16 @@ What changed for people who use Jantar, newest first. Versions before
   vitamin", "had 2 rotis and dal", "spent 250 on lunch") and it suggests
   todos, reminders, meals and expenses as cards. Nothing is added until you
   tap **Add** (or **Add all** for the todos and meals of one answer, never
-  money), each added card has **Undo** for a day, and **Edit** changes a
-  card before it is added. Ask "calories left?" or "what's due?" and the
-  answer is filled in on the phone from Today, with your own calorie
-  target. Off until `jantar ask on`.
+  money), each added card has **Undo** until a day after you asked, and
+  **Edit** changes a card before it is added. Ask "calories left?" or
+  "what's due?" and the answer is filled in on the phone from Today, with
+  your own calorie target. Off until `jantar ask on`.
 - Ask runs Claude Code on your account the way Rewrite does, on Rewrite's
-  model: only what you type goes to Claude (with the date, time and which
-  Life parts are on), never your saved lists, medicines or money. Its
-  history stays in the daemon's memory, the last 30 messages per phone for
-  up to 7 days; Clear history, `jantar ask off` and a restart forget it.
+  model: only what you type goes to Claude (with the date, time and time
+  zone, which Life parts are on, the currency code and the fixed category
+  names), never your saved lists, medicines or money. Its history stays in
+  the daemon's memory, the last 30 messages per phone for up to 7 days;
+  Clear history, `jantar ask off` and a restart forget it.
   [SECURITY.md](SECURITY.md#v053-ask) lists what it can't do.
 
 ## 0.5.2 (1 November 2026)

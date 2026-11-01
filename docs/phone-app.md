@@ -224,10 +224,10 @@ jantar ask off                      # hides it and forgets its history
   card. **Add all** adds the todo and food cards of one answer in one tap
   (a meal is often several cards); a money card always needs its own Add.
   A card over a day old can't be added: ask again.
-- **Undo** on an added card works for 24 hours. It deletes the item **as
-  it is now**, with any change made since (an edit, Done, a repeating todo
-  moved on to its next day). After that, delete it in Todos, Food or
-  Finance.
+- **Undo** on an added card works until a day after you asked. It deletes
+  the item **as it is now**, with any change made since (an edit, Done, a
+  repeating todo moved on to its next day). After that, delete it in
+  Todos, Food or Finance.
 - **Times.** A time with no day is the next time it comes: "at 6" is 06:00
   or 18:00 today, else 06:00 tomorrow. A repeating reminder whose time has
   passed today starts on its next day. A one-off reminder for a time
@@ -239,10 +239,11 @@ jantar ask off                      # hides it and forgets its history
 - **What it can't do:** change, finish or delete items you already have,
   log a dose or change a medicine, or touch sessions, files, settings or
   the shelf. It says so in the reply and suggests nothing.
-- **What goes to Claude**, as the page says under the box: only what you
-  type there (medicine names or amounts you type do go), the date and
-  time, and which Life parts are on. Your saved lists, medicines and money
-  stay on the Mac.
+- **What goes to Claude** (the page sums it up under the box): only what
+  you type there (medicine names or amounts you type do go), the date,
+  time and time zone, which Life parts are on, the currency code and the
+  fixed category names. Your saved lists, medicines and money stay on the
+  Mac.
 - **History** lives in the daemon's memory only: the last 30 messages per
   phone, for up to 7 days. **Clear history** forgets this phone's, `jantar
   ask off` forgets everyone's, and a restart of the daemon forgets it too.

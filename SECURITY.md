@@ -179,10 +179,10 @@ limits trust (below).
 `jantard --read-only` refuses every action on sessions: typing, Enter,
 Ctrl-U, control keys, focus, answering cards (blocking permission hooks are
 not held, so Claude asks in the terminal), the cswap CLI poller, settings
-changes, v0.3's Rewrite runs, launches, new windows and new folders, and
-v0.4's primes and Ask Claude (both run a headless Claude that spends an
-account's quota). Life and Intel writes still work: they touch only
-Jantar's own files.
+changes, v0.3's Rewrite runs, launches, new windows and new folders,
+v0.4's primes and Ask Claude, and sending a message to v0.5.3's Ask (each
+runs a headless Claude that spends an account's quota). Life and Intel
+writes still work: they touch only Jantar's own files.
 Screenshots never select a tab. Files still reads. It is enforced on the
 daemon's parts themselves, not only in the HTTP layer. `--no-terminal` turns
 the Terminal.app backend off, so no AppleScript runs at all (no screen peek,
@@ -196,12 +196,12 @@ Jantar next to a live setup.
   ever travels as an argument, so a prompt can never be parsed as code.
 - `cswap` is always run with `CLAUDE_CONFIG_DIR` and
   `CLAUDE_SECURESTORAGE_CONFIG_DIR` removed from its environment.
-- Headless Claude runs (Rewrite, Ask Claude and the primer) share one
+- Headless Claude runs (Rewrite, Ask Claude, Ask and the primer) share one
   runner: argv only, an empty 0700 working folder, no tools, no MCP servers,
   no session saved, and the environment without Claude's config dir or any
   API key or token. With cswap they run `cswap run --share-history <N> --
-  -p`; with one Claude login (no cswap) Rewrite and Ask Claude run `claude
-  -p` itself, and the primer does not run at all.
+  -p`; with one Claude login (no cswap) Rewrite, Ask Claude and Ask run
+  `claude -p` itself, and the primer does not run at all.
 
 ### Repository hygiene
 
@@ -1093,9 +1093,10 @@ never used.
   and food cards of one answer; a money card always needs its own tap.
   Medicines can't be written from Ask at all: a dose is logged only by
   your tap on the medicines card, as on Today.
-- Each added card has **Undo** for 24 hours, which deletes the item it
-  made. A card over 24 hours old can't be added or undone from Ask, and
-  Undo is refused while that Life part is off.
+- Each added card has **Undo** until a day after its message was sent,
+  which deletes the item it made. A card whose message is over a day old
+  can't be added or undone from Ask, and Undo is refused while that Life
+  part is off.
 - The Ask part holds only Life, the usage reader and the legacy ccw
   reader. It has no writer, terminal, launcher, controls, files or
   settings, so nothing in an answer can reach a session, a file, the

@@ -279,4 +279,4 @@ tab's picture (`session/controls/ShotView.tsx` and `useShot.ts`) behind
 `import()`, still over; 270.7 kB with the pairing QR (`devices/Qr.tsx` and
 the `qrcode` package) behind `import()` too, loaded the first time a
 pairing code is shown. `code-split.test.ts` keeps both out of the first
-load. The Ask chunk is 55.6 kB with what it pulls in (`LAZY_MAX` 80.0 kB).
+load. The Ask chunk is 55.8 kB with what it pulls in (`LAZY_MAX` 80.0 kB).

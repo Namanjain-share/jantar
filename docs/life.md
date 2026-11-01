@@ -65,7 +65,7 @@ jantar life status
   kept one) and is refused while Jantar runs read-only.
 - **Ask** (its own switch, `jantar ask on`) turns plain words into todos,
   reminders, meals and money entries, each added only by your tap, with
-  Undo for a day ([Ask](phone-app.md#ask)).
+  Undo until a day after you asked ([Ask](phone-app.md#ask)).
 
 ## Settings
 
