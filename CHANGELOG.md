@@ -3,6 +3,33 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## Unreleased
+
+Fleet (v0.6), off until you run `jantar fleet on` at the Mac. With it off,
+nothing changes.
+
+- **Your servers on the same board.** Pair Linux servers, Windows machines
+  and other Macs with the Mac (`jantar node pair` there, `jantar node join`
+  on the server), and their Claude Code sessions, cards and accounts show
+  on the phone beside the Mac's, each row naming its machine. Each server
+  dials out to the Mac through the front door the phone already uses
+  (Cloudflare with an Access service token, or Tailscale), so it opens no
+  port. Keys are pinned at join and every link is a fresh challenge both
+  ways; `jantar node revoke` ends a server's link at once.
+- **On Linux (and Windows with WSL2), Claude in tmux** can be answered,
+  prompted and started from the phone, on the server's own Claude accounts
+  (cswap if it has it, else each `~/.claude-<name>` config dir). A session
+  started outside tmux shows its cards and transcript, and the phone says
+  why it can't type there.
+- **Native Windows is a preview:** sessions and their hook cards only, with
+  Claude Code 2.1.310 or newer, on a machine nobody else logs on to.
+- A server that goes offline keeps its sessions on the board, greyed, and a
+  write to it says nothing was sent. `jantar fleet status` and `jantar node
+  list` say how each link last closed.
+- Not yet checked on real machines: sending prompts on Linux, real Claude
+  Code in tmux, the Access path for the link, native Windows and WSL2's
+  keep-alive ([what is not verified yet](docs/fleet.md#not-verified-yet)).
+
 ## 0.5.2 (1 November 2026)
 
 The first public release.

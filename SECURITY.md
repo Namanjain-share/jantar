@@ -1157,7 +1157,17 @@ such middle party: use it if that matters to you.
 - **On native Windows** (a preview, not yet checked on a real Windows
   machine), the hooks and control sockets are named pipes with Node's
   default access list (you, administrators and SYSTEM; others may only
-  read), and Jantar never types into a terminal there.
+  read), and Jantar never types into a terminal there. Pipe names are
+  machine-wide, so another user of the machine could create Jantar's pipe
+  before the daemon does. The hook client therefore sends an event only
+  after the pipe's owner proves it holds the key the daemon writes to
+  `run\hooks.key` in your profile at each start; a pipe someone else made
+  gets a random nonce and nothing else, and Claude asks in its own
+  terminal. Not covered yet: the control pipe (the `jantar` command trusts
+  whoever answers on it), and another user holding the pipes' connections
+  open so the cards fail open. Keep Jantar's folder in your profile (the
+  default) and use native Windows only on a machine nobody else logs on
+  to; on a shared server use WSL2 or Linux.
 
 ### Privacy
 

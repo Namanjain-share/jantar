@@ -338,6 +338,15 @@ it, and with the daemon stopped it asks you to say `--read-only` or
 file modes mean nothing; your user profile's permissions protect the
 Jantar folder.
 
+**Use native Windows only on a machine nobody else logs on to.** The pipes
+Jantar listens on have machine-wide names, so another user could create one
+first. The hook client checks the hooks pipe's owner against a key the
+daemon writes to `run\hooks.key` in the Jantar folder at each start, and
+sends nothing to a pipe that fails, so Claude asks in its own terminal; the
+control pipe has no such check yet. Keep the Jantar folder in your profile
+(the default): a `JANTAR_HOME` outside `%USERPROFILE%` leaves the key as
+readable as that folder. On a shared server, use [WSL2](#wsl2) or Linux.
+
 ## Accounts on a server
 
 | Server | Accounts | Usage numbers |
@@ -512,6 +521,29 @@ on "Prevent automatic sleeping on power adapter when the display is off"
 `sudo pmset -c sleep 0`. With Fleet on, `jantar fleet on` and
 `jantar doctor` read the Mac's sleep setting (read only) and say when it
 sleeps on power.
+
+## Security
+
+The whole picture is in
+[SECURITY.md](../SECURITY.md#v06-fleet-paired-servers). In short:
+
+- A server opens no port. It dials the Mac's front door, and the Mac
+  checks it with the key it kept at pairing; the server checks the Mac
+  with the key pinned in its join line. A join line works once, for 10
+  minutes.
+- The phone's calls for a server's session are checked at the Mac as any
+  call is (its pairing, scope and the device secret), then run on the
+  server behind that server's own switches. A server never sees your
+  phone's secret, and the Mac never runs anything a server asks.
+- The Mac treats each server as untrusted: a server can only speak of its
+  own sessions, within fixed limits (64 sessions, 32 cards, 10 pushes a
+  minute, bounded sizes and rates); past them its link is closed.
+- `jantar node join --read-only` makes a watch-only server: it shows its
+  sessions and cards, and refuses every prompt, key and answer.
+- `jantar node revoke <name>` at the Mac ends a server's link at once; it
+  needs a new join line to come back.
+- Native Windows: only on a machine nobody else logs on to (see
+  [Windows](#windows)).
 
 ## Limits
 
