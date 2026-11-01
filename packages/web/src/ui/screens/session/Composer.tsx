@@ -14,6 +14,10 @@
  * went as a file, with "Paste the text instead". Send takes text, chips or
  * both, once every chip is on the Mac; files with a slash command say why
  * they can't go before anything is sent.
+ *
+ * v0.6: on a paired machine's session (`machine`, its name) the prompt is
+ * typed there, and Rewrite (which reads the transcript on the Mac) is off.
+ * The session screen shows the composer only where Jantar can type.
  */
 import { ArrowUpIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -68,16 +72,21 @@ export function Composer({
   phone,
   offline,
   onShowOnMac,
+  machine,
 }: {
   sid: string;
   folder: string;
   sends: Sends;
   phone: boolean;
   offline: boolean;
-  onShowOnMac: () => void;
+  /** Absent where there is no window to raise (a server's tmux session). */
+  onShowOnMac?: () => void;
+  /** v0.6: the paired machine the session runs on (null or absent: the Mac). */
+  machine?: string | null;
 }) {
   const { draft, setDraft, submit, area, attachments } = sends;
   const features = useFeatures();
+  const rewrite = features.rewrite && !machine;
   const [dropping, setDropping] = useState(false);
   const [mixed, setMixed] = useState<MixedPaste | null>(null);
   // Only while one of its chips is still in the composer and free (not sent, removed or taken by a send).
@@ -186,7 +195,7 @@ export function Composer({
             phone ? 'h-44 py-10' : 'h-40 py-8',
           )}
         />
-        {features.rewrite ? <RewriteButton sid={sid} folder={folder} sends={sends} phone={phone} offline={offline} /> : null}
+        {rewrite ? <RewriteButton sid={sid} folder={folder} sends={sends} phone={phone} offline={offline} /> : null}
         <button
           type="submit"
           aria-label="Send"
@@ -211,9 +220,11 @@ export function Composer({
       {problem ? (
         <p role="status" className="mt-8 flex flex-wrap items-center gap-x-8 type-small text-ink-2">
           <span>{problem}</span>
-          <Button variant="text" size="sm" className="-ml-8" onClick={onShowOnMac}>
-            Show on Mac
-          </Button>
+          {onShowOnMac ? (
+            <Button variant="text" size="sm" className="-ml-8" onClick={onShowOnMac}>
+              Show on {machine ?? 'Mac'}
+            </Button>
+          ) : null}
         </p>
       ) : withFiles ? (
         <p role="status" className="mt-8 type-small text-ink-2">
@@ -224,7 +235,7 @@ export function Composer({
       ) : !phone ? (
         <p className="mt-8 flex items-center gap-6 type-mono text-ink-3">
           <Keycap size="sm">⌘↵</Keycap>
-          <span>sends · typed into the terminal on your Mac</span>
+          <span>sends · typed into the terminal on {machine ?? 'your Mac'}</span>
         </p>
       ) : null}
     </form>

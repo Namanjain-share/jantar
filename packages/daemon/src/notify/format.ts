@@ -12,6 +12,9 @@
  * - Tags: one per session (`s:<sid>`), so a newer push replaces an older one
  *   on the lock screen; `acct:<id>` for account pushes (limit, usage).
  * - No emoji, no "Claude Code says".
+ * - v0.6: a paired server's push leads with the machine's name as the Mac
+ *   gave it ("build-1 · api-server needs you"); the folder gives way to it.
+ *   The Mac's own pushes carry no machine word, and generic bodies none.
  *
  * `notify.bodies` picks the detail level:
  * - full:    the content (clipped to MAX_BODY_FULL)
@@ -81,6 +84,8 @@ export const GENERIC_TITLE: Record<NotifyKind, string> = {
 export interface TextContext {
   /** IANA zone for "17:31"; the Mac's own when omitted. */
   timeZone?: string;
+  /** v0.6: the paired server's name (the hub's, never the node's own); absent for the Mac's own sessions. */
+  machine?: string;
 }
 
 export function oneLine(s: string): string {
@@ -138,6 +143,11 @@ export function titled(folder: string, rest: string): string {
 
 function folderOf(sid: string, session?: Session | null): string {
   return session?.folder || session?.name?.trim() || sid.slice(0, 8);
+}
+
+/** v0.6: "build-1 · api-server" for a server's session; the folder alone for the Mac's. */
+export function onMachine(folder: string, machine: string | undefined): string {
+  return machine ? `${oneLine(machine)} · ${folder}` : folder;
 }
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -288,10 +298,16 @@ const WAITING_SHORT: Partial<Record<NotifyKind, string>> = {
   plan: 'Plan waiting',
 };
 
-export function cardNotification(p: PendingRequest, session: Session | null | undefined, mode: BodiesMode, ts: string): RoutedNotification | null {
+export function cardNotification(
+  p: PendingRequest,
+  session: Session | null | undefined,
+  mode: BodiesMode,
+  ts: string,
+  ctx: TextContext = {},
+): RoutedNotification | null {
   const kind = cardKind(p);
   if (!kind) return null;
-  const folder = folderOf(p.sid, session);
+  const folder = onMachine(folderOf(p.sid, session), ctx.machine);
   let full: string;
   let short: string;
   if (kind === 'question') {
@@ -323,9 +339,9 @@ export function cardNotification(p: PendingRequest, session: Session | null | un
 }
 
 /** A session that Claude says is waiting, with no card (the hook-less path). */
-export function waitingNotification(session: Session, mode: BodiesMode, ts: string): RoutedNotification {
+export function waitingNotification(session: Session, mode: BodiesMode, ts: string, ctx: TextContext = {}): RoutedNotification {
   const kind = waitingKind(session.waitingFor);
-  const folder = folderOf(session.sid, session);
+  const folder = onMachine(folderOf(session.sid, session), ctx.machine);
   const text = session.now?.text?.trim();
   const full = text ? `${KIND_WORD[kind]}: ${text}` : session.waitingFor ? `Waiting for ${session.waitingFor} in the terminal.` : 'Waiting in the terminal.';
   return finish(
@@ -371,8 +387,9 @@ export function doneNotification(
   mode: BodiesMode,
   ts: string,
   ranMs?: number,
+  ctx: TextContext = {},
 ): RoutedNotification {
-  const folder = folderOf(sid, session);
+  const folder = onMachine(folderOf(sid, session), ctx.machine);
   const reply = lastReply?.text?.trim() || session?.lastReply?.text?.trim() || '';
   const ran = ranMs !== undefined && Number.isFinite(ranMs) && ranMs >= 60_000 ? ` · ${dur(ranMs)}` : '';
   return finish(
@@ -415,7 +432,7 @@ export function alertNotification(
 ): RoutedNotification {
   const kind = alertKind(alert.kind);
   const url = `/alerts?id=${encodeURIComponent(alert.id)}`;
-  const folder = alert.sid ? folderOf(alert.sid, session) : alert.label || 'A session';
+  const folder = onMachine(alert.sid ? folderOf(alert.sid, session) : alert.label || 'A session', ctx.machine);
   const why = alert.why ? sentence(alert.why) : '';
 
   const account = alert.account ?? session?.account ?? undefined;
@@ -423,10 +440,12 @@ export function alertNotification(
     const at = ctx.resetsAt ? hhmm(ctx.resetsAt, ctx.timeZone) : '';
     const who = ctx.folders?.length ? `${joinFolders(ctx.folders)} ${ctx.folders.length === 1 ? 'is' : 'are'} paused.` : '';
     const full = [at ? `Resets ${at}.` : '', who].filter(Boolean).join(' ') || why || sentence(alert.what);
+    const limitTitle = `acct ${acct(account)} hit its ${ctx.window ? `${ctx.window} ` : ''}limit`;
     return finish(
       {
         kind,
-        title: `acct ${acct(account)} hit its ${ctx.window ? `${ctx.window} ` : ''}limit`,
+        // A server's account 01 is not the Mac's: its name comes first.
+        title: ctx.machine ? titled(ctx.machine, ` · ${limitTitle}`) : limitTitle,
         full,
         short: at ? `Limit hit · resets ${at}` : 'Limit hit',
         url: '/accounts',
@@ -496,8 +515,14 @@ export function usageNotification(
   );
 }
 
-export function sendFailedNotification(job: SendJob, session: Session | null | undefined, mode: BodiesMode, ts: string): RoutedNotification {
-  const folder = folderOf(job.sid, session);
+export function sendFailedNotification(
+  job: SendJob,
+  session: Session | null | undefined,
+  mode: BodiesMode,
+  ts: string,
+  ctx: TextContext = {},
+): RoutedNotification {
+  const folder = onMachine(folderOf(job.sid, session), ctx.machine);
   const reason = sentence(job.reason ?? '') || 'The prompt was not proven by the transcript.';
   return finish(
     {

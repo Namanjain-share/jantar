@@ -6,12 +6,32 @@
  * Order is the protocol's `boardOrder`, the same order the strip, the
  * palette and the shell's j / k / 1-9 keys use, split into the four rails:
  * NEEDS YOU, YOUR TURN, WORKING (with compacting and "no update"), ENDED.
+ *
+ * v0.6 (Fleet): once a machine is paired every row names its machine ("Mac"
+ * for this one) before the account, and the account is read from that
+ * machine (`sessionAccount`; a config-dir account by its alias, as every
+ * server has its own account 0). A row of an offline machine is muted and
+ * says "offline since 14:02" where its age was. One list across machines,
+ * in the same order; no filter row.
  */
-import { boardOrder, pendingFor, stateFeatures, type Account, type Alert, type PendingRequest, type Session, type State } from '@jantar/protocol';
+import {
+  boardOrder,
+  machineName,
+  machineOf,
+  pendingFor,
+  sessionAccount,
+  stateFeatures,
+  type Account,
+  type Alert,
+  type PendingRequest,
+  type Session,
+  type State,
+} from '@jantar/protocol';
 import { describeSuggestion, planOf, questionsOf, summarizeTool } from '../../../lib/describe.js';
 import { accountId, clock, fiveHourPct, previewText } from '../../../lib/format.js';
 import { GROUP_LABEL, GROUP_ORDER, glyphStateOf, groupOf, type GlyphState, type GroupKey } from '../../kit/glyph.js';
 import { needsWord } from '../../shell/data.js';
+import { hasMachines, offlineSince } from '../session/Info.js';
 
 const MIN = 60_000;
 
@@ -121,8 +141,10 @@ export interface RowModel {
   /** Waiting past the first reminder point: the age turns ember. */
   ageEmber: boolean;
   line2: Line2;
-  /** Account id ("03") and its 5-hour % (null with no reading). Null with no account. */
+  /** Account id ("03", or a server's config-dir alias) and its 5-hour % (null with no reading). Null with no account. */
   account: { id: string; pct: number | null } | null;
+  /** v0.6: the machine it runs on ("Mac", "build-1"), once any machine is paired; null (or absent) before. */
+  machine?: { name: string; node?: string; offline: boolean } | null;
   /** An in-flight move: "03 → 06 · restarting". */
   move: string | null;
   /** "+2 agents", "2 cards". */
@@ -149,10 +171,19 @@ export function waitingSince(state: State, s: Session): number | null {
   return parse(card?.createdAt) ?? parse(s.statusSince);
 }
 
-/** Account and 5-hour % for the right of line 2. */
+/** Account and 5-hour % for the right of line 2, from the session's own machine. */
 function accountCell(state: State, s: Session, now: number): RowModel['account'] {
   if (s.account === null) return null;
-  return { id: accountId(s.account), pct: fiveHourPct(state.accounts[String(s.account)], now) };
+  const a = sessionAccount(state, s) ?? undefined;
+  const dirs = s.node !== undefined && machineOf(state, s.node)?.accountsMode === 'dirs';
+  return { id: dirs && a?.alias ? a.alias : accountId(s.account), pct: fiveHourPct(a, now) };
+}
+
+/** v0.6: the row's machine, once any is paired. */
+function machineCell(state: State, s: Session): NonNullable<RowModel['machine']> | null {
+  if (!hasMachines(state)) return null;
+  if (s.node === undefined) return { name: machineName(state, undefined), offline: false };
+  return { name: machineName(state, s.node), node: s.node, offline: machineOf(state, s.node)?.online !== true };
 }
 
 /** "03 → 06 · restarting", or "03 · parked" while the destination is not known. */
@@ -230,7 +261,10 @@ export function rowOf(state: State, s: Session, now: number): RowModel {
   const glyph = glyphStateOf(state, s, now);
   const cards = openCards(state, s.sid);
   const card = cards[0];
-  const { age, ember } = ageOf(state, s, glyph, now);
+  const machine = machineCell(state, s);
+  const node = machine?.offline && s.node !== undefined ? machineOf(state, s.node) : null;
+  // An offline machine's row says since when, where its age was (its status is as last heard).
+  const { age, ember } = node ? { age: offlineSince(node, now), ember: false } : ageOf(state, s, glyph, now);
   const tags: string[] = [];
   if (s.subagentsRunning > 0) tags.push(`+${s.subagentsRunning} ${s.subagentsRunning === 1 ? 'agent' : 'agents'}`);
   if (cards.length > 1) tags.push(`${cards.length} cards`);
@@ -245,6 +279,7 @@ export function rowOf(state: State, s: Session, now: number): RowModel {
     ageEmber: ember,
     line2: line2Of(state, s, glyph, card),
     account: accountCell(state, s, now),
+    machine,
     move: glyph === 'ended' ? null : moveText(s),
     tag: tags.length ? tags.join(' · ') : null,
     files: glyph === 'turn' && stateFeatures(state).files && (s.filesChanged ?? 0) > 0 ? (s.filesChanged ?? 0) : null,
@@ -461,7 +496,9 @@ export function deskAlerts(state: State, seenTs: string, n = 3): DeskAlert[] {
     .map((a) => {
       const s = a.sid ? state.sessions[a.sid] : undefined;
       const parts = a.label.split(' · ');
-      const subject = s ? `${s.folder} · ${s.name?.trim() || s.sid.slice(0, 8)}` : parts.length >= 3 ? parts.slice(1).join(' · ') : a.label;
+      const what = s ? `${s.folder} · ${s.name?.trim() || s.sid.slice(0, 8)}` : parts.length >= 3 ? parts.slice(1).join(' · ') : a.label;
+      // v0.6: a paired machine's alert names the machine first.
+      const subject = a.node !== undefined && hasMachines(state) ? `${machineName(state, a.node)} · ${what}` : what;
       const href = a.sid ? `/s/${encodeURIComponent(a.sid)}` : a.account !== undefined ? '/accounts' : '/alerts';
       return { alert: a, subject, text: a.why ? `${a.what} ${a.why}` : a.what, href, unseen: a.ts > seenTs };
     });

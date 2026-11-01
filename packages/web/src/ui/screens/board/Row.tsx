@@ -17,6 +17,11 @@
  * Selected: --select fill and the 2 px --ink tick, never ember. Unseen
  * your-turn rows: folder at 680. Status is the glyph plus the rail word.
  *
+ * v0.6: once a machine is paired, the machine ("Mac", "build-1") comes
+ * before the account (on line 1 of an ended row, which has no line 2); a
+ * server's config-dir account shows by its alias. An offline machine's
+ * rows are muted, with "offline since 14:02" for the age.
+ *
  * The row's menu (spec 5.3.1, while launching is on, live sessions only):
  * long press, right click or the menu key opens it (`menu`; the Ledger holds
  * the one menu); the click that follows a long press is dropped.
@@ -88,17 +93,19 @@ function Line2({ row, ceiling }: { row: RowModel; ceiling: number }) {
   }
   const a = row.account;
   const { life } = useFeatures();
-  const single = useAccountsMode() === 'single';
+  // One login on the Mac: no account to tell apart there (a server's rows keep theirs).
+  const single = useAccountsMode() === 'single' && row.machine?.node === undefined;
   return (
     <span data-line2 className="mt-4 flex h-20 min-w-0 items-center pl-24 text-small md:mt-0 md:h-18">
       <span className={clsx('min-w-0 flex-1 truncate', l.kind === 'needs' ? 'text-ink' : 'text-ink-2')}>{body}</span>
-      {/* v0.4: the project whose folder holds this session (WP-W's chip; nothing while Life is off). */}
-      {life ? <ProjectChip cwd={row.session.cwd} /> : null}
+      {/* v0.4: the project whose folder holds this session (WP-W's chip; nothing while Life is off, nor for a server's folder). */}
+      {life && row.machine?.node === undefined ? <ProjectChip cwd={row.session.cwd} /> : null}
       {row.files !== null ? (
         <span data-files className="ml-12 flex-none type-mono text-ink-3">
           {filesText(row.files)}
         </span>
       ) : null}
+      {row.machine ? <MachineChip name={row.machine.name} /> : null}
       {single ? null : row.move ? (
         <span data-acct className="ml-12 flex-none type-mono text-ink-3">
           {row.move}
@@ -114,6 +121,15 @@ function Line2({ row, ceiling }: { row: RowModel; ceiling: number }) {
           </span>
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/** v0.6: the machine a row runs on, before its account. */
+function MachineChip({ name }: { name: string }) {
+  return (
+    <span data-machine className="ml-12 max-w-1/3 flex-none truncate type-mono text-ink-3">
+      {name}
     </span>
   );
 }
@@ -138,6 +154,7 @@ export function RowBody({ row, ceiling, unseen = false, events = 0 }: { row: Row
         </span>
         <span className={clsx('ml-8 min-w-0 flex-initial truncate type-row', ended ? 'text-ink-3' : 'text-ink-2')}>{row.name}</span>
         {row.tag ? <span className="ml-8 hidden flex-none type-mono text-ink-3 md:inline">{row.tag}</span> : null}
+        {ended && row.machine ? <MachineChip name={row.machine.name} /> : null}
         <span className={clsx('ml-auto flex-none pl-12 type-mono', row.ageEmber ? 'text-signal-text' : 'text-ink-3')}>{row.age}</span>
       </span>
       {ended ? null : <Line2 row={row} ceiling={ceiling} />}
@@ -204,7 +221,13 @@ export function Row({
       className={clsx(rowClass(row, ground, selected), menu && 'select-none [-webkit-touch-callout:none]')}
     >
       {wash > 0 ? <span key={wash} aria-hidden="true" className="pointer-events-none absolute inset-0 bg-signal opacity-0 animate-wash" /> : null}
-      <RowBody row={row} ceiling={ceiling} unseen={unseen} events={events} />
+      {row.machine?.offline ? (
+        <span data-offline className="block opacity-60">
+          <RowBody row={row} ceiling={ceiling} unseen={unseen} events={events} />
+        </span>
+      ) : (
+        <RowBody row={row} ceiling={ceiling} unseen={unseen} events={events} />
+      )}
     </m.a>
   );
 }

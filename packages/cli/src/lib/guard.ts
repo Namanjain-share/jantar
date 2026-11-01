@@ -1,9 +1,9 @@
 /**
  * A safety net for the test suite: while running under a test runner, the
  * CLI refuses to write, delete or load anything in the real user's home
- * (LaunchAgents, ~/.jantar and ccw-v2's ~/.ccw-v2, Claude's and cswap's
- * dirs, ccw's config). Tests work on a synthetic HOME, so this only ever
- * fires on a test bug.
+ * (LaunchAgents, v0.6's systemd user units, ~/.jantar and ccw-v2's
+ * ~/.ccw-v2, Claude's and cswap's dirs, ccw's config). Tests work on a
+ * synthetic HOME, so this only ever fires on a test bug.
  */
 import { realpathSync } from 'node:fs';
 import { userInfo } from 'node:os';
@@ -36,6 +36,8 @@ export function guardRealPath(path: string, what: string): void {
   if (!home) return;
   const protectedDirs = [
     join(home, 'Library', 'LaunchAgents'),
+    // v0.6: where `jantar install` writes jantar.service on a Linux server.
+    join(home, '.config', 'systemd'),
     join(home, '.jantar'),
     join(home, '.ccw-v2'),
     join(home, '.claude'),

@@ -2,7 +2,8 @@
  * The command registry. Each command lives in its own file. The order is
  * the help order: everyday commands, then the v0.3 switches and roots the
  * daemon's "turn it on at your Mac" sentences name, then v0.4's Life, Intel
- * and kept accounts, v0.5's Meetings, then setup.
+ * and kept accounts, v0.5's Meetings, v0.6's Fleet (fleet, node), then
+ * setup.
  */
 import type { Command } from '../command.js';
 import accounts from './accounts.js';
@@ -10,6 +11,7 @@ import controls from './controls.js';
 import devices from './devices.js';
 import doctor from './doctor.js';
 import files from './files.js';
+import fleet from './fleet.js';
 import folders from './folders.js';
 import hooks from './hooks.js';
 import importCcwV2 from './import-ccw-v2.js';
@@ -20,6 +22,7 @@ import launch from './launch.js';
 import life from './life.js';
 import meetings from './meetings.js';
 import newSession from './new.js';
+import node from './node.js';
 import open from './open.js';
 import pair from './pair.js';
 import remote from './remote.js';
@@ -49,6 +52,9 @@ export const COMMANDS: readonly Command[] = [
   accounts,
   // v0.5
   meetings,
+  // v0.6
+  fleet,
+  node,
   remote,
   hooks,
   doctor,

@@ -5,9 +5,15 @@
  *
  * "Full" means the autoswitch ceiling, the % of a 5-hour window autoswitch
  * treats as full, which is also what ccw's `fullInMin` counts down to.
+ *
+ * v0.6 (Fleet): `buildRows` takes the machine (`node`, absent for the Mac)
+ * and reads only its accounts and sessions: every server has its own
+ * account 0, so a server's session never counts on the Mac's account.
  */
 import {
+  accountsOf,
   boardOrder,
+  machineOf,
   type Account,
   type AccountProjection,
   type Move,
@@ -82,10 +88,12 @@ const parse = (iso: string | undefined): number | null => {
   return Number.isFinite(t) ? t : null;
 };
 
-export function buildRows(state: State, plan: PlanResponse | null, ceiling: number, now: number): AccountRow[] {
-  const order = boardOrder(state);
-  const moves = Object.values(state.moves);
-  return Object.values(state.accounts)
+export function buildRows(state: State, plan: PlanResponse | null, ceiling: number, now: number, node?: string): AccountRow[] {
+  const order = boardOrder(state).filter((s) => s.node === node);
+  // Moves and the plan are the Mac's own (the legacy ccw tool runs there).
+  const moves = node === undefined ? Object.values(state.moves) : [];
+  const active = node === undefined ? state.activeAccount : (machineOf(state, node)?.activeAccount ?? null);
+  return Object.values(accountsOf(state, node))
     .sort((a, b) => a.id - b.id)
     .map((a) => {
       const ok = a.usageStatus === 'ok';
@@ -109,7 +117,7 @@ export function buildRows(state: State, plan: PlanResponse | null, ceiling: numb
       if (plan?.next === a.id) flags.push({ text: 'next →', tone: 'next' });
       if (!ok) flags.push({ text: usageStatusText(a.usageStatus), tone: 'warn' });
       if (a.held) flags.push({ text: 'held', tone: 'plain' });
-      if (a.isDefaultLogin || state.activeAccount === a.id) flags.push({ text: 'default login', tone: 'plain' });
+      if (a.isDefaultLogin || active === a.id) flags.push({ text: 'default login', tone: 'plain' });
       if (a.disabled) flags.push({ text: 'disabled', tone: 'plain' });
 
       return {

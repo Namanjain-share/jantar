@@ -1,21 +1,65 @@
 /**
- * v0.6 Fleet: runs the hub's calls on a node (lane L4). STUB from wave 0:
- * answers every call 501 until L4 replaces this file, keeping the name and
- * signature.
+ * v0.6 Fleet: runs the hub's calls on a node.
  *
- * Only NODE_ROUTES (anything else: 404); the path from
+ * Only NODE_ROUTES (anything else: 404, nothing run); the path from
  * `buildPath(ROUTES[route], params)` plus the query, never a path from the
- * hub; through the node's own API (`link.inject`, the `link` transport), as
- * the device `hub.<deviceId>` with the phone's scopes, so every switch,
- * guard, idempotency check and audit row on the node works as on a Mac. An
- * upload's bulk becomes the raw body. A reply too large for the link
- * (over NODE_LIMITS.bulkToHubBytes) is a 500 "reply too large for the link".
+ * hub, and only with exactly the route's own path params, each an id
+ * (NODE_SUPPLIED_ID: no `/`, no `..`; else 400); through the node's own API
+ * (`link.inject`, the `link` transport), as the device `hub.<deviceId>` with
+ * the phone's scopes, so every switch, guard, idempotency check and audit
+ * row on the node works as on a Mac. An upload's bulk becomes the raw body
+ * (L1's link checked its size and sha256 before it got here). A reply too
+ * large for the link (over NODE_LIMITS.bulkToHubBytes) is a 500 "reply too
+ * large for the link". Nothing of a call (body, query, reply) is logged.
  */
-import { errorBody } from '@jantar/protocol';
-import type { CallExecutor, DaemonContext, LinkInjector } from '../contracts.js';
+import { ROUTES, buildPath, errorBody, type RouteDef } from '@jantar/protocol';
+import { NODE_LIMITS, NODE_SUPPLIED_ID, isNodeRoute, type NodeCallReply, type NodeCallRequest } from '@jantar/protocol/node-link';
+import type { CallExecutor, DaemonContext, LinkInjector, LinkRequest } from '../contracts.js';
+import { jsonBytes } from '../fleet/clip.js';
 
-export function createExecutor(_ctx: DaemonContext, _link: LinkInjector): CallExecutor {
+const PATH_PARAM = /:([A-Za-z0-9_]+)/g;
+
+/** The route's path with exactly its own params, each an id; null when they are not that. */
+function pathOf(def: RouteDef, params: Readonly<Record<string, string>>): string | null {
+  const names = [...def.path.matchAll(PATH_PARAM)].map((m) => m[1] as string);
+  const given = Object.keys(params);
+  if (given.length !== names.length || !names.every((n) => Object.hasOwn(params, n) && NODE_SUPPLIED_ID.test(params[n] as string))) return null;
+  return buildPath(def, params);
+}
+
+function fail(status: number, code: Parameters<typeof errorBody>[0], message: string): NodeCallReply {
+  return { status, body: errorBody(code, message) };
+}
+
+export function createExecutor(ctx: DaemonContext, link: LinkInjector): CallExecutor {
+  const log = ctx.log.child({ part: 'node-calls' });
   return {
-    run: async () => ({ status: 501, body: errorBody('not_implemented', 'Calls from the hub are not built yet') }),
+    async run(req: NodeCallRequest, bulk?: Buffer): Promise<NodeCallReply> {
+      if (!isNodeRoute(req.route)) return fail(404, 'not_found', 'not found');
+      const def: RouteDef = ROUTES[req.route];
+      const path = pathOf(def, req.params);
+      if (path === null) return fail(400, 'invalid_request', 'invalid path params');
+      // NODE_ROUTES are REST routes; never the event stream.
+      if (def.method === 'WS') return fail(404, 'not_found', 'not found');
+      const raw = def.rawBody !== undefined;
+      if (bulk !== undefined && !raw) return fail(400, 'invalid_request', 'this call takes no bytes');
+      const query = new URLSearchParams(Object.entries(req.query)).toString();
+      const call: LinkRequest = { method: def.method, url: query ? `${path}?${query}` : path, actor: req.actor };
+      if (req.idem !== undefined) call.idem = req.idem;
+      if (raw) call.raw = bulk ?? Buffer.alloc(0);
+      else if (req.body !== undefined) call.body = req.body;
+      let reply: NodeCallReply;
+      try {
+        reply = await link.inject(call);
+      } catch (e) {
+        log.error('a call from the hub failed', { route: req.route, error: String(e).slice(0, 200) });
+        return fail(500, 'internal', 'internal error');
+      }
+      if (jsonBytes(reply.body) > NODE_LIMITS.bulkToHubBytes) {
+        log.warn('a reply too large for the link', { route: req.route });
+        return fail(500, 'internal', 'reply too large for the link');
+      }
+      return reply;
+    },
   };
 }

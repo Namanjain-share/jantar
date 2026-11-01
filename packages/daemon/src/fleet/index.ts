@@ -1,34 +1,121 @@
 /**
- * v0.6 Fleet: the hub's Fleet part (lane L4 wires it; L1's link server and
- * NodeAuth inside). STUB from wave 0: inert; `target` finds no node, so every
- * route runs on the Mac as in v0.5.2, and the rest refuses (501) until L4
- * replaces this file, keeping `createFleet: Factories['fleet']`.
+ * v0.6 Fleet: the hub's Fleet part. L1's link server (fleet/socket.ts) and
+ * NodeAuth (auth/nodes.ts) inside; the registry (fleet/registry.ts) keeps
+ * each node's view and re-emits its checked, clipped events; the forwarder
+ * (fleet/forward.ts) carries the phone's calls.
  *
  * Built on every hub and inert while settings fleet.enabled is off: no
  * listener, no timer, no file. It follows the switch itself: on, the hub key
  * (link/keys.ts loadOrCreateHubKey) and the link server (fleet/socket.ts);
  * off, every link closes 4403 and each node's view and sessions leave the
- * board (node.removed). Started after `notifications`, before `api`.
+ * board (node.removed; the pairings stay, so turning it on again needs no
+ * re-join). Started after `notifications`, before `api`.
  */
-import type { Factories, FleetService } from '../contracts.js';
+import { NodeIdSchema, type MachinesPairReply, type RouteName } from '@jantar/protocol';
+import { NODE_CLOSE, NODE_ROUTES, hubOrigin, isNodeRoute } from '@jantar/protocol/node-link';
+import type { Actor, Factories, FleetResult, FleetService, FleetTarget, LinkServer, Unsubscribe } from '../contracts.js';
 import { NodeAuth } from '../auth/nodes.js';
+import { actorId } from '../core/actor.js';
+import { refuseUpgrade } from '../api/node-upgrade.js';
+import { loadOrCreateHubKey } from '../link/keys.js';
 import { createLinkServer } from './socket.js';
-import { forwardCall } from './forward.js';
+import { forwardCall, targetOf } from './forward.js';
+import { NodeRegistry } from './registry.js';
 
-const NOT_BUILT = 'Fleet is not built yet';
+/** `jantar fleet on` says the same: a server dials a fixed https address, never a quick tunnel's. */
+const NO_DOOR = 'Servers need a fixed front door. Set one up with jantar remote setup.';
+const QUICK_TUNNEL = /\.trycloudflare\.com$/i;
 
 export const createFleet: Factories['fleet'] = (ctx): FleetService => {
+  const log = ctx.log.child({ part: 'fleet' });
   const auth = new NodeAuth(ctx);
-  const server = createLinkServer(ctx, auth, { onLink: (link) => link.close(4403, 'not built yet') });
+  const registry = new NodeRegistry(ctx);
+  let server: LinkServer | null = null;
+  let unsubSettings: Unsubscribe | null = null;
+  // Switch changes apply one at a time, in order.
+  let switching: Promise<void> = Promise.resolve();
+
+  const enabled = () => ctx.settings.get().fleet.enabled;
+
+  const turnOn = async (): Promise<void> => {
+    if (server) return;
+    try {
+      await loadOrCreateHubKey(ctx.paths);
+    } catch (e) {
+      log.error('cannot load the hub key', { error: String(e).slice(0, 200) });
+    }
+    server = createLinkServer(ctx, auth, {
+      onLink: (link) => {
+        auth.touch(link.nodeId, { os: link.info.os, version: link.info.version });
+        registry.attach(link);
+      },
+    });
+    log.info('fleet on');
+  };
+
+  const turnOff = async (code: number, reason: string, board: boolean): Promise<void> => {
+    const s = server;
+    server = null;
+    if (board) registry.removeAll();
+    else registry.detachAll();
+    if (!s) return;
+    s.closeAll(code, reason);
+    await s.stop();
+    log.info('fleet off', { code });
+  };
+
+  const follow = (on: boolean) => {
+    switching = switching
+      .then(() => (on ? turnOn() : turnOff(NODE_CLOSE.fleetOff, 'Fleet is off', true)))
+      .catch((e: unknown) => log.error('fleet switch failed', { error: String(e).slice(0, 200) }));
+    return switching;
+  };
+
+  const target = (route: RouteName, params: Readonly<Record<string, string>>, query: Readonly<Record<string, unknown>>): FleetTarget | null => {
+    const t = targetOf(ctx.store.getState(), route, params, query);
+    if (t || !enabled() || !isNodeRoute(route) || NODE_ROUTES[route] !== 'query') return t;
+    // A paired server that has not linked since the Mac started: still a machine, offline (503, not 404).
+    const id = query.node;
+    if (typeof id !== 'string' || !NodeIdSchema.safeParse(id).success) return null;
+    const rec = ctx.db.nodes.get(id);
+    return rec && rec.revokedAt === null ? { nodeId: rec.id, name: rec.name } : null;
+  };
+
   return {
-    start: async () => {},
-    stop: () => server.stop(),
-    target: () => null,
-    forward: (target, call) => forwardCall(null, target, call),
-    acceptLink: (req, socket, head) => server.accept(req, socket, head),
-    pair: async () => ({ ok: false, code: 'not_implemented', reason: NOT_BUILT }),
-    makeTokens: async () => ({ ok: false, code: 'not_implemented', reason: NOT_BUILT }),
-    list: () => [],
-    revoke: async () => ({ ok: false, code: 'not_implemented', reason: NOT_BUILT }),
+    async start() {
+      if (unsubSettings) return;
+      unsubSettings = ctx.settings.subscribe((next, prev) => {
+        if (next.fleet.enabled !== prev.fleet.enabled) void follow(next.fleet.enabled);
+      });
+      if (enabled()) await follow(true);
+    },
+    async stop() {
+      unsubSettings?.();
+      unsubSettings = null;
+      await switching;
+      await turnOff(NODE_CLOSE.goingAway, 'Jantar is stopping', false);
+    },
+    target,
+    forward: (t, call) => forwardCall(enabled() ? registry.link(t.nodeId) : null, t, call),
+    acceptLink(req, socket, head) {
+      if (server) server.accept(req, socket, head);
+      else refuseUpgrade(socket, 503, 'unavailable', 'The Fleet link is starting; try again in a moment');
+    },
+    pair: (body, meta) => auth.pair(body, meta),
+    async makeTokens(body, actor: Actor): Promise<FleetResult<{ tokens: MachinesPairReply['tokens'] }>> {
+      const url = ctx.settings.get().remote.publicUrl;
+      const origin = url === null ? null : hubOrigin(url);
+      if (!origin || QUICK_TUNNEL.test(new URL(origin).hostname)) return { ok: false, code: 'conflict', reason: NO_DOOR };
+      return auth.makeTokens(body, { hubUrl: origin, createdBy: actorId(actor) });
+    },
+    list: () => registry.rows(),
+    async revoke(id, actor) {
+      const rec = auth.revoke(id, actorId(actor));
+      if (!rec) return { ok: false, code: 'not_found', reason: 'no such machine' };
+      // Off the board first, so the closing link does not grey it out on the way.
+      registry.remove(id);
+      server?.closeNode(id, NODE_CLOSE.unknown, 'removed');
+      return { ok: true, machine: registry.rowOf(ctx.db.nodes.get(id) ?? rec) };
+    },
   };
 };

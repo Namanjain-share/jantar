@@ -1,0 +1,23 @@
+# What the jantar-fleet-test image leaves out of the repo (BuildKit reads
+# <Dockerfile>.dockerignore beside the Dockerfile). Above all the host's
+# node_modules and dist: the image installs and builds its own, for Linux.
+**/node_modules
+**/dist
+**/dist-test
+**/.vite
+**/.vitest
+**/coverage
+**/*.tsbuildinfo
+**/.DS_Store
+**/.jantar-test-*
+**/*.db
+**/*.db-wal
+**/*.db-shm
+.git
+site
+.secrets-denylist.local
+.env
+.env.*
+docs/research
+docs/design-brief.md
+docs/v*-notes.md

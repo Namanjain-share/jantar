@@ -19,8 +19,13 @@
  *   `notify.webpush|mac|telegram`. Life pushes do not come through here
  *   (life/push.ts sends them with direct.ts), but if one ever did, mute
  *   still could not silence a medicine.
+ * - v0.6 Fleet: a paired server's pushes name it (format.ts, the name the
+ *   Mac gave it), and each server gets at most NODE_LIMITS.pushesPerMin a
+ *   minute, on top of the mute (a server cannot flood the phone); the Mac's
+ *   own pushes never count against it.
  */
-import { accountsOf, type Alert, type DaemonEvent, type NotifyKind, type PendingRequest, type State } from '@jantar/protocol';
+import { accountsOf, machineName, type Alert, type DaemonEvent, type NotifyKind, type PendingRequest, type State } from '@jantar/protocol';
+import { NODE_LIMITS } from '@jantar/protocol/node-link';
 import type { DaemonContext, NotificationRouter, Notifier, TimerId, Unsubscribe } from '../contracts.js';
 import {
   alertNotification,
@@ -34,6 +39,7 @@ import {
   waitingNotification,
   type LimitContext,
   type RoutedNotification,
+  type TextContext,
   type UsageContext,
 } from './format.js';
 import { channelOn, isMuted } from './direct.js';
@@ -43,6 +49,8 @@ const TOLD_KEY = 'notify.reminders.told';
 const TOLD_TTL_MS = 48 * 60 * 60 * 1000;
 /** Dedupe memory for one-shot pushes (failed sends, waiting episodes). */
 const SENT_CAP = 2000;
+/** v0.6: the window of a server's push budget. */
+const PUSH_WINDOW_MS = 60_000;
 
 interface Waiting {
   since: string;
@@ -101,6 +109,16 @@ export function usageContext(state: Readonly<State>, account: number, window: st
   return ctx;
 }
 
+/** v0.6: the paired server a session runs on (undefined: the Mac's own). */
+export function nodeOf(state: Readonly<State>, sid: string | undefined): string | undefined {
+  return sid !== undefined && Object.hasOwn(state.sessions, sid) ? state.sessions[sid]?.node : undefined;
+}
+
+/** v0.6: the machine word for a push: a server's name as the Mac gave it; nothing for the Mac. */
+export function machineContext(state: Readonly<State>, node: string | undefined): TextContext {
+  return node === undefined ? {} : { machine: machineName(state, node) };
+}
+
 /** The oldest open card (not subagent info) of a session, or Claude's own "waiting". */
 export function waitingOf(state: Readonly<State>, sid: string): Waiting | null {
   const session = state.sessions[sid];
@@ -123,6 +141,8 @@ export class NotificationRouterImpl implements NotificationRouter {
   private readonly workStart = new Map<string, string>();
   private readonly ranFor = new Map<string, number>();
   private readonly inflight = new Set<Promise<void>>();
+  /** v0.6: node id -> when its recent pushes went out (the last PUSH_WINDOW_MS). */
+  private readonly nodePushes = new Map<string, number[]>();
   private readonly log;
 
   constructor(
@@ -208,7 +228,8 @@ export class NotificationRouterImpl implements NotificationRouter {
         if (!ev.sid) return;
         const s = state.sessions[ev.sid];
         const ts = this.ctx.clock.iso();
-        this.dispatch(doneNotification(ev.sid, s, ev.data.lastReply, this.bodies(), ts, this.takeRan(ev.sid, ts)));
+        const node = nodeOf(state, ev.sid);
+        this.dispatch(doneNotification(ev.sid, s, ev.data.lastReply, this.bodies(), ts, this.takeRan(ev.sid, ts), machineContext(state, node)), node);
         return;
       }
       case 'session.reminder':
@@ -219,7 +240,9 @@ export class NotificationRouterImpl implements NotificationRouter {
       case 'alert.limit':
       case 'alert.error': {
         const a = ev.data.alert;
-        this.dispatch(alertNotification(a, a.sid ? state.sessions[a.sid] : null, this.bodies(), this.ctx.clock.iso(), limitContext(state, a)));
+        const node = a.node ?? nodeOf(state, a.sid);
+        const ctx = { ...limitContext(state, a), ...machineContext(state, node) };
+        this.dispatch(alertNotification(a, a.sid ? state.sessions[a.sid] : null, this.bodies(), this.ctx.clock.iso(), ctx), node);
         return;
       }
       case 'usage.threshold':
@@ -232,7 +255,8 @@ export class NotificationRouterImpl implements NotificationRouter {
         const job = ev.data.job;
         if (job.stage !== 'failed') return;
         if (!this.once(`send-failed:${job.id}`)) return;
-        this.dispatch(sendFailedNotification(job, state.sessions[job.sid], this.bodies(), this.ctx.clock.iso()));
+        const node = nodeOf(state, job.sid);
+        this.dispatch(sendFailedNotification(job, state.sessions[job.sid], this.bodies(), this.ctx.clock.iso(), machineContext(state, node)), node);
         return;
       }
       default:
@@ -297,8 +321,9 @@ export class NotificationRouterImpl implements NotificationRouter {
       const card = state.pending[p.id];
       if (!card || card.state !== 'open') return;
       if (!this.once(key)) return;
-      const n = cardNotification(card, state.sessions[card.sid], this.bodies(), this.ctx.clock.iso());
-      if (n) this.dispatch(n);
+      const node = nodeOf(state, card.sid);
+      const n = cardNotification(card, state.sessions[card.sid], this.bodies(), this.ctx.clock.iso(), machineContext(state, node));
+      if (n) this.dispatch(n, node);
     };
     if (delay <= 0) fire();
     else this.settle.set(key, this.ctx.clock.setTimeout(fire, delay));
@@ -318,7 +343,7 @@ export class NotificationRouterImpl implements NotificationRouter {
       const w = waitingOf(state, sid);
       if (w?.card) return; // the card's own push covers it
       if (!this.once(key)) return;
-      this.dispatch(waitingNotification(s, this.bodies(), this.ctx.clock.iso()));
+      this.dispatch(waitingNotification(s, this.bodies(), this.ctx.clock.iso(), machineContext(state, s.node)), s.node);
     };
     const settleMs = this.ctx.settings.get().notify.settle_ms;
     if (settleMs <= 0) fire();
@@ -395,9 +420,10 @@ export class NotificationRouterImpl implements NotificationRouter {
     if (!w || !session) return;
     const mode = this.bodies();
     const ts = this.ctx.clock.iso();
-    const base = w.card ? cardNotification(w.card, session, mode, ts) : waitingNotification(session, mode, ts);
+    const ctx = machineContext(state, session.node);
+    const base = w.card ? cardNotification(w.card, session, mode, ts, ctx) : waitingNotification(session, mode, ts, ctx);
     if (!base) return;
-    this.dispatch(reminderNotification(base, afterMin, mode, ts));
+    this.dispatch(reminderNotification(base, afterMin, mode, ts), session.node);
   }
 
   private toldMap(): ToldMap {
@@ -432,8 +458,29 @@ export class NotificationRouterImpl implements NotificationRouter {
     return channelOn(this.ctx.settings.get().notify, n);
   }
 
-  private dispatch(n: RoutedNotification): void {
+  /**
+   * v0.6: whether a server still has push budget this minute (and spend one).
+   * Only pushes that would go out count; the Mac's own never do.
+   */
+  private nodeBudget(node: string): boolean {
+    const now = this.ctx.clock.now();
+    const recent = (this.nodePushes.get(node) ?? []).filter((t) => t > now - PUSH_WINDOW_MS);
+    if (recent.length >= NODE_LIMITS.pushesPerMin) {
+      this.nodePushes.set(node, recent);
+      return false;
+    }
+    recent.push(now);
+    this.nodePushes.set(node, recent);
+    return true;
+  }
+
+  /** `node`: the paired server the push is about (v0.6), undefined for the Mac's own. */
+  private dispatch(n: RoutedNotification, node?: string): void {
     if (!this.allowed(n)) return;
+    if (node !== undefined && !this.nodeBudget(node)) {
+      this.log.info('server push budget spent', { node, kind: n.kind });
+      return;
+    }
     for (const notifier of this.deps.notifiers) {
       if (!this.channelOn(notifier)) continue;
       const p = (async () => {

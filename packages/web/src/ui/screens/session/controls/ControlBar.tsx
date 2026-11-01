@@ -12,15 +12,18 @@
  * what happened in ink-3, a refusal in ink-2 with the daemon's reason (a
  * dialog is open, a draft is in the box, ...). Nothing here is ember.
  * Offline every control is disabled; the composer already says why.
+ *
+ * v0.6: on a paired machine's session, Clear draft follows that machine's
+ * own switch (`sessionFeatures`); the session screen mounts the bar only
+ * where Jantar can type (`canType`).
  */
 import { DotsThreeIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
-import type { ControlKey, Session, SessionCommandBody } from '@jantar/protocol';
+import { sessionFeatures, type ControlKey, type Session, type SessionCommandBody } from '@jantar/protocol';
 import { errorText, isApiError } from '../../../../lib/api.js';
 import { newIdempotencyKey } from '../../../../lib/ids.js';
-import { useDeps } from '../../../context.js';
-import { useFeatures } from '../../../shell/data.js';
+import { useApp, useDeps } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
 import { HoldButton } from '../../../kit/HoldButton.js';
 import { IconButton } from '../../../kit/IconButton.js';
@@ -51,9 +54,9 @@ function reasonOf(e: unknown): string {
 
 const slash = (cmd: SessionCommandBody) => (cmd.args ? `/${cmd.name} ${cmd.args}` : `/${cmd.name}`);
 
-export function ControlBar({ sid, phone, offline, modeChip }: ControlBarProps) {
+export function ControlBar({ sid, session, phone, offline, modeChip }: ControlBarProps) {
   const { api } = useDeps();
-  const { clearDraft } = useFeatures();
+  const clearDraft = useApp((s) => sessionFeatures(s.state, session).clearDraft);
   const [busy, setBusy] = useState<Busy>(null);
   const [note, setNote] = useState<Note>(null);
 
@@ -108,7 +111,7 @@ export function ControlBar({ sid, phone, offline, modeChip }: ControlBarProps) {
         Interrupt
       </HoldButton>
       {clearDraft ? (
-        <Button variant="text" aria-label="Clear draft in the Mac's terminal" onClick={() => void press('clearInput')} disabled={off}>
+        <Button variant="text" aria-label={session.node === undefined ? "Clear draft in the Mac's terminal" : 'Clear draft in its terminal'} onClick={() => void press('clearInput')} disabled={off}>
           Clear draft
         </Button>
       ) : null}

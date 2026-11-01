@@ -14,6 +14,10 @@
  *   phone or browser); an extension code with `claimExtension()` (the Chrome
  *   extension, `jantar pair --extension`). Each claim answers `invalid` for
  *   the other kind's code without spending it. One store, one set of rules.
+ * - v0.6: a `node` code is a server's join line (`jantar node pair`), claimed
+ *   with `claimNode()`. It carries no scopes; the name the Mac gave the
+ *   server is reserved beside the code's hash until the code is spent or
+ *   expires (auth/nodes.ts keeps its own store of these).
  */
 import { PAIR_CODE_TTL_MS, type Device, type Scope } from '@jantar/protocol';
 import type { Clock, Logger } from '../contracts.js';
@@ -27,7 +31,7 @@ import { DEFAULT_DEVICE_SCOPES, normalizeScopes } from './scopes.js';
 /** Outstanding codes kept at most; the oldest is dropped first. */
 export const MAX_OPEN_CODES = 20;
 
-export type PairKind = 'device' | 'extension';
+export type PairKind = 'device' | 'extension' | 'node';
 
 interface CodeEntry {
   pairId: string;
@@ -39,7 +43,7 @@ interface CodeEntry {
 }
 
 export interface PairStartInput {
-  /** Default 'device'. An extension code carries no scopes (its key reaches the capture routes only). */
+  /** Default 'device'. An extension code carries no scopes (its key reaches the capture routes only); nor does a node's (v0.6). */
   kind?: PairKind;
   name?: string;
   scopes?: readonly Scope[];
@@ -62,9 +66,13 @@ export type ExtensionClaimResult =
   | { ok: true; id: string; key: string; pairId: string }
   | { ok: false; code: 'invalid' | 'expired'; message: string };
 
+/** v0.6: a node code's claim: the name reserved for the server. */
+export type NodeClaimResult = { ok: true; name: string; pairId: string } | { ok: false; code: 'invalid' | 'expired'; message: string };
+
 export interface PairingOptions {
   clock: Pick<Clock, 'now' | 'iso'>;
-  devices: DeviceAuth;
+  /** Issues the device on a device claim (v0.6: without it, as for a store of server codes only, every device claim is invalid). */
+  devices?: DeviceAuth;
   /** v0.5: issues the extension's key on an extension claim (without it, every extension claim is invalid). */
   extensions?: ExtensionAuth;
   log?: Logger;
@@ -103,7 +111,7 @@ export class PairingService {
     const entry: CodeEntry = {
       pairId: newId(),
       kind,
-      scopes: kind === 'extension' ? [] : normalizeScopes(input.scopes && input.scopes.length > 0 ? input.scopes : DEFAULT_DEVICE_SCOPES),
+      scopes: kind !== 'device' ? [] : normalizeScopes(input.scopes && input.scopes.length > 0 ? input.scopes : DEFAULT_DEVICE_SCOPES),
       expiresAt: now + this.ttlMs,
       createdBy: input.createdBy,
     };
@@ -126,7 +134,7 @@ export class PairingService {
     if (!CODE_RE.test(input.code)) return { ok: false, code: 'invalid', message: 'pairing code is not valid' };
     const h = hashCode(input.code);
     const entry = this.codes.get(h);
-    if (!entry || entry.kind !== 'device') return { ok: false, code: 'invalid', message: 'pairing code is not valid' };
+    if (!entry || entry.kind !== 'device' || !this.opts.devices) return { ok: false, code: 'invalid', message: 'pairing code is not valid' };
     this.codes.delete(h);
     if (this.opts.clock.now() > entry.expiresAt) {
       return { ok: false, code: 'expired', message: 'pairing code has expired; create a new one with: jantar pair' };
@@ -159,6 +167,30 @@ export class PairingService {
     const { id, key } = this.opts.extensions.issue(origin);
     this.log.info('extension paired', { pairId: entry.pairId, extensionId: id });
     return { ok: true, id, key, pairId: entry.pairId };
+  }
+
+  /**
+   * v0.6: trade a server's join code for the name the Mac reserved with it.
+   * The code is used up even when it has expired; another kind's code is
+   * `invalid` here and is not used up.
+   */
+  claimNode(code: string): NodeClaimResult {
+    if (!CODE_RE.test(code)) return { ok: false, code: 'invalid', message: 'pairing code is not valid' };
+    const h = hashCode(code);
+    const entry = this.codes.get(h);
+    if (!entry || entry.kind !== 'node' || !entry.name) return { ok: false, code: 'invalid', message: 'pairing code is not valid' };
+    this.codes.delete(h);
+    if (this.opts.clock.now() > entry.expiresAt) {
+      return { ok: false, code: 'expired', message: 'pairing code has expired; create a new one with: jantar node pair' };
+    }
+    this.log.info('server code claimed', { pairId: entry.pairId });
+    return { ok: true, name: entry.name, pairId: entry.pairId };
+  }
+
+  /** v0.6: the names reserved by server codes not yet used or expired. */
+  reservedNames(): string[] {
+    this.sweep();
+    return [...this.codes.values()].flatMap((e) => (e.kind === 'node' && e.name ? [e.name] : []));
   }
 
   /** Codes not yet used or expired. */

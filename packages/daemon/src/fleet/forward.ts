@@ -1,30 +1,118 @@
 /**
- * v0.6 Fleet: the phone's calls for a node (lane L4). STUB from wave 0:
- * targetOf finds nothing and forwardCall answers 501 until L4 replaces this
- * file, keeping each name and signature.
+ * v0.6 Fleet: the phone's calls for a node.
  *
  * targetOf: NODE_ROUTES only; `sid` -> `state.sessions[sid].node`, `card` ->
  * its session's node, `launch` -> `state.launches[id].node`, `query` -> the
- * live node `?node=` names (own keys only; ids checked first). forwardCall:
- * at most NODE_LIMITS.callsInFlight per node (then 429, retry-after 2),
- * NODE_LIMITS.callTimeoutMs (longCallTimeoutMs for LONG_NODE_ROUTES), an
- * upload's bytes as the call's bulk; never queued across a disconnect: a
- * call on a link that drops ends node_offline (api/errors.ts nodeFailureReply).
+ * node `?node=` names (own keys only; ids checked first). An offline node is
+ * still a target: the forward then answers 503 at once.
+ *
+ * forwardCall: at most NODE_LIMITS.callsInFlight per node (then 429), an
+ * upload's bytes as the call's bulk; never queued across a disconnect. The
+ * link owns the timeout (callTimeoutMs, longCallTimeoutMs for
+ * LONG_NODE_ROUTES) and ends a call on a link that drops node_offline; the
+ * hub's own sentences (api/errors.ts nodeFailureReply) always name the
+ * machine as the hub named it. Idempotency is the node's alone: the call
+ * carries `idem`, the hub caches nothing.
  */
-import { errorBody, type RouteName, type State } from '@jantar/protocol';
-import type { NodeCallReply } from '@jantar/protocol/node-link';
-import type { FleetTarget, ForwardCall, HubLink } from '../contracts.js';
+import { EVENT, NodeIdSchema, SEND_FINAL_STAGES, errorBody, machineName, type RouteName, type SendJob, type State } from '@jantar/protocol';
+import { NODE_LIMITS, NODE_ROUTES, NODE_SUPPLIED_ID, isNodeRoute, type NodeCallReply } from '@jantar/protocol/node-link';
+import type { Clock, FleetTarget, ForwardCall, HubLink, Store } from '../contracts.js';
+import { newId } from '../core/ids.js';
+import { nodeFailureReply } from '../api/errors.js';
 
-export function targetOf(
-  _state: Readonly<State>,
-  _route: RouteName,
-  _params: Readonly<Record<string, string>>,
-  _query: Readonly<Record<string, unknown>>,
-): FleetTarget | null {
-  return null;
+function own<T>(rec: Readonly<Record<string, T>> | undefined, id: string | undefined): T | undefined {
+  return rec !== undefined && typeof id === 'string' && NODE_SUPPLIED_ID.test(id) && Object.hasOwn(rec, id) ? rec[id] : undefined;
 }
 
+export function targetOf(
+  state: Readonly<State>,
+  route: RouteName,
+  params: Readonly<Record<string, string>>,
+  query: Readonly<Record<string, unknown>>,
+): FleetTarget | null {
+  if (!isNodeRoute(route)) return null;
+  let node: string | undefined;
+  switch (NODE_ROUTES[route]) {
+    case 'sid':
+      node = own(state.sessions, params.sid)?.node;
+      break;
+    case 'card': {
+      const card = own(state.pending, params.id);
+      node = card ? own(state.sessions, card.sid)?.node : undefined;
+      break;
+    }
+    case 'launch':
+      node = own(state.launches, params.id)?.node;
+      break;
+    case 'query': {
+      const q = query.node;
+      node = typeof q === 'string' && NodeIdSchema.safeParse(q).success && state.nodes !== undefined && Object.hasOwn(state.nodes, q) ? q : undefined;
+      break;
+    }
+  }
+  return node === undefined ? null : { nodeId: node, name: machineName(state, node) };
+}
+
+/** Calls in flight per link (a new link starts at none). */
+const inFlight = new WeakMap<HubLink, number>();
+
 /** One call over the node's link (`link` null: the node is offline). Never rejects. */
-export async function forwardCall(_link: HubLink | null, _target: FleetTarget, _call: ForwardCall): Promise<NodeCallReply> {
-  return { status: 501, body: errorBody('not_implemented', 'Forwarding to servers is not built yet') };
+export async function forwardCall(link: HubLink | null, target: FleetTarget, call: ForwardCall): Promise<NodeCallReply> {
+  if (!link) return nodeFailureReply('node_offline', target.name);
+  const busy = inFlight.get(link) ?? 0;
+  if (busy >= NODE_LIMITS.callsInFlight) {
+    return { status: 429, body: errorBody('rate_limited', `${target.name} has too many calls waiting; try again in a few seconds`) };
+  }
+  inFlight.set(link, busy + 1);
+  try {
+    const req = {
+      id: newId(),
+      route: call.route,
+      params: call.params,
+      query: call.query,
+      actor: call.actor,
+      ...(call.body !== undefined ? { body: call.body } : {}),
+      ...(call.idem !== undefined ? { idem: call.idem } : {}),
+    };
+    const reply = await link.call(req, call.raw);
+    // The link's own failures say so in the hub's words, with the hub's name for the machine.
+    const code = (reply.body as { error?: { code?: unknown } } | null)?.error?.code;
+    if (reply.status === 503 && code === 'node_offline') return nodeFailureReply('node_offline', target.name);
+    if (reply.status === 504 && code === 'node_timeout') return nodeFailureReply('node_timeout', target.name);
+    return reply;
+  } catch {
+    // HubLink.call never rejects; if one ever did, nothing is known to have run.
+    return nodeFailureReply('node_offline', target.name);
+  } finally {
+    const n = (inFlight.get(link) ?? 1) - 1;
+    if (n > 0) inFlight.set(link, n);
+    else inFlight.delete(link);
+  }
+}
+
+/**
+ * GET /ctl/sends/:jobId/wait for a prompt the CLI sent to a node's session:
+ * the hub's writer never had that job, so the wait follows its re-emitted
+ * `send.progress` in the hub's store until it reaches a final stage, or
+ * `timeoutMs` passes (the job as it stands then). Undefined when the hub has
+ * no such job.
+ */
+export function waitForStoreSend(store: Store, clock: Clock, jobId: string, timeoutMs?: number): Promise<SendJob | undefined> {
+  const now = own(store.getState().sends, jobId);
+  if (!now || SEND_FINAL_STAGES.includes(now.stage)) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    let job: SendJob = now;
+    let timer: ReturnType<Clock['setTimeout']> | undefined;
+    const done = () => {
+      unsub();
+      clock.clearTimeout(timer);
+      resolve(job);
+    };
+    const unsub = store.subscribe((ev) => {
+      if (ev.type !== EVENT.SEND_PROGRESS || ev.data.job.id !== jobId) return;
+      job = ev.data.job;
+      if (SEND_FINAL_STAGES.includes(job.stage)) done();
+    });
+    if (timeoutMs !== undefined) timer = clock.setTimeout(done, Math.max(0, timeoutMs));
+  });
 }

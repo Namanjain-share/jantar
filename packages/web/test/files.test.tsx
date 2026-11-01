@@ -666,7 +666,8 @@ describe("a session's Files tab", () => {
     expect(await screen.findByRole('heading', { name: 'session.ts' })).toBeTruthy();
     // The card (an article in the dock) is still there to answer.
     expect(screen.getAllByRole('article').length).toBeGreaterThan(0);
-    expect(screen.getByText('npm test')).toBeTruthy();
+    // v0.6: the card's own chunk may still be on its way.
+    expect(await screen.findByText('npm test')).toBeTruthy();
   });
 
   it('the back button returns to the list; Browse shows the session folder', async () => {

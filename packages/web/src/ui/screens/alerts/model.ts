@@ -2,8 +2,12 @@
  * The Alerts timeline (direction.md 5.4): rows grouped under day rails, each
  * with a subject (folder · session, or the account), a past-tense sentence
  * and one action. Pure helpers, easy to test.
+ *
+ * v0.6 (Fleet): an alert from a paired machine (`alert.node`) names the
+ * machine first ("build-1 · api-server · fix-tests"), from the Mac's name
+ * for it, once the screen passes `nodes`.
  */
-import type { Alert, AlertKind, Session } from '@jantar/protocol';
+import { machineName, type Alert, type AlertKind, type NodeView, type Session } from '@jantar/protocol';
 import { PRODUCT_NAME } from '../../../brand.js';
 import { accountId } from '../../../lib/format.js';
 import { routePath } from '../../../lib/router.js';
@@ -28,9 +32,15 @@ export function parseKind(v: string | null): KindFilter {
 /**
  * "api-server · rate limiter". The live session names it when it still
  * exists; otherwise the label ("status · folder · session") without its
- * status word; an account alert reads "acct 03".
+ * status word; an account alert reads "acct 03". A paired machine's alert
+ * starts with the machine ("build-1 · api-server · rate limiter").
  */
-export function subjectOf(a: Alert, sessions: Record<string, Session>): string {
+export function subjectOf(a: Alert, sessions: Record<string, Session>, nodes?: Record<string, NodeView>): string {
+  const what = subjectText(a, sessions);
+  return a.node !== undefined && nodes && Object.keys(nodes).length ? `${machineName({ nodes }, a.node)} · ${what}` : what;
+}
+
+function subjectText(a: Alert, sessions: Record<string, Session>): string {
   const s = a.sid ? sessions[a.sid] : undefined;
   if (s) return [s.folder, s.name?.trim()].filter(Boolean).join(' · ');
   const parts = a.label.split(' · ').map((p) => p.trim()).filter(Boolean);

@@ -70,6 +70,10 @@
  * - A subagent's prompt is titled "A subagent asks · <tool>" when the dialog
  *   is a permission for that tool; any other dialog is Claude's.
  * - Show on Mac stays, as a secondary button.
+ * - v0.6: on a paired machine's session (one Jantar can type into: the
+ *   session screen shows this dock for no other) the dialog is answered on
+ *   that machine; Show on Mac shows only where there is a Terminal window
+ *   to raise ("Show on mini-1"), not for a tmux pane.
  */
 import clsx from 'clsx';
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
@@ -128,7 +132,10 @@ export interface TermDialogDockProps {
   late: boolean;
   /** The composer's sends: "No, and tell Claude …" puts its note in the draft (`sends.setDraft`). */
   sends: Sends;
-  onShowOnMac: () => void;
+  /** Absent where there is no window to raise (a server's tmux pane). */
+  onShowOnMac?: () => void;
+  /** v0.6: the paired machine the session runs on (absent: the Mac). */
+  machine?: string;
 }
 
 export const CANT_READ = "Jantar can't read this dialog's options. Use the keys, or answer it at the Mac.";
@@ -686,7 +693,7 @@ function TapLine({ line }: { line: AnswerLine | null }) {
   );
 }
 
-export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, sends, onShowOnMac }: TermDialogDockProps) {
+export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, sends, onShowOnMac, machine }: TermDialogDockProps) {
   const offline = useApp((s) => s.conn.status === 'offline');
   const block = useAnswerBlock();
   const { busy, line, renewed, answer } = useDialogAnswer(sid, read, sends);
@@ -736,13 +743,13 @@ export function TermDialogDock({ sid, subagent, screen: read, phone, age, late, 
   const [dropped, setDropped] = useState<string | null>(null);
   /** The fingerprint of the dialog last tapped: any other dialog shown after it takes focus on its question. */
   const [tappedOn, setTappedOn] = useState<string | null>(null);
-  const actions = (
+  const actions = onShowOnMac ? (
     <Actions phone={phone}>
       <Button size={phone ? 'xl' : 'lg'} className={phone ? 'flex-1' : undefined} onClick={onShowOnMac}>
-        Show on Mac
+        Show on {machine ?? 'Mac'}
       </Button>
     </Actions>
-  );
+  ) : null;
   // A tall dialog scrolls inside the phone sheet, so the transcript above keeps some room.
   const scroll = phone ? 'max-h-480 overflow-y-auto overscroll-contain' : undefined;
 

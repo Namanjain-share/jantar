@@ -18,6 +18,9 @@
  * States: skeleton rows while loading; "No folders here"; no roots (teach the
  * Mac command); the daemon's sentence for anything it refused (the TCC
  * sentence, launching off); a filter with no match.
+ *
+ * v0.6: the Where row (NewSession.tsx) sits under the title; on a paired
+ * machine the folders, the sentences and the accounts mode are its own.
  */
 import { ArrowRightIcon, CaretLeftIcon, FolderIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -37,7 +40,7 @@ import { useAccountsMode } from '../../shell/data.js';
 import { Link } from '../../shell/Link.js';
 import { Segmented } from '../accounts/Segmented.js';
 import { folderName } from '../launch/stages.js';
-import { SESSIONS_VIEW, dirname, joinPath, type Request } from './data.js';
+import { SESSIONS_VIEW, dirname, joinPath, useWhere, type Request } from './data.js';
 import { NewFolder } from './NewFolder.js';
 
 /** Show the filter field past this many folders (or whenever the listing was cut short). */
@@ -195,6 +198,8 @@ function Crumbs({ root, path, onBrowse, onStart }: { root: FileRoot; path: strin
 
 export interface FolderBrowserProps {
   phone: boolean;
+  /** v0.6: the Where row, under the title (absent while no machine can start sessions). */
+  whereRow?: ReactNode;
   roots: Request<FilesRootsResponse>;
   /** The root being browsed (SESSIONS_VIEW: the live session folders); undefined while there is none. */
   root: string | undefined;
@@ -213,10 +218,12 @@ export interface FolderBrowserProps {
 }
 
 export function FolderBrowser(props: FolderBrowserProps) {
-  const { phone, roots, root, path, listing, recent, selected, offline, moreLoading, onBrowse, onStart, onPin, onMore, onCreated } = props;
+  const { phone, whereRow, roots, root, path, listing, recent, selected, offline, moreLoading, onBrowse, onStart, onPin, onMore, onCreated } = props;
   const navigate = useNavigate();
   const now = useNow(60_000);
-  const single = useAccountsMode() === 'single';
+  const where = useWhere();
+  const hubMode = useAccountsMode();
+  const single = (where?.accountsMode ?? hubMode) === 'single';
   const hintId = useId();
   const guard = useRef<PressGuard>({ at: -Infinity }).current;
   const [q, setQ] = useState('');
@@ -248,6 +255,7 @@ export function FolderBrowser(props: FolderBrowserProps) {
       <h1 id="new-session-title" data-display className={clsx('type-display text-ink', phone ? 'px-16 pb-12 pt-4' : 'px-16 pb-12 pt-20')}>
         New session
       </h1>
+      {whereRow}
     </>
   );
 
@@ -266,7 +274,7 @@ export function FolderBrowser(props: FolderBrowserProps) {
         {header}
         <EmptyState title="No folders to start in">
           <p>
-            Add folders on your Mac: <code className="type-mono text-ink">{CLI_NAME} folders add-root ~/Desktop</code>
+            Add folders on {where ? where.name : 'your Mac'}: <code className="type-mono text-ink">{CLI_NAME} folders add-root {where ? '~/code' : '~/Desktop'}</code>
           </p>
         </EmptyState>
       </div>
@@ -301,7 +309,7 @@ export function FolderBrowser(props: FolderBrowserProps) {
   } else if (!current) {
     body = (
       <p role="alert" className="px-16 py-16 type-small text-ink-2">
-        That folder list is not on this Mac any more. Pick one above.
+        That folder list is not on {where ? where.name : 'this Mac'} any more. Pick one above.
       </p>
     );
   } else if (!listing.data) {

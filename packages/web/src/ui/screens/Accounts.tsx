@@ -16,8 +16,13 @@
  * With one Claude login (v0.4 single-account mode) there is no usage, hold,
  * autoswitch or move to show: accounts/Single.tsx says so instead, with the
  * one account and its sessions.
+ *
+ * v0.6 (Fleet): once a machine is paired, this is the Mac's section ("Mac ·
+ * cswap" above it) and each machine's accounts follow, by name
+ * (accounts/Machines.tsx, its own chunk). Until then the screen is as
+ * before.
  */
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { PRODUCT_NAME } from '../../brand.js';
 import { errorText } from '../../lib/api.js';
 import { accountId } from '../../lib/format.js';
@@ -37,6 +42,9 @@ import { PhoneRows } from './accounts/PhoneRows.js';
 import { Segmented } from './accounts/Segmented.js';
 import { SingleAccount } from './accounts/Single.js';
 import { hhmm, searchParam } from './accounts/time.js';
+import { hasMachines } from './session/Info.js';
+
+const MachineAccounts = lazy(() => import('./accounts/Machines.js').then((m) => ({ default: m.MachineAccounts })));
 
 const SORTS = [
   { key: 'id' as const, label: 'Number' },
@@ -44,11 +52,27 @@ const SORTS = [
 ];
 
 export function Accounts() {
-  return useAccountsMode() === 'single' ? <SingleAccount /> : <CswapAccounts />;
+  const single = useAccountsMode() === 'single';
+  const machines = useApp((s) => hasMachines(s.state));
+  const mac = single ? <SingleAccount machines={machines} /> : <CswapAccounts machines={machines} />;
+  if (!machines) return mac;
+  return (
+    <>
+      {mac}
+      <Suspense fallback={null}>
+        <MachineAccounts />
+      </Suspense>
+    </>
+  );
+}
+
+/** v0.6: the Mac's section names the Mac once a machine is paired. */
+function MacLabel({ mode }: { mode: string }) {
+  return <p className="mb-4 type-rail text-ink-3">Mac · {mode}</p>;
 }
 
 /** cswap's accounts: usage, resets, burn, holds and moves. */
-function CswapAccounts() {
+function CswapAccounts({ machines }: { machines: boolean }) {
   const { api } = useDeps();
   const toast = useToast();
   const navigate = useNavigate();
@@ -168,6 +192,7 @@ function CswapAccounts() {
         {heading}
         <div className={phone ? '' : 'max-w-640'}>
           <header className={phone ? 'border-b border-line px-16 pb-16 pt-4' : 'border-b border-line pb-16'}>
+            {machines ? <MacLabel mode="cswap" /> : null}
             <p data-display className="type-display text-ink">
               {displayLine(rows)}
             </p>
@@ -201,6 +226,7 @@ function CswapAccounts() {
     <section aria-labelledby="accounts-title" className="px-32 pb-32 pt-24 animate-enter">
       {heading}
       <header className="mb-20 max-w-1320">
+        {machines ? <MacLabel mode="cswap" /> : null}
         <p data-display className="type-display text-ink">
           {displayLine(rows)}
         </p>

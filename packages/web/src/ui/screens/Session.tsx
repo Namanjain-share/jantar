@@ -24,9 +24,24 @@
  * subagent card is open, or when the latest read parsed a dialog, in any
  * status but ended. The control bar hides while the dock shows: every key
  * there is refused while a dialog waits.
+ *
+ * v0.6 (Fleet): a paired machine's session says where it runs under the
+ * header ("build-1 · Linux · tmux"), reads its account and switches from
+ * its own machine (no Picture, Files or Rewrite there), and offers the
+ * composer, keypad and control bar only while Jantar can type into it
+ * (`canType`); otherwise the one fixed line for why (not in tmux, Windows
+ * watch-only, a watch-only machine, offline). Show on Mac shows only where
+ * there is a Terminal window to raise. Its cards are headed with the
+ * machine's name and are off while it is offline or watch-only. Every call
+ * stays keyed by the session or card: the Mac knows where it runs. A
+ * session of the Mac's own looks as before.
+ *
+ * The hook cards (session/Permission.tsx, Plan.tsx, Question.tsx) load
+ * with import() the first time one shows (v0.6: the first load's room for
+ * Fleet); until one arrives the dock says what it is with a spinner.
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { pendingFor, type Session } from '@jantar/protocol';
+import { machineName, machineOf, pendingFor, sessionAccount, sessionFeatures, typeRefusalText, type Session } from '@jantar/protocol';
 import { errorText } from '../../lib/api.js';
 import { screenTitle } from '../../lib/favicon.js';
 import { ago } from '../../lib/format.js';
@@ -49,13 +64,11 @@ import { takeAsk } from './session/ask.js';
 import { answeredBy, type Receipt } from './session/decide.js';
 import { DockFrame, isLate } from './session/DockFrame.js';
 import { Header, PANEL_ID, TAB_ID, Tabs, type View } from './session/Header.js';
-import { subagentTitle } from './session/Info.js';
+import { cardMachine, hasMachines, machineLine, screenReadable, SubagentAsk, subagentTitle } from './session/Info.js';
 import { PaneRoot } from './session/keys.js';
 import { MetaLine, Props } from './session/Meta.js';
 import { kindWord, needsQueue, openCard, stepsFor } from './session/order.js';
-import { PermissionCard, type CardProps } from './session/Permission.js';
-import { PlanCard } from './session/Plan.js';
-import { QuestionCard } from './session/Question.js';
+import type { CardProps } from './session/Permission.js';
 import { AnswerReceipt } from './session/Receipt.js';
 import { ScreenView } from './session/ScreenView.js';
 import { useSessionScreen, useWaitingSettled } from './session/screen.js';
@@ -78,6 +91,12 @@ const TermDialogDock = lazy(() => import('./session/TermDialog.js').then((m) => 
  */
 const ShotView = lazy(() => import('./session/controls/ShotView.js').then((m) => ({ default: m.ShotView })));
 
+/** v0.6: the hook cards are their own chunks, loaded the first time one shows. */
+const PermissionCard = lazy(() => import('./session/Permission.js').then((m) => ({ default: m.PermissionCard })));
+const QuestionCard = lazy(() => import('./session/Question.js').then((m) => ({ default: m.QuestionCard })));
+const PlanCard = lazy(() => import('./session/Plan.js').then((m) => ({ default: m.PlanCard })));
+const CARD_WORD = { permission: 'Permission', question: 'Question', plan: 'Plan' } as const;
+
 /** ?view=screen (and ?view=files&root=&path=&tab=) survive a reload (the router keeps only ?p= for sessions). */
 function viewFromUrl(): { view: View; files: FilesLocation } {
   try {
@@ -85,6 +104,11 @@ function viewFromUrl(): { view: View; files: FilesLocation } {
   } catch {
     return { view: 'transcript', files: {} };
   }
+}
+
+/** The sessions on one machine (`node` undefined: the Mac's own). */
+function sessionsOn(sessions: Record<string, Session>, node: string | undefined): Record<string, Session> {
+  return Object.fromEntries(Object.entries(sessions).filter(([, s]) => s.node === node));
 }
 
 function waitingAge(iso: string, now: number): string {
@@ -104,7 +128,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const conn = useApp((s) => s.conn.status);
   const offline = conn === 'offline';
   const ceiling = useCeiling();
-  const features = useFeatures();
+  const hubFeatures = useFeatures();
   const root = useRef<HTMLDivElement>(null);
 
   // Keep the last known session, so a session that goes away mid-read still shows what it said.
@@ -114,7 +138,17 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   if (live) seen.current = live;
   const session = live ?? seen.current;
   const gone = !live && session !== null;
-  const account = session && session.account !== null ? state.accounts[String(session.account)] : undefined;
+  // v0.6: a paired machine's session reads its account and switches from that machine, and says why
+  // Jantar can't type into it (null: it can). The Mac's own sessions read exactly as before.
+  const account = session ? (sessionAccount(state, session) ?? undefined) : undefined;
+  const features = session && session.node !== undefined ? sessionFeatures(state, session) : hubFeatures;
+  const refusal = session ? typeRefusalText(state, session) : null;
+  const typable = refusal === null;
+  const readable = !session || screenReadable(state, session);
+  const node = session ? machineOf(state, session.node) : null;
+  const machine = session?.node !== undefined ? machineName(state, session.node) : null;
+  // Show on Mac raises a Terminal window: the Mac's own, or a Mac server's (online, not watch-only).
+  const raisable = !session || session.node === undefined || (node?.backend === 'terminal-app' && typable);
 
   const sends = useSends(sid, now);
   const { setDraft } = sends;
@@ -130,7 +164,8 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   // v0.4.2: the session screen's one terminal read (nothing for a session that is gone). The Screen
   // tab counts only while its text shows (`peek`): its picture reads no text.
   const [peek, setPeek] = useState(false);
-  const screenRead = useSessionScreen(sid, view === 'screen' && !peek ? 'transcript' : view, live?.status ?? null, Boolean(subagent));
+  // A server's session with no terminal to read (offline, no tmux pane, native Windows) is never read.
+  const screenRead = useSessionScreen(sid, view === 'screen' && !peek ? 'transcript' : view, readable ? (live?.status ?? null) : null, Boolean(subagent));
   const settled = useWaitingSettled(live?.status ?? null, live?.statusSince ?? null, clockNow);
   const [focusing, setFocusing] = useState(false);
   const [focusError, setFocusError] = useState<string | null>(null);
@@ -214,7 +249,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
     setFocusError(null);
     try {
       await api.focus(sid);
-      toast('Brought the tab to the front on the Mac', 'ok');
+      toast(`Brought the tab to the front on ${machine ?? 'the Mac'}`, 'ok');
     } catch (e) {
       setFocusError(errorText(e));
     } finally {
@@ -251,13 +286,27 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const dock = !ended && !target && !(receipt !== null && showReceipt) && (settled || subagent !== undefined || dialogOnScreen);
 
   // ----- the bottom of the pane: dock, receipt or composer -----
-  const composer = (
-    <Composer sid={sid} folder={session.folder} sends={sends} phone={phone} offline={offline} onShowOnMac={() => void showOnMac()} />
+  // v0.6: where Jantar can't type (canType), the one fixed line for why takes the composer's place.
+  const composer = typable ? (
+    <Composer
+      sid={sid}
+      folder={session.folder}
+      sends={sends}
+      phone={phone}
+      offline={offline}
+      {...(raisable ? { onShowOnMac: () => void showOnMac() } : {})}
+      machine={machine}
+    />
+  ) : (
+    <p role="status" className={phone ? 'flex-none border-t border-line px-16 pb-safe-16 pt-12 type-small text-ink-2' : 'type-small text-ink-2'}>
+      {refusal}
+    </p>
   );
   let bottom: ReactNode;
   if (gone) {
     bottom = null;
   } else if (target) {
+    const cardFrom = cardMachine(state, session);
     const props: CardProps = {
       p: target,
       folder: session.folder,
@@ -268,16 +317,29 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       aside: open.length > 1 ? <Tag>{open.length} cards</Tag> : undefined,
       onDecided,
       // A plan card without the plan's text sends the user to the Mac, which shows the plan (SP10).
-      onShowOnMac: () => void showOnMac(),
+      ...(raisable ? { onShowOnMac: () => void showOnMac() } : {}),
+      ...(cardFrom ? { machine: cardFrom } : {}),
     };
-    bottom =
-      target.kind === 'permission' ? (
-        <PermissionCard key={target.id} {...props} />
-      ) : target.kind === 'question' ? (
-        <QuestionCard key={target.id} {...props} />
-      ) : (
-        <PlanCard key={target.id} {...props} />
-      );
+    const word = target.kind === 'permission' ? `${CARD_WORD.permission} · ${target.tool}` : CARD_WORD[target.kind === 'question' ? 'question' : 'plan'];
+    bottom = (
+      <Suspense
+        fallback={
+          <DockFrame phone={phone} title={word} age={props.age} late={props.late} peek={word}>
+            <div data-card-loading className="mt-12 flex h-40 items-center">
+              <Spinner label="Loading the card" />
+            </div>
+          </DockFrame>
+        }
+      >
+        {target.kind === 'permission' ? (
+          <PermissionCard key={target.id} {...props} />
+        ) : target.kind === 'question' ? (
+          <QuestionCard key={target.id} {...props} />
+        ) : (
+          <PlanCard key={target.id} {...props} />
+        )}
+      </Suspense>
+    );
   } else if (receipt && showReceipt) {
     const withComposer = phase === 'picked' && !ended && session.status !== 'waiting';
     bottom = (
@@ -300,6 +362,21 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
     );
     // The composer sits second, in a div, here and in the plain branch below: a send clears the
     // receipt, and the composer (with a Rewrite sheet open in it) must stay mounted across that.
+  } else if (dock && !typable) {
+    // v0.6: nothing on that machine can be typed or read from here: what waits, and why.
+    const since = subagent ? subagent.createdAt : session.statusSince;
+    bottom = (
+      <DockFrame
+        phone={phone}
+        title={subagent ? subagentTitle(subagent) : 'Claude is waiting in the terminal'}
+        age={ago(since, now) || 'now'}
+        late={isLate(since, now)}
+        peek={refusal ?? ''}
+      >
+        {subagent ? <SubagentAsk p={subagent} /> : null}
+        <p className="mt-8 type-small text-ink-2">{refusal}</p>
+      </DockFrame>
+    );
   } else if (dock) {
     const since = subagent ? subagent.createdAt : session.statusSince;
     const age = ago(since, now) || 'now';
@@ -323,7 +400,8 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
           age={age}
           late={isLate(since, now)}
           sends={sends}
-          onShowOnMac={() => void showOnMac()}
+          {...(raisable ? { onShowOnMac: () => void showOnMac() } : {})}
+          {...(machine ? { machine } : {})}
         />
       </Suspense>
     );
@@ -345,7 +423,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
 
   // v0.3: the control bar (with its mode chip) above the bottom block, while no card or dialog dock is open.
   const controlBar =
-    features.controls && !gone && !ended && !target && !dock ? (
+    features.controls && typable && !gone && !ended && !target && !dock ? (
       <ControlBar
         sid={sid}
         session={session}
@@ -380,7 +458,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       }}
       onShowOnMac={() => void showOnMac()}
       showOnMacBusy={focusing}
-      canShowOnMac={!ended}
+      canShowOnMac={!ended && raisable}
       onBack={() => navigate('/')}
       back={frame === 'tablet'}
       files={filesTab}
@@ -394,18 +472,27 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   ) : null;
   const focusLine = focusError ? (
     <p role="alert" className={phone ? 'flex-none px-16 pb-8 type-small text-signal-text' : 'flex-none px-32 pt-8 type-small text-signal-text'}>
-      Could not show it on the Mac: {focusError}
+      Could not show it on {machine ?? 'the Mac'}: {focusError}
     </p>
   ) : null;
+  // v0.6: where a paired machine's session runs, under the header.
+  const where = machineLine(state, session, now);
+  const whereLine = where ? (
+    <p data-machine-line className={phone ? 'flex-none truncate px-16 pb-4 type-mono text-ink-3' : 'flex-none truncate px-32 pt-8 type-mono text-ink-3'}>
+      {where}
+    </p>
+  ) : null;
+  // "Also on 03" counts the sessions on the same machine's account 03 only (every server has its own).
+  const sameMachine = hasMachines(state) ? { ...state, sessions: sessionsOn(state.sessions, session.node) } : state;
   // The Screen tab's text: the session screen's one read, and the keypad while no dock is up.
   const screenText = (p: { id?: string; labelledBy?: string }) => (
     <ScreenView
       sid={sid}
       phone={phone}
-      onShowOnMac={() => void showOnMac()}
+      {...(raisable ? { onShowOnMac: () => void showOnMac() } : {})}
       read={screenRead}
       onShown={setPeek}
-      keys={features.controls && !gone && !ended && !target && !dock}
+      keys={features.controls && typable && !gone && !ended && !target && !dock}
       offline={offline}
       {...p}
     />
@@ -439,6 +526,10 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
           text={screenText}
         />
       </Suspense>
+    ) : view === 'screen' && !readable ? (
+      <div role="tabpanel" id={PANEL_ID(sid, 'screen')} aria-labelledby={TAB_ID(sid, 'screen')} className={phone ? 'min-h-0 flex-1 px-16 py-16' : 'min-h-0 flex-1 py-16'}>
+        <p className="type-small text-ink-2">{refusal}</p>
+      </div>
     ) : view === 'screen' ? (
       screenText({ id: PANEL_ID(sid, 'screen'), labelledBy: TAB_ID(sid, 'screen') })
     ) : (
@@ -464,6 +555,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
           style={{ height: 'calc(100% + env(safe-area-inset-bottom, 0px))', marginBottom: 'calc(env(safe-area-inset-bottom, 0px) * -1)' }}
         >
           {header}
+          {whereLine}
           {reading ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone modeOnChip={modeOnChip} />}
           <div className="flex-none border-b border-line px-16 py-8">
             <Tabs sid={sid} view={view} onView={(v) => setView(v)} phone files={filesTab} />
@@ -482,6 +574,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
     <PaneRoot.Provider value={root}>
       <div ref={root} className="flex h-full min-h-0 flex-col bg-bg">
         {header}
+        {whereLine}
         {focusLine}
         <div className="flex min-h-0 flex-1 justify-between gap-32 px-32">
           <div className="flex min-h-0 min-w-0 max-w-640 flex-1 flex-col">
@@ -491,7 +584,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
             {controlBar}
             {bottom ? <div className="flex-none pb-24">{bottom}</div> : null}
           </div>
-          {wide ? <Props session={session} account={account} state={state} ceiling={ceiling} now={now} onOpen={openSession} modeOnChip={modeOnChip} /> : null}
+          {wide ? <Props session={session} account={account} state={sameMachine} ceiling={ceiling} now={now} onOpen={openSession} modeOnChip={modeOnChip} /> : null}
         </div>
       </div>
     </PaneRoot.Provider>

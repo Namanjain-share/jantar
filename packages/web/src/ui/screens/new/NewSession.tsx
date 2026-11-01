@@ -17,18 +17,31 @@
  * when you chose Start (a deep link opens it at the folder's parent).
  *
  * The shell mounts this only while launching is switched on (features.launch).
+ *
+ * v0.6 (Fleet): a Where row above the folder browser picks the machine,
+ * the Mac or a paired one that is online with starting on there:
+ *
+ *   Where     [ Mac ] [ build-1 ] [ build-2 ]
+ *
+ * Every folder and start call below then goes to that machine (`node` on
+ * each call, through `onMachine`), and the browser, the Resume list, the
+ * start form and the receipt are that machine's own. A launch's receipt and
+ * a session's folder (a Board row's "New session here") stay on the machine
+ * they belong to. The row shows only while some machine can start sessions;
+ * until then this screen is as before.
  */
 import { XIcon } from '@phosphor-icons/react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { LaunchJob } from '@jantar/protocol';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { HUB_MACHINE_NAME, type LaunchJob, type NodeView, type State } from '@jantar/protocol';
 import { errorText } from '../../../lib/api.js';
 import { routePath } from '../../../lib/router.js';
-import { useApp, useDeps, useNavigate, useToast } from '../../context.js';
+import { AppProvider, useApp, useDeps, useNavigate, useToast } from '../../context.js';
 import { IconButton } from '../../kit/IconButton.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { isSplit, useFrame } from '../../shell/layout.js';
+import { Segmented } from '../accounts/Segmented.js';
 import { Receipt } from '../launch/Receipt.js';
-import { SESSIONS_VIEW, basename, dirname, peekPrompt, relUnder, useRequest } from './data.js';
+import { SESSIONS_VIEW, WhereContext, basename, dirname, onMachine, peekPrompt, relUnder, useRequest, useWhere, type Where } from './data.js';
 import { FolderBrowser, sessionRootsOf } from './FolderBrowser.js';
 import { StartForm } from './StartForm.js';
 
@@ -50,8 +63,85 @@ interface Place {
   path: string;
 }
 
-export function NewSession({ root, path = '', start = false, account, launch, from }: NewSessionProps) {
+/** The machine last picked in the Where row, while the app runs (never stored). */
+let lastPicked: string | undefined;
+
+/** The paired machines a session can start on now: online, with starting on there; by name. */
+export function startMachines(nodes: State['nodes']): NodeView[] {
+  return Object.values(nodes ?? {})
+    .filter((n) => n.online && n.features.launch)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const MAC = 'mac';
+
+/**
+ * The machine a launch (its receipt, or "Try again") or a session's folder
+ * (root `s.<sid>`) belongs to: its node id, MAC for the Mac, or null when
+ * the URL names neither.
+ */
+function pinnedTo(state: State, root: string | undefined, launch: string | undefined, from: string | undefined): string | null {
+  const id = launch ?? from;
+  if (id && Object.hasOwn(state.launches, id)) return state.launches[id]?.node ?? MAC;
+  const sid = root?.startsWith('s.') ? root.slice(2) : null;
+  if (sid && Object.hasOwn(state.sessions, sid)) return state.sessions[sid]?.node ?? MAC;
+  return null;
+}
+
+export function NewSession(props: NewSessionProps) {
+  const deps = useDeps();
+  const navigate = useNavigate();
+  const nodes = useApp((s) => s.state.nodes);
+  const pinNode = useApp((s) => pinnedTo(s.state, props.root, props.launch, props.from));
+  const choices = useMemo(() => startMachines(nodes), [nodes]);
+  const [picked, setPicked] = useState<string | undefined>(lastPicked);
+  const chosen = picked !== undefined && choices.some((n) => n.id === picked) ? picked : undefined;
+  const node = pinNode === null ? chosen : pinNode === MAC ? undefined : pinNode;
+  const view = node !== undefined && nodes && Object.hasOwn(nodes, node) ? nodes[node] : undefined;
+  const where = useMemo<Where | null>(
+    () => (node === undefined ? null : { node, name: view?.name ?? 'a server', accountsMode: view?.accountsMode ?? 'dirs' }),
+    [node, view?.name, view?.accountsMode],
+  );
+  const api = useMemo(() => onMachine(deps.api, node), [deps.api, node]);
+  const scoped = useMemo(() => ({ ...deps, api }), [deps, api]);
+
+  const pick = (k: string) => {
+    const next = k === MAC ? undefined : k;
+    lastPicked = next;
+    setPicked(next);
+    // Folders and launches are each machine's own: the browser starts again at the new one's first folder list.
+    if (next !== node) navigate(routePath({ name: 'new' }));
+  };
+  const shown = node !== undefined && !choices.some((n) => n.id === node) && view ? [...choices, view] : choices;
+  const whereRow =
+    shown.length > 0 ? (
+      <div className="flex min-w-0 items-center gap-12 px-16 pb-12">
+        <span aria-hidden="true" className="w-72 flex-none type-small text-ink-3">
+          Where
+        </span>
+        <div className="no-scrollbar min-w-0 overflow-x-auto">
+          <Segmented
+            label="Where"
+            segments={[{ key: MAC, label: HUB_MACHINE_NAME }, ...shown.map((n) => ({ key: n.id, label: n.name }))]}
+            value={node ?? MAC}
+            onChange={pick}
+          />
+        </div>
+      </div>
+    ) : null;
+
+  return (
+    <AppProvider deps={scoped}>
+      <WhereContext.Provider value={where}>
+        <NewSessionPlace key={node ?? MAC} {...props} whereRow={whereRow} />
+      </WhereContext.Provider>
+    </AppProvider>
+  );
+}
+
+function NewSessionPlace({ root, path = '', start = false, account, launch, from, whereRow }: NewSessionProps & { whereRow: ReactNode }) {
   const { api } = useDeps();
+  const where = useWhere();
   const navigate = useNavigate();
   const toast = useToast();
   const split = isSplit(useFrame());
@@ -161,7 +251,18 @@ export function NewSession({ root, path = '', start = false, account, launch, fr
 
   let body: ReactNode = null;
   if (launch) {
-    body = <Receipt key={launch} id={launch} phone={!split} retryTo={retryTo} aside={closeButton} />;
+    const receipt = <Receipt key={launch} id={launch} phone={!split} retryTo={retryTo} aside={closeButton} />;
+    // v0.6: a machine's launch says where it runs.
+    body = where ? (
+      <>
+        <p data-machine-line className="pb-8 type-mono text-ink-3">
+          On {where.name}
+        </p>
+        {receipt}
+      </>
+    ) : (
+      receipt
+    );
   } else if (target) {
     body = (
       <StartForm
@@ -185,6 +286,7 @@ export function NewSession({ root, path = '', start = false, account, launch, fr
   const browser = (
     <FolderBrowser
       phone={!split}
+      whereRow={whereRow}
       roots={roots}
       root={shownRoot}
       path={shownPath}

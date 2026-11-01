@@ -2,6 +2,10 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/lib/api.js';
 import { account, emit, fakeApi, iso, pending, renderApp, session, stateWith } from './helpers.js';
+import { preloadCards } from './fleet-helpers.js';
+
+// v0.6: the hook cards load with import(); every test here meets them loaded.
+preloadCards();
 
 const card = () => screen.getByRole('article');
 

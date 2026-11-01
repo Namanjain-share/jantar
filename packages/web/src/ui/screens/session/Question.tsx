@@ -7,6 +7,10 @@
  * terminal does. "Send answer" is enabled once every question has an answer.
  * "Chat about this" is Claude's own way out: it declines with Claude's
  * sentence (CLARIFY_MESSAGE) and Claude asks what to clarify.
+ *
+ * v0.6: a paired machine's card is headed with the Mac's name for it, says
+ * when its input was too large to send here, and is off while the machine
+ * is offline or watch-only.
  */
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -19,6 +23,7 @@ import { Keycap } from '../../kit/Keycap.js';
 import { useDecide } from './decide.js';
 import { DockFrame } from './DockFrame.js';
 import { Actions, InlineError, OfflineLine } from './Fields.js';
+import { CardMachineLines, cardTitle, tooLarge } from './Info.js';
 import { usePaneKeys } from './keys.js';
 import type { CardProps } from './Permission.js';
 
@@ -68,12 +73,12 @@ function Box({ on, multi }: { on: boolean; multi: boolean }) {
   );
 }
 
-export function QuestionCard({ p, phone, offline, age, late, aside, onDecided }: CardProps) {
+export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, machine }: CardProps) {
   const { busy, error, decide } = useDecide(p, onDecided);
   const questions = questionsOf(p);
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
   const [page, setPage] = useState(0);
-  const disabled = busy || p.state !== 'open' || offline;
+  const disabled = busy || p.state !== 'open' || offline || Boolean(machine?.blocked);
   const baseId = useId();
   const size = phone ? 'xl' : 'lg';
 
@@ -112,8 +117,13 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided }:
   // answer the phone can still give.
   if (!questions.length || !q) {
     return (
-      <DockFrame phone={phone} title="Question" age={age} late={late} aside={aside} peek="Answer it at the Mac.">
-        <p className="mt-8 type-body text-ink-2">This question has no options the app can show. Answer it at the Mac, or decline it here.</p>
+      <DockFrame phone={phone} title={cardTitle('Question', machine)} age={age} late={late} aside={aside} peek={`Answer it at ${machine?.name ?? 'the Mac'}.`}>
+        {tooLarge(p, machine) ? null : (
+          <p className="mt-8 type-body text-ink-2">
+            This question has no options the app can show. Answer it at {machine?.name ?? 'the Mac'}, or decline it here.
+          </p>
+        )}
+        <CardMachineLines p={p} m={machine} />
         <Actions phone={phone}>
           <Button size={size} disabled={disabled} onClick={decline}>
             Decline
@@ -139,7 +149,7 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided }:
     );
 
   return (
-    <DockFrame phone={phone} title="Question" age={age} late={late} aside={aside} peek={q.question}>
+    <DockFrame phone={phone} title={cardTitle('Question', machine)} age={age} late={late} aside={aside} peek={q.question}>
       <div onKeyDown={onKey}>
         {questions.length > 1 ? (
           <div className="mt-8 flex h-28 items-center gap-4 type-mono text-ink-3">
@@ -243,6 +253,7 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided }:
           ) : null}
         </Actions>
         {!complete && questions.length > 1 ? <p className="mt-8 type-small text-ink-3">Answer every question to send.</p> : null}
+        <CardMachineLines p={p} m={machine} />
         <InlineError error={error} />
         <OfflineLine offline={offline} />
       </div>
