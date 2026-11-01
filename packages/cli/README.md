@@ -22,9 +22,9 @@ jantar import-ccw-v2      copy a ccw-v2 state dir (the old name, ~/.ccw-v2) into
 
 Everything past the Board is off until switched on here, on the Mac. A
 phone can never change these settings (`files`, `folders`, `launch`,
-`rewrite`, `controls`, `screenshots`, `life`, `intel`, `accounts` and
-`meetings` are Mac-only groups), so every "turn it on at your Mac" sentence the phone
-shows names one of these commands:
+`rewrite`, `controls`, `screenshots`, `life`, `intel`, `accounts`,
+`meetings` and `ask` are Mac-only groups), so every "turn it on at your Mac"
+sentence the phone shows names one of these commands:
 
 ```
 jantar folders add-root ~/Desktop     a folder Files and New session may browse (list, roots, rm-root, allow)
@@ -38,10 +38,11 @@ jantar screenshots on|off             a Picture view of the session's window (al
 jantar life on <module...>            Life: todos, medicines, food, places, finance (status, off, set, backup, restore)
 jantar intel on|off                   the Intel shelf (sources, source add <file.jsonl>, source rm, add, list)
 jantar accounts                       one Claude login or cswap, the kept accounts and ccw's hold list
-jantar accounts keep <n...>           keep accounts for other work: Auto, Rewrite and Ask Claude never pick them
+jantar accounts keep <n...>           keep accounts for other work: Auto, Rewrite, Ask Claude and Ask never pick them
 jantar accounts prime on|off          start idle 5-hour windows early (cswap only; --kept for kept accounts too)
 jantar meetings on|off                Meetings from the Chrome extension (bare: the status; unpair)
 jantar meetings export <id|last|--all> [--out DIR]   a folder per meeting: meeting.md and shots/*.jpg
+jantar ask on|off                     Ask: a chat page that suggests todos, reminders, food and money (status)
 ```
 
 Flags for new sessions come from fixed lists only (`--permission`,
@@ -68,6 +69,7 @@ prompt was not sent or not proven), `2` usage error, `3` daemon not running.
 | `meetings on/off` | settings, through the daemon (or `config.json` while it is down); `on` says what stays on the Mac and what the summary sends | nothing |
 | `meetings export` | a new folder per meeting under `--out` (default: the current folder), 0700, holding `meeting.md` and `shots/*.jpg` (0600), read over `ctl.sock`; one meeting refuses a folder already there, `--all` leaves it as it is and goes on; times in Life's time zone when one is set, else the Mac's | nothing |
 | `meetings unpair` | revokes every paired extension key, through the daemon | nothing |
+| `ask on/off` | settings, through the daemon (or `config.json` while it is down); `on` says what goes to Claude and what stays on the Mac, `off` makes the daemon forget Ask's history (kept in its memory only) | nothing; with Ask on, the daemon runs one headless `claude -p` per message, on Rewrite's model |
 | `pair --extension` | a one-time code in the daemon, printed as `jantar-ext:<port>:<code>` | nothing |
 | `life backup` / `restore` | a copy of `life.db` in `~/.jantar/backups` / `life.db` from a backup (the old one kept beside it), through the daemon | nothing |
 | `intel add` | one line in `~/.jantar/intel/captures.jsonl`, through the daemon | nothing |
