@@ -41,8 +41,9 @@ run sessions with general Bash access, treat card approvals as coming from
 From v0.5.3 such a process can also list and add todos of any Life project
 linked to a folder, over the control socket
 ([folder todos and the MCP server](#folder-todos-and-the-mcp-server)).
-From v0.7 it can also list every open post, with its text, and add new
-ones, at most 30 an hour ([Posts](#v07-posts)).
+From v0.7 it can also list every open post and the newest 100 posted or
+skipped, with their text, and add new ones, at most 30 an hour
+([Posts](#v07-posts)).
 
 ### Network exposure
 
@@ -1058,8 +1059,8 @@ the days around today with their weekdays, which Life parts are on, the
 currency code, and the fixed category names (never your own). **What you
 type goes as typed, a medicine name or an amount included.** Ask never
 sends anything it reads from Life: no todo titles, project names,
-medicines, doses, calories, weights, amounts, bills, cafés or earlier
-messages. A question about today ("calories left?") gets a card that the
+medicines, doses, calories, weights, amounts, bills, cafés, posts or
+earlier messages. A question about today ("calories left?") gets a card that the
 phone fills from its own read of Today; Claude never sees the numbers. The
 line under the box says the words go to Claude and its "What's sent" opens
 this list; `jantar ask on` says it at the Mac.
@@ -1490,10 +1491,15 @@ its prompt tells Claude never to say anything was posted.
 
 Only two posts routes answer on the control socket: the list and an add
 (`jantar post list` and `jantar post add`). Any process running as you, a
-Claude session with Bash included, can therefore read every open post,
-its text and notes included, and add new ones, at most 30 an hour; past
-that it gets 429 with "Scripts and Claude sessions added 30 posts this
-hour. Add more on the phone, or try again later." It cannot change a
+Claude session with Bash included, can therefore read every open post
+and the newest 100 posted or skipped (`--done`), text, notes and posted
+links included, and add new ones, at most 30 an hour; past that it gets
+429 with "Scripts and Claude sessions added 30 posts this hour. Add more
+on the phone, or try again later." `jantar post add --text-file` reads
+any file you can, with no Files denylist (as `--text "$(cat f)"` would),
+so such a session could put a file's contents, `~/.ssh` included, into a
+post that then shows on every control phone; the daemon itself never
+reads the file, and no push carries the text. It cannot change a
 post's text, link or status, delete one or set the goals: those routes
 are not on the control socket at all (404), so a Copy or an Open on the
 phone always acts on what you last saw or saved there. The limit keeps a
@@ -1510,8 +1516,8 @@ against Life's 240 a minute.
   do. Off (the default) it says "Post due" or "Posts due · 2" and the time.
   On, it also names the platform and where the post goes ("Post on Reddit ·
   r/exampletools · 19:30"), cut to 40 characters, never the title or the
-  text. Where and title are one line at the schema (no control or bidi
-  character), so neither can forge a second line.
+  text. Where and title are one line at the schema (no control, bidi or
+  line separator character), so neither can forge a second line.
 - The integration suite plants a marker in a post's where, title, text,
   notes and link and checks that none reaches a frame, an event, an audit
   row, a log line, a write reply or a push with the details off; with them

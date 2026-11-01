@@ -114,7 +114,7 @@ todo sheet.
 Only what you type on the page (medicine names or amounts you type do
 go), the date, time and time zone, the days around today, which Life
 parts are on, the currency code and the fixed category names. Your saved
-lists, medicines and money stay on the Mac. The line under the box says
+lists, medicines, money and posts stay on the Mac. The line under the box says
 your words go to Claude, and its **What's sent** opens this list;
 `jantar ask on` says it at the Mac.
 
