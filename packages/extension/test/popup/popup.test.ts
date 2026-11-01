@@ -8,8 +8,11 @@
  * no em dash or exclamation mark anywhere; nothing of a meeting in the
  * console; a line while the worker has not answered; a screen reader hears
  * the view's first line once when it changes, not the whole popup again;
- * the captions sentences are the page's own. The run against the real
- * worker is with-worker.test.ts.
+ * the captions sentences are the page's own. v0.5.3: Settings shows the
+ * shortcut (with a link to Chrome's shortcuts page) and the last screenshot
+ * try with Chrome's words or Jantar's status; the main view names this
+ * tab's failed try of the last 10 minutes, and never claims the tab is
+ * allowed. The run against the real worker is with-worker.test.ts.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,9 +22,9 @@ import { BAD_CODE, MISMATCH, NOT_RUNNING, PAIR_AGAIN, TRY_AGAIN } from '../../sr
 import { meetAdapter } from '../../src/content/adapters/meet.js';
 import { teamsAdapter } from '../../src/content/adapters/teams.js';
 import { NOT_FOUND as PAGE_NOT_FOUND } from '../../src/content/capture.js';
-import type { FromPopup, PopupState } from '../../src/shared/messages.js';
-import { HOW_TO, LOADING, NOT_FOUND, mountPopup, tabFromSearch, type Popup } from '../../src/popup/app.js';
-import { createChromeFake, type ChromeFake, type ChromeModel } from '../helpers/chrome-fake.js';
+import type { FromPopup, LastShot, PopupState } from '../../src/shared/messages.js';
+import { HOW_TO, LOADING, NOT_FOUND, RECENT_SHOT_MS, SHORTCUTS_URL, mountPopup, tabFromSearch, type Popup } from '../../src/popup/app.js';
+import { CAPTURE_PERMISSION_ERROR, createChromeFake, type ChromeFake, type ChromeModel } from '../helpers/chrome-fake.js';
 
 const PROJECT_A = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
 const PROJECT_B = '01JFZ8X8Y3T0V5G9WQK2M4N6QR';
@@ -362,6 +365,113 @@ describe('Settings', () => {
     buttonNamed('Settings').click();
     buttonNamed('Back').click();
     expect(text()).toContain('Open a Google Meet or Teams call in this tab (reload it if the call is already open).');
+  });
+});
+
+const ALLOW_HERE_WHY = 'click the Jantar icon once in this tab, then try again.';
+/** 12:41 on this Mac's clock. */
+const AT_1241 = new Date(2026, 9, 31, 12, 41, 30).getTime();
+const shotRecord = (over: Partial<LastShot> = {}): LastShot => ({ at: AT_1241, from: 'page', tabId: 7, ok: true, text: 'Saved', step: 'saved', ...over });
+const granted = shotRecord({ ok: false, text: `Not saved: ${ALLOW_HERE_WHY}`, step: 'grant', chrome: CAPTURE_PERMISSION_ERROR });
+/** The Settings view's text, line by line (each row and paragraph). */
+const settingsLines = () => [...root.querySelectorAll('.view .row, .view .stack p')].map((n) => n.textContent);
+
+describe('v0.5.3: Settings › Shortcut', () => {
+  it('shows the key Chrome holds, with Change opening chrome://extensions/shortcuts', async () => {
+    answers.state = state({ shortcut: '⌥⇧S' });
+    await open();
+    buttonNamed('Settings').click();
+    expect(settingsLines()).toContain('Shortcut: ⌥⇧SChange');
+    buttonNamed('Change').click();
+    await vi.waitFor(() => expect(model.opened).toEqual([SHORTCUTS_URL]));
+    expect(SHORTCUTS_URL).toBe('chrome://extensions/shortcuts');
+    noBadMarks();
+  });
+
+  it('"Shortcut: not set" when another extension took the key, with Set', async () => {
+    answers.state = state({ shortcut: '' });
+    await open();
+    buttonNamed('Settings').click();
+    expect(settingsLines()).toContain('Shortcut: not setSet');
+    buttonNamed('Set').click();
+    await vi.waitFor(() => expect(model.opened).toEqual([SHORTCUTS_URL]));
+  });
+});
+
+describe('v0.5.3: Settings › Last screenshot', () => {
+  const lines = async (lastShot: LastShot | null) => {
+    answers.state = state({ lastShot });
+    await open();
+    buttonNamed('Settings').click();
+    noBadMarks();
+    return [...root.querySelectorAll('.view .stack p')].map((p) => p.textContent);
+  };
+
+  it('none yet', async () => {
+    expect(await lines(null)).toEqual(['Last screenshot: none yet']);
+  });
+
+  it('saved: the time, the control, Saved', async () => {
+    expect(await lines(shotRecord())).toEqual(['Last screenshot: 12:41 · camera button · Saved']);
+  });
+
+  it("refused by Chrome: why, then Chrome's own words on a quiet line", async () => {
+    expect(await lines({ ...granted, from: 'command' })).toEqual([`Last screenshot: 12:41 · shortcut · Not saved: ${ALLOW_HERE_WHY}`, `Chrome said: ${CAPTURE_PERMISSION_ERROR}`]);
+    expect(await lines(shotRecord({ from: 'popup', ok: false, text: 'Not saved: Chrome could not take it.', step: 'chrome', chrome: 'Chrome did not answer' }))).toEqual([
+      'Last screenshot: 12:41 · popup · Not saved: Chrome could not take it.',
+      'Chrome said: Chrome did not answer',
+    ]);
+  });
+
+  it("refused by Jantar: its sentence, then the status", async () => {
+    expect(await lines(shotRecord({ ok: false, text: 'Not saved: This meeting has 500 screenshots.', step: 'daemon', status: 409 }))).toEqual([
+      'Last screenshot: 12:41 · camera button · Not saved: This meeting has 500 screenshots.',
+      'Jantar answered 409',
+    ]);
+    expect(await lines(shotRecord({ ok: false, text: MISMATCH, step: 'daemon', status: 400 }))).toEqual([`Last screenshot: 12:41 · camera button · Not saved: ${MISMATCH}`, 'Jantar answered 400']);
+  });
+});
+
+describe('v0.5.3: the main view after a failed try in this tab', () => {
+  const recent = (over: Partial<LastShot> = {}) => ({ ...granted, at: Date.now() - 2 * 60_000, ...over });
+  const MISSED = `Last screenshot not saved: ${ALLOW_HERE_WHY}`;
+
+  it('the sheet and notes on say it once, as a quiet line, with Screenshot still there', async () => {
+    answers.state = state({ pageButton: false, lastShot: recent(), tab: meetTab() });
+    await open();
+    expect([...root.querySelectorAll('.view p.quiet')].at(-1)?.textContent).toBe(MISSED);
+    expect(text().split(MISSED)).toHaveLength(2);
+    expect(buttonNamed('Screenshot')).toBeTruthy();
+    answers.state = state({ pageButton: false, lastShot: recent({ from: 'popup', text: 'Not saved: Chrome could not take it.', step: 'chrome' }), tab: meetTab({ name: 'Weekly sync', notes: true }) });
+    await open();
+    expect(text()).toContain('Last screenshot not saved: Chrome could not take it.');
+    noBadMarks();
+  });
+
+  it('not for a saved try, another tab, one over 10 minutes old, the waiting room or a page that is not a call', async () => {
+    for (const s of [
+      state({ lastShot: recent({ ok: true, text: 'Saved', step: 'saved' }), tab: meetTab() }),
+      state({ lastShot: recent({ tabId: 8 }), tab: meetTab() }),
+      state({ lastShot: recent({ at: Date.now() - RECENT_SHOT_MS - 1_000 }), tab: meetTab() }),
+      state({ lastShot: recent(), tab: meetTab({ inCall: false }) }),
+      state({ lastShot: recent(), tab: null }),
+    ]) {
+      answers.state = s;
+      await open();
+      expect(text()).not.toContain('Last screenshot');
+    }
+  });
+
+  it('never claims this tab is allowed (opening the popup always grants it)', async () => {
+    for (const s of [
+      state({ pageButton: false, lastShot: recent(), tab: meetTab() }),
+      state({ pageButton: false, lastShot: recent({ ok: true, text: 'Saved', step: 'saved' }), tab: meetTab({ notes: true }) }),
+      state({ pageButton: true, lastShot: recent(), tab: meetTab() }),
+    ]) {
+      answers.state = s;
+      await open();
+      expect(text()).not.toMatch(/allowed/i);
+    }
   });
 });
 

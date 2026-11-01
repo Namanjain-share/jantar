@@ -26,8 +26,8 @@ export const SHOT = Object.freeze({
   joinFirst: 'Not saved: join the call first.',
   openTabFirst: 'Not saved: open the meeting tab first.',
   tooLarge: 'Not saved: the screenshot is too large.',
-  /** No activeTab grant here and no `<all_urls>` (D1): the toolbar icon or the shortcut grants it. */
-  allowHere: 'Click the Jantar icon once to allow screenshots here.',
+  /** No activeTab grant here and no `<all_urls>` (D1): the toolbar icon or the shortcut grants it. A failure, so it says "Not saved" too (v0.5.3). */
+  allowHere: 'Not saved: click the Jantar icon once in this tab, then try again.',
   chromeFailed: 'Not saved: Chrome could not take it.',
   notRunning: 'Not saved: Jantar is not running on this Mac.',
   pairAgain: 'Not saved: pair again: jantar pair --extension',

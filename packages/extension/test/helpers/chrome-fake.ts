@@ -14,6 +14,9 @@
  * getURL, sendMessage, onMessage with dispatch, lastError, invalidate),
  * tabs (get, query, sendMessage, captureVisibleTab, onRemoved), an in-memory
  * storage.session, permissions (contains, request) and commands.onCommand.
+ * v0.5.3 adds commands.getAll (the screenshot command's shortcut is
+ * `model.shortcut`) and tabs.create (each URL in `model.opened`), for the
+ * popup's Settings.
  * Every call after `model.invalidate()` throws "Extension context
  * invalidated.", as Chrome does after the extension is reloaded.
  */
@@ -137,6 +140,10 @@ export interface ChromeModel {
   requested: string[][];
   /** What storage.session holds. */
   session: Map<string, unknown>;
+  /** The take-screenshot command's shortcut as commands.getAll shows it ('' when none is set; the default). */
+  shortcut: string;
+  /** Every URL tabs.create opened, in order. */
+  opened: string[];
   /** The sender `runtime.sendMessage` uses (default: the extension's popup page). */
   sender: FakeSender;
   /** A page sender for tab `tabId` (its URL from the tab), from this extension. */
@@ -162,6 +169,7 @@ export interface ChromeFake {
     query(q: { active?: boolean; lastFocusedWindow?: boolean; windowId?: number; currentWindow?: boolean }): Promise<FakeTab[]>;
     sendMessage(tabId: number, msg: unknown): Promise<unknown>;
     captureVisibleTab(windowId?: number, options?: { format?: string; quality?: number }): Promise<string>;
+    create(p: { url?: string; active?: boolean; windowId?: number }): Promise<FakeTab>;
     onRemoved: FakeRemovedEvent;
   };
   storage: {
@@ -176,7 +184,10 @@ export interface ChromeFake {
     contains(p: { origins?: string[] }): Promise<boolean>;
     request(p: { origins?: string[] }): Promise<boolean>;
   };
-  commands: { onCommand: FakeCommandEvent };
+  commands: {
+    onCommand: FakeCommandEvent;
+    getAll(): Promise<{ name: string; description: string; shortcut: string }[]>;
+  };
 }
 
 /** Install a fake `chrome` on globalThis (replacing any) and return it with the model the test drives. */
@@ -230,6 +241,8 @@ export function createChromeFake(opts: { id?: string } = {}): { chrome: ChromeFa
     permissionAnswer: false,
     requested: [],
     session: new Map(),
+    shortcut: '',
+    opened: [],
     sender: { id: opts.id ?? EXTENSION_ID, url: `${base()}popup.html` },
     pageSender(tabId) {
       const tab = tabs.get(tabId);
@@ -293,6 +306,12 @@ export function createChromeFake(opts: { id?: string } = {}): { chrome: ChromeFa
         }
         return `data:image/jpeg;base64,${model.captureImage.toString('base64')}`;
       },
+      async create(p) {
+        alive();
+        model.opened.push(p.url ?? '');
+        const id = Math.max(0, ...tabs.keys()) + 1;
+        return model.addTab({ id, windowId: p.windowId ?? model.focusedWindow ?? 1, url: p.url ?? '', active: p.active ?? true });
+      },
       onRemoved: new FakeRemovedEvent(alive),
     },
     storage: {
@@ -333,7 +352,17 @@ export function createChromeFake(opts: { id?: string } = {}): { chrome: ChromeFa
         return model.permissionAnswer;
       },
     },
-    commands: { onCommand: new FakeCommandEvent(alive) },
+    commands: {
+      onCommand: new FakeCommandEvent(alive),
+      async getAll() {
+        alive();
+        // As Chrome lists them: the toolbar action's own entry first, then the manifest's command.
+        return [
+          { name: '_execute_action', description: '', shortcut: '' },
+          { name: 'take-screenshot', description: 'Take a screenshot of the meeting', shortcut: model.shortcut },
+        ];
+      },
+    },
   };
   g.chrome = chrome;
   return { chrome, model };

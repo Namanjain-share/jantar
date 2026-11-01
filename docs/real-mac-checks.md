@@ -229,19 +229,21 @@ The extension's suites run in a test Chromium against synthetic Meet and
 Teams pages. On real calls, so far: pairing worked; a Meet call kept its
 captions and got its summary; a short Teams call kept its captions.
 **Screenshots from the extension did not reach Jantar in the first three
-real calls**, and the cause is not known yet. The rest is open:
+real calls**, and the cause is not known yet. Since 0.5.3 the popup's
+Settings › Last screenshot says how each try ended, so R3 can say why. The
+rest is open:
 
 | Check | Question | What depends on it |
 |---|---|---|
 | R1 | Build, Load unpacked, pin, `jantar meetings on`, `jantar pair --extension`, paste, Allow: the terminal says "Paired.", the popup says it is connected and lists your projects. Then Site access set to **On specific sites** as [extension.md](extension.md) says, and once to **On click**: does the popup still reach Jantar, and do notes still start? | setting the extension up, and taking the permission back |
 | R2 | A Meet call with a second device: Start, talk 5 minutes, another tab for 2 minutes, Chrome minimized for 1 minute: lines keep arriving, and the phone shows them within 10 s. Then, with Chrome's automatic picture-in-picture for Meet on, another tab for over 60 s while people talk: still one meeting, not ended `left`, and the lines said meanwhile kept (if not, Meet's in-call check must be widened) | captions in a hidden tab, and Meet's picture-in-picture |
-| R3 | The page button, Option+Shift+S and the popup's Screenshot, twice each: each saves, neither the button nor the popup is in the picture; one JPEG's size on a Retina screen. **Failing so far** (above) | screenshots |
+| R3 | The page button, Option+Shift+S and the popup's Screenshot, twice each: each saves, neither the button nor the popup is in the picture; one JPEG's size on a Retina screen. After each try, write down which control you used and what the bubble said, then read the popup's **Settings › Last screenshot** (with its "Chrome said" or "Jantar answered" line) and the `meetings: screenshot upload` lines in `daemon.err.log`. **Failing so far** (above) | screenshots |
 | R4 | Captions off with notes on, then Meet's "Translate speech" on: the bubble says how to turn them on, and the camera button still shows in the call. Captions on and nobody talking for over 60 s after Start: no "Can't read captions on this page." | Meet's in-call check and its captions-not-found |
 | R5 | A Teams web call on `teams.cloud.microsoft` and one on `teams.live.com`: captions read with names; whether they live in the top frame; the same silent minute after Start as R4 | the Teams adapter |
 | R6 | The camera button in Meet and in Teams (Chat and the participants panel open too) covers none of the site's controls or captions | the button's spot |
 | R7 | Leave a Meet call and rejoin within a minute; in Teams open Chat during a call (the mini window) and stay there over 60 s while people talk: still one meeting, not ended `left`, notes go on with the lines said meanwhile (if not, Teams' in-call check must be widened) | the one-minute grace, and Teams' mini window |
 | R8 | End, then the phone: the summary in under a minute, decisions, items, Add to todos, the transcript with its screenshots, the viewer, Export text, Delete and Undo | the summary on real meetings |
-| R9 | Option+Shift+S clashes with nothing in Meet or Teams | the shortcut |
+| R9 | Option+Shift+S clashes with nothing in Meet or Teams, and Settings › Shortcut shows the key Chrome holds ("Shortcut: ⌥⇧S"; "not set" when another extension took it, with Set opening `chrome://extensions/shortcuts`) | the shortcut |
 | R10 | Chrome minimized and the shortcut pressed from another app: nothing is captured, or the flash says why | `captureVisibleTab` on macOS |
 | R11 | Quit Chrome during a call with notes on: the meeting ends within about 15 minutes and gets its summary | the keep-alive and the stale end |
 

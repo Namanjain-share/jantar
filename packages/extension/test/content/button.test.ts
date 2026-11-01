@@ -5,8 +5,10 @@
  * frames before the shot is asked for, then shown with the flash; a hide
  * the worker asked for shows again by itself when its show never comes;
  * two clicks give two shots; one bubble at a time, 8 s or until clicked;
- * the notes-on dot. And the content script's source: no innerHTML, no <style>
- * element, no style attribute, animation frames only for the hide.
+ * the notes-on dot; v0.5.3: a page-button shot with no answer in 25 s shows
+ * the button again with "did not answer". And the content script's source:
+ * no innerHTML, no <style> element, no style attribute, animation frames
+ * only for the hide.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -14,8 +16,11 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { meetAdapter } from '../../src/content/adapters/meet.js';
 import { teamsAdapter } from '../../src/content/adapters/teams.js';
-import { BUBBLE_MS, FLASH_MS, HIDE_GIVE_UP_MS, NOTES_TITLE, NO_ANSWER, SHOT_LABEL, createCameraButton, type CameraButton } from '../../src/content/button.js';
+import { BUBBLE_MS, FLASH_MS, HIDE_GIVE_UP_MS, NOTES_TITLE, NO_ANSWER, PAGE_SHOT_LIMIT_MS, SHOT_LABEL, createCameraButton, type CameraButton } from '../../src/content/button.js';
+import { SHOT_TIMEOUT_MS } from '../../src/background/client.js';
+import { CAPTURE_TIMEOUT_MS, QUOTA_WAIT_MS } from '../../src/background/shots.js';
 import type { ShotAnswer } from '../../src/shared/messages.js';
+import { TIMING } from '../../src/shared/wire.js';
 import { cameraHost, captureShadows, settle, trustedClick } from './chrome.js';
 
 const FRAME = 16;
@@ -169,6 +174,37 @@ describe('MP10: a shot from the page button', () => {
     trustedClick(c.cam());
     await settle(2 * FRAME);
     expect(c.tip().textContent).toBe(NO_ANSWER);
+  });
+
+  it('v0.5.3: no answer within 25 s shows the button again with "did not answer"; a late answer changes nothing; the next click goes', async () => {
+    const answers: ((a: ShotAnswer) => void)[] = [];
+    const c = camera(() => new Promise((r) => answers.push(r)));
+    c.b.setShown(true);
+    trustedClick(c.cam());
+    await settle(2 * FRAME);
+    expect(c.shots).toHaveLength(1);
+    await settle(PAGE_SHOT_LIMIT_MS - 1);
+    expect(cameraHost()!.style.getPropertyValue('visibility')).toBe('hidden');
+    expect(c.tip().hidden).toBe(true);
+    await settle(1);
+    expect(cameraHost()!.style.getPropertyValue('visibility')).toBe('');
+    expect(c.tip().textContent).toBe(NO_ANSWER);
+    // The worker's answer after the limit is dropped.
+    answers[0]!({ ok: true, text: 'Saved' });
+    await settle(0);
+    expect(c.tip().textContent).toBe(NO_ANSWER);
+    trustedClick(c.cam());
+    await settle(2 * FRAME);
+    expect(c.shots).toHaveLength(2);
+    answers[1]!({ ok: true, text: 'Saved' });
+    await settle(0);
+    expect(c.tip().textContent).toBe('Saved');
+    expect(cameraHost()!.style.getPropertyValue('visibility')).toBe('');
+  });
+
+  it('v0.5.3: the limit is 25 s, above what the worker may wait for (a 5-s capture, its quota wait and gap, a 15-s upload)', () => {
+    expect(PAGE_SHOT_LIMIT_MS).toBe(25_000);
+    expect(PAGE_SHOT_LIMIT_MS).toBeGreaterThan(CAPTURE_TIMEOUT_MS + QUOTA_WAIT_MS + TIMING.shotGapMs + SHOT_TIMEOUT_MS);
   });
 
   it('a second click while one is in flight waits its turn: two clicks, two shots', async () => {

@@ -4,14 +4,20 @@
  * comes from the worker's `state` answer; everything it does is one
  * message to the worker (it never calls the daemon itself).
  *
+ * v0.5.3: Settings shows the screenshot shortcut (with a link to Chrome's
+ * shortcuts page) and the last screenshot try: when, from where, and how it
+ * ended, with Chrome's own words or the daemon's status. The main view says
+ * when this tab's last try failed in the last 10 minutes. It never claims a
+ * tab is allowed: opening the popup always grants this tab.
+ *
  * Built with DOM calls and textContent only (the page has no inline
  * script, no style attribute and no on* handler). No em dash, no
  * exclamation mark.
  */
-import type { Done, FromPopup, PopupState } from '../shared/messages.js';
+import type { Done, FromPopup, LastShot, PopupState, ShotFrom } from '../shared/messages.js';
 import type { MeetingSite } from '../shared/sites.js';
 import { WIRE_LIMITS } from '../shared/wire.js';
-import { JOIN_FIRST, NOT_RUNNING, NO_MEETING_TAB, TRY_AGAIN } from '../background/sentences.js';
+import { JOIN_FIRST, NOT_RUNNING, NO_MEETING_TAB, SHOT, TRY_AGAIN } from '../background/sentences.js';
 
 /** The sites' own way to turn captions on (the adapters' `howTo`, spec 3.4). */
 export const HOW_TO: Readonly<Record<MeetingSite, string>> = {
@@ -30,6 +36,43 @@ export const OFFER_WHY =
   'Chrome calls this reading and changing your data on all websites. Jantar still runs only on Meet and Teams pages, and takes a screenshot of the meeting tab only when you click.';
 export const TELL_PEOPLE = 'Let people know you keep notes.';
 export const ALL_URLS = '<all_urls>';
+/** Chrome's page for extension shortcuts (opened in a tab: no permission needed). */
+export const SHORTCUTS_URL = 'chrome://extensions/shortcuts';
+/** The main view names a failed try in this tab for this long. */
+export const RECENT_SHOT_MS = 10 * 60_000;
+
+/** The control a try came from, in Settings' words. */
+const FROM_WORDS: Readonly<Record<ShotFrom, string>> = { page: 'camera button', popup: 'popup', command: 'shortcut' };
+
+/** "12:41", in this Mac's time. */
+export function clockOf(at: number): string {
+  const d = new Date(at);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Why a try was not saved, without the flash's own "Not saved: ". */
+const reasonOf = (text: string): string => text.replace(/^Not saved: /, '');
+
+export const shortcutLine = (shortcut: string): string => `Shortcut: ${shortcut || 'not set'}`;
+
+/** "Last screenshot: 12:41 · camera button · Saved", or "… · Not saved: <why>". */
+export function lastShotLine(last: LastShot | null): string {
+  if (!last) return 'Last screenshot: none yet';
+  return `Last screenshot: ${clockOf(last.at)} · ${FROM_WORDS[last.from]} · ${last.ok ? SHOT.saved : `Not saved: ${reasonOf(last.text)}`}`;
+}
+
+/** The second, quiet line: Chrome's own words, or the status Jantar answered with; null when there is neither. */
+export function lastShotDetail(last: LastShot | null): string | null {
+  if (last?.chrome) return `Chrome said: ${last.chrome}`;
+  if (last?.status !== undefined) return `Jantar answered ${last.status}`;
+  return null;
+}
+
+/** The main view's line when this tab's last try failed in the last 10 minutes; else null. */
+export function missedLine(last: LastShot | null, tabId: number, now: number): string | null {
+  if (!last || last.ok || last.tabId !== tabId || now - last.at > RECENT_SHOT_MS) return null;
+  return `Last screenshot not saved: ${reasonOf(last.text)}`;
+}
 
 type Tab = NonNullable<PopupState['tab']>;
 type Projects = PopupState['projects'];
@@ -221,6 +264,12 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     await refresh();
   }
 
+  function openShortcuts(): void {
+    void Promise.resolve()
+      .then(() => chrome.tabs.create({ url: SHORTCUTS_URL }))
+      .catch(() => undefined);
+  }
+
   function notNow(): void {
     offer = false;
     draw();
@@ -316,9 +365,12 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
 
   function settingsView(s: PopupState): Node[] {
     const allowed = s.pageButton ? el('span', { class: 'quiet' }, 'Allowed') : button('Allow', allow);
+    const detail = lastShotDetail(s.lastShot);
     return [
       el('h2', {}, 'Settings'),
       el('div', { class: 'row' }, el('span', {}, 'Screenshot button on meeting pages'), allowed),
+      el('div', { class: 'row quiet' }, el('span', {}, shortcutLine(s.shortcut)), button(s.shortcut ? 'Change' : 'Set', openShortcuts, { link: true })),
+      el('div', { class: 'stack quiet' }, el('p', {}, lastShotLine(s.lastShot)), detail && el('p', { class: 'mono' }, detail)),
       el('div', { class: 'row' }, el('span', {}, 'Paired with Jantar on this Mac'), button('Unpair', () => void unpair())),
     ];
   }
@@ -330,8 +382,11 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     const tab = s.tab;
     if (!tab) return [para(NO_MEETING_TAB, 'lead'), para(CONNECTED, 'quiet')];
     if (!tab.inCall) return [para(JOIN_FIRST, 'lead')];
-    if (tab.notes) return notesView(tab);
-    return sheetView(tab, s.projects);
+    const out = tab.notes ? notesView(tab) : sheetView(tab, s.projects);
+    // The popup holds this tab's grant now, so its Screenshot takes it.
+    const missed = missedLine(s.lastShot, tabId, Date.now());
+    if (missed) out.push(para(missed, 'quiet'));
+    return out;
   }
 
   function draw(): void {

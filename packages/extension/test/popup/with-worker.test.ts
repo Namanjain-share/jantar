@@ -3,10 +3,13 @@
  * worker's fetch): pair, allow the page button, Start with a project, see
  * notes on and the captions state, End, and a Screenshot from the sheet
  * that saves into a meeting made for the call. And a meeting tab that went
- * to another site: the popup offers nothing there.
+ * to another site: the popup offers nothing there. v0.5.3: a page-button
+ * try Chrome refused shows in the main view and in Settings, with Chrome's
+ * words and the shortcut.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NO_MEETING_TAB } from '../../src/background/sentences.js';
+import { NO_MEETING_TAB, SHOT } from '../../src/background/sentences.js';
+import { CAPTURE_PERMISSION_ERROR } from '../helpers/chrome-fake.js';
 import { mountPopup } from '../../src/popup/app.js';
 import { KEY, PROJECT_ID, setupWorker, type WorkerUnderTest } from '../background/chrome.js';
 
@@ -74,5 +77,28 @@ describe('the popup with the worker', () => {
     expect(root.textContent).toContain(NO_MEETING_TAB);
     expect([...root.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Settings']);
     expect(w.daemon.of('shot')).toHaveLength(1);
+  });
+
+  it('v0.5.3: a page-button try Chrome refused: the main view says so, Settings says how and when, with the shortcut', async () => {
+    w = setupWorker();
+    await w.meetTab(7, { title: 'Weekly sync' });
+    w.model.shortcut = '⌥⇧S';
+    // The popup reads "the last 10 minutes" on the real clock.
+    w.clock.t = Date.now();
+    w.model.failCapture('permission');
+    expect(await w.page(7, { t: 'shot' })).toEqual({ ok: false, text: SHOT.allowHere });
+    const root = document.createElement('main');
+    document.body.replaceChildren(root);
+    await mountPopup({ root, tabId: 7, close: () => undefined });
+    expect(root.textContent).toContain('Last screenshot not saved: click the Jantar icon once in this tab, then try again.');
+    [...root.querySelectorAll('button')].find((b) => b.textContent === 'Settings')?.click();
+    const lines = [...root.querySelectorAll('.view .row, .view .stack p')].map((n) => n.textContent);
+    expect(lines).toContain('Shortcut: ⌥⇧SChange');
+    expect(lines.some((l) => /^Last screenshot: \d\d:\d\d · camera button · Not saved: click the Jantar icon once in this tab, then try again\.$/.test(l ?? ''))).toBe(true);
+    expect(lines).toContain(`Chrome said: ${CAPTURE_PERMISSION_ERROR}`);
+    // The popup's own Screenshot now (it holds the grant): saved, and Settings follows.
+    expect(await w.popup({ t: 'shot', tabId: 7 })).toEqual({ ok: true, text: SHOT.saved });
+    await mountPopup({ root, tabId: 7, close: () => undefined });
+    expect(root.textContent).not.toContain('Last screenshot not saved');
   });
 });

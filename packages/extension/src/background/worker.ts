@@ -14,7 +14,7 @@ import { createLines, pickLines } from './lines.js';
 import { createMeetings } from './meetings.js';
 import { createPairing } from './pairing.js';
 import { MISMATCH, PAIR_AGAIN, SHOT, TRY_AGAIN } from './sentences.js';
-import { createShots } from './shots.js';
+import { createShots, readLastShot } from './shots.js';
 import type { KeyStore } from './store.js';
 import { createTabs } from './tabs.js';
 
@@ -71,6 +71,16 @@ function projectsOf(body: unknown): PopupState['projects'] {
   return out;
 }
 
+/** The shortcut Chrome holds for the screenshot as it shows it ("⌥⇧S"); '' when none is set (another extension took the key). */
+async function shortcutOf(): Promise<string> {
+  try {
+    const all = await chrome.commands.getAll();
+    return all.find((c) => c.name === SHOT_COMMAND)?.shortcut ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /** The popup holds activeTab for its tab, so Chrome shows that tab's URL to the worker. */
 async function stillOnMeetingPage(tabId: number): Promise<boolean> {
   try {
@@ -96,7 +106,12 @@ export function createWorker(deps: WorkerDeps): Worker {
   onForgotten = () => pairing.forgotten(PAIR_AGAIN);
 
   async function popupState(tabId: number): Promise<PopupState> {
-    const [pairingNow, pageButton] = await Promise.all([deps.keys.get(), chrome.permissions.contains({ origins: [ALL_URLS] }).catch(() => false)]);
+    const [pairingNow, pageButton, shortcut, lastShot] = await Promise.all([
+      deps.keys.get(),
+      chrome.permissions.contains({ origins: [ALL_URLS] }).catch(() => false),
+      shortcutOf(),
+      readLastShot(),
+    ]);
     let head: Pick<PopupState, 'connection' | 'sentence'> = { connection: 'unpaired' };
     let projects: PopupState['projects'] = null;
     if (pairingNow) {
@@ -112,9 +127,8 @@ export function createWorker(deps: WorkerDeps): Worker {
       ...head,
       pageButton,
       projects,
-      // v0.5.3 wave 0: the Meetings package reads the last try and the shortcut.
-      lastShot: null,
-      shortcut: '',
+      lastShot,
+      shortcut,
       tab: view
         ? {
             site: view.site,

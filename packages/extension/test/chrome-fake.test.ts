@@ -86,6 +86,20 @@ describe('the chrome fake', () => {
     expect(seen).toEqual(['take-screenshot', 'closed 3']);
   });
 
+  it("lists the commands with the screenshot's shortcut, and opens a tab", async () => {
+    const f = createChromeFake();
+    model = f.model;
+    const shortcut = async () => (await f.chrome.commands.getAll()).find((c) => c.name === 'take-screenshot')?.shortcut;
+    expect(await shortcut()).toBe('');
+    f.model.shortcut = '⌥⇧S';
+    expect(await shortcut()).toBe('⌥⇧S');
+    f.model.addTab({ id: 4, windowId: 1, url: 'https://example.com/', active: true });
+    const made = await f.chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+    expect(made).toMatchObject({ id: 5, windowId: 1, url: 'chrome://extensions/shortcuts', active: true });
+    expect(f.model.opened).toEqual(['chrome://extensions/shortcuts']);
+    expect(f.model.tab(4)?.active).toBe(false);
+  });
+
   it('after invalidate, the id is gone and every call throws', async () => {
     const f = createChromeFake();
     model = f.model;

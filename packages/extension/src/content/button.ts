@@ -13,7 +13,9 @@
  * hides itself and waits two animation frames (one frame still left the
  * button in a shot, research 4.6) before asking the worker. A hide the
  * worker asked for (a shortcut or popup shot) ends with its `show`, or by
- * itself after HIDE_GIVE_UP_MS should that never come.
+ * itself after HIDE_GIVE_UP_MS should that never come. A page-button shot
+ * the worker has not answered within PAGE_SHOT_LIMIT_MS shows the button
+ * again with NO_ANSWER: the button is never left hidden.
  */
 import type { ShotAnswer } from '../shared/messages.js';
 import type { SiteAdapter } from './adapters/types.js';
@@ -27,6 +29,12 @@ export const FLASH_MS = 1_200;
 export const BUBBLE_MS = 8_000;
 /** The page-button shot when the worker gave no answer at all. */
 export const NO_ANSWER = 'Not saved: the Jantar extension did not answer.';
+/**
+ * The page button waits this long for the worker's answer, then shows again
+ * with NO_ANSWER. Above everything the worker may wait for: a capture
+ * (5 s at most, its quota retry and gaps) and the upload (15 s).
+ */
+export const PAGE_SHOT_LIMIT_MS = 25_000;
 /** A hide answers after two frames, or after this long when frames stop (a hidden tab). */
 const HIDE_MAX_MS = 500;
 /**
@@ -173,11 +181,17 @@ export function createCameraButton(o: CameraButtonOptions): CameraButton {
   const shoot = async () => {
     await hide();
     let answer: ShotAnswer | undefined;
+    let limit: ReturnType<typeof setTimeout> | undefined;
     try {
-      answer = await o.shoot();
+      const late = new Promise<undefined>((resolve) => {
+        limit = setTimeout(() => resolve(undefined), PAGE_SHOT_LIMIT_MS);
+      });
+      // An answer after the limit is dropped (the popup's Settings › Last screenshot says how the try ended).
+      answer = await Promise.race([o.shoot(), late]);
     } catch {
       answer = undefined;
     } finally {
+      clearTimeout(limit);
       reveal();
     }
     if (answer && typeof answer.text === 'string') flash(answer.text, answer.ok === true);

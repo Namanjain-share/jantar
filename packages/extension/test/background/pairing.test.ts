@@ -137,18 +137,37 @@ describe('the popup state', () => {
     w = setupWorker();
     w.daemon.on('info', { status: 200, body: { projects: [{ id: ULID, name: 'Acme site', emoji: '🚀' }, { id: '01JFZ8X8Y3T0V5G9WQK2M4N6QR', name: 'Home' }] } });
     await w.meetTab(7, { title: 'Weekly sync' });
+    const at = w.clock.t;
     await w.page(7, { t: 'shot' });
+    w.model.shortcut = '⌥⇧S';
     expect(await w.popup({ t: 'state', tabId: 7 })).toEqual({
       connection: 'ok',
       pageButton: false,
       projects: [{ id: ULID, name: 'Acme site', emoji: '🚀' }, { id: '01JFZ8X8Y3T0V5G9WQK2M4N6QR', name: 'Home' }],
       tab: { site: 'meet', inCall: true, title: 'Weekly sync', name: 'Weekly sync', notes: false, shots: 1, captions: 'unknown' },
-      lastShot: null,
-      shortcut: '',
+      lastShot: { at, from: 'page', tabId: 7, ok: true, text: 'Saved', step: 'saved' },
+      shortcut: '⌥⇧S',
     });
     w.model.granted.add('<all_urls>');
     await w.page(7, { t: 'captions', state: 'reading' });
     expect(await w.popup({ t: 'state', tabId: 7 })).toMatchObject({ pageButton: true, tab: { captions: 'reading' } });
+  });
+
+  it("v0.5.3: the last try in any tab and Chrome's shortcut; a record that is not one reads as none, a shortcut Chrome will not list as ''", async () => {
+    w = setupWorker();
+    await w.meetTab(7);
+    w.model.failCapture('permission');
+    await w.page(7, { t: 'shot' });
+    // Asked from another tab: the record is the last try anywhere.
+    expect(await w.popup({ t: 'state', tabId: 3 })).toMatchObject({ lastShot: { tabId: 7, from: 'page', ok: false, step: 'grant' }, shortcut: '' });
+    w.model.session.set('lastShot', { at: 'now', from: 'page', tabId: 7, ok: false, text: 'x', step: 'grant' });
+    w.model.shortcut = 'Alt+Shift+S';
+    expect(await w.popup({ t: 'state', tabId: 3 })).toMatchObject({ lastShot: null, shortcut: 'Alt+Shift+S' });
+    w.model.session.set('lastShot', { at: 1, from: 'page', tabId: 7, ok: true, text: 'Saved', step: 'minimized' });
+    w.chrome.commands.getAll = async () => {
+      throw new Error('broken');
+    };
+    expect(await w.popup({ t: 'state', tabId: 3 })).toMatchObject({ connection: 'ok', lastShot: null, shortcut: '' });
   });
 
   it('projects null while Todos are off; no tab for a tab that is not a meeting tab', async () => {
