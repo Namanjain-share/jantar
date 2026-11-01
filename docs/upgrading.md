@@ -20,6 +20,25 @@ daemon migrates `config.json` and its databases on start (moving settings
 to version 2 in v0.4 kept the old file as `config.json.v1`). The
 [changelog](../CHANGELOG.md) says what changed in each version.
 
+### 0.7.0: Life's first schema change
+
+0.7.0 adds a table for Posts to `life.db`, the first change to that file's
+layout since Life began. The new daemon moves the file to it on start, and
+0.6.1 can't open it after that: every Life part would say "Life data could
+not be opened". The nightly backup and the start-up one name their copy
+after the day, so they can replace that day's copy with the new layout.
+Keep a copy they never write, before you upgrade:
+
+```sh
+jantar life backup                       # on 0.6.1: prints "Backed up to <folder>/life-<day>.db"
+cp -p <folder>/life-<day>.db <folder>/life-pre-0.7.0.db
+```
+
+Then upgrade as above. To go back to 0.6.1 later, install it and run
+`jantar life restore life-pre-0.7.0.db` (restore works while Life can't
+open its file, and keeps the newer file beside it). `jantar life restore`
+with no name lists the copy, and it is kept until 30 newer backups exist.
+
 ## From Jantar's old name
 
 Up to v0.3 Jantar was called ccw-v2 and kept its state in `~/.ccw-v2`. It

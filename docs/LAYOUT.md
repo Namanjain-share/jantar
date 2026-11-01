@@ -95,7 +95,9 @@ jantar/
                    retry, through the built app's service worker), ext-v053 (the toolbar
                    icon's activeTab path) and mcp (the built `jantar mcp` over stdio);
                    v0.6.1: v061-background (background work through the hooks, the
-                   transcript, the phone's events and `jantar status`)
+                   transcript, the phone's events and `jantar status`);
+                   v0.7.0: v07-posts (Posts through `jantar post`, ctl.sock, a paired
+                   phone and the ring, with the privacy sweep)
 ```
 
 ## The daemon's parts
@@ -193,7 +195,7 @@ Ask (v0.5.3, `ask/`) holds only life, usage and ccwLegacy: no writer,
 terminal, launcher, controls, files or settings. Each message is one run of
 the shared headless runner (`rewrite/run.ts`) in the empty
 `<state dir>/ask/work` (0700, emptied before each run), beside a copy of its
-prompt (`assets/ask/assistant-v1.md`). Its turns live in its memory only, so
+prompt (`assets/ask/assistant-v2.md`). Its turns live in its memory only, so
 `start()` has nothing to load; `stop()` and the switch going off abort the
 run and forget them.
 
@@ -301,7 +303,7 @@ field schemas, now exported from `life.ts`; the turn and its limits; seven
 control-scope routes behind the Mac-only `ask.enabled` switch and the `ask`
 feature flag; protocol version 3 and settings version 2 unchanged, no
 jantar.db migration), the daemon part (`ask/`, its turns in memory only, so
-no file of its own), its prompt (`assets/ask/assistant-v1.md`), the page
+no file of its own), its prompt (`assets/ask/`), the page
 (`screens/ask/`, a lazy chunk), `jantar ask`, the fake claude's Ask modes
 and `ASK_MARKER` (`test/fixtures/src/ask.ts`), and the end-to-end suites
 `v053-ask` (over HTTP, with the privacy sweep) and `web-v053-ask` (the built
@@ -416,3 +418,30 @@ no settings change and no protocol bump (`PROTOCOL_VERSION` 3, `NODE_PROTO`
 and the watcher in `packages/daemon/test/sources/transcript-background.test.ts`,
 the board and the header in `packages/web/test/board-background.test.tsx`,
 end to end in `test/integration/v061-background.integration.test.ts`.
+
+### v0.7.0
+
+Posts: a sixth Life part, `posts`, for what the user plans to post on
+social media by hand. Jantar never posts: it keeps the text, rings at the
+time and gives Copy and Open. The protocol (`life.ts`: the post, its body
+and patch, the weekly goals, `POST_PLATFORM_LABEL` / `POST_KIND_LABEL`
+shared by the push, the CLI and the phone; five control-scope routes
+behind the `posts` feature, phase `v0.7`, only the list and an add on
+ctl.sock); the daemon module (`life/posts/{module,repo,pings}.ts`: the
+todo ring reused through `armRing` in `life/todos/pings.ts`, posts due in
+the same minute as one push, the week from Monday in the Life zone, the
+ctl.sock add limit `V07_LIMITS.postCtl` in `api/services.ts`); life.db's
+migration 2 (the `posts` table and its one index, `posts_open`), Life's
+first schema change, with goals in `meta('post_goals')`; `jantar post add`
+and `list` (`cli/src/commands/post.ts`); the phone's Posts screen
+(`screens/life/posts/`, a lazy chunk; `life/shared/links.tsx` for the
+https-only Open shared with Cafés); and Ask's post card (`AskPostAction`,
+an idea with no text, notes or link) with its prompt moved to
+`assets/ask/assistant-v2.md`. The v1 copy a daemon left in
+`<state dir>/ask/` stays (Rewrite's `prepareRunDir` owns that folder). No
+jantar.db migration, no settings version and no protocol bump
+(`PROTOCOL_VERSION` 3). Tests: `packages/protocol/test/v07-posts.test.ts`,
+`packages/daemon/test/life/posts{,-pings}.test.ts`,
+`packages/cli/test/post.test.ts`, `packages/web/test/posts.test.tsx`, Ask's
+post card in `packages/daemon/test/ask/` and `packages/web/test/ask.test.tsx`,
+end to end in `test/integration/v07-posts.integration.test.ts`.

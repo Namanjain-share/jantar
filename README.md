@@ -111,16 +111,18 @@ More: [servers](docs/fleet.md).
 
 ### Off until you want them
 
-A small life list (todos, reminders, medicines, food, cafés, money), a
-shelf for links your scripts save, and notes from your Google Meet and
-Teams calls in Chrome (their live captions and a summary; the screenshots
-you click are not yet confirmed on a real call). Each is switched on at the
-Mac, one at a time, and the pictures here show them on. A fresh install
-shows only Board, Accounts, Alerts and Devices. **Ask** (`jantar ask on`)
-turns plain words ("remind me to stretch at 6 pm") into Life's todos,
-reminders, meals and expenses, each added only when you tap it. With
-`jantar mcp` added to Claude Code, a session can search the shelf, save to
-it, and add todos to the project linked to its folder.
+A small life list (todos, reminders, medicines, food, cafés, money, and
+the social posts you plan, with a reminder at the time; Jantar never posts
+them), a shelf for links your scripts save, and notes from your Google
+Meet and Teams calls in Chrome (their live captions and a summary; the
+screenshots you click are not yet confirmed on a real call). Each is
+switched on at the Mac, one at a time, and the pictures here show them on.
+A fresh install shows only Board, Accounts, Alerts and Devices. **Ask**
+(`jantar ask on`) turns plain words ("remind me to stretch at 6 pm") into
+Life's todos, reminders, meals, expenses and post ideas, each added only
+when you tap it. With `jantar mcp` added to Claude Code, a session can
+search the shelf, save to it, and add todos to the project linked to its
+folder.
 
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/today-phone-dark.png"><img src="docs/img/today-phone.png" width="240" alt="Today: two medicines due at 13:00, then the todos due."></picture>
@@ -237,8 +239,8 @@ by this project. More in [How it is put together](docs/architecture.md).
 | [The app](docs/phone-app.md) | Every screen on the phone and the Mac, sending prompts, new sessions, Files, Rewrite, Controls |
 | [Answering from the phone](docs/phone-control.md) | Hook cards, terminal dialogs, the keypad, attachments, what stays at the Mac |
 | [Accounts](docs/accounts.md) and [the primer](docs/primer.md) | One login or cswap, usage, kept accounts, priming idle windows |
-| [Life](docs/life.md) | Today, todos, reminders, projects, medicines, food, cafés, finance |
-| [Ask](docs/assistant.md) | The chat page: plain words in, todos, reminders, meals and expenses out as cards you add with a tap; what goes to Claude |
+| [Life](docs/life.md) | Today, todos, reminders, projects, medicines, food, cafés, finance, posts |
+| [Ask](docs/assistant.md) | The chat page: plain words in, todos, reminders, meals, expenses and post ideas out as cards you add with a tap; what goes to Claude |
 | [Alerts and sounds](docs/alerts.md) | A tone per kind of alert, the 2-minute countdown alert, what the lock screen can do, `jantar notify` |
 | [Intel shelf](docs/intel.md) | The shelf, its search, its JSONL line format, and `jantar mcp` for Claude Code |
 | [Meetings](docs/extension.md) | The Chrome extension for Meet and Teams |

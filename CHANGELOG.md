@@ -10,6 +10,43 @@ Mac: plan what you post on social media, get a reminder at the time, copy
 the text and open the place to post it. Jantar never posts anything itself.
 The protocol stays at version 3, and settings don't change version.
 
+- **Before upgrading: `jantar life backup`, then copy that file to
+  `life-pre-0.7.0.db` in the same folder.** 0.7.0 adds a table to
+  `life.db`, Life's first schema change, and 0.6.1 can't open Life after
+  0.7.0 has; going back needs `jantar life restore life-pre-0.7.0.db`. The
+  nightly backup can replace that day's copy, which is why the copy gets
+  its own name ([Upgrading](docs/upgrading.md#070-lifes-first-schema-change)).
+- **A post** is one thing you will post by hand: the platform (Reddit,
+  Instagram, X, LinkedIn, YouTube, TikTok, Threads, Facebook, Hacker News
+  or Other), where it goes (a subreddit, an account or a handle), the kind
+  (post, comment, reel, story, thread, short, video or link), a title, the
+  text or caption, notes that are never copied (the flair, the media to
+  attach, the sub's rules), a link to the page where you post it, and a
+  day and time. It moves from Idea to Ready to Posted, or Skipped.
+- **The Posts screen** (under Life) lists Late, Today, Tomorrow, Later and
+  No date. A post due today has Copy (the text) and Open (the link); tap
+  its square once you have posted it, with Undo for five seconds, and add
+  the posted link in the post. Done lists what you posted and skipped.
+- **A reminder at the time**, like a todo's, with the catch-up after the
+  Mac was offline. Posts due in the same minute come as one push. The lock
+  screen says "Post due" and the time; with `lock-screen-details` on it
+  also names the platform and where, never the title or the text.
+- **A weekly goal** per platform, or per platform and kind, set on the
+  phone: "This week: Reels 1/3 · Reddit 2/6", Monday to Sunday. Today
+  shows one line: "2 to post today · 1 late".
+- **`jantar post add`** and **`jantar post list`** let scripts and Claude
+  sessions on the Mac load and read posts: `jantar post add --platform
+  reddit --where r/exampletools --at "2026-11-02 19:30" --title "Launch
+  day" --text-file draft.md --link
+  https://www.reddit.com/r/exampletools/submit --status ready`. At most 30
+  adds an hour come from the Mac; marking posted, skipping, editing,
+  deleting and the goals are on the phone only.
+- **Ask** suggests a post: "reel tomorrow 7pm about the launch" gives an
+  Instagram reel card with Add and Undo, added as an idea. Ask never writes
+  a post's text. Its prompt is now `assistant-v2.md`.
+- Nothing calls a social network or an API, and no link is ever fetched:
+  links are `https` only and open when you tap them.
+
 ## 0.6.1 (1 November 2026)
 
 - **A session waiting on a dynamic workflow or a background agent shows as

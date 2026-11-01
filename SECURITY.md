@@ -24,8 +24,8 @@ permission / question / plan cards (equivalent to remote code execution);
 transcript and screen contents; cswap account data; from v0.4, what you
 keep in Life (medicines and doses, food and weight, money, todos, cafés)
 and on the Intel shelf; from v0.5, your meetings' transcripts and
-screenshots; and, from v0.5.3, what you type into Ask (kept in the
-daemon's memory only).
+screenshots; from v0.5.3, what you type into Ask (kept in the daemon's
+memory only); and, from v0.7, the posts you plan and their drafts.
 
 **Trust boundary:** the local macOS user. Any process running as you —
 including a Claude session — can reach Jantar's Unix sockets. Everything
@@ -41,6 +41,8 @@ run sessions with general Bash access, treat card approvals as coming from
 From v0.5.3 such a process can also list and add todos of any Life project
 linked to a folder, over the control socket
 ([folder todos and the MCP server](#folder-todos-and-the-mcp-server)).
+From v0.7 it can also list every open post, with its text, and add new
+ones, at most 30 an hour ([Posts](#v07-posts)).
 
 ### Network exposure
 
@@ -1067,7 +1069,7 @@ this list; `jantar ask on` says it at the Mac.
 The same isolated headless run as Rewrite: `cswap run --share-history <N>
 -- -p` (or `claude -p` on one login) with no tools (`--tools ""`), MCP,
 slash commands, hooks, CLAUDE.md files, auto memory and session
-persistence off, a fixed system prompt file (`ask/assistant-v1.md`), one
+persistence off, a fixed system prompt file (`ask/assistant-v2.md`), one
 turn, a $1.00 budget, JSON output, low effort and a 90-second timeout, on
 Rewrite's model (`rewrite.model`, with `rewrite.fallbackModel`). The text
 goes on stdin only, inside a `<message>` block it cannot open or close,
@@ -1082,21 +1084,25 @@ never used.
 ### The allow-list, and nothing applied without a tap
 
 - The answer must be one JSON object: a reply and at most 10 actions. Each
-  action is checked on its own against a strict schema of one of four
-  types: **todo** (a reminder is a todo with a time), **food**, **money**
-  and **show** (what is due, calories, medicines: read-only). Any other
-  type, an unknown field or a value out of range drops that action, and the
-  page says how many were left out. Food and money are never dated in the
-  future; a project is matched by name to one you have, never taken as an
-  id from the model; a money category is one of the fixed names, else
-  Other.
+  action is checked on its own against a strict schema of one of five
+  types: **todo** (a reminder is a todo with a time), **food**, **money**,
+  **post** (v0.7: a plan only) and **show** (what is due, calories,
+  medicines: read-only). Any other type, an unknown field or a value out
+  of range drops that action, and the page says how many were left out.
+  Food and money are never dated in the future; a project is matched by
+  name to one you have, never taken as an id from the model; a money
+  category is one of the fixed names, else Other. A post has no text,
+  notes, link or status field (one of them drops it), its where and title
+  must be one line with no control or bidi character, and it is always
+  added as an idea.
 - The reply is plain text: control and bidi characters removed, at most
   500 characters, never rendered as Markdown or links. It cannot add
   anything; the prompt tells Claude never to claim it did.
 - Every item is a card, and **Add** goes through the same Life call the
-  Todos, Food and Finance screens use, as your device, so Life's checks,
-  switches, limits and pings all apply. **Add all** covers only the todo
-  and food cards of one answer; a money card always needs its own tap.
+  Todos, Food, Finance and Posts screens use, as your device, so Life's
+  checks, switches, limits and pings all apply. **Add all** covers only
+  the todo, food and post cards of one answer; a money card always needs
+  its own tap.
   Medicines can't be written from Ask at all: a dose is logged only by
   your tap on the medicines card, as on Today.
 - Each added card has **Undo** until a day after its message was sent,
@@ -1463,3 +1469,57 @@ copy of a server's state on disk.
 - A server can fill its own share of the phone (its 64 sessions and 32
   cards, its 20 alerts and finished sends, its 10 notifications a minute)
   with any text. `jantar node revoke` stops it.
+
+## v0.7: Posts
+
+Posts is a Life part for what you plan to post on social media. It is off
+until you run `jantar life on posts` at the Mac, and its routes need the
+`control` scope, reads included, so a read-only device sees no posts.
+While it is off they answer 403 with the command to turn it on; while
+`life.db` can't be opened, 503.
+
+**Jantar never posts anything.** It keeps the title, the text and your
+notes in `life.db`, rings at the time, and gives you Copy and Open. It
+talks to no social network or API and never fetches a link: a post's link
+and its posted link must be `https`, and they open only when you tap them
+(in a new tab, without the opener or the referrer). Ask can add a post as
+an idea (its platform, kind, where, title and time), never its text, and
+its prompt tells Claude never to say anything was posted.
+
+### What a process on the Mac can do
+
+Only two posts routes answer on the control socket: the list and an add
+(`jantar post list` and `jantar post add`). Any process running as you, a
+Claude session with Bash included, can therefore read every open post,
+its text and notes included, and add new ones, at most 30 an hour; past
+that it gets 429 with "Scripts and Claude sessions added 30 posts this
+hour. Add more on the phone, or try again later." It cannot change a
+post's text, link or status, delete one or set the goals: those routes
+are not on the control socket at all (404), so a Copy or an Open on the
+phone always acts on what you last saw or saved there. The limit keeps a
+looping session from scheduling hundreds of separate pushes. Adds from
+the phone, and Ask's cards, never count against it; every write counts
+against Life's 240 a minute.
+
+### What stays in life.db
+
+- The title, the text and the notes are never in a push, a log line, an
+  event, an audit row (the post's id only) or a write reply (`{ id }` or
+  `{ ok: true }`); only the owner's `GET /v1/posts` returns them.
+- The lock screen follows `life.lockScreenDetails`, as Medicines and bills
+  do. Off (the default) it says "Post due" or "Posts due · 2" and the time.
+  On, it also names the platform and where the post goes ("Post on Reddit ·
+  r/exampletools · 19:30"), cut to 40 characters, never the title or the
+  text. Where and title are one line at the schema (no control or bidi
+  character), so neither can forge a second line.
+- The integration suite plants a marker in a post's where, title, text,
+  notes and link and checks that none reaches a frame, an event, an audit
+  row, a log line, a write reply or a push with the details off; with them
+  on, the push holds where alone.
+
+### Upgrading
+
+0.7.0 adds the posts table to `life.db`, Life's first schema change, and
+0.6.1 refuses the newer file. The nightly backup can replace that day's
+copy, so keep one named `life-pre-0.7.0.db` before upgrading
+([Upgrading](docs/upgrading.md#070-lifes-first-schema-change)).

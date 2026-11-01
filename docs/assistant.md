@@ -2,8 +2,8 @@
 
 Ask is a chat page on the phone, right after Today. Type what you want in
 plain words, the way you would text it to yourself, and Ask suggests Life
-items as cards: todos, reminders, meals with their calories, expenses and
-income. **Nothing is added until you tap Add.** Ask about today
+items as cards: todos, reminders, meals with their calories, expenses,
+income and posts to make. **Nothing is added until you tap Add.** Ask about today
 ("calories left?", "what's due?") and the answer is filled in on the
 phone from Today, with your own numbers.
 
@@ -21,10 +21,10 @@ adds one.
 At the Mac, with the Life parts you want Ask to use:
 
 ```sh
-jantar life on todos food finance   # Ask suggests only for Life parts that are on
-jantar ask on                       # says what goes to Claude
-jantar ask status                   # the switch, and the model (Rewrite's: jantar rewrite model <m>)
-jantar ask off                      # hides it, stops an answer being written, forgets its history
+jantar life on todos food finance posts   # Ask suggests only for Life parts that are on
+jantar ask on                             # says what goes to Claude
+jantar ask status                         # the switch, and the model (Rewrite's: jantar rewrite model <m>)
+jantar ask off                            # hides it, stops an answer being written, forgets its history
 ```
 
 Ask is off until you turn it on, and only the Mac can turn it on. The
@@ -50,6 +50,8 @@ Send key); Shift+Enter starts a new line.
 | calories left? | a **Now** card: calories eaten against your target, and what is left |
 | what's due? | a **Now** card: today's and overdue todos (tap them as on Today) |
 | did I take my meds? | a **Now** card: today's medicines (tap a dose as on Today) |
+| reel tomorrow 7pm about the launch | an **Instagram reel** idea for tomorrow at 19:00, "About the launch" (it rings) |
+| reddit post in r/exampletools friday 7:30 pm | a **Reddit post** idea for r/exampletools on Friday at 19:30 |
 | delete my gym todo | a reply saying what Ask can do, and no cards |
 
 Hindi and Hinglish words for times work too: *kal* (tomorrow for a
@@ -62,20 +64,22 @@ reminder, yesterday for a meal or money), *subah*, *shaam*, *raat*.
 | **Todo** or **Reminder** | a todo, with its day, time, repeat, priority and project when you said them (a todo with a time is a reminder and rings) |
 | **Food** | a meal entry with its calories, today or up to 7 days back |
 | **Expense** or **Income** | a money entry in one of the usual categories, today or up to 7 days back |
+| **Reddit post**, **Instagram reel**, … | an idea in [Posts](life.md#posts): the platform, the kind, where, a title and its day and time (with a time it rings). Ask never writes a post's text: you write it in Posts, and post it yourself |
 | **Now** | nothing: it shows what is due today, calories against your target, or today's medicines |
 
 - **Add**, **Edit** (change the fields, then Save and add) or **Skip**
-  each card. **Add all** adds the todo and food cards of one answer in one
-  tap (a meal is often several cards); it waits while a card is open in
-  Edit. A money card always needs its own Add.
+  each card. **Add all** adds the todo, food and post cards of one answer
+  in one tap (a meal is often several cards); it waits while a card is
+  open in Edit. A money card always needs its own Add.
 - **Undo** on an added card works until a day after you asked. It deletes
   the item **as it is now**, with any change made since (an edit, Done, a
   repeating todo moved on to its next day). After that, delete it in
-  Todos, Food or Finance. A card over a day old can't be added: ask again.
+  Todos, Food, Finance or Posts. A card over a day old can't be added: ask
+  again.
 - A card may carry one note: "That time has passed, so it won't ring." (a
-  one-off reminder for a time already gone), "No time, so it won't ring.
-  Edit to add one." (you asked for a reminder and gave no time), or "No
-  project by that name. It will be added without one."
+  one-off reminder or a post for a time already gone), "No time, so it
+  won't ring. Edit to add one." (you asked for a reminder and gave no
+  time), or "No project by that name. It will be added without one."
 
 ## Times
 
@@ -83,7 +87,7 @@ reminder, yesterday for a meal or money), *subah*, *shaam*, *raat*.
   today, else 06:00 tomorrow.
 - A repeating reminder whose time has passed today starts on its next
   day; Life never rings one whose time has already gone.
-- Meals and money are never in the future.
+- Meals and money are never in the future. A post never repeats.
 - Today and now are your Life time zone's (`jantar life set timezone`).
 
 ## Questions about today
@@ -96,7 +100,8 @@ Food). Tapping a dose on the medicines card is the only way Ask logs one.
 ## What it can't do
 
 Change, finish or delete items you already have; log a dose or change a
-medicine; save foods, bills or cafés; or touch sessions, files, settings,
+medicine; save foods, bills or cafés; write a post's text or caption, mark
+one posted or post anything anywhere; or touch sessions, files, settings,
 the shelf or another device. Ask says so in the reply and suggests
 nothing.
 
@@ -139,7 +144,7 @@ stay in Life. Another device never sees your messages.
 | The page says | What it means |
 |---|---|
 | That is off on this Mac. Turn it on at the Mac: jantar ask on | the switch is off (and there is no Ask tab) |
-| Turn a Life part on first: jantar life on todos | none of Todos, Food, Finance or Medicines is on |
+| Turn a Life part on first: jantar life on todos | none of Todos, Food, Finance, Medicines or Posts is on |
 | Ask can't run while Jantar is read-only. | the daemon runs with `--read-only` |
 | Ask needs Claude Code on this Mac. | Jantar found no `claude` (one login) or `cswap` (several) to run it with |
 | No account has room right now. Try again in a while. | every account is at its limit, kept or held |
@@ -153,13 +158,16 @@ stay in Life. Another device never sees your messages.
 ## Why it is safe to point at your Life
 
 - **A fixed list.** An answer is checked action by action against strict
-  schemas of four kinds: todo, food, money and show. Anything else, such as
-  a shell command, a settings change, a medicine, a session or a link, is
-  dropped, and the page says how many were left out.
+  schemas of five kinds: todo, food, money, post and show. Anything else,
+  such as a shell command, a settings change, a medicine, a session or a
+  link, is dropped, and the page says how many were left out. A post card
+  has no text, notes or link field at all, and its where and title must
+  be one line.
 - **Your tap applies it.** Add goes through the same Life call the Todos,
-  Food and Finance screens use, as your phone, so Life's checks, switches,
-  limits and pings apply. Money is never part of Add all. Medicines are
-  never written.
+  Food, Finance and Posts screens use, as your phone, so Life's checks,
+  switches, limits and pings apply. Money is never part of Add all.
+  Medicines are never written. A post is always added as an idea, and
+  Jantar never posts anything.
 - **Nothing else is in reach.** The Ask part holds only Life, the usage
   reader and the legacy ccw reader: no writer, terminal, launcher, files or
   settings. The run has no tools, no MCP, no hooks and no session

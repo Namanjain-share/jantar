@@ -56,11 +56,13 @@ Each of these is a Mac-only setting: a phone can never change it.
 | Command | What it does |
 |---|---|
 | `jantar life status` | modules, zone, currency, who gets medicine pings, backups |
-| `jantar life on \| off <module...> \| all` | `todos`, `medicines`, `food`, `places`, `finance` ([Life](life.md)) |
+| `jantar life on \| off <module...> \| all` | `todos`, `medicines`, `food`, `places`, `finance`, `posts` ([Life](life.md)) |
 | `jantar life set timezone <IANA> \| none` | the zone days and ping times follow (none: the Mac's) |
 | `jantar life set currency <XXX> \| none` | a label for amounts |
-| `jantar life set lock-screen-details on \| off` | names on the lock screen |
+| `jantar life set lock-screen-details on \| off` | names on the lock screen: medicine and bill names, and where a post goes (off: "Medicine due", "Bill due", "Post due") |
 | `jantar life backup` / `restore <file> [--yes]` | copy `life.db` now; put a backup back |
+| `jantar post add --platform <p> [--where W] [--kind K] [--at "YYYY-MM-DD HH:MM"] [--title T] [--text-file F \| --text T] [--notes N] [--link URL] [--status idea\|ready]` | add a post to make; with a time it rings on the phone; at most 30 an hour from the Mac ([Posts](life.md#posts)) |
+| `jantar post list [--done] [--json]` | this week against the goals, then the posts to make (`--done`: posted and skipped) |
 | `jantar intel on \| off \| sources` | the shelf and the files it follows ([Intel](intel.md)) |
 | `jantar intel source add <file.jsonl>` / `source rm <id>` | follow a file, or stop |
 | `jantar intel add "<title>" [--url U] [--type T] [--tag T]... [--note N]` | put an item on the shelf |
@@ -72,7 +74,7 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar meetings [on \| off]` | Meetings from the Chrome extension ([Meetings](extension.md)) |
 | `jantar meetings export <id> \| last \| --all [--out DIR]` | a folder per meeting: `meeting.md` and `shots/*.jpg` |
 | `jantar meetings unpair` | revoke every paired extension |
-| `jantar ask on \| off \| status` | Ask, a chat page that suggests todos, reminders, food and money ([Ask](assistant.md)); `off` forgets its history; `status` names the model (Rewrite's) |
+| `jantar ask on \| off \| status` | Ask, a chat page that suggests todos, reminders, food, money and posts ([Ask](assistant.md)); `off` forgets its history; `status` names the model (Rewrite's) |
 
 ### Alerts
 

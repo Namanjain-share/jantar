@@ -93,10 +93,10 @@ are there.
 
 ## Life modules
 
-Life (todos, medicines, food and weight, cafés, finance) and the Intel shelf
-are switched on per module at the Mac (`jantar life on <module>`,
-`jantar intel on`) and are off by default, so people take only what they
-want. A change to one of them keeps it that way:
+Life (todos, medicines, food and weight, cafés, finance, posts) and the
+Intel shelf are switched on per module at the Mac (`jantar life on
+<module>`, `jantar intel on`) and are off by default, so people take only
+what they want. A change to one of them keeps it that way:
 
 - Life data lives in its own `life.db`, which the daemon never resets: a file
   that fails its checks is refused, not replaced.
@@ -106,10 +106,11 @@ want. A change to one of them keeps it that way:
 - Keep each module small. Left out on purpose: subtasks, labels and saved
   views in todos; as-needed medicines and streaks; macros and a food
   database; bank import, balances and more than one currency; contacts,
-  deals or a pipeline in projects (they are not a CRM). Ask before adding a
-  field, a setting or a screen.
-- Deleting a todo, a meal, a weight, a saved food, a café or a money entry
-  happens at once, with Undo for five seconds, never a confirm dialog
+  deals or a pipeline in projects (they are not a CRM); posting, a social
+  network's API, logos, media and analytics in posts (Jantar never posts).
+  Ask before adding a field, a setting or a screen.
+- Deleting a todo, a meal, a weight, a saved food, a café, a money entry or
+  a post happens at once, with Undo for five seconds, never a confirm dialog
   (`useHeldDeletes` in `life/today/parts.tsx`). The Undo is a bar pinned
   to the bottom of the visible area (`Page`'s `undo`, or last in a sheet),
   so it is in view however far down the row was. A medicine, a project or a

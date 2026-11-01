@@ -25,7 +25,7 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Devices** | This device (theme, install, which notifications), paired devices, and **Show pairing code** for a phone; with Fleet, **Machines**: each paired server, online or not, and its version |
 | **Files** | Which files the live sessions created or changed, newest first; a browser over the folders set on the Mac; a read-only viewer |
 | **New session** | A folder, an account (with cswap) and the flags, the exact command line it will type, Resume, then hold to start; with Fleet, a **Where** row picks the Mac or a server |
-| **Today** and **Life** | Today, Todos (with Reminders and Projects), Medicines, Food, Cafés and Finance; on a phone they sit behind Today and More ([Life](life.md)) |
+| **Today** and **Life** | Today, Todos (with Reminders and Projects), Medicines, Food, Cafés, Finance and Posts (what you plan to post on social media, with a reminder, Copy and Open; Jantar never posts); on a phone they sit behind Today and More ([Life](life.md)) |
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
 | **Ask** | Right after Today: tell it what to add in plain words, and add its suggestions with a tap ([Ask](assistant.md)) |
@@ -65,10 +65,10 @@ jantar devices grant iPhone launch    # let one device start them
 jantar rewrite on                     # dictated text into a prompt
 jantar controls on                    # keys, mode switching and slash commands (on by default)
 jantar screenshots on                 # a Picture view of the session's window
-jantar life on all                    # Life: todos, medicines, food, cafés, finance
+jantar life on all                    # Life: todos, medicines, food, cafés, finance, posts
 jantar intel on                       # the Intel shelf
 jantar meetings on                    # Meetings from the Chrome extension
-jantar ask on                         # Ask: suggestions for todos, reminders, food and money
+jantar ask on                         # Ask: suggestions for todos, reminders, food, money and posts
 ```
 
 Every command and option is in [Configuration](configuration.md).
@@ -207,7 +207,8 @@ kept for other work. Attachments survive a Rewrite.
 
 A chat page that turns plain words into Life items. Type what you want
 ("todo add call the bank", "remind me to stretch at 6 pm", "had 2 rotis
-and dal", "spent 250 on lunch") or ask about today ("calories left?").
+and dal", "spent 250 on lunch", "reel tomorrow 7pm about the launch") or
+ask about today ("calories left?").
 The Mac makes one headless Claude run, on Rewrite's model at low effort,
 and shows a short reply with up to 10 suggestions as cards. **Nothing is
 added until you tap Add.**
@@ -218,9 +219,10 @@ jantar ask on                       # says what goes to Claude
 jantar ask off                      # hides it and forgets its history
 ```
 
-- **Add**, **Edit** or **Skip** each card; **Add all** adds the todo and
-  food cards of one answer (never money). **Undo** works until a day
-  after you asked.
+- **Add**, **Edit** or **Skip** each card; **Add all** adds the todo,
+  food and post cards of one answer (never money). **Undo** works until a
+  day after you asked. A post card is an idea: Ask never writes a post's
+  text.
 - Questions about today never send your lists to Claude: the phone fills
   the answer card from Today.
 - **What goes to Claude** (**What's sent**, under the box): only what you

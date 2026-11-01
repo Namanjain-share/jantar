@@ -39,7 +39,7 @@ jantar notify test urgent      # one test push of a group to your devices
 | **Answer soon** | Claude's 2-minute countdown on an ask nobody answers | Alarm: three short high beeps | "Answer soon" |
 | **Needs you** | a permission, a question, a plan, "still waiting", a session started from a phone | Ding: two rising notes | "Claude needs you" |
 | **Done** | a session finished its turn | Success: a rising four-note tune | "Done" |
-| **Medicines and reminders** | a medicine, a todo or a bill is due | Bell: three soft strikes | "Reminder" |
+| **Medicines and reminders** | a medicine, a todo, a bill or a post is due | Bell: three soft strikes | "Reminder" |
 | **Problems** | a prompt not delivered, a blocked tool, a limit, an API error, usage, a security alert | Low: two falling notes | "Something needs a look" |
 
 Those five phrases are the only words Jantar ever speaks: never what Claude
