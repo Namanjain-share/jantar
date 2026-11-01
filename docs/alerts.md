@@ -83,8 +83,7 @@ seconds down and the rows answer the ask
 ([Answering from the phone](phone-control.md)).
 
 What the read does: at most one screen read per session every 10 seconds,
-plus one for the repeat, and one more 10 seconds later if a read for an
-ask's card failed. It never types, and nothing it reads is kept, logged or
+the repeat and a retry after a failed read included. It never types, and nothing it reads is kept, logged or
 sent. With the terminal off (`--no-terminal`) there is no urgent alert.
 Turn it off with `jantar notify urgent off`; such asks then get the plain
 "needs you" push. The daemon remembers which asks it pushed only while it

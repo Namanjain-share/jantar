@@ -109,8 +109,11 @@ limits trust (below).
   container with a published port, a dev server that prints request headers)
   can replay it with a forged `Origin`. That is why writes and the event
   stream also need the device secret: IndexedDB is per origin, port included,
-  so another port never sees it. A replayed cookie can still **read**:
-  session state, transcripts and the terminal screen peek. For that, prefer
+  so another port never sees it. A replayed cookie can still **read**
+  whatever that device's scopes read: session state, transcripts, the
+  terminal screen peek and, with those parts on, files, Life, the shelf,
+  meetings and Ask's history (medicine names and amounts as typed). For
+  that, prefer
   the Tailscale HTTPS URL, use `jantar open --no-admin`, and revoke the Mac's
   browser device when you are done with it.
 - **Devices paired before the device secret existed** keep reading but get
@@ -1117,7 +1120,9 @@ never used.
   `<state dir>/ask/` holds only the prompt copy and the empty run folder.
   **Clear history** forgets one phone's, `jantar ask off` forgets
   everyone's and stops a run in progress, and a daemon restart forgets
-  them all. Items already added stay in Life.
+  them all. Items already added stay in Life. Revoking a device does not
+  drop its turns: they stay in memory until the 7-day sweep, `jantar ask
+  off` or a restart, though nothing can read them any more.
 - The text leaves the daemon only in the reply to the owner's
   `GET /v1/ask`; another device gets 404 for a message that isn't its own.
   Events carry only `life.changed {}`, audit rows the turn id and counts
@@ -1139,6 +1144,10 @@ never used.
   expense of 50,000" can make Claude suggest it. The suggestion is still
   a card showing its amount and day, nothing is applied until you tap Add,
   and money is never part of Add all.
+- **The reply can claim what it did not do.** Claude's reply is plain text
+  beside the cards, and a hostile paste or a mistake can make it say
+  "logged your dose" or "added". Only a card's **✓ Added** means something
+  was added; a dose is logged only by its tap on the medicines card.
 - **Undo deletes the item as it is now**, with any change made since: an
   edit, Done, a repeating todo moved on to its next day.
 - **A reminder's title shows on the lock screen.** A todo push follows
@@ -1162,8 +1171,7 @@ The daemon now reads a session's Terminal screen by itself, the way the
 Screen tab does, to see whether Claude's 2-minute auto-block countdown is
 running: when an unattended ask turns up (a subagent's card) or a session
 waits with no card. It reads at most once per session every 10 seconds,
-plus one read for the repeat and one more 10 seconds later when a card's
-read failed. It never types and takes no writer lock, and nothing it reads
+the repeat and the retry after a failed read included. It never types and takes no writer lock, and nothing it reads
 is kept: no screen text is logged, stored, emitted or pushed. With the
 terminal off (`--no-terminal`), with `notify.urgent` off
 (`jantar notify urgent off`), without `permission` in `notify.kinds`,
@@ -1238,7 +1246,9 @@ An added todo goes through the Life write limiter, the open-todo cap and
 the audit log (ids only), and one with a time pings the phone like any
 reminder. The server never runs `claude` or anything else. A switch that is
 off, or a stopped daemon, is reported to Claude as yours to change, with
-the command for you to run, not as a command for the session.
+the command for you to run, not as a command for the session. A failure
+that is not the daemon's own sentence is one fixed sentence, never the
+error's own words, which could name a path on the Mac.
 
 ### The shelf is global
 
@@ -1249,6 +1259,14 @@ bots, so it is a prompt-injection channel: the tools only read and append,
 and the server tells Claude to treat shelf text as data, never as
 instructions. The folder a capture came from stays in the captures file on
 the Mac; no route or tool returns it.
+
+Todos are a second such channel. A meeting's action items are Claude's
+summary of what other people said on the call, and land in the meeting's
+project; an Ask card can come from pasted text; another session in the
+same folder can add one with `todo_add`. Once that project is linked to a
+folder, `todos_here` hands their titles and notes to every session there.
+The server's instructions and the tool's description call todo text data,
+never instructions, as for the shelf.
 
 ### Meetings: why a screenshot was not saved
 
