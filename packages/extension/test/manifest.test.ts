@@ -6,12 +6,20 @@
  * none of the permissions the spec rules out, no externally_connectable, no
  * web-accessible resources, the MV3 default CSP, nothing remote. A fork that
  * makes its own key changes EXTENSION_ID with it: this test ties the two.
+ *
+ * v0.8 (Read saved links, spec 13.3): `alarms` and `scripting` (neither
+ * warns at install), and exactly the six post sites as optional origins,
+ * on the platforms' exact hosts (no subdomain wildcard, no Threads or
+ * Facebook), asked only by the popup's switch. Still never `tabs`,
+ * `cookies`, `webRequest`, `debugger`, `history`, `tabCapture`,
+ * `offscreen` or `downloads`.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { EXTENSION_ID as PROTOCOL_EXTENSION_ID } from '@jantar/protocol';
 import { manifestFor } from '../scripts/build.mjs';
+import { CHROME_POST_HOSTS } from '@jantar/protocol/post-url';
 import { CONTENT_MATCHES, MEETING_HOSTS } from '../src/shared/sites.js';
 import { EXTENSION_ID } from '../src/shared/wire.js';
 
@@ -32,21 +40,27 @@ function idOf(publicKeyBase64: string): string {
   return [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
 }
 
-const NEVER = ['tabs', 'scripting', 'cookies', 'webRequest', 'webRequestBlocking', 'declarativeNetRequest', 'downloads', 'tabCapture', 'offscreen', 'alarms', 'unlimitedStorage', 'history', 'bookmarks', 'clipboardRead', 'debugger', 'nativeMessaging', 'management'];
+const NEVER = ['tabs', 'cookies', 'webRequest', 'webRequestBlocking', 'declarativeNetRequest', 'downloads', 'tabCapture', 'offscreen', 'unlimitedStorage', 'history', 'bookmarks', 'clipboardRead', 'debugger', 'nativeMessaging', 'management'];
+/** v0.8: the six post sites, exactly (spec 13.3). */
+export const POST_ORIGINS = ['https://www.instagram.com/*', 'https://www.youtube.com/*', 'https://www.tiktok.com/*', 'https://x.com/*', 'https://www.reddit.com/*', 'https://www.linkedin.com/*'];
 
 describe('MX1: the manifest', () => {
   it('is MV3 for Chrome 120 and up, named Jantar, saying what leaves the Mac', () => {
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.minimum_chrome_version).toBe('120');
     expect(manifest.name).toBe('Jantar');
-    expect(manifest.description).toBe('Saves Meet and Teams captions and your screenshots to Jantar on your Mac. Summaries send the transcript text to Claude.');
+    expect(manifest.description).toBe('Meet and Teams captions, your screenshots, and posts you save to Intel, kept by Jantar on your Mac. Summaries use Claude.');
+    expect((manifest.description as string).length).toBeLessThanOrEqual(132);
     expect(pkg.license).toBe('FSL-1.1-MIT');
   });
 
-  it('asks for activeTab and storage, the daemon on 127.0.0.1 (every port), and <all_urls> only as the optional grant', () => {
-    expect(manifest.permissions).toEqual(['activeTab', 'storage']);
+  it('asks for activeTab, storage, alarms and scripting, the daemon on 127.0.0.1 (every port), and <all_urls> and the six post sites only as optional grants', () => {
+    expect(manifest.permissions).toEqual(['activeTab', 'storage', 'alarms', 'scripting']);
     expect(manifest.host_permissions).toEqual(['http://127.0.0.1/*']);
-    expect(manifest.optional_host_permissions).toEqual(['<all_urls>']);
+    expect(manifest.optional_host_permissions).toEqual(['<all_urls>', ...POST_ORIGINS]);
+    // The six are the protocol's post hosts, exactly: no wildcard subdomain, no port, no other site.
+    expect(POST_ORIGINS).toEqual(Object.values(CHROME_POST_HOSTS).map((host) => `https://${host}/*`));
+    for (const o of POST_ORIGINS) expect(o, o).not.toMatch(/\*\.|threads|facebook|:\d/);
     for (const p of [...manifest.permissions, ...manifest.host_permissions, ...(manifest.optional_host_permissions ?? [])]) expect(NEVER, p).not.toContain(p);
     expect(manifest).not.toHaveProperty('optional_permissions');
   });
@@ -56,7 +70,8 @@ describe('MX1: the manifest', () => {
     // homepage_url is only the "Website" link on chrome://extensions: nothing is loaded from it.
     const { homepage_url: _link, ...loaded } = manifest;
     const urls = JSON.stringify(loaded).match(/https?:\/\/[^"/*]+/g) ?? [];
-    for (const u of urls) expect(['http://127.0.0.1', ...MEETING_HOSTS.map((h) => `https://${h}`)], u).toContain(u);
+    const posts = POST_ORIGINS.map((o) => o.replace(/\/\*$/, ''));
+    for (const u of urls) expect(['http://127.0.0.1', ...MEETING_HOSTS.map((h) => `https://${h}`), ...posts], u).toContain(u);
   });
 
   it("links docs/extension.md in the repository that package.json names", () => {
@@ -87,7 +102,7 @@ describe('MX1: the manifest', () => {
     expect(EXTENSION_ID).toBe(PROTOCOL_EXTENSION_ID);
   });
 
-  it("the build writes the package's version; the test build only moves <all_urls> into host_permissions", async () => {
+  it("the build writes the package's version; the test build only moves the optional grants into host_permissions", async () => {
     const built = (await manifestFor()) as Manifest;
     const test = (await manifestFor({ test: true })) as Manifest;
     expect(built.version).toBe(pkg.version);

@@ -147,6 +147,7 @@ describe('the popup state', () => {
       tab: { site: 'meet', inCall: true, title: 'Weekly sync', name: 'Weekly sync', notes: false, shots: 1, captions: 'unknown' },
       lastShot: { at, from: 'page', tabId: 7, ok: true, text: 'Saved', step: 'saved' },
       shortcut: '⌥⇧S',
+      reads: false,
     });
     w.model.granted.add('<all_urls>');
     await w.page(7, { t: 'captions', state: 'reading' });
@@ -173,12 +174,12 @@ describe('the popup state', () => {
   it('projects null while Todos are off; no tab for a tab that is not a meeting tab', async () => {
     w = setupWorker();
     w.daemon.on('info', { status: 200, body: { projects: null } });
-    expect(await w.popup({ t: 'state', tabId: 3 })).toEqual({ connection: 'ok', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '' });
+    expect(await w.popup({ t: 'state', tabId: 3 })).toEqual({ connection: 'ok', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '', reads: false });
   });
 
   it('not paired: no daemon call', async () => {
     w = setupWorker({ paired: false });
-    expect(await w.popup({ t: 'state', tabId: 3 })).toEqual({ connection: 'unpaired', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '' });
+    expect(await w.popup({ t: 'state', tabId: 3 })).toEqual({ connection: 'unpaired', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '', reads: false });
     expect(w.daemon.calls).toEqual([]);
   });
 

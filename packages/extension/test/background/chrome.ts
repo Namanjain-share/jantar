@@ -31,7 +31,7 @@ export const ULID = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
 export const PROJECT_ID = '01JFZ8X8Y3T0V5G9WQK2M4N6QR';
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-export type Op = 'info' | 'claim' | 'open' | 'lines' | 'shot' | 'end';
+export type Op = 'info' | 'claim' | 'open' | 'lines' | 'shot' | 'end' | 'readNext' | 'readResult';
 
 /** What the fake daemon answers: a status and body, or 'down' (the connection is refused). */
 export type Answer = { status: number; body?: unknown } | 'down';
@@ -54,6 +54,9 @@ const DEFAULTS: Record<Op, Answer> = {
   lines: { status: 200, body: { ok: true } },
   shot: { status: 200, body: { id: ULID } },
   end: { status: 200, body: { ok: true } },
+  // v0.8: no post to read; a result taken.
+  readNext: { status: 200, body: { job: null } },
+  readResult: { status: 200, body: { ok: true } },
 };
 
 /** An error body as the daemon writes it. */
@@ -62,6 +65,10 @@ export const daemonError = (status: number, message: string): Answer => ({ statu
 function opOf(path: string): { op: Op; clientId: string | null } | null {
   if (path === '/v1/ext/info') return { op: 'info', clientId: null };
   if (path === '/v1/ext/pair') return { op: 'claim', clientId: null };
+  // v0.8: a read result's lease id rides where a meeting's client id does.
+  if (path === '/v1/ext/reads/next') return { op: 'readNext', clientId: null };
+  const read = /^\/v1\/ext\/reads\/([^/]+)$/.exec(path);
+  if (read?.[1]) return { op: 'readResult', clientId: read[1] };
   const m = /^\/v1\/ext\/meetings\/([^/]+)(?:\/(lines|shots|end))?$/.exec(path);
   if (!m?.[1]) return null;
   const tail = m[2];
@@ -192,6 +199,9 @@ export function setupWorker(opts: { paired?: boolean; deps?: Partial<WorkerDeps>
   chrome.runtime.onMessage.addListener(worker.onMessage as never);
   chrome.commands.onCommand.addListener(worker.onCommand as never);
   chrome.tabs.onRemoved.addListener(worker.onRemoved as never);
+  chrome.alarms.onAlarm.addListener(worker.onAlarm as never);
+  chrome.runtime.onStartup.addListener(worker.onStartup as never);
+  chrome.runtime.onInstalled.addListener(worker.onStartup as never);
 
   const page = (tabId: number, msg: unknown) => chrome.runtime.onMessage.dispatch(msg, model.pageSender(tabId));
   return {

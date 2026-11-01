@@ -55,7 +55,9 @@ export type FromPopup =
   | { t: 'start'; tabId: number; name: string; projectId?: string; people?: string; autoTodos: boolean }
   /** Answered with ShotAnswer. */
   | { t: 'shot'; tabId: number }
-  | { t: 'end'; tabId: number };
+  | { t: 'end'; tabId: number }
+  /** v0.8: Read saved links on or off (the popup asked Chrome for the post sites first). Answered with Done. */
+  | { t: 'reads'; on: boolean };
 
 export type Done = { ok: boolean; error?: string };
 
@@ -102,4 +104,6 @@ export interface PopupState {
   lastShot: LastShot | null;
   /** v0.5.3: the take-screenshot shortcut as Chrome shows it ("⌥⇧S"), '' when unset. */
   shortcut: string;
+  /** v0.8: Read saved links is on (switched on here, and Chrome allows the post sites). */
+  reads: boolean;
 }

@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MEETING_MARKER } from '@jantar/fixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BAD_CODE, MISMATCH, NOT_RUNNING, PAIR_AGAIN, TRY_AGAIN } from '../../src/background/sentences.js';
+import { BAD_CODE, MISMATCH, NOT_RUNNING, PAIR_AGAIN, READS, TRY_AGAIN } from '../../src/background/sentences.js';
 import { meetAdapter } from '../../src/content/adapters/meet.js';
 import { teamsAdapter } from '../../src/content/adapters/teams.js';
 import { NOT_FOUND as PAGE_NOT_FOUND } from '../../src/content/capture.js';
@@ -31,7 +31,7 @@ const PROJECT_B = '01JFZ8X8Y3T0V5G9WQK2M4N6QR';
 
 type Tab = NonNullable<PopupState['tab']>;
 const meetTab = (over: Partial<Tab> = {}): Tab => ({ site: 'meet', inCall: true, title: 'Weekly sync', notes: false, shots: 0, captions: 'unknown', ...over });
-const state = (over: Partial<PopupState> = {}): PopupState => ({ connection: 'ok', pageButton: true, projects: null, tab: null, lastShot: null, shortcut: '', ...over });
+const state = (over: Partial<PopupState> = {}): PopupState => ({ connection: 'ok', pageButton: true, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, ...over }) as PopupState;
 
 let chrome: ChromeFake;
 let model: ChromeModel;
@@ -579,5 +579,57 @@ describe('popup.html', () => {
     const props = new Set(css.match(/--[a-z0-9-]+(?=:)/g));
     expect([...props].sort()).toEqual(['--bg', '--ink', '--ink-2', '--jup', '--line-strong', '--surface']);
     expect(css).not.toMatch(/url\(/);
+  });
+});
+
+describe('v0.8: Settings › Read saved links', () => {
+  const POSTS = ['https://www.instagram.com/*', 'https://www.youtube.com/*', 'https://www.tiktok.com/*', 'https://x.com/*', 'https://www.reddit.com/*', 'https://www.linkedin.com/*'];
+  const toggle = () => input('reads');
+  const flip = (on: boolean) => {
+    toggle().checked = on;
+    toggle().dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  it('off by default, a switch with its plain line', async () => {
+    await open();
+    buttonNamed('Settings').click();
+    expect(toggle().getAttribute('role')).toBe('switch');
+    expect(toggle().checked).toBe(false);
+    expect(root.querySelector('label[for="reads"]')?.textContent).toBe(READS.title);
+    expect(text()).toContain(READS.why);
+    noBadMarks();
+  });
+
+  it("on asks Chrome for exactly the six post sites from the click itself, then tells the worker", async () => {
+    await open();
+    buttonNamed('Settings').click();
+    model.permissionAnswer = true;
+    flip(true);
+    // Before anything is awaited: Chrome only asks on the user's gesture.
+    expect(model.requested).toEqual([POSTS]);
+    answers.state = state({ reads: true });
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'reads', on: true }));
+    await vi.waitFor(() => expect(toggle().checked).toBe(true));
+  });
+
+  it("Chrome's no leaves it off and says so; the worker is not told", async () => {
+    await open();
+    buttonNamed('Settings').click();
+    model.permissionAnswer = false;
+    flip(true);
+    await vi.waitFor(() => expect(text()).toContain(READS.denied));
+    expect(sent.some((m) => m.t === 'reads')).toBe(false);
+    expect(toggle().checked).toBe(false);
+  });
+
+  it('off tells the worker, asking Chrome nothing', async () => {
+    answers.state = state({ reads: true });
+    await open();
+    buttonNamed('Settings').click();
+    expect(toggle().checked).toBe(true);
+    answers.state = state({ reads: false });
+    flip(false);
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'reads', on: false }));
+    expect(model.requested).toEqual([]);
   });
 });

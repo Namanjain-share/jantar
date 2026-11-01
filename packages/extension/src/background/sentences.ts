@@ -36,3 +36,10 @@ export const SHOT = Object.freeze({
 
 /** "Not saved: <the daemon's sentence>". */
 export const notSaved = (sentence: string): string => `Not saved: ${sentence}`;
+
+/** v0.8: Read saved links, in the popup's words. */
+export const READS = Object.freeze({
+  title: 'Read saved links',
+  why: 'Opens posts you save to Intel (Instagram, YouTube, TikTok, X, Reddit, LinkedIn) in a muted background tab, as you, reads the post and closes the tab. Post links only, never other pages.',
+  denied: "Chrome didn't allow the post sites, so Read saved links stays off.",
+});

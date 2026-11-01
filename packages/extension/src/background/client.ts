@@ -27,6 +27,10 @@ export const EXT_ROUTES = Object.freeze({
   shot: { method: 'POST', path: '/v1/ext/meetings/:clientId/shots' },
   /** extMeetingEnd */
   end: { method: 'POST', path: '/v1/ext/meetings/:clientId/end' },
+  /** v0.8 extReadNext: the next post to read in this Chrome (a URL the daemon rebuilt), or null. */
+  readNext: { method: 'GET', path: '/v1/ext/reads/next' },
+  /** v0.8 extReadResult: what the tab read of that post, or why it could not. */
+  readResult: { method: 'POST', path: '/v1/ext/reads/:id' },
 } as const);
 
 export type Op = keyof typeof EXT_ROUTES;
@@ -56,14 +60,16 @@ export interface ClientDeps {
 }
 
 export interface Client {
-  /** A capture or info call with the stored key. */
-  call<T = unknown>(op: KeyedOp, req?: { clientId?: string; body?: unknown }): Promise<Reply<T>>;
+  /** A capture, info or read call with the stored key (`leaseId`: v0.8's read result). */
+  call<T = unknown>(op: KeyedOp, req?: { clientId?: string; leaseId?: string; body?: unknown }): Promise<Reply<T>>;
   /** The pairing claim on `port` (no key). */
   claim(port: number, code: string): Promise<Reply<{ id?: unknown; key?: unknown }>>;
 }
 
 /** A client id is a uuid the worker made; anything else never reaches a path. */
 const CLIENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** v0.8: a read lease's id, as the daemon's ExtReadIdSchema has it. */
+const LEASE_ID = /^[A-Za-z0-9_-]{8,64}$/;
 
 /** The daemon's sentence from an error body, else a plain one with the status. */
 async function sentenceOf(res: Response): Promise<string> {
@@ -80,12 +86,18 @@ async function sentenceOf(res: Response): Promise<string> {
 export function createClient(deps: ClientDeps): Client {
   const timeouts = deps.timeouts ?? { call: CALL_TIMEOUT_MS, shot: SHOT_TIMEOUT_MS };
 
-  async function send<T>(port: number, op: Op, clientId: string | undefined, body: unknown, key: string | null): Promise<Reply<T>> {
+  async function send<T>(port: number, op: Op, ids: { clientId?: string | undefined; leaseId?: string | undefined }, body: unknown, key: string | null): Promise<Reply<T>> {
     const route = EXT_ROUTES[op];
     let path: string = route.path;
     if (path.includes(':clientId')) {
+      const { clientId } = ids;
       if (!clientId || !CLIENT_ID.test(clientId)) throw new Error('bad client id');
       path = path.replace(':clientId', clientId);
+    }
+    if (path.includes(':id')) {
+      const { leaseId } = ids;
+      if (!leaseId || !LEASE_ID.test(leaseId)) throw new Error('bad lease id');
+      path = path.replace(':id', leaseId);
     }
     const headers: Record<string, string> = {};
     if (key) headers[EXTENSION_KEY_HEADER] = key;
@@ -98,7 +110,8 @@ export function createClient(deps: ClientDeps): Client {
         credentials: 'omit',
         headers,
         ...(route.method === 'POST' ? { body: JSON.stringify(body ?? {}) } : {}),
-        signal: AbortSignal.timeout(op === 'shot' ? timeouts.shot : timeouts.call),
+        // A screenshot and a read's result carry megabytes.
+        signal: AbortSignal.timeout(op === 'shot' || op === 'readResult' ? timeouts.shot : timeouts.call),
       });
     } catch {
       return { kind: 'down' };
@@ -116,10 +129,10 @@ export function createClient(deps: ClientDeps): Client {
   }
 
   return {
-    async call<T>(op: KeyedOp, req: { clientId?: string; body?: unknown } = {}): Promise<Reply<T>> {
+    async call<T>(op: KeyedOp, req: { clientId?: string; leaseId?: string; body?: unknown } = {}): Promise<Reply<T>> {
       const pairing: Pairing | null = await deps.keys.get();
       if (!pairing) return { kind: 'unpaired' };
-      const reply = await send<T>(pairing.port, op, req.clientId, req.body, pairing.key);
+      const reply = await send<T>(pairing.port, op, { clientId: req.clientId, leaseId: req.leaseId }, req.body, pairing.key);
       if (reply.kind === 'error' && reply.status === 401) {
         // Jantar no longer knows this key (unpaired at the Mac, idle 90 days, or a sixth extension paired).
         // Forget it only if it is still the one stored: a pairing that landed meanwhile stays.
@@ -133,7 +146,7 @@ export function createClient(deps: ClientDeps): Client {
       return reply;
     },
     claim(port, code) {
-      return send(port, 'claim', undefined, { code }, null);
+      return send(port, 'claim', {}, { code }, null);
     },
   };
 }

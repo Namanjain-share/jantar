@@ -10,6 +10,11 @@
  * when this tab's last try failed in the last 10 minutes. It never claims a
  * tab is allowed: opening the popup always grants this tab.
  *
+ * v0.8: Settings has the Read saved links switch (off by default). Turning
+ * it on asks Chrome for the six post sites on the click itself (Chrome asks
+ * only on a user gesture), then tells the worker; turning it off tells the
+ * worker only.
+ *
  * Built with DOM calls and textContent only (the page has no inline
  * script, no style attribute and no on* handler). No em dash, no
  * exclamation mark.
@@ -17,7 +22,8 @@
 import type { Done, FromPopup, LastShot, PopupState, ShotFrom } from '../shared/messages.js';
 import type { MeetingSite } from '../shared/sites.js';
 import { WIRE_LIMITS } from '../shared/wire.js';
-import { JOIN_FIRST, NOT_RUNNING, NO_MEETING_TAB, SHOT, TRY_AGAIN } from '../background/sentences.js';
+import { JOIN_FIRST, NOT_RUNNING, NO_MEETING_TAB, READS, SHOT, TRY_AGAIN } from '../background/sentences.js';
+import { postOrigins } from '../shared/post-sites.js';
 
 /** The sites' own way to turn captions on (the adapters' `howTo`, spec 3.4). */
 export const HOW_TO: Readonly<Record<MeetingSite, string>> = {
@@ -231,6 +237,26 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
       });
   }
 
+  /** v0.8: Read saved links. On: Chrome's prompt for the post sites, from the click itself; then the worker. */
+  function setReads(on: boolean): void {
+    if (busy) return;
+    if (!on) {
+      void act({ t: 'reads', on: false }).then(() => refresh());
+      return;
+    }
+    const asked = chrome.permissions.request({ origins: postOrigins() });
+    void asked
+      .catch(() => false)
+      .then(async (granted) => {
+        if (!granted) {
+          error = READS.denied;
+          return refresh();
+        }
+        await act({ t: 'reads', on: true });
+        return refresh();
+      });
+  }
+
   async function start(tab: Tab): Promise<void> {
     const d = draft ?? { name: defaultName(tab), projectId: '', people: '', autoTodos: false };
     const msg: FromPopup = {
@@ -367,9 +393,13 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
   function settingsView(s: PopupState): Node[] {
     const allowed = s.pageButton ? el('span', { class: 'quiet' }, 'Allowed') : button('Allow', allow);
     const detail = lastShotDetail(s.lastShot);
+    const box = el('input', { id: 'reads', type: 'checkbox', role: 'switch' });
+    box.checked = s.reads;
+    box.addEventListener('change', () => setReads(box.checked));
     return [
       el('h2', {}, 'Settings'),
       el('div', { class: 'row' }, el('span', {}, 'Screenshot button on meeting pages'), allowed),
+      el('div', { class: 'setting' }, el('label', { class: 'switch', for: 'reads' }, box, el('span', {}, READS.title)), para(READS.why, 'quiet')),
       el(
         'div',
         { class: 'row quiet' },

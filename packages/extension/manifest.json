@@ -2,13 +2,13 @@
   "manifest_version": 3,
   "name": "Jantar",
   "version": "0.8.0",
-  "description": "Saves Meet and Teams captions and your screenshots to Jantar on your Mac. Summaries send the transcript text to Claude.",
+  "description": "Meet and Teams captions, your screenshots, and posts you save to Intel, kept by Jantar on your Mac. Summaries use Claude.",
   "homepage_url": "https://github.com/Namanjain-share/jantar/blob/main/docs/extension.md",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwfVgu6Y3YOnNEaVRKzNNmE8TrO091D9VY+P5I1r4VsqslBbnT1SNIK5yFuO1/UNxXonVMw/9ZcG+3aeNk4IlUMGoeLoS/Byrbwft42BTQrEMI70x4M/qVX5+Yap7cVSd1Na0z9RHnkdfBYD4E4VM1YNap2J1RcfoB/EwdstDNt7qcbKYMgL9RrO6Mc/W4xxoL6E24zJYcJ8aYvxJstMeFf5+WhcLmMePAtJNrRQmyyLV6bZwZtMydZiNYACGVMpRYepZJlxql3AF83ZjRDqtljdIsTlPW65qPFlYXBud9HaQN84G6Tt6AlCYLBjjuaDO3c8W7uFxM6Z3VDaksdVgSQIDAQAB",
   "minimum_chrome_version": "120",
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "alarms", "scripting"],
   "host_permissions": ["http://127.0.0.1/*"],
-  "optional_host_permissions": ["<all_urls>"],
+  "optional_host_permissions": ["<all_urls>", "https://www.instagram.com/*", "https://www.youtube.com/*", "https://www.tiktok.com/*", "https://x.com/*", "https://www.reddit.com/*", "https://www.linkedin.com/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "content_scripts": [
     {

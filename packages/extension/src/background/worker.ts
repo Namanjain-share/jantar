@@ -5,6 +5,10 @@
  * works on every Chrome from 120; an ignored one gets no answer.
  *
  * The worker never logs caption text, names, titles, keys or images.
+ *
+ * v0.8: Read saved links (reads.ts): the popup's switch, the read alarm
+ * (`onAlarm`), and the alarm put back when the browser starts or the
+ * extension is installed or updated (`onStartup`).
  */
 import type { CallAnswer, Done, FromPopup, PopupState, ShotAnswer } from '../shared/messages.js';
 import { acceptPage, acceptPopup, onMeetingPage, type PageMessage } from './accept.js';
@@ -13,6 +17,7 @@ import { sendToTab, type Ctx } from './ctx.js';
 import { createLines, pickLines } from './lines.js';
 import { createMeetings } from './meetings.js';
 import { createPairing } from './pairing.js';
+import { createReads, type Reads } from './reads.js';
 import { MISMATCH, PAIR_AGAIN, SHOT, TRY_AGAIN } from './sentences.js';
 import { createShots, readLastShot } from './shots.js';
 import type { KeyStore } from './store.js';
@@ -25,6 +30,8 @@ export interface WorkerDeps {
   sleep?: (ms: number) => Promise<void>;
   uuid?: () => string;
   timeouts?: { call: number; shot: number };
+  /** v0.8: a read's own limits (tests shorten them). */
+  readLimits?: { jobMs?: number; completeMs?: number };
 }
 
 /** The command manifest.json names for the shortcut. */
@@ -38,8 +45,14 @@ export interface Worker {
   onMessage(msg: unknown, sender: chrome.runtime.MessageSender, respond: Respond): boolean;
   onCommand(command: string, tab?: chrome.tabs.Tab): void;
   onRemoved(tabId: number): void;
+  /** v0.8: chrome.alarms.onAlarm (the read alarm wakes the reads). */
+  onAlarm(alarm: { name: string }): void;
+  /** v0.8: chrome.runtime.onStartup and onInstalled: the read alarm back while the switch is on. */
+  onStartup(): void;
   /** What the popup shows (also its `state` answer). */
   popupState(tabId: number): Promise<PopupState>;
+  /** v0.8: Read saved links. */
+  readonly reads: Reads;
 }
 
 /** The info read's connection (spec 3.10, the notes' PopupState rules). */
@@ -104,13 +117,16 @@ export function createWorker(deps: WorkerDeps): Worker {
   const shots = createShots(ctx, meetings);
   const pairing = createPairing(ctx, meetings);
   onForgotten = () => pairing.forgotten(PAIR_AGAIN);
+  const readLimits = deps.readLimits;
+  const reads = createReads(ctx, readLimits ? { limits: readLimits } : {});
 
   async function popupState(tabId: number): Promise<PopupState> {
-    const [pairingNow, pageButton, shortcut, lastShot] = await Promise.all([
+    const [pairingNow, pageButton, shortcut, lastShot, readsOn] = await Promise.all([
       deps.keys.get(),
       chrome.permissions.contains({ origins: [ALL_URLS] }).catch(() => false),
       shortcutOf(),
       readLastShot(),
+      reads.on().catch(() => false),
     ]);
     let head: Pick<PopupState, 'connection' | 'sentence'> = { connection: 'unpaired' };
     let projects: PopupState['projects'] = null;
@@ -129,6 +145,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       projects,
       lastShot,
       shortcut,
+      reads: readsOn,
       tab: view
         ? {
             site: view.site,
@@ -171,6 +188,8 @@ export function createWorker(deps: WorkerDeps): Worker {
         return shots.take(msg.tabId, 'popup');
       case 'end':
         return meetings.end(msg.tabId);
+      case 'reads':
+        return reads.set(msg.on);
     }
   }
 
@@ -182,7 +201,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       if (t === 'shot') return { ok: false, text: SHOT.tryAgain } satisfies ShotAnswer;
       return undefined;
     }
-    if (t === 'state') return { connection: 'down', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '' } satisfies PopupState;
+    if (t === 'state') return { connection: 'down', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '', reads: false } satisfies PopupState;
     if (t === 'shot') return { ok: false, text: SHOT.tryAgain } satisfies ShotAnswer;
     return { ok: false, error: TRY_AGAIN } satisfies Done;
   }
@@ -212,7 +231,16 @@ export function createWorker(deps: WorkerDeps): Worker {
       void meetings.removed(tabId).catch(() => undefined);
     },
 
+    onAlarm(alarm) {
+      reads.onAlarm(alarm);
+    },
+
+    onStartup() {
+      reads.restore();
+    },
+
     popupState,
+    reads,
   };
 }
 

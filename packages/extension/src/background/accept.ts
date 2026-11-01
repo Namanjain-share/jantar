@@ -64,6 +64,8 @@ export function acceptPopup(msg: unknown, sender: Sender): FromPopup | null {
       return typeof msg.text === 'string' && msg.text.length <= 1_000 ? { t: 'pair', text: msg.text } : null;
     case 'unpair':
       return { t: 'unpair' };
+    case 'reads':
+      return typeof msg.on === 'boolean' ? { t: 'reads', on: msg.on } : null;
     case 'start':
       if (!isTabId(msg.tabId) || typeof msg.name !== 'string' || msg.name.length > 1_000 || typeof msg.autoTodos !== 'boolean') return null;
       if (!optionalString(msg.projectId, 64) || !optionalString(msg.people, 1_000)) return null;

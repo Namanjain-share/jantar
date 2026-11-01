@@ -58,7 +58,7 @@ describe('from the popup', () => {
   it('state: Jantar down, nothing known', async () => {
     w = setupWorker();
     w.keys.get = broken;
-    expect(await w.popup({ t: 'state', tabId: 7 })).toEqual({ connection: 'down', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '' });
+    expect(await w.popup({ t: 'state', tabId: 7 })).toEqual({ connection: 'down', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '', reads: false });
   });
 
   it('start, end, pair and unpair: "Something went wrong. Try again."', async () => {

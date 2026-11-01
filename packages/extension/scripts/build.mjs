@@ -13,9 +13,11 @@
  * packages/web/scripts/gen-icons.mjs draws them), and manifest.json with the
  * version from package.json. The test build differs only in its manifest:
  * Playwright cannot click the toolbar or answer a permission prompt, so
- * `<all_urls>` moves from optional_host_permissions into host_permissions
- * (test/bundle.test.ts diffs the two builds). The extension imports only
- * types from @jantar/protocol, so nothing of zod is bundled.
+ * the optional grants (`<all_urls>`, and v0.8's six post sites) move from
+ * optional_host_permissions into host_permissions (test/bundle.test.ts
+ * diffs the two builds). The extension imports only types from
+ * @jantar/protocol, plus its two zod-free subpaths (post-url and
+ * page-read), so nothing of zod is bundled.
  */
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';

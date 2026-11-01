@@ -118,6 +118,13 @@ label {
   font-size: 13px;
 }
 
+/* v0.8: one setting with its switch and a quiet line under it. */
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .stack label:not(:first-child) {
   margin-top: 4px;
 }

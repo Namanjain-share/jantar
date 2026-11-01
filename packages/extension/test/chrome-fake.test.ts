@@ -110,3 +110,54 @@ describe('the chrome fake', () => {
     expect(() => f.chrome.runtime.onMessage.addListener(() => undefined)).toThrow(INVALIDATED_ERROR);
   });
 });
+
+describe('the chrome fake, v0.8 (Read saved links)', () => {
+  it('reads the source manifest, keeps alarms and storage.local, and has the startup events', async () => {
+    const f = createChromeFake();
+    model = f.model;
+    expect(f.chrome.runtime.getManifest()).toMatchObject({ manifest_version: 3, permissions: ['activeTab', 'storage', 'alarms', 'scripting'] });
+    await f.chrome.alarms.create('a', { periodInMinutes: 0.5 });
+    expect(await f.chrome.alarms.get('a')).toEqual({ name: 'a', periodInMinutes: 0.5 });
+    expect(await f.chrome.alarms.clear('a')).toBe(true);
+    expect(await f.chrome.alarms.get('a')).toBeUndefined();
+    await f.chrome.storage.local.set({ k: true });
+    expect(await f.chrome.storage.local.get('k')).toEqual({ k: true });
+    expect(f.model.local.get('k')).toBe(true);
+    const seen: string[] = [];
+    f.chrome.runtime.onStartup.addListener(() => seen.push('startup'));
+    f.chrome.alarms.onAlarm.addListener((a) => seen.push(a.name));
+    f.chrome.runtime.onStartup.dispatch();
+    f.chrome.alarms.onAlarm.dispatch({ name: 'jantar-reads', scheduledTime: 0 });
+    expect(seen).toEqual(['startup', 'jantar-reads']);
+  });
+
+  it('navigates a tab with its scripted updates, removes it, and answers executeScript', async () => {
+    const f = createChromeFake();
+    model = f.model;
+    const tab = await f.chrome.tabs.create({ url: 'about:blank', active: false });
+    expect(tab).toMatchObject({ url: 'about:blank', active: false });
+    const updates: unknown[] = [];
+    f.chrome.tabs.onUpdated.addListener((id, info, t) => updates.push([id, info, t.url]));
+    await f.chrome.tabs.update(tab.id, { url: 'https://example.com/a', muted: true });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(updates).toEqual([
+      [tab.id, { status: 'loading', url: 'https://example.com/a' }, 'https://example.com/a'],
+      [tab.id, { status: 'complete' }, 'https://example.com/a'],
+    ]);
+    expect(f.model.tab(tab.id)).toMatchObject({ url: 'https://example.com/a', muted: true });
+    f.model.onScript = () => [{ frameId: 0, result: 42 }];
+    expect(await f.chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'ISOLATED', func: () => 42 })).toEqual([{ frameId: 0, result: 42 }]);
+    await f.chrome.tabs.remove(tab.id);
+    expect(f.model.removed).toEqual([tab.id]);
+    await expect(f.chrome.tabs.remove(tab.id)).rejects.toThrow('No tab with id');
+    await expect(f.chrome.scripting.executeScript({ target: { tabId: tab.id } })).rejects.toThrow('No tab with id');
+  });
+
+  it('<all_urls> granted covers every web origin', async () => {
+    const f = createChromeFake();
+    model = f.model;
+    expect(await f.chrome.permissions.contains({ origins: ['https://x.com/*'] })).toBe(false);
+    f.model.granted.add('<all_urls>');
+    expect(await f.chrome.permissions.contains({ origins: ['https://x.com/*'] })).toBe(true);
+  });
+});

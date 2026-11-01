@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe('the route table', () => {
   it("equals the protocol's extension routes, GET and POST only", () => {
-    const names = { info: 'extInfo', claim: 'extPairClaim', open: 'extMeetingOpen', lines: 'extMeetingLines', shot: 'extMeetingShot', end: 'extMeetingEnd' } as const;
+    const names = { info: 'extInfo', claim: 'extPairClaim', open: 'extMeetingOpen', lines: 'extMeetingLines', shot: 'extMeetingShot', end: 'extMeetingEnd', readNext: 'extReadNext', readResult: 'extReadResult' } as const;
     for (const [op, name] of Object.entries(names)) {
       const ours = EXT_ROUTES[op as keyof typeof EXT_ROUTES];
       expect({ method: ours.method, path: ours.path }, op).toEqual({ method: ROUTES[name].method, path: ROUTES[name].path });
