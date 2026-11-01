@@ -321,7 +321,8 @@ describe('v0.4.2 dialogs: the screen path and the keypad through the fake osascr
     // The audit row says what kind and which row, never the screen or the time.
     const row = d.ctx.db.audit.list({ after: 0, limit: 1000 }).filter((e) => e.action === 'sessionDialog').at(-1);
     expect(row?.params).toEqual({ sid: SID, option: 1, kind: 'permission', options: 2, role: 'pick', outcome: 'done' });
-    expect(JSON.stringify(row)).not.toMatch(/1:3\d|automatically block/u);
+    // Its own `ts` left out: a wall clock at 11:3x or xx:x1:3x would read as the countdown's time.
+    expect(JSON.stringify({ ...row, ts: undefined })).not.toMatch(/1:3\d|automatically block/u);
 
     // Two queued workflow prompts that differ only in their command: a tap for the first never answers the second.
     const first = await shown(screenOf('PERM_WORKFLOW_TWIN_A'));
