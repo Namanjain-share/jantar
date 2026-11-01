@@ -42,8 +42,10 @@ export function groupOf(g: GlyphState): GroupKey {
  * The glyph for a session. "Needs you" wins (an open card, or Claude says it
  * is waiting); a session moving between accounts keeps the working glyph.
  * v0.6.1: so does a session with a workflow or background agent running
- * (`backgroundRunning`): idle between turns reads as working, and nothing
- * updates `statusAt` during that wait, so it is never "no update".
+ * (`backgroundRunning`). Idle between turns it reads as working, and it is
+ * never "no update" while that work runs, mid-turn too: the session is
+ * running either way (even if a Stop was missed), and nothing it runs in the
+ * background updates `statusAt`.
  */
 export function glyphStateOf(state: State, session: Session, now: number, staleMs = STALE_MS): GlyphState {
   if (needsYou(state, session.sid)) return 'needs';

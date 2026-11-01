@@ -44,7 +44,7 @@ export function statusWord(session: Session, pending?: PendingRequest | null): s
   return STATUS_WORD[shownStatus(session)];
 }
 
-/** "status · folder · session", the label used on the board and in pushes. */
+/** "status · folder · session", the label `jantar status` and `jantar send` print. */
 export function sessionLabel(session: Session, pending?: PendingRequest | null): string {
   const name = session.name?.trim() || session.sid.slice(0, 8);
   return `${statusWord(session, pending)} · ${session.folder} · ${name}`;

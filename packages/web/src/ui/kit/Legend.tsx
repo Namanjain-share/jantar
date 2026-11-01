@@ -9,7 +9,7 @@ import { StatusGlyph } from './StatusGlyph.js';
 
 export const LEGEND: readonly { state: GlyphState; word: string; text: string }[] = [
   { state: 'needs', word: GLYPH_WORD.needs, text: 'Claude asked a question, wants permission for a tool, has a plan to approve, or is waiting in the terminal.' },
-  { state: 'working', word: GLYPH_WORD.working, text: 'Claude is running. The line under it is the tool it is using right now.' },
+  { state: 'working', word: GLYPH_WORD.working, text: 'Claude is running. The line under it is the tool it is using right now, or the work it runs in the background.' },
   { state: 'compacting', word: GLYPH_WORD.compacting, text: 'Claude is shrinking its context, then goes back to work on its own.' },
   { state: 'turn', word: GLYPH_WORD.turn, text: 'Claude finished and is waiting for your next prompt.' },
   { state: 'stale', word: GLYPH_WORD.stale, text: 'Still marked working, but nothing has come in for a while.' },
