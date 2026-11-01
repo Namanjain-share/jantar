@@ -113,9 +113,8 @@ limits trust (below).
   whatever that device's scopes read: session state, transcripts, the
   terminal screen peek and, with those parts on, files, Life, the shelf,
   meetings and Ask's history (medicine names and amounts as typed). For
-  that, prefer
-  the Tailscale HTTPS URL, use `jantar open --no-admin`, and revoke the Mac's
-  browser device when you are done with it.
+  that, prefer the Tailscale HTTPS URL, use `jantar open --no-admin`, and
+  revoke the Mac's browser device when you are done with it.
 - **Devices paired before the device secret existed** keep reading but get
   401 on every write and on the event stream (the app falls back to polling):
   pair them again (`jantar pair`, or `jantar open` on the Mac). The same
@@ -1171,12 +1170,12 @@ The daemon now reads a session's Terminal screen by itself, the way the
 Screen tab does, to see whether Claude's 2-minute auto-block countdown is
 running: when an unattended ask turns up (a subagent's card) or a session
 waits with no card. It reads at most once per session every 10 seconds,
-the repeat and the retry after a failed read included. It never types and takes no writer lock, and nothing it reads
-is kept: no screen text is logged, stored, emitted or pushed. With the
-terminal off (`--no-terminal`), with `notify.urgent` off
-(`jantar notify urgent off`), without `permission` in `notify.kinds`,
-while pushes are muted, or with every channel off (`notify.webpush` and
-the rest), nothing is read.
+the repeat and the retry after a failed read included. It never types and
+takes no writer lock, and nothing it reads is kept: no screen text is
+logged, stored, emitted or pushed. With the terminal off
+(`--no-terminal`), with `notify.urgent` off (`jantar notify urgent off`),
+without `permission` in `notify.kinds`, while pushes are muted, or with
+every channel off (`notify.webpush` and the rest), nothing is read.
 
 The Answer soon push it sends holds the folder's name, the time left and a
 fixed sentence (with `generic` bodies, the time left only), never the
