@@ -1,8 +1,8 @@
 /**
  * v0.6 native Windows (preview): the pipe names, on a real Windows machine.
- * The first of the windows-latest checks; the rest (W1-W8: the hooks pipe
- * end to end, the installer, a node-mode daemon on a Windows profile, the
- * printed schtasks lines) join this folder. Skipped on any other platform.
+ * W1-W8 (the hooks pipe end to end, the installer, a node-mode daemon on a
+ * Windows profile, the printed schtasks lines, the state dirs) are beside
+ * it (README.md). Skipped on any other platform.
  */
 import { describe, expect, it } from 'vitest';
 import { pipePath, resolvePaths } from '@jantar/daemon/config';

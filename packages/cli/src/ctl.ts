@@ -2,8 +2,11 @@
  * Client for the daemon's control socket (paths.ctlSock). The socket speaks
  * the same HTTP/1.1 JSON API as the web app (see @jantar/protocol ROUTES,
  * `ctl: true` routes only); the daemon treats the peer as actor "cli".
+ * v0.6: on Windows paths.ctlSock is the daemon's named pipe (config.ts
+ * pipePath), which node:http reaches the same way.
  */
 import { request as httpRequest } from 'node:http';
+import { isPipePath } from '@jantar/daemon/config';
 import { IDEMPOTENCY_HEADER, type ErrorBody } from '@jantar/protocol';
 
 export interface CtlResponse<T = unknown> {
@@ -16,9 +19,10 @@ export class CtlUnavailableError extends Error {
     readonly socketPath: string,
     readonly causeCode: string | undefined,
   ) {
+    const what = isPipePath(socketPath) ? 'control pipe' : 'control socket';
     super(
       causeCode === 'ENOENT' || causeCode === 'ECONNREFUSED'
-        ? `jantard is not running (no control socket at ${socketPath}). Start it with: jantar install`
+        ? `jantard is not running (no ${what} at ${socketPath}). Start it with: jantar install`
         : `cannot reach jantard at ${socketPath}: ${causeCode ?? 'unknown error'}`,
     );
     this.name = 'CtlUnavailableError';

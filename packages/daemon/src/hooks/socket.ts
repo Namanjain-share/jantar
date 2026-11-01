@@ -1,5 +1,9 @@
 /**
  * The hooks socket: a Unix stream socket (0600 in a 0700 dir; never TCP).
+ * v0.6: on Windows a named pipe instead (config.ts pipePath; the default
+ * pipe DACL gives the owner, admins and SYSTEM full control and everyone
+ * else read only, so no other user can send an event): no file, so no dir,
+ * mode, stale file or unlink.
  * One event per connection, written by the client as one JSON line.
  *
  * - Async events: the client writes and half-closes; the daemon never replies.
@@ -13,7 +17,7 @@ import { createConnection, createServer, type Server, type Socket } from 'node:n
 import { chmod, lstat, mkdir, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { Logger } from '../contracts.js';
-import { socketPathOk } from '../config.js';
+import { isPipePath, socketPathOk } from '../config.js';
 
 export const MAX_HOOK_LINE_BYTES = 2 * 1024 * 1024;
 
@@ -142,11 +146,14 @@ export async function listenHookSocket(opts: HookSocketOptions): Promise<HookSoc
   const firstLineMs = opts.firstLineTimeoutMs ?? 5000;
   const maxConns = opts.maxConnections ?? 1024;
   if (!socketPathOk(path)) throw new Error(`hooks socket path is too long for macOS (max 103 bytes): ${path}`);
+  const pipe = isPipePath(path);
 
-  const dir = dirname(path);
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await chmod(dir, 0o700);
-  await clearStale(path);
+  if (!pipe) {
+    const dir = dirname(path);
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await chmod(dir, 0o700);
+    await clearStale(path);
+  }
 
   const conns = new Set<HookConn>();
   const server: Server = createServer({ allowHalfOpen: false }, (socket) => {
@@ -230,7 +237,9 @@ export async function listenHookSocket(opts: HookSocketOptions): Promise<HookSoc
   });
 
   await new Promise<void>((resolve, reject) => {
-    const onError = (e: Error) => reject(e);
+    const onError = (e: NodeJS.ErrnoException) =>
+      // A pipe has no stale file to probe: a second daemon on it fails here.
+      reject(pipe && e.code === 'EADDRINUSE' ? new Error(`another process is already listening on ${path}`) : e);
     server.once('error', onError);
     server.listen(path, () => {
       server.off('error', onError);
@@ -238,8 +247,11 @@ export async function listenHookSocket(opts: HookSocketOptions): Promise<HookSoc
     });
   });
   server.on('error', (e) => log.error('hooks socket error', { error: e.message }));
-  await chmod(path, 0o600);
-  const ino = (await lstat(path)).ino;
+  let ino = 0;
+  if (!pipe) {
+    await chmod(path, 0o600);
+    ino = (await lstat(path)).ino;
+  }
 
   return {
     path,
@@ -247,6 +259,7 @@ export async function listenHookSocket(opts: HookSocketOptions): Promise<HookSoc
     async close() {
       for (const c of conns) c.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      if (pipe) return;
       // Remove the socket file, unless another daemon has replaced it since.
       try {
         const st = await lstat(path);

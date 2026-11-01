@@ -3,7 +3,9 @@
 //
 // Claude Code starts this program once per hook event and writes the event
 // JSON to its stdin. The client adds the `_jantar` tag and forwards the event
-// to the daemon's Unix socket, <state dir>/run/hooks.sock. The state dir is
+// to the daemon's Unix socket, <state dir>/run/hooks.sock (on Windows, v0.6:
+// the daemon's named pipe, \\.\pipe\jantar-<hash of the state dir>-hooks,
+// named as the daemon names it). The state dir is
 // $JANTAR_HOME (or the old $CCW_V2_HOME) when set; else, for the installed
 // copy (<state dir>/bin/jantar-hook), the dir it was installed in, since
 // Claude's sessions do not have JANTAR_HOME; else ~/.jantar.
@@ -111,22 +113,27 @@
   var argv = process.argv.slice(2);
   var waitFlag = argv.indexOf('--wait') !== -1;
 
+  /** v0.6: Windows has no Unix sockets; the daemon listens on a named pipe (its name needs node:crypto). */
+  var WINDOWS = process.platform === 'win32';
+
   var builtin = typeof process.getBuiltinModule === 'function' ? process.getBuiltinModule.bind(process) : null;
   if (!builtin) {
     // Node older than 22.3 / 20.16: fall back to dynamic import (valid in both module systems).
-    Promise.all([import('node:net'), import('node:os'), import('node:path')]).then(
+    var loading = [import('node:net'), import('node:os'), import('node:path')];
+    if (WINDOWS) loading.push(import('node:crypto'));
+    Promise.all(loading).then(
       function (mods) {
-        run(mods[0], mods[1], mods[2]);
+        run(mods[0], mods[1], mods[2], mods[3]);
       },
       function () {
         finish();
       },
     );
   } else {
-    run(builtin('node:net'), builtin('node:os'), builtin('node:path'));
+    run(builtin('node:net'), builtin('node:os'), builtin('node:path'), WINDOWS ? builtin('node:crypto') : undefined);
   }
 
-  function run(net, os, path) {
+  function run(net, os, path, crypto) {
     // Non-waiting runs have one hard deadline. Waiting runs only limit stdin
     // and connect; after that Claude's own hook timeout (86400 s) applies.
     if (!waitFlag) setTimeout(finish, ASYNC_DEADLINE_MS).unref();
@@ -149,8 +156,21 @@
       var blocking = waitFlag && !subagent;
       if (subagent && waitFlag) setTimeout(finish, ASYNC_DEADLINE_MS).unref();
 
-      send(net, path.join(stateDir(os, path), 'run', 'hooks.sock'), line, blocking);
+      var dir = stateDir(os, path);
+      send(net, WINDOWS ? pipeName(path, crypto, dir, 'hooks') : path.join(dir, 'run', 'hooks.sock'), line, blocking);
     });
+  }
+
+  /**
+   * v0.6: the daemon's named pipe on Windows, the same four lines as its
+   * pipePath (packages/daemon/src/config.ts): the state dir resolved, written
+   * with backslashes, without a trailing one, lower-cased; the first 16 hex
+   * of its sha256. Every spelling of one state dir gives one name.
+   */
+  function pipeName(path, crypto, dir, kind) {
+    var norm = path.win32.resolve(dir).replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+    var hash = crypto.createHash('sha256').update(norm).digest('hex').slice(0, 16);
+    return '\\\\.\\pipe\\jantar-' + hash + '-' + kind;
   }
 
   /** $JANTAR_HOME (or $CCW_V2_HOME), else the dir of an installed copy (<state dir>/bin/jantar-hook), else ~/.jantar. */
