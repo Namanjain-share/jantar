@@ -521,15 +521,26 @@ describe('what holds it', () => {
     expect(r.sent.map((x) => `${String(x.payload.group)}|${String(x.payload.title)}`)).toEqual(['needs|demo-app needs you']);
   });
 
-  it('the mute holds it, and notify.kinds without permission drops it', async () => {
+  it('the mute or no channel on holds it with no read, and notify.kinds without permission drops it', async () => {
+    // Muted: no push could go out (the waiting push is held the same way), so nothing is read.
     const r = await rig();
     await r.ctx.settings.patch({ notify: { muted_until: r.ctx.clock.iso(r.ctx.clock.now() + 30 * 60 * S) } });
     r.ask(110);
     subagentCard(r);
     waiting(r);
     await r.tick(3 * S);
-    expect(r.terminal.reads).toBe(1);
+    expect(r.terminal.reads).toBe(0);
+    expect(r.panes.asked).toEqual([]);
     expect(r.sent).toEqual([]);
+
+    // Web Push off, the only channel here: no read and nothing sent.
+    const w = await rig({ notify: { webpush: false } });
+    w.ask(110);
+    subagentCard(w);
+    waiting(w);
+    await w.tick(3 * S);
+    expect(w.terminal.reads).toBe(0);
+    expect(w.sent).toEqual([]);
 
     // Without permission in the kinds the urgent push could never go: no read, and a question's wait is pushed.
     const k = await rig({ notify: { kinds: ['question', 'send-failed'] } });

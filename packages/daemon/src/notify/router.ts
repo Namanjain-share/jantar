@@ -19,8 +19,9 @@
  *   `notify.webpush|mac|telegram`. Life pushes do not come through here
  *   (life/push.ts sends them with direct.ts), but if one ever did, mute
  *   still could not silence a medicine.
- * - v0.5.3, the urgent alert (countdown.ts, while `notify.urgent` is on and
- *   `notify.kinds` holds permission, the kind it goes out as): when a
+ * - v0.5.3, the urgent alert (countdown.ts, while `notify.urgent` is on,
+ *   `notify.kinds` holds permission, the kind it goes out as, nothing is
+ *   muted and a channel is on): when a
  *   subagent-info card opens (once more while it is open if the read
  *   failed), and before a waiting push, the session's screen is read once
  *   for Claude's 2-minute auto-block countdown. One ask gets one urgent
@@ -464,10 +465,15 @@ export class NotificationRouterImpl implements NotificationRouter {
 
   // ---- the urgent alert (v0.5.3) ------------------------------------------------
 
-  /** notify.urgent, and permission in notify.kinds: without it the urgent push could never go out, so nothing is read. */
+  /**
+   * notify.urgent, permission in notify.kinds, no mute and a channel on:
+   * without them the urgent push could never go out, so nothing is read.
+   * The waiting push is held the same way (allowed()), so none goes instead.
+   */
   private urgentOn(): boolean {
     const n = this.ctx.settings.get().notify;
-    return n.urgent && n.kinds.includes('permission');
+    if (!n.urgent || !n.kinds.includes('permission') || isMuted(n, this.ctx.clock.now())) return false;
+    return this.deps.notifiers.some((x) => this.channelOn(x));
   }
 
   private onUrgent(u: UrgentPush): void {

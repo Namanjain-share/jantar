@@ -144,7 +144,7 @@ export interface UrgentPush {
 export interface CountdownWatchDeps {
   clock: Clock;
   probe: CountdownProbe;
-  /** notify.urgent (and permission in notify.kinds), asked before every probe. */
+  /** notify.urgent (with permission in notify.kinds, no mute and a channel on), asked before every probe. */
   enabled: () => boolean;
   push: (u: UrgentPush) => void;
   /** Async work in flight (the router's whenIdle and stop wait for it). */
