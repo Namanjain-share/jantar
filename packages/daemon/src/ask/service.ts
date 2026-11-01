@@ -6,23 +6,27 @@
  * first; anyone else asking for one gets not_found. Nothing is written to
  * disk: not life.db (its nightly backups never hold chat text) and no file
  * of its own, since a message can name a medicine or an amount. Pruned on
- * every send and list, every owner's: the newest ASK_TURNS_KEPT each, none
- * older than ASK_KEEP_DAYS. Clear forgets one device's, the switch turning
- * off and stop() forget everyone's, so a restart forgets them too; items
- * already added stay in Life.
+ * every send and list and every hour, every owner's: the newest
+ * ASK_TURNS_KEPT each, and an older one while an item it added can still
+ * be undone (ASK_APPLY_WITHIN_MS: Undo never vanishes inside its day);
+ * none older than ASK_KEEP_DAYS. Clear forgets one device's, the switch
+ * turning off and stop() forget everyone's, so a restart forgets them too;
+ * items already added stay in Life.
  *
  * The queue: `queued -> running -> done | failed | cancelled`, one
  * unfinished turn per device, one run at a time daemon-wide, oldest first.
  * `kick()` never runs inside the caller's request. An epoch and `live()`
  * (as meetings/summary.ts) mean a run that ends after Cancel, Clear, the
- * switch turning off or stop() keeps nothing.
+ * switch turning off or stop() keeps nothing. stop() waits for the run it
+ * killed (as Rewrite), so its audit row is written before later parts stop.
  *
  * The run is Ask Claude's (life/food/estimate.ts) on the shared runner
  * (rewrite/run.ts): Rewrite's isolation flags, the env scrub, an empty 0700
  * cwd under paths.askDir emptied before each run, our system prompt as a
  * file (assets/ask/assistant-v1.md), the input on stdin only (input.ts),
  * the account from rewrite/pick.ts (never a kept or held one; account 0
- * with `claude -p` directly on one login). Rewrite's model and fallback,
+ * with `claude -p` directly on one login; a read of ccw's hold list that
+ * hangs ends at Cancel or ASK_TIMEOUT_MS). Rewrite's model and fallback,
  * read when the run starts, at low effort, ASK_TIMEOUT_MS, the runner's
  * budget cap. No adopt step and no second account. A refused option the
  * run can do without is learned in this part's own set.
@@ -59,7 +63,7 @@ import {
   type AskWriteAction,
   type RewriteModel,
 } from '@jantar/protocol';
-import type { Actor, AskService, CcwLegacySource, DaemonContext, LifeResult, LifeService, Logger, Unsubscribe, UsageSource } from '../contracts.js';
+import type { Actor, AskService, CcwLegacySource, DaemonContext, LifeResult, LifeService, Logger, TimerId, Unsubscribe, UsageSource } from '../contracts.js';
 import { actorId } from '../core/actor.js';
 import { newId } from '../core/ids.js';
 import { pickSharedRunAccount, runVia } from '../rewrite/pick.js';
@@ -69,8 +73,10 @@ import { askInput } from './input.js';
 
 /** Low effort: a short answer from a short input. */
 export const ASK_EFFORT = 'low';
-/** It runs in the background; the phone shows "Asking Claude…" with Cancel meanwhile. */
+/** It runs in the background; the phone shows "Asking Claude…" with Cancel meanwhile. The account pick has as long again. */
 export const ASK_TIMEOUT_MS = 90_000;
+/** Turns are pruned this often too, so none stays in memory long past ASK_KEEP_DAYS when nobody opens Ask. */
+export const ASK_SWEEP_MS = 60 * 60_000;
 /** Bump with the prompt's text; the audit row records it. */
 export const ASK_PROMPT_VERSION = 'v1';
 export const ASK_PROMPT_ASSET = `ask/assistant-${ASK_PROMPT_VERSION}.md`;
@@ -97,13 +103,14 @@ export interface AskOptions {
 /** How a run ended, as its audit row says it. */
 type AuditOutcome = 'ok' | 'unavailable' | 'no_account' | 'timeout' | 'unreadable' | 'failed' | 'cancelled' | 'stopped';
 
-/** One run of the queue. `epoch` is the part's when it began; `why` says who stopped it. */
+/** One run of the queue. `epoch` is the part's when it began; `why` says who stopped it; `done` settles when it has ended. */
 interface Run {
   owner: string;
   turnId: string;
   epoch: number;
   abort: AbortController;
   why?: 'cancelled' | 'stopped';
+  done?: Promise<void>;
 }
 
 type Refusal = Extract<LifeResult, { ok: false }>;
@@ -161,6 +168,7 @@ class AskServiceImpl implements AskService {
   /** Refused options already logged ("" for one that couldn't be read). */
   private readonly logged = new Set<string>();
   private unsubscribe: Unsubscribe | null = null;
+  private sweep: TimerId | undefined;
   private readonly log: Logger;
   private readonly readOnly: boolean;
 
@@ -180,12 +188,17 @@ class AskServiceImpl implements AskService {
         this.changed();
       }
     });
+    this.sweep ??= this.ctx.clock.setInterval(() => this.pruneAll(), ASK_SWEEP_MS);
   }
 
   async stop(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.ctx.clock.clearInterval(this.sweep);
+    this.sweep = undefined;
+    const run = this.running;
     this.forgetAll('stopped');
+    await run?.done;
   }
 
   list(actor: Actor): LifeResult<AskList> {
@@ -199,7 +212,8 @@ class AskServiceImpl implements AskService {
   send(text: string, actor: Actor): LifeResult<{ id: string }> {
     const owner = actorId(actor);
     const message = text.trim();
-    if (!message || message.length > ASK_TEXT_MAX) return refuse('invalid_request', ASK_SENTENCES.noText);
+    if (!message) return refuse('invalid_request', ASK_SENTENCES.noText);
+    if (message.length > ASK_TEXT_MAX) return refuse('invalid_request', ASK_SENTENCES.tooLong);
     const notReady = this.notReady();
     if (notReady) return notReady;
     this.pruneAll();
@@ -247,7 +261,7 @@ class AskServiceImpl implements AskService {
       return refuse('invalid_request', ASK_SENTENCES.editProject);
     }
     const wanted = edit ?? action;
-    const checked = checkWrite(wanted, this.scope(turn.text, false), { noProject: card.flag === 'no_project' });
+    const checked = checkWrite(wanted, this.now(), { noTime: card.flag === 'no_time', noProject: card.flag === 'no_project' });
     if (!checked.ok) return refuse('invalid_request', checked.reason);
     const off = this.moduleOff(checked.action);
     if (off) return off;
@@ -323,12 +337,23 @@ class AskServiceImpl implements AskService {
     return this.ctx.clock.now() - Date.parse(turn.at) > ASK_APPLY_WITHIN_MS;
   }
 
-  /** The owner's newest ASK_TURNS_KEPT, none older than ASK_KEEP_DAYS. */
+  /** A card of `turn` added an item that Undo can still remove. */
+  private undoable(turn: AskTurn): boolean {
+    return !this.tooOld(turn) && turn.cards.some((c) => c.state === 'added');
+  }
+
+  /**
+   * The owner's newest ASK_TURNS_KEPT, and any older one while it is
+   * undoable (at most a day's sends: the day budget bounds them); none older
+   * than ASK_KEEP_DAYS.
+   */
   private prune(owner: string): void {
     const list = this.turns.get(owner);
     if (!list) return;
     const cutoff = this.ctx.clock.now() - ASK_KEEP_DAYS * DAY_MS;
-    const kept = list.filter((t) => Date.parse(t.at) >= cutoff).slice(-ASK_TURNS_KEPT);
+    const recent = list.filter((t) => Date.parse(t.at) >= cutoff);
+    const newest = recent.length - ASK_TURNS_KEPT;
+    const kept = recent.filter((t, i) => i >= newest || this.undoable(t));
     if (kept.length === 0) this.turns.delete(owner);
     else if (kept.length !== list.length) this.turns.set(owner, kept);
   }
@@ -408,15 +433,15 @@ class AskServiceImpl implements AskService {
     return { today: dayKeyOf(at, z.timezone), now: hhmmOf(at, z.timezone), ...z };
   }
 
-  /** What the rules check against now. `projects`: read the project names (the parse matches them; Add needs none). */
-  private scope(text: string, projects = true): AskScope {
+  /** What the parse checks an answer against now (Add needs only today and now). */
+  private scope(text: string): AskScope {
     const life = this.ctx.settings.get().life;
     const { today, now } = this.now();
     return {
       today,
       now,
       modules: { todos: life.todos, food: life.food, finance: life.finance, medicines: life.medicines },
-      projects: projects && life.todos ? this.projects() : [],
+      projects: life.todos ? this.projects() : [],
       remind: asksReminder(text),
     };
   }
@@ -491,7 +516,7 @@ class AskServiceImpl implements AskService {
     const run: Run = { ...next, epoch: this.epoch, abort: new AbortController() };
     this.running = run;
     // Never inside the caller's own request: the send that queued it answers first.
-    void Promise.resolve()
+    run.done = Promise.resolve()
       .then(() => this.run(run))
       .catch((e: unknown) => {
         this.log.error('ask: a run failed', { error: errorKind(e) });
@@ -526,12 +551,18 @@ class AskServiceImpl implements AskService {
       this.finish(run, { failed: 'unavailable' });
       return;
     }
-    const account = await pickSharedRunAccount(ctx, { usage: this.deps.usage, ccwLegacy: this.deps.ccwLegacy, log: this.log });
+    const picking = ctx.clock.now();
+    const account = await this.pick(run);
     const turn = this.live(run);
-    if (!turn) return;
-    if (account === null) {
-      this.audit(run, { ...counts, ms: 0, account: null, outcome: 'no_account' });
-      this.finish(run, { failed: 'no_account' });
+    if (!turn || account === 'cancelled') {
+      // Cancel, Clear, the switch or stop() while the account was picked: nothing ran.
+      this.audit(run, { ...counts, ms: 0, account: null, outcome: run.why ?? 'cancelled' });
+      return;
+    }
+    if (account === null || account === 'timeout') {
+      const outcome = account === null ? 'no_account' : 'timeout';
+      this.audit(run, { ...counts, ms: account === null ? 0 : Math.max(0, ctx.clock.now() - picking), account: null, outcome });
+      this.finish(run, { failed: outcome });
       return;
     }
     const life = s.life;
@@ -574,6 +605,30 @@ class AskServiceImpl implements AskService {
     this.audit(run, { ...counts, ms, account, outcome: kind, cards: answer?.cards.length ?? 0, dropped: answer?.dropped ?? 0 });
     this.log.info('ask: run ended', { outcome: kind, ms, cards: answer?.cards.length ?? 0, dropped: answer?.dropped ?? 0 });
     this.finish(run, answer ?? { failed: kind });
+  }
+
+  /**
+   * The run's account (null: none has room), or the pick cut short: at
+   * Cancel, Clear, the switch or stop() ('cancelled'), or after
+   * ASK_TIMEOUT_MS ('timeout'). A read of ccw's hold list that hangs never
+   * holds the queue; it is left to end on its own.
+   */
+  private async pick(run: Run): Promise<AccountId | null | 'cancelled' | 'timeout'> {
+    const { signal } = run.abort;
+    let timer: TimerId | undefined;
+    let onAbort = () => {};
+    const cut = new Promise<'cancelled' | 'timeout'>((resolve) => {
+      onAbort = () => resolve('cancelled');
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+      timer = this.ctx.clock.setTimeout(() => resolve('timeout'), ASK_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([pickSharedRunAccount(this.ctx, { usage: this.deps.usage, ccwLegacy: this.deps.ccwLegacy, log: this.log }), cut]);
+    } finally {
+      this.ctx.clock.clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+    }
   }
 
   /** The run's last state, when it still counts: done with the answer, or failed with its sentence; a tick. */

@@ -16,12 +16,12 @@ import { readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ASK_MESSAGES, claudeCalls, claudeSignals, makeFakeHome, processAlive, type FakeHome } from '@jantar/fixtures';
-import { ASK_REPLY_MAX, AskTurnSchema, type Account, type AccountId } from '@jantar/protocol';
+import { ASK_REPLY_MAX, AskTurnSchema } from '@jantar/protocol';
 import { ASK_SENTENCES } from '../../src/ask/answer.js';
 import { askInput } from '../../src/ask/input.js';
 import { ASK_TIMEOUT_MS } from '../../src/ask/service.js';
 import { rewriteArgv } from '../../src/rewrite/run.js';
-import { LEAKY_ENV, NOW, PHONE, TODAY, TOMORROW, WAIT, cleanTemps, makeAskRig, send, type AskRig, type RigOptions } from './helpers.js';
+import { LEAKY_ENV, PHONE, TODAY, TOMORROW, WAIT, account, cleanTemps, makeAskRig, send, type AskRig, type RigOptions } from './helpers.js';
 
 let home: FakeHome | undefined;
 let rig: AskRig | undefined;
@@ -48,23 +48,6 @@ function setMode(mode: string, extra: Record<string, unknown> = {}): void {
 function flag(args: readonly string[], name: string): string | undefined {
   const i = args.indexOf(name);
   return i < 0 ? undefined : args[i + 1];
-}
-
-function account(id: AccountId, five: number): Account {
-  return {
-    id,
-    emailMasked: `a${id}***@example.com`,
-    isDefaultLogin: false,
-    disabled: false,
-    held: false,
-    usageStatus: 'ok',
-    fetchedAt: NOW,
-    ageS: 0,
-    windows: [
-      { kind: 'five_hour', pct: five },
-      { kind: 'seven_day', pct: 20 },
-    ],
-  };
 }
 
 /** Send and wait for the end. */

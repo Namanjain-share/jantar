@@ -6,7 +6,9 @@
  * switch, --read-only (askSend only: it spends quota), parsed the params
  * and the strict bodies, and counted every write against
  * s.lifeWriteLimiter. askSend also counts against s.askLimiter (10 a
- * minute) and s.askDayBudget (100 a day) per device, as Ask Claude does.
+ * minute) and s.askDayBudget (100 a day) per device: both are checked
+ * first and counted only once the part takes the message, so a refusal
+ * (busy, not ready) spends neither.
  *
  * Write replies carry ids only (`{ id }`: the turn's for askSend, the new
  * item's for askAdd; else `{ ok }`), so the idempotency cache never keeps
@@ -41,14 +43,18 @@ export const ASK_ROUTE_IMPLS: RouteTable = {
     handle: (c: Call<unknown, unknown, AskSendBody>, s) => {
       const actor = needActor(c.auth);
       const who = actorName(c.auth);
-      for (const [limiter, message] of [
+      const limits = [
         [s.askLimiter, ASK_SEND_LIMITED],
         [s.askDayBudget, ASK_SEND_DAY_LIMITED],
-      ] as const) {
-        const limited = limiter.hit(who);
+      ] as const;
+      for (const [limiter, message] of limits) {
+        const limited = limiter.check(who);
         if (!limited.ok) throw new ApiError('rate_limited', message, { 'retry-after': String(Math.max(1, Math.ceil(limited.retryAfterMs / 1000))) });
       }
-      return lifeValue(s.deps.ask.send(c.body.text, actor));
+      // A refusal throws here, before anything is counted.
+      const sent = lifeValue(s.deps.ask.send(c.body.text, actor));
+      for (const [limiter] of limits) limiter.hit(who);
+      return sent;
     },
     audit: lifeAudit,
   },

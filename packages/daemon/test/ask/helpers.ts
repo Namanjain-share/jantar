@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { vi } from 'vitest';
 import type { FakeHome } from '@jantar/fixtures';
-import { SettingsSchema, type Account, type AskTurn, type LifeStatus, type Settings } from '@jantar/protocol';
+import { SettingsSchema, type Account, type AccountId, type AskTurn, type LifeStatus, type Settings } from '@jantar/protocol';
 import type { Actor, AskService, Bins, ExecFile, FinanceModule, FoodModule, LifeService, TodosModule } from '../../src/contracts.js';
 import { buildAskService } from '../../src/ask/service.js';
 import { FakeClock } from '../../src/core/clock.js';
@@ -22,7 +22,7 @@ import { TEST_BINS, createFakeExec, createTestContext, createTestLifeCore, type 
 import { buildFinanceModule } from '../../src/life/finance/module.js';
 import { buildFoodModule } from '../../src/life/food/module.js';
 import { buildTodosModule } from '../../src/life/todos/module.js';
-import { makeFakes } from '../api/fakes.js';
+import { makeFakes, type FakeCcwLegacy, type FakeUsage } from '../api/fakes.js';
 
 /** 14:05 in Asia/Kolkata, Sun 2026-11-01. */
 export const NOW = '2026-11-01T08:35:00.000Z';
@@ -76,6 +76,9 @@ export interface AskRig {
   food: FoodModule;
   finance: FinanceModule;
   ask: AskService;
+  /** The fakes the account pick reads (usage, ccw's hold list). */
+  usage: FakeUsage;
+  ccwLegacy: FakeCcwLegacy;
   /** Fake exec runs waiting for an answer (empty with a fake home). */
   held: HeldRun[];
   setBroken(reason: string | null): void;
@@ -86,6 +89,24 @@ export interface AskRig {
   /** Wait until the fake exec holds `n` runs. */
   heldCount(n: number): Promise<void>;
   close(): Promise<void>;
+}
+
+/** A cswap account with `five` % of its 5-hour window used (synthetic). */
+export function account(id: AccountId, five: number): Account {
+  return {
+    id,
+    emailMasked: `a${id}***@example.com`,
+    isDefaultLogin: false,
+    disabled: false,
+    held: false,
+    usageStatus: 'ok',
+    fetchedAt: NOW,
+    ageS: 0,
+    windows: [
+      { kind: 'five_hour', pct: five },
+      { kind: 'seven_day', pct: 20 },
+    ],
+  };
 }
 
 /** `claude -p --output-format json`'s success line for `result`. */
@@ -105,6 +126,8 @@ export interface AskParts {
   food: FoodModule;
   finance: FinanceModule;
   ask: AskService;
+  usage: FakeUsage;
+  ccwLegacy: FakeCcwLegacy;
   setBroken(reason: string | null): void;
 }
 
@@ -144,6 +167,8 @@ export function askOn(ctx: TestContext, opts: { readOnly?: boolean } = {}): AskP
     food,
     finance,
     ask,
+    usage: f.usage,
+    ccwLegacy: f.ccwLegacy,
     setBroken: (reason) => {
       broken = reason;
     },
@@ -195,7 +220,7 @@ export async function makeAskRig(opts: RigOptions = {}): Promise<AskRig> {
   }
   if (opts.accounts) ctx.store.emit({ type: 'usage.updated', data: { accounts: opts.accounts, activeAccount: null, fetchedAt: NOW, source: 'cache' } });
   const parts = askOn(ctx, { readOnly: opts.readOnly === true });
-  const { core, life, todos, food, finance, ask } = parts;
+  const { core, life, todos, food, finance, ask, usage, ccwLegacy } = parts;
   await ask.start();
   const turn = (id: string, actor: Actor = PHONE) => {
     const r = ask.list(actor);
@@ -209,6 +234,8 @@ export async function makeAskRig(opts: RigOptions = {}): Promise<AskRig> {
     food,
     finance,
     ask,
+    usage,
+    ccwLegacy,
     held,
     setBroken: parts.setBroken,
     turn,

@@ -6,8 +6,10 @@
  * - The due rules end to end: a time with no day at 09:00 is tomorrow, at
  *   18:00 today; daily at 09:00 with no day is tomorrow 09:00 with no flag;
  *   weekly moves 7 days; monthly from the 31st lands on the next month's
- *   last day; a one-off today at 09:00 is past_time. Adding the daily one
- *   arms its ping at tomorrow 09:00 in the zone; Undo clears it.
+ *   last day; a one-off today at 09:00 is past_time, and so is today's
+ *   18:00 tapped after midnight. Adding the daily one arms its ping at
+ *   tomorrow 09:00 in the zone; Undo clears it. no_time stays at Add
+ *   until an edit gives the todo a time.
  * - Add calls the module with the tapping device (Life's checks, pings and
  *   tick apply), keeps the new id on the card; Undo deletes it (an item
  *   already deleted counts as removed). Skip is final. A second Add, an Add
@@ -116,6 +118,28 @@ describe('the due rules (FakeClock at 14:05 in the Life zone)', () => {
     const added = rig.ask.add(id, 0, undefined, PHONE);
     expect(rig.turn(id)?.cards[0]).toMatchObject({ state: 'added', flag: 'past_time' });
     expect(added.ok && todoRow(rig, added.value.id)).toBeNull();
+  });
+
+  it("today's 18:00 tapped after midnight is added for yesterday and flagged past_time; it does not ring", async () => {
+    rig = await makeAskRig();
+    const id = await answered(rig, [{ type: 'todo', title: 'Call back', time: '18:00' }]);
+    expect(rig.turn(id)?.cards[0]?.flag).toBeUndefined();
+    rig.ctx.clock.advance(10 * 60 * 60_000); // 00:05 the next day
+    const added = rig.ask.add(id, 0, undefined, PHONE);
+    expect(added.ok).toBe(true);
+    expect(rig.turn(id)?.cards[0]).toMatchObject({ state: 'added', flag: 'past_time', action: { due: { day: TODAY, time: '18:00' } } });
+    expect(added.ok && todoRow(rig, added.value.id)).toBeNull();
+  });
+
+  it('no_time stays at Add while the todo has no time; an edit that gives it one clears it', async () => {
+    rig = await makeAskRig();
+    const id = await answered(rig, [{ type: 'todo', title: 'Call mum' }, { type: 'todo', title: 'Pay rent' }], 'remind me to call mum and pay rent');
+    expect(rig.turn(id)?.cards.map((c) => c.flag)).toEqual(['no_time', 'no_time']);
+    expect(rig.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
+    expect(rig.turn(id)?.cards[0]).toMatchObject({ state: 'added', flag: 'no_time' });
+    const edited = rig.ask.add(id, 1, { type: 'todo', title: 'Pay rent', due: { day: TOMORROW, time: '09:00' } }, PHONE);
+    expect(edited.ok).toBe(true);
+    expect(rig.turn(id)?.cards[1]).toEqual({ action: { type: 'todo', title: 'Pay rent', due: { day: TOMORROW, time: '09:00' } }, state: 'added', ref: edited.ok ? edited.value.id : '' });
   });
 });
 

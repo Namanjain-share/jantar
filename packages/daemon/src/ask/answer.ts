@@ -13,23 +13,28 @@
  *   first ASK_CARDS_MAX are read; every one after counts as dropped.
  * - Every string: control and bidi characters stripped (rewrite/guards.ts
  *   CONTROL), line ends made spaces (notes keep them), trimmed, then too
- *   long or empty drops the action (it is never cut).
+ *   long or empty drops the action (it is never cut). Nothing visible
+ *   (only spaces and zero-width or other format characters) is empty.
  * - Days are real days from a week back to 400 days on; food and money are
  *   never after today. A todo's day and time are placed in this order:
  *   (1) a time and no day, no repeat: today if the time is still ahead,
  *   else tomorrow; (2) a repeat and no day: today; then settleDue: (3) a
  *   repeat whose start is not after now steps on, as Done does
  *   (life-core nextRepeat), until it is (Life never rings a repeating todo
- *   whose time passed); (4) a one-off for today at a time not after now
- *   keeps its day and is flagged past_time.
+ *   whose time passed); (4) a one-off whose time is not after now (today
+ *   at a time gone, or any earlier day) keeps its day and is flagged
+ *   past_time.
+ * - no_time: the message asked for a reminder (remind, yaad, याद) and no
+ *   todo in the answer has a time; then each todo without one says so.
+ *   One todo with a time answers the ask: the others are plain todos.
  * - A project is matched by name (trimmed, any case; active, then paused,
  *   then done projects; the first hit), never by an id the model wrote.
  * - Money: the amount in the currency's units becomes hundredths
  *   (₹250 is 25000), the category one of DEFAULT_CATEGORIES[kind] (any
- *   case) or 'Other'.
+ *   case) or 'Other' (any other name, however long).
  * - The reply: controls stripped, trimmed and cut to ASK_REPLY_MAX with
- *   its "…" counted (as rewrite/context.ts clip). Plain text: the phone
- *   never renders it as Markdown or links.
+ *   its "…" counted (as rewrite/context.ts clip); nothing visible is no
+ *   reply. Plain text: the phone never renders it as Markdown or links.
  *
  * `checkWrite` runs the same rules on a card's action (or the phone's edit
  * of it) again at Add, against the time then. Nothing here logs.
@@ -38,6 +43,7 @@ import { nextRepeat, shiftDay } from '@jantar/life-core';
 import {
   ASK_CARDS_MAX,
   ASK_REPLY_MAX,
+  ASK_TEXT_MAX,
   AskActionSchema,
   AskWriteActionSchema,
   DEFAULT_CATEGORIES,
@@ -70,6 +76,7 @@ export const ASK_SENTENCES = {
   busy: 'Wait for the answer, or cancel it.',
   empty: "I couldn't find anything to add. Try saying it another way.",
   noText: 'Type a message first.',
+  tooLong: `Keep a message to ${ASK_TEXT_MAX} characters.`,
   noTurn: 'No such message.',
   noCard: 'No such suggestion.',
   notDone: 'Wait for the answer.',
@@ -101,7 +108,7 @@ export interface AskScope {
   now: string;
   modules: { todos: boolean; food: boolean; finance: boolean; medicines: boolean };
   projects: readonly AskProject[];
-  /** The message asked for a reminder (remind, reminder, yaad): a todo with no time is flagged no_time. */
+  /** The message asked for a reminder (remind, reminder, yaad, याद): see no_time. */
   remind: boolean;
 }
 
@@ -121,15 +128,16 @@ const NOTES_MAX = 2000;
 const PROJECT_MAX = 60;
 const FOOD_NAME_MAX = 80;
 const KCAL_MAX = 10_000;
-/** A category as written (Life's own cap); it is mapped to a fixed name anyway. */
-const CATEGORY_MAX = 24;
 const MONEY_NOTE_MAX = 200;
 const AMOUNT_MAX = 1e12;
 /** A runaway guard for settleDue's steps (a week back takes 8 daily steps). */
 const SETTLE_STEPS_MAX = 1000;
 
 const FENCE = /^```[A-Za-z]*\s*\n([\s\S]*?)\n?```$/;
-const REMIND = /\b(?:remind\w*|yaad)\b/i;
+// \b is ASCII-only, so याद is matched as it is.
+const REMIND = /\b(?:remind\w*|yaad)\b|याद/i;
+/** Nothing a person can see: spaces, zero-width and other format characters (U+200B, U+FEFF, joiners), the Hangul fillers and the blank Braille cell. */
+const BLANK = /^[\s\p{Cf}\u115f\u1160\u2800\u3164\uffa0]*$/u;
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -139,10 +147,11 @@ export function asksReminder(text: string): boolean {
   return REMIND.test(text);
 }
 
-/** Line ends normalised, controls stripped; other line ends made spaces unless `lines`. */
+/** Line ends normalised, controls stripped; other line ends made spaces unless `lines`; nothing visible is empty. */
 function cleanString(s: string, lines: boolean): string {
   const t = s.replace(LINE_END, '\n').replace(CONTROL, '');
-  return (lines ? t : t.replace(/\n/g, ' ')).trim();
+  const out = (lines ? t : t.replace(/\n/g, ' ')).trim();
+  return BLANK.test(out) ? '' : out;
 }
 
 /** Left out, a bad value, or the value. */
@@ -197,9 +206,10 @@ function startsAfterNow(due: Due, scope: Pick<AskScope, 'today' | 'now'>): boole
  * Rules (3) and (4): a repeating todo that would start at or before now
  * steps on to its next day, as Done moves it (daily +1 day, weekly +7,
  * monthly the same date next month, clamped to the month's end), until it
- * starts after now; a one-off for today at a time not after now keeps its
- * day and is flagged past_time (it won't ring). Run by the parse and again
- * by Add.
+ * starts after now; a one-off whose time is not after now (today at a time
+ * gone, or a day before today: the model wrote one, or a card for today
+ * was tapped after midnight) keeps its day and is flagged past_time (it
+ * won't ring). Run by the parse and again by Add.
  */
 export function settleDue(a: AskTodoAction, scope: Pick<AskScope, 'today' | 'now'>): { action: AskTodoAction; flag?: 'past_time' } {
   const due = a.due;
@@ -210,16 +220,18 @@ export function settleDue(a: AskTodoAction, scope: Pick<AskScope, 'today' | 'now
     for (let i = 0; i < SETTLE_STEPS_MAX && !startsAfterNow({ ...due, day }, scope); i++) day = nextRepeat({ freq }, day, day);
     return { action: day === due.day ? a : { ...a, due: { ...due, day } } };
   }
-  if (due.day === scope.today && due.time !== undefined && due.time <= scope.now) return { action: a, flag: 'past_time' };
+  if (due.time !== undefined && !startsAfterNow(due, scope)) return { action: a, flag: 'past_time' };
   return { action: a };
 }
 
-/** One flag a card shows: past_time, else no_time (a reminder asked for with no time), else no_project. */
-function todoFlag(a: AskTodoAction, past: boolean, scope: Pick<AskScope, 'remind'>, noProject: boolean): AskFlag | undefined {
+/** One flag a card shows: past_time, else no_time (`noTime`, and still no time), else no_project. */
+function todoFlag(a: AskTodoAction, past: boolean, noTime: boolean, noProject: boolean): AskFlag | undefined {
   if (past) return 'past_time';
-  if (scope.remind && a.due?.time === undefined) return 'no_time';
+  if (noTime && a.due?.time === undefined) return 'no_time';
   return noProject ? 'no_project' : undefined;
 }
+
+const untimedTodo = (a: AskAction): boolean => a.type === 'todo' && a.due?.time === undefined;
 
 /** The project named `name`: trimmed, any case; active, then paused, then done; the first hit. */
 export function matchProject(name: string, projects: readonly AskProject[]): string | undefined {
@@ -279,7 +291,8 @@ function readTodo(o: Obj, scope: AskScope): Read | null {
     ...(r !== undefined ? { repeat: r } : {}),
   };
   const settled = settleDue(action, scope);
-  const flag = todoFlag(settled.action, settled.flag !== undefined, scope, project !== undefined && projectId === undefined);
+  // no_time is the whole answer's (parseAnswer).
+  const flag = todoFlag(settled.action, settled.flag !== undefined, false, project !== undefined && projectId === undefined);
   return { action: settled.action, ...(flag ? { flag } : {}) };
 }
 
@@ -305,7 +318,8 @@ function readMoney(o: Obj, scope: AskScope): Read | null {
   if (!onlyKeys(o, MONEY_KEYS)) return null;
   const kind = enumField(o.kind, ['expense', 'income'] as const);
   const amount = numberField(o.amount);
-  const category = textField(o.category, CATEGORY_MAX);
+  // Any length: it is mapped to a fixed name (else 'Other') anyway.
+  const category = textField(o.category, Number.POSITIVE_INFINITY);
   const note = textField(o.note, MONEY_NOTE_MAX);
   const day = pastDay(o.day, scope);
   if (kind === undefined || kind === BAD || amount === undefined || amount === BAD || category === undefined || category === BAD) return null;
@@ -351,9 +365,9 @@ export function readAction(raw: unknown, scope: AskScope): Read | null {
   return read && AskActionSchema.safeParse(read.action).success ? read : null;
 }
 
-/** The reply as a turn keeps it: controls stripped, trimmed, at most ASK_REPLY_MAX with its "…". */
+/** The reply as a turn keeps it: controls stripped, trimmed, at most ASK_REPLY_MAX with its "…"; nothing visible is ''. */
 export function replyOf(text: string): string {
-  const cut = clip(text.replace(LINE_END, '\n').replace(CONTROL, '').trim(), ASK_REPLY_MAX);
+  const cut = clip(cleanString(text, true), ASK_REPLY_MAX);
   // Never half of a surrogate pair before the "…".
   return cut.length === ASK_REPLY_MAX && /[\uD800-\uDBFF]…$/.test(cut) ? `${cut.slice(0, -2)}…` : cut;
 }
@@ -382,6 +396,10 @@ export function parseAnswer(result: string, scope: AskScope): ParsedAnswer | nul
     }
     cards.push({ action: read.action, state: 'proposed', ...(read.flag ? { flag: read.flag } : {}) });
   }
+  // A reminder asked for and no todo given a time: each todo without one says so (over no_project).
+  if (scope.remind && cards.every((c) => c.action.type !== 'todo' || untimedTodo(c.action))) {
+    for (const c of cards) if (untimedTodo(c.action)) c.flag = 'no_time';
+  }
   const reply = replyOf(value.reply);
   if (reply) return { reply, cards, dropped };
   return cards.length > 0 ? { cards, dropped } : { reply: ASK_SENTENCES.empty, cards, dropped };
@@ -394,9 +412,10 @@ export type Checked = { ok: true; action: AskWriteAction; flag?: AskFlag } | { o
  * Add: the card form's schema, real days in range, food and money not
  * after today, and settleDue for a todo (a repeating one whose time passed
  * since the answer moves to its next day; past_time is worked out again).
+ * `noTime`: the card said no_time (it stays while there is still no time);
  * `noProject`: the card had a project name that matched none.
  */
-export function checkWrite(a: AskWriteAction, scope: Pick<AskScope, 'today' | 'now' | 'remind'>, opts: { noProject?: boolean } = {}): Checked {
+export function checkWrite(a: AskWriteAction, scope: Pick<AskScope, 'today' | 'now'>, opts: { noTime?: boolean; noProject?: boolean } = {}): Checked {
   const parsed = AskWriteActionSchema.safeParse(a);
   if (!parsed.success) return { ok: false, reason: ASK_SENTENCES.badItem };
   const action = parsed.data;
@@ -404,7 +423,7 @@ export function checkWrite(a: AskWriteAction, scope: Pick<AskScope, 'today' | 'n
     if (action.repeat && !action.due) return { ok: false, reason: ASK_SENTENCES.badItem };
     if (action.due && !dayInRange(action.due.day, scope.today)) return { ok: false, reason: ASK_SENTENCES.badDay };
     const settled = settleDue(action, scope);
-    const flag = todoFlag(settled.action, settled.flag !== undefined, scope, opts.noProject === true && settled.action.projectId === undefined);
+    const flag = todoFlag(settled.action, settled.flag !== undefined, opts.noTime === true, opts.noProject === true && settled.action.projectId === undefined);
     return { ok: true, action: settled.action, ...(flag ? { flag } : {}) };
   }
   if (!dayInRange(action.day, scope.today)) return { ok: false, reason: ASK_SENTENCES.badDay };

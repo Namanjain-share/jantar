@@ -10,7 +10,9 @@
  *   taps still work.
  * - askSend is 202 `{ id }`; an Idempotency-Key replay is the same turn
  *   and no second run; 10 a minute and 100 a day per device (429 with
- *   their sentences); every Ask write counts against the Life write limit.
+ *   their sentences), counted only for a message the part takes (busy and
+ *   not ready spend neither); every Ask write counts against the Life
+ *   write limit.
  * - A full turn: send, list, Add, Skip, Undo, Clear, with the replies and
  *   audit rows (the turn's id only) and the errors' codes.
  */
@@ -50,6 +52,8 @@ interface Opts {
   readOnly?: boolean;
   /** What each claude run answers (default: one todo). */
   answer?: (call: ExecCall) => string;
+  /** Each claude run waits for this before it answers (default: none). */
+  gate?: Promise<void>;
 }
 
 /** The API with the Ask part on a fake exec whose claude answers at once; a paired control device. */
@@ -59,7 +63,8 @@ async function askApi(opts: Opts = {}) {
   const exec = createFakeExec((call) => {
     if (call.file !== TEST_BINS.claude) return undefined;
     runs.push(call);
-    return { stdout: claudeJson(answer(call)) };
+    const out = { stdout: claudeJson(answer(call)) };
+    return opts.gate ? opts.gate.then(() => out) : out;
   });
   const state = mkdtempSync(join(tmpdir(), 'jantar-ask-api-'));
   temps.push(state);
@@ -252,6 +257,33 @@ describe('limits', () => {
     expect(limited.json().error).toEqual({ code: 'rate_limited', message: ASK_SEND_DAY_LIMITED });
     expect(ASK_SEND_DAY_LIMITED).toBe('This device has asked 100 times today. Try again tomorrow.');
   }, 60_000);
+
+  it('a refused send spends neither limit: busy (409) and not ready (503) over and over, then ten still run this minute', async () => {
+    let open = () => {};
+    const gate = new Promise<void>((res) => {
+      open = res;
+    });
+    const { call, settled } = await askApi({ gate });
+    const first = await call('POST', '/v1/ask', { text: 'todo add one' });
+    expect(first.statusCode).toBe(202);
+    for (let i = 0; i < ASK_LIMITS.send.limit + 2; i++) {
+      const busy = await call('POST', '/v1/ask', { text: 'todo add two' });
+      expect(busy.json().error, `busy ${i + 1}`).toEqual({ code: 'conflict', message: ASK_SENTENCES.busy });
+    }
+    open();
+    await settled(IdReplySchema.parse(first.json()).id);
+    const p = parts as AskParts;
+    p.setBroken('Life data needs attention (synthetic).');
+    for (let i = 0; i < ASK_LIMITS.send.limit + 2; i++) expect((await call('POST', '/v1/ask', { text: 'todo add two' })).statusCode, `broken ${i + 1}`).toBe(503);
+    p.setBroken(null);
+    // One of ten used: nine more, then the 429.
+    for (let i = 1; i < ASK_LIMITS.send.limit; i++) {
+      const r = await call('POST', '/v1/ask', { text: `todo add task ${i}` });
+      expect(r.statusCode, `message ${i + 1}`).toBe(202);
+      await settled(IdReplySchema.parse(r.json()).id);
+    }
+    expect((await call('POST', '/v1/ask', { text: 'todo add one more' })).json().error).toEqual({ code: 'rate_limited', message: ASK_SEND_LIMITED });
+  });
 
   it('every Ask write counts against the Life write limit (its own sentence); reads do not', async () => {
     const { api, call } = await askApi();

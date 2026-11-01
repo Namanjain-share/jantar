@@ -38,7 +38,7 @@ export const ASK_TEXT_MAX = 1000;
 export const ASK_REPLY_MAX = 500;
 /** Cards in one answer at most (every action after the 10th is dropped). */
 export const ASK_CARDS_MAX = 10;
-/** Turns kept per device, in the daemon's memory only. */
+/** Turns kept per device, in the daemon's memory only (an older one too while an item it added can still be undone). */
 export const ASK_TURNS_KEPT = 30;
 /** No turn is kept longer than this. */
 export const ASK_KEEP_DAYS = 7;
@@ -86,8 +86,8 @@ export type AskAction = z.infer<typeof AskActionSchema>;
 
 /**
  * Why a card says more (the phone words it): a one-off reminder whose time
- * passed today (it won't ring), a reminder asked for with no time, a project
- * name with no project.
+ * has passed (today, or a day before today: it won't ring), a reminder asked
+ * for and no time given, a project name with no project.
  */
 export const AskFlagSchema = z.enum(['past_time', 'no_time', 'no_project']);
 export type AskFlag = z.infer<typeof AskFlagSchema>;

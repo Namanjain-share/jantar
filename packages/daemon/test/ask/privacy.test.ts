@@ -2,11 +2,16 @@
  * Ask's privacy (spec 6, 11; 12.2 "privacy"), over the real pipeline with
  * the real exec against a fake home: ASK_MARKER, sent in what the phone
  * types through every fake Ask mode (and the taps on its cards), never
- * reaches an event, an audit row, a log line or a write reply. It comes
- * back only in the owner's `GET /v1/ask`; no file under the Jantar home
- * holds it after the runs (the fake claude's own call log sits outside it,
- * in its root); it is gone from GET after Clear and after the switch
- * turns off.
+ * reaches an event, an audit row, a log line or a write reply (each read
+ * directly). It comes back only in the owner's `GET /v1/ask`; it is gone
+ * from GET after Clear and after the switch turns off.
+ *
+ * The file sweep is narrower than it reads: here jantar.db and life.db are
+ * in memory (createTestContext, askOn), so it covers the ask/ run dir and
+ * any other loose file under the Jantar home (the fake claude's own call
+ * log sits outside it, in its root). The on-disk jantar.db, life.db and
+ * logs are swept by test/integration/v053-ask.integration.test.ts, on a
+ * real daemon.
  */
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -125,7 +130,7 @@ describe('the marker', () => {
     expect(markersIn(t.ctx.log.records, ask)).toEqual([]);
     expect(markersIn(replies, ask)).toEqual([]);
     expect(markersIn(await list(other.cookie), ask)).toEqual([]);
-    // No file under the Jantar home holds it: the run dir has the prompt copy and an empty work/ only.
+    // No loose file under the Jantar home holds it (the dbs are in memory here: see the top): the run dir has the prompt copy and an empty work/ only.
     expect(relative(fh.jantarHome, join(fh.root, 'calls')).startsWith('..')).toBe(true);
     const files = filesUnder(fh.jantarHome);
     expect(files.map((f) => relative(fh.jantarHome, f)).filter((f) => f.startsWith('ask'))).toEqual([join('ask', 'assistant-v1.md')]);

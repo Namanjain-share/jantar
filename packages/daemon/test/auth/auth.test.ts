@@ -46,6 +46,20 @@ describe('SlidingWindowLimiter', () => {
     for (let i = 0; i < 20; i++) l.hit(`k${i}`);
     expect(l.size()).toBeLessThanOrEqual(5);
   });
+
+  it('check answers as hit would and records nothing', () => {
+    const clock = new FakeClock();
+    const l = new SlidingWindowLimiter({ limit: 2, windowMs: 60_000, clock });
+    for (let i = 0; i < 5; i++) expect(l.check('a')).toEqual({ ok: true, remaining: 2 });
+    expect(l.hit('a')).toEqual({ ok: true, remaining: 1 });
+    expect(l.check('a')).toEqual({ ok: true, remaining: 1 });
+    expect(l.hit('a').ok).toBe(true);
+    clock.advance(10_000);
+    expect(l.check('a')).toEqual({ ok: false, retryAfterMs: 50_000 });
+    expect(l.hit('a')).toEqual({ ok: false, retryAfterMs: 50_000 });
+    clock.advance(50_001);
+    expect(l.check('a')).toEqual({ ok: true, remaining: 2 });
+  });
 });
 
 describe('DeviceAuth', () => {
