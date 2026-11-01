@@ -3,7 +3,7 @@
  *
  *   Food                                    +
  *   ‹  Thu 30 Oct  ›                          DayNav, › stops at today
- *   1,240 / 2,000 kcal         ▬▬▬▬▬▬───      "/ 2,000" opens the target sheet
+ *   1,240 / 1,500 kcal         ▬▬▬▬▬▬▬──      "/ 1,500" opens the target sheet
  *   72.4 kg · -0.6 in 7 days · goal 70.0      opens the weight sheet ("Log weight" with none)
  *   08:40  Poha                     280       tap edits; ··· Delete (5 s Undo)
  *   [+ Add food]                              Type | Saved | Ask Claude
@@ -128,7 +128,7 @@ function unbroken(line: string): string {
     .join(' · ');
 }
 
-/** "1,240 / 2,000 kcal" over a 2 px bar; the target opens its sheet; past it, "+240 over" in --ink-2. */
+/** "1,240 / 1,500 kcal" over a 2 px bar; the target opens its sheet; past it, "+240 over" in --ink-2. */
 function Totals({ day, onTarget }: { day: FoodDay; onTarget: () => void }) {
   const over = day.kcal - day.target;
   return (
