@@ -399,8 +399,9 @@ picture, the pairing QR, the sounds and the hook cards each behind
 Background work: a session idle between turns while a dynamic workflow or
 background agent it started still runs. `sources/transcripts/background.ts`
 (`BackgroundScanner`, pure) replays the main transcript's launches and ends
-(main chain only, rows older than the claude process ignored) and checks
-them against Claude's own count in each `turn_duration` row; the watcher
+(main chain only, rows older than the claude process ignored, recently
+ended ids kept so an end written before its launch wins) and checks them
+against Claude's own count in each `turn_duration` row; the watcher
 feeds it the bytes it already reads and publishes the optional
 `Session.background` (`SessionBackgroundSchema`: counts of workflows,
 agents, shells and monitors, `since`, up to three workflow names) on every

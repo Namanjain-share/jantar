@@ -6,10 +6,12 @@
  * (run_in_background, or moved to the background on a timeout) and Monitor
  * tools, and SendMessage resuming an agent. Ends are a TaskStop result, a
  * `<task-notification>` that has a `<status>` (queued, or the user row that
- * starts a turn with it), and `agents_killed`. Claude's own count in each
- * `turn_duration` row corrects what replay missed: a stop from Claude's task
- * panel leaves no row, and a launch before the first read (a daemon restart)
- * is a count with no name.
+ * starts a turn with it), and `agents_killed`. Recently ended ids are kept,
+ * so a launch whose end was written first (a fast shell) never counts.
+ * Claude's own count in each `turn_duration` row corrects what replay missed
+ * (an end with no row read here), and counts, with no name, what launched
+ * before the first read (a daemon restart): that count holds until the next
+ * one, or until one of those workflows ends (workflow ids start with "w").
  *
  * Main chain only, and only ids launched in it: the main transcript also
  * queues the notifications of tasks that subagents and workflow agents
@@ -61,6 +63,8 @@ function failed(e: Obj): boolean {
 
 export class BackgroundScanner {
   private readonly tasks = new Map<string, Task>();
+  /** Recently ended ids, oldest first (at most BACKGROUND_TASKS_MAX). */
+  private readonly ended = new Set<string>();
   private unknown: Floor | null = null;
 
   /** One transcript row, in file order. Rows before `procStart` (epoch ms) are ignored. */
@@ -121,23 +125,44 @@ export class BackgroundScanner {
     } else if (r.status === 'async_launched' && typeof r.agentId === 'string' && typeof r.description === 'string') {
       this.add(r.agentId, { kind: 'agent', at }); // the description is never kept
     } else if (r.success === true && typeof r.resumedAgentId === 'string') {
+      this.ended.delete(r.resumedAgentId); // a resumed agent runs again
       this.add(r.resumedAgentId, { kind: 'agent', at });
     } else if (typeof r.backgroundTaskId === 'string' && typeof r.stdout === 'string') {
       this.add(r.backgroundTaskId, { kind: 'shell', at });
     } else if (typeof r.taskId === 'string' && num(r.timeoutMs) !== undefined) {
       this.add(r.taskId, r.persistent === true ? { kind: 'monitor', at } : { kind: 'monitor', at, until: at + (num(r.timeoutMs) ?? 0) });
     } else if (typeof r.task_id === 'string' && typeof r.message === 'string' && r.message.startsWith('Successfully stopped task')) {
-      this.tasks.delete(r.task_id);
+      this.end(r.task_id);
     }
   }
 
+  /** A launch, unless its end was already read; past the cap the oldest shell or monitor goes first. */
   private add(id: string, task: Task): void {
+    if (this.ended.has(id)) return;
     this.tasks.delete(id);
     if (this.tasks.size >= BACKGROUND_TASKS_MAX) {
-      const oldest = this.tasks.keys().next().value;
-      if (oldest !== undefined) this.tasks.delete(oldest);
+      const all = [...this.tasks];
+      const drop = all.find(([, t]) => t.kind === 'shell' || t.kind === 'monitor') ?? all[0];
+      if (drop) this.tasks.delete(drop[0]);
     }
     this.tasks.set(id, task);
+  }
+
+  /**
+   * One task's end, read once (a notification is both queued and the turn it
+   * starts). A workflow never seen launching lowers the unnamed count: only
+   * the main chain launches workflows. An agent's end does not, because the
+   * main transcript also gets the ends of agents its subagents launched.
+   */
+  private end(id: string): void {
+    if (!id || this.ended.has(id)) return;
+    if (!this.tasks.delete(id) && id.startsWith('w') && this.unknown && this.unknown.workflows > 0) {
+      this.unknown.workflows -= 1;
+      if (!this.unknown.workflows && !this.unknown.agents) this.unknown = null;
+    }
+    this.ended.add(id);
+    const oldest = this.ended.values().next().value;
+    if (this.ended.size > BACKGROUND_TASKS_MAX && oldest !== undefined) this.ended.delete(oldest);
   }
 
   /** Ends every task id of each complete notification that has a status (a monitor's event has none). */
@@ -146,7 +171,7 @@ export class BackgroundScanner {
     for (const m of text.matchAll(NOTIFICATION)) {
       const block = m[1] ?? '';
       if (!STATUS.test(block)) continue;
-      for (const id of block.matchAll(TASK_ID)) this.tasks.delete((id[1] ?? '').trim());
+      for (const id of block.matchAll(TASK_ID)) this.end((id[1] ?? '').trim());
     }
   }
 

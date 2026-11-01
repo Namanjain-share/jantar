@@ -167,6 +167,33 @@ describe('BackgroundScanner', () => {
     expect(snap(both)).toEqual({ workflows: 2, since: iso(1), names: ['demo-sweep'] });
   });
 
+  it("a workflow's end with no launch read lowers the unnamed count once; an agent's does not", () => {
+    const W0 = 'wdemozzzz';
+    const sc = scanned([
+      turnDuration(ctx(5000), { workflows: 2, agents: 1 }),
+      enqueue(9000, taskNotification(W0, 'completed')),
+      taskNotificationTurn(ctx(9001), taskNotification(W0, 'completed')), // the same end, as the turn it starts
+      enqueue(9500, taskNotification('a1111111111111111', 'completed')), // a subagent's agent, maybe
+    ]);
+    expect(snap(sc)).toEqual({ workflows: 1, agents: 1, since: iso(5000) });
+
+    const last = scanned([turnDuration(ctx(5000), { workflows: 1 }), enqueue(9000, taskNotification(W0, 'failed'))]);
+    expect(snap(last)).toEqual({});
+  });
+
+  it('an end written before its launch: the launch never counts, and a resumed agent still does', () => {
+    const sc = scanned([
+      enqueue(0, taskNotification([B1, W1, M1], 'completed')),
+      ...launch(1, shellLaunched(B1)),
+      ...launch(2, workflowLaunched(W1, 'demo-sweep')),
+      ...launch(3, monitorStarted(M1, 600_000, true)),
+    ]);
+    expect(snap(sc)).toEqual({});
+    sc.scan(enqueue(10, taskNotification(A1, 'completed')), START);
+    for (const e of launch(20, { success: true, message: 'Synthetic', resumedAgentId: A1 })) sc.scan(e, START);
+    expect(snap(sc)).toEqual({ agents: 1, since: iso(21) });
+  });
+
   it('agents_killed ends the agents launched before it', () => {
     const sc = scanned([
       ...launch(0, agentLaunched(A1)),
@@ -177,7 +204,7 @@ describe('BackgroundScanner', () => {
     expect(snap(sc)).toEqual({ workflows: 1, agents: 1, since: iso(11), names: ['demo-sweep'] });
   });
 
-  it('ages out after 24 h, and keeps the newest 64 tasks of 70', () => {
+  it('ages out after 24 h, keeps the newest 64 tasks of 70, and drops shells before a workflow', () => {
     const sc = scanned(launch(0, workflowLaunched(W1, 'demo-sweep')));
     expect(snap(sc, T + BACKGROUND_MAX_AGE_MS)).toMatchObject({ workflows: 1 });
     expect(snap(sc, T + BACKGROUND_MAX_AGE_MS + 2)).toEqual({});
@@ -189,6 +216,10 @@ describe('BackgroundScanner', () => {
     expect(snap(many)).toEqual({ shells: 64 });
     many.scan(enqueue(5000, taskNotification(ids[69]!, 'completed')), START);
     expect(snap(many)).toEqual({ shells: 63 });
+
+    // past the cap, shells and monitors go before a workflow
+    const kept = scanned([...launch(0, workflowLaunched(W1, 'demo-sweep')), ...ids.flatMap((id, i) => launch(10 + i * 10, shellLaunched(id)))]);
+    expect(snap(kept)).toEqual({ workflows: 1, shells: 63, since: iso(1), names: ['demo-sweep'] });
   });
 
   it('names: the first line, clipped to 80, newest first, at most 3', () => {
