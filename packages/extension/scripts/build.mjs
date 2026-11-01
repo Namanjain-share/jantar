@@ -17,7 +17,9 @@
  * optional_host_permissions into host_permissions (test/bundle.test.ts
  * diffs the two builds). The extension imports only types from
  * @jantar/protocol, plus its two zod-free subpaths (post-url and
- * page-read), so nothing of zod is bundled.
+ * page-read), so nothing of zod is bundled. Those two are bundled from
+ * their source (the `@jantar/source` condition tsconfig and vitest use),
+ * so a protocol dist left from an older build never ships a stale reader.
  */
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -68,6 +70,7 @@ export async function buildExtension({ outDir, test = false } = {}) {
       bundle: true,
       format,
       platform: 'browser',
+      conditions: ['@jantar/source'],
       target: 'chrome120',
       minify: false,
       sourcemap: false,

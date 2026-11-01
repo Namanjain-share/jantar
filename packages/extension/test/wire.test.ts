@@ -67,6 +67,7 @@ describe('wire', () => {
       pollEveryMs: 30_000,
       jobsPerWake: 5,
       jobMs: 45_000,
+      blankMs: 2_000,
       completeMs: 20_000,
       settleMs: 2_500,
       frames: 4,

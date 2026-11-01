@@ -75,6 +75,8 @@ export const READ_LIMITS = Object.freeze({
   jobsPerWake: 5,
   /** One job, start to result (INTEL_READ_LIMITS.chromeResultMs). */
   jobMs: 45_000,
+  /** A new tab's about:blank loading, at most, before the post's URL goes in. */
+  blankMs: 2_000,
   /** The tab's load, then a settle before reading. */
   completeMs: 20_000,
   settleMs: 2_500,

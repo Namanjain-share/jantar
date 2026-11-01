@@ -5,8 +5,10 @@
  * - A job off `chromePostOf` (a link shim, a profile, another platform's
  *   post) is refused (`blocked`) and no tab opens; without the post site's
  *   grant, `no_permission`.
- * - The tab is the worker's own, made at about:blank in the background, its
- *   onUpdated listener added before the post's URL goes in, muted.
+ * - The tab is the worker's own, made at about:blank in the background; once
+ *   about:blank has loaded, its onUpdated listener is added before the
+ *   post's URL goes in, muted. An update that moves nothing (the mute's
+ *   own, while Chrome still hides about:blank) is not a step off.
  * - The first update whose URL leaves the post's shape (another host, the
  *   platform's sign-in path, a shim on the same host) or is hidden closes
  *   the tab at once; the platforms' own on-shape redirects go on.
@@ -104,6 +106,46 @@ describe('G10: one read', () => {
     expect(result()?.clientId).toBe(LEASE);
     expect(result()?.body).toEqual({ ok: true, page: PAGE });
     expect(w.daemon.ops()).toEqual(['readNext', 'readResult', 'readNext']);
+  });
+
+  it("waits out about:blank's own load before listening (Chrome hides about:blank: a late update of its own would look like a step off)", async () => {
+    await ready();
+    const get = w.chrome.tabs.get.bind(w.chrome.tabs);
+    const asked: boolean[] = [];
+    w.chrome.tabs.get = async (id) => {
+      asked.push(w.chrome.tabs.onUpdated.hasListeners());
+      const tab = await get(id);
+      return { ...tab, status: asked.length < 3 ? 'loading' : 'complete' };
+    };
+    const listening = navigate((url) => [
+      { info: { status: 'loading', url }, url },
+      { info: { status: 'complete' }, url },
+    ]);
+    await w.worker.reads.wake();
+    // Asked while about:blank loaded, with no listener yet; then the listener, then the post.
+    expect(asked.slice(0, 3)).toEqual([false, false, false]);
+    expect(listening).toEqual([true]);
+    expect(result()?.body).toEqual({ ok: true, page: PAGE });
+  });
+
+  it("an about:blank that never says it loaded holds the read up at most blankMs; the mute's own hidden update moves nothing", async () => {
+    await ready();
+    const get = w.chrome.tabs.get.bind(w.chrome.tabs);
+    let loading = 0;
+    w.chrome.tabs.get = async (id) => {
+      const tab = await get(id);
+      if (w.model.updates.length > 0) return tab;
+      loading += 1;
+      return { ...tab, status: 'loading' };
+    };
+    navigate((url) => [
+      { info: {}, url: undefined },
+      { info: { status: 'loading', url }, url },
+      { info: { status: 'complete' }, url },
+    ]);
+    await w.worker.reads.wake();
+    expect(loading).toBe(READ_LIMITS.blankMs / 50);
+    expect(result()?.body).toEqual({ ok: true, page: PAGE });
   });
 
   it('refuses a job off the post shapes (shims, profiles, logins, another platform), opening no tab', async () => {
@@ -220,10 +262,9 @@ describe('G10: one read', () => {
     expect(huge.frames).toEqual([]);
   });
 
-  it('offShape: on the shape, about:blank only before the read, sign-in paths, anything else', () => {
+  it('offShape: on the shape, sign-in paths, anything else (about:blank, which Chrome hides anyway, is never a post)', () => {
     expect(offShape(REEL, 'instagram')).toBeNull();
-    expect(offShape('about:blank', 'instagram')).toBeNull();
-    expect(offShape('about:blank', 'instagram', true)).toBe('redirected');
+    expect(offShape('about:blank', 'instagram')).toBe('redirected');
     expect(offShape(undefined, 'instagram')).toBe('redirected');
     expect(offShape('https://x.com/i/flow/login', 'x')).toBe('login');
     expect(offShape('https://www.linkedin.com/authwall?trk=x', 'linkedin')).toBe('login');

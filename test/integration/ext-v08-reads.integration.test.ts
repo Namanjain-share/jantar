@@ -18,8 +18,12 @@
  *    comment box; the tab is closed after.
  * 3. A post whose page redirects to another host: the tab is closed at once
  *    and the result says `redirected`; one that redirects to the platform's
- *    sign-in page says `login`; X's own redirect from /i/status/ to the
- *    handle's status page is followed and read.
+ *    sign-in page says `login`; X's own move from /i/status/ to the
+ *    handle's status page (its app rewrites the URL in the page, as x.com
+ *    does) is followed and read.
+ *
+ * Every web request the browser makes is answered by `context.route` (the
+ * pages' pictures 404): nothing here reaches the network.
  * 4. A job off the post shapes (a link shim) is `blocked` and opens nothing.
  * 5. Off again: the worker stops asking.
  *
@@ -126,13 +130,16 @@ const seen: string[] = [];
 
 async function servePosts(context: BrowserContext): Promise<void> {
   const page = (html: string) => ({ status: 200, contentType: 'text/html', body: html });
-  await context.route(/^https:\/\/(www\.instagram\.com|x\.com|l\.instagram\.com|evil\.example|example\.com)\//, (route) => {
+  // Every web request is answered here (the pages' pictures 404), so nothing waits on the network; the stand-in on loopback goes through.
+  await context.route(/^https?:\/\//, (route) => {
     const url = route.request().url();
+    if (url.startsWith('http://127.0.0.1:')) return route.continue();
     seen.push(url);
+    if (!/^https:\/\/(www\.instagram\.com|x\.com|l\.instagram\.com|evil\.example|example\.com)\//.test(url)) return route.fulfill({ status: 404, body: '' });
     if (url === REEL) return route.fulfill(page(POST_PAGES.instagram.html));
     if (url === REDIRECTED) return route.fulfill({ status: 302, headers: { location: 'https://evil.example/landing' }, body: '' });
     if (url === LOGIN_WALL) return route.fulfill({ status: 302, headers: { location: 'https://x.com/i/flow/login?redirect_after_login=%2Fi%2Fstatus' }, body: '' });
-    if (url === X_SHORT) return route.fulfill({ status: 302, headers: { location: X_FULL }, body: '' });
+    if (url === X_SHORT) return route.fulfill(page(POST_PAGES.x.html.replace('</body>', `<script>history.replaceState(null, '', ${JSON.stringify(new URL(X_FULL).pathname)})</script></body>`)));
     if (url === X_FULL) return route.fulfill(page(POST_PAGES.x.html));
     if (url.startsWith('https://x.com/i/flow/login')) return route.fulfill(page(`<!doctype html><title>Log in to X</title><main><input type="password"><p>${SIGNED_IN_MARKER}</p></main>`));
     if (url.startsWith('https://evil.example/')) return route.fulfill(page(`<!doctype html><title>Elsewhere</title><p>${SIGNED_IN_MARKER}</p>`));
@@ -192,7 +199,7 @@ describe.skipIf(!ready)('G10: Read saved links in a real browser', () => {
   it("reads the reel in a background tab of its own: the post's caption and author, never the signed-in user; the tab closed", async () => {
     const r = await resultFor('lease_reel00001');
     expect(r.origin).toBe(EXT_ORIGIN);
-    expect(r.body.ok).toBe(true);
+    expect(r.body).toMatchObject({ ok: true });
     expect(r.body.page?.finalUrl).toBe(REEL);
     expect(r.body.page?.text).toContain(POST_PAGES.instagram.caption);
     expect(r.body.page?.author).toBe('example_cook');
@@ -207,9 +214,9 @@ describe.skipIf(!ready)('G10: Read saved links in a real browser', () => {
     for (const r of stand.results) expect(JSON.stringify(r.body)).not.toContain(SIGNED_IN_MARKER);
   });
 
-  it("X's own redirect to the handle's status page is followed and read", async () => {
+  it("X's own move to the handle's status page is followed and read", async () => {
     const r = await resultFor('lease_xpost0004');
-    expect(r.body.ok).toBe(true);
+    expect(r.body).toMatchObject({ ok: true });
     expect(r.body.page?.finalUrl).toBe(X_FULL);
     expect(r.body.page?.text).toContain(POST_PAGES.x.caption);
     expect(r.body.page?.text).not.toContain('A reply above the post');

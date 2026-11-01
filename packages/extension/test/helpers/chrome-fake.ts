@@ -49,6 +49,8 @@ export interface FakeTab {
   title?: string;
   /** v0.8 */
   muted?: boolean;
+  /** v0.8: what tabs.get says of the tab's load (unset: not loading). */
+  status?: 'loading' | 'complete';
 }
 
 /** v0.8: one tabs.onUpdated as the test scripts it: the change, and the URL the tab shows (undefined: hidden from the extension). */

@@ -8,11 +8,16 @@
  * 1. the job's URL must pass `chromePostOf` for the job's platform (the
  *    daemon rebuilt it from the post's parts; anything else is `blocked`),
  *    and Chrome must allow that post site (`no_permission`);
- * 2. a background tab of its own at about:blank (never active), a
- *    `tabs.onUpdated` listener for that tab, then the post's URL, muted;
- * 3. every update after that whose URL is off the post's shape, or hidden
- *    (it left the hosts this extension may see), closes the tab at once:
- *    `login` on the platform's own sign-in paths, else `redirected`;
+ * 2. a background tab of its own at about:blank (never active); once
+ *    about:blank has loaded (≤ READ_LIMITS.blankMs: Chrome hides about:blank
+ *    from an extension without the `tabs` permission, so its own late
+ *    updates would look like a step off the sites), a `tabs.onUpdated`
+ *    listener for that tab, then the post's URL, muted;
+ * 3. every update after that which moves the tab (its load state or its
+ *    URL) to a URL off the post's shape, or hidden (it left the hosts this
+ *    extension may see), closes the tab at once: `login` on the platform's
+ *    own sign-in paths, else `redirected`. The mute's own update comes
+ *    while the tab still shows the hidden about:blank, and moves nothing;
  * 4. loaded (≤ 20 s) and 2.5 s more, the URL is checked again, the bundled
  *    reader (`@jantar/protocol/page-read`) runs in the ISOLATED world with
  *    at most 4 frames, and the tab is closed, always.
@@ -68,13 +73,11 @@ export function jobOf(v: unknown): { id: string | null; job: ReadJob | null } {
 
 /**
  * Why a tab's URL is not the job's post, or null when it is. Undefined is a
- * URL Chrome hides from this extension: the tab left the sites it may see.
- * about:blank (the tab before the post loads) is not a step off unless
- * `strict` (the check right before reading).
+ * URL Chrome hides from this extension: the tab left the sites it may see
+ * (about:blank, which Chrome hides too, is never a post).
  */
-export function offShape(url: string | undefined, platform: ChromePlatform, strict = false): ReadWhy | null {
+export function offShape(url: string | undefined, platform: ChromePlatform): ReadWhy | null {
   if (url === undefined) return 'redirected';
-  if (url === 'about:blank') return strict ? 'redirected' : null;
   if (chromePostOf(url)?.platform === platform) return null;
   try {
     const u = new URL(url);
@@ -112,6 +115,9 @@ export interface Reads {
   read(job: ReadJob): Promise<ReadOutcome>;
 }
 
+/** How often a new tab's about:blank is asked whether it has loaded. */
+const BLANK_POLL_MS = 50;
+
 /** A timer that resolves after `ms`, and can be cancelled. */
 function timer(ms: number): { done: Promise<'timeout'>; cancel(): void } {
   let id: ReturnType<typeof setTimeout> | undefined;
@@ -124,6 +130,7 @@ function timer(ms: number): { done: Promise<'timeout'>; cancel(): void } {
 export function createReads(ctx: Pick<Ctx, 'client' | 'sleep'>, opts: { limits?: { jobMs?: number; completeMs?: number } } = {}): Reads {
   const jobMs = opts.limits?.jobMs ?? READ_LIMITS.jobMs;
   const completeMs = opts.limits?.completeMs ?? READ_LIMITS.completeMs;
+  const blankMs = READ_LIMITS.blankMs;
   let waking: Promise<void> | null = null;
 
   async function stored(): Promise<boolean> {
@@ -148,6 +155,15 @@ export function createReads(ctx: Pick<Ctx, 'client' | 'sleep'>, opts: { limits?:
     await chrome.alarms.create(READ_ALARM, { periodInMinutes: READ_LIMITS.pollEveryMs / 60_000, delayInMinutes: READ_LIMITS.pollEveryMs / 60_000 });
   }
 
+  /** A new tab's about:blank done loading (or blankMs gone), so none of its own updates reach a read's listener. */
+  async function blankLoaded(tabId: number): Promise<void> {
+    for (let waited = 0; waited < blankMs; waited += BLANK_POLL_MS) {
+      const now = await chrome.tabs.get(tabId).catch(() => null);
+      if (now?.status !== 'loading') return;
+      await ctx.sleep(BLANK_POLL_MS);
+    }
+  }
+
   /** The tab a read made, closed whatever happens (a second close is harmless). */
   async function close(tabId: number | undefined): Promise<void> {
     if (typeof tabId !== 'number') return;
@@ -169,14 +185,15 @@ export function createReads(ctx: Pick<Ctx, 'client' | 'sleep'>, opts: { limits?:
     if (!(await chrome.permissions.contains({ origins: [origin] }).catch(() => false))) return { ok: false, why: 'no_permission' };
 
     let left: ReadWhy | null = null;
-    let armed = false;
     let loaded!: () => void;
     let leave!: (why: ReadWhy) => void;
     const complete = new Promise<'complete'>((resolve) => (loaded = () => resolve('complete')));
     const gone = new Promise<ReadWhy>((resolve) => (leave = resolve));
-    const listener = (id: number, info: { status?: string }, tab: { url?: string; pendingUrl?: string }) => {
-      if (id !== held.tabId || !armed || left) return;
-      const why = offShape(tab.url ?? tab.pendingUrl, job.platform);
+    const listener = (id: number, info: { status?: string; url?: string }, tab: { url?: string; pendingUrl?: string }) => {
+      if (id !== held.tabId || left) return;
+      // Only an update that moves the tab (the mute's own comes while it still shows about:blank, hidden).
+      if (info.status === undefined && info.url === undefined) return;
+      const why = offShape(tab.url || tab.pendingUrl || undefined, job.platform);
       if (why) {
         left = why;
         void close(id);
@@ -190,15 +207,15 @@ export function createReads(ctx: Pick<Ctx, 'client' | 'sleep'>, opts: { limits?:
       const tab = await chrome.tabs.create({ url: 'about:blank', active: false });
       held.tabId = tab.id;
       if (typeof tab.id !== 'number') return { ok: false, why: 'failed' };
+      await blankLoaded(tab.id);
       chrome.tabs.onUpdated.addListener(listener);
       await chrome.tabs.update(tab.id, { url: job.url, muted: true });
-      armed = true;
       const first = await Promise.race([complete, gone, wait.done]);
       if (first !== 'complete') return { ok: false, why: first };
       await ctx.sleep(READ_LIMITS.settleMs);
       if (left) return { ok: false, why: left };
       const now = await chrome.tabs.get(tab.id);
-      const why = offShape(now.url, job.platform, true);
+      const why = offShape(now.url, job.platform);
       if (why) return { ok: false, why };
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
@@ -209,7 +226,7 @@ export function createReads(ctx: Pick<Ctx, 'client' | 'sleep'>, opts: { limits?:
       if (left) return { ok: false, why: left };
       const page = result?.result as PageRead | undefined;
       if (!page || typeof page !== 'object' || typeof page.finalUrl !== 'string') return { ok: false, why: 'failed' };
-      const after = offShape(page.finalUrl, job.platform, true);
+      const after = offShape(page.finalUrl, job.platform);
       if (after) return { ok: false, why: after };
       return { ok: true, page: fitRead(page) };
     } finally {
