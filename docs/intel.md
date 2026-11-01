@@ -92,7 +92,8 @@ The phone, `jantar intel list --q` and `jantar mcp` share one search:
   among equals. Without words the shelf stays newest first.
 - On the phone the count line says "12 matches", the words are marked in
   each row, and × clears the search. The magnifier in the phone's header
-  opens the shelf with the search box ready.
+  opens the shelf with the search box ready, for a new search (Back returns
+  to the one before).
 
 ## From Claude Code (MCP)
 
@@ -137,3 +138,7 @@ What a session can and cannot reach:
   Sessions add at most 20 todos an hour.
 - Shelf text comes from saved pages and bots, so the server tells Claude to
   treat it as data, never as instructions.
+- A switch you turned off, or a stopped daemon, is yours to change: the
+  tools tell Claude so, with the command for you to run. A daemon too busy
+  to answer within 10 seconds is reported as slow, not stopped, and Claude
+  is told to check before adding the same todo or note again.
