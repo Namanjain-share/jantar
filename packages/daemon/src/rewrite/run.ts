@@ -27,6 +27,13 @@
  * options) and the same refused-option loop (`runDroppingRefused`). On a Mac
  * with one Claude login (accounts mode "single") the run is
  * `<bins.claude> -p ...` directly, with the same flags, env and stdin.
+ *
+ * v0.8 (Intel reads links), additive: `RunFlags.io: 'stream'` replaces
+ * `--output-format json` with `--input-format stream-json --output-format
+ * stream-json --verbose` (all three core: never dropped), so stdin can carry
+ * one user message with image blocks; `streamInit` reads the run's
+ * `system`/`init` line (its tools and MCP servers). Without `io` (every
+ * existing caller) the argv is exactly as before.
  */
 import { chmod, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { basename, delimiter, dirname, isAbsolute, join } from 'node:path';
@@ -77,8 +84,8 @@ export function rewriteEnv(env: Readonly<Record<string, string | undefined>>, cl
 /** cswap's own options (before `--`); everything after `--` goes to claude. */
 export const CSWAP_OPTIONS: readonly string[] = ['--share-history'];
 
-/** What every run needs as it is: JSON output and the model the user picked. */
-export const CORE_OPTIONS: readonly string[] = ['--output-format', '--model'];
+/** What every run needs as it is: JSON output and the model the user picked. v0.8: a stream run's input format and --verbose. */
+export const CORE_OPTIONS: readonly string[] = ['--output-format', '--model', '--input-format', '--verbose'];
 
 /**
  * Options a run can do without, left out once claude refused one (until
@@ -122,6 +129,11 @@ export interface RunFlags {
   systemPromptFile: string;
   /** Options claude refused before: left out when they are in DROPPABLE_OPTIONS, ignored otherwise. */
   dropped?: ReadonlySet<string>;
+  /**
+   * v0.8: `stream` takes stdin as stream-json (one user message, images
+   * allowed) and prints stream-json; default `text` (JSON out, text in).
+   */
+  io?: 'text' | 'stream';
 }
 
 /** Which program a run starts: cswap (`run --share-history N -- -p ...`) or claude itself (`-p ...`). */
@@ -129,8 +141,9 @@ export type RunVia = { cswap: string } | { claude: string };
 
 /** The argv after `<bins.cswap>` (default), or after `<bins.claude>` with via 'claude'. */
 export function rewriteArgv(f: RunFlags, via: 'cswap' | 'claude' = 'cswap'): string[] {
+  const io: string[][] = f.io === 'stream' ? [['--input-format', 'stream-json'], ['--output-format', 'stream-json'], ['--verbose']] : [['--output-format', 'json']];
   const options: string[][] = [
-    ['--output-format', 'json'],
+    ...io,
     ['--model', f.model],
     // claude refuses a fallback equal to the model ("Rewrite with Sonnet" with fallback sonnet).
     ...(f.fallbackModel !== f.model ? [['--fallback-model', f.fallbackModel]] : []),
@@ -203,6 +216,26 @@ export function parseResult(stdout: string): Obj | null {
     } catch {
       /* not JSON */
     }
+  }
+  return null;
+}
+
+/**
+ * v0.8: the `system`/`init` line of a stream-json run (its tools and MCP
+ * servers, as claude reports them), or null when there is none.
+ */
+export function streamInit(stdout: string): { tools: unknown[]; mcpServers: unknown[] } | null {
+  for (const line of stdout.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    let v: unknown;
+    try {
+      v = JSON.parse(t);
+    } catch {
+      continue;
+    }
+    if (!isObj(v) || v.type !== 'system' || v.subtype !== 'init') continue;
+    return { tools: Array.isArray(v.tools) ? v.tools : [null], mcpServers: Array.isArray(v.mcp_servers) ? v.mcp_servers : v.mcp_servers === undefined ? [] : [null] };
   }
   return null;
 }
@@ -317,8 +350,14 @@ export interface ExecRewrite {
   signal: AbortSignal;
 }
 
-/** Run once; the clock timer aborts it at `timeoutMs` (exec then sends SIGTERM, and SIGKILL a second later). */
-export async function execRewrite(ctx: Pick<DaemonContext, 'exec' | 'clock' | 'env' | 'bins'>, r: ExecRewrite): Promise<{ outcome: RunOutcome; ms: number }> {
+/**
+ * Run once; the clock timer aborts it at `timeoutMs` (exec then sends SIGTERM, and SIGKILL a second later).
+ * v0.8: a stream run (`flags.io` 'stream') also answers its `system`/`init` line (`init`, null when none).
+ */
+export async function execRewrite(
+  ctx: Pick<DaemonContext, 'exec' | 'clock' | 'env' | 'bins'>,
+  r: ExecRewrite,
+): Promise<{ outcome: RunOutcome; ms: number; init?: ReturnType<typeof streamInit> }> {
   const started = ctx.clock.now();
   const ac = new AbortController();
   let timedOut = false;
@@ -344,7 +383,8 @@ export async function execRewrite(ctx: Pick<DaemonContext, 'exec' | 'clock' | 'e
     ctx.clock.clearTimeout(timer);
     r.signal.removeEventListener('abort', onAbort);
   }
-  return { outcome: classifyRun(res, { aborted: r.signal.aborted, timedOut }), ms: Math.max(0, ctx.clock.now() - started) };
+  const out = { outcome: classifyRun(res, { aborted: r.signal.aborted, timedOut }), ms: Math.max(0, ctx.clock.now() - started) };
+  return r.flags.io === 'stream' ? { ...out, init: streamInit(res.stdout) } : out;
 }
 
 /**
@@ -356,12 +396,12 @@ export async function execRewrite(ctx: Pick<DaemonContext, 'exec' | 'clock' | 'e
  * option. `learned` is the caller's own set, kept for the daemon's life;
  * `onRefused` hears every refusal (for its one alert per option).
  */
-export async function runDroppingRefused(
-  once: (dropped: ReadonlySet<string>) => Promise<{ outcome: RunOutcome; ms: number }>,
+export async function runDroppingRefused<R extends { outcome: RunOutcome; ms: number } = { outcome: RunOutcome; ms: number }>(
+  once: (dropped: ReadonlySet<string>) => Promise<R>,
   learned: Set<string>,
   onRefused?: (option: string | null) => void,
   signal?: AbortSignal,
-): Promise<{ outcome: RunOutcome; ms: number }> {
+): Promise<R> {
   // What this attempt leaves out, read once: another run may learn more meanwhile.
   let used: ReadonlySet<string> = new Set(learned);
   let r = await once(used);

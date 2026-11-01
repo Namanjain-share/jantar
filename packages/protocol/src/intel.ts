@@ -219,7 +219,7 @@ export type IntelJobsResponse = z.infer<typeof IntelJobsResponseSchema>;
 export const IntelFrameParamsSchema = z.object({ id: IntelIdSchema, n: z.coerce.number().int().min(0).max(INTEL_READ_LIMITS.thumbsMax - 1) });
 export type IntelFrameParams = z.infer<typeof IntelFrameParamsSchema>;
 
-/** GET /v1/intel/read/status (the Mac only): what `jantar intel read status` prints. */
+/** GET /v1/intel/read/status (the Mac only): what the CLI's `intel read status` prints. */
 export const IntelReadStatusSchema = z.object({
   /** intel.enabled and intel.read. */
   on: z.boolean(),

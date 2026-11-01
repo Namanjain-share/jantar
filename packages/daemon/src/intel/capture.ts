@@ -10,17 +10,14 @@
  * (v0.5.3: "via claude" for what `jantar mcp` saved). The `cwd` of a
  * capture from the Mac (the CLI's, or the Claude session's) stays in the
  * file on the Mac: the shelf leaves it out.
+ *
+ * v0.8: the file has one writer, read/store.ts, with one lock; a capture is
+ * appended through it (service.ts), and `appendCapture` is the store's.
  */
-import { constants } from 'node:fs';
-import { chmod, mkdir, open } from 'node:fs/promises';
-import { join } from 'node:path';
 import type { IntelCaptureBody } from '@jantar/protocol';
 import type { IntelVia } from '../contracts.js';
-import { readRange } from '../sources/lib/fsx.js';
-import { CAPTURES_FILE } from './sources.js';
 
-/** Append only (read only for the last byte), created 0600, never through a symlink. */
-export const CAPTURE_OPEN_FLAGS = constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
+export { CAPTURE_OPEN_FLAGS, appendCapture } from './read/store.js';
 
 export interface CaptureFrom {
   /** v0.5.3: `claude` when `jantar mcp` saved it for a Claude session. v0.8: `shortcut` (the capture door) and `ask` too. */
@@ -42,19 +39,4 @@ export function captureRecord(id: string, at: string, body: IntelCaptureBody, fr
   rec.via = from.via;
   if (from.via !== 'phone' && from.cwd) rec.cwd = from.cwd;
   return rec;
-}
-
-/** Append `record` to <dir>/captures.jsonl, making the dir 0700 and the file 0600. */
-export async function appendCapture(dir: string, record: Record<string, unknown>): Promise<void> {
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await chmod(dir, 0o700);
-  const fh = await open(join(dir, CAPTURES_FILE), CAPTURE_OPEN_FLAGS, 0o600);
-  try {
-    await fh.chmod(0o600);
-    const { size } = await fh.stat();
-    const torn = size > 0 && (await readRange(fh, size - 1, 1))[0] !== 0x0a;
-    await fh.write(`${torn ? '\n' : ''}${JSON.stringify(record)}\n`);
-  } finally {
-    await fh.close();
-  }
 }

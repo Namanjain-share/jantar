@@ -25,9 +25,16 @@
  * A capture made from the CLI keeps the folder it ran in (`cwd`) in the
  * captures file; the shelf leaves that field out, so no Mac path reaches a
  * phone or a search.
+ *
+ * v0.8: a read item's creator, platform, caption, transcript, on-screen
+ * text, key points, background and note are searched too; a word equal to
+ * or inside the creator scores like a tag (3, 2). A captures tombstone
+ * removes its id. Links are compared in their canonical form
+ * (read/url.ts), so a shared link with tracking parameters is the same item.
  */
 import { INTEL_MAX_ITEMS, searchTerms, type IntelItem, type IntelListQuery, type IntelListResponse } from '@jantar/protocol';
 import { listItem, type MappedRecord } from './map.js';
+import { canonical } from './read/url.js';
 import { CAPTURES_SOURCE } from './sources.js';
 
 const TAGS_SHOWN = 30;
@@ -49,6 +56,8 @@ interface SearchText {
   title: string;
   type: string;
   tags: string[];
+  /** v0.8: a read item's creator, lowercased ('' without one). */
+  creator: string;
 }
 
 /** A search word, with its "starts a word in the title" test. */
@@ -67,10 +76,10 @@ function newestFirst(a: Entry, b: Entry): number {
   return b.atMs - a.atMs || b.seq - a.seq;
 }
 
-/** A url as the shelf compares them (scheme and host case, a bare host's "/"). */
+/** A url as the shelf compares them (scheme and host case, a bare host's "/"; v0.8: canonical, so tracking parameters and mobile hosts don't count). */
 export function urlKey(url: string): string {
   try {
-    return new URL(url).href;
+    return canonical(new URL(url).href);
   } catch {
     return url;
   }
@@ -86,8 +95,22 @@ function textOf(e: Entry): SearchText {
     const tags = item.tags.map((t) => t.toLowerCase());
     const type = item.type?.toLowerCase() ?? '';
     const title = item.title.toLowerCase();
-    const rest = [item.summary, item.why, item.url, ...item.fields.map((f) => f.value)].filter((v) => v !== undefined);
-    e.text = { all: [title, type, ...tags, ...rest.map((v) => v.toLowerCase())].join('\n'), title, type, tags };
+    const creator = item.creator?.toLowerCase() ?? '';
+    const rest = [
+      item.summary,
+      item.why,
+      item.url,
+      ...item.fields.map((f) => f.value),
+      item.creator,
+      item.platform,
+      item.caption,
+      item.transcript,
+      item.onScreen,
+      ...(item.points ?? []),
+      item.background,
+      item.note,
+    ].filter((v) => v !== undefined);
+    e.text = { all: [title, type, ...tags, ...rest.map((v) => v.toLowerCase())].join('\n'), title, type, tags, creator };
   }
   return e.text;
 }
@@ -107,8 +130,8 @@ function scoreOf(t: SearchText, terms: readonly Term[]): number {
   for (const { word, start } of terms) {
     if (start.test(t.title)) score += 6;
     else if (t.title.includes(word)) score += 4;
-    else if (t.type === word || t.tags.includes(word)) score += 3;
-    else if (t.type.includes(word) || t.tags.some((x) => x.includes(word))) score += 2;
+    else if (t.type === word || t.tags.includes(word) || t.creator === word) score += 3;
+    else if (t.type.includes(word) || t.tags.some((x) => x.includes(word)) || (t.creator !== '' && t.creator.includes(word))) score += 2;
     else score += 1;
   }
   return score;
@@ -195,7 +218,10 @@ export class Shelf {
       items = new Map();
       this.bySource.set(source, items);
     }
-    for (const r of records) items.set(r.rid, { source, rid: r.rid, item: shelved(source, r.item), atMs: r.atMs, seq: this.seq++ });
+    for (const r of records) {
+      if (r.deleted) items.delete(r.rid);
+      else items.set(r.rid, { source, rid: r.rid, item: shelved(source, r.item), atMs: r.atMs, seq: this.seq++ });
+    }
     this.changed();
     this.cap();
   }

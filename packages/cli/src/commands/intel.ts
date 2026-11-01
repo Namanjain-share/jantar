@@ -11,11 +11,12 @@
  * real path. `sources` takes counts and errors from the daemon and paths
  * from the local config.
  *
- * v0.8 (Intel reads links): `read on|off|status|speech`, `save` (save a link
- * and read it on the Mac), `jobs`, `retry` and `delete` (lane A), and
- * `shortcut` (the iOS Shortcut's keys: commands/intel-shortcut.ts, lane C,
- * handed its arguments unparsed). Wave 0's shells: the usage and help are
- * final, a run says "Not built yet."
+ * v0.8 (Intel reads links): `read on|off|status|speech` (the Mac's switch,
+ * what reading can use here, the speech language), `save` (save a link or a
+ * note and read it on the Mac; with reading off it says so and saves
+ * nothing), `jobs`, `retry` and `delete`, and `shortcut` (the iOS
+ * Shortcut's keys: commands/intel-shortcut.ts, handed its arguments
+ * unparsed). `intel add` stays 0.7's plain capture, whatever the switch.
  */
 import { realpath } from 'node:fs/promises';
 import { isAbsolute, normalize } from 'node:path';
@@ -23,12 +24,21 @@ import { expandHome } from '@jantar/daemon/files/deny';
 import { SOURCE_REFUSED, checkSource, sourceRefs } from '@jantar/daemon/intel/sources';
 import {
   FolderPathSchema,
+  INTEL_DEPTHS,
   INTEL_PAGE_MAX,
+  INTEL_READ_LIMITS,
   IntelCaptureBodySchema,
+  IntelIdSchema,
   ROUTES,
+  buildPath,
   type IntelCaptureBody,
   type IntelCaptureReply,
+  type IntelDepth,
+  type IntelJob,
+  type IntelJobsResponse,
   type IntelListResponse,
+  type IntelReadReply,
+  type IntelReadStatus,
   type IntelSource,
   type IntelSourcesResponse,
   type Settings,
@@ -61,11 +71,29 @@ const FLAGS = {
 type Flags = ParsedArgs<typeof FLAGS>['flags'];
 
 /**
- * v0.8 wave 0: the actions that are still shells ("Not built yet."). Lane A
- * takes each out as it builds it; test/sentences.test.ts skips the
- * sentences that name one until then.
+ * v0.8 wave 0: the actions that were still shells ("Not built yet."). All
+ * built now; test/sentences.test.ts and cli.test.ts read it.
  */
-export const INTEL_SHELLS: ReadonlySet<string> = new Set(['save', 'jobs', 'retry', 'delete', 'read']);
+export const INTEL_SHELLS: ReadonlySet<string> = new Set();
+
+/** What `jantar intel read on` says leaves the Mac (docs/intel.md says it in full). */
+export const READ_ON_SENTENCE =
+  'Reading links is on. Links you save are read on this Mac, one at a time: the page from the platform (and, with the extension\'s Read saved links on, your Chrome opens the post as you), ' +
+  'then the text, the pictures and what is said go to Claude. Audio never leaves the Mac.\n';
+export const READ_OFF_SENTENCE = 'Reading links is off. Saved links stay on the shelf; nothing is read.\n';
+/** `read on` before the shelf. */
+export const READ_NEEDS_SHELF = 'turn the Intel shelf on too: jantar intel on';
+
+const STATE_WORDS: Readonly<Record<IntelJob['state'], string>> = {
+  queued: 'waiting',
+  fetching: 'opening',
+  preparing: 'getting the Mac ready (once)',
+  frames: 'looking at frames',
+  transcribing: 'listening',
+  summarising: 'summarising',
+  saved: 'saved',
+  failed: "couldn't read",
+};
 
 /** Refuse flags that belong to another action, so a typo never goes unnoticed. */
 function only(flags: Flags, action: string, allowed: readonly (keyof typeof FLAGS)[]): void {
@@ -228,6 +256,135 @@ function captureProblem(field: PropertyKey | undefined): string {
   }
 }
 
+// ------------------------------------------------------------------ v0.8 reads
+
+function depthOf(flags: Flags): IntelDepth | undefined {
+  if (flags.depth === undefined) return undefined;
+  const d = flags.depth.trim().toLowerCase();
+  if (!(INTEL_DEPTHS as readonly string[]).includes(d)) throw new UsageError('--depth must be light, standard or full');
+  return d as IntelDepth;
+}
+
+function itemId(raw: string | undefined, action: string): string {
+  if (raw === undefined) throw new UsageError(`${action} needs an item id (see: jantar intel list)`);
+  if (!IntelIdSchema.safeParse(raw).success) throw new UsageError(`"${clip(raw, 40)}" is not an item id`);
+  return raw;
+}
+
+async function save(ctx: CliContext, words: readonly string[], flags: Flags): Promise<number> {
+  const text = words.join(' ').trim();
+  if (!text) throw new UsageError('save needs a link or some text: jantar intel save <link|text>');
+  if (text.length > INTEL_READ_LIMITS.textMax) throw new UsageError(`the text must be at most ${INTEL_READ_LIMITS.textMax} characters`);
+  const depth = depthOf(flags);
+  const r = await callDaemon<IntelReadReply>(ctx.ctl, 'POST', ROUTES.intelRead.path, { text, ...(depth ? { depth } : {}) }, { idempotencyKey: ctx.deps.randomId() });
+  ctx.io.out(r.duplicate ? `Already saved (${r.id}): nothing added.\n` : `${r.message} ${r.id}\n`);
+  return EXIT.ok;
+}
+
+function jobLine(j: IntelJob): string {
+  let host = '';
+  if (j.url) {
+    try {
+      host = new URL(j.url).hostname.replace(/^www\./, '');
+    } catch {
+      host = '';
+    }
+  }
+  const what = clip(j.title || host || j.platform, 80);
+  const tier = j.state === 'fetching' && j.tier ? ` (${j.tier})` : '';
+  const why = j.reason ? `: ${j.reason}` : '';
+  return `  ${STATE_WORDS[j.state]}${tier}  ${j.depth}  ${j.platform}  ${what}  ${j.id}${why}\n`;
+}
+
+async function jobs(ctx: CliContext): Promise<number> {
+  const r = await callDaemon<IntelJobsResponse>(ctx.ctl, 'GET', ROUTES.intelJobs.path);
+  if (!r.reading.on || !r.reading.canRun) ctx.io.out(`${r.reading.why ?? 'Reading links is off.'}\n`);
+  if (r.jobs.length === 0) {
+    ctx.io.out('No reads waiting, running or finished today.\n');
+    return EXIT.ok;
+  }
+  for (const j of r.jobs) ctx.io.out(jobLine(j));
+  return EXIT.ok;
+}
+
+async function retry(ctx: CliContext, raw: string | undefined, flags: Flags): Promise<number> {
+  const id = itemId(raw, 'retry');
+  const depth = depthOf(flags);
+  await callDaemon<{ id: string }>(ctx.ctl, 'POST', buildPath(ROUTES.intelReread, { id }), depth ? { depth } : {}, { idempotencyKey: ctx.deps.randomId() });
+  ctx.io.out(`Reading it again${depth ? ` (${depth})` : ''}: see jantar intel jobs\n`);
+  return EXIT.ok;
+}
+
+async function remove(ctx: CliContext, raw: string | undefined): Promise<number> {
+  const id = itemId(raw, 'delete');
+  await callDaemon<{ ok: true }>(ctx.ctl, 'DELETE', buildPath(ROUTES.intelDelete, { id }), undefined, { idempotencyKey: ctx.deps.randomId() });
+  ctx.io.out(`Deleted ${id} and its pictures.\n`);
+  return EXIT.ok;
+}
+
+const yesNo = (b: boolean) => (b ? 'yes' : 'no');
+
+function statusText(st: IntelReadStatus): string {
+  const lines = [
+    `Reading links: ${st.on ? 'on' : 'off'}${st.why ? ` (${st.why})` : ''}`,
+    `  Chrome (the extension): ${st.chrome.paired ? 'paired' : 'not paired'}${st.chrome.lastPollAt ? `, last asked ${st.chrome.lastPollAt}` : ', Read saved links not asking'}`,
+    `  Headless browser (Google Chrome): ${st.browser.found ? 'found' : 'not found'}`,
+    `  yt-dlp (optional): ${st.ytdlp.found ? `found${st.ytdlp.version ? ` (${st.ytdlp.version})` : ''}` : 'not found'}`,
+    `  Command Line Tools: ${st.clt.found ? 'found' : 'not found (frames and speech need them: xcode-select --install)'}`,
+    `  Media helper: ${st.helper.built ? 'built' : 'not built yet'}`,
+    `  sandbox-exec: ${st.sandbox.found ? 'found' : 'not found (frames and speech stay off)'}`,
+    `  Speech: ${st.speech.locale}${st.speech.onDevice === null ? ' (not checked yet)' : st.speech.onDevice ? ' (on this Mac)' : ' (not on this Mac: no speech-to-text)'}`,
+    `  Today: ${st.today.reads} of ${st.today.perDay} reads, ${st.today.full} of ${st.today.fullPerDay} Full`,
+    `  Queue: ${st.queue.waiting} waiting, ${st.queue.running} running`,
+    `  Shortcut keys: ${st.captureKeys}`,
+    `  Shortcut door: ${st.door.open ? `open${st.door.url ? ` at ${st.door.url}` : ''}` : `closed${st.door.why ? ` (${st.door.why})` : ''}`}`,
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
+async function read(ctx: CliContext, rest: readonly string[]): Promise<number> {
+  const [sub, arg, extra] = rest;
+  if (extra !== undefined) throw new UsageError(`unexpected argument "${clip(extra, 40)}"`);
+  if (sub === 'on' || sub === 'off') {
+    if (arg !== undefined) throw new UsageError(`read ${sub} takes no argument`);
+    const on = sub === 'on';
+    await changeSettings(ctx, { intel: { read: on } }, (s) => (on ? `${READ_ON_SENTENCE}${s.intel.enabled ? '' : `The shelf itself is off, so nothing is read yet: ${READ_NEEDS_SHELF}\n`}` : READ_OFF_SENTENCE));
+    return EXIT.ok;
+  }
+  if (sub === 'status') {
+    if (arg !== undefined) throw new UsageError('read status takes no argument');
+    try {
+      ctx.io.out(statusText(await callDaemon<IntelReadStatus>(ctx.ctl, 'GET', ROUTES.intelReadStatus.path)));
+    } catch (e) {
+      if (!(e instanceof CtlUnavailableError)) throw e;
+      const { settings } = await readSettings(ctx);
+      ctx.io.out(`Reading links: ${onOff(settings.intel.enabled && settings.intel.read)} (the daemon is not running, so nothing more to say)\n`);
+    }
+    return EXIT.ok;
+  }
+  if (sub === 'speech') {
+    if (arg === undefined) throw new UsageError('read speech needs a language, e.g. jantar intel read speech en-IN');
+    if (!/^[a-z]{2,3}-[A-Z]{2}$/.test(arg)) throw new UsageError('the language looks like en-IN or en-US');
+    const { settings } = await readSettings(ctx);
+    const before = settings.intel.speechLocale;
+    await changeSettings(ctx, { intel: { speechLocale: arg } }, () => '');
+    // Refused unless this Mac recognises it on device (audio never leaves the Mac).
+    let st: IntelReadStatus | null = null;
+    try {
+      st = await callDaemon<IntelReadStatus>(ctx.ctl, 'GET', ROUTES.intelReadStatus.path);
+    } catch (e) {
+      if (!(e instanceof CtlUnavailableError)) throw e;
+    }
+    if (st && st.speech.onDevice === false) {
+      await changeSettings(ctx, { intel: { speechLocale: before } }, () => '');
+      throw new Error(`${arg} is not recognised on this Mac (only on-device speech is used); kept ${before}`);
+    }
+    ctx.io.out(st && st.speech.onDevice ? `Speech-to-text language: ${arg} (on this Mac).\n` : `Speech-to-text language: ${arg} (checked when the Mac first reads speech).\n`);
+    return EXIT.ok;
+  }
+  throw new UsageError(sub === undefined ? 'read needs on, off, status or speech' : `unknown read action "${clip(sub, 20)}" (on, off, status or speech)`);
+}
+
 async function list(ctx: CliContext, flags: Flags): Promise<number> {
   if ((flags.tag?.length ?? 0) > 1) throw new UsageError('list takes one --tag');
   const limit = flags.limit ?? LIST_DEFAULT;
@@ -245,7 +402,9 @@ async function list(ctx: CliContext, flags: Flags): Promise<number> {
   }
   const typeW = Math.min(16, Math.max(...r.items.map((i) => clip(i.type ?? '-', 16).length)));
   for (const i of r.items) {
-    ctx.io.out(`${dateOf(i.at)}  ${clip(i.type ?? '-', 16).padEnd(typeW)}  ${clip(i.title, 120)}\n`);
+    const by = [i.platform && i.platform !== 'web' && i.platform !== 'note' ? i.platform : '', i.creator ?? ''].filter(Boolean).join(' · ');
+    const state = i.read?.state === 'failed' ? "  (couldn't read)" : i.read && i.read.state !== 'saved' ? '  (reading)' : '';
+    ctx.io.out(`${dateOf(i.at)}  ${clip(i.type ?? '-', 16).padEnd(typeW)}  ${clip(i.title, 120)}${by ? `  · ${clip(by, 60)}` : ''}${state}\n`);
     if (i.url) ctx.io.out(`${' '.repeat(10 + 2 + typeW + 2)}${clip(i.url, 200)}\n`);
   }
   // The CLI does not page: past the most one list holds, only a narrower list shows the rest.
@@ -322,12 +481,25 @@ export default defineCommand(
         only(flags, 'list', ['q', 'type', 'tag', 'limit']);
         if (rest.length) throw new UsageError('list takes no argument (search with --q)');
         return list(ctx, flags);
+      case 'save':
+        only(flags, 'save', ['depth']);
+        return save(ctx, rest, flags);
+      case 'jobs':
+        only(flags, 'jobs', []);
+        if (rest.length) throw new UsageError('jobs takes no argument');
+        return jobs(ctx);
+      case 'retry':
+        only(flags, 'retry', ['depth']);
+        if (rest.length > 1) throw new UsageError('retry takes one item id');
+        return retry(ctx, rest[0], flags);
+      case 'delete':
+        only(flags, 'delete', []);
+        if (rest.length > 1) throw new UsageError('delete takes one item id');
+        return remove(ctx, rest[0]);
+      case 'read':
+        only(flags, 'read', []);
+        return read(ctx, rest);
       default:
-        // v0.8 (wave 0 shells; lane A builds them).
-        if (action !== undefined && INTEL_SHELLS.has(action)) {
-          ctx.io.err('Not built yet.\n');
-          return EXIT.usage;
-        }
         throw new UsageError(`unknown action "${clip(action ?? '', 20)}" (on, off, sources, source, add, list, save, jobs, retry, delete, read or shortcut)`);
     }
   },

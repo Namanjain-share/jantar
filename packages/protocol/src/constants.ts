@@ -409,7 +409,7 @@ export type FleetCopyKey = keyof typeof FLEET_COPY;
  * caps (a step past one fails with its plain reason).
  */
 export const INTEL_READ_LIMITS = Object.freeze({
-  // --- What may be sent (Add post, the Shortcut, Ask, `jantar intel save`)
+  // --- What may be sent (Add post, the Shortcut, Ask, the CLI's `intel save`)
   /** The text sent: the first http(s) link in it is the item's link, the rest its note. */
   textMax: 4_000,
   /** The user's note kept with an item. */

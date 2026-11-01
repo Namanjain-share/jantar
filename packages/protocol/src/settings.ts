@@ -295,7 +295,7 @@ export const IntelSettingsSchema = z.object({
   sources: z.array(z.string().min(1).max(1024)).max(10).default(() => []),
   /**
    * v0.8 (no version bump): the Mac reads links saved to the shelf (Add
-   * post, the Shortcut, Ask, `jantar intel save`), one job at a time. Off
+   * post, the Shortcut, Ask, the CLI's `intel save`), one job at a time. Off
    * until `jantar intel read on`; needs `enabled` too.
    */
   read: z.boolean().default(false),

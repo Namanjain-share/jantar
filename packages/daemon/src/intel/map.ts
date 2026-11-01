@@ -15,8 +15,24 @@
  *   why      why_it_matters, why
  *   fields   every other string, number, boolean or array of strings, in
  *            file order, at most 20; objects are skipped
+ *
+ * v0.8: in the daemon's own captures file only (`source === 'captures'`), an
+ * item read from a link carries typed keys (CAPTURE_RICH_KEYS): platform,
+ * creator, posted_at, depth, read, caption, transcript, on_screen, points,
+ * background, note, frames, each checked and cut, never a field. In any
+ * other source they stay plain fields, so a bot's file can never claim
+ * frames, a job state or media. `{ id, deleted: true }` in captures is a
+ * tombstone: that id leaves the shelf.
  */
-import { IntelItemSchema, type IntelItem, type IntelListItem } from '@jantar/protocol';
+import {
+  INTEL_READ_LIMITS,
+  IntelDepthSchema,
+  IntelItemSchema,
+  IntelPlatformSchema,
+  IntelReadSchema,
+  type IntelItem,
+  type IntelListItem,
+} from '@jantar/protocol';
 import { sha256Hex } from '../core/hash.js';
 import { isObj, toEpochMs } from '../sources/lib/values.js';
 
@@ -26,7 +42,29 @@ export interface MappedRecord {
   item: IntelItem;
   /** Epoch ms of `item.at`, -1 without one (sorts last). */
   atMs: number;
+  /** v0.8, captures only: a tombstone (the shelf drops `rid`; `item` is a placeholder). */
+  deleted?: true;
 }
+
+/** v0.8: the source whose records may carry the typed keys of a read item. */
+const CAPTURES = 'captures';
+
+/** v0.8: the typed keys of an item read from a link (captures only). */
+export const CAPTURE_RICH_KEYS: readonly string[] = [
+  'platform',
+  'creator',
+  'posted_at',
+  'depth',
+  'read',
+  'caption',
+  'transcript',
+  'on_screen',
+  'points',
+  'background',
+  'note',
+  'frames',
+  'deleted',
+];
 
 const TITLE_MAX = 300;
 const TYPE_MAX = 40;
@@ -110,12 +148,79 @@ function fieldValue(v: unknown): string | undefined {
   return undefined;
 }
 
+/** The record's own id when it fits (printable, short), else ''. */
+function ownId(raw: Record<string, unknown>, source: string): string {
+  const own = typeof raw.id === 'string' ? raw.id : typeof raw.id === 'number' && Number.isSafeInteger(raw.id) ? String(raw.id) : '';
+  return own.length <= RID_MAX && source.length + 1 + own.length <= WIRE_ID_MAX && RID.test(own) ? own : '';
+}
+
+/**
+ * v0.8: what the captures store needs of a line: its record id as the shelf
+ * keys it (mapRecord's rule) and whether it is a tombstone, or null when the
+ * shelf would skip it (no title, not an object). A tombstone needs its own id.
+ */
+export function recordKey(raw: unknown, source: string): { rid: string; deleted: boolean } | null {
+  if (!isObj(raw)) return null;
+  if (source === CAPTURES && raw.deleted === true) {
+    const own = ownId(raw, source);
+    return own ? { rid: own, deleted: true } : null;
+  }
+  const title = first(raw, ['title', 'name', 'headline'], (v) => text(v, TITLE_MAX));
+  if (!title) return null;
+  const url = first(raw, ['url', 'link'], httpLink);
+  return { rid: ownId(raw, source) || sha256Hex(`${source}\n${url?.value ?? ''}\n${title.value}`).slice(0, 24), deleted: false };
+}
+
+/** v0.8: a captures line's typed keys, each checked and cut (anything else is dropped). */
+function richOf(raw: Record<string, unknown>): Partial<IntelItem> {
+  const out: Partial<IntelItem> = {};
+  const platform = IntelPlatformSchema.safeParse(raw.platform);
+  if (platform.success) out.platform = platform.data;
+  const creator = text(raw.creator, 80);
+  if (creator) out.creator = creator;
+  const posted = toEpochMs(raw.posted_at);
+  if (posted !== undefined) out.postedAt = new Date(posted).toISOString();
+  const depth = IntelDepthSchema.safeParse(raw.depth);
+  if (depth.success) out.depth = depth.data;
+  const read = IntelReadSchema.safeParse(raw.read);
+  if (read.success) out.read = read.data;
+  const caption = longText(raw.caption, INTEL_READ_LIMITS.captionMax);
+  if (caption) out.caption = caption;
+  const transcript = longText(raw.transcript, INTEL_READ_LIMITS.transcriptMax);
+  if (transcript) out.transcript = transcript;
+  const onScreen = longText(raw.on_screen, INTEL_READ_LIMITS.onScreenMax);
+  if (onScreen) out.onScreen = onScreen;
+  if (Array.isArray(raw.points)) {
+    const points = raw.points.map((p) => text(p, 200)).filter((p): p is string => p !== undefined).slice(0, 6);
+    if (points.length) out.points = points;
+  }
+  const background = longText(raw.background, 600);
+  if (background) out.background = background;
+  const note = longText(raw.note, INTEL_READ_LIMITS.noteMax);
+  if (note) out.note = note;
+  if (typeof raw.frames === 'number' && Number.isInteger(raw.frames) && raw.frames >= 0) out.frames = Math.min(raw.frames, INTEL_READ_LIMITS.thumbsMax);
+  return out;
+}
+
+/** Text that keeps its line breaks, trimmed and cut. */
+function longText(v: unknown, max: number): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t === '' ? undefined : cut(t, max);
+}
+
 /**
  * A parsed line as an item of `source`, or null when it is not a JSON
  * object or has no title (the follower counts it as skipped).
  */
 export function mapRecord(raw: unknown, source: string): MappedRecord | null {
   if (!isObj(raw)) return null;
+  const rich = source === CAPTURES;
+  if (rich && raw.deleted === true) {
+    const own = ownId(raw, source);
+    if (!own) return null;
+    return { rid: own, deleted: true, atMs: -1, item: { id: `${source}:${own}`, source, at: null, title: '-', tags: [], fields: [] } };
+  }
   const title = first(raw, ['title', 'name', 'headline'], (v) => text(v, TITLE_MAX));
   if (!title) return null;
   const url = first(raw, ['url', 'link'], httpLink);
@@ -125,7 +230,7 @@ export function mapRecord(raw: unknown, source: string): MappedRecord | null {
   const summary = first(raw, ['what_it_is', 'summary', 'description', 'text'], (v) => text(v, TEXT_MAX));
   const why = first(raw, ['why_it_matters', 'why'], (v) => text(v, TEXT_MAX));
 
-  const used = new Set(['id']);
+  const used = new Set(['id', ...(rich ? CAPTURE_RICH_KEYS : [])]);
   for (const hit of [title, url, at, type, tags, summary, why]) if (hit) used.add(hit.key);
   const fields: IntelItem['fields'] = [];
   for (const [key, v] of Object.entries(raw)) {
@@ -136,9 +241,7 @@ export function mapRecord(raw: unknown, source: string): MappedRecord | null {
     if (fields.length === FIELDS_MAX) break;
   }
 
-  const own = typeof raw.id === 'string' ? raw.id : typeof raw.id === 'number' && Number.isSafeInteger(raw.id) ? String(raw.id) : '';
-  const fits = own.length <= RID_MAX && source.length + 1 + own.length <= WIRE_ID_MAX && RID.test(own);
-  const rid = fits ? own : sha256Hex(`${source}\n${url?.value ?? ''}\n${title.value}`).slice(0, 24);
+  const rid = ownId(raw, source) || sha256Hex(`${source}\n${url?.value ?? ''}\n${title.value}`).slice(0, 24);
 
   const item: IntelItem = {
     id: `${source}:${rid}`,
@@ -152,14 +255,19 @@ export function mapRecord(raw: unknown, source: string): MappedRecord | null {
   if (type) item.type = type.value;
   if (summary) item.summary = summary.value;
   if (why) item.why = why.value;
+  if (rich) Object.assign(item, richOf(raw));
   return { rid, item, atMs: at ? at.value : -1 };
 }
 
-/** The list row of an item: no why, no fields, the summary cut for two lines. */
+/** The list row of an item: no why, no fields, the summary cut for two lines. v0.8: platform, creator, the read's state and reason, a thumb. */
 export function listItem(item: IntelItem): IntelListItem {
   const row: IntelListItem = { id: item.id, source: item.source, at: item.at, title: item.title, tags: item.tags };
   if (item.url !== undefined) row.url = item.url;
   if (item.type !== undefined) row.type = item.type;
   if (item.summary !== undefined) row.summary = cut(item.summary, SUMMARY_LIST_MAX);
+  if (item.platform !== undefined) row.platform = item.platform;
+  if (item.creator !== undefined) row.creator = item.creator;
+  if (item.read !== undefined) row.read = { state: item.read.state, ...(item.read.reason !== undefined ? { reason: item.read.reason } : {}) };
+  if ((item.frames ?? 0) > 0) row.thumb = true;
   return row;
 }

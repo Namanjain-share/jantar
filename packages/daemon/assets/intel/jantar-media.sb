@@ -1,0 +1,25 @@
+;; jantar-media's sandbox (spec 5.1). The daemon runs every helper step as
+;;   /usr/bin/sandbox-exec -f jantar-media.sb -D JOB=<real job dir> -D HOME=<real home>
+;;     -D HELPER=<real helper path> <helper> <sub> ...
+;; with env PATH=/usr/bin:/bin, HOME=<job dir>, TMPDIR=<job dir>/tmp/.
+;;
+;; A hostile mp4, image or PDF that exploits AVFoundation, ImageIO or PDFKit
+;; reads nothing of the user's (no file under HOME but the job dir), reaches
+;; no network, execs nothing (not /usr/bin/open), cannot reach the pasteboard
+;; or open a URL through LaunchServices, and writes only inside the job dir.
+;; Never (subpath "/private/var/folders"), never a read of HOME beyond the job
+;; dir. A rule a framework turns out to need is added as narrowly as possible
+;; (one literal path or one named subfolder, as a -D param) and written down
+;; here with its reason (docs/real-mac-checks.md proves each subcommand).
+(version 1)
+(allow default)
+(deny network*)
+(deny process-fork)
+(deny process-exec*)
+(allow process-exec (literal (param "HELPER")))
+(deny file-read* (subpath (param "HOME")))
+(allow file-read* (literal (param "HELPER")) (subpath (param "JOB")))
+(deny file-write*)
+(allow file-write* (subpath (param "JOB")) (literal "/dev/null"))
+(deny mach-lookup (global-name "com.apple.pasteboard.1")
+                  (global-name "com.apple.coreservices.launchservicesd"))
