@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.6.0 (unreleased)
+## 0.6.0 (1 November 2026)
 
 **Fleet**: your servers on the same phone. It is off until you run
 `jantar fleet on` at the Mac; with it off, Jantar works as 0.5.3 did but
