@@ -135,7 +135,7 @@ export function fakeLookup(addrs: Record<string, string[]> = {}, asked: string[]
 }
 
 /** The guard's seam for a local server: every vetted address is dialed at 127.0.0.1:<port>. */
-export function seamFor(port: number, opts: { addrs?: Record<string, string[]>; dialed?: string[]; asked?: string[] } = {}): GuardNet {
+export function seamFor(port: number, opts: { addrs?: Record<string, string[]>; dialed?: string[]; asked?: string[] } = {}): GuardNet & { lookup: LookupFunction } {
   return {
     lookup: fakeLookup(opts.addrs ?? {}, opts.asked ?? []),
     ca: testCert().cert,

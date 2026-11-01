@@ -258,11 +258,15 @@ const TOOLS: readonly Tool[] = [
         fields,
         ...(left > 0 ? { cut: `${left} fields left out` } : {}),
       });
+      // The item's own fields fit first, without the transcript; the transcript gets the room left (cut, never them).
+      const bare = fitted(i.fields, (fields, left) => build(fields, left, undefined));
+      if (i.transcript === undefined) return said(bare);
+      const kept = (JSON.parse(bare) as { fields: unknown[] }).fields.length;
+      const fields = i.fields.slice(0, kept);
       let transcript = i.transcript;
       for (;;) {
-        const text = fitted(i.fields, (fields, left) => build(fields, left, transcript));
-        if (text.length <= MCP_RESULT_MAX || transcript === undefined || transcript.length === 0) return said(text);
-        // Cut the transcript (never the item's own fields) until the answer fits.
+        const text = JSON.stringify(build(fields, i.fields.length - kept, transcript));
+        if (text.length <= MCP_RESULT_MAX || transcript.length === 0) return said(text);
         const over = text.length - MCP_RESULT_MAX;
         transcript = transcript.length > over + 40 ? `${transcript.slice(0, transcript.length - over - 40)} […]` : '';
       }
