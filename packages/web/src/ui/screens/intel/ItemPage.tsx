@@ -159,7 +159,8 @@ function ReadLine({ item, job, canRead, offline, onChanged }: { item: IntelItem;
       </p>
     );
     action = 'again';
-  } else if (item.source === 'captures' && httpsHref(item.url)) {
+  } else if (item.source === 'captures' && httpHref(item.url)) {
+    // A plain capture with a link (the Mac reads an http link as https).
     action = 'first';
   }
   const notes = read?.notes ?? [];
@@ -243,7 +244,8 @@ function Body({
     <article>
       {item.frames ? (
         <div className="pb-8">
-          <FrameStrip id={item.id} count={item.frames} />
+          {/* A new read replaces the pictures: a new strip asks for them again. */}
+          <FrameStrip key={item.read?.at ?? ''} id={item.id} count={item.frames} />
         </div>
       ) : null}
       <div className="px-16">
