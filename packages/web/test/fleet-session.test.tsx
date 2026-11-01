@@ -10,11 +10,14 @@
  * keyed by the session or card. The Mac's own sessions are as before.
  */
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { FLEET_COPY } from '@jantar/protocol';
+import { describe, expect, it, vi } from 'vitest';
+import { FLEET_COPY, type TerminalDialog } from '@jantar/protocol';
 import { nodeCard } from '@jantar/fixtures';
-import { account, fakeApi, pending, renderApp, session } from './helpers.js';
-import { fleetState, preloadCards, SID } from './fleet-helpers.js';
+import { cardMachine, machineLine, screenReadable } from '../src/ui/screens/session/Info.js';
+import { BLOCKED, PLAN_PARTIAL, atMachine, blocksLine } from '../src/ui/screens/session/TermDialog.js';
+import fixtures from './term-dialog-fixtures.json';
+import { account, fakeApi, iso, NOW, pending, renderApp, session } from './helpers.js';
+import { fleetState, IDS, preloadCards, SID } from './fleet-helpers.js';
 
 preloadCards();
 
@@ -136,5 +139,79 @@ describe("the Mac's own session, with machines paired", () => {
   it("keeps a Mac card's title", () => {
     open('a', fakeApi(), { sessions: [session('a', { status: 'waiting' })], pending: [pending('a')] });
     expect(within(card()).getByRole('heading').textContent).toBe('Permission · Bash');
+  });
+});
+
+describe('S19: a server cannot pass for the Mac', () => {
+  it('a session and card named "Mac" still carry the name the Mac gave the machine', () => {
+    const fake = { sid: '7a1c0000-0000-4000-8000-0000000000aa', folder: 'Mac', name: 'Mac', node: IDS.build1 };
+    const c = nodeCard({ sid: fake.sid, id: '01JF1EETCARDMAC000000000AAbbCCddEEffGGhh04', tool: 'Mac' });
+    const s = fleetState({ features: MAC_ON, pending: [c] });
+    s.sessions[fake.sid] = { ...s.sessions[SID.tmux]!, ...fake, paneId: '%8', status: 'waiting' };
+    const { unmount } = renderApp({ path: '/', state: s });
+    const chip = document.querySelector(`a[data-sid="${fake.sid}"] [data-machine]`);
+    expect(chip?.textContent).toBe('build-1');
+    unmount();
+    renderApp({ path: `/s/${fake.sid}`, state: s });
+    expect(where()?.textContent).toBe('build-1 · Linux · tmux');
+    expect(within(card()).getByRole('heading').textContent).toBe('build-1 asks · Permission · Mac');
+  });
+});
+
+describe('the words', () => {
+  it("read a screen only where there is one: the Mac's, a pane on tmux, a Mac server's; online", () => {
+    const s = fleetState();
+    const at = (sid: string) => s.sessions[sid]!;
+    expect(screenReadable(s, session('a'))).toBe(true);
+    expect(screenReadable(s, at(SID.tmux))).toBe(true);
+    expect(screenReadable(s, at(SID.mac))).toBe(true);
+    // A watch-only machine's screen still reads; nothing is typed there.
+    expect(screenReadable(s, at(SID.readOnly))).toBe(true);
+    expect(screenReadable(s, { ...at(SID.readOnly), paneId: undefined })).toBe(false);
+    expect(screenReadable(s, at(SID.noPane))).toBe(false);
+    expect(screenReadable(s, at(SID.windows))).toBe(false);
+    expect(screenReadable(s, at(SID.offline))).toBe(false);
+    expect(screenReadable(s, { node: 'unknown', paneId: '%1' })).toBe(false);
+  });
+
+  it("name the machine: the session's line, and its cards (off while offline or watch-only)", () => {
+    const s = fleetState();
+    expect(machineLine(s, session('a'), NOW)).toBeNull();
+    expect(machineLine(s, { node: IDS.build2 }, NOW)).toBe('build-2 · Linux (WSL) · tmux');
+    expect(machineLine(s, { node: 'unknown' }, NOW)).toBe('a server');
+    expect(cardMachine(s, session('a'))).toBeUndefined();
+    expect(cardMachine(s, s.sessions[SID.tmux]!)).toEqual({ name: 'build-1', blocked: null });
+    expect(cardMachine(s, s.sessions[SID.noPane]!)).toEqual({ name: 'build-1', blocked: null });
+    expect(cardMachine(s, s.sessions[SID.offline]!)).toEqual({ name: 'build-3', blocked: 'build-3 is offline' });
+    expect(cardMachine(s, s.sessions[SID.readOnly]!)).toEqual({ name: 'ro-1', blocked: FLEET_COPY.readOnlyNode('ro-1') });
+  });
+});
+
+describe("a server's terminal dialog", () => {
+  const PERM = (fixtures as unknown as Record<string, { dialog: TerminalDialog }>).PERM_WORKFLOW_133!.dialog;
+
+  it('says the machine where the dock says "the Mac", and offers no window to raise on tmux', async () => {
+    const getScreen = vi.fn(async (_sid: string, _lines?: number) => ({ text: 'synthetic terminal text', lines: 40, at: iso(0), backend: 'tmux', screenKey: 'a'.repeat(64), dialog: { ...PERM, blocksIn: '1:30' } }));
+    const s = fleetState({ features: MAC_ON });
+    s.sessions[SID.work] = { ...s.sessions[SID.work]!, status: 'waiting' };
+    renderApp({ path: `/s/${SID.work}`, api: fakeApi({ getScreen }), state: s });
+    // The dock is its own chunk.
+    const choices = await screen.findByRole('group', { name: 'Choices' }, { timeout: 10_000 });
+    const dock = choices.closest('article')!;
+    // Headed with the Mac's name for the machine, as its hook cards are.
+    expect(within(dock).getByRole('heading').textContent).toMatch(/^build-1 asks · /u);
+    expect(dock.textContent).toMatch(/Claude blocks this at build-1 in /u);
+    expect(dock.textContent).not.toMatch(/the Mac/u);
+    expect(within(dock).queryByRole('button', { name: /^Show on/u })).toBeNull();
+    expect(getScreen.mock.calls[0]?.[0]).toBe(SID.work);
+  });
+
+  it("keeps the Mac's own words for the Mac's sessions", () => {
+    expect(atMachine(BLOCKED, undefined)).toBe(BLOCKED);
+    expect(atMachine(BLOCKED, null)).toBe(BLOCKED);
+    expect(atMachine(blocksLine('2 min'), 'build-1')).toBe('Claude blocks this at build-1 in 2 min if nobody answers');
+    expect(atMachine(PLAN_PARTIAL, 'mini-1')).toBe('mini-1 shows only part of this plan. Read the rest at mini-1 before you approve.');
+    // "your Mac" names the Mac's own switch: never rewritten.
+    expect(atMachine('Turn them on at your Mac', 'build-1')).toBe('Turn them on at your Mac');
   });
 });

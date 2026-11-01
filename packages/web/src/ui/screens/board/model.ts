@@ -20,7 +20,7 @@ import {
   machineOf,
   pendingFor,
   sessionAccount,
-  stateFeatures,
+  sessionFeatures,
   type Account,
   type Alert,
   type PendingRequest,
@@ -282,7 +282,7 @@ export function rowOf(state: State, s: Session, now: number): RowModel {
     machine,
     move: glyph === 'ended' ? null : moveText(s),
     tag: tags.length ? tags.join(' · ') : null,
-    files: glyph === 'turn' && stateFeatures(state).files && (s.filesChanged ?? 0) > 0 ? (s.filesChanged ?? 0) : null,
+    files: glyph === 'turn' && sessionFeatures(state, s).files && (s.filesChanged ?? 0) > 0 ? (s.filesChanged ?? 0) : null,
     card,
   };
 }

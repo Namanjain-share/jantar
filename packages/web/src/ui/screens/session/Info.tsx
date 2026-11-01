@@ -74,11 +74,15 @@ export function machineLine(state: Pick<State, 'nodes'>, session: Pick<Session, 
 /**
  * Whether the Mac can read a session's screen: the Mac's own, and a
  * server's while it is online and the session has a terminal to read (a
- * tmux pane; never native Windows). A watch-only server's screen reads.
+ * tmux pane; never native Windows). A watch-only server's screen reads
+ * too, where it has one.
  */
 export function screenReadable(state: Pick<State, 'nodes'>, session: Pick<Session, 'node' | 'paneId'>): boolean {
-  const key = typeRefusal(state, session);
-  return key === null || key === 'readOnlyNode';
+  if (session.node === undefined) return true;
+  const node = machineOf(state, session.node);
+  if (!node?.online) return false;
+  if (node.backend === 'tmux') return Boolean(session.paneId);
+  return node.backend === 'terminal-app';
 }
 
 /** A hook card from a paired machine: the machine's name, and why it can't be answered now (offline, watch-only). */

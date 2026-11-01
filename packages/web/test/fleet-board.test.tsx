@@ -7,13 +7,16 @@
  * With no machine paired (or an older daemon that sends no `nodes`) the
  * Board is exactly v0.5's. Alerts from a machine start with its name.
  */
-import { screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { boardOrder, emptyState } from '@jantar/protocol';
 import { ledgerGroups, deskAlerts } from '../src/ui/screens/board/model.js';
 import { subjectOf } from '../src/ui/screens/alerts/model.js';
 import { account, alert, NOW, pending, renderApp, session, stateWith } from './helpers.js';
 import { fleetNodes, fleetState, IDS, SID } from './fleet-helpers.js';
+import { viewport } from './launch-fixtures.js';
+
+afterEach(() => vi.unstubAllGlobals());
 
 const row = (sid: string) => document.querySelector<HTMLElement>(`a[data-sid="${sid}"]`)!;
 const chip = (sid: string) => row(sid).querySelector<HTMLElement>('[data-machine]');
@@ -106,5 +109,20 @@ describe('alerts from a machine', () => {
     expect(subjectOf(alert('z', { node: IDS.build3, label: 'Working · tools · export' }), {}, fleetNodes())).toBe('build-3 · tools · export');
     const empty = emptyState();
     expect(deskAlerts({ ...empty, alerts: [alert('y')] }, '')[0]?.subject).toBe('web-app · fix login');
+  });
+});
+
+describe('the Desk', () => {
+  it("names a queued card's machine once a machine is paired, and nothing before", () => {
+    viewport(1440);
+    const { unmount } = renderApp({ state: fleetState({ sessions: [session('b', { status: 'waiting' })], pending: [pending('b')] }) });
+    const desk = screen.getByRole('region', { name: 'Desk' });
+    const cards = within(desk).getAllByRole('article');
+    const machineOf = (label: RegExp) => cards.find((c) => label.test(c.getAttribute('aria-label') ?? ''))?.querySelector('[data-machine]')?.textContent;
+    expect(machineOf(/: api-server$/)).toBe('build-1');
+    expect(machineOf(/: b$/)).toBe('Mac');
+    unmount();
+    renderApp({ state: stateWith({ sessions: [session('b', { status: 'waiting' })], pending: [pending('b')] }) });
+    expect(within(screen.getByRole('region', { name: 'Desk' })).getAllByRole('article')[0]!.querySelector('[data-machine]')).toBeNull();
   });
 });

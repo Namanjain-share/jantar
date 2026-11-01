@@ -66,10 +66,10 @@ interface Place {
 /** The machine last picked in the Where row, while the app runs (never stored). */
 let lastPicked: string | undefined;
 
-/** The paired machines a session can start on now: online, with starting on there; by name. */
+/** The paired machines a session can start on now: online, not watch-only, with starting on there; by name. */
 export function startMachines(nodes: State['nodes']): NodeView[] {
   return Object.values(nodes ?? {})
-    .filter((n) => n.online && n.features.launch)
+    .filter((n) => n.online && !n.readOnly && n.features.launch)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
