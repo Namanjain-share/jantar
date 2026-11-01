@@ -8,7 +8,13 @@
  * - An `AccountId` is the cswap slot number.
  */
 import { z } from 'zod';
-import { DIALOG_COUNTDOWN_TIME, SLASH_ARGS_MAX } from './constants.js';
+import {
+  BACKGROUND_NAME_MAX,
+  BACKGROUND_NAMES_MAX,
+  BACKGROUND_TASKS_MAX,
+  DIALOG_COUNTDOWN_TIME,
+  SLASH_ARGS_MAX,
+} from './constants.js';
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -96,6 +102,32 @@ export const SessionNowSchema = z.object({
 });
 export type SessionNow = z.infer<typeof SessionNowSchema>;
 
+const backgroundCount = () => z.number().int().positive().max(BACKGROUND_TASKS_MAX).optional();
+
+/**
+ * v0.6.1: work Claude Code still runs in the background for a session, read
+ * from its main transcript. Counts are left out when 0, so `{}` means nothing
+ * runs. Only workflows and agents make a session look working; shells and
+ * monitors are a quiet count (a long-lived monitor would otherwise keep a
+ * session busy forever). Never a task's prompt, description, command,
+ * summary, output file or id.
+ */
+export const SessionBackgroundSchema = z.object({
+  /** Dynamic workflows (the Workflow tool) still running. */
+  workflows: backgroundCount(),
+  /** Background agents (the Agent tool, launched async) still running. */
+  agents: backgroundCount(),
+  /** Background shells (Bash run_in_background, or moved to the background on a timeout). */
+  shells: backgroundCount(),
+  /** Monitors (the Monitor tool) not yet ended, stopped or expired. */
+  monitors: backgroundCount(),
+  /** When the oldest running workflow or agent was launched. Present exactly when workflows or agents are. */
+  since: IsoDateSchema.optional(),
+  /** The running workflows' names (meta.name), newest first. */
+  names: z.array(z.string().min(1).max(BACKGROUND_NAME_MAX)).min(1).max(BACKGROUND_NAMES_MAX).optional(),
+});
+export type SessionBackground = z.infer<typeof SessionBackgroundSchema>;
+
 export const SessionSchema = z.object({
   sid: z.string().min(1),
   pid: z.number().int(),
@@ -139,6 +171,13 @@ export const SessionSchema = z.object({
   burn: z.object({ pctPerMin: z.number(), updatedAt: IsoDateSchema }).optional(),
   /** v0.3: how many files Claude created or changed in this session (from its transcript), while Files is on. */
   filesChanged: z.number().int().nonnegative().optional(),
+  /**
+   * v0.6.1: background work still running (SessionBackgroundSchema). Absent
+   * (an older daemon, or a session that never ran any) and `{}` both mean
+   * none. Cleared by a patch to `{}`, never by `unset`: a 0.6.0 hub refuses an
+   * unset key it does not know, which would cost a mixed Fleet its link.
+   */
+  background: SessionBackgroundSchema.optional(),
   /**
    * v0.6: the paired machine (node id) this session runs on; absent = the
    * hub's own session. Stamped by the hub when a node reports it, never

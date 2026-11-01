@@ -100,6 +100,13 @@ export const NODE_SENDS_CAP = 20;
 /** Transcript backfill cap for alert detection on first read. */
 export const ALERT_BACKFILL_BYTES = 256 * 1024;
 
+/** v0.6.1: the most background tasks the daemon tracks per session, and the most a count says. */
+export const BACKGROUND_TASKS_MAX = 64;
+/** v0.6.1: a workflow's name (its script's meta.name), at most this many characters. */
+export const BACKGROUND_NAME_MAX = 80;
+/** v0.6.1: at most this many workflow names per session. */
+export const BACKGROUND_NAMES_MAX = 3;
+
 // ---------------------------------------------------------------------------
 // v0.3
 

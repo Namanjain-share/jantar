@@ -21,6 +21,8 @@
  *   (NodeView, state.nodes, node.updated / node.removed, the fleet switch, the /v1/machines routes,
  *   FLEET_COPY). The link between a server and the hub is the subpath `@jantar/protocol/node-link`,
  *   never exported here: none of it belongs in the phone's bundle.
+ * - v0.6.1 (in models, selectors, constants): `Session.background`, the work Claude Code still
+ *   runs in the background, and `backgroundRunning`, `shownStatus` and `backgroundText`
  */
 export * from './constants.js';
 export * from './models.js';

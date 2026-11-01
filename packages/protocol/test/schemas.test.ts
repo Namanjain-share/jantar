@@ -99,9 +99,10 @@ describe('models', () => {
   });
 
   it('lists exactly the optional session fields as unsettable', () => {
-    // v0.6's `node` is optional but never unset (a session never changes machine).
+    // v0.6's `node` is optional but never unset (a session never changes machine); v0.6.1's
+    // `background` is cleared by a patch to {} (a 0.6.0 hub refuses an unset key it does not know).
     const optional = Object.entries(SessionSchema.shape)
-      .filter(([k]) => k !== 'node')
+      .filter(([k]) => k !== 'node' && k !== 'background')
       .filter(([, schema]) => (schema as { safeParse(v: unknown): { success: boolean } }).safeParse(undefined).success)
       .map(([k]) => k)
       .sort();

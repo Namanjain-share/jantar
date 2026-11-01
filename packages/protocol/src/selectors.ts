@@ -2,10 +2,19 @@
  * Small pure helpers every client uses the same way: labels, board order,
  * "needs you", a session's project by folder, e-mail masking. v0.6: which
  * machine a session runs on, its features, its account, and whether Jantar
- * can type into it.
+ * can type into it. v0.6.1: the status the board shows while a session waits
+ * on background work (`shownStatus`), and the words for that work.
  */
 import { FLEET_COPY, HUB_MACHINE_NAME, type FleetCopyKey } from './constants.js';
-import { NO_FEATURES, type Account, type Features, type NodeView, type PendingRequest, type Session } from './models.js';
+import {
+  NO_FEATURES,
+  type Account,
+  type Features,
+  type NodeView,
+  type PendingRequest,
+  type Session,
+  type SessionStatus,
+} from './models.js';
 import { stateFeatures, type State } from './state.js';
 
 /** Basename of a path, for display ("/a/b/my-app" -> "my-app"; a Windows node's "C:\\code\\api" -> "api"). */
@@ -32,7 +41,7 @@ const STATUS_WORD: Record<Session['status'], string> = {
 
 export function statusWord(session: Session, pending?: PendingRequest | null): string {
   if (pending) return PENDING_WORD[pending.kind];
-  return STATUS_WORD[session.status];
+  return STATUS_WORD[shownStatus(session)];
 }
 
 /** "status · folder · session", the label used on the board and in pushes. */
@@ -60,7 +69,7 @@ export function needsYou(state: State, sid: string): boolean {
 
 function rank(state: State, s: Session): number {
   if (needsYou(state, s.sid)) return 0;
-  switch (s.status) {
+  switch (shownStatus(s)) {
     case 'idle':
       return 1; // your turn
     case 'working':
@@ -105,6 +114,46 @@ export function boardOrder(state: State): Session[] {
     return a.s.sid.localeCompare(b.s.sid);
   });
   return keyed.map((k) => k.s);
+}
+
+// ---------------------------------------------------------------------------
+// v0.6.1: background work (workflows, agents, shells, monitors) between turns.
+
+/** v0.6.1: workflows plus background agents running; 0 for an ended session. Shells and monitors never count. */
+export function backgroundRunning(s: Pick<Session, 'status' | 'background'>): number {
+  if (s.status === 'ended' || !s.background) return 0;
+  return (s.background.workflows ?? 0) + (s.background.agents ?? 0);
+}
+
+/** v0.6.1: the status the board shows: idle with background work running reads as working. */
+export function shownStatus(s: Pick<Session, 'status' | 'background'>): SessionStatus {
+  return s.status === 'idle' && backgroundRunning(s) > 0 ? 'working' : s.status;
+}
+
+export interface BackgroundText {
+  /** "1 workflow running", "2 agents running", "1 workflow and 2 agents running"; null with neither. */
+  running: string | null;
+  /** The newest running workflow's name, "+N" for the other workflows: "demo-sweep", "demo-sweep +1"; null with none named. */
+  name: string | null;
+  /** The quiet count: "6 shells", "1 monitor", "6 shells · 1 monitor"; null with neither. */
+  quiet: string | null;
+}
+
+const count = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** v0.6.1: the words for a session's background work (all null for an ended session or none). */
+export function backgroundText(s: Pick<Session, 'status' | 'background'>): BackgroundText {
+  const b = s.status === 'ended' ? undefined : s.background;
+  const workflows = b?.workflows ?? 0;
+  const agents = b?.agents ?? 0;
+  const kinds = [workflows ? count(workflows, 'workflow') : '', agents ? count(agents, 'agent') : ''].filter(Boolean);
+  const newest = workflows ? b?.names?.[0] : undefined;
+  const quiet = [b?.shells ? count(b.shells, 'shell') : '', b?.monitors ? count(b.monitors, 'monitor') : ''].filter(Boolean);
+  return {
+    running: kinds.length ? `${kinds.join(' and ')} running` : null,
+    name: newest ? (workflows > 1 ? `${newest} +${workflows - 1}` : newest) : null,
+    quiet: quiet.length ? quiet.join(' · ') : null,
+  };
 }
 
 /**
