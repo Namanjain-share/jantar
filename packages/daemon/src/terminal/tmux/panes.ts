@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import type { DaemonContext, TerminalErrorCode } from '../../contracts.js';
 import { normalizeTty } from '../tty.js';
 import type { TmuxBackendOptions } from './index.js';
-import { PANE_ID_RE, PTS_RE, runTmux, tmuxFailure } from './write.js';
+import { FIELD_SEP, PANE_ID_RE, PTS_RE, runTmux, tmuxFailure } from './write.js';
 
 /** One line of `list-panes -a`. */
 export interface TmuxPaneRow {
@@ -27,8 +27,8 @@ export interface TmuxPaneRow {
   dead: boolean;
 }
 
-/** `list-panes -F`: tab-separated, the fields TmuxPaneRow keeps. */
-export const LIST_FORMAT = ['#{pane_id}', '#{pane_tty}', '#{pane_pid}', '#{pane_height}', '#{pane_dead}'].join('\t');
+/** `list-panes -F`: the fields TmuxPaneRow keeps, FIELD_SEP between them. */
+export const LIST_FORMAT = ['#{pane_id}', '#{pane_tty}', '#{pane_pid}', '#{pane_height}', '#{pane_dead}'].join(FIELD_SEP);
 
 /** Steps up the parent chain from a session's pid when it has no tty. */
 export const ANCESTRY_MAX = 16;
@@ -37,7 +37,7 @@ export const ANCESTRY_MAX = 16;
 export function parsePaneRows(stdout: string): TmuxPaneRow[] {
   const rows: TmuxPaneRow[] = [];
   for (const line of stdout.split('\n')) {
-    const [id = '', tty = '', pid = '', height = '', dead = ''] = line.split('\t');
+    const [id = '', tty = '', pid = '', height = '', dead = ''] = line.split(FIELD_SEP);
     if (!PANE_ID_RE.test(id) || !PTS_RE.test(tty) || !/^\d{1,9}$/u.test(pid) || !/^\d{1,5}$/u.test(height)) continue;
     rows.push({ id, tty, pid: Number(pid), height: Number(height), dead: dead === '1' });
   }

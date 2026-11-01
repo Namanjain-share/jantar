@@ -47,7 +47,7 @@ import { typeifFinds } from '../terminal-app/script.js';
 import { normalizeTty, ttyName } from '../tty.js';
 import type { TmuxBackendOptions } from './index.js';
 import { bindPane, listPanes, type TmuxPaneRow } from './panes.js';
-import { CHANGED_REASON, NOT_THIS_PANE, PANE_ID_RE, PTS_RE, TMUX_TIMEOUT_MS, fail, runTmux, tmuxFailure, tmuxWrite, type TmuxWrite } from './write.js';
+import { CHANGED_REASON, FIELD_SEP, NOT_THIS_PANE, PANE_ID_RE, PTS_RE, TMUX_TIMEOUT_MS, fail, runTmux, tmuxFailure, tmuxWrite, type TmuxWrite } from './write.js';
 
 /** The pause between a prompt's text and its Enter: past Claude's ~100 ms paste window. */
 export const ENTER_AFTER_TEXT_MS = 250;
@@ -148,13 +148,13 @@ export class TmuxBackend implements TerminalBackend {
     const n = Math.max(1, Math.min(400, Math.floor(opts.lines ?? 80)));
     const t = pane.handle;
     // One call, one server step: the tty and height, then the screen of that same pane.
-    const r = await runTmux(this.ctx, this.opts, ['display-message', '-p', '-t', t, '#{pane_tty}\t#{pane_height}', ';', 'capture-pane', '-p', '-N', '-t', t]);
+    const r = await runTmux(this.ctx, this.opts, ['display-message', '-p', '-t', t, `#{pane_tty}${FIELD_SEP}#{pane_height}`, ';', 'capture-pane', '-p', '-N', '-t', t]);
     if (!r || r.spawnError || r.timedOut || r.code !== 0) {
       const why = tmuxFailure(r);
       return why.code === 'failed' ? fail('unreadable', why.reason) : why;
     }
     const nl = r.stdout.indexOf('\n');
-    const [tty, height] = (nl < 0 ? r.stdout : r.stdout.slice(0, nl)).split('\t');
+    const [tty, height] = (nl < 0 ? r.stdout : r.stdout.slice(0, nl)).split(FIELD_SEP);
     if (tty !== pane.tty) return fail('not_found', NOT_THIS_PANE);
     // capture-pane ends every row with a line feed: the last one is not part of the screen.
     const raw = nl < 0 ? '' : r.stdout.slice(nl + 1).replace(/\n$/u, '');
@@ -241,14 +241,14 @@ export class TmuxBackend implements TerminalBackend {
     const name = `jantar-${newId().slice(-10).toLowerCase()}`;
     if (!SESSION_NAME_RE.test(name)) return fail('failed', 'could not name a tmux session');
     const r = await runTmux(this.ctx, this.opts, [
-      'new-session', '-d', '-s', name, '-x', String(OPEN_COLS), '-y', String(OPEN_ROWS), '-P', '-F', '#{pane_id}\t#{pane_tty}',
+      'new-session', '-d', '-s', name, '-x', String(OPEN_COLS), '-y', String(OPEN_ROWS), '-P', '-F', `#{pane_id}${FIELD_SEP}#{pane_tty}`,
     ]);
     if (!r || r.spawnError || r.timedOut || r.code !== 0) {
       const why = tmuxFailure(r);
       this.ctx.log.warn('tmux new-session failed', { code: why.code });
       return why;
     }
-    const [id = '', tty = ''] = r.stdout.trim().split('\t');
+    const [id = '', tty = ''] = r.stdout.trim().split(FIELD_SEP);
     if (!PANE_ID_RE.test(id) || !PTS_RE.test(tty)) return fail('failed', "tmux didn't report the new session's pane");
     const pane: Pane = { id: `tmux:${id}`, backend: 'tmux', handle: id, tty, foreground: 'shell' };
     // A shell, then the line typed into it with its Return (no paste window in a shell).

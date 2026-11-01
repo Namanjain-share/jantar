@@ -33,4 +33,4 @@ export function createTmuxBackend(ctx: DaemonContext, opts: TmuxBackendOptions =
 
 export { ENTER_AFTER_TEXT_MS, NO_PANE, OPEN_COLS, OPEN_ROWS, TICK_MS, TmuxBackend, tmuxVersionOk } from './backend.js';
 export { ANCESTRY_MAX, LIST_FORMAT, ancestorsOf, bindPane, parentFromStat, parsePaneRows, type TmuxPaneRow } from './panes.js';
-export { GATE_LINES_MAX, GLOB_SPECIALS, JANTAR_CHANGED, gateLines, hexTokens, tmuxGate, tmuxWrite, type TmuxWrite } from './write.js';
+export { FIELD_SEP, GATE_LINES_MAX, GLOB_SPECIALS, JANTAR_CHANGED, gateLines, hexTokens, tmuxGate, tmuxWrite, type TmuxWrite } from './write.js';

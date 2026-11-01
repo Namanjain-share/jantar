@@ -108,7 +108,7 @@ async function server(name: string, banner = '', opts: { bracketed?: boolean; so
     await wait(25);
   }
   const pid = Number(await readFile(`${log}.ready`, 'utf8'));
-  const [id = '', tty = ''] = tmux(sock, 'list-panes', '-t', `t${n}`, '-F', '#{pane_id}\t#{pane_tty}').trim().split('\t');
+  const [id = '', tty = ''] = tmux(sock, 'list-panes', '-t', `t${n}`, '-F', '#{pane_id} #{pane_tty}').trim().split(' ');
   return { sock, log, pid, pane: { id: `tmux:${id}`, backend: 'tmux', handle: id, tty, foreground: 'claude', pid } };
 }
 

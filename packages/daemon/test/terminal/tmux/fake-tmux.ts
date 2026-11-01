@@ -50,6 +50,9 @@ export interface FakeTmux {
 
 const res = (r: Partial<ExecResult>): Partial<ExecResult> => ({ code: 0, stdout: '', stderr: '', ...r });
 
+/** A printed format as tmux 3.2a and 3.3a print it: a tab becomes `_` (why the backend separates fields with a space). */
+const printed = (s: string): string => s.replaceAll('\t', '_');
+
 /** fnmatch(`*pat*`, line) with only `?` and `*` special, as tmux's `#{C:}` with GLOB_SPECIALS gone. */
 function globFinds(pattern: string, line: string): boolean {
   const re = [...pattern].map((ch) => (ch === '?' ? '.' : ch === '*' ? '.*' : ch.replace(/[.*+?^${}()|[\]\\]/u, '\\$&'))).join('');
@@ -212,13 +215,13 @@ export function createFakeTmux(opts: { version?: string } = {}): FakeTmux {
       switch (args[0]) {
         case 'list-panes': {
           if (args[1] !== '-a' || args[2] !== '-F') throw new Error('list-panes shape');
-          return res({ stdout: fake.panes.map((p) => `${expand(args[3] as string, p)}\n`).join('') });
+          return res({ stdout: fake.panes.map((p) => `${printed(expand(args[3] as string, p))}\n`).join('') });
         }
         case 'display-message': {
           const p = target(args);
           if (!p) return res({ code: 1, stderr: `can't find pane: ${args[3]}` });
           const fmt = args[4] as string;
-          let out = `${expand(fmt, p)}\n`;
+          let out = `${printed(expand(fmt, p))}\n`;
           if (args[5] === ';') {
             if (args.slice(6).join(' ') !== `capture-pane -p -N -t ${p.id}`) throw new Error('capture shape');
             out += `${p.screen}\n`;
@@ -246,7 +249,7 @@ export function createFakeTmux(opts: { version?: string } = {}): FakeTmux {
         case 'new-session': {
           const id = `%${fake.panes.length}`;
           const p = fake.addPane({ id, tty: `/dev/pts/${20 + fake.panes.length}`, height: Number(args[args.indexOf('-y') + 1]) });
-          return res({ stdout: `${expand(args[args.indexOf('-F') + 1] as string, p)}\n` });
+          return res({ stdout: `${printed(expand(args[args.indexOf('-F') + 1] as string, p))}\n` });
         }
         default:
           throw new Error(`unexpected tmux command ${args[0]}`);

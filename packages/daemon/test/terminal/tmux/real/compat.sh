@@ -3,6 +3,7 @@
 # (lane L2, spec 4.1: tmux 3.2a on ubuntu:22.04). No Node: plain sh, the
 # exact argv shapes terminal/tmux/ builds and the gates tmuxGate builds
 # (tmux.test.ts checks this file holds them, with @TTY@ for the pane's tty).
+# Fields of a printed format are space-separated: 3.2a prints a tab as `_`.
 # run.sh runs it in a throwaway container: `run.sh compat`. Never on a
 # machine with a tmux server of its own.
 set -eu
@@ -22,11 +23,12 @@ tmux -V
 G0='#{&&:#{==:#{pane_tty},@TTY@},#{&&:#{==:#{pane_in_mode},0},#{&&:#{==:#{pane_synchronized},0},#{&&:#{==:#{pane_input_off},0},#{==:#{pane_dead},0}}}}}'
 G2='#{&&:#{==:#{pane_tty},@TTY@},#{&&:#{==:#{pane_in_mode},0},#{&&:#{==:#{pane_synchronized},0},#{&&:#{==:#{pane_input_off},0},#{&&:#{==:#{pane_dead},0},#{&&:#{C:Do you want to proceed?},#{&&:#{C:❯ 1. Yes},#{C:  ?(touch /tmp/jantar-pwned) ?a?b? ?x? ?y? ?z}}}}}}}}'
 GX='#{&&:#{==:#{pane_tty},@TTY@},#{&&:#{==:#{pane_in_mode},0},#{&&:#{==:#{pane_synchronized},0},#{&&:#{==:#{pane_input_off},0},#{&&:#{==:#{pane_dead},0},#{&&:#{C:Do you want to proceed?},#{C:Not on this screen}}}}}}}'
-LIST='#{pane_id}	#{pane_tty}	#{pane_pid}	#{pane_height}	#{pane_dead}'
+LIST='#{pane_id} #{pane_tty} #{pane_pid} #{pane_height} #{pane_dead}'
 BUF=jantar-01JF1EETN0DEBV11D1000000A1
 CHANGED='display-message -p JANTAR-CHANGED'
 
-# A pane that shows a dialog, then logs every byte it gets, raw.
+# A pane that shows a dialog, then logs every byte it gets, raw (appending,
+# so emptying the log between checks leaves no hole of zero bytes).
 cat > "$dir/banner" <<'EOF'
 Do you want to proceed?
   #(touch /tmp/jantar-pwned) {a,b} [x] *y? \z
@@ -34,7 +36,7 @@ Do you want to proceed?
   2. No
 EOF
 : > "$dir/log"
-t -f /dev/null new-session -d -s compat -x 200 -y 50 "cat $dir/banner; stty raw -echo; exec cat > $dir/log"
+t -f /dev/null new-session -d -s compat -x 200 -y 50 "cat $dir/banner; stty raw -echo; exec cat >> $dir/log"
 sleep 1
 p=$(t list-panes -a -F '#{pane_id}')
 tty=$(t display-message -p -t "$p" '#{pane_tty}')
@@ -47,12 +49,12 @@ flags=$(t display-message -p -t "$p" '#{pane_in_mode}|#{pane_synchronized}|#{pan
 
 # list-panes as findPane and the tick read it.
 row=$(t list-panes -a -F "$LIST")
-case "$row" in "$p	$tty	"*"	50	0") ok "list-panes -a -F: $row" ;; *) no "list-panes: $row" ;; esac
+case "$row" in "$p $tty "*" 50 0") ok "list-panes -a -F: $row" ;; *) no "list-panes: $row" ;; esac
 
 # readScreen: the tty and height, then capture-pane -p -N, in one call.
-screen=$(t display-message -p -t "$p" '#{pane_tty}	#{pane_height}' ';' capture-pane -p -N -t "$p")
+screen=$(t display-message -p -t "$p" '#{pane_tty} #{pane_height}' ';' capture-pane -p -N -t "$p")
 first=$(printf '%s\n' "$screen" | head -n 1)
-[ "$first" = "$tty	50" ] && ok "display-message ; capture-pane: $first" || no "readScreen head: $first"
+[ "$first" = "$tty 50" ] && ok "display-message ; capture-pane: $first" || no "readScreen head: $first"
 printf '%s\n' "$screen" | grep -q '#(touch /tmp/jantar-pwned) {a,b} \[x\] \*y? \\z' && ok "capture-pane -p -N shows the dialog" || no "capture-pane"
 
 # The write primitive: text on stdin, then one gated step; a trailing ; survives.
@@ -106,10 +108,10 @@ t send-keys -t "$p" -X cancel
 sleep 0.2
 
 # openWindow's new session: 200x50, its pane id and tty reported.
-new=$(t new-session -d -s jantar-compat0001 -x 200 -y 50 -P -F '#{pane_id}	#{pane_tty}')
-np=$(printf '%s' "$new" | cut -f1)
+new=$(t new-session -d -s jantar-compat0001 -x 200 -y 50 -P -F '#{pane_id} #{pane_tty}')
+np=$(printf '%s' "$new" | cut -d ' ' -f1)
 size=$(t display-message -p -t "$np" '#{pane_width}x#{pane_height}')
-case "$new" in %*"	/dev/pts/"*) [ "$size" = "200x50" ] && ok "new-session -d -x 200 -y 50 -P -F: $new $size" || no "size $size" ;; *) no "new-session: $new" ;; esac
+case "$new" in %*" /dev/pts/"*) [ "$size" = "200x50" ] && ok "new-session -d -x 200 -y 50 -P -F: $new $size" || no "size $size" ;; *) no "new-session: $new" ;; esac
 
 t kill-server
 rm -rf "$dir"

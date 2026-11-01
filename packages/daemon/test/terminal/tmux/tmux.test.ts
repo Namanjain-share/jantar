@@ -15,7 +15,7 @@
  * - type, pressEnter, clearInput, pressKey (through Terminal.app's keys.ts),
  *   compare-and-type, openWindow, foregroundOf, focus.
  */
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -25,6 +25,7 @@ import { createFakeExec, createTestContext, onCommand, type TestContext } from '
 import {
   GLOB_SPECIALS,
   JANTAR_CHANGED,
+  LIST_FORMAT,
   NO_PANE,
   TmuxBackend,
   ancestorsOf,
@@ -143,6 +144,18 @@ describe('tmuxGate (spec 4.2)', () => {
 
   it('takes a /dev/pts tty only', () => {
     for (const bad of ['/dev/ttys003', 'pts/3', '/dev/pts/3;', '/dev/pts/3}', '/dev/pts/']) expect(() => tmuxGate(undefined, bad)).toThrow();
+  });
+
+  it('real/compat.sh (tmux 3.2a) runs exactly these gates and this list format', async () => {
+    const sh = await readFile(join(import.meta.dirname, 'real', 'compat.sh'), 'utf8');
+    const held = (name: string) => new RegExp(`^${name}='(.*)'$`, 'mu').exec(sh)?.[1];
+    const at = (gate: string) => gate.replaceAll(TTY, '@TTY@');
+    const line = '  #(touch /tmp/jantar-pwned) {a,b} [x] *y? \\z';
+    expect(held('G0')).toBe(at(tmuxGate(undefined, TTY)));
+    expect(held('G2')).toBe(at(tmuxGate(`Do you want to proceed?\n${line}\n❯ 1. Yes`, TTY)));
+    expect(held('GX')).toBe(at(tmuxGate('Do you want to proceed?\nNot on this screen', TTY)));
+    expect(held('LIST')).toBe(LIST_FORMAT);
+    expect(sh).toContain(line);
   });
 });
 
@@ -316,7 +329,7 @@ describe('the tmux backend', () => {
     const ps = exec.calls.find((c) => c.file === '/usr/bin/ps');
     expect(ps?.args).toEqual(['-t', 'pts/3', '-o', 'pid=,stat=,comm=']);
     expect(ps?.opts.env?.LC_ALL).toBe('C');
-    expect(fake.calls.find((c) => c[0] === 'list-panes')).toEqual(['list-panes', '-a', '-F', '#{pane_id}\t#{pane_tty}\t#{pane_pid}\t#{pane_height}\t#{pane_dead}']);
+    expect(fake.calls.find((c) => c[0] === 'list-panes')).toEqual(['list-panes', '-a', '-F', '#{pane_id} #{pane_tty} #{pane_pid} #{pane_height} #{pane_dead}']);
   });
 
   it('S22: a stored paneId names no pane: a session on another tty is not bound to the server\'s %3', async () => {
@@ -385,7 +398,7 @@ describe('the tmux backend', () => {
   });
 
   it('parsePaneRows keeps only well-formed rows', () => {
-    expect(parsePaneRows('%3\t/dev/pts/3\t101\t50\t0\n%4\t/dev/ttys004\t1\t50\t0\n%x\t/dev/pts/5\t1\t50\t0\n%6\t/dev/pts/6\t7\t24\t1\n')).toEqual([
+    expect(parsePaneRows('%3 /dev/pts/3 101 50 0\n%4 /dev/ttys004 1 50 0\n%x /dev/pts/5 1 50 0\n%6 /dev/pts/6 7 24 1\n%7_/dev/pts/7_8_50_0\n')).toEqual([
       { id: '%3', tty: '/dev/pts/3', pid: 101, height: 50, dead: false },
       { id: '%6', tty: '/dev/pts/6', pid: 7, height: 24, dead: true },
     ]);
@@ -397,7 +410,7 @@ describe('the tmux backend', () => {
     const r = await b.readScreen(paneOf(fake), { lines: 2 });
     expect(r).toMatchObject({ ok: true, raw: 'one  \ntwo\nthree   ', tabRows: 40 });
     expect(r.ok && r.text).toBe('two\nthree');
-    expect(fake.calls).toEqual([['display-message', '-p', '-t', '%3', '#{pane_tty}\t#{pane_height}', ';', 'capture-pane', '-p', '-N', '-t', '%3']]);
+    expect(fake.calls).toEqual([['display-message', '-p', '-t', '%3', '#{pane_tty} #{pane_height}', ';', 'capture-pane', '-p', '-N', '-t', '%3']]);
     p.tty = '/dev/pts/7';
     expect(await b.readScreen(paneOf(fake))).toMatchObject({ ok: false, code: 'not_found' });
   });
@@ -522,7 +535,7 @@ describe('the tmux backend', () => {
     const create = fake.calls.find((c) => c[0] === 'new-session') as string[];
     expect(create.slice(0, 3)).toEqual(['new-session', '-d', '-s']);
     expect(create[3]).toMatch(/^jantar-[0-9a-z]{10}$/u);
-    expect(create.slice(4)).toEqual(['-x', '200', '-y', '50', '-P', '-F', '#{pane_id}\t#{pane_tty}']);
+    expect(create.slice(4)).toEqual(['-x', '200', '-y', '50', '-P', '-F', '#{pane_id} #{pane_tty}']);
     expect(fake.pane('%0').input).toBe(`${command}\r`);
     for (const c of fake.calls) for (const a of c) expect(a).not.toContain(FLEET_SECRET);
   });

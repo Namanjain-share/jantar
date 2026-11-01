@@ -57,6 +57,12 @@ export interface TmuxWrite {
 
 /** Per tmux call. */
 export const TMUX_TIMEOUT_MS = 5_000;
+/**
+ * Between the fields of a printed format (`-F`, `display-message -p`): a
+ * space. tmux 3.2a and 3.3a print a tab there as `_`, and no field Jantar
+ * reads (a pane id, a /dev/pts tty, a number, a flag) can hold a space.
+ */
+export const FIELD_SEP = ' ';
 /** The most `#{C:}` lines one gate checks: the first, the pointer row, the longest and the last. */
 export const GATE_LINES_MAX = 4;
 
@@ -170,12 +176,12 @@ export function hexTokens(keys: string): string {
 }
 
 /** The pane's flags, read when an ungated write was refused: which one stopped it. */
-const FLAGS_FORMAT = ['#{pane_tty}', '#{pane_in_mode}', '#{pane_synchronized}', '#{pane_input_off}', '#{pane_dead}'].join('\t');
+const FLAGS_FORMAT = ['#{pane_tty}', '#{pane_in_mode}', '#{pane_synchronized}', '#{pane_input_off}', '#{pane_dead}'].join(FIELD_SEP);
 
 async function refusalOf(ctx: DaemonContext, opts: TmuxBackendOptions, pane: Pane): Promise<Failure> {
   const r = await runTmux(ctx, opts, ['display-message', '-p', '-t', pane.handle, FLAGS_FORMAT]);
   if (!ok(r)) return tmuxFailure(r);
-  const [tty, inMode, sync, inputOff, dead] = r.stdout.replace(/\n$/u, '').split('\t');
+  const [tty, inMode, sync, inputOff, dead] = r.stdout.replace(/\n$/u, '').split(FIELD_SEP);
   if (tty !== pane.tty) return fail('not_found', NOT_THIS_PANE);
   if (dead === '1') return fail('not_found', 'the program in the tmux pane has exited');
   if (inMode === '1') return fail('unsupported', 'the tmux pane is in copy mode: press q there');
