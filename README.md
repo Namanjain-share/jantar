@@ -15,7 +15,7 @@ once in Terminal on a Mac, on one Claude account or many. Jantar runs on
 your Mac and your phone reaches it through your own tunnel: there is no
 Jantar server and no Jantar account.
 
-**v0.5.1, early** · macOS and Terminal.app · source-available
+**v0.5.2, early** · macOS and Terminal.app · source-available
 (FSL-1.1-MIT) · not affiliated with Anthropic
 
 [Install](docs/install.md) · [Your phone](docs/install.md#reach-it-from-your-phone) ·
@@ -161,7 +161,7 @@ project. More in [How it is put together](docs/architecture.md).
 
 ## Status and limits
 
-- v0.5.1. Terminal.app only; tmux and iTerm2 come later
+- v0.5.2. Terminal.app only; tmux and iTerm2 come later
   ([roadmap](docs/roadmap.md)).
 - A few answers stay at the Mac until a real Mac confirms them:
   [real-Mac checks](docs/real-mac-checks.md).
