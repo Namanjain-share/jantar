@@ -587,7 +587,7 @@ describe('lib/pwa.ts answers the service worker on its port', () => {
     expect(onNavigate).toHaveBeenCalledWith('/s/abc');
   });
 
-  it('only true counts; onChime throwing is { played: false }; a care chime has no port to answer', () => {
+  it('only true counts; onChime throwing is { played: false }; an urgent or care chime has no port to answer', () => {
     const handlers = withWorker();
     let answer: unknown = 'yes';
     const onChime = vi.fn(() => {
@@ -603,6 +603,8 @@ describe('lib/pwa.ts answers the service worker on its port', () => {
     answer = true;
     expect(() => handlers.message!({ data: { type: 'jantar:chime', group: 'care' }, ports: [] })).not.toThrow();
     expect(onChime).toHaveBeenLastCalledWith('care');
+    expect(() => handlers.message!({ data: { type: 'jantar:chime', group: 'urgent' }, ports: [] })).not.toThrow();
+    expect(onChime).toHaveBeenLastCalledWith('urgent');
   });
 });
 

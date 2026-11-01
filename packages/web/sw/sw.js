@@ -197,14 +197,17 @@ async function visibleClient() {
  * own tone (chosen on that device, kept where this worker can't read it), and
  * the push goes silent only when the app answers { played: true } within
  * CHIME_WAIT_MS. Any other answer, none, or an error: the phone's own sound.
- * Medicines and Life (`care`) are never silent: the app's bell plays on top,
- * unasked. The message holds the group's name and nothing else.
+ * Answer soon (`urgent`), medicines and Life (`care`) are never silent: the
+ * app's tone plays on top, unasked. iOS Web Audio follows the silent switch
+ * while the context still says it runs, so a "played" tone may be unheard,
+ * and these must keep the phone's sound or buzz. The message holds the
+ * group's name and nothing else.
  */
 async function chimed(group) {
   if (typeof group !== 'string' || !GROUPS.has(group)) return false;
   const client = await visibleClient();
   if (!client) return false;
-  if (group === 'care') {
+  if (group === 'care' || group === 'urgent') {
     client.postMessage({ type: 'jantar:chime', group });
     return false;
   }

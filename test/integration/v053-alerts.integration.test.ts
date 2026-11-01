@@ -19,8 +19,8 @@
  *     no "needs you" push; at about a minute left, one repeat; past the
  *     deadline, nothing more.
  *  3. On the phone: each push plays its group's tone and says its phrase;
- *     it is shown silent when the app played it, never for medicines and
- *     reminders; the urgent repeat plays again.
+ *     it is shown silent when the app played it, never for Answer soon or
+ *     medicines and reminders; the urgent repeat plays again.
  *  4. A yearly reminder due while the Mac has no network: nothing leaves,
  *     the scheduler says once that it waits; with the network back one push,
  *     marked late, then never another; Done moves it a year on at its time.
@@ -309,7 +309,7 @@ describe('v0.5.3 alerts: the groups, the countdown and the missed-push retry', (
       return { ...heard, silent: shown.silent };
     }
 
-    it('each push plays its group tone and says its phrase; silent only when played, never for care; the repeat plays again', async (t) => {
+    it('each push plays its group tone and says its phrase; silent only when played, never for urgent or care; the repeat plays again', async (t) => {
       if (!ready) return t.skip();
       expect(toPhone.map((p) => p.group)).toEqual(['needs', 'done', 'care', 'problem', 'urgent', 'urgent', 'urgent']);
       let lastUrgent = 0;
@@ -319,7 +319,7 @@ describe('v0.5.3 alerts: the groups, the countdown and the missed-push retry', (
         if (group === 'urgent') await quiet(Math.max(0, lastUrgent + 3_200 - Date.now()));
         const heard = await deliver(p);
         if (group === 'urgent') lastUrgent = Date.now();
-        expect(heard, `${group}: ${p.title}`).toEqual({ hz: TONE_HZ[DEFAULT_TONES[group]], said: [ALERT_PHRASES[group]], silent: group !== 'care' });
+        expect(heard, `${group}: ${p.title}`).toEqual({ hz: TONE_HZ[DEFAULT_TONES[group]], said: [ALERT_PHRASES[group]], silent: group !== 'care' && group !== 'urgent' });
       }
     }, perfBudgetMs(90_000));
   });

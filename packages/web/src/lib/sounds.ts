@@ -8,7 +8,9 @@
  *   change, so a chime never plays through the switch or stops the user's
  *   music. On the lock screen the phone plays its own alert sound.
  * - `play()` is true only when notes were scheduled on a running
- *   AudioContext: the service worker silences a push only then.
+ *   AudioContext: the service worker silences a push only then, and never
+ *   Answer soon, a medicine or a Life ping (the context still runs with
+ *   the silent switch on, so a tone that "played" may be unheard).
  * - Speech says ALERT_PHRASES and nothing else: `speak()` takes a group,
  *   never a string. iOS speaks a page's phrases only after one began inside
  *   a tap, and asks again on every load, so the first tap with Speak on

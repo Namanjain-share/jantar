@@ -291,8 +291,8 @@ describe('v0.5.3: the chime from a push (S4, S5)', () => {
     expect(msg).toEqual({ type: 'jantar:chime', group: 'needs' });
     expect(transfer).toEqual([sw.channels[0]!.port2]);
     expect(sw.channels[0]!.port1.close).toHaveBeenCalled();
-    // urgent, done and problem the same way.
-    for (const g of ['urgent', 'done', 'problem']) expect((await shown(sw, push(g))).silent, g).toBe(true);
+    // done and problem the same way.
+    for (const g of ['done', 'problem']) expect((await shown(sw, push(g))).silent, g).toBe(true);
   });
 
   it('keeps the sound for { played: false } or any other answer', async () => {
@@ -361,6 +361,26 @@ describe('v0.5.3: the chime from a push (S4, S5)', () => {
       vi.useRealTimers();
     }
     expect(client.postMessage.mock.calls).toEqual([[{ type: 'jantar:chime', group: 'care' }]]);
+    expect(sw.channels).toEqual([]);
+  });
+
+  it('never silences Answer soon (urgent): the alarm is posted without a port, the push keeps its sound or buzz', async () => {
+    // iOS Web Audio follows the silent switch while the context still runs: a "played" alarm may be unheard.
+    const sw = loadSw({ version: 'v', precache: [] });
+    const client = windowClient({ answer: { played: true } });
+    sw.self.clients.matchAll.mockResolvedValue([client]);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settled = false;
+      const options = shown(sw, push('urgent')).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      expect((await options).silent).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(client.postMessage.mock.calls).toEqual([[{ type: 'jantar:chime', group: 'urgent' }]]);
     expect(sw.channels).toEqual([]);
   });
 

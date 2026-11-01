@@ -14,7 +14,7 @@ What changed for people who use Jantar, newest first. Versions before
   the silent switch; on the lock screen the iPhone plays its one alert
   sound for every web app, whatever you pick. When the open app plays a
   push's tone, the push comes without the phone's sound, so you hear one;
-  medicine and Life pings always keep it. Sounds are on by default on a
+  Answer soon, medicine and Life pings always keep it. Sounds are on by default on a
   phone and off on the Mac's dashboard. [Alerts and sounds](docs/alerts.md).
 - **Answer soon.** When an unattended agent's ask shows Claude's 2-minute
   auto-block countdown, the daemon reads that screen once and the phone

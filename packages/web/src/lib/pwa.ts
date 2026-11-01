@@ -67,7 +67,8 @@ export interface SwHandlers {
   /**
    * v0.5.3: a push came while this page is on screen (sw.js): play its group's
    * chime. True only when a tone played: the service worker then shows the
-   * push silently; anything else leaves the phone's own sound.
+   * push silently; anything else leaves the phone's own sound. Answer soon,
+   * medicine and Life pings are never silent: their tone plays on top.
    */
   onChime(group: AlertGroup): boolean;
 }
@@ -86,7 +87,7 @@ export function registerServiceWorker(h: SwHandlers): void {
       } catch {
         // no chime: the push keeps its sound
       }
-      // The worker waits on this port for the answer (none for a medicine or Life ping).
+      // The worker waits on this port for the answer (none for Answer soon, a medicine or a Life ping).
       e.ports[0]?.postMessage({ played });
     }
   });

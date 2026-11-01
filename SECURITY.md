@@ -1058,7 +1058,8 @@ seconds left).
   `problem`). The service worker hands the group's name, and nothing else,
   to a visible window of the app on the same origin. A push is shown
   silent only when that window answers within 300 ms that it played its
-  own tone; medicine and Life pings never are.
+  own tone; Answer soon, medicine and Life pings never are (a tone the
+  app counts as played may be unheard with the silent switch on).
 - The app speaks only five fixed phrases ("Answer soon", "Claude needs
   you", "Done", "Reminder", "Something needs a look"): never a prompt, a
   folder, a medicine or a name. Its speech call takes a group, not text.
