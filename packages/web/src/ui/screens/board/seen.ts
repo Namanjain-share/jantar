@@ -8,7 +8,7 @@
  * the open session (desktop split) or its row is tapped (phone).
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { Session, State } from '@jantar/protocol';
+import { shownStatus, type Session, type State } from '@jantar/protocol';
 import { readLocal, writeLocal } from '../../../lib/storage.js';
 
 export const SEEN_KEY = 'board-seen';
@@ -20,9 +20,9 @@ function since(s: Session): number {
   return Number.isFinite(t) ? t : 0;
 }
 
-/** True for a your-turn session that finished after you last looked at it. */
+/** True for a your-turn session that finished after you last looked at it (v0.6.1: not while a workflow it started runs). */
 export function isUnseen(map: SeenMap, s: Session): boolean {
-  if (s.status !== 'idle') return false;
+  if (shownStatus(s) !== 'idle') return false;
   const at = map[s.sid];
   return at !== undefined && since(s) > at;
 }

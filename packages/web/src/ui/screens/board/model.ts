@@ -13,14 +13,23 @@
  * server has its own account 0). A row of an offline machine is muted and
  * says "offline since 14:02" where its age was. One list across machines,
  * in the same order; no filter row.
+ *
+ * v0.6.1: a session idle between turns while a workflow or background agent
+ * it started runs sits under WORKING, with "1 workflow running  demo-sweep"
+ * on line 2 and how long since it started; shells and monitors are a quiet
+ * tag ("6 shells") on any live row. `backgroundLine` words the session
+ * header's line the same way.
  */
 import {
+  backgroundRunning,
+  backgroundText,
   boardOrder,
   machineName,
   machineOf,
   pendingFor,
   sessionAccount,
   sessionFeatures,
+  shownStatus,
   type Account,
   type Alert,
   type PendingRequest,
@@ -57,6 +66,18 @@ export function span(ms: number): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
+}
+
+/**
+ * v0.6.1: a session's background work in words: what runs, the newest
+ * workflow's name and how long ("1 workflow running · demo-sweep · 52m"),
+ * and the quiet count ("6 shells · 1 monitor"). Null parts are left out.
+ */
+export function backgroundLine(s: Pick<Session, 'status' | 'background'>, now: number): { running: string | null; quiet: string | null } {
+  const t = backgroundText(s);
+  const since = parse(s.background?.since);
+  const running = t.running ? [t.running, t.name, since === null ? null : span(now - since)].filter(Boolean).join(' · ') : null;
+  return { running, quiet: t.quiet };
 }
 
 /** "12m", "1h54", "2h05": minutes for runways and resets. */
@@ -147,7 +168,7 @@ export interface RowModel {
   machine?: { name: string; node?: string; offline: boolean } | null;
   /** An in-flight move: "03 → 06 · restarting". */
   move: string | null;
-  /** "+2 agents", "2 cards". */
+  /** "+2 agents", "6 shells", "2 cards". */
   tag: string | null;
   /** Files this session changed ("4 files" in mono on line 2, spec 5.2.1): your-turn rows only, while Files is on. */
   files: number | null;
@@ -220,6 +241,11 @@ function needsLine(state: State, s: Session, card: PendingRequest | undefined): 
   }
 }
 
+/** v0.6.1: idle between turns while a workflow or background agent runs (the working glyph, a Done status). */
+function onBackground(s: Session): boolean {
+  return s.status === 'idle' && backgroundRunning(s) > 0;
+}
+
 function line2Of(state: State, s: Session, glyph: GlyphState, card: PendingRequest | undefined): Line2 {
   switch (glyph) {
     case 'needs':
@@ -228,6 +254,10 @@ function line2Of(state: State, s: Session, glyph: GlyphState, card: PendingReque
       return { kind: 'tool', verb: 'Compacting', arg: 'the conversation' };
     case 'working':
     case 'stale': {
+      if (onBackground(s)) {
+        const t = backgroundText(s);
+        return { kind: 'tool', verb: t.running ?? '', arg: t.name ?? '' };
+      }
       if (s.now?.kind === 'tool') return { kind: 'tool', verb: s.now.tool || 'Tool', arg: firstLine(s.now.text) };
       if (s.now?.text) return { kind: 'text', text: previewText(s.now.text, 200) };
       const reply = replyLine(s.lastReply?.text);
@@ -253,7 +283,7 @@ function ageOf(state: State, s: Session, glyph: GlyphState, now: number): { age:
     const last = parse(s.statusAt) ?? parse(s.statusSince);
     return { age: last === null ? 'no update' : `no update ${span(now - last)}`, ember: false };
   }
-  const at = parse(s.statusSince);
+  const at = (glyph === 'working' && onBackground(s) ? parse(s.background?.since) : null) ?? parse(s.statusSince);
   return { age: at === null ? '' : span(now - at), ember: false };
 }
 
@@ -266,7 +296,10 @@ export function rowOf(state: State, s: Session, now: number): RowModel {
   // An offline machine's row says since when, where its age was (its status is as last heard).
   const { age, ember } = node ? { age: offlineSince(node, now), ember: false } : ageOf(state, s, glyph, now);
   const tags: string[] = [];
-  if (s.subagentsRunning > 0) tags.push(`+${s.subagentsRunning} ${s.subagentsRunning === 1 ? 'agent' : 'agents'}`);
+  // Idle on background work: its agents are on line 2 already, so no "+N agents" beside them.
+  if (s.subagentsRunning > 0 && !onBackground(s)) tags.push(`+${s.subagentsRunning} ${s.subagentsRunning === 1 ? 'agent' : 'agents'}`);
+  const quiet = backgroundText(s).quiet;
+  if (quiet) tags.push(quiet);
   if (cards.length > 1) tags.push(`${cards.length} cards`);
   return {
     sid: s.sid,
@@ -425,11 +458,11 @@ export function deskItem(state: State, row: RowModel): DeskItem {
   }
 }
 
-/** Your-turn sessions, most recently finished first. */
+/** Your-turn sessions, most recently finished first (v0.6.1: not one still running a workflow it started). */
 export function lastFinished(state: State, n = 5): Session[] {
   const at = (s: Session) => parse(s.lastReply?.at) ?? parse(s.statusSince) ?? 0;
   return Object.values(state.sessions)
-    .filter((s) => s.status === 'idle')
+    .filter((s) => shownStatus(s) === 'idle')
     .sort((a, b) => at(b) - at(a))
     .slice(0, n);
 }

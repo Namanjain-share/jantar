@@ -36,6 +36,10 @@
  * stays keyed by the session or card: the Mac knows where it runs. A
  * session of the Mac's own looks as before.
  *
+ * v0.6.1: a session waiting on work it started in the background says so in
+ * one mono line under the header ("1 workflow running · demo-sweep · 52m",
+ * then the quiet "6 shells"), and its glyph reads working until it ends.
+ *
  * The hook cards (session/Permission.tsx, Plan.tsx, Question.tsx) load
  * with import() the first time one shows (v0.6: the first load's room for
  * Fleet); until one arrives the dock says what it is with a spinner. A
@@ -44,7 +48,17 @@
  * with Reload, instead of leaving the screen blank.
  */
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { machineName, machineOf, pendingFor, sessionAccount, sessionFeatures, typeRefusal, typeRefusalText, type Session } from '@jantar/protocol';
+import {
+  machineName,
+  machineOf,
+  pendingFor,
+  sessionAccount,
+  sessionFeatures,
+  shownStatus,
+  typeRefusal,
+  typeRefusalText,
+  type Session,
+} from '@jantar/protocol';
 import { errorText } from '../../lib/api.js';
 import { screenTitle } from '../../lib/favicon.js';
 import { ago } from '../../lib/format.js';
@@ -59,6 +73,7 @@ import { Spinner } from '../kit/Spinner.js';
 import { Tag } from '../kit/Tag.js';
 import { useCeiling, useFeatures } from '../shell/data.js';
 import { useFrame } from '../shell/layout.js';
+import { backgroundLine } from './board/model.js';
 import { Composer, carriesFiles } from './session/Composer.js';
 import { ControlBar } from './session/controls/ControlBar.js';
 import { ModeChip } from './session/controls/ModeChip.js';
@@ -312,7 +327,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const step = !showReceipt && steps.index >= 0 ? { at: steps.index + 1, of: steps.list.length } : null;
   const queue = needsQueue(state).filter((s) => s.sid !== sid);
   const next = queue[0] ?? null;
-  const working = Object.values(state.sessions).filter((s) => s.status === 'working' || s.status === 'compacting').length;
+  const working = Object.values(state.sessions).filter((s) => shownStatus(s) === 'working' || shownStatus(s) === 'compacting').length;
   const ended = gone || session.status === 'ended';
   // v0.4.2 (spec 2.1): a dialog in the terminal with no hook card for it, below a card and its receipt.
   const dialogOnScreen = Boolean(screenRead.screen?.dialog) || screenRead.answered !== null;
@@ -514,6 +529,15 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       Could not show it on {machine ?? 'the Mac'}: {focusError}
     </p>
   ) : null;
+  // v0.6.1: what it still runs in the background, right under the header (no role="status": it changes every minute).
+  const bg = gone ? null : backgroundLine(session, now);
+  const bgLine =
+    bg && (bg.running || bg.quiet) ? (
+      <p data-background-line className={phone ? 'flex-none truncate px-16 pb-4 type-mono' : 'flex-none truncate px-32 pt-8 type-mono'}>
+        {bg.running ? <span className="text-ink-2">{bg.running}</span> : null}
+        {bg.quiet ? <span className="text-ink-3">{bg.running ? ` · ${bg.quiet}` : bg.quiet}</span> : null}
+      </p>
+    ) : null;
   // v0.6: where a paired machine's session runs, under the header.
   const where = machineLine(state, session, now);
   const whereLine = where ? (
@@ -590,6 +614,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
           style={{ height: 'calc(100% + env(safe-area-inset-bottom, 0px))', marginBottom: 'calc(env(safe-area-inset-bottom, 0px) * -1)' }}
         >
           {header}
+          {bgLine}
           {whereLine}
           {reading ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone modeOnChip={modeOnChip} noUsage={noUsage} />}
           <div className="flex-none border-b border-line px-16 py-8">
@@ -609,6 +634,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
     <PaneRoot.Provider value={root}>
       <div ref={root} className="flex h-full min-h-0 flex-col bg-bg">
         {header}
+        {bgLine}
         {whereLine}
         {focusLine}
         <div className="flex min-h-0 flex-1 justify-between gap-32 px-32">

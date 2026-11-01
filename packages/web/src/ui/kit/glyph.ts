@@ -3,7 +3,7 @@
  * how a session maps onto them. Status is told by glyph SHAPE plus the rail
  * word, never by colour alone (direction.md 5.0 "Status glyphs", rule 16).
  */
-import { needsYou, type Session, type State } from '@jantar/protocol';
+import { backgroundRunning, needsYou, type Session, type State } from '@jantar/protocol';
 
 export type GlyphState = 'needs' | 'working' | 'compacting' | 'turn' | 'ended' | 'stale';
 
@@ -41,6 +41,9 @@ export function groupOf(g: GlyphState): GroupKey {
 /**
  * The glyph for a session. "Needs you" wins (an open card, or Claude says it
  * is waiting); a session moving between accounts keeps the working glyph.
+ * v0.6.1: so does a session with a workflow or background agent running
+ * (`backgroundRunning`): idle between turns reads as working, and nothing
+ * updates `statusAt` during that wait, so it is never "no update".
  */
 export function glyphStateOf(state: State, session: Session, now: number, staleMs = STALE_MS): GlyphState {
   if (needsYou(state, session.sid)) return 'needs';
@@ -48,13 +51,13 @@ export function glyphStateOf(state: State, session: Session, now: number, staleM
     case 'waiting':
       return 'needs';
     case 'idle':
-      return 'turn';
+      return backgroundRunning(session) > 0 ? 'working' : 'turn';
     case 'ended':
       return 'ended';
     case 'compacting':
       return 'compacting';
     case 'working': {
-      if (session.move) return 'working';
+      if (session.move || backgroundRunning(session) > 0) return 'working';
       const last = Date.parse(session.statusAt ?? session.statusSince);
       return Number.isFinite(last) && now - last > staleMs ? 'stale' : 'working';
     }
