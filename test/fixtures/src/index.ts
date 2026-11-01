@@ -26,3 +26,5 @@ export * from './perf.js';
 // v0.6 Fleet
 export * from './link.js';
 export * from './node.js';
+// v0.8 Intel reads links
+export * from './posts.js';
