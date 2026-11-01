@@ -120,13 +120,15 @@ after(() => {
 });
 
 const page = (rel) => read(join(dist, rel));
+/** SITE_URL as the build reads it (the Pages workflow sets it). */
+const siteUrl = () => (process.env.SITE_URL || '').replace(/\/+$/, '').replace(/^http:\/\//, 'https://') || null;
 const htmlFiles = () => listFiles(dist).filter((f) => f.endsWith('.html'));
 
 // ---------------------------------------------------------------------------
 // the build
 
 test('the build passes its own checks: files, relative links, anchors, CSP, images', () => {
-  assert.deepEqual(checkDist(dist, { siteUrl: (process.env.SITE_URL || '').replace(/\/+$/, '').replace(/^http:\/\//, 'https://') || null }), []);
+  assert.deepEqual(checkDist(dist, { siteUrl: siteUrl() }), []);
 });
 
 test('every figure slot is on the page, framed, in both themes', () => {
@@ -448,7 +450,7 @@ test('the film: read from its MP4, played only from files in the build, the bann
 
   // with the film
   const html = read(join(filmDist, 'index.html'));
-  assert.deepEqual(checkDist(filmDist), []);
+  assert.deepEqual(checkDist(filmDist, { siteUrl: siteUrl() }), []);
   assert.match(html, /<div class="film-box" data-film data-webm="media\/launch\.webm" data-mp4="media\/launch\.mp4">/);
   assert.match(html, /<a class="film-play" href="media\/launch\.mp4">/, 'without JS the poster links to the MP4');
   assert.match(html, /<button class="film-ctl" type="button" aria-label="Pause the film">/);

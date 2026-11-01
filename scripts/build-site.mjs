@@ -876,7 +876,7 @@ export async function build(opts, log = (s) => process.stdout.write(`${s}\n`)) {
   const film = filmFiles(opts.film ?? null);
   const answers = readdirSync(join(SRC, 'answers'))
     .filter((f) => f.endsWith('.html'))
-    .sort()
+    .sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a.localeCompare(b)))
     .map((f) => `answers/${f}`);
 
   rmSync(out, { recursive: true, force: true });
