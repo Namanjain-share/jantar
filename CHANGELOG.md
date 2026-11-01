@@ -23,8 +23,9 @@ What changed for people who use Jantar, newest first. Versions before
   and the page says how many. Its history stays in the daemon's memory,
   the last 30 messages per phone (and an older one while Undo still works
   on what it added) for up to 7 days; Clear history, `jantar ask off` and
-  a restart forget it. A message refused because one is still waiting
-  doesn't count against the 10 a minute and 100 a day.
+  a restart forget it. A message refused because one is still waiting, or
+  because Ask can't run, doesn't count against the 10 a minute and 100 a
+  day.
   [SECURITY.md](SECURITY.md#v053-ask) lists what it can't do.
 - **A sound for each kind of alert.** Every push now belongs to one of five
   groups (Answer soon, Needs you, Done, Medicines and reminders, Problems),
@@ -55,8 +56,10 @@ What changed for people who use Jantar, newest first. Versions before
   one falls on the 28th in other years). A repeating reminder keeps its
   own time: a daily 11:00 snoozed an hour still rings at 11:00 the next
   day (a reminder made before 0.5.3 learns its time once you change it in
-  the todo sheet). Today has Add todo, due today, and its weight line logs
-  today's weight. [Life](docs/life.md) lists the limits.
+  the todo sheet). Snooze, Done and then Undo no longer moves a monthly
+  todo to the snoozed day of the month for good. Today has Add todo, due
+  today, and its weight line logs today's weight. [Life](docs/life.md)
+  lists the limits.
 - The daily calorie target starts at **1,500 kcal** (it was 2,000). A
   target you already set on the phone stays as it is.
 - **A ping the Mac could not send for lack of network** (asleep, Wi-Fi off)
@@ -88,8 +91,7 @@ What changed for people who use Jantar, newest first. Versions before
   tab, then try again." when Chrome has not let the extension take that
   tab, and Chrome gets 5 seconds to take a picture. The daemon logs one
   line per screenshot upload, refusals included, with the status and size
-  only. Why the screenshots of three real calls never arrived is still
-  open: the next call's Last screenshot should say.
+  only.
 - **A one-line install.** `curl -fsSL https://jantar.namanbuilt.com/install.sh | bash`
   checks for macOS, Node.js and pnpm, clones release v0.5.3 into `~/jantar`,
   builds it, runs `jantar init` and asks before `jantar install`. No sudo.
@@ -100,10 +102,8 @@ What changed for people who use Jantar, newest first. Versions before
   wide cut and a portrait cut for phones, and the film's words written out
   under it. The README opens with a short loop of the same story. Both use
   example data only.
-- The integration suites' own time limits get the same allowance on a slow
-  CI runner as their waits, and the Life scheduler arms its next ping even
-  after a failed read. The Ubuntu run's `v04-life` "08:00" step had timed
-  out at 30 seconds.
+- A reminder due while Life's database was busy no longer rings up to 30
+  seconds late.
 - New settings: `ask.enabled` (off) and `notify.urgent` (on). The protocol
   version stays 3 and the settings version 2: no migration.
 
