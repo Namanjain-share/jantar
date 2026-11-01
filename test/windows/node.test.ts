@@ -85,7 +85,8 @@ describe.skipIf(!WINDOWS)('W3-W6: a native Windows node', () => {
       join(hubState, 'config.json'),
       JSON.stringify({ remote: { port, publicUrl: `http://127.0.0.1:${port}` }, usage: { poller: 'off' }, notify: { settle_ms: 0 }, fleet: { enabled: true } }),
     );
-    hub = await startDaemon({ env: { ...envWithout(), HOME: hubHome, USERPROFILE: hubHome, JANTAR_HOME: hubState }, terminal: false, rotateLogs: false, log: memoryLogger() });
+    // JANTAR_TEST_LOOPBACK_DOOR=1: the hub accepts this test's http loopback door (as fleet-link.integration does).
+    hub = await startDaemon({ env: { ...envWithout(), HOME: hubHome, USERPROFILE: hubHome, JANTAR_HOME: hubState, JANTAR_TEST_LOOPBACK_DOOR: '1' }, terminal: false, rotateLogs: false, log: memoryLogger() });
     hubCtl = createCtlClient(hub.ctx.paths.ctlSock);
 
     // The node's profile: two accounts, one live session each.
