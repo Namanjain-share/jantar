@@ -282,3 +282,17 @@ Before the repository goes public, or a fork takes it over:
   shares, and a Markdown link or picture that does not resolve.
 - Pin the CLA action in `.github/workflows/cla.yml` to a full commit SHA,
   and the other actions in `.github/workflows/ci.yml` too.
+
+## Releasing (maintainers)
+
+- In the release commit, date the version's heading in `CHANGELOG.md`
+  (as `## 0.5.2 (1 November 2026)`, never `(unreleased)`). The website deploys
+  from main, and its build refuses an undated heading: its pages name the
+  version, and its `install.sh` fetches that version's tag.
+- Push the tag with main, in one push: `git push --atomic origin main v0.5.3`.
+  A tag pushed later leaves the website's one-line install failing until
+  it is there.
+- Don't name a branch like a release tag; once one is merged, delete it.
+  `install.sh` fetches `refs/tags/v<version>` by its full name, but
+  `git clone --branch v0.5.3` and `git checkout v0.5.3` take a branch of
+  that name before the tag.
