@@ -74,15 +74,15 @@ export function nextFullHour(now: LifeClock): { day: string; time: string } {
   return { day: now.day, time: `${String(h).padStart(2, '0')}:00` };
 }
 
-/** Live sessions (not ended) whose folder is inside `folder`. */
+/** The Mac's live sessions (not ended) whose folder is inside `folder`. A paired server's (v0.6) never is: Life is the Mac's. */
 export function liveIn(sessions: readonly Session[], folder: string | undefined): Session[] {
   if (!folder) return [];
-  return sessions.filter((s) => s.status !== 'ended' && inFolder(s.cwd, folder));
+  return sessions.filter((s) => s.node === undefined && s.status !== 'ended' && inFolder(s.cwd, folder));
 }
 
-/** The distinct folders of the sessions the phone knows, for a project's Folder picker. */
+/** The distinct folders of the Mac's sessions the phone knows (no paired server's), for a project's Folder picker. */
 export function sessionFolders(sessions: readonly Session[]): string[] {
-  return [...new Set(sessions.map((s) => s.cwd).filter((c) => c.startsWith('/')))].sort();
+  return [...new Set(sessions.filter((s) => s.node === undefined).map((s) => s.cwd).filter((c) => c.startsWith('/')))].sort();
 }
 
 /** A project's name with its emoji, as rows and chips show it. */

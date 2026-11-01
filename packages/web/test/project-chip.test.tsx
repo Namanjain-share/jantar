@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ProjectView } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { inFolder, projectFor } from '../src/ui/screens/life/todos/useProjects.js';
+import { liveIn, sessionFolders } from '../src/ui/screens/life/todos/model.js';
 import { fakeApi, iso, renderApp, session, stateWith } from './helpers.js';
 
 const id = (n: number) => `01JFZ8X8Y3T0V5G9WQK2M4N${String(n).padStart(3, '0')}`;
@@ -143,5 +144,16 @@ describe('folder matching', () => {
     expect(projectFor('/w/a/b/c', list)?.id).toBe(id(2));
     expect(projectFor('/w/z', list)?.id).toBe(id(1));
     expect(projectFor('/elsewhere', list)).toBeNull();
+  });
+
+  it("v0.6: a paired server's session is never a project's live session or a Folder choice", () => {
+    const all = [
+      session('mac', { status: 'idle', cwd: '/w/alpha' }),
+      session('srv', { status: 'idle', cwd: '/w/alpha/api', node: '01JF1EETN0DEBV11D1000000A1' }),
+      session('srv2', { status: 'idle', cwd: '/srv/beta', node: '01JF1EETN0DEBV11D1000000A1' }),
+      session('gone', { status: 'ended', cwd: '/w/alpha' }),
+    ];
+    expect(liveIn(all, '/w/alpha').map((s) => s.sid)).toEqual(['mac']);
+    expect(sessionFolders(all)).toEqual(['/w/alpha']);
   });
 });
