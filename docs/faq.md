@@ -88,8 +88,11 @@ address of your front door.
 
 ## Why did a medicine ping not come?
 
-Pings come from the daemon on your Mac, so they need the Mac awake. Keep
-your phone's own alarm for a dose you must not miss.
+Pings come from the daemon on your Mac, so they need the Mac awake. Since
+0.5.3, a ping the Mac could not send for lack of network goes out, marked
+late, once the network is back, up to 6 hours late (a medicine's is skipped
+when its next dose is under 3 hours away). Keep your phone's own alarm for
+a dose you must not miss.
 
 ## Known limits
 

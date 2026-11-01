@@ -59,10 +59,11 @@ More: [answering prompts from the phone](docs/phone-control.md).
 Each kind of push has its own tone in the app: an alarm when Claude's
 2-minute countdown runs on an ask nobody answers ("about 2 min to answer",
 and once more a minute before it blocks), a ding when a session needs you,
-a success tune when one is done. A voice can add a few fixed words. Tones
-and the voice play only while Jantar is open on screen, and follow the
-silent switch; on the lock screen the iPhone plays its one alert sound for
-every web app.
+a success tune when one is done (Done pushes are off until
+`jantar notify done on`). A voice can add a few fixed words. Tones and
+the voice play only while Jantar is open on screen, and follow the
+silent switch; on the lock screen the iPhone plays its one alert sound
+for every web app.
 
 More: [alerts and sounds](docs/alerts.md).
 
@@ -207,6 +208,7 @@ by this project. More in [How it is put together](docs/architecture.md).
 | [Answering from the phone](docs/phone-control.md) | Hook cards, terminal dialogs, the keypad, attachments, what stays at the Mac |
 | [Accounts](docs/accounts.md) and [the primer](docs/primer.md) | One login or cswap, usage, kept accounts, priming idle windows |
 | [Life](docs/life.md) | Today, todos, reminders, projects, medicines, food, cafés, finance |
+| [Ask](docs/assistant.md) | The chat page: plain words in, todos, reminders, meals and expenses out as cards you add with a tap; what goes to Claude |
 | [Alerts and sounds](docs/alerts.md) | A tone per kind of alert, the 2-minute countdown alert, what the lock screen can do, `jantar notify` |
 | [Intel shelf](docs/intel.md) | The shelf, its search, its JSONL line format, and `jantar mcp` for Claude Code |
 | [Meetings](docs/extension.md) | The Chrome extension for Meet and Teams |

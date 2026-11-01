@@ -17,9 +17,9 @@ jantar/
   LICENSE (FSL-1.1-MIT)  THIRD_PARTY_NOTICES.md
   CHANGELOG.md
   docs/            README.md (the index), the user guides (install, phone-app, phone-control,
-                   alerts, accounts, primer, life, intel, extension, configuration, security, faq,
-                   roadmap, upgrading, real-mac-checks), and for contributors: LAYOUT.md (this
-                   file), architecture.md, hook-protocol.md, PROVENANCE.md
+                   alerts, accounts, primer, life, assistant, intel, extension, configuration,
+                   security, faq, roadmap, upgrading, real-mac-checks), and for contributors:
+                   LAYOUT.md (this file), architecture.md, hook-protocol.md, PROVENANCE.md
   docs/img/        the screenshots the README and docs show (scripts/screenshots.mjs writes them)
   docs/brand/      the logo, the README banner and the social preview (scripts/brand.mjs writes them);
                    the launch film, its phone cut and the README's GIFs (scripts/launch-video.mjs)

@@ -14,7 +14,7 @@
 | [The primer](primer.md) | Starting an idle account's 5-hour window early |
 | [Life](life.md) | Today, todos, reminders, projects, medicines, food and weight, cafés, finance; backup and restore |
 | [Ask](assistant.md) | The chat page: plain words in, todos, reminders, meals and expenses out as cards you add with a tap; what goes to Claude |
-| [Intel shelf](intel.md) | The shelf, its sources and the JSONL line format |
+| [Intel shelf](intel.md) | The shelf, its search, its sources and the JSONL line format, and `jantar mcp` for Claude Code |
 | [Meetings](extension.md) | The Chrome extension for Google Meet and Microsoft Teams: setup, captions, screenshots, summaries, export, deleting everything |
 | [Configuration](configuration.md) | Every command, the daemon's flags, environment variables, `config.json`, the state folder |
 | [Security, in plain words](security.md) | What Jantar can reach, what a phone can do, what leaves the Mac; the full model is [SECURITY.md](../SECURITY.md) |

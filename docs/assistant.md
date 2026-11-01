@@ -100,6 +100,10 @@ medicine; save foods, bills or cafés; or touch sessions, files, settings,
 the shelf or another device. Ask says so in the reply and suggests
 nothing.
 
+It suggests a repeat every day, week or month, never every year: for a
+birthday or a renewal, add the todo, then pick Year under Repeat in its
+todo sheet.
+
 ## What goes to Claude
 
 Only what you type on the page (medicine names or amounts you type do
