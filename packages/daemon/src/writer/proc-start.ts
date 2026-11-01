@@ -10,6 +10,11 @@
  *
  * ISO strings and epoch numbers are accepted as well, in case the format
  * changes.
+ *
+ * v0.6 (D7): what Claude writes as `procStart` on Linux is not verified yet,
+ * and busybox `ps` prints another format. When either side doesn't parse,
+ * the check still fails closed, with one fixed sentence (PROC_START_UNREAD)
+ * that sends the user to `jantar doctor` on that machine.
  */
 import type { DaemonContext } from '../contracts.js';
 import { cLocale } from '../core/exec.js';
@@ -19,6 +24,9 @@ const MONTHS: Record<string, number> = {
 };
 
 const LSTART_RE = /^(?:[A-Za-z]{3}\s+)?([A-Za-z]{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+(\d{4})$/u;
+
+/** D7: the recorded start time or `ps`'s doesn't parse (the phone names the machine). */
+export const PROC_START_UNREAD = "Jantar can't confirm this Claude process on this machine (its start time doesn't parse); see jantar doctor there";
 
 /** Tolerance for comparing two start times (ps has 1 s resolution). */
 export const PROC_START_TOLERANCE_MS = 1500;
@@ -69,7 +77,7 @@ export async function checkSessionProcess(
     return { ok: false, reason: "the session's process has exited" };
   }
   const recorded = procStartCandidates(procStart);
-  if (recorded.length === 0) return { ok: false, reason: "the session file's process start time can't be read" };
+  if (recorded.length === 0) return { ok: false, reason: PROC_START_UNREAD };
   const r = await ctx.exec(ctx.bins.ps, ['-o', 'lstart=', '-p', String(pid)], {
     env: { ...cLocale(ctx.env), TZ: 'UTC' },
     timeoutMs: 5000,
@@ -78,7 +86,7 @@ export async function checkSessionProcess(
   const line = r.stdout.trim().split('\n')[0] ?? '';
   if (r.code !== 0 || !line) return { ok: false, reason: "the session's process has exited" };
   const actual = parsePsLstartUtc(line);
-  if (actual === null) return { ok: false, reason: "the process start time couldn't be read" };
+  if (actual === null) return { ok: false, reason: PROC_START_UNREAD };
   if (!recorded.some((ms) => Math.abs(ms - actual) <= PROC_START_TOLERANCE_MS)) {
     return { ok: false, reason: "the session's pid now belongs to another process" };
   }

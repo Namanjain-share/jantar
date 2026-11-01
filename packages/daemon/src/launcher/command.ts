@@ -6,6 +6,7 @@
  *   cs-shell:   cd -- <folder> && <csCommand> <N> -- <flags> --session-id <uuid> --name <name>
  *   cswap-run:  cd -- <folder> && [<preLaunchArgv> &&] <cswap> run [--share-history] <N> -- <same tail>
  *   claude:     cd -- <folder> && <bins.claude> <flags> --session-id <uuid> --name <name>
+ *   dirs:       cd -- <folder> && env CLAUDE_CONFIG_DIR=<dir> <bins.claude> <same tail as claude>
  *   a resume:   any of these with `--resume <uuid>` in place of `--session-id <uuid>`
  *
  * - Built only here, from checked parts: the folder's realpath, an account
@@ -29,6 +30,11 @@
  *   cswap-run start nothing in single mode (accountsModeProblem).
  * - A resume carries no --session-id: Claude Code refuses the two together
  *   unless --fork-session is given.
+ * - v0.6, accountsMode "dirs" (a paired server without cswap, spec 5):
+ *   claude mode only. An account other than ~/.claude is its config dir,
+ *   given to claude as `env CLAUDE_CONFIG_DIR=<dir>` (an absolute path,
+ *   quoted like every word; `env` works in every shell, where older fish
+ *   refuses a bare `VAR=x` prefix). Still no `--`.
  */
 import { LaunchNameSchema, type AccountsMode, type Settings } from '@jantar/protocol';
 
@@ -59,10 +65,15 @@ export const CLAUDE_MISSING = 'claude (Claude Code) was not found on this Mac';
 export const NO_CSWAP_MODE = 'This Mac has no cswap. Run: jantar launch mode claude';
 /** claude mode picks no account, so with cswap a start needs cs-shell or cswap-run. */
 export const CSWAP_MODE = 'This Mac has cswap. Pick how to start sessions: jantar launch mode cswap-run';
+/** v0.6: a server whose accounts are config dirs starts sessions in claude mode only. */
+export const NO_CSWAP_DIRS = 'This machine has no cswap: its accounts are config dirs. Run: jantar launch mode claude';
+/** v0.6: CLAUDE_CONFIG_DIR is typed only before claude, in claude mode. */
+export const CONFIG_DIR_CLAUDE_ONLY = 'a config dir starts sessions in claude mode only';
 
-/** Why this Mac's accounts mode and launch.mode cannot start a session together, or null. */
+/** Why this machine's accounts mode and launch.mode cannot start a session together, or null. */
 export function accountsModeProblem(accounts: AccountsMode, mode: Settings['launch']['mode']): string | null {
   if (accounts === 'single') return mode === 'claude' ? null : NO_CSWAP_MODE;
+  if (accounts === 'dirs') return mode === 'claude' ? null : NO_CSWAP_DIRS;
   return mode === 'claude' ? CSWAP_MODE : null;
 }
 
@@ -97,7 +108,7 @@ export interface CommandParts {
    * v0.6, accountsMode "dirs" (a paired Linux or Windows server without
    * cswap): the picked account's config dir, typed as `env
    * CLAUDE_CONFIG_DIR=<dir>` before claude, with no `--`; null or absent for
-   * ~/.claude (and in every other mode). Lane L2 builds that line.
+   * ~/.claude (and in every other mode).
    */
   configDir?: string | null;
 }
@@ -114,6 +125,9 @@ export function launchCommand(p: CommandParts): CommandResult {
   if (!LaunchNameSchema.safeParse(p.name).success) return { ok: false, reason: 'the session name may use letters, digits, ".", "_" and "-" only' };
   // launchFlagArgs gives flags and one-word values only ("--effort", "ultracode").
   if (p.args.some((a) => !/^(?:--[a-z][a-z-]*|[A-Za-z]+)$/u.test(a))) return { ok: false, reason: 'unexpected claude flag' };
+  const configDir = p.configDir ?? null;
+  if (configDir !== null && !configDir.startsWith('/')) return { ok: false, reason: 'the config dir is not an absolute path' };
+  if (configDir !== null && p.launch.mode !== 'claude') return { ok: false, reason: CONFIG_DIR_CLAUDE_ONLY, setup: true };
   const n = p.account === null ? ACCOUNT_PLACEHOLDER : String(p.account);
   const session = p.resume
     ? ['--resume', p.sid as string, ...(RESUME_KEEPS_NAME ? ['--name', q(p.name)] : [])]
@@ -122,7 +136,7 @@ export function launchCommand(p: CommandParts): CommandResult {
   let run: string;
   if (p.launch.mode === 'claude') {
     if (!p.claude || !p.claude.startsWith('/')) return { ok: false, reason: CLAUDE_MISSING, setup: true };
-    run = [q(p.claude), ...p.args.map(q), ...session].join(' ');
+    run = [...(configDir !== null ? ['env', q(`CLAUDE_CONFIG_DIR=${configDir}`)] : []), q(p.claude), ...p.args.map(q), ...session].join(' ');
   } else if (p.launch.mode === 'cs-shell') {
     if (!COMMAND_WORD_RE.test(p.launch.csCommand)) return { ok: false, reason: 'launch.csCommand must be a plain command name', setup: true };
     run = `${p.launch.csCommand} ${n} ${tail}`;
