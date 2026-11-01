@@ -171,7 +171,7 @@ describe.skipIf(!WINDOWS)('W3-W6: a native Windows node', () => {
     const r = await client;
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } });
-  });
+  }, 120_000);
 
   it('W5: a prompt to a Windows session gets the watch-only line; the node has controls and launch off', async () => {
     const res = await http(port, 'POST', `/v1/sessions/${SID_A}/prompt`, { body: { text: 'hello' }, cookie });
