@@ -7,7 +7,7 @@
 | Page | What it holds |
 |---|---|
 | [Install and run](install.md) | Requirements, a read-only trial, running under launchd, macOS prompts, reaching it from your phone (Tailscale, Cloudflare), pairing, updating, uninstalling |
-| [The app](phone-app.md) | Every screen on the phone and the Mac, sending prompts with proof, new sessions and Resume, Files, Rewrite, Controls, devices and scopes |
+| [The app](phone-app.md) | Every screen on the phone and the Mac, sending prompts with proof, new sessions and Resume, Files, Rewrite, Ask, Controls, devices and scopes |
 | [Answering from the phone](phone-control.md) | Hook cards, terminal dialogs as buttons, the keypad, attachments, what stays at the Mac and why |
 | [Accounts](accounts.md) | One login or cswap, usage and resets, accounts kept for other work |
 | [The primer](primer.md) | Starting an idle account's 5-hour window early |

@@ -28,9 +28,11 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Today** and **Life** | Today, Todos (with Reminders and Projects), Medicines, Food, Cafés and Finance; on a phone they sit behind Today and More ([Life](life.md)) |
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
+| **Ask** | Right after Today: tell it what to add in plain words, and add its suggestions with a tap ([Ask](#ask)) |
 
-On a phone the tab bar holds Board, Today, Files, Accounts and More. On a
-Mac a session opens beside the board from 1024 px wide.
+On a phone the tab bar holds Board, Today, Files, Accounts and More. With
+Ask on it holds Board, Today, Ask, Files and More, and Accounts moves into
+More. On a Mac a session opens beside the board from 1024 px wide.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="img/board-desktop-dark.png"><img src="img/board-desktop.png" alt="The Board on a Mac: the sessions, the cards waiting on you, the next resets and new alerts."></picture>
 
@@ -60,6 +62,7 @@ jantar screenshots on                 # a Picture view of the session's window
 jantar life on all                    # Life: todos, medicines, food, cafés, finance
 jantar intel on                       # the Intel shelf
 jantar meetings on                    # Meetings from the Chrome extension
+jantar ask on                         # Ask: suggestions for todos, reminders, food and money
 ```
 
 Every command and option is in [Configuration](configuration.md).
@@ -194,6 +197,61 @@ jantar rewrite model sonnet                       # or opus, haiku
 phone whatever the model. Rewrite runs on an account with room, never one
 kept for other work. Attachments survive a Rewrite.
 
+## Ask
+
+A chat page that turns plain words into Life items. Type what you want
+("todo add call the bank", "remind me to stretch at 6 pm", "had 2 rotis
+and dal", "spent 250 on lunch") or ask about today ("calories left?").
+The Mac makes one headless Claude run, on Rewrite's model at low effort,
+and shows a short reply with up to 10 suggestions as cards. **Nothing is
+added until you tap Add.**
+
+```sh
+jantar life on todos food finance   # Ask suggests only for Life parts that are on
+jantar ask on                       # says what goes to Claude
+jantar ask status                   # the switch, and the model (Rewrite's: jantar rewrite model <m>)
+jantar ask off                      # hides it and forgets its history
+```
+
+| Card | What it adds |
+|---|---|
+| **Todo** or **Reminder** | a todo, with its day, time, repeat, priority and project when you said them (a todo with a time is a reminder and rings) |
+| **Food** | what you ate with its calories, today or up to 7 days back |
+| **Expense** or **Income** | a money entry in one of the usual categories, today or up to 7 days back |
+| **Now** | nothing: what is due today, calories against your target, or today's medicines, filled in on the phone |
+
+- **Add**, **Edit** (change the fields, then Save and add) or **Skip** each
+  card. **Add all** adds the todo and food cards of one answer in one tap
+  (a meal is often several cards); a money card always needs its own Add.
+  A card over a day old can't be added: ask again.
+- **Undo** on an added card works for 24 hours. It deletes the item **as
+  it is now**, with any change made since (an edit, Done, a repeating todo
+  moved on to its next day). After that, delete it in Todos, Food or
+  Finance.
+- **Times.** A time with no day is the next time it comes: "at 6" is 06:00
+  or 18:00 today, else 06:00 tomorrow. A repeating reminder whose time has
+  passed today starts on its next day. A one-off reminder for a time
+  already gone says it won't ring.
+- **Questions about today** never send your lists to Claude. Claude only
+  picks a Now card, and the phone fills it from Today: the calories card
+  uses your own target. Tapping a dose on the medicines card is the only
+  way Ask logs one.
+- **What it can't do:** change, finish or delete items you already have,
+  log a dose or change a medicine, or touch sessions, files, settings or
+  the shelf. It says so in the reply and suggests nothing.
+- **What goes to Claude**, as the page says under the box: only what you
+  type there (medicine names or amounts you type do go), the date and
+  time, and which Life parts are on. Your saved lists, medicines and money
+  stay on the Mac.
+- **History** lives in the daemon's memory only: the last 30 messages per
+  phone, for up to 7 days. **Clear history** forgets this phone's, `jantar
+  ask off` forgets everyone's, and a restart of the daemon forgets it too.
+  Items you added stay in Life.
+- One answer at a time per phone (Cancel stops it), 10 messages a minute
+  and 100 a day. Ask needs the `control` scope, runs on an account with
+  room (never one kept or held for other work), and is refused while
+  Jantar runs `--read-only`.
+
 ## Controls and screenshots
 
 The session screen's control bar has the permission mode chip, Interrupt,
@@ -234,8 +292,8 @@ jantar devices revoke iPhone            # sign the device out for good
 
 `<device>` is a device id, a unique id prefix (4+ characters) or a unique
 device name. Scopes form a chain: read < control < launch < admin. Only
-the Mac grants `launch`. `launch off`, `files off`, `rewrite off` and
-`screenshots off` stop each feature at once.
+the Mac grants `launch`. `launch off`, `files off`, `rewrite off`,
+`screenshots off` and `ask off` stop each feature at once.
 
 ## Notifications
 

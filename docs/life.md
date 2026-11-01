@@ -63,6 +63,9 @@ jantar life status
   never a medicine's.
 - **Ask Claude** runs one headless Claude on an account with room (never a
   kept one) and is refused while Jantar runs read-only.
+- **Ask** (its own switch, `jantar ask on`) turns plain words into todos,
+  reminders, meals and money entries, each added only by your tap, with
+  Undo for a day ([Ask](phone-app.md#ask)).
 
 ## Settings
 

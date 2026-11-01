@@ -86,7 +86,9 @@ shelf for links your scripts save, and notes from your Google Meet and
 Teams calls in Chrome (their live captions and a summary; the screenshots
 you click are not yet confirmed on a real call). Each is switched on at the
 Mac, one at a time, and the pictures here show them on. A fresh install
-shows only Board, Accounts, Alerts and Devices.
+shows only Board, Accounts, Alerts and Devices. **Ask** (`jantar ask on`)
+turns plain words ("remind me to stretch at 6 pm") into Life's todos,
+reminders, meals and expenses, each added only when you tap it.
 
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/today-phone-dark.png"><img src="docs/img/today-phone.png" width="240" alt="Today: two medicines due at 13:00, then the todos due."></picture>
@@ -94,8 +96,8 @@ shows only Board, Accounts, Alerts and Devices.
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/intel-phone-dark.png"><img src="docs/img/intel-phone.png" width="240" alt="The Intel shelf: saved links with type filters."></picture>
 </p>
 
-More: [Life](docs/life.md), [Meetings](docs/extension.md),
-[the Intel shelf](docs/intel.md).
+More: [Life](docs/life.md), [Ask](docs/phone-app.md#ask),
+[Meetings](docs/extension.md), [the Intel shelf](docs/intel.md).
 
 ## Requirements
 
@@ -143,9 +145,9 @@ has the steps to bring your phones and settings along.
 
 What leaves the Mac: your phone's requests travel through the tunnel you
 set up (with Cloudflare, TLS ends at Cloudflare). Notifications go through
-Apple's or Google's push service. Rewrite, Ask Claude and meeting summaries
-run Claude Code on your own account. Nothing goes to a server run by this
-project. More in [How it is put together](docs/architecture.md).
+Apple's or Google's push service. Rewrite, Ask Claude, Ask and meeting
+summaries run Claude Code on your own account. Nothing goes to a server run
+by this project. More in [How it is put together](docs/architecture.md).
 
 ## Safety, in short
 

@@ -50,6 +50,8 @@ jantar/
       src/meetings/      v0.5 Meetings: meetings.db (refused, never reset), the extension's
                          captures, screenshot files, the library, the summary queue
       src/auth/extensions.ts  v0.5 the paired Chrome extension's key (its own kind, not a device)
+      src/ask/           v0.5.3 Ask: the message's stdin (input.ts), the answer's checks and the
+                         card rules (answer.ts), the turns in memory, the queue and Add/Undo (service.ts)
     hook/          jantar-hook (bin/jantar-hook.mjs, zero dependencies)
     cli/           jantar (src/commands/<name>.ts, one file per command)
     web/           Vite + React 19 PWA
@@ -71,7 +73,8 @@ jantar/
                    v0.5: extension.ts launches playwright-core's own Chromium with the built
                    extension in a fresh temp profile and drives it (openPopup, tabIdOf, the
                    camera's closed shadow root): ext-smoke and ext-v05 (synthetic Meet and
-                   Teams pages at the real URLs); v05-meetings, v05-privacy, web-v05
+                   Teams pages at the real URLs); v05-meetings, v05-privacy, web-v05;
+                   v0.5.3: v053-ask (Ask through the daemon, the CLI and the fake claude)
 ```
 
 ## The daemon's parts
@@ -94,6 +97,7 @@ the wiring in `daemon.ts` is mechanical. Tests sit beside each in
 | Files, Rewrite, launching, Controls (v0.3) | `packages/daemon/src/{files,rewrite,launcher,controls}/**` | `createFilesService: Factories['files']`, `createChangesService: Factories['changes']` (files/index.ts); `createRewriteService: Factories['rewrite']` (rewrite/index.ts); `createLauncher: Factories['launcher']` (launcher/index.ts); `createControlsService: Factories['controls']` (controls/index.ts) |
 | Life, Intel, the primer (v0.4) | `packages/life-core/**`, `packages/daemon/src/{life,intel,primer}/**` | `createLifeService: Factories['life']` (life/index.ts, with `LIFE_MODULE_BUILDERS`); `createIntelService: Factories['intel']` (intel/index.ts); the primer service (primer/index.ts) |
 | Meetings (v0.5) | `packages/extension/**`, `packages/daemon/src/meetings/**`, `packages/daemon/src/auth/extensions.ts`, `packages/web/src/ui/screens/meetings/**` | `createMeetingsService: Factories['meetings']` (meetings/index.ts, with `MEETINGS_BUILDERS`; daemon.ts passes `{ readOnly }`); the built extension in `packages/extension/dist` |
+| Ask (v0.5.3) | `packages/protocol/src/ask.ts`, `packages/daemon/src/ask/**`, `packages/daemon/src/api/routes/ask.ts`, `packages/daemon/assets/ask/**`, `packages/web/src/ui/screens/ask/**`, `packages/cli/src/commands/ask.ts` | `createAskService: Factories['ask']` (ask/index.ts; daemon.ts passes `{ life, usage, ccwLegacy }` and `{ readOnly }`) |
 
 Rules of thumb:
 
@@ -125,12 +129,13 @@ Implemented in `packages/daemon/src/daemon.ts`:
 2. `persistEvents(store, db)` and `persistPendingHistory(store, db)` (db/index.ts)
 3. parts: ccwLegacy → sessions → transcripts → transcriptWatcher → usage →
    hooks → terminal → writer → notifiers → files → changes → rewrite →
-   launcher → controls → life → intel → meetings → primer → notifications →
-   api (`--read-only` wraps usage, hooks, terminal, writer, rewrite, launcher
-   and settings, and life's food module only for Ask Claude, never intel;
-   meetings is told `readOnly`, not wrapped: capture and edits work,
-   summaries never run; `--no-terminal` swaps in `NullTerminalBackend`; see
-   modes.ts)
+   launcher → controls → life → intel → meetings → ask → primer →
+   notifications → api (`--read-only` wraps usage, hooks, terminal, writer,
+   rewrite, launcher and settings, and life's food module only for Ask
+   Claude, never intel; meetings is told `readOnly`, not wrapped: capture and
+   edits work, summaries never run; ask is told `readOnly` too: the API
+   refuses sending a message, and its list says Ask can't run;
+   `--no-terminal` swaps in `NullTerminalBackend`; see modes.ts)
 4. `startServices([...])` in that order (log rotator first); stop in reverse
    on SIGINT / SIGTERM, then close the db.
 
@@ -149,6 +154,14 @@ start and every 6 hours until it stops. Dialog answers and the keypad are
 two more methods of the controls part (`controls/dialog.ts`,
 `controls/keypad.ts`), over the Terminal.app backend's compare-and-type
 script mode.
+
+Ask (v0.5.3, `ask/`) holds only life, usage and ccwLegacy: no writer,
+terminal, launcher, controls, files or settings. Each message is one run of
+the shared headless runner (`rewrite/run.ts`) in the empty
+`<state dir>/ask/work` (0700, emptied before each run), beside a copy of its
+prompt (`assets/ask/assistant-v1.md`). Its turns live in its memory only, so
+`start()` has nothing to load; `stop()` and the switch going off abort the
+run and forget them.
 
 ## What each version added
 
@@ -244,3 +257,26 @@ only with screenshots on) and the hook cards (`session/Question.tsx`,
 `Permission.tsx`, `Plan.tsx`, 4.4 kB; a card would wait for its chunk the
 first time one opens). Raising `MAIN_JS_MAX` is a decision to record, not
 a fix.
+
+### v0.5.3
+
+Ask: a chat page that turns plain words into suggested Life items (todos,
+reminders, food, money), through the shared headless runner. The protocol
+(`protocol/src/ask.ts`: the card form of the four actions on Life's own
+field schemas, now exported from `life.ts`; the turn and its limits; seven
+control-scope routes behind the Mac-only `ask.enabled` switch and the `ask`
+feature flag; protocol version 3 and settings version 2 unchanged, no
+jantar.db migration), the daemon part (`ask/`, its turns in memory only, so
+no file of its own), its prompt (`assets/ask/assistant-v1.md`), the page
+(`screens/ask/`, a lazy chunk), `jantar ask`, the fake claude's Ask modes
+and `ASK_MARKER` (`test/fixtures/src/ask.ts`), and the end-to-end suite
+`v053-ask`.
+
+The Ask routes' schemas ride in `ROUTES`, which the first load holds, so it
+needed room first (gzip, `MAIN_JS_MAX` 280.0 kB, unchanged): 279.8 kB
+before Ask; 281.3 kB with Ask and its protocol; 280.3 kB with the Screen
+tab's picture (`session/controls/ShotView.tsx` and `useShot.ts`) behind
+`import()`, still over; 270.7 kB with the pairing QR (`devices/Qr.tsx` and
+the `qrcode` package) behind `import()` too, loaded the first time a
+pairing code is shown. `code-split.test.ts` keeps both out of the first
+load. The Ask chunk is 55.6 kB with what it pulls in (`LAZY_MAX` 80.0 kB).
