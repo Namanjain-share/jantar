@@ -27,6 +27,7 @@
  * Security: the socket accepts hook events only. Decisions come exclusively
  * through decide(), which only accepts paired devices with the control scope.
  */
+import { join } from 'node:path';
 import {
   DecisionBodySchema,
   HookPayloadSchema,
@@ -68,7 +69,7 @@ import {
   toolSummary,
 } from './keys.js';
 import { compareKeys, parseMono, ReorderBuffer, type OrderKey } from './ordering.js';
-import { listenHookSocket, type HookConn, type HookSocketServer } from './socket.js';
+import { HOOKS_KEY_FILE, listenHookSocket, type HookConn, type HookSocketServer } from './socket.js';
 import { notificationKind, statusForEvent, type HookStatus } from './status-map.js';
 import { ToolResultWatcher } from './transcript-check.js';
 
@@ -229,6 +230,8 @@ export class HooksBridgeImpl implements HooksBridge {
       this.server = await listenHookSocket({
         path: this.socketPath,
         log: this.log,
+        // v0.6, a Windows pipe: the key the hook client checks the pipe's owner with (ignored on a Unix socket).
+        keyFile: join(this.ctx.paths.runDir, HOOKS_KEY_FILE),
         onLine: (conn, line) => this.onLine(conn, line),
       });
     } catch (e) {

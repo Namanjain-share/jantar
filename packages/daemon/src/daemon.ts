@@ -78,7 +78,7 @@ import { createSessionSource } from './sources/claude-files/index.js';
 import { createUsageSource } from './sources/cswap/index.js';
 import { createTranscriptReader, createTranscriptWatcher } from './sources/transcripts/index.js';
 import { createHooksBridge } from './hooks/index.js';
-import { pickTerminal } from './terminal/pick.js';
+import { nodeBackendOf, pickTerminal } from './terminal/pick.js';
 import { createWriter } from './writer/index.js';
 import { createChangesService, createFilesService } from './files/index.js';
 import { createRewriteService } from './rewrite/index.js';
@@ -229,7 +229,10 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     const injector: LinkInjector = {
       inject: (req) => apiRef?.link()?.inject(req) ?? Promise.resolve({ status: 503, body: errorBody('unavailable', 'jantard is starting') }),
     };
-    const nodeLink: NodeLinkService = node ? createNodeLink(ctx, { executor: createExecutor(ctx, injector) }) : offNodeLink();
+    // What the node reports of itself in its auth frame: the phone offers typing and starting only where they work.
+    const nodeLink: NodeLinkService = node
+      ? createNodeLink(ctx, { executor: createExecutor(ctx, injector), self: { backend: nodeBackendOf(mode, rawTerminal), readOnly } })
+      : offNodeLink();
     const apiOpts: ApiOptions = { ...opts.api, mode };
     if (opts.port !== undefined) apiOpts.port = opts.port;
     const api = createApiServerWith(

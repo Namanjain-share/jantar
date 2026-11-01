@@ -213,17 +213,21 @@ export class NotificationRouterImpl implements NotificationRouter {
         this.reevaluate(ev.data.session.sid);
         return;
       case 'session.removed':
-        if (ev.sid) {
-          this.workStart.delete(ev.sid);
-          this.ranFor.delete(ev.sid);
-          this.clearReminder(ev.sid);
-          for (const [k, t] of [...this.settle]) {
-            if (!k.startsWith(`wait:${ev.sid}:`)) continue;
-            this.ctx.clock.clearTimeout(t);
-            this.settle.delete(k);
-          }
+        if (ev.sid) this.forget(ev.sid);
+        return;
+      case 'node.removed': {
+        // v0.6: its sessions and cards left the board with it; nothing more is timed or pushed for them.
+        this.nodePushes.delete(ev.data.id);
+        const sids = new Set([...this.workStart.keys(), ...this.ranFor.keys(), ...this.reminders.keys()]);
+        for (const k of this.settle.keys()) if (k.startsWith('wait:')) sids.add(k.slice('wait:'.length).split(':')[0] ?? '');
+        for (const sid of sids) if (!Object.hasOwn(state.sessions, sid)) this.forget(sid);
+        for (const [k, t] of [...this.settle]) {
+          if (!k.startsWith('card:') || Object.hasOwn(state.pending, k.slice('card:'.length))) continue;
+          this.ctx.clock.clearTimeout(t);
+          this.settle.delete(k);
         }
         return;
+      }
       case 'session.done': {
         if (!ev.sid) return;
         const s = state.sessions[ev.sid];
@@ -348,6 +352,18 @@ export class NotificationRouterImpl implements NotificationRouter {
     const settleMs = this.ctx.settings.get().notify.settle_ms;
     if (settleMs <= 0) fire();
     else this.settle.set(key, this.ctx.clock.setTimeout(fire, settleMs));
+  }
+
+  /** A session gone from the board: its timers and what was tracked for it. */
+  private forget(sid: string): void {
+    this.workStart.delete(sid);
+    this.ranFor.delete(sid);
+    this.clearReminder(sid);
+    for (const [k, t] of [...this.settle]) {
+      if (!k.startsWith(`wait:${sid}:`)) continue;
+      this.ctx.clock.clearTimeout(t);
+      this.settle.delete(k);
+    }
   }
 
   // ---- reminders -----------------------------------------------------------

@@ -32,6 +32,8 @@ const TYPE_LOG_MAX = 64;
 
 interface NodeRuntime {
   link: HubLink | null;
+  /** The latest link, kept after the registry let it go (removed, Fleet off, stopping): its close still counts. */
+  latest: HubLink | null;
   /** The latest link's `auth` info (kept after it closes: the Machines list shows the backend). */
   info: HubLinkInfo | null;
   snapshot: boolean;
@@ -214,8 +216,19 @@ export class NodeRegistry {
   /** A link passed the handshake: its snapshot comes next, then its events. The newest link of a node wins. */
   attach(link: HubLink): void {
     const id = link.nodeId;
-    const rt: NodeRuntime = this.nodes.get(id) ?? { link: null, info: null, snapshot: false, early: [], events: [], refusals: [], spent: [], taken: new Set(), lastClose: null };
-    Object.assign(rt, { link, info: link.info, snapshot: false, early: [], events: [], refusals: [], spent: [], taken: new Set() });
+    const rt: NodeRuntime = this.nodes.get(id) ?? {
+      link: null,
+      latest: null,
+      info: null,
+      snapshot: false,
+      early: [],
+      events: [],
+      refusals: [],
+      spent: [],
+      taken: new Set(),
+      lastClose: null,
+    };
+    Object.assign(rt, { link, latest: link, info: link.info, snapshot: false, early: [], events: [], refusals: [], spent: [], taken: new Set() });
     this.nodes.set(id, rt);
     const live = () => rt.link === link && !this.closing.has(link);
     link.onSnapshot((snap) => {
@@ -244,11 +257,13 @@ export class NodeRegistry {
       else this.close(link, NODE_CLOSE.protocol, typeOf(ev), 'no snapshot');
     });
     link.onClose((code) => {
+      if (rt.latest !== link) return;
+      const at = this.now();
+      // Kept for the Machines list, a revoke's 4401 and Fleet off's 4403 included.
+      rt.lastClose = { code, at };
       if (rt.link !== link) return;
       rt.link = null;
       rt.early = [];
-      const at = this.now();
-      rt.lastClose = { code, at };
       const rec = this.record(id);
       const prev = this.view(id);
       // Its sessions and cards stay, greyed, until it is back, removed, or the hub restarts.
@@ -273,19 +288,19 @@ export class NodeRegistry {
   private close(link: HubLink, code: number, type: string, reason: string): void {
     if (this.closing.has(link)) return;
     this.closing.add(link);
-    this.log.warn('node link closed', { node: link.nodeId, code, type, reason });
+    this.log.warn('node link closed', { node: link.nodeId, closeCode: code, type, reason });
     link.close(code, code === NODE_CLOSE.slow ? 'too many events' : code === NODE_CLOSE.goingAway ? 'send a snapshot again' : 'protocol error');
   }
 
   /**
    * Revoked: forget its link (closed by the caller) and take it off the board.
    * A link that spoke of its sessions (the same server, joined again under a
-   * new name) is closed 1001, so its next link's snapshot brings them.
+   * new name) is closed 1001, so its next link's snapshot brings them. What
+   * the Machines list shows of it stays: its backend and how its link closed.
    */
   remove(nodeId: string, resync = true): void {
     const rt = this.nodes.get(nodeId);
-    if (rt) rt.link = null;
-    this.nodes.delete(nodeId);
+    if (rt) Object.assign(rt, { link: null, snapshot: false, early: [], events: [], refusals: [], spent: [], taken: new Set() });
     const st = this.state();
     const sids = new Set(Object.values(st.sessions).flatMap((s) => (s.node === nodeId ? [s.sid] : [])));
     const shown = this.view(nodeId) !== null || sids.size > 0 || Object.values(st.launches).some((l) => l.node === nodeId);

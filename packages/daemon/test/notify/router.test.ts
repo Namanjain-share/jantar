@@ -389,4 +389,17 @@ describe('v0.6: a paired server cannot flood the phone (S25)', () => {
     await router.whenIdle();
     expect(push.sent).toHaveLength(10);
   });
+
+  it('a removed server leaves no timer behind: its open card is never reminded of', async () => {
+    const s = serverSession(BUILD1, 3);
+    openCard({ sid: s.sid });
+    await tick(3000);
+    expect(ctx.clock.pending()).toBeGreaterThan(0);
+    // Revoked (or Fleet off): the server, its sessions and its cards leave the board.
+    ctx.store.emit({ type: 'node.removed', data: { id: BUILD1 } });
+    expect(ctx.clock.pending()).toBe(0);
+    await tick(60 * MIN);
+    await router.whenIdle();
+    expect(push.sent.map((n) => n.kind)).toEqual(['permission']);
+  });
 });

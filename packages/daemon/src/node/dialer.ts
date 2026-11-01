@@ -121,7 +121,8 @@ export function createDialer(ctx: DaemonContext, file: string, self: () => NodeS
 
   /** One line per change of how attempts end (an impostor: every time). */
   const report = (e: LinkEnding, wait: number): void => {
-    const fields = { host: status.hubHost, code: endingCode(e), retryInMs: wait };
+    // `closeCode`: the logger redacts any field named `code` (pairing codes).
+    const fields = { host: status.hubHost, closeCode: endingCode(e), retryInMs: wait };
     if (e.kind === 'impostor') {
       log.error("the hub's welcome is not signed by the key this server joined with: not linking", fields);
       return;

@@ -72,7 +72,8 @@ describe('v0.6: memoryLinkPair', () => {
     again.node.onCall(() => new Promise((resolve) => (release = () => resolve({ status: 200, body: {} }))));
     const waiting = again.hub.call(call('c3'));
     again.drop(1006);
-    expect((await waiting).status).toBe(503);
+    // Handed to the node before the drop: it may have run (as the real link says, 504 node_timeout).
+    expect((await waiting).status).toBe(504);
     release!();
     expect(again.frames.filter((f) => f.k === 'result')).toEqual([]);
   });

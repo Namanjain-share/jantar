@@ -18,7 +18,7 @@ import { NodeAuth } from '../auth/nodes.js';
 import { actorId } from '../core/actor.js';
 import { refuseUpgrade } from '../api/node-upgrade.js';
 import { createLinkServer } from './socket.js';
-import { forwardCall, targetOf } from './forward.js';
+import { forwardCall, targetOf, typingRefusal } from './forward.js';
 import { NodeRegistry } from './registry.js';
 
 /** `jantar fleet on` says the same: a server dials a fixed https address, never a quick tunnel's. */
@@ -57,7 +57,7 @@ export const createFleet: Factories['fleet'] = (ctx): FleetService => {
     if (!s) return;
     s.closeAll(code, reason);
     await s.stop();
-    log.info('fleet off', { code });
+    log.info('fleet off', { closeCode: code });
   };
 
   const follow = (on: boolean) => {
@@ -92,7 +92,12 @@ export const createFleet: Factories['fleet'] = (ctx): FleetService => {
       await turnOff(NODE_CLOSE.goingAway, 'Jantar is stopping', false);
     },
     target,
-    forward: (t, call) => forwardCall(enabled() ? registry.link(t.nodeId) : null, t, call),
+    forward: async (t, call) => {
+      const link = enabled() ? registry.link(t.nodeId) : null;
+      // Online, but the phone shows it can't type there: the same sentence, and nothing reaches the node.
+      const refused = link ? typingRefusal(ctx.store.getState(), call.route, call.params) : null;
+      return refused ?? forwardCall(link, t, call);
+    },
     acceptLink(req, socket, head) {
       if (server) server.accept(req, socket, head);
       else refuseUpgrade(socket, 503, 'unavailable', 'The Fleet link is starting; try again in a moment');

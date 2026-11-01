@@ -129,7 +129,7 @@ export function createLinkServer(ctx: DaemonContext, auth: NodeAuth, hooks: Link
       ctx.clock.clearTimeout(timer);
       // Its place is free now, not once a peer that ignores the close frame lets go.
       release();
-      log.info('server link refused', { why, code, ...(nodeId ? { nodeId } : {}) });
+      log.info('server link refused', { why, closeCode: code, ...(nodeId ? { nodeId } : {}) });
       if (nodeId && code === NODE_CLOSE.version) auth.noteRefusal(nodeId, code);
       ws.close(code, why);
     };
@@ -354,7 +354,7 @@ class LiveLink implements HubLink {
       // A call already on the wire may have run on the node: its outcome is unknown (spec 3.6), so never "Nothing was sent".
       w.settle(nodeFailureReply(w.sent ? 'node_timeout' : 'node_offline', this.name));
     }
-    this.log.info('server link closed', { nodeId: this.nodeId, code });
+    this.log.info('server link closed', { nodeId: this.nodeId, closeCode: code });
     for (const fn of this.closeFns.splice(0)) fn(code);
   }
 

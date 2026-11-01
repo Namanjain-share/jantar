@@ -496,6 +496,9 @@ function forwardActor(auth: RequestAuth): NodeCallActor {
   return { deviceId: auth.device.id, deviceName: auth.device.name, scopes: auth.device.scopes.filter((x) => x !== 'admin') };
 }
 
+/** v0.6: the wait a forwarded 429 asks for, in seconds (spec 3.6). */
+const FORWARDED_RETRY_AFTER_S = '2';
+
 /** v0.6: an Idempotency-Key a forwarded call may carry (it travels in the link's frame). */
 const FORWARD_IDEM_KEY = /^[\x21-\x7e]{1,128}$/;
 
@@ -701,6 +704,8 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
         if (auth.transport === 'tcp' && (auth.touched || auth.legacyCookie) && auth.deviceKey && out.status < 400) {
           reply.setCookie(DEVICE_COOKIE, auth.deviceKey, s.cookieOptions());
         }
+        // The link carries no headers: a forwarded 429 (17 calls in flight to that server, or its own limit) gets one here.
+        if (out.status === 429) reply.header('retry-after', FORWARDED_RETRY_AFTER_S);
         return reply.code(out.status).send(out.body);
       }
 

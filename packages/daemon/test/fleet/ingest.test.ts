@@ -188,7 +188,7 @@ describe('a snapshot', () => {
     expect(pair.open).toBe(false);
     expect(events).toEqual([]);
     expect(nodeSessions()).toEqual([]);
-    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ node: NODE_IDS.build1, code: NODE_CLOSE.protocol, reason: 'over the state budget' });
+    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ node: NODE_IDS.build1, closeCode: NODE_CLOSE.protocol, reason: 'over the state budget' });
   });
 
   it('keeps 64 sessions and 32 open cards of a snapshot, dropping the rest', async () => {
@@ -210,7 +210,7 @@ describe('a snapshot', () => {
     const pair = await linked(snap);
     expect(pair.open).toBe(false);
     expect(events).toEqual([]);
-    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ code: NODE_CLOSE.protocol, reason: 'snapshot refused' });
+    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ closeCode: NODE_CLOSE.protocol, reason: 'snapshot refused' });
   });
 
   it('keeps the unfinished sends and launches plus the newest 20 (84 each at most), counting the rest', async () => {
@@ -268,7 +268,7 @@ describe('a server joined again under a new name, its old pairing still on the b
     reg.remove(NODE_IDS.build1);
     expect(nodeSessions(NODE_IDS.build1)).toEqual([]);
     expect(b.open).toBe(false);
-    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ node: NODE_IDS.build2, code: NODE_CLOSE.goingAway });
+    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ node: NODE_IDS.build2, closeCode: NODE_CLOSE.goingAway });
     const next = linkTo(reg, NODE_IDS.build2);
     next.node.sendSnapshot(again());
     await settle();
@@ -358,7 +358,7 @@ describe('events (S1: a node speaks for its own things only)', () => {
     expect(pair.open).toBe(false);
     const lines = warnings(ctx).filter((r) => r.msg === 'node link closed');
     expect(lines).toHaveLength(1);
-    expect(lines[0]?.fields).toMatchObject({ node: NODE_IDS.build1, code: NODE_CLOSE.protocol, type: 'session.updated', reason: 'not its session' });
+    expect(lines[0]?.fields).toMatchObject({ node: NODE_IDS.build1, closeCode: NODE_CLOSE.protocol, type: 'session.updated', reason: 'not its session' });
     expect(JSON.stringify(ctx.log.records)).not.toContain(FLEET_SECRET);
     // Its sessions stay, greyed.
     expect(stateOf().nodes?.[NODE_IDS.build1]?.online).toBe(false);
@@ -424,7 +424,7 @@ describe('events (S1: a node speaks for its own things only)', () => {
     pair.node.sendEvent(nodeEvents.sessionUpdated(S2, { subagentsRunning: 1 }));
     await settle();
     expect(pair.open).toBe(false);
-    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ code: NODE_CLOSE.slow, reason: 'over the event rate' });
+    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ closeCode: NODE_CLOSE.slow, reason: 'over the event rate' });
   });
 
   it('S13: what its events re-emit is capped too: over 4 MiB in 10 s closes 1013, and the hub keeps no more than that', async () => {
@@ -436,7 +436,7 @@ describe('events (S1: a node speaks for its own things only)', () => {
       await settle(1);
     }
     expect(pair.open).toBe(false);
-    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ code: NODE_CLOSE.slow, type: 'usage.updated', reason: 'over the byte rate' });
+    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ closeCode: NODE_CLOSE.slow, type: 'usage.updated', reason: 'over the byte rate' });
     const sizes = events.map((e) => jsonBytes(e));
     const biggest = Math.max(...sizes);
     // The caps keep each one small: 32 accounts of 128 characters a string.

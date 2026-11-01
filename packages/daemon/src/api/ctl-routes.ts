@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { localSessions } from '@jantar/protocol';
 import type { FastifyInstance } from 'fastify';
 import type { DaemonRole, NodeLinkStatus } from '../contracts.js';
+import { waitForStoreSend } from '../fleet/forward.js';
 import { ApiError, zodMessage } from './errors.js';
 import type { ApiServices } from './services.js';
 import type { DaemonMode } from '../modes.js';
@@ -123,7 +124,8 @@ export function registerCtlRoutes(app: FastifyInstance, s: ApiServices, address:
     if (!p.success) throw new ApiError('invalid_request', zodMessage('params', p.error.issues));
     const q = WaitQuerySchema.safeParse(req.query ?? {});
     if (!q.success) throw new ApiError('invalid_request', zodMessage('query', q.error.issues));
-    const job = await s.deps.writer.wait(p.data.jobId, q.data.timeoutMs);
+    // v0.6: a prompt sent to a paired server's session ran there; its job reaches the hub as re-emitted send.progress.
+    const job = (await s.deps.writer.wait(p.data.jobId, q.data.timeoutMs)) ?? (await waitForStoreSend(s.ctx.store, s.ctx.clock, p.data.jobId, q.data.timeoutMs));
     if (!job) throw new ApiError('not_found', 'no such send job');
     return { job };
   });

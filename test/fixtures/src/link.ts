@@ -9,8 +9,10 @@
  * link/codec.ts encodeFrame / decodeFrame), and is kept in `frames` in order
  * (S3: a node's frame never reaches another node; S14: no planted secret in
  * a frame that should not carry it). A second snapshot closes the link 4400,
- * as the real socket does. Calls on a closed link, or still waiting when it
- * closes, end with the hub's node_offline reply; nothing is queued.
+ * as the real socket does. Calls on a closed link end with the hub's
+ * node_offline reply (nothing was sent); calls still waiting when it closes
+ * were handed to the node, so they end node_timeout (it may have run them),
+ * as the real link does. Nothing is queued.
  */
 import { createHash } from 'node:crypto';
 import type { DaemonEvent, NodeBackend, NodeOs } from '@jantar/protocol';
@@ -57,6 +59,8 @@ export interface MemoryLinkOptions {
   info?: Partial<MemoryLinkInfo>;
   /** What a call gets when the link is down (default: 503 node_offline). */
   offline?: (req: NodeCallRequest) => NodeCallReply;
+  /** What a call the node was handed gets when the link drops before its result (default: 504 node_timeout). */
+  dropped?: (req: NodeCallRequest) => NodeCallReply;
   /** Frames as text and back (default JSON); give L1's codec to send every frame through it. */
   codec?: { encode(frame: NodeFrame): string; decode(text: string): unknown };
 }
@@ -83,6 +87,9 @@ export function memoryLinkPair(opts: MemoryLinkOptions = {}): MemoryLinkPair {
   const decode = opts.codec?.decode ?? ((t: string) => JSON.parse(t) as unknown);
   const offline =
     opts.offline ?? (() => ({ status: 503, body: { error: { code: 'node_offline', message: 'The server is offline. Nothing was sent.' } } }));
+  const dropped =
+    opts.dropped ??
+    (() => ({ status: 504, body: { error: { code: 'node_timeout', message: "The server didn't answer in time. Check the session before trying again." } } }));
   const frames: MemoryFrame[] = [];
   const snapshotFns: ((snap: NodeSnapshot) => void)[] = [];
   const eventFns: ((event: unknown) => void)[] = [];
@@ -105,7 +112,7 @@ export function memoryLinkPair(opts: MemoryLinkOptions = {}): MemoryLinkPair {
     open = false;
     for (const [id, settle] of waiting) {
       waiting.delete(id);
-      settle(offline({ id } as NodeCallRequest));
+      settle(dropped({ id } as NodeCallRequest));
     }
     for (const fn of hubCloseFns) fn(code);
     for (const fn of nodeCloseFns) fn(code);

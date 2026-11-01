@@ -237,14 +237,14 @@ describe('forwardCall', () => {
     expect(n.fakes.writer.submits[0]?.actor).toEqual({ kind: 'device', deviceId: 'hub.dev-1', scopes: ['read', 'control', 'launch'] });
   });
 
-  it('S15: offline is honest: 503 at once, nothing queued; a call in flight when the link drops ends 503 too', async () => {
+  it('S15: offline is honest: 503 at once, nothing queued; a call in flight when the link drops ends 504 (it may have run)', async () => {
     const { fwd, pair, reg, node: n } = await rig();
     let release: (() => void) | null = null;
     n.fakes.transcripts.page = () => new Promise((r) => (release = () => r({ items: [], nextBefore: null })));
     const waiting = fwd('getTranscript');
     await settle();
     pair.drop(1006);
-    expect(await waiting).toEqual({ status: 503, body: { error: { code: 'node_offline', message: 'build-1 is offline. Nothing was sent.' } } });
+    expect(await waiting).toEqual({ status: 504, body: { error: { code: 'node_timeout', message: "build-1 didn't answer in time. Check the session before trying again." } } });
     (release as (() => void) | null)?.();
     expect(reg.link(NODE_IDS.build1)).toBeNull();
     const after = await fwd('sendPrompt');

@@ -50,8 +50,9 @@ export function refuseUpgrade(socket: Duplex, status: number, code: ErrorCode, m
     'Connection: close',
     ...Object.entries(headers).map(([k, v]) => `${k}: ${v}`),
   ];
-  socket.end(`${lines.join('\r\n')}\r\n\r\n${body}`);
-  socket.destroy();
+  // Destroyed once the reply is flushed: destroying at once could cut it off on a slow socket, and a node
+  // that saw no 404 or 429 would read a network error and retry sooner than it was told to.
+  socket.end(`${lines.join('\r\n')}\r\n\r\n${body}`, () => socket.destroy());
 }
 
 function headerValue(v: string | string[] | undefined): string | undefined {

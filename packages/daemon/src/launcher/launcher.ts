@@ -70,6 +70,10 @@ import { answerKeys, dialogAction, dialogQuestion, readStartupScreen, screenTail
 import { fail, isRefusal } from './folders.js';
 import { auditAnswer, auditLaunch, launchNotification, pushLaunch, type LaunchPushKind } from './report.js';
 
+/** No window can open: the Mac's Terminal, or (v0.6, a Linux server) no usable tmux there. */
+export const noWindows = (terminal: Pick<TerminalBackend, 'kind'>) =>
+  terminal.kind === 'tmux' ? "This server has no tmux 3.2 or later, so Jantar can't open a new window there" : "This Mac's terminal can't open new windows";
+
 export interface RunTimings {
   /** Screen, foreground and session checks while starting. */
   pollMs: number;
@@ -384,7 +388,7 @@ export class LaunchRun {
     this.setStage('opening', 'Opening a window');
     const open = this.d.terminal.openWindow?.bind(this.d.terminal);
     if (!open) {
-      this.finish('failed', "This Mac's terminal can't open new windows");
+      this.finish('failed', noWindows(this.d.terminal));
       return false;
     }
     const r = await open(command);

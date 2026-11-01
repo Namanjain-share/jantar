@@ -222,6 +222,10 @@ export class ApiServerImpl implements ApiServer {
           log.info('control socket listening', { path: sock });
         } catch (e) {
           await this.stop();
+          // v0.6: pipe names are machine-wide, so a taken one may be another user's process posing as Jantar.
+          if (isPipePath(sock) && (e as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+            throw new Error(`another process is already listening on ${sock}: another jantard on this state dir, or a process (perhaps another user's) posing as one`);
+          }
           throw e;
         }
       }

@@ -14,9 +14,12 @@
  * machine as the hub named it. A node's `unauthorized` (about the hub's
  * device there, never the phone's pairing) becomes a 500, so the phone never
  * reads it as "this device is not paired". Idempotency is the node's alone:
- * the call carries `idem`, the hub caches nothing.
+ * the call carries `idem`, the hub caches nothing. A launch job in the
+ * reply carries the node (as state.launches does). typingRefusal: a typing
+ * call where the phone shows Jantar can't type gets the phone's sentence
+ * from the hub.
  */
-import { EVENT, NodeIdSchema, SEND_FINAL_STAGES, errorBody, machineName, type RouteName, type SendJob, type State } from '@jantar/protocol';
+import { EVENT, FLEET_COPY, NodeIdSchema, SEND_FINAL_STAGES, errorBody, machineName, typeRefusal, type RouteName, type SendJob, type State } from '@jantar/protocol';
 import { NODE_LIMITS, NODE_ROUTES, NODE_SUPPLIED_ID, isNodeRoute, type NodeCallReply } from '@jantar/protocol/node-link';
 import type { Clock, FleetTarget, ForwardCall, HubLink, Store } from '../contracts.js';
 import { newId } from '../core/ids.js';
@@ -55,6 +58,31 @@ export function targetOf(
   return node === undefined ? null : { nodeId: node, name: machineName(state, node) };
 }
 
+/** The routes that type into a session's terminal: refused on the hub where the phone says Jantar can't type. */
+const TYPING_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>(['sendPrompt', 'sessionKey', 'sessionMode', 'sessionCommand', 'sessionDialog', 'sessionKeypad']);
+
+/**
+ * A typing call to a node session the phone shows as one Jantar can't type
+ * into (typeRefusal: outside tmux, native Windows, a watch-only server),
+ * answered on the hub with the phone's own sentence, naming the machine as
+ * the hub named it; nothing goes to the node. Offline is forwardCall's (503).
+ */
+export function typingRefusal(state: Readonly<State>, route: RouteName, params: Readonly<Record<string, string>>): NodeCallReply | null {
+  if (!TYPING_ROUTES.has(route)) return null;
+  const session = own(state.sessions, params.sid);
+  if (!session || session.node === undefined) return null;
+  const key = typeRefusal(state, session);
+  if (key === null || key === 'offline') return null;
+  return { status: 422, body: errorBody('refused', FLEET_COPY[key](machineName(state, session.node))) };
+}
+
+/** A launch job in a node's reply, stamped with the node as the hub's state has it (the node never names itself). */
+export function stampLaunchReply(reply: NodeCallReply, target: FleetTarget): NodeCallReply {
+  const body = reply.body as { job?: unknown } | null;
+  if (reply.status >= 400 || typeof body !== 'object' || body === null || typeof body.job !== 'object' || body.job === null) return reply;
+  return { ...reply, body: { ...body, job: { ...body.job, node: target.nodeId } } };
+}
+
 /** Calls in flight per link (a new link starts at none). */
 const inFlight = new WeakMap<HubLink, number>();
 
@@ -82,7 +110,7 @@ export async function forwardCall(link: HubLink | null, target: FleetTarget, cal
     if (reply.status === 503 && code === 'node_offline') return nodeFailureReply('node_offline', target.name);
     if (reply.status === 504 && code === 'node_timeout') return nodeFailureReply('node_timeout', target.name);
     if (reply.status === 401 || code === 'unauthorized') return { status: 500, body: errorBody('internal', `${target.name} refused the call`) };
-    return reply;
+    return NODE_ROUTES[call.route] === 'launch' || call.route === 'launchStart' ? stampLaunchReply(reply, target) : reply;
   } catch {
     // HubLink.call never rejects; if one ever did, nothing is known to have run.
     return nodeFailureReply('node_offline', target.name);

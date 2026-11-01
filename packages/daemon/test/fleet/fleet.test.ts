@@ -19,6 +19,7 @@ import { PassThrough } from 'node:stream';
 import type { IncomingMessage } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { linuxNodeSnapshot, memoryLinkPair, type MemoryLinkPair } from '@jantar/fixtures';
+import { FLEET_COPY } from '@jantar/protocol';
 import { NODE_CLOSE, decodeJoinToken } from '@jantar/protocol/node-link';
 import type { Actor, FleetService, HubLink, LinkServer, LinkServerHooks } from '../../src/contracts.js';
 import type { TestContext } from '../../src/core/testing.js';
@@ -161,8 +162,9 @@ describe('the switch', () => {
     expect(ctx.store.getState().nodes).toEqual({});
     expect(Object.values(ctx.store.getState().sessions).every((s) => s.node === undefined)).toBe(true);
     expect(fleet.target('getScreen', { sid: S1 }, {})).toBeNull();
-    // The pairings stay.
+    // The pairings stay, and the Machines list says how their links closed (jantar fleet status, node list).
     expect(fleet.list().map((r) => r.name).sort()).toEqual(['build-1', 'build-2', 'win-1']);
+    expect(fleet.list().find((r) => r.id === NODE_IDS.build1)).toMatchObject({ online: false, backend: 'tmux', lastClose: { code: NODE_CLOSE.fleetOff } });
     await fleetOn();
     await link(NODE_IDS.build1);
     expect(ctx.store.getState().nodes?.[NODE_IDS.build1]?.online).toBe(true);
@@ -206,6 +208,8 @@ describe('revoke and stop', () => {
     expect(pair.open).toBe(false);
     expect(events.map((e) => e.type)).toEqual(['node.removed']);
     expect(ctx.store.getState().nodes?.[NODE_IDS.build1]).toBeUndefined();
+    // The row keeps what the Machines list shows of it: its backend and the 4401.
+    expect(fleet.list().find((r) => r.id === NODE_IDS.build1)).toMatchObject({ backend: 'tmux', lastClose: { code: NODE_CLOSE.unknown } });
     expect(await fleet.revoke('01JF1EETN0DE0000000000000Z', ADMIN)).toEqual({ ok: false, code: 'not_found', reason: 'no such machine' });
   });
 
@@ -222,6 +226,53 @@ describe('revoke and stop', () => {
     await ctx.settings.patch({ fleet: { enabled: true } });
     await settle();
     expect(servers()).toHaveLength(1);
+  });
+});
+
+describe('forwarding to a linked node', () => {
+  const PHONE = { deviceId: 'dev-1', deviceName: 'Sam phone', scopes: ['read', 'control', 'launch'] as ('read' | 'control' | 'launch')[] };
+  const BUILD1 = { nodeId: NODE_IDS.build1, name: 'build-1' };
+  const NO_PANE = '7a1c0000-0000-4000-8000-000000000003';
+  const calls = (pair: MemoryLinkPair) => pair.frames.filter((f) => f.k === 'call').length;
+
+  it("a typing call where the phone shows Jantar can't type gets the phone's sentence from the hub; nothing reaches the node", async () => {
+    await fleet.start();
+    await fleetOn();
+    const pair = await link();
+    pair.node.onCall(async () => ({ status: 202, body: { job: {} } }));
+    const prompt = await fleet.forward(BUILD1, { route: 'sendPrompt', params: { sid: NO_PANE }, query: {}, body: { text: 'hi' }, actor: PHONE });
+    expect(prompt).toEqual({ status: 422, body: { error: { code: 'refused', message: FLEET_COPY.notInTmux('build-1') } } });
+    const key = await fleet.forward(BUILD1, { route: 'sessionKey', params: { sid: NO_PANE }, query: {}, body: { key: 'enter' }, actor: PHONE });
+    expect(key.status).toBe(422);
+    expect(calls(pair)).toBe(0);
+    // Reading it, and typing into a session in tmux, go to the node.
+    expect((await fleet.forward(BUILD1, { route: 'getScreen', params: { sid: NO_PANE }, query: {}, actor: PHONE })).status).toBe(202);
+    expect((await fleet.forward(BUILD1, { route: 'sendPrompt', params: { sid: S1 }, query: {}, body: { text: 'hi' }, actor: PHONE })).status).toBe(202);
+    expect(calls(pair)).toBe(2);
+  });
+
+  it('a watch-only node: every typing call is refused on the hub with its sentence', async () => {
+    await fleet.start();
+    await fleetOn();
+    const pair = memoryLinkPair({ nodeId: NODE_IDS.build1, info: { readOnly: true } });
+    server().pairs.set(NODE_IDS.build1, pair);
+    server().hooks.onLink(pair.hub as HubLink);
+    pair.node.sendSnapshot(linuxNodeSnapshot());
+    await settle();
+    const r = await fleet.forward(BUILD1, { route: 'sendPrompt', params: { sid: S1 }, query: {}, body: { text: 'hi' }, actor: PHONE });
+    expect(r).toEqual({ status: 422, body: { error: { code: 'refused', message: FLEET_COPY.readOnlyNode('build-1') } } });
+    expect(calls(pair)).toBe(0);
+  });
+
+  it("a launch job in the node's reply carries the node, as state.launches does", async () => {
+    await fleet.start();
+    await fleetOn();
+    const pair = await link();
+    pair.node.onCall(async (req) => (req.route === 'launchStart' ? { status: 202, body: { job: { id: 'launch-0001', stage: 'queued' } } } : { status: 404, body: { error: { code: 'not_found', message: 'no such launch' } } }));
+    const started = await fleet.forward(BUILD1, { route: 'launchStart', params: {}, query: {}, body: {}, idem: 'dev-1:k-1', actor: PHONE });
+    expect(started).toEqual({ status: 202, body: { job: { id: 'launch-0001', stage: 'queued', node: NODE_IDS.build1 } } });
+    // A refusal is passed on as it came.
+    expect(await fleet.forward(BUILD1, { route: 'launchGet', params: { id: 'launch-0002' }, query: {}, actor: PHONE })).toEqual({ status: 404, body: { error: { code: 'not_found', message: 'no such launch' } } });
   });
 });
 
