@@ -19,7 +19,12 @@
  *   (never seen working) is still caught, because the turn is identified by
  *   its prompt, not by a busy -> idle edge. Sessions whose status comes from
  *   hooks are left to the hooks bridge (Stop hook), and a session.done from
- *   anyone else for the same turn cancels ours.
+ *   anyone else for the same turn cancels ours;
+ * - v0.6.1: publishes the work Claude still runs in the background
+ *   (`background`: workflows, agents, shells, monitors) from the same bytes
+ *   of the main transcript (background.ts), checked on every poll so a
+ *   monitor's expiry or a relaunch clears it with no new bytes. Cleared by
+ *   a patch to {}, never unset (a 0.6.0 hub would refuse the unset).
  */
 import { basename, dirname, join } from 'node:path';
 import {
@@ -48,6 +53,7 @@ import { fileSig, fsx, listDir, readRange } from '../lib/fsx.js';
 import { Serial } from '../lib/serial.js';
 import { stableJson } from '../lib/values.js';
 import { AlertScanner, type FoundAlert } from './alerts.js';
+import { BackgroundScanner } from './background.js';
 import { FileChangeScanner, publishFileOps } from './file-changes.js';
 
 export interface TranscriptWatcherOptions {
@@ -98,12 +104,16 @@ interface Track {
   scanner: AlertScanner;
   /** v0.3: Write / Edit / MultiEdit / NotebookEdit calls -> files.changed. */
   files: FileChangeScanner;
+  /** v0.6.1: background work; the main transcript's track only. */
+  bg?: BackgroundScanner;
 }
 
 interface Watched {
   sid: string;
   path: string | null;
   main: Track | null;
+  /** v0.6.1: the claude process's start (epoch ms, the session file's startedAt): its background work is newer. */
+  procStart: number | null;
   sig: string | null;
   lastGrowAt: number;
   /** Latest tail computed (published or not). */
@@ -213,6 +223,7 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
         sid: r.sid,
         path: null,
         main: null,
+        procStart: null,
         sig: null,
         lastGrowAt: this.ctx.clock.now(),
         tail: null,
@@ -226,13 +237,14 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
       };
       this.watched.set(r.sid, w);
     }
+    w.procStart = r.startedAt ?? null;
     const hint: { cwd?: string; configDir?: string; transcriptPath?: string } = { cwd: r.cwd, configDir: r.configDir };
     if (s.transcriptPath) hint.transcriptPath = s.transcriptPath;
     const path = await this.deps.transcripts.pathFor(r.sid, hint);
     if (!path) return;
     if (w.path !== path) {
       w.path = path;
-      w.main = { path, offset: null, size: 0, scanner: new AlertScanner(), files: new FileChangeScanner() };
+      w.main = { path, offset: null, size: 0, scanner: new AlertScanner(), files: new FileChangeScanner(), bg: new BackgroundScanner() };
       w.sig = null;
       w.published = null;
       w.subs.clear();
@@ -248,8 +260,9 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
       w.lastGrowAt = now;
       w.tail = await this.deps.transcripts.tail(path);
       this.publishTail(w);
-      if (w.main) await this.scanAlerts(r.sid, w.main, sig.size);
+      if (w.main) await this.scanAlerts(r.sid, w.main, sig.size, w.procStart);
     }
+    this.publishBackground(w);
     await this.pollSubagents(w);
     this.checkDone(w);
   }
@@ -276,6 +289,14 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
     }
     w.published = tail;
     this.update(s, patch, unset);
+  }
+
+  /** v0.6.1: what runs in the background now; one patch when it changes ({} once it all ends). */
+  private publishBackground(w: Watched): void {
+    const s = localSession(this.ctx.store.getState(), w.sid);
+    if (!s || !w.main?.bg) return;
+    const next = w.main.bg.snapshot(w.procStart, this.ctx.clock.now());
+    if (stableJson(next) !== stableJson(s.background ?? {})) this.update(s, { background: next }, []);
   }
 
   private update(s: Session, patch: SessionPatch, unset: SessionOptionalKey[]): void {
@@ -354,12 +375,13 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
 
   // ---------------------------------------------------------------- alerts
 
-  private async scanAlerts(sid: string, track: Track, size: number): Promise<void> {
+  private async scanAlerts(sid: string, track: Track, size: number, procStart: number | null = null): Promise<void> {
     if (size < track.size) {
       // the file shrank: read it again from the start
       track.offset = null;
       track.scanner = new AlertScanner();
       track.files = new FileChangeScanner({ byAgent: track.files.byAgent });
+      if (track.bg) track.bg = new BackgroundScanner();
     }
     track.size = size;
     // the first read is history: the changes index backfills it itself
@@ -379,6 +401,7 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
           if (now - found.at > this.opts.alertWindowMs) continue;
           this.publishAlert(sid, track.path, found);
         }
+        track.bg?.scan(e.raw, procStart);
       }
       publishFileOps(this.ctx, sid, await track.files.scanRead(track.path, from, entries, next, now), quietBefore);
     }

@@ -3,7 +3,8 @@
  * JSONL line). Shapes follow what the daemon reads: user / assistant entries
  * with `message.content`, `attachment` entries of type queued_command,
  * `queue-operation` enqueue entries, permission-mode, system away_summary and
- * API error entries. Every value is made up.
+ * API error entries; v0.6.1: background launches, stops, task notifications
+ * and `turn_duration`. Every value is made up.
  */
 
 export type Entry = Record<string, unknown>;
@@ -123,6 +124,89 @@ export function apiError(ctx: EntryContext, text: string, rateLimit = false): En
   };
   if (rateLimit) e.error = 'rate_limit';
   return e;
+}
+
+// ---------------------------------------------------------------------------
+// v0.6.1: background work (Claude Code 2.1.316's shapes; every id, name and word is made up)
+
+/** A tool result with its structured `toolUseResult`, as Claude writes a launch, a stop or a failure. */
+export function toolResultWith(ctx: EntryContext, toolUseId: string, content: string, toolUseResult: unknown, isError = false): Entry {
+  return { ...toolResult(ctx, toolUseId, content, isError), toolUseResult };
+}
+
+/** The end of a completed main turn, with Claude's own count of what still runs (left out when 0). */
+export function turnDuration(ctx: EntryContext, pending: { workflows?: number; agents?: number } = {}): Entry {
+  const e: Entry = { ...base('system', ctx), subtype: 'turn_duration', durationMs: 4000, messageCount: 6, isMeta: false };
+  if (pending.workflows) e.pendingWorkflowCount = pending.workflows;
+  if (pending.agents) e.pendingBackgroundAgentCount = pending.agents;
+  return e;
+}
+
+/** A `<task-notification>` text: an end when it has a status, a monitor's event without one. */
+export function taskNotification(
+  ids: string | string[],
+  status?: 'completed' | 'failed' | 'killed' | 'stopped',
+  summary = 'Synthetic task finished',
+): string {
+  const lines = (Array.isArray(ids) ? ids : [ids]).map((id) => `<task-id>${id}</task-id>`);
+  if (status) lines.push(`<status>${status}</status>`);
+  lines.push(`<summary>${summary}</summary>`);
+  return `<task-notification>\n${lines.join('\n')}\n</task-notification>`;
+}
+
+/** The user row a queued notification starts a turn with. */
+export function taskNotificationTurn(ctx: EntryContext, text: string): Entry {
+  return { ...userPrompt(ctx, text), origin: { kind: 'task-notification', producer: 'session-task' } };
+}
+
+/** A bare system row (`agents_killed`, ...). */
+export function systemRow(ctx: EntryContext, subtype: string): Entry {
+  return { ...base('system', ctx), subtype };
+}
+
+/** The Workflow tool's result: launched in the background. */
+export function workflowLaunched(taskId: string, name: string): Record<string, unknown> {
+  return {
+    status: 'async_launched',
+    taskType: 'local_workflow',
+    taskId,
+    runId: `wf_${taskId}`,
+    workflowName: name,
+    scriptPath: '/tmp/demo/workflows/scripts/demo.js',
+    summary: 'Synthetic workflow summary',
+    transcriptDir: '/tmp/demo/workflows',
+  };
+}
+
+/** The Agent tool's result, launched async. */
+export function agentLaunched(agentId: string): Record<string, unknown> {
+  return {
+    status: 'async_launched',
+    agentId,
+    description: 'Synthetic agent',
+    prompt: 'Synthetic agent prompt',
+    outputFile: '/tmp/demo/agent.output',
+    canReadOutputFile: true,
+    isAsync: true,
+    resolvedModel: 'claude-synthetic',
+  };
+}
+
+/** A Bash call running in the background (or moved there when it timed out). */
+export function shellLaunched(id: string, opts: { timedOut?: boolean } = {}): Record<string, unknown> {
+  const r: Record<string, unknown> = { backgroundTaskId: id, stdout: '', stderr: '', interrupted: false, isImage: false, noOutputExpected: false };
+  if (opts.timedOut) r.timedOutAfterMs = 120_000;
+  return r;
+}
+
+/** The Monitor tool's result. */
+export function monitorStarted(id: string, timeoutMs: number, persistent: boolean): Record<string, unknown> {
+  return { taskId: id, timeoutMs, persistent };
+}
+
+/** The TaskStop tool's result. */
+export function taskStopped(id: string, taskType: string): Record<string, unknown> {
+  return { message: `Successfully stopped task: ${id} (Synthetic task)`, task_id: id, task_type: taskType, command: 'synthetic command' };
 }
 
 /** Serialize entries as JSONL (with a trailing newline). */
