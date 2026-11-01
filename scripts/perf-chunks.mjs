@@ -5,7 +5,8 @@
 //    (what index.html loads and preloads before the first screen), gzipped,
 //    at most MAIN_JS_MAX; its stylesheet at most MAIN_CSS_MAX.
 // 2. Each lazy Life or Intel screen (Shell.tsx's import() of Today, Todos,
-//    Meds, Food, Places, Money and Intel), and any chunk one of them loads
+//    Meds, Food, Places, Money and Intel; v0.5's Meetings and v0.5.3's
+//    Ask too), and any chunk one of them loads
 //    with import() in turn: its own chunk plus the shared chunks it imports
 //    that the main load does not already hold, at most LAZY_MAX gzipped.
 //    That is what a phone fetches the first time the screen opens.
@@ -37,10 +38,10 @@ const DEFAULT_DIST = join(here, '..', 'packages', 'web', 'dist');
  */
 export const MAIN_JS_MAX = 280_000;
 export const MAIN_CSS_MAX = 16_000;
-/** Spec 9.6: each lazy Life or Intel chunk; v0.5 holds Meetings to the same. */
+/** Spec 9.6: each lazy Life or Intel chunk; v0.5 holds Meetings to the same, v0.5.3 Ask. */
 export const LAZY_MAX = 80_000;
 /** The screens Shell.tsx loads lazily, by their file names (a chunk is named after its module). */
-export const LAZY_SCREENS = ['Today', 'Todos', 'Meds', 'Food', 'Places', 'Money', 'Intel', 'Meetings'];
+export const LAZY_SCREENS = ['Today', 'Todos', 'Meds', 'Food', 'Places', 'Money', 'Intel', 'Meetings', 'Ask'];
 
 const STATIC_IMPORT = /^\s*(?:import|export)\s*(?:[^'"`;]*?\bfrom\s*)?(["'`])\.\/([^"'`]+)\1\s*;?/;
 const DYNAMIC_IMPORT = /\bimport\(\s*(["'`])\.\/([^"'`]+)\1\s*\)/g;

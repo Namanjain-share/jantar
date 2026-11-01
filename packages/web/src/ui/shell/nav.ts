@@ -1,7 +1,9 @@
 /**
  * The places, in rail and tab order, with their Phosphor icons (v0.4, D2):
- * Board, Today, Files, Accounts, Alerts, Devices, Intel, Meetings (v0.5);
- * Today, Files, Intel and Meetings only while their switch is on. The rail
+ * Board, Today, Ask (v0.5.3), Files, Accounts, Alerts, Devices, Intel,
+ * Meetings (v0.5); Today, Ask, Files, Intel and Meetings only while their
+ * switch is on. Ask sits right after Today, so with Life and Ask on it is a
+ * phone tab and Accounts moves into More. The rail
  * lists every place that is on. The phone has room for five tabs: with more
  * places on, the fifth tab is More, holding the rest (its badge is theirs
  * added up).
@@ -10,6 +12,7 @@ import {
   BellIcon,
   BookmarksIcon,
   ChartBarHorizontalIcon,
+  ChatCircleDotsIcon,
   DeviceMobileIcon,
   DotsThreeIcon,
   FilesIcon,
@@ -26,13 +29,14 @@ export interface NavItem {
   href: string;
   label: string;
   icon: Icon;
-  /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5). */
-  feature?: 'files' | 'life' | 'intel' | 'meetings';
+  /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Ask: v0.5.3). */
+  feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask';
 }
 
 export const NAV: readonly NavItem[] = [
   { route: 'board', href: '/', label: 'Board', icon: ListBulletsIcon },
   { route: 'today', href: '/today', label: 'Today', icon: SunIcon, feature: 'life' },
+  { route: 'ask', href: '/ask', label: 'Ask', icon: ChatCircleDotsIcon, feature: 'ask' },
   { route: 'files', href: '/files', label: 'Files', icon: FilesIcon, feature: 'files' },
   { route: 'accounts', href: '/accounts', label: 'Accounts', icon: ChartBarHorizontalIcon },
   { route: 'alerts', href: '/alerts', label: 'Alerts', icon: BellIcon },

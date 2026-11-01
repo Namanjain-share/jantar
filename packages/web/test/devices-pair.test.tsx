@@ -188,7 +188,8 @@ describe('devices screen', () => {
     renderApp({ path: '/devices', api, state: stateWith({}) });
     fireEvent.click(screen.getByRole('button', { name: /Show pairing code/ }));
     expect(await screen.findByText('This code expired.')).toBeTruthy();
-    expect(screen.getByRole('img', { name: 'Expired pairing QR code' })).toBeTruthy();
+    // The QR is its own chunk (v0.5.3): it may arrive a moment after the dialog.
+    expect(await screen.findByRole('img', { name: 'Expired pairing QR code' })).toBeTruthy();
     expect(screen.getByText(/Anyone with this code can pair until it expires/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Make a new code' }));
     await waitFor(() => expect(api.pairStart).toHaveBeenCalledTimes(2));

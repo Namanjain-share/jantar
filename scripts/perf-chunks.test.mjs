@@ -1,7 +1,7 @@
 // node --test scripts/
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -50,6 +50,13 @@ function withDist(over, fn) {
 }
 
 const run = (args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+
+test("every lazy screen Shell.tsx loads with a gate is listed, v0.5.3's Ask among them", () => {
+  const shell = readFileSync(join(dirname(script), '..', 'packages', 'web', 'src', 'ui', 'shell', 'Shell.tsx'), 'utf8');
+  assert.match(shell, /import\('\.\.\/screens\/ask\/Ask\.js'\)/);
+  assert.ok(LAZY_SCREENS.includes('Ask'));
+  assert.ok(LAZY_SCREENS.includes('Meetings'));
+});
 
 test('a chunk name drops its hash', () => {
   assert.equal(chunkName('Today-CUumKW6f.js'), 'Today');

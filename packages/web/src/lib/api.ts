@@ -30,6 +30,10 @@
  * v0.5 adds a call per phone Meetings route. The `/v1/ext/` routes are the
  * Chrome extension's (its own key, from the Mac itself): never called here.
  * A meeting's screenshot comes back as a Blob, like a file.
+ *
+ * v0.5.3 adds a call per Ask route. `askList` is the only one whose reply
+ * carries text (this device's turns); every Ask write answers an id or ok,
+ * and takes the Idempotency-Key of the tap that made it.
  */
 import {
   DEVICE_SECRET_HEADER,
@@ -40,6 +44,8 @@ import {
   buildPath,
   eventsSocketProtocols,
   type AccountsResponse,
+  type AskList,
+  type AskWriteAction,
   type BillBody,
   type BillPaidBody,
   type BillPatch,
@@ -347,6 +353,21 @@ export interface Api {
   /** Add action item `n` to its project's todos: the reply is the todo's id. */
   meetingItemTodo(id: string, n: number, idempotencyKey?: string): Promise<IdReply>;
   meetingItemUntodo(id: string, n: number, idempotencyKey?: string): Promise<OkReply>;
+
+  // --- v0.5.3 Ask (control scope, reads included)
+  /** This device's turns, oldest first, and whether Ask can run now. */
+  askList(): Promise<AskList>;
+  /** The reply is the new turn's id; its answer comes in a later askList. */
+  askSend(text: string, idempotencyKey?: string): Promise<IdReply>;
+  /** Forget this device's history (items already added stay in Life). */
+  askClear(idempotencyKey?: string): Promise<OkReply>;
+  /** Stop a turn that is waiting or running. */
+  askCancel(id: string, idempotencyKey?: string): Promise<OkReply>;
+  /** Add card `n` of turn `id`, as suggested or as `edit`ed: the reply is the new item's id. */
+  askAdd(id: string, n: number, edit?: AskWriteAction, idempotencyKey?: string): Promise<IdReply>;
+  askSkip(id: string, n: number, idempotencyKey?: string): Promise<OkReply>;
+  /** Delete the item card `n` added (within a day of the turn). */
+  askUndo(id: string, n: number, idempotencyKey?: string): Promise<OkReply>;
 }
 
 /** What pairClaim returns: the claim reply without its device secret. */
@@ -670,6 +691,14 @@ export function createApi(opts: ApiOptions = {}): Api {
     meetingSummarize: (id, k) => call(ROUTES.meetingSummarize, { params: { id }, ...key(k) }),
     meetingItemTodo: (id, n, k) => call(ROUTES.meetingItemTodo, { params: { id, n: String(n) }, ...key(k) }),
     meetingItemUntodo: (id, n, k) => call(ROUTES.meetingItemUntodo, { params: { id, n: String(n) }, ...key(k) }),
+
+    askList: () => call(ROUTES.askList),
+    askSend: (text, k) => call(ROUTES.askSend, { body: { text }, ...key(k) }),
+    askClear: (k) => call(ROUTES.askClear, key(k)),
+    askCancel: (id, k) => call(ROUTES.askCancel, { params: { id }, ...key(k) }),
+    askAdd: (id, n, edit, k) => call(ROUTES.askAdd, { params: { id, n: String(n) }, body: edit ? { edit } : {}, ...key(k) }),
+    askSkip: (id, n, k) => call(ROUTES.askSkip, { params: { id, n: String(n) }, ...key(k) }),
+    askUndo: (id, n, k) => call(ROUTES.askUndo, { params: { id, n: String(n) }, ...key(k) }),
   };
 }
 

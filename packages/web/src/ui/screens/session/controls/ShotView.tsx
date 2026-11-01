@@ -1,8 +1,8 @@
 /**
  * The Screen tab's Picture | Text switch (v0.3, the controls addendum; work
  * package C owns this file). The session screen uses it for the Screen tab
- * only while screenshots are switched on (features.screenshots). Its root is
- * the tab panel.
+ * only while screenshots are switched on (features.screenshots), inside
+ * its tab panel.
  *
  * - Picture: the terminal window as an image (useShot.ts), on the --term
  *   surface, with "captured 3s ago · Refresh · Show on Mac" under it. It is
@@ -16,6 +16,10 @@
  * - Every state renders: taking the first picture, the picture, a refusal
  *   (text instead), an error (with Refresh), offline (no new picture).
  * The choice of Picture or Text is this device's, kept in localStorage.
+ *
+ * v0.5.3: this file and useShot.ts are their own chunk (Session.tsx loads
+ * them with import()), so the tab panel is Session.tsx's: it stays while
+ * the chunk loads, and this view fills it.
  */
 import clsx from 'clsx';
 import { useState, type ReactNode } from 'react';
@@ -34,9 +38,6 @@ export interface ShotViewProps {
   sid: string;
   phone: boolean;
   onShowOnMac?: () => void;
-  /** The tab panel's id and its tab's id. */
-  id: string;
-  labelledBy: string;
   /**
    * The text peek (ScreenView). Called with the panel ids it should take
    * (pass both to make it the panel itself, none to nest it in yours).
@@ -68,7 +69,7 @@ function FaceSwitch({ face, onFace, phone }: { face: Face; onFace: (f: Face) => 
   return <Segmented label="Show the screen as" segments={FACES} value={face} onChange={onFace} fill={phone} />;
 }
 
-export function ShotView({ sid, phone, onShowOnMac, id, labelledBy, text }: ShotViewProps) {
+export function ShotView({ sid, phone, onShowOnMac, text }: ShotViewProps) {
   const features = useFeatures();
   const offline = useApp((s) => s.conn.status === 'offline');
   const now = useNow(5_000);
@@ -164,11 +165,11 @@ export function ShotView({ sid, phone, onShowOnMac, id, labelledBy, text }: Shot
   }
 
   return (
-    <div id={id} role="tabpanel" aria-labelledby={labelledBy} className="flex min-h-0 flex-1 flex-col">
+    <>
       <div className={clsx('flex-none', phone ? 'px-16 pt-16' : 'pt-24')}>
         <FaceSwitch face={face} onFace={setFace} phone={phone} />
       </div>
       {body}
-    </div>
+    </>
   );
 }

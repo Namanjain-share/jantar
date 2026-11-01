@@ -4,10 +4,14 @@
  * codes over TCP). "Show pairing code" opens a dialog with the QR (black on white, 220 px in a 12 px white card),
  * the link with Copy, a per-second expiry countdown, three numbered steps and
  * one warning line (direction.md 5.5).
+ *
+ * v0.5.3: the QR and its encoder (the qrcode package) are their own chunk,
+ * loaded the first time a code is shown, so the app's first load has room
+ * for Ask; a white card of the same size holds the place meanwhile.
  */
 import { Dialog } from '@base-ui/react/dialog';
 import { CopyIcon, QrCodeIcon, XIcon } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { CLI_NAME, type PairStartResponse, type Scope } from '@jantar/protocol';
 import { errorText, isApiError } from '../../../lib/api.js';
 import { useDeps, useNow } from '../../context.js';
@@ -16,8 +20,9 @@ import { IconButton } from '../../kit/IconButton.js';
 import { RailLabel } from '../../kit/RailLabel.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { Tag } from '../../kit/Tag.js';
-import { QrCard } from './Qr.js';
 import { InlineError, SCOPE_TEXT, StepNumber, copyText, useFlash } from './parts.js';
+
+const QrCard = lazy(() => import('./Qr.js').then((m) => ({ default: m.QrCard })));
 
 export const PAIR_STEPS = ["Open your phone's camera", 'Scan the code', 'Pick a name and tap Pair this device'] as const;
 
@@ -45,7 +50,9 @@ function PairCode({ pair, scopes, busy, onRenew, onDone }: { pair: PairStartResp
       </Dialog.Description>
 
       <div className="mt-20 flex flex-col gap-24 md:flex-row md:items-start">
-        <QrCard text={pair.url} label={expired ? 'Expired pairing QR code' : 'Pairing QR code'} dim={expired} />
+        <Suspense fallback={<div aria-hidden="true" className="size-244 flex-none rounded-dock bg-qr-paper" />}>
+          <QrCard text={pair.url} label={expired ? 'Expired pairing QR code' : 'Pairing QR code'} dim={expired} />
+        </Suspense>
         <div className="min-w-0 flex-1">
           <ol className="border-t border-line">
             {PAIR_STEPS.map((s, i) => (

@@ -88,6 +88,8 @@ describe('design rules (direction.md 7)', () => {
         'ui/screens/life/money/BillRow.tsx',
         'ui/screens/life/shared/states.tsx',
         'ui/screens/life/shared/PushWarning.tsx',
+        // v0.5.3 (spec 1): an Ask turn that failed, and a refused Send, Cancel, Add, Skip, Undo or Clear.
+        'ui/screens/ask/Turn.tsx',
       ]),
     ).toEqual([]);
     // Never a border, an outline or a focus ring.
