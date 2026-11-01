@@ -38,6 +38,21 @@ and the repo installed and built inside it as a server would (`pnpm install
 --frozen-lockfile`, `pnpm -r build`). `measure.sh` times both steps and keeps
 their peak memory; `run.mjs` prints them.
 
+Measured for the install notes (v0.6 branch, November 2026; "peak" is the
+step's anonymous memory from cgroup v2, all processes together):
+
+| Step | Machine | Time | Peak |
+|---|---|---|---|
+| `pnpm install --frozen-lockfile` | 12 CPUs, no limit | 14 s | 845 MiB |
+| `pnpm install --frozen-lockfile` (store removed) | 1 CPU, 1 GiB, no swap | 6 s | 259 MiB |
+| `pnpm -r build` | 12 CPUs, no limit | 21-60 s | 1.4 GiB |
+| `pnpm -r build` | 2 CPUs, 2 GiB, no swap | 42 s | 1.1 GiB |
+| `pnpm -r build` | 1 CPU, 1 GiB, no swap | 51 s | 718 MiB |
+
+So a 1 GiB server builds Jantar without swap; the build takes what memory
+it finds. To repeat one limited row:
+`docker run --rm --network none --cpus 1 --memory 1g --memory-swap 1g -w /repo jantar-fleet-test jantar-measure build pnpm -r build`.
+
 ## The scenarios (`fleet.e2e.test.ts`)
 
 One story on one stack, in this order: the door; E1 node1 joins; E2 node2

@@ -115,6 +115,26 @@ function sha256(bytes: string | Buffer): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+/**
+ * A database dump with the sent prompt's Board line (`now: {kind: 'prompt',
+ * text}` of its session, stored with the events as on a Mac) left out, as
+ * the v0.4.2 privacy sweep does; JSON kept in a text column is walked too.
+ */
+function withoutSentPrompt(value: unknown, sent: string): unknown {
+  if (typeof value === 'string' && /^[[{]/.test(value)) {
+    try {
+      return withoutSentPrompt(JSON.parse(value) as unknown, sent);
+    } catch {
+      return value;
+    }
+  }
+  if (Array.isArray(value)) return value.map((v) => withoutSentPrompt(v, sent));
+  if (value === null || typeof value !== 'object') return value;
+  const o = value as Record<string, unknown>;
+  if (o.kind === 'prompt' && o.text === sent) return { kind: 'prompt', text: '(the prompt sent)' };
+  return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, withoutSentPrompt(v, sent)]));
+}
+
 describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
   beforeAll(async () => {
     await up();
@@ -332,7 +352,8 @@ describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
       'the start to finish',
     );
     expect(job.stage, job.reason).toBe('done');
-    expect(job.node).toBe(t.build1);
+    expect((await state()).launches[id]?.node).toBe(t.build1);
+    expect.soft(job.node, 'the forwarded reply names its machine too').toBe(t.build1);
 
     const sessions = (await run('node1', ['tmux', 'list-sessions', '-F', '#{session_name} #{window_width}x#{window_height}'])).trim().split('\n');
     const opened = sessions.filter((l) => !before.has(l.split(' ')[0]!));
@@ -353,8 +374,9 @@ describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
     expect(userTexts(await transcriptOn('node1', job.sid, '/work/web', '/home/node/.claude-work'))).toContain('start with the tests');
   });
 
-  it('E14: a planted secret (a prompt, a screen-only line, an uploaded file) is in no log of hub, nodes or door, and in neither database', async () => {
-    const job = await prompt(t.s1, { text: `remember ${FLEET_SECRET} for later` });
+  it('E14: a planted secret (a prompt, a screen-only line, an uploaded file) is in no log of hub, nodes or door, and in neither database (but the prompt as its Board line)', async () => {
+    const sent = `remember ${FLEET_SECRET} for later`;
+    const job = await prompt(t.s1, { text: sent });
     expect(job.stage, job.reason).toBe('proven');
     await fakeControl('node1', t.s1, { say: `screen ${FLEET_SECRET}` });
     await eventually(async () => String((await call('GET', `/v1/sessions/${t.s1}/screen`)).body.text ?? '').includes(FLEET_SECRET), 30_000, 'the line on the screen');
@@ -373,7 +395,7 @@ describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
     for (const [service, file] of dbs) {
       const dump = await run(service, ['node', '/repo/test/docker/machine.mjs', 'dump', file]);
       expect(dump.length, `${service} dump`).toBeGreaterThan(2);
-      expect(dump, `${service} ${file}`).not.toContain(FLEET_SECRET);
+      expect(JSON.stringify(withoutSentPrompt(JSON.parse(dump), sent)), `${service} ${file}`).not.toContain(FLEET_SECRET);
     }
   });
 
