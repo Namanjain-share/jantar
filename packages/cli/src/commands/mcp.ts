@@ -1,8 +1,9 @@
 /**
  * jantar mcp (v0.5.3): an MCP server for Claude Code on stdin and stdout,
  * written by hand (no SDK, no new dependency). JSON-RPC 2.0, one message
- * per line, MCP 2025-11-25 and 2025-06-18: `initialize` echoes a version it
- * knows, else the newest. Anything else it does not serve, the 2026-07-28
+ * per line, MCP 2025-11-25, 2025-06-18 and 2025-03-26 (it uses nothing the
+ * older ones lack; they ignore a tool's title): `initialize` echoes a
+ * version it knows, else the newest. Anything else it does not serve, the 2026-07-28
  * `server/discover` probe included, is "method not found", and a client
  * then falls back to `initialize`. Only MCP messages ever go to stdout.
  *
@@ -46,7 +47,7 @@ import { clip } from '../lib/text.js';
 import { CLI_VERSION } from '../version.js';
 
 /** Newest first: what `initialize` answers when the client asks for a version it does not know. */
-export const MCP_VERSIONS = ['2025-11-25', '2025-06-18'] as const;
+export const MCP_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'] as const;
 /** A longer line is refused (-32600) and the server reads on. */
 export const MCP_LINE_MAX = 1024 * 1024;
 /** Each tool's text stays at most this long (Claude Code saves a result over 50,000 characters to a file). */
@@ -96,7 +97,9 @@ const JANTAR_BIN = fileURLToPath(new URL('../../bin/jantar.mjs', import.meta.url
 /**
  * The session's folder: CLAUDE_PROJECT_DIR when it is a folder path the
  * daemon accepts, else the folder the server runs in when that is one and
- * not `/`, else none (the todo tools then refuse).
+ * not `/`, else none (the todo tools then refuse). `/` from Claude Code is a
+ * session started there (the daemon matches it only to a project linked to
+ * exactly `/`); `/` as the folder it runs in is a server started with none.
  */
 export function mcpFolder(env: Readonly<Record<string, string | undefined>>, cwd: () => string): string | null {
   const dir = env.CLAUDE_PROJECT_DIR;

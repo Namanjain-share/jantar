@@ -100,9 +100,9 @@ async function callTool(s: ReturnType<typeof server>, name: string, args?: unkno
 const paths = (calls: readonly CtlCall[]) => calls.map((c) => `${c.method} ${c.path}`);
 
 describe('the handshake and JSON-RPC', () => {
-  it('initialize echoes 2025-11-25 and 2025-06-18; any other version gets the newest; server info and instructions', async () => {
+  it('initialize echoes 2025-11-25, 2025-06-18 and 2025-03-26; any other version gets the newest; server info and instructions', async () => {
     const s = server();
-    for (const v of ['2025-11-25', '2025-06-18']) {
+    for (const v of ['2025-11-25', '2025-06-18', '2025-03-26']) {
       const r = await ask(s, 'initialize', { protocolVersion: v, capabilities: {}, clientInfo: { name: 'claude-code', version: '9.9.9' } });
       expect(r.jsonrpc).toBe('2.0');
       expect(r.result?.protocolVersion).toBe(v);
