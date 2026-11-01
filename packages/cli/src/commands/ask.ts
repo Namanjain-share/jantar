@@ -4,9 +4,9 @@
  *
  * Ask is a chat page on the phone. What the user types goes to one isolated
  * headless Claude run on Rewrite's model, which only proposes todos,
- * reminders, food and money as cards; nothing is added until the user taps
- * Add. Its history lives in the daemon's memory only, so `off` (and a
- * restart) forgets it; items already added stay in Life.
+ * reminders, food, money and posts as cards; nothing is added until the
+ * user taps Add. Its history lives in the daemon's memory only, so `off`
+ * (and a restart) forgets it; items already added stay in Life.
  */
 import { ASK_SENTENCES } from '@jantar/daemon/ask/answer';
 import { ASK_KEEP_DAYS, ASK_TURNS_KEPT, type Settings } from '@jantar/protocol';
@@ -27,10 +27,10 @@ function dataFlow(s: Settings): string {
   );
 }
 
-/** Ask suggests todos, food and money, and shows medicines: with none of them on, it has nothing to do (the daemon's own sentence). */
+/** Ask suggests todos, food, money and posts, and shows medicines: with none of them on, it has nothing to do (the daemon's own sentence). */
 function lifeHint(s: Settings): string {
   const l = s.life;
-  return l.todos || l.food || l.finance || l.medicines ? '' : `${ASK_SENTENCES.noModules}\n`;
+  return l.todos || l.food || l.finance || l.medicines || l.posts ? '' : `${ASK_SENTENCES.noModules}\n`;
 }
 
 function modelLine(s: Settings): string {
@@ -40,7 +40,7 @@ function modelLine(s: Settings): string {
 export default defineCommand(
   {
     name: 'ask',
-    summary: 'Turn Ask (a chat page that suggests todos, reminders, food and money) on or off.',
+    summary: 'Turn Ask (a chat page that suggests todos, reminders, food, money and posts) on or off.',
     usage: 'jantar ask <on|off|status>',
     owner: 'WP-ASK',
     help:

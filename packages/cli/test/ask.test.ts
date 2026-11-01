@@ -47,8 +47,8 @@ describe('jantar ask', () => {
     expect(on.io.stdout).toContain('(model sonnet, as Rewrite)');
     expect(ASK_SENTENCES.noModules).toBe('Turn a Life part on first: jantar life on todos');
     expect(on.io.stdout).toContain(`${ASK_SENTENCES.noModules}\n`);
-    // Any of todos, food, finance or medicines is enough; cafés are not.
-    for (const part of ['food', 'finance', 'medicines']) {
+    // Any of todos, food, finance, medicines or posts is enough; cafés are not.
+    for (const part of ['food', 'finance', 'medicines', 'posts']) {
       const one = daemon({ life: { [part]: true } });
       const io = contextFor({ env: ENV }, { ctl: one.ctl });
       expect(await ask.run(['on'], io.ctx)).toBe(EXIT.ok);

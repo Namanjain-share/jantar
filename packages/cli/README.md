@@ -37,14 +37,15 @@ jantar new <folder>                   start a session from the Mac, as the start
 jantar rewrite on|off                 dictated text into a prompt (glossary, model)
 jantar controls on|off                keys, mode switching and slash commands, on by default (status, escape, clear-draft)
 jantar screenshots on|off             a Picture view of the session's window (allow-select)
-jantar life on <module...>            Life: todos, medicines, food, places, finance (status, off, set, backup, restore)
+jantar life on <module...>            Life: todos, medicines, food, places, finance, posts (status, off, set, backup, restore)
+jantar post add --platform <p>       Posts: a post to make by hand, with its text and a reminder (list); Jantar never posts
 jantar intel on|off                   the Intel shelf (sources, source add <file.jsonl>, source rm, add, list)
 jantar accounts                       one Claude login or cswap, the kept accounts and ccw's hold list
 jantar accounts keep <n...>           keep accounts for other work: Auto, Rewrite, Ask Claude and Ask never pick them
 jantar accounts prime on|off          start idle 5-hour windows early (cswap only; --kept for kept accounts too)
 jantar meetings on|off                Meetings from the Chrome extension (bare: the status; unpair)
 jantar meetings export <id|last|--all> [--out DIR]   a folder per meeting: meeting.md and shots/*.jpg
-jantar ask on|off                     Ask: a chat page that suggests todos, reminders, food and money (status)
+jantar ask on|off                     Ask: a chat page that suggests todos, reminders, food, money and posts (status)
 ```
 
 Flags for new sessions come from fixed lists only (`--permission`,
