@@ -1,8 +1,11 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/banner-dark.png">
-    <img src="docs/brand/banner.png" alt="Jantar: every Claude Code session on your Mac, on your phone. Three phone screens: the board, a plan waiting for approval, and a meeting's summary.">
-  </picture>
+  <a href="https://jantar.namanbuilt.com/#film">
+    <picture>
+      <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset="docs/brand/banner-dark.png">
+      <source media="(prefers-reduced-motion: reduce)" srcset="docs/brand/banner.png">
+      <img src="docs/brand/demo.gif" alt="A 14-second loop with example data: a Claude Code session waits in one of twelve Terminal tabs, the phone gets api-server needs you, one tap on Yes answers it, and the session carries on. Jantar: every Claude Code session on your Mac, on your phone.">
+    </picture>
+  </a>
 </p>
 
 # Jantar
