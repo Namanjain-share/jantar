@@ -115,7 +115,8 @@ describe('Medicines: the day', () => {
     const api = medsApi(() => new Promise<MedicinesResponse>((r) => (resolve = r)));
     open(api);
     await heading();
-    expect(api.medsGet).toHaveBeenCalledWith(undefined);
+    // The h1 can paint a beat before the first load fires on a slow runner.
+    await waitFor(() => expect(api.medsGet).toHaveBeenCalledWith(undefined));
     resolve(today());
     expect(await screen.findByRole('region', { name: 'Morning' })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Night' })).toBeTruthy();
