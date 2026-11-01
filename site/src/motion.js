@@ -16,65 +16,98 @@
   for (const el of document.querySelectorAll('.strip')) rest.observe(el);
 
   // The film plays muted and looped while half of it is in view, unless the
-  // reader wants less motion, saves data or paused it.
+  // reader wants less motion, saves data or paused it. A narrow screen gets
+  // the phone cut; the two are as long, so turning the phone keeps the place.
   const box = document.querySelector('[data-film]');
   if (box) {
+    const fig = box.closest('figure');
     const link = box.querySelector('.film-play');
-    const ctl = box.querySelector('.film-ctl');
-    const img = box.querySelector('img');
+    const tools = fig.querySelector('.film-tools');
+    const [pause, full] = tools.querySelectorAll('button');
+    const narrow = matchMedia('(max-width: 767px)');
     let v = null;
     let seen = false;
     let held = false;
     const auto = () => !still.matches && !held && !navigator.connection?.saveData;
-    const make = () => {
+    const isFull = () => v && (document.fullscreenElement === v || v.webkitDisplayingFullscreen);
+    const src = (t) => box.dataset[narrow.matches && box.dataset[`${t}Narrow`] ? `${t}Narrow` : t];
+    const make = (at) => {
       if (v) return v;
       v = document.createElement('video');
       for (const a of ['muted', 'loop', 'playsinline']) v.setAttribute(a, '');
       v.muted = true;
       v.setAttribute('aria-hidden', 'true');
       v.preload = 'auto';
+      const img = box.querySelector('img');
       v.poster = img.currentSrc || img.src;
       for (const t of ['webm', 'mp4']) {
         const s = document.createElement('source');
-        s.src = box.dataset[t];
+        s.src = src(t);
         s.type = `video/${t}`;
         v.append(s);
       }
-      v.addEventListener('pause', () => box.classList.remove('on'));
+      if (at) v.addEventListener('loadedmetadata', () => (v.currentTime = at), { once: true });
+      v.addEventListener('pause', () => fig.classList.remove('on'));
       box.prepend(v);
       return v;
     };
-    const go = () =>
-      make()
+    // resolves true once it plays
+    const go = (at) =>
+      make(at)
         .play()
         .then(
-          () => box.classList.add('on'),
-          () => box.classList.remove('auto'),
+          () => {
+            fig.classList.add('on');
+            return true;
+          },
+          () => {
+            fig.classList.remove('auto');
+            return false;
+          },
         );
-    const stop = () => v && v.pause();
-    box.classList.toggle('auto', auto());
+    const stop = () => v && !isFull() && v.pause();
+    const drop = () => {
+      v.remove();
+      v = null;
+      fig.classList.remove('on');
+    };
+    tools.hidden = false;
+    fig.classList.toggle('auto', auto());
     link.addEventListener('click', (e) => {
       e.preventDefault();
       held = false;
-      go().then(() => ctl.focus());
+      go().then((on) => on && pause.focus());
     });
-    ctl.addEventListener('click', () => {
+    pause.addEventListener('click', () => {
       held = true;
-      box.classList.remove('auto', 'on');
-      stop();
+      fig.classList.remove('auto', 'on');
+      v?.pause();
       link.focus();
     });
+    // iPhone has only the video's own full screen; turn the phone for the wide film
+    full.addEventListener('click', () => {
+      if (!v) return;
+      if (document.fullscreenEnabled && v.requestFullscreen) v.requestFullscreen().catch(() => undefined);
+      else v.webkitEnterFullscreen?.();
+    });
+    document.addEventListener('fullscreenchange', () => v && (v.controls = document.fullscreenElement === v));
     watch((e) => {
       seen = e.intersectionRatio >= 0.5;
       if (seen && auto()) go();
       else if (!seen) stop();
     }, { threshold: [0, 0.5] }).observe(box);
     document.addEventListener('visibilitychange', () => (document.hidden ? stop() : seen && auto() && go()));
+    narrow.addEventListener('change', () => {
+      if (!v || isFull()) return;
+      const on = fig.classList.contains('on');
+      const at = v.currentTime;
+      drop();
+      if (on) go(at);
+    });
     still.addEventListener('change', () => {
       if (!still.matches || !v) return;
-      v.remove();
-      v = null;
-      box.classList.remove('auto', 'on');
+      drop();
+      fig.classList.remove('auto');
     });
   }
 

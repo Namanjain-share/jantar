@@ -19,6 +19,7 @@ import {
   ALLOWED_ABSOLUTE,
   FILM,
   FILM_SERVED,
+  NARROW,
   ROOT,
   build,
   checkDist,
@@ -26,6 +27,7 @@ import {
   dialSvg,
   faviconSvg,
   filmFiles,
+  filmScript,
   installSh,
   jpegSize,
   listFiles,
@@ -46,6 +48,7 @@ import {
   serve,
   tokenBlocks,
 } from './build-site.mjs';
+import { SCENES } from './launch-video.mjs';
 
 const SRC = join(ROOT, 'site', 'src');
 const read = (p) => readFileSync(p, 'utf8');
@@ -78,24 +81,34 @@ function fakeMp4(seconds, { faststart = true } = {}) {
   return Buffer.concat(faststart ? [ftyp, moov, mdat] : [ftyp, mdat, moov]);
 }
 
-/** The start of a JPEG: its frame header says 320 x 180, and nothing decodes. */
-const fakeJpeg = () => Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0xb4, 0x01, 0x40, 0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1, 0xff, 0xd9]);
+/** The start of a JPEG: its frame header says width x height (320 x 180), and nothing decodes. */
+const fakeJpeg = (w = 320, h = 180) => Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, h >> 8, h & 0xff, w >> 8, w & 0xff, 0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1, 0xff, 0xd9]);
 
-/** FILM's three files in `dir`, by their names: two seconds of ffmpeg's test source, or fakes. */
+/** FILM's six files in `dir`, by their names: two seconds of ffmpeg's test source (wide, and portrait for the phone cut), or fakes. */
 function makeFilm(dir) {
   mkdirSync(dir, { recursive: true });
   const name = (k) => join(dir, FILM[k].split('/').pop());
   const ffmpeg = process.env.FFMPEG || 'ffmpeg';
-  const src = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=15:d=2'];
   try {
-    execFileSync(ffmpeg, [...src, '-frames:v', '1', name('poster')], { stdio: 'ignore' });
-    execFileSync(ffmpeg, [...src, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '45', '-an', name('webm')], { stdio: 'ignore' });
-    execFileSync(ffmpeg, [...src, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', name('mp4')], { stdio: 'ignore' });
+    for (const [size, mp4, webm, poster] of [
+      ['320x180', 'mp4', 'webm', 'poster'],
+      ['180x320', 'mp4Narrow', 'webmNarrow', 'posterNarrow'],
+    ]) {
+      const src = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `testsrc2=s=${size}:r=15:d=2`];
+      execFileSync(ffmpeg, [...src, '-frames:v', '1', name(poster)], { stdio: 'ignore' });
+      execFileSync(ffmpeg, [...src, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '45', '-an', name(webm)], { stdio: 'ignore' });
+      execFileSync(ffmpeg, [...src, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', name(mp4)], { stdio: 'ignore' });
+    }
     return true;
   } catch {
-    writeFileSync(name('mp4'), fakeMp4(53));
-    writeFileSync(name('webm'), Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]));
-    writeFileSync(name('poster'), fakeJpeg());
+    for (const [mp4, webm, poster, jpeg] of [
+      ['mp4', 'webm', 'poster', fakeJpeg()],
+      ['mp4Narrow', 'webmNarrow', 'posterNarrow', fakeJpeg(180, 320)],
+    ]) {
+      writeFileSync(name(mp4), fakeMp4(53));
+      writeFileSync(name(webm), Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]));
+      writeFileSync(name(poster), jpeg);
+    }
     return false;
   }
 }
@@ -343,14 +356,19 @@ test('sizes stay small', () => {
   const js = files.find((f) => /^assets\/site\.[0-9a-f]{8}\.js$/.test(f));
   assert.ok(size(js) < 3 * 1024, `${js} is ${size(js)} bytes`);
   const motion = files.find((f) => /^assets\/motion\.[0-9a-f]{8}\.js$/.test(f));
-  assert.ok(size(motion) < 3 * 1024, `${motion} is ${size(motion)} bytes`);
+  // deferred, and nothing waits on it: the motions, and the film's play, pause, full screen and phone cut
+  assert.ok(size(motion) < 5 * 1024, `${motion} is ${size(motion)} bytes`);
   assert.ok(size(css) < 48 * 1024, `${css} is ${size(css)} bytes`);
   assert.ok(size('index.html') < 96 * 1024, `index.html is ${size('index.html')} bytes`);
   const webp = files.filter((f) => f.endsWith('.webp'));
-  // the film: what a browser can fetch for it (MP4, WebM, every poster width) stays under 6 MB
-  const film = files.filter((f) => f === FILM_SERVED.mp4 || f === FILM_SERVED.webm || /^img\/(?:launch-poster|banner-dark)[-.]/.test(f));
-  const filmBytes = film.reduce((n, f) => n + size(f), 0);
-  assert.ok(filmBytes <= 6 * 1024 * 1024, `the film's files are ${filmBytes} bytes`);
+  // each cut of the film: what a browser can fetch for it (MP4, WebM, every poster width) stays under 6 MB
+  const wide = files.filter((f) => f === FILM_SERVED.mp4 || f === FILM_SERVED.webm || /^img\/(?:launch-poster|banner-dark)[-.]/.test(f));
+  const narrow = files.filter((f) => f === FILM_SERVED.mp4Narrow || f === FILM_SERVED.webmNarrow || /^img\/launch-narrow-poster[-.]/.test(f));
+  for (const [cut, list] of [['wide', wide], ['phone', narrow]]) {
+    const bytes = list.reduce((n, f) => n + size(f), 0);
+    assert.ok(bytes <= 6 * 1024 * 1024, `the ${cut} film's files are ${bytes} bytes`);
+  }
+  const film = [...wide, ...narrow];
   if (files.includes(FILM_SERVED.gif)) assert.ok(size(FILM_SERVED.gif) < 8 * 1024 * 1024, 'the GIF is under 8 MB');
   if (webp.length) {
     for (const f of webp.filter((x) => !film.includes(x))) assert.ok(size(f) < 170 * 1024, `${f} is ${size(f)} bytes`);
@@ -440,20 +458,48 @@ test('the film: read from its MP4, played only from files in the build, the bann
   assert.equal(clock(83), '1:23');
   for (const k of Object.keys(FILM)) assert.match(FILM[k], /^docs\/brand\/(?:launch|demo)[-.]/);
   assert.deepEqual(jpegSize(join(tmp, 'film', 'launch-poster.jpg')), { width: 320, height: 180 });
+  assert.deepEqual(jpegSize(join(tmp, 'film', 'launch-narrow-poster.jpg')), { width: 180, height: 320 });
   assert.equal(filmFiles(join(tmp, 'nothing-here')).video, false);
+  // the wide three alone: the film plays, wide everywhere
+  const wideOnly = join(tmp, 'wide-only');
+  mkdirSync(wideOnly, { recursive: true });
+  for (const k of ['mp4', 'webm', 'poster']) copyFileSync(join(tmp, 'film', FILM[k].split('/').pop()), join(wideOnly, FILM[k].split('/').pop()));
+  assert.deepEqual([filmFiles(wideOnly).video, filmFiles(wideOnly).narrow], [true, false]);
   const half = join(tmp, 'half-written');
   mkdirSync(half, { recursive: true });
   for (const k of ['mp4', 'poster']) copyFileSync(join(tmp, 'film', FILM[k].split('/').pop()), join(half, FILM[k].split('/').pop()));
   writeFileSync(join(half, FILM.webm.split('/').pop()), '');
   assert.throws(() => filmFiles(half), /is not a WebM/, 'a WebM still being written stops the build with a plain message');
   assert.equal(filmFiles(join(tmp, 'film')).video, true);
+  assert.equal(filmFiles(join(tmp, 'film')).narrow, true);
 
   // with the film
   const html = read(join(filmDist, 'index.html'));
   assert.deepEqual(checkDist(filmDist, { siteUrl: siteUrl() }), []);
-  assert.match(html, /<div class="film-box" data-film data-webm="media\/launch\.webm" data-mp4="media\/launch\.mp4">/);
+  assert.match(
+    html,
+    /<div class="film-box" data-film data-webm="media\/launch\.webm" data-mp4="media\/launch\.mp4" data-webm-narrow="media\/launch-narrow\.webm" data-mp4-narrow="media\/launch-narrow\.mp4">/,
+  );
   assert.match(html, /<a class="film-play" href="media\/launch\.mp4">/, 'without JS the poster links to the MP4');
-  assert.match(html, /<button class="film-ctl" type="button" aria-label="Pause the film">/);
+  assert.match(html, /<div class="film-tools" hidden><button class="film-ctl" type="button" data-act="pause" aria-label="Pause the film">/);
+  assert.match(html, /<button class="film-ctl" type="button" data-act="full" aria-label="Play the film full screen">/);
+  // a narrow screen gets the phone cut's poster, at its own shape
+  assert.ok(html.includes(`<picture><source media="${NARROW}" srcset="img/launch-narrow-poster`), 'the phone cut has its poster');
+  assert.match(html, /<source media="\(max-width: 767px\)" srcset="[^"]+" sizes="[^"]+" width="180" height="320">/);
+  assert.ok(existsSync(join(filmDist, FILM_SERVED.webmNarrow)) && existsSync(join(filmDist, FILM_SERVED.mp4Narrow)));
+  // the film has no sound: its words, scene by scene, are on the page (WCAG 1.2.1)
+  const words = /<details class="film-words"><summary>Read the film's captions<\/summary>[\s\S]*?<\/details>/.exec(html)?.[0];
+  assert.ok(words, 'a <details> with the film\'s words');
+  const text = unescape(words.replace(/&nbsp;/g, ' '));
+  for (const s of SCENES) {
+    assert.ok(text.includes(s.id === 'S9' ? 'The end card: Jantar.' : s.what), `${s.id}: what it shows`);
+    if (s.kicker) assert.ok(text.includes(s.kicker), `${s.id}: its kicker`);
+    for (const c of s.captions) assert.ok(text.includes(c.lines.join(' ')), `${s.id}: "${c.lines.join(' ')}"`);
+  }
+  assert.equal(filmScript('0.5.2').length, SCENES.length);
+  const endCard = filmScript('0.5.2').at(-1).what;
+  assert.ok(endCard.includes('jantar.namanbuilt.com'), 'the end card names the site');
+  assert.match(endCard, /v0\.5\.2.*Example data throughout\. Not affiliated with Anthropic\./);
   assert.match(html, /<p class="watch"><a href="#film">Watch the <span class="nw">film<svg/);
   assert.ok(existsSync(join(filmDist, FILM_SERVED.webm)) && existsSync(join(filmDist, FILM_SERVED.mp4)));
   assert.doesNotMatch(html, /<video\b|\sautoplay\b/, 'no <video> in the page: motion.js adds it when the film is in view');
@@ -689,26 +735,61 @@ test('in Chromium: the film loads when in view, plays muted and looped, pauses o
     await p.locator('.film-box').scrollIntoViewIfNeeded();
     await p.waitForSelector('.film-box video', { state: 'attached' });
     assert.deepEqual(await p.evaluate(videoOf), { muted: true, loop: true, inline: true, sources: [FILM_SERVED.webm, FILM_SERVED.mp4] });
+    assert.ok(media.every((u) => !u.includes('-narrow')), 'a wide screen loads nothing of the phone cut');
+    const PAUSE = '.film-tools [data-act="pause"]';
+    const FULL = '.film-tools [data-act="full"]';
     if (playable) {
-      await p.waitForSelector('.film-box.on', { timeout: 10000 });
-      assert.ok(await p.isVisible('.film-ctl'), 'the pause button shows while it plays');
+      await p.waitForSelector('.film-fig.on', { timeout: 10000 });
+      assert.ok(await p.isVisible(PAUSE), 'the pause button shows while it plays');
+      assert.ok(await p.isVisible(FULL), 'and the full-screen button beside it');
+      // under the film, off the picture
+      const [film, tools] = await p.evaluate(() => ['.film-box', '.film-tools'].map((s) => document.querySelector(s).getBoundingClientRect().toJSON()));
+      assert.ok(tools.top >= film.bottom, 'the controls sit under the film');
       assert.equal(await p.isVisible('.film-play'), false);
-      await p.click('.film-ctl');
-      await p.waitForFunction(() => document.querySelector('.film-box video').paused && !document.querySelector('.film-box').classList.contains('on'));
+      await p.click(FULL);
+      await p.waitForFunction(() => document.fullscreenElement === document.querySelector('.film-box video'), undefined, { timeout: 5000 });
+      assert.equal(await p.evaluate(() => document.querySelector('.film-box video').controls), true, 'full screen has the player\'s controls');
+      await p.evaluate(() => document.exitFullscreen());
+      await p.waitForFunction(() => !document.fullscreenElement && !document.querySelector('.film-box video').controls);
+      await p.locator('.film-box').scrollIntoViewIfNeeded();
+      await p.waitForSelector('.film-fig.on', { timeout: 5000 });
+      await p.click(PAUSE);
+      await p.waitForFunction(() => document.querySelector('.film-box video').paused && !document.querySelector('.film-fig').classList.contains('on'));
       assert.ok(await p.isVisible('.film-play'), 'paused, the play link is back');
       assert.equal(await p.evaluate(() => document.activeElement?.className), 'film-play', 'and has the focus');
+      assert.equal(await p.isVisible(PAUSE), false, 'paused, no pause button');
       await p.evaluate(() => scrollTo(0, 0));
       await p.waitForTimeout(200);
       await p.locator('.film-box').scrollIntoViewIfNeeded();
       await p.waitForTimeout(500);
       assert.equal(await p.evaluate(() => document.querySelector('.film-box video').paused), true, 'paused by hand, it stays paused in view');
       await p.click('.film-play');
-      await p.waitForSelector('.film-box.on');
+      await p.waitForSelector('.film-fig.on');
+      assert.equal(await p.evaluate(() => document.activeElement?.dataset.act), 'pause', 'played by hand, the focus goes to pause');
       await p.evaluate(() => scrollTo(0, 0));
       await p.waitForFunction(() => document.querySelector('.film-box video').paused, undefined, { timeout: 5000 });
     }
     assert.deepEqual(problems, []);
     await ctx.close();
+
+    // A phone: the phone cut, its poster, and the wide film once the screen turns wide (same place in the film).
+    const phone = await browser.newContext({ reducedMotion: 'no-preference', viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+    const pp = await phone.newPage();
+    const phoneMedia = [];
+    pp.on('request', (r) => r.url().includes('/media/') && phoneMedia.push(r.url()));
+    await pp.goto(server.url, { waitUntil: 'load' });
+    await pp.locator('.film-box').scrollIntoViewIfNeeded();
+    await pp.waitForFunction(() => document.querySelector('.film-box img').complete);
+    assert.match(await pp.evaluate(() => document.querySelector('.film-box img').currentSrc), /launch-narrow-poster/, 'the phone cut\'s poster');
+    await pp.waitForSelector('.film-box video', { state: 'attached' });
+    assert.deepEqual((await pp.evaluate(videoOf)).sources, [FILM_SERVED.webmNarrow, FILM_SERVED.mp4Narrow]);
+    if (playable) {
+      await pp.waitForSelector('.film-fig.on', { timeout: 10000 });
+      assert.ok(phoneMedia.length > 0 && phoneMedia.every((u) => u.includes('-narrow')), `a phone loads only the phone cut (${phoneMedia.join(', ')})`);
+      await pp.setViewportSize({ width: 844, height: 390 });
+      await pp.waitForFunction((src) => document.querySelector('.film-box video source')?.getAttribute('src') === src, FILM_SERVED.webm, { timeout: 5000 });
+    }
+    await phone.close();
 
     const still = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 1280, height: 800 } });
     const sp = await still.newPage();
@@ -719,7 +800,7 @@ test('in Chromium: the film loads when in view, plays muted and looped, pauses o
     assert.ok(await sp.isVisible('.film-play'), 'reduced motion: the film plays on a click');
     await sp.click('.film-play');
     await sp.waitForSelector('.film-box video', { state: 'attached' });
-    if (playable) await sp.waitForSelector('.film-box.on', { timeout: 10000 });
+    if (playable) await sp.waitForSelector('.film-fig.on', { timeout: 10000 });
     await still.close();
 
     const nojs = await browser.newContext({ javaScriptEnabled: false });
@@ -728,7 +809,9 @@ test('in Chromium: the film loads when in view, plays muted and looped, pauses o
     await np.locator('.film-box').scrollIntoViewIfNeeded();
     assert.ok(await np.isVisible('.film-play'));
     assert.equal(await np.getAttribute('.film-play', 'href'), FILM_SERVED.mp4, 'JS off: the poster links to the MP4');
-    assert.equal(await np.isVisible('.film-ctl'), false, 'JS off: no pause button that does nothing');
+    assert.equal(await np.isVisible('.film-tools'), false, 'JS off: no pause or full-screen button that does nothing');
+    await np.click('.film-words summary');
+    assert.equal(await np.evaluate(() => document.querySelector('.film-words').open), true, 'JS off: the film\'s words open');
     await nojs.close();
   } finally {
     await server.close();

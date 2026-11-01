@@ -14,7 +14,9 @@
 //   film      docs/brand/launch.mp4, launch.webm and launch-poster.jpg (FILM, as
 //             scripts/launch-video.mjs writes them), copied to media/ with the
 //             poster made into WebP; demo.gif beside them. Until all three
-//             are there, the band shows the night banner
+//             are there, the band shows the night banner. The phone cut
+//             (launch-narrow.*) plays on a narrow screen when it is there too;
+//             the film's words, scene by scene, come from the script's SCENES
 //   copy      the Quickstart block from README.md, the one-line install from
 //             docs/install.md, the copyright line from LICENSE, the version
 //             from package.json (and its date from CHANGELOG.md) and the
@@ -32,8 +34,9 @@
 //
 // --out must be inside site/ or the OS temp folder (it is emptied first).
 // --no-resize copies the PNGs instead of making WebP (quick, for tests).
-// --film takes FILM's files (launch.mp4, launch.webm, launch-poster.jpg,
-// demo.gif) from DIR instead of docs/brand/ (a render not yet committed).
+// --film takes FILM's files (launch.mp4, launch.webm, launch-poster.jpg, the
+// launch-narrow.* three, demo.gif) from DIR instead of docs/brand/ (a render
+// not yet committed).
 // The repository URL comes from GITHUB_SERVER_URL and GITHUB_REPOSITORY (CI),
 // else package.json's repository; SITE_URL (CI: actions/configure-pages)
 // adds the canonical, Open Graph tags and sitemap.xml.
@@ -44,6 +47,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, relative, resolve, sep, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SCENES, endCard } from './launch-video.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(here, '..');
@@ -74,18 +78,27 @@ const WEBP_QUALITY = 0.82;
  * The launch film and the README's GIF, where scripts/launch-video.mjs writes
  * them. The site plays the film (WebM first, then the H.264 MP4) over its
  * poster; with any of the three missing it shows the night banner, still,
- * and no play control. Each is served under media/ by its own name.
+ * and no play control. A screen under NARROW gets the phone cut instead
+ * (its poster by <picture>, its video by motion.js), when its three are
+ * there. Each is served under media/ by its own name.
  */
 export const FILM = {
   mp4: 'docs/brand/launch.mp4',
   webm: 'docs/brand/launch.webm',
   poster: 'docs/brand/launch-poster.jpg',
+  mp4Narrow: 'docs/brand/launch-narrow.mp4',
+  webmNarrow: 'docs/brand/launch-narrow.webm',
+  posterNarrow: 'docs/brand/launch-narrow-poster.jpg',
   gif: 'docs/brand/demo.gif',
 };
+/** The screens that get the phone cut: the site's one-column widths, where the wide film is under 736 px across. */
+export const NARROW = '(max-width: 767px)';
 /** Where each is served. */
 export const FILM_SERVED = Object.fromEntries(Object.entries(FILM).map(([k, f]) => [k, `media/${basename(f)}`]));
 const FILM_WIDTHS = [960, 1440, 1920];
 const FILM_SIZES = '(min-width: 1280px) 1184px, (min-width: 1024px) calc(100vw - 96px), (min-width: 768px) calc(100vw - 64px), calc(100vw - 32px)';
+const NARROW_WIDTHS = [360, 720, 1080];
+const NARROW_SIZES = 'calc(100vw - 32px)';
 const FILM_ALT = "A frame from the film, with example data: a Bash prompt waiting in Terminal on the Mac, and the same prompt on the phone with Claude's options as buttons.";
 const BANNER_ALT =
   "Jantar: every Claude Code session on your Mac, on your phone. Three phone screens with example data: the board, a plan waiting for approval, and a meeting's summary.";
@@ -363,19 +376,19 @@ async function makeWebp(jobs) {
 }
 
 /**
- * Writes dist/img/* and returns, per slot, what the <picture> needs. `still`
- * (the film's poster, or the banner) is made into WebP in the same pass and
- * gets its list of files.
+ * Writes dist/img/* and returns, per slot, what the <picture> needs. Each of
+ * `stills` (the film's posters, or the banner) is made into WebP in the same
+ * pass and gets its list of files.
  */
-async function buildImages(figs, dist, resize, log, still = null) {
+async function buildImages(figs, dist, resize, log, stills = []) {
   const imgDir = join(dist, 'img');
   mkdirSync(imgDir, { recursive: true });
   const plan = {};
   const jobs = [];
-  if (still) {
+  for (const still of stills) {
     const widths = [...new Set(still.widths.map((w) => Math.min(w, still.size.width)))].sort((a, b) => a - b);
     const outs = widths.map((w) => ({ w, h: Math.round((w * still.size.height) / still.size.width), path: join(imgDir, `${still.name}-${w}.webp`), rel: `img/${still.name}-${w}.webp` }));
-    jobs.push({ src: still.src, outs, still: true, name: still.name, ext: extname(still.src) });
+    jobs.push({ src: still.src, outs, still, name: still.name, ext: extname(still.src) });
   }
   for (const [slot, f] of Object.entries(figs)) {
     const size = pngSize(join(IMG, `${f.file}.png`));
@@ -395,7 +408,7 @@ async function buildImages(figs, dist, resize, log, still = null) {
     if (job.still) {
       const rel = `img/${job.name}${job.ext}`;
       if (!done) copyFileSync(job.src, join(dist, rel));
-      still.list = done ? job.outs.map((o) => ({ w: o.w, rel: o.rel })) : [{ w: still.size.width, rel }];
+      job.still.list = done ? job.outs.map((o) => ({ w: o.w, rel: o.rel })) : [{ w: job.still.size.width, rel }];
     } else if (done) {
       plan[job.slot][job.variant] = job.outs.map((o) => ({ w: o.w, rel: o.rel }));
     } else {
@@ -464,45 +477,84 @@ export function clock(seconds) {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
 
+/** An MP4 Safari can play from its first bytes, and a WebM that is whole enough to be one. */
+function checkVideo(mp4, webm) {
+  const info = mp4Info(mp4);
+  if (!info.h264) fail(`${shown(mp4)} has no H.264 (avc1) track, which Safari needs`);
+  if (!info.faststart) fail(`${shown(mp4)}: the movie header comes after the media; encode it with -movflags +faststart`);
+  const ebml = readFileSync(webm).subarray(0, 4);
+  if (ebml.length < 4 || ebml.readUInt32BE(0) !== 0x1a45dfa3) fail(`${shown(webm)} is not a WebM`);
+  return info;
+}
+
 /**
- * Which film the build has: { video, files: {mp4, webm, poster, gif}, info, still }.
+ * Which film the build has: { video, narrow, files, info, still, stillNarrow }.
  * The video needs all three of the MP4, the WebM and the poster; without them
- * the band shows the night banner, still.
+ * the band shows the night banner, still. The phone cut needs its own three
+ * and the same length (motion.js swaps one for the other mid-play).
  */
 export function filmFiles(dir = null) {
   const at = (rel) => (dir ? join(dir, basename(rel)) : join(ROOT, rel));
   const files = Object.fromEntries(Object.entries(FILM).map(([k, rel]) => [k, existsSync(at(rel)) ? at(rel) : null]));
   const video = Boolean(files.mp4 && files.webm && files.poster);
-  let info = null;
-  if (video) {
-    info = mp4Info(files.mp4);
-    if (!info.h264) fail(`${shown(files.mp4)} has no H.264 (avc1) track, which Safari needs`);
-    if (!info.faststart) fail(`${shown(files.mp4)}: the movie header comes after the media; encode it with -movflags +faststart`);
-    const ebml = readFileSync(files.webm).subarray(0, 4);
-    if (ebml.length < 4 || ebml.readUInt32BE(0) !== 0x1a45dfa3) fail(`${shown(files.webm)} is not a WebM`);
+  const info = video ? checkVideo(files.mp4, files.webm) : null;
+  let narrow = false;
+  if (video && files.mp4Narrow && files.webmNarrow && files.posterNarrow) {
+    const n = checkVideo(files.mp4Narrow, files.webmNarrow);
+    if (Math.abs(n.seconds - info.seconds) > 0.5) fail(`${shown(files.mp4Narrow)} is ${n.seconds.toFixed(1)} s and ${shown(files.mp4)} ${info.seconds.toFixed(1)} s: the two cuts must be as long`);
+    narrow = true;
   }
   const src = video ? files.poster : join(BRAND, 'banner-dark.png');
   const still = { src, name: basename(src).replace(/\.[a-z]+$/i, ''), size: imageSize(src), widths: FILM_WIDTHS, alt: video ? FILM_ALT : BANNER_ALT };
-  return { video, files, info, still };
+  const stillNarrow = narrow ? { src: files.posterNarrow, name: basename(files.posterNarrow).replace(/\.[a-z]+$/i, ''), size: imageSize(files.posterNarrow), widths: NARROW_WIDTHS } : null;
+  return { video, narrow, files, info, still, stillNarrow };
 }
 
-/** The band's figure: the poster with a play link and a pause button, or the still alone. */
-function filmHtml(film, root) {
+/** The film's words, scene by scene: what each shows and its captions, for <details> under the film (it has no sound). */
+export function filmScript(version) {
+  const end = endCard(version);
+  return SCENES.map((s) => ({
+    at: clock(s.start),
+    what: s.id === 'S9' ? `The end card: ${end.name}. ${end.tagline} ${end.url}. ${end.meta}. ${end.foot}` : s.what,
+    kicker: s.kicker ?? null,
+    lines: s.captions.map((c) => c.lines.join(' ')),
+  }));
+}
+
+/** The band's figure: the poster with a play link, pause and full-screen buttons and the film's words, or the still alone. */
+function filmHtml(film, root, version) {
   const s = film.still;
-  const set = s.list.map((i) => `${root}${i.rel} ${i.w}w`).join(', ');
+  const set = (list) => list.map((i) => `${root}${i.rel} ${i.w}w`).join(', ');
   const img =
-    `<img src="${root}${s.list[0].rel}" srcset="${set}" sizes="${FILM_SIZES}" width="${s.size.width}" height="${s.size.height}" ` +
+    `<img src="${root}${s.list[0].rel}" srcset="${set(s.list)}" sizes="${FILM_SIZES}" width="${s.size.width}" height="${s.size.height}" ` +
     `alt="${esc(s.alt)}" loading="lazy" decoding="async">`;
   const gif = film.files.gif ? ` <a href="${root}${FILM_SERVED.gif}">A shorter cut, as a GIF</a>` : '';
   if (!film.video) {
     return `<figure class="film-fig"><div class="film-box film-box--still">${img}</div><figcaption class="film-cap"><span class="rail">Example data</span> The board, a plan waiting for approval and a meeting's summary, on the phone.${gif}</figcaption></figure>`;
   }
+  const n = film.stillNarrow;
+  // a narrow screen gets the phone cut's poster, at its own shape
+  const pic = n
+    ? `<picture><source media="${NARROW}" srcset="${set(n.list)}" sizes="${NARROW_SIZES}" width="${n.size.width}" height="${n.size.height}">${img}</picture>`
+    : img;
+  const narrowData = film.narrow ? ` data-webm-narrow="${root}${FILM_SERVED.webmNarrow}" data-mp4-narrow="${root}${FILM_SERVED.mp4Narrow}"` : '';
   const secs = Math.round(film.info.seconds);
+  const words = filmScript(version)
+    .map(
+      (w) =>
+        `<li><span class="rail">${w.at}</span><div><p>${esc(w.what)}</p>` +
+        (w.kicker ? `<p class="film-kick">On screen: ${w.kicker.startsWith('jantar ') ? `<code>${esc(w.kicker)}</code>` : esc(w.kicker)}</p>` : '') +
+        w.lines.map((l) => `<p class="film-said">${esc(l)}</p>`).join('') +
+        '</div></li>',
+    )
+    .join('');
   return (
-    `<figure class="film-fig"><div class="film-box" data-film data-webm="${root}${FILM_SERVED.webm}" data-mp4="${root}${FILM_SERVED.mp4}">${img}` +
-    `<a class="film-play" href="${root}${FILM_SERVED.mp4}"><span class="film-btn"><x-icon name="play"></x-icon></span><span class="film-act">Play the film</span><span class="rail">${clock(secs)} · no sound</span></a>` +
-    '<button class="film-ctl" type="button" aria-label="Pause the film"><x-icon name="pause"></x-icon></button></div>' +
-    `<figcaption class="film-cap"><span class="rail">Example data</span> A ${secs}-second film with captions and no sound: a session waits in Terminal, your phone gets the question, one tap answers it, and the session carries on.${gif}</figcaption></figure>`
+    `<figure class="film-fig"><div class="film-box" data-film data-webm="${root}${FILM_SERVED.webm}" data-mp4="${root}${FILM_SERVED.mp4}"${narrowData}>${pic}` +
+    `<a class="film-play" href="${root}${FILM_SERVED.mp4}"><span class="film-btn"><x-icon name="play"></x-icon></span><span class="film-act">Play the film</span><span class="rail">${clock(secs)} · no sound</span></a></div>` +
+    '<div class="film-tools" hidden><button class="film-ctl" type="button" data-act="pause" aria-label="Pause the film"><x-icon name="pause"></x-icon></button>' +
+    '<button class="film-ctl" type="button" data-act="full" aria-label="Play the film full screen"><x-icon name="corners-out"></x-icon></button></div>' +
+    `<figcaption class="film-cap"><span class="rail">Example data</span> A ${secs}-second film with captions and no sound: a session waits in Terminal, your phone gets the question, one tap answers it, and the session carries on.${gif}</figcaption></figure>` +
+    `<details class="film-words"><summary>Read the film's captions</summary><p>What the film shows, scene by scene, and the words on screen. Every screen in it is example data.</p><ol>${words}</ol></details>`
   );
 }
 
@@ -582,13 +634,13 @@ export function iconSvgs() {
 // ---------------------------------------------------------------------------
 // README and docs
 
-/** The first ```sh block under README's ## Quickstart, verbatim. */
+/** The step-by-step ```sh block under README's ## Quickstart (the one that starts with git clone), verbatim. */
 export function quickstartBlock() {
   const readme = read(join(ROOT, 'README.md'));
   const at = readme.search(/^#{1,3} Quickstart\s*$/m);
   if (at < 0) fail('README.md has no Quickstart heading');
-  const m = /```sh\n([\s\S]*?)\n```/.exec(readme.slice(at));
-  if (!m) fail('README.md: no ```sh block under Quickstart');
+  const m = /```sh\n(git clone [\s\S]*?)\n```/.exec(readme.slice(at));
+  if (!m) fail('README.md: no ```sh block that starts with git clone under Quickstart');
   return m[1];
 }
 
@@ -744,7 +796,7 @@ export function renderPage(name, ctx) {
     .replace('<x-header></x-header>', read(join(SRC, 'header.html')).trim())
     .replace('<x-footer></x-footer>', read(join(SRC, 'footer.html')).trim());
   if (ctx.film) {
-    html = html.replace('<x-film></x-film>', filmHtml(ctx.film, root)).replace(
+    html = html.replace('<x-film></x-film>', filmHtml(ctx.film, root, ctx.values.version)).replace(
       '<x-film-link></x-film-link>',
       ctx.film.video
         ? `<p class="watch"><a href="#film">Watch the film<x-icon name="play"></x-icon></a> <span class="rail">${clock(ctx.film.info.seconds)} · no sound</span></p>`
@@ -910,13 +962,12 @@ export async function build(opts, log = (s) => process.stdout.write(`${s}\n`)) {
   writeFileSync(join(out, motionPath), motion);
   const themeInit = read(join(SRC, 'theme-init.js')).trim();
 
-  const images = await buildImages(figs, out, opts.resize, log, film.still);
+  const images = await buildImages(figs, out, opts.resize, log, [film.still, film.stillNarrow].filter(Boolean));
   if (film.video || film.files.gif) mkdirSync(join(out, 'media'), { recursive: true });
   if (film.video) {
-    copyFileSync(film.files.mp4, join(out, FILM_SERVED.mp4));
-    copyFileSync(film.files.webm, join(out, FILM_SERVED.webm));
+    for (const k of ['mp4', 'webm', ...(film.narrow ? ['mp4Narrow', 'webmNarrow'] : [])]) copyFileSync(film.files[k], join(out, FILM_SERVED[k]));
   } else {
-    const have = Object.entries(film.files).filter(([k, f]) => f && k !== 'gif');
+    const have = Object.entries(film.files).filter(([k, f]) => f && ['mp4', 'webm', 'poster'].includes(k));
     if (have.length) log(`note: the film needs ${FILM.mp4}, ${FILM.webm} and ${FILM.poster}; with only ${have.map(([k]) => k).join(', ')} the site shows the banner`);
   }
   if (film.files.gif) copyFileSync(film.files.gif, join(out, FILM_SERVED.gif));
@@ -978,8 +1029,9 @@ export async function build(opts, log = (s) => process.stdout.write(`${s}\n`)) {
   log(`built ${shown(out)}: ${files.length} files, ${kb(total)}`);
   log(`  index.html ${kb(size('index.html'))} · ${cssPath} ${kb(size(cssPath))} · ${jsPath} ${kb(size(jsPath))} · ${motionPath} ${kb(size(motionPath))}`);
   log(`  first view (html, css, Archivo, the hero phone at 2x): ${kb(firstView)}`);
-  const filmBytes = files.filter((f) => f === FILM_SERVED.mp4 || f === FILM_SERVED.webm || f.startsWith(`img/${film.still.name}`)).reduce((n, f) => n + size(f), 0);
-  log(film.video ? `  the film (${clock(film.info.seconds)}): MP4, WebM and poster ${kb(filmBytes)}` : `  no film yet (${FILM.mp4}, ${FILM.webm}, ${FILM.poster}): the band shows the banner`);
+  const cut = (mp4, webm, still) => files.filter((f) => f === mp4 || f === webm || f.startsWith(`img/${still.name}-`) || f === `img/${basename(still.src)}`).reduce((n, f) => n + size(f), 0);
+  log(film.video ? `  the film (${clock(film.info.seconds)}): MP4, WebM and poster ${kb(cut(FILM_SERVED.mp4, FILM_SERVED.webm, film.still))}` : `  no film yet (${FILM.mp4}, ${FILM.webm}, ${FILM.poster}): the band shows the banner`);
+  if (film.narrow) log(`  the phone cut: MP4, WebM and poster ${kb(cut(FILM_SERVED.mp4Narrow, FILM_SERVED.webmNarrow, film.stillNarrow))}`);
   log(`  repository ${values.repo}${values.siteUrl ? ` · site ${values.siteUrl}` : ' · no SITE_URL: no canonical or Open Graph tags'}`);
   return { out, cssPath, jsPath, motionPath, values, files, film };
 }
@@ -1060,7 +1112,7 @@ export function checkDist(dist, { siteUrl = null } = {}) {
       if (srcset) for (const part of srcset.split(',')) resources.push(part.trim().split(/\s+/)[0]);
     }
     // the film's sources, which motion.js puts in a <video>
-    for (const m of text.matchAll(/\sdata-(?:webm|mp4)="([^"]*)"/g)) resources.push(m[1]);
+    for (const m of text.matchAll(/\sdata-(?:webm|mp4)(?:-narrow)?="([^"]*)"/g)) resources.push(m[1]);
     for (const v of resources) {
       if (/^(?:[a-z]+:|\/\/|\/)/i.test(v)) p(`a resource that is not relative: ${v}`);
       else if (!resolveIn(dist, f, v)) p(`a resource that is not in the build: ${v}`);

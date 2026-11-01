@@ -891,12 +891,25 @@ a.hdr-cta:hover {
 }
 
 /* ------------------------------------------------------------ film */
-/* The poster sits in the flow and sets the box's shape; motion.js lays the
-   <video> over it. The play link covers the poster until the film plays;
-   the pause button shows only while it plays. */
+/* The poster sits in the flow and sets the box's shape (on a narrow screen
+   the phone cut's, by <picture>); motion.js lays the <video> over it. The
+   play link covers the poster until the film plays. Pause and full screen
+   sit under the film, off the picture, and show only while it plays; their
+   room is kept so nothing moves when they appear. */
 .film-fig {
   display: grid;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'box box' 'cap tools';
+  gap: 12px 16px;
+}
+.film-fig > .film-box {
+  grid-area: box;
+}
+.film-fig > .film-cap {
+  grid-area: cap;
+}
+.film-box picture {
+  display: block;
 }
 .film-box {
   position: relative;
@@ -961,34 +974,39 @@ a.hdr-cta:hover {
 .film-play .rail {
   color: var(--term-dim);
 }
-.film-ctl {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 1;
+.film-tools {
+  grid-area: tools;
+  display: flex;
+  gap: 8px;
+  visibility: hidden;
+}
+.film-tools[hidden] {
   display: none;
+}
+.film-fig.on .film-tools {
+  visibility: visible;
+}
+.film-ctl {
+  display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
-  border: 1px solid var(--term-dim);
+  border: 1px solid var(--line-strong);
   border-radius: 50%;
-  background: var(--term);
-  color: var(--term-ink);
+  background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
 }
 .film-ctl:hover {
-  border-color: var(--term-ink);
+  border-color: var(--ink-3);
 }
 .film-ctl .ic {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
-.film-box.on .film-ctl {
-  display: grid;
-}
-.film-box.on .film-play,
-.film-box.auto .film-play {
+.film-fig.on .film-play,
+.film-fig.auto .film-play {
   display: none;
 }
 .film-box :focus-visible {
@@ -1009,6 +1027,63 @@ a.hdr-cta:hover {
 .film-cap .rail {
   margin-right: 6px;
 }
+/* the film's words, for anyone who can't watch it, or would rather read */
+.film-words {
+  margin-top: 16px;
+  max-width: 62em;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+.film-words summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 560;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 4px;
+}
+.film-words summary:hover {
+  text-decoration-color: var(--ink-3);
+}
+.film-words > p {
+  margin: 4px 0 12px;
+  color: var(--ink-3);
+}
+.film-words ol {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.film-words li {
+  display: flex;
+  gap: 12px;
+}
+.film-words li > .rail {
+  flex: 0 0 3.5em;
+  padding-top: 3px;
+}
+.film-words li > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.film-words li p {
+  margin: 0;
+  text-wrap: pretty;
+}
+.film-words .film-kick {
+  color: var(--ink-3);
+}
+.film-words .film-said {
+  color: var(--ink);
+  font-weight: 560;
+}
 @media (min-width: 768px) {
   .film-btn {
     width: 80px;
@@ -1017,12 +1092,6 @@ a.hdr-cta:hover {
   .film-btn .ic {
     width: 32px;
     height: 32px;
-  }
-  .film-ctl {
-    right: 16px;
-    bottom: 16px;
-    width: 44px;
-    height: 44px;
   }
 }
 
@@ -2008,6 +2077,11 @@ a.hdr-cta:hover {
 }
 .code .c {
   color: var(--term-dim);
+}
+/* one long line (the one-line install): wrap it rather than hide its end off the right */
+.code--wrap pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .code .copy:not([hidden]) + pre {
   padding-top: 48px;

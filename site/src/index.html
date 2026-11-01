@@ -83,9 +83,11 @@
 
 <!-- ============================== film ============================== -->
 <!-- The build fills <x-film> from docs/brand/launch.mp4, launch.webm and
-     launch-poster.jpg (FILM in scripts/build-site.mjs), or with the banner
-     while the film is not there. motion.js plays it muted, looped and
-     inline when it is in view, never under reduced motion or Save-Data. -->
+     launch-poster.jpg (FILM in scripts/build-site.mjs), the phone cut
+     (launch-narrow.*) for narrow screens and the film's words under it, or
+     with the banner while the film is not there. motion.js plays it muted,
+     looped and inline when it is in view, never under reduced motion or
+     Save-Data. -->
 <section class="sec g-page film" id="film" aria-labelledby="film-h">
   <div class="frame">
     <div class="head head--split">
@@ -514,11 +516,11 @@ node packages/daemon/bin/jantard.mjs \
       </div>
       <div class="install-code">
         <p class="rail install-sub">In one line</p>
-        <div class="code code--big">
+        <div class="code code--big code--wrap">
           <button class="copy" type="button" data-copy="one-code" hidden><x-icon name="copy"></x-icon><span>Copy</span></button>
           <pre tabindex="0" aria-label="The one-line install"><code id="one-code"><x-install-line></x-install-line></code></pre>
         </div>
-        <p class="small">It checks for macOS, Node and pnpm, clones release v{{version}} into <code>~/jantar</code>, builds it and runs <code>jantar init</code>, then asks before <code>jantar install</code>. No sudo. <a href="install.sh">Read the script</a> first, or run it with <code><span class="nw">--dry-run</span></code> to see the plan.</p>
+        <p class="small">It checks for macOS, Node and pnpm, clones release v{{version}} into <code>~/jantar</code>, builds it and runs <code>jantar init</code>, then asks before <code>jantar install</code>. No sudo. <a href="install.sh">Read the script</a> first. To see its plan with nothing changed, end the line with <code><span class="nw">bash -s -- --dry-run</span></code> instead of <code>bash</code>.</p>
         <p class="rail install-sub">Or step by step</p>
         <div class="code code--big">
           <button class="copy" type="button" data-copy="qs-code" hidden><x-icon name="copy"></x-icon><span>Copy</span></button>
