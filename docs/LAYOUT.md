@@ -353,7 +353,9 @@ of them out of the first load; the hook cards remain the next split to try.
 Fleet: servers (Linux, WSL2, other Macs, and native Windows as a preview)
 paired with the Mac, each running its own Claude sessions on its own
 accounts, all on the one phone. Off until `jantar fleet on` at the Mac
-(`fleet.enabled`, a Mac-only switch); with it off the Mac behaves as v0.5.3.
+(`fleet.enabled`, a Mac-only switch); with it off the Mac behaves as v0.5.3
+but for the lazy hook cards, `PROC_START_UNREAD` in `writer/proc-start.ts`
+and the admin-only `/v1/machines` routes.
 One codebase, two roles: a daemon whose state dir holds `node/node.json`
 is a node (`roleOf` in `config.ts`), else the hub. A node binds no TCP port,
 runs no Life, Intel, Meetings, primer, Rewrite or pushes (stand-ins in

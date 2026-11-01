@@ -6,8 +6,8 @@ What changed for people who use Jantar, newest first. Versions before
 ## 0.6.0 (unreleased)
 
 **Fleet**: your servers on the same phone. It is off until you run
-`jantar fleet on` at the Mac; with it off, nothing changes but the last
-line below.
+`jantar fleet on` at the Mac; with it off, Jantar works as 0.5.3 did but
+for the last two lines below. How to set it up: [servers](docs/fleet.md).
 
 - **Your servers on the same board.** Pair Linux servers, Windows machines
   and other Macs with the Mac (`jantar node pair` there, `jantar node join`
@@ -17,6 +17,15 @@ line below.
   (Cloudflare with an Access service token, or Tailscale), so it opens no
   port. Keys are pinned at join and every link is a fresh challenge both
   ways; `jantar node revoke` ends a server's link at once.
+- **What you set up.** With Cloudflare: one Access application for
+  `/v1/node/*` with a single Service Auth policy, and a service token the
+  servers share. Its expiry takes every server offline at once, so renew it
+  before then and run `jantar node access` on each server. With Tailscale:
+  a tag for the servers and a grant to the Mac's HTTPS port. Each server
+  runs Jantar as a service: a systemd user unit with lingering on Linux and
+  WSL2 (WSL2 also needs `systemd=true` and its keep-alive lines), the
+  LaunchAgent on another Mac, the `schtasks` lines the join prints on
+  native Windows. All of it, step by step: [servers](docs/fleet.md).
 - **On Linux (and Windows with WSL2), Claude in tmux** can be answered,
   prompted and started from the phone, on the server's own Claude accounts
   (cswap if it has it, else each `~/.claude-<name>` config dir). A session
@@ -42,6 +51,12 @@ line below.
 - Not yet checked on real machines: sending prompts on Linux, real Claude
   Code in tmux, the Access path for the link, native Windows and WSL2's
   keep-alive ([what is not verified yet](docs/fleet.md#not-verified-yet)).
+- On every Mac, Fleet or not: before typing into a session, a Claude
+  process whose start time can't be read is refused with one sentence that
+  points to `jantar doctor`, and a bare number that is no time since 2000
+  no longer counts as a start time. An admin device can list and remove
+  paired servers (`GET /v1/machines`, `DELETE /v1/machines/:id`); there
+  are none until Fleet is on.
 - On every Mac, Fleet or not: the hook cards now load as their own part of
   the app, so the first card after the app opens may show "Loading the
   card" for a moment (well under a second; that part is kept for offline

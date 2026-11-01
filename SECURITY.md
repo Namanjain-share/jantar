@@ -1282,8 +1282,11 @@ status and the size only.
 Fleet lets the phone reach Claude sessions on other machines (Linux
 servers, Windows machines, other Macs) through the Mac. It starts **off**
 and only the Mac turns it on (`jantar fleet on`); while it is off,
-`/v1/node/*` does not exist and nothing below applies. How to set it up is
-in [docs/fleet.md](docs/fleet.md).
+`/v1/node/*` does not exist and nothing below applies. Two things stay
+either way: an admin device can list and revoke stored pairings
+(`GET /v1/machines`, `DELETE /v1/machines/:id`), which only narrows
+access, and the database holds the table of paired servers (empty until a
+server joins). How to set it up is in [docs/fleet.md](docs/fleet.md).
 
 ### What pairing a server means
 

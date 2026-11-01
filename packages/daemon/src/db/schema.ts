@@ -166,7 +166,7 @@ export const MIGRATIONS: readonly Migration[] = [
   {
     version: 5,
     name: 'v0.6 nodes',
-    // Additive: v0.5.2 opens a file at this schema, warns, and carries on with the tables it knows.
+    // Additive: v0.5.3 (and v0.5.2) opens a file at this schema, warns, and carries on with the tables it knows.
     sql: `
       -- Paired servers (Fleet). Only each node's public key is kept; its
       -- name is the hub's, unique among live rows. A revoked row stays.
