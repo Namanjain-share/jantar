@@ -10,7 +10,9 @@
 // reads process.memoryUsage(); then turns every Life module and the shelf on
 // over ctl.sock (as `jantar life on` and `jantar intel source add` do), adds
 // a month of Life rows from the phone and a shelf of INTEL_MAX_ITEMS records
-// shaped like a bot's (about 1.5 kB a line), rests and reads it again. The
+// shaped like a bot's (about 1.5 kB a line; v0.8: a fifth of them, at most
+// 1,000, read items in captures.jsonl, about 3 kB with every tenth
+// transcript at its 8,000-char cap), rests and reads it again. The
 // difference is what turning everything on costs at rest: what the daemon
 // holds once garbage is collected (the V8 heap and the memory outside it;
 // verdict() says why not RSS). Resting is 3 s idle, then a full garbage
@@ -60,6 +62,43 @@ export function shelfRecord(intelRecord, i) {
     product_angle: say('Product angle', 2),
     tags: ['example', 'synthetic', `tag-${i % 40}`],
   });
+}
+
+/**
+ * v0.8: read item `i`, a captures line as a finished read writes it (spec
+ * 2.1, 7: about 3 kB), every tenth with a transcript at its 8,000-char cap.
+ * Synthetic: made-up creators, example links.
+ */
+export function readRecord(i) {
+  const say = (what, n) => Array.from({ length: n }, (_, k) => `${what} ${i}, sentence ${k + 1}: a synthetic line about an example post.`).join(' ');
+  const transcript = i % 10 === 0 ? `[0:00] ${'a synthetic spoken line '.repeat(400)}`.slice(0, 8_000) : `[0:00] ${say('Said', 8)}`;
+  return {
+    id: `01JSYNTHREAD${String(i).padStart(14, '0')}`,
+    captured_at: '2026-11-02T10:00:00.000Z',
+    title: `Example post ${i}: a synthetic title of usual length`,
+    url: `https://www.example.com/post/${i}`,
+    platform: 'web',
+    type: 'article',
+    creator: `Example Creator ${i % 50}`,
+    posted_at: '2026-10-30T08:00:00.000Z',
+    what_it_is: say('Summary', 4),
+    why_it_matters: say('Why', 1),
+    tags: ['example', 'synthetic', `read-${i % 40}`],
+    points: [say('Point one', 1), say('Point two', 1), say('Point three', 1)],
+    caption: say('Caption', 8),
+    on_screen: say('On screen', 2),
+    transcript,
+    note: `A synthetic note ${i}`,
+    frames: 3,
+    depth: 'standard',
+    via: 'shortcut',
+    read: { state: 'saved', depth: 'standard', done: 'standard', tier: 'download', at: '2026-11-02T10:01:00.000Z' },
+  };
+}
+
+/** v0.8: how many of a shelf of `count` are read items (the rest are a bot's). */
+export function readCount(count) {
+  return Math.min(1_000, Math.floor(count / 5));
 }
 
 /**
@@ -135,14 +174,19 @@ async function child({ items }) {
   };
 
   let shelf = '';
+  const reads = readCount(count);
   const d = await bootDaemon({
     noTerminal: true,
-    // The bot's file is there from the start; the daemon reads it once the shelf is on.
+    // The bot's file and (v0.8) the read items in captures.jsonl are there from the start; the daemon reads them once the shelf is on.
     before: async (home) => {
       shelf = join(home.home, 'bot', 'intel.jsonl');
       await mkdir(dirname(shelf), { recursive: true });
-      const lines = Array.from({ length: count }, (_, i) => JSON.stringify(shelfRecord(fx.intelRecord, i)));
+      const lines = Array.from({ length: count - reads }, (_, i) => JSON.stringify(shelfRecord(fx.intelRecord, i)));
       await writeFile(shelf, lines.length ? `${lines.join('\n')}\n` : '');
+      const intelDir = join(home.jantarHome, 'intel');
+      await mkdir(intelDir, { recursive: true, mode: 0o700 });
+      const rich = Array.from({ length: reads }, (_, i) => JSON.stringify(readRecord(i)));
+      await writeFile(join(intelDir, 'captures.jsonl'), rich.length ? `${rich.join('\n')}\n` : '', { mode: 0o600 });
     },
   });
   try {

@@ -51,8 +51,15 @@ interface Entry {
 }
 
 interface SearchText {
-  /** Every searched field, one per line (a word never spans two). */
+  /** Every searched field but the long ones, one per line (a word never spans two). */
   all: string;
+  /**
+   * v0.8: a read item's long texts (caption, transcript, on-screen text,
+   * background, note) as the item already holds them: lowercased only while
+   * a search reads them, so the shelf never keeps a second copy (the memory
+   * gate, scripts/perf-memory.mjs).
+   */
+  long: readonly string[];
   title: string;
   type: string;
   tags: string[];
@@ -96,23 +103,16 @@ function textOf(e: Entry): SearchText {
     const type = item.type?.toLowerCase() ?? '';
     const title = item.title.toLowerCase();
     const creator = item.creator?.toLowerCase() ?? '';
-    const rest = [
-      item.summary,
-      item.why,
-      item.url,
-      ...item.fields.map((f) => f.value),
-      item.creator,
-      item.platform,
-      item.caption,
-      item.transcript,
-      item.onScreen,
-      ...(item.points ?? []),
-      item.background,
-      item.note,
-    ].filter((v) => v !== undefined);
-    e.text = { all: [title, type, ...tags, ...rest.map((v) => v.toLowerCase())].join('\n'), title, type, tags, creator };
+    const rest = [item.summary, item.why, item.url, ...item.fields.map((f) => f.value), item.creator, item.platform, ...(item.points ?? [])].filter((v) => v !== undefined);
+    const long = [item.caption, item.transcript, item.onScreen, item.background, item.note].filter((v) => v !== undefined);
+    e.text = { all: [title, type, ...tags, ...rest.map((v) => v.toLowerCase())].join('\n'), long, title, type, tags, creator };
   }
   return e.text;
+}
+
+/** Whether `word` (lower case) is anywhere in the item's searched text. */
+function has(t: SearchText, word: string): boolean {
+  return t.all.includes(word) || t.long.some((s) => s.toLowerCase().includes(word));
 }
 
 /**
@@ -273,7 +273,7 @@ export class Shelf {
     const types = new Map<string, number>();
     const tags = new Map<string, { tag: string; n: number }>();
     for (const e of this.order()) {
-      if (terms.length && !terms.every((t) => textOf(e).all.includes(t.word))) continue;
+      if (terms.length && !terms.every((t) => has(textOf(e), t.word))) continue;
       const typeOk = q.type === undefined || e.item.type === q.type;
       const tagOk = tag === undefined || e.item.tags.some((t) => t.toLowerCase() === tag);
       if (tagOk && e.item.type !== undefined) types.set(e.item.type, (types.get(e.item.type) ?? 0) + 1);
