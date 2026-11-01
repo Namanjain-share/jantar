@@ -18,3 +18,12 @@ condition = "AND"
 paths = ['''(^|/)packages/extension/manifest\.json$''']
 regexTarget = "line"
 regexes = ['''^\s*"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA[A-Za-z0-9+/]+={0,2}",?\s*$''']
+
+# v0.8: a Jantar capture key (the iOS Shortcut's door to Intel): the prefix
+# and 32 random bytes, base64url. Never committed; tests build theirs at run
+# time from repeated letters.
+[[rules]]
+id = "jantar-capture-key"
+description = "A Jantar capture key (jcap_ and 43 base64url characters)"
+regex = '''jcap_[A-Za-z0-9_-]{43}'''
+keywords = ["jcap_"]

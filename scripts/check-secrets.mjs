@@ -76,6 +76,8 @@ const PATTERNS = [
   { id: 'aws-key', re: new RegExp('\\bAK' + 'IA[0-9A-Z]{16}\\b', 'g') },
   { id: 'google-key', re: new RegExp('\\bAI' + 'za[0-9A-Za-z_-]{35}\\b', 'g') },
   { id: 'telegram-token', re: /\b\d{8,10}:[A-Za-z0-9_-]{35}\b/g },
+  // v0.8: a Jantar capture key (the iOS Shortcut's door): the prefix and 32 random bytes, base64url.
+  { id: 'jantar-capture-key', re: new RegExp('\\bjc' + 'ap_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])', 'g') },
   { id: 'jwt', re: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
   {
     id: 'oauth-token-json',
