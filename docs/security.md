@@ -48,6 +48,11 @@ point below links to its section there.
   account, so their text goes to Anthropic as any Claude Code use does. A
   meeting's screenshots never leave the Mac
   ([the summary](../SECURITY.md#the-summary-what-leaves-the-mac)).
+- With `jantar mcp` added, what its tools return (shelf items, and the
+  titles and notes of the open todos of the project linked to the
+  session's folder) goes into that Claude session and reaches Anthropic
+  like any tool output
+  ([the MCP server](../SECURITY.md#folder-todos-and-the-mcp-server)).
 - There is no Jantar server, no telemetry and no account with this project.
 
 ## What a session can do

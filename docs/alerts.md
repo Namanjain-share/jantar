@@ -77,7 +77,8 @@ running with at least 20 seconds left, your phone gets one push:
 It goes out as a permission push, so the mute holds it, and a device that
 turned permission pushes off gets none. With permission off in the Mac's
 kinds there is no urgent alert at all: nothing is read, and the session's
-own push goes as before. Tap it to open the session; the dock counts the
+own push goes as before. While muted, or with Web Push off, nothing is read
+either. Tap it to open the session; the dock counts the
 seconds down and the rows answer the ask
 ([Answering from the phone](phone-control.md)).
 
@@ -107,7 +108,7 @@ Muted: no
 ```
 
 A test push goes to every device by Web Push, past the Mac's kinds and the
-mute (you asked for it at the Mac). Each device keeps its own kinds: one
+mute (you asked for it at the Mac), at most 10 a minute. Each device keeps its own kinds: one
 that turned Done off in Devices › Notifications gets no Done test. It says
 "Sent to 1 device." or "No device got it." and why (Web Push off, or no
 device for it). With Jantar open on the phone, a test plays that group's

@@ -1030,7 +1030,9 @@ Each needs someone already running code on this Mac.
 
 Nothing here sends anything to a new service: pushes still go only through
 Apple's or Google's push service, and nothing new is switched on that
-reaches outside the Mac.
+reaches outside the Mac. Once you add `jantar mcp` to Claude Code, its tool
+results travel with that session to Anthropic
+([below](#folder-todos-and-the-mcp-server)).
 
 ### The countdown read
 
@@ -1042,8 +1044,9 @@ plus one read for the repeat and one more 10 seconds later when a card's
 read failed. It never types and takes no writer lock, and nothing it reads
 is kept: no screen text is logged, stored, emitted or pushed. With the
 terminal off (`--no-terminal`), with `notify.urgent` off
-(`jantar notify urgent off`) or without `permission` in `notify.kinds`,
-nothing is read.
+(`jantar notify urgent off`), without `permission` in `notify.kinds`,
+while pushes are muted, or with every channel off (`notify.webpush` and
+the rest), nothing is read.
 
 The Answer soon push it sends holds the folder's name, the time left and a
 fixed sentence (with `generic` bodies, the time left only), never the
@@ -1066,12 +1069,15 @@ seconds left).
 - `jantar notify test` (`POST /v1/notify/test`) needs admin and answers
   only over the control socket (TCP: 403). It skips `notify.kinds` and the
   mute because you asked for it at the Mac; each device's own kinds still
-  apply, and `notify.webpush` off stops it.
+  apply, and `notify.webpush` off stops it. At most 10 a minute, so a loop
+  in a session cannot ring the phone without end.
 
 ### The missed-push retry
 
 A Life ping whose push never left the Mac (no DNS answer or no connection,
-with no HTTP status) waits for the network and goes out when it is back,
+with no HTTP status; the push host is looked up first, so a lookup that
+hangs past the push's 10 seconds is no DNS answer too) waits for the
+network and goes out when it is back,
 marked late, up to 6 hours late; a medicine's is skipped once its next dose
 is under 3 hours away. Anything that may have reached the push service (an
 HTTP status, a reset connection, a timeout) still counts as a failure and
@@ -1100,6 +1106,11 @@ adding only: never done, edit or delete, and never medicines, food, weight,
 money or cafés. The "this session's folder only" rule binds the MCP tools,
 which take the folder from Claude Code (`CLAUDE_PROJECT_DIR`, else the
 folder the server runs in), never from the model.
+
+What the tools return goes into the Claude session and reaches Anthropic
+like any tool output: shelf items, and the titles and notes of the linked
+project's open todos. With `mcp__jantar__todos_here` (or `intel_search`,
+`intel_get`) in `permissions.allow`, Claude reads them without asking.
 
 An added todo goes through the Life write limiter, the open-todo cap and
 the audit log (ids only), and one with a time pings the phone like any

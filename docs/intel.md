@@ -138,6 +138,8 @@ What a session can and cannot reach:
   Sessions add at most 20 todos an hour.
 - Shelf text comes from saved pages and bots, so the server tells Claude to
   treat it as data, never as instructions.
+- What the tools return (shelf items, the todos' titles and notes) goes
+  into the session and reaches Anthropic like any tool output.
 - A switch you turned off, or a stopped daemon, is yours to change: the
   tools tell Claude so, with the command for you to run. A daemon too busy
   to answer within 10 seconds is reported as slow, not stopped, and Claude

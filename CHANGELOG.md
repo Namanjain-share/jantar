@@ -23,11 +23,12 @@ What changed for people who use Jantar, newest first. Versions before
   the command or the question, expires with the countdown, and goes out as
   a permission push (the mute and each device's kinds hold it). With
   Sounds on, the dock plays the alarm at 60, 30 and 10 seconds left.
-  `jantar notify urgent off` turns it off.
+  `jantar notify urgent off` turns it off. While pushes are muted, or Web
+  Push is off, nothing is read.
 - `jantar notify`: Web Push, the kinds the Mac sends, the urgent alert and
   the mute in one view; `urgent on|off`, `done on|off` (Done pushes, and so
   the success tune, stay off by default) and `test [group]`, one test push
-  to your devices.
+  to your devices (at most 10 a minute).
 - **Life.** Todos repeat every year too (birthdays, renewals; a 29 February
   one falls on the 28th in other years). A repeating reminder keeps its
   own time: a daily 11:00 snoozed an hour still rings at 11:00 the next
@@ -38,13 +39,17 @@ What changed for people who use Jantar, newest first. Versions before
   goes out, marked late, once the network is back, up to 6 hours late; a
   medicine's is skipped when its next dose is under 3 hours away. A push
   that may have reached Apple or Google is never sent again, so a ping can
-  be late but never arrives twice. Session pushes are not retried.
+  be late but never arrives twice. A DNS lookup that hangs past the push's
+  10 seconds counts as no network too. A ping whose send ended after its
+  30-second deadline but reached a device is no longer sent again (since
+  0.4). Session pushes are not retried.
 - **`jantar mcp`**: an MCP server for Claude Code. A session can search the
   Intel shelf, read an item, save a link or a note ("via claude" on the
   phone), and list and add todos of the Life project linked to its folder
   (at most 20 an hour; never done, edit or delete). Run `jantar mcp` in a
   terminal for the `claude mcp add` line to paste. The shelf is global:
-  every session can read all of it. [The Intel shelf](docs/intel.md#from-claude-code-mcp).
+  every session can read all of it. What the tools return goes into the
+  session and reaches Anthropic like any tool output. [The Intel shelf](docs/intel.md#from-claude-code-mcp).
 - **Search the shelf by words, best match first.** Every word must appear
   in the item (the title, notes, type, tags, link or a field), a "quoted
   phrase" matches whole, and a word at the start of a title's word ranks
