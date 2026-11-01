@@ -1,5 +1,5 @@
-// The page's few motions and the film. Without this file, or with reduced
-// motion, every part shows its finished state and the film stays a poster.
+// The few motions and the film. Without this file, or with reduced motion,
+// every part shows its finished state and the film stays a poster.
 (() => {
   const still = matchMedia('(prefers-reduced-motion: reduce)');
   if (!('IntersectionObserver' in window)) return;
@@ -15,8 +15,8 @@
   const rest = watch((e) => e.target.classList.toggle('idle', !e.isIntersecting));
   for (const el of document.querySelectorAll('.strip')) rest.observe(el);
 
-  // The film: muted, looped and inline while half of it is in view, unless
-  // the reader asks for less motion, saves data or paused it.
+  // The film plays muted and looped while half of it is in view, unless the
+  // reader wants less motion, saves data or paused it.
   const box = document.querySelector('[data-film]');
   if (box) {
     const link = box.querySelector('.film-play');

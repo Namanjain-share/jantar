@@ -478,7 +478,8 @@ export function filmFiles(dir = null) {
     info = mp4Info(files.mp4);
     if (!info.h264) fail(`${shown(files.mp4)} has no H.264 (avc1) track, which Safari needs`);
     if (!info.faststart) fail(`${shown(files.mp4)}: the movie header comes after the media; encode it with -movflags +faststart`);
-    if (readFileSync(files.webm).readUInt32BE(0) !== 0x1a45dfa3) fail(`${shown(files.webm)} is not a WebM`);
+    const ebml = readFileSync(files.webm).subarray(0, 4);
+    if (ebml.length < 4 || ebml.readUInt32BE(0) !== 0x1a45dfa3) fail(`${shown(files.webm)} is not a WebM`);
   }
   const src = video ? files.poster : join(BRAND, 'banner-dark.png');
   const still = { src, name: basename(src).replace(/\.[a-z]+$/i, ''), size: imageSize(src), widths: FILM_WIDTHS, alt: video ? FILM_ALT : BANNER_ALT };

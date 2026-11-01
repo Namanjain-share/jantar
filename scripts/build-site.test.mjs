@@ -439,6 +439,11 @@ test('the film: read from its MP4, played only from files in the build, the bann
   for (const k of Object.keys(FILM)) assert.match(FILM[k], /^docs\/brand\/(?:launch|demo)[-.]/);
   assert.deepEqual(jpegSize(join(tmp, 'film', 'launch-poster.jpg')), { width: 320, height: 180 });
   assert.equal(filmFiles(join(tmp, 'nothing-here')).video, false);
+  const half = join(tmp, 'half-written');
+  mkdirSync(half, { recursive: true });
+  for (const k of ['mp4', 'poster']) copyFileSync(join(tmp, 'film', FILM[k].split('/').pop()), join(half, FILM[k].split('/').pop()));
+  writeFileSync(join(half, FILM.webm.split('/').pop()), '');
+  assert.throws(() => filmFiles(half), /is not a WebM/, 'a WebM still being written stops the build with a plain message');
   assert.equal(filmFiles(join(tmp, 'film')).video, true);
 
   // with the film
