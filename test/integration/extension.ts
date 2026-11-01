@@ -9,6 +9,13 @@
  * worker knows a page by, the popup opened for a tab, and the camera
  * button's closed shadow root read and clicked as a person would.
  *
+ * v0.5.3 adds the toolbar icon itself (ext-v053): Chromium runs with
+ * `--enable-unsafe-extension-debugging`, so the browser's DevTools session
+ * has the Extensions domain, and `Extensions.triggerAction` on a tab target
+ * is Chrome's own toolbar click (it grants activeTab and opens the action
+ * popup). That popup is no Playwright Page: it is reached as a target of
+ * its own, and clicked through Input on that target (a trusted click).
+ *
  * Needs `pnpm -r build` (packages/extension/dist-test, or dist) and the full
  * Chromium for playwright-core (the headless shell loads no extension):
  * `pnpm exec playwright-core install chromium`. Without them the suites are
@@ -20,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { perfBudgetMs } from '@jantar/fixtures';
-import { chromium, type BrowserContext, type Page, type Worker } from 'playwright-core';
+import { chromium, type BrowserContext, type CDPSession, type Page, type Worker } from 'playwright-core';
 
 /** The extension as you load it (optional <all_urls>), and the test build (granted at install). */
 export const EXT_DIST = fileURLToPath(new URL('../../packages/extension/dist', import.meta.url));
@@ -61,7 +68,8 @@ export async function launchExtension(opts: { build?: 'test' | 'dist' } = {}): P
     context = await chromium.launchPersistentContext(profile, {
       channel: 'chromium',
       headless: true,
-      args: [`--disable-extensions-except=${dir}`, `--load-extension=${dir}`],
+      // The last one opens the Extensions domain to the browser's DevTools session (the toolbar icon, ext-v053).
+      args: [`--disable-extensions-except=${dir}`, `--load-extension=${dir}`, '--enable-unsafe-extension-debugging'],
     });
     const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker', { timeout: 15_000 }));
     const extensionId = new URL(worker.url()).host;
@@ -204,3 +212,105 @@ export async function clickCamera(page: Page): Promise<void> {
   if (!box) throw new Error('the camera button is not on the page');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 }
+
+// ---------------------------------------------------------------------------
+// v0.5.3: the toolbar icon and its real action popup (ext-v053)
+
+/** A DevTools session on the whole browser, for `run`, then detached. */
+async function withBrowserCdp<T>(ext: LoadedExtension, run: (cdp: CDPSession) => Promise<T>): Promise<T> {
+  const browser = ext.context.browser();
+  if (!browser) throw new Error('no browser behind the persistent context');
+  const cdp = await browser.newBrowserCDPSession();
+  try {
+    return await run(cdp);
+  } finally {
+    await cdp.detach().catch(() => undefined);
+  }
+}
+
+/** What Chromium answers when it has no Extensions domain (an older build, or the flag missing). */
+const NO_EXTENSIONS_DOMAIN = /wasn't found|not available|not supported|unknown method/i;
+
+/**
+ * A click on the extension's toolbar icon in `page`'s window, as Chrome
+ * makes it (`Extensions.triggerAction` on the page's tab target): it grants
+ * activeTab for that tab and opens the action popup. False when this
+ * Chromium has no Extensions domain (the caller skips with a warning).
+ */
+export async function clickToolbarIcon(ext: LoadedExtension, page: Page): Promise<boolean> {
+  return withBrowserCdp(ext, async (cdp) => {
+    const { targetInfos } = await cdp.send('Target.getTargets', { filter: [{ type: 'tab' }] });
+    const tab = targetInfos.find((t) => t.url === page.url());
+    if (!tab) throw new Error(`no tab target at ${page.url()}`);
+    try {
+      await cdp.send('Extensions.triggerAction', { id: ext.extensionId, targetId: tab.targetId });
+      return true;
+    } catch (e) {
+      if (NO_EXTENSIONS_DOMAIN.test(e instanceof Error ? e.message : String(e))) return false;
+      throw e;
+    }
+  });
+}
+
+/** The action popup (the one the toolbar icon opens), driven through its own DevTools target. */
+export interface ActionPopup {
+  /** `expression` evaluated in the popup's page, by value. */
+  evaluate<T>(expression: string): Promise<T>;
+  /** A trusted click at (x, y), CSS pixels of the popup. The popup may close itself on it, so the release is not waited for. */
+  click(x: number, y: number): Promise<void>;
+  /** Close the popup, as a click elsewhere would. */
+  close(): Promise<void>;
+}
+
+/** The open action popup (`popup.html` with no `?tab=`), once Chrome shows it; its session lives until `close()` or the popup goes. */
+export async function actionPopup(ext: LoadedExtension, ms = 10_000): Promise<ActionPopup> {
+  const browser = ext.context.browser();
+  if (!browser) throw new Error('no browser behind the persistent context');
+  const cdp = await browser.newBrowserCDPSession();
+  const url = `chrome-extension://${ext.extensionId}/popup.html`;
+  const deadline = Date.now() + perfBudgetMs(ms);
+  let targetId: string | undefined;
+  while (!targetId) {
+    const { targetInfos } = await cdp.send('Target.getTargets', { filter: [{}] });
+    targetId = targetInfos.find((t) => t.type === 'page' && t.url === url)?.targetId;
+    if (targetId) break;
+    if (Date.now() > deadline) {
+      await cdp.detach().catch(() => undefined);
+      throw new Error('the action popup did not open');
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const popupTarget = targetId;
+  // flatten: false, so the popup's protocol messages ride on this browser session (Playwright has no handle for the popup).
+  const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: popupTarget, flatten: false });
+  let next = 0;
+  const call = (method: string, params: Record<string, unknown>): Promise<{ result?: unknown; error?: { message: string } }> =>
+    new Promise((resolve) => {
+      const id = ++next;
+      const on = (e: { sessionId?: string; message: string }) => {
+        if (e.sessionId !== sessionId) return;
+        const m = JSON.parse(e.message) as { id?: number; result?: unknown; error?: { message: string } };
+        if (m.id !== id) return;
+        cdp.off('Target.receivedMessageFromTarget', on);
+        resolve(m);
+      };
+      cdp.on('Target.receivedMessageFromTarget', on);
+      void cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id, method, params }) }).catch(() => undefined);
+    });
+  return {
+    async evaluate<T>(expression: string): Promise<T> {
+      const r = await call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+      if (r.error) throw new Error(r.error.message);
+      return (r.result as { result?: { value?: T } } | undefined)?.result?.value as T;
+    },
+    async click(x, y) {
+      await call('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+      void call('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    },
+    async close() {
+      await cdp.send('Target.closeTarget', { targetId: popupTarget }).catch(() => undefined);
+      await cdp.detach().catch(() => undefined);
+    },
+  };
+}
+

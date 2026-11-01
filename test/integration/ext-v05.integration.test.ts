@@ -75,7 +75,7 @@ const SAVED = 'Saved';
 const NOT_RUNNING = 'Not saved: Jantar is not running on this Mac.';
 const NOT_ANSWERING = 'Jantar is not answering. Notes wait in this tab until it is back.';
 const OPEN_TAB_FIRST = 'Not saved: open the meeting tab first.';
-const ALLOW_HERE = 'Click the Jantar icon once to allow screenshots here.';
+const ALLOW_HERE = 'Not saved: click the Jantar icon once in this tab, then try again.';
 const BROKEN = 'Meetings data could not be opened. The file is untouched. Move meetings.db aside at your Mac to start again (docs/extension.md).';
 
 /** The fixture page each meeting host serves, changed as the flows go. */
