@@ -349,8 +349,9 @@ export class NotificationRouterImpl implements NotificationRouter {
   private onCardOpened(p: PendingRequest): void {
     if (cardKind(p) === null) {
       // Subagent info: shown in the app, never pushed. Hooks can't answer it, so it may be Claude's countdown.
+      // A sid not on the board yet is the Mac's (a server's card comes only for a session the hub holds): read, and retry.
       const session = this.ctx.store.getState().sessions[p.sid];
-      if (session && this.urgentFor(session)) {
+      if (session ? this.urgentFor(session) : this.urgentOn()) {
         this.countdown?.check(p.sid, p.createdAt, { retry: () => this.ctx.store.getState().pending[p.id]?.state === 'open' });
       }
       return;

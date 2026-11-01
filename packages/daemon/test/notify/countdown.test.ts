@@ -592,6 +592,20 @@ describe('what holds it', () => {
     expect(done.panes.asked).toEqual([SID]);
   });
 
+  it('a card opened before its Mac session is on the board is read again 10 s later, as in 0.5.3', async () => {
+    const r = await rig();
+    r.ask(110);
+    const NEW = 'sess-bbbb-2222';
+    subagentCard(r, { sid: NEW });
+    await r.tick(3 * S);
+    const s = makeSession({ sid: NEW, statusSince: r.ctx.clock.iso() });
+    r.ctx.store.emit({ type: 'session.added', sid: s.sid, data: { session: s } });
+    await r.tick(URGENT_PROBE_GAP_MS);
+    expect(r.panes.asked).toEqual([NEW]);
+    expect(r.urgent()).toHaveLength(1);
+    expect(r.urgent()[0]?.payload.sid).toBe(NEW);
+  });
+
   it('a repeat whose read fails sends nothing more', async () => {
     const r = await rig();
     r.ask(110);
