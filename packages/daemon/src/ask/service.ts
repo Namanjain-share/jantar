@@ -23,7 +23,7 @@
  * The run is Ask Claude's (life/food/estimate.ts) on the shared runner
  * (rewrite/run.ts): Rewrite's isolation flags, the env scrub, an empty 0700
  * cwd under paths.askDir emptied before each run, our system prompt as a
- * file (assets/ask/assistant-v1.md), the input on stdin only (input.ts),
+ * file (assets/ask/assistant-v2.md), the input on stdin only (input.ts),
  * the account from rewrite/pick.ts (never a kept or held one; account 0
  * with `claude -p` directly on one login; a read of ccw's hold list that
  * hangs ends at Cancel or ASK_TIMEOUT_MS). Rewrite's model and fallback,
@@ -35,8 +35,10 @@
  * (or the phone's edit of it) against now (answer.ts checkWrite), then
  * calls the Life module with the tapping device as actor, so Life's own
  * checks, caps, pings and `life.changed` apply as they are; Undo removes
- * the item it made within ASK_APPLY_WITHIN_MS. Dispatch is a fixed switch
- * on the type, to six calls: this part holds only `life`, `usage` and
+ * the item it made within ASK_APPLY_WITHIN_MS. A post card adds an idea
+ * in-process, so the hourly limit on posts added over ctl.sock never counts
+ * it. Dispatch is a fixed switch
+ * on the type, to eight calls: this part holds only `life`, `usage` and
  * `ccwLegacy`, so an answer reaches nothing else (sessions, files, the
  * shell, settings or other devices).
  *
@@ -55,6 +57,7 @@ import {
   ASK_TURNS_KEPT,
   FoodBodySchema,
   MoneyBodySchema,
+  PostBodySchema,
   TodoBodySchema,
   type AccountId,
   type AskCard,
@@ -78,15 +81,16 @@ export const ASK_TIMEOUT_MS = 90_000;
 /** Turns are pruned this often too, so none stays in memory long past ASK_KEEP_DAYS when nobody opens Ask. */
 export const ASK_SWEEP_MS = 60 * 60_000;
 /** Bump with the prompt's text; the audit row records it. */
-export const ASK_PROMPT_VERSION = 'v1';
+export const ASK_PROMPT_VERSION = 'v2';
 export const ASK_PROMPT_ASSET = `ask/assistant-${ASK_PROMPT_VERSION}.md`;
 
 /** The Life part each write type needs, and its switch's sentence (as the API's FEATURE_OFF says it). */
-export const ASK_MODULE_OF = { todo: 'todos', food: 'food', money: 'finance' } as const;
+export const ASK_MODULE_OF = { todo: 'todos', food: 'food', money: 'finance', post: 'posts' } as const;
 export const ASK_MODULE_OFF = {
   todos: 'Todos are off. Turn them on at your Mac: jantar life on todos',
   food: 'Food is off. Turn it on at your Mac: jantar life on food',
   finance: 'Finance is off. Turn it on at your Mac: jantar life on finance',
+  posts: 'Posts are off. Turn them on at your Mac: jantar life on posts',
 } as const;
 
 export interface AskDeps {
@@ -398,8 +402,8 @@ class AskServiceImpl implements AskService {
     const broken = this.lifeBroken();
     if (broken !== null) return refuse('life_unavailable', broken);
     if (!runVia(this.ctx)) return refuse('conflict', ASK_SENTENCES.noRunner);
-    const { todos, food, finance, medicines } = s.life;
-    if (!todos && !food && !finance && !medicines) return refuse('conflict', ASK_SENTENCES.noModules);
+    const { todos, food, finance, medicines, posts } = s.life;
+    if (!todos && !food && !finance && !medicines && !posts) return refuse('conflict', ASK_SENTENCES.noModules);
     return null;
   }
 
@@ -440,7 +444,7 @@ class AskServiceImpl implements AskService {
     return {
       today,
       now,
-      modules: { todos: life.todos, food: life.food, finance: life.finance, medicines: life.medicines },
+      modules: { todos: life.todos, food: life.food, finance: life.finance, medicines: life.medicines, posts: life.posts },
       projects: life.todos ? this.projects() : [],
       remind: asksReminder(text),
     };
@@ -456,7 +460,7 @@ class AskServiceImpl implements AskService {
   }
 
   // -------------------------------------------------------------------------
-  // Apply: a fixed switch to six Life calls
+  // Apply: a fixed switch to eight Life calls
 
   /** The part's switch is off (403 with its sentence), or life.db is broken (503). */
   private moduleOff(action: AskWriteAction): Refusal | null {
@@ -490,6 +494,18 @@ class AskServiceImpl implements AskService {
         const body = MoneyBodySchema.safeParse(fields);
         return body.success ? life.finance.add(body.data, actor) : refuse('invalid_request', ASK_SENTENCES.badItem);
       }
+      case 'post': {
+        // Always an idea: Ask plans a post, the user writes and posts it.
+        const body = PostBodySchema.safeParse({
+          platform: action.platform,
+          kind: action.kind,
+          ...(action.where !== undefined ? { where: action.where } : {}),
+          ...(action.title !== undefined ? { title: action.title } : {}),
+          ...(action.due ? { due: action.due } : {}),
+          status: 'idea',
+        });
+        return body.success ? life.posts.create(body.data, actor) : refuse('invalid_request', ASK_SENTENCES.badItem);
+      }
     }
   }
 
@@ -502,6 +518,8 @@ class AskServiceImpl implements AskService {
         return life.food.remove(ref, actor);
       case 'money':
         return life.finance.remove(ref, actor);
+      case 'post':
+        return life.posts.remove(ref, actor);
     }
   }
 
@@ -568,7 +586,7 @@ class AskServiceImpl implements AskService {
     const life = s.life;
     const input = askInput({
       ...this.now(),
-      modules: { todos: life.todos, food: life.food, finance: life.finance, medicines: life.medicines },
+      modules: { todos: life.todos, food: life.food, finance: life.finance, medicines: life.medicines, posts: life.posts },
       text: turn.text,
     });
     turn.state = 'running';

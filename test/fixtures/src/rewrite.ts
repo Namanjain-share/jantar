@@ -97,13 +97,15 @@ export const FAKE_CLAUDE_MODES = [
  * - meeting-long: a 2,001-character summary
  * - meeting-answer: prose instead of JSON
  *
- * Ask modes (v0.5.3), only when the run's --system-prompt-file is ask/assistant-v1.md
+ * Ask modes (v0.5.3), only when the run's --system-prompt-file is ask/assistant-v<N>.md
  * (the default there is ask-ok; slow, auth-error and empty work there too):
  * - ask-ok: one answer per message kind (ASK_MESSAGES in ask.ts): "todo add X", "remind me every
  *   day at H:MM to X" (no day), "remind me to X [tomorrow] at H:MM", "remind me at H to X" (the next
  *   H o'clock), "had 2 rotis and dal" (Roti 240, Dal 180), "ate/had X [N kcal]", "spent N on X"
- *   (category "food", lower case), "calories left" / "what's due" / "meds" (show cards); anything
- *   else a reply only. The reply names the message, so a marker in it comes back
+ *   (category "food", lower case), "calories left" / "what's due" / "meds" (show cards),
+ *   "<kind> [on <where>] [tomorrow] <H>am|pm about X" (v0.7: a post idea titled "About X", on
+ *   reddit for an r/ where, x for a thread, else instagram); anything else a reply only. The
+ *   reply names the message, so a marker in it comes back
  * - ask-fence: the same JSON inside a ```json code fence
  * - ask-bad-json: JSON cut short, and the message on stderr
  * - ask-answer: prose instead of JSON

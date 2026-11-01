@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { askInput, dayWithWeekday, type AskInput } from '../../src/ask/input.js';
 import { escapeTags } from '../../src/rewrite/context.js';
 
-const ALL_ON = { todos: true, food: true, finance: true, medicines: true };
+const ALL_ON = { todos: true, food: true, finance: true, medicines: true, posts: true };
 const base = (over: Partial<AskInput> = {}): AskInput => ({
   today: '2026-11-01',
   now: '14:05',
@@ -39,7 +39,7 @@ describe('<now>', () => {
         'Next 7 days: Mon 2026-11-02, Tue 2026-11-03, Wed 2026-11-04, Thu 2026-11-05, Fri 2026-11-06, Sat 2026-11-07, Sun 2026-11-08',
         '</now>',
         '<life>',
-        'On: todos, food, money, medicines (show only)',
+        'On: todos, food, money, posts, medicines (show only)',
         'Currency: INR',
         'Expense categories: Food, Groceries, Transport, Bills, Rent, Shopping, Health, Fun, Other',
         'Income categories: Salary, Other',
@@ -62,10 +62,12 @@ describe('<now>', () => {
 
 describe('<life>', () => {
   it('names only the parts that are on, in order, money for finance; never cafés', () => {
-    const life = (m: Partial<typeof ALL_ON>) => block(askInput(base({ modules: { todos: false, food: false, finance: false, medicines: false, ...m } })), 'life').split('\n')[0];
+    const life = (m: Partial<typeof ALL_ON>) => block(askInput(base({ modules: { todos: false, food: false, finance: false, medicines: false, posts: false, ...m } })), 'life').split('\n')[0];
     expect(life({ todos: true })).toBe('On: todos');
     expect(life({ finance: true, medicines: true })).toBe('On: money, medicines (show only)');
     expect(life({ food: true, todos: true })).toBe('On: todos, food');
+    expect(life({ posts: true })).toBe('On: posts');
+    expect(life({ finance: true, posts: true, medicines: true })).toBe('On: money, posts, medicines (show only)');
     expect(life({})).toBe('On: none');
     expect(askInput(base())).not.toMatch(/caf|places/i);
   });

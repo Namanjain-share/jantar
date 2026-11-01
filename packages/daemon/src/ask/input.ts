@@ -4,16 +4,18 @@
  *   <now>      today, the time and the Life zone, yesterday, the 7 days
  *              before and after today, each with its weekday (so the model
  *              never works one out)
- *   <life>     which Life parts are on (todos, food, money, medicines for
- *              show only; never cafés), the currency code and the fixed
- *              category names (DEFAULT_CATEGORIES, never the user's own)
+ *   <life>     which Life parts are on (todos, food, money, posts,
+ *              medicines for show only; never cafés), the currency code
+ *              and the fixed category names (DEFAULT_CATEGORIES, never the
+ *              user's own)
  *   <message>  what the user typed, as typed
  *
  * Nothing from Life's data goes in: no titles, projects, medicines, doses,
- * calories, weights or amounts. The message is data: any of our three tags
- * inside it, however spelled (any case, spaces around the "/", zero-width
- * or bidi characters inside the name), is escaped ("</message>" becomes
- * "<\/message>") so it can neither close its block nor open another.
+ * calories, weights, amounts or posts. The message is data: any of our
+ * three tags inside it, however spelled (any case, spaces around the "/",
+ * zero-width or bidi characters inside the name), is escaped
+ * ("</message>" becomes "<\/message>") so it can neither close its block
+ * nor open another.
  *
  * Nothing here is logged or emitted: the input holds what the user typed.
  */
@@ -32,6 +34,8 @@ export interface AskInputLife {
   food: boolean;
   /** Life's `finance` module ("money" to the model). */
   finance: boolean;
+  /** v0.7 Posts: plans only (Ask never writes a post's text). */
+  posts: boolean;
   /** Show cards only: nothing is ever written to Medicines from Ask. */
   medicines: boolean;
 }
@@ -60,6 +64,7 @@ function onLine(m: AskInputLife): string {
   if (m.todos) parts.push('todos');
   if (m.food) parts.push('food');
   if (m.finance) parts.push('money');
+  if (m.posts) parts.push('posts');
   if (m.medicines) parts.push('medicines (show only)');
   return parts.length > 0 ? parts.join(', ') : 'none';
 }

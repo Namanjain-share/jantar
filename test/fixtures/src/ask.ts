@@ -25,6 +25,7 @@ export const ASK_MESSAGES = {
   calories: 'calories left?',
   due: "what's due today?",
   meds: 'did I take my meds',
+  post: 'reel tomorrow 7pm about the launch',
   chat: 'hello there',
 } as const;
 

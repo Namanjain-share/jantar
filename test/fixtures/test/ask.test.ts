@@ -1,6 +1,6 @@
 /**
  * The fake claude's Ask modes (v0.5.3), run as a process the way the
- * daemon runs it: `claude -p ... --system-prompt-file <dir>/assistant-v1.md`
+ * daemon runs it: `claude -p ... --system-prompt-file <dir>/assistant-v2.md`
  * with the three blocks on stdin. ask-ok answers each message kind the
  * daemon's tests send (ASK_MESSAGES), "remind me at H to X" follows the
  * prompt's "at 6" rule from the <now> time, a marker in the message comes
@@ -16,7 +16,7 @@ let home: FakeHome;
 let ARGS: string[] = [];
 beforeAll(async () => {
   home = await makeFakeHome({ sessions: [] });
-  const promptFile = join(home.root, 'ask', 'assistant-v1.md');
+  const promptFile = join(home.root, 'ask', 'assistant-v2.md');
   await mkdir(dirname(promptFile), { recursive: true });
   await writeFile(promptFile, 'You turn one message into suggestions.\n');
   ARGS = ['-p', '--output-format', 'json', '--model', 'opus', '--fallback-model', 'sonnet', '--effort', 'low', '--permission-prompts', 'none', '--system-prompt-file', promptFile];
@@ -58,6 +58,7 @@ describe('ask-ok', () => {
       calories: [{ type: 'show', what: 'calories' }],
       due: [{ type: 'show', what: 'due' }],
       meds: [{ type: 'show', what: 'meds' }],
+      post: [{ type: 'post', platform: 'instagram', kind: 'reel', title: 'About the launch', day: '2026-11-02', time: '19:00' }],
       chat: [],
     };
     for (const [kind, message] of Object.entries(ASK_MESSAGES)) {
@@ -72,6 +73,14 @@ describe('ask-ok', () => {
     expect(await at('05:00')).toMatchObject({ day: '2026-11-01', time: '06:00' });
     expect(await at('14:05')).toMatchObject({ day: '2026-11-01', time: '18:00' });
     expect(await at('19:30')).toMatchObject({ day: '2026-11-02', time: '06:00' });
+  });
+
+  it('a post: its kind, where and platform, the hour today or tomorrow, "About X" with a marker kept', async () => {
+    expect((await answerOf('thread 9am about the beta')).actions).toEqual([{ type: 'post', platform: 'x', kind: 'thread', title: 'About the beta', day: '2026-11-01', time: '09:00' }]);
+    expect((await answerOf(askText('post on r/exampletools tomorrow 12pm about the demo', { marked: true }))).actions).toEqual([
+      { type: 'post', platform: 'reddit', kind: 'post', where: 'r/exampletools', title: `About the demo ${ASK_MARKER}`, day: '2026-11-02', time: '12:00' },
+    ]);
+    expect((await answerOf('story on @example.studio 12am about the team')).actions[0]).toMatchObject({ platform: 'instagram', where: '@example.studio', time: '00:00' });
   });
 
   it('a marker in the message stays in the title and the reply; the daemon\'s escape is undone', async () => {

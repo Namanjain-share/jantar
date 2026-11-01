@@ -3,7 +3,7 @@
  * against a fake home: the fake claude (its Ask mode, picked by the prompt
  * file's name) runs as a process and records its argv, stdin, env and cwd.
  *
- * - argv is Rewrite's isolation argv with assistant-v1.md and Rewrite's
+ * - argv is Rewrite's isolation argv with assistant-v2.md and Rewrite's
  *   model and fallback (opus and sonnet; a changed rewrite.model is
  *   followed at the next run); the message is on stdin only; the env holds
  *   no other login or API key; the cwd is the empty work/ under the run dir.
@@ -56,7 +56,7 @@ async function ask(r: AskRig, text: string) {
 }
 
 describe('the run is isolated like Rewrite, the message is on stdin only', () => {
-  it("single mode: `claude -p` with Rewrite's isolation flags, assistant-v1.md, opus and sonnet at low effort", async () => {
+  it("single mode: `claude -p` with Rewrite's isolation flags, assistant-v2.md, opus and sonnet at low effort", async () => {
     const r = await realRig();
     const t = await ask(r, ASK_MESSAGES.todo);
     expect(t).toMatchObject({ state: 'done', cards: [{ action: { type: 'todo', title: 'call the bank' }, state: 'proposed' }] });
@@ -64,7 +64,7 @@ describe('the run is isolated like Rewrite, the message is on stdin only', () =>
     expect(calls).toHaveLength(1);
     const call = calls[0]!;
     expect(call).toMatchObject({ via: 'claude', account: null });
-    const promptFile = join(r.ctx.paths.askDir, 'assistant-v1.md');
+    const promptFile = join(r.ctx.paths.askDir, 'assistant-v2.md');
     expect(call.args).toEqual(rewriteArgv({ account: null, model: 'opus', fallbackModel: 'sonnet', effort: 'low', systemPromptFile: promptFile }, 'claude'));
     expect(flag(call.args, '--tools')).toBe('');
     expect(flag(call.args, '--disallowedTools')).toBe('mcp__*');
@@ -73,12 +73,12 @@ describe('the run is isolated like Rewrite, the message is on stdin only', () =>
     expect(flag(call.args, '--max-turns')).toBe('1');
     expect(flag(call.args, '--max-budget-usd')).toBe('1.00');
     // The prompt is a file, the asset byte for byte; the message is stdin only.
-    const asset = readFileSync(join(r.ctx.paths.assetsDir, 'ask', 'assistant-v1.md'), 'utf8');
+    const asset = readFileSync(join(r.ctx.paths.assetsDir, 'ask', 'assistant-v2.md'), 'utf8');
     expect(readFileSync(promptFile, 'utf8')).toBe(asset);
     expect(asset.startsWith('You turn one message from the user into suggestions for their own Life app')).toBe(true);
     expect(call.args.join('\n')).not.toContain('call the bank');
     expect(call.stdin).toBe(
-      askInput({ today: TODAY, now: '14:05', timezone: 'Asia/Kolkata', currency: 'INR', modules: { todos: true, food: true, finance: true, medicines: true }, text: ASK_MESSAGES.todo }),
+      askInput({ today: TODAY, now: '14:05', timezone: 'Asia/Kolkata', currency: 'INR', modules: { todos: true, food: true, finance: true, medicines: true, posts: true }, text: ASK_MESSAGES.todo }),
     );
     for (const k of Object.keys(LEAKY_ENV)) expect(call.envKeys, k).not.toContain(k);
     expect(realpathSync(call.cwd)).toBe(realpathSync(join(r.ctx.paths.askDir, 'work')));
@@ -109,7 +109,7 @@ describe('the run is isolated like Rewrite, the message is on stdin only', () =>
     expect((await ask(r, ASK_MESSAGES.todo)).state).toBe('done');
     const runs = (await (home as FakeHome).calls('cswap')).filter((c) => c.args[0] === 'run');
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.args).toEqual(rewriteArgv({ account: 2, model: 'opus', fallbackModel: 'sonnet', effort: 'low', systemPromptFile: join(r.ctx.paths.askDir, 'assistant-v1.md') }, 'cswap'));
+    expect(runs[0]?.args).toEqual(rewriteArgv({ account: 2, model: 'opus', fallbackModel: 'sonnet', effort: 'low', systemPromptFile: join(r.ctx.paths.askDir, 'assistant-v2.md') }, 'cswap'));
     for (const k of Object.keys(LEAKY_ENV)) expect(runs[0]?.envKeys, k).not.toContain(k);
     const [call] = await claudeCalls(home as FakeHome);
     expect(call).toMatchObject({ via: 'cswap', account: 2 });
@@ -196,6 +196,9 @@ describe("every fake mode's cards", () => {
     expect((await ask(r, ASK_MESSAGES.calories)).cards.map((c) => c.action)).toEqual([{ type: 'show', what: 'calories' }]);
     expect((await ask(r, ASK_MESSAGES.due)).cards.map((c) => c.action)).toEqual([{ type: 'show', what: 'due' }]);
     expect((await ask(r, ASK_MESSAGES.meds)).cards.map((c) => c.action)).toEqual([{ type: 'show', what: 'meds' }]);
+    expect((await ask(r, ASK_MESSAGES.post)).cards).toEqual([
+      { action: { type: 'post', platform: 'instagram', kind: 'reel', title: 'About the launch', due: { day: TOMORROW, time: '19:00' } }, state: 'proposed' },
+    ]);
     expect(await ask(r, ASK_MESSAGES.chat)).toMatchObject({ state: 'done', cards: [], dropped: 0, reply: `Ask can suggest todos, reminders, food and money. For: ${ASK_MESSAGES.chat}` });
     expect((await ask(r, 'remind me to call mum')).cards).toEqual([]);
   });

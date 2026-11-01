@@ -13,7 +13,21 @@
 import type { CcwLegacySource, DaemonContext, Factories, LifeService, UsageSource } from '../contracts.js';
 import { buildAskService, type AskOptions } from './service.js';
 
-export { ASK_SENTENCES, asksReminder, checkWrite, matchCategory, matchProject, parseAnswer, readAction, replyOf, settleDue, type AskScope, type ParsedAnswer } from './answer.js';
+export {
+  ASK_SENTENCES,
+  asksReminder,
+  checkWrite,
+  matchCategory,
+  matchKind,
+  matchPlatform,
+  matchProject,
+  parseAnswer,
+  readAction,
+  replyOf,
+  settleDue,
+  type AskScope,
+  type ParsedAnswer,
+} from './answer.js';
 export { ASK_TAGS, askInput, dayWithWeekday, type AskInput } from './input.js';
 export {
   ASK_EFFORT,

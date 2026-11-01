@@ -48,7 +48,7 @@
 //   meeting-answer    prose instead of JSON
 // plus slow, auth-error and empty as above. It is logged like every run.
 //
-// Ask mode (v0.5.3 Ask): when --system-prompt-file ends in assistant-v1.md
+// Ask mode (v0.5.3 Ask): when --system-prompt-file ends in assistant-v<N>.md
 // it reads <now> (the Today and Time lines) and <message> from stdin, with
 // the daemon's tag escapes undone, and answers with ASK_MODES, picked the
 // same way (default ask-ok):
@@ -62,6 +62,9 @@
 //                      "ate X [N kcal]" or "had X [N kcal]" a food X (N, else 100 kcal);
 //                      "spent N on X" an expense of N, category "food" (lower case), note X;
 //                      "calories left", "what's due", "meds" a show card;
+//                      "<kind> [on <where>] [tomorrow] <H>am|pm about X" (v0.7) a post
+//                        idea of that kind at H (today, or tomorrow), titled "About X":
+//                        on reddit when where starts r/, on x for a thread, else instagram;
 //                      anything else a reply only. The reply names the message, so a
 //                      marker in it stays in the titles and the reply.
 //   ask-fence          the ask-ok JSON inside a ```json code fence
@@ -342,6 +345,13 @@ export function askOkAnswer({ today, now, message }) {
   if (/calories left/i.test(message)) return { reply: reply('Here are your calories.'), actions: [{ type: 'show', what: 'calories' }] };
   if (/what'?s due/i.test(message)) return { reply: reply("Here is what's due."), actions: [{ type: 'show', what: 'due' }] };
   if (/\bmeds\b/i.test(message)) return { reply: reply("Here are today's medicines."), actions: [{ type: 'show', what: 'meds' }] };
+  if ((m = /^(post|comment|reel|story|thread|short|video|link)(?: on (\S+))?( tomorrow)? (\d{1,2})(am|pm) about (.+)$/is.exec(message))) {
+    const [, kind, where, tomorrow, h, half, about] = m;
+    const platform = where?.startsWith('r/') ? 'reddit' : kind.toLowerCase() === 'thread' ? 'x' : 'instagram';
+    const time = hhmm((Number(h) % 12) + (half.toLowerCase() === 'pm' ? 12 : 0));
+    const post = { type: 'post', platform, kind: kind.toLowerCase(), ...(where ? { where } : {}), title: `About ${about}`, day: tomorrow ? addDays(today, 1) : today, time };
+    return { reply: reply(`A ${kind.toLowerCase()} to post.`), actions: [post] };
+  }
   return { reply: reply('Ask can suggest todos, reminders, food and money.'), actions: [] };
 }
 
@@ -504,7 +514,7 @@ export async function runClaude({ root, args, stdin, account = null, via = 'clau
   const config = readJson(join(root, 'fake', 'claude.json'), {});
   const food = promptFile !== undefined && promptFile.endsWith('estimate-v1.md');
   const meeting = promptFile !== undefined && promptFile.endsWith('summary-v1.md');
-  const ask = promptFile !== undefined && promptFile.endsWith('assistant-v1.md');
+  const ask = promptFile !== undefined && /assistant-v\d+\.md$/.test(promptFile);
   const [modes, fallbackMode] = food
     ? [FOOD_MODES, 'food-ok']
     : meeting

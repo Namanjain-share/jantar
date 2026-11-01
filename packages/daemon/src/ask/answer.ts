@@ -8,7 +8,7 @@
  *   none). Other top-level keys are ignored. Anything else makes the turn
  *   unreadable.
  * - The model form of an action (what Claude writes) is a strict object of
- *   one of four types: todo, food, money, show. Any other type, an unknown
+ *   one of five types: todo, food, money, post, show. Any other type, an unknown
  *   field, a value of the wrong kind or out of range, or a type whose Life
  *   part is off drops that action alone (counted in `dropped`). Only the
  *   first ASK_CARDS_MAX are read; every one after counts as dropped.
@@ -33,6 +33,13 @@
  * - Money: the amount in the currency's units becomes hundredths
  *   (₹250 is 25000), the category one of DEFAULT_CATEGORIES[kind] (any
  *   case) or 'Other' (any other name, however long).
+ * - Post (v0.7): a plan, never the post itself, so it has no text, notes or
+ *   link key (one drops it). The platform is its name in any case or an
+ *   alias (insta and ig, twitter, yt, hacker news, fb), else 'other'; the
+ *   kind its name or plural in any case, else 'post'. `where` and `title`
+ *   are taken as written and must pass Posts' one-line schemas (a newline
+ *   or a bidi character drops the action). Day and time as a todo's (1)
+ *   and (4), never a repeat.
  * - The reply: controls stripped, trimmed and cut to ASK_REPLY_MAX with
  *   its "…" counted (as rewrite/context.ts clip); nothing visible is no
  *   reply. Plain text: the phone never renders it as Markdown or links.
@@ -50,13 +57,21 @@ import {
   DEFAULT_CATEGORIES,
   DayKeySchema,
   HhMmSchema,
+  POST_KINDS,
+  POST_KIND_LABEL,
+  POST_PLATFORMS,
+  PostTitleSchema,
+  PostWhereSchema,
   type AskAction,
   type AskCard,
   type AskFlag,
+  type AskPostAction,
   type AskTodoAction,
   type AskWriteAction,
   type Due,
   type MoneyKind,
+  type PostKind,
+  type PostPlatform,
   type ProjectStatus,
 } from '@jantar/protocol';
 import { isRealDay } from '../life/food/module.js';
@@ -86,7 +101,7 @@ export const ASK_SENTENCES = {
   skipped: 'Skipped.',
   old: 'Over a day old. Ask again.',
   nothingToUndo: 'Nothing to undo.',
-  oldUndo: 'Over a day old. Delete it in Todos, Food or Finance instead.',
+  oldUndo: 'Over a day old. Delete it in Todos, Food, Finance or Posts instead.',
   editType: "An edit can't change what kind of item it is.",
   editProject: 'An edit can keep the suggested project or leave it out, nothing else.',
   badDay: 'Pick a day from a week ago to a year ahead.',
@@ -107,7 +122,7 @@ export interface AskScope {
   today: string;
   /** Now as HH:MM in the Life zone. */
   now: string;
-  modules: { todos: boolean; food: boolean; finance: boolean; medicines: boolean };
+  modules: { todos: boolean; food: boolean; finance: boolean; medicines: boolean; posts: boolean };
   projects: readonly AskProject[];
   /** The message asked for a reminder (remind, reminder, yaad, याद): see no_time. */
   remind: boolean;
@@ -259,6 +274,7 @@ const TODO_KEYS = ['type', 'title', 'day', 'time', 'repeat', 'priority', 'projec
 const FOOD_KEYS = ['type', 'name', 'kcal', 'day'] as const;
 const MONEY_KEYS = ['type', 'kind', 'amount', 'category', 'note', 'day'] as const;
 const SHOW_KEYS = ['type', 'what'] as const;
+const POST_KEYS = ['type', 'platform', 'kind', 'where', 'title', 'day', 'time'] as const;
 
 function readTodo(o: Obj, scope: AskScope): Read | null {
   if (!onlyKeys(o, TODO_KEYS)) return null;
@@ -332,6 +348,67 @@ function readMoney(o: Obj, scope: AskScope): Read | null {
   };
 }
 
+/** What people call a platform besides its own name (lower case). */
+const PLATFORM_ALIAS: Readonly<Record<string, PostPlatform>> = {
+  insta: 'instagram',
+  ig: 'instagram',
+  twitter: 'x',
+  yt: 'youtube',
+  'hacker news': 'hn',
+  fb: 'facebook',
+};
+
+/** The platform named `name`: its own name or an alias, any case; else 'other'. */
+export function matchPlatform(name: string): PostPlatform {
+  const want = name.trim().toLowerCase().replace(/\s+/g, ' ');
+  return (POST_PLATFORMS as readonly string[]).includes(want) ? (want as PostPlatform) : (PLATFORM_ALIAS[want] ?? 'other');
+}
+
+/** The kind named `name`: its own name or its plural ("reels"), any case; else 'post'. */
+export function matchKind(name: string): PostKind {
+  const want = name.trim().toLowerCase();
+  return POST_KINDS.find((k) => k === want || POST_KIND_LABEL[k][1].toLowerCase() === want) ?? 'post';
+}
+
+/** A post's where or title: as written, one line by Posts' own schema, something visible. */
+function lineField(v: unknown, schema: typeof PostWhereSchema | typeof PostTitleSchema): Field<string> {
+  if (v === undefined) return undefined;
+  const parsed = schema.safeParse(v);
+  return parsed.success && !BLANK.test(parsed.data) ? parsed.data : BAD;
+}
+
+function readPost(o: Obj, scope: AskScope): Read | null {
+  if (!onlyKeys(o, POST_KEYS)) return null;
+  // Any length: each is mapped to a fixed name anyway.
+  const platform = textField(o.platform, Number.POSITIVE_INFINITY);
+  const kind = textField(o.kind, Number.POSITIVE_INFINITY);
+  const where = lineField(o.where, PostWhereSchema);
+  const title = lineField(o.title, PostTitleSchema);
+  const day = dayField(o.day, scope);
+  const time = timeField(o.time);
+  if (platform === undefined || [platform, kind, where, title, day, time].includes(BAD)) return null;
+  const d = day as string | undefined;
+  const hm = time as string | undefined;
+  // (1) a time with no day: the next time it comes.
+  let due: Due | undefined;
+  if (d !== undefined) due = hm !== undefined ? { day: d, time: hm } : { day: d };
+  else if (hm !== undefined) due = { day: hm > scope.now ? scope.today : shiftDay(scope.today, 1), time: hm };
+  const action: AskPostAction = {
+    type: 'post',
+    platform: matchPlatform(platform as string),
+    kind: kind === undefined ? 'post' : matchKind(kind as string),
+    ...(where !== undefined ? { where: where as string } : {}),
+    ...(title !== undefined ? { title: title as string } : {}),
+    ...(due ? { due } : {}),
+  };
+  return postPast(action, scope) ? { action, flag: 'past_time' } : { action };
+}
+
+/** (4) for a post: a time not after now (today at a time gone, or an earlier day) won't ring. */
+function postPast(a: AskPostAction, scope: Pick<AskScope, 'today' | 'now'>): boolean {
+  return a.due?.time !== undefined && !startsAfterNow(a.due, scope);
+}
+
 /** Which Life part a show card reads. */
 const SHOW_MODULE = { due: 'todos', calories: 'food', meds: 'medicines' } as const;
 
@@ -355,6 +432,9 @@ export function readAction(raw: unknown, scope: AskScope): Read | null {
       break;
     case 'money':
       read = scope.modules.finance ? readMoney(raw, scope) : null;
+      break;
+    case 'post':
+      read = scope.modules.posts ? readPost(raw, scope) : null;
       break;
     case 'show':
       read = readShow(raw, scope);
@@ -413,6 +493,7 @@ export type Checked = { ok: true; action: AskWriteAction; flag?: AskFlag } | { o
  * Add: the card form's schema, real days in range, food and money not
  * after today, and settleDue for a todo (a repeating one whose time passed
  * since the answer moves to its next day; past_time is worked out again).
+ * A post's day is in range, and past_time is worked out again.
  * `noTime`: the card said no_time (it stays while there is still no time);
  * `noProject`: the card had a project name that matched none.
  */
@@ -426,6 +507,10 @@ export function checkWrite(a: AskWriteAction, scope: Pick<AskScope, 'today' | 'n
     const settled = settleDue(action, scope);
     const flag = todoFlag(settled.action, settled.flag !== undefined, opts.noTime === true, opts.noProject === true && settled.action.projectId === undefined);
     return { ok: true, action: settled.action, ...(flag ? { flag } : {}) };
+  }
+  if (action.type === 'post') {
+    if (action.due && !dayInRange(action.due.day, scope.today)) return { ok: false, reason: ASK_SENTENCES.badDay };
+    return postPast(action, scope) ? { ok: true, action, flag: 'past_time' } : { ok: true, action };
   }
   if (!dayInRange(action.day, scope.today)) return { ok: false, reason: ASK_SENTENCES.badDay };
   if (action.day > scope.today) return { ok: false, reason: ASK_SENTENCES.futureDay };

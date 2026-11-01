@@ -27,6 +27,10 @@ import {
   LongNotesSchema,
   MoneyKindSchema,
   MoneyNoteSchema,
+  PostKindSchema,
+  PostPlatformSchema,
+  PostTitleSchema,
+  PostWhereSchema,
   TodoPrioritySchema,
   TodoTitleSchema,
 } from './life.js';
@@ -75,19 +79,34 @@ export const AskMoneyActionSchema = z.strictObject({
 });
 export type AskMoneyAction = z.infer<typeof AskMoneyActionSchema>;
 
+/**
+ * v0.7: a post to plan (Posts). Ask plans, the user writes: no text, notes
+ * or link, and it is always added as an idea. `where` and `title` are one
+ * line, as Posts keeps them. With a time it rings like a todo.
+ */
+export const AskPostActionSchema = z.strictObject({
+  type: z.literal('post'),
+  platform: PostPlatformSchema,
+  kind: PostKindSchema,
+  where: PostWhereSchema.optional(),
+  title: PostTitleSchema.optional(),
+  due: DueSchema.optional(),
+});
+export type AskPostAction = z.infer<typeof AskPostActionSchema>;
+
 export const AskShowActionSchema = z.strictObject({ type: z.literal('show'), what: AskShowWhatSchema });
 export type AskShowAction = z.infer<typeof AskShowActionSchema>;
 
 /** What Add may apply (an Edit sends one of these, of the card's own type). */
-export const AskWriteActionSchema = z.discriminatedUnion('type', [AskTodoActionSchema, AskFoodActionSchema, AskMoneyActionSchema]);
+export const AskWriteActionSchema = z.discriminatedUnion('type', [AskTodoActionSchema, AskFoodActionSchema, AskMoneyActionSchema, AskPostActionSchema]);
 export type AskWriteAction = z.infer<typeof AskWriteActionSchema>;
-export const AskActionSchema = z.discriminatedUnion('type', [AskTodoActionSchema, AskFoodActionSchema, AskMoneyActionSchema, AskShowActionSchema]);
+export const AskActionSchema = z.discriminatedUnion('type', [AskTodoActionSchema, AskFoodActionSchema, AskMoneyActionSchema, AskPostActionSchema, AskShowActionSchema]);
 export type AskAction = z.infer<typeof AskActionSchema>;
 
 /**
- * Why a card says more (the phone words it): a one-off reminder whose time
- * has passed (today, or a day before today: it won't ring), a reminder asked
- * for and no time given, a project name with no project.
+ * Why a card says more (the phone words it): a one-off reminder or a timed
+ * post whose time has passed (today, or a day before today: it won't ring),
+ * a reminder asked for and no time given, a project name with no project.
  */
 export const AskFlagSchema = z.enum(['past_time', 'no_time', 'no_project']);
 export type AskFlag = z.infer<typeof AskFlagSchema>;

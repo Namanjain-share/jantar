@@ -1,10 +1,11 @@
 /**
  * v0.5.3 Ask end to end (spec 12.4): jantard in-process on a synthetic HOME
- * with the production wiring (harness.ts), Todos, Food, Finance and
- * Medicines on in the UTC Life zone, a phone paired with control and admin
- * (its event stream open from the start), a second control device and a
- * read-only one, `jantar` (main() from packages/cli) on the real ctl.sock,
- * and the fake claude answering through the fake cswap in its Ask modes.
+ * with the production wiring (harness.ts), Todos, Food, Finance, Medicines
+ * and (v0.7) Posts on in the UTC Life zone, a phone paired with control
+ * and admin (its event stream open from the start), a second control
+ * device and a read-only one, `jantar` (main() from packages/cli) on the
+ * real ctl.sock, and the fake claude answering through the fake cswap in
+ * its Ask modes.
  * Nothing runs claude, cswap or osascript for real.
  *
  * 0. The switch: off, the phone is refused with the sentence naming
@@ -21,12 +22,15 @@
  * 3. "spent 250 on lunch": Add; GET /v1/money shows 25000.
  * 4. "had 2 rotis and dal": two food cards; Add each in order (as Add all
  *    does); Today's kcal grows by their sum.
+ * 4b. (v0.7) "reel tomorrow 7pm about the launch <marker>": one post card
+ *    (Instagram, a reel, tomorrow 19:00); Add makes an idea in GET
+ *    /v1/posts with no text; Undo takes it out.
  * 5. A run that fails with the marker on claude's stderr: a fixed sentence.
  * 6. Clear forgets this phone's history; items added stay in Life.
  * 7. `jantar ask off` forgets every turn (seen after `jantar ask on`).
- * 8. The fake's calls: the isolation argv, the message on stdin only, and
- *    none of the Claude config and API key variables planted in the
- *    daemon's environment.
+ * 8. The fake's calls: the isolation argv with the v2 prompt, the message
+ *    on stdin only, and none of the Claude config and API key variables
+ *    planted in the daemon's environment.
  * 9. The sweep: the marker is in no WS frame, the ring, the stored events,
  *    an audit row, a log line, a write reply or a refusal, and in no file
  *    under the Jantar home. life.db keeps what the phone added (the
@@ -53,6 +57,7 @@ import {
   type Features,
   type MoneyMonth,
   type PairStartResponse,
+  type PostsResponse,
   type StateResponse,
   type Today,
   type TodosResponse,
@@ -71,7 +76,7 @@ interface WsClient {
 }
 const WebSocket = createRequire(daemonRequire.resolve('@fastify/websocket'))('ws') as new (url: string, protocols: string[], opts: { headers: Record<string, string> }) => WsClient;
 
-const LIFE = { todos: true, food: true, finance: true, medicines: true, timezone: 'UTC', currency: 'INR' };
+const LIFE = { todos: true, food: true, finance: true, medicines: true, posts: true, timezone: 'UTC', currency: 'INR' };
 const OFF_SENTENCE = 'Ask is off. Turn it on at your Mac: jantar ask on';
 /** Planted in the daemon's environment (synthetic values): no Ask run may inherit them. */
 const LEAKY_ENV = { CLAUDE_CONFIG_DIR: '/synthetic/ask-other-login', CLAUDE_SECURESTORAGE_CONFIG_DIR: '/synthetic/ask-secure', ANTHROPIC_API_KEY: 'sk-synthetic-key' };
@@ -81,6 +86,7 @@ const SAY = {
   reminder: 'remind me at 6 to take Examplocin',
   lunch: `spent 250 on lunch ${ASK_MARKER}`,
   meal: 'had 2 rotis and dal',
+  reel: `reel tomorrow 7pm about the launch ${ASK_MARKER}`,
   broken: `todo add call the plumber ${ASK_MARKER}`,
   chat: `hello there ${ASK_MARKER}`,
 } as const;
@@ -155,7 +161,7 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
 
   const add = (turn: AskTurn, n: number) => ok<{ id: string }>('POST', `/v1/ask/turns/${turn.id}/actions/${n}`, {});
   const turnNow = async (id: string): Promise<AskTurn | undefined> => (await ok<AskList>('GET', '/v1/ask')).turns.find((t) => t.id === id);
-  const askRuns = async (): Promise<ClaudeCall[]> => (await claudeCalls(d.home)).filter((c) => c.args.some((a) => a.endsWith('assistant-v1.md')));
+  const askRuns = async (): Promise<ClaudeCall[]> => (await claudeCalls(d.home)).filter((c) => c.args.some((a) => a.endsWith('assistant-v2.md')));
 
   beforeAll(async () => {
     d = await bootDaemon({ home: { sessions: [] }, settings: { life: LIFE }, env: LEAKY_ENV });
@@ -300,6 +306,28 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
     expect(after.food?.kcal).toBe((before.food?.kcal ?? 0) + sum);
   }, perfBudgetMs(60_000));
 
+  it('4b. "reel tomorrow 7pm about the launch": a post card; Add makes an idea with no text, Undo takes it out', async () => {
+    const turn = await ask(SAY.reel);
+    expect(turn.cards).toHaveLength(1);
+    const card = turn.cards[0]!;
+    if (card.action.type !== 'post') throw new Error(`a ${card.action.type} card, not a post`);
+    const [run] = (await askRuns()).filter((c) => c.stdin.includes(SAY.reel));
+    expect(run?.stdin).toMatch(/^On: todos, food, money, posts, medicines \(show only\)$/m);
+    const today = /^Today: \w{3} (\d{4}-\d\d-\d\d)$/m.exec(run?.stdin ?? '')?.[1] ?? '';
+    const tomorrow = new Date(Date.parse(`${today}T00:00:00.000Z`) + 86_400_000).toISOString().slice(0, 10);
+    expect(card.action).toEqual({ type: 'post', platform: 'instagram', kind: 'reel', title: `About the launch ${ASK_MARKER}`, due: { day: tomorrow, time: '19:00' } });
+    expect((await ok<PostsResponse>('GET', '/v1/posts')).posts).toEqual([]);
+
+    const { id } = await add(turn, 0);
+    const [post] = (await ok<PostsResponse>('GET', '/v1/posts')).posts;
+    expect(post).toMatchObject({ id, platform: 'instagram', kind: 'reel', status: 'idea', due: { day: tomorrow, time: '19:00' } });
+    expect(post?.text).toBeUndefined();
+    expect(post?.link).toBeUndefined();
+    expect(await ok('DELETE', `/v1/ask/turns/${turn.id}/actions/0`)).toEqual({ ok: true });
+    expect((await ok<PostsResponse>('GET', '/v1/posts')).posts).toEqual([]);
+    expect((await turnNow(turn.id))?.cards[0]?.state).toBe('proposed');
+  }, perfBudgetMs(60_000));
+
   it('5. a run that fails with the marker on claude\'s stderr ends in a fixed sentence', async () => {
     await setFakeClaude(d.home, { mode: 'ask-bad-json' });
     try {
@@ -345,13 +373,13 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
 
   it('8. each run had the isolation argv, Rewrite\'s model at low effort, and the message on stdin only', async () => {
     const runs = await askRuns();
-    expect(runs.length).toBeGreaterThanOrEqual(7);
+    expect(runs.length).toBeGreaterThanOrEqual(8);
     const settings = d.ctx.settings.get();
     const held = new Set<number>([...settings.accounts.kept, ...settings.autoswitch.hold]);
     for (const run of runs) {
       const promptFile = run.args[run.args.indexOf('--system-prompt-file') + 1] ?? '';
-      expect(basename(promptFile)).toBe('assistant-v1.md');
-      expect(promptFile).toContain(join('ask', 'assistant-v1.md'));
+      expect(basename(promptFile)).toBe('assistant-v2.md');
+      expect(promptFile).toContain(join('ask', 'assistant-v2.md'));
       expect(run.args).toEqual(rewriteArgv({ account: run.account, model: 'opus', fallbackModel: 'sonnet', effort: 'low', systemPromptFile: promptFile }, 'claude'));
       expect(run.cwd.endsWith(join('ask', 'work'))).toBe(true);
       expect(run.args.join(' ')).not.toContain(ASK_MARKER);
@@ -400,7 +428,7 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
 
     // Files: the marker is in none outside life.db; in life.db, no message as typed and nothing of a turn never added.
     const files = await walk(d.home.jantarHome);
-    expect(files.map((f) => basename(f))).toEqual(expect.arrayContaining(['config.json', 'jantar.db', 'life.db', 'assistant-v1.md']));
+    expect(files.map((f) => basename(f))).toEqual(expect.arrayContaining(['config.json', 'jantar.db', 'life.db', 'assistant-v2.md']));
     const life = (f: string) => /^life\b.*\.db(-wal|-shm)?$/.test(basename(f));
     let inLife = false;
     for (const f of files) {
@@ -415,7 +443,7 @@ describe('v0.5.3 Ask through jantard: the phone, the CLI, the fake claude and th
     // Which rows hold it is not checked; the message checks above are what hold there.
     expect(inLife).toBe(true);
     // Ask's own folder holds the prompt copy and an empty work folder, nothing else.
-    expect(files.filter((f) => f.includes(`${join(d.home.jantarHome, 'ask')}/`)).map((f) => basename(f))).toEqual(['assistant-v1.md']);
+    expect(files.filter((f) => f.includes(`${join(d.home.jantarHome, 'ask')}/`)).map((f) => basename(f))).toEqual(['assistant-v2.md']);
   });
 });
 

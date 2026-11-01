@@ -17,11 +17,15 @@
  *   An Add after a repeating card's time passed moves it on. An edit can't
  *   change the type, put food after today or name another project (400).
  *   A part that is off: 403 on Add and Undo. Life broken: 503.
+ * - v0.7 post cards: Add makes an idea (never text, notes or a link) with
+ *   the tapping device, through a stand-in posts module; Undo removes it;
+ *   an edit keeps the rules (one-line where, a day in range); a time that
+ *   passed since the answer is past_time; Posts off is 403.
  * - Nothing is applied when a turn finishes: Life is untouched until Add.
  */
 import { instantAt } from '@jantar/life-core';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ASK_APPLY_WITHIN_MS, type AskTodoAction } from '@jantar/protocol';
+import { ASK_APPLY_WITHIN_MS, type AskPostAction, type AskTodoAction } from '@jantar/protocol';
 import { ASK_SENTENCES } from '../../src/ask/answer.js';
 import { ASK_MODULE_OFF } from '../../src/ask/service.js';
 import { FakeClock } from '../../src/core/clock.js';
@@ -226,6 +230,82 @@ describe('Add, Skip and Undo', () => {
     expect(r.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.old });
     expect(r.ask.undo(id, 0, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.oldUndo });
     expect(counts(r).food).toBe(1);
+  });
+});
+
+describe('post cards (v0.7)', () => {
+  it('Add makes an idea with the tapping device, and only the plan; Undo removes it', async () => {
+    rig = await makeAskRig();
+    const r = rig;
+    const id = await answered(r, [
+      { type: 'post', platform: 'insta', kind: 'reels', title: 'About the launch', day: TOMORROW, time: '19:00' },
+      { type: 'post', platform: 'reddit', where: 'r/exampletools' },
+    ], 'reel tomorrow 7pm about the launch');
+    expect(r.turn(id)?.cards.map((c) => c.action)).toEqual([
+      { type: 'post', platform: 'instagram', kind: 'reel', title: 'About the launch', due: { day: TOMORROW, time: '19:00' } },
+      { type: 'post', platform: 'reddit', kind: 'post', where: 'r/exampletools' },
+    ]);
+    expect(r.posts.posts.size).toBe(0);
+    const ticks = r.core.changedCount;
+    const added = r.ask.add(id, 0, undefined, PHONE);
+    expect(added.ok).toBe(true);
+    const postId = added.ok ? added.value.id : '';
+    expect(r.core.changedCount).toBe(ticks + 1);
+    const { createdAt: _c, updatedAt: _u, ...made } = r.posts.posts.get(postId) ?? ({} as Record<string, unknown>);
+    expect(made).toEqual({ id: postId, platform: 'instagram', kind: 'reel', title: 'About the launch', due: { day: TOMORROW, time: '19:00' }, status: 'idea' });
+    expect(r.posts.actors.get(postId)).toEqual(PHONE);
+    expect(r.turn(id)?.cards[0]).toMatchObject({ state: 'added', ref: postId });
+    // Add all's sibling: the second card alone.
+    expect(r.ask.add(id, 1, undefined, PHONE).ok).toBe(true);
+    expect(r.posts.posts.size).toBe(2);
+
+    expect(r.ask.undo(id, 0, PHONE)).toEqual({ ok: true, value: true });
+    expect(r.posts.posts.has(postId)).toBe(false);
+    expect(r.turn(id)?.cards[0]).toEqual({ action: { type: 'post', platform: 'instagram', kind: 'reel', title: 'About the launch', due: { day: TOMORROW, time: '19:00' } }, state: 'proposed' });
+    // A post already deleted on the Posts screen counts as removed.
+    const second = r.turn(id)?.cards[1]?.ref ?? '';
+    expect(r.posts.remove(second, PHONE).ok).toBe(true);
+    expect(r.ask.undo(id, 1, PHONE)).toEqual({ ok: true, value: true });
+  });
+
+  it('an edit: platform, kind, where, title and the day and time, with the same rules', async () => {
+    rig = await makeAskRig();
+    const r = rig;
+    const id = await answered(r, [{ type: 'post', platform: 'instagram', kind: 'reel', title: 'About the launch', day: TOMORROW, time: '19:00' }]);
+    const edit: AskPostAction = { type: 'post', platform: 'reddit', kind: 'post', where: 'r/examplecode', title: 'Launch day', due: { day: TOMORROW, time: '19:30' } };
+    expect(r.ask.add(id, 0, { ...edit, where: 'r/example\ncode' }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.badItem });
+    expect(r.ask.add(id, 0, { ...edit, due: { day: '2028-01-01' } }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.badDay });
+    expect(r.ask.add(id, 0, { ...edit, text: 'The whole post' } as AskPostAction, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.badItem });
+    expect(r.ask.add(id, 0, { type: 'todo', title: 'Launch day' }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.editType });
+    expect(r.posts.posts.size).toBe(0);
+    const added = r.ask.add(id, 0, edit, PHONE);
+    expect(added.ok).toBe(true);
+    expect(r.posts.posts.get(added.ok ? added.value.id : '')).toMatchObject({ platform: 'reddit', kind: 'post', where: 'r/examplecode', title: 'Launch day', status: 'idea' });
+    expect(r.turn(id)?.cards[0]?.action).toEqual(edit);
+  });
+
+  it('a time that passed since the answer: added and flagged past_time', async () => {
+    rig = await makeAskRig();
+    const id = await answered(rig, [{ type: 'post', platform: 'x', kind: 'thread', time: '15:00' }]);
+    expect(rig.turn(id)?.cards[0]).toMatchObject({ action: { due: { day: TODAY, time: '15:00' } } });
+    expect(rig.turn(id)?.cards[0]?.flag).toBeUndefined();
+    rig.ctx.clock.advance(60 * 60_000); // 15:05
+    expect(rig.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
+    expect(rig.turn(id)?.cards[0]).toMatchObject({ state: 'added', flag: 'past_time' });
+  });
+
+  it("Posts off: the card is dropped from an answer, and Add and Undo are 403 with the switch's sentence", async () => {
+    rig = await makeAskRig();
+    const r = rig;
+    const id = await answered(r, [{ type: 'post', platform: 'reddit' }, { type: 'post', platform: 'x' }]);
+    expect(r.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
+    expect((await r.ctx.settings.patch({ life: { posts: false } })).ok).toBe(true);
+    expect(r.ask.undo(id, 0, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF.posts });
+    expect(r.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF.posts });
+    expect(ASK_MODULE_OFF.posts).toBe(FEATURE_OFF.posts.message);
+    const off = await answered(r, [{ type: 'post', platform: 'reddit' }, { type: 'todo', title: 'Call the bank' }]);
+    expect(r.turn(off)).toMatchObject({ cards: [{ action: { type: 'todo' } }], dropped: 1 });
+    expect(r.posts.posts.size).toBe(1);
   });
 });
 

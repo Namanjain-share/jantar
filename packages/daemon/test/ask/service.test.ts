@@ -297,11 +297,15 @@ describe('not ready', () => {
     await check(broken, 'life_unavailable', 'Life data needs attention (synthetic).');
     await check(await makeAskRig({ bins: { claude: null } }), 'conflict', ASK_SENTENCES.noRunner);
     await check(await makeAskRig({ mode: 'cswap', bins: { cswap: null } }), 'conflict', ASK_SENTENCES.noRunner);
-    await check(await makeAskRig({ settings: { life: { todos: false, food: false, finance: false, medicines: false, places: true } } }), 'conflict', ASK_SENTENCES.noModules);
-    // Medicines alone are enough (show cards).
-    rig = await makeAskRig({ settings: { life: { todos: false, food: false, finance: false, medicines: true } } });
+    await check(await makeAskRig({ settings: { life: { todos: false, food: false, finance: false, medicines: false, posts: false, places: true } } }), 'conflict', ASK_SENTENCES.noModules);
+    // Medicines alone are enough (show cards), and so are posts (v0.7).
+    rig = await makeAskRig({ settings: { life: { todos: false, food: false, finance: false, medicines: true, posts: false } } });
     const l = rig.ask.list(PHONE);
     expect(l.ok && l.value).toEqual({ ready: true, turns: [] });
+    await rig.close();
+    rig = await makeAskRig({ settings: { life: { todos: false, food: false, finance: false, medicines: false, posts: true } } });
+    const p = rig.ask.list(PHONE);
+    expect(p.ok && p.value).toEqual({ ready: true, turns: [] });
   });
 
   it('an empty message and a long one are refused, each with its sentence; the text is kept trimmed', async () => {

@@ -4,10 +4,10 @@
  * (never Markdown, never a link) and a card per suggestion. A card changes
  * nothing until Add. Edit changes it first (web only), Skip sets it aside,
  * and an added card keeps "✓ Added · Undo" while its turn is at most a day
- * old. "Add all N" adds the proposed todo and food cards one at a time (one
- * askAdd each, never money), stopping at the first refusal; it waits while
- * a card of the turn is open in Edit, so it never adds the suggestion the
- * user is changing. Every tap has its own Idempotency-Key: a refusal the
+ * old. "Add all N" adds the proposed todo, food and post cards one at a
+ * time (one askAdd each, never money), stopping at the first refusal; it
+ * waits while a card of the turn is open in Edit, so it never adds the
+ * suggestion the user is changing. Every tap has its own Idempotency-Key: a refusal the
  * Mac kept for one tap never answers the next.
  *
  * Ink only, with ember (design rule 3) for a failure alone: a turn that
@@ -263,6 +263,8 @@ function cardTitle(card: AskCard, currency: string | null): string {
       return a.name;
     case 'money':
       return formatAmount(a.amount, currency);
+    case 'post':
+      return a.title ?? '';
     case 'show':
       return '';
   }
@@ -282,6 +284,8 @@ function metaOf(card: AskCard, today: string, projects: readonly ProjectView[]):
       return [`${kcalText(a.kcal)} kcal`, ...(a.day === today ? [] : [dayWords(a.day, today)])];
     case 'money':
       return [a.category, ...(a.note ? [a.note] : []), ...(a.day === today ? [] : [dayWords(a.day, today)])];
+    case 'post':
+      return [...(a.where ? [a.where] : []), ...(a.due ? [dueWords(a.due, today)] : [])];
     case 'show':
       return [];
   }

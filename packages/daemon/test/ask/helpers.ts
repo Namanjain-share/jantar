@@ -2,6 +2,8 @@
  * The Ask part on a test context, for the service, apply, runner, privacy
  * and route tests: Life's real todos, food and finance modules on an
  * in-memory life.db (a RecordingScheduler shows the pings they arm), a
+ * stand-in posts module (v0.7: a Map that keeps what Ask added and ticks
+ * as Life does; Posts' own rules are tested with the real module), a
  * stand-in LifeService around them whose status gives the Life zone, and
  * either the real exec against a fake home's bins (the fake claude runs as
  * a process) or a fake exec whose claude runs the test answers by hand.
@@ -12,8 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { vi } from 'vitest';
 import type { FakeHome } from '@jantar/fixtures';
-import { SettingsSchema, type Account, type AccountId, type AskTurn, type LifeStatus, type Settings } from '@jantar/protocol';
-import type { Actor, AskService, Bins, ExecFile, FinanceModule, FoodModule, LifeService, TodosModule } from '../../src/contracts.js';
+import { LIFE_LIMITS, SettingsSchema, type Account, type AccountId, type AskTurn, type LifeStatus, type Post, type Settings } from '@jantar/protocol';
+import type { Actor, AskService, Bins, ExecFile, FinanceModule, FoodModule, LifeCore, LifeService, PostsModule, TodosModule } from '../../src/contracts.js';
 import { buildAskService } from '../../src/ask/service.js';
 import { FakeClock } from '../../src/core/clock.js';
 import { createExecFile } from '../../src/core/exec.js';
@@ -35,9 +37,9 @@ export const WAIT = { timeout: 15_000, interval: 10 };
 /** What the daemon's own env may hold and a run must never inherit (synthetic values). */
 export const LEAKY_ENV = { CLAUDE_CONFIG_DIR: '/synthetic/other-login', CLAUDE_SECURESTORAGE_CONFIG_DIR: '/synthetic/secure', ANTHROPIC_API_KEY: 'sk-synthetic-key' };
 
-/** Ask on, with todos, food, money and medicines, in the Life zone, in rupees. */
+/** Ask on, with todos, food, money, medicines and posts, in the Life zone, in rupees. */
 export function askSettings(over: Record<string, unknown> = {}): Settings {
-  const base = { ask: { enabled: true }, life: { todos: true, food: true, finance: true, medicines: true, timezone: ZONE, currency: 'INR' } };
+  const base = { ask: { enabled: true }, life: { todos: true, food: true, finance: true, medicines: true, posts: true, timezone: ZONE, currency: 'INR' } };
   const merged: Record<string, unknown> = { ...base };
   for (const [k, v] of Object.entries(over)) {
     const prev = merged[k];
@@ -68,6 +70,44 @@ export interface HeldRun {
   raw(stdout: string, extra?: { code?: number; stderr?: string }): void;
 }
 
+/** The stand-in posts module: what was added, and who added it. */
+export interface StubPosts extends PostsModule {
+  readonly posts: ReadonlyMap<string, Post>;
+  readonly actors: ReadonlyMap<string, Actor>;
+}
+
+/**
+ * Posts for Ask's tests (v0.7), before and apart from the real module:
+ * create keeps the post (the cap of open posts as Life's), remove deletes
+ * it (not_found when gone), each write ticks through the core. Only what
+ * Ask calls.
+ */
+export function stubPosts(core: LifeCore): StubPosts {
+  const posts = new Map<string, Post>();
+  const actors = new Map<string, Actor>();
+  const stub: Partial<StubPosts> = {
+    name: 'posts',
+    posts,
+    actors,
+    today: () => ({}),
+    create: (body, actor) => {
+      if (posts.size >= LIFE_LIMITS.openPosts) return { ok: false, code: 'conflict', reason: 'Too many posts (stub).' };
+      const id = core.newId();
+      const at = core.now().toISOString();
+      posts.set(id, { ...body, id, kind: body.kind ?? 'post', status: body.status ?? 'idea', createdAt: at, updatedAt: at });
+      actors.set(id, actor);
+      core.changed();
+      return { ok: true, value: { id } };
+    },
+    remove: (id) => {
+      if (!posts.delete(id)) return { ok: false, code: 'not_found', reason: 'That post is gone.' };
+      core.changed();
+      return { ok: true, value: true };
+    },
+  };
+  return notBuilt<StubPosts>('Posts', stub);
+}
+
 export interface AskRig {
   ctx: TestContext;
   core: TestLifeCore;
@@ -75,6 +115,7 @@ export interface AskRig {
   todos: TodosModule;
   food: FoodModule;
   finance: FinanceModule;
+  posts: StubPosts;
   ask: AskService;
   /** The fakes the account pick reads (usage, ccw's hold list). */
   usage: FakeUsage;
@@ -125,6 +166,7 @@ export interface AskParts {
   todos: TodosModule;
   food: FoodModule;
   finance: FinanceModule;
+  posts: StubPosts;
   ask: AskService;
   usage: FakeUsage;
   ccwLegacy: FakeCcwLegacy;
@@ -143,6 +185,7 @@ export function askOn(ctx: TestContext, opts: { readOnly?: boolean } = {}): AskP
   const todos = buildTodosModule(core, deps);
   const food = buildFoodModule(core, deps);
   const finance = buildFinanceModule(core, deps);
+  const posts = stubPosts(core);
   let broken: string | null = null;
   const status = (): LifeStatus => {
     const s = ctx.settings.get().life;
@@ -158,7 +201,7 @@ export function askOn(ctx: TestContext, opts: { readOnly?: boolean } = {}): AskP
       push: { devices: 0, webpush: true },
     };
   };
-  const life = notBuilt<LifeService>('Life', { start: async () => {}, stop: async () => {}, broken: () => broken, status, todos, food, finance });
+  const life = notBuilt<LifeService>('Life', { start: async () => {}, stop: async () => {}, broken: () => broken, status, todos, food, finance, posts });
   const ask = buildAskService(ctx, { life, usage: f.usage, ccwLegacy: f.ccwLegacy }, { readOnly: opts.readOnly === true });
   return {
     core,
@@ -166,6 +209,7 @@ export function askOn(ctx: TestContext, opts: { readOnly?: boolean } = {}): AskP
     todos,
     food,
     finance,
+    posts,
     ask,
     usage: f.usage,
     ccwLegacy: f.ccwLegacy,
@@ -220,7 +264,7 @@ export async function makeAskRig(opts: RigOptions = {}): Promise<AskRig> {
   }
   if (opts.accounts) ctx.store.emit({ type: 'usage.updated', data: { accounts: opts.accounts, activeAccount: null, fetchedAt: NOW, source: 'cache' } });
   const parts = askOn(ctx, { readOnly: opts.readOnly === true });
-  const { core, life, todos, food, finance, ask, usage, ccwLegacy } = parts;
+  const { core, life, todos, food, finance, posts, ask, usage, ccwLegacy } = parts;
   await ask.start();
   const turn = (id: string, actor: Actor = PHONE) => {
     const r = ask.list(actor);
@@ -233,6 +277,7 @@ export async function makeAskRig(opts: RigOptions = {}): Promise<AskRig> {
     todos,
     food,
     finance,
+    posts,
     ask,
     usage,
     ccwLegacy,

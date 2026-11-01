@@ -5,7 +5,17 @@
  * form (protocol ask.ts) and day keys on the Life clock. The reply and the
  * user's words are only ever shown as text.
  */
-import { ASK_APPLY_WITHIN_MS, type AskAction, type AskFlag, type AskShowWhat, type AskTodoAction, type AskTurn } from '@jantar/protocol';
+import {
+  ASK_APPLY_WITHIN_MS,
+  POST_KIND_LABEL,
+  POST_PLATFORM_LABEL,
+  type AskAction,
+  type AskFlag,
+  type AskPostAction,
+  type AskShowWhat,
+  type AskTodoAction,
+  type AskTurn,
+} from '@jantar/protocol';
 import { dayLabel, shiftDayKey } from '../life/shared/DayNav.js';
 
 /** Under the box, always: one line, so the box and the chat keep the screen (with a phone's keyboard up too). */
@@ -18,7 +28,14 @@ export const PRIVACY =
   'Nothing is added until you tap Add.';
 
 /** The empty page's chips: a tap fills the box, never sends. */
-export const EXAMPLES: readonly string[] = ['todo add call the bank', 'remind me to stretch at 6 pm', 'had 2 rotis and dal', 'spent 250 on lunch', 'calories left?'];
+export const EXAMPLES: readonly string[] = [
+  'todo add call the bank',
+  'remind me to stretch at 6 pm',
+  'had 2 rotis and dal',
+  'spent 250 on lunch',
+  'calories left?',
+  'reel tomorrow 7pm about the launch',
+];
 
 export const ASK_COPY = {
   empty: 'Tell Ask what to add, or ask about today.',
@@ -54,6 +71,12 @@ export const SHOW_OFF: Readonly<Record<AskShowWhat, string>> = {
   meds: 'Medicines are off.',
 };
 
+/** A post's platform and kind in words: "Reddit post", "Instagram reel"; "Post" for another platform. */
+export function postKindLabel(a: Pick<AskPostAction, 'platform' | 'kind'>): string {
+  const kind = POST_KIND_LABEL[a.kind][0];
+  return a.platform === 'other' ? kind : `${POST_PLATFORM_LABEL[a.platform]} ${kind.toLowerCase()}`;
+}
+
 /** The kind on a card's first line. */
 export function kindLabel(a: AskAction): string {
   switch (a.type) {
@@ -63,6 +86,8 @@ export function kindLabel(a: AskAction): string {
       return 'Food';
     case 'money':
       return a.kind === 'income' ? 'Income' : 'Expense';
+    case 'post':
+      return postKindLabel(a);
     case 'show':
       return 'Now';
   }
@@ -98,13 +123,16 @@ export function unfinished(turn: Pick<AskTurn, 'state'>): boolean {
   return turn.state === 'queued' || turn.state === 'running';
 }
 
+/** The cards Add all may add: todos, food and post ideas (v0.7); never money or show. */
+const ADD_ALL: ReadonlySet<AskAction['type']> = new Set(['todo', 'food', 'post']);
+
 /**
- * The cards "Add all N" adds, in order: the proposed todo and food cards of
- * a finished turn at most a day old, when there are two or more. Money and
- * show cards are never among them.
+ * The cards "Add all N" adds, in order: the proposed todo, food and post
+ * cards of a finished turn at most a day old, when there are two or more.
+ * Money and show cards are never among them.
  */
 export function addAllCards(turn: AskTurn, nowMs: number): number[] {
   if (turn.state !== 'done' || !fresh(turn, nowMs)) return [];
-  const ns = turn.cards.flatMap((c, n) => (c.state === 'proposed' && (c.action.type === 'todo' || c.action.type === 'food') ? [n] : []));
+  const ns = turn.cards.flatMap((c, n) => (c.state === 'proposed' && ADD_ALL.has(c.action.type) ? [n] : []));
   return ns.length >= 2 ? ns : [];
 }

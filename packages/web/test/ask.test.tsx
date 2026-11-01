@@ -3,7 +3,7 @@
  * (not ready, empty, sending, waiting, done, failed, cancelled, offline, a
  * load error), every card state (proposed, too old, editing, added, Undo
  * gone after a day, skipped, a refused Add, Skip, Undo or Save and add),
- * one Idempotency-Key per tap, Add all (todo and food only, in order,
+ * one Idempotency-Key per tap, Add all (todo, food and post only, in order,
  * stopping at the first refusal, every card off while it runs, waiting
  * while a card is open in Edit), money through formatAmount, a reply that
  * stays text, the show cards read from `GET /v1/life/today` alone (the
@@ -11,7 +11,8 @@
  * example chips (gone while Ask can't run), Clear, a refused Send, Cancel
  * or Clear and when its sentence goes, Try again's wait, the privacy line
  * and its What's sent, Enter and Shift+Enter, and Ask in the places (none
- * on a device paired without control).
+ * on a device paired without control); v0.7's post card (its words, its
+ * Edit with no text, notes or link, Add all).
  * Every name and amount here is made up.
  */
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -59,6 +60,11 @@ const moneyCard = (amount: number, card: Partial<AskCard> = {}): AskCard => ({
   ...card,
 });
 const showCard = (what: 'due' | 'calories' | 'meds'): AskCard => ({ action: { type: 'show', what }, state: 'proposed' });
+const postCard = (over: Partial<Extract<AskCard['action'], { type: 'post' }>> = {}, card: Partial<AskCard> = {}): AskCard => ({
+  action: { type: 'post', platform: 'instagram', kind: 'reel', ...over },
+  state: 'proposed',
+  ...card,
+});
 
 function turn(n: number, over: Partial<AskTurn> = {}): AskTurn {
   return { id: tid(n), at: ago(60_000), text: `message ${n}`, state: 'done', reply: `Reply ${n}.`, cards: [], dropped: 0, ...over };
@@ -110,10 +116,17 @@ describe('the page', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Ask' })).toBeTruthy();
   });
 
-  it('empty: one line and five examples that fill the box without sending', async () => {
+  it('empty: one line and six examples that fill the box without sending', async () => {
     const { api } = open(list([]));
     const chips = within(await screen.findByRole('group', { name: 'Examples' })).getAllByRole('button');
-    expect(chips.map((c) => c.textContent)).toEqual(['todo add call the bank', 'remind me to stretch at 6 pm', 'had 2 rotis and dal', 'spent 250 on lunch', 'calories left?']);
+    expect(chips.map((c) => c.textContent)).toEqual([
+      'todo add call the bank',
+      'remind me to stretch at 6 pm',
+      'had 2 rotis and dal',
+      'spent 250 on lunch',
+      'calories left?',
+      'reel tomorrow 7pm about the launch',
+    ]);
     fireEvent.click(chips[3]!);
     expect(box().value).toBe('spent 250 on lunch');
     expect(api.askSend).not.toHaveBeenCalled();
@@ -368,6 +381,28 @@ describe('cards', () => {
     expect(cards[4]!.textContent).toContain("No time, so it won't ring. Edit to add one.");
   });
 
+  it('words a post: platform and kind, its title, where it goes, the day and time; a time gone says so', async () => {
+    const t = turn(1, {
+      cards: [
+        postCard({ title: 'About the launch', due: { day: '2026-01-16', time: '19:00' } }),
+        postCard({ platform: 'reddit', kind: 'post', where: 'r/exampletools', due: { day: TODAY, time: '08:00' } }, { flag: 'past_time' }),
+        postCard({ platform: 'other', kind: 'thread', title: 'Launch notes' }),
+        postCard({ platform: 'hn', kind: 'link', title: 'Show HN' }, { state: 'added', ref: tid(66) }),
+      ],
+    });
+    open(list([t]));
+    const cards = within(await screen.findByRole('list', { name: 'Suggestions' })).getAllByRole('listitem');
+    expect(cards[0]!.textContent).toContain('Instagram reelAbout the launch');
+    expect(cards[0]!.textContent).toContain('Tomorrow, Fri 16 Jan · 19:00');
+    expect(cards[1]!.textContent).toContain('Reddit post');
+    expect(cards[1]!.textContent).toContain('r/exampletools · Today · 08:00');
+    expect(cards[1]!.textContent).toContain("That time has passed, so it won't ring.");
+    expect(button('Add: Reddit post')).toBeTruthy();
+    expect(cards[2]!.textContent).toContain('ThreadLaunch notes');
+    expect(cards[3]!.textContent).toContain('Hacker News linkShow HN');
+    expect(button('Undo: Show HN')).toBeTruthy();
+  });
+
   it('money shows the amount through formatAmount, its category and note; food its kcal and a day not today', async () => {
     const t = turn(1, {
       cards: [moneyCard(25000), { action: { type: 'money', kind: 'income', amount: 12345, category: 'Salary', day: '2026-01-14' }, state: 'proposed' }, foodCard('Roti', 1240), { ...foodCard('Dal', 180), action: { type: 'food', day: '2026-01-14', name: 'Dal', kcal: 180 } }],
@@ -535,9 +570,54 @@ describe('cards', () => {
     );
     expect(api.moneyMonth).not.toHaveBeenCalled();
   });
+
+  it('Edit a post: platform, kind, where, title, day and time; no text, notes or link; Save and add sends the plan', async () => {
+    const askAdd = vi.fn(async () => ({ id: tid(67) }));
+    open(list([turn(1, { cards: [postCard({ title: 'About the launch', due: { day: '2026-01-16', time: '19:00' } })] })]), { askAdd });
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit: About the launch' }));
+    const form = screen.getByRole('form', { name: 'Edit the suggestion' });
+    expect((within(form).getByLabelText('Platform') as HTMLSelectElement).value).toBe('instagram');
+    expect((within(form).getByLabelText('Kind') as HTMLSelectElement).value).toBe('reel');
+    expect(within(form).queryByLabelText(/Text|Caption|Notes|Link/)).toBeNull();
+    expect((within(form).getByLabelText('Where') as HTMLInputElement).maxLength).toBe(80);
+    fireEvent.change(within(form).getByLabelText('Platform'), { target: { value: 'reddit' } });
+    fireEvent.change(within(form).getByLabelText('Kind'), { target: { value: 'post' } });
+    fireEvent.change(within(form).getByLabelText('Where'), { target: { value: ' r/examplecode ' } });
+    fireEvent.change(within(form).getByLabelText('Title'), { target: { value: 'Launch day' } });
+    fireEvent.change(within(form).getByLabelText('Due time'), { target: { value: '19:30' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Save and add' }));
+    await waitFor(() =>
+      expect(askAdd).toHaveBeenCalledWith(
+        tid(1),
+        0,
+        { type: 'post', platform: 'reddit', kind: 'post', where: 'r/examplecode', title: 'Launch day', due: { day: '2026-01-16', time: '19:30' } },
+        expect.any(String),
+      ),
+    );
+  });
+
+  it('Edit a post: a cleared day clears the time and leaves both out; a cleared title is left out', async () => {
+    const askAdd = vi.fn(async () => ({ id: tid(68) }));
+    open(list([turn(1, { cards: [postCard({ title: 'About the launch', due: { day: '2026-01-16', time: '19:00' } })] })]), { askAdd });
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit: About the launch' }));
+    const form = screen.getByRole('form', { name: 'Edit the suggestion' });
+    fireEvent.change(within(form).getByLabelText('Due day'), { target: { value: '' } });
+    expect((within(form).getByLabelText('Due time') as HTMLInputElement).disabled).toBe(true);
+    fireEvent.change(within(form).getByLabelText('Title'), { target: { value: '  ' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Save and add' }));
+    await waitFor(() => expect(askAdd).toHaveBeenCalledWith(tid(1), 0, { type: 'post', platform: 'instagram', kind: 'reel' }, expect.any(String)));
+  });
 });
 
 describe('Add all', () => {
+  it('counts post cards (ideas, with Undo) beside todo and food', async () => {
+    const askAdd = vi.fn(async () => ({ id: tid(76) }));
+    open(list([turn(1, { cards: [postCard({ title: 'About the launch' }), moneyCard(25000), postCard({ platform: 'x', kind: 'thread', title: 'Beta notes' })] })]), { askAdd });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add all 2' }));
+    await waitFor(() => expect(askAdd).toHaveBeenCalledTimes(2));
+    expect(askAdd.mock.calls.map((c) => (c as unknown[])[1])).toEqual([0, 2]);
+  });
+
   it('shows only for two or more proposed todo or food cards, counting neither money nor show cards', async () => {
     const { set } = open(list([turn(1, { cards: [todoCard('Call the bank'), moneyCard(25000), showCard('due')] })]), { lifeToday: vi.fn(async () => ({ day: TODAY })) });
     await screen.findByText('Reply 1.');

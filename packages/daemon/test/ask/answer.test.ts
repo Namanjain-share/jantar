@@ -4,12 +4,26 @@
  * four day-and-time steps (FakeClock-free: `now` is a scope value here),
  * no_time over the whole answer, project matching, amounts to hundredths,
  * category mapping, a part that is off, the cap of ten, an unreadable
- * answer, nothing visible, and the reply cut to 500 with its "…".
+ * answer, nothing visible, and the reply cut to 500 with its "…"; v0.7's
+ * post cards (aliases, one-line where and title, no text key, past_time).
  * checkWrite runs the same rules at Add.
  */
 import { describe, expect, it } from 'vitest';
-import { ASK_REPLY_MAX, AskTurnSchema, type AskTodoAction } from '@jantar/protocol';
-import { ASK_SENTENCES, asksReminder, checkWrite, matchCategory, matchProject, parseAnswer, readAction, replyOf, settleDue, type AskScope } from '../../src/ask/answer.js';
+import { ASK_REPLY_MAX, AskTurnSchema, POST_KINDS, POST_PLATFORMS, type AskPostAction, type AskTodoAction } from '@jantar/protocol';
+import {
+  ASK_SENTENCES,
+  asksReminder,
+  checkWrite,
+  matchCategory,
+  matchKind,
+  matchPlatform,
+  matchProject,
+  parseAnswer,
+  readAction,
+  replyOf,
+  settleDue,
+  type AskScope,
+} from '../../src/ask/answer.js';
 
 const ID_A = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
 const ID_B = '01JFZ8X8Y3T0V5G9WQK2M4N6PS';
@@ -20,7 +34,7 @@ const TOMORROW = '2026-11-02';
 const scope = (over: Partial<AskScope> = {}): AskScope => ({
   today: TODAY,
   now: '14:05',
-  modules: { todos: true, food: true, finance: true, medicines: true },
+  modules: { todos: true, food: true, finance: true, medicines: true, posts: true },
   projects: [
     { id: ID_A, name: 'Jantar', status: 'done' },
     { id: ID_B, name: ' jantar ', status: 'active' },
@@ -86,7 +100,7 @@ describe('the answer', () => {
 });
 
 describe('the allow-list', () => {
-  it('four types only; anything else, a non-object or an unknown field drops it', () => {
+  it('five types only; anything else, a non-object or an unknown field drops it', () => {
     for (const raw of [
       { type: 'shell', command: 'touch x' },
       { type: 'settings', patch: { files: { enabled: true } } },
@@ -102,16 +116,23 @@ describe('the allow-list', () => {
       { type: 'food', name: 'Roti', kcal: 120, save: true },
       { type: 'money', kind: 'expense', amount: 250, category: 'Food', billId: ID_B },
       { type: 'show', what: 'due', day: TODAY },
+      { type: 'POST', platform: 'reddit' },
+      { type: 'post', platform: 'reddit', status: 'posted' },
+      { type: 'post', platform: 'reddit', id: ID_B },
     ]) {
       expect(one(raw), JSON.stringify(raw)).toBeNull();
     }
   });
 
   it('a part that is off drops its actions (show cards by the part they read)', () => {
-    const off = (m: Partial<AskScope['modules']>) => scope({ modules: { todos: true, food: true, finance: true, medicines: true, ...m } });
+    const off = (m: Partial<AskScope['modules']>) => scope({ modules: { todos: true, food: true, finance: true, medicines: true, posts: true, ...m } });
     expect(one({ type: 'todo', title: 'x' }, off({ todos: false }))).toBeNull();
     expect(one({ type: 'food', name: 'Roti', kcal: 1 }, off({ food: false }))).toBeNull();
     expect(one({ type: 'money', kind: 'income', amount: 1, category: 'Salary' }, off({ finance: false }))).toBeNull();
+    expect(one({ type: 'post', platform: 'reddit' }, off({ posts: false }))).toBeNull();
+    expect(one({ type: 'post', platform: 'reddit' }, off({ todos: false, food: false, finance: false, medicines: false }))).toEqual({
+      action: { type: 'post', platform: 'reddit', kind: 'post' },
+    });
     expect(one({ type: 'show', what: 'due' }, off({ todos: false }))).toBeNull();
     expect(one({ type: 'show', what: 'calories' }, off({ food: false }))).toBeNull();
     expect(one({ type: 'show', what: 'meds' }, off({ medicines: false }))).toBeNull();
@@ -270,6 +291,86 @@ describe('money', () => {
   });
 });
 
+describe('post (v0.7): a plan, never the post', () => {
+  const post = (fields: Record<string, unknown>, s = scope()) => one({ type: 'post', platform: 'instagram', ...fields }, s);
+
+  it('reads platform, kind, where, title, day and time; kind defaults to post; always a plan', () => {
+    expect(post({ kind: 'reel', title: 'About the launch', day: TOMORROW, time: '19:00' })).toEqual({
+      action: { type: 'post', platform: 'instagram', kind: 'reel', title: 'About the launch', due: { day: TOMORROW, time: '19:00' } },
+    });
+    expect(one({ type: 'post', platform: 'reddit', where: 'r/exampletools', day: TOMORROW })).toEqual({
+      action: { type: 'post', platform: 'reddit', kind: 'post', where: 'r/exampletools', due: { day: TOMORROW } },
+    });
+    expect(post({})).toEqual({ action: { type: 'post', platform: 'instagram', kind: 'post' } });
+    // Platform is required.
+    expect(one({ type: 'post', kind: 'reel' })).toBeNull();
+  });
+
+  it('a platform by name or alias, any case; any other name is other', () => {
+    for (const p of POST_PLATFORMS) expect(matchPlatform(p.toUpperCase())).toBe(p);
+    expect(matchPlatform('insta')).toBe('instagram');
+    expect(matchPlatform(' IG ')).toBe('instagram');
+    expect(matchPlatform('Twitter')).toBe('x');
+    expect(matchPlatform('yt')).toBe('youtube');
+    expect(matchPlatform('Hacker  News')).toBe('hn');
+    expect(matchPlatform('fb')).toBe('facebook');
+    expect(matchPlatform('Mastodon')).toBe('other');
+    expect(post({ platform: 'Insta' })?.action).toMatchObject({ platform: 'instagram' });
+    expect(post({ platform: 'Bluesky' })?.action).toMatchObject({ platform: 'other' });
+    expect(post({ platform: 'p'.repeat(500) })?.action).toMatchObject({ platform: 'other' });
+    for (const platform of [5, '', ' ', null, ['reddit']]) expect(post({ platform }), JSON.stringify(platform)).toBeNull();
+  });
+
+  it('a kind by name or plural, any case; any other is post', () => {
+    for (const k of POST_KINDS) expect(matchKind(k.toUpperCase())).toBe(k);
+    expect(matchKind('Reels')).toBe('reel');
+    expect(matchKind('stories')).toBe('story');
+    expect(matchKind('shorts')).toBe('short');
+    expect(matchKind('carousel')).toBe('post');
+    expect(post({ kind: 'Reels' })?.action).toMatchObject({ kind: 'reel' });
+    expect(post({ kind: 'carousel' })?.action).toMatchObject({ kind: 'post' });
+    for (const kind of [5, '', null]) expect(post({ kind }), JSON.stringify(kind)).toBeNull();
+  });
+
+  it('no text, caption, notes, link or status: any such key drops it', () => {
+    for (const extra of [{ text: 'Hello Reddit' }, { caption: 'x' }, { notes: 'flair' }, { link: 'https://www.example.com/submit' }, { status: 'ready' }, { repeat: 'weekly' }]) {
+      expect(post(extra), JSON.stringify(extra)).toBeNull();
+    }
+    const r = parseAnswer(answer([{ type: 'post', platform: 'reddit', text: 'The whole post' }, { type: 'post', platform: 'reddit' }]), scope());
+    expect(r).toEqual({ reply: 'ok', cards: [{ action: { type: 'post', platform: 'reddit', kind: 'post' }, state: 'proposed' }], dropped: 1 });
+  });
+
+  it('where and title as written, one line: a newline, a control or a bidi character drops it; too long or blank drops it', () => {
+    expect(post({ where: '  @example.studio ', title: ' Launch day ' })?.action).toMatchObject({ where: '@example.studio', title: 'Launch day' });
+    for (const bad of ['r/example\ntools', 'r/exampletools\u0007', 'r/‮sloot', 'r/\u2066x', '\u200b', ' ', '']) {
+      expect(post({ where: bad }), JSON.stringify(bad)).toBeNull();
+      expect(post({ title: bad }), JSON.stringify(bad)).toBeNull();
+    }
+    expect(post({ where: 'w'.repeat(80) })).not.toBeNull();
+    expect(post({ where: 'w'.repeat(81) })).toBeNull();
+    expect(post({ title: 't'.repeat(300) })).not.toBeNull();
+    expect(post({ title: 't'.repeat(301) })).toBeNull();
+    expect(post({ where: 5 })).toBeNull();
+  });
+
+  it('day and time as a todo: a time alone is the next time it comes; a time gone is past_time; no repeat', () => {
+    expect(post({ time: '19:00' })?.action).toMatchObject({ due: { day: TODAY, time: '19:00' } });
+    expect(post({ time: '09:00' })?.action).toMatchObject({ due: { day: TOMORROW, time: '09:00' } });
+    expect(post({ day: TODAY, time: '09:00' })).toEqual({ action: { type: 'post', platform: 'instagram', kind: 'post', due: { day: TODAY, time: '09:00' } }, flag: 'past_time' });
+    expect(post({ day: '2026-10-31', time: '23:59' })?.flag).toBe('past_time');
+    expect(post({ day: TODAY, time: '14:06' })?.flag).toBeUndefined();
+    expect(post({ day: '2026-10-31' })).toEqual({ action: { type: 'post', platform: 'instagram', kind: 'post', due: { day: '2026-10-31' } } });
+    expect(post({ day: '2026-10-24' })).toBeNull();
+    expect(post({ day: '2026-02-31' })).toBeNull();
+    expect(post({ time: '7pm' })).toBeNull();
+  });
+
+  it('never no_time or no_project, even when a reminder was asked', () => {
+    const r = parseAnswer(answer([{ type: 'post', platform: 'reddit' }]), scope({ remind: true }));
+    expect(r?.cards.map((c) => c.flag)).toEqual([undefined]);
+  });
+});
+
 describe('settleDue and checkWrite (Add)', () => {
   const daily: AskTodoAction = { type: 'todo', title: 'Stretch', due: { day: TODAY, time: '18:00' }, repeat: 'daily' };
 
@@ -302,5 +403,17 @@ describe('settleDue and checkWrite (Add)', () => {
     });
     expect(checkWrite({ type: 'todo', title: 'x' }, s, { noProject: true })).toEqual({ ok: true, action: { type: 'todo', title: 'x' }, flag: 'no_project' });
     expect(checkWrite({ type: 'todo', title: 'x', projectId: ID_B }, s, { noProject: true })).toEqual({ ok: true, action: { type: 'todo', title: 'x', projectId: ID_B } });
+  });
+
+  it('checkWrite on a post: its schema, a day in range, past_time against now', () => {
+    const s = { today: TODAY, now: '19:00' };
+    const reel: AskPostAction = { type: 'post', platform: 'instagram', kind: 'reel', due: { day: TODAY, time: '19:30' } };
+    expect(checkWrite(reel, s)).toEqual({ ok: true, action: reel });
+    expect(checkWrite(reel, { today: TODAY, now: '19:30' })).toEqual({ ok: true, action: reel, flag: 'past_time' });
+    expect(checkWrite({ ...reel, due: { day: '2026-10-01', time: '19:30' } }, s)).toEqual({ ok: false, reason: ASK_SENTENCES.badDay });
+    expect(checkWrite({ ...reel, where: 'r/x\ny' }, s)).toEqual({ ok: false, reason: ASK_SENTENCES.badItem });
+    expect(checkWrite({ ...reel, text: 'x' } as AskPostAction, s)).toEqual({ ok: false, reason: ASK_SENTENCES.badItem });
+    // The todo flags are a todo's alone.
+    expect(checkWrite({ type: 'post', platform: 'x', kind: 'thread' }, s, { noTime: true, noProject: true })).toEqual({ ok: true, action: { type: 'post', platform: 'x', kind: 'thread' } });
   });
 });

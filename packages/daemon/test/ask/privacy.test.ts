@@ -133,7 +133,7 @@ describe('the marker', () => {
     // No loose file under the Jantar home holds it (the dbs are in memory here: see the top): the run dir has the prompt copy and an empty work/ only.
     expect(relative(fh.jantarHome, join(fh.root, 'calls')).startsWith('..')).toBe(true);
     const files = filesUnder(fh.jantarHome);
-    expect(files.map((f) => relative(fh.jantarHome, f)).filter((f) => f.startsWith('ask'))).toEqual([join('ask', 'assistant-v1.md')]);
+    expect(files.map((f) => relative(fh.jantarHome, f)).filter((f) => f.startsWith('ask'))).toEqual([join('ask', 'assistant-v2.md')]);
     for (const f of files) expect(markersIn(readFileSync(f), ask), f).toEqual([]);
 
     // Clear: gone from GET.

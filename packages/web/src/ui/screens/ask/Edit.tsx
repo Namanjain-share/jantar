@@ -11,10 +11,30 @@
  * - money: Expense or Income, the amount (read into hundredths), a
  *   category from DEFAULT_CATEGORIES (the only names Ask suggests, so the
  *   page never loads the month), the note, a day on or before today.
+ * - post (v0.7): platform, kind, where and title (one line each), day and
+ *   time (clearable). No text, notes or link: the user writes the post on
+ *   the Posts screen.
  */
 import clsx from 'clsx';
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
-import { DEFAULT_CATEGORIES, type AskFoodAction, type AskMoneyAction, type AskTodoAction, type AskWriteAction, type MoneyKind, type ProjectView } from '@jantar/protocol';
+import {
+  DEFAULT_CATEGORIES,
+  POST_KINDS,
+  POST_KIND_LABEL,
+  POST_PLATFORMS,
+  POST_PLATFORM_LABEL,
+  POST_TITLE_MAX,
+  POST_WHERE_MAX,
+  type AskFoodAction,
+  type AskMoneyAction,
+  type AskPostAction,
+  type AskTodoAction,
+  type AskWriteAction,
+  type MoneyKind,
+  type PostKind,
+  type PostPlatform,
+  type ProjectView,
+} from '@jantar/protocol';
 import { amountInput, parseAmount } from '../../../lib/money.js';
 import { Button } from '../../kit/Button.js';
 import { Spinner } from '../../kit/Spinner.js';
@@ -49,6 +69,8 @@ export function CardEdit({ action, ...rest }: { action: AskWriteAction } & Commo
       return <FoodEdit action={action} {...rest} />;
     case 'money':
       return <MoneyEdit action={action} {...rest} />;
+    case 'post':
+      return <PostEdit action={action} {...rest} />;
   }
 }
 
@@ -97,27 +119,9 @@ function TodoEdit({ action, project, busy, disabled, onSave, onCancel }: { actio
       <Field label="Title" htmlFor={`${id}-title`}>
         <input id={`${id}-title`} className={INPUT} value={title} maxLength={200} autoComplete="off" onChange={(e) => setTitle(e.target.value)} />
       </Field>
-      <Field label="Due" id={`${id}-due`}>
-        <div role="group" aria-labelledby={`${id}-due`} className="flex items-center gap-8">
-          <input
-            type="date"
-            aria-label="Due day"
-            className={INPUT}
-            value={day}
-            onChange={(e) => {
-              setDay(e.target.value);
-              if (!e.target.value) setTime('');
-            }}
-          />
-          <input type="time" aria-label="Due time" className={INPUT} value={time} disabled={!day} onChange={(e) => setTime(e.target.value)} />
-          {time ? (
-            <Button variant="text" size="sm" onClick={() => setTime('')}>
-              Clear time
-            </Button>
-          ) : null}
-        </div>
+      <DueFields id={id} day={day} time={time} onDay={setDay} onTime={setTime}>
         {noDay ? <p className="mt-4 type-small text-ink-3">{ASK_COPY.repeatNeedsDay}</p> : null}
-      </Field>
+      </DueFields>
       {action.repeat ? <Kept label="Repeat">{REPEAT_TEXT[action.repeat]}</Kept> : null}
       {action.priority === 'high' ? <Kept label="Priority">High</Kept> : null}
       {project ? <Kept label="Project">{projectLabel(project)}</Kept> : null}
@@ -219,6 +223,112 @@ function MoneyEdit({ action, today, currency, busy, disabled, onSave, onCancel }
       <Field label="Day" htmlFor={`${id}-day`}>
         <input id={`${id}-day`} type="date" className={INPUT} value={day} max={today} aria-invalid={day > today} onChange={(e) => setDay(e.target.value)} />
       </Field>
+      <Actions ok={ok} busy={busy} disabled={disabled} onCancel={onCancel} />
+    </form>
+  );
+}
+
+/** A todo's or a post's day and time, both clearable (clearing the day clears the time). */
+function DueFields({
+  id,
+  day,
+  time,
+  onDay,
+  onTime,
+  children,
+}: {
+  id: string;
+  day: string;
+  time: string;
+  onDay: (v: string) => void;
+  onTime: (v: string) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <Field label="Due" id={`${id}-due`}>
+      <div role="group" aria-labelledby={`${id}-due`} className="flex items-center gap-8">
+        <input
+          type="date"
+          aria-label="Due day"
+          className={INPUT}
+          value={day}
+          onChange={(e) => {
+            onDay(e.target.value);
+            if (!e.target.value) onTime('');
+          }}
+        />
+        <input type="time" aria-label="Due time" className={INPUT} value={time} disabled={!day} onChange={(e) => onTime(e.target.value)} />
+        {time ? (
+          <Button variant="text" size="sm" onClick={() => onTime('')}>
+            Clear time
+          </Button>
+        ) : null}
+      </div>
+      {children}
+    </Field>
+  );
+}
+
+function PostEdit({ action, busy, disabled, onSave, onCancel }: { action: AskPostAction } & Common) {
+  const id = useId();
+  const [platform, setPlatform] = useState<PostPlatform>(action.platform);
+  const [kind, setKind] = useState<PostKind>(action.kind);
+  const [where, setWhere] = useState(action.where ?? '');
+  const [title, setTitle] = useState(action.title ?? '');
+  const [day, setDay] = useState(action.due?.day ?? '');
+  const [time, setTime] = useState(action.due?.time ?? '');
+  const ok = day === '' || DAY.test(day);
+
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    if (!ok || disabled) return;
+    onSave({
+      type: 'post',
+      platform,
+      kind,
+      ...(where.trim() ? { where: where.trim() } : {}),
+      ...(title.trim() ? { title: title.trim() } : {}),
+      ...(day ? { due: { day, ...(time ? { time } : {}) } } : {}),
+    });
+  };
+
+  return (
+    <form onSubmit={save} aria-label="Edit the suggestion" className="mt-4">
+      <div className="flex gap-8">
+        <Field label="Platform" htmlFor={`${id}-platform`} className="min-w-0 flex-1">
+          <select id={`${id}-platform`} className={INPUT} value={platform} onChange={(e) => setPlatform(e.target.value as PostPlatform)}>
+            {POST_PLATFORMS.map((p) => (
+              <option key={p} value={p}>
+                {POST_PLATFORM_LABEL[p]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Kind" htmlFor={`${id}-kind`} className="min-w-0 flex-1">
+          <select id={`${id}-kind`} className={INPUT} value={kind} onChange={(e) => setKind(e.target.value as PostKind)}>
+            {POST_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {POST_KIND_LABEL[k][0]}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Where" htmlFor={`${id}-where`}>
+        <input
+          id={`${id}-where`}
+          className={INPUT}
+          value={where}
+          maxLength={POST_WHERE_MAX}
+          placeholder="r/subreddit, @account or a page"
+          autoComplete="off"
+          onChange={(e) => setWhere(e.target.value)}
+        />
+      </Field>
+      <Field label="Title" htmlFor={`${id}-title`}>
+        <input id={`${id}-title`} className={INPUT} value={title} maxLength={POST_TITLE_MAX} autoComplete="off" onChange={(e) => setTitle(e.target.value)} />
+      </Field>
+      <DueFields id={id} day={day} time={time} onDay={setDay} onTime={setTime} />
       <Actions ok={ok} busy={busy} disabled={disabled} onCancel={onCancel} />
     </form>
   );
