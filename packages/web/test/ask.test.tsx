@@ -92,7 +92,7 @@ describe('the page', () => {
     open(list([]));
     await screen.findByText('Tell Ask what to add, or ask about today.');
     expect(PRIVACY).toBe(
-      'Sent to Claude on your account: only what you type here (medicine names or amounts you type do go), the date and time, and which Life parts are on. Your saved lists, medicines and money stay on the Mac. Nothing is added until you tap Add.',
+      'Sent to Claude on your account: only what you type here (medicine names or amounts you type do go), the date, time and time zone, which Life parts are on, the currency code and the fixed category names. Your saved lists, medicines and money stay on the Mac. Nothing is added until you tap Add.',
     );
     expect(screen.getByText(PRIVACY).className).toMatch(/\btype-small\b.*\btext-ink-3\b/);
     expect(screen.getByRole('heading', { level: 1, name: 'Ask' })).toBeTruthy();
@@ -343,7 +343,7 @@ describe('cards', () => {
     expect(cards[2]!.textContent).toContain('Sat 17 Jan · 09:00');
     expect(cards[2]!.textContent).toContain('The ones by the window');
     expect(cards[2]!.textContent).toContain('No project by that name. It will be added without one.');
-    expect(cards[3]!.textContent).toContain("That time has passed today, so it won't ring.");
+    expect(cards[3]!.textContent).toContain("That time has passed, so it won't ring.");
     expect(cards[4]!.textContent).toContain("No time, so it won't ring. Edit to add one.");
   });
 

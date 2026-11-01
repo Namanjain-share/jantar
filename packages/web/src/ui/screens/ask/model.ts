@@ -8,10 +8,11 @@
 import { ASK_APPLY_WITHIN_MS, type AskAction, type AskFlag, type AskShowWhat, type AskTodoAction, type AskTurn } from '@jantar/protocol';
 import { dayLabel, shiftDayKey } from '../life/shared/DayNav.js';
 
-/** Under the box, always (spec 1 and 7: the same words as `jantar ask on` and the docs). */
+/** Under the box, always (spec 1 and 7: what `jantar ask on`, the docs and SECURITY.md list too). */
 export const PRIVACY =
-  'Sent to Claude on your account: only what you type here (medicine names or amounts you type do go), the date and time, ' +
-  'and which Life parts are on. Your saved lists, medicines and money stay on the Mac. Nothing is added until you tap Add.';
+  'Sent to Claude on your account: only what you type here (medicine names or amounts you type do go), the date, time and time zone, ' +
+  'which Life parts are on, the currency code and the fixed category names. Your saved lists, medicines and money stay on the Mac. ' +
+  'Nothing is added until you tap Add.';
 
 /** The empty page's chips: a tap fills the box, never sends. */
 export const EXAMPLES: readonly string[] = ['todo add call the bank', 'remind me to stretch at 6 pm', 'had 2 rotis and dal', 'spent 250 on lunch', 'calories left?'];
@@ -32,7 +33,7 @@ export const ASK_COPY = {
 
 /** A card's flag, worded on the phone (the daemon sends only the code). */
 export const FLAG_TEXT: Readonly<Record<AskFlag, string>> = {
-  past_time: "That time has passed today, so it won't ring.",
+  past_time: "That time has passed, so it won't ring.",
   no_time: "No time, so it won't ring. Edit to add one.",
   no_project: 'No project by that name. It will be added without one.',
 };
