@@ -289,10 +289,10 @@ Before the repository goes public, or a fork takes it over:
   (as `## 0.5.2 (1 November 2026)`, never `(unreleased)`). The website deploys
   from main, and its build refuses an undated heading: its pages name the
   version, and its `install.sh` fetches that version's tag.
-- Push the tag with main, in one push: `git push --atomic origin main v0.6.0`.
+- Push the tag with main, in one push: `git push --atomic origin main v0.6.1`.
   A tag pushed later leaves the website's one-line install failing until
   it is there.
 - Don't name a branch like a release tag; once one is merged, delete it.
   `install.sh` fetches `refs/tags/v<version>` by its full name, but
-  `git clone --branch v0.6.0` and `git checkout v0.6.0` take a branch of
+  `git clone --branch v0.6.1` and `git checkout v0.6.1` take a branch of
   that name before the tag.
