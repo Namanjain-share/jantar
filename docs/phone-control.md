@@ -288,8 +288,8 @@ The rest stays at the Mac, each for a reason:
   bypass warning while a session starts (once it runs, its dialogs use the
   screen path).
 - **Mac-only by design:** every switch (controls, screenshots, files,
-  launch, rewrite, folders, life, intel, accounts, meetings, bins, remote,
-  and `controls.escapeVerified`, `clearVerified`, `interruptKey`,
+  launch, rewrite, folders, life, intel, accounts, meetings, ask, bins,
+  remote, and `controls.escapeVerified`, `clearVerified`, `interruptKey`,
   `screenshots.allowSelect`), pairing, scope grants, and Life backup and
   restore. A phone must not widen its own reach.
 

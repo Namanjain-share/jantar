@@ -18,6 +18,7 @@ import {
 } from '@jantar/protocol';
 import type {
   Actor,
+  AskService,
   Bins,
   CcwLegacySource,
   DaemonContext,
@@ -173,11 +174,11 @@ export function createTestContext(opts: TestContextOptions = {}): TestContext {
 
 /** The v0.3 parts. */
 export type V03Parts = Pick<Parts, 'files' | 'changes' | 'rewrite' | 'launcher' | 'controls'>;
-/** The parts notBuiltParts() gives: v0.3's, v0.4's (life, intel) and v0.5's (meetings). */
-export type NotBuiltParts = V03Parts & Pick<Parts, 'life' | 'intel' | 'meetings'>;
+/** The parts notBuiltParts() gives: v0.3's, v0.4's (life, intel), v0.5's (meetings) and v0.5.3's (ask). */
+export type NotBuiltParts = V03Parts & Pick<Parts, 'life' | 'intel' | 'meetings' | 'ask'>;
 
 /**
- * v0.3, v0.4 and v0.5 parts that start, stop and answer every call with
+ * v0.3, v0.4, v0.5 and v0.5.3 parts that start, stop and answer every call with
  * NotImplementedError (the API's 501), for tests that do not exercise them.
  * Unlike each part's own WP0 stub (replaced when its package lands), these
  * stay inert, so a test can swap in just the part it is about:
@@ -236,6 +237,7 @@ export function notBuiltParts(): NotBuiltParts {
       library: notBuilt<MeetingLibrary>('Meetings'),
       summaries: notBuilt<MeetingSummaries>('Meetings'),
     }),
+    ask: notBuilt<AskService>('Ask', { ...life }),
   };
 }
 

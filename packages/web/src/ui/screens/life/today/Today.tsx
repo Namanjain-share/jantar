@@ -7,7 +7,7 @@
  *   MEDICINES   WP-MD's MedsToday              "No medicines today." with none
  *   DUE         overdue todos, then today's    "Nothing due today." with none
  *   BILLS       due within 3 days or overdue   only when there are some
- *   FOOD        1,240 / 2,000 kcal  [+]        always, while food is on
+ *   FOOD        1,240 / 1,500 kcal  [+]        always, while food is on
  *   CLAUDE      2 sessions need you  ›         always; a tap opens the Board
  *   LIFE        one row per module that is on, and the shelf
  *

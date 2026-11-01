@@ -41,6 +41,7 @@ const LAZY_PLACES = {
   money: () => import('../src/ui/screens/life/money/Money.js'),
   intel: () => import('../src/ui/screens/intel/Intel.js'),
   meetings: () => import('../src/ui/screens/meetings/Meetings.js'),
+  ask: () => import('../src/ui/screens/ask/Ask.js'),
 };
 
 /**
@@ -145,7 +146,7 @@ export function stateWith(parts: {
   sends?: SendJob[];
   seq?: number;
   activeAccount?: number | null;
-  /** Switches to turn on (daemon.version; v0.3's, v0.4's life and intel, v0.5's meetings); without it the state has no daemon info, so every one is off. */
+  /** Switches to turn on (daemon.version; v0.3's, v0.4's life and intel, v0.5's meetings, v0.5.3's ask); without it the state has no daemon info, so every one is off. */
   features?: Partial<Features>;
   /** v0.4: the daemon's accounts mode (needs `features` for daemon info; default cswap). */
   accountsMode?: 'single' | 'cswap';
@@ -297,6 +298,14 @@ export function fakeApi(over: Partial<Api> = {}) {
     meetingSummarize: notBuilt(),
     meetingItemTodo: notBuilt(),
     meetingItemUntodo: notBuilt(),
+    // v0.5.3: each answers 501 (a part not built yet) unless the test passes its own.
+    askList: notBuilt(),
+    askSend: notBuilt(),
+    askClear: notBuilt(),
+    askCancel: notBuilt(),
+    askAdd: notBuilt(),
+    askSkip: notBuilt(),
+    askUndo: notBuilt(),
   };
   return Object.assign(base, over) as typeof base & Api;
 }

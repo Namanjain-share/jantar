@@ -51,7 +51,7 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar screenshots on \| off \| status` | a Picture view of the session's Terminal window |
 | `jantar screenshots allow-select [on \| off]` | capture a background tab by selecting it for a moment |
 
-### Life, Intel, accounts and Meetings
+### Life, Intel, accounts, Meetings and Ask
 
 | Command | What it does |
 |---|---|
@@ -71,6 +71,7 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar meetings [on \| off]` | Meetings from the Chrome extension ([Meetings](extension.md)) |
 | `jantar meetings export <id> \| last \| --all [--out DIR]` | a folder per meeting: `meeting.md` and `shots/*.jpg` |
 | `jantar meetings unpair` | revoke every paired extension |
+| `jantar ask on \| off \| status` | Ask, a chat page that suggests todos, reminders, food and money ([Ask](assistant.md)); `off` forgets its history; `status` names the model (Rewrite's) |
 
 ### Setup
 
@@ -103,7 +104,7 @@ usage error, `3` daemon not running.
 | `--port <n>` | TCP port on 127.0.0.1 (default `remote.port`, 7420; `0` picks a free port) |
 | `--home <dir>` | state dir (default `$JANTAR_HOME`, then `~/.jantar`) |
 | `--no-terminal` | Terminal.app backend off: no screen peek, focus or sending |
-| `--read-only` | observe only: refuse sending, focus, answering cards, the cswap poller, primes, Ask Claude and settings changes (Life writes still work) |
+| `--read-only` | observe only: refuse sending, focus, answering cards, the cswap poller, primes, Ask Claude, Ask's messages and settings changes (Life writes still work) |
 | `-v`, `--version` | print the version |
 | `-h`, `--help` | print the help |
 
@@ -130,7 +131,7 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 |---|---|---|
 | `remote` | `port` (7420), `publicUrl` (the address in pairing links), `allowedOrigins` | the Mac (`jantar remote`) |
 | `folders` | `roots`, `sessionRoots` (live sessions' folders count as roots; on), `allow`, `extraDeny` (added to the denylist, which can't shrink) | the Mac |
-| `files`, `rewrite`, `screenshots`, `meetings` | `enabled` (off), plus `rewrite.model`, `rewrite.glossary`, `screenshots.allowSelect` | the Mac |
+| `files`, `rewrite`, `screenshots`, `meetings`, `ask` | `enabled` (off), plus `rewrite.model` (also Ask's model), `rewrite.glossary`, `screenshots.allowSelect` | the Mac |
 | `launch` | `enabled` (off), `mode` (`claude`), `defaultFlags`, `preLaunchArgv`, `csCommand`, rate limits | the Mac |
 | `controls` | `enabled`, `escapeVerified`, `clearVerified` (all on), `interruptKey` (`interrupt` or `escape`) | the Mac |
 | `life` | one switch per module (off), `timezone`, `currency`, `lockScreenDetails` | the Mac |
@@ -157,6 +158,6 @@ Everything Jantar keeps is in `~/.jantar` (or `JANTAR_HOME`), mode 0700:
 | `bin/jantar-hook` | the hook client Claude's settings call |
 | `logs/` | the daemon's logs |
 | `run/` | `ctl.sock`, `hooks.sock` and screenshots in flight |
-| `rewrite/`, `food-estimate/`, `meeting-summary/` | working folders for Rewrite, Ask Claude and meeting summaries |
+| `rewrite/`, `food-estimate/`, `meeting-summary/`, `ask/` | working folders for Rewrite, Ask Claude, meeting summaries and Ask. `ask/` holds only a copy of Ask's prompt and an empty `work/` folder the run starts in: Ask's history lives in the daemon's memory, never in a file |
 
 `jantar uninstall --purge` deletes the whole folder after a y/N.

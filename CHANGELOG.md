@@ -5,6 +5,29 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## Unreleased
 
+- **Ask**, a chat page on the phone, right after Today. Tell it what to
+  add in plain words ("todo add call the bank", "remind me at 6 to take my
+  vitamin", "had 2 rotis and dal", "spent 250 on lunch") and it suggests
+  todos, reminders, meals and expenses as cards. Nothing is added until you
+  tap **Add** (or **Add all** for the todos and meals of one answer, never
+  money), each added card has **Undo** until a day after you asked, and
+  **Edit** changes a card before it is added. Ask "calories left?" or
+  "what's due?" and the answer is filled in on the phone from Today, with
+  your own calorie target. Off until `jantar ask on`. The guide:
+  [docs/assistant.md](docs/assistant.md).
+- Ask runs Claude Code on your account the way Rewrite does, on Rewrite's
+  model: only what you type goes to Claude (with the date, time and time
+  zone, which Life parts are on, the currency code and the fixed category
+  names), never your saved lists, medicines or money. Claude can only
+  propose the four kinds of card; anything else in its answer is left out
+  and the page says how many. Its history stays in the daemon's memory,
+  the last 30 messages per phone (and an older one while Undo still works
+  on what it added) for up to 7 days; Clear history, `jantar ask off` and
+  a restart forget it. A message refused because one is still waiting
+  doesn't count against the 10 a minute and 100 a day.
+  [SECURITY.md](SECURITY.md#v053-ask) lists what it can't do.
+- The daily calorie target starts at **1,500 kcal** (it was 2,000). A
+  target you already set on the phone stays as it is.
 - **A one-line install.** `curl -fsSL https://jantar.namanbuilt.com/install.sh | bash`
   checks for macOS, Node.js and pnpm, clones release v0.5.2 into `~/jantar`,
   builds it, runs `jantar init` and asks before `jantar install`. No sudo.

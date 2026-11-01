@@ -2,8 +2,9 @@
 /**
  * The Files place, the session's Files tab body and New session are their
  * own chunks (wave 2), and v0.4.2's dialog dock and keypad, v0.5's
- * Meetings, and (v0.5.1) a picked file's preparation and the attachment
- * glyphs too: nothing the app's entry imports statically reaches them, so
+ * Meetings, (v0.5.1) a picked file's preparation and the attachment
+ * glyphs, and v0.5.3's Ask, the Screen tab's picture and the pairing QR
+ * too: nothing the app's entry imports statically reaches them, so
  * Vite cannot fold them back into the main chunk. A static import is
  * `import ... from` or `export ... from` without `type`; `import()` is the
  * split point. The check walks src/ from main.tsx.
@@ -82,6 +83,11 @@ describe('code splitting', () => {
       'ui/screens/meetings/Meetings.tsx',
       'ui/screens/meetings/MeetingPage.tsx',
       'ui/screens/meetings/ShotViewer.tsx',
+      // v0.5.3: Ask loads only while it is on.
+      'ui/screens/ask/Ask.tsx',
+      'ui/screens/ask/Turn.tsx',
+      'ui/screens/ask/Edit.tsx',
+      'ui/screens/ask/Show.tsx',
     ];
     for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
     expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
@@ -97,6 +103,15 @@ describe('code splitting', () => {
     expect(readFileSync(join(src, 'ui/screens/session/ScreenView.tsx'), 'utf8')).toContain("import('./Keypad.js')");
   });
 
+  it("keeps the Screen tab's picture and the pairing QR out of the main chunk (v0.5.3: room for Ask)", () => {
+    const lazyOnly = ['ui/screens/session/controls/ShotView.tsx', 'ui/screens/session/controls/useShot.ts', 'ui/screens/devices/Qr.tsx'];
+    for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
+    expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
+    expect([...main.packages].filter((p) => p === 'qrcode')).toEqual([]);
+    expect(readFileSync(join(src, 'ui/screens/Session.tsx'), 'utf8')).toContain("import('./session/controls/ShotView.js')");
+    expect(readFileSync(join(src, 'ui/screens/devices/PairNew.tsx'), 'utf8')).toContain("import('./Qr.js')");
+  });
+
   it("keeps a file's preparation and the attachment glyphs out of the main chunk (v0.5.1: the first attachment loads them)", () => {
     const lazyOnly = ['ui/screens/session/attach/convert.ts', 'ui/screens/session/attach/glyph-icons.tsx'];
     for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
@@ -110,6 +125,7 @@ describe('code splitting', () => {
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");
     expect(shell).toContain("import('../screens/new/NewSession.js')");
     expect(shell).toContain("import('../screens/meetings/Meetings.js')");
+    expect(shell).toContain("import('../screens/ask/Ask.js')");
     const tab = readFileSync(join(src, 'ui/screens/session/FilesTab.tsx'), 'utf8');
     expect(tab).toContain("import('../files/SessionFiles.js')");
     for (const text of [shell, tab]) expect(text).not.toMatch(/import\(\s*['"`](blob|data):/);

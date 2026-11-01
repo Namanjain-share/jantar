@@ -23,6 +23,8 @@ import type { FileHandle } from 'node:fs/promises';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import type {
   Account,
+  AskList,
+  AskWriteAction,
   AccountId,
   AccountsMode,
   BillBody,
@@ -253,6 +255,12 @@ export interface Paths {
   intelDir: string;
   /** v0.4: Ask Claude's run dir (the empty cwd, the system prompt copy), <home>/food-estimate (0700, created on demand). */
   foodEstimateDir: string;
+  /**
+   * v0.5.3: Ask's run dir, <home>/ask (0700, created on demand): only the
+   * system prompt copy and the empty work/ cwd. No chat text is ever
+   * written there (turns live in memory).
+   */
+  askDir: string;
   /**
    * v0.4.2: files from the phone, <home>/uploads/<sid>/<id>.<ext> (dirs 0700,
    * files 0600, created on demand by the UploadStore, swept after
@@ -1305,7 +1313,16 @@ export type LifeModuleName = 'todos' | 'medicines' | 'food' | 'places' | 'financ
  * error of the same name (estimate_failed: 502; forbidden: 403, a switch the
  * call needs is off, as Meetings' Add to todos while Todos are off).
  */
-export type LifeErrorCode = 'invalid_request' | 'not_found' | 'conflict' | 'forbidden' | 'rate_limited' | 'unavailable' | 'estimate_failed';
+export type LifeErrorCode =
+  | 'invalid_request'
+  | 'not_found'
+  | 'conflict'
+  | 'forbidden'
+  | 'rate_limited'
+  | 'unavailable'
+  | 'estimate_failed'
+  /** v0.5.3: Ask while life.db is broken (503, as the pipeline answers Life's own routes). */
+  | 'life_unavailable';
 
 /**
  * A Life answer: the value, or an error code and a fixed daemon sentence
@@ -1762,6 +1779,33 @@ export interface MeetingsService extends Service {
 }
 
 // ===========================================================================
+// v0.5.3: Ask
+
+/**
+ * The Ask part (ask/service.ts): this device's turns in memory, one headless
+ * Claude run at a time (the shared runner), and the taps that add a card's
+ * item to Life (through the Life modules, the tapping device as actor) or
+ * undo it. Every call names the actor; a turn is its owner's alone (anyone
+ * else gets not_found). Nothing here logs, emits or audits chat text: the
+ * one event is `life.changed {}`.
+ */
+export interface AskService extends Service {
+  /** This device's turns, oldest first, and whether Ask can run now. */
+  list(actor: Actor): LifeResult<AskList>;
+  /** Queue a turn (one unfinished per device); the value is its id. */
+  send(text: string, actor: Actor): LifeResult<{ id: string }>;
+  /** A waiting or running turn of this device becomes cancelled; a finished one is left as it is. */
+  cancel(id: string, actor: Actor): LifeResult;
+  /** Forget this device's turns (its unfinished one is stopped). */
+  clear(actor: Actor): LifeResult;
+  /** Add card `n`'s item to Life (as `edit` says, when given); the value is the new item's id. */
+  add(id: string, n: number, edit: AskWriteAction | undefined, actor: Actor): LifeResult<{ id: string }>;
+  skip(id: string, n: number, actor: Actor): LifeResult;
+  /** Delete the item card `n` added, as it is now. */
+  undo(id: string, n: number, actor: Actor): LifeResult;
+}
+
+// ===========================================================================
 // Factories (the integration step wires these in main.ts)
 
 export type Factory<T, D = Record<never, never>> = (ctx: DaemonContext, deps: D) => T;
@@ -1787,6 +1831,8 @@ export interface Parts {
   intel: IntelService;
   /** v0.5 */
   meetings: MeetingsService;
+  /** v0.5.3 */
+  ask: AskService;
   notifications: NotificationRouter;
   api: ApiServer;
 }
@@ -1858,6 +1904,8 @@ export interface Factories {
   intel: Factory<IntelService, { files: FilesService }>;
   /** v0.5 (WP0's shell; the builders are WP-MS's and WP-SU's). `life`: projects and todos; `usage` and `ccwLegacy`: the summary's account. */
   meetings: Factory<MeetingsService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
+  /** v0.5.3. Only these three: no writer, terminal, launcher, controls, files or settings patch, so a model's answer reaches nothing else. */
+  ask: Factory<AskService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
   notifications: Factory<NotificationRouter, { notifiers: Notifier[] }>;
   api: Factory<ApiServer, Omit<Parts, 'api' | 'notifications'>>;
 }

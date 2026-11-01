@@ -53,10 +53,10 @@ jantar accounts keep --none
 ```
 
 A kept account is never picked by Auto (on the start sheet), Rewrite, Ask
-Claude, meeting summaries or the primer. You can still start a session on
-one by hand, after a confirmation (`--confirm-held` for `jantar new`). The
-list is the setting `accounts.kept`; the phone cannot change it. When the
-legacy ccw tool is installed, its hold list is read live on top.
+Claude, Ask, meeting summaries or the primer. You can still start a session
+on one by hand, after a confirmation (`--confirm-held` for `jantar new`).
+The list is the setting `accounts.kept`; the phone cannot change it. When
+the legacy ccw tool is installed, its hold list is read live on top.
 
 ## Priming idle 5-hour windows
 

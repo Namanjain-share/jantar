@@ -228,6 +228,8 @@ describe('fake claude modes', () => {
         'unknown-option',
         ...['food-ok', 'food-fence', 'food-bad-json', 'food-too-many', 'food-negative', 'food-answer', 'food-refuse-option'],
         ...['meeting-ok', 'meeting-fence', 'meeting-bad-json', 'meeting-too-many', 'meeting-long', 'meeting-answer'],
+        ...['ask-ok', 'ask-fence', 'ask-bad-json', 'ask-answer', 'ask-not-object', 'ask-unknown-type', 'ask-extra-field'],
+        ...['ask-too-many', 'ask-bad-values', 'ask-long-reply', 'ask-claims', 'ask-refuse-option'],
       ].sort(),
     );
   });

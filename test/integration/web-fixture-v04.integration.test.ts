@@ -6,7 +6,7 @@
  *   (reads from the data, writes `{ id }` or `{ ok: true }`), and any other
  *   path is left to the server;
  * - the day the screenshots tell holds: two doses due at 13:00 and none
- *   overdue, 1,240 of 2,000 kcal, weight changes that agree with the
+ *   overdue, 1,240 of 1,500 kcal, weight changes that agree with the
  *   weights listed, Food over its budget, two bills on Today;
  * - Resume's Last is the newest conversation not running, and the preview
  *   types `--resume <id>` in place of `--session-id`;
@@ -98,7 +98,7 @@ describe('webFixtureV04', () => {
     const food = m.byCategory.find((c) => c.category === 'Food')!;
     expect(food.spent).toBeGreaterThan(food.budget!);
     expect(f.v04.today.bills?.map((b) => b.name)).toEqual(['Gym', 'Example Stream']);
-    expect(f.v04.today.food).toEqual({ kcal: 1240, target: 2000, weight: w.latest });
+    expect(f.v04.today.food).toEqual({ kcal: 1240, target: 1500, weight: w.latest });
     for (const p of f.v04.projects) expect(p.open).toBe(f.v04.todos.filter((t) => t.projectId === p.id).length);
   });
 

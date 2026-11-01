@@ -148,6 +148,7 @@ import {
   MeetingsQuerySchema,
   MeetingsStatusSchema,
 } from './meetings.js';
+import { AskAddBodySchema, AskCardParamsSchema, AskListSchema, AskSendBodySchema, AskTurnParamsSchema } from './ask.js';
 import { StateSchema } from './state.js';
 import { EventSchema } from './events.js';
 
@@ -744,7 +745,7 @@ export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
  * The switch a route sits behind (Mac only). v0.3: settings `<feature>.enabled`.
  * v0.4: 'life' is on while any Life module is; each module name reads
  * `life.<module>`; 'intel' reads `intel.enabled`. v0.5: 'meetings' reads
- * `meetings.enabled`.
+ * `meetings.enabled`. v0.5.3: 'ask' reads `ask.enabled`.
  */
 export type FeatureSwitch =
   | 'files'
@@ -759,7 +760,8 @@ export type FeatureSwitch =
   | 'places'
   | 'finance'
   | 'intel'
-  | 'meetings';
+  | 'meetings'
+  | 'ask';
 
 export interface RouteDef {
   method: HttpMethod | 'WS';
@@ -772,7 +774,7 @@ export interface RouteDef {
    * loopback, with its bound Origin (daemon api/app.ts gate).
    */
   scope: Scope | 'public' | 'extension';
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5';
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3';
   /**
    * While this switch is off the route answers 403 with the sentence that
    * turns it on (screenshots: 403 screenshots_off), before validation and
@@ -1383,6 +1385,37 @@ export const ROUTES = {
   meetingItemUntodo: route({
     method: 'DELETE', path: '/v1/meetings/:id/items/:n/todo', scope: 'control', phase: 'v0.5', ctl: false, feature: 'meetings',
     params: MeetingItemParamsSchema, response: OkReplySchema, summary: 'Remove the todo an action item made (a todo already gone is fine).',
+  }),
+
+  // --- v0.5.3 Ask: the phone only (control, reads included), never on ctl.sock; askSend spends quota, so --read-only refuses it.
+  askList: route({
+    method: 'GET', path: '/v1/ask', scope: 'control', phase: 'v0.5.3', ctl: false, feature: 'ask',
+    response: AskListSchema, summary: "This device's Ask turns, oldest first, and whether Ask can run now.",
+  }),
+  askSend: route({
+    method: 'POST', path: '/v1/ask', scope: 'control', phase: 'v0.5.3', ctl: false, feature: 'ask', status: 202,
+    body: AskSendBodySchema, response: IdReplySchema, summary: 'Ask in plain words: one headless Claude run suggests cards (the reply is the turn id).',
+  }),
+  askClear: route({
+    method: 'DELETE', path: '/v1/ask', scope: 'control', phase: 'v0.5.3', ctl: false, feature: 'ask',
+    response: OkReplySchema, summary: "Forget this device's Ask history (items already added stay in Life).",
+  }),
+  askCancel: route({
+    method: 'DELETE', path: '/v1/ask/turns/:id', scope: 'control', phase: 'v0.5.3', ctl: false, feature: 'ask',
+    params: AskTurnParamsSchema, response: OkReplySchema, summary: 'Stop a turn that is waiting or running.',
+  }),
+  askAdd: route({
+    method: 'POST', path: '/v1/ask/turns/:id/actions/:n', scope: 'control', phase: 'v0.5.3', ctl: false, feature: 'ask',
+    params: AskCardParamsSchema, body: AskAddBodySchema, response: IdReplySchema,
+    summary: "Add a card's item to Life, as suggested or as edited (the reply is the new item's id).",
+  }),
+  askSkip: route({
+    method: 'POST', path: '/v1/ask/turns/:id/actions/:n/skip', scope: 'control', phase: 'v0.5.3', ctl: false, feature: 'ask',
+    params: AskCardParamsSchema, response: OkReplySchema, summary: 'Skip a card.',
+  }),
+  askUndo: route({
+    method: 'DELETE', path: '/v1/ask/turns/:id/actions/:n', scope: 'control', phase: 'v0.5.3', ctl: false, feature: 'ask',
+    params: AskCardParamsSchema, response: OkReplySchema, summary: 'Undo an Add within a day: delete the item as it is now.',
   }),
 } as const satisfies Record<string, RouteDef>;
 

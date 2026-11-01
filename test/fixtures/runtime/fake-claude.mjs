@@ -47,6 +47,37 @@
 //   meeting-long      a 2,001-character summary
 //   meeting-answer    prose instead of JSON
 // plus slow, auth-error and empty as above. It is logged like every run.
+//
+// Ask mode (v0.5.3 Ask): when --system-prompt-file ends in assistant-v1.md
+// it reads <now> (the Today and Time lines) and <message> from stdin, with
+// the daemon's tag escapes undone, and answers with ASK_MODES, picked the
+// same way (default ask-ok):
+//   ask-ok             the first match on the message, any case:
+//                      "todo add X" a todo titled X;
+//                      "remind me every day at H:MM to X" a daily todo at H:MM with no day;
+//                      "remind me to X [tomorrow] at H:MM" a todo on today (or tomorrow) at H:MM;
+//                      "remind me at H to X" (no am or pm) a todo at the next H o'clock:
+//                        H:00 today, else H+12:00 today, else H:00 tomorrow;
+//                      "had 2 rotis and dal" Roti 240 and Dal 180 kcal;
+//                      "ate X [N kcal]" or "had X [N kcal]" a food X (N, else 100 kcal);
+//                      "spent N on X" an expense of N, category "food" (lower case), note X;
+//                      "calories left", "what's due", "meds" a show card;
+//                      anything else a reply only. The reply names the message, so a
+//                      marker in it stays in the titles and the reply.
+//   ask-fence          the ask-ok JSON inside a ```json code fence
+//   ask-bad-json       JSON cut short, and the message on stderr
+//   ask-answer         prose instead of JSON
+//   ask-not-object     []
+//   ask-unknown-type   one todo plus shell, settings, medicine, session and intel actions
+//   ask-extra-field    a todo with projectId, a todo with id, a food with save, money with billId
+//   ask-too-many       15 todos
+//   ask-bad-values     a todo today at 00:00 and a weekly one at 00:00 (both kept), then
+//                      13 actions each with one bad value
+//   ask-long-reply     a 2,000-character reply with U+202E, U+0007 and a Markdown link
+//   ask-claims         "Done! I added 50000 to your expenses." and a money action of 50000
+//   ask-refuse-option  "error: unknown option '--permission-prompts'" while that flag
+//                      is in argv (claude's own words), else ask-ok
+// plus slow, auth-error and empty as above. It is logged like every run.
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -76,6 +107,25 @@ export const MEETING_MODES = [
   'meeting-too-many',
   'meeting-long',
   'meeting-answer',
+  'slow',
+  'auth-error',
+  'empty',
+];
+
+/** Ask's modes (the ask mode, see the file comment). */
+export const ASK_MODES = [
+  'ask-ok',
+  'ask-fence',
+  'ask-bad-json',
+  'ask-answer',
+  'ask-not-object',
+  'ask-unknown-type',
+  'ask-extra-field',
+  'ask-too-many',
+  'ask-bad-values',
+  'ask-long-reply',
+  'ask-claims',
+  'ask-refuse-option',
   'slow',
   'auth-error',
   'empty',
@@ -235,6 +285,146 @@ function meetingResultFor(mode, stdin) {
   }
 }
 
+/** Ask's stdin: today and now from <now>, and the message with the daemon's tag escapes undone. */
+export function askParts(stdin) {
+  const today = /^Today: \w{3} (\d{4}-\d{2}-\d{2})$/m.exec(stdin)?.[1] ?? '2026-01-15';
+  const now = /^Time: (\d{2}:\d{2})/m.exec(stdin)?.[1] ?? '00:00';
+  const m = /<message>\n?([\s\S]*?)\n?<\/message>/.exec(stdin);
+  const message = (m ? m[1] : stdin).replace(/<\\(\/?)/g, '<$1').trim();
+  return { today, now, message };
+}
+
+/** A day key `n` days after `day`. */
+function addDays(day, n) {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+const hhmm = (h, m = 0) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+/** ask-ok's answer for one message (see the file comment). */
+export function askOkAnswer({ today, now, message }) {
+  const reply = (what) => `${what} For: ${message}`;
+  let m;
+  if ((m = /^todo add (.+)$/is.exec(message))) {
+    return { reply: reply('A todo.'), actions: [{ type: 'todo', title: m[1] }] };
+  }
+  if ((m = /^remind me every day at (\d{1,2}):(\d{2}) to (.+)$/is.exec(message))) {
+    return { reply: reply('A reminder every day.'), actions: [{ type: 'todo', title: m[3], time: hhmm(Number(m[1]), Number(m[2])), repeat: 'daily' }] };
+  }
+  if ((m = /^remind me to (.+?)( tomorrow)? at (\d{1,2}):(\d{2})$/is.exec(message))) {
+    const day = m[2] ? addDays(today, 1) : today;
+    return { reply: reply('A reminder.'), actions: [{ type: 'todo', title: m[1], day, time: hhmm(Number(m[3]), Number(m[4])) }] };
+  }
+  if ((m = /^remind me at (\d{1,2}) to (.+)$/is.exec(message))) {
+    // The prompt's "at 6" rule: the next 6 o'clock still ahead.
+    const h = Number(m[1]);
+    const title = m[2].replace(/^take /i, 'Take ');
+    const [day, time] = hhmm(h) > now ? [today, hhmm(h)] : h + 12 < 24 && hhmm(h + 12) > now ? [today, hhmm(h + 12)] : [addDays(today, 1), hhmm(h)];
+    return { reply: reply('A reminder.'), actions: [{ type: 'todo', title, day, time }] };
+  }
+  if (/^had 2 rotis and dal\b/i.test(message)) {
+    return {
+      reply: reply('Assumed 2 medium rotis and 1 bowl of dal.'),
+      actions: [
+        { type: 'food', name: 'Roti', kcal: 240 },
+        { type: 'food', name: 'Dal', kcal: 180 },
+      ],
+    };
+  }
+  if ((m = /^(?:ate|had) (.+?)(?: (\d+) kcal)?$/is.exec(message))) {
+    return { reply: reply('One food.'), actions: [{ type: 'food', name: m[1], kcal: m[2] ? Number(m[2]) : 100 }] };
+  }
+  if ((m = /^spent (\d+(?:\.\d+)?) on (.+)$/is.exec(message))) {
+    return { reply: reply('An expense.'), actions: [{ type: 'money', kind: 'expense', amount: Number(m[1]), category: 'food', note: m[2] }] };
+  }
+  if (/calories left/i.test(message)) return { reply: reply('Here are your calories.'), actions: [{ type: 'show', what: 'calories' }] };
+  if (/what'?s due/i.test(message)) return { reply: reply("Here is what's due."), actions: [{ type: 'show', what: 'due' }] };
+  if (/\bmeds\b/i.test(message)) return { reply: reply("Here are today's medicines."), actions: [{ type: 'show', what: 'meds' }] };
+  return { reply: reply('Ask can suggest todos, reminders, food and money.'), actions: [] };
+}
+
+/** Ask mode's answer: the JSON (or what a mode makes of it) as the result text. */
+function askResultFor(mode, stdin) {
+  if (mode === 'auth-error' || mode === 'empty') return resultFor(mode, '');
+  const parts = askParts(stdin);
+  const { today } = parts;
+  const json = JSON.stringify(askOkAnswer(parts));
+  const todo = (title) => ({ type: 'todo', title });
+  switch (mode) {
+    case 'ask-fence':
+      return { result: `\`\`\`json\n${json}\n\`\`\`` };
+    case 'ask-bad-json':
+      return { result: json.slice(0, -5), stderr: `fake claude: answer cut short after: ${parts.message}\n` };
+    case 'ask-answer':
+      return { result: `Sure, I would add that for you: ${parts.message}` };
+    case 'ask-not-object':
+      return { result: '[]' };
+    case 'ask-unknown-type':
+      return {
+        result: JSON.stringify({
+          reply: 'One todo.',
+          actions: [
+            todo('Call the bank'),
+            { type: 'shell', command: 'touch x' },
+            { type: 'settings', patch: { files: { enabled: true } } },
+            { type: 'medicine', name: 'X', taken: true },
+            { type: 'session', sid: 's1', text: 'y' },
+            { type: 'intel', url: 'https://example.com' },
+          ],
+        }),
+      };
+    case 'ask-extra-field':
+      return {
+        result: JSON.stringify({
+          reply: 'Four things.',
+          actions: [
+            { ...todo('Call the bank'), projectId: '01JFZ8X8Y3T0V5G9WQK2M4N6PR' },
+            { ...todo('Pay rent'), id: '01JFZ8X8Y3T0V5G9WQK2M4N6PS' },
+            { type: 'food', name: 'Roti', kcal: 120, save: true },
+            { type: 'money', kind: 'expense', amount: 250, category: 'Food', billId: '01JFZ8X8Y3T0V5G9WQK2M4N6PT' },
+          ],
+        }),
+      };
+    case 'ask-too-many':
+      return { result: JSON.stringify({ reply: 'Fifteen todos.', actions: Array.from({ length: 15 }, (_, i) => todo(`Task ${i + 1}`)) }) };
+    case 'ask-bad-values':
+      return {
+        result: JSON.stringify({
+          reply: 'Some of these are wrong.',
+          actions: [
+            { type: 'todo', title: 'Stretch', day: today, time: '00:00' },
+            { type: 'todo', title: 'Water the plants', day: today, time: '00:00', repeat: 'weekly' },
+            { type: 'money', kind: 'expense', amount: -5, category: 'Food' },
+            { type: 'money', kind: 'expense', amount: '250', category: 'Food' },
+            { type: 'food', name: 'Feast', kcal: 20000 },
+            todo('x'.repeat(300)),
+            todo(''),
+            { type: 'todo', title: 'Leap', day: '2026-02-31' },
+            { type: 'todo', title: 'Far away', day: addDays(today, 730) },
+            { type: 'food', name: 'Roti', kcal: 120, day: addDays(today, 1) },
+            { type: 'money', kind: 'expense', amount: 250, category: 'Food', day: addDays(today, 1) },
+            { type: 'todo', title: 'Late', day: today, time: '25:00' },
+            { type: 'todo', title: 'Often', day: today, repeat: 'hourly' },
+            { type: 'show', what: 'spent' },
+            { type: 'show', what: 'bills' },
+          ],
+        }),
+      };
+    case 'ask-long-reply': {
+      const head = 'Here \u202Eis [bank](https://bank.example) \u0007a long reply. ';
+      return { result: JSON.stringify({ reply: (head + 'x'.repeat(2000)).slice(0, 2000), actions: [] }) };
+    }
+    case 'ask-claims':
+      return {
+        result: JSON.stringify({ reply: 'Done! I added 50000 to your expenses.', actions: [{ type: 'money', kind: 'expense', amount: 50000, category: 'Other' }] }),
+      };
+    default:
+      return { result: json };
+  }
+}
+
 function resultFor(mode, text) {
   const clean = cleanText(text);
   switch (mode) {
@@ -314,7 +504,14 @@ export async function runClaude({ root, args, stdin, account = null, via = 'clau
   const config = readJson(join(root, 'fake', 'claude.json'), {});
   const food = promptFile !== undefined && promptFile.endsWith('estimate-v1.md');
   const meeting = promptFile !== undefined && promptFile.endsWith('summary-v1.md');
-  const [modes, fallbackMode] = food ? [FOOD_MODES, 'food-ok'] : meeting ? [MEETING_MODES, 'meeting-ok'] : [MODES, 'clean'];
+  const ask = promptFile !== undefined && promptFile.endsWith('assistant-v1.md');
+  const [modes, fallbackMode] = food
+    ? [FOOD_MODES, 'food-ok']
+    : meeting
+      ? [MEETING_MODES, 'meeting-ok']
+      : ask
+        ? [ASK_MODES, 'ask-ok']
+        : [MODES, 'clean'];
   const picked = pickMode(config, args, stdin, account, modes, fallbackMode);
   const delayMs = picked.rule?.delayMs ?? config.delayMs ?? 0;
   if (picked.rule && picked.rule.mode === undefined) {
@@ -325,7 +522,7 @@ export async function runClaude({ root, args, stdin, account = null, via = 'clau
   }
   const mode = picked.rule ? (modes.includes(picked.rule.mode) ? picked.rule.mode : fallbackMode) : picked.mode;
 
-  if ((mode === 'unknown-option' || mode === 'food-refuse-option') && args.includes('--permission-prompts')) {
+  if ((mode === 'unknown-option' || mode === 'food-refuse-option' || mode === 'ask-refuse-option') && args.includes('--permission-prompts')) {
     process.stderr.write("error: unknown option '--permission-prompts'\n");
     return 1;
   }
@@ -334,7 +531,7 @@ export async function runClaude({ root, args, stdin, account = null, via = 'clau
 
   const input = optionValue(args, '--input-format') === 'stream-json' ? streamJsonText(stdin) : stdin;
   const text = dictatedText(input);
-  const out = food ? foodResultFor(mode, mealText(input)) : meeting ? meetingResultFor(mode, input) : resultFor(mode, text);
+  const out = food ? foodResultFor(mode, mealText(input)) : meeting ? meetingResultFor(mode, input) : ask ? askResultFor(mode, input) : resultFor(mode, text);
   if (out.stderr) process.stderr.write(out.stderr);
   const modelName = model ?? 'default';
   const sessionId = optionValue(args, '--session-id') ?? randomUUID();

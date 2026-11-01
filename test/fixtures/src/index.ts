@@ -21,4 +21,5 @@ export * from './intel.js';
 export * from './history.js';
 export * from './dialogs.js';
 export * from './meetings.js';
+export * from './ask.js';
 export * from './perf.js';

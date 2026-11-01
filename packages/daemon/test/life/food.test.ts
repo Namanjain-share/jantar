@@ -184,9 +184,9 @@ describe('saved foods', () => {
 });
 
 describe('targets', () => {
-  it('the calorie target and goal weight live in meta: default 2000 and none, set, and a null goal clears', () => {
+  it('the calorie target and goal weight live in meta: default 1500 and none, set, and a null goal clears', () => {
     const { core, food } = rig();
-    expect(value(food.day())).toMatchObject({ target: 2000, weight: { goalKg: null } });
+    expect(value(food.day())).toMatchObject({ target: 1500, weight: { goalKg: null } });
     expect(food.setTargets({ kcalTarget: 1800, goalKg: 70 }, PHONE)).toEqual({ ok: true, value: true });
     expect(value(food.day())).toMatchObject({ target: 1800, weight: { goalKg: 70 } });
     expect(core.db.meta('kcal_target')).toBe('1800');
@@ -250,7 +250,7 @@ describe('GET /v1/food at size (spec 9.6)', () => {
 describe("Food's part of Today", () => {
   it("is the day's kcal, the target and the latest weight", () => {
     const { food } = rig();
-    expect(food.today(TODAY)).toEqual({ food: { kcal: 0, target: 2000, weight: null } });
+    expect(food.today(TODAY)).toEqual({ food: { kcal: 0, target: 1500, weight: null } });
     value(food.add(foodBody({ kcal: 240 }), PHONE));
     value(food.add(foodBody({ kcal: 180 }), PHONE));
     value(food.setTargets({ kcalTarget: 1800 }, PHONE));

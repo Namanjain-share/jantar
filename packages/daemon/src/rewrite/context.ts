@@ -33,22 +33,31 @@ export const TOP_LEVEL_TTL_MS = 5 * 60_000;
 /** Changed files listed in the vocabulary, at most. */
 const CHANGED_MAX = 80;
 
-// Our tag names (and the spec's old <transcript>) in any case, opening or closing, with stray spaces
-// around the "/" and format characters (\p{Cf}: zero-width, bidi) anywhere up to the end of the name.
+// Tag names in any case, opening or closing, with stray spaces around the "/" and format characters
+// (\p{Cf}: zero-width, bidi) anywhere up to the end of the name.
 const GAP = '[\\s\\p{Cf}]*';
 const tagName = (name: string) => [...name].join('\\p{Cf}*');
-const TAG_RE = new RegExp(`<${GAP}(/)?${GAP}(${[...CONTEXT_TAGS, 'transcript'].map(tagName).join('|')})\\b`, 'giu');
 const FORMAT_CHARS = /\p{Cf}/gu;
 
-/** Data that can no longer open or close one of our blocks. */
-export function escapeTags(s: string): string {
-  return s.replace(TAG_RE, (_m, slash: string | undefined, name: string) => {
-    const clean = name.replace(FORMAT_CHARS, '');
-    return slash ? `<\\/${clean}` : `<\\${clean}`;
-  });
+/**
+ * An escaper for `tags`: "</x>" becomes "<\/x>" and "<x>" becomes "<\x>",
+ * however the tag is spelled (see above), so data can't open or close one.
+ * v0.5.3: Ask's stdin (ask/input.ts) escapes its own tags with it.
+ */
+export function tagEscaper(tags: readonly string[]): (s: string) => string {
+  const re = new RegExp(`<${GAP}(/)?${GAP}(${tags.map(tagName).join('|')})\\b`, 'giu');
+  return (s) =>
+    s.replace(re, (_m, slash: string | undefined, name: string) => {
+      const clean = name.replace(FORMAT_CHARS, '');
+      return slash ? `<\\/${clean}` : `<\\${clean}`;
+    });
 }
 
-function clip(s: string, n: number): string {
+/** Data that can no longer open or close one of our blocks (and the spec's old <transcript>). */
+export const escapeTags: (s: string) => string = tagEscaper([...CONTEXT_TAGS, 'transcript']);
+
+/** At most `n` characters, the "…" of a cut included. */
+export function clip(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 

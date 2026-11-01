@@ -5,12 +5,12 @@
  */
 import { CaretRightIcon } from '@phosphor-icons/react';
 import { Badge } from '../../kit/Badge.js';
-import { useFeatures, useNeedsCount, useNewAlerts } from '../../shell/data.js';
+import { useNeedsCount, useNewAlerts, usePlaceFeatures } from '../../shell/data.js';
 import { Link } from '../../shell/Link.js';
 import { tabItems } from '../../shell/nav.js';
 
 export function More() {
-  const { more } = tabItems(useFeatures());
+  const { more } = tabItems(usePlaceFeatures());
   const badges: Partial<Record<string, number>> = { board: useNeedsCount(), alerts: useNewAlerts(false) };
   return (
     <div className="px-16 pb-48 pt-16 animate-enter md:px-32 md:pt-24">

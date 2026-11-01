@@ -104,6 +104,7 @@ export function resolvePaths(opts: ResolvePathsOptions = {}): Paths {
     backupsDir: join(home, 'backups'),
     intelDir: join(home, 'intel'),
     foodEstimateDir: join(home, 'food-estimate'),
+    askDir: join(home, 'ask'),
     uploadsDir: join(home, 'uploads'),
     meetingsDb: join(home, MEETINGS_DB_FILE),
     meetingsDir: join(home, 'meetings'),

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readScreenState } from '../../../packages/daemon/src/terminal/screen.js';
 import {
+  ASK_MARKER,
   DICTATED,
   FILE_MARKER,
   PRIVACY_MARKERS,
@@ -27,7 +28,7 @@ describe('markersIn', () => {
     expect(markersIn(Buffer.from(`..${FILE_MARKER}..`))).toEqual([FILE_MARKER]);
     expect(markersIn(new Map([[REWRITE_MARKER, 1]]))).toEqual([REWRITE_MARKER]);
     expect(markersIn({ [SCREEN_MARKER]: true })).toEqual([SCREEN_MARKER]);
-    expect(markersIn([SECRET_MARKER, SCREEN_MARKER, FILE_MARKER, REWRITE_MARKER])).toEqual([...PRIVACY_MARKERS]);
+    expect(markersIn([SECRET_MARKER, SCREEN_MARKER, FILE_MARKER, REWRITE_MARKER, ASK_MARKER])).toEqual([...PRIVACY_MARKERS]);
     const loop: Record<string, unknown> = { s: 'clean' };
     loop.self = loop;
     expect(markersIn(loop)).toEqual([]);
@@ -69,7 +70,7 @@ describe('markersIn', () => {
   });
 
   it('the markers are distinct and none contains another', () => {
-    expect(new Set(PRIVACY_MARKERS).size).toBe(4);
+    expect(new Set(PRIVACY_MARKERS).size).toBe(5);
     for (const a of PRIVACY_MARKERS) for (const b of PRIVACY_MARKERS) if (a !== b) expect(a.includes(b)).toBe(false);
   });
 });

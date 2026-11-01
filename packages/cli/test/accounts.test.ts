@@ -62,7 +62,7 @@ describe('jantar accounts', () => {
     const { ctx, io } = contextFor(home, { deps: withCswap(), ctl });
     expect(await accounts.run([], ctx), io.stderr).toBe(EXIT.ok);
     expect(io.stdout).toMatch(/^Accounts: cswap, \d+ accounts \(cswap at .+, the running daemon\)\.$/m);
-    expect(io.stdout).toContain('Kept for other work: 4, 7. Auto, Rewrite and Ask Claude never pick them; a manual start still can, after a confirm.');
+    expect(io.stdout).toContain('Kept for other work: 4, 7. Auto, Rewrite, Ask Claude and Ask never pick them; a manual start still can, after a confirm.');
     expect(io.stdout).toContain('Held by autoswitch: 9');
     expect(io.stdout).toContain("ccw's hold list (read live): 6, 2");
     expect(ctl.calls.every((c) => c.method === 'GET')).toBe(true);
@@ -123,7 +123,7 @@ describe('jantar accounts', () => {
     const keep = contextFor(home, { deps: withCswap(), ctl });
     expect(await accounts.run(['keep', '7', '4', '7'], keep.ctx), keep.io.stderr).toBe(EXIT.ok);
     expect(s.patches).toEqual([{ accounts: { kept: [4, 7] } }]);
-    expect(keep.io.stdout).toBe('Kept for other work: 4, 7. Auto, Rewrite and Ask Claude never pick them; a manual start still can, after a confirm.\n');
+    expect(keep.io.stdout).toBe('Kept for other work: 4, 7. Auto, Rewrite, Ask Claude and Ask never pick them; a manual start still can, after a confirm.\n');
 
     const unknown = contextFor(home, { deps: withCswap(), ctl });
     expect(await accounts.run(['keep', '4', '12'], unknown.ctx)).toBe(EXIT.ok);

@@ -48,6 +48,18 @@ export class SlidingWindowLimiter {
     return { ok: true, remaining: this.opts.limit - list.length };
   }
 
+  /**
+   * What `hit` would answer now, recording nothing (`remaining` counts this
+   * one as not yet made). Check first and hit once the request is taken, so
+   * a request refused for another reason spends nothing.
+   */
+  check(key: string): RateLimitResult {
+    const now = this.opts.clock.now();
+    const list = (this.hits.get(key) ?? []).filter((t) => t > now - this.opts.windowMs);
+    if (list.length < this.opts.limit) return { ok: true, remaining: this.opts.limit - list.length };
+    return { ok: false, retryAfterMs: Math.max(1, (list[0] ?? now) + this.opts.windowMs - now) };
+  }
+
   /** Number of keys currently tracked (tests). */
   size(): number {
     return this.hits.size;

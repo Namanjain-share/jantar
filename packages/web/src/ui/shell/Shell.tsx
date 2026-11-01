@@ -12,8 +12,9 @@
  * first time one opens (skeleton rows meanwhile), so the main chunk carries
  * neither; the service worker precaches them like every other file. So are
  * v0.4's Life screens and the Intel shelf, each shown only while its switch
- * is on (Life: any module; which modules are on is the screen's to ask), and
- * v0.5's Meetings, shown only while Meetings are on.
+ * is on (Life: any module; which modules are on is the screen's to ask),
+ * v0.5's Meetings, shown only while Meetings are on, and v0.5.3's Ask,
+ * shown only while Ask is on.
  */
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { boardOrder, needsYou } from '@jantar/protocol';
@@ -59,6 +60,8 @@ const Money = lazy(() => import('../screens/life/money/Money.js').then((m) => ({
 const Intel = lazy(() => import('../screens/intel/Intel.js').then((m) => ({ default: m.Intel })));
 // v0.5, its own chunk.
 const Meetings = lazy(() => import('../screens/meetings/Meetings.js').then((m) => ({ default: m.Meetings })));
+// v0.5.3, its own chunk.
+const Ask = lazy(() => import('../screens/ask/Ask.js').then((m) => ({ default: m.Ask })));
 
 export function Shell() {
   const { api, connection, pushEnv } = useDeps();
@@ -221,6 +224,18 @@ export function Shell() {
           <NotFound off="meetings on" />
         ) : (
           <SkeletonRows count={5} caption="Opening Meetings…" />
+        );
+        break;
+      // v0.5.3: Ask while it is on.
+      case 'ask':
+        screen = features.ask ? (
+          <Suspense fallback={<SkeletonRows count={5} caption="Opening Ask…" />}>
+            <Ask />
+          </Suspense>
+        ) : featuresKnown ? (
+          <NotFound off="ask on" />
+        ) : (
+          <SkeletonRows count={5} caption="Opening Ask…" />
         );
         break;
       case 'more':

@@ -88,7 +88,7 @@
       "cls": "phone--life",
       "widths": [200, 400, 600],
       "sizes": "(min-width: 1280px) 196px, (min-width: 1024px) calc((100vw - 256px) / 5), 196px",
-      "alt": "Food: 1,240 of 2,000 kcal and the weight line."
+      "alt": "Food: 1,240 of 1,500 kcal and the weight line."
     },
     "life-money": {
       "file": "money-phone",

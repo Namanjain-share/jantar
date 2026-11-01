@@ -11,7 +11,7 @@
  *
  * - Today: two medicines due at 13:00 (Placebin 10 mg, Testamol 500 mg), the
  *   morning ones taken and one more tonight; two overdue todos and four for
- *   today; two bills within three days; 1,240 of 2,000 kcal and 81.6 kg.
+ *   today; two bills within three days; 1,240 of 1,500 kcal and 81.6 kg.
  * - Todos: five projects (two linked to Board folders, so Board rows carry
  *   their chip), reminders, a daily and a weekly repeat.
  * - Food: five entries, saved foods, 20 weights over 30 days, a goal.
@@ -372,7 +372,8 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
   ];
   const recent: Weight[] = KG.map(([n, kg]) => ({ day: day(n), kg }));
   const weight = { latest: recent[0] ?? null, change7: -0.6, change30: -1.6, goalKg: 78, recent };
-  const TARGET = 2000;
+  // The daily target a new Life starts with (KCAL_TARGET_DEFAULT).
+  const TARGET = 1500;
   const foodDay = (d: string): FoodDay => {
     const list = d === today ? entries : [];
     return { day: d, today, target: TARGET, kcal: list.reduce((s, e) => s + e.kcal, 0), entries: list, saved, weight };

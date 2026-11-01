@@ -76,8 +76,8 @@ To look first, skip `jantar init` for now and try it in a throwaway folder
 
 `--read-only` refuses every action on your sessions (no typing, no focus,
 no answering cards, no cswap calls, no settings changes, no primes, no Ask
-Claude runs) and `--no-terminal` means no AppleScript at all. With a
-throwaway state dir, nothing is written outside it:
+Claude runs, no messages to Ask) and `--no-terminal` means no AppleScript
+at all. With a throwaway state dir, nothing is written outside it:
 
 ```sh
 export JANTAR_HOME=/tmp/jantar-try     # keep it short: Unix socket paths max out at 103 bytes
@@ -147,7 +147,7 @@ Or run the daemon in the foreground instead of under launchd:
 | `--port <n>` | TCP port on 127.0.0.1 (default `remote.port`, 7420; `0` picks a free port) |
 | `--home <dir>` | state dir (default `$JANTAR_HOME`, then `~/.jantar`) |
 | `--no-terminal` | Terminal.app backend off: no screen peek, focus or sending |
-| `--read-only` | observe only: refuse sending, focus, answering cards, the cswap poller, primes, Ask Claude and settings changes (Life writes still work) |
+| `--read-only` | observe only: refuse sending, focus, answering cards, the cswap poller, primes, Ask Claude, Ask's messages and settings changes (Life writes still work) |
 | `-v`, `--version` | print the version and exit |
 | `-h`, `--help` | print the help and exit |
 

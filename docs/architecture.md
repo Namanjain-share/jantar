@@ -15,6 +15,7 @@ runs anywhere else.
    intel:   JSONL sources followed for appends · captures file
    primer:  one tiny headless run per idle 5-hour window (opt-in, cswap)
    meetings: meetings.db (its own SQLite file) · screenshot files · one summary run at a time
+   ask:     one isolated headless run per message · items added through Life on your tap · history in memory
    api:     REST /v1 + WS /v1/events · pairing · scopes · audit · Web Push
           ▲                         ▲                        ▲
    jantar-hook (hooks.sock)     jantar CLI (ctl.sock)    Jantar Chrome extension (127.0.0.1, its own key)
@@ -47,7 +48,7 @@ runs anywhere else.
 | Package | What |
 |---|---|
 | `packages/protocol` | zod schemas, event types, the shared reducer, REST and WebSocket types |
-| `packages/daemon` | `jantard`: sources, hooks bridge, Terminal.app backend, writer, API, auth, Web Push, SQLite, Life, the Intel shelf, the primer and Meetings |
+| `packages/daemon` | `jantard`: sources, hooks bridge, Terminal.app backend, writer, API, auth, Web Push, SQLite, Life, the Intel shelf, the primer, Meetings and Ask |
 | `packages/life-core` | pure date, repeat, dose and adherence logic for Life |
 | `packages/hook` | `jantar-hook`: zero-dependency hook client |
 | `packages/cli` | `jantar`: every command in [Configuration](configuration.md#commands) |

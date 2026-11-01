@@ -10,9 +10,9 @@
  *   3. parts: ccwLegacy -> sessions -> transcripts -> transcriptWatcher ->
  *      usage -> hooks -> terminal -> writer -> notifiers -> files -> changes
  *      -> rewrite -> launcher -> controls -> life -> intel -> meetings ->
- *      primer -> notifications -> api (the v0.3, v0.4 and v0.5 parts sit
- *      behind their switches; the API refuses their routes while a switch
- *      is off)
+ *      ask -> primer -> notifications -> api (the v0.3, v0.4, v0.5 and
+ *      v0.5.3 parts sit behind their switches; the API refuses their routes
+ *      while a switch is off)
  *   4. startServices() in that order; stop() runs them down in reverse.
  *
  * main.ts calls startDaemon() with the command-line flags; the end-to-end
@@ -62,6 +62,7 @@ import { createLifeService, LIFE_MODULE_BUILDERS } from './life/index.js';
 import { buildLifeService } from './life/service.js';
 import { createIntelService } from './intel/index.js';
 import { createMeetingsService } from './meetings/index.js';
+import { createAskService } from './ask/index.js';
 import { createPrimer } from './primer/index.js';
 import { WebPushNotifier, createNotificationRouter, createNotifiers, type PushSender } from './notify/index.js';
 import { createApiServerWith, type ApiOptions } from './api/index.js';
@@ -177,6 +178,8 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     const intel = createIntelService(ctx, { files });
     // v0.5. Meetings are told --read-only, not wrapped: capture and edits are Jantar's own files, summaries spend quota.
     const meetings = createMeetingsService(ctx, { life, usage, ccwLegacy }, { readOnly });
+    // v0.5.3. Ask is told --read-only too: its taps are Life writes (allowed), its runs spend quota (never).
+    const ask = createAskService(ctx, { life, usage, ccwLegacy }, { readOnly });
     // v0.4. Primes free 5-hour windows while accounts.prime is on; never under --read-only (it runs cswap).
     const primer = createPrimer(ctx, { usage, ccwLegacy }, { readOnly });
     const notifications = createNotificationRouter(ctx, { notifiers });
@@ -202,6 +205,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
         life,
         intel,
         meetings,
+        ask,
       },
       apiOpts,
     );
@@ -223,6 +227,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
       life,
       intel,
       meetings,
+      ask,
       notifications,
       api,
     };
@@ -247,6 +252,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
       ['life', life],
       ['intel', intel],
       ['meetings', meetings],
+      ['ask', ask],
       ['primer', primer],
       ['notifications', notifications],
       ['api', api],
