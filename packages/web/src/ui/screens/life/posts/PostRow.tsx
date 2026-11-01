@@ -44,7 +44,7 @@ export function CopyButton({ value, name, className }: { value: string | undefin
   );
 }
 
-const OPEN = buttonClass('text', 'sm', 'gap-4');
+const OPEN = buttonClass('text', 'sm');
 
 export interface PostRowProps {
   post: Post;
