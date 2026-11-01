@@ -4,8 +4,9 @@
  * own here before it becomes a card.
  *
  * - The answer: one JSON object (one code fence around it tolerated) with
- *   `reply` (a string) and `actions` (an array; left out means none). Other
- *   top-level keys are ignored. Anything else makes the turn unreadable.
+ *   `reply` (a string) and `actions` (an array; left out or null means
+ *   none). Other top-level keys are ignored. Anything else makes the turn
+ *   unreadable.
  * - The model form of an action (what Claude writes) is a strict object of
  *   one of four types: todo, food, money, show. Any other type, an unknown
  *   field, a value of the wrong kind or out of range, or a type whose Life
@@ -384,7 +385,7 @@ export function parseAnswer(result: string, scope: AskScope): ParsedAnswer | nul
     return null;
   }
   if (!isObj(value) || typeof value.reply !== 'string') return null;
-  const actions = value.actions === undefined ? [] : value.actions;
+  const actions = value.actions ?? [];
   if (!Array.isArray(actions)) return null;
   const cards: AskCard[] = [];
   let dropped = Math.max(0, actions.length - ASK_CARDS_MAX);

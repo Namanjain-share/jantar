@@ -34,7 +34,7 @@ const one = (raw: unknown, s = scope()) => readAction(raw, s);
 const answer = (actions: unknown[], reply = 'ok') => JSON.stringify({ reply, actions });
 
 describe('the answer', () => {
-  it('one JSON object, or inside one code fence; actions left out are none; other keys ignored', () => {
+  it('one JSON object, or inside one code fence; actions left out or null are none; other keys ignored', () => {
     expect(parseAnswer(answer([{ type: 'todo', title: 'Call the bank' }]), scope())).toEqual({
       reply: 'ok',
       cards: [{ action: { type: 'todo', title: 'Call the bank' }, state: 'proposed' }],
@@ -42,6 +42,7 @@ describe('the answer', () => {
     });
     expect(parseAnswer('```json\n{"reply":"hi","actions":[]}\n```', scope())).toEqual({ reply: 'hi', cards: [], dropped: 0 });
     expect(parseAnswer('  {"reply":"hi","mood":"good"}  ', scope())).toEqual({ reply: 'hi', cards: [], dropped: 0 });
+    expect(parseAnswer('{"reply":"Nothing to add.","actions":null}', scope())).toEqual({ reply: 'Nothing to add.', cards: [], dropped: 0 });
   });
 
   it('anything else is unreadable (null)', () => {
