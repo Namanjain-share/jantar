@@ -440,8 +440,11 @@ an idea with no text, notes or link) with its prompt moved to
 `assets/ask/assistant-v2.md`. The v1 copy a daemon left in
 `<state dir>/ask/` stays (Rewrite's `prepareRunDir` owns that folder). No
 jantar.db migration, no settings version and no protocol bump
-(`PROTOCOL_VERSION` 3). Tests: `packages/protocol/test/v07-posts.test.ts`,
+(`PROTOCOL_VERSION` 3). The first load stays under `MAIN_JS_MAX` at
+272.9 kB in 14 chunks, and Posts pulls in 45.4 kB. Tests:
+`packages/protocol/test/v07-posts.test.ts`,
 `packages/daemon/test/life/posts{,-pings}.test.ts`,
-`packages/cli/test/post.test.ts`, `packages/web/test/posts.test.tsx`, Ask's
-post card in `packages/daemon/test/ask/` and `packages/web/test/ask.test.tsx`,
-end to end in `test/integration/v07-posts.integration.test.ts`.
+`packages/cli/test/post.test.ts`, `packages/web/test/posts.test.tsx`,
+Ask's post card in `packages/daemon/test/ask/` and
+`packages/web/test/ask.test.tsx`, end to end in
+`test/integration/v07-posts.integration.test.ts`.
