@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.5.3 (unreleased)
+## 0.5.3 (1 November 2026)
 
 - **Ask**, a chat page on the phone, right after Today. Tell it what to
   add in plain words ("todo add call the bank", "remind me at 6 to take my
