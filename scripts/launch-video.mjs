@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 // The launch film and the README's GIF, from synthetic data only:
 //
-//   docs/brand/launch.mp4         1920 x 1080, 30 fps, 53 s, H.264 (High, yuv420p, bt709, faststart), no sound
-//   docs/brand/launch.webm        the same in VP9
-//   docs/brand/launch-poster.jpg  the film's frame at POSTER_AT, 1920 x 1080
-//   docs/brand/demo.gif           1280 x 720, 15 fps, 14 s, a loop of the same story for the README
+//   docs/brand/launch.mp4                1920 x 1080, 30 fps, 53 s, H.264 (High, yuv420p, bt709, faststart), no sound
+//   docs/brand/launch.webm               the same in VP9
+//   docs/brand/launch-poster.jpg         the film's frame at POSTER_AT, 1920 x 1080
+//   docs/brand/launch-narrow.mp4         the phone cut: 1080 x 1920, the same scenes and words, one panel at a time
+//   docs/brand/launch-narrow.webm        the same in VP9
+//   docs/brand/launch-narrow-poster.jpg  its frame at POSTER_AT, 1080 x 1920
+//   docs/brand/demo.gif                  1280 x 720, 15 fps, 14 s, a loop of the same story for the README
+//   docs/brand/demo-narrow.gif           720 x 900, the same loop for the README on a phone
+//
+// The site plays the wide film on a wide screen and the phone cut on a
+// narrow one (each viewer loads one); the README picks its GIF the same way.
+// On a phone the wide film is a 358 px box with 9 px captions; the narrow
+// cut's captions are 64 px of 1080, about 21 px there.
 //
 // Every product screen is a capture of the BUILT web app (packages/web/dist)
 // served the synthetic film fixture (test/integration/web-fixture-film.ts),
@@ -21,13 +30,14 @@
 // master. No network, no dependency beyond playwright-core and ffmpeg.
 //
 // Usage (after `pnpm build`):
-//   node scripts/launch-video.mjs [--only film|gif] [--out DIR] [--work DIR] [--reuse]
+//   node scripts/launch-video.mjs [--only film,gif,film-narrow,gif-narrow] [--out DIR] [--work DIR] [--reuse]
 //                                 [--from S3 --to S4] [--frames DIR] [--check]
 //
-// --out     where the four files go (default docs/brand)
+// --only    which of the four to render (a comma list; default all)
+// --out     where the files go (default docs/brand)
 // --work    the folder for captures and masters (default: a new temp folder)
 // --reuse   take the captures already in --work (stage changes only)
-// --from/--to  render only those scenes at the film's size, to --work/preview.mp4
+// --from/--to  render only those scenes, to --work/preview.mp4 (the phone cut with --only film-narrow)
 // --frames  also write key frames of what was encoded, and a contact sheet, as PNGs there
 // --check   validate the script (scenes, captions, captures) and render nothing
 //
@@ -37,7 +47,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MARK_RECTS, WORDS, fontFaces, tokens } from './brand.mjs';
 import { sidOf } from './screenshots.mjs';
@@ -48,18 +58,34 @@ const CHILD_ENV = 'JANTAR_LAUNCH_VIDEO_CHILD';
 const STAGE_DIR = join(here, 'launch-video');
 
 export const FILM = { width: 1920, height: 1080, fps: 30, seconds: 53 };
+/** The phone cut: the same scenes and seconds, portrait, a phone's full screen when it plays full screen. */
+export const FILM_NARROW = { width: 1080, height: 1920, fps: 30, seconds: FILM.seconds };
 /** The GIF's layout is 960 x 540 CSS px, drawn at `scale` (1280 x 720 pixels: sharp when GitHub shows it on a retina screen). */
 export const GIF = { width: 960, height: 540, scale: 4 / 3, fps: 15, seconds: 14 };
+/** The README's GIF on a phone: a 1080 x 1350 layout drawn at 2/3 (720 x 900 pixels), the same cut and seconds. */
+export const GIF_NARROW = { width: 1080, height: 1350, scale: 2 / 3, fps: GIF.fps, seconds: GIF.seconds };
+
+/** What each layout draws (stage.js reads `layout`), at which size, into which files. */
+export const LAYOUTS = {
+  film: { size: FILM, files: ['mp4', 'webm', 'poster'] },
+  'film-narrow': { size: FILM_NARROW, files: ['mp4Narrow', 'webmNarrow', 'posterNarrow'] },
+  gif: { size: GIF, files: ['gif'] },
+  'gif-narrow': { size: GIF_NARROW, files: ['gifNarrow'] },
+};
 
 /** The files this script writes, relative to the repository. */
 export const OUT = {
   mp4: 'docs/brand/launch.mp4',
   webm: 'docs/brand/launch.webm',
   poster: 'docs/brand/launch-poster.jpg',
+  mp4Narrow: 'docs/brand/launch-narrow.mp4',
+  webmNarrow: 'docs/brand/launch-narrow.webm',
+  posterNarrow: 'docs/brand/launch-narrow-poster.jpg',
   gif: 'docs/brand/demo.gif',
+  gifNarrow: 'docs/brand/demo-narrow.gif',
 };
 
-/** Size limits: the site's film (MP4, WebM and poster together) and the README's GIF. */
+/** Size limits: each cut of the site's film (its MP4, WebM and poster together), and each of the README's GIFs. */
 export const LIMITS = { site: 6 * 1024 * 1024, gif: 8 * 1024 * 1024, captionChars: 44, captionLines: 2 };
 
 /** The film's frame the poster is: the card on the phone beside the same prompt on the Mac. */
@@ -96,7 +122,10 @@ export const SHOTS = [
     ready: (page) => page.getByText('pnpm prisma migrate reset --force').first().waitFor(),
     boxes: { back: (page) => page.getByRole('button', { name: 'Back to the board' }) },
   },
+  // The board as api-server runs each command of the run, so it can follow the Terminal.
   { name: 'board-answered', path: '/', stage: 'answered', size: PHONE, ready: (page) => page.getByText('2 need you').first().waitFor() },
+  { name: 'board-migrating', path: '/', stage: 'migrating', size: PHONE, ready: (page) => page.getByText('2 need you').first().waitFor() },
+  { name: 'board-testing', path: '/', stage: 'testing', size: PHONE, ready: (page) => page.getByText('2 need you').first().waitFor() },
   { name: 'board-done', path: '/', stage: 'done', size: PHONE, ready: (page) => page.getByText('2 need you').first().waitFor() },
   { name: 'board-done-desktop', path: '/', stage: 'done', size: DESKTOP, ready: (page) => page.getByText('2 need you').first().waitFor() },
   {
@@ -124,7 +153,7 @@ export const SCENES = [
     start: 0,
     end: 7,
     product: true,
-    what: 'The problem: twelve Claude Code tabs in Terminal; one of them waits on a Bash prompt.',
+    what: 'Twelve Claude Code tabs in Terminal. The front tab moves along them to api-server, which waits on a Bash prompt to run pnpm prisma migrate reset --force.',
     kicker: 'Terminal.app · 12 tabs',
     captions: [
       { from: 0.6, to: 3.9, lines: ['Twelve Claude Code sessions.', 'Which one is waiting on you?'] },
@@ -137,7 +166,7 @@ export const SCENES = [
     start: 7,
     end: 12,
     product: true,
-    what: "The phone gets a push with the daemon's own words: api-server needs you, and the command.",
+    what: "The phone gets a push in the daemon's own words, api-server needs you, with the command. A tap on it.",
     kicker: 'jantar hooks install --apply',
     captions: [{ from: 7.6, to: 11.8, lines: ['Your phone tells you which one,', 'and what it wants to run.'] }],
     shots: [],
@@ -147,7 +176,7 @@ export const SCENES = [
     start: 12,
     end: 19,
     product: true,
-    what: 'The card on the phone beside the same prompt in Terminal; a tap on Yes; the prompt goes and the command runs.',
+    what: "The same prompt on the phone, as a card with Claude's options as buttons. A tap on Yes, and in Terminal the prompt goes and the command runs.",
     captions: [
       { from: 12.4, to: 15.8, lines: ['The same prompt, on your phone.', 'Answer it there.'] },
       { from: 16.2, to: 18.8, lines: ['The answer goes back', 'through Claude Code itself.'] },
@@ -159,19 +188,19 @@ export const SCENES = [
     start: 19,
     end: 26,
     product: true,
-    what: 'Terminal prints the run; the board moves api-server from working to your turn.',
+    what: "Terminal prints the run: the reset, a migration and the tests. The board follows it, then moves api-server to your turn with Claude's reply.",
     captions: [
       { from: 19.5, to: 22.6, lines: ['The session carries on.'] },
       { from: 23.2, to: 25.8, lines: ['When it finishes, the board says so.'] },
     ],
-    shots: ['board-answered', 'board-done'],
+    shots: ['board-answered', 'board-migrating', 'board-testing', 'board-done'],
   },
   {
     id: 'S5',
     start: 26,
     end: 32,
     product: true,
-    what: "Accounts: each account's 5-hour use against the ceiling and when it resets.",
+    what: "Accounts on the phone: each account's 5-hour use against the ceiling and when it resets. One account's row is marked.",
     kicker: 'jantar accounts · cswap optional',
     captions: [{ from: 26.6, to: 31.6, big: true, lines: ['One Claude login, or many with cswap.', "Each one's use, and when it resets."] }],
     shots: ['accounts'],
@@ -181,7 +210,7 @@ export const SCENES = [
     start: 32,
     end: 38,
     product: true,
-    what: 'The board on the Mac beside the board on the phone.',
+    what: 'The same board in a browser on the Mac and on the phone, the sessions that need you first.',
     kicker: 'jantar open',
     captions: [{ from: 32.6, to: 37.6, lines: ['Every session on one board, on the Mac too.', 'The ones that need you first.'] }],
     shots: ['board-done-desktop', 'board-done'],
@@ -191,7 +220,7 @@ export const SCENES = [
     start: 38,
     end: 43,
     product: true,
-    what: "A meeting's summary, decisions and action items.",
+    what: "A meeting's summary, decisions and action items on the phone.",
     kicker: 'jantar meetings on',
     captions: [{ from: 38.5, to: 42.6, big: true, lines: ['Meet and Teams notes from live captions.', 'A summary after the call. No audio.'] }],
     shots: ['meeting'],
@@ -201,7 +230,7 @@ export const SCENES = [
     start: 43,
     end: 47,
     product: true,
-    what: 'Today: two medicines due at 13:00 and the todos due.',
+    what: "Today on the phone: two medicines due at 13:00 and the day's todos.",
     kicker: 'jantar life on medicines todos',
     captions: [{ from: 43.4, to: 46.6, big: true, lines: ['A small life list beside the board.', 'Off until you switch it on.'] }],
     shots: ['today'],
@@ -211,7 +240,7 @@ export const SCENES = [
     start: 47,
     end: 53,
     product: false,
-    what: 'The end card: the mark, the name, the line, the site, the license and version, and "Example data throughout".',
+    what: "The end card: Jantar's mark and name, its line, the site's address, the license and version, and Example data throughout.",
     captions: [],
     shots: [],
   },
@@ -337,7 +366,10 @@ function parseArgs(argv) {
     else if (a === '--check') out.check = true;
     else fail(`unknown argument ${a}`);
   }
-  if (out.only && !['film', 'gif'].includes(out.only)) fail('--only takes film or gif');
+  const kinds = Object.keys(LAYOUTS);
+  out.only = out.only ? out.only.split(',').map((x) => x.trim()) : null;
+  for (const o of out.only ?? []) if (!kinds.includes(o)) fail(`--only takes ${kinds.join(', ')} (a comma list)`);
+  if ((out.from || out.to) && out.only && (out.only.length !== 1 || !out.only[0].startsWith('film'))) fail('--from/--to take one film: --only film or --only film-narrow');
   if ((out.from || out.to) && !SCENES.some((s) => s.id === (out.from ?? out.to))) fail(`--from/--to take a scene id (${SCENES.map((s) => s.id).join(', ')})`);
   if (out.reuse && !out.work) fail('--reuse needs --work (the folder that holds the captures)');
   return out;
@@ -548,7 +580,7 @@ function stageFiles(work, manifest, layout, version) {
   }
   const data = {
     layout,
-    size: layout === 'gif' ? GIF : FILM,
+    size: LAYOUTS[layout].size,
     scenes: SCENES,
     cut: GIF_CUT,
     shots,
@@ -655,7 +687,7 @@ function encodeGif(ffmpeg, master, out, colors) {
   );
 }
 
-const size = (f) => (existsSync(f) ? statSync(f).size : 0);
+const statSize = (f) => (existsSync(f) ? statSync(f).size : 0);
 
 /** Key frames of what was encoded, and a contact sheet (one frame a second), as PNGs in `dir`. */
 function writeFrames(ffmpeg, dir, { mp4, gif, film, cut }) {
@@ -681,7 +713,41 @@ function writeFrames(ffmpeg, dir, { mp4, gif, film, cut }) {
   log(`  frames in ${dir}`);
 }
 
+/** Key frames of a narrow render, named after its wide twin's (film-narrow-14.0.png). */
+function writeNarrowFrames(ffmpeg, dir, { mp4, gif, film, cut }) {
+  mkdirSync(dir, { recursive: true });
+  const at = (file, t, name) => ffmpegSync(ffmpeg, ['-ss', t.toFixed(3), '-i', file, '-frames:v', '1', join(dir, name)], `frame ${name}`);
+  if (mp4 && existsSync(mp4)) {
+    const times = [];
+    for (const s of film) {
+      times.push(s.start + 0.2);
+      for (const c of s.captions) times.push((c.from + c.to) / 2);
+    }
+    times.push(POSTER_AT, 11.6, 15.5, 16.4, 21.2, 23.6, 28.4, 35.8, 47.6, 52.9);
+    for (const t of [...new Set(times.map((x) => Math.round(x * 10) / 10))].sort((a, b) => a - b)) at(mp4, t, `film-narrow-${t.toFixed(1).padStart(4, '0')}.png`);
+    ffmpegSync(ffmpeg, ['-i', mp4, '-vf', 'fps=1,scale=270:-1,tile=9x6', '-frames:v', '1', join(dir, 'contact-film-narrow.png')], 'narrow contact sheet');
+  }
+  if (gif && existsSync(gif)) {
+    const times = [0.1];
+    for (const g of cut) for (const c of g.captions) times.push((c.from + c.to) / 2);
+    times.push(7.6, 7.95, 8.1, 11.0, 11.6, 13.3, 13.95);
+    for (const t of times) at(gif, t, `gif-narrow-${t.toFixed(2).padStart(5, '0')}.png`);
+    ffmpegSync(ffmpeg, ['-i', gif, '-vf', 'fps=2,scale=240:-1,tile=7x4', '-frames:v', '1', join(dir, 'contact-gif-narrow.png')], 'narrow gif contact sheet');
+  }
+}
+
 // ---------------------------------------------------------------------------
+
+/**
+ * The crf ladders: each file's crf raised until it fits its share of the
+ * cut's 6 MB. The phone cut gets less, since a phone loads it over a mobile
+ * connection (and only one of its MP4 and WebM).
+ */
+const MB = 1024 * 1024;
+const BUDGET = {
+  film: { mp4: { crfs: [24, 26, 28, 30], max: 3.2 * MB }, webm: { crfs: [34, 37, 40, 44], max: 2.4 * MB } },
+  'film-narrow': { mp4: { crfs: [26, 28, 30, 32], max: 2.5 * MB }, webm: { crfs: [37, 40, 43, 46], max: 1.8 * MB } },
+};
 
 async function main(opts) {
   const problems = checkScript();
@@ -709,54 +775,69 @@ async function main(opts) {
   const { chromium } = await import('playwright-core');
   const browser = await chromium.launch();
   const made = {};
+  const wants = (layout) => !opts.only || opts.only.includes(layout);
+  const file = (k) => join(opts.out, basename(OUT[k]));
   try {
     const preview = opts.from || opts.to;
-    if (!opts.only || opts.only === 'film' || preview) {
-      log(preview ? '2. preview' : '2. the film');
-      const files = stageFiles(work, manifest, 'film', version);
-      const { ctx, page } = await openStage(browser, files, FILM);
+    for (const layout of ['film', 'film-narrow']) {
+      if (!wants(layout) || (preview && layout === 'film-narrow' && !opts.only)) continue;
+      const size = LAYOUTS[layout].size;
+      const [kMp4, kWebm, kPoster] = LAYOUTS[layout].files;
+      log(preview ? `2. preview (${layout})` : `2. ${layout}`);
+      const files = stageFiles(work, manifest, layout, version);
+      const { ctx, page } = await openStage(browser, files, size);
       try {
-        const first = opts.from ? Math.round(SCENES.find((s) => s.id === opts.from).start * FILM.fps) : 0;
-        const last = opts.to ? Math.round(SCENES.find((s) => s.id === opts.to).end * FILM.fps) : FILM.seconds * FILM.fps;
-        const master = join(work, preview ? 'preview.mkv' : 'film.mkv');
-        await renderMaster(ffmpeg, page, { fps: FILM.fps, first, last, file: master, label: 'film' });
+        const first = opts.from ? Math.round(SCENES.find((s) => s.id === opts.from).start * size.fps) : 0;
+        const last = opts.to ? Math.round(SCENES.find((s) => s.id === opts.to).end * size.fps) : size.seconds * size.fps;
+        const master = join(work, preview ? 'preview.mkv' : `${layout}.mkv`);
+        await renderMaster(ffmpeg, page, { fps: size.fps, first, last, file: master, label: layout });
         if (preview) {
           const out = join(work, 'preview.mp4');
           encodeMp4(ffmpeg, master, out, 20);
-          log(`  ${out}  ${mb(size(out))}`);
-          if (opts.frames) writeFrames(ffmpeg, opts.frames, { mp4: out, film: SCENES.filter((s) => s.start * FILM.fps >= first && s.end * FILM.fps <= last).map((s) => ({ ...s, start: s.start - first / FILM.fps, captions: s.captions.map((c) => ({ ...c, from: c.from - first / FILM.fps, to: c.to - first / FILM.fps })) })), cut: [] });
+          log(`  ${out}  ${mb(statSize(out))}`);
+          const shifted = SCENES.filter((s) => s.start * size.fps >= first && s.end * size.fps <= last).map((s) => ({
+            ...s,
+            start: s.start - first / size.fps,
+            captions: s.captions.map((c) => ({ ...c, from: c.from - first / size.fps, to: c.to - first / size.fps })),
+          }));
+          if (opts.frames) (layout === 'film' ? writeFrames : writeNarrowFrames)(ffmpeg, opts.frames, { mp4: out, film: shifted, cut: [] });
           return;
         }
         mkdirSync(opts.out, { recursive: true });
-        made.mp4 = join(opts.out, 'launch.mp4');
-        made.webm = join(opts.out, 'launch.webm');
-        made.poster = join(opts.out, 'launch-poster.jpg');
-        encodePoster(ffmpeg, master, made.poster, Math.round(POSTER_AT * FILM.fps));
-        // Each file in its share of the 6 MB, the crf raised until it fits.
-        for (const crf of [24, 26, 28, 30]) {
-          encodeMp4(ffmpeg, master, made.mp4, crf);
-          if (size(made.mp4) <= 3.2 * 1024 * 1024) break;
+        made[kMp4] = file(kMp4);
+        made[kWebm] = file(kWebm);
+        made[kPoster] = file(kPoster);
+        encodePoster(ffmpeg, master, made[kPoster], Math.round(POSTER_AT * size.fps));
+        const budget = BUDGET[layout];
+        for (const crf of budget.mp4.crfs) {
+          encodeMp4(ffmpeg, master, made[kMp4], crf);
+          log(`  ${basename(made[kMp4])} crf ${crf}: ${kb(statSize(made[kMp4]))}`);
+          if (statSize(made[kMp4]) <= budget.mp4.max) break;
         }
-        for (const crf of [34, 37, 40, 44]) {
-          encodeWebm(ffmpeg, master, made.webm, crf, work);
-          if (size(made.webm) <= 2.4 * 1024 * 1024) break;
+        for (const crf of budget.webm.crfs) {
+          encodeWebm(ffmpeg, master, made[kWebm], crf, work);
+          log(`  ${basename(made[kWebm])} crf ${crf}: ${kb(statSize(made[kWebm]))}`);
+          if (statSize(made[kWebm]) <= budget.webm.max) break;
         }
       } finally {
         await ctx.close();
       }
     }
-    if (!opts.only || opts.only === 'gif') {
-      log('3. the GIF');
-      const files = stageFiles(work, manifest, 'gif', version);
-      const { ctx, page } = await openStage(browser, files, GIF);
+    for (const layout of ['gif', 'gif-narrow']) {
+      if (!wants(layout) || preview) continue;
+      const size = LAYOUTS[layout].size;
+      const [kGif] = LAYOUTS[layout].files;
+      log(`3. ${layout}`);
+      const files = stageFiles(work, manifest, layout, version);
+      const { ctx, page } = await openStage(browser, files, size);
       try {
-        const master = join(work, 'gif.mkv');
-        await renderMaster(ffmpeg, page, { fps: GIF.fps, first: 0, last: GIF.seconds * GIF.fps, file: master, label: 'gif' });
+        const master = join(work, `${layout}.mkv`);
+        await renderMaster(ffmpeg, page, { fps: size.fps, first: 0, last: size.seconds * size.fps, file: master, label: layout });
         mkdirSync(opts.out, { recursive: true });
-        made.gif = join(opts.out, 'demo.gif');
-        for (const colors of [192, 128, 96, 64]) {
-          encodeGif(ffmpeg, master, made.gif, colors);
-          if (size(made.gif) <= 5 * 1024 * 1024) break;
+        made[kGif] = file(kGif);
+        for (const colors of [128, 96, 64]) {
+          encodeGif(ffmpeg, master, made[kGif], colors);
+          if (statSize(made[kGif]) <= 1.5 * 1024 * 1024) break;
         }
       } finally {
         await ctx.close();
@@ -766,13 +847,22 @@ async function main(opts) {
     await browser.close().catch(() => undefined);
   }
 
-  // Gates: the site's film in 6 MB, the GIF in 8 MB.
-  const site = size(made.mp4 ?? '') + size(made.webm ?? '') + size(made.poster ?? '');
-  for (const f of Object.values(made)) log(`  ${shown(f)}  ${kb(size(f))}`);
-  if (made.mp4) log(`  film total ${mb(site)} (limit ${mb(LIMITS.site)})`);
-  if (opts.frames) writeFrames(ffmpeg, opts.frames, { mp4: made.mp4, gif: made.gif, film: SCENES, cut: GIF_CUT });
-  if (made.mp4 && site > LIMITS.site) fail(`the film's files are ${mb(site)}, over ${mb(LIMITS.site)}`, 1);
-  if (made.gif && size(made.gif) > LIMITS.gif) fail(`the GIF is ${mb(size(made.gif))}, over ${mb(LIMITS.gif)}`, 1);
+  // Gates: each cut of the film in 6 MB, each GIF in 8 MB.
+  for (const f of Object.values(made)) log(`  ${shown(f)}  ${kb(statSize(f))}`);
+  const over = [];
+  for (const layout of ['film', 'film-narrow']) {
+    const keys = LAYOUTS[layout].files;
+    if (!keys.every((key) => made[key])) continue;
+    const total = keys.reduce((n, key) => n + statSize(made[key]), 0);
+    log(`  ${layout} total ${mb(total)} (limit ${mb(LIMITS.site)})`);
+    if (total > LIMITS.site) over.push(`${layout}'s files are ${mb(total)}, over ${mb(LIMITS.site)}`);
+  }
+  for (const key of ['gif', 'gifNarrow']) if (made[key] && statSize(made[key]) > LIMITS.gif) over.push(`${shown(made[key])} is ${mb(statSize(made[key]))}, over ${mb(LIMITS.gif)}`);
+  if (opts.frames) {
+    writeFrames(ffmpeg, opts.frames, { mp4: made.mp4, gif: made.gif, film: SCENES, cut: GIF_CUT });
+    writeNarrowFrames(ffmpeg, opts.frames, { mp4: made.mp4Narrow, gif: made.gifNarrow, film: SCENES, cut: GIF_CUT });
+  }
+  if (over.length) fail(over.join('; '), 1);
   log('Review every frame by eye before committing: example data only, and every word true of this version.');
 }
 

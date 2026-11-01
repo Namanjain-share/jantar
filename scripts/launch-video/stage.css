@@ -234,7 +234,7 @@ body {
 .tap {
   border-radius: 50%;
   border: var(--tap-border) solid var(--t-ink);
-  box-shadow: 0 0 0 2px rgb(5 8 18 / 0.6), inset 0 0 0 2px rgb(5 8 18 / 0.6);
+  box-shadow: 0 0 0 3px rgb(5 8 18 / 0.7), inset 0 0 0 3px rgb(5 8 18 / 0.7);
 }
 .tap i {
   position: absolute;
@@ -288,4 +288,68 @@ body {
 }
 .end .foot {
   font-size: var(--end-foot);
+}
+.end .nw {
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- narrow (portrait) */
+/* One panel at a time in a view above the captions (stage.js narrowLayout).
+   The Terminal window gets a title bar with the front tab's name, tabs that
+   truncate, and lines that wrap at its width; the captions wrap too. */
+.stage.narrow .titlebar {
+  position: relative;
+  height: var(--title-h);
+  background: var(--t-hover);
+  border-bottom: 1px solid var(--t-line);
+}
+.stage.narrow .titlebar span {
+  right: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 var(--title-size) / 1 'Archivo Variable', sans-serif;
+  color: var(--t-ink);
+  white-space: nowrap;
+}
+.stage.narrow .tab {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.stage.narrow .tab span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stage.narrow .tab .lit {
+  right: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stage.narrow .tbody {
+  top: calc(var(--title-h) + var(--tab-h));
+}
+.stage.narrow .page .ln {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.stage.narrow .page .rl {
+  white-space: pre;
+  overflow: hidden;
+}
+.stage.narrow .cap {
+  width: var(--cap-w);
+}
+.stage.narrow .cap .line {
+  white-space: normal;
+  text-wrap: balance;
+}
+.stage.narrow .end .tag,
+.stage.narrow .end .meta {
+  max-width: var(--end-w);
+  white-space: normal;
+  text-align: center;
+  text-wrap: balance;
 }

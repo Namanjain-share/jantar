@@ -168,8 +168,11 @@ browser's clock on one Friday afternoon, and writes
 `-desktop-dark` for the screens that ask for those sizes. `--list` prints
 the file names, `--only` takes screen or file names. `brand.mjs` draws
 `docs/brand/` (the logo, the README banner and the social preview) from the
-tokens, the app's own fonts and those pictures; it runs offline. Look at
-every picture before you commit it.
+tokens, the app's own fonts and those pictures; it runs offline.
+`launch-video.mjs` renders the site's film, wide and as a portrait cut for
+phones, and the README's two GIFs from the film fixture
+(`test/integration/web-fixture-film.ts`); `--frames DIR` writes key frames
+to look at. Look at every picture and frame before you commit it.
 
 A new screen goes in the script's `SHOTS` list (with its sizes, and the
 fixture if it needs data). Pages refer to pictures relative to themselves

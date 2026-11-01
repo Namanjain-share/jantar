@@ -2,10 +2,11 @@
 // The launch film and the README's GIF (scripts/launch-video.mjs), without
 // rendering anything: the scenes and their words keep the site's copy rules
 // and say only what this version does, every capture a scene shows is taken,
-// the stage loads nothing from a network, and the committed files in
-// docs/brand are the right kind, size and shape (MP4 with its index first,
-// WebM, a 1920 x 1080 poster, a looping GIF), within the site's 6 MB and
-// GitHub's 8 MB. Rendering needs a Chromium, ffmpeg and a built web app:
+// the stage loads nothing from a network, the phone cut's words are large
+// enough to read on a phone, and the committed files in docs/brand are the
+// right kind, size and shape (MP4s with their index first, WebMs, a 1920 x
+// 1080 and a 1080 x 1920 poster, two looping GIFs), each cut within the
+// site's 6 MB and each GIF within GitHub's 8 MB. Rendering needs a Chromium, ffmpeg and a built web app:
 // node scripts/launch-video.mjs.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -13,7 +14,7 @@ import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { FILM, GIF, GIF_CUT, LIMITS, OUT, POSTER_AT, SCENES, SHOTS, SITE_HOST, checkScript, cliCommands, endCard, readVersion } from './launch-video.mjs';
+import { FILM, FILM_NARROW, GIF, GIF_CUT, GIF_NARROW, LAYOUTS, LIMITS, OUT, POSTER_AT, SCENES, SHOTS, SITE_HOST, checkScript, cliCommands, endCard, readVersion } from './launch-video.mjs';
 
 const script = join(dirname(fileURLToPath(import.meta.url)), 'launch-video.mjs');
 const repo = join(dirname(script), '..');
@@ -24,7 +25,7 @@ test('the script as written passes its own checks', () => {
   assert.deepEqual(checkScript(), []);
   const r = spawnSync(process.execPath, [script, '--check'], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /9 scenes \(53 s\), 6 GIF parts \(14 s\)/);
+  assert.match(r.stdout, /9 scenes \(53 s\), 6 GIF parts \(14 s\), 10 captures/);
 });
 
 test('the checks catch broken words, gaps and missing captures', () => {
@@ -86,11 +87,34 @@ test('every capture is of the real app on the film fixture, at night, phone or d
   for (const s of SHOTS) {
     assert.ok(!names.has(s.name), `${s.name} twice`);
     names.add(s.name);
-    assert.ok(['before', 'answered', 'done'].includes(s.stage), s.name);
+    assert.ok(['before', 'answered', 'migrating', 'testing', 'done'].includes(s.stage), s.name);
     assert.ok([390, 1440].includes(s.size.width), s.name);
     assert.equal(s.size.scale, 2, s.name);
   }
   for (const s of SCENES) for (const n of s.shots) assert.ok(names.has(n), `${s.id}: ${n}`);
+});
+
+test("the phone cut tells the same story at the same times, in words a phone can read", () => {
+  // The same scenes and seconds, so the site can swap one cut for the other mid-play.
+  assert.equal(FILM_NARROW.seconds, FILM.seconds);
+  assert.equal(FILM_NARROW.fps, FILM.fps);
+  assert.ok(FILM_NARROW.height > FILM_NARROW.width, 'portrait');
+  assert.deepEqual([GIF_NARROW.seconds, GIF_NARROW.fps], [GIF.seconds, GIF.fps]);
+  assert.ok(GIF_NARROW.height > GIF_NARROW.width, 'portrait');
+  assert.deepEqual(Object.keys(LAYOUTS).sort(), ['film', 'film-narrow', 'gif', 'gif-narrow']);
+  for (const { files } of Object.values(LAYOUTS)) for (const k of files) assert.ok(OUT[k], k);
+  // Shown 358 px wide (a 390 px phone less the page's gutters): captions of 64 px and a rail of 28 px or more read at about 21 and 9 px.
+  const js = readFileSync(join(stageDir, 'stage.js'), 'utf8');
+  const narrow = js.slice(js.indexOf('function narrowLayout()'), js.indexOf('const L = NARROW'));
+  const px = (name) => Number(new RegExp(`'${name}': '([\\d.]+)px'`).exec(narrow)?.[1]);
+  const shown = (v) => (v * 358) / FILM_NARROW.width;
+  assert.ok(px('--cap-size') >= 64 && shown(px('--cap-size')) >= 21, `captions ${px('--cap-size')} px`);
+  assert.ok(px('--cap-big-size') >= 64, `big captions ${px('--cap-big-size')} px`);
+  assert.ok(px('--rail-size') >= 28 && shown(px('--rail-size')) >= 9, `rail ${px('--rail-size')} px`);
+  assert.ok(px('--kicker-size') >= 28, `kicker ${px('--kicker-size')} px`);
+  assert.ok(px('--term-size') >= 24, `Terminal text ${px('--term-size')} px`);
+  // The GIF is drawn from the same layout at its scale: at 358 px its captions too stay over 20 px.
+  assert.ok((px('--cap-size') * GIF_NARROW.scale * 358) / (GIF_NARROW.width * GIF_NARROW.scale) >= 21);
 });
 
 test('the stage loads nothing from a network and runs on no clock', () => {
@@ -138,25 +162,38 @@ function jpegSize(buf) {
   throw new Error('no frame header');
 }
 
-test('the film: an H.264 MP4 with its index first, a VP9 WebM and a 1920 x 1080 poster, 6 MB in all', { skip: !have && 'not rendered yet' }, () => {
-  const mp4 = readFileSync(file('mp4'));
+/** A cut of the film: an H.264 MP4 with its index first and no sound, a VP9 WebM and a poster of the cut's size, 6 MB in all. */
+function checkCut([kMp4, kWebm, kPoster], size) {
+  const mp4 = readFileSync(file(kMp4));
   const top = boxes(mp4);
   assert.equal(top[0], 'ftyp');
   assert.ok(top.indexOf('moov') >= 0 && top.indexOf('moov') < top.indexOf('mdat'), `faststart: moov before mdat (${top.join(' ')})`);
   assert.ok(mp4.includes(Buffer.from('avc1')), 'H.264');
   assert.ok(!mp4.includes(Buffer.from('soun')), 'no sound track');
-  const webm = readFileSync(file('webm'));
+  const webm = readFileSync(file(kWebm));
   assert.equal(webm.readUInt32BE(0), 0x1a45dfa3, 'EBML');
   assert.ok(webm.includes(Buffer.from('webm')) && webm.includes(Buffer.from('V_VP9')), 'VP9 in WebM');
-  assert.deepEqual(jpegSize(readFileSync(file('poster'))), { width: FILM.width, height: FILM.height });
-  const total = ['mp4', 'webm', 'poster'].reduce((n, k) => n + statSync(file(k)).size, 0);
-  assert.ok(total <= LIMITS.site, `the film's files are ${total} bytes, over ${LIMITS.site}`);
+  assert.deepEqual(jpegSize(readFileSync(file(kPoster))), { width: size.width, height: size.height });
+  const total = [kMp4, kWebm, kPoster].reduce((n, k) => n + statSync(file(k)).size, 0);
+  assert.ok(total <= LIMITS.site, `${OUT[kMp4]} and the rest are ${total} bytes, over ${LIMITS.site}`);
+}
+
+test('the film: an H.264 MP4 with its index first, a VP9 WebM and a 1920 x 1080 poster, 6 MB in all', { skip: !have && 'not rendered yet' }, () => {
+  checkCut(LAYOUTS.film.files, FILM);
 });
 
-test("the README's GIF: 1280 x 720, looping, under 8 MB", { skip: !have && 'not rendered yet' }, () => {
-  const gif = readFileSync(file('gif'));
-  assert.equal(gif.toString('latin1', 0, 6), 'GIF89a');
-  assert.deepEqual([gif.readUInt16LE(6), gif.readUInt16LE(8)], [Math.round(GIF.width * GIF.scale), Math.round(GIF.height * GIF.scale)]);
-  assert.ok(gif.includes(Buffer.from('NETSCAPE2.0')), 'loops');
-  assert.ok(gif.length <= LIMITS.gif, `${gif.length} bytes, over ${LIMITS.gif}`);
+test('the phone cut: the same, 1080 x 1920, 6 MB in all, and lighter than the wide film', { skip: !have && 'not rendered yet' }, () => {
+  checkCut(LAYOUTS['film-narrow'].files, FILM_NARROW);
+  const bytes = (keys) => keys.reduce((n, k) => n + statSync(file(k)).size, 0);
+  assert.ok(bytes(['mp4Narrow', 'webmNarrow']) < bytes(['mp4', 'webm']), 'a phone loads less than a wide screen');
+});
+
+test("the README's GIFs: 1280 x 720 and 720 x 900, looping, each under 8 MB", { skip: !have && 'not rendered yet' }, () => {
+  for (const [k, size] of [['gif', GIF], ['gifNarrow', GIF_NARROW]]) {
+    const gif = readFileSync(file(k));
+    assert.equal(gif.toString('latin1', 0, 6), 'GIF89a', k);
+    assert.deepEqual([gif.readUInt16LE(6), gif.readUInt16LE(8)], [Math.round(size.width * size.scale), Math.round(size.height * size.scale)], k);
+    assert.ok(gif.includes(Buffer.from('NETSCAPE2.0')), `${k} loops`);
+    assert.ok(gif.length <= LIMITS.gif, `${k}: ${gif.length} bytes, over ${LIMITS.gif}`);
+  }
 });
