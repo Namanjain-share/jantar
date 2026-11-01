@@ -337,6 +337,8 @@ describe('v0.5.3: searching', () => {
     const mark = document.querySelector('main mark') as HTMLElement;
     expect(mark.className).toContain('bg-select');
     expect(mark.className).toContain('text-ink');
+    // The calm background alone hardly shows (about 1.1:1): an underline does.
+    expect(mark.className).toContain('underline');
     // The daemon ranks: the phone asks with no sort of its own.
     expect(api.intelList).toHaveBeenCalledWith({ q: 'hook', type: undefined, tag: undefined, limit: 50 });
     a.unmount();

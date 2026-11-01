@@ -26,7 +26,7 @@
  *   the places past the fifth tab and opens them.
  * - v0.5.3: the phone header's magnifier opens the shelf with its search box
  *   focused; words list the best match first with the words marked, and ×
- *   clears the search.
+ *   clears the search. Devices with its Sounds section (a lazy chunk).
  * - In grayscale, the five dose states (taken, skipped, overdue, due,
  *   pending) still read apart by glyph and words.
  * - Focus: Tab walks each screen in document order over visible, named
@@ -557,6 +557,13 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     expect(await box.inputValue()).toBe('');
     expect(await box.evaluate((el) => el === document.activeElement)).toBe(true);
     expect(await page.locator('mark').count()).toBe(0);
+  });
+
+  it('v0.5.3: Devices with the Sounds section, its own chunk, in each view', async () => {
+    await inEachView('/devices', async (page) => {
+      await page.getByRole('group', { name: 'Tones' }).waitFor();
+      await page.getByRole('combobox', { name: 'Tone for Answer soon' }).waitFor();
+    });
   });
 
   it("the phone's tabs: Today is current on a Life screen, and More holds the rest and opens them", async () => {

@@ -9,12 +9,13 @@ import type { IntelListItem } from '@jantar/protocol';
 import { Link } from '../../shell/Link.js';
 import { marks, shelfDate, shelfPath, type ShelfFilters } from './model.js';
 
+/** --select alone is about 1.1:1 on the page: the underline is what shows. */
 function Marked({ text, terms }: { text: string; terms: readonly string[] }) {
   return (
     <>
       {marks(text, terms).map((p, i) =>
         p.hit ? (
-          <mark key={i} className="rounded-chip bg-select text-ink">
+          <mark key={i} className="rounded-chip bg-select text-ink underline decoration-line-strong decoration-2 underline-offset-2">
             {p.text}
           </mark>
         ) : (
