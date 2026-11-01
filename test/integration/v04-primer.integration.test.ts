@@ -15,7 +15,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { claudeCalls, defaultAccounts, type FakeHome } from '@jantar/fixtures';
+import { claudeCalls, defaultAccounts, perfBudgetMs, type FakeHome } from '@jantar/fixtures';
 import type { StateResponse } from '@jantar/protocol';
 import { primeArgv } from '@jantar/daemon/primer/rules';
 import { callDaemon, createCtlClient, defaultDeps, main, memoryIo, type CtlClient } from '../../packages/cli/src/index.js';
@@ -45,11 +45,11 @@ describe('the window primer in jantard', () => {
     d = await bootDaemon({ home: { accounts: accounts(), sessions: [] } });
     ctl = createCtlClient(d.ctx.paths.ctlSock);
     await eventually(() => callDaemon(ctl, 'GET', '/healthz'), 10_000, 'the control socket');
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('primes nothing while off', async () => {
     expect(await primerState()).toMatchObject({ by: 'off', running: null, last: null });
@@ -81,7 +81,7 @@ describe('the window primer in jantard', () => {
     expect(shown.out).toContain('Last prime: account 2');
     // The run's reply never reaches the log.
     expect(d.log.records.some((r) => JSON.stringify(r).includes('Reply with only'))).toBe(false);
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 });
 
 describe('the window primer under --read-only', () => {
@@ -89,11 +89,11 @@ describe('the window primer under --read-only', () => {
 
   beforeAll(async () => {
     d = await bootDaemon({ home: { accounts: accounts(), sessions: [] }, readOnly: true, settings: { accounts: { prime: true } } });
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('says off and runs nothing', async () => {
     const ctl = createCtlClient(d.ctx.paths.ctlSock);

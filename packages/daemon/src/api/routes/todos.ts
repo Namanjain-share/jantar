@@ -3,13 +3,17 @@
  * Device routes only, never on ctl.sock. Each calls `s.deps.life.todos`
  * (life/todos/module.ts).
  *
+ * The one exception (v0.5.3): folderTodos and folderTodoCreate, ctl.sock
+ * only (localOnly), for `jantar mcp`: the open todos of the project linked
+ * to a folder, and a todo added to it.
+ *
  * The pipeline has already checked control scope, the switch and a broken
  * life.db, and validated the strict bodies. Write replies carry ids only
  * (`lifeValue` turns a LifeResult into the value or the API error); the
  * audit records the target id and nothing else (`lifeAudit`). The pipeline
  * has counted every write against s.lifeWriteLimiter already.
  */
-import type { ProjectBody, ProjectPatch, SnoozeBody, TodoBody, TodoDoneBody, TodoPatch, TodosQuery } from '@jantar/protocol';
+import type { FolderTodoBody, FolderTodosQuery, ProjectBody, ProjectPatch, SnoozeBody, TodoBody, TodoDoneBody, TodoPatch, TodosQuery } from '@jantar/protocol';
 import { lifeAudit, lifeValue, needActor, type Call, type RouteTable } from '../route-kit.js';
 
 type Id = { id: string };
@@ -71,6 +75,15 @@ export const TODOS_ROUTE_IMPLS: RouteTable = {
       lifeValue(s.deps.life.todos.removeTodo(c.params.id, needActor(c.auth)));
       return OK;
     },
+    audit: lifeAudit,
+  },
+
+  // v0.5.3, ctl.sock only (wave 0: the module's stubs; the Life package adds s.folderTodoLimiter).
+  folderTodos: {
+    handle: (c: Call<Id, FolderTodosQuery>, s) => s.deps.life.todos.forFolder(c.query.folder),
+  },
+  folderTodoCreate: {
+    handle: (c: Call<Id, unknown, FolderTodoBody>, s) => lifeValue(s.deps.life.todos.createInFolder(c.body, needActor(c.auth))),
     audit: lifeAudit,
   },
 };

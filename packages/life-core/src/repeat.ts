@@ -2,13 +2,16 @@
  * A repeating todo's next day.
  *
  * A repeat is protocol's `RepeatSchema`: every day, every week on chosen
- * weekdays (none chosen = the due day's weekday), or every month on its
- * `byMonthDay` (none = the due day's date). It is a strict subset of
+ * weekdays (none chosen = the due day's weekday), every month on its
+ * `byMonthDay` (none = the due day's date), or (v0.5.3) every year on the
+ * due day's month and its `byMonthDay`. It is a strict subset of
  * Noblot's recurrence rule, so the day walk is `computeNextRunAt`'s, run in
  * UTC over day keys (no zone can move a calendar day). Month ends clamp and
  * recover: a todo on the 31st repeats on 28 Feb, then on 31 Mar, as long as
  * the 31st is kept in `byMonthDay` (the daemon sets it from the first due
- * day; the due day itself is the 28th by then).
+ * day; the due day itself is the 28th by then). A yearly 29 Feb falls on
+ * 28 Feb in other years and comes back to the 29th in a leap year. The
+ * repeat's `at` (the series' time of day) is the daemon's: ignored here.
  */
 import type { RecurrenceRule } from './recurrence-rule.js';
 import { computeNextRunAt } from './recurrence.js';
@@ -16,14 +19,14 @@ import { dayKeyOf, shiftDay, weekdayOf } from './tz.js';
 
 /** = protocol `Repeat`. */
 export interface RepeatLike {
-  freq: 'daily' | 'weekly' | 'monthly';
+  freq: 'daily' | 'weekly' | 'monthly' | 'yearly';
   /** Weekly only: 0 = Sunday ... 6 = Saturday. Absent = the anchor day's weekday. */
   byWeekday?: readonly number[];
-  /** Monthly only: the date, 1 to 31. Absent = the anchor day's date. */
+  /** Monthly or yearly only: the date, 1 to 31. Absent = the anchor day's date. */
   byMonthDay?: number;
 }
 
-/** The rule `computeNextRunAt` walks for a repeat anchored on `anchorDay` (its weekday, and its date unless `byMonthDay` names one). */
+/** The rule `computeNextRunAt` walks for a repeat anchored on `anchorDay` (its weekday, its month, and its date unless `byMonthDay` names one). */
 export function repeatRule(repeat: RepeatLike, anchorDay: string): RecurrenceRule {
   switch (repeat.freq) {
     case 'daily':
@@ -36,6 +39,8 @@ export function repeatRule(repeat: RepeatLike, anchorDay: string): RecurrenceRul
       };
     case 'monthly':
       return { freq: 'monthly', interval: 1, byMonthDay: repeat.byMonthDay ?? Number(anchorDay.slice(8, 10)) };
+    case 'yearly':
+      return { freq: 'yearly', interval: 1, byMonth: Number(anchorDay.slice(5, 7)), byMonthDay: repeat.byMonthDay ?? Number(anchorDay.slice(8, 10)) };
   }
 }
 

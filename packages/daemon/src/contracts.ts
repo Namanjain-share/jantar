@@ -35,6 +35,8 @@ import type {
   FoodEstimate,
   FoodPatch,
   FoodTargetsBody,
+  FolderTodoBody,
+  FolderTodosResponse,
   IntelCaptureBody,
   IntelItem,
   IntelListQuery,
@@ -123,6 +125,7 @@ import type {
   Scope,
   SendJob,
   SendOrigin,
+  Session,
   SessionDialogBody,
   SessionKeypadBody,
   SessionNow,
@@ -905,11 +908,28 @@ export interface Notification {
    * read-only device never gets a medicine or a bill.
    */
   minScope?: Scope;
+  /**
+   * v0.5.3: Claude's countdown runs out then (ISO); urgent group, TTL from it.
+   * Only on a `permission` push (protocol alertGroupOf).
+   */
+  deadline?: string;
 }
 
 export interface Notifier {
+  /** v0.5.3: unchanged (a Pushover channel is not in this release). */
   readonly channel: 'webpush' | 'mac' | 'telegram';
-  send(n: Notification): Promise<{ delivered: number; failed: number }>;
+  /** `offline` (v0.5.3): failures where the push never left the Mac: DNS or connect. */
+  send(n: Notification): Promise<{ delivered: number; failed: number; offline?: number }>;
+}
+
+/**
+ * v0.5.3: finds a session's terminal pane (api/services.ts PaneLookup: a 5 s
+ * cache, one lookup per session at a time, 'timeout' after
+ * PANE_LOOKUP_TIMEOUT_MS). daemon.ts builds one and gives it to the API and
+ * to the notification router (the countdown probe), so both share it.
+ */
+export interface PaneFinder {
+  find(session: Session): Promise<Pane | null | 'timeout'>;
 }
 
 /** Subscribes to the bus; applies kinds, mute, settle delay and 10/30 min reminders; fans out. */
@@ -1444,6 +1464,15 @@ export interface TodosModule extends LifeModule {
   setDone(id: string, done: boolean, actor: Actor): LifeResult;
   snooze(id: string, preset: SnoozePreset, actor: Actor): LifeResult;
   removeTodo(id: string, actor: Actor): LifeResult;
+  /**
+   * v0.5.3 (`jantar mcp` over ctl.sock): the project whose folder holds
+   * `folder` (protocol projectFor, the deepest wins; a project linked to `/`,
+   * `/Users` or the home folder only for exactly that folder) and its open
+   * todos; project null and no todos when none.
+   */
+  forFolder(folder: string): FolderTodosResponse;
+  /** v0.5.3: add a todo to that project; not_found (TODO_REASONS.noFolderProject) when none. */
+  createInFolder(body: FolderTodoBody, actor: Actor): LifeResult<{ id: string }>;
 }
 
 /** Medicines (WP-MD). */
@@ -1551,8 +1580,11 @@ export interface LifeModuleBuilders {
 export interface IntelService extends Service {
   list(q: IntelListQuery): IntelListResponse;
   get(id: string): IntelItem | null;
-  /** A url already on the shelf answers its id with `duplicate: true` and writes nothing. */
-  capture(body: IntelCaptureBody, from: { via: 'phone' | 'cli'; cwd?: string }): Promise<LifeResult<{ id: string; duplicate: boolean }>>;
+  /**
+   * A url already on the shelf answers its id with `duplicate: true` and
+   * writes nothing. v0.5.3: `via: 'claude'` for what `jantar mcp` saves.
+   */
+  capture(body: IntelCaptureBody, from: { via: 'phone' | 'cli' | 'claude'; cwd?: string }): Promise<LifeResult<{ id: string; duplicate: boolean }>>;
   sources(): IntelSourcesResponse['sources'];
 }
 
@@ -1858,6 +1890,11 @@ export interface Factories {
   intel: Factory<IntelService, { files: FilesService }>;
   /** v0.5 (WP0's shell; the builders are WP-MS's and WP-SU's). `life`: projects and todos; `usage` and `ccwLegacy`: the summary's account. */
   meetings: Factory<MeetingsService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
-  notifications: Factory<NotificationRouter, { notifiers: Notifier[] }>;
+  /**
+   * v0.5.3: `terminal` and `panes` (the API's PaneLookup, shared) let the
+   * router read Claude's countdown off an unattended ask's screen; it only
+   * reads (never types, no writer lock).
+   */
+  notifications: Factory<NotificationRouter, { notifiers: Notifier[]; terminal: TerminalBackend; panes: PaneFinder }>;
   api: Factory<ApiServer, Omit<Parts, 'api' | 'notifications'>>;
 }

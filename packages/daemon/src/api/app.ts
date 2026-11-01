@@ -170,6 +170,10 @@ export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<RouteName, string>>> = 
   lifeRestore: 'Restore Life on the Mac: jantar life restore <file>',
   extPairStart: 'Pair the extension on the Mac: jantar pair --extension',
   extUnpair: 'Unpair on the Mac: jantar meetings unpair',
+  // v0.5.3
+  folderTodos: "Only the Mac's CLI adds a todo by folder",
+  folderTodoCreate: "Only the Mac's CLI adds a todo by folder",
+  notifyTest: 'Test alerts on the Mac: jantar notify test',
 };
 
 /** What an `extension` route answers without a valid extension key (401). */
@@ -185,11 +189,21 @@ export const EXTENSION_ORIGIN = `chrome-extension://${EXTENSION_ID}`;
  * Body fields only the Mac's CLI may send (v0.4): over TCP a body carrying
  * one is a 400 before any handler, an admin device included. intelCapture's
  * `cwd` is the folder of the session or shell that ran `jantar intel`; a
- * phone has no folder to claim.
+ * phone has no folder to claim. v0.5.3: its `via: 'claude'` marks what
+ * `jantar mcp` saved; a phone cannot claim to be a Claude session.
  */
 export const CTL_ONLY_FIELDS: Readonly<Partial<Record<RouteName, readonly string[]>>> = {
-  intelCapture: ['cwd'],
+  intelCapture: ['cwd', 'via'],
 };
+
+/**
+ * v0.5.3: the one line every screenshot upload logs (info), refusals
+ * included: the gate's 401, 403 and 429, the schema's 400, the Meetings
+ * switch's 403 and the 413 are all answered before the handler runs, so the
+ * line comes from onResponse. Codes only: the status and the request's
+ * Content-Length, never a name, a path, a client id or a body.
+ */
+export const SHOT_UPLOAD_LOG = 'meetings: screenshot upload';
 
 /**
  * Whether a route's switch is on (routes without one are always on). Read
@@ -766,6 +780,11 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
 
   // Route pattern and status only: never bodies, query strings or cookies.
   app.addHook('onResponse', async (req, reply) => {
+    if (req.routeOptions?.url === ROUTES.extMeetingShot.path) {
+      const bytes = Number(headerValue(req.headers['content-length']));
+      s.log.info(SHOT_UPLOAD_LOG, { status: reply.statusCode, ...(Number.isSafeInteger(bytes) && bytes >= 0 ? { bytes } : {}) });
+      return;
+    }
     s.log.debug('request', {
       transport,
       method: req.method,

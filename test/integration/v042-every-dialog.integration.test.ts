@@ -28,7 +28,7 @@
  * minute per device, and this file sends about three times that.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DIALOG_FIXTURES, DIALOG_SECRET, NOT_DIALOG_SCREENS, SAMPLE_TEXT, withGates, type DialogFixture } from '@jantar/fixtures';
+import { DIALOG_FIXTURES, DIALOG_SECRET, NOT_DIALOG_SCREENS, SAMPLE_TEXT, perfBudgetMs, withGates, type DialogFixture } from '@jantar/fixtures';
 import { rawExpect, readDialog } from '@jantar/daemon/terminal/dialog';
 import {
   DEVICE_COOKIE,
@@ -135,11 +135,11 @@ describe('v0.4.2: every dialog fixture answered through the daemon, with the gua
       rememberSecret(phone, claim.body);
       phones.push(phone);
     }
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('has fixtures of every kind, with and without buttons', () => {
     expect(new Set(withButtons.map((f) => shipped(f).expected.dialog?.kind))).toEqual(new Set(['permission', 'plan', 'question', 'multi', 'review']));
@@ -177,7 +177,7 @@ describe('v0.4.2: every dialog fixture answered through the daemon, with the gua
         expect(r.body as SessionDialogResponse, `${f.name} ${i}`).toEqual({ outcome: 'done', dialog: null });
         expect(writes().slice(before), `${f.name} ${i}`).toEqual([{ tty: TTY, mode: 'typeif', bytes, expected: blockOf(f.screen), out: 'ok' }]);
       }
-    }, 60_000);
+    }, perfBudgetMs(60_000));
   }
 
   it('the guard, on every fixture with buttons: changed between the read and the write, or a stale fingerprint, types nothing', async () => {
@@ -208,7 +208,7 @@ describe('v0.4.2: every dialog fixture answered through the daemon, with the gua
       expect(stale.status, f.name).toBe(409);
       expect(writes().length).toBe(before + 1);
     }
-  }, 120_000);
+  }, perfBudgetMs(120_000));
 
   for (const f of withNote) {
     it(`${f.name}: no buttons, its note; the dialog route answers nothing and the keypad moves and chooses`, async () => {

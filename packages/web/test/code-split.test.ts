@@ -2,8 +2,8 @@
 /**
  * The Files place, the session's Files tab body and New session are their
  * own chunks (wave 2), and v0.4.2's dialog dock and keypad, v0.5's
- * Meetings, and (v0.5.1) a picked file's preparation and the attachment
- * glyphs too: nothing the app's entry imports statically reaches them, so
+ * Meetings, (v0.5.1) a picked file's preparation and the attachment
+ * glyphs, and (v0.5.3) the Screen tab's picture too: nothing the app's entry imports statically reaches them, so
  * Vite cannot fold them back into the main chunk. A static import is
  * `import ... from` or `export ... from` without `type`; `import()` is the
  * split point. The check walks src/ from main.tsx.
@@ -103,6 +103,13 @@ describe('code splitting', () => {
     expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
     expect(readFileSync(join(src, 'ui/screens/session/sends.ts'), 'utf8')).toContain("import('./attach/convert.js')");
     expect(readFileSync(join(src, 'ui/screens/session/attach/glyph.tsx'), 'utf8')).toContain("import('./glyph-icons.js')");
+  });
+
+  it("keeps the Screen tab's picture out of the main chunk (v0.5.3: it loads the first time it shows)", () => {
+    const lazyOnly = ['ui/screens/session/controls/ShotView.tsx', 'ui/screens/session/controls/useShot.ts'];
+    for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
+    expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
+    expect(readFileSync(join(src, 'ui/screens/Session.tsx'), 'utf8')).toContain("import('./session/controls/ShotView.js')");
   });
 
   it('loads them with import(), never a blob: or data: URL', () => {

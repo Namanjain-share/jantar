@@ -59,6 +59,28 @@ export type FromPopup =
 
 export type Done = { ok: boolean; error?: string };
 
+/** v0.5.3: which control asked for a screenshot: the page's camera button, the popup, or the shortcut. */
+export type ShotFrom = 'page' | 'popup' | 'command';
+/** v0.5.3: where a screenshot try ended (`saved`, or the step that stopped it). */
+export type ShotStep = 'saved' | 'unpaired' | 'not-meeting' | 'not-in-call' | 'not-front' | 'grant' | 'chrome' | 'too-large' | 'down' | 'daemon';
+/**
+ * v0.5.3: the last screenshot try, one record for every take (kept in
+ * chrome.storage.session), so the popup can say why one was not saved.
+ * `text` is the flash the bubble showed; `chrome` Chrome's own error
+ * message, cut to 200 characters; `status` the daemon's HTTP status. Never a
+ * URL, a title or an image.
+ */
+export interface LastShot {
+  at: number;
+  from: ShotFrom;
+  tabId: number;
+  ok: boolean;
+  text: string;
+  step: ShotStep;
+  chrome?: string;
+  status?: number;
+}
+
 export interface PopupState {
   connection: 'ok' | 'down' | 'off' | 'unpaired';
   /** The daemon's sentence for 'off' and the problem states. */
@@ -76,4 +98,8 @@ export interface PopupState {
     shots: number;
     captions: CaptionsState | 'unknown';
   };
+  /** v0.5.3: the last screenshot try in any tab (Settings › Last screenshot); null before the first. */
+  lastShot: LastShot | null;
+  /** v0.5.3: the take-screenshot shortcut as Chrome shows it ("⌥⇧S"), '' when unset. */
+  shortcut: string;
 }

@@ -222,12 +222,12 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
     }
     ext = await launchExtension();
     await serveFixtures(ext.context);
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   afterAll(async () => {
     await ext?.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. pairing and the switch', async () => {
     expect(ext.extensionId).toBe(EXTENSION_ID);
@@ -262,7 +262,7 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
     expect(await sheet.locator('#project option').allTextContents()).toEqual(['No project', 'Example hiring', 'Example launch']);
     await sheet.close();
     expect((await list()).meetings).toEqual([]);
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('2. a Meet call: Start with the sheet, captions grow, change and finish as lines, one tick for the open', async () => {
     // The waiting room of another call never shows the button.
@@ -317,7 +317,7 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
 
     expect(ticks() - before).toBe(1);
     expect(await meet.evaluate(() => (window as unknown as { __ccClicks: number }).__ccClicks)).toBe(0);
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('3. screenshots: the page button (not in the picture), the popup, and never another tab in front', async () => {
     const box = (await cameraBox(meet))!;
@@ -362,7 +362,7 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
     await asker.close();
     await ext.worker.evaluate((id) => (globalThis as unknown as { chrome: ChromeLike }).chrome.tabs.remove(id), other);
     await meet.bringToFront();
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('4. Jantar down: the click says so, the page says it waits, and the turns arrive once each after the restart', async () => {
     await d.restart(async () => {
@@ -385,7 +385,7 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
     expect(after.running?.id).toBe(first);
     expect((await detail(first)).shots).toHaveLength(2);
     await cameraUntil(meet, (v) => v.dot, 'notes still on');
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('5. a short gap keeps the meeting; a new Meet code ends it, its summary and todos follow, and the new call has no meeting', async () => {
     await step(meet, 'hooksOff');
@@ -424,7 +424,7 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
     const popup = await openPopup(ext, await tabIdOf(ext, MEET_NEXT), meet);
     await popup.getByRole('button', { name: 'Start notes' }).waitFor();
     await popup.close();
-  }, 120_000);
+  }, perfBudgetMs(120_000));
 
   it('6. Teams under a strict CSP: the button, a shot without it, one line for a remounted turn; End, and closing the tab, end a meeting', async () => {
     const csp: string[] = [];
@@ -480,7 +480,7 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
       return got.meeting.endedAt ? got : null;
     }, 5_000, 'the Teams meeting to end');
     expect(closed.meeting.endReason).toBe('closed');
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('7. a screenshot before Start makes a meeting without notes; Start keeps it; leaving ends it after the grace; lines for a meeting without notes are 409', async () => {
     const live = await meetingPage(TEAMS_LIVE, 'teams-v2');
@@ -523,7 +523,7 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
     const lines = await http(d.port, 'POST', `/v1/ext/meetings/${client}/lines`, { ...ext2, body: { lines: [{ lineId: 'abcdefgh-1', rev: 1, speaker: 'Sam', text: 'Not kept.', at: Date.now() }] } });
     expect(lines.status, lines.text).toBe(409);
     await live.close();
-  }, 180_000);
+  }, perfBudgetMs(180_000));
 
   it('8. Not now: the build as you load it, paired, the page button says to click the Jantar icon, and nothing is made', async () => {
     const plain = await launchExtension({ build: 'dist' });
@@ -556,7 +556,7 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
     } finally {
       await plain.close();
     }
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('the sweep: what was typed into the sheet and said in the call is in no event, audit row or log line', async () => {
     // It was in play: the meeting holds it.
@@ -582,5 +582,5 @@ describe.skipIf(!ready)('ext-v05: the real extension, a Meet and a Teams call, a
     const popup = await openPopup(ext, await tabIdOf(ext, MEET_NEXT), meet);
     await view(popup).getByText(BROKEN).waitFor();
     await popup.close();
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 });

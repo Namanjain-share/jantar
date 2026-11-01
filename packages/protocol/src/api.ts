@@ -89,6 +89,9 @@ import {
   FoodEstimateSchema,
   FoodPatchSchema,
   FoodTargetsBodySchema,
+  FolderTodoBodySchema,
+  FolderTodosQuerySchema,
+  FolderTodosResponseSchema,
   IdReplySchema,
   LifeBackupResponseSchema,
   LifeIdParamsSchema,
@@ -128,6 +131,7 @@ import {
   IntelParamsSchema,
   IntelSourcesResponseSchema,
 } from './intel.js';
+import { NotifyTestBodySchema, NotifyTestResponseSchema } from './alerts.js';
 import {
   ClientIdParamsSchema,
   ExtEndBodySchema,
@@ -772,7 +776,7 @@ export interface RouteDef {
    * loopback, with its bound Origin (daemon api/app.ts gate).
    */
   scope: Scope | 'public' | 'extension';
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5';
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3';
   /**
    * While this switch is off the route answers 403 with the sentence that
    * turns it on (screenshots: 403 screenshots_off), before validation and
@@ -1383,6 +1387,24 @@ export const ROUTES = {
   meetingItemUntodo: route({
     method: 'DELETE', path: '/v1/meetings/:id/items/:n/todo', scope: 'control', phase: 'v0.5', ctl: false, feature: 'meetings',
     params: MeetingItemParamsSchema, response: OkReplySchema, summary: 'Remove the todo an action item made (a todo already gone is fine).',
+  }),
+
+  // --- v0.5.3 The Mac only (localOnly): folder todos for `jantar mcp` (the Life project linked to a
+  // session's folder; todo routes were never on ctl.sock before), and a test push per alert group.
+  folderTodos: route({
+    method: 'GET', path: '/v1/folder/todos', scope: 'control', phase: 'v0.5.3', ctl: true, localOnly: true, feature: 'todos',
+    query: FolderTodosQuerySchema, response: FolderTodosResponseSchema,
+    summary: "The open todos of the project linked to a folder (the deepest wins), or project null.",
+  }),
+  folderTodoCreate: route({
+    method: 'POST', path: '/v1/folder/todos', scope: 'control', phase: 'v0.5.3', ctl: true, localOnly: true, feature: 'todos',
+    body: FolderTodoBodySchema, response: IdReplySchema,
+    summary: 'Add a todo to the project linked to a folder (20 an hour from Claude sessions).',
+  }),
+  notifyTest: route({
+    method: 'POST', path: '/v1/notify/test', scope: 'admin', phase: 'v0.5.3', ctl: true, localOnly: true,
+    body: NotifyTestBodySchema, response: NotifyTestResponseSchema,
+    summary: 'One test push of an alert group to every device (jantar notify test [group]).',
   }),
 } as const satisfies Record<string, RouteDef>;
 

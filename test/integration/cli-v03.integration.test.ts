@@ -29,6 +29,7 @@ import {
   completeLaunch,
   launchAccounts,
   parseLaunchCommand,
+  perfBudgetMs,
   type FakeHome,
 } from '@jantar/fixtures';
 import type { OpResult, PaneTarget } from '@jantar/daemon';
@@ -155,11 +156,11 @@ describe('v0.3 CLI commands over the real control socket', () => {
       return r.sessions.some((s) => s.sid === SID);
     }, 15_000, 'the live session');
     phone = await pair('cli phone', ['read', 'control']);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. every switch refusal names a command that turns the feature on', async () => {
     expect(await features()).toMatchObject({ files: false, launch: false, rewrite: false, controls: true, screenshots: false, screenshotSelect: false });
@@ -278,5 +279,5 @@ describe('v0.3 CLI commands over the real control socket', () => {
     expect(sessions.sessions.some((s) => s.cwd === app && s.account === 7)).toBe(true);
     const launches = d.ctx.db.audit.list().filter((a) => a.action === 'launchStart');
     expect(launches.map((a) => a.actor)).toEqual(['cli']);
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 });

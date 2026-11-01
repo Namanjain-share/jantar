@@ -22,7 +22,21 @@
  * - Every write saves, re-arms its ping (pings.ts), then emits life.changed.
  *   Replies carry ids only; refusals are the fixed sentences below.
  */
-import { LIFE_LIMITS, type Project, type ProjectBody, type ProjectPatch, type ProjectView, type Repeat, type SnoozePreset, type Todo, type TodoBody, type TodoPatch, type TodosQuery } from '@jantar/protocol';
+import {
+  LIFE_LIMITS,
+  type FolderTodoBody,
+  type FolderTodosResponse,
+  type Project,
+  type ProjectBody,
+  type ProjectPatch,
+  type ProjectView,
+  type Repeat,
+  type SnoozePreset,
+  type Todo,
+  type TodoBody,
+  type TodoPatch,
+  type TodosQuery,
+} from '@jantar/protocol';
 import { hhmmOf, nextRepeat, shiftMonths, snoozeTarget } from '@jantar/life-core';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule } from '../../contracts.js';
 import { armTodo, todoPingHandler } from './pings.js';
@@ -252,6 +266,16 @@ class Todos implements TodosModule {
     this.core.scheduler.poke();
     this.core.changed();
     return OK;
+  }
+
+  // --- v0.5.3 folder todos (wave 0 stubs; the Life package builds them) -----
+
+  forFolder(_folder: string): FolderTodosResponse {
+    return { today: this.core.today(), project: null, todos: [] };
+  }
+
+  createInFolder(_body: FolderTodoBody, _actor: Actor): LifeResult<{ id: string }> {
+    return refuse('unavailable', 'Not built yet.');
   }
 
   /** Today's part: open todos overdue on `day`, and due that day (repeating ones included). */

@@ -103,6 +103,9 @@ describe('which routes need the device secret', () => {
         'sessionCommand',
         'sessionKey',
         'sessionMode',
+        // v0.5.3 (localOnly: over TCP they are refused anyway, after this check)
+        'folderTodoCreate',
+        'notifyTest',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);

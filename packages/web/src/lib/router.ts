@@ -24,7 +24,8 @@
  *   /food           Food, calories and weight (?day=)
  *   /places         Cafés (?filter=all|tried|want, ?id=)
  *   /money          Finance (?month=YYYY-MM, ?bill=<id>)
- *   /intel          The Intel shelf (?q=, ?type=, ?tag=, ?item=<shelf id>)
+ *   /intel          The Intel shelf (?q=, ?type=, ?tag=, ?item=<shelf id>; v0.5.3
+ *                   ?focus=search, from the header's magnifier, focuses the search box)
  *   /more           The places past the fifth tab
  * v0.5, shown only while Meetings are on:
  *   /meetings       Meetings (?project=<project id>|none, ?q=, ?id=<meeting id> opens one)
@@ -60,7 +61,7 @@ export type Route =
   | { name: 'food'; day?: string }
   | { name: 'places'; filter?: PlacesFilter; id?: string }
   | { name: 'money'; month?: string; bill?: string }
-  | { name: 'intel'; q?: string; type?: string; tag?: string; item?: string }
+  | { name: 'intel'; q?: string; type?: string; tag?: string; item?: string; focus?: 'search' }
   | { name: 'more' }
   // v0.5
   | { name: 'meetings'; project?: string; q?: string; id?: string }
@@ -120,7 +121,14 @@ function lifeRoute(path: string, q: URLSearchParams): Route | null {
     case '/money':
       return defined({ name: 'money' as const, month: matching(q, 'month', MONTH_KEY), bill: matching(q, 'bill', LIFE_ID) });
     case '/intel':
-      return defined({ name: 'intel' as const, q: text(q, 'q', 200), type: text(q, 'type', 40), tag: text(q, 'tag', 40), item: matching(q, 'item', INTEL_ID) });
+      return defined({
+        name: 'intel' as const,
+        q: text(q, 'q', 200),
+        type: text(q, 'type', 40),
+        tag: text(q, 'tag', 40),
+        item: matching(q, 'item', INTEL_ID),
+        focus: q.get('focus') === 'search' ? ('search' as const) : undefined,
+      });
     case '/more':
       return { name: 'more' };
     case '/meetings': {
@@ -275,7 +283,7 @@ export function routePath(r: Route): string {
     case 'money':
       return withQuery('/money', queryOf({ month: r.month, bill: r.bill }));
     case 'intel':
-      return withQuery('/intel', queryOf({ q: r.q, type: r.type, tag: r.tag, item: r.item }));
+      return withQuery('/intel', queryOf({ q: r.q, type: r.type, tag: r.tag, item: r.item, focus: r.focus }));
     case 'more':
       return '/more';
     case 'meetings':

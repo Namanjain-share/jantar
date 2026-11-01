@@ -15,6 +15,7 @@
  *   (TerminalDialog), the dialog, keypad and upload routes, attachments on a
  *   prompt, DIALOG_GATES and the fixed sentences the phone shows
  * - meetings (v0.5): the Chrome extension's captions and screenshots, the meeting library, the Markdown export
+ * - alerts (v0.5.3): the five alert groups, their tones and fixed phrases, the urgent countdown push
  */
 export * from './constants.js';
 export * from './models.js';
@@ -29,3 +30,4 @@ export * from './life.js';
 export * from './intel.js';
 export * from './primer.js';
 export * from './meetings.js';
+export * from './alerts.js';

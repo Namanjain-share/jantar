@@ -55,8 +55,10 @@ const shot = (over: Partial<Screenshot> = {}): Screenshot => ({
 
 const state = (features: Partial<Features> = { screenshots: true }) => stateWith({ sessions: [session('a')], features });
 
-function openScreen() {
+/** The Screen tab, once its picture view has loaded (v0.5.3: its own chunk, the first time it shows). */
+async function openScreen() {
   fireEvent.click(screen.getByRole('tab', { name: 'Screen' }));
+  await screen.findByRole('group', { name: 'Show the screen as' });
   return screen.getByRole('tabpanel', { name: 'Screen' });
 }
 
@@ -67,7 +69,7 @@ describe('the Screen tab with screenshots on (C8)', () => {
   it('shows the picture through an object URL, with the capture time, Refresh and Show on Mac', async () => {
     const api = fakeApi({ screenshot: vi.fn(async () => shot()) });
     renderApp({ path: '/s/a', api, state: state() });
-    const panel = openScreen();
+    const panel = await openScreen();
     // The app's segmented control (32 px, 44 under a coarse pointer), not a look-alike of its own.
     expect(within(panel).getByRole('group', { name: 'Show the screen as' }).className).toMatch(/\bh-32\b.*\bcoarse:h-44\b/);
     expect(picture().getAttribute('aria-pressed')).toBe('true');
@@ -85,7 +87,7 @@ describe('the Screen tab with screenshots on (C8)', () => {
   it('W5: Refresh takes a new picture and revokes the old URL; leaving the tab revokes the last one', async () => {
     const api = fakeApi({ screenshot: vi.fn(async () => shot()) });
     const { unmount } = renderApp({ path: '/s/a', api, state: state() });
-    const panel = openScreen();
+    const panel = await openScreen();
     await within(panel).findByRole('img');
     fireEvent.click(within(panel).getByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(within(panel).getByRole('img').getAttribute('src')).toBe('blob:http://127.0.0.1:7420/shot-2'));
@@ -99,7 +101,7 @@ describe('the Screen tab with screenshots on (C8)', () => {
   it('says it is taking the first picture while the request is out', async () => {
     const api = fakeApi({ screenshot: vi.fn(() => new Promise<Screenshot>(() => undefined)) });
     renderApp({ path: '/s/a', api, state: state() });
-    const panel = openScreen();
+    const panel = await openScreen();
     expect(await within(panel).findByRole('status', { name: 'Taking a screenshot' })).toBeTruthy();
     expect(within(panel).queryByRole('img')).toBeNull();
     expect((within(panel).getByRole('button', { name: 'Refresh' }) as HTMLButtonElement).disabled).toBe(true);
@@ -114,7 +116,7 @@ describe('the Screen tab with screenshots on (C8)', () => {
       getScreen: vi.fn(async () => ({ text: '> npm test\n  12 passing', lines: 2, at: iso(0), backend: 'terminal-app' })),
     });
     renderApp({ path: '/s/a', api, state: state({ screenshots: true, screenshotSelect: true }) });
-    const panel = openScreen();
+    const panel = await openScreen();
     expect(await within(panel).findByText('Another tab is showing in that window, showing text instead')).toBeTruthy();
     await waitFor(() => expect(within(panel).getByLabelText('Terminal text').textContent).toBe('> npm test\n  12 passing'));
     fireEvent.click(within(panel).getByRole('button', { name: 'Switch tabs for a moment and capture' }));
@@ -127,7 +129,7 @@ describe('the Screen tab with screenshots on (C8)', () => {
     writeLocal(LOCAL_DEVICE_KEY, { id: 'dev-2', name: 'iPad', scopes: ['read'] });
     const api = fakeApi({ screenshot: vi.fn().mockRejectedValue(new ApiError('tab_not_visible', 'another tab is showing in that window', 409)) });
     renderApp({ path: '/s/a', api, state: state({ screenshots: true, screenshotSelect: true }) });
-    const panel = openScreen();
+    const panel = await openScreen();
     await within(panel).findByText('Another tab is showing in that window, showing text instead');
     expect(within(panel).queryByRole('button', { name: /Switch tabs/ })).toBeNull();
     expect(within(panel).getByRole('button', { name: 'Try the picture again' })).toBeTruthy();
@@ -143,7 +145,7 @@ describe('the Screen tab with screenshots on (C8)', () => {
       getScreen: vi.fn(async () => ({ text: '> npm test', lines: 1, at: iso(0), backend: 'terminal-app' })),
     });
     renderApp({ path: '/s/a', api, state: state({ screenshots: true, screenshotSelect: true }) });
-    const panel = openScreen();
+    const panel = await openScreen();
     fireEvent.click(await within(panel).findByRole('button', { name: 'Switch tabs for a moment and capture' }));
     const alert = await within(panel).findByRole('alert');
     expect(alert.textContent).toContain("Couldn't switch tabs: Selecting a background tab for a screenshot is off");
@@ -162,7 +164,7 @@ describe('the Screen tab with screenshots on (C8)', () => {
         .mockRejectedValueOnce(new ApiError('tab_not_visible', 'the Terminal window is minimized or hidden', 409)),
     });
     renderApp({ path: '/s/a', api, state: state() });
-    const panel = openScreen();
+    const panel = await openScreen();
     await within(panel).findByText('Another tab is showing in that window, showing text instead');
     expect(within(panel).queryByRole('button', { name: /Switch tabs/ })).toBeNull();
     fireEvent.click(within(panel).getByRole('button', { name: 'Try the picture again' }));
@@ -177,7 +179,7 @@ describe('the Screen tab with screenshots on (C8)', () => {
         .mockResolvedValueOnce(shot()),
     });
     renderApp({ path: '/s/a', api, state: state() });
-    const panel = openScreen();
+    const panel = await openScreen();
     const alert = await within(panel).findByRole('alert');
     expect(alert.textContent).toContain('The screenshot failed: screencapture could not capture the window');
     expect(alert.className).not.toMatch(/signal/);
@@ -189,7 +191,7 @@ describe('the Screen tab with screenshots on (C8)', () => {
   it('takes no picture offline', async () => {
     const api = fakeApi({ screenshot: vi.fn(async () => shot()) });
     renderApp({ path: '/s/a', api, state: state(), status: 'offline' });
-    const panel = openScreen();
+    const panel = await openScreen();
     expect(within(panel).getByText("Offline: can't take a screenshot right now")).toBeTruthy();
     expect((within(panel).getByRole('button', { name: 'Refresh' }) as HTMLButtonElement).disabled).toBe(true);
     expect(api.screenshot).not.toHaveBeenCalled();
@@ -201,15 +203,14 @@ describe('the Screen tab with screenshots on (C8)', () => {
       getScreen: vi.fn(async () => ({ text: 'plain text', lines: 1, at: iso(0), backend: 'terminal-app' })),
     });
     const first = renderApp({ path: '/s/a', api, state: state() });
-    openScreen();
-    await screen.findByRole('img');
+    await within(await openScreen()).findByRole('img');
     fireEvent.click(textFace());
     expect(textFace().getAttribute('aria-pressed')).toBe('true');
     await waitFor(() => expect(screen.getByLabelText('Terminal text').textContent).toBe('plain text'));
     first.unmount();
     api.screenshot.mockClear();
     renderApp({ path: '/s/a', api, state: state() });
-    openScreen();
+    await openScreen();
     expect(textFace().getAttribute('aria-pressed')).toBe('true');
     await waitFor(() => expect(screen.getByLabelText('Terminal text')).toBeTruthy());
     expect(api.screenshot).not.toHaveBeenCalled();
@@ -220,7 +221,8 @@ describe('the Screen tab with screenshots on (C8)', () => {
   it('is not there while screenshots are off: the Screen tab is the text peek alone', async () => {
     const api = fakeApi();
     renderApp({ path: '/s/a', api, state: state({ screenshots: false }) });
-    openScreen();
+    fireEvent.click(screen.getByRole('tab', { name: 'Screen' }));
+    expect(screen.getByRole('tabpanel', { name: 'Screen' })).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Show the screen as' })).toBeNull();
     expect(api.screenshot).not.toHaveBeenCalled();
   });

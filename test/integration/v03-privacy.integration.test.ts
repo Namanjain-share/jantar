@@ -40,6 +40,7 @@ import {
   launchAccounts,
   markersIn,
   parseLaunchCommand,
+  perfBudgetMs,
   type FakeHome,
 } from '@jantar/fixtures';
 import type { OpResult, PaneTarget, PressKeyOptions } from '@jantar/daemon';
@@ -244,12 +245,12 @@ describe('v0.3 privacy sweep: no dictated text, file content, screen text or sec
       ws.on('error', reject);
     });
     await eventually(async () => frames.some((f) => f.includes('"kind":"snapshot"')), 5_000, 'the snapshot');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     ws?.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. Rewrite: dictated text in, a written prompt read and sent with its job; another job cancelled', async () => {
     const started = await call('POST', `/v1/sessions/${SID}/rewrite`, { text: DICTATED.withMarker });
@@ -275,7 +276,7 @@ describe('v0.3 privacy sweep: no dictated text, file content, screen text or sec
     expect(del.status, del.text).toBe(200);
     expect((del.body as { job: RewriteJob }).job.state).toBe('cancelled');
     await eventually(async () => eventTypes().filter((t) => t === 'rewrite.progress').length >= 4, 5_000, 'rewrite.progress on the stream');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('2. Files: roots, a listing, a text file read, the secret refused', async () => {
     await writeFile(join(cwd, 'NOTES.md'), `# Notes\n\n${FILE_MARKER}\n`);
@@ -352,7 +353,7 @@ describe('v0.3 privacy sweep: no dictated text, file content, screen text or sec
     }, 45_000, 'the launch to be done');
     // The launch window's screens did carry the marker (its top line).
     expect(terminal.launch?.screen()).toContain(SCREEN_MARKER);
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('6. the sweep: no marker in a frame, the ring, the stored events, the audit, a log line, a push, a launch row or a write reply', async () => {
     // Let the last events reach the socket.

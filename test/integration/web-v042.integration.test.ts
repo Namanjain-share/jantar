@@ -33,7 +33,7 @@ import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
-import { SAMPLE_TEXT, dialogFixture, NOT_DIALOG_SCREENS } from '@jantar/fixtures';
+import { SAMPLE_TEXT, dialogFixture, NOT_DIALOG_SCREENS, perfBudgetMs } from '@jantar/fixtures';
 import { dialogOfScreen, rawSlice } from '@jantar/daemon/terminal/dialog';
 import type { PairStartResponse, SessionsResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
@@ -156,13 +156,13 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
       return sids.includes(WAIT) && sids.includes(IDLE);
     }, 15_000, 'the live sessions');
     browser = await chromium.launch();
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   afterAll(async () => {
     for (const c of contexts) await c.close().catch(() => undefined);
     await browser?.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('the plan approval as buttons (phone and desk): Claude\'s three rows, the note field, and a tap that types one guarded Down', async () => {
     const screen = dialogFixture('PLAN_80COL').screen;
@@ -181,7 +181,7 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
       expect(tabs.writesTo(WAIT_TTY).slice(before)).toEqual([{ tty: WAIT_TTY, mode: 'typeif', bytes: ESC_B, expected: blockOf(screen), out: 'ok' }]);
       await check(page, watch, `plan answered ${vp.width}`);
     }
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('a question as buttons: its options, and "Type something…" sends the arrows and the typed answer in one write', async () => {
     const screen = dialogFixture('Q_SINGLE').screen;
@@ -198,7 +198,7 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
     await page.getByRole('group', { name: 'Choices' }).waitFor({ state: 'detached' });
     expect(tabs.writesTo(WAIT_TTY).slice(before)).toEqual([{ tty: WAIT_TTY, mode: 'typeif', bytes: ESC_B.repeat(3) + SAMPLE_TEXT, expected: blockOf(screen), out: 'ok' }]);
     await check(page, watch, 'question answered');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('a screen with no buttons shows the keypad: ↓ then Enter is one guarded write', async () => {
     const form = NOT_DIALOG_SCREENS.MCP_FORM as string;
@@ -219,7 +219,7 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
     expect(w.map((x) => [x.mode, x.bytes, x.out])).toEqual([['typeif', ESC_B, 'ok']]);
     expect(form).toContain(w[0]?.expected ?? '\u0000');
     await check(page, watch, 'keypad sent');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('focus: Tab walks the dock in document order over visible, named stops with a ring (rows, then the keypad)', async () => {
     const { page, watch } = await paired(PHONE, 'focus');
@@ -242,7 +242,7 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
     await expectSaneFocus(page, stops, { what: 'the dock with the keypad' });
     for (const want of ['button Down', 'button Show on Mac']) expect(stops.some((s) => s.what.startsWith(want)), `${want}\n${stops.map((s) => s.what).join('\n')}`).toBe(true);
     await check(page, watch, 'keypad focus walk');
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('the composer: + opens its sheet, a file from the folder goes in by name, a pasted image becomes a chip and goes with Send', async () => {
     const { page, watch } = await paired(PHONE, 'composer');
@@ -290,5 +290,5 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
       `\u001b[200~${['What is in this picture?', '', 'Attached files:', `- "screenshot.png": ${join(d.ctx.paths.uploadsDir, IDLE, stored[0] as string)}`].join('\n')}\u001b[201~`,
     );
     await check(page, watch, 'sent with the chip');
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 });

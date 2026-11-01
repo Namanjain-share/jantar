@@ -94,18 +94,5 @@ export function useProjects(): readonly ProjectView[] {
   return life ? projects : NONE;
 }
 
-/** A project's folder holds `cwd` (the folder itself or anything under it). */
-export function inFolder(cwd: string, folder: string): boolean {
-  if (!folder.startsWith('/')) return false;
-  const base = folder.length > 1 ? folder.replace(/\/+$/, '') : folder;
-  return cwd === base || cwd.startsWith(base === '/' ? '/' : `${base}/`);
-}
-
-/** The project whose folder holds `cwd`; the deepest folder wins when two do. */
-export function projectFor(cwd: string, projects: readonly ProjectView[]): ProjectView | null {
-  let best: ProjectView | null = null;
-  for (const p of projects) {
-    if (p.folder && inFolder(cwd, p.folder) && (!best || (best.folder?.length ?? 0) < p.folder.length)) best = p;
-  }
-  return best;
-}
+/** A project's folder holds `cwd`; the project whose folder holds it, the deepest winning (v0.5.3: protocol's, shared with the daemon's folder todos). */
+export { inFolder, projectFor } from '@jantar/protocol';

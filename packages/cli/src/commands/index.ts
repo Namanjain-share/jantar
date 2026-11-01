@@ -2,7 +2,8 @@
  * The command registry. Each command lives in its own file. The order is
  * the help order: everyday commands, then the v0.3 switches and roots the
  * daemon's "turn it on at your Mac" sentences name, then v0.4's Life, Intel
- * and kept accounts, v0.5's Meetings, then setup.
+ * (v0.5.3: the alert switches and the MCP server after it) and kept
+ * accounts, v0.5's Meetings, then setup.
  */
 import type { Command } from '../command.js';
 import accounts from './accounts.js';
@@ -18,8 +19,10 @@ import install from './install.js';
 import intel from './intel.js';
 import launch from './launch.js';
 import life from './life.js';
+import mcp from './mcp.js';
 import meetings from './meetings.js';
 import newSession from './new.js';
+import notify from './notify.js';
 import open from './open.js';
 import pair from './pair.js';
 import remote from './remote.js';
@@ -46,6 +49,9 @@ export const COMMANDS: readonly Command[] = [
   // v0.4
   life,
   intel,
+  // v0.5.3
+  notify,
+  mcp,
   accounts,
   // v0.5
   meetings,

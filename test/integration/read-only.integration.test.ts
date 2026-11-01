@@ -35,11 +35,11 @@ describe('jantard --read-only --no-terminal', () => {
     cookie = cookieFrom(res, DEVICE_COOKIE) as string;
     expect(cookie).toBeTruthy();
     rememberSecret(cookie, res.body);
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('reports its mode on /ctl/status and in `jantar status`', async () => {
     const st = await callDaemon<{ mode: { readOnly: boolean; terminal: string }; usage: { polling: boolean } }>(ctl, 'GET', '/ctl/status');
@@ -138,7 +138,7 @@ describe('jantard --read-only --no-terminal', () => {
     } finally {
       conn.close();
     }
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('never typed, pressed Enter, focused or ran osascript', async () => {
     expect(d.terminal.events).toEqual({ typed: [], enters: [], focused: [] });
@@ -154,11 +154,11 @@ describe('jantard --no-terminal (not read-only)', () => {
     d = await bootDaemon({ noTerminal: true });
     ctl = createCtlClient(d.ctx.paths.ctlSock);
     await eventually(() => callDaemon(ctl, 'GET', '/healthz'), 10_000, 'the control socket');
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('answers 501 for the screen peek, focus and prompts, and the writer finds no tab', async () => {
     const s = await eventually(async () => {
@@ -179,5 +179,5 @@ describe('jantard --no-terminal (not read-only)', () => {
     }
     expect(d.terminal.events).toEqual({ typed: [], enters: [], focused: [] });
     expect(await d.home.calls('osascript')).toEqual([]);
-  }, 40_000);
+  }, perfBudgetMs(40_000));
 });

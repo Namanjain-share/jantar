@@ -51,6 +51,7 @@ import {
   markersIn,
   medBody,
   moneyBody,
+  perfBudgetMs,
   placeBody,
   projectBody,
   setFakeClaude,
@@ -239,12 +240,12 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
       const sub = await http(d.port, 'POST', '/v1/push/subscribe', { cookie, body: { subscription: { endpoint, keys: KEYS } } });
       expect(sub.status, sub.text).toBe(200);
     }
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     for (const ws of sockets) ws.close();
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. switches: everything off says so; jantar life on over ctl.sock turns the modules on', async () => {
     const off = await call('GET', '/v1/life/today');
@@ -290,7 +291,7 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     expect(bad.status).toBe(502);
     expect((bad.body as { error: { message: string } }).error.message).toBe("Claude couldn't estimate that. Type the calories instead.");
     await setFakeClaude(d.home, { mode: 'food-ok' });
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('3. tomorrow 06:00: a project, todos, two reminders, two medicines and a bill; Today lists them', async () => {
     clock.jumpTo(at(D1, '06:00'));
@@ -326,7 +327,7 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
       expect.objectContaining({ endpoint: PHONE_PUSH, title: 'Todo due', body: 'Tap to open · 08:00', url: `/todos?id=${ids.remind8}`, tag: `life:todo:${ids.remind8}` }),
     );
     expect(pushes.find((p) => p.kind === 'med')).toEqual(expect.objectContaining({ endpoint: PHONE_PUSH, title: 'Medicines due · 2', body: 'Tap to log · 08:00', url: '/today', tag: 'med:08:00' }));
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('5. Today with the medicines due: Taken leaves 9 pills, Skip; Today and the checklist agree', async () => {
     clock.jumpTo(at(D1, '08:05'));
@@ -357,7 +358,7 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     const month = await get<MoneyMonth>(`/v1/money?month=${D1.slice(0, 7)}`);
     expect(month.entries.find((e) => e.id === ids.billPaid)).toMatchObject({ billId: ids.bill, amount: 64900, day: D1 });
     expect(month.bills.find((b) => b.id === ids.bill)?.nextDue).toBe(nextMonthOf(D1));
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('7. the daemon down across 10:00: after the restart the reminder and the refill (10 pills, 5 days) each ring once, "Missed at 10:00"', async () => {
     for (const ws of sockets.splice(0)) ws.close();
@@ -375,7 +376,7 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     expect(caught.find((p) => p.kind === 'med')).toEqual(
       expect.objectContaining({ endpoint: PHONE_PUSH, title: 'Medicine running low', body: 'Missed at 10:00 · Refill soon', url: `/meds?med=${ids.testamol}` }),
     );
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('8. food and weight: the estimate confirmed is 420 kcal, the changes over 7 and 30 days, the target; Today shows them', async () => {
     for (const item of estimated?.items ?? []) await made(`food:${item.name}`, 'POST', '/v1/food', { day: D1, name: item.name, kcal: item.kcal });
@@ -474,7 +475,7 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     const wire = JSON.stringify(await get<IntelSourcesResponse>('/v1/intel/sources'));
     expect(wire).not.toContain(intelPath);
     expect(wire).not.toContain(d.home.home);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('12. a broken life.db: 503 with the sentence, the file untouched, the Board up; jantar life restore brings Life back', async () => {
     const backup = await cli('life', 'backup');
@@ -510,7 +511,7 @@ describe('v0.4 Life and the Intel shelf end to end', () => {
     const back = await get<Today>('/v1/life/today');
     expect(back.food?.kcal).toBe(420);
     expect((await readdir(d.ctx.paths.home)).some((f) => f.startsWith('life.db.before-restore-'))).toBe(true);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('13. everything off again: nothing new is visible, Life status still answers', async () => {
     expect((await cli('life', 'off', 'all')).code).toBe(0);

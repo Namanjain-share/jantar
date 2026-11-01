@@ -2,7 +2,7 @@
  * State shared by the TCP listener and the control socket: device auth,
  * pairing, Origin policy, rate limits, idempotency, audit, open WebSockets,
  * the pane lookup cache and the web app hash; v0.5's extension keys and
- * their limits.
+ * their limits; v0.5.3's folder-todo limit.
  */
 import { DEFAULT_HOST, UPLOADS_IN_FLIGHT, V042_LIMITS, type Pane, type Session } from '@jantar/protocol';
 import type { DaemonContext, Logger, PaneTarget, Parts, TerminalBackend, TimerId, UploadStore } from '../contracts.js';
@@ -17,7 +17,8 @@ import { computeWebHash, webIndexExists } from './static.js';
 import type { DaemonMode } from '../modes.js';
 import { UploadStore as FileUploadStore } from '../uploads/store.js';
 
-export type ApiDeps = Omit<Parts, 'api' | 'notifications'>;
+/** v0.5.3 `panes`: daemon.ts's one PaneLookup, shared with the notification router (else the API builds its own). */
+export type ApiDeps = Omit<Parts, 'api' | 'notifications'> & { panes?: PaneLookup };
 
 /**
  * Audit rows one device may add per window for refused or failed writes and
@@ -80,6 +81,16 @@ export const V05_LIMITS = {
 } as const;
 
 export type V05Limits = { [K in keyof typeof V05_LIMITS]: { limit: number; windowMs: number } };
+
+/**
+ * v0.5.3 limits (key them by `actorName(auth)`; every ctl.sock peer is the
+ * one actor `cli`). Folder todos come from Claude sessions through `jantar
+ * mcp`: a session in bypass mode approves its own MCP writes, and each timed
+ * todo pings the phone. The pipeline's Life write limit applies on top.
+ */
+export const V053_LIMITS = {
+  folderTodo: { limit: 20, windowMs: 60 * 60_000 },
+} as const;
 
 export interface ApiOptions {
   /** TCP port (default settings.remote.port). 0 picks a free port (tests). */
@@ -305,6 +316,8 @@ export class ApiServices {
   /** v0.5 limits per extension (V05_LIMITS). */
   readonly extRequestLimiter: SlidingWindowLimiter;
   readonly extShotBytes: SlidingWindowBudget;
+  /** v0.5.3 (V053_LIMITS): todos added by folder (folderTodoCreate). */
+  readonly folderTodoLimiter: SlidingWindowLimiter;
   readonly sockets = new SocketRegistry();
   readonly panes: PaneLookup;
   readonly log: Logger;
@@ -358,7 +371,8 @@ export class ApiServices {
     const v05 = { ...V05_LIMITS, ...opts.v05Limits };
     this.extRequestLimiter = per(v05.extRequest);
     this.extShotBytes = new SlidingWindowBudget({ ...v05.extShotBytes, clock: ctx.clock });
-    this.panes = new PaneLookup(deps.terminal, ctx, undefined, opts.paneLookupTimeoutMs);
+    this.folderTodoLimiter = per(V053_LIMITS.folderTodo);
+    this.panes = deps.panes ?? new PaneLookup(deps.terminal, ctx, undefined, opts.paneLookupTimeoutMs);
     this.webDist = opts.webDist === undefined ? ctx.paths.webDist : opts.webDist;
     this.webAvailable = !!this.webDist && webIndexExists(this.webDist);
     this.webHash = this.webAvailable && this.webDist ? computeWebHash(this.webDist) : null;

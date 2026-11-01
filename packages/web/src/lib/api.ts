@@ -315,7 +315,8 @@ export interface Api {
   billDelete(id: string, idempotencyKey?: string): Promise<OkReply>;
 
   // --- v0.4 Intel shelf
-  intelList(q?: { q?: string; type?: string; tag?: string; before?: string; limit?: number }): Promise<IntelListResponse>;
+  /** v0.5.3 `sort`: best (the daemon's default with a search) or new. */
+  intelList(q?: { q?: string; type?: string; tag?: string; before?: string; limit?: number; sort?: 'best' | 'new' }): Promise<IntelListResponse>;
   intelGet(id: string): Promise<IntelItemResponse>;
   intelCapture(body: IntelCaptureBody, idempotencyKey?: string): Promise<IntelCaptureReply>;
   intelSources(): Promise<IntelSourcesResponse>;
@@ -639,7 +640,7 @@ export function createApi(opts: ApiOptions = {}): Api {
     billPaid: (id, body = {}, k) => call(ROUTES.billPaid, { params: { id }, body, ...key(k) }),
     billDelete: (id, k) => call(ROUTES.billDelete, { params: { id }, ...key(k) }),
 
-    intelList: (q = {}) => call(ROUTES.intelList, { query: { q: q.q, type: q.type, tag: q.tag, before: q.before, limit: q.limit } }),
+    intelList: (q = {}) => call(ROUTES.intelList, { query: { q: q.q, type: q.type, tag: q.tag, before: q.before, limit: q.limit, sort: q.sort } }),
     intelGet: (id) => call(ROUTES.intelGet, { params: { id } }),
     intelCapture: (body, k) => call(ROUTES.intelCapture, { body, ...key(k) }),
     intelSources: () => call(ROUTES.intelSources),

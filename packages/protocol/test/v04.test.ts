@@ -155,12 +155,12 @@ describe('Life schemas', () => {
     expect(HhMmSchema.safeParse('24:00').success).toBe(false);
   });
 
-  it('a repeat is daily, weekly on chosen days or monthly, and needs a due day', () => {
+  it('a repeat is daily, weekly on chosen days or monthly (v0.5.3: or yearly), and needs a due day', () => {
     expect(RepeatSchema.safeParse({ freq: 'weekly', byWeekday: [1, 3] }).success).toBe(true);
-    for (const r of [{ freq: 'yearly' }, { freq: 'daily', interval: 2 }, { freq: 'weekly', byWeekday: [] }, { freq: 'weekly', byWeekday: [7] }]) {
+    for (const r of [{ freq: 'hourly' }, { freq: 'daily', interval: 2 }, { freq: 'weekly', byWeekday: [] }, { freq: 'weekly', byWeekday: [7] }]) {
       expect(RepeatSchema.safeParse(r).success, JSON.stringify(r)).toBe(false);
     }
-    // byMonthDay keeps a monthly repeat's date (the daemon sets it); only a monthly repeat has one.
+    // byMonthDay keeps a monthly repeat's date (the daemon sets it); only a monthly (v0.5.3: or yearly) repeat has one.
     expect(RepeatSchema.safeParse({ freq: 'monthly', byMonthDay: 31 }).success).toBe(true);
     for (const r of [{ freq: 'weekly', byMonthDay: 3 }, { freq: 'monthly', byMonthDay: 0 }, { freq: 'monthly', byMonthDay: 32 }]) {
       expect(RepeatSchema.safeParse(r).success, JSON.stringify(r)).toBe(false);

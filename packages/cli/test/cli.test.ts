@@ -65,6 +65,24 @@ describe('jantar command line', () => {
     }
   });
 
+  it('registers the v0.5.3 commands after intel, as stubs until their packages land', async () => {
+    const names = COMMANDS.map((c) => c.name);
+    expect(names.slice(names.indexOf('intel'), names.indexOf('intel') + 3)).toEqual(['intel', 'notify', 'mcp']);
+    for (const [name, owner] of [['notify', 'WP-AL'], ['mcp', 'WP-MCP']] as const) {
+      const cmd = COMMANDS.find((c) => c.name === name);
+      expect(cmd?.owner, name).toBe(owner);
+      // Each package's own tests take over once it drops `stub`.
+      if (!cmd?.stub) continue;
+      const help = memoryIo({ HOME: '/nonexistent/jantar-test-home' });
+      expect(await main([name, '--help'], { io: help }), name).toBe(EXIT.ok);
+      expect(help.stdout).toContain(`usage: jantar ${name}`);
+      const run = memoryIo({ HOME: '/nonexistent/jantar-test-home' });
+      expect(await main([name], { io: run }), name).toBe(EXIT.usage);
+      expect(run.stderr).toBe('Not built yet.\n');
+      expect(run.stdout).toBe('');
+    }
+  });
+
   it('rejects unknown commands with usage', async () => {
     const io = memoryIo();
     expect(await main(['frobnicate'], { io })).toBe(EXIT.usage);

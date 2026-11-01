@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DaemonEvent, SendJob } from '@jantar/protocol';
 import type { Notification, Notifier } from '../../src/contracts.js';
-import { createTestContext, type TestContext } from '../../src/core/testing.js';
+import { createTestContext, fakePanes, type TestContext } from '../../src/core/testing.js';
+import { NullTerminalBackend } from '../../src/modes.js';
 import { NotificationRouterImpl, createNotificationRouter, type RoutedNotification } from '../../src/notify/index.js';
 import { makeCard, makeSession } from '../api/fakes.js';
 
@@ -132,7 +133,7 @@ describe('kinds, mute and channels', () => {
 
   it('respects the per-channel switch', async () => {
     const mac = new RecordingNotifier('mac');
-    const r2 = createNotificationRouter(ctx, { notifiers: [mac] });
+    const r2 = createNotificationRouter(ctx, { notifiers: [mac], terminal: new NullTerminalBackend(), panes: fakePanes() });
     await r2.start();
     openCard({ settleUntil: ctx.clock.iso() });
     await tick(3000);

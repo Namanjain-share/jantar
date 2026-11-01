@@ -7,7 +7,7 @@ import clsx from 'clsx';
 import type { Repeat } from '@jantar/protocol';
 import { Segmented } from '../../accounts/Segmented.js';
 
-type Choice = 'never' | 'daily' | 'weekly' | 'monthly';
+type Choice = 'never' | Repeat['freq'];
 
 /** Monday first, as the phone shows them; values are 0 = Sunday ... 6 = Saturday. */
 const WEEKDAYS: readonly { value: number; short: string; name: string }[] = [

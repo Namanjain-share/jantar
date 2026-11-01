@@ -112,6 +112,9 @@ export function createWorker(deps: WorkerDeps): Worker {
       ...head,
       pageButton,
       projects,
+      // v0.5.3 wave 0: the Meetings package reads the last try and the shortcut.
+      lastShot: null,
+      shortcut: '',
       tab: view
         ? {
             site: view.site,
@@ -165,7 +168,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       if (t === 'shot') return { ok: false, text: SHOT.tryAgain } satisfies ShotAnswer;
       return undefined;
     }
-    if (t === 'state') return { connection: 'down', pageButton: false, projects: null, tab: null } satisfies PopupState;
+    if (t === 'state') return { connection: 'down', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '' } satisfies PopupState;
     if (t === 'shot') return { ok: false, text: SHOT.tryAgain } satisfies ShotAnswer;
     return { ok: false, error: TRY_AGAIN } satisfies Done;
   }

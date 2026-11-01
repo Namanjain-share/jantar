@@ -40,6 +40,7 @@ import {
   fileToolResult,
   launchAccounts,
   parseLaunchCommand,
+  perfBudgetMs,
   type FakeHome,
 } from '@jantar/fixtures';
 import type { OpResult, PaneTarget, PressKeyOptions } from '@jantar/daemon';
@@ -192,11 +193,11 @@ describe('v0.3 wave 1 end to end on a synthetic HOME', () => {
     phone = cookieFrom(claim, DEVICE_COOKIE) as string;
     rememberSecret(phone, claim.body);
     cwd = d.home.session(SID).cwd;
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   afterAll(async () => {
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('1. Rewrite: start, a fake claude run on account 7, ready, then sent with its job id', async () => {
     const said = `um basically rename the ${REWRITE_MARKER} helper in send dot ts`;
@@ -232,7 +233,7 @@ describe('v0.3 wave 1 end to end on a synthetic HOME', () => {
 
     expect(JSON.stringify(d.ctx.db.audit.list())).not.toContain(REWRITE_MARKER);
     expect(JSON.stringify(d.log.records)).not.toContain(REWRITE_MARKER);
-  }, 60_000);
+  }, perfBudgetMs(60_000));
 
   it('2. Files: the session root, a listing without the secret, a text file, the secret refused', async () => {
     await writeFile(join(cwd, 'README.md'), '# demo-app\n\nA synthetic project.\n');
@@ -330,7 +331,7 @@ describe('v0.3 wave 1 end to end on a synthetic HOME', () => {
     const sessions = await get<SessionsResponse>('/v1/sessions');
     expect(sessions.sessions.find((s) => s.sid === done.sid)?.account).toBe(7);
     expect(d.ctx.db.audit.list().map((a) => a.action)).toEqual(expect.arrayContaining(['launchStart', 'launchAnswer']));
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('5. Controls: a mode step to plan, an interrupt, and no screenshot while screenshots are off', async () => {
     const mode = await post<{ mode: string; steps: number }>(`/v1/sessions/${SID}/mode`, { mode: 'plan' });

@@ -44,6 +44,7 @@ import {
   launchAccounts,
   medBody,
   moneyBody,
+  perfBudgetMs,
   placeBody,
   projectBody,
   todoBody,
@@ -234,13 +235,13 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     browser = await chromium.launch();
     pages.phone = await paired(PHONE, 'Example phone');
     pages.desk = await paired(DESK, 'Example Mac browser');
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   afterAll(async () => {
     for (const p of Object.values(pages)) await p?.ctx.close().catch(() => undefined);
     await browser?.close().catch(() => undefined);
     await d?.stop();
-  }, 30_000);
+  }, perfBudgetMs(30_000));
 
   it('Today: every section and the push warning; the dose sheet from a row and from a push', async () => {
     await inEachView('/today', async (page) => {
@@ -438,7 +439,7 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     expect(((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length).toBe(before);
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached' });
-  }, 90_000);
+  }, perfBudgetMs(90_000));
 
   it('Cafés and Finance, with their sheets', async () => {
     await inEachView('/places', async (page, what) => {

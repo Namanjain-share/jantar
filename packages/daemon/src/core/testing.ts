@@ -12,6 +12,7 @@ import {
   SettingsSchema,
   defaultSettings,
   type AccountsMode,
+  type Pane,
   type ProjectView,
   type Settings,
   type TodoBody,
@@ -38,6 +39,7 @@ import type {
   MeetingsCore,
   MeetingsService,
   MeetingsStore,
+  PaneFinder,
   Parts,
   Paths,
   PingHandler,
@@ -283,14 +285,17 @@ export class RecordingScheduler implements Scheduler {
   }
 }
 
-/** Records Life pushes for a scheduler or push test; `result` is what each send answers. */
+/**
+ * Records Life pushes for a scheduler or push test; `result` is what each
+ * send answers (v0.5.3: `offline`, the failures that never left the Mac).
+ */
 export interface PushSpy {
   pushes: LifePush[];
-  result: { delivered: number; failed: number };
-  send(p: LifePush): Promise<{ delivered: number; failed: number }>;
+  result: { delivered: number; failed: number; offline?: number };
+  send(p: LifePush): Promise<{ delivered: number; failed: number; offline?: number }>;
 }
 
-export function createPushSpy(result = { delivered: 1, failed: 0 }): PushSpy {
+export function createPushSpy(result: PushSpy['result'] = { delivered: 1, failed: 0 }): PushSpy {
   const spy: PushSpy = {
     pushes: [],
     result,
@@ -300,6 +305,23 @@ export function createPushSpy(result = { delivered: 1, failed: 0 }): PushSpy {
     },
   };
   return spy;
+}
+
+/**
+ * v0.5.3: a PaneFinder for the notification router's tests: answers `pane`
+ * (default: no tab) for every session, and records which sessions it was
+ * asked about, in order.
+ */
+export function fakePanes(pane: Pane | null | 'timeout' = null): PaneFinder & { asked: string[]; pane: Pane | null | 'timeout' } {
+  const panes = {
+    asked: [] as string[],
+    pane,
+    find: async (session: { sid: string }) => {
+      panes.asked.push(session.sid);
+      return panes.pane;
+    },
+  };
+  return panes;
 }
 
 export interface TestLifeCoreOptions {
