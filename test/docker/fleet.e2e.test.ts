@@ -393,6 +393,12 @@ describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
   it("E7: prompts reach Claude byte for byte (a trailing ';', a lone one, 'a\\;' and '#{pane_id}' as typed, two lines as one prompt) and are proven", async () => {
     // tmux reads an argv item ending in ';' as a command separator, and #{…} as a format (S21).
     const texts = ['fix the tests;', ';', 'a\\;', 'show #{pane_id} here', 'first line\nsecond line'];
+    // E6 closed its dialog at the fake; the hub learns it on node1's next read, so a prompt sent at once could
+    // still meet "waiting for an answer" (seen once on a slow runner). Wait until the hub no longer says so.
+    await eventually(async () => {
+      const s = await sessionOf(t.s1);
+      return s && s.status !== 'waiting' ? s : undefined;
+    }, 30_000, "node1's session no longer waiting on the hub");
     for (const text of texts) {
       const job = await prompt(t.s1, { text });
       expect(job.stage, `${text}: ${job.reason ?? ''}`).toBe('proven');
