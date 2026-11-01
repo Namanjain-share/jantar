@@ -38,7 +38,7 @@
 (function jantarHook() {
   'use strict';
 
-  var VERSION = '0.6.1';
+  var VERSION = '0.6.2';
   var TAG = '_jantar';
   var SKIP_ENV = 'JANTAR_SKIP_HOOKS';
   /** The opt-out under the old name: a session started with it stays off the board. */

@@ -136,6 +136,19 @@ describe('proof: accepted forms', () => {
     expect(r.hit?.proof.kind).toBe('user');
   });
 
+  it('a paste Claude Code wraps in <pasted_content> tags (2.1.31x records long pasted prompts this way)', () => {
+    const wrapped = `\n\n<pasted_content id="8fa8">\n${PROMPT}\n</pasted_content id="8fa8">`;
+    expect(compareCandidate(wrapped, expectedPrompt(PROMPT))).toBe('exact');
+    const r = scanForProof(asEntries([userPrompt(ctx(1), wrapped)]), expectedPrompt(PROMPT), opts);
+    expect(r.hit?.proof.kind).toBe('user');
+    expect(r.hit?.merged).toBe(false);
+    // Waiting in the queue, the enqueue carries the same wrapper.
+    const q = scanForProof(asEntries([queueOperation(ctx(2), 'enqueue', wrapped)]), expectedPrompt(PROMPT), opts);
+    expect(q.queued?.proof.kind).toBe('queue-operation');
+    // A draft typed before the paste is still flagged as merged.
+    expect(compareCandidate(`an unsent draft ${wrapped}`, expectedPrompt(PROMPT))).toBe('merged');
+  });
+
   it('a queued_command attachment (typed while Claude was busy)', () => {
     const r = scanForProof(asEntries([queuedCommand(ctx(2), PROMPT)]), expectedPrompt(PROMPT), opts);
     expect(r.hit?.proof.kind).toBe('queued_command');

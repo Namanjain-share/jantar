@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jantar",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Saves Meet and Teams captions and your screenshots to Jantar on your Mac. Summaries send the transcript text to Claude.",
   "homepage_url": "https://github.com/Namanjain-share/jantar/blob/main/docs/extension.md",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwfVgu6Y3YOnNEaVRKzNNmE8TrO091D9VY+P5I1r4VsqslBbnT1SNIK5yFuO1/UNxXonVMw/9ZcG+3aeNk4IlUMGoeLoS/Byrbwft42BTQrEMI70x4M/qVX5+Yap7cVSd1Na0z9RHnkdfBYD4E4VM1YNap2J1RcfoB/EwdstDNt7qcbKYMgL9RrO6Mc/W4xxoL6E24zJYcJ8aYvxJstMeFf5+WhcLmMePAtJNrRQmyyLV6bZwZtMydZiNYACGVMpRYepZJlxql3AF83ZjRDqtljdIsTlPW65qPFlYXBud9HaQN84G6Tt6AlCYLBjjuaDO3c8W7uFxM6Z3VDaksdVgSQIDAQAB",
