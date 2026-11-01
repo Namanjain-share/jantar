@@ -10,6 +10,7 @@
  * - `test [group]`: one test push of an alert group (default needs) to
  *   every device, through the daemon (POST /v1/notify/test, ctl.sock only).
  *   It skips notify.kinds and the mute; each device's own kinds still apply.
+ *   When no device got it, it says why: Web Push off, or no device for it.
  *
  * Switches go through the daemon over ctl.sock (with the daemon down they
  * land in config.json, lib/settings.ts), like `jantar life set`.
@@ -81,7 +82,12 @@ async function test(ctx: CliContext, word: string | undefined): Promise<number> 
   const r = await callDaemon<NotifyTestResponse>(ctx.ctl, 'POST', ROUTES.notifyTest.path, { group }, { idempotencyKey: ctx.deps.randomId() });
   const failed = r.failed > 0 ? ` ${plural(r.failed, 'push', 'pushes')} failed (the daemon log says why).` : '';
   if (r.delivered === 0) {
-    ctx.io.out(`No device got it. A device that turned this kind off in Devices › Notifications gets no test.${failed}\n`);
+    // Why: Web Push off sends to no device at all; else no device turned pushes on, or each dropped this kind.
+    const { settings } = await readSettings(ctx);
+    const why = settings.notify.webpush
+      ? 'Pushes go to each device that turned them on under Devices; one that turned this kind off in Devices › Notifications gets no test.'
+      : 'Web Push to devices is off (see jantar notify).';
+    ctx.io.out(`No device got it. ${why}${failed}\n`);
     return EXIT.failed;
   }
   ctx.io.out(`Sent to ${plural(r.delivered, 'device')}.${failed}\n`);

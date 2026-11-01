@@ -124,7 +124,14 @@ describe('jantar notify test', () => {
     const { ctl } = daemon({}, () => ok({ delivered: 0, failed: 0 }));
     const r = await run(['test', 'done'], ctl);
     expect(r.code).toBe(EXIT.failed);
-    expect(r.out).toBe('No device got it. A device that turned this kind off in Devices › Notifications gets no test.\n');
+    expect(r.out).toBe(
+      'No device got it. Pushes go to each device that turned them on under Devices; one that turned this kind off in Devices › Notifications gets no test.\n',
+    );
+    // Web Push off: that is the reason, not the devices.
+    const { ctl: off } = daemon({ notify: { webpush: false } }, () => ok({ delivered: 0, failed: 0 }));
+    const none = await run(['test'], off);
+    expect(none.code).toBe(EXIT.failed);
+    expect(none.out).toBe('No device got it. Web Push to devices is off (see jantar notify).\n');
   });
 
   it("passes the daemon's refusal on, and needs the daemon", async () => {
