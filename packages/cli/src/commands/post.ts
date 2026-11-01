@@ -7,12 +7,15 @@
  * phone's; ctl.sock has no route for them.
  *
  * `add` checks the body with PostBodySchema first (one plain sentence for
- * the first field that fails, on one line), then its encoded size against
- * the daemon's body limit, and sends nothing when either fails.
- * `--text-file` is read once as UTF-8 (a leading BOM dropped, CRLF made LF);
- * it is a file the user names, so no denylist applies (`--text "$(cat f)"`
- * reads the same). `list` never prints a post's text or notes, except with
- * `--json`, which prints the reply as it came, for scripts.
+ * the first field that fails, on one line), that `--at` names a real day,
+ * then its encoded size against the daemon's body limit, and sends nothing
+ * when any fails. A time already gone in the Life zone is added, and the
+ * line says it will not ring. `--text-file` is read once as UTF-8 (a
+ * leading BOM dropped, CRLF made LF; an empty file is refused); it is a
+ * file the user names, so no denylist applies (`--text "$(cat f)"` reads
+ * the same). `list` never prints a post's text or notes, except with
+ * `--json`, which prints the reply as it came, for scripts; `--done` shows
+ * when each went in the Life zone.
  */
 import { open, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -26,7 +29,8 @@ import {
   POST_WHERE_MAX,
   PostBodySchema,
   ROUTES,
-  postGoalLabel,
+  postGoalLabels,
+  type LifeStatus,
   type Post,
   type PostBody,
   type PostKind,
@@ -42,6 +46,8 @@ import { clip } from '../lib/text.js';
 export const TEXT_FILE_MAX_BYTES = 1024 * 1024;
 const NOTES_MAX = 2000;
 const TITLE_SHOWN = 60;
+/** A time this long gone does not ring (the daemon's LATE_AFTER_MS). */
+const LATE_MS = 120_000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 const n = (v: number) => v.toLocaleString('en-US');
 
@@ -82,6 +88,12 @@ function dueOf(at: string): PostBody['due'] {
   const m = /^(\d{4}-\d{2}-\d{2})(?:[ T]+(\d{2}:\d{2}))?$/.exec(at.trim());
   if (!m) throw new UsageError('--at takes "YYYY-MM-DD HH:MM" or YYYY-MM-DD');
   return m[2] ? { day: m[1] as string, time: m[2] } : { day: m[1] as string };
+}
+
+/** A day key that names a real date (the key's pattern lets 2026-11-31 through). */
+function realDay(day: string): boolean {
+  const [y, m, d] = day.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10) === day;
 }
 
 /** Optional text with its ends trimmed, or undefined when nothing is left (an empty shell variable adds nothing). */
@@ -152,24 +164,40 @@ function dueText(due: Post['due']): string {
   return due ? `${due.day}${due.time ? ` ${due.time}` : ''}` : '-';
 }
 
-/** A local "YYYY-MM-DD HH:MM" for an instant (posted and skipped). */
-function localTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  const p2 = (v: number) => String(v).padStart(2, '0');
-  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+/** "YYYY-MM-DD HH:MM" for an instant in `tz` (the Mac's zone when absent or unknown). */
+function wallTime(ms: number, tz?: string): string {
+  let f: Intl.DateTimeFormat;
+  const opts: Intl.DateTimeFormatOptions = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+  try {
+    f = new Intl.DateTimeFormat('en-CA', { ...opts, timeZone: tz });
+  } catch {
+    f = new Intl.DateTimeFormat('en-CA', opts);
+  }
+  const p = Object.fromEntries(f.formatToParts(ms).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
+/** The Life zone, or undefined when the daemon does not say (the Mac's zone is used). */
+async function lifeZone(ctx: CliContext): Promise<string | undefined> {
+  try {
+    return (await callDaemon<LifeStatus>(ctx.ctl, 'GET', ROUTES.lifeStatus.path)).timezone;
+  } catch {
+    return undefined;
+  }
 }
 
 /** "This week (2 Nov to 8 Nov): 2 posted · Reels 1/3 · Reddit 2/6". */
 export function weekLine(week: PostsResponse['week']): string {
   const posted = week.posted === 0 ? 'nothing posted yet' : `${n(week.posted)} posted`;
-  const goals = week.goals.length === 0 ? 'no weekly goal' : week.goals.map((g) => `${postGoalLabel(g)} ${g.done}/${g.perWeek}`).join(' · ');
+  const names = postGoalLabels(week.goals);
+  const goals = week.goals.length === 0 ? 'no weekly goal' : week.goals.map((g, i) => `${names[i]} ${g.done}/${g.perWeek}`).join(' · ');
   return `This week (${shortDay(week.from)} to ${shortDay(week.to)}): ${posted} · ${goals}`;
 }
 
-/** One list line: when, status, where and kind, the title clipped, the id. Never the text or the notes. */
-export function postLine(p: Post, done: boolean): string {
-  const when = done ? localTime(p.postedAt ?? p.updatedAt) : dueText(p.due);
+/** One list line: when (posted or skipped in `tz`, the Life zone), status, where and kind, the title clipped, the id. Never the text or the notes. */
+export function postLine(p: Post, done: boolean, tz?: string): string {
+  const at = Date.parse(p.postedAt ?? p.updatedAt);
+  const when = done ? (Number.isNaN(at) ? '-' : wallTime(at, tz)) : dueText(p.due);
   const title = p.title ? `  ${clip(p.title, TITLE_SHOWN)}` : '';
   return `${when.padEnd(16)}  ${p.status.padEnd(done ? 7 : 5)}  ${placeOf(p)} · ${p.kind}${title}  ${p.id}`;
 }
@@ -182,6 +210,7 @@ async function add(ctx: CliContext, flags: Flags): Promise<number> {
   if (flags.status !== undefined) body.status = oneOf(flags.status, '--status', ['idea', 'ready'] as const);
   if (flags.at !== undefined) body.due = dueOf(flags.at);
   const text = flags['text-file'] !== undefined ? await readText(flags['text-file']) : flags.text;
+  if (flags['text-file'] !== undefined && given(text) === undefined) throw new Error(`--text-file ${clip(flags['text-file'], 80)} is empty`);
   for (const [key, value] of [
     ['where', flags.where],
     ['title', flags.title],
@@ -194,13 +223,16 @@ async function add(ctx: CliContext, flags: Flags): Promise<number> {
   }
   const parsed = PostBodySchema.safeParse(body);
   if (!parsed.success) throw new Error(problem(parsed.error.issues[0]?.path[0]));
+  if (parsed.data.due && !realDay(parsed.data.due.day)) throw new Error(problem('due'));
   const bytes = Buffer.byteLength(JSON.stringify(parsed.data), 'utf8');
   if (bytes > MAX_BODY_BYTES) {
     throw new Error(`This post is ${n(Math.ceil(bytes / 1024))} KB once sent; the most is ${n(MAX_BODY_BYTES / 1024)} KB. Shorten the text or the notes.`);
   }
   const r = await callDaemon<{ id: string }>(ctx.ctl, 'POST', ROUTES.postCreate.path, parsed.data, { idempotencyKey: ctx.deps.randomId() });
   const due = parsed.data.due ? ` · ${dueText(parsed.data.due)}` : '';
-  ctx.io.out(`Added post ${r.id} (${parsed.data.status ?? 'idea'}) · ${placeOf(parsed.data)}${due}\n`);
+  // A time already gone in the Life zone never rings: say so, so a wrong day or zone in a batch is seen.
+  const gone = parsed.data.due?.time !== undefined && dueText(parsed.data.due) < wallTime(ctx.deps.now() - LATE_MS, await lifeZone(ctx));
+  ctx.io.out(`Added post ${r.id} (${parsed.data.status ?? 'idea'}) · ${placeOf(parsed.data)}${due}${gone ? " (that time has passed: it won't ring)" : ''}\n`);
   return EXIT.ok;
 }
 
@@ -216,7 +248,8 @@ async function list(ctx: CliContext, flags: Flags): Promise<number> {
     ctx.io.out(done ? 'Nothing posted or skipped yet.\n' : 'Nothing to post yet. Add one: jantar post add --platform <p>\n');
     return EXIT.ok;
   }
-  for (const p of r.posts) ctx.io.out(`${postLine(p, done)}\n`);
+  const tz = done ? await lifeZone(ctx) : undefined;
+  for (const p of r.posts) ctx.io.out(`${postLine(p, done, tz)}\n`);
   return EXIT.ok;
 }
 
