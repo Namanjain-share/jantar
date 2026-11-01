@@ -57,7 +57,7 @@ async function accounts(ctx: CliContext, ask: Asker, d: Detected): Promise<numbe
   ctx.io.out(`  Found cswap with ${n} account${n === 1 ? '' : 's'}: multi-account mode.\n`);
   const current = d.settings.accounts.kept;
   return ask.parsed(
-    `  Accounts to keep for other work (Auto, Rewrite and Ask Claude never pick them), numbers or none [${accountListText(current)}]: `,
+    `  Accounts to keep for other work (Auto, Rewrite, Ask Claude and Ask never pick them), numbers or none [${accountListText(current)}]: `,
     (a) => parseAccountList(a, current),
     current,
   );

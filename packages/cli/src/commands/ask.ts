@@ -8,6 +8,7 @@
  * Add. Its history lives in the daemon's memory only, so `off` (and a
  * restart) forgets it; items already added stay in Life.
  */
+import { ASK_SENTENCES } from '@jantar/daemon/ask/answer';
 import { ASK_KEEP_DAYS, ASK_TURNS_KEPT, type Settings } from '@jantar/protocol';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand } from '../command.js';
@@ -18,17 +19,18 @@ import { clip } from '../lib/text.js';
 /** What goes to Claude and what stays, as the phone's page and the docs say it. */
 function dataFlow(s: Settings): string {
   return (
-    'Only what you type there goes to Claude (medicine names or amounts you type do go), with the date and time and ' +
-    `which Life parts are on, through Claude Code on your account (model ${s.rewrite.model}, as Rewrite).\n` +
+    'Only what you type there goes to Claude (medicine names or amounts you type do go), with the date, time and time zone, ' +
+    'which Life parts are on, the currency code and the fixed category names, ' +
+    `through Claude Code on your account (model ${s.rewrite.model}, as Rewrite).\n` +
     'Your saved lists, medicines and money stay on this Mac. Nothing is added until you tap Add.\n' +
     `The last ${ASK_TURNS_KEPT} messages per phone stay in memory for up to ${ASK_KEEP_DAYS} days; a restart forgets them.\n`
   );
 }
 
-/** Ask suggests todos, food and money, and shows medicines: with none of them on, it has nothing to do. */
+/** Ask suggests todos, food and money, and shows medicines: with none of them on, it has nothing to do (the daemon's own sentence). */
 function lifeHint(s: Settings): string {
   const l = s.life;
-  return l.todos || l.food || l.finance || l.medicines ? '' : 'Ask needs a Life part. Turn one on: jantar life on todos\n';
+  return l.todos || l.food || l.finance || l.medicines ? '' : `${ASK_SENTENCES.noModules}\n`;
 }
 
 function modelLine(s: Settings): string {
@@ -50,10 +52,10 @@ export default defineCommand(
   async (argv, ctx) => {
     const { positionals } = parseArgs(argv, {}, { min: 1 });
     const [action, extra] = positionals;
-    if (extra !== undefined) throw new UsageError(`${clip(action ?? '', 20)} takes no argument`);
     switch (action) {
       case 'on':
       case 'off': {
+        if (extra !== undefined) throw new UsageError(`${action} takes no argument`);
         const on = parseOnOff(action, 'ask');
         await changeSettings(ctx, { ask: { enabled: on } }, (s) =>
           on ? `Ask is on. The phone shows Ask.\n${dataFlow(s)}${lifeHint(s)}` : 'Ask is off. Its history is forgotten; items you added stay in Life.\n',
@@ -61,6 +63,7 @@ export default defineCommand(
         return EXIT.ok;
       }
       case 'status': {
+        if (extra !== undefined) throw new UsageError('status takes no argument');
         const s = (await readSettings(ctx)).settings;
         ctx.io.out(`Ask: ${onOff(s.ask.enabled)}\n${modelLine(s)}`);
         return EXIT.ok;

@@ -4,7 +4,7 @@
  *
  *   accounts              the mode, the kept accounts, autoswitch's hold and
  *                         ccw's live hold list (read from its switch.json)
- *   accounts keep <n...>  Auto, Rewrite and Ask Claude never pick them
+ *   accounts keep <n...>  Auto, Rewrite, Ask Claude and Ask never pick them
  *   accounts keep --none  keep none
  *   accounts prime        whether free 5-hour windows are primed, and by whom
  *   accounts prime on|off prime them (settings accounts.prime; --kept: kept
@@ -43,7 +43,7 @@ const FLAGS = {
   kept: { type: 'boolean', help: 'prime on: kept and held accounts too' },
 } as const;
 
-const KEPT_RULE = 'Auto, Rewrite and Ask Claude never pick them; a manual start still can, after a confirm.';
+const KEPT_RULE = 'Auto, Rewrite, Ask Claude and Ask never pick them; a manual start still can, after a confirm.';
 /** With one Claude login there is no other account to pick, so the kept list waits for cswap. */
 const SINGLE_KEPT = 'They apply once cswap is set up.';
 
@@ -135,7 +135,7 @@ async function show(ctx: CliContext): Promise<number> {
   if (mode === 'single') {
     const why = cswap.forcedSingle ? 'JANTAR_ACCOUNTS=single' : cswap.bin ? `cswap at ${displayPath(cswap.bin, home)} but no profiles` : 'no cswap';
     ctx.io.out(`Accounts: single, one Claude login (${why}; ${decided}).\n`);
-    ctx.io.out('Usage and account moves need cswap (optional). With one login, Auto, Rewrite and Ask Claude use it.\n');
+    ctx.io.out('Usage and account moves need cswap (optional). With one login, Auto, Rewrite, Ask Claude and Ask use it.\n');
     ctx.io.out(kept.length ? `Kept for other work: ${accountListText(kept)}. ${SINGLE_KEPT}\n` : 'Kept for other work: none (with one login there is nothing to keep).\n');
   } else {
     const where = cswap.bin ? `cswap at ${displayPath(cswap.bin, home)}, ` : '';
@@ -236,7 +236,7 @@ export default defineCommand(
       '  accounts prime on      prime them: a tiny Haiku run starts a window that has not started\n' +
       '  accounts prime on --kept   kept and held accounts too\n' +
       '  accounts prime off     stop priming\n' +
-      'Kept accounts are never picked by Auto, Rewrite or Ask Claude (a manual start still can, after a confirm).\n' +
+      'Kept accounts are never picked by Auto, Rewrite, Ask Claude or Ask (a manual start still can, after a confirm).\n' +
       'The hold list of the legacy ccw tool is read live on top, when ccw is installed; when ccw primes\n' +
       'free windows itself (its default), Jantar leaves them to ccw. ' + CCW_HANDS_OVER,
   },

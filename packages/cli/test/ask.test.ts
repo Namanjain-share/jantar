@@ -6,6 +6,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ASK_SENTENCES } from '@jantar/daemon/ask/answer';
 import { makeFakeHome, type FakeHome } from '@jantar/fixtures';
 import { MAC_ONLY_SETTING_GROUPS } from '@jantar/protocol';
 import ask from '../src/commands/ask.js';
@@ -30,31 +31,33 @@ describe('jantar ask', () => {
     expect(s.settings.ask.enabled).toBe(true);
     expect(on.io.stdout).toBe(
       'Ask is on. The phone shows Ask.\n' +
-        'Only what you type there goes to Claude (medicine names or amounts you type do go), with the date and time and ' +
-        'which Life parts are on, through Claude Code on your account (model opus, as Rewrite).\n' +
+        'Only what you type there goes to Claude (medicine names or amounts you type do go), with the date, time and time zone, ' +
+        'which Life parts are on, the currency code and the fixed category names, ' +
+        'through Claude Code on your account (model opus, as Rewrite).\n' +
         'Your saved lists, medicines and money stay on this Mac. Nothing is added until you tap Add.\n' +
         'The last 30 messages per phone stay in memory for up to 7 days; a restart forgets them.\n',
     );
     expect(on.io.stderr).toBe('');
   });
 
-  it('on follows a changed Rewrite model, and points at Life when no Life part is on', async () => {
+  it('on follows a changed Rewrite model, and points at Life with the daemon\'s own sentence when no Life part is on', async () => {
     const { s, ctl } = daemon({ rewrite: { model: 'sonnet' } });
     const on = contextFor({ env: ENV }, { ctl });
     expect(await ask.run(['on'], on.ctx)).toBe(EXIT.ok);
     expect(on.io.stdout).toContain('(model sonnet, as Rewrite)');
-    expect(on.io.stdout).toContain('Ask needs a Life part. Turn one on: jantar life on todos\n');
+    expect(ASK_SENTENCES.noModules).toBe('Turn a Life part on first: jantar life on todos');
+    expect(on.io.stdout).toContain(`${ASK_SENTENCES.noModules}\n`);
     // Any of todos, food, finance or medicines is enough; cafés are not.
     for (const part of ['food', 'finance', 'medicines']) {
       const one = daemon({ life: { [part]: true } });
       const io = contextFor({ env: ENV }, { ctl: one.ctl });
       expect(await ask.run(['on'], io.ctx)).toBe(EXIT.ok);
-      expect(io.io.stdout, part).not.toContain('Ask needs a Life part');
+      expect(io.io.stdout, part).not.toContain(ASK_SENTENCES.noModules);
     }
     const places = daemon({ life: { places: true } });
     const p = contextFor({ env: ENV }, { ctl: places.ctl });
     expect(await ask.run(['on'], p.ctx)).toBe(EXIT.ok);
-    expect(p.io.stdout).toContain('Ask needs a Life part');
+    expect(p.io.stdout).toContain(ASK_SENTENCES.noModules);
     expect(s.settings.ask.enabled).toBe(true);
   });
 
@@ -91,6 +94,17 @@ describe('jantar ask', () => {
     expect(await main(['ask', 'x'.repeat(200)], { io: long.io, context: long.ctx })).toBe(EXIT.usage);
     expect(long.io.stderr).toContain('unknown action');
     expect(long.io.stderr).not.toContain('x'.repeat(40));
+    // An unknown word is named as unknown, extra words or not; a known one with an extra word takes no argument.
+    for (const [argv, said] of [
+      [['model', 'sonnet'], 'unknown action "model" (on, off or status)'],
+      [['foo', 'bar'], 'unknown action "foo" (on, off or status)'],
+      [['on', 'x'], 'on takes no argument'],
+      [['status', 'x'], 'status takes no argument'],
+    ] as const) {
+      const c = contextFor({ env: ENV }, { ctl });
+      expect(await main(['ask', ...argv], { io: c.io, context: c.ctx }), argv.join(' ')).toBe(EXIT.usage);
+      expect(c.io.stderr, argv.join(' ')).toContain(said);
+    }
   });
 
   it('is registered after meetings with its help, and ask is a Mac-only group', async () => {
