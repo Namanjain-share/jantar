@@ -3,6 +3,18 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## Unreleased
+
+- **A one-line install.** `curl -fsSL https://jantar.namanbuilt.com/install.sh | bash`
+  checks for macOS, Node.js and pnpm, clones release v0.5.2 into `~/jantar`,
+  builds it, runs `jantar init` and asks before `jantar install`. No sudo.
+  Ending the line with `bash -s -- --dry-run` shows the plan and changes
+  nothing. See [Install in one line](docs/install.md#install-in-one-line).
+- **The website has a 53-second film**, with captions and no sound, in a
+  wide cut and a portrait cut for phones, and the film's words written out
+  under it. The README opens with a short loop of the same story. Both use
+  example data only.
+
 ## 0.5.2 (1 November 2026)
 
 The first public release.

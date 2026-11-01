@@ -3,7 +3,8 @@
     <picture>
       <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset="docs/brand/banner-dark.png">
       <source media="(prefers-reduced-motion: reduce)" srcset="docs/brand/banner.png">
-      <img src="docs/brand/demo.gif" alt="A 14-second loop with example data: a Claude Code session waits in one of twelve Terminal tabs, the phone gets api-server needs you, one tap on Yes answers it, and the session carries on. Jantar: every Claude Code session on your Mac, on your phone.">
+      <source media="(max-width: 767px)" srcset="docs/brand/demo-narrow.gif">
+      <img src="docs/brand/demo.gif" alt="Jantar: every Claude Code session on your Mac, on your phone. Shown with example data: the board of sessions, and a prompt waiting on you answered from the phone.">
     </picture>
   </a>
 </p>
@@ -111,6 +112,16 @@ More: [Life](docs/life.md), [Meetings](docs/extension.md),
   Meetings
 
 ## Quickstart
+
+On a Mac with Node.js 22.13 or newer, one line clones the current release
+into `~/jantar`, builds it and runs `jantar init`, then asks before
+`jantar install` ([what the script does](docs/install.md#install-in-one-line)):
+
+```sh
+curl -fsSL https://jantar.namanbuilt.com/install.sh | bash
+```
+
+Or step by step:
 
 ```sh
 git clone https://github.com/Namanjain-share/jantar.git && cd jantar

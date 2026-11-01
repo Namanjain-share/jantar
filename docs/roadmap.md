@@ -13,8 +13,9 @@ which of these you need, and why, helps decide.
 
 ## Getting started
 
-- A one-line install: a Homebrew tap, or an npm package with the web app
-  already built, instead of clone, pnpm and a build.
+- Install without a build: a Homebrew tap, or an npm package with the web
+  app already built. The [one-line install](install.md#install-in-one-line)
+  still clones the release and builds it with pnpm.
 - `jantar demo`: the daemon serving the synthetic data the screenshots use,
   read-only, so you can see the whole app with no sessions, cswap or phone.
 - Signed releases.
