@@ -2,8 +2,8 @@
  * v0.7 wave 0, the pipeline's part for Posts (a sixth Life module):
  * - The `posts` switch: off, every posts route answers 403 with the sentence
  *   that names `jantar life on posts`, before validation and before any
- *   handler; on, the routes reach their handlers (501 while they are wave
- *   0's stubs), and `life` (Today) is on with posts alone.
+ *   handler; on, the routes reach their handlers (the stand-in Life part
+ *   answers 501), and `life` (Today) is on with posts alone.
  * - ctl.sock serves only the list and an add (what the user approved:
  *   `jantar post list`, `jantar post add`); a change, a delete and the goals
  *   are 404 there.
@@ -66,7 +66,7 @@ describe('v0.7: the posts switch', () => {
     expect(FEATURE_OFF.posts.message).toBe('Posts are off. Turn them on at your Mac: jantar life on posts');
   });
 
-  it('on: the routes reach their handlers (501 while stubs), and Today is on with posts alone', async () => {
+  it('on: the routes reach their handlers, and Today is on with posts alone', async () => {
     api = await makeApi({ ctx: { settings: POSTS_ON } });
     const { cookie } = await pairCookie(api, ['read', 'control']);
     for (const [name] of V07) {

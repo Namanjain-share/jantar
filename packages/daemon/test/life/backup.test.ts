@@ -31,7 +31,7 @@ import { FakeClock } from '../../src/core/clock.js';
 import { createTestContext, type TestContext } from '../../src/core/testing.js';
 import { notBuilt } from '../../src/core/not-implemented.js';
 import { BACKUP_CHECK_MS, BACKUP_STALE_MS, BackupTimer, RESTORE_REFUSED, backupSummary, listBackups, nextBackupAt, pruneBackups, writeBackup } from '../../src/life/backup.js';
-import { LIFE_BROKEN_REASON, openLifeDb } from '../../src/life/db.js';
+import { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, openCheckedDb, openLifeDb } from '../../src/life/db.js';
 import { BACKUP_REASONS, LIFE_START_FAILED, RESTORE_REASONS, buildLifeService } from '../../src/life/service.js';
 import { buildTodosModule } from '../../src/life/todos/module.js';
 import { makeApi, makeFakes, type TestApi } from '../api/fakes.js';
@@ -421,6 +421,49 @@ describe('LD3: restore', () => {
     expect(r).toEqual({ ok: true, value: { kept: '' } });
     expect(life.status().open).toBe(false);
     expect(titles()).toEqual(['From the backup']);
+  });
+});
+
+describe('v0.7: the pre-upgrade copy, life-pre-0.7.0.db', () => {
+  /** A schema-1 life.db (what 0.6.1 writes), copied into the backups folder as `name`. */
+  function schemaOneBackup(name: string, title: string): string {
+    const tmp = join(dir, 'seed-schema-1.db');
+    const r = openCheckedDb(tmp, { migrations: LIFE_MIGRATIONS.slice(0, 1), brokenReason: LIFE_BROKEN_REASON });
+    if (!r.ok) throw new Error(r.code);
+    const id = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
+    r.db.prepare('INSERT INTO todos (id, updated_at, json) VALUES (?, ?, ?)').run(id, 'x', JSON.stringify({ id, title, priority: 'normal', createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' }));
+    expect(r.db.meta('schema')).toBe('1');
+    mkdirSync(backups, { recursive: true, mode: 0o700 });
+    const out = join(backups, name);
+    r.db.prepare('VACUUM INTO ?').run(out);
+    r.db.close();
+    for (const s of ['', '-wal', '-shm']) rmSync(tmp + s, { force: true });
+    chmodSync(out, 0o600);
+    return out;
+  }
+
+  it('is listed, survives backups written the same day, and restores: the 0.6.1 copy moves to schema 2', async () => {
+    const pre = schemaOneBackup('life-pre-0.7.0.db', 'Before the upgrade');
+    const before = sha(pre);
+    lifeDbThere();
+    const life = service({ at: '2026-11-02T09:00:00.000Z' });
+    await life.start();
+    life.todos.createTodo({ title: 'After the upgrade' }, { kind: 'cli' });
+    for (let i = 0; i < 2; i++) expect(await life.backup()).toMatchObject({ ok: true, value: { file: 'life-2026-11-02.db' } });
+    expect(listBackups(backups).map((b) => b.name).sort()).toEqual(['life-2026-11-02.db', 'life-pre-0.7.0.db']);
+    expect(sha(pre)).toBe(before);
+
+    const r = await life.restore('life-pre-0.7.0.db');
+    expect(r.ok).toBe(true);
+    expect(titles()).toEqual(['Before the upgrade']);
+    const db = new DatabaseSync(join(dir, 'life.db'), { readOnly: true });
+    try {
+      expect((db.prepare("SELECT value FROM meta WHERE key = 'schema'").get() as { value: string }).value).toBe('2');
+    } finally {
+      db.close();
+    }
+    // The copy itself is left as it was, for another way back.
+    expect(sha(pre)).toBe(before);
   });
 });
 

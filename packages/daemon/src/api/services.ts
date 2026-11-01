@@ -112,6 +112,17 @@ export const V053_LIMITS = {
   notifyTest: { limit: 10, windowMs: 60_000 },
 } as const;
 
+/**
+ * v0.7 limits (key them by `actorName(auth)`; every ctl.sock peer is the one
+ * actor `cli`). Posts added over ctl.sock (`jantar post add`, a script, a
+ * Claude session's Bash): each timed post pings the phone, so a looping
+ * session must not schedule hundreds. The phone's adds are not counted
+ * here; the pipeline's Life write limit applies on top.
+ */
+export const V07_LIMITS = {
+  postCtl: { limit: 30, windowMs: 60 * 60_000 },
+} as const;
+
 export interface ApiOptions {
   /** TCP port (default settings.remote.port). 0 picks a free port (tests). */
   port?: number;
@@ -343,6 +354,8 @@ export class ApiServices {
   readonly folderTodoLimiter: SlidingWindowLimiter;
   /** v0.5.3 (V053_LIMITS): test pushes (notifyTest). */
   readonly notifyTestLimiter: SlidingWindowLimiter;
+  /** v0.7 (V07_LIMITS): posts added over ctl.sock (postCreate). */
+  readonly postCtlLimiter: SlidingWindowLimiter;
   readonly sockets = new SocketRegistry();
   /** v0.6: the hub's Fleet part (inert while Fleet is off), or a stand-in that targets nothing. */
   readonly fleet: FleetService;
@@ -410,6 +423,7 @@ export class ApiServices {
     this.extShotBytes = new SlidingWindowBudget({ ...v05.extShotBytes, clock: ctx.clock });
     this.folderTodoLimiter = per(V053_LIMITS.folderTodo);
     this.notifyTestLimiter = per(V053_LIMITS.notifyTest);
+    this.postCtlLimiter = per(V07_LIMITS.postCtl);
     this.panes = deps.panes ?? new PaneLookup(deps.terminal, ctx, undefined, opts.paneLookupTimeoutMs);
     this.fleet = deps.fleet ?? offFleet();
     this.nodeLink = deps.nodeLink ?? offNodeLink();

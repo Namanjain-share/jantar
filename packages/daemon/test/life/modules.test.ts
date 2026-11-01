@@ -11,7 +11,7 @@ import { createTestContext, createTestLifeCore, type TestLifeCore } from '../../
 import { LIFE_MODULE_BUILDERS } from '../../src/life/index.js';
 import { makeFakes } from '../api/fakes.js';
 
-const ALL_ON = { todos: true, medicines: true, food: true, places: true, finance: true };
+const ALL_ON = { todos: true, medicines: true, food: true, places: true, finance: true, posts: true };
 
 let core: TestLifeCore | undefined;
 afterEach(() => {

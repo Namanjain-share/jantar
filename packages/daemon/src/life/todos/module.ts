@@ -86,8 +86,8 @@ type Refusal = Extract<LifeResult, { ok: false }>;
 const refuse = (code: Refusal['code'], reason: string): Refusal => ({ ok: false, code, reason });
 const OK: LifeResult = { ok: true, value: true };
 
-/** By due day, then time (a day without a time after the timed ones), undated last; then createdAt. */
-export function byDue(a: Todo, b: Todo): number {
+/** By due day, then time (a day without a time after the timed ones), undated last; then createdAt. Posts (v0.7) sort the same. */
+export function byDue(a: Pick<Todo, 'due' | 'createdAt' | 'id'>, b: Pick<Todo, 'due' | 'createdAt' | 'id'>): number {
   const ad = a.due?.day;
   const bd = b.due?.day;
   if (ad !== bd) {

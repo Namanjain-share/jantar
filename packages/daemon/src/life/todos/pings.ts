@@ -22,9 +22,9 @@
  *   the time; short: the title's first 40 characters; generic: "Tap to
  *   open"), "Missed at HH:MM · " first on a catch-up. Tap: /todos?id=<id>.
  */
-import type { Todo } from '@jantar/protocol';
+import type { Due, Todo } from '@jantar/protocol';
 import { dayKeyOf, hhmmOf, instantAt } from '@jantar/life-core';
-import type { LifeCore, LifeModuleDeps, LifePush, PingHandler } from '../../contracts.js';
+import type { LifeCore, LifeModuleDeps, LifePush, PingHandler, PingKind } from '../../contracts.js';
 import { clip, oneLine } from '../../notify/format.js';
 import { LATE_AFTER_MS } from '../pings.js';
 import type { TodosRepo } from './repo.js';
@@ -33,14 +33,24 @@ import type { TodosRepo } from './repo.js';
 export const SHORT_TITLE = 40;
 export const TODO_PUSH_TITLE = 'Todo due';
 
+/**
+ * What rings like a todo: a todo, or (v0.7) a post, which passes `doneAt`
+ * once it is posted or skipped. `doneAt` set: it rings no more.
+ */
+export interface Ringable {
+  id: string;
+  due?: Due | undefined;
+  doneAt?: string | undefined;
+}
+
 /** When `t` rings, or null when it does not (done, no time). A wall time the zone repeats is its first pass. */
-export function ringAt(t: Todo, tz: string): Date | null {
+export function ringAt(t: Ringable, tz: string): Date | null {
   if (t.doneAt || !t.due?.time) return null;
   return instantAt(t.due.day, t.due.time, tz);
 }
 
 /** Whether `at` is a ring of `t`: its due instant, or another showing its due day and time (the later pass of a repeated hour). */
-export function ringsAt(t: Todo, at: Date, tz: string): boolean {
+export function ringsAt(t: Ringable, at: Date, tz: string): boolean {
   const first = ringAt(t, tz);
   if (!first || !t.due?.time) return false;
   return first.getTime() === at.getTime() || (dayKeyOf(at, tz) === t.due.day && hhmmOf(at, tz) === t.due.time);
@@ -54,22 +64,27 @@ export interface ArmOptions {
 }
 
 /**
- * Sets or clears `t`'s scheduler row by the rules in the file comment.
- * `armed` is the row's next_at as stored (null: no row, or parked). The
- * caller pokes.
+ * Sets or clears the `kind` row of `t` (sub '') by the rules in the file
+ * comment. `armed` is the row's next_at as stored (null: no row, or
+ * parked). The caller pokes. Todos and (v0.7) posts share it.
  */
-export function armTodo(core: Pick<LifeCore, 'scheduler' | 'tz' | 'now'>, t: Todo, armed: string | null, opts: ArmOptions = {}): void {
+export function armRing(core: Pick<LifeCore, 'scheduler' | 'tz' | 'now'>, kind: PingKind, t: Ringable, armed: string | null, opts: ArmOptions = {}): void {
   const tz = core.tz();
   const first = ringAt(t, tz);
   if (!first) {
-    core.scheduler.clear('todo', t.id);
+    core.scheduler.clear(kind, t.id);
     return;
   }
   const at = opts.at ?? first;
   if (armed !== null && (opts.at ? armed === at.toISOString() : ringsAt(t, new Date(armed), tz))) return;
   const now = core.now().getTime();
-  if (at.getTime() > now || (opts.fresh && at.getTime() > now - LATE_AFTER_MS)) core.scheduler.set('todo', t.id, '', at);
-  else core.scheduler.clear('todo', t.id);
+  if (at.getTime() > now || (opts.fresh && at.getTime() > now - LATE_AFTER_MS)) core.scheduler.set(kind, t.id, '', at);
+  else core.scheduler.clear(kind, t.id);
+}
+
+/** A todo's row (armRing for kind `todo`). */
+export function armTodo(core: Pick<LifeCore, 'scheduler' | 'tz' | 'now'>, t: Todo, armed: string | null, opts: ArmOptions = {}): void {
+  armRing(core, 'todo', t, armed, opts);
 }
 
 export function todoPush(t: Todo | null, id: string, dueAt: Date, late: boolean, tz: string, bodies: 'full' | 'short' | 'generic'): LifePush {

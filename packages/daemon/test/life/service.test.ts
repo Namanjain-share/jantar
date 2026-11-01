@@ -109,14 +109,15 @@ function pingAt(ref: string): string | null | undefined {
 
 describe('with every real module', () => {
   it('every module on: start opens, each registers its rings, status and Today answer, stop is clean', async () => {
-    const life = service({ settings: settings({ todos: true, medicines: true, food: true, places: true, finance: true }), builders: LIFE_MODULE_BUILDERS });
+    const life = service({ settings: settings({ todos: true, medicines: true, food: true, places: true, finance: true, posts: true }), builders: LIFE_MODULE_BUILDERS });
     await life.start();
     expect(life.broken()).toBeNull();
-    expect(life.status()).toMatchObject({ open: true, modules: { todos: true, medicines: true, food: true, places: true, finance: true } });
+    expect(life.status()).toMatchObject({ open: true, modules: { todos: true, medicines: true, food: true, places: true, finance: true, posts: true } });
     const today = life.today();
     expect(today.ok).toBe(true);
     expect(TodaySchema.safeParse(today.ok ? today.value : null).success).toBe(true);
-    for (const m of [life.todos, life.medicines, life.food, life.places, life.finance]) expect(typeof m.today).toBe('function');
+    expect(today.ok && today.value.posts).toEqual({ today: 0, late: 0 });
+    for (const m of [life.todos, life.medicines, life.food, life.places, life.finance, life.posts]) expect(typeof m.today).toBe('function');
     await ctx.clock.tick(MIN);
     await life.stop();
     svc = undefined;
@@ -164,6 +165,19 @@ describe('opening and closing with the switches', () => {
     await ctx.settings.patch({ life: { todos: true } });
     await ctx.clock.tick(30_000);
     expect(pushes.map((p) => p.body)).toEqual(['Missed at 11:00 · Example todo · 11:00']);
+  });
+
+  it('v0.7: a post missed while posts were off rings late once they are on again (the switch resyncs post rows)', async () => {
+    const life = service({ settings: settings({ todos: true, posts: true }), builders: builders({ posts: LIFE_MODULE_BUILDERS.posts }), at: '2026-10-30T10:58:00.000Z' });
+    await life.start();
+    const made = life.posts.create({ platform: 'reddit', where: 'r/exampletools', due: { day: '2026-10-30', time: '11:00' } }, { kind: 'cli' });
+    if (!made.ok) throw new Error(made.reason);
+    await ctx.settings.patch({ life: { posts: false } });
+    await ctx.clock.tick(5 * MIN);
+    expect(pushes).toHaveLength(0);
+    await ctx.settings.patch({ life: { posts: true } });
+    await ctx.clock.tick(30_000);
+    expect(pushes.map((p) => [p.title, p.body, p.url])).toEqual([['Post due', 'Missed at 11:00 · Tap to open · 11:00', `/posts?id=${made.value.id}`]]);
   });
 
   it('LS3 (todo part): a todo done before its time does not ring, nor a deleted one', async () => {
