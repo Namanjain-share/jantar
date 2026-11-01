@@ -9,6 +9,8 @@
  * - LP4 (todo part): with notify.bodies generic no todo title is in the
  *   push (title, body, tag, url); short cuts it to 40 characters; a
  *   catch-up leads with "Missed at HH:MM".
+ * - v0.5.3: a send that never left the Mac (no DNS) answers `offline`, so
+ *   the scheduler waits for the network.
  * - withDeadline answers timedOut when the work outlasts it.
  */
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
@@ -109,6 +111,16 @@ describe('sendLifePush', () => {
     expect(await sendLifePush(ctx, [mac, webpush, telegram], medPush)).toEqual({ delivered: 0, failed: 0, muted: false });
     expect(payloads).toEqual([]);
     expect(mac.got).toEqual([]);
+  });
+
+  it('v0.5.3: passes on the failures where the push never left the Mac (offline)', async () => {
+    const dark = new WebPushNotifier(ctx, {
+      vapid: TEST_VAPID,
+      sender: async () => {
+        throw Object.assign(new Error('getaddrinfo ENOTFOUND push.example.invalid'), { code: 'ENOTFOUND', syscall: 'getaddrinfo' });
+      },
+    });
+    expect(await sendLifePush(ctx, [dark], medPush)).toMatchObject({ delivered: 0, failed: 1, offline: 1 });
   });
 
   it('a notice never throws and says whether anything was delivered', async () => {

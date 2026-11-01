@@ -8,7 +8,8 @@
  *            pings.ts `due`), drop the ones this process is still sending,
  *            group them by (kind, the handler's group or the row, the
  *            minute) and deliver each group; then arm one timer for the
- *            earliest row due within NEAR_MS.
+ *            earliest row due within NEAR_MS, even after a read that
+ *            failed (v0.5.3), so the next row still rings on time.
  *   start    sweep once (the catch-up after a restart), resync() every
  *            handler, then the loop.
  *   deliver  1 claim each row (pings.ts claim: still due at the time seen,
@@ -23,8 +24,15 @@
  *              (push.ts withDeadline). Every device failing, or the
  *              deadline passing, keeps next_at and counts a failure (the next
  *              sweep retries; after MAX_FAILURES the row moves on). Muted
- *              (a reminder) keeps next_at and counts nothing. Delivered, or
- *              no device to send to, moves the row on.
+ *              (a reminder) keeps next_at and counts nothing. v0.5.3: so does
+ *              every failure being one where the push never left the Mac
+ *              (`offline`: no DNS or no connect, a Mac asleep or off Wi-Fi):
+ *              the row waits for the network, logged once while it waits,
+ *              and goes out marked late once a sweep can send it, within
+ *              CATCH_UP_MAX_MS and after its check (step 2 and 3) again. A
+ *              push that may have reached the push service is never sent
+ *              twice: any other failure counts. Delivered, or no device to
+ *              send to, moves the row on.
  *            5 move on: next_at = handler.next(row, max(now, due)), claim and
  *              failures cleared, only while the claim is still ours (a
  *              producer's set in between wins).
@@ -69,6 +77,8 @@ export class LifeScheduler implements Scheduler {
   private readonly repo: PingsRepo;
   /** Row ids whose push this process is still sending. */
   private readonly sending = new Set<string>();
+  /** v0.5.3: row ids waiting for the network (logged once each); a row leaves when it is sent or moves on. */
+  private readonly waiting = new Set<string>();
   /** Deliveries not yet decided (settled() waits on them). */
   private readonly deciding = new Set<Promise<void>>();
   private running = false;
@@ -185,6 +195,17 @@ export class LifeScheduler implements Scheduler {
   /** One pass over the due rows. Synchronous up to the sends, so two sweeps never interleave a claim. */
   sweep(): void {
     if (!this.running) return;
+    try {
+      this.deliverDue();
+    } finally {
+      // A read that failed still arms the near timer: the next row rings on time, not at the next sweep.
+      this.arm();
+    }
+  }
+
+  // -------------------------------------------------------------------------
+
+  private deliverDue(): void {
     const started = this.clock.now();
     const now = new Date(started);
     let rows: PingRow[];
@@ -221,10 +242,7 @@ export class LifeScheduler implements Scheduler {
       }
     }
     if (delivering > 0) this.log.debug('life sweep', { due: rows.length, groups: delivering, ms: this.clock.now() - started });
-    this.arm();
   }
-
-  // -------------------------------------------------------------------------
 
   private activeKinds(): readonly PingKind[] {
     const on = this.opts.kinds?.() ?? PING_KINDS;
@@ -279,7 +297,8 @@ export class LifeScheduler implements Scheduler {
         this.log.error('life ping update failed', { kind: handler.kind, error: errorKind(e) });
       }
     };
-    const advance = (d: Due, sent: boolean) =>
+    const advance = (d: Due, sent: boolean) => {
+      this.waiting.delete(d.row.id);
       write(() => {
         const after = new Date(Math.max(now.getTime(), d.dueAt.getTime()));
         let next: Date | null = null;
@@ -290,6 +309,7 @@ export class LifeScheduler implements Scheduler {
         }
         this.repo.advance(d.row.id, nowIso, next ? next.toISOString() : null, sent ? nowIso : null);
       });
+    };
 
     if (late && behind > CATCH_UP_MAX_MS) {
       for (const d of claimed) advance(d, false);
@@ -308,8 +328,10 @@ export class LifeScheduler implements Scheduler {
         this.log.warn('life ping check failed', { kind: d.row.kind, verdict, error: errorKind(e) });
       }
       if (verdict === 'send') send.push(d);
-      else if (verdict === 'cancel') write(() => this.repo.remove(d.row.id, nowIso));
-      else advance(d, false);
+      else if (verdict === 'cancel') {
+        this.waiting.delete(d.row.id);
+        write(() => this.repo.remove(d.row.id, nowIso));
+      } else advance(d, false);
     }
     const unsent = claimed.filter((d) => !send.includes(d)).map((d) => d.row.id);
     done(unsent);
@@ -349,9 +371,18 @@ export class LifeScheduler implements Scheduler {
           for (const d of send) write(() => this.repo.release(d.row.id, nowIso));
           return;
         }
+        if (res.delivered === 0 && res.failed > 0 && (res.offline ?? 0) === res.failed) {
+          // The push never left the Mac: keep next_at, count nothing, and retry on the next sweep.
+          for (const d of send) write(() => this.repo.release(d.row.id, nowIso));
+          const fresh = send.filter((d) => !this.waiting.has(d.row.id));
+          for (const d of fresh) this.waiting.add(d.row.id);
+          if (fresh.length > 0) this.log.info('life push waiting for the network', { kind: handler.kind, rows: fresh.length });
+          return;
+        }
         if (res.failed > 0 && res.delivered === 0) return failure('every device failed');
+        const waited = send.some((d) => this.waiting.has(d.row.id));
         for (const d of send) advance(d, true);
-        this.log.info('life push sent', { kind: handler.kind, rows: send.length, delivered: res.delivered, late, ms: this.clock.now() - t0 });
+        this.log.info('life push sent', { kind: handler.kind, rows: send.length, delivered: res.delivered, late, ...(waited ? { waited: true } : {}), ms: this.clock.now() - t0 });
       },
       (e: unknown) => failure(errorKind(e)),
     );

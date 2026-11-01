@@ -12,6 +12,9 @@
  * - A send that has not finished after LIFE_PUSH_DEADLINE_MS counts as
  *   failed (`withDeadline`); the scheduler keeps the row out of its sweeps
  *   until the send itself ends, so a slow push service never pushes twice.
+ * - v0.5.3: `offline` passes on the failures where the push never left the
+ *   Mac (notify/webpush.ts); when every failure is one, the scheduler waits
+ *   for the network instead of counting a failure.
  *
  * The text was built by the module that owns the kind; this file adds only
  * the time stamp and the scope, and logs nothing of it.
@@ -26,6 +29,8 @@ import { errorKind } from './pings.js';
 export interface LifeSendResult {
   delivered: number;
   failed: number;
+  /** v0.5.3: the failures where the push never left the Mac (DNS or connect: asleep, Wi-Fi off). */
+  offline?: number;
   muted?: boolean;
 }
 

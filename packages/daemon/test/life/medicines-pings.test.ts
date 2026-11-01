@@ -7,7 +7,9 @@
  * still sends; the lock screen names nothing unless details are on (LP4);
  * the refill ping rings at 10:00 once per box, even when a ring was missed
  * by more than 6 hours; a time moved after today's dose rings from tomorrow;
- * the times follow the zone across a DST change.
+ * the times follow the zone across a DST change. v0.5.3: a dose ping that
+ * could not leave the Mac waits for the network, and is still skipped once
+ * that medicine's next time is under 3 hours away (real scheduler).
  *
  * The handlers run under a small stand-in for the scheduler (`sweep`) that
  * does what spec 4.2 says the real one does with them: rows due by now,
@@ -385,6 +387,67 @@ describe('LS6: a catch-up whose send fails is retried', () => {
     } finally {
       sched.stop();
       core.close();
+    }
+  });
+});
+
+describe('LS6 (v0.5.3): a dose ping waiting for the network', () => {
+  /** The real scheduler over a medicines module, its pushes answered by `spy`. */
+  function realRig(start: string) {
+    const clock = new FakeClock(start);
+    const core = createTestLifeCore({ clock, tz: TZ, settings: { medicines: true } });
+    const ctx = createTestContext({ clock });
+    const spy = createPushSpy({ delivered: 0, failed: 1, offline: 1 });
+    const sched = new LifeScheduler(clock, ctx.log, () => core.db, { send: spy.send });
+    (core as LifeCore).scheduler = sched;
+    const f = makeFakes(ctx);
+    const meds = buildMedicinesModule(core, { ctx, sessions: f.sessions, usage: f.usage, ccwLegacy: f.ccwLegacy });
+    /** `ms` on the clock, a sweep (30 s) at a time, each send answered before the next. */
+    const settle = async (ms: number) => {
+      for (let left = ms; left > 0; left -= 30_000) {
+        await clock.tick(Math.min(left, 30_000));
+        await sched.settled();
+        await clock.tick(0);
+      }
+    };
+    return { clock, core, ctx, spy, sched, meds, settle, row: (sub: string) => sched.rows('med').find((x) => x.sub === sub) };
+  }
+
+  it('goes out late once the network is back, while the next time is more than 3 hours away', async () => {
+    const r = realRig(iso(DAY, '07:59'));
+    try {
+      ok(r.meds.create({ ...PLACEBIN, times: ['08:00', '12:05'] }, PHONE));
+      r.sched.start();
+      await r.settle(60 * 60_000); // 08:00 to 08:59, offline every sweep
+      expect(r.spy.pushes.length).toBeGreaterThan(5);
+      expect(r.row('08:00')).toMatchObject({ nextAt: iso(DAY, '08:00'), failures: 0 });
+      r.spy.result = { delivered: 1, failed: 0 };
+      await r.settle(30_000);
+      expect(r.spy.pushes.at(-1)?.body).toBe('Not logged at 08:00 · Tap to log · 08:00');
+      expect(r.row('08:00')?.nextAt).toBe(iso(shiftDay(DAY, 1), '08:00'));
+    } finally {
+      r.sched.stop();
+      r.core.close();
+    }
+  });
+
+  it('is skipped, unsent, once that medicine is due again in under 3 hours; that one then rings on time', async () => {
+    const r = realRig(iso(DAY, '07:59'));
+    try {
+      ok(r.meds.create({ ...PLACEBIN, times: ['08:00', '12:00'] }, PHONE));
+      r.sched.start();
+      await r.settle(70 * 60_000); // offline until 09:09, when 12:00 is under 3 hours away
+      const tries = r.spy.pushes.length;
+      expect(r.spy.pushes.at(-1)?.body).toBe('Not logged at 08:00 · Tap to log · 08:00');
+      r.spy.result = { delivered: 1, failed: 0 };
+      await r.settle(30_000);
+      expect(r.spy.pushes).toHaveLength(tries);
+      expect(r.row('08:00')?.nextAt).toBe(iso(shiftDay(DAY, 1), '08:00'));
+      await r.settle(3 * 60 * 60_000);
+      expect(r.spy.pushes.slice(tries).map((p) => p.body)).toEqual(['Tap to log · 12:00']);
+    } finally {
+      r.sched.stop();
+      r.core.close();
     }
   });
 });
