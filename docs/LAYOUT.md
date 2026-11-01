@@ -93,7 +93,9 @@ jantar/
                    web-v053-ask (the built Ask page in Chromium against jantard),
                    v053-alerts (the alert groups, the countdown and the missed-push
                    retry, through the built app's service worker), ext-v053 (the toolbar
-                   icon's activeTab path) and mcp (the built `jantar mcp` over stdio)
+                   icon's activeTab path) and mcp (the built `jantar mcp` over stdio);
+                   v0.6.1: v061-background (background work through the hooks, the
+                   transcript, the phone's events and `jantar status`)
 ```
 
 ## The daemon's parts
@@ -409,4 +411,7 @@ line) and `jantar status` show such a session as working; `status` and
 is cleared by a patch to `{}`, never `unset`, so a 0.6.0 hub (which refuses
 an unset key it does not know) keeps its link to a 0.6.1 node. No migration,
 no settings change and no protocol bump (`PROTOCOL_VERSION` 3, `NODE_PROTO`
-1). The first load stays under `MAIN_JS_MAX` at 271.7 kB.
+1). The first load stays under `MAIN_JS_MAX` at 271.7 kB. Tests: the scanner
+and the watcher in `packages/daemon/test/sources/transcript-background.test.ts`,
+the board and the header in `packages/web/test/board-background.test.tsx`,
+end to end in `test/integration/v061-background.integration.test.ts`.
