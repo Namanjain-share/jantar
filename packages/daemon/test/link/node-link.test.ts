@@ -62,3 +62,17 @@ describe('createNodeLink', () => {
     expect(hub.links[1]!.events).toEqual([]);
   });
 });
+
+describe('thisNodeOs', () => {
+  it('macOS, Windows, Linux, and Linux inside WSL2 (microsoft in osrelease)', () => {
+    const never = (): string => {
+      throw new Error('osrelease is read on Linux only');
+    };
+    expect(thisNodeOs('darwin', never)).toBe('macos');
+    expect(thisNodeOs('win32', never)).toBe('windows');
+    expect(thisNodeOs('linux', () => '6.8.0-45-generic\n')).toBe('linux');
+    expect(thisNodeOs('linux', () => '5.15.153.1-microsoft-standard-WSL2\n')).toBe('wsl');
+    expect(thisNodeOs('linux', () => '4.4.0-19041-Microsoft\n')).toBe('wsl');
+    expect(thisNodeOs('linux', () => '')).toBe('linux');
+  });
+});

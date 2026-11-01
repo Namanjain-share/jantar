@@ -163,13 +163,23 @@ describe('NodeAuth.pair', () => {
   it('is rate limited per caller, with a retry-after; other callers are not', async () => {
     const { auth, clock } = await setup();
     const [t] = await lines(auth);
-    for (let i = 0; i < NODE_CLAIMS_PER_MIN; i += 1) await auth.pair(claimBody(t!.token, { code: 'B'.repeat(22) }), { rateKey: 'busy' });
+    // 10, plus 2 for the one open join line.
+    for (let i = 0; i < NODE_CLAIMS_PER_MIN + 2; i += 1) await auth.pair(claimBody(t!.token, { code: 'B'.repeat(22) }), { rateKey: 'busy' });
     const r = await auth.pair(claimBody(t!.token), { rateKey: 'busy' });
     expect(r).toMatchObject({ ok: false, code: 'rate_limited', headers: { 'retry-after': '60' } });
     // The refused attempt spent nothing: another caller pairs with the same line.
     expect(await auth.pair(claimBody(t!.token), { rateKey: 'other' })).toMatchObject({ ok: true });
     clock.advance(60_001);
     expect(await auth.pair(claimBody(t!.token), { rateKey: 'busy' })).toMatchObject({ ok: false, code: 'unauthorized' });
+  });
+
+  it('twenty servers behind one NAT joining in the same minute all pair (the budget grows with open lines and pairings)', async () => {
+    const { auth } = await setup();
+    const tokens = await lines(auth, { count: 20 });
+    // Two mistyped claims first: they count against the caller too.
+    for (let i = 0; i < 2; i += 1) expect(await auth.pair(claimBody(tokens[0]!.token, { code: 'B'.repeat(22) }), { rateKey: 'nat' })).toMatchObject({ code: 'unauthorized' });
+    for (const t of tokens) expect(await auth.pair(claimBody(t.token), { rateKey: 'nat' }), t.name).toMatchObject({ ok: true });
+    expect(auth.pairedCount()).toBe(20);
   });
 });
 

@@ -7,10 +7,12 @@
  * redirects; TLS against Node's CA list plus NODE_EXTRA_CA_CERTS), answers
  * the challenge, checks the hub's welcome against the pinned key (an
  * impostor is closed and logged every time), and hands each verified link
- * to `onLink`. A `call` before the welcome is never acted on. Then the
- * watchdog (no frame for NODE_LIMITS.watchdogMs: the link is dropped), app
- * heartbeats every HEARTBEAT_MS, and full-jitter backoff (link/backoff.ts)
- * with the wait spec 3.8 gives each ending. An HTTP 403 with no Jantar body
+ * to `onLink`. A `call` before the welcome is never acted on; a challenge
+ * of another link version (its `v`, read before the strict parse) ends the
+ * attempt 4426, "update Jantar here". Then the watchdog (no frame for
+ * NODE_LIMITS.watchdogMs: the link is dropped), app heartbeats every
+ * HEARTBEAT_MS, and full-jitter backoff (link/backoff.ts) with the wait
+ * spec 3.8 gives each ending. An HTTP 403 with no Jantar body
  * is Cloudflare Access refusing: counted in `accessRefused` (since the last
  * good link) and sent in the next `auth`. Every timer is ctx.clock's.
  *
@@ -19,7 +21,8 @@
  * up to NODE_LIMITS.bulkToHubBytes; over that a result is a 500 "reply too
  * large for the link"); an upload's bulk that does not arrive whole is the
  * call's 400 and nothing runs; at most NODE_LIMITS.callsInFlight calls run
- * at once (more: 429). Nothing is ever logged but kinds, sizes, codes and
+ * at once (more: 429; an upload refused so has its chunks dropped as they
+ * come, the link kept). Nothing is ever logged but kinds, sizes, codes and
  * the hub's host.
  *
  * JANTAR_NODE_RETRY_CAP_MS (tests: the Docker end-to-end run) shortens every
@@ -44,7 +47,7 @@ import { MAX_BUFFERED } from '../api/events-ws.js';
 import { NODE_LINK_OFF } from '../modes.js';
 import { endingCode, retryWait, type LinkEnding } from '../link/backoff.js';
 import { BulkAssembler, bulkLane, decodeFrame, encodeFrame, sendWithBulk } from '../link/codec.js';
-import { authFrame, newNonce, thisNodeOs, welcomeValid, type NodeSelf } from '../link/handshake.js';
+import { CHALLENGE_V, authFrame, looseFrame, newNonce, thisNodeOs, welcomeValid, type NodeSelf } from '../link/handshake.js';
 import { accessHeaders, isJantarError, isTlsError } from '../link/join.js';
 import { privateKeyOf, readNodeFile } from '../link/keys.js';
 import { WS_OPEN, WS_TOO_BIG, openLinkSocket, type WsSocket } from '../link/ws-client.js';
@@ -290,9 +293,15 @@ class Attempt {
     if (this.phase === 'done') return;
     this.alive();
     if (isBinary) return this.drop({ kind: 'protocol' });
-    const d = decodeFrame(data.toString('utf8'));
+    const text = data.toString('utf8');
+    const d = decodeFrame(text);
     if (!d.ok) {
       if (d.problem === 'unknown-kind' && this.phase === 'linked') return;
+      // A newer hub's challenge may not parse here: its `v` says why (4426, "update Jantar here"), not a protocol error.
+      const v = this.phase === 'challenge' && d.kind === 'challenge' ? looseFrame(text)?.v : undefined;
+      if (typeof v === 'number' && v !== CHALLENGE_V) {
+        return this.drop({ kind: 'closed', code: NODE_CLOSE.version }, NODE_CLOSE.version);
+      }
       return this.drop({ kind: 'protocol' });
     }
     const f = d.frame;
@@ -478,6 +487,8 @@ class SocketNodeLink implements NodeLink {
     if (this.running.has(f.id) || this.assembling.has(f.id)) return this.end(NODE_CLOSE.protocol, 'a call id twice');
     const { k: _k, bulk, ...req } = f;
     if (this.running.size + this.assembling.size >= NODE_LIMITS.callsInFlight) {
+      // An upload's chunks still follow: dropped as they come, never taken for a stranger's (which would drop the link).
+      if (bulk) this.bulks.refuseId(f.id);
       return this.result(f.id, { status: 429, body: errorBody('rate_limited', 'Too many calls at once on this server: try again in a moment.') });
     }
     if (!bulk) return this.run(req);

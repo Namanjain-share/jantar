@@ -175,6 +175,11 @@ export class BulkAssembler {
     return this.finish(chunk.id, b.sha256, Buffer.concat(b.parts, b.size));
   }
 
+  /** A head frame's bulk refused before `begin` (its call answered 429): its trailing chunks are dropped. */
+  refuseId(id: string): void {
+    this.forget(id);
+  }
+
   /** Bulks being assembled now. */
   inFlight(): number {
     return this.open.size;
@@ -192,12 +197,16 @@ export class BulkAssembler {
   }
 
   private refuse(id: string, problem: Exclude<BulkStep, { ok: true }>['problem']): BulkStep {
+    this.forget(id);
+    return { ok: false, problem };
+  }
+
+  private forget(id: string): void {
     this.open.delete(id);
     this.refused.add(id);
     for (const old of this.refused) {
       if (this.refused.size <= REFUSED_KEPT) break;
       this.refused.delete(old);
     }
-    return { ok: false, problem };
   }
 }

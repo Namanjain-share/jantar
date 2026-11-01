@@ -17,7 +17,7 @@ import { NODE_CLOSE, NODE_LIMITS, NODE_PROTO, linkUrl, type NodeFrame, type Node
 import type { Dialer, NodeFile, NodeLink, NodeLinkStatus } from '../../src/contracts.js';
 import { FakeClock } from '../../src/core/clock.js';
 import type { TestContext } from '../../src/core/testing.js';
-import { challengeFrame, newNonce, welcomeFrame, type NodeSelf } from '../../src/link/handshake.js';
+import { CHALLENGE_V, challengeFrame, newNonce, welcomeFrame, type NodeSelf } from '../../src/link/handshake.js';
 import { generateKeyPair, privateKeyPem, writeNodeFile, type LinkKeyPair } from '../../src/link/keys.js';
 import { createDialer } from '../../src/node/dialer.js';
 import { cleanup, joinNode, onCleanup, pass, rawHub, refusingDoor, startHub, testCtx, type RawPeer, type Refusal } from './harness.js';
@@ -147,6 +147,23 @@ describe('the welcome is checked against the pinned key (S10)', () => {
     expect(hub.auths[0]).toMatchObject({ nodeId: NODE_ID, proto: NODE_PROTO, os: 'linux', version: '0.6.0', backend: 'tmux', readOnly: false, accessRefused: 0 });
   });
 
+  it("a newer hub's challenge (another v, a field this version does not know) is 4426: hourly, 'update Jantar here'", async () => {
+    const pinned = generateKeyPair();
+    const seen: RawPeer[] = [];
+    const newer = await rawHub((peer) => (seen.push(peer), peer.send({ k: 'challenge', v: CHALLENGE_V + 1, nonce: newNonce(), features: ['x'] })));
+    const { ctx, clock } = await nodeHome(newer.url, pinned.publicKey);
+    const { d } = startDialer(ctx);
+    const r = await attempt(d, clock);
+    expect(r.status.lastClose?.code).toBe(NODE_CLOSE.version);
+    expect(r.wait).toBe(NODE_LIMITS.hourlyRetryMs);
+    expect(await seen[0]!.closed).toBe(NODE_CLOSE.version);
+    expect(logged(ctx, 'warn', /^the hub speaks another link version: update Jantar here$/)).toHaveLength(1);
+    // This version's challenge with such a field is a protocol error.
+    const odd = await rawHub((peer) => peer.send({ k: 'challenge', v: CHALLENGE_V, nonce: newNonce(), features: ['x'] }));
+    const home = await nodeHome(odd.url, pinned.publicKey);
+    expect((await attempt(startDialer(home.ctx).d, home.clock)).status.lastClose?.code).toBe(NODE_CLOSE.protocol);
+  });
+
   it('a hub frame a hub may not send closes 4400', async () => {
     const pinned = generateKeyPair();
     const hub = await fakeHub(pinned, (peer) => peer.send({ k: 'snapshot', state: linuxNodeSnapshot() }));
@@ -248,7 +265,7 @@ describe('the waits between attempts (spec 3.8, fake time)', () => {
     expect(after.wait).toBe(500);
   });
 
-  it('each ending gets its wait: removed and other versions hourly, Fleet off every 10 min, 429 its retry-after', async () => {
+  it('each ending gets its wait: removed and other versions hourly, Fleet off every 10 min, 429 its retry-after (jittered)', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.999999);
     const pinned = generateKeyPair();
     const closes = [NODE_CLOSE.unknown, NODE_CLOSE.version, NODE_CLOSE.fleetOff, NODE_CLOSE.replaced];
@@ -272,7 +289,8 @@ describe('the waits between attempts (spec 3.8, fake time)', () => {
       // Replaced: backoff with a 10-minute cap (attempt 3: 8 s x 0.999999).
       [NODE_CLOSE.replaced, 7999],
       [404, NODE_LIMITS.slowRetryMs],
-      [429, 17_000],
+      // Its retry-after, plus up to as much again (16.999 s at the top).
+      [429, 33_999],
       [503, NODE_LIMITS.backoffCapMs - 1],
     ]);
     // One line per kind of ending, saying what to do.
@@ -336,6 +354,15 @@ describe('a live link', () => {
     // A chunk for no call at all is the hub's protocol error.
     peer.send({ k: 'chunk', id: 'nobody', i: 0, data: 'AAAA' });
     expect(await peer.closed).toBe(NODE_CLOSE.protocol);
+  });
+
+  it("a call id the node is already running is the hub's protocol error (4400)", async () => {
+    const pinned = generateKeyPair();
+    const hub = await fakeHub(pinned, (peer) => (peer.send(callFrame('c1')), peer.send(callFrame('c1'))));
+    const { ctx } = await nodeHome(hub.url, pinned.publicKey);
+    startDialer(ctx, (l) => l.onCall(() => new Promise(() => {})));
+    await vi.waitFor(() => expect(hub.peers).toHaveLength(1));
+    expect(await hub.peers[0]!.closed).toBe(NODE_CLOSE.protocol);
   });
 
   it('a frame over 1 MiB from the hub closes 1009; stopping closes 1001 and tries no more', async () => {

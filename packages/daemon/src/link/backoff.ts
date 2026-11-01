@@ -12,7 +12,10 @@
  * | 4409 (a newer link with this key)                      | backoff, cap slowRetryMs      |
  * | 4403 / HTTP 404 (Fleet off), HTTP 403 (Access refused) | slowRetryMs                   |
  * | 4401 (removed), 4426 (link versions differ)            | hourlyRetryMs                 |
- * | HTTP 429                                               | its retry-after               |
+ * | HTTP 429                                               | its retry-after, plus up to   |
+ * |                                                        | as much again at random, so   |
+ * |                                                        | refused servers do not all    |
+ * |                                                        | come back together            |
  */
 import { NODE_CLOSE, NODE_LIMITS } from '@jantar/protocol/node-link';
 
@@ -55,7 +58,10 @@ export function retryWait(e: LinkEnding, attempt: number, random: () => number =
       return backoff(NODE_LIMITS.backoffCapMs);
     case 'http':
       if (e.status === 404 || e.status === 403) return NODE_LIMITS.slowRetryMs;
-      if (e.status === 429) return Math.min(Math.max(e.retryAfterMs ?? NODE_LIMITS.backoffCapMs, 1000), NODE_LIMITS.hourlyRetryMs);
+      if (e.status === 429) {
+        const after = Math.min(Math.max(e.retryAfterMs ?? NODE_LIMITS.backoffCapMs, 1000), NODE_LIMITS.hourlyRetryMs);
+        return Math.min(after + Math.floor(Math.max(0, Math.min(random(), 1)) * after), NODE_LIMITS.hourlyRetryMs);
+      }
       return backoff(NODE_LIMITS.backoffCapMs);
     default:
       return backoff(NODE_LIMITS.backoffCapMs);

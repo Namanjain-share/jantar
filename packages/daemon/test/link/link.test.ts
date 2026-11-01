@@ -4,13 +4,17 @@
  * ways, the snapshot first then events, calls and their answers, and the
  * bulks both ways (S10, S13): a 3 MB result, a 20 MiB upload and a snapshot
  * over a frame cross with the right sha256. HubLink.call never rejects
- * (node_offline, node_timeout, 429 past 16 in flight). Nothing a frame
- * carries reaches a log (S14).
+ * (node_offline, node_timeout, 429 past 16 in flight; a call already sent
+ * when the link drops is node_timeout, never "Nothing was sent"); an upload
+ * the node refuses 429 never drops the link. Nothing a frame carries
+ * reaches a log (S14).
  */
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FLEET_SECRET, linuxNodeSnapshot, nodeEvents, nodeSession, oversizedNodeSnapshot } from '@jantar/fixtures';
+import { errorBody } from '@jantar/protocol';
 import { NODE_CLOSE, NODE_LIMITS, NodeSnapshotSchema, type NodeCallReply, type NodeCallRequest } from '@jantar/protocol/node-link';
+import { MAX_BUFFERED } from '../../src/api/events-ws.js';
 import type { NodeFile, NodeLink } from '../../src/contracts.js';
 import type { FakeClock } from '../../src/core/clock.js';
 import type { TestContext } from '../../src/core/testing.js';
@@ -141,6 +145,35 @@ describe('a paired node links', () => {
     expect(got).toEqual([{ req: call('u1', 'uploadCreate'), sha: sha256(bytes), size: bytes.length }]);
   }, 30_000);
 
+  it('events held for a snapshot that never goes out stop at 10 000: then the link is dropped 1013 (the next starts afresh)', async () => {
+    const hub = await startHub();
+    const n = await startNode(hub);
+    for (let i = 0; i <= 10_000; i += 1) n.links[0]!.sendEvent(nodeEvents.sessionRemoved('7a1c0000-0000-4000-8000-000000000099'));
+    await vi.waitFor(() => expect(hub.links[0]!.closes).toEqual([NODE_CLOSE.slow]));
+    expect(hub.links[0]!.events).toEqual([]);
+  });
+
+  it("a node's send buffer over MAX_BUFFERED is 1013", async () => {
+    const hub = await startHub();
+    const n = await startNode(hub);
+    // The socket behind the node's link, made to look backed up (a hub reading nothing for minutes).
+    const ws = (n.links[0] as unknown as { ws: object }).ws;
+    Object.defineProperty(ws, 'bufferedAmount', { get: () => MAX_BUFFERED + 1 });
+    n.links[0]!.sendSnapshot(linuxNodeSnapshot());
+    await vi.waitFor(() => expect(hub.links[0]!.closes).toEqual([NODE_CLOSE.slow]));
+    expect(hub.links[0]!.snapshots).toEqual([]);
+  });
+
+  it('a call before the node wired its executor is 503 "jantard is starting"', async () => {
+    const hub = await startHub();
+    const { ctx } = await joinNode(hub);
+    const dialer = createDialer(ctx, ctx.paths.nodeFile, () => SELF);
+    onCleanup(() => dialer.stop());
+    dialer.start(() => {});
+    await vi.waitFor(() => expect(hub.links).toHaveLength(1));
+    expect(await hub.links[0]!.link.call(call('c1', 'getScreen'))).toEqual({ status: 503, body: errorBody('unavailable', 'jantard is starting') });
+  });
+
   it('a reply over 16 MiB is a 500 from the node, never a broken link', async () => {
     const hub = await startHub();
     await startNode(hub, { onCall: async () => ({ status: 200, body: { text: 'q'.repeat(NODE_LIMITS.bulkToHubBytes + 10) } }) });
@@ -174,16 +207,39 @@ describe('HubLink.call never rejects', () => {
     expect(hub.links[0]!.closes).toEqual([]);
   });
 
-  it('a link that drops ends its calls node_offline at once; later calls too', async () => {
+  it('a link that drops ends a call already sent node_timeout (it may have run there); a call after it is node_offline', async () => {
     const hub = await startHub();
-    await startNode(hub, { onCall: () => new Promise(() => {}) });
+    const ran: string[] = [];
+    await startNode(hub, { onCall: (req) => (ran.push(req.id), new Promise(() => {})) });
     const link = hub.links[0]!.link;
     const waiting = link.call(call('c1', 'sendPrompt', { body: { text: 'x' } }));
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.waitFor(() => expect(ran).toEqual(['c1']));
     link.close(NODE_CLOSE.unknown, 'revoked');
-    expect(await waiting).toMatchObject({ status: 503, body: { error: { code: 'node_offline', message: expect.stringMatching(/is offline\. Nothing was sent\.$/) } } });
-    expect(await link.call(call('c2', 'getScreen'))).toMatchObject({ status: 503 });
+    // Never "Nothing was sent": the prompt reached the node, so the phone is told to check the session.
+    expect(await waiting).toMatchObject({ status: 504, body: { error: { code: 'node_timeout', message: expect.stringMatching(/didn't answer in time\. Check the session before trying again\.$/) } } });
+    expect(await link.call(call('c2', 'getScreen'))).toMatchObject({ status: 503, body: { error: { code: 'node_offline', message: expect.stringMatching(/is offline\. Nothing was sent\.$/) } } });
     expect(hub.links[0]!.closes).toEqual([NODE_CLOSE.unknown]);
+  });
+
+  it('a node full of calls the hub gave up on answers an upload 429 and drops its chunks; the link stays up', async () => {
+    const hub = await startHub();
+    const answers: ((r: NodeCallReply) => void)[] = [];
+    await startNode(hub, { onCall: () => new Promise((resolve) => answers.push(resolve)) });
+    const link = hub.links[0]!.link;
+    const stuck = Array.from({ length: NODE_LIMITS.callsInFlight }, (_v, i) => link.call(call(`s${i}`, 'getScreen')));
+    await vi.waitFor(() => expect(answers).toHaveLength(NODE_LIMITS.callsInFlight));
+    await pass(hub.ctx.clock, NODE_LIMITS.callTimeoutMs);
+    for (const r of await Promise.all(stuck)) expect(r.status).toBe(504);
+    // The hub has room again while the node still runs all sixteen: the upload is refused there, its chunks still coming.
+    const bytes = Buffer.alloc(NODE_LIMITS.chunkBytes * 2 + 10, 7);
+    expect(await link.call(call('u1', 'uploadCreate'), bytes)).toMatchObject({ status: 429, body: { error: { code: 'rate_limited' } } });
+    // Once a place is free on the node, a call sent after those chunks runs: the link never dropped.
+    answers[0]!({ status: 200, body: {} });
+    const next = link.call(call('c1', 'getScreen'));
+    await vi.waitFor(() => expect(answers).toHaveLength(NODE_LIMITS.callsInFlight + 1));
+    answers[NODE_LIMITS.callsInFlight]!({ status: 200, body: { ok: 1 } });
+    expect(await next).toEqual({ status: 200, body: { ok: 1 } });
+    expect(hub.links[0]!.closes).toEqual([]);
   });
 });
 

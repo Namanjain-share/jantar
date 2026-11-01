@@ -9,16 +9,18 @@
  * and the cap on sockets not yet authenticated, both grown by the paired
  * servers.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { connect, type Socket } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { linuxNodeSnapshot, nodeEvents, nodeSession } from '@jantar/fixtures';
 import { EXTENSION_IDLE_MS, HEARTBEAT_MS, SettingsSchema } from '@jantar/protocol';
-import { NODE_CLOSE, NODE_LIMITS, NODE_PROTO, type NodeCallReply, type NodeFrame } from '@jantar/protocol/node-link';
+import { NODE_CLOSE, NODE_LIMITS, NODE_LINK_PATH, NODE_PROTO, type NodeCallReply, type NodeFrame } from '@jantar/protocol/node-link';
+import { MAX_BUFFERED } from '../../src/api/events-ws.js';
 import type { NodeFile } from '../../src/contracts.js';
 import { FakeClock } from '../../src/core/clock.js';
 import { authFrame, newNonce, welcomeValid } from '../../src/link/handshake.js';
 import { generateKeyPair, privateKeyOf, privateKeyPem } from '../../src/link/keys.js';
-import { cleanup, joinNode, pass, rawNode, rawSocket, startHub, testCtx, upgrade, type RawPeer, type TestHub } from './harness.js';
+import { cleanup, joinNode, onCleanup, pass, rawNode, rawSocket, startHub, testCtx, upgrade, type RawPeer, type TestHub } from './harness.js';
 
 afterEach(cleanup);
 
@@ -43,6 +45,46 @@ async function linked(hub: TestHub, node: NodeFile, opts: { autoPong?: boolean }
 }
 
 const ip = (n: number): Record<string, string> => ({ 'CF-Connecting-IP': `198.51.100.${n}` });
+
+/** A socket that upgrades by hand, then never answers anything (a close frame included). */
+async function deafSocket(port: number, headers: Record<string, string>): Promise<Socket> {
+  const sock = connect(port, '127.0.0.1');
+  onCleanup(() => void sock.destroy());
+  const extra = Object.entries(headers).map(([k, v]) => `${k}: ${v}\r\n`).join('');
+  const key = randomBytes(16).toString('base64');
+  sock.write(`GET ${NODE_LINK_PATH} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${key}\r\n${extra}\r\n`);
+  await new Promise<void>((resolve, reject) => {
+    let got = '';
+    sock.on('data', (c: Buffer) => {
+      got += c.toString('latin1');
+      if (got.startsWith('HTTP/1.1 101')) resolve();
+      else if (got.includes('\r\n')) reject(new Error(got.split('\r\n')[0]));
+    });
+    sock.on('error', reject);
+  });
+  return sock;
+}
+
+/** Hold the hub's key read open (the window between a good auth and its welcome); `fail` makes the next reads fail. */
+function holdHubKey(hub: TestHub) {
+  const read = hub.auth.hubKey.bind(hub.auth);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let asked = 0;
+  let failing = false;
+  hub.auth.hubKey = async () => {
+    asked += 1;
+    await gate;
+    if (failing) throw new Error('unreadable');
+    return read();
+  };
+  return {
+    asked: () => asked,
+    release,
+    fail: () => (failing = true),
+    restore: () => (hub.auth.hubKey = read),
+  };
+}
 
 describe('the handshake', () => {
   it("welcome: the name the Mac gave, signed with the pinned key over both nonces; a fresh challenge every time", async () => {
@@ -99,12 +141,20 @@ describe('the handshake', () => {
     expect(hub.links).toHaveLength(0);
   });
 
-  it('another link version is 4426, noted for the Machines line until a good link', async () => {
+  it('another link version is 4426, noted for the Machines line (only when signed) until a good link', async () => {
     const hub = await startHub();
     const { node } = await joinNode(hub);
-    const newer = await rawNode(hub.url, node, { proto: NODE_PROTO + 1 });
+    // Anyone may name a node id: a forged auth still hears 4426, but the server's Machines line is not touched.
+    const forged = await rawNode(hub.url, { ...node, privateKey: privateKeyPem(generateKeyPair().privateKey) }, { proto: NODE_PROTO + 1 });
+    expect(await forged.closed).toBe(NODE_CLOSE.version);
+    expect(hub.auth.lastRefusal(node.nodeId)).toBeNull();
+    // Read before the strict parse: a newer node's auth with a field this version does not know is 4426, not 4400.
+    const newer = await rawNode(hub.url, node, { proto: NODE_PROTO + 1, features: ['x'] });
     expect(await newer.closed).toBe(NODE_CLOSE.version);
     expect(hub.auth.lastRefusal(node.nodeId)).toEqual({ code: NODE_CLOSE.version, at: '2026-11-01T10:00:00.000Z' });
+    // The same version with such a field is a protocol error.
+    const odd = await rawNode(hub.url, node, { features: ['x'] });
+    expect(await odd.closed).toBe(NODE_CLOSE.protocol);
     await linked(hub, node);
     expect(hub.auth.lastRefusal(node.nodeId)).toBeNull();
   });
@@ -132,6 +182,40 @@ describe('the handshake', () => {
     hub.ctx.clock.advance(NODE_LIMITS.handshakeMs - 1);
     hub.ctx.clock.advance(1);
     expect(await silent.closed).toBe(NODE_CLOSE.handshakeTimeout);
+  });
+
+  it('a server removed while the hub reads its key is refused 4401, never welcomed (S12)', async () => {
+    const hub = await startHub();
+    const { node } = await joinNode(hub);
+    const held = holdHubKey(hub);
+    const p = await rawNode(hub.url, node);
+    await vi.waitFor(() => expect(held.asked()).toBe(1));
+    // The revoke finds no link to close yet: the handshake must stop it itself.
+    hub.auth.revoke(node.nodeId, 'cli');
+    hub.linkServer.closeNode(node.nodeId, NODE_CLOSE.unknown, 'removed');
+    held.release();
+    expect(await p.closed).toBe(NODE_CLOSE.unknown);
+    expect(p.frames.map((f) => f.k)).toEqual(['challenge']);
+    expect(hub.links).toHaveLength(0);
+    expect(hub.linkServer.linked()).toEqual([]);
+  });
+
+  it("while the hub reads its key a frame is 4400; a key that cannot be read is 1011 and logged", async () => {
+    const hub = await startHub();
+    const { node } = await joinNode(hub);
+    const held = holdHubKey(hub);
+    const early = await rawNode(hub.url, node);
+    await vi.waitFor(() => expect(held.asked()).toBe(1));
+    early.send({ k: 'heartbeat', ts: '2026-11-01T10:00:00.000Z' });
+    expect(await early.closed).toBe(NODE_CLOSE.protocol);
+    held.release();
+    held.fail();
+    const broken = await rawNode(hub.url, node);
+    expect(await broken.closed).toBe(1011);
+    expect(broken.frames.map((f) => f.k)).toEqual(['challenge']);
+    expect(hub.ctx.log.records.some((r) => r.level === 'error' && /hub's key could not be read/.test(r.msg))).toBe(true);
+    held.restore();
+    await linked(hub, node);
   });
 
   it('the newest link with a key wins: the older closes 4409, and that is logged', async () => {
@@ -202,7 +286,7 @@ describe('a live link', () => {
     await vi.waitFor(() => expect(hub.links[1]!.snapshots).toEqual([linuxNodeSnapshot()]));
   });
 
-  it('a fifth bulk at once is one too many (4400); the calls waiting end node_offline', async () => {
+  it('a fifth bulk at once is one too many (4400); the calls waiting (already sent) end node_timeout', async () => {
     const hub = await startHub();
     const { node } = await joinNode(hub);
     const p = await linked(hub, node);
@@ -211,10 +295,10 @@ describe('a live link', () => {
     await vi.waitFor(() => expect(p.frames.filter((f) => f.k === 'call')).toHaveLength(NODE_LIMITS.bulkInFlight + 1));
     for (let i = 0; i < NODE_LIMITS.bulkInFlight + 1; i += 1) p.send({ k: 'result', id: `c${i}`, status: 200, bulk: { size: 10, sha256: 'a'.repeat(64) } });
     expect(await p.closed).toBe(NODE_CLOSE.protocol);
-    for (const r of await Promise.all(calls)) expect(r).toMatchObject({ status: 503, body: { error: { code: 'node_offline' } } });
+    for (const r of await Promise.all(calls)) expect(r).toMatchObject({ status: 504, body: { error: { code: 'node_timeout' } } });
   });
 
-  it('a corrupted result chunk closes 4400 and the call ends node_offline; a good bulk answers it', async () => {
+  it('a corrupted result chunk closes 4400 and the call ends node_timeout; a good bulk answers it', async () => {
     const hub = await startHub();
     const { node } = await joinNode(hub);
     const body = Buffer.from(JSON.stringify({ items: ['x'.repeat(2000)] }));
@@ -230,7 +314,7 @@ describe('a live link', () => {
     const flipped = Buffer.from(body);
     flipped[5] = flipped[5]! ^ 1;
     p.send({ k: 'chunk', id: 'c2', i: 0, data: flipped.toString('base64') });
-    expect(await broken).toMatchObject({ status: 503, body: { error: { code: 'node_offline' } } });
+    expect(await broken).toMatchObject({ status: 504, body: { error: { code: 'node_timeout' } } });
     expect(await p.closed).toBe(NODE_CLOSE.protocol);
   });
 
@@ -263,6 +347,23 @@ describe('a live link', () => {
     expect(hub.links[1]!.closes).toEqual([1006]);
   });
 
+  it("a flood of heartbeats reads the server's row at most once every 5 s", async () => {
+    const hub = await startHub();
+    const { node } = await joinNode(hub);
+    const p = await linked(hub, node);
+    const reads = vi.spyOn(hub.ctx.db.nodes, 'get');
+    const flood = async (ts: string, events: number): Promise<void> => {
+      for (let i = 0; i < 50; i += 1) p.send({ k: 'heartbeat', ts });
+      p.send({ k: 'event', event: nodeEvents.sessionRemoved('7a1c0000-0000-4000-8000-000000000041') });
+      await vi.waitFor(() => expect(hub.links[0]!.events).toHaveLength(events));
+    };
+    await flood('2026-11-01T10:00:00.000Z', 1);
+    expect(reads).not.toHaveBeenCalled();
+    hub.ctx.clock.advance(5000);
+    await flood('2026-11-01T10:00:05.000Z', 2);
+    expect(reads).toHaveBeenCalledTimes(1);
+  });
+
   it("a server's heartbeat keeps lastSeenAt fresh, written at most every 5 minutes", async () => {
     const hub = await startHub();
     const { node } = await joinNode(hub);
@@ -288,6 +389,50 @@ describe('a live link', () => {
     expect(await p.closed).toBe(NODE_CLOSE.unknown);
     const again = await rawNode(hub.url, node);
     expect(await again.closed).toBe(NODE_CLOSE.unknown);
+  });
+
+  it('a late result is taken for the last 64 calls that timed out; one older than that is 4400', async () => {
+    const hub = await startHub();
+    const { node } = await joinNode(hub);
+    const p = await linked(hub, node);
+    const link = hub.links[0]!.link;
+    // Five rounds of sixteen: c0..c79 all time out.
+    for (let r = 0; r < 5; r += 1) {
+      const calls = Array.from({ length: NODE_LIMITS.callsInFlight }, (_v, i) =>
+        link.call({ id: `c${r * NODE_LIMITS.callsInFlight + i}`, route: 'getScreen', params: { sid: 's1' }, query: {}, actor: ACTOR }),
+      );
+      await pass(hub.ctx.clock, NODE_LIMITS.callTimeoutMs);
+      for (const c of await Promise.all(calls)) expect(c.status).toBe(504);
+    }
+    // The newest 64 (c16..c79) are dropped quietly when they come.
+    p.send({ k: 'result', id: 'c79', status: 200, body: {} });
+    p.send({ k: 'result', id: 'c16', status: 200, body: {} });
+    p.send({ k: 'event', event: nodeEvents.sessionRemoved('7a1c0000-0000-4000-8000-000000000041') });
+    await vi.waitFor(() => expect(hub.links[0]!.events).toHaveLength(1));
+    expect(hub.links[0]!.closes).toEqual([]);
+    p.send({ k: 'result', id: 'c15', status: 200, body: {} });
+    expect(await p.closed).toBe(NODE_CLOSE.protocol);
+  });
+
+  it('a send buffer over MAX_BUFFERED is 1013', async () => {
+    const hub = await startHub();
+    const { node } = await joinNode(hub);
+    const p = await linked(hub, node);
+    // The socket behind the link, made to look backed up (a server reading nothing for minutes).
+    const ws = (hub.links[0]!.link as unknown as { ws: object }).ws;
+    Object.defineProperty(ws, 'bufferedAmount', { get: () => MAX_BUFFERED + 1 });
+    hub.ctx.clock.advance(HEARTBEAT_MS);
+    expect(await p.closed).toBe(NODE_CLOSE.slow);
+    expect(hub.links[0]!.closes).toEqual([NODE_CLOSE.slow]);
+  });
+
+  it('closing a link with a code no close frame carries (1006) cuts the socket instead of throwing', async () => {
+    const hub = await startHub();
+    const { node } = await joinNode(hub);
+    const p = await linked(hub, node);
+    expect(() => hub.links[0]!.link.close(1006, 'dropped')).not.toThrow();
+    expect(hub.links[0]!.closes).toEqual([1006]);
+    expect(await p.closed).toBe(1006);
   });
 
   it('Fleet off closes every link and every half-open socket 4403; stopping closes 1001 and refuses new ones', async () => {
@@ -330,6 +475,16 @@ describe('budgets', () => {
     p.send(authFrame(privateKeyOf(node.privateKey)!, node.nodeId, c.nonce, newNonce(), { os: 'linux', version: '0.6.0', backend: 'tmux', readOnly: false }, 0));
     await p.next('welcome');
     await vi.waitFor(async () => expect((await upgrade(hub.url, ip((n += 1)))).status).toBe(101));
+  });
+
+  it('a socket that never answers, nor closes back after its 4408, gives its place up at once', async () => {
+    const hub = await cloudflareHub();
+    const deaf = await Promise.all(Array.from({ length: NODE_LIMITS.unauthSockets }, (_v, i) => deafSocket(hub.port, ip(i))));
+    expect((await upgrade(hub.url, ip(50))).status).toBe(429);
+    hub.ctx.clock.advance(NODE_LIMITS.handshakeMs);
+    // Each was sent its close frame and none closed back (ws would wait 30 s for that): the places are free now all the same.
+    expect((await upgrade(hub.url, ip(51))).status).toBe(101);
+    for (const d of deaf) expect(d.destroyed).toBe(false);
   });
 
   it('handshakes: 10 + 2 x paired servers a minute per caller (429, retry-after); other callers are not held back', async () => {

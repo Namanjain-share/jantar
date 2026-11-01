@@ -51,7 +51,8 @@ describe('retryWait', () => {
     ['link versions differ (4426)', { kind: 'closed', code: NODE_CLOSE.version }, NODE_LIMITS.hourlyRetryMs],
     ['Fleet off (HTTP 404)', { kind: 'http', status: 404 }, NODE_LIMITS.slowRetryMs],
     ['Access refused (HTTP 403)', { kind: 'http', status: 403, access: true }, NODE_LIMITS.slowRetryMs],
-    ['rate limited (HTTP 429)', { kind: 'http', status: 429, retryAfterMs: 17_000 }, 17_000],
+    // Its retry-after, plus up to as much again (16999 at the top of the range).
+    ['rate limited (HTTP 429)', { kind: 'http', status: 429, retryAfterMs: 17_000 }, 33_999],
     ['a 502 from the tunnel', { kind: 'http', status: 502 }, 59999],
     ['a redirect', { kind: 'redirect', status: 302 }, 59999],
     ['an untrusted certificate', { kind: 'tls', error: 'SELF_SIGNED_CERT_IN_CHAIN' }, 59999],
@@ -64,10 +65,15 @@ describe('retryWait', () => {
     });
   }
 
-  it('a retry-after is kept between 1 s and an hour', () => {
-    expect(retryWait({ kind: 'http', status: 429, retryAfterMs: 1 }, 0)).toBe(1000);
-    expect(retryWait({ kind: 'http', status: 429, retryAfterMs: 9e9 }, 0)).toBe(NODE_LIMITS.hourlyRetryMs);
-    expect(retryWait({ kind: 'http', status: 429 }, 0)).toBe(NODE_LIMITS.backoffCapMs);
+  it('a retry-after is kept between 1 s and an hour, and jittered up to as much again', () => {
+    const none = () => 0;
+    expect(retryWait({ kind: 'http', status: 429, retryAfterMs: 1 }, 0, none)).toBe(1000);
+    expect(retryWait({ kind: 'http', status: 429, retryAfterMs: 9e9 }, 0, none)).toBe(NODE_LIMITS.hourlyRetryMs);
+    expect(retryWait({ kind: 'http', status: 429, retryAfterMs: 9e9 }, 0, top)).toBe(NODE_LIMITS.hourlyRetryMs);
+    expect(retryWait({ kind: 'http', status: 429 }, 0, none)).toBe(NODE_LIMITS.backoffCapMs);
+    // Ten servers refused together come back spread over the next 5 s, never before the hub's 5.
+    const waits = [0, 0.1, 0.5, 0.9].map((r) => retryWait({ kind: 'http', status: 429, retryAfterMs: 5000 }, 0, () => r));
+    expect(waits).toEqual([5000, 5500, 7500, 9500]);
   });
 
   it('the code a status shows for each ending', () => {

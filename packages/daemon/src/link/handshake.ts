@@ -9,12 +9,14 @@
  * Fresh 32-byte nonces from crypto.randomBytes on both sides stop replay;
  * the two labels and the two keys stop reflection; no clocks. The hub
  * accepts nothing but `auth` before it, and the node acts on nothing before
- * a verified `welcome`.
+ * a verified `welcome`. Each side reads the other's link version (the
+ * challenge's `v`, the auth's `proto`) before the strict parse: another
+ * version is 4426 ("update Jantar"), never 4400.
  */
 import { randomBytes, type KeyObject } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { NodeBackend, NodeOs } from '@jantar/protocol';
-import { NODE_PROTO, type NodeFrameOf } from '@jantar/protocol/node-link';
+import { NODE_LIMITS, NODE_PROTO, type NodeFrameOf } from '@jantar/protocol/node-link';
 import { signLink, verifyLink } from './keys.js';
 
 /** A fresh handshake nonce: 32 random bytes, base64url. */
@@ -32,9 +34,34 @@ export interface NodeSelf {
   readOnly: boolean;
 }
 
+/** The `v` of this version's challenge. */
+export const CHALLENGE_V = 1;
+
 /** The hub's first frame on a new socket. */
 export function challengeFrame(nonce: string): NodeFrameOf<'challenge'> {
-  return { k: 'challenge', v: 1, nonce };
+  return { k: 'challenge', v: CHALLENGE_V, nonce };
+}
+
+/**
+ * A handshake frame's text as a plain object, read before the strict parse
+ * (null if it is not one): a newer peer's challenge or auth may carry what
+ * this version does not know, and its `v` or `proto` must still be heard as
+ * another link version (4426), never as a protocol error.
+ */
+export function looseFrame(text: string): Record<string, unknown> | null {
+  if (Buffer.byteLength(text, 'utf8') > NODE_LIMITS.frameBytes) return null;
+  try {
+    const json: unknown = JSON.parse(text);
+    return typeof json === 'object' && json !== null && !Array.isArray(json) ? (json as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether a loosely read `auth` (another link version's) is signed by `publicKey` for this challenge. */
+export function looseAuthValid(publicKey: string, raw: Record<string, unknown>, hubNonce: string): boolean {
+  const { nodeId, nonce, sig } = raw;
+  return typeof nodeId === 'string' && typeof nonce === 'string' && typeof sig === 'string' && verifyLink(publicKey, 'node', nodeId, hubNonce, nonce, sig);
 }
 
 /** The node's answer to a challenge, signed with its own key; `nonce` is the node's fresh nN. */

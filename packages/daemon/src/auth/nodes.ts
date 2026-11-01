@@ -15,7 +15,8 @@
  *   version}` into `nodes` (the route audits it), and the hub signs
  *   pairSigText(nodeId, publicKey) with its key. Every bad code is the same
  *   401 sentence (no oracle); a link version that differs is 426 and spends
- *   nothing; claims are rate limited per caller (`rateKey`).
+ *   nothing; claims are rate limited per caller (`rateKey`, a budget that
+ *   grows with open join lines and pairings: NODE_CLAIMS_PER_MIN).
  * - The hub keeps public keys only. A node unseen for 90 days
  *   (EXTENSION_IDLE_MS) is revoked when it next connects; `lastSeenAt` is
  *   written at most every 5 minutes (the link touches it on every
@@ -40,7 +41,7 @@ import { newId } from '../core/ids.js';
 import { loadOrCreateHubKey, signPair, type LinkKeyPair } from '../link/keys.js';
 import { TOUCH_EVERY_MS } from './devices.js';
 import { PairingService } from './pairing.js';
-import { SlidingWindowLimiter } from './rate-limit.js';
+import { SlidingWindowLimiter, type RateLimitOptions } from './rate-limit.js';
 
 /** The one sentence every refused claim gets (no oracle: used, expired, mistyped or another kind's). */
 export const JOIN_LINE_INVALID = 'this join line is not valid (used, expired or mistyped): make a new one at the Mac';
@@ -51,7 +52,12 @@ export const MAX_JOIN_LINES = 20;
 /** Join lines waiting at once (two full `--count 20`); past it a new one is refused, never an older one dropped. */
 export const MAX_OPEN_JOIN_LINES = 2 * MAX_JOIN_LINES;
 
-/** Pairing claims per caller per minute. */
+/**
+ * Pairing claims per caller per minute: this, plus 2 for each open join line
+ * and each live pairing (a claim turns one into the other, so the budget
+ * holds through a burst). Ten or twenty servers behind one NAT running
+ * `node join` at once all fit.
+ */
 export const NODE_CLAIMS_PER_MIN = NODE_LIMITS.handshakesPerMin;
 
 /** Why a handshake's node id is refused (the link closes 4401). */
@@ -60,6 +66,7 @@ export type NodeVerdict = { ok: true; node: NodeRecord } | { ok: false; why: 'un
 export class NodeAuth {
   private readonly pairing: PairingService;
   private readonly claims: SlidingWindowLimiter;
+  private readonly claimLimits: RateLimitOptions;
   private readonly log: Logger;
   private keyLoad: Promise<LinkKeyPair> | null = null;
   private readonly refusals = new Map<string, { code: number; at: string }>();
@@ -67,7 +74,8 @@ export class NodeAuth {
   constructor(private readonly ctx: Pick<DaemonContext, 'db' | 'clock' | 'log' | 'paths'>) {
     this.log = ctx.log.child({ part: 'fleet' });
     this.pairing = new PairingService({ clock: ctx.clock, log: this.log, maxOpen: MAX_OPEN_JOIN_LINES });
-    this.claims = new SlidingWindowLimiter({ limit: NODE_CLAIMS_PER_MIN, windowMs: 60_000, clock: ctx.clock });
+    this.claimLimits = { limit: NODE_CLAIMS_PER_MIN, windowMs: 60_000, clock: ctx.clock };
+    this.claims = new SlidingWindowLimiter(this.claimLimits);
   }
 
   /** The hub's key pair (made on first use; one load at a time). */
@@ -80,6 +88,7 @@ export class NodeAuth {
 
   /** POST /v1/node/pair: spend the code, keep the key, sign the reply with the hub's key. */
   async pair(body: NodePairBody, meta: { rateKey: string }): Promise<FleetResult<{ reply: NodePairReply; nodeId: string }>> {
+    this.claimLimits.limit = NODE_CLAIMS_PER_MIN + NODE_LIMITS.handshakesPerNode * (this.pairing.openCount() + this.pairedCount());
     const limited = this.claims.hit(meta.rateKey);
     if (!limited.ok) {
       return {

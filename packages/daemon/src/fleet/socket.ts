@@ -10,11 +10,15 @@
  *   front door's header, as the API's): 10 + 2 x paired nodes a minute, so
  *   ten servers behind one NAT all reconnecting after the Mac wakes fit. Over
  *   it: HTTP 429 with retry-after.
- * - The cap on sockets not yet authenticated: 8 + paired nodes at once (429).
+ * - The cap on sockets not yet authenticated: 8 + paired nodes at once (429);
+ *   a socket refused before its welcome gives its place up at once.
  * - The handshake (link/handshake.ts): challenge, then `auth` within
  *   NODE_LIMITS.handshakeMs (else 4408) and nothing else before it (4400).
- *   A link version that differs is 4426; a node key that is unknown, revoked
- *   or idle 90 days, or a signature that fails, is 4401. Then `welcome`.
+ *   A link version that differs is 4426 (read before the strict parse, so a
+ *   newer node hears it; noted for the Machines line only when the node's
+ *   key signed it); a node key that is unknown, revoked or idle 90 days, or
+ *   a signature that fails, is 4401. The verdict is checked again once the
+ *   hub's key is read, so a revoke in between still refuses. Then `welcome`.
  * - The newest link with a key wins: an older one is closed 4409 and logged.
  * - Per link: exactly one snapshot, first (a second, or an event before it,
  *   is 4400); a frame kind a node may not send (`call`, ...) is 4400; an
@@ -23,12 +27,15 @@
  *   1 MiB is 1009 (ws itself); a send buffer over MAX_BUFFERED is 1013.
  * - Liveness: a ping every HEARTBEAT_MS (the link is terminated when the
  *   previous pong never came) and an app heartbeat both ways, which keeps
- *   Cloudflare's idle timer from firing; each node heartbeat touches the
- *   node's lastSeenAt (written at most every 5 minutes).
- * - HubLink.call never rejects: a link that is down or drops answers
- *   node_offline, one that takes too long node_timeout (60 s for
- *   LONG_NODE_ROUTES, else 30 s), the 17th call in flight 429. Nothing is
- *   queued across a disconnect.
+ *   Cloudflare's idle timer from firing; a node heartbeat (at most one every
+ *   TOUCH_GAP_MS counts) touches the node's lastSeenAt (written at most
+ *   every 5 minutes).
+ * - HubLink.call never rejects: a link that is down answers node_offline
+ *   (nothing was sent), one that takes too long node_timeout (60 s for
+ *   LONG_NODE_ROUTES, else 30 s), the 17th call in flight 429. A link that
+ *   drops ends a call already on the wire node_timeout (the node may have
+ *   run it: check the session) and one not yet sent node_offline. Nothing
+ *   is queued across a disconnect.
  *
  * A close the hub decides (revoke, Fleet off, replaced, a protocol error)
  * fires the link's onClose at once, so its owner sees the old link go before
@@ -37,7 +44,7 @@
  */
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { HEARTBEAT_MS, errorBody } from '@jantar/protocol';
+import { HEARTBEAT_MS, NodeIdSchema, errorBody } from '@jantar/protocol';
 import {
   LONG_NODE_ROUTES,
   NODE_CLOSE,
@@ -60,7 +67,7 @@ import { proxyHeaderFor, rateLimitKey } from '../auth/client-ip.js';
 import type { NodeAuth } from '../auth/nodes.js';
 import { SlidingWindowLimiter, type RateLimitOptions } from '../auth/rate-limit.js';
 import { BulkAssembler, SNAPSHOT_BULK_ID, bulkLane, decodeFrame, encodeFrame, sendWithBulk } from '../link/codec.js';
-import { authValid, challengeFrame, newNonce, welcomeFrame } from '../link/handshake.js';
+import { authValid, challengeFrame, looseAuthValid, looseFrame, newNonce, welcomeFrame } from '../link/handshake.js';
 import { WS_OPEN, WS_TOO_BIG, linkServer, type WsServer, type WsSocket } from '../link/ws-client.js';
 
 /** Late results remembered per link (a call that timed out may still be answered, its bulk included). */
@@ -116,9 +123,12 @@ export function createLinkServer(ctx: DaemonContext, auth: NodeAuth, hooks: Link
   const handshake = (ws: WsSocket, release: () => void): void => {
     const hubNonce = newNonce();
     let phase: 'auth' | 'checking' | 'done' = 'auth';
+    /** `nodeId`: only one whose key signed this auth (anyone may name a node id). */
     const refuse = (code: number, why: string, nodeId?: string): void => {
       phase = 'done';
       ctx.clock.clearTimeout(timer);
+      // Its place is free now, not once a peer that ignores the close frame lets go.
+      release();
       log.info('server link refused', { why, code, ...(nodeId ? { nodeId } : {}) });
       if (nodeId && code === NODE_CLOSE.version) auth.noteRefusal(nodeId, code);
       ws.close(code, why);
@@ -134,10 +144,16 @@ export function createLinkServer(ctx: DaemonContext, auth: NodeAuth, hooks: Link
     ws.on('message', (data, isBinary) => {
       if (phase === 'done') return;
       if (phase === 'checking') return refuse(NODE_CLOSE.protocol, 'a frame before welcome');
-      const d = isBinary ? null : decodeFrame(data.toString('utf8'));
+      const text = isBinary ? null : data.toString('utf8');
+      // The link version first, before the strict parse: a newer node's auth may carry what this version does not know (4426, never 4400).
+      const raw = text === null ? null : looseFrame(text);
+      if (raw?.k === 'auth' && typeof raw.proto === 'number' && raw.proto !== NODE_PROTO) {
+        const rec = typeof raw.nodeId === 'string' && NodeIdSchema.safeParse(raw.nodeId).success ? auth.lookup(raw.nodeId) : null;
+        return refuse(NODE_CLOSE.version, 'link versions differ', rec && looseAuthValid(rec.publicKey, raw, hubNonce) ? rec.id : undefined);
+      }
+      const d = text === null ? null : decodeFrame(text);
       if (!d?.ok || d.frame.k !== 'auth') return refuse(NODE_CLOSE.protocol, 'expected auth');
       const a = d.frame;
-      if (a.proto !== NODE_PROTO) return refuse(NODE_CLOSE.version, 'link versions differ', a.nodeId);
       const rec = auth.lookup(a.nodeId);
       if (!rec || !authValid(rec.publicKey, a, hubNonce)) return refuse(NODE_CLOSE.unknown, 'unknown server');
       const verdict = auth.verify(a.nodeId);
@@ -146,6 +162,9 @@ export function createLinkServer(ctx: DaemonContext, auth: NodeAuth, hooks: Link
       auth.hubKey().then(
         (key) => {
           if (phase !== 'checking' || ws.readyState !== WS_OPEN) return;
+          // Again: a revoke while the key was read found no link to close, so it is stopped here.
+          const now = auth.verify(a.nodeId);
+          if (!now.ok) return refuse(NODE_CLOSE.unknown, `server ${now.why}`, a.nodeId);
           phase = 'done';
           ctx.clock.clearTimeout(timer);
           release();
@@ -157,8 +176,8 @@ export function createLinkServer(ctx: DaemonContext, auth: NodeAuth, hooks: Link
           }
           auth.touch(a.nodeId, { os: a.os, version: a.version });
           auth.clearRefusal(a.nodeId);
-          ws.send(encodeFrame(welcomeFrame(key.privateKey, verdict.node.name, a.nodeId, hubNonce, a.nonce)));
-          const link = new LiveLink(ws, a.nodeId, verdict.node.name, info, ctx, auth, log, () => {
+          ws.send(encodeFrame(welcomeFrame(key.privateKey, now.node.name, a.nodeId, hubNonce, a.nonce)));
+          const link = new LiveLink(ws, a.nodeId, now.node.name, info, ctx, auth, log, () => {
             if (links.get(a.nodeId) === link) links.delete(a.nodeId);
           });
           links.set(a.nodeId, link);
@@ -166,6 +185,7 @@ export function createLinkServer(ctx: DaemonContext, auth: NodeAuth, hooks: Link
           hooks.onLink(link);
         },
         () => {
+          if (phase !== 'checking') return;
           log.error("the hub's key could not be read: no server can link");
           refuse(1011, 'hub key unavailable');
         },
@@ -196,9 +216,14 @@ export function createLinkServer(ctx: DaemonContext, auth: NodeAuth, hooks: Link
   };
 }
 
+/** A node's heartbeats closer together than this touch nothing (each touch reads the node's row). */
+const TOUCH_GAP_MS = 5000;
+
 interface Waiting {
   settle(reply: NodeCallReply): void;
   timer: TimerId;
+  /** Its frame was handed to the socket: the node may have run it. */
+  sent: boolean;
 }
 
 /** One authenticated node link (the HubLink its owner wires). */
@@ -215,6 +240,8 @@ class LiveLink implements HubLink {
   private closedWith: number | null = null;
   private alive = true;
   private readonly beat: TimerId;
+  /** When a heartbeat last touched the node's row (linking touched it). */
+  private touchedAt: number;
 
   constructor(
     private readonly ws: WsSocket,
@@ -237,6 +264,7 @@ class LiveLink implements HubLink {
     });
     ws.on('close', (code) => this.finish(code));
     this.beat = ctx.clock.setInterval(() => this.heartbeat(), HEARTBEAT_MS);
+    this.touchedAt = ctx.clock.now();
   }
 
   onSnapshot(fn: (snap: NodeSnapshot) => void): void {
@@ -282,11 +310,15 @@ class LiveLink implements HubLink {
         this.remember(req.id);
         resolve(nodeFailureReply('node_timeout', this.name));
       }, ms);
-      this.waiting.set(req.id, { settle: resolve, timer });
-      const sent = bulk ? this.lane(() => sendWithBulk(this.ws, frame, bulk)) : new Promise<void>((ok, fail) => this.ws.send(text ?? '', (err) => (err ? fail(err) : ok())));
+      const w: Waiting = { settle: resolve, timer, sent: false };
+      this.waiting.set(req.id, w);
+      const send = (): Promise<void> => {
+        w.sent = true;
+        return bulk ? sendWithBulk(this.ws, frame, bulk) : new Promise<void>((ok, fail) => this.ws.send(text ?? '', (err) => (err ? fail(err) : ok())));
+      };
+      const sent = bulk ? this.lane(send) : send();
       sent.catch((e: unknown) => {
-        const w = this.waiting.get(req.id);
-        if (!w) return;
+        if (this.waiting.get(req.id) !== w) return;
         this.waiting.delete(req.id);
         this.ctx.clock.clearTimeout(w.timer);
         if (e instanceof RangeError) resolve({ status: 500, body: errorBody('internal', 'the call is too large for the link') });
@@ -299,11 +331,15 @@ class LiveLink implements HubLink {
     this.end(code, reason);
   }
 
-  /** Close from the hub's side: onClose fires now, the socket follows. */
+  /** Close from the hub's side: onClose fires now, the socket follows (cut, for a code a close frame cannot carry). */
   end(code: number, reason: string): void {
     if (this.closedWith !== null) return;
     this.finish(code);
-    this.ws.close(code, reason);
+    try {
+      this.ws.close(code, reason);
+    } catch {
+      this.ws.terminate();
+    }
   }
 
   private finish(code: number): void {
@@ -315,7 +351,8 @@ class LiveLink implements HubLink {
     for (const [id, w] of this.waiting) {
       this.waiting.delete(id);
       this.ctx.clock.clearTimeout(w.timer);
-      w.settle(nodeFailureReply('node_offline', this.name));
+      // A call already on the wire may have run on the node: its outcome is unknown (spec 3.6), so never "Nothing was sent".
+      w.settle(nodeFailureReply(w.sent ? 'node_timeout' : 'node_offline', this.name));
     }
     this.log.info('server link closed', { nodeId: this.nodeId, code });
     for (const fn of this.closeFns.splice(0)) fn(code);
@@ -371,9 +408,13 @@ class LiveLink implements HubLink {
         return this.onResult(f);
       case 'chunk':
         return this.onChunk(f);
-      case 'heartbeat':
+      case 'heartbeat': {
+        const now = this.ctx.clock.now();
+        if (now - this.touchedAt < TOUCH_GAP_MS) return;
+        this.touchedAt = now;
         this.auth.touch(this.nodeId, { os: this.info.os, version: this.info.version });
         return;
+      }
       default:
         return;
     }
