@@ -39,9 +39,11 @@ The protocol stays at version 3, and settings don't change version.
   sessions on the Mac load and read posts: `jantar post add --platform
   reddit --where r/exampletools --at "2026-11-02 19:30" --title "Launch
   day" --text-file draft.md --link
-  https://www.reddit.com/r/exampletools/submit --status ready`. At most 30
-  adds an hour come from the Mac; marking posted, skipping, editing,
-  deleting and the goals are on the phone only.
+  https://www.reddit.com/r/exampletools/submit --status ready`. A day that
+  doesn't exist or an empty text file is refused, and a time already gone
+  is added with "(that time has passed: it won't ring)". At most 30 adds
+  an hour come from the Mac; marking posted, skipping, editing, deleting
+  and the goals are on the phone only.
 - **Ask** suggests a post: "reel tomorrow 7pm about the launch" gives an
   Instagram reel card with Add and Undo, added as an idea. Ask never writes
   a post's text. Its prompt is now `assistant-v2.md`.

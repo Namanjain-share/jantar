@@ -124,7 +124,9 @@ week". Turn it on at the Mac with `jantar life on posts`.
 - **The weekly goal**: a number a week per platform, or per platform and
   kind ("Reels 3 a week", "Reddit 6 a week"). The top of Posts counts this
   week, Monday to Sunday in the Life zone: "This week: Reels 1/3 ·
-  Reddit 2/6".
+  Reddit 2/6", on more lines when there are more goals. Two goals that
+  would read the same name their platform too ("X threads" beside
+  "Threads").
 - **Jantar never posts.** It keeps the text, rings at the time and gives
   you Copy (the title, the text) and Open (the link). You post it
   yourself, then tap Posted. It never fetches a link and talks to no
@@ -132,6 +134,9 @@ week". Turn it on at the Mac with `jantar life on posts`.
 
 Scripts and Claude sessions on the Mac can add and list posts, at most 30
 adds an hour; Posted, Skip, edits, deletes and goals are on the phone.
+`--at` is in the Life zone and must be a real day; a time already gone is
+still added, and the line says it won't ring. An empty `--text-file` is
+refused.
 
 ```sh
 jantar post add --platform reddit --where r/exampletools --at "2026-11-02 19:30" \
