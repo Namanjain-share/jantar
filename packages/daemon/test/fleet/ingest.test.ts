@@ -3,11 +3,14 @@
  * on memoryLinkPair through the registry.
  *
  * - S1: a node reports only its own sessions, cards, sends, launches and
- *   alerts; events for the Mac's or another node's are dropped, the state
- *   unchanged, and the 21st refusal in a minute closes 4400 with one log
- *   line that names the node, the type and the reason, never the payload.
+ *   alerts; events about the Mac's or another node's are dropped, the state
+ *   unchanged, and not counted (logged once per id: a server joined again
+ *   under a new name shares ids with its old pairing and must not loop on
+ *   4400); the 21st refusal in a minute closes 4400 with one log line that
+ *   names the node, the type and the reason, never the payload.
  * - S13 (registry side): 64 sessions, 32 open cards, the 4 MiB state budget,
- *   300 events in 10 s (1013), events before the snapshot wait for it.
+ *   300 events in 10 s and 4 MiB of them re-emitted in 10 s (1013), events
+ *   before the snapshot wait for it.
  * - S17: a URL in a node's text makes the hub fetch nothing.
  * - S19: 1 MiB of reply arrives as 8,000 characters, a 1 MiB card input as {}.
  * - F17: an unknown event type is dropped and not counted; a known type with
@@ -26,9 +29,10 @@ import {
   oversizedNodeSnapshot,
   windowsNodeSnapshot,
 } from '@jantar/fixtures';
-import type { DaemonEvent, PendingRequest, Session } from '@jantar/protocol';
+import { DEFAULT_LAUNCH_FLAGS, type DaemonEvent, type LaunchJob, type PendingRequest, type Session } from '@jantar/protocol';
 import { NODE_CLOSE, NODE_LIMITS, type NodeSnapshot } from '@jantar/protocol/node-link';
 import type { TestContext } from '../../src/core/testing.js';
+import { EVENT_BYTES_PER_10S, jsonBytes } from '../../src/fleet/clip.js';
 import { ingestEvent } from '../../src/fleet/ingest.js';
 import { NodeRegistry } from '../../src/fleet/registry.js';
 import { REPLY_TEXT_MAX } from '../../src/sources/transcripts/parse.js';
@@ -70,6 +74,53 @@ function fatCard(sid: string, i: number): PendingRequest {
   });
 }
 const nodeSessions = (node: string = NODE_IDS.build1) => Object.values(stateOf().sessions).filter((s) => s.node === node);
+
+/** 45 accounts with every string as long as a node can send: before the caps, one usage.updated became a node.updated of about 0.9 MB. */
+function fatUsage(round: number): DaemonEvent {
+  const text = '語'.repeat(1024);
+  const accounts = Array.from({ length: 45 }, (_, id) => ({
+    id,
+    alias: text,
+    emailMasked: text,
+    isDefaultLogin: id === 0,
+    disabled: false,
+    held: false,
+    usageStatus: text,
+    windows: Array.from({ length: 16 }, () => ({ kind: text, pct: round })),
+  }));
+  return nodeWireEvent({ type: 'usage.updated', data: { accounts, activeAccount: 0, fetchedAt: '2026-01-15T10:01:00.000Z', source: 'cache' } });
+}
+
+const sendOf = (id: string, sid: string, stage: 'typed' | 'proven') => ({
+  id,
+  sid,
+  textHash: 'h',
+  textLength: 1,
+  stage,
+  attempts: 0,
+  createdAt: '2026-01-15T10:00:00.000Z',
+  updatedAt: '2026-01-15T10:00:00.000Z',
+});
+
+const launchOf = (id: string, sid: string, more: Partial<LaunchJob> = {}): LaunchJob => ({
+  id,
+  createdAt: '2026-01-15T10:00:00.000Z',
+  updatedAt: '2026-01-15T10:00:00.000Z',
+  actor: 'device:hub.dev-1',
+  rootId: 'r.code',
+  folder: '/home/sam/code/api-server',
+  display: '~/code/api-server',
+  account: 0,
+  accountSource: 'auto',
+  requested: 'auto',
+  flags: DEFAULT_LAUNCH_FLAGS,
+  dangerous: false,
+  name: 'fix-tests',
+  sid,
+  stage: 'opening',
+  steps: [],
+  ...more,
+});
 
 describe('a snapshot', () => {
   it('puts the node on the board: its sessions stamped with its id, its card, its view online under the hub name', async () => {
@@ -151,6 +202,97 @@ describe('a snapshot', () => {
     expect(pair.open).toBe(true);
     expect(nodeSessions()).toHaveLength(NODE_LIMITS.sessions);
   });
+
+  it('more than 20 bad entries close the link 4400 and nothing of it is kept', async () => {
+    const snap = linuxNodeSnapshot();
+    for (let i = 0; i < 21; i++) snap.sessions[`bad/${i}`] = nodeSession({ sid: `bad/${i}` });
+    const events = record(ctx);
+    const pair = await linked(snap);
+    expect(pair.open).toBe(false);
+    expect(events).toEqual([]);
+    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ code: NODE_CLOSE.protocol, reason: 'snapshot refused' });
+  });
+
+  it('keeps the unfinished sends and launches plus the newest 20 (84 each at most), counting the rest', async () => {
+    const snap = linuxNodeSnapshot();
+    for (let i = 0; i < 90; i++) {
+      const job = sendOf(`send-${i}`, S1, 'typed');
+      snap.sends[job.id] = job;
+      const launch = launchOf(`launch-${i}`, `5e1f0000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+      snap.launches[launch.id] = launch;
+    }
+    const pair = await linked(snap);
+    // 6 + 6 over: under the snapshot's refusal limit.
+    expect(pair.open).toBe(true);
+    expect(Object.keys(stateOf().sends)).toHaveLength(NODE_LIMITS.sessions + 20);
+    expect(Object.values(stateOf().launches).every((l) => l.node === NODE_IDS.build1)).toBe(true);
+  });
+});
+
+describe('a server joined again under a new name, its old pairing still on the board', () => {
+  /** The server's 25 sessions: the Linux fixture's 3 and 22 more. */
+  function serverSnapshot(): NodeSnapshot {
+    const snap = linuxNodeSnapshot();
+    for (let i = 0; i < 22; i++) snap.sessions[`same-${i}`] = nodeSession({ sid: `same-${i}` });
+    return snap;
+  }
+
+  it('links, shows its new sessions, drops its words about the old ones uncounted; once the old pairing is removed, its next link brings them', async () => {
+    // build-1, the old pairing: linked, then gone (greyed).
+    const old = await linked(serverSnapshot(), NODE_IDS.build1);
+    old.drop(1006);
+    // build-2, the new pairing of the same server: the same 25 sessions, and one started since.
+    const again = (): NodeSnapshot => {
+      const snap = serverSnapshot();
+      snap.sessions['since-1'] = nodeSession({ sid: 'since-1' });
+      return snap;
+    };
+    const b = linkTo(reg, NODE_IDS.build2);
+    b.node.sendSnapshot(again());
+    await settle();
+    expect(b.open).toBe(true);
+    expect(nodeSessions(NODE_IDS.build2).map((x) => x.sid)).toEqual(['since-1']);
+    expect(nodeSessions(NODE_IDS.build1)).toHaveLength(25);
+    // Its feed believes the hub knows all 26: every update about the old ones is dropped, never counted.
+    for (let round = 0; round < 2; round++) {
+      for (const sid of Object.keys(serverSnapshot().sessions)) b.node.sendEvent(nodeEvents.sessionUpdated(sid, { name: `renamed-${round}` }));
+    }
+    b.node.sendEvent(nodeEvents.pendingResolved(S1, CARD));
+    await settle();
+    expect(b.open).toBe(true);
+    expect(nodeSessions(NODE_IDS.build1).some((x) => x.name?.startsWith('renamed'))).toBe(false);
+    expect(stateOf().pending[CARD]).toBeDefined();
+    expect(warnings(ctx).filter((r) => r.fields?.node === NODE_IDS.build2)).toEqual([]);
+
+    // The user removes the old pairing: build-2's link is told to send its snapshot again, and the next one brings them.
+    reg.remove(NODE_IDS.build1);
+    expect(nodeSessions(NODE_IDS.build1)).toEqual([]);
+    expect(b.open).toBe(false);
+    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ node: NODE_IDS.build2, code: NODE_CLOSE.goingAway });
+    const next = linkTo(reg, NODE_IDS.build2);
+    next.node.sendSnapshot(again());
+    await settle();
+    expect(next.open).toBe(true);
+    expect(nodeSessions(NODE_IDS.build2)).toHaveLength(26);
+    expect(stateOf().pending[CARD]).toBeDefined();
+  });
+
+  it("a session the Mac's own sources have is left out of a snapshot uncounted, with its card, sends and alerts", async () => {
+    const snap = linuxNodeSnapshot();
+    for (let i = 0; i < 25; i++) {
+      const sid = i === 0 ? MAC_SID : `mac-${i}`;
+      if (i > 0) ctx.store.emit({ type: 'session.added', sid, data: { session: nodeSession({ sid }) } });
+      snap.sessions[sid] = nodeSession({ sid });
+    }
+    snap.pending['01JF1EETCARDONMAC00000000AAbbCCddEEffGGhh00'] = nodeCard({ sid: MAC_SID, id: '01JF1EETCARDONMAC00000000AAbbCCddEEffGGhh00' });
+    snap.sends['job-on-mac'] = sendOf('job-on-mac', MAC_SID, 'typed');
+    snap.alerts = [{ id: 'alert-on-mac', ts: '2026-01-15T10:00:00.000Z', kind: 'error', sid: MAC_SID, label: 'x', what: 'x' }];
+    const pair = await linked(snap);
+    expect(pair.open).toBe(true);
+    expect(nodeSessions().map((x) => x.sid).sort()).toEqual([S1, S2, S3]);
+    expect(stateOf().sessions[MAC_SID]?.node).toBeUndefined();
+    expect(stateOf().sends['job-on-mac']).toBeUndefined();
+  });
 });
 
 describe('events (S1: a node speaks for its own things only)', () => {
@@ -167,7 +309,7 @@ describe('events (S1: a node speaks for its own things only)', () => {
     expect(stateOf().sessions[S2]?.status).toBe('idle');
   });
 
-  it('drops events for the Mac or another node, leaving the state as it was; the 21st refusal closes 4400', async () => {
+  it('drops events about what the Mac or another node holds, uncounted and logged once per id; the 21st refusal closes 4400', async () => {
     const pair = await linked();
     const other = linkTo(reg, NODE_IDS.build2);
     other.node.sendSnapshot({ ...linuxNodeSnapshot(), sessions: { 'b2-sess': nodeSession({ sid: 'b2-sess' }) }, pending: {} });
@@ -201,12 +343,17 @@ describe('events (S1: a node speaks for its own things only)', () => {
       nodeWireEvent({ type: 'pending.resolved', sid: S1, data: { id: 'no-such-card-0000000000000', state: 'closed' } }),
     ];
     for (const ev of bad) pair.node.sendEvent(ev);
+    // Many more about the Mac's session: still not counted.
+    for (let i = 0; i < 40; i++) pair.node.sendEvent(nodeEvents.sessionUpdated(MAC_SID, { now: { kind: 'said', text: FLEET_SECRET } }));
     await settle();
     expect(events).toEqual([]);
     expect(JSON.stringify(stateOf())).toBe(before);
     expect(pair.open).toBe(true);
-    // Six more refusals: the 21st in a minute closes the link, once, logged without the payload.
-    for (let i = 0; i < 6; i++) pair.node.sendEvent(nodeEvents.sessionUpdated(MAC_SID, { now: { kind: 'said', text: FLEET_SECRET } }));
+    // One line per id another machine holds, for this link.
+    const held = ctx.log.records.filter((r) => r.msg === 'node spoke of an id another machine holds').map((r) => r.fields?.id);
+    expect(held.sort()).toEqual([MAC_CARD, MAC_SID, 'b2-sess', 'job-b2'].sort());
+    // Five of the list were refused (a duplicate of its own, a bad id, ids the hub has nowhere): 16 more, and the 21st closes, once.
+    for (let i = 0; i < 16; i++) pair.node.sendEvent(nodeEvents.sessionUpdated('no-such-session', { now: { kind: 'said', text: FLEET_SECRET } }));
     await settle();
     expect(pair.open).toBe(false);
     const lines = warnings(ctx).filter((r) => r.msg === 'node link closed');
@@ -220,12 +367,15 @@ describe('events (S1: a node speaks for its own things only)', () => {
 
   it('a refusal older than a minute no longer counts', async () => {
     const pair = await linked();
-    for (let i = 0; i < 20; i++) pair.node.sendEvent(nodeEvents.sessionRemoved(MAC_SID));
+    for (let i = 0; i < 20; i++) pair.node.sendEvent(nodeEvents.sessionRemoved('no-such-session'));
     await settle();
     ctx.clock.advance(61_000);
-    for (let i = 0; i < 20; i++) pair.node.sendEvent(nodeEvents.sessionRemoved(MAC_SID));
+    for (let i = 0; i < 20; i++) pair.node.sendEvent(nodeEvents.sessionRemoved('no-such-session'));
     await settle();
     expect(pair.open).toBe(true);
+    pair.node.sendEvent(nodeEvents.sessionRemoved('no-such-session'));
+    await settle();
+    expect(pair.open).toBe(false);
   });
 
   it('F17: unknown types are dropped and not counted; a known type with a bad payload is', async () => {
@@ -275,6 +425,57 @@ describe('events (S1: a node speaks for its own things only)', () => {
     await settle();
     expect(pair.open).toBe(false);
     expect(warnings(ctx).at(-1)?.fields).toMatchObject({ code: NODE_CLOSE.slow, reason: 'over the event rate' });
+  });
+
+  it('S13: what its events re-emit is capped too: over 4 MiB in 10 s closes 1013, and the hub keeps no more than that', async () => {
+    const pair = await linked();
+    const events = record(ctx);
+    // Each a whole new view (a node.updated); far under the count.
+    for (let round = 1; round <= 280 && pair.open; round++) {
+      pair.node.sendEvent(fatUsage(round));
+      await settle(1);
+    }
+    expect(pair.open).toBe(false);
+    expect(warnings(ctx).at(-1)?.fields).toMatchObject({ code: NODE_CLOSE.slow, type: 'usage.updated', reason: 'over the byte rate' });
+    const sizes = events.map((e) => jsonBytes(e));
+    const biggest = Math.max(...sizes);
+    // The caps keep each one small: 32 accounts of 128 characters a string.
+    expect(Object.keys(stateOf().nodes?.[NODE_IDS.build1]?.accounts ?? {})).toHaveLength(32);
+    expect(biggest).toBeLessThan(512 * 1024);
+    // The replay ring, jantar.db and the phones got the budget and one event over it, never more.
+    expect(sizes.reduce((a, b) => a + b, 0)).toBeLessThan(EVENT_BYTES_PER_10S + 2 * biggest);
+    expect(events.length).toBeLessThan(40);
+  });
+
+  it('the byte window slides: the same bytes spread over time keep the link', async () => {
+    const pair = await linked();
+    for (let round = 1; round <= 60; round++) {
+      pair.node.sendEvent(fatUsage(round));
+      await settle(1);
+      ctx.clock.advance(2_000);
+    }
+    await settle();
+    expect(pair.open).toBe(true);
+  });
+
+  it('session.waiting with a bad pendingId is refused', async () => {
+    await linked();
+    const out = ingestEvent(reg, NODE_IDS.build1, nodeWireEvent({ type: 'session.waiting', sid: S1, data: { waitingFor: 'permission', pendingId: 'a/b' } }));
+    expect(out).toMatchObject({ ok: false, kind: 'refused', reason: 'bad id' });
+  });
+
+  it("launch.progress: its sid and first prompt's send must be ids, and never another machine's", async () => {
+    await linked();
+    ctx.store.emit({ type: 'send.progress', sid: MAC_SID, data: { job: sendOf('mac-send', MAC_SID, 'typed') } });
+    const go = (job: LaunchJob) => ingestEvent(reg, NODE_IDS.build1, nodeWireEvent({ type: 'launch.progress', data: { job } }));
+    expect(go(launchOf('l-bad-sid', 'a/b'))).toMatchObject({ kind: 'refused', reason: 'bad id' });
+    expect(go(launchOf('l-bad-send', S1, { prompt: { hash: 'h', length: 1, sendJobId: '../x' } }))).toMatchObject({ kind: 'refused', reason: 'bad id' });
+    expect(go(launchOf('l-mac-sid', MAC_SID))).toMatchObject({ kind: 'dropped' });
+    expect(go(launchOf('l-mac-send', S1, { prompt: { hash: 'h', length: 1, sendJobId: 'mac-send' } }))).toMatchObject({ kind: 'dropped' });
+    expect(Object.keys(stateOf().launches)).toEqual([]);
+    // Its own, or a session it has not told yet (a launch comes before its session): kept.
+    expect(go(launchOf('l-own', S1))).toMatchObject({ ok: true });
+    expect(go(launchOf('l-new', '5e1f0000-0000-4000-8000-000000000009'))).toMatchObject({ ok: true });
   });
 
   it('events that come before the snapshot is whole wait for it, in order', async () => {

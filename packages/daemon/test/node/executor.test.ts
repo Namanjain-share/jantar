@@ -7,6 +7,8 @@
  *   the link transport's business): method, path and query from the route,
  *   the idempotency key, the JSON body, or an upload's bytes.
  * - A reply too large for the link is a 500; nothing of a call is logged.
+ * - A call still running when the hub gives up on it (30 s, 60 s for a
+ *   launch or an upload) is a 504, so it never holds a place of the 16.
  */
 import { describe, expect, it } from 'vitest';
 import { FLEET_SECRET } from '@jantar/fixtures';
@@ -111,5 +113,24 @@ describe('uploads and replies', () => {
     expect(r).toEqual({ status: 500, body: { error: { code: 'internal', message: 'internal error' } } });
     expect(JSON.stringify(ctx.log.records)).not.toContain(FLEET_SECRET);
     expect(ctx.log.records.some((x) => x.level === 'error')).toBe(true);
+  });
+
+  it('a call that hangs is a 504 when the hub gives up on it (60 s for a launch), and no timer is left', async () => {
+    const { exec, ctx } = rig(() => new Promise<LinkResponse>(() => {}));
+    const short = exec.run(call('getScreen', { sid: S1 }));
+    const long = exec.run(call('launchStart', {}, { body: { root: 'r.code', path: 'api-server', account: 'auto' } }));
+    let longDone = false;
+    void long.then(() => (longDone = true));
+    ctx.clock.advance(NODE_LIMITS.callTimeoutMs);
+    expect(await short).toEqual({ status: 504, body: { error: { code: 'node_timeout', message: 'timed out' } } });
+    await Promise.resolve();
+    expect(longDone).toBe(false);
+    ctx.clock.advance(NODE_LIMITS.longCallTimeoutMs - NODE_LIMITS.callTimeoutMs);
+    expect((await long).status).toBe(504);
+    expect(ctx.clock.pending()).toBe(0);
+    // One that answers in time clears its timer.
+    const quick = rig();
+    await quick.exec.run(call('getScreen', { sid: S1 }));
+    expect(quick.ctx.clock.pending()).toBe(0);
   });
 });

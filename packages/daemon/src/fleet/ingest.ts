@@ -7,10 +7,14 @@
  * (NODE_SUPPLIED_ID, own keys only), ownership against the hub's state, the
  * counts (64 sessions, 32 open cards) and the 4 MiB state budget; a refusal
  * is dropped and counted (the registry closes 4400 after 20 a minute, logged
- * without the payload). Accepted events are re-emitted into the hub's own
- * store with `node` stamped (spec 3.5's table), with the hub's own seq and
- * time; a node's `daemon.version` and `usage.updated` become one
- * `node.updated`.
+ * without the payload). An id the hub holds under another machine (the Mac,
+ * or another node: a server joined again under a new name while its old
+ * pairing still shows) is dropped and not counted, so a correct node never
+ * loops on 4400; it learns nothing either way, and the event rate still
+ * bounds it. Accepted events are re-emitted into the hub's own store with
+ * `node` stamped (spec 3.5's table), with the hub's own seq and time, and
+ * report their serialized size (the registry's byte window); a node's
+ * `daemon.version` and `usage.updated` become one `node.updated`.
  *
  * A snapshot is diffed against the hub's last view of the node: cards gone
  * are closed, sessions gone removed, new ones added, changed ones patched,
@@ -40,17 +44,21 @@ import {
   type State,
 } from '@jantar/protocol';
 import { NODE_LIMITS, NODE_SUPPLIED_ID, NodeSnapshotSchema, type NodeSnapshot } from '@jantar/protocol/node-link';
-import { NODE_EVENT_TYPES, SNAPSHOT_RECENT, clipAccount, clipAlert, clipCard, clipEvent, clipLaunch, clipSend, clipSession } from './clip.js';
+import { NODE_EVENT_TYPES, SNAPSHOT_RECENT, clipAccounts, clipAlert, clipCard, clipEvent, clipLaunch, clipSend, clipSession, jsonBytes } from './clip.js';
 import type { NodeRegistry } from './registry.js';
 import { nodeViewOf } from './view.js';
 
-/** What happened to one event or snapshot. `refused` counts toward the node's refusals; `dropped` (an unknown type) does not. */
-export type IngestOutcome = { ok: true } | { ok: false; kind: 'dropped' | 'refused' | 'close'; reason: string };
+/**
+ * What happened to one event or snapshot. `ok` with the bytes it added to the
+ * hub's store; `refused` counts toward the node's refusals; `dropped` (an
+ * unknown type, or an id another machine holds) does not.
+ */
+export type IngestOutcome = { ok: true; bytes: number } | { ok: false; kind: 'dropped' | 'refused' | 'close'; reason: string };
 
 /** Sends or launches one snapshot may carry: the unfinished ones (one per session at most) and the newest few. */
 const SNAPSHOT_JOBS_MAX = NODE_LIMITS.sessions + SNAPSHOT_RECENT;
 
-const OK: IngestOutcome = { ok: true };
+const OK: IngestOutcome = { ok: true, bytes: 0 };
 const dropped = (reason: string): IngestOutcome => ({ ok: false, kind: 'dropped', reason });
 const refused = (reason: string): IngestOutcome => ({ ok: false, kind: 'refused', reason });
 const closing = (reason: string): IngestOutcome => ({ ok: false, kind: 'close', reason });
@@ -74,7 +82,24 @@ function own<T>(rec: Readonly<Record<string, T>> | undefined, id: string): T | u
 }
 
 function emitted(reg: NodeRegistry, input: EventInput): IngestOutcome {
-  return reg.emit(input) ? OK : refused('not accepted');
+  return reg.emit(input) ? { ok: true, bytes: jsonBytes(input.data) } : refused('not accepted');
+}
+
+/** An id the hub holds under another machine: dropped, not counted (the registry logs it once per link). */
+function taken(reg: NodeRegistry, nodeId: string, id: string): IngestOutcome {
+  reg.taken(nodeId, id);
+  return dropped('held by another machine');
+}
+
+/** Whether the hub has session `sid` under another machine than `nodeId`. */
+function elsewhere(st: Readonly<State>, nodeId: string, sid: string): boolean {
+  const s = own(st.sessions, sid);
+  return s !== undefined && s.node !== nodeId;
+}
+
+/** After ownSession found nothing: another machine's session (dropped) or one the hub does not have (refused). */
+function notOwn(reg: NodeRegistry, st: Readonly<State>, nodeId: string, sid: string | undefined): IngestOutcome {
+  return idOk(sid) && elsewhere(st, nodeId, sid) ? taken(reg, nodeId, sid) : refused('not its session');
 }
 
 /** Whether replacing `old` with `next` keeps the node within NODE_LIMITS.stateBytes. */
@@ -111,6 +136,7 @@ export function ingestEvent(reg: NodeRegistry, nodeId: string, event: unknown): 
     case 'session.added': {
       const s = ev.data.session;
       if (!idOk(s.sid) || ev.sid !== s.sid) return refused('bad id');
+      if (elsewhere(st, nodeId, s.sid)) return taken(reg, nodeId, s.sid);
       if (Object.hasOwn(st.sessions, s.sid)) return refused('known session');
       if (reg.tally(nodeId).sessions >= NODE_LIMITS.sessions) return refused('too many sessions');
       // The hub stamps the machine; whatever the node put there is overwritten.
@@ -120,7 +146,7 @@ export function ingestEvent(reg: NodeRegistry, nodeId: string, event: unknown): 
     }
     case 'session.updated': {
       const prev = ownSession(st, nodeId, ev.sid);
-      if (!prev) return refused('not its session');
+      if (!prev) return notOwn(reg, st, nodeId, ev.sid);
       const next: Session = { ...prev, ...ev.data.patch };
       for (const k of ev.data.unset ?? []) delete (next as Partial<Session>)[k];
       if (!fits(reg, nodeId, prev, next)) return refused('over the state budget');
@@ -129,20 +155,21 @@ export function ingestEvent(reg: NodeRegistry, nodeId: string, event: unknown): 
     case 'session.removed':
     case 'session.done': {
       const s = ownSession(st, nodeId, ev.sid);
-      if (!s) return refused('not its session');
+      if (!s) return notOwn(reg, st, nodeId, ev.sid);
       return emitted(reg, { type: ev.type, sid: s.sid, data: ev.data } as EventInput);
     }
     case 'session.waiting': {
       const s = ownSession(st, nodeId, ev.sid);
-      if (!s) return refused('not its session');
+      if (!s) return notOwn(reg, st, nodeId, ev.sid);
       if (ev.data.pendingId !== undefined && !idOk(ev.data.pendingId)) return refused('bad id');
       return emitted(reg, { type: 'session.waiting', sid: s.sid, data: ev.data });
     }
     case 'pending.opened': {
       const p = ev.data.pending;
       if (!idOk(p.id) || p.sid !== ev.sid) return refused('bad id');
-      if (!ownSession(st, nodeId, p.sid)) return refused('not its session');
-      if (Object.hasOwn(st.pending, p.id)) return refused('known card');
+      if (!ownSession(st, nodeId, p.sid)) return notOwn(reg, st, nodeId, p.sid);
+      const known = own(st.pending, p.id);
+      if (known) return ownSession(st, nodeId, known.sid) ? refused('known card') : taken(reg, nodeId, p.id);
       if (reg.tally(nodeId).cards >= NODE_LIMITS.openCards) return refused('too many cards');
       if (!fits(reg, nodeId, undefined, p)) return refused('over the state budget');
       return emitted(reg, { type: 'pending.opened', sid: p.sid, data: { pending: p } });
@@ -150,24 +177,29 @@ export function ingestEvent(reg: NodeRegistry, nodeId: string, event: unknown): 
     case 'pending.resolved': {
       const card = idOk(ev.data.id) ? own(st.pending, ev.data.id) : undefined;
       if (!card) return refused('unknown card');
-      if (!ownSession(st, nodeId, card.sid)) return refused('not its card');
+      if (!ownSession(st, nodeId, card.sid)) return taken(reg, nodeId, card.id);
       if (ev.data.state === 'decided' && !fits(reg, nodeId, card, { ...card, ...ev.data })) return refused('over the state budget');
       return emitted(reg, { type: 'pending.resolved', sid: card.sid, data: ev.data });
     }
     case 'send.progress': {
       const job = ev.data.job;
       if (!idOk(job.id) || job.sid !== ev.sid) return refused('bad id');
-      if (!ownSession(st, nodeId, job.sid)) return refused('not its session');
+      if (!ownSession(st, nodeId, job.sid)) return notOwn(reg, st, nodeId, job.sid);
       const known = own(st.sends, job.id);
-      if (known && known.sid !== job.sid) return refused('not its send');
+      if (known && known.sid !== job.sid) return ownSession(st, nodeId, known.sid) ? refused('not its send') : taken(reg, nodeId, job.id);
       if (!fits(reg, nodeId, known, job)) return refused('over the state budget');
       return emitted(reg, { type: 'send.progress', sid: job.sid, data: { job } });
     }
     case 'launch.progress': {
       const job = ev.data.job;
-      if (!idOk(job.id)) return refused('bad id');
+      // The phone's receipt opens `sid` and follows `sendJobId`: both must be this node's, or unknown yet.
+      const sendJobId = job.prompt?.sendJobId;
+      if (!idOk(job.id) || !idOk(job.sid) || (sendJobId !== undefined && !idOk(sendJobId))) return refused('bad id');
       const known = own(st.launches, job.id);
-      if (known && known.node !== nodeId) return refused('not its launch');
+      if (known && known.node !== nodeId) return taken(reg, nodeId, job.id);
+      if (elsewhere(st, nodeId, job.sid)) return taken(reg, nodeId, job.sid);
+      const send = sendJobId !== undefined ? own(st.sends, sendJobId) : undefined;
+      if (send && !ownSession(st, nodeId, send.sid)) return taken(reg, nodeId, send.id);
       const stamped: LaunchJob = { ...job, node: nodeId };
       if (!fits(reg, nodeId, known, stamped)) return refused('over the state budget');
       return emitted(reg, { type: 'launch.progress', data: { job: stamped } });
@@ -178,9 +210,9 @@ export function ingestEvent(reg: NodeRegistry, nodeId: string, event: unknown): 
     case 'alert.error': {
       const a = ev.data.alert;
       if (!idOk(a.id)) return refused('bad id');
-      if (a.sid !== undefined && !ownSession(st, nodeId, a.sid)) return refused('not its session');
+      if (a.sid !== undefined && !ownSession(st, nodeId, a.sid)) return notOwn(reg, st, nodeId, a.sid);
       const known = st.alerts.find((x) => x.id === a.id);
-      if (known && known.node !== nodeId) return refused('not its alert');
+      if (known && known.node !== nodeId) return taken(reg, nodeId, a.id);
       const alert: Alert = { ...a, node: nodeId };
       if (!fits(reg, nodeId, known, alert)) return refused('over the state budget');
       return emitted(reg, { type: ev.type, ...(a.sid !== undefined ? { sid: a.sid } : {}), data: { alert } } as EventInput);
@@ -248,12 +280,19 @@ export function ingestSnapshot(reg: NodeRegistry, nodeId: string, snap: NodeSnap
   if (!rec) return closing('not paired');
   const st = reg.state();
   let bad = 0;
+  // Sessions another machine holds on the hub: left out with all that is theirs, not counted (as for events).
+  const away = new Set<string>();
+  const skip = (id: string): void => reg.taken(nodeId, id);
 
   // Keep what this node may report, clipped; drop the rest and count it.
   const sessions = new Map<string, Session>();
   for (const raw of Object.values(s.sessions)) {
-    const known = idOk(raw.sid) ? own(st.sessions, raw.sid) : undefined;
-    if (!idOk(raw.sid) || (known && known.node !== nodeId) || sessions.has(raw.sid) || sessions.size >= NODE_LIMITS.sessions) {
+    if (idOk(raw.sid) && elsewhere(st, nodeId, raw.sid)) {
+      away.add(raw.sid);
+      skip(raw.sid);
+      continue;
+    }
+    if (!idOk(raw.sid) || sessions.has(raw.sid) || sessions.size >= NODE_LIMITS.sessions) {
       bad += 1;
       continue;
     }
@@ -262,9 +301,13 @@ export function ingestSnapshot(reg: NodeRegistry, nodeId: string, snap: NodeSnap
   const cards = new Map<string, PendingRequest>();
   for (const raw of Object.values(s.pending)) {
     // Live cards only: open, or decided and waiting for the tool to run (its `confirmed` comes later).
-    if (raw.state !== 'open' && raw.state !== 'decided') continue;
+    if ((raw.state !== 'open' && raw.state !== 'decided') || away.has(raw.sid)) continue;
     const known = idOk(raw.id) ? own(st.pending, raw.id) : undefined;
-    if (!idOk(raw.id) || !sessions.has(raw.sid) || (known && !ownSession(st, nodeId, known.sid)) || cards.size >= NODE_LIMITS.openCards) {
+    if (known && !ownSession(st, nodeId, known.sid)) {
+      skip(raw.id);
+      continue;
+    }
+    if (!idOk(raw.id) || !sessions.has(raw.sid) || cards.size >= NODE_LIMITS.openCards) {
       bad += 1;
       continue;
     }
@@ -272,7 +315,12 @@ export function ingestSnapshot(reg: NodeRegistry, nodeId: string, snap: NodeSnap
   }
   const sends: SendJob[] = [];
   for (const raw of Object.values(s.sends)) {
+    if (away.has(raw.sid)) continue;
     const known = idOk(raw.id) ? own(st.sends, raw.id) : undefined;
+    if (known && known.sid !== raw.sid && !ownSession(st, nodeId, known.sid)) {
+      skip(raw.id);
+      continue;
+    }
     if (!idOk(raw.id) || !sessions.has(raw.sid) || (known && known.sid !== raw.sid) || sends.length >= SNAPSHOT_JOBS_MAX) {
       bad += 1;
       continue;
@@ -282,7 +330,13 @@ export function ingestSnapshot(reg: NodeRegistry, nodeId: string, snap: NodeSnap
   const launches: LaunchJob[] = [];
   for (const raw of Object.values(s.launches)) {
     const known = idOk(raw.id) ? own(st.launches, raw.id) : undefined;
-    if (!idOk(raw.id) || (known && known.node !== nodeId) || launches.length >= SNAPSHOT_JOBS_MAX) {
+    const sendJobId = raw.prompt?.sendJobId;
+    const send = sendJobId !== undefined && idOk(sendJobId) ? own(st.sends, sendJobId) : undefined;
+    if ((known && known.node !== nodeId) || (idOk(raw.sid) && elsewhere(st, nodeId, raw.sid)) || (send && !ownSession(st, nodeId, send.sid))) {
+      skip(raw.id);
+      continue;
+    }
+    if (!idOk(raw.id) || !idOk(raw.sid) || (sendJobId !== undefined && !idOk(sendJobId)) || launches.length >= SNAPSHOT_JOBS_MAX) {
       bad += 1;
       continue;
     }
@@ -290,8 +344,13 @@ export function ingestSnapshot(reg: NodeRegistry, nodeId: string, snap: NodeSnap
   }
   const alerts: Alert[] = [];
   for (const raw of s.alerts.slice(0, SNAPSHOT_RECENT)) {
+    if (raw.sid !== undefined && away.has(raw.sid)) continue;
     const known = idOk(raw.id) ? st.alerts.find((x) => x.id === raw.id) : undefined;
-    if (!idOk(raw.id) || (raw.sid !== undefined && !sessions.has(raw.sid)) || (known && known.node !== nodeId)) {
+    if (known && known.node !== nodeId) {
+      skip(raw.id);
+      continue;
+    }
+    if (!idOk(raw.id) || (raw.sid !== undefined && !sessions.has(raw.sid))) {
       bad += 1;
       continue;
     }
@@ -307,7 +366,7 @@ export function ingestSnapshot(reg: NodeRegistry, nodeId: string, snap: NodeSnap
       ...(prevView ?? nodeViewOf(rec, reg.info(nodeId), null, true, reg.now())),
       features: s.daemon.features,
       accountsMode: s.daemon.accountsMode,
-      accounts: Object.fromEntries(Object.values(s.accounts).map((a) => [String(a.id), clipAccount(a)])),
+      accounts: accountsRecord(clipAccounts(Object.values(s.accounts))),
       activeAccount: s.activeAccount,
       usage: s.usage,
     },

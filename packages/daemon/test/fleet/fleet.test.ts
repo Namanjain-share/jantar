@@ -22,6 +22,7 @@ import { linuxNodeSnapshot, memoryLinkPair, type MemoryLinkPair } from '@jantar/
 import { NODE_CLOSE, decodeJoinToken } from '@jantar/protocol/node-link';
 import type { Actor, FleetService, HubLink, LinkServer, LinkServerHooks } from '../../src/contracts.js';
 import type { TestContext } from '../../src/core/testing.js';
+import { NodeAuth } from '../../src/auth/nodes.js';
 import { createFleet } from '../../src/fleet/index.js';
 import { NodeRegistry } from '../../src/fleet/registry.js';
 import { tempHome } from '../uploads/helpers.js';
@@ -164,6 +165,16 @@ describe('the switch', () => {
     expect(fleet.list().map((r) => r.name).sort()).toEqual(['build-1', 'build-2', 'win-1']);
     await fleetOn();
     await link(NODE_IDS.build1);
+    expect(ctx.store.getState().nodes?.[NODE_IDS.build1]?.online).toBe(true);
+  });
+
+  it('on with a hub key that cannot be loaded: logged, and the link server still starts (each handshake loads it again)', async () => {
+    vi.spyOn(NodeAuth.prototype, 'hubKey').mockRejectedValueOnce(new Error('EACCES: permission denied'));
+    await fleet.start();
+    await fleetOn();
+    expect(ctx.log.records.find((r) => r.msg === 'cannot load the hub key')?.level).toBe('error');
+    const pair = await link();
+    expect(pair.open).toBe(true);
     expect(ctx.store.getState().nodes?.[NODE_IDS.build1]?.online).toBe(true);
   });
 

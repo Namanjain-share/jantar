@@ -6,7 +6,7 @@
  * alerts, its switches and accounts mode, its accounts and usage), built
  * from the store and subscribed in the same tick so nothing falls between,
  * clipped with fleet/clip.ts; then its events, clipped, under
- * NODE_LIMITS.eventsPer10s: when the budget runs short it holds
+ * NODE_LIMITS.eventsPer10s and EVENT_BYTES_PER_10S: when the budget runs short it holds
  * `session.updated` and merges them per session (later values win, `unset`
  * lists joined); a status change and every other event go at once (a held
  * patch of the same session goes with it, or just before it, so nothing
@@ -20,7 +20,9 @@
  * NODE_LIMITS.sessions sessions (the most recently changed first) and
  * NODE_LIMITS.openCards live cards, and it says nothing about the rest. A
  * session left out is told (as `session.added`, as it stands) on its next
- * event once a place is free.
+ * event once a place is free; a live card left out is told (as
+ * `pending.opened`, oldest first) once a place is free, so the phone can
+ * still answer it.
  */
 import {
   LAUNCH_FINAL_STAGES,
@@ -36,7 +38,20 @@ import {
 } from '@jantar/protocol';
 import { NODE_LIMITS, type NodeSnapshot } from '@jantar/protocol/node-link';
 import type { DaemonContext, NodeFeed, NodeLink, TimerId, Unsubscribe } from '../contracts.js';
-import { NODE_EVENT_TYPES, SNAPSHOT_RECENT, clipAccount, clipAlert, clipCard, clipEvent, clipLaunch, clipSend, clipSession } from '../fleet/clip.js';
+import {
+  ACCOUNTS_MAX,
+  EVENT_BYTES_PER_10S,
+  NODE_EVENT_TYPES,
+  SNAPSHOT_RECENT,
+  clipAccount,
+  clipAlert,
+  clipCard,
+  clipEvent,
+  clipLaunch,
+  clipSend,
+  clipSession,
+  jsonBytes,
+} from '../fleet/clip.js';
 
 /**
  * The node counts its events over 12 s against the hub's 300 in 10 s: a
@@ -46,6 +61,7 @@ import { NODE_EVENT_TYPES, SNAPSHOT_RECENT, clipAccount, clipAlert, clipCard, cl
 const WINDOW_MS = 12_000;
 /** Room kept in every window for what goes at once: held patches only use the rest. */
 const URGENT_ROOM = 60;
+const URGENT_BYTES = EVENT_BYTES_PER_10S / 4;
 /** How often held patches are offered to the budget. */
 const FLUSH_MS = 1_000;
 
@@ -53,6 +69,7 @@ type Updated = EventOf<'session.updated'>;
 
 /** A card the hub keeps: open, or decided and waiting for its tool to run. */
 const live = (p: PendingRequest): boolean => p.state === 'open' || p.state === 'decided';
+const oldestFirst = (a: PendingRequest, b: PendingRequest): number => a.createdAt.localeCompare(b.createdAt);
 
 /** The newest `n` of a record by `updatedAt`, plus every one `keep` says. */
 function recent<J extends { id: string; updatedAt: string }>(rec: Readonly<Record<string, J>>, keep: (j: J) => boolean, n: number): J[] {
@@ -68,7 +85,7 @@ export function nodeSnapshot(ctx: Pick<DaemonContext, 'accountsMode'>, state: Re
   const sids = new Set(shown.map((s) => s.sid));
   const pending = Object.values(state.pending)
     .filter((p) => live(p) && sids.has(p.sid))
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .sort(oldestFirst)
     .slice(0, NODE_LIMITS.openCards);
   return {
     sessions: Object.fromEntries(shown.map((s) => [s.sid, clipSession(s)])),
@@ -84,7 +101,11 @@ export function nodeSnapshot(ctx: Pick<DaemonContext, 'accountsMode'>, state: Re
       .slice(0, SNAPSHOT_RECENT)
       .map(clipAlert),
     daemon: { features: state.daemon?.features ?? { ...NO_FEATURES }, accountsMode: state.daemon?.accountsMode ?? ctx.accountsMode() },
-    accounts: Object.fromEntries(Object.entries(state.accounts).map(([k, a]) => [k, clipAccount(a)])),
+    accounts: Object.fromEntries(
+      Object.entries(state.accounts)
+        .slice(0, ACCOUNTS_MAX)
+        .map(([k, a]) => [k, clipAccount(a)]),
+    ),
     activeAccount: state.activeAccount,
     usage: state.usage,
   };
@@ -107,11 +128,15 @@ export function mergeUpdated(earlier: Updated, later: Updated): Updated {
 
 /** One link's sender: what it told the hub, the budget window and the held patches, per session. */
 class Sender {
-  private readonly sent: number[] = [];
+  /** What went out in the last WINDOW_MS, oldest first, and its bytes in all. */
+  private readonly sent: { at: number; bytes: number }[] = [];
+  private sentBytes = 0;
   private readonly held = new Map<string, Updated>();
   /** Sessions the hub was told of, and live cards (card id -> sid). */
   private readonly sessions: Set<string>;
   private readonly cards: Map<string, string>;
+  /** A live card may not be told yet (the snapshot's cap, or a card that found no place). */
+  private behind = true;
   private timer: TimerId | undefined;
   private closed = false;
 
@@ -124,19 +149,17 @@ class Sender {
     this.cards = new Map(Object.values(snap.pending).map((p) => [p.id, p.sid]));
   }
 
-  /** What the window holds now. */
-  private used(): number {
+  /** Whether held patches may go: the window has room left beyond what is kept for urgent events, in count and bytes. */
+  private room(): boolean {
     const cutoff = this.ctx.clock.now() - WINDOW_MS;
-    while (this.sent.length > 0 && (this.sent[0] as number) <= cutoff) this.sent.shift();
-    return this.sent.length;
-  }
-
-  private room(): number {
-    return NODE_LIMITS.eventsPer10s - URGENT_ROOM - this.used();
+    while (this.sent.length > 0 && (this.sent[0] as { at: number }).at <= cutoff) this.sentBytes -= (this.sent.shift() as { bytes: number }).bytes;
+    return this.sent.length < NODE_LIMITS.eventsPer10s - URGENT_ROOM && this.sentBytes < EVENT_BYTES_PER_10S - URGENT_BYTES;
   }
 
   private send(ev: DaemonEvent): void {
-    this.sent.push(this.ctx.clock.now());
+    const bytes = jsonBytes(ev);
+    this.sent.push({ at: this.ctx.clock.now(), bytes });
+    this.sentBytes += bytes;
     this.link.sendEvent(ev);
   }
 
@@ -171,7 +194,11 @@ class Sender {
       }
       case 'pending.opened': {
         const p = ev.data.pending;
-        if (this.cards.has(p.id) || this.cards.size >= NODE_LIMITS.openCards || !this.reveal(p.sid, ev)) return false;
+        if (this.cards.has(p.id)) return false;
+        if (this.cards.size >= NODE_LIMITS.openCards || !this.reveal(p.sid, ev)) {
+          this.behind = true;
+          return false;
+        }
         this.cards.set(p.id, p.sid);
         return true;
       }
@@ -201,12 +228,40 @@ class Sender {
     if (this.closed || !NODE_EVENT_TYPES.has(raw.type)) return;
     // A node has no other machine's sessions; never forward one if it ever did.
     if (raw.type === 'session.added' && raw.data.session.node !== undefined) return;
-    const known = this.admit(raw);
-    if (known === false || known === 'told') return;
+    if (this.admit(raw) === true) this.pass(raw);
+    if (this.behind) this.catchUp(raw);
+  }
+
+  /**
+   * Live cards the hub was not told of, oldest first, while places are free
+   * (after `ev`, which may have freed one): each with its session, told first
+   * when the hub does not know it yet.
+   */
+  private catchUp(ev: DaemonEvent): void {
+    this.behind = false;
+    const cards = Object.values(this.ctx.store.getState().pending)
+      .filter((p) => live(p) && !this.cards.has(p.id))
+      .sort(oldestFirst);
+    for (const p of cards) {
+      if (this.cards.size >= NODE_LIMITS.openCards) {
+        this.behind = true;
+        return;
+      }
+      if (!this.reveal(p.sid, ev)) {
+        this.behind = true;
+        continue;
+      }
+      this.cards.set(p.id, p.sid);
+      this.send(clipEvent({ seq: ev.seq, ts: ev.ts, type: 'pending.opened', sid: p.sid, data: { pending: p } }));
+    }
+  }
+
+  /** An event the hub knows the subject of: at once, or held and merged while the budget is short. */
+  private pass(raw: DaemonEvent): void {
     const ev = clipEvent(raw);
     const sid = ev.sid;
     const held = sid !== undefined ? this.held.get(sid) : undefined;
-    if (ev.type === 'session.updated' && ev.data.patch.status === undefined && (held !== undefined || this.room() <= 0)) {
+    if (ev.type === 'session.updated' && ev.data.patch.status === undefined && (held !== undefined || !this.room())) {
       this.held.set(ev.sid as string, held ? mergeUpdated(held, ev) : ev);
       this.schedule();
       return;
@@ -234,7 +289,7 @@ class Sender {
   /** Held patches, oldest first, as far as the budget allows; the rest wait for the next round. */
   flush(): void {
     for (const [sid, ev] of this.held) {
-      if (this.closed || this.room() <= 0) break;
+      if (this.closed || !this.room()) break;
       this.held.delete(sid);
       this.send(ev);
     }

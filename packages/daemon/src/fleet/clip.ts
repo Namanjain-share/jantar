@@ -11,7 +11,9 @@
  * see the start of), else its leaves go to cardStringMax, arrays to
  * cardArrayMax, depth to cardDepthMax;
  * suggestions and questions to their caps; alerts', sends' and launches'
- * free text to fieldMax. The node keeps its own unclipped card for the
+ * free text to fieldMax; a node's accounts to ACCOUNTS_MAX, their short
+ * strings to ACCOUNT_TEXT_MAX (each `usage.updated` becomes a `node.updated`
+ * carrying the whole NodeView). The node keeps its own unclipped card for the
  * decision it builds.
  *
  * Pure: every function returns a new value and never changes its input.
@@ -50,6 +52,19 @@ export const SNAPSHOT_RECENT = 20;
 const VERSION_MAX = 64;
 /** Usage windows kept per account (a real account has two or three). */
 const WINDOWS_MAX = 16;
+/** Accounts kept per node (a server has a few). */
+export const ACCOUNTS_MAX = 32;
+/** An account's own strings (alias, masked email, usage status) and a window's kind. */
+const ACCOUNT_TEXT_MAX = 128;
+
+/**
+ * What one node's events may add to the hub's store in 10 s, serialized
+ * (next to NODE_LIMITS.eventsPer10s, which counts them): the hub closes the
+ * link 1013 above it, and the node's sender stays under it by itself. Every
+ * accepted event is kept in the replay ring and jantar.db and sent to every
+ * phone, so a count alone would let large ones through.
+ */
+export const EVENT_BYTES_PER_10S = 4 * 1024 * 1024;
 
 const { fieldMax, cardStringMax, cardArrayMax, cardDepthMax, cardInputBytes, suggestionsMax, suggestionsBytes, questionsMax, labelMax } = NODE_LIMITS;
 
@@ -167,9 +182,14 @@ export function clipLaunch(job: LaunchJob): LaunchJob {
 }
 
 export function clipAccount(a: Account): Account {
-  const out = clipStrings(a, fieldMax);
-  out.windows = a.windows.slice(0, WINDOWS_MAX).map((w) => clipStrings(w, fieldMax));
+  const out = clipStrings(a, ACCOUNT_TEXT_MAX);
+  out.windows = a.windows.slice(0, WINDOWS_MAX).map((w) => clipStrings(w, ACCOUNT_TEXT_MAX));
   return out;
+}
+
+/** The first ACCOUNTS_MAX accounts, clipped. */
+export function clipAccounts(list: readonly Account[]): Account[] {
+  return list.slice(0, ACCOUNTS_MAX).map(clipAccount);
 }
 
 /** Any event a node may send, clipped as above; other events as they are. */
@@ -200,7 +220,7 @@ export function clipEvent(ev: DaemonEvent): DaemonEvent {
     case 'alert.error':
       return { ...ev, data: { alert: clipAlert(ev.data.alert) } };
     case 'usage.updated':
-      return { ...ev, data: { ...ev.data, accounts: ev.data.accounts.map(clipAccount) } };
+      return { ...ev, data: { ...ev.data, accounts: clipAccounts(ev.data.accounts) } };
     case 'daemon.version': {
       const data = clipStrings(ev.data, fieldMax);
       data.daemonVersion = clip(ev.data.daemonVersion, VERSION_MAX);

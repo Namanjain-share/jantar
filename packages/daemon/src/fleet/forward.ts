@@ -11,8 +11,10 @@
  * link owns the timeout (callTimeoutMs, longCallTimeoutMs for
  * LONG_NODE_ROUTES) and ends a call on a link that drops node_offline; the
  * hub's own sentences (api/errors.ts nodeFailureReply) always name the
- * machine as the hub named it. Idempotency is the node's alone: the call
- * carries `idem`, the hub caches nothing.
+ * machine as the hub named it. A node's `unauthorized` (about the hub's
+ * device there, never the phone's pairing) becomes a 500, so the phone never
+ * reads it as "this device is not paired". Idempotency is the node's alone:
+ * the call carries `idem`, the hub caches nothing.
  */
 import { EVENT, NodeIdSchema, SEND_FINAL_STAGES, errorBody, machineName, type RouteName, type SendJob, type State } from '@jantar/protocol';
 import { NODE_LIMITS, NODE_ROUTES, NODE_SUPPLIED_ID, isNodeRoute, type NodeCallReply } from '@jantar/protocol/node-link';
@@ -79,6 +81,7 @@ export async function forwardCall(link: HubLink | null, target: FleetTarget, cal
     const code = (reply.body as { error?: { code?: unknown } } | null)?.error?.code;
     if (reply.status === 503 && code === 'node_offline') return nodeFailureReply('node_offline', target.name);
     if (reply.status === 504 && code === 'node_timeout') return nodeFailureReply('node_timeout', target.name);
+    if (reply.status === 401 || code === 'unauthorized') return { status: 500, body: errorBody('internal', `${target.name} refused the call`) };
     return reply;
   } catch {
     // HubLink.call never rejects; if one ever did, nothing is known to have run.
@@ -93,9 +96,9 @@ export async function forwardCall(link: HubLink | null, target: FleetTarget, cal
 /**
  * GET /ctl/sends/:jobId/wait for a prompt the CLI sent to a node's session:
  * the hub's writer never had that job, so the wait follows its re-emitted
- * `send.progress` in the hub's store until it reaches a final stage, or
- * `timeoutMs` passes (the job as it stands then). Undefined when the hub has
- * no such job.
+ * `send.progress` in the hub's store until it reaches a final stage, leaves
+ * the hub's state (its node removed), or `timeoutMs` passes (the job as it
+ * stood last). Undefined when the hub has no such job.
  */
 export function waitForStoreSend(store: Store, clock: Clock, jobId: string, timeoutMs?: number): Promise<SendJob | undefined> {
   const now = own(store.getState().sends, jobId);
@@ -109,9 +112,8 @@ export function waitForStoreSend(store: Store, clock: Clock, jobId: string, time
       resolve(job);
     };
     const unsub = store.subscribe((ev) => {
-      if (ev.type !== EVENT.SEND_PROGRESS || ev.data.job.id !== jobId) return;
-      job = ev.data.job;
-      if (SEND_FINAL_STAGES.includes(job.stage)) done();
+      if (ev.type === EVENT.SEND_PROGRESS && ev.data.job.id === jobId) job = ev.data.job;
+      if (SEND_FINAL_STAGES.includes(job.stage) || !own(store.getState().sends, jobId)) done();
     });
     if (timeoutMs !== undefined) timer = clock.setTimeout(done, Math.max(0, timeoutMs));
   });

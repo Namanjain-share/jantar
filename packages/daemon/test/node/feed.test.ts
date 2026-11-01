@@ -7,11 +7,11 @@
  *   only the events the hub takes, clipped.
  * - The ledger: nothing about a session or card the hub was never told of
  *   (the hub would refuse and count it); a left-out session is told when a
- *   place frees.
+ *   place frees, and so is a left-out live card.
  * - The budget: session.updated held and merged per session to stay under
- *   300 events in 10 s; a status change and other events go at once, in
- *   order; a node with 64 working sessions updating every second never
- *   trips the hub's 1013.
+ *   300 events and 4 MiB in 10 s; a status change and other events go at
+ *   once, in order; a node with 64 working sessions updating every second
+ *   (or writing long replies) never trips the hub's 1013.
  */
 import { describe, expect, it } from 'vitest';
 import { FLEET_SECRET, NODE_IDS, nodeCard, nodeSession, oversizedNodeSnapshot } from '@jantar/fixtures';
@@ -20,6 +20,7 @@ import { NODE_LIMITS, NodeSnapshotSchema, type NodeSnapshot } from '@jantar/prot
 import type { NodeLink } from '../../src/contracts.js';
 import { FakeClock } from '../../src/core/clock.js';
 import { createTestContext, type TestContext } from '../../src/core/testing.js';
+import { EVENT_BYTES_PER_10S, jsonBytes } from '../../src/fleet/clip.js';
 import { NodeRegistry } from '../../src/fleet/registry.js';
 import { REPLY_TEXT_MAX } from '../../src/sources/transcripts/parse.js';
 import { createNodeFeed, mergeUpdated, nodeSnapshot } from '../../src/node/feed.js';
@@ -228,16 +229,50 @@ describe('the ledger: nothing about what the hub was never told', () => {
     emit(ctx, { type: 'session.done', sid: extra.sid, data: {} });
     expect(rec.events).toEqual([]);
 
-    // A place frees: the next word about the left-out session tells it whole, the patch included.
+    // A place frees: its live card is told at once, the session as it stands first.
     emit(ctx, { type: 'session.removed', sid: sidOf(1), data: { reason: 'ended' } });
-    emit(ctx, { type: 'session.updated', sid: extra.sid, data: { patch: { subagentsRunning: 2 } } });
-    expect(rec.events.map((e) => e.type)).toEqual(['session.removed', 'session.added']);
-    const added = (rec.events[1] as EventOf<'session.added'>).data.session;
-    expect(added).toMatchObject({ sid: extra.sid, subagentsRunning: 2 });
-    // Its card opened before it was told is not the hub's to resolve; a new one is.
-    emit(ctx, { type: 'pending.resolved', sid: extra.sid, data: { id: cardOf(1), state: 'closed' } });
-    emit(ctx, { type: 'pending.opened', sid: extra.sid, data: { pending: nodeCard({ sid: extra.sid, id: cardOf(2) }) } });
     expect(rec.events.map((e) => e.type)).toEqual(['session.removed', 'session.added', 'pending.opened']);
+    const added = (rec.events[1] as EventOf<'session.added'>).data.session;
+    expect(added).toMatchObject({ sid: extra.sid, subagentsRunning: 1 });
+    expect((rec.events[2] as EventOf<'pending.opened'>).data.pending.id).toBe(cardOf(1));
+    // From now on it is known: its words go as they come.
+    emit(ctx, { type: 'session.updated', sid: extra.sid, data: { patch: { subagentsRunning: 2 } } });
+    emit(ctx, { type: 'pending.resolved', sid: extra.sid, data: { id: cardOf(1), state: 'closed' } });
+    expect(rec.events.slice(3).map((e) => e.type)).toEqual(['session.updated', 'pending.resolved']);
+  });
+
+  it('a left-out session is told on its next word once a place is free (no card of its own)', () => {
+    const ctx = createTestContext();
+    for (let i = 1; i <= 64; i++) addSession(ctx, nodeSession({ sid: sidOf(i), statusSince: at(i) }));
+    const rec = recordingLink(ctx.clock);
+    createNodeFeed(ctx).attach(rec.link);
+    addSession(ctx, nodeSession({ sid: sidOf(65), statusSince: at(65) }));
+    emit(ctx, { type: 'session.removed', sid: sidOf(1), data: { reason: 'ended' } });
+    emit(ctx, { type: 'session.updated', sid: sidOf(65), data: { patch: { subagentsRunning: 2 } } });
+    expect(rec.events.map((e) => e.type)).toEqual(['session.removed', 'session.added']);
+    expect((rec.events[1] as EventOf<'session.added'>).data.session).toMatchObject({ sid: sidOf(65), subagentsRunning: 2 });
+  });
+
+  it('an alert or a send about a left-out session tells the session first, then goes', () => {
+    const ctx = createTestContext();
+    for (let i = 1; i <= 64; i++) addSession(ctx, nodeSession({ sid: sidOf(i), statusSince: at(i) }));
+    const rec = recordingLink(ctx.clock);
+    createNodeFeed(ctx).attach(rec.link);
+    addSession(ctx, nodeSession({ sid: sidOf(65) }));
+    addSession(ctx, nodeSession({ sid: sidOf(66) }));
+    emit(ctx, { type: 'session.removed', sid: sidOf(1), data: { reason: 'ended' } });
+    emit(ctx, { type: 'session.removed', sid: sidOf(2), data: { reason: 'ended' } });
+    const alert: Alert = { id: 'alert-65', ts: T0, kind: 'error', sid: sidOf(65), label: 'error', what: 'API error' };
+    emit(ctx, { type: 'alert.error', sid: sidOf(65), data: { alert } });
+    emit(ctx, { type: 'send.progress', sid: sidOf(66), data: { job: sendJob('job-66', sidOf(66), 'typed', T0) } });
+    expect(rec.events.map((e) => `${e.type}:${e.sid ?? ''}`)).toEqual([
+      `session.removed:${sidOf(1)}`,
+      `session.removed:${sidOf(2)}`,
+      `session.added:${sidOf(65)}`,
+      `alert.error:${sidOf(65)}`,
+      `session.added:${sidOf(66)}`,
+      `send.progress:${sidOf(66)}`,
+    ]);
   });
 
   it('cards: at most 32 live; a decided card stays known until its tool runs; a removed session takes its cards along', () => {
@@ -256,9 +291,88 @@ describe('the ledger: nothing about what the hub was never told', () => {
     // A place freed: a new card goes.
     emit(ctx, { type: 'pending.opened', sid: sidOf(1), data: { pending: nodeCard({ sid: sidOf(1), id: cardOf(40) }) } });
     expect(rec.events.at(-1)?.type).toBe('pending.opened');
+    expect(rec.events.filter((e) => e.type === 'pending.opened' && e.data.pending.id === cardOf(33))).toEqual([]);
     emit(ctx, { type: 'session.removed', sid: sidOf(1), data: { reason: 'ended' } });
     emit(ctx, { type: 'pending.resolved', sid: sidOf(1), data: { id: cardOf(2), state: 'closed' } });
     expect(rec.events.at(-1)?.type).toBe('session.removed');
+  });
+});
+
+describe('cards left out are told once a place frees', () => {
+  it('the 33rd live card reaches the hub when one of the 32 is answered, and the phone can answer it', async () => {
+    const clock = new FakeClock(T0);
+    const node = createTestContext({ clock });
+    addSession(node, nodeSession({ sid: sidOf(1) }));
+    const hub = hubContext({ clock });
+    const reg = new NodeRegistry(hub);
+    const pair = linkTo(reg, NODE_IDS.build1);
+    createNodeFeed(node).attach(pair.node);
+    await settle();
+    for (let i = 1; i <= 33; i++) emit(node, { type: 'pending.opened', sid: sidOf(1), data: { pending: nodeCard({ sid: sidOf(1), id: cardOf(i), createdAt: at(i) }) } });
+    await settle();
+    const onHub = () => Object.values(hub.store.getState().pending).filter((p) => p.sid === sidOf(1)).map((p) => p.id);
+    expect(onHub()).toHaveLength(NODE_LIMITS.openCards);
+    expect(onHub()).not.toContain(cardOf(33));
+    emit(node, { type: 'pending.resolved', sid: sidOf(1), data: { id: cardOf(1), state: 'closed' } });
+    await settle();
+    expect(onHub()).toHaveLength(NODE_LIMITS.openCards);
+    expect(onHub()).toContain(cardOf(33));
+    expect(onHub()).not.toContain(cardOf(1));
+    expect(pair.open).toBe(true);
+    expect(warnings(hub)).toEqual([]);
+  });
+
+  it("a snapshot's left-out cards go on the first event after it, while there is room", () => {
+    const ctx = createTestContext();
+    addSession(ctx, nodeSession({ sid: sidOf(1) }));
+    for (let i = 1; i <= 34; i++) emit(ctx, { type: 'pending.opened', sid: sidOf(1), data: { pending: nodeCard({ sid: sidOf(1), id: cardOf(i), createdAt: at(i) }) } });
+    const rec = recordingLink(ctx.clock);
+    createNodeFeed(ctx).attach(rec.link);
+    expect(Object.keys(rec.snaps[0]?.pending ?? {})).toHaveLength(NODE_LIMITS.openCards);
+    emit(ctx, { type: 'pending.resolved', sid: sidOf(1), data: { id: cardOf(2), state: 'closed' } });
+    expect(rec.events.map((e) => (e.type === 'pending.opened' ? e.data.pending.id : e.type))).toEqual(['pending.resolved', cardOf(33)]);
+    // Nothing more fits: the 34th waits, and nothing is scanned for again until a place frees.
+    emit(ctx, { type: 'session.done', sid: sidOf(1), data: {} });
+    expect(rec.events.at(-1)?.type).toBe('session.done');
+  });
+});
+
+describe('the snapshot is not sent', () => {
+  it('sendSnapshot throwing detaches the feed: nothing more is sent, no timer is left', () => {
+    const ctx = createTestContext();
+    addSession(ctx, nodeSession({ sid: sidOf(1) }));
+    const rec = recordingLink(ctx.clock);
+    const link: NodeLink = {
+      ...rec.link,
+      sendSnapshot: () => {
+        throw new Error(FLEET_SECRET);
+      },
+    };
+    createNodeFeed(ctx).attach(link);
+    emit(ctx, { type: 'session.done', sid: sidOf(1), data: {} });
+    expect(rec.events).toEqual([]);
+    expect(ctx.clock.pending()).toBe(0);
+    const line = ctx.log.records.find((r) => r.msg === 'cannot send the snapshot');
+    expect(line?.fields).toEqual({ part: 'node-feed', error: 'Error' });
+    expect(JSON.stringify(ctx.log.records)).not.toContain(FLEET_SECRET);
+  });
+
+  it('its accounts: at most 32, clipped', () => {
+    const ctx = createTestContext();
+    const accounts = Array.from({ length: 40 }, (_, id) => ({
+      id,
+      alias: 'a'.repeat(500),
+      emailMasked: 's***',
+      isDefaultLogin: id === 0,
+      disabled: false,
+      held: false,
+      usageStatus: 'ok',
+      windows: [],
+    }));
+    emit(ctx, { type: 'usage.updated', data: { accounts, activeAccount: 0, fetchedAt: T0, source: 'cli' } });
+    const snap = nodeSnapshot(ctx, ctx.store.getState());
+    expect(Object.keys(snap.accounts)).toHaveLength(32);
+    expect(snap.accounts['0']?.alias).toHaveLength(128);
   });
 });
 
@@ -323,5 +437,32 @@ describe('the budget: under 300 events in 10 s', () => {
     const onHub = Object.values(hub.store.getState().sessions).filter((s) => s.node === NODE_IDS.build1);
     expect(onHub).toHaveLength(64);
     expect(onHub.every((s) => s.subagentsRunning === 60)).toBe(true);
+  });
+
+  it('64 sessions writing long replies every second: held under 4 MiB in 10 s, the hub never closes 1013, nothing lost', async () => {
+    const clock = new FakeClock(T0);
+    const node = createTestContext({ clock });
+    for (let i = 1; i <= 64; i++) addSession(node, nodeSession({ sid: sidOf(i) }));
+    const hub = hubContext({ clock });
+    const reg = new NodeRegistry(hub);
+    const pair = linkTo(reg, NODE_IDS.build1);
+    const sent: { at: number; bytes: number }[] = [];
+    const counted: NodeLink = { ...pair.node, sendEvent: (e) => (sent.push({ at: clock.now(), bytes: jsonBytes(e) }), pair.node.sendEvent(e)) };
+    createNodeFeed(node).attach(counted);
+    await settle();
+    for (let t = 1; t <= 20; t++) {
+      for (let i = 1; i <= 64; i++) emit(node, { type: 'session.updated', sid: sidOf(i), data: { patch: { lastReply: { text: `${t} ${'語'.repeat(REPLY_TEXT_MAX)}`, at: at(t) } } } });
+      clock.advance(1_000);
+      await settle();
+    }
+    clock.advance(30_000);
+    await settle();
+    expect(warnings(hub)).toEqual([]);
+    expect(pair.open).toBe(true);
+    let peakBytes = 0;
+    for (const x of sent) peakBytes = Math.max(peakBytes, sent.filter((y) => y.at >= x.at && y.at < x.at + 10_000).reduce((a, y) => a + y.bytes, 0));
+    expect(peakBytes).toBeLessThanOrEqual(EVENT_BYTES_PER_10S);
+    const onHub = Object.values(hub.store.getState().sessions).filter((s) => s.node === NODE_IDS.build1);
+    expect(onHub.every((s) => s.lastReply?.text.startsWith('20 '))).toBe(true);
   });
 });

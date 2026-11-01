@@ -3,13 +3,14 @@
  * own caps before the hub keeps it (and by the node before it sends): a
  * 1 MiB reply arrives as 8,000 characters, a 1 MiB card input as {} with its
  * tool name, every other string to 1,024, card arrays, depth, suggestions
- * and questions to their caps. Pure: nothing passed in changes.
+ * and questions to their caps; a node's accounts to 32, their strings to
+ * 128. Pure: nothing passed in changes.
  */
 import { describe, expect, it } from 'vitest';
 import { FLEET_SECRET, nodeCard, nodeSession, nodeWireEvent, oversizedNodeSnapshot } from '@jantar/fixtures';
 import type { Alert, DaemonEvent, LaunchJob, PendingRequest, SendJob } from '@jantar/protocol';
 import { NODE_LIMITS } from '@jantar/protocol/node-link';
-import { clipAccount, clipAlert, clipCard, clipEvent, clipLaunch, clipSend, clipSession, jsonBytes } from '../../src/fleet/clip.js';
+import { ACCOUNTS_MAX, clipAccount, clipAlert, clipCard, clipEvent, clipLaunch, clipSend, clipSession, jsonBytes } from '../../src/fleet/clip.js';
 import { AWAY_TEXT_MAX, ERROR_TEXT_MAX, NOW_TEXT_MAX, REPLY_TEXT_MAX } from '../../src/sources/transcripts/parse.js';
 
 const SID = '7a1c0000-0000-4000-8000-000000000001';
@@ -165,9 +166,32 @@ describe('alerts, sends, launches and accounts', () => {
     expect(cl.dialog?.title).toHaveLength(NODE_LIMITS.fieldMax);
     expect(cl.dialog?.options).toHaveLength(NODE_LIMITS.cardArrayMax);
     expect(cl.dialog?.options[0]).toHaveLength(NODE_LIMITS.fieldMax);
-    const acc = clipAccount({ id: 1, alias: long(5000), emailMasked: 's***', isDefaultLogin: true, disabled: false, held: false, usageStatus: 'ok', windows: Array.from({ length: 50 }, () => ({ kind: 'five_hour', pct: 1 })) });
-    expect(acc.alias).toHaveLength(NODE_LIMITS.fieldMax);
+  });
+
+  it("accounts: 32 a node, each one's strings to 128, so a node.updated stays small", () => {
+    const account = (id: number) => ({
+      id,
+      alias: long(5000, '語'),
+      emailMasked: long(5000),
+      isDefaultLogin: false,
+      disabled: false,
+      held: false,
+      usageStatus: long(5000),
+      fetchedAt: T0,
+      windows: Array.from({ length: 50 }, () => ({ kind: long(5000, '語'), pct: 1, resetsAt: T0, projectedExhaustionAt: T0 })),
+    });
+    const acc = clipAccount(account(1));
+    expect(acc.alias).toHaveLength(128);
+    expect(acc.emailMasked).toHaveLength(128);
+    expect(acc.usageStatus).toHaveLength(128);
     expect(acc.windows.length).toBeLessThan(50);
+    expect(acc.windows[0]?.kind).toHaveLength(128);
+    const ev = clipEvent(
+      nodeWireEvent({ type: 'usage.updated', data: { accounts: Array.from({ length: 45 }, (_, i) => account(i)), activeAccount: 0, fetchedAt: T0, source: 'cli' } }),
+    );
+    expect(ev.type === 'usage.updated' && ev.data.accounts.map((a) => a.id)).toEqual(Array.from({ length: ACCOUNTS_MAX }, (_, i) => i));
+    // The largest a node's accounts can be: well under the 0.9 MB a node.updated could carry before.
+    expect(jsonBytes(ev)).toBeLessThan(512 * 1024);
   });
 });
 

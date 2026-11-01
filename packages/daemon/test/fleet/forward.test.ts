@@ -280,6 +280,23 @@ describe('forwardCall', () => {
   });
 });
 
+describe("a node's own answers", () => {
+  it("a node's unauthorized is never the phone's \"not paired\": a 500 that names the machine", async () => {
+    const hub = hubContext();
+    const reg = new NodeRegistry(hub);
+    const pair = linkTo(reg, NODE_IDS.build1);
+    pair.node.onCall(async (req) =>
+      req.route === 'getScreen' ? { status: 401, body: { error: { code: 'unauthorized', message: 'not paired' } } } : { status: 403, body: { error: { code: 'unauthorized', message: 'x' } } },
+    );
+    pair.node.sendSnapshot(linuxNodeSnapshot());
+    await settle();
+    const go = (route: NodeRouteName) => forwardCall(reg.link(NODE_IDS.build1), TARGET, { route, actor: PHONE, ...CALLS[route] });
+    const want = { status: 500, body: { error: { code: 'internal', message: 'build-1 refused the call' } } };
+    expect(await go('getScreen')).toEqual(want);
+    expect(await go('getTranscript')).toEqual(want);
+  });
+});
+
 describe('waitForStoreSend (/ctl/sends/:jobId/wait for a node job)', () => {
   it('settles on the re-emitted send.progress that finishes it, or gives the job as it stands at the timeout', async () => {
     const { hub, pair } = await rig();
@@ -297,6 +314,16 @@ describe('waitForStoreSend (/ctl/sends/:jobId/wait for a node job)', () => {
     hub.clock.advance(5_000);
     expect((await slow)?.stage).toBe('enter');
     expect(hub.clock.pending()).toBe(0);
+  });
+
+  it('settles when the job leaves the hub (its node removed), even with no timeout', async () => {
+    const { hub, pair, reg } = await rig();
+    const job = { id: 'job-0003', sid: S1, textHash: 'h', textLength: 1, attempts: 0, stage: 'typed' as const, createdAt: '2026-01-15T10:00:00.000Z', updatedAt: '2026-01-15T10:00:00.000Z' };
+    pair.node.sendEvent({ seq: 1, ts: job.createdAt, type: 'send.progress', sid: S1, data: { job } });
+    await settle();
+    const waiting = waitForStoreSend(hub.store, hub.clock, 'job-0003');
+    reg.remove(NODE_IDS.build1);
+    expect((await waiting)?.stage).toBe('typed');
   });
 });
 

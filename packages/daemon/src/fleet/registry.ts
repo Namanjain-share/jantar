@@ -10,15 +10,18 @@
  *
  * A link's snapshot comes first; events that arrive while it is still being
  * assembled (a bulk's chunks may share the link with them) wait for it. More
- * than NODE_LIMITS.eventsPer10s events in 10 s closes the link 1013, more
- * than NODE_LIMITS.refusalsPerMin refused events in a minute (or a refused
- * snapshot) closes it 4400. Close reasons and log lines carry the node id,
- * the event type, a fixed reason and counts: never a payload.
+ * than NODE_LIMITS.eventsPer10s events in 10 s, or accepted events adding up
+ * to more than EVENT_BYTES_PER_10S (fleet/clip.ts) re-emitted in 10 s, closes
+ * the link 1013; more than NODE_LIMITS.refusalsPerMin refused events in a
+ * minute (or a refused snapshot) closes it 4400. An event about an id another
+ * machine holds is dropped and logged once per id per link. Close reasons
+ * and log lines carry the node id, the event type, ids, a fixed reason and
+ * counts: never a payload.
  */
 import type { EventInput, NodeRow, NodeView, State } from '@jantar/protocol';
 import { NODE_CLOSE, NODE_LIMITS } from '@jantar/protocol/node-link';
 import type { DaemonContext, HubLink, HubLinkInfo, Logger, NodeRecord } from '../contracts.js';
-import { jsonBytes } from './clip.js';
+import { EVENT_BYTES_PER_10S, jsonBytes } from './clip.js';
 import { ingestEvent, ingestSnapshot } from './ingest.js';
 import { nodeViewOf } from './view.js';
 
@@ -37,7 +40,16 @@ interface NodeRuntime {
   /** Arrival times in the last EVENT_WINDOW_MS / REFUSAL_WINDOW_MS. */
   events: number[];
   refusals: number[];
+  /** What accepted events re-emitted in the last EVENT_WINDOW_MS, serialized. */
+  spent: Spent[];
+  /** Ids another machine holds that this link spoke of (each logged once). */
+  taken: Set<string>;
   lastClose: { code: number; at: string } | null;
+}
+
+interface Spent {
+  at: number;
+  bytes: number;
 }
 
 /** What one node holds on the hub now: its sessions, its open cards, and their serialized size with the rest. */
@@ -52,6 +64,15 @@ function over(window: number[], now: number, windowMs: number, max: number): boo
   while (window.length > 0 && (window[0] as number) <= now - windowMs) window.shift();
   window.push(now);
   return window.length > max;
+}
+
+/** Add `bytes` at `now` into a sliding window; true when it adds up to more than `max`. */
+function overBytes(window: Spent[], now: number, bytes: number, windowMs: number, max: number): boolean {
+  while (window.length > 0 && (window[0] as Spent).at <= now - windowMs) window.shift();
+  window.push({ at: now, bytes });
+  let sum = 0;
+  for (const x of window) sum += x.bytes;
+  return sum > max;
 }
 
 export class NodeRegistry {
@@ -136,6 +157,14 @@ export class NodeRegistry {
     return this.nodes.get(nodeId)?.link ?? null;
   }
 
+  /** `nodeId`'s link spoke of `id`, which another machine holds on the hub: logged once per id per link. */
+  taken(nodeId: string, id: string): void {
+    const rt = this.nodes.get(nodeId);
+    if (!rt || rt.taken.has(id)) return;
+    rt.taken.add(id);
+    this.log.info('node spoke of an id another machine holds', { node: nodeId, id });
+  }
+
   /** Re-emit into the hub's store (its own seq and time). False if the store refused it: a bug, logged. */
   emit(input: EventInput): boolean {
     try {
@@ -185,8 +214,8 @@ export class NodeRegistry {
   /** A link passed the handshake: its snapshot comes next, then its events. The newest link of a node wins. */
   attach(link: HubLink): void {
     const id = link.nodeId;
-    const rt: NodeRuntime = this.nodes.get(id) ?? { link: null, info: null, snapshot: false, early: [], events: [], refusals: [], lastClose: null };
-    Object.assign(rt, { link, info: link.info, snapshot: false, early: [], events: [], refusals: [] });
+    const rt: NodeRuntime = this.nodes.get(id) ?? { link: null, info: null, snapshot: false, early: [], events: [], refusals: [], spent: [], taken: new Set(), lastClose: null };
+    Object.assign(rt, { link, info: link.info, snapshot: false, early: [], events: [], refusals: [], spent: [], taken: new Set() });
     this.nodes.set(id, rt);
     const live = () => rt.link === link && !this.closing.has(link);
     link.onSnapshot((snap) => {
@@ -229,7 +258,13 @@ export class NodeRegistry {
 
   private apply(link: HubLink, rt: NodeRuntime, ev: unknown): void {
     const out = ingestEvent(this, link.nodeId, ev);
-    if (out.ok || out.kind === 'dropped') return;
+    if (out.ok) {
+      if (overBytes(rt.spent, this.ctx.clock.now(), out.bytes, EVENT_WINDOW_MS, EVENT_BYTES_PER_10S)) {
+        this.close(link, NODE_CLOSE.slow, typeOf(ev), 'over the byte rate');
+      }
+      return;
+    }
+    if (out.kind === 'dropped') return;
     if (out.kind === 'close' || over(rt.refusals, this.ctx.clock.now(), REFUSAL_WINDOW_MS, NODE_LIMITS.refusalsPerMin)) {
       this.close(link, NODE_CLOSE.protocol, typeOf(ev), out.reason);
     }
@@ -239,20 +274,26 @@ export class NodeRegistry {
     if (this.closing.has(link)) return;
     this.closing.add(link);
     this.log.warn('node link closed', { node: link.nodeId, code, type, reason });
-    link.close(code, code === NODE_CLOSE.slow ? 'too many events' : 'protocol error');
+    link.close(code, code === NODE_CLOSE.slow ? 'too many events' : code === NODE_CLOSE.goingAway ? 'send a snapshot again' : 'protocol error');
   }
 
-  /** Revoked: forget its link (closed by the caller) and take it off the board. */
-  remove(nodeId: string): void {
+  /**
+   * Revoked: forget its link (closed by the caller) and take it off the board.
+   * A link that spoke of its sessions (the same server, joined again under a
+   * new name) is closed 1001, so its next link's snapshot brings them.
+   */
+  remove(nodeId: string, resync = true): void {
     const rt = this.nodes.get(nodeId);
     if (rt) rt.link = null;
     this.nodes.delete(nodeId);
     const st = this.state();
-    const shown =
-      this.view(nodeId) !== null ||
-      Object.values(st.sessions).some((s) => s.node === nodeId) ||
-      Object.values(st.launches).some((l) => l.node === nodeId);
+    const sids = new Set(Object.values(st.sessions).flatMap((s) => (s.node === nodeId ? [s.sid] : [])));
+    const shown = this.view(nodeId) !== null || sids.size > 0 || Object.values(st.launches).some((l) => l.node === nodeId);
     if (shown) this.emit({ type: 'node.removed', data: { id: nodeId } });
+    if (!resync) return;
+    for (const other of this.nodes.values()) {
+      if (other.link && [...other.taken].some((id) => sids.has(id))) this.close(other.link, NODE_CLOSE.goingAway, 'node.removed', 'its sessions are free');
+    }
   }
 
   /** Fleet off: every node off the board (its pairing stays, so `fleet on` needs no re-join). */
@@ -261,7 +302,8 @@ export class NodeRegistry {
     const ids = new Set<string>([...this.nodes.keys(), ...Object.keys(st.nodes ?? {})]);
     for (const s of Object.values(st.sessions)) if (s.node !== undefined) ids.add(s.node);
     for (const l of Object.values(st.launches)) if (l.node !== undefined) ids.add(l.node);
-    for (const id of ids) this.remove(id);
+    // Their links close 4403 next (Fleet off), never 1001.
+    for (const id of ids) this.remove(id, false);
   }
 
   /** The daemon stops: forget every link without touching the board. */
