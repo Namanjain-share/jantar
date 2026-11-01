@@ -109,18 +109,20 @@ describe('a post body', () => {
     expect(ok({ text: '   ' })).toBe(false);
   });
 
-  it('keeps where and title on one line, with no control or bidi characters', () => {
+  it('keeps where and title on one line, with no control, line separator or bidi characters', () => {
     expect(ok({ where: 'r/exampletools · weekly thread', title: 'Typing into Terminal from a phone' })).toBe(true);
     expect(ok({ where: 'w'.repeat(80) })).toBe(true);
     expect(ok({ where: 'w'.repeat(81) })).toBe(false);
     expect(ok({ title: 't'.repeat(300) })).toBe(true);
     expect(ok({ title: 't'.repeat(301) })).toBe(false);
-    for (const bad of ['r/example\ntools', 'r/example\u0007tools', 'r/example‮tools', 'r/example⁦tools', 'r/example\u0085tools']) {
+    for (const bad of ['r/example\ntools', 'r/example\u0007tools', 'r/example‮tools', 'r/example⁦tools', 'r/example\u0085tools', 'r/example\u2028tools', 'r/example\u2029tools']) {
       expect(ok({ where: bad }), JSON.stringify(bad)).toBe(false);
       expect(ok({ title: bad }), JSON.stringify(bad)).toBe(false);
       expect(PostPatchSchema.safeParse({ where: bad }).success, JSON.stringify(bad)).toBe(false);
     }
     expect(ok({ where: '   ' })).toBe(false);
+    // A direction mark is no line break and no override: pasted right-to-left text keeps it.
+    expect(ok({ title: 'שלום\u200f world' })).toBe(true);
   });
 
   it('takes a day with an optional time, as a todo does', () => {

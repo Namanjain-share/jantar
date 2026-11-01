@@ -614,12 +614,13 @@ export type MoneyMonth = z.infer<typeof MoneyMonthSchema>;
 // at the time, gives Copy and Open, and counts what is marked Posted.
 
 /**
- * One line: no C0 or C1 control, DEL, or bidi embedding, override or
- * isolate. The class of meetings.ts NO_CONTROL (a copy: meetings.ts imports
- * this file), so a newline or a bidi override never reaches a lock screen or
- * a CLI list line.
+ * One line: no C0 or C1 control, DEL, line or paragraph separator (U+2028,
+ * U+2029), or bidi embedding, override or isolate. The class of meetings.ts
+ * NO_CONTROL (a copy: meetings.ts imports this file) plus the two
+ * separators, so a newline or a bidi override never reaches a lock screen
+ * or a CLI list line.
  */
-const POST_LINE = /^[^\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]+$/;
+const POST_LINE = /^[^\u0000-\u001f\u007f-\u009f\u2028-\u202e\u2066-\u2069]+$/;
 const ONE_LINE = { message: 'one line, with no control characters' };
 
 export const POST_PLATFORMS = ['reddit', 'instagram', 'x', 'linkedin', 'youtube', 'tiktok', 'threads', 'facebook', 'hn', 'other'] as const;
