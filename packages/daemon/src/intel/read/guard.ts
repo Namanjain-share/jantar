@@ -318,7 +318,10 @@ const ACCEPT: Record<FetchKind, string> = {
   page: 'text/html,application/xhtml+xml,application/pdf;q=0.9',
 };
 
-const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+/** The redirects followed by hand (301, 302, 303, 307, 308): never 300, 304, 305 or 306. */
+function isRedirect(status: number): boolean {
+  return (status >= 301 && status <= 303) || status === 307 || status === 308;
+}
 
 export interface GuardOptions {
   /** The Mac's own names and its door's hosts (read per fetch: the settings may change). */
@@ -447,7 +450,7 @@ export class Guard {
       req.on('response', (res) => {
         gotResponse = true;
         const status = res.statusCode ?? 0;
-        if (REDIRECTS.has(status)) {
+        if (isRedirect(status)) {
           const location = res.headers.location;
           res.destroy();
           finish(typeof location === 'string' && location !== '' ? { kind: 'redirect', location } : { kind: 'fail', why: 'status', status });

@@ -16,7 +16,7 @@ const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !
 
 /** The i.ytimg.com frames (about 25/50/75 %) and covers of a video id. */
 export function ytFrameUrls(id: string): string[] {
-  return [1, 2, 3].map((n) => `https://i.ytimg.com/vi/${id}/hq${n}.jpg`);
+  return ['hq1', 'hq2', 'hq3'].map((n) => `https://i.ytimg.com/vi/${id}/${n}.jpg`);
 }
 export function ytCoverUrls(id: string): string[] {
   return [`https://i.ytimg.com/vi/${id}/maxresdefault.jpg`, `https://i.ytimg.com/vi/${id}/hqdefault.jpg`];
