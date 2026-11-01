@@ -6,14 +6,16 @@ Not because of Jantar. The daemon listens on 127.0.0.1, and your phone
 reaches it through the front door you set up: Tailscale (private to your
 tailnet) or a Cloudflare Tunnel (TLS ends at Cloudflare, so Cloudflare can
 read that traffic). There is no Jantar server and no telemetry. Rewrite,
-Ask Claude and meeting summaries run Claude Code on your account, the same
-way any Claude Code use does. Notifications go through Apple's or Google's
-push service. See [Security, in plain words](security.md).
+Ask Claude, Ask and meeting summaries run Claude Code on your account, the
+same way any Claude Code use does. Once you add `jantar mcp`, what its tools
+return goes into the session that called them, and so to Anthropic like any
+tool output. Notifications go through Apple's or Google's push service. See
+[Security, in plain words](security.md).
 
 ## Do I need an API key?
 
 No. Jantar uses Claude Code's own login. Its headless runs (Rewrite, Ask
-Claude, the primer, meeting summaries) run `claude` (or `cswap run`) with
+Claude, Ask, the primer, meeting summaries) run `claude` (or `cswap run`) with
 any API key or token taken out of the environment, so they use your
 subscription login.
 

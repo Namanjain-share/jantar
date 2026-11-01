@@ -308,7 +308,7 @@ export const AskSettingsSchema = z.object({
 
 export const AccountsSettingsSchema = z.object({
   /**
-   * Accounts kept for other work: Auto, Rewrite and Ask Claude never pick one (a manual
+   * Accounts kept for other work: Auto, Rewrite, Ask Claude and Ask never pick one (a manual
    * start still can, behind confirmHeld). Merged live with autoswitch.hold and ccw's hold list.
    */
   kept: z.array(AccountIdSchema).max(50).default(() => []),

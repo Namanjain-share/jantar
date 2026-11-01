@@ -67,8 +67,8 @@ node packages/daemon/bin/jantard.mjs --read-only --no-terminal --port 7491
 **One account or many.** Jantar works with a single Claude login and no
 cswap: it detects that at start. `JANTAR_ACCOUNTS=single` forces
 single-account mode on a Mac that has cswap, so you can try what most people
-see (no usage bars, holds or autoswitch; Rewrite and Ask Claude run `claude
--p` directly). Multi-account features light up when cswap and its profiles
+see (no usage bars, holds or autoswitch; Rewrite, Ask Claude and Ask run
+`claude -p` directly). Multi-account features light up when cswap and its profiles
 are there.
 
 ## Code conventions
