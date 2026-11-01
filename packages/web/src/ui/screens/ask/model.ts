@@ -8,7 +8,10 @@
 import { ASK_APPLY_WITHIN_MS, type AskAction, type AskFlag, type AskShowWhat, type AskTodoAction, type AskTurn } from '@jantar/protocol';
 import { dayLabel, shiftDayKey } from '../life/shared/DayNav.js';
 
-/** Under the box, always (spec 1 and 7: what `jantar ask on`, the docs and SECURITY.md list too). */
+/** Under the box, always: one line, so the box and the chat keep the screen (with a phone's keyboard up too). */
+export const PRIVACY_SHORT = 'Sent to Claude on your account.';
+
+/** Under that line when "What's sent" is open (spec 1 and 7: what `jantar ask on`, the docs and SECURITY.md list too). */
 export const PRIVACY =
   'Sent to Claude on your account: only what you type here (medicine names or amounts you type do go), the date, time and time zone, ' +
   'which Life parts are on, the currency code and the fixed category names. Your saved lists, medicines and money stay on the Mac. ' +

@@ -8,20 +8,22 @@
  * with the fake claude answering Ask's prompt through the fake cswap.
  * Nothing runs claude, cswap or osascript for real.
  *
- * Each phrase is typed into the box and sent with the arrow, as a person
- * would; its cards are checked on screen, applied with the card's own
- * button, found in Life through the API, and taken back with Undo:
+ * Each phrase is typed into the box and sent with the arrow (one with the
+ * keyboard's Enter, its Send key), as a person would; its cards are checked
+ * on screen, applied with the card's own button, found in Life through the
+ * API, and taken back with Undo:
  *
  * 1. Ask is in the nav right after Today; the empty page's chip fills the
- *    box without sending; the line under the box says what goes to Claude.
+ *    box without sending; the one line under the box says the words go to
+ *    Claude, and its "What's sent" opens all of what goes.
  * 2. "todo add call the bank": one Todo card; Add puts it in Todos; Undo
  *    takes it out.
  * 3. "remind me at 6 to take Examplocin" (a synthetic name): one Reminder
  *    at the next 6 o'clock; Add makes the todo with that time; Undo.
  * 4. "had 2 rotis and dal": two Food cards and "Add all 2"; Today's kcal
  *    grows by 420; Undo on each brings it back.
- * 5. "spent 250 on lunch": one Expense of ₹250 in Food, never in an Add
- *    all; Add puts 25000 hundredths in the month; Undo.
+ * 5. "spent 250 on lunch", sent with Enter: one Expense of ₹250 in Food,
+ *    never in an Add all; Add puts 25000 hundredths in the month; Undo.
  * 6. "calories left?": a Now card the phone fills from Today: 0 / 1,500
  *    kcal (the default target) and "1,500 kcal left".
  * 7. Hostile answers: shell, settings, medicine, session and intel actions
@@ -88,11 +90,12 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
 
   const open = (path: string) => page.goto(`http://127.0.0.1:${d.port}${path}`, { waitUntil: 'load' });
 
-  /** Type `text`, tap the arrow, and wait for its answer: the newest turn, done (its reply shows) or failed. */
-  async function say(text: string, until: (turn: Locator) => Locator): Promise<Locator> {
+  /** Type `text`, tap the arrow (or press Enter), and wait for its answer: the newest turn, done (its reply shows) or failed. */
+  async function say(text: string, until: (turn: Locator) => Locator, via: 'arrow' | 'enter' = 'arrow'): Promise<Locator> {
     const box = page.getByLabel(BOX);
     await box.fill(text);
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    if (via === 'enter') await box.press('Enter');
+    else await page.getByRole('button', { name: 'Send', exact: true }).click();
     const turn = page.locator('li[data-turn]').last();
     await turn.getByText(text, { exact: true }).waitFor();
     await until(turn)
@@ -142,7 +145,7 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await d?.stop();
   }, 30_000);
 
-  it('1. Ask sits right after Today; a chip fills the box and sends nothing; the line under the box says what goes to Claude', async () => {
+  it("1. Ask sits right after Today; a chip fills the box and sends nothing; one line under the box, and What's sent says what goes", async () => {
     await open('/today');
     const tabs = await page.getByRole('navigation').first().getByRole('link').allInnerTexts();
     const names = tabs.map((t) => t.trim());
@@ -150,14 +153,29 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await page.getByRole('navigation').first().getByRole('link', { name: 'Ask', exact: true }).click();
     await page.getByRole('heading', { name: 'Ask', level: 1 }).waitFor();
     await page.getByText('Tell Ask what to add, or ask about today.').waitFor();
-    await page
-      .getByText(
-        'Sent to Claude on your account: only what you type here (medicine names or amounts you type do go), the date, time and time zone, ' +
-          'which Life parts are on, the currency code and the fixed category names. Your saved lists, medicines and money stay on the Mac. ' +
-          'Nothing is added until you tap Add.',
-        { exact: true },
-      )
-      .waitFor();
+    // One line under the box, so the chat keeps the screen; What's sent opens all of what goes.
+    const line = page.getByText('Sent to Claude on your account.', { exact: true });
+    await line.waitFor();
+    const more = page.getByRole('button', { name: "What's sent", exact: true });
+    const [l, m] = [await line.boundingBox(), await more.boundingBox()];
+    if (!l || !m) throw new Error('the line or its button has no box');
+    expect(l.height, 'one line').toBeLessThan(24);
+    // Its button sits on the same line (a tap target taller than the words).
+    expect(l.y + l.height / 2).toBeGreaterThan(m.y);
+    expect(l.y + l.height / 2).toBeLessThan(m.y + m.height);
+    const words = page.getByText(
+      'Sent to Claude on your account: only what you type here (medicine names or amounts you type do go), the date, time and time zone, ' +
+        'which Life parts are on, the currency code and the fixed category names. Your saved lists, medicines and money stay on the Mac. ' +
+        'Nothing is added until you tap Add.',
+      { exact: true },
+    );
+    expect(await words.count()).toBe(0);
+    await more.click();
+    await words.waitFor();
+    expect(await more.getAttribute('aria-expanded')).toBe('true');
+    await check("What's sent open");
+    await more.click();
+    await words.waitFor({ state: 'detached' });
     await page.getByRole('group', { name: 'Examples' }).getByRole('button', { name: 'todo add call the bank' }).click();
     expect(await page.getByLabel(BOX).inputValue()).toBe('todo add call the bank');
     await page.waitForTimeout(500);
@@ -238,10 +256,10 @@ describe.skipIf(!ready)('v0.5.3 Ask in Chromium, served by jantard: each phrase 
     await check('the meal undone');
   }, 60_000);
 
-  it('5. "spent 250 on lunch": an Expense of ₹250 in Food, never in Add all; Add puts 25000 in the month; Undo', async () => {
+  it('5. "spent 250 on lunch", sent with Enter: an Expense of ₹250 in Food, never in Add all; Add puts 25000 in the month; Undo', async () => {
     const before = await month();
     const text = 'spent 250 on lunch';
-    const turn = await say(text, replied('An expense.', text));
+    const turn = await say(text, replied('An expense.', text), 'enter');
     const card = turn.locator('li[data-card="money"]');
     expect(await card.count()).toBe(1);
     const shown = await card.innerText();

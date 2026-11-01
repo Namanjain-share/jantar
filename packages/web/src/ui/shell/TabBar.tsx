@@ -7,12 +7,12 @@
 import clsx from 'clsx';
 import type { Route } from '../../lib/router.js';
 import { Badge } from '../kit/Badge.js';
-import { useFeatures } from './data.js';
+import { usePlaceFeatures } from './data.js';
 import { Link } from './Link.js';
 import { isCurrent, tabItems } from './nav.js';
 
 export function TabBar({ route, badges }: { route: Route['name']; badges: Partial<Record<Route['name'], number>> }) {
-  const { tabs, more } = tabItems(useFeatures());
+  const { tabs, more } = tabItems(usePlaceFeatures());
   return (
     <nav aria-label="Main" className={clsx('pb-safe grid flex-none border-t border-line bg-bg', tabs.length === 5 ? 'grid-cols-5' : 'grid-cols-4')}>
       {tabs.map((item) => {

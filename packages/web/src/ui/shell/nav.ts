@@ -2,9 +2,10 @@
  * The places, in rail and tab order, with their Phosphor icons (v0.4, D2):
  * Board, Today, Ask (v0.5.3), Files, Accounts, Alerts, Devices, Intel,
  * Meetings (v0.5); Today, Ask, Files, Intel and Meetings only while their
- * switch is on. Ask sits right after Today, so with Life and Ask on it is a
- * phone tab and Accounts moves into More. The rail
- * lists every place that is on. The phone has room for five tabs: with more
+ * switch is on (and Ask only on a device paired with control: the callers
+ * pass data.ts usePlaceFeatures). Ask sits right after Today, so with Life
+ * and Ask on it is a phone tab and Accounts moves into More. The rail lists
+ * every place that is on. The phone has room for five tabs: with more
  * places on, the fifth tab is More, holding the rest (its badge is theirs
  * added up).
  */

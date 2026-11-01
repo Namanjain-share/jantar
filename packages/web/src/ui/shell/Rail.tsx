@@ -9,12 +9,12 @@ import { MagnifyingGlassIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import type { Route } from '../../lib/router.js';
 import { Badge } from '../kit/Badge.js';
-import { useFeatures } from './data.js';
+import { usePlaceFeatures } from './data.js';
 import { Link } from './Link.js';
 import { isCurrent, navItems } from './nav.js';
 
 export function Rail({ route, badges, onPalette }: { route: Route['name']; badges: Partial<Record<Route['name'], number>>; onPalette: () => void }) {
-  const items = navItems(useFeatures());
+  const items = navItems(usePlaceFeatures());
   return (
     <nav aria-label="Main" className="col-start-1 row-start-2 flex flex-col items-center gap-4 border-r border-line py-8">
       {items.map((item) => {

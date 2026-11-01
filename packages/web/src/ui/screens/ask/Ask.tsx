@@ -8,7 +8,7 @@
  *   Tomorrow, Mon 2 Nov
  *   [Add] [Edit] Skip
  *   ┌──────────────────────────────────────┐ [↑]       sticky above the tabs
- *   Sent to Claude on your account: only what you type here …   always
+ *   Sent to Claude on your account.  What's sent             always
  *
  * The turns are this device's, kept in the Mac's memory: `GET /v1/ask`,
  * again on every lifeTick (the Mac ticks on each turn's change) and when
@@ -17,7 +17,9 @@
  * while a show card is on screen; the target is the Mac's, never a default.
  *
  * The box grows from one line to six (as the session composer does);
- * Cmd/Ctrl+Enter sends. One turn waits at a time: Send waits for it, and
+ * Enter sends (a phone keyboard's Send key too, and Cmd/Ctrl+Enter), Shift+Enter
+ * is a new line. The line under it says the words go to Claude; "What's
+ * sent" opens all of what goes. One turn waits at a time: Send waits for it, and
  * Try again sends a failed turn's words as a new turn. While Ask can't run
  * the Mac's sentence takes the box's place and the history stays (the
  * empty page's line and chips go, as they only fill the box). A refused
@@ -39,7 +41,7 @@ import { Loaded, OfflineLine, RowMenu, SheetActions, UndoLine, useLifeClock, use
 import { useTodoActions } from '../life/todos/actions.js';
 import { TodoSheet } from '../life/todos/TodoSheet.js';
 import { useProjects } from '../life/todos/useProjects.js';
-import { ASK_COPY, EXAMPLES, PRIVACY, unfinished } from './model.js';
+import { ASK_COPY, EXAMPLES, PRIVACY, PRIVACY_SHORT, unfinished } from './model.js';
 import { ShowContext } from './Show.js';
 import { Refused, Turn, refusalText, useTap } from './Turn.js';
 
@@ -48,6 +50,7 @@ const MAX_LINES = 6;
 /** The box shows a count once the words pass this. */
 const COUNT_FROM = 900;
 const CHIP = 'h-32 rounded-chip border border-line px-10 type-small text-ink-2 transition-colors duration-120 ease-hover hover:text-ink coarse:h-44';
+const LINK = 'rounded-chip type-small font-medium text-ink-2 transition-colors duration-120 hover:text-ink coarse:min-h-44 coarse:px-8';
 
 export function Ask() {
   const { api } = useDeps();
@@ -170,7 +173,7 @@ export function Ask() {
           )}
           {waiting ? <p className="mt-8 type-small text-ink-2">{ASK_COPY.wait}</p> : null}
           {send.error ? <Refused className="mt-8">{refusalText(send.error)}</Refused> : null}
-          <p className="mt-8 type-small text-ink-3">{PRIVACY}</p>
+          <Privacy />
         </div>
         <div ref={end} />
       </div>
@@ -203,7 +206,28 @@ export function Ask() {
   );
 }
 
-/** The box: 1 to 6 lines, Cmd/Ctrl+Enter or the arrow sends, a count past 900 characters. */
+/** One line under the box; "What's sent" opens the full words under it. */
+function Privacy() {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <p className="mt-4 flex flex-wrap items-center gap-x-8 type-small text-ink-3">
+        <span>{PRIVACY_SHORT}</span>
+        <button type="button" className={LINK} aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}>
+          What's sent
+        </button>
+      </p>
+      {open ? (
+        <p id={id} className="mt-4 type-small text-pretty text-ink-3">
+          {PRIVACY}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/** The box: 1 to 6 lines, Enter (Shift+Enter is a new line) or the arrow sends, a count past 900 characters. */
 function Box({
   area,
   draft,
@@ -235,8 +259,9 @@ function Box({
     e?.preventDefault();
     if (can) onSend();
   };
+  // Enter sends, as the keyboard's Send key says (Cmd/Ctrl+Enter too); Shift+Enter is a new line, and an IME's Enter picks its word.
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
     }

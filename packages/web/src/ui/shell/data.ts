@@ -12,6 +12,7 @@ import { useApp } from '../context.js';
 import { GLYPH_WORD, glyphStateOf, type GlyphState } from '../kit/glyph.js';
 import type { StripItem } from '../kit/Strip.js';
 import { ALERTS_SEEN_KEY } from '../screens/Alerts.js';
+import { readLocalDevice } from '../screens/devices/local.js';
 
 /** The autoswitch ceiling: read from /v1/plan through one shared feed. */
 export { DEFAULT_CEILING, useCeiling } from '../plan.js';
@@ -23,6 +24,18 @@ export { DEFAULT_CEILING, useCeiling } from '../plan.js';
  */
 export function useFeatures(): Readonly<Features> {
   return useApp((s) => s.state.daemon?.features) ?? NO_FEATURES;
+}
+
+/**
+ * The switches as the places (rail, tabs, More) list them: Ask only on a
+ * device paired with control (v0.5.3), as every Ask call needs it. A
+ * browser that kept no record of its pairing (or an unreadable one) is
+ * taken to have it, as the session's answer rows do.
+ */
+export function usePlaceFeatures(): Readonly<Features> {
+  const features = useFeatures();
+  const scopes = features.ask ? readLocalDevice()?.scopes : undefined;
+  return Array.isArray(scopes) && !scopes.includes('control') ? { ...features, ask: false } : features;
 }
 
 /**

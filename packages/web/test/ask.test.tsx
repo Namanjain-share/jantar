@@ -9,8 +9,9 @@
  * stays text, the show cards read from `GET /v1/life/today` alone (the
  * served target, a part that is off, the doses, a failed read), the
  * example chips (gone while Ask can't run), Clear, a refused Send, Cancel
- * or Clear and when its sentence goes, Try again's wait, the privacy line,
- * and Ask in the places.
+ * or Clear and when its sentence goes, Try again's wait, the privacy line
+ * and its What's sent, Enter and Shift+Enter, and Ask in the places (none
+ * on a device paired without control).
  * Every name and amount here is made up.
  */
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -20,7 +21,7 @@ import { ApiError, type Api } from '../src/lib/api.js';
 import { parseRoute, routePath } from '../src/lib/router.js';
 import { writeLocal } from '../src/lib/storage.js';
 import { LOCAL_DEVICE_KEY } from '../src/ui/screens/devices/local.js';
-import { PRIVACY } from '../src/ui/screens/ask/model.js';
+import { PRIVACY, PRIVACY_SHORT } from '../src/ui/screens/ask/model.js';
 import { navItems, tabItems } from '../src/ui/shell/nav.js';
 import { NOW, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
@@ -88,13 +89,24 @@ const sendButton = () => screen.getByRole('button', { name: 'Send' }) as HTMLBut
 const button = (name: string | RegExp) => screen.getByRole('button', { name }) as HTMLButtonElement;
 
 describe('the page', () => {
-  it('says what goes to Claude, in these exact words, under the box', async () => {
+  it("says it goes to Claude in one line under the box; What's sent opens the exact words", async () => {
     open(list([]));
     await screen.findByText('Tell Ask what to add, or ask about today.');
+    expect(PRIVACY_SHORT).toBe('Sent to Claude on your account.');
+    expect(screen.getByText(PRIVACY_SHORT).parentElement?.className).toMatch(/\btype-small\b.*\btext-ink-3\b/);
     expect(PRIVACY).toBe(
       'Sent to Claude on your account: only what you type here (medicine names or amounts you type do go), the date, time and time zone, which Life parts are on, the currency code and the fixed category names. Your saved lists, medicines and money stay on the Mac. Nothing is added until you tap Add.',
     );
-    expect(screen.getByText(PRIVACY).className).toMatch(/\btype-small\b.*\btext-ink-3\b/);
+    const more = button("What's sent");
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText(PRIVACY)).toBeNull();
+    fireEvent.click(more);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    const words = screen.getByText(PRIVACY);
+    expect(words.className).toMatch(/\btype-small\b.*\btext-ink-3\b/);
+    expect(more.getAttribute('aria-controls')).toBe(words.id);
+    fireEvent.click(more);
+    expect(screen.queryByText(PRIVACY)).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'Ask' })).toBeTruthy();
   });
 
@@ -125,11 +137,12 @@ describe('the page', () => {
     expect(api.askList).toHaveBeenCalledTimes(2);
   });
 
-  it('Cmd+Enter sends; a second send gets a key of its own; a refusal shows in ember and keeps the words', async () => {
+  it('Enter and Cmd+Enter send; a second send gets a key of its own; a refusal shows in ember and keeps the words', async () => {
     const askSend = vi
       .fn()
       .mockRejectedValueOnce(new ApiError('rate_limited', 'Too many messages from this device; try again in a minute.', 429))
-      .mockResolvedValueOnce({ id: tid(1) });
+      .mockResolvedValueOnce({ id: tid(1) })
+      .mockResolvedValueOnce({ id: tid(2) });
     open(list([]), { askSend });
     await screen.findByText('Tell Ask what to add, or ask about today.');
     fireEvent.change(box(), { target: { value: 'had 2 rotis and dal' } });
@@ -143,9 +156,16 @@ describe('the page', () => {
     await waitFor(() => expect(askSend).toHaveBeenCalledTimes(2));
     const keys = askSend.mock.calls.map((c) => c[1]);
     expect(keys[0]).not.toBe(keys[1]);
-    // Plain Enter is a new line, not a send.
-    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(box().value).toBe(''));
+    // The phone keyboard's Send key is Enter: it sends. Shift+Enter is a new line, and an IME's Enter picks its word.
+    expect(box().getAttribute('enterkeyhint')).toBe('send');
+    fireEvent.change(box(), { target: { value: 'spent 250 on lunch' } });
+    fireEvent.keyDown(box(), { key: 'Enter', shiftKey: true });
+    fireEvent.keyDown(box(), { key: 'Enter', isComposing: true });
     expect(askSend).toHaveBeenCalledTimes(2);
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(askSend).toHaveBeenCalledTimes(3));
+    expect(askSend.mock.calls[2]?.[0]).toBe('spent 250 on lunch');
   });
 
   it('counts the characters past 900, up to 1000', async () => {
@@ -163,7 +183,8 @@ describe('the page', () => {
     expect(await screen.findByText('Reply 1.')).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: 'What to add, or a question about today' })).toBeNull();
     expect(screen.getByText('jantar life on todos').tagName).toBe('CODE');
-    expect(screen.getByText(PRIVACY)).toBeTruthy();
+    expect(screen.getByText(PRIVACY_SHORT)).toBeTruthy();
+    expect(button("What's sent")).toBeTruthy();
   });
 
   it('not ready with no history: no empty line and no examples, as there is no box for them to fill', async () => {
@@ -171,7 +192,7 @@ describe('the page', () => {
     expect(await screen.findByText('jantar life on todos')).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Examples' })).toBeNull();
     expect(screen.queryByText('Tell Ask what to add, or ask about today.')).toBeNull();
-    expect(screen.getByText(PRIVACY)).toBeTruthy();
+    expect(screen.getByText(PRIVACY_SHORT)).toBeTruthy();
   });
 
   it("a refused Send's sentence goes when the words change, and when the newest turn does", async () => {
@@ -688,6 +709,25 @@ describe('Ask in the places', () => {
     expect(within(nav).getByRole('link', { name: /Ask/ }).getAttribute('aria-current')).toBe('page');
     expect(within(nav).getByRole('link', { name: /Today/ }).getAttribute('aria-current')).toBeNull();
     await screen.findByText('Tell Ask what to add, or ask about today.');
+  });
+
+  it('no Ask tab on a device paired without control (every Ask call needs it); a browser with no pairing record keeps it', () => {
+    const ALL = stateWith({ features: { life: true, files: true, ask: true, intel: true, meetings: true } });
+    const tabs = () =>
+      within(screen.getByRole('navigation', { name: 'Main' }))
+        .getAllByRole('link')
+        .map((l) => l.getAttribute('aria-label') ?? l.textContent?.trim().replace(/\d+$/, ''));
+    writeLocal(LOCAL_DEVICE_KEY, { id: 'dev-2', name: 'Tablet', scopes: ['read'] });
+    const r = renderApp({ path: '/', state: ALL });
+    expect(tabs()).toEqual(['Board', 'Today', 'Files', 'Accounts', 'More']);
+    r.unmount();
+    writeLocal(LOCAL_DEVICE_KEY, { id: 'dev-1', name: 'iPhone', scopes: ['read', 'control'] });
+    const r2 = renderApp({ path: '/', state: ALL });
+    expect(tabs()).toEqual(['Board', 'Today', 'Ask', 'Files', 'More']);
+    r2.unmount();
+    localStorage.clear();
+    renderApp({ path: '/', state: ALL });
+    expect(tabs()).toEqual(['Board', 'Today', 'Ask', 'Files', 'More']);
   });
 
   it('/ask while Ask is off says so, with the Mac command', () => {
