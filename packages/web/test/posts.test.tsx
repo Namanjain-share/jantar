@@ -255,7 +255,7 @@ describe('Posts: the list', () => {
 
   it('says so when there is nothing to post, with the add button', async () => {
     render({ posts: [] });
-    expect(await screen.findByText('Nothing to post yet.')).toBeTruthy();
+    expect(await screen.findByText('Nothing to post yet. Add a post and Jantar reminds you at its time.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add post' })).toBeTruthy();
   });
 

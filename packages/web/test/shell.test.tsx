@@ -205,7 +205,7 @@ describe('v0.7: Posts in the shell', () => {
     const postsList = vi.fn(async () => ({ today: '2026-01-15', week, posts: [] }));
     renderApp({ path: `/posts?id=${ID}`, state: stateWith({ sessions: [session('a')], features: { life: true } }), api: fakeApi({ postsList }) });
     expect(await screen.findByRole('heading', { level: 1, name: 'Posts' })).toBeTruthy();
-    expect(await screen.findByText('Nothing to post yet.')).toBeTruthy();
+    expect(await screen.findByText('Nothing to post yet. Add a post and Jantar reminds you at its time.')).toBeTruthy();
     expect(postsList).toHaveBeenCalledWith('open');
     const nav = screen.getByRole('navigation', { name: 'Main' });
     expect(within(nav).getByRole('link', { name: /Today/ }).getAttribute('aria-current')).toBe('page');

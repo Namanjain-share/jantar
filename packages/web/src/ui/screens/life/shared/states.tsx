@@ -24,7 +24,7 @@ export const EMPTY = {
   food: 'Nothing logged today.',
   places: 'No cafés yet.',
   money: 'No entries this month.',
-  posts: 'Nothing to post yet.',
+  posts: 'Nothing to post yet. Add a post and Jantar reminds you at its time.',
   postsDone: 'Nothing posted yet.',
   intel: 'Nothing on the shelf yet.',
 } as const;
