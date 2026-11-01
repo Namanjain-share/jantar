@@ -1,16 +1,18 @@
 // node --test scripts/
-// The brand files in docs/brand: what scripts/brand.mjs writes, their sizes,
+// The brand files in docs/brand: what scripts/brand.mjs writes (beside the
+// launch film and GIF of scripts/launch-video.mjs, tested there), their sizes,
 // that the logos are plain rects in the app's colours, that the mark is the
 // app's own, and that the README shows what exists. Drawing the PNGs needs
 // a Chromium; this only reads (and builds the pages as text).
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { BRAND_FILES, MARK_RECTS, PHONES, PICTURES, WORDS, bannerHtml, logoSvg, socialHtml, tokens, wanted } from './brand.mjs';
 import { variants } from './screenshots.mjs';
+import { OUT } from './launch-video.mjs';
 
 const script = join(dirname(fileURLToPath(import.meta.url)), 'brand.mjs');
 const repo = join(dirname(script), '..');
@@ -22,11 +24,17 @@ const pngSize = (file) => {
   return { width: head.readUInt32BE(16), height: head.readUInt32BE(20), colourType: head[25] };
 };
 
-test('docs/brand holds exactly the files brand.mjs writes', () => {
+test('docs/brand holds the files brand.mjs writes, and only the launch film and GIF besides', () => {
   const have = readdirSync(brand)
     .filter((f) => !f.startsWith('.'))
     .sort();
-  assert.deepEqual(have, [...BRAND_FILES].sort());
+  const film = Object.values(OUT).map((f) => basename(f));
+  for (const f of BRAND_FILES) assert.ok(have.includes(f), `${f} is missing`);
+  assert.deepEqual(
+    have.filter((f) => !BRAND_FILES.includes(f) && !film.includes(f)),
+    [],
+    'a file neither brand.mjs nor launch-video.mjs writes',
+  );
 });
 
 test('the banners are 1600 x 520 with transparent corners, the social preview 1280 x 640, all small', () => {
@@ -126,8 +134,10 @@ test('--only and --list', () => {
 test('the README shows only brand files that exist, the banner with its night copy', () => {
   const readme = readFileSync(join(repo, 'README.md'), 'utf8');
   const shown = [...readme.matchAll(/(?:src|srcset)=["'](docs\/brand\/[^"']+)["']|!\[[^\]]*\]\((docs\/brand\/[^)\s]+)\)/g)].map((m) => m[1] ?? m[2]);
-  for (const p of shown) assert.ok(BRAND_FILES.includes(p.slice('docs/brand/'.length)), p);
+  const film = Object.values(OUT);
+  for (const p of shown) assert.ok(BRAND_FILES.includes(p.slice('docs/brand/'.length)) || film.includes(p), p);
   if (shown.includes('docs/brand/banner.png')) {
-    assert.match(readme, /<source media="\(prefers-color-scheme: dark\)" srcset="docs\/brand\/banner-dark\.png">/);
+    // its night copy, in a <source> whose media query asks for dark (alone, or with reduced motion when a GIF leads)
+    assert.match(readme, /<source media="[^"]*\(prefers-color-scheme: dark\)[^"]*" srcset="docs\/brand\/banner-dark\.png">/);
   }
 });

@@ -1,0 +1,291 @@
+/*
+ * The launch film's stage (scripts/launch-video.mjs). One page, one frame
+ * per seek: stage.js places everything absolutely and sets transform and
+ * opacity per frame. Colours are the app's night tokens (tokens.css, put in
+ * by the script as --t-* on :root), the type is the app's own Archivo and
+ * JetBrains Mono. Sizes are set by stage.js per layout (film or gif) through
+ * the custom properties on .stage.
+ */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--t-bg);
+}
+body {
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+  overflow: hidden;
+}
+* {
+  box-sizing: border-box;
+}
+.stage {
+  position: relative;
+  overflow: hidden;
+  background: var(--t-bg);
+  color: var(--t-ink);
+  font-family: 'Archivo Variable', sans-serif;
+}
+.abs {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+/* ---------------------------------------------------------------- the dial */
+.dial path,
+.dial line {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ---------------------------------------------------------------- words */
+.rail {
+  font: 500 var(--rail-size) / 1 'JetBrains Mono Variable', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t-ink-3);
+  white-space: nowrap;
+}
+.cap {
+  display: flex;
+  flex-direction: column;
+}
+.cap .kicker {
+  margin: 0 0 var(--kicker-gap);
+  font: 500 var(--kicker-size) / 1.2 'JetBrains Mono Variable', monospace;
+  color: var(--t-ink-3);
+  white-space: nowrap;
+}
+.cap .kicker b {
+  font-weight: 500;
+  color: var(--t-jup-text);
+}
+.cap .line {
+  margin: 0;
+  font: 600 var(--cap-size) / var(--cap-lh) 'Archivo Variable', sans-serif;
+  letter-spacing: -0.015em;
+  color: var(--t-ink);
+  white-space: nowrap;
+}
+.cap .line + .line {
+  color: var(--t-ink-2);
+}
+.cap--big .line {
+  font-size: var(--cap-big-size);
+  line-height: var(--cap-big-lh);
+  letter-spacing: -0.02em;
+}
+
+/* ---------------------------------------------------------------- the Terminal window */
+.term {
+  overflow: hidden;
+  border: 1px solid var(--t-line-strong);
+  border-radius: var(--win-radius);
+  background: var(--t-term);
+}
+.tabbar {
+  position: relative;
+  display: flex;
+  height: var(--tab-h);
+  background: var(--t-hover);
+  border-bottom: 1px solid var(--t-line-strong);
+}
+.tab {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--tab-pad);
+  border-left: 1px solid var(--t-line);
+  font: 460 var(--tab-size) / 1 'Archivo Variable', sans-serif;
+  color: var(--t-ink-3);
+  white-space: nowrap;
+}
+.tab:first-child {
+  border-left: 0;
+}
+.tab .on {
+  position: absolute;
+  inset: 0 0 -1px;
+  background: var(--t-term);
+}
+.tab span {
+  position: relative;
+}
+.tab .lit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--t-ink);
+}
+.tbody {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--tab-h);
+  bottom: 0;
+  padding: var(--term-pad-y) var(--term-pad-x);
+  overflow: hidden;
+}
+.page {
+  position: absolute;
+  left: var(--term-pad-x);
+  right: var(--term-pad-x);
+  display: flex;
+  flex-direction: column;
+  font: 450 var(--term-size) / var(--term-lh) 'JetBrains Mono Variable', monospace;
+  color: var(--t-term-ink);
+  font-variant-numeric: tabular-nums;
+}
+.page .ln {
+  min-height: var(--term-lh);
+  white-space: pre;
+}
+.page .g {
+  display: inline-block;
+  width: 1ch;
+  font-style: normal;
+  text-align: center;
+}
+.page .dim {
+  color: var(--t-term-dim);
+}
+.page .you {
+  color: var(--t-term-dim);
+}
+.page .sel {
+  color: var(--t-ink);
+  font-weight: 560;
+}
+.page .rl {
+  color: var(--t-line-strong);
+}
+
+/* ---------------------------------------------------------------- the phone */
+.phone {
+  padding: var(--bezel);
+  border-radius: calc(var(--screen-radius) + var(--bezel));
+  background: var(--t-raised);
+  box-shadow: 0 0 0 1px var(--t-line-strong), 0 40px 80px -24px rgb(0 0 0 / 0.55);
+}
+.screen {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--screen-radius);
+  background: var(--t-page);
+}
+.screen > .abs {
+  width: 100%;
+  height: 100%;
+}
+.screen img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.lock {
+  background: var(--t-page);
+}
+.lock .clock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font: 600 var(--clock-size) / 1 'Archivo Variable', sans-serif;
+  font-stretch: 112%;
+  letter-spacing: -0.02em;
+  color: var(--t-ink);
+  font-variant-numeric: tabular-nums;
+}
+.push {
+  border-radius: var(--push-radius);
+  background: var(--t-raised);
+  box-shadow: 0 0 0 1px var(--t-line), 0 18px 36px -12px rgb(0 0 0 / 0.5);
+  padding: var(--push-pad);
+}
+.push .from {
+  display: flex;
+  align-items: center;
+  gap: var(--push-gap);
+  font: 500 var(--push-from) / 1 'JetBrains Mono Variable', monospace;
+  color: var(--t-ink-3);
+}
+.push .title {
+  margin: var(--push-gap) 0 0;
+  font: 600 var(--push-title) / 1.2 'Archivo Variable', sans-serif;
+  color: var(--t-ink);
+  letter-spacing: -0.01em;
+}
+.push .body {
+  margin: calc(var(--push-gap) / 2) 0 0;
+  font: 420 var(--push-body) / 1.35 'Archivo Variable', sans-serif;
+  color: var(--t-ink-2);
+}
+.push .body code {
+  font: 450 0.92em / 1 'JetBrains Mono Variable', monospace;
+}
+
+/* ---------------------------------------------------------------- the tap */
+/* a light ring in a thin dark halo, so it reads on a light button and on the dark ground alike */
+.tap {
+  border-radius: 50%;
+  border: var(--tap-border) solid var(--t-ink);
+  box-shadow: 0 0 0 2px rgb(5 8 18 / 0.6), inset 0 0 0 2px rgb(5 8 18 / 0.6);
+}
+.tap i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--t-ink-3);
+}
+
+/* the mustard ring round a row (time: a reset) */
+.mark-row {
+  border: var(--row-border) solid var(--t-jup-fill);
+  border-radius: 6px;
+}
+
+/* ---------------------------------------------------------------- the Mac window */
+.mac {
+  overflow: hidden;
+  border: 1px solid var(--t-line-strong);
+  border-radius: var(--win-radius);
+  background: var(--t-bg);
+}
+.mac img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ---------------------------------------------------------------- the end card */
+.end .name {
+  font: 600 var(--end-name) / 1 'Archivo Variable', sans-serif;
+  font-stretch: 125%;
+  letter-spacing: -0.02em;
+  color: var(--t-ink);
+  white-space: nowrap;
+}
+.end .tag {
+  font: 420 var(--end-tag) / 1.25 'Archivo Variable', sans-serif;
+  color: var(--t-ink-2);
+  white-space: nowrap;
+}
+.end .url {
+  font: 500 var(--end-url) / 1 'JetBrains Mono Variable', monospace;
+  color: var(--t-ink);
+  white-space: nowrap;
+}
+.end .meta,
+.end .foot {
+  font: 500 var(--end-meta) / 1.3 'JetBrains Mono Variable', monospace;
+  color: var(--t-ink-3);
+  white-space: nowrap;
+}
+.end .foot {
+  font-size: var(--end-foot);
+}
