@@ -2,7 +2,7 @@
  * State shared by the TCP listener and the control socket: device auth,
  * pairing, Origin policy, rate limits, idempotency, audit, open WebSockets,
  * the pane lookup cache and the web app hash; v0.5's extension keys and
- * their limits.
+ * their limits; v0.5.3 Ask's limits.
  */
 import { DEFAULT_HOST, UPLOADS_IN_FLIGHT, V042_LIMITS, type Pane, type Session } from '@jantar/protocol';
 import type { DaemonContext, Logger, PaneTarget, Parts, TerminalBackend, TimerId, UploadStore } from '../contracts.js';
@@ -80,6 +80,16 @@ export const V05_LIMITS = {
 } as const;
 
 export type V05Limits = { [K in keyof typeof V05_LIMITS]: { limit: number; windowMs: number } };
+
+/**
+ * v0.5.3 Ask's limits per device (key them by `actorName(auth)`): messages
+ * a minute and a day (askSend counts them). Every Ask write from a device
+ * also counts against V04_LIMITS.lifeWrite (the pipeline).
+ */
+export const ASK_LIMITS = {
+  send: { limit: 10, windowMs: 60_000 },
+  sendDay: { limit: 100, windowMs: 24 * 60 * 60_000 },
+} as const;
 
 export interface ApiOptions {
   /** TCP port (default settings.remote.port). 0 picks a free port (tests). */
@@ -302,6 +312,9 @@ export class ApiServices {
   readonly uploads: UploadStore;
   /** v0.4.2: raw bodies read so far. A refused upload never gets here (the tests check). */
   rawBodiesRead = 0;
+  /** v0.5.3 Ask's limits per device (ASK_LIMITS). */
+  readonly askLimiter: SlidingWindowLimiter;
+  readonly askDayBudget: SlidingWindowLimiter;
   /** v0.5 limits per extension (V05_LIMITS). */
   readonly extRequestLimiter: SlidingWindowLimiter;
   readonly extShotBytes: SlidingWindowBudget;
@@ -355,6 +368,8 @@ export class ApiServices {
     this.uploadBytesBudget = new SlidingWindowBudget({ ...V042_LIMITS.uploadBytes, clock: ctx.clock });
     this.uploadLimiter = per(V042_LIMITS.uploads);
     this.uploads = opts.uploads ?? new FileUploadStore(ctx);
+    this.askLimiter = per(ASK_LIMITS.send);
+    this.askDayBudget = per(ASK_LIMITS.sendDay);
     const v05 = { ...V05_LIMITS, ...opts.v05Limits };
     this.extRequestLimiter = per(v05.extRequest);
     this.extShotBytes = new SlidingWindowBudget({ ...v05.extShotBytes, clock: ctx.clock });

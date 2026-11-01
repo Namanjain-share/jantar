@@ -21,9 +21,10 @@ const TOKEN_MAX = 200;
 
 // C0 controls except tab and line feed, DEL, and C1 controls (writer/text.ts refuses them); bidi
 // embeddings, overrides, isolates and marks, which can make what the phone shows differ from what is typed.
-const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
+// v0.5.3: Ask strips the same set from what Claude writes (ask/answer.ts).
+export const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
 // CR LF, CR, and the Unicode line and paragraph separators.
-const LINE_END = /\r\n?|[\u2028\u2029]/g;
+export const LINE_END = /\r\n?|[\u2028\u2029]/g;
 const PREFACE = /^(here(?:'s|’s| is) (?:the|your) (?:prompt|message)[^:\n]*:)\s*/i;
 const FENCE = /^```[\w-]*\n([\s\S]*?)\n?```$/;
 const QUOTES: ReadonlyArray<[string, string]> = [

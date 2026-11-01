@@ -2,11 +2,12 @@
  * Privacy probes (spec rules G7, A1, A2): marker strings planted in every
  * kind of text the daemon must never put into an event, an audit row, a log
  * line or a write reply. A read reply may carry them (filesText returns file
- * content, rewriteGet the prompt); nothing else may.
+ * content, rewriteGet the prompt, askList the owner's turns); nothing else may.
  *
  *   expect(markersIn(db.events)).toEqual([]);
  *   expect(markersIn(auditRows)).toEqual([]);
  */
+import { ASK_MARKER } from './ask.js';
 import { SECRET_MARKER } from './home.js';
 import { REWRITE_MARKER } from './rewrite.js';
 
@@ -16,8 +17,8 @@ export const FILE_MARKER = 'SYNTHETIC-FILE-CONTENT-DO-NOT-LOG';
 /** In Terminal screen text: the top line of every launch screen. */
 export const SCREEN_MARKER = 'SYNTHETIC-SCREEN-TEXT-DO-NOT-LOG';
 
-/** Every marker: secrets (never served at all), dictated text, file content, screen text. */
-export const PRIVACY_MARKERS = [SECRET_MARKER, REWRITE_MARKER, FILE_MARKER, SCREEN_MARKER] as const;
+/** Every marker: secrets (never served at all), dictated text, file content, screen text, and (v0.5.3) what the phone asks Ask. */
+export const PRIVACY_MARKERS = [SECRET_MARKER, REWRITE_MARKER, FILE_MARKER, SCREEN_MARKER, ASK_MARKER] as const;
 
 /** Bytes as text twice over: one byte a character (ASCII and UTF-8 markers) and UTF-16. */
 function bytesText(bytes: Uint8Array, out: string[]): void {

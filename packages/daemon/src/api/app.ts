@@ -5,7 +5,7 @@
  *   Host check -> device cookie (and, on `/v1/ext/` only, the extension
  *   key) -> scope -> Origin (writes and WS) -> device secret (control /
  *   launch / admin writes and WS) -> `localOnly` refusal -> feature switch
- *   (v0.3, v0.4, v0.5) -> a broken life.db or meetings.db (503) -> zod
+ *   (v0.3, v0.4, v0.5, v0.5.3) -> a broken life.db or meetings.db (503) -> zod
  *   validation -> Idempotency-Key -> handler -> audit (writes).
  *   v0.5's `extension` routes swap the device steps for the extension's:
  *   a loopback peer and Host with no forwarding header, no device cookie,
@@ -107,6 +107,8 @@ export const READ_ONLY_REFUSED: ReadonlySet<RouteName> = new Set<RouteName>([
   'foodEstimate',
   // v0.5: so does a meeting's summary. Capture and the phone's edits still work.
   'meetingSummarize',
+  // v0.5.3: Ask runs a headless Claude too. Its Add, Skip, Undo, Cancel and Clear still work (Life writes).
+  'askSend',
   // v0.4.2: answers and keys act on a terminal; uploads exist only to be sent.
   'sessionDialog',
   'sessionKeypad',
@@ -179,6 +181,9 @@ export const EXTENSION_NOT_PAIRED = 'The Jantar extension is not paired. On your
 
 /** What a phone write on Meetings answers past V04_LIMITS.lifeWrite (Meetings share Life's per-device write limit). */
 export const MEETING_WRITES_LIMITED = 'Too many meeting changes from this device; try again in a minute';
+
+/** v0.5.3: what a phone write on Ask answers past V04_LIMITS.lifeWrite (Ask shares Life's per-device write limit). */
+export const ASK_WRITES_LIMITED = 'Too many changes from this device; try again in a minute';
 
 /** The origin a pairing claim must come from: the published extension's. */
 export const EXTENSION_ORIGIN = `chrome-extension://${EXTENSION_ID}`;
@@ -583,11 +588,12 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
             });
           }
         }
-        // v0.5: a phone's Meetings writes share that limit (the extension has its own, in the gate).
-        if (isWrite && def.feature === 'meetings' && auth.actor?.kind === 'device') {
+        // v0.5: a phone's Meetings writes share that limit (the extension has its own, in the gate); v0.5.3: so do Ask's.
+        if (isWrite && (def.feature === 'meetings' || def.feature === 'ask') && auth.actor?.kind === 'device') {
           const limited = s.lifeWriteLimiter.hit(actorName(auth));
           if (!limited.ok) {
-            throw new ApiError('rate_limited', MEETING_WRITES_LIMITED, { 'retry-after': String(Math.ceil(limited.retryAfterMs / 1000)) });
+            const message = def.feature === 'ask' ? ASK_WRITES_LIMITED : MEETING_WRITES_LIMITED;
+            throw new ApiError('rate_limited', message, { 'retry-after': String(Math.ceil(limited.retryAfterMs / 1000)) });
           }
         }
       } catch (e) {

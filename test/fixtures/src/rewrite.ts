@@ -49,6 +49,18 @@ export const FAKE_CLAUDE_MODES = [
   'meeting-too-many',
   'meeting-long',
   'meeting-answer',
+  'ask-ok',
+  'ask-fence',
+  'ask-bad-json',
+  'ask-answer',
+  'ask-not-object',
+  'ask-unknown-type',
+  'ask-extra-field',
+  'ask-too-many',
+  'ask-bad-values',
+  'ask-long-reply',
+  'ask-claims',
+  'ask-refuse-option',
 ] as const;
 
 /**
@@ -84,6 +96,25 @@ export const FAKE_CLAUDE_MODES = [
  * - meeting-too-many: 31 action items
  * - meeting-long: a 2,001-character summary
  * - meeting-answer: prose instead of JSON
+ *
+ * Ask modes (v0.5.3), only when the run's --system-prompt-file is ask/assistant-v1.md
+ * (the default there is ask-ok; slow, auth-error and empty work there too):
+ * - ask-ok: one answer per message kind (ASK_MESSAGES in ask.ts): "todo add X", "remind me every
+ *   day at H:MM to X" (no day), "remind me to X [tomorrow] at H:MM", "remind me at H to X" (the next
+ *   H o'clock), "had 2 rotis and dal" (Roti 240, Dal 180), "ate/had X [N kcal]", "spent N on X"
+ *   (category "food", lower case), "calories left" / "what's due" / "meds" (show cards); anything
+ *   else a reply only. The reply names the message, so a marker in it comes back
+ * - ask-fence: the same JSON inside a ```json code fence
+ * - ask-bad-json: JSON cut short, and the message on stderr
+ * - ask-answer: prose instead of JSON
+ * - ask-not-object: []
+ * - ask-unknown-type: one todo plus shell, settings, medicine, session and intel actions
+ * - ask-extra-field: a todo with projectId, a todo with id, a food with save, money with billId
+ * - ask-too-many: 15 todos
+ * - ask-bad-values: a todo today at 00:00, a weekly one today at 00:00, then 13 with one bad value each
+ * - ask-long-reply: a 2,000-character reply with U+202E, U+0007 and a Markdown link
+ * - ask-claims: "Done! I added 50000 to your expenses." and a money action of 50000
+ * - ask-refuse-option: "error: unknown option '--permission-prompts'" while that flag is in argv, else ask-ok
  */
 export type FakeClaudeMode = (typeof FAKE_CLAUDE_MODES)[number];
 
