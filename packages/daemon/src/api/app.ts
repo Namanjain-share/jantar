@@ -225,7 +225,7 @@ export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<RouteName, string>>> = 
   intelReadStatus: 'See what reading links uses at the Mac: jantar intel read status',
   captureKeyAdd: 'Make a Shortcut key at the Mac: jantar intel shortcut add',
   captureKeyList: 'List Shortcut keys at the Mac: jantar intel shortcut list',
-  captureKeyRevoke: 'Revoke Shortcut keys at the Mac: jantar intel shortcut revoke',
+  captureKeyRevoke: 'Revoke a Shortcut key at the Mac: jantar intel shortcut revoke <id>',
 };
 
 /** What an `extension` route answers without a valid extension key (401). */

@@ -10,13 +10,20 @@
  *   intel shortcut revoke <id|--all>
  *
  * `jantar intel` hands everything after `shortcut` here unparsed, so this
- * file owns its flags. Wave 0's shell until lane C builds it: a run says
- * "Not built yet."
+ * file owns its flags. The key goes to stdout once and nowhere else: never
+ * a file, a log or the clipboard. docs/shortcut.md has the steps with
+ * pictures of where each one is.
  */
+import { CAPTURE_KEY_HEADER, CaptureKeyIdSchema, CaptureKeyNameSchema, ROUTES, type CaptureKeyAddReply, type CaptureKeyList, type CaptureKeyRevokeReply } from '@jantar/protocol';
+import { captureDoor } from '@jantar/daemon/auth/capture-keys';
+import { UsageError, parseArgs } from '../args.js';
 import { EXIT, type CliContext } from '../command.js';
+import { callDaemon } from '../ctl.js';
+import { readSettings } from '../lib/settings.js';
+import { ago, clip, plural } from '../lib/text.js';
 
-/** v0.8 wave 0: still a shell; lane C sets it false when it builds the keys (test/sentences.test.ts skips the sentences until then). */
-export const SHORTCUT_SHELL: boolean = true;
+/** v0.8: built (test/sentences.test.ts checks the sentences that name it). */
+export const SHORTCUT_SHELL: boolean = false;
 
 /** The help lines `jantar intel --help` shows for it. */
 export const SHORTCUT_HELP =
@@ -24,7 +31,97 @@ export const SHORTCUT_HELP =
   '  intel shortcut list | revoke <id|--all>\n' +
   '                                 the Shortcut keys (never a key), or stop one or all of them\n';
 
-export async function runShortcut(_argv: readonly string[], ctx: CliContext): Promise<number> {
-  ctx.io.err('Not built yet.\n');
-  return EXIT.usage;
+const USAGE = 'intel shortcut add [--name <n>] | list | revoke <id|--all>';
+
+const ADD_FLAGS = { name: { type: 'string', help: 'what to call it (default iphone)' } } as const;
+const REVOKE_FLAGS = { all: { type: 'boolean', help: 'revoke every Shortcut key' } } as const;
+
+/** The Shortcut's steps for a door, as `add` prints them (docs/shortcut.md says the same with more words). */
+export function shortcutSteps(url: string, cloudflare: boolean): string {
+  const headers = cloudflare ? `${CAPTURE_KEY_HEADER} (the key), CF-Access-Client-Id and CF-Access-Client-Secret (the Access service token)` : `${CAPTURE_KEY_HEADER} (the key)`;
+  return (
+    'In Shortcuts on the iPhone:\n' +
+    '  1. + (new shortcut), name it "Save to Jantar".\n' +
+    '  2. Details: Show in Share Sheet on; it receives URLs, Text and Safari web pages; if there is no input: Get Clipboard.\n' +
+    `  3. Add "Get Contents of URL": ${url}, Method POST,\n` +
+    `     Headers ${headers},\n` +
+    '     Request Body JSON: text = Shortcut Input, depth = standard (or light, or full).\n' +
+    '  4. Add "Get Dictionary Value" for message, then "Show Notification".\n' +
+    'It answers "Saved to Jantar." Never share this shortcut: it carries the key.\n' +
+    'Steps with more detail: docs/shortcut.md\n'
+  );
+}
+
+async function add(argv: readonly string[], ctx: CliContext): Promise<number> {
+  const { flags, positionals } = parseArgs(argv, ADD_FLAGS, { max: 0 });
+  let name: string | undefined;
+  if (flags.name !== undefined) {
+    const parsed = CaptureKeyNameSchema.safeParse(flags.name);
+    if (!parsed.success) throw new UsageError('--name is one line of at most 40 characters');
+    name = parsed.data;
+  }
+  if (positionals.length) throw new UsageError('add takes no argument (name it with --name)');
+  const made = await callDaemon<CaptureKeyAddReply>(ctx.ctl, 'POST', ROUTES.captureKeyAdd.path, name ? { name } : {});
+  const { settings } = await readSettings(ctx);
+  const io = ctx.io;
+  io.out(`Shortcut key "${made.name}" (${made.id}). It is shown once: put it in the Shortcut now.\n\n  ${made.key}\n\n`);
+  if (made.saveUrl) {
+    io.out(`The door: POST ${made.saveUrl}\n`);
+    io.out(shortcutSteps(made.saveUrl, settings.remote.mode === 'cloudflare'));
+    if (settings.remote.mode === 'cloudflare') {
+      io.out('On Cloudflare, the door needs its own Access application for /v1/capture/* with one Service Auth policy and its own service token (docs/shortcut.md#cloudflare-access).\n');
+    }
+  } else {
+    const door = captureDoor(settings);
+    io.out(`The door is closed: ${door.open ? 'the daemon gave no address' : door.why}\nThe key starts working once the door is open.\n`);
+  }
+  io.out(`Stop this key: jantar intel shortcut revoke ${made.id}\n`);
+  return EXIT.ok;
+}
+
+async function list(argv: readonly string[], ctx: CliContext): Promise<number> {
+  const { positionals } = parseArgs(argv, {}, { max: 0 });
+  if (positionals.length) throw new UsageError('list takes no argument');
+  const { keys } = await callDaemon<CaptureKeyList>(ctx.ctl, 'GET', ROUTES.captureKeyList.path);
+  if (keys.length === 0) {
+    ctx.io.out('No Shortcut keys. Make one: jantar intel shortcut add\n');
+    return EXIT.ok;
+  }
+  const now = Date.now();
+  ctx.io.out(`${plural(keys.length, 'Shortcut key')}:\n`);
+  for (const k of keys) {
+    const used = k.lastSeenAt ? `used ${ago(k.lastSeenAt, now)}` : 'never used';
+    ctx.io.out(`  ${k.id}  ${clip(k.name, 40)}  made ${ago(k.createdAt, now)}, ${used}\n`);
+  }
+  return EXIT.ok;
+}
+
+async function revoke(argv: readonly string[], ctx: CliContext): Promise<number> {
+  const { flags, positionals } = parseArgs(argv, REVOKE_FLAGS, { max: 1 });
+  const [id] = positionals;
+  if (flags.all && id !== undefined) throw new UsageError('give a key id or --all, not both');
+  if (!flags.all && id === undefined) throw new UsageError('revoke needs a key id (see: jantar intel shortcut list) or --all');
+  if (id !== undefined && !CaptureKeyIdSchema.safeParse(id).success) throw new UsageError(`"${clip(id, 40)}" is not a key id (see: jantar intel shortcut list)`);
+  const body = flags.all ? { all: true as const } : { id: id as string };
+  const r = await callDaemon<CaptureKeyRevokeReply>(ctx.ctl, 'POST', ROUTES.captureKeyRevoke.path, body);
+  if (!flags.all && r.revoked === 0) {
+    ctx.io.err(`No active Shortcut key ${id}. See: jantar intel shortcut list\n`);
+    return EXIT.failed;
+  }
+  ctx.io.out(r.revoked === 0 ? 'No Shortcut keys to revoke.\n' : `Revoked ${plural(r.revoked, 'Shortcut key')}. A Shortcut using it now gets 401 (or 404 once no key is left).\n`);
+  return EXIT.ok;
+}
+
+export async function runShortcut(argv: readonly string[], ctx: CliContext): Promise<number> {
+  const [action, ...rest] = argv;
+  switch (action) {
+    case 'add':
+      return add(rest, ctx);
+    case 'list':
+      return list(rest, ctx);
+    case 'revoke':
+      return revoke(rest, ctx);
+    default:
+      throw new UsageError(action === undefined ? `shortcut needs an action: jantar ${USAGE}` : `unknown shortcut action "${clip(action, 20)}" (add, list or revoke)`);
+  }
 }

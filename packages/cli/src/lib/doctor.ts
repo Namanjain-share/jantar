@@ -15,13 +15,18 @@
  * procps, systemd lingering (`loginctl show-user`), WSL1 or WSL2 and its
  * keep-alive, virtualization on Windows (`systeminfo`), Claude's version on
  * Windows, and the hooks in each Claude config dir.
+ *
+ * v0.8 adds, read-only too: with the Intel shelf on and an iOS Shortcut key
+ * made (`jantar intel shortcut list` over ctl.sock, never a key), where the
+ * capture door is. In cloudflare mode one GET of `<publicUrl>/v1/capture/save`
+ * with no credentials: Cloudflare Access should answer it, not Jantar.
  */
 import { open, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { CSWAP_SCRUB_ENV, isPipePath, scrubEnv, socketPathOk, type DaemonRole, type ExecFile, type NodeFile, type Paths } from '@jantar/daemon';
 import { MIN_CLAUDE_WINDOWS } from '@jantar/daemon/hooks/installer';
 import { NODE_CLOSE, NODE_LINK_PATH } from '@jantar/protocol/node-link';
-import { NODE_PREFIX, ROUTES, type HealthResponse, type Settings } from '@jantar/protocol';
+import { CAPTURE_PREFIX, NODE_PREFIX, ROUTES, type CaptureKeyList, type HealthResponse, type Settings } from '@jantar/protocol';
 import { CtlUnavailableError, callDaemon, isErrorBody, type CtlClient } from '../ctl.js';
 import { daemonLogPaths, legacyAgentProblem, plistExists, plistPath } from './launchd.js';
 import { LOGINCTL, lingerOn, unitPath } from './systemd.js';
@@ -668,6 +673,7 @@ export async function runDoctor(i: DoctorInput): Promise<DoctorReport> {
     ...(node ? [] : [await checkHooks(i)]),
     ...(node || !mac ? [] : [await checkTailscale(i), await checkCloudflared(i)]),
     ...(node ? await fleetNodeChecks(i, probe) : await fleetHubChecks(i, probe)),
+    ...(node ? [] : one(await captureDoorCheck(i, probe))),
   ];
   const counts: Record<CheckStatus, number> = { ok: 0, warn: 0, fail: 0, info: 0 };
   for (const c of checks) counts[c.status] += 1;
@@ -933,6 +939,53 @@ async function accessCheck(i: DoctorInput, origin: string, host: string): Promis
     return { ...base, status: 'warn', detail: `Cloudflare Access sends ${host}/v1/node/* to a login page, which servers can't pass`, fix };
   }
   if (r.status === 403) return { ...base, status: 'ok', detail: `Cloudflare Access refuses ${host}/v1/node/* without a service token (403), as it should` };
+  return { ...base, status: 'warn', detail: `${url} answered ${r.status} without a service token`, fix };
+}
+
+// ---------------------------------------------------------------------------
+// v0.8: the iOS Shortcut's capture door
+
+/** The Shortcut keys the daemon holds (never a key), or null when it can't say. */
+async function captureKeyCount(i: DoctorInput): Promise<number | null> {
+  try {
+    const r = await callDaemon<CaptureKeyList>(i.ctl, 'GET', ROUTES.captureKeyList.path, undefined, { timeoutMs: 3000 });
+    return Array.isArray(r?.keys) ? r.keys.length : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where the Shortcut's door is, once a key exists: closed in loopback and
+ * lan mode (warn: the key can't work), Tailscale (info), or Cloudflare,
+ * where one credential-less GET must be answered by Access (403), never
+ * by Jantar or with a login page the Shortcut can't pass.
+ */
+async function captureDoorCheck(i: DoctorInput, probe: DaemonProbe): Promise<DoctorCheck | null> {
+  const s = i.settings.settings;
+  if (!s.intel.enabled || !probe.running) return null;
+  const keys = await captureKeyCount(i);
+  if (!keys) return null;
+  const base = { id: 'capture-door', title: 'Shortcut door' } as const;
+  const count = `${keys} Shortcut key${keys === 1 ? '' : 's'}`;
+  const door = fleetDoor(s);
+  const setup = 'jantar remote setup (Tailscale or Cloudflare; docs/shortcut.md)';
+  if (s.remote.mode === 'loopback' || s.remote.mode === 'lan') {
+    return { ...base, status: 'warn', detail: `${count}, but the door is closed: ${door.ok ? 'only Tailscale and Cloudflare have one' : door.why}`, fix: setup };
+  }
+  if (!door.ok) return { ...base, status: 'warn', detail: `${count}, but the Shortcut can't rely on this door: ${door.why}`, fix: setup };
+  const url = `${door.url}${CAPTURE_PREFIX}save`;
+  if (s.remote.mode === 'tailscale') return { ...base, status: 'info', detail: `${count}; the iPhone reaches ${url} while its Tailscale is on` };
+  const fix = `add an Access application for ${door.host}/v1/capture/* with one Service Auth policy and its own service token (docs/shortcut.md#cloudflare-access)`;
+  const r = await (i.probe ?? probeUrl)(url);
+  if (!r) return { ...base, status: 'warn', detail: `${url} did not answer from this Mac`, fix: 'check that the tunnel runs (cloudflared tunnel run)' };
+  if (r.jantar) {
+    return { ...base, status: 'warn', detail: `${door.host}/v1/capture/* reaches Jantar with no Access in front: anyone can try keys there (they are rate limited)`, fix };
+  }
+  if (r.status >= 300 && r.status < 400) {
+    return { ...base, status: 'warn', detail: `Cloudflare Access sends ${door.host}/v1/capture/* to a login page, which the Shortcut can't pass`, fix };
+  }
+  if (r.status === 403) return { ...base, status: 'ok', detail: `${count}; Cloudflare Access refuses ${door.host}/v1/capture/* without a service token (403), as it should` };
   return { ...base, status: 'warn', detail: `${url} answered ${r.status} without a service token`, fix };
 }
 
