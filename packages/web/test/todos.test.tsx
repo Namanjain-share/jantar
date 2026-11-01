@@ -3,7 +3,9 @@
  * rails, the rows and their meta line, Done with Undo, the ··· menu (the
  * snooze presets, Edit, Delete with no confirm: held back under a 5 s Undo
  * that puts the row back exactly), the todo sheet (create, edit, what a
- * PATCH sends, a failed save that keeps its values and its key), the Done
+ * PATCH sends, a failed save that keeps its values and its key; v0.5.3:
+ * Repeat's five short choices with Year, and a repeating todo whose due
+ * changed sending its repeat too, as the phone chose it), the Done
  * list, a push's `?id=`, the Projects tab, the project screen and sheet,
  * and every state with the <h1>. The Reminders view has its own file.
  */
@@ -308,9 +310,50 @@ describe('Todos: the todo sheet', () => {
     expect((within(sheet).getByLabelText('Due time') as HTMLInputElement).disabled).toBe(true);
     fireEvent.change(within(sheet).getByLabelText('Title'), { target: { value: 'Water the plants' } });
     fireEvent.change(within(sheet).getByLabelText('Due day'), { target: { value: DAY } });
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Every day' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Day' }));
     fireEvent.click(within(sheet).getByRole('button', { name: 'Add todo' }));
     await waitFor(() => expect(todoCreate).toHaveBeenCalledWith({ title: 'Water the plants', priority: 'normal', due: { day: DAY }, repeat: { freq: 'daily' } }, expect.any(String)));
+  });
+
+  it('v0.5.3: Repeat offers Never, Day, Week, Month and Year; Year sends a yearly repeat', async () => {
+    const todoCreate = vi.fn(async () => ({ id: id(70) }));
+    render({ api: { todoCreate } });
+    await screen.findByText('Example todo 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }));
+    const sheet = await dialog('New todo');
+    fireEvent.change(within(sheet).getByLabelText('Title'), { target: { value: 'Example birthday' } });
+    fireEvent.change(within(sheet).getByLabelText('Due day'), { target: { value: '2026-03-04' } });
+    const repeat = within(sheet).getByRole('group', { name: 'Repeat' });
+    expect(within(repeat).getAllByRole('button').map((b) => b.textContent)).toEqual(['Never', 'Day', 'Week', 'Month', 'Year']);
+    fireEvent.click(within(repeat).getByRole('button', { name: 'Year' }));
+    expect(within(repeat).getByRole('button', { name: 'Year' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Add todo' }));
+    await waitFor(() => expect(todoCreate).toHaveBeenCalledWith({ title: 'Example birthday', priority: 'normal', due: { day: '2026-03-04' }, repeat: { freq: 'yearly' } }, expect.any(String)));
+  });
+
+  it("v0.5.3: a repeating todo whose due changed sends its repeat too, as the phone chose it (the Mac sets the date and the series' time)", async () => {
+    const todoUpdate = vi.fn(async () => ({ ok: true as const }));
+    const monthly = todo(6, { due: { day: '2026-01-31', time: '09:00' }, repeat: { freq: 'monthly', byMonthDay: 31, at: '09:00' } });
+    render({ todos: [...OPEN, monthly], api: { todoUpdate } });
+    fireEvent.click(await screen.findByText('Example todo 6'));
+    let sheet = await dialog('Edit todo');
+    fireEvent.change(within(sheet).getByLabelText('Due time'), { target: { value: '10:30' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(todoUpdate).toHaveBeenCalledWith(id(6), { due: { day: '2026-01-31', time: '10:30' }, repeat: { freq: 'monthly' } }, expect.any(String)));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit todo' })).toBeNull());
+    // Weekly on chosen days keeps them.
+    await menu('Example todo 4', 'Edit');
+    sheet = await dialog('Edit todo');
+    fireEvent.change(within(sheet).getByLabelText('Due day'), { target: { value: '2026-01-27' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(todoUpdate).toHaveBeenLastCalledWith(id(4), { due: { day: '2026-01-27' }, repeat: { freq: 'weekly', byWeekday: [2] } }, expect.any(String)));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit todo' })).toBeNull());
+    // A repeating todo saved with its due unchanged sends no repeat.
+    fireEvent.click(await screen.findByText('Example todo 6'));
+    sheet = await dialog('Edit todo');
+    fireEvent.change(within(sheet).getByLabelText('Title'), { target: { value: 'Example todo 6, renamed' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(todoUpdate).toHaveBeenLastCalledWith(id(6), { title: 'Example todo 6, renamed' }, expect.any(String)));
   });
 
   it('edits only what changed', async () => {

@@ -2,8 +2,12 @@
  * The todo sheet (v0.4 spec 5.3): Title, Notes, Due (a date and an
  * optional time; with a time it is a reminder), Repeat (only with a date),
  * Priority and Project. A new reminder starts with the time first, filled
- * with the next full hour. Editing sends only what changed (null clears).
- * A failed save keeps the sheet open with its values and "Not saved".
+ * with the next full hour; one from Today (v0.5.3) starts due today, with
+ * no time. Editing sends only what changed (null clears), except that a
+ * repeating todo whose due changed sends its repeat too (v0.5.3): the Mac
+ * takes the series' time from such a save, so editing the time moves it,
+ * while Undo's due alone never does. The repeat goes as the phone chose it
+ * (freq and days): the Mac sets its date and time itself.
  */
 import { useId, useState, type FormEvent } from 'react';
 import type { ProjectView, Repeat, Todo, TodoBody, TodoPatch, TodoPriority } from '@jantar/protocol';
@@ -21,6 +25,8 @@ export interface TodoStart {
   projectId?: string;
   /** A reminder: the due date and time first, at the next full hour. */
   reminder?: boolean;
+  /** v0.5.3: due this day, with no time (Today's Add todo). */
+  day?: string;
 }
 
 export interface TodoSheetProps {
@@ -48,6 +54,9 @@ export function TodoSheet({ open, onOpenChange, sheetKey, todo, projects, now, s
 const sameRepeat = (a: Repeat | null, b: Repeat | null) =>
   (a?.freq ?? null) === (b?.freq ?? null) && (a?.byWeekday ?? []).join() === (b?.byWeekday ?? []).join();
 
+/** What the phone chooses of a repeat: its freq and days. The date (byMonthDay) and time (at) are the Mac's to set from the due. */
+const chosen = (r: Repeat): Repeat => (r.byWeekday ? { freq: r.freq, byWeekday: r.byWeekday } : { freq: r.freq });
+
 function TodoForm({ todo, projects, now, start, onDone, onSaved }: { todo: Todo | null; projects: readonly ProjectView[]; now: LifeClock; start?: TodoStart | undefined; onDone: () => void; onSaved: () => void }) {
   const { api } = useDeps();
   const offline = useOffline();
@@ -56,7 +65,7 @@ function TodoForm({ todo, projects, now, start, onDone, onSaved }: { todo: Todo 
   const first = !todo && start?.reminder ? nextFullHour(now) : null;
   const [title, setTitle] = useState(todo?.title ?? '');
   const [notes, setNotes] = useState(todo?.notes ?? '');
-  const [day, setDay] = useState(todo?.due?.day ?? first?.day ?? '');
+  const [day, setDay] = useState(todo?.due?.day ?? first?.day ?? start?.day ?? '');
   const [time, setTime] = useState(todo?.due?.time ?? first?.time ?? '');
   const [repeat, setRepeat] = useState<Repeat | undefined>(todo?.repeat);
   const [priority, setPriority] = useState<TodoPriority>(todo?.priority ?? 'normal');
@@ -84,10 +93,12 @@ function TodoForm({ todo, projects, now, start, onDone, onSaved }: { todo: Todo 
       const patch: TodoPatch = {};
       if (title.trim() !== todo.title) patch.title = title.trim();
       if (notes !== (todo.notes ?? '')) patch.notes = notes.trim() ? notes : null;
-      if (JSON.stringify(due) !== JSON.stringify(todo.due ?? null)) patch.due = due;
+      const dueChanged = JSON.stringify(due) !== JSON.stringify(todo.due ?? null);
+      if (dueChanged) patch.due = due;
       if (priority !== todo.priority) patch.priority = priority;
       if (projectId !== (todo.projectId ?? '')) patch.projectId = projectId || null;
-      if (!sameRepeat(rep, todo.repeat ?? null)) patch.repeat = rep;
+      // A changed due on a repeating todo carries its repeat, so the Mac moves the series' time with it.
+      if (!sameRepeat(rep, todo.repeat ?? null) || (dueChanged && rep)) patch.repeat = rep ? chosen(rep) : null;
       if (Object.keys(patch).length) {
         const r = await w.run(JSON.stringify(patch), (key) => api.todoUpdate(todo.id, patch, key));
         if (!r.ok) return;

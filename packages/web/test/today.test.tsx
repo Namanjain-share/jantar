@@ -4,6 +4,9 @@
  * (FOOD and CLAUDE always); every state renders with the <h1>; Done on a
  * due todo offers a 5 s Undo; `?dose=` opens WP-MD's DoseSheet for that
  * dose; the push warning shows when no device would get a medicine ping.
+ * v0.5.3 quick adds: Due's Add todo opens the todo sheet due today (with
+ * nothing due too), and the weight line opens the weight sheet over Today
+ * ("Log weight" while none is logged today); both are off while offline.
  *
  * WP-MD's MedsToday and DoseSheet are stand-ins here, so the test pins
  * what Today hands them whatever WP-MD's real ones render.
@@ -241,11 +244,13 @@ describe('Today: sections', () => {
     expect(router.getState().route).toEqual({ name: 'money', bill: id(3) });
   });
 
-  it('shows calories against the target and the latest weight, and + opens the add sheet', async () => {
+  it('shows calories against the target, "Log weight" with none logged today, and + opens the add sheet', async () => {
     render();
     const food = await section('Food');
     expect(within(food).getByText('1,240 / 2,000 kcal')).toBeTruthy();
-    expect(within(food).getByText('72.4 kg · Wed 14 Jan')).toBeTruthy();
+    expect(within(food).getByRole('link', { name: /1,240 \/ 2,000 kcal/ }).getAttribute('href')).toBe('/food');
+    expect(within(food).getByRole('button', { name: 'Log weight' })).toBeTruthy();
+    expect(within(food).queryByText(/72\.4/)).toBeNull();
     fireEvent.click(within(food).getByRole('button', { name: 'Add food' }));
     expect(await screen.findByRole('dialog', { name: 'Add food' })).toBeTruthy();
   });
@@ -278,6 +283,69 @@ describe('Today: sections', () => {
     render({ state: { features: { life: true, intel: true } } });
     const life = await section('Life');
     await waitFor(() => expect(within(life).getAllByRole('link').map((l) => l.textContent)).toEqual(['Todos', 'Medicines', 'Food', 'Finance', 'Intel']));
+  });
+});
+
+describe('Today: quick adds (v0.5.3)', () => {
+  it('Add todo opens the todo sheet due today with no time; saving adds it and reloads Today', async () => {
+    const todoCreate = vi.fn(async () => ({ id: id(70) }));
+    const { api } = render({ api: { todoCreate } });
+    const due = await section('Due');
+    fireEvent.click(within(due).getByRole('button', { name: 'Add todo' }));
+    const sheet = await screen.findByRole('dialog', { name: 'New todo' });
+    expect((within(sheet).getByLabelText('Due day') as HTMLInputElement).value).toBe(DAY);
+    expect((within(sheet).getByLabelText('Due time') as HTMLInputElement).value).toBe('');
+    fireEvent.change(within(sheet).getByLabelText('Title'), { target: { value: 'Example errand' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Add todo' }));
+    await waitFor(() => expect(todoCreate).toHaveBeenCalledWith({ title: 'Example errand', priority: 'normal', due: { day: DAY } }, expect.any(String)));
+    await waitFor(() => expect(api.lifeToday).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('dialog', { name: 'New todo' })).toBeNull();
+  });
+
+  it('Add todo is there with nothing due too', async () => {
+    render({ today: today({ todos: { overdue: [], today: [] } }) });
+    const due = await section('Due');
+    expect(within(due).getByText('Nothing due today.')).toBeTruthy();
+    fireEvent.click(within(due).getByRole('button', { name: 'Add todo' }));
+    expect(await screen.findByRole('dialog', { name: 'New todo' })).toBeTruthy();
+  });
+
+  it('a row opened after Add todo edits that todo, not a new one due today', async () => {
+    render();
+    const due = await section('Due');
+    fireEvent.click(within(due).getByRole('button', { name: 'Add todo' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'New todo' })).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New todo' })).toBeNull());
+    fireEvent.click(within(due).getByText('Example todo 1'));
+    const sheet = await screen.findByRole('dialog', { name: 'Edit todo' });
+    expect((within(sheet).getByLabelText('Due day') as HTMLInputElement).value).toBe('2026-01-14');
+  });
+
+  it('the weight line opens the weight sheet for today over Today; saving logs it and reloads Today', async () => {
+    const weightSet = vi.fn(async () => ({ ok: true as const }));
+    const summary = { latest: { day: '2026-01-14', kg: 72.4 }, change7: null, change30: null, goalKg: 70, recent: [{ day: '2026-01-14', kg: 72.4 }] };
+    const foodDay = vi.fn(async () => ({ day: DAY, today: DAY, target: 2000, kcal: 1240, entries: [], saved: [], weight: summary }));
+    const { api, router } = render({ api: { weightSet, foodDay } });
+    const food = await section('Food');
+    fireEvent.click(within(food).getByRole('button', { name: 'Log weight' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Weight' });
+    expect(foodDay).toHaveBeenCalledWith(DAY);
+    expect((within(sheet).getByLabelText('Goal weight, kg') as HTMLInputElement).value).toBe('70');
+    fireEvent.change(within(sheet).getByLabelText('Weight today, kg'), { target: { value: '72.1' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save weight' }));
+    await waitFor(() => expect(weightSet).toHaveBeenCalledWith(DAY, 72.1, expect.any(String)));
+    await waitFor(() => expect(api.lifeToday).toHaveBeenCalledTimes(2));
+    expect(router.getState().route).toEqual({ name: 'today' });
+  });
+
+  it("with today's weight logged the line reads it, and still opens the sheet", async () => {
+    const weight = { latest: { day: DAY, kg: 72.4 }, change7: null, change30: null, goalKg: null, recent: [{ day: DAY, kg: 72.4 }] };
+    const foodDay = vi.fn(async () => ({ day: DAY, today: DAY, target: 2000, kcal: 1240, entries: [], saved: [], weight }));
+    render({ today: today({ food: { kcal: 1240, target: 2000, weight: { day: DAY, kg: 72.4 } } }), api: { foodDay } });
+    const food = await section('Food');
+    fireEvent.click(within(food).getByRole('button', { name: '72.4 kg' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Weight' });
+    expect((within(sheet).getByLabelText('Weight today, kg') as HTMLInputElement).value).toBe('72.4');
   });
 });
 
@@ -329,6 +397,8 @@ describe('Today: offline', () => {
     const done = (await screen.findByRole('button', { name: 'Mark done: Example todo 1' })) as HTMLButtonElement;
     expect(done.disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Add food' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Add todo' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Log weight' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('Offline: changes need your Mac')).toBeTruthy();
   });
 });

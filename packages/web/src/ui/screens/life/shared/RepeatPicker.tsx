@@ -1,7 +1,9 @@
 /**
- * A todo's repeat (v0.4 spec 5.3): Never, Every day, Every week on chosen
- * days, Every month (on the due day's date). Shown only with a due day. A
- * week with no day chosen repeats on the due day's weekday.
+ * A todo's repeat (v0.4 spec 5.3): Never, Day, Week on chosen days, Month
+ * (on the due day's date), and (v0.5.3) Year (on the due day's date and
+ * month: birthdays, renewals). Short labels, so five fit at 375 px. Shown
+ * only with a due day. A week with no day chosen repeats on the due day's
+ * weekday.
  */
 import clsx from 'clsx';
 import type { Repeat } from '@jantar/protocol';
@@ -39,9 +41,10 @@ export function RepeatPicker({ value, onChange }: { value: Repeat | undefined; o
         onChange={pick}
         segments={[
           { key: 'never', label: 'Never' },
-          { key: 'daily', label: 'Every day' },
-          { key: 'weekly', label: 'Every week' },
-          { key: 'monthly', label: 'Every month' },
+          { key: 'daily', label: 'Day' },
+          { key: 'weekly', label: 'Week' },
+          { key: 'monthly', label: 'Month' },
+          { key: 'yearly', label: 'Year' },
         ]}
       />
       {choice === 'weekly' ? (
