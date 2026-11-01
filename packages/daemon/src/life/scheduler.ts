@@ -39,7 +39,9 @@
  *              producer's set in between wins).
  *            Rows leave `sending` when the send itself ends, which after a
  *            timeout is later than the decision: no sweep claims a row
- *            whose push is still on its way.
+ *            whose push is still on its way. One that ends past the
+ *            deadline yet reached a device moves its rows on then (claimed
+ *            again first), so the next sweep never sends it twice.
  *
  * stop() only stops sweeping: a send in flight still writes its step 5, so
  * turning the last module off and on again never repeats a push. detach()
@@ -80,7 +82,8 @@ export class LifeScheduler implements Scheduler {
   private readonly sending = new Set<string>();
   /**
    * v0.5.3: rows waiting for the network, id to the next_at they wait at (logged once each). A row leaves when it
-   * is sent or moves on; a producer's set gives it another next_at, which counts as a new wait. detach() clears it.
+   * is sent, moves on or is cleared; a producer's set gives it another next_at, which counts as a new wait.
+   * detach() clears it.
    */
   private readonly waiting = new Map<string, string>();
   /** Deliveries not yet decided (settled() waits on them). */
@@ -110,6 +113,10 @@ export class LifeScheduler implements Scheduler {
   }
 
   clear(kind: PingKind, ref: string, sub?: string): void {
+    // A row waiting for the network that its producer removed (a todo done or deleted offline) waits no more.
+    if (this.waiting.size > 0) {
+      for (const row of this.repo.list(kind)) if (row.ref === ref && (sub === undefined || row.sub === sub)) this.waiting.delete(row.id);
+    }
     this.repo.clear(kind, ref, sub);
   }
 
@@ -302,7 +309,8 @@ export class LifeScheduler implements Scheduler {
         this.log.error('life ping update failed', { kind: handler.kind, error: errorKind(e) });
       }
     };
-    const advance = (d: Due, sent: boolean) => {
+    /** `claimedAt`: the claim it holds (a send that ended past its deadline claims again). */
+    const advance = (d: Due, sent: boolean, claimedAt = nowIso) => {
       this.waiting.delete(d.row.id);
       write(() => {
         const after = new Date(Math.max(now.getTime(), d.dueAt.getTime()));
@@ -312,7 +320,7 @@ export class LifeScheduler implements Scheduler {
         } catch (e) {
           this.log.error('life ping next failed', { kind: d.row.kind, error: errorKind(e) });
         }
-        this.repo.advance(d.row.id, nowIso, next ? next.toISOString() : null, sent ? nowIso : null);
+        this.repo.advance(d.row.id, claimedAt, next ? next.toISOString() : null, sent ? claimedAt : null);
       });
     };
 
@@ -362,15 +370,44 @@ export class LifeScheduler implements Scheduler {
     } catch (e) {
       sending = Promise.reject(e);
     }
+    let pastDeadline = false;
+    /**
+     * A send that ended past its deadline but reached a device: its rows were
+     * left due (a failure), so move them on now, while no sweep can claim them,
+     * or the next sweep sends them twice. A row moved on since keeps its time.
+     */
+    const sentLate = (res: LifeSendResult) => {
+      if (!pastDeadline || !(res.delivered > 0)) return;
+      const at = this.clock.now();
+      const atIso = new Date(at).toISOString();
+      const leaseIso = new Date(at - CLAIM_LEASE_MS).toISOString();
+      let moved = 0;
+      for (const d of send) {
+        let ours = false;
+        write(() => {
+          ours = this.repo.claim(d.row.id, d.row.nextAt as string, atIso, leaseIso);
+        });
+        if (!ours) continue;
+        advance(d, true, atIso);
+        moved += 1;
+      }
+      if (moved > 0) this.log.info('life push sent after its deadline', { kind: handler.kind, rows: moved, delivered: res.delivered });
+    };
     // The rows stay in `sending` until the send itself ends, even after the deadline.
     void sending.then(
-      () => done(ids),
+      (res) => {
+        done(ids);
+        sentLate(res);
+      },
       () => done(ids),
     );
     const t0 = this.clock.now();
     return withDeadline(this.clock, sending, this.opts.deadlineMs ?? LIFE_PUSH_DEADLINE_MS).then(
       (r) => {
-        if (r.timedOut) return failure('deadline');
+        if (r.timedOut) {
+          pastDeadline = true;
+          return failure('deadline');
+        }
         const res = r.value;
         if (res.muted) {
           for (const d of send) write(() => this.repo.release(d.row.id, nowIso));

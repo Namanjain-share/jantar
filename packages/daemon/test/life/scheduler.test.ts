@@ -545,6 +545,21 @@ describe('LS6: a push that never left the Mac waits for the network (v0.5.3)', (
     expect(sent).toHaveLength(1);
     expect(sent[0]?.fields).not.toHaveProperty('waited');
   });
+
+  it('a waiting row its producer clears (a todo done or deleted offline) waits no more; another row still does', async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    r.sched.register(daily('todo', '08:00'));
+    r.sched.set('todo', 'T1', '', at('2026-01-15T08:00:00.000Z'));
+    r.sched.set('todo', 'T2', '', at('2026-01-15T08:00:00.000Z'));
+    r.rec.result = { delivered: 0, failed: 1, offline: 1 };
+    r.sched.start();
+    await r.settle();
+    const waiting = (r.sched as unknown as { waiting: Map<string, string> }).waiting;
+    const t2 = r.repo.get('todo', 'T2')?.id;
+    expect(waiting.size).toBe(2);
+    r.sched.clear('todo', 'T1');
+    expect([...waiting.keys()]).toEqual([t2]);
+  });
 });
 
 describe('the near timer after a failed read (v0.5.3)', () => {
@@ -696,6 +711,48 @@ describe('LS8: the send deadline', () => {
     await sched.settled();
     expect(calls).toBe(2);
     expect(r.repo.get('med', 'M1', '08:00')?.nextAt).toBe('2026-01-16T08:00:00.000Z');
+    sched.stop();
+  });
+
+  it('a slow send that ends past the deadline but delivered moves the row on then: the next sweep never sends it twice', async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    let release: (v: LifeSendResult) => void = () => {};
+    let calls = 0;
+    const sched = new LifeScheduler(r.clock, r.log, () => r.db, {
+      send: () => {
+        calls += 1;
+        return calls === 1 ? new Promise<LifeSendResult>((res) => (release = res)) : Promise.resolve({ delivered: 1, failed: 0 });
+      },
+    });
+    sched.register(daily('med', '08:00'));
+    sched.set('med', 'M1', '08:00', at('2026-01-15T08:00:00.000Z'));
+    sched.start();
+    await r.sleepy.tick(40_000);
+    // The deadline passed: counted as a failure, next_at kept.
+    expect(r.repo.get('med', 'M1', '08:00')).toMatchObject({ failures: 1, claimedAt: null, nextAt: '2026-01-15T08:00:00.000Z' });
+    release({ delivered: 1, failed: 0 });
+    await r.sleepy.tick(0);
+    expect(r.repo.get('med', 'M1', '08:00')).toMatchObject({ nextAt: '2026-01-16T08:00:00.000Z', claimedAt: null, failures: 0, lastSentAt: r.clock.iso() });
+    expect(r.log.records.find((e) => e.msg === 'life push sent after its deadline')?.fields).toEqual({ kind: 'med', rows: 1, delivered: 1 });
+    await r.sleepy.tick(5 * MIN);
+    await sched.settled();
+    expect(calls).toBe(1);
+    sched.stop();
+  });
+
+  it('a late end that delivered leaves alone a row its producer moved meanwhile', async () => {
+    const r = make('2026-01-15T08:00:00.000Z');
+    let release: (v: LifeSendResult) => void = () => {};
+    const sched = new LifeScheduler(r.clock, r.log, () => r.db, { send: () => new Promise<LifeSendResult>((res) => (release = res)) });
+    sched.register(daily('todo', '08:00'));
+    sched.set('todo', 'T1', '', at('2026-01-15T08:00:00.000Z'));
+    sched.start();
+    await r.sleepy.tick(40_000);
+    sched.set('todo', 'T1', '', at('2026-01-15T09:00:00.000Z')); // snoozed after the deadline, before the send ended
+    release({ delivered: 1, failed: 0 });
+    await r.sleepy.tick(0);
+    expect(r.repo.get('todo', 'T1')).toMatchObject({ nextAt: '2026-01-15T09:00:00.000Z', lastSentAt: null });
+    expect(r.log.records.some((e) => e.msg === 'life push sent after its deadline')).toBe(false);
     sched.stop();
   });
 });

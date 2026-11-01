@@ -14,7 +14,8 @@
  *   passes when its base kind (or "reminder") is wanted.
  * - v0.5.3: a push with a `deadline` (Claude's countdown) lives only until
  *   then (TTL): a stale "answer now" is noise. Failures where the push never
- *   left the Mac (no network: DNS or connect, `neverLeft`) are counted as
+ *   left the Mac (no network: DNS or connect, `neverLeft`; the host is
+ *   looked up first, so a slow DNS is one too) are counted as
  *   `offline`, so Life can wait for the network instead of giving up. The
  *   first logs a warning and the next ones a debug line, until a delivery
  *   logs that the push service is reachable again.
@@ -25,6 +26,7 @@
  * (protocol alertGroupOf); the service worker ignores fields it does not know.
  */
 import { createHash } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
 import webpush from 'web-push';
 import { alertGroupOf, type AlertGroup, type NotifyKind, type PushSubscriptionRecord } from '@jantar/protocol';
 import { hasScope } from '../auth/scopes.js';
@@ -83,12 +85,34 @@ export type PushSender = (
   options: PushSendOptions,
 ) => Promise<unknown>;
 
-export const defaultPushSender: PushSender = (subscription, payload, options) =>
-  webpush.sendNotification(
+/**
+ * v0.5.3: the push host's address first, within the push's own timeout. A
+ * lookup that fails or hangs (a Mac waking before its resolver is back) is
+ * a `getaddrinfo` error, which `neverLeft` counts as offline. Without it the
+ * socket timeout would cover a slow lookup, and Life would count a push that
+ * never left as a failure.
+ */
+export async function lookupFirst(host: string, ms: number, look: (host: string) => Promise<unknown> = lookup): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(`getaddrinfo ETIMEOUT ${host}`), { code: 'ETIMEOUT', syscall: 'getaddrinfo', hostname: host })), ms);
+    timer.unref?.();
+  });
+  try {
+    await Promise.race([look(host), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export const defaultPushSender: PushSender = async (subscription, payload, options) => {
+  await lookupFirst(new URL(subscription.endpoint).hostname, options.timeout);
+  return webpush.sendNotification(
     { endpoint: subscription.endpoint, keys: subscription.keys },
     payload,
     options as webpush.RequestOptions,
   );
+};
 
 export interface WebPushNotifierOptions {
   sender?: PushSender;

@@ -17,6 +17,7 @@ import {
   encodePayload,
   findWebPush,
   loadOrCreateVapidKeys,
+  lookupFirst,
   neverLeft,
   sendDirect,
   topicFor,
@@ -280,6 +281,18 @@ describe('v0.5.3: pushes that never left the Mac (S7)', () => {
     expect(neverLeft(new AggregateError([]))).toBe(false);
     expect(neverLeft(null)).toBe(false);
     expect(neverLeft('getaddrinfo')).toBe(false);
+  });
+
+  it("lookupFirst: the host's address within the timeout; a DNS failure or a lookup past it is a getaddrinfo error (offline)", async () => {
+    const asked: string[] = [];
+    await expect(lookupFirst('web.push.apple.com', 1_000, async (h) => void asked.push(h))).resolves.toBeUndefined();
+    expect(asked).toEqual(['web.push.apple.com']);
+    const failed = await lookupFirst('web.push.apple.com', 1_000, async () => Promise.reject(dns())).catch((e: unknown) => e);
+    expect(neverLeft(failed)).toBe(true);
+    // A resolver that never answers (a Mac waking): no network, not a push that may have reached Apple.
+    const slow = await lookupFirst('web.push.apple.com', 20, () => new Promise(() => {})).catch((e: unknown) => e);
+    expect(slow).toMatchObject({ code: 'ETIMEOUT', syscall: 'getaddrinfo', hostname: 'web.push.apple.com' });
+    expect(neverLeft(slow)).toBe(true);
   });
 
   it('send counts them as offline; anything that may have reached the push service does not', async () => {
