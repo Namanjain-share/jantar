@@ -1,6 +1,6 @@
 {
   "name": "jantar",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "See and control every Claude Code terminal session, on one Claude account or many, from your Mac or your phone. Source-available (fair source).",

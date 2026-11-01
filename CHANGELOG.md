@@ -3,6 +3,71 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.5.3 (unreleased)
+
+- **A sound for each kind of alert.** Every push now belongs to one of five
+  groups (Answer soon, Needs you, Done, Medicines and reminders, Problems),
+  and each has its own tone in the app, picked per device under Devices ›
+  Notifications › Sounds, with a Test button. "Speak a few words" adds one
+  fixed phrase per group, never what Claude asked, a folder or a medicine.
+  Tones and the voice play only while Jantar is open on screen and follow
+  the silent switch; on the lock screen the iPhone plays its one alert
+  sound for every web app, whatever you pick. When the open app plays a
+  push's tone, the push comes without the phone's sound, so you hear one;
+  medicine and Life pings always keep it. Sounds are on by default on a
+  phone and off on the Mac's dashboard. [Alerts and sounds](docs/alerts.md).
+- **Answer soon.** When an unattended agent's ask shows Claude's 2-minute
+  auto-block countdown, the daemon reads that screen once and the phone
+  gets one push, "web-app · about 2 min to answer", in place of the
+  "needs you" push, and one repeat at about a minute left. It never holds
+  the command or the question, expires with the countdown, and goes out as
+  a permission push (the mute and each device's kinds hold it). With
+  Sounds on, the dock plays the alarm at 60, 30 and 10 seconds left.
+  `jantar notify urgent off` turns it off.
+- `jantar notify`: Web Push, the kinds the Mac sends, the urgent alert and
+  the mute in one view; `urgent on|off`, `done on|off` (Done pushes, and so
+  the success tune, stay off by default) and `test [group]`, one test push
+  to your devices.
+- **Life.** Todos repeat every year too (birthdays, renewals; a 29 February
+  one falls on the 28th in other years). A repeating reminder keeps its
+  own time: a daily 11:00 snoozed an hour still rings at 11:00 the next
+  day (a reminder made before 0.5.3 learns its time once you change it in
+  the todo sheet). Today has Add todo, due today, and its weight line logs
+  today's weight. [Life](docs/life.md) lists the limits.
+- **A ping the Mac could not send for lack of network** (asleep, Wi-Fi off)
+  goes out, marked late, once the network is back, up to 6 hours late; a
+  medicine's is skipped when its next dose is under 3 hours away. A push
+  that may have reached Apple or Google is never sent again, so a ping can
+  be late but never arrives twice. Session pushes are not retried.
+- **`jantar mcp`**: an MCP server for Claude Code. A session can search the
+  Intel shelf, read an item, save a link or a note ("via claude" on the
+  phone), and list and add todos of the Life project linked to its folder
+  (at most 20 an hour; never done, edit or delete). Run `jantar mcp` in a
+  terminal for the `claude mcp add` line to paste. The shelf is global:
+  every session can read all of it. [The Intel shelf](docs/intel.md#from-claude-code-mcp).
+- **Search the shelf by words, best match first.** Every word must appear
+  in the item (the title, notes, type, tags, link or a field), a "quoted
+  phrase" matches whole, and a word at the start of a title's word ranks
+  highest. The order of `jantar intel list --q` and the phone's search
+  changed: best match first, newest first only without words. On the
+  phone the words are marked in each row, and a magnifier in the header
+  opens the search.
+- **Meetings: why a screenshot was not saved.** The popup's Settings shows
+  the last try (when, which control, how it ended, Chrome's own words or
+  the status Jantar answered) and the screenshot shortcut, with a link to
+  change it. The bubble says "Not saved: click the Jantar icon once in this
+  tab, then try again." when Chrome has not let the extension take that
+  tab, and Chrome gets 5 seconds to take a picture. The daemon logs one
+  line per screenshot upload, refusals included, with the status and size
+  only. Why the screenshots of three real calls never arrived is still
+  open: the next call's Last screenshot should say.
+- The integration suites' own time limits get the same allowance on a slow
+  CI runner as their waits, and the Life scheduler arms its next ping even
+  after a failed read. The Ubuntu run's `v04-life` "08:00" step had timed
+  out at 30 seconds.
+- New setting: `notify.urgent` (on). The protocol version stays 3 and the
+  settings version 2: no migration.
+
 ## 0.5.2 (1 November 2026)
 
 The first public release.

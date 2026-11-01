@@ -1,6 +1,6 @@
 {
   "name": "@jantar/cli",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "jantar: the command line client for jantard (init, install, doctor, accounts, pair, remote, hooks, status, send, open, new, devices, files, folders, launch, rewrite, controls, screenshots, life, intel, meetings).",
