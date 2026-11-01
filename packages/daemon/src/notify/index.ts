@@ -1,11 +1,14 @@
 /**
  * Notifications for jantard (work package E). v0.1 has one channel, Web Push;
- * Mac banners and Telegram arrive in v0.2 as further `Notifier`s.
+ * Mac banners and Telegram arrive in v0.2 as further `Notifier`s. v0.5.3:
+ * the router also gets the terminal and daemon.ts's shared PaneLookup, for
+ * the urgent alert's screen read (countdown.ts).
  */
 import type { Factories, Notifier } from '../contracts.js';
 import { NotificationRouterImpl } from './router.js';
 import { WebPushNotifier } from './webpush.js';
 
+export * from './countdown.js';
 export * from './direct.js';
 export * from './format.js';
 export * from './push-hosts.js';

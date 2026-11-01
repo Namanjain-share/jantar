@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { PendingRequest, SendJob } from '@jantar/protocol';
+import { ALERT_GROUPS, alertGroupOf, type PendingRequest, type SendJob } from '@jantar/protocol';
 import {
+  ALERT_GROUP_LABEL,
   GENERIC_BODY,
   MAX_TITLE,
+  TEST_KIND,
+  URGENT_BODY,
   alertNotification,
   cardNotification,
   clip,
@@ -10,8 +13,11 @@ import {
   doneNotification,
   dur,
   reminderNotification,
+  leftWords,
   sendFailedNotification,
   sentence,
+  testNotification,
+  urgentNotification,
   usageNotification,
   waitingKind,
   waitingNotification,
@@ -242,5 +248,62 @@ describe('notification text (web direction.md 5.8)', () => {
       alertNotification({ id: 'a', ts: TS, kind: 'blocked', sid: s.sid, label: 'x', what: 'w', why: 'y' }, s, 'full', TS),
     ];
     expect(JSON.stringify(all)).not.toMatch(/—|\p{Extended_Pictographic}/u);
+  });
+});
+
+describe('v0.5.3: the urgent alert and the test push', () => {
+  const DEADLINE = '2026-01-15T10:01:54.000Z';
+
+  it('leftWords is approximate on purpose: never "1 min 59 s"', () => {
+    expect([110, 93, 90, 60, 45, 44, 30, 20].map(leftWords)).toEqual([
+      'about 2 min',
+      'about 2 min',
+      'about 2 min',
+      'about 1 min',
+      'about 1 min',
+      'under a minute',
+      'under a minute',
+      'under a minute',
+    ]);
+    expect(leftWords(300)).toBe('about 5 min');
+  });
+
+  it('"<folder> · about 2 min to answer": a permission with its deadline, the session tag, no prompt text in any mode', () => {
+    const s = makeSession({ folder: 'web-app', now: { kind: 'tool', tool: 'Bash', text: 'rm -rf build' }, waitingFor: 'permission' });
+    const full = urgentNotification(s, 110, DEADLINE, 'full', TS);
+    expect(full).toEqual({
+      kind: 'permission',
+      title: 'web-app · about 2 min to answer',
+      body: URGENT_BODY,
+      sid: s.sid,
+      url: `/s/${s.sid}`,
+      tag: `s:${s.sid}`,
+      folder: 'web-app',
+      deadline: DEADLINE,
+      ts: TS,
+    });
+    expect(alertGroupOf(full.kind, full.deadline)).toBe('urgent');
+    expect(urgentNotification(s, 110, DEADLINE, 'short', TS)).toMatchObject({ title: 'web-app · about 2 min to answer', body: URGENT_BODY });
+    const generic = urgentNotification(s, 30, DEADLINE, 'generic', TS);
+    expect(generic).toMatchObject({ title: 'Under a minute to answer', body: '', deadline: DEADLINE });
+    expect(generic).not.toHaveProperty('folder');
+    expect(JSON.stringify([full, generic])).not.toContain('rm -rf');
+    // A long folder gives way; the words after it never do.
+    const long = urgentNotification(makeSession({ folder: 'a-very-long-folder-name-for-a-monorepo' }), 60, DEADLINE, 'full', TS);
+    expect([...long.title].length).toBeLessThanOrEqual(MAX_TITLE);
+    expect(long.title.endsWith(' · about 1 min to answer')).toBe(true);
+  });
+
+  it('a test push per group: its kind, fixed words, a deadline for urgent, control scope for care', () => {
+    expect(TEST_KIND).toEqual({ urgent: 'permission', needs: 'permission', done: 'done', care: 'life', problem: 'send-failed' });
+    for (const group of ALERT_GROUPS) {
+      const n = testNotification(group, TS);
+      expect(n, group).toMatchObject({ kind: TEST_KIND[group], title: 'Jantar test', body: `This is how "${ALERT_GROUP_LABEL[group]}" alerts arrive.`, url: '/', tag: `test:${group}`, ts: TS });
+      expect(alertGroupOf(n.kind, n.deadline), group).toBe(group);
+    }
+    expect(testNotification('urgent', TS).deadline).toBe('2026-01-15T10:02:05.000Z');
+    expect(testNotification('needs', TS)).not.toHaveProperty('deadline');
+    expect(testNotification('care', TS).minScope).toBe('control');
+    expect(testNotification('done', TS)).not.toHaveProperty('minScope');
   });
 });

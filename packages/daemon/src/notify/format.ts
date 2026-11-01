@@ -21,8 +21,13 @@
  * Tap targets (paths in the web app): `/s/<sid>?card=<id>` for cards,
  * `/s/<sid>` for session moments, `/s/<sid>?send=<jobId>` for failed sends,
  * `/alerts?id=<alertId>` for alerts and `/accounts` for account pushes.
+ *
+ * v0.5.3: the urgent alert (Claude's 2-minute countdown) carries no prompt,
+ * command or dialog text in any mode, and its time is approximate on
+ * purpose ("about 2 min"): it is sent once and never ticks on the lock
+ * screen. `jantar notify test` sends a fixed test text per alert group.
  */
-import type { Alert, AlertKind, NotifyKind, PendingRequest, SendJob, Session, Settings } from '@jantar/protocol';
+import type { Alert, AlertGroup, AlertKind, NotifyKind, PendingRequest, SendJob, Session, Settings } from '@jantar/protocol';
 import type { Notification } from '../contracts.js';
 import { canonicalJson } from '../core/hash.js';
 
@@ -513,4 +518,82 @@ export function sendFailedNotification(job: SendJob, session: Session | null | u
     mode,
     ts,
   );
+}
+
+// ---- v0.5.3: the urgent alert and the test push --------------------------------
+
+/** The urgent push's body in the full and short modes: never the ask's own words. */
+export const URGENT_BODY = 'Claude blocks this ask by itself if nobody answers.';
+
+/** "about 2 min" (93 s and 110 s), "about 1 min" (60 s), "under a minute" (under 45 s): never "1 min 59 s". */
+export function leftWords(seconds: number): string {
+  return seconds >= 45 ? `about ${Math.round(seconds / 60)} min` : 'under a minute';
+}
+
+/**
+ * Claude's auto-block countdown on an unattended ask (spec 1.3): "web-app ·
+ * about 2 min to answer", a `permission` push with the ask's `deadline`
+ * (ISO), so its alert group is `urgent` and its TTL runs out with it. No
+ * prompt text in any mode; generic: "About 2 min to answer" and no body.
+ */
+export function urgentNotification(session: Session, left: number, deadline: string, mode: BodiesMode, ts: string): RoutedNotification {
+  const words = `${leftWords(left)} to answer`;
+  const folder = folderOf(session.sid, session);
+  const n = finish(
+    {
+      kind: 'permission',
+      title: titled(folder, ` · ${words}`),
+      full: URGENT_BODY,
+      short: URGENT_BODY,
+      sid: session.sid,
+      url: sessionUrl(session.sid),
+      tag: sessionTag(session.sid),
+      folder,
+    },
+    mode,
+    ts,
+  );
+  if (mode === 'generic') n.title = `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+  n.deadline = deadline;
+  return n;
+}
+
+/** What `jantar notify test <group>` sends: the kind of each group (urgent: a permission with a deadline). */
+export const TEST_KIND: Readonly<Record<AlertGroup, NotifyKind>> = {
+  urgent: 'permission',
+  needs: 'permission',
+  done: 'done',
+  care: 'life',
+  problem: 'send-failed',
+};
+
+/** The groups as the phone's Sounds screen names them. */
+export const ALERT_GROUP_LABEL: Readonly<Record<AlertGroup, string>> = {
+  urgent: 'Answer soon',
+  needs: 'Needs you',
+  done: 'Done',
+  care: 'Medicines and reminders',
+  problem: 'Problems',
+};
+
+/** How long the urgent test push says it has (Claude's countdown starts near two minutes). */
+export const TEST_URGENT_S = 120;
+
+/**
+ * One test push of `group` (POST /v1/notify/test): fixed words, the group's
+ * kind, and for `urgent` a deadline TEST_URGENT_S ahead. `care` reaches
+ * control-scope devices only, as every Life push does.
+ */
+export function testNotification(group: AlertGroup, ts: string): Notification {
+  const n: Notification = {
+    kind: TEST_KIND[group],
+    title: 'Jantar test',
+    body: `This is how "${ALERT_GROUP_LABEL[group]}" alerts arrive.`,
+    url: '/',
+    tag: `test:${group}`,
+    ts,
+  };
+  if (group === 'urgent') n.deadline = new Date(Date.parse(ts) + TEST_URGENT_S * 1000).toISOString();
+  if (group === 'care') n.minScope = 'control';
+  return n;
 }
