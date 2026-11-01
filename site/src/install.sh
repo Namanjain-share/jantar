@@ -12,7 +12,7 @@
 # In order, printing each command before it runs it:
 #   1. checks: macOS, not root, Node.js 22.13 or newer, git, pnpm 10 (run
 #      through corepack or npx when it is missing), Claude Code (a warning)
-#   2. clones release v{{version}} of {{repo}} into ~/jantar
+#   2. fetches the release tag v{{version}} of {{repo}} into ~/jantar
 #      (JANTAR_DIR), or moves a clean clone that is already there to it
 #   3. pnpm install --frozen-lockfile, then pnpm -r build
 #   4. writes ~/.local/bin/jantar, two lines that run the CLI from the clone
@@ -144,11 +144,17 @@ check() {
   fi
 }
 
+# The release is always named refs/tags/v$VERSION: given a bare name, git
+# takes a branch before a tag of the same name.
 fetch() {
   local tag="v$VERSION"
+  local ref="refs/tags/$tag"
   step "Jantar $tag in $DIR"
   if [ ! -e "$DIR" ]; then
-    run git -c advice.detachedHead=false clone --depth 1 --branch "$tag" "$REPO" "$DIR"
+    run git init --quiet "$DIR"
+    run git -C "$DIR" remote add origin "$REPO"
+    run git -C "$DIR" fetch --depth 1 origin "$ref:$ref"
+    run git -c advice.detachedHead=false -C "$DIR" checkout --quiet "$ref"
     return 0
   fi
   [ -d "$DIR/.git" ] || die "$DIR exists and is not a clone of Jantar. Move it, or set JANTAR_DIR to another folder."
@@ -160,12 +166,17 @@ fetch() {
   esac
   [ -z "$(git -C "$DIR" status --porcelain)" ] ||
     die "$DIR has changes of its own. Commit or stash them, or set JANTAR_DIR to another folder."
+  # A shallow clone stays shallow, and so does a folder whose first fetch
+  # never finished (it has no commit yet).
   local depth=''
-  if [ "$(git -C "$DIR" rev-parse --is-shallow-repository)" = true ]; then depth='--depth=1'; fi
+  if [ "$(git -C "$DIR" rev-parse --is-shallow-repository)" = true ] ||
+    ! git -C "$DIR" rev-parse --quiet --verify HEAD >/dev/null; then
+    depth='--depth=1'
+  fi
   # $depth is one word or none.
   # shellcheck disable=SC2086
-  run git -C "$DIR" fetch $depth origin tag "$tag"
-  run git -c advice.detachedHead=false -C "$DIR" checkout --quiet "$tag"
+  run git -C "$DIR" fetch $depth origin "$ref:$ref"
+  run git -c advice.detachedHead=false -C "$DIR" checkout --quiet "$ref"
 }
 
 build() {

@@ -15,6 +15,8 @@ import { ROOT, installSh, readValues } from './build-site.mjs';
 
 const SOURCE = join(ROOT, 'site', 'src', 'install.sh');
 const values = readValues();
+/** package.json's version, escaped for a RegExp. */
+const ver = values.version.replace(/[.]/g, '\\.');
 let tmp;
 let script;
 let sys;
@@ -30,7 +32,7 @@ const STUBS = {
     '  *" remote get-url origin "*) echo "$FAKE_ORIGIN"; exit 0 ;;',
     '  *" status --porcelain "*) printf "%s" "${FAKE_STATUS:-}"; exit 0 ;;',
     '  *" --is-shallow-repository "*) echo true; exit 0 ;;',
-    '  *" clone "*) for d; do :; done; /bin/mkdir -p "$d/.git" "$d/packages/cli/bin" ;;',
+    '  *" init "*) for d; do :; done; /bin/mkdir -p "$d/.git" ;;',
     'esac',
     'log "$@"',
   ].join('\n'),
@@ -52,12 +54,13 @@ function stubs(dir, names = Object.keys(STUBS)) {
   return dir;
 }
 
-/** Runs the built script with `args` in a fresh HOME; returns { code, out, err, log, home }. */
-function run(args = [], { env = {}, without = [], tty = null, prepare } = {}) {
+/** Runs the built script with `args` in a fresh HOME; returns { code, out, err, log, home }. `git` puts a real git in place of the stub. */
+function run(args = [], { env = {}, without = [], tty = null, prepare, git = null } = {}) {
   const dir = mkdtempSync(join(tmp, 'run-'));
   const home = join(dir, 'home');
   mkdirSync(home);
-  const bin = stubs(join(dir, 'bin'), Object.keys(STUBS).filter((n) => !without.includes(n)));
+  const bin = stubs(join(dir, 'bin'), Object.keys(STUBS).filter((n) => !without.includes(n) && !(git && n === 'git')));
+  if (git) symlinkSync(git, join(bin, 'git'));
   const log = join(dir, 'log');
   writeFileSync(log, '');
   let ttyPath = join(dir, 'no-tty', 'tty');
@@ -174,7 +177,7 @@ test('--dry-run checks and prints the plan, and changes nothing', () => {
   const r = run(['--dry-run']);
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /a dry run: nothing is changed/);
-  assert.match(r.out, new RegExp(`\\+ git -c advice\\.detachedHead=false clone --depth 1 --branch v${values.version.replace(/[.]/g, '\\.')} `));
+  assert.match(r.out, new RegExp(`\\+ git -C \\S+ fetch --depth 1 origin refs/tags/v${ver}:refs/tags/v${ver}\n`));
   assert.match(r.out, /\+ node \S+\/jantar\.mjs install {3}\(only after you answer y\)/);
   assert.equal(r.log, '', 'no program was run but the checks');
   assert.equal(existsSync(join(r.home, 'jantar')), false);
@@ -186,8 +189,12 @@ test('clones the release, builds it and writes the jantar command; setup only wi
   assert.equal(r.code, 0, r.err);
   const dir = join(r.home, 'jantar');
   const log = r.log.trim().split('\n');
+  const ref = `refs/tags/v${values.version}`;
   assert.deepEqual(log, [
-    `git -c advice.detachedHead=false clone --depth 1 --branch v${values.version} ${values.repo}.git ${dir}`,
+    `git init --quiet ${dir}`,
+    `git -C ${dir} remote add origin ${values.repo}.git`,
+    `git -C ${dir} fetch --depth 1 origin ${ref}:${ref}`,
+    `git -c advice.detachedHead=false -C ${dir} checkout --quiet ${ref}`,
     `pnpm -C ${dir} install --frozen-lockfile`,
     `pnpm -C ${dir} -r build`,
   ]);
@@ -213,7 +220,7 @@ test('with a terminal: jantar init, then jantar install only on a y; --yes runs 
   assert.equal(r.code, 0, r.err);
   assert.ok(r.log.includes(`node ${cli(r.home)} init --yes\n`) && r.log.includes(`node ${cli(r.home)} install\n`), r.log);
   r = run(['--no-setup'], { tty: 'y\n' });
-  assert.ok(!/ init/.test(r.log), '--no-setup stops after the build');
+  assert.ok(!/jantar\.mjs init/.test(r.log), '--no-setup stops after the build');
 });
 
 test('a folder that is there: a clean clone of Jantar moves to the release; anything else stops it', () => {
@@ -221,9 +228,9 @@ test('a folder that is there: a clean clone of Jantar moves to the release; anyt
   let r = run([], { prepare: clone, env: { FAKE_ORIGIN: values.repo } });
   assert.equal(r.code, 0, r.err);
   const dir = join(r.home, 'jantar');
-  assert.match(r.log, new RegExp(`^git -C ${dir} fetch --depth=1 origin tag v${values.version.replace(/[.]/g, '\\.')}$`, 'm'));
-  assert.match(r.log, new RegExp(`^git -c advice\\.detachedHead=false -C ${dir} checkout --quiet v`, 'm'));
-  assert.doesNotMatch(r.log, / clone /);
+  assert.match(r.log, new RegExp(`^git -C ${dir} fetch --depth=1 origin refs/tags/v${ver}:refs/tags/v${ver}$`, 'm'));
+  assert.match(r.log, new RegExp(`^git -c advice\\.detachedHead=false -C ${dir} checkout --quiet refs/tags/v${ver}$`, 'm'));
+  assert.doesNotMatch(r.log, / init /);
   r = run([], { prepare: clone, env: { FAKE_ORIGIN: values.repo, FAKE_STATUS: ' M README.md' } });
   assert.equal(r.code, 1);
   assert.match(r.err, /has changes of its own/);
@@ -234,6 +241,47 @@ test('a folder that is there: a clean clone of Jantar moves to the release; anyt
   assert.equal(r.code, 1);
   assert.match(r.err, /exists and is not a clone of Jantar/);
   assert.equal(r.log, '');
+});
+
+test('with a real git: the release tag, never a branch of the same name, fresh, moving to the next release, and after a first fetch cut short', (t) => {
+  const real = spawnSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  if (!real || spawnSync(real, ['--version']).status !== 0) {
+    t.diagnostic('git is not installed: skipped');
+    return;
+  }
+  const box = mkdtempSync(join(tmp, 'git-'));
+  const origin = join(box, 'origin');
+  const dir = join(box, 'jantar');
+  const env = { PATH: process.env.PATH, HOME: box, GIT_CONFIG_NOSYSTEM: '1' };
+  const git = (...args) => execFileSync(real, ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], { env, encoding: 'utf8' }).trim();
+  git('init', '--quiet', '--initial-branch=main', origin);
+  /** A commit tagged v<v>, then a branch v<v> one commit past it; returns the tagged commit. */
+  const release = (v) => {
+    for (const msg of [`release ${v}`, `after ${v}`]) {
+      writeFileSync(join(origin, 'version'), `${msg}\n`);
+      git('-C', origin, 'add', 'version');
+      git('-C', origin, 'commit', '--quiet', '-m', msg);
+      if (msg.startsWith('release')) git('-C', origin, 'tag', '-a', `v${v}`, '-m', `v${v}`);
+    }
+    git('-C', origin, 'branch', `v${v}`);
+    assert.notEqual(git('-C', origin, 'rev-parse', `refs/heads/v${v}`), git('-C', origin, 'rev-parse', `refs/tags/v${v}^{commit}`));
+    return git('-C', origin, 'rev-parse', `refs/tags/v${v}^{commit}`);
+  };
+  const install = (v) => {
+    const r = run(['--no-setup'], { git: real, env: { JANTAR_VERSION: v, JANTAR_REPO: `file://${origin}`, JANTAR_DIR: dir } });
+    assert.equal(r.code, 0, r.err);
+    assert.doesNotMatch(r.err, /ambiguous/);
+    return git('-C', dir, 'rev-parse', 'HEAD');
+  };
+  const first = release('9.0.0');
+  assert.equal(install('9.0.0'), first, 'a fresh install');
+  const second = release('9.0.1');
+  assert.equal(install('9.0.1'), second, 'the clone moves to the next release');
+  rmSync(dir, { recursive: true });
+  git('init', '--quiet', dir);
+  git('-C', dir, 'remote', 'add', 'origin', `file://${origin}`);
+  assert.equal(install('9.0.1'), second, 'a folder whose first fetch never finished');
+  assert.equal(git('-C', dir, 'rev-parse', '--is-shallow-repository'), 'true');
 });
 
 test("leaves a jantar command that is not Jantar's alone", () => {
