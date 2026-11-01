@@ -143,6 +143,37 @@ describe('hooks install and uninstall on a Windows settings file', () => {
     expect((await hooksStatus({ settingsPath: settings, ...WIN })).state).toBe('not-installed');
   });
 
+  it("an exec-form entry running the old ccw-v2-hook is Jantar's: install replaces it, uninstall removes it", async () => {
+    const legacyBin = 'C:\\Users\\Sam\\.ccw-v2\\bin\\ccw-v2-hook';
+    const legacy = structuredClone(SETTINGS) as Omit<typeof SETTINGS, 'hooks'> & { hooks: Record<string, unknown[]> };
+    legacy.hooks.PermissionRequest = [{ matcher: '*', hooks: [{ type: 'command', command: NODE, args: [legacyBin, '--wait'], timeout: 86400 }] }];
+    legacy.hooks.Stop = [...SETTINGS.hooks.Stop, { hooks: [{ type: 'command', command: NODE, args: [legacyBin], async: true }] }];
+    await writeFile(settings, `${JSON.stringify(legacy, null, 2)}\n`);
+    const before = await hooksStatus({ settingsPath: settings, ...WIN });
+    expect(before.events.find((e) => e.event === 'PermissionRequest')?.state).toBe('outdated');
+    expect(before.events.find((e) => e.event === 'Stop')?.state).toBe('outdated');
+
+    ok(await installHooks({ settingsPath: settings, ...WIN, now: NOW }));
+    const after = JSON.parse(await readFile(settings, 'utf8'));
+    expect(after.hooks.PermissionRequest).toEqual([desiredGroup('PermissionRequest', WIN)]);
+    expect(after.hooks.Stop).toEqual([SETTINGS.hooks.Stop[0], desiredGroup('Stop', WIN)]);
+    expect(JSON.stringify(after)).not.toContain('ccw-v2-hook');
+    expect((await hooksStatus({ settingsPath: settings, ...WIN })).state).toBe('installed');
+
+    await writeFile(settings, `${JSON.stringify(legacy, null, 2)}\n`);
+    ok(await uninstallHooks({ settingsPath: settings, platform: 'win32', now: NOW }));
+    expect(await readFile(settings, 'utf8')).toBe(ORIGINAL);
+  });
+
+  it('with a node path the exec form refuses (a .cmd shim), the status has no command, every installed event reads outdated, and still names the minimum Claude', async () => {
+    ok(await installHooks({ settingsPath: settings, ...WIN, now: NOW }));
+    const st = await hooksStatus({ settingsPath: settings, ...WIN, node: 'C:\\Users\\Sam\\AppData\\Roaming\\npm\\node.cmd' });
+    expect(st.command).toBe('');
+    expect(st.events.every((e) => e.state === 'outdated')).toBe(true);
+    expect(st.state).toBe('outdated');
+    expect(st.minClaude).toBe(MIN_CLAUDE_WINDOWS);
+  });
+
   it('a moved node.exe reads as outdated, and install brings it up to date', async () => {
     ok(await installHooks({ settingsPath: settings, ...WIN, now: NOW }));
     const moved = { ...WIN, node: 'C:\\nvm\\v22.13.0\\node.exe' };

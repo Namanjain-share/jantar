@@ -5,15 +5,21 @@
  *
  * The client runs as Claude runs it, with one preload that makes Node look
  * like Windows to it: `process.platform` is 'win32', `node:path` is
- * path.win32, and `net.createConnection` writes the pipe name it was asked
- * for to a log, then connects to a Unix socket standing in for that pipe.
+ * path.win32, `net.createConnection` writes the pipe name it was asked for
+ * to a log, then connects to a Unix socket standing in for that pipe, and
+ * `fs.readFileSync` of <state dir>\run\hooks.key reads $FAKE_KEY_FILE.
+ *
+ * Any user can create a pipe of the daemon's name, so the client sends its
+ * event only once the pipe's owner has answered a nonce with the HMAC of
+ * the daemon's key (hookProof in packages/daemon/src/hooks/socket.ts).
  *
  * The daemon names its pipes with config.ts pipePath; this package does not
- * depend on the daemon, so both sides are pinned to the same names here and
- * in packages/daemon/test/hooks/socket-win32.test.ts.
+ * depend on the daemon, so both sides are pinned to the same names and the
+ * same proof here and in packages/daemon/test/hooks/socket-win32.test.ts.
  */
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHmac } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +30,15 @@ import { perfBudgetMs } from './perf.js';
 /** pipePath('C:\\Users\\Sam\\.jantar', kind) in packages/daemon/src/config.ts. */
 const HOOKS_PIPE = '\\\\.\\pipe\\jantar-191e58ea65b102a5-hooks';
 const PIPE_PREFIX = '\\\\.\\pipe\\';
+
+/** The daemon's hooks key (synthetic), and another one (a stale file, or another user's). */
+const KEY = 'ab'.repeat(32);
+const OTHER_KEY = 'ef'.repeat(32);
+/** hookProof(KEY, 'cd' x 32) in packages/daemon/src/hooks/socket.ts. */
+const PINNED_PROOF = 'd8c046f81eeb84e8f69d43830d6bcab36a230c2defd7748184cec9cfea296b55';
+
+/** The daemon's answer to a nonce: hex HMAC-SHA256 of `jantar-hooks-v1 <nonce>` under the key. */
+const proofOf = (key: string, nonce: string) => createHmac('sha256', Buffer.from(key, 'hex')).update(`jantar-hooks-v1 ${nonce}`).digest('hex');
 
 /** Every way a user or a service line might spell that one state dir. */
 const SPELLINGS = [
@@ -42,7 +57,19 @@ const net = require('node:net');
 const path = require('node:path');
 Object.defineProperty(process, 'platform', { value: 'win32' });
 const builtin = process.getBuiltinModule.bind(process);
-process.getBuiltinModule = (id) => (id === 'node:path' || id === 'path' ? path.win32 : builtin(id));
+const keyFs = {
+  ...fs,
+  readFileSync(file, ...rest) {
+    if (typeof file === 'string' && file.endsWith('\\\\run\\\\hooks.key')) {
+      fs.appendFileSync(process.env.FAKE_PIPE_LOG, 'key ' + file + '\\n');
+      file = process.env.FAKE_KEY_FILE;
+    }
+    return fs.readFileSync(file, ...rest);
+  },
+};
+process.getBuiltinModule = (id) => (id === 'node:path' || id === 'path' ? path.win32 : id === 'node:fs' ? keyFs : builtin(id));
+// Node before 22.3 has no getBuiltinModule: the client then loads its modules with import().
+if (process.env.FAKE_NO_BUILTIN) process.getBuiltinModule = undefined;
 const connect = net.createConnection;
 net.createConnection = function (opts, ...rest) {
   if (opts && typeof opts.path === 'string' && opts.path.startsWith(${JSON.stringify(PIPE_PREFIX)})) {
@@ -51,11 +78,13 @@ net.createConnection = function (opts, ...rest) {
   }
   return connect.call(this, opts, ...rest);
 };
+require('node:module').syncBuiltinESMExports();
 `;
 
 let dir: string;
 let preload: string;
 let pipeLog: string;
+let keyFile: string;
 
 interface Run {
   code: number | null;
@@ -64,12 +93,12 @@ interface Run {
   ms: number;
 }
 
-/** Run the real client "on Windows" with JANTAR_HOME spelled `home`. */
-function runOnWindows(args: string[], input: string, home: string): Promise<Run> {
+/** Run the real client "on Windows" with JANTAR_HOME spelled `home`; `env` adds to (or replaces) the fake's settings. */
+function runOnWindows(args: string[], input: string, home: string, env: Record<string, string> = {}): Promise<Run> {
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--require', preload, HOOK_CLIENT_PATH, ...args], {
-      env: { PATH: process.env.PATH ?? '', HOME: dir, JANTAR_HOME: home, FAKE_PIPE_DIR: dir, FAKE_PIPE_LOG: pipeLog },
+      env: { PATH: process.env.PATH ?? '', HOME: dir, JANTAR_HOME: home, FAKE_PIPE_DIR: dir, FAKE_PIPE_LOG: pipeLog, FAKE_KEY_FILE: keyFile, ...env },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -83,32 +112,52 @@ function runOnWindows(args: string[], input: string, home: string): Promise<Run>
   });
 }
 
-/** The pipe names the client asked for, in order. */
-async function pipesAsked(): Promise<string[]> {
+/** What the client asked for, in order: the pipe names, and (`key`) the key files it read. */
+async function asked(what: 'pipe' | 'key' = 'pipe'): Promise<string[]> {
   const text = await readFile(pipeLog, 'utf8').catch(() => '');
-  return text.split('\n').filter(Boolean);
+  const lines = text.split('\n').filter(Boolean);
+  return what === 'pipe' ? lines.filter((l) => l.startsWith(PIPE_PREFIX)) : lines.filter((l) => l.startsWith('key ')).map((l) => l.slice(4));
 }
+const pipesAsked = () => asked('pipe');
 
-/** A daemon on the Unix socket that stands in for `pipe`; `handler` sees each line. */
-async function fakeDaemon(pipe: string, handler: (line: string, sock: Socket) => void): Promise<{ server: Server; lines: string[] }> {
+/**
+ * A daemon on the Unix socket that stands in for `pipe`. Holding `key` it
+ * answers each connection's hello with the proof, as jantard does, and
+ * `handler` sees the next line; with `key` null (a pipe another user made)
+ * `handler` sees the first line, whatever it is.
+ */
+async function fakeDaemon(
+  pipe: string,
+  handler: (line: string, sock: Socket) => void,
+  key: string | null = KEY,
+): Promise<{ server: Server; lines: string[]; hellos: string[] }> {
   const lines: string[] = [];
+  const hellos: string[] = [];
   const server = createServer((sock) => {
     let buf = '';
+    let proven = key === null;
     let seen = false;
     sock.on('error', () => {});
     sock.on('data', (c) => {
       if (seen) return;
       buf += c.toString('utf8');
-      const nl = buf.indexOf('\n');
-      if (nl === -1) return;
-      seen = true;
-      const line = buf.slice(0, nl);
-      lines.push(line);
-      handler(line, sock);
+      for (let nl = buf.indexOf('\n'); nl !== -1 && !seen; nl = buf.indexOf('\n')) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        if (!proven && key !== null) {
+          proven = true;
+          hellos.push(line);
+          sock.write(`${JSON.stringify({ v: 1, mac: proofOf(key, (JSON.parse(line) as { hello: string }).hello) })}\n`);
+          continue;
+        }
+        seen = true;
+        lines.push(line);
+        handler(line, sock);
+      }
     });
   });
   await new Promise<void>((r) => server.listen(join(dir, pipe.slice(PIPE_PREFIX.length)), r));
-  return { server, lines };
+  return { server, lines, hellos };
 }
 
 const close = (server: Server) => new Promise<void>((r) => server.close(() => r()));
@@ -133,7 +182,9 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'jp-'));
   preload = join(dir, 'as-windows.cjs');
   pipeLog = join(dir, 'pipes.log');
+  keyFile = join(dir, 'hooks.key');
   await writeFile(preload, PRELOAD);
+  await writeFile(keyFile, `${KEY}\n`);
 });
 
 afterEach(async () => {
@@ -148,8 +199,9 @@ describe('the hook client on Windows (win32 injected)', () => {
       expect(r.stdout).toBe('');
       expect(r.stderr).toBe('');
     }
-    const asked = await pipesAsked();
-    expect(asked).toEqual(SPELLINGS.map(() => HOOKS_PIPE));
+    expect(await pipesAsked()).toEqual(SPELLINGS.map(() => HOOKS_PIPE));
+    // Each spelling's own <state dir>\run\hooks.key, one file to Windows.
+    expect((await asked('key')).map((k) => k.toLowerCase())).toEqual(SPELLINGS.map(() => 'c:\\users\\sam\\.jantar\\run\\hooks.key'));
     // Another state dir is another pipe.
     await runOnWindows([], stopEvent(), 'C:\\Users\\Sam\\.jantar-test');
     const other = (await pipesAsked()).at(-1);
@@ -182,6 +234,10 @@ describe('the hook client on Windows (win32 injected)', () => {
       expect(async.stdout).toBe('');
       await expect.poll(() => daemon.lines.length).toBe(2);
       const [held, stop] = daemon.lines.map((l) => JSON.parse(l));
+      // Each connection opened with a fresh nonce, before the event.
+      expect(daemon.hellos).toHaveLength(2);
+      for (const h of daemon.hellos) expect(h).toMatch(/^\{"v":1,"hello":"[0-9a-f]{64}"\}$/);
+      expect(daemon.hellos[0]).not.toBe(daemon.hellos[1]);
       expect(held.tool_name).toBe('Bash');
       expect(held[HOOK_TAG]).toMatchObject({ v: 1, wait: true });
       expect(stop.hook_event_name).toBe('Stop');
@@ -198,6 +254,86 @@ describe('the hook client on Windows (win32 injected)', () => {
       expect(r.code).toBe(0);
       expect(r.stdout).toBe('');
       expect(r.stderr).toBe('');
+    } finally {
+      await close(daemon.server);
+    }
+  });
+});
+
+describe('the hook client on Windows: only the holder of the key gets the event', () => {
+  it('the proof is the one jantard gives (pinned)', () => {
+    expect(proofOf(KEY, 'cd'.repeat(32))).toBe(PINNED_PROOF);
+  });
+
+  it("a pipe someone else made, answering 'allow', gets only a nonce and no decision is printed", async () => {
+    const squat = await fakeDaemon(
+      HOOKS_PIPE,
+      (_line, sock) => sock.end(`${JSON.stringify({ v: 1, mac: 'ab'.repeat(32) })}\n${JSON.stringify({ v: 1, output: ALLOW })}\n`),
+      null,
+    );
+    try {
+      for (const args of [[WAIT_FLAG], []]) {
+        const r = await runOnWindows(args, args.length ? permissionRequest() : stopEvent(), SPELLINGS[0] as string);
+        expect(r.code).toBe(0);
+        expect(r.stdout).toBe('');
+        expect(r.stderr).toBe('');
+      }
+      await expect.poll(() => squat.lines.length).toBe(2);
+      for (const l of squat.lines) expect(l).toMatch(/^\{"v":1,"hello":"[0-9a-f]{64}"\}$/);
+    } finally {
+      await close(squat.server);
+    }
+  });
+
+  it('a pipe whose owner holds another key (a stale file, another user) gets no event and no decision', async () => {
+    const other = await fakeDaemon(HOOKS_PIPE, (_line, sock) => sock.end(`${JSON.stringify({ v: 1, output: ALLOW })}\n`), OTHER_KEY);
+    try {
+      const r = await runOnWindows([WAIT_FLAG], permissionRequest(), SPELLINGS[0] as string);
+      expect(r.code).toBe(0);
+      expect(r.stdout).toBe('');
+      expect(other.hellos).toHaveLength(1);
+      expect(other.lines).toEqual([]);
+    } finally {
+      await close(other.server);
+    }
+  });
+
+  it('with no key (or a bad one) it sends nothing, prints nothing and exits 0', async () => {
+    const daemon = await fakeDaemon(HOOKS_PIPE, (_line, sock) => sock.end(`${JSON.stringify({ v: 1, output: ALLOW })}\n`));
+    try {
+      await writeFile(join(dir, 'short.key'), 'abc\n');
+      for (const file of [join(dir, 'missing.key'), join(dir, 'short.key')]) {
+        const r = await runOnWindows([WAIT_FLAG], permissionRequest(), SPELLINGS[0] as string, { FAKE_KEY_FILE: file });
+        expect(r.code).toBe(0);
+        expect(r.stdout).toBe('');
+        expect(r.stderr).toBe('');
+        expect(r.ms).toBeLessThan(perfBudgetMs(ASYNC_EXIT_BUDGET_MS));
+      }
+      expect(await pipesAsked()).toEqual([]);
+      expect(daemon.hellos).toEqual([]);
+    } finally {
+      await close(daemon.server);
+    }
+  });
+
+  it('on a Node without getBuiltinModule it loads node:crypto and node:fs with import() and still proves the pipe', async () => {
+    // A state dir this host can hold (path is POSIX here), so the key is a real file.
+    const home = join(dir, 's');
+    await mkdir(join(home, 'run'), { recursive: true });
+    await writeFile(join(home, 'run', 'hooks.key'), KEY);
+    const env = { FAKE_NO_BUILTIN: '1' };
+    // The first run, with no daemon, names the pipe.
+    expect((await runOnWindows([], stopEvent(), home, env)).code).toBe(0);
+    const [pipe] = await pipesAsked();
+    expect(pipe).toMatch(/^\\\\\.\\pipe\\jantar-[0-9a-f]{16}-hooks$/);
+    const daemon = await fakeDaemon(pipe as string, (_line, sock) => sock.end(`${JSON.stringify({ v: 1, output: ALLOW })}\n`));
+    try {
+      const r = await runOnWindows([WAIT_FLAG], permissionRequest(), home, env);
+      expect(r.code).toBe(0);
+      expect(r.stderr).toBe('');
+      expect(JSON.parse(r.stdout)).toEqual(ALLOW);
+      expect(daemon.hellos).toHaveLength(1);
+      expect(JSON.parse(daemon.lines[0] as string).tool_name).toBe('Bash');
     } finally {
       await close(daemon.server);
     }

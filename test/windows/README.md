@@ -12,7 +12,7 @@ pnpm --filter @jantar/cli test:windows
 | File | Check |
 |---|---|
 | `pipes.test.ts` | The daemon names one hooks pipe and one ctl pipe per state dir, whatever its spelling |
-| `hooks-pipe.test.ts` | W1: the hook client, run as the exec-form entry says and with the state dir spelled another way, gets the decision over the hooks pipe; with the daemon down it exits 0 and prints nothing; no other user can write to the pipe |
+| `hooks-pipe.test.ts` | W1: the hook client, run as the exec-form entry says and with the state dir spelled another way, gets the decision over the hooks pipe; with the daemon down it exits 0 and prints nothing; no other user can write to the pipe; a pipe another process made first at the daemon's name, open to all and answering "allow", gets only a nonce (the daemon proves itself with its key in `run\hooks.key`) and no decision is printed |
 | `installer.test.ts` | W2: `jantar hooks install` writes exec form (`node.exe`, `args`, `onFailure: "continue"`), installs once, and uninstall gives the file back byte for byte |
 | `node.test.ts` | W3-W6: a node on a fake profile finds its sessions without `ps`, on `dirs` accounts; it links to a hub in the same process; a phone on the hub answers a card held on the node's pipe; a prompt gets the watch-only line; `jantar node status` answers over the ctl pipe |
 | `schtasks.test.ts` | W7: the `schtasks` lines `jantar install` prints, run as printed against a task of the run's own name |

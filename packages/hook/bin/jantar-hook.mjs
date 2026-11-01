@@ -5,7 +5,9 @@
 // JSON to its stdin. The client adds the `_jantar` tag and forwards the event
 // to the daemon's Unix socket, <state dir>/run/hooks.sock (on Windows, v0.6:
 // the daemon's named pipe, \\.\pipe\jantar-<hash of the state dir>-hooks,
-// named as the daemon names it). The state dir is
+// named as the daemon names it, once the daemon has proved it holds the key
+// in <state dir>/run/hooks.key: any user can create a pipe of that name).
+// The state dir is
 // $JANTAR_HOME (or the old $CCW_V2_HOME) when set; else, for the installed
 // copy (<state dir>/bin/jantar-hook), the dir it was installed in, since
 // Claude's sessions do not have JANTAR_HOME; else ~/.jantar.
@@ -23,6 +25,8 @@
 //   before Claude shows the terminal dialog, so waiting would hide it.
 // - A blocking client never half-closes its side of the socket. The daemon
 //   reads end-of-file as "this hook is gone" (the terminal answered first).
+// - On Windows (v0.6) nothing but a nonce goes to the pipe, and no reply is
+//   trusted, until the pipe's owner has proved it holds the daemon's key.
 //
 // Module-system neutral on purpose: no static import or export statements, no
 // CommonJS loader calls, no top-level await and no module meta object (only a
@@ -51,6 +55,8 @@
   var STDIN_LIMIT_MS = 800;
   /** Limit for connecting to the daemon socket. */
   var CONNECT_LIMIT_MS = 500;
+  /** v0.6, Windows: limit for the daemon's answer to our hello. */
+  var PROOF_LIMIT_MS = 1000;
   /** Hard limit for a whole non-waiting run. */
   var ASYNC_DEADLINE_MS = 900;
 
@@ -113,27 +119,29 @@
   var argv = process.argv.slice(2);
   var waitFlag = argv.indexOf('--wait') !== -1;
 
-  /** v0.6: Windows has no Unix sockets; the daemon listens on a named pipe (its name needs node:crypto). */
+  /** v0.6: Windows has no Unix sockets; the daemon listens on a named pipe (its name and its proof need node:crypto, its key node:fs). */
   var WINDOWS = process.platform === 'win32';
 
   var builtin = typeof process.getBuiltinModule === 'function' ? process.getBuiltinModule.bind(process) : null;
   if (!builtin) {
     // Node older than 22.3 / 20.16: fall back to dynamic import (valid in both module systems).
     var loading = [import('node:net'), import('node:os'), import('node:path')];
-    if (WINDOWS) loading.push(import('node:crypto'));
+    if (WINDOWS) loading.push(import('node:crypto'), import('node:fs'));
     Promise.all(loading).then(
       function (mods) {
-        run(mods[0], mods[1], mods[2], mods[3]);
+        run(mods[0], mods[1], mods[2], mods[3], mods[4]);
       },
       function () {
         finish();
       },
     );
+  } else if (WINDOWS) {
+    run(builtin('node:net'), builtin('node:os'), builtin('node:path'), builtin('node:crypto'), builtin('node:fs'));
   } else {
-    run(builtin('node:net'), builtin('node:os'), builtin('node:path'), WINDOWS ? builtin('node:crypto') : undefined);
+    run(builtin('node:net'), builtin('node:os'), builtin('node:path'));
   }
 
-  function run(net, os, path, crypto) {
+  function run(net, os, path, crypto, fs) {
     // Non-waiting runs have one hard deadline. Waiting runs only limit stdin
     // and connect; after that Claude's own hook timeout (86400 s) applies.
     if (!waitFlag) setTimeout(finish, ASYNC_DEADLINE_MS).unref();
@@ -157,7 +165,10 @@
       if (subagent && waitFlag) setTimeout(finish, ASYNC_DEADLINE_MS).unref();
 
       var dir = stateDir(os, path);
-      send(net, WINDOWS ? pipeName(path, crypto, dir, 'hooks') : path.join(dir, 'run', 'hooks.sock'), line, blocking);
+      if (!WINDOWS) return send(net, path.join(dir, 'run', 'hooks.sock'), line, blocking, null);
+      var proof = keyProof(fs, crypto, path.join(dir, 'run', 'hooks.key'));
+      if (!proof) return finish();
+      send(net, pipeName(path, crypto, dir, 'hooks'), line, blocking, proof);
     });
   }
 
@@ -171,6 +182,41 @@
     var norm = path.win32.resolve(dir).replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
     var hash = crypto.createHash('sha256').update(norm).digest('hex').slice(0, 16);
     return '\\\\.\\pipe\\jantar-' + hash + '-' + kind;
+  }
+
+  /**
+   * v0.6, Windows: pipe names are machine-wide, so another user could create
+   * ours before the daemon does. The daemon writes a fresh random key to
+   * <state dir>/run/hooks.key (in the user's profile, which no other user can
+   * read) and must answer our nonce with its proof, the hex HMAC-SHA256 of
+   * `jantar-hooks-v1 <nonce>` under the key (hookProof in
+   * packages/daemon/src/hooks/socket.ts; this repeats that line), before it
+   * gets the event or its reply is trusted. No key: null, and nothing is sent.
+   */
+  function keyProof(fs, crypto, file) {
+    var key;
+    try {
+      key = String(fs.readFileSync(file, 'utf8')).trim();
+    } catch (_e) {
+      return null;
+    }
+    if (!/^[0-9a-f]{64}$/.test(key)) return null;
+    var nonce = crypto.randomBytes(32).toString('hex');
+    var want = Buffer.from(crypto.createHmac('sha256', Buffer.from(key, 'hex')).update('jantar-hooks-v1 ' + nonce).digest('hex'));
+    return {
+      hello: JSON.stringify({ v: 1, hello: nonce }) + '\n',
+      check: function (text) {
+        var reply;
+        try {
+          reply = JSON.parse(text);
+        } catch (_e) {
+          return false;
+        }
+        if (!reply || typeof reply !== 'object' || reply.v !== 1 || typeof reply.mac !== 'string') return false;
+        var got = Buffer.from(reply.mac);
+        return got.length === want.length && crypto.timingSafeEqual(got, want);
+      },
+    };
   }
 
   /** $JANTAR_HOME (or $CCW_V2_HOME), else the dir of an installed copy (<state dir>/bin/jantar-hook), else ~/.jantar. */
@@ -248,7 +294,7 @@
     });
   }
 
-  function send(net, sockPath, line, blocking) {
+  function send(net, sockPath, line, blocking, proof) {
     var sock;
     try {
       sock = net.createConnection({ path: sockPath });
@@ -267,35 +313,71 @@
 
     sock.on('connect', function () {
       clearTimeout(connectTimer);
-      if (!blocking) {
-        // Write, half-close, and leave as soon as the bytes are handed to the kernel.
-        sock.end(line, function () {
-          finish();
-        });
+      if (!proof) return deliver(sock, line, blocking);
+      prove(sock, proof, function () {
+        deliver(sock, line, blocking);
+      });
+    });
+  }
+
+  /** v0.6, Windows: send our hello; go on only once the daemon's first line proves it holds the key. */
+  function prove(sock, proof, then) {
+    var got = '';
+    var timer = setTimeout(fail, PROOF_LIMIT_MS);
+    timer.unref();
+    function fail() {
+      sock.destroy();
+      finish();
+    }
+    function onData(c) {
+      got += c.toString('utf8');
+      var nl = got.indexOf('\n');
+      if (nl === -1) {
+        if (got.length > 1024) fail();
         return;
       }
-      sock.write(line);
-      var got = [];
-      var gotBytes = 0;
-      sock.on('data', function (c) {
-        gotBytes += c.length;
-        if (gotBytes > MAX_REPLY_BYTES) {
-          sock.destroy();
-          return finish();
-        }
-        got.push(c);
-        var text = Buffer.concat(got).toString('utf8');
-        var nl = text.indexOf('\n');
-        if (nl === -1) return;
-        sock.destroy();
-        finish(decisionText(text.slice(0, nl)));
-      });
-      sock.on('end', function () {
-        finish(decisionText(Buffer.concat(got).toString('utf8')));
-      });
-      sock.on('close', function () {
+      clearTimeout(timer);
+      sock.removeListener('data', onData);
+      sock.removeListener('end', fail);
+      sock.removeListener('close', fail);
+      if (!proof.check(got.slice(0, nl))) return fail();
+      then();
+    }
+    sock.on('data', onData);
+    sock.on('end', fail);
+    sock.on('close', fail);
+    sock.write(proof.hello);
+  }
+
+  function deliver(sock, line, blocking) {
+    if (!blocking) {
+      // Write, half-close, and leave as soon as the bytes are handed to the kernel.
+      sock.end(line, function () {
         finish();
       });
+      return;
+    }
+    sock.write(line);
+    var got = [];
+    var gotBytes = 0;
+    sock.on('data', function (c) {
+      gotBytes += c.length;
+      if (gotBytes > MAX_REPLY_BYTES) {
+        sock.destroy();
+        return finish();
+      }
+      got.push(c);
+      var text = Buffer.concat(got).toString('utf8');
+      var nl = text.indexOf('\n');
+      if (nl === -1) return;
+      sock.destroy();
+      finish(decisionText(text.slice(0, nl)));
+    });
+    sock.on('end', function () {
+      finish(decisionText(Buffer.concat(got).toString('utf8')));
+    });
+    sock.on('close', function () {
+      finish();
     });
   }
 

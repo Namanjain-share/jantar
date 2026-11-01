@@ -38,8 +38,10 @@ describe.skipIf(!WINDOWS)('W7: the printed schtasks lines on Windows', () => {
     const find = (verb: string) => {
       const line = printed.find((l) => l.startsWith(`schtasks /${verb} `));
       if (!line) throw new Error(`jantar install printed no "schtasks /${verb}" line:\n${r.stdout}${r.stderr}`);
-      // This run's task, never the user's.
-      return line.replace(/\/TN Jantar(?=\s|$)/, `/TN ${TASK}`);
+      // This run's task, never the user's: a line the rename missed (a quoted name, say) is not run.
+      const ours = line.replace(/\/TN Jantar(?=\s|$)/, `/TN ${TASK}`);
+      if (!ours.includes(`/TN ${TASK} `) && !ours.endsWith(`/TN ${TASK}`)) throw new Error(`refusing to run a line that names another task: ${line}`);
+      return ours;
     };
     lines = { create: find('Create'), end: find('End'), remove: find('Delete') };
   }, 60_000);
