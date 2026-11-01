@@ -39,6 +39,12 @@
  *   naming no paired machine is 404, never run on the Mac instead.
  * - `node` routes (NODE_PREFIX: a server's pairing claim) read no cookie,
  *   secret or extension key: 404 while Fleet is off, 403 with any Origin.
+ *
+ * v0.8: `capture` routes (CAPTURE_PREFIX: the iOS Shortcut's door) read no
+ * device cookie either; only a capture key, read on those paths alone. Wave
+ * 0: the door answers 404 (it does not exist) until its gate is built: the
+ * mode (tailscale or cloudflare), Intel on, an active key, no Origin, the
+ * key checked before the body is read.
  *   The node link's upgrade never reaches Fastify (api/node-upgrade.ts).
  * - On a node, the `link` transport runs the hub's calls in-process (no
  *   listener): NODE_ROUTES only, as the device `hub.<phone's id>` with the
@@ -51,6 +57,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 import {
+  CAPTURE_PREFIX,
   DEVICE_COOKIE,
   DEVICE_SECRET_HEADER,
   EVENTS_WS_PROTOCOL,
@@ -60,6 +67,7 @@ import {
   EventsQuerySchema,
   FLEET_COPY,
   IDEMPOTENCY_HEADER,
+  INTEL_READ_REASONS,
   LEGACY_DEVICE_COOKIE,
   MAX_BODY_BYTES,
   NODE_PREFIX,
@@ -184,6 +192,8 @@ export const FEATURE_OFF: Readonly<Record<FeatureSwitch, { code: ErrorCode; mess
   ask: { code: 'forbidden', message: 'Ask is off. Turn it on at your Mac: jantar ask on' },
   // v0.6
   fleet: { code: 'forbidden', message: 'Fleet is off. Turn it on at your Mac: jantar fleet on' },
+  // v0.8
+  intelRead: { code: 'forbidden', message: INTEL_READ_REASONS.off },
 };
 
 /** The switches of Life's routes: while life.db is broken they answer 503 (lifeStatus, lifeBackup and lifeRestore have none). */
@@ -207,6 +217,11 @@ export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<RouteName, string>>> = 
   notifyTest: 'Test alerts on the Mac: jantar notify test',
   // v0.6
   machinesPair: 'Pair servers at the Mac: jantar node pair',
+  // v0.8
+  intelReadStatus: 'See what reading links uses at the Mac: jantar intel read status',
+  captureKeyAdd: 'Make a Shortcut key at the Mac: jantar intel shortcut add',
+  captureKeyList: 'List Shortcut keys at the Mac: jantar intel shortcut list',
+  captureKeyRevoke: 'Revoke Shortcut keys at the Mac: jantar intel shortcut revoke',
 };
 
 /** What an `extension` route answers without a valid extension key (401). */
@@ -244,7 +259,8 @@ export const SHOT_UPLOAD_LOG = 'meetings: screenshot upload';
 /**
  * Whether a route's switch is on (routes without one are always on). Read
  * from settings, never from state: v0.4's `life` is any module on, a module
- * name (v0.7's `posts` too) reads `life.<module>`, `intel` reads `intel.enabled`.
+ * name (v0.7's `posts` too) reads `life.<module>`, `intel` reads `intel.enabled`,
+ * v0.8's `intelRead` both `intel.enabled` and `intel.read`.
  */
 export function featureOn(def: Pick<RouteDef, 'feature'>, settings: Settings): boolean {
   const f = def.feature;
@@ -262,6 +278,8 @@ export function featureOn(def: Pick<RouteDef, 'feature'>, settings: Settings): b
       return settings.life[f];
     case 'intel':
       return settings.intel.enabled;
+    case 'intelRead':
+      return settings.intel.enabled && settings.intel.read;
     case 'meetings':
       return settings.meetings.enabled;
     case 'ask':
@@ -361,7 +379,7 @@ export function gate(def: Pick<RouteDef, 'scope' | 'method'>, auth: RequestAuth,
   if (auth.transport === 'ctl') return;
   if (auth.transport === 'link') {
     // v0.6: the hub's call, as the phone it forwarded: its scopes again; no browser is in the way here.
-    if (def.scope === 'public' || def.scope === 'extension' || def.scope === 'node') throw new ApiError('forbidden', 'not over the link');
+    if (def.scope === 'public' || def.scope === 'extension' || def.scope === 'node' || def.scope === 'capture') throw new ApiError('forbidden', 'not over the link');
     if (!auth.device || !hasScope(auth.device.scopes, def.scope)) throw new ApiError('forbidden', `this device does not have the ${def.scope} scope`);
     return;
   }
@@ -370,6 +388,10 @@ export function gate(def: Pick<RouteDef, 'scope' | 'method'>, auth: RequestAuth,
     if (!s.ctx.settings.get().fleet.enabled) throw new ApiError('not_found', 'not found');
     if (req.headers.origin !== undefined) throw new ApiError('forbidden', 'browsers cannot call this');
     return;
+  }
+  if (def.scope === 'capture') {
+    // v0.8: the iOS Shortcut's door. Wave 0: it does not exist until its gate is built (lane C).
+    throw new ApiError('not_found', 'not found');
   }
   if (def.scope === 'extension') {
     const bound = extensionCaller(def, auth, req, s)?.origin;
@@ -867,8 +889,8 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
       ),
     };
     const path = pathOf(req);
-    // v0.6: a server's own paths read no device cookie (and no secret, nor the extension's key).
-    if (isApiPath(path) && !path.startsWith(NODE_PREFIX)) {
+    // v0.6: a server's own paths read no device cookie (and no secret, nor the extension's key); v0.8: nor the capture door's.
+    if (isApiPath(path) && !path.startsWith(NODE_PREFIX) && !path.startsWith(CAPTURE_PREFIX)) {
       // A phone paired with ccw-v2 (imported with `jantar import-ccw-v2`) still sends the old cookie.
       const current = req.cookies?.[DEVICE_COOKIE];
       const key = current ?? req.cookies?.[LEGACY_DEVICE_COOKIE];

@@ -183,6 +183,23 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE UNIQUE INDEX IF NOT EXISTS nodes_live_name ON nodes (name) WHERE revoked_at IS NULL;
     `,
   },
+  {
+    version: 6,
+    name: 'v0.8 capture keys',
+    // Additive: 0.7 opens a file at this schema, warns, and carries on with the tables it knows.
+    sql: `
+      -- The iOS Shortcut's keys (Intel's capture door). Only the key's
+      -- prefixed sha256 is kept; a revoked row stays.
+      CREATE TABLE IF NOT EXISTS capture_keys (
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        key_hash     TEXT NOT NULL UNIQUE,
+        created_at   TEXT NOT NULL,
+        last_seen_at TEXT,
+        revoked_at   TEXT
+      );
+    `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

@@ -36,6 +36,8 @@ import type {
   Db,
   DeviceRepo,
   EventLog,
+  CaptureKeyRecord,
+  CaptureKeysRepo,
   ExtensionRecord,
   ExtensionsRepo,
   FolderPin,
@@ -760,6 +762,59 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
     },
   };
 
+  type CaptureKeyRow = {
+    id: string;
+    name: string;
+    key_hash: string;
+    created_at: string;
+    last_seen_at: string | null;
+    revoked_at: string | null;
+  };
+  const captureKeyFrom = (r: CaptureKeyRow): CaptureKeyRecord => ({
+    id: r.id,
+    name: r.name,
+    keyHash: r.key_hash,
+    createdAt: r.created_at,
+    lastSeenAt: r.last_seen_at,
+    revokedAt: r.revoked_at,
+  });
+  const captureKeyById = (id: string): CaptureKeyRecord | null => {
+    const r = stmt('SELECT * FROM capture_keys WHERE id = ?').get(id) as CaptureKeyRow | undefined;
+    return r ? captureKeyFrom(r) : null;
+  };
+  const captureKeys: CaptureKeysRepo = {
+    insert(k) {
+      stmt(
+        'INSERT INTO capture_keys (id, name, key_hash, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?)',
+      ).run(k.id, k.name, k.keyHash, k.createdAt, k.lastSeenAt, k.revokedAt);
+      wrote();
+    },
+    byHash(hash) {
+      const r = stmt('SELECT * FROM capture_keys WHERE key_hash = ?').get(hash) as CaptureKeyRow | undefined;
+      return r ? captureKeyFrom(r) : null;
+    },
+    list() {
+      return (stmt('SELECT * FROM capture_keys ORDER BY created_at ASC, id ASC').all() as CaptureKeyRow[]).map(captureKeyFrom);
+    },
+    touch(id, at) {
+      stmt('UPDATE capture_keys SET last_seen_at = ? WHERE id = ?').run(at, id);
+    },
+    revoke(id, at) {
+      stmt('UPDATE capture_keys SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ?').run(at, id);
+      wrote();
+      return captureKeyById(id);
+    },
+    revokeAll(at) {
+      const r = stmt('UPDATE capture_keys SET revoked_at = ? WHERE revoked_at IS NULL').run(at);
+      wrote();
+      return Number(r.changes);
+    },
+    activeCount() {
+      const r = stmt('SELECT COUNT(*) AS n FROM capture_keys WHERE revoked_at IS NULL').get() as { n: number } | undefined;
+      return Number(r?.n ?? 0);
+    },
+  };
+
   pruneNow();
 
   return {
@@ -777,6 +832,7 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
     rewriteRuns,
     extensions,
     nodes,
+    captureKeys,
     pruneNow,
     schemaVersion() {
       const row = db.prepare('SELECT MAX(version) AS v FROM migrations').get() as { v: number | null } | undefined;

@@ -12,6 +12,10 @@
  *   `extension`). It reaches the extension's capture routes and nothing
  *   else; anywhere else the header is never read. The loopback peer and
  *   Host the gate also asks for there are extra conditions, never a grant.
+ * - v0.8: on CAPTURE_PREFIX paths only, a capture key in CAPTURE_KEY_HEADER
+ *   makes the caller the iOS Shortcut (actor `capture`, by the key's id). It
+ *   reaches the capture door and nothing else; no device cookie is read
+ *   there, and anywhere else the header is never read.
  * - v0.6: on a node, the `link` transport is the hub's calls, run in-process
  *   (no listener): the caller is the phone as the hub forwarded it, a device
  *   `hub.<device id>` with the phone's scopes, never stored. Nothing outside
@@ -42,6 +46,8 @@ export interface RequestAuth {
   secretOk?: boolean;
   /** v0.5: the paired extension whose key came in EXTENSION_KEY_HEADER (read on `/v1/ext/` paths only), and the Origin bound to it. */
   extension?: { id: string; origin: string };
+  /** v0.8: the capture key that came in CAPTURE_KEY_HEADER (read on CAPTURE_PREFIX paths only), by its id. */
+  capture?: { id: string };
   /** Rate-limit key (address based; never used for trust). */
   rateKey: string;
 }

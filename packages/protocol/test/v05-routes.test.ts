@@ -45,8 +45,8 @@ describe('v0.5 routes', () => {
       expect(r.path.startsWith('/v1/ext/'), name).toBe(true);
       expect(r.feature, name).toBe('meetings');
     }
-    // No route outside v0.5 takes the extension's key.
-    expect(routes.filter(([, r]) => r.scope === 'extension' && r.phase !== 'v0.5')).toEqual([]);
+    // No route outside v0.5 takes the extension's key, but v0.8's two reads (v08-intel-read.test.ts).
+    expect(names(routes.filter(([, r]) => r.scope === 'extension' && r.phase !== 'v0.5'))).toEqual(['extReadNext', 'extReadResult']);
   });
 
   it('pairing: start and unpair are admin and the Mac only; the claim is public; none has a switch', () => {
@@ -93,8 +93,8 @@ describe('v0.5 routes', () => {
     expect(Object.keys(ExtUnpairReplySchema.shape).sort()).toEqual(['ok', 'revoked']);
   });
 
-  it('only the screenshot upload has its own body limit', () => {
-    expect(routes.filter(([, r]) => r.bodyLimit !== undefined).map(([n]) => n)).toEqual(['extMeetingShot']);
+  it('only the screenshot upload has its own body limit (and v0.8\'s door and read results)', () => {
+    expect(routes.filter(([, r]) => r.bodyLimit !== undefined).map(([n]) => n)).toEqual(['extMeetingShot', 'captureSave', 'extReadResult']);
     expect(ROUTES.extMeetingShot.bodyLimit).toBe(MEETING_SHOT_BODY_MAX);
   });
 

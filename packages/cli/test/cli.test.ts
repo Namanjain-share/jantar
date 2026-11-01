@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { resolvePaths } from '@jantar/daemon/config';
+import { INTEL_SHELLS } from '../src/commands/intel.js';
+import { SHORTCUT_SHELL } from '../src/commands/intel-shortcut.js';
 import { COMMANDS, CtlUnavailableError, EXIT, createCtlClient, helpText, isErrorBody, main, memoryIo } from '../src/index.js';
 
 describe('jantar command line', () => {
@@ -93,6 +95,21 @@ describe('jantar command line', () => {
     expect(help.stdout).toContain('usage: jantar post <add --platform <p> [options]|list [--done] [--json]>');
     expect(help.stdout).toContain('reddit, instagram, x, linkedin, youtube, tiktok, threads, facebook, hn, other');
     expect(cmd?.stub).toBeUndefined();
+  });
+
+  it('v0.8: intel names its new actions in its help; the shells say so until their lanes build them', async () => {
+    const help = memoryIo({ HOME: '/nonexistent/jantar-test-home' });
+    expect(await main(['intel', '--help'], { io: help })).toBe(EXIT.ok);
+    for (const line of ['intel save <link|text>', 'intel jobs', 'intel retry <id>', 'intel delete <id>', 'intel read on | off | status', 'intel read speech <locale>', 'intel shortcut add', 'intel shortcut list | revoke <id|--all>']) {
+      expect(help.stdout, line).toContain(line);
+    }
+    for (const argv of [['intel', 'save', 'https://example.com/a'], ['intel', 'read', 'status'], ['intel', 'shortcut', 'list']]) {
+      const action = argv[1] as string;
+      if (action === 'shortcut' ? !SHORTCUT_SHELL : !INTEL_SHELLS.has(action)) continue;
+      const run = memoryIo({ HOME: '/nonexistent/jantar-test-home' });
+      expect(await main(argv, { io: run }), argv.join(' ')).toBe(EXIT.usage);
+      expect(run.stderr).toBe('Not built yet.\n');
+    }
   });
 
   it('rejects unknown commands with usage', async () => {

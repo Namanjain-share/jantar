@@ -145,8 +145,9 @@ describe('MA2: the capture routes take the extension key only', () => {
 });
 
 describe('MA3: the key reaches nothing else', () => {
-  // v0.6's `node` routes read no key and no cookie: 404 while Fleet is off (v06-gate.test.ts).
-  const httpRoutes = (Object.entries(ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.method !== 'WS' && d.scope !== 'public' && d.scope !== 'node');
+  // v0.6's `node` routes read no key and no cookie: 404 while Fleet is off (v06-gate.test.ts); v0.8's capture door
+  // neither: 404 while it is closed (v08-contracts.test.ts).
+  const httpRoutes = (Object.entries(ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.method !== 'WS' && d.scope !== 'public' && d.scope !== 'node' && d.scope !== 'capture');
 
   it('in its own header on every route outside /v1/ext/ it is 401, and on the event stream', async () => {
     api = await makeApi({ ctx: { settings: V05_ON } });

@@ -2,18 +2,23 @@
  * The extension's mirrors of the protocol (it imports only types from
  * @jantar/protocol): the header, the pairing line, the ID and the limits
  * equal the protocol's; the pairing line parses as the popup reads it; the
- * timings are the spec's (3.2); the four hosts and siteOf.
+ * timings are the spec's (3.2); the four hosts and siteOf. v0.8: the read
+ * alarm's name and the read limits equal the protocol's; post-url and
+ * page-read are imported from the protocol (zod-free subpaths), not mirrored.
  */
 import { describe, expect, it } from 'vitest';
 import {
   EXTENSION_ID as P_ID,
   EXTENSION_KEY_HEADER as P_HEADER,
   EXTENSION_PAIR_PREFIX as P_PREFIX,
+  INTEL_READ_LIMITS,
   MEETING_LIMITS,
   MEETING_SHOT_MAX_BYTES as P_SHOT_MAX,
 } from '@jantar/protocol';
+import { readPage } from '@jantar/protocol/page-read';
+import { CHROME_POST_HOSTS, chromePostOf } from '@jantar/protocol/post-url';
 import { MEETING_HOSTS, siteOf } from '../src/shared/sites.js';
-import { DAEMON_HOST, DAEMON_ORIGIN, EXTENSION_ID, EXTENSION_KEY_HEADER, EXTENSION_PAIR_PREFIX, MEETING_SHOT_MAX_BYTES, PAIR_LINE, TIMING, WIRE_LIMITS } from '../src/shared/wire.js';
+import { DAEMON_HOST, DAEMON_ORIGIN, EXTENSION_ID, EXTENSION_KEY_HEADER, EXTENSION_PAIR_PREFIX, MEETING_SHOT_MAX_BYTES, PAIR_LINE, READ_ALARM, READ_LIMITS, TIMING, WIRE_LIMITS } from '../src/shared/wire.js';
 
 describe('wire', () => {
   it("mirrors the protocol's constants", () => {
@@ -54,5 +59,33 @@ describe('wire', () => {
     expect(MEETING_HOSTS.map(siteOf)).toEqual(['meet', 'teams', 'teams', 'teams']);
     for (const h of ['meet.google.com.example.com', 'google.com', 'teams.microsoft.com.mcas.ms', 'evil.example', '']) expect(siteOf(h), h).toBeNull();
     expect(siteOf('MEET.GOOGLE.COM')).toBe('meet');
+  });
+
+  it("v0.8: the read alarm and limits keep to the daemon's", () => {
+    expect(READ_ALARM).toBe('jantar-reads');
+    expect({ ...READ_LIMITS }).toEqual({
+      pollEveryMs: 30_000,
+      jobsPerWake: 5,
+      jobMs: 45_000,
+      completeMs: 20_000,
+      settleMs: 2_500,
+      frames: 4,
+      frameBytes: 200 * 1024,
+      textMax: 40_000,
+      resultBytes: 2 * 1024 * 1024,
+    });
+    expect(Object.isFrozen(READ_LIMITS)).toBe(true);
+    expect(READ_LIMITS.jobMs).toBe(INTEL_READ_LIMITS.chromeResultMs);
+    expect(READ_LIMITS.frames).toBe(INTEL_READ_LIMITS.chromeFrames);
+    expect(READ_LIMITS.frameBytes).toBe(INTEL_READ_LIMITS.pageFrameBytes);
+    expect(READ_LIMITS.textMax).toBe(INTEL_READ_LIMITS.pageTextMax);
+    expect(READ_LIMITS.resultBytes).toBe(INTEL_READ_LIMITS.extResultBytes);
+    expect(READ_LIMITS.pollEveryMs).toBeLessThan(INTEL_READ_LIMITS.chromeFreshMs / 2);
+  });
+
+  it('v0.8: imports the post links and the reader from the protocol, not a mirror', () => {
+    expect(Object.keys(CHROME_POST_HOSTS)).toHaveLength(6);
+    expect(chromePostOf('https://www.instagram.com/reel/AbC123xyz/')?.platform).toBe('instagram');
+    expect(typeof readPage).toBe('function');
   });
 });

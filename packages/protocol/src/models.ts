@@ -1059,6 +1059,8 @@ export const FeaturesSchema = z.object({
   life: z.boolean().default(false),
   /** v0.4: the Intel shelf is on (settings intel.enabled). */
   intel: z.boolean().default(false),
+  /** v0.8: the Mac reads saved links (settings intel.enabled and intel.read): the phone offers Add post. */
+  intelRead: z.boolean().default(false),
   /** v0.5: Meetings are on (settings meetings.enabled). Never which meeting runs: that is a control read. */
   meetings: z.boolean().default(false),
   /** v0.5.3: Ask is on (settings ask.enabled). Why it can't run is in `GET /v1/ask`, a control read. */
@@ -1080,6 +1082,7 @@ export const NO_FEATURES: Readonly<Features> = Object.freeze({
   clearDraft: false,
   life: false,
   intel: false,
+  intelRead: false,
   meetings: false,
   ask: false,
   fleet: false,

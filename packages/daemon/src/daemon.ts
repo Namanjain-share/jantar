@@ -91,7 +91,7 @@ import { createLauncher } from './launcher/index.js';
 import { createControlsService } from './controls/index.js';
 import { createLifeService, LIFE_MODULE_BUILDERS } from './life/index.js';
 import { buildLifeService } from './life/service.js';
-import { createIntelService } from './intel/index.js';
+import { createIntelService, type IntelOptions } from './intel/index.js';
 import { createMeetingsService } from './meetings/index.js';
 import { createAskService } from './ask/index.js';
 import { createPrimer } from './primer/index.js';
@@ -131,6 +131,11 @@ export interface DaemonOptions {
   pushSender?: PushSender;
   /** Default the system clock (end-to-end tests move theirs forward to a Life ping's time). */
   clock?: Clock;
+  /**
+   * v0.8, tests only: Intel's DNS lookup and CA (local HTTPS servers) and the
+   * headless tier's browser binary. main.ts never passes it.
+   */
+  intel?: Pick<IntelOptions, 'net' | 'browser'>;
 }
 
 export interface RunningDaemon {
@@ -222,11 +227,13 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
       : readOnly
         ? buildLifeService(ctx, lifeDeps, readOnlyLifeBuilders(LIFE_MODULE_BUILDERS))
         : createLifeService(ctx, lifeDeps);
-    const intel: IntelService = off ? off.intel : createIntelService(ctx, { files });
+    // v0.8: Intel reads links on the Mac; under --read-only links are saved, never read (they spend quota and fetch pages).
+    const intel: IntelService = off ? off.intel : createIntelService(ctx, { files, usage, ccwLegacy }, { readOnly, ...opts.intel });
     // v0.5. Meetings are told --read-only, not wrapped: capture and edits are Jantar's own files, summaries spend quota.
     const meetings: MeetingsService = off ? off.meetings : createMeetingsService(ctx, { life, usage, ccwLegacy }, { readOnly });
     // v0.5.3. Ask is told --read-only too: its taps are Life writes (allowed), its runs spend quota (never).
-    const ask: AskService = off ? off.ask : createAskService(ctx, { life, usage, ccwLegacy }, { readOnly });
+    // v0.8: and Intel's read and remove, for the save card.
+    const ask: AskService = off ? off.ask : createAskService(ctx, { life, usage, ccwLegacy, intel }, { readOnly });
     // v0.4. Primes free 5-hour windows while accounts.prime is on; never under --read-only (it runs cswap).
     const primer: Service | null = off ? null : createPrimer(ctx, { usage, ccwLegacy }, { readOnly });
     const panes = new PaneLookup(terminal, ctx, undefined, opts.api?.paneLookupTimeoutMs);

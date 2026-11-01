@@ -128,6 +128,11 @@ export const TEST_BINS: Bins = {
   screencapture: null,
   tmux: null,
   sips: null,
+  // v0.8: none of Intel's media tools in tests (fake ctx.exec answers for them where a test needs one).
+  swiftc: null,
+  xcodeSelect: null,
+  sandboxExec: null,
+  ytDlp: null,
 };
 
 export interface TestContextOptions {

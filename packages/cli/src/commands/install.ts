@@ -65,6 +65,8 @@ export async function binsPatch(ctx: CliContext): Promise<Record<string, string>
   const found = await resolveBins({ settings, env: ctx.io.env, userHome: ctx.paths.userHome, usePath: true });
   const patch: Record<string, string> = {};
   for (const [key, value] of Object.entries(found)) {
+    // v0.8: Apple's tools (swiftc, xcode-select, sandbox-exec) are fixed paths, never settings.
+    if (!Object.hasOwn(settings.bins, key)) continue;
     const current = (settings.bins as Record<string, string | null>)[key];
     if (key === 'node') {
       if (current !== ctx.deps.nodePath) patch.node = ctx.deps.nodePath;

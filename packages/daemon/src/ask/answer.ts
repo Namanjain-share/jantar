@@ -513,6 +513,8 @@ export function checkWrite(a: AskWriteAction, scope: Pick<AskScope, 'today' | 'n
     if (action.due && !dayInRange(action.due.day, scope.today)) return { ok: false, reason: ASK_SENTENCES.badDay };
     return postPast(action, scope) ? { ok: true, action, flag: 'past_time' } : { ok: true, action };
   }
+  // v0.8: a save card (the typed fast path) is checked by its schema alone; Intel refuses a link it won't read.
+  if (action.type === 'save') return { ok: true, action };
   if (!dayInRange(action.day, scope.today)) return { ok: false, reason: ASK_SENTENCES.badDay };
   if (action.day > scope.today) return { ok: false, reason: ASK_SENTENCES.futureDay };
   return { ok: true, action };

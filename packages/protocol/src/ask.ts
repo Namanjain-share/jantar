@@ -34,6 +34,7 @@ import {
   TodoPrioritySchema,
   TodoTitleSchema,
 } from './life.js';
+import { IntelDepthSchema, IntelIdSchema } from './intel.js';
 import { IsoDateSchema } from './models.js';
 
 /** What the phone may send, in characters. */
@@ -97,10 +98,24 @@ export type AskPostAction = z.infer<typeof AskPostActionSchema>;
 export const AskShowActionSchema = z.strictObject({ type: z.literal('show'), what: AskShowWhatSchema });
 export type AskShowAction = z.infer<typeof AskShowActionSchema>;
 
+/**
+ * v0.8: save a link to Intel and read it (Add post). Only the daemon's
+ * typed fast path makes one ("save this: <link>", or a message that is just
+ * a link, while reading links is on); Claude never proposes a save (a `save`
+ * in its answer is dropped). Add saves and queues the read; the card's ref
+ * is then the Intel item's id, and Undo deletes that item.
+ */
+export const AskSaveActionSchema = z.strictObject({
+  type: z.literal('save'),
+  url: z.url({ protocol: /^https?$/ }).max(2000),
+  depth: IntelDepthSchema.optional(),
+});
+export type AskSaveAction = z.infer<typeof AskSaveActionSchema>;
+
 /** What Add may apply (an Edit sends one of these, of the card's own type). */
-export const AskWriteActionSchema = z.discriminatedUnion('type', [AskTodoActionSchema, AskFoodActionSchema, AskMoneyActionSchema, AskPostActionSchema]);
+export const AskWriteActionSchema = z.discriminatedUnion('type', [AskTodoActionSchema, AskFoodActionSchema, AskMoneyActionSchema, AskPostActionSchema, AskSaveActionSchema]);
 export type AskWriteAction = z.infer<typeof AskWriteActionSchema>;
-export const AskActionSchema = z.discriminatedUnion('type', [AskTodoActionSchema, AskFoodActionSchema, AskMoneyActionSchema, AskPostActionSchema, AskShowActionSchema]);
+export const AskActionSchema = z.discriminatedUnion('type', [AskTodoActionSchema, AskFoodActionSchema, AskMoneyActionSchema, AskPostActionSchema, AskSaveActionSchema, AskShowActionSchema]);
 export type AskAction = z.infer<typeof AskActionSchema>;
 
 /**
@@ -117,8 +132,8 @@ export type AskCardState = z.infer<typeof AskCardStateSchema>;
 export const AskCardSchema = z.object({
   action: AskActionSchema,
   state: AskCardStateSchema,
-  /** The item Add made (Undo deletes it). */
-  ref: LifeIdSchema.optional(),
+  /** The item Add made (Undo deletes it); v0.8: an Intel item's id for a save card. */
+  ref: LifeIdSchema.or(IntelIdSchema).optional(),
   flag: AskFlagSchema.optional(),
 });
 export type AskCard = z.infer<typeof AskCardSchema>;

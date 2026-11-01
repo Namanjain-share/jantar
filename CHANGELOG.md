@@ -3,6 +3,17 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.8.0 (unreleased)
+
+Add post, in Intel, off until you run `jantar intel read on` at the Mac:
+send a link (an Instagram reel, a YouTube video, an X or LinkedIn post, a
+Reddit thread, a TikTok, an article, a PDF, any https page) or a note from
+the phone, an iOS Shortcut, Ask or `jantar intel save`. It is saved on the
+shelf at once, then read on the Mac one at a time, and you find it later by
+what it said. jantar.db gains a table (migration 6; 0.7 opens it and
+carries on). Rebuild and reload the Chrome extension. The protocol stays at
+version 3, and settings don't change version.
+
 ## 0.7.0 (2 November 2026)
 
 Posts, a sixth part of Life, off until you run `jantar life on posts` at the

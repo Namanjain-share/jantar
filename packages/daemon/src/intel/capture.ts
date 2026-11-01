@@ -15,6 +15,7 @@ import { constants } from 'node:fs';
 import { chmod, mkdir, open } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { IntelCaptureBody } from '@jantar/protocol';
+import type { IntelVia } from '../contracts.js';
 import { readRange } from '../sources/lib/fsx.js';
 import { CAPTURES_FILE } from './sources.js';
 
@@ -22,8 +23,8 @@ import { CAPTURES_FILE } from './sources.js';
 export const CAPTURE_OPEN_FLAGS = constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
 
 export interface CaptureFrom {
-  /** v0.5.3: `claude` when `jantar mcp` saved it for a Claude session. */
-  via: 'phone' | 'cli' | 'claude';
+  /** v0.5.3: `claude` when `jantar mcp` saved it for a Claude session. v0.8: `shortcut` (the capture door) and `ask` too. */
+  via: IntelVia;
   /** The folder `jantar intel` ran in, or the session's (ctl.sock only). */
   cwd?: string;
 }

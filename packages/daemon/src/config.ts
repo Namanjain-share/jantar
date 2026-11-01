@@ -505,7 +505,17 @@ export class MemorySettingsStore implements SettingsStore {
 // ---------------------------------------------------------------------------
 // Binaries
 
-const WELL_KNOWN: Record<keyof Omit<Bins, 'node'>, (userHome: string) => string[]> = {
+/** v0.8: Apple's own tools, at their fixed paths only: never from settings or PATH (one runs untrusted media in a sandbox). */
+const FIXED_BINS = {
+  swiftc: '/usr/bin/swiftc',
+  xcodeSelect: '/usr/bin/xcode-select',
+  sandboxExec: '/usr/bin/sandbox-exec',
+} as const satisfies Partial<Record<keyof Bins, string>>;
+
+/** The programs looked up in settings.bins, then PATH (when allowed), then well-known places. */
+type FoundBin = keyof Omit<Bins, 'node' | keyof typeof FIXED_BINS>;
+
+const WELL_KNOWN: Record<FoundBin, (userHome: string) => string[]> = {
   ps: () => ['/bin/ps', '/usr/bin/ps'],
   osascript: () => ['/usr/bin/osascript'],
   lsof: () => ['/usr/sbin/lsof', '/usr/bin/lsof'],
@@ -516,9 +526,10 @@ const WELL_KNOWN: Record<keyof Omit<Bins, 'node'>, (userHome: string) => string[
   screencapture: () => ['/usr/sbin/screencapture'],
   tmux: () => ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/bin/tmux'],
   sips: () => ['/usr/bin/sips'],
+  ytDlp: (h) => [join(h, '.local', 'bin', 'yt-dlp'), '/opt/homebrew/bin/yt-dlp', '/usr/local/bin/yt-dlp'],
 };
 
-const COMMAND_NAME: Record<keyof Omit<Bins, 'node'>, string> = {
+const COMMAND_NAME: Record<FoundBin, string> = {
   ps: 'ps',
   osascript: 'osascript',
   lsof: 'lsof',
@@ -528,6 +539,7 @@ const COMMAND_NAME: Record<keyof Omit<Bins, 'node'>, string> = {
   screencapture: 'screencapture',
   tmux: 'tmux',
   sips: 'sips',
+  ytDlp: 'yt-dlp',
 };
 
 async function isExecutable(path: string): Promise<boolean> {
@@ -552,13 +564,14 @@ export interface ResolveBinsOptions {
 /**
  * Absolute paths for every external program: settings.bins first, then $PATH
  * (when allowed), then well-known locations. `ps` falls back to /bin/ps.
+ * v0.8: swiftc, xcode-select and sandbox-exec only at their fixed paths.
  */
 export async function resolveBins(opts: ResolveBinsOptions): Promise<Bins> {
   const env = opts.env ?? process.env;
   const pathDirs = opts.usePath === false ? [] : (env.PATH ?? '').split(delimiter).filter(Boolean);
   // Windows: claude.exe before npm's extensionless sh shim, which can be found but not started.
   const win = (opts.platform ?? process.platform) === 'win32';
-  const find = async (key: keyof Omit<Bins, 'node'>): Promise<string | null> => {
+  const find = async (key: FoundBin): Promise<string | null> => {
     const configured = opts.settings.bins[key];
     if (configured) return (await isExecutable(configured)) ? configured : null;
     const names = win ? [`${COMMAND_NAME[key]}.exe`, COMMAND_NAME[key]] : [COMMAND_NAME[key]];
@@ -582,5 +595,9 @@ export async function resolveBins(opts: ResolveBinsOptions): Promise<Bins> {
     screencapture: await find('screencapture'),
     tmux: await find('tmux'),
     sips: await find('sips'),
+    ytDlp: await find('ytDlp'),
+    swiftc: (await isExecutable(FIXED_BINS.swiftc)) ? FIXED_BINS.swiftc : null,
+    xcodeSelect: (await isExecutable(FIXED_BINS.xcodeSelect)) ? FIXED_BINS.xcodeSelect : null,
+    sandboxExec: (await isExecutable(FIXED_BINS.sandboxExec)) ? FIXED_BINS.sandboxExec : null,
   };
 }

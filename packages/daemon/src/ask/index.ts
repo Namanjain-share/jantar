@@ -10,7 +10,7 @@
  * taps; input.ts writes the run's stdin; answer.ts reads Claude's answer
  * and checks every action against a fixed list. There is no history file.
  */
-import type { CcwLegacySource, DaemonContext, Factories, LifeService, UsageSource } from '../contracts.js';
+import type { CcwLegacySource, DaemonContext, Factories, IntelService, LifeService, UsageSource } from '../contracts.js';
 import { buildAskService, type AskOptions } from './service.js';
 
 export {
@@ -42,6 +42,10 @@ export {
 } from './service.js';
 
 /** The Ask part (Factories['ask'] plus the daemon's mode). */
-export function createAskService(ctx: DaemonContext, deps: { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }, opts: AskOptions = {}): ReturnType<Factories['ask']> {
+export function createAskService(
+  ctx: DaemonContext,
+  deps: { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource; intel: Pick<IntelService, 'read' | 'remove'> },
+  opts: AskOptions = {},
+): ReturnType<Factories['ask']> {
   return buildAskService(ctx, deps, opts);
 }

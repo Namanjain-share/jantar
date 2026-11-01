@@ -11,6 +11,9 @@
  * hub forwards to a server (NODE_ROUTES) is forwarded by the pipeline
  * before its handler here runs, and getSession answers a server's session
  * from the hub's state. v0.7: routes/posts.ts (Posts, a Life module).
+ * v0.8: Intel reads links: routes/intel.ts (extended), routes/ext-reads.ts
+ * (the extension's reads), routes/capture.ts (the iOS Shortcut's door) and
+ * routes/capture-keys.ts (its keys, the Mac only).
  *
  * v0.4.2: getScreen also returns the dialog the screen shows (terminal/
  * dialog.ts), why a dialog-looking screen gets no buttons (or that Claude's
@@ -81,6 +84,9 @@ import { MEETINGS_ROUTE_IMPLS } from './routes/meetings.js';
 import { ASK_ROUTE_IMPLS } from './routes/ask.js';
 import { NOTIFY_ROUTE_IMPLS } from './routes/notify.js';
 import { MACHINES_ROUTE_IMPLS } from './routes/machines.js';
+import { CAPTURE_ROUTE_IMPLS } from './routes/capture.js';
+import { CAPTURE_KEYS_ROUTE_IMPLS } from './routes/capture-keys.js';
+import { EXT_READS_ROUTE_IMPLS } from './routes/ext-reads.js';
 import type { ApiServices } from './services.js';
 
 export { isRawReply, notImplementedRoute, type Call, type RawReply, type RouteImpl, type RouteTable } from './route-kit.js';
@@ -592,7 +598,7 @@ const CORE_ROUTE_IMPLS: RouteTable = {
   },
 };
 
-/** Every route's handler: the core table plus one table per v0.3, v0.4, v0.5, v0.5.3, v0.6 and v0.7 feature (routes/*.ts). */
+/** Every route's handler: the core table plus one table per v0.3, v0.4, v0.5, v0.5.3, v0.6, v0.7 and v0.8 feature (routes/*.ts). */
 export const ROUTE_IMPLS: RouteTable = {
   ...CORE_ROUTE_IMPLS,
   ...REWRITE_ROUTE_IMPLS,
@@ -623,4 +629,8 @@ export const ROUTE_IMPLS: RouteTable = {
   ...MACHINES_ROUTE_IMPLS,
   // v0.7
   ...POSTS_ROUTE_IMPLS,
+  // v0.8 (the shelf's reads, jobs, Delete, thumbnails and status are in INTEL_ROUTE_IMPLS)
+  ...EXT_READS_ROUTE_IMPLS,
+  ...CAPTURE_ROUTE_IMPLS,
+  ...CAPTURE_KEYS_ROUTE_IMPLS,
 };

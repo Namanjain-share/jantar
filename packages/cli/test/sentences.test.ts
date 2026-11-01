@@ -22,6 +22,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeFakeHome, type FakeHome } from '@jantar/fixtures';
 import { meetingDetail } from '@jantar/fixtures';
 import type { DevicePublic, LifeStatus, MeetingsStatus } from '@jantar/protocol';
+import { INTEL_SHELLS } from '../src/commands/intel.js';
+import { SHORTCUT_SHELL } from '../src/commands/intel-shortcut.js';
 import { COMMANDS, EXIT, main, memoryIo } from '../src/index.js';
 import { contextFor, fakeCtl, fakeSettings, ok } from './helpers.js';
 
@@ -31,6 +33,12 @@ const COMMAND = '(?:files|folders|launch|devices|rewrite|controls|screenshots|ne
 const STUBS = new Set(COMMANDS.filter((c) => c.stub).map((c) => c.name));
 /** A sentence's command when another command's package builds it (v0.5: WP-MC builds `pair --extension` with `meetings`). */
 const BUILT_WITH: Readonly<Record<string, string>> = { pair: 'meetings' };
+/** v0.8 wave 0: a `jantar intel` action still a shell (its lane takes it out of INTEL_SHELLS, or sets SHORTCUT_SHELL false, as it builds it). */
+function intelShell(said: string): boolean {
+  const [cmd, action] = said.split(' ');
+  if (cmd !== 'intel' || action === undefined) return false;
+  return action === 'shortcut' ? SHORTCUT_SHELL : INTEL_SHELLS.has(action);
+}
 /** Sentences that name a command whose argument the screen fills in (the phone's "jantar meetings export {id}"). */
 const FILLED: Readonly<Record<string, string>> = { 'meetings export': 'meetings export <id>' };
 /** Commands whose --help prints their own text, not the usage line (v0.5.3: `jantar mcp` prints the line that adds it to Claude Code). */
@@ -165,7 +173,7 @@ describe('the commands the daemon and the web app name', () => {
 
   for (const [said, where] of found) {
     const first = said.split(' ')[0] as string;
-    const stub = STUBS.has(first) || STUBS.has(BUILT_WITH[first] ?? '');
+    const stub = STUBS.has(first) || STUBS.has(BUILT_WITH[first] ?? '') || intelShell(said);
     const line = FILLED[said] ?? said;
     it.skipIf(stub)(`jantar ${said} (${where[0]}${where.length > 1 ? ` and ${where.length - 1} more` : ''})`, async () => {
       const words = line.split(' ').map((w) => {

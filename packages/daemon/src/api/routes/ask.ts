@@ -67,7 +67,7 @@ export const ASK_ROUTE_IMPLS: RouteTable = {
     audit: lifeAudit,
   },
   askAdd: {
-    handle: (c: Call<AskCardParams, unknown, AskAddBody>, s) => lifeValue(s.deps.ask.add(c.params.id, c.params.n, c.body?.edit, needActor(c.auth))),
+    handle: async (c: Call<AskCardParams, unknown, AskAddBody>, s) => lifeValue(await s.deps.ask.add(c.params.id, c.params.n, c.body?.edit, needActor(c.auth))),
     // The turn's id, never the new item's (lifeAudit reads `:id` first).
     audit: lifeAudit,
   },
@@ -76,7 +76,7 @@ export const ASK_ROUTE_IMPLS: RouteTable = {
     audit: lifeAudit,
   },
   askUndo: {
-    handle: (c: Call<AskCardParams>, s) => okOf(s.deps.ask.undo(c.params.id, c.params.n, needActor(c.auth))),
+    handle: async (c: Call<AskCardParams>, s) => okOf(await s.deps.ask.undo(c.params.id, c.params.n, needActor(c.auth))),
     audit: lifeAudit,
   },
 };

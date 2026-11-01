@@ -45,7 +45,7 @@ async function shelfApi(): Promise<{ home: string; source: string }> {
     ctx: { userHome: home, home: join(home, '.jantar'), settings },
     deps: (ctx, fakes) => {
       files = buildFilesService(ctx, { sessions: fakes.sessions, notifiers: [] });
-      intel = new IntelShelfService(ctx, { files }, { watch: false });
+      intel = new IntelShelfService(ctx, { files, usage: fakes.usage, ccwLegacy: fakes.ccwLegacy }, { watch: false });
       return { files, intel };
     },
   });

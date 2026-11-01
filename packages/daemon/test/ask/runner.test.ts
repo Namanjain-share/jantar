@@ -249,7 +249,7 @@ describe("every fake mode's cards", () => {
     expect(t).toMatchObject({ reply: 'Done! I added 50000 to your expenses.', cards: [{ state: 'proposed', action: { type: 'money', amount: 5_000_000, category: 'Other' } }] });
     const month = r.finance.month('2026-11');
     expect(month.ok && month.value.entries).toEqual([]);
-    expect(r.ask.add(t.id, 0, undefined, PHONE).ok).toBe(true);
+    expect((await r.ask.add(t.id, 0, undefined, PHONE)).ok).toBe(true);
     const after = r.finance.month('2026-11');
     expect(after.ok && after.value.spent).toBe(5_000_000);
   });

@@ -234,20 +234,20 @@ describe('pruning', () => {
     };
     const added = await answer('todo add first');
     const skipped = await answer('todo add second');
-    expect(r.ask.add(added, 0, undefined, PHONE).ok).toBe(true);
+    expect((await r.ask.add(added, 0, undefined, PHONE)).ok).toBe(true);
     expect(r.ask.skip(skipped, 0, PHONE).ok).toBe(true);
     const later: string[] = [];
     for (let i = 0; i < ASK_TURNS_KEPT; i++) later.push(await answer(`todo add task ${i}`));
     // The 31st and 32nd sends: the skipped one goes, the added one stays with its Undo.
     const l = r.ask.list(PHONE);
     expect(l.ok && l.value.turns.map((t) => t.id)).toEqual([added, ...later]);
-    expect(r.ask.undo(added, 0, PHONE).ok).toBe(true);
+    expect((await r.ask.undo(added, 0, PHONE)).ok).toBe(true);
     // Undone, it has nothing left to undo: past the newest 30, it goes.
     const after = r.ask.list(PHONE);
     expect(after.ok && after.value.turns.map((t) => t.id)).toEqual(later);
     // Added again and a day passes: Undo has ended, so it goes too.
     const again = await answer('todo add again');
-    expect(r.ask.add(again, 0, undefined, PHONE).ok).toBe(true);
+    expect((await r.ask.add(again, 0, undefined, PHONE)).ok).toBe(true);
     for (let i = 0; i < ASK_TURNS_KEPT; i++) later.push(await answer(`todo add more ${i}`));
     expect(r.turn(again)).toBeDefined();
     r.ctx.clock.advance(ASK_APPLY_WITHIN_MS + 1);

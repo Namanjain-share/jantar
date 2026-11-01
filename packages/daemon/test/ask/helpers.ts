@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { vi } from 'vitest';
 import type { FakeHome } from '@jantar/fixtures';
 import { LIFE_LIMITS, SettingsSchema, type Account, type AccountId, type AskTurn, type LifeStatus, type Post, type Settings } from '@jantar/protocol';
-import type { Actor, AskService, Bins, ExecFile, FinanceModule, FoodModule, LifeCore, LifeService, PostsModule, TodosModule } from '../../src/contracts.js';
+import type { Actor, AskService, Bins, ExecFile, FinanceModule, FoodModule, IntelService, LifeCore, LifeService, PostsModule, TodosModule } from '../../src/contracts.js';
 import { buildAskService } from '../../src/ask/service.js';
 import { FakeClock } from '../../src/core/clock.js';
 import { createExecFile } from '../../src/core/exec.js';
@@ -202,7 +202,9 @@ export function askOn(ctx: TestContext, opts: { readOnly?: boolean } = {}): AskP
     };
   };
   const life = notBuilt<LifeService>('Life', { start: async () => {}, stop: async () => {}, broken: () => broken, status, todos, food, finance, posts });
-  const ask = buildAskService(ctx, { life, usage: f.usage, ccwLegacy: f.ccwLegacy }, { readOnly: opts.readOnly === true });
+  // v0.8: Intel's read and remove for the save card (wave 0: not built, the API's 501).
+  const intel = notBuilt<Pick<IntelService, 'read' | 'remove'>>('Reading links');
+  const ask = buildAskService(ctx, { life, usage: f.usage, ccwLegacy: f.ccwLegacy, intel }, { readOnly: opts.readOnly === true });
   return {
     core,
     life,

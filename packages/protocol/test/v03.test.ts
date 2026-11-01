@@ -161,8 +161,8 @@ describe('v0.3 settings', () => {
       screenshots: { enabled: true, allowSelect: true },
       controls: { escapeVerified: true, clearVerified: true },
     });
-    // v0.4's life and intel stay off here (v04.test.ts), v0.5's meetings (v05.test.ts), v0.5.3's ask (v053.test.ts) and v0.6's fleet (v06.test.ts).
-    expect(settingsFeatures(on)).toEqual({ files: true, launch: true, rewrite: true, controls: true, screenshots: true, screenshotSelect: true, escape: true, clearDraft: true, life: false, intel: false, meetings: false, ask: false, fleet: false });
+    // v0.4's life and intel stay off here (v04.test.ts), v0.5's meetings (v05.test.ts), v0.5.3's ask (v053.test.ts), v0.6's fleet (v06.test.ts) and v0.8's intelRead (v08-intel-read.test.ts).
+    expect(settingsFeatures(on)).toEqual({ files: true, launch: true, rewrite: true, controls: true, screenshots: true, screenshotSelect: true, escape: true, clearDraft: true, life: false, intel: false, intelRead: false, meetings: false, ask: false, fleet: false });
     // Neither key while controls are off.
     expect(settingsFeatures(SettingsSchema.parse({ controls: { enabled: false, escapeVerified: true, clearVerified: true } }))).toMatchObject({ escape: false, clearDraft: false });
     // A daemon from before clearDraft existed sends no such key: off.
@@ -370,8 +370,8 @@ describe('v0.3 routes', () => {
   });
 
   it('marks only the byte routes as raw responses', () => {
-    // v0.5 adds a meeting's screenshot.
-    expect(routes.filter(([, r]) => r.rawResponse).map(([n]) => n).sort()).toEqual(['filesRaw', 'meetingShot', 'sessionScreenshot']);
+    // v0.5 adds a meeting's screenshot, v0.8 a read item's thumbnail.
+    expect(routes.filter(([, r]) => r.rawResponse).map(([n]) => n).sort()).toEqual(['filesRaw', 'intelFrame', 'meetingShot', 'sessionScreenshot']);
   });
 
   it('has no audio, git or diff routes', () => {

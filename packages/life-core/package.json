@@ -1,6 +1,6 @@
 {
   "name": "@jantar/life-core",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "Pure Life logic for Jantar: dose schedules and adherence, pill supply, repeats, day keys and snoozes in a time zone.",

@@ -41,7 +41,8 @@ describe('settings version 2', () => {
       currency: null,
       lockScreenDetails: false,
     });
-    expect(s.intel).toEqual({ enabled: false, sources: [] });
+    // v0.8 adds reading links (off) and the speech language.
+    expect(s.intel).toEqual({ enabled: false, sources: [], read: false, speechLocale: 'en-IN' });
     expect(s.accounts).toEqual({ kept: [], prime: false, primeKept: false });
     expect(settingsFeatures(s)).toMatchObject({ life: false, intel: false });
   });

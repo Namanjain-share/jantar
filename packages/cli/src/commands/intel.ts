@@ -10,6 +10,12 @@
  * most 50 MB that the Files denylist does not protect, by its given or its
  * real path. `sources` takes counts and errors from the daemon and paths
  * from the local config.
+ *
+ * v0.8 (Intel reads links): `read on|off|status|speech`, `save` (save a link
+ * and read it on the Mac), `jobs`, `retry` and `delete` (lane A), and
+ * `shortcut` (the iOS Shortcut's keys: commands/intel-shortcut.ts, lane C,
+ * handed its arguments unparsed). Wave 0's shells: the usage and help are
+ * final, a run says "Not built yet."
  */
 import { realpath } from 'node:fs/promises';
 import { isAbsolute, normalize } from 'node:path';
@@ -34,6 +40,7 @@ import { denyRulesFor, displayPath } from '../lib/roots.js';
 import { readSettings } from '../lib/settings.js';
 import { changeSettings, hasControlChars, onOff, parseOnOff } from '../lib/switches.js';
 import { clip, plural } from '../lib/text.js';
+import { SHORTCUT_HELP, runShortcut } from './intel-shortcut.js';
 
 /** IntelSettingsSchema's limits. */
 const SOURCES_MAX = 10;
@@ -48,9 +55,17 @@ const FLAGS = {
   note: { type: 'string', help: 'add: a note, shown as "what it is"' },
   q: { type: 'string', help: 'list: search by words (titles, notes, type, tags, link, fields), best match first' },
   limit: { type: 'number', help: `list: how many (default ${LIST_DEFAULT}, at most ${INTEL_PAGE_MAX})` },
+  depth: { type: 'string', help: 'save, retry: light, standard (the default) or full' },
 } as const;
 
 type Flags = ParsedArgs<typeof FLAGS>['flags'];
+
+/**
+ * v0.8 wave 0: the actions that are still shells ("Not built yet."). Lane A
+ * takes each out as it builds it; test/sentences.test.ts skips the
+ * sentences that name one until then.
+ */
+export const INTEL_SHELLS: ReadonlySet<string> = new Set(['save', 'jobs', 'retry', 'delete', 'read']);
 
 /** Refuse flags that belong to another action, so a typo never goes unnoticed. */
 function only(flags: Flags, action: string, allowed: readonly (keyof typeof FLAGS)[]): void {
@@ -242,8 +257,8 @@ async function list(ctx: CliContext, flags: Flags): Promise<number> {
 export default defineCommand(
   {
     name: 'intel',
-    summary: 'Turn the Intel shelf on or off, name its JSONL sources, add and list items.',
-    usage: 'jantar intel <on|off|sources|source add <file.jsonl>|source rm <id>|add "<title>"|list> [options]',
+    summary: 'Turn the Intel shelf on or off, name its JSONL sources, add, save and read links, list items.',
+    usage: 'jantar intel <on|off|sources|source add <file.jsonl>|source rm <id>|add "<title>"|list|save <link|text>|jobs|retry <id>|delete <id>|read on|off|status|speech <locale>|shortcut ...> [options]',
     owner: 'WP-IN',
     help:
       '  intel on | off                 show or hide the shelf on the phone\n' +
@@ -254,9 +269,19 @@ export default defineCommand(
       '                                 put an item on the shelf (a link already there is not added twice)\n' +
       '  intel list [--q <text>] [--type <t>] [--tag <t>] [--limit <n>]\n' +
       '                                 what is on the shelf: best match first with --q, else newest first\n' +
+      '  intel save <link|text> [--depth light|standard|full]\n' +
+      '                                 save a link (a reel, a video, a post, an article, a PDF) and read it on this Mac\n' +
+      '  intel jobs                     the reads waiting, running and finished today\n' +
+      '  intel retry <id> [--depth <d>] read an item again\n' +
+      '  intel delete <id>              delete a saved item and its thumbnails\n' +
+      '  intel read on | off | status   let this Mac read saved links (what leaves it, what it can use)\n' +
+      '  intel read speech <locale>     the language of speech-to-text (on this Mac only), e.g. en-IN\n' +
+      SHORTCUT_HELP +
       'A source is named by its file name: ~/bot/intel.jsonl shows as "intel" on the phone.',
   },
   async (argv, ctx) => {
+    // v0.8: the Shortcut's keys parse their own flags.
+    if (argv[0] === 'shortcut') return runShortcut(argv.slice(1), ctx);
     const { flags, positionals } = parseArgs(argv, FLAGS, { min: 1 });
     const [action, ...rest] = positionals;
     switch (action) {
@@ -298,7 +323,12 @@ export default defineCommand(
         if (rest.length) throw new UsageError('list takes no argument (search with --q)');
         return list(ctx, flags);
       default:
-        throw new UsageError(`unknown action "${clip(action ?? '', 20)}" (on, off, sources, source, add or list)`);
+        // v0.8 (wave 0 shells; lane A builds them).
+        if (action !== undefined && INTEL_SHELLS.has(action)) {
+          ctx.io.err('Not built yet.\n');
+          return EXIT.usage;
+        }
+        throw new UsageError(`unknown action "${clip(action ?? '', 20)}" (on, off, sources, source, add, list, save, jobs, retry, delete, read or shortcut)`);
     }
   },
 );

@@ -65,9 +65,10 @@ import {
   type AskWriteAction,
   type RewriteModel,
 } from '@jantar/protocol';
-import type { Actor, AskService, CcwLegacySource, DaemonContext, LifeResult, LifeService, Logger, TimerId, Unsubscribe, UsageSource } from '../contracts.js';
+import type { Actor, AskService, CcwLegacySource, DaemonContext, IntelService, LifeResult, LifeService, Logger, TimerId, Unsubscribe, UsageSource } from '../contracts.js';
 import { actorId } from '../core/actor.js';
 import { newId } from '../core/ids.js';
+import { NotImplementedError } from '../core/not-implemented.js';
 import { pickSharedRunAccount, runVia } from '../rewrite/pick.js';
 import { DROPPABLE_OPTIONS, execRewrite, prepareRunDir, runDroppingRefused, type RunOutcome } from '../rewrite/run.js';
 import { ASK_SENTENCES, asksReminder, checkWrite, parseAnswer, type AskProject, type AskScope, type ParsedAnswer } from './answer.js';
@@ -96,7 +97,15 @@ export interface AskDeps {
   life: LifeService;
   usage: UsageSource;
   ccwLegacy: CcwLegacySource;
+  /** v0.8: Intel's read and remove only, for the save card (lane C). */
+  intel: Pick<IntelService, 'read' | 'remove'>;
 }
+
+/** The write cards Life applies (every one but v0.8's save, which goes to Intel). */
+type LifeWriteAction = Exclude<AskWriteAction, { type: 'save' }>;
+
+/** What a save card's Add and Undo say until lane C builds them (NotImplementedError: the API's 501). */
+const SAVING = 'Saving links from Ask';
 
 export interface AskOptions {
   /** jantard --read-only: told, not wrapped (the list says why; send is refused). */
@@ -252,7 +261,7 @@ class AskServiceImpl implements AskService {
     return OK;
   }
 
-  add(id: string, n: number, edit: AskWriteAction | undefined, actor: Actor): LifeResult<{ id: string }> {
+  async add(id: string, n: number, edit: AskWriteAction | undefined, actor: Actor): Promise<LifeResult<{ id: string }>> {
     const found = this.writeCard(actorId(actor), id, n);
     if (!found.ok) return found;
     const { turn, card, action } = found.value;
@@ -266,6 +275,8 @@ class AskServiceImpl implements AskService {
     const wanted = edit ?? action;
     const checked = checkWrite(wanted, this.now(), { noTime: card.flag === 'no_time', noProject: card.flag === 'no_project' });
     if (!checked.ok) return refuse('invalid_request', checked.reason);
+    // v0.8: a save card goes to Intel, never to Life.
+    if (checked.action.type === 'save') throw new NotImplementedError(SAVING);
     const off = this.moduleOff(checked.action);
     if (off) return off;
     const made = this.apply(checked.action, actor);
@@ -289,13 +300,15 @@ class AskServiceImpl implements AskService {
     return OK;
   }
 
-  undo(id: string, n: number, actor: Actor): LifeResult {
+  async undo(id: string, n: number, actor: Actor): Promise<LifeResult> {
     const found = this.card(actorId(actor), id, n);
     if (!found.ok) return found;
     const { turn, card } = found.value;
     const action = card.action;
     if (action.type === 'show' || card.state !== 'added' || !card.ref) return refuse('conflict', ASK_SENTENCES.nothingToUndo);
     if (this.tooOld(turn)) return refuse('conflict', ASK_SENTENCES.oldUndo);
+    // v0.8: a save card's item is Intel's.
+    if (action.type === 'save') throw new NotImplementedError(SAVING);
     // While the part is off Life's own delete is refused too (403): Undo is no way around a switch.
     const off = this.moduleOff(action);
     if (off) return off;
@@ -462,7 +475,7 @@ class AskServiceImpl implements AskService {
   // Apply: a fixed switch to eight Life calls
 
   /** The part's switch is off (403 with its sentence), or life.db is broken (503). */
-  private moduleOff(action: AskWriteAction): Refusal | null {
+  private moduleOff(action: LifeWriteAction): Refusal | null {
     const module = ASK_MODULE_OF[action.type];
     if (!this.ctx.settings.get().life[module]) return refuse('forbidden', ASK_MODULE_OFF[module]);
     const broken = this.lifeBroken();
@@ -470,7 +483,7 @@ class AskServiceImpl implements AskService {
   }
 
   /** Life's own body, checked with its own schema before the module is called. */
-  private apply(action: AskWriteAction, actor: Actor): LifeResult<{ id: string }> {
+  private apply(action: LifeWriteAction, actor: Actor): LifeResult<{ id: string }> {
     const life = this.deps.life;
     switch (action.type) {
       case 'todo': {
@@ -508,7 +521,7 @@ class AskServiceImpl implements AskService {
     }
   }
 
-  private remove(action: AskWriteAction, ref: string, actor: Actor): LifeResult {
+  private remove(action: LifeWriteAction, ref: string, actor: Actor): LifeResult {
     const life = this.deps.life;
     switch (action.type) {
       case 'todo':

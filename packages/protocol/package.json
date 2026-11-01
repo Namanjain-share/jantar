@@ -1,6 +1,6 @@
 {
   "name": "@jantar/protocol",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "Shared zod schemas, event types, reducer and REST types for Jantar.",
@@ -23,6 +23,16 @@
       "@jantar/source": "./src/node-link.ts",
       "types": "./dist/node-link.d.ts",
       "default": "./dist/node-link.js"
+    },
+    "./post-url": {
+      "@jantar/source": "./src/post-url.ts",
+      "types": "./dist/post-url.d.ts",
+      "default": "./dist/post-url.js"
+    },
+    "./page-read": {
+      "@jantar/source": "./src/page-read.ts",
+      "types": "./dist/page-read.d.ts",
+      "default": "./dist/page-read.js"
     },
     "./package.json": "./package.json"
   },

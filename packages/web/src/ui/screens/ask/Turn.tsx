@@ -265,6 +265,13 @@ function cardTitle(card: AskCard, currency: string | null): string {
       return formatAmount(a.amount, currency);
     case 'post':
       return a.title ?? '';
+    // v0.8 (wave 0): the link's host; lane B draws the save card.
+    case 'save':
+      try {
+        return new URL(a.url).host;
+      } catch {
+        return '';
+      }
     case 'show':
       return '';
   }
@@ -286,6 +293,9 @@ function metaOf(card: AskCard, today: string, projects: readonly ProjectView[]):
       return [a.category, ...(a.note ? [a.note] : []), ...(a.day === today ? [] : [dayWords(a.day, today)])];
     case 'post':
       return [...(a.where ? [a.where] : []), ...(a.due ? [dueWords(a.due, today)] : [])];
+    // v0.8 (wave 0): the depth; lane B words it.
+    case 'save':
+      return [a.depth ?? 'standard'];
     case 'show':
       return [];
   }

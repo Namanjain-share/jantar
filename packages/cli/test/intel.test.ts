@@ -62,7 +62,8 @@ describe('on and off', () => {
     const { ctx, io } = contextFor(home);
     expect(await intel.run(['on'], ctx)).toBe(EXIT.ok);
     const config = JSON.parse(await readFile(join(home.jantarHome, 'config.json'), 'utf8'));
-    expect(config.intel).toEqual({ enabled: true, sources: [] });
+    // v0.8: reading links stays off, with its speech language.
+    expect(config.intel).toEqual({ enabled: true, sources: [], read: false, speechLocale: 'en-IN' });
     expect(io.stdout).toContain('Saved to config.json');
   });
 });

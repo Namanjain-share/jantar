@@ -6,9 +6,10 @@
  * part (the hub's forwarder and link, or an inert stand-in) and, on a node,
  * the in-process calls of the `link` transport.
  */
-import { DEFAULT_HOST, UPLOADS_IN_FLIGHT, V042_LIMITS, type Pane, type Session } from '@jantar/protocol';
+import { DEFAULT_HOST, INTEL_READ_LIMITS, UPLOADS_IN_FLIGHT, V042_LIMITS, type Pane, type Session } from '@jantar/protocol';
 import type { DaemonContext, FleetService, Logger, NodeLinkService, PaneTarget, Parts, TerminalBackend, TimerId, UploadStore } from '../contracts.js';
 import { DeviceAuth } from '../auth/devices.js';
+import { CaptureKeyAuth } from '../auth/capture-keys.js';
 import { ExtensionAuth } from '../auth/extensions.js';
 import { OriginPolicy } from '../auth/origin.js';
 import { PairingService } from '../auth/pairing.js';
@@ -121,6 +122,19 @@ export const V053_LIMITS = {
  */
 export const V07_LIMITS = {
   postCtl: { limit: 30, windowMs: 60 * 60_000 },
+} as const;
+
+/**
+ * v0.8 limits of the capture door (INTEL_READ_LIMITS): saves per capture
+ * key an hour and a day (key them by `actorName(auth)`, `capture:<id>`),
+ * and bad keys per caller (key them by `auth.rateKey`, which reads
+ * CF-Connecting-IP only in cloudflare mode). The queue's and the daily read
+ * caps apply on top (Intel's own).
+ */
+export const V08_LIMITS = {
+  captureHour: { limit: INTEL_READ_LIMITS.capturePerHour, windowMs: 60 * 60_000 },
+  captureDay: { limit: INTEL_READ_LIMITS.capturePerDay, windowMs: 24 * 60 * 60_000 },
+  captureBadKey: { limit: INTEL_READ_LIMITS.badKeys, windowMs: INTEL_READ_LIMITS.badKeyWindowMs },
 } as const;
 
 export interface ApiOptions {
@@ -356,6 +370,12 @@ export class ApiServices {
   readonly notifyTestLimiter: SlidingWindowLimiter;
   /** v0.7 (V07_LIMITS): posts added over ctl.sock (postCreate). */
   readonly postCtlLimiter: SlidingWindowLimiter;
+  /** v0.8: the iOS Shortcut's capture keys (auth/capture-keys.ts). */
+  readonly captureKeys: CaptureKeyAuth;
+  /** v0.8 (V08_LIMITS): the capture door's saves per key, an hour and a day, and its bad keys per caller. */
+  readonly captureHourLimiter: SlidingWindowLimiter;
+  readonly captureDayLimiter: SlidingWindowLimiter;
+  readonly captureBadKeyLimiter: SlidingWindowLimiter;
   readonly sockets = new SocketRegistry();
   /** v0.6: the hub's Fleet part (inert while Fleet is off), or a stand-in that targets nothing. */
   readonly fleet: FleetService;
@@ -424,6 +444,10 @@ export class ApiServices {
     this.folderTodoLimiter = per(V053_LIMITS.folderTodo);
     this.notifyTestLimiter = per(V053_LIMITS.notifyTest);
     this.postCtlLimiter = per(V07_LIMITS.postCtl);
+    this.captureKeys = new CaptureKeyAuth({ db: ctx.db, clock: ctx.clock, log: this.log });
+    this.captureHourLimiter = per(V08_LIMITS.captureHour);
+    this.captureDayLimiter = per(V08_LIMITS.captureDay);
+    this.captureBadKeyLimiter = per(V08_LIMITS.captureBadKey);
     this.panes = deps.panes ?? new PaneLookup(deps.terminal, ctx, undefined, opts.paneLookupTimeoutMs);
     this.fleet = deps.fleet ?? offFleet();
     this.nodeLink = deps.nodeLink ?? offNodeLink();

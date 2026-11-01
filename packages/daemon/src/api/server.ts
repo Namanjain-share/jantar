@@ -73,9 +73,9 @@ async function clearStaleSocket(path: string): Promise<void> {
 
 /**
  * v0.6: the switches a daemon reports in daemon.version. A node never offers
- * Files, Rewrite, screenshots, Life, Intel, Meetings, Ask or Fleet (they are
- * the Mac's), and with no backend it can type with, no Controls or starting
- * sessions either.
+ * Files, Rewrite, screenshots, Life, Intel (v0.8: nor reading links),
+ * Meetings, Ask or Fleet (they are the Mac's), and with no backend it can
+ * type with, no Controls or starting sessions either.
  */
 export function reportedFeatures(settings: Settings, mode: Pick<DaemonMode, 'role' | 'terminal'>): Features {
   const f = settingsFeatures(settings);
@@ -89,6 +89,7 @@ export function reportedFeatures(settings: Settings, mode: Pick<DaemonMode, 'rol
     screenshotSelect: false,
     life: false,
     intel: false,
+    intelRead: false,
     meetings: false,
     ask: false,
     fleet: false,

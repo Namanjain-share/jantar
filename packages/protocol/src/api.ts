@@ -69,6 +69,7 @@ import {
   FILES_CHANGES_LIMIT,
   FILES_LIST_LIMIT,
   FILES_TEXT_WINDOW,
+  INTEL_READ_LIMITS,
   LAUNCH_HISTORY_LIMIT,
   KEYPAD_LINES,
   LAUNCH_PROMPT_MAX,
@@ -131,12 +132,29 @@ import {
   WeightBodySchema,
 } from './life.js';
 import {
+  CaptureKeyAddBodySchema,
+  CaptureKeyAddReplySchema,
+  CaptureKeyListSchema,
+  CaptureKeyRevokeBodySchema,
+  CaptureKeyRevokeReplySchema,
+  CaptureSaveBodySchema,
+  CaptureSaveReplySchema,
+  ExtReadNextReplySchema,
+  ExtReadParamsSchema,
+  ExtReadResultBodySchema,
   IntelCaptureBodySchema,
   IntelCaptureReplySchema,
+  IntelFrameParamsSchema,
   IntelItemResponseSchema,
+  IntelJobsResponseSchema,
   IntelListQuerySchema,
   IntelListResponseSchema,
   IntelParamsSchema,
+  IntelReadBodySchema,
+  IntelReadReplySchema,
+  IntelReadStatusSchema,
+  IntelRereadBodySchema,
+  IntelRereadReplySchema,
   IntelSourcesResponseSchema,
 } from './intel.js';
 import { NotifyTestBodySchema, NotifyTestResponseSchema } from './alerts.js';
@@ -823,6 +841,7 @@ export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
  * `life.<module>`; 'intel' reads `intel.enabled`. v0.5: 'meetings' reads
  * `meetings.enabled`. v0.5.3: 'ask' reads `ask.enabled`. v0.6: 'fleet' reads
  * `fleet.enabled`. v0.7: 'posts', a sixth Life module, reads `life.posts`.
+ * v0.8: 'intelRead' reads `intel.enabled` and `intel.read` (reading links).
  */
 export type FeatureSwitch =
   | 'files'
@@ -840,7 +859,8 @@ export type FeatureSwitch =
   | 'meetings'
   | 'ask'
   | 'fleet'
-  | 'posts';
+  | 'posts'
+  | 'intelRead';
 
 export interface RouteDef {
   method: HttpMethod | 'WS';
@@ -855,9 +875,13 @@ export interface RouteDef {
    * Fleet is on (404 otherwise), never with an Origin, and the caller
    * proves itself with its own key (the pairing code, then the link's
    * handshake).
+   * v0.8: "capture" routes (under CAPTURE_PREFIX: the iOS Shortcut's door)
+   * take no device either, only a capture key (CAPTURE_KEY_HEADER): they
+   * exist only in `tailscale` or `cloudflare` mode, with Intel on and an
+   * active key (404 otherwise), never with an Origin.
    */
-  scope: Scope | 'public' | 'extension' | 'node';
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7';
+  scope: Scope | 'public' | 'extension' | 'node' | 'capture';
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8';
   /**
    * While this switch is off the route answers 403 with the sentence that
    * turns it on (screenshots: 403 screenshots_off), before validation and
@@ -1567,6 +1591,69 @@ export const ROUTES = {
   postGoalsSet: route({
     method: 'PUT', path: '/v1/posts/goals', scope: 'control', phase: 'v0.7', ctl: false, feature: 'posts',
     body: PostGoalsBodySchema, response: OkReplySchema, summary: 'Replace the weekly goals, one per platform and kind ([] removes them).',
+  }),
+
+  // --- v0.8 Intel reads links (Add post). The phone and the CLI save and read (behind intelRead); the jobs,
+  // Delete and thumbnails need only the shelf. The Mac alone sees the status and makes capture keys.
+  intelRead: route({
+    method: 'POST', path: '/v1/intel/reads', scope: 'control', phase: 'v0.8', ctl: true, feature: 'intelRead',
+    body: IntelReadBodySchema, response: IntelReadReplySchema,
+    summary: 'Save a link (or a note) to the shelf at once and read it on the Mac in the background.',
+  }),
+  intelReread: route({
+    method: 'POST', path: '/v1/intel/items/:id/read', scope: 'control', phase: 'v0.8', ctl: true, feature: 'intelRead',
+    params: IntelParamsSchema, body: IntelRereadBodySchema, response: IntelRereadReplySchema,
+    summary: 'Retry a read, or read an item again at another depth.',
+  }),
+  intelJobs: route({
+    method: 'GET', path: '/v1/intel/jobs', scope: 'control', phase: 'v0.8', ctl: true, feature: 'intel',
+    response: IntelJobsResponseSchema, summary: 'Reads waiting and running, oldest first, then those finished in the last day.',
+  }),
+  intelDelete: route({
+    method: 'DELETE', path: '/v1/intel/items/:id', scope: 'control', phase: 'v0.8', ctl: true, feature: 'intel',
+    params: IntelParamsSchema, response: OkReplySchema, summary: 'Delete a saved item and its thumbnails (captures only).',
+  }),
+  intelFrame: route({
+    method: 'GET', path: '/v1/intel/items/:id/frames/:n', scope: 'control', phase: 'v0.8', ctl: false, feature: 'intel', rawResponse: true,
+    params: IntelFrameParamsSchema, summary: "A read item's thumbnail (image/jpeg).",
+  }),
+  intelReadStatus: route({
+    method: 'GET', path: '/v1/intel/read/status', scope: 'admin', phase: 'v0.8', ctl: true, localOnly: true,
+    response: IntelReadStatusSchema, summary: 'What reading links can use on this Mac, today\'s reads, the queue and the capture door.',
+  }),
+  captureKeyAdd: route({
+    method: 'POST', path: '/v1/intel/capture-keys', scope: 'admin', phase: 'v0.8', ctl: true, localOnly: true, feature: 'intel',
+    body: CaptureKeyAddBodySchema, response: CaptureKeyAddReplySchema,
+    summary: "A capture key for the iOS Shortcut, shown once (the Mac only: jantar intel shortcut add).",
+  }),
+  captureKeyList: route({
+    method: 'GET', path: '/v1/intel/capture-keys', scope: 'admin', phase: 'v0.8', ctl: true, localOnly: true,
+    response: CaptureKeyListSchema, summary: 'The active capture keys (never a key).',
+  }),
+  captureKeyRevoke: route({
+    method: 'POST', path: '/v1/intel/capture-keys/revoke', scope: 'admin', phase: 'v0.8', ctl: true, localOnly: true,
+    body: CaptureKeyRevokeBodySchema, response: CaptureKeyRevokeReplySchema, summary: 'Revoke one capture key, or all of them.',
+  }),
+
+  // --- v0.8 The capture door (CAPTURE_PREFIX): the iOS Shortcut's one route, with a capture key, only in
+  // tailscale or cloudflare mode while Intel is on and a key exists (404 otherwise). It saves and queues only.
+  captureSave: route({
+    method: 'POST', path: '/v1/capture/save', scope: 'capture', phase: 'v0.8', ctl: false, status: 202,
+    bodyLimit: INTEL_READ_LIMITS.captureBodyBytes,
+    body: CaptureSaveBodySchema, response: CaptureSaveReplySchema,
+    summary: 'Save a shared link to Intel (the iOS Shortcut); the reply is always the same sentence.',
+  }),
+
+  // --- v0.8 The extension's reads (its key, loopback, its bound Origin), while Read saved links is on in its popup.
+  extReadNext: route({
+    method: 'GET', path: '/v1/ext/reads/next', scope: 'extension', phase: 'v0.8', ctl: false, feature: 'intelRead',
+    response: ExtReadNextReplySchema, summary: 'The next post for Chrome to read (a URL the daemon rebuilt), or null.',
+  }),
+  extReadResult: route({
+    method: 'POST', path: '/v1/ext/reads/:id', scope: 'extension', phase: 'v0.8', ctl: false, feature: 'intelRead',
+    bodyLimit: INTEL_READ_LIMITS.extResultBytes,
+    params: ExtReadParamsSchema, body: ExtReadResultBodySchema, response: OkReplySchema,
+    summary: 'What Chrome read of a post, or why it could not.',
   }),
 } as const satisfies Record<string, RouteDef>;
 

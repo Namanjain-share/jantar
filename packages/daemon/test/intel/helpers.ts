@@ -12,6 +12,7 @@ import type { SessionSource } from '../../src/contracts.js';
 import { createTestContext, type TestContext } from '../../src/core/testing.js';
 import { buildFilesService } from '../../src/files/service.js';
 import { IntelShelfService, type IntelServiceOptions } from '../../src/intel/service.js';
+import { FakeCcwLegacy, FakeUsage } from '../api/fakes.js';
 
 export interface IntelEnv {
   base: string;
@@ -50,7 +51,7 @@ export async function intelEnv(opts: { intel?: Partial<Settings['intel']>; servi
   const ctx = createTestContext({ userHome: home, home: join(home, '.jantar'), settings });
   const files = buildFilesService(ctx, { sessions: noSessions, notifiers: [] });
   await files.start();
-  const intel = new IntelShelfService(ctx, { files }, { watch: false, ...opts.service });
+  const intel = new IntelShelfService(ctx, { files, usage: new FakeUsage(), ccwLegacy: new FakeCcwLegacy() }, { watch: false, ...opts.service });
   if (opts.start !== false) await intel.start();
   return {
     base,

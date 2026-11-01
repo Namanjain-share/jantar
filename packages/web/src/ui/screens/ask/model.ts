@@ -88,6 +88,9 @@ export function kindLabel(a: AskAction): string {
       return a.kind === 'income' ? 'Income' : 'Expense';
     case 'post':
       return postKindLabel(a);
+    // v0.8 (wave 0): a save to Intel; lane B draws its card.
+    case 'save':
+      return 'Save to Intel';
     case 'show':
       return 'Now';
   }

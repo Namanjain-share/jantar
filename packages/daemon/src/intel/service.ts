@@ -13,9 +13,25 @@
  * emitted or audited.
  */
 import { dirname, isAbsolute, join } from 'node:path';
-import type { IntelCaptureBody, IntelItem, IntelListQuery, IntelListResponse, IntelSourcesResponse, Settings } from '@jantar/protocol';
-import type { DaemonContext, Factories, IntelService, LifeResult, TimerId, Unsubscribe } from '../contracts.js';
+import type {
+  ExtReadJob,
+  ExtReadResultBody,
+  IntelCaptureBody,
+  IntelDepth,
+  IntelItem,
+  IntelJobsResponse,
+  IntelListQuery,
+  IntelListResponse,
+  IntelReadBody,
+  IntelReadReply,
+  IntelReadStatus,
+  IntelSourcesResponse,
+  Settings,
+} from '@jantar/protocol';
+import type { DaemonContext, Factories, IntelService, IntelVia, LifeResult, TimerId, Unsubscribe } from '../contracts.js';
 import { newId } from '../core/ids.js';
+import { NotImplementedError } from '../core/not-implemented.js';
+import type { IntelOptions } from './index.js';
 import { DirWatcher } from '../sources/lib/dir-watch.js';
 import { Serial } from '../sources/lib/serial.js';
 import { appendCapture, captureRecord, type CaptureFrom } from './capture.js';
@@ -34,10 +50,14 @@ export interface IntelServiceOptions {
   emitEveryMs?: number;
   /** Items kept across every source (default INTEL_MAX_ITEMS). */
   maxItems?: number;
+  /** v0.8: the daemon's mode and the tests' seams (intel/index.ts IntelOptions). */
+  read?: IntelOptions;
 }
 
 const EMPTY_LIST: IntelListResponse = { items: [], next: null, total: 0, types: [], tags: [] };
 export const SHELF_OFF = 'The Intel shelf is off.';
+/** What an unbuilt v0.8 call says (NotImplementedError: the API's 501). */
+const READING = 'Reading links';
 export const CAPTURE_FAILED = "Couldn't save it on the Mac. Try again.";
 
 export class IntelShelfService implements IntelService {
@@ -53,7 +73,7 @@ export class IntelShelfService implements IntelService {
   private captures: Promise<unknown> = Promise.resolve();
   private emitTimer: TimerId | undefined;
   private lastEmit = -Infinity;
-  private readonly opts: Required<Omit<IntelServiceOptions, 'maxItems'>>;
+  private readonly opts: Required<Omit<IntelServiceOptions, 'maxItems' | 'read'>>;
 
   constructor(
     private readonly ctx: DaemonContext,
@@ -114,6 +134,40 @@ export class IntelShelfService implements IntelService {
       ...(f.error !== undefined ? { error: f.error } : {}),
       updatedAt: f.updatedAt,
     }));
+  }
+
+  // ---------------------------------------------------------------- v0.8 reads (wave 0 stubs: the API's 501 until lane A)
+
+  read(_body: IntelReadBody, _from: { via: IntelVia; keyId?: string }): Promise<LifeResult<IntelReadReply>> {
+    return Promise.reject(new NotImplementedError(READING));
+  }
+
+  reread(_id: string, _depth: IntelDepth | undefined): LifeResult<{ id: string }> {
+    throw new NotImplementedError(READING);
+  }
+
+  jobs(): IntelJobsResponse {
+    throw new NotImplementedError(READING);
+  }
+
+  remove(_id: string): Promise<LifeResult> {
+    return Promise.reject(new NotImplementedError(READING));
+  }
+
+  frame(_id: string, _n: number): Promise<Buffer | null> {
+    return Promise.reject(new NotImplementedError(READING));
+  }
+
+  readStatus(): Promise<IntelReadStatus> {
+    return Promise.reject(new NotImplementedError(READING));
+  }
+
+  extNext(_extensionId: string): ExtReadJob | null {
+    throw new NotImplementedError(READING);
+  }
+
+  extResult(_leaseId: string, _extensionId: string, _body: ExtReadResultBody): LifeResult {
+    throw new NotImplementedError(READING);
   }
 
   // ---------------------------------------------------------------- tests

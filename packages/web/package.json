@@ -1,6 +1,6 @@
 {
   "name": "@jantar/web",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "license": "FSL-1.1-MIT",
   "description": "The Jantar web dashboard and installable phone app (PWA).",

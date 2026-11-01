@@ -52,7 +52,7 @@ describe('LG3: v0.4 settings are Mac only', () => {
     expect((await api.ctl.inject({ method: 'PATCH', url: '/v1/settings', payload: samples })).statusCode).toBe(200);
     const { cookie } = await pairCookie(api, ['admin']);
     const read = await api.tcp.inject({ method: 'GET', url: '/v1/settings', headers: h(cookie) });
-    expect(read.json().settings.intel).toEqual({ enabled: true, sources: [] });
+    expect(read.json().settings.intel).toEqual({ read: false, speechLocale: 'en-IN', enabled: true, sources: [] });
     const patched = await api.tcp.inject({ method: 'PATCH', url: '/v1/settings', headers: h(cookie), payload: { notify: { webpush: true } } });
     expect(patched.statusCode).toBe(200);
     expect(patched.json().settings.intel.sources).toEqual([]);

@@ -57,3 +57,32 @@ export const TIMING = Object.freeze({
   /** Screenshots at least this far apart (Chrome allows two a second). */
   shotGapMs: 550,
 });
+
+/**
+ * v0.8: reading saved links in the user's Chrome (the popup's Read saved
+ * links, off by default). The worker's alarm wakes it to ask the daemon for
+ * posts to read (`GET /v1/ext/reads/next`); the daemon uses Chrome only while
+ * the extension asked within INTEL_READ_LIMITS.chromeFreshMs. Which links
+ * may open is `@jantar/protocol/post-url` itself (imported, no zod), and the
+ * reader `@jantar/protocol/page-read`: nothing here mirrors them.
+ */
+export const READ_ALARM = 'jantar-reads';
+/** The daemon's limits and the worker's timings for one read (INTEL_READ_LIMITS where it names them). */
+export const READ_LIMITS = Object.freeze({
+  /** The alarm's period (Chrome's shortest), well inside the daemon's 90 s. */
+  pollEveryMs: 30_000,
+  /** Jobs taken per wake, one at a time. */
+  jobsPerWake: 5,
+  /** One job, start to result (INTEL_READ_LIMITS.chromeResultMs). */
+  jobMs: 45_000,
+  /** The tab's load, then a settle before reading. */
+  completeMs: 20_000,
+  settleMs: 2_500,
+  /** Canvas frames read at most (INTEL_READ_LIMITS.chromeFrames), each at most frameBytes decoded. */
+  frames: 4,
+  frameBytes: 200 * 1024,
+  /** The post's own text kept (INTEL_READ_LIMITS.pageTextMax). */
+  textMax: 40_000,
+  /** The result's body at most (INTEL_READ_LIMITS.extResultBytes). */
+  resultBytes: 2 * 1024 * 1024,
+});

@@ -34,7 +34,8 @@ function urlOf(def: RouteDef): string {
 }
 
 // v0.6's `node` routes read no device at all: 404 while Fleet is off, 403 with any Origin (v06-gate.test.ts).
-const httpRoutes = (Object.entries(ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.method !== 'WS' && d.scope !== 'node');
+// v0.8's `capture` door neither: 404 while it is closed (v08-contracts.test.ts).
+const httpRoutes = (Object.entries(ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.method !== 'WS' && d.scope !== 'node' && d.scope !== 'capture');
 const protectedRoutes = httpRoutes.filter(([, d]) => d.scope !== 'public');
 const writeRoutes = httpRoutes.filter(([, d]) => d.method !== 'GET');
 

@@ -78,7 +78,7 @@ describe('the due rules (FakeClock at 14:05 in the Life zone)', () => {
     // Nothing is applied when the answer comes.
     expect(counts(r).todos).toBe(0);
 
-    const added = r.ask.add(id, 2, undefined, PHONE);
+    const added = await r.ask.add(id, 2, undefined, PHONE);
     expect(added.ok).toBe(true);
     const todoId = added.ok ? added.value.id : '';
     const listed = r.todos.listTodos({ done: false });
@@ -88,7 +88,7 @@ describe('the due rules (FakeClock at 14:05 in the Life zone)', () => {
     expect(todoRow(r, todoId)).toBe('2026-11-02T03:30:00.000Z');
     expect(r.turn(id)?.cards[2]).toMatchObject({ state: 'added', ref: todoId });
 
-    expect(r.ask.undo(id, 2, PHONE)).toEqual({ ok: true, value: true });
+    expect(await r.ask.undo(id, 2, PHONE)).toEqual({ ok: true, value: true });
     expect(todoRow(r, todoId)).toBeNull();
     expect(counts(r).todos).toBe(0);
     expect(r.turn(id)?.cards[2]).toEqual({ action: cards[2]?.action, state: 'proposed' });
@@ -98,7 +98,7 @@ describe('the due rules (FakeClock at 14:05 in the Life zone)', () => {
     rig = await makeAskRig({ clock: new FakeClock('2026-10-31T08:35:00.000Z') });
     const id = await answered(rig, [{ type: 'todo', title: 'Pay rent', day: '2026-10-31', time: '09:00', repeat: 'monthly' }]);
     expect(rig.turn(id)?.cards[0]?.action).toMatchObject({ due: { day: '2026-11-30', time: '09:00' }, repeat: 'monthly' });
-    const added = rig.ask.add(id, 0, undefined, PHONE);
+    const added = await rig.ask.add(id, 0, undefined, PHONE);
     expect(added.ok && todoRow(rig, added.value.id)).toBe(ring('2026-11-30', '09:00'));
   });
 
@@ -107,7 +107,7 @@ describe('the due rules (FakeClock at 14:05 in the Life zone)', () => {
     const id = await answered(rig, [{ type: 'todo', title: 'Evening walk', time: '18:00', repeat: 'daily' }]);
     expect(rig.turn(id)?.cards[0]?.action).toMatchObject({ due: { day: TODAY, time: '18:00' } });
     rig.ctx.clock.advance(5 * 60 * 60_000); // 19:05
-    const added = rig.ask.add(id, 0, undefined, PHONE);
+    const added = await rig.ask.add(id, 0, undefined, PHONE);
     expect(added.ok).toBe(true);
     const todoId = added.ok ? added.value.id : '';
     expect(rig.turn(id)?.cards[0]?.action).toMatchObject({ due: { day: TOMORROW, time: '18:00' } });
@@ -120,7 +120,7 @@ describe('the due rules (FakeClock at 14:05 in the Life zone)', () => {
     expect(rig.turn(id)?.cards[0]).toMatchObject({ action: { due: { day: TODAY, time: '15:00' } } });
     expect(rig.turn(id)?.cards[0]?.flag).toBeUndefined();
     rig.ctx.clock.advance(60 * 60_000); // 15:05
-    const added = rig.ask.add(id, 0, undefined, PHONE);
+    const added = await rig.ask.add(id, 0, undefined, PHONE);
     expect(rig.turn(id)?.cards[0]).toMatchObject({ state: 'added', flag: 'past_time' });
     expect(added.ok && todoRow(rig, added.value.id)).toBeNull();
   });
@@ -130,7 +130,7 @@ describe('the due rules (FakeClock at 14:05 in the Life zone)', () => {
     const id = await answered(rig, [{ type: 'todo', title: 'Call back', time: '18:00' }]);
     expect(rig.turn(id)?.cards[0]?.flag).toBeUndefined();
     rig.ctx.clock.advance(10 * 60 * 60_000); // 00:05 the next day
-    const added = rig.ask.add(id, 0, undefined, PHONE);
+    const added = await rig.ask.add(id, 0, undefined, PHONE);
     expect(added.ok).toBe(true);
     expect(rig.turn(id)?.cards[0]).toMatchObject({ state: 'added', flag: 'past_time', action: { due: { day: TODAY, time: '18:00' } } });
     expect(added.ok && todoRow(rig, added.value.id)).toBeNull();
@@ -140,9 +140,9 @@ describe('the due rules (FakeClock at 14:05 in the Life zone)', () => {
     rig = await makeAskRig();
     const id = await answered(rig, [{ type: 'todo', title: 'Call mum' }, { type: 'todo', title: 'Pay rent' }], 'remind me to call mum and pay rent');
     expect(rig.turn(id)?.cards.map((c) => c.flag)).toEqual(['no_time', 'no_time']);
-    expect(rig.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
+    expect((await rig.ask.add(id, 0, undefined, PHONE)).ok).toBe(true);
     expect(rig.turn(id)?.cards[0]).toMatchObject({ state: 'added', flag: 'no_time' });
-    const edited = rig.ask.add(id, 1, { type: 'todo', title: 'Pay rent', due: { day: TOMORROW, time: '09:00' } }, PHONE);
+    const edited = await rig.ask.add(id, 1, { type: 'todo', title: 'Pay rent', due: { day: TOMORROW, time: '09:00' } }, PHONE);
     expect(edited.ok).toBe(true);
     expect(rig.turn(id)?.cards[1]).toEqual({ action: { type: 'todo', title: 'Pay rent', due: { day: TOMORROW, time: '09:00' } }, state: 'added', ref: edited.ok ? edited.value.id : '' });
   });
@@ -157,8 +157,8 @@ describe('Add, Skip and Undo', () => {
       { type: 'money', kind: 'expense', amount: 250, category: 'food', note: 'lunch' },
     ]);
     const ticks = r.core.changedCount;
-    const food = r.ask.add(id, 0, undefined, PHONE);
-    const money = r.ask.add(id, 1, undefined, PHONE);
+    const food = await r.ask.add(id, 0, undefined, PHONE);
+    const money = await r.ask.add(id, 1, undefined, PHONE);
     expect(food.ok && money.ok).toBe(true);
     // Life's own writes ticked (life.changed {}).
     expect(r.core.changedCount).toBe(ticks + 2);
@@ -167,19 +167,19 @@ describe('Add, Skip and Undo', () => {
     const month = r.finance.month('2026-11');
     expect(month.ok && month.value.entries.map((e) => [e.kind, e.amount, e.category, e.note, e.day])).toEqual([['expense', 25000, 'Food', 'lunch', TODAY]]);
 
-    expect(r.ask.undo(id, 0, PHONE).ok).toBe(true);
-    expect(r.ask.undo(id, 1, PHONE).ok).toBe(true);
+    expect((await r.ask.undo(id, 0, PHONE)).ok).toBe(true);
+    expect((await r.ask.undo(id, 1, PHONE)).ok).toBe(true);
     expect(counts(r)).toMatchObject({ food: 0, money: 0 });
   });
 
   it('Undo of an item already deleted in Life is fine (one tick of its own)', async () => {
     rig = await makeAskRig();
     const id = await answered(rig, [{ type: 'food', name: 'Dal', kcal: 180 }]);
-    const added = rig.ask.add(id, 0, undefined, PHONE);
+    const added = await rig.ask.add(id, 0, undefined, PHONE);
     expect(added.ok && rig.food.remove(added.value.id, PHONE).ok).toBe(true);
     const events = rig.ctx.store.replay(0);
     const before = events.kind === 'events' ? events.events.length : 0;
-    expect(rig.ask.undo(id, 0, PHONE)).toEqual({ ok: true, value: true });
+    expect(await rig.ask.undo(id, 0, PHONE)).toEqual({ ok: true, value: true });
     const after = rig.ctx.store.replay(0);
     expect((after.kind === 'events' ? after.events : []).slice(before).map((e) => e.type)).toEqual(['life.changed']);
     expect(rig.turn(id)?.cards[0]?.state).toBe('proposed');
@@ -189,20 +189,20 @@ describe('Add, Skip and Undo', () => {
     rig = await makeAskRig();
     const r = rig;
     const id = await answered(r, [{ type: 'todo', title: 'Call the bank' }, { type: 'food', name: 'Roti', kcal: 120 }, { type: 'show', what: 'calories' }]);
-    expect(r.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
-    expect(r.ask.add(id, 0, undefined, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.added });
+    expect((await r.ask.add(id, 0, undefined, PHONE)).ok).toBe(true);
+    expect(await r.ask.add(id, 0, undefined, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.added });
     expect(r.ask.skip(id, 0, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.added });
     expect(r.ask.skip(id, 1, PHONE)).toEqual({ ok: true, value: true });
     expect(r.turn(id)?.cards[1]?.state).toBe('skipped');
-    expect(r.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.skipped });
+    expect(await r.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.skipped });
     expect(r.ask.skip(id, 1, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.skipped });
-    expect(r.ask.undo(id, 1, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.nothingToUndo });
-    expect(r.ask.add(id, 2, undefined, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.notWrite });
-    expect(r.ask.undo(id, 2, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.nothingToUndo });
-    expect(r.ask.add(id, 3, undefined, PHONE)).toEqual({ ok: false, code: 'not_found', reason: ASK_SENTENCES.noCard });
+    expect(await r.ask.undo(id, 1, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.nothingToUndo });
+    expect(await r.ask.add(id, 2, undefined, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.notWrite });
+    expect(await r.ask.undo(id, 2, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.nothingToUndo });
+    expect(await r.ask.add(id, 3, undefined, PHONE)).toEqual({ ok: false, code: 'not_found', reason: ASK_SENTENCES.noCard });
     // Another device's turn is not found at all.
-    expect(r.ask.add(id, 0, undefined, TABLET)).toEqual({ ok: false, code: 'not_found', reason: ASK_SENTENCES.noTurn });
-    expect(r.ask.undo(id, 0, TABLET)).toEqual({ ok: false, code: 'not_found', reason: ASK_SENTENCES.noTurn });
+    expect(await r.ask.add(id, 0, undefined, TABLET)).toEqual({ ok: false, code: 'not_found', reason: ASK_SENTENCES.noTurn });
+    expect(await r.ask.undo(id, 0, TABLET)).toEqual({ ok: false, code: 'not_found', reason: ASK_SENTENCES.noTurn });
     expect(counts(r)).toMatchObject({ todos: 1, food: 0 });
   });
 
@@ -214,21 +214,21 @@ describe('Add, Skip and Undo', () => {
     await rig.heldCount(1);
     rig.held[0]?.answer('not json');
     expect((await rig.settled(id)).state).toBe('failed');
-    expect(rig.ask.add(id, 0, undefined, PHONE)).toEqual({ ok: false, code: 'not_found', reason: ASK_SENTENCES.noCard });
+    expect(await rig.ask.add(id, 0, undefined, PHONE)).toEqual({ ok: false, code: 'not_found', reason: ASK_SENTENCES.noCard });
   });
 
   it('over 24 hours: Add and Undo are refused (409), at 24 hours exactly they work', async () => {
     rig = await makeAskRig();
     const r = rig;
     const id = await answered(r, [{ type: 'food', name: 'Roti', kcal: 120, day: TODAY }, { type: 'food', name: 'Dal', kcal: 180, day: TODAY }]);
-    expect(r.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
+    expect((await r.ask.add(id, 0, undefined, PHONE)).ok).toBe(true);
     r.ctx.clock.advance(ASK_APPLY_WITHIN_MS);
     // Exactly a day old: still allowed (the food day is yesterday now, in range).
-    expect(r.ask.undo(id, 0, PHONE).ok).toBe(true);
-    expect(r.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
+    expect((await r.ask.undo(id, 0, PHONE)).ok).toBe(true);
+    expect((await r.ask.add(id, 0, undefined, PHONE)).ok).toBe(true);
     r.ctx.clock.advance(1);
-    expect(r.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.old });
-    expect(r.ask.undo(id, 0, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.oldUndo });
+    expect(await r.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.old });
+    expect(await r.ask.undo(id, 0, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ASK_SENTENCES.oldUndo });
     expect(counts(r).food).toBe(1);
   });
 });
@@ -247,7 +247,7 @@ describe('post cards (v0.7)', () => {
     ]);
     expect(r.posts.posts.size).toBe(0);
     const ticks = r.core.changedCount;
-    const added = r.ask.add(id, 0, undefined, PHONE);
+    const added = await r.ask.add(id, 0, undefined, PHONE);
     expect(added.ok).toBe(true);
     const postId = added.ok ? added.value.id : '';
     expect(r.core.changedCount).toBe(ticks + 1);
@@ -256,16 +256,16 @@ describe('post cards (v0.7)', () => {
     expect(r.posts.actors.get(postId)).toEqual(PHONE);
     expect(r.turn(id)?.cards[0]).toMatchObject({ state: 'added', ref: postId });
     // Add all's sibling: the second card alone.
-    expect(r.ask.add(id, 1, undefined, PHONE).ok).toBe(true);
+    expect((await r.ask.add(id, 1, undefined, PHONE)).ok).toBe(true);
     expect(r.posts.posts.size).toBe(2);
 
-    expect(r.ask.undo(id, 0, PHONE)).toEqual({ ok: true, value: true });
+    expect(await r.ask.undo(id, 0, PHONE)).toEqual({ ok: true, value: true });
     expect(r.posts.posts.has(postId)).toBe(false);
     expect(r.turn(id)?.cards[0]).toEqual({ action: { type: 'post', platform: 'instagram', kind: 'reel', title: 'About the launch', due: { day: TOMORROW, time: '19:00' } }, state: 'proposed' });
     // A post already deleted on the Posts screen counts as removed.
     const second = r.turn(id)?.cards[1]?.ref ?? '';
     expect(r.posts.remove(second, PHONE).ok).toBe(true);
-    expect(r.ask.undo(id, 1, PHONE)).toEqual({ ok: true, value: true });
+    expect(await r.ask.undo(id, 1, PHONE)).toEqual({ ok: true, value: true });
   });
 
   it('an edit: platform, kind, where, title and the day and time, with the same rules', async () => {
@@ -273,12 +273,12 @@ describe('post cards (v0.7)', () => {
     const r = rig;
     const id = await answered(r, [{ type: 'post', platform: 'instagram', kind: 'reel', title: 'About the launch', day: TOMORROW, time: '19:00' }]);
     const edit: AskPostAction = { type: 'post', platform: 'reddit', kind: 'post', where: 'r/examplecode', title: 'Launch day', due: { day: TOMORROW, time: '19:30' } };
-    expect(r.ask.add(id, 0, { ...edit, where: 'r/example\ncode' }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.badItem });
-    expect(r.ask.add(id, 0, { ...edit, due: { day: '2028-01-01' } }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.badDay });
-    expect(r.ask.add(id, 0, { ...edit, text: 'The whole post' } as AskPostAction, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.badItem });
-    expect(r.ask.add(id, 0, { type: 'todo', title: 'Launch day' }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.editType });
+    expect(await r.ask.add(id, 0, { ...edit, where: 'r/example\ncode' }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.badItem });
+    expect(await r.ask.add(id, 0, { ...edit, due: { day: '2028-01-01' } }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.badDay });
+    expect(await r.ask.add(id, 0, { ...edit, text: 'The whole post' } as AskPostAction, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.badItem });
+    expect(await r.ask.add(id, 0, { type: 'todo', title: 'Launch day' }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.editType });
     expect(r.posts.posts.size).toBe(0);
-    const added = r.ask.add(id, 0, edit, PHONE);
+    const added = await r.ask.add(id, 0, edit, PHONE);
     expect(added.ok).toBe(true);
     expect(r.posts.posts.get(added.ok ? added.value.id : '')).toMatchObject({ platform: 'reddit', kind: 'post', where: 'r/examplecode', title: 'Launch day', status: 'idea' });
     expect(r.turn(id)?.cards[0]?.action).toEqual(edit);
@@ -290,7 +290,7 @@ describe('post cards (v0.7)', () => {
     expect(rig.turn(id)?.cards[0]).toMatchObject({ action: { due: { day: TODAY, time: '15:00' } } });
     expect(rig.turn(id)?.cards[0]?.flag).toBeUndefined();
     rig.ctx.clock.advance(60 * 60_000); // 15:05
-    expect(rig.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
+    expect((await rig.ask.add(id, 0, undefined, PHONE)).ok).toBe(true);
     expect(rig.turn(id)?.cards[0]).toMatchObject({ state: 'added', flag: 'past_time' });
   });
 
@@ -298,10 +298,10 @@ describe('post cards (v0.7)', () => {
     rig = await makeAskRig();
     const r = rig;
     const id = await answered(r, [{ type: 'post', platform: 'reddit' }, { type: 'post', platform: 'x' }]);
-    expect(r.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
+    expect((await r.ask.add(id, 0, undefined, PHONE)).ok).toBe(true);
     expect((await r.ctx.settings.patch({ life: { posts: false } })).ok).toBe(true);
-    expect(r.ask.undo(id, 0, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF.posts });
-    expect(r.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF.posts });
+    expect(await r.ask.undo(id, 0, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF.posts });
+    expect(await r.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF.posts });
     expect(ASK_MODULE_OFF.posts).toBe(FEATURE_OFF.posts.message);
     const off = await answered(r, [{ type: 'post', platform: 'reddit' }, { type: 'todo', title: 'Call the bank' }]);
     expect(r.turn(off)).toMatchObject({ cards: [{ action: { type: 'todo' } }], dropped: 1 });
@@ -313,7 +313,7 @@ describe('edits', () => {
   it('an edit is applied as sent, with the same rules; the card keeps what was added', async () => {
     rig = await makeAskRig();
     const id = await answered(rig, [{ type: 'food', name: 'Roti', kcal: 240 }]);
-    const r = rig.ask.add(id, 0, { type: 'food', day: '2026-10-31', name: 'Two rotis', kcal: 250 }, PHONE);
+    const r = await rig.ask.add(id, 0, { type: 'food', day: '2026-10-31', name: 'Two rotis', kcal: 250 }, PHONE);
     expect(r.ok).toBe(true);
     const day = rig.food.day('2026-10-31');
     expect(day.ok && day.value.entries.map((e) => [e.name, e.kcal])).toEqual([['Two rotis', 250]]);
@@ -333,17 +333,17 @@ describe('edits', () => {
       { type: 'money', kind: 'expense', amount: 250, category: 'Food' },
     ]);
     expect(r.turn(id)?.cards[1]?.action).toMatchObject({ projectId });
-    expect(r.ask.add(id, 0, { type: 'todo', title: 'Roti' }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.editType });
-    expect(r.ask.add(id, 0, { type: 'food', day: TOMORROW, name: 'Roti', kcal: 240 }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.futureDay });
-    expect(r.ask.add(id, 2, { type: 'money', kind: 'expense', amount: 25000, category: 'Food', day: '2025-11-01' }, PHONE)).toEqual({
+    expect(await r.ask.add(id, 0, { type: 'todo', title: 'Roti' }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.editType });
+    expect(await r.ask.add(id, 0, { type: 'food', day: TOMORROW, name: 'Roti', kcal: 240 }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.futureDay });
+    expect(await r.ask.add(id, 2, { type: 'money', kind: 'expense', amount: 25000, category: 'Food', day: '2025-11-01' }, PHONE)).toEqual({
       ok: false,
       code: 'invalid_request',
       reason: ASK_SENTENCES.badDay,
     });
-    expect(r.ask.add(id, 1, { type: 'todo', title: 'Send the quote', projectId: otherId }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.editProject });
+    expect(await r.ask.add(id, 1, { type: 'todo', title: 'Send the quote', projectId: otherId }, PHONE)).toEqual({ ok: false, code: 'invalid_request', reason: ASK_SENTENCES.editProject });
     expect(counts(r)).toEqual({ todos: 0, food: 0, money: 0 });
     // The card's own project, or none, is fine.
-    expect(r.ask.add(id, 1, { type: 'todo', title: 'Send the quote today', projectId }, PHONE).ok).toBe(true);
+    expect((await r.ask.add(id, 1, { type: 'todo', title: 'Send the quote today', projectId }, PHONE)).ok).toBe(true);
   });
 });
 
@@ -353,13 +353,13 @@ describe('switches and Life', () => {
     const r = rig;
     const id = await answered(r, [{ type: 'todo', title: 'Call the bank' }, { type: 'food', name: 'Roti', kcal: 120 }, { type: 'money', kind: 'income', amount: 1000, category: 'Salary' }]);
     for (const [n, part] of [[0, 'todos'], [1, 'food'], [2, 'finance']] as const) {
-      expect(r.ask.add(id, n, undefined, PHONE).ok).toBe(true);
+      expect((await r.ask.add(id, n, undefined, PHONE)).ok).toBe(true);
       expect((await r.ctx.settings.patch({ life: { [part]: false } })).ok).toBe(true);
-      expect(r.ask.undo(id, n, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF[part] });
+      expect(await r.ask.undo(id, n, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF[part] });
       expect((await r.ctx.settings.patch({ life: { [part]: true } })).ok).toBe(true);
-      expect(r.ask.undo(id, n, PHONE).ok).toBe(true);
+      expect((await r.ask.undo(id, n, PHONE)).ok).toBe(true);
       expect((await r.ctx.settings.patch({ life: { [part]: false } })).ok).toBe(true);
-      expect(r.ask.add(id, n, undefined, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF[part] });
+      expect(await r.ask.add(id, n, undefined, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: ASK_MODULE_OFF[part] });
       expect((await r.ctx.settings.patch({ life: { [part]: true } })).ok).toBe(true);
       // The sentence is the API's own for that switch.
       expect(ASK_MODULE_OFF[part]).toBe(FEATURE_OFF[part].message);
@@ -369,10 +369,10 @@ describe('switches and Life', () => {
   it('Life broken: 503 with its sentence on Add and Undo', async () => {
     rig = await makeAskRig();
     const id = await answered(rig, [{ type: 'food', name: 'Roti', kcal: 120 }, { type: 'food', name: 'Dal', kcal: 180 }]);
-    expect(rig.ask.add(id, 0, undefined, PHONE).ok).toBe(true);
+    expect((await rig.ask.add(id, 0, undefined, PHONE)).ok).toBe(true);
     rig.setBroken('Life data needs attention (synthetic).');
-    expect(rig.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'life_unavailable', reason: 'Life data needs attention (synthetic).' });
-    expect(rig.ask.undo(id, 0, PHONE)).toEqual({ ok: false, code: 'life_unavailable', reason: 'Life data needs attention (synthetic).' });
+    expect(await rig.ask.add(id, 1, undefined, PHONE)).toEqual({ ok: false, code: 'life_unavailable', reason: 'Life data needs attention (synthetic).' });
+    expect(await rig.ask.undo(id, 0, PHONE)).toEqual({ ok: false, code: 'life_unavailable', reason: 'Life data needs attention (synthetic).' });
   });
 
   it("Life's own refusal passes through unchanged (a project deleted since the answer)", async () => {
@@ -380,7 +380,7 @@ describe('switches and Life', () => {
     const made = rig.todos.createProject({ name: 'Acme site' }, PHONE);
     const id = await answered(rig, [{ type: 'todo', title: 'Send the quote', project: 'Acme site' }]);
     expect(made.ok && rig.todos.removeProject(made.value.id, PHONE).ok).toBe(true);
-    const r = rig.ask.add(id, 0, undefined, PHONE);
+    const r = await rig.ask.add(id, 0, undefined, PHONE);
     expect(r).toMatchObject({ ok: false, code: 'invalid_request' });
     expect(rig.turn(id)?.cards[0]?.state).toBe('proposed');
   });

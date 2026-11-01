@@ -398,3 +398,205 @@ export const FLEET_COPY = Object.freeze({
   versionProblem: (machine: string) => `${machine} runs an older link version: update Jantar there`,
 });
 export type FleetCopyKey = keyof typeof FLEET_COPY;
+
+// ---------------------------------------------------------------------------
+// v0.8: Intel reads links (Add post: a reel, a video, a post, an article, a
+// PDF or any https link, read on the Mac one job at a time), and the iOS
+// Shortcut's capture door
+
+/**
+ * Every number of Intel's reads. Sizes count decompressed bytes; times are
+ * caps (a step past one fails with its plain reason).
+ */
+export const INTEL_READ_LIMITS = Object.freeze({
+  // --- What may be sent (Add post, the Shortcut, Ask, `jantar intel save`)
+  /** The text sent: the first http(s) link in it is the item's link, the rest its note. */
+  textMax: 4_000,
+  /** The user's note kept with an item. */
+  noteMax: 2_000,
+  /** A link, at most. */
+  linkMax: 2_000,
+  /** A pending item's daemon-made title ("Instagram reel", a host and path, a note's first line). */
+  pendingTitleMax: 120,
+
+  // --- The queue (daemon memory only; one job at a time daemon-wide)
+  /** Unfinished jobs (queued and running) at most; past it a save is kept as failed (queueFull). */
+  queueMax: 100,
+  /** Reads started per day, every depth. */
+  perDay: 100,
+  /** Of which Full. */
+  fullPerDay: 30,
+  /** A job's hard stop, whatever step it is in (tooLong). */
+  jobMs: 8 * 60_000,
+  /** Finished jobs stay in `GET /v1/intel/jobs` this long, at most finishedMax of them. */
+  finishedKeepMs: 24 * 60 * 60_000,
+  finishedMax: 50,
+  /** Jobs in one `GET /v1/intel/jobs` reply. */
+  jobsMax: 150,
+
+  // --- Fetching (the guard: every byte the daemon fetches for Intel)
+  /** Redirects followed by hand, each re-checked. */
+  redirectsMax: 5,
+  connectMs: 5_000,
+  firstByteMs: 10_000,
+  /** HTML, JSON and oEmbed bodies. */
+  pageBytes: 5 * 1024 * 1024,
+  pageMs: 20_000,
+  /** A link from the user's note (Full), at most relatedMax of them, each cut to relatedChars. */
+  relatedBytes: 2 * 1024 * 1024,
+  relatedMs: 15_000,
+  relatedMax: 3,
+  relatedChars: 6_000,
+  /** A still image, at most imagesPerItem fetched for one item. */
+  imageBytes: 8 * 1024 * 1024,
+  imageMs: 20_000,
+  imagesPerItem: 6,
+  pdfBytes: 25 * 1024 * 1024,
+  pdfMs: 30_000,
+  /** A video or audio file. */
+  mediaBytes: 150 * 1024 * 1024,
+  mediaMs: 90_000,
+  /** Bytes through the CONNECT proxy (headless browser, yt-dlp) for one job. */
+  proxyBytesPerJob: 200 * 1024 * 1024,
+
+  // --- The page tiers
+  /** The user's Chrome is used only when the extension polled this recently. */
+  chromeFreshMs: 90_000,
+  /** Wait for the extension to claim a job, then for its result. */
+  chromeClaimMs: 45_000,
+  chromeResultMs: 45_000,
+  /** Canvas frames the Chrome tier reads, at most. */
+  chromeFrames: 4,
+  /** Canvas frames the headless browser reads, at most. */
+  browserFrames: 20,
+  /** The headless browser tier, launch to close. */
+  browserMs: 30_000,
+  /** One yt-dlp run. */
+  ytdlpMs: 120_000,
+  /** The post's own text an in-page read keeps (PageRead.text). */
+  pageTextMax: 40_000,
+  /** One ld+json block, cut before JSON.parse. */
+  jsonBlockMax: 50_000,
+  /** One canvas frame from a page, decoded. */
+  pageFrameBytes: 200 * 1024,
+
+  // --- Frames, speech, thumbnails (the Mac's media helper)
+  /** Frames read for on-screen text: one per 2 s of video, at most this many. */
+  ocrFrames: 20,
+  /** Key frames shown to Claude: Standard, Full. */
+  framesStandard: 4,
+  framesFull: 6,
+  /** Long edge of a picture shown to Claude, and of a kept thumbnail. */
+  claudeEdge: 768,
+  thumbEdge: 320,
+  /** Thumbnails kept per item (the cover and the frames Claude saw), each at most thumbBytes. */
+  thumbsMax: 7,
+  thumbBytes: 60 * 1024,
+  /** Every item's thumbnails together; past it a new read keeps none. */
+  mediaDirBytes: 1024 * 1024 * 1024,
+  /** The sweep never removes a thumbnail folder changed this recently (a job's `.new` folder). */
+  mediaSweepQuietMs: 60 * 60_000,
+  /** Speech-to-text covers the first this many seconds. */
+  speechMaxSec: 1_800,
+  /** A transcript kept: the head and the tail around "[… cut …]". */
+  transcriptMax: 8_000,
+  transcriptHead: 6_000,
+  transcriptTail: 2_000,
+  /** The saved fields' own caps. */
+  captionMax: 2_000,
+  onScreenMax: 1_000,
+
+  // --- The Claude run
+  /** Text given to Claude: Light and Standard, Full; of which transcript at most transcriptToClaude. */
+  claudeTextMax: 30_000,
+  claudeTextFullMax: 60_000,
+  transcriptToClaude: 20_000,
+  /** The run's stdin (Claude Code caps piped stdin at 10 MB). */
+  claudeStdinBytes: 4 * 1024 * 1024,
+  claudeMs: 120_000,
+  claudeFullMs: 180_000,
+
+  // --- captures.jsonl (the one store of items)
+  /** Compacted when dead lines are more than this share of the file and the file is over compactMinBytes. */
+  compactDeadShare: 0.5,
+  compactMinBytes: 1024 * 1024,
+
+  // --- The capture door (POST /v1/capture/save) and its keys
+  /** The door's body limit. */
+  captureBodyBytes: 8 * 1024,
+  /** Saves per key: an hour, a day. */
+  capturePerHour: 30,
+  capturePerDay: 200,
+  /** Bad keys per caller in badKeyWindowMs. */
+  badKeys: 20,
+  badKeyWindowMs: 10 * 60_000,
+  /** Active capture keys at most (a new one past it revokes the oldest). */
+  captureKeysMax: 5,
+  /** A capture key unused this long stops working. */
+  captureKeyIdleMs: 180 * 24 * 60 * 60_000,
+
+  // --- The extension's reads (POST /v1/ext/reads/:id)
+  extResultBytes: 2 * 1024 * 1024,
+});
+
+/**
+ * The fixed sentences of a read that did not finish or never started
+ * (IntelRead.reason, a refusal's message). The phone shows them as they are;
+ * none quotes a link, a title or a page.
+ */
+export const INTEL_READ_REASONS = /* @__PURE__ */ Object.freeze({
+  off: 'Reading links is off. Turn it on at your Mac: jantar intel read on',
+  readOnly: 'Reading is paused: Jantar runs read-only on the Mac.',
+  daily: "Today's reads are used up. Retry tomorrow.",
+  queueFull: 'Too many links are waiting. Try again later.',
+  shelfFull: "The shelf's file on the Mac is full. Delete some saved items first.",
+  badLink: 'Only public https links can be read.',
+  blocked: "That link points inside a network, so the Mac won't open it.",
+  notFound: "The post wasn't found. It may be deleted or private.",
+  login: "That post needs a login. With Chrome open and Jantar's Read saved links on, Retry reads it as you.",
+  reddit: "Reddit blocked the Mac. With Chrome open and Jantar's Read saved links on, Retry reads the thread.",
+  tiktok: "TikTok didn't open from this Mac (it sent Jantar to its region page). Saved as a link.",
+  timeout: 'The page took too long to answer.',
+  tooBig: 'The file is too big to read.',
+  noClt: "Frames and speech need Apple's Command Line Tools: run xcode-select --install at the Mac.",
+  format: "This video's format can't be read on this Mac.",
+  noYtdlp: "No video file: yt-dlp isn't on this Mac (it's optional).",
+  noClaude: "Claude Code wasn't found on the Mac.",
+  noAccount: 'No Claude account has room right now. Retry later.',
+  unreadable: "Claude's answer couldn't be read. Retry.",
+  notIsolated: "Claude Code here didn't start without tools.",
+  stopped: 'Stopped before it finished. Retry.',
+  tooLong: 'The read took too long.',
+});
+export type IntelReadReasonKey = keyof typeof INTEL_READ_REASONS;
+
+/** What a saved read left out (IntelRead.notes, at most 3): fixed sentences too. */
+export const INTEL_READ_NOTES = /* @__PURE__ */ Object.freeze({
+  coverOnly: 'Frames: only the cover image',
+  imagesOnly: "Frames: only the post's images",
+  noSpeech: 'No speech in this video',
+  noSound: 'This video has no sound',
+  transcriptCut: 'Transcript covers the first 30 minutes',
+  noAudio: "No captions, and the audio couldn't be fetched",
+  noSpeechModel: "Speech-to-text for that language isn't available on this Mac",
+  speechDenied: "Speech-to-text isn't allowed on this Mac",
+  speechSlow: 'Speech-to-text took too long',
+  noPictures: "Pictures couldn't be shown to this Claude Code version",
+  noSandbox: "Frames and speech need macOS's sandbox-exec, which this Mac doesn't have",
+  mediaFull: 'No room for pictures on the Mac (1 GiB used)',
+});
+export type IntelReadNoteKey = keyof typeof INTEL_READ_NOTES;
+
+/** The capture door's only reply, whatever happened (a new link, one already saved, reading off, over a cap). */
+export const CAPTURE_SAVED_SENTENCE = 'Saved to Jantar.';
+/** Request header with a capture key; read on CAPTURE_PREFIX paths only. */
+export const CAPTURE_KEY_HEADER = 'x-jantar-capture-key';
+/** A capture key: this prefix and 32 random bytes, base64url (43 characters). */
+export const CAPTURE_KEY_PREFIX = 'jcap_';
+/**
+ * The capture door's paths (the iOS Shortcut's). The capture key is read
+ * here only, and these paths read no device cookie, secret or extension key.
+ */
+export const CAPTURE_PREFIX = '/v1/capture/';
+/** The honest User-Agent of every fetch the Mac makes for Intel (a faked browser one is never sent). */
+export const JANTAR_FETCH_UA = 'Jantar/0.8 (+https://github.com/Namanjain-share/jantar)';

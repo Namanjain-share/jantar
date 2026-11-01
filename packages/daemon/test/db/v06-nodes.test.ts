@@ -41,8 +41,9 @@ const repos: [string, () => { db: Db; close(): void }][] = [
 ];
 
 describe('v0.6: migration 5', () => {
-  it('is the latest, additive, and makes the nodes table with a live-name index', () => {
-    expect(LATEST_SCHEMA_VERSION).toBe(5);
+  it('is additive, and makes the nodes table with a live-name index', () => {
+    // v0.8 added migration 6 (test/db/v08-capture-keys.test.ts).
+    expect(LATEST_SCHEMA_VERSION).toBe(6);
     const m = MIGRATIONS.find((x) => x.version === 5);
     expect(m?.sql).toMatch(/CREATE TABLE IF NOT EXISTS nodes/);
     expect(m?.sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS nodes_live_name ON nodes \(name\) WHERE revoked_at IS NULL/);
@@ -50,7 +51,7 @@ describe('v0.6: migration 5', () => {
     expect(m?.sql).not.toMatch(/secret|private|token/i);
     const db = openSqliteFile(join(dir, 'jantar.db'));
     try {
-      expect(db.schemaVersion()).toBe(5);
+      expect(db.schemaVersion()).toBe(6);
     } finally {
       db.close();
     }

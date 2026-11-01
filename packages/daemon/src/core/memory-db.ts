@@ -12,7 +12,7 @@ import {
   type PendingRequest,
   type PushSubscriptionRecord,
 } from '@jantar/protocol';
-import type { Db, ExtensionRecord, FolderPin, FolderSeen, NodeRecord, RewriteRun } from '../contracts.js';
+import type { CaptureKeyRecord, Db, ExtensionRecord, FolderPin, FolderSeen, NodeRecord, RewriteRun } from '../contracts.js';
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -30,6 +30,7 @@ export function createMemoryDb(): Db & { closed: boolean } {
   const runs = new Map<string, RewriteRun>();
   const exts = new Map<string, ExtensionRecord>();
   const nodeRows = new Map<string, NodeRecord>();
+  const captureKeyRows = new Map<string, CaptureKeyRecord>();
   let auditSeq = 0;
 
   const db: Db & { closed: boolean } = {
@@ -262,6 +263,44 @@ export function createMemoryDb(): Db & { closed: boolean } {
         if (!n) return null;
         if (!n.revokedAt) n.revokedAt = at;
         return clone(n);
+      },
+    },
+    captureKeys: {
+      insert(k) {
+        if (captureKeyRows.has(k.id)) throw new Error(`capture key ${k.id} exists`);
+        for (const x of captureKeyRows.values()) if (x.keyHash === k.keyHash) throw new Error('capture key exists');
+        captureKeyRows.set(k.id, clone(k));
+      },
+      byHash(hash) {
+        for (const k of captureKeyRows.values()) if (k.keyHash === hash) return clone(k);
+        return null;
+      },
+      list() {
+        return clone([...captureKeyRows.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
+      },
+      touch(id, at) {
+        const k = captureKeyRows.get(id);
+        if (k) k.lastSeenAt = at;
+      },
+      revoke(id, at) {
+        const k = captureKeyRows.get(id);
+        if (!k) return null;
+        if (!k.revokedAt) k.revokedAt = at;
+        return clone(k);
+      },
+      revokeAll(at) {
+        let n = 0;
+        for (const k of captureKeyRows.values()) {
+          if (k.revokedAt) continue;
+          k.revokedAt = at;
+          n += 1;
+        }
+        return n;
+      },
+      activeCount() {
+        let n = 0;
+        for (const k of captureKeyRows.values()) if (!k.revokedAt) n += 1;
+        return n;
       },
     },
     close() {

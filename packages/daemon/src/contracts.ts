@@ -41,10 +41,17 @@ import type {
   FoodTargetsBody,
   FolderTodoBody,
   FolderTodosResponse,
+  ExtReadJob,
+  ExtReadResultBody,
   IntelCaptureBody,
+  IntelDepth,
   IntelItem,
+  IntelJobsResponse,
   IntelListQuery,
   IntelListResponse,
+  IntelReadBody,
+  IntelReadReply,
+  IntelReadStatus,
   IntelSourcesResponse,
   LifeStatus,
   MedicineBody,
@@ -237,6 +244,18 @@ export interface Bins {
   tmux: string | null;
   /** /usr/bin/sips: resizes terminal screenshots (v0.3). */
   sips: string | null;
+  /**
+   * v0.8 (Intel reads links). The three Apple tools are fixed paths, never
+   * from settings or PATH: /usr/bin/swiftc builds the media helper once,
+   * after /usr/bin/xcode-select -p shows Command Line Tools or Xcode, and
+   * /usr/bin/sandbox-exec runs it (no sandbox-exec: the helper never runs).
+   * null = not on this Mac.
+   */
+  swiftc: string | null;
+  xcodeSelect: string | null;
+  sandboxExec: string | null;
+  /** v0.8: yt-dlp, optional: settings.bins.ytDlp, ~/.local/bin, /opt/homebrew/bin, /usr/local/bin (PATH at install). */
+  ytDlp: string | null;
 }
 
 /** Every path the daemon uses. Built by `resolvePaths()` in config.ts. */
@@ -270,7 +289,12 @@ export interface Paths {
   lifeDb: string;
   /** v0.4: nightly copies of life.db, <home>/backups (0700, created on demand). */
   backupsDir: string;
-  /** v0.4: the Intel shelf's own files (captures.jsonl), <home>/intel (0700, created on demand). */
+  /**
+   * v0.4: the Intel shelf's own files (captures.jsonl), <home>/intel (0700,
+   * created on demand). v0.8 derives its subfolders from it, no new keys:
+   * bin/ (the media helper), media/<item>/ (thumbnails), run/ (the Claude
+   * run's empty cwd), jobs/ (a job's files while it runs).
+   */
   intelDir: string;
   /** v0.4: Ask Claude's run dir (the empty cwd, the system prompt copy), <home>/food-estimate (0700, created on demand). */
   foodEstimateDir: string;
@@ -511,6 +535,23 @@ export interface ExtensionRecord {
 }
 
 /**
+ * v0.8: a capture key for the iOS Shortcut (migration 6, table
+ * `capture_keys`). Only `sha256('jantar-capture-key:' + key)` is kept; the
+ * prefix differs from the device and extension hashes, so no key can pose
+ * as another kind. A revoked row stays, for the audit log.
+ */
+export interface CaptureKeyRecord {
+  /** A ulid. */
+  id: string;
+  /** The user's name for it ("iphone"), one line. */
+  name: string;
+  keyHash: string;
+  createdAt: string;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+}
+
+/**
  * v0.6: a paired server (migration 5, table `nodes`). The hub keeps its
  * public key only; the name is the hub's (unique among live nodes). A
  * revoked row stays, for the audit log.
@@ -558,6 +599,21 @@ export interface ExtensionsRepo {
   revoke(id: string, at: string): ExtensionRecord | null;
 }
 
+/** v0.8: table `capture_keys` (auth/capture-keys.ts is its only user). */
+export interface CaptureKeysRepo {
+  insert(rec: CaptureKeyRecord): void;
+  byHash(keyHash: string): CaptureKeyRecord | null;
+  /** Oldest first, revoked ones included. */
+  list(): CaptureKeyRecord[];
+  touch(id: string, at: string): void;
+  /** Sets revokedAt (once); null for an unknown id. */
+  revoke(id: string, at: string): CaptureKeyRecord | null;
+  /** Every live key revoked; the count. */
+  revokeAll(at: string): number;
+  /** Keys not revoked. */
+  activeCount(): number;
+}
+
 export interface Db {
   readonly events: EventLog;
   readonly audit: AuditLog;
@@ -574,6 +630,8 @@ export interface Db {
   readonly extensions: ExtensionsRepo;
   /** v0.6 */
   readonly nodes: NodesRepo;
+  /** v0.8 */
+  readonly captureKeys: CaptureKeysRepo;
   close(): void;
 }
 
@@ -621,7 +679,9 @@ export type Actor =
   | { kind: 'device'; deviceId: string; scopes: readonly Scope[] }
   | { kind: 'cli' }
   | { kind: 'system' }
-  | { kind: 'extension'; extensionId: string };
+  | { kind: 'extension'; extensionId: string }
+  /** v0.8: the iOS Shortcut, by its capture key's id (never the key). */
+  | { kind: 'capture'; keyId: string };
 
 // ===========================================================================
 // Sources (work package B)
@@ -1694,10 +1754,24 @@ export interface LifeModuleBuilders {
 }
 
 /**
+ * v0.8: where a save came from: the phone's Add post, the CLI, a Claude
+ * session (`jantar mcp`, plain saves only), the iOS Shortcut's door, Ask's
+ * save card. Kept in the item as `via`.
+ */
+export type IntelVia = 'phone' | 'cli' | 'claude' | 'shortcut' | 'ask';
+
+/**
  * The Intel shelf (WP-IN: intel/service.ts): JSONL files named on the Mac
  * plus <intelDir>/captures.jsonl, read into memory and followed for appends.
  * Emits `life.changed` at most every 2 s while items change. No path ever
  * leaves it.
+ *
+ * v0.8 (lane A: intel/read/): the Mac reads links saved to the shelf, one
+ * job at a time daemon-wide (queue in memory; on disk an unfinished item is
+ * `queued`, and every one left so at start is written failed, never
+ * re-queued). Every write to captures.jsonl goes through one store with one
+ * lock. Nothing here logs, emits or audits a link, a title, a caption, a
+ * transcript or a note: the one event is `life.changed {}`.
  */
 export interface IntelService extends Service {
   list(q: IntelListQuery): IntelListResponse;
@@ -1706,8 +1780,30 @@ export interface IntelService extends Service {
    * A url already on the shelf answers its id with `duplicate: true` and
    * writes nothing. v0.5.3: `via: 'claude'` for what `jantar mcp` saves.
    */
-  capture(body: IntelCaptureBody, from: { via: 'phone' | 'cli' | 'claude'; cwd?: string }): Promise<LifeResult<{ id: string; duplicate: boolean }>>;
+  capture(body: IntelCaptureBody, from: { via: IntelVia; cwd?: string }): Promise<LifeResult<{ id: string; duplicate: boolean }>>;
   sources(): IntelSourcesResponse['sources'];
+  /**
+   * v0.8: save the text's first link (or the note) at once and queue its
+   * read. A link already saved answers its id with `duplicate: true`
+   * (nothing written, no re-run); reading off, read-only, a full queue or
+   * today's cap save it as failed with the plain reason (`queued: false`).
+   * `keyId` names the capture key the door took (audit only).
+   */
+  read(body: IntelReadBody, from: { via: IntelVia; keyId?: string }): Promise<LifeResult<IntelReadReply>>;
+  /** v0.8: Retry, or Read again at `depth` (refused while the item's job is queued or running). */
+  reread(id: string, depth: IntelDepth | undefined): LifeResult<{ id: string }>;
+  /** v0.8: unfinished jobs oldest first, then those finished in the last day; whether reads can run. */
+  jobs(): IntelJobsResponse;
+  /** v0.8: delete a captures item (its job cancelled, a tombstone, a compaction, its thumbnails); other sources are refused. */
+  remove(id: string): Promise<LifeResult>;
+  /** v0.8: thumbnail `n` of an item, JPEG bytes checked, or null. */
+  frame(id: string, n: number): Promise<Buffer | null>;
+  /** v0.8: what `jantar intel read status` prints. */
+  readStatus(): Promise<IntelReadStatus>;
+  /** v0.8: the next post for the paired extension to read (a URL the daemon rebuilt), leased to it; null when none. Records the poll. */
+  extNext(extensionId: string): ExtReadJob | null;
+  /** v0.8: what the extension read for lease `leaseId` (only the extension that took the lease). */
+  extResult(leaseId: string, extensionId: string, body: ExtReadResultBody): LifeResult;
 }
 
 // ===========================================================================
@@ -1935,11 +2031,15 @@ export interface AskService extends Service {
   cancel(id: string, actor: Actor): LifeResult;
   /** Forget this device's turns (its unfinished one is stopped). */
   clear(actor: Actor): LifeResult;
-  /** Add card `n`'s item to Life (as `edit` says, when given); the value is the new item's id. */
-  add(id: string, n: number, edit: AskWriteAction | undefined, actor: Actor): LifeResult<{ id: string }>;
+  /**
+   * Add card `n`'s item to Life (as `edit` says, when given); the value is
+   * the new item's id. v0.8: async, as a save card's Add saves to Intel
+   * (`intel.read`, the value then the Intel item's id).
+   */
+  add(id: string, n: number, edit: AskWriteAction | undefined, actor: Actor): Promise<LifeResult<{ id: string }>>;
   skip(id: string, n: number, actor: Actor): LifeResult;
-  /** Delete the item card `n` added, as it is now. */
-  undo(id: string, n: number, actor: Actor): LifeResult;
+  /** Delete the item card `n` added, as it is now. v0.8: async (a save card's Undo is `intel.remove`). */
+  undo(id: string, n: number, actor: Actor): Promise<LifeResult>;
 }
 
 // ===========================================================================
@@ -2256,12 +2356,22 @@ export interface Factories {
   >;
   /** v0.4 (WP-LS). `notifiers`: Life pushes go to the Web Push one only (life/push.ts). */
   life: Factory<LifeService, { sessions: SessionSource; usage: UsageSource; ccwLegacy: CcwLegacySource; notifiers: Notifier[] }>;
-  /** v0.4 (WP-IN). `files`: its denylist refuses protected source paths. */
-  intel: Factory<IntelService, { files: FilesService }>;
+  /**
+   * v0.4 (WP-IN). `files`: its denylist refuses protected source paths.
+   * v0.8: `usage` and `ccwLegacy` pick the read's Claude account, as
+   * Meetings' summary does (intel/index.ts createIntelService also takes
+   * `{ readOnly }`, and tests only the guard's and browser's seams).
+   */
+  intel: Factory<IntelService, { files: FilesService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
   /** v0.5 (WP0's shell; the builders are WP-MS's and WP-SU's). `life`: projects and todos; `usage` and `ccwLegacy`: the summary's account. */
   meetings: Factory<MeetingsService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
-  /** v0.5.3. Only these three: no writer, terminal, launcher, controls, files or settings patch, so a model's answer reaches nothing else. */
-  ask: Factory<AskService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
+  /**
+   * v0.5.3. Only these: no writer, terminal, launcher, controls, files or
+   * settings patch, so a model's answer reaches nothing else. v0.8: Intel's
+   * read and remove only, for the save card (the typed fast path; Claude
+   * never proposes a save).
+   */
+  ask: Factory<AskService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource; intel: Pick<IntelService, 'read' | 'remove'> }>;
   /**
    * v0.5.3: `terminal` and `panes` (the API's PaneLookup, shared) let the
    * router read Claude's countdown off an unattended ask's screen; it only

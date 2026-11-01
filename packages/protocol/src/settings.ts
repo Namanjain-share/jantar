@@ -235,6 +235,8 @@ export const BinsSettingsSchema = z.object({
   screencapture: z.string().nullable().default(null),
   tmux: z.string().nullable().default(null),
   sips: z.string().nullable().default(null),
+  /** v0.8: yt-dlp, optional (Intel's last way to a video file, single-file formats only). */
+  ytDlp: z.string().nullable().default(null),
 });
 
 /** An IANA time zone this runtime knows ("Asia/Kolkata", "UTC"). */
@@ -291,6 +293,14 @@ export const IntelSettingsSchema = z.object({
   enabled: z.boolean().default(false),
   /** Absolute paths of JSONL files, checked at load. A source's id and label come from its file name; no path ever leaves the Mac. */
   sources: z.array(z.string().min(1).max(1024)).max(10).default(() => []),
+  /**
+   * v0.8 (no version bump): the Mac reads links saved to the shelf (Add
+   * post, the Shortcut, Ask, `jantar intel save`), one job at a time. Off
+   * until `jantar intel read on`; needs `enabled` too.
+   */
+  read: z.boolean().default(false),
+  /** v0.8: on-device speech-to-text's language (Full); only a locale this Mac recognises on device is used. */
+  speechLocale: z.string().regex(/^[a-z]{2,3}-[A-Z]{2}$/).default('en-IN'),
 });
 
 /**
@@ -512,6 +522,7 @@ export function settingsFeatures(s: Settings): Features {
     clearDraft: s.controls.enabled && s.controls.clearVerified,
     life: lifeOn(s),
     intel: s.intel.enabled,
+    intelRead: s.intel.enabled && s.intel.read,
     meetings: s.meetings.enabled,
     ask: s.ask.enabled,
     fleet: s.fleet.enabled,

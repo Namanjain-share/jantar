@@ -117,10 +117,11 @@ describe('the shelf shows refusals, never paths', () => {
 
   it('no intel body or query names a path; the only folder is a capture\'s cwd, which the pipeline takes from ctl.sock only', () => {
     const intel = (Object.entries(ROUTES) as [string, RouteDef][]).filter(([, d]) => d.feature === 'intel');
-    expect(intel.map(([n]) => n).sort()).toEqual(['intelCapture', 'intelGet', 'intelList', 'intelSources']);
+    // v0.8: the jobs, Delete, thumbnails and a Shortcut key's add (its name).
+    expect(intel.map(([n]) => n).sort()).toEqual(['captureKeyAdd', 'intelCapture', 'intelDelete', 'intelFrame', 'intelGet', 'intelJobs', 'intelList', 'intelSources']);
     const keys = intel.flatMap(([, d]) => [d.body, d.query].flatMap((s) => (s && 'shape' in s ? Object.keys((s as { shape: object }).shape) : [])));
     // v0.5.3: the list's sort, and a capture's ctl-only via.
-    expect(keys.sort()).toEqual(['before', 'cwd', 'limit', 'note', 'q', 'sort', 'tag', 'tags', 'title', 'type', 'type', 'url', 'via'].sort());
+    expect(keys.sort()).toEqual(['before', 'cwd', 'limit', 'name', 'note', 'q', 'sort', 'tag', 'tags', 'title', 'type', 'type', 'url', 'via'].sort());
     expect(Object.keys(IntelSourceSchema.shape).sort()).toEqual(['error', 'id', 'items', 'label', 'skipped', 'updatedAt']);
   });
 });

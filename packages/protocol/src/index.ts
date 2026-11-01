@@ -26,6 +26,12 @@
  * - v0.7 Posts (in life, settings, api, constants): a sixth Life module, `posts`, plans for what
  *   the user posts on social media by hand, with a ring at the time and weekly goals; the
  *   /v1/posts routes; the platform and kind labels
+ * - v0.8 Intel reads links (in intel, settings, models, ask, api, constants): Add post, the depths
+ *   and job states, the rich fields of a read item, the jobs, Delete and thumbnail routes, the
+ *   `intelRead` switch, Ask's save card, the capture door (`capture` scope, CAPTURE_PREFIX) and its
+ *   keys, the extension's read jobs. Two zod-free subpaths the extension bundles, never exported
+ *   here: `@jantar/protocol/post-url` (the post links the user's Chrome may open) and
+ *   `@jantar/protocol/page-read` (the in-page reader both page tiers run)
  */
 export * from './constants.js';
 export * from './models.js';

@@ -11,6 +11,8 @@ export function actorId(a: Actor): string {
       return 'system';
     case 'extension':
       return `extension:${a.extensionId}`;
+    case 'capture':
+      return `capture:${a.keyId}`;
   }
 }
 
