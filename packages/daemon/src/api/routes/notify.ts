@@ -10,16 +10,26 @@
  *   for at the Mac skips `notify.kinds` and the mute. `notify.webpush` off
  *   still sends nothing, and each device's own kinds still apply, so a
  *   device that turned Done off gets no Done test.
+ * - At most V053_LIMITS.notifyTest a minute (s.notifyTestLimiter, every
+ *   ctl.sock peer being the one actor `cli`): it skips the mute.
  * - The answer is the counts only; the audit row names the group.
  */
 import type { NotifyTestBody, NotifyTestResponse } from '@jantar/protocol';
 import { sendDirect } from '../../notify/direct.js';
 import { testNotification } from '../../notify/format.js';
+import { ApiError } from '../errors.js';
+import { actorName } from '../request.js';
 import type { Call, RouteTable } from '../route-kit.js';
+import { V053_LIMITS } from '../services.js';
+
+/** The test pushes' cap, as a refusal says it. */
+export const NOTIFY_TEST_LIMITED = `${V053_LIMITS.notifyTest.limit} test pushes this minute. Try again in a moment.`;
 
 export const NOTIFY_ROUTE_IMPLS: RouteTable = {
   notifyTest: {
     handle: async (c: Call<Record<string, string>, unknown, NotifyTestBody>, s): Promise<NotifyTestResponse> => {
+      const limited = s.notifyTestLimiter.hit(actorName(c.auth));
+      if (!limited.ok) throw new ApiError('rate_limited', NOTIFY_TEST_LIMITED, { 'retry-after': String(Math.max(1, Math.ceil(limited.retryAfterMs / 1000))) });
       const webpush = s.deps.notifiers.filter((n) => n.channel === 'webpush');
       const r = await sendDirect(s.ctx, webpush, testNotification(c.body.group, s.ctx.clock.iso()), { ignoreMute: true });
       return { delivered: r.delivered, failed: r.failed };

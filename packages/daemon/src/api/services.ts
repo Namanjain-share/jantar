@@ -87,9 +87,12 @@ export type V05Limits = { [K in keyof typeof V05_LIMITS]: { limit: number; windo
  * one actor `cli`). Folder todos come from Claude sessions through `jantar
  * mcp`: a session in bypass mode approves its own MCP writes, and each timed
  * todo pings the phone. The pipeline's Life write limit applies on top.
+ * A test push skips the mute, so a loop of `jantar notify test` must not
+ * ring the phone without end.
  */
 export const V053_LIMITS = {
   folderTodo: { limit: 20, windowMs: 60 * 60_000 },
+  notifyTest: { limit: 10, windowMs: 60_000 },
 } as const;
 
 export interface ApiOptions {
@@ -318,6 +321,8 @@ export class ApiServices {
   readonly extShotBytes: SlidingWindowBudget;
   /** v0.5.3 (V053_LIMITS): todos added by folder (folderTodoCreate). */
   readonly folderTodoLimiter: SlidingWindowLimiter;
+  /** v0.5.3 (V053_LIMITS): test pushes (notifyTest). */
+  readonly notifyTestLimiter: SlidingWindowLimiter;
   readonly sockets = new SocketRegistry();
   readonly panes: PaneLookup;
   readonly log: Logger;
@@ -372,6 +377,7 @@ export class ApiServices {
     this.extRequestLimiter = per(v05.extRequest);
     this.extShotBytes = new SlidingWindowBudget({ ...v05.extShotBytes, clock: ctx.clock });
     this.folderTodoLimiter = per(V053_LIMITS.folderTodo);
+    this.notifyTestLimiter = per(V053_LIMITS.notifyTest);
     this.panes = deps.panes ?? new PaneLookup(deps.terminal, ctx, undefined, opts.paneLookupTimeoutMs);
     this.webDist = opts.webDist === undefined ? ctx.paths.webDist : opts.webDist;
     this.webAvailable = !!this.webDist && webIndexExists(this.webDist);

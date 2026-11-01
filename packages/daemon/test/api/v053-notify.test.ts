@@ -9,9 +9,13 @@
  * - Each device's own kinds still apply (life always passes); care reaches
  *   control-scope devices only, like every Life push.
  * - Strict body; the audit row names the group.
+ * - At most 10 a minute: it skips the mute, so a loop must not ring on.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { ALERT_GROUPS, type AlertGroup, type NotifyKind, type Scope } from '@jantar/protocol';
+import { NOTIFY_TEST_LIMITED } from '../../src/api/routes/notify.js';
+import { V053_LIMITS } from '../../src/api/services.js';
+import type { FakeClock } from '../../src/core/clock.js';
 import { makeApi, type TestApi } from './fakes.js';
 
 let api: TestApi;
@@ -97,6 +101,22 @@ describe('POST /v1/notify/test', () => {
       const res = await test(api, body);
       expect(res.statusCode, JSON.stringify(body)).toBe(400);
     }
+  });
+
+  it('10 a minute, then 429 with the sentence and nothing sent; a minute later it sends again', async () => {
+    api = await setup();
+    expect(V053_LIMITS.notifyTest).toEqual({ limit: 10, windowMs: 60_000 });
+    for (let i = 0; i < 10; i++) expect((await test(api, { group: 'needs' })).statusCode, String(i)).toBe(200);
+    api.fakes.pushed.length = 0;
+    const over = await test(api, { group: 'needs' });
+    expect(over.statusCode).toBe(429);
+    expect(over.json().error).toEqual({ code: 'rate_limited', message: NOTIFY_TEST_LIMITED });
+    expect(NOTIFY_TEST_LIMITED).toBe('10 test pushes this minute. Try again in a moment.');
+    expect(Number(over.headers['retry-after'])).toBeGreaterThan(0);
+    expect(api.fakes.pushed).toEqual([]);
+    (api.ctx.clock as FakeClock).advance(60_001);
+    expect((await test(api, { group: 'needs' })).statusCode).toBe(200);
+    expect(api.fakes.pushed.length).toBeGreaterThan(0);
   });
 
   it("the audit row names the group and the Mac's CLI, nothing else", async () => {
