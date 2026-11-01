@@ -21,16 +21,15 @@
  *   still could not silence a medicine.
  * - v0.5.3, the urgent alert (countdown.ts, while `notify.urgent` is on,
  *   `notify.kinds` holds permission, the kind it goes out as, nothing is
- *   muted and a channel is on): when a
- *   subagent-info card opens (once more while it is open if the read
- *   failed), and before a waiting push, the session's screen is read once
- *   for Claude's 2-minute auto-block countdown. One ask gets one urgent
- *   `permission` push with its deadline (and at most one repeat); while that
- *   read shows it open the session's plain waiting push is not sent. A read
- *   that failed or took over URGENT_ANSWER_MS lets the waiting push go. It
- *   goes through the same filters as every push (kinds, mute, channels,
- *   each device's kinds). Without `terminal` and `panes` there is no urgent
- *   alert.
+ *   muted and a channel is on): when a subagent-info card opens (once more
+ *   while it is open if the read failed), and before a waiting push, the
+ *   session's screen is read once for Claude's 2-minute auto-block
+ *   countdown. One ask gets one urgent `permission` push with its deadline
+ *   (and at most one repeat); while that read shows it open the session's
+ *   plain waiting push is not sent. A read that failed or took over
+ *   URGENT_ANSWER_MS lets the waiting push go. It goes through the same
+ *   filters as every push (kinds, mute, channels, each device's kinds).
+ *   Without `terminal` and `panes` there is no urgent alert.
  */
 import type { Alert, DaemonEvent, NotifyKind, PendingRequest, State } from '@jantar/protocol';
 import type { DaemonContext, NotificationRouter, Notifier, PaneFinder, TerminalBackend, TimerId, Unsubscribe } from '../contracts.js';

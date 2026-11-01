@@ -3,9 +3,10 @@
  * written by hand (no SDK, no new dependency). JSON-RPC 2.0, one message
  * per line, MCP 2025-11-25, 2025-06-18 and 2025-03-26 (it uses nothing the
  * older ones lack; they ignore a tool's title): `initialize` echoes a
- * version it knows, else the newest. Anything else it does not serve, the 2026-07-28
- * `server/discover` probe included, is "method not found", and a client
- * then falls back to `initialize`. Only MCP messages ever go to stdout.
+ * version it knows, else the newest. Anything else it does not serve, the
+ * 2026-07-28 `server/discover` probe included, is "method not found", and a
+ * client then falls back to `initialize`. Only MCP messages ever go to
+ * stdout.
  *
  * Five tools, each one call to the daemon over ctl.sock like every command:
  * intel_search, intel_get and intel_add on the Intel shelf (all of it: the
