@@ -280,6 +280,11 @@ Devices. Scopes go from read to control to launch to admin; see
 
 ## Updating
 
+Installed with the one-line install? Run the same line again
+(`curl -fsSL https://jantar.namanbuilt.com/install.sh | bash`): it moves
+`~/jantar` to the new release, builds it and asks before `jantar install`.
+`git pull` updates only a clone of main:
+
 ```sh
 git pull
 pnpm install && pnpm -r build

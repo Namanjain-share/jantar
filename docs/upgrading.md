@@ -2,7 +2,11 @@
 
 ## Updating Jantar
 
-Pull, build and reload the daemon:
+Installed with the one-line install? Run the same line again
+(`curl -fsSL https://jantar.namanbuilt.com/install.sh | bash`): it moves
+`~/jantar` to the new release, builds it and asks before `jantar install`.
+`git pull` updates only a clone of main; there, pull, build and reload
+the daemon:
 
 ```sh
 git pull

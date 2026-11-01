@@ -94,7 +94,8 @@ What changed for people who use Jantar, newest first. Versions before
   checks for macOS, Node.js and pnpm, clones release v0.5.3 into `~/jantar`,
   builds it, runs `jantar init` and asks before `jantar install`. No sudo.
   Ending the line with `bash -s -- --dry-run` shows the plan and changes
-  nothing. See [Install in one line](docs/install.md#install-in-one-line).
+  nothing. To update a one-line install, run the same line again: `git pull`
+  updates only a clone of main. See [Install in one line](docs/install.md#install-in-one-line).
 - **The website has a 53-second film**, with captions and no sound, in a
   wide cut and a portrait cut for phones, and the film's words written out
   under it. The README opens with a short loop of the same story. Both use
