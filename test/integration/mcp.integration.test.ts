@@ -10,7 +10,11 @@
  * 2. todos_here before any project is linked: project null. A project is
  *    linked to the folder through the device API (the phone's way); then
  *    todo_add adds to it and todos_here shows it (lane L's folder routes).
- * 3. S10: every line on stdout is one JSON-RPC message; the server exits 0
+ * 3. Out of scope (S11): a tool that would complete, delete or reach
+ *    another module is unknown (-32602); a folder or project the model
+ *    names is refused and adds nothing; another folder's project never
+ *    shows; a switch off at the Mac is the user's to turn on.
+ * 4. S10: every line on stdout is one JSON-RPC message; the server exits 0
  *    when stdin ends.
  *
  * Needs `pnpm -r build` first (CI builds before testing); skipped otherwise.
@@ -21,7 +25,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { perfBudgetMs, projectBody } from '@jantar/fixtures';
+import { perfBudgetMs, projectBody, todoBody } from '@jantar/fixtures';
 import { DEVICE_COOKIE, type PairStartResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
 import { bootDaemon, type Daemon } from './harness.js';
@@ -176,7 +180,50 @@ describe.skipIf(!built)('jantar mcp: the real executable against jantard', () =>
     expect(here.todos).toContainEqual({ id: todoId, title: 'Check the example deploy', due: { day: '2026-11-02' }, priority: 'high' });
   }, perfBudgetMs(60_000));
 
-  it('3. stdout held only JSON-RPC lines; the server exits 0 when stdin ends', async () => {
+  it("3. out of scope: other tools, a folder or project the model names, another folder's project, a switch off", async () => {
+    for (const name of ['todo_done', 'todo_delete', 'todo_edit', 'medicines_today', 'run_command']) {
+      const a = await mcp.request('tools/call', { name, arguments: {} });
+      expect(a.error?.code, name).toBe(-32602);
+      expect(a.result, name).toBeUndefined();
+    }
+
+    // Another project, linked to another folder, with a todo of its own (the phone's way).
+    const other = join(d.home.home, 'work', 'other-app');
+    const made = await http(d.port, 'POST', '/v1/projects', { cookie: phone, headers: { 'idempotency-key': 'k-mcp-other' }, body: projectBody({ name: 'Other app', folder: other }) });
+    expect(made.status, made.text).toBe(200);
+    const otherId = (made.body as { id: string }).id;
+    const todo = await http(d.port, 'POST', '/v1/todos', { cookie: phone, headers: { 'idempotency-key': 'k-mcp-other-todo' }, body: todoBody({ title: 'Other folder only', projectId: otherId }) });
+    expect(todo.status, todo.text).toBe(200);
+
+    type Here = { project: { name: string }; todos: { title: string }[] };
+    const before = JSON.parse((await mcp.tool('todos_here')).text) as Here;
+    // The folder comes from Claude Code, never from the model.
+    for (const args of [{ title: 'Elsewhere', folder: other }, { title: 'Elsewhere', projectId: otherId }]) {
+      const r = await mcp.tool('todo_add', args);
+      expect(r.isError, r.text).toBe(true);
+      expect(r.text).toMatch(/^(folder|projectId): not an argument of todo_add\.$/);
+    }
+    const after = JSON.parse((await mcp.tool('todos_here')).text) as Here;
+    expect(after.project).toEqual({ name: 'Example app' });
+    expect(after.todos).toEqual(before.todos);
+    expect(after.todos.map((t) => t.title)).not.toContain('Other folder only');
+    expect(after.todos.map((t) => t.title)).not.toContain('Elsewhere');
+    const theirs = await http(d.port, 'GET', `/v1/todos?project=${otherId}`, { cookie: phone });
+    expect(theirs.status, theirs.text).toBe(200);
+    expect((theirs.body as { todos: { title: string }[] }).todos.map((t) => t.title)).toEqual(['Other folder only']);
+
+    // A switch the user turned off at the Mac: said to be theirs, never a command for the session.
+    await callDaemon(ctl, 'PATCH', '/v1/settings', { intel: { enabled: false } });
+    try {
+      const off = await mcp.tool('intel_search', { query: 'zephyr' });
+      expect(off.isError).toBe(true);
+      expect(off.text).toMatch(/^The user turned this off; only they turn it back on\. Tell them: .*jantar intel on/);
+    } finally {
+      await callDaemon(ctl, 'PATCH', '/v1/settings', { intel: { enabled: true } });
+    }
+  }, perfBudgetMs(60_000));
+
+  it('4. stdout held only JSON-RPC lines; the server exits 0 when stdin ends', async () => {
     mcp.child.stdin?.end();
     expect(await mcp.exit()).toBe(0);
     expect(mcp.rest).toBe('');

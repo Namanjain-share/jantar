@@ -24,6 +24,9 @@
  *   done, is a bar inside the visible area.
  * - The phone's tabs: Today is current on every Life screen, More holds
  *   the places past the fifth tab and opens them.
+ * - v0.5.3: the phone header's magnifier opens the shelf with its search box
+ *   focused; words list the best match first with the words marked, and ×
+ *   clears the search.
  * - In grayscale, the five dose states (taken, skipped, overdue, due,
  *   pending) still read apart by glyph and words.
  * - Focus: Tab walks each screen in document order over visible, named
@@ -524,6 +527,36 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     await page.getByText('<script>window.__pwned=1</script>').first().waitFor();
     await sheet(page, watch, "Intel's add sheet", () => page.getByRole('button', { name: 'Add', exact: true }).first().click());
     expect(await page.evaluate(() => document.querySelectorAll('script:not([src])').length)).toBe(0);
+  });
+
+  it("v0.5.3: the phone header's magnifier opens the shelf's search; words find the best match first, marked; × clears", async () => {
+    const { page, watch } = pages.phone!;
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto(`http://127.0.0.1:${d.port}/today`);
+    await page.getByText('Example overdue todo').first().waitFor();
+    await page.getByRole('link', { name: 'Search the Intel shelf' }).click();
+    const box = page.getByRole('searchbox', { name: 'Search the shelf' });
+    await box.waitFor();
+    // The box is ready to type in, and the magnifier's word leaves the address.
+    await expect.poll(() => box.evaluate((el) => el === document.activeElement)).toBe(true);
+    await page.waitForURL(/\/intel$/);
+
+    await page.keyboard.type('tool 7');
+    await page.waitForURL(/\/intel\?q=tool(\+|%20)7$/);
+    const count = page.getByText(/^\d+ match(es)?$/);
+    await count.waitFor();
+    const rows = count.locator('xpath=following-sibling::ul[1]').locator('li');
+    // Both words at a word's start in its title first; then a word inside one (newest first among equals).
+    await expect.poll(() => rows.evaluateAll((els) => els.slice(0, 3).map((li) => li.querySelector('p')?.textContent))).toEqual(['Example tool 7', 'Example tool 27', 'Example tool 17']);
+    expect(await rows.first().locator('p').first().locator('mark').allTextContents()).toEqual(['tool', '7']);
+    await check(page, watch, 'Intel search');
+
+    await page.getByRole('button', { name: 'Clear the search' }).click();
+    await page.waitForURL(/\/intel$/);
+    await page.getByText(/^\d+ items$/).waitFor();
+    expect(await box.inputValue()).toBe('');
+    expect(await box.evaluate((el) => el === document.activeElement)).toBe(true);
+    expect(await page.locator('mark').count()).toBe(0);
   });
 
   it("the phone's tabs: Today is current on a Life screen, and More holds the rest and opens them", async () => {
