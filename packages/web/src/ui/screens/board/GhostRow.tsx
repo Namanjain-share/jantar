@@ -9,18 +9,22 @@
  *
  * In a dialog the glyph turns needs-you and line 2 says what Claude asks, so
  * the state reads in words too, not by colour alone. Tapping a row opens
- * the launch's receipt.
+ * the launch's receipt. v0.6: once a machine is paired, line 1 names the
+ * machine it starts on; a server's launches show by that server's own
+ * starting switch.
  */
 import clsx from 'clsx';
 import { useMemo } from 'react';
-import type { LaunchJob } from '@jantar/protocol';
+import { machineName, type LaunchJob } from '@jantar/protocol';
 import { routePath } from '../../../lib/router.js';
 import { useApp, useNow } from '../../context.js';
 import { RailLabel } from '../../kit/RailLabel.js';
 import { StatusGlyph } from '../../kit/StatusGlyph.js';
-import { useAccountsMode, useFeatures } from '../../shell/data.js';
+import { useAccountsMode } from '../../shell/data.js';
 import { Link } from '../../shell/Link.js';
 import { elapsed, folderName, ghostWord, isFinal, launchAccount } from '../launch/stages.js';
+import { useCanStart } from '../new/machines.js';
+import { hasMachines } from '../session/Info.js';
 
 /** Launches not done yet whose session has no row of its own, oldest first. */
 export function ghostLaunches(launches: Record<string, LaunchJob>, sessions: Record<string, unknown>): LaunchJob[] {
@@ -33,6 +37,7 @@ export function GhostRow({ job, ground, now }: { job: LaunchJob; ground: 'surfac
   const dialog = job.stage === 'dialog';
   // One Claude login: every launch is on it, so the line names no account.
   const single = useAccountsMode() === 'single';
+  const machine = useApp((s) => (hasMachines(s.state) ? machineName(s.state, job.node) : null));
   const href = routePath({ name: 'new', root: job.rootId, launch: job.id });
   return (
     <Link
@@ -51,6 +56,11 @@ export function GhostRow({ job, ground, now }: { job: LaunchJob; ground: 'surfac
         </span>
         <span className="min-w-0 max-w-3/5 flex-initial truncate type-row font-medium text-ink">{folderName(job.display)}</span>
         <span className="ml-8 min-w-0 flex-initial truncate type-row text-ink-2">Starting</span>
+        {machine ? (
+          <span data-machine className="ml-auto max-w-1/3 flex-none truncate pl-12 type-mono text-ink-3">
+            {machine}
+          </span>
+        ) : null}
       </span>
       <span className="mt-4 flex h-20 min-w-0 items-center pl-24 type-mono text-ink-3 md:mt-0 md:h-18">
         <span className="min-w-0 truncate">
@@ -66,7 +76,7 @@ export function GhostRow({ job, ground, now }: { job: LaunchJob; ground: 'surfac
 export function GhostRows({ ground }: { ground: 'surface' | 'bg' }) {
   const launches = useApp((s) => s.state.launches);
   const sessions = useApp((s) => s.state.sessions);
-  const on = useFeatures().launch;
+  const on = useCanStart();
   // While launching is off the launches slice is not even read.
   const ghosts = useMemo(() => (on ? ghostLaunches(launches, sessions) : []), [on, launches, sessions]);
   if (!on || !ghosts.length) return null;

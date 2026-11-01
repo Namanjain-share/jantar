@@ -26,7 +26,8 @@ function withMac(s: State): State {
   return s;
 }
 const fleet = () => withMac(fleetState({ features: {} }));
-const machines = () => screen.findByRole('list', { name: 'Machines' }, { timeout: 10_000 });
+// Named once, by its heading ("Machines 6"): never the section, its heading and its list all three.
+const machines = async () => within(await screen.findByRole('region', { name: /^Machines/ }, { timeout: 10_000 })).getByRole('list');
 const rowOf = (list: HTMLElement, name: string) => list.querySelector<HTMLElement>(`li[data-machine="${name}"]`)!;
 const admin = () => localStorage.setItem('jantar:device', JSON.stringify({ id: 'dev-1', name: 'Test phone', scopes: ['read', 'control', 'admin'] }));
 
@@ -34,6 +35,8 @@ describe('Machines', () => {
   it('lists each machine by name with its OS, terminal, presence and version', async () => {
     renderApp({ path: '/devices', state: fleet() });
     const list = await machines();
+    // A screen reader hears "Machines" once: the heading names the section, and nothing else repeats it.
+    expect(document.querySelectorAll('[aria-label="Machines"]')).toHaveLength(0);
     expect([...list.querySelectorAll<HTMLElement>('li[data-machine]')].map((li) => li.dataset.machine)).toEqual([
       'build-1',
       'build-2',
@@ -162,7 +165,7 @@ describe('with no machine paired', () => {
       else delete s.nodes;
       const { unmount } = renderApp({ path: '/devices', state: s });
       expect(await screen.findByText(/not affiliated with or endorsed by Anthropic/)).toBeTruthy();
-      expect(screen.queryByRole('region', { name: 'Machines' })).toBeNull();
+      expect(screen.queryByRole('region', { name: /^Machines/ })).toBeNull();
       expect(screen.queryByText(PAIR_LINE)).toBeNull();
       unmount();
     }

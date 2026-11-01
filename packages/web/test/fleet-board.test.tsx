@@ -7,10 +7,11 @@
  * With no machine paired (or an older daemon that sends no `nodes`) the
  * Board is exactly v0.5's. Alerts from a machine start with its name.
  */
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { boardOrder, emptyState } from '@jantar/protocol';
 import { ledgerGroups, deskAlerts } from '../src/ui/screens/board/model.js';
+import { stripItems } from '../src/ui/shell/data.js';
 import { subjectOf } from '../src/ui/screens/alerts/model.js';
 import { account, alert, NOW, pending, renderApp, session, stateWith } from './helpers.js';
 import { fleetNodes, fleetState, IDS, SID } from './fleet-helpers.js';
@@ -53,6 +54,12 @@ describe('the machine chip', () => {
     const off = row(SID.offline);
     expect(off.querySelector('[data-offline]')).not.toBeNull();
     expect(off.textContent).toContain('offline since 14:02');
+    // Muted by colour, never faded: no opacity on the row or its text (4.5:1 holds); only the glyph dims.
+    expect(off.className).not.toContain('opacity');
+    const faded = [...off.querySelectorAll('[class*="opacity"]')];
+    expect(faded.map((el) => el.textContent)).toEqual(['']);
+    expect(faded[0]?.querySelector('svg')).not.toBeNull();
+    expect(within(off).getByText('offline since 14:02').className).toContain('text-ink-2');
     expect(row(SID.tmux).querySelector('[data-offline]')).toBeNull();
   });
 
@@ -67,6 +74,25 @@ describe('the machine chip', () => {
     expect(boardOrder(s).length).toBe(order.length);
     // No machine filter: no group of machine buttons anywhere on the Board.
     expect(screen.queryByRole('group', { name: /machine/i })).toBeNull();
+  });
+
+  it('names the machine in the strip labels once one is paired (the same repo may run on ten)', () => {
+    const items = stripItems(fleetState({ sessions: [session('a')] }), NOW);
+    expect(items.find((i) => i.id === SID.tmux)?.label).toMatch(/^api-server · build-1 · /);
+    expect(items.find((i) => i.id === 'a')?.label).toContain(' · Mac · ');
+    expect(stripItems(stateWith({ sessions: [session('a')] }), NOW)[0]?.label).not.toContain('Mac');
+  });
+
+  it("the ⌘K palette names each session's machine, and finds a machine's sessions by its name", async () => {
+    viewport(1280);
+    const { history } = renderApp({ state: fleetState() });
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    const input = await screen.findByPlaceholderText('Jump to a session or account');
+    const options = screen.getAllByRole('option');
+    expect(options.some((o) => o.textContent?.includes('build-1'))).toBe(true);
+    fireEvent.change(input, { target: { value: 'build-2' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(history.entries.at(-1)).toBe(`/s/${SID.cswap}`);
   });
 
   it('shows on an ended row too (line 1, which is all it has)', () => {
@@ -128,6 +154,13 @@ describe('the Desk', () => {
     expect(machineOf(/: api-server$/)).toBe('build-1');
     expect(machineOf(/: b$/)).toBe('Mac');
     unmount();
+    // A card queued on a machine that went offline says so beside its name.
+    const off = fleetState({ sessions: [session('b', { status: 'waiting' })], pending: [pending('b')] });
+    off.nodes![IDS.build1] = { ...off.nodes![IDS.build1]!, online: false };
+    const again = renderApp({ state: off });
+    const queued = within(screen.getByRole('region', { name: 'Desk' })).getAllByRole('article');
+    expect(queued.find((c) => /: api-server$/.test(c.getAttribute('aria-label') ?? ''))?.querySelector('[data-machine]')?.textContent).toBe('build-1 · offline');
+    again.unmount();
     renderApp({ state: stateWith({ sessions: [session('b', { status: 'waiting' })], pending: [pending('b')] }) });
     expect(within(screen.getByRole('region', { name: 'Desk' })).getAllByRole('article')[0]!.querySelector('[data-machine]')).toBeNull();
   });

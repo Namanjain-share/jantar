@@ -138,8 +138,12 @@ export const NODE_CLOSE = Object.freeze({
   rateLimited: 4429,
 });
 
-/** Every id a node supplies (sid, card id, job id, launch id, call id): checked before any lookup. */
-export const NODE_SUPPLIED_ID = /^[A-Za-z0-9_-]{1,80}$/;
+/**
+ * Every id a node supplies (sid, card id, job id, launch id, call id):
+ * checked before any lookup. Never `__proto__`: copied into a plain record
+ * it would become the record's prototype.
+ */
+export const NODE_SUPPLIED_ID = /^(?!__proto__$)[A-Za-z0-9_-]{1,80}$/;
 
 /** How the hub finds the node a forwarded route goes to. */
 export type NodeTargetKind =

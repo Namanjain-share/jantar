@@ -242,6 +242,8 @@ export interface Where {
   name: string;
   /** How that machine reads its accounts (a server: cswap or config dirs). */
   accountsMode: AccountsMode;
+  /** Its link is up: while it is not, nothing can start there ("build-1 is offline"). */
+  online: boolean;
 }
 
 /** Where New session starts; null (no provider): the Mac, as before Fleet. */

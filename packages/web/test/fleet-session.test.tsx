@@ -17,15 +17,26 @@ import { FLEET_COPY, type TerminalDialog } from '@jantar/protocol';
 import { nodeCard } from '@jantar/fixtures';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { TAP_GUARD_MS } from '../src/ui/screens/session/answer.js';
-import { cardMachine, machineLine, screenReadable, tooLarge } from '../src/ui/screens/session/Info.js';
+import { cardMachine, machineLine, offlineSince, screenReadable, tooLarge } from '../src/ui/screens/session/Info.js';
 import { BLOCKED, PLAN_PARTIAL, atMachine, blocksLine, controlsOffOn, peekOf } from '../src/ui/screens/session/TermDialog.js';
 import fixtures from './term-dialog-fixtures.json';
 import { account, fakeApi, iso, NOW, pending, renderApp, session } from './helpers.js';
-import { fleetState, IDS, preloadCards, SID } from './fleet-helpers.js';
+import { fleetState, IDS, OFFLINE_AT, preloadCards, SID } from './fleet-helpers.js';
 
 preloadCards();
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+/** Pretend the window is `width` px wide (jsdom has no matchMedia). */
+function viewport(width: number) {
+  vi.stubGlobal('matchMedia', (query: string) => {
+    const m = /min-width:\s*(\d+)px/.exec(query);
+    return { matches: m ? width >= Number(m[1]) : false, media: query, onchange: null, addEventListener: () => undefined, removeEventListener: () => undefined, addListener: () => undefined, removeListener: () => undefined, dispatchEvent: () => false };
+  });
+}
 
 /** Every v0.3 to v0.5 switch on at the Mac: none of them may reach a server's session. */
 const MAC_ON = { controls: true, clearDraft: true, escape: true, files: true, rewrite: true, screenshots: true, launch: true } as const;
@@ -34,6 +45,8 @@ const open = (sid: string, api = fakeApi(), parts: Parameters<typeof fleetState>
 const prompt = () => screen.queryByLabelText('Prompt for Claude');
 const card = () => screen.getByRole('article');
 const where = () => document.querySelector<HTMLElement>('[data-machine-line]');
+// Offline is a status, said before anything was sent: never a failed send's "Nothing was sent."
+const OFFLINE = "build-3 is offline (since 14:02): Jantar can't send anything there until it is back.";
 
 describe("a server's session", () => {
   it('says where it runs under the header, and offers what its machine allows', async () => {
@@ -60,6 +73,33 @@ describe("a server's session", () => {
     expect(api.sendPrompt.mock.calls[0]?.[0]).toBe(SID.work);
   });
 
+  it("on a server that reads no usage: the account by its alias and no usage, never a red 'unknown'", () => {
+    // build-1 has config dirs: every account's usage status is 'unknown' there.
+    const { unmount } = open(SID.work);
+    expect(document.body.textContent).toContain('work');
+    expect(document.body.textContent).not.toContain('unknown');
+    expect(document.querySelector('.text-signal-text')).toBeNull();
+    unmount();
+    // The property column (1360 px and wider): the account by its alias, no 5-hour, resets or burn.
+    viewport(1440);
+    const wide = open(SID.work);
+    const props = screen.getByRole('complementary', { name: 'Session properties' });
+    expect(props.textContent).toContain('work');
+    expect(props.textContent).not.toContain('unknown');
+    expect(props.textContent).not.toContain('5-hour');
+    expect(props.textContent).not.toContain('Resets');
+    wide.unmount();
+    // One login on the Mac hides the Mac's accounts only: a server's session keeps its own.
+    renderApp({ path: `/s/${SID.work}`, state: fleetState({ features: MAC_ON, accountsMode: 'single' }) });
+    expect(screen.getByRole('complementary', { name: 'Session properties' }).textContent).toContain('Account');
+  });
+
+  it('says since when a machine is offline: the time today, the weekday this week, the date past 6 days', () => {
+    expect(offlineSince({ since: OFFLINE_AT }, NOW)).toBe('offline since 14:02');
+    expect(offlineSince({ since: new Date(NOW - 3 * 86_400_000).toISOString() }, NOW)).toMatch(/^offline since (Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d\d:\d\d$/);
+    expect(offlineSince({ since: new Date(NOW - 10 * 86_400_000).toISOString() }, NOW)).toMatch(/^offline since \d{1,2} [A-Z][a-z]{2}$/);
+  });
+
   it('reads its screen only where there is one; the Screen tab says why not', async () => {
     const api = fakeApi();
     const { unmount } = open(SID.windows, api);
@@ -69,7 +109,7 @@ describe("a server's session", () => {
     unmount();
     open(SID.offline, api);
     fireEvent.click(screen.getByRole('tab', { name: 'Screen' }));
-    expect((await screen.findByRole('tabpanel', { name: 'Screen' })).textContent).toBe(FLEET_COPY.offline('build-3'));
+    expect((await screen.findByRole('tabpanel', { name: 'Screen' })).textContent).toBe(OFFLINE);
     expect(api.getScreen).not.toHaveBeenCalled();
   });
 
@@ -77,7 +117,7 @@ describe("a server's session", () => {
     { name: 'started outside tmux', sid: SID.noPane, line: FLEET_COPY.notInTmux('build-1'), at: 'build-1 · Linux · tmux' },
     { name: 'on native Windows', sid: SID.windows, line: FLEET_COPY.watchOnlyWindows('win-1'), at: 'win-1 · Windows · watch' },
     { name: 'on a watch-only machine', sid: SID.readOnly, line: FLEET_COPY.readOnlyNode('ro-1'), at: 'ro-1 · Linux · tmux' },
-    { name: 'on an offline machine', sid: SID.offline, line: FLEET_COPY.offline('build-3'), at: 'build-3 · Linux · tmux · offline since 14:02' },
+    { name: 'on an offline machine', sid: SID.offline, line: OFFLINE, at: 'build-3 · Linux · tmux · offline since 14:02' },
   ];
   for (const c of cases) {
     it(`${c.name}: the fixed line instead of the composer, keys and control bar`, () => {

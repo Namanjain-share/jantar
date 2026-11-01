@@ -48,7 +48,7 @@ import { Segmented } from '../accounts/Segmented.js';
 import { Receipt } from '../launch/Receipt.js';
 import { SESSIONS_VIEW, WhereContext, basename, dirname, onMachine, peekPrompt, relUnder, useRequest, useWhere, type Where } from './data.js';
 import { FolderBrowser, sessionRootsOf } from './FolderBrowser.js';
-import { startMachines } from './machines.js';
+import { launchMachines, startMachines } from './machines.js';
 import { StartForm } from './StartForm.js';
 
 export interface NewSessionProps {
@@ -95,13 +95,18 @@ export function NewSession(props: NewSessionProps) {
   // Each machine keeps its own switches: the Mac is offered only while its own starting is on.
   const macOn = useFeatures().launch;
   const choices = useMemo(() => startMachines(nodes), [nodes]);
+  const switchedOn = useMemo(() => launchMachines(nodes), [nodes]);
   const [picked, setPicked] = useState<string | undefined>(lastPicked);
-  const chosen = picked !== undefined && choices.some((n) => n.id === picked) ? picked : macOn ? undefined : choices[0]?.id;
+  // A picked machine stays while it is paired with starting on, offline included: a link that drops
+  // for a second never moves the form (and what was typed in it) to another machine.
+  const kept = picked !== undefined && switchedOn.some((n) => n.id === picked);
+  const chosen = kept ? picked : macOn ? undefined : (choices[0] ?? switchedOn[0])?.id;
   const node = pinNode === null ? chosen : pinNode === MAC ? undefined : pinNode;
   const view = node !== undefined && nodes && Object.hasOwn(nodes, node) ? nodes[node] : undefined;
   const where = useMemo<Where | null>(
-    () => (node === undefined ? null : { node, name: view?.name ?? 'a server', accountsMode: view?.accountsMode ?? 'dirs' }),
-    [node, view?.name, view?.accountsMode],
+    () =>
+      node === undefined ? null : { node, name: view?.name ?? 'a server', accountsMode: view?.accountsMode ?? 'dirs', online: view?.online ?? false },
+    [node, view?.name, view?.accountsMode, view?.online],
   );
   const api = useMemo(() => onMachine(deps.api, node), [deps.api, node]);
   const scoped = useMemo(() => ({ ...deps, api }), [deps, api]);
@@ -123,7 +128,10 @@ export function NewSession(props: NewSessionProps) {
         <div className="no-scrollbar min-w-0 overflow-x-auto">
           <Segmented
             label="Where"
-            segments={[...(macOn || node === undefined ? [{ key: MAC, label: HUB_MACHINE_NAME }] : []), ...shown.map((n) => ({ key: n.id, label: n.name }))]}
+            segments={[
+              ...(macOn || node === undefined ? [{ key: MAC, label: HUB_MACHINE_NAME }] : []),
+              ...shown.map((n) => ({ key: n.id, label: n.online ? n.name : `${n.name} (offline)` })),
+            ]}
             value={node ?? MAC}
             onChange={pick}
           />

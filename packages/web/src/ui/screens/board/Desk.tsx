@@ -113,7 +113,7 @@ function QueueCard({ item, index }: { item: DeskItem; index: number }) {
         </span>
         {r.machine ? (
           <span data-machine className="ml-12 flex-none type-mono text-ink-3">
-            {r.machine.name}
+            {r.machine.offline ? `${r.machine.name} · offline` : r.machine.name}
           </span>
         ) : null}
         {index < 9 ? (

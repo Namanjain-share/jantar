@@ -102,11 +102,13 @@ export function renderUnit(o: UnitOptions): string {
   return lines.join('\n');
 }
 
-/** `${XDG_CONFIG_HOME:-~/.config}/systemd/user/jantar.service` (under the possibly synthetic user home). */
-export function unitPath(paths: Pick<Paths, 'userHome'>, env: Readonly<Record<string, string | undefined>> = {}): string {
-  const xdg = env.XDG_CONFIG_HOME;
-  const config = xdg && isAbsolute(xdg) ? xdg : join(paths.userHome, '.config');
-  return join(config, 'systemd', 'user', UNIT_NAME);
+/**
+ * `~/.config/systemd/user/jantar.service` (under the possibly synthetic user
+ * home). Never the shell's XDG_CONFIG_HOME: the user manager (started by
+ * PAM) reads ~/.config/systemd/user unless its own environment sets it.
+ */
+export function unitPath(paths: Pick<Paths, 'userHome'>): string {
+  return join(paths.userHome, '.config', 'systemd', 'user', UNIT_NAME);
 }
 
 /** The unit for this install: node + daemon by absolute path, logs under the state dir. */
@@ -119,7 +121,8 @@ export function unitFor(input: {
 }): string {
   const logs = daemonLogPaths(input.paths);
   const env: Record<string, string> = {
-    PATH: [dirname(input.nodePath), '/usr/local/bin', '/usr/bin', '/bin'].join(':'),
+    // A tmux server jantard starts first (after a reboot) hands this PATH to every pane, and so to Claude's Bash tool.
+    PATH: [dirname(input.nodePath), '/usr/local/sbin', '/usr/local/bin', '/usr/sbin', '/usr/bin', '/sbin', '/bin', '/snap/bin'].join(':'),
   };
   // As the LaunchAgent: only a non-default state dir is pinned.
   const home = stateDirFromEnv(input.env);

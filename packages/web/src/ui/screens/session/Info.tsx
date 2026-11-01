@@ -55,10 +55,31 @@ export function hasMachines(state: Pick<State, 'nodes'>): boolean {
   return state.nodes !== undefined && Object.keys(state.nodes).length > 0;
 }
 
+const SIX_DAYS_MS = 6 * 24 * 3_600_000;
+
+/** When a machine went offline: "14:02", "Tue 14:02", or its date ("3 Oct") past 6 days. */
+function offlineAt(node: Pick<NodeView, 'since'>, now: number): string {
+  const t = Date.parse(node.since);
+  if (Number.isFinite(t) && now - t > SIX_DAYS_MS) return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return clock(node.since, now);
+}
+
 /** "offline since 14:02" */
 export function offlineSince(node: Pick<NodeView, 'since'>, now: number): string {
-  const at = clock(node.since, now);
+  const at = offlineAt(node, now);
   return at ? `offline since ${at}` : 'offline';
+}
+
+/**
+ * Why nothing can be typed into an offline machine's session, said before
+ * anything was sent: "build-3 is offline (since 14:02): Jantar can't send
+ * anything there until it is back." (FLEET_COPY.offline is the refusal of a
+ * send that failed.)
+ */
+export function offlineStatus(state: Pick<State, 'nodes'>, session: Pick<Session, 'node'>, now: number): string {
+  const node = machineOf(state, session.node);
+  const at = node ? offlineAt(node, now) : '';
+  return `${machineName(state, session.node)} is offline${at ? ` (since ${at})` : ''}: Jantar can't send anything there until it is back.`;
 }
 
 /** The session header's machine line, "build-1 · Linux · tmux" (offline: "· offline since 14:02"); null for the Mac's own sessions. */

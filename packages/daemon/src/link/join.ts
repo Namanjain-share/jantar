@@ -27,8 +27,12 @@ export interface PairWithHubOptions {
   fetch?: typeof fetch;
 }
 
-/** The node file to write (key included), or one sentence saying why not (`status`: the hub's HTTP answer, when there was one). */
-export type PairWithHubResult = { ok: true; node: NodeFile } | { ok: false; reason: string; status?: number };
+/**
+ * The node file to write (key included), or one sentence saying why not
+ * (`status`: the hub's HTTP answer, when there was one; `accessRefused`: a
+ * 403 that is not Jantar's, Cloudflare Access answering before the hub).
+ */
+export type PairWithHubResult = { ok: true; node: NodeFile } | { ok: false; reason: string; status?: number; accessRefused?: true };
 
 /** How long the claim may take. */
 const PAIR_TIMEOUT_MS = 30_000;
@@ -136,7 +140,10 @@ export async function pairWithHub(token: string, opts: PairWithHubOptions): Prom
   } catch (e) {
     return { ok: false, reason: failureText(errorCode(e), host), status: res.status };
   }
-  if (res.status !== 201) return { ok: false, reason: refusalText(res.status, text !== null && isJantarError(text)), status: res.status };
+  if (res.status !== 201) {
+    const jantarBody = text !== null && isJantarError(text);
+    return { ok: false, reason: refusalText(res.status, jantarBody), status: res.status, ...(res.status === 403 && !jantarBody ? { accessRefused: true as const } : {}) };
+  }
   let json: unknown = null;
   try {
     json = text === null ? null : JSON.parse(text);
@@ -146,7 +153,13 @@ export async function pairWithHub(token: string, opts: PairWithHubOptions): Prom
   const reply = NodePairReplySchema.safeParse(json);
   if (!reply.success) return { ok: false, reason: "The hub's answer was not understood: nothing was saved.", status: res.status };
   if (!verifyPair(hubKey, reply.data.nodeId, keys.publicKey, reply.data.sig)) {
-    return { ok: false, reason: 'The server at that address is not the Mac that made this line: nothing was saved.', status: res.status };
+    // Whoever answers may have passed the claim on to the real Mac with a key of their own: the Mac paired it under the line's name.
+    return {
+      ok: false,
+      reason:
+        'The server at that address is not the Mac that made this line: nothing was saved. Someone else may answer at that address and have used the line: at the Mac, run jantar node revoke <name> for the name it was made for.',
+      status: res.status,
+    };
   }
   return {
     ok: true,

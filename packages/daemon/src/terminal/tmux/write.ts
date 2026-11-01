@@ -96,10 +96,12 @@ export function fail(code: TerminalErrorCode, reason: string): Failure {
  * default server (`/tmp/tmux-<uid>/default`), also when jantard itself was
  * started inside tmux. Nor CLAUDE_CONFIG_DIR (CSWAP_SCRUB_ENV): a server
  * jantard starts passes its env to every pane, where it would move a
- * ~/.claude start into another config dir.
+ * ~/.claude start into another config dir. Nor the Access secret `jantar
+ * node join` may read from the environment (a jantard run by hand from that
+ * shell): every Claude the phone starts would have it.
  */
 export function tmuxEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string | undefined> {
-  return scrubEnv(env, ['TMUX', 'TMUX_PANE', ...CSWAP_SCRUB_ENV]);
+  return scrubEnv(env, ['TMUX', 'TMUX_PANE', 'JANTAR_CF_ACCESS_CLIENT_SECRET', ...CSWAP_SCRUB_ENV]);
 }
 
 /** One tmux call: `-S <socket>` first when a test gave one, then `args`. Null when tmux was not found. */

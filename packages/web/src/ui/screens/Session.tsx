@@ -44,7 +44,7 @@
  * with Reload, instead of leaving the screen blank.
  */
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { machineName, machineOf, pendingFor, sessionAccount, sessionFeatures, typeRefusalText, type Session } from '@jantar/protocol';
+import { machineName, machineOf, pendingFor, sessionAccount, sessionFeatures, typeRefusal, typeRefusalText, type Session } from '@jantar/protocol';
 import { errorText } from '../../lib/api.js';
 import { screenTitle } from '../../lib/favicon.js';
 import { ago } from '../../lib/format.js';
@@ -67,7 +67,7 @@ import { takeAsk } from './session/ask.js';
 import { answeredBy, type Receipt } from './session/decide.js';
 import { DockFrame, isLate } from './session/DockFrame.js';
 import { Header, PANEL_ID, TAB_ID, Tabs, type View } from './session/Header.js';
-import { cardMachine, hasMachines, machineLine, screenReadable, SubagentAsk, subagentTitle } from './session/Info.js';
+import { cardMachine, hasMachines, machineLine, offlineStatus, screenReadable, SubagentAsk, subagentTitle } from './session/Info.js';
 import { PaneRoot } from './session/keys.js';
 import { MetaLine, Props } from './session/Meta.js';
 import { kindWord, needsQueue, openCard, stepsFor } from './session/order.js';
@@ -173,10 +173,13 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   // Jantar can't type into it (null: it can). The Mac's own sessions read exactly as before.
   const account = session ? (sessionAccount(state, session) ?? undefined) : undefined;
   const features = session && session.node !== undefined ? sessionFeatures(state, session) : hubFeatures;
-  const refusal = session ? typeRefusalText(state, session) : null;
+  // Offline: a status, not a failed send's refusal (nothing was sent yet).
+  const refusal = session ? (typeRefusal(state, session) === 'offline' ? offlineStatus(state, session, now) : typeRefusalText(state, session)) : null;
   const typable = refusal === null;
   const readable = !session || screenReadable(state, session);
   const node = session ? machineOf(state, session.node) : null;
+  // A server that reads no usage (config dirs, one login): its session's meta says nothing of usage.
+  const noUsage = session?.node !== undefined && node?.accountsMode !== 'cswap';
   const machine = session?.node !== undefined ? machineName(state, session.node) : null;
   // Show on Mac raises a Terminal window: the Mac's own, or a Mac server's (online, not watch-only).
   const raisable = !session || session.node === undefined || (node?.backend === 'terminal-app' && typable);
@@ -594,7 +597,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
         >
           {header}
           {whereLine}
-          {reading ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone modeOnChip={modeOnChip} />}
+          {reading ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone modeOnChip={modeOnChip} noUsage={noUsage} />}
           <div className="flex-none border-b border-line px-16 py-8">
             <Tabs sid={sid} view={view} onView={(v) => setView(v)} phone files={filesTab} />
           </div>
@@ -616,13 +619,13 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
         {focusLine}
         <div className="flex min-h-0 flex-1 justify-between gap-32 px-32">
           <div className="flex min-h-0 min-w-0 max-w-640 flex-1 flex-col">
-            {wide ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone={false} modeOnChip={modeOnChip} />}
+            {wide ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone={false} modeOnChip={modeOnChip} noUsage={noUsage} />}
             {goneNotice}
             {panel}
             {controlBar}
             {bottom ? <div className="flex-none pb-24">{bottom}</div> : null}
           </div>
-          {wide ? <Props session={session} account={account} state={sameMachine} ceiling={ceiling} now={now} onOpen={openSession} modeOnChip={modeOnChip} /> : null}
+          {wide ? <Props session={session} account={account} state={sameMachine} ceiling={ceiling} now={now} onOpen={openSession} modeOnChip={modeOnChip} noUsage={noUsage} /> : null}
         </div>
       </div>
     </PaneRoot.Provider>

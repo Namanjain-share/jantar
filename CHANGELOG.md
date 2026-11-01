@@ -6,7 +6,7 @@ What changed for people who use Jantar, newest first. Versions before
 ## Unreleased
 
 Fleet (v0.6), off until you run `jantar fleet on` at the Mac. With it off,
-nothing changes.
+nothing changes but the last line below.
 
 - **Your servers on the same board.** Pair Linux servers, Windows machines
   and other Macs with the Mac (`jantar node pair` there, `jantar node join`
@@ -23,12 +23,17 @@ nothing changes.
   why it can't type there.
 - **Native Windows is a preview:** sessions and their hook cards only, with
   Claude Code 2.1.310 or newer, on a machine nobody else logs on to.
-- A server that goes offline keeps its sessions on the board, greyed, and a
-  write to it says nothing was sent. `jantar fleet status` and `jantar node
-  list` say how each link last closed.
+- A server that goes offline keeps its sessions on the board, muted
+  ("offline since 14:02"), and nothing is sent there until it is back.
+  `jantar fleet status` and `jantar node list` say how each link last
+  closed.
 - Not yet checked on real machines: sending prompts on Linux, real Claude
   Code in tmux, the Access path for the link, native Windows and WSL2's
   keep-alive ([what is not verified yet](docs/fleet.md#not-verified-yet)).
+- On every Mac, Fleet or not: the hook cards now load as their own part of
+  the app, so the first card after the app opens may show "Loading the
+  card" for a moment (well under a second; that part is kept for offline
+  use like the rest). It keeps the app's first load small.
 
 ## 0.5.2 (1 November 2026)
 

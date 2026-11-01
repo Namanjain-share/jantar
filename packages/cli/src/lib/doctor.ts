@@ -294,7 +294,7 @@ export async function readCtlStatus(ctl: CtlClient): Promise<CtlStatusView | nul
 /** Where the daemon's service is, in words (v0.6: a systemd unit on Linux, a task on Windows). */
 async function serviceWhere(i: DoctorInput): Promise<string> {
   if (i.platform === 'linux') {
-    const unit = unitPath(i.paths, i.env);
+    const unit = unitPath(i.paths);
     return (await exists(unit)) ? `systemd unit at ${unit}` : 'systemd unit not installed';
   }
   if (i.platform === 'win32') return 'a Scheduled Task (jantar install prints its lines)';

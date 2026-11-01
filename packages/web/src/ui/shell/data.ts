@@ -5,13 +5,26 @@
  * memoised values.
  */
 import { useMemo } from 'react';
-import { NO_FEATURES, boardOrder, needsYou, pendingFor, type AccountsMode, type Features, type LaunchJob, type PendingRequest, type State } from '@jantar/protocol';
+import {
+  NO_FEATURES,
+  boardOrder,
+  machineName,
+  needsYou,
+  pendingFor,
+  type AccountsMode,
+  type Features,
+  type LaunchJob,
+  type PendingRequest,
+  type State,
+} from '@jantar/protocol';
 import { accountId, ago, fiveHourPct } from '../../lib/format.js';
 import { readLocal } from '../../lib/storage.js';
 import { useApp } from '../context.js';
 import { GLYPH_WORD, glyphStateOf, type GlyphState } from '../kit/glyph.js';
 import type { StripItem } from '../kit/Strip.js';
 import { ALERTS_SEEN_KEY } from '../screens/Alerts.js';
+import { useCanStart } from '../screens/new/machines.js';
+import { hasMachines } from '../screens/session/Info.js';
 
 /** The autoswitch ceiling: read from /v1/plan through one shared feed. */
 export { DEFAULT_CEILING, useCeiling } from '../plan.js';
@@ -50,11 +63,13 @@ export function needsWord(state: State, sid: string): string {
 }
 
 export function stripItems(state: State, now: number): StripItem[] {
+  // v0.6: once a machine is paired, each label names its machine (the same repo may run on ten).
+  const machines = hasMachines(state);
   return boardOrder(state).map((s) => {
     const g: GlyphState = glyphStateOf(state, s, now);
     const word = g === 'needs' ? needsWord(state, s.sid) : GLYPH_WORD[g];
     const age = ago(s.statusSince, now);
-    return { id: s.sid, state: g, label: [s.folder, word, age].filter(Boolean).join(' · ') };
+    return { id: s.sid, state: g, label: [s.folder, machines ? machineName(state, s.node) : '', word, age].filter(Boolean).join(' · ') };
   });
 }
 
@@ -69,7 +84,7 @@ export function launchesNeedingYou(state: State): LaunchJob[] {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-/** Sessions that need you, and, while launching is on, launches waiting on a dialog card. */
+/** Sessions that need you, and, while starting is on somewhere (the Mac or a server), launches waiting on a dialog card. */
 export function needsCount(state: State, launchOn = false): number {
   let n = 0;
   for (const sid of Object.keys(state.sessions)) if (needsYou(state, sid)) n += 1;
@@ -90,7 +105,8 @@ export function usagePairs(state: State, now: number = Date.now()): UsagePair[] 
 
 export function useNeedsCount(): number {
   const state = useApp((s) => s.state);
-  const { launch } = useFeatures();
+  // Each machine's own switch, as the Board's ghost rows: a server's launch counts with the Mac's starting off.
+  const launch = useCanStart();
   return useMemo(() => needsCount(state, launch), [state, launch]);
 }
 

@@ -56,6 +56,7 @@ import {
   EVENTS_WS_PROTOCOL,
   EXTENSION_ID,
   EXTENSION_KEY_HEADER,
+  ErrorCodeSchema,
   EventsQuerySchema,
   FLEET_COPY,
   IDEMPOTENCY_HEADER,
@@ -691,14 +692,15 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
         if (call.idempotencyKey !== undefined) fwd.idem = `${fwd.actor.deviceId}:${call.idempotencyKey}`;
         const out = await s.fleet.forward(target, fwd);
         if (isWrite) {
-          const err = (out.body as { error?: { code: string; message: string } } | null)?.error;
+          // Only the error's code, and only a known one: a server's own words never reach the Mac's audit log.
+          const code = ErrorCodeSchema.safeParse((out.body as { error?: { code?: unknown } } | null)?.error?.code);
           audit({
             actor: actorName(auth),
             action: name,
             target: rawParams.sid ?? rawParams.id,
             params: { node: target.nodeId },
             result: auditResult(out.status),
-            detail: err ? `${err.code}: ${err.message}` : undefined,
+            detail: code.success ? code.data : undefined,
           });
         }
         if (auth.transport === 'tcp' && (auth.touched || auth.legacyCookie) && auth.deviceKey && out.status < 400) {

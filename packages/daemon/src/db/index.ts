@@ -54,12 +54,17 @@ export function persistEvents(store: Pick<Store, 'subscribe'>, db: Db, log?: Log
 /**
  * Keep `db.pending` (card history) in step with pending.opened / resolved.
  * Records are insert-or-replace by id, so this is safe to run even if the
- * hooks bridge also records cards itself.
+ * hooks bridge also records cards itself. The Mac's own cards only (v0.6): a
+ * server's session's cards are never written, so no server can push the
+ * Mac's card history out (and resolving one finds no row to update).
  */
-export function persistPendingHistory(store: Pick<Store, 'subscribe'>, db: Db, log?: Logger): Unsubscribe {
+export function persistPendingHistory(store: Pick<Store, 'subscribe' | 'getState'>, db: Db, log?: Logger): Unsubscribe {
   return store.subscribe((ev: DaemonEvent) => {
     try {
       if (ev.type === 'pending.opened') {
+        const { sessions } = store.getState();
+        const sid = ev.data.pending.sid;
+        if (Object.hasOwn(sessions, sid) && sessions[sid]?.node !== undefined) return;
         db.pending.record(ev.data.pending);
       } else if (ev.type === 'pending.resolved') {
         const prev = db.pending.get(ev.data.id);

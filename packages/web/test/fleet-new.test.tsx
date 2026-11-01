@@ -22,7 +22,7 @@ import { AppProvider, createToastStore } from '../src/ui/context.js';
 import { onMachine } from '../src/ui/screens/new/data.js';
 import { canStartAnywhere, canStartOn, startMachines } from '../src/ui/screens/new/machines.js';
 import { NewSession } from '../src/ui/screens/new/NewSession.js';
-import { NOW, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+import { emit, iso, NOW, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 import { fleetNodes, fleetState, IDS, SID } from './fleet-helpers.js';
 import { entry, job, launchApi, listing, viewport } from './launch-fixtures.js';
 
@@ -131,6 +131,38 @@ describe('the Where row', () => {
     for (const [q] of (api.launchPreview as ReturnType<typeof vi.fn>).mock.calls) expect(q.node).toBe(IDS.mini1);
   });
 
+  it('keeps a picked machine through a dropped link: the form and what was typed stay, and the hold waits for it', async () => {
+    const api = launchApi({}, { 'r.1:': work });
+    const { store, history } = renderApp({ path: '/new', api, state: fleetState({ features: ON }) });
+    await pick('build-2');
+    await waitFor(() => expect(rows()).toEqual(['api', 'notes']));
+    fireEvent.click(within(row('api')).getByRole('button', { name: 'Start a session in api' }));
+    await waitFor(() => expect(hold().disabled).toBe(false));
+    fireEvent.change(within(sheet()).getByLabelText(/First prompt/), { target: { value: 'fix the flaky test' } });
+    const online = (on: boolean) => {
+      const node = { ...store.getState().state.nodes![IDS.build2]!, online: on, since: iso(0) };
+      act(() => emit(store, [{ seq: store.getState().state.seq + 1, ts: iso(0), type: 'node.updated', data: { node } }]));
+    };
+
+    // build-2's link drops for a second: still build-2 (said offline), the form open as it was, the hold off.
+    online(false);
+    expect(await pressed()).toBe('build-2 (offline)');
+    expect(history.entries.at(-1)).toBe('/new?root=r.1&path=api&start=1');
+    expect((within(sheet()).getByLabelText(/First prompt/) as HTMLTextAreaElement).value).toBe('fix the flaky test');
+    expect(within(sheet()).getByRole('button', { name: /^Hold to start on build-2\. Hold for/ }).hasAttribute('disabled')).toBe(true);
+    expect(within(sheet()).getByText('build-2 is offline')).toBeTruthy();
+
+    // Back: the same form, ready again.
+    online(true);
+    expect(await pressed()).toBe('build-2');
+    await waitFor(() => expect(hold().disabled).toBe(false));
+    expect((within(sheet()).getByLabelText(/First prompt/) as HTMLTextAreaElement).value).toBe('fix the flaky test');
+    expect(within(sheet()).queryByText('build-2 is offline')).toBeNull();
+
+    await pick('Mac');
+    expect(await pressed()).toBe('Mac');
+  });
+
   it('sits under the title in the split layout too', async () => {
     viewport(1280);
     renderApp({ path: '/new', api: launchApi(), state: fleetState({ features: ON }) });
@@ -218,6 +250,16 @@ describe("with the Mac's own starting off", () => {
     expect((await screen.findAllByRole('button', { name: 'New session' })).length).toBeGreaterThan(0);
   });
 
+  it("shows a server's launch on its way on the Board, naming the machine, and counts its dialog in the tab", async () => {
+    const s = startingOn(IDS.build2);
+    s.launches.L7 = job('L7', { node: IDS.build2, stage: 'dialog' });
+    renderApp({ path: '/', api: launchApi(), state: s });
+    await waitFor(() => expect(document.querySelector('[data-launch="L7"]')).not.toBeNull());
+    expect(document.querySelector('[data-launch="L7"] [data-machine]')?.textContent).toBe('build-2');
+    // build-1's open card and this dialog: the Mac's own starting being off never hides it.
+    await waitFor(() => expect(document.title).toMatch(/^\(2\) /));
+  });
+
   it('offers each machine that can start but never the Mac, the first one picked', async () => {
     const api = launchApi();
     renderNew(fleetState({ features: {} }), api);
@@ -246,13 +288,14 @@ describe('where a session can start', () => {
     expect(canStartOn(fleetState({ features: ON }), undefined)).toBe(true);
   });
 
-  it('canStartAnywhere: the Mac, or any machine that can start (New session exists while it holds)', () => {
+  it("canStartAnywhere: the Mac, or any machine by its own switch, online or not (New session exists while it holds)", () => {
     expect(canStartAnywhere(stateWith({ features: {} }))).toBe(false);
     expect(canStartAnywhere(stateWith({ features: ON }))).toBe(true);
     expect(canStartAnywhere(startingOn())).toBe(false);
     expect(canStartAnywhere(startingOn(IDS.build1))).toBe(true);
-    // An offline or watch-only machine with starting on is no place to start.
-    expect(canStartAnywhere(startingOn(IDS.build3, IDS.ro1))).toBe(false);
+    // A watch-only machine is no place to start; an offline one keeps New session (its link may be back in a second).
+    expect(canStartAnywhere(startingOn(IDS.ro1))).toBe(false);
+    expect(canStartAnywhere(startingOn(IDS.build3))).toBe(true);
     const older = stateWith({ features: {} });
     delete older.nodes;
     expect(canStartAnywhere(older)).toBe(false);

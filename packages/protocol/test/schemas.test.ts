@@ -162,6 +162,10 @@ describe('selectors', () => {
     expect(folderOf('/a/b/my-app/')).toBe('my-app');
     expect(folderOf('/')).toBe('/');
     expect(folderOf('rel')).toBe('rel');
+    // A native Windows node's cwd.
+    expect(folderOf('C:\\Users\\sam\\code\\api')).toBe('api');
+    expect(folderOf('C:\\Users\\sam\\code\\api\\')).toBe('api');
+    expect(folderOf('C:/work/code/web/\\')).toBe('web');
   });
 
   it('labels sessions as "status · folder · session"', () => {

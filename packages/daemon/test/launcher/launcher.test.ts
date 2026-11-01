@@ -1201,7 +1201,7 @@ describe('preview and account choice with ccw running', () => {
     const want = {
       ok: false,
       code: 'unavailable',
-      reason: "This Mac isn't set up to start sessions from the phone: cswap was not found (install it, or on the Mac run: jantar launch mode cs-shell)",
+      reason: "This machine isn't set up to start sessions from the phone: cswap was not found (install it, or on the Mac run: jantar launch mode cs-shell)",
     };
     expect(await rig.launcher.preview({ root: 'r.work', path: 'alpha-app', account: 'auto' }, PHONE)).toEqual(want);
     expect(await rig.launcher.launch(body(), PHONE, 'k')).toEqual(want);
@@ -1488,7 +1488,7 @@ describe('v0.4: single-account mode and claude mode (LL6)', () => {
   it('claude mode with no claude found is a setup problem, not the folder', async () => {
     rig = await historyRig(SINGLE);
     Object.assign(rig.ctx.bins, { claude: null });
-    const want = { ok: false, code: 'unavailable', reason: "This Mac isn't set up to start sessions from the phone: claude (Claude Code) was not found on this Mac" };
+    const want = { ok: false, code: 'unavailable', reason: "This machine isn't set up to start sessions from the phone: claude (Claude Code) was not found on this machine" };
     expect(await rig.launcher.preview({ root: 'r.work', path: 'alpha-app', account: 'auto' }, PHONE)).toEqual(want);
     expect(await rig.launcher.launch(body(), PHONE, 'k')).toEqual(want);
   });

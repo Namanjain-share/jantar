@@ -7,7 +7,8 @@
  *   ──────●━━━━━━━━━━━━━━━   +30%/h  (or "full ~14:16")
  *
  * The expanded row adds the runway in words, the 7d bar and reset, scoped
- * windows, every flag and the sessions as 44 px links.
+ * windows, every flag and the sessions as 44 px links. `muted` (an offline
+ * server's last readings): the name and % in ink-3, the bar stale.
  */
 import type { State } from '@jantar/protocol';
 import clsx from 'clsx';
@@ -29,6 +30,7 @@ export function PhoneRows({
   bar,
   open,
   onToggle,
+  muted = false,
 }: {
   rows: AccountRow[];
   state: State;
@@ -39,6 +41,7 @@ export function PhoneRows({
   bar: number;
   open: ReadonlySet<number>;
   onToggle: (id: number) => void;
+  muted?: boolean;
 }) {
   return (
     <ul aria-label="Accounts">
@@ -61,8 +64,8 @@ export function PhoneRows({
                     onToggle(r.id);
                   }}
                 >
-                  <span className="type-mono font-key text-ink">{r.tag}</span>
-                  <span className="min-w-0 truncate type-row text-ink-2">{r.alias}</span>
+                  <span className={clsx('type-mono font-key', muted ? 'text-ink-3' : 'text-ink')}>{r.tag}</span>
+                  <span className={clsx('min-w-0 truncate type-row', muted ? 'text-ink-3' : 'text-ink-2')}>{r.alias}</span>
                 </button>
                 {flag ? (
                   <Tag tone={flag.tone} className="ml-8 h-18">
@@ -70,12 +73,12 @@ export function PhoneRows({
                   </Tag>
                 ) : null}
                 <span className="ml-auto flex-none pl-12 type-mono">
-                  <span className={!r.ok ? 'text-ink-3' : r.past ? 'text-signal-text' : 'text-ink'}>{r.h5 ?? '–'}</span>
+                  <span className={!r.ok || muted ? 'text-ink-3' : r.past ? 'text-signal-text' : 'text-ink'}>{r.h5 ?? '–'}</span>
                   <span className="ml-4 text-ink-3">5h</span>
                 </span>
               </div>
               <div className="mt-6 flex h-16 items-center justify-between gap-12">
-                <Meter value={r.h5} stale={!r.ok} label={`${r.name} 5-hour usage`} width={bar} ceiling={ceiling} />
+                <Meter value={r.h5} stale={!r.ok || muted} label={`${r.name} 5-hour usage`} width={bar} ceiling={ceiling} />
                 <span className="truncate type-mono text-ink-3">
                   {r.resetAt !== null ? (
                     <>

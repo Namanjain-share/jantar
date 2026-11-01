@@ -100,7 +100,8 @@ function serverState(): State {
   const state = emptyState();
   state.sessions = {
     s1: nodeSession({ sid: 's1', paneId: '%3' }),
-    s2: nodeSession({ sid: 's2', tty: '/dev/pts/4', configDir: '/home/sam/.claude-work', account: 1 }),
+    // As a Linux daemon has it: `ps -o tty=` prints "pts/4" (tmux says "/dev/pts/4").
+    s2: nodeSession({ sid: 's2', tty: 'pts/4', configDir: '/home/sam/.claude-work', account: 1 }),
   };
   state.daemon = { protocol: 3, daemonVersion: '0.6.0', webHash: null, accountsMode: 'dirs' };
   return state;
@@ -248,6 +249,12 @@ describe('jantar node at the Mac', () => {
     const { ctx, io } = contextFor(home, { deps: testDeps({ platform: 'linux' }) });
     expect(await createNodeCommand().run(['status'], ctx)).toBe(EXIT.failed);
     expect(io.stderr).toBe('This machine is not a server yet: run jantar node join <line from jantar node pair at the Mac>.\n');
+    // And the hub's verbs there: the hub is a Mac (never the local daemon's "Fleet is off" or an empty list).
+    for (const argv of [['pair'], ['list'], ['revoke', 'build-1']]) {
+      const linux = contextFor(home, { deps: testDeps({ platform: 'linux' }) });
+      expect(await createNodeCommand().run(argv, linux.ctx)).toBe(EXIT.failed);
+      expect(linux.io.stderr).toBe('The hub is a Mac: run this there. This machine joins it with jantar node join <line from the Mac>.\n');
+    }
   });
 
   it('refuses an unknown action and a missing name', async () => {
@@ -427,7 +434,9 @@ describe('jantar node join on a Linux server', () => {
   it('writes nothing when the answer is not signed by the Mac that made the line', async () => {
     const t = await server({ hub: fakeHub({ sign: 'wrong' }), answers: [''] });
     expect(await t.node.run(['join', t.hub.line], t.ctx)).toBe(EXIT.failed);
-    expect(t.io.stderr).toBe('Not joined. The server at that address is not the Mac that made this line: nothing was saved.\n');
+    expect(t.io.stderr).toBe(
+      'Not joined. The server at that address is not the Mac that made this line: nothing was saved. Someone else may answer at that address and have used the line: at the Mac, run jantar node revoke <name> for the name it was made for.\n',
+    );
     expect(t.io.stdout).toBe('');
     await nothingWritten(t);
   });
@@ -440,11 +449,20 @@ describe('jantar node join on a Linux server', () => {
     );
     await nothingWritten(used);
 
+    // Access refused the claim: this join again with the right token (the line still works), never jantar node access.
     const access = await server({ hub: fakeHub({ status: 403, jantarBody: false }), answers: [''] });
     expect(await access.node.run(['join', access.hub.line], access.ctx)).toBe(EXIT.failed);
-    expect(access.io.stderr).toContain('Cloudflare Access refused the connection');
-    expect(access.io.stderr).toContain("If the Mac's door has Cloudflare Access, pass --cf-access-client-id.\n");
+    expect(access.io.stderr).toBe(
+      'Not joined. This door has Cloudflare Access: run jantar node join <line> --cf-access-client-id <id> (the secret is asked hidden, or set JANTAR_CF_ACCESS_CLIENT_SECRET). Nothing was saved on this machine.\n',
+    );
     await nothingWritten(access);
+    const wrong = await server({ hub: fakeHub({ status: 403, jantarBody: false }), answers: [CLIENT_ID] });
+    expect(await wrong.node.run(['join', wrong.hub.line], wrong.ctx)).toBe(EXIT.failed);
+    expect(wrong.io.stderr).toBe(
+      "Not joined. Cloudflare Access refused this server's service token (wrong, expired or revoked): run jantar node join <line> again with the right --cf-access-client-id; the secret is asked hidden. Nothing was saved on this machine.\n",
+    );
+    expect(wrong.io.stderr).not.toContain('jantar node access');
+    await nothingWritten(wrong);
 
     const typo = await server();
     expect(await typo.node.run(['join', 'jn1.not-a-line!'], typo.ctx)).toBe(EXIT.failed);
@@ -610,6 +628,15 @@ describe('jantar node join on a Linux server', () => {
     expect(t.io.stdout).not.toContain('outside tmux');
   });
 
+  it('without --hooks: names the dirs that have them already (a leave keeps them), and hints only for the rest', async () => {
+    const t = await server({ answers: [''] });
+    await writeFile(join(t.ctx.paths.userHome, '.claude', 'settings.json'), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: t.ctx.paths.hookBin }] }] } }));
+    expect(await t.node.run(['join', t.hub.line, '--no-service'], t.ctx), t.io.stderr).toBe(EXIT.ok);
+    expect(t.io.stdout).toContain(
+      'Hooks: already in ~/.claude/settings.json; not installed in ~/.claude-work/settings.json (cards need them): jantar hooks install --apply, with --settings <dir>/settings.json for each other config dir.\n',
+    );
+  });
+
   it('without a terminal: no secret prompt, so a token id needs the secret from the environment', async () => {
     const t = await server({ deps: { askSecret: undefined } });
     expect(await t.node.run(['join', t.hub.line, '--cf-access-client-id', CLIENT_ID], t.ctx)).toBe(EXIT.usage);
@@ -644,7 +671,7 @@ describe('jantar node join on native Windows (preview)', () => {
     expect(await node.run(['join', hub.line], ctx), io.stderr).toBe(EXIT.ok);
     expect(hub.claims[0]?.body.os).toBe('windows');
     expect(deps.exec.calls).toEqual([]);
-    expect(io.stdout).toContain('Service: on Windows, Jantar runs as a task at logon. In Command Prompt (cmd.exe), run:\n');
+    expect(io.stdout).toContain('Service: on Windows, Jantar runs as a task at logon. In Command Prompt (cmd.exe, Run as administrator), run:\n');
     expect(io.stdout).toContain('  schtasks /Create /TN Jantar /SC ONLOGON /RL LIMITED /F /TR ');
     expect(io.stdout).toContain('--log-files');
     expect(io.stdout).toContain('  schtasks /Run /TN Jantar\n');

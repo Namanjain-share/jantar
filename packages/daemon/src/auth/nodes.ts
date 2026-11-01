@@ -123,10 +123,18 @@ export class NodeAuth {
     return { ok: true, reply: { nodeId: rec.id, name: rec.name, sig: signPair(key.privateKey, rec.id, rec.publicKey) }, nodeId: rec.id };
   }
 
-  /** POST /v1/machines/pair: one join line per name (`hubUrl`: remote.publicUrl; `createdBy`: the audit actor). */
-  async makeTokens(body: MachinesPairBody, opts: { hubUrl: string; createdBy: string }): Promise<FleetResult<{ tokens: MachinesPairReply['tokens'] }>> {
+  /**
+   * POST /v1/machines/pair: one join line per name (`hubUrl`: remote.publicUrl;
+   * `createdBy`: the audit actor). https only: a line sends each server to
+   * that address with its Access secret, and http on loopback would be the
+   * server's own machine. `loopbackHttp`: the tests' door alone.
+   */
+  async makeTokens(
+    body: MachinesPairBody,
+    opts: { hubUrl: string; createdBy: string; loopbackHttp?: boolean },
+  ): Promise<FleetResult<{ tokens: MachinesPairReply['tokens'] }>> {
     const url = hubOrigin(opts.hubUrl);
-    if (!url) return { ok: false, code: 'conflict', reason: 'Servers need a fixed front door. Set one up with jantar remote setup.' };
+    if (!url || (!url.startsWith('https:') && opts.loopbackHttp !== true)) return { ok: false, code: 'conflict', reason: 'Servers need a fixed front door. Set one up with jantar remote setup.' };
     const names = this.namesFor(body);
     if (!names.ok) return names;
     if (this.pairing.openCount() + names.names.length > MAX_OPEN_JOIN_LINES) {

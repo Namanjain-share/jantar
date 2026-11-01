@@ -322,7 +322,8 @@ with no shell, and fail open: if Jantar is not running, Claude asks in its
 own terminal.
 
 There is no Windows service code. The join prints two lines to run in
-Command Prompt (`cmd.exe`), a task that starts the daemon at logon:
+Command Prompt (`cmd.exe`, **Run as administrator**: creating a logon task
+needs it), a task that starts the daemon at logon:
 
 ```
 schtasks /Create /TN Jantar /SC ONLOGON /RL LIMITED /F /TR "\"C:\Program Files\nodejs\node.exe\" \"C:\Users\sam\jantar\packages\daemon\bin\jantard.mjs\" --log-files"
@@ -330,7 +331,8 @@ schtasks /Run /TN Jantar
 ```
 
 It runs while you are logged on; an unattended server needs auto-logon or
-a kept session. `schtasks /End /TN Jantar` stops it and
+a kept session. At logon a console window opens for it: keep it open
+(minimise it), as closing it stops Jantar. `schtasks /End /TN Jantar` stops it and
 `schtasks /Delete /TN Jantar /F` removes it. `jantar install` prints the
 lines again (to update): it keeps `--read-only` when the running daemon has
 it, and with the daemon stopped it asks you to say `--read-only` or
@@ -556,12 +558,14 @@ The whole picture is in
 - Native Windows: watch and cards only (see [Windows](#windows)).
 - No Picture view, Files or Rewrite for servers' sessions; Life, Intel,
   Meetings and notifications live on the Mac.
-- A server that goes offline keeps its rows and cards on the phone, greyed,
-  until it is back, removed, or the Mac's daemon restarts. Nothing is
-  queued: a prompt or answer to an offline server is refused at once.
+- A server that goes offline keeps its rows and cards on the phone, muted
+  ("offline since 14:02"), until it is back, removed, or the Mac's daemon
+  restarts. Nothing is queued: a prompt or answer to an offline server is
+  refused at once.
 - After the Mac's daemon restarts, an open card on a server may be pushed
   to the phone once more.
-- Per server: 64 sessions, 32 open cards, 10 notifications a minute, and
+- Per server: 64 sessions, 32 open cards, its newest 20 alerts and
+  finished sends beside the Mac's, 10 notifications a minute, and
   1 MiB per message (larger replies such as transcript pages and uploads
   travel in parts; uploads up to the usual 20 MiB).
 
@@ -583,9 +587,9 @@ behaviour holds: a refusal you can see, never a guess.
 - **The Cloudflare Access path application for the WebSocket.** If it
   fails, the server reports "Access refused"; Tailscale is the other door.
 - **Native Windows** (hooks through a named pipe, the printed task): see
-  [Windows](#windows). Also whether a standard user can create the logon
-  task without an elevated Command Prompt on every Windows edition (the
-  automated check runs elevated).
+  [Windows](#windows). Also whether the logon task needs the elevated
+  Command Prompt the join asks for on every Windows edition, and its console
+  window at logon (the automated check runs elevated, with no logon).
 - **WSL2 keep-alive** over hours, and a second Mac as a server.
 
 The security side of Fleet, including what it does not protect against,

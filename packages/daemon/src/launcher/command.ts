@@ -64,7 +64,7 @@ export const ACCOUNT_PLACEHOLDER = '<account>';
 export const RESUME_KEEPS_NAME = true;
 
 /** claude mode needs the absolute path of claude, found at daemon start (bins.claude). */
-export const CLAUDE_MISSING = 'claude (Claude Code) was not found on this Mac';
+export const CLAUDE_MISSING = 'claude (Claude Code) was not found on this machine';
 /** Single mode (no cswap) starts sessions in claude mode only. */
 export const NO_CSWAP_MODE = 'This Mac has no cswap. Run: jantar launch mode claude';
 /** claude mode picks no account, so with cswap a start needs cs-shell or cswap-run. */

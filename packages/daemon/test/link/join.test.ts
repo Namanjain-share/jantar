@@ -59,7 +59,12 @@ describe('pairWithHub', () => {
     if (!d.ok) throw new Error(d.reason);
     const forged = encodeJoinToken({ ...d.token, hubKey: generateKeyPair().publicKey });
     const r = await pairWithHub(forged, OPTS);
-    expect(r).toEqual({ ok: false, status: 201, reason: 'The server at that address is not the Mac that made this line: nothing was saved.' });
+    expect(r).toEqual({
+      ok: false,
+      status: 201,
+      reason:
+        'The server at that address is not the Mac that made this line: nothing was saved. Someone else may answer at that address and have used the line: at the Mac, run jantar node revoke <name> for the name it was made for.',
+    });
   });
 
   it('a redirect is never followed', async () => {
@@ -76,11 +81,12 @@ describe('pairWithHub', () => {
   it("Cloudflare Access's 403 (no Jantar body) is told apart from the hub's own", async () => {
     const access = await answering(403, '<!doctype html><title>Forbidden</title>', { 'content-type': 'text/html' });
     const r = await pairWithHub(lineFor(access.url), OPTS);
-    expect(r).toMatchObject({ ok: false, status: 403 });
+    expect(r).toMatchObject({ ok: false, status: 403, accessRefused: true });
     expect(r.ok ? '' : r.reason).toMatch(/^Cloudflare Access refused the connection/);
     const jantar = await answering(403, JSON.stringify({ error: { code: 'forbidden', message: 'browsers cannot call this' } }));
     const own = await pairWithHub(lineFor(jantar.url), OPTS);
     expect(own.ok ? '' : own.reason).toMatch(/^The hub refused this server \(403\)/);
+    expect(own).not.toHaveProperty('accessRefused');
     await Promise.all([access.close(), jantar.close()]);
   });
 

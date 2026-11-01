@@ -29,6 +29,7 @@ import { ensureStateDirs, type NodeFile } from '@jantar/daemon';
 import { roleOf } from '@jantar/daemon/config';
 import { pairWithHub } from '@jantar/daemon/link/join';
 import { readNodeFile, writeNodeFile } from '@jantar/daemon/link/keys';
+import { normalizeTty } from '@jantar/daemon/terminal/tty';
 import {
   MachinesPairBodySchema,
   NodeNameSchema,
@@ -540,10 +541,19 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
   const os = nodeOsOf(ctx.deps.platform, await deps.readText(OSRELEASE));
   const res = await deps.pairWithHub(line, { os, version: CLI_VERSION, cfAccess });
   if (!res.ok) {
+    // Access refused the claim: the line still works for its 10 minutes, so the fix is this join with the right token
+    // (the link's own sentence, refusalText, sends a joined server to jantar node access, which needs a pairing).
+    if (res.accessRefused) {
+      ctx.io.err(
+        cfAccess
+          ? "Not joined. Cloudflare Access refused this server's service token (wrong, expired or revoked): run jantar node join <line> again with the right --cf-access-client-id; the secret is asked hidden. Nothing was saved on this machine.\n"
+          : 'Not joined. This door has Cloudflare Access: run jantar node join <line> --cf-access-client-id <id> (the secret is asked hidden, or set JANTAR_CF_ACCESS_CLIENT_SECRET). Nothing was saved on this machine.\n',
+      );
+      return EXIT.failed;
+    }
     // L1's sentences end in a period, and some already say nothing was saved.
     const saved = /nothing was saved/i.test(res.reason) ? '' : ' Nothing was saved on this machine.';
-    const noToken = res.status === 403 && !cfAccess ? ' If the Mac\'s door has Cloudflare Access, pass --cf-access-client-id.' : '';
-    ctx.io.err(`Not joined. ${res.reason}${saved}${noToken}\n`);
+    ctx.io.err(`Not joined. ${res.reason}${saved}\n`);
     return EXIT.failed;
   }
   await ensureStateDirs(ctx.paths, ctx.deps.platform);
@@ -604,7 +614,8 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
       const sessions = state ? Object.values(state.sessions).filter((s) => s.status !== 'ended') : [];
       // paneId comes on the daemon's 10-second tick, so just after the link the panes' own ttys say it too.
       const panes = tmux ? await paneTtys(ctx) : new Set<string>();
-      const inTmux = sessions.filter((s) => s.paneId !== undefined || (s.tty !== undefined && panes.has(s.tty))).length;
+      // tmux says "/dev/pts/3"; a Linux session's tty is ps's "pts/3".
+      const inTmux = sessions.filter((s) => s.paneId !== undefined || panes.has(normalizeTty(s.tty) ?? '')).length;
       const accounts = accountsText(ctx, state?.daemon?.accountsMode, dirs, Object.keys(state?.accounts ?? {}).length);
       ctx.io.out(`Linked. ${plural(sessions.length, 'Claude session')} here${tmux ? ` (${inTmux} in tmux)` : ''} on ${accounts}.\n`);
       if (tmux && sessions.length > inTmux) notes.push("Sessions outside tmux show on the phone with their cards, but Jantar can't type into them.\n");
@@ -616,7 +627,17 @@ async function joinCmd(ctx: CliContext, deps: NodeCommandDeps, line: string, fla
     }
   }
   if (hooks) ctx.io.out(hooksLine(hooks));
-  else if (dirs.length) ctx.io.out('Hooks: not installed here (cards need them): jantar hooks install --apply, with --settings <dir>/settings.json for each other config dir.\n');
+  else if (dirs.length) {
+    // Without --hooks: what is there already (a leave keeps them), and the hint for the rest.
+    const has: string[] = [];
+    const lacks: string[] = [];
+    for (const d of dirs) ((await dirHasHooks(d.dir, ctx.paths.hookBin)) === true ? has : lacks).push(tilde(join(d.dir, 'settings.json'), ctx.paths.userHome));
+    const there = has.length ? `already in ${andList(has)}` : '';
+    const missing = lacks.length
+      ? `not installed in ${andList(lacks)} (cards need them): jantar hooks install --apply, with --settings <dir>/settings.json for each other config dir`
+      : '';
+    ctx.io.out(`Hooks: ${[there, missing].filter(Boolean).join('; ')}.\n`);
+  }
   for (const n of notes) ctx.io.out(n);
   if (ctx.deps.platform === 'win32') {
     ctx.io.out("Windows: the phone shows these sessions and answers their cards; prompts and the screen need WSL2 (jantar doctor).\n");
@@ -809,7 +830,12 @@ export function createNodeCommand(over: Partial<NodeCommandDeps> = {}): Command 
       const none = (what: string) => {
         if (arg !== undefined) throw new UsageError(`${what} takes no argument`);
       };
-      const hubOnly = async () => wrongRole(ctx, 'hub', deps.readNodeFile);
+      const hubOnly = async () => {
+        const wrong = await wrongRole(ctx, 'hub', deps.readNodeFile);
+        if (wrong || ctx.deps.platform === 'darwin') return wrong;
+        // Off a Mac and never joined: a hub only where Fleet was switched on here; else the hub is a Mac.
+        return (await readSettings(ctx)).settings.fleet.enabled ? null : 'The hub is a Mac: run this there. This machine joins it with jantar node join <line from the Mac>.';
+      };
       const nodeOnly = async () => wrongRole(ctx, 'node', deps.readNodeFile);
       const refuse = (sentence: string) => {
         ctx.io.err(`${sentence}\n`);

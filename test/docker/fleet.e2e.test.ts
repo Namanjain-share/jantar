@@ -264,7 +264,9 @@ describe.skipIf(!ON)('Fleet end to end in Docker (E1-E15)', () => {
     // The join without the token: refused at the door, nothing saved.
     const bare = await exec('node2', ['jantar', 'node', 'join', line, '--no-service', '--hooks']);
     expect(bare.code).toBe(1);
-    expect(bare.stderr).toContain('Cloudflare Access refused the connection');
+    // The join's own next step (this join again with the token), never `jantar node access`, which needs a pairing.
+    expect(bare.stderr).toContain('This door has Cloudflare Access: run jantar node join <line> --cf-access-client-id <id>');
+    expect(bare.stderr).not.toContain('jantar node access');
     expect(bare.stderr).toContain('Nothing was saved on this machine.');
     expect((await exec('node2', ['test', '-e', `${NODE_STATE}/node/node.json`])).code).not.toBe(0);
 

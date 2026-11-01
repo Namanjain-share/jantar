@@ -160,7 +160,7 @@ export async function startHub(opts: { ctx?: TestContext; tls?: { key: string; c
       onLink = fn;
     },
     token: async (name) => {
-      const r = await auth.makeTokens(name ? { name } : {}, { hubUrl: url, createdBy: 'cli' });
+      const r = await auth.makeTokens(name ? { name } : {}, { hubUrl: url, createdBy: 'cli', loopbackHttp: true });
       if (!r.ok) throw new Error(r.reason);
       return r.tokens[0]!.token;
     },

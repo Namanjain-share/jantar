@@ -107,7 +107,8 @@ export const createFleet: Factories['fleet'] = (ctx): FleetService => {
       const url = ctx.settings.get().remote.publicUrl;
       const origin = url === null ? null : hubOrigin(url);
       if (!origin || QUICK_TUNNEL.test(new URL(origin).hostname)) return { ok: false, code: 'conflict', reason: NO_DOOR };
-      return auth.makeTokens(body, { hubUrl: origin, createdBy: actorId(actor) });
+      // JANTAR_TEST_LOOPBACK_DOOR=1: the tests' hub on loopback http (never set by Jantar itself).
+      return auth.makeTokens(body, { hubUrl: origin, createdBy: actorId(actor), loopbackHttp: ctx.env.JANTAR_TEST_LOOPBACK_DOOR === '1' });
     },
     list: () => registry.rows(),
     async revoke(id, actor) {

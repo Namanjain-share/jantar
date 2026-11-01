@@ -20,7 +20,8 @@
  * v0.6: once a machine is paired, the machine ("Mac", "build-1") comes
  * before the account (on line 1 of an ended row, which has no line 2); a
  * server's config-dir account shows by its alias. An offline machine's
- * rows are muted, with "offline since 14:02" for the age.
+ * rows are muted (their text in ink-3, still 4.5:1 or more, and only the
+ * glyph dimmed), with "offline since 14:02" for the age in ink-2.
  *
  * The row's menu (spec 5.3.1, while launching is on, live sessions only):
  * long press, right click or the menu key opens it (`menu`; the Ledger holds
@@ -69,7 +70,7 @@ function useEventCount(s: Session, glyph: GlyphState): number {
   return n;
 }
 
-function Line2({ row, ceiling }: { row: RowModel; ceiling: number }) {
+function Line2({ row, ceiling, muted }: { row: RowModel; ceiling: number; muted: boolean }) {
   const l = row.line2;
   let body = null;
   if (l.kind === 'needs') {
@@ -97,7 +98,7 @@ function Line2({ row, ceiling }: { row: RowModel; ceiling: number }) {
   const single = useAccountsMode() === 'single' && row.machine?.node === undefined;
   return (
     <span data-line2 className="mt-4 flex h-20 min-w-0 items-center pl-24 text-small md:mt-0 md:h-18">
-      <span className={clsx('min-w-0 flex-1 truncate', l.kind === 'needs' ? 'text-ink' : 'text-ink-2')}>{body}</span>
+      <span className={clsx('min-w-0 flex-1 truncate', muted ? 'text-ink-3' : l.kind === 'needs' ? 'text-ink' : 'text-ink-2')}>{body}</span>
       {/* v0.4: the project whose folder holds this session (WP-W's chip; nothing while Life is off, nor for a server's folder). */}
       {life && row.machine?.node === undefined ? <ProjectChip cwd={row.session.cwd} /> : null}
       {row.files !== null ? (
@@ -134,30 +135,38 @@ function MachineChip({ name }: { name: string }) {
   );
 }
 
-/** The inside of a row, shared by the real rows and the empty board's example. */
+/**
+ * The inside of a row, shared by the real rows and the empty board's example.
+ * An offline machine's row is `data-offline`: its text in ink-3 and the age
+ * ("offline since 14:02") in ink-2, never faded (text keeps 4.5:1); only the
+ * glyph is dimmed.
+ */
 export function RowBody({ row, ceiling, unseen = false, events = 0 }: { row: RowModel; ceiling: number; unseen?: boolean; events?: number }) {
   const ended = row.glyph === 'ended';
+  const muted = row.machine?.offline === true;
   return (
     <>
-      <span className="flex h-20 min-w-0 items-center md:h-18">
-        <span key={events} className={clsx('mr-8 flex-none', events > 0 && 'animate-dim')}>
+      <span data-offline={muted ? '' : undefined} className="flex h-20 min-w-0 items-center md:h-18">
+        <span key={events} className={clsx('mr-8 flex-none', events > 0 && 'animate-dim', muted && 'opacity-60')}>
           <StatusGlyph state={row.glyph} />
         </span>
         <span
           className={clsx(
             'min-w-0 max-w-3/5 flex-initial truncate type-row',
-            ended ? 'text-ink-2' : 'text-ink',
+            muted ? 'text-ink-3' : ended ? 'text-ink-2' : 'text-ink',
             unseen ? 'font-strong' : ended ? 'font-regular' : 'font-medium',
           )}
         >
           {row.folder}
         </span>
-        <span className={clsx('ml-8 min-w-0 flex-initial truncate type-row', ended ? 'text-ink-3' : 'text-ink-2')}>{row.name}</span>
+        <span className={clsx('ml-8 min-w-0 flex-initial truncate type-row', ended || muted ? 'text-ink-3' : 'text-ink-2')}>{row.name}</span>
         {row.tag ? <span className="ml-8 hidden flex-none type-mono text-ink-3 md:inline">{row.tag}</span> : null}
         {ended && row.machine ? <MachineChip name={row.machine.name} /> : null}
-        <span className={clsx('ml-auto flex-none pl-12 type-mono', row.ageEmber ? 'text-signal-text' : 'text-ink-3')}>{row.age}</span>
+        <span className={clsx('ml-auto flex-none pl-12 type-mono', muted ? 'text-ink-2' : row.ageEmber ? 'text-signal-text' : 'text-ink-3')}>
+          {row.age}
+        </span>
       </span>
-      {ended ? null : <Line2 row={row} ceiling={ceiling} />}
+      {ended ? null : <Line2 row={row} ceiling={ceiling} muted={muted} />}
     </>
   );
 }
@@ -221,13 +230,7 @@ export function Row({
       className={clsx(rowClass(row, ground, selected), menu && 'select-none [-webkit-touch-callout:none]')}
     >
       {wash > 0 ? <span key={wash} aria-hidden="true" className="pointer-events-none absolute inset-0 bg-signal opacity-0 animate-wash" /> : null}
-      {row.machine?.offline ? (
-        <span data-offline className="block opacity-60">
-          <RowBody row={row} ceiling={ceiling} unseen={unseen} events={events} />
-        </span>
-      ) : (
-        <RowBody row={row} ceiling={ceiling} unseen={unseen} events={events} />
-      )}
+      <RowBody row={row} ceiling={ceiling} unseen={unseen} events={events} />
     </m.a>
   );
 }

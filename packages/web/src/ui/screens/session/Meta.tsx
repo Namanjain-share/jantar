@@ -14,6 +14,12 @@
  * With one Claude login (v0.4 single-account mode) nothing reads usage, so
  * the account, its 5-hour %, the resets, burn and "Also on" are left out:
  * "auto mode · started 2h ago". With nothing left to say, there is no line.
+ *
+ * v0.6: a server's session follows its own machine. One login on the Mac
+ * hides nothing of a server's; a server that reads no usage (config dirs,
+ * or one login: `noUsage`) names the account by its alias, as the Board
+ * does, and says nothing of usage (its accounts' status is always unknown,
+ * never a reason for --signal-text).
  */
 import clsx from 'clsx';
 import { Fragment, type ReactNode } from 'react';
@@ -49,6 +55,7 @@ export function MetaLine({
   now,
   phone,
   modeOnChip = false,
+  noUsage = false,
 }: {
   session: Session;
   account: Account | undefined;
@@ -56,18 +63,29 @@ export function MetaLine({
   now: number;
   phone: boolean;
   modeOnChip?: boolean;
+  /** A server that reads no usage: the account by its alias, and no usage parts. */
+  noUsage?: boolean;
 }) {
-  const single = useAccountsMode() === 'single';
+  const single = useAccountsMode() === 'single' && session.node === undefined;
   const { w, pct } = usage(account, now);
   const parts: { key: string; node: ReactNode }[] = [];
-  const acct = session.account === null ? 'unknown account' : account?.alias ? `${accountId(session.account)} ${account.alias}` : accountId(session.account);
+  const acct =
+    session.account === null
+      ? 'unknown account'
+      : noUsage && account?.alias
+        ? account.alias
+        : account?.alias
+          ? `${accountId(session.account)} ${account.alias}`
+          : accountId(session.account);
   if (session.move) {
     const m = session.move;
     parts.push({ key: 'move', node: `${accountId(m.from)} → ${m.to !== undefined ? accountId(m.to) : '?'} · ${m.step}` });
   } else {
     parts.push({ key: 'acct', node: <span>{acct}</span> });
   }
-  if (account && account.usageStatus !== 'ok') {
+  if (noUsage) {
+    // Nothing reads usage there.
+  } else if (account && account.usageStatus !== 'ok') {
     parts.push({ key: 'status', node: <span className="text-signal-text">{usageStatusText(account.usageStatus)}</span> });
   } else if (pct !== null) {
     parts.push({
@@ -118,6 +136,7 @@ export function Props({
   now,
   onOpen,
   modeOnChip = false,
+  noUsage = false,
 }: {
   session: Session;
   account: Account | undefined;
@@ -126,8 +145,10 @@ export function Props({
   now: number;
   onOpen: (sid: string) => void;
   modeOnChip?: boolean;
+  /** A server that reads no usage: the account by its alias, and no 5-hour, resets or burn. */
+  noUsage?: boolean;
 }) {
-  const single = useAccountsMode() === 'single';
+  const single = useAccountsMode() === 'single' && session.node === undefined;
   const { w, pct } = usage(account, now);
   const id = session.account;
   const others = id === null ? [] : Object.values(state.sessions).filter((s) => s.account === id && s.sid !== session.sid);
@@ -144,20 +165,24 @@ export function Props({
     <aside aria-label="Session properties" className="w-220 flex-none pt-24">
       <dl className="flex flex-col">
         {single ? null : (
+          <Row k="Account">
+            {session.move ? (
+              <>
+                <span>{accountId(session.move.from)}</span>
+                <span className="text-ink-3">→ {session.move.to !== undefined ? accountId(session.move.to) : '?'}</span>
+              </>
+            ) : noUsage && account?.alias ? (
+              <span>{account.alias}</span>
+            ) : (
+              <>
+                <span>{accountId(id)}</span>
+                {account?.alias ? <span className="text-ink-3">{account.alias}</span> : null}
+              </>
+            )}
+          </Row>
+        )}
+        {single || noUsage ? null : (
           <>
-            <Row k="Account">
-              {session.move ? (
-                <>
-                  <span>{accountId(session.move.from)}</span>
-                  <span className="text-ink-3">→ {session.move.to !== undefined ? accountId(session.move.to) : '?'}</span>
-                </>
-              ) : (
-                <>
-                  <span>{accountId(id)}</span>
-                  {account?.alias ? <span className="text-ink-3">{account.alias}</span> : null}
-                </>
-              )}
-            </Row>
             <Row k="5-hour">
               {account && account.usageStatus !== 'ok' ? (
                 <span className="text-signal-text">{usageStatusText(account.usageStatus)}</span>
@@ -227,7 +252,7 @@ export function Props({
           </Row>
         ) : null}
       </dl>
-      {note && !single ? <p className="mt-12 type-small text-ink-3">{note}</p> : null}
+      {note && !single && !noUsage ? <p className="mt-12 type-small text-ink-3">{note}</p> : null}
     </aside>
   );
 }

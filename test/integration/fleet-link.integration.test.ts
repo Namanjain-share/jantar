@@ -59,6 +59,8 @@ describe('a hub and a node in one process', () => {
     // The hub: Fleet on, its front door on loopback http; no sessions of its own, so every one on the board is the node's.
     hub = await bootDaemon({
       home: { sessions: [] },
+      // Join lines name an https door only, but for the tests' loopback one.
+      env: { JANTAR_TEST_LOOPBACK_DOOR: '1' },
       settings: { remote: { port, publicUrl: `http://127.0.0.1:${port}` }, fleet: { enabled: true } },
     });
     hubCtl = createCtlClient(hub.ctx.paths.ctlSock);

@@ -62,6 +62,13 @@ describe('v0.6: pipe names on Windows', () => {
     expect(mac.ctlSock).toBe('/synthetic/home/.jantar/run/ctl.sock');
     expect(resolvePaths({ env, platform: 'linux' }).ctlSock).toBe(mac.ctlSock);
   });
+
+  it("finds the user's folder on Windows by USERPROFILE, never a HOME that MSYS2 set", () => {
+    const env = { HOME: '/synthetic/msys/home/sam', USERPROFILE: '/synthetic/profile/sam' };
+    expect(resolvePaths({ env, platform: 'win32' }).claudeHome).toBe('/synthetic/profile/sam/.claude');
+    expect(resolvePaths({ env, platform: 'win32' }).home).toBe('/synthetic/profile/sam/.jantar');
+    expect(resolvePaths({ env, platform: 'linux' }).claudeHome).toBe('/synthetic/msys/home/sam/.claude');
+  });
 });
 
 describe("v0.6: cswap's folder per platform", () => {

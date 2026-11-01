@@ -89,6 +89,13 @@ export const SETTLE_MS = 3000;
 export const ALERTS_CAP = 200;
 /** The reducer keeps at most this many send jobs. */
 export const SENDS_CAP = 100;
+/**
+ * v0.6: what each paired machine keeps beside the Mac's own: its newest
+ * alerts, and its finished sends. Each has a share of its own, so no server
+ * can push the Mac's (or another server's) out.
+ */
+export const NODE_ALERTS_CAP = 20;
+export const NODE_SENDS_CAP = 20;
 
 /** Transcript backfill cap for alert detection on first read. */
 export const ALERT_BACKFILL_BYTES = 256 * 1024;

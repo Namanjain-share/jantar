@@ -7,10 +7,10 @@ import { FLEET_COPY, HUB_MACHINE_NAME, type FleetCopyKey } from './constants.js'
 import { NO_FEATURES, type Account, type Features, type NodeView, type PendingRequest, type Session } from './models.js';
 import { stateFeatures, type State } from './state.js';
 
-/** Basename of a path, for display ("/a/b/my-app" -> "my-app"). */
+/** Basename of a path, for display ("/a/b/my-app" -> "my-app"; a Windows node's "C:\\code\\api" -> "api"). */
 export function folderOf(cwd: string): string {
-  const trimmed = cwd.replace(/\/+$/, '');
-  const i = trimmed.lastIndexOf('/');
+  const trimmed = cwd.replace(/[\\/]+$/, '');
+  const i = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
   return (i >= 0 ? trimmed.slice(i + 1) : trimmed) || '/';
 }
 

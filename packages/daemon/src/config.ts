@@ -113,7 +113,8 @@ export function legacyStateDirRefusal(paths: Pick<Paths, 'home' | 'dbFile'>): st
 export function resolvePaths(opts: ResolvePathsOptions = {}): Paths {
   const env = opts.env ?? process.env;
   const platform = opts.platform ?? process.platform;
-  const userHome = resolve(opts.userHome ?? (env.HOME || homedir()));
+  // Windows: the profile Claude Code uses (USERPROFILE, as os.homedir()), never a HOME that MSYS2 or Emacs set.
+  const userHome = resolve(opts.userHome ?? ((platform === 'win32' ? env.USERPROFILE : env.HOME) || homedir()));
   const home = resolve(opts.home ?? (stateDirFromEnv(env) || join(userHome, STATE_DIR_NAME)));
   const runDir = join(home, 'run');
   const claudeHome = join(userHome, '.claude');
@@ -543,6 +544,8 @@ export interface ResolveBinsOptions {
   userHome: string;
   /** Search $PATH too (install time / CLI). The daemon itself passes false. Default true. */
   usePath?: boolean;
+  /** v0.6: on win32 `<name>.exe` is looked for first, as the CLI's finder does. Default: process.platform. */
+  platform?: NodeJS.Platform;
 }
 
 /**
@@ -552,12 +555,17 @@ export interface ResolveBinsOptions {
 export async function resolveBins(opts: ResolveBinsOptions): Promise<Bins> {
   const env = opts.env ?? process.env;
   const pathDirs = opts.usePath === false ? [] : (env.PATH ?? '').split(delimiter).filter(Boolean);
+  // Windows: claude.exe before npm's extensionless sh shim, which can be found but not started.
+  const win = (opts.platform ?? process.platform) === 'win32';
   const find = async (key: keyof Omit<Bins, 'node'>): Promise<string | null> => {
     const configured = opts.settings.bins[key];
     if (configured) return (await isExecutable(configured)) ? configured : null;
+    const names = win ? [`${COMMAND_NAME[key]}.exe`, COMMAND_NAME[key]] : [COMMAND_NAME[key]];
     for (const dir of pathDirs) {
-      const p = join(dir, COMMAND_NAME[key]);
-      if (await isExecutable(p)) return p;
+      for (const name of names) {
+        const p = join(dir, name);
+        if (await isExecutable(p)) return p;
+      }
     }
     for (const p of WELL_KNOWN[key](opts.userHome)) if (await isExecutable(p)) return p;
     return null;

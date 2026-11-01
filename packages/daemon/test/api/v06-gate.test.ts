@@ -210,6 +210,26 @@ describe('v0.6: the forward step', () => {
     expect(row).toMatchObject({ params: { node: NODE }, result: 'ok' });
   });
 
+  it("audits a refused forward by its error code only: the server's own words never reach the Mac's audit log", async () => {
+    const f = fakeFleet(['node-sess-1']);
+    const said = 'PLANTED server text '.repeat(25);
+    const fleet: FleetService = {
+      ...f.fleet,
+      forward: async (_t, call) =>
+        call.route === 'sessionKey' ? { status: 409, body: { error: { code: 'conflict', message: said } } } : { status: 500, body: { error: { code: 'made-up', message: said } } },
+    };
+    api = await makeApi({ sessions: [nodeSession()], deps: () => ({ fleet }) });
+    const { cookie } = await pairCookie(api, ['read', 'control']);
+    expect((await api.tcp.inject({ method: 'POST', url: '/v1/sessions/node-sess-1/keys', headers: h(cookie), payload: { key: 'enter' } })).statusCode).toBe(409);
+    expect((await api.tcp.inject({ method: 'POST', url: '/v1/sessions/node-sess-1/prompt', headers: h(cookie), payload: { text: 'hi' } })).statusCode).toBe(500);
+    const rows = api.ctx.db.audit.list().filter((a) => a.target === 'node-sess-1');
+    expect(rows.map((r) => [r.action, r.detail])).toEqual([
+      ['sessionKey', 'conflict'],
+      ['sendPrompt', undefined],
+    ]);
+    expect(JSON.stringify(api.ctx.db.audit.list())).not.toContain('PLANTED');
+  });
+
   it('still checks the device, scope, Origin and secret first, and the body', async () => {
     const f = fakeFleet(['node-sess-1']);
     api = await makeApi({ sessions: [nodeSession()], deps: () => ({ fleet: f.fleet }) });

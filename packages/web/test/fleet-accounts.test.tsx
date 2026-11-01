@@ -65,12 +65,15 @@ describe('Accounts by machine', () => {
     expect(list.textContent).not.toContain('42');
   });
 
-  it('mutes an offline machine and says since when', async () => {
+  it('mutes an offline machine and says since when, never faded (its text keeps 4.5:1)', async () => {
     renderApp({ path: '/accounts', state: fleetState(macParts()) });
     const s = await sectionOf('build-3');
-    expect(s.className).toContain('opacity-60');
-    expect(within(s).getByText('offline since 14:02')).toBeTruthy();
-    expect((await sectionOf('build-1')).className).not.toContain('opacity-60');
+    expect(s.hasAttribute('data-offline')).toBe(true);
+    expect(s.querySelector('[class*="opacity"]')).toBeNull();
+    expect(s.className).not.toContain('opacity');
+    expect(within(s).getByText('offline since 14:02').className).toContain('text-ink-2');
+    expect(within(s).getByText('claude').className).toContain('text-ink-3');
+    expect((await sectionOf('build-1')).hasAttribute('data-offline')).toBe(false);
   });
 
   it('names the Mac\'s one login as "Mac · 1 login" in single mode, with its own sessions only', async () => {

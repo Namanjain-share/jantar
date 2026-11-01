@@ -8,13 +8,14 @@
  * replays after a reconnect safe. A client that sees `ev.seq > state.seq + 1`
  * has missed events and should resync (`hasGap`).
  */
-import { ALERTS_CAP, LAUNCH_CAP, REWRITE_CAP, SENDS_CAP } from './constants.js';
+import { ALERTS_CAP, LAUNCH_CAP, NODE_ALERTS_CAP, NODE_SENDS_CAP, REWRITE_CAP, SENDS_CAP } from './constants.js';
 import { MOVE_FINAL_EVENT_TYPES, isAlertEvent, isMoveEvent, type DaemonEvent } from './events.js';
 import {
   LAUNCH_FINAL_STAGES,
   REWRITE_FINAL_STATES,
   SEND_FINAL_STAGES,
   type Account,
+  type Alert,
   type LaunchJob,
   type PendingRequest,
   type RewriteJob,
@@ -43,7 +44,7 @@ function apply(s: State, ev: DaemonEvent): State {
   if (isAlertEvent(ev)) {
     const alert = ev.data.alert;
     const rest = s.alerts.filter((a) => a.id !== alert.id);
-    return { ...s, alerts: [alert, ...rest].slice(0, ALERTS_CAP) };
+    return { ...s, alerts: capAlerts([alert, ...rest]) };
   }
   if (isMoveEvent(ev) || ev.type === 'move.cleared') {
     return applyMove(s, ev);
@@ -69,6 +70,8 @@ function apply(s: State, ev: DaemonEvent): State {
       delete sessions[sid];
       const pending = omitWhere(s.pending, (p) => p.sid === sid);
       const out: State = { ...s, sessions, pending };
+      // v0.6: a server's sends go with its session, so every send left is known to be the Mac's or a live server session's.
+      if (s.sessions[sid]?.node !== undefined) out.sends = omitWhere(s.sends, (j) => j.sid === sid);
       if (s.fileTicks && Object.hasOwn(s.fileTicks, sid)) {
         const fileTicks = { ...s.fileTicks };
         delete fileTicks[sid];
@@ -106,7 +109,7 @@ function apply(s: State, ev: DaemonEvent): State {
     }
     case 'send.progress': {
       const job = ev.data.job;
-      return { ...s, sends: pruneSends({ ...s.sends, [job.id]: job }) };
+      return { ...s, sends: pruneSends({ ...s.sends, [job.id]: job }, s.sessions) };
     }
     case 'rewrite.progress': {
       const job = ev.data.job;
@@ -194,19 +197,27 @@ function removeNode(s: State, id: string): State {
   return out;
 }
 
+/** `rec` without the entries `pred` picks (the same object when none). Built with fromEntries: every key stays an own key. */
 function omitWhere<T>(rec: Record<string, T>, pred: (v: T, k: string) => boolean): Record<string, T> {
-  let changed = false;
-  const out: Record<string, T> = {};
-  for (const [k, v] of Object.entries(rec)) {
-    if (pred(v, k)) changed = true;
-    else out[k] = v;
-  }
-  return changed ? out : rec;
+  const entries = Object.entries(rec);
+  const kept = entries.filter(([k, v]) => !pred(v, k));
+  return kept.length === entries.length ? rec : Object.fromEntries(kept);
 }
 
-/** Keep at most SENDS_CAP jobs, dropping the oldest finished ones first. */
-function pruneSends(sends: Record<string, SendJob>): Record<string, SendJob> {
-  return pruneJobs(sends, SENDS_CAP, (j) => SEND_FINAL_STAGES.includes(j.stage));
+/** The Mac's newest ALERTS_CAP alerts and each server's newest NODE_ALERTS_CAP (newest first, as given). */
+function capAlerts(alerts: Alert[]): Alert[] {
+  const seen = new Map<string, number>();
+  return alerts.filter((a) => {
+    const n = (seen.get(a.node ?? '') ?? 0) + 1;
+    seen.set(a.node ?? '', n);
+    return n <= (a.node === undefined ? ALERTS_CAP : NODE_ALERTS_CAP);
+  });
+}
+
+/** Keep at most SENDS_CAP of the Mac's jobs and NODE_SENDS_CAP of each server's, dropping the oldest finished ones first. */
+function pruneSends(sends: Record<string, SendJob>, sessions: State['sessions']): Record<string, SendJob> {
+  const machine = (j: SendJob) => (Object.hasOwn(sessions, j.sid) ? sessions[j.sid]?.node : undefined);
+  return pruneEach(sends, machine, SENDS_CAP, NODE_SENDS_CAP, (j) => SEND_FINAL_STAGES.includes(j.stage));
 }
 
 /** Keep at most REWRITE_CAP rewrite jobs: the oldest finished first, then the oldest of the rest. */
@@ -214,9 +225,40 @@ function pruneRewrites(jobs: Record<string, RewriteJob>): Record<string, Rewrite
   return pruneJobs(jobs, REWRITE_CAP, (j) => REWRITE_FINAL_STATES.includes(j.state), true);
 }
 
-/** Keep at most LAUNCH_CAP launches: the oldest finished first, then the oldest of the rest. */
+/** Keep at most LAUNCH_CAP launches of each machine: the oldest finished first, then the oldest of the rest. */
 function pruneLaunches(jobs: Record<string, LaunchJob>): Record<string, LaunchJob> {
-  return pruneJobs(jobs, LAUNCH_CAP, (j) => LAUNCH_FINAL_STAGES.includes(j.stage), true);
+  return pruneEach(jobs, (j) => j.node, LAUNCH_CAP, LAUNCH_CAP, (j) => LAUNCH_FINAL_STAGES.includes(j.stage), true);
+}
+
+/**
+ * pruneJobs on each machine's jobs alone: the Mac's (`machine` undefined) to
+ * `hubCap`, each server's to `nodeCap`. So a server's jobs, whatever their
+ * number or `updatedAt`, never push out the Mac's or another server's.
+ */
+function pruneEach<J extends { id: string; updatedAt: string }>(
+  jobs: Record<string, J>,
+  machine: (j: J) => string | undefined,
+  hubCap: number,
+  nodeCap: number,
+  finished: (j: J) => boolean,
+  hard = false,
+): Record<string, J> {
+  const groups = new Map<string, J[]>();
+  for (const j of Object.values(jobs)) {
+    const k = machine(j) ?? '';
+    const g = groups.get(k);
+    if (g) g.push(j);
+    else groups.set(k, [j]);
+  }
+  let out = jobs;
+  for (const [k, list] of groups) {
+    const cap = k === '' ? hubCap : nodeCap;
+    if (list.length <= cap) continue;
+    const kept = pruneJobs(Object.fromEntries(list.map((j) => [j.id, j])), cap, finished, hard);
+    if (out === jobs) out = { ...jobs };
+    for (const j of list) if (!Object.hasOwn(kept, j.id)) delete out[j.id];
+  }
+  return out;
 }
 
 /**

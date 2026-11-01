@@ -18,7 +18,7 @@
  * leave the board. Pairing happens at the Mac only.
  */
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { CLI_NAME, FLEET_COPY, type NodeView } from '@jantar/protocol';
 import { errorText } from '../../../lib/api.js';
 import { newIdempotencyKey } from '../../../lib/ids.js';
@@ -96,6 +96,7 @@ export function Machines() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [failed, setFailed] = useState<{ id: string; text: string } | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const headingId = useId();
 
   const list = Object.values(nodes ?? {}).sort((a, b) => a.name.localeCompare(b.name));
   const count = (id: string) => Object.values(sessions).filter((s) => s.node === id).length;
@@ -115,11 +116,11 @@ export function Machines() {
   };
 
   return (
-    <section aria-label="Machines">
-      <RailLabel ground="bg" sticky={false} inset={false} count={list.length} className="mt-40">
+    <section aria-labelledby={headingId}>
+      <RailLabel id={headingId} ground="bg" sticky={false} inset={false} count={list.length} className="mt-40">
         Machines
       </RailLabel>
-      <ul aria-label="Machines">
+      <ul>
         {list.map((n) => (
           <MachineRow
             key={n.id}

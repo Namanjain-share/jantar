@@ -123,9 +123,10 @@ const nameTaken = (name: string) => `A session named ${name} is already running 
 /** v0.6, config dirs: the account's ~/.claude-<name> lost its .claude.json since the roster was listed. */
 const dirGone = (id: AccountId) => `${acct(id)}'s config dir is no longer on this machine (no .claude.json in it)`;
 
-/** Why the command line can't be built: the Mac's launch setup, or something about this folder. */
+/** Why the command line can't be built: this machine's launch setup, or something about this folder. */
 function commandFailure(cmd: { reason: string; setup?: true }): Failure {
-  if (cmd.setup) return fail('unavailable', `This Mac isn't set up to start sessions from the phone: ${cmd.reason}`);
+  // v0.6: said on a server too, so "this machine" (the phone names which).
+  if (cmd.setup) return fail('unavailable', `This machine isn't set up to start sessions from the phone: ${cmd.reason}`);
   return fail('invalid_request', `This folder can't be started from the phone: ${cmd.reason}`);
 }
 

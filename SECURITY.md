@@ -1088,8 +1088,9 @@ in [docs/fleet.md](docs/fleet.md).
   revoked when it next connects. `jantar fleet off` closes every link.
 - **TLS.** Servers check the front door's certificate against Node's
   bundled CA list plus `NODE_EXTRA_CA_CERTS`, not the operating system's
-  store (Jantar does not pass `--use-system-ca`). `http://` is accepted only
-  for loopback, redirects are refused, and there is no switch to skip
+  store (Jantar does not pass `--use-system-ca`). The Mac makes join lines
+  for an `https://` door only; a server accepts `http://` only on loopback
+  (the tests' door), redirects are refused, and there is no switch to skip
   certificate checks.
 
 ### What the handshake does and does not stop
@@ -1101,8 +1102,13 @@ server's key. They do get the Cloudflare Access service token (its id and
 secret): a server sends it with its join and with every link attempt,
 before any signature is checked. On its own that token gets no further
 than the pairing and link handshakes at the real Mac, which still need a
-fresh join line or a paired server's key. If you think the hostname was
-taken, [rotate the token](docs/fleet.md#rotate-the-access-token).
+fresh join line or a paired server's key. A join line claimed through them
+is the exception: they can pass the claim on to the real Mac with a key of
+their own. The server then sees a signature that doesn't check and saves
+nothing, but the Mac has paired their key under that line's name, so
+`jantar node join` says to run `jantar node revoke <name>` at the Mac. If
+you think the hostname was taken, revoke any such server and
+[rotate the token](docs/fleet.md#rotate-the-access-token).
 
 It does **not** stop anything that terminates TLS in the path. Cloudflare,
 or a TLS-inspecting proxy whose CA a server trusts through
@@ -1123,6 +1129,11 @@ such middle party: use it if that matters to you.
   over 64 KiB arrives empty, with its tool name), under a 4 MiB budget per
   server: at most 64 sessions, 32 open cards and 10 notifications a minute
   per server, on top of the global mute.
+- A server's alerts, sends and starts have a share of their own beside the
+  Mac's (its newest 20 alerts and finished sends), and its alerts and cards
+  never go into the Mac's alert and card history in `jantar.db` (they stay
+  in the replay ring, which grows per server). However much a server sends,
+  it can't push the Mac's alerts, card history or send receipts out.
 - Every card and row names the server by the name **the Mac** gave it. A
   server can show its own sessions and cards with any content, but it can
   never look like the Mac.
@@ -1190,5 +1201,5 @@ copy of a server's state on disk.
   server offline at once, and only renewing it on each server
   (`jantar node access`) brings them back.
 - A server can fill its own share of the phone (its 64 sessions and 32
-  cards, its 10 notifications a minute) with any text. `jantar node revoke`
-  stops it.
+  cards, its 20 alerts and finished sends, its 10 notifications a minute)
+  with any text. `jantar node revoke` stops it.

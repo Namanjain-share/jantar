@@ -15,6 +15,8 @@
  * Mac's, as every server has an account 0. With config dirs (`dirs`) the
  * account 0 is ~/.claude and every other one ~/.claude-<alias>; nothing
  * reads usage there. Logins stay at the machine: nothing here changes one.
+ * An offline machine's section is muted: its rows in ink-3 and "offline
+ * since 14:02" in ink-2, never faded (text keeps 4.5:1).
  */
 import { boardOrder, FLEET_COPY, type Account, type NodeView, type State } from '@jantar/protocol';
 import { useMemo, useState } from 'react';
@@ -47,6 +49,7 @@ export function asideOf(node: NodeView, now: number): string {
 }
 
 function DirAccounts({ node, state, now, phone }: { node: NodeView; state: State; now: number; phone: boolean }) {
+  const muted = !node.online;
   const order = useMemo(() => boardOrder(state).filter((s) => s.node === node.id), [state, node.id]);
   const accounts = Object.values(node.accounts).sort((a, b) => a.id - b.id);
   return (
@@ -60,7 +63,7 @@ function DirAccounts({ node, state, now, phone }: { node: NodeView; state: State
         return (
           <li key={a.id} data-account={a.id} className={phone ? 'border-b border-line px-16 pb-8 pt-12' : 'border-b border-line pb-8 pt-12'}>
             <div className="flex h-20 min-w-0 items-center gap-12">
-              <span className="min-w-0 truncate type-row font-medium text-ink">{a.alias ?? `account ${a.id}`}</span>
+              <span className={`min-w-0 truncate type-row font-medium ${muted ? 'text-ink-3' : 'text-ink'}`}>{a.alias ?? `account ${a.id}`}</span>
               {node.accountsMode === 'dirs' ? <span className="min-w-0 truncate type-mono text-ink-3">{dirOf(a)}</span> : null}
               <span className="ml-auto flex-none type-mono text-ink-3">{sessionsText(cells.length)}</span>
             </div>
@@ -88,7 +91,9 @@ function CswapAccounts({ node, state, now, phone }: { node: NodeView; state: Sta
       else s.add(id);
       return s;
     });
-  return <PhoneRows rows={rows} state={state} ceiling={ceiling} weeklyCeiling={null} now={now} bar={phone ? 200 : 320} open={open} onToggle={toggle} />;
+  return (
+    <PhoneRows rows={rows} state={state} ceiling={ceiling} weeklyCeiling={null} now={now} bar={phone ? 200 : 320} open={open} onToggle={toggle} muted={!node.online} />
+  );
 }
 
 export function MachineAccounts() {
@@ -101,8 +106,13 @@ export function MachineAccounts() {
     <section aria-label="Accounts on other machines" className={phone ? 'pb-24' : 'px-32 pb-32'}>
       <div className={phone ? '' : 'max-w-640'}>
         {nodes.map((node) => (
-          <section key={node.id} aria-label={`${node.name} accounts`} data-machine={node.name} className={node.online ? 'mt-24' : 'mt-24 opacity-60'}>
-            <RailLabel ground="bg" sticky={false} inset={phone} aside={asideOf(node, now)}>
+          <section key={node.id} aria-label={`${node.name} accounts`} data-machine={node.name} data-offline={node.online ? undefined : ''} className="mt-24">
+            <RailLabel
+              ground="bg"
+              sticky={false}
+              inset={phone}
+              aside={node.online ? asideOf(node, now) : <span className="text-ink-2">{asideOf(node, now)}</span>}
+            >
               {`${node.name} · ${modeWord(node)}`}
             </RailLabel>
             {node.accountsMode === 'cswap' ? (

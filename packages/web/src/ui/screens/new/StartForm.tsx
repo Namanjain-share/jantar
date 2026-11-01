@@ -241,7 +241,9 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
   const nameTaken = fresh ? p.warnings.find((w) => w.kind === 'name') : undefined;
   // What the daemon would refuse at start (a leading !, /clear, control characters): said before the hold.
   const promptBad = prompt.trim() ? promptProblem(prompt, where?.name) : null;
-  const ready = fresh && accountReady && nameOk && !nameTaken && !promptBad && !offline && !starting;
+  // v0.6: the machine's link is down for now; the form (and what was typed) stays until it is back.
+  const away = where !== null && !where.online;
+  const ready = fresh && accountReady && nameOk && !nameTaken && !promptBad && !offline && !away && !starting;
   const warnings = p.warnings.filter((w) => w.kind !== 'effort' && w.kind !== 'name' && !(w.kind === 'held' && chosen?.held));
 
   const pick = (v: AccountChoice, confirmHeld: boolean) => {
@@ -536,6 +538,7 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
         {starting ? <Spinner label="Starting" /> : null}
       </div>
       {offline ? <OfflineNote what="start" className="mt-12" /> : null}
+      {!offline && away ? <p className="mt-12 type-small text-ink-2">{`${where.name} is offline`}</p> : null}
       {!offline && fresh && !accountReady && !needsHeldOk && !single && pinned === null ? <p className="mt-12 type-small text-ink-2">Pick an account to start.</p> : null}
       {preview.error && !preview.fresh ? (
         <p role="alert" className="mt-12 type-small text-ink-2">

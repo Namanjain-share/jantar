@@ -192,8 +192,15 @@ describe('tmuxWrite: the one write primitive (S21)', () => {
     }
   });
 
-  it('every call passes the private socket first, and never TMUX, TMUX_PANE or CLAUDE_CONFIG_DIR', async () => {
-    const env = { HOME: '/home/sam', TMUX: '/tmp/tmux-1000/default,1,0', TMUX_PANE: '%9', LC_ALL: 'C', CLAUDE_CONFIG_DIR: '/home/sam/.claude-work' };
+  it('every call passes the private socket first, and never TMUX, TMUX_PANE, CLAUDE_CONFIG_DIR or the Access secret', async () => {
+    const env = {
+      HOME: '/home/sam',
+      TMUX: '/tmp/tmux-1000/default,1,0',
+      TMUX_PANE: '%9',
+      LC_ALL: 'C',
+      CLAUDE_CONFIG_DIR: '/home/sam/.claude-work',
+      JANTAR_CF_ACCESS_CLIENT_SECRET: FLEET_SECRET,
+    };
     const { fake, ctx, exec } = rig({ env });
     fake.addPane({ id: '%3', tty: TTY });
     expect(await tmuxWrite(ctx, { socket: SOCKET }, paneOf(fake), { text: 'hi', enter: true })).toEqual({ ok: true });
@@ -205,6 +212,8 @@ describe('tmuxWrite: the one write primitive (S21)', () => {
       expect(c.opts.env?.TMUX_PANE).toBeUndefined();
       // a server jantard starts would hand it to every pane, and a ~/.claude start would run in another dir
       expect(c.opts.env?.CLAUDE_CONFIG_DIR).toBeUndefined();
+      // a jantard run by hand from the shell `jantar node join` read it in: never on to tmux and every Claude there
+      expect(c.opts.env?.JANTAR_CF_ACCESS_CLIENT_SECRET).toBeUndefined();
       expect(c.opts.env?.HOME).toBe('/home/sam');
     }
   });

@@ -177,6 +177,18 @@ describe('resolveBins', () => {
     expect(noPath.cswap).not.toBe(join(bin, 'cswap'));
   });
 
+  it("on Windows, claude.exe before npm's extensionless shim in the same folder", async () => {
+    const bin = join(dir, 'winbin');
+    await mkdir(bin);
+    for (const name of ['claude', 'claude.exe']) {
+      await writeFile(join(bin, name), '#!/bin/sh\nexit 0\n');
+      await chmod(join(bin, name), 0o755);
+    }
+    const userHome = join(dir, 'home');
+    expect((await resolveBins({ settings: defaultSettings(), env: { PATH: bin }, userHome, platform: 'win32' })).claude).toBe(join(bin, 'claude.exe'));
+    expect((await resolveBins({ settings: defaultSettings(), env: { PATH: bin }, userHome, platform: 'linux' })).claude).toBe(join(bin, 'claude'));
+  });
+
   it('finds Claude Code\'s older "local" install, which only a shell alias reaches', async () => {
     const userHome = join(dir, 'home');
     await mkdir(join(userHome, '.claude', 'local'), { recursive: true });

@@ -18,6 +18,9 @@
  * - The snapshot diff: only what changed; a card the hub has is never
  *   re-opened (or pushed) after a dropped link.
  */
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   FLEET_SECRET,
@@ -29,9 +32,20 @@ import {
   oversizedNodeSnapshot,
   windowsNodeSnapshot,
 } from '@jantar/fixtures';
-import { DEFAULT_LAUNCH_FLAGS, type DaemonEvent, type LaunchJob, type PendingRequest, type Session } from '@jantar/protocol';
+import {
+  ALERT_EVENT_TYPES,
+  DEFAULT_LAUNCH_FLAGS,
+  NODE_ALERTS_CAP,
+  NODE_SENDS_CAP,
+  type Alert,
+  type DaemonEvent,
+  type LaunchJob,
+  type PendingRequest,
+  type Session,
+} from '@jantar/protocol';
 import { NODE_CLOSE, NODE_LIMITS, type NodeSnapshot } from '@jantar/protocol/node-link';
 import type { TestContext } from '../../src/core/testing.js';
+import { openSqliteFile, persistEvents, persistPendingHistory } from '../../src/db/index.js';
 import { EVENT_BYTES_PER_10S, jsonBytes } from '../../src/fleet/clip.js';
 import { ingestEvent } from '../../src/fleet/ingest.js';
 import { NodeRegistry } from '../../src/fleet/registry.js';
@@ -705,5 +719,78 @@ describe('offline, reconnect and the snapshot diff', () => {
     expect(Object.keys(stateOf().sessions)).toEqual([MAC_SID]);
     expect(stateOf().pending[MAC_CARD]).toBeDefined();
     expect(reg.rows().map((r) => r.name)).toEqual(['build-1', 'build-2', 'win-1']);
+  });
+});
+
+describe("a server's share: whatever it sends, the Mac's alerts, alert history, card history and finished sends stay whole", () => {
+  const alertOf = (id: string, over: Partial<Alert> = {}): Alert => ({ id, ts: '2026-01-15T10:00:00.000Z', kind: 'error', label: 'x', what: 'x', ...over });
+  const srvCard = (i: number) => `01JF1EETCARDSRV${String(i).padStart(11, '0')}AAbbCCddEEffGG`;
+
+  it("300 alerts and 200 open/resolve cycles from a server leave the Mac's whole", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jantar-share-'));
+    // jantar.db with small caps, so a flood far smaller than the real one would have filled it.
+    const db = openSqliteFile(join(dir, 'jantar.db'), { alertCap: 50, pendingCap: 50 });
+    const unsub = [persistEvents(ctx.store, db), persistPendingHistory(ctx.store, db)];
+    try {
+      db.pending.record(stateOf().pending[MAC_CARD]!);
+      for (let i = 0; i < 50; i++) ctx.store.emit({ type: 'alert.error', data: { alert: alertOf(`mac-al-${i}`) } });
+      const macAlerts = stateOf().alerts.map((a) => a.id);
+      const pair = await linked();
+      // Under the event rate: 250 events, then the next 10 s.
+      let sent = 0;
+      const send = async (ev: DaemonEvent) => {
+        pair.node.sendEvent(ev);
+        if (++sent % 250 === 0) {
+          await settle();
+          ctx.clock.advance(10_001);
+        }
+      };
+      for (let i = 0; i < 300; i++) await send(nodeWireEvent({ type: 'alert.error', data: { alert: alertOf(`srv-al-${i}`) } }));
+      for (let i = 0; i < 200; i++) {
+        const card = nodeCard({ sid: S1, id: srvCard(i) });
+        await send(nodeEvents.pendingOpened(card));
+        await send(nodeEvents.pendingResolved(S1, card.id));
+      }
+      await settle();
+      expect(warnings(ctx).map((w) => w.fields)).toEqual([]);
+      expect(pair.open).toBe(true);
+
+      // The state (the Mac's and every phone's): the Mac's 50 alerts, and the server's newest 20 beside them.
+      const alerts = stateOf().alerts;
+      expect(alerts.filter((a) => a.node === undefined).map((a) => a.id)).toEqual(macAlerts);
+      expect(alerts.filter((a) => a.node === NODE_IDS.build1).map((a) => a.id)).toEqual(
+        Array.from({ length: NODE_ALERTS_CAP }, (_, i) => `srv-al-${299 - i}`),
+      );
+      // jantar.db: the alert history (GET /v1/alerts) keeps every one of the Mac's; the server's are in the replay ring.
+      const history = db.events.latest({ limit: 1000, types: ALERT_EVENT_TYPES }).map((e) => (e.data as { alert: Alert }).alert);
+      expect(history.filter((a) => a.node === undefined)).toHaveLength(50);
+      // The card history: the Mac's card, and none of the server's.
+      expect(db.pending.get(MAC_CARD)).not.toBeNull();
+      expect(db.pending.get(srvCard(0))).toBeNull();
+      expect(db.pending.get(srvCard(199))).toBeNull();
+    } finally {
+      for (const u of unsub) u();
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("finished sends: a server's, dated in the future, never push out the Mac's", async () => {
+    for (let i = 0; i < 60; i++) ctx.store.emit({ type: 'send.progress', sid: MAC_SID, data: { job: sendOf(`mac-send-${i}`, MAC_SID, 'proven') } });
+    const pair = await linked();
+    for (let i = 0; i < 150; i++) {
+      const job = { ...sendOf(`srv-send-${i}`, S1, 'proven'), updatedAt: '2099-01-01T00:00:00.000Z' };
+      pair.node.sendEvent(nodeWireEvent({ type: 'send.progress', sid: S1, data: { job } }));
+    }
+    await settle();
+    expect(pair.open).toBe(true);
+    const sends = Object.values(stateOf().sends);
+    expect(sends.filter((j) => j.sid === MAC_SID)).toHaveLength(60);
+    expect(sends.filter((j) => j.sid === S1)).toHaveLength(NODE_SENDS_CAP);
+    // A server's session that ends takes its sends with it: none is left to count as the Mac's.
+    pair.node.sendEvent(nodeEvents.sessionRemoved(S1));
+    await settle();
+    expect(Object.values(stateOf().sends).filter((j) => j.sid === S1)).toEqual([]);
+    expect(Object.values(stateOf().sends).filter((j) => j.sid === MAC_SID)).toHaveLength(60);
   });
 });

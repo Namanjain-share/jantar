@@ -83,8 +83,9 @@ describe('NodeAuth.makeTokens', () => {
     for (const hubUrl of ['', 'http://jantar.example.com', 'https://x.example.com/path', 'not a url']) {
       expect(await auth.makeTokens({}, { hubUrl, createdBy: 'cli' }), hubUrl).toMatchObject({ ok: false, code: 'conflict' });
     }
-    // Loopback http is the tests' door.
-    expect(await auth.makeTokens({}, { hubUrl: 'http://127.0.0.1:7431', createdBy: 'cli' })).toMatchObject({ ok: true });
+    // Loopback http would send each server to its own machine, Access secret and all: the tests' door only.
+    expect(await auth.makeTokens({}, { hubUrl: 'http://127.0.0.1:7431', createdBy: 'cli' })).toMatchObject({ ok: false, code: 'conflict' });
+    expect(await auth.makeTokens({}, { hubUrl: 'http://127.0.0.1:7431', createdBy: 'cli', loopbackHttp: true })).toMatchObject({ ok: true });
   });
 
   it('"mac" is never a server name', async () => {

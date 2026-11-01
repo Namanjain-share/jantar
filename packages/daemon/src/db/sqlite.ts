@@ -68,6 +68,16 @@ export const REWRITE_RUNS_CAP = 5000;
 export const PRUNE_EVERY = 100;
 
 const ALERT_TYPES: ReadonlySet<string> = new Set(ALERT_EVENT_TYPES);
+
+/**
+ * Whether an event counts toward the alert history (ALERT_HISTORY_CAP): the
+ * Mac's own alerts only. A server's (v0.6, `alert.node` set) stay in the
+ * replay ring, which grows per server, so no server can push the Mac's
+ * alert history out.
+ */
+function isAlertRow(ev: DaemonEvent): boolean {
+  return ALERT_TYPES.has(ev.type) && (ev.data as { alert?: { node?: string } }).alert?.node === undefined;
+}
 const HIGH_WATER_KEY = 'events.high_water';
 
 type SqliteModule = typeof import('node:sqlite');
@@ -326,7 +336,7 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
         `INSERT INTO events (seq, ts, type, sid, account, is_alert, json) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(seq) DO UPDATE SET ts = excluded.ts, type = excluded.type, sid = excluded.sid,
            account = excluded.account, is_alert = excluded.is_alert, json = excluded.json`,
-      ).run(ev.seq, ev.ts, ev.type, ev.sid ?? null, ev.account ?? null, ALERT_TYPES.has(ev.type) ? 1 : 0, json(ev));
+      ).run(ev.seq, ev.ts, ev.type, ev.sid ?? null, ev.account ?? null, isAlertRow(ev) ? 1 : 0, json(ev));
       const hw = Number(metaGet(HIGH_WATER_KEY) ?? 0);
       if (ev.seq > hw) metaSet(HIGH_WATER_KEY, String(ev.seq));
       wrote();

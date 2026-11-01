@@ -120,7 +120,7 @@ function specOf(ctx: CliContext, readOnly: boolean) {
 /** Where the service file lives (null on Windows: the task lives in Task Scheduler). */
 export function servicePath(kind: ServiceKind, ctx: Pick<CliContext, 'paths' | 'io'>): string | null {
   if (kind === 'launchd') return plistPath(ctx.paths);
-  if (kind === 'systemd') return unitPath(ctx.paths, ctx.io.env);
+  if (kind === 'systemd') return unitPath(ctx.paths);
   return null;
 }
 
@@ -190,10 +190,11 @@ function noSystemdNext(line: string): string {
 export function schtasksText(ctx: CliContext, readOnly: boolean): string {
   const l = schtasksLines(specOf(ctx, readOnly));
   let text =
-    'Service: on Windows, Jantar runs as a task at logon. In Command Prompt (cmd.exe), run:\n' +
+    'Service: on Windows, Jantar runs as a task at logon. In Command Prompt (cmd.exe, Run as administrator), run:\n' +
     `  ${l.create}\n` +
     `  ${l.run}\n` +
     'It runs while you are logged on (an unattended server needs auto-logon or a kept session).\n' +
+    'At logon a console window opens for it: keep it open (minimise it), as closing it stops Jantar.\n' +
     'To stop it, then remove it:\n' +
     `  ${l.end}\n` +
     `  ${l.remove}\n`;
@@ -239,7 +240,7 @@ export async function installService(ctx: CliContext, input: ServiceInput & { st
         next: `Run the daemon yourself instead: ${daemonLine(ctx, input.readOnly)}`,
       };
     }
-    const path = unitPath(ctx.paths, ctx.io.env);
+    const path = unitPath(ctx.paths);
     const unit = unitFor(spec);
     const before = await readUnit(path);
     await writeUnit(path, unit);
@@ -280,7 +281,7 @@ export async function restartService(ctx: CliContext): Promise<ServiceOutcome> {
     return { ok: true, kind, text: 'Restarted the LaunchAgent.\n', started: true };
   }
   if (kind === 'systemd') {
-    if ((await readUnit(unitPath(ctx.paths, ctx.io.env))) === null) return { ok: false, reason: `the systemd unit is not installed (jantar install)` };
+    if ((await readUnit(unitPath(ctx.paths))) === null) return { ok: false, reason: `the systemd unit is not installed (jantar install)` };
     const r = await restartUnit(ctx.deps.exec, await systemctlOf(ctx));
     if (!r.ok) return { ok: false, reason: r.reason };
     return { ok: true, kind, text: `Restarted ${UNIT_NAME}.\n`, started: true };
@@ -309,7 +310,7 @@ export async function removeService(ctx: CliContext): Promise<ServiceOutcome> {
     return { ok: true, kind, text, started: false };
   }
   if (kind === 'systemd') {
-    const path = unitPath(ctx.paths, ctx.io.env);
+    const path = unitPath(ctx.paths);
     // No unit, nothing systemd could be running: systemctl is not asked (it may not even run here).
     if ((await readUnit(path)) === null) return { ok: true, kind, text: 'Service: not installed\n', started: false };
     const systemctl = await systemctlOf(ctx);

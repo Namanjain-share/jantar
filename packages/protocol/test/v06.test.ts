@@ -8,13 +8,18 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import * as index from '../src/index.js';
 import {
+  ALERTS_CAP,
   DEFAULT_SETTINGS,
   FLEET_COPY,
+  LAUNCH_CAP,
   MAC_ONLY_SETTING_GROUPS,
+  NODE_ALERTS_CAP,
+  NODE_SENDS_CAP,
   NO_FEATURES,
   NodeViewSchema,
   PROTOCOL_VERSION,
   ROUTES,
+  SENDS_CAP,
   StateSchema,
   accountsOf,
   canType,
@@ -205,7 +210,8 @@ describe('v0.6: the link frames', () => {
 
   it('takes the ids the daemon makes and refuses anything path-like', () => {
     for (const id of ['01JFAKEPENDING0000000000000AAAAAAAAAAAAAAAA', '5e1f0000-0000-4000-8000-000000000001', 'snapshot', 'job_1']) expect(NODE_SUPPLIED_ID.test(id), id).toBe(true);
-    for (const id of ['', '../x', 'a/b', 'a b', 'x'.repeat(81), 'constructor\n']) expect(NODE_SUPPLIED_ID.test(id), id).toBe(false);
+    for (const id of ['', '../x', 'a/b', 'a b', 'x'.repeat(81), 'constructor\n', '__proto__']) expect(NODE_SUPPLIED_ID.test(id), id).toBe(false);
+    expect(NODE_SUPPLIED_ID.test('__proto__x')).toBe(true);
   });
 });
 
@@ -297,6 +303,52 @@ describe('v0.6: state, events and the reducer', () => {
     // Removing it again changes nothing but the seq.
     const again = reduce(next, ev({ type: 'node.removed', data: { id: NODE_A } }));
     expect({ ...again, seq: 0 }).toEqual({ ...next, seq: 0 });
+  });
+
+  it("gives each server a share of its own: never the Mac's alerts, finished sends or launches", () => {
+    let s = fleetState();
+    const apply = (input: Parameters<typeof ev>[0]) => {
+      s = reduce(s, ev(input));
+    };
+    for (let i = 0; i < 50; i++) apply({ type: 'alert.error', data: { alert: alert({ id: `mac-${i}`, kind: 'error' }) } });
+    for (let i = 0; i < 300; i++) apply({ type: 'alert.error', data: { alert: alert({ id: `a-${i}`, kind: 'error', node: NODE_A }) } });
+    apply({ type: 'alert.error', data: { alert: alert({ id: 'b-0', kind: 'error', node: NODE_B }) } });
+    expect(s.alerts.filter((a) => a.node === undefined)).toHaveLength(50);
+    expect(s.alerts.filter((a) => a.node === NODE_A).map((a) => a.id)).toEqual(Array.from({ length: NODE_ALERTS_CAP }, (_, i) => `a-${299 - i}`));
+    expect(s.alerts[0]?.id).toBe('b-0');
+    for (let i = 0; i < ALERTS_CAP + 5; i++) apply({ type: 'alert.error', data: { alert: alert({ id: `mac2-${i}`, kind: 'error' }) } });
+    expect(s.alerts.filter((a) => a.node === undefined)).toHaveLength(ALERTS_CAP);
+    expect(s.alerts.filter((a) => a.node === NODE_A)).toHaveLength(NODE_ALERTS_CAP);
+
+    // Finished sends: a server's, dated in the future, push out only its own oldest.
+    for (let i = 0; i < 40; i++) apply({ type: 'send.progress', sid: 'mac-1', data: { job: job({ id: `mac-s-${i}`, sid: 'mac-1', stage: 'proven' }) } });
+    const future = '2099-01-01T00:00:00.000Z';
+    for (let i = 0; i < SENDS_CAP + 10; i++) apply({ type: 'send.progress', sid: 'a-1', data: { job: job({ id: `a-s-${i}`, sid: 'a-1', stage: 'proven', updatedAt: future }) } });
+    expect(Object.values(s.sends).filter((j) => j.sid === 'mac-1')).toHaveLength(41);
+    // build-1's share: its 20, job-a (on a-2, still in flight) among them.
+    expect(Object.values(s.sends).filter((j) => j.sid.startsWith('a-'))).toHaveLength(NODE_SENDS_CAP);
+    // Its session ends: its sends go with it (job-a on a-2 stays with a-2).
+    apply({ type: 'session.removed', sid: 'a-1', data: {} });
+    expect(Object.values(s.sends).filter((j) => j.sid === 'a-1')).toEqual([]);
+    expect(Object.keys(s.sends)).toContain('job-a');
+    // The Mac's session that ends keeps its receipts, as before Fleet.
+    apply({ type: 'session.removed', sid: 'mac-1', data: {} });
+    expect(Object.values(s.sends).filter((j) => j.sid === 'mac-1')).toHaveLength(41);
+
+    // Launches: LAUNCH_CAP for each machine.
+    for (let i = 0; i < LAUNCH_CAP + 5; i++) apply({ type: 'launch.progress', data: { job: launch({ id: `a-l-${i}`, node: NODE_A, updatedAt: future }) } });
+    expect(Object.keys(s.launches)).toContain('launch-mac');
+    expect(Object.values(s.launches).filter((l) => l.node === NODE_A)).toHaveLength(LAUNCH_CAP);
+  });
+
+  it("removes a machine without letting an id like __proto__ become the records' prototype", () => {
+    let s = fleetState();
+    // A record that holds `__proto__` as an own key (JSON.parse makes one so); the reducer copies records with fromEntries.
+    s = { ...s, sessions: { ...s.sessions, ...(JSON.parse(`{"__proto__": ${JSON.stringify(session({ sid: '__proto__', node: NODE_B, cwd: '/x' }))}}`) as State['sessions']) } };
+    const next = reduce(s, ev({ type: 'node.removed', data: { id: NODE_A } }));
+    expect(Object.getPrototypeOf(next.sessions)).toBe(Object.prototype);
+    expect(Object.hasOwn(next.sessions, '__proto__')).toBe(true);
+    expect((next.sessions as unknown as { cwd?: string }).cwd).toBeUndefined();
   });
 
   it('never patches a session onto another machine', () => {

@@ -105,6 +105,8 @@ export async function forwardCall(link: HubLink | null, target: FleetTarget, cal
       ...(call.idem !== undefined ? { idem: call.idem } : {}),
     };
     const reply = await link.call(req, call.raw);
+    // A status the phone can't be answered with (1xx: no body, the call would hang) is not passed on.
+    if (reply.status < 200 || reply.status > 599) return { status: 502, body: errorBody('internal', `${target.name}'s reply was not understood`) };
     // The link's own failures say so in the hub's words, with the hub's name for the machine.
     const code = (reply.body as { error?: { code?: unknown } } | null)?.error?.code;
     if (reply.status === 503 && code === 'node_offline') return nodeFailureReply('node_offline', target.name);

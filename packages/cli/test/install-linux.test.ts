@@ -79,10 +79,10 @@ describe('the systemd unit', () => {
   it('pins a state dir that is not the default, as the LaunchAgent does', () => {
     const paths = resolvePaths({ env: { HOME: '/home/sam', JANTAR_HOME: '/srv/jantar' } });
     const unit = unitFor({ paths, nodePath: '/usr/bin/node', daemonBin: '/home/sam/jantar/packages/daemon/bin/jantard.mjs', env: { JANTAR_HOME: '/srv/jantar' } });
-    expect(unit).toContain('Environment=PATH=/usr/bin:/usr/local/bin:/usr/bin:/bin\nEnvironment=JANTAR_HOME=/srv/jantar\n');
+    expect(unit).toContain('Environment=PATH=/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\nEnvironment=JANTAR_HOME=/srv/jantar\n');
     expect(unit).toContain('StandardOutput=append:/srv/jantar/logs/daemon.out.log\n');
+    // Never the shell's XDG_CONFIG_HOME: systemd's user manager reads ~/.config/systemd/user.
     expect(unitPath(paths)).toBe('/home/sam/.config/systemd/user/jantar.service');
-    expect(unitPath(paths, { XDG_CONFIG_HOME: '/home/sam/cfg' })).toBe('/home/sam/cfg/systemd/user/jantar.service');
   });
 
   it("the guard refuses the real user's unit folder under a test runner", async () => {
@@ -394,7 +394,7 @@ describe('jantar install on a Windows server (preview: lines printed, nothing ru
     expect(deps.exec.calls).toHaveLength(0);
     expect(io.stdout).toContain(schtasksText(ctx, true));
     const l = schtasksLines({ nodePath: deps.nodePath, daemonBin: locations.daemonBin, env: home.env, readOnly: true });
-    expect(io.stdout).toContain(`In Command Prompt (cmd.exe), run:\n  ${l.create}\n  ${l.run}\n`);
+    expect(io.stdout).toContain(`In Command Prompt (cmd.exe, Run as administrator), run:\n  ${l.create}\n  ${l.run}\n`);
     expect(l.create).toContain('--log-files');
     expect(l.create).toContain('--read-only');
     expect(io.stdout).toContain(`To stop it, then remove it:\n  ${l.end}\n  ${l.remove}\n`);

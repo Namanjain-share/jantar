@@ -295,6 +295,19 @@ describe("a node's own answers", () => {
     expect(await go('getScreen')).toEqual(want);
     expect(await go('getTranscript')).toEqual(want);
   });
+
+  it('a status the phone could not be answered with (1xx: no body, the call would hang) is a 502', async () => {
+    const hub = hubContext();
+    const reg = new NodeRegistry(hub);
+    const pair = linkTo(reg, NODE_IDS.build1);
+    pair.node.onCall(async (req) => ({ status: req.route === 'getScreen' ? 101 : 199, body: { lines: ['x'] } }));
+    pair.node.sendSnapshot(linuxNodeSnapshot());
+    await settle();
+    const go = (route: NodeRouteName) => forwardCall(reg.link(NODE_IDS.build1), TARGET, { route, actor: PHONE, ...CALLS[route] });
+    const want = { status: 502, body: { error: { code: 'internal', message: "build-1's reply was not understood" } } };
+    expect(await go('getScreen')).toEqual(want);
+    expect(await go('getTranscript')).toEqual(want);
+  });
 });
 
 describe('waitForStoreSend (/ctl/sends/:jobId/wait for a node job)', () => {
