@@ -107,6 +107,17 @@ function commandForm(text: string): { name: string; args: string } | null {
   return { name: name.startsWith('/') ? name : `/${name}`, args: squash(args) };
 }
 
+/**
+ * Claude Code (2.1.31x) records a pasted prompt wrapped in
+ * `<pasted_content id="…">` … `</pasted_content id="…">`. Jantar types long
+ * prompts as a paste, so the recorded text is the prompt inside those tags:
+ * the tags themselves are never part of what was typed.
+ */
+const PASTED_TAG_RE = /<\/?pasted_content(?:\s+id="[^"]*")?\s*>/gu;
+export function unwrapPasted(text: string): string {
+  return text.includes('pasted_content') ? text.replace(PASTED_TAG_RE, ' ') : text;
+}
+
 export type Comparison = 'exact' | 'merged' | 'doubled' | 'partial' | null;
 
 /** Below this many characters a shorter recorded text isn't reported as "part of the prompt". */
@@ -119,7 +130,7 @@ const PARTIAL_MIN_CHARS = 8;
  * is (or ends with) the prompt again; partial: only a beginning of it.
  */
 export function compareCandidate(text: string, expected: ExpectedPrompt): Comparison {
-  const norm = squash(text);
+  const norm = squash(unwrapPasted(text));
   if (!norm || !expected.norm) return null;
   if (norm === expected.norm) return 'exact';
   const cmd = commandForm(text);

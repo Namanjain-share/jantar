@@ -50,6 +50,15 @@ The protocol stays at version 3, and settings don't change version.
 - Nothing calls a social network or an API, and no link is ever fetched:
   links are `https` only and open when you tap them.
 
+## 0.6.2 (2 November 2026)
+
+- **A long prompt sent from the phone no longer says "Not delivered" when it
+  arrived.** Claude Code 2.1.31x records a pasted prompt inside
+  `<pasted_content>` tags, and Jantar types long prompts as a paste, so its
+  check that Claude took the prompt compared the text with the tags around
+  it and gave up, although the session had the prompt. The check now reads
+  the prompt inside those tags.
+
 ## 0.6.1 (1 November 2026)
 
 - **A session waiting on a dynamic workflow or a background agent shows as
