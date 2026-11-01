@@ -24,9 +24,10 @@ The protocol stays at version 3, and settings don't change version.
   attach, the sub's rules), a link to the page where you post it, and a
   day and time. It moves from Idea to Ready to Posted, or Skipped.
 - **The Posts screen** (under Life) lists Late, Today, Tomorrow, Later and
-  No date. A post due today has Copy (the text) and Open (the link); tap
-  its square once you have posted it, with Undo for five seconds, and add
-  the posted link in the post. Done lists what you posted and skipped.
+  No date. A post due today or late has Copy (the text) and Open (the
+  link) on its row; tap its square once you have posted it, with Undo for
+  five seconds, and add the posted link in the post. Done lists what you
+  posted and skipped.
 - **A reminder at the time**, like a todo's, with the catch-up after the
   Mac was offline. Posts due in the same minute come as one push. The lock
   screen says "Post due" and the time; with `lock-screen-details` on it

@@ -7,8 +7,8 @@
  * old. "Add all N" adds the proposed todo, food and post cards one at a
  * time (one askAdd each, never money), stopping at the first refusal; it
  * waits while a card of the turn is open in Edit, so it never adds the
- * suggestion the user is changing. Every tap has its own Idempotency-Key: a refusal the
- * Mac kept for one tap never answers the next.
+ * suggestion the user is changing. Every tap has its own Idempotency-Key:
+ * a refusal the Mac kept for one tap never answers the next.
  *
  * Ink only, with ember (design rule 3) for a failure alone: a turn that
  * failed, and a refused Send, Cancel, Add, Skip, Undo or Clear.

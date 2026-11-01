@@ -8,10 +8,11 @@
  *   none). Other top-level keys are ignored. Anything else makes the turn
  *   unreadable.
  * - The model form of an action (what Claude writes) is a strict object of
- *   one of five types: todo, food, money, post, show. Any other type, an unknown
- *   field, a value of the wrong kind or out of range, or a type whose Life
- *   part is off drops that action alone (counted in `dropped`). Only the
- *   first ASK_CARDS_MAX are read; every one after counts as dropped.
+ *   one of five types: todo, food, money, post, show. Any other type, an
+ *   unknown field, a value of the wrong kind or out of range, or a type
+ *   whose Life part is off drops that action alone (counted in `dropped`).
+ *   Only the first ASK_CARDS_MAX are read; every one after counts as
+ *   dropped.
  * - Every string: control and bidi characters stripped (rewrite/guards.ts
  *   CONTROL), line ends made spaces (notes keep them), trimmed, then too
  *   long or empty drops the action (it is never cut). Nothing visible

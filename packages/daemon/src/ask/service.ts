@@ -36,11 +36,10 @@
  * calls the Life module with the tapping device as actor, so Life's own
  * checks, caps, pings and `life.changed` apply as they are; Undo removes
  * the item it made within ASK_APPLY_WITHIN_MS. A post card adds an idea
- * in-process, so the hourly limit on posts added over ctl.sock never counts
- * it. Dispatch is a fixed switch
- * on the type, to eight calls: this part holds only `life`, `usage` and
- * `ccwLegacy`, so an answer reaches nothing else (sessions, files, the
- * shell, settings or other devices).
+ * in-process, so the hourly limit on posts added over ctl.sock never
+ * counts it. Dispatch is a fixed switch on the type, to eight calls: this
+ * part holds only `life`, `usage` and `ccwLegacy`, so an answer reaches
+ * nothing else (sessions, files, the shell, settings or other devices).
  *
  * No text anywhere but the owner's list: events are `life.changed {}` on
  * each turn state change, Skip, Clear and the switch turning off (Add and
