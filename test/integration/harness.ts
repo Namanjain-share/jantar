@@ -243,9 +243,9 @@ export async function bootDaemon(opts: BootOptions = {}): Promise<Daemon> {
         },
         ...(opts.openDb ? { openDb: opts.openDb } : {}),
         ...(opts.clock ? { clock: opts.clock } : {}),
-        // The fake osascript and ps are node scripts: on a busy CI runner the pair can take longer than a Mac's
-        // real Terminal gets to find a tab.
-        ...(opts.terminalApp ? { api: { paneLookupTimeoutMs: perfBudgetMs(PANE_LOOKUP_TIMEOUT_MS) } } : {}),
+        // The fake osascript and ps are node scripts: on a busy CI runner, or a Mac running the whole suite at
+        // once, the pair can take longer than a Mac's real Terminal gets to find a tab.
+        ...(opts.terminalApp ? { api: { paneLookupTimeoutMs: Math.max(perfBudgetMs(PANE_LOOKUP_TIMEOUT_MS), 3 * PANE_LOOKUP_TIMEOUT_MS) } } : {}),
       });
     const running = await start();
     const d: Daemon = {
