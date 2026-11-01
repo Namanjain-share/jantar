@@ -3,8 +3,8 @@
  * request: the handshake (both versions, an unknown one, the 2026-07-28
  * probe), notifications, ping, tools/list (five tools in order, strict
  * inputs, annotations), each tool's exact daemon call and answer, field
- * sentences, the daemon's own sentences (down, 403, 404, 429, anything
- * else), JSON-RPC errors (unknown tool, not JSON, a batch, a line over
+ * sentences, the daemon's own sentences (down, slow, 403 framed as the
+ * user's, 404, 429, anything else), JSON-RPC errors (unknown tool, not JSON, a batch, a line over
  * 1 MiB), the 40,000-character budget, no folder, and the command itself:
  * the setup on a terminal with double-quoted absolute paths and the copied
  * UNSAFE_IN_COMMAND check, and stdout holding only JSON lines.
@@ -15,8 +15,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ROUTES, type FolderTodosResponse, type IntelItem, type IntelListItem, type IntelListResponse, type Todo } from '@jantar/protocol';
+import { LIFE_LIMITS, ROUTES, type FolderTodosResponse, type IntelItem, type IntelListItem, type IntelListResponse, type Todo } from '@jantar/protocol';
 import { EXIT } from '../src/command.js';
+import { CtlUnavailableError } from '../src/ctl.js';
 import mcp, { MCP_INSTRUCTIONS, MCP_LINE_MAX, MCP_RESULT_MAX, MCP_SAYS, createMcpServer, mcpCommand, mcpFolder, setupText, type McpHost } from '../src/commands/mcp.js';
 import { main } from '../src/index.js';
 import { memoryIo } from '../src/io.js';
@@ -176,7 +177,7 @@ describe('tools/list', () => {
       expect(t.annotations.title).toBe(t.title);
     }
     const by = Object.fromEntries(tools.map((t) => [t.name, t]));
-    for (const name of ['intel_search', 'intel_get', 'todos_here']) expect(by[name]?.annotations, name).toEqual({ title: by[name]?.title, readOnlyHint: true });
+    for (const name of ['intel_search', 'intel_get', 'todos_here']) expect(by[name]?.annotations, name).toEqual({ title: by[name]?.title, readOnlyHint: true, openWorldHint: false });
     for (const name of ['intel_add', 'todo_add']) {
       expect(by[name]?.annotations, name).toEqual({ title: by[name]?.title, readOnlyHint: false, destructiveHint: false, openWorldHint: false });
     }
@@ -187,6 +188,9 @@ describe('tools/list', () => {
     expect(by.todos_here?.inputSchema.properties).toEqual({});
     expect(Object.keys(by.todo_add?.inputSchema.properties as object)).toEqual(['title', 'notes', 'due_day', 'due_time', 'priority']);
     expect(by.todo_add?.inputSchema.required).toEqual(['title']);
+    // Only a time makes a reminder (life/todos/pings.ts): a day alone never pings.
+    expect(by.todo_add?.description).toContain("due_day sets its day; with due_time too it becomes a reminder that pings the user's phone then.");
+    expect(by.intel_search?.inputSchema.properties).toMatchObject({ limit: { type: 'integer', minimum: 1, maximum: 20, default: 10 } });
   });
 });
 
@@ -353,12 +357,37 @@ describe('sentences', () => {
     expect(ctl.calls).toEqual([]);
   });
 
+  it('an optional argument sent as null counts as left out; limit may come as a numeric string', async () => {
+    const ctl = daemon();
+    const s = server(ctl);
+    expect((await callTool(s, 'intel_search', { query: null, type: null, tag: null, limit: '5', newest: null })).isError).toBe(false);
+    expect(ctl.calls.at(-1)?.path).toBe('/v1/intel?limit=5');
+    await callTool(s, 'intel_add', { title: 'A note', url: null, type: null, tags: null, note: null });
+    expect(ctl.calls.at(-1)?.body).toEqual({ title: 'A note', via: 'claude', cwd: FOLDER });
+    expect((await callTool(s, 'todo_add', { title: 'Plain', notes: null, due_day: null, due_time: null, priority: null })).isError).toBe(false);
+    expect(ctl.calls.at(-1)?.body).toEqual({ folder: FOLDER, title: 'Plain' });
+    const n = ctl.calls.length;
+    // A required one sent as null is missing; a string that is no whole number is still refused.
+    expect(await callTool(s, 'intel_add', { title: null })).toEqual({ text: 'title: 1 to 300 characters.', isError: true });
+    expect(await callTool(s, 'intel_search', { limit: 'five' })).toEqual({ text: 'limit: a whole number from 1 to 20.', isError: true });
+    expect(await callTool(s, 'intel_search', { limit: '2.5' })).toEqual({ text: 'limit: a whole number from 1 to 20.', isError: true });
+    expect(ctl.calls).toHaveLength(n);
+  });
+
   it("the daemon down, 403, 404, 429 and anything else: each one sentence, the daemon's own where it has one", async () => {
     const down = fakeCtl({}, { down: true });
-    expect(await callTool(server(down), 'intel_search', {})).toEqual({ text: "Jantar isn't running on this Mac. On the Mac: jantar install", isError: true });
+    expect(await callTool(server(down), 'intel_search', {})).toEqual({ text: "Jantar isn't running on this Mac. Only the user starts it, at the Mac: jantar install", isError: true });
     expect(await callTool(server(down), 'todos_here')).toEqual({ text: MCP_SAYS.down, isError: true });
+    const refused = daemon({ 'GET /v1/intel': () => Promise.reject(new CtlUnavailableError('/synthetic/run/ctl.sock', 'ECONNREFUSED')) });
+    expect((await callTool(server(refused), 'intel_search', {})).text).toBe(MCP_SAYS.down);
+    // A switch off: the daemon's sentence, framed as the user's to act on.
     const off = daemon({ 'GET /v1/intel': fail('forbidden', 'The Intel shelf is off. Turn it on at your Mac: jantar intel on', 403) });
-    expect(await callTool(server(off), 'intel_search', {})).toEqual({ text: 'The Intel shelf is off. Turn it on at your Mac: jantar intel on', isError: true });
+    expect(await callTool(server(off), 'intel_search', {})).toEqual({
+      text: 'The user turned this off; only they turn it back on. Tell them: The Intel shelf is off. Turn it on at your Mac: jantar intel on',
+      isError: true,
+    });
+    const todosOff = daemon({ 'GET /v1/folder/todos': fail('forbidden', 'Todos are off. Turn them on at your Mac: jantar life on todos', 403) });
+    expect((await callTool(server(todosOff), 'todo_add', { title: 'x' })).text).toBe(`${MCP_SAYS.userOnly} Todos are off. Turn them on at your Mac: jantar life on todos`);
     const gone = daemon({ 'GET /v1/intel/items/intel%3At-104': fail('not_found', 'That item is no longer on the shelf.', 404) });
     expect((await callTool(server(gone), 'intel_get', { id: 'intel:t-104' })).text).toBe('That item is no longer on the shelf.');
     const many = daemon({ 'POST /v1/folder/todos': fail('rate_limited', 'Claude sessions added 20 todos this hour. Add more on the phone, or try again later.', 429) });
@@ -367,6 +396,24 @@ describe('sentences', () => {
     expect((await callTool(server(broken), 'todos_here')).text).toBe('Jantar answered 503: Life data could not be opened.');
     const odd = daemon({ 'GET /v1/intel': () => ({ status: 500, body: null }) });
     expect((await callTool(server(odd), 'intel_search', {})).text).toBe('Jantar answered 500: daemon answered HTTP 500');
+    const broke = daemon({ 'GET /v1/intel': () => Promise.reject(new Error('synthetic failure')) });
+    expect(await callTool(server(broke), 'intel_search', {})).toEqual({ text: 'jantar mcp failed: synthetic failure', isError: true });
+  });
+
+  it('a daemon too slow to answer (ctl.ts times out at 10 s) is slow, never down: an add may already be saved, so Claude checks first', async () => {
+    const late = () => Promise.reject(new CtlUnavailableError('/synthetic/run/ctl.sock', 'ETIMEDOUT'));
+    const slowAdd = 'Jantar did not answer in time (the Mac may be busy); it may already have saved this. Check with todos_here or intel_search before adding it again.';
+    const todo = daemon({ 'POST /v1/folder/todos': late });
+    expect(await callTool(server(todo), 'todo_add', { title: 'Check the deploy', due_day: '2026-11-02', due_time: '10:00' })).toEqual({ text: slowAdd, isError: true });
+    expect(MCP_SAYS.slowAdd).toBe(slowAdd);
+    expect(await callTool(server(daemon({ 'POST /v1/intel/captures': late })), 'intel_add', { title: 'A note' })).toEqual({ text: slowAdd, isError: true });
+    // A read is only slow.
+    expect(await callTool(server(daemon({ 'GET /v1/intel': late })), 'intel_search', {})).toEqual({ text: 'Jantar did not answer in time (the Mac may be busy). Try again in a moment.', isError: true });
+    expect((await callTool(server(daemon({ 'GET /v1/folder/todos': late })), 'todos_here')).text).toBe(MCP_SAYS.slow);
+    // Any other socket error is not "down" either.
+    const reset = daemon({ 'POST /v1/intel/captures': () => Promise.reject(new CtlUnavailableError('/synthetic/run/ctl.sock', 'ECONNRESET')) });
+    expect((await callTool(server(reset), 'intel_add', { title: 'A note' })).text).toBe(slowAdd);
+    for (const text of Object.values(MCP_SAYS)) expect(text).not.toMatch(/^(Run|On the Mac)/);
   });
 });
 
@@ -391,6 +438,21 @@ describe('the 40,000-character budget', () => {
     expect(body.fields.map((f) => f.key)).toEqual(fields.slice(0, body.fields.length).map((f) => f.key));
     expect(body.cut).toBe(`${20 - body.fields.length} fields left out`);
     expect(body.why_it_matters).toHaveLength(2000);
+  });
+
+  // Before, each pass re-stringified the whole list: minutes at this size, far past the 15 s test limit.
+  it('todos_here at the open-todo cap (5,000 with long notes) still answers at once: each todo is measured once', async () => {
+    const todos = Array.from({ length: LIFE_LIMITS.openTodos }, (_, i) => todo({ id: `01JSYNTHT0D00000000000${String(i).padStart(4, '0')}`, title: 't'.repeat(200), notes: 'n'.repeat(2000) }));
+    const ctl = daemon({ 'GET /v1/folder/todos': ok(here({ todos })) });
+    const r = await callTool(server(ctl), 'todos_here');
+    expect(r.text.length).toBeLessThanOrEqual(MCP_RESULT_MAX);
+    const body = JSON.parse(r.text) as { todos: { id: string }[]; more: string };
+    // As many as fit, in order: one more would not.
+    expect(body.todos.map((t) => t.id)).toEqual(todos.slice(0, body.todos.length).map((t) => t.id));
+    expect(body.todos.length).toBeGreaterThan(10);
+    expect(body.more).toBe(`${LIFE_LIMITS.openTodos - body.todos.length} more on the phone`);
+    const oneMore = JSON.stringify({ ...body, todos: [...body.todos, body.todos[0]], more: `${LIFE_LIMITS.openTodos - body.todos.length - 1} more on the phone` });
+    expect(oneMore.length).toBeGreaterThan(MCP_RESULT_MAX);
   });
 
   it('todos_here keeps the first todos that fit and points to the phone for the rest', async () => {

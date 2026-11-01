@@ -54,9 +54,19 @@ export const MCP_RESULT_MAX = 40_000;
 const SEARCH_DEFAULT = 10;
 const SEARCH_MAX = 20;
 
-/** The one sentence a tool answers when it cannot. */
+/**
+ * The one sentence a tool answers when it cannot. A command in one is the
+ * user's to run, never Claude's: the sentence says so.
+ */
 export const MCP_SAYS = {
-  down: `Jantar isn't running on this Mac. On the Mac: ${CLI_NAME} install`,
+  down: `Jantar isn't running on this Mac. Only the user starts it, at the Mac: ${CLI_NAME} install`,
+  /** A read that got no answer in time: the daemon is up but slow (a busy Mac). */
+  slow: 'Jantar did not answer in time (the Mac may be busy). Try again in a moment.',
+  /** An add that got no answer: it may have been saved, and a retry carries a new Idempotency-Key. */
+  slowAdd:
+    'Jantar did not answer in time (the Mac may be busy); it may already have saved this. Check with todos_here or intel_search before adding it again.',
+  /** Before the daemon's 403 sentence: a switch the user turned off. */
+  userOnly: 'The user turned this off; only they turn it back on. Tell them:',
   noFolder: 'This MCP client gave Jantar no project folder.',
   noProject: 'No Life project is linked to this folder. The user can link one on the phone: Projects › a project › Folder.',
   timeNeedsDay: 'due_time: give due_day too (a time needs a day).',
@@ -128,12 +138,19 @@ interface Tool<S extends z.ZodType = z.ZodType> {
 
 const tool = <S extends z.ZodType>(t: Tool<S>): Tool => t as unknown as Tool;
 
-const READ_ONLY = { readOnlyHint: true } as const;
+// The shelf and the todos are a closed set: no tool reaches the web.
+const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
 const APPEND_ONLY = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;
 
 /** What `build` makes of `list`, as compact JSON, with items dropped from its end until it fits MCP_RESULT_MAX (`left` counts them). */
 function fitted<T>(list: T[], build: (kept: T[], left: number) => unknown): string {
-  let kept = list.length;
+  // Each item costs at least its own JSON and a comma, so no more than `kept` can fit: start there, not at the
+  // whole list (5,000 open todos would stringify the list 5,000 times).
+  let kept = 0;
+  for (let size = 0; kept < list.length; kept += 1) {
+    size += JSON.stringify(list[kept]).length + 1;
+    if (size > MCP_RESULT_MAX) break;
+  }
   for (;;) {
     const text = JSON.stringify(build(list.slice(0, kept), list.length - kept));
     if (text.length <= MCP_RESULT_MAX || kept === 0) return text;
@@ -156,7 +173,8 @@ const TOOLS: readonly Tool[] = [
       query: z.string().max(200).optional().describe('Words to find; a "quoted phrase" counts as one word. Leave it out for the newest items.'),
       type: z.string().max(40).optional().describe('Only items of this type (tool, repo, ...).'),
       tag: z.string().max(40).optional().describe('Only items with this tag.'),
-      limit: z.number().int().min(1).max(SEARCH_MAX).default(SEARCH_DEFAULT).describe(`How many items (1 to ${SEARCH_MAX}).`),
+      // A model sometimes sends "5": coerced, the schema it reads stays an integer.
+      limit: z.coerce.number().int().min(1).max(SEARCH_MAX).default(SEARCH_DEFAULT).describe(`How many items (1 to ${SEARCH_MAX}).`),
       newest: z.boolean().optional().describe('Newest first instead of best match first.'),
     }),
     fields: {
@@ -274,7 +292,7 @@ const TOOLS: readonly Tool[] = [
     name: 'todo_add',
     title: 'Add a todo here',
     description:
-      "Add a todo to the Life project linked to this session's folder. due_day (and due_time) make it a reminder that pings the user's phone then.",
+      "Add a todo to the Life project linked to this session's folder. due_day sets its day; with due_time too it becomes a reminder that pings the user's phone then.",
     input: z.strictObject({
       title: z.string().trim().min(1).max(200).describe('The todo, in a few words.'),
       notes: z.string().max(2000).optional().describe('Notes.'),
@@ -319,12 +337,19 @@ function badArguments(t: Tool, issue: z.ZodError['issues'][number] | undefined):
   return field ? `${field}: ${t.fields[field] ?? issue?.message ?? 'not valid'}.` : `${t.name} takes an object of named arguments.`;
 }
 
-/** A call that failed, as the one sentence Claude can act on or pass on. */
-function failure(e: unknown): string {
-  if (e instanceof CtlUnavailableError) return MCP_SAYS.down;
+/** A call that failed, as the one sentence Claude can act on or pass on. `adds`: the tool writes. */
+function failure(e: unknown, adds: boolean): string {
+  if (e instanceof CtlUnavailableError) {
+    // No socket, or nothing listening on it: down. Anything else (ctl.ts's 10 s timeout on a busy Mac) is a daemon
+    // that may still have done it, and a retry would add it twice.
+    if (e.causeCode === 'ENOENT' || e.causeCode === 'ECONNREFUSED') return MCP_SAYS.down;
+    return adds ? MCP_SAYS.slowAdd : MCP_SAYS.slow;
+  }
   if (e instanceof DaemonError) {
-    // The daemon's own sentences: a switch off names its command; gone, no project, too many.
-    if (e.status === 403 || e.status === 404 || e.status === 429) return e.message;
+    // A switch off: the daemon's sentence names its command, which is the user's.
+    if (e.status === 403) return `${MCP_SAYS.userOnly} ${e.message}`;
+    // The daemon's own sentences: gone, no project, too many.
+    if (e.status === 404 || e.status === 429) return e.message;
     return `Jantar answered ${e.status}: ${e.message}`;
   }
   return `jantar mcp failed: ${e instanceof Error ? e.message : String(e)}`;
@@ -360,14 +385,15 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     if (!t) return error(id, -32602, typeof name === 'string' ? `Unknown tool: ${clip(name, 80)}` : 'tools/call needs the name of a tool');
     const args = params.arguments ?? {};
     if (!isObject(args)) return error(id, -32602, 'arguments must be an object');
-    const parsed = t.input.safeParse(args);
+    // An optional argument sent as null is one left out (a model sometimes sends every key).
+    const parsed = t.input.safeParse(Object.fromEntries(Object.entries(args).filter(([, v]) => v !== null)));
     let answer: ToolAnswer;
     if (!parsed.success) answer = refused(badArguments(t, parsed.error.issues[0]));
     else {
       try {
         answer = await t.run(parsed.data, deps);
       } catch (e) {
-        answer = refused(failure(e));
+        answer = refused(failure(e, t.annotations.readOnlyHint !== true));
       }
     }
     return result(id, { content: [{ type: 'text', text: answer.text }], ...(answer.isError ? { isError: true } : {}) });
