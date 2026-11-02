@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.9.0 (unreleased)
+## 0.9.0 (2 November 2026)
 
 Log a comment, in Posts: paste the link to a comment you made (on Reddit:
 Share, then Copy link) and Jantar saves it as a posted comment, with the
