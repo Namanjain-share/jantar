@@ -178,7 +178,7 @@ const CARD_TOOLS: readonly ChatTool[] = [
   {
     name: 'request_delete',
     kind: 'card',
-    part: 'life',
+    part: 'cards',
     taints: false,
     input: z.strictObject({
       kind: z.enum(DELETE_KINDS),
@@ -194,7 +194,7 @@ const CARD_TOOLS: readonly ChatTool[] = [
   {
     name: 'request_action',
     kind: 'card',
-    part: 'life',
+    part: 'cards',
     taints: false,
     input: z.strictObject({ kind: z.enum(ACTION_KINDS), id: z.string().min(1).max(200), depth: IntelDepthSchema.optional() }),
     description: "Ask the user to stop a medicine, summarize a meeting, or read a saved link again (the last two use their Claude quota). A card; only their tap runs it.",
@@ -239,6 +239,8 @@ export function partOn(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings'>, part
       }
     case 'life':
       return LIFE_PARTS.some((p) => s.life[p]) && lifeOk();
+    case 'cards':
+      return partOn(s, d, 'life') || partOn(s, d, 'intel') || partOn(s, d, 'meetings');
     default:
       return s.life[part] && lifeOk();
   }
@@ -261,6 +263,7 @@ const PART_NAME: Readonly<Record<ChatPart, string>> = {
   intel: 'The Intel shelf',
   meetings: 'Meetings',
   sessions: 'Sessions',
+  cards: 'Life, Intel and Meetings',
 };
 
 // ------------------------------------------------------------------ the reads
@@ -665,9 +668,19 @@ export class TurnTools {
       return { text: TOOL_SENTENCES.card, isError: false };
     }
     if (this.counts.writes >= CHAT_WRITES_MAX) return this.refused(TOOL_SENTENCES.limit);
-    const r = await applyWrite(this.o.deps, tool, input, this.o.actor);
-    if (!r.ok) return this.refused(r.reason);
+    // Counted before the await, so calls released together can't pass the cap; a write refused gives its place back.
     this.counts.writes += 1;
+    let r: Awaited<ReturnType<typeof applyWrite>>;
+    try {
+      r = await applyWrite(this.o.deps, tool, input, this.o.actor);
+    } catch (e) {
+      this.counts.writes -= 1;
+      throw e;
+    }
+    if (!r.ok) {
+      this.counts.writes -= 1;
+      return this.refused(r.reason);
+    }
     recordChange(this.o, r.value);
     return { text: `Done: ${r.value.change.label} (id ${r.value.change.ref}). The user sees it in the chat with Undo.`, isError: false };
   }

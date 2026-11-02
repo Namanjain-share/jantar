@@ -46,6 +46,20 @@ describe('the tool list', () => {
     expect(names).toContain('sessions_find');
   });
 
+  it('with every Life module off but Intel and Meetings on, deletes and actions can still be asked for', async () => {
+    rig = await chatRig({ life: { todos: false, medicines: false, food: false, places: false, finance: false, posts: false } });
+    const names = toolsFor(rig.ctx.settings.get(), rig.deps).map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(['request_delete', 'request_action']));
+    expect(names).not.toContain('today');
+    const item = rig.intel.add({ title: 'Synthetic page' });
+    const { tools, turnId } = rig.turn();
+    expect((await tools.call('request_delete', { kind: 'intel', id: item.id })).isError).toBe(false);
+    expect((await tools.call('request_action', { kind: 'reread_link', id: item.id })).isError).toBe(false);
+    expect(rig.store.cards(turnId)).toHaveLength(2);
+    // A card's own part is still checked: a todo can't be asked for with Todos off.
+    expect(await tools.call('request_delete', { kind: 'todo', id: '01JZZZZZZZZZZZZZZZZZZZZZZZ' })).toEqual({ isError: true, text: 'Todos is off on this Mac. Only the user turns it on, at the Mac.' });
+  });
+
   it('a part switched off after the list is refused at call time', async () => {
     rig = await chatRig();
     const { tools } = rig.turn();
@@ -232,6 +246,17 @@ describe('writes', () => {
 
     // A null the add's schema does not take still means "not given".
     expect(await next.tools.call('todo_add', { title: 'Call the bank', due: null, notes: null, repeat: null })).toMatchObject({ isError: false });
+  });
+
+  it('calls released together still stop at the write cap; a refused write gives its place back', async () => {
+    rig = await chatRig();
+    const { tools, turnId } = rig.turn();
+    expect((await tools.call('todo_edit', { id: '01JZZZZZZZZZZZZZZZZZZZZZZZ', title: 'Gone' })).isError).toBe(true);
+    const answers = await Promise.all(Array.from({ length: 12 }, (_, n) => tools.call('todo_add', { title: `Synthetic todo ${n}` })));
+    expect(answers.filter((a) => !a.isError)).toHaveLength(10);
+    expect(answers.filter((a) => a.text === 'Limit reached for this message.')).toHaveLength(2);
+    expect(rig.store.changes(turnId)).toHaveLength(10);
+    expect(tools.counts.writes).toBe(10);
   });
 
   it('bad arguments get a fixed sentence and count as refused', async () => {
