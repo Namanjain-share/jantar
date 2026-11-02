@@ -246,7 +246,7 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
     } catch (e) {
       throw new Error(`${(e as Error).message}\n${dumpLog()}`);
     }
-    expect(job, `${JSON.stringify(job)}\n${dumpLog()}`).toMatchObject({ state: 'saved', platform: 'instagram', depth: 'standard', tier: 'browser' });
+    expect(job, `${JSON.stringify(job)}\nlaunches ${seen.launches.length}; requests:\n${seen.requests.join('\n')}\n${dumpLog()}`).toMatchObject({ state: 'saved', platform: 'instagram', depth: 'standard', tier: 'browser' });
     const item = (await get<{ item: IntelItem }>(`/v1/intel/items/${encodeURIComponent(id)}`)).item;
     expect(item).toMatchObject({ url: REEL, platform: 'instagram', type: 'reel', depth: 'standard', read: { state: 'saved', depth: 'standard', done: 'standard', tier: 'browser' } });
     expect(item.read?.notes ?? []).toEqual([]);
