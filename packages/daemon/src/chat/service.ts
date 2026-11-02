@@ -769,11 +769,9 @@ export class ChatServiceImpl implements ChatService {
     store.updateTurn(run.turnId, (t) => ({ ...t, tainted: c.tainted, refused: c.refused }));
     if (kind === 'ok' && outcome?.kind === 'ok') this.finish(run, { reply: outcome.result, isolationFailed: false });
     else if (kind === 'not_isolated') this.finish(run, { failed: 'not_isolated' }, true);
-    else if (kind === 'model' as AuditOutcome || kind === 'failed') {
-      // A run that hit its turn cap after doing things still answers with what it did.
-      const changes = store.changes(run.turnId).length + store.cards(run.turnId).length;
-      if (changes > 0 && outcome?.kind === 'model') this.finish(run, { reply: '', isolationFailed: false });
-      else this.finish(run, { failed: kind });
+    else if (kind === 'failed' && outcome?.kind === 'model' && store.changes(run.turnId).length + store.cards(run.turnId).length > 0) {
+      // A run that hit its turn cap after doing things still answers with what it did ("Done.").
+      this.finish(run, { reply: '', isolationFailed: false });
     } else this.finish(run, { failed: kind });
   }
 
