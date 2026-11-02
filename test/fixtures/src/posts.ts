@@ -194,3 +194,36 @@ export async function writeFakeYtDlp(root: string, dir: string): Promise<string>
   await chmod(path, 0o755);
   return path;
 }
+
+/** v0.8: the paths writeFakeMediaTools wrote, named as the daemon's Bins names them. */
+export interface FakeMediaTools {
+  xcodeSelect: string;
+  swiftc: string;
+  sandboxExec: string;
+}
+
+/**
+ * v0.8: fake `xcode-select`, `swiftc` and `sandbox-exec` (runtime/fake-bin.mjs)
+ * written into `dir` for the fake home at `root`, and `<root>/fake-clt/usr/bin/swiftc`
+ * (what `xcode-select -p` points at). The fake swiftc "builds" a fake
+ * `jantar-media` that answers every subcommand with synthetic output; the
+ * fake sandbox-exec runs it with no sandbox. Nothing compiles Swift. Calls go
+ * to <root>/calls/<name>.jsonl. A test puts these paths in the daemon's
+ * bins (they have no settings: the real ones sit at fixed paths).
+ */
+export async function writeFakeMediaTools(root: string, dir: string): Promise<FakeMediaTools> {
+  const runtime = fileURLToPath(new URL('../runtime/fake-bin.mjs', import.meta.url));
+  const wrapper = (name: string) => `#!${process.execPath}\nimport { run } from ${JSON.stringify(runtime)};\nawait run({ name: ${JSON.stringify(name)}, root: ${JSON.stringify(root)} });\n`;
+  const put = async (path: string, name: string) => {
+    await mkdir(join(path, '..'), { recursive: true });
+    await writeFile(path, wrapper(name), { mode: 0o755 });
+    await chmod(path, 0o755);
+    return path;
+  };
+  await put(join(root, 'fake-clt', 'usr', 'bin', 'swiftc'), 'swiftc');
+  return {
+    xcodeSelect: await put(join(dir, 'xcode-select'), 'xcode-select'),
+    swiftc: await put(join(dir, 'swiftc'), 'swiftc'),
+    sandboxExec: await put(join(dir, 'sandbox-exec'), 'sandbox-exec'),
+  };
+}

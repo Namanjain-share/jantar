@@ -3,13 +3,14 @@
  * the way the daemon runs it (`claude -p --input-format stream-json
  * --output-format stream-json --verbose --system-prompt-file
  * <dir>/read-v1.md`, one user message with text and image blocks on stdin),
- * and the fake yt-dlp (single-file formats only, forbidden options
- * refused). Every value synthetic.
+ * the fake yt-dlp (single-file formats only, forbidden options refused),
+ * and the fake media tools (xcode-select, swiftc "building" a fake
+ * jantar-media, sandbox-exec running it). Every value synthetic.
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { POST_MARKER, TINY_JPEG_DATA_URL, makeFakeHome, setFakeClaude, writeFakeYtDlp, type FakeClaudeMode, type FakeHome } from '../src/index.js';
+import { POST_MARKER, TINY_JPEG_DATA_URL, makeFakeHome, setFakeClaude, writeFakeMediaTools, writeFakeYtDlp, type FakeClaudeMode, type FakeHome } from '../src/index.js';
 import { sh } from './run.js';
 
 let home: FakeHome;
@@ -106,5 +107,37 @@ describe('the fake yt-dlp', () => {
       const r = await sh(home, bin, args);
       expect(r.code, args.join(' ')).toBe(2);
     }
+  });
+});
+
+describe('the fake media tools', () => {
+  it('xcode-select points at a swiftc; swiftc "builds" jantar-media; sandbox-exec runs it with the HELPER it was given', async () => {
+    const tools = await writeFakeMediaTools(home.root, join(home.root, 'media-bin'));
+    const clt = (await sh(home, tools.xcodeSelect, ['-p'])).stdout.trim();
+    expect(clt).toBe(join(home.root, 'fake-clt'));
+    expect((await sh(home, join(clt, 'usr', 'bin', 'swiftc'), ['--version'])).stdout).toContain('synthetic');
+    const job = join(home.root, 'media-job');
+    await mkdir(join(job, 'frames'), { recursive: true });
+    const helper = join(home.root, 'media-bin', 'jantar-media');
+    expect((await sh(home, tools.swiftc, ['-O', '-module-cache-path', join(job, 'cache'), '-o', helper, 'jantar-media.swift'])).code).toBe(0);
+    const profile = join(home.root, 'media.sb');
+    await writeFile(profile, '(version 1)\n');
+    const run = async (sub: string, ...args: string[]) => {
+      const r = await sh(home, tools.sandboxExec, ['-f', profile, '-D', `JOB=${job}`, '-D', `HOME=${home.home}`, '-D', `HELPER=${helper}`, helper, sub, ...args], undefined, { cwd: job });
+      expect(r.code, `${sub}: ${r.stderr}`).toBe(0);
+      return JSON.parse(r.stdout) as Record<string, unknown>;
+    };
+    const video = join(job, 'media.mp4');
+    await writeFile(video, 'synthetic');
+    expect(await run('probe', video)).toMatchObject({ duration: 12, video: 1, audio: 1 });
+    expect((await run('frames', video, join(job, 'frames'), '3', '768')).frames).toHaveLength(3);
+    expect((await readFile(join(job, 'frames', 'frame-01.jpg'))).subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+    expect(await run('image', video, join(job, 'thumb.jpg'), '320')).toEqual({ w: 320, h: 320 });
+    expect((await run('ocr', join(job, 'frames', 'frame-01.jpg'))).results).toEqual([{ file: 'frame-01.jpg', lines: ['SYNTHETIC SCREEN TEXT'] }]);
+    expect(await run('speech', video, 'en-US', '1800')).toEqual({ segments: [{ at: 0, text: 'A synthetic spoken line.' }], cut: false });
+    expect(await run('locales')).toHaveProperty('locales');
+    // The profile must be a file, and HELPER must name the program run.
+    expect((await sh(home, tools.sandboxExec, ['-f', join(job, 'none.sb'), '-D', `HELPER=${helper}`, helper, 'locales'])).code).toBe(65);
+    expect((await sh(home, tools.sandboxExec, ['-f', profile, '-D', 'HELPER=/elsewhere', helper, 'locales'])).code).toBe(65);
   });
 });

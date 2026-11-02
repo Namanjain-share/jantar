@@ -14,13 +14,16 @@
 //      moves it. The last entry stays.
 //   2. `cswap run [flags] [<N>] -- ... -p ...` hands over to fake-claude.mjs (it logs to
 //      calls/claude.jsonl), the way cswap 0.26 hands over (cswapHandover below);
-//   3. the built-in behaviour for cswap, ps, lsof, screencapture and sips, and osascript's
+//   3. the built-in behaviour for cswap, ps, lsof, screencapture, sips, yt-dlp and (v0.8)
+//      Intel's media tools (xcode-select, swiftc, sandbox-exec, jantar-media), and osascript's
 //      `typeif` mode, one expected text or several in order (below);
 //   4. exit 0 with no output.
 // The `claude` wrapper goes straight to fake-claude.mjs, which has its own rules.
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { chmodSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runClaude, watchSignals } from './fake-claude.mjs';
 import { imageInfo, makeJpeg, makePng, pngIsNoise } from './images.mjs';
 import { AUTH_OVERRIDE_ENV_VARS, findOnPath, matches, readJson, readStdin, record, recordedEnv, sleep, withLock, writableByFake, writeJsonAtomic } from './lib.mjs';
@@ -374,7 +377,113 @@ function builtinYtDlp(root, args) {
   return { code: 2, stderr: 'fake yt-dlp: nothing asked\n' };
 }
 
-const BUILTINS = { cswap: builtinCswap, ps: builtinPs, lsof: builtinLsof, screencapture: builtinScreencapture, sips: builtinSips, 'yt-dlp': builtinYtDlp };
+/**
+ * v0.8 Intel's media helper (spec 5.1) as tests fake it: no Swift build and
+ * no sandbox, the daemon's own build, key and argv code unchanged.
+ *   xcode-select -p                  <root>/fake-clt (writeFakeMediaTools put usr/bin/swiftc there)
+ *   swiftc --version                 a synthetic version line
+ *   swiftc ... -o <out> <source>     "builds" the helper: a jantar-media wrapper at <out>
+ *   sandbox-exec -f <profile> -D K=V ... <helper> <sub> ...
+ *                                    checks the profile is a file and HELPER names <helper>,
+ *                                    then runs <helper> with the rest (no sandbox here)
+ *   jantar-media <sub> ...           probe | frames | image | ocr | speech | pdf | locales: one
+ *                                    JSON line, files written where the daemon asked (only in a
+ *                                    temp dir). <root>/fake/jantar-media.json may set `duration`,
+ *                                    `ocr` and `speech` (lines of text) and `pdfText`.
+ */
+const FAKE_BIN = fileURLToPath(import.meta.url);
+
+function builtinXcodeSelect(root, args) {
+  if (args[0] === '-p') return { stdout: `${join(root, 'fake-clt')}\n` };
+  return { code: 1, stderr: 'fake xcode-select: only -p\n' };
+}
+
+function builtinSwiftc(root, args) {
+  if (args.includes('--version')) return { stdout: 'Apple Swift version 6.0 (synthetic)\nTarget: arm64-apple-macosx15.0\n' };
+  const i = args.indexOf('-o');
+  const out = i >= 0 ? args[i + 1] : undefined;
+  if (!out || !args.includes('-module-cache-path')) return { code: 1, stderr: 'fake swiftc: -module-cache-path and -o <out> expected\n' };
+  if (!writableByFake(out, root)) return { code: 1, stderr: `fake swiftc: refusing to write ${out} (outside the temp dir)\n` };
+  writeFileSync(out, `#!${process.execPath}\nimport { run } from ${JSON.stringify(FAKE_BIN)};\nawait run({ name: 'jantar-media', root: ${JSON.stringify(root)} });\n`, { mode: 0o755 });
+  chmodSync(out, 0o755);
+  return {};
+}
+
+function builtinSandboxExec(root, args) {
+  const params = {};
+  let profile;
+  let i = 0;
+  while (i < args.length && args[i].startsWith('-')) {
+    if (args[i] === '-f') profile = args[i + 1];
+    if (args[i] === '-D') {
+      const [k, ...v] = String(args[i + 1]).split('=');
+      params[k] = v.join('=');
+    }
+    i += ['-f', '-D', '-p', '-n'].includes(args[i]) ? 2 : 1;
+  }
+  const [helper, ...rest] = args.slice(i);
+  if (!profile || !existsSync(profile)) return { code: 65, stderr: 'fake sandbox-exec: no profile file\n' };
+  if (!helper || params.HELPER !== helper) return { code: 65, stderr: 'fake sandbox-exec: HELPER does not name the program\n' };
+  const r = spawnSync(helper, rest, { cwd: process.cwd(), env: process.env, encoding: 'utf8', maxBuffer: 1024 * 1024 });
+  return { stdout: r.stdout ?? '', stderr: r.stderr ?? '', code: r.status ?? 1 };
+}
+
+function builtinJantarMedia(root, args) {
+  const cfg = readJson(join(root, 'fake', 'jantar-media.json'), {});
+  const [sub, ...rest] = args;
+  const duration = Number(cfg.duration ?? 12);
+  const write = (file, bytes) => {
+    if (!writableByFake(file, root)) throw new Error(`fake jantar-media: refusing to write ${file}`);
+    writeFileSync(file, bytes);
+  };
+  const line = (v) => ({ stdout: `${JSON.stringify(v)}\n` });
+  switch (sub) {
+    case 'probe':
+      return line({ duration, size: statSync(rest[0]).size, video: 1, audio: 1 });
+    case 'frames': {
+      const [, out, n] = rest;
+      const count = Math.max(1, Math.min(Number(n) || 1, 20));
+      const frames = [];
+      for (let k = 0; k < count; k++) {
+        const file = `frame-${String(k + 1).padStart(2, '0')}.jpg`;
+        write(join(out, file), makeJpeg(32, 18));
+        frames.push({ file, at: Math.round(((k + 0.5) * duration * 10) / count) / 10 });
+      }
+      return line({ frames });
+    }
+    case 'image': {
+      const [, out, edge] = rest;
+      write(out, makeJpeg(32, 32));
+      return line({ w: Number(edge) || 32, h: Number(edge) || 32 });
+    }
+    case 'ocr':
+      return line({ results: rest.map((f) => ({ file: basename(f), lines: cfg.ocr ?? ['SYNTHETIC SCREEN TEXT'] })) });
+    case 'speech':
+      return line({ segments: (cfg.speech ?? ['A synthetic spoken line.']).map((text, k) => ({ at: k * 4, text })), cut: false });
+    case 'pdf': {
+      const [, out] = rest;
+      write(out, makeJpeg(32, 45));
+      return line({ text: cfg.pdfText ?? 'A synthetic paper about small kitchen gardens.', title: 'A synthetic paper', pages: 1, image: true });
+    }
+    case 'locales':
+      return line({ locales: [{ id: 'en-US', onDevice: true }, { id: 'en-IN', onDevice: true }] });
+    default:
+      return { code: 64, stderr: 'fake jantar-media: unknown subcommand\n' };
+  }
+}
+
+const BUILTINS = {
+  cswap: builtinCswap,
+  ps: builtinPs,
+  lsof: builtinLsof,
+  screencapture: builtinScreencapture,
+  sips: builtinSips,
+  'yt-dlp': builtinYtDlp,
+  'xcode-select': builtinXcodeSelect,
+  swiftc: builtinSwiftc,
+  'sandbox-exec': builtinSandboxExec,
+  'jantar-media': builtinJantarMedia,
+};
 
 /** typeif in parts: what may lie between two, 1 to 5 digits and colons (script.ts TYPEIF_GAP_CHARS, `isTime`). */
 const TYPEIF_GAP = /^[0-9:]{1,5}$/u;
