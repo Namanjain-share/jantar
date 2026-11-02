@@ -258,9 +258,10 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
     lost,
 
     async call(tabId, msg, site) {
-      const now = ctx.now();
       const stage = stageOf(msg);
       let state = await ctx.tabs.serial(tabId, async () => {
+        // Read in this tab's turn: a Start or End before it may have taken a while.
+        const now = ctx.now();
         const prev = await ctx.tabs.read(tabId);
         if (prev?.clientId && (msg.left === true || prev.callKey !== msg.callKey)) await finish(tabId, prev, prev.clientId, 'left');
         const title = cleanText(msg.title, 300);
