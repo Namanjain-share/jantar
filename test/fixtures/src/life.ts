@@ -16,6 +16,7 @@ import type {
   MedicineBody,
   MoneyBody,
   PlaceBody,
+  PlaceVisitBody,
   PostBody,
   ProjectBody,
   TodoBody,
@@ -81,6 +82,7 @@ export function weightBody(over: Partial<WeightBody> = {}, opts: MarkOptions = {
   return { kg: opts.marked ? MARKER_KG : 72.4, ...over };
 }
 
+/** v0.10: with the café's own stars, sub-ratings, price level, would go again, tags and a dish's extras. */
 export function placeBody(over: Partial<PlaceBody> = {}, opts: MarkOptions = {}): PlaceBody {
   return {
     name: mark('Example Café', opts),
@@ -89,9 +91,26 @@ export function placeBody(over: Partial<PlaceBody> = {}, opts: MarkOptions = {})
     notes: mark('Synthetic café notes', opts),
     tried: true,
     dishes: [
-      { name: mark('Sample Dosa', opts), rating: 5 },
+      { name: mark('Sample Dosa', opts), rating: 5, price: 18000, again: true, notes: mark('Synthetic dish notes', opts) },
       { name: mark('Sample Coffee', opts), rating: 3 },
     ],
+    stars: 4,
+    ratings: { food: 5, drinks: 3, work: 4 },
+    price: 2,
+    again: 'yes',
+    tags: ['wifi', 'sockets', opts.marked ? `T ${LIFE_MARKER}` : 'Sample tag'],
+    ...over,
+  };
+}
+
+/** v0.10: a visit to a café on LIFE_DAY. */
+export function visitBody(over: Partial<PlaceVisitBody> = {}, opts: MarkOptions = {}): PlaceVisitBody {
+  return {
+    day: LIFE_DAY,
+    spend: 45000,
+    stars: 4,
+    had: [mark('Sample Dosa', opts)],
+    notes: mark('Synthetic visit notes', opts),
     ...over,
   };
 }

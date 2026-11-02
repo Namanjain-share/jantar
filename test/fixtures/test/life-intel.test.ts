@@ -1,7 +1,8 @@
 /**
  * The v0.4 fixtures: every Life body passes its schema, marked or not, and a
  * marked one carries LIFE_MARKER in every text field (v0.7: a post's where,
- * title, text, notes and link too); the intel writer's
+ * title, text, notes and link too; v0.10: a café's tags, a dish's notes
+ * and a visit's notes and what was had); the intel writer's
  * lines and counts are what the follower should end up with.
  */
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -17,6 +18,7 @@ import {
   MedicineBodySchema,
   MoneyBodySchema,
   PlaceBodySchema,
+  PlaceVisitBodySchema,
   PostBodySchema,
   ProjectBodySchema,
   TodoBodySchema,
@@ -39,6 +41,7 @@ import {
   moneyBody,
   placeBody,
   postBody,
+  visitBody,
   projectBody,
   todoBody,
   weightBody,
@@ -55,6 +58,7 @@ describe('Life bodies', () => {
     ['money', MoneyBodySchema, moneyBody],
     ['bill', BillBodySchema, billBody],
     ['post', PostBodySchema, postBody],
+    ['visit', PlaceVisitBodySchema, visitBody],
   ] as const;
 
   it('pass their schemas, marked or not', () => {
@@ -79,6 +83,9 @@ describe('Life bodies', () => {
       expect(strings(marked).some((s) => s.includes(LIFE_MARKER)), what).toBe(true);
     }
     expect(placeBody({}, { marked: true }).dishes?.every((d) => d.name.includes(LIFE_MARKER))).toBe(true);
+    expect(placeBody({}, { marked: true }).dishes?.[0]?.notes).toContain(LIFE_MARKER);
+    expect(placeBody({}, { marked: true }).tags?.some((t) => t.includes(LIFE_MARKER))).toBe(true);
+    expect(visitBody({}, { marked: true }).had?.every((h) => h.includes(LIFE_MARKER))).toBe(true);
     expect(todoBody({}, { timed: { time: '11:00' } }).due).toEqual({ day: '2026-10-30', time: '11:00' });
     expect(postBody({}, { marked: true }).link).toContain(LIFE_MARKER);
     expect(postBody({}, { timed: { day: '2026-11-02', time: '19:30' } }).due).toEqual({ day: '2026-11-02', time: '19:30' });

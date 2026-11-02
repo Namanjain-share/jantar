@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { LIFE_MARKER, placeBody } from '@jantar/fixtures';
-import { LIFE_LIMITS, PlacesResponseSchema, type Place } from '@jantar/protocol';
+import { LIFE_LIMITS, PlacesQuerySchema, PlacesResponseSchema, type Place, type PlacesQuery } from '@jantar/protocol';
 import type { Actor, LifeService, PlacesModule } from '../../src/contracts.js';
 import { FakeClock } from '../../src/core/clock.js';
 import { notBuilt } from '../../src/core/not-implemented.js';
@@ -43,14 +43,15 @@ function value<T>(r: { ok: true; value: T } | { ok: false; code: string; reason:
 }
 
 const names = (places: Place[]) => places.map((p) => p.name);
+const Q = (filter: PlacesQuery['filter']): PlacesQuery => PlacesQuerySchema.parse({ filter });
 
 describe('cafés', () => {
   it('adds a place with its dishes; best is the highest rating; tried defaults to false and dishes to none', () => {
     const { core, places } = rig();
     const { id } = value(places.create(placeBody(), PHONE));
     const bare = value(places.create({ name: '  Plain Place ' }, PHONE));
-    const list = value(places.list('all')).places;
-    expect(PlacesResponseSchema.parse(value(places.list('all'))).places).toEqual(list);
+    const list = value(places.list(Q('all'))).places;
+    expect(PlacesResponseSchema.parse(value(places.list(Q('all')))).places).toEqual(list);
     expect(list.find((p) => p.id === id)).toEqual({
       id,
       name: 'Example Café',
@@ -59,11 +60,15 @@ describe('cafés', () => {
       notes: 'Synthetic café notes',
       tried: true,
       dishes: [
-        { name: 'Sample Dosa', rating: 5 },
+        { name: 'Sample Dosa', rating: 5, price: 18000, again: true, notes: 'Synthetic dish notes' },
         { name: 'Sample Coffee', rating: 3 },
       ],
       best: 5,
-      tags: [],
+      stars: 4,
+      ratings: { food: 5, drinks: 3, work: 4 },
+      price: 2,
+      again: 'yes',
+      tags: ['wifi', 'sockets', 'Sample tag'],
       visits: { count: 0, last: null, avgSpend: null },
       createdAt: NOW,
       updatedAt: NOW,
@@ -89,7 +94,7 @@ describe('cafés', () => {
     value(places.create({ name: 'charlie', dishes: [{ name: 'Dish', rating: 5 }] }, PHONE));
     value(places.create({ name: 'Alpha', dishes: [{ name: 'Dish', rating: 3 }] }, PHONE));
     value(places.create({ name: 'Able', dishes: [{ name: 'A', rating: 1 }, { name: 'B', rating: 5 }] }, PHONE));
-    expect(names(value(places.list('all')).places)).toEqual(['Able', 'charlie', 'Alpha', 'Bravo', 'Unrated']);
+    expect(names(value(places.list(Q('all'))).places)).toEqual(['Able', 'charlie', 'Alpha', 'Bravo', 'Unrated']);
   });
 
   it('filters on tried and want to try, keeping the order', () => {
@@ -98,9 +103,9 @@ describe('cafés', () => {
     value(places.create({ name: 'Want High', tried: false, dishes: [{ name: 'Dish', rating: 4 }] }, PHONE));
     value(places.create({ name: 'Tried High', tried: true, dishes: [{ name: 'Dish', rating: 5 }] }, PHONE));
     value(places.create({ name: 'Want None' }, PHONE));
-    expect(names(value(places.list('tried')).places)).toEqual(['Tried High', 'Tried Low']);
-    expect(names(value(places.list('want')).places)).toEqual(['Want High', 'Want None']);
-    expect(value(places.list('all')).places).toHaveLength(4);
+    expect(names(value(places.list(Q('tried'))).places)).toEqual(['Tried High', 'Tried Low']);
+    expect(names(value(places.list(Q('want'))).places)).toEqual(['Want High', 'Want None']);
+    expect(value(places.list(Q('all'))).places).toHaveLength(4);
   });
 
   it('a change recomputes best; dishes replace the list; null clears area, link and notes; absent keeps them', () => {
@@ -108,17 +113,17 @@ describe('cafés', () => {
     const { id } = value(places.create(placeBody(), PHONE));
     core.clock.advance(60_000);
     expect(places.update(id, { dishes: [{ name: 'Sample Vada', rating: 2 }] }, PHONE)).toEqual({ ok: true, value: true });
-    let p = value(places.list('all')).places[0] as Place;
+    let p = value(places.list(Q('all'))).places[0] as Place;
     expect(p).toMatchObject({ dishes: [{ name: 'Sample Vada', rating: 2 }], best: 2, area: 'Example Area', updatedAt: '2026-10-30T06:01:00.000Z', createdAt: NOW });
     expect(core.db.prepare('SELECT best FROM places WHERE id = ?').get(id)).toEqual({ best: 2 });
     value(places.update(id, { area: null, link: null, notes: null, tried: false, name: 'Renamed' }, PHONE));
-    p = value(places.list('all')).places[0] as Place;
+    p = value(places.list(Q('all'))).places[0] as Place;
     expect(p).toMatchObject({ name: 'Renamed', tried: false });
     expect(p).not.toHaveProperty('area');
     expect(p).not.toHaveProperty('link');
     expect(p).not.toHaveProperty('notes');
     value(places.update(id, { dishes: [], area: '   ' }, PHONE));
-    p = value(places.list('all')).places[0] as Place;
+    p = value(places.list(Q('all'))).places[0] as Place;
     expect(p).toMatchObject({ dishes: [], best: null });
     expect(p).not.toHaveProperty('area');
   });
@@ -127,7 +132,7 @@ describe('cafés', () => {
     const { places } = rig();
     const { id } = value(places.create(placeBody(), PHONE));
     expect(places.remove(id, PHONE)).toEqual({ ok: true, value: true });
-    expect(value(places.list('all')).places).toEqual([]);
+    expect(value(places.list(Q('all'))).places).toEqual([]);
     expect(places.remove(id, PHONE)).toEqual({ ok: false, code: 'not_found', reason: PLACES_SENTENCES.none });
     expect(places.update(GHOST, { tried: true }, PHONE)).toEqual({ ok: false, code: 'not_found', reason: PLACES_SENTENCES.none });
   });
@@ -152,14 +157,16 @@ describe('cafés', () => {
     const { core, ctx, places } = rig();
     value(places.create({ name: 'Good' }, PHONE));
     core.db.prepare('INSERT INTO places (id, best, updated_at, json) VALUES (?, NULL, ?, ?)').run('BROKEN', NOW, `{"name":"${LIFE_MARKER}"`);
-    expect(names(value(places.list('all')).places)).toEqual(['Good']);
+    expect(names(value(places.list(Q('all'))).places)).toEqual(['Good']);
     expect(ctx.log.records.map((r) => r.fields)).toEqual([expect.objectContaining({ table: 'places', id: 'BROKEN' })]);
     expect(JSON.stringify(ctx.log.records)).not.toContain(LIFE_MARKER);
   });
 
-  it('bestOf: the highest rating, null with no dishes; Cafés has no part of Today', () => {
+  it('bestOf: the highest rating, null with no dishes or none rated (v0.10); Cafés has no part of Today', () => {
     expect(bestOf([])).toBeNull();
     expect(bestOf([{ name: 'A', rating: 2 }, { name: 'B', rating: 4 }])).toBe(4);
+    expect(bestOf([{ name: 'A' }, { name: 'B', rating: 2 }])).toBe(2);
+    expect(bestOf([{ name: 'A' }])).toBeNull();
     expect(rig().places.today('2026-10-30')).toEqual({});
   });
 });

@@ -61,7 +61,10 @@ import type {
   MoneyMonth,
   MoneyPatch,
   PlaceBody,
+  PlaceDetail,
   PlacePatch,
+  PlaceVisitBody,
+  PlaceVisitPatch,
   PlacesQuery,
   PlacesResponse,
   PostBody,
@@ -1668,13 +1671,24 @@ export interface FoodModule extends LifeModule {
   estimateStatus(): { available: boolean; reason?: string };
 }
 
-/** Cafés (WP-FF). Always sorted by best. */
+/**
+ * Cafés (WP-FF). v0.10 (spec 0.10 A4.5, proposed): the list filters and
+ * sorts by the query (best first by default), one café reads with a page of
+ * its visits, and visits are logged, changed and deleted here.
+ */
 export interface PlacesModule extends LifeModule {
   readonly name: 'places';
-  list(filter: PlacesQuery['filter']): LifeResult<PlacesResponse>;
+  list(q: PlacesQuery): LifeResult<PlacesResponse>;
+  /** The café and its newest PLACE_VISITS_PAGE visits, older than the visit `before` when given. */
+  get(id: string, before?: string): LifeResult<PlaceDetail>;
   create(body: PlaceBody, actor: Actor): LifeResult<{ id: string }>;
   update(id: string, patch: PlacePatch, actor: Actor): LifeResult;
+  /** Deletes its visits too. */
   remove(id: string, actor: Actor): LifeResult;
+  /** Today or earlier in the Life zone; the first visit marks the café tried. */
+  visitAdd(placeId: string, body: PlaceVisitBody, actor: Actor): LifeResult<{ id: string }>;
+  visitUpdate(placeId: string, visitId: string, patch: PlaceVisitPatch, actor: Actor): LifeResult;
+  visitRemove(placeId: string, visitId: string, actor: Actor): LifeResult;
 }
 
 /**
