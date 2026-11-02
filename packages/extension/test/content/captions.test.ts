@@ -29,7 +29,7 @@ let capture: Capture | null = null;
 let console_: ReturnType<typeof watchConsole>;
 
 beforeEach(() => {
-  vi.useFakeTimers({ now: Date.parse('2026-11-02T20:37:00.000Z') });
+  vi.useFakeTimers({ now: Date.parse('2026-10-30T10:00:00.000Z') });
   goTo(meetUrl('abc-defg-hij'));
   console_ = watchConsole();
 });
