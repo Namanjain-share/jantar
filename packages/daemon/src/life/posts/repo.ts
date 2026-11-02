@@ -95,6 +95,11 @@ export class PostsRepo {
     return Number((this.core.db.prepare(`SELECT COUNT(*) AS n FROM posts WHERE ${OPEN}`).get() as { n: number }).n);
   }
 
+  /** A posted post already holds this posted link (exactly as stored). */
+  hasPostedUrl(url: string): boolean {
+    return this.core.db.prepare("SELECT 1 FROM posts WHERE status = 'posted' AND json_extract(json, '$.postedUrl') = ? LIMIT 1").get(url) !== undefined;
+  }
+
   /** The platform and kind of each post posted in [fromIso, toIso). */
   postedBetween(fromIso: string, toIso: string): { platform: PostPlatform; kind: PostKind }[] {
     return this.all("SELECT json FROM posts WHERE status = 'posted' AND posted_at >= ? AND posted_at < ?", fromIso, toIso).map((p) => ({ platform: p.platform, kind: p.kind }));

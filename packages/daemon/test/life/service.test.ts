@@ -116,7 +116,7 @@ describe('with every real module', () => {
     const today = life.today();
     expect(today.ok).toBe(true);
     expect(TodaySchema.safeParse(today.ok ? today.value : null).success).toBe(true);
-    expect(today.ok && today.value.posts).toEqual({ today: 0, late: 0 });
+    expect(today.ok && today.value.posts).toEqual({ today: 0, late: 0, comments: { done: 0 } });
     for (const m of [life.todos, life.medicines, life.food, life.places, life.finance, life.posts]) expect(typeof m.today).toBe('function');
     await ctx.clock.tick(MIN);
     await life.stop();

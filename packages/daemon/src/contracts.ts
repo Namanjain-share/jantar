@@ -1688,7 +1688,7 @@ export interface PostsModule extends LifeModule {
   readonly name: 'posts';
   /** Open (idea and ready) by due, or the newest posted and skipped (`done`), with this week against the goals. */
   list(q: PostsQuery): LifeResult<PostsResponse>;
-  /** An idea or ready post; past LIFE_LIMITS.openPosts it is conflict. */
+  /** An idea or ready post (past LIFE_LIMITS.openPosts it is conflict), or one posted with its link (the same link twice is conflict). */
   create(body: PostBody, actor: Actor): LifeResult<{ id: string }>;
   /** Any status to any other; a posted link only while posted (else invalid_request). */
   update(id: string, patch: PostPatch, actor: Actor): LifeResult;

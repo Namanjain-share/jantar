@@ -4,9 +4,11 @@
  * the text, rings at the time (pings.ts, the todo ring), and counts what is
  * marked Posted against the weekly goals.
  *
- * - A new post is an idea or ready (default idea); past
- *   LIFE_LIMITS.openPosts open ones (idea and ready) it is conflict. Posted
- *   and skipped posts are history, never pruned.
+ * - A new post is an idea or ready (default idea), or posted with its link
+ *   (v0.9 Log a comment: postedAt is the moment it is logged); past
+ *   LIFE_LIMITS.openPosts open ones (idea and ready) an open create is
+ *   conflict; the same posted link twice is conflict. Posted and skipped
+ *   posts are history, never pruned.
  * - Any status may follow any other (the phone). The daemon owns postedAt:
  *   stamped on the way into posted (kept while it stays posted), cleared
  *   with the posted link on the way out. A posted link only while posted.
@@ -18,6 +20,8 @@
  * - The week runs Monday 00:00 to the next Monday 00:00 in the Life zone. A
  *   post counts when its postedAt falls inside it; a goal counts its
  *   platform's posts, and its kind's when it has one. Goals live in meta.
+ * - Today's part counts open posts due today and before, and (v0.9) the
+ *   comments posted that day against ceil(the comment goals' perWeek / 7).
  * - Every write saves, re-arms the ring, pokes the scheduler, then emits
  *   life.changed. Replies carry ids only; refusals are fixed sentences.
  */
@@ -46,6 +50,7 @@ export const POSTS_SENTENCES = {
   full: `You have ${LIFE_LIMITS.openPosts} posts to make. Post, skip or delete one to add another.`,
   invalid: 'That post is not valid.',
   postedLink: 'Mark it posted before adding the posted link.',
+  logged: 'You logged that link already.',
   goals: 'Those weekly goals are not valid.',
   noDay: 'That date does not exist.',
 } as const;
@@ -103,15 +108,25 @@ class Posts implements PostsModule {
 
   create(body: PostBody, _actor: Actor): LifeResult<{ id: string }> {
     if (body.due && !isRealDay(body.due.day)) return refuse('invalid_request', POSTS_SENTENCES.noDay);
-    if (this.repo.countOpen() >= LIFE_LIMITS.openPosts) return refuse('conflict', POSTS_SENTENCES.full);
+    const status = body.status ?? 'idea';
+    if (body.postedUrl !== undefined && status !== 'posted') return refuse('invalid_request', POSTS_SENTENCES.postedLink);
+    // The cap is on posts to make; a logged one is history.
+    if (isOpen(status) && this.repo.countOpen() >= LIFE_LIMITS.openPosts) return refuse('conflict', POSTS_SENTENCES.full);
+    // A second paste of the same link must not count twice (an exact match: a share link differs per share).
+    if (body.postedUrl !== undefined && this.repo.hasPostedUrl(body.postedUrl)) return refuse('conflict', POSTS_SENTENCES.logged);
     const at = this.stamp();
-    const p: Post = { id: this.core.newId(), platform: body.platform, kind: body.kind ?? 'post', status: body.status ?? 'idea', createdAt: at, updatedAt: at };
+    const p: Post = { id: this.core.newId(), platform: body.platform, kind: body.kind ?? 'post', status, createdAt: at, updatedAt: at };
     for (const key of TEXT_FIELDS) {
       const v = text(body[key]);
       if (v !== undefined) p[key] = v;
     }
     if (body.link !== undefined) p.link = body.link;
     if (body.due !== undefined) p.due = body.due;
+    // Logged as posted: posted now, by the daemon's clock (a due is kept but never rings: armPost rings open posts only).
+    if (status === 'posted') {
+      p.postedAt = at;
+      if (body.postedUrl !== undefined) p.postedUrl = body.postedUrl;
+    }
     const r = this.saved(p, null);
     return r.ok ? { ok: true, value: { id: p.id } } : r;
   }
@@ -167,15 +182,28 @@ class Posts implements PostsModule {
     return OK;
   }
 
-  /** Today's part: open posts due on `day`, and due before it (late). */
-  today(day: string): { posts: { today: number; late: number } } {
+  /**
+   * Today's part: open posts due on `day`, and due before it (late); and the
+   * comments posted on `day` (any platform, the Life zone's midnights),
+   * against a day's share of the comment goals (none without one).
+   */
+  today(day: string): { posts: { today: number; late: number; comments: { done: number; goal?: number } } } {
     let today = 0;
     let late = 0;
     for (const p of this.repo.openDueBy(day)) {
       if (p.due?.day === day) today += 1;
       else late += 1;
     }
-    return { posts: { today, late } };
+    const tz = this.core.tz();
+    const done = this.repo
+      .postedBetween(instantAt(day, '00:00', tz).toISOString(), instantAt(shiftDay(day, 1), '00:00', tz).toISOString())
+      .filter((p) => p.kind === 'comment').length;
+    const perWeek = this.repo
+      .goals()
+      .filter((g) => g.kind === 'comment')
+      .reduce((n, g) => n + g.perWeek, 0);
+    const comments = perWeek > 0 ? { done, goal: Math.ceil(perWeek / 7) } : { done };
+    return { posts: { today, late, comments } };
   }
 }
 

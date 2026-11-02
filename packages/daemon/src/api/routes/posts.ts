@@ -1,7 +1,8 @@
 /**
  * Posts (feature `posts`, v0.7). The list and an add are on ctl.sock too
- * (`jantar post list`, `jantar post add`); changing, deleting and the weekly
- * goals are device routes only. Each calls `s.deps.life.posts`
+ * (`jantar post list`, `jantar post add`, and v0.9's `jantar post log`: an
+ * add may be a posted post, Log a comment); changing, deleting and the
+ * weekly goals are device routes only. Each calls `s.deps.life.posts`
  * (life/posts/module.ts).
  *
  * Scripts and Claude sessions add at most V07_LIMITS.postCtl posts an hour

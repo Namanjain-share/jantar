@@ -8,7 +8,7 @@
  *   and back to the list from posted holds it;
  * - status rules: postedAt stamped once on the way into posted, cleared with
  *   the posted link on the way out; a posted link only while posted;
- * - the open list sorts as todos do; the done list is the newest 100;
+ * - the open list sorts as todos do; the done list is the newest 300;
  * - the week: its Monday for each weekday, across a month and a year end;
  *   counts across Sunday 23:59 to Monday 00:00 in Asia/Kolkata and in
  *   America/New_York (the week the clocks go back); goals with and without
@@ -177,7 +177,7 @@ describe('posts', () => {
     expect(open(posts).posts).toHaveLength(LIFE_LIMITS.openPosts);
   });
 
-  it('the open list sorts by day, then time (untimed after timed), undated last, then createdAt; done is the newest 100', () => {
+  it('the open list sorts by day, then time (untimed after timed), undated last, then createdAt; done is the newest 300', () => {
     const { posts, core } = rig();
     const undated = add(posts);
     core.clock.advance(1000);
@@ -221,8 +221,8 @@ describe('posts', () => {
     add(posts);
     const posted = add(posts, { due: { day: '2026-11-02', time: '08:00' } });
     ok(posts.update(posted, { status: 'posted' }, PHONE));
-    expect(posts.today('2026-11-02')).toEqual({ posts: { today: 2, late: 1 } });
-    expect(posts.today('2026-11-03')).toEqual({ posts: { today: 1, late: 3 } });
+    expect(posts.today('2026-11-02')).toEqual({ posts: { today: 2, late: 1, comments: { done: 0 } } });
+    expect(posts.today('2026-11-03')).toEqual({ posts: { today: 1, late: 3, comments: { done: 0 } } });
   });
 });
 
