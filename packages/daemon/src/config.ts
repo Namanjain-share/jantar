@@ -147,6 +147,8 @@ export function resolvePaths(opts: ResolvePathsOptions = {}): Paths {
     meetingsDb: join(home, MEETINGS_DB_FILE),
     meetingsDir: join(home, 'meetings'),
     meetingSummaryDir: join(home, 'meeting-summary'),
+    chatDb: join(home, 'chat.db'),
+    chatDir: join(home, 'chat'),
     fleetDir: join(home, 'fleet'),
     hubKeyFile: join(home, 'fleet', 'hub-key.pem'),
     nodeDir: join(home, 'node'),

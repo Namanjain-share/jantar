@@ -327,6 +327,20 @@ export interface Paths {
   meetingsDir: string;
   /** v0.5: the summary run's dir (the empty cwd, the system prompt copy), <home>/meeting-summary (0700, created on demand). */
   meetingSummaryDir: string;
+  /**
+   * v0.10 (spec 0.10 B3, proposed): Chat's history, <home>/chat.db (0600).
+   * Refused, never reset, when it will not open (chat/db.ts). Never in the
+   * nightly Life backup.
+   */
+  chatDb: string;
+  /**
+   * v0.10 (proposed): Chat's files, <home>/chat (0700, created on demand):
+   * photos/ (the thread's photos, 0600 each) and run/<rid>/ (a run's empty
+   * cwd, the prompt copy and its mcp.json, removed when the run ends).
+   * `askDir` stays one release, unused (the daemon removes <home>/ask when it
+   * holds only Ask's prompt copy and its empty work dir).
+   */
+  chatDir: string;
   /** v0.6: the hub's Fleet files, <home>/fleet (0700, made by the first `jantar fleet on`). */
   fleetDir: string;
   /** v0.6: the hub's Ed25519 key, <home>/fleet/hub-key.pem (PKCS8, 0600). Only its public half ever leaves the Mac (in join lines). */

@@ -10,6 +10,10 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FakeHome } from './home.js';
+import { makePng } from '../runtime/images.mjs';
+
+/** A generated PNG (runtime/images.mjs) for a chat photo: flat, or noise that won't compress. */
+export { makePng };
 
 /** Planted in Life, Intel, meetings and transcripts for the Chat privacy sweep. */
 export const CHAT_MARKER = 'SYNTHETIC-CHAT-TEXT-DO-NOT-LOG';
