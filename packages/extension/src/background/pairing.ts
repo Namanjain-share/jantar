@@ -13,9 +13,15 @@
  * out, notes stop and the tabs' meetings are forgotten (after a 401, or an
  * end Jantar did not take, the daemon ends them 10 minutes later; a new
  * pairing is a new extension to it, so they could not be continued anyway).
+ *
+ * v0.10: Unpair turns Always start when I join a call off and drops every
+ * arm (it is part of "stop keeping notes in this Chrome"); a 401 drops every
+ * arm and keeps Always, so the next join says to pair again. Every tab's
+ * badge is painted again after a broadcast.
  */
 import type { Done } from '../shared/messages.js';
 import { PAIR_LINE } from '../shared/wire.js';
+import type { Arms } from './arms.js';
 import type { Ctx } from './ctx.js';
 import type { Meetings } from './meetings.js';
 import { BAD_CODE, NOT_RUNNING } from './sentences.js';
@@ -39,7 +45,7 @@ export interface PairingFlow {
   forgotten(sentence: string): Promise<void>;
 }
 
-export function createPairing(ctx: Ctx, meetings: Pick<Meetings, 'end'>): PairingFlow {
+export function createPairing(ctx: Ctx, meetings: Pick<Meetings, 'end'>, arms: Pick<Arms, 'dropAll' | 'stopAlways' | 'paint'>): PairingFlow {
   /** Tell every known tab whether the button shows; on the way out, stop notes and forget the meetings. */
   async function broadcast(on: boolean, stopText?: string): Promise<void> {
     for (const tabId of await ctx.tabs.ids()) {
@@ -53,6 +59,7 @@ export function createPairing(ctx: Ctx, meetings: Pick<Meetings, 'end'>): Pairin
         if (hadNotes) await ctx.toTab(tabId, stopText ? { t: 'capture', on: false, text: stopText } : { t: 'capture', on: false });
       }
       await ctx.toTab(tabId, { t: 'button', on });
+      await arms.paint(tabId);
     }
   }
 
@@ -75,14 +82,18 @@ export function createPairing(ctx: Ctx, meetings: Pick<Meetings, 'end'>): Pairin
     },
 
     async unpair() {
+      // Always first, so no End leaves an arm and no page's `call` makes one meanwhile.
+      await arms.stopAlways();
       // Whatever an end answers, the unpair goes on.
       await Promise.all((await ctx.tabs.ids()).map((tabId) => meetings.end(tabId).catch(() => undefined)));
+      await arms.dropAll();
       await ctx.keys.clear();
       await broadcast(false);
       return { ok: true };
     },
 
-    forgotten(sentence) {
+    async forgotten(sentence) {
+      await arms.dropAll();
       return broadcast(false, sentence);
     },
   };

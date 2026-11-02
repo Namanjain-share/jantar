@@ -9,9 +9,17 @@
  * v0.8: Read saved links (reads.ts): the popup's switch, the read alarm
  * (`onAlarm`), and the alarm put back when the browser starts or the
  * extension is installed or updated (`onStartup`).
+ *
+ * v0.10: Start when I join (arms.ts, meetings.ts): the popup's `arm`,
+ * `disarm` and `always`; the arm alarm beside the read alarm, cleared on
+ * startup (session storage is empty then); the popup state's stage, arm and
+ * last start by itself; each tab's toolbar badge painted after every
+ * message about it.
  */
-import type { CallAnswer, Done, FromPopup, PopupState, ShotAnswer } from '../shared/messages.js';
+import type { AutoStart, CallAnswer, Done, FromPopup, PopupState, ShotAnswer } from '../shared/messages.js';
+import { ARM_TIMING } from '../shared/wire.js';
 import { acceptPage, acceptPopup, onMeetingPage, type PageMessage } from './accept.js';
+import { createArms, viewOf, type Arms } from './arms.js';
 import { createClient, type Reply } from './client.js';
 import { sendToTab, type Ctx } from './ctx.js';
 import { createLines, pickLines } from './lines.js';
@@ -53,6 +61,8 @@ export interface Worker {
   popupState(tabId: number): Promise<PopupState>;
   /** v0.8: Read saved links. */
   readonly reads: Reads;
+  /** v0.10: Start when I join. */
+  readonly arms: Arms;
 }
 
 /** The info read's connection (spec 3.10, the notes' PopupState rules). */
@@ -94,6 +104,13 @@ async function shortcutOf(): Promise<string> {
   }
 }
 
+/** v0.10: the last start by itself the popup shows: one that started while notes are on, one that failed lately while they are off. */
+function autoOf(auto: AutoStart | undefined, notes: boolean, now: number): AutoStart | null {
+  if (!auto) return null;
+  if (auto.ok) return notes ? auto : null;
+  return !notes && now - auto.at < ARM_TIMING.failedShowMs ? auto : null;
+}
+
 /** The popup holds activeTab for its tab, so Chrome shows that tab's URL to the worker. */
 async function stillOnMeetingPage(tabId: number): Promise<boolean> {
   try {
@@ -113,20 +130,22 @@ export function createWorker(deps: WorkerDeps): Worker {
   const client = createClient({ keys: deps.keys, fetch: deps.fetch, onUnpaired: () => onForgotten(), ...(deps.timeouts ? { timeouts: deps.timeouts } : {}) });
   const ctx: Ctx = { keys: deps.keys, client, tabs: createTabs(), now, sleep, uuid, toTab: sendToTab };
   const lines = createLines(ctx);
-  const meetings = createMeetings(ctx, lines);
+  const arms = createArms(ctx);
+  const meetings = createMeetings(ctx, lines, arms);
   const shots = createShots(ctx, meetings);
-  const pairing = createPairing(ctx, meetings);
+  const pairing = createPairing(ctx, meetings, arms);
   onForgotten = () => pairing.forgotten(PAIR_AGAIN);
   const readLimits = deps.readLimits;
   const reads = createReads(ctx, readLimits ? { limits: readLimits } : {});
 
   async function popupState(tabId: number): Promise<PopupState> {
-    const [pairingNow, pageButton, shortcut, lastShot, readsOn] = await Promise.all([
+    const [pairingNow, pageButton, shortcut, lastShot, readsOn, always] = await Promise.all([
       deps.keys.get(),
       chrome.permissions.contains({ origins: [ALL_URLS] }).catch(() => false),
       shortcutOf(),
       readLastShot(),
       reads.on().catch(() => false),
+      arms.always(),
     ]);
     let head: Pick<PopupState, 'connection' | 'sentence'> = { connection: 'unpaired' };
     let projects: PopupState['projects'] = null;
@@ -139,6 +158,15 @@ export function createWorker(deps: WorkerDeps): Worker {
     const record = await ctx.tabs.read(tabId);
     // A meeting tab that went to another site is not one now: no Start, Screenshot or End offered there.
     const view = record && (await stillOnMeetingPage(tabId)) ? record : null;
+    // v0.10: and its arm ends there and then.
+    if (!view && (await arms.read(tabId))) {
+      await ctx.tabs.serial(tabId, () => arms.drop(tabId));
+      await arms.schedule();
+    }
+    const at = ctx.now();
+    const arm = view ? await arms.live(tabId, at) : null;
+    const notes = Boolean(view?.clientId && view.notes);
+    await arms.paint(tabId);
     return {
       ...head,
       pageButton,
@@ -152,30 +180,39 @@ export function createWorker(deps: WorkerDeps): Worker {
             inCall: view.inCall,
             title: view.title,
             ...(view.clientId && view.name ? { name: view.name } : {}),
-            notes: Boolean(view.clientId && view.notes),
+            notes,
             shots: view.clientId ? view.shots : 0,
             captions: view.captions,
-            stage: view.inCall ? 'in' : 'none',
-            hook: '',
-            arm: null,
-            auto: null,
+            stage: view.stage ?? (view.inCall ? 'in' : 'none'),
+            hook: view.hook ?? '',
+            arm: arm ? viewOf(arm) : null,
+            auto: autoOf(view.auto, notes, at),
           }
         : null,
-      always: false,
+      always,
     };
   }
+
+  /** Answer `answer`, after the tab's badge is painted again. */
+  const painted = async <T>(tabId: number, answer: T): Promise<T> => {
+    await arms.paint(tabId);
+    return answer;
+  };
 
   async function fromPage(m: PageMessage): Promise<unknown> {
     switch (m.msg.t) {
       case 'call':
-        return meetings.call(m.tabId, m.msg, m.site);
-      case 'lines':
-        return lines.forward(m.tabId, pickLines(m.msg.lines));
+        return painted(m.tabId, await meetings.call(m.tabId, m.msg, m.site));
+      case 'lines': {
+        const answer = await lines.forward(m.tabId, pickLines(m.msg.lines));
+        // Notes stopped (a refusal): the badge says so.
+        return !answer.ok && !answer.retry ? painted(m.tabId, answer) : answer;
+      }
       case 'captions':
         await meetings.captions(m.tabId, m.msg.state);
         return undefined;
       case 'shot':
-        return shots.take(m.tabId, 'page');
+        return painted(m.tabId, await shots.take(m.tabId, 'page'));
     }
   }
 
@@ -188,17 +225,19 @@ export function createWorker(deps: WorkerDeps): Worker {
       case 'unpair':
         return pairing.unpair();
       case 'start':
-        return meetings.start(msg);
+        return painted(msg.tabId, await meetings.start(msg));
       case 'shot':
-        return shots.take(msg.tabId, 'popup');
+        return painted(msg.tabId, await shots.take(msg.tabId, 'popup'));
       case 'end':
-        return meetings.end(msg.tabId);
+        return painted(msg.tabId, await meetings.end(msg.tabId));
       case 'reads':
         return reads.set(msg.on);
       case 'arm':
+        return painted(msg.tabId, await meetings.arm(msg));
       case 'disarm':
+        return painted(msg.tabId, await meetings.disarm(msg.tabId));
       case 'always':
-        return { ok: false, error: TRY_AGAIN };
+        return arms.setAlways(msg.on);
     }
   }
 
@@ -233,7 +272,10 @@ export function createWorker(deps: WorkerDeps): Worker {
       if (command !== SHOT_COMMAND || typeof tab?.id !== 'number') return;
       const tabId = tab.id;
       // With no key stored the shortcut does nothing.
-      void deps.keys.get().then((p) => (p ? shots.take(tabId, 'command') : undefined)).catch(() => undefined);
+      void deps.keys
+        .get()
+        .then((p) => (p ? shots.take(tabId, 'command').then(() => arms.paint(tabId)) : undefined))
+        .catch(() => undefined);
     },
 
     onRemoved(tabId) {
@@ -242,14 +284,17 @@ export function createWorker(deps: WorkerDeps): Worker {
 
     onAlarm(alarm) {
       reads.onAlarm(alarm);
+      arms.onAlarm(alarm);
     },
 
     onStartup() {
       reads.restore();
+      arms.restore();
     },
 
     popupState,
     reads,
+    arms,
   };
 }
 

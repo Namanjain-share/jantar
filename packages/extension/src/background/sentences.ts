@@ -72,11 +72,14 @@ export const ARM = /* @__PURE__ */ Object.freeze({
   failed: (why: string) => `Notes did not start when you joined: ${why}`,
 });
 
+/** v0.10: the page's bubble when Always arms a call (on its own, so the worker carries no Settings copy). */
+export const ALWAYS_ARMED = 'Jantar starts notes when you join. Not this call: the Jantar icon.';
+
 /** v0.10: Settings › Always start when I join a call, and the page's bubble when it arms a call. */
 export const ALWAYS = /* @__PURE__ */ Object.freeze({
   title: 'Always start when I join a call',
   why: 'Notes start by themselves in every Meet or Teams call you join in this Chrome, once you are in the call, never before. Skip one with Not this call. Let people know you keep notes.',
-  armedBubble: 'Jantar starts notes when you join. Not this call: the Jantar icon.',
+  armedBubble: ALWAYS_ARMED,
 });
 
 /** v0.10: why notes did not start by themselves in a call another tab already keeps notes for. */

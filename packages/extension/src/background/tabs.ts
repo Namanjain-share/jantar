@@ -11,8 +11,12 @@
  * - `serial` runs one meeting step per tab at a time (Start, End, a call's
  *   leave, a screenshot's open and upload, a tab closing), so two of them
  *   never make two meetings for one call.
+ *
+ * v0.10: the record also keeps what the page last said it shows (its stage
+ * and hook, and when it last said anything), and the last time notes
+ * started by themselves (`auto`), for the popup and the toolbar badge.
  */
-import type { CaptionsState } from '../shared/messages.js';
+import type { AutoStart, CallStage, CaptionsState } from '../shared/messages.js';
 import type { MeetingSite } from '../shared/sites.js';
 
 export interface TabState {
@@ -34,18 +38,36 @@ export interface TabState {
   captions: CaptionsState | 'unknown';
   /** When the last keep-alive went (ms). */
   lastKeepAlive?: number;
+  /** v0.10: the page's stage and the hook id that decided it, as its last `call` said. */
+  stage?: CallStage;
+  hook?: string;
+  /** v0.10: when the page's last `call` came (ms). */
+  heardAt?: number;
+  /** v0.10: the last start by itself (Start when I join): when, and whether notes started (`text`: why not). */
+  auto?: AutoStart;
 }
 
-/** A tab's record without its meeting (after End, a leave or a 404). */
+/** A tab's record without its meeting (after End, a leave or a 404); what the page shows stays. */
 export function withoutMeeting(s: TabState): TabState {
-  return { site: s.site, inCall: s.inCall, callKey: s.callKey, title: s.title, notes: false, shots: 0, captions: 'unknown' };
+  return {
+    site: s.site,
+    inCall: s.inCall,
+    callKey: s.callKey,
+    title: s.title,
+    notes: false,
+    shots: 0,
+    captions: 'unknown',
+    ...(s.stage !== undefined ? { stage: s.stage } : {}),
+    ...(s.hook !== undefined ? { hook: s.hook } : {}),
+    ...(s.heardAt !== undefined ? { heardAt: s.heardAt } : {}),
+  };
 }
 
 const PREFIX = 'tab:';
 const keyOf = (tabId: number) => `${PREFIX}${tabId}`;
 
 /** One promise chain per key: `run` waits for the ones before it. */
-function chains() {
+export function chains() {
   const tails = new Map<number, Promise<unknown>>();
   return <T>(tabId: number, fn: () => Promise<T>): Promise<T> => {
     const before = tails.get(tabId) ?? Promise.resolve();
