@@ -480,8 +480,9 @@ of the Shortcut's door. The phone: Add post, the Reading strip and read
 items under `screens/intel/` (the Intel chunk), and Ask's save card.
 `playwright-core` 1.63.0 moves from the root's dev dependencies into the
 daemon's dependencies (the headless browser tier, imported lazily). No
-settings version and no protocol bump (`PROTOCOL_VERSION` 3). Tests: G1 to
-G18 across `packages/daemon/test/{intel,api,ask,arch}/`,
+settings version and no protocol bump (`PROTOCOL_VERSION` 3). The first
+load stays under `MAIN_JS_MAX` at 275.4 kB in 14 chunks, and Intel pulls in
+46.8 kB (its own chunk 10.1 kB). Tests: G1 to G18 across `packages/daemon/test/{intel,api,ask,arch}/`,
 `packages/protocol/test/{post-url,v08-intel-read}.test.ts`,
 `packages/extension/test/{page-read,background/reads}.test.ts`,
 `packages/cli/test/doctor-capture.test.ts`, the fake claude's read modes,
@@ -494,4 +495,10 @@ Intel's seams from `read-net.ts`: one local HTTPS server for the public
 web, playwright-core's own Chromium through the daemon's proxy; the
 harness's `intel` and `fakeMediaTools` options) and
 `test/integration/ext-v08-reads.integration.test.ts` (the built extension
-in Chromium, every web request answered by the test).
+in Chromium, every web request answered by the test), and the user's own
+flow in `test/integration/v08-reel-flow.integration.test.ts` (the built
+phone app saves a reel, Chrome needs a login, the headless browser and the
+media helper read it, the phone finds it by a caption word and by a word
+only its frames hold, and Open original is the reel; with
+`JANTAR_REAL_MEDIA=1` the real Swift helper on a reel made by
+`make-reel.swift`, see docs/real-mac-checks.md).

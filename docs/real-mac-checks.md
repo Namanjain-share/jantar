@@ -295,20 +295,46 @@ WSL2's keep-alive. They are listed in
 
 The tests run the reader against synthetic pages in jsdom and in
 playwright-core's own Chromium, a fake `claude` and a fake `yt-dlp`, and
-fake the media helper's answers; Swift is never compiled in a test. On a
-real Mac, still open:
+fake the media helper's answers; by default Swift is never compiled in a
+test.
+
+Checked on 2 November 2026 (macOS 26, swiftc 6.0.3, Command Line Tools):
+
+- **`jantar-media` built from the repository's source** with its own
+  module cache in about 45 seconds. The build pins `-swift-version 5`: the
+  speech step waits with `RunLoop.main.run(until:)` inside an async
+  context, which Swift 6 language mode refuses (5 mode only warns).
+- **Under `assets/intel/jantar-media.sb` exactly**, `probe`, `frames`,
+  `image`, `ocr`, `pdf` and `locales` work. Refused inside the profile:
+  reading another file under HOME, writing outside the job folder, and
+  running any other program. Two rules were needed on top, both in the
+  profile with their reasons: the metadata of the job folder's ancestors
+  (without it `realpath(3)` of any file in the job folder fails, so every
+  subcommand failed), and the helper's own folder entry (without it
+  `image` crashed in ImageIO's JPEG writer). The sandbox log also shows
+  harmless denials for the syslog socket and `/dev/dtracehelper`.
+- **End to end on the real helper**: `JANTAR_REAL_MEDIA=1` runs
+  `test/integration/v08-reel-flow.integration.test.ts` with the real tools
+  (about two minutes; without it the fake helper stands in). A synthetic
+  4-second H.264 reel is made with AVFoundation
+  (`test/integration/make-reel.swift`, no ffmpeg); the phone saves the
+  reel's link, Chrome says it needs a login, the headless browser reads
+  the post, the daemon builds the helper with the real swiftc, fetches the
+  reel's file through the guard, and `frames` and Vision's `ocr` read
+  "MANGO LASSI" and "SERVE COLD" off its frames under `sandbox-exec`; the
+  phone then finds the reel by "lassi", a word only its frames hold.
+
+On a real Mac, still open:
 
 1. **One real `claude -p` stream-json run** with a synthetic JPEG: the line
    shapes, that `--verbose` is needed with `--output-format stream-json`,
    the init line's `tools: []`, and that the run ends when stdin closes.
-2. **`jantar-media` built from the repository's source** (its own module
-   cache), and `probe`, `frames`, `image`, `ocr`, `speech`, `pdf` and
-   `locales` on a synthetic mp4 (`say` and the generator in the research
-   notes) **under `assets/intel/jantar-media.sb` exactly**, also as a
-   launchd child (speech authorisation stays "not determined" and on-device
-   recognition still works). Inside the profile, proven refused: reading a
-   file under HOME outside the job folder, running `/usr/bin/open`, a
-   pasteboard write, a write to `/private/var/folders`. Any rule a framework
+2. **`speech` under `assets/intel/jantar-media.sb`** on a synthetic mp4
+   with a `say` track, also as a launchd child (speech authorisation stays
+   "not determined" and on-device recognition still works); not run yet,
+   so no privacy prompt appears on a shared screen. Inside the profile,
+   still to prove refused: a pasteboard write and a write to
+   `/private/var/folders` outside the job folder. Any rule a framework
    needs on top is recorded here with its reason.
 3. **`speech … 60`** on a 3-minute synthetic file stops near 60 seconds and
    says `cut: true`.
