@@ -46,6 +46,19 @@ their live captions and how a line grows and settles; no code was copied:
 - Google Meet Captions Exporter (https://github.com/nikooo777/google-meet-captions-exporter)
 - meet-caption-log-extension (https://github.com/yhotta240/meet-caption-log-extension)
 
+v0.10's captions switch and Teams light-meetings support take facts only
+(selector strings, ids, `data-tid`s, aria-labels, icon names and menu
+steps) from these projects' notes and sources; no code, comments or
+identifiers were copied:
+
+- vibeconf-app (MIT, https://github.com/wanderingstan/vibeconf-app)
+- Vexa (Apache-2.0, https://github.com/Vexa-ai/vexa)
+- openclaw (MIT, https://github.com/openclaw/openclaw)
+- ai-second-brain's Teams notes (Apache-2.0, https://github.com/BrianArfi/ai-second-brain)
+- amazon-transcribe-live-meeting-assistant (MIT, https://github.com/aws-samples/amazon-transcribe-live-meeting-assistant)
+- Recall.ai's microsoft-teams-meeting-bot (no licence: facts only, https://github.com/recallai/microsoft-teams-meeting-bot)
+- TranscripTonic, MS Teams Live Captions Saver and Meeting Transcripts, as above
+
 ## External tools used, not vendored
 
 - **cswap / claude-swap** (MIT, https://github.com/realiti4/claude-swap): used

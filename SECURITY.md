@@ -914,7 +914,15 @@ on (`jantar meetings on`).
   I join** or **Always start when I join a call** (0.10), before you are in
   the call (until then only whether the page shows the call's join screen,
   its waiting room or the call, by fixed controls and never page text, its
-  code and its title), and never switches captions on. An arm is kept per
+  code and its title). Since 0.10, when notes start and only then (a
+  Settings switch, on by default), it turns the call's own live captions on
+  if they are off: it reads the captions control's state first and clicks
+  only that control, or the call's More menu and its captions item (Language
+  and speech on older Teams), with `element.click()` or Meet's own `c` key;
+  it closes any menu it opened, tries at most three times, and never turns
+  captions off. Captions are per viewer: nobody else in the call sees a
+  change, and the sites record nothing. It calls no page-world API and
+  needs no new permission. An arm is kept per
   tab in the worker's session storage (the sheet's fields, the site and
   Meet's code, never a URL), starts notes only once the page has shown the
   in-call controls on two checks running, and sends nothing to Jantar

@@ -23,8 +23,9 @@ you are in the call; and nothing is photographed until you click.
   or Microsoft already show you on screen, with the speaker's name and the
   time, each line kept once in its final form as the site revises it.
   Nothing is read before you press **Start notes**, or, if you chose
-  **Start when I join**, before you are in the call. Captions must be on
-  (the page tells you how when they are not).
+  **Start when I join**, before you are in the call. Captions must be on:
+  since 0.10 Jantar turns them on for you when notes start, and when none
+  come in the page says how ([Captions](#captions)).
 - **Screenshots**: a small round camera button at the edge of the call, the
   toolbar icon's Screenshot, or Option+Shift+S. The button hides itself,
   the tab is taken, "Saved" flashes. A screenshot before Start still saves,
@@ -81,7 +82,9 @@ lives in your Jantar state folder (`~/.jantar`, or `JANTAR_HOME`):
 The extension never:
 
 - records audio or video, or reads the call's media;
-- switches captions on for you (it tells you how; see Captions below);
+- clicks anything in the call, except, when notes start, the call's own
+  captions control to turn captions on (since 0.10, a Settings switch, on by
+  default; see [Captions](#captions)); it never turns captions off;
 - reads the page before notes start, except whether you are on the call's
   join screen, in its waiting room or in the call (fixed controls only,
   never what anyone says), and the page title (to fill in the meeting's
@@ -311,8 +314,8 @@ you armed. Until then nothing of the call reaches Jantar, and the waiting
 room is never read: Jantar counts you in the call on the same controls Start
 notes trusts (Meet's captions button or caption area, Teams' Leave button
 or caption area), seen on two checks a second apart, so a control that
-flashes up in the waiting room starts nothing. Captions are not switched on
-for you; if they are off, the page says how, as after Start notes.
+flashes up in the waiting room starts nothing. If captions are off, Jantar
+turns them on as it does after Start notes ([Captions](#captions)).
 
 The toolbar icon shows, per tab:
 
@@ -320,7 +323,7 @@ The toolbar icon shows, per tab:
 |---|---|
 | **ARM** | Notes start when you are in the call. |
 | **ON** | Notes are on in this tab, however they started. |
-| **!** | Notes did not start by themselves. Open the Jantar icon for why. |
+| **!** | Notes did not start by themselves, or notes are on but no captions came in yet. Open the Jantar icon for why. |
 
 An armed tab's popup says **Armed: starts when you join** (or **when you're
 let in**, or **when you rejoin** after leaving), with the name (the page's
@@ -438,15 +441,62 @@ final form, with the speaker and the time it was first shown. A long turn
 is split into lines at a sentence end. Nothing is added: no audio is heard,
 so what the captions missed, the transcript misses.
 
-Captions must be on in that tab. Turning them on is for you only; nobody
-else in the call sees a change. When notes are on and no captions show, the
-camera button's bubble tells you how:
+Captions must be on in that tab. Meet and Teams start every call with
+them off, and turning them on is for you only: nobody else in the call
+sees a change, and nothing is recorded.
 
-- **Google Meet:** the **CC** button (Captions) at the bottom of the call, or
-  press **c**.
-- **Microsoft Teams:** More (…) > **Language and speech** > **Live
-  captions**, or **Cmd+Shift+A**. Newer Teams layouts also have a
-  **Captions** button.
+### Captions on when notes start
+
+Since 0.10, when notes start (**Start notes**, **Start when I join**, or
+notes going on again after a reload), Jantar turns the call's captions on
+in that tab if they are off. **Settings › Turn on captions when notes
+start** switches this off (it is on by default; it only changes what you
+see in your own call). What it does, and nothing else:
+
+- It reads the captions control first and clicks only a control that says
+  captions are off. If the control says they are on, nothing is clicked.
+- **Google Meet:** the captions button; since Meet's redesign of 22 October
+  2026, **Captions and translation (CC)** › **Turn on captions**, closing
+  the pop-up again. Meet's own key **c** is the last resort, only when the
+  button says captions are off.
+- **Microsoft Teams:** the toolbar's **Captions** button when it is there;
+  else **More (…)** › **Captions** (Teams 2026, and a guest in Teams light
+  meetings), or **More (…)** › **Language and speech** › **Show live
+  captions**; it closes More again. A guest's **Captions** item does not say
+  whether captions are on, so Jantar clicks it once, only when nothing on
+  the page shows captions, and never a second time (Teams shows captions
+  only once someone speaks).
+- At most three tries, ten seconds apart. It waits while you have More or
+  Meet's captions pop-up open yourself. If More has no captions item (the
+  organiser switched captions off), it stops at once.
+- It never turns captions off, and once they were on it never touches them
+  again: if you turn them off, they stay off.
+- **Settings › Call check** says how it went, with Jantar's own name for
+  the control: "Captions: turned on by Jantar · teams:cc-more-item", "were
+  on", "Jantar clicked Captions; none on screen yet", or "Jantar could not
+  turn them on".
+
+### No captions yet
+
+If no caption line has come in during the first minute of notes, the page
+says so, the icon shows **!**, and the popup's notes view says the same
+until a line comes in:
+
+- **Google Meet:** "No captions yet: Jantar writes notes from the call's
+  live captions. Turn them on: Captions and translation (CC) › Turn on
+  captions, or press c."
+- **Microsoft Teams:** "… Turn them on: More (…) › Captions (in some
+  meetings: More (…) › Language and speech › Show live captions)."
+- **Teams light meetings** (a guest): "… Turn them on: More (…) ›
+  Captions."
+
+It says it once more three minutes later if there is still nothing, then
+never again: Jantar cannot tell a quiet call from one without captions, so
+in a call where nobody speaks for the first minute it says this too. After
+lines came in, it speaks up again only if the captions vanish from the page
+for a minute (turned off, or lost on a reconnect). The first line clears the
+**!**. A meeting that ended with notes on and no line says on the phone
+"Notes ran 10:00-10:42 but no captions came in."
 
 Things to know:
 
@@ -462,8 +512,12 @@ Things to know:
 - **Captions turned off by an admin:** an organisation can switch live
   captions off for its meetings. Then there is nothing to keep, and only
   screenshots are saved.
-- **Guests:** joining Teams as a guest without an account may offer no
-  captions; the same then applies.
+- **Guests:** joining Teams as a guest without an account opens Teams
+  light meetings (`/light-meetings/launch?…`), which has live captions under
+  More (…) › Captions; Jantar turns them on there too. Not checked on a real
+  Mac yet ([R-C4](real-mac-checks.md#meetings-v010-captions-on-when-notes-start)).
+  Teams' **Cmd+Shift+A** is not said any more: it is reported not to work
+  for guests, and Chrome may take it.
 - **The Teams desktop app** is not covered. Open the meeting in Chrome
   instead (Teams offers to continue in the browser).
 - Speakers are named as the site names them; your own lines say "You". A
@@ -609,8 +663,9 @@ To turn it off: the same switch. To take the six sites back as well:
 ## Updating the extension
 
 **0.10.0** (unreleased): build again and reload the extension. It changes
-this time (Start when I join, the toolbar badge). No new permission. Start
-when I join is forgotten on the reload; reload open meeting tabs.
+this time (Start when I join, the toolbar badge, captions turned on when
+notes start). No new permission. Start when I join is forgotten on the
+reload; reload open meeting tabs.
 
 **0.9.0**: build again and press the reload arrow on the Jantar card (the
 extension itself does not change). Coming from 0.7 or older, Chrome grants

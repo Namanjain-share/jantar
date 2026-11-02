@@ -8,9 +8,10 @@ What changed for people who use Jantar, newest first. Versions before
 Start when I join, in the Jantar extension: open the Jantar icon on a Meet
 or Teams join screen or in the waiting room, fill the sheet as for Start
 notes, and press Start when I join. Notes start by themselves once you are
-let in, exactly as Start notes would, and never before. Jantar, the protocol
-and meetings.db don't change: build and reload the extension (no new
-permission).
+let in, exactly as Start notes would, and never before. And Jantar turns
+the call's captions on when notes start, since it writes notes from them.
+Jantar, the protocol and meetings.db don't change: build and reload the
+extension (no new permission), and update the phone app.
 
 - **Start when I join**: the icon shows ARM while it waits, ON once notes
   are on, and the page says "Jantar started notes. Let people know you keep
@@ -45,6 +46,37 @@ permission).
 - Fixed: after a reload of a call with notes on, notes resume only once the
   call's controls held two checks, never on one that flashes up in the
   waiting room.
+- **Captions on when notes start** (Settings › Turn on captions when notes
+  start, on by default): Jantar writes notes from the call's live captions,
+  and Meet and Teams start every call with them off. When notes start
+  (Start notes, Start when I join, or notes going on again after a reload)
+  Jantar turns them on in that tab if they are off: Meet's captions button
+  or, since Meet's redesign, Captions and translation › Turn on captions;
+  Teams' Captions button, More › Captions (also for a guest in Teams light
+  meetings) or More › Language and speech › Show live captions. It reads the
+  control first and clicks only one that says off, closes the menu it
+  opened, tries at most three times, waits while you are in the menu
+  yourself, and never turns captions off or back on after you did.
+  Captions are only for you; nobody in the call sees a change. Settings ›
+  Call check says how it went ("Captions: turned on by Jantar · …").
+- **No captions yet**: no caption line in the first minute of notes, the
+  page says "No captions yet: Jantar writes notes from the call's live
+  captions. Turn them on: <the way for Meet, Teams, or a Teams guest>.",
+  once more three minutes later, the icon shows ! and the popup says the
+  same until the first line comes in. It replaces the 10-second "No
+  captions on screen" bubble, and the way for Teams no longer names
+  Language and speech alone or Cmd+Shift+A.
+- Teams light meetings (joining as a guest): their captions are read with
+  the speakers' names (the guest's caption layout, no Fluent UI items).
+- Meet's captions button found by its icon too, so Meet counts as in the
+  call with captions off after its redesign of 22 October 2026 (Start and
+  Start when I join depended on the old button). Checks R-C1 to R-C7 in
+  docs/real-mac-checks.md.
+- Fixed, on the phone: a meeting whose notes ran but got no caption line
+  said "No transcript: notes were not started." It now says "Notes ran
+  10:00-10:42 but no captions came in. Jantar writes notes from the call's
+  live captions; they were off or not visible." The first sentence stays for
+  notes that never ran.
 
 ## 0.9.0 (2 November 2026)
 

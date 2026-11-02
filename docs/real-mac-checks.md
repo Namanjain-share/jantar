@@ -390,6 +390,28 @@ your own Chrome; agents never drive it.
 | R16 | Reload the page while armed, on Meet's join screen and in the Teams waiting room: still ARM, and it still starts | a reload while armed |
 | R17 | Armed, then `jantar meetings off` (or Jantar stopped) before being let in: the bubble and the popup say why, and the icon shows ! | saying why notes did not start |
 
+### Meetings (v0.10, captions on when notes start)
+
+Open. The suites drive synthetic Meet controls (the old captions toggle, the
+"Captions and translation" pop-up of 22 October 2026), Teams' pinned toggle,
+More › Captions (signed in, and a light-meetings guest's item that says
+nothing of its state), More › Language and speech, and a More with no
+captions item, plus light meetings' caption tree; none of this has run on a
+real call yet. The selectors come from other projects' notes of October and
+November 2026. Each probe lists ids and counts only: paste it in DevTools on
+the meeting tab, never a name or a caption. Run these in your own Chrome;
+agents never drive it.
+
+| Check | Question | What depends on it |
+|---|---|---|
+| R-C1 | **Meet**, in a call with captions **off**, then on: does Settings › Call check say "in the call" with captions off, and with which hook (`meet:captions-button` or `meet:captions-icon`)? Probe: `[...document.querySelectorAll('button')].filter(b=>/caption\|translate_cc/.test(b.querySelector('i')?.textContent\|\|'')).map(b=>({js:b.getAttribute('jsname'),pop:b.getAttribute('aria-haspopup'),pressed:b.getAttribute('aria-pressed'),icon:b.querySelector('i').textContent}))`. With captions off, does `[jscontroller="D1tHje"]` exist? `['[jscontroller="D1tHje"]','div[role="region"][tabindex="0"]'].map(s=>[s,document.querySelectorAll(s).length])` | Meet's in-call check since its redesign (Start and Start when I join with captions off) |
+| R-C2 | **Meet**: Start notes with captions off. Do captions come on by themselves within a few seconds, with the pop-up closed again? Call check: "Captions: turned on by Jantar · meet:cc-popup" (or `meet:cc-button`, `meet:key-c`)? Lines arrive? Again with Translate speech on. With captions already on: "were on", nothing clicked. Turn them off during notes: they stay off. The same through Start when I join | captions on, Meet |
+| R-C3 | **Teams v2** signed in (`teams.cloud.microsoft`): Start notes with captions off. Does More open and close by itself and captions come on? Which hook does Call check name (`teams:cc-pinned`, `teams:cc-more-item`, `teams:cc-lang-speech`, `teams:cc-text`)? Probe with More open: `[...document.querySelectorAll('[role^="menuitem"]')].map(e=>[e.id,e.dataset.tid,e.getAttribute('role'),e.getAttribute('aria-checked')])`, and More's own `id` and `data-tid`. In a meeting whose organiser turned captions off: "Jantar could not turn them on · teams:no-cc-item", More opened once | captions on, Teams v2 |
+| R-C4 | **Teams light meetings as a guest** (the case of 2 November 2026: a `teams.microsoft.com/light-meetings/launch?…&anon=true` link): Start notes (and once Start when I join) with captions off. Do captions come on through More › Captions, Call check "Captions: … · teams:cc-more-item", and do lines arrive with speakers' names? Probe with someone speaking: `JSON.stringify({tids:[...document.querySelectorAll("[data-tid*='caption']")].map(e=>e.dataset.tid),rows:document.querySelectorAll('.fui-ChatMessageCompact').length,authors:document.querySelectorAll('[data-tid="author"]').length,texts:document.querySelectorAll('[data-tid="closed-caption-text"]').length})`. Does the address leave `/light-meetings/` after you are let in? | light meetings: captions on and read |
+| R-C5 | Settings › Turn on captions when notes start **off**, Start notes with captions off: nothing is clicked; after a minute the page says "No captions yet: … Turn them on: <this client's way>.", the icon shows !, the popup's notes view says the same. Turn captions on by hand and speak: the ! goes with the first line, and no second bubble 3 minutes later. A meeting ended with no line: the phone says "Notes ran …-… but no captions came in." | the caption watch, the phone's copy |
+| R-C6 | Teams v2 in Chrome on the Mac: does a real **Cmd+Shift+A** toggle captions, or open Chrome's tab search? | whether the docs name the shortcut again |
+| R-C7 | Teams v2 signed in: is Teams' own **Automatically turn on live captions** in the captions pane's settings, and does it work in the web client? | a way that needs no clicks from Jantar |
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear
