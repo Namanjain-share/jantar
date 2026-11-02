@@ -21,7 +21,7 @@ import { CtlUnavailableError, callDaemon } from '../ctl.js';
 import { readSettings } from '../lib/settings.js';
 import { changeSettings, onOff, parseOnOff } from '../lib/switches.js';
 import { clip, plural } from '../lib/text.js';
-import { runChatShortcut, CHAT_SHORTCUT_HELP } from './chat-shortcut.js';
+import { CHAT_SHORTCUT_HELP, doorLine, runChatShortcut } from './chat-shortcut.js';
 
 /** What goes to Claude and what stays (spec 0.10 B2), as the phone's empty thread and the docs say it. */
 export function chatDataFlow(s: Settings): string {
@@ -60,13 +60,7 @@ async function status(ctx: CliContext): Promise<void> {
     if (!(e instanceof CtlUnavailableError)) throw e;
     io.out("On disk: the daemon isn't running.\n");
   }
-  await statusDoor(ctx, s);
-}
-
-/** The Siri door's line (the shortcut part fills it in). */
-async function statusDoor(ctx: CliContext, s: Settings): Promise<void> {
-  const { doorLine } = await import('./chat-shortcut.js');
-  ctx.io.out(await doorLine(ctx, s));
+  io.out(await doorLine(ctx, s));
 }
 
 async function clear(argv: readonly string[], ctx: CliContext): Promise<number> {

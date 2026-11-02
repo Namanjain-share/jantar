@@ -249,7 +249,8 @@ describe('the commands the daemon and the web app name', () => {
         'POST /v1/chat/keys/revoke': () => ok({ revoked: 1 }),
       });
       // A person at the Mac answers yes when a command asks (life restore asks before it replaces life.db).
-      const { ctx, io } = contextFor(home, { ctl, ioOptions: { answers: ['y', 'y', 'y'] } });
+      // v0.10: `chat shortcut add` shows a key, so it runs only on a terminal (a person's own Terminal).
+      const { ctx, io } = contextFor(home, { ctl, ioOptions: { answers: ['y', 'y', 'y'], isTTY: line.startsWith('chat shortcut add') } });
       const out = join(home.home, 'exports');
       const argv = WRITES_FILES.test(line) ? [...words, '--out', out] : words;
       expect(await main(argv, { io, context: ctx }), `${io.stdout}${io.stderr}`).toBe(EXIT.ok);

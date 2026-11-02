@@ -7,6 +7,8 @@
  *   Cloudflare, where one credential-less probe of /v1/capture/save must be
  *   answered by Access (403), never by Jantar or with a login page. No key
  *   (or the shelf off): no line and no probe.
+ * - v0.10: the Siri door (/v1/capture/chat) the same way, once Chat is on
+ *   and a chat key exists.
  * - `jantar intel shortcut add | list | revoke`: the key printed once with
  *   the door and the steps (or why the door is closed), the list never
  *   holding a key, revoke by id or --all, usage errors for the rest.
@@ -44,8 +46,8 @@ describe('jantar doctor: the Shortcut door', () => {
     await home.cleanup();
   });
 
-  async function run(o: { remote?: Record<string, unknown>; intel?: boolean; keys?: number; probe?: ProbeResult | null } = {}) {
-    const settings = settingsWith({ remote: o.remote ?? { mode: 'cloudflare', publicUrl: FLEET_HUB_URL }, intel: { enabled: o.intel ?? true } });
+  async function run(o: { remote?: Record<string, unknown>; intel?: boolean; keys?: number; probe?: ProbeResult | null; chat?: boolean; chatKeys?: number } = {}) {
+    const settings = settingsWith({ remote: o.remote ?? { mode: 'cloudflare', publicUrl: FLEET_HUB_URL }, intel: { enabled: o.intel ?? true }, ask: { enabled: o.chat ?? false } });
     const deps = testDeps({
       locations: await fakePackages(home.root),
       bins: { cswap: home.bins.cswap, osascript: home.bins.osascript },
@@ -57,6 +59,8 @@ describe('jantar doctor: the Shortcut door', () => {
       'GET /ctl/status': ok({ role: 'hub', daemonVersion: '0.9.0' }),
       'GET /v1/settings': ok({ settings }),
       'GET /v1/intel/capture-keys': ok({ keys }),
+      // v0.10: the Siri door's keys.
+      'GET /v1/chat/keys': ok({ keys: Array.from({ length: o.chatKeys ?? 0 }, (_, n) => ({ ...ROW, id: `${KEY_ID.slice(0, -1)}${n}` })), chatUrl: null }),
     });
     const probes: string[] = [];
     const { ctx } = contextFor(home, { deps, ctl });
@@ -86,6 +90,20 @@ describe('jantar doctor: the Shortcut door', () => {
     expect(find(login.report, 'capture-door')).toMatchObject({ status: 'warn', detail: expect.stringContaining("login page, which the Shortcut can't pass") });
     const down = await run({ probe: null });
     expect(find(down.report, 'capture-door')).toMatchObject({ status: 'warn', detail: 'https://jantar.example.com/v1/capture/save did not answer from this Mac' });
+  });
+
+  it('v0.10: the Siri door is probed too once Chat is on and a chat key exists', async () => {
+    const { report, probes } = await run({ chat: true, chatKeys: 1 });
+    expect(find(report, 'chat-door')).toMatchObject({
+      title: 'Siri door',
+      status: 'ok',
+      detail: '1 Siri key; Cloudflare Access refuses jantar.example.com/v1/capture/* without a service token (403), as it should',
+    });
+    expect(probes).toEqual(['https://jantar.example.com/v1/capture/save', 'https://jantar.example.com/v1/capture/chat']);
+    const off = await run({ chat: false, chatKeys: 1 });
+    expect(find(off.report, 'chat-door')).toBeUndefined();
+    const none = await run({ chat: true, chatKeys: 0 });
+    expect(find(none.report, 'chat-door')).toBeUndefined();
   });
 
   it('Tailscale: an info line, no probe', async () => {

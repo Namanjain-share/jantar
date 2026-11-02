@@ -20,6 +20,8 @@
  * made (`jantar intel shortcut list` over ctl.sock, never a key), where the
  * capture door is. In cloudflare mode one GET of `<publicUrl>/v1/capture/save`
  * with no credentials: Cloudflare Access should answer it, not Jantar.
+ * v0.10: the same for the Siri door (`/v1/capture/chat`) once Chat is on and
+ * a chat key is made (`jantar chat shortcut list`).
  */
 import { open, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
@@ -674,6 +676,7 @@ export async function runDoctor(i: DoctorInput): Promise<DoctorReport> {
     ...(node || !mac ? [] : [await checkTailscale(i), await checkCloudflared(i)]),
     ...(node ? await fleetNodeChecks(i, probe) : await fleetHubChecks(i, probe)),
     ...(node ? [] : one(await captureDoorCheck(i, probe))),
+    ...(node ? [] : one(await captureDoorCheck(i, probe, 'chat'))),
   ];
   const counts: Record<CheckStatus, number> = { ok: 0, warn: 0, fail: 0, info: 0 };
   for (const c of checks) counts[c.status] += 1;
@@ -945,10 +948,11 @@ async function accessCheck(i: DoctorInput, origin: string, host: string): Promis
 // ---------------------------------------------------------------------------
 // v0.8: the iOS Shortcut's capture door
 
-/** The Shortcut keys the daemon holds (never a key), or null when it can't say. */
-async function captureKeyCount(i: DoctorInput): Promise<number | null> {
+/** The keys of a door the daemon holds (never a key), or null when it can't say. v0.10: the Siri door's too. */
+async function doorKeyCount(i: DoctorInput, kind: 'save' | 'chat'): Promise<number | null> {
   try {
-    const r = await callDaemon<CaptureKeyList>(i.ctl, 'GET', ROUTES.captureKeyList.path, undefined, { timeoutMs: 3000 });
+    const path = kind === 'chat' ? ROUTES.chatKeyList.path : ROUTES.captureKeyList.path;
+    const r = await callDaemon<CaptureKeyList>(i.ctl, 'GET', path, undefined, { timeoutMs: 3000 });
     return Array.isArray(r?.keys) ? r.keys.length : null;
   } catch {
     return null;
@@ -956,25 +960,28 @@ async function captureKeyCount(i: DoctorInput): Promise<number | null> {
 }
 
 /**
- * Where the Shortcut's door is, once a key exists: closed in loopback and
+ * Where a Shortcut's door is, once a key exists: closed in loopback and
  * lan mode (warn: the key can't work), Tailscale (info), or Cloudflare,
  * where one credential-less GET must be answered by Access (403), never
- * by Jantar or with a login page the Shortcut can't pass.
+ * by Jantar or with a login page the Shortcut can't pass. v0.10: the Siri
+ * door (`/v1/capture/chat`, Chat's keys) the same way as the save door.
  */
-async function captureDoorCheck(i: DoctorInput, probe: DaemonProbe): Promise<DoctorCheck | null> {
+async function captureDoorCheck(i: DoctorInput, probe: DaemonProbe, kind: 'save' | 'chat' = 'save'): Promise<DoctorCheck | null> {
   const s = i.settings.settings;
-  if (!s.intel.enabled || !probe.running) return null;
-  const keys = await captureKeyCount(i);
+  const on = kind === 'chat' ? s.ask.enabled : s.intel.enabled;
+  if (!on || !probe.running) return null;
+  const keys = await doorKeyCount(i, kind);
   if (!keys) return null;
-  const base = { id: 'capture-door', title: 'Shortcut door' } as const;
-  const count = `${keys} Shortcut key${keys === 1 ? '' : 's'}`;
+  const base = kind === 'chat' ? ({ id: 'chat-door', title: 'Siri door' } as const) : ({ id: 'capture-door', title: 'Shortcut door' } as const);
+  const what = kind === 'chat' ? 'Siri key' : 'Shortcut key';
+  const count = `${keys} ${what}${keys === 1 ? '' : 's'}`;
   const door = fleetDoor(s);
   const setup = 'jantar remote setup (Tailscale or Cloudflare; docs/shortcut.md)';
   if (s.remote.mode === 'loopback' || s.remote.mode === 'lan') {
     return { ...base, status: 'warn', detail: `${count}, but the door is closed: ${door.ok ? 'only Tailscale and Cloudflare have one' : door.why}`, fix: setup };
   }
   if (!door.ok) return { ...base, status: 'warn', detail: `${count}, but the Shortcut can't rely on this door: ${door.why}`, fix: setup };
-  const url = `${door.url}${CAPTURE_PREFIX}save`;
+  const url = `${door.url}${CAPTURE_PREFIX}${kind}`;
   if (s.remote.mode === 'tailscale') return { ...base, status: 'info', detail: `${count}; the iPhone reaches ${url} while its Tailscale is on` };
   const fix = `add an Access application for ${door.host}/v1/capture/* with one Service Auth policy and its own service token (docs/shortcut.md#cloudflare-access)`;
   const r = await (i.probe ?? probeUrl)(url);

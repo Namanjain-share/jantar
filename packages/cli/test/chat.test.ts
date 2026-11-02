@@ -97,3 +97,71 @@ describe('jantar chat', () => {
     expect(s.patches).toEqual([{ ask: { enabled: true } }]);
   });
 });
+
+describe('jantar chat shortcut', () => {
+  const KEY = `jchat_${'B'.repeat(43)}`;
+  const ID = '01JSYNTHKEY000000000000000';
+  function keyDaemon(settings: Record<string, unknown> = {}) {
+    const s = fakeSettings({ ask: { enabled: true }, remote: { mode: 'tailscale', publicUrl: 'https://jantar.example.com' }, ...settings });
+    const routes = {
+      ...s.routes,
+      [`POST ${ROUTES.chatKeyAdd.path}`]: ok({ id: ID, key: KEY, name: 'iphone', chatUrl: 'https://jantar.example.com/v1/capture/chat' }),
+      [`GET ${ROUTES.chatKeyList.path}`]: ok({ keys: [{ id: ID, name: 'iphone', createdAt: '2026-11-02T10:00:00.000Z', lastSeenAt: null }], chatUrl: 'https://jantar.example.com/v1/capture/chat' }),
+      [`POST ${ROUTES.chatKeyRevoke.path}`]: ok({ revoked: 1 }),
+    } as Parameters<typeof fakeCtl>[0];
+    return { s, ctl: fakeCtl(routes) };
+  }
+
+  it('add refuses without a terminal and inside Claude Code; the key never leaves without one', async () => {
+    const { ctl } = keyDaemon();
+    const pipe = contextFor({ env: ENV }, { ctl });
+    expect(await chat.run(['shortcut', 'add'], pipe.ctx)).toBe(EXIT.failed);
+    expect(pipe.io.stderr).toBe('Run this yourself in Terminal: the key is shown once and must not end up in a log.\n');
+    const claude = contextFor({ env: { ...ENV, CLAUDECODE: '1' } }, { ctl, ioOptions: { isTTY: true } });
+    expect(await chat.run(['shortcut', 'add'], claude.ctx)).toBe(EXIT.failed);
+    const entry = contextFor({ env: { ...ENV, CLAUDE_CODE_ENTRYPOINT: 'cli' } }, { ctl, ioOptions: { isTTY: true } });
+    expect(await chat.run(['shortcut', 'add'], entry.ctx)).toBe(EXIT.failed);
+    expect(ctl.calls.some((c) => c.method === 'POST')).toBe(false);
+    for (const c of [pipe, claude, entry]) expect(c.io.stdout + c.io.stderr).not.toContain('jchat_');
+  });
+
+  it('add on a terminal prints the key once, the door and the steps', async () => {
+    const { ctl } = keyDaemon();
+    const c = contextFor({ env: ENV }, { ctl, ioOptions: { isTTY: true } });
+    expect(await chat.run(['shortcut', 'add', '--name', 'iphone'], c.ctx)).toBe(EXIT.ok);
+    expect(c.io.stdout.split(KEY)).toHaveLength(2);
+    expect(c.io.stdout).toContain('The door: POST https://jantar.example.com/v1/capture/chat');
+    expect(c.io.stdout).toContain('name it "Jantar", so "Hey Siri, Jantar" runs it');
+    expect(c.io.stdout).toContain('Dictate Text');
+    expect(c.io.stdout).toContain('Speak Text');
+    expect(c.io.stdout).toContain(`jantar chat shortcut revoke ${ID}`);
+  });
+
+  it('list never prints a key; revoke one or all; steps works anywhere with no key', async () => {
+    const { ctl } = keyDaemon();
+    const l = contextFor({ env: ENV }, { ctl });
+    expect(await chat.run(['shortcut', 'list'], l.ctx)).toBe(EXIT.ok);
+    expect(l.io.stdout).toContain(`${ID}  iphone`);
+    expect(l.io.stdout).not.toContain('jchat_');
+    const r = contextFor({ env: ENV }, { ctl });
+    expect(await chat.run(['shortcut', 'revoke', ID], r.ctx)).toBe(EXIT.ok);
+    expect(await chat.run(['shortcut', 'revoke', '--all'], r.ctx)).toBe(EXIT.ok);
+    const st = contextFor({ env: ENV }, { ctl });
+    expect(await chat.run(['shortcut', 'steps'], st.ctx)).toBe(EXIT.ok);
+    expect(st.io.stdout).toContain('https://jantar.example.com/v1/capture/chat');
+    expect(st.io.stdout).not.toContain('jchat_');
+    const closed = keyDaemon({ remote: { mode: 'loopback' } });
+    const c2 = contextFor({ env: ENV }, { ctl: closed.ctl });
+    expect(await chat.run(['shortcut', 'steps'], c2.ctx)).toBe(EXIT.ok);
+    expect(c2.io.stdout).toContain('https://<your address>/v1/capture/chat');
+    expect(c2.io.stdout).toContain('The door is closed now');
+  });
+
+  it('status shows the Siri door and its keys', async () => {
+    const { ctl } = keyDaemon();
+    const extra = fakeCtl({ ...ctl.routes, [`GET ${ROUTES.chatStatus.path}`]: ok({ turns: 1, photos: 0, bytes: 0, broken: null }) } as Parameters<typeof fakeCtl>[0]);
+    const c = contextFor({ env: ENV }, { ctl: extra });
+    expect(await chat.run(['status'], c.ctx)).toBe(EXIT.ok);
+    expect(c.io.stdout).toContain('Siri door: POST https://jantar.example.com/v1/capture/chat, 1 Siri key\n');
+  });
+});
