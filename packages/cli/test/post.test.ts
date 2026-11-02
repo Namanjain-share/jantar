@@ -279,20 +279,24 @@ describe('post list', () => {
     ]);
   });
 
-  it('--done ends a posted row with its whole link (a control character printed as a space), and never prints text or notes', async () => {
+  it('--done ends a posted row with its whole link (a control character printed as a space; no bidi or zero-width character), and never prints text or notes', async () => {
     const long = `https://www.reddit.com/r/exampletools/comments/1abc2de/comment/kx9y8z7/?utm_source=share&utm_medium=web3x&utm_name=${'a'.repeat(120)}`;
     const done: Post[] = [
       { ...base, id: '01JSYNTHPOST0000000000000G', platform: 'reddit', kind: 'comment', where: 'r/exampletools', status: 'posted', postedAt: '2026-11-02T15:44:00.000Z', postedUrl: long, text: MARKER, notes: MARKER },
       { ...base, id: '01JSYNTHPOST0000000000000H', platform: 'x', kind: 'comment', status: 'posted', postedAt: '2026-11-02T15:40:00.000Z', postedUrl: 'https://x.com/example_user/status/1\u001b[31mred' },
+      // The daemon takes any https link the URL parser takes, these included.
+      { ...base, id: '01JSYNTHPOST0000000000000J', platform: 'reddit', kind: 'comment', where: 'r/exampletools', status: 'posted', postedAt: '2026-11-02T15:30:00.000Z', postedUrl: 'https://www.reddit.com/r/exampletools/s/x\u200babc\u2067d\u202e' },
     ];
     const r = await run(['list', '--done'], fakeCtl({ 'GET /v1/posts': () => ok(reply({ posts: done })), 'GET /v1/life/status': ok({ timezone: 'UTC' }) }));
     expect(r.out.split('\n').slice(1)).toEqual([
       `2026-11-02 15:44  posted   Reddit · r/exampletools · comment  01JSYNTHPOST0000000000000G  ${long}`,
       '2026-11-02 15:40  posted   X · comment  01JSYNTHPOST0000000000000H  https://x.com/example_user/status/1red',
+      '2026-11-02 15:30  posted   Reddit · r/exampletools · comment  01JSYNTHPOST0000000000000J  https://www.reddit.com/r/exampletools/s/xabcd',
       '',
     ]);
     expect(r.out).not.toContain(MARKER);
     expect(r.out).not.toContain('\u001b');
+    expect(r.out).not.toMatch(/[\u200b\u202e\u2067]/);
   });
 
   it('a list without --done never prints a link', async () => {

@@ -55,6 +55,8 @@ const TITLE_SHOWN = 60;
 /** A time this long gone does not ring (the daemon's LATE_AFTER_MS). */
 const LATE_MS = 120_000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+/** Bidi embeddings, overrides, isolates and marks, zero-width characters and the BOM: never part of a link, and they would reorder or hide the line. */
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
 const n = (v: number) => v.toLocaleString('en-US');
 
 const FLAGS = {
@@ -204,13 +206,13 @@ export function weekLine(week: PostsResponse['week']): string {
 
 /**
  * One list line: when (posted or skipped in `tz`, the Life zone), status, where and kind, the title clipped, the id,
- * and with `done` the posted link (never clipped, so it still opens). Never the text or the notes.
+ * and with `done` the posted link (never clipped, so it still opens; with no bidi or zero-width character). Never the text or the notes.
  */
 export function postLine(p: Post, done: boolean, tz?: string): string {
   const at = Date.parse(p.postedAt ?? p.updatedAt);
   const when = done ? (Number.isNaN(at) ? '-' : wallTime(at, tz)) : dueText(p.due);
   const title = p.title ? `  ${clip(p.title, TITLE_SHOWN)}` : '';
-  const link = done && p.postedUrl ? `  ${clean(p.postedUrl)}` : '';
+  const link = done && p.postedUrl ? `  ${clean(p.postedUrl).replace(INVISIBLE, '')}` : '';
   return `${when.padEnd(16)}  ${p.status.padEnd(done ? 7 : 5)}  ${placeOf(p)} · ${p.kind}${title}  ${p.id}${link}`;
 }
 
