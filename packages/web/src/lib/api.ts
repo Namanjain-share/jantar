@@ -795,8 +795,9 @@ export function createApi(opts: ApiOptions = {}): Api {
       const s = await secret();
       if (s) headers[DEVICE_SECRET_HEADER] = s;
       const url = new URL(buildPath(ROUTES.chatPhotoAdd), base).toString();
-      // The upload path answers the route's own reply ({ id }) as it is.
-      return (await upload({ url, headers }, blob, { ...(o.onProgress ? { onProgress: o.onProgress } : {}), ...(o.signal ? { signal: o.signal } : {}) })) as unknown as IdReply;
+      // The route answers { id } (not a session upload's { upload: { id } }): the upload path checks for that.
+      const accept = (json: unknown) => typeof (json as { id?: unknown } | null | undefined)?.id === 'string';
+      return (await upload({ url, headers }, blob, { accept, ...(o.onProgress ? { onProgress: o.onProgress } : {}), ...(o.signal ? { signal: o.signal } : {}) })) as unknown as IdReply;
     },
     chatPhoto: async (id, o = {}) => (await bytes(ROUTES.chatPhoto, { params: { id }, ...(o.signal ? { signal: o.signal } : {}) })).blob,
     chatPhotoDelete: async (id) => {

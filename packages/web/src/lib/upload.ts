@@ -36,6 +36,17 @@ export interface UploadOptions {
   onProgress?: (sent: number, total: number) => void;
   /** Aborts the upload (the chip's ×). */
   signal?: AbortSignal;
+  /**
+   * Whether a 2xx reply is the one the route answers. Default: a session upload's `{ upload: { id } }`.
+   * Chat's photos answer `{ id }` (lib/api.ts chatPhotoAdd says so).
+   */
+  accept?: (json: unknown) => boolean;
+}
+
+/** A session upload's reply: `{ upload: { id } }`. */
+function isUploadReply(json: unknown): boolean {
+  const upload = (json as Partial<UploadResponse> | undefined)?.upload;
+  return !!upload && typeof upload.id === 'string';
 }
 
 export type UploadFn = (req: UploadRequest, blob: Blob, opts?: UploadOptions) => Promise<UploadResponse>;
@@ -73,6 +84,7 @@ function parse(text: string): unknown {
 export function uploadFile(req: UploadRequest, blob: Blob, opts: UploadOptions = {}): Promise<UploadResponse> {
   return new Promise<UploadResponse>((resolve, reject) => {
     const { signal, onProgress } = opts;
+    const accept = opts.accept ?? isUploadReply;
     if (signal?.aborted) {
       reject(new ApiError('network', 'The upload was stopped', 0));
       return;
@@ -111,8 +123,7 @@ export function uploadFile(req: UploadRequest, blob: Blob, opts: UploadOptions =
         reject(new ApiError(code, err?.message ?? `${xhr.status} ${xhr.statusText}`.trim(), xhr.status));
         return;
       }
-      const upload = (json as Partial<UploadResponse> | undefined)?.upload;
-      if (!upload || typeof upload.id !== 'string') {
+      if (!accept(json)) {
         reject(new ApiError('bad_response', 'The daemon sent an unreadable reply.', xhr.status));
         return;
       }

@@ -221,4 +221,22 @@ describe('the API client sends uploads through it', () => {
     expect(await done).toEqual(REPLY);
     expect(f).not.toHaveBeenCalled();
   });
+
+  it("chatPhotoAdd takes the chat route's { id } reply (a session upload's shape is not asked of it)", async () => {
+    useFakeXhr();
+    const credentials = { get: async () => ({ secret: SECRET, deviceId: 'dev-1', savedAt: '2026-10-31T00:00:00.000Z' }), set: async () => undefined, clear: async () => undefined } as unknown as CredentialStore;
+    const api = createApi({ fetch: vi.fn() as unknown as typeof fetch, base: BASE, credentials });
+    const id = '01JFZ8X8Y3T0V5G9WQK2M4N770';
+    const done = api.chatPhotoAdd(new Blob(['x'], { type: 'image/jpeg' }));
+    await vi.waitFor(() => expect(FakeXhr.last).not.toBeNull());
+    expect(xhr().url).toBe(`${BASE}/v1/chat/photos`);
+    xhr().reply(200, JSON.stringify({ id }));
+    expect(await done).toEqual({ id });
+    // A reply without one is still unreadable.
+    FakeXhr.last = null;
+    const odd = api.chatPhotoAdd(new Blob(['x'], { type: 'image/jpeg' }));
+    await vi.waitFor(() => expect(FakeXhr.last).not.toBeNull());
+    xhr().reply(200, JSON.stringify({ upload: { id } }));
+    await expect(odd).rejects.toMatchObject({ code: 'bad_response' });
+  });
 });
