@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.10.0 (unreleased)
+## 0.10.0 (3 November 2026)
 
 Cafés get stars, ratings, a price level, tags and visits. Ask becomes
 **Chat**, which does what you ask across Jantar at once, with Undo, and
