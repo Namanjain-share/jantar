@@ -15,7 +15,7 @@ import { boardOrder } from '@jantar/protocol';
 import { useMemo } from 'react';
 import { useApp, useNow } from '../../context.js';
 import { SkeletonRows } from '../../kit/Skeleton.js';
-import { useFrame } from '../../shell/layout.js';
+import { useLayout } from '../../shell/layout.js';
 import { SessionList, sessionCells } from './SessionCells.js';
 
 export const SINGLE_DISPLAY = 'One Claude login';
@@ -28,11 +28,10 @@ export function sessionsText(n: number): string {
 }
 
 export function SingleAccount({ machines = false }: { machines?: boolean } = {}) {
-  const frame = useFrame();
+  const phone = useLayout().chrome === 'phone';
   const now = useNow(30_000);
   const state = useApp((s) => s.state);
   const conn = useApp((s) => s.conn);
-  const phone = frame === 'phone';
   // One login: every session of this Mac is on it (a paired machine's are on its own accounts).
   const cells = useMemo(() => sessionCells(state, boardOrder(state).filter((s) => s.node === undefined), now), [state, now]);
   const name = Object.values(state.accounts)[0]?.alias ?? FALLBACK_NAME;

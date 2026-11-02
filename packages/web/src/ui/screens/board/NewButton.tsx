@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
 import { useNavigate } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { useCanStart } from '../new/machines.js';
-import { useFrame } from '../../shell/layout.js';
+import { useLayout } from '../../shell/layout.js';
 
 export function NewButton({
   wide = false,
@@ -26,7 +26,7 @@ export function NewButton({
   className?: string;
 }) {
   const navigate = useNavigate();
-  const phone = useFrame() === 'phone';
+  const phone = useLayout().chrome === 'phone';
   const on = useCanStart();
   if (!on) return null;
   return (

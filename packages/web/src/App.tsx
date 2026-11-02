@@ -1,6 +1,7 @@
 /**
  * App root: dependencies (store, API, router, toasts), the providers every
- * screen relies on, and the shell (ui/shell/Shell.tsx).
+ * screen relies on (the layout too: one set of media-query listeners), and
+ * the shell (ui/shell/Shell.tsx).
  *
  * - CSPProvider disableStyleElements: Base UI never injects a <style> (the
  *   CSP is style-src 'self'); the few rules it would add live in styles/.
@@ -17,6 +18,7 @@ import { createApi } from './lib/api.js';
 import { createRouter, memoryHistory } from './lib/router.js';
 import type { AppStore } from './store.js';
 import { AppProvider, createToastStore, type AppDeps } from './ui/context.js';
+import { LayoutProvider } from './ui/shell/layout.js';
 import { Shell } from './ui/shell/Shell.js';
 
 const loadMotionFeatures = () => import('./motionFeatures.js').then((m) => m.default);
@@ -37,7 +39,9 @@ export function App(props: AppProps) {
       <MotionConfig reducedMotion="user">
         <LazyMotion features={loadMotionFeatures} strict>
           <AppProvider deps={deps}>
-            <Shell />
+            <LayoutProvider value={deps.layout}>
+              <Shell />
+            </LayoutProvider>
           </AppProvider>
         </LazyMotion>
       </MotionConfig>

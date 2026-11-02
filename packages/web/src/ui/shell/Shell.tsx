@@ -1,5 +1,5 @@
 /**
- * The app shell: picks the frame for the width (shell/layout.ts), wires the
+ * The app shell: picks the chrome for the window (shell/layout.ts), wires the
  * chrome to the store and router, and places the current screen.
  *
  *   phone   PhoneHeader / notices / screen / TabBar   (a session is full screen)
@@ -35,7 +35,7 @@ import { routePath, type FilesLocation, type Route } from '../../lib/router.js';
 import { useAccountsMode, useCeiling, useFeatures, useNeedsCount, useNewAlerts, useStripItems, useUsagePairs } from './data.js';
 import { More } from '../screens/more/More.js';
 import { useGlobalKeys, useKey } from './keys.js';
-import { isSplit, useFrame } from './layout.js';
+import { frameOf, isSplit, useLayout } from './layout.js';
 import { LegendPopover, LegendSheet } from './LegendPopover.js';
 import { OfflineNotice, UpdateNotice } from './Notices.js';
 import { PhoneHeader } from './PhoneHeader.js';
@@ -75,7 +75,7 @@ export function Shell() {
   const { api, connection, pushEnv } = useDeps();
   const route = useRoute();
   const navigate = useNavigate();
-  const frame = useFrame();
+  const layout = useLayout();
   const conn = useApp((s) => s.conn);
   const state = useApp((s) => s.state);
   const updateAvailable = useApp((s) => s.updateAvailable);
@@ -94,8 +94,8 @@ export function Shell() {
   const paletteUsed = useRef(false);
   if (palette) paletteUsed.current = true;
 
-  const phone = frame === 'phone';
-  const split = isSplit(frame);
+  const phone = layout.chrome === 'phone';
+  const split = isSplit(frameOf(layout));
   const bare = route.name === 'pair' || conn.status === 'unauthorized';
   const offline = conn.status === 'offline';
   const dashed = offline || conn.status === 'connecting';

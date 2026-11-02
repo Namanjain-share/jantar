@@ -21,7 +21,7 @@ import { CHAT_PHOTO_EDGE, CHAT_PHOTOS_MAX, CHAT_PHOTO_MAX_BYTES, CHAT_TEXT_MAX }
 import { errorText } from '../../../lib/api.js';
 import { useDeps } from '../../context.js';
 import { Spinner } from '../../kit/Spinner.js';
-import { useFrame } from '../../shell/layout.js';
+import { useLayout } from '../../shell/layout.js';
 import { prepareFile } from '../session/attach/convert.js';
 import { Refused } from './Turn.js';
 
@@ -127,7 +127,7 @@ export function Composer({
   chips: ReturnType<typeof useChips>;
 }) {
   const id = useId();
-  const phone = useFrame() === 'phone';
+  const phone = useLayout().chrome === 'phone';
   const file = useRef<HTMLInputElement>(null);
   // A failed photo holds Send: the message would go without it, and Claude would answer as if it had seen it.
   const can = canSend && !chips.uploading && chips.failed === 0 && (draft.trim().length > 0 || chips.ready > 0);

@@ -72,7 +72,7 @@ import { SkeletonRows } from '../kit/Skeleton.js';
 import { Spinner } from '../kit/Spinner.js';
 import { Tag } from '../kit/Tag.js';
 import { useCeiling, useFeatures } from '../shell/data.js';
-import { useFrame } from '../shell/layout.js';
+import { frameOf, useLayout } from '../shell/layout.js';
 import { backgroundLine } from './board/model.js';
 import { Composer, carriesFiles } from './session/Composer.js';
 import { ControlBar } from './session/controls/ControlBar.js';
@@ -166,8 +166,10 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const toast = useToast();
   const navigate = useNavigate();
   const now = useNow(15_000);
-  const frame = useFrame();
-  const phone = frame === 'phone';
+  const layout = useLayout();
+  const phone = layout.chrome === 'phone';
+  // The back button shows where the ledger is not beside the session (the 768-1023 frame).
+  const frame = frameOf(layout);
   const wide = useMedia(WIDE) && !phone;
   const state = useApp((s) => s.state);
   const conn = useApp((s) => s.conn.status);

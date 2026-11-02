@@ -2,12 +2,19 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, alert, fakeApi, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
-/** Pretend the window is `width` px wide (jsdom has no matchMedia). */
-function viewport(width: number) {
+/** Pretend the window is `width` px wide, with a fine pointer unless `coarse` (jsdom has no matchMedia). */
+function viewport(width: number, { coarse = false } = {}) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /min-width:\s*(\d+)px/.exec(query);
+    const min = /min-width:\s*(\d+)px/.exec(query);
+    const max = /max-width:\s*(\d+)px/.exec(query);
+    const pointer = /\(pointer:\s*(coarse|fine)\)/.exec(query);
+    const known = min || max || pointer;
     return {
-      matches: m ? width >= Number(m[1]) : false,
+      matches:
+        Boolean(known) &&
+        (!min || width >= Number(min[1])) &&
+        (!max || width <= Number(max[1])) &&
+        (!pointer || (pointer[1] === 'coarse') === coarse),
       media: query,
       onchange: null,
       addEventListener: () => undefined,
@@ -126,6 +133,22 @@ describe('tablet shell', () => {
     expect(screen.queryByRole('region', { name: 'Ledger' })).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'infra' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy();
+  });
+});
+
+describe('0.11: the chrome by width and pointer', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("a touch screen keeps the Mac's chrome from 768 until the touch shell is built, and the phone's below", () => {
+    viewport(1180, { coarse: true });
+    const a = renderApp({ state: busy() });
+    expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
+    expect(screen.getByRole('listbox', { name: /All sessions/ })).toBeTruthy();
+    a.unmount();
+    viewport(600, { coarse: true });
+    renderApp({ state: busy() });
+    expect(screen.queryByRole('listbox', { name: /All sessions/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Tap for the legend/ })).toBeTruthy();
   });
 });
 

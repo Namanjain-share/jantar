@@ -16,7 +16,7 @@ import { readLocal, writeLocal } from '../../lib/storage.js';
 import { useApp, useNavigate, useNow } from '../context.js';
 import { RailLabel } from '../kit/RailLabel.js';
 import { SkeletonRows } from '../kit/Skeleton.js';
-import { useFrame } from '../shell/layout.js';
+import { useLayout } from '../shell/layout.js';
 import { Segmented } from './accounts/Segmented.js';
 import { searchParam } from './accounts/time.js';
 import { AlertRowDesk, AlertRowPhone } from './alerts/AlertRow.js';
@@ -37,7 +37,7 @@ export function Alerts() {
   const first = useApp((s) => s.state.seq === 0 && s.conn.status !== 'offline');
   const navigate = useNavigate();
   const now = useNow(30_000);
-  const phone = useFrame() === 'phone';
+  const phone = useLayout().chrome === 'phone';
   // What was new when the screen opened stays new while it is open.
   const [seenAtOpen] = useState(() => readLocal<string>(ALERTS_SEEN_KEY, ''));
   const [kind, setKind] = useState<KindFilter>(() => parseKind(searchParam('/alerts', 'kind')));

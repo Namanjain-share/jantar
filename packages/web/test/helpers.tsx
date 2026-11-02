@@ -25,6 +25,7 @@ import type { PushEnv } from '../src/lib/push.js';
 import { createRouter, memoryHistory } from '../src/lib/router.js';
 import { createAppStore, type AppStore } from '../src/store.js';
 import { createToastStore } from '../src/ui/context.js';
+import type { Layout, LayoutStore } from '../src/ui/shell/layout.js';
 
 export const T0 = '2026-01-15T10:00:00.000Z';
 export const NOW = Date.parse('2026-01-15T10:05:00.000Z');
@@ -373,6 +374,8 @@ export function renderApp(opts: {
   pushEnv?: PushEnv;
   connection?: Connection;
   status?: 'live' | 'polling' | 'connecting' | 'offline' | 'unauthorized';
+  /** The window's layout (layoutAt(width)), or a store the test changes; omitted = matchMedia (none in jsdom: the phone). */
+  layout?: Layout | LayoutStore;
 } = {}) {
   const store = createAppStore(opts.state ?? emptyState());
   store.getState().setConn({ status: opts.status ?? 'live', lastOkAt: NOW });
@@ -383,7 +386,7 @@ export function renderApp(opts: {
   const connection = opts.connection ?? fakeConnection();
   const pushEnv = opts.pushEnv ?? fakePushEnv();
   const utils = render(
-    <App store={store} api={api} router={router} toasts={toasts} connection={connection} pushEnv={pushEnv} now={() => NOW} />,
+    <App store={store} api={api} router={router} toasts={toasts} connection={connection} pushEnv={pushEnv} now={() => NOW} {...(opts.layout ? { layout: opts.layout } : {})} />,
   );
   return { ...utils, store, router, history, toasts, api, connection };
 }

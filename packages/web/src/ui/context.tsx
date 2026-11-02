@@ -11,6 +11,7 @@ import type { Connection } from '../lib/connection.js';
 import type { PushEnv } from '../lib/push.js';
 import type { Route, Router } from '../lib/router.js';
 import type { AppState, AppStore } from '../store.js';
+import type { Layout, LayoutStore } from './shell/layout.js';
 
 export type ToastTone = 'info' | 'ok' | 'error';
 export interface Toast {
@@ -50,6 +51,8 @@ export interface AppDeps {
   pushEnv?: PushEnv;
   /** Clock for "x minutes ago"; omitted = Date.now. */
   now?: () => number;
+  /** The window's layout (shell/layout.ts); omitted = the browser's media queries. Tests pass one, or a store they change. */
+  layout?: Layout | LayoutStore;
 }
 
 const Ctx = createContext<AppDeps | null>(null);

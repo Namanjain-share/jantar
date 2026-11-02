@@ -22,7 +22,7 @@ import { boardOrder, FLEET_COPY, type Account, type NodeView, type State } from 
 import { useMemo, useState } from 'react';
 import { useApp, useNow } from '../../context.js';
 import { RailLabel } from '../../kit/RailLabel.js';
-import { useFrame } from '../../shell/layout.js';
+import { useLayout } from '../../shell/layout.js';
 import { offlineSince } from '../session/Info.js';
 import { ceilingOf } from './hooks.js';
 import { buildRows } from './model.js';
@@ -99,7 +99,7 @@ function CswapAccounts({ node, state, now, phone }: { node: NodeView; state: Sta
 export function MachineAccounts() {
   const state = useApp((s) => s.state);
   const now = useNow(30_000);
-  const phone = useFrame() === 'phone';
+  const phone = useLayout().chrome === 'phone';
   const nodes = Object.values(state.nodes ?? {}).sort((a, b) => a.name.localeCompare(b.name));
   if (!nodes.length) return null;
   return (

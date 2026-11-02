@@ -1,0 +1,113 @@
+/**
+ * The layout context (shell/layout.ts): the size classes and the chrome as
+ * tables, one listener per query for the whole app, and a layout injected
+ * through AppDeps.layout instead of a matchMedia stub.
+ */
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { QUERIES, chromeFor, createLayoutStore, frameOf, layoutAt, sizeFor, useLayout, type Chrome, type Size } from '../src/ui/shell/layout.js';
+import { renderApp, session, stateWith } from './helpers.js';
+
+/** A window `width` wide with a fine or coarse pointer; counts the change listeners added and removed. */
+function stubWindow(width: number, coarse = false) {
+  const listening = new Map<string, number>();
+  vi.stubGlobal('matchMedia', (query: string) => {
+    const min = /min-width:\s*(\d+)px/.exec(query);
+    const pointer = /pointer:\s*(coarse|fine)/.exec(query);
+    const matches = (min ? width >= Number(min[1]) : true) && (pointer ? (pointer[1] === 'coarse') === coarse : true);
+    return {
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: () => listening.set(query, (listening.get(query) ?? 0) + 1),
+      removeEventListener: () => listening.set(query, (listening.get(query) ?? 0) - 1),
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    };
+  });
+  return listening;
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('size classes and chrome', () => {
+  // width: size, fine pointer, coarse pointer before the touch shell, coarse pointer with it
+  const rows: Array<[number, Size, Chrome, Chrome, Chrome]> = [
+    [320, 'compact', 'phone', 'phone', 'phone'],
+    [375, 'compact', 'phone', 'phone', 'phone'],
+    [585, 'compact', 'phone', 'phone', 'phone'],
+    [639, 'compact', 'phone', 'phone', 'phone'],
+    [640, 'medium', 'phone', 'phone', 'touch'],
+    [767, 'medium', 'phone', 'phone', 'touch'],
+    [768, 'medium', 'desk', 'desk', 'touch'],
+    [820, 'medium', 'desk', 'desk', 'touch'],
+    [1023, 'medium', 'desk', 'desk', 'touch'],
+    [1024, 'regular', 'desk', 'desk', 'touch'],
+    [1180, 'regular', 'desk', 'desk', 'touch'],
+    [1440, 'regular', 'desk', 'desk', 'touch'],
+  ];
+
+  it.each(rows)('%i px: %s; fine %s, coarse %s, coarse with the touch shell %s', (width, size, fine, coarse, touch) => {
+    expect(sizeFor(width)).toBe(size);
+    expect(chromeFor(width, false, false)).toBe(fine);
+    expect(chromeFor(width, false, true)).toBe(fine);
+    expect(chromeFor(width, true, false)).toBe(coarse);
+    expect(chromeFor(width, true, true)).toBe(touch);
+  });
+
+  it('the Mac keeps its chrome until the touch shell is built, and has a keyboard from the start', () => {
+    expect(layoutAt(1440)).toEqual({ size: 'regular', coarse: false, chrome: 'desk', keyboard: true, kbUp: false, wide: true });
+    expect(layoutAt(820, { coarse: true })).toEqual({ size: 'medium', coarse: true, chrome: 'desk', keyboard: false, kbUp: false, wide: false });
+  });
+
+  it('keeps the older frames as an adapter', () => {
+    expect(frameOf(layoutAt(390))).toBe('phone');
+    expect(frameOf(layoutAt(767))).toBe('phone');
+    expect(frameOf(layoutAt(900))).toBe('tablet');
+    expect(frameOf(layoutAt(1100))).toBe('desk');
+    expect(frameOf(layoutAt(1280))).toBe('wide');
+  });
+});
+
+describe('the provider', () => {
+  it('listens with one listener per query for the whole app: five', () => {
+    const listening = stubWindow(1440);
+    renderApp({ state: stateWith({ sessions: [session('web-app'), session('api', { status: 'idle' })] }) });
+    expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
+    const active = [...listening].filter(([, n]) => n > 0);
+    expect(active.map(([q]) => q).sort()).toEqual(Object.values(QUERIES).sort());
+    expect(active.every(([, n]) => n === 1)).toBe(true);
+  });
+
+  it('reads the window: 1440 with a fine pointer is the desk, 600 with a coarse one the phone', () => {
+    stubWindow(1440);
+    const a = renderApp({ state: stateWith({ sessions: [session('web-app')] }) });
+    expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
+    a.unmount();
+    stubWindow(600, true);
+    renderApp({ state: stateWith({ sessions: [session('web-app')] }) });
+    expect(screen.queryByRole('region', { name: 'Ledger' })).toBeNull();
+    expect(screen.getByRole('link', { name: /Board/ }).closest('nav')?.getAttribute('aria-label')).toBe('Main');
+  });
+
+  it('takes a layout from the test instead of matchMedia, and follows a store the test changes', () => {
+    const layout = createLayoutStore(layoutAt(1440));
+    renderApp({ state: stateWith({ sessions: [session('web-app')] }), layout });
+    expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
+    act(() => layout.setState(layoutAt(390), true));
+    expect(screen.queryByRole('region', { name: 'Ledger' })).toBeNull();
+    act(() => layout.setState(layoutAt(1100), true));
+    expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
+  });
+
+  it('a screen rendered on its own follows the window by itself', () => {
+    stubWindow(1440);
+    function Probe() {
+      const l = useLayout();
+      return <p>{`${l.size} ${l.chrome}`}</p>;
+    }
+    render(<Probe />);
+    expect(screen.getByText('regular desk')).toBeTruthy();
+  });
+});
