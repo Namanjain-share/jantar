@@ -20,6 +20,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ChatTurn } from '@jantar/protocol';
+import { useDraft } from '../../../lib/drafts.js';
 import { useDeps, useNow } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
@@ -44,12 +45,13 @@ export function Chat() {
   const turns = [...earlier.filter((t) => !(load.data?.turns ?? []).some((x) => x.id === t.id)), ...(load.data?.turns ?? [])];
   const area = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
-  const [draft, setDraft] = useState('');
+  // 0.11: the box is a draft (lib/drafts.ts), kept past leaving Chat and coming back.
+  const [draft, setDraft] = useDraft('chat');
   const [confirm, setConfirm] = useState(false);
   const send = useTap();
   const clear = useTap();
   const more = useTap();
-  const chips = useChips();
+  const chips = useChips('chat');
   /** Failed turns sent again from here: their Try again goes, so a second tap sends no duplicate. */
   const [retried, setRetried] = useState<ReadonlySet<string>>(() => new Set());
 

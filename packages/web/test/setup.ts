@@ -1,5 +1,6 @@
 import { cleanup, configure } from '@testing-library/react';
 import { afterEach, beforeAll } from 'vitest';
+import { forgetDrafts } from '../src/lib/drafts.js';
 
 const dom = typeof window !== 'undefined';
 
@@ -29,4 +30,6 @@ afterEach(() => {
   } catch {
     // ignore
   }
+  // After cleanup(): an unmounting composer puts its draft aside, which the next test must not find.
+  forgetDrafts();
 });

@@ -19,6 +19,7 @@ import clsx from 'clsx';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { CHAT_PHOTO_EDGE, CHAT_PHOTOS_MAX, CHAT_PHOTO_MAX_BYTES, CHAT_TEXT_MAX } from '@jantar/protocol';
 import { errorText } from '../../../lib/api.js';
+import { getAside, setAside } from '../../../lib/drafts.js';
 import { useDeps } from '../../context.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { useLayout } from '../../shell/layout.js';
@@ -52,12 +53,22 @@ export function chipTrouble(chips: readonly Pick<ChatChip, 'error'>[]): string |
 }
 
 /** The chips and their uploads; `ids()` names the uploaded ones for a send, `clear()` empties the row once the Mac took it. */
-export function useChips() {
+export function useChips(draftKey?: string) {
   const { api } = useDeps();
-  const [chips, setChips] = useState<ChatChip[]>([]);
+  // 0.11: with a draft key, the photos already on the Mac wait for the box to open again (lib/drafts.ts).
+  const [chips, setChips] = useState<ChatChip[]>(() => (draftKey ? (getAside<ChatChip[]>(draftKey) ?? []) : []));
   const live = useRef(chips);
   live.current = chips;
-  useEffect(() => () => live.current.forEach((c) => URL.revokeObjectURL(c.url)), []);
+  useEffect(
+    () => () => {
+      const keep = draftKey ? live.current.filter((c) => c.id && !c.error) : [];
+      if (draftKey) setAside(draftKey, keep.length ? keep : undefined);
+      live.current.forEach((c) => {
+        if (!keep.includes(c)) URL.revokeObjectURL(c.url);
+      });
+    },
+    [draftKey],
+  );
 
   const patch = (key: string, p: Partial<ChatChip>) => setChips((cs) => cs.map((c) => (c.key === key ? { ...c, ...p } : c)));
 

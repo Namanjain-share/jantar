@@ -32,6 +32,7 @@
  * until removed or swept.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getAside, setAside, useDraft } from '../../../lib/drafts.js';
 import {
   SEND_FINAL_STAGES,
   UPLOADS_IN_FLIGHT,
@@ -288,24 +289,37 @@ export function promptProblem(raw: string, machine?: string | null): string | nu
 
 const OTHERS_KEEP_MS = 15 * 60_000;
 
+/** What a session's draft keeps beside its text: the chips already on the Mac, and the names' counters. */
+interface KeptChips {
+  chips: Attachment[];
+  counts: { chip: number; image: number; file: number };
+}
+
+/** A chip that can wait for the session to open again: on the Mac, and not taken by a send. */
+const keptChip = (a: Attachment) => a.state === 'ready' && a.upload !== undefined && !a.sending;
+
 export function useSends(sid: string, now: number) {
   const { api } = useDeps();
   const jobs = useApp((s) => s.state.sends);
   const offline = useApp((s) => s.conn.status === 'offline');
   const [local, setLocal] = useState<LocalSend[]>([]);
-  const [draft, setDraft] = useState('');
+  // 0.11: the prompt and the chips already on the Mac are this session's draft (lib/drafts.ts), so
+  // leaving the session and opening it again, or a reload of the tab, finds them as they were.
+  const draftKey = `s:${sid}`;
+  const [draft, setDraft] = useDraft(draftKey);
+  const [kept] = useState(() => getAside<KeptChips>(draftKey));
   const [sentCount, setSentCount] = useState(0);
   const area = useRef<HTMLTextAreaElement>(null);
   // v0.4.2: the chips, mirrored in a ref so an upload that ends between renders sees the latest list.
-  const [attachments, setAttachmentList] = useState<Attachment[]>([]);
-  const chips = useRef<Attachment[]>([]);
+  const [attachments, setAttachmentList] = useState<Attachment[]>(() => kept?.chips ?? []);
+  const chips = useRef<Attachment[]>(kept?.chips ?? []);
   const files = useRef(new Map<string, ChipFile>());
   const inFlight = useRef(new Set<string>());
   /** Upload slots still held on the Mac by aborted uploads (ABORT_SETTLE_MS each). */
   const settling = useRef(0);
   /** Photos wait here to be prepared one at a time. */
   const photos = useRef<Promise<unknown>>(Promise.resolve());
-  const counts = useRef({ chip: 0, image: 0, file: 0 });
+  const counts = useRef(kept?.counts ?? { chip: 0, image: 0, file: 0 });
   const alive = useRef(true);
   // Read by uploads that end between renders.
   const offlineNow = useRef(offline);
@@ -330,9 +344,12 @@ export function useSends(sid: string, now: number) {
     return () => {
       alive.current = false;
       for (const f of map.values()) f.ctrl?.abort();
-      for (const a of chips.current) revoke(a.thumb);
+      // The chips already on the Mac stay with the draft (their thumbnails too); the rest go.
+      const keep = chips.current.filter(keptChip);
+      setAside(draftKey, keep.length ? ({ chips: keep, counts: { ...counts.current } } satisfies KeptChips) : undefined);
+      for (const a of chips.current) if (!keep.includes(a)) revoke(a.thumb);
     };
-  }, []);
+  }, [draftKey]);
 
   // Offline (spec 6.8): the uploads on their way fail with Retry, and none starts (pump). Back online, the line saying so goes.
   useEffect(() => {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SendJob } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { fakeUploads, pdf, textFile } from './attach-helpers.js';
+import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
 import { emit, fakeApi, iso, renderApp, sendJob, session, stateWith } from './helpers.js';
 
 const box = () => screen.getByLabelText('Prompt for Claude') as HTMLTextAreaElement;
@@ -188,6 +189,55 @@ describe('sending with attachments (v0.4.2)', () => {
     fireEvent.click(sendButton());
     await waitFor(() => expect(api.sendPrompt).toHaveBeenCalledTimes(1));
     expect(api.sendPrompt.mock.calls[0]).toEqual(['a', '', expect.any(String), { attachments: [{ upload: ids[0], label: 'scan.pdf' }] }]);
+  });
+
+  it('0.11 c09: the prompt and its chips survive leaving the session and opening it again', async () => {
+    const { router } = await withFiles([pdf('report.pdf')]);
+    fireEvent.change(box(), { target: { value: 'read this first' } });
+    expect(sessionStorage.getItem('jantar:draft:s:a')).toBe('read this first');
+    // The phone: the board replaces the session, which unmounts.
+    act(() => router.getState().navigate('/'));
+    expect(screen.queryByLabelText('Prompt for Claude')).toBeNull();
+    act(() => router.getState().navigate('/s/a'));
+    expect(box().value).toBe('read this first');
+    expect(chipNames()).toEqual(['report.pdf']);
+    expect(sendButton().disabled).toBe(false);
+  });
+
+  it('0.11 c09: the prompt and its chips stay through a layout change (a rotation across 768), in the same composer', async () => {
+    const up = fakeUploads();
+    const api = fakeApi({ uploadCreate: up.uploadCreate, uploadDelete: up.uploadDelete });
+    const layout = createLayoutStore(layoutAt(820));
+    renderApp({ path: '/s/a', api, layout, state: stateWith({ sessions: [session('a', { status: 'idle' })] }) });
+    fireEvent.change(screen.getByLabelText('Add files'), { target: { files: [pdf('report.pdf')] } });
+    await waitFor(() => expect(up.uploadCreate).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      up.finish(0);
+    });
+    fireEvent.change(box(), { target: { value: 'read this first' } });
+    const area = box();
+    for (const width of [390, 1180, 767, 768]) {
+      act(() => layout.setState(layoutAt(width), true));
+      expect(box()).toBe(area);
+      expect(area.value).toBe('read this first');
+      expect(chipNames()).toEqual(['report.pdf']);
+    }
+  });
+
+  it('0.11 c09: a chip still uploading when the session is left does not come back; a sent prompt leaves no draft', async () => {
+    const up = fakeUploads();
+    const api = fakeApi({ uploadCreate: up.uploadCreate, uploadDelete: up.uploadDelete });
+    const { router } = renderApp({ path: '/s/a', api, state: stateWith({ sessions: [session('a', { status: 'idle' })] }) });
+    fireEvent.change(screen.getByLabelText('Add files'), { target: { files: [pdf('slow.pdf')] } });
+    await waitFor(() => expect(up.uploadCreate).toHaveBeenCalledTimes(1));
+    act(() => router.getState().navigate('/'));
+    act(() => router.getState().navigate('/s/a'));
+    expect(chipNames()).toEqual([]);
+    fireEvent.change(box(), { target: { value: 'ship it' } });
+    fireEvent.keyDown(box(), { key: 'Enter', metaKey: true });
+    await waitFor(() => expect(api.sendPrompt).toHaveBeenCalled());
+    expect(box().value).toBe('');
+    expect(sessionStorage.getItem('jantar:draft:s:a')).toBeNull();
   });
 
   it('a chip can not be removed while its send is on the way', async () => {

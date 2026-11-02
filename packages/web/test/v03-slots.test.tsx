@@ -114,7 +114,8 @@ describe('session screen slots', () => {
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('@src/send.ts:3 ');
     expect(api.sendPrompt).not.toHaveBeenCalled();
     unmount();
+    // 0.11: the draft is kept for the session (lib/drafts.ts), but the mention isn't added a second time.
     renderApp({ path: '/s/a', state: stateWith({ sessions: [session('a', { status: 'idle' })] }) });
-    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('@src/send.ts:3 ');
   });
 });

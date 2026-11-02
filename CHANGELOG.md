@@ -5,6 +5,9 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## 0.12.0 (unreleased)
 
+- What you type to a session, to Chat or as a new session's first prompt
+  is kept when you leave and come back, or reload the tab, until it is
+  sent; files and photos already uploaded stay attached to it.
 - The board puts the ledger beside a session from a window 856 px wide
   (was 1024), and its column is 340 px until the window is about 1240 px
   wide (it was 360 from 1024 and 440 from 1280). Each place keeps its own

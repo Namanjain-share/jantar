@@ -66,6 +66,7 @@ import {
   type LaunchStartBody,
 } from '@jantar/protocol';
 import { errorText, isApiError } from '../../../lib/api.js';
+import { clearDraft, useDraft } from '../../../lib/drafts.js';
 import { accountId } from '../../../lib/format.js';
 import { newIdempotencyKey } from '../../../lib/ids.js';
 import { useApp, useDeps, useNow } from '../../context.js';
@@ -146,7 +147,9 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
   const [heldOk, setHeldOk] = useState(false);
   const [picks, setPicks] = useState<Partial<LaunchFlags>>({});
   const [name, setName] = useState(initialName);
-  const [prompt, setPrompt] = useState(initialPrompt);
+  // 0.11: the first prompt is this folder's draft (lib/drafts.ts), cleared once a start is accepted; without one, Try again's prompt.
+  const promptKey = `new:${root}:${path}`;
+  const [prompt, setPrompt] = useDraft(promptKey, initialPrompt);
   const [picking, setPicking] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<unknown>(null);
@@ -279,6 +282,7 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
       attempt.current = null;
       if (text) keepPrompt(r.job.id, text);
       if (retryOf) takePrompt(retryOf);
+      clearDraft(promptKey);
       onStarted(r.job);
     } catch (e) {
       if (!isApiError(e, 'network')) attempt.current = null;
