@@ -1792,9 +1792,11 @@ export interface LifeModuleBuilders {
 /**
  * v0.8: where a save came from: the phone's Add post, the CLI, a Claude
  * session (`jantar mcp`, plain saves only), the iOS Shortcut's door, Ask's
- * save card. Kept in the item as `via`.
+ * save card. Kept in the item as `via`. v0.10 (spec 0.10 H, proposed):
+ * 'chat', what Chat saved (a link in the user's own message); 'ask' stays
+ * for items saved before.
  */
-export type IntelVia = 'phone' | 'cli' | 'claude' | 'shortcut' | 'ask';
+export type IntelVia = 'phone' | 'cli' | 'claude' | 'shortcut' | 'ask' | 'chat';
 
 /**
  * The Intel shelf (WP-IN: intel/service.ts): JSONL files named on the Mac
