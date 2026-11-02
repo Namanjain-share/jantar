@@ -457,10 +457,10 @@ To turn it off: the same switch. To take the six sites back as well:
 
 ## Updating the extension
 
-**0.8.0**: build again and press the reload arrow on the Jantar card. Chrome
-grants the new `alarms` and `scripting` permissions on that reload without
-asking; the six post sites are asked only when you turn on Read saved
-links.
+**0.9.0**: build again and press the reload arrow on the Jantar card (the
+extension itself does not change). Coming from 0.7 or older, Chrome grants
+the `alarms` and `scripting` permissions on that reload without asking;
+the six post sites are asked only when you turn on Read saved links.
 
 After pulling a new version of Jantar: build again (`pnpm -r build`), then
 in `chrome://extensions` press the reload arrow on the Jantar card, then
