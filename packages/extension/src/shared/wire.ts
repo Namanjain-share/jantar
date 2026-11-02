@@ -73,8 +73,8 @@ export const READ_LIMITS = Object.freeze({
   pollEveryMs: 30_000,
   /** Jobs taken per wake, one at a time. */
   jobsPerWake: 5,
-  /** One job, start to result (INTEL_READ_LIMITS.chromeResultMs). */
-  jobMs: 45_000,
+  /** One job, start to result: 5 s inside INTEL_READ_LIMITS.chromeResultMs, whose timer starts first (on the daemon). */
+  jobMs: 40_000,
   /** A new tab's about:blank loading, at most, before the post's URL goes in. */
   blankMs: 2_000,
   /** The tab's load, then a settle before reading. */

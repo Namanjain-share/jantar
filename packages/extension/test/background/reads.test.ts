@@ -157,6 +157,11 @@ describe('G10: one read', () => {
       job({ url: 'https://www.youtube.com/redirect?q=https%3A%2F%2Fexample.com' , platform: 'youtube' }),
       job({ url: 'https://www.youtube.com/watch?v=Ab3dE6gH9jK' }),
       job({ url: 'http://www.instagram.com/reel/AbC123xyz/' }),
+      // The post's shape, but not the URL rebuilt from it: another query, a fragment, the handle's path.
+      job({ url: 'https://www.instagram.com/reel/AbC123xyz/?next=https%3A%2F%2Fexample.com' }),
+      job({ url: 'https://www.instagram.com/reel/AbC123xyz/#x' }),
+      job({ url: 'https://www.instagram.com/example_cook/reel/AbC123xyz/' }),
+      job({ url: 'https://x.com/i/status/1850000000000000000?anything=1', platform: 'x' }),
       job({ platform: 'threads' }),
       job({ frames: 'many' }),
     ]) {

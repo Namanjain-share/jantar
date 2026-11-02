@@ -5,8 +5,9 @@
  * Chrome, as the user, one at a time, at most READ_LIMITS.jobsPerWake per
  * wake, each within READ_LIMITS.jobMs:
  *
- * 1. the job's URL must pass `chromePostOf` for the job's platform (the
- *    daemon rebuilt it from the post's parts; anything else is `blocked`),
+ * 1. the job's URL must be exactly the post's URL rebuilt from its parts
+ *    (`chromePostOf`, then `chromePathOf`) for the job's platform, as the
+ *    daemon sends it; anything else (another query, a fragment) is `blocked`,
  *    and Chrome must allow that post site (`no_permission`);
  * 2. a background tab of its own at about:blank (never active); once
  *    about:blank has loaded (≤ READ_LIMITS.blankMs: Chrome hides about:blank
@@ -30,7 +31,7 @@
  * platform URL. Nothing here logs a URL, a title or page text.
  */
 import { readPage, type PageRead } from '@jantar/protocol/page-read';
-import { CHROME_PLATFORMS, CHROME_POST_HOSTS, chromePostOf, isLoginPath, type ChromePlatform } from '@jantar/protocol/post-url';
+import { CHROME_PLATFORMS, CHROME_POST_HOSTS, chromePathOf, chromePostOf, isLoginPath, type ChromePlatform } from '@jantar/protocol/post-url';
 import type { Done } from '../shared/messages.js';
 import { postOrigins } from '../shared/post-sites.js';
 import { READ_ALARM, READ_LIMITS } from '../shared/wire.js';
@@ -86,6 +87,20 @@ export function offShape(url: string | undefined, platform: ChromePlatform): Rea
     // not a URL at all
   }
   return 'redirected';
+}
+
+/**
+ * The job's URL is exactly the one rebuilt from its post's parts on the
+ * platform's host (as the daemon sends it): no other query, no fragment,
+ * nothing the shape check alone would let through.
+ */
+export function rebuilt(job: Pick<ReadJob, 'url' | 'platform'>): boolean {
+  const post = chromePostOf(job.url);
+  if (!post || post.platform !== job.platform || job.url.includes('#')) return false;
+  const path = chromePathOf(post);
+  // chromePostOf parsed it (https, no port or login): the host and the path with its query are compared as written.
+  const u = new URL(job.url);
+  return path !== null && u.href === job.url && u.hostname === CHROME_POST_HOSTS[post.platform] && `${u.pathname}${u.search}` === path;
 }
 
 /** A read cut to the daemon's body limit: frames past the cap or too big dropped first, then the newest frames, then the text. */
@@ -175,7 +190,7 @@ export function createReads(ctx: Pick<Ctx, 'client' | 'sleep'>, opts: { limits?:
   }
 
   async function readIn(job: ReadJob, held: { tabId?: number }): Promise<ReadOutcome> {
-    if (chromePostOf(job.url)?.platform !== job.platform) return { ok: false, why: 'blocked' };
+    if (!rebuilt(job)) return { ok: false, why: 'blocked' };
     let origin: string;
     try {
       origin = `${new URL(job.url).origin}/*`;

@@ -440,7 +440,7 @@ How one read goes:
    **the post, not the page** (the caption or text, the creator, the time,
    the post's own pictures, top comments on Reddit and LinkedIn, and up to 4
    frames of the video when Chrome draws them), and closes the tab. Always,
-   within 45 seconds.
+   within 40 seconds.
 
 It never clicks, types, scrolls, likes, follows or posts, and never reads
 your feed, your notifications, the page's header or menus, or anything with

@@ -66,7 +66,7 @@ describe('wire', () => {
     expect({ ...READ_LIMITS }).toEqual({
       pollEveryMs: 30_000,
       jobsPerWake: 5,
-      jobMs: 45_000,
+      jobMs: 40_000,
       blankMs: 2_000,
       completeMs: 20_000,
       settleMs: 2_500,
@@ -76,7 +76,8 @@ describe('wire', () => {
       resultBytes: 2 * 1024 * 1024,
     });
     expect(Object.isFrozen(READ_LIMITS)).toBe(true);
-    expect(READ_LIMITS.jobMs).toBe(INTEL_READ_LIMITS.chromeResultMs);
+    // The daemon's timer starts when it hands the job over: the extension answers before it ends.
+    expect(READ_LIMITS.jobMs).toBe(INTEL_READ_LIMITS.chromeResultMs - 5_000);
     expect(READ_LIMITS.frames).toBe(INTEL_READ_LIMITS.chromeFrames);
     expect(READ_LIMITS.frameBytes).toBe(INTEL_READ_LIMITS.pageFrameBytes);
     expect(READ_LIMITS.textMax).toBe(INTEL_READ_LIMITS.pageTextMax);
