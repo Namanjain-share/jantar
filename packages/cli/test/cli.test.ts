@@ -92,7 +92,9 @@ describe('jantar command line', () => {
     expect(cmd?.owner).toBe('WP-POSTS');
     const help = memoryIo({ HOME: '/nonexistent/jantar-test-home' });
     expect(await main(['post', '--help'], { io: help })).toBe(EXIT.ok);
-    expect(help.stdout).toContain('usage: jantar post <add --platform <p> [options]|list [--done] [--json]>');
+    expect(help.stdout).toContain("usage: jantar post <add --platform <p> [options]|log '<link>' [options]|list [--done] [--json]>");
+    // v0.9: log a comment you made.
+    expect(help.stdout).toContain("post log '<link>' [--text-file <path> | --text <t>] [--where <w>]");
     expect(help.stdout).toContain('reddit, instagram, x, linkedin, youtube, tiktok, threads, facebook, hn, other');
     expect(cmd?.stub).toBeUndefined();
   });

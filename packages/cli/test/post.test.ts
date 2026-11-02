@@ -7,8 +7,11 @@
  * and a body over the daemon's limit before sending, and says when a time
  * already gone in the Life zone won't ring; `list` prints the week line and
  * one line per post, never the text or notes (only `--json` does), with
- * `--done` times in the Life zone. The daemon's 403 and 429 sentences
- * reach the user as they are. Synthetic values only.
+ * `--done` times in the Life zone and each posted link. `log` (v0.9) sends
+ * a posted comment with its link, the platform and where read from the
+ * link (`--where` overrides), and refuses a link that is not a whole https
+ * one before sending. The daemon's 403, 409 and 429 sentences reach the
+ * user as they are. Synthetic values only.
  */
 import { mkdir, mkdtemp, rm, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -99,6 +102,7 @@ describe('post add', () => {
       ['add', '--platform', 'reddit', '--done'],
       ['add', '--platform', 'reddit', 'extra'],
       ['list', '--platform', 'reddit'],
+      ['list', 'extra'],
       ['frob'],
       [],
     ]) {
@@ -269,10 +273,31 @@ describe('post list', () => {
     const r = await run(['list', '--done'], ctl);
     expect(ctl.calls[0]?.path).toBe('/v1/posts?done=1');
     expect(r.out.split('\n').slice(1)).toEqual([
-      '2026-11-02 19:41  posted   Reddit · r/exampletools · post  01JSYNTHPOST0000000000000E',
+      '2026-11-02 19:41  posted   Reddit · r/exampletools · post  01JSYNTHPOST0000000000000E  https://www.example.com/p/1',
       '2026-11-01 09:05  skipped  Instagram · story  01JSYNTHPOST0000000000000F',
       '',
     ]);
+  });
+
+  it('--done ends a posted row with its whole link (a control character printed as a space), and never prints text or notes', async () => {
+    const long = `https://www.reddit.com/r/exampletools/comments/1abc2de/comment/kx9y8z7/?utm_source=share&utm_medium=web3x&utm_name=${'a'.repeat(120)}`;
+    const done: Post[] = [
+      { ...base, id: '01JSYNTHPOST0000000000000G', platform: 'reddit', kind: 'comment', where: 'r/exampletools', status: 'posted', postedAt: '2026-11-02T15:44:00.000Z', postedUrl: long, text: MARKER, notes: MARKER },
+      { ...base, id: '01JSYNTHPOST0000000000000H', platform: 'x', kind: 'comment', status: 'posted', postedAt: '2026-11-02T15:40:00.000Z', postedUrl: 'https://x.com/example_user/status/1\u001b[31mred' },
+    ];
+    const r = await run(['list', '--done'], fakeCtl({ 'GET /v1/posts': () => ok(reply({ posts: done })), 'GET /v1/life/status': ok({ timezone: 'UTC' }) }));
+    expect(r.out.split('\n').slice(1)).toEqual([
+      `2026-11-02 15:44  posted   Reddit · r/exampletools · comment  01JSYNTHPOST0000000000000G  ${long}`,
+      '2026-11-02 15:40  posted   X · comment  01JSYNTHPOST0000000000000H  https://x.com/example_user/status/1red',
+      '',
+    ]);
+    expect(r.out).not.toContain(MARKER);
+    expect(r.out).not.toContain('\u001b');
+  });
+
+  it('a list without --done never prints a link', async () => {
+    const r = await run(['list'], fakeCtl({ 'GET /v1/posts': () => ok(reply()) }));
+    expect(r.out).not.toContain('https://');
   });
 
   it('--done shows the times in the Life zone, not the Mac\'s', async () => {
@@ -292,5 +317,87 @@ describe('post list', () => {
     const r = await run(['list'], fakeCtl({ 'GET /v1/posts': fail('forbidden', 'Posts are off. Turn them on at your Mac: jantar life on posts', 403) }));
     expect(r.code).toBe(EXIT.failed);
     expect(r.err).toBe('jantar post: Posts are off. Turn them on at your Mac: jantar life on posts\n');
+  });
+});
+
+describe('post log', () => {
+  const SHARE = 'https://www.reddit.com/r/exampletools/s/AbCdEf1234';
+
+  it('sends a posted comment with its link, the platform and where read from the link, and says what it logged', async () => {
+    const rows: [string, Record<string, unknown>, string][] = [
+      [
+        'https://www.reddit.com/r/exampletools/comments/1abc2de/comment/kx9y8z7/?utm_source=share&utm_medium=web3x',
+        { platform: 'reddit', where: 'r/exampletools' },
+        'Reddit · r/exampletools',
+      ],
+      [SHARE, { platform: 'reddit', where: 'r/exampletools' }, 'Reddit · r/exampletools'],
+      ['https://redd.it/1abc2de', { platform: 'reddit' }, 'Reddit'],
+      ['https://x.com/example_user/status/1234567890123456789', { platform: 'x' }, 'X'],
+      ['https://forum.example.org/t/1#post-2', { platform: 'other', where: 'forum.example.org' }, 'Other · forum.example.org'],
+    ];
+    for (const [link, place, said] of rows) {
+      const r = await run(['log', `  ${link} `]);
+      expect(r.err, link).toBe('');
+      expect(r.code, link).toBe(EXIT.ok);
+      expect(r.sent, link).toEqual([
+        { method: 'POST', path: '/v1/posts', body: { ...place, kind: 'comment', status: 'posted', postedUrl: link }, opts: { idempotencyKey: expect.any(String) } },
+      ]);
+      expect(r.out, link).toBe(`Logged comment ${ID} · ${said}\n`);
+    }
+  });
+
+  it('--where overrides the link; --text and --text-file give what was written', async () => {
+    const over = await run(['log', SHARE, '--where', 'r/examplecode', '--text', '  What I wrote.  ']);
+    expect(over.sent[0]?.body).toEqual({ platform: 'reddit', kind: 'comment', status: 'posted', postedUrl: SHARE, where: 'r/examplecode', text: 'What I wrote.' });
+    expect(over.out).toBe(`Logged comment ${ID} · Reddit · r/examplecode\n`);
+    const x = await run(['log', 'https://x.com/example_user/status/1234567890123456789', '--where', '@example_studio']);
+    expect(x.sent[0]?.body).toMatchObject({ platform: 'x', where: '@example_studio' });
+    const file = join(dir, 'said.md');
+    await writeFile(file, '\ufeffFirst line\r\n\r\nSecond line\r\n');
+    const fromFile = await run(['log', SHARE, '--text-file', file]);
+    expect(fromFile.code).toBe(EXIT.ok);
+    expect(fromFile.sent[0]?.body).toMatchObject({ text: 'First line\n\nSecond line' });
+    // An empty --where keeps the link's.
+    expect((await run(['log', SHARE, '--where', ' '])).sent[0]?.body).toMatchObject({ where: 'r/exampletools' });
+  });
+
+  it('a missing link, both text flags or another action\'s flag is usage; nothing sent', async () => {
+    for (const bad of [
+      ['log'],
+      ['log', SHARE, '--text', 'a', '--text-file', join(dir, 'x.md')],
+      ['log', SHARE, '--platform', 'reddit'],
+      ['log', SHARE, '--kind', 'post'],
+      ['log', SHARE, '--done'],
+      ['log', SHARE, '--status', 'ready'],
+    ]) {
+      const r = await run(bad);
+      expect(r.code, bad.join(' ')).toBe(EXIT.usage);
+      expect(r.sent, bad.join(' ')).toEqual([]);
+    }
+    expect((await run(['log'])).err).toContain("log needs the link to your comment, in quotes: jantar post log 'https://…'");
+  });
+
+  it('a link that is not a whole https link is one sentence, exit 1, nothing sent', async () => {
+    for (const link of ['http://www.reddit.com/r/exampletools/s/AbCdEf1234', 'www.reddit.com/r/exampletools', 'reddit.com/r/exampletools', 'javascript:alert(1)', '', ' ']) {
+      const r = await run(['log', link]);
+      expect(r.code, link).toBe(EXIT.failed);
+      expect(r.err, link).toBe("jantar post: The link must be a whole https link. Put it in quotes: jantar post log 'https://…'\n");
+      expect(r.sent, link).toEqual([]);
+    }
+    // A bad --where is the add's sentence.
+    const where = await run(['log', SHARE, '--where', 'r/example\ntools']);
+    expect(where.code).toBe(EXIT.failed);
+    expect(where.err).toBe('jantar post: --where must be one line of 1 to 80 characters\n');
+    expect(where.sent).toEqual([]);
+  });
+
+  it("the daemon's sentences reach the user as they are: the same link twice (409) and the hourly limit (429)", async () => {
+    const twice = await run(['log', SHARE], daemon({ 'POST /v1/posts': fail('conflict', 'You logged that link already.', 409) }));
+    expect(twice.code).toBe(EXIT.failed);
+    expect(twice.err).toBe('jantar post: You logged that link already.\n');
+    const limited = 'Scripts and Claude sessions added 30 posts this hour. Add more on the phone, or try again later.';
+    const many = await run(['log', SHARE], daemon({ 'POST /v1/posts': fail('rate_limited', limited, 429) }));
+    expect(many.code).toBe(EXIT.failed);
+    expect(many.err).toBe(`jantar post: ${limited}\n`);
   });
 });

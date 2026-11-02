@@ -6,6 +6,11 @@
  * Marking posted, skipping, editing, deleting and the weekly goals are the
  * phone's; ctl.sock has no route for them.
  *
+ * `log` (v0.9): a comment already made, posted now, over ctl.sock, counted
+ * in the 30 an hour. The platform and where come from the link alone
+ * (postPlaceOf; never fetched); `--where` overrides. The link must be one
+ * quoted word (in zsh an unquoted `?` is a glob and `&` backgrounds).
+ *
  * `add` checks the body with PostBodySchema first (one plain sentence for
  * the first field that fails, on one line), that `--at` names a real day,
  * then its encoded size against the daemon's body limit, and sends nothing
@@ -15,7 +20,7 @@
  * file the user names, so no denylist applies (`--text "$(cat f)"` reads
  * the same). `list` never prints a post's text or notes, except with
  * `--json`, which prints the reply as it came, for scripts; `--done` shows
- * when each went in the Life zone.
+ * when each went in the Life zone, and ends a row with its posted link.
  */
 import { open, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -30,6 +35,7 @@ import {
   PostBodySchema,
   ROUTES,
   postGoalLabels,
+  postPlaceOf,
   type LifeStatus,
   type Post,
   type PostBody,
@@ -40,7 +46,7 @@ import {
 import { UsageError, parseArgs, type ParsedArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { callDaemon } from '../ctl.js';
-import { clip } from '../lib/text.js';
+import { clean, clip } from '../lib/text.js';
 
 /** A text file larger than this on disk is refused before it is read. */
 export const TEXT_FILE_MAX_BYTES = 1024 * 1024;
@@ -53,12 +59,12 @@ const n = (v: number) => v.toLocaleString('en-US');
 
 const FLAGS = {
   platform: { type: 'string', help: `add: ${POST_PLATFORMS.join(', ')}` },
-  where: { type: 'string', help: 'add: a subreddit, an account or a handle (one line)' },
+  where: { type: 'string', help: 'add, log: a subreddit, an account or a handle (one line)' },
   kind: { type: 'string', help: `add: ${POST_KINDS.join(', ')} (default post)` },
   at: { type: 'string', help: 'add: "YYYY-MM-DD HH:MM" in the Life zone (it rings), or YYYY-MM-DD (it does not)' },
   title: { type: 'string', help: 'add: the title (one line)' },
-  text: { type: 'string', help: 'add: the text or caption' },
-  'text-file': { type: 'string', help: 'add: read the text from this UTF-8 file' },
+  text: { type: 'string', help: 'add, log: the text or caption (log: what you wrote)' },
+  'text-file': { type: 'string', help: 'add, log: read the text from this UTF-8 file' },
   notes: { type: 'string', help: 'add: flair, media, rules: shown on the phone, never copied' },
   link: { type: 'string', help: 'add: where to post it (https)' },
   status: { type: 'string', help: 'add: idea (default) or ready' },
@@ -143,6 +149,8 @@ function problem(field: PropertyKey | undefined): string {
       return `--notes must be at most ${n(NOTES_MAX)} characters`;
     case 'link':
       return '--link must be a whole https link';
+    case 'postedUrl':
+      return 'the link must be a whole https link';
     case 'due':
       return '--at must be a real day, and a time from 00:00 to 23:59';
     default:
@@ -194,23 +202,45 @@ export function weekLine(week: PostsResponse['week']): string {
   return `This week (${shortDay(week.from)} to ${shortDay(week.to)}): ${posted} · ${goals}`;
 }
 
-/** One list line: when (posted or skipped in `tz`, the Life zone), status, where and kind, the title clipped, the id. Never the text or the notes. */
+/**
+ * One list line: when (posted or skipped in `tz`, the Life zone), status, where and kind, the title clipped, the id,
+ * and with `done` the posted link (never clipped, so it still opens). Never the text or the notes.
+ */
 export function postLine(p: Post, done: boolean, tz?: string): string {
   const at = Date.parse(p.postedAt ?? p.updatedAt);
   const when = done ? (Number.isNaN(at) ? '-' : wallTime(at, tz)) : dueText(p.due);
   const title = p.title ? `  ${clip(p.title, TITLE_SHOWN)}` : '';
-  return `${when.padEnd(16)}  ${p.status.padEnd(done ? 7 : 5)}  ${placeOf(p)} · ${p.kind}${title}  ${p.id}`;
+  const link = done && p.postedUrl ? `  ${clean(p.postedUrl)}` : '';
+  return `${when.padEnd(16)}  ${p.status.padEnd(done ? 7 : 5)}  ${placeOf(p)} · ${p.kind}${title}  ${p.id}${link}`;
+}
+
+/** `--text` or `--text-file` (not both; an empty file refused), or undefined. */
+async function textOf(flags: Flags): Promise<string | undefined> {
+  if (flags.text !== undefined && flags['text-file'] !== undefined) throw new UsageError('give --text or --text-file, not both');
+  const text = flags['text-file'] !== undefined ? await readText(flags['text-file']) : flags.text;
+  if (flags['text-file'] !== undefined && given(text) === undefined) throw new Error(`--text-file ${clip(flags['text-file'], 80)} is empty`);
+  return text;
+}
+
+/** The checked body, refused with one sentence when PostBodySchema or the daemon's body limit would refuse it. */
+function checked(body: PostBody): PostBody {
+  const parsed = PostBodySchema.safeParse(body);
+  if (!parsed.success) throw new Error(problem(parsed.error.issues[0]?.path[0]));
+  if (parsed.data.due && !realDay(parsed.data.due.day)) throw new Error(problem('due'));
+  const bytes = Buffer.byteLength(JSON.stringify(parsed.data), 'utf8');
+  if (bytes > MAX_BODY_BYTES) {
+    throw new Error(`This post is ${n(Math.ceil(bytes / 1024))} KB once sent; the most is ${n(MAX_BODY_BYTES / 1024)} KB. Shorten the text or the notes.`);
+  }
+  return parsed.data;
 }
 
 async function add(ctx: CliContext, flags: Flags): Promise<number> {
   if (flags.platform === undefined) throw new UsageError(`add needs --platform (${POST_PLATFORMS.join(', ')})`);
-  if (flags.text !== undefined && flags['text-file'] !== undefined) throw new UsageError('give --text or --text-file, not both');
   const body: PostBody = { platform: oneOf<PostPlatform>(flags.platform, '--platform', POST_PLATFORMS) };
   if (flags.kind !== undefined) body.kind = oneOf<PostKind>(flags.kind, '--kind', POST_KINDS);
   if (flags.status !== undefined) body.status = oneOf(flags.status, '--status', ['idea', 'ready'] as const);
   if (flags.at !== undefined) body.due = dueOf(flags.at);
-  const text = flags['text-file'] !== undefined ? await readText(flags['text-file']) : flags.text;
-  if (flags['text-file'] !== undefined && given(text) === undefined) throw new Error(`--text-file ${clip(flags['text-file'], 80)} is empty`);
+  const text = await textOf(flags);
   for (const [key, value] of [
     ['where', flags.where],
     ['title', flags.title],
@@ -221,18 +251,29 @@ async function add(ctx: CliContext, flags: Flags): Promise<number> {
     const v = given(value);
     if (v !== undefined) body[key] = v;
   }
-  const parsed = PostBodySchema.safeParse(body);
-  if (!parsed.success) throw new Error(problem(parsed.error.issues[0]?.path[0]));
-  if (parsed.data.due && !realDay(parsed.data.due.day)) throw new Error(problem('due'));
-  const bytes = Buffer.byteLength(JSON.stringify(parsed.data), 'utf8');
-  if (bytes > MAX_BODY_BYTES) {
-    throw new Error(`This post is ${n(Math.ceil(bytes / 1024))} KB once sent; the most is ${n(MAX_BODY_BYTES / 1024)} KB. Shorten the text or the notes.`);
-  }
-  const r = await callDaemon<{ id: string }>(ctx.ctl, 'POST', ROUTES.postCreate.path, parsed.data, { idempotencyKey: ctx.deps.randomId() });
-  const due = parsed.data.due ? ` · ${dueText(parsed.data.due)}` : '';
+  const sent = checked(body);
+  const r = await callDaemon<{ id: string }>(ctx.ctl, 'POST', ROUTES.postCreate.path, sent, { idempotencyKey: ctx.deps.randomId() });
+  const due = sent.due ? ` · ${dueText(sent.due)}` : '';
   // A time already gone in the Life zone never rings: say so, so a wrong day or zone in a batch is seen.
-  const gone = parsed.data.due?.time !== undefined && dueText(parsed.data.due) < wallTime(ctx.deps.now() - LATE_MS, await lifeZone(ctx));
-  ctx.io.out(`Added post ${r.id} (${parsed.data.status ?? 'idea'}) · ${placeOf(parsed.data)}${due}${gone ? " (that time has passed: it won't ring)" : ''}\n`);
+  const gone = sent.due?.time !== undefined && dueText(sent.due) < wallTime(ctx.deps.now() - LATE_MS, await lifeZone(ctx));
+  ctx.io.out(`Added post ${r.id} (${sent.status ?? 'idea'}) · ${placeOf(sent)}${due}${gone ? " (that time has passed: it won't ring)" : ''}\n`);
+  return EXIT.ok;
+}
+
+/** A comment already made: posted now, with its link; the platform and where read from the link (never fetched). */
+async function log(ctx: CliContext, flags: Flags, link: string | undefined): Promise<number> {
+  if (link === undefined) throw new UsageError("log needs the link to your comment, in quotes: jantar post log 'https://…'");
+  const place = postPlaceOf(link);
+  if (!place) throw new Error("The link must be a whole https link. Put it in quotes: jantar post log 'https://…'");
+  const text = await textOf(flags);
+  const body: PostBody = { platform: place.platform, kind: 'comment', status: 'posted', postedUrl: link.trim() };
+  const where = given(flags.where) ?? place.where;
+  if (where !== undefined) body.where = where;
+  const t = given(text);
+  if (t !== undefined) body.text = t;
+  const sent = checked(body);
+  const r = await callDaemon<{ id: string }>(ctx.ctl, 'POST', ROUTES.postCreate.path, sent, { idempotencyKey: ctx.deps.randomId() });
+  ctx.io.out(`Logged comment ${r.id} · ${placeOf(sent)}\n`);
   return EXIT.ok;
 }
 
@@ -256,30 +297,39 @@ async function list(ctx: CliContext, flags: Flags): Promise<number> {
 export default defineCommand(
   {
     name: 'post',
-    summary: 'Add a social post to make (it rings at its time on the phone), and list them. Jantar never posts.',
-    usage: 'jantar post <add --platform <p> [options]|list [--done] [--json]>',
+    summary: 'Add a social post to make (it rings at its time on the phone), log a comment you made, and list them. Jantar never posts.',
+    usage: "jantar post <add --platform <p> [options]|log '<link>' [options]|list [--done] [--json]>",
     owner: 'WP-POSTS',
     help:
       '  post add --platform <p> [--where <w>] [--kind <k>] [--at "YYYY-MM-DD HH:MM" | --at YYYY-MM-DD]\n' +
       '           [--title <t>] [--text-file <path> | --text <t>] [--notes <n>] [--link <https url>]\n' +
       '           [--status idea|ready]\n' +
       '                                 add a post to make; a day and a time ring on the phone (a day alone does not)\n' +
-      '  post list [--done] [--json]    this week against the goals, then the posts to make (--done: posted and skipped)\n' +
+      "  post log '<link>' [--text-file <path> | --text <t>] [--where <w>]\n" +
+      '                                 log a comment you made: it counts as posted now; the platform and where come\n' +
+      '                                 from the link (Reddit: Share, then Copy link). Quote the link\n' +
+      '  post list [--done] [--json]    this week against the goals, then the posts to make (--done: posted and skipped,\n' +
+      '                                 with their links)\n' +
       `Platforms: ${POST_PLATFORMS.join(', ')}. Kinds: ${POST_KINDS.join(', ')}.\n` +
       'Posted, Skip, editing, deleting and the weekly goals are on the phone. Turn Posts on: jantar life on posts',
   },
   async (argv, ctx) => {
-    const { flags, positionals } = parseArgs(argv, FLAGS, { min: 1, max: 1 });
-    const [action] = positionals;
+    const { flags, positionals } = parseArgs(argv, FLAGS, { min: 1, max: 2 });
+    const [action, word] = positionals;
     switch (action) {
       case 'add':
+        if (word !== undefined) throw new UsageError('"post add" takes no other word');
         only(flags, 'add', ['platform', 'where', 'kind', 'at', 'title', 'text', 'text-file', 'notes', 'link', 'status']);
         return add(ctx, flags);
+      case 'log':
+        only(flags, 'log', ['text', 'text-file', 'where']);
+        return log(ctx, flags, word);
       case 'list':
+        if (word !== undefined) throw new UsageError('"post list" takes no other word');
         only(flags, 'list', ['done', 'json']);
         return list(ctx, flags);
       default:
-        throw new UsageError(`unknown action "${clip(action ?? '', 20)}" (add or list)`);
+        throw new UsageError(`unknown action "${clip(action ?? '', 20)}" (add, log or list)`);
     }
   },
 );
