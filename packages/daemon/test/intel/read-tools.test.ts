@@ -73,11 +73,13 @@ describe('G7: the headless browser tier', () => {
   }
 
   it('the system Chrome (channel chrome) at runtime; executablePath only from the seam; never a headless shell, video, HAR or screenshot', () => {
-    const env = { PATH: '/usr/bin', HTTPS_PROXY: 'http://proxy.example.test:3128', http_proxy: 'x', NO_PROXY: 'y', HOME: '/h' };
+    const env = { PATH: '/usr/bin', HTTPS_PROXY: 'http://proxy.example.test:3128', http_proxy: 'x', NO_PROXY: 'y', HOME: '/h', SOME_TOKEN: 'synthetic' };
     const run = launchOptions(4321, { env });
     expect(run).toEqual({
       headless: true,
       channel: 'chrome',
+      // Chrome's own sandbox: playwright-core adds --no-sandbox unless this is true.
+      chromiumSandbox: true,
       proxy: { server: 'http://127.0.0.1:4321' },
       args: ['--force-webrtc-ip-handling-policy=disable_non_proxied_udp'],
       env: { PATH: '/usr/bin', HOME: '/h' },
@@ -90,7 +92,7 @@ describe('G7: the headless browser tier', () => {
     expect(CONTEXT_OPTIONS).toEqual({ serviceWorkers: 'block', acceptDownloads: false, viewport: { width: 1280, height: 800 } });
     const all = JSON.stringify([run, seam, CONTEXT_OPTIONS]);
     for (const banned of ['recordVideo', 'recordHar', 'headless_shell', 'chromium-headless-shell', 'userDataDir', 'permissions']) expect(all).not.toContain(banned);
-    expect(browserEnv({ ALL_PROXY: 'a', Socks_Proxy: 'b', KEEP: 'c' })).toEqual({ KEEP: 'c' });
+    expect(browserEnv({ ALL_PROXY: 'a', Socks_Proxy: 'b', OTHER: 'c', PATH: '/usr/bin', HOME: '/h', TMPDIR: '/t/', LANG: 'en_US.UTF-8' })).toEqual({ PATH: '/usr/bin', HOME: '/h', TMPDIR: '/t/', LANG: 'en_US.UTF-8' });
     expect(SYSTEM_CHROME).toBe('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
   });
 

@@ -9,9 +9,11 @@
  *   only through the service's injected `executablePath` (never settings, env
  *   or CLI), and a fake module through `load`.
  * - `chromium.launch()` only: a fresh temp profile Playwright makes and
- *   deletes, never the user's profile; headless; every connection through
- *   the guard's CONNECT proxy; WebRTC kept off non-proxied UDP; env without
- *   proxy variables.
+ *   deletes, never the user's profile; headless; Chrome's own sandbox on
+ *   (`chromiumSandbox: true`: playwright-core otherwise adds --no-sandbox);
+ *   every connection through the guard's CONNECT proxy; WebRTC kept off
+ *   non-proxied UDP; env only PATH, HOME, TMPDIR and LANG (no proxy
+ *   variable, nothing else of the daemon's).
  * - Context: service workers blocked, no downloads, 1280×800, no
  *   permissions, never recordVideo or recordHar, no screenshots.
  * - One page: goto (domcontentloaded, 20 s), 2.5 s settle, the bundled
@@ -48,16 +50,20 @@ export interface BrowserOptions {
   executablePath?: string;
   /** Tests only: a fake module instead of `import('playwright-core')`. */
   load?: () => Promise<PwModule>;
-  /** The daemon's env, scrubbed of proxy variables for the browser. */
+  /** The daemon's env; the browser gets only BROWSER_ENV of it. */
   env: Readonly<Record<string, string | undefined>>;
 }
 
-const PROXY_ENV = /^(https?_proxy|all_proxy|no_proxy|ftp_proxy|socks_proxy)$/i;
+/** All of the daemon's env a browser rendering strangers' pages is given (never a proxy variable or a token). */
+export const BROWSER_ENV = ['PATH', 'HOME', 'TMPDIR', 'LANG'] as const;
 
-/** The browser's env: the daemon's without any proxy variable. */
+/** The browser's env: BROWSER_ENV of the daemon's, nothing else. */
 export function browserEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(env)) if (v !== undefined && !PROXY_ENV.test(k)) out[k] = v;
+  for (const k of BROWSER_ENV) {
+    const v = env[k];
+    if (v !== undefined) out[k] = v;
+  }
   return out;
 }
 
@@ -66,6 +72,7 @@ export function launchOptions(proxyPort: number, o: Pick<BrowserOptions, 'execut
   return {
     headless: true,
     ...(o.executablePath ? { executablePath: o.executablePath } : { channel: 'chrome' }),
+    chromiumSandbox: true,
     proxy: { server: `http://127.0.0.1:${proxyPort}` },
     args: ['--force-webrtc-ip-handling-policy=disable_non_proxied_udp'],
     env: browserEnv(o.env),

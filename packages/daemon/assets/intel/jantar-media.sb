@@ -4,9 +4,11 @@
 ;; with env PATH=/usr/bin:/bin, HOME=<job dir>, TMPDIR=<job dir>/tmp/.
 ;;
 ;; A hostile mp4, image or PDF that exploits AVFoundation, ImageIO or PDFKit
-;; reads nothing of the user's (no file under HOME but the job dir), reaches
-;; no network, execs nothing (not /usr/bin/open), cannot reach the pasteboard
-;; or open a URL through LaunchServices, and writes only inside the job dir.
+;; reads no file under HOME but the job dir, reaches no network, execs nothing
+;; (not /usr/bin/open), cannot reach the pasteboard or open a URL through
+;; LaunchServices, and writes only inside the job dir. What is readable to the
+;; user outside HOME stays readable (/private/tmp, the per-user folders under
+;; /var/folders, /Users/Shared, /Volumes): SECURITY.md's accepted risk.
 ;; Never (subpath "/private/var/folders"), never a read of HOME beyond the job
 ;; dir. A rule a framework turns out to need is added as narrowly as possible
 ;; (one literal path or one named subfolder, as a -D param) and written down

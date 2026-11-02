@@ -107,8 +107,10 @@ Off until you run `jantar intel read on` at the Mac
   MCP and an empty folder, inside tags it can't close, and its answer is
   checked (no links, no Markdown) before it is kept.
 - Frames and speech run in a small helper, under a macOS sandbox that
-  can't reach the network, your files outside its job folder, other
-  programs or the pasteboard. Audio never leaves the Mac.
+  can't reach the network, other programs, the pasteboard or any file in
+  your home folder outside its job folder (shared places such as
+  `/private/tmp`, `/Users/Shared` and attached drives stay readable to it).
+  Audio never leaves the Mac.
 - The iOS Shortcut's door exists only over Tailscale or Cloudflare, with a
   key made at the Mac; it can only save, and says the same sentence
   whatever happened ([the Shortcut](shortcut.md)).

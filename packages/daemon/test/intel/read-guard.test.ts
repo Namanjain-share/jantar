@@ -40,6 +40,9 @@ describe('G1: the BlockList', () => {
       'fd7a:115c:a1e0::1',
       'fe80::1',
       '64:ff9b::a00:1',
+      // IPv4-compatible and SIIT forms of loopback and a private address.
+      '::7f00:1',
+      '::ffff:0:a00:1',
       '0.0.0.0',
       '224.0.0.1',
       '255.255.255.255',
@@ -51,7 +54,8 @@ describe('G1: the BlockList', () => {
   });
 
   it('never lists ::ffff:0:0/96 (Node would then block every IPv4 address)', () => {
-    expect(BLOCKED_V6.some((r) => r.toLowerCase().startsWith('::ffff'))).toBe(false);
+    expect(BLOCKED_V6.some((r) => r.toLowerCase().replace(/\/\d+$/, '') === '::ffff:0:0')).toBe(false);
+    for (const a of ['8.8.8.8', '93.184.216.34', '1.1.1.1']) expect(isBlockedAddress(a), a).toBe(false);
   });
 });
 

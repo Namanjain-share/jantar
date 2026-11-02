@@ -15,7 +15,7 @@
  *      checked for the host. No global fetch, no proxy env, no keep-alive.
  *   5. Redirects by hand: each Location goes through 1-4 again, at most 5
  *      hops; never to http.
- *   6. Status 200 only (206 for a range); the content type must fit what was
+ *   6. Status 200 only (no Range is ever asked); the content type must fit what was
  *      asked and the magic bytes must agree; sizes count decompressed bytes;
  *      time caps (connect 5 s, first byte 10 s, the total per kind).
  *
@@ -54,8 +54,15 @@ export const BLOCKED_V4: readonly string[] = [
   '240.0.0.0/4',
 ];
 
-/** Blocked IPv6 ranges. Never ::ffff:0:0/96: Node would then block every IPv4 address. */
+/**
+ * Blocked IPv6 ranges. Never ::ffff:0:0/96 (IPv4-mapped): Node would then
+ * block every IPv4 address. ::/96 (IPv4-compatible, ::7f00:1) and
+ * ::ffff:0:0:0/96 (SIIT, ::ffff:0:a.b.c.d) are other prefixes and block no
+ * IPv4 address.
+ */
 export const BLOCKED_V6: readonly string[] = [
+  '::/96',
+  '::ffff:0:0:0/96',
   '::/128',
   '::1/128',
   '64:ff9b::/96',
@@ -461,7 +468,7 @@ export class Guard {
           finish({ kind: 'fail', why: 'notFound', status });
           return;
         }
-        if (status !== 200 && status !== 206) {
+        if (status !== 200) {
           res.destroy();
           finish({ kind: 'fail', why: 'status', status });
           return;

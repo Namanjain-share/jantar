@@ -1565,8 +1565,9 @@ Every byte the daemon fetches for Intel goes through one guard
    name, or the host of `remote.publicUrl` and `remote.allowedOrigins`.
 3. DNS: every address returned must be outside loopback, private,
    carrier-grade NAT, link-local (cloud metadata included), multicast,
-   documentation and the other reserved ranges, IPv4 and IPv6 (IPv4-mapped
-   IPv6 included); one bad address refuses the host.
+   documentation and the other reserved ranges, IPv4 and IPv6 (IPv4-mapped,
+   IPv4-compatible and SIIT IPv6 included); one bad address refuses the
+   host.
 4. The socket connects to the address that was checked (no second lookup),
    with TLS still verified for the host name. No global `fetch`, no proxy
    variables, no keep-alive across reads.
@@ -1590,8 +1591,10 @@ them.
 - The browser tier is the **system Chrome** through playwright-core
   (`channel: 'chrome'`, kept current by Google), never Playwright's pinned
   build, started with a fresh temporary profile it deletes (never your
-  profile), headless, with the proxy above, WebRTC kept off the network, no
-  service workers, no downloads, no permissions, no recording. An honest
+  profile), headless, with Chrome's own sandbox on (playwright-core would
+  otherwise turn it off), the proxy above, WebRTC kept off the network, no
+  service workers, no downloads, no permissions, no recording, and only
+  `PATH`, `HOME`, `TMPDIR` and `LANG` of the daemon's environment. An honest
   User-Agent; no login, ever. Closed after each read.
 - yt-dlp is optional and the last way to a video file. It runs with argv
   only, `--ignore-config --no-plugin-dirs --no-cookies
@@ -1623,7 +1626,8 @@ you**, so it gets the narrowest rule in Jantar:
   goes anywhere Jantar did not build. Articles, PDFs, Threads, Facebook and
   every other link never open there.
 - The extension takes a URL only from the daemon's read route (with its
-  key, from this Mac), checks the shape again, opens it in a background
+  key, from this Mac), checks again that it is exactly the URL rebuilt
+  from the post's id (no other query, no fragment), opens it in a background
   tab of its own at `about:blank` first with its listener in place, muted,
   closes the tab on the first update whose URL leaves the shape or is
   hidden from it, checks again before reading, reads **the post, not the
@@ -1713,7 +1717,12 @@ only at Full; the phone shows it as text.
 - **A leaked capture key** lets its holder fill your shelf with links and
   make your Mac fetch public pages (and, with Read saved links on, open
   public posts of the six platforms in your Chrome), at most 30 an hour
-  and 200 a day, until you revoke it. It never reads anything back.
+  and 200 a day, until you revoke it. It never reads anything back, but
+  opening a post as you can be visible to its creator on some platforms
+  (TikTok's post view history, when both sides have it on): the holder
+  could queue their own post to learn your account. The door's reply is
+  the same for every save; its timing can differ a little (a link already
+  saved writes nothing).
 - **The confused deputy above**: a post page's own script can navigate
   the tab before the extension sees it.
 - **Downstream injection**: saved text later reaches tool-using Claude
@@ -1725,5 +1734,10 @@ only at Full; the phone shows it as text.
   stops finding a post's text saves the link with less and says so, and
   never falls back to reading the whole page.
 - **A malicious media file** exploiting Apple's frameworks runs inside the
-  helper's sandbox: it can read and write only that read's folder and
-  print what it found as "transcript".
+  helper's sandbox: it reaches no network, runs nothing else, writes only
+  that read's folder and reads no file in your home folder but that one.
+  Outside your home folder it can still read what is readable to you:
+  `/private/tmp`, your per-user temporary and cache folders under
+  `/var/folders`, `/Users/Shared` and attached drives under `/Volumes`. It
+  could print what it found there as "transcript" or on-screen text, which
+  is kept on the shelf and shown to Claude.

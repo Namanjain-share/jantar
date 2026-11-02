@@ -345,9 +345,9 @@ On a real Mac, still open:
    draws canvas frames (if not, none, by design: the headless pass reads
    Instagram's frames).
 5. **The headless system Chrome** through playwright-core 1.63
-   (`channel: 'chrome'`, a temporary profile): no Keychain prompt, your
-   running Chrome untouched, a public reel's canvas frames through the
-   frames-only pass.
+   (`channel: 'chrome'`, a temporary profile, Chrome's sandbox on): no
+   Keychain prompt, your running Chrome untouched, no `--no-sandbox` in
+   `ps`, a public reel's canvas frames through the frames-only pass.
 6. **A logged-in Instagram page** carries `video_versions` in its embedded
    JSON (if not, frames come from the headless pass or yt-dlp).
 7. **The Shortcut** on iOS 26, through Tailscale and through a Cloudflare
