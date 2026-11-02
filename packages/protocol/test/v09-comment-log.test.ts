@@ -189,10 +189,12 @@ describe("Today's comments, the goal labels and Done", () => {
     expect(postGoalLabel({ platform: 'hn', kind: 'comment' })).toBe('Hacker News comments');
     expect(postGoalLabel({ platform: 'instagram', kind: 'reel' })).toBe('Reels');
     expect(postGoalLabel({ platform: 'reddit' })).toBe('Reddit');
-    expect(postGoalLabels([{ platform: 'reddit', kind: 'comment' }, { platform: 'x', kind: 'comment' }, { platform: 'reddit', kind: 'post' }])).toEqual([
+    // Beside a comment goal, the same platform's other kinds name it too.
+    expect(postGoalLabels([{ platform: 'reddit', kind: 'comment' }, { platform: 'x', kind: 'comment' }, { platform: 'reddit', kind: 'post' }, { platform: 'instagram', kind: 'reel' }])).toEqual([
       'Reddit comments',
       'X comments',
-      'Posts',
+      'Reddit posts',
+      'Reels',
     ]);
     expect(postGoalLabels([{ platform: 'reddit', kind: 'comment' }, { platform: 'reddit' }, { platform: 'instagram', kind: 'reel' }])).toEqual([
       'Reddit comments',

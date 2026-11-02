@@ -770,14 +770,16 @@ export function postGoalLabel(g: Pick<PostGoal, 'platform' | 'kind'>): string {
 /**
  * Each goal's name in a list: postGoalLabel, with the platform first when
  * two goals would read the same ("X threads" beside "Threads", "Instagram
- * reels" beside "Facebook reels").
+ * reels" beside "Facebook reels"), or when its platform has a comment goal
+ * ("Reddit posts" beside "Reddit comments").
  */
 export function postGoalLabels(goals: readonly Pick<PostGoal, 'platform' | 'kind'>[]): string[] {
   const names = goals.map(postGoalLabel);
+  const commented = new Set(goals.filter((g) => g.kind === 'comment').map((g) => g.platform));
   return goals.map((g, i) => {
     const name = names[i] as string;
     const twice = names.indexOf(name) !== names.lastIndexOf(name);
-    return g.kind && twice ? `${POST_PLATFORM_LABEL[g.platform]} ${POST_KIND_LABEL[g.kind][1].toLowerCase()}` : name;
+    return g.kind && (twice || commented.has(g.platform)) ? `${POST_PLATFORM_LABEL[g.platform]} ${POST_KIND_LABEL[g.kind][1].toLowerCase()}` : name;
   });
 }
 
