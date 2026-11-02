@@ -270,6 +270,11 @@ describe('Add post', () => {
   it("What's sent opens the exact words; Add by hand is the 0.7 form", async () => {
     const api = shelfApi();
     const { sheet } = await openSheet(api);
+    // The line under the picker says what goes to Claude at the depth picked (Standard by default).
+    expect(within(sheet).getByText('The page, its text and a few pictures go to Claude.')).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Light/ }));
+    expect(within(sheet).getByText('The page and its text go to Claude.')).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Full/ }));
     expect(within(sheet).getByText('The page, pictures and what is said go to Claude.')).toBeTruthy();
     const more = within(sheet).getByRole('button', { name: "What's sent" });
     expect(within(sheet).queryByText(READ_COPY.sentAll)).toBeNull();

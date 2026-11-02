@@ -127,7 +127,7 @@ export function AddPostSheet({
           />
         </div>
         <p className="mt-6 flex flex-wrap items-center gap-x-8 type-small text-ink-3">
-          <span>{READ_COPY.sent}</span>
+          <span>{READ_COPY.sent[depth]}</span>
           <button type="button" className={LINK} aria-expanded={whatOpen} aria-controls={whatOpen ? `${id}-sent` : undefined} onClick={() => setWhatOpen(!whatOpen)}>
             What's sent
           </button>

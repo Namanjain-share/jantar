@@ -155,7 +155,12 @@ export const READ_COPY = {
   already: 'Already saved.',
   again: 'Reading it again on your Mac.',
   byHand: 'Add by hand',
-  sent: 'The page, pictures and what is said go to Claude.',
+  /** One line under the depth picker: what goes to Claude at that depth. */
+  sent: {
+    light: 'The page and its text go to Claude.',
+    standard: 'The page, its text and a few pictures go to Claude.',
+    full: 'The page, pictures and what is said go to Claude.',
+  } as Readonly<Record<IntelDepth, string>>,
   /** Under "What's sent" (docs/intel.md and SECURITY.md list the same). */
   sentAll:
     "The Mac fetches the link itself, with no cookies; with Read saved links on in Jantar's Chrome extension, your Chrome opens the post as you. " +

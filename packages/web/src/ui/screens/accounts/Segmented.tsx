@@ -49,7 +49,8 @@ export function Segmented<K extends string>({
             fill && 'flex-1 justify-center',
             // 38 px inside the 44 px box on touch: the hit area takes in the padding and border.
             'coarse:before:absolute coarse:before:inset-x-0 coarse:before:-inset-y-3',
-            s.key === value ? 'bg-select text-ink' : 'text-ink-3 hover:text-ink',
+            // The ring keeps the picked one visible at night, where --select sits almost on --raised.
+            s.key === value ? 'bg-select text-ink ring-1 ring-inset ring-line-strong' : 'text-ink-3 hover:text-ink',
           )}
         >
           {s.label}
