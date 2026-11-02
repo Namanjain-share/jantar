@@ -15,9 +15,11 @@
  * pairing is a new extension to it, so they could not be continued anyway).
  *
  * v0.10: Unpair turns Always start when I join a call off and drops every
- * arm (it is part of "stop keeping notes in this Chrome"); a 401 drops every
- * arm and keeps Always, so the next join says to pair again. Every tab's
- * badge is painted again after a broadcast.
+ * arm before it ends the meetings (it is part of "stop keeping notes in this
+ * Chrome"); a 401 drops every arm and keeps Always, which then arms nothing
+ * and the next join screen says to pair; pairing again arms the join
+ * screens open now when Always is on. Every tab's badge is painted again
+ * after a broadcast.
  */
 import type { Done } from '../shared/messages.js';
 import { PAIR_LINE } from '../shared/wire.js';
@@ -45,7 +47,7 @@ export interface PairingFlow {
   forgotten(sentence: string): Promise<void>;
 }
 
-export function createPairing(ctx: Ctx, meetings: Pick<Meetings, 'end'>, arms: Pick<Arms, 'dropAll' | 'stopAlways' | 'paint'>): PairingFlow {
+export function createPairing(ctx: Ctx, meetings: Pick<Meetings, 'end'>, arms: Pick<Arms, 'dropAll' | 'stopAlways' | 'paint' | 'rearm'>): PairingFlow {
   /** Tell every known tab whether the button shows; on the way out, stop notes and forget the meetings. */
   async function broadcast(on: boolean, stopText?: string): Promise<void> {
     for (const tabId of await ctx.tabs.ids()) {
@@ -77,16 +79,19 @@ export function createPairing(ctx: Ctx, meetings: Pick<Meetings, 'end'>, arms: P
       const key = reply.body?.key;
       if (typeof key !== 'string' || !KEY_SHAPE.test(key)) return { ok: false, error: BAD_CODE };
       await ctx.keys.set({ port: line.port, key, pairedAt: new Date(ctx.now()).toISOString() });
+      // v0.10: Always (kept through a 401) arms the join screens open now.
+      await arms.rearm();
       await broadcast(true);
       return { ok: true };
     },
 
     async unpair() {
-      // Always first, so no End leaves an arm and no page's `call` makes one meanwhile.
+      // Always first, so no End leaves an arm and no page's `call` makes one meanwhile; then the arms, so no tab let in
+      // during the ends below starts a meeting the unpair would only end.
       await arms.stopAlways();
+      await arms.dropAll();
       // Whatever an end answers, the unpair goes on.
       await Promise.all((await ctx.tabs.ids()).map((tabId) => meetings.end(tabId).catch(() => undefined)));
-      await arms.dropAll();
       await ctx.keys.clear();
       await broadcast(false);
       return { ok: true };

@@ -276,7 +276,7 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
           heardAt: now,
         }));
         if (!next) return next;
-        const arm = await arms.onCall(tabId, next, { stage, hook: msg.hook ?? '', callKey: msg.callKey }, now);
+        const arm = await arms.onCall(tabId, next, { stage, hook: msg.hook ?? '', callKey: msg.callKey, was: prev?.stage ?? 'none' }, now);
         if (!arm) return next;
         if (next.clientId && next.notes) {
           // Used: notes are on (a Start that won the race; or a start whose `capture` a worker restart lost, sent again).

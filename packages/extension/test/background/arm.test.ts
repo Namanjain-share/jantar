@@ -14,11 +14,11 @@
  */
 import { MEETING_MARKER } from '@jantar/fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ALWAYS_ARMED, AUTO, JOIN_SCREEN_FIRST, NOT_RUNNING, NO_MEETING_TAB, OTHER_TAB, PAIR_AGAIN, PAIR_FIRST } from '../../src/background/sentences.js';
+import { ALWAYS_ARMED, AUTO, JOIN_SCREEN_FIRST, NOT_RUNNING, NO_MEETING_TAB, OTHER_TAB, PAIR_AGAIN } from '../../src/background/sentences.js';
 import { createWorker } from '../../src/background/worker.js';
 import type { CallStage, ToPage } from '../../src/shared/messages.js';
 import { ARM_ALARM, ARM_TIMING, READ_ALARM, TIMING } from '../../src/shared/wire.js';
-import { MEET_CODE, MEET_URL, PROJECT_ID, daemonError, markerIn, setupWorker, watchConsole, type WorkerUnderTest } from './chrome.js';
+import { KEY, MEET_CODE, MEET_URL, PORT, PROJECT_ID, TEAMS_URL, ULID, daemonError, markerIn, setupWorker, watchConsole, type WorkerUnderTest } from './chrome.js';
 
 let w: WorkerUnderTest;
 let watched: ReturnType<typeof watchConsole> | undefined;
@@ -43,6 +43,18 @@ async function tabAt(tabId: number, stage: CallStage = 'prejoin', over: Record<s
   w.model.addTab({ id: tabId, windowId: 1, url, active: true });
   w.model.onTabMessage(tabId, () => ({ ok: true }));
   await call(tabId, stage, over);
+}
+
+/** A Teams page's `call` at a stage (Teams v2: one address, no call key). */
+function teamsCall(tabId: number, stage: CallStage, over: Record<string, unknown> = {}) {
+  const hook = { prejoin: 'teams:prejoin-join', lobby: 'teams:join-link', in: 'teams:hangup-button', left: 'page:left' }[stage as string];
+  return w.page(tabId, { t: 'call', site: 'teams', inCall: stage === 'in', callKey: null, title: 'Weekly sync', stage, ...(hook ? { hook } : {}), ...over });
+}
+
+async function teamsAt(tabId: number, stage: CallStage) {
+  w.model.addTab({ id: tabId, windowId: 1, url: TEAMS_URL, active: true });
+  w.model.onTabMessage(tabId, () => ({ ok: true }));
+  await teamsCall(tabId, stage);
 }
 
 const arm = (tabId: number, over: Record<string, unknown> = {}) => w.popup({ t: 'arm', tabId, name: '', autoTodos: false, ...over });
@@ -473,7 +485,7 @@ describe('when notes cannot start', () => {
     expect(w.tabState(7)).toMatchObject({ notes: true, auto: { ok: true } });
   });
 
-  it('a 401: "Pair again", every arm dropped, Always kept', async () => {
+  it('a 401: "Pair again", every arm dropped, Always kept; later join screens are never armed and say why', async () => {
     w = setupWorker();
     await w.popup({ t: 'always', on: true });
     await tabAt(7, 'lobby');
@@ -487,17 +499,59 @@ describe('when notes cannot start', () => {
     expect(await w.keys.get()).toBeNull();
     expect(await w.worker.arms.always()).toBe(true);
     expect(w.model.badge(8).text).toBe('');
+    // Another call's join screen: no arm, no ARM, and no promise; the page says why, once.
+    await tabAt(9, 'none', { callKey: OTHER_CODE });
+    await call(9, 'prejoin', { callKey: OTHER_CODE });
+    expect(stored(9)).toBeUndefined();
+    expect(captures(9)).toEqual([{ t: 'capture', on: false, text: AUTO.unpaired }]);
+    expect(w.model.badge(9).text).toBe('');
+    later(TIMING.keepAliveMs);
+    await call(9, 'lobby', { callKey: OTHER_CODE });
+    later(TIMING.keepAliveMs);
+    await call(9, 'lobby', { callKey: OTHER_CODE });
+    expect(captures(9)).toHaveLength(1);
+    await call(9, 'in', { callKey: OTHER_CODE });
+    expect(w.daemon.of('open')).toHaveLength(1);
+    expect(captures(9)).toHaveLength(1);
+    expect(await w.popup({ t: 'state', tabId: 9 })).toMatchObject({ connection: 'unpaired', always: true, tab: { arm: null } });
   });
 
-  it('no key at all (Always on, never paired): no daemon call, and the page says to pair', async () => {
+  it('no key at all (Always on, never paired): nothing armed, no ARM, no daemon call; the page says to pair once per visit', async () => {
     w = setupWorker({ paired: false });
     await w.popup({ t: 'always', on: true });
-    await tabAt(7, 'lobby');
-    expect(stored(7)).toMatchObject({ from: 'always' });
+    await tabAt(7, 'none');
+    await call(7, 'lobby');
+    expect(stored(7)).toBeUndefined();
+    expect(captures(7)).toEqual([{ t: 'capture', on: false, text: AUTO.unpaired }]);
+    expect(AUTO.unpaired).not.toContain(ALWAYS_ARMED);
+    expect(w.model.badge(7).text).toBe('');
     await call(7, 'in');
     expect(w.daemon.ops()).toEqual([]);
-    expect(captures(7).at(-1)).toEqual({ t: 'capture', on: false, text: AUTO.notStarted(PAIR_FIRST) });
-    expect(w.model.badge(7).text).toBe('!');
+    expect(captures(7)).toHaveLength(1);
+    // A reload of the join screen (pagehide, then the screen again) says it again.
+    await call(7, 'none', { hook: 'page:hide' });
+    await call(7, 'prejoin');
+    expect(captures(7)).toHaveLength(2);
+    // Turning Always on again while not paired arms nothing either.
+    await w.popup({ t: 'always', on: true });
+    expect(stored(7)).toBeUndefined();
+    expect(w.model.badge(7).text).toBe('');
+  });
+
+  it('paired again with Always on: the tabs on a join screen are armed at once', async () => {
+    w = setupWorker({ paired: false });
+    await w.popup({ t: 'always', on: true });
+    await tabAt(7, 'none');
+    await call(7, 'prejoin');
+    await tabAt(8, 'none', { callKey: null });
+    w.daemon.on('claim', { status: 200, body: { id: ULID, key: KEY } });
+    expect(await w.popup({ t: 'pair', text: `jantar-ext:${PORT}:C0DEc0de_C0DE-c0deC0` })).toEqual({ ok: true });
+    expect(stored(7)).toMatchObject({ from: 'always', callKey: MEET_CODE });
+    expect(stored(8)).toBeUndefined();
+    expect(captures(7).at(-1)).toEqual({ t: 'capture', on: false, text: ALWAYS_ARMED });
+    expect(w.model.badge(7).text).toBe('ARM');
+    await call(7, 'in');
+    expect(w.daemon.of('open')).toHaveLength(1);
   });
 });
 
@@ -542,6 +596,70 @@ describe('Always start when I join a call', () => {
     expect(stored(10)).toBeUndefined();
     expect(captures(8)).toEqual([{ t: 'capture', on: false, text: ALWAYS_ARMED }]);
     expect([7, 8, 9, 10].map((id) => w.model.badge(id).text)).toEqual(['ARM', 'ARM', '', '']);
+  });
+
+  it('Teams: a page that shows nothing of a call (Chat) is never armed, also when its `left` says so', async () => {
+    w = setupWorker();
+    await w.popup({ t: 'always', on: true });
+    await teamsAt(7, 'none');
+    later(TIMING.keepAliveMs);
+    await teamsCall(7, 'none');
+    expect(stored(7)).toBeUndefined();
+    // A call, then Leave to Chat: the page's `left` names stage none (no rejoin on screen).
+    await teamsCall(7, 'in');
+    later(TIMING.leaveGraceMs);
+    await teamsCall(7, 'none', { left: true, hook: 'page:left' });
+    expect(stored(7)).toBeUndefined();
+    expect(captures(7)).toEqual([]);
+    expect(w.model.badge(7).text).toBe('');
+  });
+
+  it("Teams: Chat for a minute after the join screen or after leaving ends the arm, Always's and a popup one, and a later call is armed afresh", async () => {
+    w = setupWorker();
+    await teamsAt(7, 'prejoin');
+    await arm(7, { name: 'Weekly sync', projectId: PROJECT_ID, autoTodos: true });
+    // Chat: the page says none and then nothing (none never beats).
+    await teamsCall(7, 'none');
+    later(ARM_TIMING.awayMs);
+    await fire();
+    expect(stored(7)).toBeUndefined();
+    expect(w.model.badge(7).text).toBe('');
+    // Another meeting later in the same tab starts nothing.
+    await teamsCall(7, 'prejoin', { title: 'Board review' });
+    await teamsCall(7, 'in', { title: 'Board review' });
+    expect(w.daemon.ops()).toEqual([]);
+    // Always: End, Leave to Chat, a minute: the `off` arm goes, and another meeting starts.
+    await w.popup({ t: 'start', tabId: 7, name: 'Board review', autoTodos: false });
+    await w.popup({ t: 'always', on: true });
+    expect(await w.popup({ t: 'end', tabId: 7 })).toEqual({ ok: true });
+    expect(stored(7)).toMatchObject({ off: true });
+    later(TIMING.leaveGraceMs);
+    await teamsCall(7, 'none', { left: true, hook: 'page:left' });
+    later(20 * 60_000);
+    await fire();
+    expect(stored(7)).toBeUndefined();
+    await teamsCall(7, 'prejoin', { title: 'Planning' });
+    expect(stored(7)).toMatchObject({ from: 'always' });
+    expect(stored(7)).not.toHaveProperty('off');
+    await teamsCall(7, 'in', { title: 'Planning' });
+    expect(w.daemon.of('open')).toHaveLength(2);
+    expect(w.daemon.of('open')[1]?.body).toMatchObject({ site: 'teams', name: 'Planning' });
+  });
+
+  it('an Always arm ended by the away rule while its page came back to the join screen: no "can\'t see" bubble, just armed again', async () => {
+    w = setupWorker();
+    await w.popup({ t: 'always', on: true });
+    await tabAt(7, 'prejoin');
+    expect(captures(7)).toEqual([{ t: 'capture', on: false, text: ALWAYS_ARMED }]);
+    await call(7, 'none');
+    later(ARM_TIMING.awayMs + 5_000);
+    // The alarm was late: the page's own `call` finds the arm ended.
+    await call(7, 'prejoin');
+    expect(captures(7)).toEqual([
+      { t: 'capture', on: false, text: ALWAYS_ARMED },
+      { t: 'capture', on: false, text: ALWAYS_ARMED },
+    ]);
+    expect(stored(7)).toMatchObject({ from: 'always', at: w.clock.t });
   });
 
   it('a page first seen in the call is never started (a reload mid-call, an instant meeting)', async () => {

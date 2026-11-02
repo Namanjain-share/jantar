@@ -22,8 +22,8 @@ export const NO_MEETING_TAB = 'Open a Google Meet or Teams call in this tab (rel
 export const JOIN_FIRST = 'Join the call first.';
 /** v0.10: Start when I join, on a page that shows no join screen, waiting room or call. */
 export const JOIN_SCREEN_FIRST = "Open the call's join screen first.";
-/** v0.10: why notes did not start by themselves with no key stored. */
-export const PAIR_FIRST = 'pair the extension first: click the Jantar icon.';
+/** v0.10: why notes do not start by themselves with no key stored. */
+export const PAIR_FIRST = 'the extension is not paired. Click the Jantar icon to pair.';
 /** Something in the extension itself went wrong (never expected). */
 export const TRY_AGAIN = 'Something went wrong. Try again.';
 
@@ -57,11 +57,18 @@ export const ARM = /* @__PURE__ */ Object.freeze({
   leadPrejoin: 'Not in the call yet.',
   leadLobby: 'Waiting to be let in.',
   leadLeft: 'You left the call.',
-  hint: 'Notes start by themselves once you are in the call, only in this tab.',
+  hint: "Press Start when I join: notes start by themselves once you're in the call, in this tab only.",
+  /** Not this call (or End) while Always is on: the sheet says the call is skipped. */
+  skipped: 'Always is on, but not for this call. Notes will not start by themselves.',
+  /** An armed tab while Jantar answers that it takes nothing (Meetings off) or does not answer. */
+  blocked: "Start when I join is on for this tab, but notes can't start until this is fixed.",
   armedPrejoin: 'Armed: starts when you join',
   armedLobby: "Armed: starts when you're let in",
   armedLeft: 'Armed: starts when you rejoin',
   nameFromPage: 'Name from the page',
+  fromPage: (title: string) => `${title} (from the page)`,
+  todos: 'action items to todos',
+  cancelName: 'Cancel Start when I join',
   noProject: 'No project',
   byAlways: 'Always start when I join a call is on (Settings).',
   change: 'Change',
@@ -78,8 +85,12 @@ export const ALWAYS_ARMED = 'Jantar starts notes when you join. Not this call: t
 /** v0.10: Settings › Always start when I join a call, and the page's bubble when it arms a call. */
 export const ALWAYS = /* @__PURE__ */ Object.freeze({
   title: 'Always start when I join a call',
-  why: 'Notes start by themselves in every Meet or Teams call you join in this Chrome, once you are in the call, never before. Skip one with Not this call. Let people know you keep notes.',
+  why: 'Notes start by themselves in every Meet or Teams call you join in this Chrome, once you are in the call, never before. To skip a call, click the Jantar icon on it, then Not this call. Let people know you keep notes.',
   armedBubble: ALWAYS_ARMED,
+  /** The pairing view, while Always is on and nothing can start. */
+  unpaired: "Always start when I join a call is on, but notes can't start until the extension is paired.",
+  turnOff: 'Turn off',
+  turnOffName: 'Turn off Always start when I join a call',
 });
 
 /** v0.10: why notes did not start by themselves in a call another tab already keeps notes for. */
@@ -92,6 +103,8 @@ export const AUTO = /* @__PURE__ */ Object.freeze({
   retrying: 'Notes did not start: Jantar is not running on this Mac. Trying again for 2 minutes.',
   otherTab: `Notes did not start: ${OTHER_TAB}`,
   lost: "Notes will not start by themselves: Jantar can't see this call's join screen or the call.",
+  /** Always is on but no key is stored: said once as the page comes to a join screen, a waiting room or a left call. */
+  unpaired: `Notes will not start by themselves: ${PAIR_FIRST}`,
 });
 
 /** v0.10: Settings › Call check: what the page shows, in words, and the hook id that decided it. */

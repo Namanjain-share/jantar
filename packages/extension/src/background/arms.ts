@@ -26,7 +26,10 @@
  * alarm only delays the badge.
  *
  * Always lives in chrome.storage.local (`startOnJoin`, no secret, like v0.8's
- * `readSaved`), cached here and read again after a worker restart.
+ * `readSaved`), cached here and read again after a worker restart. It arms
+ * nothing while no key is stored (never paired, Unpair's race, a 401): the
+ * page hears why instead, once as it comes to a join screen, a waiting room
+ * or a left call, and the icon shows no ARM. Pairing arms the known tabs.
  */
 import type { ArmView, CallStage, Done } from '../shared/messages.js';
 import type { MeetingSite } from '../shared/sites.js';
@@ -125,6 +128,8 @@ export interface Heard {
   stage: CallStage;
   hook: string;
   callKey: string | null;
+  /** The stage the page showed before this `call` (none for a new record). */
+  was?: CallStage;
 }
 
 export interface Arms {
@@ -153,15 +158,17 @@ export interface Arms {
   restore(): void;
   /** Always start when I join a call. */
   always(): Promise<boolean>;
-  /** The popup's switch: on arms every known tab on a join screen, waiting room or left call; off drops Always's arms. */
+  /** The popup's switch: on arms every known tab on a join screen, waiting room or left call (when paired); off drops Always's arms. */
   setAlways(on: boolean): Promise<Done>;
+  /** Just paired: with Always on, its arms for the known tabs on a join screen, waiting room or left call. */
+  rearm(): Promise<void>;
   /** Always off, nothing else (Unpair). */
   stopAlways(): Promise<void>;
   /** The tab's badge, from its record and its live arm. */
   paint(tabId: number): Promise<void>;
 }
 
-export function createArms(ctx: Pick<Ctx, 'tabs' | 'now' | 'toTab'>): Arms {
+export function createArms(ctx: Pick<Ctx, 'tabs' | 'now' | 'toTab' | 'keys'>): Arms {
   const writes = chains();
   let cached: boolean | undefined;
 
@@ -196,10 +203,10 @@ export function createArms(ctx: Pick<Ctx, 'tabs' | 'now' | 'toTab'>): Arms {
     }
   }
 
-  /** An arm that ended: gone, and the page told when it still shows something but no join screen, waiting room or call. */
-  async function end(tabId: number, arm: Arm, why: Liveness): Promise<void> {
+  /** An arm that ended: gone, and the page told when it still shows something but no join screen, waiting room or call (unless `quiet`). */
+  async function end(tabId: number, arm: Arm, why: Liveness, quiet = false): Promise<void> {
     await drop(tabId);
-    if (why === 'away' && arm.awayHow === 'screen' && !arm.off) await ctx.toTab(tabId, { t: 'capture', on: false, text: AUTO.lost });
+    if (why === 'away' && arm.awayHow === 'screen' && !arm.off && !quiet) await ctx.toTab(tabId, { t: 'capture', on: false, text: AUTO.lost });
   }
 
   async function always(): Promise<boolean> {
@@ -236,6 +243,22 @@ export function createArms(ctx: Pick<Ctx, 'tabs' | 'now' | 'toTab'>): Arms {
     } catch {
       // Storage failing: the badge stays as it was.
     }
+  }
+
+  /** Always's arms for every known tab on a join screen, waiting room or left call whose page spoke lately; none while not paired. */
+  async function armKnown(): Promise<void> {
+    if (!(await ctx.keys.get())) return;
+    const now = ctx.now();
+    for (const tabId of await ctx.tabs.ids()) {
+      await ctx.tabs.serial(tabId, async () => {
+        const state = await ctx.tabs.read(tabId);
+        // A record the page has not spoken to lately is a page that went: never armed.
+        if ((await read(tabId)) || !state || state.heardAt === undefined || now - state.heardAt >= ARM_TIMING.silentMs || !armable(state)) return;
+        await armAlways(tabId, state, now);
+      });
+      await paintTab(tabId);
+    }
+    await schedule();
   }
 
   async function sweep(): Promise<void> {
@@ -275,7 +298,8 @@ export function createArms(ctx: Pick<Ctx, 'tabs' | 'now' | 'toTab'>): Arms {
       if (arm) {
         const life = liveness(arm, now);
         if (life !== 'live') {
-          await end(tabId, arm, life);
+          // Back on a join screen or in a waiting room, Always arms the page again at once (or says why not): no "can't see" before.
+          await end(tabId, arm, life, arm.from === 'always' && WAITING.has(heard.stage));
           arm = null;
         } else if (arm.site !== state.site || (arm.callKey !== null && heard.callKey !== null && heard.callKey !== arm.callKey)) {
           // Another call in this tab.
@@ -299,8 +323,13 @@ export function createArms(ctx: Pick<Ctx, 'tabs' | 'now' | 'toTab'>): Arms {
         await schedule();
       }
       if (armable(state) && (await always())) {
-        arm = await armAlways(tabId, state, now);
-        await schedule();
+        if (await ctx.keys.get()) {
+          arm = await armAlways(tabId, state, now);
+          await schedule();
+        } else if (!WAITING.has(heard.was ?? 'none')) {
+          // Not paired: nothing is armed and nothing promised; the page hears why as it comes to the screen.
+          await ctx.toTab(tabId, { t: 'capture', on: false, text: AUTO.unpaired });
+        }
       }
       return arm;
     },
@@ -324,23 +353,16 @@ export function createArms(ctx: Pick<Ctx, 'tabs' | 'now' | 'toTab'>): Arms {
     async setAlways(on) {
       try {
         await storeAlways(on);
-        const now = ctx.now();
-        const tabs = new Set([...(await ctx.tabs.ids()), ...(await all()).map(([id]) => id)]);
-        for (const tabId of tabs) {
-          await ctx.tabs.serial(tabId, async () => {
-            const arm = await read(tabId);
-            if (!on) {
-              if (arm?.from === 'always') await drop(tabId);
-              return;
-            }
-            const state = await ctx.tabs.read(tabId);
-            // A record the page has not spoken to lately is a page that went: never armed.
-            if (arm || !state || state.heardAt === undefined || now - state.heardAt >= ARM_TIMING.silentMs || !armable(state)) return;
-            await armAlways(tabId, state, now);
-          });
-          await paintTab(tabId);
+        if (on) await armKnown();
+        else {
+          for (const [tabId] of await all()) {
+            await ctx.tabs.serial(tabId, async () => {
+              if ((await read(tabId))?.from === 'always') await drop(tabId);
+            });
+            await paintTab(tabId);
+          }
+          await schedule();
         }
-        await schedule();
         return { ok: true };
       } catch {
         return { ok: false, error: TRY_AGAIN };
@@ -348,6 +370,14 @@ export function createArms(ctx: Pick<Ctx, 'tabs' | 'now' | 'toTab'>): Arms {
     },
 
     stopAlways: () => storeAlways(false),
+
+    async rearm() {
+      try {
+        if (await always()) await armKnown();
+      } catch {
+        // Storage failing: the pairing stands; the page's next `call` arms it.
+      }
+    },
 
     paint: paintTab,
   };
