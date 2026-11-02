@@ -402,11 +402,15 @@ export const SCRIPTS: MutationScript[] = [
 
 export interface CallScript {
   name: string;
+  /** v0.10: the path the page starts at (made up); without one the test sets it (`meetUrl`). */
+  path?: string;
   build(doc: Document): Fixture;
   steps: ScriptStep[];
 }
 
-/** The call watch's scripts (MX5): the page's URL is set by the test (`meetUrl`). */
+const goTo = (fx: Fixture, path: string) => fx.doc.defaultView?.history.pushState({}, '', path);
+
+/** The call watch's scripts (MX5): the page's URL is set by the test (`meetUrl`) or the script's `path`. */
 export const CALL_SCRIPTS: CallScript[] = [
   {
     name: 'the in-call hooks gone for 10 s and back',
@@ -417,5 +421,42 @@ export const CALL_SCRIPTS: CallScript[] = [
     name: 'a new Meet code',
     build: (doc) => buildMeet(doc),
     steps: [step(5_000, (fx) => fx.doc.defaultView?.history.pushState({}, '', meetUrl('xyz-abcd-efg')))],
+  },
+  // v0.10: the screens before the call (Start when I join).
+  {
+    name: 'prejoin, lobby, admitted',
+    path: meetUrl('abc-defg-hij', 'short'),
+    build: (doc) => buildMeet(doc, { state: 'prejoin' }),
+    steps: [
+      step(5_000, (fx) => meet(fx).askToJoin()),
+      step(10_000, (fx) => {
+        meet(fx).admit();
+        // Admitted: Meet rewrites the URL to /meet/<code>, the same call.
+        goTo(fx, meetUrl('abc-defg-hij', 'meet'));
+      }),
+    ],
+  },
+  {
+    name: 'lobby with a one-poll hook flicker',
+    path: meetUrl('abc-defg-hij', 'short'),
+    build: (doc) => buildMeet(doc, { state: 'lobby' }),
+    steps: [step(5_000, (fx) => meet(fx).captionsButton(true)), step(1_000, (fx) => meet(fx).captionsButton(false))],
+  },
+  {
+    name: 'teams join, lobby, admitted',
+    path: '/light-meetings/launch?anon=1&p=made-up-1',
+    build: (doc) => buildTeams(doc, { layout: 'v2', state: 'prejoin', light: true }),
+    steps: [step(5_000, (fx) => teams(fx).clickJoin()), step(10_000, (fx) => teams(fx).admit())],
+  },
+  {
+    name: 'teams pre-join then Chat',
+    path: '/v2/?meetingjoin=true&p=made-up-2',
+    build: (doc) => buildTeams(doc, { state: 'prejoin' }),
+    steps: [
+      step(5_000, (fx) => {
+        teams(fx).toChat();
+        goTo(fx, '/v2/');
+      }),
+    ],
   },
 ];

@@ -11,6 +11,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { meetAdapter } from '../../src/content/adapters/meet.js';
 import { teamsAdapter } from '../../src/content/adapters/teams.js';
 import { FIXTURE_PAGES, FIXTURE_SCRIPT_PATH, PAGE_BACKGROUND, STRICT_CSP, fixtureDriverScript, fixturePageHtml, type FixturePageName } from '../fixtures/pages.js';
+import { BEFORE_CALL_PAGES } from '../fixtures/specs.js';
 
 // jsdom ships no types and the workspace adds none: the little used here, typed by hand.
 type Dom = { window: Window & typeof globalThis & { eval(code: string): unknown } };
@@ -54,7 +55,7 @@ describe('the fixture pages', () => {
   it.each(FIXTURE_PAGES.map((n) => [n]))('%s builds a page its adapter reads', (name) => {
     const { doc, adapter, step, dom } = open(name);
     expect(dom.window.getComputedStyle(doc.body).backgroundColor).toBe(PAGE_BACKGROUND);
-    const waiting = name === 'meet-waiting' || name === 'teams-lobby';
+    const waiting = BEFORE_CALL_PAGES.includes(name);
     expect(adapter.inCall(doc)).toBe(!waiting);
     if (waiting) step('join');
     expect(adapter.inCall(doc)).toBe(true);
@@ -116,5 +117,44 @@ describe('the fixture pages', () => {
     expect(doc.querySelector('[data-tid="anon-hangup-button"]')).not.toBeNull();
     expect(teamsAdapter.title(doc)).toBe('');
     expect(teamsAdapter.title(open('teams-2026-right').doc)).toBe('Weekly sync');
+  });
+
+  it('v0.10: drives the screens before the call: Ask to join, Join now, admitted, Leave', () => {
+    const meet = open('meet-prejoin');
+    const q = (doc: Document, sel: string) => doc.querySelector(sel);
+    expect(q(meet.doc, 'button[jsname="Qx7uuf"]')).not.toBeNull();
+    expect(meet.doc.body.textContent).not.toContain('call_end');
+    meet.step('askToJoin');
+    expect(q(meet.doc, 'button[jsname="Qx7uuf"]')).toBeNull();
+    expect(meet.doc.body.textContent).toContain('call_end');
+    expect(meetAdapter.inCall(meet.doc)).toBe(false);
+    meet.step('captionsButton', true);
+    expect(meetAdapter.inCall(meet.doc)).toBe(true);
+    meet.step('captionsButton', false);
+    meet.step('admit');
+    expect(meetAdapter.inCall(meet.doc)).toBe(true);
+    meet.step('leave');
+    expect(meetAdapter.inCall(meet.doc)).toBe(false);
+    expect(meet.doc.body.textContent).toContain('Rejoin');
+    expect(meet.doc.body.textContent).not.toContain('call_end');
+
+    const teams = open('teams-prejoin');
+    expect(q(teams.doc, '#prejoin-join-button')).not.toBeNull();
+    teams.step('clickJoin');
+    expect(q(teams.doc, '#prejoin-join-button')).toBeNull();
+    expect(teamsAdapter.inCall(teams.doc)).toBe(false);
+    expect(teams.doc.body.textContent).toContain('Someone will let you in when the meeting starts');
+    teams.step('admit');
+    expect(teamsAdapter.inCall(teams.doc)).toBe(true);
+    teams.step('leave');
+    expect(teamsAdapter.inCall(teams.doc)).toBe(false);
+    teams.step('toChat');
+    expect(teams.doc.body.textContent).not.toContain('Join now');
+
+    const light = open('teams-light-waiting');
+    expect(q(light.doc, 'nav.app-bar')).toBeNull();
+    expect(teamsAdapter.inCall(light.doc)).toBe(false);
+    light.step('admit');
+    expect(q(light.doc, '[data-tid="anon-hangup-button"]')).not.toBeNull();
   });
 });

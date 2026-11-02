@@ -12,6 +12,15 @@
  * #prejoin-join-button only; the call a hang-up button (an anonymous guest's
  * with `anon`).
  *
+ * v0.10 adds the screens around the call, each with its own made-up words
+ * (never read by the adapter): 'prejoin' (the join screen, #prejoin-join-button;
+ * 'lobby' is its v0.5 name and stays the same screen), 'waiting' (the
+ * waiting room after Join now: no join button and no hang-up; `lobbyHangup`
+ * draws a hang-up there, as a Teams lobby might, research R12), 'left' (after
+ * Leave), and a Chat view (`toChat`). `light` is the anonymous light-meetings
+ * page (no app bar, the guest's hang-up). Steps: clickJoin, admit (join is
+ * the same step), leave, toChat.
+ *
  *   const teams = buildTeams(document, { layout: 'v2' });
  *   const a = teams.say('Sam', 'Can everyone see my screen?');
  *   teams.unmount(a); teams.remount(a);      // the virtual list drops and redraws an item
@@ -20,12 +29,19 @@ import { h, setWords, wordsOf } from './dom.js';
 
 export type TeamsLayout = 'v2' | '2026-bottom' | '2026-right' | 'loose';
 
+/** v0.10: the screens around the call (see the header); 'lobby' is v0.5's name for 'prejoin'. */
+export type TeamsState = 'prejoin' | 'waiting' | 'call' | 'left' | 'lobby' | 'chat';
+
 export interface TeamsOptions {
   layout?: TeamsLayout;
-  /** The lobby or the call. Default 'call'. */
-  state?: 'lobby' | 'call';
+  /** Which screen the page shows. Default 'call'. */
+  state?: TeamsState;
   /** An anonymous guest's hang-up button. */
   anon?: boolean;
+  /** v0.10: a hang-up button in the waiting room too. */
+  lobbyHangup?: boolean;
+  /** v0.10: the anonymous light-meetings page: no app bar, the guest's hang-up. */
+  light?: true;
   /** The captions on screen. Default true in a call. */
   captions?: boolean;
 }
@@ -46,6 +62,15 @@ export interface TeamsFixture {
   readonly items: TeamsItem[];
   region(): HTMLElement;
   join(): void;
+  /** v0.10: Join now pressed on the join screen: the waiting room. */
+  clickJoin(): void;
+  /** v0.10: let in (the same step as join). */
+  admit(): void;
+  /** v0.10: Leave pressed: the call's controls go. */
+  leave(): void;
+  /** v0.10: Chat opened instead: nothing of a call on screen. */
+  toChat(): void;
+  state(): TeamsState;
   say(author: string | null, text: string): TeamsItem;
   /** The virtual list drops an item (scrolled out). */
   unmount(item: TeamsItem): void;
@@ -58,6 +83,16 @@ export interface TeamsFixture {
   replaceRegion(): void;
   remove(): void;
 }
+
+/** Each screen's own words, made up; the adapter never reads them. */
+const SCREEN_WORDS: Readonly<Record<TeamsState, string>> = {
+  prejoin: 'Choose your audio and video settings for Weekly sync',
+  lobby: 'Choose your audio and video settings for Weekly sync',
+  waiting: 'Someone will let you in when the meeting starts',
+  call: '',
+  left: 'You left the meeting',
+  chat: 'Chat',
+};
 
 const WRAPPER: Record<TeamsLayout, string> = {
   v2: 'closed-caption-v2-window-wrapper',
@@ -77,11 +112,15 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
   const appBar = h(doc, 'nav', { class: 'app-bar', 'aria-label': 'App bar' }, h(doc, 'button', { 'aria-label': 'Chat' }, 'Chat'));
   const toolbar = h(doc, 'div', { role: 'toolbar', class: 'call-controls' });
   const ccToggle = h(doc, 'button', { id: 'closed-captions-button', 'data-tid': 'closed-captions-button-on', 'aria-pressed': 'true' }, 'Captions');
-  const hangup = opts.anon
-    ? h(doc, 'button', { 'data-tid': 'anon-hangup-button', 'aria-label': 'Leave' }, 'Leave')
-    : h(doc, 'button', { id: 'hangup-button', 'data-tid': 'hangup-main-btn', 'aria-label': 'Leave' }, 'Leave');
+  const hangup =
+    opts.anon || opts.light
+      ? h(doc, 'button', { 'data-tid': 'anon-hangup-button', 'aria-label': 'Leave' }, 'Leave')
+      : h(doc, 'button', { id: 'hangup-button', 'data-tid': 'hangup-main-btn', 'aria-label': 'Leave' }, 'Leave');
   const join = h(doc, 'button', { id: 'prejoin-join-button' }, 'Join now');
-  root.append(appBar, toolbar);
+  const rejoin = h(doc, 'button', { class: 'rejoin' }, 'Rejoin');
+  const screen = h(doc, 'div', { class: 'screen' });
+  if (opts.light) root.append(screen, toolbar);
+  else root.append(appBar, screen, toolbar);
 
   const items: (TeamsItem & { build(): HTMLElement })[] = [];
   let region = makeRegion();
@@ -99,7 +138,13 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
 
   function layoutPage() {
     const inCall = state === 'call';
-    toolbar.replaceChildren(...(inCall && is2026 ? [ccToggle] : []), ...(inCall && hooksShown ? [hangup] : []), ...(inCall ? [] : [join]));
+    screen.textContent = SCREEN_WORDS[state];
+    toolbar.replaceChildren(
+      ...(inCall && is2026 ? [ccToggle] : []),
+      ...((inCall && hooksShown) || (state === 'waiting' && opts.lobbyHangup) ? [hangup] : []),
+      ...(state === 'prejoin' || state === 'lobby' ? [join] : []),
+      ...(state === 'left' ? [rejoin] : []),
+    );
     if (inCall && captionsShown && hooksShown) {
       if (!region.isConnected) root.append(region);
     } else region.remove();
@@ -150,16 +195,27 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
   layoutPage();
   doc.body.append(root);
 
+  const admit = () => {
+    state = 'call';
+    captionsShown = opts.captions ?? true;
+    layoutPage();
+  };
+  const show = (next: TeamsState) => () => {
+    state = next;
+    layoutPage();
+  };
+
   return {
     doc,
     root,
     items,
     region: () => region,
-    join() {
-      state = 'call';
-      captionsShown = opts.captions ?? true;
-      layoutPage();
-    },
+    join: admit,
+    admit,
+    clickJoin: show('waiting'),
+    leave: show('left'),
+    toChat: show('chat'),
+    state: () => state,
     say(author, text) {
       const item = makeItem(author, text);
       items.push(item);
