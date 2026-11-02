@@ -604,7 +604,13 @@ describe('the meeting page', () => {
       [detail({ summary: { ...none, state: 'running' } }), 'Writing the summary…', null],
       [detail({ summary: { ...none, state: 'failed', reason: 'Claude did not answer in time.' } }), 'Claude did not answer in time.', 'Try again'],
       [detail({ summary: { ...none, state: 'none', reason: 'Too little was said for a summary.' } }), 'Too little was said for a summary.', 'Summarize'],
-      [detail({ summary: { ...none, state: 'none' }, lines: [] }), 'No transcript: notes were not started.', null],
+      // v0.10: notes ran, no caption line came in.
+      [
+        detail({ meeting: { notes: true, lines: 0 }, summary: { ...none, state: 'none' }, lines: [] }),
+        `Notes ran ${hm(D.meeting.startedAt)}-${hm(D.meeting.endedAt!)} but no captions came in. Jantar writes notes from the call's live captions; they were off or not visible.`,
+        null,
+      ],
+      [detail({ meeting: { notes: false, lines: 0 }, summary: { ...none, state: 'none' }, lines: [] }), 'No transcript: notes were not started.', null],
       [detail({ meeting: { endedAt: null }, summary: { ...none, state: 'none' } }), 'The summary comes after the meeting ends.', null],
       // Opened by a screenshot before Start: no notes, so no summary to wait for.
       [detail({ meeting: { endedAt: null, notes: false, lines: 0 }, summary: { ...none, state: 'none' }, lines: [] }), 'No transcript: notes were not started.', null],
