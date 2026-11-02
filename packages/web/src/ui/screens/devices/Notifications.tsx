@@ -173,7 +173,7 @@ export function NotificationsRow() {
             ) : null}
             {switchable ? (
               <>
-                <div role="group" aria-label="Notification kinds" className="grid border-t border-line md:grid-cols-2 md:gap-x-24">
+                <div role="group" aria-label="Notification kinds" className="grid border-t border-line @md:grid-cols-2 @md:gap-x-24">
                   {KINDS.map((k) => (
                     <label
                       key={k.kind}

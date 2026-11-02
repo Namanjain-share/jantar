@@ -18,7 +18,7 @@ export interface EmptyStateProps {
 
 export function EmptyState({ title, children, example, legend = false, className }: EmptyStateProps) {
   return (
-    <section className={clsx('px-16 py-24 md:px-32', className)}>
+    <section className={clsx('px-16 py-24 desk:px-32', className)}>
       <h2 className="type-title text-ink">{title}</h2>
       {children ? <div className="mt-6 max-w-560 type-small text-ink-2">{children}</div> : null}
       {example ? (

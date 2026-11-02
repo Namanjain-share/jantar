@@ -52,7 +52,7 @@ export function SvgView({
       ) : !whole ? (
         <StateLine>This SVG is too large to preview. Its source shows under Source.</StateLine>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto p-16 md:p-24">
+        <div className="min-h-0 flex-1 overflow-auto p-16 desk:p-24">
           {/* Revoked once painted (the image stays): "Open in New Tab" on a long press then finds no same-origin SVG document to load. */}
           {url ? <img src={url} alt={name} className="mx-auto h-auto max-w-full" onLoad={() => URL.revokeObjectURL(url)} /> : null}
         </div>

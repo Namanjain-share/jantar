@@ -61,35 +61,35 @@ function DeviceRow({
   const agent = describeAgent(d.userAgent);
   return (
     <li className="border-b border-line">
-      <div className="flex min-h-56 items-center gap-12 py-8 md:gap-16">
+      <div className="flex min-h-56 items-center gap-12 py-8 @md:gap-16">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-8">
             <span className={clsx('truncate type-row font-medium', revoked ? 'text-ink-3' : 'text-ink')}>{d.name}</span>
             {mine ? <Tag>this device</Tag> : null}
-            <span className="ml-auto flex-none pl-8 md:hidden">
+            <span className="ml-auto flex-none pl-8 @md:hidden">
               <span className="sr-only">last seen </span>
               <Seen d={d} now={now} />
             </span>
           </div>
           <div className="mt-2 truncate type-mono text-ink-3">
-            {agent ? <span>{agent}</span> : <span className="md:hidden">paired {shortDate(d.createdAt)}</span>}
-            <span className="md:hidden">
+            {agent ? <span>{agent}</span> : <span className="@md:hidden">paired {shortDate(d.createdAt)}</span>}
+            <span className="@md:hidden">
               {' · '}
               {d.scopes.join(', ')}
             </span>
           </div>
         </div>
-        <div className="hidden w-200 flex-none flex-wrap gap-4 md:flex">
+        <div className="hidden w-200 flex-none flex-wrap gap-4 @md:flex">
           <span className="sr-only">scopes </span>
           {d.scopes.map((s) => (
             <Tag key={s}>{s}</Tag>
           ))}
         </div>
-        <div className="hidden w-72 flex-none type-mono text-ink-3 md:block">
+        <div className="hidden w-72 flex-none type-mono text-ink-3 @md:block">
           <span className="sr-only">paired </span>
           {shortDate(d.createdAt)}
         </div>
-        <div className="hidden w-104 flex-none md:block">
+        <div className="hidden w-104 flex-none @md:block">
           <span className="sr-only">last seen </span>
           <Seen d={d} now={now} />
         </div>
@@ -104,7 +104,7 @@ function DeviceRow({
       {open && !revoked ? (
         <div
           id={panelId}
-          className="flex flex-col gap-12 pb-12 animate-pop md:flex-row md:items-center"
+          className="flex flex-col gap-12 pb-12 animate-pop @md:flex-row @md:items-center"
           onKeyDown={(e) => {
             if (e.key !== 'Escape') return;
             e.stopPropagation();
@@ -125,7 +125,7 @@ function DeviceRow({
               Revoke
             </HoldButton>
           </div>
-          {error ? <InlineError className="md:basis-full">{error}</InlineError> : null}
+          {error ? <InlineError className="@md:basis-full">{error}</InlineError> : null}
         </div>
       ) : null}
     </li>
@@ -192,7 +192,7 @@ export function PairedDevices({ onCount }: { onCount?: (active: number | null) =
       {devices?.length === 0 ? <p className="py-12 type-small text-ink-2">No devices yet.</p> : null}
       {devices?.length ? (
         <>
-          <div aria-hidden="true" className="hidden h-28 items-center gap-16 border-b border-line type-rail text-ink-3 md:flex">
+          <div aria-hidden="true" className="hidden h-28 items-center gap-16 border-b border-line type-rail text-ink-3 @md:flex">
             <span className="min-w-0 flex-1">Device</span>
             <span className="w-200 flex-none">Scopes</span>
             <span className="w-72 flex-none">Paired</span>

@@ -380,7 +380,7 @@ function List({
         />
       </div>
       {todos && (chips.length > 0 || filters.project) ? (
-        <div role="group" aria-label="Filter by project" className="no-scrollbar mt-12 flex gap-6 overflow-x-auto px-16 md:flex-wrap md:overflow-visible">
+        <div role="group" aria-label="Filter by project" className="no-scrollbar mt-12 flex gap-6 overflow-x-auto px-16 @md:flex-wrap @md:overflow-visible">
           <Chip pressed={!filters.project} disabled={offline} onClick={() => go({ ...filters, project: undefined })}>
             All
           </Chip>

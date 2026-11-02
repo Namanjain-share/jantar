@@ -174,7 +174,7 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
           <>
             <Warnings warnings={t.warnings} />
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-              <MarkdownDoc text={t.text} root={root} path={path} onOpen={openRel} className="px-16 py-16 md:px-24" />
+              <MarkdownDoc text={t.text} root={root} path={path} onOpen={openRel} className="px-16 py-16 desk:px-24" />
               <MoreText t={t} />
             </div>
           </>
@@ -194,7 +194,7 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
   }
 
   const tabs = change ? (
-    <div className="flex-none px-16 pb-8 md:px-24">
+    <div className="flex-none px-16 pb-8 desk:px-24">
       <Segmented
         label="File views"
         value={tab}

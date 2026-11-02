@@ -64,7 +64,7 @@ export function StateLine({
   className?: string;
 }) {
   return (
-    <div role={alert ? 'alert' : undefined} className={clsx('px-16 py-16 md:px-24', className)}>
+    <div role={alert ? 'alert' : undefined} className={clsx('px-16 py-16 desk:px-24', className)}>
       {title ? <p className="type-title text-ink">{title}</p> : null}
       <p className={clsx('flex items-start gap-8 type-small text-ink-2', title && 'mt-4')}>
         {locked ? <LockIcon size={16} aria-label="Protected" className="mt-2 flex-none text-ink-3" /> : null}

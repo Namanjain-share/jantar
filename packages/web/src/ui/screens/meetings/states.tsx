@@ -14,14 +14,14 @@ import { NO_CONTROL } from './model.js';
 export function MeetingsError({ error, offline = false, onRetry }: { error: unknown; offline?: boolean; onRetry?: () => void }) {
   if (!offline && isApiError(error, 'forbidden') && /\bscope\b/.test(error.message)) {
     return (
-      <div role="status" className="px-16 py-16 md:px-24">
+      <div role="status" className="px-16 py-16 desk:px-24">
         <p className="type-small text-ink-2">{NO_CONTROL}</p>
       </div>
     );
   }
   if (!offline && isApiError(error, 'meetings_unavailable')) {
     return (
-      <div role="status" className="px-16 py-16 md:px-24">
+      <div role="status" className="px-16 py-16 desk:px-24">
         <CommandSentence sentence={error.message} />
       </div>
     );

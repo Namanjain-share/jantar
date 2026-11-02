@@ -151,6 +151,18 @@ describe('design rules (direction.md 7)', () => {
       expect(tokens).toContain(v);
   });
 
+  it('0.11: panes ask their container; only the Mac chrome asks the window', () => {
+    // Shrinking allowlists: c23 converts these and empties both lists.
+    const stillByWindow = ['ui/screens/board/Desk.tsx']; // 2xl:flex (the side column)
+    const stillMedia = ['ui/screens/Session.tsx']; // useMedia(WIDE) (the property column)
+    // md: lg: xl: 2xl: are window widths: the chrome's business. A pane uses @md: (its own width), the
+    // Mac's density uses desk: (768 and up with a fine pointer).
+    expect(offenders(/(?<![\w@:-])(?:md|lg|xl|2xl):(?=[\w[!-])/, ['ui/shell/TopBar.tsx', 'ui/shell/StatusBar.tsx', 'ui/shell/Rail.tsx', ...stillByWindow])).toEqual([]);
+    expect(offenders(/\buseMedia\(/, ['ui/shell/layout.ts', 'ui/context.tsx', ...stillMedia])).toEqual([]);
+    // The container sizes are named in @theme, so Tailwind would also read them as widths: never use those.
+    expect(offenders(/(?<![\w-])(?:max-w|min-w|w)-(?:sm|md|two|split|wide|props|lg|xl)(?![\w-])/)).toEqual([]);
+  });
+
   it('24. ships no em dashes', () => {
     expect(offenders(/—/)).toEqual([]);
   });

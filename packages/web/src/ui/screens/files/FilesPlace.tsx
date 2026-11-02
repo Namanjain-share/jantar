@@ -119,7 +119,7 @@ export function FilesPlace({ location, onLocation }: FilesPlaceProps) {
 
   if (!features.files) {
     return (
-      <div className="px-16 py-24 md:px-32">
+      <div className="px-16 py-24 desk:px-32">
         <FilesOff />
       </div>
     );

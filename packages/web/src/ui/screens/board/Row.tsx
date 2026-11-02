@@ -97,7 +97,7 @@ function Line2({ row, ceiling, muted }: { row: RowModel; ceiling: number; muted:
   // One login on the Mac: no account to tell apart there (a server's rows keep theirs).
   const single = useAccountsMode() === 'single' && row.machine?.node === undefined;
   return (
-    <span data-line2 className="mt-4 flex h-20 min-w-0 items-center pl-24 text-small md:mt-0 md:h-18">
+    <span data-line2 className="mt-4 flex h-20 min-w-0 items-center pl-24 text-small desk:mt-0 desk:h-18">
       <span className={clsx('min-w-0 flex-1 truncate', muted ? 'text-ink-3' : l.kind === 'needs' ? 'text-ink' : 'text-ink-2')}>{body}</span>
       {/* v0.4: the project whose folder holds this session (WP-W's chip; nothing while Life is off, nor for a server's folder). */}
       {life && row.machine?.node === undefined ? <ProjectChip cwd={row.session.cwd} /> : null}
@@ -114,7 +114,7 @@ function Line2({ row, ceiling, muted }: { row: RowModel; ceiling: number; muted:
       ) : a ? (
         <span data-acct className="ml-12 flex-none type-mono text-ink-3">
           {a.id}
-          <span className="hidden md:inline">
+          <span className="hidden desk:inline">
             <span aria-hidden="true"> · </span>
             <span className="sr-only">5h </span>
             <b className={clsx('font-data', pastCeiling(a.pct, ceiling) ? 'text-signal-text' : 'text-ink-2')}>{a.pct ?? '–'}</b>
@@ -146,7 +146,7 @@ export function RowBody({ row, ceiling, unseen = false, events = 0 }: { row: Row
   const muted = row.machine?.offline === true;
   return (
     <>
-      <span data-offline={muted ? '' : undefined} className="flex h-20 min-w-0 items-center md:h-18">
+      <span data-offline={muted ? '' : undefined} className="flex h-20 min-w-0 items-center desk:h-18">
         <span key={events} className={clsx('mr-8 flex-none', events > 0 && 'animate-dim', muted && 'opacity-60')}>
           <StatusGlyph state={row.glyph} />
         </span>
@@ -160,7 +160,7 @@ export function RowBody({ row, ceiling, unseen = false, events = 0 }: { row: Row
           {row.folder}
         </span>
         <span className={clsx('ml-8 min-w-0 flex-initial truncate type-row', ended || muted ? 'text-ink-3' : 'text-ink-2')}>{row.name}</span>
-        {row.tag ? <span className="ml-8 hidden flex-none type-mono text-ink-3 md:inline">{row.tag}</span> : null}
+        {row.tag ? <span className="ml-8 hidden flex-none type-mono text-ink-3 desk:inline">{row.tag}</span> : null}
         {ended && row.machine ? <MachineChip name={row.machine.name} /> : null}
         <span className={clsx('ml-auto flex-none pl-12 type-mono', muted ? 'text-ink-2' : row.ageEmber ? 'text-signal-text' : 'text-ink-3')}>
           {row.age}
@@ -175,7 +175,7 @@ export function rowClass(row: RowModel, ground: 'surface' | 'bg', selected: bool
   const ended = row.glyph === 'ended';
   return clsx(
     'relative block scroll-mt-28 border-b border-line px-16 transition-colors duration-120 ease-hover focus-visible:-outline-offset-2',
-    ended ? 'pb-11 pt-12 md:pb-8 md:pt-9' : 'pb-9 pt-10 md:pb-7 md:pt-8',
+    ended ? 'pb-11 pt-12 desk:pb-8 desk:pt-9' : 'pb-9 pt-10 desk:pb-7 desk:pt-8',
     selected ? 'row-tick bg-select' : clsx(ground === 'surface' ? 'bg-surface' : 'bg-bg', 'hover:bg-hover'),
   );
 }

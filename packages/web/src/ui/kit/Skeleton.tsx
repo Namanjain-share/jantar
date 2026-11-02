@@ -8,12 +8,12 @@ import { StatusGlyph } from './StatusGlyph.js';
 
 export function SkeletonRow() {
   return (
-    <div className="border-b border-line px-16 py-10 md:py-8" aria-hidden="true">
-      <div className="flex h-20 items-center gap-8 md:h-18">
+    <div className="border-b border-line px-16 py-10 desk:py-8" aria-hidden="true">
+      <div className="flex h-20 items-center gap-8 desk:h-18">
         <StatusGlyph state="ended" />
         <span className="h-8 w-2/5 bg-line" />
       </div>
-      <div className="mt-4 flex h-20 items-center pl-24 md:mt-0 md:h-18">
+      <div className="mt-4 flex h-20 items-center pl-24 desk:mt-0 desk:h-18">
         <span className="h-8 w-7/10 bg-line" />
       </div>
     </div>

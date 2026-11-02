@@ -34,7 +34,7 @@ export function ImageView({ root, path, name, size }: { root: string; path: stri
     return <Loading caption="Loading the image…" count={2} />;
   }
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-16 md:p-24">
+    <div className="min-h-0 flex-1 overflow-auto p-16 desk:p-24">
       {url ? <img src={url} alt={name} className="mx-auto h-auto max-w-full" /> : null}
     </div>
   );

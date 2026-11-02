@@ -70,7 +70,7 @@ function EmptyBoard({ ceiling, ground }: { ceiling: number; ground: 'surface' | 
       title="No Claude sessions running"
       legend
       example={
-        <div className={clsx('relative block border-y border-line pb-9 pt-10 md:pb-7 md:pt-8', ground === 'surface' ? 'bg-surface' : 'bg-bg')}>
+        <div className={clsx('relative block border-y border-line pb-9 pt-10 desk:pb-7 desk:pt-8', ground === 'surface' ? 'bg-surface' : 'bg-bg')}>
           <RowBody row={EXAMPLE} ceiling={ceiling} />
         </div>
       }

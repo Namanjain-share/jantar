@@ -48,7 +48,7 @@ export function LifeLoading({ caption = 'Asking the Mac…', count = 4 }: { capt
 /** An empty list: one --ink-2 sentence and the add button. */
 export function LifeEmpty({ children, action, className }: { children: ReactNode; action?: ReactNode; className?: string }) {
   return (
-    <div className={clsx('px-16 py-16 md:px-24', className)}>
+    <div className={clsx('px-16 py-16 desk:px-24', className)}>
       <p className="type-small text-ink-2">{children}</p>
       {action ? <div className="mt-12">{action}</div> : null}
     </div>
@@ -72,7 +72,7 @@ export function LifeError({ error, offline = false, onRetry }: { error: unknown;
     body = <p className="type-small text-ink-2">{isApiError(error) && error.message ? errorText(error) : LOAD_FAILED}</p>;
   }
   return (
-    <div role="status" className="px-16 py-16 md:px-24">
+    <div role="status" className="px-16 py-16 desk:px-24">
       {body}
       {retry ? (
         <Button size="sm" className="mt-12" onClick={retry}>

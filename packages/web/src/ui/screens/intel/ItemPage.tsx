@@ -304,8 +304,8 @@ function Body({
         {item.fields.length ? (
           <dl className="mt-16 border-t border-line">
             {item.fields.map((f, i) => (
-              <div key={`${f.key}-${i}`} className="border-b border-line py-8 md:flex md:gap-12">
-                <dt className="break-words type-small text-ink-3 md:w-160 md:flex-none">{f.key}</dt>
+              <div key={`${f.key}-${i}`} className="border-b border-line py-8 @md:flex @md:gap-12">
+                <dt className="break-words type-small text-ink-3 @md:w-160 @md:flex-none">{f.key}</dt>
                 <dd className="min-w-0 whitespace-pre-wrap break-words type-small text-ink">
                   <FieldValue value={f.value} />
                 </dd>
@@ -340,7 +340,7 @@ export function ItemPage({ id, filters, offline }: { id: string; filters: ShelfF
     jobs.reload();
   };
   return (
-    <div className="pb-48 animate-enter md:max-w-720">
+    <div className="pb-48 animate-enter max-w-720">
       <div className="px-8 pt-8">
         <Back filters={filters} />
       </div>

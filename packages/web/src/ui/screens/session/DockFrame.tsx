@@ -52,7 +52,7 @@ function Head({ id, title, glyph, age, late, aside, hints }: Pick<DockFrameProps
       </h2>
       {age ? <span className={clsx('ml-8 flex-none type-mono', late ? 'text-signal-text' : 'text-ink-3')}>{age}</span> : null}
       {aside ? <span className="ml-8 flex-none">{aside}</span> : null}
-      {hints ? <span className="ml-auto hidden flex-none md:inline-flex">{hints}</span> : null}
+      {hints ? <span className="ml-auto hidden flex-none desk:inline-flex">{hints}</span> : null}
     </div>
   );
 }

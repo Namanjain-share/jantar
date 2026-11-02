@@ -115,8 +115,8 @@ export function Chat() {
 
   return (
     <>
-      <div className="flex min-h-full flex-col animate-enter md:max-w-720">
-        <header className="flex min-h-44 items-center gap-12 px-16 pb-8 pt-16 md:pt-24">
+      <div className="flex min-h-full flex-col animate-enter max-w-720">
+        <header className="flex min-h-44 items-center gap-12 px-16 pb-8 pt-16 desk:pt-24">
           <h1 data-display className="min-w-0 flex-1 truncate type-display text-ink">
             Chat
           </h1>

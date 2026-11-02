@@ -13,7 +13,7 @@ export function More() {
   const { more } = tabItems(usePlaceFeatures());
   const badges: Partial<Record<string, number>> = { board: useNeedsCount(), alerts: useNewAlerts(false) };
   return (
-    <div className="px-16 pb-48 pt-16 animate-enter md:px-32 md:pt-24">
+    <div className="px-16 pb-48 pt-16 animate-enter desk:px-32 desk:pt-24">
       <h1 data-display className="type-display text-ink">
         More
       </h1>

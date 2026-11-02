@@ -46,11 +46,11 @@ export function GhostRow({ job, ground, now }: { job: LaunchJob; ground: 'surfac
       data-glyph={dialog ? 'needs' : 'working'}
       // The ledger row's frame (Row.tsx rowClass): hairline, 52 / 64 px, hover. A ghost is never selected.
       className={clsx(
-        'relative block scroll-mt-28 border-b border-line px-16 pb-9 pt-10 transition-colors duration-120 ease-hover hover:bg-hover focus-visible:-outline-offset-2 md:pb-7 md:pt-8',
+        'relative block scroll-mt-28 border-b border-line px-16 pb-9 pt-10 transition-colors duration-120 ease-hover hover:bg-hover focus-visible:-outline-offset-2 desk:pb-7 desk:pt-8',
         ground === 'surface' ? 'bg-surface' : 'bg-bg',
       )}
     >
-      <span className="flex h-20 min-w-0 items-center md:h-18">
+      <span className="flex h-20 min-w-0 items-center desk:h-18">
         <span className="mr-8 flex-none">
           <StatusGlyph state={dialog ? 'needs' : 'working'} />
         </span>
@@ -62,7 +62,7 @@ export function GhostRow({ job, ground, now }: { job: LaunchJob; ground: 'surfac
           </span>
         ) : null}
       </span>
-      <span className="mt-4 flex h-20 min-w-0 items-center pl-24 type-mono text-ink-3 md:mt-0 md:h-18">
+      <span className="mt-4 flex h-20 min-w-0 items-center pl-24 type-mono text-ink-3 desk:mt-0 desk:h-18">
         <span className="min-w-0 truncate">
           {single ? null : `${launchAccount(job)} · `}
           <span className={dialog ? 'text-ink' : 'text-ink-2'}>{ghostWord(job)}</span> · {elapsed(job.createdAt, now)}

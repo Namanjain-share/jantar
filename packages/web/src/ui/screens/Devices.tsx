@@ -34,7 +34,7 @@ export function Devices() {
   if (machines) machinesShown.current = true;
   const [paired, setPaired] = useState<number | null>(null);
   return (
-    <div className="px-16 pb-48 pt-16 animate-enter md:px-32 md:pt-24">
+    <div className="px-16 pb-48 pt-16 animate-enter desk:px-32 desk:pt-24">
       <div className="max-w-880">
         <h1 data-display className="type-display text-ink">
           Devices

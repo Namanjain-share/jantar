@@ -207,7 +207,7 @@ export function PdfView({ root, path, size }: { root: string; path: string; size
   if (phase.name === 'ready') {
     const pages = Array.from({ length: phase.doc.numPages }, (_, i) => i + 1);
     return (
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-16 py-16 md:px-24">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-16 py-16 desk:px-24">
         <p className="mb-12 type-mono text-ink-3">
           PDF · {sizeText(size)} · {pages.length === 1 ? '1 page' : `${pages.length} pages`}
         </p>
@@ -223,7 +223,7 @@ export function PdfView({ root, path, size }: { root: string; path: string; size
     return <LoadError error={phase.error} offline={offline} onRetry={() => void open()} />;
   }
   return (
-    <div className="px-16 py-16 md:px-24">
+    <div className="px-16 py-16 desk:px-24">
       <p className="flex items-center gap-8 type-mono text-ink-3">
         <FilePdfIcon size={20} aria-hidden="true" className="text-ink-2" />
         PDF · {sizeText(size)}

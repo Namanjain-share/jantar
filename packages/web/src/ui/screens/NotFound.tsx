@@ -10,7 +10,7 @@ import { useNavigate } from '../context.js';
 export function NotFound({ off }: { off?: string }) {
   const navigate = useNavigate();
   return (
-    <section className="px-16 py-24 md:px-32">
+    <section className="px-16 py-24 desk:px-32">
       <h1 className="type-title text-ink">{off ? 'That is off on this Mac.' : 'That page does not exist.'}</h1>
       {off ? (
         <p className="mt-8 type-body text-ink-2">

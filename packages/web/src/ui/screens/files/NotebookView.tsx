@@ -111,7 +111,7 @@ export function NotebookView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Warnings warnings={t.warnings} />
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-16 py-16 md:px-24">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-16 py-16 desk:px-24">
         {nb.cells.length ? (
           <ol aria-label="Cells" className="flex flex-col gap-24">
             {nb.cells.map((c, i) => (

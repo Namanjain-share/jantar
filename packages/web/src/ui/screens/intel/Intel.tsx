@@ -283,8 +283,8 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
   }
 
   return (
-    <div className="pb-48 animate-enter md:max-w-720">
-      <header className="flex min-h-44 items-center gap-12 px-16 pb-8 pt-16 md:pt-24">
+    <div className="pb-48 animate-enter max-w-720">
+      <header className="flex min-h-44 items-center gap-12 px-16 pb-8 pt-16 desk:pt-24">
         <h1 data-display className="min-w-0 flex-1 truncate type-display text-ink">
           Intel
         </h1>
@@ -321,7 +321,7 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
       </div>
       {chipsFrom && (typeChips.length > 0 || chipsFrom.tags.length > 0 || filters.tag) ? (
         // The tag filter comes right after All, so it is on screen however many types the shelf has; the row wraps from md up.
-        <div role="group" aria-label="Filter the shelf" className="no-scrollbar mt-12 flex gap-6 overflow-x-auto px-16 md:flex-wrap md:overflow-visible">
+        <div role="group" aria-label="Filter the shelf" className="no-scrollbar mt-12 flex gap-6 overflow-x-auto px-16 @md:flex-wrap @md:overflow-visible">
           <Chip pressed={!filters.type} onClick={() => go({ ...filters, type: undefined })}>
             All
           </Chip>

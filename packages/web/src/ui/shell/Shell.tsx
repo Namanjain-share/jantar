@@ -8,6 +8,11 @@
  *
  * Pair and NotPaired are bare: no chrome at all.
  *
+ * 0.11: every box a screen scrolls in is a query container (@container), so
+ * a screen lays itself out by its pane's width (@md: and the rest, 640 and
+ * up), not the window's; only the chrome and the Mac's density (desk:)
+ * follow the window.
+ *
  * The v0.3 places, Files and New session, are their own chunks, loaded the
  * first time one opens (skeleton rows meanwhile), so the main chunk carries
  * neither; the service worker precaches them like every other file. So are
@@ -276,7 +281,7 @@ export function Shell() {
   if (bare) {
     return (
       <div className="min-h-dvh bg-bg">
-        <main id="main" className="pt-safe pb-safe">
+        <main id="main" className="@container pt-safe pb-safe">
           {screen}
         </main>
         <Toasts />
@@ -294,7 +299,7 @@ export function Shell() {
         {fullScreen ? <div className="pt-safe flex-none" /> : <PhoneHeader needs={needs} items={items} dashed={dashed} search={features.intel} onLegend={() => setLegend(true)} onHome={() => connection?.kick()} />}
         {offline ? <OfflineNotice /> : null}
         {updateAvailable ? <UpdateNotice /> : null}
-        <main id="main" key={scrollKey} className={fullScreen ? 'pb-safe min-h-0 flex-1 overflow-y-auto' : 'min-h-0 flex-1 overflow-y-auto'}>
+        <main id="main" key={scrollKey} className={fullScreen ? '@container pb-safe min-h-0 flex-1 overflow-y-auto' : '@container min-h-0 flex-1 overflow-y-auto'}>
           {screen}
         </main>
         {fullScreen ? null : <TabBar route={route.name} badges={badges} />}
@@ -309,17 +314,17 @@ export function Shell() {
   if (split && ledgerRoute) {
     body = (
       <div className="grid-ledger grid h-full min-h-0">
-        <section aria-label="Ledger" className="no-scrollbar min-h-0 overflow-y-auto border-r border-line bg-surface">
+        <section aria-label="Ledger" className="@container no-scrollbar min-h-0 overflow-y-auto border-r border-line bg-surface">
           <Board />
         </section>
-        <section aria-label="Detail" key={scrollKey} className="min-h-0 min-w-0 overflow-y-auto">
+        <section aria-label="Detail" key={scrollKey} className="@container min-h-0 min-w-0 overflow-y-auto">
           {route.name === 'session' ? screen : <Desk />}
         </section>
       </div>
     );
   } else {
     body = (
-      <div key={scrollKey} className="h-full overflow-y-auto">
+      <div key={scrollKey} className="@container h-full overflow-y-auto">
         {screen}
       </div>
     );

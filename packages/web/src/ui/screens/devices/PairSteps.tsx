@@ -30,7 +30,7 @@ import { InlineError, Receipt, StepNumber } from './parts.js';
 /** The bare frame: wordmark, the step count, one column (440 max). */
 export function PairFrame({ step, children }: { step?: [number, number]; children: ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-440 px-16 pb-32 md:pt-48">
+    <div className="mx-auto w-full max-w-440 px-16 pb-32 desk:pt-48">
       <div className="flex h-52 items-center justify-between">
         <Wordmark />
         {step ? (

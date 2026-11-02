@@ -49,7 +49,7 @@ function PairCode({ pair, scopes, busy, onRenew, onDone }: { pair: PairStartResp
         The device gets <span className="type-mono text-ink">{scopes.join(', ')}</span>. The code works once.
       </Dialog.Description>
 
-      <div className="mt-20 flex flex-col gap-24 md:flex-row md:items-start">
+      <div className="mt-20 flex flex-col gap-24 @sm:flex-row @sm:items-start">
         <Suspense fallback={<div aria-hidden="true" className={expired ? 'size-244 flex-none rounded-dock bg-qr-paper opacity-20' : 'size-244 flex-none rounded-dock bg-qr-paper'} />}>
           <QrCard text={pair.url} label={expired ? 'Expired pairing QR code' : 'Pairing QR code'} dim={expired} />
         </Suspense>
@@ -169,8 +169,8 @@ export function PairNew() {
       <Dialog.Root open={pair !== null} onOpenChange={(o) => (o ? undefined : setPair(null))}>
         <Dialog.Portal>
           <Dialog.Backdrop className="fixed inset-0 z-35 bg-scrim animate-fade" />
-          <Dialog.Viewport className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto px-16 py-48 md:items-center">
-            <Dialog.Popup className="w-full max-w-600 rounded-dock bg-raised p-24 text-ink shadow-float outline-none animate-pop">
+          <Dialog.Viewport className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto px-16 py-48 desk:items-center">
+            <Dialog.Popup className="@container w-full max-w-600 rounded-dock bg-raised p-24 text-ink shadow-float outline-none animate-pop">
               {pair ? <PairCode pair={pair} scopes={scopes} busy={busy} onRenew={() => void start()} onDone={() => setPair(null)} /> : null}
             </Dialog.Popup>
           </Dialog.Viewport>

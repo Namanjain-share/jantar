@@ -47,9 +47,9 @@ export function Page({
 }) {
   const offline = useOffline();
   return (
-    <div className="pb-48 animate-enter md:max-w-720">
+    <div className="pb-48 animate-enter max-w-720">
       {back ? <div className="px-8 pt-8">{back}</div> : null}
-      <header className={clsx('flex min-h-44 items-center gap-12 px-16 pb-8', back ? 'pt-4' : 'pt-16 md:pt-24')}>
+      <header className={clsx('flex min-h-44 items-center gap-12 px-16 pb-8', back ? 'pt-4' : 'pt-16 desk:pt-24')}>
         <h1 data-display className={clsx('min-w-0 flex-1 text-ink', wrapTitle ? 'break-words type-title' : 'truncate type-display')}>
           {title}
         </h1>

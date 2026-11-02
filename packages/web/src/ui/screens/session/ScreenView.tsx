@@ -101,7 +101,7 @@ export function TermBox({
       tabIndex={0}
       aria-label={label}
       className={clsx(
-        'no-scrollbar flex flex-col overflow-auto whitespace-pre-wrap rounded-btn bg-term px-16 py-12 font-mono text-code font-data text-term-ink wrap-break-word md:px-20 md:py-16',
+        'no-scrollbar flex flex-col overflow-auto whitespace-pre-wrap rounded-btn bg-term px-16 py-12 font-mono text-code font-data text-term-ink wrap-break-word desk:px-20 desk:py-16',
         fill && 'min-h-0 flex-1',
         className,
       )}
