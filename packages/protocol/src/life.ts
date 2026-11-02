@@ -17,12 +17,17 @@
 import { z } from 'zod';
 import {
   FOOD_ESTIMATE_TEXT_MAX,
+  PLACE_RATING_KEYS,
+  PLACE_TAGS,
+  PLACE_TAGS_MAX,
+  PLACE_TAG_LABELS,
   POST_GOALS_MAX,
   POST_LINK_MAX,
   POST_PER_WEEK_MAX,
   POST_TEXT_MAX,
   POST_TITLE_MAX,
   POST_WHERE_MAX,
+  type PlaceTagKey,
 } from './constants.js';
 import { IsoDateSchema } from './models.js';
 import { LIFE_MODULES } from './settings.js';
@@ -446,16 +451,91 @@ export const FoodEstimateSchema = z.object({
 export type FoodEstimate = z.infer<typeof FoodEstimateSchema>;
 
 // ---------------------------------------------------------------------------
-// Cafés
+// Shared by cafés (v0.10 tags, a dish's price, a visit's spend) and finance
 
-export const DishSchema = z.strictObject({ name: z.string().trim().min(1).max(60), rating: z.number().int().min(1).max(5) });
+/** A finance category, and (v0.10) a custom café tag: trimmed, 1 to 24 characters, no control characters. */
+export const CategorySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(24)
+  .regex(/^[^\u0000-\u001f\u007f]+$/);
+export type Category = z.infer<typeof CategorySchema>;
+/** Integer hundredths of the currency unit. */
+export const AmountSchema = z.number().int().min(1).max(1e12);
+
+// ---------------------------------------------------------------------------
+// Cafés
+//
+// v0.10 (spec 0.10 A1): a café's own stars, six optional sub-ratings, a
+// price level, would go again, tags (fixed keys plus custom ones), richer
+// dishes, and visits (their own table; the list carries a summary only).
+// Stored shapes are tolerant `z.object`s, so a field a later build adds
+// never hides a whole café; body shapes stay strict (an unknown key is a 400).
+
+const Rating = z.number().int().min(1).max(5);
+export const PlaceRatingKeySchema = z.enum(PLACE_RATING_KEYS);
+/** Stored: each sub-rating optional. */
+export const PlaceRatingsSchema = z.object({
+  food: Rating.optional(),
+  drinks: Rating.optional(),
+  ambience: Rating.optional(),
+  service: Rating.optional(),
+  value: Rating.optional(),
+  work: Rating.optional(),
+});
+export type PlaceRatings = z.infer<typeof PlaceRatingsSchema>;
+/** In a POST body. */
+export const PlaceRatingsBodySchema = z.strictObject(PlaceRatingsSchema.shape);
+/** In a PATCH body: merges per key; null clears that key. */
+export const PlaceRatingsPatchSchema = z.strictObject({
+  food: Rating.nullable().optional(),
+  drinks: Rating.nullable().optional(),
+  ambience: Rating.nullable().optional(),
+  service: Rating.nullable().optional(),
+  value: Rating.nullable().optional(),
+  work: Rating.nullable().optional(),
+});
+export type PlaceRatingsPatch = z.infer<typeof PlaceRatingsPatchSchema>;
+/** 1 (cheap) to 4 (splurge), shown in the Life currency's symbol. */
+export const PriceLevelSchema = z.number().int().min(1).max(4);
+export type PriceLevel = z.infer<typeof PriceLevelSchema>;
+export const GoAgainSchema = z.enum(['yes', 'maybe', 'no']);
+export type GoAgain = z.infer<typeof GoAgainSchema>;
+/** A fixed tag's key (PLACE_TAGS) or a custom tag, by CategorySchema's rule. */
+export const PlaceTagSchema = CategorySchema;
+export const PlaceTagsSchema = z.array(PlaceTagSchema).max(PLACE_TAGS_MAX);
+
+/** Stored: a dish can be listed before it is tried (v0.10: rating optional). */
+export const DishSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  rating: Rating.optional(),
+  /** Hundredths. */
+  price: AmountSchema.optional(),
+  /** Would order again. */
+  again: z.boolean().optional(),
+  notes: z.string().max(200).optional(),
+});
 export type Dish = z.infer<typeof DishSchema>;
+export const DishBodySchema = z.strictObject(DishSchema.shape);
+export type DishBody = z.infer<typeof DishBodySchema>;
 const PlaceNameSchema = z.string().trim().min(1).max(80);
 const AreaSchema = z.string().trim().max(60);
 /** A maps or menu link; opened in a new tab only. */
 const PlaceLinkSchema = z.url({ protocol: /^https$/ }).max(500);
 const PlaceNotesSchema = z.string().max(1000);
 const DishesSchema = z.array(DishSchema).max(30);
+const DishesBodySchema = z.array(DishBodySchema).max(30);
+
+/** Derived from a café's visits when it is read (never stored with the café). */
+export const PlaceVisitsSummarySchema = z.object({
+  count: z.number().int().nonnegative(),
+  /** The newest visit's day. */
+  last: DayKeySchema.nullable(),
+  /** Hundredths, the mean over the visits with a spend, rounded. */
+  avgSpend: z.number().int().nullable(),
+});
+export type PlaceVisitsSummary = z.infer<typeof PlaceVisitsSummarySchema>;
 
 export const PlaceSchema = z.object({
   id: LifeIdSchema,
@@ -465,53 +545,188 @@ export const PlaceSchema = z.object({
   notes: PlaceNotesSchema.optional(),
   tried: z.boolean(),
   dishes: DishesSchema,
-  /** Derived: the highest dish rating. */
-  best: z.number().int().min(1).max(5).nullable(),
+  /** Derived: the highest rating among the rated dishes, null when none is rated. */
+  best: Rating.nullable(),
+  /** v0.10: the café's own overall rating. */
+  stars: Rating.optional(),
+  ratings: PlaceRatingsSchema.optional(),
+  price: PriceLevelSchema.optional(),
+  again: GoAgainSchema.optional(),
+  tags: PlaceTagsSchema.default(() => []),
+  /** Derived from place_visits when read; never stored in the café's json. */
+  visits: PlaceVisitsSummarySchema.default(() => ({ count: 0, last: null, avgSpend: null })),
   ...stamps,
 });
 export type Place = z.infer<typeof PlaceSchema>;
-/** POST /v1/places (tried defaults to false, dishes to none). */
+/** POST /v1/places (tried defaults to false, dishes to none, tags to none). */
 export const PlaceBodySchema = z.strictObject({
   name: PlaceNameSchema,
   area: AreaSchema.optional(),
   link: PlaceLinkSchema.optional(),
   notes: PlaceNotesSchema.optional(),
   tried: z.boolean().optional(),
-  dishes: DishesSchema.optional(),
+  dishes: DishesBodySchema.optional(),
+  stars: Rating.optional(),
+  ratings: PlaceRatingsBodySchema.optional(),
+  price: PriceLevelSchema.optional(),
+  again: GoAgainSchema.optional(),
+  tags: PlaceTagsSchema.optional(),
 });
 export type PlaceBody = z.infer<typeof PlaceBodySchema>;
-/** PATCH /v1/places/:id: every field optional; null clears area, link and notes; dishes replace wholesale. */
+/**
+ * PATCH /v1/places/:id: every field optional; null clears area, link, notes,
+ * stars, price and again; `ratings` merges per key (null clears that key);
+ * dishes and tags replace wholesale.
+ */
 export const PlacePatchSchema = z.strictObject({
   name: PlaceNameSchema.optional(),
   area: AreaSchema.nullable().optional(),
   link: PlaceLinkSchema.nullable().optional(),
   notes: PlaceNotesSchema.nullable().optional(),
   tried: z.boolean().optional(),
-  dishes: DishesSchema.optional(),
+  dishes: DishesBodySchema.optional(),
+  stars: Rating.nullable().optional(),
+  price: PriceLevelSchema.nullable().optional(),
+  again: GoAgainSchema.nullable().optional(),
+  ratings: PlaceRatingsPatchSchema.optional(),
+  tags: PlaceTagsSchema.optional(),
 });
 export type PlacePatch = z.infer<typeof PlacePatchSchema>;
-/** Always sorted by best. */
-export const PlacesQuerySchema = z.object({ filter: z.enum(['all', 'tried', 'want']).default('all') });
+
+const VisitHadSchema = z.array(z.string().trim().min(1).max(60)).max(10);
+const VisitNotesSchema = z.string().max(500);
+/** v0.10: one visit to a café (stored in place_visits). */
+export const PlaceVisitSchema = z.object({
+  id: LifeIdSchema,
+  placeId: LifeIdSchema,
+  /** Today or earlier in the Life zone. */
+  day: DayKeySchema,
+  /** Hundredths. */
+  spend: AmountSchema.optional(),
+  /** How this visit was. */
+  stars: Rating.optional(),
+  /** Dish names. */
+  had: VisitHadSchema.optional(),
+  notes: VisitNotesSchema.optional(),
+  ...stamps,
+});
+export type PlaceVisit = z.infer<typeof PlaceVisitSchema>;
+/** POST /v1/places/:id/visits (day defaults to today; the first visit marks the café tried). */
+export const PlaceVisitBodySchema = z.strictObject({
+  day: DayKeySchema.optional(),
+  spend: AmountSchema.optional(),
+  stars: Rating.optional(),
+  had: VisitHadSchema.optional(),
+  notes: VisitNotesSchema.optional(),
+});
+export type PlaceVisitBody = z.infer<typeof PlaceVisitBodySchema>;
+/** PATCH /v1/places/:id/visits/:visitId: null clears spend, stars, had and notes. */
+export const PlaceVisitPatchSchema = z.strictObject({
+  day: DayKeySchema.optional(),
+  spend: AmountSchema.nullable().optional(),
+  stars: Rating.nullable().optional(),
+  had: VisitHadSchema.nullable().optional(),
+  notes: VisitNotesSchema.nullable().optional(),
+});
+export type PlaceVisitPatch = z.infer<typeof PlaceVisitPatchSchema>;
+export const PlaceVisitParamsSchema = z.object({ id: LifeIdSchema, visitId: LifeIdSchema });
+
+/** v0.10: each sort ends with the name, then the id, so the order never wobbles. */
+export const PlacesSortSchema = z.enum(['best', 'recent', 'visits', 'name', 'price', 'work']);
+export type PlacesSort = z.infer<typeof PlacesSortSchema>;
+/**
+ * GET /v1/places. v0.10: sorts and filters, run by the daemon's module so
+ * the phone, the CLI and Chat share one implementation.
+ */
+export const PlacesQuerySchema = z.object({
+  filter: z.enum(['all', 'tried', 'want']).default('all'),
+  sort: PlacesSortSchema.default('best'),
+  /** A comma list; a café must carry every one (keys, labels or custom tags, any case). */
+  tags: z.string().max(400).optional(),
+  /** At most this price level; a café with no price is left out. */
+  price: z.enum(['1', '2', '3', '4']).optional(),
+  /** At least this score (placeScore); a café with no score is left out. */
+  stars: z.enum(['1', '2', '3', '4', '5']).optional(),
+  /** "1": only cafés you would go to again. */
+  again: flag01.optional(),
+  /** Exactly this area, any case. */
+  area: z.string().trim().max(60).optional(),
+  /** Name, area, dish names, tags (keys and labels) and notes, any case. */
+  q: z.string().trim().max(80).optional(),
+});
 export type PlacesQuery = z.infer<typeof PlacesQuerySchema>;
-export const PlacesResponseSchema = z.object({ places: z.array(PlaceSchema) });
+export type PlacesQueryInput = z.input<typeof PlacesQuerySchema>;
+export const PlacesResponseSchema = z.object({
+  places: z.array(PlaceSchema),
+  /** v0.10: every tag on the cafés of the filter segment (before tags and q narrow it), with how many carry it. */
+  tags: z.array(z.object({ tag: z.string(), n: z.number().int() })),
+  /** v0.10: the same for areas. */
+  areas: z.array(z.object({ area: z.string(), n: z.number().int() })),
+});
 export type PlacesResponse = z.infer<typeof PlacesResponseSchema>;
+/** GET /v1/places/:id?before=<visitId>: the café and a page of its visits, newest first. */
+export const PlaceGetQuerySchema = z.object({ before: LifeIdSchema.optional() });
+export type PlaceGetQuery = z.infer<typeof PlaceGetQuerySchema>;
+export const PlaceDetailSchema = z.object({
+  place: PlaceSchema,
+  visits: z.array(PlaceVisitSchema),
+  /** Older visits than this page exist. */
+  more: z.boolean(),
+});
+export type PlaceDetail = z.infer<typeof PlaceDetailSchema>;
+
+const TAG_BY_FOLDED: ReadonlyMap<string, PlaceTagKey> = /* @__PURE__ */ new Map(
+  PLACE_TAGS.flatMap((k) => [
+    [k, k],
+    [PLACE_TAG_LABELS[k].toLowerCase(), k],
+  ]),
+);
+
+/** A tag as stored: a fixed key when it names one (by key or label, any case), else the custom tag trimmed. */
+export function placeTagKey(tag: string): string {
+  const t = tag.trim();
+  return TAG_BY_FOLDED.get(t.toLowerCase()) ?? t;
+}
+
+/** A fixed tag's label, or a custom tag as typed. */
+export function placeTagLabel(tag: string): string {
+  return (PLACE_TAG_LABELS as Readonly<Record<string, string>>)[tag] ?? tag;
+}
+
+/** Tags as stored: each by placeTagKey, empty ones and duplicates (any case) dropped, order kept. */
+export function normalizePlaceTags(tags: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of tags) {
+    const key = placeTagKey(raw);
+    const folded = key.toLowerCase();
+    if (key === '' || seen.has(folded)) continue;
+    seen.add(folded);
+    out.push(key);
+  }
+  return out;
+}
+
+/**
+ * What the Best sort and the stars filter go by: the café's own stars, else
+ * its sub-ratings' mean rounded to the nearest half, else its best dish,
+ * else null.
+ */
+export function placeScore(p: { stars?: number | undefined; ratings?: PlaceRatings | undefined; best?: number | null | undefined }): number | null {
+  if (p.stars !== undefined) return p.stars;
+  const subs = PLACE_RATING_KEYS.map((k) => p.ratings?.[k]).filter((v): v is number => typeof v === 'number');
+  if (subs.length > 0) return Math.round((subs.reduce((a, b) => a + b, 0) / subs.length) * 2) / 2;
+  return p.best ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // Finance (amounts: integer hundredths of the currency unit)
 
-export const CategorySchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(24)
-  .regex(/^[^\u0000-\u001f\u007f]+$/);
-export type Category = z.infer<typeof CategorySchema>;
 /** The category picker's fixed list; categories used in the last 12 months are added to it. */
 export const DEFAULT_CATEGORIES = {
   expense: ['Food', 'Groceries', 'Transport', 'Bills', 'Rent', 'Shopping', 'Health', 'Fun', 'Other'],
   income: ['Salary', 'Other'],
 } as const;
-export const AmountSchema = z.number().int().min(1).max(1e12);
 export const MoneyKindSchema = z.enum(['expense', 'income']);
 export type MoneyKind = z.infer<typeof MoneyKindSchema>;
 export const MoneyNoteSchema = z.string().max(200);

@@ -387,7 +387,9 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
     area,
     tried,
     dishes,
-    best: dishes.length ? Math.max(...dishes.map((x) => x.rating)) : null,
+    best: dishes.length ? Math.max(...dishes.map((x) => x.rating ?? 0)) : null,
+    tags: [],
+    visits: { count: 0, last: null, avgSpend: null },
     createdAt: iso(60 * 24 * (n - 680)),
     updatedAt: iso(60 * 24 * (n - 690 + 3)),
     ...over,
@@ -693,7 +695,7 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
         return ok(foodDay(qDay && qDay <= today ? qDay : today));
       case 'placesList': {
         const f = q.get('filter');
-        return ok({ places: places.filter((p) => (f === 'tried' ? p.tried : f === 'want' ? !p.tried : true)) });
+        return ok({ places: places.filter((p) => (f === 'tried' ? p.tried : f === 'want' ? !p.tried : true)), tags: [], areas: [] });
       }
       case 'moneyMonth':
         return ok(moneyMonth(q.get('month') ?? month));

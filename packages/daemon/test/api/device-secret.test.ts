@@ -111,6 +111,10 @@ describe('which routes need the device secret', () => {
         'postDelete',
         'postGoalsSet',
         'postUpdate',
+        // v0.10 Cafés depth: a café's visits (control scope)
+        'placeVisitAdd',
+        'placeVisitDelete',
+        'placeVisitUpdate',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);

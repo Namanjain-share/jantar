@@ -23,7 +23,7 @@ afterEach(() => vi.useRealTimers());
 const id = (n: number) => `01JFZ8X8Y3T0V5G9WQK2M4N${String(n).padStart(3, '0')}`;
 
 function place(n: number, over: Partial<Place> = {}): Place {
-  return { id: id(n), name: `Example Café ${n}`, tried: true, dishes: [], best: null, createdAt: iso(0), updatedAt: iso(0), ...over };
+  return { id: id(n), name: `Example Café ${n}`, tried: true, dishes: [], best: null, tags: [], visits: { count: 0, last: null, avgSpend: null }, createdAt: iso(0), updatedAt: iso(0), ...over };
 }
 
 const PLACES: Place[] = [
@@ -33,7 +33,8 @@ const PLACES: Place[] = [
 ];
 
 function render(opts: { places?: Place[]; list?: (f?: string) => Promise<{ places: Place[] }>; path?: string; api?: Parameters<typeof fakeApi>[0]; conn?: 'live' | 'offline' } = {}) {
-  const api = fakeApi({ placesList: vi.fn(opts.list ?? (async () => ({ places: opts.places ?? PLACES }))), ...opts.api });
+  const list = opts.list ?? (async () => ({ places: opts.places ?? PLACES }));
+  const api = fakeApi({ placesList: vi.fn(async (f?: string) => ({ tags: [], areas: [], ...(await list(f)) })), ...opts.api });
   return renderApp({ path: opts.path ?? '/places', api, state: stateWith({ features: { life: true } }), ...(opts.conn ? { status: opts.conn } : {}) });
 }
 

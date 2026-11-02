@@ -50,7 +50,7 @@ describe('cafés', () => {
     const { id } = value(places.create(placeBody(), PHONE));
     const bare = value(places.create({ name: '  Plain Place ' }, PHONE));
     const list = value(places.list('all')).places;
-    expect(PlacesResponseSchema.parse({ places: list }).places).toEqual(list);
+    expect(PlacesResponseSchema.parse(value(places.list('all'))).places).toEqual(list);
     expect(list.find((p) => p.id === id)).toEqual({
       id,
       name: 'Example Café',
@@ -63,10 +63,22 @@ describe('cafés', () => {
         { name: 'Sample Coffee', rating: 3 },
       ],
       best: 5,
+      tags: [],
+      visits: { count: 0, last: null, avgSpend: null },
       createdAt: NOW,
       updatedAt: NOW,
     });
-    expect(list.find((p) => p.id === bare.id)).toEqual({ id: bare.id, name: 'Plain Place', tried: false, dishes: [], best: null, createdAt: NOW, updatedAt: NOW });
+    expect(list.find((p) => p.id === bare.id)).toEqual({
+      id: bare.id,
+      name: 'Plain Place',
+      tried: false,
+      dishes: [],
+      best: null,
+      tags: [],
+      visits: { count: 0, last: null, avgSpend: null },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     expect(core.changedCount).toBe(2);
   });
 
@@ -195,7 +207,7 @@ describe('places routes', () => {
     expect(JSON.stringify([r.kind === 'events' ? r.events : [], api.ctx.db.audit.list(), api.ctx.log.records])).not.toContain(LIFE_MARKER);
   });
 
-  it('a link that is not https is 400; an unknown place 404; a bad filter 400; not on ctl.sock', async () => {
+  it('a link that is not https is 400; an unknown place 404; a bad filter 400; writes not on ctl.sock (v0.10: the list is)', async () => {
     const { api, cookie } = await placesApi();
     for (const link of ['http://maps.example.com/x', 'javascript:alert(1)', '/relative']) {
       const res = await api.tcp.inject({ method: 'POST', url: '/v1/places', headers: h(cookie), payload: placeBody({ link }) });
@@ -205,6 +217,7 @@ describe('places routes', () => {
     expect(ghost.statusCode).toBe(404);
     expect(ghost.json().error).toEqual({ code: 'not_found', message: PLACES_SENTENCES.none });
     expect((await api.tcp.inject({ method: 'GET', url: '/v1/places?filter=best', headers: h(cookie) })).statusCode).toBe(400);
-    expect((await api.ctl.inject({ method: 'GET', url: '/v1/places' })).statusCode).toBe(404);
+    expect((await api.ctl.inject({ method: 'GET', url: '/v1/places' })).statusCode).toBe(200);
+    expect((await api.ctl.inject({ method: 'POST', url: '/v1/places', payload: placeBody() })).statusCode).toBe(404);
   });
 });

@@ -111,7 +111,12 @@ import {
   MoneyQuerySchema,
   OkReplySchema,
   PlaceBodySchema,
+  PlaceDetailSchema,
+  PlaceGetQuerySchema,
   PlacePatchSchema,
+  PlaceVisitBodySchema,
+  PlaceVisitParamsSchema,
+  PlaceVisitPatchSchema,
   PlacesQuerySchema,
   PlacesResponseSchema,
   PostBodySchema,
@@ -881,7 +886,7 @@ export interface RouteDef {
    * active key (404 otherwise), never with an Origin.
    */
   scope: Scope | 'public' | 'extension' | 'node' | 'capture';
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8';
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10';
   /**
    * While this switch is off the route answers 403 with the sentence that
    * turns it on (screenshots: 403 screenshots_off), before validation and
@@ -1312,8 +1317,10 @@ export const ROUTES = {
   }),
 
   placesList: route({
-    method: 'GET', path: '/v1/places', scope: 'control', phase: 'v0.4', ctl: false, feature: 'places',
-    query: PlacesQuerySchema, response: PlacesResponseSchema, summary: 'Cafés, best rated first (?filter=tried|want).',
+    // v0.10: on ctl.sock too, read only (jantar place list); every café write stays the phone's.
+    method: 'GET', path: '/v1/places', scope: 'control', phase: 'v0.4', ctl: true, feature: 'places',
+    query: PlacesQuerySchema, response: PlacesResponseSchema,
+    summary: 'Cafés, best rated first by default (?filter, ?sort, ?tags, ?price, ?stars, ?again, ?area, ?q), with tag and area counts.',
   }),
   placeCreate: route({
     method: 'POST', path: '/v1/places', scope: 'control', phase: 'v0.4', ctl: false, feature: 'places',
@@ -1325,7 +1332,25 @@ export const ROUTES = {
   }),
   placeDelete: route({
     method: 'DELETE', path: '/v1/places/:id', scope: 'control', phase: 'v0.4', ctl: false, feature: 'places',
-    params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete a café.',
+    params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete a café and its visits.',
+  }),
+  // v0.10 (spec 0.10 A3): one café with its visits, and the visit writes. Ids-only replies.
+  placeGet: route({
+    method: 'GET', path: '/v1/places/:id', scope: 'control', phase: 'v0.10', ctl: true, feature: 'places',
+    params: LifeIdParamsSchema, query: PlaceGetQuerySchema, response: PlaceDetailSchema,
+    summary: 'One café and its newest visits (?before=<visitId> for older ones).',
+  }),
+  placeVisitAdd: route({
+    method: 'POST', path: '/v1/places/:id/visits', scope: 'control', phase: 'v0.10', ctl: false, feature: 'places',
+    params: LifeIdParamsSchema, body: PlaceVisitBodySchema, response: IdReplySchema, summary: 'Log a visit to a café (today or earlier); the first marks it tried.',
+  }),
+  placeVisitUpdate: route({
+    method: 'PATCH', path: '/v1/places/:id/visits/:visitId', scope: 'control', phase: 'v0.10', ctl: false, feature: 'places',
+    params: PlaceVisitParamsSchema, body: PlaceVisitPatchSchema, response: OkReplySchema, summary: 'Change a visit.',
+  }),
+  placeVisitDelete: route({
+    method: 'DELETE', path: '/v1/places/:id/visits/:visitId', scope: 'control', phase: 'v0.10', ctl: false, feature: 'places',
+    params: PlaceVisitParamsSchema, response: OkReplySchema, summary: 'Delete a visit.',
   }),
 
   moneyMonth: route({

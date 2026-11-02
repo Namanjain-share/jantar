@@ -4,6 +4,8 @@
  * CLI nor a Claude session using it can read or write them; the shelf,
  * Life's status and Resume's history are. Backup and restore are the Mac
  * only: over TCP even an admin device gets 403 with the command to run.
+ * v0.10: the café list (and one café) can be read there, for `jantar
+ * place`; every café write is still 404 there.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RouteDef, RouteName } from '@jantar/protocol';
@@ -17,6 +19,8 @@ afterEach(async () => {
 });
 
 const PRIVATE = ['/v1/medicines', '/v1/food', '/v1/weights', '/v1/places', '/v1/money', '/v1/bills', '/v1/todos', '/v1/projects', '/v1/life/today'];
+/** v0.10: read only on ctl.sock (jantar place list and show). */
+const CTL_READS = new Set<RouteName>(['placesList', 'placeGet']);
 
 describe('LG4: ctl.sock never serves Life data', () => {
   it('every medicine, food, weight, place, money, bill, todo, project and Today route is 404 on ctl.sock', async () => {
@@ -24,11 +28,12 @@ describe('LG4: ctl.sock never serves Life data', () => {
     let checked = 0;
     for (const [name, def] of V04 as [RouteName, RouteDef][]) {
       if (!PRIVATE.some((p) => def.path === p || def.path.startsWith(`${p}/`))) continue;
+      if (CTL_READS.has(name)) continue;
       checked += 1;
       const res = await v04Call(api, 'ctl', name);
       expect(res.statusCode, name).toBe(404);
     }
-    expect(checked).toBe(40);
+    expect(checked).toBe(39);
   });
 
   it('the shelf, Life status, backup, restore and Resume history are served there', async () => {

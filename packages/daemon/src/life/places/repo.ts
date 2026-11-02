@@ -28,9 +28,11 @@ export class PlacesRepo {
   }
 
   put(p: Place): void {
+    // v0.10: the visits summary is derived when read, never stored.
+    const { visits: _derived, ...stored } = PlaceSchema.parse(p);
     this.core.db
       .prepare('INSERT INTO places (id, best, updated_at, json) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET best = excluded.best, updated_at = excluded.updated_at, json = excluded.json')
-      .run(p.id, p.best, p.updatedAt, JSON.stringify(PlaceSchema.parse(p)));
+      .run(p.id, p.best, p.updatedAt, JSON.stringify(stored));
   }
 
   /** True when there was one to delete. */

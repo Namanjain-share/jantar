@@ -59,13 +59,15 @@ describe('v0.4 routes', () => {
     expect(byFeature(undefined)).toEqual(['lifeBackup', 'lifeRestore', 'lifeStatus']);
   });
 
-  it('LG4: no health, food, money, todo or Today route is served on ctl.sock', () => {
-    const PRIVATE = ['/v1/medicines', '/v1/food', '/v1/weights', '/v1/places', '/v1/money', '/v1/bills', '/v1/todos', '/v1/projects', '/v1/life/today'];
+  it('LG4: no health, food, money, todo or Today route is served on ctl.sock; cafés only read there (v0.10)', () => {
+    const PRIVATE = ['/v1/medicines', '/v1/food', '/v1/weights', '/v1/money', '/v1/bills', '/v1/todos', '/v1/projects', '/v1/life/today'];
     for (const [name, r] of routes) {
       if (PRIVATE.some((p) => r.path === p || r.path.startsWith(`${p}/`))) expect(r.ctl, name).toBe(false);
+      // v0.10: jantar place list and show read cafés over ctl.sock; every café write stays the phone's.
+      if (r.path === '/v1/places' || r.path.startsWith('/v1/places/')) expect(r.ctl, name).toBe(r.method === 'GET');
     }
     expect(v04.filter(([, r]) => r.ctl).map(([n]) => n).sort()).toEqual(
-      ['intelCapture', 'intelGet', 'intelList', 'intelSources', 'launchHistory', 'lifeBackup', 'lifeRestore', 'lifeStatus'].sort(),
+      ['intelCapture', 'intelGet', 'intelList', 'intelSources', 'launchHistory', 'lifeBackup', 'lifeRestore', 'lifeStatus', 'placesList'].sort(),
     );
   });
 

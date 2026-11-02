@@ -39,9 +39,9 @@ const EMPTY_FOR: Record<PlacesFilter, string> = {
   want: 'Nothing on the want to try list.',
 };
 
-/** The place's best dish: the highest rating, the first of those. */
+/** The place's best dish: the highest rating, the first of those; an unrated dish never counts. */
 export function bestDish(p: Place) {
-  return p.dishes.reduce<Place['dishes'][number] | null>((best, d) => (!best || d.rating > best.rating ? d : best), null);
+  return p.dishes.reduce<Place['dishes'][number] | null>((best, d) => (d.rating !== undefined && (!best || d.rating > (best.rating ?? 0)) ? d : best), null);
 }
 
 export function Places({ filter = 'all', id }: PlacesProps) {
@@ -107,7 +107,7 @@ export function Places({ filter = 'all', id }: PlacesProps) {
                       {dish ? (
                         <span className="mt-2 flex items-center gap-8 type-small text-ink-2">
                           <span className="min-w-0 truncate">{dish.name}</span>
-                          <Stars rating={dish.rating} />
+                          <Stars rating={dish.rating ?? 0} />
                         </span>
                       ) : null}
                     </button>

@@ -20,9 +20,10 @@ export const PLACES_SENTENCES = {
   invalid: 'That café is not valid.',
 } as const;
 
-/** The highest dish rating, or null with no dishes. */
+/** The highest rating among the rated dishes, or null when none is rated (v0.10: a dish may be unrated). */
 export function bestOf(dishes: readonly Dish[]): number | null {
-  return dishes.length === 0 ? null : Math.max(...dishes.map((d) => d.rating));
+  const rated = dishes.flatMap((d) => (d.rating === undefined ? [] : [d.rating]));
+  return rated.length === 0 ? null : Math.max(...rated);
 }
 
 /** Best first (no rating last), then by name, then by id so the order never wobbles. */
@@ -43,8 +44,18 @@ function fail(code: 'invalid_request' | 'not_found' | 'conflict', reason: string
 }
 
 /** A place with its optional fields set only when they hold something (`area: undefined` is never stored). */
-function shape(p: Omit<Place, 'area' | 'link' | 'notes' | 'best'> & { area?: string | undefined; link?: string | undefined; notes?: string | undefined }): Place {
-  const out: Place = { id: p.id, name: p.name.trim(), tried: p.tried, dishes: p.dishes, best: bestOf(p.dishes), createdAt: p.createdAt, updatedAt: p.updatedAt };
+function shape(p: Omit<Place, 'area' | 'link' | 'notes' | 'best' | 'tags' | 'visits'> & { area?: string | undefined; link?: string | undefined; notes?: string | undefined }): Place {
+  const out: Place = {
+    id: p.id,
+    name: p.name.trim(),
+    tried: p.tried,
+    dishes: p.dishes,
+    best: bestOf(p.dishes),
+    tags: [],
+    visits: { count: 0, last: null, avgSpend: null },
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  };
   const area = text(p.area);
   const notes = text(p.notes);
   if (area !== undefined) out.area = area;
@@ -68,13 +79,13 @@ export function buildPlacesModule(core: LifeCore, deps: LifeModuleDeps): PlacesM
 
     list(filter: PlacesQuery['filter']) {
       const places = repo.all().filter((p) => filter === 'all' || (filter === 'tried' ? p.tried : !p.tried));
-      return { ok: true, value: { places: places.sort(byBest) } };
+      return { ok: true, value: { places: places.sort(byBest), tags: [], areas: [] } };
     },
 
     create(body: PlaceBody, _actor: Actor) {
       if (repo.count() >= LIFE_LIMITS.places) return fail('conflict', PLACES_SENTENCES.full);
       const now = core.now().toISOString();
-      const place = shape({ ...body, id: core.newId(), tried: body.tried ?? false, dishes: body.dishes ?? [], createdAt: now, updatedAt: now });
+      const place = shape({ name: body.name, area: body.area, link: body.link, notes: body.notes, id: core.newId(), tried: body.tried ?? false, dishes: body.dishes ?? [], createdAt: now, updatedAt: now });
       const r = save(place);
       return r.ok ? { ok: true, value: { id: place.id } } : r;
     },

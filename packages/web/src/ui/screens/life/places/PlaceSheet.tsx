@@ -61,7 +61,7 @@ function PlaceForm({ place, onSaved, onDelete, onDone }: { place: Place | null; 
   const [area, setArea] = useState(place?.area ?? '');
   const [link, setLink] = useState(place?.link ?? '');
   const [tried, setTried] = useState(place?.tried ?? false);
-  const [dishes, setDishes] = useState<DishRow[]>(() => (place?.dishes ?? []).map((d, i) => ({ key: i, name: d.name, rating: d.rating })));
+  const [dishes, setDishes] = useState<DishRow[]>(() => (place?.dishes ?? []).map((d, i) => ({ key: i, name: d.name, rating: d.rating ?? 0 })));
   const [notes, setNotes] = useState(place?.notes ?? '');
 
   const named = dishes.filter((d) => d.name.trim());

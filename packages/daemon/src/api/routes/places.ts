@@ -1,6 +1,8 @@
 /**
- * Cafés (feature `places`, WP-FF). Device routes only, never on ctl.sock.
- * Each calls `s.deps.life.places` (life/places/module.ts).
+ * Cafés (feature `places`, WP-FF). Device routes, except that v0.10's
+ * reads (the list and one café) are on ctl.sock too, for `jantar place`;
+ * every write stays the phone's. Each calls `s.deps.life.places`
+ * (life/places/module.ts).
  *
  * The pipeline has already checked control scope, the switch and a broken
  * life.db, validated the strict bodies and counted every write against
@@ -10,7 +12,7 @@
  */
 import type { PlaceBody, PlacePatch, PlacesQuery } from '@jantar/protocol';
 import type { LifeResult } from '../../contracts.js';
-import { lifeAudit, lifeValue, needActor, type Call, type RouteTable } from '../route-kit.js';
+import { lifeAudit, lifeValue, needActor, notImplementedRoute, type Call, type RouteTable } from '../route-kit.js';
 
 type Id = { id: string };
 
@@ -36,4 +38,9 @@ export const PLACES_ROUTE_IMPLS: RouteTable = {
     handle: (c: Call<Id>, s) => okOf(s.deps.life.places.remove(c.params.id, needActor(c.auth))),
     audit: lifeAudit,
   },
+  // v0.10: one café and its visits (built with the module's visits).
+  placeGet: notImplementedRoute('Café visits'),
+  placeVisitAdd: notImplementedRoute('Café visits'),
+  placeVisitUpdate: notImplementedRoute('Café visits'),
+  placeVisitDelete: notImplementedRoute('Café visits'),
 };

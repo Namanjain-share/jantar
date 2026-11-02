@@ -169,7 +169,66 @@ export const LIFE_LIMITS = Object.freeze({
    * keeps its worst case near todos'. Posted and skipped ones are history.
    */
   openPosts: 200,
+  /** v0.10: café visits across every café (weights' precedent); past it a visit answers 409. */
+  placeVisits: 10_000,
 });
+/** v0.10: a café's sub-ratings, in the order the place screen lists them. */
+export const PLACE_RATING_KEYS = ['food', 'drinks', 'ambience', 'service', 'value', 'work'] as const;
+export type PlaceRatingKey = (typeof PLACE_RATING_KEYS)[number];
+/** v0.10: what the phone, the CLI and the daemon call each sub-rating. */
+export const PLACE_RATING_LABELS: Readonly<Record<PlaceRatingKey, string>> = /* @__PURE__ */ Object.freeze({
+  food: 'Food',
+  drinks: 'Coffee & drinks',
+  ambience: 'Vibe',
+  service: 'Service',
+  value: 'Value',
+  work: 'Work',
+});
+/**
+ * v0.10: the fixed café tags by key, work-friendly first (then seating and
+ * vibe, who with, food and hours, practical). Anything else is a custom tag,
+ * kept as typed.
+ */
+export const PLACE_TAGS = [
+  'wifi', 'sockets', 'quiet', 'laptops', 'calls',
+  'outdoor', 'rooftop', 'cozy', 'ac',
+  'pets', 'kids', 'groups', 'date',
+  'veg', 'vegan', 'breakfast', 'desserts', 'specialty-coffee', 'late',
+  'parking', 'takeaway',
+] as const;
+export type PlaceTagKey = (typeof PLACE_TAGS)[number];
+/** v0.10: each fixed tag's label; a custom tag typed as a label (any case) is stored as its key. */
+export const PLACE_TAG_LABELS: Readonly<Record<PlaceTagKey, string>> = /* @__PURE__ */ Object.freeze({
+  wifi: 'Wi-Fi',
+  sockets: 'Sockets',
+  quiet: 'Quiet',
+  laptops: 'Laptop-friendly',
+  calls: 'OK for calls',
+  outdoor: 'Outdoor',
+  rooftop: 'Rooftop',
+  cozy: 'Cozy',
+  ac: 'AC',
+  pets: 'Pet-friendly',
+  kids: 'Kid-friendly',
+  groups: 'Good for groups',
+  date: 'Date spot',
+  veg: 'Veg options',
+  vegan: 'Vegan options',
+  breakfast: 'Breakfast',
+  desserts: 'Desserts',
+  'specialty-coffee': 'Specialty coffee',
+  late: 'Open late',
+  parking: 'Parking',
+  takeaway: 'Takeaway',
+});
+/** v0.10: the tags the `work` sort counts. */
+export const PLACE_WORK_TAGS = ['wifi', 'sockets', 'quiet', 'laptops', 'calls'] as const;
+/** v0.10: tags on one café, fixed and custom together. */
+export const PLACE_TAGS_MAX = 20;
+/** v0.10: visits per page of GET /v1/places/:id (newest first, `?before=` for older). */
+export const PLACE_VISITS_PAGE = 200;
+/** v0.10: a price level in words, where no Life currency is set (level 1 to 4). */
+export const PLACE_PRICE_WORDS = ['Cheap', 'Mid', 'Pricey', 'Splurge'] as const;
 /** The daily calorie target until one is set on the phone. */
 export const KCAL_TARGET_DEFAULT = 1500;
 /** A Life push that has not finished by then counts as failed (the claim lease is 120 s). */
