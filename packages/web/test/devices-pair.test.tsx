@@ -6,7 +6,10 @@ import { pwaStore } from '../src/lib/pwa.js';
 import { guessDeviceName } from '../src/ui/screens/Pair.js';
 import { describeAgent } from '../src/ui/screens/devices/local.js';
 import { countdown } from '../src/ui/screens/devices/PairNew.js';
-import { NOW, fakeApi, fakeConnection, fakePushEnv, iso, renderApp, stateWith } from './helpers.js';
+import { NOW, fakeApi, fakeConnection, fakePushEnv, iso, opened, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+// 0.11: Devices opens from its own chunk.
+preloadPlaces('devices');
 
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
 
@@ -159,6 +162,7 @@ describe('devices screen', () => {
   it('shows a pairing QR code with the code hidden in the visible link', async () => {
     const api = fakeApi();
     renderApp({ path: '/devices', api, state: stateWith({}) });
+    await opened('Devices');
     fireEvent.click(screen.getByRole('button', { name: /Show pairing code/ }));
     const qr = await screen.findByRole('img', { name: 'Pairing QR code' });
     expect(api.pairStart).toHaveBeenCalledWith({});
@@ -167,8 +171,9 @@ describe('devices screen', () => {
     expect(screen.getByText(/expires in/)).toBeTruthy();
   });
 
-  it('a code made here gives read and control; an admin device is paired with the CLI', () => {
+  it('a code made here gives read and control; an admin device is paired with the CLI', async () => {
     renderApp({ path: '/devices', state: stateWith({}) });
+    await opened('Devices');
     expect(screen.queryByLabelText(/Also allow admin/)).toBeNull();
     // v0.5.3: This device has Sounds switches; the pairing section has none.
     expect(within(screen.getByRole('region', { name: 'Pair a device' })).queryByRole('switch')).toBeNull();
@@ -178,6 +183,7 @@ describe('devices screen', () => {
   it('says pairing codes are made on the Mac when forbidden', async () => {
     const api = fakeApi({ pairStart: vi.fn().mockRejectedValue(new ApiError('forbidden', 'local only', 403)) });
     renderApp({ path: '/devices', api, state: stateWith({}) });
+    await opened('Devices');
     fireEvent.click(screen.getByRole('button', { name: /Show pairing code/ }));
     expect(await screen.findByText(/Run jantar pair in Terminal there/)).toBeTruthy();
   });
@@ -187,6 +193,7 @@ describe('devices screen', () => {
       pairStart: vi.fn(async () => ({ code: 'C0DEc0deC0DEc0deC0DE', url: 'https://mac.example.test/pair#c=C0DEc0deC0DEc0deC0DE', expiresAt: new Date(NOW - 1000).toISOString() })),
     });
     renderApp({ path: '/devices', api, state: stateWith({}) });
+    await opened('Devices');
     fireEvent.click(screen.getByRole('button', { name: /Show pairing code/ }));
     expect(await screen.findByText('This code expired.')).toBeTruthy();
     // The QR is its own chunk (v0.5.3): it may arrive a moment after the dialog.
@@ -199,8 +206,9 @@ describe('devices screen', () => {
     expect(countdown(-5)).toBe('0:00');
   });
 
-  it('switches the theme', () => {
+  it('switches the theme', async () => {
     renderApp({ path: '/devices', state: stateWith({}) });
+    await opened('Devices');
     fireEvent.click(screen.getByRole('radio', { name: 'Dark' }));
     expect(document.documentElement.dataset.theme).toBe('dark');
     expect(screen.getByRole('radio', { name: 'Dark' }).getAttribute('aria-checked')).toBe('true');

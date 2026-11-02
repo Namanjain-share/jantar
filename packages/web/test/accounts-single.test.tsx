@@ -8,7 +8,10 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Account } from '@jantar/protocol';
 import { SINGLE_DISPLAY, SINGLE_SENTENCE, sessionsText } from '../src/ui/screens/accounts/Single.js';
-import { account, fakeApi, renderApp, session, stateWith } from './helpers.js';
+import { account, fakeApi, opened, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+// 0.11: Accounts opens from its own chunk.
+preloadPlaces('accounts');
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */
 function viewport(width: number) {
@@ -52,10 +55,11 @@ function expectNoUsage() {
 }
 
 describe('Accounts with one Claude login', () => {
-  it('on a phone: the sentence, the one account and its sessions as links', () => {
+  it('on a phone: the sentence, the one account and its sessions as links', async () => {
     viewport(390);
     const api = fakeApi();
     const { history } = renderApp({ path: '/accounts', api, state: single() });
+    await opened('Accounts');
     expect(screen.getByRole('heading', { level: 1, name: 'Accounts' })).toBeTruthy();
     expect(screen.getByText(SINGLE_DISPLAY).hasAttribute('data-display')).toBe(true);
     expect(SINGLE_DISPLAY).toBe('One Claude login');
@@ -77,26 +81,29 @@ describe('Accounts with one Claude login', () => {
     expect(history.entries.at(-1)).toBe('/s/web-app');
   });
 
-  it('on a Mac: the same view, no matrix', () => {
+  it('on a Mac: the same view, no matrix', async () => {
     viewport(1440);
     renderApp({ path: '/accounts', state: single() });
+    await opened('Accounts');
     expect(screen.getByText(SINGLE_DISPLAY)).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByRole('columnheader')).toBeNull();
     expectNoUsage();
   });
 
-  it('with no sessions, says so', () => {
+  it('with no sessions, says so', async () => {
     viewport(390);
     renderApp({ path: '/accounts', state: single({ sessions: [] }) });
+    await opened('Accounts');
     expect(screen.getByText('No sessions right now')).toBeTruthy();
     expect(screen.queryAllByRole('link', { name: / · / })).toEqual([]);
     expect([sessionsText(0), sessionsText(1), sessionsText(3)]).toEqual(['No sessions right now', '1 session', '3 sessions']);
   });
 
-  it('names the account Claude before the daemon has sent it', () => {
+  it('names the account Claude before the daemon has sent it', async () => {
     viewport(390);
     renderApp({ path: '/accounts', state: single({ accounts: [] }) });
+    await opened('Accounts');
     const row = document.querySelector('[data-account="single"]');
     expect(row?.textContent).toContain('Claude');
   });
@@ -109,21 +116,24 @@ describe('Accounts with one Claude login', () => {
     first.unmount();
 
     renderApp({ path: '/accounts', state: single(), status: 'offline' });
+    await opened('Accounts');
     expect(screen.getByText(SINGLE_DISPLAY)).toBeTruthy();
     expect(screen.getByText('2 sessions')).toBeTruthy();
   });
 
-  it('cswap mode is unchanged: usage, the ceiling and Refresh', () => {
+  it('cswap mode is unchanged: usage, the ceiling and Refresh', async () => {
     viewport(390);
     renderApp({ path: '/accounts', state: stateWith({ features: {}, accountsMode: 'cswap', accounts: [account(1), account(2)] }) });
+    await opened('Accounts');
     expect(screen.queryByText(SINGLE_DISPLAY)).toBeNull();
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy();
     expect(screen.getAllByRole('meter').length).toBeGreaterThan(0);
   });
 
-  it('a daemon from before v0.4 (no accounts mode) is cswap', () => {
+  it('a daemon from before v0.4 (no accounts mode) is cswap', async () => {
     viewport(390);
     renderApp({ path: '/accounts', state: stateWith({ accounts: [account(1)] }) });
+    await opened('Accounts');
     expect(screen.queryByText(SINGLE_DISPLAY)).toBeNull();
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy();
   });

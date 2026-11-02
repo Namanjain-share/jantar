@@ -144,6 +144,42 @@ describe('code splitting', () => {
     expect(readFileSync(join(src, 'ui/screens/devices/Notifications.tsx'), 'utf8')).toContain("import('./Sounds.js')");
   });
 
+  it('0.11: keeps Accounts, Alerts and Devices out of the main chunk (room for the wide layouts)', () => {
+    const lazyOnly = [
+      'ui/screens/Accounts.tsx',
+      'ui/screens/accounts/Matrix.tsx',
+      'ui/screens/accounts/PhoneRows.tsx',
+      'ui/screens/accounts/Moves.tsx',
+      'ui/screens/accounts/Runway.tsx',
+      'ui/screens/accounts/Primer.tsx',
+      'ui/screens/accounts/Single.tsx',
+      'ui/screens/accounts/Machines.tsx',
+      'ui/screens/accounts/SessionCells.tsx',
+      'ui/screens/accounts/hooks.ts',
+      'ui/screens/accounts/model.ts',
+      'ui/screens/accounts/Segmented.tsx',
+      'ui/screens/Alerts.tsx',
+      'ui/screens/alerts/AlertRow.tsx',
+      'ui/screens/alerts/Mute.tsx',
+      'ui/screens/alerts/MuteMenu.tsx',
+      'ui/screens/Devices.tsx',
+      'ui/screens/devices/PairedDevices.tsx',
+      'ui/screens/devices/PairNew.tsx',
+      'ui/screens/devices/ThisDevice.tsx',
+      'ui/screens/devices/Machines.tsx',
+    ];
+    for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
+    expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
+    // The tab badge and the Desk read the seen mark from the model, not the screen.
+    expect(main.files.has('ui/screens/alerts/model.ts')).toBe(true);
+    // Pair keeps the push section in main (Pair.tsx > PairSteps.tsx > Notifications.tsx).
+    expect(main.files.has('ui/screens/devices/Notifications.tsx')).toBe(true);
+    const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
+    expect(shell).toContain("import('../screens/Accounts.js')");
+    expect(shell).toContain("import('../screens/Alerts.js')");
+    expect(shell).toContain("import('../screens/Devices.js')");
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");

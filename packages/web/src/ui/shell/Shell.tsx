@@ -14,7 +14,9 @@
  * v0.4's Life screens and the Intel shelf, each shown only while its switch
  * is on (Life: any module; which modules are on is the screen's to ask),
  * v0.5's Meetings, shown only while Meetings are on, v0.10's Chat (v0.5.3's
- * Ask), shown only while Chat is on, and v0.7's Posts, a Life screen.
+ * Ask), shown only while Chat is on, and v0.7's Posts, a Life screen. 0.11
+ * loads Accounts, Alerts and Devices the same way, to make room in the main
+ * load for the wide layouts.
  */
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { boardOrder, needsYou } from '@jantar/protocol';
@@ -22,11 +24,8 @@ import { documentTitle, setFavicon } from '../../lib/favicon.js';
 import { resyncPush } from '../../lib/push.js';
 import { useApp, useDeps, useNavigate, useNow, useRoute } from '../context.js';
 import { SkeletonRows } from '../kit/Skeleton.js';
-import { Accounts } from '../screens/Accounts.js';
-import { Alerts } from '../screens/Alerts.js';
 import { Board } from '../screens/Board.js';
 import { Desk } from '../screens/Desk.js';
-import { Devices } from '../screens/Devices.js';
 import { useCanStart } from '../screens/new/machines.js';
 import { NotFound } from '../screens/NotFound.js';
 import { NotPaired, PairScreen } from '../screens/Pair.js';
@@ -46,6 +45,10 @@ import { TabBar } from './TabBar.js';
 import { Toasts } from './Toasts.js';
 import { TopBar } from './TopBar.js';
 
+// 0.11: Accounts, Alerts and Devices, each its own chunk (room in the main load for the wide layouts).
+const Accounts = lazy(() => import('../screens/Accounts.js').then((m) => ({ default: m.Accounts })));
+const Alerts = lazy(() => import('../screens/Alerts.js').then((m) => ({ default: m.Alerts })));
+const Devices = lazy(() => import('../screens/Devices.js').then((m) => ({ default: m.Devices })));
 // Desktop-only and loaded on first use: cmdk and the Base UI dialog.
 const Palette = lazy(() => import('./Palette.js').then((m) => ({ default: m.Palette })));
 // v0.3 places, each its own chunk (the viewer, highlighter client and TanStack Virtual; the folder browser, start form and receipt).
@@ -162,14 +165,27 @@ export function Shell() {
       case 'session':
         screen = <SessionScreen key={route.sid} sid={route.sid} pendingId={route.pendingId} />;
         break;
+      // 0.11: each loads the first time it opens (skeleton rows meanwhile).
       case 'accounts':
-        screen = <Accounts />;
+        screen = (
+          <Suspense fallback={<SkeletonRows count={5} caption="Opening Accounts…" />}>
+            <Accounts />
+          </Suspense>
+        );
         break;
       case 'alerts':
-        screen = <Alerts />;
+        screen = (
+          <Suspense fallback={<SkeletonRows count={5} caption="Opening Alerts…" />}>
+            <Alerts />
+          </Suspense>
+        );
         break;
       case 'devices':
-        screen = <Devices />;
+        screen = (
+          <Suspense fallback={<SkeletonRows count={5} caption="Opening Devices…" />}>
+            <Devices />
+          </Suspense>
+        );
         break;
       // v0.3 places exist only while their switch is on. Until the daemon has said which are on (a
       // cold start, or a cache a new version dropped), they wait: a launch push opens /new at once.

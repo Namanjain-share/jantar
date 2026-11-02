@@ -25,7 +25,7 @@ import { readLocal } from '../../../lib/storage.js';
 import { ago } from '../../../lib/format.js';
 import { useApp, useNow } from '../../context.js';
 import { Link } from '../../shell/Link.js';
-import { ALERTS_SEEN_KEY } from '../Alerts.js';
+import { ALERTS_SEEN_KEY } from '../alerts/model.js';
 import { Runway, runwayLabel } from './Runway.js';
 import {
   RUNWAY_SPAN_MIN,

@@ -10,7 +10,10 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_TONES, type AlertGroup, type AlertTone } from '@jantar/protocol';
 import { setAppChimes, type Chimes } from '../src/lib/sounds.js';
-import { fakePushEnv, renderApp, stateWith } from './helpers.js';
+import { fakePushEnv, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+// 0.11: Devices opens from its own chunk.
+preloadPlaces('devices');
 
 function recorder(): Chimes & { tones: AlertTone[]; said: AlertGroup[]; unlocks: number } {
   const r = {

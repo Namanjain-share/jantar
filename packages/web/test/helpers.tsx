@@ -2,7 +2,7 @@
  * Synthetic fixtures and a fake API for component tests. Every name, folder
  * and address here is made up.
  */
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeAll, vi } from 'vitest';
 import {
   NO_FEATURES,
@@ -43,6 +43,10 @@ const LAZY_PLACES = {
   intel: () => import('../src/ui/screens/intel/Intel.js'),
   meetings: () => import('../src/ui/screens/meetings/Meetings.js'),
   chat: () => import('../src/ui/screens/chat/Chat.js'),
+  // 0.11: Accounts, Alerts and Devices open from their own chunks too.
+  accounts: () => import('../src/ui/screens/Accounts.js'),
+  alerts: () => import('../src/ui/screens/Alerts.js'),
+  devices: () => import('../src/ui/screens/Devices.js'),
 };
 
 /**
@@ -56,6 +60,15 @@ export function preloadPlaces(...names: Array<keyof typeof LAZY_PLACES>): void {
   beforeAll(async () => {
     await Promise.all(names.map((name) => LAZY_PLACES[name]()));
   });
+}
+
+/**
+ * 0.11: Accounts, Alerts and Devices open from their own chunks, so a test
+ * that renders one waits for its heading before asking about the screen
+ * (an absence asked about the skeleton would pass for the wrong reason).
+ */
+export function opened(place: 'Accounts' | 'Alerts' | 'Devices'): Promise<HTMLElement> {
+  return screen.findByRole('heading', { level: 1, name: place });
 }
 
 export const iso = (msFromT0: number) => new Date(Date.parse(T0) + msFromT0).toISOString();

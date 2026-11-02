@@ -21,10 +21,10 @@ import { Segmented } from './accounts/Segmented.js';
 import { searchParam } from './accounts/time.js';
 import { AlertRowDesk, AlertRowPhone } from './alerts/AlertRow.js';
 import { Mute } from './alerts/Mute.js';
-import { FILTER_FROM, FILTER_LABEL, FILTER_ORDER, actionOf, byDay, parseKind, sentenceOf, subjectOf, type KindFilter } from './alerts/model.js';
+import { ALERTS_SEEN_KEY, FILTER_FROM, FILTER_LABEL, FILTER_ORDER, actionOf, byDay, parseKind, sentenceOf, subjectOf, type KindFilter } from './alerts/model.js';
 
-/** Remember the newest alert this device has seen (for the tab badge). */
-export const ALERTS_SEEN_KEY = 'alerts-seen-ts';
+/** Remember the newest alert this device has seen (for the tab badge): kept in alerts/model.ts. */
+export { ALERTS_SEEN_KEY } from './alerts/model.js';
 
 const EMPTY_LINE = 'Limits, API errors, blocked tools and rejected prompts show up here with what happened.';
 

@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { writeLocal } from '../src/lib/storage.js';
 import { buildRows, burnText, displayLine, sortRows } from '../src/ui/screens/accounts/model.js';
 import { dayLabel, dur } from '../src/ui/screens/accounts/time.js';
-import { ALERTS_SEEN_KEY } from '../src/ui/screens/Alerts.js';
-import { sentenceOf, subjectOf } from '../src/ui/screens/alerts/model.js';
-import { NOW, account, alert, fakeApi, iso, renderApp, session, stateWith } from './helpers.js';
+import { ALERTS_SEEN_KEY, sentenceOf, subjectOf } from '../src/ui/screens/alerts/model.js';
+import { NOW, account, alert, fakeApi, iso, opened, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+// 0.11: Accounts and Alerts open from their own chunks.
+preloadPlaces('accounts', 'alerts');
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */
 function viewport(width: number) {
@@ -75,12 +77,12 @@ describe('accounts screen (phone)', () => {
     account(1, { isDefaultLogin: true, usageStatus: 'token_expired', windows: [] }),
   ];
 
-  it('shows each account as a two-line row that expands', () => {
+  it('shows each account as a two-line row that expands', async () => {
     renderApp({
       path: '/accounts',
       state: stateWith({ accounts, sessions: [session('web-app', { account: 2 }), session('docs', { account: 2, status: 'idle' })], activeAccount: 1 }),
     });
-    expect(screen.getByText('1 account runs out before its reset').hasAttribute('data-display')).toBe(true);
+    expect((await screen.findByText('1 account runs out before its reset')).hasAttribute('data-display')).toBe(true);
     const list = screen.getByRole('list', { name: 'Accounts' });
     const rows = within(list).getAllByRole('listitem');
     expect(rows.map((r) => within(r).getAllByRole('button')[0]!.getAttribute('aria-label'))).toEqual(['01', '02 side']);
@@ -114,6 +116,7 @@ describe('accounts screen (phone)', () => {
   it("shows ccw's read-only next account and the ceiling from /v1/plan", async () => {
     const api = fakeApi({ getPlan: vi.fn(async () => plan({ next: 2, ceiling: 90 })) });
     renderApp({ path: '/accounts', api, state: stateWith({ accounts }) });
+    await opened('Accounts');
     // 91% is past a 90% ceiling, which read-scope devices get from /v1/plan
     expect(await screen.findByText('1 account past the ceiling')).toBeTruthy();
     expect(screen.getByText('next → 02')).toBeTruthy();
@@ -125,6 +128,7 @@ describe('accounts screen (phone)', () => {
   it('asks for a usage refresh and shows a failure inline', async () => {
     const api = fakeApi({ refreshUsage: vi.fn(async () => ({ queued: false, reason: 'refreshed 20 s ago', nextAllowedAt: null })) });
     renderApp({ path: '/accounts', api, state: stateWith({ accounts }) });
+    await opened('Accounts');
     fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
     expect(await screen.findByText('Not refreshed: refreshed 20 s ago')).toBeTruthy();
     api.refreshUsage.mockRejectedValueOnce(new Error('boom'));
@@ -132,9 +136,10 @@ describe('accounts screen (phone)', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('boom');
   });
 
-  it('sorts by headroom and says so in the URL', () => {
+  it('sorts by headroom and says so in the URL', async () => {
     const three = [account(1, { windows: [{ kind: 'five_hour', pct: 70, resetsAt: iso(3600_000) }] }), account(2), account(3, { windows: [] })];
     const { history } = renderApp({ path: '/accounts', state: stateWith({ accounts: three }) });
+    await opened('Accounts');
     const ids = () => within(screen.getByRole('list', { name: 'Accounts' })).getAllByRole('listitem').map((r) => within(r).getAllByRole('button')[0]!.getAttribute('aria-label'));
     expect(ids()).toEqual(['01', '02', '03']);
     fireEvent.click(screen.getByRole('button', { name: 'Headroom' }));
@@ -145,11 +150,12 @@ describe('accounts screen (phone)', () => {
     expect(history.entries.at(-1)).toBe('/accounts');
   });
 
-  it('draws moves as lanes and names the held accounts', () => {
+  it('draws moves as lanes and names the held accounts', async () => {
     const move: Move = { sid: 'search', from: 4, to: 8, step: 'restarting', why: '5-hour window at 92%', since: iso(240_000), folder: 'search', name: 'index rebuild' };
     const s = stateWith({ accounts: [account(4), account(6, { held: true }), account(8)], sessions: [session('search', { account: 4, move })] });
     s.moves = { search: move };
     renderApp({ path: '/accounts', state: s });
+    await opened('Accounts');
     const moves = screen.getByRole('region', { name: /Moves/ });
     expect(within(moves).getByRole('img', { name: 'Move from 04 to 08, in progress' })).toBeTruthy();
     expect(within(moves).getByText('04 → 08')).toBeTruthy();
@@ -157,8 +163,9 @@ describe('accounts screen (phone)', () => {
     expect(moves.textContent).toContain('Held account 06 is left out of autoswitch. Its lane is dashed.');
   });
 
-  it('has an empty state', () => {
+  it('has an empty state', async () => {
     renderApp({ path: '/accounts', state: stateWith({}) });
+    await opened('Accounts');
     expect(screen.getByText('No accounts yet')).toBeTruthy();
   });
 });
@@ -182,6 +189,7 @@ describe('accounts screen (desktop matrix)', () => {
       path: '/accounts',
       state: stateWith({ accounts, sessions: [session('web-app', { account: 3, status: 'idle' }), session('api', { account: 3 })] }),
     });
+    await opened('Accounts');
     const table = screen.getByRole('table', { name: 'Accounts' });
     expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual([
       'Acct',
@@ -259,9 +267,9 @@ describe('alerts screen', () => {
   ];
   const rowsText = (c: HTMLElement) => [...c.querySelectorAll('[data-alert]')].map((li) => li.getAttribute('data-alert'));
 
-  it('lists alerts newest first under day rails, new ones marked', () => {
+  it('lists alerts newest first under day rails, new ones marked', async () => {
     const { container } = renderApp({ path: '/alerts', state: stateWith({ alerts, sessions: [session('web-app', { name: 'fix login' })] }) });
-    expect(screen.getByText('4 new').hasAttribute('data-display')).toBe(true);
+    expect((await screen.findByText('4 new')).hasAttribute('data-display')).toBe(true);
     expect(rowsText(container)).toEqual(['a3', 'a2', 'a1', 'a0']);
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Today', 'Yesterday']);
     expect(screen.getByText('web-app · fix login')).toBeTruthy();
@@ -274,22 +282,25 @@ describe('alerts screen', () => {
     expect(screen.queryByRole('group', { name: 'Filter alerts' })).toBeNull();
   });
 
-  it('shows what was seen before as seen', () => {
+  it('shows what was seen before as seen', async () => {
     writeLocal(ALERTS_SEEN_KEY, iso(60_000));
     renderApp({ path: '/alerts', state: stateWith({ alerts }) });
+    await opened('Alerts');
     expect(screen.getByText('1 new')).toBeTruthy();
     expect(document.querySelectorAll('[data-unseen]')).toHaveLength(1);
   });
 
-  it('says nothing is new on a later visit', () => {
+  it('says nothing is new on a later visit', async () => {
     writeLocal(ALERTS_SEEN_KEY, iso(90_000));
     renderApp({ path: '/alerts', state: stateWith({ alerts }) });
+    await opened('Alerts');
     expect(screen.getByText('Nothing new')).toBeTruthy();
   });
 
-  it('expands a row inline to its full text', () => {
+  it('expands a row inline to its full text', async () => {
     viewport(1440);
     renderApp({ path: '/alerts', state: stateWith({ alerts, sessions: [session('web-app')] }) });
+    await opened('Alerts');
     const row = screen.getByRole('button', { name: /API error 529/ });
     expect(screen.queryByText('overloaded_error: try again')).toBeNull();
     fireEvent.click(row);
@@ -300,6 +311,7 @@ describe('alerts screen', () => {
   it('links to live sessions only, and limits to Accounts', async () => {
     viewport(1440);
     const { history } = renderApp({ path: '/alerts', state: stateWith({ alerts, sessions: [session('web-app')] }) });
+    await opened('Alerts');
     const links = screen.getAllByRole('link', { name: 'Open session' });
     expect(links.length).toBe(1);
     expect(screen.getAllByRole('link', { name: 'Open accounts' })).toHaveLength(1);
@@ -307,19 +319,21 @@ describe('alerts screen', () => {
     await waitFor(() => expect(history.entries.at(-1)).toBe('/s/web-app'));
   });
 
-  it('opens the action from the expanded row on a phone', () => {
+  it('opens the action from the expanded row on a phone', async () => {
     renderApp({ path: '/alerts', state: stateWith({ alerts, sessions: [session('web-app')] }) });
+    await opened('Alerts');
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /API error 529/ }));
     expect(screen.getByRole('link', { name: 'Open session' })).toBeTruthy();
     expect(screen.getByText('overloaded_error: try again')).toBeTruthy();
   });
 
-  it('filters by kind past 20 alerts, in the URL', () => {
+  it('filters by kind past 20 alerts, in the URL', async () => {
     const many = Array.from({ length: 21 }, (_, i) =>
       alert(`m${i}`, { kind: i % 3 === 0 ? 'error' : 'blocked', ts: iso(-i * 60_000), what: `thing ${i}` }),
     );
     const { container, history } = renderApp({ path: '/alerts', state: stateWith({ alerts: many }) });
+    await opened('Alerts');
     const filters = screen.getByRole('group', { name: 'Filter alerts' });
     expect(within(filters).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['All 21', 'Errors 7', 'Blocked 14']);
     fireEvent.click(within(filters).getByRole('button', { name: 'Errors 7' }));
@@ -342,8 +356,9 @@ describe('alerts screen', () => {
     expect(await screen.findByRole('button', { name: /Mute pushes/ })).toBeTruthy();
   });
 
-  it('has an empty state', () => {
+  it('has an empty state', async () => {
     renderApp({ path: '/alerts', state: stateWith({}) });
+    await opened('Alerts');
     expect(screen.getByText('No alerts')).toBeTruthy();
     expect(screen.getByText('Limits, API errors, blocked tools and rejected prompts show up here with what happened.')).toBeTruthy();
   });

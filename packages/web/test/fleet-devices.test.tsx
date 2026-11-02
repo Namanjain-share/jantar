@@ -13,8 +13,11 @@ import { DEVICE_SECRET_HEADER, FLEET_COPY, type DaemonEvent, type State } from '
 import { createApi, type Api } from '../src/lib/api.js';
 import type { CredentialStore } from '../src/lib/credential.js';
 import { PAIR_LINE, presenceText, versionText } from '../src/ui/screens/devices/Machines.js';
-import { emit, fakeApi, iso, NOW, renderApp, stateWith } from './helpers.js';
+import { emit, fakeApi, iso, NOW, preloadPlaces, renderApp, stateWith } from './helpers.js';
 import { fleetNodes, fleetState, IDS } from './fleet-helpers.js';
+
+// 0.11: Devices opens from its own chunk.
+preloadPlaces('devices');
 
 beforeAll(async () => {
   await import('../src/ui/screens/devices/Machines.js');

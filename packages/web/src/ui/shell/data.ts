@@ -22,7 +22,7 @@ import { readLocal } from '../../lib/storage.js';
 import { useApp } from '../context.js';
 import { GLYPH_WORD, glyphStateOf, type GlyphState } from '../kit/glyph.js';
 import type { StripItem } from '../kit/Strip.js';
-import { ALERTS_SEEN_KEY } from '../screens/Alerts.js';
+import { ALERTS_SEEN_KEY } from '../screens/alerts/model.js';
 import { readLocalDevice } from '../screens/devices/local.js';
 import { useCanStart } from '../screens/new/machines.js';
 import { hasMachines } from '../screens/session/Info.js';

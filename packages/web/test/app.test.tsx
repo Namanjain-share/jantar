@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { emptyState, type DaemonEvent } from '@jantar/protocol';
 import { PRODUCT_NAME } from '../src/brand.js';
 import { App, createAppStore } from '../src/index.js';
-import { T0, account, alert, emit, iso, pending, renderApp, session, stateWith } from './helpers.js';
+import { T0, account, alert, emit, iso, opened, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+// 0.11: Accounts, Alerts and Devices open from their own chunks.
+preloadPlaces('accounts', 'alerts', 'devices');
 
 /** Ledger rows in order, as "rail word · sid" (the Board's rows carry data-sid). */
 const labels = () =>
@@ -81,7 +84,7 @@ describe('app shell', () => {
     expect(strip.querySelectorAll('[data-cell]').length).toBe(1);
   });
 
-  it('badges the Board tab with the needs-you count and Alerts with new alerts', () => {
+  it('badges the Board tab with the needs-you count and Alerts with new alerts', async () => {
     const p = pending('a');
     const { store } = renderApp({
       state: stateWith({ sessions: [session('a', { status: 'waiting' }), session('b'), session('c', { status: 'idle' })], pending: [p], alerts: [alert('x1')] }),
@@ -92,6 +95,8 @@ describe('app shell', () => {
     expect(document.title).toBe(`(1) ${PRODUCT_NAME}`);
     fireEvent.click(within(nav).getByRole('link', { name: /Alerts/ }));
     expect(within(nav).getByRole('link', { name: /Alerts/ }).textContent).not.toMatch(/\d/);
+    // 0.11: the screen opens from its own chunk; once open, it marks what arrives as seen.
+    await opened('Alerts');
     act(() =>
       emit(store, [{ seq: 11, ts: iso(100_000), type: 'alert.error', data: { alert: alert('x2', { kind: 'error', ts: iso(100_000) }) } }]),
     );
@@ -100,15 +105,16 @@ describe('app shell', () => {
     expect(within(nav).getByRole('link', { name: /Alerts/ }).textContent).not.toMatch(/\d/);
   });
 
-  it('routes to accounts, alerts and devices from the tab bar', () => {
+  it('routes to accounts, alerts and devices from the tab bar', async () => {
     renderApp({ state: stateWith({ accounts: [account(1)] }) });
     const nav = screen.getByRole('navigation', { name: 'Main' });
+    // 0.11: each opens from its own chunk.
     fireEvent.click(within(nav).getByRole('link', { name: /Accounts/ }));
-    expect(screen.getByRole('heading', { name: 'Accounts' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Accounts' })).toBeTruthy();
     fireEvent.click(within(nav).getByRole('link', { name: /Alerts/ }));
-    expect(screen.getByRole('heading', { name: 'Alerts' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Alerts' })).toBeTruthy();
     fireEvent.click(within(nav).getByRole('link', { name: /Devices/ }));
-    expect(screen.getByRole('heading', { name: 'Devices' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Devices' })).toBeTruthy();
   });
 
   it('shows a not-found page for unknown paths', () => {

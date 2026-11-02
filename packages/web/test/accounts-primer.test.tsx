@@ -12,7 +12,10 @@ import type { DaemonEvent, PrimerStatus, State } from '@jantar/protocol';
 import { PRODUCT_NAME } from '../src/brand.js';
 import { primerText } from '../src/ui/screens/accounts/Primer.js';
 import { dayClock } from '../src/ui/screens/accounts/time.js';
-import { NOW, account, emit, iso, renderApp, stateWith } from './helpers.js';
+import { NOW, account, emit, iso, opened, preloadPlaces, renderApp, stateWith } from './helpers.js';
+
+// 0.11: Accounts opens from its own chunk.
+preloadPlaces('accounts');
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */
 function viewport(width: number) {
@@ -59,9 +62,10 @@ describe('the words', () => {
 });
 
 describe('on the Accounts screen', () => {
-  it('on a phone: one line under Moves, the account in mono', () => {
+  it('on a phone: one line under Moves, the account in mono', async () => {
     viewport(390);
     renderApp({ path: '/accounts', state: withPrimer(status({ last: { account: 4, at: AT, ok: true } })) });
+    await opened('Accounts');
     const p = line();
     expect(p?.textContent).toBe(primerText(status({ last: { account: 4, at: AT, ok: true } }), NOW));
     expect(p?.querySelector('b')?.textContent).toBe('04');
@@ -71,32 +75,37 @@ describe('on the Accounts screen', () => {
     expect(p?.querySelector('button')).toBeNull();
   });
 
-  it('on a Mac: the same line, and ccw named when it primes', () => {
+  it('on a Mac: the same line, and ccw named when it primes', async () => {
     viewport(1440);
     renderApp({ path: '/accounts', state: withPrimer(status({ by: 'ccw' })) });
+    await opened('Accounts');
     expect(line()?.textContent).toBe('ccw primes free 5-hour windows');
     expect(screen.getByRole('meter', { name: /03 5-hour usage/ })).toBeTruthy();
   });
 
-  it('nothing while nobody primes, or before the daemon says', () => {
+  it('nothing while nobody primes, or before the daemon says', async () => {
     viewport(390);
     const { unmount } = renderApp({ path: '/accounts', state: withPrimer(status({ by: 'off' })) });
+    await opened('Accounts');
     expect(line()).toBeNull();
     unmount();
     renderApp({ path: '/accounts', state: withPrimer() });
+    await opened('Accounts');
     expect(line()).toBeNull();
   });
 
-  it('nothing with one Claude login', () => {
+  it('nothing with one Claude login', async () => {
     viewport(390);
     const single = withPrimer(status(), { features: {}, accountsMode: 'single', accounts: [account(0, { usageStatus: 'unknown', windows: [] })] });
     renderApp({ path: '/accounts', state: single });
+    await opened('Accounts');
     expect(line()).toBeNull();
   });
 
-  it('follows primer.status live', () => {
+  it('follows primer.status live', async () => {
     viewport(390);
     const { store } = renderApp({ path: '/accounts', state: withPrimer(status()) });
+    await opened('Accounts');
     expect(line()?.textContent).toBe(`${PRODUCT_NAME} primes free 5-hour windows`);
     const seq = store.getState().state.seq;
     const ev = (n: number, s: PrimerStatus): DaemonEvent => ({ seq: seq + n, ts: iso(0), type: 'primer.status', data: { status: s } });

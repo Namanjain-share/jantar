@@ -3,6 +3,11 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.12.0 (unreleased)
+
+- Accounts, Alerts and Devices load the first time you open one, as Files
+  and Life do, which keeps the app's first load small.
+
 ## 0.11.0 (3 November 2026)
 
 **Accountability partner** (off by default; called People in the code, the

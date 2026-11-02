@@ -13,8 +13,11 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { FLEET_COPY } from '@jantar/protocol';
 import { asideOf, dirOf, modeWord } from '../src/ui/screens/accounts/Machines.js';
 import { buildRows } from '../src/ui/screens/accounts/model.js';
-import { account, NOW, renderApp, session, stateWith } from './helpers.js';
+import { account, NOW, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 import { fleetNodes, fleetState, IDS, OFFLINE_AT } from './fleet-helpers.js';
+
+// 0.11: Accounts opens from its own chunk.
+preloadPlaces('accounts');
 
 // The machines' sections are their own chunk: load it once, before the tests wait for it.
 beforeAll(async () => {
