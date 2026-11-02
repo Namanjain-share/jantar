@@ -31,6 +31,7 @@ import { notBuilt } from '../../src/core/not-implemented.js';
 import { createTestContext, type TestContext } from '../../src/core/testing.js';
 import { LIFE_MODULE_BUILDERS } from '../../src/life/index.js';
 import { buildLifeService } from '../../src/life/service.js';
+import { meetingTodoNotes } from '../../src/meetings/common.js';
 import { makeFakes } from '../api/fakes.js';
 
 export const NOW = '2026-11-02T10:00:00.000Z';
@@ -79,7 +80,7 @@ export class FakeIntel implements Pick<IntelService, 'list' | 'get' | 'read' | '
   jobs: IntelService['jobs'] = () => ({ jobs: [], available: true } as unknown as ReturnType<IntelService['jobs']>);
 }
 
-/** A meetings library in a map, with action items that become todos through Life. */
+/** A meetings library in a map, with action items that become todos through Life (marked as the meeting's words). */
 export function fakeMeetings(life: () => LifeService): Pick<MeetingsService, 'library' | 'summaries' | 'status' | 'broken'> & { details: Map<string, MeetingDetail>; requested: string[] } {
   const details = new Map<string, MeetingDetail>();
   const requested: string[] = [];
@@ -113,7 +114,8 @@ export function fakeMeetings(life: () => LifeService): Pick<MeetingsService, 'li
       const d = details.get(id);
       const item = d?.summary.items[n];
       if (!d || !item) return { ok: false, code: 'not_found', reason: 'No such item.' };
-      const r = life().todos.createTodo({ title: item.title }, actor);
+      // As meetings/summary.ts makes it: the meeting's name in the notes, marked as the meeting's words.
+      const r = life().todos.createTodo({ title: item.title, notes: meetingTodoNotes(d.meeting.name, d.meeting.startedAt.slice(0, 10)) }, actor, { from: 'meeting' });
       if (r.ok) item.todoId = r.value.id;
       return r;
     },

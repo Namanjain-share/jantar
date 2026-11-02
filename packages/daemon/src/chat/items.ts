@@ -19,6 +19,7 @@ import {
   type Todo,
 } from '@jantar/protocol';
 import { shiftDay, shiftMonths } from '@jantar/life-core';
+import { MEETING_TODO_NOTES_START } from '../meetings/common.js';
 import { cut, line } from './text.js';
 import type { ChatDeps } from './types.js';
 
@@ -45,6 +46,16 @@ export function findTodo(d: ChatDeps, id: string): Todo | null {
     if (hit) return hit;
   }
   return null;
+}
+
+/**
+ * Whether a todo's title and notes are a meeting's words (an action item; the meeting's name): marked
+ * `from: 'meeting'` since 0.10, and before that known by the notes the daemon wrote ("From the meeting "…"
+ * on …"). Chat frames such a todo as data and taints its message; a todo of the user's own whose notes say
+ * so is framed too, which only asks for a tap.
+ */
+export function fromMeeting(t: Pick<Todo, 'from' | 'notes'>): boolean {
+  return t.from === 'meeting' || (t.notes ?? '').includes(MEETING_TODO_NOTES_START);
 }
 
 export function findProject(d: ChatDeps, id: string): ProjectView | null {

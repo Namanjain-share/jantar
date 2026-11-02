@@ -53,7 +53,7 @@ import {
   type PostGoal,
 } from '@jantar/protocol';
 import type { Actor, LifeResult } from '../contracts.js';
-import { current, findMedicine, findMeeting, findPlace, findTodo, labelOf, medicineHasDoses, type ItemRef } from './items.js';
+import { current, findMedicine, findMeeting, findPlace, findTodo, fromMeeting, labelOf, medicineHasDoses, type ItemRef } from './items.js';
 import type { ChangeJson } from './store.js';
 import { cut, line } from './text.js';
 import type { ChatDeps } from './types.js';
@@ -195,9 +195,18 @@ export interface Journal {
   steps: Step[];
 }
 
+/**
+ * Whose words a change's or a card's label carries when they are someone else's: a meeting's (its name, an
+ * action item, a todo made from one) or a saved page's title. The run's answer frames such a label as data
+ * and taints the message (B9).
+ */
+export type LabelSource = 'meeting' | 'intel';
+
 export interface Applied {
   change: ChangeJson;
   journal: Journal | null;
+  /** Set when the label carries someone else's words. */
+  third?: LabelSource;
 }
 
 /** null and absent are the same value. */
@@ -351,8 +360,25 @@ function doseNow(d: ChatDeps, medId: string, day: string, slot: string): { doseI
   return r.ok ? (r.value.day.groups.flatMap((g) => g.items).find((x) => x.medId === medId && x.slot === slot) ?? null) : null;
 }
 
-/** Apply one write tool's checked input as `actor`. */
+/** Apply one write tool's checked input as `actor`; `third` says when its label is someone else's words. */
 export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, actor: Actor): Promise<LifeResult<Applied>> {
+  const r = await applyOne(d, tool, raw, actor);
+  if (!r.ok || r.value.third) return r;
+  const third = writeLabelSource(d, tool, r.value.change.ref);
+  return third ? { ok: true, value: { ...r.value, third } } : r;
+}
+
+/** A meeting's own write names the meeting (and an action item); a todo's names the todo, a meeting's words when made from one. */
+function writeLabelSource(d: ChatDeps, tool: WriteTool, ref: string): LabelSource | null {
+  if (tool === 'meeting_edit' || tool === 'meeting_item_todo') return 'meeting';
+  if (tool === 'todo_add' || tool === 'todo_edit' || tool === 'todo_done' || tool === 'todo_snooze') {
+    const t = findTodo(d, ref);
+    return t && fromMeeting(t) ? 'meeting' : null;
+  }
+  return null;
+}
+
+async function applyOne(d: ChatDeps, tool: WriteTool, raw: unknown, actor: Actor): Promise<LifeResult<Applied>> {
   const parsed = WRITE_INPUTS[tool].safeParse(raw);
   if (!parsed.success) return refuse('invalid_request', ACTION_SENTENCES.bad);
   const life = d.life;
@@ -593,9 +619,10 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
       const r = await d.intel.read({ text: i.url, ...(i.depth ? { depth: i.depth } : {}) }, { via: 'chat' });
       if (!r.ok) return r;
       const ref: ItemRef = { kind: 'intel', id: r.value.id };
-      // A link already on the shelf: nothing was written, so nothing to undo.
+      // A link already on the shelf: nothing was written, so nothing to undo; its title is the page's own words.
       const undoable = !r.value.duplicate;
-      return { ok: true, value: { change: { module, op: 'save', ref: r.value.id, label: labelOf(d, ref, 'Intel · a saved link'), undoable }, journal: undoable ? { steps: [{ do: 'remove', item: ref }] } : null } };
+      const change: ChangeJson = { module, op: 'save', ref: r.value.id, label: labelOf(d, ref, 'Intel · a saved link'), undoable };
+      return { ok: true, value: undoable ? { change, journal: { steps: [{ do: 'remove', item: ref }] } } : { change, journal: null, third: 'intel' } };
     }
   }
 }
@@ -735,6 +762,8 @@ export interface Described {
   op: string;
   ref: string | null;
   label: string;
+  /** Set when the label carries someone else's words. */
+  third?: LabelSource;
 }
 
 const q = (s: string, n = 80) => cut(line(s), n);
@@ -743,12 +772,12 @@ const q = (s: string, n = 80) => cut(line(s), n);
 export function describeDelete(d: ChatDeps, a: Extract<CardAction, { t: 'delete' }>): LifeResult<Described> {
   const gone = refuse('not_found', ACTION_SENTENCES.gone);
   const module = DELETE_MODULE[a.kind];
-  const out = (label: string, ref: string | null = a.id): LifeResult<Described> => ({ ok: true, value: { module, op: 'delete', ref, label: cut(label, 200) } });
+  const out = (label: string, ref: string | null = a.id, third?: LabelSource): LifeResult<Described> => ({ ok: true, value: { module, op: 'delete', ref, label: cut(label, 200), ...(third ? { third } : {}) } });
   const life = d.life;
   switch (a.kind) {
     case 'todo': {
       const t = findTodo(d, a.id);
-      return t ? out(`Delete todo ${q(t.title)}?`) : gone;
+      return t ? out(`Delete todo ${q(t.title)}?`, a.id, fromMeeting(t) ? 'meeting' : undefined) : gone;
     }
     case 'project': {
       const p = current(d, { kind: 'project', id: a.id }) as { name?: string; open?: number } | null;
@@ -813,17 +842,17 @@ export function describeDelete(d: ChatDeps, a: Extract<CardAction, { t: 'delete'
     }
     case 'meeting': {
       const m = findMeeting(d, a.id);
-      return m ? out(`Delete meeting ${q(m.name)} with its notes and screenshots?`) : gone;
+      return m ? out(`Delete meeting ${q(m.name)} with its notes and screenshots?`, a.id, 'meeting') : gone;
     }
     case 'meeting_todo': {
       const m = d.meetings.library.get(a.id);
       const n = Number(a.parent);
       const item = m.ok && Number.isInteger(n) ? m.value.summary.items[n] : undefined;
-      return m.ok && item?.todoId ? out(`Remove the todo made from ${q(item.title)}?`) : refuse('not_found', ACTION_SENTENCES.noItem);
+      return m.ok && item?.todoId ? out(`Remove the todo made from ${q(item.title)}?`, a.id, 'meeting') : refuse('not_found', ACTION_SENTENCES.noItem);
     }
     case 'intel': {
       const i = d.intel.get(a.id);
-      return i ? out(`Delete ${q(i.title)} from the Intel shelf?`) : gone;
+      return i ? out(`Delete ${q(i.title)} from the Intel shelf?`, a.id, 'intel') : gone;
     }
   }
 }
@@ -841,11 +870,11 @@ export function describeAction(d: ChatDeps, a: Extract<CardAction, { t: 'action'
     }
     case 'summarize_meeting': {
       const m = findMeeting(d, a.id);
-      return m ? { ok: true, value: { module, op: 'summarize', ref: a.id, label: cut(`Summarize ${q(m.name)}? It runs Claude on your account.`, 200) } } : gone;
+      return m ? { ok: true, value: { module, op: 'summarize', ref: a.id, label: cut(`Summarize ${q(m.name)}? It runs Claude on your account.`, 200), third: 'meeting' } } : gone;
     }
     case 'reread_link': {
       const i = d.intel.get(a.id);
-      return i ? { ok: true, value: { module, op: 'reread', ref: a.id, label: cut(`Read ${q(i.title)} again? It runs Claude on your account.`, 200) } } : gone;
+      return i ? { ok: true, value: { module, op: 'reread', ref: a.id, label: cut(`Read ${q(i.title)} again? It runs Claude on your account.`, 200), third: 'intel' } } : gone;
     }
   }
 }

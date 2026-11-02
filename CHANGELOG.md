@@ -35,8 +35,8 @@ Chat's history is new data on disk, in `chat.db`.
   are on. Adds and changes happen at once and show under the answer with
   **Undo** for a day; every delete, stopping a medicine, and anything that
   spends Claude quota is a **Confirm** card that runs only on your tap;
-  after Chat reads someone else's text (a saved page, a meeting, a
-  session), its writes wait as **Do it** cards. A link is saved only when
+  after Chat reads someone else's text (a saved page, a meeting or a todo
+  made from one, a session), its writes wait as **Do it** cards. A link is saved only when
   you wrote it.
 - **Sessions in Chat are read only**: it can say which session waits for
   you, what it asked, its last messages and your accounts' usage, and it

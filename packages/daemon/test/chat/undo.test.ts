@@ -279,13 +279,14 @@ describe('Undo', () => {
   it('an Intel link already on the shelf has no Undo', async () => {
     rig = await chatRig();
     rig.intel.add({ url: 'https://example.com/already' });
-    const { tools, turnId } = rig.turn({ message: 'save https://example.com/already and https://example.com/new' });
-    await tools.call('intel_save', { url: 'https://example.com/already' });
+    // The new one first: the one already there answers with its page's title, which taints the message (tools.test.ts).
+    const { tools, turnId } = rig.turn({ message: 'save https://example.com/new and https://example.com/already' });
     await tools.call('intel_save', { url: 'https://example.com/new' });
+    await tools.call('intel_save', { url: 'https://example.com/already' });
     const changes = rig.store.changes(turnId);
-    expect(changes.map((c) => c.undoable)).toEqual([false, true]);
-    expect(await undo(rig, turnId, 0)).toMatchObject({ ok: false, reason: 'This one has no Undo.' });
-    expect(await undo(rig, turnId, 1)).toEqual({ ok: true, value: true });
+    expect(changes.map((c) => c.undoable)).toEqual([true, false]);
+    expect(await undo(rig, turnId, 1)).toMatchObject({ ok: false, reason: 'This one has no Undo.' });
+    expect(await undo(rig, turnId, 0)).toEqual({ ok: true, value: true });
     expect(rig.intel.reads.map((r) => r.via)).toEqual(['chat', 'chat']);
   });
 });
