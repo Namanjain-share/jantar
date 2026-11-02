@@ -62,7 +62,8 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar life set lock-screen-details on \| off` | names on the lock screen: medicine and bill names, and where a post goes (off: "Medicine due", "Bill due", "Post due") |
 | `jantar life backup` / `restore <file> [--yes]` | copy `life.db` now; put a backup back |
 | `jantar post add --platform <p> [--where W] [--kind K] [--at "YYYY-MM-DD HH:MM"] [--title T] [--text-file F \| --text T] [--notes N] [--link URL] [--status idea\|ready]` | add a post to make; with a time it rings on the phone; at most 30 an hour from the Mac ([Posts](life.md#posts)) |
-| `jantar post list [--done] [--json]` | this week against the goals, then the posts to make (`--done`: posted and skipped) |
+| `jantar post log '<link>' [--text T \| --text-file F] [--where W]` | log a comment you made; it counts as posted now; quote the link |
+| `jantar post list [--done] [--json]` | this week against the goals, then the posts to make (`--done`: posted and skipped, with their links) |
 | `jantar intel on \| off \| sources` | the shelf and the files it follows ([Intel](intel.md)) |
 | `jantar intel source add <file.jsonl>` / `source rm <id>` | follow a file, or stop |
 | `jantar intel add "<title>" [--url U] [--type T] [--tag T]... [--note N]` | put an item on the shelf |

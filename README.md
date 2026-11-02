@@ -112,8 +112,8 @@ More: [servers](docs/fleet.md).
 ### Off until you want them
 
 A small life list (todos, reminders, medicines, food, cafés, money, and
-the social posts you plan, with a reminder at the time; Jantar never posts
-them), a shelf for links your scripts save, and notes from your Google
+the social posts you plan, with a reminder at the time, and log the
+comments you make; Jantar never posts them), a shelf for links your scripts save, and notes from your Google
 Meet and Teams calls in Chrome (their live captions and a summary; the
 screenshots you click are not yet confirmed on a real call). Each is
 switched on at the Mac, one at a time, and the pictures here show them on.

@@ -502,3 +502,25 @@ media helper read it, the phone finds it by a caption word and by a word
 only its frames hold, and Open original is the reel; with
 `JANTAR_REAL_MEDIA=1` the real Swift helper on a reel made by
 `make-reel.swift`, see docs/real-mac-checks.md).
+
+### v0.9.0
+
+Log a comment, in Posts. The protocol: `post-place.ts` (`postPlaceOf`,
+the platform and where of a comment's link, read from the link alone and
+never fetched; re-exported from the main entry, no new subpath), a post
+body that may be `posted` with its `postedUrl`, Today's posts part with
+`comments` against a daily goal, a comment goal that names its platform
+(`postGoalLabel`), and `POSTS_DONE_PAGE` 300 (`life.ts`, `constants.ts`).
+The daemon: the widened create in `life/posts/module.ts` (a posted create
+stamps `postedAt`, skips the open cap, refuses the same posted link twice
+through `repo.ts` `hasPostedUrl`) and its `today()` (comments posted that
+day in the Life zone). The phone: `screens/life/posts/LogCommentSheet.tsx`
+(the Posts chunk) opened from Posts' footer, and Today's second Posts row.
+The CLI: `jantar post log` and the posted link on `post list --done` rows.
+No new route, table, migration, setting or dependency; `PROTOCOL_VERSION`
+3. The first load is 276.0 kB of `MAIN_JS_MAX` 280 kB (the protocol's
+shared chunk carries `postPlaceOf`), and Posts pulls in 46.8 kB (its own
+chunk 7.8 kB). Tests: `packages/protocol/test/v09-comment-log.test.ts`,
+`packages/daemon/test/life/posts-log.test.ts`, `packages/cli/test/post.test.ts`,
+`packages/web/test/{posts,today}.test.tsx`, and end to end in
+`test/integration/v09-comment-log.integration.test.ts`.

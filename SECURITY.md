@@ -41,9 +41,9 @@ run sessions with general Bash access, treat card approvals as coming from
 From v0.5.3 such a process can also list and add todos of any Life project
 linked to a folder, over the control socket
 ([folder todos and the MCP server](#folder-todos-and-the-mcp-server)).
-From v0.7 it can also list every open post and the newest 100 posted or
+From v0.7 it can also list every open post and the newest 300 posted or
 skipped, with their text, and add new ones, at most 30 an hour
-([Posts](#v07-posts)).
+([Posts](#v07-posts)); from v0.9 an add may log a comment as posted.
 
 ### Network exposure
 
@@ -1492,7 +1492,7 @@ its prompt tells Claude never to say anything was posted.
 Only two posts routes answer on the control socket: the list and an add
 (`jantar post list` and `jantar post add`). Any process running as you, a
 Claude session with Bash included, can therefore read every open post
-and the newest 100 posted or skipped (`--done`), text, notes and posted
+and the newest 300 posted or skipped (`--done`), text, notes and posted
 links included, and add new ones, at most 30 an hour; past that it gets
 429 with "Scripts and Claude sessions added 30 posts this hour. Add more
 on the phone, or try again later." `jantar post add --text-file` reads
@@ -1502,7 +1502,12 @@ post that then shows on every control phone; the daemon itself never
 reads the file, and no push carries the text. It cannot change a
 post's text, link or status, delete one or set the goals: those routes
 are not on the control socket at all (404), so a Copy or an Open on the
-phone always acts on what you last saw or saved there. The limit keeps a
+phone always acts on what you last saw or saved there. From v0.9 the add
+may also log a post as already posted, with its link (`jantar post log`):
+such a process can therefore add to the weekly goals' counts and Today's
+comments, within the same 30 an hour, and still cannot change, delete or
+un-post one. The daemon only reads a logged link as text and never
+fetches it. The limit keeps a
 looping session from scheduling hundreds of separate pushes. Adds from
 the phone, and Ask's cards, never count against it; every write counts
 against Life's 240 a minute.

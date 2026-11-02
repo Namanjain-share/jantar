@@ -49,8 +49,9 @@ jantar life status
   budgets, and bills that remind you.
 - **Posts** (`posts`): what you plan to post on social media (a Reddit
   post, an Instagram reel, an X thread), with its text ready to copy, a
-  reminder at the time, and a weekly goal per platform. Jantar never posts
-  anything: you copy, open and post it yourself ([Posts](#posts)).
+  reminder at the time, and a weekly goal per platform; and a log of the
+  comments you make, with their links. Jantar never posts anything: you
+  copy, open and post it yourself ([Posts](#posts)).
 
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="img/projects-phone-dark.png"><img src="img/projects-phone.png" width="240" alt="Projects with their open todos and live sessions."></picture>
@@ -114,7 +115,17 @@ week". Turn it on at the Mac with `jantar life on posts`.
 - **Idea, Ready, Posted.** A post starts as an idea; mark it Ready when
   the text is done. Tap its square once you have posted it, with Undo for
   five seconds. Open the post to add the link to what you posted, or to
-  Skip one you won't make. Done lists what you posted and skipped.
+  Skip one you won't make. Done lists the newest 300 you posted and
+  skipped, each with Open for its link.
+- **Log a comment.** Made a comment? Tap Log a comment at the foot of
+  Posts and paste the link to it (on Reddit: Share, then Copy link). The
+  platform and where come from the link as you paste it: a Reddit link
+  gives `r/<sub>`; X, LinkedIn, YouTube and the rest give the platform,
+  and you can type the where. Add what you wrote if you like, then Log
+  comment, with Undo for five seconds. It counts as posted at the moment
+  you log it, so log it when you post it. The same link twice is refused.
+  Jantar never opens or fetches the link; it only reads it as text, and
+  Open in Done is your tap.
 - **The reminder** rings at the post's time, like a todo's. Posts due in
   the same minute come as one push. The lock screen says "Post due" and
   the time; with `lock-screen-details` on it also says the platform and
@@ -126,23 +137,31 @@ week". Turn it on at the Mac with `jantar life on posts`.
   week, Monday to Sunday in the Life zone: "This week: Reels 1/3 ·
   Reddit 2/6", on more lines when there are more goals. Two goals that
   would read the same name their platform too ("X threads" beside
-  "Threads").
+  "Threads"), and a comment goal always does ("Reddit comments 12/35").
+  With a comment goal, Today shows "Comments today 3/5": the weekly
+  comment goals divided by 7, rounded up. Tip: a goal with no kind counts
+  comments too, so set Reddit posts as kind Post ("Reddit posts 2 a
+  week") and comments as kind Comment.
 - **Jantar never posts.** It keeps the text, rings at the time and gives
   you Copy (the title, the text) and Open (the link). You post it
   yourself, then tap Posted. It never fetches a link and talks to no
   social network.
 
-Scripts and Claude sessions on the Mac can add and list posts, at most 30
-adds an hour; Posted, Skip, edits, deletes and goals are on the phone.
-`--at` is in the Life zone and must be a real day; a time already gone is
-still added, and the line says it won't ring. An empty `--text-file` is
-refused.
+Scripts and Claude sessions on the Mac can add and list posts and log
+comments, at most 30 adds and logs an hour; Posted, Skip, edits, deletes
+and goals are on the phone. `--at` is in the Life zone and must be a real
+day; a time already gone is still added, and the line says it won't
+ring. An empty `--text-file` is refused. `jantar post log` takes the link
+in quotes (in zsh an unquoted `?` or `&` breaks the command); `post list
+--done` prints each posted link. Ask does not log comments: use Log a
+comment or `jantar post log` (a link typed into Ask is offered to Intel).
 
 ```sh
 jantar post add --platform reddit --where r/exampletools --at "2026-11-02 19:30" \
   --title "Typing into Terminal from a phone" --text-file draft.md \
   --link https://www.reddit.com/r/exampletools/submit --status ready
-jantar post list                         # this week, then the posts to make (--done: posted and skipped)
+jantar post log 'https://www.reddit.com/r/exampletools/s/AbCdEf1234' --text-file said.md
+jantar post list                         # this week, then the posts to make (--done: posted and skipped, with links)
 ```
 
 ## Settings

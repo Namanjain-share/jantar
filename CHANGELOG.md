@@ -3,6 +3,34 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.9.0 (unreleased)
+
+Log a comment, in Posts: paste the link to a comment you made (on Reddit:
+Share, then Copy link) and Jantar saves it as a posted comment, with the
+platform and where read from the link; Today counts comments against a
+daily share of the weekly goal; `jantar post log`; Done shows the newest
+300. Nothing to do when upgrading: life.db, settings and the protocol
+don't change.
+
+- **Log a comment** (the foot of Posts, beside + Post): paste the link and
+  see "Reddit · r/exampletools" as you paste it (X, LinkedIn, YouTube and
+  the rest give the platform; type the where if you like), add what you
+  wrote if you want, then Log comment, with Undo for five seconds. It
+  counts as posted at the moment you log it. The same link twice is
+  refused ("You logged that link already."). Jantar never opens or
+  fetches the link.
+- **Comments today**: with a comment goal (Posts › the week line, kind
+  Comment), Today's Posts section shows "Comments today 3/5", the weekly
+  comment goals divided by 7 and rounded up; a tap opens Posts › Done.
+- **The week line** names a comment goal's platform: "Reddit comments
+  12/35".
+- **Done** lists the newest 300 posted and skipped (was 100), each logged
+  comment with the first line of what you wrote and Open.
+- **On the Mac**: `jantar post log '<link>' [--text T | --text-file F]
+  [--where W]` logs a comment (quote the link), within the same 30 adds an
+  hour as `jantar post add`; `jantar post list --done` prints each posted
+  link.
+
 ## 0.8.0 (2 November 2026)
 
 Add post, in Intel, off until you run `jantar intel read on` at the Mac:

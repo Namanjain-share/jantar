@@ -25,7 +25,7 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Devices** | This device (theme, install, which notifications), paired devices, and **Show pairing code** for a phone; with Fleet, **Machines**: each paired server, online or not, and its version |
 | **Files** | Which files the live sessions created or changed, newest first; a browser over the folders set on the Mac; a read-only viewer |
 | **New session** | A folder, an account (with cswap) and the flags, the exact command line it will type, Resume, then hold to start; with Fleet, a **Where** row picks the Mac or a server |
-| **Today** and **Life** | Today, Todos (with Reminders and Projects), Medicines, Food, Cafés, Finance and Posts (what you plan to post on social media, with a reminder, Copy and Open; Jantar never posts); on a phone they sit behind Today and More ([Life](life.md)) |
+| **Today** and **Life** | Today, Todos (with Reminders and Projects), Medicines, Food, Cafés, Finance and Posts (what you plan to post on social media, with a reminder, Copy and Open, and log the comments you make, with their links; Jantar never posts); on a phone they sit behind Today and More ([Life](life.md)) |
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
 | **Ask** | Right after Today: tell it what to add in plain words, and add its suggestions with a tap ([Ask](assistant.md)) |
