@@ -56,3 +56,8 @@ export function showsText(root: Element): boolean {
   }
   return false;
 }
+
+/** v0.10: where the page is, as the page's own memory keeps it (path, query and hash; never sent, never stored). */
+export function pageAt(loc: Location | null | undefined): string | null {
+  return loc ? `${loc.pathname}${loc.search}${loc.hash}` : null;
+}

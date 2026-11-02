@@ -5,20 +5,39 @@
  * the candidates cover the 2026 renderer wrapper, the v2 window wrapper with
  * its virtual list, and the older renderer. Teams' URL names no meeting, so
  * the tab is the call (`callKey` is null).
+ *
+ * v0.10, the screens around the call (Start when I join), first match wins
+ * and every check is an exact `id` or `data-tid` (never the loose match):
+ * a lobby-only hook (TEAMS_LOBBY, empty until a real-Mac check names one:
+ * R12) is the waiting room even beside a hang-up; then the call (a hang-up,
+ * then a caption container); the join screen (#prejoin-join-button); the
+ * waiting room after Join now (this page saw the join button at this same
+ * URL and shows neither it nor the call); and a join link by its path or
+ * query alone (path and query only: no host, no URL is spelled out here).
  */
 import { WIRE_LIMITS } from '../../shared/wire.js';
-import { collapse, first, firstAll, inButton, textOf } from './dom.js';
-import type { Block, SiteAdapter } from './types.js';
+import { collapse, first, firstAll, inButton, pageAt, textOf } from './dom.js';
+import type { Block, HookId, SiteAdapter } from './types.js';
 
-/** Hang-up controls: in a call only (the last one is an anonymous guest's). The lobby has #prejoin-join-button instead. */
-const HANGUP = [
-  '#hangup-button',
-  'button[data-tid="hangup-main-btn"]',
-  'button[data-tid="hangup-leave-button"]',
-  'button[data-tid="hangup-end-meeting-button"]',
-  'button[data-tid="hangup-button"]',
-  'button[data-tid="anon-hangup-button"]',
+/** Hang-up controls, each with its hook id: in a call only (the last one is an anonymous guest's). The lobby has #prejoin-join-button instead. */
+const HANGUP: readonly (readonly [string, HookId])[] = [
+  ['#hangup-button', 'teams:hangup-button'],
+  ['button[data-tid="hangup-main-btn"]', 'teams:hangup-main-btn'],
+  ['button[data-tid="hangup-leave-button"]', 'teams:hangup-leave-button'],
+  ['button[data-tid="hangup-end-meeting-button"]', 'teams:hangup-end-meeting-button'],
+  ['button[data-tid="hangup-button"]', 'teams:hangup-button-tid'],
+  ['button[data-tid="anon-hangup-button"]', 'teams:anon-hangup-button'],
 ];
+/**
+ * v0.10: hooks only the waiting room has (`data-tid` or `id`). Empty until
+ * a real-Mac check (R12) names one; one that matches makes the page the
+ * waiting room, and not in a call, even while a hang-up button shows.
+ */
+export const TEAMS_LOBBY: readonly string[] = [];
+/** v0.10: the join screen's Join now (the second is unverified, R12). */
+const PREJOIN = ['#prejoin-join-button', 'button[data-tid="prejoin-join-button"]'];
+/** v0.10: the paths of a join link (light meetings, the meetup-join link, the short /meet/ link, the launcher). */
+const JOIN_PATHS = ['/light-meetings/', '/l/meetup-join/', '/meet/', '/dl/launcher/'];
 /** The caption container, newest layout first. */
 const REGION = [
   '[data-tid="closed-caption-renderer-wrapper"]',
@@ -42,10 +61,20 @@ export const teamsAdapter: SiteAdapter = {
 
   callKey: () => null,
 
-  // Asked every second on every Teams page (Chat and Calendar too): the specific hooks only, never the loose
-  // substring match over the whole document, which region() still tries while notes are on.
-  inCall(doc) {
-    return first(doc, HANGUP) !== null || first(doc, REGION) !== null;
+  inCall: (doc) => inCallHook(doc) !== null,
+
+  inCallHook,
+
+  waiting(doc, seen) {
+    if (lobbyOnly(doc)) return { stage: 'lobby', hook: 'teams:lobby', strong: true };
+    if (inCallHook(doc) !== null) return null;
+    if (first(doc, PREJOIN) !== null) return { stage: 'prejoin', hook: 'teams:prejoin-join', strong: true };
+    const loc = doc.location;
+    if (!loc) return null;
+    // Light meetings and v2 both pass through Join now before the waiting room, at the same URL.
+    if (seen.joinHookAt !== null && seen.joinHookAt === pageAt(loc)) return { stage: 'lobby', hook: 'teams:after-join', strong: true };
+    if (joinLink(loc)) return { stage: 'prejoin', hook: 'teams:join-link', strong: false };
+    return null;
   },
 
   // "<subject> | Microsoft Teams", with (n) counters and view names mixed in;
@@ -84,6 +113,24 @@ export const teamsAdapter: SiteAdapter = {
   // Right of the 68-px app bar.
   spot: Object.freeze({ left: '76px', top: '50%' }),
 };
+
+// Asked every second on every Teams page (Chat and Calendar too): the specific hooks only, never the loose
+// substring match over the whole document, which region() still tries while notes are on.
+function inCallHook(doc: Document): HookId | null {
+  if (lobbyOnly(doc)) return null;
+  for (const [sel, id] of HANGUP) if (doc.querySelector(sel) !== null) return id;
+  if (first(doc, REGION) !== null) return 'teams:caption-region';
+  return null;
+}
+
+function lobbyOnly(doc: Document): boolean {
+  return TEAMS_LOBBY.length > 0 && first(doc, TEAMS_LOBBY) !== null;
+}
+
+function joinLink(loc: Location): boolean {
+  const path = loc.pathname.toLowerCase();
+  return JOIN_PATHS.some((p) => path.startsWith(p)) || loc.search.toLowerCase().includes('meetingjoin=true');
+}
 
 function findRegion(doc: Document): Element | null {
   return first(doc, REGION) ?? first(doc, LOOSE_REGION, (el) => first(el, TEXT) !== null);

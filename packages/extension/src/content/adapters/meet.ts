@@ -8,10 +8,17 @@
  * The shape the candidates expect: region › list › one child per speaker
  * turn › [name (often with an avatar), text]. The list's last children are
  * not captions; they hold buttons, and nothing inside a button is read.
+ *
+ * v0.10, the screens around the call (Start when I join), first match wins:
+ * the call (the captions button, then the caption region: `inCall`'s own
+ * two hooks), the waiting room (a button holding the `call_end` icon and no
+ * captions button: you wait to be let in), the join screen (Meet's join
+ * button), else the code alone (the join screen, or a screen after it).
+ * The icon is a fixed glyph name, not localized page text.
  */
 import { WIRE_LIMITS } from '../../shared/wire.js';
 import { collapse, first, firstAll, holdsButton, inButton, textOf } from './dom.js';
-import type { Block, SiteAdapter } from './types.js';
+import type { Block, HookId, SiteAdapter } from './types.js';
 
 /** The call's code in both URL forms: /abc-defg-hij and, once admitted, /meet/abc-defg-hij. */
 const CODE = /(?:^|\/)([a-z]{3,4}-[a-z]{4}-[a-z]{3,4})(?=\/|$)/i;
@@ -34,18 +41,27 @@ const TEXT = ['.ygicle', '.bh44bd', '.iTTPOb'];
 /** A turn's name element. */
 const NAME = ['.NWpY1d', '.zs7s8d', '.KcIKyf', '.adE6rb'];
 const TITLE = ['[data-meeting-title]'];
+/** v0.10: Meet's icon fonts; a button holding one whose ligature is exactly `call_end` (the waiting room shows it, the captions button not yet). */
+const ICONS = ['button i.google-symbols', 'button i.google-material-icons', 'button i.material-icons-extended'];
+const CALL_END = 'call_end';
+/** v0.10: the join screen's Join now / Ask to join (unverified on a real Mac, R12; it only names the join screen). */
+const JOIN_BUTTON = ['[jsname="Qx7uuf"]'];
 
 export const meetAdapter: SiteAdapter = {
   site: 'meet',
 
   callKey,
 
-  // A code and the captions button or the caption region. Meet's call_end
-  // icon is also on the waiting room's screen, so it proves nothing alone,
-  // and with the captions button beside it adds nothing to the button.
-  inCall(doc) {
-    if (!doc.location || callKey(doc.location) === null) return false;
-    return first(doc, CAPTIONS_BUTTON) !== null || findRegion(doc) !== null;
+  inCall: (doc) => inCallHook(doc) !== null,
+
+  inCallHook,
+
+  waiting(doc) {
+    if (!doc.location || callKey(doc.location) === null || inCallHook(doc) !== null) return null;
+    if (first(doc, ICONS, (el) => collapse(el.textContent) === CALL_END)) return { stage: 'lobby', hook: 'meet:call_end', strong: true };
+    if (first(doc, JOIN_BUTTON)) return { stage: 'prejoin', hook: 'meet:join-button', strong: true };
+    // The code alone: the join screen, or "You left" and "You can't join" (the call watch's memory makes those `left`).
+    return { stage: 'prejoin', hook: 'meet:code', strong: false };
   },
 
   title(doc) {
@@ -66,6 +82,17 @@ export const meetAdapter: SiteAdapter = {
   howTo: "No captions on screen. Turn them on with the CC button, or press c. If they are on, Jantar can't read them on this page; screenshots still work.",
   spot: Object.freeze({ left: '12px', top: '50%' }),
 };
+
+// A code and the captions button or the caption region. Meet's call_end
+// icon is also on the waiting room's screen, so it proves nothing alone,
+// and with the captions button beside it adds nothing to the button.
+function inCallHook(doc: Document): HookId | null {
+  if (!doc.location || callKey(doc.location) === null) return null;
+  if (first(doc, CAPTIONS_BUTTON) !== null) return 'meet:captions-button';
+  // Whether the region is on the page, never what it says.
+  if (findRegion(doc) !== null) return 'meet:caption-region';
+  return null;
+}
 
 function callKey(loc: Location): string | null {
   const m = CODE.exec(loc.pathname);
