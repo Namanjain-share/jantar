@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeFakeHome, type FakeHome } from '@jantar/fixtures';
 import { meetingDetail } from '@jantar/fixtures';
-import type { DevicePublic, LifeStatus, MeetingsStatus } from '@jantar/protocol';
+import type { DevicePublic, IntelReadStatus, LifeStatus, MeetingsStatus } from '@jantar/protocol';
 import { INTEL_SHELLS } from '../src/commands/intel.js';
 import { SHORTCUT_SHELL } from '../src/commands/intel-shortcut.js';
 import { COMMANDS, EXIT, main, memoryIo } from '../src/index.js';
@@ -45,6 +45,8 @@ const FILLED: Readonly<Record<string, string>> = { 'meetings export': 'meetings 
 const OWN_HELP: Readonly<Record<string, string>> = { mcp: 'claude mcp add ' };
 /** Commands that only read from the daemon and write files on the Mac: they get `--out` and must write something. */
 const WRITES_FILES = /^meetings export\b/;
+/** v0.8: commands that only read from the daemon and print (the sentence points at them to see something, not to change it). */
+const READS_ONLY = /^intel (?:read status|shortcut list)$/;
 /** Words after the command: a <placeholder>, or a plain word (paths like ~/Desktop included). */
 const WORDS = '(?: (?:<[a-z-]+>|[A-Za-z0-9~/._-]+))*';
 const LITERAL = new RegExp(`\\bjantar (${COMMAND}${WORDS})`, 'g');
@@ -74,6 +76,25 @@ function meetingsStatus(): () => MeetingsStatus {
     asked += 1;
     const extensions = asked > 1 ? [{ id: '01JFZ8X8Y3T0V5G9WQK2M4N6PT', pairedAt: '2026-01-15T10:00:00.000Z', lastSeenAt: null }] : [];
     return { on: true, open: true, meetings: 1, running: 0, shotsBytes: 2048, summary: { available: true }, extensions };
+  };
+}
+
+/** v0.8: what GET /v1/intel/read/status answers on a Mac that reads links, with its door closed (loopback). */
+function intelReadStatus(): IntelReadStatus {
+  return {
+    on: true,
+    canRun: true,
+    chrome: { paired: false, lastPollAt: null },
+    browser: { found: true },
+    ytdlp: { found: false, version: null },
+    clt: { found: true },
+    helper: { built: false },
+    sandbox: { found: true },
+    speech: { locale: 'en-IN', onDevice: null },
+    today: { reads: 0, full: 0, perDay: 200, fullPerDay: 20 },
+    queue: { waiting: 0, running: 0 },
+    captureKeys: 1,
+    door: { open: false, url: null, why: 'the daemon only listens on this Mac' },
   };
 }
 
@@ -212,6 +233,11 @@ describe('the commands the daemon and the web app name', () => {
         [`GET /v1/meetings/${meetingDetail().meeting.id}/shots/${meetingDetail().shots[0]?.id}`]: ok(Buffer.from([0xff, 0xd8, 0xff, 0xd9])),
         // v0.5.3: the test push.
         'POST /v1/notify/test': () => ok({ delivered: 1, failed: 0 }),
+        // v0.8: reading links and the Shortcut's keys, at the Mac only (a key id stands in as <id>).
+        'GET /v1/intel/read/status': () => ok(intelReadStatus()),
+        'POST /v1/intel/capture-keys': () => ok({ id: meetingDetail().meeting.id, key: `jcap_${'A'.repeat(43)}`, name: 'iphone', saveUrl: null }),
+        'GET /v1/intel/capture-keys': () => ok({ keys: [{ id: meetingDetail().meeting.id, name: 'iphone', createdAt: at, lastSeenAt: null }] }),
+        'POST /v1/intel/capture-keys/revoke': () => ok({ revoked: 1 }),
       });
       // A person at the Mac answers yes when a command asks (life restore asks before it replaces life.db).
       const { ctx, io } = contextFor(home, { ctl, ioOptions: { answers: ['y', 'y', 'y'] } });
@@ -219,6 +245,7 @@ describe('the commands the daemon and the web app name', () => {
       const argv = WRITES_FILES.test(line) ? [...words, '--out', out] : words;
       expect(await main(argv, { io, context: ctx }), `${io.stdout}${io.stderr}`).toBe(EXIT.ok);
       if (WRITES_FILES.test(line)) expect((await readdir(out)).length, 'the command wrote nothing').toBeGreaterThan(0);
+      else if (READS_ONLY.test(line)) expect(ctl.calls.some((c) => c.method === 'GET'), 'the command asked nothing').toBe(true);
       else expect(ctl.calls.some((c) => c.method !== 'GET'), 'the command changed nothing').toBe(true);
       expect(io.stderr).toBe('');
     });

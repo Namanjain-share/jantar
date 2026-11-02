@@ -215,17 +215,18 @@ describe('v0.8 the extension and the page read', () => {
     expectTypeOf<PageReadParsed>().toEqualTypeOf<PageRead>();
   });
 
-  it('readPage reads the title, the kept meta pairs and the ld+json blocks of the page it runs in', () => {
+  it('readPage reads the title, the kept meta pairs and the ld+json blocks of the page it runs in', async () => {
     const el = (attrs: Record<string, string>, text = '') => ({ getAttribute: (n: string) => attrs[n] ?? null, textContent: text });
     vi.stubGlobal('location', { href: 'https://www.instagram.com/reel/AbC123xyz/' });
     vi.stubGlobal('document', {
       title: '  Example  cook \n',
+      querySelector: () => null,
       querySelectorAll: (sel: string) =>
         sel.startsWith('meta')
           ? [el({ property: 'og:title', content: 'A made up reel' }), el({ name: 'viewport', content: 'width=device-width' }), el({ name: 'description', content: 'x' })]
           : [el({}, ' {"@type":"VideoObject"} '), el({}, '')],
     });
-    const read = readPage({ platform: 'instagram', frames: 0, textMax: 40_000 });
+    const read = await readPage({ platform: 'instagram', frames: 0, textMax: 40_000 });
     expect(read).toEqual({
       finalUrl: 'https://www.instagram.com/reel/AbC123xyz/',
       title: 'Example cook',
@@ -241,9 +242,9 @@ describe('v0.8 the extension and the page read', () => {
     expect(PageReadSchema.safeParse(read).success).toBe(true);
   });
 
-  it('readPage runs from its own source alone, as both tiers send it (no import, no closure)', () => {
-    const doc = { title: 'A made up page', querySelectorAll: (sel: string) => (sel.startsWith('meta') ? [{ getAttribute: (n: string) => ({ property: 'og:title', content: 'x' })[n] ?? null, textContent: '' }] : []) };
-    const read = runInNewContext(`(${readPage.toString()})({ platform: 'web', frames: 0, textMax: 100 })`, { document: doc, location: { href: 'https://example.com/a' } }) as PageRead;
+  it('readPage runs from its own source alone, as both tiers send it (no import, no closure)', async () => {
+    const doc = { title: 'A made up page', querySelector: () => null, querySelectorAll: (sel: string) => (sel.startsWith('meta') ? [{ getAttribute: (n: string) => ({ property: 'og:title', content: 'x' })[n] ?? null, textContent: '' }] : []) };
+    const read = (await runInNewContext(`(${readPage.toString()})({ platform: 'web', frames: 0, textMax: 100 })`, { document: doc, location: { href: 'https://example.com/a' } })) as PageRead;
     expect({ ...read, meta: [...read.meta] }).toMatchObject({ finalUrl: 'https://example.com/a', title: 'A made up page', meta: [{ k: 'og:title', v: 'x' }], text: '' });
   });
 
