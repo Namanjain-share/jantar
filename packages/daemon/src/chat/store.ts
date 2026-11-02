@@ -282,6 +282,21 @@ export class ChatStore {
    * swept.
    */
   sweep(o: { cutoffIso: string; maxTurns: number; undoCutoffIso: string; unattachedCutoffIso: string }): { photos: PhotoRow[]; turns: number } {
+    const r = this.removeOld(o);
+    // secure_delete overwrote the freed pages in the file; the WAL still holds the rows' text until a checkpoint.
+    if (r.turns > 0) this.checkpoint();
+    return r;
+  }
+
+  private checkpoint(): void {
+    try {
+      this.db.raw.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch {
+      // a busy file: the next checkpoint takes it
+    }
+  }
+
+  private removeOld(o: { cutoffIso: string; maxTurns: number; undoCutoffIso: string; unattachedCutoffIso: string }): { photos: PhotoRow[]; turns: number } {
     return this.db.tx(() => {
       const old = (this.db.prepare("SELECT id FROM turns WHERE at < ? AND state NOT IN ('queued', 'running')").all(o.cutoffIso) as Row[]).map((r) => str(r.id));
       const overflow = (

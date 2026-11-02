@@ -5,7 +5,7 @@
  * days, by count, the 24 h journal purge and unattached photos, Clear.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -137,6 +137,18 @@ describe('ChatStore', () => {
     expect(s.page(undefined, 10).turns.map((t) => t.id)).toEqual([running.id, newest.id]);
     expect(r.turns).toBe(2);
     expect(s.photo('FRESH')).not.toBeNull();
+  });
+
+  it("the sweep leaves no swept turn's text in chat.db-wal", () => {
+    const s = store();
+    const marker = 'SYNTHETIC-SWEPT-MARKER-7f3a';
+    s.insertTurn(turn('2026-10-01T10:00:00.000Z', { text: marker }));
+    s.insertTurn(turn('2026-11-02T09:00:00.000Z'));
+    s.sweep({ cutoffIso: '2026-10-03T10:00:00.000Z', maxTurns: 100, undoCutoffIso: '2026-11-01T10:00:00.000Z', unattachedCutoffIso: '2026-11-02T09:00:00.000Z' });
+    const wal = `${file}-wal`;
+    const text = (path: string) => (existsSync(path) ? readFileSync(path).toString('latin1') : '');
+    expect(text(wal)).not.toContain(marker);
+    expect(text(file)).not.toContain(marker);
   });
 
   it('expires the journal and waiting cards after the Undo window', () => {
