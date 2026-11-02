@@ -216,7 +216,7 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
     if (work) await rm(work, { recursive: true, force: true });
   }, perfBudgetMs(30_000));
 
-  it.skipIf(!browserTier)('the phone saves a reel at Standard; Chrome needs a login, the headless browser reads it, the helper takes its frames; search finds it by its caption and by its frames; Open original is the reel', async () => {
+  it.skipIf(!browserTier || !CHROMIUM)('the phone saves a reel at Standard; Chrome needs a login, the headless browser reads it, the helper takes its frames; search finds it by its caption and by its frames; Open original is the reel', async () => {
     // 1. The phone: Add post, a shared link, Standard, Save.
     await page.goto(`http://127.0.0.1:${d.port}/intel`, { waitUntil: 'load' });
     // Read saved links on: the extension has asked, and there is nothing yet.

@@ -33,11 +33,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Chromium for the browser checks of the built web app (test/integration/web*.integration.test.ts).
       - run: pnpm exec playwright-core install --with-deps --only-shell chromium
-      # The full Chromium on Ubuntu for the Chrome extension's end-to-end suites
+      # The full Chromium: on Ubuntu for the Chrome extension's end-to-end suites
       # (test/integration/ext-*.integration.test.ts: the headless shell loads no
-      # extension). macOS keeps the shell and skips them with a warning.
-      - if: runner.os == 'Linux'
-        run: pnpm exec playwright-core install --with-deps chromium
+      # extension; macOS skips them with a warning), and on macOS for Intel's
+      # headless-browser reads (test/integration/v08-*.integration.test.ts launch
+      # it, never the shell; those cases run on the macOS job only).
+      - run: pnpm exec playwright-core install --with-deps chromium
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test

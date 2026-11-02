@@ -327,7 +327,7 @@ describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
     expect(await search('pressure cook')).toContain(id);
   });
 
-  it.skipIf(!browserTier)("4. a reel Chrome can't read (login): the headless browser reads the post, its video 404s, yt-dlp's single file gives the frames", async () => {
+  it.skipIf(!browserTier || !CHROMIUM)("4. a reel Chrome can't read (login): the headless browser reads the post, its video 404s, yt-dlp's single file gives the frames", async () => {
     const saved = await ok<IntelReadReply>('POST', '/v1/intel/reads', { text: REEL_TWO, depth: 'standard' });
     ids.reelTwo = saved.id;
     const job = await leased();
@@ -467,7 +467,7 @@ describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
     expect((await jobs()).jobs.filter((j) => j.state !== 'saved' && j.state !== 'failed')).toEqual([]);
   });
 
-  it.skipIf(!browserTier)('10. jantar mcp: intel_search finds a read item by a word of its page; intel_get labels what was read as page text', async () => {
+  it.skipIf(!browserTier || !CHROMIUM)('10. jantar mcp: intel_search finds a read item by a word of its page; intel_get labels what was read as page text', async () => {
     const mcp = createMcpServer({ ctl, folder: null, randomId: () => randomUUID() });
     let n = 0;
     const rpc = async (method: string, params: Record<string, unknown>) => {
