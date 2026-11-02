@@ -59,6 +59,8 @@ describe('the fixture pages', () => {
     expect(adapter.inCall(doc)).toBe(!waiting);
     if (waiting) step('join');
     expect(adapter.inCall(doc)).toBe(true);
+    // v0.10: a page that opens with captions off (captions on when notes start) has them turned on first.
+    step('captionsOn');
     if (name === 'teams-loose') expect(adapter.region(doc)).toBeNull();
     expect(step('say', 'Sam', 'So the plan for Friday')).toBe(0);
     step('say', null, 'Is everyone here?');

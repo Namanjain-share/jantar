@@ -11,6 +11,12 @@
  *    the icon says ON and the popup shows the notes view.
  * 2. Teams light meetings: a guest's waiting room at
  *    /light-meetings/launch (a made-up query), armed, then let in: notes start.
+ * 3. Captions on when notes start, Teams light meetings as a guest (the case
+ *    of 2 November 2026): captions off, Start notes; Jantar opens More, clicks
+ *    Captions and closes More (one click, nothing else), the lines then come in
+ *    with their speakers, and Settings › Call check names how it went.
+ * 4. The same on Meet's "Captions and translation" (2026-10-22): the pop-up is
+ *    opened, its toggle turned on, and the pop-up closed again.
  *
  * Needs `pnpm -r build` and the full Chromium for playwright-core; skipped
  * with a warning otherwise (extension.ts).
@@ -30,6 +36,9 @@ const ready = await extensionReady('ext-v010-arm');
 const MEET = 'https://meet.google.com/abc-defg-hij';
 const LIGHT = 'https://teams.microsoft.com/light-meetings/launch?anon=1&p=made-up-thread';
 const ARM_BUTTON = 'Start when I join';
+/** v0.10: two more calls, each with captions off, at addresses of their own. */
+const LIGHT_GUEST = 'https://teams.microsoft.com/light-meetings/launch?anon=true&p=made-up-guest';
+const MEET_POPUP = 'https://meet.google.com/xyz-abcd-efg';
 
 /** The fixture page each meeting host serves. */
 const served = new Map<string, FixturePageName>();
@@ -159,5 +168,64 @@ describe.skipIf(!ready)('ext-v010-arm: Start when I join in the real extension',
     expect(running.projectId).toBeUndefined();
     expect(await badge(LIGHT)).toBe('ON');
     await popup.close();
+    await teams.close();
+    await eventually(async () => ((await list()).running === null ? true : null), 10_000, 'the Teams meeting ended with its tab');
+  }, perfBudgetMs(90_000));
+
+  it('3. captions on when notes start, Teams light meetings as a guest: More › Captions, closed again, then lines with speakers', async () => {
+    const teams = await meetingPage(LIGHT_GUEST, 'teams-light-call');
+    expect(await step(teams, 'captionsShown')).toBe(false);
+    const popup = await openPopup(ext, await tabIdOf(ext, LIGHT_GUEST), teams);
+    await popup.getByRole('button', { name: 'Start notes' }).click();
+    await view(popup).getByText('Keeping notes').waitFor();
+    await eventually(async () => ((await step(teams, 'captionsShown')) === true ? true : null), 10_000, 'the captions on');
+    expect(await step(teams, 'ccLog')).toEqual(['more-open', 'item']);
+    await step(teams, 'say', 'Sam', 'Shall we begin?');
+    await step(teams, 'say', 'Priya', 'Yes, go ahead.');
+    const running = await eventually(async () => (await list()).running, 10_000, 'the guest meeting');
+    const said = await eventually(
+      async () => {
+        const lines = (await detail(running.id)).lines.map((l) => [l.speaker, l.text]);
+        return lines.length === 2 ? lines : null;
+      },
+      10_000,
+      "the guest's lines",
+    );
+    expect(said).toEqual([
+      ['Sam', 'Shall we begin?'],
+      ['Priya', 'Yes, go ahead.'],
+    ]);
+    expect(await badge(LIGHT_GUEST)).toBe('ON');
+    // Nothing was on screen until someone spoke: one click, never a second.
+    await teams.waitForTimeout(2_000);
+    expect(await step(teams, 'ccLog')).toEqual(['more-open', 'item']);
+    // Settings › Call check, in a popup opened after the page said how it went: turned on (someone spoke while
+    // Jantar checked), or clicked with nothing on screen yet; by the item either way.
+    await popup.close();
+    const again = await openPopup(ext, await tabIdOf(ext, LIGHT_GUEST), teams);
+    await again.getByRole('button', { name: 'Settings' }).click();
+    await view(again).getByText(/^Captions: (turned on by Jantar|Jantar clicked Captions; none on screen yet) · teams:cc-more-item$/).waitFor();
+    await again.close();
+    await teams.close();
+    await eventually(async () => ((await list()).running === null ? true : null), 10_000, 'the guest meeting ended with its tab');
+  }, perfBudgetMs(90_000));
+
+  it('4. captions on when notes start, Meet\'s "Captions and translation": the pop-up opened, turned on, closed', async () => {
+    const meet = await meetingPage(MEET_POPUP, 'meet-popup-off');
+    const popup = await openPopup(ext, await tabIdOf(ext, MEET_POPUP), meet);
+    await popup.getByRole('button', { name: 'Start notes' }).click();
+    await view(popup).getByText('Keeping notes').waitFor();
+    await eventually(async () => ((await step(meet, 'captionsShown')) === true ? true : null), 10_000, 'the captions on');
+    await eventually(async () => ((await step(meet, 'ccLog')) as string[]).includes('popup-close') || null, 10_000, 'the pop-up closed');
+    expect(await step(meet, 'ccLog')).toEqual(['popup-open', 'toggle', 'popup-close']);
+    await step(meet, 'say', 'Alex', 'Captions came on by themselves');
+    const running = await eventually(async () => (await list()).running, 10_000, 'the Meet meeting');
+    await eventually(async () => ((await detail(running.id)).lines.some((l) => l.text === 'Captions came on by themselves') ? true : null), 10_000, 'the line');
+    await popup.close();
+    const again = await openPopup(ext, await tabIdOf(ext, MEET_POPUP), meet);
+    await again.getByRole('button', { name: 'Settings' }).click();
+    await view(again).getByText('Captions: turned on by Jantar · meet:cc-popup').waitFor();
+    await again.close();
+    await meet.close();
   }, perfBudgetMs(90_000));
 });

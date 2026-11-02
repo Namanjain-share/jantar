@@ -24,6 +24,10 @@ export const PAGE_SPECS = {
   'teams-prejoin': { site: 'teams', options: { layout: '2026-bottom', state: 'prejoin' }, title: 'Weekly sync | Microsoft Teams' },
   'teams-waiting': { site: 'teams', options: { layout: '2026-bottom', state: 'waiting' }, title: 'Weekly sync | Microsoft Teams' },
   'teams-light-waiting': { site: 'teams', options: { layout: 'v2', state: 'waiting', light: true }, title: 'Weekly sync | Microsoft Teams' },
+  // v0.10: calls whose captions are off (captions on when notes start): a light-meetings guest (More › Captions; the
+  // guest's caption tree, shown once someone speaks), and Meet's "Captions and translation" pop-up.
+  'teams-light-call': { site: 'teams', options: { layout: 'guest', light: true, hangupId: true, captions: false, lateRegion: true }, title: 'Weekly sync | Microsoft Teams' },
+  'meet-popup-off': { site: 'meet', options: { state: 'call', cc: 'popup', captions: false }, title: 'Meet – Weekly sync' },
 } satisfies Record<string, FixturePageSpec>;
 
 /** v0.10: the fixture pages that open before the call (each reaches the call with `join`). */

@@ -15,7 +15,8 @@
  * remount(i) (Teams), hooksOff, hooksOn, captionsOff, captionsOn,
  * replaceRegion, goTo(path), shown() (the words of every turn).
  * v0.10: askToJoin (Meet), clickJoin and toChat (Teams), admit, leave, and
- * captionsButton(on) (Meet's one-poll flicker).
+ * captionsButton(on) (Meet's one-poll flicker); ccLog() (what was clicked or
+ * pressed on the captions controls) and captionsShown().
  */
 import { buildMeet, type MeetFixture } from './meet.js';
 import { PAGE_BACKGROUND, PAGE_SPECS, type FixturePageName } from './specs.js';
@@ -63,6 +64,8 @@ function start(): void {
     replaceRegion: () => fx.replaceRegion(),
     goTo: (path) => history.pushState({}, '', String(path)),
     shown: () => (meet ? meet.turns.map((t) => t.text()) : teams!.items.map((t) => t.text())),
+    ccLog: () => [...fx.ccLog],
+    captionsShown: () => fx.captionsShown(),
   };
 
   (window as unknown as { __step: (name: string, ...args: unknown[]) => unknown }).__step = (step, ...args) => {
