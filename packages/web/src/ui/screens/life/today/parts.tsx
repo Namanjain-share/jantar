@@ -29,6 +29,10 @@ import type { LifeLoad } from '../shared/useLife.js';
  * offline (the shell shows its banner) a mono line under the title says why
  * add and save are off. `wrapTitle` (a café's name, v0.10) wraps a long
  * title at the title size instead of cutting it.
+ *
+ * 0.11: a page is 720 wide at most, unless it is `wide`: Today and the
+ * Life lists lay their sections out by the pane's width instead (cards in
+ * columns, kit/Columns.tsx), so they take all of it.
  */
 export function Page({
   title,
@@ -36,6 +40,7 @@ export function Page({
   back,
   undo,
   wrapTitle = false,
+  wide = false,
   children,
 }: {
   title: ReactNode;
@@ -43,11 +48,13 @@ export function Page({
   back?: ReactNode;
   undo?: Pick<Undo, 'offer' | 'take'>;
   wrapTitle?: boolean;
+  /** 0.11: the whole pane's width, not 720. */
+  wide?: boolean;
   children: ReactNode;
 }) {
   const offline = useOffline();
   return (
-    <div className="pb-48 animate-enter max-w-720">
+    <div className={clsx('pb-48 animate-enter', !wide && 'max-w-720')}>
       {back ? <div className="px-8 pt-8">{back}</div> : null}
       <header className={clsx('flex min-h-44 items-center gap-12 px-16 pb-8', back ? 'pt-4' : 'pt-16 desk:pt-24')}>
         <h1 data-display className={clsx('min-w-0 flex-1 text-ink', wrapTitle ? 'break-words type-title' : 'truncate type-display')}>

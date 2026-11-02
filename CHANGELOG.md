@@ -5,6 +5,13 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## 0.12.0 (unreleased)
 
+- **Today is a page of cards** on a wide window (from about 640 px of
+  content, on a Mac or an iPad): Medicines, Claude, Due, Food, Bills and
+  Posts side by side, three columns on a 1440 px Mac window and two at
+  1024. Each card shows up to five rows and links to its place; the Claude
+  card lists the sessions waiting on you longest. The Life places sit in a
+  strip on top, and **Edit cards** orders and hides the cards on this
+  device. A phone keeps the list.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

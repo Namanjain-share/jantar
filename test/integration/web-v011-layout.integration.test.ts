@@ -31,6 +31,11 @@
  * dark. On a failure the page's PNG goes to the OS temp folder, named in the
  * message. Every name and value is synthetic. Needs a built dist/ and a
  * Chromium.
+ *
+ * While working on one place: JANTAR_LAYOUT_STATES=today,todos measures only
+ * those states, JANTAR_LAYOUT_SIZES=mac-1440,ipad-air-l only those sizes,
+ * and JANTAR_LAYOUT_SHOTS=1 keeps every page's PNG (not only a failure's) in
+ * the same folder, with the share measured in the log.
  */
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,6 +53,11 @@ import { serveWebApp, type WebServer } from './web-server.js';
 
 const ready = await browserReady('web-v011-layout.integration');
 const FULL = process.env.JANTAR_LAYOUT_FULL === '1';
+const list = (v: string | undefined) => (v ? new Set(v.split(',').map((x) => x.trim())) : null);
+/** Only these states / sizes (a place being worked on); the user's-case check then reads only what ran. */
+const ONLY_STATES = list(process.env.JANTAR_LAYOUT_STATES);
+const ONLY_SIZES = list(process.env.JANTAR_LAYOUT_SIZES);
+const SHOTS = process.env.JANTAR_LAYOUT_SHOTS === '1';
 
 /** The iPad's insets in the Home Screen app: the status bar and the home indicator. */
 const IPAD = { top: 24, bottom: 20 };
@@ -131,15 +141,6 @@ const USERS_CASE = { sizes: ['mac-1440', 'touch-1440'], states: ['today', 'chat'
  * view or the detail's text beside them to pass.
  */
 export const KNOWN_WIDE_GAPS: Record<string, number> = {
-  'today@mac-1440': 0.85,
-  'today@touch-1440': 0.85,
-  'today@desktop': 0.85,
-  'today@mac-1024': 0.79,
-  'today@ipad-air-l': 0.82,
-  'today@ipad-pro-l': 0.82,
-  'today@ipad-1024': 0.79,
-  'today@ipad-13-l': 0.84,
-  'today@safari-l': 0.82,
   'todos@mac-1440': 0.85,
   'todos@touch-1440': 0.83,
   'todos@desktop': 0.85,
@@ -403,8 +404,8 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
   }
 
   const groups = new Map<string, State[]>();
-  for (const s of STATES) groups.set(fixtureKey(s), [...(groups.get(fixtureKey(s)) ?? []), s]);
-  const sizes = Object.entries(LAYOUT_SIZES).filter(([, v]) => FULL || v.tier === 'A');
+  for (const s of STATES.filter((x) => !ONLY_STATES || ONLY_STATES.has(x.name))) groups.set(fixtureKey(s), [...(groups.get(fixtureKey(s)) ?? []), s]);
+  const sizes = Object.entries(LAYOUT_SIZES).filter(([k, v]) => (ONLY_SIZES ? ONLY_SIZES.has(k) : FULL || v.tier === 'A'));
   const schemes = FULL ? (['light', 'dark'] as const) : (['light'] as const);
 
   for (const [size, viewport] of sizes) {
@@ -444,6 +445,7 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
                 await page.screenshot({ path: file }).catch(() => undefined);
                 return file;
               };
+              let measuredShare: number | null = null;
               // 1. Nothing sideways (or what KNOWN_SIDEWAYS still lists).
               const sidewaysKnown = KNOWN_SIDEWAYS[`${s.name}@${size}`] !== undefined;
               if (p.sideways.length && !sidewaysKnown) problems.push(`${at}: sideways: ${p.sideways.join('; ')} (${await shot()})`);
@@ -454,6 +456,7 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
                 if (p.exempt && users) problems.push(`${at}: the user's case is never exempt, but read as ${p.exempt}`);
                 if (!p.exempt) {
                   const share = Math.round(emptyShare(p.boxes, p.region) * 100) / 100;
+                  measuredShare = share;
                   const key = `${s.name}@${size}`;
                   measured.add(key);
                   if (share > MAX_EMPTY) wide[key] = share;
@@ -462,6 +465,7 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
                   if (share <= MAX_EMPTY && known !== undefined) problems.push(`${at}: now ${Math.round(share * 100)} % empty: take it out of KNOWN_WIDE_GAPS`);
                 }
               }
+              if (SHOTS) console.info(`[layout] ${s.name}@${size} ${scheme}: ${measuredShare === null ? 'not measured' : `${Math.round(measuredShare * 100)} % empty`} (${await shot()})`);
             }
             // 7. The console, over every place this context opened.
             problems.push(...consoleProblems(watch, size));
@@ -471,7 +475,8 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
           }
         }
         // 12. The user's four screens were measured at 1440 x 960.
-        if (USERS_CASE.sizes.includes(size)) for (const s of USERS_CASE.states) if (!measured.has(`${s}@${size}`)) problems.push(`${s} at ${size}: the user's case was not measured`);
+        if (USERS_CASE.sizes.includes(size))
+          for (const s of USERS_CASE.states) if ((!ONLY_STATES || ONLY_STATES.has(s)) && !measured.has(`${s}@${size}`)) problems.push(`${s} at ${size}: the user's case was not measured`);
         if (Object.keys(wide).length) console.info(`[layout] ${size} ${scheme} still wide: ${JSON.stringify(wide)}`);
         expect(problems, problems.join('\n')).toEqual([]);
       }, perfBudgetMs(240_000));

@@ -12,6 +12,7 @@ import type { MedsDay, MedsDayItem } from '@jantar/protocol';
 import { useDeps, useNow } from '../../../context.js';
 import { NotSaved } from '../shared/states.js';
 import { useLifeStatus } from '../shared/useLife.js';
+import { MoreLink } from '../today/Dashboard.js';
 import { DoseRow } from './DoseRow.js';
 import { DoseSheet } from './DoseSheet.js';
 import { NO_MEDS_TODAY, dayItems, isDue, lifeNow, loggedText, useMedWrite, useOffline } from './data.js';
@@ -19,9 +20,11 @@ import { NO_MEDS_TODAY, dayItems, isDue, lifeNow, loggedText, useMedWrite, useOf
 export interface MedsTodayProps {
   data: MedsDay;
   onChanged(): void;
+  /** 0.11, Today's card: at most this many doses still to log, then "2 more" (to Medicines). */
+  max?: number;
 }
 
-export function MedsToday({ data, onChanged }: MedsTodayProps) {
+export function MedsToday({ data, onChanged, max }: MedsTodayProps) {
   const { api } = useDeps();
   const { status } = useLifeStatus();
   const tz = status?.timezone ?? null;
@@ -54,7 +57,8 @@ export function MedsToday({ data, onChanged }: MedsTodayProps) {
 
   return (
     <div>
-      {open.length ? <ul aria-label="Doses still to log">{open.map(row)}</ul> : null}
+      {open.length ? <ul aria-label="Doses still to log">{open.slice(0, max).map(row)}</ul> : null}
+      {max !== undefined && open.length > max ? <MoreLink n={open.length - max} href="/meds" what="doses" /> : null}
       {logged.length ? (
         <button
           type="button"

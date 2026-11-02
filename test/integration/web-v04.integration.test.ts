@@ -265,7 +265,9 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
   it('Today: every section and the push warning; the dose sheet from a row and from a push; the quick adds', async () => {
     await inEachView('/today', async (page) => {
       await page.getByRole('heading', { name: 'Today', level: 1 }).waitFor();
-      for (const section of ['Medicines', 'Due', 'Bills', 'Food', 'Claude', 'Life']) await page.getByRole('region', { name: section }).waitFor();
+      for (const section of ['Medicines', 'Due', 'Bills', 'Food', 'Claude']) await page.getByRole('region', { name: section }).waitFor();
+      // 0.11: the LIFE list on a phone; on a wide pane the Life strip over the cards.
+      await page.getByRole('region', { name: 'Life' }).or(page.getByRole('navigation', { name: 'Life' })).waitFor();
       await page.getByText('No device gets medicine pings.').first().waitFor();
       await page.getByText('Example overdue todo').waitFor();
       await page.getByText('Example Stream').first().waitFor();

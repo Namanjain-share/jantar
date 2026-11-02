@@ -514,3 +514,108 @@ describe('Today: offline', () => {
     expect(screen.getByText('Offline: changes need your Mac')).toBeTruthy();
   });
 });
+
+describe('Today: cards (0.11)', () => {
+  // A pane 1384 wide: Today measures its body (cards from 640) and Columns its box (three of 340).
+  const wide = () => vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: 1352, bottom: 800, width: 1352, height: 800, toJSON: () => ({}) });
+  const column = (name: string) => screen.getByRole('region', { name }).parentElement;
+  const many = (n: number) => Array.from({ length: n }, (_, i) => todo(20 + i, { due: { day: DAY } }));
+
+  it('deals the sections into three columns of cards in the default order, each with its module link', async () => {
+    wide();
+    render({ state: { sessions: [session('a', { status: 'waiting' })] } });
+    await section('Medicines');
+    expect(document.querySelector('[data-columns]')?.getAttribute('data-columns')).toBe('3');
+    // Medicines, Claude, Due, Food, Bills, round-robin: card i in column i mod 3.
+    expect(column('Medicines')).toBe(column('Food'));
+    expect(column('Claude')).toBe(column('Bills'));
+    expect(column('Due')).not.toBe(column('Medicines'));
+    expect(within(await section('Medicines')).getByRole('link', { name: 'Open Medicines' }).getAttribute('href')).toBe('/meds');
+    expect(within(await section('Due')).getByRole('link', { name: 'Open Todos' }).getAttribute('href')).toBe('/todos');
+    expect(within(await section('Claude')).getByRole('link', { name: 'Open the Board' }).getAttribute('href')).toBe('/');
+    // No LIFE list: the strip on top takes its place.
+    expect(screen.queryByRole('region', { name: 'Life' })).toBeNull();
+  });
+
+  it('puts the Life places in a strip on top, with what is open in each', async () => {
+    wide();
+    render({ state: { features: { life: true, intel: true } } });
+    const strip = await screen.findByRole('navigation', { name: 'Life' });
+    await waitFor(() => expect(within(strip).getAllByRole('link').map((l) => l.textContent)).toEqual(['Todos2', 'Medicines1', 'Food', 'Finance', 'Intel']));
+    expect(within(strip).getByRole('link', { name: /Todos/ }).getAttribute('href')).toBe('/todos');
+  });
+
+  it('shows five todos in the Due card and links the rest to Todos; Add todo stays', async () => {
+    wide();
+    render({ today: today({ todos: { overdue: many(2), today: many(5).map((t, i) => ({ ...t, id: id(40 + i), title: `Later todo ${i}` })) } }) });
+    const due = await section('Due');
+    expect(within(due).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(due).getByText('2 late')).toBeTruthy();
+    expect(within(due).getByRole('link', { name: '2 more todos' }).getAttribute('href')).toBe('/todos');
+    fireEvent.click(within(due).getByRole('button', { name: 'Add todo' }));
+    expect(await screen.findByRole('dialog', { name: 'New todo' })).toBeTruthy();
+  });
+
+  it('lists the sessions waiting on you in the Claude card, each a link, with the counts under them', async () => {
+    wide();
+    const sessions = [session('a', { status: 'waiting', folder: 'web-app' }), session('b', { status: 'idle' }), session('c', { status: 'working' })];
+    render({ state: { sessions } });
+    const claude = await section('Claude');
+    expect(within(claude).getByText('1 needs you')).toBeTruthy();
+    const waiting = within(claude).getByRole('list', { name: 'Waiting on you' });
+    expect(within(waiting).getByRole('link').getAttribute('href')).toBe('/s/a');
+    expect(within(claude).getByRole('link', { name: /1 session needs you/ }).getAttribute('href')).toBe('/');
+    expect(within(claude).getByText(/1 your turn/)).toBeTruthy();
+    expect(within(claude).getByText(/1 working/)).toBeTruthy();
+  });
+
+  it('Edit cards hides a card and moves another, and keeps the order on this device', async () => {
+    wide();
+    const a = render();
+    await section('Bills');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }));
+    const edit = screen.getByRole('region', { name: 'Edit cards' });
+    expect(within(edit).getAllByRole('button', { name: /^Move / }).map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Move Medicines',
+      'Move Claude',
+      'Move Due',
+      'Move Food',
+      'Move Bills',
+      'Move Posts',
+    ]);
+    fireEvent.click(within(edit).getByRole('switch', { name: 'Bills' }));
+    // The arrow keys on a handle move its card: Due twice up, to the top, keeping the focus.
+    within(edit).getByRole('button', { name: 'Move Due' }).focus();
+    fireEvent.keyDown(within(edit).getByRole('button', { name: 'Move Due' }), { key: 'ArrowUp' });
+    fireEvent.keyDown(within(edit).getByRole('button', { name: 'Move Due' }), { key: 'ArrowUp' });
+    expect(within(edit).getAllByRole('button', { name: /^Move / })[0]!.getAttribute('aria-label')).toBe('Move Due');
+    expect(document.activeElement).toBe(within(edit).getByRole('button', { name: 'Move Due' }));
+    fireEvent.click(within(edit).getByRole('button', { name: 'Done' }));
+    await section('Due');
+    expect(screen.queryByRole('region', { name: 'Bills' })).toBeNull();
+    expect(JSON.parse(localStorage.getItem('jantar:today-cards') ?? 'null')).toEqual({ order: ['due', 'meds', 'claude', 'food', 'bills', 'posts'], hidden: ['bills'] });
+    a.unmount();
+    // Opened again on this device: the order and the switch hold. Due first, so it leads the first column.
+    render();
+    await section('Due');
+    expect(column('Due')).toBe(column('Food'));
+    expect(screen.queryByRole('region', { name: 'Bills' })).toBeNull();
+  });
+
+  it("is 0.10's list below a pane of 640: rails, no cards, the LIFE list", async () => {
+    render();
+    await section('Due');
+    expect(document.querySelector('[data-card]')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit cards' })).toBeNull();
+    expect(await section('Life')).toBeTruthy();
+  });
+});
+
+describe('Today: the card order store', () => {
+  it('makes what is stored whole: unknown ids out, each card once, a missing one at its default place', async () => {
+    const { cardPrefs } = await import('../src/ui/screens/life/today/Dashboard.js');
+    expect(cardPrefs(null)).toEqual({ order: ['meds', 'claude', 'due', 'food', 'bills', 'posts'], hidden: [] });
+    expect(cardPrefs({ order: ['posts', 'nope', 'due', 'posts'], hidden: ['food', 'x'] })).toEqual({ order: ['meds', 'claude', 'posts', 'due', 'food', 'bills'], hidden: ['food'] });
+    expect(cardPrefs('garbage')).toEqual({ order: ['meds', 'claude', 'due', 'food', 'bills', 'posts'], hidden: [] });
+  });
+});
