@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { CHAT_UNDO_WITHIN_MS, CHAT_WRITES_MAX } from '@jantar/protocol';
 import { dismissCard, runCard } from '../../src/chat/taps.js';
 import { TOOL_SENTENCES } from '../../src/chat/tools.js';
-import { chatRig, PHONE, TABLET, TODAY, type ChatRig } from './helpers.js';
+import { chatRig, idIn, PHONE, TABLET, TODAY, type ChatRig } from './helpers.js';
 
 let rig: ChatRig | undefined;
 afterEach(async () => {
@@ -105,6 +105,15 @@ describe('untrusted text, links and caps (B9)', () => {
       ['do', 'Add todo Follow up on the page?'],
       ['do', 'Add medicine Placebin?'],
     ]);
+    // An edit's card names the item by its own label and says what changes.
+    const medId = (() => {
+      const m = rig.life.medicines.create({ name: 'Placebin', times: ['08:00'], schedule: { freq: 'daily' } }, PHONE);
+      return m.ok ? m.value.id : '';
+    })();
+    const todoId = idIn((await rig.turn().tools.call('todo_add', { title: 'Call the bank' })).text);
+    expect((await tools.call('med_edit', { id: medId, times: ['23:00'], dose: null })).text).toBe(TOOL_SENTENCES.card);
+    expect((await tools.call('todo_done', { id: todoId })).text).toBe(TOOL_SENTENCES.card);
+    expect(rig.store.cards(turnId).slice(2).map((c) => c.label)).toEqual(['Change Medicine · Placebin · 08:00: dose cleared, times 23:00?', 'Mark Todo · Call the bank done?']);
     done(rig, turnId);
     expect(await runCard(o(rig), turnId, 0, TABLET, 'device:dev-tablet')).toEqual({ ok: true, value: true });
     const changes = rig.store.changes(turnId);

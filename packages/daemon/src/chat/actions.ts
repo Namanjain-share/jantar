@@ -909,9 +909,83 @@ export async function runCardAction(d: ChatDeps, a: Exclude<CardAction, { t: 'wr
   }
 }
 
-/** A Do-it card's label: what the write would do, from its checked input (never the model's words but the item's own). */
-export function describeWrite(tool: WriteTool, input: Record<string, unknown>): string {
+/** The item a write changes, from its checked input; null for an add or a set. */
+function writeTarget(tool: WriteTool, input: Record<string, unknown>): ItemRef | null {
+  const id = typeof input.id === 'string' ? input.id : '';
+  const day = typeof input.day === 'string' ? { day: input.day } : {};
+  switch (tool) {
+    case 'todo_edit':
+    case 'todo_done':
+    case 'todo_snooze':
+      return { kind: 'todo', id };
+    case 'project_edit':
+      return { kind: 'project', id };
+    case 'med_edit':
+      return { kind: 'medicine', id };
+    case 'dose_log':
+      return { kind: 'medicine', id: String(input.medId ?? '') };
+    case 'food_edit':
+      return { kind: 'meal', id, ...day };
+    case 'place_edit':
+      return { kind: 'place', id };
+    case 'dish_set':
+    case 'visit_log':
+      return { kind: 'place', id: String(input.placeId ?? '') };
+    case 'visit_edit':
+      return { kind: 'visit', id: String(input.visitId ?? ''), parent: String(input.placeId ?? '') };
+    case 'money_edit':
+      return { kind: 'money', id, ...day };
+    case 'bill_edit':
+    case 'bill_paid':
+      return { kind: 'bill', id };
+    case 'post_edit':
+      return { kind: 'post', id };
+    case 'meeting_edit':
+    case 'meeting_item_todo':
+      return { kind: 'meeting', id };
+    default:
+      return null;
+  }
+}
+
+/** One value of a held write, short: "18:00", "cleared", "yes". */
+function shortValue(v: unknown): string {
+  if (v === null) return 'cleared';
+  if (typeof v === 'string') return q(v, 40);
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  if (Array.isArray(v)) return v.map(shortValue).join(', ');
+  if (v && typeof v === 'object') return Object.values(v as Record<string, unknown>).map(shortValue).join(' ');
+  return '';
+}
+
+/** Keys of a write's input that name its item, not what changes. */
+const WHERE_KEYS = new Set(['id', 'placeId', 'visitId', 'medId']);
+
+/**
+ * A Do-it card's label: what the write would do, from its checked input. An edit names its item by the
+ * item's own label (as the change list would) and lists what it changes, so a tap after someone else's
+ * text is never a blind one: "Change Medicine · Placebin · 08:00: times 23:00?".
+ */
+export function describeWrite(d: ChatDeps, tool: WriteTool, input: Record<string, unknown>): string {
   const s = (k: string) => (typeof input[k] === 'string' ? q(input[k] as string) : '');
+  const target = writeTarget(tool, input);
+  const name = target ? labelOf(d, target, 'an item that is not there now') : '';
+  const changes = Object.entries(input)
+    .filter(([k, v]) => !WHERE_KEYS.has(k) && !(k === 'day' && (tool === 'food_edit' || tool === 'money_edit')) && v !== undefined)
+    .map(([k, v]) => `${k} ${shortValue(v)}`.trim())
+    .join(', ');
+  const named: Partial<Record<WriteTool, string>> = {
+    todo_done: `Mark ${name} ${input.done === false ? 'not done' : 'done'}`,
+    todo_snooze: `Snooze ${name}: ${s('preset')}`,
+    bill_paid: `Mark ${name} paid`,
+    dose_log: `Log ${name}: ${s('day')} ${s('slot')} ${s('status')}`,
+    dish_set: `Set dish ${s('name')} at ${name}${changes ? `: ${changes}` : ''}`,
+    visit_log: `Log a visit to ${name}${changes ? `: ${changes}` : ''}`,
+    meeting_item_todo: `Add action item ${typeof input.n === 'number' ? input.n : ''} of ${name} to its todos`,
+  };
+  if (target && named[tool]) return cut(`${named[tool]}?`, 200);
+  if (target) return cut(`Change ${name}: ${changes || 'nothing'}?`, 200);
   const what: Partial<Record<WriteTool, string>> = {
     todo_add: `Add todo ${s('title')}`,
     project_add: `Add project ${s('name')}`,
@@ -922,10 +996,10 @@ export function describeWrite(tool: WriteTool, input: Record<string, unknown>): 
     bill_add: `Add bill ${s('name')}`,
     post_add: `Plan a ${s('kind') || 'post'}${s('title') ? ` ${s('title')}` : ''}`,
     intel_save: 'Save a link to Intel',
-    visit_log: 'Log a café visit',
-    dish_set: `Set dish ${s('name')}`,
-    weight_set: `Set the weight of ${s('day')}`,
-    dose_log: 'Log a dose',
+    weight_set: `Set the weight of ${s('day')} to ${typeof input.kg === 'number' ? input.kg : ''} kg`,
+    food_targets_set: `Set the food targets: ${changes}`,
+    budget_set: `Set the budget for ${s('category')} to ${typeof input.amount === 'number' ? input.amount / 100 : ''}`,
+    post_goals_set: `Replace the posting goals: ${changes}`,
   };
-  return cut(`${what[tool] ?? `Change: ${tool.replace(/_/g, ' ')}`}?`, 200);
+  return cut(`${what[tool] ?? `${tool.replace(/_/g, ' ')}: ${changes}`}?`, 200);
 }

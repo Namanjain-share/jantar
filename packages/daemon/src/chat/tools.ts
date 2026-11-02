@@ -664,7 +664,7 @@ export class TurnTools {
     if (this.counts.tainted) {
       if (this.counts.cards >= CHAT_CARDS_MAX) return this.refused(TOOL_SENTENCES.limit);
       const action: CardAction = { t: 'write', tool, input };
-      this.addCard('do', WRITE_MODULE[tool], tool.replace(/_.*$/, ''), null, describeWrite(tool, input), action);
+      this.addCard('do', WRITE_MODULE[tool], tool.replace(/_.*$/, ''), null, describeWrite(this.o.deps, tool, input), action);
       return { text: TOOL_SENTENCES.card, isError: false };
     }
     if (this.counts.writes >= CHAT_WRITES_MAX) return this.refused(TOOL_SENTENCES.limit);
