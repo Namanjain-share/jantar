@@ -5,7 +5,8 @@
  * - publishes what the tail says (`now`, `lastReply`, `mode`, `away`,
  *   `errorLast`, `transcriptPath`) as session.updated;
  * - finds alerts (blocked / rejected / limit / API error) in the bytes the
- *   transcript grew by, and in its subagents' transcripts. The first read
+ *   transcript grew by, and in its subagents' transcripts (v0.10.2: a call
+ *   Claude stopped is not "you rejected", alerts.ts). The first read
  *   backfills at most ALERT_BACKFILL_BYTES (256 KB, not ccw's 4 MB) and
  *   only the last hour. Alert ids are stable and remembered across restarts,
  *   so a restart does not repeat the feed;
@@ -244,7 +245,9 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
     if (!path) return;
     if (w.path !== path) {
       w.path = path;
-      w.main = { path, offset: null, size: 0, scanner: new AlertScanner(), files: new FileChangeScanner(), bg: new BackgroundScanner() };
+      // v0.10.2: the session's mode now stands in until the transcript names one (a stopped call is not "you rejected")
+      const mode = (): string | undefined => localSession(this.ctx.store.getState(), r.sid)?.mode;
+      w.main = { path, offset: null, size: 0, scanner: new AlertScanner({ mode }), files: new FileChangeScanner(), bg: new BackgroundScanner() };
       w.sig = null;
       w.published = null;
       w.subs.clear();
@@ -379,7 +382,7 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
     if (size < track.size) {
       // the file shrank: read it again from the start
       track.offset = null;
-      track.scanner = new AlertScanner();
+      track.scanner = new AlertScanner(track.scanner.options);
       track.files = new FileChangeScanner({ byAgent: track.files.byAgent });
       if (track.bg) track.bg = new BackgroundScanner();
     }
@@ -418,7 +421,9 @@ export class TranscriptWatcherImpl implements TranscriptWatcher {
       w.lastWalk = now;
       const dir = join(dirname(w.path), w.sid); // <projects>/<encoded cwd>/<sid>/subagents, workflows, ...
       for (const f of await recentJsonl(dir, since)) {
-        if (!w.subs.has(f)) w.subs.set(f, { path: f, offset: null, size: 0, scanner: new AlertScanner(), files: new FileChangeScanner({ byAgent: true }) });
+        if (!w.subs.has(f)) {
+          w.subs.set(f, { path: f, offset: null, size: 0, scanner: new AlertScanner({ agent: true }), files: new FileChangeScanner({ byAgent: true }) });
+        }
       }
       if (w.subs.size > SUBAGENT_FILES_MAX) {
         const keep = [...w.subs].slice(-SUBAGENT_FILES_MAX);

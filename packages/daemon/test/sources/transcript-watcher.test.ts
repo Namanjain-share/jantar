@@ -2,11 +2,18 @@ import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  AGENT_PROMPT_DENIED,
   apiError,
   assistantText,
   assistantToolUse,
+  interruptedForToolUse,
+  permissionMode,
+  taskStopped,
   toJsonl,
+  toolRejected,
   toolResult,
+  toolResultWith,
+  toolStopped,
   userPrompt,
   type Entry,
 } from '@jantar/fixtures';
@@ -263,6 +270,44 @@ describe('transcript watcher: alerts', () => {
     expect(env.events.of('alert.limit', sid).map((e) => e.data.alert.why)).toEqual(['API Error: Rate limit reached']);
     expect(env.events.of('alert.error', sid).map((e) => e.data.alert.why)).toEqual(['API Error: 529 overloaded']);
     expect(env.ctx.store.getState().alerts).toHaveLength(5);
+  });
+
+  it('v0.10.2: calls stopped by a save prompt are not "you rejected", in bypass mode or in a workflow agent', async () => {
+    const sid = SID.busy;
+    const s = env.home.session(sid);
+    const c = (ms = 0) => at(env.ctx, sid, s.cwd, ms);
+    const agent = (e: Entry): Entry => ({ ...e, isSidechain: true, agentId: 'a0000000000000002' });
+    await env.home.appendTranscript(sid, [
+      permissionMode(c(), 'bypassPermissions'),
+      { ...userPrompt(c(1), 'Save all the workflows and then stop them.'), permissionMode: 'bypassPermissions' },
+      assistantToolUse(c(2), 'Bash', { command: 'sleep 600', description: 'Wait for the scan' }, 'toolu_wait'),
+      toolStopped(c(3), 'toolu_wait', { note: true }),
+      interruptedForToolUse(c(4)),
+      assistantToolUse(c(5), 'TaskStop', { task_id: 'wtask0002' }, 'toolu_stop'),
+      toolResultWith(c(6), 'toolu_stop', 'Successfully stopped task', taskStopped('wtask0002', 'local_workflow')),
+      // words typed at a dialog are a real rejection in any mode
+      assistantToolUse(c(7), 'Write', { file_path: '/w/a/notes.md', content: 'x' }, 'toolu_w'),
+      toolRejected(c(8), 'toolu_w', { said: 'not now' }),
+    ]);
+    const sub = join(dirname(s.transcriptPath), sid, 'subagents', 'workflows', 'wf_wtask0002', 'agent-a0000000000000002.jsonl');
+    await mkdir(dirname(sub), { recursive: true });
+    await writeFile(
+      sub,
+      toJsonl([
+        agent(assistantToolUse(c(-60_000), 'Bash', { command: 'python scan.py', description: 'Run a faster scan' }, 'toolu_a1')),
+        agent(assistantToolUse(c(-59_000), 'WebFetch', { url: 'https://example.com/markets' }, 'toolu_a2')),
+        agent(toolStopped(c(7), 'toolu_a1')),
+        agent(toolStopped(c(7), 'toolu_a2')),
+        agent(interruptedForToolUse(c(7))),
+        // the agent's own permission prompt, said no to: still a rejection
+        agent(assistantToolUse(c(8), 'Bash', { command: 'rm -rf data/old' }, 'toolu_a3')),
+        agent(toolRejected(c(9), 'toolu_a3', { text: AGENT_PROMPT_DENIED })),
+      ]),
+    );
+    env.ctx.clock.advance(20_000); // subagent folders are listed every 20 s
+    await r.step();
+    const rejected = env.events.of('alert.rejected', sid).map((e) => e.data.alert.what);
+    expect(rejected).toEqual(['you rejected: Write · notes.md', 'you rejected: Bash · rm -rf data/old']);
   });
 
   it('backfills at most 256 KB and only the last hour, and never repeats an alert after a restart', async () => {

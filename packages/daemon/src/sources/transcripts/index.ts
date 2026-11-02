@@ -17,6 +17,6 @@ export {
   ALERT_IDS_KV_KEY,
   type TranscriptWatcherOptions,
 } from './watcher.js';
-export { AlertScanner, type FoundAlert } from './alerts.js';
+export { AlertScanner, type AlertScannerOptions, type FoundAlert } from './alerts.js';
 export { BackgroundScanner, BACKGROUND_MAX_AGE_MS } from './background.js';
 export { summarizeTail, itemsFromEntry, classifyUser, isTurnStart, parseLine } from './parse.js';
