@@ -5,6 +5,9 @@
  * PopupState's `sentence`. A sentence the daemon wrote (Meetings off, a cap,
  * the day's budget) is passed on as it came. No em dash, no exclamation
  * mark.
+ *
+ * v0.10's groups are marked pure, so a bundle that never names one (the
+ * worker and the popup's own copy) leaves it out.
  */
 
 export const NOT_RUNNING = 'Jantar is not running on this Mac.';
@@ -49,7 +52,7 @@ export const READS = Object.freeze({
 });
 
 /** v0.10: Start when I join, in the popup's words. */
-export const ARM = Object.freeze({
+export const ARM = /* @__PURE__ */ Object.freeze({
   button: 'Start when I join',
   leadPrejoin: 'Not in the call yet.',
   leadLobby: 'Waiting to be let in.',
@@ -70,7 +73,7 @@ export const ARM = Object.freeze({
 });
 
 /** v0.10: Settings › Always start when I join a call, and the page's bubble when it arms a call. */
-export const ALWAYS = Object.freeze({
+export const ALWAYS = /* @__PURE__ */ Object.freeze({
   title: 'Always start when I join a call',
   why: 'Notes start by themselves in every Meet or Teams call you join in this Chrome, once you are in the call, never before. Skip one with Not this call. Let people know you keep notes.',
   armedBubble: 'Jantar starts notes when you join. Not this call: the Jantar icon.',
@@ -80,7 +83,7 @@ export const ALWAYS = Object.freeze({
 export const OTHER_TAB = 'they are already on for this call in another tab.';
 
 /** v0.10: what the page says when notes start by themselves, or do not. */
-export const AUTO = Object.freeze({
+export const AUTO = /* @__PURE__ */ Object.freeze({
   started: 'Jantar started notes. Let people know you keep notes.',
   notStarted: (why: string) => `Notes did not start: ${why}`,
   retrying: 'Notes did not start: Jantar is not running on this Mac. Trying again for 2 minutes.',
@@ -89,7 +92,7 @@ export const AUTO = Object.freeze({
 });
 
 /** v0.10: Settings › Call check: what the page shows, in words, and the hook id that decided it. */
-export const CALL_CHECK = Object.freeze({
+export const CALL_CHECK = /* @__PURE__ */ Object.freeze({
   none: 'no join screen or call',
   prejoin: 'join screen',
   lobby: 'waiting to be let in',
