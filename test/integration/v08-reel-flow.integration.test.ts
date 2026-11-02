@@ -115,6 +115,11 @@ async function makeReel(dir: string): Promise<Buffer> {
   return readFile(join(dir, 'reel.mp4'));
 }
 
+// The headless browser keeps Chrome's sandbox (chromiumSandbox: true). Ubuntu 23.10+ CI refuses the user
+// namespaces that sandbox needs, so the read falls to the downloader there. Intel reading runs on the Mac
+// only (servers don't read Intel), so the browser-tier cases run on the macOS job.
+const browserTier = process.platform === 'darwin';
+
 describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found again by search (${REAL ? 'the real media helper' : 'the fake media helper'})`, () => {
   let d: Daemon;
   let ctl: CtlClient;
@@ -211,7 +216,7 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
     if (work) await rm(work, { recursive: true, force: true });
   }, perfBudgetMs(30_000));
 
-  it('the phone saves a reel at Standard; Chrome needs a login, the headless browser reads it, the helper takes its frames; search finds it by its caption and by its frames; Open original is the reel', async () => {
+  it.skipIf(!browserTier)('the phone saves a reel at Standard; Chrome needs a login, the headless browser reads it, the helper takes its frames; search finds it by its caption and by its frames; Open original is the reel', async () => {
     // 1. The phone: Add post, a shared link, Standard, Save.
     await page.goto(`http://127.0.0.1:${d.port}/intel`, { waitUntil: 'load' });
     // Read saved links on: the extension has asked, and there is nothing yet.

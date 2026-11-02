@@ -112,6 +112,11 @@ const articleHtml = (title: string, body: string) =>
 const html = (body: string): Answer => ({ type: 'text/html; charset=utf-8', body });
 const jpeg = (): Answer => ({ type: 'image/jpeg', body: JPEG });
 
+// The headless browser keeps Chrome's sandbox (chromiumSandbox: true). Ubuntu 23.10+ CI refuses the user
+// namespaces that sandbox needs, so the read falls to the downloader there. Intel reading runs on the Mac
+// only (servers don't read Intel), so the browser-tier cases run on the macOS job.
+const browserTier = process.platform === 'darwin';
+
 describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
   let d: Daemon;
   let ctl: CtlClient;
@@ -247,7 +252,7 @@ describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
     expect(builds).toHaveLength(1);
   });
 
-  it('2. the phone saves an article at Standard: on the shelf at once, read in the headless browser, found by its words and its screen text', async () => {
+  it.skipIf(!browserTier)('2. the phone saves an article at Standard: on the shelf at once, read in the headless browser, found by its words and its screen text', async () => {
     const saved = await ok<IntelReadReply>('POST', '/v1/intel/reads', { text: `${ARTICLE}?utm_source=share&ref=feed&id=${POST_MARKER} for the weekend ${POST_MARKER}`, depth: 'standard' });
     expect(saved).toMatchObject({ duplicate: false, queued: true, message: 'Saved. Reading it on your Mac.' });
     ids.article = saved.id;
@@ -322,7 +327,7 @@ describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
     expect(await search('pressure cook')).toContain(id);
   });
 
-  it("4. a reel Chrome can't read (login): the headless browser reads the post, its video 404s, yt-dlp's single file gives the frames", async () => {
+  it.skipIf(!browserTier)("4. a reel Chrome can't read (login): the headless browser reads the post, its video 404s, yt-dlp's single file gives the frames", async () => {
     const saved = await ok<IntelReadReply>('POST', '/v1/intel/reads', { text: REEL_TWO, depth: 'standard' });
     ids.reelTwo = saved.id;
     const job = await leased();
