@@ -81,10 +81,11 @@ describe('a post body', () => {
     for (const k of POST_KINDS) expect(ok({ kind: k }), k).toBe(true);
   });
 
-  it('is an idea or ready, never posted or skipped', () => {
+  it('is an idea, ready or posted, never skipped', () => {
     expect(ok({ status: 'idea' })).toBe(true);
     expect(ok({ status: 'ready' })).toBe(true);
-    expect(ok({ status: 'posted' })).toBe(false);
+    // v0.9: posted logs one already made (Log a comment).
+    expect(ok({ status: 'posted' })).toBe(true);
     expect(ok({ status: 'skipped' })).toBe(false);
   });
 

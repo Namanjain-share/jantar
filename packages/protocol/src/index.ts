@@ -32,6 +32,9 @@
  *   keys, the extension's read jobs. Two zod-free subpaths the extension bundles, never exported
  *   here: `@jantar/protocol/post-url` (the post links the user's Chrome may open) and
  *   `@jantar/protocol/page-read` (the in-page reader both page tiers run)
+ * - v0.9 Log a comment (in life, post-place, api, constants): a post body may be posted with its
+ *   link, `postPlaceOf` reads a comment's link for its platform and where (never fetched), Today
+ *   counts today's comments, a comment goal names its platform, Done shows the newest 300
  */
 export * from './constants.js';
 export * from './models.js';
@@ -43,6 +46,7 @@ export * from './selectors.js';
 export * from './hooks.js';
 export * from './api.js';
 export * from './life.js';
+export * from './post-place.js';
 export * from './intel.js';
 export * from './primer.js';
 export * from './meetings.js';

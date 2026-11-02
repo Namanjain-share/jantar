@@ -179,7 +179,8 @@ export const MED_CATCH_UP_GAP_MS = 3 * 60 * 60_000;
 /**
  * v0.7 Posts: a post's text or caption, title (Reddit's cap) and where
  * (a subreddit, an account or a handle); its link and posted link; the
- * weekly goals; one page of posted and skipped posts.
+ * weekly goals; one page of posted and skipped posts (v0.9: 300, about
+ * eight weeks at five logged comments a day).
  */
 export const POST_TEXT_MAX = 20_000;
 export const POST_TITLE_MAX = 300;
@@ -187,7 +188,7 @@ export const POST_WHERE_MAX = 80;
 export const POST_LINK_MAX = 2_000;
 export const POST_GOALS_MAX = 10;
 export const POST_PER_WEEK_MAX = 50;
-export const POSTS_DONE_PAGE = 100;
+export const POSTS_DONE_PAGE = 300;
 /** What Ask Claude may be given to estimate ("2 rotis and dal"). */
 export const FOOD_ESTIMATE_TEXT_MAX = 500;
 /**

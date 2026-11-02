@@ -1577,7 +1577,7 @@ export const ROUTES = {
   }),
   postCreate: route({
     method: 'POST', path: '/v1/posts', scope: 'control', phase: 'v0.7', ctl: true, feature: 'posts',
-    body: PostBodySchema, response: IdReplySchema, summary: 'Add a post to make, an idea or ready (a day and time make it ring).',
+    body: PostBodySchema, response: IdReplySchema, summary: 'Add a post to make (an idea or ready; a day and time make it ring), or log one already posted, such as a comment, with its link.',
   }),
   postUpdate: route({
     method: 'PATCH', path: '/v1/posts/:id', scope: 'control', phase: 'v0.7', ctl: false, feature: 'posts',

@@ -629,7 +629,7 @@ export const PostPlatformSchema = z.enum(POST_PLATFORMS);
 export type PostPlatform = z.infer<typeof PostPlatformSchema>;
 export const PostKindSchema = z.enum(POST_KINDS);
 export type PostKind = z.infer<typeof PostKindSchema>;
-/** Idea, then Ready, then Posted (or Skipped). A new post is an idea or ready. */
+/** Idea, then Ready, then Posted (or Skipped). A new post is an idea or ready, or posted when it logs one already made. */
 export const PostStatusSchema = z.enum(['idea', 'ready', 'posted', 'skipped']);
 export type PostStatus = z.infer<typeof PostStatusSchema>;
 /** A subreddit, an account or a handle ("r/exampletools", "@example.studio"). */
@@ -685,7 +685,7 @@ export const PostSchema = z.object({
   ...stamps,
 });
 export type Post = z.infer<typeof PostSchema>;
-/** POST /v1/posts (kind defaults to post, status to idea; never posted or skipped). */
+/** POST /v1/posts (kind defaults to post, status to idea; or posted, to log one already made, such as a comment, with its link; never skipped). */
 export const PostBodySchema = z.strictObject({
   platform: PostPlatformSchema,
   kind: PostKindSchema.optional(),
@@ -695,7 +695,9 @@ export const PostBodySchema = z.strictObject({
   notes: LongNotesSchema.optional(),
   link: PostLinkSchema.optional(),
   due: DueSchema.optional(),
-  status: z.enum(['idea', 'ready']).optional(),
+  status: z.enum(['idea', 'ready', 'posted']).optional(),
+  /** v0.9: the posted post's link, only with status posted (Log a comment). */
+  postedUrl: PostLinkSchema.optional(),
 });
 export type PostBody = z.infer<typeof PostBodySchema>;
 /**
@@ -740,7 +742,7 @@ export const PostsQuerySchema = z.object({ done: flag01.default(false) });
 export type PostsQuery = z.infer<typeof PostsQuerySchema>;
 /**
  * GET /v1/posts: open posts (idea and ready) by due (day, then time, untimed
- * after timed, undated last), then createdAt; with done=1 the newest 100
+ * after timed, undated last), then createdAt; with done=1 the newest 300
  * posted or skipped. `week` runs Monday to Sunday in the Life zone and counts
  * what was posted in it, against each goal.
  */
@@ -756,8 +758,12 @@ export const PostsResponseSchema = z.object({
 });
 export type PostsResponse = z.infer<typeof PostsResponseSchema>;
 
-/** A goal's name: the kind's plural with a kind ("Reels"), else the platform ("Reddit"). */
+/**
+ * A goal's name: the kind's plural with a kind ("Reels"), else the platform
+ * ("Reddit"). A comment goal always names its platform ("Reddit comments").
+ */
 export function postGoalLabel(g: Pick<PostGoal, 'platform' | 'kind'>): string {
+  if (g.kind === 'comment') return `${POST_PLATFORM_LABEL[g.platform]} comments`;
   return g.kind ? POST_KIND_LABEL[g.kind][1] : POST_PLATFORM_LABEL[g.platform];
 }
 
@@ -804,8 +810,17 @@ export const TodaySchema = z.object({
   food: z.object({ kcal: z.number().int(), target: z.number().int(), weight: WeightSchema.nullable() }).optional(),
   /** nextDue <= today + 3 days. */
   bills: z.array(BillSchema).optional(),
-  /** v0.7: open posts due today, and due before today. */
-  posts: z.object({ today: z.number().int().nonnegative(), late: z.number().int().nonnegative() }).optional(),
+  /**
+   * v0.7: open posts due today, and due before today. v0.9 `comments`: posted
+   * comments with postedAt in that day, against ceil(the comment goals' perWeek sum / 7).
+   */
+  posts: z
+    .object({
+      today: z.number().int().nonnegative(),
+      late: z.number().int().nonnegative(),
+      comments: z.object({ done: z.number().int().nonnegative(), goal: z.number().int().positive().optional() }).optional(),
+    })
+    .optional(),
 });
 export type Today = z.infer<typeof TodaySchema>;
 
