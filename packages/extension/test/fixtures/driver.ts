@@ -14,6 +14,9 @@
  * trimFront(i, words) (Meet), setSpeaker(i, name), unmount(i) and
  * remount(i) (Teams), hooksOff, hooksOn, captionsOff, captionsOn,
  * replaceRegion, goTo(path), shown() (the words of every turn).
+ * v0.9.1: askToJoin (Meet), clickJoin and toChat (Teams), admit, leave, and
+ * captionsButton(on) (Meet's one-poll flicker); ccLog() (what was clicked or
+ * pressed on the captions controls) and captionsShown().
  */
 import { buildMeet, type MeetFixture } from './meet.js';
 import { PAGE_BACKGROUND, PAGE_SPECS, type FixturePageName } from './specs.js';
@@ -37,6 +40,12 @@ function start(): void {
 
   const steps: Record<string, Step> = {
     join: () => fx.join(),
+    admit: () => fx.admit(),
+    leave: () => fx.leave(),
+    askToJoin: () => meet?.askToJoin(),
+    clickJoin: () => teams?.clickJoin(),
+    toChat: () => teams?.toChat(),
+    captionsButton: (on) => meet?.captionsButton(Boolean(on)),
     say: (speaker, text) => {
       if (meet) meet.say(speaker as string | null, String(text));
       else teams!.say(speaker as string | null, String(text));
@@ -55,6 +64,8 @@ function start(): void {
     replaceRegion: () => fx.replaceRegion(),
     goTo: (path) => history.pushState({}, '', String(path)),
     shown: () => (meet ? meet.turns.map((t) => t.text()) : teams!.items.map((t) => t.text())),
+    ccLog: () => [...fx.ccLog],
+    captionsShown: () => fx.captionsShown(),
   };
 
   (window as unknown as { __step: (name: string, ...args: unknown[]) => unknown }).__step = (step, ...args) => {

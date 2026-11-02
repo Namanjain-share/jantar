@@ -99,7 +99,9 @@ describe('the built extension', () => {
     for (const f of ['content.js', 'background.js', 'popup.js']) expect(read(dist, f), f).not.toMatch(/\bZodError\b|\bzod\b/);
     expect(Buffer.byteLength(read(dist, 'content.js'))).toBeLessThanOrEqual(60 * 1024);
     // v0.8: the worker carries the in-page reader and the post shapes (unminified, so it can be read): 40 KB became 80.
-    expect(Buffer.byteLength(read(dist, 'background.js'))).toBeLessThanOrEqual(80 * 1024);
+    // v0.9.1: Start when I join (the arm and its rules, the alarm, the badge, the start by itself) adds about 13 KB
+    // unminified after trimming (its copy stays out of the popup's bundle and the popup's out of the worker's): 80 KB became 88.
+    expect(Buffer.byteLength(read(dist, 'background.js'))).toBeLessThanOrEqual(88 * 1024);
     expect(Buffer.byteLength(read(dist, 'popup.js'))).toBeLessThanOrEqual(40 * 1024);
   });
 
@@ -108,5 +110,23 @@ describe('the built extension', () => {
     for (const name of ['function readPage', 'function chromePostOf', 'function isLoginPath', 'jantar-reads']) expect(worker, name).toContain(name);
     for (const f of ['content.js', 'popup.js']) expect(read(dist, f), f).not.toContain('function readPage');
     expect(read(dist, 'content.js')).not.toContain('chromePostOf');
+  });
+
+  it('v0.9.1: the setting for captions lives in the worker; the page script switches captions on but never reads storage, nor bundles what it never reads', () => {
+    expect(read(dist, 'background.js')).toContain('autoCaptions');
+    const content = read(dist, 'content.js');
+    for (const hook of ['#closed-captions-button', '#callingButtons-showMoreBtn', 'translate_cc']) expect(content, hook).toContain(hook);
+    expect(content).not.toContain('autoCaptions');
+    expect(content).not.toMatch(/chrome\.storage/);
+    for (const unread of ['READ_LIMITS', 'ARM_TIMING']) expect(content, unread).not.toContain(unread);
+  });
+
+  it("v0.9.1: the worker holds the arm alarm; the page script never touches the worker's session storage", () => {
+    expect(read(dist, 'background.js')).toContain('jantar-arm');
+    expect(read(dist, 'background.js')).toContain('startOnJoin');
+    expect(read(dist, 'content.js')).not.toContain('storage.session');
+    expect(read(dist, 'content.js')).not.toContain('jantar-arm');
+    // The Teams join-link check names paths only: MP8 above already found no URL in content.js.
+    expect(read(dist, 'content.js')).toContain('/light-meetings/');
   });
 });

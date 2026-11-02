@@ -8,6 +8,25 @@
  * variant with every known caption class renamed (the structural fallback,
  * MX9).
  *
+ * v0.9.1 adds the screens around the call, each with its own made-up words
+ * (never read by the adapter): the join screen ('prejoin', an "Ask to join"
+ * button with Meet's join jsname), the waiting room after it ('lobby', the
+ * call_end icon only), and the screen after Leave ('left', a Rejoin button),
+ * with the steps between them: askToJoin, admit (join is the same step) and
+ * leave. 'waiting' stays v0.5's waiting room: the call_end icon and an Ask to
+ * join button without the jsname (it reads as the lobby).
+ *
+ * v0.9.1, captions switched on (research captions-research.md 2.2, as of
+ * 2026-11-02): the captions control says whether captions are on, and a
+ * click on it changes them. `cc: 'old'` is the one toggle (Meet's captions
+ * jsname, `aria-pressed`, the closed_caption / closed_caption_off icon);
+ * `cc: 'popup'` is the "Captions and translation" button of 2026-10-22,
+ * which opens a pop-up holding the toggle (and two buttons that open
+ * more). The key `c` toggles captions in either shape. `emptyContainer`
+ * leaves an empty caption container on the page while captions are off
+ * (an unverified report: R-C3). `popupMs` opens the pop-up that long after
+ * the click (a slow page). `ccLog` lists what was clicked or pressed.
+ *
  *   const meet = buildMeet(document, { state: 'call' });
  *   const t = meet.say('Sam', 'So the plan');
  *   t.grow('for Friday is to ship.');          // a characterData change, as Meet revises
@@ -18,15 +37,24 @@
  */
 import { h, setWords, wordsOf } from './dom.js';
 
+/** v0.9.1: the screens around the call (see the header). */
+export type MeetState = 'prejoin' | 'lobby' | 'call' | 'left' | 'waiting';
+
 export interface MeetOptions {
-  /** The waiting room (no captions button yet) or the call. Default 'call'. */
-  state?: 'waiting' | 'call';
+  /** Which screen the page shows. Default 'call'. */
+  state?: MeetState;
   /** The caption region on screen. Default true in a call. */
   captions?: boolean;
   /** Every known caption class renamed: only the structural fallback reads it. */
   renamed?: boolean;
   /** `data-meeting-title`; null for none. Default 'Weekly sync'. */
   title?: string | null;
+  /** v0.9.1: the captions control's shape (see the header). Default 'old'. */
+  cc?: 'old' | 'popup';
+  /** v0.9.1: an empty caption container stays on the page while captions are off. */
+  emptyContainer?: true;
+  /** v0.9.1: the pop-up opens this long after the click. */
+  popupMs?: number;
 }
 
 export interface MeetTurn {
@@ -49,6 +77,16 @@ export interface MeetFixture {
   region(): HTMLElement;
   /** Admitted from the waiting room: the captions button appears. */
   join(): void;
+  /** v0.9.1: Ask to join pressed: the join screen becomes the waiting room. */
+  askToJoin(): void;
+  /** v0.9.1: let in (the same step as join). */
+  admit(): void;
+  /** v0.9.1: Leave pressed: the call's controls go and a Rejoin button shows. */
+  leave(): void;
+  /** v0.9.1: the captions button alone, on or off whatever the screen (a re-render's one-poll flicker). */
+  captionsButton(on: boolean): void;
+  /** v0.9.1: the screen the page shows now. */
+  state(): MeetState;
   /** A new turn, before the list's trailing controls. A null speaker leaves the name empty. */
   say(speaker: string | null, text: string): MeetTurn;
   captionsOff(): void;
@@ -59,6 +97,12 @@ export interface MeetFixture {
   hooksOn(): void;
   /** The region drawn again: new region, list and turn elements with the same words. */
   replaceRegion(): void;
+  /** v0.9.1: the captions are on (what the control says). */
+  captionsShown(): boolean;
+  /** v0.9.1: what was clicked or pressed on the captions controls, in order. */
+  readonly ccLog: string[];
+  /** v0.9.1: the captions pop-up (cc 'popup') is open. */
+  popupOpen(): boolean;
   remove(): void;
 }
 
@@ -66,6 +110,15 @@ export interface MeetFixture {
 export function meetUrl(code: string, form: 'short' | 'meet' = 'meet'): string {
   return form === 'meet' ? `/meet/${code}` : `/${code}`;
 }
+
+/** Each screen's own words, made up; the adapter never reads them. */
+const SCREEN_WORDS: Readonly<Record<MeetState, string>> = {
+  prejoin: 'Ready to join?',
+  lobby: 'Asking to be let in…',
+  waiting: 'Asking to be let in…',
+  call: '',
+  left: 'You left the meeting',
+};
 
 const KNOWN = { turn: 'nMcdL', nameBox: 'adE6rb', nameInner: 'KcIKyf', name: 'NWpY1d', text: 'ygicle VbkSUe' };
 const RENAMED = { turn: 'q7Lw2', nameBox: 'p0Zr8', nameInner: 'u3Kd1', name: 'x9Tq4', text: 'm2Hv6' };
@@ -80,10 +133,31 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
   const root = h(doc, 'div', { 'data-jantar-fixture': 'meet' });
   if (title !== null) root.append(h(doc, 'div', { 'data-meeting-title': title, class: 'title' }, title));
   const toolbar = h(doc, 'div', { class: 'toolbar', role: 'toolbar' });
-  const ccButton = h(doc, 'button', { jsname: 'RrG0hf', 'aria-label': 'Turn off captions', 'aria-pressed': 'true' }, h(doc, 'i', { class: 'google-symbols', 'aria-hidden': 'true' }, 'closed_caption'));
+  const popup = opts.cc === 'popup';
+  const ccIcon = h(doc, 'i', { class: 'google-symbols', 'aria-hidden': 'true' }, popup ? 'translate_cc' : 'closed_caption');
+  const ccButton = popup
+    ? h(doc, 'button', { 'aria-label': 'Captions and translation', 'aria-haspopup': 'dialog', 'aria-pressed': 'true', 'aria-expanded': 'false' }, ccIcon)
+    : h(doc, 'button', { jsname: 'RrG0hf', 'aria-label': 'Turn off captions', 'aria-pressed': 'true' }, ccIcon);
+  // v0.9.1: the pop-up of 2026-10-22: the toggle first, then translation and its settings (each opens more).
+  const ccToggle = h(doc, 'button', { 'aria-label': 'Turn off captions' }, 'Captions');
+  const ccDialog = h(
+    doc,
+    'div',
+    { role: 'dialog', 'aria-label': 'Captions and translation' },
+    ccToggle,
+    h(doc, 'button', { 'aria-haspopup': 'menu', 'aria-label': 'Translate to' }, 'Translation'),
+    h(doc, 'button', { 'aria-haspopup': 'dialog', 'aria-label': 'Caption settings' }, 'Settings'),
+  );
+  const ccLog: string[] = [];
+  const container = h(doc, 'div', { jscontroller: 'D1tHje' });
   const leave = h(doc, 'button', { 'aria-label': 'Leave call' }, h(doc, 'i', { class: 'google-symbols', 'aria-hidden': 'true' }, 'call_end'));
   const askToJoin = h(doc, 'button', { class: 'join' }, 'Ask to join');
-  root.append(toolbar);
+  // v0.9.1: the join screen's button (jsname as research names it, unverified on a real Mac: R12), and the left screen's.
+  const joinButton = h(doc, 'button', { jsname: 'Qx7uuf', class: 'join' }, 'Ask to join');
+  const rejoin = h(doc, 'button', { class: 'rejoin' }, 'Rejoin');
+  const screen = h(doc, 'div', { class: 'screen' });
+  root.append(screen, toolbar);
+  let flicker = false;
 
   let region = makeRegion();
   let list = region.firstElementChild as HTMLElement;
@@ -102,11 +176,76 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
     ];
   }
 
+  /** v0.9.1: the control says what the captions are. */
+  function paintCc() {
+    ccButton.setAttribute('aria-pressed', String(captionsShown));
+    if (popup) {
+      ccToggle.setAttribute('aria-label', captionsShown ? 'Turn off captions' : 'Turn on captions');
+      return;
+    }
+    ccButton.setAttribute('aria-label', captionsShown ? 'Turn off captions' : 'Turn on captions');
+    ccIcon.textContent = captionsShown ? 'closed_caption' : 'closed_caption_off';
+  }
+
+  function setCaptions(on: boolean) {
+    captionsShown = on;
+    layout();
+  }
+
+  function closePopup() {
+    ccDialog.remove();
+    ccButton.setAttribute('aria-expanded', 'false');
+  }
+
+  ccButton.addEventListener('click', () => {
+    if (!popup) {
+      ccLog.push('button');
+      setCaptions(!captionsShown);
+    } else if (ccDialog.isConnected) {
+      ccLog.push('popup-close');
+      closePopup();
+    } else {
+      ccLog.push('popup-open');
+      const open = () => {
+        root.append(ccDialog);
+        ccButton.setAttribute('aria-expanded', 'true');
+      };
+      if (opts.popupMs) setTimeout(open, opts.popupMs);
+      else open();
+    }
+  });
+  ccToggle.addEventListener('click', () => {
+    ccLog.push('toggle');
+    setCaptions(!captionsShown);
+  });
+  doc.addEventListener('keydown', (ev) => {
+    if (!root.isConnected) return;
+    if (ev.key === 'Escape' && ccDialog.isConnected) {
+      ccLog.push('escape');
+      closePopup();
+    } else if (ev.key === 'c' && state === 'call') {
+      ccLog.push('key-c');
+      setCaptions(!captionsShown);
+    }
+  });
+
   function layout() {
-    toolbar.replaceChildren(...(state === 'call' && hooksShown ? [ccButton] : []), leave, ...(state === 'waiting' ? [askToJoin] : []));
-    if (captionsShown && hooksShown && state === 'call') {
+    const inCall = state === 'call';
+    paintCc();
+    screen.textContent = SCREEN_WORDS[state];
+    toolbar.replaceChildren(
+      ...((inCall && hooksShown) || flicker ? [ccButton] : []),
+      ...(inCall || state === 'waiting' || state === 'lobby' ? [leave] : []),
+      ...(state === 'waiting' ? [askToJoin] : []),
+      ...(state === 'prejoin' ? [joinButton] : []),
+      ...(state === 'left' ? [rejoin] : []),
+    );
+    if (captionsShown && hooksShown && inCall) {
       if (!region.isConnected) root.append(region);
     } else region.remove();
+    if (opts.emptyContainer && inCall && !captionsShown) {
+      if (!container.isConnected) root.append(container);
+    } else container.remove();
   }
 
   function makeTurn(speaker: string | null, words: string): MeetTurn & { rebuild(): HTMLElement } {
@@ -155,16 +294,32 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
   layout();
   doc.body.append(root);
 
+  const admit = () => {
+    state = 'call';
+    captionsShown = opts.captions ?? true;
+    layout();
+  };
+
   return {
     doc,
     root,
     turns,
     region: () => region,
-    join() {
-      state = 'call';
-      captionsShown = opts.captions ?? true;
+    join: admit,
+    admit,
+    askToJoin() {
+      state = 'lobby';
       layout();
     },
+    leave() {
+      state = 'left';
+      layout();
+    },
+    captionsButton(on) {
+      flicker = on;
+      layout();
+    },
+    state: () => state,
     say(speaker, text) {
       const t = makeTurn(speaker, text);
       turns.push(t);
@@ -202,6 +357,9 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
       list = nextList;
       if (!was) layout();
     },
+    captionsShown: () => captionsShown,
+    ccLog,
+    popupOpen: () => ccDialog.isConnected,
     remove() {
       root.remove();
     },

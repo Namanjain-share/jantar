@@ -21,10 +21,22 @@ export const GONE = 'That meeting is no longer here.';
 export const WRITING = 'Writing the summary…';
 export const AFTER_END = 'The summary comes after the meeting ends.';
 export const NO_NOTES = 'No transcript: notes were not started.';
+/**
+ * v0.9.1: notes ran (Start, or Start when I join) and the meeting ended
+ * without one caption line: the call's captions were off, or not on
+ * screen. The times are the meeting's, in the phone's own zone: a
+ * screenshot may have opened it before notes started, and the meeting does
+ * not say when they did.
+ */
+export function noCaptionsText(m: Pick<Meeting, 'startedAt' | 'endedAt'>): string {
+  const ran = m.endedAt ? `${hhmm(m.startedAt)}-${hhmm(m.endedAt)}` : `from ${hhmm(m.startedAt)}`;
+  return `No captions came in while notes were on (meeting ${ran}). Jantar writes notes from the call's live captions; they were off or not visible.`;
+}
 /** What `none` and `failed` say when the daemon gave no reason (it always does today). */
 export const TOO_LITTLE = 'Too little was said for a summary.';
 export const SUMMARY_FAILED = 'The summary could not be written.';
-export const NO_LINES_YET = 'No lines yet. They show here as people speak.';
+/** A running meeting with notes on and no line yet (v0.9.1: where lines come from). */
+export const NO_LINES_YET = "No lines yet. They show here as people speak, from the call's live captions: captions must be on in the call.";
 export const SHOT_FAILED = "Couldn't load the screenshot.";
 /** The daemon's 429 for screenshot bytes (200 MB per 10 minutes, shared with Files). */
 export const SHOTS_LIMITED = 'Too many screenshots loaded in the last 10 minutes. Wait a little and try again.';
@@ -163,7 +175,9 @@ export type SummaryView =
   /** Ended with lines but no summary: the reason, and Summarize. */
   | { kind: 'none'; reason: string }
   /** No lines, ended or made by a screenshot before Start: notes were never started. */
-  | { kind: 'no-notes' };
+  | { kind: 'no-notes' }
+  /** v0.9.1: ended with notes on (the meeting's `notes`) and no lines: no captions came in. */
+  | { kind: 'no-captions'; text: string };
 
 /** What the SUMMARY section shows (spec 5.3). */
 export function summaryView(d: MeetingDetail): SummaryView {
@@ -179,7 +193,9 @@ export function summaryView(d: MeetingDetail): SummaryView {
     case 'failed':
       return { kind: 'failed', reason: s.reason ?? SUMMARY_FAILED };
     case 'none':
-      return d.lines.length > 0 ? { kind: 'none', reason: s.reason ?? TOO_LITTLE } : { kind: 'no-notes' };
+      if (d.lines.length > 0) return { kind: 'none', reason: s.reason ?? TOO_LITTLE };
+      // Whether notes ran is the meeting's own flag (the daemon's), not the lines: zero lines with notes on is no captions.
+      return d.meeting.notes ? { kind: 'no-captions', text: noCaptionsText(d.meeting) } : { kind: 'no-notes' };
   }
 }
 

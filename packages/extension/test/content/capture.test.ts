@@ -8,20 +8,25 @@
  *   stops notes, drops the map and shows the text; 20,000 waiting stop
  *   notes; the not-answering bubble shows once per outage; captions that
  *   never settle still go at least every 2 s;
- * - the captions state: `none` after 10 s, `notFound` after 60 s on a page
- *   that changed, each with its bubble once, `reading` otherwise; the
- *   tracker is flushed when the region goes;
+ * - the captions state: `none` with no caption line in the first minute
+ *   (its bubble naming this client's way, once more at the one recheck, then
+ *   never again; after lines came only the captions gone for a minute),
+ *   `notFound` after 60 s on a page that changed, its bubble once, `reading`
+ *   once a line is read; the tracker is flushed when the region goes;
  * - End sends what waits before it answers; pagehide sends it unawaited.
  */
 import type { LineUpsert } from '@jantar/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { meetAdapter } from '../../src/content/adapters/meet.js';
 import type { SiteAdapter } from '../../src/content/adapters/types.js';
-import { NOT_ANSWERING, NOT_ANSWERING_MS, NOT_FOUND, PENDING_MAX, UNREACHABLE, createCapture, makeNonce, type Capture, type LinesMessage } from '../../src/content/capture.js';
+import { teamsAdapter } from '../../src/content/adapters/teams.js';
+import { NOT_ANSWERING, NOT_ANSWERING_MS, NOT_FOUND, NO_CAPTIONS_BUBBLE_MS, PENDING_MAX, UNREACHABLE, createCapture, makeNonce, type Capture, type LinesMessage } from '../../src/content/capture.js';
+import { noCaptions } from '../../src/shared/captions.js';
 import type { CaptionsState, LinesAnswer } from '../../src/shared/messages.js';
 import { TIMING, WIRE_LIMITS } from '../../src/shared/wire.js';
 import { h } from '../fixtures/dom.js';
 import { buildMeet, meetUrl, type MeetFixture } from '../fixtures/meet.js';
+import { buildTeams } from '../fixtures/teams.js';
 import { MEETING_MARKER, goTo, settle, watchConsole } from './chrome.js';
 
 type Reply = (msg: LinesMessage) => LinesAnswer | undefined | Promise<LinesAnswer | undefined>;
@@ -47,6 +52,7 @@ afterEach(async () => {
 function capturing(opts: { adapter?: SiteAdapter; reply?: Reply; nonce?: string } = {}) {
   const sent: LinesMessage[] = [];
   const bubbles: string[] = [];
+  const bubbleMs: (number | undefined)[] = [];
   const states: CaptionsState[] = [];
   const stops: number[] = [];
   const io = { reply: opts.reply ?? (() => ({ ok: true }) as LinesAnswer) };
@@ -58,12 +64,15 @@ function capturing(opts: { adapter?: SiteAdapter; reply?: Reply; nonce?: string 
       return io.reply(msg);
     },
     captions: (s) => states.push(s),
-    bubble: (t) => bubbles.push(t),
+    bubble: (t, ms) => {
+      bubbles.push(t);
+      bubbleMs.push(ms);
+    },
     onStop: () => stops.push(Date.now()),
     nonce: () => opts.nonce ?? 'testnnce',
   });
   const lines = () => sent.flatMap((m) => m.lines);
-  return { sent, bubbles, states, stops, io, lines, capture };
+  return { sent, bubbles, bubbleMs, states, stops, io, lines, capture };
 }
 
 /** A change, read after the debounce, then the send timer. */
@@ -236,27 +245,72 @@ describe('MX6: lines wait in the page', () => {
 });
 
 describe('the captions state', () => {
-  it('none after noCaptionsMs with no region (the howTo bubble, once), then reading', async () => {
+  it('none with no caption line in the first minute (the bubble names the way), once more at the recheck, never again; a line clears it', async () => {
     const meet = buildMeet(document, { captions: false });
     const c = capturing();
+    const nudge = noCaptions('meet');
+    expect(nudge).toBe("No captions yet: Jantar writes notes from the call's live captions. Turn them on: Captions and translation (CC) › Turn on captions.");
     c.capture.start();
     await settle(TIMING.noCaptionsMs - TIMING.callPollMs);
     expect(c.states).toEqual([]);
     await settle(TIMING.callPollMs);
     expect(c.states).toEqual(['none']);
-    expect(c.bubbles).toEqual([meetAdapter.howTo]);
-    await settle(TIMING.notFoundMs);
-    expect(c.bubbles).toEqual([meetAdapter.howTo]);
+    expect(c.bubbles).toEqual([nudge]);
+    expect(c.bubbleMs).toEqual([NO_CAPTIONS_BUBBLE_MS]);
+    // The one recheck: the bubble again, the state as it was.
+    await settle(TIMING.captionsRecheckMs - TIMING.callPollMs);
+    expect(c.bubbles).toEqual([nudge]);
+    await settle(TIMING.callPollMs);
+    expect(c.bubbles).toEqual([nudge, nudge]);
+    expect(c.states).toEqual(['none']);
+    await settle(10 * TIMING.captionsRecheckMs);
+    expect(c.bubbles).toEqual([nudge, nudge]);
     meet.captionsOn();
     meet.say('Sam', 'Captions are on now');
     await settle(TIMING.callPollMs + 10);
     expect(c.states).toEqual(['none', 'reading']);
     expect(c.lines().map((l) => l.text)).toEqual(['Captions are on now']);
-    // Off again: the nudge again, once.
+    // Off again after lines came: once they have been gone a minute.
     meet.captionsOff();
-    await settle(TIMING.noCaptionsMs + TIMING.callPollMs);
+    await settle(TIMING.noCaptionsMs - TIMING.callPollMs);
+    expect(c.states).toEqual(['none', 'reading']);
+    await settle(2 * TIMING.callPollMs);
     expect(c.states).toEqual(['none', 'reading', 'none']);
-    expect(c.bubbles).toEqual([meetAdapter.howTo, meetAdapter.howTo]);
+    expect(c.bubbles).toEqual([nudge, nudge, nudge]);
+  });
+
+  it('a line in the first minute: no bubble then, and no silence after it ever counts', async () => {
+    const meet = buildMeet(document);
+    const c = capturing();
+    c.capture.start();
+    await settle(TIMING.noCaptionsMs - 5 * TIMING.callPollMs);
+    meet.say('Sam', 'Just in time');
+    await settle(TIMING.callPollMs + 10);
+    expect(c.states).toEqual(['reading']);
+    await settle(TIMING.noCaptionsMs + 3 * TIMING.captionsRecheckMs);
+    expect(c.states).toEqual(['reading']);
+    expect(c.bubbles).toEqual([]);
+  });
+
+  it("the bubble names this client's way: a light-meetings guest's (whose item says nothing: only if none show when people speak), and signed-in Teams'", async () => {
+    goTo('/light-meetings/launch?anon=true&p=made-up');
+    buildTeams(document, { layout: 'guest', light: true, captions: false });
+    const c = capturing({ adapter: teamsAdapter });
+    c.capture.start();
+    await settle(TIMING.noCaptionsMs);
+    expect(c.bubbles).toEqual([noCaptions('light', 'unsure')]);
+    expect(noCaptions('light', 'unsure')).toMatch(/If none appear when people speak, turn them on: More \(…\) › Captions\.$/);
+    expect(noCaptions('light')).toMatch(/Turn them on: More \(…\) › Captions\.$/);
+    await c.capture.stop();
+    document.body.replaceChildren();
+    goTo('/v2/');
+    // The toolbar's Captions says off.
+    buildTeams(document, { layout: '2026-bottom', captions: false });
+    const d = capturing({ adapter: teamsAdapter });
+    d.capture.start();
+    await settle(TIMING.noCaptionsMs);
+    expect(d.bubbles).toEqual([noCaptions('teams')]);
+    expect(noCaptions('teams')).toContain('More (…) › Captions (in some meetings: More (…) › Language and speech › Show live captions).');
   });
 
   it('notFound when the region shows text but nothing reads for notFoundMs (the bubble, once)', async () => {
@@ -275,12 +329,14 @@ describe('the captions state', () => {
     expect(c.sent).toEqual([]);
   });
 
-  it('an empty region (only its controls show text) is neither none nor notFound', async () => {
+  it('an empty region (only its controls show text) is never notFound; with no line in the first minute and the control saying on, it is waiting (nobody spoke): no bubble', async () => {
     buildMeet(document);
     const c = capturing();
     c.capture.start();
-    await settle(2 * TIMING.notFoundMs);
+    await settle(TIMING.noCaptionsMs - TIMING.callPollMs);
     expect(c.states).toEqual([]);
+    await settle(2 * TIMING.notFoundMs);
+    expect(c.states).toEqual(['waiting']);
     expect(c.bubbles).toEqual([]);
   });
 

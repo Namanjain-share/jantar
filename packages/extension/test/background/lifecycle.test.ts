@@ -35,9 +35,9 @@ describe('Start', () => {
     const [open] = w.daemon.of('open');
     expect(open?.clientId).toMatch(UUID);
     expect(open?.body).toEqual({ site: 'meet', name: `Planning ${MEETING_MARKER}`, projectId: PROJECT_ID, people: `Sam, Priya ${MEETING_MARKER}`, autoTodos: true, captions: true, at: w.clock.t });
-    expect(w.toPage(7)).toEqual([{ t: 'capture', on: true }]);
+    expect(w.toPage(7)).toEqual([{ t: 'capture', on: true, cc: true }]);
     expect(w.tabState(7)).toMatchObject({ clientId: open?.clientId, name: `Planning ${MEETING_MARKER}`, notes: true, shots: 0 });
-    expect(await call(7)).toEqual({ button: true, notes: true });
+    expect(await call(7)).toEqual({ button: true, notes: true, cc: true });
   });
 
   it('cleans the fields: the name from the page when blank, no blank people, no unknown project, auto todos only with a project', async () => {
@@ -148,7 +148,7 @@ describe('End', () => {
     expect(await ended).toEqual({ ok: true });
     expect(w.daemon.ops()).toEqual(['open', 'lines', 'end']);
     expect(w.daemon.of('end')[0]).toMatchObject({ clientId, body: { reason: 'user', at: w.clock.t } });
-    expect(w.toPage(7)).toEqual([{ t: 'capture', on: true }, { t: 'capture', on: false }]);
+    expect(w.toPage(7)).toEqual([{ t: 'capture', on: true, cc: true }, { t: 'capture', on: false }]);
     expect(w.tabState(7)?.clientId).toBeUndefined();
     expect(w.tabState(7)).toMatchObject({ notes: false, shots: 0 });
     expect(await call(7)).toEqual({ button: true, notes: false });
@@ -243,12 +243,12 @@ describe('a call from the page', () => {
     await w.meetTab(7);
     await start(7);
     // A reload: the page's first call, out of the call, then back in; a title change; the keep-alive a minute on.
-    expect(await call(7, { inCall: false })).toEqual({ button: true, notes: true });
-    expect(await call(7, { inCall: true })).toEqual({ button: true, notes: true });
-    expect(await call(7, { title: 'Weekly sync (2)' })).toEqual({ button: true, notes: true });
+    expect(await call(7, { inCall: false })).toEqual({ button: true, notes: true, cc: true });
+    expect(await call(7, { inCall: true })).toEqual({ button: true, notes: true, cc: true });
+    expect(await call(7, { title: 'Weekly sync (2)' })).toEqual({ button: true, notes: true, cc: true });
     expect(w.tabState(7)).toMatchObject({ title: 'Weekly sync (2)', notes: true });
     w.clock.t += TIMING.keepAliveMs;
-    expect(await call(7)).toEqual({ button: true, notes: true });
+    expect(await call(7)).toEqual({ button: true, notes: true, cc: true });
     expect(w.daemon.of('end')).toEqual([]);
     expect(w.daemon.of('lines')).toHaveLength(1);
   });
@@ -257,7 +257,7 @@ describe('a call from the page', () => {
     w = setupWorker();
     await w.meetTab(7, { url: TEAMS_URL });
     await start(7);
-    expect(await w.page(7, { t: 'call', site: 'teams', inCall: true, callKey: null, title: 'Chat' })).toEqual({ button: true, notes: true });
+    expect(await w.page(7, { t: 'call', site: 'teams', inCall: true, callKey: null, title: 'Chat' })).toEqual({ button: true, notes: true, cc: true });
     expect(w.daemon.of('end')).toEqual([]);
   });
 
@@ -301,11 +301,11 @@ describe('the keep-alive', () => {
     for (const answer of ['down', daemonError(500, 'internal'), daemonError(403, 'Meetings are off. Turn them on at your Mac: jantar meetings on'), daemonError(429, 'too many requests')] as const) {
       w.daemon.on('lines', answer);
       w.clock.t += TIMING.keepAliveMs;
-      expect(await call(7), JSON.stringify(answer)).toEqual({ button: true, notes: true });
+      expect(await call(7), JSON.stringify(answer)).toEqual({ button: true, notes: true, cc: true });
     }
     expect(w.daemon.of('lines')).toHaveLength(4);
     expect(w.tabState(7)).toMatchObject({ clientId, notes: true });
-    expect(w.toPage(7)).toEqual([{ t: 'capture', on: true }]);
+    expect(w.toPage(7)).toEqual([{ t: 'capture', on: true, cc: true }]);
   });
 
   it('a 404 (the stale sweep ended it while the Mac slept, or it was deleted on the phone) clears the meeting and stops notes', async () => {

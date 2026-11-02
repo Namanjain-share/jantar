@@ -5,10 +5,12 @@
  * that saves into a meeting made for the call. And a meeting tab that went
  * to another site: the popup offers nothing there. v0.5.3: a page-button
  * try Chrome refused shows in the main view and in Settings, with Chrome's
- * words and the shortcut.
+ * words and the shortcut. v0.9.1: Start when I join, from the join screen to
+ * notes on, with the badge.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NO_MEETING_TAB, SHOT } from '../../src/background/sentences.js';
+import { ARM, AUTO, NO_MEETING_TAB, SHOT } from '../../src/background/sentences.js';
+import { MEET_CODE, MEET_URL } from '../background/chrome.js';
 import { CAPTURE_PERMISSION_ERROR } from '../helpers/chrome-fake.js';
 import { mountPopup } from '../../src/popup/app.js';
 import { KEY, PROJECT_ID, setupWorker, type WorkerUnderTest } from '../background/chrome.js';
@@ -47,7 +49,7 @@ describe('the popup with the worker', () => {
     click('Start notes');
     await vi.waitFor(() => expect(text()).toContain('Keeping notes · Weekly sync'));
     expect(w.daemon.of('open')[0]?.body).toMatchObject({ name: 'Weekly sync', projectId: PROJECT_ID, autoTodos: true, captions: true });
-    expect(w.toPage(7).at(-1)).toEqual({ t: 'capture', on: true });
+    expect(w.toPage(7).at(-1)).toEqual({ t: 'capture', on: true, cc: true });
 
     await w.page(7, { t: 'captions', state: 'reading' });
     await popup.refresh();
@@ -100,5 +102,48 @@ describe('the popup with the worker', () => {
     expect(await w.popup({ t: 'shot', tabId: 7 })).toEqual({ ok: true, text: SHOT.saved });
     await mountPopup({ root, tabId: 7, close: () => undefined });
     expect(root.textContent).not.toContain('Last screenshot not saved');
+  });
+
+  it('v0.9.1: Start when I join with a project, from the join screen; let in, notes start by themselves and the popup follows', async () => {
+    w = setupWorker();
+    w.model.addTab({ id: 7, windowId: 1, url: MEET_URL, active: true });
+    w.model.onTabMessage(7, () => ({ ok: true }));
+    const page = (stage: string, inCall = false) =>
+      w.page(7, { t: 'call', site: 'meet', inCall, callKey: MEET_CODE, title: 'Weekly sync', stage, hook: stage === 'lobby' ? 'meet:call_end' : stage === 'in' ? 'meet:captions-button' : 'meet:join-button' });
+    await page('none');
+    await page('prejoin');
+    w.daemon.on('info', { status: 200, body: { projects: [{ id: PROJECT_ID, name: 'Acme site' }] } });
+    const root = document.createElement('main');
+    document.body.replaceChildren(root);
+    const popup = await mountPopup({ root, tabId: 7, close: () => undefined });
+    const text = () => root.textContent ?? '';
+    const click = (name: string) => [...root.querySelectorAll('button')].find((b) => b.textContent === name)?.click();
+    const field = (id: string) => root.querySelector<HTMLInputElement & HTMLSelectElement>(`#${id}`) as HTMLInputElement & HTMLSelectElement;
+    expect(text()).toContain(ARM.leadPrejoin);
+
+    field('project').value = PROJECT_ID;
+    field('project').dispatchEvent(new Event('change'));
+    field('todos').click();
+    click(ARM.button);
+    await vi.waitFor(() => expect(text()).toContain(ARM.armedPrejoin));
+    // The name untouched: the page's title once in the call.
+    expect(text()).toContain(`${ARM.fromPage('Weekly sync')} · Acme site · ${ARM.todos}`);
+    expect(w.model.badge(7).text).toBe('ARM');
+    expect(w.daemon.ops().filter((op) => op !== 'info')).toEqual([]);
+
+    // Ask to join, then let in: the in-call hooks on two polls.
+    await page('lobby');
+    await popup.refresh();
+    expect(text()).toContain(ARM.armedLobby);
+    await page('lobby', true);
+    expect(w.daemon.of('open')).toEqual([]);
+    await page('in', true);
+    expect(w.daemon.of('open')).toHaveLength(1);
+    expect(w.daemon.of('open')[0]?.body).toMatchObject({ name: 'Weekly sync', projectId: PROJECT_ID, autoTodos: true, captions: true });
+    expect(w.toPage(7).at(-1)).toEqual({ t: 'capture', on: true, text: AUTO.started, cc: true });
+    expect(w.model.badge(7).text).toBe('ON');
+    await popup.refresh();
+    expect(text()).toContain('Keeping notes · Weekly sync');
+    expect(text()).toMatch(/Started when you joined, \d\d:\d\d/);
   });
 });

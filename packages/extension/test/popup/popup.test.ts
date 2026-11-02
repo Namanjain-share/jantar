@@ -18,20 +18,37 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MEETING_MARKER } from '@jantar/fixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BAD_CODE, MISMATCH, NOT_RUNNING, PAIR_AGAIN, READS, TRY_AGAIN } from '../../src/background/sentences.js';
-import { meetAdapter } from '../../src/content/adapters/meet.js';
-import { teamsAdapter } from '../../src/content/adapters/teams.js';
+import { ALWAYS, ARM, BAD_CODE, CALL_CHECK, CC, MISMATCH, NOT_RUNNING, PAIR_AGAIN, READS, TRY_AGAIN } from '../../src/background/sentences.js';
 import { NOT_FOUND as PAGE_NOT_FOUND } from '../../src/content/capture.js';
-import type { FromPopup, LastShot, PopupState } from '../../src/shared/messages.js';
-import { HOW_TO, LOADING, NOT_FOUND, RECENT_SHOT_MS, SHORTCUTS_URL, mountPopup, tabFromSearch, type Popup } from '../../src/popup/app.js';
+import { CC_WAITING, noCaptions } from '../../src/shared/captions.js';
+import type { ArmView, FromPopup, LastShot, PopupState } from '../../src/shared/messages.js';
+import { ARM_TIMING } from '../../src/shared/wire.js';
+import { LOADING, NOT_FOUND, RECENT_SHOT_MS, SHORTCUTS_URL, TELL_PEOPLE, clockOf, inTheCall, mountPopup, tabFromSearch, type Popup } from '../../src/popup/app.js';
 import { CAPTURE_PERMISSION_ERROR, createChromeFake, type ChromeFake, type ChromeModel } from '../helpers/chrome-fake.js';
 
 const PROJECT_A = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
 const PROJECT_B = '01JFZ8X8Y3T0V5G9WQK2M4N6QR';
 
 type Tab = NonNullable<PopupState['tab']>;
-const meetTab = (over: Partial<Tab> = {}): Tab => ({ site: 'meet', inCall: true, title: 'Weekly sync', notes: false, shots: 0, captions: 'unknown', ...over });
-const state = (over: Partial<PopupState> = {}): PopupState => ({ connection: 'ok', pageButton: true, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, ...over }) as PopupState;
+// v0.9.1: a tab's stage follows inCall unless a test names one; no arm, no start by itself.
+// v0.9.1: the captions' client follows the site; nothing said yet of switching captions on; the switch on by default.
+const meetTab = (over: Partial<Tab> = {}): Tab => ({
+  site: 'meet',
+  inCall: true,
+  title: 'Weekly sync',
+  notes: false,
+  shots: 0,
+  captions: 'unknown',
+  client: over.site === 'teams' ? 'teams' : 'meet',
+  cc: null,
+  stage: over.inCall === false ? 'none' : 'in',
+  hook: '',
+  arm: null,
+  auto: null,
+  ...over,
+});
+const state = (over: Partial<PopupState> = {}): PopupState =>
+  ({ connection: 'ok', pageButton: true, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, always: false, autoCaptions: true, ...over }) as PopupState;
 
 let chrome: ChromeFake;
 let model: ChromeModel;
@@ -304,10 +321,14 @@ describe('notes on', () => {
     noBadMarks();
   });
 
-  it("the captions state: the site's way to turn them on, can't read them, or nothing yet", async () => {
+  it("the captions state: no captions yet and the site's way to turn them on (in the words for why), on and waiting for speech, can't read them, or nothing yet", async () => {
     for (const [tab, line] of [
-      [meetTab({ notes: true, captions: 'none' }), HOW_TO.meet],
-      [meetTab({ site: 'teams', notes: true, captions: 'none' }), HOW_TO.teams],
+      [meetTab({ notes: true, captions: 'none' }), noCaptions('meet')],
+      [meetTab({ site: 'teams', notes: true, captions: 'none' }), noCaptions('teams')],
+      [meetTab({ site: 'teams', client: 'light', notes: true, captions: 'none', why: 'clicked' }), noCaptions('light', 'clicked')],
+      [meetTab({ site: 'teams', client: 'light', notes: true, captions: 'none', why: 'unsure' }), noCaptions('light', 'unsure')],
+      [meetTab({ site: 'teams', notes: true, captions: 'none', why: 'unavailable' }), noCaptions('teams', 'unavailable')],
+      [meetTab({ notes: true, captions: 'waiting' }), CC_WAITING],
       [meetTab({ notes: true, captions: 'notFound' }), NOT_FOUND],
     ] as const) {
       answers.state = state({ tab });
@@ -319,9 +340,7 @@ describe('notes on', () => {
     expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual(['Keeping notes · Weekly sync', '1 screenshot']);
   });
 
-  it("the captions sentences are the page's own (the adapters' howTo, capture.ts's not found)", () => {
-    expect(HOW_TO.meet).toBe(meetAdapter.howTo);
-    expect(HOW_TO.teams).toBe(teamsAdapter.howTo);
+  it("the captions sentences are the page's own (shared/captions.ts, capture.ts's not found)", () => {
     expect(NOT_FOUND).toBe(PAGE_NOT_FOUND);
   });
 
@@ -631,5 +650,398 @@ describe('v0.8: Settings › Read saved links', () => {
     flip(false);
     await vi.waitFor(() => expect(sent).toContainEqual({ t: 'reads', on: false }));
     expect(model.requested).toEqual([]);
+  });
+});
+
+describe('v0.9.1: Start when I join', () => {
+  const before = (stage: 'prejoin' | 'lobby' | 'left' | 'none', over: Partial<Tab> = {}) => meetTab({ inCall: false, stage, hook: stage === 'lobby' ? 'meet:call_end' : 'meet:join-button', ...over });
+  const armView = (over: Partial<ArmView> = {}): ArmView => ({ from: 'popup', off: false, name: 'Planning', autoTodos: false, until: Date.now() + ARM_TIMING.maxMs, ...over });
+  const lead = () => root.querySelector('.view .lead')?.textContent;
+  const arms = () => sent.filter((m): m is Extract<FromPopup, { t: 'arm' }> => m.t === 'arm');
+
+  it('the join screen: the arm sheet, Start when I join, no Screenshot, the reminder and the hint', async () => {
+    answers.state = state({ tab: before('prejoin') });
+    await open();
+    expect(lead()).toBe(ARM.leadPrejoin);
+    expect(input('name').value).toBe('Weekly sync');
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.button, 'Settings']);
+    const quiet = [...root.querySelectorAll('.view p.quiet')].map((p) => p.textContent);
+    expect(quiet).toEqual([TELL_PEOPLE, ARM.hint]);
+    expect(root.querySelector('[aria-live]')?.textContent).toBe(ARM.leadPrejoin);
+    noBadMarks();
+  });
+
+  it('the waiting room and after leaving have their own leads; a waiting room with a one-poll flicker too', async () => {
+    answers.state = state({ tab: before('lobby') });
+    await open();
+    expect(lead()).toBe(ARM.leadLobby);
+    answers.state = state({ tab: before('left') });
+    await open();
+    expect(lead()).toBe(ARM.leadLeft);
+    answers.state = state({ tab: before('lobby', { inCall: true }) });
+    await open();
+    expect(lead()).toBe(ARM.leadLobby);
+    expect(inTheCall({ inCall: true, stage: 'lobby' })).toBe(false);
+    expect(inTheCall({ inCall: true, stage: 'none' })).toBe(true);
+    expect(inTheCall({ inCall: false, stage: 'in' })).toBe(false);
+  });
+
+  it("sends `arm`: an untouched name as '' (the page's title in the call), a typed one as typed; the project and todos rules as Start's", async () => {
+    answers.state = state({ projects: [{ id: PROJECT_A, name: 'Acme site' }], tab: before('prejoin') });
+    await open();
+    submit(ARM.button);
+    await vi.waitFor(() => expect(arms()).toHaveLength(1));
+    expect(arms()[0]).toEqual({ t: 'arm', tabId: 7, name: '', autoTodos: false });
+    await open();
+    type(input('name'), 'Planning');
+    type(input('people'), 'Sam, Priya');
+    type(select() as HTMLSelectElement, PROJECT_A);
+    input('todos').click();
+    submit(ARM.button);
+    await vi.waitFor(() => expect(arms()).toHaveLength(2));
+    expect(arms()[1]).toEqual({ t: 'arm', tabId: 7, name: 'Planning', projectId: PROJECT_A, people: 'Sam, Priya', autoTodos: true });
+    // The todos switch alone, without a project, sends no todos.
+    await open();
+    input('todos').click();
+    submit(ARM.button);
+    await vi.waitFor(() => expect(arms()).toHaveLength(3));
+    expect(arms()[2]).toEqual({ t: 'arm', tabId: 7, name: '', autoTodos: false });
+  });
+
+  it("a Done's error shows, and the sheet stays", async () => {
+    answers.state = state({ tab: before('prejoin') });
+    answers.done.arm = { ok: false, error: "Open the call's join screen first." };
+    await open();
+    type(input('name'), 'Kept');
+    submit(ARM.button);
+    await vi.waitFor(() => expect(root.querySelector('[role="alert"]')?.textContent).toBe("Open the call's join screen first."));
+    expect(input('name').value).toBe('Kept');
+  });
+
+  it('no join screen or call: "Join the call first.", and where Start when I join shows', async () => {
+    answers.state = state({ tab: before('none') });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([JOIN_FIRST_TEXT, ARM.where]);
+    expect(buttons().map((b) => b.textContent)).toEqual(['Settings']);
+    noBadMarks();
+  });
+
+  it('the armed view, per stage and per way in: what starts, People, the reminder; Change and Cancel or Not this call', async () => {
+    const projects = [{ id: PROJECT_A, name: 'Acme site' }];
+    answers.state = state({ projects, tab: before('lobby', { arm: armView({ projectId: PROJECT_A, people: 'Sam, Priya' }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([ARM.armedLobby, 'Planning · Acme site', 'People: Sam, Priya', TELL_PEOPLE]);
+    expect(root.querySelector('.view .lead .dot')).not.toBeNull();
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.change, ARM.cancel, 'Settings']);
+    expect(buttonNamed(ARM.change).getAttribute('aria-label')).toBe('Change what starts when you join');
+    noBadMarks();
+    answers.state = state({ projects, tab: before('prejoin', { arm: armView({ name: '' }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([ARM.armedPrejoin, `${ARM.fromPage('Weekly sync')} · No project`, TELL_PEOPLE]);
+    answers.state = state({ tab: before('left', { arm: armView({ from: 'always', name: '' }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([ARM.armedLeft, ARM.fromPage('Weekly sync'), TELL_PEOPLE, ARM.byAlways]);
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.change, ARM.notThisCall, 'Settings']);
+    noBadMarks();
+  });
+
+  it('Cancel and Not this call send `disarm`; an off arm shows the sheet to arm by hand', async () => {
+    answers.state = state({ tab: before('lobby', { arm: armView() }) });
+    await open();
+    answers.state = state({ tab: before('lobby') });
+    buttonNamed(ARM.cancel).click();
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'disarm', tabId: 7 }));
+    await vi.waitFor(() => expect(lead()).toBe(ARM.leadLobby));
+    answers.state = state({ tab: before('lobby', { arm: armView({ from: 'always', name: '' }) }) });
+    await open();
+    answers.state = state({ always: true, tab: before('lobby', { arm: armView({ from: 'always', off: true, name: '' }) }) });
+    buttonNamed(ARM.notThisCall).click();
+    await vi.waitFor(() => expect(buttons().map((b) => b.textContent)).toEqual([ARM.button, 'Settings']));
+    expect(sent.filter((m) => m.t === 'disarm')).toHaveLength(2);
+  });
+
+  it("Change opens the sheet filled from the arm, Back returns; Start when I join sends the changes", async () => {
+    answers.state = state({ projects: [{ id: PROJECT_A, name: 'Acme site' }], tab: before('lobby', { arm: armView({ projectId: PROJECT_A, people: 'Sam', autoTodos: true }) }) });
+    await open();
+    buttonNamed(ARM.change).click();
+    expect(lead()).toBe(ARM.leadLobby);
+    expect(input('name').value).toBe('Planning');
+    expect(input('people').value).toBe('Sam');
+    expect(select()?.value).toBe(PROJECT_A);
+    expect(input('todos').checked).toBe(true);
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.button, 'Back', 'Settings']);
+    buttonNamed('Back').click();
+    expect(lead()).toBe(ARM.armedLobby);
+    buttonNamed(ARM.change).click();
+    type(input('people'), 'Sam, Alex');
+    submit(ARM.button);
+    await vi.waitFor(() => expect(arms()).toHaveLength(1));
+    expect(arms()[0]).toEqual({ t: 'arm', tabId: 7, name: 'Planning', projectId: PROJECT_A, people: 'Sam, Alex', autoTodos: true });
+    // An arm with no name of its own keeps it so: the page's title in the call.
+    answers.state = state({ tab: before('lobby', { arm: armView({ from: 'always', name: '' }) }) });
+    await open();
+    buttonNamed(ARM.change).click();
+    expect(input('name').value).toBe('Weekly sync');
+    submit(ARM.button);
+    await vi.waitFor(() => expect(arms()).toHaveLength(2));
+    expect(arms()[1]).toMatchObject({ name: '' });
+  });
+
+  it('asks the worker again every 2 s while the armed view shows, and becomes the notes view when notes start', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      answers.state = state({ tab: before('lobby', { arm: armView() }) });
+      await open();
+      const asked = () => sent.filter((m) => m.t === 'state').length;
+      expect(asked()).toBe(1);
+      await vi.advanceTimersByTimeAsync(ARM_TIMING.popupPollMs - 1);
+      expect(asked()).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(asked()).toBe(2);
+      await vi.advanceTimersByTimeAsync(2 * ARM_TIMING.popupPollMs);
+      expect(asked()).toBe(4);
+      // Let in: notes started by themselves.
+      answers.state = state({ tab: meetTab({ name: 'Planning', notes: true, auto: { at: AT_1241, ok: true } }) });
+      await vi.advanceTimersByTimeAsync(ARM_TIMING.popupPollMs);
+      expect(text()).toContain('Keeping notes · Planning');
+      const n = asked();
+      await vi.advanceTimersByTimeAsync(5 * ARM_TIMING.popupPollMs);
+      expect(asked()).toBe(n);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('"Join the call first." follows the page too: opened in its first second, it becomes the arm sheet', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      answers.state = state({ tab: before('none') });
+      await open();
+      expect(lead()).toBe(JOIN_FIRST_TEXT);
+      answers.state = state({ tab: before('prejoin') });
+      await vi.advanceTimersByTimeAsync(ARM_TIMING.popupPollMs);
+      expect(lead()).toBe(ARM.leadPrejoin);
+      // The sheet is a form: no more asking.
+      const n = sent.filter((m) => m.t === 'state').length;
+      await vi.advanceTimersByTimeAsync(5 * ARM_TIMING.popupPollMs);
+      expect(sent.filter((m) => m.t === 'state')).toHaveLength(n);
+      // Not a meeting tab, or Settings open: nothing to follow.
+      answers.state = state({ tab: null });
+      await open();
+      const m = sent.filter((x) => x.t === 'state').length;
+      await vi.advanceTimersByTimeAsync(5 * ARM_TIMING.popupPollMs);
+      expect(sent.filter((x) => x.t === 'state')).toHaveLength(m);
+      answers.state = state({ tab: before('none') });
+      await open();
+      buttonNamed('Settings').click();
+      const k = sent.filter((x) => x.t === 'state').length;
+      await vi.advanceTimersByTimeAsync(5 * ARM_TIMING.popupPollMs);
+      expect(sent.filter((x) => x.t === 'state')).toHaveLength(k);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never asks again while a form is on screen (a redraw would lose the typing)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      answers.state = state({ tab: before('lobby', { arm: armView() }) });
+      await open();
+      buttonNamed(ARM.change).click();
+      const n = sent.filter((m) => m.t === 'state').length;
+      await vi.advanceTimersByTimeAsync(5 * ARM_TIMING.popupPollMs);
+      expect(sent.filter((m) => m.t === 'state')).toHaveLength(n);
+      answers.state = state({ tab: before('prejoin') });
+      await open();
+      await vi.advanceTimersByTimeAsync(5 * ARM_TIMING.popupPollMs);
+      expect(sent.filter((m) => m.t === 'state')).toHaveLength(n + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('notes started by themselves: the notes view says when; a failed start: the sheet says why, above Start notes', async () => {
+    answers.state = state({ tab: meetTab({ name: 'Planning', notes: true, auto: { at: AT_1241, ok: true } }) });
+    await open();
+    expect(text()).toContain('Started when you joined, 12:41');
+    expect(ARM.startedAt(clockOf(AT_1241))).toBe('Started when you joined, 12:41');
+    noBadMarks();
+    const why = 'Meetings are off. Turn them on at your Mac: jantar meetings on';
+    answers.state = state({ tab: meetTab({ auto: { at: Date.now(), ok: false, text: why } }) });
+    await open();
+    const alert = root.querySelector('form [role="alert"]');
+    expect(alert?.textContent).toBe(`Notes did not start when you joined: ${why}`);
+    expect(alert?.nextElementSibling?.querySelector('button')?.textContent).toBe('Start notes');
+    noBadMarks();
+  });
+
+  it('Settings: Always start when I join a call, off by default, with its copy; the switch sends `always`', async () => {
+    answers.state = state({ tab: before('lobby') });
+    await open();
+    buttonNamed('Settings').click();
+    const box = input('always');
+    expect(box.getAttribute('role')).toBe('switch');
+    expect(box.checked).toBe(false);
+    expect(root.querySelector('label[for="always"]')?.textContent).toBe(ALWAYS.title);
+    expect(text()).toContain(ALWAYS.why);
+    noBadMarks();
+    answers.state = state({ always: true, tab: before('lobby') });
+    box.checked = true;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'always', on: true }));
+    await vi.waitFor(() => expect(input('always').checked).toBe(true));
+    // No Chrome prompt for it.
+    expect(model.requested).toEqual([]);
+  });
+
+  it('an off arm (Not this call, End): the sheet says this call is skipped, above the form', async () => {
+    answers.state = state({ always: true, tab: before('lobby', { arm: armView({ from: 'always', off: true, name: '' }) }) });
+    await open();
+    const ps = [...root.querySelectorAll('.view p')].map((p) => p.textContent);
+    expect(ps.slice(0, 2)).toEqual([ARM.leadLobby, ARM.skipped]);
+    expect(root.querySelector('.view form')?.previousElementSibling?.textContent).toBe(ARM.skipped);
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.button, 'Settings']);
+    // Without an off arm, no such line.
+    answers.state = state({ tab: before('lobby') });
+    await open();
+    expect(text()).not.toContain(ARM.skipped);
+    expect(ARM.hint.startsWith(`Press ${ARM.button}`)).toBe(true);
+    noBadMarks();
+  });
+
+  it('Meetings off or Jantar not answering on an armed tab: the reason, that the arm is on but cannot start, and Cancel or Not this call', async () => {
+    const off = 'Meetings are off. Turn them on at your Mac: jantar meetings on';
+    answers.state = state({ connection: 'off', sentence: off, tab: before('prejoin', { arm: armView() }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([off, ARM.blocked]);
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.cancel, 'Settings']);
+    answers.state = state({ connection: 'off', sentence: off, tab: before('prejoin') });
+    buttonNamed(ARM.cancel).click();
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'disarm', tabId: 7 }));
+    await vi.waitFor(() => expect(text()).not.toContain(ARM.blocked));
+    answers.state = state({ connection: 'down', tab: before('lobby', { arm: armView({ from: 'always', name: '' }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([NOT_RUNNING, ARM.blocked]);
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.notThisCall, 'Settings']);
+    // An off arm, or none: only the reason.
+    answers.state = state({ connection: 'off', sentence: off, tab: before('lobby', { arm: armView({ from: 'always', off: true }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([off]);
+    noBadMarks();
+  });
+
+  it('not paired with Always on: the pairing view says notes cannot start, and Always can be turned off there', async () => {
+    answers.state = state({ connection: 'unpaired', sentence: PAIR_AGAIN, pageButton: false, always: true, tab: before('prejoin') });
+    await open();
+    expect(text()).toContain(PAIR_AGAIN);
+    expect(text()).toContain(ALWAYS.unpaired);
+    const off = buttonNamed(ALWAYS.turnOff);
+    expect(off.getAttribute('aria-label')).toBe(ALWAYS.turnOffName);
+    answers.state = state({ connection: 'unpaired', sentence: PAIR_AGAIN, pageButton: false, always: false, tab: before('prejoin') });
+    off.click();
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'always', on: false }));
+    await vi.waitFor(() => expect(text()).not.toContain(ALWAYS.unpaired));
+    expect(buttons().map((b) => b.textContent)).toEqual(['Pair']);
+    noBadMarks();
+  });
+
+  it("the armed view names the page's title when the arm has no name, the todos when on, and what Cancel cancels", async () => {
+    const projects = [{ id: PROJECT_A, name: 'Acme site' }];
+    answers.state = state({ projects, tab: before('prejoin', { arm: armView({ name: '', projectId: PROJECT_A, autoTodos: true }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')][1]?.textContent).toBe(`${ARM.fromPage('Weekly sync')} · Acme site · ${ARM.todos}`);
+    expect(buttonNamed(ARM.cancel).getAttribute('aria-label')).toBe(ARM.cancelName);
+    answers.state = state({ tab: before('prejoin', { title: '', arm: armView({ name: '' }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')][1]?.textContent).toBe(ARM.nameFromPage);
+  });
+
+  it('Settings: the meeting settings come first, together (Always, then Call check)', async () => {
+    answers.state = state({ tab: before('lobby', { site: 'teams', hook: 'teams:after-join' }) });
+    await open();
+    buttonNamed('Settings').click();
+    const blocks = [...root.querySelectorAll('.view > *')].map((n) => n.className || n.tagName);
+    const always = blocks.indexOf('setting');
+    expect(blocks[always + 1]).toBe('mono check');
+    expect(root.querySelector('.view h2')?.nextElementSibling?.querySelector('#always')).not.toBeNull();
+  });
+
+  it('a redraw after an action keeps the keyboard in the view: on the same control, else the first one', async () => {
+    answers.state = state({ tab: before('lobby') });
+    const popup = await open();
+    buttonNamed(ARM.button).focus();
+    answers.state = state({ tab: before('lobby', { arm: armView() }) });
+    submit(ARM.button);
+    await vi.waitFor(() => expect(root.querySelector('.view .lead')?.textContent).toBe(ARM.armedLobby));
+    expect(document.activeElement?.textContent).toBe(ARM.change);
+    buttonNamed(ARM.cancel).focus();
+    await popup.refresh();
+    expect(document.activeElement?.textContent).toBe(ARM.cancel);
+  });
+
+  it('Settings › Call check: the stage in words and our hook id, for a meeting tab only', async () => {
+    answers.state = state({ tab: before('lobby', { site: 'teams', hook: 'teams:after-join' }) });
+    await open();
+    buttonNamed('Settings').click();
+    expect(root.querySelector('.view p.check')?.textContent).toBe('Call check: waiting to be let in · teams:after-join');
+    expect(CALL_CHECK.line(CALL_CHECK.none, '')).toBe('Call check: no join screen or call');
+    answers.state = state({ tab: null });
+    await open();
+    buttonNamed('Settings').click();
+    expect(root.querySelector('.view p.check')).toBeNull();
+    expect(text()).not.toContain('Call check');
+  });
+});
+
+const JOIN_FIRST_TEXT = 'Join the call first.';
+
+describe('v0.9.1: captions on when notes start', () => {
+  it('Settings: Turn on captions when notes start, on by default, with its copy; the switch sends `autoCaptions`', async () => {
+    answers.state = state({ tab: meetTab({ notes: true, name: 'Weekly sync' }) });
+    await open();
+    buttonNamed('Settings').click();
+    const box = input('captions');
+    expect(box.getAttribute('role')).toBe('switch');
+    expect(box.checked).toBe(true);
+    expect(root.querySelector('label[for="captions"]')?.textContent).toBe(CC.title);
+    expect(text()).toContain(CC.why);
+    noBadMarks();
+    answers.state = state({ autoCaptions: false, tab: meetTab({ notes: true, name: 'Weekly sync' }) });
+    box.checked = false;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'autoCaptions', on: false }));
+    await vi.waitFor(() => expect(input('captions').checked).toBe(false));
+    expect(model.requested).toEqual([]);
+  });
+
+  it('Settings › Call check: how switching captions on went, by our own hook id, once the page said', async () => {
+    const cases: [NonNullable<Tab['cc']>, string][] = [
+      [{ result: 'turned-on', hook: 'teams:cc-more-item' }, 'Captions: turned on by Jantar · teams:cc-more-item'],
+      [{ result: 'was-on', hook: 'meet:captions-button' }, 'Captions: were on · meet:captions-button'],
+      [{ result: 'clicked', hook: 'teams:cc-more-item' }, 'Captions: Jantar clicked Captions; none on screen yet · teams:cc-more-item'],
+      [{ result: 'failed', hook: 'meet:no-cc' }, 'Captions: Jantar could not turn them on · meet:no-cc'],
+      [{ result: 'unsure', hook: 'teams:cc-more-item' }, "Captions: can't tell if they are on; Jantar left them · teams:cc-more-item"],
+      [{ result: 'unavailable', hook: 'teams:no-cc-item' }, "Captions: this meeting offers none (the organizer's settings) · teams:no-cc-item"],
+      [{ result: 'kept', hook: 'meet:captions-button' }, 'Captions: on earlier in this call; Jantar left them as they are · meet:captions-button'],
+    ];
+    for (const [cc, line] of cases) {
+      answers.state = state({ tab: meetTab({ notes: true, cc }) });
+      await open();
+      buttonNamed('Settings').click();
+      expect([...root.querySelectorAll('.view p.check')].map((p) => p.textContent)).toContain(line);
+      noBadMarks();
+    }
+    answers.state = state({ tab: meetTab({ notes: true }) });
+    await open();
+    buttonNamed('Settings').click();
+    expect(text()).not.toContain('Captions:');
+  });
+
+  it("notes on with no captions yet: the notes view names this client's way to turn them on (a light-meetings guest's)", async () => {
+    answers.state = state({ tab: meetTab({ site: 'teams', client: 'light', notes: true, captions: 'none', name: 'Weekly sync' }) });
+    await open();
+    expect(text()).toContain(noCaptions('light'));
+    expect(noCaptions('light')).toBe("No captions yet: Jantar writes notes from the call's live captions. Turn them on: More (…) › Captions.");
+    noBadMarks();
   });
 });

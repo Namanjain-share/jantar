@@ -12,6 +12,7 @@ import type { Meeting, MeetingDetail, MeetingLine, MeetingShot } from '@jantar/p
 import { exportFileName, exportMarkdown, exportText, slug, type ExportEnv } from '../src/ui/screens/meetings/export.js';
 import {
   AFTER_END,
+  NO_LINES_YET,
   NO_NOTES,
   addLabel,
   byDay,
@@ -25,6 +26,7 @@ import {
   meetingWhen,
   meetingWho,
   meetingsPath,
+  noCaptionsText,
   shotsText,
   summaryView,
   transcriptParts,
@@ -126,7 +128,20 @@ describe('the summary section', () => {
     expect(summaryView(D)).toEqual({ kind: 'done', text: D.summary.text });
     expect(summaryView(detail({ summary: { state: 'failed', reason: 'Claude did not answer in time. Try again.' } }))).toEqual({ kind: 'failed', reason: 'Claude did not answer in time. Try again.' });
     expect(summaryView(detail({ summary: { state: 'none', reason: 'Too little was said for a summary.' } }))).toEqual({ kind: 'none', reason: 'Too little was said for a summary.' });
-    expect(summaryView(detail({ summary: { state: 'none' }, lines: [] }))).toEqual({ kind: 'no-notes' });
+    // Notes ran but no caption line came in (captions off, or not on screen): never "notes were not started".
+    const ran = detail({ meeting: { notes: true, lines: 0 }, summary: { state: 'none', reason: 'Too little was said for a summary.' }, lines: [] });
+    expect(summaryView(ran)).toEqual({ kind: 'no-captions', text: noCaptionsText(ran.meeting) });
+    // The times are the meeting's (a screenshot may have opened it before Start), never said to be the notes'.
+    expect(noCaptionsText(ran.meeting)).toBe(
+      `No captions came in while notes were on (meeting ${hm(M.startedAt)}-${hm(M.endedAt!)}). Jantar writes notes from the call's live captions; they were off or not visible.`,
+    );
+    expect(noCaptionsText({ startedAt: M.startedAt, endedAt: null })).toBe(
+      `No captions came in while notes were on (meeting from ${hm(M.startedAt)}). Jantar writes notes from the call's live captions; they were off or not visible.`,
+    );
+    // A running meeting with notes on and no line yet: where lines come from.
+    expect(NO_LINES_YET).toBe("No lines yet. They show here as people speak, from the call's live captions: captions must be on in the call.");
+    // Notes truly never started (a meeting a screenshot opened, then ended): only then.
+    expect(summaryView(detail({ meeting: { notes: false, lines: 0 }, summary: { state: 'none' }, lines: [] }))).toEqual({ kind: 'no-notes' });
     expect([AFTER_END, NO_NOTES]).toEqual(['The summary comes after the meeting ends.', 'No transcript: notes were not started.']);
   });
 });

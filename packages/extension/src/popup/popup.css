@@ -107,6 +107,19 @@ h2 {
   background: var(--jup);
 }
 
+/* v0.9.1: armed, not yet keeping notes: a ring, not the notes dot. */
+.dot.ring {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--jup);
+  background: none;
+}
+
+/* v0.9.1: Call check's hook id is never broken in two (at 320 px it moves to the next line whole). */
+.check .hook {
+  white-space: nowrap;
+}
+
 .stack {
   display: flex;
   flex-direction: column;

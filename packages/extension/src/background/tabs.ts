@@ -11,8 +11,16 @@
  * - `serial` runs one meeting step per tab at a time (Start, End, a call's
  *   leave, a screenshot's open and upload, a tab closing), so two of them
  *   never make two meetings for one call.
+ *
+ * v0.9.1: the record also keeps what the page last said it shows (its stage
+ * and hook, and when it last said anything), and the last time notes
+ * started by themselves (`auto`), for the popup and the toolbar badge; and
+ * for the captions, whose way to turn them on the page names (`client`),
+ * why none came (`why`) and how switching them on went (`cc`, gone with the
+ * meeting). A page going away (`page:hide`: a reload) leaves its captions
+ * state `unknown` until the next page says, so no stale `!` outlives it.
  */
-import type { CaptionsState } from '../shared/messages.js';
+import type { AutoStart, CallStage, CaptionsClient, CaptionsState, CaptionsWhy, CcReport } from '../shared/messages.js';
 import type { MeetingSite } from '../shared/sites.js';
 
 export interface TabState {
@@ -32,20 +40,42 @@ export interface TabState {
   /** Screenshots saved into this meeting. */
   shots: number;
   captions: CaptionsState | 'unknown';
+  /** v0.9.1: whose way to turn captions on (the page's captions state names it), why `none`, and how switching them on went (this meeting's notes). */
+  client?: CaptionsClient;
+  why?: CaptionsWhy;
+  cc?: CcReport;
   /** When the last keep-alive went (ms). */
   lastKeepAlive?: number;
+  /** v0.9.1: the page's stage and the hook id that decided it, as its last `call` said. */
+  stage?: CallStage;
+  hook?: string;
+  /** v0.9.1: when the page's last `call` came (ms). */
+  heardAt?: number;
+  /** v0.9.1: the last start by itself (Start when I join): when, and whether notes started (`text`: why not). */
+  auto?: AutoStart;
 }
 
-/** A tab's record without its meeting (after End, a leave or a 404). */
+/** A tab's record without its meeting (after End, a leave or a 404); what the page shows stays. */
 export function withoutMeeting(s: TabState): TabState {
-  return { site: s.site, inCall: s.inCall, callKey: s.callKey, title: s.title, notes: false, shots: 0, captions: 'unknown' };
+  return {
+    site: s.site,
+    inCall: s.inCall,
+    callKey: s.callKey,
+    title: s.title,
+    notes: false,
+    shots: 0,
+    captions: 'unknown',
+    ...(s.stage !== undefined ? { stage: s.stage } : {}),
+    ...(s.hook !== undefined ? { hook: s.hook } : {}),
+    ...(s.heardAt !== undefined ? { heardAt: s.heardAt } : {}),
+  };
 }
 
 const PREFIX = 'tab:';
 const keyOf = (tabId: number) => `${PREFIX}${tabId}`;
 
 /** One promise chain per key: `run` waits for the ones before it. */
-function chains() {
+export function chains() {
   const tails = new Map<number, Promise<unknown>>();
   return <T>(tabId: number, fn: () => Promise<T>): Promise<T> => {
     const before = tails.get(tabId) ?? Promise.resolve();

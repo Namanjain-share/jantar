@@ -25,6 +25,7 @@ import { MEETING_HOSTS, siteOf } from '../../src/shared/sites.js';
 import { TIMING } from '../../src/shared/wire.js';
 import { buildMeet, meetUrl } from '../fixtures/meet.js';
 import { buildTeams } from '../fixtures/teams.js';
+import { noCaptions } from '../../src/shared/captions.js';
 import { MEETING_MARKER, cameraHost, captureShadows, goTo, pageWorld, settle, trustedClick, watchConsole, type PageWorld } from './chrome.js';
 
 const FRAME = 16;
@@ -54,7 +55,7 @@ afterEach(() => {
   expect(console_.said()).toEqual([]);
 });
 
-function start(opts: { paired?: boolean; notes?: boolean; site?: 'meet' | 'teams' } = {}) {
+function start(opts: { paired?: boolean; notes?: boolean; site?: 'meet' | 'teams'; cc?: boolean } = {}) {
   world = pageWorld(opts);
   content = startContent({ adapter: opts.site === 'teams' ? teamsAdapter : meetAdapter, nonce: () => nonces.shift()! });
   return content!;
@@ -81,7 +82,7 @@ describe('startContent', () => {
     buildMeet(document, { state: 'waiting' });
     start();
     await settle(0);
-    expect(world.worker.of('call')).toEqual([{ t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync' }]);
+    expect(world.worker.of('call')).toEqual([{ t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync', stage: 'none' }]);
   });
 });
 
@@ -143,7 +144,7 @@ describe('MP6: nothing is read before Start', () => {
       ['pagenon1-1', 'Sam'],
       ['pagenon1-2', 'Priya'],
     ]);
-    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'reading' }]);
+    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'reading', client: 'meet' }]);
   });
 
   it('a CallAnswer with notes on resumes notes after a reload, with a new nonce', async () => {
@@ -151,7 +152,8 @@ describe('MP6: nothing is read before Start', () => {
     meet.say('Sam', 'After the reload');
     start({ notes: true });
     nonces = ['reloadd1'];
-    await settle(TIMING.debounceMs + 10);
+    // v0.9.1: once the call held two polls (the stage), a poll after the page loaded.
+    await settle(TIMING.callPollMs + TIMING.debounceMs + 10);
     expect(content!.capture.on).toBe(true);
     expect(world.worker.of('lines').flatMap((m) => m.lines.map((l) => l.lineId))).toEqual(['reloadd1-1']);
   });
@@ -166,10 +168,117 @@ describe('MP6: nothing is read before Start', () => {
     expect(cameraHost()).toBeNull();
     meet.join();
     meet.say('Sam', 'Back in the call');
-    await settle(TIMING.callPollMs + TIMING.debounceMs + 10);
+    await settle(2 * TIMING.callPollMs + TIMING.debounceMs + 10);
     expect(content!.capture.on).toBe(true);
     expect(rootOf()!.querySelector('.dot')!.hasAttribute('hidden')).toBe(false);
     expect(world.worker.of('lines').flatMap((m) => m.lines.map((l) => [l.lineId, l.text]))).toEqual([['pagenon1-1', 'Back in the call']]);
+  });
+
+  it('v0.9.1: a reload into the waiting room: an in-call control that flashes up for one poll resumes nothing (the stage, not the phase)', async () => {
+    const meet = buildMeet(document, { state: 'lobby' });
+    start({ notes: true });
+    await settle(3 * TIMING.callPollMs);
+    meet.captionsButton(true);
+    await settle(TIMING.callPollMs);
+    meet.captionsButton(false);
+    await settle(5 * TIMING.callPollMs);
+    expect(content!.call.phase()).not.toBe('out');
+    expect(content!.capture.on).toBe(false);
+    expect(world.worker.of('captions')).toEqual([]);
+  });
+});
+
+describe('v0.9.1: captions on when notes start', () => {
+  it('`capture {on: true, cc: true}` switches them on and tells the worker how (`cc`); the captions state names the client', async () => {
+    const meet = buildMeet(document, { captions: false });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    expect(await world.toPage({ t: 'capture', on: true, cc: true })).toEqual({ ok: true });
+    await settle(1_000);
+    expect(meet.ccLog).toEqual(['button']);
+    expect(world.worker.of('cc')).toEqual([{ t: 'cc', result: 'turned-on', hook: 'meet:cc-button' }]);
+    meet.say('Sam', 'Notes from here');
+    await settle(TIMING.callPollMs + TIMING.linesEveryMs);
+    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'reading', client: 'meet' }]);
+  });
+
+  it("without `cc` (the switch off) nothing is clicked, and the minute without a line says so, naming the way (a guest's item says nothing: only if none show when people speak)", async () => {
+    goTo('/light-meetings/launch?anon=true&p=made-up');
+    const teams = buildTeams(document, { layout: 'guest', light: true, hangupId: true, captions: false });
+    start({ site: 'teams' });
+    await settle(3 * TIMING.callPollMs);
+    await world.toPage({ t: 'capture', on: true });
+    await settle(TIMING.noCaptionsMs);
+    expect(teams.ccLog).toEqual([]);
+    expect(world.worker.of('cc')).toEqual([]);
+    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'none', client: 'light', why: 'unsure' }]);
+    expect(tip()?.textContent).toBe(noCaptions('light', 'unsure'));
+  });
+
+  it('Repro C, whole page: a guest who joined long before Start (captions on, nobody speaking) keeps them on: no blind click ("unsure"); one who starts at once gets it', async () => {
+    goTo('/light-meetings/launch?anon=true&p=made-up');
+    let teams = buildTeams(document, { layout: 'guest', light: true, hangupId: true, captions: true, lateRegion: true });
+    start({ site: 'teams' });
+    await settle(3 * TIMING.callPollMs);
+    expect(content!.call.stage()).toBe('in');
+    await settle(2 * 60_000);
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(30_000);
+    expect(teams.ccLog).toEqual(['more-open', 'more-close']);
+    expect(teams.captionsShown()).toBe(true);
+    expect(world.worker.of('cc')).toEqual([{ t: 'cc', result: 'unsure', hook: 'teams:cc-more-item' }]);
+    content!.stop();
+    world.done();
+    document.body.replaceChildren();
+    // Another page load: in the call, notes started by themselves seconds later (captions start off).
+    teams = buildTeams(document, { layout: 'guest', light: true, hangupId: true, captions: false, lateRegion: true });
+    start({ site: 'teams' });
+    await settle(3 * TIMING.callPollMs);
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(30_000);
+    expect(teams.ccLog).toEqual(['more-open', 'item']);
+    expect(teams.captionsShown()).toBe(true);
+    expect(world.worker.of('cc')).toEqual([{ t: 'cc', result: 'clicked', hook: 'teams:cc-more-item' }]);
+  });
+
+  it('Repro F, whole page: End then Start in the same call after he turned captions off clicks nothing; after leaving the call, a rejoin starts fresh', async () => {
+    const meet = buildMeet(document, { captions: false });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(1_000);
+    expect(meet.ccLog).toEqual(['button']);
+    (document.querySelector('button[jsname="RrG0hf"]') as HTMLButtonElement).click();
+    await world.toPage({ t: 'capture', on: false });
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(30_000);
+    expect(meet.ccLog).toEqual(['button', 'button']);
+    expect(meet.captionsShown()).toBe(false);
+    expect(world.worker.of('cc').map((m) => m.result)).toEqual(['turned-on', 'kept']);
+    await world.toPage({ t: 'capture', on: false });
+    meet.leave();
+    await settle(TIMING.leaveGraceMs + 2 * TIMING.callPollMs);
+    expect(content!.call.phase()).toBe('out');
+    meet.admit();
+    meet.captionsOff();
+    await settle(2 * TIMING.callPollMs);
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(1_000);
+    expect(meet.ccLog).toEqual(['button', 'button', 'button']);
+    expect(meet.captionsShown()).toBe(true);
+  });
+
+  it('a reload that resumes notes switches them on too when the answer says `cc`; never before the call', async () => {
+    const meet = buildMeet(document, { state: 'lobby', captions: false });
+    start({ notes: true, cc: true });
+    await settle(5 * TIMING.callPollMs);
+    expect(meet.ccLog).toEqual([]);
+    meet.admit();
+    meet.captionsOff();
+    await settle(3 * TIMING.callPollMs);
+    expect(content!.capture.on).toBe(true);
+    expect(meet.ccLog).toEqual(['button']);
+    expect(meet.captionsShown()).toBe(true);
   });
 });
 
@@ -385,5 +494,72 @@ describe('the extension reloaded', () => {
     expect(world.worker.of('shot')).toEqual([]);
     expect(cam()!.hidden).toBe(true);
     expect(tip()!.textContent).toBe(RELOAD);
+  });
+});
+
+describe('v0.9.1: Start when I join, in the page', () => {
+  const AUTO_STARTED = 'Jantar started notes. Let people know you keep notes.';
+
+  it('`capture {on: true, text}` starts notes as Start does, then shows the text', async () => {
+    const meet = buildMeet(document, { state: 'lobby' });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    meet.admit();
+    meet.say('Sam', 'Said once in the call');
+    await settle(2 * TIMING.callPollMs);
+    expect(await world.toPage({ t: 'capture', on: true, text: AUTO_STARTED })).toEqual({ ok: true });
+    expect(content!.capture.on).toBe(true);
+    expect(rootOf()!.querySelector('.dot')!.hasAttribute('hidden')).toBe(false);
+    expect(cam()!.title).toBe('Jantar is keeping notes in this tab');
+    expect(tip()!.textContent).toBe(AUTO_STARTED);
+    await settle(TIMING.linesEveryMs + 10);
+    expect(world.worker.of('lines').flatMap((m) => m.lines.map((l) => l.text))).toEqual(['Said once in the call']);
+    // A second one changes nothing (the worker may send it again after a restart).
+    await world.toPage({ t: 'capture', on: true });
+    expect(content!.capture.on).toBe(true);
+  });
+
+  it('`capture {on: false, text}` on a join screen shows only the bubble, at the button\'s spot, with no button', async () => {
+    buildMeet(document, { state: 'prejoin' });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    expect(cameraHost()).toBeNull();
+    await world.toPage({ t: 'capture', on: false, text: 'Jantar starts notes when you join. Not this call: the Jantar icon.' });
+    expect(content!.capture.on).toBe(false);
+    expect(tip()!.textContent).toBe('Jantar starts notes when you join. Not this call: the Jantar icon.');
+    expect(cam()!.hidden).toBe(true);
+    expect(cameraHost()!.style.getPropertyValue('left')).toBe('12px');
+  });
+
+  it('MP6: on the join screen and in the waiting room nothing is read or observed, whatever the worker answers', async () => {
+    for (const state of ['prejoin', 'lobby'] as const) {
+      const meet = buildMeet(document, { state });
+      meet.say('Sam', `Never read ${MEETING_MARKER}`);
+      const blocks = vi.spyOn(meetAdapter, 'blocks');
+      const region = vi.spyOn(meetAdapter, 'region');
+      const observe = vi.spyOn(MutationObserver.prototype, 'observe');
+      start({ notes: true });
+      await settle(TIMING.noCaptionsMs + 3 * TIMING.keepAliveMs);
+      expect(blocks, state).not.toHaveBeenCalled();
+      expect(region, state).not.toHaveBeenCalled();
+      expect(observe, state).not.toHaveBeenCalled();
+      expect(world.worker.of('lines')).toEqual([]);
+      expect(world.worker.of('captions')).toEqual([]);
+      expect(JSON.stringify(world.worker.got)).not.toContain(MEETING_MARKER);
+      content!.stop();
+      world.done();
+      for (const spy of [blocks, region, observe]) spy.mockRestore();
+      document.body.replaceChildren();
+    }
+    content = null;
+  });
+
+  it('pagehide sends one `call` with stage none and hook page:hide', async () => {
+    buildMeet(document, { state: 'lobby' });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    const before = world.worker.of('call').length;
+    window.dispatchEvent(new Event('pagehide'));
+    expect(world.worker.of('call').slice(before)).toEqual([{ t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync', stage: 'none', hook: 'page:hide' }]);
   });
 });

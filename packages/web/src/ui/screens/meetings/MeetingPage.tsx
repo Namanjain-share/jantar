@@ -122,6 +122,8 @@ function SummaryBody({ view, action, busy, offline }: { view: SummaryView; actio
       );
     case 'no-notes':
       return say(NO_NOTES);
+    case 'no-captions':
+      return say(view.text);
   }
 }
 

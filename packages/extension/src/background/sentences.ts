@@ -5,6 +5,9 @@
  * PopupState's `sentence`. A sentence the daemon wrote (Meetings off, a cap,
  * the day's budget) is passed on as it came. No em dash, no exclamation
  * mark.
+ *
+ * v0.9.1's groups are marked pure, so a bundle that never names one (the
+ * worker and the popup's own copy) leaves it out.
  */
 
 export const NOT_RUNNING = 'Jantar is not running on this Mac.';
@@ -17,6 +20,10 @@ export const NOT_OPEN = 'This meeting is not open in Jantar any more. Start note
 /** A meeting tab open before the extension was loaded or reloaded has no page script yet: Chrome adds it only on a load. */
 export const NO_MEETING_TAB = 'Open a Google Meet or Teams call in this tab (reload it if the call is already open).';
 export const JOIN_FIRST = 'Join the call first.';
+/** v0.9.1: Start when I join, on a page that shows no join screen, waiting room or call. */
+export const JOIN_SCREEN_FIRST = "Open the call's join screen first.";
+/** v0.9.1: why notes do not start by themselves with no key stored. */
+export const PAIR_FIRST = 'the extension is not paired. Click the Jantar icon to pair.';
 /** Something in the extension itself went wrong (never expected). */
 export const TRY_AGAIN = 'Something went wrong. Try again.';
 
@@ -42,4 +49,88 @@ export const READS = Object.freeze({
   title: 'Read saved links',
   why: 'Opens posts you save to Intel (Instagram, YouTube, TikTok, X, Reddit, LinkedIn) in a muted background tab, as you, reads the post and closes the tab. Post links only, never other pages.',
   denied: "Chrome didn't allow the post sites, so Read saved links stays off.",
+});
+
+/** v0.9.1: Start when I join, in the popup's words. */
+export const ARM = /* @__PURE__ */ Object.freeze({
+  button: 'Start when I join',
+  leadPrejoin: 'Not in the call yet.',
+  leadLobby: 'Waiting to be let in.',
+  leadLeft: 'You left the call.',
+  hint: "Press Start when I join: notes start by themselves once you're in the call, in this tab only.",
+  /** Not this call (or End) while Always is on: the sheet says the call is skipped. */
+  skipped: 'Always is on, but not for this call. Notes will not start by themselves.',
+  /** An armed tab while Jantar answers that it takes nothing (Meetings off) or does not answer. */
+  blocked: "Start when I join is on for this tab, but notes can't start until this is fixed.",
+  armedPrejoin: 'Armed: starts when you join',
+  armedLobby: "Armed: starts when you're let in",
+  armedLeft: 'Armed: starts when you rejoin',
+  nameFromPage: 'Name from the page',
+  fromPage: (title: string) => `${title} (from the page)`,
+  todos: 'action items to todos',
+  cancelName: 'Cancel Start when I join',
+  noProject: 'No project',
+  byAlways: 'Always start when I join a call is on (Settings).',
+  change: 'Change',
+  cancel: 'Cancel',
+  notThisCall: 'Not this call',
+  where: "Start when I join shows on the call's join screen or in its waiting room.",
+  startedAt: (clock: string) => `Started when you joined, ${clock}`,
+  failed: (why: string) => `Notes did not start when you joined: ${why}`,
+});
+
+/** v0.9.1: the page's bubble when Always arms a call (on its own, so the worker carries no Settings copy). */
+export const ALWAYS_ARMED = 'Jantar starts notes when you join. Not this call: the Jantar icon.';
+
+/** v0.9.1: Settings › Always start when I join a call, and the page's bubble when it arms a call. */
+export const ALWAYS = /* @__PURE__ */ Object.freeze({
+  title: 'Always start when I join a call',
+  why: 'Notes start by themselves in every Meet or Teams call you join in this Chrome, once you are in the call, never before. To skip a call, click the Jantar icon on it, then Not this call. Let people know you keep notes.',
+  armedBubble: ALWAYS_ARMED,
+  /** The pairing view, while Always is on and nothing can start. */
+  unpaired: "Always start when I join a call is on, but notes can't start until the extension is paired.",
+  turnOff: 'Turn off',
+  turnOffName: 'Turn off Always start when I join a call',
+});
+
+/** v0.9.1: why notes did not start by themselves in a call another tab already keeps notes for. */
+export const OTHER_TAB = 'they are already on for this call in another tab.';
+
+/** v0.9.1: what the page says when notes start by themselves, or do not. */
+export const AUTO = /* @__PURE__ */ Object.freeze({
+  started: 'Jantar started notes. Let people know you keep notes.',
+  notStarted: (why: string) => `Notes did not start: ${why}`,
+  retrying: 'Notes did not start: Jantar is not running on this Mac. Trying again for 2 minutes.',
+  otherTab: `Notes did not start: ${OTHER_TAB}`,
+  lost: "Notes will not start by themselves: Jantar can't see this call's join screen or the call.",
+  /** Always is on but no key is stored: said once as the page comes to a join screen, a waiting room or a left call. */
+  unpaired: `Notes will not start by themselves: ${PAIR_FIRST}`,
+});
+
+/** v0.9.1: Settings › Call check: what the page shows, in words, and the hook id that decided it. */
+export const CALL_CHECK = /* @__PURE__ */ Object.freeze({
+  none: 'no join screen or call',
+  prejoin: 'join screen',
+  lobby: 'waiting to be let in',
+  in: 'in the call',
+  left: 'left the call',
+  line: (stage: string, hook: string) => `Call check: ${stage}${hook ? ` · ${hook}` : ''}`,
+});
+
+/**
+ * v0.9.1: Settings › Turn on captions when notes start (on by default), and
+ * Call check's captions line: how switching them on went, and the hook id
+ * that decided it.
+ */
+export const CC = /* @__PURE__ */ Object.freeze({
+  title: 'Turn on captions when notes start',
+  why: "Jantar writes notes from the call's live captions, so when notes start it turns them on in this call if they are off. Only you see them, and once they were on in a call Jantar leaves them as you set them.",
+  'was-on': 'were on',
+  'turned-on': 'turned on by Jantar',
+  clicked: 'Jantar clicked Captions; none on screen yet',
+  failed: 'Jantar could not turn them on',
+  unsure: "can't tell if they are on; Jantar left them",
+  unavailable: "this meeting offers none (the organizer's settings)",
+  kept: 'on earlier in this call; Jantar left them as they are',
+  line: (words: string, hook: string) => `Captions: ${words}${hook ? ` · ${hook}` : ''}`,
 });

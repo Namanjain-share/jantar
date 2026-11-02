@@ -161,4 +161,29 @@ describe('the chrome fake, v0.8 (Read saved links)', () => {
     f.model.granted.add('<all_urls>');
     expect(await f.chrome.permissions.contains({ origins: ['https://x.com/*'] })).toBe(true);
   });
+
+  it("v0.9.1: keeps each tab's badge (text, colour, title); a tab that is not open throws, as Chrome does", async () => {
+    const f = createChromeFake();
+    model = f.model;
+    f.model.addTab({ id: 7, windowId: 1, url: 'https://meet.google.com/abc-defg-hij', active: true });
+    f.model.addTab({ id: 8, windowId: 1, url: 'https://meet.google.com/abc-defg-hij', active: false });
+    expect(f.model.badge(7)).toEqual({ text: '', color: '', title: '' });
+    await f.chrome.action.setBadgeText({ tabId: 7, text: 'ARM' });
+    await f.chrome.action.setBadgeBackgroundColor({ tabId: 7, color: '#a67a0c' });
+    await f.chrome.action.setTitle({ tabId: 7, title: 'Jantar: notes start when you are in the call' });
+    expect(f.model.badge(7)).toEqual({ text: 'ARM', color: '#a67a0c', title: 'Jantar: notes start when you are in the call' });
+    expect(f.model.badge(8)).toEqual({ text: '', color: '', title: '' });
+    await expect(f.chrome.action.setBadgeText({ tabId: 9, text: 'ON' })).rejects.toThrow(/No tab/);
+    f.model.invalidate();
+    await expect(f.chrome.action.setTitle({ tabId: 7, title: 'x' })).rejects.toThrow(INVALIDATED_ERROR);
+  });
+
+  it('v0.9.1: an alarm keeps its `when`', async () => {
+    const f = createChromeFake();
+    model = f.model;
+    await f.chrome.alarms.create('jantar-arm', { when: 1_800_000_000_000 });
+    expect(await f.chrome.alarms.get('jantar-arm')).toEqual({ name: 'jantar-arm', when: 1_800_000_000_000 });
+    await f.chrome.alarms.create('jantar-arm', { when: 1_800_000_060_000 });
+    expect(f.model.alarms.get('jantar-arm')).toEqual({ name: 'jantar-arm', when: 1_800_000_060_000 });
+  });
 });

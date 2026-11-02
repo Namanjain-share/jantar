@@ -18,7 +18,8 @@
  *    is rewritten in the middle, trimmed at the front, and another speaker
  *    talks: the daemon holds the final lines, once each, with one
  *    `life.changed` for the open and none for the lines; the site's own
- *    captions button is never clicked.
+ *    captions button is never clicked (v0.9.1: captions are on, so turning
+ *    them on when notes start clicks nothing).
  * 3. Screenshots: the page button (a 0600 JPEG, "Saved", the button not in
  *    the picture: MX3), the popup's Screenshot, and none of another tab in
  *    front of the meeting's window (MX2).

@@ -8,13 +8,27 @@
  *   button shows only then, and only in a call) and whether this tab's
  *   meeting has notes on. Notes on in the first answer since the page
  *   loaded is a reload: they resume once the call is on again (not in the
- *   waiting room). Later answers never start notes (the page may have
+ *   waiting room: v0.9.1, once the stage is `in`, the in-call hooks held two
+ *   polls). Later answers never start notes (the page may have
  *   stopped them itself); notes off in one stops them. An answer to a
  *   `call` sent before the worker's last `capture` message is out of date
  *   on notes and changes nothing there;
  * - the capture loop (capture.ts), on only between `capture {on: true}` and
  *   `capture {on: false}`: nothing is read from the page before Start;
  * - the camera button and its bubble (button.ts).
+ *
+ * v0.9.1: `capture {on: true, text}` (notes started by themselves once you
+ * were in the call) turns notes on as Start does, then shows `text`; the
+ * bubble shows at the button's spot even where no button is (a join screen).
+ * On pagehide the call watch sends one last `call` (`hide`).
+ *
+ * v0.9.1: `cc` on `capture {on: true}` (or on the answer that resumes notes
+ * after a reload) also switches the call's captions on (captions.ts); how
+ * it went goes to the worker as `cc`, and the captions state names whose
+ * way to turn them on the popup should show (`client`) and why none came
+ * (`why`). The page keeps the switch's memory (captions.ts) for as long as
+ * it is loaded, so End then Start in the same call clicks nothing again;
+ * leaving the call (the call watch's `out`) forgets the call.
  *
  * The page answers only the worker's messages (`capture`, `button`, `hide`,
  * `show`) and only from this extension; its own `FromPage` messages, which a
@@ -29,6 +43,7 @@ import { teamsAdapter } from './adapters/teams.js';
 import type { SiteAdapter } from './adapters/types.js';
 import { createCameraButton, type CameraButton } from './button.js';
 import { createCallWatch, type CallWatch } from './call.js';
+import { ccCall, ccMemory } from './captions.js';
 import { createCapture, type Capture } from './capture.js';
 import { contextGone, createPageRuntime } from './runtime.js';
 
@@ -65,8 +80,9 @@ export function startContent(opts: ContentOptions = {}): Content | null {
   const askedAt = new WeakMap<CallAnswer, number>();
   /** No call answer has come since the page loaded. */
   let first = true;
-  /** The first answer had notes on: they resume once the call is on. */
+  /** The first answer had notes on: they resume once the call is on (`resumeCc`: switching captions on too). */
   let resume = false;
+  let resumeCc = false;
 
   const rt = createPageRuntime(() => {
     // The extension was reloaded: this page's chrome is gone for good.
@@ -88,27 +104,33 @@ export function startContent(opts: ContentOptions = {}): Content | null {
     },
   });
 
+  // v0.9.1: what this page remembers of switching captions on, across notes runs; leaving the call forgets the call.
+  const memory = ccMemory();
   const capture = createCapture({
     adapter,
     doc,
     send: async (msg) => linesAnswer(await rt.send(msg)),
-    captions: (state) => void rt.send({ t: 'captions', state }),
-    bubble: (text) => button.bubble(text),
+    captions: (state, why) => void rt.send({ t: 'captions', state, client: adapter.cc.client(doc), why }),
+    memory,
+    inSince: () => call.inSince(),
+    cc: (result, hook) => void rt.send({ t: 'cc', result, hook }),
+    bubble: (text, ms) => button.bubble(text, ms),
     onStop: () => button.setNotes(false),
     nonce: opts.nonce,
   });
 
   const sync = () => button.setShown(paired && !rt.dead && call.phase() !== 'out');
 
-  const notesOn = () => {
+  const notesOn = (cc: boolean) => {
     if (rt.dead) return;
     resume = false;
-    if (!capture.on) capture.start();
+    if (!capture.on) capture.start({ cc });
     button.setNotes(true);
   };
 
+  // v0.9.1: on the stage (the in-call hooks held two polls), so a control that flashes up in the waiting room resumes nothing.
   const resumeInCall = () => {
-    if (resume && call.phase() === 'in') notesOn();
+    if (resume && call.stage() === 'in') notesOn(resumeCc);
   };
 
   const call = createCallWatch({
@@ -131,12 +153,16 @@ export function startContent(opts: ContentOptions = {}): Content | null {
             button.setNotes(false);
             void capture.stop();
           }
-        } else if (first) resume = true;
+        } else if (first) {
+          resume = true;
+          resumeCc = answer.cc === true;
+        }
       }
       first = false;
       resumeInCall();
     },
-    onPhase: () => {
+    onPhase: (phase) => {
+      if (phase === 'out') ccCall(memory, null);
       sync();
       resumeInCall();
     },
@@ -161,7 +187,8 @@ export function startContent(opts: ContentOptions = {}): Content | null {
         heard += 1;
         resume = false;
         if (m.on) {
-          notesOn();
+          notesOn(m.cc === true);
+          if (m.text && !rt.dead) button.bubble(m.text);
           respond({ ok: true });
           return undefined;
         }
@@ -179,7 +206,10 @@ export function startContent(opts: ContentOptions = {}): Content | null {
     }
   };
 
-  const onPageHide = () => capture.last();
+  const onPageHide = () => {
+    capture.last();
+    call.hide();
+  };
 
   const removeListeners = () => {
     try {
@@ -221,11 +251,10 @@ function adapterFor(hostname: string): SiteAdapter | null {
 
 /** A worker message for the page, or null (the page's own messages, unknown `t`). */
 function toPage(msg: unknown): ToPage | null {
-  if (!msg || typeof msg !== 'object') return null;
-  const m = msg as Record<string, unknown>;
+  const m = fields(msg) ?? {};
   switch (m.t) {
     case 'capture':
-      return { t: 'capture', on: m.on === true, text: typeof m.text === 'string' && m.text ? m.text : undefined };
+      return { t: 'capture', on: m.on === true, text: typeof m.text === 'string' && m.text ? m.text : undefined, ...(m.cc === true ? { cc: true as const } : {}) };
     case 'button':
       return { t: 'button', on: m.on === true };
     case 'hide':
@@ -237,24 +266,24 @@ function toPage(msg: unknown): ToPage | null {
   }
 }
 
+/** An answer's fields, or null when it is no object. */
+const fields = (a: unknown) => (a && typeof a === 'object' ? (a as Record<string, unknown>) : null);
+
 function callAnswer(a: unknown): CallAnswer | undefined {
-  if (!a || typeof a !== 'object') return undefined;
-  const m = a as Record<string, unknown>;
-  return { button: m.button === true, notes: m.notes === true };
+  const m = fields(a);
+  return m ? { button: m.button === true, notes: m.notes === true, ...(m.cc === true ? { cc: true as const } : {}) } : undefined;
 }
 
 function linesAnswer(a: unknown): LinesAnswer | undefined {
-  if (!a || typeof a !== 'object') return undefined;
-  const m = a as Record<string, unknown>;
-  if (m.ok === true) return { ok: true };
-  if (m.ok === false) return { ok: false, retry: m.retry === true, text: typeof m.text === 'string' ? m.text : undefined };
+  const m = fields(a);
+  if (m?.ok === true) return { ok: true };
+  if (m?.ok === false) return { ok: false, retry: m.retry === true, text: typeof m.text === 'string' ? m.text : undefined };
   return undefined;
 }
 
 function shotAnswer(a: unknown): ShotAnswer | undefined {
-  if (!a || typeof a !== 'object') return undefined;
-  const m = a as Record<string, unknown>;
-  return typeof m.text === 'string' ? { ok: m.ok === true, text: m.text } : undefined;
+  const m = fields(a);
+  return typeof m?.text === 'string' ? { ok: m.ok === true, text: m.text } : undefined;
 }
 
 startContent();

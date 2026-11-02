@@ -910,8 +910,27 @@ on (`jantar meetings on`).
   read or change another site: its page script is not injected anywhere
   else.
 - It reads nothing of a call before **Start notes** (until then only
-  whether you are in a call, its code and its title), and never switches
-  captions on. A screenshot needs a click the browser made (`isTrusted`),
+  whether you are in a call, its code and its title), or, with **Start when
+  I join** or **Always start when I join a call** (0.9.1), before you are in
+  the call (until then only whether the page shows the call's join screen,
+  its waiting room or the call, by fixed controls and never page text, its
+  code and its title). Since 0.9.1, when notes start and only then (a
+  Settings switch, on by default), it turns the call's own live captions on
+  if they are off: it reads the captions control's state first and clicks
+  only that control, or the call's More menu and its captions item (Language
+  and speech on older Teams), with `element.click()` or Meet's own `c` key;
+  it closes any menu it opened, tries at most three times, and clicks only
+  a control that says captions are off. A Teams guest's captions item says
+  nothing and toggles: it is clicked at most once per page, only when notes
+  start within a minute of joining (captions start off) and no caption area
+  is on the page. Once captions were on in a call it never touches them
+  again in that page. Captions are per viewer: nobody else in the call sees a
+  change, and the sites record nothing. It calls no page-world API and
+  needs no new permission. An arm is kept per
+  tab in the worker's session storage (the sheet's fields, the site and
+  Meet's code, never a URL), starts notes only once the page has shown the
+  in-call controls on two checks running, and sends nothing to Jantar
+  before then. A screenshot needs a click the browser made (`isTrusted`),
   the shortcut or the popup, and is of the meeting tab only: the worker
   checks right before and right after each capture that the tab is still
   the active tab of the same window and still on a meeting host, and saves

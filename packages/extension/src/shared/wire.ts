@@ -33,28 +33,35 @@ export const WIRE_LIMITS = Object.freeze({
   name: 120,
   people: 200,
 });
-/** A screenshot, decoded (MEETING_SHOT_MAX_BYTES). */
-export const MEETING_SHOT_MAX_BYTES = 4 * 1024 * 1024;
+/** A screenshot, decoded (MEETING_SHOT_MAX_BYTES): 4 MiB. */
+export const MEETING_SHOT_MAX_BYTES = 4_194_304;
 
-/** How often things happen in the page and the worker (spec 3.2). */
+/**
+ * How often things happen in the page and the worker (spec 3.2). Said here
+ * and not beside each field, since the bundler keeps comments inside an
+ * object literal and this one ships in all three bundles:
+ * - callPollMs: the call watch's poll (a setTimeout, never requestAnimationFrame);
+ * - leaveGraceMs: the in-call hooks gone this long: the call is left;
+ * - keepAliveMs: while in a call, `call` again this often; the worker turns it into the meeting's keep-alive;
+ * - linesEveryMs: at most one `lines` message this often per tab;
+ * - linesRetryMs: after Jantar did not answer, try the pending lines again after this long;
+ * - debounceMs: a change in the caption region is read this long after it settles;
+ * - noCaptionsMs (v0.9.1): notes on and no caption line this long (or, after lines came, the captions gone this
+ *   long): the caption watch asks the captions control (`waiting` or `none`);
+ * - captionsRecheckMs (v0.9.1): still no caption line this long after the first bubble: the bubble once more (and never again);
+ * - notFoundMs: caption text on screen but no blocks read this long: the 'notFound' bubble;
+ * - shotGapMs: screenshots at least this far apart (Chrome allows two a second).
+ */
 export const TIMING = Object.freeze({
-  /** The call watch's poll (a setTimeout, never requestAnimationFrame). */
   callPollMs: 1_000,
-  /** The in-call hooks gone this long: the call is left. */
   leaveGraceMs: 60_000,
-  /** While in a call, `call` again this often; the worker turns it into the meeting's keep-alive. */
   keepAliveMs: 60_000,
-  /** At most one `lines` message this often per tab. */
   linesEveryMs: 1_500,
-  /** After Jantar did not answer, try the pending lines again after this long. */
   linesRetryMs: 2_000,
-  /** A change in the caption region is read this long after it settles. */
   debounceMs: 250,
-  /** Notes on and no caption region this long: the 'none' bubble. */
-  noCaptionsMs: 10_000,
-  /** Caption text on screen but no blocks read this long: the 'notFound' bubble. */
+  noCaptionsMs: 60_000,
+  captionsRecheckMs: 180_000,
   notFoundMs: 60_000,
-  /** Screenshots at least this far apart (Chrome allows two a second). */
   shotGapMs: 550,
 });
 
@@ -68,7 +75,9 @@ export const TIMING = Object.freeze({
  */
 export const READ_ALARM = 'jantar-reads';
 /** The daemon's limits and the worker's timings for one read (INTEL_READ_LIMITS where it names them). */
-export const READ_LIMITS = Object.freeze({
+// Marked pure (as the copy in sentences.ts), and with literal numbers (esbuild keeps a product it does not fold):
+// bundles that never read these leave them out (the page script).
+export const READ_LIMITS = /* @__PURE__ */ Object.freeze({
   /** The alarm's period (Chrome's shortest), well inside the daemon's 90 s. */
   pollEveryMs: 30_000,
   /** Jobs taken per wake, one at a time. */
@@ -82,9 +91,35 @@ export const READ_LIMITS = Object.freeze({
   settleMs: 2_500,
   /** Canvas frames read at most (INTEL_READ_LIMITS.chromeFrames), each at most frameBytes decoded. */
   frames: 4,
-  frameBytes: 200 * 1024,
+  frameBytes: 204_800, // 200 KiB
   /** The post's own text kept (INTEL_READ_LIMITS.pageTextMax). */
   textMax: 40_000,
   /** The result's body at most (INTEL_READ_LIMITS.extResultBytes). */
-  resultBytes: 2 * 1024 * 1024,
+  resultBytes: 2_097_152, // 2 MiB
+});
+
+/**
+ * v0.9.1: Start when I join. The page reports a stage only once it held
+ * STAGE_STABLE_POLLS polls in a row (an admission included), so a one-poll
+ * flicker of an in-call control never starts notes. The worker keeps each
+ * tab's arm in chrome.storage.session and sweeps the ones that ended with one
+ * alarm (ARM_ALARM).
+ */
+export const STAGE_STABLE_POLLS = 2;
+export const ARM_ALARM = 'jantar-arm';
+export const ARM_TIMING = /* @__PURE__ */ Object.freeze({
+  /** An arm unused this long ends. */
+  maxMs: 7_200_000, // 2 h
+  /** No join screen, waiting room or call this long: the arm ends. */
+  awayMs: 60_000,
+  /** No `call` from the tab this long: the arm ends. */
+  silentMs: 300_000, // 5 min
+  /** More tries after "Jantar is not running", one per keep-alive. */
+  retries: 2,
+  /** The "!" badge and the popup's line, this long after a failed start by itself. */
+  failedShowMs: 600_000, // 10 min
+  /** The popup asks again this often while it shows an armed tab. */
+  popupPollMs: 2_000,
+  /** Chrome's shortest alarm delay (Chrome 120). */
+  alarmMinMs: 30_000,
 });

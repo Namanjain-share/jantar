@@ -40,6 +40,15 @@ export function inButton(el: Element, root: Element): boolean {
   return false;
 }
 
+/** How many of `texts` each of their ancestors below `region` holds (one: inside a single turn). */
+export function heldBy(texts: readonly Element[], region: Element): Map<Element, number> {
+  const held = new Map<Element, number>();
+  for (const text of texts) {
+    for (let a = text.parentElement; a && a !== region; a = a.parentElement) held.set(a, (held.get(a) ?? 0) + 1);
+  }
+  return held;
+}
+
 /** True when `el` is or holds a button or [role=button]. */
 export function holdsButton(el: Element): boolean {
   return el.tagName === 'BUTTON' || el.getAttribute('role') === 'button' || el.querySelector('button') !== null || el.querySelector('[role="button"]') !== null;
@@ -55,4 +64,59 @@ export function showsText(root: Element): boolean {
     if (parent && !inButton(parent, root)) return true;
   }
   return false;
+}
+
+/** v0.9.1: where the page is, as the page's own memory keeps it (path, query and hash; never sent, never stored). */
+export function pageAt(loc: Location | null | undefined): string | null {
+  return loc ? `${loc.pathname}${loc.search}${loc.hash}` : null;
+}
+
+/** v0.9.1: how long a try waits between its steps, and for a menu or pop-up to open. */
+export const CC_STEP_MS = 300;
+export const CC_OPEN_MS = 2_000;
+
+/** v0.9.1: not inside a hidden or aria-hidden subtree (jsdom has no layout, so no more than this is asked). */
+export function shown(el: Element): boolean {
+  return el.closest('[hidden], [aria-hidden="true"]') === null;
+}
+
+/** v0.9.1: a captions control's English words (both sites), exactly: offering to turn them off (so they are on), or on. */
+export const SAYS_ON_EN: ReadonlySet<string> = new Set(['turn off captions', 'turn off live captions', 'hide live captions']);
+export const SAYS_OFF_EN: ReadonlySet<string> = new Set(['turn on captions', 'turn on live captions', 'show live captions']);
+
+/** v0.9.1: what a captions control says: aria-pressed or aria-checked, else `off` (a site's own sign of off), else its English words. */
+export function saysOf(el: Element, off = false): 'on' | 'off' | 'unknown' {
+  for (const attr of ['aria-pressed', 'aria-checked']) {
+    const v = el.getAttribute(attr);
+    if (v === 'true' || v === 'false') return v === 'true' ? 'on' : 'off';
+  }
+  if (off) return 'off';
+  const words = labelOf(el);
+  return SAYS_ON_EN.has(words) ? 'on' : SAYS_OFF_EN.has(words) ? 'off' : 'unknown';
+}
+
+/** v0.9.1: a control's own label, lower-cased: its aria-label, else its text. */
+export function labelOf(el: Element): string {
+  return collapse(el.getAttribute('aria-label') ?? el.textContent).toLowerCase();
+}
+
+/** v0.9.1: a click as a page script makes one (HTMLElement.click()). */
+export function click(el: Element): void {
+  (el as HTMLElement).click();
+}
+
+/** v0.9.1: one keydown, bubbling from `target` (the site's own key handlers take untrusted ones). */
+export function press(target: EventTarget, key: string, code: string): void {
+  const view = (target as Node).ownerDocument?.defaultView ?? (target as Document).defaultView;
+  const Ctor = view?.KeyboardEvent ?? KeyboardEvent;
+  target.dispatchEvent(new Ctor('keydown', { key, code, bubbles: true, cancelable: true }));
+}
+
+/** v0.9.1: what `find` finds, asked again every CC_STEP_MS for up to `ms`; null when it never does. */
+export async function poll<T>(wait: (ms: number) => Promise<void>, find: () => T | null, ms = CC_OPEN_MS): Promise<T | null> {
+  for (let waited = 0; ; waited += CC_STEP_MS) {
+    const got = find();
+    if (got !== null || waited >= ms) return got;
+    await wait(CC_STEP_MS);
+  }
 }
