@@ -3,6 +3,61 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.10.0 (unreleased)
+
+Cafés get stars, ratings, a price level, tags and visits. Ask becomes
+**Chat**, which does what you ask across Jantar at once, with Undo, and
+asks before deleting anything; ask it by voice with Siri ("Hey Siri,
+Jantar"). Upgrade notes follow.
+
+**Before upgrading: nothing to copy by hand.** The daemon keeps
+`life-pre-0.10.0.db` in the backups folder before it moves life.db to
+schema 3 (Life's second schema change); 0.9.0 can't open Life afterwards,
+and going back needs `jantar life restore life-pre-0.10.0.db`
+([Upgrading](docs/upgrading.md#0100-lifes-second-schema-change)).
+jantar.db gains a column for key scopes (0.9.0 keeps working on it).
+Chat's history is new data on disk, in `chat.db`.
+
+- **Cafés**: a café's own stars, six optional ratings (Food, Coffee &
+  drinks, Vibe, Service, Value, Work), a price level, would go again,
+  tags (Wi-Fi, Sockets, Quiet and 18 more, plus your own), dishes with a
+  price, order again and notes (a dish can be listed before it is
+  tried), and visits (day, spend, stars, what you had). The list sorts
+  (best, recent, visits, name, price, work) and filters by tags, price,
+  stars, area and would go again; each café has its own screen. A café
+  with visits asks before it is deleted. On the Mac, `jantar place list`
+  and `jantar place show` read cafés.
+- **Chat** (the nav's Chat, right after Today; `/ask` lands there): one
+  thread per Mac, the same on every phone and for Siri. Type, or send up
+  to four photos (a receipt, a menu), and Chat reads and changes your
+  todos, reminders, medicines, food, weight, cafés (the new fields too),
+  money, bills, posts, the Intel shelf and meetings, for the parts that
+  are on. Adds and changes happen at once and show under the answer with
+  **Undo** for a day; every delete, stopping a medicine, and anything that
+  spends Claude quota is a **Confirm** card that runs only on your tap;
+  after Chat reads someone else's text (a saved page, a meeting, a
+  session), its writes wait as **Do it** cards. A link is saved only when
+  you wrote it.
+- **Sessions in Chat are read only**: it can say which session waits for
+  you, what it asked, its last messages and your accounts' usage, and it
+  can never type into a terminal, answer a prompt or start a session.
+- **History**: kept on the Mac in `chat.db` for 30 days (`jantar chat keep
+  <days>`); Clear chat (or `jantar chat clear`) deletes it, and what Chat
+  added stays.
+- **Siri**: "Hey Siri, Jantar" with an iPhone Shortcut and a Siri key made
+  at the Mac (`jantar chat shortcut add`, in your own Terminal; shown
+  once). Siri speaks the answer within 20 seconds and Jantar's own count
+  of what changed, else "Still working on it" and a notification when it
+  is ready. Same door rules as Save to Jantar: Tailscale or Cloudflare
+  only, and a Siri key opens nothing else
+  ([Ask Jantar with Siri](docs/shortcut.md#ask-jantar-with-siri)).
+- **What goes to Claude now**: what you type and your photos, with the
+  last messages of the chat and whatever Chat looks up to answer, for the
+  parts that are on ([Chat](docs/assistant.md#what-goes-to-claude)).
+- **On the Mac**: `jantar chat on | off | status | clear | keep |
+  voice-model | shortcut`; `jantar ask` still works and runs `jantar
+  chat`. `jantar doctor` checks the Siri door too.
+
 ## 0.9.0 (2 November 2026)
 
 Log a comment, in Posts: paste the link to a comment you made (on Reddit:

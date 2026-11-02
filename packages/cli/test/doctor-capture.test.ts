@@ -55,8 +55,8 @@ describe('jantar doctor: the Shortcut door', () => {
     });
     const keys = Array.from({ length: o.keys ?? 1 }, (_, n) => ({ ...ROW, id: `${KEY_ID.slice(0, -1)}${n}` }));
     const ctl = fakeCtl({
-      'GET /healthz': ok({ ok: true, protocol: 3, daemonVersion: '0.9.0' }),
-      'GET /ctl/status': ok({ role: 'hub', daemonVersion: '0.9.0' }),
+      'GET /healthz': ok({ ok: true, protocol: 3, daemonVersion: '0.10.0' }),
+      'GET /ctl/status': ok({ role: 'hub', daemonVersion: '0.10.0' }),
       'GET /v1/settings': ok({ settings }),
       'GET /v1/intel/capture-keys': ok({ keys }),
       // v0.10: the Siri door's keys.
