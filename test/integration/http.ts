@@ -28,13 +28,23 @@ export function http(
   port: number,
   method: string,
   path: string,
-  opts: { body?: unknown; origin?: string | null; cookie?: string; headers?: Record<string, string>; noSecret?: boolean } = {},
+  opts: {
+    body?: unknown;
+    /** v0.10: raw bytes (application/octet-stream) instead of a JSON body. */
+    raw?: Buffer;
+    origin?: string | null;
+    cookie?: string;
+    headers?: Record<string, string>;
+    noSecret?: boolean;
+    /** v0.10: a longer wait than 10 s (the Siri door answers within 20 s). */
+    timeoutMs?: number;
+  } = {},
 ): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
-    const payload = opts.body === undefined ? undefined : Buffer.from(JSON.stringify(opts.body));
+    const payload = opts.raw ?? (opts.body === undefined ? undefined : Buffer.from(JSON.stringify(opts.body)));
     const headers: Record<string, string> = { accept: 'application/json', host: `127.0.0.1:${port}`, ...opts.headers };
     if (payload) {
-      headers['content-type'] = 'application/json';
+      headers['content-type'] = opts.raw ? 'application/octet-stream' : 'application/json';
       headers['content-length'] = String(payload.length);
     }
     if (opts.origin !== null) headers.origin = opts.origin ?? `http://127.0.0.1:${port}`;
@@ -43,7 +53,7 @@ export function http(
       const secret = SECRETS.get(opts.cookie);
       if (secret && !opts.noSecret) headers[DEVICE_SECRET_HEADER] = secret;
     }
-    const req = request({ host: '127.0.0.1', port, method, path, headers, timeout: 10_000 }, (res) => {
+    const req = request({ host: '127.0.0.1', port, method, path, headers, timeout: opts.timeoutMs ?? 10_000 }, (res) => {
       const chunks: Buffer[] = [];
       res.on('data', (c: Buffer) => chunks.push(c));
       res.on('end', () => {

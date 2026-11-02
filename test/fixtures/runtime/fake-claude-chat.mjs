@@ -315,27 +315,23 @@ export async function runChat({ root, args, stdin, matches, account }) {
         break;
       }
       case 'chat-marker': {
+        // Batched like the real one (one assistant message, many tool_use blocks), so it stays inside --max-turns.
         const texts = [];
-        const add = (a) => {
-          if (a && !a.isError) texts.push(a.text);
-          return a;
+        const keep = (answers) => {
+          for (const a of answers) if (a && !a.isError) texts.push(a.text);
+          return answers;
         };
-        for (const name of ['today', 'todos_find', 'meds_day', 'food_day', 'money_month', 'places_find', 'posts_find', 'sessions_find', 'accounts_usage']) {
-          if (allowed.includes(full(name))) add(await one(name, {}));
-        }
-        for (const [find, get] of [
+        const reads = ['today', 'todos_find', 'meds_day', 'food_day', 'money_month', 'places_find', 'posts_find', 'sessions_find', 'accounts_usage'].filter((n) => allowed.includes(full(n)));
+        if (reads.length) keep(await round(reads.map((n) => [n, {}])));
+        const pairs = [
           ['intel_find', 'intel_get'],
           ['meetings_find', 'meeting_get'],
           ['places_find', 'place_get'],
-        ]) {
-          if (!allowed.includes(full(find)) || !allowed.includes(full(get))) continue;
-          const id = idOf(add(await one(find, {})));
-          if (id) add(await one(get, { id }));
-        }
-        if (allowed.includes(full('session_get'))) {
-          const sid = idOf(await one('sessions_find', {}));
-          if (sid) add(await one('session_get', { id: sid }));
-        }
+          ['sessions_find', 'session_get'],
+        ].filter(([f, g]) => allowed.includes(full(f)) && allowed.includes(full(g)));
+        const found = pairs.length ? keep(await round(pairs.map(([f]) => [f, {}]))) : [];
+        const gets = pairs.map(([, g], i) => [g, idOf(found[i])]).filter(([, id]) => id).map(([g, id]) => [g, { id }]);
+        if (gets.length) keep(await round(gets));
         reply = texts.join('\n');
         break;
       }
