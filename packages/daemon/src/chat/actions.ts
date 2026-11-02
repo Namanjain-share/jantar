@@ -110,7 +110,8 @@ export const WRITE_INPUTS = {
   weight_set: z.strictObject({ day: DayKeySchema, ...WeightBodySchema.shape }),
   food_targets_set: FoodTargetsBodySchema,
   place_add: PlaceBodySchema,
-  place_edit: z.strictObject({ id: Id, ...PlacePatchSchema.shape }),
+  // Not `dishes`: a wholesale replace would drop dishes with no Confirm card. dish_set adds or changes one, request_delete removes one.
+  place_edit: z.strictObject({ id: Id, ...PlacePatchSchema.omit({ dishes: true }).shape }),
   dish_set: DishSetSchema,
   visit_log: z.strictObject({
     placeId: Id,

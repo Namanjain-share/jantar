@@ -153,6 +153,23 @@ describe('writes', () => {
     expect(p.ok && p.value.visits).toHaveLength(1);
   });
 
+  it("place_edit can't replace a café's dishes: removing one is a Confirm card", async () => {
+    rig = await chatRig();
+    const made = rig.life.places.create({ name: 'Sample Dosa House', dishes: [{ name: 'Idli', rating: 5 }, { name: 'Vada', rating: 4 }] }, PHONE);
+    const placeId = made.ok ? made.value.id : '';
+    const { tools, turnId } = rig.turn();
+    const r = await tools.call('place_edit', { id: placeId, dishes: [] });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/^Those arguments don't fit place_edit/);
+    const p = rig.life.places.get(placeId);
+    expect(p.ok && p.value.place.dishes.map((x) => x.name)).toEqual(['Idli', 'Vada']);
+    expect(rig.store.changes(turnId)).toEqual([]);
+    expect(JSON.stringify(listed(CHAT_TOOLS.find((t) => t.name === 'place_edit')!).inputSchema)).not.toContain('dishes');
+    const card = await tools.call('request_delete', { kind: 'dish', id: 'Vada', parent: placeId });
+    expect(card.text).toContain('Remove Vada from Sample Dosa House?');
+    expect(rig.store.cards(turnId)).toHaveLength(1);
+  });
+
   it('bad arguments get a fixed sentence and count as refused', async () => {
     rig = await chatRig();
     const { tools } = rig.turn();
