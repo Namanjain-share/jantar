@@ -193,7 +193,8 @@ export default defineCommand(
       '  remote setup --apply       run "tailscale serve" for the daemon and update the pairing URL\n' +
       '  remote setup --cloudflare  print the steps for a Cloudflare quick tunnel (fallback)\n' +
       '  remote url https://HOST    use HOST in pairing links and accept it as an Origin\n' +
-      '  remote url --clear         back to loopback-only pairing links',
+      '  remote url --clear         back to loopback-only pairing links\n' +
+      '  remote people-url https://HOST   People: the partner\'s own hostname (--clear: none)',
   },
   async (argv, ctx) => {
     const { flags, positionals } = parseArgs(argv, FLAGS, { min: 1, max: 2 });
@@ -206,6 +207,20 @@ export default defineCommand(
       case 'setup':
         if (positionals.length > 1) throw new UsageError('setup takes no argument');
         return setup(ctx, flags);
+      case 'people-url': {
+        // v0.12 People: her hostname (its own Access app). The daemon refuses one that mixes with yours.
+        const url = positionals[1];
+        if (flags.clear) {
+          if (url) throw new UsageError('give a URL or --clear, not both');
+          await callDaemon(ctx.ctl, 'PATCH', '/v1/settings', { remote: { peopleUrl: null } });
+          ctx.io.out('No people hostname: nothing of theirs can be reached.\n');
+          return EXIT.ok;
+        }
+        if (!url) throw new UsageError('missing URL (or --clear)');
+        await callDaemon(ctx.ctl, 'PATCH', '/v1/settings', { remote: { peopleUrl: url } });
+        ctx.io.out(`People hostname: ${url}. Its Origin is theirs alone; yours never is.\n`);
+        return EXIT.ok;
+      }
       case 'url': {
         const url = positionals[1];
         if (flags.clear) {
@@ -216,7 +231,7 @@ export default defineCommand(
         return setUrl(ctx, url);
       }
       default:
-        throw new UsageError(`unknown action "${action}" (status, setup or url)`);
+        throw new UsageError(`unknown action "${action}" (status, setup, url or people-url)`);
     }
   },
 );

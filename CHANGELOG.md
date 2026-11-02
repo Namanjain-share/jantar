@@ -40,6 +40,10 @@ partner simply can't sign in there).
   old and new values) and correct a weight they logged; you never create
   one for them or tick anything in their name. Their reminders ring their
   devices, not yours. "See what Sam sees" shows them exactly your view.
+- **At the Mac**: `jantar remote people-url <https-url>`, `jantar people
+  on|off|doctor|add|offer|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
+  ([People](docs/people.md)). Everything that lets someone in, shapes their
+  offer or ends their space runs only at the Mac.
 - **Their app** is its own web app (`/p` on their hostname), built apart
   from yours: none of your screens or code are in it, and your app's first
   load is unchanged by it. It has the join page (generated from the offer,

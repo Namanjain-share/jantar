@@ -20,6 +20,22 @@ daemon migrates `config.json` and its databases on start (moving settings
 to version 2 in v0.4 kept the old file as `config.json.v1`). The
 [changelog](../CHANGELOG.md) says what changed in each version.
 
+### 0.12.0: Life's third schema change (People)
+
+Before moving life.db to schema 4 the daemon copies it to
+`backups/life-pre-<version>.db`. Schema 4 adds a `space` to every Life
+table (every existing row is yours, `''`, so nothing is rewritten), rebuilds
+`weights` and `foods_saved` keyed per space, and adds People's tables. An
+older daemon refuses a schema-4 file (Life answers 503 there); to go back,
+restore that copy: `jantar life restore life-pre-<version>.db`. Anything a
+partner added since the upgrade is lost then.
+
+jantar.db gains People's tables (their devices, link codes, push list,
+invites and the consent ledger) and an audit column. An older daemon warns
+and carries on, never reading them: a partner simply can't sign in there,
+and gets no pushes. Settings gain `remote.peopleUrl` and `people`; an older
+daemon drops both, so the people hostname answers 403 there.
+
 ### 0.10.0: Life's second schema change
 
 0.10.0 adds a table for cafés' visits to `life.db`. Nothing to copy by

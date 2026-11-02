@@ -429,6 +429,20 @@ agents never drive it.
 | R-C6 | Teams v2 in Chrome on the Mac: does a real **Cmd+Shift+A** toggle captions, or open Chrome's tab search? | whether the docs name the shortcut again |
 | R-C7 | Teams v2 signed in: is Teams' own **Automatically turn on live captions** in the captions pane's settings, and does it work in the web client? | a way that needs no clicks from Jantar |
 
+### People (v0.12, P1)
+
+On real devices, with a second hostname behind its own Access app:
+
+- Access's emailed code on an iPhone, then the join page and Accept; Add to
+  Home Screen; the Access session expiring inside the Home Screen app, and
+  the code round trip from there.
+- Linking the Home Screen app with a code from Safari (Me › Devices).
+- Turn on notifications; a test push at each lock-screen level.
+- Leave revoking within a second; Leave while `jantar people off`.
+- A page on the people origin, open in the owner's own browser, failing to
+  open `wss://<his host>/v1/events` or to POST to an owner route.
+- With Tailscale, a shared-in user reaching only the People port.
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear

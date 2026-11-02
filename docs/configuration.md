@@ -192,6 +192,21 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 | `autoswitch` | the ceilings Jantar shows (`ceiling` 97 %, `weekly_ceiling` 95 %) and the hold list; Jantar itself does not switch accounts | the Mac, or an admin device |
 | `notify`, `usage` | push bodies and kinds, a mute, and `urgent` (the Answer soon push, on); the cswap poller (`auto`: only while the legacy ccw tool's bot is not running) | the Mac, or an admin device |
 
+### People (v0.12)
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `remote.peopleUrl` | `null` | The partner's own hostname (`https://us.example.com`, an origin only). Its Origin is theirs alone: it must differ from `remote.publicUrl` and must not be in `remote.allowedOrigins`. `jantar remote people-url <url>` |
+| `people.enabled` | `false` | People on or off (`jantar people on`/`off`). Needs `remote.mode` `cloudflare` or `tailscale`, a `remote.peopleUrl` and `people.ownerName`. Their Pause, Leave and Download work either way. |
+| `people.ownerName` | `null` | Your name as they read it ("From Sam"). `jantar people on --name <name>` |
+
+Both groups are the Mac's only: a phone's settings change touching them is
+refused. A daemon whose people settings have a problem serves no people
+hostname at all. See [People](people.md).
+
+`jantar people …` (add, offer, invite, list, devices, revoke, revoke-invite,
+remove, modules, todos, doctor) runs at the Mac only.
+
 ## The state folder
 
 Everything Jantar keeps is in `~/.jantar` (or `JANTAR_HOME`), mode 0700:

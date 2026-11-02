@@ -13,6 +13,7 @@
 | [Accounts](accounts.md) | One login or cswap, usage and resets, accounts kept for other work |
 | [The primer](primer.md) | Starting an idle account's 5-hour window early |
 | [Life](life.md) | Today, todos, reminders, projects, medicines, food and weight, cafés, finance, posts; backup and restore |
+| [People](people.md) | Share a space with one other person: their own hostname and app, the agreement they accept, to-dos you add for them, pause, leave |
 | [Chat](assistant.md) | Ask Jantar anything, by text, photo or Siri: changes at once with Undo, deletes only on your tap, sessions read only; "save this: <link>" to Intel; what goes to Claude |
 | [Intel shelf](intel.md) | The shelf, its search, its sources and the JSONL line format, `jantar mcp` for Claude Code, and Add post: the Mac reads a reel, video, post, article or PDF you save (depths, sources, Retry, what leaves the Mac) |
 | [Save to Jantar](shortcut.md) | The iOS Share-sheet Shortcut for Add post: a key made at the Mac, the steps, the Tailscale and Cloudflare doors, troubleshooting |

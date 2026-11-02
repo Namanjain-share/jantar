@@ -10,6 +10,7 @@
       "@jantar/fixtures": ["../../test/fixtures/src/index.ts"],
       "@jantar/protocol": ["../../packages/protocol/src/index.ts"],
       "@jantar/protocol/node-link": ["../../packages/protocol/src/node-link.ts"],
+      "@jantar/protocol/people": ["../../packages/protocol/src/people.ts"],
       "@jantar/hook": ["../../packages/hook/src/index.ts"],
       "@jantar/daemon": ["../../packages/daemon/src/index.ts"],
       "@jantar/daemon/*": ["../../packages/daemon/src/*", "../../packages/daemon/src/*.ts"]

@@ -2047,3 +2047,57 @@ New folder, a name, then Start a session here.
 - Claude's trust card for a just-made folder is never answered for you:
   that Jantar made it is no reason to trust what is in it by the time a
   session starts.
+
+## v0.12: People
+
+People (off by default) lets the owner share a space with one other person.
+It adds a new asset: **another person's Life data, health data included**.
+
+- **The trust boundary doesn't move.** It is still the owner's macOS user.
+  Anything running as them, Claude sessions with Bash included, can read
+  life.db. Jantar's promise covers what it shows; the join page says so.
+- **A second principal, apart by construction.** The partner's credential is
+  a person device (`person_devices`, hashes with their own prefix), in the
+  `__Host-jantar_person` cookie (Secure, `Path=/`, no `Domain`: no sibling
+  host can plant it), read only under `/v1/p/` and only on the people
+  hostname. The owner's cookie is never read there. A person device holds
+  none of the owner's scopes.
+- **The people host is fenced** in Fastify's `onRequest` and in the node
+  link's raw upgrade: only `/healthz`, `/v1/p/*` and the partner app's own
+  files (its chunk set, read from its build's manifest) answer there;
+  everything else is 404 with an empty body. On the owner's hosts every
+  `/v1/p/*` path and the partner app's files are 404.
+- **Two Origin sets.** The people hostname and the owner's are the same
+  *site*, so SameSite doesn't separate them, and a WebSocket has no CORS.
+  Owner routes and `/v1/events` accept only the owner's origins (never the
+  people origin); person routes and `/v1/p/events` accept the people origin
+  alone. Settings that would mix them are refused, and in `lan` or
+  `loopback` mode there is no people host at all.
+- **Invites and link codes**: 128-bit, single use, stored only as hashes,
+  carried in a URL fragment; invites last 24 hours and are made at the Mac
+  only; device-link codes last 5 minutes. Wrong, spent and expired codes all
+  get one answer. At join, in Cloudflare mode, the email Access forwards is
+  compared with the one the owner gave (a check against mistakes, not a
+  cryptographic binding: verifying the Access JWT is a later item).
+- **Her stream** sends counters only (no State, replay, ids or titles), and
+  ticks only for writes into her space; the owner's stream ticks for her
+  writes only in areas the agreement shows him.
+- **Pushes** to her go only to her push list, by Web Push, with her lock
+  screen choice applied; the Mac banner and Telegram never carry a person's
+  push.
+- **No owner-only record of her**: her own writes are audited as
+  `person.write` with no route, target or params; the request log names her
+  routes as `/v1/p/*`; no route or command shows her devices' last-seen,
+  user agent or any address.
+- **Consent is a ledger** in jantar.db (append-only), authoritative over
+  life.db for left and forgotten: a Life restore can't bring back a
+  forgotten person.
+- **Downgrade fails closed**: an older daemon refuses life.db schema 4, never
+  reads People's jantar.db tables, and drops the people settings (her host
+  then answers 403).
+
+Pinned by `packages/daemon/test/people/*` and `test/arch/v012-people.test.ts`
+(every owner route with her credential, every person route with his, both
+event streams, push routing, the Origin split, static files by host) and
+`packages/web/test/partner/import-graph.test.ts` (her app is a separate
+bundle holding no owner module).

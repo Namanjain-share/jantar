@@ -31,6 +31,7 @@ import notify from './notify.js';
 import node from './node.js';
 import open from './open.js';
 import pair from './pair.js';
+import people from './people.js';
 import place from './place.js';
 import post from './post.js';
 import remote from './remote.js';
@@ -60,6 +61,8 @@ export const COMMANDS: readonly Command[] = [
   post,
   // v0.10 (cafés, read only)
   place,
+  // v0.12 People
+  people,
   intel,
   // v0.5.3
   notify,
