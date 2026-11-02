@@ -24,7 +24,7 @@ import { IconButton } from '../../../kit/IconButton.js';
 import { Sheet } from '../../../kit/Sheet.js';
 import { Tag } from '../../../kit/Tag.js';
 import { Segmented } from '../../accounts/Segmented.js';
-import { Switch } from '../../devices/parts.js';
+import { SwitchRow } from '../../devices/parts.js';
 import { CHIP, CHIP_OFF, CHIP_ON } from '../money/fields.js';
 import { EMPTY, LifeEmpty, NotSaved } from '../shared/states.js';
 import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
@@ -420,12 +420,9 @@ function FiltersSheet({
             ]}
           />
         </Field>
-        <div className="flex min-h-44 items-center gap-12 py-8">
-          <Switch id="places-filter-again" checked={!!view.again} onChange={(v) => onChange({ ...view, again: v ? true : undefined })} />
-          <label htmlFor="places-filter-again" className="type-small text-ink">
-            Would go again
-          </label>
-        </div>
+        <SwitchRow id="places-filter-again" checked={!!view.again} onChange={(v) => onChange({ ...view, again: v ? true : undefined })}>
+          Would go again
+        </SwitchRow>
         {areaChips.length ? (
           <Field label="Area" id="places-filter-area">
             <div role="group" aria-labelledby="places-filter-area" className="flex flex-wrap gap-6">

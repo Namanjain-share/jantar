@@ -116,7 +116,7 @@ export function PlaceScreen({ id, back, currency, today, undo, held, customTags,
     </Link>
   );
   const aside = place ? (
-    <Button size="sm" disabled={offline} onClick={() => edit.show(place)}>
+    <Button size="sm" className="coarse:min-w-44" disabled={offline} onClick={() => edit.show(place)}>
       Edit
     </Button>
   ) : null;

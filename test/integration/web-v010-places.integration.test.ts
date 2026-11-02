@@ -16,7 +16,9 @@
  * - Under a coarse pointer (the 320 px phone) every target is 44 px tall:
  *   the rows, the bar, the filter chips, the stars, the segmented controls
  *   (their box; a segment's hit area fills it), Log visit, the dish and
- *   visit rows.
+ *   visit rows, Open link, and each switch's row (Would go again, Tried it,
+ *   Would order again), which toggles from its far edge too; Edit and a
+ *   tag chip are 44 px wide as well.
  *
  * Every name and value is synthetic. Needs a built dist/ and a Chromium.
  */
@@ -227,6 +229,22 @@ describe.skipIf(!ready)('v0.10 Cafés depth in Chromium, served by jantard', () 
       await target.waitFor();
       expect((await target.boundingBox())?.height ?? 0, what).toBeGreaterThanOrEqual(44);
     };
+    const wide = async (target: Locator, what: string) => {
+      await target.waitFor();
+      expect((await target.boundingBox())?.width ?? 0, what).toBeGreaterThanOrEqual(44);
+    };
+    /** A switch's row: 44 px tall, and a tap on its far right edge toggles the switch (then back). */
+    const switchRow = async (scope: Locator, name: string) => {
+      const sw = scope.getByRole('switch', { name });
+      const row = scope.locator('label').filter({ has: scope.page().getByRole('switch', { name }) });
+      await tall(row, `${name}'s row`);
+      const box = (await row.boundingBox())!;
+      const was = await sw.isChecked();
+      await row.click({ position: { x: box.width - 4, y: box.height / 2 } });
+      expect(await sw.isChecked(), `${name} from the row's edge`).toBe(!was);
+      await row.click({ position: { x: box.width - 4, y: box.height / 2 } });
+      expect(await sw.isChecked()).toBe(was);
+    };
     const all = async (targets: Locator, what: string) => {
       await targets.first().waitFor();
       const n = await targets.count();
@@ -245,11 +263,14 @@ describe.skipIf(!ready)('v0.10 Cafés depth in Chromium, served by jantard', () 
       await all(filters.getByRole('group', { name: 'Tags' }).getByRole('button'), 'a tag chip');
       // A segment is 38 px inside its 44 px box; its hit area takes in the box's padding (Segmented's ::before).
       await tall(filters.getByRole('group', { name: 'Price up to' }), 'the price segments');
+      await switchRow(filters, 'Would go again');
       await page.keyboard.press('Escape');
       await filters.waitFor({ state: 'detached' });
 
       await page.goto(`http://127.0.0.1:${d.port}/places?id=${ids.cafe}`, { waitUntil: 'load' });
       await tall(page.getByRole('button', { name: 'Log visit' }), 'Log visit');
+      await tall(page.getByRole('link', { name: 'Open link' }), 'Open link on the café screen');
+      await wide(page.getByRole('button', { name: 'Edit' }), 'Edit');
       await all(page.getByRole('region', { name: 'Dishes' }).getByRole('button', { name: /Cardamom|Flat|Sourdough/ }), 'a dish row');
       await all(page.getByRole('region', { name: /^Visits/ }).getByRole('list').getByRole('button'), 'a visit row');
       await page.getByRole('button', { name: 'Edit' }).click();
@@ -258,8 +279,17 @@ describe.skipIf(!ready)('v0.10 Cafés depth in Chromium, served by jantard', () 
       await tall(edit.getByRole('group', { name: 'Price' }), 'the price levels');
       await tall(edit.getByRole('group', { name: 'Would go again' }), 'would go again');
       await all(edit.getByRole('group', { name: 'Tags' }).getByRole('button'), 'a tag');
+      const tags = edit.getByRole('group', { name: 'Tags' }).getByRole('button');
+      for (let i = 0; i < (await tags.count()); i++) await wide(tags.nth(i), `a tag ${i}`);
+      await tall(edit.getByRole('link', { name: 'Open link' }), 'Open link in the café sheet');
+      await switchRow(edit, 'Tried it');
       await page.keyboard.press('Escape');
       await edit.waitFor({ state: 'detached' });
+      await page.getByRole('region', { name: 'Dishes' }).getByText('Cardamom bun').click();
+      const dish = page.getByRole('dialog');
+      await switchRow(dish, 'Would order again');
+      await page.keyboard.press('Escape');
+      await dish.waitFor({ state: 'detached' });
     } finally {
       await page.emulateMedia({ reducedMotion: null });
     }

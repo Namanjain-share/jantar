@@ -15,7 +15,7 @@ import { useDeps } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
 import { Sheet } from '../../../kit/Sheet.js';
 import { Spinner } from '../../../kit/Spinner.js';
-import { Switch } from '../../devices/parts.js';
+import { SwitchRow } from '../../devices/parts.js';
 import { AmountField, CHIP, CHIP_OFF, CHIP_ON } from '../money/fields.js';
 import { NotSaved } from '../shared/states.js';
 import { Field, INPUT, OfflineLine, SheetActions, TEXTAREA, useOffline, useWrite } from '../today/parts.js';
@@ -170,12 +170,9 @@ function VisitForm({ place, visit, today, currency, onSaved, onDelete, onDone }:
       </Field>
       {!visit && had.length ? (
         <>
-          <div className="flex min-h-44 items-center gap-12 py-8">
-            <Switch id={`${id}-rate`} checked={rate} onChange={setRate} />
-            <label htmlFor={`${id}-rate`} className="type-small text-ink">
-              Also rate the dishes I had
-            </label>
-          </div>
+          <SwitchRow id={`${id}-rate`} checked={rate} onChange={setRate}>
+            Also rate the dishes I had
+          </SwitchRow>
           {rate
             ? had.map((n) => (
                 <Field key={n} label={n} id={`${id}-rate-${n}`}>

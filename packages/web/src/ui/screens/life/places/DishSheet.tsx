@@ -12,7 +12,7 @@ import { useDeps } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
 import { Sheet } from '../../../kit/Sheet.js';
 import { Spinner } from '../../../kit/Spinner.js';
-import { Switch } from '../../devices/parts.js';
+import { SwitchRow } from '../../devices/parts.js';
 import { AmountField } from '../money/fields.js';
 import { NotSaved } from '../shared/states.js';
 import { Field, INPUT, OfflineLine, SheetActions, TEXTAREA, useOffline, useWrite, type Undo } from '../today/parts.js';
@@ -99,12 +99,9 @@ function DishForm({ place, index, currency, undo, onSaved, onDone }: Omit<DishSh
         {rating ? null : <p className="mt-4 type-small text-ink-3">Not tried yet</p>}
       </Field>
       <AmountField id={`${id}-price`} label="Price" value={price} start={dish ? startPrice : undefined} onChange={setPrice} currency={currency} />
-      <div className="flex min-h-44 items-center gap-12 py-8">
-        <Switch id={`${id}-again`} checked={again} onChange={setAgain} />
-        <label htmlFor={`${id}-again`} className="type-small text-ink">
-          Would order again
-        </label>
-      </div>
+      <SwitchRow id={`${id}-again`} checked={again} onChange={setAgain}>
+        Would order again
+      </SwitchRow>
       <Field label="Notes" htmlFor={`${id}-notes`}>
         <textarea id={`${id}-notes`} className={TEXTAREA} value={notes} maxLength={200} rows={2} onChange={(e) => setNotes(e.target.value)} />
       </Field>

@@ -33,11 +33,11 @@ export function TagPicker({ id, value, onChange, custom = [] }: { id: string; va
     <Field label="Tags" id={id}>
       <div role="group" aria-labelledby={id} className="flex flex-wrap gap-6">
         {chips.map((t) => (
-          <button key={t} type="button" aria-pressed={has(t)} disabled={full && !has(t)} onClick={() => toggle(t)} className={clsx(CHIP, has(t) ? CHIP_ON : CHIP_OFF, 'disabled:opacity-40')}>
+          <button key={t} type="button" aria-pressed={has(t)} disabled={full && !has(t)} onClick={() => toggle(t)} className={clsx(CHIP, has(t) ? CHIP_ON : CHIP_OFF, 'coarse:min-w-44 disabled:opacity-40')}>
             {tagLabel(t)}
           </button>
         ))}
-        <button type="button" aria-pressed={typing} disabled={full} onClick={() => setTyping((o) => !o)} className={clsx(CHIP, typing ? CHIP_ON : CHIP_OFF, 'disabled:opacity-40')}>
+        <button type="button" aria-pressed={typing} disabled={full} onClick={() => setTyping((o) => !o)} className={clsx(CHIP, typing ? CHIP_ON : CHIP_OFF, 'coarse:min-w-44 disabled:opacity-40')}>
           Other…
         </button>
       </div>

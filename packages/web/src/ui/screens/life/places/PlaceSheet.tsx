@@ -26,7 +26,7 @@ import { IconButton } from '../../../kit/IconButton.js';
 import { Sheet } from '../../../kit/Sheet.js';
 import { Spinner } from '../../../kit/Spinner.js';
 import { Segmented } from '../../accounts/Segmented.js';
-import { Switch } from '../../devices/parts.js';
+import { SwitchRow } from '../../devices/parts.js';
 import { linkOk, OpenLink } from '../shared/links.js';
 import { NotSaved } from '../shared/states.js';
 import { Field, INPUT, OfflineLine, SheetActions, TEXTAREA, useOffline, useWrite } from '../today/parts.js';
@@ -207,12 +207,9 @@ function PlaceForm({
         />
       </Field>
       {badLink ? <p className="type-small text-ink-2">Use a link that starts with https://</p> : null}
-      <div className="flex min-h-44 items-center gap-12 py-8">
-        <Switch id={`${id}-tried`} checked={tried} onChange={setTried} />
-        <label htmlFor={`${id}-tried`} className="type-small text-ink">
-          Tried it
-        </label>
-      </div>
+      <SwitchRow id={`${id}-tried`} checked={tried} onChange={setTried}>
+        Tried it
+      </SwitchRow>
       <Field label="Stars" id={`${id}-stars`} aside={<ClearRating value={stars} label="Clear the stars" onClear={() => setStars(null)} />}>
         <StarPicker label="Stars" value={stars} onChange={setStars} />
       </Field>

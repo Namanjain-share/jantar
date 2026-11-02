@@ -73,6 +73,19 @@ export function Switch({
   );
 }
 
+/**
+ * A switch with its words as one row: the whole row is the <label>, at least
+ * 44 px tall, so a tap anywhere on it (not only the 28 px box) toggles it.
+ */
+export function SwitchRow({ id, checked, onChange, children, className }: { id?: string; checked: boolean; onChange: (on: boolean) => void; children: ReactNode; className?: string }) {
+  return (
+    <label className={clsx('flex min-h-44 cursor-pointer items-center gap-12 py-8', className)}>
+      <Switch id={id} checked={checked} onChange={onChange} />
+      <span className="type-small text-ink">{children}</span>
+    </label>
+  );
+}
+
 const THEMES: { v: ThemePref; label: string }[] = [
   { v: 'system', label: 'System' },
   { v: 'light', label: 'Light' },

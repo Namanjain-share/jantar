@@ -37,7 +37,7 @@ export function OpenLink({ url, className, label = 'Open link', name }: { url: s
       target="_blank"
       rel="noopener noreferrer"
       aria-label={name}
-      className={className ?? 'inline-flex items-center gap-4 type-small text-ink-2 underline underline-offset-2 hover:text-ink'}
+      className={className ?? 'inline-flex items-center gap-4 type-small text-ink-2 underline underline-offset-2 hover:text-ink coarse:min-h-44'}
     >
       {label}
       <ArrowSquareOutIcon size={12} aria-hidden="true" />
