@@ -7,7 +7,9 @@
  * square is ember (design rule 3: what needs you now). A tap elsewhere opens
  * the sheet. Notes never show on a row.
  *
- * Done: "Posted Mon 2 Nov 19:41" or "Skipped", and Open for the posted link.
+ * Done: the label never cut ("Reddit · r/exampletools"; it wraps, and the
+ * time goes under it when both don't fit), "Posted Mon 2 Nov 19:41" or
+ * "Skipped", and Open for the posted link.
  *
  * Copy writes to the clipboard on the user's tap; Open is a new tab with no
  * opener and no referrer. Jantar never posts anything anywhere.
@@ -106,8 +108,8 @@ export function DonePostRow({ post, tz, onOpen }: { post: Post; tz?: string | nu
       </span>
       <div className="min-w-0 flex-1">
         <button type="button" className="block w-full py-4 pr-8 text-left coarse:min-h-44 coarse:py-10" onClick={() => onOpen(post)}>
-          <span className="flex items-baseline gap-8">
-            <span className="min-w-0 truncate type-row text-ink-3">{label}</span>
+          <span className="flex flex-wrap items-baseline gap-x-8">
+            <span className="min-w-0 break-words type-row text-ink-3">{label}</span>
             <span className="ml-auto flex-none type-mono text-ink-3">{doneText(post, tz)}</span>
           </span>
           {line ? <span className="mt-2 block truncate type-small text-ink-3">{line}</span> : null}

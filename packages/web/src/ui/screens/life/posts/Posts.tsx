@@ -8,9 +8,10 @@
  *                                                 wraps between goals, never cut)
  *   No device gets post reminders.             PushWarning, while posts are on
  *   [ To post | Done ]
- *   LATE / TODAY / TOMORROW / LATER / NO DATE  PostRow
- *   [+ Post] [Log a comment]       Posted this week: 2   (the count wraps to its own
- *                                                 line on a narrow phone)
+ *   [+ Post] [Log a comment]                   on both, above the list, so a long
+ *                                                 list never pushes them down
+ *   LATE / TODAY / TOMORROW / LATER / NO DATE  PostRow (Done: DonePostRow)
+ *   Posted this week: 2
  *
  * Log a comment (v0.9) opens LogCommentSheet: paste the link to a comment
  * already made; it is saved posted now, with a 5 s Undo that deletes it.
@@ -164,6 +165,15 @@ export function Posts({ filter = 'open', id }: PostsProps) {
       <div className="px-16 pb-12 pt-4">
         <Segmented<PostsFilter> label="Show" fill value={filter} onChange={(f) => navigate(routePath(f === 'open' ? { name: 'posts' } : { name: 'posts', filter: f }), { replace: true })} segments={FILTERS} />
       </div>
+      {week ? (
+        <div className="flex flex-wrap items-center gap-x-12 gap-y-8 px-16 pb-12">
+          {addButton}
+          <Button disabled={offline} onClick={() => logSheet.show()}>
+            <ChatCircleIcon size={16} aria-hidden="true" />
+            Log a comment
+          </Button>
+        </div>
+      ) : null}
       {actions.error ? (
         <div className="px-16">
           <NotSaved error={actions.error} />
@@ -204,16 +214,7 @@ export function Posts({ filter = 'open', id }: PostsProps) {
           );
         }}
       </Loaded>
-      {week ? (
-        <div className="flex flex-wrap items-center gap-x-12 gap-y-8 px-16 pt-12">
-          {addButton}
-          <Button disabled={offline} onClick={() => logSheet.show()}>
-            <ChatCircleIcon size={16} aria-hidden="true" />
-            Log a comment
-          </Button>
-          <span className="ml-auto type-mono text-ink-3">Posted this week: {week.posted}</span>
-        </div>
-      ) : null}
+      {week ? <p className="px-16 pt-12 type-mono text-ink-3">Posted this week: {week.posted}</p> : null}
       <PostSheet
         open={sheet.open}
         onOpenChange={sheet.onOpenChange}

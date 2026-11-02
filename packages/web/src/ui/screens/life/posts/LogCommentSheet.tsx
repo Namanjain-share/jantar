@@ -14,7 +14,8 @@
  * The platform and where come from the link alone (postPlaceOf): Jantar
  * never fetches, opens or checks it. A retry of the same body keeps its
  * Idempotency-Key, so a double tap logs once; a failure (the same link
- * twice included) keeps the sheet open with Not saved.
+ * twice included) keeps the sheet open with Not saved, until the link is
+ * edited. Paste, then the keyboard's Done saves (one thumb).
  */
 import { useId, useState, type FormEvent } from 'react';
 import { POST_LINK_MAX, POST_TEXT_MAX, POST_WHERE_MAX, PostBodySchema, PostWhereSchema, postPlaceOf, type PostBody } from '@jantar/protocol';
@@ -91,6 +92,7 @@ function LogForm({ onDone, onLogged }: { onDone: () => void; onLogged: (id: stri
           type="url"
           inputMode="url"
           autoFocus
+          enterKeyHint="done"
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
@@ -100,7 +102,10 @@ function LogForm({ onDone, onLogged }: { onDone: () => void; onLogged: (id: stri
           maxLength={POST_LINK_MAX}
           aria-invalid={link.trim() !== '' && !place}
           aria-describedby={`${id}-place`}
-          onChange={(e) => setLink(e.target.value)}
+          onChange={(e) => {
+            setLink(e.target.value);
+            w.clear();
+          }}
         />
       </Field>
       <p id={`${id}-place`} aria-live="polite" className={place ? 'type-mono text-ink-2' : 'type-small text-ink-2'}>

@@ -592,14 +592,25 @@ describe('Posts: Log a comment (v0.9)', () => {
   const type = (sheet: HTMLElement, label: string, value: string) => fireEvent.change(within(sheet).getByLabelText(label), { target: { value } });
   const logButton = (sheet: HTMLElement) => within(sheet).getByRole('button', { name: 'Log comment' }) as HTMLButtonElement;
 
-  it('shows the button beside + Post on To post and on Done, off while offline', async () => {
+  // a comes before b in the page.
+  const before = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+  it('shows the button beside + Post, above the list, on To post and on Done (a long list never pushes it down); off while offline', async () => {
     const a = render();
-    await screen.findByRole('region', { name: 'Late' });
-    expect((screen.getByRole('button', { name: 'Log a comment' }) as HTMLButtonElement).disabled).toBe(false);
+    const late = await screen.findByRole('region', { name: 'Late' });
+    const log = screen.getByRole('button', { name: 'Log a comment' }) as HTMLButtonElement;
+    expect(log.disabled).toBe(false);
+    expect(log.parentElement).toBe(screen.getByRole('button', { name: 'Add post' }).parentElement);
+    expect(before(screen.getByRole('group', { name: 'Show' }), log)).toBe(true);
+    expect(before(log, late)).toBe(true);
+    // The week's count stays under the list.
+    expect(before(screen.getByRole('region', { name: 'No date' }), screen.getByText('Posted this week: 2'))).toBe(true);
     a.unmount();
     const b = render({ path: '/posts?filter=done' });
-    await screen.findByRole('list', { name: 'Done' });
+    const done = await screen.findByRole('list', { name: 'Done' });
     expect((screen.getByRole('button', { name: 'Log a comment' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(before(screen.getByRole('button', { name: 'Log a comment' }), done)).toBe(true);
+    expect(before(screen.getByRole('button', { name: 'Add post' }), done)).toBe(true);
     b.unmount();
     render({ conn: 'offline' });
     await screen.findByRole('region', { name: 'Late' });
@@ -613,6 +624,8 @@ describe('Posts: Log a comment (v0.9)', () => {
     const link = within(sheet).getByLabelText('Link to your comment') as HTMLInputElement;
     expect(link.type).toBe('url');
     expect(link.getAttribute('autocapitalize')).toBe('off');
+    // Paste, then the keyboard's Done saves.
+    expect(link.getAttribute('enterkeyhint')).toBe('done');
     expect(logButton(sheet).disabled).toBe(true);
     type(sheet, 'Link to your comment', SHARE);
     expect(within(sheet).getByText('Reddit · r/exampletools')).toBeTruthy();
@@ -703,6 +716,9 @@ describe('Posts: Log a comment (v0.9)', () => {
     expect((await within(sheet).findByRole('alert')).textContent).toBe('Not saved. You logged that link already.');
     expect((within(sheet).getByLabelText('Link to your comment') as HTMLInputElement).value).toBe(SHARE);
     expect(screen.getByRole('dialog', { name: 'Log a comment' })).toBeTruthy();
+    // Another link: the old sentence goes.
+    type(sheet, 'Link to your comment', 'https://www.reddit.com/r/exampletools/s/ZyXwVu9876');
+    expect(within(sheet).queryByRole('alert')).toBeNull();
   });
 
   it('Done lists a logged comment with what was written and Open', async () => {
@@ -714,5 +730,17 @@ describe('Posts: Log a comment (v0.9)', () => {
     expect(item.textContent).toContain('Posted Thu 15 Jan 15:44');
     expect(item.textContent).toContain('Answered the question first.');
     expect(within(item).getByRole('link', { name: 'Open the posted link: Reddit · r/exampletools' }).getAttribute('href')).toBe(SHARE);
+  });
+
+  it('Done never cuts the where: the label wraps, and the time goes under it when both do not fit', async () => {
+    const where = 'r/exampledevelopersabcdefgh';
+    const logged = post(41, { kind: 'comment', where, status: 'posted', postedAt: '2026-01-15T15:44:00.000Z', postedUrl: SHARE });
+    render({ path: '/posts?filter=done', list: async () => ({ today: DAY, week: WEEK, posts: [logged] }) });
+    const list = await screen.findByRole('list', { name: 'Done' });
+    const label = within(list).getByText(`Reddit · ${where}`);
+    expect(label.className).not.toContain('truncate');
+    expect(label.className).toContain('break-words');
+    expect(label.parentElement?.className).toContain('flex-wrap');
+    expect(within(list).getByText('Posted Thu 15 Jan 15:44').parentElement).toBe(label.parentElement);
   });
 });
