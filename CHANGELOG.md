@@ -3,6 +3,16 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.10.2 (unreleased)
+
+- Alerts no longer say **you rejected** for a tool call nobody refused.
+  Claude writes the same words when a call is stopped (Esc, a stopped
+  workflow or agent, ccw's save prompt) as when you say No, so Jantar now
+  says it only when a permission prompt could have been on screen: never
+  in a subagent or workflow agent, and in bypass or auto mode only for a
+  question or plan you dismissed. A No with words typed for Claude always
+  shows, and a subagent's prompt you said no to now shows too.
+
 ## 0.10.1 (3 November 2026)
 
 - **New folder in Files**: inside any folder you browse (say ~/Desktop),
