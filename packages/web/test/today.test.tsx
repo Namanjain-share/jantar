@@ -21,6 +21,7 @@ import { ApiError } from '../src/lib/api.js';
 import { formatAmount } from '../src/lib/money.js';
 import { NO_PUSH, NO_PUSH_DEVICES, NO_PUSH_SWITCH } from '../src/ui/screens/life/shared/PushWarning.js';
 import { lifeClockAt } from '../src/ui/screens/life/today/parts.js';
+import { commentsLine } from '../src/ui/screens/life/today/Today.js';
 import { fakeApi, iso, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
 preloadPlaces('today');
@@ -319,6 +320,41 @@ describe('Today: posts (v0.7)', () => {
     const life = await section('Life');
     await waitFor(() => expect(within(life).getAllByRole('link').map((l) => l.textContent)).toEqual(['Todos', 'Medicines', 'Food', 'Finance', 'Posts']));
     expect(within(life).getByRole('link', { name: 'Posts' }).getAttribute('href')).toBe('/posts');
+  });
+});
+
+describe('Today: comments (v0.9)', () => {
+  const on = () => status({ modules: { todos: true, medicines: true, food: true, places: false, finance: true, posts: true } });
+
+  it('says the comments made today against the goal, on a second line that opens Posts › Done', async () => {
+    const { router } = render({ status: on(), today: today({ posts: { today: 2, late: 1, comments: { done: 3, goal: 5 } } }) });
+    const posts = await section('Posts');
+    expect(within(posts).getAllByRole('link').map((l) => l.textContent)).toEqual(['2 to post today · 1 late', 'Comments today 3/5']);
+    const link = within(posts).getByRole('link', { name: 'Comments today 3/5' });
+    expect(link.getAttribute('href')).toBe('/posts?filter=done');
+    // Ink only, even under the goal.
+    expect(link.innerHTML).not.toMatch(/signal|ember/);
+    fireEvent.click(link);
+    expect(router.getState().route).toEqual({ name: 'posts', filter: 'done' });
+  });
+
+  it('with no comment goal it says the count alone; with a goal it shows 0/5; with neither it shows nothing', async () => {
+    const a = render({ status: on(), today: today({ posts: { today: 0, late: 0, comments: { done: 3 } } }) });
+    expect(within(await section('Posts')).getByRole('link', { name: 'Comments today 3' })).toBeTruthy();
+    a.unmount();
+    const b = render({ status: on(), today: today({ posts: { today: 0, late: 0, comments: { done: 0, goal: 5 } } }) });
+    const zero = within(await section('Posts')).getByRole('link', { name: 'Comments today 0/5' });
+    expect(zero.innerHTML).not.toMatch(/signal|ember/);
+    b.unmount();
+    render({ status: on(), today: today({ posts: { today: 0, late: 0, comments: { done: 0 } } }) });
+    const posts = await section('Posts');
+    expect(within(posts).getAllByRole('link').map((l) => l.textContent)).toEqual(['Nothing to post today']);
+  });
+
+  it('commentsLine reads N/goal, or N alone', () => {
+    expect(commentsLine({ done: 3, goal: 5 })).toBe('Comments today 3/5');
+    expect(commentsLine({ done: 0, goal: 8 })).toBe('Comments today 0/8');
+    expect(commentsLine({ done: 12 })).toBe('Comments today 12');
   });
 });
 

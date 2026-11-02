@@ -9,15 +9,18 @@
  *   No device gets post reminders.             PushWarning, while posts are on
  *   [ To post | Done ]
  *   LATE / TODAY / TOMORROW / LATER / NO DATE  PostRow
- *   [+ Post]                       Posted this week: 2
+ *   [+ Post] [Log a comment]       Posted this week: 2   (the count wraps to its own
+ *                                                 line on a narrow phone)
  *
+ * Log a comment (v0.9) opens LogCommentSheet: paste the link to a comment
+ * already made; it is saved posted now, with a 5 s Undo that deletes it.
  * The square marks a post Posted with a 5 s Undo (its old status goes
  * back); Skip in the sheet does the same. Delete asks nothing: the post
  * leaves the list at once with a 5 s Undo, and the delete is sent once the
  * Undo goes. `id` (a post's push) opens that post's sheet on arrival. The
  * title is the page's <h1> in every state.
  */
-import { PlusIcon } from '@phosphor-icons/react';
+import { ChatCircleIcon, PlusIcon } from '@phosphor-icons/react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Post, PostPatch } from '@jantar/protocol';
 import { routePath, type PostsFilter } from '../../../../lib/router.js';
@@ -30,6 +33,7 @@ import { EMPTY, LifeEmpty, NotSaved } from '../shared/states.js';
 import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
 import { Loaded, Page, useHeldDeletes, useLifeClock, useOffline, useSheet, useUndo } from '../today/parts.js';
 import { GoalsSheet } from './GoalsSheet.js';
+import { LogCommentSheet } from './LogCommentSheet.js';
 import { byGroup, GROUP_LABEL, GROUP_ORDER, postLabel, weekGoals } from './model.js';
 import { DonePostRow, PostRow } from './PostRow.js';
 import { PostSheet } from './PostSheet.js';
@@ -48,6 +52,8 @@ export interface PostActions {
   /** Posted or Skipped at once (with what the sheet edited), and a 5 s Undo that puts its old status back. */
   mark(post: Post, status: 'posted' | 'skipped', changes?: PostPatch): void;
   remove(post: Post): void;
+  /** A comment just logged (v0.9): a 5 s Undo that deletes it. */
+  logged(id: string, label: string): void;
   /** A row with a write in flight. */
   busy: ReadonlySet<string>;
   error: unknown;
@@ -94,7 +100,8 @@ function usePostActions(reload: () => void): PostActions {
   const { remove: hold, visible: unheld } = useHeldDeletes(undo);
   const remove = useCallback((p: Post) => hold(p.id, `Deleted: ${postLabel(p)}`, () => act(p.id, () => api.postDelete(p.id))), [hold, act, api]);
   const visible = useCallback((posts: readonly Post[]) => unheld(posts, (p) => p.id), [unheld]);
-  return useMemo(() => ({ mark, remove, busy, error, undo, visible }), [mark, remove, busy, error, undo, visible]);
+  const logged = useCallback((id: string, label: string) => show(`Logged: ${label}`, () => void act(id, () => api.postDelete(id))), [act, api, show]);
+  return useMemo(() => ({ mark, remove, logged, busy, error, undo, visible }), [mark, remove, logged, busy, error, undo, visible]);
 }
 
 export function Posts({ filter = 'open', id }: PostsProps) {
@@ -107,6 +114,7 @@ export function Posts({ filter = 'open', id }: PostsProps) {
   const now = useLifeClock(status, load.data?.today);
   const sheet = useSheet<Post>();
   const goals = useSheet();
+  const logSheet = useSheet();
   const opened = useRef<string | null>(null);
   const target = id ? load.data?.posts.find((p) => p.id === id) : undefined;
   const { show } = sheet;
@@ -197,8 +205,12 @@ export function Posts({ filter = 'open', id }: PostsProps) {
         }}
       </Loaded>
       {week ? (
-        <div className="flex items-center gap-12 px-16 pt-12">
+        <div className="flex flex-wrap items-center gap-x-12 gap-y-8 px-16 pt-12">
           {addButton}
+          <Button disabled={offline} onClick={() => logSheet.show()}>
+            <ChatCircleIcon size={16} aria-hidden="true" />
+            Log a comment
+          </Button>
           <span className="ml-auto type-mono text-ink-3">Posted this week: {week.posted}</span>
         </div>
       ) : null}
@@ -214,6 +226,15 @@ export function Posts({ filter = 'open', id }: PostsProps) {
         onDelete={actions.remove}
       />
       {week ? <GoalsSheet open={goals.open} onOpenChange={goals.onOpenChange} sheetKey={goals.key} goals={week.goals} onSaved={load.reload} /> : null}
+      <LogCommentSheet
+        open={logSheet.open}
+        onOpenChange={logSheet.onOpenChange}
+        sheetKey={logSheet.key}
+        onLogged={(logged, label) => {
+          load.reload();
+          actions.logged(logged, label);
+        }}
+      />
     </Page>
   );
 }

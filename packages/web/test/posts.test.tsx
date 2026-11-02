@@ -581,3 +581,138 @@ describe('Posts: the weekly goals', () => {
     await waitFor(() => expect(postGoalsSet).toHaveBeenCalledWith({ goals: [] }, expect.any(String)));
   });
 });
+
+describe('Posts: Log a comment (v0.9)', () => {
+  const SHARE = 'https://www.reddit.com/r/exampletools/s/AbCdEf1234';
+  const openLog = async () => {
+    await screen.findByRole('button', { name: 'Add post' });
+    fireEvent.click(screen.getByRole('button', { name: 'Log a comment' }));
+    return screen.findByRole('dialog', { name: 'Log a comment' });
+  };
+  const type = (sheet: HTMLElement, label: string, value: string) => fireEvent.change(within(sheet).getByLabelText(label), { target: { value } });
+  const logButton = (sheet: HTMLElement) => within(sheet).getByRole('button', { name: 'Log comment' }) as HTMLButtonElement;
+
+  it('shows the button beside + Post on To post and on Done, off while offline', async () => {
+    const a = render();
+    await screen.findByRole('region', { name: 'Late' });
+    expect((screen.getByRole('button', { name: 'Log a comment' }) as HTMLButtonElement).disabled).toBe(false);
+    a.unmount();
+    const b = render({ path: '/posts?filter=done' });
+    await screen.findByRole('list', { name: 'Done' });
+    expect((screen.getByRole('button', { name: 'Log a comment' }) as HTMLButtonElement).disabled).toBe(false);
+    b.unmount();
+    render({ conn: 'offline' });
+    await screen.findByRole('region', { name: 'Late' });
+    expect((screen.getByRole('button', { name: 'Log a comment' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('reads the link as it is typed: Reddit with its sub, X with no where, another site by its host, and a bad link', async () => {
+    render();
+    const sheet = await openLog();
+    expect(within(sheet).getByText('Paste the link to your comment. On Reddit: Share, then Copy link.')).toBeTruthy();
+    const link = within(sheet).getByLabelText('Link to your comment') as HTMLInputElement;
+    expect(link.type).toBe('url');
+    expect(link.getAttribute('autocapitalize')).toBe('off');
+    expect(logButton(sheet).disabled).toBe(true);
+    type(sheet, 'Link to your comment', SHARE);
+    expect(within(sheet).getByText('Reddit · r/exampletools')).toBeTruthy();
+    expect(logButton(sheet).disabled).toBe(false);
+    type(sheet, 'Link to your comment', 'https://redd.it/1abc2de');
+    expect(within(sheet).getByText('Reddit · Comment')).toBeTruthy();
+    type(sheet, 'Link to your comment', 'https://x.com/example_user/status/1234567890123456789');
+    expect(within(sheet).getByText('X · Comment')).toBeTruthy();
+    expect((within(sheet).getByLabelText('Where') as HTMLInputElement).value).toBe('');
+    type(sheet, 'Link to your comment', 'https://www.example.com/discussions/1#comment-2');
+    expect(within(sheet).getByText('Comment · example.com')).toBeTruthy();
+    for (const bad of ['http://www.reddit.com/r/exampletools/s/AbCdEf1234', 'reddit.com/r/exampletools']) {
+      type(sheet, 'Link to your comment', bad);
+      expect(within(sheet).getByText('Use a link that starts with https://')).toBeTruthy();
+      expect(logButton(sheet).disabled).toBe(true);
+    }
+  });
+
+  it('fills Where from the link until it is typed in, then keeps what was typed', async () => {
+    render();
+    const sheet = await openLog();
+    const where = () => (within(sheet).getByLabelText('Where') as HTMLInputElement).value;
+    type(sheet, 'Link to your comment', SHARE);
+    expect(where()).toBe('r/exampletools');
+    type(sheet, 'Link to your comment', 'https://www.reddit.com/r/examplecode/s/AbCdEf1234');
+    expect(where()).toBe('r/examplecode');
+    type(sheet, 'Where', 'r/examplecode · weekly thread');
+    expect(within(sheet).getByText('Reddit · r/examplecode · weekly thread')).toBeTruthy();
+    type(sheet, 'Link to your comment', SHARE);
+    expect(where()).toBe('r/examplecode · weekly thread');
+    type(sheet, 'Where', 'r/example\u202etools');
+    expect(within(sheet).getByText('Use one line, with no special characters.')).toBeTruthy();
+    expect(logButton(sheet).disabled).toBe(true);
+  });
+
+  it('sends the posted comment with one Idempotency-Key across a retry; then closes, reloads and offers Undo, which deletes it', async () => {
+    let calls = 0;
+    const postCreate = vi.fn(async (): Promise<{ id: string }> => {
+      calls += 1;
+      if (calls === 1) throw new ApiError('unavailable', 'The Mac did not answer.', 503);
+      return { id: id(30) };
+    });
+    const postDelete = vi.fn(async () => ({ ok: true as const }));
+    const { api } = render({ api: { postCreate, postDelete } });
+    const sheet = await openLog();
+    type(sheet, 'Link to your comment', `  ${SHARE} `);
+    type(sheet, 'What you wrote', 'Answered the question first.\n\nThen one thing I did.');
+    fireEvent.click(logButton(sheet));
+    expect((await within(sheet).findByRole('alert')).textContent).toBe('Not saved. The Mac did not answer.');
+    fireEvent.click(logButton(sheet));
+    await waitFor(() => expect(postCreate).toHaveBeenCalledTimes(2));
+    const body = { platform: 'reddit', kind: 'comment', status: 'posted', postedUrl: SHARE, where: 'r/exampletools', text: 'Answered the question first.\n\nThen one thing I did.' };
+    expect(postCreate.mock.calls.map((c) => (c as unknown[])[0])).toEqual([body, body]);
+    const keys = postCreate.mock.calls.map((c) => (c as unknown[])[1]);
+    expect(typeof keys[0]).toBe('string');
+    expect(keys[1]).toBe(keys[0]);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(await screen.findByText('Logged: Reddit · r/exampletools')).toBeTruthy();
+    await waitFor(() => expect(api.postsList).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(postDelete).toHaveBeenCalledWith(id(30)));
+  });
+
+  it('leaves the text out when none was written, and Cancel sends nothing', async () => {
+    const postCreate = vi.fn(async () => ({ id: id(31) }));
+    render({ api: { postCreate } });
+    let sheet = await openLog();
+    type(sheet, 'Link to your comment', 'https://x.com/example_user/status/1234567890123456789');
+    type(sheet, 'What you wrote', '   ');
+    fireEvent.click(logButton(sheet));
+    await waitFor(() => expect(postCreate).toHaveBeenCalledWith({ platform: 'x', kind: 'comment', status: 'posted', postedUrl: 'https://x.com/example_user/status/1234567890123456789' }, expect.any(String)));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    sheet = await openLog();
+    expect((within(sheet).getByLabelText('Link to your comment') as HTMLInputElement).value).toBe('');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(postCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('the same link twice keeps the sheet open with Not saved and the sentence', async () => {
+    const postCreate = vi.fn(async (): Promise<never> => {
+      throw new ApiError('conflict', 'You logged that link already.', 409);
+    });
+    render({ api: { postCreate } });
+    const sheet = await openLog();
+    type(sheet, 'Link to your comment', SHARE);
+    fireEvent.click(logButton(sheet));
+    expect((await within(sheet).findByRole('alert')).textContent).toBe('Not saved. You logged that link already.');
+    expect((within(sheet).getByLabelText('Link to your comment') as HTMLInputElement).value).toBe(SHARE);
+    expect(screen.getByRole('dialog', { name: 'Log a comment' })).toBeTruthy();
+  });
+
+  it('Done lists a logged comment with what was written and Open', async () => {
+    const logged = post(40, { kind: 'comment', where: 'r/exampletools', text: 'Answered the question first.\nThen one thing I did.', status: 'posted', postedAt: '2026-01-15T15:44:00.000Z', postedUrl: SHARE });
+    render({ path: '/posts?filter=done', list: async () => ({ today: DAY, week: WEEK, posts: [logged] }) });
+    const list = await screen.findByRole('list', { name: 'Done' });
+    const item = within(list).getByRole('listitem');
+    expect(item.textContent).toContain('Reddit · r/exampletools');
+    expect(item.textContent).toContain('Posted Thu 15 Jan 15:44');
+    expect(item.textContent).toContain('Answered the question first.');
+    expect(within(item).getByRole('link', { name: 'Open the posted link: Reddit · r/exampletools' }).getAttribute('href')).toBe(SHARE);
+  });
+});
