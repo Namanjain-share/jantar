@@ -31,7 +31,7 @@ import { FakeClock } from '../../src/core/clock.js';
 import { createTestContext, type TestContext } from '../../src/core/testing.js';
 import { notBuilt } from '../../src/core/not-implemented.js';
 import { BACKUP_CHECK_MS, BACKUP_STALE_MS, BackupTimer, RESTORE_REFUSED, backupSummary, listBackups, nextBackupAt, pruneBackups, writeBackup } from '../../src/life/backup.js';
-import { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, openCheckedDb, openLifeDb } from '../../src/life/db.js';
+import { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, LIFE_SCHEMA_VERSION, openCheckedDb, openLifeDb } from '../../src/life/db.js';
 import { BACKUP_REASONS, LIFE_START_FAILED, RESTORE_REASONS, buildLifeService } from '../../src/life/service.js';
 import { buildTodosModule } from '../../src/life/todos/module.js';
 import { makeApi, makeFakes, type TestApi } from '../api/fakes.js';
@@ -195,11 +195,14 @@ describe('LD3: backups', () => {
     expect(pruneBackups(backups)).toEqual([]);
   });
 
-  it('the summary: the newest backup time and the count', () => {
-    expect(backupSummary(backups)).toEqual({ last: null, count: 0 });
+  it('the summary: the newest backup time, the count and (v0.10) the newest pre-upgrade copy', () => {
+    expect(backupSummary(backups)).toEqual({ last: null, count: 0, pre: null });
     seedBackup('life-2026-10-01.db', [], Date.parse('2026-10-01T03:30:00.000Z'));
     seedBackup('life-2026-10-02.db', [], Date.parse('2026-10-02T03:30:00.000Z'));
-    expect(backupSummary(backups)).toEqual({ last: '2026-10-02T03:30:00.000Z', count: 2 });
+    expect(backupSummary(backups)).toEqual({ last: '2026-10-02T03:30:00.000Z', count: 2, pre: null });
+    seedBackup('life-pre-0.7.0.db', [], Date.parse('2026-09-01T03:30:00.000Z'));
+    seedBackup('life-pre-0.10.0.db', [], Date.parse('2026-10-01T09:30:00.000Z'));
+    expect(backupSummary(backups)).toEqual({ last: '2026-10-02T03:30:00.000Z', count: 4, pre: 'life-pre-0.10.0.db' });
   });
 
   it('refused while Life is off or broken: nothing to copy', async () => {
@@ -442,7 +445,7 @@ describe('v0.7: the pre-upgrade copy, life-pre-0.7.0.db', () => {
     return out;
   }
 
-  it('is listed, survives backups written the same day, and restores: the 0.6.1 copy moves to schema 2', async () => {
+  it('is listed, survives backups written the same day, and restores: the 0.6.1 copy moves to the current schema', async () => {
     const pre = schemaOneBackup('life-pre-0.7.0.db', 'Before the upgrade');
     const before = sha(pre);
     lifeDbThere();
@@ -458,7 +461,7 @@ describe('v0.7: the pre-upgrade copy, life-pre-0.7.0.db', () => {
     expect(titles()).toEqual(['Before the upgrade']);
     const db = new DatabaseSync(join(dir, 'life.db'), { readOnly: true });
     try {
-      expect((db.prepare("SELECT value FROM meta WHERE key = 'schema'").get() as { value: string }).value).toBe('2');
+      expect((db.prepare("SELECT value FROM meta WHERE key = 'schema'").get() as { value: string }).value).toBe(String(LIFE_SCHEMA_VERSION));
     } finally {
       db.close();
     }

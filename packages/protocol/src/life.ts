@@ -1014,6 +1014,10 @@ export const LifeStatusSchema = z.object({
   /** Ask Claude can run on this Mac, or why not. */
   estimate: z.object({ available: z.boolean(), reason: z.string().optional() }),
   backups: z.object({ last: IsoDateSchema.nullable(), count: z.number().int() }),
+  /** v0.10: life.db's schema while it is open (a 0.9 daemon sends none). */
+  schema: z.number().int().optional(),
+  /** v0.10: the newest pre-upgrade copy the daemon wrote before migrating (`life-pre-<version>.db`), when there is one. */
+  preUpgrade: z.string().optional(),
   /** Who would get a medicine ping now: control-scope devices with a push subscription, and the notify.webpush switch. */
   push: z.object({ devices: z.number().int().nonnegative(), webpush: z.boolean() }),
 });

@@ -20,12 +20,20 @@
  * brokenReason })` is the body of the open; `openLifeDb` calls it with
  * Life's migrations, and meetings/db.ts with Meetings' (meetings.db is
  * refused, never reset, the same way).
+ *
+ * v0.10 (spec 0.10 A2.2): before an existing file moves to a newer schema,
+ * the open can copy it first (`preMigrateCopy`), from the read-only check
+ * connection with `VACUUM INTO`, so the copy holds what only the WAL held
+ * and nothing is migrated without a way back: a copy that fails refuses
+ * the open (`precopy_failed`) with the file still at its old schema.
  */
-import { closeSync, existsSync, openSync, readSync, fstatSync, chmodSync, statSync, unlinkSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync, fstatSync, chmodSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { basename, dirname } from 'node:path';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import { CLI_NAME } from '@jantar/protocol';
 import type { LifeDb } from '../contracts.js';
+import { ensureBackupsDir } from './backup.js';
 
 /** What every Life route but status, backup and restore answers (503 life_unavailable) while life.db is broken. */
 export const LIFE_BROKEN_REASON = `Life data could not be opened. The file is untouched. Restore a backup at your Mac: ${CLI_NAME} life restore <file>`;
@@ -111,6 +119,18 @@ export const LIFE_MIGRATIONS: readonly LifeMigration[] = [
       CREATE INDEX posts_open ON posts (status, due_day);
     `,
   },
+  {
+    // v0.10: life.db's second schema change. A 0.9.0 daemon refuses a schema-3 file (newer_schema), so going back
+    // means restoring the copy the daemon wrote before migrating (backups/life-pre-0.10.0.db, docs/upgrading.md).
+    // No REFERENCES: no Life table uses foreign keys; the module deletes a café's visits in its own transaction.
+    version: 3,
+    name: 'place_visits',
+    sql: `
+      CREATE TABLE place_visits (id TEXT PRIMARY KEY, place_id TEXT NOT NULL, day TEXT NOT NULL, updated_at TEXT NOT NULL, json TEXT NOT NULL);
+      CREATE INDEX place_visits_place ON place_visits (place_id, day);
+      CREATE INDEX place_visits_day ON place_visits (day);
+    `,
+  },
 ];
 
 /** The schema this build writes and reads. A file with a newer one is refused, never downgraded. */
@@ -120,9 +140,16 @@ export const LIFE_SCHEMA_VERSION = Math.max(...LIFE_MIGRATIONS.map((m) => m.vers
  * Why an open was refused, for logs only (`{ event: 'life.broken', code }`).
  * The phone only ever sees LIFE_BROKEN_REASON.
  */
-export type LifeOpenFailure = 'not_sqlite' | 'truncated' | 'open_failed' | 'corrupt' | 'newer_schema' | 'migration_failed';
+export type LifeOpenFailure = 'not_sqlite' | 'truncated' | 'open_failed' | 'corrupt' | 'newer_schema' | 'migration_failed' | 'precopy_failed';
 
-export type LifeOpenResult = { ok: true; db: LifeDb } | { ok: false; code: LifeOpenFailure; reason: string };
+/** v0.10: the copy an open wrote before migrating (`file` is the name only, for the log). */
+export interface PreMigrateCopied {
+  from: number;
+  to: number;
+  file: string;
+}
+
+export type LifeOpenResult = { ok: true; db: LifeDb; precopy?: PreMigrateCopied } | { ok: false; code: LifeOpenFailure; reason: string };
 
 type SqliteModule = typeof import('node:sqlite');
 let sqliteModule: SqliteModule | undefined;
@@ -194,6 +221,13 @@ export interface CheckedDbOptions {
   brokenReason: string;
   /** Pragmas for this file's every connection, set with WAL (meetings.db: secure_delete). */
   pragmas?: readonly string[];
+  /**
+   * v0.10: for an existing file at schema `from` (1 or more) that is about to
+   * move to `to`, the absolute file to copy it into first, or null for none.
+   * A copy already there is kept (nothing is written); a copy that fails
+   * refuses the open as `precopy_failed`. meetings.db passes none.
+   */
+  preMigrateCopy?: (from: number, to: number) => string | null;
 }
 
 function build(raw: DatabaseSync, file: string): LifeDb {
@@ -305,13 +339,49 @@ function checked(raw: DatabaseSync, latest: number): { code: LifeOpenFailure } |
 }
 
 /**
+ * `VACUUM INTO` a 0600 `<target>.tmp` in a 0700 folder, then rename it to
+ * `target` (the way backup.ts writes a backup). True when `target` is there
+ * afterwards: written now, or kept from an earlier open whose migration then
+ * failed. A failure leaves no `.tmp` behind.
+ */
+function copyInto(raw: DatabaseSync, target: string): { ok: boolean; wrote: boolean } {
+  if (existsSync(target)) return { ok: true, wrote: false };
+  const tmp = `${target}.tmp`;
+  const removeTmp = () => {
+    try {
+      if (existsSync(tmp)) unlinkSync(tmp);
+    } catch {
+      /* best effort */
+    }
+  };
+  try {
+    ensureBackupsDir(dirname(target));
+    removeTmp();
+    closeSync(openSync(tmp, 'wx', 0o600));
+    raw.prepare('VACUUM INTO ?').run(tmp);
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, target);
+    return { ok: true, wrote: true };
+  } catch {
+    removeTmp();
+    return { ok: false, wrote: false };
+  }
+}
+
+/**
  * The refusal checks on a file that exists, through a read-only connection:
  * closing it never checkpoints a WAL into a file being refused, nor deletes
  * that WAL. A read-only connection to a WAL-mode file still makes an empty
  * `-wal` and a `-shm` when they are missing; those two are removed again, so
- * nothing is left beside a refused file.
+ * nothing is left beside a refused file. v0.10: once the checks pass, a
+ * file about to migrate is copied first (`preMigrateCopy`) on this same
+ * read-only connection, before the read-write one opens.
  */
-function checkReadOnly(path: string, latest: number): { code: LifeOpenFailure } | { schema: number } {
+function checkReadOnly(
+  path: string,
+  latest: number,
+  preMigrateCopy?: CheckedDbOptions['preMigrateCopy'],
+): { code: LifeOpenFailure } | { schema: number; precopy?: PreMigrateCopied } {
   const had = { wal: existsSync(`${path}-wal`), shm: existsSync(`${path}-shm`) };
   let raw: DatabaseSync;
   try {
@@ -320,7 +390,21 @@ function checkReadOnly(path: string, latest: number): { code: LifeOpenFailure } 
   } catch {
     return { code: 'open_failed' };
   }
-  const out = checked(raw, latest);
+  let out: { code: LifeOpenFailure } | { schema: number; precopy?: PreMigrateCopied } = checked(raw, latest);
+  if ('schema' in out && preMigrateCopy && out.schema >= 1 && out.schema < latest) {
+    const from = out.schema;
+    let target: string | null = null;
+    try {
+      target = preMigrateCopy(from, latest);
+    } catch {
+      out = { code: 'precopy_failed' };
+    }
+    if (target !== null && 'schema' in out) {
+      const copy = copyInto(raw, target);
+      if (!copy.ok) out = { code: 'precopy_failed' };
+      else if (copy.wrote) out = { schema: from, precopy: { from, to: latest, file: basename(target) } };
+    }
+  }
   closeQuietly(raw);
   try {
     if (!had.wal && existsSync(`${path}-wal`) && sizeOf(`${path}-wal`) === 0) unlinkSync(`${path}-wal`);
@@ -333,10 +417,15 @@ function checkReadOnly(path: string, latest: number): { code: LifeOpenFailure } 
 
 /**
  * Open (creating and migrating) life.db at `path`, or ":memory:" (tests).
- * A refusal answers LIFE_BROKEN_REASON.
+ * A refusal answers LIFE_BROKEN_REASON. v0.10: only the service's own open
+ * passes `preMigrateCopy` (a restore's check of a staged copy never does).
  */
-export function openLifeDb(path: string): LifeOpenResult {
-  return openCheckedDb(path, { migrations: LIFE_MIGRATIONS, brokenReason: LIFE_BROKEN_REASON });
+export function openLifeDb(path: string, opts: { preMigrateCopy?: CheckedDbOptions['preMigrateCopy'] } = {}): LifeOpenResult {
+  return openCheckedDb(path, {
+    migrations: LIFE_MIGRATIONS,
+    brokenReason: LIFE_BROKEN_REASON,
+    ...(opts.preMigrateCopy ? { preMigrateCopy: opts.preMigrateCopy } : {}),
+  });
 }
 
 /**
@@ -348,13 +437,15 @@ export function openLifeDb(path: string): LifeOpenResult {
  * not changed), and only then WAL and the file's own pragmas. Every check
  * that can refuse runs before anything is written. Its migrations record
  * their version in `meta('schema')`, so the first one must create the
- * `meta` table.
+ * `meta` table. v0.10: `preMigrateCopy` writes its copy after the
+ * read-only checks and before the real connection opens.
  */
 export function openCheckedDb(path: string, opts: CheckedDbOptions): LifeOpenResult {
   const latest = Math.max(...opts.migrations.map((m) => m.version));
   const refused = (code: LifeOpenFailure): LifeOpenResult => ({ ok: false, code, reason: opts.brokenReason });
   const memory = path === ':memory:';
   const fresh = !memory && !existsSync(path);
+  let precopy: PreMigrateCopied | undefined;
   if (fresh) {
     try {
       closeSync(openSync(path, 'wx', 0o600));
@@ -370,8 +461,9 @@ export function openCheckedDb(path: string, opts: CheckedDbOptions): LifeOpenRes
     } catch {
       return refused('open_failed');
     }
-    const ro = checkReadOnly(path, latest);
+    const ro = checkReadOnly(path, latest, opts.preMigrateCopy);
     if ('code' in ro) return refused(ro.code);
+    precopy = ro.precopy;
   }
   let raw: DatabaseSync;
   try {
@@ -409,5 +501,5 @@ export function openCheckedDb(path: string, opts: CheckedDbOptions): LifeOpenRes
       }
     }
   }
-  return { ok: true, db: build(raw, path) };
+  return { ok: true, db: build(raw, path), ...(precopy ? { precopy } : {}) };
 }

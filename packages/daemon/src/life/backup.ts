@@ -66,11 +66,16 @@ export function listBackups(dir: string): BackupFile[] {
   return out.sort((a, b) => b.mtimeMs - a.mtimeMs || b.name.localeCompare(a.name));
 }
 
-/** LifeStatus.backups. */
-export function backupSummary(dir: string): { last: string | null; count: number } {
+/** v0.10: the copy the daemon writes before life.db moves to a newer schema (spec 0.10 A2.2). */
+export function preUpgradeName(version: string): string {
+  return `life-pre-${version}.db`;
+}
+
+/** LifeStatus.backups, and (v0.10) the newest `life-pre-*.db` copy. */
+export function backupSummary(dir: string): { last: string | null; count: number; pre: string | null } {
   const all = listBackups(dir);
   const newest = all[0];
-  return { last: newest ? new Date(newest.mtimeMs).toISOString() : null, count: all.length };
+  return { last: newest ? new Date(newest.mtimeMs).toISOString() : null, count: all.length, pre: all.find((b) => b.name.startsWith('life-pre-'))?.name ?? null };
 }
 
 /**

@@ -31,11 +31,15 @@
  *   scheduler restarts and life.changed goes out. Allowed while broken; a
  *   Life that still cannot start on the restored file answers so.
  *
+ * v0.10: before life.db moves to a newer schema the open copies it into
+ * backups/life-pre-<version>.db (db.ts preMigrateCopy; a restore's check
+ * of a staged copy never does), and status names that copy and the schema.
+ *
  * Nothing here logs or emits Life text: logs carry codes, kinds and
  * counts; the only event is `life.changed {}`.
  */
 import { chmodSync, copyFileSync, constants as fsConstants, existsSync, renameSync, statSync, unlinkSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 import { dayKeyOf, isValidTimeZone } from '@jantar/life-core';
 import { CLI_NAME, LIFE_MODULES, lifeOn, type LifeStatus, type Settings, type Today } from '@jantar/protocol';
 import { hasScope } from '../auth/scopes.js';
@@ -63,7 +67,7 @@ import type {
 } from '../contracts.js';
 import { newId } from '../core/ids.js';
 import { pushEndpointProblem } from '../notify/push-hosts.js';
-import { BackupTimer, backupSummary, listBackups, restoreTarget, RESTORE_REFUSED, writeBackup } from './backup.js';
+import { BackupTimer, backupSummary, listBackups, preUpgradeName, restoreTarget, RESTORE_REFUSED, writeBackup } from './backup.js';
 import { LIFE_BROKEN_REASON, openLifeDb } from './db.js';
 import { KIND_MODULE, PING_KINDS, errorKind } from './pings.js';
 import { createLifeSend, pushNotice, type LifeSend } from './push.js';
@@ -159,7 +163,7 @@ class LifeServiceImpl implements LifeService {
   private noticeSent = false;
   private backupFailedOn: string | null = null;
   /** LifeStatus.backups as last read, with the backups folder's mtime then and when (real time) it was read. */
-  private backupsSeen: { mtimeMs: number; readAtMs: number; value: LifeStatus['backups'] } | null = null;
+  private backupsSeen: { mtimeMs: number; readAtMs: number; value: ReturnType<typeof backupSummary> } | null = null;
   private readonly macZone: string;
   private readonly log: Logger;
   private readonly send: LifeSend;
@@ -272,6 +276,14 @@ class LifeServiceImpl implements LifeService {
     } catch (e) {
       this.log.warn('life push count failed', { error: errorKind(e) });
     }
+    const backups = this.backupsStatus();
+    let schema: number | undefined;
+    try {
+      const v = Number(this.handle?.meta('schema'));
+      if (this.handle && Number.isInteger(v)) schema = v;
+    } catch (e) {
+      this.log.warn('life schema read failed', { error: errorKind(e) });
+    }
     return {
       open: this.handle !== null && lifeOn(s),
       ...(this.brokenReason !== null ? { broken: this.brokenReason } : {}),
@@ -281,8 +293,10 @@ class LifeServiceImpl implements LifeService {
       lockScreenDetails: s.life.lockScreenDetails,
       modules,
       estimate,
-      backups: this.backupsStatus(),
+      backups: { last: backups.last, count: backups.count },
       push: { devices, webpush: s.notify.webpush },
+      ...(schema !== undefined ? { schema } : {}),
+      ...(backups.pre !== null ? { preUpgrade: backups.pre } : {}),
     };
   }
 
@@ -383,12 +397,12 @@ class LifeServiceImpl implements LifeService {
   }
 
   /**
-   * LifeStatus.backups: listed again when the folder's mtime moved, after a backup or restore of ours, and while
+   * LifeStatus.backups (and v0.10's preUpgrade): listed again when the folder's mtime moved, after a backup or restore of ours, and while
    * the last listing was read within BACKUPS_RACY_MS of that mtime. A folder stamps its time in steps (a coarse
    * clock on Linux, whole seconds on some filesystems), so a file made and removed in the step of the listing
    * leaves the mtime as it was: only a listing read clearly after the mtime is trusted (git's "racily clean").
    */
-  private backupsStatus(): LifeStatus['backups'] {
+  private backupsStatus(): ReturnType<typeof backupSummary> {
     const dir = this.ctx.paths.backupsDir;
     // The real time, not ctx.clock: it is compared with the time the filesystem stamped.
     const readAtMs = Date.now();
@@ -436,10 +450,14 @@ class LifeServiceImpl implements LifeService {
       this.fail('missing', LIFE_MISSING_REASON);
       return false;
     }
-    const r = openLifeDb(this.ctx.paths.lifeDb);
+    const r = openLifeDb(this.ctx.paths.lifeDb, { preMigrateCopy: () => join(this.ctx.paths.backupsDir, preUpgradeName(this.ctx.version.daemon)) });
     if (!r.ok) {
       this.fail(r.code, LIFE_BROKEN_REASON);
       return false;
+    }
+    if (r.precopy) {
+      this.backupsSeen = null;
+      this.log.info('life copied before its upgrade', { event: 'life.precopy', from: r.precopy.from, to: r.precopy.to, file: r.precopy.file });
     }
     this.handle = r.db;
     if (!this.built) {

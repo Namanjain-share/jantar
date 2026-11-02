@@ -357,10 +357,11 @@ describe('status', () => {
     expect(pushDevices(ctx.db)).toBe(2);
   });
 
-  it('the fields: modules, zone, today, currency, lock screen, estimate from food while food is on, backups', async () => {
+  it('the fields: modules, zone, today, currency, lock screen, estimate from food while food is on, backups, the schema (v0.10)', async () => {
     const life = service({ settings: settings({ todos: true, currency: 'INR', lockScreenDetails: true, timezone: 'Asia/Kolkata' }) });
     await life.start();
     expect(life.status()).toEqual({
+      schema: 3,
       open: true,
       timezone: 'Asia/Kolkata',
       today: '2026-10-30',

@@ -7,8 +7,13 @@
  * left with its WAL still holding pages is not "cut short".
  *
  * v0.7: migration 2 (posts), Life's first schema change. A file 0.6.1 wrote
- * (migration 1 only) opens, moves to schema 2 and keeps every row; one
- * whose migration 2 fails is left at schema 1 with its rows.
+ * (migration 1 only) opens, moves to the current schema and keeps every
+ * row; one whose migration 2 fails is left at schema 1 with its rows.
+ *
+ * v0.10: migration 3 (place_visits), Life's second schema change. A file
+ * 0.9.0 wrote (schema 2) opens, moves to 3 and keeps every row; one whose
+ * migration 3 fails is left at 2. The pre-upgrade copy is in
+ * precopy.test.ts.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -106,7 +111,7 @@ describe('openLifeDb', () => {
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(statSync(dir).mode & 0o777).toBe(0o700);
     const tables = (db.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map((t) => t.name);
-    expect(tables).toEqual(['bills', 'budgets', 'doses', 'food', 'foods_saved', 'medicines', 'meta', 'money', 'pings', 'places', 'posts', 'projects', 'todos', 'weights']);
+    expect(tables).toEqual(['bills', 'budgets', 'doses', 'food', 'foods_saved', 'medicines', 'meta', 'money', 'pings', 'place_visits', 'places', 'posts', 'projects', 'todos', 'weights']);
     expect(db.meta('schema')).toBe(String(LIFE_SCHEMA_VERSION));
     expect(LIFE_SCHEMA_VERSION).toBe(LIFE_MIGRATIONS.length);
     for (const f of readdirSync(dir)) expect(statSync(join(dir, f)).mode & 0o777, f).toBe(0o600);
@@ -116,7 +121,7 @@ describe('openLifeDb', () => {
     seeded();
     const db = openOk();
     expect((db.prepare('SELECT count(*) AS n FROM food').get() as { n: number }).n).toBe(200);
-    expect(db.meta('schema')).toBe('2');
+    expect(db.meta('schema')).toBe('3');
   });
 
   it('keeps the unique dose slot and the weight range in the schema', () => {
@@ -175,10 +180,11 @@ function schemaOneFile(): void {
 
 describe('v0.7: migration 2, posts (Life\'s first schema change)', () => {
   it('is schema 2: a posts table with one index, posts_open; migration 1 is unchanged', () => {
-    expect(LIFE_SCHEMA_VERSION).toBe(2);
+    expect(LIFE_SCHEMA_VERSION).toBe(3);
     expect(LIFE_MIGRATIONS.map((m) => [m.version, m.name])).toEqual([
       [1, 'life'],
       [2, 'posts'],
+      [3, 'place_visits'],
     ]);
     expect(LIFE_MIGRATIONS[0]?.sql).not.toMatch(/posts/);
     const db = openOk();
@@ -188,10 +194,10 @@ describe('v0.7: migration 2, posts (Life\'s first schema change)', () => {
     expect(indexes).toEqual(['posts_open']);
   });
 
-  it('a 0.6.1 file opens, moves to schema 2 and keeps every row', () => {
+  it('a 0.6.1 file opens, moves to the current schema (3) and keeps every row', () => {
     schemaOneFile();
     const db = openOk();
-    expect(db.meta('schema')).toBe('2');
+    expect(db.meta('schema')).toBe('3');
     expect(db.meta('kcal_target')).toBe('1800');
     const todo = db.prepare('SELECT due_day, json FROM todos').all() as { due_day: string; json: string }[];
     expect(todo).toHaveLength(1);
@@ -206,7 +212,7 @@ describe('v0.7: migration 2, posts (Life\'s first schema change)', () => {
     db.close();
     open.splice(open.indexOf(db), 1);
     // Opened again: nothing migrates twice.
-    expect(openOk().meta('schema')).toBe('2');
+    expect(openOk().meta('schema')).toBe('3');
   });
 
   it('a 0.6.1 file whose migration 2 fails is refused, and stays at schema 1 with its rows', () => {
@@ -224,12 +230,77 @@ describe('v0.7: migration 2, posts (Life\'s first schema change)', () => {
     expect(again.db.meta('kcal_target')).toBe('1800');
   });
 
-  it('a schema-3 file (from a later build) is refused untouched', () => {
+  it('a schema-4 file (from a later build) is refused untouched', () => {
     const db = openOk();
-    db.setMeta('schema', '3');
+    db.setMeta('schema', '4');
     db.close();
     open.splice(open.indexOf(db), 1);
     expectRefusedUntouched('newer_schema');
+  });
+});
+
+const PLACE_ID = '01JFZ8X8Y3T0V5G9WQK2M4N6PS';
+
+/** A life.db as 0.9.0 left it: migrations 1 and 2, with a todo, a post, a café and a meta value, closed. */
+function schemaTwoFile(): void {
+  const r = openCheckedDb(file, { migrations: LIFE_MIGRATIONS.slice(0, 2), brokenReason: LIFE_BROKEN_REASON });
+  if (!r.ok) throw new Error(`refused: ${r.code}`);
+  const db = r.db;
+  db.tx(() => {
+    const todo = { id: '01JFZ8X8Y3T0V5G9WQK2M4N6PR', title: 'Example todo', priority: 'normal', createdAt: '2026-11-01T10:00:00.000Z', updatedAt: '2026-11-01T10:00:00.000Z' };
+    db.prepare('INSERT INTO todos (id, project_id, due_day, done_at, updated_at, json) VALUES (?, NULL, NULL, NULL, ?, ?)').run(todo.id, todo.updatedAt, JSON.stringify(todo));
+    const place = { id: PLACE_ID, name: 'Example Café', tried: true, dishes: [{ name: 'Sample Dosa', rating: 5 }], best: 5, createdAt: '2026-11-01T10:00:00.000Z', updatedAt: '2026-11-01T10:00:00.000Z' };
+    db.prepare('INSERT INTO places (id, best, updated_at, json) VALUES (?, ?, ?, ?)').run(place.id, 5, place.updatedAt, JSON.stringify(place));
+    db.prepare("INSERT INTO posts (id, status, due_day, posted_at, updated_at, json) VALUES ('p1', 'idea', NULL, NULL, 'x', '{}')").run();
+    db.setMeta('kcal_target', '1800');
+  });
+  expect(db.meta('schema')).toBe('2');
+  db.close();
+}
+
+describe("v0.10: migration 3, place_visits (Life's second schema change)", () => {
+  it('a place_visits table with two indexes; migrations 1 and 2 are unchanged', () => {
+    expect(LIFE_MIGRATIONS[0]?.sql).not.toMatch(/place_visits/);
+    expect(LIFE_MIGRATIONS[1]?.sql).not.toMatch(/place_visits/);
+    expect(LIFE_MIGRATIONS[2]?.sql).not.toMatch(/REFERENCES/);
+    const db = openOk();
+    const cols = (db.raw.prepare('PRAGMA table_info(place_visits)').all() as { name: string }[]).map((c) => c.name);
+    expect(cols).toEqual(['id', 'place_id', 'day', 'updated_at', 'json']);
+    const indexes = (db.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'place_visits' AND sql IS NOT NULL ORDER BY name").all() as { name: string }[]).map((i) => i.name);
+    expect(indexes).toEqual(['place_visits_day', 'place_visits_place']);
+  });
+
+  it('a 0.9.0 file (schema 2) opens, moves to 3 and keeps every row', () => {
+    schemaTwoFile();
+    const db = openOk();
+    expect(db.meta('schema')).toBe('3');
+    expect(db.meta('kcal_target')).toBe('1800');
+    expect((db.prepare('SELECT count(*) AS n FROM todos').get() as { n: number }).n).toBe(1);
+    expect((db.prepare('SELECT count(*) AS n FROM posts').get() as { n: number }).n).toBe(1);
+    const place = db.prepare('SELECT best, json FROM places').all() as { best: number; json: string }[];
+    expect(place).toHaveLength(1);
+    expect(place[0]?.best).toBe(5);
+    expect(JSON.parse(place[0]?.json ?? '{}').name).toBe('Example Café');
+    expect((db.prepare('SELECT count(*) AS n FROM place_visits').get() as { n: number }).n).toBe(0);
+    db.prepare('INSERT INTO place_visits (id, place_id, day, updated_at, json) VALUES (?, ?, ?, ?, ?)').run('v1', PLACE_ID, '2026-11-01', 'x', '{}');
+    expect(Object.values(db.raw.prepare('PRAGMA quick_check').get() as object)[0]).toBe('ok');
+    db.close();
+    open.splice(open.indexOf(db), 1);
+    expect(openOk().meta('schema')).toBe('3');
+  });
+
+  it('a 0.9.0 file whose migration 3 fails is refused, and stays at schema 2 with its rows', () => {
+    schemaTwoFile();
+    const raw = new DatabaseSync(file);
+    raw.exec('CREATE TABLE place_visits (x)');
+    raw.close();
+    expect(openLifeDb(file)).toEqual({ ok: false, code: 'migration_failed', reason: LIFE_BROKEN_REASON });
+    const again = openCheckedDb(file, { migrations: LIFE_MIGRATIONS.slice(0, 2), brokenReason: LIFE_BROKEN_REASON });
+    if (!again.ok) throw new Error(`refused: ${again.code}`);
+    open.push(again.db);
+    expect(again.db.meta('schema')).toBe('2');
+    expect((again.db.prepare('SELECT count(*) AS n FROM places').get() as { n: number }).n).toBe(1);
+    expect(again.db.meta('kcal_target')).toBe('1800');
   });
 });
 
@@ -330,7 +401,7 @@ describe('createTestLifeCore (core/testing.ts)', () => {
     try {
       core.clock.set('2026-10-30T20:00:00.000Z');
       expect(core.today()).toBe('2026-10-31');
-      expect(core.db.meta('schema')).toBe('2');
+      expect(core.db.meta('schema')).toBe('3');
       expect(core.settings().medicines).toBe(true);
       expect(core.newId()).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
       core.scheduler.set('med', 'm1', '08:00', new Date('2026-10-31T02:30:00.000Z'));
