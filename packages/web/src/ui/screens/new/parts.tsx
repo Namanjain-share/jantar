@@ -6,7 +6,7 @@
  */
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
-import { grantCommand, noScopeLead } from './data.js';
+import { grantCommand, noScopeLead } from './scope.js';
 
 /**
  * One row of the start form's property list (spec 5.3.3): the label in

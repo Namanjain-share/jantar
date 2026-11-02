@@ -12,12 +12,21 @@
  * flags and Resume are picked (Files and the launcher share root ids). On a
  * phone it gets its own row under the breadcrumb; on a wider screen it sits
  * beside the ···. Launching off: no button.
+ *
+ * 0.10.1 (`create`, the Files place only): New folder, once the listing has
+ * loaded and while Files and launching are both on. On a phone a text
+ * button at the end of that second row (icon only below 360 px); wider, an
+ * icon button before the ···. Its sheet (NewFolderSheet, lazy) makes one
+ * empty folder through POST /v1/folders, the start sheet's own route, and
+ * this folder then opens it with a "just made" panel whose primary, Start a
+ * session here, is the start sheet for it. The panel shows on the way in
+ * only, never on a deep link or a later visit.
  */
 import { Menu } from '@base-ui/react/menu';
-import { DotsThreeIcon, FolderIcon, PlusIcon } from '@phosphor-icons/react';
+import { DotsThreeIcon, FolderIcon, FolderPlusIcon, PlayIcon, PlusIcon } from '@phosphor-icons/react';
 import { FILES_LIST_LIMIT, type FileEntry, type FileListing, type FileRoot, type Session } from '@jantar/protocol';
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { accountId, agoLong } from '../../../lib/format.js';
 import { routePath, type FilesLocation } from '../../../lib/router.js';
 import { readLocal, writeLocal } from '../../../lib/storage.js';
@@ -34,6 +43,40 @@ import { Footnote, LoadError, Loading, StateLine, fileErrorText } from './states
 import { VirtualList } from './VirtualList.js';
 
 const HIDDEN_KEY = 'files-show-hidden';
+
+// Only the Files place offers New folder: the session's Files tab and the attach picker never load it.
+const NewFolderSheet = lazy(() => import('./NewFolderSheet.js').then((m) => ({ default: m.NewFolderSheet })));
+
+/** "~/Desktop/work" + "auth/new-project" -> "~/Desktop/work/auth/new-project". */
+function displayAt(label: string, rel: string): string {
+  return rel ? `${label.replace(/\/+$/u, '')}/${rel}` : label;
+}
+
+/**
+ * The "just made" panel (0.10.1): a folder New folder just made (or Open it
+ * picked), with the one primary on screen, which takes focus.
+ */
+function JustMade({ name, display, phone, onStart }: { name: string; display: string; phone: boolean; onStart: () => void }) {
+  const start = useRef<HTMLButtonElement>(null);
+  useEffect(() => start.current?.focus(), []);
+  return (
+    <section aria-label="Folder ready" className="flex-none border-b border-line px-16 py-16">
+      <p aria-live="polite" className="type-row font-medium text-ink">
+        <TextRun text={`${name} is ready`} />
+      </p>
+      <p className="mt-2 truncate type-mono text-ink-3">
+        <TextRun text={display} />
+      </p>
+      <p className="mt-8 type-small text-ink-2">
+        Claude asks whether to trust a new folder; you answer here, not at the Mac.
+      </p>
+      <Button ref={start} variant="primary" size={phone ? 'xl' : 'md'} className={clsx('mt-12', phone && 'w-full')} onClick={onStart}>
+        <PlayIcon size={16} weight="fill" aria-hidden="true" />
+        Start a session here
+      </Button>
+    </section>
+  );
+}
 
 const ITEM =
   'flex h-32 cursor-pointer select-none items-center px-12 type-small text-ink outline-none transition-colors duration-120 ease-hover ' +
@@ -136,6 +179,7 @@ function Folder({
   path,
   label,
   phone,
+  create,
   onLocation,
   onRoots,
 }: {
@@ -143,12 +187,13 @@ function Folder({
   path: string;
   label: string;
   phone: boolean;
+  create: boolean;
   onLocation: (next: FilesLocation) => void;
   onRoots?: () => void;
 }) {
   const { api } = useDeps();
   const navigate = useNavigate();
-  const { launch } = useFeatures();
+  const { launch, files } = useFeatures();
   const now = useNow(60_000);
   const offline = useOffline();
   const [hidden, setHidden] = useState(() => readLocal<boolean>(HIDDEN_KEY, false));
@@ -199,13 +244,46 @@ function Folder({
     onLocation(e.type === 'dir' ? dirLocation(root, at) : { root, path: at });
   };
 
+  // New folder (0.10.1): the sheet mounts at its first opening and stays for its close animation.
+  const [sheet, setSheet] = useState({ open: false, n: 0 });
+  const newButton = useRef<HTMLButtonElement>(null);
+  // One Idempotency-Key per folder, kept across openings: a retry after a lost 201 is replayed.
+  const kept = useRef<{ sig: string; key: string } | null>(null);
+  // The folder New folder just made (or Open it picked): its panel shows while it is the one shown.
+  const [created, setCreated] = useState<string | null>(null);
+  const arrived = useRef(false);
+  useEffect(() => setCreated((c) => (c !== null && c !== rel ? null : c)), [rel]);
+  const canCreate = create && launch && files && first.data !== null;
+  const openSheet = () => {
+    arrived.current = false;
+    setSheet((s) => ({ open: true, n: s.n + 1 }));
+  };
+  const arrive = (at: string) => {
+    arrived.current = true;
+    // Set before the move: the effect above keeps it once `rel` is this path.
+    setCreated(at);
+    setSheet((s) => ({ ...s, open: false }));
+    onLocation(dirLocation(root, at));
+  };
+  const startIn = (at: string) => navigate(routePath({ name: 'new', root, ...(at ? { path: at } : {}), start: true }));
+
   const trail = crumbs(label, rel);
   const startHere = launch ? (
-    <Button size="sm" className="flex-none" onClick={() => navigate(routePath({ name: 'new', root, ...(rel ? { path: rel } : {}), start: true }))}>
+    <Button size="sm" className="flex-none" onClick={() => startIn(rel)}>
       <PlusIcon size={14} weight="bold" aria-hidden="true" />
       New Claude session here
     </Button>
   ) : null;
+  const newFolder = !canCreate ? null : phone ? (
+    <Button ref={newButton} variant="text" size="sm" aria-label="New folder" className="ml-auto flex-none coarse:min-w-44" onClick={openSheet}>
+      <FolderPlusIcon size={16} aria-hidden="true" className="flex-none" />
+      <span className="max-[360px]:sr-only">New folder</span>
+    </Button>
+  ) : (
+    <IconButton ref={newButton} aria-label="New folder" title="New folder" onClick={openSheet}>
+      <FolderPlusIcon size={18} aria-hidden="true" />
+    </IconButton>
+  );
   const bar = (
     <div className={clsx('flex flex-none items-center gap-4 border-b border-line', phone ? 'pl-16 pr-8' : 'pl-16 pr-12')}>
       {onRoots ? (
@@ -232,6 +310,7 @@ function Folder({
         })}
       </nav>
       {!phone ? startHere : null}
+      {!phone ? newFolder : null}
       <Menu.Root>
         <Menu.Trigger render={<IconButton aria-label="Folder options" />}>
           <DotsThreeIcon size={20} weight="bold" />
@@ -248,22 +327,51 @@ function Folder({
       </Menu.Root>
     </div>
   );
-  // A phone has no room beside the breadcrumb: the button takes the header's second row.
+  // A phone has no room beside the breadcrumb: the buttons take the header's second row.
   const header =
     phone && startHere ? (
       <>
         {bar}
-        <div className="flex flex-none items-center border-b border-line px-16 py-8">{startHere}</div>
+        <div className="flex flex-none items-center gap-8 border-b border-line px-16 py-8">
+          {startHere}
+          {newFolder}
+        </div>
       </>
     ) : (
       bar
     );
+  const ready =
+    created !== null && created === rel ? (
+      <JustMade name={rel.slice(rel.lastIndexOf('/') + 1)} display={displayAt(label, rel)} phone={phone} onStart={() => startIn(rel)} />
+    ) : null;
+  const sheetEl =
+    sheet.n > 0 ? (
+      <Suspense fallback={null}>
+        <NewFolderSheet
+          open={sheet.open}
+          onOpenChange={(o) => setSheet((s) => ({ ...s, open: o }))}
+          formKey={sheet.n}
+          root={root}
+          parent={rel}
+          display={displayAt(label, rel)}
+          entries={entries}
+          phone={phone}
+          offline={offline}
+          kept={kept}
+          onArrive={arrive}
+          // Back to New folder, unless it opened a folder: then its panel's primary has the focus.
+          finalFocus={() => (arrived.current ? false : (newButton.current ?? true))}
+        />
+      </Suspense>
+    ) : null;
 
   if (!first.data) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {header}
+        {ready}
         {first.error ? <LoadError error={first.error} offline={offline} what="folder" onRetry={first.reload} /> : <Loading count={5} caption="Reading the folder…" />}
+        {sheetEl}
       </div>
     );
   }
@@ -289,6 +397,7 @@ function Folder({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {header}
+      {ready}
       <VirtualList
         items={entries}
         label={`${trail[trail.length - 1]?.label ?? label}, ${entries.length} entries`}
@@ -297,6 +406,7 @@ function Folder({
         render={(e) => <EntryRow e={e} now={now} onOpen={open} />}
         footer={footer}
       />
+      {sheetEl}
     </div>
   );
 }
@@ -319,11 +429,17 @@ export interface BrowseProps {
    * whose folder is already listed under another root (or the roots still loading).
    */
   rootLabel?: string;
+  /**
+   * Offer New folder in a folder (0.10.1): the Files place only, never the
+   * session's Files tab or the attach picker. It also needs Files and
+   * launching on; the device's scope is not checked here (a 403 teaches it).
+   */
+  create?: boolean;
 }
 
 const NO_SESSIONS: Readonly<Record<string, Session>> = {};
 
-export function Browse({ roots, root, path, phone, sessions = NO_SESSIONS, onLocation, onRoots, rootLabel }: BrowseProps) {
+export function Browse({ roots, root, path, phone, sessions = NO_SESSIONS, onLocation, onRoots, rootLabel, create = false }: BrowseProps) {
   if (!root) return <RootList roots={roots} sessions={sessions} onLocation={onLocation} />;
   const info = roots.data?.roots.find((r) => r.id === root);
   return (
@@ -333,6 +449,7 @@ export function Browse({ roots, root, path, phone, sessions = NO_SESSIONS, onLoc
       path={path}
       label={info ? (info.home ? '~' : info.display) : (rootLabel ?? root)}
       phone={phone}
+      create={create}
       onLocation={onLocation}
       onRoots={onRoots}
     />

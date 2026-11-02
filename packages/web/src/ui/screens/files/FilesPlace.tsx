@@ -153,7 +153,7 @@ export function FilesPlace({ location, onLocation }: FilesPlaceProps) {
   if (segment === 'browse') {
     const root = place.kind === 'lists' ? undefined : place.root;
     const path = place.kind === 'dir' ? place.path : place.kind === 'file' ? dirOf(place.path) : '';
-    body = <Browse roots={roots} root={root} path={path} phone={phone} sessions={sessions} onLocation={open} onRoots={() => open({})} />;
+    body = <Browse roots={roots} root={root} path={path} phone={phone} sessions={sessions} onLocation={open} onRoots={() => open({})} create />;
   } else if (!list) {
     body = changes.error ? <LoadError error={changes.error} offline={offline} what="list" onRetry={changes.reload} /> : <Loading />;
   } else if (!list.length) {

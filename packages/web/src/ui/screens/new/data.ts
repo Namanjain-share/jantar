@@ -17,10 +17,9 @@
  * (`onMachine`): each one carries `node` for a machine, nothing for the Mac.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { CLI_NAME, LAUNCH_CAP, type AccountsMode, type PastSession } from '@jantar/protocol';
-import { isApiError, type Api } from '../../../lib/api.js';
+import { LAUNCH_CAP, type AccountsMode, type PastSession } from '@jantar/protocol';
+import type { Api } from '../../../lib/api.js';
 import { accountId } from '../../../lib/format.js';
-import { deviceNoun, readLocalDevice, userAgent } from '../devices/local.js';
 
 /** The root segment that lists the folders live sessions run in (a client view, never sent to the daemon). */
 export const SESSIONS_VIEW = 'sessions';
@@ -126,32 +125,10 @@ export function useRequest<T>(key: string | null, run: () => Promise<T>, opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Refusals
+// Refusals: in scope.ts (0.10.1), so Files' New folder can name the grant
+// command without pulling this module into its chunk.
 
-/**
- * A 403 for a missing scope ("this device does not have the launch scope").
- * Scopes stored at pairing go stale after `devices grant` on the Mac, so the
- * screen learns it this way, never from what it stored.
- */
-export function isNoScope(e: unknown): boolean {
-  return isApiError(e, 'forbidden') && /\bscope\b/i.test(e.message);
-}
-
-/** A device name as one shell word ("iPhone", 'Sam'\''s iPhone'). */
-export function shellWord(s: string): string {
-  return /^[A-Za-z0-9._@%+=:,/-]+$/.test(s) ? s : `'${s.replaceAll("'", "'\\''")}'`;
-}
-
-/** What to run on the Mac to let this device start sessions. There is no grant button: the daemon refuses it over the network. */
-export function grantCommand(): string {
-  const me = readLocalDevice();
-  return `${CLI_NAME} devices grant ${me ? shellWord(me.name) : '<device>'} launch`;
-}
-
-/** "This phone can't start sessions." (or tablet, browser) */
-export function noScopeLead(): string {
-  return `This ${deviceNoun(userAgent())} can't start sessions.`;
-}
+export { grantCommand, isNoScope, noScopeLead, shellWord } from './scope.js';
 
 // ---------------------------------------------------------------------------
 // The first prompt, kept for "Edit and resend" (memory only)

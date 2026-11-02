@@ -7,7 +7,9 @@
  */
 import { Drawer } from '@base-ui/react/drawer';
 import clsx from 'clsx';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
+
+type PopupProps = ComponentProps<typeof Drawer.Popup>;
 
 export interface SheetProps {
   open: boolean;
@@ -20,15 +22,23 @@ export interface SheetProps {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Where focus goes on open (default: the first field, else the sheet). */
+  initialFocus?: PopupProps['initialFocus'];
+  /** Where focus goes on close (default: the trigger, when Base UI opened it). */
+  finalFocus?: PopupProps['finalFocus'];
 }
 
-export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, children, className }: SheetProps) {
+export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, children, className, initialFocus, finalFocus }: SheetProps) {
   return (
     <Drawer.Root open={open} onOpenChange={(next) => onOpenChange(next)} swipeDirection="down">
       <Drawer.Portal>
         <Drawer.Backdrop className="sheet-backdrop fixed inset-0 bg-scrim" />
         <Drawer.Viewport className="fixed inset-0 flex items-end justify-center">
-          <Drawer.Popup className={clsx('sheet-popup w-full max-w-560 rounded-t-dock bg-raised px-16 text-ink outline-none', className)}>
+          <Drawer.Popup
+            className={clsx('sheet-popup w-full max-w-560 rounded-t-dock bg-raised px-16 text-ink outline-none', className)}
+            initialFocus={initialFocus}
+            finalFocus={finalFocus}
+          >
             <div className="flex h-20 items-center justify-center" aria-hidden="true">
               <span className="h-4 w-36 rounded-chip bg-ink-4" />
             </div>
