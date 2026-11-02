@@ -116,16 +116,24 @@ class Tui {
     return this.waitFor('start');
   }
 
-  /** The screen as the fake last drew it (one line per row, unwrapped). */
+  /** The screen file as it is now, or null while the fake has not drawn one yet. */
+  private async drawn(): Promise<string[] | null> {
+    const text = await readFile(join(ctl, `${this.sid}.screen.txt`), 'utf8').catch(() => '');
+    return text ? text.replace(/\n$/, '').split('\n') : null;
+  }
+
+  /**
+   * The screen as the fake last drew it (one line per row, unwrapped). The fake records `start` before its first
+   * draw, so right after started() the file may not be there yet: wait for it to exist and hold something.
+   */
   async screen(): Promise<string[]> {
-    const text = await readFile(join(ctl, `${this.sid}.screen.txt`), 'utf8');
-    return text.replace(/\n$/, '').split('\n');
+    return until(() => this.drawn(), 'the first screen');
   }
 
   async screenWith(pred: (lines: string[]) => boolean, what: string): Promise<string[]> {
     return until(async () => {
-      const lines = await this.screen();
-      return pred(lines) ? lines : null;
+      const lines = await this.drawn();
+      return lines && pred(lines) ? lines : null;
     }, what);
   }
 
