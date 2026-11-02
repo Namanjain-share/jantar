@@ -160,21 +160,30 @@ export function isShellTitle(t: string | undefined): boolean {
   return SHELL_TITLES.has(s);
 }
 
+/** A post with no words of its own (a captionless reel, a media-only X post): its creator and its picture or video. Its content is on screen or spoken. */
+function mediaPost(f: PageFields): boolean {
+  return !!(f.creator ?? f.handle) && (!!f.cover || !!f.video || f.images.length > 0 || f.frames.length > 0);
+}
+
 /**
  * Spec 3.3's good read: the post's text (at least one character), or for a
  * video platform a title and a creator, or for a web page main text of at
- * least 200 characters (or a title with a description). A login wall, an
- * app shell or an empty read is not good.
+ * least 200 characters (or a title with a description). Instagram, TikTok
+ * and X posts are also good with no text when the read has the creator and
+ * the post's picture or video: frames, on-screen text, speech and Claude
+ * read the rest. A login wall, an app shell or an empty read is not good.
  */
 export function isGood(platform: IntelPlatform, f: PageFields | null): boolean {
   if (!f || f.why === 'login' || f.why === 'notFound' || f.why === 'tiktok' || f.why === 'blocked') return false;
   const text = f.text.trim().length;
   switch (platform) {
     case 'youtube':
-    case 'tiktok':
       return text > 0 || (!!f.title && !isShellTitle(f.title) && !!(f.creator ?? f.handle));
+    case 'tiktok':
+      return text > 0 || (!!f.title && !isShellTitle(f.title) && !!(f.creator ?? f.handle)) || mediaPost(f);
     case 'instagram':
     case 'x':
+      return text > 0 || mediaPost(f);
     case 'linkedin':
       return text > 0;
     case 'reddit':

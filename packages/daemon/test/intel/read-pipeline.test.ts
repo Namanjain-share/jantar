@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { INTEL_READ_LIMITS, INTEL_READ_NOTES, INTEL_READ_REASONS, IntelReadReplySchema, type PageReadParsed } from '@jantar/protocol';
-import type { ExecCall } from '../../src/core/testing.js';
+import { onCommand, type ExecCall } from '../../src/core/testing.js';
 import { READ_SENTENCES } from '../../src/intel/service.js';
 import { HAVE_OPENSSL, TINY_JPEG, httpsServer, seamFor, type Handler, type TestServer } from './read-helpers.js';
 import { ANSWER, HELPER_BINS, fakeClaude, fakeHelper, hangingClaude, readEnv, until, type ReadEnv } from './read-env.js';
@@ -214,7 +214,8 @@ describe.skipIf(!HAVE_OPENSSL)('the page tiers', () => {
     expect(e.intel.extResult(job.id, 'ext-2', { ok: true, page: read })).toMatchObject({ ok: false, code: 'not_found' });
     expect(e.intel.extResult(job.id, 'ext-1', { ok: true, page: read })).toEqual({ ok: true, value: true });
     await e.idle();
-    expect(e.items().get(id)).toMatchObject({ caption: 'Three ways to cook dal at home', creator: 'Example Cook', read: { state: 'saved', tier: 'chrome' } });
+    // The name and the handle: a search for either finds it.
+    expect(e.items().get(id)).toMatchObject({ caption: 'Three ways to cook dal at home', creator: 'Example Cook @example_cook', read: { state: 'saved', tier: 'chrome' } });
     const sent = stdinOf(seen[0] as ExecCall);
     expect(sent.text).toMatch(/<byline>[\s\S]*Example Cook[\s\S]*<\/byline>/);
     expect(sent.text).toMatch(/<caption>[\s\S]*Three ways to cook dal[\s\S]*<\/caption>/);
@@ -365,7 +366,7 @@ describe.skipIf(!HAVE_OPENSSL)('frames, on-screen text, speech and thumbnails (a
     const rid = idOf(await e.intel.read({ text: `https://x.com/example_person/status/${id}?s=20`, depth: 'full' }, { via: 'phone' }));
     await e.idle();
     const line = e.items().get(rid) as Record<string, unknown>;
-    expect(line).toMatchObject({ platform: 'x', creator: 'Example Person', transcript: '[0:01] hello from a synthetic voice', frames: 7, read: { state: 'saved', depth: 'full', done: 'full', tier: 'download' } });
+    expect(line).toMatchObject({ platform: 'x', creator: 'Example Person @example_person', transcript: '[0:01] hello from a synthetic voice', frames: 7, read: { state: 'saved', depth: 'full', done: 'full', tier: 'download' } });
     const ocr = e.exec.calls.find((c) => c.args.includes('ocr')) as ExecCall;
     expect(ocr.args.slice(ocr.args.indexOf('ocr') + 1)).toHaveLength(6);
     const speech = e.exec.calls.find((c) => c.args.includes('speech')) as ExecCall;
@@ -422,6 +423,69 @@ describe.skipIf(!HAVE_OPENSSL)('frames, on-screen text, speech and thumbnails (a
     const ocr = e.exec.calls.find((c) => c.args.includes('ocr')) as ExecCall;
     expect(ocr.args.slice(ocr.args.indexOf('ocr') + 1)).toHaveLength(3);
     expect((e.items().get(id)?.read as { notes?: string[] }).notes ?? []).not.toContain(INTEL_READ_NOTES.coverOnly);
+  });
+
+  it('a public reel with no caption: read from its creator, cover and frames, never failed as a login', async () => {
+    const s = await site({
+      'www.instagram.com/reel/AbC123xyz/': html(
+        '<html><head><title>Example Cook on Instagram</title><meta property="og:title" content="Example Cook on Instagram"><meta property="og:description" content="1,204 likes, 33 comments - example_cook on October 30, 2026"><meta property="og:image" content="https://scontent.cdninstagram.com/cover.jpg"></head></html>',
+      ),
+      'scontent.cdninstagram.com/cover.jpg': jpeg,
+    });
+    const seen: ExecCall[] = [];
+    const clt = realpathSync(e0Dir());
+    const e = await env({ read: { net: seamFor(s.port) }, bins: HELPER_BINS, handlers: [fakeClaude(ANSWER, seen), ...fakeHelper(clt)] });
+    const id = idOf(await e.intel.read({ text: 'https://www.instagram.com/reel/AbC123xyz/' }, { via: 'phone' }));
+    await e.idle();
+    const line = e.items().get(id) as Record<string, unknown>;
+    expect(line).toMatchObject({ title: ANSWER.title, creator: 'Example Cook @example_cook', posted_at: '2026-10-30T12:00:00.000Z', on_screen: 'LINE 1', read: { state: 'saved', tier: 'download', done: 'standard' } });
+    expect(line.caption).toBeUndefined();
+    expect((line.read as { notes?: string[] }).notes).toContain(INTEL_READ_NOTES.coverOnly);
+    // Claude saw the cover and its on-screen text.
+    const sent = stdinOf(seen[0] as ExecCall);
+    expect(sent.images).toBe(1);
+    expect(sent.text).toContain('LINE 1');
+  });
+
+  it('no Command Line Tools: a Standard read asks xcode-select only, never swiftc (no install dialog), and goes on as Light', async () => {
+    const s = await site({ 'www.example.test/a-post': html(article()), 'www.example.test/pic.jpg': jpeg });
+    const e = await env({ read: { net: seamFor(s.port) }, bins: HELPER_BINS, handlers: [fakeClaude(), onCommand('xcode-select', { code: 2, stdout: '' })] });
+    const id = idOf(await e.intel.read({ text: 'https://www.example.test/a-post' }, { via: 'cli' }));
+    const states: string[] = [];
+    await until(() => {
+      for (const j of e.intel.jobs().jobs) states.push(j.state);
+      return e.intel.queue.counts().running === 0 && e.intel.queue.counts().waiting === 0;
+    });
+    await e.idle();
+    expect(e.items().get(id)?.read).toMatchObject({ state: 'saved', done: 'light', notes: [INTEL_READ_REASONS.noClt] });
+    const tools = e.exec.calls.map((c) => c.file).filter((f) => f !== '/fake/bin/claude');
+    expect(new Set(tools)).toEqual(new Set(['/usr/bin/xcode-select']));
+    expect(states).not.toContain('preparing');
+  });
+
+  it('a Full article: no speech step and no audio note (nothing there is spoken)', async () => {
+    const s = await site({ 'www.example.test/a-post': html(article()), 'www.example.test/pic.jpg': jpeg });
+    const clt = realpathSync(e0Dir());
+    const e = await env({ read: { net: seamFor(s.port) }, bins: HELPER_BINS, handlers: [fakeClaude(), ...fakeHelper(clt)] });
+    const id = idOf(await e.intel.read({ text: 'https://www.example.test/a-post', depth: 'full' }, { via: 'cli' }));
+    await e.idle();
+    const read = e.items().get(id)?.read as { state: string; done: string; notes?: string[] };
+    expect(read).toMatchObject({ state: 'saved', depth: 'full', done: 'full' });
+    expect(read.notes ?? []).not.toContain(INTEL_READ_NOTES.noAudio);
+    expect(e.exec.calls.some((c) => c.args.includes('speech'))).toBe(false);
+  });
+
+  it('Delete while Claude runs: no thumbnails are written after it', async () => {
+    const s = await site({ 'www.example.test/a-post': html(article()), 'www.example.test/pic.jpg': jpeg });
+    const started = { n: 0 };
+    const clt = realpathSync(e0Dir());
+    const e = await env({ read: { net: seamFor(s.port) }, bins: HELPER_BINS, handlers: [hangingClaude(started), ...fakeHelper(clt)] });
+    const id = idOf(await e.intel.read({ text: 'https://www.example.test/a-post' }, { via: 'cli' }));
+    await until(() => started.n === 1, 5_000, 'the job to reach claude');
+    expect(await e.intel.remove(`captures:${id}`)).toEqual({ ok: true, value: true });
+    await e.idle();
+    expect(existsSync(join(e.ctx.paths.intelDir, 'media', id))).toBe(false);
+    expect(e.intel.jobs().jobs).toEqual([]);
   });
 
   /** Where the pretend Command Line Tools live (removed after each test). */

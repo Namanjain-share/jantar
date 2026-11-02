@@ -11,8 +11,8 @@
  *   preparing     the media helper's one-time build
  *   frames        Standard/Full: frames (§4's order), the cover and post
  *                 images, on-screen text (Vision OCR) on every kept frame
- *   transcribing  Full: YouTube captions, else on-device speech on the video
- *                 or audio file
+ *   transcribing  Full, where there is a video: YouTube captions, else
+ *                 on-device speech on the video or audio file
  *   summarising   Full's related pages (links in the user's note only), then
  *                 the Claude run
  *
@@ -253,7 +253,7 @@ export async function runRead(job: Job, d: PipelineDeps, update: (state: IntelRe
     if (r.signal.aborted) return finish(r, failed(r, abortReason(job)), 'stopped');
     await media(r);
     if (r.signal.aborted) return finish(r, failed(r, abortReason(job)), 'stopped');
-    if (job.depth === 'full' && job.link) await transcript(r);
+    if (job.depth === 'full' && job.link && spoken(r)) await transcript(r);
     if (r.signal.aborted) return finish(r, failed(r, abortReason(job)), 'stopped');
     update('summarising');
     if (job.depth === 'full') r.related = await relatedPages(d.guard, job.note, { jobDir: r.jobDir, helper: r.helperOk ? d.helper : null, signal: r.signal });
@@ -263,11 +263,12 @@ export async function runRead(job: Job, d: PipelineDeps, update: (state: IntelRe
     if (!res.ok) {
       outcome = res.outcome;
       const reason = r.signal.aborted ? abortReason(job) : INTEL_READ_REASONS[res.why];
-      return finish(r, failed(r, reason, await thumbs(r)), outcome, account);
+      // Deleted while Claude ran: its thumbnails are already gone, and none are written again.
+      return finish(r, failed(r, reason, job.why === 'deleted' ? baseFrames(r) : await thumbs(r)), outcome, account);
     }
     if (res.noPictures) r.note(INTEL_READ_NOTES.noPictures);
     outcome = 'ok';
-    return finish(r, await saved(r, res.answer, await thumbs(r)), outcome, account);
+    return finish(r, await saved(r, res.answer, job.why === 'deleted' ? baseFrames(r) : await thumbs(r)), outcome, account);
   } catch (e) {
     d.log.error('intel read step failed', { error: (e as { code?: string }).code ?? (e instanceof Error ? e.name : 'error') });
     return finish(r, failed(r, r.signal.aborted ? abortReason(job) : INTEL_READ_REASONS.stopped), 'error', account);
@@ -594,6 +595,14 @@ async function media(r: Run): Promise<void> {
 
 // ---------------------------------------------------------------- transcript
 
+/** The platforms whose posts are videos (or may be). */
+const VIDEO_PLATFORMS: ReadonlySet<IntelPlatform> = new Set(['instagram', 'youtube', 'tiktok']);
+
+/** Full listens only where there is a video: an article, a PDF or a text post has nothing to transcribe. */
+function spoken(r: Run): boolean {
+  return VIDEO_PLATFORMS.has(r.kind.platform) || r.realFrames || r.mediaFile !== null || !!r.fields.video || !!r.fields.duration;
+}
+
 function segmentsText(segments: readonly { at: number; text: string }[]): string {
   return segments.map((s) => `[${stamp(s.at)}] ${s.text.replace(/\s+/g, ' ').trim()}`).join('\n');
 }
@@ -748,6 +757,13 @@ function baseFrames(r: Run): number {
   return typeof f === 'number' && Number.isInteger(f) && f >= 0 ? Math.min(f, INTEL_READ_LIMITS.thumbsMax) : 0;
 }
 
+/** The name and the handle (`Example Cook @example_cook`), so a search for either finds the item; the handle once. */
+export function creatorOf(f: Pick<PageFields, 'creator' | 'handle'>): string | undefined {
+  if (!f.creator || !f.handle) return f.creator ?? f.handle;
+  const bare = f.handle.replace(/^@/, '').toLowerCase();
+  return bare && f.creator.toLowerCase().includes(bare) ? f.creator : `${f.creator} ${f.handle}`;
+}
+
 /** The fields every last line carries (the item's own, then what the read found). */
 function common(r: Run, frames: number): CaptureLine {
   const f = r.fields;
@@ -756,7 +772,7 @@ function common(r: Run, frames: number): CaptureLine {
   if (r.link) line.url = r.link;
   line.platform = r.kind.platform;
   line.type = typeOf(r);
-  const creator = f.creator ?? f.handle;
+  const creator = creatorOf(f);
   if (creator) line.creator = creator.slice(0, 80);
   if (f.postedAt) line.posted_at = f.postedAt;
   if (f.text) line.caption = f.text.slice(0, INTEL_READ_LIMITS.captionMax);

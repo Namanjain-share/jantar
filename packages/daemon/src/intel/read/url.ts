@@ -7,7 +7,7 @@
  *   (guard.ts checkUrl: userinfo, a port, an IP literal, a local name) is
  *   refused, and nothing is saved.
  * - `canonical`: tracking parameters stripped, the platforms' hosts made
- *   one (m. and mobile. dropped, instagram.com → www.instagram.com,
+ *   one (their m. and mobile. dropped, instagram.com → www.instagram.com,
  *   twitter.com → x.com, youtu.be/<id> → /watch?v=<id>), no fragment. Dedupe
  *   compares canonical links.
  * - `kindOf`: the platform and type chip by exact shape (post-url.ts
@@ -76,6 +76,9 @@ const HOSTS: Readonly<Record<string, string>> = {
   'www.x.com': 'x.com',
 };
 
+/** The hosts the platforms use. */
+const PLATFORM_HOSTS: ReadonlySet<string> = new Set(Object.values(HOSTS));
+
 /** The canonical form of an https link the URL rules passed (unchanged when it is not a URL). */
 export function canonical(href: string): string {
   let u: URL;
@@ -85,8 +88,9 @@ export function canonical(href: string): string {
     return href;
   }
   let host = normHost(u.hostname);
-  if (host.startsWith('m.')) host = host.slice(2);
-  else if (host.startsWith('mobile.')) host = host.slice('mobile.'.length);
+  // m. and mobile. only on the platforms' hosts: on any other site it may be another site.
+  const bare = host.startsWith('m.') ? host.slice(2) : host.startsWith('mobile.') ? host.slice('mobile.'.length) : host;
+  if (HOSTS[bare] !== undefined || PLATFORM_HOSTS.has(bare)) host = bare;
   host = HOSTS[host] ?? host;
   if (host === 'youtu.be') {
     const id = u.pathname.split('/')[1] ?? '';

@@ -53,6 +53,13 @@ describe('canonical (spec 3.2)', () => {
     expect(canonical('https://linkedin.com/feed/update/urn:li:activity:7250000000000000000/')).toBe('https://www.linkedin.com/feed/update/urn:li:activity:7250000000000000000/');
   });
 
+  it('m. and mobile. are dropped only on the platforms\' hosts (elsewhere it may be another site)', () => {
+    expect(canonical('https://m.example.com/x')).toBe('https://m.example.com/x');
+    expect(canonical('https://mobile.example.com/x')).toBe('https://mobile.example.com/x');
+    expect(canonical('https://m.tiktok.com/v/1')).toBe('https://www.tiktok.com/v/1');
+    expect(canonical('https://m.x.com/example/status/1850000000000000000')).toBe('https://x.com/example/status/1850000000000000000');
+  });
+
   it('dedupe: two shares of one post are the same link', () => {
     expect(canonical('https://instagram.com/reel/AbC123xyz/?igsh=one')).toBe(canonical('https://www.instagram.com/reel/AbC123xyz/?igsh=two&utm_source=ig_web_copy_link'));
   });

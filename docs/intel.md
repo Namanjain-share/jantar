@@ -62,10 +62,12 @@ Each item is read at the depth you pick; **Standard** is the default.
 |---|---|
 | **Light** | The page: the caption or text, the creator, the time, the cover picture (kept as a thumbnail). Claude writes a title, a summary, tags and key points from the text. |
 | **Standard** | Light, plus up to 4 key frames (or the post's own pictures) and the cover shown to Claude, plus the text on screen read from up to 20 frames (one every 2 seconds), so burnt-in subtitles are searchable. |
-| **Full** | Standard with up to 6 frames, plus speech-to-text on the Mac (or YouTube's own captions), up to 3 links from your own note read too, and Claude's own background knowledge, shown apart as "From Claude, not from the post". |
+| **Full** | Standard with up to 6 frames, plus speech-to-text on the Mac (or YouTube's own captions) when there is a video, up to 3 links from your own note read too, and Claude's own background knowledge, shown apart as "From Claude, not from the post". |
 
 A note with no link is never fetched: Light and Standard give the same,
-Full adds Claude's background.
+Full adds Claude's background. A reel or post with no caption is still
+read: its creator, its cover and frames, the text on screen and (at Full)
+what is said carry it.
 
 ### What each kind of link gives
 
@@ -141,13 +143,15 @@ finished. Retry." and never restarts on its own.
 
 Frames and speech use one small helper the Mac builds once from Apple's
 Command Line Tools (`xcode-select --install`) and runs in a sandbox that
-cannot reach the network or your files. Without the tools, Standard and
-Full read like Light and say why.
+cannot reach the network or any file in your home folder but the read's
+own folder. Without the tools, Standard and Full read like Light and say
+why.
 
 ### Search and MCP
 
-Search covers the creator, the platform, the caption, the text on screen,
-the transcript, the key points, Claude's background and your note, besides
+Search covers the creator (the name and the @handle, as "Example Cook
+@example_cook"), the platform, the caption, the text on screen, the
+transcript, the key points, Claude's background and your note, besides
 everything above; a word equal to the creator counts like a tag.
 `intel_search` rows add the platform and creator, and `intel_get` adds the
 caption, the text on screen, the key points and the transcript, each

@@ -192,7 +192,8 @@ export class MediaHelper {
 
   /** Whether `ensure()` would have to build (the job then shows `preparing`). */
   async needsBuild(): Promise<boolean> {
-    if (this.gap()) return false;
+    // Without the tools, swiftc is xcrun's stub, whose first run opens the install dialog: never asked.
+    if (this.gap() || !(await this.toolsFound())) return false;
     const key = await this.key().catch(() => null);
     if (!key) return true;
     const have = await readFile(`${this.helperPath}.key`, 'utf8').catch(() => '');

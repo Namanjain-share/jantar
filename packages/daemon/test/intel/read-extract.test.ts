@@ -32,7 +32,7 @@ import {
 } from '../../src/intel/read/platforms/social.js';
 import { webFromHtml, webFromPage } from '../../src/intel/read/platforms/web.js';
 import { youtubeFromOembed, youtubeFromWatch, ytCoverUrls, ytFrameUrls } from '../../src/intel/read/platforms/youtube.js';
-import { ytdlpFields } from '../../src/intel/read/pipeline.js';
+import { creatorOf, ytdlpFields } from '../../src/intel/read/pipeline.js';
 
 const MB5 = 5 * 1024 * 1024;
 
@@ -207,6 +207,25 @@ describe('Instagram', () => {
     expect(isGood('instagram', f)).toBe(true);
   });
 
+  it('a reel with no caption is still good: its creator and its cover (the content is on screen or spoken)', () => {
+    const f = instagramFromHtml(
+      '<html><head><title>Example Cook on Instagram</title><meta property="og:title" content="Example Cook on Instagram"><meta property="og:description" content="1,204 likes, 33 comments - example_cook on October 30, 2026"><meta property="og:image" content="https://scontent.cdninstagram.com/cover.jpg"></head></html>',
+    );
+    expect(f).toMatchObject({ text: '', creator: 'Example Cook', handle: '@example_cook', cover: 'https://scontent.cdninstagram.com/cover.jpg' });
+    expect(f.why).toBeUndefined();
+    expect(isGood('instagram', f)).toBe(true);
+    // No picture or video, or no creator: not good.
+    expect(isGood('instagram', { ...f, cover: undefined })).toBe(false);
+    expect(isGood('instagram', { ...f, creator: undefined, handle: undefined })).toBe(false);
+    // A login wall stays a hard stop, whatever else the page has.
+    expect(isGood('instagram', { ...f, why: 'login' })).toBe(false);
+    // The same for a media-only X post and a TikTok with no caption; LinkedIn still needs its text.
+    const media: PageFields = { text: '', creator: 'Example Person', handle: '@example_person', meta: [], images: ['https://pbs.twimg.com/a.jpg'], frames: [] };
+    expect(isGood('x', media)).toBe(true);
+    expect(isGood('tiktok', { ...media, images: [], video: 'https://v16.tiktokcdn.com/v.mp4' })).toBe(true);
+    expect(isGood('linkedin', media)).toBe(false);
+  });
+
   it('the app shell is a login wall; a cover off the CDN is dropped', () => {
     const shell = instagramFromHtml('<html><head><title>Instagram</title></head></html>');
     expect(shell.why).toBe('login');
@@ -335,5 +354,15 @@ describe('yt-dlp\'s -J as page fields', () => {
     expect(f).toMatchObject({ title: 'Example clip', text: 'A synthetic clip.', creator: 'Example Uploader', duration: 42 });
     expect(f.postedAt).toMatch(/^2026-/);
     expect(ytdlpFields('nope')).toEqual({ text: '', meta: [], images: [], frames: [] });
+  });
+});
+
+describe("the item's creator", () => {
+  it('the name and the handle, so a search for either finds it; the handle only once', () => {
+    expect(creatorOf({ creator: 'Example Cook', handle: '@example_cook' })).toBe('Example Cook @example_cook');
+    expect(creatorOf({ creator: 'example_cook', handle: '@example_cook' })).toBe('example_cook');
+    expect(creatorOf({ handle: '@example_cook' })).toBe('@example_cook');
+    expect(creatorOf({ creator: 'Example Channel' })).toBe('Example Channel');
+    expect(creatorOf({})).toBeUndefined();
   });
 });
