@@ -81,10 +81,10 @@ Some things wait for your tap, as a card:
   (summarizing a meeting, reading a link again). Chat has no tool that
   deletes: it can only ask.
 - **Do it**: after Chat has read text someone else wrote (a saved page, a
-  meeting's lines, a session's transcript), its writes in that message
-  wait for your tap, so a page can't make Chat change your lists. The
-  card names the item and what would change ("Change Medicine ·
-  Placebin · 08:00: times 23:00?").
+  meeting's name or lines, a session's name, what it waits for or its
+  transcript), its writes in that message wait for your tap, so a page
+  can't make Chat change your lists. The card names the item and what
+  would change ("Change Medicine · Placebin · 08:00: times 23:00?").
 
 Cards work for a day, then expire. Dismiss closes one.
 
