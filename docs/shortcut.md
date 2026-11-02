@@ -149,3 +149,67 @@ HTTP status):
 
 The saved item shows at once on the phone; if it says "Couldn't read",
 its reason and **Retry** are there.
+
+## Ask Jantar with Siri
+
+A second Shortcut, "Jantar", lets you ask [Chat](assistant.md) by voice:
+"Hey Siri, Jantar", then your question, and Siri speaks the answer. What
+it adds or changes shows in the phone's Chat with Undo; a delete by voice
+is only ever a card to confirm on the phone.
+
+It needs the same door as above (Tailscale or a Cloudflare tunnel with an
+https address), Chat on (`jantar chat on`), and its own key, a **Siri
+key**, made at the Mac in your own Terminal:
+
+```sh
+jantar chat shortcut add      # the key, shown once, with the door and these steps
+jantar chat shortcut list     # the keys (never a key)
+jantar chat shortcut revoke <id>   # or --all
+jantar chat shortcut steps    # the steps again, with no key
+```
+
+A Siri key opens only the Siri door, and a Shortcut key only the save
+door: either one on the other door is refused like a wrong key.
+
+### Build it
+
+1. Shortcuts app, **+** (new shortcut), name it **Jantar** (so "Hey Siri,
+   Jantar" runs it).
+2. **Dictate Text** (Stop Listening: After Pause).
+3. **Get Contents of URL**: `https://<your address>/v1/capture/chat`.
+   Show More: Method **POST**; Headers `x-jantar-capture-key` = the Siri
+   key, and on Cloudflare `CF-Access-Client-Id` and
+   `CF-Access-Client-Secret` (the same Access application and service
+   token as the save door); Request Body **JSON** with `text` = **Dictated
+   Text**.
+4. **Get Dictionary Value** for `message`.
+5. **Speak Text** with the Dictionary Value (or **Show Result**, which
+   Siri reads aloud when it runs by voice).
+
+To type instead, make a copy with **Ask for Input** in place of Dictate
+Text. Never share the Shortcut: it carries the key and the Access token.
+
+| The door | Path | Key | Limits |
+|---|---|---|---|
+| Save to Jantar | `/v1/capture/save` | Shortcut key (`jcap_`) | 30 an hour, 200 a day |
+| Jantar (Siri) | `/v1/capture/chat` | Siri key (`jchat_`) | 10 a minute, 100 a day |
+
+### What Siri hears
+
+Within 20 seconds, Chat's answer in at most two short sentences, then
+Jantar's own count of what changed ("Added 1 and changed 1. Undo is in
+Jantar.", "1 to confirm in Jantar."). A longer answer gets "Still working
+on it. The answer will be in Jantar." and a notification on the phone
+when it is done ("Your answer is in Chat.", with no text of the answer).
+
+### When it doesn't work
+
+| Siri says | Why | What to do |
+|---|---|---|
+| nothing (an empty result) | Cloudflare Access refused it before Jantar | check the two `CF-Access-…` headers |
+| "This needs a Jantar Siri key. Make one at the Mac: jantar chat shortcut add" | the key is missing, mistyped, a Shortcut key, revoked or idle for 180 days | `jantar chat shortcut add` in your own Terminal |
+| "not found" | the door is closed: loopback or LAN mode, Chat off, or no Siri key | `jantar chat status`, `jantar chat on`, `jantar remote setup` |
+| "Still working on it. The answer will be in Jantar." | the answer took longer than 20 s | open Chat on the phone |
+| "Jantar is busy. Try again in a minute." | three messages are already waiting | wait a minute |
+| "Too many questions from this Shortcut; try again later" | 10 in a minute, or 100 in a day | wait |
+

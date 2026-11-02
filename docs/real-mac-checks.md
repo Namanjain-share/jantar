@@ -247,9 +247,24 @@ rest is open:
 | R10 | Chrome minimized and the shortcut pressed from another app: nothing is captured, or the flash says why | `captureVisibleTab` on macOS |
 | R11 | Quit Chrome during a call with notes on: the meeting ends within about 15 minutes and gets its summary | the keep-alive and the stale end |
 
-### Ask (v0.5.3)
+### Chat and Siri (v0.10)
 
-The suites run Ask against the fake `claude`. Run these once on the real
+The suites run Chat against a fake `claude` that speaks MCP to the real
+bridge and dispatcher. Run these once on the real Mac, as [How to run one
+safely](#how-to-run-one-safely) says: a throwaway `JANTAR_HOME` (for
+example `/tmp/jv010-check`), `--port 7421`, `jantar life on all`, `jantar
+chat on`, a phone paired with that daemon, synthetic messages only.
+
+| Check | Question | What depends on it |
+|---|---|---|
+| S1 | One real Chat turn ("Add oat milk to my list"): does the run's `system`/`init` line show exactly the `jantar` server, connected, and the allowed tools (no built-in tool)? Is a tool not in `--allowedTools` denied? Does `--setting-sources local` still load `--mcp-config`? How big is stdout per tool round? | the init gate, and the tools mode as a whole |
+| S2 | Time to answer with one to three tool calls on haiku, sonnet and opus at effort low | the 20 s Siri budget and the `voiceModel` default |
+| S3 | On an iPhone: "Hey Siri, Jantar" locked and unlocked; is Speak Text or Show Result spoken? The real "Get Contents of URL" timeout; the Access token headers on Cloudflare | the Siri Shortcut |
+| S4 | Upgrade a copy of a 0.9.0 state dir (never `~/.jantar`) with `JANTAR_HOME`: `life-pre-0.10.0.db` appears in its backups folder, and jantar.db's capture keys are still Shortcut keys | the upgrade |
+
+### Ask (v0.5.3, until 0.10)
+
+The suites ran Ask against the fake `claude`. Run these once on the real
 Mac with opus, as [How to run one safely](#how-to-run-one-safely) says: a
 throwaway `JANTAR_HOME` (for example `/tmp/jantar-check`), `--port 7421`,
 `jantar life on todos food finance medicines`, `jantar ask on`, and a

@@ -105,9 +105,10 @@ jantar life status
   on the phone under Projects › a project › Folder.
 - **Ask Claude** runs one headless Claude on an account with room (never a
   kept one) and is refused while Jantar runs read-only.
-- **Ask** (its own switch, `jantar ask on`) turns plain words into todos,
-  reminders, meals, money entries and post ideas, each added only by your
-  tap, with Undo until a day after you asked ([Ask](assistant.md)).
+- **Chat** (its own switch, `jantar chat on`) adds and changes todos,
+  reminders, medicines, meals, cafés, money and posts from plain words or a
+  photo, each change with Undo for a day; a delete waits for your tap
+  ([Chat](assistant.md)).
 
 ## Posts
 
@@ -170,8 +171,8 @@ and goals are on the phone. `--at` is in the Life zone and must be a real
 day; a time already gone is still added, and the line says it won't
 ring. An empty `--text-file` is refused. `jantar post log` takes the link
 in quotes (in zsh an unquoted `?` or `&` breaks the command); `post list
---done` prints each posted link. Ask does not log comments: use Log a
-comment or `jantar post log` (a link typed into Ask is offered to Intel).
+--done` prints each posted link. Chat does not log a comment's link unless
+you wrote it in your message: use Log a comment or `jantar post log`.
 
 ```sh
 jantar post add --platform reddit --where r/exampletools --at "2026-11-02 19:30" \

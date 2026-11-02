@@ -28,7 +28,7 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Today** and **Life** | Today, Todos (with Reminders and Projects), Medicines, Food, Cafés, Finance and Posts (what you plan to post on social media, with a reminder, Copy and Open, and log the comments you make, with their links; Jantar never posts); on a phone they sit behind Today and More ([Life](life.md)) |
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
-| **Ask** | Right after Today: tell it what to add in plain words, and add its suggestions with a tap ([Ask](assistant.md)) |
+| **Chat** | Right after Today: ask Jantar anything, or tell it what to add or change; each change has Undo, deletes wait for your tap ([Chat](assistant.md)) |
 
 A session waiting on a dynamic workflow or a background agent it started
 shows under Working ("1 workflow running", the workflow's name and how
@@ -37,7 +37,7 @@ long), even though its turn is over. Its header says "1 workflow running ·
 ("6 shells"), and it returns to Your turn when the last one finishes.
 
 On a phone the tab bar holds Board, Today, Files, Accounts and More. With
-Ask on it holds Board, Today, Ask, Files and More, and Accounts moves into
+Chat on it holds Board, Today, Chat, Files and More, and Accounts moves into
 More. On a Mac a session opens beside the board from 1024 px wide.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="img/board-desktop-dark.png"><img src="img/board-desktop.png" alt="The Board on a Mac: the sessions, the cards waiting on you, the next resets and new alerts."></picture>
@@ -68,7 +68,7 @@ jantar screenshots on                 # a Picture view of the session's window
 jantar life on all                    # Life: todos, medicines, food, cafés, finance, posts
 jantar intel on                       # the Intel shelf
 jantar meetings on                    # Meetings from the Chrome extension
-jantar ask on                         # Ask: suggestions for todos, reminders, food, money and posts
+jantar chat on                        # Chat: ask Jantar anything; changes with Undo, deletes on your tap
 ```
 
 Every command and option is in [Configuration](configuration.md).
@@ -203,37 +203,26 @@ jantar rewrite model sonnet                       # or opus, haiku
 phone whatever the model. Rewrite runs on an account with room, never one
 kept for other work. Attachments survive a Rewrite.
 
-## Ask
+## Chat
 
-A chat page that turns plain words into Life items. Type what you want
-("todo add call the bank", "remind me to stretch at 6 pm", "had 2 rotis
-and dal", "spent 250 on lunch", "reel tomorrow 7pm about the launch") or
-ask about today ("calories left?").
-The Mac makes one headless Claude run, on Rewrite's model at low effort,
-and shows a short reply with up to 10 suggestions as cards. **Nothing is
-added until you tap Add.**
+Chat (Ask until 0.10) does what you ask across Jantar. Type it, or send a
+photo ("Add oat milk to my list", "How many calories today?", "Rate
+Example Café 4 stars, great Wi-Fi", a picture of a receipt). One
+headless Claude run on the Mac, with only Jantar's own tools, answers in
+plain text, and under the answer is the list of what it did: **Added**,
+**Changed**, **Logged**, each with **Undo** for a day. A delete, stopping a
+medicine or anything that spends quota is a **Confirm** card; after it
+reads someone else's text its writes wait as **Do it** cards. It reads
+your sessions but never types into one.
 
 ```sh
-jantar life on todos food finance   # Ask suggests only for Life parts that are on
-jantar ask on                       # says what goes to Claude
-jantar ask off                      # hides it and forgets its history
+jantar chat on       # says what goes to Claude
+jantar chat off      # hides it and closes the Siri door; the history stays
+jantar chat clear    # deletes the history (what it added stays)
 ```
 
-- **Add**, **Edit** or **Skip** each card; **Add all** adds the todo,
-  food and post cards of one answer (never money). **Undo** works until a
-  day after you asked. A post card is an idea: Ask never writes a post's
-  text.
-- Questions about today never send your lists to Claude: the phone fills
-  the answer card from Today.
-- **What goes to Claude** (**What's sent**, under the box): only what you
-  type there (medicine names or amounts you type do go), the date, time
-  and time zone, which Life parts are on, the currency code and the fixed
-  category names.
-- **History** lives in the daemon's memory only; Clear history, `jantar
-  ask off` and a restart forget it. Items you added stay in Life.
-
-Every phrase it understands, the cards, times, limits and what each
-message on the page means: [Ask](assistant.md).
+The thread is one per Mac, the same on every phone and for Siri, kept on
+the Mac for 30 days. Everything about it: [Chat](assistant.md).
 
 ## Controls and screenshots
 

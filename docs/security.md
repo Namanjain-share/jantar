@@ -44,15 +44,12 @@ point below links to its section there.
   ends at Cloudflare ([network exposure](../SECURITY.md#network-exposure)).
 - Notifications go to Apple's or Google's push service, with the detail you
   choose (medicine names stay off the lock screen unless you turn them on).
-- Rewrite, Ask Claude, Ask and meeting summaries run Claude Code on your
+- Rewrite, Ask Claude, Chat and meeting summaries run Claude Code on your
   own account, so their text goes to Anthropic as any Claude Code use does.
   A meeting's screenshots never leave the Mac
-  ([the summary](../SECURITY.md#the-summary-what-leaves-the-mac)). Ask
-  sends only what you type there (medicine names or amounts you type
-  included), the date, time and time zone, which Life parts are on, the
-  currency code and the fixed category names; your saved lists, medicines
-  and money stay on the Mac, and nothing is added until you tap Add
-  ([Ask](../SECURITY.md#v053-ask)).
+  ([the summary](../SECURITY.md#the-summary-what-leaves-the-mac)). Chat
+  sends what you type, your photos and what it looks up to answer, for the
+  parts you turned on ([Chat and Siri](#chat-and-siri-v010)).
 - With `jantar mcp` added, what its tools return (shelf items, and the
   titles and notes of the open todos of the project linked to the
   session's folder) goes into that Claude session and reaches Anthropic
@@ -114,6 +111,25 @@ Off until you run `jantar intel read on` at the Mac
 - The iOS Shortcut's door exists only over Tailscale or Cloudflare, with a
   key made at the Mac; it can only save, and says the same sentence
   whatever happened ([the Shortcut](shortcut.md)).
+
+## Chat and Siri (v0.10)
+
+Chat sends what you type, your photos and what it looks up to answer
+(only the parts you turned on) to Claude, on your account. Each message
+is one Claude Code run with no file, shell or web tool: it can only call
+Jantar's own tools, and Jantar stops the run before any call if Claude
+Code shows anything else. Adds and changes happen at once with Undo for a
+day; deletes, stopping a medicine and anything that spends quota wait for
+your tap; after Chat reads text someone else wrote, its writes wait for
+your tap too. It never types into a session. It saves a link only when
+you wrote it. The history stays on the Mac (`chat.db`, 30 days by
+default; `jantar chat clear` deletes it).
+
+The Siri door takes its own key, made at the Mac and shown once. Someone
+with that key could read and change your lists by voice or text (never
+delete), 10 times a minute, until you revoke it: `jantar chat shortcut
+revoke --all`. [SECURITY.md](../SECURITY.md#v010-chat-and-the-siri-door)
+has the details.
 
 ## What a session can do
 

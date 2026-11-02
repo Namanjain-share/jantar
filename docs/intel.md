@@ -49,8 +49,8 @@ jantar intel read status    # what it can use here: Chrome, the headless browser
   form (title, link, type, tags, note), which reads nothing.
 - **The iPhone's Share sheet**: the "Save to Jantar" Shortcut
   ([docs/shortcut.md](shortcut.md)). It needs Tailscale or Cloudflare.
-- **Ask**: "save this: <link>" (or just the link, or "keep it to intel -
-  <link> full") gives one card, Add saves it. No Claude run for that.
+- **Chat**: "save this: <link>" (or just the link, or "keep it to intel -
+  <link> full") saves it at once, with Undo. No Claude run for that.
 - **The Mac**: `jantar intel save <link|text> [--depth light|standard|full]`.
   `jantar intel add` stays a plain capture that reads nothing.
 
@@ -291,7 +291,7 @@ What a session can and cannot reach:
   reaches medicines, food, weight, money, cafés, meetings or sessions.
   Sessions add at most 20 todos an hour.
 - Shelf text comes from saved pages and bots, and todos from meetings'
-  action items, Ask and other sessions, so the server tells Claude to treat
+  action items, Chat and other sessions, so the server tells Claude to treat
   both as data, never as instructions.
 - What the tools return (shelf items, the todos' titles and notes) goes
   into the session and reaches Anthropic like any tool output.

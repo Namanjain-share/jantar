@@ -51,7 +51,7 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar screenshots on \| off \| status` | a Picture view of the session's Terminal window |
 | `jantar screenshots allow-select [on \| off]` | capture a background tab by selecting it for a moment |
 
-### Life, Intel, accounts, Meetings and Ask
+### Life, Intel, accounts, Meetings and Chat
 
 | Command | What it does |
 |---|---|
@@ -83,7 +83,10 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar meetings [on \| off]` | Meetings from the Chrome extension ([Meetings](extension.md)) |
 | `jantar meetings export <id> \| last \| --all [--out DIR]` | a folder per meeting: `meeting.md` and `shots/*.jpg` |
 | `jantar meetings unpair` | revoke every paired extension |
-| `jantar ask on \| off \| status` | Ask, a chat page that suggests todos, reminders, food, money and posts ([Ask](assistant.md)); `off` forgets its history; `status` names the model (Rewrite's) |
+| `jantar chat on \| off \| status` | Chat, which does what you ask across Jantar with Undo and asks before deleting ([Chat](assistant.md)); `off` hides it and closes the Siri door, the history stays; `status` names the models, the history on disk and the door |
+| `jantar chat clear [--broken] [--yes] \| keep <days> \| voice-model <m>` | delete the history (what it added stays); how long it is kept (`ask.keepDays`, 1-365, 30); the model a Siri question runs on (`ask.voiceModel`, `sonnet`) |
+| `jantar chat shortcut add \| list \| revoke <id\|--all> \| steps` | the Siri Shortcut's keys ([Ask Jantar with Siri](shortcut.md#ask-jantar-with-siri)); `add` only in your own Terminal, the key shown once |
+| `jantar ask ...` | the same as `jantar chat ...` (Ask is now Chat) |
 
 ### Alerts
 
@@ -178,7 +181,7 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 |---|---|---|
 | `remote` | `port` (7420), `publicUrl` (the address in pairing links), `allowedOrigins` | the Mac (`jantar remote`) |
 | `folders` | `roots`, `sessionRoots` (live sessions' folders count as roots; on), `allow`, `extraDeny` (added to the denylist, which can't shrink) | the Mac |
-| `files`, `rewrite`, `screenshots`, `meetings`, `ask` | `enabled` (off), plus `rewrite.model` (also Ask's model), `rewrite.glossary`, `screenshots.allowSelect` | the Mac |
+| `files`, `rewrite`, `screenshots`, `meetings`, `ask` | `enabled` (off), plus `rewrite.model` (also Chat's model on the phone), `rewrite.glossary`, `screenshots.allowSelect`; 0.10: `ask` is Chat's group (the name stays for 0.9), with `keepDays` (30, 1-365: how long the history is kept) and `voiceModel` (`sonnet`: the model a Siri question runs on) | the Mac |
 | `launch` | `enabled` (off), `mode` (`claude`), `defaultFlags`, `preLaunchArgv`, `csCommand`, rate limits | the Mac |
 | `controls` | `enabled`, `escapeVerified`, `clearVerified` (all on), `interruptKey` (`interrupt` or `escape`) | the Mac |
 | `life` | one switch per module (off), `timezone`, `currency`, `lockScreenDetails` | the Mac |
@@ -200,7 +203,7 @@ Everything Jantar keeps is in `~/.jantar` (or `JANTAR_HOME`), mode 0700:
 | `life.db`, `backups/` | Life, and its nightly copies (the newest 30) |
 | `meetings.db`, `meetings/` | Meetings' text, and the screenshots, a folder per meeting |
 | `uploads/<session>/` | files sent from the phone, removed after 7 days |
-| `intel/captures.jsonl` | items added with `jantar intel add`, the phone, Add post, the Shortcut and Ask. 0.8: a read item's lines too (a later line with the same id replaces the earlier one); compacted on Delete and when most of the file is old lines; new saves refused past 50 MB |
+| `intel/captures.jsonl` | items added with `jantar intel add`, the phone, Add post, the Shortcut, Ask and Chat. 0.8: a read item's lines too (a later line with the same id replaces the earlier one); compacted on Delete and when most of the file is old lines; new saves refused past 50 MB |
 | `intel/bin/` | 0.8: `jantar-media`, the frames and speech helper built once from `assets/intel/jantar-media.swift` with Apple's Command Line Tools, and its cache key |
 | `intel/media/<item>/` | 0.8: a read item's small thumbnails (at most 7, 1 GiB for all items) |
 | `intel/run/`, `intel/jobs/` | 0.8: the Claude run's empty folder and prompt copy; one folder per read while it runs, deleted when it ends |

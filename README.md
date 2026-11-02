@@ -117,10 +117,10 @@ comments you make; Jantar never posts them), a shelf for links your scripts save
 Meet and Teams calls in Chrome (their live captions and a summary; the
 screenshots you click are not yet confirmed on a real call). Each is
 switched on at the Mac, one at a time, and the pictures here show them on.
-A fresh install shows only Board, Accounts, Alerts and Devices. **Ask**
-(`jantar ask on`) turns plain words ("remind me to stretch at 6 pm") into
-Life's todos, reminders, meals, expenses and post ideas, each added only
-when you tap it. With `jantar mcp` added to Claude Code, a session can
+A fresh install shows only Board, Accounts, Alerts and Devices. **Chat**
+(`jantar chat on`) does what you ask across Jantar ("remind me to stretch
+at 6 pm", "rate Example Café 4 stars"), each change with Undo and every
+delete only on your tap; "Hey Siri, Jantar" asks it by voice. With `jantar mcp` added to Claude Code, a session can
 search the shelf, save to it, and add todos to the project linked to its
 folder. **Add post** (`jantar intel read on`) has the Mac read a reel,
 video, post, article or PDF you send from the phone or the iPhone's Share
@@ -133,7 +133,7 @@ shelf, so you can find it later by what it said.
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/intel-phone-dark.png"><img src="docs/img/intel-phone.png" width="240" alt="The Intel shelf: saved links with type filters."></picture>
 </p>
 
-More: [Life](docs/life.md), [Ask](docs/assistant.md),
+More: [Life](docs/life.md), [Chat](docs/assistant.md),
 [Meetings](docs/extension.md), [the Intel shelf](docs/intel.md),
 [Save to Jantar from the iPhone](docs/shortcut.md).
 
@@ -244,7 +244,7 @@ by this project. More in [How it is put together](docs/architecture.md).
 | [Answering from the phone](docs/phone-control.md) | Hook cards, terminal dialogs, the keypad, attachments, what stays at the Mac |
 | [Accounts](docs/accounts.md) and [the primer](docs/primer.md) | One login or cswap, usage, kept accounts, priming idle windows |
 | [Life](docs/life.md) | Today, todos, reminders, projects, medicines, food, cafés, finance, posts |
-| [Ask](docs/assistant.md) | The chat page: plain words in, todos, reminders, meals, expenses and post ideas out as cards you add with a tap; what goes to Claude |
+| [Chat](docs/assistant.md) | Ask Jantar anything, by text, photo or Siri: it adds and changes things at once with Undo, asks before deleting, reads sessions without typing into them; what goes to Claude |
 | [Alerts and sounds](docs/alerts.md) | A tone per kind of alert, the 2-minute countdown alert, what the lock screen can do, `jantar notify` |
 | [Intel shelf](docs/intel.md) | The shelf, its search, its JSONL line format, and `jantar mcp` for Claude Code |
 | [Meetings](docs/extension.md) | The Chrome extension for Meet and Teams |

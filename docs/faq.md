@@ -17,7 +17,7 @@ travel to your Mac through the same front door. See
 ## Do I need an API key?
 
 No. Jantar uses Claude Code's own login. Its headless runs (Rewrite, Ask
-Claude, Ask, the primer, meeting summaries) run `claude` (or `cswap run`) with
+Claude, Chat, the primer, meeting summaries) run `claude` (or `cswap run`) with
 any API key or token taken out of the environment, so they use your
 subscription login.
 

@@ -48,7 +48,7 @@ runs anywhere else.
 | Package | What |
 |---|---|
 | `packages/protocol` | zod schemas, event types, the shared reducer, REST and WebSocket types |
-| `packages/daemon` | `jantard`: sources, hooks bridge, Terminal.app backend, writer, API, auth, Web Push, SQLite, Life, the Intel shelf, the primer, Meetings and Ask |
+| `packages/daemon` | `jantard`: sources, hooks bridge, Terminal.app backend, writer, API, auth, Web Push, SQLite, Life, the Intel shelf, the primer, Meetings and Chat |
 | `packages/life-core` | pure date, repeat, dose and adherence logic for Life |
 | `packages/hook` | `jantar-hook`: zero-dependency hook client |
 | `packages/cli` | `jantar`: every command in [Configuration](configuration.md#commands) |

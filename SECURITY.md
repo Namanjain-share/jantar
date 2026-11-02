@@ -1034,7 +1034,10 @@ Each needs someone already running code on this Mac.
 
 ## v0.5.3: Ask
 
-Ask is a chat page that turns plain words into suggested Life items. It
+(Until 0.10. Ask is now Chat: [v0.10: Chat and the Siri door](#v010-chat-and-the-siri-door)
+replaces this section. It is kept for 0.5.3 to 0.9.)
+
+Ask was a chat page that turned plain words into suggested Life items. It
 writes to Life, so it follows Life's rules, and it runs Claude, so it
 follows Rewrite's. The model's answer is data: it can only **propose**
 items from a fixed list, and only your tap adds one.
@@ -1759,3 +1762,170 @@ only at Full; the phone shows it as text.
   `/var/folders`, `/Users/Shared` and attached drives under `/Volumes`. It
   could print what it found there as "transcript" or on-screen text, which
   is kept on the shelf and shown to Claude.
+
+## v0.10: Chat and the Siri door
+
+Chat replaces Ask. It is a page on the phone (and a door for Siri) where
+the user writes in plain words, or sends photos, and one isolated
+headless Claude run per message does what they ask across Jantar with
+Jantar's own tools. Unlike Ask it **writes**: adds and edits happen at
+once and are journalled with Undo. Deletes, and anything irreversible or
+quota-spending, are cards the user taps. Sessions are read only.
+
+### Switch and scope
+
+- `ask.enabled` (the group keeps its 0.9 name, so a downgrade keeps the
+  switch) starts **off** and changes only at the Mac (`jantar chat
+  on|off`); `ask` stays a Mac-only settings group. While it is off every
+  Chat route is 403 with "Chat is off. Turn it on at your Mac: jantar chat
+  on", and the Siri door is 404.
+- Every phone route needs `control` scope, the thread read included.
+  `jantard --read-only` refuses sending a message, uploading a photo and
+  the Siri door (each spends quota or exists only to be sent).
+- Chat reaches only the parts that are on, checked when the run's tools
+  are listed and again at every call.
+
+### What is sent to Claude
+
+What the user types and the photos they send, with the date, time and
+zone, the last messages of the thread (at most 12 or 16,000 characters,
+framed as data), and whatever the run looks up: todos, medicines, food,
+cafés, money, posts, the Intel shelf, meetings, and sessions, waiting
+prompts and usage (read only), for the parts that are on. A session's
+projection never carries its `cwd`, config dir, transcript path, pane,
+tty, pid or process start; an account never its email, masked or not.
+Photos go inline as base64 image blocks after a daemon-written label;
+the run never gets a path.
+
+### The run, the bridge and the init gate
+
+- One headless `claude -p` per message through the shared runner, on an
+  account `rewrite/pick.ts` picks (never a kept or held one), with the env
+  scrubbed as every run, `--tools ""` (no built-in tool: no Bash, Read,
+  Write, Edit, WebFetch, WebSearch or Task), `--mcp-config` naming one
+  server and `--strict-mcp-config`, `--allowedTools` listing each tool of
+  this message by exact name (never a wildcard), `--setting-sources local`
+  with hooks off, `--no-session-persistence`, `--permission-mode
+  dontAsk`, 12 turns (6 by voice), a $1.00 budget cap, 120 s (60 s by
+  voice). `--mcp-config` and `--allowedTools` are isolation options: a
+  claude that refuses one ends the run, and nothing with more (or less)
+  reach runs instead.
+- The one MCP server is a zero-dependency bridge
+  (`assets/chat/bridge.mjs`, `node:net` and `node:process` only) that
+  pipes Claude Code's stdio to a per-run Unix socket in the daemon's run
+  dir (0600, made under a 0077 umask) after sending a 32-byte token. The
+  daemon takes one connection whose first line is that token
+  (constant-time compare); anything else fails the run. The model can't
+  read `mcp.json` or the token: it has no file tool.
+- **The init gate.** The dispatcher answers `initialize` and `tools/list`
+  at once but holds every `tools/call` until the run's `system`/`init`
+  line has been read from its stdout and shows exactly one MCP server,
+  named `jantar`, connected, and exactly this message's tools. Anything
+  else (a built-in tool, another server, a failed one, no init line
+  within 10 s) aborts the run before any call, answers held calls with an
+  error, and fails the turn ("Chat stopped: it could not run in its safe
+  mode on this Mac"). The same check runs on the whole stdout at the end;
+  failing it there undoes every change of the turn through the journal.
+
+### What the Chat part holds, and never holds
+
+The part is built with Life, Intel's list/get/read/remove/reread/jobs,
+Meetings' library and summaries, a read-only board (the store's state and
+transcript pages), usage, ccw's read-only view, the Web Push sender and
+the settings' read side. It never holds the writer, the terminal, the
+launcher, hooks' decide, the controls, session uploads, Files, the
+settings' write side, devices or keys. `test/arch/v010-chat.test.ts`
+reads the source to keep it so: "sessions are read only" is a property of
+the code, not of the prompt.
+
+### Writes, Undo, cards and taint
+
+- Writes go through Life's own body schemas and modules, as the turn's
+  sender (a device, or the Siri key), so Life's checks, caps and pings
+  apply as they are. The daemon writes each change's label from the item,
+  and keeps a journal of the values an edit changed. The phone renders
+  changes and cards from that journal, never from Claude's reply.
+- Undo works for 24 h, as the tapping device: an add is deleted as it is
+  now; an edit is put back only while every changed key still holds
+  Chat's value (else 409). A part that is off refuses its Undo too.
+- Every delete, stopping a medicine, summarizing a meeting and reading a
+  link again are **Confirm cards**: the run has no tool that does them.
+  The tap runs the phone's own call, as the tapping device, within 24 h,
+  after checking the item is still there.
+- **Taint.** Once a message has read third-party text (an Intel item's
+  text, a meeting's lines, a session's transcript or waiting prompt),
+  every later write of that message becomes a **Do it** card instead.
+  The user's own photos don't taint (a receipt may become an expense, with
+  Undo), but no message ever deletes.
+- Caps per message: 24 tool calls, 10 writes, 10 cards, 5 timed todos or
+  posts; past them a tool answers "Limit reached for this message." Life's
+  own caps and the per-device write limit (240 a minute) apply on top.
+
+### The link rule
+
+A link is kept (Intel's save, a café's or a post's link) only when the
+exact URL appears in the user's own message of that turn. Saving a link
+makes the Mac fetch it, so a URL Claude wrote could carry data out; this
+closes that. v0.8's fast path stays: a message that is only a link, or
+"save this: <link>", saves it at once with Undo and runs no Claude.
+
+### History on disk
+
+Ask kept its turns in memory only. Chat keeps the thread in `chat.db`
+(0600, refused and never reset like `meetings.db`, `secure_delete` on),
+because Undo and cards must survive a restart and the thread is shared by
+every device and Siri. It holds what the user typed, the replies, the
+Undo journal (prior values of what Chat edited) and the photos (under
+`<home>/chat/photos`, 0600). The sweep removes turns older than
+`ask.keepDays` (30 by default), keeps at most 5,000, drops the journal
+after 24 h and the photo folder under 500 MB. Clear deletes it all and
+vacuums. It is never in Life's nightly backup.
+
+### The Siri door and its key
+
+- `POST /v1/capture/chat` is under the capture prefix like the save door:
+  it exists only in tailscale or cloudflare mode with an https public
+  address, Chat on and an active chat key (else 404); any Origin is 403;
+  the key is read before the body.
+- A chat key is `jchat_` and 32 random bytes, stored only as
+  `sha256('jantar-chat-key:' + key)` with scope `chat` (jantar.db
+  migration 7). Each door takes only its own scope's keys: a save door key
+  on the Siri door, or a chat key on the save door, is refused like an
+  unknown key and counted by the shared bad-key limiter. A 0.9 daemon
+  refuses `jchat_` keys outright. Made at the Mac only, in the user's own
+  Terminal (`jantar chat shortcut add` refuses without a terminal or under
+  Claude Code), shown once; five per scope; idle 180 days.
+- The door answers within 20 s with what Siri speaks (the reply cut to
+  300 characters with no links, ids or Markdown, and the daemon's own
+  count sentence), else "Still working on it. The answer will be in
+  Jantar." and a Web Push with no text of the answer. Never a delete by
+  voice: a delete is a card on the phone.
+- **Leak impact.** A leaked chat key lets its holder read and write Life
+  (and read the shelf, meetings and sessions' status) by text, within
+  10 messages a minute and 100 a day, never deleting, until it is revoked
+  (`jantar chat shortcut revoke`), it idles out, or Chat is turned off.
+  TLS, Cloudflare Access (the same `/v1/capture/*` application and token
+  as the save door; a separate application is optional) and the limits
+  bound it.
+
+### Accepted risks
+
+- **Injection through Life text.** A todo note written by another process
+  (`jantar mcp`, a script) or a café note is read in an untainted message
+  and could steer a write. It is bounded by the caps, shown with Undo, and
+  can never delete or fetch.
+- **Claude's words.** The reply is Claude's: it can be wrong about what
+  happened. The change list and cards are the record.
+- **A stolen phone** with a paired device can use Chat like the owner;
+  revoke the device (`jantar devices revoke`).
+
+## v0.10: Cafés
+
+A café now carries its own stars, sub-ratings, a price level, tags and
+visits (a `place_visits` table, life.db schema 3). A local process can
+now **read** cafés over `ctl.sock` (`jantar place list | show`), as it can
+read posts; every café write stays the phone's (and Chat's, with Undo).
+Before moving life.db to schema 3 the daemon writes a pre-upgrade copy,
+`backups/life-pre-0.10.0.db`: going back to 0.9 needs `jantar life
+restore life-pre-0.10.0.db` ([upgrading](docs/upgrading.md)).
+

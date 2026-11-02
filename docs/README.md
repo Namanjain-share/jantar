@@ -7,13 +7,13 @@
 | Page | What it holds |
 |---|---|
 | [Install and run](install.md) | Requirements, a read-only trial, running under launchd, macOS prompts, reaching it from your phone (Tailscale, Cloudflare), pairing, updating, uninstalling |
-| [The app](phone-app.md) | Every screen on the phone and the Mac, sending prompts with proof, new sessions and Resume, Files, Rewrite, Ask, Controls, devices and scopes |
+| [The app](phone-app.md) | Every screen on the phone and the Mac, sending prompts with proof, new sessions and Resume, Files, Rewrite, Chat, Controls, devices and scopes |
 | [Answering from the phone](phone-control.md) | Hook cards, terminal dialogs as buttons, the keypad, attachments, what stays at the Mac and why |
 | [Alerts and sounds](alerts.md) | The five alert groups and their tones, Answer soon for Claude's 2-minute countdown, what the lock screen can and cannot do, `jantar notify` |
 | [Accounts](accounts.md) | One login or cswap, usage and resets, accounts kept for other work |
 | [The primer](primer.md) | Starting an idle account's 5-hour window early |
 | [Life](life.md) | Today, todos, reminders, projects, medicines, food and weight, cafés, finance, posts; backup and restore |
-| [Ask](assistant.md) | The chat page: plain words in, todos, reminders, meals, expenses and post ideas out as cards you add with a tap; "save this: <link>" to Intel; what goes to Claude |
+| [Chat](assistant.md) | Ask Jantar anything, by text, photo or Siri: changes at once with Undo, deletes only on your tap, sessions read only; "save this: <link>" to Intel; what goes to Claude |
 | [Intel shelf](intel.md) | The shelf, its search, its sources and the JSONL line format, `jantar mcp` for Claude Code, and Add post: the Mac reads a reel, video, post, article or PDF you save (depths, sources, Retry, what leaves the Mac) |
 | [Save to Jantar](shortcut.md) | The iOS Share-sheet Shortcut for Add post: a key made at the Mac, the steps, the Tailscale and Cloudflare doors, troubleshooting |
 | [Meetings](extension.md) | The Chrome extension for Google Meet and Microsoft Teams: setup, captions, screenshots, summaries, export, deleting everything; and Read saved links, posts read in your own Chrome |

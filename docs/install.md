@@ -79,7 +79,7 @@ To look first, skip `jantar init` for now and try it in a throwaway folder
 
 `--read-only` refuses every action on your sessions (no typing, no focus,
 no answering cards, no cswap calls, no settings changes, no primes, no Ask
-Claude runs, no messages to Ask) and `--no-terminal` means no AppleScript
+Claude runs, no messages to Chat) and `--no-terminal` means no AppleScript
 at all. With a throwaway state dir, nothing is written outside it:
 
 ```sh

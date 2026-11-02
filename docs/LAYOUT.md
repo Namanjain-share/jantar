@@ -51,8 +51,11 @@ jantar/
       src/meetings/      v0.5 Meetings: meetings.db (refused, never reset), the extension's
                          captures, screenshot files, the library, the summary queue
       src/auth/extensions.ts  v0.5 the paired Chrome extension's key (its own kind, not a device)
-      src/ask/           v0.5.3 Ask: the message's stdin (input.ts), the answer's checks and the
-                         card rules (answer.ts), the turns in memory, the queue and Add/Undo (service.ts)
+      src/chat/          v0.10 Chat (replaced v0.5.3's ask/): chat.db and its rows (db.ts, store.ts),
+                         photos (photos.ts), the queue and the run (service.ts), the per-run MCP
+                         server (dispatcher.ts), the tools, the journal and the taps (tools.ts,
+                         actions.ts, taps.ts), the run's input and the reply (input.ts, text.ts)
+      src/mcp/rpc.ts     v0.10 the MCP JSON-RPC core shared by Chat's dispatcher and `jantar mcp`
       src/link/          v0.6 the node link's library: Ed25519 keys and node.json (keys.ts), the
                          handshake, frames and bulks (codec.ts), backoff, join (pairWithHub), ws
       src/fleet/         v0.6 the hub's Fleet part: the link server (socket.ts), the registry of
@@ -89,9 +92,7 @@ jantar/
                    extension in a fresh temp profile and drives it (openPopup, tabIdOf, the
                    camera's closed shadow root): ext-smoke and ext-v05 (synthetic Meet and
                    Teams pages at the real URLs); v05-meetings, v05-privacy, web-v05;
-                   v0.5.3: v053-ask (Ask through the daemon, the CLI and the fake claude),
-                   web-v053-ask (the built Ask page in Chromium against jantard),
-                   v053-alerts (the alert groups, the countdown and the missed-push
+                   v0.5.3: v053-alerts (the alert groups, the countdown and the missed-push
                    retry, through the built app's service worker), ext-v053 (the toolbar
                    icon's activeTab path) and mcp (the built `jantar mcp` over stdio);
                    v0.6.1: v061-background (background work through the hooks, the
@@ -120,7 +121,7 @@ the wiring in `daemon.ts` is mechanical. Tests sit beside each in
 | Files, Rewrite, launching, Controls (v0.3) | `packages/daemon/src/{files,rewrite,launcher,controls}/**` | `createFilesService: Factories['files']`, `createChangesService: Factories['changes']` (files/index.ts); `createRewriteService: Factories['rewrite']` (rewrite/index.ts); `createLauncher: Factories['launcher']` (launcher/index.ts); `createControlsService: Factories['controls']` (controls/index.ts) |
 | Life, Intel, the primer (v0.4) | `packages/life-core/**`, `packages/daemon/src/{life,intel,primer}/**` | `createLifeService: Factories['life']` (life/index.ts, with `LIFE_MODULE_BUILDERS`); `createIntelService: Factories['intel']` (intel/index.ts); the primer service (primer/index.ts) |
 | Meetings (v0.5) | `packages/extension/**`, `packages/daemon/src/meetings/**`, `packages/daemon/src/auth/extensions.ts`, `packages/web/src/ui/screens/meetings/**` | `createMeetingsService: Factories['meetings']` (meetings/index.ts, with `MEETINGS_BUILDERS`; daemon.ts passes `{ readOnly }`); the built extension in `packages/extension/dist` |
-| Ask (v0.5.3) | `packages/protocol/src/ask.ts`, `packages/daemon/src/ask/**`, `packages/daemon/src/api/routes/ask.ts`, `packages/daemon/assets/ask/**`, `packages/web/src/ui/screens/ask/**`, `packages/cli/src/commands/ask.ts` | `createAskService: Factories['ask']` (ask/index.ts; daemon.ts passes `{ life, usage, ccwLegacy }` and `{ readOnly }`) |
+| Chat and the Siri door (v0.10; Ask until then) | `packages/protocol/src/chat.ts`, `packages/daemon/src/{chat,mcp}/**`, `packages/daemon/src/api/routes/chat.ts`, `packages/daemon/assets/chat/**`, `packages/web/src/ui/screens/chat/**`, `packages/cli/src/commands/{chat,chat-shortcut,ask}.ts` | `createChatService: Factories['chat']` (chat/index.ts) |
 | Fleet, the hub (v0.6) | `packages/daemon/src/{fleet,link}/**`, `packages/daemon/src/auth/nodes.ts`, `packages/cli/src/commands/{fleet,node}.ts` | `createFleet: Factories['fleet']` (fleet/index.ts; L1's `createLinkServer` and `NodeAuth` inside) |
 | Intel reads links (v0.8) | `packages/protocol/src/{post-url,page-read}.ts`, `packages/daemon/src/intel/read/**`, `packages/daemon/assets/intel/**`, `packages/daemon/src/auth/capture-keys.ts`, `packages/daemon/src/api/routes/{capture,capture-keys,ext-reads}.ts`, `packages/extension/src/background/reads.ts`, `packages/web/src/ui/screens/intel/**`, `packages/cli/src/commands/intel{,-shortcut}.ts` | still `createIntelService: Factories['intel']` (daemon.ts passes `{ files, usage, ccwLegacy }` and `{ readOnly }`); Ask gets Intel's `read` and `remove` only |
 | Fleet, a node (v0.6) | `packages/daemon/src/node/**`, `packages/daemon/src/terminal/{pick.ts,tmux/**}`, `packages/daemon/src/sources/cswap/dirs.ts`, `packages/cli/src/lib/{systemd,service}.ts` | `createNodeLink: Factories['nodeLink']` (node/index.ts; daemon.ts passes `{ executor, self }`); `createTmuxBackend` (terminal/tmux/index.ts, picked by `pickTerminal`) |
@@ -155,12 +156,13 @@ Implemented in `packages/daemon/src/daemon.ts`:
 2. `persistEvents(store, db)` and `persistPendingHistory(store, db)` (db/index.ts)
 3. parts: ccwLegacy → sessions → transcripts → transcriptWatcher → usage →
    hooks → terminal → writer → notifiers → files → changes → rewrite →
-   launcher → controls → life → intel → meetings → ask → primer →
+   launcher → controls → life → intel → meetings → chat → primer →
    notifications → api (`--read-only` wraps usage, hooks, terminal, writer,
    rewrite, launcher and settings, and life's food module only for Ask
    Claude, never intel; meetings is told `readOnly`, not wrapped: capture and
-   edits work, summaries never run; ask is told `readOnly` too: the API
-   refuses sending a message, and its list says Ask can't run;
+   edits work, summaries never run; chat is told `readOnly` too: the API
+   refuses sending a message, a photo and the Siri door, and its list says
+   Chat can't run;
    `--no-terminal` swaps in `NullTerminalBackend`; see modes.ts)
 4. `startServices([...])` in that order (log rotator first); stop in reverse
    on SIGINT / SIGTERM, then close the db.
@@ -172,7 +174,7 @@ inert stand-in) → sessions → transcriptWatcher → usage → hooks → termi
 (the tmux backend's 10-second pane tick, when it has one) → writer → files
 → launcher → controls → api (no TCP port: only the control socket and the
 link app) → nodeLink (the dialler, last, so the hub's first call finds the
-API); Changes, Rewrite, Life, Intel, Meetings, Ask, the primer and pushes
+API); Changes, Rewrite, Life, Intel, Meetings, Chat, the primer and pushes
 are stand-ins that open no file and start no timer (`nodeOffParts()` in
 modes.ts).
 
@@ -192,13 +194,18 @@ two more methods of the controls part (`controls/dialog.ts`,
 `controls/keypad.ts`), over the Terminal.app backend's compare-and-type
 script mode.
 
-Ask (v0.5.3, `ask/`) holds only life, usage and ccwLegacy: no writer,
-terminal, launcher, controls, files or settings. Each message is one run of
-the shared headless runner (`rewrite/run.ts`) in the empty
-`<state dir>/ask/work` (0700, emptied before each run), beside a copy of its
-prompt (`assets/ask/assistant-v2.md`). Its turns live in its memory only, so
-`start()` has nothing to load; `stop()` and the switch going off abort the
-run and forget them.
+Chat (v0.10, `chat/`; Ask's `ask/` until then) holds Life, Intel's list,
+get, read, remove, reread and jobs, Meetings' library and summaries, a
+read-only board (the store's state and transcript pages), usage,
+ccwLegacy and the notifiers: no writer, terminal, launcher, controls,
+hooks' decide, files, uploads or settings' write side
+(`test/arch/v010-chat.test.ts`). It opens `chat.db` at start when Chat is on
+or the file exists (refused, never reset), fails any turn a restart left
+unfinished, and sweeps every hour. Each message is one run of the shared
+runner in tools mode in `<state dir>/chat/run/<rid>` (0700, removed when
+the run ends) beside a copy of its prompt (`assets/chat/chat-v1.md`) and
+its `mcp.json`, with the dispatcher's socket in the run dir; `stop()` and
+the switch going off abort the run and cancel the queue.
 
 ## What each version added
 
@@ -553,3 +560,31 @@ schemas sit in the protocol's shared chunk), and Places pulls in 50.5 kB
 `packages/cli/test/place.test.ts`,
 `packages/web/test/{places,place-screen,place-sheets}.test.tsx`, and end to
 end in `test/integration/{v010-places,v010-upgrade,web-v010-places}.integration.test.ts`.
+
+Chat replaces Ask. The protocol (`chat.ts`): the thread, its changes and
+cards, the send body, photos, the chat keys and the Siri door's body and
+reply; fourteen routes in phase `v0.10` (the phone's `/v1/chat*`, the
+Mac's `chatStatus` and `chatKey*`, and `captureChat` at
+`POST /v1/capture/chat`); Ask's seven routes and `ask.ts` are gone; the
+`ask` settings group keeps its name and gains `keepDays` and
+`voiceModel`. The daemon: `chat/` (above) with chat.db (refused, never
+reset) and its photos under `<home>/chat`; the shared runner's tools mode
+(`RunFlags.tools`, `TOOLS_ISOLATION_OPTIONS`, `initProblem`) and
+`ExecOptions.onStdout`; `mcp/rpc.ts`, which `jantar mcp` imports too;
+`assets/chat/chat-v1.md` and `bridge.mjs`; jantar.db migration 7 (a
+`scope` column on `capture_keys`) and the gate split per door in
+`api/app.ts`. The CLI: `jantar chat` (`chat.ts`, `chat-shortcut.ts`),
+`jantar ask` as its alias, and doctor's Siri door probe. The phone
+(`screens/chat/`, the Chat chunk): `Chat.tsx`, `Turn.tsx`, `Composer.tsx`
+and `model.ts`; `/ask` reads as `/chat`. The first load is 278.3 kB of
+`MAIN_JS_MAX` 280 kB, and Chat pulls in 43.6 kB (its own chunk 5.8 kB).
+Tests: `packages/protocol/test/v010-chat.test.ts`,
+`packages/daemon/test/{chat,mcp}/**`, `packages/daemon/test/rewrite/tools.test.ts`,
+`packages/daemon/test/arch/v010-chat.test.ts`,
+`packages/daemon/test/api/v010-capture-chat.test.ts`,
+`packages/daemon/test/db/v010-chat-keys.test.ts`,
+`packages/cli/test/{chat,doctor-capture}.test.ts`,
+`packages/web/test/chat.test.tsx`,
+`test/fixtures/test/fake-claude-chat.test.ts` (the fake claude's Chat
+mode: an MCP client over the run's one server), and end to end in
+`test/integration/{v010-chat,v010-siri,web-v010-chat}.integration.test.ts`.
