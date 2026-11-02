@@ -127,7 +127,7 @@ describe('the popup with the worker', () => {
     click(ARM.button);
     await vi.waitFor(() => expect(text()).toContain(ARM.armedPrejoin));
     // The name untouched: the page's title once in the call.
-    expect(text()).toContain(`${ARM.nameFromPage} · Acme site`);
+    expect(text()).toContain(`${ARM.fromPage('Weekly sync')} · Acme site · ${ARM.todos}`);
     expect(w.model.badge(7).text).toBe('ARM');
     expect(w.daemon.ops().filter((op) => op !== 'info')).toEqual([]);
 

@@ -720,10 +720,10 @@ describe('v0.10: Start when I join', () => {
     noBadMarks();
     answers.state = state({ projects, tab: before('prejoin', { arm: armView({ name: '' }) }) });
     await open();
-    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([ARM.armedPrejoin, `${ARM.nameFromPage} · No project`, TELL_PEOPLE]);
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([ARM.armedPrejoin, `${ARM.fromPage('Weekly sync')} · No project`, TELL_PEOPLE]);
     answers.state = state({ tab: before('left', { arm: armView({ from: 'always', name: '' }) }) });
     await open();
-    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([ARM.armedLeft, ARM.nameFromPage, TELL_PEOPLE, ARM.byAlways]);
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([ARM.armedLeft, ARM.fromPage('Weekly sync'), TELL_PEOPLE, ARM.byAlways]);
     expect(buttons().map((b) => b.textContent)).toEqual([ARM.change, ARM.notThisCall, 'Settings']);
     noBadMarks();
   });
@@ -875,6 +875,91 @@ describe('v0.10: Start when I join', () => {
     await vi.waitFor(() => expect(input('always').checked).toBe(true));
     // No Chrome prompt for it.
     expect(model.requested).toEqual([]);
+  });
+
+  it('an off arm (Not this call, End): the sheet says this call is skipped, above the form', async () => {
+    answers.state = state({ always: true, tab: before('lobby', { arm: armView({ from: 'always', off: true, name: '' }) }) });
+    await open();
+    const ps = [...root.querySelectorAll('.view p')].map((p) => p.textContent);
+    expect(ps.slice(0, 2)).toEqual([ARM.leadLobby, ARM.skipped]);
+    expect(root.querySelector('.view form')?.previousElementSibling?.textContent).toBe(ARM.skipped);
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.button, 'Settings']);
+    // Without an off arm, no such line.
+    answers.state = state({ tab: before('lobby') });
+    await open();
+    expect(text()).not.toContain(ARM.skipped);
+    expect(ARM.hint.startsWith(`Press ${ARM.button}`)).toBe(true);
+    noBadMarks();
+  });
+
+  it('Meetings off or Jantar not answering on an armed tab: the reason, that the arm is on but cannot start, and Cancel or Not this call', async () => {
+    const off = 'Meetings are off. Turn them on at your Mac: jantar meetings on';
+    answers.state = state({ connection: 'off', sentence: off, tab: before('prejoin', { arm: armView() }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([off, ARM.blocked]);
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.cancel, 'Settings']);
+    answers.state = state({ connection: 'off', sentence: off, tab: before('prejoin') });
+    buttonNamed(ARM.cancel).click();
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'disarm', tabId: 7 }));
+    await vi.waitFor(() => expect(text()).not.toContain(ARM.blocked));
+    answers.state = state({ connection: 'down', tab: before('lobby', { arm: armView({ from: 'always', name: '' }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([NOT_RUNNING, ARM.blocked]);
+    expect(buttons().map((b) => b.textContent)).toEqual([ARM.notThisCall, 'Settings']);
+    // An off arm, or none: only the reason.
+    answers.state = state({ connection: 'off', sentence: off, tab: before('lobby', { arm: armView({ from: 'always', off: true }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual([off]);
+    noBadMarks();
+  });
+
+  it('not paired with Always on: the pairing view says notes cannot start, and Always can be turned off there', async () => {
+    answers.state = state({ connection: 'unpaired', sentence: PAIR_AGAIN, pageButton: false, always: true, tab: before('prejoin') });
+    await open();
+    expect(text()).toContain(PAIR_AGAIN);
+    expect(text()).toContain(ALWAYS.unpaired);
+    const off = buttonNamed(ALWAYS.turnOff);
+    expect(off.getAttribute('aria-label')).toBe(ALWAYS.turnOffName);
+    answers.state = state({ connection: 'unpaired', sentence: PAIR_AGAIN, pageButton: false, always: false, tab: before('prejoin') });
+    off.click();
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'always', on: false }));
+    await vi.waitFor(() => expect(text()).not.toContain(ALWAYS.unpaired));
+    expect(buttons().map((b) => b.textContent)).toEqual(['Pair']);
+    noBadMarks();
+  });
+
+  it("the armed view names the page's title when the arm has no name, the todos when on, and what Cancel cancels", async () => {
+    const projects = [{ id: PROJECT_A, name: 'Acme site' }];
+    answers.state = state({ projects, tab: before('prejoin', { arm: armView({ name: '', projectId: PROJECT_A, autoTodos: true }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')][1]?.textContent).toBe(`${ARM.fromPage('Weekly sync')} · Acme site · ${ARM.todos}`);
+    expect(buttonNamed(ARM.cancel).getAttribute('aria-label')).toBe(ARM.cancelName);
+    answers.state = state({ tab: before('prejoin', { title: '', arm: armView({ name: '' }) }) });
+    await open();
+    expect([...root.querySelectorAll('.view p')][1]?.textContent).toBe(ARM.nameFromPage);
+  });
+
+  it('Settings: the meeting settings come first, together (Always, then Call check)', async () => {
+    answers.state = state({ tab: before('lobby', { site: 'teams', hook: 'teams:after-join' }) });
+    await open();
+    buttonNamed('Settings').click();
+    const blocks = [...root.querySelectorAll('.view > *')].map((n) => n.className || n.tagName);
+    const always = blocks.indexOf('setting');
+    expect(blocks[always + 1]).toBe('mono check');
+    expect(root.querySelector('.view h2')?.nextElementSibling?.querySelector('#always')).not.toBeNull();
+  });
+
+  it('a redraw after an action keeps the keyboard in the view: on the same control, else the first one', async () => {
+    answers.state = state({ tab: before('lobby') });
+    const popup = await open();
+    buttonNamed(ARM.button).focus();
+    answers.state = state({ tab: before('lobby', { arm: armView() }) });
+    submit(ARM.button);
+    await vi.waitFor(() => expect(root.querySelector('.view .lead')?.textContent).toBe(ARM.armedLobby));
+    expect(document.activeElement?.textContent).toBe(ARM.change);
+    buttonNamed(ARM.cancel).focus();
+    await popup.refresh();
+    expect(document.activeElement?.textContent).toBe(ARM.cancel);
   });
 
   it('Settings › Call check: the stage in words and our hook id, for a meeting tab only', async () => {
