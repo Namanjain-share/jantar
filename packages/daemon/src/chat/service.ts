@@ -488,10 +488,12 @@ export class ChatServiceImpl implements ChatService {
       return { message: sent.reason, outcome: 'refused' };
     }
     const turnId = sent.value.id;
-    const finished = await this.waitFor(turnId, waitMs);
+    await this.waitFor(turnId, waitMs);
     const store = this.store;
     const turn = store?.turn(turnId);
-    if (!finished || !turn || unfinished(turn)) {
+    // What the turn is now decides, not whether the wait timed out: one that ended just after the timeout is
+    // answered here (its ended() has run, so a push it waited for would never come).
+    if (!turn || unfinished(turn)) {
       this.pushWhenDone.add(turnId);
       return { message: CHAT_SENTENCES.voiceLater, outcome: 'later', turnId };
     }

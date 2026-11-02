@@ -200,6 +200,22 @@ describe('a turn through the fake claude, the bridge and the dispatcher', () => 
     expect(del.message).toBe('I asked you to confirm the delete. 1 to confirm in Jantar.');
   });
 
+  it('voice: a turn that ends just after the wait timed out is answered, not left for a push that never comes', async () => {
+    await setFakeClaude(home, { mode: 'chat-slow', slowMs: 5000 });
+    const asked = chat.voice('how many calories today', { kind: 'capture', keyId: 'synthetic-key' }, 10_000);
+    const id = await vi.waitFor(() => {
+      const r = chat.list(PHONE);
+      const t = r.ok ? r.value.turns.at(-1) : undefined;
+      if (!t || t.via !== 'voice' || t.state !== 'running') throw new Error('not yet');
+      return t.id;
+    }, WAIT);
+    // The wait times out, and the turn ends before voice() looks at it.
+    ctx.clock.advance(10_001);
+    expect(chat.cancel(id, PHONE)).toEqual({ ok: true, value: true });
+    const r = await asked;
+    expect(r).toMatchObject({ outcome: 'answered', message: CHAT_SENTENCES.cancelled, turnId: id });
+  });
+
   it("Try again: a failed turn's photo goes with the new message; a photo sent and answered does not", async () => {
     const up = await chat.photoAdd(makePng(64, 48), PHONE);
     if (!up.ok) throw new Error(up.reason);
