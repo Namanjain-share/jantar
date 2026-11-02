@@ -24,6 +24,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { stateDirFromEnv } from '@jantar/daemon/config';
+import { MCP_LINE_MAX, MCP_VERSIONS, createRpcServer, isRpcObject, rpcError, rpcResult, type RpcId } from '@jantar/daemon/mcp/rpc';
 import {
   CLI_NAME,
   DayKeySchema,
@@ -47,10 +48,8 @@ import { CtlUnavailableError, DaemonError, callDaemon, type CtlClient } from '..
 import { clip } from '../lib/text.js';
 import { CLI_VERSION } from '../version.js';
 
-/** Newest first: what `initialize` answers when the client asks for a version it does not know. */
-export const MCP_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'] as const;
-/** A longer line is refused (-32600) and the server reads on. */
-export const MCP_LINE_MAX = 1024 * 1024;
+/** v0.10: the versions and the line cap live with the shared JSON-RPC core (daemon mcp/rpc.ts). */
+export { MCP_LINE_MAX, MCP_VERSIONS };
 /** Each tool's text stays at most this long (Claude Code saves a result over 50,000 characters to a file). */
 export const MCP_RESULT_MAX = 40_000;
 const SEARCH_DEFAULT = 10;
@@ -395,12 +394,13 @@ function failure(e: unknown, adds: boolean): string {
 
 // ------------------------------------------------------------------ JSON-RPC
 
-type Id = string | number;
+// v0.10: the framing (initialize, ping, tools/list, the line cap, notifications, errors) is the daemon's
+// mcp/rpc.ts, shared with Chat's dispatcher; this server keeps its five tools.
+type Id = RpcId;
 
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-
-const result = (id: Id, value: unknown) => JSON.stringify({ jsonrpc: '2.0', id, result: value });
-const error = (id: Id | null, code: number, message: string) => JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } });
+const isObject = isRpcObject;
+const result = rpcResult;
+const error = rpcError;
 
 export interface McpServerOptions {
   ctl: CtlClient;
@@ -437,55 +437,12 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     return result(id, { content: [{ type: 'text', text: answer.text }], ...(answer.isError ? { isError: true } : {}) });
   }
 
-  async function reply(id: Id, method: string, params: Record<string, unknown>): Promise<string> {
-    switch (method) {
-      case 'initialize': {
-        const asked = params.protocolVersion;
-        return result(id, {
-          protocolVersion: MCP_VERSIONS.find((v) => v === asked) ?? MCP_VERSIONS[0],
-          capabilities: { tools: {} },
-          serverInfo: { name: 'jantar', title: 'Jantar', version: CLI_VERSION },
-          instructions: MCP_INSTRUCTIONS,
-        });
-      }
-      case 'ping':
-        return result(id, {});
-      case 'tools/list':
-        return result(id, { tools: TOOLS.map(listed) });
-      case 'tools/call':
-        return call(id, params);
-      default:
-        // server/discover (the 2026-07-28 probe) included: the client falls back to initialize.
-        return error(id, -32601, `Method not found: ${clip(method, 80)}`);
-    }
-  }
-
-  return {
-    async onLine(line) {
-      if (line.trim() === '') return [];
-      if (Buffer.byteLength(line, 'utf8') > MCP_LINE_MAX) return [error(null, -32600, 'Message too large (at most 1 MiB)')];
-      let msg: unknown;
-      try {
-        msg = JSON.parse(line);
-      } catch {
-        return [error(null, -32700, 'Parse error')];
-      }
-      if (Array.isArray(msg)) return [error(null, -32600, 'Batches are not supported')];
-      if (!isObject(msg)) return [error(null, -32600, 'Invalid request')];
-      const { id, method, params } = msg;
-      const validId = typeof id === 'string' || typeof id === 'number' ? id : null;
-      if (typeof method !== 'string') {
-        // An answer to a request: this server sends none, so there is nothing to match it to.
-        if ('result' in msg || 'error' in msg) return [];
-        return [error(validId, -32600, 'Invalid request')];
-      }
-      // A notification (initialized, cancelled, ...) is never answered.
-      if (!('id' in msg)) return [];
-      if (validId === null || msg.jsonrpc !== '2.0') return [error(validId, -32600, 'Invalid request')];
-      if (params !== undefined && !isObject(params)) return [error(validId, -32602, 'params must be an object')];
-      return [await reply(validId, method, params ?? {})];
-    },
-  };
+  return createRpcServer({
+    serverInfo: { name: 'jantar', title: 'Jantar', version: CLI_VERSION },
+    instructions: MCP_INSTRUCTIONS,
+    tools: () => TOOLS.map(listed),
+    call,
+  });
 }
 
 // ------------------------------------------------------------------ the command
