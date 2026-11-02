@@ -337,7 +337,7 @@ describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
     const done = await finished(saved.id, 'the reel read past Chrome');
     expect(done.state, dumpLog()).toBe('saved');
     const got = await item(saved.id);
-    expect(got.caption).toContain(POST_PAGES.instagram.caption);
+    expect(got.caption, `${JSON.stringify(done)}\n${dumpLog()}`).toContain(POST_PAGES.instagram.caption);
     expect(JSON.stringify(got)).not.toContain(SIGNED_IN_MARKER);
     expect(got.frames).toBeGreaterThanOrEqual(1);
     // yt-dlp: the platform's own extractor, one single-file format, through the daemon's proxy, no cookies.
