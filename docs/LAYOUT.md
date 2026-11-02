@@ -524,3 +524,32 @@ chunk 7.8 kB). Tests: `packages/protocol/test/v09-comment-log.test.ts`,
 `packages/daemon/test/life/posts-log.test.ts`, `packages/cli/test/post.test.ts`,
 `packages/web/test/{posts,today}.test.tsx`, and end to end in
 `test/integration/v09-comment-log.integration.test.ts`.
+
+### v0.10.0
+
+Cafés depth. The protocol (`life.ts`, `constants.ts`): a café's own
+`stars`, six optional sub-ratings (`PLACE_RATING_KEYS`), a price level,
+`again`, tags (`PLACE_TAGS`, work-friendly first, plus custom ones by the
+category rule; `placeTagKey`, `normalizePlaceTags`), dishes whose rating
+may wait, with a price, order again and notes, and visits
+(`PlaceVisitSchema`); stored shapes are tolerant `z.object`s and bodies
+strict; the list query's sorts and filters and `placeScore`; four routes
+in phase `v0.10` (`placeGet`, `placeVisitAdd`, `placeVisitUpdate`,
+`placeVisitDelete`), with `placesList` and `placeGet` read only on
+ctl.sock. The daemon: life.db's migration 3 (`place_visits`), Life's second
+schema change, and `CheckedDbOptions.preMigrateCopy` in `life/db.ts`, the
+copy `LifeService.open()` writes before migrating
+(`backups/life-pre-<version>.db`); `life/places/{module,repo}.ts` sort and
+filter in the module, read every café's visit summary in one grouped query
+and delete a café with its visits in one transaction. The CLI: `jantar
+place list|show` (`cli/src/commands/place.ts`) and the schema in `jantar
+life status`. The phone (`screens/life/places/`, the Places chunk): the
+list's Sort, Filters and search in the address, `PlaceScreen.tsx` at
+`?id=`, and the café, dish and visit sheets with `TagPicker.tsx`. The
+first load is 277.5 kB of `MAIN_JS_MAX` 280 kB (the new routes and their
+schemas sit in the protocol's shared chunk), and Places pulls in 50.5 kB
+(its own chunk 11.8 kB). Tests: `packages/protocol/test/v010-places.test.ts`,
+`packages/daemon/test/life/{places,places-depth,precopy,db}.test.ts`,
+`packages/cli/test/place.test.ts`,
+`packages/web/test/{places,place-screen,place-sheets}.test.tsx`, and end to
+end in `test/integration/{v010-places,v010-upgrade,web-v010-places}.integration.test.ts`.

@@ -20,6 +20,29 @@ daemon migrates `config.json` and its databases on start (moving settings
 to version 2 in v0.4 kept the old file as `config.json.v1`). The
 [changelog](../CHANGELOG.md) says what changed in each version.
 
+### 0.10.0: Life's second schema change
+
+0.10.0 adds a table for cafés' visits to `life.db`. Nothing to copy by
+hand this time: before it moves the file to the new layout, the daemon
+writes `life-pre-0.10.0.db` in the backups folder itself (from the file as
+it was, with anything still in its write-ahead log), and moves nothing if
+that copy can't be written. A daemon older than 0.10.0 that never started
+on the file wrote nothing, so upgrading straight from 0.6.x gets the copy
+too, from before both changes.
+
+0.9.0 can't open the newer file: every Life part would say "Life data
+could not be opened". To go back, install 0.9.0 and run:
+
+```sh
+jantar life restore life-pre-0.10.0.db
+```
+
+That brings back Life as it was at the upgrade and loses every Life change
+made since (todos, doses, meals, money, posts and cafés); the newer file
+is kept beside it. `jantar life restore` with no name lists the copy, and
+`jantar life status` names it. It is kept until 30 newer backups exist,
+like every backup.
+
 ### 0.7.0: Life's first schema change
 
 0.7.0 adds a table for Posts to `life.db`, the first change to that file's

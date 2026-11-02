@@ -43,8 +43,16 @@ jantar life status
   and your weight with its change over 7 and 30 days. The calorie target
   (1,500 kcal until you change it) and the goal weight are set on the
   phone.
-- **Cafés** (`places`): your places and their best dishes, rated, tried or
-  want to try.
+- **Cafés** (`places`): your places, tried or want to try. A café has its
+  own stars, six optional ratings (food, coffee and drinks, vibe, service,
+  value, work), a price level (shown in your currency's symbol), would go
+  again, and tags: Wi-Fi, sockets, quiet and the rest, or your own. Its
+  dishes have stars (or none yet, to try), a price and would order again;
+  its visits keep the day, what you spent and had, and how it was. Sort by
+  best, recent, most visited, name, price or work; filter by tags, price,
+  stars, would go again and area, or search. Each café has its own screen,
+  and `jantar place list` and `show` read them at the Mac (never change
+  them).
 - **Finance** (`finance`): expenses and income by category, monthly
   budgets, and bills that remind you.
 - **Posts** (`posts`): what you plan to post on social media (a Reddit
@@ -60,8 +68,12 @@ jantar life status
 </p>
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="img/food-phone-dark.png"><img src="img/food-phone.png" width="240" alt="Food: 1,240 of 1,500 kcal and the weight line."></picture>
-  <picture><source media="(prefers-color-scheme: dark)" srcset="img/places-phone-dark.png"><img src="img/places-phone.png" width="240" alt="Cafés, best rated first."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="img/places-phone-dark.png"><img src="img/places-phone.png" width="240" alt="Cafés, best rated first, with filters."></picture>
   <picture><source media="(prefers-color-scheme: dark)" srcset="img/money-phone-dark.png"><img src="img/money-phone.png" width="240" alt="Finance: spending by category against budgets, and bills."></picture>
+</p>
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="img/place-phone-dark.png"><img src="img/place-phone.png" width="240" alt="A café: its stars, price, ratings, tags, dishes and visits."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="img/place-filters-phone-dark.png"><img src="img/place-filters-phone.png" width="240" alt="Cafés' filters: tags, price, stars, would go again and area."></picture>
 </p>
 
 ## How it behaves
@@ -70,10 +82,11 @@ jantar life status
   every phone: `1,240` is 1240 and `1,240.50` is 1240.50. The currency is
   a label only; there is one currency.
 - **Undo instead of a confirm.** Deleting a todo, a meal, a weight, a saved
-  food, a café, a money entry or a post happens at once, with Undo for five
-  seconds. A medicine, a project or a bill still asks first, because
-  deleting one also drops its dose history, its todos' link to it or its
-  reminders.
+  food, a café with no visits, a café's visit or dish, a money entry or a
+  post happens at once, with Undo for five seconds. A medicine, a project, a
+  bill or a café with visits still asks first ("Delete Example Café and its
+  3 visits?"), because deleting one also drops its dose history, its todos'
+  link to it, its reminders or its visits.
 - **Pings need the Mac awake.** Medicine, reminder and post pings come from
   the daemon, so a sleeping Mac sends none. Keep your phone's own alarm for a
   dose you must not miss. Muting pushes under Alerts holds a todo's ping,
@@ -178,7 +191,7 @@ jantar life off finance                  # its data stays in life.db
 jantar life set timezone Europe/Berlin   # days and ping times (default, or none: the Mac's zone)
 jantar life set currency EUR             # a label for amounts (none: plain numbers)
 jantar life set lock-screen-details on   # names on the lock screen (default off: "Medicine due", "Bill due", "Post due")
-jantar life status                       # modules, zone, currency, who gets medicine pings, backups
+jantar life status                       # modules, zone, currency, who gets medicine pings, backups, life.db's schema
 ```
 
 ## Backup and restore
@@ -195,6 +208,13 @@ jantar life restore life-2026-10-29.db   # asks first, and keeps the current lif
 A file that fails its checks is refused, never reset: Life says so on the
 phone, the rest of Jantar keeps working, and `jantar life restore` brings
 a backup back.
+
+From 0.10.0 the daemon keeps a copy for you before it changes life.db's
+layout: `life-pre-<version>.db` in the same folder, written before the
+change and kept until 30 newer backups exist (`jantar life status` names
+it). 0.10.0 adds a table for cafés' visits, and 0.9.0 can't open life.db
+after that; `jantar life restore life-pre-0.10.0.db` on 0.9.0 brings the
+old file back ([Upgrading](upgrading.md#0100-lifes-second-schema-change)).
 
 Before upgrading to 0.7.0, copy a fresh backup to `life-pre-0.7.0.db` in
 the same folder. 0.7.0 adds the posts table, and 0.6.1 can't open

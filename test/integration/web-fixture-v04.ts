@@ -457,7 +457,7 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
       { name: 'Margherita', rating: 4, price: 1100 },
       { name: 'Garlic knots', rating: 3 },
     ], { stars: 3, price: 3, again: 'maybe', tags: ['groups', 'late', 'outdoor'], visits: summary(703) }),
-    place(704, 'Demo Noodle Bar', 'Station Road', true, [{ name: 'Dan dan noodles', rating: 4, price: 950 }], { price: 2, again: 'no', tags: ['takeaway'], visits: summary(704) }),
+    place(704, 'Demo Noodle Bar', 'Station Road', true, [{ name: 'Dan dan noodles', rating: 4, price: 950 }], { stars: 3, price: 2, again: 'no', tags: ['takeaway'], visits: summary(704) }),
     place(705, 'Fixture Bakery', 'Hill Lane', false, [{ name: 'Cinnamon roll' }], { notes: 'Sourdough on Saturdays.', price: 1, tags: ['breakfast', 'desserts'] }),
     place(706, 'Mock Ramen', 'Canal Side', false, []),
   ];
@@ -719,7 +719,7 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
     });
   };
 
-  /** v0.10: the list as the daemon filters it (the fixture's order is already best first; other sorts keep it). */
+  /** v0.10: the list as the daemon filters it, best first (the score, then the name); the other sorts are not kept here. */
   const placesList = (q: URLSearchParams) => {
     const f = q.get('filter');
     const segment = places.filter((p) => (f === 'tried' ? p.tried : f === 'want' ? !p.tried : true));
@@ -738,8 +738,9 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
         (!text || [p.name, p.area ?? '', ...p.dishes.map((d) => d.name), ...p.tags, ...p.tags.map(placeTagLabel), p.notes ?? ''].join('\n').toLowerCase().includes(text)),
     );
     const count = <K extends string>(keys: K[]) => [...keys.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map<K, number>())].sort((a, b) => b[1] - a[1]);
+    const score = (p: Place) => placeScore(p) ?? -1;
     return {
-      places: shown,
+      places: [...shown].sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })),
       tags: count(segment.flatMap((p) => p.tags)).map(([tag, n]) => ({ tag, n })),
       areas: count(segment.flatMap((p) => (p.area ? [p.area] : []))).map(([area, n]) => ({ area, n })),
     };

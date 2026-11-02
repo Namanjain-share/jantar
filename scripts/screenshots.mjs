@@ -235,6 +235,25 @@ export const SHOTS = [
   },
   { name: 'food', path: '/food', sizes: PHONE },
   { name: 'places', path: '/places', sizes: PHONE },
+  // v0.10: the first café's own screen (its row tapped), and the list's Filters sheet.
+  {
+    name: 'place',
+    path: '/places',
+    sizes: PHONE,
+    steps: async (page) => {
+      await page.getByRole('list', { name: 'Cafés' }).getByRole('button').first().click();
+      await page.getByRole('button', { name: 'Log visit' }).waitFor();
+    },
+  },
+  {
+    name: 'place-filters',
+    path: '/places',
+    sizes: PHONE,
+    steps: async (page) => {
+      await page.getByRole('button', { name: /^Filters/ }).click();
+      await page.getByRole('dialog', { name: 'Filters' }).waitFor();
+    },
+  },
   // v0.7: Posts on in its own variant, so no other picture changes (Today keeps its sections).
   { name: 'posts', path: '/posts', sizes: PHONE, variant: 'posts' },
   { name: 'money', path: '/money', sizes: PHONE },

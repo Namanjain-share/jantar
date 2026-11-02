@@ -203,10 +203,11 @@ async function child({ items }) {
       life: { todos: true, medicines: true, food: true, places: true, finance: true, timezone: 'UTC', currency: 'INR' },
       intel: { enabled: true, sources: [shelf] },
     });
-    // 186 writes: under the 240 a minute one device may make.
+    // 236 writes: under the 240 a minute one device may make.
     const send = async (method, path, body) => {
       const r = await http(d.port, method, path, { cookie, body });
       if (r.status !== 200) throw new Error(`${method} ${path}: ${r.status} ${r.text}`);
+      return r.body;
     };
     const ago = (n) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
     for (let i = 0; i < 3; i++) await send('POST', '/v1/projects', fx.projectBody({ name: `Example project ${i}` }));
@@ -215,7 +216,11 @@ async function child({ items }) {
     await send('POST', '/v1/medicines', fx.PLACEBIN);
     for (let i = 0; i < 60; i++) await send('POST', '/v1/food', fx.foodBody({ day: ago(i % 30), name: `Sample food ${i}`, kcal: 100 + i }));
     for (let i = 0; i < 30; i++) await send('PUT', `/v1/weights/${ago(i)}`, { kg: 72 + (i % 5) / 10 });
-    for (let i = 0; i < 10; i++) await send('POST', '/v1/places', fx.placeBody({ name: `Example Café ${i}` }));
+    // v0.10: each café with five visits.
+    for (let i = 0; i < 10; i++) {
+      const { id } = await send('POST', '/v1/places', fx.placeBody({ name: `Example Café ${i}` }));
+      for (let v = 0; v < 5; v++) await send('POST', `/v1/places/${id}/visits`, fx.visitBody({ day: ago(v * 3) }));
+    }
     for (let i = 0; i < 40; i++) await send('POST', '/v1/money', fx.moneyBody({ day: ago(i % 30), amount: 10_000 + i }));
     await send('POST', '/v1/bills', fx.billBody({ nextDue: ago(0) }));
     await eventually(async () => (await callDaemon(ctl, 'GET', '/v1/intel?limit=1')).total === count, 60_000, `the shelf to hold ${count} items`);

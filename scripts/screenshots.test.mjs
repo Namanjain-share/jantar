@@ -65,6 +65,9 @@ test('the screens the README and the docs promise are all taken, at the sizes th
     'dose',
     'food',
     'places',
+    // v0.10: a café's screen and the list's Filters sheet.
+    'place',
+    'place-filters',
     'posts',
     'money',
     'intel',

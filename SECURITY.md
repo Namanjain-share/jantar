@@ -1541,6 +1541,13 @@ or deleting a visit are not on the control socket (404).
 copy, so keep one named `life-pre-0.7.0.db` before upgrading
 ([Upgrading](docs/upgrading.md#070-lifes-first-schema-change)).
 
+0.10.0 adds the cafés' visits table, Life's second schema change, and
+0.9.0 refuses the newer file. The daemon writes `life-pre-0.10.0.db` itself
+before it migrates, `VACUUM INTO` a 0600 file in the 0700 backups folder
+from the read-only check connection, and refuses to migrate (Life answers
+503 with its sentence, the file untouched) when that copy fails
+([Upgrading](docs/upgrading.md#0100-lifes-second-schema-change)).
+
 ## v0.8: Intel reads links
 
 Add post saves a link (or text) on the Intel shelf and has the Mac read it
