@@ -43,6 +43,18 @@ is kept beside it. `jantar life restore` with no name lists the copy, and
 `jantar life status` names it. It is kept until 30 newer backups exist,
 like every backup.
 
+If you made Siri keys, revoke them before you go back
+(`jantar chat shortcut revoke --all`): 0.9.0 doesn't know them apart from
+Shortcut keys, so with only Siri keys its save door would exist (answering
+401 rather than 404), `jantar intel shortcut list` would list them, and
+its five-key rule could revoke one.
+
+The copy is written once: if you go back, use 0.9.0 for a while and then
+upgrade again, the copy still holds Life as it was at the first upgrade.
+Before upgrading again, keep a copy of your own (`jantar life backup`,
+then copy that file aside) or move `life-pre-0.10.0.db` out of the
+backups folder so a fresh one is written.
+
 ### 0.7.0: Life's first schema change
 
 0.7.0 adds a table for Posts to `life.db`, the first change to that file's

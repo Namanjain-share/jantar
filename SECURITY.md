@@ -1900,8 +1900,11 @@ vacuums. It is never in Life's nightly backup.
   count sentence), else "Still working on it. The answer will be in
   Jantar." and a Web Push with no text of the answer. Never a delete by
   voice: a delete is a card on the phone.
-- **Leak impact.** A leaked chat key lets its holder read and write Life
-  (and read the shelf, meetings and sessions' status) by text, within
+- **Leak impact.** A leaked chat key lets its holder read and write Life,
+  and read whatever Chat can read for the parts that are on: the Intel
+  shelf with an item's text, meetings with what was said, and sessions
+  (their status, a waiting prompt's tool input and the last 10 messages
+  of a session's transcript, read only), by text, within
   10 messages a minute and 100 a day, never deleting, until it is revoked
   (`jantar chat shortcut revoke`), it idles out, or Chat is turned off.
   TLS, Cloudflare Access (the same `/v1/capture/*` application and token
