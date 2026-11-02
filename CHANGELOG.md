@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.10.0 (unreleased)
+## 0.9.1 (3 November 2026)
 
 Start when I join, in the Jantar extension: open the Jantar icon on a Meet
 or Teams join screen or in the waiting room, fill the sheet as for Start

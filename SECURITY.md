@@ -911,10 +911,10 @@ on (`jantar meetings on`).
   else.
 - It reads nothing of a call before **Start notes** (until then only
   whether you are in a call, its code and its title), or, with **Start when
-  I join** or **Always start when I join a call** (0.10), before you are in
+  I join** or **Always start when I join a call** (0.9.1), before you are in
   the call (until then only whether the page shows the call's join screen,
   its waiting room or the call, by fixed controls and never page text, its
-  code and its title). Since 0.10, when notes start and only then (a
+  code and its title). Since 0.9.1, when notes start and only then (a
   Settings switch, on by default), it turns the call's own live captions on
   if they are off: it reads the captions control's state first and clicks
   only that control, or the call's More menu and its captions item (Language

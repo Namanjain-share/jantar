@@ -1,5 +1,5 @@
 /**
- * v0.10: the call's captions switched on when notes start (captions.ts,
+ * v0.9.1: the call's captions switched on when notes start (captions.ts,
  * through the capture loop), with fake timers, on the synthetic fixtures:
  * - only after `start({cc: true})`: never before notes start (MP6), never
  *   without `cc` (the Settings switch off);

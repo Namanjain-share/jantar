@@ -374,7 +374,7 @@ real share link from the Reddit app has not been pasted yet.
    on both tabs, and on Done a long where (r/exampledevelopers) shown in
    full, nothing cut and no sideways scroll.
 
-### Meetings (v0.10, Start when I join)
+### Meetings (v0.9.1, Start when I join)
 
 Open. The extension's suites drive synthetic join screens, waiting rooms
 and calls (a one-poll flicker of an in-call control included) in jsdom and
@@ -390,7 +390,7 @@ your own Chrome; agents never drive it.
 | R16 | Reload the page while armed, on Meet's join screen and in the Teams waiting room: still ARM, and it still starts | a reload while armed |
 | R17 | Armed, then `jantar meetings off` (or Jantar stopped) before being let in: the bubble and the popup say why, and the icon shows ! | saying why notes did not start |
 
-### Meetings (v0.10, captions on when notes start)
+### Meetings (v0.9.1, captions on when notes start)
 
 Open. The suites drive synthetic Meet controls (the old captions toggle, the
 "Captions and translation" pop-up of 22 October 2026), Teams' pinned toggle,

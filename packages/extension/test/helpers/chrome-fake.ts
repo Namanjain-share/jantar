@@ -24,7 +24,7 @@
  * default loading then complete on the URL), scripting.executeScript (its
  * answer from `model.onScript`), and permissions.contains answering true for
  * any https origin while `<all_urls>` is granted, as Chrome does.
- * v0.10 (Start when I join) adds action.setBadgeText, setBadgeBackgroundColor
+ * v0.9.1 (Start when I join) adds action.setBadgeText, setBadgeBackgroundColor
  * and setTitle, kept per tab in `model.badges` (`model.badge(tabId)`; a tab
  * that is not open throws, as Chrome does), and alarms.create keeps `when`.
  * Every call after `model.invalidate()` throws "Extension context
@@ -70,14 +70,14 @@ export interface ScriptCall {
   args?: unknown[];
 }
 
-/** v0.10: one tab's toolbar badge as the code under test set it ('' for what it never set). */
+/** v0.9.1: one tab's toolbar badge as the code under test set it ('' for what it never set). */
 export interface FakeBadge {
   text: string;
   color: string;
   title: string;
 }
 
-/** v0.10: an alarm as alarms.create made it. */
+/** v0.9.1: an alarm as alarms.create made it. */
 export interface FakeAlarm {
   name: string;
   periodInMinutes?: number;
@@ -231,7 +231,7 @@ export interface ChromeModel {
   scripts: ScriptCall[];
   /** What executeScript answers (default: one frame with an undefined result); throwing rejects it. */
   onScript: (call: ScriptCall) => unknown;
-  // --- v0.10
+  // --- v0.9.1
   /** Each tab's badge, by tab id. */
   badges: Map<number, FakeBadge>;
   /** One tab's badge ({ text: '', color: '', title: '' } when nothing was set). */
@@ -295,7 +295,7 @@ export interface ChromeFake {
     onCommand: FakeCommandEvent;
     getAll(): Promise<{ name: string; description: string; shortcut: string }[]>;
   };
-  /** v0.10 */
+  /** v0.9.1 */
   action: {
     setBadgeText(d: { tabId?: number; text: string }): Promise<void>;
     setBadgeBackgroundColor(d: { tabId?: number; color: string }): Promise<void>;
@@ -412,7 +412,7 @@ export function createChromeFake(opts: { id?: string } = {}): { chrome: ChromeFa
     },
   });
 
-  /** v0.10: one badge field of one tab, as Chrome sets it (a tab that is not open throws). */
+  /** v0.9.1: one badge field of one tab, as Chrome sets it (a tab that is not open throws). */
   const setBadge = async (tabId: number | undefined, field: keyof FakeBadge, value: string) => {
     alive();
     if (tabId === undefined) throw new Error('the fake sets badges per tab only');

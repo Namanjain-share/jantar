@@ -8,7 +8,7 @@
  *   button shows only then, and only in a call) and whether this tab's
  *   meeting has notes on. Notes on in the first answer since the page
  *   loaded is a reload: they resume once the call is on again (not in the
- *   waiting room: v0.10, once the stage is `in`, the in-call hooks held two
+ *   waiting room: v0.9.1, once the stage is `in`, the in-call hooks held two
  *   polls). Later answers never start notes (the page may have
  *   stopped them itself); notes off in one stops them. An answer to a
  *   `call` sent before the worker's last `capture` message is out of date
@@ -17,12 +17,12 @@
  *   `capture {on: false}`: nothing is read from the page before Start;
  * - the camera button and its bubble (button.ts).
  *
- * v0.10: `capture {on: true, text}` (notes started by themselves once you
+ * v0.9.1: `capture {on: true, text}` (notes started by themselves once you
  * were in the call) turns notes on as Start does, then shows `text`; the
  * bubble shows at the button's spot even where no button is (a join screen).
  * On pagehide the call watch sends one last `call` (`hide`).
  *
- * v0.10: `cc` on `capture {on: true}` (or on the answer that resumes notes
+ * v0.9.1: `cc` on `capture {on: true}` (or on the answer that resumes notes
  * after a reload) also switches the call's captions on (captions.ts); how
  * it went goes to the worker as `cc`, and the captions state names whose
  * way to turn them on the popup should show (`client`) and why none came
@@ -104,7 +104,7 @@ export function startContent(opts: ContentOptions = {}): Content | null {
     },
   });
 
-  // v0.10: what this page remembers of switching captions on, across notes runs; leaving the call forgets the call.
+  // v0.9.1: what this page remembers of switching captions on, across notes runs; leaving the call forgets the call.
   const memory = ccMemory();
   const capture = createCapture({
     adapter,
@@ -128,7 +128,7 @@ export function startContent(opts: ContentOptions = {}): Content | null {
     button.setNotes(true);
   };
 
-  // v0.10: on the stage (the in-call hooks held two polls), so a control that flashes up in the waiting room resumes nothing.
+  // v0.9.1: on the stage (the in-call hooks held two polls), so a control that flashes up in the waiting room resumes nothing.
   const resumeInCall = () => {
     if (resume && call.stage() === 'in') notesOn(resumeCc);
   };

@@ -1,5 +1,5 @@
 /**
- * v0.10, Start when I join, end to end (spec 14.4): the real extension (the
+ * v0.9.1, Start when I join, end to end (spec 14.4): the real extension (the
  * test build) in playwright-core's own Chromium with a fresh profile, never
  * the user's Chrome; synthetic Meet and Teams pages served at the meeting
  * addresses inside that browser only; jantard with a synthetic HOME.
@@ -36,7 +36,7 @@ const ready = await extensionReady('ext-v010-arm');
 const MEET = 'https://meet.google.com/abc-defg-hij';
 const LIGHT = 'https://teams.microsoft.com/light-meetings/launch?anon=1&p=made-up-thread';
 const ARM_BUTTON = 'Start when I join';
-/** v0.10: two more calls, each with captions off, at addresses of their own. */
+/** v0.9.1: two more calls, each with captions off, at addresses of their own. */
 const LIGHT_GUEST = 'https://teams.microsoft.com/light-meetings/launch?anon=true&p=made-up-guest';
 const MEET_POPUP = 'https://meet.google.com/xyz-abcd-efg';
 

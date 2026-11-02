@@ -1,5 +1,5 @@
 /**
- * v0.10: where each client turns its live captions on, and what the page's
+ * v0.9.1: where each client turns its live captions on, and what the page's
  * bubble and the popup say when no caption line came in. Shared, so both
  * say exactly the same (research captions-research.md 6.5). No em dash, no
  * exclamation mark. Only `off` (the control says so) tells him to turn
@@ -24,5 +24,5 @@ export const noCaptions = (client: CaptionsClient, why: CaptionsWhy = 'off'): st
       ? "This meeting offers no captions (the organizer's settings), so there are no notes. Screenshots still work."
       : `${WHY} ${why === 'unsure' ? 'If none appear when people speak, turn' : 'Turn'} them on: ${CC_PATH[client]}.`;
 
-/** v0.10: `waiting`, the popup's quiet line (no bubble, no `!`). */
+/** v0.9.1: `waiting`, the popup's quiet line (no bubble, no `!`). */
 export const CC_WAITING = 'Captions are on; lines appear once someone speaks.';

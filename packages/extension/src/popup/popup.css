@@ -107,7 +107,7 @@ h2 {
   background: var(--jup);
 }
 
-/* v0.10: armed, not yet keeping notes: a ring, not the notes dot. */
+/* v0.9.1: armed, not yet keeping notes: a ring, not the notes dot. */
 .dot.ring {
   width: 7px;
   height: 7px;
@@ -115,7 +115,7 @@ h2 {
   background: none;
 }
 
-/* v0.10: Call check's hook id is never broken in two (at 320 px it moves to the next line whole). */
+/* v0.9.1: Call check's hook id is never broken in two (at 320 px it moves to the next line whole). */
 .check .hook {
   white-space: nowrap;
 }

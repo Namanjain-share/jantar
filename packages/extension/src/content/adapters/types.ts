@@ -4,7 +4,7 @@
  * ordered list of candidates tried one at a time (never one comma-joined
  * selector), so a redesign that renames one hook falls back to the next.
  *
- * v0.10: `inCallHook` names the in-call control that matched, and `waiting`
+ * v0.9.1: `inCallHook` names the in-call control that matched, and `waiting`
  * says whether the page shows the call's join screen or its waiting room,
  * each by a fixed hook id. Both read fixed attributes, Meet's icon ligature
  * and the URL's path and query only: never caption text or names, never
@@ -17,26 +17,26 @@ export type { CallStage };
 /** One fixed id from an adapter's own lists ("meet:call_end"), never page text. */
 export type HookId = string;
 
-/** v0.10: the join screen or the waiting room, with the hook that said so. `strong`: a real hook matched, not the URL alone. */
+/** v0.9.1: the join screen or the waiting room, with the hook that said so. `strong`: a real hook matched, not the URL alone. */
 export interface Waiting {
   stage: 'prejoin' | 'lobby';
   hook: HookId;
   strong: boolean;
 }
 
-/** v0.10: the page's own memory for `waiting`: the URL (path, query and hash, in memory only) where this page last saw a join hook. */
+/** v0.9.1: the page's own memory for `waiting`: the URL (path, query and hash, in memory only) where this page last saw a join hook. */
 export interface WaitingSeen {
   joinHookAt: string | null;
 }
 
-/** v0.10: whether the call's own captions are on, by a fixed control or the caption region (`hook` says which), never caption text. */
+/** v0.9.1: whether the call's own captions are on, by a fixed control or the caption region (`hook` says which), never caption text. */
 export interface CcState {
   state: 'on' | 'off' | 'unknown';
   hook: HookId;
 }
 
 /**
- * v0.10: one try to switch captions on: they were on (`on`), a control was
+ * v0.9.1: one try to switch captions on: they were on (`on`), a control was
  * clicked or a key pressed (`clicked`; `blind`: an item that says nothing),
  * there was nothing to click (`none`: maybe not drawn yet), the site's menu
  * opened and holds no captions (`unavailable`: the organizer's policy; a
@@ -51,7 +51,7 @@ export interface CcStep {
 }
 
 /**
- * v0.10: what a try may use: a wait on the page's own clock, which try this
+ * v0.9.1: what a try may use: a wait on the page's own clock, which try this
  * is (1 first), whether one blind click is allowed (notes started just
  * after the page came into the call, when captions are off), and `live()`,
  * false once notes stopped: nothing more is clicked or pressed then, and
@@ -65,7 +65,7 @@ export interface CcTry {
 }
 
 /**
- * v0.10: the call's own captions control (research captions-research.md
+ * v0.9.1: the call's own captions control (research captions-research.md
  * 6.2). Only ever used after notes start (MP6): it reads the control's
  * state first and clicks only a control that says off (on Teams, also a
  * captions item that says nothing, only when the try allows a blind click
@@ -92,9 +92,9 @@ export interface SiteAdapter {
   callKey(loc: Location): string | null;
   /** In a call: `inCallHook(doc) !== null`. */
   inCall(doc: Document): boolean;
-  /** v0.10: the in-call hook that matched, or null. */
+  /** v0.9.1: the in-call hook that matched, or null. */
   inCallHook(doc: Document): HookId | null;
-  /** v0.10: not in a call: the join screen or the waiting room, or null for neither. */
+  /** v0.9.1: not in a call: the join screen or the waiting room, or null for neither. */
   waiting(doc: Document, seen: WaitingSeen): Waiting | null;
   /** The page title for the Name field, cleaned; '' when it says nothing. */
   title(doc: Document): string;
@@ -102,7 +102,7 @@ export interface SiteAdapter {
   region(doc: Document): Element | null;
   /** The region's speaker turns in DOM order; never reads inside button or [role=button] subtrees. */
   blocks(region: Element): Block[];
-  /** v0.10: the call's own captions control (it replaces v0.5's `howTo`: shared/captions.ts words the way to turn them on per client). */
+  /** v0.9.1: the call's own captions control (it replaces v0.5's `howTo`: shared/captions.ts words the way to turn them on per client). */
   readonly cc: CaptionsControl;
   /** The camera button's fixed position (CSS lengths), clear of the site's controls; checked on the real Mac (R6). */
   readonly spot: Readonly<{ left?: string; right?: string; top?: string; bottom?: string }>;

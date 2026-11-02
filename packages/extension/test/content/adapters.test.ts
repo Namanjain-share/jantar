@@ -247,7 +247,7 @@ describe('Teams', () => {
   });
 });
 
-describe('v0.10: the screens around the call', () => {
+describe('v0.9.1: the screens around the call', () => {
   const none = { joinHookAt: null };
 
   it('Meet: the join screen, the waiting room, the call and the screen after Leave, each by its hook', () => {
@@ -400,7 +400,7 @@ describe('v0.10: the screens around the call', () => {
   });
 });
 
-describe('v0.10: light meetings (the guest client) and the call\'s captions control', () => {
+describe('v0.9.1: light meetings (the guest client) and the call\'s captions control', () => {
   /** Keys pressed on the page from now on. */
   const keys = () => {
     const out: string[] = [];

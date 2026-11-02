@@ -1,5 +1,5 @@
 /**
- * v0.10: Start when I join (spec 4). An arm is one tab's "start notes once I
+ * v0.9.1: Start when I join (spec 4). An arm is one tab's "start notes once I
  * am in the call", kept in chrome.storage.session under `arm:<tabId>` (in
  * memory, kept across the worker's stops, gone when Chrome quits or the
  * extension reloads; content scripts cannot read it: nothing here calls

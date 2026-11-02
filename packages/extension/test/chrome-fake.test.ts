@@ -162,7 +162,7 @@ describe('the chrome fake, v0.8 (Read saved links)', () => {
     expect(await f.chrome.permissions.contains({ origins: ['https://x.com/*'] })).toBe(true);
   });
 
-  it("v0.10: keeps each tab's badge (text, colour, title); a tab that is not open throws, as Chrome does", async () => {
+  it("v0.9.1: keeps each tab's badge (text, colour, title); a tab that is not open throws, as Chrome does", async () => {
     const f = createChromeFake();
     model = f.model;
     f.model.addTab({ id: 7, windowId: 1, url: 'https://meet.google.com/abc-defg-hij', active: true });
@@ -178,7 +178,7 @@ describe('the chrome fake, v0.8 (Read saved links)', () => {
     await expect(f.chrome.action.setTitle({ tabId: 7, title: 'x' })).rejects.toThrow(INVALIDATED_ERROR);
   });
 
-  it('v0.10: an alarm keeps its `when`', async () => {
+  it('v0.9.1: an alarm keeps its `when`', async () => {
     const f = createChromeFake();
     model = f.model;
     await f.chrome.alarms.create('jantar-arm', { when: 1_800_000_000_000 });

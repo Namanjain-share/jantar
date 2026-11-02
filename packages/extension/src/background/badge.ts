@@ -1,8 +1,8 @@
 /**
- * v0.10: the toolbar badge, per tab (spec 10). `ON` while the tab keeps
+ * v0.9.1: the toolbar badge, per tab (spec 10). `ON` while the tab keeps
  * notes, however they started; `ARM` while Start when I join waits there;
  * `!` for a start by itself that failed in the last
- * ARM_TIMING.failedShowMs (the popup says why); and, v0.10, `!` while the
+ * ARM_TIMING.failedShowMs (the popup says why); and, v0.9.1, `!` while the
  * tab keeps notes but no caption line came in (the page's captions state
  * `none`: the popup says why, and how to turn captions on when they are
  * off; not `waiting`, captions on and nobody speaking yet). Chrome keeps a tab's badge

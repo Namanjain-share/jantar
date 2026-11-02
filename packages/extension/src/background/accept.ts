@@ -8,11 +8,11 @@
  *   no `tabId` of its own (a page's tab is `sender.tab.id`, never a field).
  * Anything else is ignored: no answer, nothing done.
  *
- * v0.10: a page's `call` may carry its stage (one of five) and the hook id
+ * v0.9.1: a page's `call` may carry its stage (one of five) and the hook id
  * that decided it (our own fixed id, `HOOK_ID`); the popup's `arm` is
  * checked as `start` is, `disarm` as `end`, `always` as `reads`.
  *
- * v0.10, captions on when notes start: a page's `captions` may name its
+ * v0.9.1, captions on when notes start: a page's `captions` may name its
  * client (one of three) and why none (one of four), and its `cc` names how
  * switching them on went (one of seven) with a hook id; the popup's
  * `autoCaptions` is checked as `reads`.

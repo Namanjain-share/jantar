@@ -14,7 +14,7 @@
  * end Jantar did not take, the daemon ends them 10 minutes later; a new
  * pairing is a new extension to it, so they could not be continued anyway).
  *
- * v0.10: Unpair turns Always start when I join a call off and drops every
+ * v0.9.1: Unpair turns Always start when I join a call off and drops every
  * arm before it ends the meetings (it is part of "stop keeping notes in this
  * Chrome"); a 401 drops every arm and keeps Always, which then arms nothing
  * and the next join screen says to pair; pairing again arms the join
@@ -79,7 +79,7 @@ export function createPairing(ctx: Ctx, meetings: Pick<Meetings, 'end'>, arms: P
       const key = reply.body?.key;
       if (typeof key !== 'string' || !KEY_SHAPE.test(key)) return { ok: false, error: BAD_CODE };
       await ctx.keys.set({ port: line.port, key, pairedAt: new Date(ctx.now()).toISOString() });
-      // v0.10: Always (kept through a 401) arms the join screens open now.
+      // v0.9.1: Always (kept through a 401) arms the join screens open now.
       await arms.rearm();
       await broadcast(true);
       return { ok: true };

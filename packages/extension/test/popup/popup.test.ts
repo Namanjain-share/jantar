@@ -30,8 +30,8 @@ const PROJECT_A = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
 const PROJECT_B = '01JFZ8X8Y3T0V5G9WQK2M4N6QR';
 
 type Tab = NonNullable<PopupState['tab']>;
-// v0.10: a tab's stage follows inCall unless a test names one; no arm, no start by itself.
-// v0.10: the captions' client follows the site; nothing said yet of switching captions on; the switch on by default.
+// v0.9.1: a tab's stage follows inCall unless a test names one; no arm, no start by itself.
+// v0.9.1: the captions' client follows the site; nothing said yet of switching captions on; the switch on by default.
 const meetTab = (over: Partial<Tab> = {}): Tab => ({
   site: 'meet',
   inCall: true,
@@ -653,7 +653,7 @@ describe('v0.8: Settings › Read saved links', () => {
   });
 });
 
-describe('v0.10: Start when I join', () => {
+describe('v0.9.1: Start when I join', () => {
   const before = (stage: 'prejoin' | 'lobby' | 'left' | 'none', over: Partial<Tab> = {}) => meetTab({ inCall: false, stage, hook: stage === 'lobby' ? 'meet:call_end' : 'meet:join-button', ...over });
   const armView = (over: Partial<ArmView> = {}): ArmView => ({ from: 'popup', off: false, name: 'Planning', autoTodos: false, until: Date.now() + ARM_TIMING.maxMs, ...over });
   const lead = () => root.querySelector('.view .lead')?.textContent;
@@ -995,7 +995,7 @@ describe('v0.10: Start when I join', () => {
 
 const JOIN_FIRST_TEXT = 'Join the call first.';
 
-describe('v0.10: captions on when notes start', () => {
+describe('v0.9.1: captions on when notes start', () => {
   it('Settings: Turn on captions when notes start, on by default, with its copy; the switch sends `autoCaptions`', async () => {
     answers.state = state({ tab: meetTab({ notes: true, name: 'Weekly sync' }) });
     await open();

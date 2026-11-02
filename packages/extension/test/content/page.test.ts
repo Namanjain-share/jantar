@@ -152,7 +152,7 @@ describe('MP6: nothing is read before Start', () => {
     meet.say('Sam', 'After the reload');
     start({ notes: true });
     nonces = ['reloadd1'];
-    // v0.10: once the call held two polls (the stage), a poll after the page loaded.
+    // v0.9.1: once the call held two polls (the stage), a poll after the page loaded.
     await settle(TIMING.callPollMs + TIMING.debounceMs + 10);
     expect(content!.capture.on).toBe(true);
     expect(world.worker.of('lines').flatMap((m) => m.lines.map((l) => l.lineId))).toEqual(['reloadd1-1']);
@@ -174,7 +174,7 @@ describe('MP6: nothing is read before Start', () => {
     expect(world.worker.of('lines').flatMap((m) => m.lines.map((l) => [l.lineId, l.text]))).toEqual([['pagenon1-1', 'Back in the call']]);
   });
 
-  it('v0.10: a reload into the waiting room: an in-call control that flashes up for one poll resumes nothing (the stage, not the phase)', async () => {
+  it('v0.9.1: a reload into the waiting room: an in-call control that flashes up for one poll resumes nothing (the stage, not the phase)', async () => {
     const meet = buildMeet(document, { state: 'lobby' });
     start({ notes: true });
     await settle(3 * TIMING.callPollMs);
@@ -188,7 +188,7 @@ describe('MP6: nothing is read before Start', () => {
   });
 });
 
-describe('v0.10: captions on when notes start', () => {
+describe('v0.9.1: captions on when notes start', () => {
   it('`capture {on: true, cc: true}` switches them on and tells the worker how (`cc`); the captions state names the client', async () => {
     const meet = buildMeet(document, { captions: false });
     start();
@@ -497,7 +497,7 @@ describe('the extension reloaded', () => {
   });
 });
 
-describe('v0.10: Start when I join, in the page', () => {
+describe('v0.9.1: Start when I join, in the page', () => {
   const AUTO_STARTED = 'Jantar started notes. Let people know you keep notes.';
 
   it('`capture {on: true, text}` starts notes as Start does, then shows the text', async () => {

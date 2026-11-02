@@ -10,13 +10,13 @@
  * (`onAlarm`), and the alarm put back when the browser starts or the
  * extension is installed or updated (`onStartup`).
  *
- * v0.10: Start when I join (arms.ts, meetings.ts): the popup's `arm`,
+ * v0.9.1: Start when I join (arms.ts, meetings.ts): the popup's `arm`,
  * `disarm` and `always`; the arm alarm beside the read alarm, cleared on
  * startup (session storage is empty then); the popup state's stage, arm and
  * last start by itself; each tab's toolbar badge painted after every
  * message about it.
  *
- * v0.10, captions on when notes start: the popup's `autoCaptions` (Settings,
+ * v0.9.1, captions on when notes start: the popup's `autoCaptions` (Settings,
  * on by default), the page's `cc` (how switching them on went), and the
  * badge painted again on the page's captions state (`!` while notes are on
  * with no captions yet).
@@ -66,7 +66,7 @@ export interface Worker {
   popupState(tabId: number): Promise<PopupState>;
   /** v0.8: Read saved links. */
   readonly reads: Reads;
-  /** v0.10: Start when I join. */
+  /** v0.9.1: Start when I join. */
   readonly arms: Arms;
 }
 
@@ -109,7 +109,7 @@ async function shortcutOf(): Promise<string> {
   }
 }
 
-/** v0.10: the last start by itself the popup shows: one that started while notes are on, one that failed lately while they are off. */
+/** v0.9.1: the last start by itself the popup shows: one that started while notes are on, one that failed lately while they are off. */
 function autoOf(auto: AutoStart | undefined, notes: boolean, now: number): AutoStart | null {
   if (!auto) return null;
   if (auto.ok) return notes ? auto : null;
@@ -164,7 +164,7 @@ export function createWorker(deps: WorkerDeps): Worker {
     const record = await ctx.tabs.read(tabId);
     // A meeting tab that went to another site is not one now: no Start, Screenshot or End offered there.
     const view = record && (await stillOnMeetingPage(tabId)) ? record : null;
-    // v0.10: and its arm ends there and then.
+    // v0.9.1: and its arm ends there and then.
     if (!view && (await arms.read(tabId))) {
       await ctx.tabs.serial(tabId, () => arms.drop(tabId));
       await arms.schedule();
@@ -219,7 +219,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         return !answer.ok && !answer.retry ? painted(m.tabId, answer) : answer;
       }
       case 'captions':
-        // v0.10: the badge says `!` while notes are on with no captions yet, and clears with the first line.
+        // v0.9.1: the badge says `!` while notes are on with no captions yet, and clears with the first line.
         return painted(m.tabId, await meetings.captions(m.tabId, m.msg.state, m.msg.client, m.msg.why));
       case 'cc':
         return meetings.cc(m.tabId, { result: m.msg.result, hook: m.msg.hook });

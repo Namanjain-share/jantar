@@ -1,5 +1,5 @@
 /**
- * v0.10: the call's own live captions switched on when notes start
+ * v0.9.1: the call's own live captions switched on when notes start
  * (research captions-research.md 6). Jantar writes notes from them, and
  * Teams and Meet start every call with them off. Captions are personal:
  * only this user sees them, and nobody in the call is told.
@@ -37,7 +37,7 @@ export const CC_TIMING = Object.freeze({
   blindMs: 60_000,
 });
 
-/** v0.10: the page's memory of switching captions on, for the page load (a reload forgets it). */
+/** v0.9.1: the page's memory of switching captions on, for the page load (a reload forgets it). */
 export interface CcMemory {
   /** The call it holds: Meet's code, '' on Teams (the tab is the call). */
   key: string | null;

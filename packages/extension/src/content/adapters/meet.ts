@@ -9,7 +9,7 @@
  * turn › [name (often with an avatar), text]. The list's last children are
  * not captions; they hold buttons, and nothing inside a button is read.
  *
- * v0.10, the screens around the call (Start when I join), first match wins:
+ * v0.9.1, the screens around the call (Start when I join), first match wins:
  * the call (the captions button by its jsname, then by its icon, which
  * Meet's redesign of 2026-10-22 may have left alone, then the caption
  * region: `inCall`'s own hooks), the waiting room (a button holding the `call_end` icon and no
@@ -17,7 +17,7 @@
  * button), else the code alone (the join screen, or a screen after it).
  * The icon is a fixed glyph name, not localized page text.
  *
- * v0.10, captions on when notes start (research captions-research.md 2.2;
+ * v0.9.1, captions on when notes start (research captions-research.md 2.2;
  * selector facts as of 2026-11-02, read from TranscripTonic, Meeting
  * Transcripts, meet-caption-log-extension and vibeconf, no code taken): the
  * captions control is the old toggle (its jsname) or, since 2026-10-22,
@@ -42,7 +42,7 @@ const BARE_CODE = /^[a-z]{3,4}-[a-z]{4}-[a-z]{3,4}$/i;
 /** The captions button: in the call only, in any UI language. The waiting room has none. */
 const CAPTIONS_BUTTON = ['button[jsname="RrG0hf"]'];
 /**
- * v0.10: the captions control found by its icon, whatever its jsname: the
+ * v0.9.1: the captions control found by its icon, whatever its jsname: the
  * "Captions and translation" button of 2026-10-22 opens a pop-up, the older
  * one is pressed or not. Only in the call, with captions off too (research
  * captions-research.md 2.2, R-C1).
@@ -50,12 +50,12 @@ const CAPTIONS_BUTTON = ['button[jsname="RrG0hf"]'];
 const CC_ICON_BUTTON = ['button[aria-haspopup="dialog"][aria-pressed]', 'button[aria-pressed]'];
 const CC_ICONS = new Set(['translate_cc', 'closed_caption', 'closed_caption_off']);
 const ICON_FONT = ['i.google-symbols', 'i.google-material-icons', 'i.material-icons-extended'];
-/** v0.10: the control by its English label, last (a UI in another language has none of these). */
+/** v0.9.1: the control by its English label, last (a UI in another language has none of these). */
 const CC_LABEL_EN = ['Captions and translation', 'Turn on captions', 'Turn off captions'].map((l) => `button[aria-label="${l}"]`);
-/** v0.10: the pop-up (new since the click, its aria-label the button's) and its toggle: the first button that opens nothing more and says what captions are. */
+/** v0.9.1: the pop-up (new since the click, its aria-label the button's) and its toggle: the first button that opens nothing more and says what captions are. */
 const CC_DIALOG = ['[role="dialog"]'];
 const CC_POPUP_TOGGLE = ['button:not([aria-haspopup])'];
-/** v0.10: the try that presses `c` instead of clicking the old toggle again (a click that did nothing: Translate speech's hover panel). */
+/** v0.9.1: the try that presses `c` instead of clicking the old toggle again (a click that did nothing: Translate speech's hover panel). */
 const CC_KEY_TRY = 3;
 /** The caption region (labels are localized, hence the partial match). */
 const REGION = [
@@ -72,10 +72,10 @@ const TEXT = ['.ygicle', '.bh44bd', '.iTTPOb'];
 /** A turn's name element. */
 const NAME = ['.NWpY1d', '.zs7s8d', '.KcIKyf', '.adE6rb'];
 const TITLE = ['[data-meeting-title]'];
-/** v0.10: Meet's icon fonts; a button holding one whose ligature is exactly `call_end` (the waiting room shows it, the captions button not yet). */
+/** v0.9.1: Meet's icon fonts; a button holding one whose ligature is exactly `call_end` (the waiting room shows it, the captions button not yet). */
 const ICONS = ICON_FONT.map((i) => `button ${i}`);
 const CALL_END = 'call_end';
-/** v0.10: the join screen's Join now / Ask to join (unverified on a real Mac, R12; it only names the join screen). */
+/** v0.9.1: the join screen's Join now / Ask to join (unverified on a real Mac, R12; it only names the join screen). */
 const JOIN_BUTTON = ['[jsname="Qx7uuf"]'];
 
 export const meetAdapter: SiteAdapter = {
@@ -145,7 +145,7 @@ function ccIconButton(doc: Document): Element | null {
   return first(doc, CC_ICON_BUTTON, (b) => CC_ICONS.has(iconOf(b)));
 }
 
-/** v0.10: the captions control: by its jsname, its icon, then its English label. */
+/** v0.9.1: the captions control: by its jsname, its icon, then its English label. */
 function ccControl(doc: Document): { el: Element; hook: HookId } | null {
   const old = first(doc, CAPTIONS_BUTTON);
   if (old) return { el: old, hook: 'meet:captions-button' };
@@ -155,10 +155,10 @@ function ccControl(doc: Document): { el: Element; hook: HookId } | null {
   return en ? { el: en, hook: 'meet:captions-label' } : null;
 }
 
-/** v0.10: what a captions control says: pressed (or checked), else its icon, else its English label. */
+/** v0.9.1: what a captions control says: pressed (or checked), else its icon, else its English label. */
 const ccSays = (el: Element) => saysOf(el, iconOf(el) === 'closed_caption_off');
 
-/** v0.10: one try (see the header). */
+/** v0.9.1: one try (see the header). */
 async function ccTurnOn(doc: Document, t: CcTry): Promise<CcStep> {
   const control = ccControl(doc);
   if (!control) return { result: 'none', hook: 'meet:no-cc' };
@@ -197,7 +197,7 @@ async function ccTurnOn(doc: Document, t: CcTry): Promise<CcStep> {
   return says === 'off' && t.live() ? key(doc) : { result: 'none', hook: 'meet:no-cc-toggle' };
 }
 
-/** v0.10: Meet's own shortcut for captions (it toggles: only ever sent when the control says off). */
+/** v0.9.1: Meet's own shortcut for captions (it toggles: only ever sent when the control says off). */
 function key(doc: Document): CcStep {
   press(doc, 'c', 'KeyC');
   return { result: 'clicked', hook: 'meet:key-c' };

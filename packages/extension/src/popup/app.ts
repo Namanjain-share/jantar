@@ -15,7 +15,7 @@
  * only on a user gesture), then tells the worker; turning it off tells the
  * worker only.
  *
- * v0.10, Start when I join: on a call's join screen, in its waiting room or
+ * v0.9.1, Start when I join: on a call's join screen, in its waiting room or
  * after leaving it, the sheet is the arm sheet (the same fields, Start when
  * I join, no Screenshot); an armed tab shows the armed view (Change, and
  * Cancel or Not this call), which asks the worker again every
@@ -30,7 +30,7 @@
  * Always on, the pairing view says nothing can start and offers to turn Always off. After a redraw the keyboard stays in
  * the view: on the same control, else the view's first one.
  *
- * v0.10, captions on when notes start: Settings has Turn on captions when
+ * v0.9.1, captions on when notes start: Settings has Turn on captions when
  * notes start (on by default), and Call check names how switching them on
  * went. With notes on and no captions yet, the notes view says how to turn
  * them on in this client (the page's own words).
@@ -98,11 +98,11 @@ export function missedLine(last: LastShot | null, tabId: number, now: number): s
 type Tab = NonNullable<PopupState['tab']>;
 type Projects = PopupState['projects'];
 
-/** v0.10: the stages Start when I join is offered on. */
+/** v0.9.1: the stages Start when I join is offered on. */
 const WAITING: ReadonlySet<CallStage> = new Set(['prejoin', 'lobby', 'left']);
 
 /**
- * v0.10: in the call as the popup means it: the page says so, or its call
+ * v0.9.1: in the call as the popup means it: the page says so, or its call
  * watch is in a call whose stage is not known yet. A waiting room's one-poll
  * flicker of an in-call control keeps the arm views.
  */
@@ -148,7 +148,7 @@ function captionsWords(tab: Tab): string {
     case 'waiting':
       return CC_WAITING;
     case 'none':
-      // v0.10: the page's own bubble, in this client's words and for why (shared/captions.ts).
+      // v0.9.1: the page's own bubble, in this client's words and for why (shared/captions.ts).
       return noCaptions(tab.client, tab.why);
     case 'notFound':
       return NOT_FOUND;
@@ -226,9 +226,9 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
   /** The sheet and the pairing code as typed, kept across redraws. `nameTouched`: the Name was typed in (else Start when I join sends '': the page's title then). */
   let draft: { name: string; projectId: string; people: string; autoTodos: boolean; nameTouched: boolean } | null = null;
   let code = '';
-  /** v0.10: the armed view's Change: the arm sheet, filled from the arm. */
+  /** v0.9.1: the armed view's Change: the arm sheet, filled from the arm. */
   let editing = false;
-  /** v0.10: the timer of a view that follows the page (asks the worker again while it shows). */
+  /** v0.9.1: the timer of a view that follows the page (asks the worker again while it shows). */
   let polling: ReturnType<typeof setTimeout> | undefined;
   let following = false;
   /** The control that had the keyboard before a redraw (its id or label), until a redraw gives the keyboard back. */
@@ -320,7 +320,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     await refresh();
   }
 
-  /** v0.10: Start when I join, with the sheet's fields; an untouched Name is the page's title once in the call. */
+  /** v0.9.1: Start when I join, with the sheet's fields; an untouched Name is the page's title once in the call. */
   async function armIt(tab: Tab): Promise<void> {
     const d = draft ?? newDraft(tab);
     const done = await act({
@@ -338,7 +338,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     await refresh();
   }
 
-  /** v0.10: Cancel, or Not this call. */
+  /** v0.9.1: Cancel, or Not this call. */
   async function disarm(): Promise<void> {
     if (busy) return;
     await act({ t: 'disarm', tabId });
@@ -347,7 +347,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     await refresh();
   }
 
-  /** v0.10: Change: the arm sheet with the arm's fields. */
+  /** v0.9.1: Change: the arm sheet with the arm's fields. */
   function change(tab: Tab, arm: ArmView): void {
     draft = { name: arm.name || defaultName(tab), projectId: arm.projectId ?? '', people: arm.people ?? '', autoTodos: arm.autoTodos, nameTouched: arm.name !== '' };
     editing = true;
@@ -362,13 +362,13 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     draw();
   }
 
-  /** v0.10: Always start when I join a call (no Chrome prompt: nothing new is asked of Chrome). */
+  /** v0.9.1: Always start when I join a call (no Chrome prompt: nothing new is asked of Chrome). */
   function setAlways(on: boolean): void {
     if (busy) return;
     void act({ t: 'always', on }).then(() => refresh());
   }
 
-  /** v0.10: Turn on captions when notes start (it only changes what he sees in his own call). */
+  /** v0.9.1: Turn on captions when notes start (it only changes what he sees in his own call). */
   function setAutoCaptions(on: boolean): void {
     if (busy) return;
     void act({ t: 'autoCaptions', on }).then(() => refresh());
@@ -412,7 +412,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
 
   // --- views
 
-  /** v0.10: Cancel (a popup arm) or Not this call (an Always arm). */
+  /** v0.9.1: Cancel (a popup arm) or Not this call (an Always arm). */
   const disarmButton = (arm: ArmView) => button(arm.from === 'always' ? ARM.notThisCall : ARM.cancel, () => void disarm(), arm.from === 'always' ? {} : { name: ARM.cancelName });
 
   function pairView(sentence: string | undefined, always: boolean): Node[] {
@@ -425,7 +425,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
       if (!busy) void pair(input.value);
     });
     const out: Node[] = [para(sentence ?? PAIR_PROMPT, 'lead'), form, el('p', { class: 'mono' }, PAIR_COMMAND)];
-    // v0.10: Always kept through a 401 arms nothing until paired; it can be turned off here (Settings needs pairing).
+    // v0.9.1: Always kept through a 401 arms nothing until paired; it can be turned off here (Settings needs pairing).
     if (always) out.push(para(ALWAYS.unpaired, 'quiet'), el('div', { class: 'actions' }, button(ALWAYS.turnOff, () => setAlways(false), { name: ALWAYS.turnOffName })));
     return out;
   }
@@ -438,7 +438,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     ];
   }
 
-  /** The assign sheet: Start notes in the call, or (v0.10) Start when I join before it. */
+  /** The assign sheet: Start notes in the call, or (v0.9.1) Start when I join before it. */
   function sheetView(tab: Tab, projects: Projects, mode: 'start' | 'arm' = 'start'): Node[] {
     const d = (draft ??= newDraft(tab));
     const name = el('input', { id: 'name', type: 'text', maxlength: String(WIRE_LIMITS.name) });
@@ -493,7 +493,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
       // Not this call (or End) while Always is on: nothing starts by itself unless he arms it here.
       return [para(armLead(tab.stage), 'lead'), tab.arm?.off ? para(ARM.skipped, 'quiet') : null, form].filter((n) => n !== null) as Node[];
     }
-    // v0.10: notes did not start by themselves lately: why, above Start notes.
+    // v0.9.1: notes did not start by themselves lately: why, above Start notes.
     const failed = tab.auto && !tab.auto.ok ? el('p', { class: 'error', role: 'alert' }, ARM.failed(tab.auto.text ?? TRY_AGAIN)) : null;
     const form = el(
       'form',
@@ -510,7 +510,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     return tab.shots > 0 ? [form, para(shotsLine(tab.shots), 'mono')] : [form];
   }
 
-  /** v0.10: an armed tab: what starts when he is in the call, Change, and Cancel or Not this call. */
+  /** v0.9.1: an armed tab: what starts when he is in the call, Change, and Cancel or Not this call. */
   function armedView(tab: Tab, arm: ArmView, projects: Projects): Node[] {
     following = true;
     const project = arm.projectId ? projects?.find((p) => p.id === arm.projectId) : undefined;
@@ -532,7 +532,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     ].filter((n) => n !== null) as Node[];
   }
 
-  /** v0.10: not in the call: the armed view, the arm sheet, or why there is nothing to arm. */
+  /** v0.9.1: not in the call: the armed view, the arm sheet, or why there is nothing to arm. */
   function beforeView(tab: Tab, projects: Projects): Node[] {
     const arm = tab.arm && !tab.arm.off ? tab.arm : null;
     if (!tab.notes && arm && !editing) return armedView(tab, arm, projects);
@@ -551,7 +551,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     ];
     const words = captionsWords(tab);
     if (words) out.push(para(words, 'quiet'));
-    // v0.10: notes started by themselves when he was let in.
+    // v0.9.1: notes started by themselves when he was let in.
     if (tab.auto?.ok) out.push(para(ARM.startedAt(clockOf(tab.auto.at)), 'quiet'));
     out.push(el('div', { class: 'actions' }, button('Screenshot', screenshot), button('End', () => void end())));
     return out;
@@ -572,11 +572,11 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     const cc = s.tab?.cc;
     return [
       el('h2', {}, 'Settings'),
-      // v0.10: the meeting settings first, together: Always, then what the page shows (by our own hook id, never page text).
+      // v0.9.1: the meeting settings first, together: Always, then what the page shows (by our own hook id, never page text).
       el('div', { class: 'setting' }, el('label', { class: 'switch', for: 'always' }, always, el('span', {}, ALWAYS.title)), para(ALWAYS.why, 'quiet')),
       // The hook id keeps to one line (at 320 px it moves to the next line whole).
       s.tab ? el('p', { class: 'mono check' }, CALL_CHECK.line(CALL_CHECK[s.tab.stage], ''), s.tab.hook && ' · ', s.tab.hook && el('span', { class: 'hook' }, s.tab.hook)) : null,
-      // v0.10: how switching captions on went in this tab's notes (our own hook id again, never page text).
+      // v0.9.1: how switching captions on went in this tab's notes (our own hook id again, never page text).
       cc ? el('p', { class: 'mono check' }, CC.line(CC[cc.result], ''), ' · ', el('span', { class: 'hook' }, cc.hook)) : null,
       el('div', { class: 'setting' }, el('label', { class: 'switch', for: 'captions' }, captions, el('span', {}, CC.title)), para(CC.why, 'quiet')),
       el('div', { class: 'row' }, el('span', {}, 'Screenshot button on meeting pages'), allowed),
@@ -596,7 +596,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     if (s.connection === 'unpaired') return pairView(s.sentence, s.always);
     if (offer && !s.pageButton) return offerView();
     if (s.connection !== 'ok') {
-      // v0.10: an armed tab keeps its arm, which cannot start until this is fixed: say so, and let him drop it.
+      // v0.9.1: an armed tab keeps its arm, which cannot start until this is fixed: say so, and let him drop it.
       const arm = s.tab && !s.tab.notes && s.tab.arm && !s.tab.arm.off ? s.tab.arm : null;
       const why = para(s.sentence ?? NOT_RUNNING, 'lead');
       return arm ? [why, para(ARM.blocked, 'quiet'), el('div', { class: 'actions' }, disarmButton(arm))] : [why];
@@ -611,7 +611,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     return out;
   }
 
-  /** v0.10: a view that follows the page asks again while it shows (and the popup is still on screen). */
+  /** v0.9.1: a view that follows the page asks again while it shows (and the popup is still on screen). */
   function poll(): void {
     polling = undefined;
     if (view.isConnected) void refresh();

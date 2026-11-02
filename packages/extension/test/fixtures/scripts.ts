@@ -402,7 +402,7 @@ export const SCRIPTS: MutationScript[] = [
 
 export interface CallScript {
   name: string;
-  /** v0.10: the path the page starts at (made up); without one the test sets it (`meetUrl`). */
+  /** v0.9.1: the path the page starts at (made up); without one the test sets it (`meetUrl`). */
   path?: string;
   build(doc: Document): Fixture;
   steps: ScriptStep[];
@@ -422,7 +422,7 @@ export const CALL_SCRIPTS: CallScript[] = [
     build: (doc) => buildMeet(doc),
     steps: [step(5_000, (fx) => fx.doc.defaultView?.history.pushState({}, '', meetUrl('xyz-abcd-efg')))],
   },
-  // v0.10: the screens before the call (Start when I join).
+  // v0.9.1: the screens before the call (Start when I join).
   {
     name: 'prejoin, lobby, admitted',
     path: meetUrl('abc-defg-hij', 'short'),

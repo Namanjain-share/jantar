@@ -14,7 +14,7 @@
  * trimFront(i, words) (Meet), setSpeaker(i, name), unmount(i) and
  * remount(i) (Teams), hooksOff, hooksOn, captionsOff, captionsOn,
  * replaceRegion, goTo(path), shown() (the words of every turn).
- * v0.10: askToJoin (Meet), clickJoin and toChat (Teams), admit, leave, and
+ * v0.9.1: askToJoin (Meet), clickJoin and toChat (Teams), admit, leave, and
  * captionsButton(on) (Meet's one-poll flicker); ccLog() (what was clicked or
  * pressed on the captions controls) and captionsShown().
  */

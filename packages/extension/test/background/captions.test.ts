@@ -1,5 +1,5 @@
 /**
- * v0.10, captions on when notes start, the worker's part: Settings › Turn on
+ * v0.9.1, captions on when notes start, the worker's part: Settings › Turn on
  * captions when notes start is on by default (chrome.storage.local
  * `autoCaptions`), and then every `capture {on: true}` (Start, a start by
  * itself) and every call answer with notes on carries `cc`; switched off,

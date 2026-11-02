@@ -57,7 +57,7 @@ describe('MX5: the call watch', () => {
     const meet = buildMeet(document, { state: 'waiting' });
     const w = watching(meetAdapter);
     await settle();
-    // v0.10: every `call` carries the page's stable stage; none is stable on the first poll.
+    // v0.9.1: every `call` carries the page's stable stage; none is stable on the first poll.
     expect(w.sent).toEqual([{ t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync', stage: 'none' }]);
     expect(w.answers).toEqual([{ button: true, notes: false }]);
     meet.join();
@@ -67,11 +67,11 @@ describe('MX5: the call watch', () => {
     expect(w.sent.slice(1)).toEqual([{ t: 'call', site: 'meet', inCall: true, callKey: 'abc-defg-hij', title: 'Weekly sync', stage: 'none' }]);
     expect(watch!.phase()).toBe('in');
     await settle(10 * TIMING.callPollMs);
-    // v0.10: one poll later the call held two polls: one more `call` says so, and then nothing until the keep-alive.
+    // v0.9.1: one poll later the call held two polls: one more `call` says so, and then nothing until the keep-alive.
     expect(w.sent.slice(2)).toEqual([{ t: 'call', site: 'meet', inCall: true, callKey: 'abc-defg-hij', title: 'Weekly sync', stage: 'in', hook: 'meet:captions-button' }]);
   });
 
-  it('v0.10: inSince is when the page came into the call (its first poll in it, before the stage holds), through a toolbar flicker; null once out', async () => {
+  it('v0.9.1: inSince is when the page came into the call (its first poll in it, before the stage holds), through a toolbar flicker; null once out', async () => {
     goTo(meetUrl('abc-defg-hij'));
     const meet = buildMeet(document, { state: 'waiting' });
     watching(meetAdapter);
@@ -159,7 +159,7 @@ describe('MX5: the call watch', () => {
     expect(watch!.phase()).toBe('leaving');
     goTo(meetUrl('xyz-abcd-efg'));
     await settle(TIMING.callPollMs);
-    // v0.10: the fixture's call_end icon stays on screen without the other hooks, so the page reads as a waiting room.
+    // v0.9.1: the fixture's call_end icon stays on screen without the other hooks, so the page reads as a waiting room.
     expect(w.sent.at(-1)).toEqual({ t: 'call', site: 'meet', inCall: false, callKey: 'xyz-abcd-efg', title: 'Weekly sync', stage: 'lobby', hook: 'meet:call_end' });
     expect(watch!.phase()).toBe('out');
     await settle(3 * TIMING.leaveGraceMs);
@@ -171,7 +171,7 @@ describe('MX5: the call watch', () => {
     buildMeet(document, { state: 'waiting' });
     const w = watching(meetAdapter);
     await settle(5 * TIMING.leaveGraceMs);
-    // v0.10: the waiting room beats every keepAliveMs (the arm's sign the page is still there), never in a call, never `left`.
+    // v0.9.1: the waiting room beats every keepAliveMs (the arm's sign the page is still there), never in a call, never `left`.
     expect(w.sent.every((m) => m.inCall === false && m.stage !== 'in')).toBe(true);
     expect(w.lefts()).toEqual([]);
     watch!.stop();
@@ -196,7 +196,7 @@ describe('MX5: the call watch', () => {
     expect(w.lefts()).toHaveLength(1);
     const before = w.sent.length;
     await settle(3 * TIMING.keepAliveMs);
-    // v0.10: out of the call the page beats only for a join screen, a waiting room or `left`, and never as in a call.
+    // v0.9.1: out of the call the page beats only for a join screen, a waiting room or `left`, and never as in a call.
     expect(w.sent.slice(before).length).toBeGreaterThan(0);
     expect(w.sent.slice(before).every((m) => m.inCall === false && !m.left && m.stage !== 'in' && m.stage !== 'none')).toBe(true);
   });
@@ -280,7 +280,7 @@ const stages = (sent: CallMessage[]) =>
     .map((m) => [m.inCall, m.stage, m.hook ?? ''] as const)
     .filter((m, i, all) => i === 0 || JSON.stringify(m) !== JSON.stringify(all[i - 1]));
 
-describe('v0.10: the stage', () => {
+describe('v0.9.1: the stage', () => {
   it('a page loaded on the join screen says so after two polls', async () => {
     goTo(meetUrl('abc-defg-hij', 'short'));
     buildMeet(document, { state: 'prejoin' });

@@ -6,7 +6,7 @@
  * the day's budget) is passed on as it came. No em dash, no exclamation
  * mark.
  *
- * v0.10's groups are marked pure, so a bundle that never names one (the
+ * v0.9.1's groups are marked pure, so a bundle that never names one (the
  * worker and the popup's own copy) leaves it out.
  */
 
@@ -20,9 +20,9 @@ export const NOT_OPEN = 'This meeting is not open in Jantar any more. Start note
 /** A meeting tab open before the extension was loaded or reloaded has no page script yet: Chrome adds it only on a load. */
 export const NO_MEETING_TAB = 'Open a Google Meet or Teams call in this tab (reload it if the call is already open).';
 export const JOIN_FIRST = 'Join the call first.';
-/** v0.10: Start when I join, on a page that shows no join screen, waiting room or call. */
+/** v0.9.1: Start when I join, on a page that shows no join screen, waiting room or call. */
 export const JOIN_SCREEN_FIRST = "Open the call's join screen first.";
-/** v0.10: why notes do not start by themselves with no key stored. */
+/** v0.9.1: why notes do not start by themselves with no key stored. */
 export const PAIR_FIRST = 'the extension is not paired. Click the Jantar icon to pair.';
 /** Something in the extension itself went wrong (never expected). */
 export const TRY_AGAIN = 'Something went wrong. Try again.';
@@ -51,7 +51,7 @@ export const READS = Object.freeze({
   denied: "Chrome didn't allow the post sites, so Read saved links stays off.",
 });
 
-/** v0.10: Start when I join, in the popup's words. */
+/** v0.9.1: Start when I join, in the popup's words. */
 export const ARM = /* @__PURE__ */ Object.freeze({
   button: 'Start when I join',
   leadPrejoin: 'Not in the call yet.',
@@ -79,10 +79,10 @@ export const ARM = /* @__PURE__ */ Object.freeze({
   failed: (why: string) => `Notes did not start when you joined: ${why}`,
 });
 
-/** v0.10: the page's bubble when Always arms a call (on its own, so the worker carries no Settings copy). */
+/** v0.9.1: the page's bubble when Always arms a call (on its own, so the worker carries no Settings copy). */
 export const ALWAYS_ARMED = 'Jantar starts notes when you join. Not this call: the Jantar icon.';
 
-/** v0.10: Settings › Always start when I join a call, and the page's bubble when it arms a call. */
+/** v0.9.1: Settings › Always start when I join a call, and the page's bubble when it arms a call. */
 export const ALWAYS = /* @__PURE__ */ Object.freeze({
   title: 'Always start when I join a call',
   why: 'Notes start by themselves in every Meet or Teams call you join in this Chrome, once you are in the call, never before. To skip a call, click the Jantar icon on it, then Not this call. Let people know you keep notes.',
@@ -93,10 +93,10 @@ export const ALWAYS = /* @__PURE__ */ Object.freeze({
   turnOffName: 'Turn off Always start when I join a call',
 });
 
-/** v0.10: why notes did not start by themselves in a call another tab already keeps notes for. */
+/** v0.9.1: why notes did not start by themselves in a call another tab already keeps notes for. */
 export const OTHER_TAB = 'they are already on for this call in another tab.';
 
-/** v0.10: what the page says when notes start by themselves, or do not. */
+/** v0.9.1: what the page says when notes start by themselves, or do not. */
 export const AUTO = /* @__PURE__ */ Object.freeze({
   started: 'Jantar started notes. Let people know you keep notes.',
   notStarted: (why: string) => `Notes did not start: ${why}`,
@@ -107,7 +107,7 @@ export const AUTO = /* @__PURE__ */ Object.freeze({
   unpaired: `Notes will not start by themselves: ${PAIR_FIRST}`,
 });
 
-/** v0.10: Settings › Call check: what the page shows, in words, and the hook id that decided it. */
+/** v0.9.1: Settings › Call check: what the page shows, in words, and the hook id that decided it. */
 export const CALL_CHECK = /* @__PURE__ */ Object.freeze({
   none: 'no join screen or call',
   prejoin: 'join screen',
@@ -118,7 +118,7 @@ export const CALL_CHECK = /* @__PURE__ */ Object.freeze({
 });
 
 /**
- * v0.10: Settings › Turn on captions when notes start (on by default), and
+ * v0.9.1: Settings › Turn on captions when notes start (on by default), and
  * Call check's captions line: how switching them on went, and the hook id
  * that decided it.
  */

@@ -15,7 +15,7 @@
  * there is no offline queue anywhere else. It keeps reading while the call
  * watch is leaving.
  *
- * v0.10: a start with `cc` (the worker's Settings switch, on by default)
+ * v0.9.1: a start with `cc` (the worker's Settings switch, on by default)
  * also switches the call's captions on (captions.ts), stopped with notes;
  * the page's memory of it (`memory`) outlives this run. The caption watch:
  * no caption line in the first TIMING.noCaptionsMs of notes, it asks the
@@ -47,7 +47,7 @@ export const NOT_ANSWERING_MS = 10_000;
 export const NOT_ANSWERING = 'Jantar is not answering. Notes wait in this tab until it is back.';
 export const UNREACHABLE = 'Notes stopped: Jantar has been unreachable too long.';
 export const NOT_FOUND = "Can't read captions on this page. Screenshots still work.";
-/** v0.10: the no-captions bubble stays this long (it was easy to miss at 8 s). */
+/** v0.9.1: the no-captions bubble stays this long (it was easy to miss at 8 s). */
 export const NO_CAPTIONS_BUBBLE_MS = 20_000;
 
 export interface CaptureOptions {
@@ -55,13 +55,13 @@ export interface CaptureOptions {
   doc: Document;
   /** Send `lines` to the worker; resolves its answer, or undefined when none came. */
   send(msg: LinesMessage): Promise<LinesAnswer | undefined>;
-  /** The captions state changed (the page tells the worker); v0.10: `why`, with `none`. */
+  /** The captions state changed (the page tells the worker); v0.9.1: `why`, with `none`. */
   captions(state: CaptionsState, why?: CaptionsWhy): void;
-  /** v0.10: how switching the captions on went (a start with `cc`). */
+  /** v0.9.1: how switching the captions on went (a start with `cc`). */
   cc?(result: CcResult, hook: HookId): void;
-  /** v0.10: the page's memory of switching captions on, which outlives a notes run (default: this capture's own). */
+  /** v0.9.1: the page's memory of switching captions on, which outlives a notes run (default: this capture's own). */
   memory?: CcMemory;
-  /** v0.10: when the page came into the call (the call watch's; null: not in; without it, no blind click). */
+  /** v0.9.1: when the page came into the call (the call watch's; null: not in; without it, no blind click). */
   inSince?(): number | null;
   /** Show one bubble (for `ms`, else the button's own time). */
   bubble(text: string, ms?: number): void;
@@ -73,7 +73,7 @@ export interface CaptureOptions {
 
 export interface Capture {
   readonly on: boolean;
-  /** v0.10: `cc`: also switch the call's captions on. */
+  /** v0.9.1: `cc`: also switch the call's captions on. */
   start(opts?: { cc?: boolean }): void;
   /**
    * Stop reading. `final` (End, a leave): the open lines are closed and what
@@ -109,7 +109,7 @@ export function createCapture(o: CaptureOptions): Capture {
   let unreadSince: number | null = null;
   /** When the first change not read yet came. */
   let changedAt: number | null = null;
-  /** v0.10: when notes started here; whether a line was ever read since; the no-captions bubbles shown (two at most before a line) and when the next is due; since when the captions went after lines came. */
+  /** v0.9.1: when notes started here; whether a line was ever read since; the no-captions bubbles shown (two at most before a line) and when the next is due; since when the captions went after lines came. */
   let startedAt = 0;
   let everRead = false;
   let nudges = 0;
@@ -117,7 +117,7 @@ export function createCapture(o: CaptureOptions): Capture {
   let goneSince: number | null = null;
   let ccSwitch: CaptionsSwitch | null = null;
   const memory = o.memory ?? ccMemory();
-  /** v0.10: how this run's switch went. */
+  /** v0.9.1: how this run's switch went. */
   let ran: CcResult | null = null;
 
   const setState = (next: CaptionsState, why?: CaptionsWhy) => {

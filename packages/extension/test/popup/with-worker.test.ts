@@ -5,7 +5,7 @@
  * that saves into a meeting made for the call. And a meeting tab that went
  * to another site: the popup offers nothing there. v0.5.3: a page-button
  * try Chrome refused shows in the main view and in Settings, with Chrome's
- * words and the shortcut. v0.10: Start when I join, from the join screen to
+ * words and the shortcut. v0.9.1: Start when I join, from the join screen to
  * notes on, with the badge.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -104,7 +104,7 @@ describe('the popup with the worker', () => {
     expect(root.textContent).not.toContain('Last screenshot not saved');
   });
 
-  it('v0.10: Start when I join with a project, from the join screen; let in, notes start by themselves and the popup follows', async () => {
+  it('v0.9.1: Start when I join with a project, from the join screen; let in, notes start by themselves and the popup follows', async () => {
     w = setupWorker();
     w.model.addTab({ id: 7, windowId: 1, url: MEET_URL, active: true });
     w.model.onTabMessage(7, () => ({ ok: true }));

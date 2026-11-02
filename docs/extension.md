@@ -24,7 +24,7 @@ you are in the call; and nothing is photographed until you click.
   time, each line kept once in its final form as the site revises it.
   Nothing is read before you press **Start notes**, or, if you chose
   **Start when I join**, before you are in the call. Captions must be on:
-  since 0.10 Jantar turns them on for you when notes start, and when none
+  since 0.9.1 Jantar turns them on for you when notes start, and when none
   come in the page says how ([Captions](#captions)).
 - **Screenshots**: a small round camera button at the edge of the call, the
   toolbar icon's Screenshot, or Option+Shift+S. The button hides itself,
@@ -33,7 +33,7 @@ you are in the call; and nothing is photographed until you click.
 - **Assign before you start**: the Jantar icon opens a small sheet with the
   name (from the page), a project, the people, and whether action items go
   to that project's todos on their own.
-- **Start when I join** (since 0.10): open the Jantar icon on the call's
+- **Start when I join** (since 0.9.1): open the Jantar icon on the call's
   join screen or in its waiting room, fill the same sheet and press **Start
   when I join**. Notes start by themselves once you are let in, never
   before, and only in that tab ([Start when I join](#start-when-i-join)).
@@ -83,7 +83,7 @@ The extension never:
 
 - records audio or video, or reads the call's media;
 - clicks anything in the call, except, when notes start, the call's own
-  captions control to turn captions on (since 0.10, a Settings switch, on by
+  captions control to turn captions on (since 0.9.1, a Settings switch, on by
   default; see [Captions](#captions)); it never means to turn captions off,
   and it never touches them again in a call where they were on;
 - reads the page before notes start, except whether you are on the call's
@@ -297,7 +297,7 @@ meetings.
 
 ## Start when I join
 
-Since 0.10. Open the Jantar icon while a Meet or Teams call shows its join
+Since 0.9.1. Open the Jantar icon while a Meet or Teams call shows its join
 screen (Meet's "Ready to join?", Teams' pre-join screen) or its waiting
 room (Meet's "Asking to be let in", Teams' "Someone will let you in when the
 meeting starts"). The popup says **Not in the call yet.** or **Waiting to be
@@ -410,7 +410,7 @@ start, as above, once you are let in.
   apart from Chat: arm on the pre-join screen and the arm ends a minute
   after Join now, saying "Notes will not start by themselves…"; press
   **Start notes** once you are in.
-- Not checked on a real Mac yet ([R12](real-mac-checks.md#meetings-v010-start-when-i-join)):
+- Not checked on a real Mac yet ([R12](real-mac-checks.md#meetings-v091-start-when-i-join)):
   Teams' waiting room and Teams light meetings (joining as a guest from a
   link), so neither is claimed to work. If a Teams waiting room shows a
   Leave button, Jantar would count you in the call there, for Start notes
@@ -448,7 +448,7 @@ sees a change, and nothing is recorded.
 
 ### Captions on when notes start
 
-Since 0.10, when notes start (**Start notes**, **Start when I join**, or
+Since 0.9.1, when notes start (**Start notes**, **Start when I join**, or
 notes going on again after a reload), Jantar turns the call's captions on
 in that tab if they are off. **Settings › Turn on captions when notes
 start** switches this off (it is on by default; it only changes what you
@@ -548,7 +548,7 @@ Things to know:
   light meetings (`/light-meetings/launch?…`), which has live captions under
   More (…) › Captions; Jantar turns them on there too when notes start
   within a minute of joining (above). Not checked on a real Mac yet
-  ([R-C4](real-mac-checks.md#meetings-v010-captions-on-when-notes-start)).
+  ([R-C4](real-mac-checks.md#meetings-v091-captions-on-when-notes-start)).
   Teams' **Cmd+Shift+A** is not said any more: it is reported not to work
   for guests, and Chrome may take it.
 - **The Teams desktop app** is not covered. Open the meeting in Chrome
@@ -695,7 +695,7 @@ To turn it off: the same switch. To take the six sites back as well:
 
 ## Updating the extension
 
-**0.10.0** (unreleased): build again and reload the extension. It changes
+**0.9.1**: build again and reload the extension. It changes
 this time (Start when I join, the toolbar badge, captions turned on when
 notes start). No new permission. Start when I join is forgotten on the
 reload; reload open meeting tabs.

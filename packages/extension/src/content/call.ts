@@ -21,7 +21,7 @@
  * `left` when the grace runs out. While leaving, the page still counts as in
  * the call: only `left` ends it.
  *
- * v0.10, the stage (Start when I join), beside the phases and changing none
+ * v0.9.1, the stage (Start when I join), beside the phases and changing none
  * of them. Each poll's raw stage is the call (an in-call hook), else the
  * adapter's join screen or waiting room, else none. The page reports a stage
  * only once it held STAGE_STABLE_POLLS polls in a row, so the call (`in`)
@@ -63,15 +63,15 @@ export interface CallWatch {
   start(): void;
   stop(): void;
   phase(): CallPhase;
-  /** v0.10: the stage as the worker last heard it. */
+  /** v0.9.1: the stage as the worker last heard it. */
   stage(): CallStage;
-  /** v0.10: when the page came into this call (its first poll in it; null while out of a call). */
+  /** v0.9.1: when the page came into this call (its first poll in it; null while out of a call). */
   inSince(): number | null;
-  /** v0.10: the page is going away (a reload, a navigation, the tab closing): one last `call`, not awaited. */
+  /** v0.9.1: the page is going away (a reload, a navigation, the tab closing): one last `call`, not awaited. */
   hide(): void;
 }
 
-/** v0.10: the stages that beat every keepAliveMs (the arm's sign the page is still there). */
+/** v0.9.1: the stages that beat every keepAliveMs (the arm's sign the page is still there). */
 const WAITING: ReadonlySet<CallStage> = new Set(['prejoin', 'lobby', 'left']);
 
 export function createCallWatch(o: CallWatchOptions): CallWatch {
@@ -87,7 +87,7 @@ export function createCallWatch(o: CallWatchOptions): CallWatch {
   let goneAt = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running = false;
-  // v0.10: the stable stage and its hook, and what the worker last heard.
+  // v0.9.1: the stable stage and its hook, and what the worker last heard.
   let stage: CallStage = 'none';
   let hook: HookId = '';
   let sentStage: CallStage | undefined;
@@ -169,7 +169,7 @@ export function createCallWatch(o: CallWatchOptions): CallWatch {
     }
     if (entered) inAt = now;
 
-    // v0.10: the stage, from this poll's raw stage once it held STAGE_STABLE_POLLS polls in a row.
+    // v0.9.1: the stage, from this poll's raw stage once it held STAGE_STABLE_POLLS polls in a row.
     const raw: CallStage = inHook !== null ? 'in' : (wait?.stage ?? 'none');
     const rawHook = inHook ?? wait?.hook ?? '';
     if (wait?.stage === 'prejoin' && wait.strong) joinHookAt = pageAt(o.doc.location);

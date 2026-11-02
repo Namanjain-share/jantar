@@ -66,25 +66,25 @@ export function showsText(root: Element): boolean {
   return false;
 }
 
-/** v0.10: where the page is, as the page's own memory keeps it (path, query and hash; never sent, never stored). */
+/** v0.9.1: where the page is, as the page's own memory keeps it (path, query and hash; never sent, never stored). */
 export function pageAt(loc: Location | null | undefined): string | null {
   return loc ? `${loc.pathname}${loc.search}${loc.hash}` : null;
 }
 
-/** v0.10: how long a try waits between its steps, and for a menu or pop-up to open. */
+/** v0.9.1: how long a try waits between its steps, and for a menu or pop-up to open. */
 export const CC_STEP_MS = 300;
 export const CC_OPEN_MS = 2_000;
 
-/** v0.10: not inside a hidden or aria-hidden subtree (jsdom has no layout, so no more than this is asked). */
+/** v0.9.1: not inside a hidden or aria-hidden subtree (jsdom has no layout, so no more than this is asked). */
 export function shown(el: Element): boolean {
   return el.closest('[hidden], [aria-hidden="true"]') === null;
 }
 
-/** v0.10: a captions control's English words (both sites), exactly: offering to turn them off (so they are on), or on. */
+/** v0.9.1: a captions control's English words (both sites), exactly: offering to turn them off (so they are on), or on. */
 export const SAYS_ON_EN: ReadonlySet<string> = new Set(['turn off captions', 'turn off live captions', 'hide live captions']);
 export const SAYS_OFF_EN: ReadonlySet<string> = new Set(['turn on captions', 'turn on live captions', 'show live captions']);
 
-/** v0.10: what a captions control says: aria-pressed or aria-checked, else `off` (a site's own sign of off), else its English words. */
+/** v0.9.1: what a captions control says: aria-pressed or aria-checked, else `off` (a site's own sign of off), else its English words. */
 export function saysOf(el: Element, off = false): 'on' | 'off' | 'unknown' {
   for (const attr of ['aria-pressed', 'aria-checked']) {
     const v = el.getAttribute(attr);
@@ -95,24 +95,24 @@ export function saysOf(el: Element, off = false): 'on' | 'off' | 'unknown' {
   return SAYS_ON_EN.has(words) ? 'on' : SAYS_OFF_EN.has(words) ? 'off' : 'unknown';
 }
 
-/** v0.10: a control's own label, lower-cased: its aria-label, else its text. */
+/** v0.9.1: a control's own label, lower-cased: its aria-label, else its text. */
 export function labelOf(el: Element): string {
   return collapse(el.getAttribute('aria-label') ?? el.textContent).toLowerCase();
 }
 
-/** v0.10: a click as a page script makes one (HTMLElement.click()). */
+/** v0.9.1: a click as a page script makes one (HTMLElement.click()). */
 export function click(el: Element): void {
   (el as HTMLElement).click();
 }
 
-/** v0.10: one keydown, bubbling from `target` (the site's own key handlers take untrusted ones). */
+/** v0.9.1: one keydown, bubbling from `target` (the site's own key handlers take untrusted ones). */
 export function press(target: EventTarget, key: string, code: string): void {
   const view = (target as Node).ownerDocument?.defaultView ?? (target as Document).defaultView;
   const Ctor = view?.KeyboardEvent ?? KeyboardEvent;
   target.dispatchEvent(new Ctor('keydown', { key, code, bubbles: true, cancelable: true }));
 }
 
-/** v0.10: what `find` finds, asked again every CC_STEP_MS for up to `ms`; null when it never does. */
+/** v0.9.1: what `find` finds, asked again every CC_STEP_MS for up to `ms`; null when it never does. */
 export async function poll<T>(wait: (ms: number) => Promise<void>, find: () => T | null, ms = CC_OPEN_MS): Promise<T | null> {
   for (let waited = 0; ; waited += CC_STEP_MS) {
     const got = find();

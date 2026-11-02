@@ -12,7 +12,7 @@
  *   leave, a screenshot's open and upload, a tab closing), so two of them
  *   never make two meetings for one call.
  *
- * v0.10: the record also keeps what the page last said it shows (its stage
+ * v0.9.1: the record also keeps what the page last said it shows (its stage
  * and hook, and when it last said anything), and the last time notes
  * started by themselves (`auto`), for the popup and the toolbar badge; and
  * for the captions, whose way to turn them on the page names (`client`),
@@ -40,18 +40,18 @@ export interface TabState {
   /** Screenshots saved into this meeting. */
   shots: number;
   captions: CaptionsState | 'unknown';
-  /** v0.10: whose way to turn captions on (the page's captions state names it), why `none`, and how switching them on went (this meeting's notes). */
+  /** v0.9.1: whose way to turn captions on (the page's captions state names it), why `none`, and how switching them on went (this meeting's notes). */
   client?: CaptionsClient;
   why?: CaptionsWhy;
   cc?: CcReport;
   /** When the last keep-alive went (ms). */
   lastKeepAlive?: number;
-  /** v0.10: the page's stage and the hook id that decided it, as its last `call` said. */
+  /** v0.9.1: the page's stage and the hook id that decided it, as its last `call` said. */
   stage?: CallStage;
   hook?: string;
-  /** v0.10: when the page's last `call` came (ms). */
+  /** v0.9.1: when the page's last `call` came (ms). */
   heardAt?: number;
-  /** v0.10: the last start by itself (Start when I join): when, and whether notes started (`text`: why not). */
+  /** v0.9.1: the last start by itself (Start when I join): when, and whether notes started (`text`: why not). */
   auto?: AutoStart;
 }
 

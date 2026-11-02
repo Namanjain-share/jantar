@@ -25,7 +25,7 @@
  * the end (Chrome quit, a crash, a navigation away), the daemon ends the
  * meeting 10 minutes after its last line or keep-alive.
  *
- * v0.10, Start when I join (arms.ts): a `call` saying the page has been in
+ * v0.9.1, Start when I join (arms.ts): a `call` saying the page has been in
  * the call for two polls (stage `in`) starts notes in an armed tab through
  * the same startNow as Start, with the same open body, then the page says
  * "Jantar started notes". Never before: nothing of an armed call reaches
@@ -34,7 +34,7 @@
  * page's next keep-alives (ARM_TIMING.retries). With Always on, End leaves
  * an `off` arm so a rejoin of that call in that tab does not start again.
  *
- * v0.10, captions on when notes start: with Settings › Turn on captions when
+ * v0.9.1, captions on when notes start: with Settings › Turn on captions when
  * notes start on (chrome.storage.local `autoCaptions`, on unless set off),
  * every `capture {on: true}` and every call answer with notes on carries
  * `cc`, and the page switches the call's captions on. The page's captions
@@ -50,7 +50,7 @@ import type { Lines } from './lines.js';
 import { AUTO, JOIN_FIRST, JOIN_SCREEN_FIRST, MISMATCH, NOT_OPEN, NOT_RUNNING, NO_MEETING_TAB, OTHER_TAB, PAIR_AGAIN, PAIR_FIRST, TRY_AGAIN } from './sentences.js';
 import { withoutMeeting, type TabState } from './tabs.js';
 
-/** v0.10: Settings › Turn on captions when notes start, in chrome.storage.local (no secret); on unless set off. */
+/** v0.9.1: Settings › Turn on captions when notes start, in chrome.storage.local (no secret); on unless set off. */
 export const CC_KEY = 'autoCaptions';
 
 export async function autoCaptions(): Promise<boolean> {
@@ -70,7 +70,7 @@ export async function setAutoCaptions(on: boolean): Promise<Done> {
   }
 }
 
-/** v0.10: notes on in the page (`text`: the bubble after a start by itself), switching captions on when the setting says so. */
+/** v0.9.1: notes on in the page (`text`: the bubble after a start by itself), switching captions on when the setting says so. */
 async function captureOn(text?: string): Promise<ToPage> {
   return { t: 'capture', on: true, ...(text ? { text } : {}), ...((await autoCaptions()) ? { cc: true as const } : {}) };
 }
@@ -101,7 +101,7 @@ export function defaultName(s: Pick<TabState, 'site' | 'title'>): string {
 }
 
 /**
- * v0.10: what a `call` says the page shows. The page names its stage (with
+ * v0.9.1: what a `call` says the page shows. The page names its stage (with
  * `left` too: a waiting room's one-poll flicker that ran out its grace is
  * still the waiting room); a message without one reads as v0.9's.
  */
@@ -141,12 +141,12 @@ export function doneError(reply: Reply): string {
 export interface Meetings {
   call(tabId: number, msg: CallMsg, site: MeetingSite): Promise<CallAnswer>;
   captions(tabId: number, state: TabState['captions'], client?: CaptionsClient, why?: CaptionsWhy): Promise<void>;
-  /** v0.10: how switching the captions on went. */
+  /** v0.9.1: how switching the captions on went. */
   cc(tabId: number, report: CcReport): Promise<void>;
   start(msg: StartMsg): Promise<Done>;
-  /** v0.10: Start when I join (starts now when the tab is already in the call). */
+  /** v0.9.1: Start when I join (starts now when the tab is already in the call). */
   arm(msg: ArmMsg): Promise<Done>;
-  /** v0.10: Cancel; with Always on, Not this call (an `off` arm). */
+  /** v0.9.1: Cancel; with Always on, Not this call (an `off` arm). */
   disarm(tabId: number): Promise<Done>;
   end(tabId: number): Promise<Done>;
   removed(tabId: number): Promise<void>;
@@ -255,7 +255,7 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
   }
 
   /**
-   * v0.10: the armed tab is in the call (spec 5.2; inside tabs.serial):
+   * v0.9.1: the armed tab is in the call (spec 5.2; inside tabs.serial):
    * notes start exactly as Start starts them, else the page and the popup
    * say why. Answers the tab's record as it is now.
    */
@@ -307,7 +307,7 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
           stage,
           hook: msg.hook ?? '',
           heardAt: now,
-          // v0.10: the page is going away (a reload): its captions state goes with it, until the next page says.
+          // v0.9.1: the page is going away (a reload): its captions state goes with it, until the next page says.
           ...(msg.hook === 'page:hide' ? { captions: 'unknown' as const } : {}),
         }));
         if (!next) return next;
@@ -333,7 +333,7 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
       }
       const paired = (await ctx.keys.get()) !== null;
       const notes = Boolean(state?.clientId && state.notes);
-      // v0.10: a page that resumes notes after a reload switches captions on too.
+      // v0.9.1: a page that resumes notes after a reload switches captions on too.
       return { button: paired, notes, ...(notes && (await autoCaptions()) ? { cc: true as const } : {}) };
     },
 
@@ -389,7 +389,7 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
         if (!state?.clientId) return { ok: true };
         const reply = await finish(tabId, state, state.clientId, 'user');
         if (await arms.always()) {
-          // v0.10: a rejoin of this call in this tab does not start notes again.
+          // v0.9.1: a rejoin of this call in this tab does not start notes again.
           await arms.set(tabId, newArm(state, ctx.now(), { from: 'always', off: true, name: '', autoTodos: false }));
           await arms.schedule();
         }

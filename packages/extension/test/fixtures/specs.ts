@@ -18,19 +18,19 @@ export const PAGE_SPECS = {
   'teams-loose': { site: 'teams', options: { layout: 'loose' }, title: 'Weekly sync | Microsoft Teams' },
   'teams-lobby': { site: 'teams', options: { layout: '2026-bottom', state: 'lobby' }, title: 'Weekly sync | Microsoft Teams' },
   'teams-anon': { site: 'teams', options: { layout: 'v2', anon: true }, title: 'Meet now | Microsoft Teams' },
-  // v0.10: the screens before the call (Start when I join).
+  // v0.9.1: the screens before the call (Start when I join).
   'meet-prejoin': { site: 'meet', options: { state: 'prejoin' }, title: 'Meet – Weekly sync' },
   'meet-lobby': { site: 'meet', options: { state: 'lobby' }, title: 'Meet – Weekly sync' },
   'teams-prejoin': { site: 'teams', options: { layout: '2026-bottom', state: 'prejoin' }, title: 'Weekly sync | Microsoft Teams' },
   'teams-waiting': { site: 'teams', options: { layout: '2026-bottom', state: 'waiting' }, title: 'Weekly sync | Microsoft Teams' },
   'teams-light-waiting': { site: 'teams', options: { layout: 'v2', state: 'waiting', light: true }, title: 'Weekly sync | Microsoft Teams' },
-  // v0.10: calls whose captions are off (captions on when notes start): a light-meetings guest (More › Captions; the
+  // v0.9.1: calls whose captions are off (captions on when notes start): a light-meetings guest (More › Captions; the
   // guest's caption tree, shown once someone speaks), and Meet's "Captions and translation" pop-up.
   'teams-light-call': { site: 'teams', options: { layout: 'guest', light: true, hangupId: true, captions: false, lateRegion: true }, title: 'Weekly sync | Microsoft Teams' },
   'meet-popup-off': { site: 'meet', options: { state: 'call', cc: 'popup', captions: false }, title: 'Meet – Weekly sync' },
 } satisfies Record<string, FixturePageSpec>;
 
-/** v0.10: the fixture pages that open before the call (each reaches the call with `join`). */
+/** v0.9.1: the fixture pages that open before the call (each reaches the call with `join`). */
 export const BEFORE_CALL_PAGES: readonly string[] = ['meet-waiting', 'teams-lobby', 'meet-prejoin', 'meet-lobby', 'teams-prejoin', 'teams-waiting', 'teams-light-waiting'];
 
 export type FixturePageName = keyof typeof PAGE_SPECS;

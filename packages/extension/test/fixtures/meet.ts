@@ -8,7 +8,7 @@
  * variant with every known caption class renamed (the structural fallback,
  * MX9).
  *
- * v0.10 adds the screens around the call, each with its own made-up words
+ * v0.9.1 adds the screens around the call, each with its own made-up words
  * (never read by the adapter): the join screen ('prejoin', an "Ask to join"
  * button with Meet's join jsname), the waiting room after it ('lobby', the
  * call_end icon only), and the screen after Leave ('left', a Rejoin button),
@@ -16,7 +16,7 @@
  * leave. 'waiting' stays v0.5's waiting room: the call_end icon and an Ask to
  * join button without the jsname (it reads as the lobby).
  *
- * v0.10, captions switched on (research captions-research.md 2.2, as of
+ * v0.9.1, captions switched on (research captions-research.md 2.2, as of
  * 2026-11-02): the captions control says whether captions are on, and a
  * click on it changes them. `cc: 'old'` is the one toggle (Meet's captions
  * jsname, `aria-pressed`, the closed_caption / closed_caption_off icon);
@@ -37,7 +37,7 @@
  */
 import { h, setWords, wordsOf } from './dom.js';
 
-/** v0.10: the screens around the call (see the header). */
+/** v0.9.1: the screens around the call (see the header). */
 export type MeetState = 'prejoin' | 'lobby' | 'call' | 'left' | 'waiting';
 
 export interface MeetOptions {
@@ -49,11 +49,11 @@ export interface MeetOptions {
   renamed?: boolean;
   /** `data-meeting-title`; null for none. Default 'Weekly sync'. */
   title?: string | null;
-  /** v0.10: the captions control's shape (see the header). Default 'old'. */
+  /** v0.9.1: the captions control's shape (see the header). Default 'old'. */
   cc?: 'old' | 'popup';
-  /** v0.10: an empty caption container stays on the page while captions are off. */
+  /** v0.9.1: an empty caption container stays on the page while captions are off. */
   emptyContainer?: true;
-  /** v0.10: the pop-up opens this long after the click. */
+  /** v0.9.1: the pop-up opens this long after the click. */
   popupMs?: number;
 }
 
@@ -77,15 +77,15 @@ export interface MeetFixture {
   region(): HTMLElement;
   /** Admitted from the waiting room: the captions button appears. */
   join(): void;
-  /** v0.10: Ask to join pressed: the join screen becomes the waiting room. */
+  /** v0.9.1: Ask to join pressed: the join screen becomes the waiting room. */
   askToJoin(): void;
-  /** v0.10: let in (the same step as join). */
+  /** v0.9.1: let in (the same step as join). */
   admit(): void;
-  /** v0.10: Leave pressed: the call's controls go and a Rejoin button shows. */
+  /** v0.9.1: Leave pressed: the call's controls go and a Rejoin button shows. */
   leave(): void;
-  /** v0.10: the captions button alone, on or off whatever the screen (a re-render's one-poll flicker). */
+  /** v0.9.1: the captions button alone, on or off whatever the screen (a re-render's one-poll flicker). */
   captionsButton(on: boolean): void;
-  /** v0.10: the screen the page shows now. */
+  /** v0.9.1: the screen the page shows now. */
   state(): MeetState;
   /** A new turn, before the list's trailing controls. A null speaker leaves the name empty. */
   say(speaker: string | null, text: string): MeetTurn;
@@ -97,11 +97,11 @@ export interface MeetFixture {
   hooksOn(): void;
   /** The region drawn again: new region, list and turn elements with the same words. */
   replaceRegion(): void;
-  /** v0.10: the captions are on (what the control says). */
+  /** v0.9.1: the captions are on (what the control says). */
   captionsShown(): boolean;
-  /** v0.10: what was clicked or pressed on the captions controls, in order. */
+  /** v0.9.1: what was clicked or pressed on the captions controls, in order. */
   readonly ccLog: string[];
-  /** v0.10: the captions pop-up (cc 'popup') is open. */
+  /** v0.9.1: the captions pop-up (cc 'popup') is open. */
   popupOpen(): boolean;
   remove(): void;
 }
@@ -138,7 +138,7 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
   const ccButton = popup
     ? h(doc, 'button', { 'aria-label': 'Captions and translation', 'aria-haspopup': 'dialog', 'aria-pressed': 'true', 'aria-expanded': 'false' }, ccIcon)
     : h(doc, 'button', { jsname: 'RrG0hf', 'aria-label': 'Turn off captions', 'aria-pressed': 'true' }, ccIcon);
-  // v0.10: the pop-up of 2026-10-22: the toggle first, then translation and its settings (each opens more).
+  // v0.9.1: the pop-up of 2026-10-22: the toggle first, then translation and its settings (each opens more).
   const ccToggle = h(doc, 'button', { 'aria-label': 'Turn off captions' }, 'Captions');
   const ccDialog = h(
     doc,
@@ -152,7 +152,7 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
   const container = h(doc, 'div', { jscontroller: 'D1tHje' });
   const leave = h(doc, 'button', { 'aria-label': 'Leave call' }, h(doc, 'i', { class: 'google-symbols', 'aria-hidden': 'true' }, 'call_end'));
   const askToJoin = h(doc, 'button', { class: 'join' }, 'Ask to join');
-  // v0.10: the join screen's button (jsname as research names it, unverified on a real Mac: R12), and the left screen's.
+  // v0.9.1: the join screen's button (jsname as research names it, unverified on a real Mac: R12), and the left screen's.
   const joinButton = h(doc, 'button', { jsname: 'Qx7uuf', class: 'join' }, 'Ask to join');
   const rejoin = h(doc, 'button', { class: 'rejoin' }, 'Rejoin');
   const screen = h(doc, 'div', { class: 'screen' });
@@ -176,7 +176,7 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
     ];
   }
 
-  /** v0.10: the control says what the captions are. */
+  /** v0.9.1: the control says what the captions are. */
   function paintCc() {
     ccButton.setAttribute('aria-pressed', String(captionsShown));
     if (popup) {

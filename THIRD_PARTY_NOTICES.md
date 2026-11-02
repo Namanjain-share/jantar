@@ -46,7 +46,7 @@ their live captions and how a line grows and settles; no code was copied:
 - Google Meet Captions Exporter (https://github.com/nikooo777/google-meet-captions-exporter)
 - meet-caption-log-extension (https://github.com/yhotta240/meet-caption-log-extension)
 
-v0.10's captions switch and Teams light-meetings support take facts only
+v0.9.1's captions switch and Teams light-meetings support take facts only
 (selector strings, ids, `data-tid`s, aria-labels, icon names and menu
 steps) from these projects' notes and sources; no code, comments or
 identifiers were copied:

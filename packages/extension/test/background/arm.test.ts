@@ -1,5 +1,5 @@
 /**
- * v0.10, Start when I join, the worker's part (spec 4 to 6, 12): the popup
+ * v0.9.1, Start when I join, the worker's part (spec 4 to 6, 12): the popup
  * arms a tab on its join screen or in its waiting room with the sheet's
  * fields, making no daemon call; a `call` saying the page has been in the
  * call for two polls (stage `in`) starts notes exactly as Start would, and

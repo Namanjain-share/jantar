@@ -136,7 +136,7 @@ describe('the worker takes', () => {
   });
 });
 
-describe('v0.10: the stage, Start when I join and Always', () => {
+describe('v0.9.1: the stage, Start when I join and Always', () => {
   const base = { t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync' };
 
   it("a page's `call` takes one of the five stages and our own hook id, and carries only those", () => {
@@ -202,7 +202,7 @@ describe('v0.10: the stage, Start when I join and Always', () => {
   });
 });
 
-describe('v0.10: captions on when notes start', () => {
+describe('v0.9.1: captions on when notes start', () => {
   it("a page's `captions` may name its client, and its `cc` how switching them on went with our own hook id; only those fields", () => {
     w = setupWorker();
     w.model.addTab({ id: 7, windowId: 1, url: MEET_URL, active: true });

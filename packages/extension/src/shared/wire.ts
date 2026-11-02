@@ -46,9 +46,9 @@ export const MEETING_SHOT_MAX_BYTES = 4_194_304;
  * - linesEveryMs: at most one `lines` message this often per tab;
  * - linesRetryMs: after Jantar did not answer, try the pending lines again after this long;
  * - debounceMs: a change in the caption region is read this long after it settles;
- * - noCaptionsMs (v0.10): notes on and no caption line this long (or, after lines came, the captions gone this
+ * - noCaptionsMs (v0.9.1): notes on and no caption line this long (or, after lines came, the captions gone this
  *   long): the caption watch asks the captions control (`waiting` or `none`);
- * - captionsRecheckMs (v0.10): still no caption line this long after the first bubble: the bubble once more (and never again);
+ * - captionsRecheckMs (v0.9.1): still no caption line this long after the first bubble: the bubble once more (and never again);
  * - notFoundMs: caption text on screen but no blocks read this long: the 'notFound' bubble;
  * - shotGapMs: screenshots at least this far apart (Chrome allows two a second).
  */
@@ -99,7 +99,7 @@ export const READ_LIMITS = /* @__PURE__ */ Object.freeze({
 });
 
 /**
- * v0.10: Start when I join. The page reports a stage only once it held
+ * v0.9.1: Start when I join. The page reports a stage only once it held
  * STAGE_STABLE_POLLS polls in a row (an admission included), so a one-poll
  * flicker of an in-call control never starts notes. The worker keeps each
  * tab's arm in chrome.storage.session and sweeps the ones that ended with one

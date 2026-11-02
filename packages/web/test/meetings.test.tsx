@@ -604,7 +604,7 @@ describe('the meeting page', () => {
       [detail({ summary: { ...none, state: 'running' } }), 'Writing the summary…', null],
       [detail({ summary: { ...none, state: 'failed', reason: 'Claude did not answer in time.' } }), 'Claude did not answer in time.', 'Try again'],
       [detail({ summary: { ...none, state: 'none', reason: 'Too little was said for a summary.' } }), 'Too little was said for a summary.', 'Summarize'],
-      // v0.10: notes ran, no caption line came in.
+      // v0.9.1: notes ran, no caption line came in.
       [
         detail({ meeting: { notes: true, lines: 0 }, summary: { ...none, state: 'none' }, lines: [] }),
         `No captions came in while notes were on (meeting ${hm(D.meeting.startedAt)}-${hm(D.meeting.endedAt!)}). Jantar writes notes from the call's live captions; they were off or not visible.`,

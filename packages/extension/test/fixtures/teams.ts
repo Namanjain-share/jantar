@@ -12,7 +12,7 @@
  * #prejoin-join-button only; the call a hang-up button (an anonymous guest's
  * with `anon`).
  *
- * v0.10 adds the screens around the call, each with its own made-up words
+ * v0.9.1 adds the screens around the call, each with its own made-up words
  * (never read by the adapter): 'prejoin' (the join screen, #prejoin-join-button;
  * 'lobby' is its v0.5 name and stays the same screen), 'waiting' (the
  * waiting room after Join now: no join button and no hang-up; `lobbyHangup`
@@ -21,7 +21,7 @@
  * page (no app bar, the guest's hang-up). Steps: clickJoin, admit (join is
  * the same step), leave, toChat.
  *
- * v0.10, captions switched on (research captions-research.md 3.2 and 4.3,
+ * v0.9.1, captions switched on (research captions-research.md 3.2 and 4.3,
  * as of 2026-11-02): the captions control says whether captions are on,
  * and a click on it changes them. `cc` picks where it is: 'pinned' (the
  * toolbar's #closed-captions-button, data-tid ending -on or -off), 'more'
@@ -45,10 +45,10 @@ import { h, setWords, wordsOf } from './dom.js';
 
 export type TeamsLayout = 'v2' | '2026-bottom' | '2026-right' | 'loose' | 'guest';
 
-/** v0.10: where the captions control is (see the header). */
+/** v0.9.1: where the captions control is (see the header). */
 export type TeamsCc = 'pinned' | 'more' | 'lang-speech' | 'disabled' | 'absent';
 
-/** v0.10: the screens around the call (see the header); 'lobby' is v0.5's name for 'prejoin'. */
+/** v0.9.1: the screens around the call (see the header); 'lobby' is v0.5's name for 'prejoin'. */
 export type TeamsState = 'prejoin' | 'waiting' | 'call' | 'left' | 'lobby' | 'chat';
 
 export interface TeamsOptions {
@@ -57,19 +57,19 @@ export interface TeamsOptions {
   state?: TeamsState;
   /** An anonymous guest's hang-up button. */
   anon?: boolean;
-  /** v0.10: a hang-up button in the waiting room too. */
+  /** v0.9.1: a hang-up button in the waiting room too. */
   lobbyHangup?: boolean;
-  /** v0.10: the anonymous light-meetings page: no app bar, the guest's hang-up. */
+  /** v0.9.1: the anonymous light-meetings page: no app bar, the guest's hang-up. */
   light?: true;
   /** The captions on screen. Default true in a call. */
   captions?: boolean;
-  /** v0.10: where the captions control is. Default 'pinned' on the 2026 layouts, 'more' on light meetings, else 'absent'. */
+  /** v0.9.1: where the captions control is. Default 'pinned' on the 2026 layouts, 'more' on light meetings, else 'absent'. */
   cc?: TeamsCc;
-  /** v0.10: the captions mount only once someone has spoken. */
+  /** v0.9.1: the captions mount only once someone has spoken. */
   lateRegion?: true;
-  /** v0.10: light meetings' guest hang-up is #hangup-button. */
+  /** v0.9.1: light meetings' guest hang-up is #hangup-button. */
   hangupId?: true;
-  /** v0.10: More's items come this long after its menu. */
+  /** v0.9.1: More's items come this long after its menu. */
   itemsMs?: number;
 }
 
@@ -89,13 +89,13 @@ export interface TeamsFixture {
   readonly items: TeamsItem[];
   region(): HTMLElement;
   join(): void;
-  /** v0.10: Join now pressed on the join screen: the waiting room. */
+  /** v0.9.1: Join now pressed on the join screen: the waiting room. */
   clickJoin(): void;
-  /** v0.10: let in (the same step as join). */
+  /** v0.9.1: let in (the same step as join). */
   admit(): void;
-  /** v0.10: Leave pressed: the call's controls go. */
+  /** v0.9.1: Leave pressed: the call's controls go. */
   leave(): void;
-  /** v0.10: Chat opened instead: nothing of a call on screen. */
+  /** v0.9.1: Chat opened instead: nothing of a call on screen. */
   toChat(): void;
   state(): TeamsState;
   say(author: string | null, text: string): TeamsItem;
@@ -108,11 +108,11 @@ export interface TeamsFixture {
   hooksOff(): void;
   hooksOn(): void;
   replaceRegion(): void;
-  /** v0.10: the captions are on (what the control says). */
+  /** v0.9.1: the captions are on (what the control says). */
   captionsShown(): boolean;
-  /** v0.10: a More menu is open. */
+  /** v0.9.1: a More menu is open. */
   menuOpen(): boolean;
-  /** v0.10: what was clicked or pressed on the captions controls, in order. */
+  /** v0.9.1: what was clicked or pressed on the captions controls, in order. */
   readonly ccLog: string[];
   remove(): void;
 }
@@ -153,7 +153,7 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
     : opts.anon || opts.light
       ? h(doc, 'button', { 'data-tid': 'anon-hangup-button', 'aria-label': 'Leave' }, 'Leave')
       : h(doc, 'button', { id: 'hangup-button', 'data-tid': 'hangup-main-btn', 'aria-label': 'Leave' }, 'Leave');
-  // v0.10: More and its menu (Fluent UI draws it outside the toolbar), with the captions item where `cc` puts it.
+  // v0.9.1: More and its menu (Fluent UI draws it outside the toolbar), with the captions item where `cc` puts it.
   const more = h(doc, 'button', { id: 'callingButtons-showMoreBtn', 'aria-label': 'More', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '…');
   const menuItem = (attrs: Record<string, string>, words: string) => h(doc, 'div', { role: 'menuitem', ...attrs }, words);
   // A light-meetings guest's item says nothing of its state; signed in, its data-tid and aria-checked do.
@@ -190,7 +190,7 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
     return (r.querySelector('[role="list"]') ?? r.querySelector('[data-tid="closed-caption-v2-virtual-list-content"]')) as HTMLElement;
   }
 
-  /** v0.10: each control says what the captions are. */
+  /** v0.9.1: each control says what the captions are. */
   function paintCc() {
     const tid = `closed-captions-button-${captionsShown ? 'on' : 'off'}`;
     ccToggle.setAttribute('data-tid', tid);
@@ -272,7 +272,7 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
       authorEl = who === null ? null : h(doc, 'span', { 'data-tid': 'author' }, who);
       const head = h(doc, 'div', { class: 'head' }, authorEl);
       const body = h(doc, 'div', { class: 'body' }, textEl);
-      // v0.10: a light-meetings guest's entry: one div holding its author and its text.
+      // v0.9.1: a light-meetings guest's entry: one div holding its author and its text.
       if (layout === 'guest') {
         el = h(doc, 'div', {}, ...(authorEl ? [authorEl] : []), textEl);
         return el;

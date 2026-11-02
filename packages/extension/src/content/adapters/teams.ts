@@ -6,7 +6,7 @@
  * its virtual list, and the older renderer. Teams' URL names no meeting, so
  * the tab is the call (`callKey` is null).
  *
- * v0.10, the screens around the call (Start when I join), first match wins
+ * v0.9.1, the screens around the call (Start when I join), first match wins
  * and every check is an exact `id` or `data-tid` (never the loose match):
  * a lobby-only hook (TEAMS_LOBBY, empty until a real-Mac check names one:
  * R12) is the waiting room even beside a hang-up; then the call (a hang-up,
@@ -17,7 +17,7 @@
  * alone. Off a join link (Teams v2's one /v2/ address, Chat, Calendar)
  * nothing but a real hook names a stage.
  *
- * v0.10, light meetings (the anonymous guest client at /light-meetings/,
+ * v0.9.1, light meetings (the anonymous guest client at /light-meetings/,
  * top frame, same hosts) and captions on when notes start (research
  * captions-research.md 3 and 4; selector facts as of 2026-11-02, read from
  * Live Captions Saver, Meeting Transcripts, Vexa, vibeconf, openclaw and
@@ -46,16 +46,16 @@ const HANGUP: readonly (readonly [string, HookId])[] = [
   ['button[data-tid="anon-hangup-button"]', 'teams:anon-hangup-button'],
 ];
 /**
- * v0.10: hooks only the waiting room has (`data-tid` or `id`). Empty until
+ * v0.9.1: hooks only the waiting room has (`data-tid` or `id`). Empty until
  * a real-Mac check (R12) names one; one that matches makes the page the
  * waiting room, and not in a call, even while a hang-up button shows.
  */
 export const TEAMS_LOBBY: readonly string[] = [];
-/** v0.10: the join screen's Join now (the second is unverified, R12). */
+/** v0.9.1: the join screen's Join now (the second is unverified, R12). */
 const PREJOIN = ['#prejoin-join-button', 'button[data-tid="prejoin-join-button"]'];
-/** v0.10: the paths of a join link (light meetings, the meetup-join link, the short /meet/ link, the launcher). */
+/** v0.9.1: the paths of a join link (light meetings, the meetup-join link, the short /meet/ link, the launcher). */
 const JOIN_PATHS = ['/light-meetings/', '/l/meetup-join/', '/meet/', '/dl/launcher/'];
-/** The caption container, newest layout first; v0.10: last, the virtual list itself (light meetings' tree holds it too). */
+/** The caption container, newest layout first; v0.9.1: last, the virtual list itself (light meetings' tree holds it too). */
 const REGION = [
   '[data-tid="closed-caption-renderer-wrapper"]',
   '[data-tid="closed-caption-v2-window-wrapper"]',
@@ -71,9 +71,9 @@ const ITEM = ['.fui-ChatMessageCompact'];
 /** The list of utterances (the v2 virtual list, the 2026 list): an utterance is its child. */
 const LIST = ['[data-tid="closed-caption-v2-virtual-list-content"]', '[role="list"]'];
 
-/** v0.10: the captions control, its data-tid ending -on or -off where it says (pinned, or an item in More or Language and speech). */
+/** v0.9.1: the captions control, its data-tid ending -on or -off where it says (pinned, or an item in More or Language and speech). */
 const CC_TOGGLE = ['[id="closed-captions-button"][data-tid^="closed-captions-button-"]', '#closed-captions-button'];
-/** v0.10: captions on, said without opening anything. */
+/** v0.9.1: captions on, said without opening anything. */
 const CC_ON = [
   '[data-tid="closed-captions-button-on"]',
   '#closed-captions-button[aria-checked="true"]',
@@ -81,14 +81,14 @@ const CC_ON = [
   'button[data-tid="closed-captions-turn-off-button"]',
   '#captions-panel-dismiss-button',
 ];
-/** v0.10: More (…) in the call's toolbar; its English labels last, only in the toolbar that holds the hang-up (a tile's or a chat message's "More options" is not it). */
+/** v0.9.1: More (…) in the call's toolbar; its English labels last, only in the toolbar that holds the hang-up (a tile's or a chat message's "More options" is not it). */
 const MORE = ['#callingButtons-showMoreBtn', 'button[data-tid="more-button"]', '[data-tid="callingButtons-showMoreBtn"]'];
 const MORE_EN = ['More', 'More actions', 'More options'].map((l) => `button[aria-label="${l}"]`);
 const BAR = '[role="toolbar"], [role="menubar"]';
 const MENU = ['[role="menu"]'];
 const MENU_ITEM = ['[role="menuitem"]', '[role="menuitemcheckbox"]', '[role="menuitemradio"]'];
 const LANG_SPEECH = ['#LanguageSpeechMenuControl-id'];
-/** v0.10: a captions item's English words, exactly (lower-cased), besides those that say on or off (dom.ts): a toggle saying nothing. */
+/** v0.9.1: a captions item's English words, exactly (lower-cased), besides those that say on or off (dom.ts): a toggle saying nothing. */
 const CC_ITEM_EN = new Set(['captions', 'live captions']);
 
 /** The camera button: right of the 68-px app bar. */
@@ -171,7 +171,7 @@ function inCallHook(doc: Document): HookId | null {
   return null;
 }
 
-/** v0.10: a guest (light meetings, or an anonymous hang-up) is told a guest's way to turn captions on. */
+/** v0.9.1: a guest (light meetings, or an anonymous hang-up) is told a guest's way to turn captions on. */
 function guestOrNot(doc: Document): 'light' | 'teams' {
   return doc.location?.pathname.toLowerCase().startsWith('/light-meetings/') || doc.querySelector('button[data-tid="anon-hangup-button"]') ? 'light' : 'teams';
 }
@@ -180,13 +180,13 @@ function lobbyOnly(doc: Document): boolean {
   return TEAMS_LOBBY.length > 0 && first(doc, TEAMS_LOBBY) !== null;
 }
 
-/** v0.10: what a captions control says: its data-tid, aria-checked or aria-pressed, else its English words; never caption text. */
+/** v0.9.1: what a captions control says: its data-tid, aria-checked or aria-pressed, else its English words; never caption text. */
 function ccSays(el: Element): 'on' | 'off' | 'unknown' {
   const tid = el.getAttribute('data-tid') ?? '';
   return tid.endsWith('-on') ? 'on' : tid.endsWith('-off') ? 'off' : saysOf(el);
 }
 
-/** v0.10: the captions item in a menu (or anywhere in one): its id, else its English words on a shown item. */
+/** v0.9.1: the captions item in a menu (or anywhere in one): its id, else its English words on a shown item. */
 function ccItem(root: ParentNode, hook: HookId): { el: Element; hook: HookId } | null {
   const inMenu = (el: Element) => el.closest('[role="menu"]') !== null;
   const byId = first(root, CC_TOGGLE, inMenu);
@@ -196,22 +196,22 @@ function ccItem(root: ParentNode, hook: HookId): { el: Element; hook: HookId } |
   return words ? { el: words, hook: 'teams:cc-text' } : null;
 }
 
-/** v0.10: More, by its ids; else by its English label in the call's own bar. */
+/** v0.9.1: More, by its ids; else by its English label in the call's own bar. */
 function moreOf(doc: Document): Element | null {
   return first(doc, MORE) ?? first(doc, MORE_EN, (el) => HANGUP.some(([sel]) => el.closest(BAR)?.querySelector(sel)));
 }
 
-/** v0.10: (classic) More's Language and speech, by its id, else its English words. */
+/** v0.9.1: (classic) More's Language and speech, by its id, else its English words. */
 const LANG = 'teams:lang-speech';
 function langSpeech(menu: Element): { el: Element; hook: HookId } | null {
   const el = first(menu, LANG_SPEECH) ?? first(menu, MENU_ITEM, (i) => shown(i) && labelOf(i).includes('language') && labelOf(i).includes('speech'));
   return el && { el, hook: LANG };
 }
 
-/** v0.10: a caption container of any kind, not a control nor in a menu or the toolbar: captions may be on. */
+/** v0.9.1: a caption container of any kind, not a control nor in a menu or the toolbar: captions may be on. */
 const ccMounted = (doc: Document) => first(doc, LOOSE_REGION, (el) => !el.closest(`button, [role^="menu"], ${BAR}, #closed-captions-button`)) !== null;
 
-/** v0.10: one try (see the header). */
+/** v0.9.1: one try (see the header). */
 async function ccTurnOn(doc: Document, t: CcTry): Promise<CcStep> {
   // Pinned in the toolbar: click it only when it says off.
   const pinned = first(doc, CC_TOGGLE, (el) => el.closest('[role="menu"]') === null);
@@ -293,7 +293,7 @@ function utterance(text: Element, region: Element, held: Map<Element, number>): 
     const author = first(a, AUTHOR, notHere);
     if (author) return { el: a, author };
   }
-  // v0.10: authors and texts side by side in one container (paired by order): the nearest author before it, up to the previous text.
+  // v0.9.1: authors and texts side by side in one container (paired by order): the nearest author before it, up to the previous text.
   if (el === text) {
     for (let p = text.previousElementSibling; p && !TEXT.some((sel) => p!.matches(sel)); p = p.previousElementSibling) {
       if (AUTHOR.some((sel) => p!.matches(sel))) return { el, author: p };
