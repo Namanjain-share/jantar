@@ -31,6 +31,15 @@ partner simply can't sign in there).
   is off, in read-only mode or while Life data is damaged. Every look and
   change you make in their space is in their Activity. Their own writes
   reach your audit log as `person.write` with no detail.
+- **Their to-dos, reminders and weight** live in their own space on your
+  Mac. You can add to-dos and reminders for them (they show "From" you and
+  apply at once; mark one "no snooze" or ask for "Got it"); they can tick,
+  undo, snooze, skip with a reason, say "Got it" or ask to change one of
+  yours, and edit only their own. With their agreement you can edit their
+  own items too (each shows "Edited by" you, and their Activity keeps the
+  old and new values) and correct a weight they logged; you never create
+  one for them or tick anything in their name. Their reminders ring their
+  devices, not yours. "See what Sam sees" shows them exactly your view.
 - **Their app** is its own web app (`/p` on their hostname), built apart
   from yours: none of your screens or code are in it, and your app's first
   load is unchanged by it. It has the join page (generated from the offer,

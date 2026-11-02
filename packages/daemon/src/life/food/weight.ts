@@ -30,18 +30,19 @@ function kgOf(kg10: number): number {
 }
 
 /** Log `day`'s weight (replacing one logged that day). `day` is a real day key (the module checks). */
-export function setWeight(core: LifeCore, day: string, kg: number): LifeResult {
+export function setWeight(core: LifeCore, day: string, kg: number, space = ''): LifeResult {
   if (day > core.today()) return { ok: false, code: 'invalid_request', reason: WEIGHT_SENTENCES.future };
   const kg10 = kg10Of(kg);
   // The table's own CHECK: 20 to 400 kg (WeightBodySchema's range, after rounding).
   if (!Number.isFinite(kg) || kg10 < 200 || kg10 > 4000) return { ok: false, code: 'invalid_request', reason: WEIGHT_SENTENCES.range };
   const db = core.db;
   return db.tx((): LifeResult => {
-    const had = db.prepare("SELECT 1 FROM weights WHERE space = '' AND day = ?").get(day) !== undefined;
-    if (!had && (db.prepare("SELECT COUNT(*) AS n FROM weights WHERE space = ''").get() as { n: number }).n >= LIFE_LIMITS.weights) {
+    const had = db.prepare('SELECT 1 FROM weights WHERE space = ? AND day = ?').get(space, day) !== undefined;
+    if (!had && (db.prepare('SELECT COUNT(*) AS n FROM weights WHERE space = ?').get(space) as { n: number }).n >= LIFE_LIMITS.weights) {
       return { ok: false, code: 'conflict', reason: WEIGHT_SENTENCES.full };
     }
-    db.prepare("INSERT INTO weights (space, day, kg10, at) VALUES ('', ?, ?, ?) ON CONFLICT (space, day) DO UPDATE SET kg10 = excluded.kg10, at = excluded.at").run(
+    db.prepare('INSERT INTO weights (space, day, kg10, at) VALUES (?, ?, ?, ?) ON CONFLICT (space, day) DO UPDATE SET kg10 = excluded.kg10, at = excluded.at').run(
+      space,
       day,
       kg10,
       core.now().toISOString(),
@@ -50,14 +51,14 @@ export function setWeight(core: LifeCore, day: string, kg: number): LifeResult {
   });
 }
 
-export function removeWeight(core: LifeCore, day: string): LifeResult {
-  const n = Number(core.db.prepare("DELETE FROM weights WHERE space = '' AND day = ?").run(day).changes);
+export function removeWeight(core: LifeCore, day: string, space = ''): LifeResult {
+  const n = Number(core.db.prepare('DELETE FROM weights WHERE space = ? AND day = ?').run(space, day).changes);
   return n > 0 ? { ok: true, value: true } : { ok: false, code: 'not_found', reason: WEIGHT_SENTENCES.none };
 }
 
 /** `day`'s own weight in kg, or null. */
-export function weightOn(core: LifeCore, day: string): number | null {
-  const row = core.db.prepare("SELECT kg10 FROM weights WHERE space = '' AND day = ?").get(day) as { kg10: number } | undefined;
+export function weightOn(core: LifeCore, day: string, space = ''): number | null {
+  const row = core.db.prepare('SELECT kg10 FROM weights WHERE space = ? AND day = ?').get(space, day) as { kg10: number } | undefined;
   return row ? kgOf(row.kg10) : null;
 }
 
@@ -90,4 +91,10 @@ export function weightSummary(core: LifeCore): WeightSummary {
 export function latestWeight(core: LifeCore): Weight | null {
   const row = core.db.prepare("SELECT day, kg10 FROM weights WHERE space = '' ORDER BY day DESC LIMIT 1").get() as { day: string; kg10: number } | undefined;
   return row ? { day: row.day, kg: kgOf(row.kg10) } : null;
+}
+
+/** v0.12 People: a space's weights, newest first (her Health and his view of it). */
+export function weightsOf(core: LifeCore, space: string, limit = 400): Weight[] {
+  const rows = core.db.prepare('SELECT day, kg10 FROM weights WHERE space = ? ORDER BY day DESC LIMIT ?').all(space, limit) as { day: string; kg10: number }[];
+  return rows.map((r) => ({ day: r.day, kg: kgOf(r.kg10) }));
 }

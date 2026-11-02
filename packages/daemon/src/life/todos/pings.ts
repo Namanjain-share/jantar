@@ -59,6 +59,8 @@ export function ringsAt(t: Ringable, at: Date, tz: string): boolean {
 export interface ArmOptions {
   /** This write gave the todo its due time (see the file comment). */
   fresh?: boolean;
+  /** v0.12: the person whose devices it rings (a todo in her space); absent: the owner's. */
+  person?: string | undefined;
   /** The instant meant when the wall time alone is ambiguous (Snooze 1h in a repeated hour). */
   at?: Date | undefined;
 }
@@ -78,8 +80,10 @@ export function armRing(core: Pick<LifeCore, 'scheduler' | 'tz' | 'now'>, kind: 
   const at = opts.at ?? first;
   if (armed !== null && (opts.at ? armed === at.toISOString() : ringsAt(t, new Date(armed), tz))) return;
   const now = core.now().getTime();
-  if (at.getTime() > now || (opts.fresh && at.getTime() > now - LATE_AFTER_MS)) core.scheduler.set(kind, t.id, '', at);
-  else core.scheduler.clear(kind, t.id);
+  if (at.getTime() > now || (opts.fresh && at.getTime() > now - LATE_AFTER_MS)) {
+    if (opts.person) core.scheduler.set(kind, t.id, '', at, opts.person);
+    else core.scheduler.set(kind, t.id, '', at);
+  } else core.scheduler.clear(kind, t.id);
 }
 
 /** A todo's row (armRing for kind `todo`). */
@@ -87,7 +91,12 @@ export function armTodo(core: Pick<LifeCore, 'scheduler' | 'tz' | 'now'>, t: Tod
   armRing(core, 'todo', t, armed, opts);
 }
 
-export function todoPush(t: Todo | null, id: string, dueAt: Date, late: boolean, tz: string, bodies: 'full' | 'short' | 'generic'): LifePush {
+/** v0.12: the person a space rings (her own space), or undefined for the owner's and a shared one. */
+export function personOfSpace(space: string): string | undefined {
+  return space !== '' && !space.startsWith('s:') ? space : undefined;
+}
+
+export function todoPush(t: Todo | null, id: string, dueAt: Date, late: boolean, tz: string, bodies: 'full' | 'short' | 'generic', person?: string): LifePush {
   const time = hhmmOf(dueAt, tz);
   const title = t ? oneLine(t.title) : '';
   let body: string;
@@ -95,31 +104,35 @@ export function todoPush(t: Todo | null, id: string, dueAt: Date, late: boolean,
   else if (bodies === 'short') body = `${clip(title, SHORT_TITLE)} · ${time}`;
   else body = `${title} · ${time}`;
   if (late) body = `Missed at ${time} · ${body}`;
+  // v0.12: hers opens her app, and only her devices get it (the scheduler's row names her).
+  if (person) return { kind: 'life', title: TODO_PUSH_TITLE, body, url: `/p/todos?id=${id}`, tag: `life:todo:${person}:${id}`, person };
   return { kind: 'life', title: TODO_PUSH_TITLE, body, url: `/todos?id=${id}`, tag: `life:todo:${id}` };
 }
 
 export function todoPingHandler(core: LifeCore, deps: Pick<LifeModuleDeps, 'ctx'>, repo: TodosRepo): PingHandler {
   return {
     kind: 'todo',
+    // The scheduler's sweep is the `system` reader (C4): every space, each todo ringing its own person's devices.
     check(row, dueAt) {
-      const t = repo.todo(row.ref);
+      const t = repo.anySpace(row.ref)?.todo;
       if (!t || !ringAt(t, core.tz())) return 'cancel';
       return ringsAt(t, dueAt, core.tz()) ? 'send' : 'skip';
     },
     push(rows, dueAt, late) {
       const id = rows[0]?.ref ?? '';
-      return todoPush(repo.todo(id), id, dueAt, late, core.tz(), deps.ctx.settings.get().notify.bodies);
+      const hit = repo.anySpace(id);
+      return todoPush(hit?.todo ?? null, id, dueAt, late, core.tz(), deps.ctx.settings.get().notify.bodies, hit ? personOfSpace(hit.space) : rows[0]?.person);
     },
     next(row, after) {
-      const t = repo.todo(row.ref);
+      const t = repo.anySpace(row.ref)?.todo;
       const at = t ? ringAt(t, core.tz()) : null;
       return at && at.getTime() > after.getTime() ? at : null;
     },
     resync() {
       const armed = repo.pingTimes();
       const ringing = new Set<string>();
-      for (const t of repo.openTimed()) {
-        armTodo(core, t, armed.get(t.id) ?? null);
+      for (const { todo: t, space } of repo.openTimedAnySpace()) {
+        armTodo(core, t, armed.get(t.id) ?? null, { person: personOfSpace(space) });
         ringing.add(t.id);
       }
       for (const ref of armed.keys()) if (!ringing.has(ref)) core.scheduler.clear('todo', ref);

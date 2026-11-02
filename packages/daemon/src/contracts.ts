@@ -1680,6 +1680,8 @@ export interface PingRow {
   claimedAt: string | null;
   failures: number;
   lastSentAt: string | null;
+  /** v0.12: whose devices it rings (absent: the owner's). The handler's push goes to that person's app. */
+  person?: string;
 }
 
 /** What one Life push says. `kind` is the NotifyKind: med (medicines, refills) or life (todos, bills, posts). */
@@ -1713,8 +1715,8 @@ export interface PingHandler {
 /** The one scheduler (life/scheduler.ts): claim before send, at most once per occurrence, one catch-up after sleep. */
 export interface Scheduler {
   register(h: PingHandler): void;
-  /** Upsert one row; clears its claim and failures. Producers call it after every write. */
-  set(kind: PingKind, ref: string, sub: string, nextAt: Date | null): void;
+  /** Upsert one row; clears its claim and failures. Producers call it after every write. v0.12: `person` rings her devices. */
+  set(kind: PingKind, ref: string, sub: string, nextAt: Date | null, person?: string): void;
   /** Remove a source's rows (all of them when `sub` is omitted). */
   clear(kind: PingKind, ref: string, sub?: string): void;
   /** Re-arm the near timer after a write. */
@@ -1772,8 +1774,13 @@ export interface TodosModule extends LifeModule {
   /** Its todos move to no project. */
   removeProject(id: string, actor: Actor): LifeResult;
   listTodos(q: TodosQuery): LifeResult<TodosResponse>;
-  /** `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. */
-  createTodo(body: TodoBody, actor: Actor, opts?: { from?: TodoFrom }): LifeResult<{ id: string }>;
+  /**
+   * `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. v0.12: `opts.by`
+   * (the author, in a person space) and `opts.extra` (People's daemon-set fields) come from the People module.
+   */
+  createTodo(body: TodoBody, actor: Actor, opts?: { from?: TodoFrom; by?: string; extra?: Partial<import('@jantar/protocol/people').PersonTodo> }): LifeResult<{ id: string }>;
+  /** v0.12 People: this module over one space (`''` the owner's). Only the People module calls it. */
+  inSpace(space: string): TodosModule;
   updateTodo(id: string, patch: TodoPatch, actor: Actor): LifeResult;
   /** done=false is Undo (one-off todos; a repeating one answers conflict). Done on a repeating todo moves its due day. */
   setDone(id: string, done: boolean, actor: Actor): LifeResult;

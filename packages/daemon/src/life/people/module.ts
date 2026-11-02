@@ -129,6 +129,10 @@ export class PeopleModule {
   private readonly log: Logger;
   /** Owner ticks: his devices re-fetch (life.changed {}) when her sharing changes (C24). */
   ownerChanged: () => void = () => {};
+  /** Her to-dos and weights, as either side writes them (set by the Life service). */
+  space: import('./space.js').PersonSpace | null = null;
+  /** What he sees of her, and her mirror of it (set by the Life service). */
+  views: import('./views.js').PeopleViews | null = null;
 
   constructor(private readonly deps: PeopleDeps) {
     const { ctx } = deps;
@@ -963,8 +967,19 @@ export class PeopleModule {
   }
 
   /** Her name for his pushes ("Asha paused"), or a neutral word. */
-  private nameOf(pid: string): string {
+  nameOf(pid: string): string {
     return this.person(pid)?.name ?? 'Your partner';
+  }
+
+  /** A push to her devices (Web Push only, her lock screen and mute applied). */
+  pushHer(pid: string, p: LifePush): void {
+    this.deps.push({ ...p, person: pid });
+  }
+
+  /** A push about her to his devices (Web Push only). */
+  pushOwner(_pid: string, p: LifePush): void {
+    const { person: _none, ...owner } = p;
+    this.deps.push(owner);
   }
 
   /** Mirror the ledger's state onto her life.db row (best effort while life.db is broken). */

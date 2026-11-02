@@ -66,7 +66,8 @@ import {
 } from '@jantar/protocol';
 import { hhmmOf, nextRepeat, shiftMonths, snoozeTarget } from '@jantar/life-core';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule } from '../../contracts.js';
-import { armTodo, todoPingHandler } from './pings.js';
+import type { PersonTodo } from '@jantar/protocol/people';
+import { armTodo, personOfSpace, todoPingHandler } from './pings.js';
 import { TodosRepo } from './repo.js';
 
 const count = (n: number) => n.toLocaleString('en-US');
@@ -153,6 +154,8 @@ const BROAD_FOLDERS = ['/', '/users'];
 
 class Todos implements TodosModule {
   readonly name = 'todos' as const;
+  /** v0.12: this module in other spaces (her space's, built once). */
+  private readonly spaces = new Map<string, Todos>();
 
   constructor(
     private readonly core: LifeCore,
@@ -160,6 +163,29 @@ class Todos implements TodosModule {
     /** The user's home folder (ctx.paths.userHome): a broad folder. */
     private readonly home: string,
   ) {}
+
+  /** v0.12 People: the same module over one space (the People module's person todos use it; no route reaches it otherwise). */
+  inSpace(space: string): Todos {
+    if (space === this.repo.space) return this;
+    let m = this.spaces.get(space);
+    if (!m) this.spaces.set(space, (m = new Todos(this.core, this.repo.inSpace(space), this.home)));
+    return m;
+  }
+
+  /** v0.12: the space this module works in. */
+  get space(): string {
+    return this.repo.space;
+  }
+
+  /**
+   * v0.12: his screens re-fetch on a write to his own space only. A write in
+   * her space ticks her stream and, for areas his agreement covers, his
+   * (life/people/space.ts), so his stream can't tell him she is active in
+   * an area she keeps private (M11).
+   */
+  private changed(): void {
+    if (this.repo.space === '') this.core.changed();
+  }
 
   private nowHhmm(): string {
     return hhmmOf(this.core.now(), this.core.tz());
@@ -169,13 +195,13 @@ class Todos implements TodosModule {
     return this.core.now().toISOString();
   }
 
-  /** Save, re-arm the ping, and tell the screens. `before`: the todo as stored (null on create); `at`: see ArmOptions. */
-  private saved(t: Todo, before: Todo | null, at?: Date): void {
-    this.repo.saveTodo(t);
+  /** Save, re-arm the ping, and tell the screens. `before`: the todo as stored (null on create); `at`: see ArmOptions. v0.12: `by` the author on create. */
+  private saved(t: Todo, before: Todo | null, at?: Date, by = ''): void {
+    this.repo.saveTodo(t, by);
     const fresh = !before || before.due?.day !== t.due?.day || before.due?.time !== t.due?.time;
-    armTodo(this.core, t, this.repo.pingAt(t.id), { fresh, at });
+    armTodo(this.core, t, this.repo.pingAt(t.id), { fresh, at, person: personOfSpace(this.repo.space) });
     this.core.scheduler.poke();
-    this.core.changed();
+    this.changed();
   }
 
   // --- projects --------------------------------------------------------------
@@ -198,7 +224,7 @@ class Todos implements TodosModule {
     if (body.due !== undefined) p.due = body.due;
     if (body.folder !== undefined) p.folder = body.folder;
     this.repo.saveProject(p);
-    this.core.changed();
+    this.changed();
     return { ok: true, value: { id: p.id } };
   }
 
@@ -214,13 +240,13 @@ class Todos implements TodosModule {
       else if (v !== undefined) next[key] = v;
     }
     this.repo.saveProject(next);
-    this.core.changed();
+    this.changed();
     return OK;
   }
 
   removeProject(id: string, _actor: Actor): LifeResult {
     if (!this.repo.deleteProject(id, this.stamp())) return refuse('not_found', TODO_REASONS.noProject);
-    this.core.changed();
+    this.changed();
     return OK;
   }
 
@@ -232,12 +258,12 @@ class Todos implements TodosModule {
     return { ok: true, value: { today, todos } };
   }
 
-  createTodo(body: TodoBody, _actor: Actor, opts: { from?: TodoFrom } = {}): LifeResult<{ id: string }> {
+  createTodo(body: TodoBody, _actor: Actor, opts: { from?: TodoFrom; by?: string; extra?: Partial<PersonTodo> } = {}): LifeResult<{ id: string }> {
     if (body.repeat && !body.due) return refuse('invalid_request', TODO_REASONS.repeatNeedsDue);
     if (body.projectId !== undefined && !this.repo.project(body.projectId)) return refuse('invalid_request', TODO_REASONS.projectGone);
     if (this.repo.openCount() >= LIFE_LIMITS.openTodos) return refuse('conflict', TODO_REASONS.todosFull);
     const at = this.stamp();
-    const t: Todo = { id: this.core.newId(), title: body.title, priority: body.priority ?? 'normal', createdAt: at, updatedAt: at };
+    const t: Todo = { ...(opts.extra ?? {}), id: this.core.newId(), title: body.title, priority: body.priority ?? 'normal', createdAt: at, updatedAt: at };
     if (body.notes !== undefined) t.notes = body.notes;
     if (opts.from !== undefined) t.from = opts.from;
     if (body.due !== undefined) t.due = body.due;
@@ -246,7 +272,7 @@ class Todos implements TodosModule {
       // A monthly or yearly date the client named stays; otherwise the due day's. The series' time is the due time.
       t.repeat = withAt(body.repeat.byMonthDay !== undefined ? body.repeat : withMonthDay(body.repeat, body.due.day), body.due);
     }
-    this.saved(t, null);
+    this.saved(t, null, undefined, opts.by ?? '');
     return { ok: true, value: { id: t.id } };
   }
 
@@ -334,7 +360,7 @@ class Todos implements TodosModule {
     if (!this.repo.deleteTodo(id)) return refuse('not_found', TODO_REASONS.noTodo);
     this.core.scheduler.clear('todo', id);
     this.core.scheduler.poke();
-    this.core.changed();
+    this.changed();
     return OK;
   }
 

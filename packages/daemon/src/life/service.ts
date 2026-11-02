@@ -71,6 +71,8 @@ import { BackupTimer, backupSummary, listBackups, preUpgradeName, restoreTarget,
 import { LIFE_BROKEN_REASON, openLifeDb } from './db.js';
 import { KIND_MODULE, PING_KINDS, errorKind } from './pings.js';
 import { PeopleModule } from './people/module.js';
+import { PersonSpace } from './people/space.js';
+import { PeopleViews } from './people/views.js';
 import { createLifeSend, pushNotice, type LifeSend } from './push.js';
 import { LifeScheduler } from './scheduler.js';
 import { buildToday } from './today.js';
@@ -217,6 +219,9 @@ class LifeServiceImpl implements LifeService {
       push: (p) => void pushNotice(ctx, this.send, p),
     });
     this.people.ownerChanged = () => this.changed();
+    const lifeCore = () => (this.handle ? this.core : null);
+    this.people.space = new PersonSpace(this.people, () => this.todos, lifeCore);
+    this.people.views = new PeopleViews(this.people, this.people.space, () => this.todos, lifeCore);
   }
 
   get todos(): TodosModule {

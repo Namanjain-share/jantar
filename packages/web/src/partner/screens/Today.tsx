@@ -5,14 +5,20 @@
  * due join this screen with their routes.
  */
 import { fieldsChanged } from '@jantar/protocol/people-core';
-import type { PersonMe } from '@jantar/protocol/people';
-import { useState } from 'react';
+import type { PersonMe, PersonOwnToday } from '@jantar/protocol/people';
+import { useCallback, useEffect, useState } from 'react';
+import { TodoRow } from './TodoRow.js';
 import { Button } from '../../ui/kit/Button.js';
 import type { PersonApi } from '../api.js';
 import { joinCopy } from '../join/copy.js';
 
-export function Today({ me, api, reload }: { me: PersonMe; api: PersonApi; reload: () => void }) {
+export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi; reload: () => void; tick: number }) {
   const day = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const [today, setToday] = useState<PersonOwnToday | null>(null);
+  const load = useCallback(() => api.today().then(setToday, () => setToday(null)), [api]);
+  useEffect(() => {
+    void load();
+  }, [load, tick]);
   return (
     <div>
       <header className="flex items-baseline justify-between">
@@ -20,7 +26,20 @@ export function Today({ me, api, reload }: { me: PersonMe; api: PersonApi; reloa
         <span className="text-small text-ink-2">{me.owner.name}</span>
       </header>
       {me.pending && me.agreement ? <ProposalCard me={me} api={api} reload={reload} /> : null}
-      <p className="mt-24 text-ink-2">Nothing due right now.</p>
+      {today && today.todos.length > 0 ? (
+        <section aria-label="Due today" className="mt-16">
+          <h2 className="font-semibold">
+            Reminders and to-dos{today.overdue > 0 ? ` · ${today.overdue} overdue` : ''}
+          </h2>
+          <ul className="divide-y divide-line">
+            {today.todos.map((t) => (
+              <TodoRow key={t.id} t={t} owner={me.owner.name} onDone={(d) => void api.done(t.id, d).then(load)} onAck={() => void api.ack(t.id).then(load)} />
+            ))}
+          </ul>
+        </section>
+      ) : (
+        <p className="mt-24 text-ink-2">Nothing due right now.</p>
+      )}
     </div>
   );
 }

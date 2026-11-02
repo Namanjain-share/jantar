@@ -108,8 +108,8 @@ export class LifeScheduler implements Scheduler {
     this.handlers.set(h.kind, h);
   }
 
-  set(kind: PingKind, ref: string, sub: string, nextAt: Date | null): void {
-    this.repo.set(kind, ref, sub, nextAt ? nextAt.toISOString() : null);
+  set(kind: PingKind, ref: string, sub: string, nextAt: Date | null, person = ''): void {
+    this.repo.set(kind, ref, sub, nextAt ? nextAt.toISOString() : null, person);
   }
 
   clear(kind: PingKind, ref: string, sub?: string): void {

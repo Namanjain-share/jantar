@@ -276,12 +276,12 @@ export class RecordingScheduler implements Scheduler {
     this.handlers.set(h.kind, h);
   }
 
-  set(kind: PingKind, ref: string, sub: string, nextAt: Date | null): void {
+  set(kind: PingKind, ref: string, sub: string, nextAt: Date | null, person = ''): void {
     const at = nextAt ? nextAt.toISOString() : null;
     this.calls.push({ op: 'set', kind, ref, sub, nextAt: at });
     const key = `${kind}|${ref}|${sub}`;
     const prev = this.rows.get(key);
-    this.rows.set(key, { id: prev?.id ?? key, kind, ref, sub, nextAt: at, claimedAt: null, failures: 0, lastSentAt: prev?.lastSentAt ?? null });
+    this.rows.set(key, { id: prev?.id ?? key, kind, ref, sub, nextAt: at, claimedAt: null, failures: 0, lastSentAt: prev?.lastSentAt ?? null, ...(person ? { person } : {}) });
   }
 
   clear(kind: PingKind, ref: string, sub?: string): void {

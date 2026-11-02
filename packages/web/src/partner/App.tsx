@@ -10,7 +10,9 @@ import { parsePersonRoute, type PersonRoute } from './router.js';
 import { Join } from './screens/Join.js';
 import { Left } from './screens/Left.js';
 import { Me } from './screens/Me.js';
+import { Health } from './screens/Health.js';
 import { Today } from './screens/Today.js';
+import { Todos } from './screens/Todos.js';
 
 export function navigate(to: string): void {
   history.pushState(null, '', to);
@@ -75,10 +77,15 @@ export function App({ api }: { api: PersonApi }) {
     );
   }, [api]);
   const needsMe = route.name !== 'join' && route.name !== 'link';
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     if (needsMe) load();
   }, [needsMe, load]);
-  useTicks(needsMe && me !== null, load);
+  const onTick = useCallback(() => {
+    load();
+    setTick((n) => n + 1);
+  }, [load]);
+  useTicks(needsMe && me !== null, onTick);
 
   if (route.name === 'join' || route.name === 'link') return <Join api={api} mode={route.name} />;
   if (route.name === 'left') return <Left me={me} api={api} />;
@@ -99,11 +106,16 @@ export function App({ api }: { api: PersonApi }) {
     <div className="mx-auto flex min-h-dvh max-w-[42rem] flex-col">
       <Banner me={me} />
       <main className="flex-1 px-16 pb-96 pt-16">
-        {route.name === 'today' ? <Today me={me} api={api} reload={load} /> : <Me me={me} api={api} reload={load} tab={route.tab} />}
+        {route.name === 'today' ? <Today me={me} api={api} reload={load} tick={tick} /> : null}
+        {route.name === 'todos' ? <Todos me={me} api={api} tick={tick} /> : null}
+        {route.name === 'health' ? <Health api={api} tick={tick} /> : null}
+        {route.name === 'me' ? <Me me={me} api={api} reload={load} tab={route.tab} /> : null}
       </main>
       <nav className="fixed inset-x-0 bottom-0 border-t border-line bg-bg pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex max-w-[42rem]">
           <TabLink to="/p" label="Today" on={route.name === 'today'} />
+          <TabLink to="/p/todos" label="To-do" on={route.name === 'todos'} />
+          <TabLink to="/p/health" label="Health" on={route.name === 'health'} />
           <TabLink to="/p/me" label="Me" on={route.name === 'me'} />
         </div>
       </nav>

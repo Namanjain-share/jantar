@@ -49,6 +49,8 @@ interface RawRow {
   claimed_at: string | null;
   failures: number;
   last_sent_at: string | null;
+  /** v0.12 (schema 4): whose devices it rings ('' the owner's). */
+  person?: string;
 }
 
 function rowOf(r: RawRow): PingRow {
@@ -58,6 +60,7 @@ function rowOf(r: RawRow): PingRow {
     ref: r.ref,
     sub: r.sub,
     nextAt: r.next_at,
+    ...(r.person ? { person: r.person } : {}),
     claimedAt: r.claimed_at,
     failures: Number(r.failures),
     lastSentAt: r.last_sent_at,
@@ -73,13 +76,13 @@ export class PingsRepo {
   constructor(private readonly db: () => LifeDb) {}
 
   /** Upsert; a new time clears the claim and the failures, and keeps last_sent_at. */
-  set(kind: PingKind, ref: string, sub: string, nextAt: string | null): void {
+  set(kind: PingKind, ref: string, sub: string, nextAt: string | null, person = ''): void {
     this.db()
       .prepare(
-        `INSERT INTO pings (id, kind, ref, sub, next_at, claimed_at, failures) VALUES (?, ?, ?, ?, ?, NULL, 0)
-         ON CONFLICT (kind, ref, sub) DO UPDATE SET next_at = excluded.next_at, claimed_at = NULL, failures = 0`,
+        `INSERT INTO pings (id, kind, ref, sub, next_at, claimed_at, failures, person) VALUES (?, ?, ?, ?, ?, NULL, 0, ?)
+         ON CONFLICT (kind, ref, sub) DO UPDATE SET next_at = excluded.next_at, claimed_at = NULL, failures = 0, person = excluded.person`,
       )
-      .run(newId(), kind, ref, sub, nextAt);
+      .run(newId(), kind, ref, sub, nextAt, person);
   }
 
   clear(kind: PingKind, ref: string, sub?: string): void {

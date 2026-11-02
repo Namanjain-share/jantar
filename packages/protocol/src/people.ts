@@ -321,7 +321,8 @@ export const PersonTodaySchema = z.object({
   name: PersonNameSchema,
   state: PersonStateSchema,
   todos: z.union([LockedSchema, PersonTodayTodosSchema]),
-  meds: z.union([LockedSchema, OwnerMedsViewSchema]),
+  /** null: not part of this build yet (her medicines join the space in a later commit of P1). */
+  meds: z.union([LockedSchema, OwnerMedsViewSchema]).nullable(),
   weight: z.union([LockedSchema, z.object({ latest: PersonWeightSchema.nullable() })]),
   /** null: her food module is off, so there is no food area at all (O6). */
   food: z.union([LockedSchema, z.object({ kcal: z.number().int(), target: z.number().int() })]).nullable(),
@@ -635,6 +636,18 @@ const PERSON_ACCOUNT_ROUTES = {
 
 /** Her Life routes (spec 1.3.2): each declares its area. */
 export const PERSON_LIFE_ROUTES = {
+  personWeights: route({
+    method: 'GET', path: '/v1/p/weights', scope: 'person', phase: 'v0.12', ctl: false, area: 'weight',
+    response: PersonWeightsResponseSchema, summary: 'Her weights.',
+  }),
+  personWeightSet: route({
+    method: 'PUT', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.12', ctl: false, area: 'weight',
+    params: z.object({ day: DayKeySchema }), body: WeightBodySchema, response: OkReplySchema, summary: "Set a day's weight.",
+  }),
+  personWeightDelete: route({
+    method: 'DELETE', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.12', ctl: false, area: 'weight',
+    params: z.object({ day: DayKeySchema }), response: OkReplySchema, summary: "Remove a day's weight.",
+  }),
   personMirror: route({
     method: 'GET', path: '/v1/p/mirror/:area', scope: 'person', phase: 'v0.12', ctl: false,
     params: MirrorParamsSchema, query: DayQuerySchema, summary: 'Exactly what the owner sees of one area ({locked: true} when off).',
@@ -697,7 +710,10 @@ export const PERSON_LIFE_ROUTES = {
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete a project of hers; its to-dos move to none.',
   }),
 
-  // --- Health (areas meds, weight, food)
+} as const satisfies Record<string, RouteDef>;
+
+/** Her medicines and food (spec 1.3.2): defined here, served when their handlers land (a later commit of P1). */
+export const PERSON_HEALTH_ROUTES = {
   personMeds: route({
     method: 'GET', path: '/v1/p/medicines', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds',
     query: DayQuerySchema, response: PersonMedicinesResponseSchema, summary: 'Her medicines and a day of doses.',
@@ -721,18 +737,6 @@ export const PERSON_LIFE_ROUTES = {
   personDoseDelete: route({
     method: 'DELETE', path: '/v1/p/medicines/:id/doses/:doseId', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds',
     params: DoseParamsSchema, response: OkReplySchema, summary: 'Undo a dose.',
-  }),
-  personWeights: route({
-    method: 'GET', path: '/v1/p/weights', scope: 'person', phase: 'v0.12', ctl: false, area: 'weight',
-    response: PersonWeightsResponseSchema, summary: 'Her weights.',
-  }),
-  personWeightSet: route({
-    method: 'PUT', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.12', ctl: false, area: 'weight',
-    params: z.object({ day: DayKeySchema }), body: WeightBodySchema, response: OkReplySchema, summary: "Set a day's weight.",
-  }),
-  personWeightDelete: route({
-    method: 'DELETE', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.12', ctl: false, area: 'weight',
-    params: z.object({ day: DayKeySchema }), response: OkReplySchema, summary: "Remove a day's weight.",
   }),
   personFoodDay: route({
     method: 'GET', path: '/v1/p/food', scope: 'person', phase: 'v0.12', ctl: false, area: 'food',
@@ -770,6 +774,18 @@ const PEOPLE_ROUTES_BASE = {
 
 /** The owner's reads and writes in her space (spec 9.3.4), each declaring its area (M9). */
 export const PEOPLE_LIFE_ROUTES = {
+  personOwnerWeights: route({
+    method: 'GET', path: '/v1/people/:pid/weights', scope: 'control', phase: 'v0.12', ctl: false, area: 'weight',
+    params: PidParamsSchema, response: OwnerWeightViewSchema, summary: 'Her weights (see.weight).',
+  }),
+  personOwnerWeightUpdate: route({
+    method: 'PATCH', path: '/v1/people/:pid/weights/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'weight',
+    params: PidDayParamsSchema, body: WeightBodySchema, response: OkReplySchema, summary: 'Correct a weight she logged (editHers.weight); never a new one.',
+  }),
+  personOwnerWeightDelete: route({
+    method: 'DELETE', path: '/v1/people/:pid/weights/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'weight',
+    params: PidDayParamsSchema, response: OkReplySchema, summary: 'Remove a weight she logged (editHers.weight).',
+  }),
   personOwnerToday: route({
     method: 'GET', path: '/v1/people/:pid/today', scope: 'control', phase: 'v0.12', ctl: false, area: 'today',
     params: PidParamsSchema, query: DayQuerySchema, response: PersonTodaySchema, summary: 'Her Today as the agreement allows (locked tiles for off areas).',
@@ -790,6 +806,10 @@ export const PEOPLE_LIFE_ROUTES = {
     method: 'DELETE', path: '/v1/people/:pid/todos/:id', scope: 'control', phase: 'v0.12', ctl: false, area: 'todos',
     params: PidIdParamsSchema, response: OkReplySchema, summary: 'Delete his item (assign.todos) or hers (editHers.todos).',
   }),
+} as const satisfies Record<string, RouteDef>;
+
+/** His reads and writes of her medicines and food: defined here, served when their handlers land. */
+export const PEOPLE_HEALTH_ROUTES = {
   personOwnerMeds: route({
     method: 'GET', path: '/v1/people/:pid/medicines', scope: 'control', phase: 'v0.12', ctl: false, area: 'meds',
     params: PidParamsSchema, query: DayQuerySchema, response: OwnerMedsViewSchema, summary: 'Her medicines at the agreed level.',
@@ -805,18 +825,6 @@ export const PEOPLE_LIFE_ROUTES = {
   personOwnerMedStop: route({
     method: 'POST', path: '/v1/people/:pid/medicines/:id/stop', scope: 'control', phase: 'v0.12', ctl: false, area: 'meds',
     params: PidIdParamsSchema, response: OkReplySchema, summary: 'Stop his addition (assign.meds) or hers (editHers.meds).',
-  }),
-  personOwnerWeights: route({
-    method: 'GET', path: '/v1/people/:pid/weights', scope: 'control', phase: 'v0.12', ctl: false, area: 'weight',
-    params: PidParamsSchema, response: OwnerWeightViewSchema, summary: 'Her weights (see.weight).',
-  }),
-  personOwnerWeightUpdate: route({
-    method: 'PATCH', path: '/v1/people/:pid/weights/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'weight',
-    params: PidDayParamsSchema, body: WeightBodySchema, response: OkReplySchema, summary: 'Correct a weight she logged (editHers.weight); never a new one.',
-  }),
-  personOwnerWeightDelete: route({
-    method: 'DELETE', path: '/v1/people/:pid/weights/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'weight',
-    params: PidDayParamsSchema, response: OkReplySchema, summary: 'Remove a weight she logged (editHers.weight).',
   }),
   personOwnerFood: route({
     method: 'GET', path: '/v1/people/:pid/food', scope: 'control', phase: 'v0.12', ctl: false, area: 'food',
@@ -884,8 +892,8 @@ const PEOPLE_ACCOUNT_ROUTES = {
 } as const satisfies Record<string, RouteDef>;
 
 /** Every route of hers this build serves (scope `person`; the arch test pins the list, T1). */
-export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES } as const;
+export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES } as const;
 export type PersonRouteName = keyof typeof PERSON_ROUTES;
 /** Every owner People route this build serves (the arch test pins each one's scope, ctl, localOnly and area). */
-export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_ACCOUNT_ROUTES } as const;
+export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
 export type PeopleRouteName = keyof typeof PEOPLE_ROUTES;

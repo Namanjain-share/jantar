@@ -193,3 +193,32 @@ describe("M11: his stream about her", () => {
     s.close();
   });
 });
+
+describe('M11: her Life writes and his stream', () => {
+  it("tick his devices only for areas he sees; always tick hers; never tick Bea's", async () => {
+    const mine = await his(f.owner.control);
+    await mine.waitFor((m) => m.some((x) => x.kind === 'snapshot'));
+    const hers = await her(f.asha.full);
+    const beas = await her(f.bea.full);
+    await hers.waitFor((m) => m.length >= 2);
+    await beas.waitFor((m) => m.length >= 2);
+    const lifeTicks = () => mine.messages.filter((x) => x.kind === 'event' && x.event.type === 'life.changed').length;
+    // Off: her to-do and weight writes reach her stream, not his.
+    expect((await onHer(f.api, 'POST', '/v1/p/agreement/narrow', f.asha.full, { see: { todos: false, weight: false } })).statusCode).toBe(200);
+    await settle();
+    const before = lifeTicks();
+    const n = hers.messages.length;
+    const nb = beas.messages.length;
+    expect((await onHer(f.api, 'POST', '/v1/p/todos', f.asha.full, { title: 'Private' })).statusCode).toBe(201);
+    expect((await onHer(f.api, 'PUT', '/v1/p/weights/2026-11-03', f.asha.full, { kg: 60 })).statusCode).toBe(200);
+    await settle();
+    expect(lifeTicks()).toBe(before);
+    expect(hers.messages.slice(n).filter((x) => x.kind === 'tick').length).toBe(2);
+    expect(beas.messages.slice(nb).filter((x) => x.kind === 'tick')).toEqual([]);
+    // On (Bea shares her to-dos): her write ticks his stream.
+    const b0 = lifeTicks();
+    expect((await onHer(f.api, 'POST', '/v1/p/todos', f.bea.full, { title: 'Shared' })).statusCode).toBe(201);
+    await mine.waitFor(() => lifeTicks() > b0);
+    for (const s of [mine, hers, beas]) s.close();
+  });
+});

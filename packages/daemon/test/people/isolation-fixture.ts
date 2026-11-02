@@ -139,7 +139,7 @@ async function ctl<T>(api: TestApi, method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
 }
 
 /** Her side of a call on her host, with her origin. */
-async function onHer(api: TestApi, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, cred: Cred, payload?: unknown) {
+async function onHer(api: TestApi, method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT', url: string, cred: Cred, payload?: unknown) {
   resetLimiters(api);
   return api.tcp.inject({
     method,

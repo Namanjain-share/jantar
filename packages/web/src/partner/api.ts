@@ -6,7 +6,7 @@
  * as `{error: {code, message}}` and are thrown as PersonApiError with the
  * daemon's sentence.
  */
-import type { AgreementFields, AgreementPatch, JoinPreview, JoinReply, PersonActivityResponse, PersonMe } from '@jantar/protocol/people';
+import type { AgreementFields, AgreementPatch, JoinPreview, JoinReply, PersonActivityResponse, PersonMe, PersonOwnToday, PersonTodo, PersonWeightsResponse } from '@jantar/protocol/people';
 import { personCredentialStore, type PersonCredentialStore } from './credential.js';
 
 /** Her routes' paths, as PERSON_ROUTES has them (test/partner/api.test.ts compares). */
@@ -31,6 +31,18 @@ export const PERSON_PATHS = {
   pushSubscribe: ['POST', '/v1/p/push/subscribe'],
   pushUnsubscribe: ['POST', '/v1/p/push/unsubscribe'],
   pushTest: ['POST', '/v1/p/push/test'],
+  today: ['GET', '/v1/p/today'],
+  todos: ['GET', '/v1/p/todos'],
+  todoCreate: ['POST', '/v1/p/todos'],
+  todoDelete: ['DELETE', '/v1/p/todos/:id'],
+  todoDone: ['POST', '/v1/p/todos/:id/done'],
+  todoAck: ['POST', '/v1/p/todos/:id/ack'],
+  todoAsk: ['POST', '/v1/p/todos/:id/ask'],
+  todoSkip: ['POST', '/v1/p/todos/:id/skip'],
+  weights: ['GET', '/v1/p/weights'],
+  weightSet: ['PUT', '/v1/p/weights/:day'],
+  weightDelete: ['DELETE', '/v1/p/weights/:day'],
+  mirror: ['GET', '/v1/p/mirror/:area'],
 } as const;
 type PathKey = keyof typeof PERSON_PATHS;
 
@@ -74,6 +86,18 @@ export interface PersonApi {
   pushKey(): Promise<{ publicKey: string }>;
   pushSubscribe(subscription: PushSubscriptionJSON): Promise<void>;
   pushTest(): Promise<{ delivered: number }>;
+  today(): Promise<PersonOwnToday>;
+  todos(done?: boolean): Promise<{ today: string; todos: PersonTodo[] }>;
+  createTodo(body: { title: string; due?: { day: string; time?: string } }): Promise<{ id: string }>;
+  deleteTodo(id: string): Promise<void>;
+  done(id: string, done: boolean, report?: string): Promise<void>;
+  ack(id: string): Promise<void>;
+  ask(id: string, note: string): Promise<void>;
+  skip(id: string, reason?: string): Promise<void>;
+  weights(): Promise<PersonWeightsResponse>;
+  setWeight(day: string, kg: number): Promise<void>;
+  deleteWeight(day: string): Promise<void>;
+  mirror(area: string): Promise<unknown>;
 }
 
 function idemKey(): string {
@@ -148,5 +172,17 @@ export function createPersonApi(opts: { fetch?: typeof fetch; base?: string; cre
     pushKey: () => call('pushKey'),
     pushSubscribe: async (subscription) => void (await call('pushSubscribe', { body: { subscription: { endpoint: subscription.endpoint, keys: subscription.keys } } })),
     pushTest: () => call('pushTest'),
+    today: () => call('today'),
+    todos: (done) => call('todos', { query: { done: done ? '1' : undefined } }),
+    createTodo: (body) => call('todoCreate', { body }),
+    deleteTodo: async (id) => void (await call('todoDelete', { params: { id } })),
+    done: async (id, done, report) => void (await call('todoDone', { params: { id }, body: { done, ...(report ? { report } : {}) } })),
+    ack: async (id) => void (await call('todoAck', { params: { id } })),
+    ask: async (id, note) => void (await call('todoAsk', { params: { id }, body: { note } })),
+    skip: async (id, reason) => void (await call('todoSkip', { params: { id }, body: reason ? { reason } : {} })),
+    weights: () => call('weights'),
+    setWeight: async (day, kg) => void (await call('weightSet', { params: { day }, body: { kg } })),
+    deleteWeight: async (day) => void (await call('weightDelete', { params: { day } })),
+    mirror: (area) => call('mirror', { params: { area } }),
   };
 }

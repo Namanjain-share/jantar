@@ -6,12 +6,23 @@
  * the log by table, not by content.
  *
  * Every call reads `core.db` afresh: a restore swaps the handle.
+ *
+ * v0.12 People: a repo works in one space (`''` the owner's, `<pid>` hers):
+ * every query names it, so the owner's repo never sees a row of hers and
+ * the reverse. `by_person` is the row's author, set on insert and never
+ * changed; a row's json never holds `by` or `space` (they come from the
+ * columns). Rows parse with PersonTodoSchema, the owner's Todo plus
+ * People's optional fields, so no edit drops them. The ping handler alone
+ * reads across spaces (`anySpace`), to ring each todo on its own person's
+ * devices.
  */
-import { ProjectSchema, TodoSchema, type Project, type Todo } from '@jantar/protocol';
+import { ProjectSchema, type Project, type Todo } from '@jantar/protocol';
+import { PersonTodoSchema } from '@jantar/protocol/people';
 import type { LifeCore, Logger } from '../../contracts.js';
 
 interface JsonRow {
   json: string;
+  by_person?: string;
 }
 
 export interface ProjectCounts {
@@ -26,7 +37,14 @@ export class TodosRepo {
   constructor(
     private readonly core: Pick<LifeCore, 'db'>,
     private readonly log: Logger,
+    /** v0.12: the space this repo reads and writes. */
+    readonly space = '',
   ) {}
+
+  /** This repo, in another space. */
+  inSpace(space: string): TodosRepo {
+    return space === this.space ? this : new TodosRepo(this.core, this.log, space);
+  }
 
   private parse<T>(table: string, rows: readonly JsonRow[], schema: { safeParse(v: unknown): { success: true; data: T } | { success: false } }): T[] {
     const out: T[] = [];
@@ -40,7 +58,7 @@ export class TodosRepo {
         continue;
       }
       const p = schema.safeParse(value);
-      if (p.success) out.push(p.data);
+      if (p.success) out.push(this.space !== '' && r.by_person !== undefined ? ({ ...p.data, by: r.by_person } as T) : p.data);
       else bad += 1;
     }
     if (bad > 0) this.log.warn('life rows left out: they no longer parse', { table, rows: bad });
@@ -50,41 +68,42 @@ export class TodosRepo {
   // --- projects --------------------------------------------------------------
 
   project(id: string): Project | null {
-    const r = this.core.db.prepare('SELECT json FROM projects WHERE id = ?').get(id) as JsonRow | undefined;
+    const r = this.core.db.prepare('SELECT json FROM projects WHERE space = ? AND id = ?').get(this.space, id) as JsonRow | undefined;
     return r ? (this.parse('projects', [r], ProjectSchema)[0] ?? null) : null;
   }
 
   projects(): Project[] {
-    return this.parse('projects', this.core.db.prepare('SELECT json FROM projects').all() as unknown as JsonRow[], ProjectSchema);
+    return this.parse('projects', this.core.db.prepare('SELECT json FROM projects WHERE space = ?').all(this.space) as unknown as JsonRow[], ProjectSchema);
   }
 
   projectCount(): number {
-    return Number((this.core.db.prepare('SELECT COUNT(*) AS n FROM projects').get() as { n: number }).n);
+    return Number((this.core.db.prepare('SELECT COUNT(*) AS n FROM projects WHERE space = ?').get(this.space) as { n: number }).n);
   }
 
   saveProject(p: Project): void {
     const json = JSON.stringify(ProjectSchema.parse(p));
     this.core.db
       .prepare(
-        `INSERT INTO projects (id, status, updated_at, json) VALUES (?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at, json = excluded.json`,
+        `INSERT INTO projects (id, status, updated_at, json, space) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at, json = excluded.json
+         WHERE projects.space = excluded.space`,
       )
-      .run(p.id, p.status, p.updatedAt, json);
+      .run(p.id, p.status, p.updatedAt, json, this.space);
   }
 
   /** Delete a project; its todos move to no project (one transaction). */
   deleteProject(id: string, at: string): boolean {
     const db = this.core.db;
     return db.tx(() => {
-      const gone = Number(db.prepare('DELETE FROM projects WHERE id = ?').run(id).changes) === 1;
+      const gone = Number(db.prepare('DELETE FROM projects WHERE space = ? AND id = ?').run(this.space, id).changes) === 1;
       if (!gone) return false;
-      const rows = db.prepare('SELECT json FROM todos WHERE project_id = ?').all(id) as unknown as JsonRow[];
-      for (const t of this.parse('todos', rows, TodoSchema)) {
+      const rows = db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND project_id = ?').all(this.space, id) as unknown as JsonRow[];
+      for (const t of this.parse('todos', rows, PersonTodoSchema)) {
         const { projectId: _gone, ...rest } = t;
         this.saveTodo({ ...rest, updatedAt: at });
       }
       // A row that no longer parses still lets go of the project.
-      db.prepare('UPDATE todos SET project_id = NULL WHERE project_id = ?').run(id);
+      db.prepare('UPDATE todos SET project_id = NULL WHERE space = ? AND project_id = ?').run(this.space, id);
       return true;
     });
   }
@@ -98,17 +117,17 @@ export class TodosRepo {
       .prepare(
         `SELECT project_id AS id, COUNT(*) AS open,
                 SUM(CASE WHEN due_day < ? OR (due_day = ? AND json_extract(json, '$.due.time') < ?) THEN 1 ELSE 0 END) AS overdue
-           FROM todos WHERE done_at IS NULL AND project_id IS NOT NULL GROUP BY project_id`,
+           FROM todos WHERE space = ? AND done_at IS NULL AND project_id IS NOT NULL GROUP BY project_id`,
       )
-      .all(today, today, nowHhmm) as unknown as { id: string; open: number; overdue: number | null }[];
+      .all(today, today, nowHhmm, this.space) as unknown as { id: string; open: number; overdue: number | null }[];
     return new Map(rows.map((r) => [r.id, { open: Number(r.open), overdue: Number(r.overdue ?? 0) }]));
   }
 
   // --- todos -----------------------------------------------------------------
 
   todo(id: string): Todo | null {
-    const r = this.core.db.prepare('SELECT json FROM todos WHERE id = ?').get(id) as JsonRow | undefined;
-    return r ? (this.parse('todos', [r], TodoSchema)[0] ?? null) : null;
+    const r = this.core.db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND id = ?').get(this.space, id) as JsonRow | undefined;
+    return r ? (this.parse('todos', [r], PersonTodoSchema)[0] ?? null) : null;
   }
 
   /** Open todos, of one project or of none ('none') when `project` is given. Unsorted. */
@@ -116,17 +135,17 @@ export class TodosRepo {
     const db = this.core.db;
     const rows =
       project === undefined
-        ? db.prepare('SELECT json FROM todos WHERE done_at IS NULL').all()
+        ? db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NULL').all(this.space)
         : project === 'none'
-          ? db.prepare('SELECT json FROM todos WHERE done_at IS NULL AND project_id IS NULL').all()
-          : db.prepare('SELECT json FROM todos WHERE done_at IS NULL AND project_id = ?').all(project);
-    return this.parse('todos', rows as unknown as JsonRow[], TodoSchema);
+          ? db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NULL AND project_id IS NULL').all(this.space)
+          : db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NULL AND project_id = ?').all(this.space, project);
+    return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
   }
 
   /** Open todos due on or before `day` (Today's part). Unsorted. */
   openDueBy(day: string): Todo[] {
-    const rows = this.core.db.prepare('SELECT json FROM todos WHERE done_at IS NULL AND due_day IS NOT NULL AND due_day <= ?').all(day);
-    return this.parse('todos', rows as unknown as JsonRow[], TodoSchema);
+    const rows = this.core.db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NULL AND due_day IS NOT NULL AND due_day <= ?').all(this.space, day);
+    return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
   }
 
   /** The newest done todos (of one project, or of none). */
@@ -134,36 +153,64 @@ export class TodosRepo {
     const db = this.core.db;
     const rows =
       project === undefined
-        ? db.prepare('SELECT json FROM todos WHERE done_at IS NOT NULL ORDER BY done_at DESC, id DESC LIMIT ?').all(limit)
+        ? db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NOT NULL ORDER BY done_at DESC, id DESC LIMIT ?').all(this.space, limit)
         : project === 'none'
-          ? db.prepare('SELECT json FROM todos WHERE done_at IS NOT NULL AND project_id IS NULL ORDER BY done_at DESC, id DESC LIMIT ?').all(limit)
-          : db.prepare('SELECT json FROM todos WHERE done_at IS NOT NULL AND project_id = ? ORDER BY done_at DESC, id DESC LIMIT ?').all(project, limit);
-    return this.parse('todos', rows as unknown as JsonRow[], TodoSchema);
+          ? db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NOT NULL AND project_id IS NULL ORDER BY done_at DESC, id DESC LIMIT ?').all(this.space, limit)
+          : db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NOT NULL AND project_id = ? ORDER BY done_at DESC, id DESC LIMIT ?').all(this.space, project, limit);
+    return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
   }
 
   openCount(): number {
-    return Number((this.core.db.prepare('SELECT COUNT(*) AS n FROM todos WHERE done_at IS NULL').get() as { n: number }).n);
+    return Number((this.core.db.prepare('SELECT COUNT(*) AS n FROM todos WHERE space = ? AND done_at IS NULL').get(this.space) as { n: number }).n);
   }
 
   /** Open todos with a due time: the ones that ring. */
   openTimed(): Todo[] {
-    const rows = this.core.db.prepare("SELECT json FROM todos WHERE done_at IS NULL AND json_extract(json, '$.due.time') IS NOT NULL").all();
-    return this.parse('todos', rows as unknown as JsonRow[], TodoSchema);
+    const rows = this.core.db.prepare("SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NULL AND json_extract(json, '$.due.time') IS NOT NULL").all(this.space);
+    return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
   }
 
-  saveTodo(t: Todo): void {
-    const json = JSON.stringify(TodoSchema.parse(t));
+  /**
+   * The ping handler's reads (the `system` sweep, C4): a todo in any space
+   * with the space it lives in, and every open timed todo of every space,
+   * so a reminder of hers keeps ringing her devices after a restart.
+   */
+  anySpace(id: string): { todo: Todo; space: string } | null {
+    const r = this.core.db.prepare('SELECT json, space FROM todos WHERE id = ? AND space = space').get(id) as (JsonRow & { space: string }) | undefined;
+    if (!r) return null;
+    const t = this.parse('todos', [r], PersonTodoSchema)[0];
+    return t ? { todo: t, space: r.space } : null;
+  }
+
+  openTimedAnySpace(): { todo: Todo; space: string }[] {
+    const rows = this.core.db
+      .prepare("SELECT json, space FROM todos WHERE space = space AND done_at IS NULL AND json_extract(json, '$.due.time') IS NOT NULL")
+      .all() as unknown as (JsonRow & { space: string })[];
+    return rows.flatMap((r) => {
+      const t = this.parse('todos', [r], PersonTodoSchema)[0];
+      return t ? [{ todo: t, space: r.space }] : [];
+    });
+  }
+
+  /**
+   * Insert or update. `by` (the author) is written on insert only and never
+   * changed by an update; `by` and `space` never go into the json.
+   */
+  saveTodo(t: Todo, by = ''): void {
+    const { by: _by, ...rest } = t as Todo & { by?: string };
+    const json = JSON.stringify(PersonTodoSchema.parse(rest));
     this.core.db
       .prepare(
-        `INSERT INTO todos (id, project_id, due_day, done_at, updated_at, json) VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO todos (id, project_id, due_day, done_at, updated_at, json, space, by_person) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET project_id = excluded.project_id, due_day = excluded.due_day,
-           done_at = excluded.done_at, updated_at = excluded.updated_at, json = excluded.json`,
+           done_at = excluded.done_at, updated_at = excluded.updated_at, json = excluded.json
+         WHERE todos.space = excluded.space`,
       )
-      .run(t.id, t.projectId ?? null, t.due?.day ?? null, t.doneAt ?? null, t.updatedAt, json);
+      .run(t.id, t.projectId ?? null, t.due?.day ?? null, t.doneAt ?? null, t.updatedAt, json, this.space, by);
   }
 
   deleteTodo(id: string): boolean {
-    return Number(this.core.db.prepare('DELETE FROM todos WHERE id = ?').run(id).changes) === 1;
+    return Number(this.core.db.prepare('DELETE FROM todos WHERE space = ? AND id = ?').run(this.space, id).changes) === 1;
   }
 
   /** A todo's ping row's next_at (null: no row, or parked after its ring). The scheduler writes `pings`; this only reads it. */

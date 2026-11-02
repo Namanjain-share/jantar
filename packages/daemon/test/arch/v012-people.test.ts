@@ -66,6 +66,25 @@ const REVIEWED_PERSON_ROUTES = [
   'personPushTest',
   'personPushUnsubscribe',
   'personResume',
+  // Her Today, to-dos, projects, weights and mirror.
+  'personMirror',
+  'personProjectCreate',
+  'personProjectDelete',
+  'personProjectUpdate',
+  'personProjects',
+  'personToday',
+  'personTodoAck',
+  'personTodoAsk',
+  'personTodoCreate',
+  'personTodoDelete',
+  'personTodoDone',
+  'personTodoSkip',
+  'personTodoSnooze',
+  'personTodoUpdate',
+  'personTodos',
+  'personWeightDelete',
+  'personWeightSet',
+  'personWeights',
 ];
 
 /** T1: his People routes, reviewed: scope, ctl, localOnly, area. */
@@ -86,6 +105,15 @@ const REVIEWED_PEOPLE_OWNER_ROUTES: Record<string, { scope: string; ctl: boolean
   personOwnerDevices: { scope: 'control', ctl: true, localOnly: false, area: null },
   personPropose: { scope: 'admin', ctl: false, localOnly: false, area: null },
   personRemove: { scope: 'admin', ctl: true, localOnly: true, area: null },
+  // His reads and writes in her space, each with its area.
+  personAssign: { scope: 'control', ctl: false, localOnly: false, area: 'todos' },
+  personOwnerToday: { scope: 'control', ctl: false, localOnly: false, area: 'today' },
+  personOwnerTodoDelete: { scope: 'control', ctl: false, localOnly: false, area: 'todos' },
+  personOwnerTodoUpdate: { scope: 'control', ctl: false, localOnly: false, area: 'todos' },
+  personOwnerTodos: { scope: 'control', ctl: true, localOnly: false, area: 'todos' },
+  personOwnerWeightDelete: { scope: 'control', ctl: false, localOnly: false, area: 'weight' },
+  personOwnerWeightUpdate: { scope: 'control', ctl: false, localOnly: false, area: 'weight' },
+  personOwnerWeights: { scope: 'control', ctl: false, localOnly: false, area: 'weight' },
 };
 
 /** M9: the `:pid` routes about the person, not her data (no area). */
@@ -124,6 +152,14 @@ describe('T1: the allowlist is exactly the reviewed list', () => {
 });
 
 describe('M9: route metadata', () => {
+  it('every person data route and every :pid data route declares an area', () => {
+    for (const [k, def] of person) {
+      // Her account routes have none; the mirror's area is its `:area` parameter.
+      const account = /^person(Join|Me|Agreement|Pause|Resume|Leave|Export|Activity|Prefs|Device|Push|Events|Mirror)/.test(k);
+      if (!account) expect(def.area, k).toBeDefined();
+    }
+  });
+
   it('every People route is phase v0.12; areas come from AREAS; localOnly implies ctl', () => {
     for (const [k, def] of [...person, ...people]) {
       expect(def.phase, k).toBe('v0.12');
@@ -199,5 +235,28 @@ describe('her route files and his stay apart', () => {
         if (f.rel.startsWith('api/routes/') && !f.rel.startsWith('api/routes/person/')) expect(spec, f.rel).not.toMatch(/routes\/person\/|^\.\/person\//);
       }
     }
+  });
+});
+
+/**
+ * T6 (C5), the part this build pins: every SELECT, UPDATE and DELETE on a
+ * table that already holds person spaces names `space` (her to-dos,
+ * projects and weights; saved foods are keyed per space), and every query
+ * on her Activity names `person`. Medicines, doses, food and cafés join
+ * this list as their modules take a space.
+ */
+describe('T6: every query on a person-space table names its space', () => {
+  const SPACE_TABLES = ['todos', 'projects', 'weights', 'foods_saved'];
+  const statements = (text: string) => [...text.matchAll(/(['"`])((?:SELECT|UPDATE|DELETE)\b[\s\S]*?)\1/g)].map((m) => m[2] as string);
+  it('names space (or person) in every statement on them', () => {
+    const bad: string[] = [];
+    for (const f of src) {
+      for (const sql of statements(f.text)) {
+        const tables = [...sql.matchAll(/\b(?:FROM|UPDATE|JOIN)\s+([a-z_]+)/gi)].map((m) => (m[1] as string).toLowerCase());
+        if (tables.some((t) => SPACE_TABLES.includes(t)) && !/\bspace\b/.test(sql)) bad.push(`${f.rel}: ${sql.slice(0, 90)}`);
+        if (tables.includes('person_activity') && !/\bperson\b/.test(sql)) bad.push(`${f.rel}: ${sql.slice(0, 90)}`);
+      }
+    }
+    expect(bad).toEqual([]);
   });
 });

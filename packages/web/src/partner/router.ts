@@ -6,6 +6,8 @@
  */
 export type PersonRoute =
   | { name: 'today' }
+  | { name: 'todos' }
+  | { name: 'health' }
   | { name: 'join' }
   | { name: 'link' }
   | { name: 'me'; tab: MeTab }
@@ -18,6 +20,8 @@ export type MeTab = (typeof ME_TABS)[number];
 export function parsePersonRoute(pathname: string, search: string): PersonRoute {
   const path = pathname.replace(/\/+$/, '') || '/';
   if (path === '/p' || path === '/') return { name: 'today' };
+  if (path === '/p/todos') return { name: 'todos' };
+  if (path === '/p/health') return { name: 'health' };
   if (path === '/p/join') return { name: 'join' };
   if (path === '/p/link') return { name: 'link' };
   if (path === '/p/left') return { name: 'left' };
