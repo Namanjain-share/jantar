@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.10.1 (unreleased)
+## 0.10.1 (3 November 2026)
 
 - **New folder in Files**: inside any folder you browse (say ~/Desktop),
   New folder makes an empty folder and opens it with **Start a session
