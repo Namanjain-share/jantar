@@ -209,6 +209,55 @@ export function taskStopped(id: string, taskType: string): Record<string, unknow
   return { message: `Successfully stopped task: ${id} (Synthetic task)`, task_id: id, task_type: taskType, command: 'synthetic command' };
 }
 
+// ---------------------------------------------------------------------------
+// v0.10.2: a call the user said no to, and a call Claude stopped (Claude Code 2.1.316's shapes; every word typed is made up)
+
+const DECLINED_HEAD =
+  "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).";
+
+/** Claude Code's words for a "No" with nothing typed, and for a call it stopped. */
+export const TOOL_DECLINED = `${DECLINED_HEAD} STOP what you are doing and wait for the user to tell you how to proceed.`;
+
+/** What Claude Code adds after a rejection when its corrections note is on. */
+export const CORRECTION_NOTE =
+  "\n\nNote: The user's next message may contain a correction or preference. Pay close attention \u2014 if they explain what went wrong or how they'd prefer you to work, consider saving that to memory.";
+
+/** A subagent's permission prompt (or a safety-check prompt) the user said no to. */
+export const AGENT_PROMPT_DENIED =
+  'Permission for this tool use was denied. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). Try a different approach or report the limitation to complete your task.';
+
+/**
+ * A call Claude stopped: Esc on a running call, TaskStop, a stop from the
+ * UI, a shutdown. A "No" at the dialog with nothing typed is written the
+ * same way.
+ */
+export function toolStopped(ctx: EntryContext, toolUseId: string, opts: { note?: boolean } = {}): Entry {
+  const text = opts.note ? TOOL_DECLINED + CORRECTION_NOTE : TOOL_DECLINED;
+  return { ...toolResultWith(ctx, toolUseId, text, 'User rejected tool use', true), toolDenialKind: 'user-rejected' };
+}
+
+/**
+ * A "No" at a permission dialog that went through Claude's permission
+ * decision: with words typed for Claude, or (newer Claude Code) with the
+ * decision recorded.
+ */
+export function toolRejected(
+  ctx: EntryContext,
+  toolUseId: string,
+  opts: { said?: string; note?: boolean; source?: 'user_reject' | 'user_abort' | null; text?: string } = {},
+): Entry {
+  let text = opts.text ?? (opts.said !== undefined ? `${DECLINED_HEAD} To tell you how to proceed, the user said:\n${opts.said}` : TOOL_DECLINED);
+  if (opts.note) text += CORRECTION_NOTE;
+  const e: Entry = { ...toolResultWith(ctx, toolUseId, text, `Error: ${text}`, true), toolDenialKind: 'user-rejected' };
+  if (opts.source !== null) e.permissionDecision = { decision: 'reject', source: opts.source ?? 'user_reject', reasonCode: 'unknown' };
+  return e;
+}
+
+/** The user row Claude writes after a stopped call or a "No" with nothing typed. */
+export function interruptedForToolUse(ctx: EntryContext): Entry {
+  return userBlocks(ctx, '[Request interrupted by user for tool use]');
+}
+
 /** Serialize entries as JSONL (with a trailing newline). */
 export function toJsonl(entries: readonly Entry[]): string {
   return entries.map((e) => JSON.stringify(e)).join('\n') + (entries.length ? '\n' : '');
