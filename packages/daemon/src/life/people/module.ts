@@ -875,6 +875,30 @@ export class PeopleModule {
     }
   }
 
+  /**
+   * The daily sweep (the nightly backup's timer and every life.db open, as
+   * the `system` reader): an ending window that has run out becomes left;
+   * a left person past `forgetAt` (30 days after Leave or remove) is
+   * forgotten; each Activity is pruned to 365 days and 5,000 rows.
+   */
+  sweep(): void {
+    const core = this.deps.core();
+    if (!core) return;
+    const now = this.now();
+    for (const pid of this.deps.ctx.db.people.consents.persons()) {
+      const l = this.ledger(pid);
+      if (l.state === 'ending' && l.until && Date.parse(l.until) <= now) this.finishEnding(pid);
+      const after = this.ledger(pid);
+      if (after.state === 'left') {
+        const p = this.repo.get(pid);
+        const left = this.deps.ctx.db.people.consents.listFor(pid).filter((r) => r.action === 'left' || r.action === 'removed').at(-1);
+        const forgetAt = p?.forgetAt ? Date.parse(p.forgetAt) : left ? Date.parse(left.at) + PERSON_FORGET_DAYS * DAY_MS : NaN;
+        if (Number.isFinite(forgetAt) && forgetAt <= now) this.forget(pid, 'system');
+      }
+      if (after.state === 'active' || after.state === 'paused') this.repo.prune(pid, now);
+    }
+  }
+
   /** After a restore of Life data (C11): each person still sharing gets an Activity row saying data may be missing. */
   afterRestore(): void {
     if (!this.deps.core()) return;

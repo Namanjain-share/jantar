@@ -483,6 +483,7 @@ class LifeServiceImpl implements LifeService {
     // v0.12 (C11): the consent ledger wins over whatever life.db holds (a restore can't bring a forgotten person back).
     try {
       this.people.reconcile();
+      this.people.sweep();
     } catch (e) {
       this.log.error('people reconcile failed', { error: errorKind(e) });
     }
@@ -559,6 +560,12 @@ class LifeServiceImpl implements LifeService {
   /** The nightly run: back up, and say so once a day when it failed. */
   private async nightly(): Promise<void> {
     if (!this.handle) return;
+    // v0.12 People: ending windows close, left spaces past their 30 days are forgotten, Activity is pruned.
+    try {
+      this.people.sweep();
+    } catch (e) {
+      this.log.error('people sweep failed', { error: errorKind(e) });
+    }
     const r = await this.backup();
     if (r.ok) return;
     const day = this.core.today();

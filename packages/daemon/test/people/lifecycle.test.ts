@@ -321,3 +321,23 @@ it('joinPerson works for a fresh partner end to end (fixture self-check)', async
   expect(me.person.name).toBe('Ola');
   expect(me.agreement?.see.meds).toBe('off');
 });
+
+describe('the daily sweep', () => {
+  it('forgets a left space after its 30 days, not before; closes an ending window', async () => {
+    const x = await fx();
+    const core = x.life.people.openCore();
+    if (!core) throw new Error('life closed');
+    await onHer(x.api, 'POST', '/v1/p/todos', x.asha.full, { title: 'Keep me a while' });
+    expect((await onHer(x.api, 'POST', '/v1/p/leave', x.asha.full, { data: 'keep30', confirm: 'LEAVE' })).statusCode).toBe(200);
+    x.api.ctx.clock.advance(29 * 24 * 3600_000);
+    x.life.people.sweep();
+    expect(core.db.prepare('SELECT COUNT(*) AS n FROM todos WHERE space = ?').get(x.asha.id)).toEqual({ n: 1 });
+    x.api.ctx.clock.advance(2 * 24 * 3600_000);
+    x.life.people.sweep();
+    expect(core.db.prepare('SELECT COUNT(*) AS n FROM todos WHERE space = ?').get(x.asha.id)).toEqual({ n: 0 });
+    expect(core.db.prepare('SELECT COUNT(*) AS n FROM people WHERE id = ?').get(x.asha.id)).toEqual({ n: 0 });
+    expect(x.api.ctx.db.people.consents.latestFor(x.asha.id)?.action).toBe('forgotten');
+    // Dev's ending window (7 days) closed along the way: his devices are revoked and he has left.
+    expect(x.api.ctx.db.people.devices.listFor(x.dev.id).every((d) => d.revokedAt !== null)).toBe(true);
+  });
+});
