@@ -484,6 +484,14 @@ settings version and no protocol bump (`PROTOCOL_VERSION` 3). Tests: G1 to
 G18 across `packages/daemon/test/{intel,api,ask,arch}/`,
 `packages/protocol/test/{post-url,v08-intel-read}.test.ts`,
 `packages/extension/test/{page-read,background/reads}.test.ts`,
-`packages/cli/test/doctor-capture.test.ts`, the fake claude's read modes
-and the fake yt-dlp in `test/fixtures/test/intel-read.test.ts`, and end to
-end in `test/integration/`.
+`packages/cli/test/doctor-capture.test.ts`, the fake claude's read modes,
+the fake yt-dlp and the fake media tools (`writeFakeMediaTools`: an
+xcode-select, a swiftc that "builds" a fake `jantar-media`, a sandbox-exec
+that runs it; nothing compiles Swift) in
+`test/fixtures/test/intel-read.test.ts`, and end to end in
+`test/integration/v08-intel-read.integration.test.ts` (the daemon with
+Intel's seams from `read-net.ts`: one local HTTPS server for the public
+web, playwright-core's own Chromium through the daemon's proxy; the
+harness's `intel` and `fakeMediaTools` options) and
+`test/integration/ext-v08-reads.integration.test.ts` (the built extension
+in Chromium, every web request answered by the test).
