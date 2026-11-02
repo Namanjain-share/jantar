@@ -5,8 +5,10 @@
  * while the item's part is on; a tap never runs inside a run.
  *
  * Undo: an add deletes the item as it is now (one already gone counts as
- * undone); an edit only while every changed key still holds Chat's value,
- * else 409 "That changed after Chat's edit; change it back by hand." A
+ * undone; a café with visits by then is refused); an edit, a todo's done,
+ * a weight, the targets, a budget, the goals or a dose go back to what was
+ * there before only while Chat's value still holds, else 409 "That changed
+ * after Chat's edit; change it back by hand." A
  * Confirm has no Undo (the tap was the check); a Do-it's write becomes a
  * change of the turn, with its own Undo.
  */

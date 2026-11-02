@@ -55,6 +55,12 @@ export function removeWeight(core: LifeCore, day: string): LifeResult {
   return n > 0 ? { ok: true, value: true } : { ok: false, code: 'not_found', reason: WEIGHT_SENTENCES.none };
 }
 
+/** `day`'s own weight in kg, or null. */
+export function weightOn(core: LifeCore, day: string): number | null {
+  const row = core.db.prepare('SELECT kg10 FROM weights WHERE day = ?').get(day) as { kg10: number } | undefined;
+  return row ? kgOf(row.kg10) : null;
+}
+
 /** The newest weight on or before `day`, in kg x 10. */
 function onOrBefore(core: LifeCore, day: string): number | null {
   const row = core.db.prepare('SELECT kg10 FROM weights WHERE day <= ? ORDER BY day DESC LIMIT 1').get(day) as { kg10: number } | undefined;

@@ -19,7 +19,7 @@ import { FoodEntrySchema, LIFE_LIMITS, type FoodBody, type FoodEntry, type FoodP
 import type { Actor, FoodModule, LifeCore, LifeModuleDeps, LifeResult } from '../../contracts.js';
 import { FoodEstimator } from './estimate.js';
 import { FoodRepo, GOAL_KG10_KEY, KCAL_TARGET_KEY } from './repo.js';
-import { kg10Of, latestWeight, removeWeight, setWeight, weightSummary } from './weight.js';
+import { kg10Of, latestWeight, removeWeight, setWeight, weightOn, weightSummary } from './weight.js';
 
 /** How many saved foods FoodDay lists. */
 export const SAVED_SHOWN = 30;
@@ -148,6 +148,11 @@ export function buildFoodModule(core: LifeCore, deps: LifeModuleDeps): FoodModul
     removeWeight(day: string, _actor: Actor) {
       if (!isRealDay(day)) return fail('invalid_request', FOOD_SENTENCES.noDay);
       return done(removeWeight(core, day));
+    },
+
+    weightOn(day: string) {
+      if (!isRealDay(day)) return fail('invalid_request', FOOD_SENTENCES.noDay);
+      return { ok: true, value: weightOn(core, day) };
     },
 
     estimate(text: string, signal: AbortSignal, actor: Actor) {

@@ -74,6 +74,10 @@ export const ACTION_SENTENCES = {
   noBudget: 'No budget for that category.',
   noDose: 'No dose logged at that time.',
   stopped: 'That medicine is already stopped.',
+  nothing: 'Nothing to change.',
+  alreadyDone: 'That todo is already done.',
+  alreadyOpen: 'That todo is already open.',
+  hasVisits: 'That café has visits now. Delete it in its own screen instead.',
 } as const;
 
 const Id = LifeIdSchema;
@@ -165,16 +169,24 @@ export const WRITE_MODULE: Readonly<Record<WriteTool, ChatModule>> = {
   intel_save: 'intel',
 };
 
-/** One step that puts something back. Undo runs a journal's steps last first, after checking every `patch`. */
+/**
+ * One step that puts something back. Undo runs a journal's steps last first,
+ * after checking that every step's `after` (Chat's value) still holds: an
+ * edit's keys, a todo's done state, a day's weight, the targets, a budget,
+ * the goals, a dose. A value changed since is the user's: 409.
+ */
 export type Step =
   | { do: 'remove'; item: ItemRef }
   | { do: 'patch'; item: ItemRef; before: Record<string, unknown>; after: Record<string, unknown> }
+  /** Put the todo back to `done` (what it was before Chat's call); Chat's call left it `!done`. */
   | { do: 'todoDone'; id: string; done: boolean }
-  | { do: 'weight'; day: string; kg: number | null }
-  | { do: 'targets'; body: FoodTargetsBody }
-  | { do: 'budget'; category: string; amount: number | null }
-  | { do: 'goals'; goals: PostGoal[] }
-  | { do: 'dose'; medId: string; doseId: string; prev: DoseBody | null }
+  | { do: 'weight'; day: string; kg: number | null; after: number }
+  | { do: 'targets'; body: FoodTargetsBody; after: FoodTargetsBody }
+  | { do: 'budget'; category: string; amount: number | null; after: number }
+  | { do: 'goals'; goals: PostGoal[]; after: PostGoal[] }
+  | { do: 'dose'; medId: string; doseId: string; prev: DoseBody | null; day: string; slot: string; status: DoseBody['status'] }
+  /** After a visit's Undo: the café untried again, unless it has other visits by then. */
+  | { do: 'untried'; placeId: string }
   | { do: 'meetingTodo'; id: string; n: number };
 
 export interface Journal {
@@ -304,6 +316,31 @@ const split = <T extends Record<string, unknown>, K extends keyof T>(o: T, ...ke
   return out;
 };
 
+/** A category's monthly budget now, or null. */
+function budgetOf(d: ChatDeps, category: string): number | null {
+  const m = d.life.finance.month();
+  return m.ok ? (m.value.byCategory.find((c) => c.category.toLowerCase() === category.toLowerCase())?.budget ?? null) : null;
+}
+
+/** The weekly posting goals now (null when Posts can't be read). */
+function goalsNow(d: ChatDeps): PostGoal[] | null {
+  const list = d.life.posts.list({ done: false });
+  return list.ok ? list.value.week.goals.map((g) => ({ platform: g.platform, ...(g.kind ? { kind: g.kind } : {}), perWeek: g.perWeek })) : null;
+}
+
+/** The targets now, at the keys `keys` names (null when Food can't be read). */
+function targetsNow(d: ChatDeps, keys: FoodTargetsBody): FoodTargetsBody | null {
+  const fd = d.life.food.day();
+  if (!fd.ok) return null;
+  return { ...(keys.kcalTarget !== undefined ? { kcalTarget: fd.value.target } : {}), ...(keys.goalKg !== undefined ? { goalKg: fd.value.weight.goalKg } : {}) };
+}
+
+/** A dose's day item for the medicine at `slot`, as it is now. */
+function doseNow(d: ChatDeps, medId: string, day: string, slot: string): { doseId?: string; status: string } | null {
+  const r = d.life.medicines.get(day);
+  return r.ok ? (r.value.day.groups.flatMap((g) => g.items).find((x) => x.medId === medId && x.slot === slot) ?? null) : null;
+}
+
 /** Apply one write tool's checked input as `actor`. */
 export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, actor: Actor): Promise<LifeResult<Applied>> {
   const parsed = WRITE_INPUTS[tool].safeParse(raw);
@@ -324,13 +361,16 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
       const done = i.done ?? true;
       const before = findTodo(d, i.id);
       if (!before) return refuse('not_found', ACTION_SENTENCES.gone);
+      const repeating = Boolean(before.repeat && before.due);
+      // A one-off already so: the module changes nothing, so there is no change to show or undo.
+      if (!repeating && Boolean(before.doneAt) === done) return refuse('conflict', done ? ACTION_SENTENCES.alreadyDone : ACTION_SENTENCES.alreadyOpen);
       const r = life.todos.setDone(i.id, done, actor);
       if (!r.ok) return r;
       const ref: ItemRef = { kind: 'todo', id: i.id };
       // A repeating todo's Done moves its due day (the phone's rule): Undo puts the old one back.
-      const step: Step = before.repeat
+      const step: Step = repeating
         ? { do: 'patch', item: ref, before: { due: before.due ?? null }, after: { due: findTodo(d, i.id)?.due ?? null } }
-        : { do: 'todoDone', id: i.id, done: !done };
+        : { do: 'todoDone', id: i.id, done: Boolean(before.doneAt) };
       return { ok: true, value: { change: { module, op: done ? 'done' : 'undone', ref: i.id, label: labelOf(d, ref), undoable: true }, journal: { steps: [step] } } };
     }
     case 'todo_snooze': {
@@ -367,7 +407,8 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
       const r = life.medicines.logDose(i.medId, body, actor);
       if (!r.ok) return r;
       const label = cut(`Dose · ${line(med.name)} · ${i.day} ${i.slot} · ${i.status}`, 160);
-      return { ok: true, value: { change: { module, op: 'log', ref: i.medId, label, undoable: true }, journal: { steps: [{ do: 'dose', medId: i.medId, doseId: r.value.id, prev }] } } };
+      const step: Step = { do: 'dose', medId: i.medId, doseId: r.value.id, prev, day: i.day, slot: i.slot, status: i.status };
+      return { ok: true, value: { change: { module, op: 'log', ref: i.medId, label, undoable: true }, journal: { steps: [step] } } };
     }
     case 'food_add': {
       const i = WRITE_INPUTS.food_add.parse(raw);
@@ -379,11 +420,16 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
     }
     case 'weight_set': {
       const i = WRITE_INPUTS.weight_set.parse(raw);
-      const fd = life.food.day(i.day);
-      const prev = fd.ok ? (fd.value.weight.recent.find((w) => w.day === i.day)?.kg ?? null) : null;
+      // That day's own weight (FoodDay lists only the newest 30).
+      const had = life.food.weightOn(i.day);
+      if (!had.ok) return had;
+      const prev = had.value;
+      if (prev !== null && Math.round(prev * 10) === Math.round(i.kg * 10)) return refuse('conflict', ACTION_SENTENCES.nothing);
       const r = life.food.setWeight(i.day, { kg: i.kg }, actor);
       if (!r.ok) return r;
-      return { ok: true, value: { change: { module, op: 'set', ref: i.day, label: `Weight · ${i.kg} kg · ${i.day}`, undoable: true }, journal: { steps: [{ do: 'weight', day: i.day, kg: prev }] } } };
+      const now = life.food.weightOn(i.day);
+      const kg = now.ok && now.value !== null ? now.value : i.kg;
+      return { ok: true, value: { change: { module, op: 'set', ref: i.day, label: `Weight · ${kg} kg · ${i.day}`, undoable: true }, journal: { steps: [{ do: 'weight', day: i.day, kg: prev, after: kg }] } } };
     }
     case 'food_targets_set': {
       const i = WRITE_INPUTS.food_targets_set.parse(raw);
@@ -393,10 +439,14 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
         ...(i.kcalTarget !== undefined ? { kcalTarget: fd.value.target } : {}),
         ...(i.goalKg !== undefined ? { goalKg: fd.value.weight.goalKg } : {}),
       };
+      const kg10 = (kg: number | null | undefined) => (kg == null ? null : Math.round(kg * 10));
+      const same = (i.kcalTarget === undefined || i.kcalTarget === fd.value.target) && (i.goalKg === undefined || kg10(i.goalKg) === kg10(fd.value.weight.goalKg));
+      if (same) return refuse('conflict', ACTION_SENTENCES.nothing);
       const r = life.food.setTargets(i, actor);
       if (!r.ok) return r;
       const label = cut(['Targets', i.kcalTarget !== undefined ? `${i.kcalTarget} kcal a day` : '', i.goalKg != null ? `goal ${i.goalKg} kg` : ''].filter(Boolean).join(' · '), 160);
-      return { ok: true, value: { change: { module, op: 'set', ref: 'targets', label, undoable: true }, journal: { steps: [{ do: 'targets', body: prev }] } } };
+      const now = targetsNow(d, i);
+      return { ok: true, value: { change: { module, op: 'set', ref: 'targets', label, undoable: true }, journal: { steps: [{ do: 'targets', body: prev, after: now ?? i }] } } };
     }
     case 'place_add':
       return added(d, life.places.create(WRITE_INPUTS.place_add.parse(raw), actor), (id) => ({ kind: 'place', id }), module);
@@ -449,9 +499,10 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
         return v;
       }
       const visit: ItemRef = { kind: 'visit', id: v.value.id, parent: i.placeId };
-      // The first visit marks the café tried (the module's rule): Undo marks it untried again.
-      if (!place.tried) steps.unshift({ do: 'patch', item: { kind: 'place', id: i.placeId }, before: { tried: false }, after: { tried: true } });
       steps.unshift({ do: 'remove', item: visit });
+      // The first visit marks the café tried (the module's rule): Undo marks it untried again, after the visit
+      // goes (steps run last first), unless it has other visits by then.
+      if (!place.tried) steps.unshift({ do: 'untried', placeId: i.placeId });
       return { ok: true, value: { change: { module, op: 'log', ref: v.value.id, label: labelOf(d, visit), undoable: true }, journal: { steps } } };
     }
     case 'visit_edit': {
@@ -468,12 +519,14 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
     }
     case 'budget_set': {
       const i = WRITE_INPUTS.budget_set.parse(raw);
-      const m = life.finance.month();
-      const prev = m.ok ? (m.value.byCategory.find((c) => c.category.toLowerCase() === i.category.toLowerCase())?.budget ?? null) : null;
+      const prev = budgetOf(d, i.category);
+      if (prev === i.amount) return refuse('conflict', ACTION_SENTENCES.nothing);
       const body = BudgetBodySchema.parse(i);
       const r = life.finance.setBudget(body, actor);
       if (!r.ok) return r;
-      return { ok: true, value: { change: { module, op: 'set', ref: i.category, label: cut(`Budget · ${line(i.category)} · ${i.amount / 100}`, 160), undoable: true }, journal: { steps: [{ do: 'budget', category: i.category, amount: prev }] } } };
+      // The ref is not the category: a category is the user's own words, and audit rows carry ids only.
+      const step: Step = { do: 'budget', category: i.category, amount: prev, after: i.amount };
+      return { ok: true, value: { change: { module, op: 'set', ref: 'budget', label: cut(`Budget · ${line(i.category)} · ${i.amount / 100}`, 160), undoable: true }, journal: { steps: [step] } } };
     }
     case 'bill_add':
       return added(d, life.finance.createBill(WRITE_INPUTS.bill_add.parse(raw), actor), (id) => ({ kind: 'bill', id }), module);
@@ -503,11 +556,11 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
     }
     case 'post_goals_set': {
       const body = WRITE_INPUTS.post_goals_set.parse(raw);
-      const list = life.posts.list({ done: false });
-      const prev: PostGoal[] = list.ok ? list.value.week.goals.map((g) => ({ platform: g.platform, ...(g.kind ? { kind: g.kind } : {}), perWeek: g.perWeek })) : [];
+      const prev = goalsNow(d) ?? [];
       const r = life.posts.setGoals(body, actor);
       if (!r.ok) return r;
-      return { ok: true, value: { change: { module, op: 'set', ref: 'goals', label: `Post goals · ${body.goals.length}`, undoable: true }, journal: { steps: [{ do: 'goals', goals: prev }] } } };
+      const step: Step = { do: 'goals', goals: prev, after: goalsNow(d) ?? body.goals };
+      return { ok: true, value: { change: { module, op: 'set', ref: 'goals', label: `Post goals · ${body.goals.length}`, undoable: true }, journal: { steps: [step] } } };
     }
     case 'meeting_edit': {
       const i = WRITE_INPUTS.meeting_edit.parse(raw);
@@ -536,13 +589,58 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
   }
 }
 
-/** Undo a journal as `actor`: every edit checked first (409 when changed since), then the steps last first. */
+/** Whether step `s` may run: Chat's value still holds (else 409), its item is there (else 404); null when it may. */
+function stillChats(d: ChatDeps, s: Step): Refusal | null {
+  const changed = refuse('conflict', ACTION_SENTENCES.changed);
+  switch (s.do) {
+    case 'patch': {
+      const cur = current(d, s.item);
+      if (!cur) return refuse('not_found', ACTION_SENTENCES.gone);
+      return unchangedSince(cur, s.after) ? null : changed;
+    }
+    case 'remove': {
+      // An add's Undo never takes what the user added since with it: a café's visits.
+      if (s.item.kind !== 'place') return null;
+      const p = findPlace(d, s.item.id);
+      return p && p.visits.count > 0 ? refuse('conflict', ACTION_SENTENCES.hasVisits) : null;
+    }
+    case 'todoDone': {
+      const t = findTodo(d, s.id);
+      if (!t) return refuse('not_found', ACTION_SENTENCES.gone);
+      return Boolean(t.doneAt) === !s.done ? null : changed;
+    }
+    case 'weight': {
+      const w = d.life.food.weightOn(s.day);
+      if (!w.ok) return w;
+      // Chat's weight already gone and none there before: nothing to put back.
+      if (w.value === null && s.kg === null) return null;
+      return w.value === s.after ? null : changed;
+    }
+    case 'targets': {
+      const now = targetsNow(d, s.after);
+      return now && stable(now) === stable(s.after) ? null : changed;
+    }
+    case 'budget':
+      return budgetOf(d, s.category) === s.after ? null : changed;
+    case 'goals': {
+      const now = goalsNow(d);
+      return now && stable(now) === stable(s.after) ? null : changed;
+    }
+    case 'dose': {
+      const now = doseNow(d, s.medId, s.day, s.slot);
+      return now?.doseId === s.doseId && now.status === s.status ? null : changed;
+    }
+    case 'untried':
+    case 'meetingTodo':
+      return null;
+  }
+}
+
+/** Undo a journal as `actor`: every step checked first (409 when changed since), then the steps last first. */
 export async function undoJournal(d: ChatDeps, journal: Journal, actor: Actor): Promise<LifeResult> {
   for (const s of journal.steps) {
-    if (s.do !== 'patch') continue;
-    const cur = current(d, s.item);
-    if (!cur) return refuse('not_found', ACTION_SENTENCES.gone);
-    if (!unchangedSince(cur, s.after)) return refuse('conflict', ACTION_SENTENCES.changed);
+    const no = stillChats(d, s);
+    if (no) return no;
   }
   for (const s of [...journal.steps].reverse()) {
     const r = await undoStep(d, s, actor);
@@ -561,8 +659,11 @@ async function undoStep(d: ChatDeps, s: Step, actor: Actor): Promise<LifeResult>
       return patchItem(d, s.item, s.before, actor);
     case 'todoDone':
       return life.todos.setDone(s.id, s.done, actor);
-    case 'weight':
-      return s.kg === null ? life.food.removeWeight(s.day, actor) : life.food.setWeight(s.day, { kg: s.kg }, actor);
+    case 'weight': {
+      if (s.kg !== null) return life.food.setWeight(s.day, { kg: s.kg }, actor);
+      const r = life.food.removeWeight(s.day, actor);
+      return !r.ok && r.code === 'not_found' ? { ok: true, value: true } : r;
+    }
     case 'targets':
       return Object.keys(s.body).length ? life.food.setTargets(s.body, actor) : { ok: true, value: true };
     case 'budget':
@@ -571,6 +672,11 @@ async function undoStep(d: ChatDeps, s: Step, actor: Actor): Promise<LifeResult>
       return life.posts.setGoals({ goals: s.goals }, actor);
     case 'dose':
       return s.prev ? life.medicines.logDose(s.medId, s.prev, actor).ok ? { ok: true, value: true } : refuse('conflict', ACTION_SENTENCES.changed) : life.medicines.undoDose(s.medId, s.doseId, actor);
+    case 'untried': {
+      const p = findPlace(d, s.placeId);
+      if (!p || !p.tried || p.visits.count > 0) return { ok: true, value: true };
+      return life.places.update(s.placeId, { tried: false }, actor);
+    }
     case 'meetingTodo':
       return d.meetings.summaries.removeTodo(s.id, s.n, actor);
   }
@@ -655,9 +761,8 @@ export function describeDelete(d: ChatDeps, a: Extract<CardAction, { t: 'delete'
       return s ? out(`Delete the saved food ${q(s.name)}?`) : gone;
     }
     case 'weight': {
-      const fd = life.food.day(a.id);
-      const w = fd.ok ? fd.value.weight.recent.find((x) => x.day === a.id) : undefined;
-      return w ? out(`Delete the weight of ${a.id} (${w.kg} kg)?`) : refuse('not_found', ACTION_SENTENCES.noWeight);
+      const w = life.food.weightOn(a.id);
+      return w.ok && w.value !== null ? out(`Delete the weight of ${a.id} (${w.value} kg)?`) : refuse('not_found', ACTION_SENTENCES.noWeight);
     }
     case 'place': {
       const p = findPlace(d, a.id);

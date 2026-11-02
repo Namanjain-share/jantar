@@ -5,6 +5,7 @@
  * add already deleted (undone), past 24 h (refused), a part off (refused).
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { shiftDay } from '@jantar/life-core';
 import { CHAT_UNDO_WITHIN_MS } from '@jantar/protocol';
 import { undoChange } from '../../src/chat/taps.js';
 import { chatRig, idIn, PHONE, TABLET, TODAY, type ChatRig } from './helpers.js';
@@ -88,6 +89,109 @@ describe('Undo', () => {
     const todos = open.ok ? open.value.todos : [];
     expect(todos.find((t) => t.title === 'Water the plants')?.due).toEqual({ day: TODAY });
     expect(todos.find((t) => t.title === 'Post the letter')?.doneAt).toBeUndefined();
+  });
+
+  it('todo_done that changes nothing is refused with no change; Undo puts back the state before, not its opposite', async () => {
+    rig = await chatRig();
+    const done = rig.life.todos.createTodo({ title: 'Post the letter' }, PHONE);
+    const open = rig.life.todos.createTodo({ title: 'Call the bank' }, PHONE);
+    const doneId = done.ok ? done.value.id : '';
+    const openId = open.ok ? open.value.id : '';
+    rig.life.todos.setDone(doneId, true, PHONE);
+    const { tools, turnId } = rig.turn();
+    expect(await tools.call('todo_done', { id: doneId })).toEqual({ isError: true, text: 'That todo is already done.' });
+    expect(await tools.call('todo_done', { id: openId, done: false })).toEqual({ isError: true, text: 'That todo is already open.' });
+    expect(rig.store.changes(turnId)).toEqual([]);
+    expect(await undo(rig, turnId, 0)).toMatchObject({ ok: false, code: 'not_found' });
+    const isDone = (id: string) => {
+      const r = rig!.life.todos.listTodos({ done: true });
+      return r.ok && r.value.todos.some((t) => t.id === id);
+    };
+    expect(isDone(doneId)).toBe(true);
+    expect(isDone(openId)).toBe(false);
+
+    // Chat reopens the done one: Undo makes it done again.
+    expect((await tools.call('todo_done', { id: doneId, done: false })).isError).toBe(false);
+    expect(isDone(doneId)).toBe(false);
+    expect(await undo(rig, turnId, 0)).toEqual({ ok: true, value: true });
+    expect(isDone(doneId)).toBe(true);
+
+    // Chat marks the open one done, the user reopens it by hand: Undo is refused (it is no longer Chat's).
+    expect((await tools.call('todo_done', { id: openId })).isError).toBe(false);
+    rig.life.todos.setDone(openId, false, PHONE);
+    expect(await undo(rig, turnId, 1)).toMatchObject({ ok: false, code: 'conflict', reason: "That changed after Chat's edit; change it back by hand." });
+    expect(isDone(openId)).toBe(false);
+  });
+
+  it("weight_set on a day past the newest 30 puts that day's own weight back; changed since is refused", async () => {
+    rig = await chatRig();
+    const days = Array.from({ length: 40 }, (_, n) => shiftDay(TODAY, -n));
+    for (const day of days) rig.life.food.setWeight(day, { kg: 70 }, PHONE);
+    const oldest = days.at(-1) as string;
+    const { tools, turnId } = rig.turn();
+    expect((await tools.call('weight_set', { day: oldest, kg: 72 })).isError).toBe(false);
+    expect(await undo(rig, turnId, 0)).toEqual({ ok: true, value: true });
+    expect(rig.life.food.weightOn(oldest)).toEqual({ ok: true, value: 70 });
+    // The same weight again changes nothing.
+    expect(await tools.call('weight_set', { day: oldest, kg: 70 })).toEqual({ isError: true, text: 'Nothing to change.' });
+    // A delete card for that old day names its weight.
+    const card = await tools.call('request_delete', { kind: 'weight', id: oldest });
+    expect(card.text).toContain(`Delete the weight of ${oldest} (70 kg)?`);
+    // Chat sets it, the user changes it: Undo leaves the user's.
+    expect((await tools.call('weight_set', { day: oldest, kg: 73 })).isError).toBe(false);
+    rig.life.food.setWeight(oldest, { kg: 74 }, PHONE);
+    expect(await undo(rig, turnId, 1)).toMatchObject({ ok: false, code: 'conflict' });
+    expect(rig.life.food.weightOn(oldest)).toEqual({ ok: true, value: 74 });
+  });
+
+  it('a budget, the targets, the goals and a dose the user changed since are not undone (409)', async () => {
+    rig = await chatRig();
+    const med = rig.life.medicines.create({ name: 'Placebin', times: ['08:00'], schedule: { freq: 'daily' } }, PHONE);
+    const medId = med.ok ? med.value.id : '';
+    const { tools, turnId } = rig.turn();
+    await tools.call('budget_set', { category: 'Food', amount: 500000 });
+    await tools.call('food_targets_set', { kcalTarget: 1800 });
+    await tools.call('post_goals_set', { goals: [{ platform: 'reddit', kind: 'comment', perWeek: 7 }] });
+    await tools.call('dose_log', { medId, day: TODAY, slot: '08:00', status: 'taken' });
+    expect(rig.store.changes(turnId)).toHaveLength(4);
+    rig.life.finance.setBudget({ category: 'Food', amount: 600000 }, PHONE);
+    rig.life.food.setTargets({ kcalTarget: 2000 }, PHONE);
+    rig.life.posts.setGoals({ goals: [{ platform: 'reddit', kind: 'comment', perWeek: 3 }] }, PHONE);
+    rig.life.medicines.logDose(medId, { day: TODAY, slot: '08:00', status: 'skipped' }, PHONE);
+    for (const n of [0, 1, 2, 3]) expect(await undo(rig, turnId, n), `change ${n}`).toMatchObject({ ok: false, code: 'conflict' });
+    const m = rig.life.finance.month();
+    expect(m.ok && m.value.byCategory.find((c) => c.category === 'Food')?.budget).toBe(600000);
+    const fd = rig.life.food.day(TODAY);
+    expect(fd.ok && fd.value.target).toBe(2000);
+    // Setting what is already there changes nothing.
+    expect(await tools.call('budget_set', { category: 'Food', amount: 600000 })).toEqual({ isError: true, text: 'Nothing to change.' });
+    expect(await tools.call('food_targets_set', { kcalTarget: 2000 })).toEqual({ isError: true, text: 'Nothing to change.' });
+  });
+
+  it("budget_set's change and audit row carry no category name", async () => {
+    rig = await chatRig();
+    const { tools, turnId } = rig.turn();
+    await tools.call('budget_set', { category: 'Synthetic Hobby', amount: 100000 });
+    expect(rig.store.changes(turnId)[0]?.ref).toBe('budget');
+    expect(JSON.stringify(rig.ctx.db.audit.list({}))).not.toContain('Synthetic Hobby');
+  });
+
+  it("a visit's Undo keeps the café tried when it has another visit by then; a café's add is not undone once it has visits", async () => {
+    rig = await chatRig();
+    const made = rig.life.places.create({ name: 'Sample Dosa House' }, PHONE);
+    const id = made.ok ? made.value.id : '';
+    const { tools, turnId } = rig.turn();
+    expect((await tools.call('visit_log', { placeId: id, stars: 4 })).isError).toBe(false);
+    rig.life.places.visitAdd(id, { day: TODAY, stars: 5 }, PHONE);
+    expect(await undo(rig, turnId, 0)).toEqual({ ok: true, value: true });
+    const p = rig.life.places.get(id);
+    expect(p.ok && p.value.place.tried).toBe(true);
+    expect(p.ok && p.value.visits).toHaveLength(1);
+
+    const added = idIn((await tools.call('place_add', { name: 'Example Café' })).text);
+    rig.life.places.visitAdd(added, { day: TODAY }, PHONE);
+    expect(await undo(rig, turnId, 1)).toMatchObject({ ok: false, code: 'conflict', reason: 'That café has visits now. Delete it in its own screen instead.' });
+    expect(rig.life.places.get(added).ok).toBe(true);
   });
 
   it('a dose logged over an existing one puts the first back; a new one is removed', async () => {

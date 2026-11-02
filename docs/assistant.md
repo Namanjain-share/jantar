@@ -66,9 +66,12 @@ become an expense, a menu a café's dishes, a whiteboard a todo list.
 
 Under Chat's answer is the list of what it did, from the Mac's own record
 (never from Claude's words): "Added", "Changed", "Logged", each with
-**Undo** for a day. Undo deletes what was added as it is now, and puts an
-edit back only while nothing changed it since ("That changed after
-Chat's edit; change it back by hand.").
+**Undo** for a day. Undo deletes what was added as it is now (not a café
+that has visits by then), and puts back what was there before (an edit, a
+todo marked done, a weight, a budget, a target, a dose) only while
+nothing changed it since ("That changed after Chat's edit; change it back
+by hand."). A call that would change nothing is refused, so the list
+never shows a change that did not happen.
 
 Some things wait for your tap, as a card:
 

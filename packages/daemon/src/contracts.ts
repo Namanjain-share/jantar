@@ -1701,6 +1701,8 @@ export interface FoodModule extends LifeModule {
   /** `day` on or before today; replaces that day's weight. */
   setWeight(day: string, body: WeightBody, actor: Actor): LifeResult;
   removeWeight(day: string, actor: Actor): LifeResult;
+  /** v0.10 (spec 0.10 B8, proposed): `day`'s own weight in kg, or null (Chat's Undo and its delete card; FoodDay lists only the newest 30). */
+  weightOn(day: string): LifeResult<number | null>;
   /** One headless claude run through rewrite/run.ts's shared runner; saves nothing. `signal` aborts when the request closes. */
   estimate(text: string, signal: AbortSignal, actor: Actor): Promise<LifeResult<FoodEstimate>>;
   /** Whether Ask Claude can run on this Mac (LifeStatus.estimate). */

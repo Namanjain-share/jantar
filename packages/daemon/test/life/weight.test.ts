@@ -84,6 +84,15 @@ describe('logging a weight', () => {
     expect(food.removeWeight(TODAY, PHONE)).toEqual({ ok: false, code: 'not_found', reason: WEIGHT_SENTENCES.none });
   });
 
+  it("v0.10: weightOn reads one day's own weight, however old; null for a day with none", () => {
+    const { core, food } = rig();
+    for (let i = 0; i < 40; i++) value(food.setWeight(ago(i), { kg: 70 + i / 10 }, PHONE));
+    expect(food.weightOn(ago(39))).toEqual({ ok: true, value: 73.9 });
+    expect(food.weightOn(ago(40))).toEqual({ ok: true, value: null });
+    expect(food.weightOn('2026-02-30')).toEqual({ ok: false, code: 'invalid_request', reason: FOOD_SENTENCES.noDay });
+    expect(core.changedCount).toBe(40);
+  });
+
   it(`caps the log at ${LIFE_LIMITS.weights}: a new day is refused, a logged day can still change`, () => {
     const { core, food } = rig();
     const db = core.db;
