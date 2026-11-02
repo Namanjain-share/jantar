@@ -28,7 +28,7 @@ import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { CtlUnavailableError, callDaemon } from '../ctl.js';
 import { readSettingsFile } from '../lib/settings.js';
 import { changeSettings, onOff, parseOnOff } from '../lib/switches.js';
-import { ago, plural } from '../lib/text.js';
+import { ago, clean, plural } from '../lib/text.js';
 
 const FLAGS = {
   yes: { type: 'boolean', short: 'y', help: 'restore: do not ask first' },
@@ -103,7 +103,9 @@ async function status(ctx: CliContext): Promise<number> {
     return EXIT.ok;
   }
   const state = st.broken ? `broken: ${st.broken}` : st.open ? 'open' : 'closed (no module is on)';
-  ctx.io.out(`Life data: ${state}\n${modulesLine(st.modules)}`);
+  // v0.10: the schema while life.db is open (a 0.9 daemon does not say).
+  const schema = st.schema !== undefined ? ` (life.db schema ${st.schema})` : '';
+  ctx.io.out(`Life data: ${state}${schema}\n${modulesLine(st.modules)}`);
   ctx.io.out(settingsLines(`${st.timezone} (today is ${st.today})`, st));
   ctx.io.out(pushLine(st.push));
   if (st.modules.food) ctx.io.out(`Ask Claude (calories): ${st.estimate.available ? 'available' : `not available${st.estimate.reason ? `: ${st.estimate.reason}` : ''}`}\n`);
@@ -112,6 +114,8 @@ async function status(ctx: CliContext): Promise<number> {
       ? `Backups: none yet in ${ctx.paths.backupsDir} (nightly at 03:30; now: jantar life backup)\n`
       : `Backups: ${st.backups.count} in ${ctx.paths.backupsDir}, the newest ${ago(st.backups.last, ctx.deps.now())}\n`,
   );
+  // v0.10: the copy the daemon kept before life.db moved to a newer schema (the way back to the version before).
+  if (st.preUpgrade) ctx.io.out(`Pre-upgrade copy: ${clean(st.preUpgrade)}\n`);
   return EXIT.ok;
 }
 

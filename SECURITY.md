@@ -1512,6 +1512,12 @@ looping session from scheduling hundreds of separate pushes. Adds from
 the phone, and Ask's cards, never count against it; every write counts
 against Life's 240 a minute.
 
+From v0.10 such a process can also **read** your cafés over the control
+socket, as it can read posts: `jantar place list` and `jantar place show`
+answer every café with its ratings, tags, dishes, notes and visits. It can
+never write one: adding, changing, deleting a café and logging, changing
+or deleting a visit are not on the control socket (404).
+
 ### What stays in life.db
 
 - The title, the text and the notes are never in a push, a log line, an

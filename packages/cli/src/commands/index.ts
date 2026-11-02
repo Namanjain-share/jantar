@@ -5,6 +5,7 @@
  * (v0.5.3: the alert switches and the MCP server after it) and kept
  * accounts, v0.5's Meetings, v0.5.3's Ask, v0.6's Fleet (fleet, node), then
  * setup. v0.7's post sits right after life: Posts are a Life module.
+ * v0.10's place (read cafés) follows post.
  */
 import type { Command } from '../command.js';
 import accounts from './accounts.js';
@@ -29,6 +30,7 @@ import notify from './notify.js';
 import node from './node.js';
 import open from './open.js';
 import pair from './pair.js';
+import place from './place.js';
 import post from './post.js';
 import remote from './remote.js';
 import rewrite from './rewrite.js';
@@ -55,6 +57,8 @@ export const COMMANDS: readonly Command[] = [
   life,
   // v0.7 (a Life module's own command, after life)
   post,
+  // v0.10 (cafés, read only)
+  place,
   intel,
   // v0.5.3
   notify,

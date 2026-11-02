@@ -55,7 +55,7 @@ Each of these is a Mac-only setting: a phone can never change it.
 
 | Command | What it does |
 |---|---|
-| `jantar life status` | modules, zone, currency, who gets medicine pings, backups |
+| `jantar life status` | modules, zone, currency, who gets medicine pings, backups, life.db's schema and the pre-upgrade copy |
 | `jantar life on \| off <module...> \| all` | `todos`, `medicines`, `food`, `places`, `finance`, `posts` ([Life](life.md)) |
 | `jantar life set timezone <IANA> \| none` | the zone days and ping times follow (none: the Mac's) |
 | `jantar life set currency <XXX> \| none` | a label for amounts |
@@ -64,6 +64,8 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar post add --platform <p> [--where W] [--kind K] [--at "YYYY-MM-DD HH:MM"] [--title T] [--text-file F \| --text T] [--notes N] [--link URL] [--status idea\|ready]` | add a post to make; with a time it rings on the phone; at most 30 an hour from the Mac ([Posts](life.md#posts)) |
 | `jantar post log '<link>' [--text T \| --text-file F] [--where W]` | log a comment you made; it counts as posted now; quote the link |
 | `jantar post list [--done] [--json]` | this week against the goals, then the posts to make (`--done`: posted and skipped, with their links) |
+| `jantar place list [--tried \| --want] [--sort best\|recent\|visits\|name\|price\|work] [--tag T]... [--area A] [--q TEXT] [--json]` | your cafés, one line each: name, stars, price, area, last visit, tags; read only ([Cafés](life.md#the-modules)) |
+| `jantar place show <id> [--json]` | one café: its ratings, tags, dishes, the newest 10 visits and notes |
 | `jantar intel on \| off \| sources` | the shelf and the files it follows ([Intel](intel.md)) |
 | `jantar intel source add <file.jsonl>` / `source rm <id>` | follow a file, or stop |
 | `jantar intel add "<title>" [--url U] [--type T] [--tag T]... [--note N]` | put an item on the shelf |

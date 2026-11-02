@@ -62,6 +62,22 @@ describe('jantar life status', () => {
     expect(out).toContain('Medicine pings: 1 device with notifications on');
     expect(out).toContain('Backups: 3 in /synthetic/state/backups, the newest 3h ago');
     expect(out).not.toContain('Ask Claude');
+    // A 0.9 daemon names no schema and no pre-upgrade copy.
+    expect(out).not.toContain('schema');
+    expect(out).not.toContain('Pre-upgrade copy');
+  });
+
+  it('v0.10: names life.db\'s schema and the pre-upgrade copy the daemon kept', async () => {
+    const { ctl } = daemon({}, status({ schema: 3, preUpgrade: 'life-pre-0.10.0.db' }));
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await life.run(['status'], c.ctx)).toBe(EXIT.ok);
+    expect(c.io.stdout).toContain('Life data: open (life.db schema 3)\n');
+    expect(c.io.stdout).toContain('Pre-upgrade copy: life-pre-0.10.0.db\n');
+    const fresh = daemon({}, status({ schema: 3 }));
+    const d = contextFor({ env: ENV }, { ctl: fresh.ctl });
+    await life.run(['status'], d.ctx);
+    expect(d.io.stdout).toContain('life.db schema 3');
+    expect(d.io.stdout).not.toContain('Pre-upgrade copy');
   });
 
   it('says when no device gets medicine pings, when Web Push is off, when broken, and what Ask Claude says', async () => {
