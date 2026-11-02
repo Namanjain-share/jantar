@@ -133,7 +133,7 @@ describe('G16: nothing resumes after a restart', () => {
     await e.ctx.settings.patch({ intel: { read: false } });
     await until(() => e.intel.queue.counts().running === 0, 6_000, 'the running job to stop');
     // The queue empties a moment before each item's failed line is written: wait for the lines, not the queue.
-    await until(() => { const now = e.items(); return ids.every((id) => now.get(id)?.read?.state === 'failed'); }, 6_000, 'every item marked failed');
+    await until(() => { const now = e.items(); return ids.every((id) => (now.get(id)?.read as { state?: string } | undefined)?.state === 'failed'); }, 6_000, 'every item marked failed');
     const items = e.items();
     for (const id of ids) expect(items.get(id)?.read).toMatchObject({ state: 'failed', reason: INTEL_READ_REASONS.stopped });
     expect(started.n).toBe(1);
