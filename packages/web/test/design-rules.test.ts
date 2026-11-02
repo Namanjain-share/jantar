@@ -128,6 +128,29 @@ describe('design rules (direction.md 7)', () => {
     expect(offenders(/\bease-in\b(?!-)/)).toEqual([]);
   });
 
+  it('0.11: the desk type step needs a fine pointer, and pane sizes are tokens', () => {
+    const tokens = code.find((f) => f.path === 'styles/tokens.css')?.text ?? '';
+    // A touch screen keeps the phone's type at every width; the Mac's step starts at 768 as before.
+    expect(tokens).toMatch(/@media \(min-width: 768px\) and \(pointer: fine\) \{\s*:root \{\s*--fs-display: 22px;/);
+    expect(tokens).not.toMatch(/@media \(min-width: 768px\) \{/);
+    expect(tokens).toMatch(/--fs-read: 16px;\s*--lh-read: 25px;/);
+    expect(tokens).toMatch(/--fs-read: 15px;\s*--lh-read: 24px;/);
+    expect(tokens).toMatch(/@utility type-read \{/);
+    const containers = [...tokens.matchAll(/--container-([a-z]+): (\d+)px;/g)].map((m) => [m[1], Number(m[2])]);
+    expect(containers).toEqual([
+      ['sm', 480],
+      ['md', 640],
+      ['two', 760],
+      ['split', 800],
+      ['wide', 900],
+      ['props', 940],
+      ['lg', 960],
+      ['xl', 1180],
+    ]);
+    for (const v of ['--rail-desk-w: 56px', '--rail-w: 72px', '--sidebar-w: 220px', '--list-w: 340px', '--list-w-xl: 440px', '--history-w: 300px', '--side-w: 320px', '--chat-dock-w: 360px', '--sheet-w: 540px', '--popover-w: 320px', '--palette-w: 600px', '--pane-header-h: 56px'])
+      expect(tokens).toContain(v);
+  });
+
   it('24. ships no em dashes', () => {
     expect(offenders(/—/)).toEqual([]);
   });

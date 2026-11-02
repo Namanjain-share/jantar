@@ -160,9 +160,15 @@
 }
 
 /* ========================= type scale =========================
- * Phone values by default; desktop from 768px (the phone frame ends there).
+ * Phone values by default; desktop from 768px with a fine pointer (the Mac's
+ * phone frame ends there). A touch screen keeps the phone's sizes at every
+ * width (0.11: an iPad is read at arm's length, like a phone).
  * Exactly these sizes: 11, 12, 14, 15, 16, 17, 28 on phone, plus 11.5, 12.5,
  * 13 and 22 on desktop (direction.md 5.0 and dir-k.html).
+ *
+ * --fs-read (0.11, type-read): long reading text (transcript prose, Chat's
+ * replies, the Intel reader, meeting transcripts, a post's text), 16 / 25 on
+ * touch and 15 / 24 on the Mac.
  */
 :root {
   --fs-display: 28px;
@@ -185,8 +191,10 @@
   --lh-input: 22px;
   --fs-word: 15px;
   --lh-word: 20px;
+  --fs-read: 16px;
+  --lh-read: 25px;
 }
-@media (min-width: 768px) {
+@media (min-width: 768px) and (pointer: fine) {
   :root {
     --fs-display: 22px;
     --lh-display: 28px;
@@ -200,7 +208,28 @@
     --lh-mono: 16px;
     --fs-code: 12.5px;
     --lh-code: 20px;
+    --fs-read: 15px;
+    --lh-read: 24px;
   }
+}
+
+/* ========================= pane geometry =========================
+ * 0.11: the widths the shell and the panes are built from (build plan 1.3,
+ * 1.4). Plain variables, read by kit.css's grids and by arbitrary values.
+ */
+:root {
+  --rail-desk-w: 56px; /* the Mac's rail */
+  --rail-w: 72px; /* the touch rail, with labels */
+  --sidebar-w: 220px; /* the touch sidebar */
+  --list-w: 340px; /* a list column beside its detail */
+  --list-w-xl: 440px; /* the same, in a split container of 1180 or more */
+  --history-w: 300px; /* Chat's days */
+  --side-w: 320px; /* Chat's third column */
+  --chat-dock-w: 360px; /* Chat beside any screen */
+  --sheet-w: 540px; /* a form sheet */
+  --popover-w: 320px; /* a popover for one value */
+  --palette-w: 600px; /* the Cmd-K palette */
+  --pane-header-h: 56px; /* a pane's header row */
 }
 
 /* ========================= Tailwind theme =========================
@@ -219,6 +248,18 @@
   --breakpoint-lg: 1024px; /* ledger column 360 + detail pane */
   --breakpoint-xl: 1280px; /* ledger column 440 */
   --breakpoint-2xl: 1360px; /* session property column */
+
+  /* 0.11: pane sizes for container queries (@md:, @split:, @wide:, ...), on
+     @container elements; named here because the theme is wiped. Tailwind
+     also reads them for max-w-<name> and w-<name>, which nothing uses. */
+  --container-sm: 480px; /* the session header goes two rows below */
+  --container-md: 640px; /* lists become grids or tables */
+  --container-two: 760px; /* two inner columns */
+  --container-split: 800px; /* list and detail side by side */
+  --container-wide: 900px; /* a side column beside the content */
+  --container-props: 940px; /* the session's property column */
+  --container-lg: 960px; /* Accounts' 7-day column */
+  --container-xl: 1180px; /* a 440 list column; Chat's third column */
 
   --font-sans: 'Archivo Variable', 'Archivo Fallback', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -372,6 +413,8 @@
   --text-rail--line-height: var(--lh-rail);
   --text-input: var(--fs-input);
   --text-input--line-height: var(--lh-input);
+  --text-read: var(--fs-read);
+  --text-read--line-height: var(--lh-read);
 }
 
 /* ========================= type styles =========================
@@ -460,6 +503,14 @@
   font-weight: 500;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
+}
+/* 0.11: long reading text; 16 / 25 on touch, 15 / 24 on the Mac. */
+@utility type-read {
+  font-family: var(--font-sans);
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
+  font-weight: 420;
+  letter-spacing: -0.006em;
 }
 @utility type-input {
   font-family: var(--font-sans);

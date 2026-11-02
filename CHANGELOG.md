@@ -5,6 +5,8 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## 0.12.0 (unreleased)
 
+- On a touch screen 768 px and wider (an iPad), text keeps the phone's
+  sizes instead of the Mac's smaller ones. The Mac is unchanged.
 - Accounts, Alerts and Devices load the first time you open one, as Files
   and Life do, which keeps the app's first load small.
 
