@@ -29,6 +29,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AskCard, AskList, AskTurn, IntelItem, IntelJob, IntelJobsResponse, IntelListItem, IntelListResponse, LifeStatus } from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
+import { OPEN } from '../src/ui/screens/intel/AddPostSheet.js';
 import { DEPTH_LINE, READ_COPY, bylineOf, httpsHref, jobName, stateWord, stripJobs } from '../src/ui/screens/intel/model.js';
 import { NOW, emit, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
@@ -156,8 +157,8 @@ describe('the model', () => {
     expect(stateWord('fetching')).toBe('Opening the page');
     expect(DEPTH_LINE).toEqual({
       light: 'The page, caption and a summary',
-      standard: 'Also looks at frames and the text on screen',
-      full: 'Also listens, and reads links in your note',
+      standard: 'Light, plus frames and the text on screen',
+      full: 'Standard, plus what is said and links in your note',
     });
   });
 
@@ -198,12 +199,12 @@ describe('Add post', () => {
     expect(within(sheet).getByText('A reel, video, post, article, PDF or any link, or just text.')).toBeTruthy();
     expect(box(sheet).maxLength).toBe(4000);
     expect(depth(sheet, 'Standard').getAttribute('aria-pressed')).toBe('true');
-    expect(within(sheet).getByText('Also looks at frames and the text on screen')).toBeTruthy();
+    expect(within(sheet).getByText('Light, plus frames and the text on screen')).toBeTruthy();
     const save = within(sheet).getByRole('button', { name: 'Save' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.change(box(sheet), { target: { value: '  https://www.example.com/reel/AbC123xyz/ the second one  ' } });
     fireEvent.click(depth(sheet, 'Full'));
-    expect(within(sheet).getByText('Also listens, and reads links in your note')).toBeTruthy();
+    expect(within(sheet).getByText('Standard, plus what is said and links in your note')).toBeTruthy();
     const lists = fn(api.intelList).mock.calls.length;
     const jobs = fn(api.intelJobs).mock.calls.length;
     fireEvent.click(save);
@@ -253,7 +254,11 @@ describe('Add post', () => {
     fireEvent.change(box(sheet), { target: { value: 'https://www.example.com/reel/AbC123xyz/' } });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     expect(await within(sheet).findByText('Already saved.')).toBeTruthy();
-    expect(within(sheet).getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(`/intel?item=${encodeURIComponent(RID)}`);
+    const open = within(sheet).getByRole('link', { name: 'Open' });
+    expect(open.getAttribute('href')).toBe(`/intel?item=${encodeURIComponent(RID)}`);
+    // A text button like Read again: 44 px under a coarse pointer.
+    expect(open.className).toBe(OPEN);
+    expect(OPEN).toContain('coarse:min-h-44');
     fireEvent.click(depth(sheet, 'Full'));
     fireEvent.click(within(sheet).getByRole('button', { name: 'Read again as Full' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add post' })).toBeNull());
@@ -315,8 +320,11 @@ describe('the Reading strip', () => {
       'Downloading · Standard',
       'Saved · Standard',
     ]);
-    expect(within(rows[0]!).getByRole('link', { name: 'Instagram reel' }).getAttribute('href')).toBe(`/intel?item=${encodeURIComponent(jobs[0]!.id)}`);
-    expect(within(rows[1]!).getByRole('link').textContent).toBe('www.example.com');
+    // The title and its state line are one link (one 44 px+ target).
+    const first = within(rows[0]!).getByRole('link', { name: /^Instagram reel/ });
+    expect(first.getAttribute('href')).toBe(`/intel?item=${encodeURIComponent(jobs[0]!.id)}`);
+    expect(first.textContent).toContain('Opening in Chrome · Standard');
+    expect(within(rows[1]!).getByRole('link').firstElementChild?.textContent).toBe('www.example.com');
     // The rail counts them; the list follows under it.
     expect(within(s).getByRole('heading', { name: /Reading/ }).textContent).toBe('Reading8');
     expect(within(s).queryByRole('button')).toBeNull();

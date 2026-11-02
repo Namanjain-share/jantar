@@ -215,7 +215,7 @@ describe.skipIf(!ready)('v0.8 Intel reading links in Chromium at 390 px: the Rea
     await sheet.getByText('A reel, video, post, article, PDF or any link, or just text.').waitFor();
     await sheet.getByLabel('Link or text').fill('https://www.example.com/reel/Qw3rTy12345/ the paneer one');
     await sheet.getByRole('group', { name: 'Depth' }).getByRole('button', { name: 'Full' }).click();
-    await sheet.getByText('Also listens, and reads links in your note').waitFor();
+    await sheet.getByText('Standard, plus what is said and links in your note').waitFor();
     expect(await overflow(page), 'the sheet').toEqual([]);
     await sheet.getByRole('button', { name: 'Save' }).click();
     await sheet.waitFor({ state: 'hidden' });

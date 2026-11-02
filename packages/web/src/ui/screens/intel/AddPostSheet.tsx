@@ -13,7 +13,7 @@
 import { useId, useState, type FormEvent } from 'react';
 import { INTEL_DEPTH_DEFAULT, INTEL_READ_LIMITS, type IntelDepth, type IntelReadReply } from '@jantar/protocol';
 import { useDeps } from '../../context.js';
-import { Button } from '../../kit/Button.js';
+import { Button, buttonClass } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { Link } from '../../shell/Link.js';
@@ -27,6 +27,8 @@ const TEXTAREA =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink';
 /** A quiet text button (Ask's "What's sent"): 44 px tall under a coarse pointer. */
 const LINK = 'rounded-chip type-small font-medium text-ink-2 transition-colors duration-120 ease-hover hover:text-ink coarse:min-h-44 coarse:px-8';
+/** Open, after "Already saved.": a text button like Read again beside it (44 px under a coarse pointer), not a 19 px inline link. */
+export const OPEN = buttonClass('text', 'sm');
 
 export function AddPostSheet({
   open,
@@ -138,7 +140,7 @@ export function AddPostSheet({
         {already ? (
           <div role="status" className="mt-12 flex flex-wrap items-center gap-x-8 gap-y-4 type-small text-ink">
             <span>{READ_COPY.already}</span>
-            <Link href={shelfPath({}, already.id)} onClick={close} className="text-ink underline underline-offset-2">
+            <Link href={shelfPath({}, already.id)} onClick={close} className={OPEN}>
               Open
             </Link>
             <Button variant="text" size="sm" disabled={again.busy || offline} onClick={() => void readAgain()}>

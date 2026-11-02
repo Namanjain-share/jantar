@@ -5,8 +5,8 @@
  * link's host) opening the item, then its state word and depth in mono.
  *
  *   READING 2
- *   Instagram reel                                 a row opens the item
- *   ▪ Looking at frames · Standard                 the one read running
+ *   Instagram reel                                 the title and state line
+ *   ▪ Looking at frames · Standard                 open the item (one target)
  *   www.example.com/article
  *   Couldn't read · Light
  *   The page took too long to answer.              the Mac's fixed sentence
@@ -39,19 +39,24 @@ function JobRow({ job, filters, blocked, onChanged }: { job: IntelJob; filters: 
     setPicking(false);
     onChanged();
   };
+  const failed = job.state === 'failed';
   return (
-    <li data-job={job.id} data-state={job.state} className="border-b border-line px-16 py-10">
-      <Link href={shelfPath(filters, job.id)} className="block truncate type-row font-medium text-ink hover:underline hover:underline-offset-2">
-        {jobName(job)}
+    <li data-job={job.id} data-state={job.state} className="border-b border-line">
+      {/* The title and the state line are one target (about 59 px), as a shelf row is; Retry and Change depth stay outside it. */}
+      <Link
+        href={shelfPath(filters, job.id)}
+        className={`block px-16 pt-10 ${failed ? 'pb-2' : 'pb-10'} transition-colors duration-120 ease-hover hover:bg-hover focus-visible:-outline-offset-2 coarse:min-h-44`}
+      >
+        <span className="block truncate type-row font-medium text-ink">{jobName(job)}</span>
+        <p className="mt-2 flex items-center gap-8 type-mono text-ink-3">
+          {running ? <Spinner label={READ_COPY.reading} /> : null}
+          <span className="min-w-0 truncate">
+            {stateWord(job.state, job.tier)} · {DEPTH_LABEL[job.depth]}
+          </span>
+        </p>
       </Link>
-      <p className="mt-2 flex items-center gap-8 type-mono text-ink-3">
-        {running ? <Spinner label={READ_COPY.reading} /> : null}
-        <span className="min-w-0 truncate">
-          {stateWord(job.state, job.tier)} · {DEPTH_LABEL[job.depth]}
-        </span>
-      </p>
-      {job.state === 'failed' ? (
-        <>
+      {failed ? (
+        <div className="px-16 pb-10">
           {job.reason ? <p className="mt-2 break-words type-small text-ink-2">{job.reason}</p> : null}
           {picking ? (
             <ReadAt initial={job.depth} busy={w.busy} disabled={blocked} onRead={(d) => void read(d)} onCancel={() => setPicking(false)} />
@@ -67,7 +72,7 @@ function JobRow({ job, filters, blocked, onChanged }: { job: IntelJob; filters: 
             </div>
           )}
           {w.error ? <NotSaved error={w.error} /> : null}
-        </>
+        </div>
       ) : null}
     </li>
   );

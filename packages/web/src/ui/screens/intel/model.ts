@@ -173,8 +173,8 @@ export const DEPTH_LABEL: Readonly<Record<IntelDepth, string>> = { light: 'Light
 /** What each depth does, in one line (under the depth control). */
 export const DEPTH_LINE: Readonly<Record<IntelDepth, string>> = {
   light: 'The page, caption and a summary',
-  standard: 'Also looks at frames and the text on screen',
-  full: 'Also listens, and reads links in your note',
+  standard: 'Light, plus frames and the text on screen',
+  full: 'Standard, plus what is said and links in your note',
 };
 
 export const PLATFORM_LABEL: Readonly<Record<IntelPlatform, string>> = {
