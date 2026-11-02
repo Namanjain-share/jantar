@@ -5,6 +5,7 @@
  */
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { keyboardStore, setKeyboard } from '../src/lib/input.js';
 import { QUERIES, chromeFor, createLayoutStore, frameOf, layoutAt, sizeFor, useLayout, type Chrome, type Size } from '../src/ui/shell/layout.js';
 import { renderApp, session, stateWith } from './helpers.js';
 
@@ -99,6 +100,25 @@ describe('the provider', () => {
     expect(screen.queryByRole('region', { name: 'Ledger' })).toBeNull();
     act(() => layout.setState(layoutAt(1100), true));
     expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
+  });
+
+  it('0.11 c05: a coarse pointer has a keyboard once lib/input.ts has seen one; a fine pointer from the start', () => {
+    keyboardStore.setState({ keyboard: false });
+    function Probe() {
+      const l = useLayout();
+      return <p>{`keyboard ${l.keyboard}`}</p>;
+    }
+    stubWindow(1180, true);
+    const a = render(<Probe />);
+    expect(screen.getByText('keyboard false')).toBeTruthy();
+    act(() => setKeyboard(true));
+    expect(screen.getByText('keyboard true')).toBeTruthy();
+    act(() => setKeyboard(false));
+    expect(screen.getByText('keyboard false')).toBeTruthy();
+    a.unmount();
+    stubWindow(1440);
+    render(<Probe />);
+    expect(screen.getByText('keyboard true')).toBeTruthy();
   });
 
   it('a screen rendered on its own follows the window by itself', () => {

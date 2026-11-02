@@ -4,6 +4,7 @@ import './styles/index.css';
 import { App } from './App.js';
 import { createApi } from './lib/api.js';
 import { createConnection } from './lib/connection.js';
+import { watchInput } from './lib/input.js';
 import { listenForInstallPrompt, registerServiceWorker } from './lib/pwa.js';
 import { browserHistory, createRouter } from './lib/router.js';
 import { applyTheme, themeStore } from './lib/theme.js';
@@ -12,6 +13,8 @@ import { createToastStore } from './ui/context.js';
 import { wireStateCache } from './ui/screens/board/cache.js';
 
 applyTheme(themeStore.getState().pref);
+// 0.11: the last pointer (data-input, for hover) and whether a hardware keyboard has been seen.
+watchInput();
 
 const store = createAppStore();
 // Paint the last known state at once, whichever screen opens first (a push opens a session).

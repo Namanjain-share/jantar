@@ -10,7 +10,8 @@
  *             phone below 768 and desk from 768, as before; a coarse pointer
  *             gets the same until the touch shell exists, then the phone below
  *             640 and touch from 640.
- *   keyboard  a hardware keyboard has been seen (a fine pointer: from the start)
+ *   keyboard  a hardware keyboard has been seen: a fine pointer from the start,
+ *             a coarse one once lib/input.ts has seen it
  *   kbUp      the on-screen keyboard is up
  *
  * Panes are laid out by their own width (container queries), with either
@@ -33,6 +34,7 @@
 import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { keyboardStore } from '../../lib/input.js';
 
 export type Size = 'compact' | 'medium' | 'regular';
 export type Chrome = 'phone' | 'touch' | 'desk';
@@ -116,7 +118,8 @@ const hasMedia = () => typeof window !== 'undefined' && typeof window.matchMedia
 /** The window's breakpoint, read from the queries: the layout of the narrowest width that matches them. */
 function fromQueries(matches: (q: string) => boolean): Layout {
   const width = matches(QUERIES.wide) ? 1280 : matches(QUERIES.regular) ? 1024 : matches(QUERIES.desk) ? 768 : matches(QUERIES.medium) ? 640 : 0;
-  return layoutAt(width, { coarse: matches(QUERIES.coarse) });
+  const coarse = matches(QUERIES.coarse);
+  return layoutAt(width, { coarse, keyboard: !coarse || keyboardStore.getState().keyboard });
 }
 
 function readWindow(): Layout {
@@ -127,7 +130,7 @@ function same(a: Layout, b: Layout): boolean {
   return a.size === b.size && a.coarse === b.coarse && a.chrome === b.chrome && a.keyboard === b.keyboard && a.kbUp === b.kbUp && a.wide === b.wide;
 }
 
-/** Keeps `store` in step with the window: one change listener per query, until the returned function runs. */
+/** Keeps `store` in step with the window (one change listener per query) and the keyboard flag, until the returned function runs. */
 function follow(store: LayoutStore): () => void {
   if (!hasMedia()) return () => undefined;
   const lists = new Map<string, MediaQueryList>(Object.values(QUERIES).map((q) => [q, window.matchMedia(q)]));
@@ -136,10 +139,12 @@ function follow(store: LayoutStore): () => void {
     if (!same(store.getState(), next)) store.setState(next, true);
   };
   for (const l of lists.values()) l.addEventListener?.('change', update);
+  const stopKeyboard = keyboardStore.subscribe(update);
   // The window may have changed between the first render and now.
   update();
   return () => {
     for (const l of lists.values()) l.removeEventListener?.('change', update);
+    stopKeyboard();
   };
 }
 

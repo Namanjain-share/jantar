@@ -124,4 +124,18 @@ describe('production build', () => {
       expect(text).not.toMatch(/@import\s+url\(["']?https?:/);
     }
   }, 60_000);
+
+  it('0.11: hover follows (hover: hover) and the last pointer, and the desk type step needs a fine pointer', () => {
+    // The build above, read again (the tests in a file run in order).
+    const assets = readdirSync(join(out, 'assets'));
+    const css = readFileSync(join(out, 'assets', assets.find((f) => f.endsWith('.css'))!), 'utf8');
+    // Both forms of every hover: (hover: hover), and an iPad's trackpad, which reports hover: none (lib/input.ts).
+    expect(css).toMatch(/@media \(hover:\s*hover\)\s*\{\s*\.hover\\:bg-hover:hover\s*\{/);
+    expect(css).toMatch(/\[data-input=["']?mouse["']?\] \.hover\\:bg-hover:hover\s*\{/);
+    // group-hover compounds with both too.
+    expect(css).toMatch(/\.group-hover\\:underline:is\(:where\(\.group\):hover \*\)/);
+    expect(css).toMatch(/\.group-hover\\:underline:is\(\[data-input=["']?mouse["']?\] :where\(\.group\):hover \*\)/);
+    // tokens.css: the Mac's type step, never a touch screen's.
+    expect(css).toMatch(/@media \((?:min-width:\s*768px|width\s*>=\s*768px)\) and \(pointer:\s*fine\)/);
+  });
 });

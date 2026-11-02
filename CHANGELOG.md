@@ -5,6 +5,9 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## 0.12.0 (unreleased)
 
+- On an iPad with a trackpad or a mouse, rows and buttons show their hover
+  tint, as on a Mac (iPadOS says it can't hover, so Jantar now watches the
+  pointer itself).
 - On a touch screen 768 px and wider (an iPad), text keeps the phone's
   sizes instead of the Mac's smaller ones. The Mac is unchanged.
 - Accounts, Alerts and Devices load the first time you open one, as Files
