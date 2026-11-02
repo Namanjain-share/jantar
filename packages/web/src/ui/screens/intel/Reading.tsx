@@ -15,6 +15,7 @@
  * A saved read stays an hour, then the list holds it. When reads can't run
  * now (the Mac runs read-only) the Mac's sentence says so under the rail.
  * All of it is text: a title is never a link of its own, never Markdown.
+ * 0.11: across a wide pane the jobs are cards in a row, as the shelf.
  */
 import { useState } from 'react';
 import type { IntelDepth, IntelJob, IntelJobsResponse } from '@jantar/protocol';
@@ -80,12 +81,15 @@ function JobRow({ job, filters, blocked, onChanged }: { job: IntelJob; filters: 
 
 export function Reading({
   data,
+  grid = false,
   now,
   filters,
   offline,
   onChanged,
 }: {
   data: IntelJobsResponse;
+  /** 0.11: cards in a row across a wide pane, as the shelf's grid. */
+  grid?: boolean;
   now: number;
   filters: ShelfFilters;
   offline: boolean;
@@ -101,7 +105,7 @@ export function Reading({
         {READ_COPY.reading}
       </RailLabel>
       {why ? <p className="border-b border-line px-16 py-8 type-small text-ink-2">{why}</p> : null}
-      <ul>
+      <ul className={grid ? 'grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-12 px-16 pb-4 pt-12 [&>li]:overflow-hidden [&>li]:rounded-dock [&>li]:border [&>li]:bg-raised' : undefined}>
         {jobs.map((j) => (
           <JobRow key={j.id} job={j} filters={filters} blocked={offline || !data.reading.canRun} onChanged={onChanged} />
         ))}

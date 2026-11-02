@@ -15,7 +15,6 @@
  */
 import type { Alert } from '@jantar/protocol';
 import clsx from 'clsx';
-import { useLayoutEffect, useRef } from 'react';
 import { useNavigate } from '../../context.js';
 import { StatusGlyph } from '../../kit/StatusGlyph.js';
 import { Link } from '../../shell/Link.js';
@@ -92,15 +91,10 @@ export function AlertRowTable({ alert: a, subject, sentence, action, unseen, hre
   );
 }
 
-/** 0.11, the list beside an open alert: two lines, the open one ticked; a row opens its alert. */
+/** 0.11, the list beside an open alert: two lines, the open one ticked (the SplitPane keeps it in view); a row opens its alert. */
 export function AlertRowPick({ alert: a, subject, sentence, unseen, href, selected }: AlertRowProps & { href: string; selected: boolean }) {
-  const ref = useRef<HTMLLIElement>(null);
-  // Opened from the table, the list column comes in where the alert's row is.
-  useLayoutEffect(() => {
-    if (selected) ref.current?.scrollIntoView({ block: 'nearest' });
-  }, [selected]);
   return (
-    <li ref={ref} className="border-b border-line" data-alert={a.id} data-unseen={unseen ? 'true' : undefined}>
+    <li className="border-b border-line" data-alert={a.id} data-unseen={unseen ? 'true' : undefined}>
       <Link
         href={href}
         aria-current={selected ? 'true' : undefined}

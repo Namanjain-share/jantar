@@ -16,6 +16,7 @@ import type { IntelItem, IntelListItem, IntelListResponse, IntelSource } from '@
 import { ApiError, type Api } from '../src/lib/api.js';
 import { FieldValue } from '../src/ui/screens/intel/ItemPage.js';
 import { ADD_SOURCE_COMMAND, hasFilters, httpHref, itemsWord, marks, matchesWord, shelfDate, shelfPath, shelfTime, tagsFrom, termsOf } from '../src/ui/screens/intel/model.js';
+import { layoutAt } from '../src/ui/shell/layout.js';
 import { emit, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('intel');
@@ -134,6 +135,41 @@ describe('the model', () => {
     // "İ" lowercases to two characters: the offsets would drift, so nothing is marked.
     expect(marks('İstanbul guide', ['guide'])).toEqual([{ text: 'İstanbul guide', hit: false }]);
     for (const [text, q] of [['Claude Code hooks', 'o'], ['a<b>c</b>', 'b'], ['x', '']] as const) expect(joined(text, termsOf(q))).toBe(text);
+  });
+});
+
+describe('0.11: a wide pane', () => {
+  // A 1440 window: the Mac's chrome, and the shelf's SplitPane splits (jsdom has no layout: it follows the window).
+  const wide = (path: string, api: Api) => renderApp({ path, state: ON, api, layout: layoutAt(1440) });
+
+  it('lays the shelf out as cards with nothing open, and keeps rows on a phone', async () => {
+    const a = wide('/intel', shelfApi());
+    const grid = await screen.findByRole('list', { name: 'Items' });
+    expect(within(grid).getAllByRole('link').map((l) => l.getAttribute('href'))).toEqual(['/intel?item=intel%3Aex-2', '/intel?item=intel%3Aex-1']);
+    // Each card: the title, where it is from, what it is, its tags.
+    const card = within(grid).getAllByRole('listitem')[0]!;
+    expect(within(card).getByText('tool · intel · 12 Jan')).toBeTruthy();
+    expect(within(card).getByText('example')).toBeTruthy();
+    a.unmount();
+    open('/intel', shelfApi());
+    await screen.findByText('Example tool 2');
+    expect(screen.queryByRole('list', { name: 'Items' })).toBeNull();
+  });
+
+  it('opens an item beside the list, its row current; Close goes back to the same view', async () => {
+    const api = shelfApi({ intelGet: vi.fn(async () => ({ item: item() })) });
+    const { router } = wide('/intel?type=tool', api);
+    fireEvent.click(within(await screen.findByRole('list', { name: 'Items' })).getByRole('link', { name: /Example tool 1/ }));
+    expect(router.getState().route).toEqual({ name: 'intel', type: 'tool', item: 'intel:ex-1' });
+    const reader = await screen.findByRole('region', { name: 'Item' });
+    expect(await within(reader).findByRole('heading', { name: 'Example tool 1' })).toBeTruthy();
+    // The list beside it: rows, the open one current.
+    const shelf = screen.getByRole('region', { name: 'Shelf' });
+    await waitFor(() => expect(within(shelf).getByRole('link', { name: /Example tool 1/ }).getAttribute('aria-current')).toBe('true'));
+    expect(within(shelf).queryByRole('list', { name: 'Items' })).toBeNull();
+    fireEvent.click(within(reader).getByRole('button', { name: 'Close' }));
+    expect(router.getState().route).toEqual({ name: 'intel', type: 'tool' });
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Item' })).toBeNull());
   });
 });
 

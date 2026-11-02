@@ -19,6 +19,12 @@ What changed for people who use Jantar, newest first. Versions before
   through them; Esc or Close goes back. The address keeps the open alert
   and the kind filter (`/alerts?kind=error&id=…`). In a narrow window a
   row still opens under itself.
+- **Intel** fills a wide window with cards (five across a 1440 px Mac
+  window): the first picture when there is one, the title, where it is
+  from, what it is and two tags; the reads in progress are cards too. An
+  item opens beside the list, which keeps your search and filters; Close or
+  Esc goes back to them. A reel's pictures are shown four across the
+  reading column, about 120 x 213 instead of 52 x 90.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

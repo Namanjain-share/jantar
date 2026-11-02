@@ -23,10 +23,12 @@
  *   Board's Desk), or 'fill': the list takes the whole width (D2).
  * - Esc closes the detail in split mode (`onClose`; the place says where the
  *   list is), unless `escape` is false (a dialog over it has the key).
+ * - Beside an open item the list keeps that item's row (aria-current) in
+ *   view: opening one from a wide list lands on its row.
  *   SplitContext gives what the panes inside need: split, wide, selected and
  *   close (the Close button a detail header shows in split mode).
  */
-import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useKey } from '../shell/keys.js';
 import { useLayout, type Layout } from '../shell/layout.js';
 import { usePaneScroll } from './Pane.js';
@@ -62,6 +64,39 @@ export function splitFor(width: number): Mode {
 export function guessSplit(l: Layout): Mode {
   const desk = l.chrome !== 'phone';
   return { split: desk && l.size === 'regular', wide: desk && l.wide };
+}
+
+/**
+ * Beside an open item, the list shows that item's row (its `aria-current`):
+ * brought into view when the item opens, and kept there while what is above
+ * it still loads (a strip, more rows), until the list is scrolled by hand.
+ */
+function useCurrentInView(ref: RefObject<HTMLElement | null>, on: boolean, selection: string | undefined): void {
+  useLayoutEffect(() => {
+    const list = ref.current;
+    if (!list || !on) return;
+    let touched = false;
+    const keep = () => {
+      if (!touched) list.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' });
+    };
+    const stop = () => {
+      touched = true;
+    };
+    keep();
+    const opts = { passive: true } as const;
+    list.addEventListener('wheel', stop, opts);
+    list.addEventListener('touchstart', stop, opts);
+    list.addEventListener('keydown', stop);
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(keep) : null;
+    const content = list.firstElementChild;
+    if (ro && content) ro.observe(content);
+    return () => {
+      ro?.disconnect();
+      list.removeEventListener('wheel', stop);
+      list.removeEventListener('touchstart', stop);
+      list.removeEventListener('keydown', stop);
+    };
+  }, [ref, on, selection]);
 }
 
 export interface SplitPaneProps {
@@ -112,6 +147,7 @@ export function SplitPane({ name, list, detail, selection, empty = 'fill', listL
   const showDetail = selected || (mode.split && !fill);
   usePaneScroll(listBox, `${name}:list`, showList);
   usePaneScroll(detailBox, `${name}:detail:${selection ?? ''}`, showDetail);
+  useCurrentInView(listBox, mode.split && selected, selection);
   useKey('Escape', () => onClose?.(), mode.split && selected && Boolean(onClose) && escape);
 
   const ctx: SplitState = { split: mode.split, wide: mode.wide, selected, close: onClose };

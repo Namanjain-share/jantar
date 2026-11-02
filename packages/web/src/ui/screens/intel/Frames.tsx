@@ -9,7 +9,10 @@
  *
  * - `RowThumb`: 48 px, frame 0, on a row of the list.
  * - `FrameStrip`: the item page's strip, sideways; a tap opens the larger
- *   view in a sheet with the same bytes.
+ *   view in a sheet with the same bytes. 0.11: from a pane of 480, up to
+ *   four across the reading column, 216 tall (240 from 640), each picture
+ *   fitted whole: a reel's frame is about 120 x 213 there (it was 52 x 90).
+ * - `CardFrame`: frame 0 across the top of a card in the wide grid.
  */
 import { ImageIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type RefObject } from 'react';
@@ -53,6 +56,17 @@ export function useFrame(id: string, n: number, on: boolean): Blob | null {
   return blob;
 }
 
+/** 0.11: frame 0 across the top of a card in the grid (decorative: the card's title names it). */
+export function CardFrame({ id }: { id: string }) {
+  const box = useRef<HTMLSpanElement>(null);
+  const url = useObjectUrl(useFrame(id, 0, useSeen(box)));
+  return (
+    <span ref={box} data-thumb className="block h-140 w-full flex-none overflow-hidden border-b border-line bg-surface">
+      {url ? <img src={url} alt="" className="block size-full object-cover" /> : null}
+    </span>
+  );
+}
+
 /** Frame 0 at 48 px on the right of a row (decorative: the row's title names it). */
 export function RowThumb({ id }: { id: string }) {
   const box = useRef<HTMLSpanElement>(null);
@@ -69,18 +83,18 @@ function StripFrame({ id, n, count, onOpen }: { id: string; n: number; count: nu
   const blob = useFrame(id, n, useSeen(box));
   const url = useObjectUrl(blob);
   return (
-    <li className="flex-none">
+    <li className="flex-none @sm:min-w-0">
       <button
         ref={box}
         type="button"
         aria-label={`Picture ${n + 1} of ${count}`}
         onClick={() => onOpen(n, blob)}
-        className="block h-96 overflow-hidden rounded-btn border border-line bg-surface transition-colors duration-120 ease-hover hover:border-line-strong"
+        className="block h-96 overflow-hidden rounded-btn border border-line bg-surface transition-colors duration-120 ease-hover hover:border-line-strong @sm:h-216 @sm:w-full @md:h-240"
       >
         {url ? (
-          <img src={url} alt="" className="block h-full w-auto max-w-160 object-cover" />
+          <img src={url} alt="" className="block h-full w-auto max-w-160 object-cover @sm:w-full @sm:max-w-none @sm:object-contain" />
         ) : (
-          <span data-placeholder className="flex h-full w-72 items-center justify-center text-ink-3">
+          <span data-placeholder className="flex h-full w-72 items-center justify-center text-ink-3 @sm:w-full">
             <ImageIcon size={16} aria-hidden="true" />
           </span>
         )}
@@ -108,7 +122,12 @@ export function FrameStrip({ id, count }: { id: string; count: number }) {
   if (count <= 0) return null;
   return (
     <>
-      <ul aria-label="Pictures" className="no-scrollbar flex gap-8 overflow-x-auto px-16 pb-4">
+      <ul
+        aria-label="Pictures"
+        // A narrow pane: a sideways strip. From 480: up to four across the reading column, each fitted whole.
+        style={{ gridTemplateColumns: `repeat(${Math.min(count, 4)}, minmax(0, 1fr))` }}
+        className="no-scrollbar flex gap-8 overflow-x-auto px-16 pb-4 @sm:grid @sm:overflow-visible"
+      >
         {Array.from({ length: count }, (_, n) => (
           <StripFrame key={n} id={id} n={n} count={count} onOpen={(k, blob) => setOpen({ n: k, count, blob })} />
         ))}

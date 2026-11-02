@@ -28,6 +28,13 @@
  * unfiltered shelf starts with the Reading strip (the Mac's jobs, loaded
  * again on every life.changed). With reading off, Add is the 0.7 sheet and
  * no jobs are asked for.
+ *
+ * 0.11 (build plan 2.7): a SplitPane ("intel", fill). With nothing open the
+ * shelf takes the pane as a grid of cards (IntelCard, at least 240 wide:
+ * five on a 1440 Mac), the Reading strip as cards too, the chips wrapping;
+ * an item opens beside it from a pane of 800 (the list becomes rows, the
+ * open one ticked), and over it below that, with "< Intel". A phone keeps
+ * the rows.
  */
 import { CaretRightIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -36,12 +43,14 @@ import { INTEL_PAGE_MAX, type IntelListItem, type IntelListResponse } from '@jan
 import { useApp, useDeps, useNavigate, useNow, useToast } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Spinner } from '../../kit/Spinner.js';
+import { SplitPane, useSplit } from '../../kit/SplitPane.js';
 import { useFeatures } from '../../shell/data.js';
+import { useLayout } from '../../shell/layout.js';
 import { EMPTY, LifeEmpty, LifeError, LifeLoading, OFFLINE_WRITE } from '../life/shared/states.js';
 import { useLifeLoad } from '../life/shared/useLife.js';
 import { AddPostSheet } from './AddPostSheet.js';
 import { AddSheet } from './AddSheet.js';
-import { IntelRow } from './IntelRow.js';
+import { IntelCard, IntelRow } from './IntelRow.js';
 import { ItemPage } from './ItemPage.js';
 import {
   ADDED,
@@ -71,9 +80,21 @@ export interface IntelProps {
 
 export function Intel({ q, type, tag, item, focus }: IntelProps) {
   const offline = useApp((s) => s.conn.status === 'offline');
+  const navigate = useNavigate();
   const filters: ShelfFilters = { q, type, tag };
-  if (item) return <ItemPage id={item} filters={filters} offline={offline} />;
-  return <Shelf filters={filters} offline={offline} focus={focus === 'search'} />;
+  // 0.11: the shelf across the pane, and an item beside it from a pane of 800 (over it below that, as before).
+  return (
+    <SplitPane
+      name="intel"
+      list={<Shelf filters={filters} offline={offline} focus={focus === 'search'} open={item ?? null} />}
+      detail={item ? <ItemPage key={item} id={item} filters={filters} offline={offline} /> : null}
+      selection={item}
+      empty="fill"
+      listLabel="Shelf"
+      detailLabel="Item"
+      onClose={() => navigate(shelfPath(filters), { replace: true })}
+    />
+  );
 }
 
 // Room on the right for the clear button; WebKit's own clear button hidden, so there is one.
@@ -118,8 +139,12 @@ interface More {
   next: string | null;
 }
 
-function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: boolean; focus: boolean }) {
+function Shelf({ filters, offline, focus, open }: { filters: ShelfFilters; offline: boolean; focus: boolean; open: string | null }) {
   const { api } = useDeps();
+  // 0.11: cards across the pane with nothing open (not on a phone); rows in the list column beside an item.
+  const phone = useLayout().chrome === 'phone';
+  const split = useSplit();
+  const grid = !phone && !split?.selected;
   const navigate = useNavigate();
   const toast = useToast();
   const now = useNow(60_000);
@@ -264,11 +289,19 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
     body = (
       <>
         <p className="px-16 pb-8 pt-12 type-mono text-ink-3">{terms.length ? matchesWord(data.total) : itemsWord(data.total)}</p>
-        <ul className="border-t border-line">
-          {items.map((i) => (
-            <IntelRow key={i.id} item={i} filters={filters} terms={terms} now={now} />
-          ))}
-        </ul>
+        {grid ? (
+          <ul aria-label="Items" className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-12 px-16 pt-4">
+            {items.map((i) => (
+              <IntelCard key={i.id} item={i} filters={filters} terms={terms} now={now} />
+            ))}
+          </ul>
+        ) : (
+          <ul className="border-t border-line">
+            {items.map((i) => (
+              <IntelRow key={i.id} item={i} filters={filters} terms={terms} now={now} current={i.id === open} />
+            ))}
+          </ul>
+        )}
         {next ? (
           <div className="px-16 pt-12">
             <Button variant="outline" onClick={() => void showMore()} disabled={moreBusy || offline}>
@@ -283,7 +316,7 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
   }
 
   return (
-    <div className="pb-48 animate-enter max-w-720">
+    <div className="pb-48 animate-enter">
       <header className="flex min-h-44 items-center gap-12 px-16 pb-8 pt-16 desk:pt-24">
         <h1 data-display className="min-w-0 flex-1 truncate type-display text-ink">
           Intel
@@ -291,7 +324,7 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
         {addButton}
       </header>
       {offline ? <p className="px-16 pb-8 type-mono text-ink-3">{OFFLINE_WRITE}</p> : null}
-      <div className="relative mx-16">
+      <div className="relative mx-16 @md:max-w-560">
         <label htmlFor={searchId} className="sr-only">
           Search the shelf
         </label>
@@ -349,6 +382,7 @@ function Shelf({ filters, offline, focus }: { filters: ShelfFilters; offline: bo
       {jobs.data && !hasFilters(filters) ? (
         <Reading
           data={jobs.data}
+          grid={grid}
           now={now}
           filters={filters}
           offline={offline}

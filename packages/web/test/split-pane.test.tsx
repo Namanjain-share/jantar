@@ -197,6 +197,30 @@ describe('scroll and keys', () => {
     expect(list!.scrollTop).toBe(320);
   });
 
+  it("beside an open item the list brings that item's row (aria-current) into view; not in single", () => {
+    const spy = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const Rows = () => (
+      <ul>
+        <li>first</li>
+        <li aria-current="true">open one</li>
+      </ul>
+    );
+    const r = render(
+      <LayoutProvider value={createLayoutStore(layoutAt(1440))}>
+        <SplitPane name="rows" list={<Rows />} detail={<Item id="b" />} selection="b" listLabel="List" detailLabel="Item" />
+      </LayoutProvider>,
+    );
+    expect(spy.mock.contexts.at(-1)).toBe(screen.getByText('open one'));
+    r.unmount();
+    spy.mockClear();
+    render(
+      <LayoutProvider value={createLayoutStore(layoutAt(900))}>
+        <SplitPane name="rows" list={<Rows />} detail={<Item id="b" />} selection="b" listLabel="List" detailLabel="Item" />
+      </LayoutProvider>,
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('Esc closes the open item in split mode, not in single, and not while escape is off', () => {
     const onClose = vi.fn();
     const layout = createLayoutStore(layoutAt(1440));
