@@ -180,6 +180,18 @@ describe('code splitting', () => {
     expect(shell).toContain("import('../screens/Devices.js')");
   });
 
+  it("0.11: main's Base UI is exactly the CSP provider and the Drawer (D12)", () => {
+    // The Drawer (kit/Sheet.tsx) holds Base UI's shared popup runtime in main, which every lazy screen
+    // also reaches (Life's Page menu, Chat's RowMenu, the sheets). Dropping it would charge that runtime
+    // (about 20 kB) to each of them; adding Dialog, Menu or Popover here would grow main for one screen.
+    expect([...main.packages].filter((p) => p.startsWith('@base-ui/')).sort()).toEqual(['@base-ui/react/csp-provider', '@base-ui/react/drawer']);
+    // The legend popover and the palette (cmdk and the Dialog) load on first use.
+    const lazyOnly = ['ui/shell/LegendPopup.tsx', 'ui/shell/Palette.tsx'];
+    for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
+    expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
+    expect(main.files.has('ui/kit/Sheet.tsx')).toBe(true);
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");
