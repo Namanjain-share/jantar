@@ -260,7 +260,7 @@ chat on`, a phone paired with that daemon, synthetic messages only.
 | S1 | One real Chat turn ("Add oat milk to my list"): does the run's `system`/`init` line show exactly the `jantar` server, connected, and the allowed tools (no built-in tool)? Is a tool not in `--allowedTools` denied? Does `--setting-sources local` still load `--mcp-config`? How big is stdout per tool round? | the init gate, and the tools mode as a whole |
 | S2 | Time to answer with one to three tool calls on haiku, sonnet and opus at effort low | the 20 s Siri budget and the `voiceModel` default |
 | S3 | On an iPhone: "Hey Siri, Jantar" locked and unlocked; is Speak Text or Show Result spoken? The real "Get Contents of URL" timeout; the Access token headers on Cloudflare | the Siri Shortcut |
-| S4 | Upgrade a copy of a 0.9.0 state dir (never `~/.jantar`) with `JANTAR_HOME`: `life-pre-0.10.0.db` appears in its backups folder, and jantar.db's capture keys are still Shortcut keys | the upgrade |
+| S4 | Upgrade a copy of a 0.9.1 state dir (never `~/.jantar`) with `JANTAR_HOME`: `life-pre-0.10.0.db` appears in its backups folder, and jantar.db's capture keys are still Shortcut keys | the upgrade |
 
 ### Ask (v0.5.3, until 0.10)
 

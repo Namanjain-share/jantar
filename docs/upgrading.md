@@ -30,8 +30,8 @@ that copy can't be written. A daemon older than 0.10.0 that never started
 on the file wrote nothing, so upgrading straight from 0.6.x gets the copy
 too, from before both changes.
 
-0.9.0 can't open the newer file: every Life part would say "Life data
-could not be opened". To go back, install 0.9.0 and run:
+0.9.1 can't open the newer file: every Life part would say "Life data
+could not be opened". To go back, install 0.9.1 and run:
 
 ```sh
 jantar life restore life-pre-0.10.0.db
@@ -44,12 +44,12 @@ is kept beside it. `jantar life restore` with no name lists the copy, and
 like every backup.
 
 If you made Siri keys, revoke them before you go back
-(`jantar chat shortcut revoke --all`): 0.9.0 doesn't know them apart from
+(`jantar chat shortcut revoke --all`): 0.9.1 doesn't know them apart from
 Shortcut keys, so with only Siri keys its save door would exist (answering
 401 rather than 404), `jantar intel shortcut list` would list them, and
 its five-key rule could revoke one.
 
-The copy is written once: if you go back, use 0.9.0 for a while and then
+The copy is written once: if you go back, use 0.9.1 for a while and then
 upgrade again, the copy still holds Life as it was at the first upgrade.
 Before upgrading again, keep a copy of your own (`jantar life backup`,
 then copy that file aside) or move `life-pre-0.10.0.db` out of the

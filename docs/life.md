@@ -213,8 +213,8 @@ a backup back.
 From 0.10.0 the daemon keeps a copy for you before it changes life.db's
 layout: `life-pre-<version>.db` in the same folder, written before the
 change and kept until 30 newer backups exist (`jantar life status` names
-it). 0.10.0 adds a table for cafés' visits, and 0.9.0 can't open life.db
-after that; `jantar life restore life-pre-0.10.0.db` on 0.9.0 brings the
+it). 0.10.0 adds a table for cafés' visits, and 0.9.1 can't open life.db
+after that; `jantar life restore life-pre-0.10.0.db` on 0.9.1 brings the
 old file back ([Upgrading](upgrading.md#0100-lifes-second-schema-change)).
 
 Before upgrading to 0.7.0, copy a fresh backup to `life-pre-0.7.0.db` in

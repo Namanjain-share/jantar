@@ -12,10 +12,10 @@ Jantar"). Upgrade notes follow.
 
 **Before upgrading: nothing to copy by hand.** The daemon keeps
 `life-pre-0.10.0.db` in the backups folder before it moves life.db to
-schema 3 (Life's second schema change); 0.9.0 can't open Life afterwards,
+schema 3 (Life's second schema change); 0.9.1 can't open Life afterwards,
 and going back needs `jantar life restore life-pre-0.10.0.db`
 ([Upgrading](docs/upgrading.md#0100-lifes-second-schema-change)).
-jantar.db gains a column for key scopes (0.9.0 keeps working on it).
+jantar.db gains a column for key scopes (0.9.1 keeps working on it).
 Chat's history is new data on disk, in `chat.db`.
 
 - **Cafés**: a café's own stars, six optional ratings (Food, Coffee &
