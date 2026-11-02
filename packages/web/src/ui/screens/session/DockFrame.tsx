@@ -64,15 +64,6 @@ export function DockFrame({ phone, title, glyph, age, late, aside, hints, peek, 
   const start = useRef<number | null>(null);
   const moved = useRef(false);
 
-  if (!phone) {
-    return (
-      <article aria-labelledby={id} className={clsx('animate-rise rounded-dock border border-line bg-raised px-20 pb-16 pt-16', className)}>
-        <Head id={id} title={title} glyph={glyph} age={age} late={late} aside={aside} hints={hints} />
-        {children}
-      </article>
-    );
-  }
-
   const grab = {
     onPointerDown(e: PointerEvent<HTMLButtonElement>) {
       start.current = e.clientY;
@@ -99,20 +90,29 @@ export function DockFrame({ phone, title, glyph, age, late, aside, hints, peek, 
       setDy(0);
     },
   };
-  const style: CSSProperties | undefined = dy ? { transform: `translateY(${dy}px)` } : undefined;
+  const style: CSSProperties | undefined = phone && dy ? { transform: `translateY(${dy}px)` } : undefined;
+  // The phone's peek: folded to one line.
+  const peeking = phone && folded;
 
+  // 0.11 (build plan 1.6): one tree for the phone and the desk. Each part keeps its place and only
+  // the classes change, so a resize across 768 keeps the card's own fields (a Question's typed answer,
+  // Plan's feedback, Permission's note) mounted, with their focus.
   return (
     <article
       aria-labelledby={id}
       className={clsx(
-        'relative z-3 flex-none animate-rise rounded-t-dock border-t border-line bg-raised px-16',
-        followed ? 'pb-16' : 'pb-safe-16',
-        start.current === null && 'transition-transform duration-300 ease-sheet motion-reduce:transition-none',
+        phone
+          ? [
+              'relative z-3 flex-none animate-rise rounded-t-dock border-t border-line bg-raised px-16',
+              followed ? 'pb-16' : 'pb-safe-16',
+              start.current === null && 'transition-transform duration-300 ease-sheet motion-reduce:transition-none',
+            ]
+          : 'animate-rise rounded-dock border border-line bg-raised px-20 pb-16 pt-16',
         className,
       )}
       style={style}
     >
-      {foldable ? (
+      {!phone ? null : foldable ? (
         <button
           type="button"
           className="relative flex h-20 w-full touch-none items-center justify-center coarse:h-28 coarse:before:absolute coarse:before:inset-x-0 coarse:before:-inset-y-8"
@@ -134,7 +134,7 @@ export function DockFrame({ phone, title, glyph, age, late, aside, hints, peek, 
           <span className="h-4 w-36 rounded-chip bg-ink-4" />
         </div>
       )}
-      {folded ? (
+      {peeking ? (
         <button
           type="button"
           className="relative flex h-24 w-full min-w-0 items-center text-left coarse:before:absolute coarse:before:inset-x-0 coarse:before:-inset-y-10"
@@ -147,14 +147,13 @@ export function DockFrame({ phone, title, glyph, age, late, aside, hints, peek, 
           {age ? <span className={clsx('ml-8 flex-none type-mono', late ? 'text-signal-text' : 'text-ink-3')}>{age}</span> : null}
           {peek ? <span className="ml-8 min-w-0 truncate type-small text-ink-2">{peek}</span> : null}
         </button>
-      ) : (
-        <>
-          <div className="pt-4">
-            <Head id={id} title={title} glyph={glyph} age={age} late={late} aside={aside} />
-          </div>
-          {children}
-        </>
+      ) : null}
+      {peeking ? null : (
+        <div className={phone ? 'pt-4' : 'contents'}>
+          <Head id={id} title={title} glyph={glyph} age={age} late={late} aside={aside} hints={phone ? undefined : hints} />
+        </div>
       )}
+      {peeking ? null : children}
     </article>
   );
 }

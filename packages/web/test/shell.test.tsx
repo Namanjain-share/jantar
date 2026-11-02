@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
 import { account, alert, fakeApi, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
 /** Pretend the window is `width` px wide, with a fine pointer unless `coarse` (jsdom has no matchMedia). */
@@ -239,5 +240,67 @@ describe('v0.7: Posts in the shell', () => {
     expect(await screen.findByText('That is off on this Mac.')).toBeTruthy();
     expect(screen.getByText('jantar life on <module>')).toBeTruthy();
     expect(screen.queryByRole('heading', { level: 1, name: 'Posts' })).toBeNull();
+  });
+});
+
+describe('0.11 c08: one shell tree', () => {
+  it('a session at 1440, 820 and 390 renders through the same tree: the composer keeps its node and its draft', () => {
+    const layout = createLayoutStore(layoutAt(1440));
+    renderApp({ state: busy(), path: '/s/infra', layout });
+    const area = screen.getByLabelText('Prompt for Claude') as HTMLTextAreaElement;
+    fireEvent.change(area, { target: { value: 'half a thought' } });
+    expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
+    // 820: the Mac's chrome, the pane too narrow for the ledger beside the session.
+    act(() => layout.setState(layoutAt(820), true));
+    expect(screen.queryByRole('region', { name: 'Ledger' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Back to the board' })).toBeTruthy();
+    expect(screen.getByLabelText('Prompt for Claude')).toBe(area);
+    // 390: the phone's chrome around the same place.
+    act(() => layout.setState(layoutAt(390), true));
+    expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
+    expect(screen.getByLabelText('Prompt for Claude')).toBe(area);
+    act(() => layout.setState(layoutAt(1440), true));
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy();
+    expect(screen.getByLabelText('Prompt for Claude')).toBe(area);
+    expect(area.value).toBe('half a thought');
+  });
+
+  it("a place opens at its own scroll, not the last place's, and gets its own back", () => {
+    const tops = new WeakMap<Element, number>();
+    Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return tops.get(this) ?? 0;
+      },
+      set(this: HTMLElement, v: number) {
+        tops.set(this, v);
+      },
+    });
+    try {
+      const { router } = renderApp({ state: busy(), path: '/more', layout: layoutAt(1440) });
+      const more = document.querySelector('[data-pane="more"]') as HTMLElement;
+      expect(more).toBeTruthy();
+      more.scrollTop = 900;
+      fireEvent.scroll(more);
+      act(() => router.getState().navigate('/alerts'));
+      const alerts = document.querySelector('[data-pane="alerts"]') as HTMLElement;
+      expect(alerts).not.toBe(more);
+      expect(alerts.scrollTop).toBe(0);
+      act(() => router.getState().navigate('/more'));
+      expect((document.querySelector('[data-pane="more"]') as HTMLElement).scrollTop).toBe(900);
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'scrollTop');
+    }
+  });
+
+  it('main never scrolls; the phone and the Mac put the same place in the same slot', () => {
+    const layout = createLayoutStore(layoutAt(1440));
+    renderApp({ state: busy(), layout });
+    const main = screen.getByRole('main');
+    expect(main.className).not.toMatch(/overflow/);
+    expect(document.querySelector('[data-chrome]')?.getAttribute('data-chrome')).toBe('desk');
+    act(() => layout.setState(layoutAt(390), true));
+    expect(screen.getByRole('main')).toBe(main);
+    expect(document.querySelector('[data-chrome]')?.getAttribute('data-chrome')).toBe('phone');
   });
 });

@@ -2,16 +2,18 @@
  * The app shell: picks the chrome for the window (shell/layout.ts), wires the
  * chrome to the store and router, and places the current screen.
  *
- *   phone   PhoneHeader / notices / screen / TabBar   (a session is full screen)
- *   tablet  TopBar / Rail + screen / StatusBar          (a session is full width)
- *   desk+   TopBar / Rail + ledger column + detail pane / StatusBar
+ *   phone   PhoneHeader / notices / place / TabBar     (a session is full screen)
+ *   desk    TopBar / Rail + place / StatusBar
+ *
+ * 0.11: one tree for every chrome (the place is always slot 4, so a resize
+ * never remounts it), and the place lays itself out by its own width: the
+ * board and a session are one SplitPane (kit/SplitPane.tsx: the ledger beside
+ * the session or the Desk from a pane of 800, one at a time below), every
+ * other place a Pane (kit/Pane.tsx). Every pane is a query container, so a
+ * screen's @md: and the rest (640 and up) read its pane's width, not the
+ * window's; only the chrome and the Mac's density (desk:) follow the window.
  *
  * Pair and NotPaired are bare: no chrome at all.
- *
- * 0.11: every box a screen scrolls in is a query container (@container), so
- * a screen lays itself out by its pane's width (@md: and the rest, 640 and
- * up), not the window's; only the chrome and the Mac's density (desk:)
- * follow the window.
  *
  * The v0.3 places, Files and New session, are their own chunks, loaded the
  * first time one opens (skeleton rows meanwhile), so the main chunk carries
@@ -28,7 +30,9 @@ import { boardOrder, needsYou } from '@jantar/protocol';
 import { documentTitle, setFavicon } from '../../lib/favicon.js';
 import { resyncPush } from '../../lib/push.js';
 import { useApp, useDeps, useNavigate, useNow, useRoute } from '../context.js';
+import { Pane } from '../kit/Pane.js';
 import { SkeletonRows } from '../kit/Skeleton.js';
+import { SplitPane } from '../kit/SplitPane.js';
 import { Board } from '../screens/Board.js';
 import { Desk } from '../screens/Desk.js';
 import { useCanStart } from '../screens/new/machines.js';
@@ -40,7 +44,7 @@ import { routePath, type FilesLocation, type Route } from '../../lib/router.js';
 import { useAccountsMode, useCeiling, useFeatures, useNeedsCount, useNewAlerts, useStripItems, useUsagePairs } from './data.js';
 import { More } from '../screens/more/More.js';
 import { useGlobalKeys, useKey } from './keys.js';
-import { frameOf, isSplit, useLayout } from './layout.js';
+import { useLayout } from './layout.js';
 import { LegendPopover, LegendSheet } from './LegendPopover.js';
 import { OfflineNotice, UpdateNotice } from './Notices.js';
 import { PhoneHeader } from './PhoneHeader.js';
@@ -100,7 +104,6 @@ export function Shell() {
   if (palette) paletteUsed.current = true;
 
   const phone = layout.chrome === 'phone';
-  const split = isSplit(frameOf(layout));
   const bare = route.name === 'pair' || conn.status === 'unauthorized';
   const offline = conn.status === 'offline';
   const dashed = offline || conn.status === 'connecting';
@@ -155,7 +158,7 @@ export function Shell() {
     },
     ledgerKeys,
   );
-  useKey('Escape', () => navigate('/'), ledgerKeys && split && route.name === 'session' && !palette && !legend);
+  // Esc back to the board from a session beside the ledger: the board's SplitPane (kit/SplitPane.tsx).
 
   // The switches are known once the daemon has said them, or a synced state came from a daemon too old to have them.
   const featuresKnown = state.daemon != null || state.seq > 0;
@@ -290,80 +293,91 @@ export function Shell() {
   }
 
   const badges = { board: needs, alerts: newAlerts };
-  const scrollKey = route.name === 'session' ? `s:${route.sid}` : route.name;
-
-  if (phone) {
-    const fullScreen = route.name === 'session';
-    return (
-      <div className="flex h-dvh flex-col bg-bg">
-        {fullScreen ? <div className="pt-safe flex-none" /> : <PhoneHeader needs={needs} items={items} dashed={dashed} search={features.intel} onLegend={() => setLegend(true)} onHome={() => connection?.kick()} />}
-        {offline ? <OfflineNotice /> : null}
-        {updateAvailable ? <UpdateNotice /> : null}
-        <main id="main" key={scrollKey} className={fullScreen ? '@container pb-safe min-h-0 flex-1 overflow-y-auto' : '@container min-h-0 flex-1 overflow-y-auto'}>
-          {screen}
-        </main>
-        {fullScreen ? null : <TabBar route={route.name} badges={badges} />}
-        <LegendSheet open={legend} onOpenChange={setLegend} />
-        <Toasts />
-      </div>
-    );
-  }
-
-  const ledgerRoute = route.name === 'board' || route.name === 'session';
-  let body: ReactNode;
-  if (split && ledgerRoute) {
-    body = (
-      <div className="grid-ledger grid h-full min-h-0">
-        <section aria-label="Ledger" className="@container no-scrollbar min-h-0 overflow-y-auto border-r border-line bg-surface">
-          <Board />
-        </section>
-        <section aria-label="Detail" key={scrollKey} className="@container min-h-0 min-w-0 overflow-y-auto">
-          {route.name === 'session' ? screen : <Desk />}
-        </section>
-      </div>
-    );
-  } else {
-    body = (
-      <div key={scrollKey} className="@container h-full overflow-y-auto">
+  // A phone shows a session full screen: no header, no tabs.
+  const fullScreen = phone && route.name === 'session';
+  // The board and a session are one SplitPane: the ledger beside the session (or the Desk) when the
+  // pane is wide enough, one of them otherwise. Every other place is a Pane, its own keyed scroll box,
+  // so it opens at its own scroll. main itself never scrolls.
+  const place =
+    route.name === 'board' || route.name === 'session' ? (
+      <SplitPane
+        name="board"
+        list={<Board />}
+        detail={route.name === 'session' ? screen : null}
+        selection={route.name === 'session' ? route.sid : undefined}
+        empty={<Desk />}
+        listLabel="Ledger"
+        detailLabel="Detail"
+        onClose={() => navigate('/')}
+        escape={!palette && !legend}
+      />
+    ) : (
+      <Pane key={route.name} name={route.name}>
         {screen}
-      </div>
+      </Pane>
     );
-  }
 
+  // One tree at every chrome (build plan 1.6). Each slot keeps its element type and place, so the place
+  // in slot 4 is never remounted when the chrome changes (768 on a Mac, a rotation, a window drag):
+  // only the chrome around it is swapped, and only classes change.
   return (
-    <div className="grid-shell grid h-dvh bg-bg">
-      <TopBar
-        needs={needs}
-        items={items}
-        accounts={Object.keys(state.accounts).length}
-        known={state.seq > 0}
-        dashed={dashed}
-        onOpen={openSession}
-        onPalette={() => setPalette(true)}
-        onHome={() => connection?.kick()}
-      />
-      <Rail route={route.name} badges={badges} onPalette={() => setPalette(true)} />
-      <div className="col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col">
+    <div data-chrome={layout.chrome} className={phone ? 'flex h-dvh flex-col bg-bg' : 'grid-shell grid h-dvh bg-bg'}>
+      {/* 1: the phone's header */}
+      {phone ? (
+        fullScreen ? (
+          <div className="pt-safe flex-none" />
+        ) : (
+          <PhoneHeader needs={needs} items={items} dashed={dashed} search={features.intel} onLegend={() => setLegend(true)} onHome={() => connection?.kick()} />
+        )
+      ) : null}
+      {/* 2: the Mac's top bar */}
+      {phone ? null : (
+        <TopBar
+          needs={needs}
+          items={items}
+          accounts={Object.keys(state.accounts).length}
+          known={state.seq > 0}
+          dashed={dashed}
+          onOpen={openSession}
+          onPalette={() => setPalette(true)}
+          onHome={() => connection?.kick()}
+        />
+      )}
+      {/* 3: the rail */}
+      {phone ? null : <Rail route={route.name} badges={badges} onPalette={() => setPalette(true)} />}
+      {/* 4: the place, always here */}
+      <div className={phone ? 'flex min-h-0 flex-1 flex-col' : 'col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col'}>
         {offline ? <OfflineNotice /> : null}
+        {phone && updateAvailable ? <UpdateNotice /> : null}
         <main id="main" className="relative min-h-0 flex-1">
-          {body}
+          {place}
         </main>
       </div>
-      <StatusBar
-        conn={conn}
-        seq={state.seq}
-        now={now}
-        fetchedAt={state.usage.fetchedAt}
-        pairs={pairs}
-        single={single}
-        ceiling={ceiling}
-        route={route.name}
-        needs={needs}
-        updateAvailable={updateAvailable}
-        onAccounts={() => navigate('/accounts')}
-        legend={<LegendPopover open={legend} onOpenChange={setLegend} />}
-      />
-      {paletteUsed.current ? (
+      {/* 5: Chat beside any screen (build plan c28) */}
+      {null}
+      {/* 6: the phone's tabs, or the Mac's status bar */}
+      {phone ? (
+        fullScreen ? null : (
+          <TabBar route={route.name} badges={badges} />
+        )
+      ) : (
+        <StatusBar
+          conn={conn}
+          seq={state.seq}
+          now={now}
+          fetchedAt={state.usage.fetchedAt}
+          pairs={pairs}
+          single={single}
+          ceiling={ceiling}
+          route={route.name}
+          needs={needs}
+          updateAvailable={updateAvailable}
+          onAccounts={() => navigate('/accounts')}
+          legend={<LegendPopover open={legend} onOpenChange={setLegend} />}
+        />
+      )}
+      {phone ? <LegendSheet open={legend} onOpenChange={setLegend} /> : null}
+      {!phone && paletteUsed.current ? (
         <Suspense fallback={null}>
           <Palette open={palette} onOpenChange={setPalette} now={now} />
         </Suspense>

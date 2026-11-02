@@ -5,6 +5,14 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## 0.12.0 (unreleased)
 
+- The board puts the ledger beside a session from a window 856 px wide
+  (was 1024), and its column is 340 px until the window is about 1240 px
+  wide (it was 360 from 1024 and 440 from 1280). Each place keeps its own
+  scroll: opening one no longer starts it where the last place was
+  scrolled, and going back finds it where you left it.
+- Resizing the window, or turning a phone or an iPad, no longer resets the
+  open session: what you typed, a card's picked option and typed answer,
+  and the transcript's place all stay.
 - On an iPad with a trackpad or a mouse, rows and buttons show their hover
   tint, as on a Mac (iPadOS says it can't hover, so Jantar now watches the
   pointer itself).

@@ -40,6 +40,46 @@
 }
 
 @layer components {
+  /* ---------- SplitPane (0.11): a list and its detail ----------
+     kit/SplitPane.tsx decides split or single by the pane's width and says
+     so in data-*; these rules only lay out the grid. Single: one column, the
+     inactive section hidden. Split: the list column (340, 440 in a wide
+     pane, 300 for Chat's history) on --surface, then the detail. Fill: in
+     split with nothing open, the list takes the width. */
+  .split {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .split-list,
+  .split-detail {
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .split[data-split] {
+    grid-template-columns: var(--list-w) minmax(0, 1fr);
+  }
+  .split[data-split][data-wide] {
+    grid-template-columns: var(--list-w-xl) minmax(0, 1fr);
+  }
+  .split[data-split][data-list='history'] {
+    grid-template-columns: var(--history-w) minmax(0, 1fr);
+  }
+  .split[data-split] > .split-list {
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .split[data-fill] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .split[data-fill] > .split-list {
+    border-right: 0;
+    background: none;
+  }
+
   /* Status glyphs, strip cells, meters: colour changes ease over 160 ms. */
   .glyph rect {
     transition: fill 160ms var(--ease-ui);

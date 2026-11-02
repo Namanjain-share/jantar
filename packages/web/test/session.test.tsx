@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/lib/api.js';
+import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
 import { account, emit, fakeApi, iso, pending, renderApp, session, stateWith } from './helpers.js';
 import { preloadCards } from './fleet-helpers.js';
 
@@ -397,5 +398,44 @@ describe('subagent card', () => {
     await waitFor(() => expect(api.focus).toHaveBeenCalledWith('a'));
     // The writer refuses a prompt while a subagent waits, so the dock takes the composer's place.
     expect(screen.queryByLabelText('Prompt for Claude')).toBeNull();
+  });
+});
+
+describe('0.11 c08: one tree for the phone and the desk', () => {
+  it('flipping the chrome keeps the composer, its draft and the transcript mounted', () => {
+    const layout = createLayoutStore(layoutAt(1440));
+    renderApp({ path: '/s/a', layout, state: stateWith({ sessions: [session('a')] }) });
+    const area = screen.getByLabelText('Prompt for Claude') as HTMLTextAreaElement;
+    const transcript = screen.getByRole('tabpanel');
+    fireEvent.change(area, { target: { value: 'run the tests' } });
+    for (const width of [390, 1440, 767, 768]) {
+      act(() => layout.setState(layoutAt(width), true));
+      expect(screen.getByLabelText('Prompt for Claude')).toBe(area);
+      expect(screen.getByRole('tabpanel')).toBe(transcript);
+    }
+    expect(area.value).toBe('run the tests');
+  });
+
+  it("flipping the chrome keeps a Question card's pick and its typed answer, in the same nodes", () => {
+    const layout = createLayoutStore(layoutAt(390));
+    const questions = [{ question: 'Which database?', header: 'DB', options: [{ label: 'Postgres' }, { label: 'SQLite' }] }];
+    const p = pending('a', { kind: 'question', tool: 'AskUserQuestion', input: { questions }, questions });
+    renderApp({ path: '/s/a', layout, state: stateWith({ sessions: [session('a', { status: 'waiting' })], pending: [p] }) });
+    const article = card();
+    const postgres = within(article).getByLabelText(/Postgres/) as HTMLInputElement;
+    fireEvent.click(postgres);
+    for (const width of [1440, 390, 768, 767]) {
+      act(() => layout.setState(layoutAt(width), true));
+      expect(card()).toBe(article);
+      expect(within(card()).getByLabelText(/Postgres/)).toBe(postgres);
+      expect(postgres.checked).toBe(true);
+    }
+    const own = within(article).getByPlaceholderText('Your own answer') as HTMLInputElement;
+    fireEvent.change(own, { target: { value: 'Postgres 17' } });
+    for (const width of [1440, 390]) {
+      act(() => layout.setState(layoutAt(width), true));
+      expect(within(card()).getByPlaceholderText('Your own answer')).toBe(own);
+    }
+    expect(own.value).toBe('Postgres 17');
   });
 });

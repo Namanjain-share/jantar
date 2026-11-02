@@ -5,8 +5,10 @@
  * 64 px phone) read "status · folder · session", what it is doing, and the
  * account with its 5-hour %.
  *
- * Frames: the 360 / 440 px --surface ledger column beside the Desk (desk,
- * wide), full width on tablet, and the phone list under the shell header.
+ * Frames: the 340 / 440 px --surface ledger column beside the Desk or a
+ * session when the board's SplitPane is split (0.11: by the pane's width,
+ * kit/SplitPane.tsx), full width otherwise, and the phone list under the
+ * shell header.
  * The display line stays put; only the rows scroll.
  *
  * States (5.6): skeleton rows before the first sync with nothing cached; the
@@ -23,7 +25,8 @@ import { SkeletonRows } from '../kit/Skeleton.js';
 import { useApp, useDeps, useNavigate, useNow, useRoute } from '../context.js';
 import { launchesNeedingYou, useCeiling } from '../shell/data.js';
 import { useCanStart } from './new/machines.js';
-import { isSplit, useFrame } from '../shell/layout.js';
+import { useSplit } from '../kit/SplitPane.js';
+import { useLayout } from '../shell/layout.js';
 import { wireStateCache } from './board/cache.js';
 import { DisplayLine } from './board/DisplayLine.js';
 import { GhostRows } from './board/GhostRow.js';
@@ -89,7 +92,9 @@ export function Board() {
   const conn = useApp((s) => s.conn.status);
   const route = useRoute();
   const navigate = useNavigate();
-  const frame = useFrame();
+  const phone = useLayout().chrome === 'phone';
+  // The --surface column beside a session or the Desk; the page's ground when the ledger is the page.
+  const split = useSplit()?.split ?? false;
   const now = useNow(10_000);
   const ceiling = useCeiling();
 
@@ -99,7 +104,7 @@ export function Board() {
   const groups = useMemo(() => ledgerGroups(state, now), [state, now]);
   const selectedSid = route.name === 'session' ? route.sid : null;
   const { unseen, markSeen } = useSeen(state, selectedSid, clock);
-  const ground = isSplit(frame) ? 'surface' : 'bg';
+  const ground = split ? 'surface' : 'bg';
   const needs = groupRows(groups, 'needs');
   // A launch waiting on its trust card needs you too (U8): counted with the sessions, after them.
   // v0.6: a launch on a server needs you as one on the Mac does (each machine keeps its own starting switch).
@@ -143,7 +148,7 @@ export function Board() {
           needs={needs.length + waitingLaunches.length}
           working={working}
           ground={ground}
-          phone={frame === 'phone'}
+          phone={phone}
           onStart={() => {
             const card = waitingLaunches[0];
             if (first) open(first, `/s/${encodeURIComponent(first.sid)}`);

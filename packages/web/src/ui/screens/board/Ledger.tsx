@@ -15,6 +15,7 @@
 import { m } from 'motion/react';
 import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@jantar/protocol';
+import { usePaneScroll } from '../../kit/Pane.js';
 import { RailLabel } from '../../kit/RailLabel.js';
 import { useApp } from '../../context.js';
 import { canStartAnywhere, canStartOn } from '../new/machines.js';
@@ -65,6 +66,8 @@ export function Ledger({
   const sig = orderSignature(groups);
   const wash = useWash(groups);
   const list = useRef<HTMLDivElement>(null);
+  // 0.11: the ledger's scroll survives the list being put away (a session opened on a phone) and a resize.
+  usePaneScroll(list, 'board:ledger');
   // v0.6: each row's own machine decides "New session here" (the Mac's starting switch, or that server's).
   const daemon = useApp((s) => s.state.daemon);
   const nodes = useApp((s) => s.state.nodes);

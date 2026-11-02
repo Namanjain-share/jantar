@@ -69,10 +69,11 @@ import { Button } from '../kit/Button.js';
 import { EmptyState } from '../kit/EmptyState.js';
 import { glyphStateOf } from '../kit/glyph.js';
 import { SkeletonRows } from '../kit/Skeleton.js';
+import { useSplit } from '../kit/SplitPane.js';
 import { Spinner } from '../kit/Spinner.js';
 import { Tag } from '../kit/Tag.js';
 import { useCeiling, useFeatures } from '../shell/data.js';
-import { frameOf, useLayout } from '../shell/layout.js';
+import { useLayout } from '../shell/layout.js';
 import { backgroundLine } from './board/model.js';
 import { Composer, carriesFiles } from './session/Composer.js';
 import { ControlBar } from './session/controls/ControlBar.js';
@@ -168,8 +169,8 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const now = useNow(15_000);
   const layout = useLayout();
   const phone = layout.chrome === 'phone';
-  // The back button shows where the ledger is not beside the session (the 768-1023 frame).
-  const frame = frameOf(layout);
+  // The back button shows where the ledger is not beside the session (the board's SplitPane is single).
+  const split = useSplit()?.split ?? false;
   const wide = useMedia(WIDE) && !phone;
   const state = useApp((s) => s.state);
   const conn = useApp((s) => s.conn.status);
@@ -516,7 +517,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       // v0.6: a Mac server's window is shown there ("Show on mini-1"); a tmux or Windows server has none to show.
       {...(machine !== null ? { showOn: raisable ? machine : null } : {})}
       onBack={() => navigate('/')}
-      back={frame === 'tablet'}
+      back={!phone && !split}
       files={filesTab}
     />
   );
@@ -606,48 +607,36 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       />
     );
 
-  if (phone) {
-    return (
-      <PaneRoot.Provider value={root}>
-        <div
-          ref={root}
-          className="flex h-full min-h-0 flex-col bg-bg"
-          // Reach under the home indicator so the sheet's surface runs to the edge (CSSOM style, CSP-safe).
-          style={{ height: 'calc(100% + env(safe-area-inset-bottom, 0px))', marginBottom: 'calc(env(safe-area-inset-bottom, 0px) * -1)' }}
-        >
-          {header}
-          {bgLine}
-          {whereLine}
-          {reading ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone modeOnChip={modeOnChip} noUsage={noUsage} />}
-          <div className="flex-none border-b border-line px-16 py-8">
-            <Tabs sid={sid} view={view} onView={(v) => setView(v)} phone files={filesTab} />
-          </div>
-          {focusLine}
-          {goneNotice}
-          {panel}
-          {reading ? null : controlBar}
-          {bottomShown}
-        </div>
-      </PaneRoot.Provider>
-    );
-  }
-
+  // 0.11 (build plan 1.6): one tree for the phone and every wider chrome. Each part keeps its place
+  // at every width and only its classes change (on the phone the two column boxes are `contents`), so
+  // a resize across 768 (or 640) keeps the transcript and its scroll, the dock card (a Question's pick
+  // and typed answer) and the composer mounted. A part one chrome alone shows is null on the other.
+  // The phone's panel reaches under the home indicator: the shell gives this pane the full height,
+  // and the composer and the dock pad themselves (pb-safe-16).
   return (
     <PaneRoot.Provider value={root}>
-      <div ref={root} className="flex h-full min-h-0 flex-col bg-bg">
+      <div ref={root} data-session-root className="flex h-full min-h-0 flex-col bg-bg">
         {header}
         {bgLine}
         {whereLine}
+        {phone && !reading ? <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone modeOnChip={modeOnChip} noUsage={noUsage} /> : null}
+        {phone ? (
+          <div className="flex-none border-b border-line px-16 py-8">
+            <Tabs sid={sid} view={view} onView={(v) => setView(v)} phone files={filesTab} />
+          </div>
+        ) : null}
         {focusLine}
-        <div className="flex min-h-0 flex-1 justify-between gap-32 px-32">
-          <div className="flex min-h-0 min-w-0 max-w-640 flex-1 flex-col">
-            {wide ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone={false} modeOnChip={modeOnChip} noUsage={noUsage} />}
+        <div className={phone ? 'contents' : 'flex min-h-0 flex-1 justify-between gap-32 px-32'}>
+          <div className={phone ? 'contents' : 'flex min-h-0 min-w-0 max-w-640 flex-1 flex-col'}>
+            {phone || wide ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone={false} modeOnChip={modeOnChip} noUsage={noUsage} />}
             {goneNotice}
             {panel}
-            {controlBar}
-            {bottom ? <div className="flex-none pb-24">{bottom}</div> : null}
+            {reading ? null : controlBar}
+            <div className={phone ? 'contents' : bottomShown ? 'flex-none pb-24' : 'hidden'}>{bottomShown}</div>
           </div>
-          {wide ? <Props session={session} account={account} state={sameMachine} ceiling={ceiling} now={now} onOpen={openSession} modeOnChip={modeOnChip} noUsage={noUsage} /> : null}
+          {!phone && wide ? (
+            <Props session={session} account={account} state={sameMachine} ceiling={ceiling} now={now} onOpen={openSession} modeOnChip={modeOnChip} noUsage={noUsage} />
+          ) : null}
         </div>
       </div>
     </PaneRoot.Provider>
