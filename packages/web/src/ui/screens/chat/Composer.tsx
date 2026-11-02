@@ -7,10 +7,14 @@
  * only when small and clean; GIF as it is. Each one uploads at once (its
  * chip shows the progress and a × that cancels it or removes it from the
  * Mac); at most CHAT_PHOTOS_MAX a message. Send waits while a photo
- * uploads, offline, or with nothing to send. Enter sends, Shift+Enter is a
- * new line. Never a data: URL: chips show blob: URLs.
+ * uploads, offline, or with nothing to send, and while a photo failed (its
+ * chip has a warning glyph, the reason is one line under the row; × takes
+ * it off), so no photo is dropped without a word. The chips stay until the
+ * Mac takes the message. Enter sends, Shift+Enter is a new line; the box
+ * keeps the focus (read-only while sending, never disabled). Never a data:
+ * URL: chips show blob: URLs.
  */
-import { ArrowUpIcon, ImageIcon, XIcon } from '@phosphor-icons/react';
+import { ArrowUpIcon, ImageIcon, WarningIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { CHAT_PHOTO_EDGE, CHAT_PHOTOS_MAX, CHAT_PHOTO_MAX_BYTES, CHAT_TEXT_MAX } from '@jantar/protocol';
@@ -19,6 +23,7 @@ import { useDeps } from '../../context.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { useFrame } from '../../shell/layout.js';
 import { prepareFile } from '../session/attach/convert.js';
+import { Refused } from './Turn.js';
 
 const LINE = 22;
 const MAX_LINES = 6;
@@ -35,7 +40,18 @@ export interface ChatChip {
   abort: AbortController;
 }
 
-/** The chips and their uploads; `take()` hands the ids over for a send and empties the row. */
+/** "Photos up to 6 MB." from "Photos up to 6 MB" (a reason ends a sentence once). */
+const sentence = (s: string) => `${s.replace(/[.\s]+$/, '')}.`;
+
+/** What is wrong with the row, as one sentence under it; null when nothing failed. */
+export function chipTrouble(chips: readonly Pick<ChatChip, 'error'>[]): string | null {
+  const failed = chips.filter((c) => c.error);
+  if (failed.length === 0) return null;
+  const first = sentence(failed[0]?.error ?? '');
+  return failed.length === 1 ? `A photo didn't upload: ${first} Remove it to send.` : `${failed.length} photos didn't upload: ${first} Remove them to send.`;
+}
+
+/** The chips and their uploads; `ids()` names the uploaded ones for a send, `clear()` empties the row once the Mac took it. */
 export function useChips() {
   const { api } = useDeps();
   const [chips, setChips] = useState<ChatChip[]>([]);
@@ -79,16 +95,18 @@ export function useChips() {
     setChips((cs) => cs.filter((x) => x.key !== key));
   };
 
-  const take = (): string[] => {
-    const ids = live.current.filter((c) => c.id && !c.error).map((c) => c.id as string);
+  const ids = (): string[] => live.current.filter((c) => c.id && !c.error).map((c) => c.id as string);
+
+  /** After a send the Mac took: the photos are the message's now, so nothing is deleted. */
+  const clear = () => {
     live.current.forEach((c) => URL.revokeObjectURL(c.url));
     setChips([]);
-    return ids;
   };
 
   const uploading = chips.some((c) => !c.id && !c.error);
+  const failed = chips.filter((c) => c.error).length;
   const ready = chips.filter((c) => c.id && !c.error).length;
-  return { chips, add, remove, take, uploading, ready };
+  return { chips, add, remove, ids, clear, uploading, failed, ready };
 }
 
 export function Composer({
@@ -111,7 +129,9 @@ export function Composer({
   const id = useId();
   const phone = useFrame() === 'phone';
   const file = useRef<HTMLInputElement>(null);
-  const can = canSend && !chips.uploading && (draft.trim().length > 0 || chips.ready > 0);
+  // A failed photo holds Send: the message would go without it, and Claude would answer as if it had seen it.
+  const can = canSend && !chips.uploading && chips.failed === 0 && (draft.trim().length > 0 || chips.ready > 0);
+  const trouble = chipTrouble(chips.chips);
 
   useLayoutEffect(() => {
     const el = area.current;
@@ -137,9 +157,11 @@ export function Composer({
       {chips.chips.length ? (
         <ul aria-label="Photos to send" className="mb-8 flex flex-wrap gap-8">
           {chips.chips.map((c) => (
-            <li key={c.key} className="relative size-64">
+            <li key={c.key} className="relative size-64" aria-label={c.error ? `A photo that didn't upload: ${c.error}` : undefined}>
               {c.error ? (
-                <span className="flex size-64 items-center justify-center rounded-btn border border-line px-4 text-center type-small text-signal-text">{c.error}</span>
+                <span className="flex size-64 items-center justify-center rounded-btn border border-line bg-surface text-signal">
+                  <WarningIcon size={20} aria-hidden="true" />
+                </span>
               ) : (
                 <img src={c.url} alt="" className="size-64 rounded-btn border border-line object-cover" />
               )}
@@ -148,13 +170,20 @@ export function Composer({
                   {c.total ? Math.round((c.sent / c.total) * 100) : 0}%
                 </span>
               ) : null}
-              <button type="button" aria-label="Remove the photo" className="absolute -right-6 -top-6 flex size-24 items-center justify-center rounded-full border border-line bg-bg text-ink-2 coarse:size-44 coarse:-right-12 coarse:-top-12" onClick={() => chips.remove(c.key)}>
+              {/* A small × inside the corner; on touch its hit area is 44 px (::before), within the chip and the gap. */}
+              <button
+                type="button"
+                aria-label="Remove the photo"
+                className="absolute right-2 top-2 flex size-24 items-center justify-center rounded-full border border-line bg-bg/90 text-ink-2 hover:text-ink coarse:before:absolute coarse:before:-inset-10"
+                onClick={() => chips.remove(c.key)}
+              >
                 <XIcon size={12} weight="bold" aria-hidden="true" />
               </button>
             </li>
           ))}
         </ul>
       ) : null}
+      {trouble ? <Refused className="-mt-4 mb-8">{trouble}</Refused> : null}
       <div className="flex items-end gap-8">
         <input
           ref={file}
@@ -189,7 +218,8 @@ export function Composer({
           rows={1}
           maxLength={CHAT_TEXT_MAX}
           placeholder="Ask or tell Jantar"
-          disabled={sending}
+          readOnly={sending}
+          aria-busy={sending}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKey}
           enterKeyHint="send"

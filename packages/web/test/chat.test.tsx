@@ -78,7 +78,13 @@ describe('Chat', () => {
     expect(rows.map((r) => r.textContent)).toEqual(['AddedTodo · Buy oat milkUndo', 'ChangedCafé · Sample Dosa House · 4★Undo', 'UndoneFood · Dal · 180 kcal']);
     fireEvent.click(within(rows[1]!).getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(chatUndo).toHaveBeenCalledWith(tid(1), 1, expect.any(String)));
-    expect(await screen.findByText("That changed after Chat's edit; change it back by hand.")).toBeTruthy();
+    const why = await screen.findByText("That changed after Chat's edit; change it back by hand.");
+    // On its own line under the row, the label still there, and no Undo to be refused again.
+    expect(why.closest('li')).toBe(rows[1]);
+    expect(within(rows[1]!).getByText('Café · Sample Dosa House · 4★').contains(why)).toBe(false);
+    expect(why.parentElement).toBe(rows[1]);
+    expect(within(rows[1]!).queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(within(rows[0]!).getByRole('button', { name: 'Undo' })).toBeTruthy();
   });
 
   it('no Undo past a day', async () => {
@@ -184,6 +190,64 @@ describe('Chat', () => {
     await waitFor(() => expect(chatPhotoAdd).toHaveBeenCalledTimes(2));
     fireEvent.click(within(again).getByRole('button', { name: 'Remove the photo' }));
     await waitFor(() => expect(chatPhotoDelete).toHaveBeenCalledWith(tid(70)));
+  });
+});
+
+describe('photo chips', () => {
+  const gif = () => new File([new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])], 'receipt.gif', { type: 'image/gif' });
+  const pick = (files: File[]) => fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files } });
+
+  it("a photo that didn't upload holds Send, says why under the row with a glyph on its chip, and × takes it off", async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:chip'), revokeObjectURL: vi.fn() }));
+    let n = 0;
+    const chatPhotoAdd = vi.fn(async () => {
+      n += 1;
+      if (n === 1) throw new ApiError('refused', 'Chat takes photos only (JPEG, PNG, WebP or GIF).', 422);
+      return { id: tid(71) };
+    });
+    const chatSend = vi.fn(async () => ({ id: tid(5) }));
+    open(list([]), { chatPhotoAdd, chatSend });
+    await screen.findByText('Ask Jantar anything, or tell it what to add or change.');
+    pick([gif(), gif()]);
+    const chips = await screen.findByRole('list', { name: 'Photos to send' });
+    await waitFor(() => expect(within(chips).getAllByRole('listitem')).toHaveLength(2));
+    const why = await screen.findByText("A photo didn't upload: Chat takes photos only (JPEG, PNG, WebP or GIF). Remove it to send.");
+    expect(why.getAttribute('role')).toBe('alert');
+    expect(within(chips).getByLabelText("A photo that didn't upload: Chat takes photos only (JPEG, PNG, WebP or GIF).")).toBeTruthy();
+    fireEvent.change(box(), { target: { value: 'what is on these' } });
+    await waitFor(() => expect(chatPhotoAdd).toHaveBeenCalledTimes(2));
+    expect(sendButton().disabled).toBe(true);
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    expect(chatSend).not.toHaveBeenCalled();
+    fireEvent.click(within(chips).getAllByRole('button', { name: 'Remove the photo' })[0]!);
+    await waitFor(() => expect(sendButton().disabled).toBe(false));
+    expect(screen.queryByText(/didn't upload/)).toBeNull();
+    fireEvent.click(sendButton());
+    await waitFor(() => expect(chatSend).toHaveBeenCalledWith('what is on these', [tid(71)], expect.any(String)));
+  });
+
+  it('a refused send keeps the text and the chips; the box keeps the focus', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:chip'), revokeObjectURL: vi.fn() }));
+    const chatPhotoAdd = vi.fn(async () => ({ id: tid(72) }));
+    const chatSend = vi.fn<Api['chatSend']>().mockRejectedValueOnce(new ApiError('conflict', 'Jantar is busy. Try again in a minute.', 409)).mockResolvedValue({ id: tid(6) });
+    open(list([]), { chatPhotoAdd, chatSend });
+    await screen.findByText('Ask Jantar anything, or tell it what to add or change.');
+    pick([gif()]);
+    await waitFor(() => expect(chatPhotoAdd).toHaveBeenCalled());
+    fireEvent.change(box(), { target: { value: 'what is on this' } });
+    box().focus();
+    await waitFor(() => expect(sendButton().disabled).toBe(false));
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    expect(await screen.findByText('Jantar is busy. Try again in a minute.')).toBeTruthy();
+    expect(box().value).toBe('what is on this');
+    expect(within(screen.getByRole('list', { name: 'Photos to send' })).getAllByRole('listitem')).toHaveLength(1);
+    expect(document.activeElement).toBe(box());
+    expect(box().disabled).toBe(false);
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(chatSend).toHaveBeenLastCalledWith('what is on this', [tid(72)], expect.any(String)));
+    await waitFor(() => expect(screen.queryByRole('list', { name: 'Photos to send' })).toBeNull());
+    expect(box().value).toBe('');
+    expect(document.activeElement).toBe(box());
   });
 });
 

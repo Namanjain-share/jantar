@@ -67,6 +67,13 @@ export function Chat() {
     return ok;
   };
 
+  // The box's message: the chips go once the Mac took it (a refused send keeps them), and the box keeps the focus.
+  const sendBox = async () => {
+    const ok = await go(draft, chips.ids(), true);
+    if (ok) chips.clear();
+    area.current?.focus();
+  };
+
   // Try again sends the text and the photos still there (the Mac takes a failed turn's photos again).
   const retry = async (t: ChatTurn) => {
     const ok = await go(t.text, t.photos.filter((p) => !p.gone).map((p) => p.id), false);
@@ -184,7 +191,7 @@ export function Chat() {
           {load.data && !load.data.ready.ok ? (
             <CommandSentence sentence={load.data.ready.reason ?? CHAT_COPY.notReady} />
           ) : (
-            <Composer area={area} draft={draft} setDraft={setDraft} sending={send.busy} canSend={canSend} chips={chips} onSend={() => void go(draft, chips.take(), true)} />
+            <Composer area={area} draft={draft} setDraft={setDraft} sending={send.busy} canSend={canSend} chips={chips} onSend={() => void sendBox()} />
           )}
           {busy ? <p className="mt-8 type-small text-ink-2">{CHAT_COPY.wait}</p> : null}
           {send.error ? <Refused className="mt-8">{refusalText(send.error)}</Refused> : null}

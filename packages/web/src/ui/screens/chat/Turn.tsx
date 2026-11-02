@@ -177,21 +177,28 @@ export function Turn({ turn, nowMs, offline, canSend, retried = false, onRetry, 
   );
 }
 
+/**
+ * One change: its word, its label (up to two lines, so the part that changed shows), Undo while it may run.
+ * A refused Undo says why on its own line under the row, at full width; after a 409 (changed since, already
+ * undone) Undo goes, as it would only be refused again.
+ */
 function Change({ turn, change, nowMs, offline, onChanged }: { turn: ChatTurn; change: ChatChange; nowMs: number; offline: boolean; onChanged: () => void }) {
   const { api } = useDeps();
   const tap = useTap();
-  const can = undoable(change, turn, nowMs);
+  const can = undoable(change, turn, nowMs) && !isApiError(tap.error, 'conflict');
   return (
-    <li className="flex min-h-32 items-center gap-8">
-      <span className={clsx('w-64 flex-none type-small', change.state === 'undone' ? 'text-ink-3' : 'text-ink-2')}>{changeWord(change)}</span>
-      <span className={clsx('min-w-0 flex-1 truncate type-small', change.state === 'undone' ? 'text-ink-3 line-through' : 'text-ink')}>{change.label}</span>
-      {can ? (
-        <Button variant="text" size="sm" disabled={offline || tap.busy} onClick={() => void tap.run((k) => api.chatUndo(turn.id, change.n, k)).then(onChanged)}>
-          {tap.busy ? <Spinner label="Undoing" /> : null}
-          Undo
-        </Button>
-      ) : null}
-      {tap.error ? <Refused>{refusalText(tap.error)}</Refused> : null}
+    <li>
+      <div className="flex min-h-32 items-center gap-8">
+        <span className={clsx('w-64 flex-none type-small', change.state === 'undone' ? 'text-ink-3' : 'text-ink-2')}>{changeWord(change)}</span>
+        <span className={clsx('line-clamp-2 min-w-0 flex-1 break-words type-small', change.state === 'undone' ? 'text-ink-3 line-through' : 'text-ink')}>{change.label}</span>
+        {can ? (
+          <Button variant="text" size="sm" disabled={offline || tap.busy} onClick={() => void tap.run((k) => api.chatUndo(turn.id, change.n, k)).then(onChanged)}>
+            {tap.busy ? <Spinner label="Undoing" /> : null}
+            Undo
+          </Button>
+        ) : null}
+      </div>
+      {tap.error ? <Refused className="mt-2 pl-72">{refusalText(tap.error)}</Refused> : null}
     </li>
   );
 }

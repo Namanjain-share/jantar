@@ -13,9 +13,16 @@
  *   two photo chips. No console message about the Content Security Policy,
  *   no console error, no data: image, `window.__pwned` never set, and
  *   nothing sticking out past the viewport's sides.
+ * - Two photos picked in the app upload (the chips finish), Send sends them
+ *   and the turn has both.
+ * - A photo that didn't upload: a glyph on its chip, the reason on its own
+ *   line under the row (inside 320 px), Send held until × takes it off.
+ * - An Undo refused at 320 px (changed since): the reason under the row at
+ *   full width, the label still shown, no Undo left.
  * - /ask lands on /chat.
  * - Under a coarse pointer (the 320 px phone) every target is 44 px tall:
- *   the photo button, Send, Undo, Confirm, Dismiss.
+ *   the photo button, Send, Undo, Confirm, Dismiss; a chip's × is small to
+ *   see with a 44 px hit area.
  *
  * Every name and value is synthetic. Needs a built dist/ and a Chromium.
  */
@@ -147,8 +154,79 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
       await chips.waitFor();
       await eventually(async () => ((await chips.getByRole('listitem').count()) === 2 ? true : null), perfBudgetMs(10_000), 'two chips');
       await check(page, watch, `composer ${v.who} ${v.scheme}`);
-      for (let i = 0; i < 2; i++) await chips.getByRole('button', { name: 'Remove the photo' }).first().click();
+      if (v.who === 'p390' && v.scheme === 'light') {
+        // Both finish uploading, then Send sends them with the message.
+        await eventually(async () => ((await chips.getByLabel('Uploading').count()) === 0 ? true : null), perfBudgetMs(15_000), 'the uploads');
+        expect(await page.getByText(/didn't upload/).count()).toBe(0);
+        const before = ((await call('GET', '/v1/chat')).body as ChatList).turns.length;
+        await page.getByRole('textbox', { name: 'A message to Chat' }).fill(chatText('chat-photos', 'what is on these'));
+        await page.getByRole('button', { name: 'Send' }).click();
+        const sent = await eventually(
+          async () => {
+            const turns = ((await call('GET', '/v1/chat')).body as ChatList).turns;
+            const t = turns.at(-1);
+            return turns.length > before && t && t.state === 'done' ? t : null;
+          },
+          perfBudgetMs(30_000),
+          'the turn with two photos',
+        );
+        expect(sent.photos).toHaveLength(2);
+        expect(sent.reply).toMatch(/^I see 2 photo/);
+        await chips.waitFor({ state: 'detached' });
+      } else {
+        for (let i = 0; i < 2; i++) await chips.getByRole('button', { name: 'Remove the photo' }).first().click();
+      }
     }
+  });
+
+  it("a photo that didn't upload: its glyph, the reason under the row inside 320 px, Send held until it is removed", async () => {
+    const { page, watch } = pages.p320!;
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto(`http://127.0.0.1:${d.port}/chat`, { waitUntil: 'load' });
+    await page.getByRole('button', { name: 'Confirm' }).waitFor();
+    const reason = 'Chat takes photos only (JPEG, PNG, WebP or GIF).';
+    await page.route('**/v1/chat/photos', (r) => r.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: { code: 'refused', message: reason } }) }));
+    try {
+      await page.getByRole('textbox', { name: 'A message to Chat' }).fill('what is on this');
+      await page.locator('input[type="file"]').setInputFiles([{ name: 'one.png', mimeType: 'image/png', buffer: makePng(40, 30) }]);
+      const why = page.getByText(`A photo didn't upload: ${reason} Remove it to send.`);
+      await why.waitFor();
+      await page.getByLabel(`A photo that didn't upload: ${reason}`).waitFor();
+      expect(await page.getByRole('button', { name: 'Send' }).isDisabled()).toBe(true);
+      const box = await why.boundingBox();
+      expect(box?.width ?? 0, 'the reason has the row').toBeGreaterThan(240);
+      // The browser logs the 422 itself; nothing else may.
+      watch.errors.splice(0, watch.errors.length, ...watch.errors.filter((e) => !/status of 422/.test(e)));
+      await check(page, watch, 'a failed chip at 320');
+      await page.getByRole('button', { name: 'Remove the photo' }).click();
+      await why.waitFor({ state: 'detached' });
+      expect(await page.getByRole('button', { name: 'Send' }).isDisabled()).toBe(false);
+    } finally {
+      await page.unroute('**/v1/chat/photos');
+      await page.getByRole('textbox', { name: 'A message to Chat' }).fill('');
+    }
+  });
+
+  it("an Undo refused at 320 px: the reason under the row at full width, the label still shown, no Undo left", async () => {
+    const { page, watch } = pages.p320!;
+    const cafe = (((await call('GET', '/v1/places')).body as { places: Array<{ id: string; name: string }> }).places.find((p) => p.name === 'Sample Dosa House') as { id: string }).id;
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto(`http://127.0.0.1:${d.port}/chat`, { waitUntil: 'load' });
+    const row = page.getByRole('list', { name: 'What Chat changed' }).first().getByRole('listitem').filter({ hasText: 'Café · Sample Dosa House' });
+    await row.waitFor();
+    // Changed by hand after Chat's edit: Undo is refused.
+    expect((await call('PATCH', `/v1/places/${cafe}`, { stars: 2 })).status).toBe(200);
+    await row.getByRole('button', { name: 'Undo' }).click();
+    const why = row.getByRole('alert');
+    await why.waitFor();
+    expect(await why.textContent()).toBe("That changed after Chat's edit; change it back by hand.");
+    const label = await row.getByText(/^Café · Sample Dosa House/).boundingBox();
+    expect(label?.width ?? 0, 'the label').toBeGreaterThan(100);
+    expect((await why.boundingBox())?.width ?? 0, 'the reason').toBeGreaterThan(200);
+    expect(await row.getByRole('button', { name: 'Undo' }).count()).toBe(0);
+    // The browser logs the 409 itself; nothing else may.
+    watch.errors.splice(0, watch.errors.length, ...watch.errors.filter((e) => !/status of 409/.test(e)));
+    await check(page, watch, 'an Undo refused at 320');
   });
 
   it('under a coarse pointer every target is 44 px tall (320 px phone)', async () => {
@@ -162,5 +240,18 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
     await tall(page.getByRole('button', { name: 'Undo' }).first(), 'undo');
     await tall(page.getByRole('button', { name: 'Confirm' }), 'confirm');
     await tall(page.getByRole('button', { name: 'Dismiss' }), 'dismiss');
+    // A chip's × shows at 24 px; touch reaches it 20 px out from its middle (its ::before), inside the chip and the gap.
+    await page.locator('input[type="file"]').setInputFiles([{ name: 'one.png', mimeType: 'image/png', buffer: makePng(40, 30) }]);
+    const x = page.getByRole('button', { name: 'Remove the photo' });
+    await x.waitFor();
+    const b = (await x.boundingBox())!;
+    expect(b.width).toBeLessThanOrEqual(26);
+    const cx = b.x + b.width / 2;
+    const cy = b.y + b.height / 2;
+    for (const [dx, dy] of [[-20, 0], [20, 0], [0, -20], [0, 20]] as const) {
+      expect(await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.closest('button')?.getAttribute('aria-label') ?? null, [cx + dx, cy + dy] as const), `${dx},${dy}`).toBe('Remove the photo');
+    }
+    await x.click();
+    await x.waitFor({ state: 'detached' });
   });
 });
