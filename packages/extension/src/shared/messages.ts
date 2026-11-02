@@ -12,12 +12,23 @@ import type { MeetingSite } from './sites.js';
 /** What the page knows about the captions on screen. */
 export type CaptionsState = 'reading' | 'none' | 'notFound';
 
+/**
+ * v0.10: what the page shows, as the page's call watch judges it from fixed
+ * controls only: no join screen or call (`none`), the call's join screen
+ * (`prejoin`), its waiting room (`lobby`), the call (`in`), or this page left
+ * the call (`left`).
+ */
+export type CallStage = 'none' | 'prejoin' | 'lobby' | 'in' | 'left';
+
 // ---------------------------------------------------------------------------
 // content script -> worker (chrome.runtime.sendMessage)
 
 export type FromPage =
-  /** Answered with CallAnswer. `left`: the 60-s grace ran out (the worker ends the meeting). */
-  | { t: 'call'; site: MeetingSite; inCall: boolean; left?: true; callKey: string | null; title: string }
+  /**
+   * Answered with CallAnswer. `left`: the 60-s grace ran out (the worker ends the meeting).
+   * v0.10: `stage`, the page's stable stage, and `hook`, the fixed hook id that decided it (never page text).
+   */
+  | { t: 'call'; site: MeetingSite; inCall: boolean; left?: true; callKey: string | null; title: string; stage?: CallStage; hook?: string }
   /** At most 200, the newest revision per lineId. Answered with LinesAnswer. */
   | { t: 'lines'; lines: LineUpsert[] }
   | { t: 'captions'; state: CaptionsState }
@@ -35,7 +46,10 @@ export type ShotAnswer = { ok: boolean; text: string };
 // worker -> content script (chrome.tabs.sendMessage)
 
 export type ToPage =
-  /** Start or stop reading captions, and the notes-on dot; `text`: a bubble saying why they stopped. */
+  /**
+   * Start or stop reading captions, and the notes-on dot; `text`: a bubble saying why they stopped.
+   * v0.10: `text` with `on: true` is the bubble shown once notes started by themselves.
+   */
   | { t: 'capture'; on: boolean; text?: string }
   /** After pairing, unpairing or a 401. */
   | { t: 'button'; on: boolean }
@@ -57,9 +71,33 @@ export type FromPopup =
   | { t: 'shot'; tabId: number }
   | { t: 'end'; tabId: number }
   /** v0.8: Read saved links on or off (the popup asked Chrome for the post sites first). Answered with Done. */
-  | { t: 'reads'; on: boolean };
+  | { t: 'reads'; on: boolean }
+  /** v0.10: Start when I join, with the sheet's fields (`name` '': the page's title then). Done; starts now when the tab is already in the call. */
+  | { t: 'arm'; tabId: number; name: string; projectId?: string; people?: string; autoTodos: boolean }
+  /** v0.10: Cancel, or Not this call for an Always arm. Done. */
+  | { t: 'disarm'; tabId: number }
+  /** v0.10: Settings › Always start when I join a call. Done. */
+  | { t: 'always'; on: boolean };
 
 export type Done = { ok: boolean; error?: string };
+
+/** v0.10: a tab's live Start when I join, as the popup shows it. `off`: Not this call (Always skips this call). */
+export interface ArmView {
+  from: 'popup' | 'always';
+  off: boolean;
+  name: string;
+  projectId?: string;
+  people?: string;
+  autoTodos: boolean;
+  until: number;
+}
+
+/** v0.10: the last time notes started by themselves in a tab, or why they did not (`text`). */
+export interface AutoStart {
+  at: number;
+  ok: boolean;
+  text?: string;
+}
 
 /** v0.5.3: which control asked for a screenshot: the page's camera button, the popup, or the shortcut. */
 export type ShotFrom = 'page' | 'popup' | 'command';
@@ -99,6 +137,13 @@ export interface PopupState {
     notes: boolean;
     shots: number;
     captions: CaptionsState | 'unknown';
+    /** v0.10: what the page last said it shows, and the hook id that decided it ('' when none). */
+    stage: CallStage;
+    hook: string;
+    /** v0.10: Start when I join, live arms only. */
+    arm: ArmView | null;
+    /** v0.10: the last start by itself: started, or failed in the last ARM_TIMING.failedShowMs. */
+    auto: AutoStart | null;
   };
   /** v0.5.3: the last screenshot try in any tab (Settings › Last screenshot); null before the first. */
   lastShot: LastShot | null;
@@ -106,4 +151,6 @@ export interface PopupState {
   shortcut: string;
   /** v0.8: Read saved links is on (switched on here, and Chrome allows the post sites). */
   reads: boolean;
+  /** v0.10: Always start when I join a call. */
+  always: boolean;
 }

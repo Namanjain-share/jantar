@@ -6,7 +6,7 @@
  * answer and nothing done (no daemon call, no state, no capture).
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { siteOfUrl } from '../../src/background/accept.js';
+import { acceptPage, acceptPopup, siteOfUrl } from '../../src/background/accept.js';
 import { MEETING_HOSTS, siteOf } from '../../src/shared/sites.js';
 import { MEET_URL, setupWorker, type WorkerUnderTest } from './chrome.js';
 
@@ -133,5 +133,71 @@ describe('the worker takes', () => {
     w.model.addTab({ id: 3, windowId: 9, url: w.model.extensionSender('popup.html?tab=7').url as string, active: true });
     const sender = { ...w.model.pageSender(3) };
     expect(await w.chrome.runtime.onMessage.dispatch({ t: 'state', tabId: 7 }, sender)).toMatchObject({ connection: 'ok' });
+  });
+});
+
+describe('v0.10: the stage, Start when I join and Always', () => {
+  const base = { t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync' };
+
+  it("a page's `call` takes one of the five stages and our own hook id, and carries only those", () => {
+    w = setupWorker();
+    w.model.addTab({ id: 7, windowId: 1, url: MEET_URL, active: true });
+    const sender = w.model.pageSender(7) as chrome.runtime.MessageSender;
+    for (const stage of ['none', 'prejoin', 'lobby', 'in', 'left']) {
+      expect(acceptPage({ ...base, stage, hook: 'meet:call_end' }, sender)?.msg, stage).toEqual({ ...base, stage, hook: 'meet:call_end' });
+    }
+    expect(acceptPage({ ...base, stage: 'lobby', hook: 'page:hide', extra: 'dropped' }, sender)?.msg).toEqual({ ...base, stage: 'lobby', hook: 'page:hide' });
+    // Without them it is the v0.9 message.
+    expect(acceptPage(base, sender)?.msg).toEqual(base);
+  });
+
+  it('refuses a `call` with a bad stage or hook (nothing done)', async () => {
+    w = setupWorker();
+    w.model.addTab({ id: 7, windowId: 1, url: MEET_URL, active: true });
+    for (const over of [
+      { stage: 'waiting' },
+      { stage: 'IN' },
+      { stage: 3 },
+      { stage: null },
+      { hook: '' },
+      { hook: 'Meet:Call_End' },
+      { hook: 'Sam is speaking' },
+      { hook: 'x'.repeat(41) },
+      { hook: 7 },
+    ]) {
+      expect(await w.page(7, { ...base, ...over }), JSON.stringify(over)).toBeUndefined();
+    }
+    nothingDone();
+    expect(w.model.session.size).toBe(0);
+  });
+
+  it('takes `arm`, `disarm` and `always` from the popup only, with exactly their fields', () => {
+    w = setupWorker();
+    w.model.addTab({ id: 7, windowId: 1, url: MEET_URL, active: true });
+    const popup = w.model.extensionSender('popup.html') as chrome.runtime.MessageSender;
+    const page = w.model.pageSender(7) as chrome.runtime.MessageSender;
+    const arm = { t: 'arm', tabId: 7, name: '', projectId: '01JFZ8X8Y3T0V5G9WQK2M4N6PR', people: 'Sam', autoTodos: true };
+    expect(acceptPopup({ ...arm, extra: 1 }, popup)).toEqual(arm);
+    expect(acceptPopup({ t: 'arm', tabId: 7, name: 'Weekly sync', autoTodos: false }, popup)).toEqual({ t: 'arm', tabId: 7, name: 'Weekly sync', autoTodos: false });
+    expect(acceptPopup({ t: 'disarm', tabId: 7, why: 'x' }, popup)).toEqual({ t: 'disarm', tabId: 7 });
+    expect(acceptPopup({ t: 'always', on: true, tabId: 7 }, popup)).toEqual({ t: 'always', on: true });
+    for (const bad of [
+      { t: 'arm', tabId: 7, name: 'x' },
+      { t: 'arm', tabId: '7', name: '', autoTodos: false },
+      { t: 'arm', tabId: 7, name: 'x'.repeat(1_001), autoTodos: false },
+      { t: 'arm', tabId: 7, name: '', projectId: 'p'.repeat(65), autoTodos: false },
+      { t: 'arm', tabId: 7, name: '', people: 'p'.repeat(1_001), autoTodos: false },
+      { t: 'disarm' },
+      { t: 'disarm', tabId: 1.5 },
+      { t: 'always' },
+      { t: 'always', on: 'yes' },
+    ]) {
+      expect(acceptPopup(bad, popup), JSON.stringify(bad)).toBeNull();
+    }
+    // A page can send none of them.
+    for (const msg of [arm, { t: 'disarm', tabId: 7 }, { t: 'always', on: true }]) {
+      expect(acceptPopup(msg, page), msg.t).toBeNull();
+      expect(acceptPage(msg, page), msg.t).toBeNull();
+    }
   });
 });

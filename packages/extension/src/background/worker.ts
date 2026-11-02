@@ -155,8 +155,13 @@ export function createWorker(deps: WorkerDeps): Worker {
             notes: Boolean(view.clientId && view.notes),
             shots: view.clientId ? view.shots : 0,
             captions: view.captions,
+            stage: view.inCall ? 'in' : 'none',
+            hook: '',
+            arm: null,
+            auto: null,
           }
         : null,
+      always: false,
     };
   }
 
@@ -190,6 +195,10 @@ export function createWorker(deps: WorkerDeps): Worker {
         return meetings.end(msg.tabId);
       case 'reads':
         return reads.set(msg.on);
+      case 'arm':
+      case 'disarm':
+      case 'always':
+        return { ok: false, error: TRY_AGAIN };
     }
   }
 
@@ -201,7 +210,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       if (t === 'shot') return { ok: false, text: SHOT.tryAgain } satisfies ShotAnswer;
       return undefined;
     }
-    if (t === 'state') return { connection: 'down', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '', reads: false } satisfies PopupState;
+    if (t === 'state') return { connection: 'down', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, always: false } satisfies PopupState;
     if (t === 'shot') return { ok: false, text: SHOT.tryAgain } satisfies ShotAnswer;
     return { ok: false, error: TRY_AGAIN } satisfies Done;
   }

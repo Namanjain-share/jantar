@@ -7,8 +7,12 @@
  * - from a page: a tab, an https URL on one of the four meeting hosts, and
  *   no `tabId` of its own (a page's tab is `sender.tab.id`, never a field).
  * Anything else is ignored: no answer, nothing done.
+ *
+ * v0.10: a page's `call` may carry its stage (one of five) and the hook id
+ * that decided it (our own fixed id, `HOOK_ID`); the popup's `arm` is
+ * checked as `start` is, `disarm` as `end`, `always` as `reads`.
  */
-import type { FromPage, FromPopup } from '../shared/messages.js';
+import type { CallStage, FromPage, FromPopup } from '../shared/messages.js';
 import { siteOf, type MeetingSite } from '../shared/sites.js';
 
 export type PageMessage = { tabId: number; site: MeetingSite; msg: FromPage };
@@ -35,6 +39,9 @@ export function siteOfUrl(raw: string): MeetingSite | null {
 export const onMeetingPage = (tab: { url?: string }): boolean => tab.url === undefined || siteOfUrl(tab.url) !== null;
 
 const CAPTIONS = new Set(['reading', 'none', 'notFound']);
+const STAGES = new Set<string>(['none', 'prejoin', 'lobby', 'in', 'left']);
+/** A hook id: one of the adapters' own fixed ids ("meet:call_end", "page:hide"), never page text. */
+export const HOOK_ID = /^[a-z0-9:_-]{1,40}$/;
 
 type Sender = chrome.runtime.MessageSender;
 
@@ -59,18 +66,21 @@ export function acceptPopup(msg: unknown, sender: Sender): FromPopup | null {
     case 'state':
     case 'shot':
     case 'end':
+    case 'disarm':
       return isTabId(msg.tabId) ? ({ t: msg.t, tabId: msg.tabId } as FromPopup) : null;
     case 'pair':
       return typeof msg.text === 'string' && msg.text.length <= 1_000 ? { t: 'pair', text: msg.text } : null;
     case 'unpair':
       return { t: 'unpair' };
     case 'reads':
-      return typeof msg.on === 'boolean' ? { t: 'reads', on: msg.on } : null;
+    case 'always':
+      return typeof msg.on === 'boolean' ? { t: msg.t, on: msg.on } : null;
     case 'start':
+    case 'arm':
       if (!isTabId(msg.tabId) || typeof msg.name !== 'string' || msg.name.length > 1_000 || typeof msg.autoTodos !== 'boolean') return null;
       if (!optionalString(msg.projectId, 64) || !optionalString(msg.people, 1_000)) return null;
       return {
-        t: 'start',
+        t: msg.t,
         tabId: msg.tabId,
         name: msg.name,
         ...(typeof msg.projectId === 'string' ? { projectId: msg.projectId } : {}),
@@ -96,10 +106,14 @@ export function acceptPage(msg: unknown, sender: Sender): PageMessage | null {
         typeof msg.inCall === 'boolean' &&
         (msg.left === undefined || msg.left === true) &&
         (msg.callKey === null || (typeof msg.callKey === 'string' && msg.callKey.length <= 64)) &&
-        typeof msg.title === 'string';
+        typeof msg.title === 'string' &&
+        (msg.stage === undefined || (typeof msg.stage === 'string' && STAGES.has(msg.stage))) &&
+        (msg.hook === undefined || (typeof msg.hook === 'string' && HOOK_ID.test(msg.hook)));
       if (!ok) return null;
       const call: FromPage = { t: 'call', site, inCall: msg.inCall as boolean, callKey: msg.callKey as string | null, title: (msg.title as string).slice(0, 1_000) };
       if (msg.left === true) call.left = true;
+      if (msg.stage !== undefined) call.stage = msg.stage as CallStage;
+      if (msg.hook !== undefined) call.hook = msg.hook as string;
       return { tabId, site, msg: call };
     }
     case 'lines':

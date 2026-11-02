@@ -30,8 +30,9 @@ const PROJECT_A = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
 const PROJECT_B = '01JFZ8X8Y3T0V5G9WQK2M4N6QR';
 
 type Tab = NonNullable<PopupState['tab']>;
-const meetTab = (over: Partial<Tab> = {}): Tab => ({ site: 'meet', inCall: true, title: 'Weekly sync', notes: false, shots: 0, captions: 'unknown', ...over });
-const state = (over: Partial<PopupState> = {}): PopupState => ({ connection: 'ok', pageButton: true, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, ...over }) as PopupState;
+// v0.10: a tab's stage follows inCall unless a test names one; no arm, no start by itself.
+const meetTab = (over: Partial<Tab> = {}): Tab => ({ site: 'meet', inCall: true, title: 'Weekly sync', notes: false, shots: 0, captions: 'unknown', stage: over.inCall === false ? 'none' : 'in', hook: '', arm: null, auto: null, ...over });
+const state = (over: Partial<PopupState> = {}): PopupState => ({ connection: 'ok', pageButton: true, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, always: false, ...over }) as PopupState;
 
 let chrome: ChromeFake;
 let model: ChromeModel;

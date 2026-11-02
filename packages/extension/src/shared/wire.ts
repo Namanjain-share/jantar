@@ -88,3 +88,29 @@ export const READ_LIMITS = Object.freeze({
   /** The result's body at most (INTEL_READ_LIMITS.extResultBytes). */
   resultBytes: 2 * 1024 * 1024,
 });
+
+/**
+ * v0.10: Start when I join. The page reports a stage only once it held
+ * STAGE_STABLE_POLLS polls in a row (an admission included), so a one-poll
+ * flicker of an in-call control never starts notes. The worker keeps each
+ * tab's arm in chrome.storage.session and sweeps the ones that ended with one
+ * alarm (ARM_ALARM).
+ */
+export const STAGE_STABLE_POLLS = 2;
+export const ARM_ALARM = 'jantar-arm';
+export const ARM_TIMING = Object.freeze({
+  /** An arm unused this long ends. */
+  maxMs: 2 * 60 * 60_000,
+  /** No join screen, waiting room or call this long: the arm ends. */
+  awayMs: 60_000,
+  /** No `call` from the tab this long: the arm ends. */
+  silentMs: 5 * 60_000,
+  /** More tries after "Jantar is not running", one per keep-alive. */
+  retries: 2,
+  /** The "!" badge and the popup's line, this long after a failed start by itself. */
+  failedShowMs: 10 * 60_000,
+  /** The popup asks again this often while it shows an armed tab. */
+  popupPollMs: 2_000,
+  /** Chrome's shortest alarm delay (Chrome 120). */
+  alarmMinMs: 30_000,
+});
