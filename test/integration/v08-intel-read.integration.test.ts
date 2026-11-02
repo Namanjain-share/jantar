@@ -450,8 +450,8 @@ describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
     expect(file).not.toContain(LATER_WORDS);
     expect(file).not.toContain(rid);
     expect(existsSync(join(d.ctx.paths.intelDir, 'media', rid))).toBe(false);
-    // The others are still there.
-    expect(await search('turmeric')).toContain(ids.article);
+    // The others are still there (the article exists where test 2 runs: the macOS job).
+    if (ids.article) expect(await search('turmeric')).toContain(ids.article);
   });
 
   it('9. a restart while a read hangs: failed "Stopped before it finished. Retry." and nothing reads it again', async () => {
@@ -467,7 +467,7 @@ describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
     expect((await jobs()).jobs.filter((j) => j.state !== 'saved' && j.state !== 'failed')).toEqual([]);
   });
 
-  it('10. jantar mcp: intel_search finds a read item by a word of its page; intel_get labels what was read as page text', async () => {
+  it.skipIf(!browserTier)('10. jantar mcp: intel_search finds a read item by a word of its page; intel_get labels what was read as page text', async () => {
     const mcp = createMcpServer({ ctl, folder: null, randomId: () => randomUUID() });
     let n = 0;
     const rpc = async (method: string, params: Record<string, unknown>) => {
