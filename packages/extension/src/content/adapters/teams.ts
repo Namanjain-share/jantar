@@ -10,10 +10,12 @@
  * and every check is an exact `id` or `data-tid` (never the loose match):
  * a lobby-only hook (TEAMS_LOBBY, empty until a real-Mac check names one:
  * R12) is the waiting room even beside a hang-up; then the call (a hang-up,
- * then a caption container); the join screen (#prejoin-join-button); the
- * waiting room after Join now (this page saw the join button at this same
- * URL and shows neither it nor the call); and a join link by its path or
- * query alone (path and query only: no host, no URL is spelled out here).
+ * then a caption container); the join screen (#prejoin-join-button); then,
+ * on a join link only (by its path or query: no host, no URL is spelled out
+ * here), the waiting room after Join now (this page saw the join button at
+ * this same URL and shows neither it nor the call), else the join link
+ * alone. Off a join link (Teams v2's one /v2/ address, Chat, Calendar)
+ * nothing but a real hook names a stage.
  */
 import { WIRE_LIMITS } from '../../shared/wire.js';
 import { collapse, first, firstAll, inButton, pageAt, textOf } from './dom.js';
@@ -71,10 +73,11 @@ export const teamsAdapter: SiteAdapter = {
     if (first(doc, PREJOIN) !== null) return { stage: 'prejoin', hook: 'teams:prejoin-join', strong: true };
     const loc = doc.location;
     if (!loc) return null;
-    // Light meetings and v2 both pass through Join now before the waiting room, at the same URL.
+    if (!joinLink(loc)) return null;
+    // Light meetings pass through Join now before the waiting room, at the same URL. Only on a join link: Teams v2 keeps
+    // one address (/v2/) for its whole app, so there the join screen seen before proves nothing (Chat after a cancel).
     if (seen.joinHookAt !== null && seen.joinHookAt === pageAt(loc)) return { stage: 'lobby', hook: 'teams:after-join', strong: true };
-    if (joinLink(loc)) return { stage: 'prejoin', hook: 'teams:join-link', strong: false };
-    return null;
+    return { stage: 'prejoin', hook: 'teams:join-link', strong: false };
   },
 
   // "<subject> | Microsoft Teams", with (n) counters and view names mixed in;

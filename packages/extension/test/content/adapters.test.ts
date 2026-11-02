@@ -300,6 +300,17 @@ describe('v0.10: the screens around the call', () => {
     expect(teamsAdapter.waiting(document, seen)).toBeNull();
   });
 
+  it('Teams: off a join link a join screen seen before proves no waiting room (v2 keeps /v2/ for Chat too)', () => {
+    goTo('/v2/');
+    const teams = buildTeams(document, { state: 'prejoin' });
+    expect(teamsAdapter.waiting(document, none)).toEqual({ stage: 'prejoin', hook: 'teams:prejoin-join', strong: true });
+    const seen = { joinHookAt: pageAt(document.location) };
+    teams.toChat();
+    expect(teamsAdapter.waiting(document, seen)).toBeNull();
+    teams.clickJoin();
+    expect(teamsAdapter.waiting(document, seen)).toBeNull();
+  });
+
   it('Teams: a join link by its path alone; Chat and Calendar are none', () => {
     buildTeams(document, { state: 'waiting', light: true });
     for (const path of ['/light-meetings/launch?anon=1&p=made-up', '/l/meetup-join/made-up-thread/0?context=x', '/meet/1234567890?p=made-up', '/dl/launcher/launcher.html?type=meetup-join']) {

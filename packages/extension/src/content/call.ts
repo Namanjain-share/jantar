@@ -28,8 +28,12 @@
  * needs the in-call hooks Start trusts on two polls running: a one-poll
  * flicker in the waiting room never reports it. While leaving the stage
  * stays as it was. After this page sent `left` (having been in the call) the
- * stage is `left` until a real join or waiting-room hook, the call, or a new
- * Meet code. Every `call` carries the stage and its hook id; one more goes
+ * stage is `left` while the page shows only the weak join-screen guess (the
+ * Meet code or a Teams join link alone, as "You left" does), until a real
+ * join or waiting-room hook, the call, or a new Meet code; a page that shows
+ * nothing of a call (Teams' Chat, Meet's home) is `none`, also in the `left`
+ * message itself, so a page away from the meeting is never armed and its
+ * arm's away clock runs. Every `call` carries the stage and its hook id; one more goes
  * whenever the stage changes, every keepAliveMs while the page shows a join
  * screen, a waiting room or `left` (the worker's sign the page is still
  * there), and once on pagehide (`hide`, stage none, hook `page:hide`).
@@ -169,8 +173,10 @@ export function createCallWatch(o: CallWatchOptions): CallWatch {
     rawStage = raw;
     const stable = held >= STAGE_STABLE_POLLS;
     if (left) {
-      // Only a page that was in the call has left it; a waiting room's one-poll flicker keeps its stage.
-      if (stage === 'in') {
+      // Only a page that was in the call has left it; a waiting room's one-poll flicker keeps its stage. A page that
+      // shows nothing of a call by then (Teams' Chat) has no rejoin to arm: none.
+      if (stage === 'in' && raw === 'none' && stable) setStage('none', 'page:left');
+      else if (stage === 'in') {
         setStage('left', 'page:left');
         leftFrom = key;
       }
@@ -183,7 +189,8 @@ export function createCallWatch(o: CallWatchOptions): CallWatch {
       }
     } else if (phase === 'out') {
       if (leftFrom !== undefined && k !== null && k !== leftFrom) leftFrom = undefined;
-      if (stable && (leftFrom === undefined || wait?.strong === true)) {
+      // `left` holds only over the weak join-screen guess (the code or the join link alone: "You left" has those).
+      if (stable && (leftFrom === undefined || wait?.strong !== false)) {
         leftFrom = undefined;
         setStage(raw, rawHook);
       }

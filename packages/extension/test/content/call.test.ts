@@ -397,6 +397,93 @@ describe('v0.10: the stage', () => {
     expect(r.w.sent).toHaveLength(n);
   });
 
+  it('Teams v2 is one address: the join screen at /v2/, then Chat at /v2/, reads as none (never as the waiting room), and beats no more', async () => {
+    goTo('/v2/');
+    const teams = buildTeams(document, { state: 'prejoin' });
+    const w = watching(teamsAdapter);
+    await settle(2 * TIMING.callPollMs);
+    expect(watch!.stage()).toBe('prejoin');
+    teams.toChat();
+    await settle(3 * TIMING.callPollMs);
+    expect(watch!.stage()).toBe('none');
+    expect(w.sent.at(-1)).toMatchObject({ stage: 'none' });
+    expect(w.sent.some((m) => m.hook === 'teams:after-join')).toBe(false);
+    const n = w.sent.length;
+    await settle(30 * TIMING.keepAliveMs);
+    expect(w.sent).toHaveLength(n);
+  });
+
+  it('Teams: the waiting room after Join now counts only on a join link', async () => {
+    goTo('/v2/?meetingjoin=true&p=made-up-3');
+    const teams = buildTeams(document, { state: 'prejoin' });
+    watching(teamsAdapter);
+    await settle(2 * TIMING.callPollMs);
+    teams.clickJoin();
+    await settle(2 * TIMING.callPollMs);
+    expect(watch!.stage()).toBe('lobby');
+  });
+
+  it('Teams: a call, Leave, then Chat: none, not `left`; the `left` itself says none, and nothing beats', async () => {
+    goTo('/v2/');
+    const teams = buildTeams(document, { state: 'call' });
+    const w = watching(teamsAdapter);
+    await settle(2 * TIMING.callPollMs);
+    expect(watch!.stage()).toBe('in');
+    teams.toChat();
+    await settle(TIMING.leaveGraceMs + 3 * TIMING.callPollMs);
+    // The page shows nothing of a call: no rejoin to arm, so no `left` stage (Always arms none on Chat).
+    expect(w.lefts()).toEqual([expect.objectContaining({ left: true, stage: 'none', hook: 'page:left' })]);
+    expect(watch!.stage()).toBe('none');
+    const n = w.sent.length;
+    await settle(30 * TIMING.keepAliveMs);
+    expect(w.sent).toHaveLength(n);
+  });
+
+  it('Teams: a call, Leave on its "You left" screen, then Chat: `left`, then none', async () => {
+    goTo('/v2/');
+    const teams = buildTeams(document, { state: 'call' });
+    const w = watching(teamsAdapter);
+    await settle(2 * TIMING.callPollMs);
+    teams.leave();
+    await settle(TIMING.leaveGraceMs + 3 * TIMING.callPollMs);
+    // No hook of a rejoin known at /v2/: none.
+    expect(watch!.stage()).toBe('none');
+    // On a join link the "You left" screen keeps `left` (Rejoin), then Chat (the address changes) is none.
+    watch!.stop();
+    document.body.replaceChildren();
+    goTo('/light-meetings/launch?anon=1&p=made-up-4');
+    const light = buildTeams(document, { state: 'call', light: true });
+    const again = watching(teamsAdapter);
+    await settle(2 * TIMING.callPollMs);
+    light.leave();
+    await settle(TIMING.leaveGraceMs + 3 * TIMING.callPollMs);
+    expect(again.lefts()).toEqual([expect.objectContaining({ stage: 'left', hook: 'page:left' })]);
+    expect(watch!.stage()).toBe('left');
+    light.toChat();
+    goTo('/v2/');
+    await settle(3 * TIMING.callPollMs);
+    expect(watch!.stage()).toBe('none');
+    expect(w.sent.length).toBeGreaterThan(0);
+  });
+
+  it("Meet: after `left`, Meet's home page (no code) is none, and beats no more", async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document);
+    const w = watching(meetAdapter);
+    await settle(2 * TIMING.callPollMs);
+    meet.leave();
+    await settle(TIMING.leaveGraceMs + 2 * TIMING.callPollMs);
+    expect(watch!.stage()).toBe('left');
+    document.body.replaceChildren();
+    goTo('/');
+    await settle(3 * TIMING.callPollMs);
+    expect(watch!.stage()).toBe('none');
+    expect(w.sent.at(-1)).toMatchObject({ callKey: null, stage: 'none' });
+    const n = w.sent.length;
+    await settle(30 * TIMING.keepAliveMs);
+    expect(w.sent).toHaveLength(n);
+  });
+
   it('every `call` names a stage, and a hook only as one of our own ids', async () => {
     const r = await run('prejoin, lobby, admitted', meetAdapter);
     await r.steps();
