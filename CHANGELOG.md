@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.8.0 (unreleased)
+## 0.8.0 (2 November 2026)
 
 Add post, in Intel, off until you run `jantar intel read on` at the Mac:
 send a link (an Instagram reel, a YouTube video, an X or LinkedIn post, a
