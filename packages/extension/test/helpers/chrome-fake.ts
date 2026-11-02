@@ -24,6 +24,9 @@
  * default loading then complete on the URL), scripting.executeScript (its
  * answer from `model.onScript`), and permissions.contains answering true for
  * any https origin while `<all_urls>` is granted, as Chrome does.
+ * v0.10 (Start when I join) adds action.setBadgeText, setBadgeBackgroundColor
+ * and setTitle, kept per tab in `model.badges` (`model.badge(tabId)`; a tab
+ * that is not open throws, as Chrome does), and alarms.create keeps `when`.
  * Every call after `model.invalidate()` throws "Extension context
  * invalidated.", as Chrome does after the extension is reloaded.
  */
@@ -65,6 +68,21 @@ export interface ScriptCall {
   world?: string;
   func?: (...args: never[]) => unknown;
   args?: unknown[];
+}
+
+/** v0.10: one tab's toolbar badge as the code under test set it ('' for what it never set). */
+export interface FakeBadge {
+  text: string;
+  color: string;
+  title: string;
+}
+
+/** v0.10: an alarm as alarms.create made it. */
+export interface FakeAlarm {
+  name: string;
+  periodInMinutes?: number;
+  delayInMinutes?: number;
+  when?: number;
 }
 
 /** Who sent a runtime message, as the test names it. */
@@ -196,7 +214,7 @@ export interface ChromeModel {
   /** What runtime.getManifest answers (default: the source manifest.json). */
   manifest: Record<string, unknown>;
   /** Alarms by name, as alarms.create made them. */
-  alarms: Map<string, { name: string; periodInMinutes?: number; delayInMinutes?: number }>;
+  alarms: Map<string, FakeAlarm>;
   /** What storage.local holds. */
   local: Map<string, unknown>;
   /** Every tabs.update, in order. */
@@ -213,6 +231,11 @@ export interface ChromeModel {
   scripts: ScriptCall[];
   /** What executeScript answers (default: one frame with an undefined result); throwing rejects it. */
   onScript: (call: ScriptCall) => unknown;
+  // --- v0.10
+  /** Each tab's badge, by tab id. */
+  badges: Map<number, FakeBadge>;
+  /** One tab's badge ({ text: '', color: '', title: '' } when nothing was set). */
+  badge(tabId: number): FakeBadge;
   /** From now on `runtime.id` is undefined and every call throws "Extension context invalidated." */
   invalidate(): void;
   /** Put back what globalThis.chrome was. */
@@ -239,8 +262,8 @@ export interface ChromeFake {
     onInstalled: FakeSimpleEvent<[{ reason: string }]>;
   };
   alarms: {
-    create(name: string, info: { periodInMinutes?: number; delayInMinutes?: number }): Promise<void>;
-    get(name: string): Promise<{ name: string; periodInMinutes?: number } | undefined>;
+    create(name: string, info: { periodInMinutes?: number; delayInMinutes?: number; when?: number }): Promise<void>;
+    get(name: string): Promise<FakeAlarm | undefined>;
     clear(name: string): Promise<boolean>;
     onAlarm: FakeSimpleEvent<[{ name: string; scheduledTime: number }]>;
   };
@@ -271,6 +294,12 @@ export interface ChromeFake {
   commands: {
     onCommand: FakeCommandEvent;
     getAll(): Promise<{ name: string; description: string; shortcut: string }[]>;
+  };
+  /** v0.10 */
+  action: {
+    setBadgeText(d: { tabId?: number; text: string }): Promise<void>;
+    setBadgeBackgroundColor(d: { tabId?: number; color: string }): Promise<void>;
+    setTitle(d: { tabId?: number; title: string }): Promise<void>;
   };
 }
 
@@ -346,6 +375,8 @@ export function createChromeFake(opts: { id?: string } = {}): { chrome: ChromeFa
     ],
     scripts: [],
     onScript: () => [{ frameId: 0, result: undefined }],
+    badges: new Map(),
+    badge: (tabId) => ({ text: '', color: '', title: '', ...model.badges.get(tabId) }),
     invalidate() {
       dead = true;
       id = undefined;
@@ -380,6 +411,14 @@ export function createChromeFake(opts: { id?: string } = {}): { chrome: ChromeFa
       store().clear();
     },
   });
+
+  /** v0.10: one badge field of one tab, as Chrome sets it (a tab that is not open throws). */
+  const setBadge = async (tabId: number | undefined, field: keyof FakeBadge, value: string) => {
+    alive();
+    if (tabId === undefined) throw new Error('the fake sets badges per tab only');
+    if (!tabs.has(tabId)) throw new Error(`No tab with id: ${tabId}.`);
+    model.badges.set(tabId, { ...model.badge(tabId), [field]: value });
+  };
 
   const onMessage = new FakeMessageEvent(alive);
   const onUpdated = new FakeUpdatedEvent(alive);
@@ -523,6 +562,11 @@ export function createChromeFake(opts: { id?: string } = {}): { chrome: ChromeFa
           { name: 'take-screenshot', description: 'Take a screenshot of the meeting', shortcut: model.shortcut },
         ];
       },
+    },
+    action: {
+      setBadgeText: (d) => setBadge(d.tabId, 'text', d.text),
+      setBadgeBackgroundColor: (d) => setBadge(d.tabId, 'color', d.color),
+      setTitle: (d) => setBadge(d.tabId, 'title', d.title),
     },
   };
   g.chrome = chrome;
