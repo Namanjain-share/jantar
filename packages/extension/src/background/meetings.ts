@@ -45,9 +45,30 @@ export type EndReason = 'user' | 'left' | 'closed';
 
 export type Opened = { ok: true; clientId: string } | { ok: false; reply: Reply };
 
+/** The sheet's fields as Start keeps them. `name` '' is the page's title when notes start. */
+export interface StartFields {
+  name: string;
+  projectId?: string;
+  people?: string;
+  autoTodos: boolean;
+}
+
 /** The Name the popup prefills: the page's title, else "Meet call" or "Teams call". */
 export function defaultName(s: Pick<TabState, 'site' | 'title'>): string {
   return cleanText(s.title, WIRE_LIMITS.name) || (s.site === 'meet' ? 'Meet call' : 'Teams call');
+}
+
+/** The sheet's fields cleaned: a ulid project or none, the name and people cleaned, action items to todos only with a project. */
+export function cleanFields(f: { name?: unknown; projectId?: unknown; people?: unknown; autoTodos?: unknown }): StartFields {
+  const projectId = typeof f.projectId === 'string' && LIFE_ID.test(f.projectId) ? f.projectId : undefined;
+  const people = cleanText(f.people, WIRE_LIMITS.people);
+  return {
+    name: cleanText(f.name, WIRE_LIMITS.name),
+    ...(projectId ? { projectId } : {}),
+    ...(people ? { people } : {}),
+    // Action items go to todos only with a project to put them in.
+    autoTodos: projectId !== undefined && f.autoTodos === true,
+  };
 }
 
 /** A Done's error for a reply that was not 2xx. */
@@ -142,6 +163,28 @@ export function createMeetings(ctx: Ctx, lines: Lines): Meetings {
     return { ok: true, clientId };
   }
 
+  /**
+   * The one way notes start: the popup's Start and Start when I join both
+   * come here, inside tabs.serial(tabId). `bubble`: what the page says once
+   * notes are on.
+   */
+  async function startNow(tabId: number, fields: StartFields, bubble?: string): Promise<Done> {
+    const state = await ctx.tabs.read(tabId);
+    if (!state) return { ok: false, error: NO_MEETING_TAB };
+    if (!state.inCall) return { ok: false, error: JOIN_FIRST };
+    const f = cleanFields(fields);
+    const opened = await open(tabId, state, {
+      name: f.name || defaultName(state),
+      ...(f.projectId ? { projectId: f.projectId } : {}),
+      ...(f.people ? { people: f.people } : {}),
+      autoTodos: f.autoTodos,
+      captions: true,
+    });
+    if (!opened.ok) return { ok: false, error: doneError(opened.reply) };
+    await ctx.toTab(tabId, bubble ? { t: 'capture', on: true, text: bubble } : { t: 'capture', on: true });
+    return { ok: true };
+  }
+
   return {
     open,
     lost,
@@ -169,24 +212,7 @@ export function createMeetings(ctx: Ctx, lines: Lines): Meetings {
     },
 
     start(msg) {
-      return ctx.tabs.serial(msg.tabId, async () => {
-        const state = await ctx.tabs.read(msg.tabId);
-        if (!state) return { ok: false, error: NO_MEETING_TAB };
-        if (!state.inCall) return { ok: false, error: JOIN_FIRST };
-        const projectId = typeof msg.projectId === 'string' && LIFE_ID.test(msg.projectId) ? msg.projectId : undefined;
-        const people = cleanText(msg.people, WIRE_LIMITS.people);
-        const opened = await open(msg.tabId, state, {
-          name: cleanText(msg.name, WIRE_LIMITS.name) || defaultName(state),
-          ...(projectId ? { projectId } : {}),
-          ...(people ? { people } : {}),
-          // Action items go to todos only with a project to put them in.
-          autoTodos: projectId !== undefined && msg.autoTodos === true,
-          captions: true,
-        });
-        if (!opened.ok) return { ok: false, error: doneError(opened.reply) };
-        await ctx.toTab(msg.tabId, { t: 'capture', on: true });
-        return { ok: true };
-      });
+      return ctx.tabs.serial(msg.tabId, () => startNow(msg.tabId, msg));
     },
 
     end(tabId) {
