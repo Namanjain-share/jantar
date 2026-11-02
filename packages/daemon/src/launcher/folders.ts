@@ -17,15 +17,19 @@
  *   (case, Unicode, as the denylist folds) onto a sibling's is a conflict on
  *   every volume, and the new folder is checked after mkdir by the parent's
  *   inode, an O_NOFOLLOW open of it, its realpath and the policy again. A
- *   mismatch removes only the empty folder made here, and only while the
- *   path still names its inode. Every write goes through `dirx` (mkdir.ts).
+ *   mismatch removes the empty folder made here, and only while the path
+ *   still names its inode. Every write goes through `dirx` (mkdir.ts).
+ *   Since 0.10.1 the hourly budget is checked again and charged with no
+ *   await in between, so requests sent at once cannot overspend it.
  *
  *   Accepted, as policy.ts accepts it for reads: a same-user process can
  *   still swap a path component between the last check and mkdir, or between
- *   the checks after it and the rollback. The checks catch the first and keep
- *   the second from removing anything but our own empty folder. Closing it
- *   needs mkdirat/unlinkat, which Node lacks, and whoever can win the race
- *   already runs as the user.
+ *   the rollback's lstat and its rmdir. The checks after mkdir catch the
+ *   first. The second can make the rollback remove at most one empty
+ *   directory, which may not be the one made, and only while a process
+ *   running as the user wins that race. Closing it needs mkdirat/unlinkat,
+ *   which Node lacks, and whoever can win the race can already remove that
+ *   directory itself.
  */
 import { lstat, realpath } from 'node:fs/promises';
 import type { BigIntStats } from 'node:fs';
@@ -86,6 +90,12 @@ const HOUR_MS = 60 * 60_000;
 const LIVE_TTL_MS = 30_000;
 
 export type Failure = { ok: false; code: LaunchErrorCode; reason: string; retryAfterMs?: number };
+
+/** A wait in words, rounded up to a minute: "in 1 minute", "in 42 minutes". */
+export function inMinutes(ms: number): string {
+  const m = Math.max(1, Math.ceil(ms / 60_000));
+  return `in ${m} ${m === 1 ? 'minute' : 'minutes'}`;
+}
 
 export function fail(code: LaunchErrorCode, reason: string, retryAfterMs?: number): Failure {
   return retryAfterMs === undefined ? { ok: false, code, reason } : { ok: false, code, reason, retryAfterMs };
@@ -295,11 +305,8 @@ export class Folders implements FolderBrowser {
     const who = actorId(actor);
     const limit = this.ctx.settings.get().launch.rate.foldersPerHour;
     const now = this.ctx.clock.now();
-    const hits = (this.creates.get(who) ?? []).filter((t) => t > now - HOUR_MS);
-    this.creates.set(who, hits);
-    if (hits.length >= limit) {
-      return fail('rate_limited', `At most ${limit} new folders an hour; try again later`, Math.max(1, (hits[0] ?? now) + HOUR_MS - now));
-    }
+    const spent = this.spent(who, now, limit);
+    if (spent) return spent;
     // 4. The parent: root, clean relative path, denylist, realpath inside the root, a directory and not a link.
     const policy = this.policy();
     const parent = await policy.resolveDir(body.root, body.parent);
@@ -325,8 +332,11 @@ export class Folders implements FolderBrowser {
       return mkdirFailure(e, body.name);
     }
     if (clash) return fail('conflict', takenSentence(clash, body.name));
-    // 8. From here on the try counts.
-    hits.push(now);
+    // 8. From here on the try counts. The budget is read again: a request sent at the same time may
+    //    have spent it while this one awaited the disk. No await between this check and the charge.
+    const over = this.spent(who, now, limit);
+    if (over) return over;
+    this.creates.get(who)?.push(now);
     // 9. The parent must still be the directory checked at step 6.
     if (!(await this.sameDir(parent.real, p0))) return this.moved(actor, rootId, rel);
     // 10. One mkdir, never recursive; it does not follow a final symlink (even a dangling one is EEXIST).
@@ -353,6 +363,20 @@ export class Folders implements FolderBrowser {
     if (!landed) return this.rollback(actor, rootId, rel, target, made);
     // 14.
     return { ok: true, created: { root: landed.root.id, path: landed.rel } };
+  }
+
+  /**
+   * The actor's hourly budget, synchronously: a 429 naming the wait when
+   * `limit` creates fall in the last hour, else null. The pruned list is
+   * stored back, so a charge pushed right after lands where the next
+   * request reads.
+   */
+  private spent(who: string, now: number, limit: number): Failure | null {
+    const hits = (this.creates.get(who) ?? []).filter((t) => t > now - HOUR_MS);
+    this.creates.set(who, hits);
+    if (hits.length < limit) return null;
+    const wait = Math.max(1, (hits[0] ?? now) + HOUR_MS - now);
+    return fail('rate_limited', `At most ${limit} new ${limit === 1 ? 'folder' : 'folders'} an hour; try again ${inMinutes(wait)}`, wait);
   }
 
   /** The directory at `path` (not a link) still has `was`'s dev and ino. */
@@ -391,7 +415,9 @@ export class Folders implements FolderBrowser {
   /**
    * Step 13: the folder is not where it should be. Remove it only while
    * `target` still names the directory made (`made`); rmdir removes only an
-   * empty one. Anything else there is not ours and is left alone.
+   * empty one. Anything else there is not ours and is left alone, except
+   * that a same-user swap between the lstat and the rmdir can make the
+   * rmdir take one other empty directory (the header's accepted race).
    */
   private async rollback(actor: Actor, root: string, rel: string, target: string, made: BigIntStats | null): Promise<Failure> {
     let removed = false;

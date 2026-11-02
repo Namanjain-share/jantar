@@ -2023,21 +2023,27 @@ New folder, a name, then Start a session here.
   names the entry Files would list.
 - The new folder is checked after `mkdir`: the parent's inode (held from
   before the check of its names), an `O_NOFOLLOW` open of the folder, its
-  realpath, and the policy again. A mismatch removes only the empty
-  folder that was made, and only if the path still names its inode, and
-  answers "The folder moved while it was being created". That refusal and
-  a protected-name one count toward the probe alarm. The leftover race:
-  Node has no `mkdirat`, so a process running as you can still swap a
-  path component between the last check and `mkdir`; the checks catch it
-  and keep the rollback to the folder that was made. Whoever can win that
-  race can already write anywhere you can.
+  realpath, and the policy again. A mismatch removes the empty folder
+  that was made, if the path still names its inode, and answers "The
+  folder moved while it was being created". That refusal and a
+  protected-name one count toward the probe alarm. The leftover races:
+  Node has no `mkdirat` or `unlinkat`, so a process running as you can
+  still swap a path component between the last check and `mkdir`, which
+  the checks after it catch, or between the rollback's own check and its
+  `rmdir`, which can then remove at most one empty directory, perhaps not
+  the one that was made. Whoever can win either race can already write
+  and remove anywhere you can.
 - Limits: 10 new folders an hour per device, and
-  `launch.rate.foldersPerHour` (10) per actor. Audited as `foldersCreate`
-  with root, parent, name and relative path, never an absolute path.
+  `launch.rate.foldersPerHour` (10) per actor, which holds for requests
+  sent at once too. Audited as `foldersCreate` with root, parent, name
+  and relative path, never an absolute path.
 - An Idempotency-Key replays a create, so a retry after a lost reply is
-  not a second try. Served on the control socket as the CLI, on purpose:
-  a local process can run `mkdir` without Jantar. No event carries a
-  path; other devices see the folder when they next open its parent.
+  not a second try. The phone keeps a key only after a network failure:
+  the daemon replays any answer under a key for 24 hours, so after a
+  refusal it asks again with a new one. Served on the control socket as
+  the CLI, on purpose: a local process can run `mkdir` without Jantar.
+  No event carries a path; other devices see the folder when they next
+  open its parent.
 - Claude's trust card for a just-made folder is never answered for you:
   that Jantar made it is no reason to trust what is in it by the time a
   session starts.

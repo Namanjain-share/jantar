@@ -14,6 +14,9 @@ What changed for people who use Jantar, newest first. Versions before
   there.
 - Retrying a new folder after a dropped connection no longer says it
   already exists.
+- `launch.rate.foldersPerHour` now holds for new folders asked for at
+  the same moment, and a new folder refused for the limit says how many
+  minutes to wait.
 - `jantar files status` says whether Files shows New folder;
   `jantar launch status` shows the new-folder limit.
 

@@ -275,6 +275,23 @@ describe('mode, scope and limits', () => {
     expect((await create('', 'f3', { kind: 'cli' })).ok).toBe(true);
   });
 
+  it('requests sent at once cannot spend more than foldersPerHour: 10 parallel names with a budget of 3 make 3', async () => {
+    await setup({}, 3);
+    const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => create('', `p${i}`)));
+    expect(rs.filter((r) => r.ok)).toHaveLength(3);
+    for (const r of rs.filter((x) => !x.ok)) expect(r).toMatchObject({ ok: false, code: 'rate_limited', retryAfterMs: expect.any(Number) });
+    expect(readdirSync(env.desktop).filter((n) => /^p\d$/.test(n))).toHaveLength(3);
+    // Another actor's budget is its own.
+    expect((await create('', 'p-cli', { kind: 'cli' })).ok).toBe(true);
+  });
+
+  it('the 429 names the wait: minutes until the oldest folder of the hour drops out', async () => {
+    await setup({}, 1);
+    expect((await create('', 'w0')).ok).toBe(true);
+    const r = await create('', 'w1');
+    expect(r).toMatchObject({ ok: false, code: 'rate_limited', reason: 'At most 1 new folder an hour; try again in 60 minutes' });
+  });
+
   it('a live session’s folder is a root too (s.<sid>)', async () => {
     await setup();
     const s = env.addSession({ sid: 'live-1', cwd: env.proj });

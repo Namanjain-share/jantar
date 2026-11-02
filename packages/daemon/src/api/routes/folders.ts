@@ -20,6 +20,7 @@
  */
 import type { FolderCreateBody, FolderPinBody, FoldersListQuery } from '@jantar/protocol';
 import type { LaunchResult } from '../../contracts.js';
+import { inMinutes } from '../../launcher/folders.js';
 import { ApiError } from '../errors.js';
 import { actorName } from '../request.js';
 import { needActor, type Call, type RouteTable } from '../route-kit.js';
@@ -88,7 +89,7 @@ export const FOLDERS_ROUTE_IMPLS: RouteTable = {
       const actor = needActor(c.auth);
       const limited = s.folderCreateLimiter.hit(actorName(c.auth));
       if (!limited.ok) {
-        throw new ApiError('rate_limited', 'Too many new folders; try again later', {
+        throw new ApiError('rate_limited', `Too many new folders from this device; try again ${inMinutes(limited.retryAfterMs)}`, {
           'retry-after': String(Math.ceil(limited.retryAfterMs / 1000)),
         });
       }
