@@ -16,6 +16,16 @@
  * leave. 'waiting' stays v0.5's waiting room: the call_end icon and an Ask to
  * join button without the jsname (it reads as the lobby).
  *
+ * v0.10, captions switched on (research captions-research.md 2.2, as of
+ * 2026-11-02): the captions control says whether captions are on, and a
+ * click on it changes them. `cc: 'old'` is the one toggle (Meet's captions
+ * jsname, `aria-pressed`, the closed_caption / closed_caption_off icon);
+ * `cc: 'popup'` is the "Captions and translation" button of 2026-10-22,
+ * which opens a pop-up holding the toggle (and two buttons that open
+ * more). The key `c` toggles captions in either shape. `emptyContainer`
+ * leaves an empty caption container on the page while captions are off
+ * (an unverified report: R-C3). `ccLog` lists what was clicked or pressed.
+ *
  *   const meet = buildMeet(document, { state: 'call' });
  *   const t = meet.say('Sam', 'So the plan');
  *   t.grow('for Friday is to ship.');          // a characterData change, as Meet revises
@@ -38,6 +48,10 @@ export interface MeetOptions {
   renamed?: boolean;
   /** `data-meeting-title`; null for none. Default 'Weekly sync'. */
   title?: string | null;
+  /** v0.10: the captions control's shape (see the header). Default 'old'. */
+  cc?: 'old' | 'popup';
+  /** v0.10: an empty caption container stays on the page while captions are off. */
+  emptyContainer?: true;
 }
 
 export interface MeetTurn {
@@ -80,6 +94,12 @@ export interface MeetFixture {
   hooksOn(): void;
   /** The region drawn again: new region, list and turn elements with the same words. */
   replaceRegion(): void;
+  /** v0.10: the captions are on (what the control says). */
+  captionsShown(): boolean;
+  /** v0.10: what was clicked or pressed on the captions controls, in order. */
+  readonly ccLog: string[];
+  /** v0.10: the captions pop-up (cc 'popup') is open. */
+  popupOpen(): boolean;
   remove(): void;
 }
 
@@ -110,7 +130,23 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
   const root = h(doc, 'div', { 'data-jantar-fixture': 'meet' });
   if (title !== null) root.append(h(doc, 'div', { 'data-meeting-title': title, class: 'title' }, title));
   const toolbar = h(doc, 'div', { class: 'toolbar', role: 'toolbar' });
-  const ccButton = h(doc, 'button', { jsname: 'RrG0hf', 'aria-label': 'Turn off captions', 'aria-pressed': 'true' }, h(doc, 'i', { class: 'google-symbols', 'aria-hidden': 'true' }, 'closed_caption'));
+  const popup = opts.cc === 'popup';
+  const ccIcon = h(doc, 'i', { class: 'google-symbols', 'aria-hidden': 'true' }, popup ? 'translate_cc' : 'closed_caption');
+  const ccButton = popup
+    ? h(doc, 'button', { 'aria-label': 'Captions and translation', 'aria-haspopup': 'dialog', 'aria-pressed': 'true', 'aria-expanded': 'false' }, ccIcon)
+    : h(doc, 'button', { jsname: 'RrG0hf', 'aria-label': 'Turn off captions', 'aria-pressed': 'true' }, ccIcon);
+  // v0.10: the pop-up of 2026-10-22: the toggle first, then translation and its settings (each opens more).
+  const ccToggle = h(doc, 'button', { 'aria-label': 'Turn off captions' }, 'Captions');
+  const ccDialog = h(
+    doc,
+    'div',
+    { role: 'dialog', 'aria-label': 'Captions and translation' },
+    ccToggle,
+    h(doc, 'button', { 'aria-haspopup': 'menu', 'aria-label': 'Translate to' }, 'Translation'),
+    h(doc, 'button', { 'aria-haspopup': 'dialog', 'aria-label': 'Caption settings' }, 'Settings'),
+  );
+  const ccLog: string[] = [];
+  const container = h(doc, 'div', { jscontroller: 'D1tHje' });
   const leave = h(doc, 'button', { 'aria-label': 'Leave call' }, h(doc, 'i', { class: 'google-symbols', 'aria-hidden': 'true' }, 'call_end'));
   const askToJoin = h(doc, 'button', { class: 'join' }, 'Ask to join');
   // v0.10: the join screen's button (jsname as research names it, unverified on a real Mac: R12), and the left screen's.
@@ -137,8 +173,58 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
     ];
   }
 
+  /** v0.10: the control says what the captions are. */
+  function paintCc() {
+    ccButton.setAttribute('aria-pressed', String(captionsShown));
+    if (popup) {
+      ccToggle.setAttribute('aria-label', captionsShown ? 'Turn off captions' : 'Turn on captions');
+      return;
+    }
+    ccButton.setAttribute('aria-label', captionsShown ? 'Turn off captions' : 'Turn on captions');
+    ccIcon.textContent = captionsShown ? 'closed_caption' : 'closed_caption_off';
+  }
+
+  function setCaptions(on: boolean) {
+    captionsShown = on;
+    layout();
+  }
+
+  function closePopup() {
+    ccDialog.remove();
+    ccButton.setAttribute('aria-expanded', 'false');
+  }
+
+  ccButton.addEventListener('click', () => {
+    if (!popup) {
+      ccLog.push('button');
+      setCaptions(!captionsShown);
+    } else if (ccDialog.isConnected) {
+      ccLog.push('popup-close');
+      closePopup();
+    } else {
+      ccLog.push('popup-open');
+      root.append(ccDialog);
+      ccButton.setAttribute('aria-expanded', 'true');
+    }
+  });
+  ccToggle.addEventListener('click', () => {
+    ccLog.push('toggle');
+    setCaptions(!captionsShown);
+  });
+  doc.addEventListener('keydown', (ev) => {
+    if (!root.isConnected) return;
+    if (ev.key === 'Escape' && ccDialog.isConnected) {
+      ccLog.push('escape');
+      closePopup();
+    } else if (ev.key === 'c' && state === 'call') {
+      ccLog.push('key-c');
+      setCaptions(!captionsShown);
+    }
+  });
+
   function layout() {
     const inCall = state === 'call';
+    paintCc();
     screen.textContent = SCREEN_WORDS[state];
     toolbar.replaceChildren(
       ...((inCall && hooksShown) || flicker ? [ccButton] : []),
@@ -150,6 +236,9 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
     if (captionsShown && hooksShown && inCall) {
       if (!region.isConnected) root.append(region);
     } else region.remove();
+    if (opts.emptyContainer && inCall && !captionsShown) {
+      if (!container.isConnected) root.append(container);
+    } else container.remove();
   }
 
   function makeTurn(speaker: string | null, words: string): MeetTurn & { rebuild(): HTMLElement } {
@@ -261,6 +350,9 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
       list = nextList;
       if (!was) layout();
     },
+    captionsShown: () => captionsShown,
+    ccLog,
+    popupOpen: () => ccDialog.isConnected,
     remove() {
       root.remove();
     },

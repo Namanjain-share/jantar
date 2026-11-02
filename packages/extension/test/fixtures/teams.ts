@@ -21,13 +21,31 @@
  * page (no app bar, the guest's hang-up). Steps: clickJoin, admit (join is
  * the same step), leave, toChat.
  *
+ * v0.10, captions switched on (research captions-research.md 3.2 and 4.3,
+ * as of 2026-11-02): the captions control says whether captions are on,
+ * and a click on it changes them. `cc` picks where it is: 'pinned' (the
+ * toolbar's #closed-captions-button, data-tid ending -on or -off), 'more'
+ * (More › Captions, a menu item: with its state signed in, without it for a
+ * light-meetings guest), 'lang-speech' (More › Language and speech › Show
+ * live captions), 'disabled' (More holds no captions item: the organizer's
+ * policy) or 'absent' (no control). Clicking an item closes the menu, as
+ * Teams does; Escape closes it too. The 'guest' layout is light meetings'
+ * caption tree: renderer wrapper › window wrapper › virtual list › one div
+ * per entry holding its author and its text, no Fluent UI item class.
+ * `lateRegion` mounts the captions only once someone has spoken; `hangupId`
+ * gives the light-meetings guest #hangup-button (as seen live) instead of
+ * anon-hangup-button. `ccLog` lists what was clicked or pressed.
+ *
  *   const teams = buildTeams(document, { layout: 'v2' });
  *   const a = teams.say('Sam', 'Can everyone see my screen?');
  *   teams.unmount(a); teams.remount(a);      // the virtual list drops and redraws an item
  */
 import { h, setWords, wordsOf } from './dom.js';
 
-export type TeamsLayout = 'v2' | '2026-bottom' | '2026-right' | 'loose';
+export type TeamsLayout = 'v2' | '2026-bottom' | '2026-right' | 'loose' | 'guest';
+
+/** v0.10: where the captions control is (see the header). */
+export type TeamsCc = 'pinned' | 'more' | 'lang-speech' | 'disabled' | 'absent';
 
 /** v0.10: the screens around the call (see the header); 'lobby' is v0.5's name for 'prejoin'. */
 export type TeamsState = 'prejoin' | 'waiting' | 'call' | 'left' | 'lobby' | 'chat';
@@ -44,6 +62,12 @@ export interface TeamsOptions {
   light?: true;
   /** The captions on screen. Default true in a call. */
   captions?: boolean;
+  /** v0.10: where the captions control is. Default 'pinned' on the 2026 layouts, 'more' on light meetings, else 'absent'. */
+  cc?: TeamsCc;
+  /** v0.10: the captions mount only once someone has spoken. */
+  lateRegion?: true;
+  /** v0.10: light meetings' guest hang-up is #hangup-button. */
+  hangupId?: true;
 }
 
 export interface TeamsItem {
@@ -81,6 +105,12 @@ export interface TeamsFixture {
   hooksOff(): void;
   hooksOn(): void;
   replaceRegion(): void;
+  /** v0.10: the captions are on (what the control says). */
+  captionsShown(): boolean;
+  /** v0.10: a More menu is open. */
+  menuOpen(): boolean;
+  /** v0.10: what was clicked or pressed on the captions controls, in order. */
+  readonly ccLog: string[];
   remove(): void;
 }
 
@@ -99,6 +129,7 @@ const WRAPPER: Record<TeamsLayout, string> = {
   '2026-bottom': 'closed-caption-renderer-wrapper',
   '2026-right': 'closed-caption-renderer-wrapper',
   loose: 'closed-caption-panel-next',
+  guest: 'closed-caption-renderer-wrapper',
 };
 
 export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture {
@@ -106,16 +137,31 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
   let state = opts.state ?? 'call';
   let captionsShown = opts.captions ?? state === 'call';
   let hooksShown = true;
-  const is2026 = layout !== 'v2';
+  const is2026 = layout !== 'v2' && layout !== 'guest';
+  const cc: TeamsCc = opts.cc ?? (is2026 ? 'pinned' : opts.light ? 'more' : 'absent');
+  const ccLog: string[] = [];
 
   const root = h(doc, 'div', { 'data-jantar-fixture': 'teams' });
   const appBar = h(doc, 'nav', { class: 'app-bar', 'aria-label': 'App bar' }, h(doc, 'button', { 'aria-label': 'Chat' }, 'Chat'));
   const toolbar = h(doc, 'div', { role: 'toolbar', class: 'call-controls' });
   const ccToggle = h(doc, 'button', { id: 'closed-captions-button', 'data-tid': 'closed-captions-button-on', 'aria-pressed': 'true' }, 'Captions');
-  const hangup =
-    opts.anon || opts.light
+  const hangup = opts.hangupId
+    ? h(doc, 'button', { id: 'hangup-button', 'aria-label': 'Leave' }, 'Leave')
+    : opts.anon || opts.light
       ? h(doc, 'button', { 'data-tid': 'anon-hangup-button', 'aria-label': 'Leave' }, 'Leave')
       : h(doc, 'button', { id: 'hangup-button', 'data-tid': 'hangup-main-btn', 'aria-label': 'Leave' }, 'Leave');
+  // v0.10: More and its menu (Fluent UI draws it outside the toolbar), with the captions item where `cc` puts it.
+  const more = h(doc, 'button', { id: 'callingButtons-showMoreBtn', 'aria-label': 'More', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '…');
+  const menuItem = (attrs: Record<string, string>, words: string) => h(doc, 'div', { role: 'menuitem', ...attrs }, words);
+  // A light-meetings guest's item says nothing of its state; signed in, its data-tid and aria-checked do.
+  const ccItem = opts.light
+    ? menuItem({ id: 'closed-captions-button' }, 'Captions')
+    : menuItem({ id: 'closed-captions-button', role: 'menuitemcheckbox', 'data-tid': 'closed-captions-button-off', 'aria-checked': 'false' }, 'Captions');
+  const langItem = menuItem({ id: 'LanguageSpeechMenuControl-id' }, 'Language and speech');
+  const subItem = menuItem({ id: 'closed-captions-button' }, 'Show live captions');
+  const others = () => [menuItem({}, 'Meeting info'), menuItem({}, 'Settings')];
+  const menu = h(doc, 'div', { role: 'menu', 'aria-label': 'More' });
+  const submenu = h(doc, 'div', { role: 'menu', 'aria-label': 'Language and speech' }, subItem);
   const join = h(doc, 'button', { id: 'prejoin-join-button' }, 'Join now');
   const rejoin = h(doc, 'button', { class: 'rejoin' }, 'Rejoin');
   const screen = h(doc, 'div', { class: 'screen' });
@@ -127,8 +173,13 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
   let list = listOf(region);
 
   function makeRegion(): HTMLElement {
-    const l = layout === 'v2' ? h(doc, 'div', { 'data-tid': 'closed-caption-v2-virtual-list-content' }) : h(doc, 'div', { role: 'list' });
-    const inner = layout === '2026-right' || layout === 'loose' ? h(doc, 'aside', { 'aria-label': 'Live captions' }, l) : l;
+    const l = layout === 'v2' || layout === 'guest' ? h(doc, 'div', { 'data-tid': 'closed-caption-v2-virtual-list-content' }) : h(doc, 'div', { role: 'list' });
+    const inner =
+      layout === '2026-right' || layout === 'loose'
+        ? h(doc, 'aside', { 'aria-label': 'Live captions' }, l)
+        : layout === 'guest'
+          ? h(doc, 'div', { 'data-tid': 'closed-caption-v2-window-wrapper' }, l)
+          : l;
     return h(doc, 'div', { 'data-tid': WRAPPER[layout], 'data-position': layout === '2026-right' ? 'right' : 'bottom' }, inner);
   }
 
@@ -136,18 +187,71 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
     return (r.querySelector('[role="list"]') ?? r.querySelector('[data-tid="closed-caption-v2-virtual-list-content"]')) as HTMLElement;
   }
 
+  /** v0.10: each control says what the captions are. */
+  function paintCc() {
+    const tid = `closed-captions-button-${captionsShown ? 'on' : 'off'}`;
+    ccToggle.setAttribute('data-tid', tid);
+    ccToggle.setAttribute('aria-pressed', String(captionsShown));
+    if (!opts.light) {
+      ccItem.setAttribute('data-tid', tid);
+      ccItem.setAttribute('aria-checked', String(captionsShown));
+    }
+    subItem.textContent = captionsShown ? 'Hide live captions' : 'Show live captions';
+  }
+
+  function closeMenus() {
+    menu.remove();
+    submenu.remove();
+    more.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleCaptions(by: string) {
+    ccLog.push(by);
+    captionsShown = !captionsShown;
+    closeMenus();
+    layoutPage();
+  }
+
+  ccToggle.addEventListener('click', () => toggleCaptions('pinned'));
+  ccItem.addEventListener('click', () => toggleCaptions('item'));
+  subItem.addEventListener('click', () => toggleCaptions('item'));
+  langItem.addEventListener('click', () => {
+    ccLog.push('language-and-speech');
+    root.append(submenu);
+  });
+  more.addEventListener('click', () => {
+    if (menu.isConnected) {
+      ccLog.push('more-close');
+      closeMenus();
+      return;
+    }
+    ccLog.push('more-open');
+    const first = cc === 'more' ? [ccItem] : cc === 'lang-speech' ? [langItem] : [];
+    menu.replaceChildren(...first, ...others());
+    root.append(menu);
+    more.setAttribute('aria-expanded', 'true');
+  });
+  doc.addEventListener('keydown', (ev) => {
+    if (!root.isConnected || ev.key !== 'Escape' || !menu.isConnected) return;
+    ccLog.push('escape');
+    closeMenus();
+  });
+
   function layoutPage() {
     const inCall = state === 'call';
+    paintCc();
     screen.textContent = SCREEN_WORDS[state];
     toolbar.replaceChildren(
-      ...(inCall && is2026 ? [ccToggle] : []),
+      ...(inCall && cc === 'pinned' ? [ccToggle] : []),
+      ...(inCall && (cc === 'more' || cc === 'lang-speech' || cc === 'disabled') ? [more] : []),
       ...((inCall && hooksShown) || (state === 'waiting' && opts.lobbyHangup) ? [hangup] : []),
       ...(state === 'prejoin' || state === 'lobby' ? [join] : []),
       ...(state === 'left' ? [rejoin] : []),
     );
-    if (inCall && captionsShown && hooksShown) {
+    if (inCall && captionsShown && hooksShown && (!opts.lateRegion || items.length > 0)) {
       if (!region.isConnected) root.append(region);
     } else region.remove();
+    if (!inCall) closeMenus();
   }
 
   function makeItem(author: string | null, words: string): TeamsItem & { build(): HTMLElement } {
@@ -161,6 +265,11 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
       authorEl = who === null ? null : h(doc, 'span', { 'data-tid': 'author' }, who);
       const head = h(doc, 'div', { class: 'head' }, authorEl);
       const body = h(doc, 'div', { class: 'body' }, textEl);
+      // v0.10: a light-meetings guest's entry: one div holding its author and its text.
+      if (layout === 'guest') {
+        el = h(doc, 'div', {}, ...(authorEl ? [authorEl] : []), textEl);
+        return el;
+      }
       if (layout === '2026-right' || layout === 'loose') el = h(doc, 'div', { role: 'listitem' }, head, body);
       else if (layout === 'v2') el = h(doc, 'div', { class: 'fui-ChatMessageCompact' }, head, body);
       else el = h(doc, 'div', { role: 'listitem' }, h(doc, 'div', { class: 'fui-ChatMessageCompact' }, head, body));
@@ -185,7 +294,8 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
         else if (authorEl) setWords(authorEl, name);
         else {
           authorEl = h(doc, 'span', { 'data-tid': 'author' }, name);
-          el.querySelector('.head')?.append(authorEl);
+          if (layout === 'guest') el.prepend(authorEl);
+          else el.querySelector('.head')?.append(authorEl);
         }
       },
       build,
@@ -220,6 +330,7 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
       const item = makeItem(author, text);
       items.push(item);
       list.append(item.el);
+      if (opts.lateRegion) layoutPage();
       return item;
     },
     unmount(item) {
@@ -257,6 +368,9 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
       list = nextList;
       if (!was) layoutPage();
     },
+    captionsShown: () => captionsShown,
+    menuOpen: () => menu.isConnected,
+    ccLog,
     remove() {
       root.remove();
     },
