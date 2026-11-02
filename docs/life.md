@@ -117,15 +117,17 @@ week". Turn it on at the Mac with `jantar life on posts`.
   five seconds. Open the post to add the link to what you posted, or to
   Skip one you won't make. Done lists the newest 300 you posted and
   skipped, each with Open for its link.
-- **Log a comment.** Made a comment? Tap Log a comment at the foot of
-  Posts and paste the link to it (on Reddit: Share, then Copy link). The
+- **Log a comment.** Made a comment? Tap Log a comment at the top of
+  Posts, under To post and Done, and paste the link to it (on Reddit:
+  Share, then Copy link); the keyboard's Done saves it. The
   platform and where come from the link as you paste it: a Reddit link
   gives `r/<sub>`; X, LinkedIn, YouTube and the rest give the platform,
   and you can type the where. Add what you wrote if you like, then Log
   comment, with Undo for five seconds. It counts as posted at the moment
   you log it, so log it when you post it. The same link twice is refused.
-  Jantar never opens or fetches the link; it only reads it as text, and
-  Open in Done is your tap.
+  Done shows each one's where in full, with Open. Jantar never opens or
+  fetches the link; it only reads it as text, and Open in Done is your
+  tap.
 - **The reminder** rings at the post's time, like a todo's. Posts due in
   the same minute come as one push. The lock screen says "Post due" and
   the time; with `lock-screen-details` on it also says the platform and
@@ -137,11 +139,13 @@ week". Turn it on at the Mac with `jantar life on posts`.
   week, Monday to Sunday in the Life zone: "This week: Reels 1/3 ·
   Reddit 2/6", on more lines when there are more goals. Two goals that
   would read the same name their platform too ("X threads" beside
-  "Threads"), and a comment goal always does ("Reddit comments 12/35").
+  "Threads"), and a comment goal always does ("Reddit comments 12/35"),
+  as does another kind's goal on its platform ("Reddit posts 0/2").
   With a comment goal, Today shows "Comments today 3/5": the weekly
-  comment goals divided by 7, rounded up. Tip: a goal with no kind counts
-  comments too, so set Reddit posts as kind Post ("Reddit posts 2 a
-  week") and comments as kind Comment.
+  comment goals divided by 7, rounded up; with none, "Comments today 3"
+  once you log one that day. Tip: a goal with no kind counts comments
+  too, so set Reddit posts as kind Post ("Reddit posts 2 a week") and
+  comments as kind Comment.
 - **Jantar never posts.** It keeps the text, rings at the time and gives
   you Copy (the title, the text) and Open (the link). You post it
   yourself, then tap Posted. It never fetches a link and talks to no

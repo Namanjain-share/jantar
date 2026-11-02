@@ -362,15 +362,17 @@ The tests read synthetic comment links and drive the sheet in jsdom; a
 real share link from the Reddit app has not been pasted yet.
 
 1. **On the iPhone**: in the Reddit app, your own comment › Share › Copy
-   link; in Jantar, Posts › Log a comment, paste: the sheet shows
-   "Reddit · r/<sub>" before saving; Log comment; Done lists it, and Open
-   lands on the comment.
+   link; in Jantar, Posts › Log a comment, paste: the keyboard comes up
+   with the link field focused in the Home Screen app, the sheet shows
+   "Reddit · r/<sub>" before saving, and the keyboard's Done saves (as Log
+   comment does); Done lists it, and Open lands on the comment.
 2. **Today**, with the goal Reddit, kind Comment, 35 a week: "Comments
    today 1/5" after the first one, and the week line "Reddit comments
    1/35".
-3. **The footer** at the narrowest phone (320 px), light and dark: + Post
-   and Log a comment on one line, "Posted this week" wrapping to its own,
-   nothing cut and no sideways scroll.
+3. **The top of Posts** at the narrowest phone (320 px), light and dark:
+   the buttons + Post and Log a comment on one line under To post | Done,
+   on both tabs, and on Done a long where (r/exampledevelopers) shown in
+   full, nothing cut and no sideways scroll.
 
 ## Trying Escape and Clear draft again
 

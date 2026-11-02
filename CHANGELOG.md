@@ -12,20 +12,25 @@ daily share of the weekly goal; `jantar post log`; Done shows the newest
 300. Nothing to do when upgrading: life.db, settings and the protocol
 don't change.
 
-- **Log a comment** (the foot of Posts, beside + Post): paste the link and
-  see "Reddit · r/exampletools" as you paste it (X, LinkedIn, YouTube and
-  the rest give the platform; type the where if you like), add what you
-  wrote if you want, then Log comment, with Undo for five seconds. It
-  counts as posted at the moment you log it. The same link twice is
-  refused ("You logged that link already."). Jantar never opens or
-  fetches the link.
+- **Log a comment** (the top of Posts, beside + Post, on To post and
+  Done): paste the link and see "Reddit · r/exampletools" as you paste it
+  (X, LinkedIn, YouTube and the rest give the platform; type the where if
+  you like), add what you wrote if you want, then Log comment (or the
+  keyboard's Done), with Undo for five seconds. It counts as posted at the
+  moment you log it. The same link twice is refused ("You logged that
+  link already."). Jantar never opens or fetches the link.
 - **Comments today**: with a comment goal (Posts › the week line, kind
   Comment), Today's Posts section shows "Comments today 3/5", the weekly
-  comment goals divided by 7 and rounded up; a tap opens Posts › Done.
-- **The week line** names a comment goal's platform: "Reddit comments
-  12/35".
+  comment goals divided by 7 and rounded up (with none, "Comments today 3"
+  once one is logged that day); a tap opens Posts › Done.
+- **The week line** names a comment goal's platform, and the platform of
+  any other kind's goal beside it: "Reddit comments 12/35 · Reddit posts
+  0/2".
 - **Done** lists the newest 300 posted and skipped (was 100), each logged
-  comment with the first line of what you wrote and Open.
+  comment with the first line of what you wrote and Open; the where is
+  never cut (it wraps, and the time goes under it).
+- **+ Post** moved from the foot of Posts to the top, beside Log a comment,
+  so a long list never pushes it down.
 - **On the Mac**: `jantar post log '<link>' [--text T | --text-file F]
   [--where W]` logs a comment (quote the link), within the same 30 adds an
   hour as `jantar post add`; `jantar post list --done` prints each posted

@@ -515,7 +515,7 @@ The daemon: the widened create in `life/posts/module.ts` (a posted create
 stamps `postedAt`, skips the open cap, refuses the same posted link twice
 through `repo.ts` `hasPostedUrl`) and its `today()` (comments posted that
 day in the Life zone). The phone: `screens/life/posts/LogCommentSheet.tsx`
-(the Posts chunk) opened from Posts' footer, and Today's second Posts row.
+(the Posts chunk) opened from the top of Posts, beside + Post, and Today's second Posts row.
 The CLI: `jantar post log` and the posted link on `post list --done` rows.
 No new route, table, migration, setting or dependency; `PROTOCOL_VERSION`
 3. The first load is 276.0 kB of `MAIN_JS_MAX` 280 kB (the protocol's
