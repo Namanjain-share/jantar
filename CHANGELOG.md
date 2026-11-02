@@ -3,6 +3,20 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.10.1 (unreleased)
+
+- **New folder in Files**: inside any folder you browse (say ~/Desktop),
+  New folder makes an empty folder and opens it with **Start a session
+  here**, the start sheet for that folder. It needs launching on and a
+  device with the launch scope, as starting a session does.
+- A new folder's name is refused when it differs only in capitals from
+  something already in that folder, and the message names what is
+  there.
+- Retrying a new folder after a dropped connection no longer says it
+  already exists.
+- `jantar files status` says whether Files shows New folder;
+  `jantar launch status` shows the new-folder limit.
+
 ## 0.10.0 (3 November 2026)
 
 Cafés get stars, ratings, a price level, tags and visits. Ask becomes

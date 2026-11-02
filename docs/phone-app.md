@@ -111,7 +111,9 @@ the risky ones; each names its mode, so "Ask me" is
 `--permission-mode manual`, which needs Claude Code 2.1.314 or newer),
 Chrome, effort up to ultracode, and model. **Resume** opens an earlier
 conversation of that folder instead: Last, or Pick from the list. Claude's
-trust dialog for a new folder comes back as a card to answer.
+trust dialog for a new folder comes back as a card to answer. New folder
+at the foot of the browser makes an empty folder there and opens the start
+sheet for it, as [Files](#files)' New folder does from there.
 
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="img/start-phone-dark.png"><img src="img/start-phone.png" width="260" alt="The start sheet: folder, account, permission mode and the exact command line it will type."></picture>
@@ -185,7 +187,15 @@ included), `folders rm-root <id>` removes one, and `folders allow <path>`
 opens a hidden home folder such as `~/.config/nvim` (never `~/.ssh`,
 `~/.claude*` and the like; `rm-allow` hides it again). `jantar files roots`
 (with `add <path>` and `remove <id>`) is the same list, and `jantar files
-status` says whether Files is on.
+status` says whether Files is on and shows New folder.
+
+**New folder**: in any folder you browse, New folder makes one empty
+folder there (letters, digits, spaces, `.`, `_` and `-`; not starting
+with a dot; at most 60) and opens it with **Start a session here**, the
+start sheet for it. It needs launching on and a device with the launch
+scope (`jantar launch on`, `jantar devices grant <device> launch`). A name
+already used here, in any letter case, is refused. At most 10 new folders
+an hour.
 
 ## Rewrite
 

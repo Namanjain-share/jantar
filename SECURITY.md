@@ -298,6 +298,8 @@ while off.
 - Changed files are read from the transcripts; there is no git and no diff.
   A protected file shows its name, tool and counts only.
 - The Files routes are not served on the control socket.
+- The Files routes only read; New folder (v0.10.1) is the launch route below
+  ([v0.10.1: New folder in Files](#v0101-new-folder-in-files)).
 
 ### Starting sessions: the launch scope and the flags allowlist
 
@@ -333,7 +335,8 @@ while off.
   `jantar accounts keep`) are always held, whatever `autoswitch.hold` or
   ccw's `switch.json` say (or whether ccw is there at all). At
   most 4 accepted starts per 10 minutes, 30 a day and 2 in flight per device,
-  one launch per account at a time, 10 new folders an hour (mkdir is never recursive),
+  one launch per account at a time, 10 new folders an hour (mkdir is never recursive;
+  a name that differs only in case from one already there is refused),
   and the API caps tries at 12 per 10 minutes. A retried start with the same
   Idempotency-Key opens one window.
 - Claude's trust dialog is always a card on the phone, never answered for
@@ -1994,3 +1997,47 @@ Before moving life.db to schema 3 the daemon writes a pre-upgrade copy,
 `backups/life-pre-0.10.0.db`: going back to 0.9 needs `jantar life
 restore life-pre-0.10.0.db` ([upgrading](docs/upgrading.md)).
 
+## v0.10.1: New folder in Files
+
+Files can now make a folder to start a session in: browse to a folder,
+New folder, a name, then Start a session here.
+
+- Files itself still never writes. Its New folder is the v0.3 route
+  `POST /v1/folders`, the one the start sheet uses: `launch` scope (granted
+  only on the Mac), the launch switch, the device secret and Origin on
+  writes, and refused under `--read-only`. Files shows the button only
+  while Files and launching are both on; the daemon does not ask for
+  Files, because the start sheet uses the route with Files off.
+- What can be made: one empty folder, never recursive, mode 0755 at most
+  (the umask applies), only below a root the path policy serves (a root
+  set on the Mac or a live session's folder, the roots a start may use),
+  never the root itself, never through a link out of it, never with a
+  protected name. A link already of that name, even a dangling one, is a
+  conflict, and nothing is made at its target.
+- The name rule is ASCII on purpose (letters, digits, space, `.`, `_`,
+  `-`; starting with a letter or digit; no trailing space or dot; at most
+  60): no NFC and NFD pairs, look-alikes, bidi or zero-width characters.
+  Widening it is a security decision, recorded here first. A name that
+  matches an existing entry once case and Unicode are folded (as the
+  denylist folds them) is refused, on every volume, and the refusal
+  names the entry Files would list.
+- The new folder is checked after `mkdir`: the parent's inode (held from
+  before the check of its names), an `O_NOFOLLOW` open of the folder, its
+  realpath, and the policy again. A mismatch removes only the empty
+  folder that was made, and only if the path still names its inode, and
+  answers "The folder moved while it was being created". That refusal and
+  a protected-name one count toward the probe alarm. The leftover race:
+  Node has no `mkdirat`, so a process running as you can still swap a
+  path component between the last check and `mkdir`; the checks catch it
+  and keep the rollback to the folder that was made. Whoever can win that
+  race can already write anywhere you can.
+- Limits: 10 new folders an hour per device, and
+  `launch.rate.foldersPerHour` (10) per actor. Audited as `foldersCreate`
+  with root, parent, name and relative path, never an absolute path.
+- An Idempotency-Key replays a create, so a retry after a lost reply is
+  not a second try. Served on the control socket as the CLI, on purpose:
+  a local process can run `mkdir` without Jantar. No event carries a
+  path; other devices see the folder when they next open its parent.
+- Claude's trust card for a just-made folder is never answered for you:
+  that Jantar made it is no reason to trust what is in it by the time a
+  session starts.
