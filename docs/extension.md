@@ -323,9 +323,11 @@ The toolbar icon shows, per tab:
 | **!** | Notes did not start by themselves. Open the Jantar icon for why. |
 
 An armed tab's popup says **Armed: starts when you join** (or **when you're
-let in**, or **when you rejoin** after leaving), with the name and project,
-**Change** and **Cancel**. Left open, it turns into the notes view by
-itself once notes start, which then says "Started when you joined, 10:02".
+let in**, or **when you rejoin** after leaving), with the name (the page's
+title, "(from the page)", until you type one), the project and whether action
+items go to its todos, **Change** and **Cancel**. Left open, it turns into
+the notes view by itself once notes start, which then says "Started when you
+joined, 10:02".
 
 Start when I join ends, and notes do not start, on:
 
@@ -333,7 +335,8 @@ Start when I join ends, and notes do not start, on:
 - closing the tab;
 - the tab leaving the meeting: another Meet call in the same tab ends it at
   once, and a page that shows no join screen, waiting room or call for a
-  minute (Teams' Chat, another site) ends it then;
+  minute (Teams' Chat, Meet's home page, another site) ends it then, also
+  after you left the call;
 - two hours unused, for a call that never starts;
 - **Unpair**, reloading or updating the extension, or Chrome quitting.
 
@@ -347,13 +350,22 @@ Meet or Teams call you join in this Chrome: on each join screen or waiting
 room the page says "Jantar starts notes when you join. Not this call: the
 Jantar icon.", and notes start once you are in the call, with the page's
 title as the name and no project. **Not this call** in the popup skips that
-call in that tab (you can still press Start when I join or Start notes
-yourself). After **End**, leaving and rejoining the same call in that tab
-does not start notes again; another call does. It starts only a call you
-join: a page first seen already in the call (a reload mid-call, an instant
-meeting with no join screen) waits for **Start notes**. When another tab
-already keeps notes for the same Meet call, it does not start a second one.
-**Unpair** turns it off.
+call in that tab: the popup then says "Always is on, but not for this call.
+Notes will not start by themselves." above the sheet, where you can still
+press Start when I join, or Start notes once in. After **End**, leaving and
+rejoining the same call in that tab does not start notes again; another call
+does. It starts only a call you join: a page first seen already in the call
+(a reload mid-call, an instant meeting with no join screen) waits for
+**Start notes**, and leaving a call for a page that shows nothing of it
+(Teams' Chat) arms nothing. When another tab already keeps notes for the
+same Meet call, it does not start a second one. **Unpair** turns it off.
+
+While the extension is not paired (never, or since Jantar asked to "Pair
+again"), Always arms nothing and the icon never shows ARM: each join screen
+says once "Notes will not start by themselves: the extension is not paired.
+Click the Jantar icon to pair.", and the pairing view says so too, with
+**Turn off** to switch Always off without pairing. Pairing again arms the
+join screens open then.
 
 ### When notes do not start
 
@@ -365,27 +377,44 @@ says "Notes did not start when you joined: …" for ten minutes:
 - "Notes did not start: Jantar is not running on this Mac." Jantar is tried
   again for two minutes first ("Trying again for 2 minutes.").
 - "Notes did not start: Pair again: jantar pair --extension" when Jantar
-  no longer knows the extension's key, and on later joins (Always stays on)
-  "Notes did not start: pair the extension first: click the Jantar icon."
+  no longer knows the extension's key. Every arm ends then; later join
+  screens are not armed (Always above).
 - "Notes did not start: they are already on for this call in another tab."
 - "Notes will not start by themselves: Jantar can't see this call's join
   screen or the call." The page left its join screen or waiting room for a
   minute without Jantar seeing the call. Press **Start notes** once you are
-  in the call, and send the Call check below with a report.
+  in the call, and send the Call check below with a report. (Not said when
+  Jantar takes a call it does not know for its waiting room: see Limits.)
 
-Before you join, the popup arms nothing while the extension is not paired
-or Meetings are off at the Mac: it says so instead.
+Before you join, the popup arms nothing while the extension is not paired,
+Meetings are off at the Mac or Jantar is not running: it says so instead. A
+tab armed before that keeps its ARM, and its popup says why under "Start when
+I join is on for this tab, but notes can't start until this is fixed.", with
+**Cancel** (or **Not this call**). With Always on, a join screen is still
+armed while Meetings are off or Jantar is not running: notes then do not
+start, as above, once you are let in.
 
 ### Limits
 
-- A tab in the background may notice you were let in up to a minute late
-  (Chrome slows hidden tabs); the captions on screen then are read.
+- A tab in the background may notice you were let in up to about two
+  minutes late (Chrome wakes a hidden tab about once a minute, and Jantar
+  waits for two checks); the captions on screen then are read.
 - A call with no join screen or waiting room needs **Start notes**.
+- Teams' waiting room after **Join now** counts as one only on a meeting's
+  join link (Teams light meetings, the meetup-join and launcher links).
+  Teams' own app keeps one address for everything, so there it is not told
+  apart from Chat: arm on the pre-join screen and the arm ends a minute
+  after Join now, saying "Notes will not start by themselves…"; press
+  **Start notes** once you are in.
 - Not checked on a real Mac yet ([R12](real-mac-checks.md#meetings-v010-start-when-i-join)):
   Teams' waiting room and Teams light meetings (joining as a guest from a
   link), so neither is claimed to work. If a Teams waiting room shows a
   Leave button, Jantar would count you in the call there, for Start notes
-  too.
+  too. If light meetings' call has controls Jantar does not know, Jantar
+  keeps taking it for the waiting room: the icon keeps showing ARM and the
+  popup "Armed: starts when you're let in" while you are in the call (up to
+  two hours), and no bubble says notes did not start. If the icon still
+  shows ARM once you are in, press **Start notes** and send the Call check.
 - Two tabs on the same call armed by hand make two meetings, as two Start
   notes do.
 

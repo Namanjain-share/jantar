@@ -16,21 +16,35 @@ permission).
   are on, and the page says "Jantar started notes. Let people know you keep
   notes." Only that tab, only once you are in the call (the controls Start
   notes trusts, seen on two checks a second apart). Cancel, closing the
-  tab, leaving the meeting's page for a minute, another Meet call in the
-  tab, or two hours unused end it. Nothing of the call reaches Jantar
-  before you are let in.
+  tab, leaving the meeting's page for a minute (Teams' Chat or Meet's home
+  page too, also after leaving the call), another Meet call in the tab, or
+  two hours unused end it. Nothing of the call reaches Jantar before you
+  are let in. The armed popup names the page's title, the project and the
+  todos switch.
 - **Always start when I join a call** (Settings, off by default): every
   Meet or Teams call you join in this Chrome. Not this call skips one, and
-  End keeps a rejoin of that call from starting again. A call first seen
-  already in progress waits for Start notes. Unpair turns it off.
+  End keeps a rejoin of that call from starting again; the popup then says
+  the call is skipped. A call first seen already in progress waits for
+  Start notes, and a call left for Teams' Chat is not armed. Unpair turns
+  it off. While the extension is not paired it arms nothing and shows no
+  ARM: the join screen says to pair, and the pairing view can turn it off.
+  Pairing again arms the join screens open then.
 - When notes can't start by themselves (Meetings off, Jantar not running,
   the extension not paired, another tab already keeping notes for the
-  call), the page and the popup say why, and the icon shows !.
+  call), the page and the popup say why, and the icon shows !. An armed tab
+  whose notes can't start yet (Meetings off, Jantar not running) says so in
+  the popup, with Cancel or Not this call.
 - The icon shows ON in a tab keeping notes, however they started.
   Settings › Call check names what the page shows (the join screen, the
   waiting room, the call), by Jantar's own name for the control, for
-  reports. Teams' waiting room and Teams light meetings are not checked on
+  reports, next to Always at the top of Settings. Teams' waiting room after
+  Join now is told apart only on a meeting's join link (light meetings):
+  in Teams' own app an arm made on the pre-join screen ends a minute after
+  Join now. Teams' waiting room and Teams light meetings are not checked on
   a real Mac yet (docs/real-mac-checks.md, R12 to R17).
+- Fixed: after a reload of a call with notes on, notes resume only once the
+  call's controls held two checks, never on one that flashes up in the
+  waiting room.
 
 ## 0.9.0 (2 November 2026)
 
