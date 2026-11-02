@@ -1366,7 +1366,10 @@ export interface FolderBrowser {
   list(q: FoldersListQuery, actor: Actor): Promise<LaunchResult<{ listing: FoldersListResponse }>>;
   recent(actor: Actor): Promise<FolderRecent[]>;
   pin(body: FolderPinBody, actor: Actor): Promise<LaunchResult>;
-  /** mkdir without `recursive` (EEXIST: conflict); 10 per hour per device; audited as folder.create. */
+  /**
+   * mkdir without `recursive` of a name no sibling folds to (409 on a clash, any letter case); `launch` scope;
+   * 10 per hour per device; checked by inode and realpath after mkdir; audited as foldersCreate.
+   */
   create(body: FolderCreateBody, actor: Actor): Promise<LaunchResult<{ created: FolderCreateResponse }>>;
 }
 

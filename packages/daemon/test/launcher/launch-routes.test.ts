@@ -7,15 +7,16 @@
  * Idempotency-Key opens one window), device scopes granted on the Mac, the
  * per-device limiters, and audit rows without prompt text.
  */
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { V03_LAUNCH_FLAGS, IDEMPOTENCY_HEADER, SettingsSchema, type LaunchJob } from '@jantar/protocol';
-import { V03_LIMITS } from '../../src/api/services.js';
+import { V03_LIMITS, type ApiOptions } from '../../src/api/services.js';
+import type { FilesService } from '../../src/contracts.js';
 import { LauncherService } from '../../src/launcher/service.js';
-import { h, makeApi, makeSession, pairCookie, type TestApi } from '../api/fakes.js';
-import { FakeBackend, FakeCcw, FakePolicy, DEFAULT_ACCOUNTS, KEPT, T0, filesWith, trustScreen, until } from './helpers.js';
+import { bare, h, makeApi, makeSession, pairCookie, type TestApi } from '../api/fakes.js';
+import { FakeBackend, FakeCcw, FakePolicy, DEFAULT_ACCOUNTS, KEPT, T0, advance, filesWith, trustScreen, until } from './helpers.js';
 
 let api: TestApi;
 let tmp: string;
@@ -33,7 +34,7 @@ const SECRET = 'SECRET-PROMPT-9d2f refactor the parser';
 /** Every refusal the launcher handed to Files' audit (files.denied and the probe alarm). */
 let denied: [string, string, string][] = [];
 
-async function setup(launch: Record<string, unknown> = {}) {
+async function setup(launch: Record<string, unknown> = {}, more: { files?: boolean; api?: ApiOptions } = {}) {
   denied = [];
   tmp = await realpath(await mkdtemp(join(tmpdir(), 'ccw-launch-api-')));
   const work = join(tmp, 'work');
@@ -41,22 +42,31 @@ async function setup(launch: Record<string, unknown> = {}) {
   await mkdir(join(work, 'beta'));
   terminal = new FakeBackend();
   api = await makeApi({
-    ctx: { settings: SettingsSchema.parse({ launch: { enabled: true, mode: 'cs-shell', defaultFlags: V03_LAUNCH_FLAGS, ...launch }, accounts: { kept: KEPT } }) },
+    ...(more.api ? { api: more.api } : {}),
+    ctx: {
+      settings: SettingsSchema.parse({
+        launch: { enabled: true, mode: 'cs-shell', defaultFlags: V03_LAUNCH_FLAGS, ...launch },
+        accounts: { kept: KEPT },
+        ...(more.files === undefined ? {} : { files: { enabled: more.files } }),
+      }),
+    },
     sessions: [],
     deps: (ctx, fakes) => {
+      const files: FilesService = {
+        ...filesWith(new FakePolicy([{ id: 'r.work', label: 'work', real: work, display: '~/work' }])),
+        denied: (_actor, root, rel, reason) => void denied.push([root, rel, reason]),
+      };
       launcher = new LauncherService(ctx, {
         sessions: fakes.sessions,
         terminal,
         writer: fakes.writer,
         usage: fakes.usage,
         ccwLegacy: (ccw = new FakeCcw()),
-        files: {
-          ...filesWith(new FakePolicy([{ id: 'r.work', label: 'work', real: work, display: '~/work' }])),
-          denied: (_actor, root, rel, reason) => void denied.push([root, rel, reason]),
-        },
+        files,
         notifiers: [],
       });
-      return { launcher };
+      // The same files (path policy) for the routes that read it themselves (launchHistory).
+      return { launcher, files };
     },
   });
   api.ctx.clock.set(T0);
@@ -367,6 +377,150 @@ describe('folders', () => {
     const limited = await make('f11', 'c11');
     expect(limited.statusCode).toBe(429);
     expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
+  // 0.10.1: Files' New folder is a second way into this same route.
+  const NEW = { root: 'r.work', parent: 'beta', name: 'new-project' };
+
+  it('create: the audit row holds relative paths only, never the Mac’s absolute path', async () => {
+    await setup();
+    const { cookie } = await pairCookie(api, ['launch']);
+    expect((await post('/v1/folders', NEW, cookie, { [IDEMPOTENCY_HEADER]: 'abs-0' })).statusCode).toBe(201);
+    const row = api.ctx.db.audit.list({ limit: 100 }).find((a) => a.action === 'foldersCreate');
+    expect(row).toMatchObject({ result: 'ok', target: 'r.work', params: { root: 'r.work', parent: 'beta', name: 'new-project', rel: 'beta/new-project' } });
+    expect(JSON.stringify(api.ctx.db.audit.list({ limit: 100 }))).not.toContain(tmp);
+  });
+
+  it('create: a retry with the same Idempotency-Key replays the 201 (one folder, one audit row); another body with that key is 409', async () => {
+    const { work } = await setup();
+    const { cookie } = await pairCookie(api, ['launch']);
+    const first = await post('/v1/folders', NEW, cookie, { [IDEMPOTENCY_HEADER]: 'idem-1' });
+    const again = await post('/v1/folders', NEW, cookie, { [IDEMPOTENCY_HEADER]: 'idem-1' });
+    expect([first.statusCode, again.statusCode]).toEqual([201, 201]);
+    expect(again.json()).toEqual({ root: 'r.work', path: 'beta/new-project' });
+    expect(again.headers['idempotent-replayed']).toBe('true');
+    expect(first.headers['idempotent-replayed']).toBeUndefined();
+    expect(await readdir(join(work, 'beta'))).toEqual(['new-project']);
+    expect(api.ctx.db.audit.list({ limit: 100 }).filter((a) => a.action === 'foldersCreate')).toHaveLength(1);
+    const other = await post('/v1/folders', { ...NEW, name: 'other' }, cookie, { [IDEMPOTENCY_HEADER]: 'idem-1' });
+    expect(other.statusCode).toBe(409);
+    expect(await readdir(join(work, 'beta'))).toEqual(['new-project']);
+    // Without a replay (a new key), the same name is taken.
+    const taken = await post('/v1/folders', NEW, cookie, { [IDEMPOTENCY_HEADER]: 'idem-2' });
+    expect(taken.statusCode).toBe(409);
+    expect(taken.json().error.message).toBe('A folder named new-project already exists here');
+  });
+
+  it('create: a name that differs only in case is 409 over HTTP, naming what is there', async () => {
+    const { work } = await setup();
+    await mkdir(join(work, 'beta', 'New-Project'));
+    const { cookie } = await pairCookie(api, ['launch']);
+    const res = await post('/v1/folders', NEW, cookie, { [IDEMPOTENCY_HEADER]: 'case-1' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toEqual({ code: 'conflict', message: 'A folder named New-Project already exists here; names that differ only in capitals count as the same' });
+  });
+
+  it('create: the launch scope (a control device is 403 naming it; launch and admin pass)', async () => {
+    await setup();
+    const phone = await pairCookie(api, ['read', 'control']);
+    const denied403 = await post('/v1/folders', NEW, phone.cookie, { [IDEMPOTENCY_HEADER]: 'sc-0' });
+    expect(denied403.statusCode).toBe(403);
+    expect(denied403.json().error.message).toMatch(/launch/);
+    const launchDevice = await pairCookie(api, ['launch']);
+    expect((await post('/v1/folders', NEW, launchDevice.cookie, { [IDEMPOTENCY_HEADER]: 'sc-1' })).statusCode).toBe(201);
+    const admin = await pairCookie(api, ['admin']);
+    expect((await post('/v1/folders', { ...NEW, name: 'by-admin' }, admin.cookie, { [IDEMPOTENCY_HEADER]: 'sc-2' })).statusCode).toBe(201);
+  });
+
+  it('create: launching off is 403 whatever Files says; Files off with launching on still creates (the start sheet needs it)', async () => {
+    await setup({ enabled: false }, { files: true });
+    const a = await pairCookie(api, ['launch']);
+    const off = await post('/v1/folders', NEW, a.cookie, { [IDEMPOTENCY_HEADER]: 'f-0' });
+    expect(off.statusCode).toBe(403);
+    expect(off.json().error.message).toMatch(/jantar launch on/);
+    await launcher.stop();
+    await api.close();
+    await rm(tmp, { recursive: true, force: true });
+    await setup({}, { files: false });
+    const b = await pairCookie(api, ['launch']);
+    expect((await post('/v1/folders', NEW, b.cookie, { [IDEMPOTENCY_HEADER]: 'f-1' })).statusCode).toBe(201);
+  });
+
+  it('create: refused under --read-only (403); without the device secret (401) or from a foreign Origin (403)', async () => {
+    const { work } = await setup({}, { api: { mode: { readOnly: true, terminal: 'terminal-app' } } });
+    const { cookie } = await pairCookie(api, ['launch']);
+    expect((await post('/v1/folders', NEW, cookie, { [IDEMPOTENCY_HEADER]: 'ro-0' })).statusCode).toBe(403);
+    await launcher.stop();
+    await api.close();
+    await rm(tmp, { recursive: true, force: true });
+    const second = await setup();
+    const d = await pairCookie(api, ['launch']);
+    const noSecret = await api.tcp.inject({ method: 'POST', url: '/v1/folders', headers: bare(d.cookie, { [IDEMPOTENCY_HEADER]: 'ro-1' }), payload: NEW });
+    expect(noSecret.statusCode).toBe(401);
+    const foreign = await post('/v1/folders', NEW, d.cookie, { [IDEMPOTENCY_HEADER]: 'ro-2', origin: 'https://evil.example' });
+    expect(foreign.statusCode).toBe(403);
+    expect(await readdir(join(second.work, 'beta'))).toEqual([]);
+    expect(work).not.toBe(second.work);
+  });
+
+  it('create: ctl.sock is the CLI (D11): 201, audited with actor cli', async () => {
+    const { work } = await setup();
+    const res = await api.ctl.inject({ method: 'POST', url: '/v1/folders', headers: { [IDEMPOTENCY_HEADER]: 'cli-f' }, payload: { ...NEW, name: 'from-cli' } });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toEqual({ root: 'r.work', path: 'beta/from-cli' });
+    expect(await readdir(join(work, 'beta'))).toEqual(['from-cli']);
+    expect(api.ctx.db.audit.list({ limit: 100 }).find((a) => a.action === 'foldersCreate')).toMatchObject({ actor: 'cli', result: 'ok' });
+  });
+
+  it('create: escapes over HTTP are 400 before the handler (a parent with .., a name with /, an unknown key)', async () => {
+    const { work } = await setup();
+    const { cookie } = await pairCookie(api, ['launch']);
+    const spy = vi.spyOn(launcher.folders, 'create');
+    for (const [i, payload] of [
+      { ...NEW, parent: '../..' },
+      { ...NEW, name: 'a/b' },
+      { ...NEW, name: '..' },
+      { ...NEW, name: '.ssh' },
+      { ...NEW, recursive: true },
+      { ...NEW, mode: 0o777 },
+      { root: 'r.work', parent: 'beta' },
+    ].entries()) {
+      const res = await post('/v1/folders', payload, cookie, { [IDEMPOTENCY_HEADER]: `esc-${i}` });
+      expect(res.statusCode, JSON.stringify(payload)).toBe(400);
+    }
+    // A parent with .. reaches the service only when zod lets it through; either way nothing is made.
+    expect(spy.mock.calls.every(([b]) => b.parent === '../..')).toBe(true);
+    expect(await readdir(join(work, 'beta'))).toEqual([]);
+    expect(await readdir(tmp)).toEqual(['work']);
+  });
+});
+
+describe('a new folder, then a session in it (0.10.1, D1)', () => {
+  it('preview names it, its history is empty, the start opens it and the trust card waits for the phone', async () => {
+    const { work } = await setup();
+    const { cookie } = await pairCookie(api, ['launch']);
+    const made = await post('/v1/folders', { root: 'r.work', parent: '', name: 'new-project' }, cookie, { [IDEMPOTENCY_HEADER]: 'np-0' });
+    expect(made.json()).toEqual({ root: 'r.work', path: 'new-project' });
+    const preview = await api.tcp.inject({ method: 'GET', url: '/v1/launch/preview?root=r.work&path=new-project', headers: h(cookie) });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({ root: 'r.work', path: 'new-project', display: '~/work/new-project', name: 'new-project' });
+    expect(preview.json().command).toContain(join(work, 'new-project'));
+    const history = await api.tcp.inject({ method: 'GET', url: '/v1/launch/history?root=r.work&path=new-project', headers: h(cookie) });
+    expect(history.json()).toEqual({ sessions: [] });
+    const res = await post('/v1/launches', { ...START, path: 'new-project' }, cookie, { [IDEMPOTENCY_HEADER]: 'np-1' });
+    expect(res.statusCode).toBe(202);
+    const id = res.json().job.id as string;
+    expect(res.json().job).toMatchObject({ name: 'new-project', folder: join(work, 'new-project') });
+    await until(api.ctx.clock, () => launcher.get(id)?.job.stage === 'starting');
+    expect(terminal.opened[0]).toContain(join(work, 'new-project'));
+    terminal.fg = 'claude';
+    terminal.screen = trustScreen(0);
+    await until(api.ctx.clock, () => launcher.get(id)?.job.stage === 'dialog');
+    expect(launcher.get(id)?.job.dialog?.title).toBe('Accessing workspace:');
+    // Made by Jantar is no reason to trust it: nothing is answered for the phone.
+    await advance(api.ctx.clock, 30_000, 1_000);
+    expect(terminal.keys).toEqual([]);
+    expect(launcher.get(id)?.job.stage).toBe('dialog');
   });
 });
 

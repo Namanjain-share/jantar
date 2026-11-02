@@ -1,8 +1,9 @@
 /**
  * The new-session folder browser (spec 4.5.1) and security rule L11: a new
  * folder's name holds the regex (no leading dot, no "/", no trailing space
- * or dot), mkdir is never recursive, and an existing name is a conflict.
- * Everything runs in a temp dir through a fake path policy.
+ * or dot), mkdir is never recursive, and an existing name (in any letter
+ * case, 0.10.1) is a conflict. Everything runs in a temp dir through a fake
+ * path policy; folders-create.test.ts runs New folder on the real one.
  */
 import { chmod, mkdir, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -172,11 +173,16 @@ describe('L11: create a folder', () => {
     expect((await create('', 'My Project v2')).ok).toBe(true);
   });
 
-  it('an existing name is a conflict, file or folder', async () => {
-    rig = await makeRig({ folders: ['taken'] });
+  it('an existing name is a conflict, file or folder, in any letter case (0.10.1: it names what is there)', async () => {
+    rig = await makeRig({ folders: ['taken', 'Project'] });
     await writeFile(join(rig.work, 'file'), '');
     expect(await create('', 'taken')).toEqual({ ok: false, code: 'conflict', reason: 'A folder named taken already exists here' });
-    expect(await create('', 'file')).toMatchObject({ ok: false, code: 'conflict' });
+    expect(await create('', 'file')).toEqual({ ok: false, code: 'conflict', reason: 'A file named file already exists here' });
+    expect(await create('', 'PROJECT')).toEqual({
+      ok: false,
+      code: 'conflict',
+      reason: 'A folder named Project already exists here; names that differ only in capitals count as the same',
+    });
   });
 
   it('the parent must pass the policy: not protected, not out of the root through a link', async () => {

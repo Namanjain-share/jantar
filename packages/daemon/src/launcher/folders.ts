@@ -12,11 +12,24 @@
  * - pin: in the db, shared by every device, at most 20.
  * - create: one `mkdir` (0755, never recursive) of a checked name in a
  *   checked parent; EEXIST is a conflict, EPERM the macOS privacy sentence;
- *   settings.launch.rate.foldersPerHour per actor. Where the new folder
- *   landed is checked again (a parent swapped for a symlink meanwhile).
+ *   settings.launch.rate.foldersPerHour per actor. Since 0.10.1 Files' New
+ *   folder is a second caller (same route, same checks): a name that folds
+ *   (case, Unicode, as the denylist folds) onto a sibling's is a conflict on
+ *   every volume, and the new folder is checked after mkdir by the parent's
+ *   inode, an O_NOFOLLOW open of it, its realpath and the policy again. A
+ *   mismatch removes only the empty folder made here, and only while the
+ *   path still names its inode. Every write goes through `dirx` (mkdir.ts).
+ *
+ *   Accepted, as policy.ts accepts it for reads: a same-user process can
+ *   still swap a path component between the last check and mkdir, or between
+ *   the checks after it and the rollback. The checks catch the first and keep
+ *   the second from removing anything but our own empty folder. Closing it
+ *   needs mkdirat/unlinkat, which Node lacks, and whoever can win the race
+ *   already runs as the user.
  */
-import { lstat, mkdir, realpath, rmdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { lstat, realpath } from 'node:fs/promises';
+import type { BigIntStats } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import {
   FolderNameSchema,
   localSessions,
@@ -42,6 +55,9 @@ import type {
 } from '../contracts.js';
 import { actorId } from '../core/actor.js';
 import { hasScope } from '../auth/scopes.js';
+import { normSeg } from '../files/deny.js';
+import { DIR_MAX_SCAN } from '../files/policy.js';
+import { dirx } from './mkdir.js';
 
 /** Entries per page. */
 export const FOLDERS_PAGE = 500;
@@ -54,6 +70,16 @@ export const HIDDEN_NAMES: ReadonlySet<string> = new Set(['node_modules', '.git'
 
 export const TCC_SENTENCE =
   "macOS hasn't let Jantar use this folder. Allow it under System Settings > Privacy & Security > Files and Folders.";
+
+/** FolderNameSchema in words (ASCII on purpose, 0.10.1 D5). */
+export const FOLDER_NAME_RULE =
+  'A folder name uses only the letters A to Z, digits, spaces, dots, dashes and underscores; it starts with a letter or digit, does not end in a space or a dot, and has at most 60 characters';
+export const PROTECTED_NAME = 'That name is on the protected list';
+export const MOVED_SENTENCE = 'The folder moved while it was being created';
+const CAPITALS = 'names that differ only in capitals count as the same';
+
+/** What a directory entry is, as its dirent (or an lstat) says. */
+export type EntryKind = 'dir' | 'file' | 'link' | 'other';
 
 const HOUR_MS = 60 * 60_000;
 /** realpath of each live session's cwd, cached this long. */
@@ -251,14 +277,21 @@ export class Folders implements FolderBrowser {
     return { ok: true };
   }
 
+  /**
+   * New folder (spec 0.10.1 §3.2), in this order: the actor allow-list, the
+   * name, the hourly budget, the parent through the policy, the protected
+   * name, the parent's identity, the sibling clash (folded), the charge, the
+   * parent's identity again, mkdir, the new folder's identity, where it
+   * landed, and a guarded rollback when it is not where it should be.
+   */
   async create(body: FolderCreateBody, actor: Actor): Promise<LaunchResult<{ created: { root: string; path: string } }>> {
-    // An allow-list, as starting a session: the CLI or a device with launch (never the system or the extension).
+    // 1. An allow-list, as starting a session: the CLI or a device with launch (never the system or the extension).
     if (!(actor.kind === 'cli' || (actor.kind === 'device' && hasScope(actor.scopes, 'launch')))) {
       return fail('forbidden', "This device can't create folders. On your Mac run: jantar devices grant <device> launch");
     }
-    if (!FolderNameSchema.safeParse(body.name).success) {
-      return fail('invalid_request', 'A folder name starts with a letter or digit, has no "/", and does not end in a space or a dot');
-    }
+    // 2. The name again (zod refused a bad one at 400 already).
+    if (!FolderNameSchema.safeParse(body.name).success) return fail('invalid_request', FOLDER_NAME_RULE);
+    // 3. The hourly budget per actor (charged at step 8, once the cheap refusals are behind).
     const who = actorId(actor);
     const limit = this.ctx.settings.get().launch.rate.foldersPerHour;
     const now = this.ctx.clock.now();
@@ -267,26 +300,120 @@ export class Folders implements FolderBrowser {
     if (hits.length >= limit) {
       return fail('rate_limited', `At most ${limit} new folders an hour; try again later`, Math.max(1, (hits[0] ?? now) + HOUR_MS - now));
     }
+    // 4. The parent: root, clean relative path, denylist, realpath inside the root, a directory and not a link.
     const policy = this.policy();
     const parent = await policy.resolveDir(body.root, body.parent);
     if (isRefusal(parent)) return this.refusal(actor, body.root, body.parent, parent);
+    const rootId = parent.root.id;
+    const rel = parent.rel ? `${parent.rel}/${body.name}` : body.name;
     const target = join(parent.real, body.name);
-    if (policy.isProtected(target)) return fail('forbidden', 'That name is on the protected list');
-    hits.push(now);
+    // 5. The name on the denylist (it folds case and Unicode); counted for the probe alarm, as Files' refusals are.
+    if (policy.isProtected(target)) return this.refusal(actor, rootId, rel, { refused: 'protected', message: PROTECTED_NAME });
+    // 6. The parent's identity, held until the folder is made.
+    let p0: BigIntStats;
     try {
-      await mkdir(target, { mode: 0o755 });
+      p0 = await dirx.lstat(parent.real);
     } catch (e) {
       return mkdirFailure(e, body.name);
     }
-    const rel = parent.rel ? `${parent.rel}/${body.name}` : body.name;
-    // A parent swapped for a symlink between the check and mkdir would have put the folder elsewhere.
-    const landed = await policy.resolveDir(parent.root.id, rel);
-    if (isRefusal(landed) || landed.real !== (await realOr(target))) {
-      await rmdir(target).catch(() => undefined);
-      this.ctx.log.warn('new folder did not land under its root; removed', { root: parent.root.id });
-      return fail('forbidden', 'The folder moved while it was being created');
+    if (!p0.isDirectory() || p0.isSymbolicLink()) return this.moved(actor, rootId, rel);
+    // 7. A sibling whose name folds onto this one: a conflict on every volume, naming what is there.
+    let clash: SiblingClash | null;
+    try {
+      clash = await siblingClash(parent.real, body.name, policy);
+    } catch (e) {
+      return mkdirFailure(e, body.name);
     }
+    if (clash) return fail('conflict', takenSentence(clash, body.name));
+    // 8. From here on the try counts.
+    hits.push(now);
+    // 9. The parent must still be the directory checked at step 6.
+    if (!(await this.sameDir(parent.real, p0))) return this.moved(actor, rootId, rel);
+    // 10. One mkdir, never recursive; it does not follow a final symlink (even a dangling one is EEXIST).
+    try {
+      await dirx.mkdirOne(target);
+    } catch (e) {
+      return mkdirFailure(e, body.name, isErrno(e, 'EEXIST') ? await kindAt(target) : undefined);
+    }
+    // 11. What was made, opened without following a final link: its identity guards the rollback.
+    let made: BigIntStats;
+    try {
+      const fh = await dirx.openDirNoFollow(target);
+      try {
+        made = await fh.stat({ bigint: true });
+      } finally {
+        await fh.close().catch(() => undefined);
+      }
+    } catch {
+      // ELOOP, ENOTDIR, ENOENT: the path no longer names what mkdir made, so nothing here is ours to remove.
+      return this.rollback(actor, rootId, rel, target, null);
+    }
+    // 12. Where it landed: same parent inode, realpath directly below the parent's, the policy agrees, same inode there.
+    const landed = await this.landed(parent, rel, body.name, p0, made);
+    if (!landed) return this.rollback(actor, rootId, rel, target, made);
+    // 14.
     return { ok: true, created: { root: landed.root.id, path: landed.rel } };
+  }
+
+  /** The directory at `path` (not a link) still has `was`'s dev and ino. */
+  private async sameDir(path: string, was: BigIntStats): Promise<boolean> {
+    try {
+      const now = await dirx.lstat(path);
+      return now.isDirectory() && !now.isSymbolicLink() && now.dev === was.dev && now.ino === was.ino;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Step 12: the policy's view of the new folder when every check holds, else null. */
+  private async landed(
+    parent: { real: string; root: ResolvedRoot },
+    rel: string,
+    name: string,
+    p0: BigIntStats,
+    made: BigIntStats,
+  ): Promise<{ root: ResolvedRoot; rel: string } | null> {
+    if (!made.isDirectory()) return null;
+    if (!(await this.sameDir(parent.real, p0))) return null;
+    let real: string;
+    try {
+      real = await dirx.realpath(join(parent.real, name));
+    } catch {
+      return null;
+    }
+    if (dirname(real) !== parent.real || basename(real) !== name) return null;
+    const at = await this.policy().resolveDir(parent.root.id, rel);
+    if (isRefusal(at) || at.real !== real) return null;
+    if (!(await this.sameDir(real, made))) return null;
+    return { root: at.root, rel: at.rel };
+  }
+
+  /**
+   * Step 13: the folder is not where it should be. Remove it only while
+   * `target` still names the directory made (`made`); rmdir removes only an
+   * empty one. Anything else there is not ours and is left alone.
+   */
+  private async rollback(actor: Actor, root: string, rel: string, target: string, made: BigIntStats | null): Promise<Failure> {
+    let removed = false;
+    if (made) {
+      try {
+        const l = await dirx.lstat(target);
+        if (l.isDirectory() && l.dev === made.dev && l.ino === made.ino) {
+          await dirx.rmdir(target);
+          removed = true;
+        }
+      } catch {
+        // Gone, replaced or no longer empty: not ours to remove.
+      }
+    }
+    // No path in the log: the root id only.
+    this.ctx.log.warn('new folder did not land under its root', { root, removed });
+    return this.moved(actor, root, rel);
+  }
+
+  /** A race refusal: 403, and it counts toward the probe alarm as an `outside` refusal. */
+  private moved(actor: Actor, root: string, rel: string): Failure {
+    return this.refusal(actor, root, rel, { refused: 'outside', message: MOVED_SENTENCE });
   }
 
   /** folders_seen: a session ran in this folder (session.added). */
@@ -351,11 +478,64 @@ function sortKey(a: FolderEntry, b: FolderEntry): number {
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }
 
-export function mkdirFailure(e: unknown, name: string): Failure {
+/** A sibling whose name folds onto a new folder's name. */
+export interface SiblingClash {
+  name: string;
+  type: EntryKind;
+}
+
+/**
+ * The first entry of `parentReal` whose name folds (normSeg: case and
+ * Unicode, as APFS and the denylist fold) onto `name`, or null. At most
+ * DIR_MAX_SCAN entries are read; past that, mkdir's EEXIST is the last word
+ * (on a case-insensitive volume). Protected entries are never named back
+ * (none can fold onto a name the denylist let through, but it is cheap to be
+ * sure). Errors (EPERM, EACCES) are thrown for the caller to word.
+ */
+export async function siblingClash(parentReal: string, name: string, policy: Pick<FilePolicy, 'isProtected'>): Promise<SiblingClash | null> {
+  const want = normSeg(name);
+  const dir = await dirx.opendir(parentReal);
+  try {
+    for (let scanned = 0; scanned < DIR_MAX_SCAN; scanned++) {
+      const ent = await dir.read();
+      if (!ent) return null;
+      if (normSeg(ent.name) !== want) continue;
+      if (policy.isProtected(join(parentReal, ent.name))) continue;
+      return { name: ent.name, type: ent.isDirectory() ? 'dir' : ent.isFile() ? 'file' : ent.isSymbolicLink() ? 'link' : 'other' };
+    }
+    return null;
+  } finally {
+    await dir.close().catch(() => undefined);
+  }
+}
+
+/** "A folder named Project already exists here; names that differ only in capitals count as the same". */
+export function takenSentence(clash: SiblingClash, name: string): string {
+  const what = clash.type === 'dir' ? 'A folder' : clash.type === 'file' ? 'A file' : 'Something';
+  const base = `${what} named ${clash.name} already exists here`;
+  return clash.name === name ? base : `${base}; ${CAPITALS}`;
+}
+
+function isErrno(e: unknown, code: string): boolean {
+  return (e as NodeJS.ErrnoException | null)?.code === code;
+}
+
+/** What is at `path` now (for EEXIST's wording), or undefined. */
+async function kindAt(path: string): Promise<EntryKind | undefined> {
+  try {
+    const l = await dirx.lstat(path);
+    return l.isDirectory() ? 'dir' : l.isFile() ? 'file' : l.isSymbolicLink() ? 'link' : 'other';
+  } catch {
+    return undefined;
+  }
+}
+
+/** mkdir's errno as a sentence; for EEXIST, `existing` says what is there (a folder when unknown). */
+export function mkdirFailure(e: unknown, name: string, existing?: EntryKind): Failure {
   const code = (e as NodeJS.ErrnoException | null)?.code;
   switch (code) {
     case 'EEXIST':
-      return fail('conflict', `A folder named ${name} already exists here`);
+      return fail('conflict', takenSentence({ name, type: existing ?? 'dir' }, name));
     case 'EPERM':
       return fail('forbidden', TCC_SENTENCE);
     case 'EACCES':

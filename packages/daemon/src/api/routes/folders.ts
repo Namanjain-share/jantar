@@ -12,6 +12,11 @@
  * (launchPreview shares it), and the audit params of the two writes: paths
  * and ids only. Path refusals are audited by Files (files.denied, and the
  * probe alarm), as its own are.
+ *
+ * 0.10.1: Files' New folder is foldersCreate's second caller (the start
+ * sheet's browser is the first): no second write route, so one set of
+ * checks, one audit action and one budget. A protected name and a race
+ * refusal count toward the probe alarm too (Folders.create).
  */
 import type { FolderCreateBody, FolderPinBody, FoldersListQuery } from '@jantar/protocol';
 import type { LaunchResult } from '../../contracts.js';
