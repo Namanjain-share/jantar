@@ -227,7 +227,8 @@ export class MediaHelper {
       const cache = join(work, 'module-cache');
       await ensureDir(cache);
       const tmp = join(work, HELPER_NAME);
-      const r = await this.ctx.exec(swiftc, ['-O', '-module-cache-path', cache, '-o', tmp, join(this.ctx.paths.assetsDir, HELPER_SOURCE)], {
+      // Swift 5 language mode: the speech wait (RunLoop inside an async context) is refused by Swift 6's.
+      const r = await this.ctx.exec(swiftc, ['-O', '-module-cache-path', cache, '-swift-version', '5', '-o', tmp, join(this.ctx.paths.assetsDir, HELPER_SOURCE)], {
         cwd: work,
         env: { PATH: SAFE_PATH, HOME: work },
         timeoutMs: BUILD_MS,

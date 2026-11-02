@@ -270,6 +270,8 @@ describe.skipIf(!HAVE_OPENSSL)('the page tiers', () => {
     const id = idOf(await e.intel.read({ text: 'https://www.example.test/a-post', depth: 'light' }, { via: 'cli' }));
     await e.idle();
     expect(e.items().get(id)).toMatchObject({ title: ANSWER.title, read: { state: 'saved' } });
+    // The Reading strip names the finished job by the title the read found, not the pending one.
+    expect(e.intel.jobs().jobs.find((j) => j.id === `captures:${id}`)).toMatchObject({ state: 'saved', title: ANSWER.title });
     ok = false;
     expect(e.intel.reread(`captures:${id}`, 'light').ok).toBe(true);
     await e.idle();

@@ -214,6 +214,8 @@ export class ReadQueue {
         }
         if (!line) return;
         await this.d.write(line);
+        // The Reading strip names the job as the item is now called (the title the read found).
+        if (typeof line.title === 'string' && line.title) job.title = line.title.slice(0, 300);
         const read = line.read as { state?: string; reason?: string; notes?: string[] } | undefined;
         if (read?.notes) job.notes = read.notes;
         this.end(job, read?.state === 'saved' ? 'saved' : 'failed', read?.reason);

@@ -265,6 +265,8 @@ describe('G9: the media helper', () => {
     expect(cache.startsWith(join(e.ctx.paths.intelDir, 'bin', 'build-'))).toBe(true);
     expect(cache.endsWith('module-cache')).toBe(true);
     expect(build.args.at(-1)).toBe(join(ASSETS, 'intel', 'jantar-media.swift'));
+    // Swift 5 language mode, whatever swiftc's default becomes.
+    expect(build.args[build.args.indexOf('-swift-version') + 1]).toBe('5');
     expect(build.opts.env?.PATH).toBe('/usr/bin:/bin');
     const xs = e.exec.calls.findIndex((c) => c.file === '/usr/bin/xcode-select');
     expect(xs).toBe(0);
