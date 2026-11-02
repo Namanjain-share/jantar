@@ -270,6 +270,27 @@ describe('writes', () => {
     expect(tools.counts.writes).toBe(10);
   });
 
+  it("a run's writes count against Life's write limit (240 a minute), one budget with the sender's own writes", async () => {
+    rig = await chatRig();
+    // The phone's own Life writes this minute (the API counts them on the same limiter): all but one.
+    for (let i = 0; i < 239; i++) expect(rig.lifeWrites.hit('device:dev-phone').ok).toBe(true);
+    const { tools, turnId } = rig.turn();
+    expect((await tools.call('todo_add', { title: 'Buy oat milk' })).isError).toBe(false);
+    expect(await tools.call('todo_add', { title: 'Buy bread' })).toEqual({ isError: true, text: 'Limit reached for this message.' });
+    expect(tools.counts).toMatchObject({ writes: 1, refused: 1 });
+    expect(rig.store.changes(turnId)).toHaveLength(1);
+    const open = rig.life.todos.listTodos({ done: false });
+    expect(open.ok && open.value.todos.map((t) => t.title)).toEqual(['Buy oat milk']);
+    // The run's write took the last place: the phone's next write is refused too.
+    expect(rig.lifeWrites.hit('device:dev-phone').ok).toBe(false);
+    // A card is not a write (its tap is, on the tapping device's route); reads are not limited.
+    await tools.call('intel_get', { id: rig.intel.add().id });
+    expect(await tools.call('todo_add', { title: 'Buy bread' })).toEqual({ isError: false, text: 'Put in the chat for the user to tap.' });
+    // A minute on, it writes again.
+    rig.ctx.clock.set('2026-11-02T10:01:01.000Z');
+    expect((await rig.turn().tools.call('todo_add', { title: 'Buy bread' })).isError).toBe(false);
+  });
+
   it('bad arguments get a fixed sentence and count as refused', async () => {
     rig = await chatRig();
     const { tools } = rig.turn();

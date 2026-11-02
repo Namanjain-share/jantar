@@ -5,7 +5,8 @@
  * Siri door's voice turns. Sessions are read only.
  *
  * `createChatService` is the part daemon.ts wires (Factories['chat'], plus
- * `{ readOnly }`: under --read-only the list says so and nothing runs).
+ * `{ readOnly, lifeWrites }`: under --read-only the list says so and nothing
+ * runs; a run's writes count against the API's own Life write limiter).
  * service.ts holds the queue and the run; dispatcher.ts the per-run MCP
  * server behind assets/chat/bridge.mjs; tools.ts, actions.ts and taps.ts
  * the tools, the journal and the taps; store.ts, db.ts and photos.ts what
@@ -18,9 +19,9 @@ import type { ChatDeps } from './types.js';
 export { CHAT_BROKEN_REASON, openChatDb } from './db.js';
 export { CHAT_PROMPT_ASSET, CHAT_PROMPT_VERSION, CHAT_SENTENCES, buildChatService, type ChatOptions } from './service.js';
 export { CHAT_TOOLS, toolsFor } from './tools.js';
-export type { ChatDeps } from './types.js';
+export type { ChatDeps, ChatWriteLimiter } from './types.js';
 
 /** The Chat part (Factories['chat'] plus the daemon's mode). */
-export function createChatService(ctx: DaemonContext, deps: ChatDeps, opts: ChatOptions = {}): ReturnType<Factories['chat']> {
+export function createChatService(ctx: DaemonContext, deps: ChatDeps, opts: ChatOptions): ReturnType<Factories['chat']> {
   return buildChatService(ctx, deps, opts);
 }

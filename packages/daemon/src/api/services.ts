@@ -165,6 +165,12 @@ export interface ApiOptions {
   /** v0.4.2: where uploads go (tests pass a fake). Default: uploads/store.ts on paths.uploadsDir. */
   uploads?: UploadStore;
   /**
+   * v0.10: Life's per-device write limiter (V04_LIMITS.lifeWrite). daemon.ts makes one and hands
+   * it to the Chat part too, so a Chat run's writes and the sender's own share one budget.
+   * Default: a new one (tests).
+   */
+  lifeWriteLimiter?: SlidingWindowLimiter;
+  /**
    * How long a read waits for the terminal to find a session's tab (default
    * PANE_LOOKUP_TIMEOUT_MS). Tests only: the end-to-end tests' osascript and
    * ps are node scripts, far slower to start than the real ones on a busy CI runner.
@@ -437,7 +443,7 @@ export class ApiServices {
     this.keysLimiter = per(V03_LIMITS.keys);
     this.screenshotLimiter = per(V03_LIMITS.screenshot);
     this.screenshotSelectLimiter = per(V03_LIMITS.screenshotSelect);
-    this.lifeWriteLimiter = per(V04_LIMITS.lifeWrite);
+    this.lifeWriteLimiter = opts.lifeWriteLimiter ?? per(V04_LIMITS.lifeWrite);
     this.estimateLimiter = per(V04_LIMITS.estimate);
     this.estimateDayBudget = per(V04_LIMITS.estimateDay);
     this.intelCaptureLimiter = per(V04_LIMITS.intelCapture);

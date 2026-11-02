@@ -21,6 +21,8 @@ import {
   type TranscriptItem,
 } from '@jantar/protocol';
 import type { Actor, IntelService, LifeService, MeetingsService } from '../../src/contracts.js';
+import { V04_LIMITS } from '../../src/api/services.js';
+import { SlidingWindowLimiter } from '../../src/auth/rate-limit.js';
 import { openChatDb } from '../../src/chat/db.js';
 import { ChatStore } from '../../src/chat/store.js';
 import { TurnTools, toolsFor } from '../../src/chat/tools.js';
@@ -136,6 +138,8 @@ export interface ChatRig {
   deps: ChatDeps;
   /** The board: what sessions_find and session_get read. */
   board: { sessions: Record<string, Session>; pending: Record<string, PendingRequest>; transcript: TranscriptItem[] };
+  /** Life's per-device write limit (240 a minute), as daemon.ts shares it between the API and Chat. */
+  lifeWrites: SlidingWindowLimiter;
   /** A turn's tools (every part on unless the settings say otherwise). */
   turn(o?: { message?: string; actor?: Actor; id?: string }): { tools: TurnTools; turnId: string };
   close(): Promise<void>;
@@ -160,6 +164,7 @@ export async function chatRig(over: Record<string, unknown> = {}): Promise<ChatR
   const intel = new FakeIntel();
   const meetings = fakeMeetings(() => life);
   const board: ChatRig['board'] = { sessions: {}, pending: {}, transcript: [] };
+  const lifeWrites = new SlidingWindowLimiter({ ...V04_LIMITS.lifeWrite, clock: ctx.clock });
   const deps: ChatDeps = {
     life,
     intel,
@@ -181,6 +186,7 @@ export async function chatRig(over: Record<string, unknown> = {}): Promise<ChatR
     meetings,
     deps,
     board,
+    lifeWrites,
     turn(o = {}) {
       const id = o.id ?? turnId();
       if (!store.turn(id)) store.insertTurn({ id, at: ctx.clock.iso(), via: 'phone', text: o.message ?? '', photos: [], state: 'running', tainted: false, refused: 0, by: 'device:dev-phone' });
@@ -193,6 +199,7 @@ export async function chatRig(over: Record<string, unknown> = {}): Promise<ChatR
         actorName: 'device:dev-phone',
         message: o.message ?? '',
         tools: toolsFor(ctx.settings.get(), deps),
+        lifeWrites,
         live: () => true,
       });
       return { tools, turnId: id };

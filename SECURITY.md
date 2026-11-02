@@ -1862,7 +1862,10 @@ the code, not of the prompt.
   Undo), but no message ever deletes.
 - Caps per message: 24 tool calls, 10 writes, 10 cards, 5 timed todos or
   posts; past them a tool answers "Limit reached for this message." Life's
-  own caps and the per-device write limit (240 a minute) apply on top.
+  own caps apply on top, and so does Life's write limit of 240 a minute:
+  each of a run's writes counts against the sender's (the device, or the
+  Siri key), one budget with that device's own Life writes and taps, and
+  past it the tool gives the same answer.
 
 ### The link rule
 

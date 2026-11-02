@@ -14,6 +14,9 @@
  *    usage in one run, each tool answering with the item's own words.
  * 2. A turn writes with Undo: a todo added, a café rated and a visit
  *    logged, in life.db at once; Undo from the phone puts each back.
+ * 2b. A run's writes share the sender's Life write limit (240 a minute)
+ *    with its own routes: a tablet's 239 writes and its message leave no
+ *    room, and each of the run's writes is refused.
  * 3. Deletes need the user's Confirm: Chat has no delete tool, only a card;
  *    the item stays until the tap, which deletes it.
  * 4. Chat never reaches a session-writing route: the run's tools are
@@ -210,6 +213,39 @@ describe('v0.10 Chat through jantard: the phone, the Siri door, the fake claude 
     // A second Undo is a conflict, with the Mac's sentence.
     const again = await call('POST', `/v1/chat/turns/${t.id}/changes/0/undo`);
     expect(again.status).toBe(409);
+  });
+
+  it("2b. a run's writes share the sender's Life write limit with its own routes: past 240 a minute they are refused", async () => {
+    // Another device, so the phone keeps its own minute: 239 Life writes from its screens, then its message (the 240th).
+    const tablet = (await pair('Example tablet', ['read', 'control'])).cookie;
+    const put = (path: string, body: unknown) => http(d.port, path === '/v1/chat' ? 'POST' : 'PUT', path, { cookie: tablet, body, headers: { 'idempotency-key': `k-${randomUUID()}` } });
+    for (let i = 0; i < 239; i++) {
+      const r = await put('/v1/food/targets', { kcalTarget: 2000 });
+      expect(r.status, r.text).toBe(200);
+    }
+    const sent = await put('/v1/chat', { text: chatText('chat-write', 'add oat milk and rate the dosa place') });
+    expect(sent.status, sent.text).toBe(202);
+    const id = (sent.body as { id: string }).id;
+    const t = await eventually(
+      async () => {
+        const x = (await ok<ChatList>('GET', '/v1/chat')).turns.find((y) => y.id === id);
+        return x && x.state !== 'queued' && x.state !== 'running' ? x : null;
+      },
+      perfBudgetMs(30_000),
+      "the tablet's answer",
+    );
+    expect(t.state, `${t.reason}\n${dumpLog()}`).toBe('done');
+    expect(t.changes).toEqual([]);
+    expect(t.refused).toBe(3);
+    expect((await lastRun())?.calls.filter((c) => c.isError).map((c) => [c.name, c.text])).toEqual([
+      ['todo_add', 'Limit reached for this message.'],
+      ['place_edit', 'Limit reached for this message.'],
+      ['visit_log', 'Limit reached for this message.'],
+    ]);
+    expect(await todoTitles()).not.toContain('Buy oat milk');
+    expect((await ok<PlaceDetail>('GET', `/v1/places/${cafeId}`)).visits).toEqual([]);
+    // The tablet's own next write is over the limit too; the phone's minute is its own.
+    expect((await put('/v1/food/targets', { kcalTarget: 2000 })).status).toBe(429);
   });
 
   it('3. deletes need Confirm: no delete tool, a card only; the item stays until the tap', async () => {

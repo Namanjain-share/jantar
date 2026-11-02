@@ -118,6 +118,8 @@ clear --broken` moves it aside.
 Limits: 10 messages a minute and 100 a day per device (and per Siri key);
 three waiting at once; per message at most 24 tool calls, 10 changes, 10
 cards and 5 timed reminders or posts; each answer at most two minutes.
+Chat's changes also count against Life's 240 changes a minute, with the
+ones you make on that phone's own screens.
 
 ## When it says
 
@@ -128,7 +130,7 @@ cards and 5 timed reminders or posts; each answer at most two minutes.
 | No account has room right now. | every account is kept, held or past Rewrite's ceiling |
 | Chat stopped: it could not run in its safe mode on this Mac. | the run's tools were not exactly Jantar's; run `jantar doctor` |
 | Only a link in your own message can be saved. | Chat never saves a link Claude wrote |
-| Limit reached for this message. | one of the per-message caps |
+| Limit reached for this message. | one of the per-message caps, or Life's 240 changes a minute |
 
 ## Why it is safe
 

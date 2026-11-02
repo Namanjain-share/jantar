@@ -66,7 +66,7 @@ import { ChatStore, type TurnRecord } from './store.js';
 import { dismissCard, runCard, undoChange } from './taps.js';
 import { countSentence, replyText, speakable } from './text.js';
 import { audit, partOn, recordChange, toolsFor, TurnTools } from './tools.js';
-import type { ChatDeps } from './types.js';
+import type { ChatDeps, ChatWriteLimiter } from './types.js';
 
 export const CHAT_PROMPT_VERSION = 'v1';
 export const CHAT_PROMPT_ASSET = `chat/chat-${CHAT_PROMPT_VERSION}.md`;
@@ -149,6 +149,8 @@ function failedReason(o: AuditOutcome): string {
 
 export interface ChatOptions {
   readOnly?: boolean;
+  /** Life's per-device write limit, the API's own instance (daemon.ts): a run's writes count with the sender's. */
+  lifeWrites: ChatWriteLimiter;
 }
 
 export class ChatServiceImpl implements ChatService {
@@ -170,14 +172,16 @@ export class ChatServiceImpl implements ChatService {
   private sweepTimer: TimerId | undefined;
   private readonly log: Logger;
   private readonly readOnly: boolean;
+  private readonly lifeWrites: ChatWriteLimiter;
 
   constructor(
     private readonly ctx: DaemonContext,
     private readonly deps: ChatDeps,
-    opts: ChatOptions = {},
+    opts: ChatOptions,
   ) {
     this.log = ctx.log.child({ part: 'chat' });
     this.readOnly = opts.readOnly === true;
+    this.lifeWrites = opts.lifeWrites;
     this.photos = new ChatPhotos(ctx);
   }
 
@@ -669,7 +673,7 @@ export class ChatServiceImpl implements ChatService {
     const single = 'claude' in program;
     const actor: Actor = this.senders.get(run.turnId) ?? { kind: 'system' };
     const list = toolsFor(s, this.deps);
-    const tools = new TurnTools({ ctx, deps: this.deps, store, turnId: run.turnId, actor, actorName: queued.by, message: queued.text, tools: list, live: () => this.live(run) !== null });
+    const tools = new TurnTools({ ctx, deps: this.deps, store, turnId: run.turnId, actor, actorName: queued.by, message: queued.text, tools: list, lifeWrites: this.lifeWrites, live: () => this.live(run) !== null });
     const allowed = list.map((t) => `mcp__jantar__${t.name}`);
     const rid = randomBytes(4).toString('hex');
     const runDir = join(ctx.paths.chatDir, 'run', rid);
@@ -876,6 +880,6 @@ function onParts(s: ReturnType<DaemonContext['settings']['get']>, d: ChatDeps): 
   return names.filter(([p]) => partOn(s, d, p)).map(([, n]) => n);
 }
 
-export function buildChatService(ctx: DaemonContext, deps: ChatDeps, opts: ChatOptions = {}): ChatService {
+export function buildChatService(ctx: DaemonContext, deps: ChatDeps, opts: ChatOptions): ChatService {
   return new ChatServiceImpl(ctx, deps, opts);
 }

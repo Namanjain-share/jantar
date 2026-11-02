@@ -28,6 +28,15 @@ export interface ChatDeps {
 }
 
 /**
+ * Life's per-device write limit (V04_LIMITS.lifeWrite, 240 a minute): the API's own
+ * `lifeWriteLimiter`, one instance daemon.ts hands to both, so a run's direct writes and the
+ * sender's own Life writes share one budget (keyed by the sender, as the API keys its routes).
+ */
+export interface ChatWriteLimiter {
+  hit(key: string): { ok: true } | { ok: false; retryAfterMs: number };
+}
+
+/**
  * The parts Chat reaches, each behind its own switch; `sessions` (read only) is always there on the hub.
  * `cards` (request_delete, request_action) is on while any part with a delete or an action is: a Life
  * module, Intel or Meetings (each card is checked against its own part again).

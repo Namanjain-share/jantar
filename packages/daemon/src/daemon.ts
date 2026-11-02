@@ -97,6 +97,8 @@ import { createChatService } from './chat/index.js';
 import { createPrimer } from './primer/index.js';
 import { WebPushNotifier, createNotificationRouter, createNotifiers, type PushSender } from './notify/index.js';
 import { PaneLookup, createApiServerWith, type ApiOptions, type ApiServerImpl } from './api/index.js';
+import { V04_LIMITS } from './api/services.js';
+import { SlidingWindowLimiter } from './auth/rate-limit.js';
 import { createFleet } from './fleet/index.js';
 import { createNodeLink } from './node/index.js';
 import { createExecutor } from './node/executor.js';
@@ -122,7 +124,7 @@ export interface DaemonOptions {
   /** Look binaries up on $PATH as well (tests, manual runs). Default false, as under launchd. */
   usePath?: boolean;
   /** Extra API options (control socket path, web dist, cookie flags; tests). */
-  api?: Omit<ApiOptions, 'port' | 'readOnly' | 'mode'>;
+  api?: Omit<ApiOptions, 'port' | 'readOnly' | 'mode' | 'lifeWriteLimiter'>;
   /** Rotate the launchd log files in paths.logsDir. Default true. */
   rotateLogs?: boolean;
   /** More notification channels next to Web Push (tests record what would be pushed). */
@@ -233,8 +235,10 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     const meetings: MeetingsService = off ? off.meetings : createMeetingsService(ctx, { life, usage, ccwLegacy }, { readOnly });
     // v0.10. Chat (replaces Ask) is told --read-only too: its taps are Life writes (allowed), its runs spend quota (never).
     // Sessions reach it read only: the store's state and transcript pages, never the writer, terminal or hooks.
+    // Life's per-device write limit is one budget: the api counts its routes on it, Chat a run's writes.
     const board = { state: () => ctx.store.getState(), page: transcripts.page.bind(transcripts) };
-    const chat: ChatService = off ? off.chat : createChatService(ctx, { life, intel, meetings, board, usage, ccwLegacy, notifiers }, { readOnly });
+    const lifeWrites = new SlidingWindowLimiter({ ...V04_LIMITS.lifeWrite, clock: ctx.clock });
+    const chat: ChatService = off ? off.chat : createChatService(ctx, { life, intel, meetings, board, usage, ccwLegacy, notifiers }, { readOnly, lifeWrites });
     // v0.4. Primes free 5-hour windows while accounts.prime is on; never under --read-only (it runs cswap).
     const primer: Service | null = off ? null : createPrimer(ctx, { usage, ccwLegacy }, { readOnly });
     const panes = new PaneLookup(terminal, ctx, undefined, opts.api?.paneLookupTimeoutMs);
@@ -250,7 +254,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     const nodeLink: NodeLinkService = node
       ? createNodeLink(ctx, { executor: createExecutor(ctx, injector), self: { backend: nodeBackendOf(mode, rawTerminal), readOnly } })
       : offNodeLink();
-    const apiOpts: ApiOptions = { ...opts.api, mode };
+    const apiOpts: ApiOptions = { ...opts.api, mode, lifeWriteLimiter: lifeWrites };
     if (opts.port !== undefined) apiOpts.port = opts.port;
     const api = createApiServerWith(
       ctx,

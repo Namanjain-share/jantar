@@ -12,7 +12,9 @@
  *
  * The rules (B9): at most CHAT_TOOL_CALLS_MAX calls, CHAT_WRITES_MAX direct
  * writes, CHAT_CARDS_MAX cards and 5 timed todos or posts a turn ("Limit
- * reached for this message."); a link is written only when it is in the
+ * reached for this message."), and every direct write counts against Life's
+ * per-device write limit with the sender's own writes (the same answer past
+ * it); a link is written only when it is in the
  * user's own message; after a taint every write is a Do-it card; every
  * delete and every irreversible or quota-spending action is a Confirm card.
  * Writes are journalled (chat.db) with their Undo; a card keeps the checked
@@ -60,7 +62,7 @@ import {
 } from './actions.js';
 import type { ChangeJson, ChatStore } from './store.js';
 import { clean, cut, data, dataNote, line } from './text.js';
-import type { ChatDeps, ChatPart } from './types.js';
+import type { ChatDeps, ChatPart, ChatWriteLimiter } from './types.js';
 
 export type ToolKind = 'read' | 'write' | 'card';
 
@@ -560,6 +562,8 @@ export interface TurnToolsOptions {
   message: string;
   /** The tools listed this turn (by name). */
   tools: readonly ChatTool[];
+  /** Life's per-device write limit, shared with the API's routes: each direct write counts, as `actorName`. */
+  lifeWrites: ChatWriteLimiter;
   /** False once the turn no longer counts (Cancel, Clear, off): every call is refused. */
   live(): boolean;
 }
@@ -669,6 +673,8 @@ export class TurnTools {
       return { text: TOOL_SENTENCES.card, isError: false };
     }
     if (this.counts.writes >= CHAT_WRITES_MAX) return this.refused(TOOL_SENTENCES.limit);
+    // One budget with the sender's own Life writes (the API counts its routes on the same limiter, by the same name).
+    if (!this.o.lifeWrites.hit(this.o.actorName).ok) return this.refused(TOOL_SENTENCES.limit);
     // Counted before the await, so calls released together can't pass the cap; a write refused gives its place back.
     this.counts.writes += 1;
     let r: Awaited<ReturnType<typeof applyWrite>>;

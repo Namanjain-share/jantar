@@ -18,6 +18,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { chatRuns, chatText, makeFakeHome, makePng, setFakeClaude, type FakeHome } from '@jantar/fixtures';
 import { CHAT_QUEUE_MAX, type ChatTurn } from '@jantar/protocol';
 import type { ChatService, LifeService } from '../../src/contracts.js';
+import { V04_LIMITS } from '../../src/api/services.js';
+import { SlidingWindowLimiter } from '../../src/auth/rate-limit.js';
 import { CHAT_SENTENCES, buildChatService } from '../../src/chat/service.js';
 import { FakeClock } from '../../src/core/clock.js';
 import { createExecFile } from '../../src/core/exec.js';
@@ -57,7 +59,7 @@ async function boot(): Promise<void> {
     usage: f.usage,
     ccwLegacy: f.ccwLegacy,
     notifiers: f.notifiers,
-  });
+  }, { lifeWrites: new SlidingWindowLimiter({ ...V04_LIMITS.lifeWrite, clock: ctx.clock }) });
   await chat.start();
 }
 
