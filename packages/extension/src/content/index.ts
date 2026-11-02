@@ -16,6 +16,11 @@
  *   `capture {on: false}`: nothing is read from the page before Start;
  * - the camera button and its bubble (button.ts).
  *
+ * v0.10: `capture {on: true, text}` (notes started by themselves once you
+ * were in the call) turns notes on as Start does, then shows `text`; the
+ * bubble shows at the button's spot even where no button is (a join screen).
+ * On pagehide the call watch sends one last `call` (`hide`).
+ *
  * The page answers only the worker's messages (`capture`, `button`, `hide`,
  * `show`) and only from this extension; its own `FromPage` messages, which a
  * test's chrome reaches it with, and unknown `t` are ignored. After the
@@ -162,6 +167,7 @@ export function startContent(opts: ContentOptions = {}): Content | null {
         resume = false;
         if (m.on) {
           notesOn();
+          if (m.text && !rt.dead) button.bubble(m.text);
           respond({ ok: true });
           return undefined;
         }
@@ -179,7 +185,10 @@ export function startContent(opts: ContentOptions = {}): Content | null {
     }
   };
 
-  const onPageHide = () => capture.last();
+  const onPageHide = () => {
+    capture.last();
+    call.hide();
+  };
 
   const removeListeners = () => {
     try {

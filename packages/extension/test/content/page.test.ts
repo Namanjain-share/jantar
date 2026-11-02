@@ -81,7 +81,7 @@ describe('startContent', () => {
     buildMeet(document, { state: 'waiting' });
     start();
     await settle(0);
-    expect(world.worker.of('call')).toEqual([{ t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync' }]);
+    expect(world.worker.of('call')).toEqual([{ t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync', stage: 'none' }]);
   });
 });
 
@@ -385,5 +385,72 @@ describe('the extension reloaded', () => {
     expect(world.worker.of('shot')).toEqual([]);
     expect(cam()!.hidden).toBe(true);
     expect(tip()!.textContent).toBe(RELOAD);
+  });
+});
+
+describe('v0.10: Start when I join, in the page', () => {
+  const AUTO_STARTED = 'Jantar started notes. Let people know you keep notes.';
+
+  it('`capture {on: true, text}` starts notes as Start does, then shows the text', async () => {
+    const meet = buildMeet(document, { state: 'lobby' });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    meet.admit();
+    meet.say('Sam', 'Said once in the call');
+    await settle(2 * TIMING.callPollMs);
+    expect(await world.toPage({ t: 'capture', on: true, text: AUTO_STARTED })).toEqual({ ok: true });
+    expect(content!.capture.on).toBe(true);
+    expect(rootOf()!.querySelector('.dot')!.hasAttribute('hidden')).toBe(false);
+    expect(cam()!.title).toBe('Jantar is keeping notes in this tab');
+    expect(tip()!.textContent).toBe(AUTO_STARTED);
+    await settle(TIMING.linesEveryMs + 10);
+    expect(world.worker.of('lines').flatMap((m) => m.lines.map((l) => l.text))).toEqual(['Said once in the call']);
+    // A second one changes nothing (the worker may send it again after a restart).
+    await world.toPage({ t: 'capture', on: true });
+    expect(content!.capture.on).toBe(true);
+  });
+
+  it('`capture {on: false, text}` on a join screen shows only the bubble, at the button\'s spot, with no button', async () => {
+    buildMeet(document, { state: 'prejoin' });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    expect(cameraHost()).toBeNull();
+    await world.toPage({ t: 'capture', on: false, text: 'Jantar starts notes when you join. Not this call: the Jantar icon.' });
+    expect(content!.capture.on).toBe(false);
+    expect(tip()!.textContent).toBe('Jantar starts notes when you join. Not this call: the Jantar icon.');
+    expect(cam()!.hidden).toBe(true);
+    expect(cameraHost()!.style.getPropertyValue('left')).toBe('12px');
+  });
+
+  it('MP6: on the join screen and in the waiting room nothing is read or observed, whatever the worker answers', async () => {
+    for (const state of ['prejoin', 'lobby'] as const) {
+      const meet = buildMeet(document, { state });
+      meet.say('Sam', `Never read ${MEETING_MARKER}`);
+      const blocks = vi.spyOn(meetAdapter, 'blocks');
+      const region = vi.spyOn(meetAdapter, 'region');
+      const observe = vi.spyOn(MutationObserver.prototype, 'observe');
+      start({ notes: true });
+      await settle(TIMING.noCaptionsMs + 3 * TIMING.keepAliveMs);
+      expect(blocks, state).not.toHaveBeenCalled();
+      expect(region, state).not.toHaveBeenCalled();
+      expect(observe, state).not.toHaveBeenCalled();
+      expect(world.worker.of('lines')).toEqual([]);
+      expect(world.worker.of('captions')).toEqual([]);
+      expect(JSON.stringify(world.worker.got)).not.toContain(MEETING_MARKER);
+      content!.stop();
+      world.done();
+      for (const spy of [blocks, region, observe]) spy.mockRestore();
+      document.body.replaceChildren();
+    }
+    content = null;
+  });
+
+  it('pagehide sends one `call` with stage none and hook page:hide', async () => {
+    buildMeet(document, { state: 'lobby' });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    const before = world.worker.of('call').length;
+    window.dispatchEvent(new Event('pagehide'));
+    expect(world.worker.of('call').slice(before)).toEqual([{ t: 'call', site: 'meet', inCall: false, callKey: 'abc-defg-hij', title: 'Weekly sync', stage: 'none', hook: 'page:hide' }]);
   });
 });
