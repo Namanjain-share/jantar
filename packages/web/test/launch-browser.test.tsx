@@ -275,7 +275,8 @@ describe('folder browser: new folder', () => {
     const { history } = renderApp({ path: '/new?root=r.1&path=api', api, state: state() });
     const input = await open();
     const create = screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement;
-    for (const bad of ['.hidden', 'trailing.', 'trailing ', 'a/b']) {
+    // A trailing space is trimmed before the check (iOS predictive text adds one), so it is no longer a bad name.
+    for (const bad of ['.hidden', 'trailing.', ' .lead', 'a/b']) {
       fireEvent.change(input, { target: { value: bad } });
       expect(create.disabled).toBe(true);
       expect(input.getAttribute('aria-invalid')).toBe('true');
@@ -284,16 +285,51 @@ describe('folder browser: new folder', () => {
     fireEvent.change(input, { target: { value: 'next-thing' } });
     expect(create.disabled).toBe(false);
     fireEvent.click(create);
-    await waitFor(() => expect(foldersCreate).toHaveBeenCalledWith({ root: 'r.1', parent: 'api', name: 'next-thing' }));
+    await waitFor(() => expect(foldersCreate).toHaveBeenCalledWith({ root: 'r.1', parent: 'api', name: 'next-thing' }, expect.any(String)));
     await waitFor(() => expect(history.entries.at(-1)).toBe('/new?root=r.1&path=api%2Fnext-thing&start=1'));
   });
 
-  it('says the folder exists on a 409', async () => {
-    const api = launchApi({ foldersCreate: vi.fn(async () => Promise.reject(new ApiError('conflict', 'exists', 409))) });
+  it("shows the daemon's sentence on a 409, which names what is there in its own letter case", async () => {
+    const taken = 'A folder named API already exists here; names that differ only in capitals count as the same';
+    const api = launchApi({ foldersCreate: vi.fn(async () => Promise.reject(new ApiError('conflict', taken, 409))) });
     renderApp({ path: '/new?root=r.1', api, state: state() });
     fireEvent.change(await open(), { target: { value: 'api' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-    expect(await screen.findByText('There is already a folder called api here.')).toBeTruthy();
+    expect((await screen.findByRole('alert')).textContent).toBe(taken);
+  });
+
+  it('trims the name before it is checked and sent', async () => {
+    const foldersCreate = vi.fn(async () => ({ root: 'r.1', path: 'my app' }));
+    renderApp({ path: '/new?root=r.1', api: launchApi({ foldersCreate }), state: state() });
+    const input = await open();
+    fireEvent.change(input, { target: { value: '  my app  ' } });
+    expect(input.getAttribute('aria-invalid')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(foldersCreate).toHaveBeenCalledWith({ root: 'r.1', parent: '', name: 'my app' }, expect.any(String)));
+  });
+
+  it('a retry of the same name sends the same Idempotency-Key; another name gets a new one', async () => {
+    const foldersCreate = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError('network', 'offline', 0))
+      .mockRejectedValueOnce(new ApiError('network', 'offline', 0))
+      .mockResolvedValue({ root: 'r.1', path: 'scratch-2' });
+    renderApp({ path: '/new?root=r.1', api: launchApi({ foldersCreate }), state: state() });
+    const input = await open();
+    const create = () => fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.change(input, { target: { value: 'scratch' } });
+    create();
+    await screen.findByRole('alert');
+    create();
+    await waitFor(() => expect(foldersCreate).toHaveBeenCalledTimes(2));
+    await screen.findByRole('alert');
+    fireEvent.change(input, { target: { value: 'scratch-2' } });
+    create();
+    await waitFor(() => expect(foldersCreate).toHaveBeenCalledTimes(3));
+    const keys = foldersCreate.mock.calls.map((c) => c[1] as string);
+    expect(keys[0]).toEqual(expect.any(String));
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
   });
 
   it('teaches the Mac command on a missing launch scope, with no grant button', async () => {

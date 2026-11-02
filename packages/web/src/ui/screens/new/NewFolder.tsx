@@ -4,19 +4,23 @@
  * is the daemon's own (FolderNameSchema: no leading dot, no "/", no trailing
  * space or dot); the daemon makes one folder, never a path, and answers 409
  * when it exists. Creating needs the `launch` scope, which a 403 reveals.
+ *
+ * 0.10.1: the name is trimmed (iOS predictive text adds a trailing space),
+ * every try sends an Idempotency-Key (one per name, reused on a retry, so a
+ * lost 201 is replayed instead of answering "already exists"), and a 409
+ * shows the daemon's sentence, which names what is there in its own case.
+ * Files' New folder (files/NewFolderSheet) is the same route.
  */
 import { FolderPlusIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useId, useRef, useState, type FormEvent } from 'react';
-import { FolderNameSchema } from '@jantar/protocol';
-import { errorText, isApiError } from '../../../lib/api.js';
+import { errorText } from '../../../lib/api.js';
+import { FOLDER_NAME_HINT, createSig, folderNameOk, keepKey } from '../../../lib/folder-name.js';
 import { useDeps } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { isNoScope } from './data.js';
 import { NoScopeNote, OfflineNote } from './parts.js';
-
-export const folderNameOk = (n: string) => FolderNameSchema.safeParse(n).success;
 
 export function NewFolder({ root, parent, offline, phone, onCreated }: { root: string; parent: string; offline: boolean; phone: boolean; onCreated: (path: string) => void }) {
   const { api } = useDeps();
@@ -26,7 +30,9 @@ export function NewFolder({ root, parent, offline, phone, onCreated }: { root: s
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const ok = folderNameOk(name);
+  const kept = useRef<{ sig: string; key: string } | null>(null);
+  const trimmed = name.trim();
+  const ok = folderNameOk(trimmed);
 
   if (!open) {
     return (
@@ -53,7 +59,8 @@ export function NewFolder({ root, parent, offline, phone, onCreated }: { root: s
     setBusy(true);
     setError(null);
     try {
-      const r = await api.foldersCreate({ root, parent, name });
+      const r = await api.foldersCreate({ root, parent, name: trimmed }, keepKey(kept, createSig(root, parent, trimmed)));
+      kept.current = null;
       onCreated(r.path);
     } catch (err) {
       setError(err);
@@ -80,8 +87,8 @@ export function NewFolder({ root, parent, offline, phone, onCreated }: { root: s
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
-          aria-invalid={name !== '' && !ok}
-          aria-describedby={name !== '' && !ok ? `${id}-hint` : undefined}
+          aria-invalid={trimmed !== '' && !ok}
+          aria-describedby={trimmed !== '' && !ok ? `${id}-hint` : undefined}
           className="h-40 min-w-0 flex-1 rounded-btn border border-line-strong bg-bg px-12 type-input text-ink outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink coarse:h-44"
         />
         <Button type="submit" variant="primary" disabled={!ok || busy || offline}>
@@ -99,9 +106,9 @@ export function NewFolder({ root, parent, offline, phone, onCreated }: { root: s
           Cancel
         </Button>
       </div>
-      {name !== '' && !ok ? (
+      {trimmed !== '' && !ok ? (
         <p id={`${id}-hint`} className="mt-6 type-small text-ink-2">
-          Start with a letter or digit; letters, digits, spaces, dots, dashes and underscores after that. It can't end in a space or a dot.
+          {FOLDER_NAME_HINT}
         </p>
       ) : null}
       {offline ? <OfflineNote what="make folders" className="mt-8" /> : null}
@@ -110,7 +117,7 @@ export function NewFolder({ root, parent, offline, phone, onCreated }: { root: s
           <NoScopeNote className="mt-8" />
         ) : (
           <p role="alert" className="mt-8 type-small text-ink-2">
-            {isApiError(error, 'conflict') ? `There is already a folder called ${name} here.` : errorText(error)}
+            {errorText(error)}
           </p>
         )
       ) : null}

@@ -19,6 +19,7 @@ import { describeSuggestion, questionsOf, summarizeTool } from '../src/lib/descr
 import { createRouter, LIFE_ROUTES, memoryHistory, parseRoute, routePath } from '../src/lib/router.js';
 import { closeNotificationsFor, disablePush, enablePush, getPushState, isIOS, urlBase64ToBytes } from '../src/lib/push.js';
 import { newIdempotencyKey } from '../src/lib/ids.js';
+import { FOLDER_NAME_HINT, clashIn, createSig, folderNameOk, freeFolderName, keepKey } from '../src/lib/folder-name.js';
 import { readLocal, writeLocal } from '../src/lib/storage.js';
 import { account, fakeApi, fakePushEnv, pending } from './helpers.js';
 
@@ -256,5 +257,62 @@ describe('ids and storage', () => {
     writeLocal('theme', undefined);
     expect(readLocal('theme', 'system')).toBe('system');
     expect(localStorage.getItem('ccw-v2:theme')).toBeNull();
+  });
+});
+
+describe('folder names (0.10.1 New folder)', () => {
+  it('folderNameOk is the daemon rule: ASCII, one segment, no leading dot, no trailing space or dot, at most 60', () => {
+    for (const ok of ['new-project', 'My Project v2', 'a', 'x'.repeat(60), 'v1.2_final']) expect(folderNameOk(ok), ok).toBe(true);
+    for (const bad of ['', '.hidden', '..', 'a/b', 'a\\b', 'trailing.', 'trailing ', '-dash', 'caf\u00e9', '\u202eevil', 'x'.repeat(61)]) {
+      expect(folderNameOk(bad), JSON.stringify(bad)).toBe(false);
+    }
+    expect(FOLDER_NAME_HINT).toMatch(/can't end in a space or a dot/);
+  });
+
+  it('freeFolderName: new-project, then -2 up to -99, folded the way the daemon folds', () => {
+    expect(freeFolderName([])).toBe('new-project');
+    expect(freeFolderName(['src', 'README.md'])).toBe('new-project');
+    expect(freeFolderName(['new-project'])).toBe('new-project-2');
+    expect(freeFolderName(['new-project', 'New-Project-2'])).toBe('new-project-3');
+    expect(freeFolderName(['NEW-PROJECT', 'new-project-2', 'new-project-3'])).toBe('new-project-4');
+    expect(freeFolderName(['scratch'], 'scratch')).toBe('scratch-2');
+    // All 99 taken: the base again, and the clash check says why Create is off.
+    const all = ['new-project', ...Array.from({ length: 98 }, (_, i) => `new-project-${i + 2}`)];
+    expect(freeFolderName(all)).toBe('new-project');
+  });
+
+  it('clashIn finds an entry whose name folds onto the one typed, and says what it is', () => {
+    const entries = [
+      { name: 'Project', type: 'dir' },
+      { name: 'README', type: 'file' },
+      { name: 'ghost', type: 'link' },
+      { name: '\u212Aeys', type: 'file' },
+    ] as const;
+    expect(clashIn(entries, 'project')).toEqual({ name: 'Project', type: 'dir' });
+    expect(clashIn(entries, 'Project')).toEqual({ name: 'Project', type: 'dir' });
+    expect(clashIn(entries, 'readme')).toEqual({ name: 'README', type: 'file' });
+    expect(clashIn(entries, 'GHOST')).toEqual({ name: 'ghost', type: 'link' });
+    // KELVIN SIGN folds onto K, as the daemon's normSeg folds it.
+    expect(clashIn(entries, 'keys')).toEqual({ name: '\u212Aeys', type: 'file' });
+    expect(clashIn(entries, 'other')).toBeNull();
+    expect(clashIn(entries, '')).toBeNull();
+  });
+
+  it('keepKey: one Idempotency-Key per name, reused on a retry, new for another name', () => {
+    const ref: { current: { sig: string; key: string } | null } = { current: null };
+    const a = keepKey(ref, 'new-project');
+    expect(a).toMatch(/^[0-9a-f-]{32,36}$/);
+    expect(keepKey(ref, 'new-project')).toBe(a);
+    const b = keepKey(ref, 'other');
+    expect(b).not.toBe(a);
+    expect(keepKey(ref, 'other')).toBe(b);
+    // After a success the caller forgets it: the same name then gets a new key.
+    ref.current = null;
+    expect(keepKey(ref, 'other')).not.toBe(b);
+    // The same name in another folder is another body, so another key.
+    const here = keepKey(ref, createSig('r.work', 'auth', 'new-project'));
+    expect(keepKey(ref, createSig('r.work', 'auth', 'new-project'))).toBe(here);
+    expect(keepKey(ref, createSig('r.work', 'api', 'new-project'))).not.toBe(here);
+    expect(createSig('r.work', 'a', 'b/c')).not.toBe(createSig('r.work', 'a/b', 'c'));
   });
 });
