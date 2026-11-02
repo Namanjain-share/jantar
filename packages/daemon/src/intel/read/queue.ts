@@ -13,9 +13,11 @@
  * - `stopAll` (reading off, Intel off, the daemon stopping) aborts the
  *   running job and writes every waiting one failed with the stopped
  *   sentence; nothing resumes after a restart (the store's start pass).
- * - `cancel` (Delete) drops a waiting job or aborts the running one; it then
- *   writes nothing (the item is gone).
- * - Finished jobs stay listed for a day, at most finishedMax.
+ * - `cancel` (Delete) drops a waiting job (today's count gets it back) or
+ *   aborts the running one; it then writes nothing (the item is gone).
+ * - Finished jobs stay listed for a day, at most finishedMax, one per item:
+ *   a Retry, Read again or Delete drops the item's finished row.
+ * - A job stopped after Claude answered keeps its saved line.
  */
 import { INTEL_READ_LIMITS, INTEL_READ_REASONS, type IntelDepth, type IntelJob, type IntelReadState, type IntelTier } from '@jantar/protocol';
 import type { Clock, Logger, TimerId } from '../../contracts.js';
@@ -120,17 +122,25 @@ export class ReadQueue {
     this.reads += 1;
     if (spec.depth === 'full') this.fulls += 1;
     const job: Job = { ...spec, id: `captures:${spec.rid}`, state: 'queued', notes: [], queuedAt: this.d.clock.iso(), abort: new AbortController() };
+    // A Retry or Read again replaces the item's last finished row: one row per item.
+    this.forget(spec.rid);
     this.waiting.push(job);
     this.d.changed();
     this.kick();
     return job;
   }
 
-  /** Delete: drop a waiting job, or abort the running one; nothing is written for it. */
+  /** Delete: drop a waiting job (it never started, so today's count gets it back), or abort the running one; nothing is written for it, and its finished row goes. */
   cancel(rid: string): void {
     const at = this.waiting.findIndex((j) => j.rid === rid);
-    if (at >= 0) this.waiting.splice(at, 1);
+    if (at >= 0) {
+      const [job] = this.waiting.splice(at, 1);
+      this.roll();
+      this.reads = Math.max(0, this.reads - 1);
+      if (job?.depth === 'full') this.fulls = Math.max(0, this.fulls - 1);
+    }
     if (this.running?.rid === rid) this.abort(this.running, 'deleted');
+    this.forget(rid);
     this.d.changed();
   }
 
@@ -151,6 +161,8 @@ export class ReadQueue {
     }
     this.paused = false;
     if (waiting.length || running) this.d.changed();
+    // A link saved while this waited is started now (the running job's own kick saw the pause).
+    this.kick();
   }
 
   /** Unfinished jobs oldest first, then the finished ones of the last day (newest first). */
@@ -169,6 +181,11 @@ export class ReadQueue {
     this.day = day;
     this.reads = 0;
     this.fulls = 0;
+  }
+
+  /** Drop the item's finished rows. */
+  private forget(rid: string): void {
+    for (let i = this.finished.length - 1; i >= 0; i--) if (this.finished[i]?.rid === rid) this.finished.splice(i, 1);
   }
 
   private abort(job: Job, why: AbortWhy): void {
@@ -205,13 +222,15 @@ export class ReadQueue {
       .then(() => this.d.run(job, update))
       .then(async (line) => {
         if (job.why === 'deleted') return;
-        if (job.why) {
+        const state = (line?.read as { state?: string } | undefined)?.state;
+        if (job.why && state !== 'saved') {
           // Stopped or past its hard stop: what was gathered is in the failed line the run gave back.
           const reason = job.why === 'tooLong' ? INTEL_READ_REASONS.tooLong : INTEL_READ_REASONS.stopped;
-          await this.d.write(line && (line.read as { state?: string } | undefined)?.state === 'failed' ? line : this.d.failedLine(job, reason));
+          await this.d.write(line && state === 'failed' ? line : this.d.failedLine(job, reason));
           this.end(job, 'failed', reason);
           return;
         }
+        // (A stop that came after Claude answered keeps the saved read.)
         if (!line) return;
         await this.d.write(line);
         // The Reading strip names the job as the item is now called (the title the read found).
