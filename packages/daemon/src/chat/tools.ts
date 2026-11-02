@@ -577,7 +577,23 @@ function timedOf(tool: WriteTool, input: Record<string, unknown>): boolean {
   return !!due && typeof due === 'object' && typeof due.time === 'string';
 }
 
-const strip = (args: Record<string, unknown>) => Object.fromEntries(Object.entries(args).filter(([, v]) => v !== null));
+/**
+ * A tool's arguments, checked. A model sends null for "not given" as often as for "clear it", so the raw
+ * arguments are tried first and a null the schema takes (an edit's "null clears") is kept; only the top-level
+ * nulls the schema refuses are dropped before the second try.
+ */
+export function parseArgs(schema: z.ZodType, raw: Record<string, unknown>): ReturnType<z.ZodType['safeParse']> {
+  const first = schema.safeParse(raw);
+  if (first.success) return first;
+  const drop = new Set<string>();
+  for (const issue of first.error.issues) {
+    if (issue.code === 'unrecognized_keys') for (const k of issue.keys) if (raw[k] === null) drop.add(k);
+    const k = issue.path[0];
+    if (typeof k === 'string' && raw[k] === null) drop.add(k);
+  }
+  if (drop.size === 0) return first;
+  return schema.safeParse(Object.fromEntries(Object.entries(raw).filter(([k]) => !drop.has(k))));
+}
 
 /** The tools one turn's run calls, with the rules (B9) and the journal. */
 export class TurnTools {
@@ -609,7 +625,7 @@ export class TurnTools {
     if (!this.o.live()) return this.refused(TOOL_SENTENCES.failed);
     const s = this.o.ctx.settings.get();
     if (!partOn(s, this.o.deps, t.part)) return this.refused(TOOL_SENTENCES.off(PART_NAME[t.part]));
-    const parsed = t.input.safeParse(strip(rawArgs));
+    const parsed = parseArgs(t.input, rawArgs);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       return this.refused(`Those arguments don't fit ${t.name}${issue ? `: ${issue.path.join('.') || 'input'} ${issue.message}` : ''}.`);

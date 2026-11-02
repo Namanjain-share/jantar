@@ -293,14 +293,22 @@ async function removeItem(d: ChatDeps, ref: ItemRef, actor: Actor): Promise<Life
   }
 }
 
-/** An edit: the item before, the module's update, the item after; the journal holds both sides of the changed keys. */
+/**
+ * An edit: the item before, the module's update, the item after; the journal holds both sides of the changed
+ * keys. An edit that changes nothing (no key, or every key already so) is refused, so the change list never
+ * shows a change that did not happen.
+ */
 function edit(d: ChatDeps, ref: ItemRef, patch: Record<string, unknown>, actor: Actor, module: ChatModule, op: ChangeJson['op'] = 'edit'): LifeResult<Applied> {
   const before = current(d, ref);
   if (!before) return refuse('not_found', ACTION_SENTENCES.gone);
+  const keys = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+  if (Object.keys(keys).length === 0 || stable(pickKeys(before, keys)) === stable(keys)) return refuse('conflict', ACTION_SENTENCES.nothing);
   const r = patchItem(d, ref, patch, actor);
   if (!r.ok) return r;
   const after = current(d, ref) ?? {};
   const step: Step = { do: 'patch', item: ref, before: pickKeys(before, patch), after: pickKeys(after, patch) };
+  // The module took it but kept what was there (a trimmed name, a tag already on).
+  if (stable(step.before) === stable(step.after)) return refuse('conflict', ACTION_SENTENCES.nothing);
   return { ok: true, value: { change: { module, op, ref: ref.id, label: labelOf(d, ref), undoable: true }, journal: { steps: [step] } } };
 }
 
@@ -481,13 +489,14 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, act
       if (!place) return refuse('not_found', ACTION_SENTENCES.gone);
       const steps: Step[] = [];
       // Dishes first, so a refused rating leaves no visit behind.
-      if (i.dishRatings?.length) {
-        const dishes: Dish[] = place.dishes.map((x) => ({ ...x }));
-        for (const dr of i.dishRatings) {
-          const at = dishes.findIndex((x) => x.name.toLowerCase() === dr.name.toLowerCase());
-          if (at >= 0) dishes[at] = { ...(dishes[at] as Dish), rating: dr.rating };
-          else dishes.push({ name: dr.name, rating: dr.rating });
-        }
+      const dishes: Dish[] = place.dishes.map((x) => ({ ...x }));
+      for (const dr of i.dishRatings ?? []) {
+        const at = dishes.findIndex((x) => x.name.toLowerCase() === dr.name.toLowerCase());
+        if (at >= 0) dishes[at] = { ...(dishes[at] as Dish), rating: dr.rating };
+        else dishes.push({ name: dr.name, rating: dr.rating });
+      }
+      // Ratings the dishes already have change nothing: the visit is still logged.
+      if (stable(dishes) !== stable(place.dishes)) {
         const r = edit(d, { kind: 'place', id: i.placeId }, { dishes }, actor, module);
         if (!r.ok) return r;
         steps.push(...(r.value.journal?.steps ?? []));

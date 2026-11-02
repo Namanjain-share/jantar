@@ -8,10 +8,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { makePending } from '@jantar/fixtures';
 import { z } from 'zod';
+import { current } from '../../src/chat/items.js';
+import { undoChange } from '../../src/chat/taps.js';
 import { CHAT_TOOLS, listed, toolsFor } from '../../src/chat/tools.js';
 import { boardSession, chatRig, idIn, PHONE, TODAY, type ChatRig } from './helpers.js';
 
 let rig: ChatRig | undefined;
+const MEETING = '01JMEET0000000000000000001';
 afterEach(async () => {
   await rig?.close();
   rig = undefined;
@@ -168,6 +171,67 @@ describe('writes', () => {
     const card = await tools.call('request_delete', { kind: 'dish', id: 'Vada', parent: placeId });
     expect(card.text).toContain('Remove Vada from Sample Dosa House?');
     expect(rig.store.cards(turnId)).toHaveLength(1);
+  });
+
+  it('null clears every nullable key of an edit, with a change and its Undo; an edit that changes nothing is refused', async () => {
+    rig = await chatRig();
+    const v = <T>(r: { ok: true; value: T } | { ok: false }): T => {
+      if (!r.ok) throw new Error('setup failed');
+      return r.value;
+    };
+    const project = v(rig.life.todos.createProject({ name: 'Synthetic launch', emoji: '🚀', notes: 'Plan it.', due: TODAY }, PHONE)).id;
+    const todo = v(rig.life.todos.createTodo({ title: 'Buy milk', notes: 'two litres', due: { day: TODAY, time: '18:00' }, projectId: project, repeat: { freq: 'daily' } }, PHONE)).id;
+    const med = v(rig.life.medicines.create({ name: 'Placebin', dose: '1 tablet', times: ['08:00'], schedule: { freq: 'daily' }, pills: { left: 20, perDose: 1 }, notes: 'With food.' }, PHONE)).id;
+    const cafe = v(rig.life.places.create({ name: 'Sample Dosa House', area: 'Old Town', link: 'https://maps.example.com/?q=dosa', notes: 'Corner seat.', stars: 4, price: 2, again: 'yes', ratings: { food: 4 } }, PHONE)).id;
+    const visit = v(rig.life.places.visitAdd(cafe, { day: TODAY, spend: 45000, stars: 4, had: ['Idli'], notes: 'Busy.' }, PHONE)).id;
+    const money = v(rig.life.finance.add({ kind: 'expense', amount: 25000, category: 'Food', day: TODAY, note: 'Lunch' }, PHONE)).id;
+    const post = v(rig.life.posts.create({ platform: 'reddit', kind: 'comment', where: 'Example forum', title: 'A title', text: 'Some text', notes: 'Note', link: 'https://example.com/thread', due: { day: TODAY } }, PHONE)).id;
+    rig.meetings.details.set(MEETING, { meeting: { id: MEETING, name: 'Weekly sync', startedAt: `${TODAY}T09:00:00.000Z`, people: 'Asha, Ravi', projectId: project }, summary: { state: 'none', items: [], decisions: [] }, lines: [] } as never);
+    rig.life.food.setTargets({ goalKg: 68 }, PHONE);
+    const { tools, turnId } = rig.turn();
+
+    const cases: Array<[string, Record<string, unknown>, () => Record<string, unknown> | null, string[]]> = [
+      ['todo_edit', { id: todo, notes: null, projectId: null, repeat: null }, () => current(rig!.deps, { kind: 'todo', id: todo }), ['notes', 'projectId', 'repeat']],
+      ['todo_edit', { id: todo, due: null }, () => current(rig!.deps, { kind: 'todo', id: todo }), ['due']],
+      ['project_edit', { id: project, emoji: null, notes: null, due: null }, () => current(rig!.deps, { kind: 'project', id: project }), ['emoji', 'notes', 'due']],
+      ['med_edit', { id: med, dose: null, pills: null, notes: null }, () => current(rig!.deps, { kind: 'medicine', id: med }), ['dose', 'pills', 'notes']],
+      ['place_edit', { id: cafe, area: null, link: null, notes: null, stars: null, price: null, again: null }, () => current(rig!.deps, { kind: 'place', id: cafe }), ['area', 'link', 'notes', 'stars', 'price', 'again']],
+      ['visit_edit', { placeId: cafe, visitId: visit, spend: null, stars: null, had: null, notes: null }, () => current(rig!.deps, { kind: 'visit', id: visit, parent: cafe }), ['spend', 'stars', 'had', 'notes']],
+      ['money_edit', { id: money, day: TODAY, note: null }, () => current(rig!.deps, { kind: 'money', id: money, day: TODAY }), ['note']],
+      ['post_edit', { id: post, where: null, title: null, text: null, notes: null, link: null, due: null }, () => current(rig!.deps, { kind: 'post', id: post }), ['where', 'title', 'text', 'notes', 'link', 'due']],
+      ['meeting_edit', { id: MEETING, people: null, projectId: null }, () => current(rig!.deps, { kind: 'meeting', id: MEETING }), ['people', 'projectId']],
+    ];
+    for (const [name, args, read, cleared] of cases) {
+      const r = await tools.call(name, args);
+      expect(r.isError, `${name}: ${r.text}`).toBe(false);
+      const now = read() ?? {};
+      for (const k of cleared) expect(now[k] ?? null, `${name} ${k}`).toBeNull();
+    }
+    expect(await tools.call('place_edit', { id: cafe, ratings: { food: null } })).toMatchObject({ isError: false });
+    const p = rig.life.places.get(cafe);
+    expect(p.ok && p.value.place.ratings?.food).toBeUndefined();
+    const changes = rig.store.changes(turnId);
+    expect(changes).toHaveLength(cases.length + 1);
+    expect(changes.every((c) => c.op === 'edit' && c.undoable)).toBe(true);
+    // A second message (ten direct writes a message).
+    const next = rig.turn();
+    expect(await next.tools.call('food_targets_set', { goalKg: null })).toMatchObject({ isError: false });
+    const fd = rig.life.food.day(TODAY);
+    expect(fd.ok && fd.value.weight.goalKg).toBeNull();
+
+    // Undo puts cleared fields back (the due day first: a repeat needs one).
+    for (const n of [1, 0]) expect(await undoChange({ ctx: rig.ctx, deps: rig.deps, store: rig.store }, turnId, n, PHONE, 'device:dev-phone')).toEqual({ ok: true, value: true });
+    expect(current(rig.deps, { kind: 'todo', id: todo })).toMatchObject({ notes: 'two litres', projectId: project, repeat: { freq: 'daily' }, due: { day: TODAY, time: '18:00' } });
+
+    // Nothing to change: no key, or every key already so. No change is journalled.
+    const before = rig.store.changes(next.turnId).length;
+    expect(await next.tools.call('todo_edit', { id: todo })).toEqual({ isError: true, text: 'Nothing to change.' });
+    expect(await next.tools.call('place_edit', { id: cafe, stars: null })).toEqual({ isError: true, text: 'Nothing to change.' });
+    expect(await next.tools.call('todo_edit', { id: todo, title: 'Buy milk' })).toEqual({ isError: true, text: 'Nothing to change.' });
+    expect(rig.store.changes(next.turnId)).toHaveLength(before);
+
+    // A null the add's schema does not take still means "not given".
+    expect(await next.tools.call('todo_add', { title: 'Call the bank', due: null, notes: null, repeat: null })).toMatchObject({ isError: false });
   });
 
   it('bad arguments get a fixed sentence and count as refused', async () => {
