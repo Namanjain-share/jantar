@@ -5,7 +5,7 @@
  * receiver, captures with their failures, storage.session, permissions,
  * commands, and an invalidated context.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CAPTURE_PERMISSION_ERROR, CAPTURE_QUOTA_ERROR, INVALIDATED_ERROR, NO_RECEIVER_ERROR, createChromeFake, type ChromeModel } from './helpers/chrome-fake.js';
 import { EXTENSION_ID } from '../src/shared/wire.js';
 
@@ -139,7 +139,8 @@ describe('the chrome fake, v0.8 (Read saved links)', () => {
     const updates: unknown[] = [];
     f.chrome.tabs.onUpdated.addListener((id, info, t) => updates.push([id, info, t.url]));
     await f.chrome.tabs.update(tab.id, { url: 'https://example.com/a', muted: true });
-    await new Promise((r) => setTimeout(r, 5));
+    // The fake sends 'complete' on a later tick; a fixed 5 ms was too short on a busy CI runner.
+    await vi.waitFor(() => expect(updates).toHaveLength(2));
     expect(updates).toEqual([
       [tab.id, { status: 'loading', url: 'https://example.com/a' }, 'https://example.com/a'],
       [tab.id, { status: 'complete' }, 'https://example.com/a'],
