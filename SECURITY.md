@@ -919,8 +919,12 @@ on (`jantar meetings on`).
   if they are off: it reads the captions control's state first and clicks
   only that control, or the call's More menu and its captions item (Language
   and speech on older Teams), with `element.click()` or Meet's own `c` key;
-  it closes any menu it opened, tries at most three times, and never turns
-  captions off. Captions are per viewer: nobody else in the call sees a
+  it closes any menu it opened, tries at most three times, and clicks only
+  a control that says captions are off. A Teams guest's captions item says
+  nothing and toggles: it is clicked at most once per page, only when notes
+  start within a minute of joining (captions start off) and no caption area
+  is on the page. Once captions were on in a call it never touches them
+  again in that page. Captions are per viewer: nobody else in the call sees a
   change, and the sites record nothing. It calls no page-world API and
   needs no new permission. An arm is kept per
   tab in the worker's session storage (the sheet's fields, the site and

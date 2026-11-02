@@ -56,16 +56,32 @@ extension (no new permission), and update the phone app.
   meetings) or More › Language and speech › Show live captions. It reads the
   control first and clicks only one that says off, closes the menu it
   opened, tries at most three times, waits while you are in the menu
-  yourself, and never turns captions off or back on after you did.
-  Captions are only for you; nobody in the call sees a change. Settings ›
-  Call check says how it went ("Captions: turned on by Jantar · …").
-- **No captions yet**: no caption line in the first minute of notes, the
-  page says "No captions yet: Jantar writes notes from the call's live
-  captions. Turn them on: <the way for Meet, Teams, or a Teams guest>.",
-  once more three minutes later, the icon shows ! and the popup says the
-  same until the first line comes in. It replaces the 10-second "No
-  captions on screen" bubble, and the way for Teams no longer names
-  Language and speech alone or Cmd+Shift+A.
+  yourself, and clicks nothing more once notes stop. A Teams guest's
+  Captions item says nothing and toggles, so it is clicked only when notes
+  start within a minute of joining (captions start off), once per page,
+  and never with a caption area on the page; otherwise Jantar leaves
+  captions as they are. Once captions were on in a call, no later notes in
+  that page touch them (End then Start included): if you turn them off,
+  they stay off. Captions are only for you; nobody in the call sees a
+  change. Settings › Call check says how it went ("Captions: turned on by
+  Jantar · …", "can't tell if they are on; Jantar left them", "this meeting
+  offers none (the organizer's settings)", "on earlier in this call; Jantar
+  left them as they are").
+- **No captions yet**: no caption line in the first minute of notes,
+  Jantar asks the call's captions control. Captions on (nobody has spoken
+  yet): no bubble and no !, the popup says "Captions are on; lines appear
+  once someone speaks." Otherwise the page says why, once more three
+  minutes later, the icon shows ! and the popup says the same until the
+  first line comes in: "No captions yet: Jantar writes notes from the
+  call's live captions. Turn them on: <the way for Meet, Teams, or a Teams
+  guest>." only when the control says off (the controls toggle; Meet's
+  words no longer say "press c"); "Jantar turned captions on. If none
+  appear when people speak, check …" after its click; "… If none appear
+  when people speak, turn them on: …" when nothing says; "This meeting
+  offers no captions (the organizer's settings) …" when More has none. It
+  replaces the 10-second "No captions on screen" bubble, and the way for
+  Teams no longer names Language and speech alone or Cmd+Shift+A. A
+  reload no longer leaves an old ! on the icon.
 - Teams light meetings (joining as a guest): their captions are read with
   the speakers' names (the guest's caption layout, no Fluent UI items).
 - Meet's captions button found by its icon too, so Meet counts as in the
@@ -73,10 +89,12 @@ extension (no new permission), and update the phone app.
   Start when I join depended on the old button). Checks R-C1 to R-C7 in
   docs/real-mac-checks.md.
 - Fixed, on the phone: a meeting whose notes ran but got no caption line
-  said "No transcript: notes were not started." It now says "Notes ran
-  10:00-10:42 but no captions came in. Jantar writes notes from the call's
-  live captions; they were off or not visible." The first sentence stays for
-  notes that never ran.
+  said "No transcript: notes were not started." It now says "No captions
+  came in while notes were on (meeting 10:00-10:42). Jantar writes notes
+  from the call's live captions; they were off or not visible." (the
+  meeting's times, which may start before notes did). The first sentence
+  stays for notes that never ran. A running meeting with no line yet says
+  that lines come from the call's live captions, which must be on.
 
 ## 0.9.0 (2 November 2026)
 

@@ -84,7 +84,8 @@ The extension never:
 - records audio or video, or reads the call's media;
 - clicks anything in the call, except, when notes start, the call's own
   captions control to turn captions on (since 0.10, a Settings switch, on by
-  default; see [Captions](#captions)); it never turns captions off;
+  default; see [Captions](#captions)); it never means to turn captions off,
+  and it never touches them again in a call where they were on;
 - reads the page before notes start, except whether you are on the call's
   join screen, in its waiting room or in the call (fixed controls only,
   never what anyone says), and the page title (to fill in the meeting's
@@ -454,49 +455,80 @@ start** switches this off (it is on by default; it only changes what you
 see in your own call). What it does, and nothing else:
 
 - It reads the captions control first and clicks only a control that says
-  captions are off. If the control says they are on, nothing is clicked.
+  captions are off (the one exception, a Teams guest's Captions item, is
+  below). If the control says they are on, nothing is clicked.
 - **Google Meet:** the captions button; since Meet's redesign of 22 October
   2026, **Captions and translation (CC)** › **Turn on captions**, closing
-  the pop-up again. Meet's own key **c** is the last resort, only when the
-  button says captions are off.
+  the pop-up again. Jantar takes only the pop-up that opened for that
+  button, and clicks its toggle only when the toggle itself says captions
+  are off and the button agrees. Meet's own key **c** (it toggles) is the
+  last resort, only when the button says captions are off.
 - **Microsoft Teams:** the toolbar's **Captions** button when it is there;
-  else **More (…)** › **Captions** (Teams 2026, and a guest in Teams light
+  else **More (…)** (the call's own, never a tile's or a message's "More
+  options") › **Captions** (Teams 2026, and a guest in Teams light
   meetings), or **More (…)** › **Language and speech** › **Show live
-  captions**; it closes More again. A guest's **Captions** item does not say
-  whether captions are on, so Jantar clicks it once, only when nothing on
-  the page shows captions, and never a second time (Teams shows captions
-  only once someone speaks).
+  captions**; it closes More again, and waits a moment for More's items to
+  appear.
+- **A guest's Captions item** (Teams light meetings) does not say whether
+  captions are on, and it toggles. Jantar clicks it only when notes start
+  within a minute of you coming into the call (as Start when I join does,
+  or Start pressed straight away: captions start off), only once per page,
+  and never while any caption area is on the page. Otherwise it leaves
+  captions as they are, and Call check says "can't tell if they are on;
+  Jantar left them". Teams shows captions only once someone speaks, so
+  after that click nothing may show yet.
 - At most three tries, ten seconds apart. It waits while you have More or
-  Meet's captions pop-up open yourself. If More has no captions item (the
-  organiser switched captions off), it stops at once.
-- It never turns captions off, and once they were on it never touches them
-  again: if you turn them off, they stay off.
+  Meet's captions pop-up open yourself. If More has no captions item twice
+  (the organiser switched captions off), it stops. When notes stop in the
+  middle of a try, nothing more is clicked or pressed; only what is already
+  open is closed.
+- It never means to turn captions off. Once captions were on in a call, or
+  Jantar turned them on, it never touches them again in that page, also
+  after End and Start notes again: if you turn them off, they stay off
+  (Call check: "on earlier in this call; Jantar left them as they are").
+  Leaving the call, a reload or another Meet call starts afresh.
 - **Settings › Call check** says how it went, with Jantar's own name for
   the control: "Captions: turned on by Jantar · teams:cc-more-item", "were
-  on", "Jantar clicked Captions; none on screen yet", or "Jantar could not
-  turn them on".
+  on", "Jantar clicked Captions; none on screen yet", "can't tell if they
+  are on; Jantar left them", "this meeting offers none (the organizer's
+  settings)", "on earlier in this call; Jantar left them as they are", or
+  "Jantar could not turn them on".
 
 ### No captions yet
 
-If no caption line has come in during the first minute of notes, the page
-says so, the icon shows **!**, and the popup's notes view says the same
-until a line comes in:
+If no caption line has come in during the first minute of notes, Jantar
+asks the call's captions control (notes are on, so it may). The controls
+are toggles, so Jantar says "Turn them on" only when the control says they
+are off:
 
-- **Google Meet:** "No captions yet: Jantar writes notes from the call's
-  live captions. Turn them on: Captions and translation (CC) › Turn on
-  captions, or press c."
-- **Microsoft Teams:** "… Turn them on: More (…) › Captions (in some
-  meetings: More (…) › Language and speech › Show live captions)."
-- **Teams light meetings** (a guest): "… Turn them on: More (…) ›
+- **Captions are on** (the control says so, or Jantar saw them on): nobody
+  has spoken yet. No bubble and no **!**; the popup's notes view says
+  "Captions are on; lines appear once someone speaks."
+- **The control says they are off:** the page says so, the icon shows
+  **!**, and the popup says the same until a line comes in. Google Meet:
+  "No captions yet: Jantar writes notes from the call's live captions. Turn
+  them on: Captions and translation (CC) › Turn on captions." Microsoft
+  Teams: "… Turn them on: More (…) › Captions (in some meetings: More (…) ›
+  Language and speech › Show live captions)." Teams light meetings (a
+  guest): "… Turn them on: More (…) › Captions."
+- **Jantar clicked a guest's Captions item and nothing shows yet:** "Jantar
+  turned captions on. If none appear when people speak, check More (…) ›
   Captions."
+- **Nothing says whether they are on** (a guest's item Jantar left alone,
+  or the switch off): "No captions yet: … If none appear when people speak,
+  turn them on: More (…) › Captions."
+- **More has no captions item** (the organiser's settings): "This meeting
+  offers no captions (the organizer's settings), so there are no notes.
+  Screenshots still work."
 
 It says it once more three minutes later if there is still nothing, then
-never again: Jantar cannot tell a quiet call from one without captions, so
-in a call where nobody speaks for the first minute it says this too. After
-lines came in, it speaks up again only if the captions vanish from the page
-for a minute (turned off, or lost on a reconnect). The first line clears the
-**!**. A meeting that ended with notes on and no line says on the phone
-"Notes ran 10:00-10:42 but no captions came in."
+never again. After lines came in, it speaks up again only if the captions
+vanish from the page for a minute, or the control says off (turned off, or
+lost on a reconnect). The first line clears the **!**, and a reload clears
+an old one until the page says again. A meeting that ended with notes on
+and no line says on the phone "No captions came in while notes were on
+(meeting 10:00-10:42)." (the meeting's times: a screenshot may have opened
+it before notes started); one still running says where lines come from.
 
 Things to know:
 
@@ -514,8 +546,9 @@ Things to know:
   screenshots are saved.
 - **Guests:** joining Teams as a guest without an account opens Teams
   light meetings (`/light-meetings/launch?…`), which has live captions under
-  More (…) › Captions; Jantar turns them on there too. Not checked on a real
-  Mac yet ([R-C4](real-mac-checks.md#meetings-v010-captions-on-when-notes-start)).
+  More (…) › Captions; Jantar turns them on there too when notes start
+  within a minute of joining (above). Not checked on a real Mac yet
+  ([R-C4](real-mac-checks.md#meetings-v010-captions-on-when-notes-start)).
   Teams' **Cmd+Shift+A** is not said any more: it is reported not to work
   for guests, and Chrome may take it.
 - **The Teams desktop app** is not covered. Open the meeting in Chrome
