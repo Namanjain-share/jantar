@@ -10,8 +10,9 @@
  * not captions; they hold buttons, and nothing inside a button is read.
  *
  * v0.10, the screens around the call (Start when I join), first match wins:
- * the call (the captions button, then the caption region: `inCall`'s own
- * two hooks), the waiting room (a button holding the `call_end` icon and no
+ * the call (the captions button by its jsname, then by its icon, which
+ * Meet's redesign of 2026-10-22 may have left alone, then the caption
+ * region: `inCall`'s own hooks), the waiting room (a button holding the `call_end` icon and no
  * captions button: you wait to be let in), the join screen (Meet's join
  * button), else the code alone (the join screen, or a screen after it).
  * The icon is a fixed glyph name, not localized page text.
@@ -26,6 +27,15 @@ const BARE_CODE = /^[a-z]{3,4}-[a-z]{4}-[a-z]{3,4}$/i;
 
 /** The captions button: in the call only, in any UI language. The waiting room has none. */
 const CAPTIONS_BUTTON = ['button[jsname="RrG0hf"]'];
+/**
+ * v0.10: the captions control found by its icon, whatever its jsname: the
+ * "Captions and translation" button of 2026-10-22 opens a pop-up, the older
+ * one is pressed or not. Only in the call, with captions off too (research
+ * captions-research.md 2.2, R-C1).
+ */
+const CC_ICON_BUTTON = ['button[aria-haspopup="dialog"][aria-pressed]', 'button[aria-pressed]'];
+const CC_ICONS = new Set(['translate_cc', 'closed_caption', 'closed_caption_off']);
+const ICON_FONT = ['i.google-symbols', 'i.google-material-icons', 'i.material-icons-extended'];
 /** The caption region (labels are localized, hence the partial match). */
 const REGION = [
   'div[role="region"][aria-label*="aption" i]',
@@ -42,7 +52,7 @@ const TEXT = ['.ygicle', '.bh44bd', '.iTTPOb'];
 const NAME = ['.NWpY1d', '.zs7s8d', '.KcIKyf', '.adE6rb'];
 const TITLE = ['[data-meeting-title]'];
 /** v0.10: Meet's icon fonts; a button holding one whose ligature is exactly `call_end` (the waiting room shows it, the captions button not yet). */
-const ICONS = ['button i.google-symbols', 'button i.google-material-icons', 'button i.material-icons-extended'];
+const ICONS = ICON_FONT.map((i) => `button ${i}`);
 const CALL_END = 'call_end';
 /** v0.10: the join screen's Join now / Ask to join (unverified on a real Mac, R12; it only names the join screen). */
 const JOIN_BUTTON = ['[jsname="Qx7uuf"]'];
@@ -83,15 +93,26 @@ export const meetAdapter: SiteAdapter = {
   spot: Object.freeze({ left: '12px', top: '50%' }),
 };
 
-// A code and the captions button or the caption region. Meet's call_end
-// icon is also on the waiting room's screen, so it proves nothing alone,
-// and with the captions button beside it adds nothing to the button.
+// A code and the captions button (by its jsname, else by its icon) or the
+// caption region. Meet's call_end icon is also on the waiting room's
+// screen, so it proves nothing alone, and with the captions button beside
+// it adds nothing to the button.
 function inCallHook(doc: Document): HookId | null {
   if (!doc.location || callKey(doc.location) === null) return null;
   if (first(doc, CAPTIONS_BUTTON) !== null) return 'meet:captions-button';
+  if (ccIconButton(doc) !== null) return 'meet:captions-icon';
   // Whether the region is on the page, never what it says.
   if (findRegion(doc) !== null) return 'meet:caption-region';
   return null;
+}
+
+/** The glyph a control's icon shows ('' for none). */
+function iconOf(el: Element): string {
+  return collapse(first(el, ICON_FONT)?.textContent);
+}
+
+function ccIconButton(doc: Document): Element | null {
+  return first(doc, CC_ICON_BUTTON, (b) => CC_ICONS.has(iconOf(b)));
 }
 
 function callKey(loc: Location): string | null {

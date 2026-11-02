@@ -267,6 +267,29 @@ describe('v0.10: the screens around the call', () => {
     expect(meetAdapter.waiting(document, none)).toBeNull();
   });
 
+  it('Meet: the captions control by its icon is in the call too, with captions off (the 2026-10-22 "Captions and translation" button)', () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document, { state: 'lobby', cc: 'popup', captions: false });
+    // The waiting room has no captions icon (call_end only).
+    expect(meetAdapter.inCallHook(document)).toBeNull();
+    meet.admit();
+    meet.captionsOff();
+    // No jsname on the new button, no region: the icon decides.
+    expect(document.querySelector('button[jsname="RrG0hf"]')).toBeNull();
+    expect(meetAdapter.inCallHook(document)).toBe('meet:captions-icon');
+    expect(meetAdapter.waiting(document, none)).toBeNull();
+    // Only a pressed button or a pop-up's, holding exactly a captions glyph.
+    document.body.replaceChildren();
+    document.body.append(h(document, 'button', {}, h(document, 'i', { class: 'google-symbols' }, 'closed_caption')));
+    document.body.append(h(document, 'button', { 'aria-pressed': 'false' }, h(document, 'i', { class: 'google-symbols' }, 'closed_caption_disabled')));
+    document.body.append(h(document, 'button', { 'aria-pressed': 'false' }, 'closed_caption_off'));
+    expect(meetAdapter.inCallHook(document)).toBeNull();
+    for (const icon of ['translate_cc', 'closed_caption', 'closed_caption_off']) {
+      document.body.replaceChildren(h(document, 'button', { 'aria-pressed': 'false' }, h(document, 'i', { class: 'google-material-icons' }, icon)));
+      expect(meetAdapter.inCallHook(document), icon).toBe('meet:captions-icon');
+    }
+  });
+
   it("Meet: v0.5's waiting room (call_end and an Ask to join without the jsname) reads as the waiting room", () => {
     goTo(meetUrl('abc-defg-hij'));
     buildMeet(document, { state: 'waiting' });
