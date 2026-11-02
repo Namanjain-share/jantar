@@ -60,7 +60,11 @@ export function categoriesFor(kind: MoneyKind, categories: readonly string[], se
   return categories.filter((c) => !incomeOnly.has(c));
 }
 
-const CHIP = 'h-32 rounded-chip border px-10 type-small transition-colors duration-120 ease-hover coarse:h-44';
+/** A chip: 32 px, 44 px on touch (v0.10: Cafés' tags and filters use it too). */
+export const CHIP = 'h-32 rounded-chip border px-10 type-small transition-colors duration-120 ease-hover coarse:h-44';
+/** A chip's look, pressed or not. */
+export const CHIP_ON = 'border-line-strong bg-select text-ink';
+export const CHIP_OFF = 'border-line text-ink-2 hover:text-ink';
 
 export function CategoryPicker({ id, chips, value, onChange }: { id: string; chips: readonly string[]; value: string; onChange: (v: string) => void }) {
   const known = chips.includes(value);

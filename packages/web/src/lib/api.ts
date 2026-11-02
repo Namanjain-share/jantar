@@ -97,7 +97,11 @@ import {
   type MoneyPatch,
   type OkReply,
   type PlaceBody,
+  type PlaceDetail,
   type PlacePatch,
+  type PlaceVisitBody,
+  type PlaceVisitPatch,
+  type PlacesQueryInput,
   type PlacesResponse,
   type PostBody,
   type PostGoalsBody,
@@ -332,10 +336,16 @@ export interface Api {
   foodEstimate(text: string, opts?: { signal?: AbortSignal }): Promise<FoodEstimate>;
   weightSet(day: string, kg: number, idempotencyKey?: string): Promise<OkReply>;
   weightDelete(day: string, idempotencyKey?: string): Promise<OkReply>;
-  placesList(filter?: 'all' | 'tried' | 'want'): Promise<PlacesResponse>;
+  /** v0.10: the sort and filters as the daemon's query keys (a 0.9 daemon reads the filter alone). */
+  placesList(q?: PlacesQueryInput): Promise<PlacesResponse>;
   placeCreate(body: PlaceBody, idempotencyKey?: string): Promise<IdReply>;
   placeUpdate(id: string, patch: PlacePatch, idempotencyKey?: string): Promise<OkReply>;
   placeDelete(id: string, idempotencyKey?: string): Promise<OkReply>;
+  /** v0.10: one café and a page of its visits, newest first (`before`: older than that visit). */
+  placeGet(id: string, before?: string): Promise<PlaceDetail>;
+  placeVisitAdd(id: string, body: PlaceVisitBody, idempotencyKey?: string): Promise<IdReply>;
+  placeVisitUpdate(id: string, visitId: string, patch: PlaceVisitPatch, idempotencyKey?: string): Promise<OkReply>;
+  placeVisitDelete(id: string, visitId: string, idempotencyKey?: string): Promise<OkReply>;
   moneyMonth(month?: string): Promise<MoneyMonth>;
   moneyAdd(body: MoneyBody, idempotencyKey?: string): Promise<IdReply>;
   moneyUpdate(id: string, patch: MoneyPatch, idempotencyKey?: string): Promise<OkReply>;
@@ -706,10 +716,14 @@ export function createApi(opts: ApiOptions = {}): Api {
     foodEstimate: (text, o = {}) => call(ROUTES.foodEstimate, { body: { text }, withKey: false, ...(o.signal ? { signal: o.signal } : {}) }),
     weightSet: (day, kg, k) => call(ROUTES.weightSet, { params: { day }, body: { kg }, ...key(k) }),
     weightDelete: (day, k) => call(ROUTES.weightDelete, { params: { day }, ...key(k) }),
-    placesList: (filter) => call(ROUTES.placesList, { query: { filter } }),
+    placesList: (q = {}) => call(ROUTES.placesList, { query: q }),
     placeCreate: (body, k) => call(ROUTES.placeCreate, { body, ...key(k) }),
     placeUpdate: (id, patch, k) => call(ROUTES.placeUpdate, { params: { id }, body: patch, ...key(k) }),
     placeDelete: (id, k) => call(ROUTES.placeDelete, { params: { id }, ...key(k) }),
+    placeGet: (id, before) => call(ROUTES.placeGet, { params: { id }, query: { before } }),
+    placeVisitAdd: (id, body, k) => call(ROUTES.placeVisitAdd, { params: { id }, body, ...key(k) }),
+    placeVisitUpdate: (id, visitId, patch, k) => call(ROUTES.placeVisitUpdate, { params: { id, visitId }, body: patch, ...key(k) }),
+    placeVisitDelete: (id, visitId, k) => call(ROUTES.placeVisitDelete, { params: { id, visitId }, ...key(k) }),
     moneyMonth: (month) => call(ROUTES.moneyMonth, { query: { month } }),
     moneyAdd: (body, k) => call(ROUTES.moneyAdd, { body, ...key(k) }),
     moneyUpdate: (id, patch, k) => call(ROUTES.moneyUpdate, { params: { id }, body: patch, ...key(k) }),

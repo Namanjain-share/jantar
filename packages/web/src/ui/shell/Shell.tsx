@@ -360,7 +360,7 @@ function lifeScreen(route: Route): ReactNode {
     case 'food':
       return <Food day={route.day} />;
     case 'places':
-      return <Places filter={route.filter} id={route.id} />;
+      return <Places {...route} />;
     case 'money':
       return <Money month={route.month} bill={route.bill} />;
     case 'posts':

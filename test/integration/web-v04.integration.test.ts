@@ -472,7 +472,13 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     await page.emulateMedia({ colorScheme: 'light' });
     await page.goto(`http://127.0.0.1:${d.port}/places`);
     await page.getByText('Example Café').first().waitFor();
-    await sheet(page, watch, 'a café opened', () => page.getByText('Example Café').first().click());
+    // v0.10: a café opens its own screen; Edit is the café sheet.
+    await page.getByText('Example Café').first().click();
+    await page.getByRole('button', { name: 'Log visit' }).waitFor();
+    await check(page, watch, 'a café opened');
+    await sheet(page, watch, 'the café sheet, Edit', () => page.getByRole('button', { name: 'Edit' }).click());
+    await page.goto(`http://127.0.0.1:${d.port}/places`);
+    await page.getByText('Example Café').first().waitFor();
     await sheet(page, watch, 'the café sheet', () => page.getByRole('button', { name: 'Add café' }).click());
 
     await page.goto(`http://127.0.0.1:${d.port}/money`);

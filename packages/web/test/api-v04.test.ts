@@ -46,7 +46,9 @@ describe('v0.4 api client', () => {
     await api.todosList({ project: 'none', done: true });
     await api.medsGet('2026-10-29');
     await api.foodDay();
-    await api.placesList('want');
+    await api.placesList({ filter: 'want' });
+    await api.placesList({ sort: 'work', tags: 'wifi,sockets', again: '1', q: 'dosa' });
+    await api.placeGet(ID, DOSE);
     await api.moneyMonth('2026-10');
     await api.intelList({ q: 'hooks', tag: 'repo', limit: 10 });
     await api.intelGet('captures:01J/x');
@@ -59,6 +61,8 @@ describe('v0.4 api client', () => {
       '/v1/medicines?day=2026-10-29',
       '/v1/food',
       '/v1/places?filter=want',
+      '/v1/places?sort=work&tags=wifi%2Csockets&again=1&q=dosa',
+      `/v1/places/${ID}?before=${DOSE}`,
       '/v1/money?month=2026-10',
       '/v1/intel?q=hooks&tag=repo&limit=10',
       '/v1/intel/items/captures%3A01J%2Fx',
@@ -85,6 +89,10 @@ describe('v0.4 api client', () => {
       [() => api.budgetSet({ category: 'Food', amount: null }), 'PUT', '/v1/money/budgets'],
       [() => api.billPaid(ID), 'POST', `/v1/bills/${ID}/paid`],
       [() => api.intelCapture({ title: 'Example capture' }), 'POST', '/v1/intel/captures'],
+      // v0.10: a café's visits.
+      [() => api.placeVisitAdd(ID, { spend: 45000 }), 'POST', `/v1/places/${ID}/visits`],
+      [() => api.placeVisitUpdate(ID, DOSE, { stars: null }), 'PATCH', `/v1/places/${ID}/visits/${DOSE}`],
+      [() => api.placeVisitDelete(ID, DOSE), 'DELETE', `/v1/places/${ID}/visits/${DOSE}`],
     ];
     for (const [i, [run, method, path]] of writes.entries()) {
       await run();

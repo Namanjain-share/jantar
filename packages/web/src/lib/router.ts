@@ -22,7 +22,8 @@
  *   /todos          Todos (?tab=todos|reminders|projects, ?project=<id>, ?id=<todo id>)
  *   /meds           Medicines (?day=YYYY-MM-DD, ?med=<id>)
  *   /food           Food, calories and weight (?day=)
- *   /places         Cafés (?filter=all|tried|want, ?id=)
+ *   /places         Cafés (?filter=all|tried|want; v0.10 ?sort=, ?tags=a,b, ?price=1-4, ?stars=1-5,
+ *                   ?again=1, ?area=, ?q=; ?id= opens one café's screen)
  *   /money          Finance (?month=YYYY-MM, ?bill=<id>)
  *   /posts          v0.7 Posts (?filter=open|done, ?id=<post id> opens one, from a post's push)
  *   /intel          The Intel shelf (?q=, ?type=, ?tag=, ?item=<shelf id>; v0.5.3
@@ -62,7 +63,7 @@ export type Route =
   | { name: 'todos'; tab?: TodosTab; project?: string; id?: string }
   | { name: 'meds'; day?: string; med?: string }
   | { name: 'food'; day?: string }
-  | { name: 'places'; filter?: PlacesFilter; id?: string }
+  | ({ name: 'places'; filter?: PlacesFilter; id?: string } & PlacesView)
   | { name: 'money'; month?: string; bill?: string }
   // v0.7, a Life screen too
   | { name: 'posts'; filter?: PostsFilter; id?: string }
@@ -76,6 +77,21 @@ export type Route =
 
 export type TodosTab = 'todos' | 'reminders' | 'projects';
 export type PlacesFilter = 'all' | 'tried' | 'want';
+/** v0.10: the Cafés list's sort and filters, as the address carries them (the daemon's own query keys). */
+export interface PlacesView {
+  sort?: PlacesSortKey;
+  /** A comma list: every tag must be there. */
+  tags?: string;
+  /** At most this price level, '1' to '4'. */
+  price?: string;
+  /** At least this score, '1' to '5'. */
+  stars?: string;
+  again?: boolean;
+  area?: string;
+  q?: string;
+}
+export type PlacesSortKey = 'best' | 'recent' | 'visits' | 'name' | 'price' | 'work';
+const PLACES_SORTS: readonly string[] = ['best', 'recent', 'visits', 'name', 'price', 'work'];
 /** Posts to make (idea and ready), or the posted and skipped ones. */
 export type PostsFilter = 'open' | 'done';
 
@@ -125,7 +141,19 @@ function lifeRoute(path: string, q: URLSearchParams): Route | null {
     case '/places': {
       const f = q.get('filter');
       const filter = (f === 'all' || f === 'tried' || f === 'want' ? f : undefined) as PlacesFilter | undefined;
-      return defined({ name: 'places' as const, filter, id: matching(q, 'id', LIFE_ID) });
+      const sort = q.get('sort');
+      return defined({
+        name: 'places' as const,
+        filter,
+        id: matching(q, 'id', LIFE_ID),
+        sort: (sort && PLACES_SORTS.includes(sort) ? sort : undefined) as PlacesSortKey | undefined,
+        tags: text(q, 'tags', 400),
+        price: matching(q, 'price', /^[1-4]$/),
+        stars: matching(q, 'stars', /^[1-5]$/),
+        again: q.get('again') === '1' ? true : undefined,
+        area: text(q, 'area', 60),
+        q: text(q, 'q', 80),
+      });
     }
     case '/money':
       return defined({ name: 'money' as const, month: matching(q, 'month', MONTH_KEY), bill: matching(q, 'bill', LIFE_ID) });
@@ -294,7 +322,10 @@ export function routePath(r: Route): string {
     case 'food':
       return withQuery('/food', queryOf({ day: r.day }));
     case 'places':
-      return withQuery('/places', queryOf({ filter: r.filter, id: r.id }));
+      return withQuery(
+        '/places',
+        queryOf({ filter: r.filter, sort: r.sort, tags: r.tags, price: r.price, stars: r.stars, again: r.again ? '1' : undefined, area: r.area, q: r.q, id: r.id }),
+      );
     case 'money':
       return withQuery('/money', queryOf({ month: r.month, bill: r.bill }));
     case 'posts':

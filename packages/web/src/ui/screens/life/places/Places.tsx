@@ -1,28 +1,41 @@
 /**
- * Cafés (v0.4 spec 5.6): your own list of places and their dishes,
- * `[ All | Tried | Want to try ]`, always best first (the daemon sorts by
- * the highest dish rating). A row: the name, the area in mono, the best
- * dish with its stars, and a mono `want` tag when not tried yet. A tap
- * opens the place sheet; `id` (a link to one place) opens it on arrival.
- * The sheet's Delete takes the place off at once with a 5 s Undo here; the
- * delete is sent once the Undo goes. The title is the page's <h1> in every
- * state.
+ * Cafés (v0.4 spec 5.6; v0.10 spec 0.10 A7.1): your own list of places,
+ * `[ All | Tried | Want to try ]`, then a bar with Sort, Filters and a
+ * search, and, while filters are on, a row of them to take off one by one.
+ * The daemon filters and sorts (best first by default); the address carries
+ * the view (`/places?filter=tried&sort=work&tags=wifi,sockets&q=dosa`).
+ *
+ * A row: the name, the café's own stars (or `want` until it is tried) and
+ * its price level; the best dish with its stars; then, in mono, the area,
+ * the last visit and the first tags. A tap opens the café's screen
+ * (`?id=`, PlaceScreen). The Undo of a delete lives here, so it is still on
+ * screen when a deleted café's screen goes back to the list. Every v0.10
+ * field may be missing from a 0.9 daemon's answer. The title is the page's
+ * <h1> in every state.
  */
-import { PlusIcon } from '@phosphor-icons/react';
-import { useEffect, useRef } from 'react';
-import type { Place } from '@jantar/protocol';
-import { routePath, type PlacesFilter } from '../../../../lib/router.js';
+import { CheckIcon, MagnifyingGlassIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
+import clsx from 'clsx';
+import { useEffect, useRef, useState } from 'react';
+import type { Place, PlacesResponse } from '@jantar/protocol';
+import { routePath, type PlacesFilter, type PlacesSortKey, type PlacesView } from '../../../../lib/router.js';
 import { useDeps, useNavigate } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
+import { IconButton } from '../../../kit/IconButton.js';
+import { Sheet } from '../../../kit/Sheet.js';
 import { Tag } from '../../../kit/Tag.js';
 import { Segmented } from '../../accounts/Segmented.js';
+import { Switch } from '../../devices/parts.js';
+import { CHIP, CHIP_OFF, CHIP_ON } from '../money/fields.js';
 import { EMPTY, LifeEmpty, NotSaved } from '../shared/states.js';
-import { useLifeLoad } from '../shared/useLife.js';
-import { AddButton, Loaded, Page, useHeldDeletes, useOffline, useSheet, useUndo, useWrite } from '../today/parts.js';
+import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
+import { AddButton, Field, Loaded, Page, useHeldDeletes, useLifeClock, useOffline, useSheet, useUndo, useWrite } from '../today/parts.js';
+import { FIXED_TAGS, SORTS, SORT_LABELS, WORK_TAGS, filterCount, placesQuery, priceLabel, shortDay, tagLabel, tagsLine, tagsOf, tagsOn } from './model.js';
+import { PlaceScreen } from './PlaceScreen.js';
 import { PlaceSheet } from './PlaceSheet.js';
 import { Stars } from './Stars.js';
 
-export interface PlacesProps {
+export interface PlacesProps extends PlacesView {
+  name?: 'places';
   filter?: PlacesFilter | undefined;
   id?: string | undefined;
 }
@@ -39,37 +52,82 @@ const EMPTY_FOR: Record<PlacesFilter, string> = {
   want: 'Nothing on the want to try list.',
 };
 
+/** Typing in the search box reaches the address this long after it stops. */
+export const SEARCH_DEBOUNCE_MS = 250;
+
 /** The place's best dish: the highest rating, the first of those; an unrated dish never counts. */
 export function bestDish(p: Place) {
   return p.dishes.reduce<Place['dishes'][number] | null>((best, d) => (d.rating !== undefined && (!best || d.rating > (best.rating ?? 0)) ? d : best), null);
 }
 
-export function Places({ filter = 'all', id }: PlacesProps) {
+/** The view in the address, without the list's segment or a café. */
+function viewOf(p: PlacesProps): PlacesView {
+  const v: PlacesView = { sort: p.sort, tags: p.tags, price: p.price, stars: p.stars, again: p.again, area: p.area, q: p.q };
+  return Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) as PlacesView;
+}
+
+export function Places(props: PlacesProps) {
+  const { filter = 'all', id } = props;
+  const view = viewOf(props);
   const { api } = useDeps();
   const navigate = useNavigate();
   const offline = useOffline();
-  const load = useLifeLoad(`places:${filter}`, () => api.placesList(filter));
+  const { status } = useLifeStatus();
+  const currency = status?.currency ?? null;
+  const clock = useLifeClock(status);
+  const query = placesQuery(filter, view);
+  const load = useLifeLoad(`places:${JSON.stringify(query)}`, () => api.placesList(query));
   const sheet = useSheet<Place>();
   const undo = useUndo();
   const held = useHeldDeletes(undo);
   const remove = useWrite();
-  const opened = useRef<string | null>(null);
-  const target = id ? load.data?.places.find((p) => p.id === id) : undefined;
-  const places = held.visible(load.data?.places ?? [], (p) => p.id);
-  const { show } = sheet;
+  const [sorting, setSorting] = useState(false);
+  const [filtering, setFiltering] = useState(false);
 
-  useEffect(() => {
-    if (!target || opened.current === target.id) return;
-    opened.current = target.id;
-    show(target);
-  }, [target, show]);
+  // The last answer the chips and the tags came from: a view change empties `data` until it loads.
+  const data = load.data;
+  const [last, setLast] = useState<PlacesResponse | null>(null);
+  if (data && data !== last) setLast(data);
+  const known = data ?? last;
+  const customTags = (known?.tags ?? []).map((t) => t.tag).filter((t) => !FIXED_TAGS.includes(t));
 
-  const deletePlace = (p: Place) =>
+  const pathFor = (v: PlacesView, f: PlacesFilter = filter, place?: string) =>
+    routePath({ name: 'places', ...(f !== 'all' ? { filter: f } : {}), ...v, ...(place ? { id: place } : {}) });
+  const go = (v: PlacesView, f: PlacesFilter = filter) => navigate(pathFor(v, f), { replace: true });
+  const listPath = pathFor(view);
+
+  const deletePlace = (p: Place) => {
     held.remove(p.id, `Deleted: ${p.name}`, async () => {
       const r = await remove.run(`delete:${p.id}`, (key) => api.placeDelete(p.id, key));
       if (r.ok) load.reload();
       return r.ok;
     });
+    if (id) navigate(listPath, { replace: true });
+  };
+
+  if (id) {
+    return (
+      <PlaceScreen
+        key={id}
+        id={id}
+        back={listPath}
+        currency={currency}
+        today={clock.day}
+        undo={undo}
+        held={held}
+        customTags={customTags}
+        onDelete={deletePlace}
+        onDeleted={() => {
+          load.reload();
+          navigate(listPath, { replace: true });
+        }}
+      />
+    );
+  }
+
+  const places = held.visible(data?.places ?? [], (p) => p.id);
+  const count = filterCount(view);
+  const narrowed = count > 0 || !!view.q;
 
   const addButton = (
     <Button disabled={offline} onClick={() => sheet.show(null)}>
@@ -80,9 +138,11 @@ export function Places({ filter = 'all', id }: PlacesProps) {
 
   return (
     <Page title="Cafés" aside={<AddButton label="Add café" disabled={offline} onClick={() => sheet.show(null)} />} undo={undo}>
-      <div className="px-16 pb-12">
-        <Segmented<PlacesFilter> label="Show" fill value={filter} onChange={(f) => navigate(routePath(f === 'all' ? { name: 'places' } : { name: 'places', filter: f }), { replace: true })} segments={FILTERS} />
+      <div className="px-16 pb-8">
+        <Segmented<PlacesFilter> label="Show" fill value={filter} onChange={(f) => go(view, f)} segments={FILTERS} />
       </div>
+      <ViewBar view={view} count={count} onSort={() => setSorting(true)} onFilters={() => setFiltering(true)} onSearch={(q) => go({ ...view, q })} />
+      {count > 0 ? <ActiveFilters view={view} currency={currency} onChange={(v) => go(v)} /> : null}
       {remove.error ? (
         <div className="px-16">
           <NotSaved error={remove.error} />
@@ -91,34 +151,297 @@ export function Places({ filter = 'all', id }: PlacesProps) {
       <Loaded load={load}>
         {() =>
           places.length === 0 ? (
-            <LifeEmpty action={addButton}>{EMPTY_FOR[filter]}</LifeEmpty>
+            narrowed ? (
+              <LifeEmpty
+                action={
+                  <Button variant="text" onClick={() => go({ ...(view.sort ? { sort: view.sort } : {}) })}>
+                    Clear the search and filters
+                  </Button>
+                }
+              >
+                No café matches.
+              </LifeEmpty>
+            ) : (
+              <LifeEmpty action={addButton}>{EMPTY_FOR[filter]}</LifeEmpty>
+            )
           ) : (
             <ul aria-label="Cafés" className="border-t border-line">
-              {places.map((p) => {
-                const dish = bestDish(p);
-                return (
-                  <li key={p.id} className="border-b border-line">
-                    <button type="button" onClick={() => sheet.show(p)} className="block w-full px-16 py-10 text-left transition-colors duration-120 ease-hover hover:bg-hover coarse:min-h-44">
-                      <span className="flex items-baseline gap-8">
-                        <span className="min-w-0 truncate type-row font-medium text-ink">{p.name}</span>
-                        {p.area ? <span className="min-w-0 truncate type-mono text-ink-3">{p.area}</span> : null}
-                        {!p.tried ? <Tag className="ml-auto">want</Tag> : null}
-                      </span>
-                      {dish ? (
-                        <span className="mt-2 flex items-center gap-8 type-small text-ink-2">
-                          <span className="min-w-0 truncate">{dish.name}</span>
-                          <Stars rating={dish.rating ?? 0} />
-                        </span>
-                      ) : null}
-                    </button>
-                  </li>
-                );
-              })}
+              {places.map((p) => (
+                <PlaceRow key={p.id} place={p} currency={currency} onOpen={() => navigate(pathFor(view, filter, p.id))} />
+              ))}
             </ul>
           )
         }
       </Loaded>
-      <PlaceSheet open={sheet.open} onOpenChange={sheet.onOpenChange} sheetKey={sheet.key} place={sheet.item} onSaved={load.reload} onDelete={deletePlace} />
+      <PlaceSheet
+        open={sheet.open}
+        onOpenChange={sheet.onOpenChange}
+        sheetKey={sheet.key}
+        place={sheet.item}
+        currency={currency}
+        customTags={customTags}
+        onSaved={load.reload}
+        onDelete={deletePlace}
+        onDeleted={load.reload}
+      />
+      <SortSheet open={sorting} onOpenChange={setSorting} value={view.sort ?? 'best'} onPick={(s) => go({ ...view, sort: s === 'best' ? undefined : s })} />
+      <FiltersSheet open={filtering} onOpenChange={setFiltering} view={view} known={known} currency={currency} onChange={(v) => go(v)} />
     </Page>
+  );
+}
+
+/** One café: name, stars or want, price; the best dish; area, last visit and tags in mono. */
+function PlaceRow({ place: p, currency, onOpen }: { place: Place; currency: string | null; onOpen: () => void }) {
+  const dish = bestDish(p);
+  const tags = tagsOn(p);
+  const last = p.visits?.last ?? null;
+  const third = [p.area, last ? shortDay(last) : undefined, tags.length ? tagsLine(tags) : undefined].filter((s): s is string => !!s);
+  return (
+    <li className="border-b border-line">
+      <button type="button" onClick={onOpen} className="block w-full px-16 py-10 text-left transition-colors duration-120 ease-hover hover:bg-hover coarse:min-h-44">
+        <span className="flex items-center gap-8">
+          <span className="min-w-0 flex-1 truncate type-row font-medium text-ink">{p.name}</span>
+          {!p.tried ? <Tag>want</Tag> : p.stars ? <Stars rating={p.stars} /> : null}
+          {p.again === 'no' ? <Tag>not again</Tag> : null}
+          {p.price ? currency ? <span className="flex-none type-mono text-ink-2">{priceLabel(p.price, currency)}</span> : <Tag>{priceLabel(p.price, null)}</Tag> : null}
+        </span>
+        {dish ? (
+          <span className="mt-2 flex items-center gap-8 type-small text-ink-2">
+            <span className="min-w-0 truncate">{dish.name}</span>
+            <Stars rating={dish.rating ?? 0} />
+          </span>
+        ) : null}
+        {third.length ? <span className="mt-2 block truncate type-mono text-ink-3">{third.join(' · ')}</span> : null}
+      </button>
+    </li>
+  );
+}
+
+/** Sort, Filters (with how many are on) and the search, which takes the bar's place while it is open. */
+function ViewBar({ view, count, onSort, onFilters, onSearch }: { view: PlacesView; count: number; onSort: () => void; onFilters: () => void; onSearch: (q: string | undefined) => void }) {
+  const [open, setOpen] = useState(!!view.q);
+  const [text, setText] = useState(view.q ?? '');
+  const box = useRef<HTMLInputElement>(null);
+  const sent = useRef(view.q ?? '');
+  const search = useRef(onSearch);
+  useEffect(() => {
+    search.current = onSearch;
+  });
+  useEffect(() => {
+    sent.current = view.q ?? '';
+    setText(view.q ?? '');
+  }, [view.q]);
+  useEffect(() => {
+    if (text.trim() === sent.current) return;
+    const t = setTimeout(() => {
+      sent.current = text.trim();
+      search.current(text.trim() || undefined);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [text]);
+  if (open) {
+    return (
+      <div className="flex items-center gap-8 px-16 pb-8">
+        <input
+          ref={box}
+          type="search"
+          aria-label="Search cafés"
+          placeholder="Search cafés"
+          autoFocus
+          enterKeyHint="search"
+          maxLength={80}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className="h-40 w-full min-w-0 rounded-btn border border-line-strong bg-bg px-12 type-input text-ink outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink coarse:h-44 [&::-webkit-search-cancel-button]:appearance-none"
+        />
+        <IconButton
+          aria-label="Close the search"
+          onClick={() => {
+            setOpen(false);
+            setText('');
+            sent.current = '';
+            if (view.q) onSearch(undefined);
+          }}
+        >
+          <XIcon size={16} aria-hidden="true" />
+        </IconButton>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-8 px-16 pb-8">
+      <Button size="md" onClick={onSort}>
+        {`Sort: ${SORT_LABELS[view.sort ?? 'best']}`}
+      </Button>
+      <Button size="md" onClick={onFilters} aria-label={count ? `Filters, ${count} on` : 'Filters'}>
+        Filters
+        {count ? <span className="type-mono text-ink-2">{count}</span> : null}
+      </Button>
+      <IconButton aria-label="Search cafés" className="ml-auto" onClick={() => setOpen(true)}>
+        <MagnifyingGlassIcon size={20} aria-hidden="true" />
+      </IconButton>
+    </div>
+  );
+}
+
+/** The filters that are on, each a chip that takes itself off, and Clear. Wraps; nothing scrolls sideways. */
+function ActiveFilters({ view, currency, onChange }: { view: PlacesView; currency: string | null; onChange: (v: PlacesView) => void }) {
+  const tags = tagsOf(view.tags);
+  const chips: { key: string; label: string; off: PlacesView }[] = [
+    ...tags.map((t) => ({ key: `tag:${t}`, label: tagLabel(t), off: { ...view, tags: tags.filter((x) => x !== t).join(',') || undefined } })),
+    ...(view.price ? [{ key: 'price', label: `Up to ${priceLabel(Number(view.price), currency)}`, off: { ...view, price: undefined } }] : []),
+    ...(view.stars ? [{ key: 'stars', label: `${view.stars}+ stars`, off: { ...view, stars: undefined } }] : []),
+    ...(view.again ? [{ key: 'again', label: 'Would go again', off: { ...view, again: undefined } }] : []),
+    ...(view.area ? [{ key: 'area', label: view.area, off: { ...view, area: undefined } }] : []),
+  ];
+  return (
+    <div role="group" aria-label="Filters on" className="flex flex-wrap items-center gap-6 px-16 pb-8">
+      {chips.map((c) => (
+        <button key={c.key} type="button" aria-label={`Take off ${c.label}`} onClick={() => onChange(c.off)} className={clsx(CHIP, CHIP_ON, 'inline-flex items-center gap-4')}>
+          {c.label}
+          <XIcon size={12} aria-hidden="true" />
+        </button>
+      ))}
+      <Button variant="text" size="sm" onClick={() => onChange({ ...(view.sort ? { sort: view.sort } : {}), ...(view.q ? { q: view.q } : {}) })}>
+        Clear
+      </Button>
+    </div>
+  );
+}
+
+const ROW =
+  'flex min-h-44 w-full items-center gap-12 border-b border-line px-4 text-left type-row text-ink transition-colors duration-120 ease-hover hover:bg-hover';
+
+function SortSheet({ open, onOpenChange, value, onPick }: { open: boolean; onOpenChange: (o: boolean) => void; value: PlacesSortKey; onPick: (s: PlacesSortKey) => void }) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title="Sort">
+      <div role="radiogroup" aria-label="Sort cafés" className="pb-16">
+        {SORTS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            role="radio"
+            aria-checked={s === value}
+            className={ROW}
+            onClick={() => {
+              onPick(s);
+              onOpenChange(false);
+            }}
+          >
+            <span className={clsx('flex-1', s === value && 'font-medium')}>{SORT_LABELS[s]}</span>
+            {s === value ? <CheckIcon size={16} aria-hidden="true" className="text-ink-2" /> : null}
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+type PriceKey = 'any' | '1' | '2' | '3' | '4';
+type StarsKey = 'any' | '3' | '4' | '5';
+
+function FiltersSheet({
+  open,
+  onOpenChange,
+  view,
+  known,
+  currency,
+  onChange,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  view: PlacesView;
+  known: PlacesResponse | null;
+  currency: string | null;
+  onChange: (v: PlacesView) => void;
+}) {
+  const on = tagsOf(view.tags);
+  const has = (t: string) => on.some((x) => x.toLowerCase() === t.toLowerCase());
+  const counts = known?.tags ?? [];
+  // Work tags first (in their order), then the rest as the daemon counted them; a tag that is on always shows.
+  const work = WORK_TAGS.map((t) => counts.find((c) => c.tag === t) ?? (has(t) ? { tag: t, n: 0 } : null)).filter((c): c is { tag: string; n: number } => c !== null);
+  const rest = counts.filter((c) => !WORK_TAGS.includes(c.tag));
+  const missing = on.filter((t) => ![...work, ...rest].some((c) => c.tag.toLowerCase() === t.toLowerCase())).map((tag) => ({ tag, n: 0 }));
+  const chips = [...work, ...rest, ...missing];
+  const toggle = (t: string) => onChange({ ...view, tags: (has(t) ? on.filter((x) => x.toLowerCase() !== t.toLowerCase()) : [...on, t]).join(',') || undefined });
+  const areas = known?.areas ?? [];
+  const areaChips = view.area && !areas.some((a) => a.area.toLowerCase() === view.area?.toLowerCase()) ? [...areas, { area: view.area, n: 0 }] : areas;
+  const price: PriceKey = (view.price as PriceKey | undefined) ?? 'any';
+  const stars: StarsKey = view.stars === '3' || view.stars === '4' || view.stars === '5' ? view.stars : 'any';
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Filters"
+      actions={
+        <Button variant="text" size="sm" onClick={() => onOpenChange(false)}>
+          Done
+        </Button>
+      }
+    >
+      <div className="pb-16">
+        <Field label="Tags" id="places-filter-tags">
+          {chips.length ? (
+            <div role="group" aria-labelledby="places-filter-tags" className="flex flex-wrap gap-6">
+              {chips.map((c) => (
+                <button key={c.tag} type="button" aria-pressed={has(c.tag)} onClick={() => toggle(c.tag)} className={clsx(CHIP, has(c.tag) ? CHIP_ON : CHIP_OFF, 'inline-flex items-center gap-6')}>
+                  {tagLabel(c.tag)}
+                  <span className="type-mono text-ink-3">{c.n}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="type-small text-ink-2">No tags on these cafés yet.</p>
+          )}
+        </Field>
+        <Field label="Price up to" id="places-filter-price">
+          <Segmented<PriceKey>
+            label="Price up to"
+            fill
+            value={price}
+            onChange={(k) => onChange({ ...view, price: k === 'any' ? undefined : k })}
+            segments={[
+              { key: 'any', label: 'Any' },
+              ...(['1', '2', '3', '4'] as const).map((k) => ({ key: k, label: priceLabel(Number(k), currency), name: `Up to price level ${k} of 4` })),
+            ]}
+          />
+        </Field>
+        <Field label="Stars at least" id="places-filter-stars">
+          <Segmented<StarsKey>
+            label="Stars at least"
+            fill
+            value={stars}
+            onChange={(k) => onChange({ ...view, stars: k === 'any' ? undefined : k })}
+            segments={[
+              { key: 'any', label: 'Any' },
+              { key: '3', label: '3+', name: 'At least 3 stars' },
+              { key: '4', label: '4+', name: 'At least 4 stars' },
+              { key: '5', label: '5', name: '5 stars' },
+            ]}
+          />
+        </Field>
+        <div className="flex min-h-44 items-center gap-12 py-8">
+          <Switch id="places-filter-again" checked={!!view.again} onChange={(v) => onChange({ ...view, again: v ? true : undefined })} />
+          <label htmlFor="places-filter-again" className="type-small text-ink">
+            Would go again
+          </label>
+        </div>
+        {areaChips.length ? (
+          <Field label="Area" id="places-filter-area">
+            <div role="group" aria-labelledby="places-filter-area" className="flex flex-wrap gap-6">
+              {areaChips.map((a) => {
+                const pressed = view.area?.toLowerCase() === a.area.toLowerCase();
+                return (
+                  <button key={a.area} type="button" aria-pressed={pressed} onClick={() => onChange({ ...view, area: pressed ? undefined : a.area })} className={clsx(CHIP, pressed ? CHIP_ON : CHIP_OFF, 'inline-flex items-center gap-6')}>
+                    {a.area}
+                    <span className="type-mono text-ink-3">{a.n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+        ) : null}
+      </div>
+    </Sheet>
   );
 }

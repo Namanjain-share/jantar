@@ -109,13 +109,14 @@ what they want. A change to one of them keeps it that way:
   deals or a pipeline in projects (they are not a CRM); posting, a social
   network's API, logos, media and analytics in posts (Jantar never posts).
   Ask before adding a field, a setting or a screen.
-- Deleting a todo, a meal, a weight, a saved food, a café, a money entry or
-  a post happens at once, with Undo for five seconds, never a confirm dialog
-  (`useHeldDeletes` in `life/today/parts.tsx`). The Undo is a bar pinned
-  to the bottom of the visible area (`Page`'s `undo`, or last in a sheet),
-  so it is in view however far down the row was. A medicine, a project or a
-  bill still asks first: deleting one also drops its dose history, its
-  todos' link to it or its reminders. An amount
+- Deleting a todo, a meal, a weight, a saved food, a café with no visits, a
+  café's visit or dish, a money entry or a post happens at once, with Undo
+  for five seconds, never a confirm dialog (`useHeldDeletes` in
+  `life/today/parts.tsx`). The Undo is a bar pinned to the bottom of the
+  visible area (`Page`'s `undo`, or last in a sheet), so it is in view
+  however far down the row was. A medicine, a project, a bill or a café
+  with visits still asks first: deleting one also drops its dose history,
+  its todos' link to it, its reminders or its visits. An amount
   is typed with a dot for decimals and commas only for thousands
   (`1,240.50`), on every phone.
 

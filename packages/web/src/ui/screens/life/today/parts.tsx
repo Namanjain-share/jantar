@@ -27,15 +27,30 @@ import type { LifeLoad } from '../shared/useLife.js';
  * A Life page: the title as the one display line (an <h1>, in every state),
  * an aside on its right, then the body. `back` sits above the title. While
  * offline (the shell shows its banner) a mono line under the title says why
- * add and save are off.
+ * add and save are off. `wrapTitle` (a café's name, v0.10) wraps a long
+ * title at the title size instead of cutting it.
  */
-export function Page({ title, aside, back, undo, children }: { title: ReactNode; aside?: ReactNode; back?: ReactNode; undo?: Pick<Undo, 'offer' | 'take'>; children: ReactNode }) {
+export function Page({
+  title,
+  aside,
+  back,
+  undo,
+  wrapTitle = false,
+  children,
+}: {
+  title: ReactNode;
+  aside?: ReactNode;
+  back?: ReactNode;
+  undo?: Pick<Undo, 'offer' | 'take'>;
+  wrapTitle?: boolean;
+  children: ReactNode;
+}) {
   const offline = useOffline();
   return (
     <div className="pb-48 animate-enter md:max-w-720">
       {back ? <div className="px-8 pt-8">{back}</div> : null}
       <header className={clsx('flex min-h-44 items-center gap-12 px-16 pb-8', back ? 'pt-4' : 'pt-16 md:pt-24')}>
-        <h1 data-display className="min-w-0 flex-1 truncate type-display text-ink">
+        <h1 data-display className={clsx('min-w-0 flex-1 text-ink', wrapTitle ? 'break-words type-title' : 'truncate type-display')}>
           {title}
         </h1>
         {aside}
@@ -353,7 +368,7 @@ export type Undo = ReturnType<typeof useUndo>;
 
 /**
  * Deleting with no confirm (todos, food entries, weights, saved foods,
- * cafés and finance entries): the row leaves the list at once and "Deleted:
+ * cafés with no visits, a café's visits, and finance entries): the row leaves the list at once and "Deleted:
  * … · Undo" stays for UNDO_MS on `undo`'s line. Nothing is sent until the
  * offer goes without Undo, so Undo puts back exactly what was there, with
  * its id, times and place; then `send` deletes it (and reloads). When that
