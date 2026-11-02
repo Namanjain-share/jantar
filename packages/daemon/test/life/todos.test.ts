@@ -6,6 +6,7 @@
  * - projects: defaults, counts (open, overdue), null clears, delete moves
  *   todos to no project, the cap;
  * - todos: sort order, overdue, the done list, the cap, project checks;
+ *   v0.10 `from: 'meeting'` set only by the daemon and kept by every write;
  * - repeat: Done moves the due day on (never `doneAt`), Undo of a
  *   repeating todo is a conflict, one left undone stays overdue and rings no
  *   more; a monthly repeat keeps its date (31 Jan, 28 Feb, 31 Mar) under the
@@ -199,6 +200,19 @@ describe('todos', () => {
     ok(todos.setDone(id, false, CLI));
     ok(todos.setDone(id, false, CLI));
     expect(get(id)).not.toHaveProperty('doneAt');
+  });
+
+  it("v0.10 from: 'meeting' is the daemon's mark only (createTodo's opts): every edit, Done, Undo and Snooze keeps it", () => {
+    const plain = add({ title: 'Call the bank' });
+    expect(get(plain)).not.toHaveProperty('from');
+    const id = ok(todos.createTodo({ title: 'Send the revised quote', notes: 'From the meeting "Weekly sync" on 2026-10-30.', due: { day: '2026-10-30' } }, CLI, { from: 'meeting' })).id;
+    expect(get(id)).toMatchObject({ from: 'meeting' });
+    ok(todos.updateTodo(id, { title: 'Send the quote', notes: null, due: null }, CLI));
+    ok(todos.snooze(id, 'tomorrow', CLI));
+    ok(todos.setDone(id, true, CLI));
+    ok(todos.setDone(id, false, CLI));
+    expect(get(id)).toMatchObject({ title: 'Send the quote', from: 'meeting' });
+    expect(get(id)).not.toHaveProperty('notes');
   });
 
   it('the open-todo cap answers conflict', () => {
@@ -840,6 +854,15 @@ describe('the todo routes', () => {
     expect((await one())?.due).toEqual({ day: '2027-10-30', time: '08:00' });
     expect((await call('PATCH', `/v1/todos/${tid}`, { due: snoozed })).statusCode).toBe(200);
     expect(await one()).toMatchObject({ due: snoozed, repeat: { freq: 'yearly', byMonthDay: 30, at: '08:00' } });
+  });
+
+  it("v0.10: no route sets or clears a todo's from (the daemon's mark for a meeting's words); GET shows it", async () => {
+    expect((await call('POST', '/v1/todos', { title: 'x', from: 'meeting' })).statusCode).toBe(400);
+    const made = life.todos.createTodo({ title: 'Send the revised quote' }, { kind: 'system' }, { from: 'meeting' });
+    const tid = made.ok ? made.value.id : '';
+    expect((await call('PATCH', `/v1/todos/${tid}`, { from: null })).statusCode).toBe(400);
+    expect((await call('PATCH', `/v1/todos/${tid}`, { title: 'Send the quote' })).statusCode).toBe(200);
+    expect(((await call('GET', '/v1/todos')).json().todos as Todo[]).find((x) => x.id === tid)).toMatchObject({ title: 'Send the quote', from: 'meeting' });
   });
 
   it('a repeat with no due day is 400 before the module; a bad id is 400', async () => {

@@ -39,6 +39,9 @@
  *   linked to `/`, `/Users` or the home folder is dropped unless the folder
  *   is exactly that one: such a project holds every repo below it. Its open
  *   todos, or a todo added to it (no repeat, no other project).
+ * - v0.10 `from: 'meeting'`: the daemon's mark on a todo made from a
+ *   meeting's action item (createTodo's `opts`, which no route passes);
+ *   every edit keeps it.
  * - Every write saves, re-arms its ping (pings.ts), then emits life.changed.
  *   Replies carry ids only; refusals are the fixed sentences below.
  */
@@ -57,6 +60,7 @@ import {
   type SnoozePreset,
   type Todo,
   type TodoBody,
+  type TodoFrom,
   type TodoPatch,
   type TodosQuery,
 } from '@jantar/protocol';
@@ -228,13 +232,14 @@ class Todos implements TodosModule {
     return { ok: true, value: { today, todos } };
   }
 
-  createTodo(body: TodoBody, _actor: Actor): LifeResult<{ id: string }> {
+  createTodo(body: TodoBody, _actor: Actor, opts: { from?: TodoFrom } = {}): LifeResult<{ id: string }> {
     if (body.repeat && !body.due) return refuse('invalid_request', TODO_REASONS.repeatNeedsDue);
     if (body.projectId !== undefined && !this.repo.project(body.projectId)) return refuse('invalid_request', TODO_REASONS.projectGone);
     if (this.repo.openCount() >= LIFE_LIMITS.openTodos) return refuse('conflict', TODO_REASONS.todosFull);
     const at = this.stamp();
     const t: Todo = { id: this.core.newId(), title: body.title, priority: body.priority ?? 'normal', createdAt: at, updatedAt: at };
     if (body.notes !== undefined) t.notes = body.notes;
+    if (opts.from !== undefined) t.from = opts.from;
     if (body.due !== undefined) t.due = body.due;
     if (body.projectId !== undefined) t.projectId = body.projectId;
     if (body.repeat !== undefined && body.due !== undefined) {

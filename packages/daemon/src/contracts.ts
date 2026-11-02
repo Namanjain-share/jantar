@@ -78,6 +78,7 @@ import type {
   SnoozePreset,
   Today,
   TodoBody,
+  TodoFrom,
   TodoPatch,
   TodosQuery,
   TodosResponse,
@@ -1656,7 +1657,8 @@ export interface TodosModule extends LifeModule {
   /** Its todos move to no project. */
   removeProject(id: string, actor: Actor): LifeResult;
   listTodos(q: TodosQuery): LifeResult<TodosResponse>;
-  createTodo(body: TodoBody, actor: Actor): LifeResult<{ id: string }>;
+  /** `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. */
+  createTodo(body: TodoBody, actor: Actor, opts?: { from?: TodoFrom }): LifeResult<{ id: string }>;
   updateTodo(id: string, patch: TodoPatch, actor: Actor): LifeResult;
   /** done=false is Undo (one-off todos; a repeating one answers conflict). Done on a repeating todo moves its due day. */
   setDone(id: string, done: boolean, actor: Actor): LifeResult;

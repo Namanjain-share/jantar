@@ -159,6 +159,12 @@ export type Due = z.infer<typeof DueSchema>;
 export const TodoPrioritySchema = z.enum(['normal', 'high']);
 export type TodoPriority = z.infer<typeof TodoPrioritySchema>;
 export const TodoTitleSchema = z.string().trim().min(1).max(200);
+/**
+ * v0.10: where a todo's words came from when they are someone else's. `meeting`: a meeting's action item
+ * (its title from the summary, its notes the meeting's name), by itself or on a tap.
+ */
+export const TodoFromSchema = z.enum(['meeting']);
+export type TodoFrom = z.infer<typeof TodoFromSchema>;
 
 export const TodoSchema = z.object({
   id: LifeIdSchema,
@@ -171,6 +177,11 @@ export const TodoSchema = z.object({
   repeat: RepeatSchema.optional(),
   /** Never set on a repeating todo. */
   doneAt: IsoDateSchema.optional(),
+  /**
+   * v0.10: set by the daemon when it makes the todo (no body sets or clears it), kept by every edit. Chat
+   * frames such a todo's title and notes as data and taints its message. An older daemon drops the key.
+   */
+  from: TodoFromSchema.optional(),
   ...stamps,
 });
 export type Todo = z.infer<typeof TodoSchema>;

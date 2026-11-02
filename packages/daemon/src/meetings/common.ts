@@ -2,8 +2,8 @@
  * What capture, the library and the sweep share: the fixed sentences every
  * refusal carries (never meeting text: a reason goes to the extension or the
  * phone, into the audit row's detail and into logs), a meeting as the phone
- * reads it, the projects lookup, the transcript's order, and what an end
- * does to the summary.
+ * reads it, the projects lookup, the transcript's order, what an end
+ * does to the summary, and a meeting todo's notes.
  */
 import { MEETING_LIMITS, MEETING_SUMMARY_MIN_CHARS, type Meeting, type MeetingSummary, type ProjectView } from '@jantar/protocol';
 import type { MeetingRow, MeetingsCore, MeetingsResult, MeetingsStore, StoredLine } from '../contracts.js';
@@ -49,6 +49,14 @@ export function iso(ms: number): string {
 
 export function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
+}
+
+/** How the notes of a todo made from a meeting's action item begin (since 0.5.0); the meeting's name follows. */
+export const MEETING_TODO_NOTES_START = 'From the meeting "';
+
+/** A meeting todo's notes: where it came from, by the meeting's name and its day. */
+export function meetingTodoNotes(name: string, day: string): string {
+  return `${MEETING_TODO_NOTES_START}${name}" on ${day}.`;
 }
 
 /** The record's summary with nothing in it yet. */

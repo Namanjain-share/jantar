@@ -33,7 +33,9 @@
  * its project is still in Life and Todos are on, one todo per item in order
  * (the system actor); a refused create stops the rest quietly and those stay
  * for a tap. `addTodo` and `removeTodo` are the phone's taps: one event each,
- * Life's own (the item's todoId is stored in the same turn).
+ * Life's own (the item's todoId is stored in the same turn). Every todo made
+ * here is marked `from: 'meeting'` (its title and notes are the meeting's
+ * words): Chat frames it as data and taints its message.
  */
 import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -44,7 +46,7 @@ import { SYSTEM_ACTOR, actorId } from '../core/actor.js';
 import { READ_ONLY_SUMMARIES } from '../modes.js';
 import { pickSharedRunAccount, runVia } from '../rewrite/pick.js';
 import { DROPPABLE_OPTIONS, execRewrite, prepareRunDir, runDroppingRefused, type RunOutcome } from '../rewrite/run.js';
-import { MEETING_REASONS, linesInOrder } from './common.js';
+import { MEETING_REASONS, linesInOrder, meetingTodoNotes } from './common.js';
 import { dayOf, summaryInput, type SummaryMeeting } from './input.js';
 
 /** D2: Sonnet at medium effort, Haiku when Sonnet is not there. */
@@ -229,6 +231,7 @@ class SummaryQueue implements MeetingSummaries {
     const made = this.core.life.todos.createTodo(
       { title: item.title, ...(projectId ? { projectId } : {}), notes: this.todoNotes(row) },
       actor,
+      { from: 'meeting' },
     );
     if (!made.ok) return made;
     // No tick of our own: Life's write ticked, and this lands in the same turn, before any screen can reload.
@@ -433,7 +436,7 @@ class SummaryQueue implements MeetingSummaries {
     const out = items.map((i) => ({ ...i }));
     try {
       for (const item of out) {
-        const made = this.core.life.todos.createTodo({ title: item.title, projectId, notes }, SYSTEM_ACTOR);
+        const made = this.core.life.todos.createTodo({ title: item.title, projectId, notes }, SYSTEM_ACTOR, { from: 'meeting' });
         if (!made.ok) {
           this.log.warn('meetings: action items stopped going to todos', { code: made.code, added: out.filter((i) => i.todoId).length });
           break;
@@ -474,7 +477,7 @@ class SummaryQueue implements MeetingSummaries {
 
   /** Where a todo came from, in its notes. */
   private todoNotes(row: MeetingRow): string {
-    return `From the meeting "${row.record.name}" on ${dayOf(row.startedAt, this.core.tz())}.`;
+    return meetingTodoNotes(row.record.name, dayOf(row.startedAt, this.core.tz()));
   }
 
   /** claude (or cswap) refused an option: one log line per option for the daemon's life. */

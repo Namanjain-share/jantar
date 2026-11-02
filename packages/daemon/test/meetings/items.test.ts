@@ -9,6 +9,7 @@
  * - Add (a tap): the meeting's project when it is still there, the device
  *   as actor, `{ id }` of the todo; a second Add is 409 "Already in todos.";
  *   with Todos off 403 with the Todos sentence.
+ * - v0.10: every todo made either way is marked `from: 'meeting'`.
  * - Remove: deletes the todo (one already gone is fine) and clears todoId.
  * - MP3's phone-edit part: a tap is one event, Life's own.
  * - An item is text: a title that reads as a command or markup is stored
@@ -123,8 +124,8 @@ const itemsOf = (c: TestMeetingsCore, id: string) => c.meetings.get(id)?.record.
 function lifeTicks(c: TestMeetingsCore): void {
   const todos = c.life.todos as TodosModule;
   const { createTodo, removeTodo } = todos;
-  todos.createTodo = (body, actor) => {
-    const r = createTodo(body, actor);
+  todos.createTodo = (body, actor, opts) => {
+    const r = createTodo(body, actor, opts);
     if (r.ok) c.changed();
     return r;
   };
@@ -170,6 +171,8 @@ describe('MS8: action items go to todos by themselves only with the toggle on, T
     expect(r.core.todos.created.map((c) => [c.body, c.actor])).toEqual(
       ANSWER.actionItems.map((i) => [{ title: i.title, projectId: PROJECT, notes: NOTES }, SYSTEM_ACTOR]),
     );
+    // v0.10: each is marked as the meeting's words (Chat frames such a todo as data).
+    expect(r.core.todos.created.map((c) => c.from)).toEqual(ANSWER.actionItems.map(() => 'meeting'));
     expect(summary.items).toEqual(ANSWER.actionItems.map((i, n) => ({ ...i, todoId: r.core.todos.created[n]!.id })));
     expect(r.core.ticks).toBe(3); // queued, running, done
   });
@@ -192,7 +195,7 @@ describe('MS8: action items go to todos by themselves only with the toggle on, T
     const todos = r.core.life.todos as TodosModule;
     const create = todos.createTodo;
     let n = 0;
-    todos.createTodo = (body, actor) => (++n === 2 ? { ok: false, code: 'conflict', reason: 'You have 1,000 open todos. Finish or delete one to add another.' } : create(body, actor));
+    todos.createTodo = (body, actor, opts) => (++n === 2 ? { ok: false, code: 'conflict', reason: 'You have 1,000 open todos. Finish or delete one to add another.' } : create(body, actor, opts));
     const id = meeting(r.core, { autoTodos: true });
     const summary = await summarize(r, id);
     expect(summary.state).toBe('done');
@@ -220,7 +223,7 @@ describe('MS8: Add and Remove', () => {
     const id = meeting(core, { summary: done(ITEMS) });
     const added = summaries.addTodo(id, 0, PHONE);
     expect(added).toEqual({ ok: true, value: { id: core.todos.created[0]!.id } });
-    expect(core.todos.created.map((c) => [c.body, c.actor])).toEqual([[{ title: 'Send the revised quote', projectId: PROJECT, notes: NOTES }, PHONE]]);
+    expect(core.todos.created.map((c) => [c.body, c.actor, c.from])).toEqual([[{ title: 'Send the revised quote', projectId: PROJECT, notes: NOTES }, PHONE, 'meeting']]);
     expect(itemsOf(core, id)).toEqual([{ ...ITEMS[0], todoId: core.todos.created[0]!.id }, ITEMS[1]]);
     expect(core.ticks).toBe(1);
     expect(summaries.addTodo(id, 0, PHONE)).toEqual({ ok: false, code: 'conflict', reason: ITEM_SENTENCES.already });

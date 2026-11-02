@@ -16,6 +16,7 @@ import {
   type ProjectView,
   type Settings,
   type TodoBody,
+  type TodoFrom,
 } from '@jantar/protocol';
 import type {
   Actor,
@@ -403,8 +404,8 @@ export function createTestLifeCore(opts: TestLifeCoreOptions = {}): TestLifeCore
 export interface FakeTodos {
   /** listProjects answers these (each with open 0, overdue 0 unless given). */
   projects: ProjectView[];
-  /** Every createTodo, in order, with the id it answered. */
-  created: { body: TodoBody; actor: Actor; id: string }[];
+  /** Every createTodo, in order, with the id it answered and the daemon's mark when given. */
+  created: { body: TodoBody; actor: Actor; id: string; from?: TodoFrom }[];
   /** Every removeTodo, in order. */
   removed: { id: string; actor: Actor }[];
   /** When set, createTodo answers this instead (a cap, Life broken). */
@@ -466,10 +467,10 @@ export function createTestMeetingsCore(opts: TestMeetingsCoreOptions = {}): Test
   const todosModule = notBuilt<TodosModule>('Life', {
     name: 'todos',
     listProjects: () => todos.listFails ?? { ok: true, value: { projects: todos.projects } },
-    createTodo: (body: TodoBody, actor: Actor) => {
+    createTodo: (body: TodoBody, actor: Actor, opts?: { from?: TodoFrom }) => {
       if (todos.createFails) return todos.createFails;
       const id = newId();
-      todos.created.push({ body, actor, id });
+      todos.created.push({ body, actor, id, ...(opts?.from ? { from: opts.from } : {}) });
       return { ok: true, value: { id } };
     },
     removeTodo: (id: string, actor: Actor) => {
