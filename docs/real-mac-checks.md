@@ -374,6 +374,22 @@ real share link from the Reddit app has not been pasted yet.
    on both tabs, and on Done a long where (r/exampledevelopers) shown in
    full, nothing cut and no sideways scroll.
 
+### Meetings (v0.10, Start when I join)
+
+Open. The extension's suites drive synthetic join screens, waiting rooms
+and calls (a one-poll flicker of an in-call control included) in jsdom and
+against the worker; none of this has run on a real call yet. Run these in
+your own Chrome; agents never drive it.
+
+| Check | Question | What depends on it |
+|---|---|---|
+| R12 | On each screen, open the popup's **Settings › Call check** and write down the stage and hook. **Meet**: Ready to join (signed in, and as a guest), Asking to be let in, in the call, after Leave. **Teams v2** (`teams.cloud.microsoft`): pre-join, waiting room, in the call, after Leave. **Teams light meetings** (`teams.microsoft.com/light-meetings/…`, as a guest): pre-join, "Someone will let you in when the meeting starts", in the call. Also: does the Teams waiting room show a Leave (hang-up) button, and with which `data-tid`; which `data-tid` only the waiting room has; does light meetings run in the top frame; is `[jsname="Qx7uuf"]` Meet's join button? | being let in on each site; `TEAMS_LOBBY`, Meet's join hook, light meetings |
+| R13 | Meet, a second account as host: Ask to join, Start when I join with project A, then the host lets you in. Notes start within 3 s of being let in, the page says "Jantar started notes…", the icon shows ON, and the phone shows the meeting with project A starting at the time you were let in. Then the same in a Teams light-meetings waiting room (the case that asked for this) | Start when I join, end to end |
+| R14 | Always on: a Meet call joined from Calendar starts by itself; Not this call skips one; End, then Leave and Rejoin, does not start again; a Teams Chat tab never shows ARM | Always start when I join a call |
+| R15 | Armed in the waiting room, another tab in front for 6 minutes before being let in: how late do notes start, and were the first captions kept? | hidden-tab timers |
+| R16 | Reload the page while armed, on Meet's join screen and in the Teams waiting room: still ARM, and it still starts | a reload while armed |
+| R17 | Armed, then `jantar meetings off` (or Jantar stopped) before being let in: the bubble and the popup say why, and the icon shows ! | saying why notes did not start |
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear

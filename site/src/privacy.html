@@ -35,8 +35,8 @@
       <section aria-labelledby="p-reads">
         <h2 class="h3" id="p-reads">What it reads, and when</h2>
         <ul class="ledger ledger--plain">
-          <li>Before you press <b>Start notes</b>: only whether you are in a call, and the page title (to fill in the meeting's name).</li>
-          <li>After Start notes: the captions already on screen, then each new one, with the speaker's name and the time. These are the site's own live captions; captions must be on, and the extension never turns them on for you.</li>
+          <li>Before you press <b>Start notes</b>: only whether you are on the call's join screen, in its waiting room or in the call, and the page title (to fill in the meeting's name).</li>
+          <li>After Start notes (or, if you chose Start when I join, once you are let in): the captions already on screen, then each new one, with the speaker's name and the time. These are the site's own live captions; captions must be on, and the extension never turns them on for you.</li>
           <li>Screenshots: of the meeting tab only, and only when you click the camera button, press the shortcut (Option+Shift+S) or choose Screenshot in the popup. On the first real calls, screenshots did not reach Jantar yet (<a href="{{doc docs/real-mac-checks.md#meetings-v05}}" rel="noopener">the Meetings checks<x-icon name="arrow-up-right"></x-icon></a>).</li>
           <li>It runs only on Google Meet (<code>meet.google.com</code>) and Microsoft Teams on the web (<code>teams.microsoft.com</code>, <code>teams.live.com</code>, <code>teams.cloud.microsoft</code>).</li>
         </ul>
@@ -44,7 +44,7 @@
 
       <section aria-labelledby="p-keeps">
         <h2 class="h3" id="p-keeps">What it keeps, and where</h2>
-        <p>For each meeting, Jantar on your Mac keeps: its name, the site, the project and people you gave it, when it started and ended, every caption line with its speaker and time, your screenshots (JPEG), and the summary with its decisions and action items. The text is in <code>meetings.db</code> and the images in <code>meetings/</code> inside your Jantar state folder (<code>~/.jantar</code>). The extension itself keeps its pairing key and its settings in Chrome's storage for the extension and, until Chrome closes, a record of the last screenshot try for the popup's Settings: when, which control and tab, the step it ended at, Chrome's own message and the status Jantar answered. That record holds no page address, title or picture, and is never sent.</p>
+        <p>For each meeting, Jantar on your Mac keeps: its name, the site, the project and people you gave it, when it started and ended, every caption line with its speaker and time, your screenshots (JPEG), and the summary with its decisions and action items. The text is in <code>meetings.db</code> and the images in <code>meetings/</code> inside your Jantar state folder (<code>~/.jantar</code>). The extension itself keeps its pairing key and its settings in Chrome's storage for the extension and, until Chrome closes, a record of the last screenshot try for the popup's Settings: when, which control and tab, the step it ended at, Chrome's own message and the status Jantar answered. That record holds no page address, title or picture, and is never sent. While a tab waits to join a call you armed with Start when I join, Chrome's memory also holds that tab's sheet (the name, project, people and Meet's call code, never a page address) until notes start or the arm ends.</p>
       </section>
 
       <section aria-labelledby="p-leaves">
@@ -58,7 +58,7 @@
           <div><dt><code>activeTab</code></dt><dd>To take a screenshot of the meeting tab when you click the Jantar icon or press the shortcut.</dd></div>
           <div><dt><code>storage</code></dt><dd>To keep the pairing key and settings, and the last screenshot try until Chrome closes.</dd></div>
           <div><dt>Access to <code>http://127.0.0.1</code></dt><dd>To send captions and screenshots to Jantar on your Mac.</dd></div>
-          <div><dt>Page script on Meet and Teams</dt><dd>To read the captions after Start notes, and to show the camera button.</dd></div>
+          <div><dt>Page script on Meet and Teams</dt><dd>To read the captions after Start notes, to start notes when you are let in, if you asked it to, and to show the camera button.</dd></div>
           <div><dt>Optional: all sites</dt><dd>Asked once, only if you allow it, so the camera button can take a screenshot without a click on the toolbar icon first. Chrome words the prompt for the widest case ("Read and change all your data on all websites"); the page script still runs only on Meet and Teams, and the extension photographs only the meeting tab, only when you ask. You can narrow it again in Chrome's Site access settings.</dd></div>
         </dl>
       </section>

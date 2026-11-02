@@ -85,7 +85,8 @@ session.
 
 No. There is no audio, no recording and no bot in the call. It keeps the
 call's live captions (the words Google or Microsoft already show you) after
-you press Start notes, and the screenshots you click. See
+you press Start notes (or once you are let in, if you chose Start when I
+join), and the screenshots you click. See
 [Meetings](extension.md).
 
 ## Can I use it at work?

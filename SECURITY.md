@@ -910,8 +910,15 @@ on (`jantar meetings on`).
   read or change another site: its page script is not injected anywhere
   else.
 - It reads nothing of a call before **Start notes** (until then only
-  whether you are in a call, its code and its title), and never switches
-  captions on. A screenshot needs a click the browser made (`isTrusted`),
+  whether you are in a call, its code and its title), or, with **Start when
+  I join** or **Always start when I join a call** (0.10), before you are in
+  the call (until then only whether the page shows the call's join screen,
+  its waiting room or the call, by fixed controls and never page text, its
+  code and its title), and never switches captions on. An arm is kept per
+  tab in the worker's session storage (the sheet's fields, the site and
+  Meet's code, never a URL), starts notes only once the page has shown the
+  in-call controls on two checks running, and sends nothing to Jantar
+  before then. A screenshot needs a click the browser made (`isTrusted`),
   the shortcut or the popup, and is of the meeting tab only: the worker
   checks right before and right after each capture that the tab is still
   the active tab of the same window and still on a meeting host, and saves

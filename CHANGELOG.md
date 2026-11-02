@@ -3,6 +3,35 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.10.0 (unreleased)
+
+Start when I join, in the Jantar extension: open the Jantar icon on a Meet
+or Teams join screen or in the waiting room, fill the sheet as for Start
+notes, and press Start when I join. Notes start by themselves once you are
+let in, exactly as Start notes would, and never before. Jantar, the protocol
+and meetings.db don't change: build and reload the extension (no new
+permission).
+
+- **Start when I join**: the icon shows ARM while it waits, ON once notes
+  are on, and the page says "Jantar started notes. Let people know you keep
+  notes." Only that tab, only once you are in the call (the controls Start
+  notes trusts, seen on two checks a second apart). Cancel, closing the
+  tab, leaving the meeting's page for a minute, another Meet call in the
+  tab, or two hours unused end it. Nothing of the call reaches Jantar
+  before you are let in.
+- **Always start when I join a call** (Settings, off by default): every
+  Meet or Teams call you join in this Chrome. Not this call skips one, and
+  End keeps a rejoin of that call from starting again. A call first seen
+  already in progress waits for Start notes. Unpair turns it off.
+- When notes can't start by themselves (Meetings off, Jantar not running,
+  the extension not paired, another tab already keeping notes for the
+  call), the page and the popup say why, and the icon shows !.
+- The icon shows ON in a tab keeping notes, however they started.
+  Settings › Call check names what the page shows (the join screen, the
+  waiting room, the call), by Jantar's own name for the control, for
+  reports. Teams' waiting room and Teams light meetings are not checked on
+  a real Mac yet (docs/real-mac-checks.md, R12 to R17).
+
 ## 0.9.0 (2 November 2026)
 
 Log a comment, in Posts: paste the link to a comment you made (on Reddit:

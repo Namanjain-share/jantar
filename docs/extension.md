@@ -8,7 +8,8 @@ writes a short summary, the decisions and the action items, and the phone
 shows it all under More > Meetings.
 
 There is no audio, no recording and no video. Nothing is read from a call
-until you press **Start notes**, and nothing is photographed until you click.
+until you press **Start notes**, or, if you chose **Start when I join**, until
+you are in the call; and nothing is photographed until you click.
 
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="img/meetings-phone-dark.png"><img src="img/meetings-phone.png" width="240" alt="Meetings: one running, then this morning's and the week's calls with their projects."></picture>
@@ -21,7 +22,8 @@ until you press **Start notes**, and nothing is photographed until you click.
 - **The transcript** is the meeting's own live captions: the words Google
   or Microsoft already show you on screen, with the speaker's name and the
   time, each line kept once in its final form as the site revises it.
-  Nothing is read before you press **Start notes**, and captions must be on
+  Nothing is read before you press **Start notes**, or, if you chose
+  **Start when I join**, before you are in the call. Captions must be on
   (the page tells you how when they are not).
 - **Screenshots**: a small round camera button at the edge of the call, the
   toolbar icon's Screenshot, or Option+Shift+S. The button hides itself,
@@ -30,6 +32,10 @@ until you press **Start notes**, and nothing is photographed until you click.
 - **Assign before you start**: the Jantar icon opens a small sheet with the
   name (from the page), a project, the people, and whether action items go
   to that project's todos on their own.
+- **Start when I join** (since 0.10): open the Jantar icon on the call's
+  join screen or in its waiting room, fill the same sheet and press **Start
+  when I join**. Notes start by themselves once you are let in, never
+  before, and only in that tab ([Start when I join](#start-when-i-join)).
 - **After the call** (End, closing the tab, or a minute after you leave),
   one headless Claude run writes a short summary, the decisions and the
   action items. On the phone, under More > Meetings: newest first, project
@@ -76,9 +82,11 @@ The extension never:
 
 - records audio or video, or reads the call's media;
 - switches captions on for you (it tells you how; see Captions below);
-- reads the page before you press Start notes, except whether you are in a
-  call and the page title (to fill in the meeting's name); at Start it reads
-  the captions already on screen, then each new one;
+- reads the page before notes start, except whether you are on the call's
+  join screen, in its waiting room or in the call (fixed controls only,
+  never what anyone says), and the page title (to fill in the meeting's
+  name); when notes start it reads the captions already on screen, then
+  each new one;
 - takes a screenshot without your click, your shortcut or the popup's
   **Screenshot**, and never of a tab other than the meeting's;
 - talks to anything but Jantar on this Mac (`http://127.0.0.1:<port>`);
@@ -198,6 +206,11 @@ reach Jantar nor read a call's captions by itself.
    (optional), and **Action items go to this project's todos** (off unless
    you turn it on). Then **Start notes**. A small dot on the camera button
    means notes are on in that tab.
+
+   Or, before you join: open the Jantar icon on the call's join screen or in
+   its waiting room. The same sheet has **Start when I join**, and notes
+   start by themselves once you are in the call
+   ([Start when I join](#start-when-i-join)).
 3. Take a screenshot whenever the screen matters: the camera button, the
    shortcut **Option+Shift+S**, or **Screenshot** in the popup. The button
    hides itself for the shot and flashes "Saved". A screenshot before Start
@@ -271,8 +284,117 @@ ends it at once. If Chrome quits or crashes, or the tab goes to another
 site, Jantar ends the meeting by itself ten minutes after it last heard from
 the tab.
 
+With **Always start when I join a call** on, **End** also keeps that call
+from starting again in that tab: leave and rejoin it and notes stay off
+until you press **Start notes**. Another call starts as usual.
+
 Each tab and call is one meeting: the same call open in two tabs makes two
 meetings.
+
+## Start when I join
+
+Since 0.10. Open the Jantar icon while a Meet or Teams call shows its join
+screen (Meet's "Ready to join?", Teams' pre-join screen) or its waiting
+room (Meet's "Asking to be let in", Teams' "Someone will let you in when the
+meeting starts"). The popup says **Not in the call yet.** or **Waiting to be
+let in.** above the same sheet as Start notes: Name, Project, People and the
+todos switch. Press **Start when I join**. Leave the Name as it is and the
+meeting takes the page's title once you are in the call (some calls show
+their title only then).
+
+Once you are let in, notes start by themselves exactly as if you had pressed
+**Start notes**: the same meeting with the same project, people and todos,
+the same dot on the camera button, and the captions already on screen are
+read first. The page says "Jantar started notes. Let people know you keep
+notes." Notes never start before you are in the call, and only in the tab
+you armed. Until then nothing of the call reaches Jantar, and the waiting
+room is never read: Jantar counts you in the call on the same controls Start
+notes trusts (Meet's captions button or caption area, Teams' Leave button
+or caption area), seen on two checks a second apart, so a control that
+flashes up in the waiting room starts nothing. Captions are not switched on
+for you; if they are off, the page says how, as after Start notes.
+
+The toolbar icon shows, per tab:
+
+| Icon | Means |
+|---|---|
+| **ARM** | Notes start when you are in the call. |
+| **ON** | Notes are on in this tab, however they started. |
+| **!** | Notes did not start by themselves. Open the Jantar icon for why. |
+
+An armed tab's popup says **Armed: starts when you join** (or **when you're
+let in**, or **when you rejoin** after leaving), with the name and project,
+**Change** and **Cancel**. Left open, it turns into the notes view by
+itself once notes start, which then says "Started when you joined, 10:02".
+
+Start when I join ends, and notes do not start, on:
+
+- **Cancel** in the popup;
+- closing the tab;
+- the tab leaving the meeting: another Meet call in the same tab ends it at
+  once, and a page that shows no join screen, waiting room or call for a
+  minute (Teams' Chat, another site) ends it then;
+- two hours unused, for a call that never starts;
+- **Unpair**, reloading or updating the extension, or Chrome quitting.
+
+A reload of the join screen or the waiting room keeps it, as long as the
+page is back within the minute.
+
+### Always start when I join a call
+
+**Settings › Always start when I join a call** (off by default) arms every
+Meet or Teams call you join in this Chrome: on each join screen or waiting
+room the page says "Jantar starts notes when you join. Not this call: the
+Jantar icon.", and notes start once you are in the call, with the page's
+title as the name and no project. **Not this call** in the popup skips that
+call in that tab (you can still press Start when I join or Start notes
+yourself). After **End**, leaving and rejoining the same call in that tab
+does not start notes again; another call does. It starts only a call you
+join: a page first seen already in the call (a reload mid-call, an instant
+meeting with no join screen) waits for **Start notes**. When another tab
+already keeps notes for the same Meet call, it does not start a second one.
+**Unpair** turns it off.
+
+### When notes do not start
+
+The page says why in a bubble, the icon shows **!**, and the popup's sheet
+says "Notes did not start when you joined: …" for ten minutes:
+
+- "Notes did not start: Meetings are off. Turn them on at your Mac: jantar
+  meetings on"
+- "Notes did not start: Jantar is not running on this Mac." Jantar is tried
+  again for two minutes first ("Trying again for 2 minutes.").
+- "Notes did not start: Pair again: jantar pair --extension" when Jantar
+  no longer knows the extension's key, and on later joins (Always stays on)
+  "Notes did not start: pair the extension first: click the Jantar icon."
+- "Notes did not start: they are already on for this call in another tab."
+- "Notes will not start by themselves: Jantar can't see this call's join
+  screen or the call." The page left its join screen or waiting room for a
+  minute without Jantar seeing the call. Press **Start notes** once you are
+  in the call, and send the Call check below with a report.
+
+Before you join, the popup arms nothing while the extension is not paired
+or Meetings are off at the Mac: it says so instead.
+
+### Limits
+
+- A tab in the background may notice you were let in up to a minute late
+  (Chrome slows hidden tabs); the captions on screen then are read.
+- A call with no join screen or waiting room needs **Start notes**.
+- Not checked on a real Mac yet ([R12](real-mac-checks.md#meetings-v010-start-when-i-join)):
+  Teams' waiting room and Teams light meetings (joining as a guest from a
+  link), so neither is claimed to work. If a Teams waiting room shows a
+  Leave button, Jantar would count you in the call there, for Start notes
+  too.
+- Two tabs on the same call armed by hand make two meetings, as two Start
+  notes do.
+
+### Call check
+
+**Settings › Call check** names what the page shows as Jantar sees it, and
+the control that decided it, for example "Call check: waiting to be let in ·
+teams:after-join". It is Jantar's own name for the control, never page
+text. Send it with a report when notes did not start by themselves.
 
 ## Captions
 
@@ -457,6 +579,10 @@ To turn it off: the same switch. To take the six sites back as well:
 
 ## Updating the extension
 
+**0.10.0** (unreleased): build again and reload the extension. It changes
+this time (Start when I join, the toolbar badge). No new permission. Start
+when I join is forgotten on the reload; reload open meeting tabs.
+
 **0.9.0**: build again and press the reload arrow on the Jantar card (the
 extension itself does not change). Coming from 0.7 or older, Chrome grants
 the `alarms` and `scripting` permissions on that reload without asking;
@@ -539,7 +665,8 @@ Keep the `meetings-aside-...` folders until you know you do not need them.
 Captions show only on your screen, and the sites tell no one that you keep
 them. The assign sheet says "Let people know you keep notes." Say so at the
 start of the call, and check what your workplace and the law where the
-people are expect before you keep anyone's words.
+people are expect before you keep anyone's words. With **Always start when I
+join a call** on, notes start in every call you join: say so each time.
 
 Jantar is not affiliated with Google or Microsoft. Google Meet and
 Microsoft Teams are named only to say what the extension works with.
