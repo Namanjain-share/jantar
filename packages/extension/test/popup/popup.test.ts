@@ -795,6 +795,36 @@ describe('v0.10: Start when I join', () => {
     }
   });
 
+  it('"Join the call first." follows the page too: opened in its first second, it becomes the arm sheet', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      answers.state = state({ tab: before('none') });
+      await open();
+      expect(lead()).toBe(JOIN_FIRST_TEXT);
+      answers.state = state({ tab: before('prejoin') });
+      await vi.advanceTimersByTimeAsync(ARM_TIMING.popupPollMs);
+      expect(lead()).toBe(ARM.leadPrejoin);
+      // The sheet is a form: no more asking.
+      const n = sent.filter((m) => m.t === 'state').length;
+      await vi.advanceTimersByTimeAsync(5 * ARM_TIMING.popupPollMs);
+      expect(sent.filter((m) => m.t === 'state')).toHaveLength(n);
+      // Not a meeting tab, or Settings open: nothing to follow.
+      answers.state = state({ tab: null });
+      await open();
+      const m = sent.filter((x) => x.t === 'state').length;
+      await vi.advanceTimersByTimeAsync(5 * ARM_TIMING.popupPollMs);
+      expect(sent.filter((x) => x.t === 'state')).toHaveLength(m);
+      answers.state = state({ tab: before('none') });
+      await open();
+      buttonNamed('Settings').click();
+      const k = sent.filter((x) => x.t === 'state').length;
+      await vi.advanceTimersByTimeAsync(5 * ARM_TIMING.popupPollMs);
+      expect(sent.filter((x) => x.t === 'state')).toHaveLength(k);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('never asks again while a form is on screen (a redraw would lose the typing)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {

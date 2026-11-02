@@ -20,8 +20,10 @@
  * I join, no Screenshot); an armed tab shows the armed view (Change, and
  * Cancel or Not this call), which asks the worker again every
  * ARM_TIMING.popupPollMs so it turns into the notes view by itself once
- * notes start (never while a form is on screen: a redraw would lose the
- * typing). The notes view says when notes started by themselves; the sheet
+ * notes start; so does "Join the call first." on a meeting tab, so it turns
+ * into the arm sheet once the page shows its join screen (a page in its
+ * first second, Teams still loading). Never while a form is on screen: a
+ * redraw would lose the typing. The notes view says when notes started by themselves; the sheet
  * says why they did not. Settings has Always start when I join a call (off
  * by default) and Call check (the page's stage and hook id, for reports).
  *
@@ -217,9 +219,9 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
   let code = '';
   /** v0.10: the armed view's Change: the arm sheet, filled from the arm. */
   let editing = false;
-  /** v0.10: the armed view's timer (asks the worker again while it shows). */
+  /** v0.10: the timer of a view that follows the page (asks the worker again while it shows). */
   let polling: ReturnType<typeof setTimeout> | undefined;
-  let armedShown = false;
+  let following = false;
 
   draw();
   const tabId = typeof opts.tabId === 'number' ? opts.tabId : await activeTabId();
@@ -486,7 +488,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
 
   /** v0.10: an armed tab: what starts when he is in the call, Change, and Cancel or Not this call. */
   function armedView(tab: Tab, arm: ArmView, projects: Projects): Node[] {
-    armedShown = true;
+    following = true;
     const project = arm.projectId ? projects?.find((p) => p.id === arm.projectId) : undefined;
     const what = [arm.name || ARM.nameFromPage, projects === null ? '' : (project?.name ?? ARM.noProject)].filter(Boolean).join(' · ');
     return [
@@ -506,11 +508,13 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
 
   /** v0.10: not in the call: the armed view, the arm sheet, or why there is nothing to arm. */
   function beforeView(tab: Tab, projects: Projects): Node[] {
+    const arm = tab.arm && !tab.arm.off ? tab.arm : null;
+    if (!tab.notes && arm && !editing) return armedView(tab, arm, projects);
+    if (!tab.notes && (arm || WAITING.has(tab.stage))) return sheetView(tab, projects, 'arm');
+    // Nothing to press here: follow the page until it shows a join screen, a waiting room or the call.
+    following = true;
     // Notes on, not in the call (a reload into the join screen): they go on once the call is on again.
     if (tab.notes) return [para(JOIN_FIRST, 'lead')];
-    const arm = tab.arm && !tab.arm.off ? tab.arm : null;
-    if (arm && !editing) return armedView(tab, arm, projects);
-    if (arm || WAITING.has(tab.stage)) return sheetView(tab, projects, 'arm');
     return [para(JOIN_FIRST, 'lead'), para(ARM.where, 'quiet')];
   }
 
@@ -568,14 +572,14 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     return out;
   }
 
-  /** v0.10: the armed view asks again while it shows (and the popup is still on screen). */
+  /** v0.10: a view that follows the page asks again while it shows (and the popup is still on screen). */
   function poll(): void {
     polling = undefined;
     if (view.isConnected) void refresh();
   }
 
   function draw(): void {
-    armedShown = false;
+    following = false;
     const body: Node[] = [];
     if (!loaded) body.push(para(LOADING, 'quiet'));
     else if (!state) body.push(para(NOT_RUNNING, 'lead'));
@@ -591,7 +595,7 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     // The view's first line (its lead, or the Settings heading) and a failed try in this tab, read out once when they change.
     const said = [view.querySelector('.lead, h2'), view.querySelector('.missed')].map((n) => n?.textContent ?? '').filter(Boolean).join(' ');
     if (live.textContent !== said) live.textContent = said;
-    if (armedShown && !busy) polling ??= setTimeout(poll, ARM_TIMING.popupPollMs);
+    if (following && !busy && page === 'main') polling ??= setTimeout(poll, ARM_TIMING.popupPollMs);
     else if (polling !== undefined) {
       clearTimeout(polling);
       polling = undefined;
