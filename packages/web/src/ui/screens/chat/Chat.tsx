@@ -50,18 +50,27 @@ export function Chat() {
   const clear = useTap();
   const more = useTap();
   const chips = useChips();
+  /** Failed turns sent again from here: their Try again goes, so a second tap sends no duplicate. */
+  const [retried, setRetried] = useState<ReadonlySet<string>>(() => new Set());
 
   const ready = load.data?.ready.ok ?? false;
   const busy = turns.filter(unfinished).length >= 3;
   const canSend = ready && !busy && !offline && !send.busy;
   const cursor = older === undefined ? (load.data?.older ?? null) : older;
 
-  const go = async (text: string, photos: readonly string[], fromBox: boolean) => {
+  const go = async (text: string, photos: readonly string[], fromBox: boolean): Promise<boolean> => {
     const t = text.trim();
-    if ((!t && photos.length === 0) || !canSend) return;
+    if ((!t && photos.length === 0) || !canSend) return false;
     const ok = await send.run((key) => api.chatSend(t, photos, key));
     if (ok && fromBox) setDraft('');
     load.reload();
+    return ok;
+  };
+
+  // Try again sends the text and the photos still there (the Mac takes a failed turn's photos again).
+  const retry = async (t: ChatTurn) => {
+    const ok = await go(t.text, t.photos.filter((p) => !p.gone).map((p) => p.id), false);
+    if (ok) setRetried((s) => new Set(s).add(t.id));
   };
 
   const last = turns.at(-1);
@@ -159,7 +168,8 @@ export function Chat() {
                         nowMs={nowMs}
                         offline={offline}
                         canSend={canSend}
-                        onRetry={(t) => void go(t.text, [], false)}
+                        retried={retried.has(turn.id)}
+                        onRetry={(t) => void retry(t)}
                         onChanged={load.reload}
                       />
                     ))}

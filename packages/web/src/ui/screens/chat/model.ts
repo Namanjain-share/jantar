@@ -34,6 +34,7 @@ export const CHAT_COPY = {
   confirm: 'Confirm',
   dismiss: 'Dismiss',
   tryAgain: 'Try again',
+  sentAgain: 'Sent again.',
   stop: 'Stop',
 } as const;
 

@@ -108,11 +108,13 @@ export interface TurnProps {
   nowMs: number;
   offline: boolean;
   canSend: boolean;
+  /** Sent again from this phone: Try again is gone. */
+  retried?: boolean;
   onRetry: (turn: ChatTurn) => void;
   onChanged: () => void;
 }
 
-export function Turn({ turn, nowMs, offline, canSend, onRetry, onChanged }: TurnProps) {
+export function Turn({ turn, nowMs, offline, canSend, retried = false, onRetry, onChanged }: TurnProps) {
   const { api } = useDeps();
   const stop = useTap();
   const [open, setOpen] = useState<ChatPhotoRef | null>(null);
@@ -145,7 +147,8 @@ export function Turn({ turn, nowMs, offline, canSend, onRetry, onChanged }: Turn
         {turn.state === 'failed' || turn.state === 'cancelled' ? (
           <div className="flex flex-wrap items-center gap-8">
             {turn.state === 'failed' ? <Refused>{turn.reason ?? "Claude couldn't answer. Try again."}</Refused> : <p className="type-small text-ink-2">{turn.reason ?? 'Cancelled.'}</p>}
-            {turn.state === 'failed' ? (
+            {turn.state === 'failed' && retried ? <p className="type-small text-ink-2">{CHAT_COPY.sentAgain}</p> : null}
+            {turn.state === 'failed' && !retried ? (
               <Button variant="outline" size="sm" disabled={!canSend} onClick={() => onRetry(turn)}>
                 {CHAT_COPY.tryAgain}
               </Button>

@@ -332,7 +332,8 @@ export class ChatServiceImpl implements ChatService {
     if (store.unfinished().length >= CHAT_QUEUE_MAX) return refuse('conflict', CHAT_SENTENCES.busy);
     for (const id of photoIds) {
       const p = store.photo(id);
-      if (!p || p.turnId !== null) return refuse('invalid_request', CHAT_SENTENCES.photoGone);
+      // Try again: a photo of a turn that failed goes with the new message (B14); one sent and answered does not.
+      if (!p || (p.turnId !== null && store.turn(p.turnId)?.state !== 'failed')) return refuse('invalid_request', CHAT_SENTENCES.photoGone);
     }
     const id = newId();
     const at = this.ctx.clock.iso();

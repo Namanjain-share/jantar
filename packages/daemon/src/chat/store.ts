@@ -232,12 +232,17 @@ export class ChatStore {
     return (this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type FROM photos WHERE turn_id = ? ORDER BY at, id').all(turnId) as Row[]).map((r) => this.photoRow(r));
   }
 
-  /** Give unattached photos to a turn; the ids that were free (in the order asked). */
+  /**
+   * Give photos to a turn: unattached ones, and a failed turn's (Try again; the failed turn still shows them,
+   * by id, and the sweep takes them with the new turn). The ids that were free (in the order asked).
+   */
   attach(turnId: string, ids: readonly string[]): string[] {
     return this.db.tx(() => {
       const taken: string[] = [];
       for (const id of ids) {
-        const r = this.db.prepare('UPDATE photos SET turn_id = ? WHERE id = ? AND turn_id IS NULL').run(turnId, id);
+        const r = this.db
+          .prepare("UPDATE photos SET turn_id = ? WHERE id = ? AND (turn_id IS NULL OR turn_id IN (SELECT id FROM turns WHERE state = 'failed'))")
+          .run(turnId, id);
         if (num(r.changes) === 1) taken.push(id);
       }
       return taken;

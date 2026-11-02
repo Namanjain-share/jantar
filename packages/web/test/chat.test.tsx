@@ -114,6 +114,20 @@ describe('Chat', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
+  it('Try again resends the text and the photos still there, then goes', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:synthetic'), revokeObjectURL: vi.fn() }));
+    const chatSend = vi.fn(async () => ({ id: tid(3) }));
+    const photos = [
+      { id: tid(80), w: 10, h: 10, gone: false },
+      { id: tid(81), w: 10, h: 10, gone: true },
+    ];
+    open(list([turn(1, { state: 'failed', reply: undefined, reason: "Claude couldn't answer. Try again.", text: 'what is on this bill', photos })]), { chatSend });
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(chatSend).toHaveBeenCalledWith('what is on this bill', [tid(80)], expect.any(String)));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull());
+    expect(screen.getByText('Sent again.')).toBeTruthy();
+  });
+
   it('a Siri turn has its tag; a removed photo says so; photos show through blob: URLs, never data:', async () => {
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:synthetic'), revokeObjectURL: vi.fn() }));
     open(list([turn(1, { via: 'voice', text: 'how many calories today' }), turn(2, { photos: [{ id: tid(80), w: 10, h: 10, gone: false }, { id: tid(81), w: 10, h: 10, gone: true }] })]));

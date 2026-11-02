@@ -15,7 +15,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { chatRuns, chatText, makeFakeHome, setFakeClaude, type FakeHome } from '@jantar/fixtures';
+import { chatRuns, chatText, makeFakeHome, makePng, setFakeClaude, type FakeHome } from '@jantar/fixtures';
 import { CHAT_QUEUE_MAX, type ChatTurn } from '@jantar/protocol';
 import type { ChatService, LifeService } from '../../src/contracts.js';
 import { CHAT_SENTENCES, buildChatService } from '../../src/chat/service.js';
@@ -198,6 +198,30 @@ describe('a turn through the fake claude, the bridge and the dispatcher', () => 
     expect(turn(r.turnId ?? '')?.via).toBe('voice');
     const del = await chat.voice(chatText('chat-delete', 'by voice'), { kind: 'capture', keyId: 'synthetic-key' }, 60_000);
     expect(del.message).toBe('I asked you to confirm the delete. 1 to confirm in Jantar.');
+  });
+
+  it("Try again: a failed turn's photo goes with the new message; a photo sent and answered does not", async () => {
+    const up = await chat.photoAdd(makePng(64, 48), PHONE);
+    if (!up.ok) throw new Error(up.reason);
+    const photo = up.value.id;
+    const send = async (text: string) => {
+      const sent = chat.send({ text, photos: [photo] }, PHONE);
+      if (!sent.ok) return sent;
+      return vi.waitFor(() => {
+        const t = turn(sent.value.id);
+        if (!t || t.state === 'queued' || t.state === 'running') throw new Error('not yet');
+        return t;
+      }, WAIT);
+    };
+    const failed = await send(chatText('chat-init-nomcp', 'what is on this bill'));
+    expect(failed).toMatchObject({ state: 'failed', photos: [{ id: photo, gone: false }] });
+    const again = await send(chatText('chat-photos', 'what is on this bill'));
+    expect(again).toMatchObject({ state: 'done', photos: [{ id: photo, gone: false }] });
+    expect((again as ChatTurn).reply).toMatch(/^I see 1 photo/);
+    // The failed turn still shows it.
+    expect(turn((failed as ChatTurn).id)?.photos).toEqual([expect.objectContaining({ id: photo })]);
+    expect((await chat.photo(photo)).ok).toBe(true);
+    expect(chat.send({ text: 'once more', photos: [photo] }, PHONE)).toMatchObject({ ok: false, reason: CHAT_SENTENCES.photoGone });
   });
 
   it('a restart keeps the thread; Clear empties it and the photo folder', async () => {

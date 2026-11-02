@@ -1544,7 +1544,7 @@ export const ROUTES = {
   }),
   chatSend: route({
     method: 'POST', path: '/v1/chat', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask', status: 202,
-    body: ChatSendBodySchema, response: IdReplySchema, summary: 'Send a message (and photos already uploaded); one headless Claude run answers it (the reply is the turn id).',
+    body: ChatSendBodySchema, response: IdReplySchema, summary: "Send a message (and photos already uploaded, or a failed turn's for Try again); one headless Claude run answers it (the reply is the turn id).",
   }),
   chatClear: route({
     method: 'DELETE', path: '/v1/chat', scope: 'control', phase: 'v0.10', ctl: true, feature: 'ask',
