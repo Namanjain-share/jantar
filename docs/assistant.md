@@ -90,6 +90,13 @@ Some things wait for your tap, as a card:
 
 Cards work for a day, then expire. Dismiss closes one.
 
+One gap is left open on purpose: the last messages of the chat go with
+each new one, and Chat's earlier answer may repeat words it read (a
+page's title, a meeting's name). The new message is not treated as having
+read them, or nearly every change would wait for a tap for a dozen
+messages after Chat read anything. Its changes still have Undo, it still
+can't delete, and it still saves only a link you wrote.
+
 ## Sessions are read only
 
 Chat can list your Claude Code sessions, what each is waiting for, its
@@ -121,7 +128,10 @@ Limits: 10 messages a minute and 100 a day per device (and per Siri key);
 three waiting at once; per message at most 24 tool calls, 10 changes, 10
 cards and 5 timed reminders or posts; each answer at most two minutes.
 Chat's changes also count against Life's 240 changes a minute, with the
-ones you make on that phone's own screens.
+ones you make on that phone's own screens; a change Life refuses (the
+item is gone, nothing to change) still counts there, as it does from a
+screen. A message that is only a link is saved without Claude and counts
+as one of your messages, not as a Chat change against Life's limit.
 
 ## When it says
 

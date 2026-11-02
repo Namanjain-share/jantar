@@ -1884,7 +1884,11 @@ the code, not of the prompt.
   own caps apply on top, and so does Life's write limit of 240 a minute:
   each of a run's writes counts against the sender's (the device, or the
   Siri key), one budget with that device's own Life writes and taps, and
-  past it the tool gives the same answer.
+  past it the tool gives the same answer. The place is taken before the
+  write is tried, as the API's routes take theirs before Life answers: a
+  write Life then refuses (no such item, nothing to change, one of Life's
+  own caps) has still used its place in the 240, though not one of the
+  message's 10 writes.
 
 ### The link rule
 
@@ -1892,7 +1896,10 @@ A link is kept (Intel's save, a café's or a post's link) only when the
 exact URL appears in the user's own message of that turn. Saving a link
 makes the Mac fetch it, so a URL Claude wrote could carry data out; this
 closes that. v0.8's fast path stays: a message that is only a link, or
-"save this: <link>", saves it at once with Undo and runs no Claude.
+"save this: <link>", saves it at once with Undo and runs no Claude. That
+save is bounded by Chat's message limits (10 a minute and 100 a day per
+device, or per Siri key), not by Life's write limit: unlike a run's
+writes it takes no place of its own in the 240 a minute.
 
 ### History on disk
 
@@ -1942,6 +1949,17 @@ vacuums. It is never in Life's nightly backup.
   (`jantar mcp`, a script) or a café note is read in an untainted message
   and could steer a write. It is bounded by the caps, shown with Undo, and
   can never delete or fetch.
+- **History carries words forward, untainted.** Each message goes with
+  the last ones of the thread (at most 12 or 16,000 characters) inside
+  `<history>`, framed as data: earlier messages, Chat's replies, and the
+  labels of their changes and cards. A reply can repeat third-party text
+  Chat read in its own message (a page's summary, a meeting's name), and
+  the next message is not tainted by it. Tainting on history would make
+  nearly every write a Do it card for a dozen messages after any read of
+  a page, a meeting or a session, which is most of what Chat is for. What
+  a message can do from history is bounded as any untainted message is:
+  the caps, Life's write limit, Undo on every change, no delete, and no
+  link but one in the user's own message.
 - **Claude's words.** The reply is Claude's: it can be wrong about what
   happened. The change list and cards are the record.
 - **A stolen phone** with a paired device can use Chat like the owner;
