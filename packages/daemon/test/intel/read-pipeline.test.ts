@@ -377,6 +377,51 @@ describe.skipIf(!HAVE_OPENSSL)('frames, on-screen text, speech and thumbnails (a
     expect(JSON.stringify(e.ctx.log.records)).not.toContain('synthetic voice');
   });
 
+  it('Instagram from the downloader with no frames: the frames-only headless pass draws them (logged out, through the proxy)', async () => {
+    const s = await site({
+      'www.instagram.com/reel/AbC123xyz/': html(
+        '<html><head><meta property="og:title" content="Example Cook on Instagram: &quot;Three ways to cook dal&quot;"><meta property="og:image" content="https://scontent.cdninstagram.com/cover.jpg"></head></html>',
+      ),
+      'scontent.cdninstagram.com/cover.jpg': jpeg,
+    });
+    const frame = `data:image/jpeg;base64,${TINY_JPEG.toString('base64')}`;
+    const calls: { launch: Record<string, unknown>; arg: unknown }[] = [];
+    let n = 0;
+    const load = async () => ({
+      chromium: {
+        launch: async (launch: Record<string, unknown>) => ({
+          close: async () => {},
+          newContext: async () => ({
+            close: async () => {},
+            newPage: async () => ({
+              goto: async () => null,
+              waitForTimeout: async () => {},
+              evaluate: (async (_fn: unknown, arg: unknown) => {
+                calls.push({ launch, arg });
+                n += 1;
+                // The page tier first: a login wall. Then the frames-only pass: the reel's frames.
+                return n === 1
+                  ? { finalUrl: 'https://www.instagram.com/accounts/login/', meta: [], jsonld: [], text: '', media: [], frames: [], why: 'login' }
+                  : { finalUrl: 'https://www.instagram.com/reel/AbC123xyz/', meta: [], jsonld: [], text: '', media: [], frames: [0.5, 2.5, 4.5].map((at) => ({ at, jpeg: frame })), duration: 6 };
+              }) as never,
+            }),
+          }),
+        }),
+      },
+    });
+    const clt = realpathSync(e0Dir());
+    const e = await env({ read: { net: seamFor(s.port), browser: { executablePath: '/nonexistent/test-chromium', load } }, bins: HELPER_BINS, handlers: [fakeClaude(), ...fakeHelper(clt)] });
+    const id = idOf(await e.intel.read({ text: 'https://www.instagram.com/reel/AbC123xyz/' }, { via: 'phone' }));
+    await e.idle();
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.arg).toMatchObject({ platform: 'instagram', frames: INTEL_READ_LIMITS.browserFrames });
+    expect(calls[1]?.launch).toMatchObject({ executablePath: '/nonexistent/test-chromium', proxy: { server: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+$/) } });
+    expect(e.items().get(id)).toMatchObject({ caption: 'Three ways to cook dal', creator: 'Example Cook', on_screen: 'LINE 1\nLINE 2\nLINE 3', read: { state: 'saved', tier: 'download', done: 'standard' } });
+    const ocr = e.exec.calls.find((c) => c.args.includes('ocr')) as ExecCall;
+    expect(ocr.args.slice(ocr.args.indexOf('ocr') + 1)).toHaveLength(3);
+    expect((e.items().get(id)?.read as { notes?: string[] }).notes ?? []).not.toContain(INTEL_READ_NOTES.coverOnly);
+  });
+
   /** Where the pretend Command Line Tools live (removed after each test). */
   function e0Dir(): string {
     const d = mkdtempSync(join(tmpdir(), 'jantar-clt-'));
