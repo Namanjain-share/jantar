@@ -201,4 +201,18 @@ describe('v0.10 chat keys', () => {
     expect(all.json()).toEqual({ revoked: 5 });
     expect(api.services.captureKeys.activeCount()).toBe(1);
   });
+
+  it('a new key is never kept for an Idempotency-Key replay: the same key again makes another', async () => {
+    await doorApi(settingsFor('tailscale'));
+    for (const route of [ROUTES.chatKeyAdd, ROUTES.captureKeyAdd]) {
+      const made = async () => {
+        const res = await api.ctl.inject({ method: 'POST', url: route.path, headers: { 'idempotency-key': 'synthetic-idem-key-0001' }, payload: {} });
+        expect(res.statusCode, res.body).toBe(200);
+        expect(res.headers['idempotent-replayed']).toBeUndefined();
+        return (res.json() as { id: string }).id;
+      };
+      const first = await made();
+      expect(await made()).not.toBe(first);
+    }
+  });
 });

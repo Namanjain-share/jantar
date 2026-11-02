@@ -271,6 +271,12 @@ export const CTL_ONLY_FIELDS: Readonly<Partial<Record<RouteName, readonly string
 export const SHOT_UPLOAD_LOG = 'meetings: screenshot upload';
 
 /**
+ * Writes whose reply is never kept for an Idempotency-Key replay: Ask Claude's meal estimate (model output)
+ * and a new Shortcut or Siri key (the reply holds the key itself, shown once: spec 0.10 B5, B12).
+ */
+export const NEVER_REPLAYED: ReadonlySet<RouteName> = new Set<RouteName>(['foodEstimate', 'captureKeyAdd', 'chatKeyAdd']);
+
+/**
  * Whether a route's switch is on (routes without one are always on). Read
  * from settings, never from state: v0.4's `life` is any module on, a module
  * name (v0.7's `posts` too) reads `life.<module>`, `intel` reads `intel.enabled`,
@@ -874,9 +880,9 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
       let out: { status: number; body: unknown };
       let replayed = false;
       try {
-        // Ask Claude's reply is model output about a meal: never kept for replay, whatever the client sends.
-        // A raw body (an upload) is never replayed either: a second post makes a second file (v0.4.2).
-        if (isWrite && call.idempotencyKey && def.scope !== 'public' && name !== 'foodEstimate' && !raw) {
+        // NEVER_REPLAYED's replies are never kept, whatever the client sends. A raw body (an upload) is
+        // never replayed either: a second post makes a second file (v0.4.2).
+        if (isWrite && call.idempotencyKey && def.scope !== 'public' && !NEVER_REPLAYED.has(name) && !raw) {
           const scope = `${actorName(auth)}|${def.method}|${pathOf(req)}`;
           const r = await s.idem.run(scope, call.idempotencyKey, call.body, run);
           out = r.response;
