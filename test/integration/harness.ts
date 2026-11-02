@@ -24,6 +24,12 @@
  *   backend (the one constant AppleScript, argv only) against the fake
  *   home's `osascript` instead, so a test sees the exact argv of every
  *   compare-and-type write; ScriptedTerminal is then left unwired.
+ * - v0.8: `intel` passes Intel's test seams (DNS lookup, CA and dial for
+ *   local HTTPS servers; the headless tier's browser). With
+ *   `fakeMediaTools` the daemon's sandbox-exec, swiftc and xcode-select
+ *   (no settings: the real ones sit at fixed paths, so a Mac with Command
+ *   Line Tools would build the Swift helper) are the fixtures' fakes, set
+ *   after every start, before any read: nothing compiles Swift.
  *
  * `loadFactories()` separately checks that every factory docs/LAYOUT.md
  * promises exists where it says, typed as a function.
@@ -46,9 +52,9 @@ import {
   type TerminalBackend,
 } from '@jantar/daemon';
 import { PANE_LOOKUP_TIMEOUT_MS } from '@jantar/daemon/api/services';
-import { startDaemon, type RunningDaemon } from '@jantar/daemon/daemon';
+import { startDaemon, type DaemonOptions, type RunningDaemon } from '@jantar/daemon/daemon';
 import { TerminalAppBackend } from '@jantar/daemon/terminal/terminal-app/index';
-import { makeFakeHome, perfBudgetMs, type FakeHome, type FakeHomeOptions } from '@jantar/fixtures';
+import { makeFakeHome, perfBudgetMs, writeFakeMediaTools, type FakeHome, type FakeHomeOptions, type FakeMediaTools } from '@jantar/fixtures';
 import { ScriptedTerminal } from './scripted-terminal.js';
 
 const DAEMON_SRC = fileURLToPath(new URL('../../packages/daemon/src/', import.meta.url));
@@ -123,6 +129,8 @@ export interface Daemon {
   pushed: Notification[];
   /** Every push Web Push sent: the subscription's endpoint, the payload as it would leave the Mac (JSON, before encryption) and its TTL in seconds. */
   webPushes: Array<{ endpoint: string; payload: string; ttl: number }>;
+  /** v0.8: the fake media tools the daemon runs (BootOptions.fakeMediaTools), else null. */
+  media: FakeMediaTools | null;
   /**
    * Stop the daemon and start it again on the same home, settings and clock
    * (ctx, parts and running change); `between` runs while it is down (move
@@ -165,6 +173,10 @@ export interface BootOptions {
    * nothing, and the push counts as one that never left the Mac.
    */
   pushOffline?: () => boolean;
+  /** v0.8: Intel's test seams (local HTTPS servers, the headless tier's browser). */
+  intel?: DaemonOptions['intel'];
+  /** v0.8: Intel's media helper tools are the fixtures' fakes (writeFakeMediaTools), set after every start. */
+  fakeMediaTools?: boolean;
 }
 
 /** What Node's fetch of a push service throws with no network: the DNS lookup failed, no HTTP status. */
@@ -230,7 +242,8 @@ export async function bootDaemon(opts: BootOptions = {}): Promise<Daemon> {
       },
     };
     const webPushes: Daemon['webPushes'] = [];
-    const start = () =>
+    const media = opts.fakeMediaTools ? await writeFakeMediaTools(home.root, join(home.root, 'media-bin')) : null;
+    const boot = () =>
       startDaemon({
         env: { ...home.env, ...opts.env },
         log,
@@ -249,7 +262,14 @@ export async function bootDaemon(opts: BootOptions = {}): Promise<Daemon> {
         // The fake osascript and ps are node scripts: on a busy CI runner, or a Mac running the whole suite at
         // once, the pair can take longer than a Mac's real Terminal gets to find a tab.
         ...(opts.terminalApp ? { api: { paneLookupTimeoutMs: Math.max(perfBudgetMs(PANE_LOOKUP_TIMEOUT_MS), 3 * PANE_LOOKUP_TIMEOUT_MS) } } : {}),
+        ...(opts.intel ? { intel: opts.intel } : {}),
       });
+    const start = async () => {
+      const r = await boot();
+      // One Bins object, shared by every part: the media helper reads these at each call.
+      if (media) Object.assign(r.ctx.bins, media);
+      return r;
+    };
     const running = await start();
     const d: Daemon = {
       home,
@@ -261,6 +281,7 @@ export async function bootDaemon(opts: BootOptions = {}): Promise<Daemon> {
       log,
       pushed,
       webPushes,
+      media,
       async restart(between) {
         await d.running.stop();
         await between?.();
