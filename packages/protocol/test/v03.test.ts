@@ -370,8 +370,8 @@ describe('v0.3 routes', () => {
   });
 
   it('marks only the byte routes as raw responses', () => {
-    // v0.5 adds a meeting's screenshot, v0.8 a read item's thumbnail.
-    expect(routes.filter(([, r]) => r.rawResponse).map(([n]) => n).sort()).toEqual(['filesRaw', 'intelFrame', 'meetingShot', 'sessionScreenshot']);
+    // v0.5 adds a meeting's screenshot, v0.8 a read item's thumbnail, v0.10 a chat photo.
+    expect(routes.filter(([, r]) => r.rawResponse).map(([n]) => n).sort()).toEqual(['chatPhoto', 'filesRaw', 'intelFrame', 'meetingShot', 'sessionScreenshot']);
   });
 
   it('has no audio, git or diff routes', () => {

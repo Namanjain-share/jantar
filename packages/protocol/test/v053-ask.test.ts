@@ -58,7 +58,7 @@ describe('v0.5.3 versions, settings and switches', () => {
   });
 
   it('Ask is off by default, a Mac-only group, and a feature flag an older daemon leaves off', () => {
-    expect(defaultSettings().ask).toEqual({ enabled: false });
+    expect(defaultSettings().ask).toEqual({ enabled: false, keepDays: 30, voiceModel: 'sonnet' });
     expect(MAC_ONLY_SETTING_GROUPS).toContain('ask');
     expect(macOnlyGroupIn({ ask: { enabled: true } })).toBe('ask');
     expect(settingsFeatures(SettingsSchema.parse({ ask: { enabled: true } })).ask).toBe(true);
@@ -68,7 +68,7 @@ describe('v0.5.3 versions, settings and switches', () => {
     expect(FeaturesSchema.parse(older).ask).toBe(false);
     // An older config without the group gets it off; an unknown key inside it is refused like every other setting.
     const { ask: _none, ...oldConfig } = defaultSettings();
-    expect(SettingsSchema.parse(oldConfig).ask).toEqual({ enabled: false });
+    expect(SettingsSchema.parse(oldConfig).ask).toEqual({ enabled: false, keepDays: 30, voiceModel: 'sonnet' });
     expect(applySettingsPatch(defaultSettings(), { ask: { model: 'opus' } }).ok).toBe(false);
     expect(applySettingsPatch(defaultSettings(), { ask: { enabled: true } })).toMatchObject({ ok: true, settings: { ask: { enabled: true } } });
   });
@@ -93,8 +93,8 @@ describe('v0.5.3 routes', () => {
       expect(r.summary.length, name).toBeGreaterThan(5);
       if (r.method === 'GET') expect(r.body, name).toBeUndefined();
     }
-    // Nothing else sits behind the Ask switch.
-    expect(names(routes.filter(([, r]) => r.feature === 'ask'))).toEqual(names(v053));
+    // Nothing else sits behind the Ask switch but v0.10's Chat routes (the switch keeps its name).
+    expect(names(routes.filter(([, r]) => r.feature === 'ask' && r.phase !== 'v0.10'))).toEqual(names(v053));
   });
 
   it('methods, paths and status', () => {

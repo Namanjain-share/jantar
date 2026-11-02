@@ -237,8 +237,10 @@ describe('v0.10 routes', () => {
   const v010 = routes.filter(([, r]) => r.phase === 'v0.10');
 
   it('four new café routes, at control scope behind the places switch', () => {
-    expect(v010.map(([n]) => n).sort()).toEqual(['placeGet', 'placeVisitAdd', 'placeVisitDelete', 'placeVisitUpdate']);
-    for (const [name, r] of v010) {
+    // Chat's v0.10 routes have their own test (v010-chat.test.ts).
+    const cafes = v010.filter(([n]) => n.startsWith('place'));
+    expect(cafes.map(([n]) => n).sort()).toEqual(['placeGet', 'placeVisitAdd', 'placeVisitDelete', 'placeVisitUpdate']);
+    for (const [name, r] of cafes) {
       expect(r.scope, name).toBe('control');
       expect(r.feature, name).toBe('places');
       expect(r.path.startsWith('/v1/places/:id'), name).toBe(true);

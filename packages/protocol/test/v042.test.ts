@@ -92,8 +92,9 @@ describe('X4: four v0.4.2 routes, control scope, never ctl', () => {
     expect((ROUTES.uploadDelete as RouteDef).feature).toBeUndefined();
   });
 
-  it('only the upload takes raw bytes, with no body schema, up to 20 MiB', () => {
-    expect(routes.filter(([, r]) => r.rawBody).map(([n]) => n)).toEqual(['uploadCreate']);
+  it('only the upload (and v0.10\'s chat photo) takes raw bytes, with no body schema, up to 20 MiB', () => {
+    expect(routes.filter(([, r]) => r.rawBody).map(([n]) => n)).toEqual(['uploadCreate', 'chatPhotoAdd']);
+    expect((ROUTES.chatPhotoAdd as RouteDef).body).toBeUndefined();
     expect((ROUTES.uploadCreate as RouteDef).rawBody).toEqual({ maxBytes: UPLOAD_MAX_BYTES });
     expect((ROUTES.uploadCreate as RouteDef).body).toBeUndefined();
     expect(UPLOAD_MAX_BYTES).toBe(20 * 1024 * 1024);

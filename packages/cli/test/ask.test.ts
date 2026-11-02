@@ -138,11 +138,11 @@ describe('jantar ask with the daemon down', () => {
     expect(await ask.run(['on'], on.ctx)).toBe(EXIT.ok);
     expect(on.io.stdout).toContain('Ask is on.');
     expect(on.io.stdout).toContain('Saved to config.json');
-    expect(JSON.parse(await readFile(join(home.jantarHome, 'config.json'), 'utf8')).ask).toEqual({ enabled: true });
+    expect(JSON.parse(await readFile(join(home.jantarHome, 'config.json'), 'utf8')).ask).toMatchObject({ enabled: true });
     const st = contextFor(home);
     expect(await ask.run(['status'], st.ctx)).toBe(EXIT.ok);
     expect(st.io.stdout).toContain('Ask: on\n');
     expect(await ask.run(['off'], contextFor(home).ctx)).toBe(EXIT.ok);
-    expect(JSON.parse(await readFile(join(home.jantarHome, 'config.json'), 'utf8')).ask).toEqual({ enabled: false });
+    expect(JSON.parse(await readFile(join(home.jantarHome, 'config.json'), 'utf8')).ask).toMatchObject({ enabled: false });
   });
 });

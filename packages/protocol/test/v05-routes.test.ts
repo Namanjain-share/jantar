@@ -93,8 +93,8 @@ describe('v0.5 routes', () => {
     expect(Object.keys(ExtUnpairReplySchema.shape).sort()).toEqual(['ok', 'revoked']);
   });
 
-  it('only the screenshot upload has its own body limit (and v0.8\'s door and read results)', () => {
-    expect(routes.filter(([, r]) => r.bodyLimit !== undefined).map(([n]) => n)).toEqual(['extMeetingShot', 'captureSave', 'extReadResult']);
+  it('only the screenshot upload has its own body limit (and v0.8\'s door and read results, v0.10\'s Siri door)', () => {
+    expect(routes.filter(([, r]) => r.bodyLimit !== undefined).map(([n]) => n)).toEqual(['extMeetingShot', 'captureSave', 'captureChat', 'extReadResult']);
     expect(ROUTES.extMeetingShot.bodyLimit).toBe(MEETING_SHOT_BODY_MAX);
   });
 

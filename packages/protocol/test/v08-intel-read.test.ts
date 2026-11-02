@@ -93,7 +93,8 @@ describe('v0.8 routes', () => {
   it('the capture scope is the door alone, under CAPTURE_PREFIX, 202, with its own small body limit and no switch', () => {
     expect(CAPTURE_PREFIX).toBe('/v1/capture/');
     expect(CAPTURE_KEY_HEADER).toBe('x-jantar-capture-key');
-    expect(names(routes.filter(([, r]) => r.scope === 'capture'))).toEqual(['captureSave']);
+    // v0.10 adds the Siri door (v010-chat.test.ts).
+    expect(names(routes.filter(([, r]) => r.scope === 'capture'))).toEqual(['captureChat', 'captureSave']);
     for (const [name, r] of routes) if (r.path.startsWith(CAPTURE_PREFIX)) expect(r.scope, name).toBe('capture');
     expect(ROUTES.captureSave).toMatchObject({ status: 202, bodyLimit: 8 * 1024 });
     expect((ROUTES.captureSave as RouteDef).feature).toBeUndefined();

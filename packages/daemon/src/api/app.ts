@@ -145,6 +145,10 @@ export const READ_ONLY_REFUSED: ReadonlySet<RouteName> = new Set<RouteName>([
   'meetingSummarize',
   // v0.5.3: Ask runs a headless Claude too. Its Add, Skip, Undo, Cancel and Clear still work (Life writes).
   'askSend',
+  // v0.10: a Chat message runs a headless Claude (as does the Siri door's); a photo exists only to be sent.
+  'chatSend',
+  'chatPhotoAdd',
+  'captureChat',
   // v0.4.2: answers and keys act on a terminal; uploads exist only to be sent.
   'sessionDialog',
   'sessionKeypad',
@@ -227,6 +231,11 @@ export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<RouteName, string>>> = 
   captureKeyAdd: 'Make a Shortcut key at the Mac: jantar intel shortcut add',
   captureKeyList: 'List Shortcut keys at the Mac: jantar intel shortcut list',
   captureKeyRevoke: 'Revoke a Shortcut key at the Mac: jantar intel shortcut revoke <id>',
+  // v0.10
+  chatStatus: 'See Chat at the Mac: jantar chat status',
+  chatKeyAdd: 'Make a Siri key at the Mac: jantar chat shortcut add',
+  chatKeyList: 'List Siri keys at the Mac: jantar chat shortcut list',
+  chatKeyRevoke: 'Revoke a Siri key at the Mac: jantar chat shortcut revoke <id>',
 };
 
 /** What an `extension` route answers without a valid extension key (401). */

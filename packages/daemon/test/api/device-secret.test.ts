@@ -115,6 +115,8 @@ describe('which routes need the device secret', () => {
         'placeVisitAdd',
         'placeVisitDelete',
         'placeVisitUpdate',
+        // v0.10 Chat: the one key route outside the switch (localOnly: refused over TCP anyway, after this check)
+        'chatKeyRevoke',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);

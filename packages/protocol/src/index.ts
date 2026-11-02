@@ -35,6 +35,8 @@
  * - v0.9 Log a comment (in life, post-place, api, constants): a post body may be posted with its
  *   link, `postPlaceOf` reads a comment's link for its platform and where (never fetched), Today
  *   counts today's comments, a comment goal names its platform, Done shows the newest 300
+ * - v0.10 Chat (in chat, settings, api): one thread per Mac replacing Ask, its changes with Undo,
+ *   Confirm and Do-it cards, photos, the chat keys and the Siri door (`POST /v1/capture/chat`)
  */
 export * from './constants.js';
 export * from './models.js';
@@ -51,4 +53,5 @@ export * from './intel.js';
 export * from './primer.js';
 export * from './meetings.js';
 export * from './ask.js';
+export * from './chat.js';
 export * from './alerts.js';

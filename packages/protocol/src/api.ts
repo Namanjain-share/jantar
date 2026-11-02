@@ -184,6 +184,23 @@ import {
   MeetingsStatusSchema,
 } from './meetings.js';
 import { AskAddBodySchema, AskCardParamsSchema, AskListSchema, AskSendBodySchema, AskTurnParamsSchema } from './ask.js';
+import {
+  CHAT_PHOTO_MAX_BYTES,
+  CaptureChatBodySchema,
+  CaptureChatReplySchema,
+  ChatItemParamsSchema,
+  ChatKeyAddBodySchema,
+  ChatKeyAddReplySchema,
+  ChatKeyListSchema,
+  ChatKeyRevokeBodySchema,
+  ChatKeyRevokeReplySchema,
+  ChatListQuerySchema,
+  ChatListSchema,
+  ChatPhotoParamsSchema,
+  ChatSendBodySchema,
+  ChatStatusSchema,
+  ChatTurnParamsSchema,
+} from './chat.js';
 import { StateSchema } from './state.js';
 import { EventSchema } from './events.js';
 
@@ -1550,6 +1567,70 @@ export const ROUTES = {
     params: AskCardParamsSchema, response: OkReplySchema, summary: 'Undo an Add within a day: delete the item as it is now.',
   }),
 
+  // --- v0.10 Chat (replaces Ask; the switch keeps its name `ask`): one thread per Mac, the phone's
+  // routes (control, reads included). chatSend and chatPhotoAdd spend quota or exist only to be sent, so
+  // --read-only refuses them. chatClear and chatStatus are on ctl.sock too (jantar chat clear | status).
+  chatList: route({
+    method: 'GET', path: '/v1/chat', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask',
+    query: ChatListQuerySchema, response: ChatListSchema, summary: 'The thread: the newest turns (before a turn), oldest first, and whether Chat can run now.',
+  }),
+  chatSend: route({
+    method: 'POST', path: '/v1/chat', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask', status: 202,
+    body: ChatSendBodySchema, response: IdReplySchema, summary: 'Send a message (and photos already uploaded); one headless Claude run answers it (the reply is the turn id).',
+  }),
+  chatClear: route({
+    method: 'DELETE', path: '/v1/chat', scope: 'control', phase: 'v0.10', ctl: true, feature: 'ask',
+    query: z.strictObject({ broken: z.literal('1').optional() }), response: OkReplySchema,
+    summary: 'Delete the whole thread, its photos and its Undo journal (items Chat added stay); ?broken=1 (the Mac only) moves a chat.db that will not open aside.',
+  }),
+  chatStatus: route({
+    method: 'GET', path: '/v1/chat/status', scope: 'admin', phase: 'v0.10', ctl: true, localOnly: true,
+    response: ChatStatusSchema, summary: 'The history on disk (turns, photos, bytes) and whether chat.db opened; never a text.',
+  }),
+  chatCancel: route({
+    method: 'DELETE', path: '/v1/chat/turns/:id', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask',
+    params: ChatTurnParamsSchema, response: OkReplySchema, summary: 'Stop a turn that is waiting or running.',
+  }),
+  chatUndo: route({
+    method: 'POST', path: '/v1/chat/turns/:id/changes/:n/undo', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask',
+    params: ChatItemParamsSchema, response: OkReplySchema, summary: 'Undo one change Chat made, within a day (an edit only while nothing changed it since).',
+  }),
+  chatCard: route({
+    method: 'POST', path: '/v1/chat/turns/:id/cards/:n', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask',
+    params: ChatItemParamsSchema, response: z.union([IdReplySchema, OkReplySchema]),
+    summary: 'Run a card: Confirm a delete or an action, or Do a write a tainted turn held back.',
+  }),
+  chatCardDismiss: route({
+    method: 'POST', path: '/v1/chat/turns/:id/cards/:n/dismiss', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask',
+    params: ChatItemParamsSchema, response: OkReplySchema, summary: 'Dismiss a card.',
+  }),
+  chatPhotoAdd: route({
+    method: 'POST', path: '/v1/chat/photos', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask',
+    rawBody: { maxBytes: CHAT_PHOTO_MAX_BYTES }, response: IdReplySchema,
+    summary: 'Store one photo for the next message (raw bytes: JPEG, PNG, WebP or GIF); the reply is its id.',
+  }),
+  chatPhoto: route({
+    method: 'GET', path: '/v1/chat/photos/:id', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask', rawResponse: true,
+    params: ChatPhotoParamsSchema, summary: "A photo of the thread (its image bytes).",
+  }),
+  chatPhotoDelete: route({
+    method: 'DELETE', path: '/v1/chat/photos/:id', scope: 'control', phase: 'v0.10', ctl: false, feature: 'ask',
+    params: ChatPhotoParamsSchema, response: OkReplySchema, summary: 'Remove a photo not sent yet.',
+  }),
+  chatKeyAdd: route({
+    method: 'POST', path: '/v1/chat/keys', scope: 'admin', phase: 'v0.10', ctl: true, localOnly: true, feature: 'ask',
+    body: ChatKeyAddBodySchema, response: ChatKeyAddReplySchema,
+    summary: 'A chat key for the Siri Shortcut, shown once (the Mac only: jantar chat shortcut add).',
+  }),
+  chatKeyList: route({
+    method: 'GET', path: '/v1/chat/keys', scope: 'admin', phase: 'v0.10', ctl: true, localOnly: true,
+    response: ChatKeyListSchema, summary: 'The active chat keys and where the door is (never a key).',
+  }),
+  chatKeyRevoke: route({
+    method: 'POST', path: '/v1/chat/keys/revoke', scope: 'admin', phase: 'v0.10', ctl: true, localOnly: true,
+    body: ChatKeyRevokeBodySchema, response: ChatKeyRevokeReplySchema, summary: 'Revoke one chat key, or all of them.',
+  }),
+
   // --- v0.5.3 The Mac only (localOnly): folder todos for `jantar mcp` (the Life project linked to a
   // session's folder; todo routes were never on ctl.sock before), and a test push per alert group.
   folderTodos: route({
@@ -1667,6 +1748,15 @@ export const ROUTES = {
     bodyLimit: INTEL_READ_LIMITS.captureBodyBytes,
     body: CaptureSaveBodySchema, response: CaptureSaveReplySchema,
     summary: 'Save a shared link to Intel (the iOS Shortcut); the reply is always the same sentence.',
+  }),
+
+  // --- v0.10 The Siri door (CAPTURE_PREFIX): a chat key, only in tailscale or cloudflare mode while Chat is on
+  // and a chat key exists (404 otherwise). It queues a voice turn and answers what Siri speaks within 20 s.
+  captureChat: route({
+    method: 'POST', path: '/v1/capture/chat', scope: 'capture', phase: 'v0.10', ctl: false,
+    bodyLimit: 8 * 1024,
+    body: CaptureChatBodySchema, response: CaptureChatReplySchema,
+    summary: 'Ask Jantar by voice (the Siri Shortcut): the reply is what Siri speaks.',
   }),
 
   // --- v0.8 The extension's reads (its key, loopback, its bound Origin), while Read saved links is on in its popup.

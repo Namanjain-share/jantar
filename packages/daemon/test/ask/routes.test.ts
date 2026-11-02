@@ -33,7 +33,7 @@ import { FakeClock } from '../../src/core/clock.js';
 import { NOW, TODAY, WAIT, answerText, askOn, askSettings, claudeJson, type AskParts } from './helpers.js';
 
 const ID = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
-const ASK = (Object.entries(ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.feature === 'ask');
+const ASK = (Object.entries(ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.feature === 'ask' && d.phase !== 'v0.10');
 
 let api: TestApi | undefined;
 let parts: AskParts | undefined;

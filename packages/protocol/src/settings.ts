@@ -313,12 +313,16 @@ export const MeetingsSettingsSchema = z.object({
 });
 
 /**
- * v0.5.3 Ask: a chat page that suggests Life items through one headless
- * Claude run (Rewrite's model). Off until turned on at the Mac
- * (`jantar ask on`); only the switch lives here.
+ * v0.5.3 Ask, v0.10 Chat: the chat page and its headless Claude runs. Off
+ * until turned on at the Mac (`jantar chat on`). v0.10: the Chat page's
+ * switch; the name stays `ask` so a 0.9 daemon keeps it.
  */
 export const AskSettingsSchema = z.object({
   enabled: z.boolean().default(false),
+  /** v0.10: Chat history kept this many days (turns, photos and Undo journal), 1-365. */
+  keepDays: z.number().int().min(1).max(365).default(30),
+  /** v0.10: the model a Siri turn runs on (a phone turn uses rewrite.model). */
+  voiceModel: RewriteModelSchema.default('sonnet'),
 });
 
 /**

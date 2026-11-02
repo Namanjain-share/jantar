@@ -82,6 +82,7 @@ import { EXT_ROUTE_IMPLS } from './routes/ext.js';
 import { MEETING_ITEMS_ROUTE_IMPLS } from './routes/meeting-items.js';
 import { MEETINGS_ROUTE_IMPLS } from './routes/meetings.js';
 import { ASK_ROUTE_IMPLS } from './routes/ask.js';
+import { CHAT_ROUTE_IMPLS } from './routes/chat.js';
 import { NOTIFY_ROUTE_IMPLS } from './routes/notify.js';
 import { MACHINES_ROUTE_IMPLS } from './routes/machines.js';
 import { CAPTURE_ROUTE_IMPLS } from './routes/capture.js';
@@ -633,4 +634,6 @@ export const ROUTE_IMPLS: RouteTable = {
   ...EXT_READS_ROUTE_IMPLS,
   ...CAPTURE_ROUTE_IMPLS,
   ...CAPTURE_KEYS_ROUTE_IMPLS,
+  // v0.10 Chat (replaces Ask) and the Siri door
+  ...CHAT_ROUTE_IMPLS,
 };
