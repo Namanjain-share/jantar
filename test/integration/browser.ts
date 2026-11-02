@@ -53,7 +53,14 @@ export interface Viewport {
   height: number;
   phone?: boolean;
   scheme?: 'light' | 'dark';
+  /** 0.11: a coarse pointer at any width: an iPad (its user agent too), or Chrome's device mode. */
+  touch?: boolean;
+  /** 0.11: the safe-area insets of the iPad's Home Screen app (the status bar, the home indicator). */
+  insets?: { top: number; bottom: number };
 }
+
+/** iPadOS 26's Safari says it is a Mac; only its five touch points tell it apart (MacIntel, maxTouchPoints 5). */
+export const IPAD_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15';
 
 export const DESK: Viewport = { width: 1440, height: 900 };
 export const PHONE: Viewport = { width: 390, height: 844, phone: true };
@@ -65,14 +72,16 @@ export function pageOpener(browser: Browser, base: () => string) {
     const ctx = await browser.newContext({
       viewport: { width: o.width, height: o.height },
       deviceScaleFactor: 2,
-      isMobile: o.phone === true,
-      hasTouch: o.phone === true,
+      isMobile: o.phone === true || o.touch === true,
+      hasTouch: o.phone === true || o.touch === true,
+      ...(o.touch ? { userAgent: IPAD_UA } : {}),
       colorScheme: o.scheme ?? 'light',
       locale: 'en-GB',
       serviceWorkers: 'block',
     });
     contexts.push(ctx);
     const page = await ctx.newPage();
+    await emulateInsets(page, o);
     const watch: Watch = { csp: [], errors: [] };
     page.on('console', (m) => {
       const t = m.text();
@@ -273,4 +282,76 @@ export async function glyphShape(row: Locator): Promise<string> {
   for (let y = 0; y < shot.height; y += 1) for (let x = 0; x < shot.width; x += 1) shape += Math.abs(luma(shot, x, y) - bg) > 12 ? '1' : '0';
   expect(shape.includes('1'), 'a glyph is invisible in grayscale').toBe(true);
   return shape;
+}
+
+/** The insets of `o`, if it has any, through the DevTools protocol (Chromium has no option for them). */
+async function emulateInsets(page: Page, o: Viewport): Promise<void> {
+  if (!o.insets) return;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: o.insets.top, bottom: o.insets.bottom, left: 0, right: 0 } });
+}
+
+/** A fixture as scripts/screenshots.mjs serves it: its clock, its time zone and its /v1 answers. */
+export interface AnsweringFixture {
+  now: number;
+  timezone: string;
+  v04: { answer(method: string, url: URL, body?: Buffer | null): { status: number; body?: unknown; bytes?: Buffer; type?: string } | null };
+}
+
+/**
+ * 0.11: a page in its own context, as scripts/screenshots.mjs opens one: the
+ * fixture's clock and time zone, a paired control device, the event stream
+ * accepted and quiet, /v1 answered from the fixture (or from `override`
+ * first), reduced motion; with `o.touch` an iPad (its user agent,
+ * MacIntel, five touch points) and `o.insets` its safe areas. Watched like
+ * pageOpener's pages; `close()` closes its context.
+ */
+export async function openTouchable(
+  browser: Browser,
+  o: Viewport,
+  fixture: AnsweringFixture,
+  override?: (url: URL) => { status: number; body: unknown } | null,
+): Promise<{ page: Page; watch: Watch; close: () => Promise<void> }> {
+  const touch = o.phone === true || o.touch === true;
+  const ctx = await browser.newContext({
+    viewport: { width: o.width, height: o.height },
+    deviceScaleFactor: 2,
+    isMobile: touch,
+    hasTouch: touch,
+    ...(o.touch ? { userAgent: IPAD_UA } : {}),
+    colorScheme: o.scheme ?? 'light',
+    locale: 'en-GB',
+    timezoneId: fixture.timezone,
+    serviceWorkers: 'block',
+    reducedMotion: 'reduce',
+  });
+  await ctx.clock.setFixedTime(fixture.now);
+  await ctx.addInitScript((ipad: boolean) => {
+    try {
+      localStorage.setItem('jantar:device', JSON.stringify({ id: 'dev2', name: ipad ? 'iPad' : 'iPhone', scopes: ['read', 'control', 'launch'] }));
+    } catch {
+      // no storage: Life asks the Mac and gets the same answers
+    }
+    if (!ipad) return;
+    Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel', configurable: true });
+    Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5, configurable: true });
+  }, o.touch === true);
+  await ctx.routeWebSocket((url) => url.pathname === '/v1/events', () => undefined);
+  await ctx.route(
+    (url) => url.pathname.startsWith('/v1/'),
+    async (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      const own = req.method() === 'GET' ? override?.(url) : null;
+      if (own) return route.fulfill({ status: own.status, contentType: 'application/json; charset=utf-8', body: JSON.stringify(own.body) });
+      const reply = fixture.v04.answer(req.method(), url, req.postDataBuffer());
+      if (!reply) return route.continue();
+      if (reply.bytes) return route.fulfill({ status: reply.status, contentType: reply.type ?? 'application/octet-stream', body: reply.bytes });
+      return route.fulfill({ status: reply.status, contentType: 'application/json; charset=utf-8', body: JSON.stringify(reply.body) });
+    },
+  );
+  const page = await ctx.newPage();
+  await emulateInsets(page, o);
+  const watch = watchConsole(page);
+  return { page, watch, close: () => ctx.close() };
 }

@@ -1,0 +1,146 @@
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+/**
+ * What the wide-window suite (web-v011-layout.integration.test.ts) reads in
+ * the page: a port of the iPad study's measuring script (build plan 6.2; it
+ * lives outside the repo, so it can't be imported). `probeLayout` runs in
+ * the page through page.evaluate, so it is one self-contained function; the
+ * numbers are worked out in Node by packages/web/test/layout-metric.ts.
+ *
+ * - region: the content region, main#main, inside the viewport.
+ * - boxes: the content boxes in it, each cut to the viewport and to every
+ *   box that clips it: visible text runs (one per line), pictures (img, svg,
+ *   canvas, video), form fields, and painted boxes (a background other than
+ *   the one behind it: a card, a chip, a button, a meter, a selected row).
+ *   A border alone is not content. A pane's own ground (90 % of its pane's
+ *   width and height or more) is not either.
+ * - sideways: the page scrolling sideways, and every box that scrolls or
+ *   cuts its content sideways, unless it (or a box around it) says it is
+ *   meant to with data-scroll-x (the terminal mirror, the code view, the
+ *   Accounts runway, the phone's chip strips).
+ * - targets: every control on screen, for the 44 pt check (c33).
+ * - exempt: why this state isn't measured for width, when it isn't (an
+ *   empty state, a place that is off).
+ */
+import type { Named, Rect } from '../../packages/web/test/layout-metric.js';
+
+export interface Probe {
+  vw: number;
+  vh: number;
+  region: Rect | null;
+  boxes: Rect[];
+  sideways: string[];
+  targets: Named[];
+  exempt: string | null;
+}
+
+export function probeLayout(): Probe {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  type Box = { l: number; t: number; r: number; b: number };
+  const VIEW: Box = { l: 0, t: 0, r: vw, b: vh };
+  const cut = (a: Box, b: Box): Box => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
+  const boxOf = (r: DOMRect): Box => ({ l: r.left, t: r.top, r: r.right, b: r.bottom });
+  const rectOf = (b: Box): Rect | null => (b.r - b.l > 0 && b.b - b.t > 0 ? { x: Math.round(b.l), y: Math.round(b.t), w: Math.round(b.r - b.l), h: Math.round(b.b - b.t) } : null);
+  const styles = new Map<Element, CSSStyleDeclaration>();
+  const style = (el: Element) => {
+    let s = styles.get(el);
+    if (!s) {
+      s = getComputedStyle(el);
+      styles.set(el, s);
+    }
+    return s;
+  };
+  const describe = (el: Element) => {
+    const label = el.getAttribute('aria-label');
+    const cls = typeof el.className === 'string' ? el.className.split(/\s+/).filter(Boolean).slice(0, 4).join('.') : '';
+    return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${label ? `[${label.slice(0, 30)}]` : ''}${cls ? `.${cls}` : ''}`.slice(0, 100);
+  };
+  // What clips an element: the viewport and every ancestor that doesn't show its overflow.
+  const clips = new Map<Element, Box>();
+  const clipOf = (el: Element): Box => {
+    const known = clips.get(el);
+    if (known) return known;
+    const p = el.parentElement;
+    let c = VIEW;
+    if (p) {
+      c = clipOf(p);
+      const s = style(p);
+      if (s.overflowX !== 'visible' || s.overflowY !== 'visible') c = cut(c, boxOf(p.getBoundingClientRect()));
+    }
+    clips.set(el, c);
+    return c;
+  };
+  const visible = (el: Element) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+
+  const main = document.querySelector('main#main');
+  const out: Probe = { vw, vh, region: null, boxes: [], sideways: [], targets: [], exempt: null };
+  if (main) {
+    out.region = rectOf(cut(VIEW, boxOf(main.getBoundingClientRect())));
+    const push = (el: Element, r: DOMRect) => {
+      const b = rectOf(cut(clipOf(el), boxOf(r)));
+      if (b) out.boxes.push(b);
+    };
+    // Text runs, one box per line.
+    const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    while (walker.nextNode()) {
+      const t = walker.currentNode as Text;
+      const el = t.parentElement;
+      if (!el || !(t.textContent ?? '').trim() || !visible(el)) continue;
+      range.selectNodeContents(t);
+      for (const r of range.getClientRects()) push(el, r);
+    }
+    // Pictures and fields.
+    for (const el of main.querySelectorAll('img, svg, canvas, video, input:not([type=hidden]), textarea, select')) {
+      if (el.tagName.toLowerCase() === 'svg' && el.parentElement?.closest('svg')) continue;
+      if (visible(el)) push(el, el.getBoundingClientRect());
+    }
+    // Painted boxes: a background of their own, other than a pane's ground.
+    const paint = (el: Element | null): string => {
+      for (let e = el; e; e = e.parentElement) {
+        const bg = style(e).backgroundColor;
+        if (bg && bg !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(bg)) return bg;
+      }
+      return 'none';
+    };
+    for (const el of main.querySelectorAll('*')) {
+      const bg = style(el).backgroundColor;
+      if (!bg || bg === 'transparent' || /rgba\([^)]*,\s*0\)$/.test(bg)) continue;
+      if (bg === paint(el.parentElement) || !visible(el)) continue;
+      const r = el.getBoundingClientRect();
+      const pane = el.parentElement?.closest('[data-pane], .split-list, .split-detail, main') ?? main;
+      const pr = pane.getBoundingClientRect();
+      if (r.width >= 0.9 * pr.width && r.height >= 0.9 * pr.height) continue;
+      push(el, r);
+    }
+    if (main.querySelector('[data-empty-state]')) out.exempt = 'an empty state';
+  }
+
+  // Sideways: the page, then every box that scrolls or cuts sideways.
+  const root = document.scrollingElement ?? document.documentElement;
+  if (root.scrollWidth > vw + 1) out.sideways.push(`the page scrolls sideways: ${root.scrollWidth} px in ${vw}`);
+  for (const el of document.querySelectorAll('body *')) {
+    const s = style(el);
+    if (s.overflowX !== 'auto' && s.overflowX !== 'scroll') continue;
+    if (el.scrollWidth <= el.clientWidth + 1 || el.closest('[data-scroll-x]') || !visible(el)) continue;
+    out.sideways.push(`${describe(el)}: ${el.scrollWidth} px in ${el.clientWidth}`);
+  }
+
+  // Controls on screen (the 44 pt check reads them on touch).
+  const SEL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=radio], [role=checkbox], [role=switch], [role=menuitem], [role=option], [role=slider], [role=link]';
+  for (const el of document.querySelectorAll(SEL)) {
+    if (el.parentElement?.closest(SEL) || !visible(el)) continue;
+    let r = el.getBoundingClientRect();
+    if (el instanceof HTMLInputElement && (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') && (r.width <= 2 || r.height <= 2)) {
+      const label = el.closest('label') ?? (el.id ? document.querySelector(`label[for="${el.id}"]`) : null);
+      if (!label) continue;
+      r = label.getBoundingClientRect();
+    }
+    const b = rectOf(cut(clipOf(el), boxOf(r)));
+    if (!b) continue;
+    const name = (el.getAttribute('aria-label') ?? (el as HTMLElement).innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    out.targets.push({ ...b, name: name || describe(el) });
+  }
+  return out;
+}

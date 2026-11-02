@@ -1,0 +1,484 @@
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+/**
+ * 0.11 wide windows and the iPad (build plan 6.1, 6.2) in the BUILT web app,
+ * in a real headless Chromium: every place at the plan's window sizes, with
+ * a fine pointer (a Mac) and a coarse one (an iPad, Chrome's device mode).
+ * Served with the daemon's real headers and the screenshot fixture
+ * (web-fixture-v08.ts, with its Chat, Posts and Intel variants), as
+ * scripts/screenshots.mjs serves it. Each context opens the app once and
+ * moves between places as the app does (the router, no reload).
+ *
+ * The checks here (6.2; the rest arrive with c33's rotation, keyboard and
+ * hover tests):
+ *
+ *   1. Nothing scrolls sideways: not the page, and no box, unless it says it
+ *      is meant to (data-scroll-x: the terminal mirror, the code view, the
+ *      Accounts runway, the phone's chip strips). KNOWN_SIDEWAYS lists what
+ *      still does, with the commit that fixes it.
+ *   3. At 1024 px and wider, no place leaves more than 35 % of its content
+ *      width empty (layout-metric.ts). Empty states are exempt. Every place
+ *      that still does is listed in KNOWN_WIDE_GAPS with its measure; a
+ *      listed one that passes fails the test too, so each chunk-2 commit
+ *      removes its rows, and the list is empty at c23.
+ *   7. No console message about the Content Security Policy, no error, no
+ *      injected <style>.
+ *  12. The user's four screens at 1440 x 960 (mac-1440 and touch-1440):
+ *      Today, Chat (its empty thread too), Alerts and Intel are measured,
+ *      never exempt.
+ *
+ * Tier A sizes in light run by default; JANTAR_LAYOUT_FULL=1 adds tier B and
+ * dark. On a failure the page's PNG goes to the OS temp folder, named in the
+ * message. Every name and value is synthetic. Needs a built dist/ and a
+ * Chromium.
+ */
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { chromium, type Browser, type Page } from 'playwright-core';
+import { perfBudgetMs } from '@jantar/fixtures';
+import { emptyShare, MAX_EMPTY } from '../../packages/web/test/layout-metric.js';
+import { browserReady, DIST, openTouchable, type Viewport, type Watch } from './browser.js';
+import { probeLayout, type Probe } from './layout-probe.js';
+import { lid } from './web-fixture-v04.js';
+import { READ_IDS, webFixtureV08, type V08Variant, type WebFixtureV08 } from './web-fixture-v08.js';
+import { sidOf } from './web-fixture.js';
+import { serveWebApp, type WebServer } from './web-server.js';
+
+const ready = await browserReady('web-v011-layout.integration');
+const FULL = process.env.JANTAR_LAYOUT_FULL === '1';
+
+/** The iPad's insets in the Home Screen app: the status bar and the home indicator. */
+const IPAD = { top: 24, bottom: 20 };
+
+/** The window sizes (6.1). Tier B and dark run with JANTAR_LAYOUT_FULL=1. */
+export const LAYOUT_SIZES: Record<string, Viewport & { tier: 'A' | 'B' }> = {
+  'mac-1440': { width: 1440, height: 960, tier: 'A' },
+  'touch-1440': { width: 1440, height: 960, touch: true, tier: 'A' },
+  desktop: { width: 1440, height: 900, tier: 'A' },
+  'mac-1024': { width: 1024, height: 768, tier: 'B' },
+  'ipad-air-l': { width: 1180, height: 820, touch: true, insets: IPAD, tier: 'A' },
+  'ipad-air-p': { width: 820, height: 1180, touch: true, insets: IPAD, tier: 'A' },
+  'ipad-pro-l': { width: 1210, height: 834, touch: true, insets: IPAD, tier: 'A' },
+  'ipad-pro-p': { width: 834, height: 1210, touch: true, insets: IPAD, tier: 'A' },
+  'ipad-1024': { width: 1024, height: 820, touch: true, insets: IPAD, tier: 'B' },
+  'ipad-13-l': { width: 1366, height: 1024, touch: true, insets: IPAD, tier: 'B' },
+  'split-23-air': { width: 795, height: 820, touch: true, tier: 'A' },
+  'split-23-pro': { width: 825, height: 834, touch: true, tier: 'A' },
+  'split-12-air': { width: 585, height: 820, touch: true, tier: 'A' },
+  'split-12-pro': { width: 600, height: 834, touch: true, tier: 'A' },
+  'split-p23-air': { width: 490, height: 1180, touch: true, tier: 'B' },
+  'split-p23-pro': { width: 504, height: 1210, touch: true, tier: 'B' },
+  third: { width: 375, height: 820, touch: true, tier: 'B' },
+  'third-18': { width: 320, height: 1180, touch: true, tier: 'B' },
+  'win-min': { width: 375, height: 486, touch: true, tier: 'B' },
+  'win-quarter': { width: 585, height: 398, touch: true, tier: 'B' },
+  'safari-l': { width: 1180, height: 734, touch: true, tier: 'B' },
+  'safari-p': { width: 820, height: 1094, touch: true, tier: 'B' },
+  phone: { width: 390, height: 844, phone: true, tier: 'A' },
+};
+
+interface State {
+  name: string;
+  path: string;
+  variant?: V08Variant;
+  accounts?: 'cswap' | 'single';
+  /** Chat on with no turns yet (the user's -14). */
+  chatEmpty?: boolean;
+}
+
+/** The places and states measured (6.1's shots that open by URL; c33 adds the ones that need steps). */
+export const STATES: readonly State[] = [
+  { name: 'board', path: '/' },
+  { name: 'session', path: `/s/${sidOf(4)}` },
+  { name: 'session-card', path: `/s/${sidOf(1)}` },
+  { name: 'new', path: '/new?root=r.work&path=jantar&start=1' },
+  { name: 'today', path: '/today' },
+  { name: 'todos', path: '/todos' },
+  { name: 'reminders', path: '/todos?tab=reminders' },
+  { name: 'projects', path: '/todos?tab=projects' },
+  { name: 'meds', path: '/meds' },
+  { name: 'food', path: '/food' },
+  { name: 'money', path: '/money' },
+  { name: 'places', path: '/places' },
+  { name: 'place', path: `/places?id=${lid(701)}` },
+  { name: 'intel', path: '/intel' },
+  { name: 'meetings', path: '/meetings' },
+  { name: 'meeting', path: `/meetings?id=${lid(501)}` },
+  { name: 'accounts', path: '/accounts' },
+  { name: 'alerts', path: '/alerts' },
+  { name: 'devices', path: '/devices' },
+  { name: 'files', path: '/files' },
+  { name: 'more', path: '/more' },
+  { name: 'chat', path: '/chat', variant: 'chat' },
+  { name: 'chat-empty', path: '/chat', variant: 'chat', chatEmpty: true },
+  { name: 'posts', path: '/posts', variant: 'posts' },
+  { name: 'intel-item', path: `/intel?item=${encodeURIComponent(READ_IDS.dal)}`, variant: 'intel-read' },
+  { name: 'accounts-single', path: '/accounts', accounts: 'single' },
+];
+
+/** 6.2 #12: the user's four screens at 1440 x 960, never exempt. */
+const USERS_CASE = { sizes: ['mac-1440', 'touch-1440'], states: ['today', 'chat', 'chat-empty', 'alerts', 'intel', 'intel-item'] };
+
+/**
+ * Every place x size at 1024 and wider that still leaves more than 35 % of its width empty, with the
+ * share measured when it was listed (chunk 1, the screenshot fixture). Chunk 2 widens each place and
+ * removes its rows (c14 Today, c16 Alerts, c17 Intel, c15 Chat, ...); the list is empty at c23.
+ *
+ * A short list reads as empty however wide it is: with 3 rows (Alerts' fixture) no 4 px column has
+ * 96 px of content, so Alerts measures 0.97-1. Its wide table and detail (c16) need either more rows in
+ * view or the detail's text beside them to pass.
+ */
+export const KNOWN_WIDE_GAPS: Record<string, number> = {
+  'today@mac-1440': 0.85,
+  'today@touch-1440': 0.85,
+  'today@desktop': 0.85,
+  'today@mac-1024': 0.79,
+  'today@ipad-air-l': 0.82,
+  'today@ipad-pro-l': 0.82,
+  'today@ipad-1024': 0.79,
+  'today@ipad-13-l': 0.84,
+  'today@safari-l': 0.82,
+  'todos@mac-1440': 0.85,
+  'todos@touch-1440': 0.83,
+  'todos@desktop': 0.85,
+  'todos@mac-1024': 0.79,
+  'todos@ipad-air-l': 0.79,
+  'todos@ipad-pro-l': 0.79,
+  'todos@ipad-1024': 0.75,
+  'todos@ipad-13-l': 0.81,
+  'todos@safari-l': 0.79,
+  'reminders@mac-1440': 0.88,
+  'reminders@touch-1440': 0.87,
+  'reminders@desktop': 0.88,
+  'reminders@mac-1024': 0.83,
+  'reminders@ipad-air-l': 0.84,
+  'reminders@ipad-pro-l': 0.84,
+  'reminders@ipad-1024': 0.81,
+  'reminders@ipad-13-l': 0.86,
+  'reminders@safari-l': 0.84,
+  'projects@mac-1440': 0.9,
+  'projects@touch-1440': 0.9,
+  'projects@desktop': 0.9,
+  'projects@mac-1024': 0.86,
+  'projects@ipad-air-l': 0.87,
+  'projects@ipad-pro-l': 0.88,
+  'projects@ipad-1024': 0.85,
+  'projects@ipad-13-l': 0.89,
+  'projects@safari-l': 0.87,
+  'meds@mac-1440': 0.87,
+  'meds@touch-1440': 0.86,
+  'meds@desktop': 0.87,
+  'meds@mac-1024': 0.81,
+  'meds@ipad-air-l': 0.83,
+  'meds@ipad-pro-l': 0.84,
+  'meds@ipad-1024': 0.81,
+  'meds@ipad-13-l': 0.86,
+  'meds@safari-l': 0.83,
+  'food@mac-1440': 0.95,
+  'food@touch-1440': 0.93,
+  'food@desktop': 0.95,
+  'food@mac-1024': 0.92,
+  'food@ipad-air-l': 0.91,
+  'food@ipad-pro-l': 0.91,
+  'food@ipad-1024': 0.9,
+  'food@ipad-13-l': 0.92,
+  'food@safari-l': 0.91,
+  'money@mac-1440': 0.89,
+  'money@touch-1440': 0.88,
+  'money@desktop': 0.89,
+  'money@mac-1024': 0.85,
+  'money@ipad-air-l': 0.86,
+  'money@ipad-pro-l': 0.86,
+  'money@ipad-1024': 0.84,
+  'money@ipad-13-l': 0.87,
+  'money@safari-l': 0.89,
+  'places@mac-1440': 0.84,
+  'places@touch-1440': 0.83,
+  'places@desktop': 0.84,
+  'places@mac-1024': 0.77,
+  'places@ipad-air-l': 0.79,
+  'places@ipad-pro-l': 0.8,
+  'places@ipad-1024': 0.76,
+  'places@ipad-13-l': 0.82,
+  'places@safari-l': 0.79,
+  'place@mac-1440': 0.83,
+  'place@touch-1440': 0.83,
+  'place@desktop': 0.83,
+  'place@mac-1024': 0.75,
+  'place@ipad-air-l': 0.79,
+  'place@ipad-pro-l': 0.79,
+  'place@ipad-1024': 0.75,
+  'place@ipad-13-l': 0.82,
+  'place@safari-l': 0.8,
+  'intel@mac-1440': 0.69,
+  'intel@touch-1440': 0.68,
+  'intel@desktop': 0.69,
+  'intel@mac-1024': 0.56,
+  'intel@ipad-air-l': 0.6,
+  'intel@ipad-pro-l': 0.61,
+  'intel@ipad-1024': 0.54,
+  'intel@ipad-13-l': 0.66,
+  'intel@safari-l': 0.6,
+  'meetings@mac-1440': 0.67,
+  'meetings@touch-1440': 0.65,
+  'meetings@desktop': 0.67,
+  'meetings@mac-1024': 0.53,
+  'meetings@ipad-air-l': 0.57,
+  'meetings@ipad-pro-l': 0.58,
+  'meetings@ipad-1024': 0.5,
+  'meetings@ipad-13-l': 0.63,
+  'meetings@safari-l': 0.69,
+  'meeting@mac-1440': 0.66,
+  'meeting@touch-1440': 0.76,
+  'meeting@desktop': 0.77,
+  'meeting@mac-1024': 0.69,
+  'meeting@ipad-air-l': 0.71,
+  'meeting@ipad-pro-l': 0.71,
+  'meeting@ipad-1024': 0.67,
+  'meeting@ipad-13-l': 0.74,
+  'meeting@safari-l': 0.73,
+  'accounts@mac-1440': 0.47,
+  'accounts@touch-1440': 0.47,
+  'accounts@desktop': 0.47,
+  'accounts@mac-1024': 0.64,
+  'accounts@ipad-air-l': 0.54,
+  'accounts@ipad-pro-l': 0.52,
+  'accounts@ipad-1024': 0.63,
+  'accounts@ipad-13-l': 0.48,
+  'accounts@safari-l': 0.54,
+  'alerts@mac-1440': 1,
+  'alerts@touch-1440': 0.97,
+  'alerts@desktop': 1,
+  'alerts@mac-1024': 1,
+  'alerts@ipad-air-l': 0.97,
+  'alerts@ipad-pro-l': 0.97,
+  'alerts@ipad-1024': 0.96,
+  'alerts@ipad-13-l': 0.97,
+  'alerts@safari-l': 0.97,
+  'devices@mac-1440': 0.71,
+  'devices@touch-1440': 0.73,
+  'devices@desktop': 0.72,
+  'devices@mac-1024': 0.68,
+  'devices@ipad-air-l': 0.7,
+  'devices@ipad-pro-l': 0.71,
+  'devices@ipad-1024': 0.65,
+  'devices@ipad-13-l': 0.63,
+  'devices@safari-l': 0.72,
+  'files@mac-1440': 0.68,
+  'files@touch-1440': 0.68,
+  'files@desktop': 0.68,
+  'files@mac-1024': 0.63,
+  'files@ipad-air-l': 0.68,
+  'files@ipad-pro-l': 0.69,
+  'files@ipad-1024': 0.63,
+  'files@ipad-13-l': 0.66,
+  'files@safari-l': 0.68,
+  'more@mac-1440': 0.99,
+  'more@touch-1440': 0.99,
+  'more@desktop': 0.99,
+  'more@mac-1024': 0.98,
+  'more@ipad-air-l': 0.98,
+  'more@ipad-pro-l': 0.98,
+  'more@ipad-1024': 0.98,
+  'more@ipad-13-l': 0.98,
+  'more@safari-l': 0.98,
+  'chat@mac-1440': 0.63,
+  'chat@touch-1440': 0.58,
+  'chat@desktop': 0.63,
+  'chat@mac-1024': 0.48,
+  'chat@ipad-air-l': 0.48,
+  'chat@ipad-pro-l': 0.49,
+  'chat@ipad-1024': 0.39,
+  'chat@ipad-13-l': 0.55,
+  'chat@safari-l': 0.48,
+  'chat-empty@mac-1440': 0.53,
+  'chat-empty@touch-1440': 0.53,
+  'chat-empty@desktop': 0.53,
+  'chat-empty@ipad-air-l': 0.42,
+  'chat-empty@ipad-pro-l': 0.43,
+  'chat-empty@ipad-13-l': 0.5,
+  'chat-empty@safari-l': 0.42,
+  'posts@mac-1440': 0.84,
+  'posts@touch-1440': 0.8,
+  'posts@desktop': 0.84,
+  'posts@mac-1024': 0.77,
+  'posts@ipad-air-l': 0.75,
+  'posts@ipad-pro-l': 0.76,
+  'posts@ipad-1024': 0.71,
+  'posts@ipad-13-l': 0.79,
+  'posts@safari-l': 0.75,
+  'intel-item@mac-1440': 0.81,
+  'intel-item@touch-1440': 0.8,
+  'intel-item@desktop': 0.82,
+  'intel-item@mac-1024': 0.75,
+  'intel-item@ipad-air-l': 0.78,
+  'intel-item@ipad-pro-l': 0.78,
+  'intel-item@ipad-1024': 0.74,
+  'intel-item@ipad-13-l': 0.79,
+  'intel-item@safari-l': 0.78,
+  'accounts-single@mac-1440': 0.86,
+  'accounts-single@touch-1440': 0.86,
+  'accounts-single@desktop': 0.86,
+  'accounts-single@mac-1024': 0.81,
+  'accounts-single@ipad-air-l': 0.82,
+  'accounts-single@ipad-pro-l': 0.83,
+  'accounts-single@ipad-1024': 0.79,
+  'accounts-single@ipad-13-l': 0.85,
+  'accounts-single@safari-l': 0.82,
+};
+
+/**
+ * What still scrolls or cuts sideways, by place x size, with the commit that fixes it. Like
+ * KNOWN_WIDE_GAPS, a listed one that no longer does fails the test, so it is taken out.
+ */
+export const KNOWN_SIDEWAYS: Record<string, string> = {
+  // A touch screen at 1024 gets the Mac's chrome until c24, and the session's header with 44 pt
+  // targets needs about 640 px; the detail is 628 (0.10 gave it 608). c23 makes Show on Mac an icon.
+  'session@ipad-1024': 'c23',
+  'session-card@ipad-1024': 'c23',
+};
+
+const WIDE_FROM = 1024;
+
+/** The shot's fixture: one per accounts mode and variant. */
+const fixtureKey = (s: State) => `${s.accounts ?? 'cswap'}:${s.variant ?? 'default'}`;
+
+describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', () => {
+  let browser: Browser;
+  let server: WebServer;
+  const fixtures = new Map<string, WebFixtureV08>();
+  let current: WebFixtureV08;
+  const fixtureOf = (s: State) => {
+    const key = fixtureKey(s);
+    let f = fixtures.get(key);
+    if (!f) {
+      f = webFixtureV08({ accounts: s.accounts ?? 'cswap', variant: s.variant ?? 'default' });
+      fixtures.set(key, f);
+    }
+    return f;
+  };
+  const shots = join(tmpdir(), 'jantar-v011-layout');
+
+  beforeAll(async () => {
+    browser = await chromium.launch();
+    current = fixtureOf(STATES[0]!);
+    server = await serveWebApp(DIST, () => current);
+    mkdirSync(shots, { recursive: true });
+  });
+  afterAll(async () => {
+    await browser?.close().catch(() => undefined);
+    await server?.close();
+  });
+
+  /** Opens `path` the way the app does: the router follows history and popstate. */
+  async function go(page: Page, path: string) {
+    await page.evaluate((p) => {
+      history.pushState(null, '', p);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }, path);
+  }
+
+  /**
+   * Waits for a place to settle: no request in flight for 500 ms (its chunk and its data), then no
+   * skeleton ("Opening …", which shows only after 150 ms), nothing busy and no spinner, then a breath.
+   */
+  async function settle(page: Page, inFlight: () => number) {
+    const until = Date.now() + perfBudgetMs(15_000);
+    let quietSince = Date.now();
+    while (Date.now() < until) {
+      await page.waitForTimeout(100);
+      if (inFlight() > 0) quietSince = Date.now();
+      else if (Date.now() - quietSince >= 500) break;
+    }
+    await page
+      .waitForFunction(
+        () => !document.querySelector('main [aria-busy="true"], main [role="progressbar"]') && !/Opening [A-Z]|Connecting to the Mac/.test(document.querySelector('main')?.textContent ?? ''),
+        null,
+        { timeout: Math.max(1000, until - Date.now()) },
+      )
+      .catch(() => undefined);
+    await page.waitForTimeout(300);
+  }
+
+  const groups = new Map<string, State[]>();
+  for (const s of STATES) groups.set(fixtureKey(s), [...(groups.get(fixtureKey(s)) ?? []), s]);
+  const sizes = Object.entries(LAYOUT_SIZES).filter(([, v]) => FULL || v.tier === 'A');
+  const schemes = FULL ? (['light', 'dark'] as const) : (['light'] as const);
+
+  for (const [size, viewport] of sizes) {
+    for (const scheme of schemes) {
+      it(`${size} (${viewport.width} x ${viewport.height}${viewport.touch || viewport.phone ? ', touch' : ''}), ${scheme}`, async () => {
+        const problems: string[] = [];
+        const wide: Record<string, number> = {};
+        const measured = new Set<string>();
+        for (const [, states] of groups) {
+          const fixture = fixtureOf(states[0]!);
+          current = fixture;
+          const chatEmpty = { on: false };
+          const opened = await openTouchable(browser, { ...viewport, scheme }, fixture, (url) =>
+            chatEmpty.on && url.pathname === '/v1/chat' ? { status: 200, body: { older: null, ready: { ok: true }, keepDays: 30, turns: [] } } : null,
+          );
+          const { page, watch, close } = opened;
+          // Requests in flight, so a place counts as loaded only once its chunk and its data are here.
+          let pending = 0;
+          page.on('request', () => (pending += 1));
+          page.on('requestfinished', () => (pending -= 1));
+          page.on('requestfailed', () => (pending -= 1));
+          try {
+            for (const [i, s] of states.entries()) {
+              chatEmpty.on = s.chatEmpty === true;
+              if (i === 0 && !s.chatEmpty) await page.goto(`${server.base}${s.path}`, { waitUntil: 'networkidle' });
+              else if (i === 0) await page.goto(`${server.base}/`, { waitUntil: 'networkidle' }).then(() => go(page, s.path));
+              else {
+                // A state of its own (the empty thread): leave first, so Chat loads again.
+                if (s.chatEmpty) await go(page, '/');
+                await go(page, s.path);
+              }
+              await settle(page, () => pending);
+              const p: Probe = await page.evaluate(probeLayout);
+              const at = `${s.name} at ${size}`;
+              const shot = async () => {
+                const file = join(shots, `${size}-${scheme}-${s.name}.png`);
+                await page.screenshot({ path: file }).catch(() => undefined);
+                return file;
+              };
+              // 1. Nothing sideways (or what KNOWN_SIDEWAYS still lists).
+              const sidewaysKnown = KNOWN_SIDEWAYS[`${s.name}@${size}`] !== undefined;
+              if (p.sideways.length && !sidewaysKnown) problems.push(`${at}: sideways: ${p.sideways.join('; ')} (${await shot()})`);
+              if (!p.sideways.length && sidewaysKnown) problems.push(`${at}: nothing sideways now: take it out of KNOWN_SIDEWAYS`);
+              // 3. The width, at 1024 and wider.
+              if (viewport.width >= WIDE_FROM && p.region) {
+                const users = USERS_CASE.sizes.includes(size) && USERS_CASE.states.includes(s.name);
+                if (p.exempt && users) problems.push(`${at}: the user's case is never exempt, but read as ${p.exempt}`);
+                if (!p.exempt) {
+                  const share = Math.round(emptyShare(p.boxes, p.region) * 100) / 100;
+                  const key = `${s.name}@${size}`;
+                  measured.add(key);
+                  if (share > MAX_EMPTY) wide[key] = share;
+                  const known = KNOWN_WIDE_GAPS[key];
+                  if (share > MAX_EMPTY && known === undefined) problems.push(`${at}: ${Math.round(share * 100)} % of the width is empty (at most ${MAX_EMPTY * 100} %) (${await shot()})`);
+                  if (share <= MAX_EMPTY && known !== undefined) problems.push(`${at}: now ${Math.round(share * 100)} % empty: take it out of KNOWN_WIDE_GAPS`);
+                }
+              }
+            }
+            // 7. The console, over every place this context opened.
+            problems.push(...consoleProblems(watch, size));
+            if (await page.evaluate(() => document.querySelectorAll('style').length)) problems.push(`${size}: a <style> element was injected`);
+          } finally {
+            await close();
+          }
+        }
+        // 12. The user's four screens were measured at 1440 x 960.
+        if (USERS_CASE.sizes.includes(size)) for (const s of USERS_CASE.states) if (!measured.has(`${s}@${size}`)) problems.push(`${s} at ${size}: the user's case was not measured`);
+        if (Object.keys(wide).length) console.info(`[layout] ${size} ${scheme} still wide: ${JSON.stringify(wide)}`);
+        expect(problems, problems.join('\n')).toEqual([]);
+      }, perfBudgetMs(240_000));
+    }
+  }
+});
+
+function consoleProblems(watch: Watch, size: string): string[] {
+  return [...watch.csp.map((t) => `${size}: CSP: ${t}`), ...watch.errors.map((t) => `${size}: console: ${t}`)];
+}

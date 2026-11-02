@@ -35,8 +35,21 @@ test('every screen has a unique name, a path in the app, and two themes for each
     [
       ['phone', 390, 844, 2],
       ['desktop', 1440, 900, 1],
+      // 0.11 (build plan 6.1): the user's 1440 x 960 with either pointer, and the 11-inch iPads.
+      ['mac-1440', 1440, 960, 1],
+      ['touch-1440', 1440, 960, 2],
+      ['ipad-air-l', 1180, 820, 2],
+      ['ipad-air-p', 820, 1180, 2],
+      ['ipad-pro-l', 1210, 834, 2],
+      ['ipad-pro-p', 834, 1210, 2],
     ],
   );
+  // A coarse pointer (an iPad's user agent) on every iPad and touch size, the Home Screen app's insets on the iPads.
+  assert.deepEqual(
+    SIZES.filter((s) => s.touch).map((s) => s.key),
+    ['touch-1440', 'ipad-air-l', 'ipad-air-p', 'ipad-pro-l', 'ipad-pro-p'],
+  );
+  assert.ok(SIZES.filter((s) => s.key.startsWith('ipad-')).every((s) => s.insets?.top === 24 && s.insets?.bottom === 20));
   assert.equal(
     variants().length,
     SHOTS.reduce((n, s) => n + sizesOf(s).length * THEMES.length, 0),

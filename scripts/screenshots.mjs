@@ -12,6 +12,12 @@
 //   docs/img/<screen>-desktop.png        1440 x 900 at 1x, day theme
 //   docs/img/<screen>-desktop-dark.png   the same at night
 //
+// and, for a shot that opts in (0.11, build plan 6.1), <screen>-mac-1440 (the
+// user's 1440 x 960 on a Mac), -touch-1440 (the same with a coarse pointer, as
+// Chrome's device mode), and -ipad-air-l, -ipad-air-p, -ipad-pro-l and
+// -ipad-pro-p (the 11-inch iPads both ways, with an iPad's user agent and the
+// Home Screen app's insets).
+//
 // The browser's clock is frozen at the fixture's `now` in its time zone,
 // this browser holds a control-scope device (so Life and the project chips
 // load), the event stream is accepted (the status bar says live), and the
@@ -66,7 +72,17 @@ const DEVICE = { id: 'dev2', name: 'iPhone', scopes: ['read', 'control', 'launch
 export const SIZES = [
   { key: 'phone', width: 390, height: 844, scale: 2, phone: true },
   { key: 'desktop', width: 1440, height: 900, scale: 1, phone: false },
+  // 0.11 (build plan 6.1): the user's 1440 x 960 with a fine pointer (a Mac) and a coarse one (Chrome's
+  // device mode), and the 11-inch iPads both ways with the Home Screen app's insets. A shot opts in.
+  { key: 'mac-1440', width: 1440, height: 960, scale: 1, phone: false },
+  { key: 'touch-1440', width: 1440, height: 960, scale: 2, phone: false, touch: true },
+  { key: 'ipad-air-l', width: 1180, height: 820, scale: 2, phone: false, touch: true, insets: { top: 24, bottom: 20 } },
+  { key: 'ipad-air-p', width: 820, height: 1180, scale: 2, phone: false, touch: true, insets: { top: 24, bottom: 20 } },
+  { key: 'ipad-pro-l', width: 1210, height: 834, scale: 2, phone: false, touch: true, insets: { top: 24, bottom: 20 } },
+  { key: 'ipad-pro-p', width: 834, height: 1210, scale: 2, phone: false, touch: true, insets: { top: 24, bottom: 20 } },
 ];
+/** iPadOS 26's Safari: a Mac's user agent; MacIntel and five touch points tell it apart (set below). */
+const IPAD_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15';
 export const THEMES = ['light', 'dark'];
 /** The sizes a shot takes when it names none. */
 export const DEFAULT_SIZES = ['phone', 'desktop'];
@@ -191,7 +207,8 @@ export const SHOTS = [
     steps: async (page) => {
       await page.getByRole('radio', { name: 'Last' }).click();
       await page.getByText('--resume', { exact: false }).first().waitFor();
-      if ((page.viewportSize()?.width ?? 0) >= 768) {
+      // The Mac's chrome shows the desk panel; the phone's, the sheet (by the chrome, not the width: an iPad's isn't the Mac's).
+      if ((await page.evaluate(() => document.querySelector('[data-chrome]')?.getAttribute('data-chrome'))) !== 'phone') {
         await page.getByRole('button', { name: /Hold to start/ }).scrollIntoViewIfNeeded();
         return;
       }
@@ -450,8 +467,9 @@ async function shoot(opts) {
       const ctx = await browser.newContext({
         viewport: { width: size.width, height: size.height },
         deviceScaleFactor: size.scale,
-        isMobile: size.phone,
-        hasTouch: size.phone,
+        isMobile: size.phone || size.touch === true,
+        hasTouch: size.phone || size.touch === true,
+        ...(size.touch ? { userAgent: IPAD_UA } : {}),
         colorScheme: theme,
         locale: 'en-GB',
         timezoneId: fixture.timezone,
@@ -460,13 +478,19 @@ async function shoot(opts) {
       });
       try {
         await ctx.clock.setFixedTime(fixture.now);
-        await ctx.addInitScript((device) => {
-          try {
-            localStorage.setItem('jantar:device', JSON.stringify(device));
-          } catch {
-            // no storage: Life then asks the Mac and gets the same answers
-          }
-        }, DEVICE);
+        await ctx.addInitScript(
+          ({ device, ipad }) => {
+            try {
+              localStorage.setItem('jantar:device', JSON.stringify(device));
+            } catch {
+              // no storage: Life then asks the Mac and gets the same answers
+            }
+            if (!ipad) return;
+            Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel', configurable: true });
+            Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5, configurable: true });
+          },
+          { device: DEVICE, ipad: size.touch === true },
+        );
         // The event stream: accepted and kept quiet, so the app shows "live" as a running daemon
         // does (the fixture server refuses it, and a shot is taken long before the heartbeat is missed).
         await ctx.routeWebSocket((url) => url.pathname === '/v1/events', () => undefined);
@@ -482,6 +506,10 @@ async function shoot(opts) {
           },
         );
         const page = await ctx.newPage();
+        if (size.insets) {
+          const cdp = await ctx.newCDPSession(page);
+          await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { ...size.insets, left: 0, right: 0 } });
+        }
         await page.goto(`${server.base}${shot.path}`, { waitUntil: 'networkidle' });
         // Skeletons wait 150 ms before they show; give every list time to settle.
         await page.waitForTimeout(600);
