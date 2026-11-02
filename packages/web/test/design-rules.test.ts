@@ -88,8 +88,9 @@ describe('design rules (direction.md 7)', () => {
         'ui/screens/life/money/BillRow.tsx',
         'ui/screens/life/shared/states.tsx',
         'ui/screens/life/shared/PushWarning.tsx',
-        // v0.5.3 (spec 1): an Ask turn that failed, and a refused Send, Cancel, Add, Skip, Undo or Clear.
-        'ui/screens/ask/Turn.tsx',
+        // v0.10: a Chat turn that failed, a refused tap, a card's Confirm (a delete), and a photo the phone refused.
+        'ui/screens/chat/Turn.tsx',
+        'ui/screens/chat/Composer.tsx',
         // v0.7 (spec 5.6): the check of a post due today or before.
         'ui/screens/life/posts/PostRow.tsx',
       ]),

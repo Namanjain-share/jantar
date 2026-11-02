@@ -15,7 +15,7 @@
  *   (TerminalDialog), the dialog, keypad and upload routes, attachments on a
  *   prompt, DIALOG_GATES and the fixed sentences the phone shows
  * - meetings (v0.5): the Chrome extension's captions and screenshots, the meeting library, the Markdown export
- * - ask (v0.5.3): the Ask page's turns, cards and limits
+ * - chat (v0.10, Ask's successor): the Chat thread, its changes, cards, photos and the Siri door
  * - alerts (v0.5.3): the five alert groups, their tones and fixed phrases, the urgent countdown push
  * - v0.6 Fleet (in models, state, events, selectors, settings, api, constants): paired machines
  *   (NodeView, state.nodes, node.updated / node.removed, the fleet switch, the /v1/machines routes,
@@ -52,6 +52,5 @@ export * from './post-place.js';
 export * from './intel.js';
 export * from './primer.js';
 export * from './meetings.js';
-export * from './ask.js';
 export * from './chat.js';
 export * from './alerts.js';

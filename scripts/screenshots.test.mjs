@@ -15,7 +15,7 @@ const repo = join(dirname(script), '..');
 const img = join(repo, 'docs', 'img');
 
 /** The variants web-fixture-v051.ts knows, and web-fixture-v08.ts's own. */
-const FIXTURE_VARIANTS = ['phone-control', 'keypad', 'ask', 'posts', 'intel-read'];
+const FIXTURE_VARIANTS = ['phone-control', 'keypad', 'chat', 'posts', 'intel-read'];
 
 test('every screen has a unique name, a path in the app, and two themes for each size it asks for', () => {
   const names = SHOTS.map((s) => s.name);
@@ -57,7 +57,7 @@ test('the screens the README and the docs promise are all taken, at the sizes th
     'attach',
     'accounts-single',
     'today',
-    'ask',
+    'chat',
     'todos',
     'reminders',
     'projects',
@@ -85,7 +85,7 @@ test('the screens the README and the docs promise are all taken, at the sizes th
   for (const n of ['dialog-plan', 'dialog-question', 'dialog-permission']) assert.equal(byName.get(n)?.variant, 'phone-control', n);
   assert.equal(byName.get('keypad')?.variant, 'keypad');
   // Ask is off until the Mac turns it on: only its own picture shows it.
-  assert.equal(byName.get('ask')?.variant, 'ask');
+  assert.equal(byName.get('chat')?.variant, 'chat');
   // v0.7: Posts is off until the Mac turns it on, like Ask.
   assert.equal(byName.get('posts')?.variant, 'posts');
   assert.equal(byName.get('posts')?.path, '/posts');
@@ -100,7 +100,7 @@ test('the screens the README and the docs promise are all taken, at the sizes th
 
 test('shots share one fixture per accounts mode and variant', () => {
   const keys = new Set(SHOTS.map(fixtureKey));
-  assert.deepEqual([...keys].sort(), ['cswap:ask', 'cswap:default', 'cswap:intel-read', 'cswap:keypad', 'cswap:phone-control', 'cswap:posts', 'single:default']);
+  assert.deepEqual([...keys].sort(), ['cswap:chat', 'cswap:default', 'cswap:intel-read', 'cswap:keypad', 'cswap:phone-control', 'cswap:posts', 'single:default']);
   assert.equal(fixtureKey({ name: 'x', path: '/' }), 'cswap:default');
 });
 

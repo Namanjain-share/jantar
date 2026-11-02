@@ -355,7 +355,7 @@ describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
   });
 
   it('5. Chat: "save this: <link>" saves it at once with Undo, no Claude run, and reads it', async () => {
-    await run('ask', 'on');
+    await run('chat', 'on');
     await run('life', 'on', 'todos');
     const claudeRuns = async () => (await readFile(join(d.home.root, 'calls', 'claude.jsonl'), 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
     const before = await claudeRuns();

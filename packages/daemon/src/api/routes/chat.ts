@@ -35,7 +35,7 @@ import type { LifeResult } from '../../contracts.js';
 import { auditResult } from '../audit.js';
 import { ApiError, toErrorReply } from '../errors.js';
 import { actorName } from '../request.js';
-import { lifeAudit, lifeValue, needActor, notImplementedRoute, type Call, type RawReply, type RouteTable } from '../route-kit.js';
+import { lifeAudit, lifeValue, needActor, type Call, type RawReply, type RouteTable } from '../route-kit.js';
 import { CHAT_LIMITS } from '../services.js';
 
 type Id = { id: string };
@@ -49,18 +49,7 @@ function okOf(r: LifeResult): { ok: true } {
   return { ok: true };
 }
 
-/** Ask's routes until the phone moves to Chat: 501 (Ask is now Chat). */
-const askGone = notImplementedRoute('Ask (now Chat)');
-
 export const CHAT_ROUTE_IMPLS: RouteTable = {
-  askList: askGone,
-  askSend: askGone,
-  askClear: askGone,
-  askCancel: askGone,
-  askAdd: askGone,
-  askSkip: askGone,
-  askUndo: askGone,
-
   chatList: {
     handle: (c: Call<unknown, ChatListQuery>, s) => lifeValue(s.deps.chat.list(needActor(c.auth), c.query?.before)),
   },

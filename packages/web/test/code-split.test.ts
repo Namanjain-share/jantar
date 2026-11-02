@@ -86,11 +86,10 @@ describe('code splitting', () => {
       'ui/screens/meetings/Meetings.tsx',
       'ui/screens/meetings/MeetingPage.tsx',
       'ui/screens/meetings/ShotViewer.tsx',
-      // v0.5.3: Ask loads only while it is on.
-      'ui/screens/ask/Ask.tsx',
-      'ui/screens/ask/Turn.tsx',
-      'ui/screens/ask/Edit.tsx',
-      'ui/screens/ask/Show.tsx',
+      // v0.10: Chat (v0.5.3's Ask) loads only while it is on.
+      'ui/screens/chat/Chat.tsx',
+      'ui/screens/chat/Turn.tsx',
+      'ui/screens/chat/Composer.tsx',
       // v0.7: Posts loads only when it opens (a Life screen).
       'ui/screens/life/posts/Posts.tsx',
       'ui/screens/life/posts/PostRow.tsx',
@@ -150,7 +149,7 @@ describe('code splitting', () => {
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");
     expect(shell).toContain("import('../screens/new/NewSession.js')");
     expect(shell).toContain("import('../screens/meetings/Meetings.js')");
-    expect(shell).toContain("import('../screens/ask/Ask.js')");
+    expect(shell).toContain("import('../screens/chat/Chat.js')");
     expect(shell).toContain("import('../screens/life/posts/Posts.js')");
     expect(shell).toContain("import('../screens/intel/Intel.js')");
     const tab = readFileSync(join(src, 'ui/screens/session/FilesTab.tsx'), 'utf8');

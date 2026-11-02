@@ -51,11 +51,11 @@ function withDist(over, fn) {
 
 const run = (args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
 
-test("every lazy screen Shell.tsx loads with a gate is listed, v0.5.3's Ask and v0.7's Posts among them", () => {
+test("every lazy screen Shell.tsx loads with a gate is listed, v0.10's Chat and v0.7's Posts among them", () => {
   const shell = readFileSync(join(dirname(script), '..', 'packages', 'web', 'src', 'ui', 'shell', 'Shell.tsx'), 'utf8');
-  assert.match(shell, /import\('\.\.\/screens\/ask\/Ask\.js'\)/);
+  assert.match(shell, /import\('\.\.\/screens\/chat\/Chat\.js'\)/);
   assert.match(shell, /import\('\.\.\/screens\/life\/posts\/Posts\.js'\)/);
-  assert.ok(LAZY_SCREENS.includes('Ask'));
+  assert.ok(LAZY_SCREENS.includes('Chat'));
   assert.ok(LAZY_SCREENS.includes('Meetings'));
   assert.ok(LAZY_SCREENS.includes('Posts'));
 });

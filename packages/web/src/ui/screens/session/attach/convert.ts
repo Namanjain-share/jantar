@@ -152,8 +152,8 @@ async function carriesMetadata(file: Blob, type: string): Promise<boolean> {
  * Draw the image on a canvas with its long edge at most UPLOAD_IMAGE_EDGE and encode it (JPEG, or PNG,
  * which keeps transparency); null on failure. Nothing of the file but its pixels survives.
  */
-async function drawAs(d: Decoded, type: 'image/jpeg' | 'image/png'): Promise<Blob | null> {
-  const scale = Math.min(1, UPLOAD_IMAGE_EDGE / Math.max(d.width, d.height));
+async function drawAs(d: Decoded, type: 'image/jpeg' | 'image/png', edge: number = UPLOAD_IMAGE_EDGE): Promise<Blob | null> {
+  const scale = Math.min(1, edge / Math.max(d.width, d.height));
   const width = Math.max(1, Math.round(d.width * scale));
   const height = Math.max(1, Math.round(d.height * scale));
   const canvas = document.createElement('canvas');
@@ -186,7 +186,7 @@ function ownExt(file: File): string {
   return EXT_OK.test(ext) ? ext : '';
 }
 
-async function prepareImage(file: File, type: string, name: string): Promise<PreparedFile | { refused: string }> {
+async function prepareImage(file: File, type: string, name: string, edge: number = UPLOAD_IMAGE_EDGE): Promise<PreparedFile | { refused: string }> {
   if (type === 'image/gif') return { blob: file, ext: 'gif', kind: 'image', name };
   // Not decoded here: the original goes, and the daemon says why it can't take it (HEIC). A JPEG would go
   // with its EXIF, GPS included: refused.
@@ -195,12 +195,12 @@ async function prepareImage(file: File, type: string, name: string): Promise<Pre
   const d = await decode(file);
   if (!d) return original();
   try {
-    const small = (type === 'image/png' || type === 'image/webp') && Math.max(d.width, d.height) <= UPLOAD_IMAGE_EDGE && file.size <= KEEP_IMAGE_BYTES;
+    const small = (type === 'image/png' || type === 'image/webp') && Math.max(d.width, d.height) <= edge && file.size <= KEEP_IMAGE_BYTES;
     if (small && !(await carriesMetadata(file, type))) return { blob: file, ext: type === 'image/png' ? 'png' : 'webp', kind: 'image', name };
     // A small one with metadata is drawn again as PNG, its pixels only, while that stays small.
-    const png = small ? await drawAs(d, 'image/png') : null;
+    const png = small ? await drawAs(d, 'image/png', edge) : null;
     if (png && png.size <= KEEP_IMAGE_BYTES) return { blob: png, ext: 'png', kind: 'image', name: stemOf(name) };
-    const jpeg = await drawAs(d, 'image/jpeg');
+    const jpeg = await drawAs(d, 'image/jpeg', edge);
     // The stored file is .jpg; the label keeps the name without its old extension.
     return jpeg ? { blob: jpeg, ext: 'jpg', kind: 'image', name: stemOf(name) } : original();
   } finally {
@@ -213,7 +213,8 @@ function isText(file: File, ext: string, name: string): boolean {
   return type.startsWith('text/') || TEXT_TYPES.has(type) || type === SVG_TYPE || ext === 'svg' || TEXT_EXTS.has(ext) || TEXT_NAMES.has(name.toLowerCase());
 }
 
-export async function prepareFile(file: File): Promise<PreparedFile | { refused: string }> {
+/** v0.10: `edge` (default UPLOAD_IMAGE_EDGE) is the long edge a photo is drawn at; Chat passes CHAT_PHOTO_EDGE. */
+export async function prepareFile(file: File, opts: { edge?: number } = {}): Promise<PreparedFile | { refused: string }> {
   const name = ownName(file);
   const type = file.type.toLowerCase();
   const ext = extOf(file.name);
@@ -221,7 +222,7 @@ export async function prepareFile(file: File): Promise<PreparedFile | { refused:
   const image = imageType(file);
   let out: PreparedFile;
   if (image) {
-    const p = await prepareImage(file, image, name);
+    const p = await prepareImage(file, image, name, opts.edge);
     if ('refused' in p) return p;
     out = p;
   } else if (type === 'application/pdf' || ext === 'pdf') {

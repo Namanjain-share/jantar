@@ -172,7 +172,8 @@ describe('v0.5.3 shelf', () => {
 describe('v0.5.3 routes', () => {
   it('are three, each the Mac only (ctl.sock), GETs without a body', () => {
     expect(v053.map(([n]) => n).sort()).toEqual(['folderTodoCreate', 'folderTodos', 'notifyTest']);
-    expect(routes.filter(([, r]) => r.phase === 'v0.5.3')).toHaveLength(3 + 7);
+    // v0.10: Ask's seven are gone (Chat's are v0.10's).
+    expect(routes.filter(([, r]) => r.phase === 'v0.5.3')).toHaveLength(3);
     for (const [name, r] of v053) {
       expect(r.localOnly, name).toBe(true);
       expect(r.ctl, name).toBe(true);

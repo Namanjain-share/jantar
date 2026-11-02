@@ -1063,7 +1063,7 @@ export const FeaturesSchema = z.object({
   intelRead: z.boolean().default(false),
   /** v0.5: Meetings are on (settings meetings.enabled). Never which meeting runs: that is a control read. */
   meetings: z.boolean().default(false),
-  /** v0.5.3: Ask is on (settings ask.enabled). Why it can't run is in `GET /v1/ask`, a control read. */
+  /** v0.5.3 Ask, v0.10 Chat: on (settings ask.enabled). Why it can't run is in `GET /v1/chat`, a control read. */
   ask: z.boolean().default(false),
   /** v0.6: Fleet is on at the Mac (settings fleet.enabled): paired servers may link. */
   fleet: z.boolean().default(false),

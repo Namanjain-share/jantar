@@ -31,8 +31,9 @@
  *   /more           The places past the fifth tab
  * v0.5, shown only while Meetings are on:
  *   /meetings       Meetings (?project=<project id>|none, ?q=, ?id=<meeting id> opens one)
- * v0.5.3, shown only while Ask is on:
- *   /ask            Ask: plain words in, suggested Life items out (no query)
+ * v0.10 (v0.5.3's Ask), shown only while Chat is on:
+ *   /chat           Chat: ask Jantar anything; it changes things with Undo (no query)
+ *   /ask            the 0.9 address: read as /chat, and the router puts /chat in its place
  * Ids in a query are read only when they match their pattern (LifeId,
  * IntelId, day and month keys); anything else is left out.
  *
@@ -71,8 +72,8 @@ export type Route =
   | { name: 'more' }
   // v0.5
   | { name: 'meetings'; project?: string; q?: string; id?: string }
-  // v0.5.3
-  | { name: 'ask' }
+  // v0.10 (v0.5.3's Ask)
+  | { name: 'chat' }
   | { name: 'notFound'; path: string };
 
 export type TodosTab = 'todos' | 'reminders' | 'projects';
@@ -275,7 +276,8 @@ export function parseRoute(pathname: string, search = '', hash = ''): Route {
   }
   const life = lifeRoute(path, q);
   if (life) return life;
-  if (path === '/ask') return { name: 'ask' };
+  // v0.10: Ask is Chat; an old link or a home-screen bookmark still lands on it.
+  if (path === '/chat' || path === '/ask') return { name: 'chat' };
   if (path === '/accounts') return { name: 'accounts' };
   if (path === '/alerts') return { name: 'alerts' };
   if (path === '/devices') return { name: 'devices' };
@@ -336,8 +338,8 @@ export function routePath(r: Route): string {
       return '/more';
     case 'meetings':
       return withQuery('/meetings', queryOf({ project: r.project, q: r.q, id: r.id }));
-    case 'ask':
-      return '/ask';
+    case 'chat':
+      return '/chat';
     case 'notFound':
       return r.path;
   }
@@ -458,6 +460,8 @@ export function createRouter(history: HistoryLike) {
     },
   }));
   history.listen(() => store.setState({ route: current() }));
+  // v0.10: /ask (Ask until 0.10) is Chat's address now; the bar says so from the start.
+  if (history.location.pathname === '/ask') history.replace('/chat');
   return store;
 }
 

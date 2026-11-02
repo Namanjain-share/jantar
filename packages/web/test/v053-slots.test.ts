@@ -28,7 +28,7 @@ const credentials: CredentialStore = {
 describe('v0.5.3 api client', () => {
   it('has no call for the Mac-only routes', () => {
     const api = createApi({ fetch: fetchOk() as unknown as typeof fetch, base: BASE, credentials }) as unknown as Record<string, unknown>;
-    // Ask's seven v0.5.3 routes are the phone's, with calls of their own (ask.test.tsx).
+    // Ask's seven v0.5.3 routes are gone (v0.10: Chat's are the phone's, chat.test.tsx).
     const v053 = (Object.entries(ROUTES) as [string, RouteDef][]).filter(([, r]) => r.phase === 'v0.5.3' && r.feature !== 'ask');
     expect(v053).toHaveLength(3);
     for (const [name, r] of v053) {

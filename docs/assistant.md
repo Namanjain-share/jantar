@@ -13,7 +13,7 @@ data: Claude can only propose items from a fixed list, and only your tap
 adds one.
 
 <p align="center">
-  <picture><source media="(prefers-color-scheme: dark)" srcset="img/ask-phone-dark.png"><img src="img/ask-phone.png" width="260" alt="Ask: a reminder added, calories left against the 1,500 kcal target, and two foods to add."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="img/chat-phone-dark.png"><img src="img/chat-phone.png" width="260" alt="Chat: a reminder added with Undo, a photo that rated a café and logged a visit, and a delete waiting for its Confirm."></picture>
 </p>
 
 ## Turn it on

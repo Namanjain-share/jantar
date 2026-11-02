@@ -28,9 +28,10 @@
  *   The board still says "3 need you".
  * - 'keypad': session 2 waits on a model list Jantar can't turn into
  *   buttons, so its dock shows the screen and the keypad.
- * - 'ask': Ask on (v0.5.3), with this phone's history on GET /v1/ask: a
- *   reminder added, "calories left?" (its card filled from Today) and a
- *   meal of two foods still to add.
+ * - 'chat': Chat on (v0.10, Ask's successor), with the thread on GET
+ *   /v1/chat: a reminder added (its Undo still shows), a café rated and a
+ *   visit logged from a photo of the bill, and a delete waiting for its
+ *   Confirm card; the photo on GET /v1/chat/photos/:id.
  * - 'posts': Posts on (v0.7), on GET /v1/posts: a made-up Reddit post due
  *   tonight, two for tomorrow, a thread next week and one with no date,
  *   and this week against two goals (Reels 1/3, Reddit 2/6). The accounts,
@@ -42,12 +43,12 @@
  */
 import { createHash } from 'node:crypto';
 import {
-  AskListSchema,
+  ChatListSchema,
   DIALOG_NOTES,
   MeetingDetailSchema,
   PostsResponseSchema,
   type Account,
-  type AskList,
+  type ChatList,
   type PendingRequest,
   type PlanResponse,
   type Post,
@@ -66,7 +67,7 @@ import { webFixtureV05, type V05Reply, type WebFixtureV05 } from './web-fixture-
 
 const MIN = 60_000;
 
-export type V051Variant = 'default' | 'phone-control' | 'keypad' | 'ask' | 'posts';
+export type V051Variant = 'default' | 'phone-control' | 'keypad' | 'chat' | 'posts';
 
 /** The pictures the script draws in Chromium before it builds the fixture (see SCREENSHOT_ART). */
 export type V051ArtName = 'slide' | 'slide2' | 'photo';
@@ -265,7 +266,7 @@ const SCREENS: Record<V051Variant, Record<number, { text: string; kind: 'questio
   keypad: {
     2: { text: MODEL_SCREEN, kind: 'keypad' },
   },
-  ask: {},
+  chat: {},
   posts: {},
 };
 
@@ -338,47 +339,65 @@ function transcripts(now: number): Record<string, { items: TranscriptItem[]; nex
 }
 
 // ---------------------------------------------------------------------------
-// Ask (the 'ask' variant)
+// Chat (the 'chat' variant)
+
+/** The photo in the thread (a flat synthetic PNG). */
+export const CHAT_PHOTO = makePng(64, 48, { rgb: [0xd9, 0xd2, 0xc4] });
 
 /**
- * This phone's Ask history, oldest first: a reminder added a quarter of an
- * hour ago (its Undo still shows), "calories left?" (the phone fills the
- * card from Today: 1,240 of 1,500 kcal) and a meal of two foods to add.
+ * The thread, oldest first: a reminder added a quarter of an hour ago (its
+ * Undo still shows), a photo of a bill that rated a café and logged a visit
+ * (two changes), and a delete waiting for its Confirm card. Every name is
+ * made up.
  */
-function askHistory(now: number, today: string): AskList {
+function chatThread(now: number, today: string): ChatList {
   const iso = (minutesAgo: number) => new Date(now - minutesAgo * MIN).toISOString();
-  return AskListSchema.parse({
-    ready: true,
+  return ChatListSchema.parse({
+    older: null,
+    ready: { ok: true },
+    keepDays: 30,
     turns: [
       {
         id: lid(1101),
         at: iso(15),
-        text: 'remind me at 6 to call the bank',
+        via: 'phone',
+        text: 'Remind me at 6 to call the bank',
+        photos: [],
         state: 'done',
-        reply: 'A reminder at 18:00 today.',
-        cards: [{ action: { type: 'todo', title: 'Call the bank', due: { day: today, time: '18:00' } }, state: 'added', ref: lid(1151) }],
-        dropped: 0,
+        reply: 'Added a reminder for 6 pm today.',
+        changes: [{ n: 0, module: 'todos', op: 'add', ref: lid(1151), label: `Todo · Call the bank · ${today} 18:00`, state: 'done', undoable: true }],
+        cards: [],
+        tainted: false,
+        refused: 0,
       },
       {
         id: lid(1102),
         at: iso(6),
-        text: 'calories left?',
+        via: 'phone',
+        text: 'Lunch at Sample Dosa House, great Wi-Fi. Rate it 4 stars.',
+        photos: [{ id: lid(1161), w: 64, h: 48, gone: false }],
         state: 'done',
-        reply: 'Here is today so far.',
-        cards: [{ action: { type: 'show', what: 'calories' }, state: 'proposed' }],
-        dropped: 0,
+        reply: 'Rated Sample Dosa House 4 stars with Wi-Fi, and logged today\'s visit at 450.',
+        changes: [
+          { n: 0, module: 'places', op: 'edit', ref: lid(1152), label: 'Café · Sample Dosa House · 4★', state: 'done', undoable: true },
+          { n: 1, module: 'places', op: 'log', ref: lid(1153), label: `Visit · Sample Dosa House · ${today} · 450`, state: 'done', undoable: true },
+        ],
+        cards: [],
+        tainted: false,
+        refused: 0,
       },
       {
         id: lid(1103),
         at: iso(1),
-        text: 'had 2 rotis and dal',
+        via: 'voice',
+        text: 'Delete the café Example Café',
+        photos: [],
         state: 'done',
-        reply: 'Assumed 2 medium rotis and 1 bowl of dal.',
-        cards: [
-          { action: { type: 'food', day: today, name: 'Roti', kcal: 240 }, state: 'proposed' },
-          { action: { type: 'food', day: today, name: 'Dal', kcal: 180 }, state: 'proposed' },
-        ],
-        dropped: 0,
+        reply: 'It is waiting for your tap in Jantar.',
+        changes: [],
+        cards: [{ n: 0, kind: 'confirm', module: 'places', op: 'delete', ref: lid(1154), label: 'Delete café Example Café and its 3 visits?', state: 'waiting' }],
+        tainted: false,
+        refused: 0,
       },
     ],
   });
@@ -485,9 +504,9 @@ export function webFixtureV051(opts: WebFixtureV051Options = {}): WebFixtureV051
   // ----- No legacy ccw tool: cswap's usage and resets only -----
   if (base.accountsMode === 'cswap' && !opts.ccw) withoutCcw(base);
 
-  // ----- Ask: on in its own variant only (it is off until the Mac turns it on) -----
-  const ask = variant === 'ask' ? askHistory(now, base.v04.today.day) : null;
-  if (ask) {
+  // ----- Chat: on in its own variant only (it is off until the Mac turns it on) -----
+  const chat = variant === 'chat' ? chatThread(now, base.v04.today.day) : null;
+  if (chat) {
     const daemon = (base.state.state as unknown as { daemon: { features: Record<string, unknown> } }).daemon;
     daemon.features = { ...daemon.features, ask: true };
   }
@@ -562,7 +581,8 @@ export function webFixtureV051(opts: WebFixtureV051Options = {}): WebFixtureV051
       return { status: 201, body: { upload: { id, kind, bytes: body?.length ?? 0 } } };
     }
     if (method === 'DELETE' && /^\/v1\/sessions\/[^/]+\/uploads\/[^/]+$/.test(path)) return { status: 200, body: { ok: true } };
-    if (ask && method === 'GET' && path === '/v1/ask') return { status: 200, body: ask };
+    if (chat && method === 'GET' && path === '/v1/chat') return { status: 200, body: chat };
+    if (chat && method === 'GET' && path.startsWith('/v1/chat/photos/')) return { status: 200, body: null, bytes: CHAT_PHOTO, type: 'image/png' };
     if (posts && method === 'GET' && path === '/v1/posts') {
       return { status: 200, body: url.searchParams.get('done') === '1' ? { ...posts, posts: [] } : posts };
     }

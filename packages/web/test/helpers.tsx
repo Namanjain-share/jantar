@@ -42,7 +42,7 @@ const LAZY_PLACES = {
   posts: () => import('../src/ui/screens/life/posts/Posts.js'),
   intel: () => import('../src/ui/screens/intel/Intel.js'),
   meetings: () => import('../src/ui/screens/meetings/Meetings.js'),
-  ask: () => import('../src/ui/screens/ask/Ask.js'),
+  chat: () => import('../src/ui/screens/chat/Chat.js'),
 };
 
 /**
@@ -316,13 +316,16 @@ export function fakeApi(over: Partial<Api> = {}) {
     meetingItemTodo: notBuilt(),
     meetingItemUntodo: notBuilt(),
     // v0.5.3: each answers 501 (a part not built yet) unless the test passes its own.
-    askList: notBuilt(),
-    askSend: notBuilt(),
-    askClear: notBuilt(),
-    askCancel: notBuilt(),
-    askAdd: notBuilt(),
-    askSkip: notBuilt(),
-    askUndo: notBuilt(),
+    chatList: notBuilt(),
+    chatSend: notBuilt(),
+    chatClear: notBuilt(),
+    chatCancel: notBuilt(),
+    chatUndo: notBuilt(),
+    chatCard: notBuilt(),
+    chatCardDismiss: notBuilt(),
+    chatPhotoAdd: notBuilt(),
+    chatPhoto: notBuilt(),
+    chatPhotoDelete: notBuilt(),
     // v0.6 Fleet: no paired machines unless the test passes its own.
     machinesList: vi.fn(async () => ({ machines: [] })),
     machineRevoke: notBuilt(),

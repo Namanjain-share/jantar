@@ -12,10 +12,6 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
-  AskActionSchema,
-  AskCardSchema,
-  AskSaveActionSchema,
-  AskWriteActionSchema,
   CAPTURE_KEY_HEADER,
   CAPTURE_KEY_PREFIX,
   CAPTURE_PREFIX,
@@ -262,17 +258,7 @@ describe('v0.8 the extension and the page read', () => {
   });
 });
 
-describe('v0.8 Ask, the switch and the fixed sentences', () => {
-  it("Ask's save card: an http(s) link and a depth, in both unions; a card's ref may be an Intel id", () => {
-    const save = { type: 'save', url: 'https://www.instagram.com/reel/AbC123xyz/', depth: 'full' };
-    expect(AskSaveActionSchema.safeParse(save).success).toBe(true);
-    expect(AskActionSchema.safeParse(save).success).toBe(true);
-    expect(AskWriteActionSchema.safeParse(save).success).toBe(true);
-    expect(AskSaveActionSchema.safeParse({ ...save, url: 'javascript:alert(1)' }).success).toBe(false);
-    expect(AskSaveActionSchema.safeParse({ ...save, title: 'x' }).success).toBe(false);
-    expect(AskCardSchema.safeParse({ action: save, state: 'added', ref: 'captures:01JFZ8X8Y3T0V5G9WQK2M4N6PR' }).success).toBe(true);
-  });
-
+describe('v0.8 the switch and the fixed sentences (v0.10: Ask\'s save card is Chat\'s fast path)', () => {
   it('reading is off by default, and on for clients only with the shelf on; settings keep their version', () => {
     const d = defaultSettings();
     expect(d.intel).toMatchObject({ read: false, speechLocale: 'en-IN' });

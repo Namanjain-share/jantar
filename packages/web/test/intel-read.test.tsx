@@ -20,20 +20,19 @@
  *   on a plain capture, each part labelled, the transcript folded, Claude's
  *   background labelled, Delete after a second tap (captures only), and a
  *   hostile title, summary, caption and transcript kept as text;
- * - Ask's save card: host and depth, Add and Skip with no Edit, then
- *   "Saved to Intel · Reading" with Open and Undo.
+ * (v0.10: Ask's save card is gone; Chat saves a link at once with Undo, chat.test.tsx.)
  *
  * Every creator, link and word here is made up (example.com hosts only).
  */
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AskCard, AskList, AskTurn, IntelItem, IntelJob, IntelJobsResponse, IntelListItem, IntelListResponse, LifeStatus } from '@jantar/protocol';
+import type { IntelItem, IntelJob, IntelJobsResponse, IntelListItem, IntelListResponse, LifeStatus } from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { OPEN } from '../src/ui/screens/intel/AddPostSheet.js';
 import { DEPTH_LINE, READ_COPY, bylineOf, httpsHref, jobName, stateWord, stripJobs } from '../src/ui/screens/intel/model.js';
 import { NOW, emit, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
-preloadPlaces('intel', 'ask');
+preloadPlaces('intel');
 
 const ON = stateWith({ features: { intel: true, intelRead: true } });
 const OFF = stateWith({ features: { intel: true } });
@@ -591,57 +590,5 @@ describe('the item page of a read item', () => {
     const hrefs = [...article.querySelectorAll('a')].map((a) => a.getAttribute('href'));
     expect(hrefs.filter((h) => h?.includes('evil'))).toEqual([]);
     expect(within(article).getByText(/^<b>@x<\/b> · Instagram/)).toBeTruthy();
-  });
-});
-
-describe("Ask's save card", () => {
-  const TID = '01JFZ8X8Y3T0V5G9WQK2M4N799';
-  const STATUS: LifeStatus = {
-    open: true,
-    timezone: 'UTC',
-    today: '2026-01-15',
-    currency: 'INR',
-    lockScreenDetails: false,
-    modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false },
-    estimate: { available: false },
-    backups: { last: null, count: 0 },
-    push: { devices: 1, webpush: true },
-  };
-  const saveCard = (card: Partial<AskCard> = {}, depth?: 'light' | 'standard' | 'full'): AskCard => ({
-    action: { type: 'save', url: 'https://www.example.com/reel/AbC123xyz/', ...(depth ? { depth } : {}) },
-    state: 'proposed',
-    ...card,
-  });
-  const turn = (cards: AskCard[]): AskTurn => ({ id: TID, at: ago(MIN), text: 'save this: https://www.example.com/reel/AbC123xyz/', state: 'done', reply: 'Save this to Intel?', cards, dropped: 0 });
-  const openAsk = (cards: AskCard[], over: Partial<Api> = {}) => {
-    let current: AskList = { ready: true, turns: [turn(cards)] };
-    const api = fakeApi({ askList: vi.fn(async () => current), lifeStatus: vi.fn(async () => STATUS), projectsList: vi.fn(async () => ({ projects: [] })), ...over });
-    const r = renderApp({ path: '/ask', api, state: stateWith({ features: { ask: true, life: true, intel: true, intelRead: true } }) });
-    return { ...r, api, set: (l: AskList) => (current = l) };
-  };
-
-  it('names the host and the depth, with Add and Skip and no Edit', async () => {
-    const askAdd = vi.fn(async () => ({ id: RID }));
-    const { set } = openAsk([saveCard()], { askAdd });
-    const card = (await screen.findByText('www.example.com')).closest('li')!;
-    expect(within(card).getByText('Save to Intel')).toBeTruthy();
-    expect(within(card).getByText('Standard')).toBeTruthy();
-    expect(within(card).queryByRole('button', { name: /^Edit/ })).toBeNull();
-    expect(within(card).getByRole('button', { name: 'Skip: www.example.com' })).toBeTruthy();
-    set({ ready: true, turns: [turn([saveCard({ state: 'added', ref: RID })])] });
-    fireEvent.click(within(card).getByRole('button', { name: 'Add: www.example.com' }));
-    await waitFor(() => expect(askAdd).toHaveBeenCalledWith(TID, 0, undefined, expect.any(String)));
-    expect(await screen.findByText('Saved to Intel · Reading')).toBeTruthy();
-  });
-
-  it('added: "Saved to Intel · Reading" with Open (the item on the shelf) and Undo', async () => {
-    const askUndo = vi.fn(async () => ({ ok: true as const }));
-    const { router } = openAsk([saveCard({ state: 'added', ref: RID }, 'full')], { askUndo });
-    const card = (await screen.findByText('Saved to Intel · Reading')).closest('li')!;
-    expect(within(card).getByText('Full')).toBeTruthy();
-    fireEvent.click(within(card).getByRole('button', { name: 'Undo: www.example.com' }));
-    await waitFor(() => expect(askUndo).toHaveBeenCalledWith(TID, 0, expect.any(String)));
-    fireEvent.click(within(card).getByRole('link', { name: 'Open' }));
-    await waitFor(() => expect(router.getState().route).toEqual({ name: 'intel', item: RID }));
   });
 });

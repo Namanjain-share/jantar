@@ -31,9 +31,11 @@
  * Chrome extension's (its own key, from the Mac itself): never called here.
  * A meeting's screenshot comes back as a Blob, like a file.
  *
- * v0.5.3 adds a call per Ask route. `askList` is the only one whose reply
- * carries text (this device's turns); every Ask write answers an id or ok,
- * and takes the Idempotency-Key of the tap that made it.
+ * v0.10 adds a call per Chat route (Ask's, v0.5.3, are gone). `chatList` is
+ * the only one whose reply carries text (the thread); every Chat write
+ * answers an id or ok, and takes the Idempotency-Key of the tap that made
+ * it. A photo goes up as raw bytes (`chatPhotoAdd`, with progress, like a
+ * session upload) and comes back as a Blob (`chatPhoto`).
  *
  * v0.6 (Fleet): every folder, start-sheet and usage call takes an optional
  * `node` (a paired server's id), sent as `?node=`: the Mac forwards it there.
@@ -58,8 +60,7 @@ import {
   buildPath,
   eventsSocketProtocols,
   type AccountsResponse,
-  type AskList,
-  type AskWriteAction,
+  type ChatList,
   type BillBody,
   type BillPaidBody,
   type BillPatch,
@@ -414,20 +415,26 @@ export interface Api {
   meetingItemTodo(id: string, n: number, idempotencyKey?: string): Promise<IdReply>;
   meetingItemUntodo(id: string, n: number, idempotencyKey?: string): Promise<OkReply>;
 
-  // --- v0.5.3 Ask (control scope, reads included)
-  /** This device's turns, oldest first, and whether Ask can run now. */
-  askList(): Promise<AskList>;
-  /** The reply is the new turn's id; its answer comes in a later askList. */
-  askSend(text: string, idempotencyKey?: string): Promise<IdReply>;
-  /** Forget this device's history (items already added stay in Life). */
-  askClear(idempotencyKey?: string): Promise<OkReply>;
+  // --- v0.10 Chat (control scope, reads included)
+  /** The thread: the newest turns (before turn `before`), oldest first, and whether Chat can run now. */
+  chatList(before?: string): Promise<ChatList>;
+  /** The reply is the new turn's id; its answer comes in a later chatList. */
+  chatSend(text: string, photos: readonly string[], idempotencyKey?: string): Promise<IdReply>;
+  /** Delete the whole thread (what it added stays). */
+  chatClear(idempotencyKey?: string): Promise<OkReply>;
   /** Stop a turn that is waiting or running. */
-  askCancel(id: string, idempotencyKey?: string): Promise<OkReply>;
-  /** Add card `n` of turn `id`, as suggested or as `edit`ed: the reply is the new item's id. */
-  askAdd(id: string, n: number, edit?: AskWriteAction, idempotencyKey?: string): Promise<IdReply>;
-  askSkip(id: string, n: number, idempotencyKey?: string): Promise<OkReply>;
-  /** Delete the item card `n` added (within a day of the turn). */
-  askUndo(id: string, n: number, idempotencyKey?: string): Promise<OkReply>;
+  chatCancel(id: string, idempotencyKey?: string): Promise<OkReply>;
+  /** Undo change `n` of turn `id` (within a day; 409 when it changed since). */
+  chatUndo(id: string, n: number, idempotencyKey?: string): Promise<OkReply>;
+  /** Run card `n` of turn `id`: Confirm, or Do it. */
+  chatCard(id: string, n: number, idempotencyKey?: string): Promise<IdReply | OkReply>;
+  chatCardDismiss(id: string, n: number, idempotencyKey?: string): Promise<OkReply>;
+  /** One photo's raw bytes for the next message (the chip's progress and ×); the reply is its id. */
+  chatPhotoAdd(blob: Blob, opts?: UploadOptions): Promise<IdReply>;
+  /** A photo of the thread, as a Blob (shown through a blob: URL). */
+  chatPhoto(id: string, opts?: { signal?: AbortSignal }): Promise<Blob>;
+  /** Remove a photo not sent yet. */
+  chatPhotoDelete(id: string): Promise<void>;
 
   // --- v0.6 Fleet (admin): the paired machines, and Remove (two taps). Pairing is at the Mac only.
   machinesList(): Promise<MachinesResponse>;
@@ -776,13 +783,25 @@ export function createApi(opts: ApiOptions = {}): Api {
     meetingItemTodo: (id, n, k) => call(ROUTES.meetingItemTodo, { params: { id, n: String(n) }, ...key(k) }),
     meetingItemUntodo: (id, n, k) => call(ROUTES.meetingItemUntodo, { params: { id, n: String(n) }, ...key(k) }),
 
-    askList: () => call(ROUTES.askList),
-    askSend: (text, k) => call(ROUTES.askSend, { body: { text }, ...key(k) }),
-    askClear: (k) => call(ROUTES.askClear, key(k)),
-    askCancel: (id, k) => call(ROUTES.askCancel, { params: { id }, ...key(k) }),
-    askAdd: (id, n, edit, k) => call(ROUTES.askAdd, { params: { id, n: String(n) }, body: edit ? { edit } : {}, ...key(k) }),
-    askSkip: (id, n, k) => call(ROUTES.askSkip, { params: { id, n: String(n) }, ...key(k) }),
-    askUndo: (id, n, k) => call(ROUTES.askUndo, { params: { id, n: String(n) }, ...key(k) }),
+    chatList: (before) => call(ROUTES.chatList, { query: { before } }),
+    chatSend: (text, photos, k) => call(ROUTES.chatSend, { body: photos.length ? { text, photos: [...photos] } : { text }, ...key(k) }),
+    chatClear: (k) => call(ROUTES.chatClear, key(k)),
+    chatCancel: (id, k) => call(ROUTES.chatCancel, { params: { id }, ...key(k) }),
+    chatUndo: (id, n, k) => call(ROUTES.chatUndo, { params: { id, n: String(n) }, ...key(k) }),
+    chatCard: (id, n, k) => call(ROUTES.chatCard, { params: { id, n: String(n) }, ...key(k) }),
+    chatCardDismiss: (id, n, k) => call(ROUTES.chatCardDismiss, { params: { id, n: String(n) }, ...key(k) }),
+    chatPhotoAdd: async (blob, o = {}) => {
+      const headers: Record<string, string> = { accept: 'application/json', 'content-type': 'application/octet-stream' };
+      const s = await secret();
+      if (s) headers[DEVICE_SECRET_HEADER] = s;
+      const url = new URL(buildPath(ROUTES.chatPhotoAdd), base).toString();
+      // The upload path answers the route's own reply ({ id }) as it is.
+      return (await upload({ url, headers }, blob, { ...(o.onProgress ? { onProgress: o.onProgress } : {}), ...(o.signal ? { signal: o.signal } : {}) })) as unknown as IdReply;
+    },
+    chatPhoto: async (id, o = {}) => (await bytes(ROUTES.chatPhoto, { params: { id }, ...(o.signal ? { signal: o.signal } : {}) })).blob,
+    chatPhotoDelete: async (id) => {
+      await call(ROUTES.chatPhotoDelete, { params: { id }, withKey: false });
+    },
     machinesList: () => call(ROUTES.machinesList),
     machineRevoke: (id, k) => call(ROUTES.machineRevoke, { params: { id }, ...key(k) }),
   };
