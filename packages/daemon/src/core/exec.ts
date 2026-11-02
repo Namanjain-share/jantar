@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import type { ExecFile, ExecOptions, ExecResult } from '../contracts.js';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -81,7 +82,19 @@ function runExec(file: string, args: readonly string[], opts: ExecOptions): Prom
       else opts.signal.addEventListener('abort', onAbort, { once: true });
     }
 
+    // v0.10: stdout as it comes (Chat's init check), whole characters only.
+    const decoder = opts.onStdout ? new StringDecoder('utf8') : null;
     child.stdout?.on('data', (b: Buffer) => {
+      if (decoder && opts.onStdout) {
+        const text = decoder.write(b);
+        if (text) {
+          try {
+            opts.onStdout(text);
+          } catch {
+            // a listener's own failure never stops the capture
+          }
+        }
+      }
       if (outLen + b.length > maxBuffer) {
         truncated = true;
         const room = maxBuffer - outLen;

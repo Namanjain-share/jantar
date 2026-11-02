@@ -34,6 +34,18 @@
  * one user message with image blocks; `streamInit` reads the run's
  * `system`/`init` line (its tools and MCP servers). Without `io` (every
  * existing caller) the argv is exactly as before.
+ *
+ * v0.10 (Chat, spec 0.10 B6.4), additive: `RunFlags.tools` gives the run one
+ * strict MCP server and the tools it may call, by exact name:
+ * `--mcp-config <file> --strict-mcp-config --allowedTools a,b,...` with
+ * `--tools ""` still (no built-in tool at all), `--max-turns` from the flags,
+ * stream-json in and out, and no `--disallowedTools "mcp__*"` (a deny rule
+ * would beat the allow list). `--mcp-config` and `--allowedTools` are
+ * isolation options too (TOOLS_ISOLATION_OPTIONS): a refusal ends the run,
+ * nothing weaker runs. Without
+ * `tools` (every existing caller) the argv is exactly as before.
+ * `initProblem` checks a run's `system`/`init` line against what it was
+ * given; `lineSplitter` feeds a streamed stdout to it line by line.
  */
 import { chmod, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { basename, delimiter, dirname, isAbsolute, join } from 'node:path';
@@ -114,6 +126,15 @@ export const ISOLATION_OPTIONS: readonly string[] = [
 ];
 
 /**
+ * v0.10 (Chat): the isolation of a tools run on top of ISOLATION_OPTIONS
+ * (which it passes too, but for `--disallowedTools`): its one MCP server and
+ * its allow list. Never dropped either: a claude that refuses one ends the
+ * run, and nothing with more reach (or none) runs instead. Kept apart from
+ * ISOLATION_OPTIONS so every run without tools still passes all of those.
+ */
+export const TOOLS_ISOLATION_OPTIONS: readonly string[] = ['--mcp-config', '--allowedTools'];
+
+/**
  * A runaway guard only: with one turn and no tools there is no runaway, and
  * Opus (U5) reading a full context (24,000 chars, more tokens in
  * Devanagari) and writing up to 16,000 chars can pass the spec's 0.25.
@@ -134,6 +155,20 @@ export interface RunFlags {
    * allowed) and prints stream-json; default `text` (JSON out, text in).
    */
   io?: 'text' | 'stream';
+  /**
+   * v0.10 (Chat): one strict MCP server and the tools it may call. Implies
+   * `io: 'stream'`. Without it the argv is exactly as before.
+   */
+  tools?: RunTools;
+}
+
+/** v0.10: a tools run's MCP config file, its allowed tools by exact name, and its turn cap. */
+export interface RunTools {
+  /** The 0600 mcp.json naming the one server. */
+  mcpConfig: string;
+  /** Exact names (mcp__<server>__<tool>); never a wildcard. */
+  allowed: readonly string[];
+  maxTurns: number;
 }
 
 /** Which program a run starts: cswap (`run --share-history N -- -p ...`) or claude itself (`-p ...`). */
@@ -141,18 +176,23 @@ export type RunVia = { cswap: string } | { claude: string };
 
 /** The argv after `<bins.cswap>` (default), or after `<bins.claude>` with via 'claude'. */
 export function rewriteArgv(f: RunFlags, via: 'cswap' | 'claude' = 'cswap'): string[] {
-  const io: string[][] = f.io === 'stream' ? [['--input-format', 'stream-json'], ['--output-format', 'stream-json'], ['--verbose']] : [['--output-format', 'json']];
+  const stream = f.io === 'stream' || f.tools !== undefined;
+  const io: string[][] = stream ? [['--input-format', 'stream-json'], ['--output-format', 'stream-json'], ['--verbose']] : [['--output-format', 'json']];
+  const t = f.tools;
+  if (t && (t.allowed.length === 0 || t.allowed.some((n) => !/^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+$/.test(n)))) throw new Error('a tools run needs exact mcp tool names');
+  // v0.10: a tools run names its one server and its tools instead of denying every MCP tool.
+  const reach: string[][] = t
+    ? [['--tools', ''], ['--mcp-config', t.mcpConfig], ['--strict-mcp-config'], ['--allowedTools', t.allowed.join(',')]]
+    : [['--tools', ''], ['--disallowedTools', 'mcp__*'], ['--strict-mcp-config']];
   const options: string[][] = [
     ...io,
     ['--model', f.model],
     // claude refuses a fallback equal to the model ("Rewrite with Sonnet" with fallback sonnet).
     ...(f.fallbackModel !== f.model ? [['--fallback-model', f.fallbackModel]] : []),
     ['--effort', f.effort],
-    ['--max-turns', '1'],
+    ['--max-turns', t ? String(t.maxTurns) : '1'],
     ['--max-budget-usd', MAX_BUDGET_USD],
-    ['--tools', ''],
-    ['--disallowedTools', 'mcp__*'],
-    ['--strict-mcp-config'],
+    ...reach,
     ['--disable-slash-commands'],
     ['--no-session-persistence'],
     ['--setting-sources', 'local'],
@@ -240,6 +280,51 @@ export function streamInit(stdout: string): { tools: unknown[]; mcpServers: unkn
   return null;
 }
 
+/** v0.10: one `system`/`init` line read on its own (as a streamed run prints it), or null when it is not one. */
+export function initOfLine(line: string): { tools: unknown[]; mcpServers: unknown[] } | null {
+  return line.trim().startsWith('{') ? streamInit(line) : null;
+}
+
+/**
+ * v0.10 (spec 0.10 B6.5): what is wrong with a tools run's init line, or
+ * null when it is exactly what the run was given: one MCP server named
+ * `server`, connected, and the tools exactly `allowed` (no built-in tool,
+ * nothing else).
+ */
+export function initProblem(init: { tools: unknown[]; mcpServers: unknown[] } | null, server: string, allowed: readonly string[]): 'no_init' | 'servers' | 'tools' | null {
+  if (!init) return 'no_init';
+  const servers = init.mcpServers;
+  const s = servers[0];
+  if (servers.length !== 1 || !isObj(s) || s.name !== server || s.status !== 'connected') return 'servers';
+  const tools = init.tools;
+  if (tools.length !== allowed.length || tools.some((t) => typeof t !== 'string')) return 'tools';
+  const want = new Set(allowed);
+  return tools.every((t) => want.has(t as string)) && new Set(tools).size === want.size ? null : 'tools';
+}
+
+/** v0.10: feeds streamed chunks to `onLine` one complete line at a time (a partial last line waits for the next chunk). */
+export function lineSplitter(onLine: (line: string) => void): { push(chunk: string): void; end(): void } {
+  let rest = '';
+  return {
+    push(chunk) {
+      rest += chunk;
+      let at = rest.indexOf('\n');
+      while (at >= 0) {
+        const line = rest.slice(0, at);
+        rest = rest.slice(at + 1);
+        if (line.trim()) onLine(line);
+        at = rest.indexOf('\n');
+      }
+      // A runaway line without a break is not a stream-json message: drop what can't be one.
+      if (rest.length > 4 * 1024 * 1024) rest = '';
+    },
+    end() {
+      if (rest.trim()) onLine(rest);
+      rest = '';
+    },
+  };
+}
+
 // Login, token and limit failures belong to the account, not to the request.
 const ACCOUNT_FAILURE =
   /invalid api key|\/login|log ?in again|not logged in|authenticat|unauthori[sz]ed|oauth|token (?:has )?(?:expired|revoked)|relogin|credit balance|usage limit|limit reached|rate.?limit/i;
@@ -248,7 +333,7 @@ const ACCOUNT_FAILURE =
 const DRIFT = /(?:unknown|unrecognized) (?:option|argument)s?:?\s*['"‘]?(--[\w-]+)?/i;
 
 /** Every option a run passes, the only ones a refusal is read as. */
-const OUR_OPTIONS: ReadonlySet<string> = new Set([...CSWAP_OPTIONS, ...CORE_OPTIONS, ...DROPPABLE_OPTIONS, ...ISOLATION_OPTIONS]);
+const OUR_OPTIONS: ReadonlySet<string> = new Set([...CSWAP_OPTIONS, ...CORE_OPTIONS, ...DROPPABLE_OPTIONS, ...ISOLATION_OPTIONS, ...TOOLS_ISOLATION_OPTIONS]);
 
 // cswap execs claude: a claude that is not there is exit 127, "command not found" or ENOENT naming claude.
 const CLAUDE_MISSING = /command not found|no such file or directory\W+(?:[^\s'"]*\/)?claude(?![\w./-])/i;
@@ -348,6 +433,10 @@ export interface ExecRewrite {
   timeoutMs: number;
   /** Aborts the run (cancel, sent meanwhile, daemon stop). */
   signal: AbortSignal;
+  /** v0.10: captured stdout at most (default 1 MiB; Chat's runs take 4 MiB). */
+  maxBuffer?: number;
+  /** v0.10: stdout as it comes (ExecOptions.onStdout). */
+  onStdout?: (chunk: string) => void;
 }
 
 /**
@@ -376,15 +465,16 @@ export async function execRewrite(
       env: rewriteEnv(ctx.env, ctx.bins.claude),
       input: r.input,
       timeoutMs: r.timeoutMs + EXEC_GRACE_MS,
-      maxBuffer: RUN_MAX_BUFFER,
+      maxBuffer: r.maxBuffer ?? RUN_MAX_BUFFER,
       signal: ac.signal,
+      ...(r.onStdout ? { onStdout: r.onStdout } : {}),
     });
   } finally {
     ctx.clock.clearTimeout(timer);
     r.signal.removeEventListener('abort', onAbort);
   }
   const out = { outcome: classifyRun(res, { aborted: r.signal.aborted, timedOut }), ms: Math.max(0, ctx.clock.now() - started) };
-  return r.flags.io === 'stream' ? { ...out, init: streamInit(res.stdout) } : out;
+  return r.flags.io === 'stream' || r.flags.tools ? { ...out, init: streamInit(res.stdout) } : out;
 }
 
 /**

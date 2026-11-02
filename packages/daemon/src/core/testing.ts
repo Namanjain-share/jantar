@@ -86,7 +86,12 @@ export function createFakeExec(...handlers: ExecHandler[]): ExecFile & { calls: 
     calls.push(call);
     for (const h of list) {
       const r = await h(call);
-      if (r) return { code: 0, signal: null, stdout: '', stderr: '', timedOut: false, truncated: false, durationMs: 0, ...r };
+      if (r) {
+        const res: ExecResult = { code: 0, signal: null, stdout: '', stderr: '', timedOut: false, truncated: false, durationMs: 0, ...r };
+        // v0.10: the fake hands its stdout to a streaming listener too (ExecOptions.onStdout).
+        if (res.stdout) opts.onStdout?.(res.stdout);
+        return res;
+      }
     }
     return { code: 127, signal: null, stdout: '', stderr: `not faked: ${file}`, timedOut: false, truncated: false, durationMs: 0 };
   }) as ExecFile & { calls: ExecCall[]; handle(h: ExecHandler): void };

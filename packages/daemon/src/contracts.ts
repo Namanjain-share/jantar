@@ -197,6 +197,14 @@ export interface ExecOptions {
   /** Max captured bytes per stream; the rest is dropped and `truncated` set. Default 4 MiB. */
   maxBuffer?: number;
   signal?: AbortSignal;
+  /**
+   * v0.10 (spec 0.10 B6.5, proposed): stdout as it comes, decoded as UTF-8
+   * (a character split across two reads arrives whole in the second). Chat
+   * reads a run's `system`/`init` line before any tool call is trusted. The
+   * captured `stdout` of the result is unchanged; a chunk past `maxBuffer`
+   * is still handed here.
+   */
+  onStdout?: (chunk: string) => void;
 }
 
 export interface ExecResult {
