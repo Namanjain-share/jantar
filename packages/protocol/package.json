@@ -29,6 +29,11 @@
       "types": "./dist/post-url.d.ts",
       "default": "./dist/post-url.js"
     },
+    "./people": {
+      "@jantar/source": "./src/people.ts",
+      "types": "./dist/people.d.ts",
+      "default": "./dist/people.js"
+    },
     "./page-read": {
       "@jantar/source": "./src/page-read.ts",
       "types": "./dist/page-read.d.ts",

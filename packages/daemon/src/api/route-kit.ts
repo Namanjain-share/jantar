@@ -8,6 +8,7 @@ import type { RouteName, Session } from '@jantar/protocol';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { LifeResult } from '../contracts.js';
 import { ApiError, nodeUnsupported } from './errors.js';
+import type { AnyRouteName } from './all-routes.js';
 import type { RequestAuth } from './request.js';
 import type { ApiServices } from './services.js';
 
@@ -41,7 +42,7 @@ export interface RouteImpl {
   stub?: true;
 }
 
-export type RouteTable = Partial<Record<RouteName, RouteImpl>>;
+export type RouteTable = Partial<Record<AnyRouteName, RouteImpl>>;
 
 /**
  * The reply of a `rawResponse` route (RouteDef.rawResponse): bytes and the

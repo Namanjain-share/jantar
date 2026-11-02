@@ -55,6 +55,8 @@ import type {
   UsageSource,
 } from '../contracts.js';
 import { openLifeDb } from '../life/db.js';
+import type { PeopleModule } from '../life/people/module.js';
+import { PersonTicks } from '../life/people/ticks.js';
 import { openMeetingsDb, type MeetingsDb } from '../meetings/db.js';
 import { createMeetingsStore } from '../meetings/store.js';
 import { MemorySettingsStore, resolvePaths } from '../config.js';
@@ -242,6 +244,8 @@ export function notBuiltParts(): NotBuiltParts {
       places: notBuilt<PlacesModule>('Life'),
       finance: notBuilt<FinanceModule>('Life'),
       posts: notBuilt<PostsModule>('Life'),
+      // v0.12: no person can be reached without Life (the gate reads `gone`), and her stream has its ticks.
+      people: notBuilt<PeopleModule>('People', { ticks: new PersonTicks(), gateState: () => 'gone', ownerReach: () => null, person: () => null, lifeOpen: () => false }),
     }),
     intel: notBuilt<IntelService>('The Intel shelf', { ...life }),
     meetings: notBuilt<MeetingsService>('Meetings', {

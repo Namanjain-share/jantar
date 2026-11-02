@@ -70,6 +70,7 @@ import { pushEndpointProblem } from '../notify/push-hosts.js';
 import { BackupTimer, backupSummary, listBackups, preUpgradeName, restoreTarget, RESTORE_REFUSED, writeBackup } from './backup.js';
 import { LIFE_BROKEN_REASON, openLifeDb } from './db.js';
 import { KIND_MODULE, PING_KINDS, errorKind } from './pings.js';
+import { PeopleModule } from './people/module.js';
 import { createLifeSend, pushNotice, type LifeSend } from './push.js';
 import { LifeScheduler } from './scheduler.js';
 import { buildToday } from './today.js';
@@ -170,6 +171,8 @@ class LifeServiceImpl implements LifeService {
   private readonly core: LifeCore;
   private readonly scheduler: LifeScheduler;
   private readonly backups: BackupTimer;
+  /** v0.12 People: built now, open or not (its exits need only jantar.db). */
+  readonly people: PeopleModule;
   private readonly closed: Modules = {
     todos: closedModule<TodosModule>('todos'),
     medicines: closedModule<MedicinesModule>('medicines'),
@@ -188,7 +191,7 @@ class LifeServiceImpl implements LifeService {
     this.log = ctx.log.child({ part: 'life' });
     this.macZone = opts.macZone ?? macZoneOf(ctx.env);
     this.zone = this.zoneFor(ctx.settings.get());
-    this.send = opts.send ?? createLifeSend(ctx, deps.notifiers);
+    this.send = opts.send ?? createLifeSend(ctx, deps.notifiers, (pid) => this.people.person(pid)?.prefs ?? null);
     const db = () => {
       if (!this.handle) throw new Error('life.db is not open');
       return this.handle;
@@ -208,6 +211,12 @@ class LifeServiceImpl implements LifeService {
       newId,
     };
     this.backups = new BackupTimer(ctx.clock, this.log, { dir: ctx.paths.backupsDir, tz: () => this.zone, run: () => this.nightly() });
+    this.people = new PeopleModule({
+      ctx,
+      core: () => (this.handle ? this.core : null),
+      push: (p) => void pushNotice(ctx, this.send, p),
+    });
+    this.people.ownerChanged = () => this.changed();
   }
 
   get todos(): TodosModule {
@@ -233,7 +242,7 @@ class LifeServiceImpl implements LifeService {
     if (this.started) return;
     this.started = true;
     this.unsubscribe = this.ctx.settings.subscribe((next, prev) => this.guarded(() => this.onSettings(next, prev)));
-    if (lifeOn(this.ctx.settings.get())) this.guarded(() => this.open());
+    if (wantsLifeDb(this.ctx.settings.get())) this.guarded(() => this.open());
   }
 
   async stop(): Promise<void> {
@@ -373,9 +382,15 @@ class LifeServiceImpl implements LifeService {
     this.backupsSeen = null;
     // The restored rows are history: every handler rebuilds them, and what came due since the backup moves on
     // unsent, before the first sweep.
-    if (lifeOn(this.ctx.settings.get()) && !this.open({ resyncFirst: true })) {
+    if (wantsLifeDb(this.ctx.settings.get()) && !this.open({ resyncFirst: true })) {
       this.log.error('life restore failed', { event: 'life.restore', code: 'reopen_failed' });
       return { ok: false, code: 'unavailable', reason: RESTORE_REASONS.reopen };
+    }
+    // v0.12 (C11): her Activity says a restore happened (it lives in life.db, so it is written after).
+    try {
+      this.people.afterRestore();
+    } catch (e) {
+      this.log.warn('people restore note failed', { error: errorKind(e) });
     }
     // Mended: a later break says so on the phone again.
     this.noticeSent = false;
@@ -460,6 +475,12 @@ class LifeServiceImpl implements LifeService {
       this.log.info('life copied before its upgrade', { event: 'life.precopy', from: r.precopy.from, to: r.precopy.to, file: r.precopy.file });
     }
     this.handle = r.db;
+    // v0.12 (C11): the consent ledger wins over whatever life.db holds (a restore can't bring a forgotten person back).
+    try {
+      this.people.reconcile();
+    } catch (e) {
+      this.log.error('people reconcile failed', { error: errorKind(e) });
+    }
     if (!this.built) {
       try {
         this.built = this.buildModules();
@@ -509,9 +530,10 @@ class LifeServiceImpl implements LifeService {
     const before = this.zone;
     this.zone = this.zoneFor(next);
     const lifeChanged = JSON.stringify(next.life) !== JSON.stringify(prev.life);
-    if (!lifeChanged && next.notify.webpush === prev.notify.webpush) return;
+    const peopleChanged = next.people.enabled !== prev.people.enabled;
+    if (!lifeChanged && !peopleChanged && next.notify.webpush === prev.notify.webpush) return;
     const on = lifeOn(next);
-    if (on && !this.handle) {
+    if (wantsLifeDb(next) && !this.handle) {
       this.open();
     } else if (this.handle) {
       if (!on) {
@@ -526,7 +548,7 @@ class LifeServiceImpl implements LifeService {
       }
       if (before !== this.zone) this.backups.rearm();
     }
-    if (lifeChanged || lifeOn(next)) this.changed();
+    if (lifeChanged || peopleChanged || lifeOn(next)) this.changed();
   }
 
   /** The nightly run: back up, and say so once a day when it failed. */
@@ -539,6 +561,11 @@ class LifeServiceImpl implements LifeService {
     this.backupFailedOn = day;
     await pushNotice(this.ctx, this.send, { kind: 'life', title: 'Life backup failed', body: 'Tonight’s copy of Life data was not written.', url: '/today', tag: 'life:backup' });
   }
+}
+
+/** life.db opens while any Life module is on, or (v0.12) while People is on: her space lives there. */
+function wantsLifeDb(s: Settings): boolean {
+  return lifeOn(s) || s.people.enabled;
 }
 
 /** Delete a database file and its -wal and -shm (a staging copy). */

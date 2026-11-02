@@ -11,7 +11,7 @@
  * row; one whose migration 2 fails is left at schema 1 with its rows.
  *
  * v0.10: migration 3 (place_visits), Life's second schema change. A file
- * 0.9.0 wrote (schema 2) opens, moves to 3 and keeps every row; one whose
+ * 0.9.0 wrote (schema 2) opens, moves to the current schema and keeps every row; one whose
  * migration 3 fails is left at 2. The pre-upgrade copy is in
  * precopy.test.ts.
  */
@@ -111,7 +111,12 @@ describe('openLifeDb', () => {
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(statSync(dir).mode & 0o777).toBe(0o700);
     const tables = (db.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map((t) => t.name);
-    expect(tables).toEqual(['bills', 'budgets', 'doses', 'food', 'foods_saved', 'medicines', 'meta', 'money', 'pings', 'place_visits', 'places', 'posts', 'projects', 'todos', 'weights']);
+    // v0.12 (schema 4) adds People's tables; person_activity's AUTOINCREMENT brings sqlite_sequence.
+    expect(tables).toEqual([
+      'bills', 'budgets', 'day_plans', 'doses', 'food', 'foods_saved', 'journal_comments', 'journal_entries', 'medicines', 'meta', 'money',
+      'people', 'person_activity', 'person_alerts', 'pings', 'place_visits', 'places', 'plan_templates', 'posts', 'projects', 'shared_spaces',
+      'sleep_logs', 'sqlite_sequence', 'todos', 'weights',
+    ]);
     expect(db.meta('schema')).toBe(String(LIFE_SCHEMA_VERSION));
     expect(LIFE_SCHEMA_VERSION).toBe(LIFE_MIGRATIONS.length);
     for (const f of readdirSync(dir)) expect(statSync(join(dir, f)).mode & 0o777, f).toBe(0o600);
@@ -121,7 +126,7 @@ describe('openLifeDb', () => {
     seeded();
     const db = openOk();
     expect((db.prepare('SELECT count(*) AS n FROM food').get() as { n: number }).n).toBe(200);
-    expect(db.meta('schema')).toBe('3');
+    expect(db.meta('schema')).toBe('4');
   });
 
   it('keeps the unique dose slot and the weight range in the schema', () => {
@@ -180,11 +185,12 @@ function schemaOneFile(): void {
 
 describe('v0.7: migration 2, posts (Life\'s first schema change)', () => {
   it('is schema 2: a posts table with one index, posts_open; migration 1 is unchanged', () => {
-    expect(LIFE_SCHEMA_VERSION).toBe(3);
+    expect(LIFE_SCHEMA_VERSION).toBe(4);
     expect(LIFE_MIGRATIONS.map((m) => [m.version, m.name])).toEqual([
       [1, 'life'],
       [2, 'posts'],
       [3, 'place_visits'],
+      [4, 'people'],
     ]);
     expect(LIFE_MIGRATIONS[0]?.sql).not.toMatch(/posts/);
     const db = openOk();
@@ -194,10 +200,10 @@ describe('v0.7: migration 2, posts (Life\'s first schema change)', () => {
     expect(indexes).toEqual(['posts_open']);
   });
 
-  it('a 0.6.1 file opens, moves to the current schema (3) and keeps every row', () => {
+  it('a 0.6.1 file opens, moves to the current schema (4) and keeps every row', () => {
     schemaOneFile();
     const db = openOk();
-    expect(db.meta('schema')).toBe('3');
+    expect(db.meta('schema')).toBe('4');
     expect(db.meta('kcal_target')).toBe('1800');
     const todo = db.prepare('SELECT due_day, json FROM todos').all() as { due_day: string; json: string }[];
     expect(todo).toHaveLength(1);
@@ -212,7 +218,7 @@ describe('v0.7: migration 2, posts (Life\'s first schema change)', () => {
     db.close();
     open.splice(open.indexOf(db), 1);
     // Opened again: nothing migrates twice.
-    expect(openOk().meta('schema')).toBe('3');
+    expect(openOk().meta('schema')).toBe('4');
   });
 
   it('a 0.6.1 file whose migration 2 fails is refused, and stays at schema 1 with its rows', () => {
@@ -230,9 +236,9 @@ describe('v0.7: migration 2, posts (Life\'s first schema change)', () => {
     expect(again.db.meta('kcal_target')).toBe('1800');
   });
 
-  it('a schema-4 file (from a later build) is refused untouched', () => {
+  it('a schema-5 file (from a later build) is refused untouched', () => {
     const db = openOk();
-    db.setMeta('schema', '4');
+    db.setMeta('schema', '5');
     db.close();
     open.splice(open.indexOf(db), 1);
     expectRefusedUntouched('newer_schema');
@@ -265,15 +271,16 @@ describe("v0.10: migration 3, place_visits (Life's second schema change)", () =>
     expect(LIFE_MIGRATIONS[2]?.sql).not.toMatch(/REFERENCES/);
     const db = openOk();
     const cols = (db.raw.prepare('PRAGMA table_info(place_visits)').all() as { name: string }[]).map((c) => c.name);
-    expect(cols).toEqual(['id', 'place_id', 'day', 'updated_at', 'json']);
+    // v0.12 (schema 4) adds by_person and space (v4-migration.test.ts).
+    expect(cols).toEqual(['id', 'place_id', 'day', 'updated_at', 'json', 'by_person', 'space']);
     const indexes = (db.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'place_visits' AND sql IS NOT NULL ORDER BY name").all() as { name: string }[]).map((i) => i.name);
-    expect(indexes).toEqual(['place_visits_day', 'place_visits_place']);
+    expect(indexes).toEqual(['place_visits_day', 'place_visits_place', 'place_visits_space_day']);
   });
 
-  it('a 0.9.0 file (schema 2) opens, moves to 3 and keeps every row', () => {
+  it('a 0.9.0 file (schema 2) opens, moves to the current schema (4) and keeps every row', () => {
     schemaTwoFile();
     const db = openOk();
-    expect(db.meta('schema')).toBe('3');
+    expect(db.meta('schema')).toBe('4');
     expect(db.meta('kcal_target')).toBe('1800');
     expect((db.prepare('SELECT count(*) AS n FROM todos').get() as { n: number }).n).toBe(1);
     expect((db.prepare('SELECT count(*) AS n FROM posts').get() as { n: number }).n).toBe(1);
@@ -286,7 +293,7 @@ describe("v0.10: migration 3, place_visits (Life's second schema change)", () =>
     expect(Object.values(db.raw.prepare('PRAGMA quick_check').get() as object)[0]).toBe('ok');
     db.close();
     open.splice(open.indexOf(db), 1);
-    expect(openOk().meta('schema')).toBe('3');
+    expect(openOk().meta('schema')).toBe('4');
   });
 
   it('a 0.9.0 file whose migration 3 fails is refused, and stays at schema 2 with its rows', () => {
@@ -401,7 +408,7 @@ describe('createTestLifeCore (core/testing.ts)', () => {
     try {
       core.clock.set('2026-10-30T20:00:00.000Z');
       expect(core.today()).toBe('2026-10-31');
-      expect(core.db.meta('schema')).toBe('3');
+      expect(core.db.meta('schema')).toBe('4');
       expect(core.settings().medicines).toBe(true);
       expect(core.newId()).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
       core.scheduler.set('med', 'm1', '08:00', new Date('2026-10-31T02:30:00.000Z'));

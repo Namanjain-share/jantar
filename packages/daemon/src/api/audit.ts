@@ -30,7 +30,8 @@ export class Auditor {
     private readonly log: Logger,
   ) {}
 
-  write(input: AuditInput): AuditEntry | null {
+  /** v0.12: `person` fills the audit row's person column (whose space it touched); never part of AuditEntry. */
+  write(input: AuditInput, person?: string): AuditEntry | null {
     const entry: Omit<AuditEntry, 'seq'> = {
       ts: this.clock.iso(),
       actor: input.actor,
@@ -41,7 +42,7 @@ export class Auditor {
     if (input.target !== undefined) entry.target = input.target;
     if (input.detail !== undefined) entry.detail = input.detail.slice(0, 500);
     try {
-      return this.db.audit.append(entry);
+      return this.db.audit.append(entry, person);
     } catch (e) {
       this.log.error('audit write failed', { action: input.action, error: String(e) });
       return null;

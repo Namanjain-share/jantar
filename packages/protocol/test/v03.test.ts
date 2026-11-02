@@ -141,8 +141,8 @@ describe('v0.3 settings', () => {
   });
 
   it('names the Mac-only groups and finds them in a patch however large', () => {
-    // v0.4 added life, intel and accounts (settings-v2.test.ts); v0.5 meetings (v05.test.ts); v0.5.3 ask (v053.test.ts); v0.6 fleet (v06.test.ts).
-    expect([...MAC_ONLY_SETTING_GROUPS].sort()).toEqual(['accounts', 'ask', 'bins', 'controls', 'files', 'fleet', 'folders', 'intel', 'launch', 'life', 'meetings', 'remote', 'rewrite', 'screenshots']);
+    // v0.4 added life, intel and accounts (settings-v2.test.ts); v0.5 meetings (v05.test.ts); v0.5.3 ask (v053.test.ts); v0.6 fleet (v06.test.ts); v0.12 people.
+    expect([...MAC_ONLY_SETTING_GROUPS].sort()).toEqual(['accounts', 'ask', 'bins', 'controls', 'files', 'fleet', 'folders', 'intel', 'launch', 'life', 'meetings', 'people', 'remote', 'rewrite', 'screenshots']);
     const many: Record<string, unknown> = {};
     for (let i = 0; i < 80; i++) many[`k${i}`] = i;
     expect(macOnlyGroupIn({ ...many, files: { enabled: true } })).toBe('files');

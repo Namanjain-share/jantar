@@ -88,10 +88,13 @@ import {
   type Settings,
 } from '@jantar/protocol';
 import { NODE_ROUTES, isNodeRoute, type NodeCallActor } from '@jantar/protocol/node-link';
+import { PERSON_COOKIE, PERSON_PREFIX } from '@jantar/protocol/people';
 import type { FleetTarget, ForwardCall } from '../contracts.js';
 import { captureDoor, captureModeOk } from '../auth/capture-keys.js';
 import { proxyHeaderFor, rateLimitKey } from '../auth/client-ip.js';
 import { deviceSecretMatches } from '../auth/devices.js';
+import { personSecretMatches } from '../auth/person-devices.js';
+import { ALL_ROUTES, isPeopleRoutePath, type AnyRouteName } from './all-routes.js';
 import { hasScope } from '../auth/scopes.js';
 import { auditResult, type AuditInput } from './audit.js';
 import { registerCtlRoutes } from './ctl-routes.js';
@@ -108,12 +111,14 @@ import {
   type ErrorReply,
 } from './errors.js';
 import { openEventStream } from './events-ws.js';
+import { openPersonEventStream } from './person-events.js';
+import { peopleHostAllows } from './people-fence.js';
 import { LINK_CALL_HEADER, actorName, cliAuth, type RequestAuth, type Transport } from './request.js';
 import { sessionOr404 } from './route-kit.js';
 import { ROUTE_IMPLS, isRawReply, type Call, type RouteImpl } from './routes.js';
 import { securityHeaders } from './security.js';
 import type { ApiServices, WsLike } from './services.js';
-import { isApiPath, registerWebApp, serveIndexFallback } from './static.js';
+import { isApiPath, registerWebApp, serveIndexFallback, servePersonFallback } from './static.js';
 import { NO_TERMINAL_REASON, READ_ONLY_REASON } from '../modes.js';
 
 /**
@@ -214,7 +219,7 @@ export const LIFE_FEATURES: ReadonlySet<FeatureSwitch> = new Set<FeatureSwitch>(
  * device's reach. It runs after the device, scope and secret checks, so
  * those refusals keep their own codes.
  */
-export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<RouteName, string>>> = {
+export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<AnyRouteName, string>>> = {
   deviceScopes: 'Grant scopes on the Mac: jantar devices grant <device> launch',
   lifeBackup: 'Back Life up on the Mac: jantar life backup',
   lifeRestore: 'Restore Life on the Mac: jantar life restore <file>',
@@ -236,6 +241,15 @@ export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<RouteName, string>>> = 
   chatKeyAdd: 'Make a Siri key at the Mac: jantar chat shortcut add',
   chatKeyList: 'List Siri keys at the Mac: jantar chat shortcut list',
   chatKeyRevoke: 'Revoke a Siri key at the Mac: jantar chat shortcut revoke <id>',
+  // v0.12 People: everything that lets a person in, shapes what she is offered or ends her space.
+  personAdd: 'Add a person at the Mac: jantar people add <name> --email <address>',
+  personOffer: 'Set what an invite offers at the Mac: jantar people offer <name>',
+  personModules: 'Change their modules at the Mac: jantar people modules <name>',
+  personInvite: 'Make an invite at the Mac: jantar people invite <name>',
+  personInviteRevoke: 'Void an invite at the Mac: jantar people revoke-invite <name>',
+  personRemove: 'End sharing at the Mac: jantar people remove <name>',
+  peopleSwitch: 'Turn People on or off at the Mac: jantar people on',
+  peopleDoctor: 'Check People at the Mac: jantar people doctor',
 };
 
 /** What an `extension` route answers without a valid extension key (401). */
@@ -257,7 +271,7 @@ export const EXTENSION_ORIGIN = `chrome-extension://${EXTENSION_ID}`;
  * phone has no folder to claim. v0.5.3: its `via: 'claude'` marks what
  * `jantar mcp` saved; a phone cannot claim to be a Claude session.
  */
-export const CTL_ONLY_FIELDS: Readonly<Partial<Record<RouteName, readonly string[]>>> = {
+export const CTL_ONLY_FIELDS: Readonly<Partial<Record<AnyRouteName, readonly string[]>>> = {
   intelCapture: ['cwd', 'via'],
 };
 
@@ -320,6 +334,9 @@ function pathOf(req: FastifyRequest): string {
 
 /** The extension's paths: the only place its key header is read. */
 const EXT_PREFIX = '/v1/ext/';
+
+/** v0.12: her app's own files, which only her host serves (M13): never registered on his origin. */
+const PERSON_APP_FILES: ReadonlySet<string> = new Set(['/p.html', '/p-sw.js', '/p.webmanifest']);
 
 function parseWith<T>(schema: z.ZodType<T> | undefined, value: unknown, where: string): T {
   if (!schema) return value as T;
@@ -469,7 +486,12 @@ const EXTENSION_GATED: ReadonlyMap<string, RouteDef> = new Map(
  * v0.5: `extension` routes and the extension's pairing claim (`name`) are
  * gated their own way, before any device check.
  */
-export function gate(def: Pick<RouteDef, 'scope' | 'method'>, auth: RequestAuth, req: FastifyRequest, s: ApiServices, name?: RouteName): void {
+export function gate(def: Pick<RouteDef, 'scope' | 'method' | 'join' | 'exit'>, auth: RequestAuth, req: FastifyRequest, s: ApiServices, name?: AnyRouteName): void {
+  // v0.12: her routes have their own gate, and no other transport serves them.
+  if (def.scope === 'person') {
+    personGate(def, auth, req, s, name);
+    return;
+  }
   if (auth.transport === 'ctl') return;
   if (auth.transport === 'link') {
     // v0.6: the hub's call, as the phone it forwarded: its scopes again; no browser is in the way here.
@@ -522,6 +544,45 @@ export function gate(def: Pick<RouteDef, 'scope' | 'method'>, auth: RequestAuth,
   if (def.scope !== 'public' && needsDeviceSecret(def) && !auth.secretOk) {
     throw new ApiError('unauthorized', DEVICE_SECRET_REFUSAL);
   }
+}
+
+/** v0.12: what her routes answer without a person device (401). */
+export const PERSON_NOT_JOINED = 'Open your invite link again.';
+/** v0.12 (T20): the ledger says she shares, but life.db (a restore of an older backup) has no space for her (401). */
+export const PERSON_SETUP_AGAIN = 'Sharing needs to be set up again. Ask for a new invite.';
+
+/**
+ * v0.12 People: her gate (spec 9.3.2). Her routes exist only on the people
+ * host (404 elsewhere, also fenced in onRequest). In order:
+ * - a `join` route takes no credential; its writes carry the people origin,
+ *   and it counts against the claim limiter;
+ * - her device (cookie, read only here; 401 without it);
+ * - the ledger, then her state (D19): left, removed or forgotten is 404; an
+ *   active ledger with no space in life.db is 401 "set up again"; `ending`
+ *   reaches only her exits and her stream;
+ * - People switched off: her exits and her stream only (C12);
+ * - writes and her socket carry exactly the people origin (C1), and her
+ *   device secret (or the cookie bound to her https host).
+ */
+function personGate(def: Pick<RouteDef, 'scope' | 'method' | 'join' | 'exit'>, auth: RequestAuth, req: FastifyRequest, s: ApiServices, name: AnyRouteName | undefined): void {
+  if (auth.transport !== 'tcp' || !s.origin.isPeopleHost(headerValue(req.headers.host))) throw new ApiError('not_found', 'not found');
+  const writeOrSocket = def.method !== 'GET';
+  const origin = headerValue(req.headers.origin);
+  if (def.join) {
+    if (writeOrSocket && !s.origin.originAllowedFor('person', origin)) throw new ApiError('forbidden', 'request origin is not allowed');
+    const limited = s.claimLimiter.hit(`person:${auth.rateKey}`);
+    if (!limited.ok) throw new ApiError('rate_limited', 'Too many tries; wait a minute', retryAfter(limited.retryAfterMs));
+    return;
+  }
+  if (!auth.person) throw new ApiError('unauthorized', PERSON_NOT_JOINED);
+  const state = s.deps.life.people.gateState(auth.person.personId);
+  if (state === 'gone') throw new ApiError('not_found', 'not found');
+  if (state === 'setup_again') throw new ApiError('unauthorized', PERSON_SETUP_AGAIN);
+  const exit = def.exit === true || name === 'personEvents';
+  if (state === 'ending' && !exit) throw new ApiError('not_found', 'not found');
+  if (!s.ctx.settings.get().people.enabled && !exit) throw new ApiError('not_found', 'not found');
+  if (writeOrSocket && !s.origin.originAllowedFor('person', origin)) throw new ApiError('forbidden', 'request origin is not allowed');
+  if (writeOrSocket && !auth.person.secretOk) throw new ApiError('unauthorized', DEVICE_SECRET_REFUSAL);
 }
 
 /**
@@ -585,12 +646,12 @@ function jsonParser(_req: FastifyRequest, body: string | Buffer, done: (err: Err
  * `?node=` that names no paired machine (or comes while Fleet is off) is
  * 404: it never runs on the Mac instead.
  */
-function forwardTarget(s: ApiServices, name: RouteName, transport: Transport, req: FastifyRequest): FleetTarget | null {
-  if (transport === 'link' || !isNodeRoute(name)) return null;
+function forwardTarget(s: ApiServices, name: AnyRouteName, transport: Transport, req: FastifyRequest): FleetTarget | null {
+  if (transport === 'link' || !isNodeRoute(name as RouteName)) return null;
   const query = (req.query ?? {}) as Record<string, unknown>;
-  const target = s.fleet.target(name, (req.params ?? {}) as Record<string, string>, query);
+  const target = s.fleet.target(name as RouteName, (req.params ?? {}) as Record<string, string>, query);
   if (target) return target;
-  if (NODE_ROUTES[name] === 'query' && query.node !== undefined) throw new ApiError('not_found', 'no such machine');
+  if (NODE_ROUTES[name as keyof typeof NODE_ROUTES] === 'query' && query.node !== undefined) throw new ApiError('not_found', 'no such machine');
   return null;
 }
 
@@ -604,8 +665,17 @@ function forwardTarget(s: ApiServices, name: RouteName, transport: Transport, re
  * a forwarded route skips the Mac's own switch, database and terminal
  * checks (the node runs its own), and a read-only hub forwards no write.
  */
-function preBodyChecks(name: RouteName, def: RouteDef, auth: RequestAuth, req: FastifyRequest, s: ApiServices, transport: Transport): FleetTarget | null {
+function preBodyChecks(name: AnyRouteName, def: RouteDef, auth: RequestAuth, req: FastifyRequest, s: ApiServices, transport: Transport): FleetTarget | null {
+  // v0.12: with People switched off, his People routes don't exist for a device (the Mac's CLI still reaches them).
+  if (transport === 'tcp' && def.scope !== 'person' && isPeopleRoutePath(def.path) && !s.ctx.settings.get().people.enabled) {
+    throw new ApiError('not_found', 'not found');
+  }
   gate(def, auth, req, s, name);
+  // v0.12: her routes need life.db, except her exits, which work on jantar.db alone or answer themselves (C12).
+  if (def.scope === 'person' && !def.exit && !def.join) {
+    const broken = s.deps.life.broken();
+    if (broken !== null) throw new ApiError('life_unavailable', broken);
+  }
   if (def.localOnly && transport !== 'ctl') {
     throw new ApiError('forbidden', LOCAL_ONLY_REFUSED[name] ?? 'only the Mac (the jantar CLI) can do this');
   }
@@ -627,10 +697,10 @@ function preBodyChecks(name: RouteName, def: RouteDef, auth: RequestAuth, req: F
     const broken = s.deps.meetings.broken();
     if (broken !== null) throw new ApiError('meetings_unavailable', broken);
   }
-  if (s.mode.readOnly && READ_ONLY_REFUSED.has(name)) throw new ApiError('forbidden', READ_ONLY_REASON);
-  if (s.mode.terminal === 'off' && NO_TERMINAL_REFUSED.has(name)) throw new ApiError('not_implemented', NO_TERMINAL_REASON);
+  if (s.mode.readOnly && (READ_ONLY_REFUSED as ReadonlySet<string>).has(name)) throw new ApiError('forbidden', READ_ONLY_REASON);
+  if (s.mode.terminal === 'off' && (NO_TERMINAL_REFUSED as ReadonlySet<string>).has(name)) throw new ApiError('not_implemented', NO_TERMINAL_REASON);
   // v0.6: a node with no backend it can type with (native Windows): watch and cards only.
-  if (s.mode.terminal === 'none' && NO_TERMINAL_REFUSED.has(name)) throw new ApiError('not_implemented', FLEET_COPY.watchOnlyWindows(''));
+  if (s.mode.terminal === 'none' && (NO_TERMINAL_REFUSED as ReadonlySet<string>).has(name)) throw new ApiError('not_implemented', FLEET_COPY.watchOnlyWindows(''));
   return null;
 }
 
@@ -657,17 +727,25 @@ function forwardQuery(query: unknown): Record<string, string> {
 }
 
 /** The audit writers of one request: every row, and a refusal's row (writes from a paired device). */
-function auditorFor(s: ApiServices, transport: Transport, name: RouteName, def: RouteDef, impl: RouteImpl, auth: RequestAuth, rawParams: Record<string, string>) {
+function auditorFor(s: ApiServices, transport: Transport, name: AnyRouteName, def: RouteDef, impl: RouteImpl, auth: RequestAuth, rawParams: Record<string, string>) {
   const isWrite = def.method !== 'GET';
+  // v0.12: whose space a People write touched: his writes into hers name her (`:pid`); hers name her too.
+  const person = auth.person?.personId ?? (isPeopleRoutePath(def.path) ? rawParams.pid : undefined);
   // Refusals, failures and read-scope writes from a device share a small
   // per-device budget (services.ts), so they cannot flood the audit log.
   const audit = (input: AuditInput) => {
     const lowValue = input.result !== 'ok' || def.scope === 'read';
     if (lowValue && transport === 'tcp' && !s.noiseAuditAllowed(actorName(auth))) return;
-    s.auditor.write(input);
+    // v0.12 (C8): her own writes say nothing about the area: `person.write`, no target, no params, codes only.
+    if (auth.person) {
+      const code = input.detail?.split(':')[0];
+      s.auditor.write({ actor: input.actor, action: 'person.write', params: {}, result: input.result, ...(code && input.result !== 'ok' ? { detail: code } : {}) }, auth.person.personId);
+      return;
+    }
+    s.auditor.write(input, person);
   };
   const auditRefusal = (e: unknown) => {
-    if (!isWrite || impl.selfAudit || (transport === 'tcp' && !auth.device)) return;
+    if (!isWrite || impl.selfAudit || (transport === 'tcp' && !auth.device && !auth.person)) return;
     const r = toErrorReply(e);
     audit({
       actor: actorName(auth),
@@ -731,7 +809,7 @@ function sendError(s: ApiServices, r: ErrorReply, err: unknown, req: FastifyRequ
  * goes away first). Every refusal also closes the connection, so the body
  * left unsent is never read.
  */
-function rawBodyHooks(s: ApiServices, transport: Transport, name: RouteName, def: RouteDef, impl: RouteImpl, maxBytes: number) {
+function rawBodyHooks(s: ApiServices, transport: Transport, name: AnyRouteName, def: RouteDef, impl: RouteImpl, maxBytes: number) {
   const counted = new WeakMap<FastifyRequest, string>();
   const release = (req: FastifyRequest) => {
     const who = counted.get(req);
@@ -776,7 +854,7 @@ function rawBodyHooks(s: ApiServices, transport: Transport, name: RouteName, def
   return { preParsing, onResponse: async (req: FastifyRequest) => release(req), onRequestAbort: async (req: FastifyRequest) => release(req) };
 }
 
-function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transport, name: RouteName, def: RouteDef, impl: RouteImpl): void {
+function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transport, name: AnyRouteName, def: RouteDef, impl: RouteImpl): void {
   if (transport === 'ctl' && !def.ctl) return;
   if (def.method === 'WS') return;
   const isWrite = def.method !== 'GET';
@@ -817,7 +895,8 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
           if (field) throw new ApiError('invalid_request', `invalid body at ${field}: only the Mac's CLI sends it`);
         }
         // Every Life write counts here, so no route can forget to (estimates have their own limits on top).
-        if (isWrite && def.feature !== undefined && LIFE_FEATURES.has(def.feature)) {
+        // v0.12: every write of hers too, keyed person:<pid>:<did>.
+        if (isWrite && ((def.feature !== undefined && LIFE_FEATURES.has(def.feature)) || (def.scope === 'person' && auth.person))) {
           const limited = s.lifeWriteLimiter.hit(actorName(auth));
           if (!limited.ok) {
             throw new ApiError('rate_limited', 'Too many Life changes from this device; try again in a minute', {
@@ -882,7 +961,7 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
       try {
         // NEVER_REPLAYED's replies are never kept, whatever the client sends. A raw body (an upload) is
         // never replayed either: a second post makes a second file (v0.4.2).
-        if (isWrite && call.idempotencyKey && def.scope !== 'public' && !NEVER_REPLAYED.has(name) && !raw) {
+        if (isWrite && call.idempotencyKey && def.scope !== 'public' && !def.join && !(NEVER_REPLAYED as ReadonlySet<string>).has(name) && !raw) {
           const scope = `${actorName(auth)}|${def.method}|${pathOf(req)}`;
           const r = await s.idem.run(scope, call.idempotencyKey, call.body, run);
           out = r.response;
@@ -982,6 +1061,25 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
       await reply.code(403).send(errorBody('forbidden', 'unknown Host header'));
       return reply;
     }
+    // v0.12 People: the host fence (spec 9.3.2, M13). Her host answers her routes, /healthz and her app's
+    // files only (everything else: 404, empty); his hosts never answer under PERSON_PREFIX. Decided on the
+    // raw path and on the route Fastify matched, so an encoded path can't slip past either way.
+    const onPeopleHost = s.origin.isPeopleHost(headerValue(req.headers.host));
+    const rawPath = pathOf(req);
+    const matched = req.routeOptions?.url;
+    if (onPeopleHost) {
+      const verdict = peopleHostAllows(req.method, rawPath, matched, s.peopleAssets);
+      if (verdict !== 'ok') {
+        req.ccw = { transport: 'tcp', actor: null, device: null, touched: false, rateKey: 'unknown' };
+        if (verdict === 'redirect') await reply.code(302).header('location', '/p').send();
+        else await reply.code(404).send();
+        return reply;
+      }
+    } else if (rawPath.startsWith(PERSON_PREFIX) || rawPath === '/v1/p' || matched?.startsWith(PERSON_PREFIX) || PERSON_APP_FILES.has(rawPath)) {
+      req.ccw = { transport: 'tcp', actor: null, device: null, touched: false, rateKey: 'unknown' };
+      await reply.code(404).send(errorBody('not_found', 'not found'));
+      return reply;
+    }
     const auth: RequestAuth = {
       transport: 'tcp',
       actor: null,
@@ -997,7 +1095,8 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
     const door = CAPTURE_GATED.get(`${req.routeOptions.method} ${req.routeOptions.url}`);
     const capture = door !== undefined;
     // v0.6: a server's own paths read no device cookie (and no secret, nor the extension's key); v0.8: nor the capture door's.
-    if (isApiPath(path) && !path.startsWith(NODE_PREFIX) && !path.startsWith(CAPTURE_PREFIX) && !capture) {
+    // v0.12: nor her prefix, nor anything on her host: his cookie never authenticates a person route (T2).
+    if (isApiPath(path) && !path.startsWith(NODE_PREFIX) && !path.startsWith(CAPTURE_PREFIX) && !capture && !path.startsWith(PERSON_PREFIX) && !onPeopleHost) {
       // A phone paired with ccw-v2 (imported with `jantar import-ccw-v2`) still sends the old cookie.
       const current = req.cookies?.[DEVICE_COOKIE];
       const key = current ?? req.cookies?.[LEGACY_DEVICE_COOKIE];
@@ -1013,6 +1112,20 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
         if (current === undefined) auth.legacyCookie = true;
       } else {
         auth.authFailure = r.reason;
+      }
+    }
+    // v0.12: her cookie, read here only: under PERSON_PREFIX, on the people host (T2).
+    if (onPeopleHost && path.startsWith(PERSON_PREFIX)) {
+      const key = req.cookies?.[PERSON_COOKIE];
+      const r = s.personDevices.authenticate(key);
+      if (r.ok && key) {
+        auth.person = {
+          personId: r.device.personId,
+          deviceId: r.device.id,
+          key,
+          secretOk: personSecretMatches(r.device, presentedSecret(req)) || cookieIsHostBound(req.headers.host, s.origin.peopleOrigin()),
+        };
+        auth.actor = { kind: 'person', personId: r.device.personId, deviceId: r.device.id };
       }
     }
     // v0.5: the extension's key is read on its own paths only, so it authenticates nothing else.
@@ -1072,10 +1185,12 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
       s.log.info(SHOT_UPLOAD_LOG, { status: reply.statusCode, ...(Number.isSafeInteger(bytes) && bytes >= 0 ? { bytes } : {}) });
       return;
     }
+    const route = req.routeOptions?.url ?? 'unmatched';
     s.log.debug('request', {
       transport,
       method: req.method,
-      route: req.routeOptions?.url ?? 'unmatched',
+      // v0.12 (C8): her routes are logged as the prefix alone, never the pattern that would name the area.
+      route: route.startsWith(PERSON_PREFIX) ? '/v1/p/*' : route,
       status: reply.statusCode,
       ms: Math.round(reply.elapsedTime),
     });
@@ -1087,6 +1202,12 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
   );
 
   app.setNotFoundHandler((req, reply) => {
+    // v0.12: her host's app shell is p.html; nothing of his is ever served there.
+    if (transport === 'tcp' && s.origin.isPeopleHost(headerValue(req.headers.host))) {
+      if (servePersonFallback(req, reply, s.webAvailable)) return;
+      void reply.code(404).send();
+      return;
+    }
     if (transport === 'tcp' && serveIndexFallback(req, reply, s.webAvailable)) return;
     void reply.code(404).send(doorBody(req, errorBody('not_found', 'not found')));
   });
@@ -1117,10 +1238,27 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
     },
   );
 
-  for (const [name, def] of Object.entries(ROUTES) as [RouteName, RouteDef][]) {
-    if (name === 'health' || name === 'events') continue;
+  // v0.12 WS /v1/p/events: her stream, on the TCP app only (never ctl or link), with its own gate (spec 9.3.6).
+  const pev = ALL_ROUTES.personEvents;
+  if (transport === 'tcp') app.get(
+    pev.path,
+    {
+      websocket: true,
+      preHandler: async (req) => {
+        gate(pev, req.ccw, req, s, 'personEvents');
+      },
+    },
+    (socket: WsLike, req: FastifyRequest) => {
+      openPersonEventStream(socket, s, req.ccw);
+    },
+  );
+
+  for (const [name, def] of Object.entries(ALL_ROUTES) as [AnyRouteName, RouteDef][]) {
+    if (name === 'health' || name === 'events' || name === 'personEvents') continue;
     // v0.6: the link serves the routes a hub forwards, and nothing else.
-    if (transport === 'link' && !isNodeRoute(name)) continue;
+    if (transport === 'link' && !isNodeRoute(name as RouteName)) continue;
+    // v0.12: her routes are the TCP app's alone.
+    if (transport !== 'tcp' && def.scope === 'person') continue;
     const impl = ROUTE_IMPLS[name];
     if (!impl) throw new Error(`no handler for route ${name}`);
     const raw = def.rawBody;

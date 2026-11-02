@@ -4,6 +4,37 @@
  * a migration that has shipped: add a new one.
  */
 
+/**
+ * v0.12 People's jantar.db tables (migration 8), also what the in-memory Db
+ * of the tests opens (core/memory-db.ts), so both run one implementation
+ * (db/people-repos.ts). Codes and keys are stored only as hashes.
+ */
+export const PEOPLE_TABLES_SQL = `
+  CREATE TABLE IF NOT EXISTS person_devices (
+    id TEXT PRIMARY KEY, person_id TEXT NOT NULL, name TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE,
+    secret_hash TEXT, created_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, revoked_at TEXT, user_agent TEXT,
+    access_email TEXT
+  );
+  CREATE INDEX IF NOT EXISTS person_devices_person ON person_devices (person_id);
+  CREATE TABLE IF NOT EXISTS person_link_codes (
+    id TEXT PRIMARY KEY, person_id TEXT NOT NULL, code_hash TEXT NOT NULL UNIQUE, by_device TEXT NOT NULL,
+    created_at TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS person_push_subs (
+    endpoint TEXT PRIMARY KEY, person_id TEXT NOT NULL, device_id TEXT NOT NULL, json TEXT NOT NULL, created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS person_push_subs_person ON person_push_subs (person_id);
+  CREATE TABLE IF NOT EXISTS person_invites (
+    id TEXT PRIMARY KEY, person_id TEXT NOT NULL, code_hash TEXT NOT NULL UNIQUE, offer_version INTEGER NOT NULL,
+    created_at TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT, revoked_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS person_consents (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, person_id TEXT NOT NULL, version INTEGER NOT NULL, action TEXT NOT NULL,
+    by TEXT NOT NULL, at TEXT NOT NULL, json TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS person_consents_person ON person_consents (person_id, seq);
+`;
+
 export interface Migration {
   version: number;
   name: string;
@@ -208,6 +239,17 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: `
       -- v0.10: which door a key opens: 'capture' (Intel's save door) or 'chat' (the Siri door).
       ALTER TABLE capture_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'capture';
+    `,
+  },
+  {
+    version: 8,
+    name: 'v0.12 people',
+    // Additive: 0.10 opens a file at this schema, warns, and carries on. It never reads these tables, so a
+    // partner is locked out of a downgraded daemon and gets no pushes (fails closed, spec 9.1.4).
+    sql: `
+      ALTER TABLE audit ADD COLUMN person TEXT;
+      CREATE INDEX IF NOT EXISTS audit_person ON audit (person, seq);
+      ${PEOPLE_TABLES_SQL}
     `,
   },
 ];

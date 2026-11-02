@@ -217,6 +217,20 @@ export const RemoteSettingsSchema = z.object({
   allowedOrigins: z.array(z.string()).default(() => []),
   /** Public base URL used in pairing links, e.g. https://mac.tailnet.ts.net */
   publicUrl: z.string().nullable().default(null),
+  /**
+   * v0.12 People: her hostname's https URL (its own Cloudflare Access app),
+   * e.g. https://us.example.com. Its origin is hers alone: never publicUrl's
+   * and never in allowedOrigins (peopleSettingsProblem).
+   */
+  peopleUrl: z.string().nullable().default(null),
+});
+
+/** v0.12 People (no version bump: an older daemon drops the unknown group, and her host with it). */
+export const PeopleSettingsSchema = z.object({
+  /** Off by default: with it off a build behaves as 0.10 for the owner; her exits still work. */
+  enabled: z.boolean().default(false),
+  /** The owner's name as she reads it ("From Sam"). */
+  ownerName: z.string().trim().min(1).max(40).nullable().default(null),
 });
 
 /**
@@ -398,6 +412,8 @@ export const SettingsSchema = z.object({
   ask: AskSettingsSchema.prefault({}),
   /** v0.6 (no version bump either) */
   fleet: FleetSettingsSchema.prefault({}),
+  /** v0.12 People (no version bump either) */
+  people: PeopleSettingsSchema.prefault({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -426,6 +442,8 @@ export const MAC_ONLY_SETTING_GROUPS = [
   'ask',
   // v0.6: the Fleet switch (a phone must never let servers in).
   'fleet',
+  // v0.12: People (a phone must never let a person in).
+  'people',
 ] as const;
 export type MacOnlySettingGroup = (typeof MAC_ONLY_SETTING_GROUPS)[number];
 
@@ -481,6 +499,9 @@ export function applySettingsPatch(current: Settings, patch: unknown): PatchResu
     const path = issue ? issue.path.join('.') : '';
     return { ok: false, error: `invalid setting${path ? ` ${path}` : ''}: ${issue?.message ?? 'invalid'}`, path };
   }
+  // v0.12: her host must stand apart from his (C1, C10).
+  const people = peopleSettingsProblem(parsed.data);
+  if (people) return { ok: false, error: `invalid setting ${people.path}: ${people.message}`, path: people.path };
   // A zone being set must be one this runtime knows (a stored one is only shape-checked).
   const zone = isPlainObject(patch.life) ? patch.life.timezone : undefined;
   if (typeof zone === 'string' && !knownZone(zone)) return { ok: false, error: `invalid setting life.timezone: ${ZONE_MESSAGE}`, path: 'life.timezone' };
@@ -539,4 +560,51 @@ export const LIFE_MODULES = ['todos', 'medicines', 'food', 'places', 'finance', 
 /** Whether any Life module is on. */
 export function lifeOn(s: Pick<Settings, 'life'>): boolean {
   return LIFE_MODULES.some((m) => s.life[m]);
+}
+
+/**
+ * v0.12 People (C1, C10): what is wrong with the people settings, or null.
+ * `remote.peopleUrl` must be an https URL on a name (not an IP or
+ * localhost), its origin must differ from `publicUrl`'s and must not be in
+ * `allowedOrigins`. `people.enabled` needs a peopleUrl, `remote.mode`
+ * tailscale or cloudflare (in lan mode every Host passes, so the people
+ * host's fence would mean nothing) and the owner's name. A daemon whose
+ * settings have a problem serves no people host at all.
+ */
+export function peopleSettingsProblem(s: Pick<Settings, 'remote' | 'people'>): { path: string; message: string } | null {
+  const url = s.remote.peopleUrl;
+  if (url !== null) {
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      return { path: 'remote.peopleUrl', message: 'must be an https URL' };
+    }
+    if (u.protocol !== 'https:') return { path: 'remote.peopleUrl', message: 'must be an https URL' };
+    if (u.hostname === 'localhost' || /^[\d.]+$/.test(u.hostname) || u.hostname.startsWith('[')) {
+      return { path: 'remote.peopleUrl', message: 'must be a hostname, not an address' };
+    }
+    if (u.pathname !== '/' || u.search !== '' || u.hash !== '' || u.username !== '' || u.password !== '') {
+      return { path: 'remote.peopleUrl', message: 'must be an origin only, like https://us.example.com' };
+    }
+    const origin = u.origin.toLowerCase();
+    const same = (other: string | null) => {
+      if (!other) return false;
+      try {
+        return new URL(other).origin.toLowerCase() === origin;
+      } catch {
+        return false;
+      }
+    };
+    if (same(s.remote.publicUrl)) return { path: 'remote.peopleUrl', message: "must differ from remote.publicUrl (her host is not his)" };
+    if (s.remote.allowedOrigins.some(same)) return { path: 'remote.peopleUrl', message: 'must not be in remote.allowedOrigins (her origin is never his)' };
+  }
+  if (s.people.enabled) {
+    if (url === null) return { path: 'people.enabled', message: 'needs remote.peopleUrl (jantar remote people-url <https-url>)' };
+    if (s.remote.mode !== 'cloudflare' && s.remote.mode !== 'tailscale') {
+      return { path: 'people.enabled', message: 'needs remote.mode cloudflare or tailscale' };
+    }
+    if (s.people.ownerName === null) return { path: 'people.enabled', message: 'needs people.ownerName' };
+  }
+  return null;
 }

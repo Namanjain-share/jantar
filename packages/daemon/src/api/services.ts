@@ -16,7 +16,8 @@ import { PairingService } from '../auth/pairing.js';
 import { SlidingWindowBudget, SlidingWindowLimiter } from '../auth/rate-limit.js';
 import { Auditor } from './audit.js';
 import { IdempotencyCache } from './idempotency.js';
-import { computeWebHash, webIndexExists } from './static.js';
+import { computeWebHash, personAssets, webIndexExists } from './static.js';
+import { PersonDeviceAuth } from '../auth/person-devices.js';
 import { offFleet, offNodeLink, type DaemonMode } from '../modes.js';
 import type { RequestAuth } from './request.js';
 import { UploadStore as FileUploadStore } from '../uploads/store.js';
@@ -328,6 +329,10 @@ export class PaneLookup {
 
 export class ApiServices {
   readonly devices: DeviceAuth;
+  /** v0.12 People: her devices (her cookie is read only on PERSON_PREFIX, on the people host). */
+  readonly personDevices: PersonDeviceAuth;
+  /** v0.12 People (C15): the `/assets/` files her host serves: her app's chunks, from the build manifest. */
+  readonly peopleAssets: ReadonlySet<string>;
   /** v0.5: the paired Chrome extension's keys. */
   readonly extensions: ExtensionAuth;
   readonly pairing: PairingService;
@@ -421,6 +426,7 @@ export class ApiServices {
   ) {
     this.log = ctx.log.child({ part: 'api' });
     this.devices = new DeviceAuth({ db: ctx.db, clock: ctx.clock, log: this.log });
+    this.personDevices = new PersonDeviceAuth({ db: ctx.db, clock: ctx.clock, log: this.log });
     this.extensions = new ExtensionAuth({ db: ctx.db, clock: ctx.clock, log: this.log });
     this.pairing = new PairingService({ clock: ctx.clock, devices: this.devices, extensions: this.extensions, log: this.log });
     this.boundPort = opts.port || ctx.settings.get().remote.port;
@@ -472,6 +478,7 @@ export class ApiServices {
     this.webDist = opts.webDist === undefined ? ctx.paths.webDist : opts.webDist;
     this.webAvailable = !!this.webDist && webIndexExists(this.webDist);
     this.webHash = this.webAvailable && this.webDist ? computeWebHash(this.webDist) : null;
+    this.peopleAssets = this.webAvailable && this.webDist ? personAssets(this.webDist) : new Set();
     this.cookieSecure = opts.cookieSecure ?? true;
     this.mode = opts.mode ?? { readOnly: false, terminal: 'terminal-app' };
     this.startedAt = ctx.clock.iso();

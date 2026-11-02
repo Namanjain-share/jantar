@@ -131,6 +131,86 @@ export const LIFE_MIGRATIONS: readonly LifeMigration[] = [
       CREATE INDEX place_visits_day ON place_visits (day);
     `,
   },
+  {
+    // v0.12 People: life.db's third schema change, with every table People's phases need (spec 9.1.1, D6).
+    // An older daemon refuses a schema-4 file (newer_schema); going back means restoring the copy the daemon
+    // wrote before migrating (backups/life-pre-<version>.db, docs/upgrading.md). '' is the owner's space
+    // everywhere, so every existing row is already the owner's: no backfill. No REFERENCES, as before.
+    version: 4,
+    name: 'people',
+    sql: `
+      CREATE TABLE people (id TEXT PRIMARY KEY, state TEXT NOT NULL, updated_at TEXT NOT NULL, json TEXT NOT NULL);
+      CREATE TABLE shared_spaces (id TEXT PRIMARY KEY, updated_at TEXT NOT NULL, json TEXT NOT NULL);
+
+      ALTER TABLE projects  ADD COLUMN space     TEXT NOT NULL DEFAULT '';
+      ALTER TABLE todos     ADD COLUMN space     TEXT NOT NULL DEFAULT '';
+      ALTER TABLE todos     ADD COLUMN by_person TEXT NOT NULL DEFAULT '';
+      DROP INDEX todos_open;
+      CREATE INDEX todos_open ON todos (space, done_at, due_day);
+      ALTER TABLE medicines ADD COLUMN space     TEXT NOT NULL DEFAULT '';
+      ALTER TABLE medicines ADD COLUMN by_person TEXT NOT NULL DEFAULT '';
+      -- C5: doses carry their medicine's space (written with the medicine's, in one transaction).
+      ALTER TABLE doses     ADD COLUMN space     TEXT NOT NULL DEFAULT '';
+      CREATE INDEX doses_space_day ON doses (space, day);
+      ALTER TABLE food      ADD COLUMN space     TEXT NOT NULL DEFAULT '';
+      DROP INDEX food_day;
+      CREATE INDEX food_day ON food (space, day);
+      ALTER TABLE places       ADD COLUMN space     TEXT NOT NULL DEFAULT '';
+      ALTER TABLE places       ADD COLUMN by_person TEXT NOT NULL DEFAULT '';
+      CREATE INDEX places_space ON places (space);
+      ALTER TABLE place_visits ADD COLUMN by_person TEXT NOT NULL DEFAULT '';
+      -- C5: visits carry their café's space.
+      ALTER TABLE place_visits ADD COLUMN space     TEXT NOT NULL DEFAULT '';
+      CREATE INDEX place_visits_space_day ON place_visits (space, day);
+      -- Whose devices a ping rings ('' the owner's).
+      ALTER TABLE pings        ADD COLUMN person    TEXT NOT NULL DEFAULT '';
+
+      -- weights: PRIMARY KEY (day) assumed one person.
+      CREATE TABLE weights_v4 (space TEXT NOT NULL DEFAULT '', day TEXT NOT NULL,
+        kg10 INTEGER NOT NULL CHECK (kg10 BETWEEN 200 AND 4000), at TEXT NOT NULL, PRIMARY KEY (space, day));
+      INSERT INTO weights_v4 (space, day, kg10, at) SELECT '', day, kg10, at FROM weights;
+      DROP TABLE weights;
+      ALTER TABLE weights_v4 RENAME TO weights;
+
+      -- foods_saved: name_key UNIQUE assumed one person.
+      CREATE TABLE foods_saved_v4 (id TEXT PRIMARY KEY, space TEXT NOT NULL DEFAULT '', name_key TEXT NOT NULL,
+        uses INTEGER NOT NULL DEFAULT 0, last_used TEXT, json TEXT NOT NULL, UNIQUE (space, name_key));
+      INSERT INTO foods_saved_v4 (id, space, name_key, uses, last_used, json)
+        SELECT id, '', name_key, uses, last_used, json FROM foods_saved;
+      DROP TABLE foods_saved;
+      ALTER TABLE foods_saved_v4 RENAME TO foods_saved;
+
+      -- Day plans (P2): one per space and day; steps and between-checks inline.
+      CREATE TABLE day_plans (id TEXT PRIMARY KEY, space TEXT NOT NULL, day TEXT NOT NULL,
+        srev INTEGER NOT NULL, updated_at TEXT NOT NULL, json TEXT NOT NULL, UNIQUE (space, day));
+      CREATE TABLE plan_templates (id TEXT PRIMARY KEY, space TEXT NOT NULL, updated_at TEXT NOT NULL, json TEXT NOT NULL);
+      CREATE INDEX plan_templates_space ON plan_templates (space);
+
+      -- Alerts between people (P2). '' is the owner.
+      CREATE TABLE person_alerts (id TEXT PRIMARY KEY, from_person TEXT NOT NULL, to_person TEXT NOT NULL,
+        at TEXT NOT NULL, state TEXT NOT NULL, json TEXT NOT NULL);
+      CREATE INDEX person_alerts_to   ON person_alerts (to_person, at);
+      CREATE INDEX person_alerts_from ON person_alerts (from_person, at);
+
+      -- Her record (P1): append-only in the app; pruned to 365 days or 5,000 rows per person.
+      CREATE TABLE person_activity (seq INTEGER PRIMARY KEY AUTOINCREMENT, person TEXT NOT NULL, at TEXT NOT NULL,
+        actor TEXT NOT NULL, action TEXT NOT NULL, ref TEXT, json TEXT NOT NULL);
+      CREATE INDEX person_activity_person ON person_activity (person, seq);
+
+      -- Journal (P2). Comments are their own rows so authorship is a column.
+      CREATE TABLE journal_entries (id TEXT PRIMARY KEY, space TEXT NOT NULL, day TEXT NOT NULL, at TEXT NOT NULL,
+        client_id TEXT, json TEXT NOT NULL, UNIQUE (space, client_id));
+      CREATE INDEX journal_entries_space_day ON journal_entries (space, day, at);
+      CREATE TABLE journal_comments (id TEXT PRIMARY KEY, space TEXT NOT NULL, entry_id TEXT NOT NULL,
+        by_person TEXT NOT NULL, at TEXT NOT NULL, json TEXT NOT NULL);
+      CREATE INDEX journal_comments_entry ON journal_comments (space, entry_id, at);
+
+      -- Sleep (P2): one night per space and night; at most one open night per space.
+      CREATE TABLE sleep_logs (id TEXT PRIMARY KEY, space TEXT NOT NULL, night TEXT NOT NULL, bed_at TEXT NOT NULL,
+        wake_at TEXT, json TEXT NOT NULL, UNIQUE (space, night));
+      CREATE UNIQUE INDEX sleep_logs_open ON sleep_logs (space) WHERE wake_at IS NULL;
+    `,
+  },
 ];
 
 /** The schema this build writes and reads. A file with a newer one is refused, never downgraded. */

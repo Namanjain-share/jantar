@@ -3,6 +3,35 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.12.0 (unreleased)
+
+**People** (off by default): share a space on your Jantar with one other
+person, on their own hostname, with an agreement they read and accept.
+With People off, nothing changes for you. Upgrade notes follow.
+
+**Before upgrading: nothing to copy by hand.** The daemon keeps
+`life-pre-<version>.db` in the backups folder before it moves life.db to
+schema 4 (Life's third schema change, which adds a space to every Life
+table; every existing row stays yours). An older daemon can't open Life
+afterwards, and going back means restoring that copy. jantar.db gains
+People's tables and an audit column (0.10 keeps working on it, and a
+partner simply can't sign in there).
+
+- **People, the base** (P1 so far): `remote.peopleUrl` names a second
+  hostname for the partner, with its own Origin: a page on it can never
+  drive your routes or open your event stream, and your cookie never
+  reaches theirs. On that hostname only the partner's routes, `/healthz`
+  and their app's files answer; everything else is 404. The partner signs
+  in with an invite link (24 hours, used once, made at the Mac) and gets
+  their own device, cookie, push list and event stream. The agreement is
+  a list of fields (presets Light, Standard and Everything fill it); they
+  can narrow it at any time, decline a request for more (a 7-day pause
+  before the same request, and "Don't ask me again"), pause, leave
+  (keep 30 days or delete now) and download their data, even while People
+  is off, in read-only mode or while Life data is damaged. Every look and
+  change you make in their space is in their Activity. Their own writes
+  reach your audit log as `person.write` with no detail.
+
 ## 0.10.2 (3 November 2026)
 
 - Alerts no longer say **you rejected** for a tool call nobody refused.

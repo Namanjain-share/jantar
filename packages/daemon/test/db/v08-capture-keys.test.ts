@@ -47,8 +47,8 @@ const repos: [string, () => { db: Db; close(): void }][] = [
 ];
 
 describe('v0.8: migration 6', () => {
-  it('is additive, and makes the capture_keys table with no key column (v0.10 adds 7)', () => {
-    expect(LATEST_SCHEMA_VERSION).toBe(7);
+  it('is additive, and makes the capture_keys table with no key column (v0.10 adds 7, v0.12 8)', () => {
+    expect(LATEST_SCHEMA_VERSION).toBe(8);
     const m = MIGRATIONS.find((x) => x.version === 6);
     expect(m?.name).toBe('v0.8 capture keys');
     expect(m?.sql).toMatch(/CREATE TABLE IF NOT EXISTS capture_keys/);
@@ -74,7 +74,7 @@ describe('v0.8: migration 6', () => {
 
     const db = openSqliteFile(file);
     try {
-      expect(db.schemaVersion()).toBe(7);
+      expect(db.schemaVersion()).toBe(8);
       expect(db.devices.get('old')?.name).toBe('Old phone');
       expect(db.nodes.get(A)?.name).toBe('build-1');
       expect(db.captureKeys.list()).toEqual([]);

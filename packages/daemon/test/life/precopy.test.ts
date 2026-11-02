@@ -91,7 +91,7 @@ function look(path: string): { schema: string; titles: string[]; tables: string[
 }
 
 describe('openLifeDb with preMigrateCopy', () => {
-  it('copies a schema-2 file before migrating it: the copy is at 2 with every row, life.db moves to 3', () => {
+  it('copies a schema-2 file before migrating it: the copy is at 2 with every row, life.db moves to the current schema (4)', () => {
     schemaTwoFile();
     const asked: [number, number][] = [];
     const r = openLifeDb(file, {
@@ -102,9 +102,9 @@ describe('openLifeDb with preMigrateCopy', () => {
     });
     if (!r.ok) throw new Error(r.code);
     keep(r.db);
-    expect(asked).toEqual([[2, 3]]);
-    expect(r.precopy).toEqual({ from: 2, to: 3, file: 'life-pre-0.10.0.db' });
-    expect(r.db.meta('schema')).toBe('3');
+    expect(asked).toEqual([[2, 4]]);
+    expect(r.precopy).toEqual({ from: 2, to: 4, file: 'life-pre-0.10.0.db' });
+    expect(r.db.meta('schema')).toBe('4');
     const copy = look(target);
     expect(copy.schema).toBe('2');
     expect(copy.titles).toEqual(['Example todo']);
@@ -145,7 +145,7 @@ describe('openLifeDb with preMigrateCopy', () => {
     expect(existsSync(`${target}-wal`)).toBe(false);
   });
 
-  it('is not written for a fresh file, a file already at 3, or :memory:', () => {
+  it('is not written for a fresh file, a file already at the current schema, or :memory:', () => {
     let calls = 0;
     const copy = () => {
       calls += 1;
@@ -179,7 +179,7 @@ describe('openLifeDb with preMigrateCopy', () => {
     if (!r.ok) throw new Error(r.code);
     keep(r.db);
     expect(r.precopy).toBeUndefined();
-    expect(r.db.meta('schema')).toBe('3');
+    expect(r.db.meta('schema')).toBe('4');
     expect(sha(target)).toBe(before);
     expect(look(target).titles).toEqual(['The first copy']);
   });
@@ -221,7 +221,7 @@ describe('openLifeDb with preMigrateCopy', () => {
     if (!r.ok) throw new Error(r.code);
     keep(r.db);
     expect(r.precopy).toBeUndefined();
-    expect(r.db.meta('schema')).toBe('3');
+    expect(r.db.meta('schema')).toBe('4');
     expect(existsSync(backups)).toBe(false);
   });
 });
@@ -262,10 +262,10 @@ describe('LifeService: life-pre-<version>.db', () => {
     expect(listBackups(backups).map((b) => b.name)).toEqual([name]);
     expect(look(join(backups, name))).toMatchObject({ schema: '2', titles: ['Example todo'] });
     const st = life.status();
-    expect(st.schema).toBe(3);
+    expect(st.schema).toBe(4);
     expect(st.preUpgrade).toBe(name);
     const logged = ctx.log.records.filter((r) => r.fields?.['event'] === 'life.precopy');
-    expect(logged.map((r) => r.fields)).toEqual([expect.objectContaining({ event: 'life.precopy', from: 2, to: 3, file: name })]);
+    expect(logged.map((r) => r.fields)).toEqual([expect.objectContaining({ event: 'life.precopy', from: 2, to: 4, file: name })]);
     expect(JSON.stringify(ctx.log.records)).not.toContain(dir);
     expect(JSON.stringify(ctx.log.records)).not.toContain('Example todo');
   });
@@ -291,7 +291,7 @@ describe('LifeService: life-pre-<version>.db', () => {
     expect(r.ok).toBe(true);
     expect(life.broken()).toBeNull();
     const now = look(file);
-    expect(now.schema).toBe('3');
+    expect(now.schema).toBe('4');
     expect(now.titles).toEqual(['Example todo']);
     expect(now.tables).toContain('place_visits');
     expect(listBackups(backups).filter((b) => b.name.startsWith('life-pre-')).map((b) => b.name)).toEqual([name]);

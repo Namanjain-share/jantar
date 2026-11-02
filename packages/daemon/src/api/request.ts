@@ -48,6 +48,12 @@ export interface RequestAuth {
   extension?: { id: string; origin: string };
   /** v0.8: the capture key that came in CAPTURE_KEY_HEADER (read on CAPTURE_PREFIX paths only), by its id. */
   capture?: { id: string };
+  /**
+   * v0.12 People: her device, from PERSON_COOKIE, read only on PERSON_PREFIX
+   * and only on the people host (api/app.ts). `secretOk`: her device secret
+   * came with it (or the cookie is bound to her https host). No scopes.
+   */
+  person?: { personId: string; deviceId: string; secretOk: boolean; key: string; touched?: boolean };
   /** Rate-limit key (address based; never used for trust). */
   rateKey: string;
 }
@@ -64,6 +70,8 @@ export function cliAuth(): RequestAuth {
 
 export function scopesOf(auth: RequestAuth): readonly Scope[] {
   if (auth.transport === 'ctl') return ALL_SCOPES;
+  // v0.12: a person device holds none of the owner's scopes.
+  if (auth.person) return [];
   return auth.device?.scopes ?? [];
 }
 

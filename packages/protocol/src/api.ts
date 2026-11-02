@@ -59,6 +59,7 @@ import {
   type PermissionModeName,
   type Scope,
 } from './models.js';
+import type { Area } from './people.js';
 import { SettingsPatchSchema, SettingsSchema } from './settings.js';
 import {
   DEVICE_SECRET_WS_PREFIX,
@@ -906,8 +907,26 @@ export interface RouteDef {
    * exist only in `tailscale` or `cloudflare` mode, with Intel on and an
    * active key (404 otherwise), never with an Origin.
    */
-  scope: Scope | 'public' | 'extension' | 'node' | 'capture';
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10';
+  scope: Scope | 'public' | 'extension' | 'node' | 'capture' | 'person';
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10' | 'v0.12';
+  /**
+   * v0.12 People (`@jantar/protocol/people`): a `person` route needs no
+   * credential (an invite or device-link claim). Only personJoinPreview,
+   * personJoin and personDeviceLinkClaim carry it.
+   */
+  join?: true;
+  /**
+   * v0.12: one of her exits (C12): it works while People is switched off,
+   * in --read-only, while she is `ending`, and (Leave, Pause) while life.db
+   * is broken. Never in READ_ONLY_REFUSED.
+   */
+  exit?: true;
+  /**
+   * v0.12: the agreement area a People route reads or writes (her data
+   * routes and every `/v1/people/:pid/*` data route). The isolation tests
+   * read it to know which field must gate the route (M9).
+   */
+  area?: Area;
   /**
    * While this switch is off the route answers 403 with the sentence that
    * turns it on (screenshots: 403 screenshots_off), before validation and

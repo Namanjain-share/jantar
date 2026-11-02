@@ -37,9 +37,30 @@ export interface LifeSendResult {
 /** Sends one Life push (the scheduler's sender: `sendLifePush` in the daemon, a spy in tests). */
 export type LifeSend = (p: LifePush) => Promise<LifeSendResult>;
 
-/** The notification a Life push becomes: control-scope devices only. */
+/**
+ * The notification a Life push becomes: control-scope devices only.
+ * v0.12: a push for a person (`p.person`) goes to her devices instead (no
+ * scope: her devices hold none of his).
+ */
 export function lifeNotification(p: LifePush, ts: string): Notification {
+  if (p.person !== undefined) return { kind: p.kind, title: p.title, body: p.body, url: p.url, tag: p.tag, ts, audience: { person: p.person } };
   return { kind: p.kind, title: p.title, body: p.body, url: p.url, tag: p.tag, ts, minScope: 'control' };
+}
+
+/**
+ * v0.12 People: what a person's push says on her lock screen (C36), and her
+ * own mute. `hide_all` strips titles ("Jantar", "Medicine time");
+ * `hide_alerts` hides the text of the owner's alerts (P2) and leaves Life
+ * pushes as they are; `all` shows everything.
+ */
+export interface PersonPushPrefs {
+  lockScreen: 'all' | 'hide_alerts' | 'hide_all';
+  muteUntil: string | null;
+}
+
+export function personPushText(p: LifePush, prefs: PersonPushPrefs): LifePush {
+  if (prefs.lockScreen !== 'hide_all') return p;
+  return { ...p, title: 'Jantar', body: p.kind === 'med' ? 'Medicine time' : 'Something new in your space' };
 }
 
 /** Web Push only, control scope only; a medicine ignores the mute. No deadline here: see `withDeadline`. */
@@ -47,14 +68,27 @@ export async function sendLifePush(
   ctx: Pick<DaemonContext, 'settings' | 'clock' | 'log'>,
   notifiers: readonly Notifier[],
   p: LifePush,
+  /** v0.12: her lock screen and mute, for a push of hers (her mute, never his, C36). */
+  personPrefs?: (personId: string) => PersonPushPrefs | null,
 ): Promise<LifeSendResult> {
   const webpush = findWebPush(notifiers);
-  return sendDirect(ctx, webpush ? [webpush] : [], lifeNotification(p, ctx.clock.iso()), { ignoreMute: p.kind === 'med' });
+  const targets = webpush ? [webpush] : [];
+  if (p.person !== undefined) {
+    const prefs = personPrefs?.(p.person) ?? { lockScreen: 'hide_all', muteUntil: null };
+    const until = prefs.muteUntil ? Date.parse(prefs.muteUntil) : NaN;
+    if (p.kind !== 'med' && Number.isFinite(until) && until > ctx.clock.now()) return { delivered: 0, failed: 0, muted: true };
+    return sendDirect(ctx, targets, lifeNotification(personPushText(p, prefs), ctx.clock.iso()), { ignoreMute: true });
+  }
+  return sendDirect(ctx, targets, lifeNotification(p, ctx.clock.iso()), { ignoreMute: p.kind === 'med' });
 }
 
 /** The daemon's LifeSend over its notifiers. */
-export function createLifeSend(ctx: Pick<DaemonContext, 'settings' | 'clock' | 'log'>, notifiers: readonly Notifier[]): LifeSend {
-  return (p) => sendLifePush(ctx, notifiers, p);
+export function createLifeSend(
+  ctx: Pick<DaemonContext, 'settings' | 'clock' | 'log'>,
+  notifiers: readonly Notifier[],
+  personPrefs?: (personId: string) => PersonPushPrefs | null,
+): LifeSend {
+  return (p) => sendLifePush(ctx, notifiers, p, personPrefs);
 }
 
 /** `work`'s value, or `timedOut` when it has not settled within `ms` on `clock`. A rejection is passed on. */

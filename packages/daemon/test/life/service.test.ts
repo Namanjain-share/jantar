@@ -361,7 +361,7 @@ describe('status', () => {
     const life = service({ settings: settings({ todos: true, currency: 'INR', lockScreenDetails: true, timezone: 'Asia/Kolkata' }) });
     await life.start();
     expect(life.status()).toEqual({
-      schema: 3,
+      schema: 4,
       open: true,
       timezone: 'Asia/Kolkata',
       today: '2026-10-30',

@@ -13,6 +13,8 @@ export function actorId(a: Actor): string {
       return `extension:${a.extensionId}`;
     case 'capture':
       return `capture:${a.keyId}`;
+    case 'person':
+      return `person:${a.personId}:${a.deviceId}`;
   }
 }
 

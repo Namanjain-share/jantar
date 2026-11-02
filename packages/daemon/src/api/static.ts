@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-const REVALIDATE = new Set(['index.html', 'sw.js', 'manifest.webmanifest', 'manifest.json']);
+const REVALIDATE = new Set(['index.html', 'sw.js', 'manifest.webmanifest', 'manifest.json', 'p.html', 'p-sw.js', 'p.webmanifest']);
 
 export function webIndexExists(dist: string): boolean {
   return existsSync(join(dist, 'index.html'));
@@ -24,7 +24,7 @@ export function webIndexExists(dist: string): boolean {
 export function computeWebHash(dist: string): string | null {
   const h = createHash('sha256');
   let any = false;
-  for (const name of ['index.html', 'sw.js', 'manifest.webmanifest']) {
+  for (const name of ['index.html', 'sw.js', 'manifest.webmanifest', 'p.html', 'p.webmanifest', 'p-sw.js']) {
     try {
       h.update(name).update('\0').update(readFileSync(join(dist, name))).update('\0');
       any = true;
@@ -64,7 +64,7 @@ export async function registerWebApp(app: FastifyInstance, dist: string): Promis
       if (REVALIDATE.has(name)) reply.header('cache-control', 'no-cache');
       else if (path.includes('/assets/')) reply.header('cache-control', 'public, max-age=31536000, immutable');
       else reply.header('cache-control', 'public, max-age=3600');
-      if (name === 'sw.js') reply.header('service-worker-allowed', '/');
+      if (name === 'sw.js' || name === 'p-sw.js') reply.header('service-worker-allowed', '/');
       if (name.endsWith('.webmanifest')) reply.header('content-type', 'application/manifest+json; charset=utf-8');
     },
   });
@@ -91,4 +91,53 @@ export function serveIndexFallback(req: FastifyRequest, reply: FastifyReply, ava
   reply.header('cache-control', 'no-cache');
   void reply.sendFile('index.html');
   return true;
+}
+
+/**
+ * v0.12 People: her host's app shell. `/p` and `/p/<route>` that accept
+ * HTML get p.html (her app, a separate bundle); nothing else falls back.
+ * True when it answered.
+ */
+export function servePersonFallback(req: FastifyRequest, reply: FastifyReply, available: boolean): boolean {
+  const path = req.url.split('?')[0] ?? '/';
+  if ((req.method !== 'GET' && req.method !== 'HEAD') || isApiPath(path) || !acceptsHtml(req)) return false;
+  if (path !== '/p' && !path.startsWith('/p/')) return false;
+  if (!available) return false;
+  reply.header('cache-control', 'no-cache');
+  void reply.sendFile('p.html');
+  return true;
+}
+
+/**
+ * v0.12 People (C15): the files under `/assets/` that her app loads: the
+ * `p` entry's chunks, the chunks they import (statically or lazily), and
+ * their stylesheets and assets, read from Vite's build manifest. Her host
+ * serves these and no other asset. Empty when there is no manifest or no
+ * `p` entry (then her host serves no asset at all).
+ */
+export function personAssets(dist: string): Set<string> {
+  const out = new Set<string>();
+  let manifest: Record<string, { file: string; imports?: string[]; dynamicImports?: string[]; css?: string[]; assets?: string[] }>;
+  try {
+    manifest = JSON.parse(readFileSync(join(dist, '.vite', 'manifest.json'), 'utf8')) as typeof manifest;
+  } catch {
+    return out;
+  }
+  const seen = new Set<string>();
+  const todo = Object.keys(manifest).filter((k) => k === 'p.html' || k.endsWith('/p.html'));
+  const add = (file: string) => {
+    if (file.startsWith('assets/')) out.add(file.slice('assets/'.length));
+  };
+  while (todo.length > 0) {
+    const key = todo.pop() as string;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const e = manifest[key];
+    if (!e) continue;
+    add(e.file);
+    for (const c of e.css ?? []) add(c);
+    for (const a of e.assets ?? []) add(a);
+    todo.push(...(e.imports ?? []), ...(e.dynamicImports ?? []));
+  }
+  return out;
 }

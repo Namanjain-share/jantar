@@ -436,7 +436,8 @@ export interface EventLog {
 }
 
 export interface AuditLog {
-  append(entry: Omit<AuditEntry, 'seq'>): AuditEntry;
+  /** v0.12: `person` is whose space the row touched ('' the owner's Life, undefined not Life); never in AuditEntry. */
+  append(entry: Omit<AuditEntry, 'seq'>, person?: string): AuditEntry;
   /** Oldest first after `after`; newest `limit` when `after` is absent. */
   list(opts?: { after?: number; limit?: number }): AuditEntry[];
 }
@@ -672,7 +673,107 @@ export interface Db {
   readonly nodes: NodesRepo;
   /** v0.8 */
   readonly captureKeys: CaptureKeysRepo;
+  /** v0.12 People: her devices, link codes, push list, invites and the consent ledger (migration 8). */
+  readonly people: PeopleDbRepos;
   close(): void;
+}
+
+// ---------------------------------------------------------------------------
+// v0.12 People in jantar.db (db/people-repos.ts)
+
+export interface PersonDeviceRecord {
+  id: string;
+  personId: string;
+  name: string;
+  keyHash: string;
+  secretHash: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+  userAgent: string | null;
+  /** C14: the Cloudflare Access email it joined with. */
+  accessEmail: string | null;
+}
+
+export interface PersonLinkCodeRecord {
+  id: string;
+  personId: string;
+  codeHash: string;
+  byDevice: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+}
+
+export interface PersonInviteRecord {
+  id: string;
+  personId: string;
+  codeHash: string;
+  offerVersion: number;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface PersonPushSubRecord {
+  endpoint: string;
+  personId: string;
+  deviceId: string;
+  subscription: { endpoint: string; expirationTime?: number | null; keys: { p256dh: string; auth: string } };
+  createdAt: string;
+}
+
+/** One row of the consent ledger: append-only, no free text (spec 9.1.2). */
+export interface ConsentRecord {
+  seq: number;
+  personId: string;
+  version: number;
+  action: string;
+  by: string;
+  at: string;
+  /** The full agreement at that version (or null), and the `left` data choice. */
+  json: { agreement: unknown | null; data?: 'keep30' | 'delete'; until?: string };
+}
+
+export interface PeopleDbRepos {
+  devices: {
+    insert(d: PersonDeviceRecord): void;
+    get(id: string): PersonDeviceRecord | null;
+    byKeyHash(hash: string): PersonDeviceRecord | null;
+    listFor(personId: string): PersonDeviceRecord[];
+    touch(id: string, at: string): void;
+    revoke(id: string, at: string): PersonDeviceRecord | null;
+  };
+  linkCodes: {
+    insert(r: PersonLinkCodeRecord): void;
+    byHash(hash: string): PersonLinkCodeRecord | null;
+    /** Spend it once: true only for the call that marked it used. */
+    use(id: string, at: string): boolean;
+    revokeAllFor(personId: string, at: string): number;
+  };
+  invites: {
+    insert(r: PersonInviteRecord): void;
+    byHash(hash: string): PersonInviteRecord | null;
+    /** The newest unspent, unrevoked invite of a person. */
+    openFor(personId: string): PersonInviteRecord | null;
+    use(id: string, at: string): boolean;
+    revokeAllFor(personId: string, at: string): number;
+  };
+  pushSubs: {
+    upsert(r: PersonPushSubRecord): void;
+    remove(endpoint: string): boolean;
+    removeForDevice(deviceId: string): number;
+    removeForPerson(personId: string): number;
+    listFor(personId: string): PersonPushSubRecord[];
+    listAll(): PersonPushSubRecord[];
+  };
+  consents: {
+    append(r: Omit<ConsentRecord, 'seq'>): ConsentRecord;
+    listFor(personId: string): ConsentRecord[];
+    latestFor(personId: string): ConsentRecord | null;
+    persons(): string[];
+  };
 }
 
 /** Opens (and migrates) the database. */
@@ -721,7 +822,9 @@ export type Actor =
   | { kind: 'system' }
   | { kind: 'extension'; extensionId: string }
   /** v0.8: the iOS Shortcut, by its capture key's id (never the key). */
-  | { kind: 'capture'; keyId: string };
+  | { kind: 'capture'; keyId: string }
+  /** v0.12 People: a partner, by her person id and the device she called from. Reaches her own routes only. */
+  | { kind: 'person'; personId: string; deviceId: string };
 
 // ===========================================================================
 // Sources (work package B)
@@ -1095,6 +1198,13 @@ export interface Notification {
    * Only on a `permission` push (protocol alertGroupOf).
    */
   deadline?: string;
+  /**
+   * v0.12 People: whose devices it is for. Absent is the owner (every push
+   * before 0.12). `{person}` goes to that person's `person_push_subs` only:
+   * Web Push walks her list instead of his, and the Mac banner and Telegram
+   * channels refuse it (they are the owner's).
+   */
+  audience?: { person: string };
 }
 
 export interface Notifier {
@@ -1581,6 +1691,8 @@ export interface LifePush {
   url: string;
   /** life:<kind>:<ref>, or med:<HH:MM> (posts:<HH:MM>) for a group: a repeat replaces the notification. */
   tag: string;
+  /** v0.12 People: her devices instead of his (absent: the owner's). Its url is one of her app's (`/p…`). */
+  person?: string;
 }
 
 /** What a module registers for each kind it owns (`scheduler.register`, when the module is built). */
@@ -1792,6 +1904,13 @@ export interface LifeService extends Service {
   readonly finance: FinanceModule;
   /** v0.7. */
   readonly posts: PostsModule;
+  /**
+   * v0.12 People (life/people/module.ts): people, invites, devices, consent,
+   * pause, leave and remove. Built with the service, whether life.db is open
+   * or not: what needs life.db answers `unavailable` while it is closed, and
+   * her exits work on jantar.db alone (C12).
+   */
+  readonly people: import('./life/people/module.js').PeopleModule;
   /** VACUUM INTO <backupsDir>/life-YYYY-MM-DD.db (0600). Refused while broken or closed: there is nothing open to copy. */
   backup(): Promise<LifeResult<{ file: string; at: string }>>;
   /** Put a backup (a `life-*.db` name inside backupsDir) back; the current file is kept beside it. Allowed while broken. */

@@ -248,6 +248,8 @@ export class WebPushNotifier implements Notifier {
   }
 
   async send(n: Notification): Promise<{ delivered: number; failed: number; offline: number }> {
+    // v0.12: a person's push walks her list alone, never his.
+    if (n.audience) return this.deliver(n, this.personTargets(n.audience.person));
     const routed = n as RoutedNotification;
     const all = newestFirst(this.ctx.db.pushSubs.list());
     const targets: PushSubscriptionRecord[] = [];
@@ -274,6 +276,38 @@ export class WebPushNotifier implements Notifier {
       if (n.minScope && !hasScope(device.scopes, n.minScope)) continue;
       if (wantsKind(rec, routed)) targets.push(rec);
     }
+    return this.deliver(n, targets);
+  }
+
+  /**
+   * v0.12 People: her subscriptions (jantar.db `person_push_subs`), newest
+   * first, each of a device of hers that is not revoked; a subscription of a
+   * revoked device or an unknown push service is dropped, and each device
+   * keeps its newest MAX_PUSH_SUBS_PER_DEVICE. His `push_subs` are never read here.
+   */
+  private personTargets(personId: string): { deviceId: string; subscription: PushSubscriptionRecord['subscription'] }[] {
+    const people = this.ctx.db.people;
+    const rows = [...people.pushSubs.listFor(personId)].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.endpoint.localeCompare(b.endpoint));
+    const out: { deviceId: string; subscription: PushSubscriptionRecord['subscription'] }[] = [];
+    const perDevice = new Map<string, number>();
+    for (const rec of rows) {
+      const device = people.devices.get(rec.deviceId);
+      if (!device || device.revokedAt || device.personId !== personId || pushEndpointProblem(rec.endpoint)) {
+        people.pushSubs.remove(rec.endpoint);
+        continue;
+      }
+      const count = (perDevice.get(rec.deviceId) ?? 0) + 1;
+      perDevice.set(rec.deviceId, count);
+      if (count > MAX_PUSH_SUBS_PER_DEVICE) {
+        people.pushSubs.remove(rec.endpoint);
+        continue;
+      }
+      out.push({ deviceId: rec.deviceId, subscription: rec.subscription as PushSubscriptionRecord['subscription'] });
+    }
+    return out;
+  }
+
+  private async deliver(n: Notification, targets: readonly Pick<PushSubscriptionRecord, 'deviceId' | 'subscription'>[]): Promise<{ delivered: number; failed: number; offline: number }> {
     if (targets.length === 0) return { delivered: 0, failed: 0, offline: 0 };
     const keys = this.vapid();
     if (!keys) return { delivered: 0, failed: targets.length, offline: 0 };
@@ -304,7 +338,8 @@ export class WebPushNotifier implements Notifier {
         const status = statusOf(e);
         const host = hostOf(rec.subscription.endpoint);
         if (status === 404 || status === 410) {
-          this.ctx.db.pushSubs.remove(rec.subscription.endpoint);
+          if (n.audience) this.ctx.db.people.pushSubs.remove(rec.subscription.endpoint);
+          else this.ctx.db.pushSubs.remove(rec.subscription.endpoint);
           this.ctx.log.info('push subscription expired; removed', { deviceId: rec.deviceId, pushHost: host, status });
         } else if (neverLeft(e)) {
           offline += 1;

@@ -61,6 +61,8 @@ export async function sendDirect(
   let offline = 0;
   for (const notifier of notifiers) {
     if (!channelOn(notify, notifier)) continue;
+    // v0.12: a person's push goes by Web Push to her devices only; the Mac banner and Telegram are the owner's.
+    if (n.audience && notifier.channel !== 'webpush') continue;
     try {
       const r = await notifier.send(n);
       delivered += r.delivered;

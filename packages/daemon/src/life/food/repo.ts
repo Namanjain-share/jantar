@@ -67,30 +67,30 @@ export class FoodRepo {
   /** The most used saved foods, then the most recently used, then by name. */
   topSaved(limit: number): SavedFood[] {
     const rows = this.core.db
-      .prepare('SELECT id, uses, json FROM foods_saved ORDER BY uses DESC, last_used DESC, name_key LIMIT ?')
+      .prepare("SELECT id, uses, json FROM foods_saved WHERE space = '' ORDER BY uses DESC, last_used DESC, name_key LIMIT ?")
       .all(limit) as unknown as SavedRow[];
     return rows.flatMap((r) => this.savedOf(r));
   }
 
   saved(id: string): SavedFood | null {
-    const row = this.core.db.prepare('SELECT id, uses, json FROM foods_saved WHERE id = ?').get(id) as SavedRow | undefined;
+    const row = this.core.db.prepare("SELECT id, uses, json FROM foods_saved WHERE space = '' AND id = ?").get(id) as SavedRow | undefined;
     return row ? (this.savedOf(row)[0] ?? null) : null;
   }
 
   savedByName(name: string): SavedFood | null {
-    const row = this.core.db.prepare('SELECT id, uses, json FROM foods_saved WHERE name_key = ?').get(savedKey(name)) as SavedRow | undefined;
+    const row = this.core.db.prepare("SELECT id, uses, json FROM foods_saved WHERE space = '' AND name_key = ?").get(savedKey(name)) as SavedRow | undefined;
     return row ? (this.savedOf(row)[0] ?? null) : null;
   }
 
   savedCount(): number {
-    return (this.core.db.prepare('SELECT COUNT(*) AS n FROM foods_saved').get() as { n: number }).n;
+    return (this.core.db.prepare("SELECT COUNT(*) AS n FROM foods_saved WHERE space = ''").get() as { n: number }).n;
   }
 
   /** A new saved food, used once at `at`. */
   insertSaved(s: Omit<SavedFood, 'uses'>, at: string): void {
     const json = JSON.stringify({ id: s.id, name: s.name, kcal: s.kcal });
     SavedFoodSchema.parse({ ...s, uses: 1 });
-    this.core.db.prepare('INSERT INTO foods_saved (id, name_key, uses, last_used, json) VALUES (?, ?, 1, ?, ?)').run(s.id, savedKey(s.name), at, json);
+    this.core.db.prepare("INSERT INTO foods_saved (id, space, name_key, uses, last_used, json) VALUES (?, '', ?, 1, ?, ?)").run(s.id, savedKey(s.name), at, json);
   }
 
   /** One more use at `at`; with `value`, its name and kcal change too (a re-save). */
@@ -98,15 +98,15 @@ export class FoodRepo {
     if (value) {
       SavedFoodSchema.parse({ id, ...value, uses: 1 });
       this.core.db
-        .prepare('UPDATE foods_saved SET uses = uses + 1, last_used = ?, name_key = ?, json = ? WHERE id = ?')
+        .prepare("UPDATE foods_saved SET uses = uses + 1, last_used = ?, name_key = ?, json = ? WHERE space = '' AND id = ?")
         .run(at, savedKey(value.name), JSON.stringify({ id, name: value.name, kcal: value.kcal }), id);
       return;
     }
-    this.core.db.prepare('UPDATE foods_saved SET uses = uses + 1, last_used = ? WHERE id = ?').run(at, id);
+    this.core.db.prepare("UPDATE foods_saved SET uses = uses + 1, last_used = ? WHERE space = '' AND id = ?").run(at, id);
   }
 
   deleteSaved(id: string): boolean {
-    return Number(this.core.db.prepare('DELETE FROM foods_saved WHERE id = ?').run(id).changes) > 0;
+    return Number(this.core.db.prepare("DELETE FROM foods_saved WHERE space = '' AND id = ?").run(id).changes) > 0;
   }
 
   /** The daily calorie target (KCAL_TARGET_DEFAULT until one is set). */

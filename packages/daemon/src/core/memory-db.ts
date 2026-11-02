@@ -12,7 +12,19 @@ import {
   type PendingRequest,
   type PushSubscriptionRecord,
 } from '@jantar/protocol';
+import { createRequire } from 'node:module';
+import type { DatabaseSync } from 'node:sqlite';
 import type { CaptureKeyRecord, Db, ExtensionRecord, FolderPin, FolderSeen, NodeRecord, RewriteRun } from '../contracts.js';
+import { createPeopleRepos } from '../db/people-repos.js';
+import { PEOPLE_TABLES_SQL } from '../db/schema.js';
+
+/** v0.12: People's jantar.db tables on an in-memory node:sqlite connection, so tests run the one implementation. */
+function memoryPeople(): Db['people'] {
+  const { DatabaseSync: Sqlite } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (file: string) => DatabaseSync };
+  const conn = new Sqlite(':memory:');
+  conn.exec(PEOPLE_TABLES_SQL);
+  return createPeopleRepos((sql) => conn.prepare(sql));
+}
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -32,6 +44,8 @@ export function createMemoryDb(): Db & { closed: boolean } {
   const nodeRows = new Map<string, NodeRecord>();
   const captureKeyRows = new Map<string, CaptureKeyRecord>();
   let auditSeq = 0;
+  /** v0.12: whose space each audit row touched (the person column), by seq. */
+  const auditPerson = new Map<number, string>();
 
   const db: Db & { closed: boolean } = {
     closed: false,
@@ -60,9 +74,10 @@ export function createMemoryDb(): Db & { closed: boolean } {
       },
     },
     audit: {
-      append(entry) {
+      append(entry, person) {
         const full: AuditEntry = { ...clone(entry), seq: ++auditSeq };
         audit.push(full);
+        if (person !== undefined) auditPerson.set(full.seq, person);
         return clone(full);
       },
       list(opts = {}) {
@@ -303,6 +318,7 @@ export function createMemoryDb(): Db & { closed: boolean } {
         return n;
       },
     },
+    people: memoryPeople(),
     close() {
       db.closed = true;
     },

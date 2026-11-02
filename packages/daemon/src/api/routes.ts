@@ -87,6 +87,9 @@ import { MACHINES_ROUTE_IMPLS } from './routes/machines.js';
 import { CAPTURE_ROUTE_IMPLS } from './routes/capture.js';
 import { CAPTURE_KEYS_ROUTE_IMPLS } from './routes/capture-keys.js';
 import { EXT_READS_ROUTE_IMPLS } from './routes/ext-reads.js';
+import { PEOPLE_ROUTE_IMPLS } from './routes/people.js';
+import { PERSON_ACCOUNT_ROUTE_IMPLS } from './routes/person/account.js';
+import { PERSON_PUSH_ROUTE_IMPLS } from './routes/person/push.js';
 import type { ApiServices } from './services.js';
 
 export { isRawReply, notImplementedRoute, type Call, type RawReply, type RouteImpl, type RouteTable } from './route-kit.js';
@@ -110,6 +113,7 @@ const MAC_COMMAND: Record<MacOnlySettingGroup, string> = {
   meetings: 'jantar meetings',
   ask: 'jantar chat',
   fleet: 'jantar fleet',
+  people: 'jantar people',
 };
 
 /**
@@ -630,6 +634,10 @@ export const ROUTE_IMPLS: RouteTable = {
   ...POSTS_ROUTE_IMPLS,
   // v0.8 (the shelf's reads, jobs, Delete, thumbnails and status are in INTEL_ROUTE_IMPLS)
   ...EXT_READS_ROUTE_IMPLS,
+  // v0.12 People: his routes about the people on his Mac, and hers (scope person).
+  ...PEOPLE_ROUTE_IMPLS,
+  ...PERSON_ACCOUNT_ROUTE_IMPLS,
+  ...PERSON_PUSH_ROUTE_IMPLS,
   ...CAPTURE_ROUTE_IMPLS,
   ...CAPTURE_KEYS_ROUTE_IMPLS,
   // v0.10 Chat (replaces Ask) and the Siri door
