@@ -99,11 +99,13 @@ export class CaptureKeyAuth {
   /** A new key named `name`, returned once and stored only as its hash; past the cap the oldest active key is revoked. */
   issue(name: string): { id: string; key: string; name: string } {
     const key = `${CAPTURE_KEY_PREFIX}${randomToken(32)}`;
+    // Strictly after every key made before it, so the oldest is the one made first (keys made in one millisecond would tie, and ids don't order within it).
+    const latest = this.opts.db.captureKeys.list().reduce((m, k) => Math.max(m, Date.parse(k.createdAt) || 0), 0);
     const rec: CaptureKeyRecord = {
       id: newId(),
       name,
       keyHash: hashCaptureKey(key),
-      createdAt: this.opts.clock.iso(),
+      createdAt: this.opts.clock.iso(Math.max(this.opts.clock.now(), latest + 1)),
       lastSeenAt: null,
       revokedAt: null,
     };
