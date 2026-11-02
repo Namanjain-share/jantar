@@ -201,3 +201,39 @@ describe('v0.10: the stage, Start when I join and Always', () => {
     }
   });
 });
+
+describe('v0.10: captions on when notes start', () => {
+  it("a page's `captions` may name its client, and its `cc` how switching them on went with our own hook id; only those fields", () => {
+    w = setupWorker();
+    w.model.addTab({ id: 7, windowId: 1, url: MEET_URL, active: true });
+    const sender = w.model.pageSender(7) as chrome.runtime.MessageSender;
+    for (const client of ['meet', 'teams', 'light']) {
+      expect(acceptPage({ t: 'captions', state: 'none', client, extra: 1 }, sender)?.msg, client).toEqual({ t: 'captions', state: 'none', client });
+    }
+    expect(acceptPage({ t: 'captions', state: 'reading' }, sender)?.msg).toEqual({ t: 'captions', state: 'reading' });
+    for (const result of ['was-on', 'turned-on', 'clicked', 'failed']) {
+      expect(acceptPage({ t: 'cc', result, hook: 'teams:cc-more-item', extra: 1 }, sender)?.msg, result).toEqual({ t: 'cc', result, hook: 'teams:cc-more-item' });
+    }
+    for (const bad of [
+      { t: 'captions', state: 'none', client: 'zoom' },
+      { t: 'captions', state: 'none', client: 3 },
+      { t: 'cc', result: 'on', hook: 'meet:cc-button' },
+      { t: 'cc', result: 'turned-on' },
+      { t: 'cc', result: 'turned-on', hook: 'Sam said something' },
+      { t: 'cc', result: 'turned-on', hook: 'x'.repeat(41) },
+    ]) {
+      expect(acceptPage(bad, sender), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it('takes `autoCaptions` from the popup only, a boolean only', () => {
+    w = setupWorker();
+    w.model.addTab({ id: 7, windowId: 1, url: MEET_URL, active: true });
+    const popup = w.model.extensionSender('popup.html') as chrome.runtime.MessageSender;
+    const page = w.model.pageSender(7) as chrome.runtime.MessageSender;
+    expect(acceptPopup({ t: 'autoCaptions', on: false, tabId: 7 }, popup)).toEqual({ t: 'autoCaptions', on: false });
+    for (const bad of [{ t: 'autoCaptions' }, { t: 'autoCaptions', on: 'off' }]) expect(acceptPopup(bad, popup), JSON.stringify(bad)).toBeNull();
+    expect(acceptPopup({ t: 'autoCaptions', on: false }, page)).toBeNull();
+    expect(acceptPage({ t: 'autoCaptions', on: false }, page)).toBeNull();
+  });
+});

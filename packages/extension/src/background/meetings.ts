@@ -33,8 +33,14 @@
  * page and the popup say why; "Jantar is not running" is tried again on the
  * page's next keep-alives (ARM_TIMING.retries). With Always on, End leaves
  * an `off` arm so a rejoin of that call in that tab does not start again.
+ *
+ * v0.10, captions on when notes start: with Settings › Turn on captions when
+ * notes start on (chrome.storage.local `autoCaptions`, on unless set off),
+ * every `capture {on: true}` and every call answer with notes on carries
+ * `cc`, and the page switches the call's captions on. The page's captions
+ * state (with its client) and how switching went (`cc`) are kept per tab.
  */
-import type { CallAnswer, CallStage, Done, FromPage, FromPopup } from '../shared/messages.js';
+import type { CallAnswer, CallStage, CaptionsClient, CcReport, Done, FromPage, FromPopup, ToPage } from '../shared/messages.js';
 import type { MeetingSite } from '../shared/sites.js';
 import { ARM_TIMING, WIRE_LIMITS } from '../shared/wire.js';
 import { WAITING, newArm, type Arm, type Arms } from './arms.js';
@@ -43,6 +49,31 @@ import { cleanText, type Ctx } from './ctx.js';
 import type { Lines } from './lines.js';
 import { AUTO, JOIN_FIRST, JOIN_SCREEN_FIRST, MISMATCH, NOT_OPEN, NOT_RUNNING, NO_MEETING_TAB, OTHER_TAB, PAIR_AGAIN, PAIR_FIRST, TRY_AGAIN } from './sentences.js';
 import { withoutMeeting, type TabState } from './tabs.js';
+
+/** v0.10: Settings › Turn on captions when notes start, in chrome.storage.local (no secret); on unless set off. */
+export const CC_KEY = 'autoCaptions';
+
+export async function autoCaptions(): Promise<boolean> {
+  try {
+    return (await chrome.storage.local.get(CC_KEY))[CC_KEY] !== false;
+  } catch {
+    return true;
+  }
+}
+
+export async function setAutoCaptions(on: boolean): Promise<Done> {
+  try {
+    await chrome.storage.local.set({ [CC_KEY]: on });
+    return { ok: true };
+  } catch {
+    return { ok: false, error: TRY_AGAIN };
+  }
+}
+
+/** v0.10: notes on in the page (`text`: the bubble after a start by itself), switching captions on when the setting says so. */
+async function captureOn(text?: string): Promise<ToPage> {
+  return { t: 'capture', on: true, ...(text ? { text } : {}), ...((await autoCaptions()) ? { cc: true as const } : {}) };
+}
 
 /** How long End waits for the page's lines post in flight. */
 export const END_WAIT_MS = 2_000;
@@ -109,7 +140,9 @@ export function doneError(reply: Reply): string {
 
 export interface Meetings {
   call(tabId: number, msg: CallMsg, site: MeetingSite): Promise<CallAnswer>;
-  captions(tabId: number, state: TabState['captions']): Promise<void>;
+  captions(tabId: number, state: TabState['captions'], client?: CaptionsClient): Promise<void>;
+  /** v0.10: how switching the captions on went. */
+  cc(tabId: number, report: CcReport): Promise<void>;
   start(msg: StartMsg): Promise<Done>;
   /** v0.10: Start when I join (starts now when the tab is already in the call). */
   arm(msg: ArmMsg): Promise<Done>;
@@ -207,7 +240,7 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
       captions: true,
     });
     if (!opened.ok) return { ok: false, error: doneError(opened.reply) };
-    await ctx.toTab(tabId, bubble ? { t: 'capture', on: true, text: bubble } : { t: 'capture', on: true });
+    await ctx.toTab(tabId, await captureOn(bubble));
     return { ok: true };
   }
 
@@ -280,7 +313,7 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
         if (!arm) return next;
         if (next.clientId && next.notes) {
           // Used: notes are on (a Start that won the race; or a start whose `capture` a worker restart lost, sent again).
-          if (next.inCall && !arm.off) await ctx.toTab(tabId, { t: 'capture', on: true });
+          if (next.inCall && !arm.off) await ctx.toTab(tabId, await captureOn());
           await arms.drop(tabId);
           await arms.schedule();
           return next;
@@ -297,11 +330,17 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
         }
       }
       const paired = (await ctx.keys.get()) !== null;
-      return { button: paired, notes: Boolean(state?.clientId && state.notes) };
+      const notes = Boolean(state?.clientId && state.notes);
+      // v0.10: a page that resumes notes after a reload switches captions on too.
+      return { button: paired, notes, ...(notes && (await autoCaptions()) ? { cc: true as const } : {}) };
     },
 
-    async captions(tabId, captions) {
-      await ctx.tabs.patch(tabId, (cur) => (cur ? { ...cur, captions } : cur));
+    async captions(tabId, captions, client) {
+      await ctx.tabs.patch(tabId, (cur) => (cur ? { ...cur, captions, ...(client ? { client } : {}) } : cur));
+    },
+
+    async cc(tabId, report) {
+      await ctx.tabs.patch(tabId, (cur) => (cur?.clientId && cur.notes ? { ...cur, cc: report } : cur));
     },
 
     start(msg) {

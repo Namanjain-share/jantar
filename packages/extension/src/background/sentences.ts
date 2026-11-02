@@ -116,3 +116,18 @@ export const CALL_CHECK = /* @__PURE__ */ Object.freeze({
   left: 'left the call',
   line: (stage: string, hook: string) => `Call check: ${stage}${hook ? ` · ${hook}` : ''}`,
 });
+
+/**
+ * v0.10: Settings › Turn on captions when notes start (on by default), and
+ * Call check's captions line: how switching them on went, and the hook id
+ * that decided it.
+ */
+export const CC = /* @__PURE__ */ Object.freeze({
+  title: 'Turn on captions when notes start',
+  why: "Jantar writes notes from the call's live captions, so when notes start it turns them on in this call if they are off. Only you see them, and Jantar never turns them off.",
+  'was-on': 'were on',
+  'turned-on': 'turned on by Jantar',
+  clicked: 'Jantar clicked Captions; none on screen yet',
+  failed: 'Jantar could not turn them on',
+  line: (words: string, hook: string) => `Captions: ${words}${hook ? ` · ${hook}` : ''}`,
+});

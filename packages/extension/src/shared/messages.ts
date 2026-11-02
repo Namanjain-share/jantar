@@ -29,6 +29,11 @@ export type CaptionsClient = 'meet' | 'teams' | 'light';
  * someone speaks), or it found no way to.
  */
 export type CcResult = 'was-on' | 'turned-on' | 'clicked' | 'failed';
+/** v0.10: a CcResult with the fixed hook id that decided it. */
+export interface CcReport {
+  result: CcResult;
+  hook: string;
+}
 
 /**
  * v0.10: what the page shows, as the page's call watch judges it from fixed
@@ -102,7 +107,9 @@ export type FromPopup =
   /** v0.10: Cancel, or Not this call for an Always arm. Done. */
   | { t: 'disarm'; tabId: number }
   /** v0.10: Settings › Always start when I join a call. Done. */
-  | { t: 'always'; on: boolean };
+  | { t: 'always'; on: boolean }
+  /** v0.10: Settings › Turn on captions when notes start (on by default). Done. */
+  | { t: 'autoCaptions'; on: boolean };
 
 export type Done = { ok: boolean; error?: string };
 
@@ -162,6 +169,10 @@ export interface PopupState {
     notes: boolean;
     shots: number;
     captions: CaptionsState | 'unknown';
+    /** v0.10: whose way to turn captions on (the page's last captions state said; else by site). */
+    client: CaptionsClient;
+    /** v0.10: how switching captions on went when notes started (Settings › Call check), null before it said. */
+    cc: CcReport | null;
     /** v0.10: what the page last said it shows, and the hook id that decided it ('' when none). */
     stage: CallStage;
     hook: string;
@@ -178,4 +189,6 @@ export interface PopupState {
   reads: boolean;
   /** v0.10: Always start when I join a call. */
   always: boolean;
+  /** v0.10: Turn on captions when notes start. */
+  autoCaptions: boolean;
 }

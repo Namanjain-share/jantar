@@ -15,6 +15,11 @@
  * startup (session storage is empty then); the popup state's stage, arm and
  * last start by itself; each tab's toolbar badge painted after every
  * message about it.
+ *
+ * v0.10, captions on when notes start: the popup's `autoCaptions` (Settings,
+ * on by default), the page's `cc` (how switching them on went), and the
+ * badge painted again on the page's captions state (`!` while notes are on
+ * with no captions yet).
  */
 import type { AutoStart, CallAnswer, Done, FromPopup, PopupState, ShotAnswer } from '../shared/messages.js';
 import { ARM_TIMING } from '../shared/wire.js';
@@ -23,7 +28,7 @@ import { createArms, viewOf, type Arms } from './arms.js';
 import { createClient, type Reply } from './client.js';
 import { sendToTab, type Ctx } from './ctx.js';
 import { createLines, pickLines } from './lines.js';
-import { createMeetings } from './meetings.js';
+import { autoCaptions, createMeetings, setAutoCaptions } from './meetings.js';
 import { createPairing } from './pairing.js';
 import { createReads, type Reads } from './reads.js';
 import { MISMATCH, PAIR_AGAIN, SHOT, TRY_AGAIN } from './sentences.js';
@@ -139,13 +144,14 @@ export function createWorker(deps: WorkerDeps): Worker {
   const reads = createReads(ctx, readLimits ? { limits: readLimits } : {});
 
   async function popupState(tabId: number): Promise<PopupState> {
-    const [pairingNow, pageButton, shortcut, lastShot, readsOn, always] = await Promise.all([
+    const [pairingNow, pageButton, shortcut, lastShot, readsOn, always, ccOn] = await Promise.all([
       deps.keys.get(),
       chrome.permissions.contains({ origins: [ALL_URLS] }).catch(() => false),
       shortcutOf(),
       readLastShot(),
       reads.on().catch(() => false),
       arms.always(),
+      autoCaptions(),
     ]);
     let head: Pick<PopupState, 'connection' | 'sentence'> = { connection: 'unpaired' };
     let projects: PopupState['projects'] = null;
@@ -183,6 +189,8 @@ export function createWorker(deps: WorkerDeps): Worker {
             notes,
             shots: view.clientId ? view.shots : 0,
             captions: view.captions,
+            client: view.client ?? (view.site === 'meet' ? 'meet' : 'teams'),
+            cc: notes && view.cc ? view.cc : null,
             stage: view.stage ?? (view.inCall ? 'in' : 'none'),
             hook: view.hook ?? '',
             arm: arm ? viewOf(arm) : null,
@@ -190,6 +198,7 @@ export function createWorker(deps: WorkerDeps): Worker {
           }
         : null,
       always,
+      autoCaptions: ccOn,
     };
   }
 
@@ -209,8 +218,10 @@ export function createWorker(deps: WorkerDeps): Worker {
         return !answer.ok && !answer.retry ? painted(m.tabId, answer) : answer;
       }
       case 'captions':
-        await meetings.captions(m.tabId, m.msg.state);
-        return undefined;
+        // v0.10: the badge says `!` while notes are on with no captions yet, and clears with the first line.
+        return painted(m.tabId, await meetings.captions(m.tabId, m.msg.state, m.msg.client));
+      case 'cc':
+        return meetings.cc(m.tabId, { result: m.msg.result, hook: m.msg.hook });
       case 'shot':
         return painted(m.tabId, await shots.take(m.tabId, 'page'));
     }
@@ -238,6 +249,8 @@ export function createWorker(deps: WorkerDeps): Worker {
         return painted(msg.tabId, await meetings.disarm(msg.tabId));
       case 'always':
         return arms.setAlways(msg.on);
+      case 'autoCaptions':
+        return setAutoCaptions(msg.on);
     }
   }
 
@@ -249,7 +262,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       if (t === 'shot') return { ok: false, text: SHOT.tryAgain } satisfies ShotAnswer;
       return undefined;
     }
-    if (t === 'state') return { connection: 'down', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, always: false } satisfies PopupState;
+    if (t === 'state') return { connection: 'down', pageButton: false, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, always: false, autoCaptions: true } satisfies PopupState;
     if (t === 'shot') return { ok: false, text: SHOT.tryAgain } satisfies ShotAnswer;
     return { ok: false, error: TRY_AGAIN } satisfies Done;
   }

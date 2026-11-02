@@ -11,8 +11,12 @@
  * v0.10: a page's `call` may carry its stage (one of five) and the hook id
  * that decided it (our own fixed id, `HOOK_ID`); the popup's `arm` is
  * checked as `start` is, `disarm` as `end`, `always` as `reads`.
+ *
+ * v0.10, captions on when notes start: a page's `captions` may name its
+ * client (one of three), and its `cc` names how switching them on went (one
+ * of four) with a hook id; the popup's `autoCaptions` is checked as `reads`.
  */
-import type { CallStage, FromPage, FromPopup } from '../shared/messages.js';
+import type { CallStage, CaptionsClient, CcResult, FromPage, FromPopup } from '../shared/messages.js';
 import { siteOf, type MeetingSite } from '../shared/sites.js';
 
 export type PageMessage = { tabId: number; site: MeetingSite; msg: FromPage };
@@ -40,6 +44,8 @@ export const onMeetingPage = (tab: { url?: string }): boolean => tab.url === und
 
 const CAPTIONS = new Set(['reading', 'none', 'notFound']);
 const STAGES = new Set<string>(['none', 'prejoin', 'lobby', 'in', 'left']);
+const CLIENTS = new Set<string>(['meet', 'teams', 'light']);
+const CC_RESULTS = new Set<string>(['was-on', 'turned-on', 'clicked', 'failed']);
 /** A hook id: one of the adapters' own fixed ids ("meet:call_end", "page:hide"), never page text. */
 export const HOOK_ID = /^[a-z0-9:_-]{1,40}$/;
 
@@ -74,6 +80,7 @@ export function acceptPopup(msg: unknown, sender: Sender): FromPopup | null {
       return { t: 'unpair' };
     case 'reads':
     case 'always':
+    case 'autoCaptions':
       return typeof msg.on === 'boolean' ? { t: msg.t, on: msg.on } : null;
     case 'start':
     case 'arm':
@@ -118,8 +125,17 @@ export function acceptPage(msg: unknown, sender: Sender): PageMessage | null {
     }
     case 'lines':
       return Array.isArray(msg.lines) ? { tabId, site, msg: { t: 'lines', lines: msg.lines } } : null;
-    case 'captions':
-      return typeof msg.state === 'string' && CAPTIONS.has(msg.state) ? { tabId, site, msg: { t: 'captions', state: msg.state as 'reading' } } : null;
+    case 'captions': {
+      if (typeof msg.state !== 'string' || !CAPTIONS.has(msg.state)) return null;
+      if (msg.client !== undefined && (typeof msg.client !== 'string' || !CLIENTS.has(msg.client))) return null;
+      const captions: FromPage = { t: 'captions', state: msg.state as 'reading' };
+      if (msg.client !== undefined) captions.client = msg.client as CaptionsClient;
+      return { tabId, site, msg: captions };
+    }
+    case 'cc':
+      return typeof msg.result === 'string' && CC_RESULTS.has(msg.result) && typeof msg.hook === 'string' && HOOK_ID.test(msg.hook)
+        ? { tabId, site, msg: { t: 'cc', result: msg.result as CcResult, hook: msg.hook } }
+        : null;
     case 'shot':
       return { tabId, site, msg: { t: 'shot' } };
     default:

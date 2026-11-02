@@ -112,6 +112,15 @@ describe('the built extension', () => {
     expect(read(dist, 'content.js')).not.toContain('chromePostOf');
   });
 
+  it('v0.10: the setting for captions lives in the worker; the page script switches captions on but never reads storage, nor bundles what it never reads', () => {
+    expect(read(dist, 'background.js')).toContain('autoCaptions');
+    const content = read(dist, 'content.js');
+    for (const hook of ['#closed-captions-button', '#callingButtons-showMoreBtn', 'translate_cc']) expect(content, hook).toContain(hook);
+    expect(content).not.toContain('autoCaptions');
+    expect(content).not.toMatch(/chrome\.storage/);
+    for (const unread of ['READ_LIMITS', 'ARM_TIMING']) expect(content, unread).not.toContain(unread);
+  });
+
   it("v0.10: the worker holds the arm alarm; the page script never touches the worker's session storage", () => {
     expect(read(dist, 'background.js')).toContain('jantar-arm');
     expect(read(dist, 'background.js')).toContain('startOnJoin');

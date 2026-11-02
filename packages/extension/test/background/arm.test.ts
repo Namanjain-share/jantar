@@ -126,7 +126,7 @@ describe('arm (the popup)', () => {
     await tabAt(7, 'in');
     expect(await arm(7, { name: 'Planning', projectId: PROJECT_ID, autoTodos: true })).toEqual({ ok: true });
     expect(w.daemon.of('open')[0]?.body).toEqual({ site: 'meet', name: 'Planning', projectId: PROJECT_ID, autoTodos: true, captions: true, at: w.clock.t });
-    expect(captures(7)).toEqual([{ t: 'capture', on: true }]);
+    expect(captures(7)).toEqual([{ t: 'capture', on: true, cc: true }]);
     expect(stored(7)).toBeUndefined();
     expect(w.model.badge(7).text).toBe('ON');
   });
@@ -158,17 +158,17 @@ describe('admission', () => {
     await arm(7, fields);
     later(30_000);
     // The answer comes after the `capture` message, so it says notes are on.
-    expect(await call(7, 'in')).toEqual({ button: true, notes: true });
+    expect(await call(7, 'in')).toEqual({ button: true, notes: true, cc: true });
     const auto = w.daemon.of('open')[1]!;
     expect(auto.body).toEqual({ ...(started.body as object), at: w.clock.t });
     expect(auto.clientId).not.toBe(started.clientId);
-    expect(captures(7)).toEqual([{ t: 'capture', on: true, text: AUTO.started }]);
+    expect(captures(7)).toEqual([{ t: 'capture', on: true, text: AUTO.started, cc: true }]);
     expect(stored(7)).toBeUndefined();
     expect(w.tabState(7)).toMatchObject({ notes: true, stage: 'in', auto: { at: w.clock.t, ok: true } });
     expect(w.model.badge(7)).toEqual({ text: 'ON', color: '#16203a', title: 'Jantar: keeping notes in this tab' });
     // The next keep-alive opens nothing again.
     later(TIMING.keepAliveMs);
-    expect(await call(7, 'in')).toEqual({ button: true, notes: true });
+    expect(await call(7, 'in')).toEqual({ button: true, notes: true, cc: true });
     expect(w.daemon.of('open')).toHaveLength(2);
     expect(captures(7)).toHaveLength(1);
   });
@@ -228,8 +228,8 @@ describe('admission', () => {
     later(TIMING.keepAliveMs);
     await call(7, 'in');
     expect(captures(7)).toEqual([
-      { t: 'capture', on: true, text: AUTO.started },
-      { t: 'capture', on: true },
+      { t: 'capture', on: true, text: AUTO.started, cc: true },
+      { t: 'capture', on: true, cc: true },
     ]);
     expect(stored(7)).toBeUndefined();
     later(TIMING.keepAliveMs);
@@ -428,7 +428,7 @@ describe('a worker restart', () => {
     w.chrome.runtime.onMessage.addListener(again.onMessage as never);
     await call(7, 'in');
     expect(w.daemon.of('open')).toHaveLength(1);
-    expect(captures(7).at(-1)).toEqual({ t: 'capture', on: true, text: AUTO.started });
+    expect(captures(7).at(-1)).toEqual({ t: 'capture', on: true, text: AUTO.started, cc: true });
     expect(await again.arms.always()).toBe(true);
   });
 });
@@ -481,7 +481,7 @@ describe('when notes cannot start', () => {
     await call(7, 'in');
     later(TIMING.keepAliveMs);
     await call(7, 'in');
-    expect(captures(7).at(-1)).toEqual({ t: 'capture', on: true, text: AUTO.started });
+    expect(captures(7).at(-1)).toEqual({ t: 'capture', on: true, text: AUTO.started, cc: true });
     expect(w.tabState(7)).toMatchObject({ notes: true, auto: { ok: true } });
   });
 
@@ -580,7 +580,7 @@ describe('Always start when I join a call', () => {
     await call(7, 'in', { title: 'Weekly sync' });
     expect(w.daemon.of('open')[0]?.body).toMatchObject({ name: 'Weekly sync', autoTodos: false, captions: true });
     expect(w.daemon.of('open')[0]?.body).not.toHaveProperty('projectId');
-    expect(captures(7).at(-1)).toEqual({ t: 'capture', on: true, text: AUTO.started });
+    expect(captures(7).at(-1)).toEqual({ t: 'capture', on: true, text: AUTO.started, cc: true });
   });
 
   it('turning it on arms every known tab on a join screen or in a waiting room, and nothing else', async () => {

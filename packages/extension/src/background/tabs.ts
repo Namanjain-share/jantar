@@ -14,9 +14,11 @@
  *
  * v0.10: the record also keeps what the page last said it shows (its stage
  * and hook, and when it last said anything), and the last time notes
- * started by themselves (`auto`), for the popup and the toolbar badge.
+ * started by themselves (`auto`), for the popup and the toolbar badge; and
+ * for the captions, whose way to turn them on the page names (`client`) and
+ * how switching them on went (`cc`, gone with the meeting).
  */
-import type { AutoStart, CallStage, CaptionsState } from '../shared/messages.js';
+import type { AutoStart, CallStage, CaptionsClient, CaptionsState, CcReport } from '../shared/messages.js';
 import type { MeetingSite } from '../shared/sites.js';
 
 export interface TabState {
@@ -36,6 +38,9 @@ export interface TabState {
   /** Screenshots saved into this meeting. */
   shots: number;
   captions: CaptionsState | 'unknown';
+  /** v0.10: whose way to turn captions on (the page's captions state names it), and how switching them on went (this meeting's notes). */
+  client?: CaptionsClient;
+  cc?: CcReport;
   /** When the last keep-alive went (ms). */
   lastKeepAlive?: number;
   /** v0.10: the page's stage and the hook id that decided it, as its last `call` said. */

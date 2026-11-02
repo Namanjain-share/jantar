@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MEETING_MARKER } from '@jantar/fixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ALWAYS, ARM, BAD_CODE, CALL_CHECK, MISMATCH, NOT_RUNNING, PAIR_AGAIN, READS, TRY_AGAIN } from '../../src/background/sentences.js';
+import { ALWAYS, ARM, BAD_CODE, CALL_CHECK, CC, MISMATCH, NOT_RUNNING, PAIR_AGAIN, READS, TRY_AGAIN } from '../../src/background/sentences.js';
 import { NOT_FOUND as PAGE_NOT_FOUND } from '../../src/content/capture.js';
 import { noCaptions } from '../../src/shared/captions.js';
 import type { ArmView, FromPopup, LastShot, PopupState } from '../../src/shared/messages.js';
@@ -31,8 +31,24 @@ const PROJECT_B = '01JFZ8X8Y3T0V5G9WQK2M4N6QR';
 
 type Tab = NonNullable<PopupState['tab']>;
 // v0.10: a tab's stage follows inCall unless a test names one; no arm, no start by itself.
-const meetTab = (over: Partial<Tab> = {}): Tab => ({ site: 'meet', inCall: true, title: 'Weekly sync', notes: false, shots: 0, captions: 'unknown', stage: over.inCall === false ? 'none' : 'in', hook: '', arm: null, auto: null, ...over });
-const state = (over: Partial<PopupState> = {}): PopupState => ({ connection: 'ok', pageButton: true, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, always: false, ...over }) as PopupState;
+// v0.10: the captions' client follows the site; nothing said yet of switching captions on; the switch on by default.
+const meetTab = (over: Partial<Tab> = {}): Tab => ({
+  site: 'meet',
+  inCall: true,
+  title: 'Weekly sync',
+  notes: false,
+  shots: 0,
+  captions: 'unknown',
+  client: over.site === 'teams' ? 'teams' : 'meet',
+  cc: null,
+  stage: over.inCall === false ? 'none' : 'in',
+  hook: '',
+  arm: null,
+  auto: null,
+  ...over,
+});
+const state = (over: Partial<PopupState> = {}): PopupState =>
+  ({ connection: 'ok', pageButton: true, projects: null, tab: null, lastShot: null, shortcut: '', reads: false, always: false, autoCaptions: true, ...over }) as PopupState;
 
 let chrome: ChromeFake;
 let model: ChromeModel;
@@ -974,3 +990,51 @@ describe('v0.10: Start when I join', () => {
 });
 
 const JOIN_FIRST_TEXT = 'Join the call first.';
+
+describe('v0.10: captions on when notes start', () => {
+  it('Settings: Turn on captions when notes start, on by default, with its copy; the switch sends `autoCaptions`', async () => {
+    answers.state = state({ tab: meetTab({ notes: true, name: 'Weekly sync' }) });
+    await open();
+    buttonNamed('Settings').click();
+    const box = input('captions');
+    expect(box.getAttribute('role')).toBe('switch');
+    expect(box.checked).toBe(true);
+    expect(root.querySelector('label[for="captions"]')?.textContent).toBe(CC.title);
+    expect(text()).toContain(CC.why);
+    noBadMarks();
+    answers.state = state({ autoCaptions: false, tab: meetTab({ notes: true, name: 'Weekly sync' }) });
+    box.checked = false;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(sent).toContainEqual({ t: 'autoCaptions', on: false }));
+    await vi.waitFor(() => expect(input('captions').checked).toBe(false));
+    expect(model.requested).toEqual([]);
+  });
+
+  it('Settings › Call check: how switching captions on went, by our own hook id, once the page said', async () => {
+    const cases: [NonNullable<Tab['cc']>, string][] = [
+      [{ result: 'turned-on', hook: 'teams:cc-more-item' }, 'Captions: turned on by Jantar · teams:cc-more-item'],
+      [{ result: 'was-on', hook: 'meet:captions-button' }, 'Captions: were on · meet:captions-button'],
+      [{ result: 'clicked', hook: 'teams:cc-more-item' }, 'Captions: Jantar clicked Captions; none on screen yet · teams:cc-more-item'],
+      [{ result: 'failed', hook: 'teams:no-cc-item' }, 'Captions: Jantar could not turn them on · teams:no-cc-item'],
+    ];
+    for (const [cc, line] of cases) {
+      answers.state = state({ tab: meetTab({ notes: true, cc }) });
+      await open();
+      buttonNamed('Settings').click();
+      expect([...root.querySelectorAll('.view p.check')].map((p) => p.textContent)).toContain(line);
+      noBadMarks();
+    }
+    answers.state = state({ tab: meetTab({ notes: true }) });
+    await open();
+    buttonNamed('Settings').click();
+    expect(text()).not.toContain('Captions:');
+  });
+
+  it("notes on with no captions yet: the notes view names this client's way to turn them on (a light-meetings guest's)", async () => {
+    answers.state = state({ tab: meetTab({ site: 'teams', client: 'light', notes: true, captions: 'none', name: 'Weekly sync' }) });
+    await open();
+    expect(text()).toContain(noCaptions('light'));
+    expect(noCaptions('light')).toBe("No captions yet: Jantar writes notes from the call's live captions. Turn them on: More (…) › Captions.");
+    noBadMarks();
+  });
+});

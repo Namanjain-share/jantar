@@ -49,7 +49,7 @@ describe('the popup with the worker', () => {
     click('Start notes');
     await vi.waitFor(() => expect(text()).toContain('Keeping notes · Weekly sync'));
     expect(w.daemon.of('open')[0]?.body).toMatchObject({ name: 'Weekly sync', projectId: PROJECT_ID, autoTodos: true, captions: true });
-    expect(w.toPage(7).at(-1)).toEqual({ t: 'capture', on: true });
+    expect(w.toPage(7).at(-1)).toEqual({ t: 'capture', on: true, cc: true });
 
     await w.page(7, { t: 'captions', state: 'reading' });
     await popup.refresh();
@@ -140,7 +140,7 @@ describe('the popup with the worker', () => {
     await page('in', true);
     expect(w.daemon.of('open')).toHaveLength(1);
     expect(w.daemon.of('open')[0]?.body).toMatchObject({ name: 'Weekly sync', projectId: PROJECT_ID, autoTodos: true, captions: true });
-    expect(w.toPage(7).at(-1)).toEqual({ t: 'capture', on: true, text: AUTO.started });
+    expect(w.toPage(7).at(-1)).toEqual({ t: 'capture', on: true, text: AUTO.started, cc: true });
     expect(w.model.badge(7).text).toBe('ON');
     await popup.refresh();
     expect(text()).toContain('Keeping notes · Weekly sync');

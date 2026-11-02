@@ -30,6 +30,11 @@
  * Always on, the pairing view says nothing can start and offers to turn Always off. After a redraw the keyboard stays in
  * the view: on the same control, else the view's first one.
  *
+ * v0.10, captions on when notes start: Settings has Turn on captions when
+ * notes start (on by default), and Call check names how switching them on
+ * went. With notes on and no captions yet, the notes view says how to turn
+ * them on in this client (the page's own words).
+ *
  * Built with DOM calls and textContent only (the page has no inline
  * script, no style attribute and no on* handler). No em dash, no
  * exclamation mark.
@@ -37,7 +42,7 @@
 import type { ArmView, CallStage, Done, FromPopup, LastShot, PopupState, ShotFrom } from '../shared/messages.js';
 import type { MeetingSite } from '../shared/sites.js';
 import { ARM_TIMING, WIRE_LIMITS } from '../shared/wire.js';
-import { ALWAYS, ARM, CALL_CHECK, JOIN_FIRST, NOT_RUNNING, NO_MEETING_TAB, READS, SHOT, TRY_AGAIN } from '../background/sentences.js';
+import { ALWAYS, ARM, CALL_CHECK, CC, JOIN_FIRST, NOT_RUNNING, NO_MEETING_TAB, READS, SHOT, TRY_AGAIN } from '../background/sentences.js';
 import { postOrigins } from '../shared/post-sites.js';
 import { noCaptions } from '../shared/captions.js';
 
@@ -142,7 +147,7 @@ function captionsWords(tab: Tab): string {
       return 'Reading captions';
     case 'none':
       // v0.10: the page's own bubble, with the way to turn captions on in this client (shared/captions.ts).
-      return noCaptions(tab.site === 'meet' ? 'meet' : 'teams');
+      return noCaptions(tab.client);
     case 'notFound':
       return NOT_FOUND;
     default:
@@ -361,6 +366,12 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     void act({ t: 'always', on }).then(() => refresh());
   }
 
+  /** v0.10: Turn on captions when notes start (it only changes what he sees in his own call). */
+  function setAutoCaptions(on: boolean): void {
+    if (busy) return;
+    void act({ t: 'autoCaptions', on }).then(() => refresh());
+  }
+
   function screenshot(): void {
     // The worker waits for the popup to go before it shoots.
     void ask({ t: 'shot', tabId });
@@ -553,12 +564,19 @@ export async function mountPopup(opts: PopupOptions): Promise<Popup> {
     const always = el('input', { id: 'always', type: 'checkbox', role: 'switch' });
     always.checked = s.always;
     always.addEventListener('change', () => setAlways(always.checked));
+    const captions = el('input', { id: 'captions', type: 'checkbox', role: 'switch' });
+    captions.checked = s.autoCaptions;
+    captions.addEventListener('change', () => setAutoCaptions(captions.checked));
+    const cc = s.tab?.cc;
     return [
       el('h2', {}, 'Settings'),
       // v0.10: the meeting settings first, together: Always, then what the page shows (by our own hook id, never page text).
       el('div', { class: 'setting' }, el('label', { class: 'switch', for: 'always' }, always, el('span', {}, ALWAYS.title)), para(ALWAYS.why, 'quiet')),
       // The hook id keeps to one line (at 320 px it moves to the next line whole).
       s.tab ? el('p', { class: 'mono check' }, CALL_CHECK.line(CALL_CHECK[s.tab.stage], ''), s.tab.hook && ' · ', s.tab.hook && el('span', { class: 'hook' }, s.tab.hook)) : null,
+      // v0.10: how switching captions on went in this tab's notes (our own hook id again, never page text).
+      cc ? el('p', { class: 'mono check' }, CC.line(CC[cc.result], ''), ' · ', el('span', { class: 'hook' }, cc.hook)) : null,
+      el('div', { class: 'setting' }, el('label', { class: 'switch', for: 'captions' }, captions, el('span', {}, CC.title)), para(CC.why, 'quiet')),
       el('div', { class: 'row' }, el('span', {}, 'Screenshot button on meeting pages'), allowed),
       el('div', { class: 'setting' }, el('label', { class: 'switch', for: 'reads' }, box, el('span', {}, READS.title)), para(READS.why, 'quiet')),
       el(
