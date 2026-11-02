@@ -60,16 +60,30 @@ export function createSig(root: string, parent: string, name: string): string {
   return `${root}\u0000${parent}\u0000${name}`;
 }
 
+type KeyRef = { current: { sig: string; key: string } | null };
+
 /**
  * The Idempotency-Key for creating `sig` (createSig): the same folder
  * reuses the key, so a retry after a lost 201 is replayed instead of
  * answering "already exists"; another name or place gets a new one (the
  * daemon refuses one key with two bodies). The caller sets
- * `ref.current = null` after a success.
+ * `ref.current = null` after a success, and calls dropAnsweredKey after a
+ * failure.
  */
-export function keepKey(ref: { current: { sig: string; key: string } | null }, sig: string): string {
+export function keepKey(ref: KeyRef, sig: string): string {
   if (!ref.current || ref.current.sig !== sig) ref.current = { sig, key: newIdempotencyKey() };
   return ref.current.key;
+}
+
+/**
+ * After a failed create: the key is kept only when the Mac never answered
+ * (a network failure, so the 201 may be the thing lost). Any answer, a
+ * refusal included, is kept by the daemon for 24 hours under that key, so
+ * reusing it would bring back the old 403, 409 or 429 after access was
+ * granted, the clash removed or the hour gone (the start sheet's own rule).
+ */
+export function dropAnsweredKey(ref: KeyRef, e: unknown): void {
+  if (!isApiError(e, 'network')) ref.current = null;
 }
 
 /** A failed create in words: the daemon's own sentence where it has one (a 429 included). */

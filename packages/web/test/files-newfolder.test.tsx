@@ -257,6 +257,37 @@ describe('the sheet', () => {
     expect(keys[2]).not.toBe(keys[0]);
   });
 
+  it('an answer from the Mac (a 429, a 409) drops the key, even across openings: the retry of the same name is asked afresh; only a lost reply keeps it', async () => {
+    // The daemon keeps every answer to a key for 24 hours: a retry with the old key would get the old refusal back.
+    const foldersCreate = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError('rate_limited', 'At most 10 new folders an hour; try again in 5 minutes', 429))
+      .mockRejectedValueOnce(new ApiError('conflict', 'A folder named new-project already exists here', 409))
+      .mockRejectedValueOnce(new ApiError('network', 'offline', 0))
+      .mockResolvedValue({ root: 'r.work', path: 'auth/new-project' });
+    renderFiles({ api: filesApi({ foldersCreate }).api });
+    await openSheet();
+    fireEvent.click(createButton());
+    await waitFor(() => expect(foldersCreate).toHaveBeenCalledTimes(1));
+    await screen.findByRole('alert');
+    fireEvent.click(createButton());
+    await waitFor(() => expect(foldersCreate).toHaveBeenCalledTimes(2));
+    await screen.findByRole('alert');
+    // Closed and opened again: the same free name, the same folder, and still a new key.
+    fireEvent.click(within(screen.getByRole('dialog', { name: NEW })).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: NEW })).toBeNull());
+    expect((await openSheet()).value).toBe('new-project');
+    fireEvent.click(createButton());
+    await waitFor(() => expect(foldersCreate).toHaveBeenCalledTimes(3));
+    await screen.findByRole('alert');
+    fireEvent.click(createButton());
+    await waitFor(() => expect(foldersCreate).toHaveBeenCalledTimes(4));
+    const keys = foldersCreate.mock.calls.map((c) => c[1] as string);
+    expect(foldersCreate.mock.calls.every((c) => (c[0] as { name: string }).name === 'new-project')).toBe(true);
+    expect(new Set(keys.slice(0, 3)).size).toBe(3);
+    expect(keys[3]).toBe(keys[2]);
+  });
+
   it('while busy: a spinner, Create off, the field read-only', async () => {
     let done: (v: { root: string; path: string }) => void = () => undefined;
     const foldersCreate = vi.fn(() => new Promise<{ root: string; path: string }>((r) => (done = r)));

@@ -14,12 +14,14 @@
  * case) is refused before sending, with "Open it" for a folder. The daemon
  * decides in the end (POST /v1/folders: launch scope, launching on, one
  * mkdir, a 409 naming what is there). Every try sends an Idempotency-Key,
- * one per folder (root, parent, name), kept by the caller across openings,
- * so a retry after a lost 201 is replayed instead of "already exists".
+ * one per folder (root, parent, name), kept by the caller across openings
+ * while the last try got no reply, so a retry after a lost 201 is replayed
+ * instead of "already exists". Any answer drops it (dropAnsweredKey): the
+ * daemon would replay a refusal under that key for 24 hours.
  */
 import { useId, useRef, useState, type FormEvent, type RefObject } from 'react';
 import type { FileEntry } from '@jantar/protocol';
-import { FOLDER_NAME_HINT, clashIn, createSig, folderErrorText, folderNameOk, freeFolderName, keepKey } from '../../../lib/folder-name.js';
+import { FOLDER_NAME_HINT, clashIn, createSig, dropAnsweredKey, folderErrorText, folderNameOk, freeFolderName, keepKey } from '../../../lib/folder-name.js';
 import { useDeps } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Sheet, type SheetProps } from '../../kit/Sheet.js';
@@ -98,6 +100,7 @@ function NameForm({
       kept.current = null;
       onArrive(r.path);
     } catch (err) {
+      dropAnsweredKey(kept, err);
       setError(err);
     } finally {
       setBusy(false);

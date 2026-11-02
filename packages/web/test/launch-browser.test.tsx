@@ -332,6 +332,27 @@ describe('folder browser: new folder', () => {
     expect(keys[2]).not.toBe(keys[0]);
   });
 
+  it('an answer from the Mac (a 429, a 409, the privacy refusal) drops the key: the retry of the same name is asked afresh; only a lost reply keeps it', async () => {
+    // The daemon keeps every answer to a key for 24 hours: a retry with the old key would get the old refusal back.
+    const foldersCreate = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError('rate_limited', 'At most 10 new folders an hour; try again in 5 minutes', 429))
+      .mockRejectedValueOnce(new ApiError('conflict', 'A folder named scratch already exists here', 409))
+      .mockRejectedValueOnce(new ApiError('forbidden', TCC, 403))
+      .mockRejectedValueOnce(new ApiError('network', 'offline', 0))
+      .mockResolvedValue({ root: 'r.1', path: 'scratch' });
+    renderApp({ path: '/new?root=r.1', api: launchApi({ foldersCreate }), state: state() });
+    fireEvent.change(await open(), { target: { value: 'scratch' } });
+    for (let n = 1; n <= 5; n += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+      await waitFor(() => expect(foldersCreate).toHaveBeenCalledTimes(n));
+      if (n < 5) await screen.findByRole('alert');
+    }
+    const keys = foldersCreate.mock.calls.map((c) => c[1] as string);
+    expect(new Set(keys.slice(0, 4)).size).toBe(4);
+    expect(keys[4]).toBe(keys[3]);
+  });
+
   it('teaches the Mac command on a missing launch scope, with no grant button', async () => {
     localStorage.setItem('jantar:device', JSON.stringify({ id: 'dev-1', name: "Sam's iPhone", scopes: ['read', 'control'] }));
     const api = launchApi({ foldersCreate: vi.fn(async () => Promise.reject(new ApiError('forbidden', 'this device does not have the launch scope', 403))) });

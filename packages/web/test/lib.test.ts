@@ -19,7 +19,8 @@ import { describeSuggestion, questionsOf, summarizeTool } from '../src/lib/descr
 import { createRouter, LIFE_ROUTES, memoryHistory, parseRoute, routePath } from '../src/lib/router.js';
 import { closeNotificationsFor, disablePush, enablePush, getPushState, isIOS, urlBase64ToBytes } from '../src/lib/push.js';
 import { newIdempotencyKey } from '../src/lib/ids.js';
-import { FOLDER_NAME_HINT, clashIn, createSig, folderNameOk, freeFolderName, keepKey } from '../src/lib/folder-name.js';
+import { ApiError } from '../src/lib/api.js';
+import { FOLDER_NAME_HINT, clashIn, createSig, dropAnsweredKey, folderNameOk, freeFolderName, keepKey } from '../src/lib/folder-name.js';
 import { readLocal, writeLocal } from '../src/lib/storage.js';
 import { account, fakeApi, fakePushEnv, pending } from './helpers.js';
 
@@ -314,5 +315,25 @@ describe('folder names (0.10.1 New folder)', () => {
     expect(keepKey(ref, createSig('r.work', 'auth', 'new-project'))).toBe(here);
     expect(keepKey(ref, createSig('r.work', 'api', 'new-project'))).not.toBe(here);
     expect(createSig('r.work', 'a', 'b/c')).not.toBe(createSig('r.work', 'a/b', 'c'));
+  });
+
+  it('dropAnsweredKey: a lost reply keeps the key; any answer from the Mac (the daemon keeps it 24 h) drops it', () => {
+    const ref: { current: { sig: string; key: string } | null } = { current: null };
+    const a = keepKey(ref, 'x');
+    dropAnsweredKey(ref, new ApiError('network', 'offline', 0));
+    expect(keepKey(ref, 'x')).toBe(a);
+    for (const e of [
+      new ApiError('conflict', 'taken', 409),
+      new ApiError('rate_limited', 'later', 429),
+      new ApiError('forbidden', 'privacy', 403),
+      new ApiError('unavailable', 'disk full', 503),
+      new ApiError('internal', '502 Bad Gateway', 502),
+      new Error('not an API error'),
+    ]) {
+      const before = keepKey(ref, 'x');
+      dropAnsweredKey(ref, e);
+      expect(ref.current, e.message).toBeNull();
+      expect(keepKey(ref, 'x')).not.toBe(before);
+    }
   });
 });

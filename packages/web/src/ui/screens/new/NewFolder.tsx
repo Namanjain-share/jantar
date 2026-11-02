@@ -6,16 +6,17 @@
  * when it exists. Creating needs the `launch` scope, which a 403 reveals.
  *
  * 0.10.1: the name is trimmed (iOS predictive text adds a trailing space),
- * every try sends an Idempotency-Key (one per name, reused on a retry, so a
- * lost 201 is replayed instead of answering "already exists"), and a 409
- * shows the daemon's sentence, which names what is there in its own case.
+ * every try sends an Idempotency-Key (one per name, reused on a retry after
+ * a network failure only, so a lost 201 is replayed instead of answering
+ * "already exists", while a refusal is asked afresh), and a 409 shows the
+ * daemon's sentence, which names what is there in its own case.
  * Files' New folder (files/NewFolderSheet) is the same route.
  */
 import { FolderPlusIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { errorText } from '../../../lib/api.js';
-import { FOLDER_NAME_HINT, createSig, folderNameOk, keepKey } from '../../../lib/folder-name.js';
+import { FOLDER_NAME_HINT, createSig, dropAnsweredKey, folderNameOk, keepKey } from '../../../lib/folder-name.js';
 import { useDeps } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Spinner } from '../../kit/Spinner.js';
@@ -63,6 +64,7 @@ export function NewFolder({ root, parent, offline, phone, onCreated }: { root: s
       kept.current = null;
       onCreated(r.path);
     } catch (err) {
+      dropAnsweredKey(kept, err);
       setError(err);
     } finally {
       setBusy(false);
