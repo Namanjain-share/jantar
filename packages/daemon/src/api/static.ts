@@ -119,7 +119,8 @@ export function personAssets(dist: string): Set<string> {
   const out = new Set<string>();
   let manifest: Record<string, { file: string; imports?: string[]; dynamicImports?: string[]; css?: string[]; assets?: string[] }>;
   try {
-    manifest = JSON.parse(readFileSync(join(dist, '.vite', 'manifest.json'), 'utf8')) as typeof manifest;
+    // Her app's own build (web vite.partner.config.ts) writes its manifest here, apart from the owner's build.
+    manifest = JSON.parse(readFileSync(join(dist, '.vite', 'p-manifest.json'), 'utf8')) as typeof manifest;
   } catch {
     return out;
   }

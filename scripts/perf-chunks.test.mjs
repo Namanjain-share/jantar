@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { LAZY_MAX, LAZY_SCREENS, analyze, chunkName, failures, importsOf } from './perf-chunks.mjs';
+import { LAZY_MAX, LAZY_SCREENS, P_MAIN_JS_MAX, analyze, chunkName, failures, importsOf } from './perf-chunks.mjs';
 
 const script = join(dirname(fileURLToPath(import.meta.url)), 'perf-chunks.mjs');
 const realDist = join(dirname(script), '..', 'packages', 'web', 'dist');
@@ -130,4 +130,28 @@ test('a missing dist or screen chunk exits 2 with the reason', () => {
 test('the built web app holds every size gate', { skip: !existsSync(join(realDist, 'index.html')) && !process.env.CI && 'packages/web/dist is missing (run pnpm build)' }, () => {
   const cli = run([]);
   assert.equal(cli.status, 0, cli.stdout + cli.stderr);
+});
+
+test("v0.12 People: her app (p.html) is read and gated apart from the owner's", () => {
+  withDist({}, (dir) => {
+    assert.equal(analyze(dir).person, null);
+  });
+  const her = {
+    'p.html': '<!doctype html><script type="module" crossorigin src="/assets/p-GGGGGGGG.js"></script><link rel="stylesheet" crossorigin href="/assets/p-p-HHHHHHHH.css">',
+    'assets/p-GGGGGGGG.js': filler(20),
+    'assets/p-p-HHHHHHHH.css': 'body{margin:0}',
+  };
+  withDist(her, (dir) => {
+    const r = analyze(dir);
+    assert.deepEqual(r.person.files, ['p-GGGGGGGG.js']);
+    assert.ok(r.person.js > 15_000 && r.person.js < 30_000);
+    // Her chunks are not in the owner's main load.
+    assert.ok(!r.main.files.includes('p-GGGGGGGG.js'));
+    assert.deepEqual(failures(r), []);
+  });
+  withDist({ ...her, 'assets/p-GGGGGGGG.js': filler(P_MAIN_JS_MAX / 1000 + 10) }, (dir) => {
+    const f = failures(analyze(dir));
+    assert.equal(f.length, 1);
+    assert.match(f[0], /her app's first load/);
+  });
 });

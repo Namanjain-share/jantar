@@ -41,6 +41,14 @@ export const MAIN_JS_MAX = 280_000;
 export const MAIN_CSS_MAX = 16_000;
 /** Spec 9.6: each lazy Life or Intel chunk; v0.5 holds Meetings to the same, v0.10 Chat (v0.5.3's Ask), v0.7 Posts. */
 export const LAZY_MAX = 80_000;
+/**
+ * v0.12 People: her app (p.html, its own Vite build) has its own gate, read
+ * from p.html the way the owner's is read from index.html. New constants,
+ * not raised ones; tighten them to the measured size plus 10% once P1 is
+ * whole (spec 9.4).
+ */
+export const P_MAIN_JS_MAX = 120_000;
+export const P_MAIN_CSS_MAX = 12_000;
 /** The screens Shell.tsx loads lazily, by their file names (a chunk is named after its module). */
 export const LAZY_SCREENS = ['Today', 'Todos', 'Meds', 'Food', 'Places', 'Money', 'Intel', 'Meetings', 'Chat', 'Posts'];
 
@@ -121,12 +129,27 @@ export function analyze(dist, screens = LAZY_SCREENS) {
     lazy.push({ name, file, own: chunks.get(file).gz, total: sum(pulled), files: pulled });
     for (const f of pulled) for (const d of chunks.get(f).dynamics) todo.push({ name: `${name} > ${chunkName(d)}`, file: d });
   }
-  return { main: { files: [...main], js: sum(main), css: cssGz }, lazy };
+  return { main: { files: [...main], js: sum(main), css: cssGz }, lazy, person: analyzePerson(dist, chunks, closure, sum) };
+}
+
+/** v0.12: her app's first load (p.html and what it imports statically), or null when it isn't built. */
+function analyzePerson(dist, chunks, closure, sum) {
+  const page = join(dist, 'p.html');
+  if (!existsSync(page)) return null;
+  const html = readFileSync(page, 'utf8');
+  const entries = [...html.matchAll(/<script[^>]*\bsrc="\/assets\/([^"]+)"/g)].map((m) => m[1]);
+  if (entries.length === 0) throw Object.assign(new Error(`${page} loads no script from /assets/`), { code: 2 });
+  const files = closure(entries);
+  const css = [...html.matchAll(/<link[^>]*\bhref="\/assets\/([^"]+\.css)"/g)].map((m) => m[1]);
+  const cssGz = css.reduce((n, f) => n + gzipSync(readFileSync(join(dist, 'assets', f))).length, 0);
+  return { files: [...files], js: sum(files), css: cssGz };
 }
 
 /** The gates `report` fails, as sentences (empty: every gate holds). */
-export function failures(report, max = { mainJs: MAIN_JS_MAX, mainCss: MAIN_CSS_MAX, lazy: LAZY_MAX }) {
+export function failures(report, max = { mainJs: MAIN_JS_MAX, mainCss: MAIN_CSS_MAX, lazy: LAZY_MAX, personJs: P_MAIN_JS_MAX, personCss: P_MAIN_CSS_MAX }) {
   const out = [];
+  if (report.person && report.person.js > (max.personJs ?? P_MAIN_JS_MAX)) out.push(`her app's first load is ${kb(report.person.js)} of JavaScript, over ${kb(max.personJs ?? P_MAIN_JS_MAX)}`);
+  if (report.person && report.person.css > (max.personCss ?? P_MAIN_CSS_MAX)) out.push(`her app's stylesheet is ${kb(report.person.css)}, over ${kb(max.personCss ?? P_MAIN_CSS_MAX)}`);
   if (report.main.js > max.mainJs) out.push(`the main load is ${kb(report.main.js)} of JavaScript, over ${kb(max.mainJs)}`);
   if (report.main.css > max.mainCss) out.push(`the main stylesheet is ${kb(report.main.css)}, over ${kb(max.mainCss)}`);
   for (const l of report.lazy) if (l.total > max.lazy) out.push(`${l.name} (${l.file}) pulls in ${kb(l.total)}, over ${kb(max.lazy)}`);
@@ -161,6 +184,7 @@ function main() {
   else {
     process.stdout.write(`main load    ${kb(report.main.js)} JS (at most ${kb(MAIN_JS_MAX)}), ${kb(report.main.css)} CSS (at most ${kb(MAIN_CSS_MAX)}), ${report.main.files.length} chunks\n`);
     for (const l of report.lazy) process.stdout.write(`${l.name.padEnd(12)} ${kb(l.total)} with what it pulls in (its own chunk ${kb(l.own)}; at most ${kb(LAZY_MAX)})\n`);
+    if (report.person) process.stdout.write(`her app      ${kb(report.person.js)} JS (at most ${kb(P_MAIN_JS_MAX)}), ${kb(report.person.css)} CSS (at most ${kb(P_MAIN_CSS_MAX)}), ${report.person.files.length} chunks\n`);
     process.stdout.write(failed.length ? `\nperf-chunks: ${failed.join('; ')}.\n` : 'perf-chunks: every gate holds.\n');
   }
   return failed.length ? 1 : 0;

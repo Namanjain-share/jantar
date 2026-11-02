@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { Plugin } from 'vite';
-import { fillHtml, readThemeColours, webManifest } from './brand.js';
+import { fillHtml, readThemeColours, webManifest, type ThemeColours } from './brand.js';
 
 /**
  * The policy the app is built for. Keep in step with the daemon's header
@@ -156,6 +156,62 @@ export function pwaPlugin(opts: { root: string }): Plugin[] {
           res.setHeader('cache-control', 'no-cache');
           res.end(renderServiceWorker(readFileSync(swSource, 'utf8'), { version: 'dev', precache: [] }));
         });
+      },
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// v0.12 People: her app's build (vite.partner.config.ts), a second Vite build
+// into the same dist/ with its own module graph, so the owner's build and its
+// chunks are byte for byte what they were (his main load gains nothing).
+
+/** v0.12: her app's own files (served only on her host). */
+export const PERSON_APP_FILES = ['p.html', 'p-sw.js', 'p.webmanifest'] as const;
+/** v0.12: the build manifest of her app (its chunk set: the daemon's people host serves these and no other asset). */
+export const PERSON_MANIFEST = '.vite/p-manifest.json';
+
+/** Her app's manifest: its own id, start and scope (/p), so it installs apart from the owner's. */
+export function personManifest(colours: ThemeColours) {
+  const { shortcuts: _none, ...rest } = webManifest(colours);
+  return { ...rest, id: '/p', start_url: '/p', scope: '/p', categories: ['productivity', 'lifestyle'] };
+}
+
+export function personPwaPlugin(opts: { root: string }): Plugin[] {
+  const swSource = join(opts.root, 'sw', 'p-sw.js');
+  return [
+    {
+      name: 'jantar:person-brand',
+      transformIndexHtml: {
+        order: 'pre',
+        handler(html) {
+          return fillHtml(html, readThemeColours(opts.root));
+        },
+      },
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'p.webmanifest', source: `${JSON.stringify(personManifest(readThemeColours(opts.root)), null, 2)}\n` });
+      },
+    },
+    {
+      name: 'jantar:person-csp-meta',
+      apply: 'build',
+      transformIndexHtml: {
+        order: 'post',
+        handler(html) {
+          return { html, tags: [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP }, injectTo: 'head-prepend' }] };
+        },
+      },
+    },
+    {
+      name: 'jantar:person-service-worker',
+      apply: 'build',
+      generateBundle(_options, bundle) {
+        // Her shell and her build's own files: nothing of the owner's build is precached on her phone.
+        const emitted = Object.keys(bundle).filter((f) => !f.endsWith('.map') && !f.startsWith('.vite/') && f !== 'p-sw.js' && !NOT_PRECACHED.test(f));
+        const precache = [...new Set(['/p.html', ...emitted.map((f) => `/${f}`)])].sort();
+        const template = readFileSync(swSource, 'utf8');
+        const version = createHash('sha256').update(JSON.stringify(precache)).update(template).digest('hex').slice(0, 12);
+        this.emitFile({ type: 'asset', fileName: 'p-sw.js', source: renderServiceWorker(template, { version, precache }) });
       },
     },
   ];

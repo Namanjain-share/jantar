@@ -31,6 +31,13 @@ partner simply can't sign in there).
   is off, in read-only mode or while Life data is damaged. Every look and
   change you make in their space is in their Activity. Their own writes
   reach your audit log as `person.write` with no detail.
+- **Their app** is its own web app (`/p` on their hostname), built apart
+  from yours: none of your screens or code are in it, and your app's first
+  load is unchanged by it. It has the join page (generated from the offer,
+  every area on its own line, switches that only turn down), Today, and Me
+  with Sharing, Activity, Devices (link another device with a 5-minute
+  code), Notifications (lock screen, mute), Pause and Leave. Its own service
+  worker opens only `/p` pages.
 
 ## 0.10.2 (3 November 2026)
 

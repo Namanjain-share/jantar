@@ -1,0 +1,17 @@
+/*
+ * v0.12 People: her app's stylesheet (its own build, vite.partner.config.ts).
+ * The same tokens, fonts, base and kit as the owner's, and only the
+ * utilities her app and the kit use: Tailwind scans src/partner and
+ * src/ui/kit here, nothing else, so her first load stays small.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@import '../styles/tokens.css';
+@import '../styles/fonts.css';
+@import '../styles/base.css';
+@import '../styles/kit.css';
+@source "../partner";
+@source "../ui/kit";
+
+@custom-variant coarse (@media (pointer: coarse));
