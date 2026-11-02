@@ -20,7 +20,7 @@ import { createRouter, LIFE_ROUTES, memoryHistory, parseRoute, routePath } from 
 import { closeNotificationsFor, disablePush, enablePush, getPushState, isIOS, urlBase64ToBytes } from '../src/lib/push.js';
 import { newIdempotencyKey } from '../src/lib/ids.js';
 import { ApiError } from '../src/lib/api.js';
-import { FOLDER_NAME_HINT, clashIn, createSig, dropAnsweredKey, folderNameOk, freeFolderName, keepKey } from '../src/lib/folder-name.js';
+import { FOLDER_NAME_HINT, clashIn, createSig, dropAnsweredKey, folderErrorText, folderNameOk, freeFolderName, keepKey, takenText } from '../src/lib/folder-name.js';
 import { readLocal, writeLocal } from '../src/lib/storage.js';
 import { account, fakeApi, fakePushEnv, pending } from './helpers.js';
 
@@ -268,6 +268,21 @@ describe('folder names (0.10.1 New folder)', () => {
       expect(folderNameOk(bad), JSON.stringify(bad)).toBe(false);
     }
     expect(FOLDER_NAME_HINT).toMatch(/can't end in a space or a dot/);
+    // ASCII on purpose: the hint says A–Z (not just "letters") and the limit.
+    expect(FOLDER_NAME_HINT).toMatch(/A–Z letters/);
+    expect(FOLDER_NAME_HINT).toMatch(/up to 60 characters/);
+  });
+
+  it("takenText and folderErrorText: a listed clash in the daemon's 409 words; its 409 and 429 sentences end in a full stop, others as sent", () => {
+    expect(takenText({ name: 'Project', type: 'dir' })).toBe('A folder named Project already exists here.');
+    expect(takenText({ name: 'README', type: 'file' })).toBe('A file named README already exists here.');
+    expect(takenText({ name: 'l', type: 'link' })).toBe('Something named l already exists here.');
+    expect(folderErrorText(new ApiError('conflict', 'A folder named API already exists here', 409))).toBe('A folder named API already exists here.');
+    expect(folderErrorText(new ApiError('rate_limited', 'At most 3 new folders an hour; try again in 7 minutes', 429))).toBe(
+      'At most 3 new folders an hour; try again in 7 minutes.',
+    );
+    expect(folderErrorText(new ApiError('forbidden', 'Turn it on at your Mac: jantar launch on', 403))).toBe('Turn it on at your Mac: jantar launch on');
+    expect(folderErrorText(new ApiError('network', 'offline', 0))).toBe('Could not reach the Mac. Check the connection and try again.');
   });
 
   it('freeFolderName: new-project, then -2 up to -99, folded the way the daemon folds', () => {

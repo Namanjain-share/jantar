@@ -17,6 +17,9 @@ What changed for people who use Jantar, newest first. Versions before
 - `launch.rate.foldersPerHour` now holds for new folders asked for at
   the same moment, and a new folder refused for the limit says how many
   minutes to wait.
+- The start sheet's New folder shows that wait, says "can't make folders
+  or start sessions" without the launch scope (and keeps Create off), and
+  no longer cuts a long pasted name without saying why.
 - `jantar files status` says whether Files shows New folder;
   `jantar launch status` shows the new-folder limit.
 

@@ -190,9 +190,9 @@ opens a hidden home folder such as `~/.config/nvim` (never `~/.ssh`,
 status` says whether Files is on and shows New folder.
 
 **New folder**: in any folder you browse, New folder makes one empty
-folder there (letters, digits, spaces, `.`, `_` and `-`; not starting
-with a dot; at most 60) and opens it with **Start a session here**, the
-start sheet for it. It needs launching on and a device with the launch
+folder there (A–Z letters, digits, spaces, `.`, `_` and `-`; starting
+with a letter or digit; at most 60) and opens it with **Start a session
+here**, the start sheet for it. It needs launching on and a device with the launch
 scope (`jantar launch on`, `jantar devices grant <device> launch`). A name
 already used here, in any letter case, is refused. At most 10 new folders
 an hour.

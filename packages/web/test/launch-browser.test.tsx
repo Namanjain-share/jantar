@@ -295,7 +295,7 @@ describe('folder browser: new folder', () => {
     renderApp({ path: '/new?root=r.1', api, state: state() });
     fireEvent.change(await open(), { target: { value: 'api' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-    expect((await screen.findByRole('alert')).textContent).toBe(taken);
+    expect((await screen.findByRole('alert')).textContent).toBe(`${taken}.`);
   });
 
   it('trims the name before it is checked and sent', async () => {
@@ -346,22 +346,30 @@ describe('folder browser: new folder', () => {
     for (let n = 1; n <= 5; n += 1) {
       fireEvent.click(screen.getByRole('button', { name: 'Create' }));
       await waitFor(() => expect(foldersCreate).toHaveBeenCalledTimes(n));
-      if (n < 5) await screen.findByRole('alert');
+      // The 429 is the daemon's own sentence, with its wait, not a generic "wait a minute".
+      if (n === 1) expect((await screen.findByRole('alert')).textContent).toBe('At most 10 new folders an hour; try again in 5 minutes.');
+      else if (n < 5) await screen.findByRole('alert');
     }
     const keys = foldersCreate.mock.calls.map((c) => c[1] as string);
     expect(new Set(keys.slice(0, 4)).size).toBe(4);
     expect(keys[4]).toBe(keys[3]);
   });
 
-  it('teaches the Mac command on a missing launch scope, with no grant button', async () => {
+  it('teaches the Mac command on a missing launch scope, with no grant button, and keeps Create off', async () => {
     localStorage.setItem('jantar:device', JSON.stringify({ id: 'dev-1', name: "Sam's iPhone", scopes: ['read', 'control'] }));
     const api = launchApi({ foldersCreate: vi.fn(async () => Promise.reject(new ApiError('forbidden', 'this device does not have the launch scope', 403))) });
     renderApp({ path: '/new?root=r.1', api, state: state() });
     fireEvent.change(await open(), { target: { value: 'scratch' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     await waitFor(() => expect(document.querySelector('[data-no-scope]')).not.toBeNull());
-    expect(document.querySelector('[data-no-scope]')!.textContent).toBe("This browser can't start sessions. On your Mac run jantar devices grant 'Sam'\\''s iPhone' launch.");
+    expect(document.querySelector('[data-no-scope]')!.textContent).toBe(
+      "This browser can't make folders or start sessions. On your Mac run jantar devices grant 'Sam'\\''s iPhone' launch.",
+    );
     expect(screen.queryByRole('button', { name: /grant/i })).toBeNull();
+    expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByRole('textbox', { name: 'New folder' }), { target: { value: 'other' } });
+    expect(document.querySelector('[data-no-scope]')).not.toBeNull();
+    expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('keeps Create off while offline, with the reason', async () => {

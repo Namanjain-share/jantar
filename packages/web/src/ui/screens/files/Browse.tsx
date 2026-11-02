@@ -20,13 +20,16 @@
  * empty folder through POST /v1/folders, the start sheet's own route, and
  * this folder then opens it with a "just made" panel whose primary, Start a
  * session here, is the start sheet for it. The panel shows on the way in
- * only, never on a deep link or a later visit.
+ * only, never on a deep link or a later visit. "Open it" on a folder that
+ * was there already shows the same primary under the folder's name, never
+ * "is ready" or the new-folder trust line. The breadcrumb scrolls to its
+ * end, so the folder shown stays in sight when the buttons narrow the bar.
  */
 import { Menu } from '@base-ui/react/menu';
 import { DotsThreeIcon, FolderIcon, FolderPlusIcon, PlayIcon, PlusIcon } from '@phosphor-icons/react';
 import { FILES_LIST_LIMIT, type FileEntry, type FileListing, type FileRoot, type Session } from '@jantar/protocol';
 import clsx from 'clsx';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { accountId, agoLong } from '../../../lib/format.js';
 import { routePath, type FilesLocation } from '../../../lib/router.js';
 import { readLocal, writeLocal } from '../../../lib/storage.js';
@@ -53,23 +56,26 @@ function displayAt(label: string, rel: string): string {
 }
 
 /**
- * The "just made" panel (0.10.1): a folder New folder just made (or Open it
- * picked), with the one primary on screen, which takes focus.
+ * The "just made" panel (0.10.1): a folder New folder just made, or one
+ * Open it picked (`made` false: its name only, no "is ready" and no
+ * new-folder trust line), with the one primary on screen, which takes focus.
  */
-function JustMade({ name, display, phone, onStart }: { name: string; display: string; phone: boolean; onStart: () => void }) {
+function JustMade({ name, display, made, phone, onStart }: { name: string; display: string; made: boolean; phone: boolean; onStart: () => void }) {
   const start = useRef<HTMLButtonElement>(null);
   useEffect(() => start.current?.focus(), []);
   return (
-    <section aria-label="Folder ready" className="flex-none border-b border-line px-16 py-16">
+    <section aria-label={made ? 'Folder ready' : 'This folder'} className="flex-none border-b border-line px-16 py-16">
       <p aria-live="polite" className="type-row font-medium text-ink">
-        <TextRun text={`${name} is ready`} />
+        <TextRun text={made ? `${name} is ready` : name} />
       </p>
       <p className="mt-2 truncate type-mono text-ink-3">
         <TextRun text={display} />
       </p>
-      <p className="mt-8 type-small text-ink-2">
-        Claude asks whether to trust a new folder; you answer here, not at the Mac.
-      </p>
+      {made ? (
+        <p className="mt-8 type-small text-ink-2">
+          Claude asks whether to trust a new folder; you answer here, not at the Mac.
+        </p>
+      ) : null}
       <Button ref={start} variant="primary" size={phone ? 'xl' : 'md'} className={clsx('mt-12', phone && 'w-full')} onClick={onStart}>
         <PlayIcon size={16} weight="fill" aria-hidden="true" />
         Start a session here
@@ -249,25 +255,31 @@ function Folder({
   const newButton = useRef<HTMLButtonElement>(null);
   // One Idempotency-Key per folder, kept across openings: a retry after a lost 201 is replayed.
   const kept = useRef<{ sig: string; key: string } | null>(null);
-  // The folder New folder just made (or Open it picked): its panel shows while it is the one shown.
-  const [created, setCreated] = useState<string | null>(null);
+  // The folder New folder just made (or Open it picked, `made` false): its panel shows while it is the one shown.
+  const [created, setCreated] = useState<{ at: string; made: boolean } | null>(null);
   const arrived = useRef(false);
-  useEffect(() => setCreated((c) => (c !== null && c !== rel ? null : c)), [rel]);
+  useEffect(() => setCreated((c) => (c !== null && c.at !== rel ? null : c)), [rel]);
   const canCreate = create && launch && files && first.data !== null;
   const openSheet = () => {
     arrived.current = false;
     setSheet((s) => ({ open: true, n: s.n + 1 }));
   };
-  const arrive = (at: string) => {
+  const arrive = (at: string, made: boolean) => {
     arrived.current = true;
     // Set before the move: the effect above keeps it once `rel` is this path.
-    setCreated(at);
+    setCreated({ at, made });
     setSheet((s) => ({ ...s, open: false }));
     onLocation(dirLocation(root, at));
   };
   const startIn = (at: string) => navigate(routePath({ name: 'new', root, ...(at ? { path: at } : {}), start: true }));
 
   const trail = crumbs(label, rel);
+  // The end of the path is where you are: keep it in sight when the bar is too narrow for all of it.
+  const crumbBar = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const el = crumbBar.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [root, rel, label, canCreate, launch]);
   const startHere = launch ? (
     <Button size="sm" className="flex-none" onClick={() => startIn(rel)}>
       <PlusIcon size={14} weight="bold" aria-hidden="true" />
@@ -291,7 +303,7 @@ function Folder({
           All folders
         </button>
       ) : null}
-      <nav aria-label="Folder path" className="no-scrollbar flex h-44 min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap type-mono text-ink-3">
+      <nav ref={crumbBar} aria-label="Folder path" className="no-scrollbar flex h-44 min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap type-mono text-ink-3">
         {trail.map((c, i) => {
           const here = i === trail.length - 1;
           return (
@@ -341,8 +353,8 @@ function Folder({
       bar
     );
   const ready =
-    created !== null && created === rel ? (
-      <JustMade name={rel.slice(rel.lastIndexOf('/') + 1)} display={displayAt(label, rel)} phone={phone} onStart={() => startIn(rel)} />
+    created !== null && created.at === rel ? (
+      <JustMade name={rel.slice(rel.lastIndexOf('/') + 1)} display={displayAt(label, rel)} made={created.made} phone={phone} onStart={() => startIn(rel)} />
     ) : null;
   const sheetEl =
     sheet.n > 0 ? (
@@ -359,6 +371,7 @@ function Folder({
           offline={offline}
           kept={kept}
           onArrive={arrive}
+          onStale={first.reload}
           // Back to New folder, unless it opened a folder: then its panel's primary has the focus.
           finalFocus={() => (arrived.current ? false : (newButton.current ?? true))}
         />

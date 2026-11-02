@@ -11,9 +11,14 @@
  *
  * The checks here only spare a request: the name rule is the daemon's own
  * FolderNameSchema, and a name that folds onto a listed entry's (any letter
- * case) is refused before sending, with "Open it" for a folder. The daemon
- * decides in the end (POST /v1/folders: launch scope, launching on, one
- * mkdir, a 409 naming what is there). Every try sends an Idempotency-Key,
+ * case) is refused before sending, in the daemon's words, with "Open it"
+ * for a folder. The daemon decides in the end (POST /v1/folders: launch
+ * scope, launching on, one mkdir, a 409 naming what is there). A 409 for
+ * something the list does not show yet (made at the Mac meanwhile) reads
+ * the folder again, so the clash check, with its Open it, takes over. A
+ * missing launch scope keeps Create off until the sheet is opened again:
+ * no other name gets past it. Nothing typed or pasted is cut: a name over
+ * 60 characters shows the hint, which says the limit. Every try sends an Idempotency-Key,
  * one per folder (root, parent, name), kept by the caller across openings
  * while the last try got no reply, so a retry after a lost 201 is replayed
  * instead of "already exists". Any answer drops it (dropAnsweredKey): the
@@ -21,12 +26,23 @@
  */
 import { useId, useRef, useState, type FormEvent, type RefObject } from 'react';
 import type { FileEntry } from '@jantar/protocol';
-import { FOLDER_NAME_HINT, clashIn, createSig, dropAnsweredKey, folderErrorText, folderNameOk, freeFolderName, keepKey } from '../../../lib/folder-name.js';
+import { isApiError } from '../../../lib/api.js';
+import {
+  FOLDER_NAME_HINT,
+  clashIn,
+  createSig,
+  dropAnsweredKey,
+  folderErrorText,
+  folderNameOk,
+  freeFolderName,
+  keepKey,
+  takenText,
+} from '../../../lib/folder-name.js';
 import { useDeps } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Sheet, type SheetProps } from '../../kit/Sheet.js';
 import { Spinner } from '../../kit/Spinner.js';
-import { isNoScope } from '../new/scope.js';
+import { FOLDERS_NO_SCOPE, isNoScope } from '../new/scope.js';
 import { NoScopeNote, OfflineNote } from '../new/parts.js';
 
 const INPUT =
@@ -49,8 +65,10 @@ export interface NewFolderSheetProps {
   offline: boolean;
   /** The Idempotency-Key per folder, kept by the caller so a reopened sheet retries with it. */
   kept: RefObject<{ sig: string; key: string } | null>;
-  /** Made (201), or "Open it" on a folder already there: its path relative to `root`. */
-  onArrive: (path: string) => void;
+  /** Made (201, `made`), or "Open it" on a folder already there: its path relative to `root`. */
+  onArrive: (path: string, made: boolean) => void;
+  /** A 409 the listing does not explain: read the folder again. */
+  onStale: () => void;
   /** Where focus goes on close. */
   finalFocus: SheetProps['finalFocus'];
 }
@@ -73,6 +91,7 @@ function NameForm({
   offline,
   kept,
   onArrive,
+  onStale,
   input,
   onCancel,
 }: Omit<NewFolderSheetProps, 'open' | 'onOpenChange' | 'formKey' | 'finalFocus'> & { input: RefObject<HTMLInputElement | null>; onCancel: () => void }) {
@@ -81,12 +100,14 @@ function NameForm({
   const [name, setName] = useState(() => freeFolderName(entries.map((e) => e.name)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // No launch scope: every name meets the same 403, so Create stays off until the sheet opens again.
+  const [noScope, setNoScope] = useState(false);
   // Select the suggested name once, on the first focus, so typing replaces it.
   const fresh = useRef(true);
   const trimmed = name.trim();
   const ok = folderNameOk(trimmed);
   const clash = ok ? clashIn(entries, trimmed) : null;
-  const ready = ok && !clash && !busy && !offline;
+  const ready = ok && !clash && !busy && !offline && !noScope;
   const hintId = `${id}-hint`;
   const noteId = `${id}-note`;
 
@@ -98,17 +119,18 @@ function NameForm({
     try {
       const r = await api.foldersCreate({ root, parent, name: trimmed }, keepKey(kept, createSig(root, parent, trimmed)));
       kept.current = null;
-      onArrive(r.path);
+      onArrive(r.path, true);
     } catch (err) {
       dropAnsweredKey(kept, err);
+      if (isNoScope(err)) setNoScope(true);
       setError(err);
+      if (isApiError(err, 'conflict')) onStale();
     } finally {
       setBusy(false);
     }
   };
 
-  const there = clash ? (clash.type === 'dir' ? 'a folder' : clash.type === 'file' ? 'a file' : 'something') : '';
-  const describedBy = [!ok && trimmed ? hintId : null, clash || error ? noteId : null].filter(Boolean).join(' ') || undefined;
+  const describedBy = [!ok && trimmed ? hintId : null, clash || error || noScope ? noteId : null].filter(Boolean).join(' ') || undefined;
   return (
     <form onSubmit={(e) => void submit(e)} aria-label="New folder" className="pb-16">
       <p className="truncate type-mono text-ink-3">in {display}</p>
@@ -127,7 +149,6 @@ function NameForm({
         }}
         aria-label="Folder name"
         readOnly={busy}
-        maxLength={60}
         autoCapitalize="off"
         autoCorrect="off"
         autoComplete="off"
@@ -144,28 +165,26 @@ function NameForm({
       ) : null}
       {clash ? (
         <p id={noteId} role="status" className="mt-8 type-small text-ink">
-          There is already {there} called {clash.name} here.
+          {takenText(clash)}
           {clash.type === 'dir' ? (
             <>
               {' '}
               <button
                 type="button"
                 className="rounded-chip font-medium text-ink underline underline-offset-2 coarse:min-h-44"
-                onClick={() => onArrive(parent ? `${parent}/${clash.name}` : clash.name)}
+                onClick={() => onArrive(parent ? `${parent}/${clash.name}` : clash.name, false)}
               >
                 Open it
               </button>
             </>
           ) : null}
         </p>
+      ) : noScope ? (
+        <NoScopeNote id={noteId} what={FOLDERS_NO_SCOPE} className="mt-8" />
       ) : error ? (
-        isNoScope(error) ? (
-          <NoScopeNote className="mt-8" />
-        ) : (
-          <p id={noteId} role="alert" className="mt-8 type-small text-ink-2">
-            {folderErrorText(error)}
-          </p>
-        )
+        <p id={noteId} role="alert" className="mt-8 type-small text-ink-2">
+          {folderErrorText(error)}
+        </p>
       ) : null}
       {offline ? <OfflineNote what="make folders" className="mt-8" /> : null}
       <div className="mt-16 flex items-center justify-end gap-8">

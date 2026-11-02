@@ -151,6 +151,17 @@ describe('frames', () => {
     expect(within(button).getByText(NEW).classList.contains('sr-only')).toBe(false);
   });
 
+  it('the breadcrumb scrolls to its end, so the folder shown stays in sight beside the buttons', async () => {
+    viewport(1024);
+    vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockReturnValue(900);
+    renderFiles({ path: '/files?root=r.work&path=auth%2Fsrc%2F' });
+    const crumbs = await screen.findByRole('navigation', { name: 'Folder path' });
+    await waitFor(() => expect(crumbs.scrollLeft).toBe(900));
+    crumbs.scrollLeft = 0;
+    fireEvent.click(await within(crumbs).findByRole('button', { name: 'auth' }));
+    await waitFor(() => expect(crumbs.scrollLeft).toBe(900));
+  });
+
   it('desktop: an icon button in the bar, between New Claude session here and the ···, whose menu is unchanged', async () => {
     viewport(1440);
     renderFiles();
@@ -181,7 +192,8 @@ describe('the sheet', () => {
     expect(input.getAttribute('autocapitalize')).toBe('off');
     expect(input.getAttribute('autocorrect')).toBe('off');
     expect(input.getAttribute('spellcheck')).toBe('false');
-    expect(input.getAttribute('maxlength')).toBe('60');
+    // A long paste is never cut silently: the hint says the limit instead.
+    expect(input.getAttribute('maxlength')).toBeNull();
   });
 
   it('skips names already listed, in any letter case', async () => {
@@ -198,13 +210,17 @@ describe('the sheet', () => {
     const { api, foldersCreate } = filesApi();
     renderFiles({ api });
     const input = await openSheet();
-    for (const bad of ['.hidden', 'a/b', 'trailing.', 'café', '']) {
+    for (const bad of ['.hidden', 'a/b', 'trailing.', 'café', 'x'.repeat(61), '']) {
       fireEvent.change(input, { target: { value: bad } });
+      expect(input.value).toBe(bad);
       expect(createButton().disabled, JSON.stringify(bad)).toBe(true);
       if (bad) {
         expect(input.getAttribute('aria-invalid')).toBe('true');
         const hint = screen.getByText(/can't end in a space or a dot/);
         expect(input.getAttribute('aria-describedby')).toContain(hint.id);
+        // ASCII on purpose ("café" is refused), and the limit is said.
+        expect(hint.textContent).toMatch(/A–Z letters/);
+        expect(hint.textContent).toMatch(/up to 60 characters/);
       }
     }
     expect(foldersCreate).not.toHaveBeenCalled();
@@ -214,7 +230,7 @@ describe('the sheet', () => {
     await waitFor(() => expect(foldersCreate).toHaveBeenCalledWith({ root: 'r.work', parent: 'auth', name: 'my app' }, expect.any(String)));
   });
 
-  it('a folder already listed under that name, in any case: says so, Create off, and Open it goes there', async () => {
+  it('a folder already listed under that name, in any case: says so in the daemon\'s words, Create off, and Open it goes there, not as a new folder', async () => {
     const { api, foldersCreate } = filesApi({}, [
       { name: 'Project', type: 'dir' },
       { name: 'README', type: 'file', size: 10 },
@@ -222,15 +238,21 @@ describe('the sheet', () => {
     const { history } = renderFiles({ api });
     const input = await openSheet();
     fireEvent.change(input, { target: { value: 'readme' } });
-    expect(screen.getByText('There is already a file called README here.')).toBeTruthy();
+    expect(screen.getByText('A file named README already exists here.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Open it' })).toBeNull();
     expect(createButton().disabled).toBe(true);
     fireEvent.change(input, { target: { value: 'project' } });
-    expect(screen.getByText('There is already a folder called Project here.')).toBeTruthy();
+    expect(screen.getByText('A folder named Project already exists here.')).toBeTruthy();
     expect(createButton().disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Open it' }));
     await waitFor(() => expect(history.entries.at(-1)).toBe('/files?root=r.work&path=auth%2FProject%2F'));
-    expect(await screen.findByText('Project is ready')).toBeTruthy();
+    // It was there already: its name and Start a session here, never "is ready" or the new-folder trust line.
+    const panel = await screen.findByRole('region', { name: 'This folder' });
+    expect(within(panel).getByText('Project')).toBeTruthy();
+    expect(within(panel).getByRole('button', { name: START })).toBeTruthy();
+    expect(screen.queryByText(/is ready/)).toBeNull();
+    expect(screen.queryByText(/Claude asks whether to trust a new folder/)).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Folder ready' })).toBeNull();
     expect(foldersCreate).not.toHaveBeenCalled();
   });
 
@@ -361,29 +383,57 @@ describe('refusals stay in the sheet', () => {
     return r;
   };
 
-  it("409: the daemon's sentence", async () => {
+  it("409: the daemon's sentence, as a sentence", async () => {
     const taken = 'A folder named New-Project already exists here; names that differ only in capitals count as the same';
     await refuse(new ApiError('conflict', taken, 409));
-    expect((await screen.findByRole('alert')).textContent).toBe(taken);
+    expect((await screen.findByRole('alert')).textContent).toBe(`${taken}.`);
     expect(screen.getByRole('dialog', { name: NEW })).toBeTruthy();
   });
 
-  it('403 for the missing launch scope: the grant command, and no grant button', async () => {
+  it('409 for a folder made at the Mac after the list loaded: the folder is read again, so the list has it and the sheet offers Open it', async () => {
+    const entries: FileEntry[] = [{ name: 'src', type: 'dir' }];
+    const foldersCreate = vi.fn(async () => {
+      entries.push({ name: 'New-Project', type: 'dir' });
+      throw new ApiError('conflict', 'A folder named New-Project already exists here; names that differ only in capitals count as the same', 409);
+    });
+    const { api, filesList } = filesApi({ foldersCreate: foldersCreate as unknown as Api['foldersCreate'] }, entries);
+    const { history } = renderFiles({ api });
+    await openSheet();
+    const asked = filesList.mock.calls.filter(([q]) => q.path === 'auth').length;
+    fireEvent.click(createButton());
+    expect(await screen.findByText('A folder named New-Project already exists here.')).toBeTruthy();
+    expect(filesList.mock.calls.filter(([q]) => q.path === 'auth').length).toBe(asked + 1);
+    expect(createButton().disabled).toBe(true);
+    // Behind the (modal) sheet, the list has it too.
+    expect(screen.getByRole('button', { name: 'New-Project', hidden: true })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open it' }));
+    await waitFor(() => expect(history.entries.at(-1)).toBe('/files?root=r.work&path=auth%2FNew-Project%2F'));
+  });
+
+  it('403 for the missing launch scope: what it blocks, the grant command, no grant button, and Create stays off', async () => {
     localStorage.setItem('jantar:device', JSON.stringify({ id: 'dev-1', name: "Sam's iPhone", scopes: ['read', 'control'] }));
     await refuse(new ApiError('forbidden', 'this device does not have the launch scope', 403));
     await waitFor(() => expect(document.querySelector('[data-no-scope]')).not.toBeNull());
-    expect(document.querySelector('[data-no-scope]')!.textContent).toContain("jantar devices grant 'Sam'\\''s iPhone' launch");
+    expect(document.querySelector('[data-no-scope]')!.textContent).toBe(
+      "This browser can't make folders or start sessions. On your Mac run jantar devices grant 'Sam'\\''s iPhone' launch.",
+    );
     expect(screen.queryByRole('button', { name: /grant/i })).toBeNull();
+    expect(createButton().disabled).toBe(true);
+    // Another name would meet the same refusal: the note stays and Create stays off.
+    fireEvent.change(within(screen.getByRole('dialog', { name: NEW })).getByRole('textbox', { name: 'Folder name' }), { target: { value: 'other' } });
+    expect(document.querySelector('[data-no-scope]')).not.toBeNull();
+    expect(createButton().disabled).toBe(true);
   });
 
   it("403 with launching off, and 429: the daemon's sentence", async () => {
     const off = 'Starting sessions from the phone is off. Turn it on at your Mac: jantar launch on';
     const first = await refuse(new ApiError('forbidden', off, 403));
+    // A sentence ending in a command is left as sent: no full stop after "jantar launch on".
     expect((await screen.findByRole('alert')).textContent).toBe(off);
     first.unmount();
     clearFilesCache();
-    await refuse(new ApiError('rate_limited', 'At most 10 new folders an hour; try again later', 429));
-    expect((await screen.findByRole('alert')).textContent).toBe('At most 10 new folders an hour; try again later');
+    await refuse(new ApiError('rate_limited', 'At most 10 new folders an hour; try again in 12 minutes', 429));
+    expect((await screen.findByRole('alert')).textContent).toBe('At most 10 new folders an hour; try again in 12 minutes.');
   });
 
   it('offline: Create off with the reason, and nothing is sent', async () => {

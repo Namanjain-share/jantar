@@ -46,12 +46,13 @@ export function Prop({
 /**
  * A 403 for the missing `launch` scope. There is no grant button: scopes are
  * granted on the Mac only (the daemon refuses deviceScopes over the network),
- * so the sentence names the command to run there.
+ * so the sentence names the command to run there. `what` the device can't
+ * do: "start sessions" unless given (New folder: FOLDERS_NO_SCOPE).
  */
-export function NoScopeNote({ className }: { className?: string }) {
+export function NoScopeNote({ what, id, className }: { what?: string; id?: string; className?: string }) {
   return (
-    <p role="alert" data-no-scope className={clsx('type-small text-ink-2', className)}>
-      {noScopeLead()} On your Mac run <code className="type-mono text-ink">{grantCommand()}</code>.
+    <p id={id} role="alert" data-no-scope className={clsx('type-small text-ink-2', className)}>
+      {noScopeLead(what)} On your Mac run <code className="type-mono text-ink">{grantCommand()}</code>.
     </p>
   );
 }

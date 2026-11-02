@@ -16,7 +16,7 @@ import { newIdempotencyKey } from './ids.js';
 export const folderNameOk = (n: string): boolean => FolderNameSchema.safeParse(n).success;
 
 export const FOLDER_NAME_HINT =
-  "Start with a letter or digit; letters, digits, spaces, dots, dashes and underscores after that. It can't end in a space or a dot.";
+  "Use A–Z letters, digits, spaces, dots, dashes and underscores, up to 60 characters. Start with a letter or digit; it can't end in a space or a dot.";
 
 /** The name a new folder starts with. */
 export const NEW_FOLDER_NAME = 'new-project';
@@ -42,6 +42,12 @@ export function freeFolderName(taken: Iterable<string>, base = NEW_FOLDER_NAME):
 }
 
 export type ClashKind = 'dir' | 'file' | 'link' | 'other';
+
+/** A listed clash in the daemon's 409 words ("A folder named Project already exists here."). */
+export function takenText(c: { name: string; type: ClashKind }): string {
+  const what = c.type === 'dir' ? 'A folder' : c.type === 'file' ? 'A file' : 'Something';
+  return `${what} named ${c.name} already exists here.`;
+}
 
 /** The loaded entry whose name folds onto `name`, or null. */
 export function clashIn(entries: Iterable<{ name: string; type: string }>, name: string): { name: string; type: ClashKind } | null {
@@ -86,7 +92,14 @@ export function dropAnsweredKey(ref: KeyRef, e: unknown): void {
   if (!isApiError(e, 'network')) ref.current = null;
 }
 
-/** A failed create in words: the daemon's own sentence where it has one (a 429 included). */
+/**
+ * A failed create in words: the daemon's own sentence where it has one (a
+ * 429 included, which says how long to wait). Its 409 and 429 sentences
+ * get the full stop the sheet's own clash sentence has; others are left as
+ * sent, since some end in a command to type ("jantar launch on").
+ */
 export function folderErrorText(e: unknown): string {
-  return isApiError(e, 'rate_limited') && e.message ? e.message : errorText(e);
+  const text = isApiError(e, 'rate_limited') && e.message ? e.message : errorText(e);
+  const own = isApiError(e, 'conflict') || isApiError(e, 'rate_limited');
+  return own && !/[.!?]$/u.test(text) ? `${text}.` : text;
 }

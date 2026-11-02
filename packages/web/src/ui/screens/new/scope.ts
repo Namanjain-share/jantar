@@ -28,7 +28,10 @@ export function grantCommand(): string {
   return `${CLI_NAME} devices grant ${me ? shellWord(me.name) : '<device>'} launch`;
 }
 
-/** "This phone can't start sessions." (or tablet, browser) */
-export function noScopeLead(): string {
-  return `This ${deviceNoun(userAgent())} can't start sessions.`;
+/** What New folder's no-scope note says the device can't do: the scope covers both. */
+export const FOLDERS_NO_SCOPE = 'make folders or start sessions';
+
+/** "This phone can't start sessions." (or tablet, browser); New folder says FOLDERS_NO_SCOPE. */
+export function noScopeLead(what = 'start sessions'): string {
+  return `This ${deviceNoun(userAgent())} can't ${what}.`;
 }
