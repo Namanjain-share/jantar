@@ -184,7 +184,7 @@ export function Shell() {
       case 'alerts':
         screen = (
           <Suspense fallback={<SkeletonRows count={5} caption="Opening Alerts…" />}>
-            <Alerts />
+            <Alerts kind={route.kind} id={route.id} />
           </Suspense>
         );
         break;

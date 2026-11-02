@@ -146,6 +146,11 @@ describe('router', () => {
     expect(parseRoute('/s/abc/')).toEqual({ name: 'session', sid: 'abc' });
     expect(parseRoute('/', '?session=old')).toEqual({ name: 'session', sid: 'old' });
     expect(parseRoute('/accounts')).toEqual({ name: 'accounts' });
+    // 0.11: an alert open beside the list, and the kind filter, in the address; anything else is left out.
+    expect(parseRoute('/alerts', '?kind=error&id=al_0123abcd')).toEqual({ name: 'alerts', kind: 'error', id: 'al_0123abcd' });
+    expect(parseRoute('/alerts', '?kind=nope&id=has%20space')).toEqual({ name: 'alerts' });
+    expect(routePath({ name: 'alerts', kind: 'limit', id: 'al_1' })).toBe('/alerts?kind=limit&id=al_1');
+    expect(routePath({ name: 'alerts' })).toBe('/alerts');
     expect(parseRoute('/pair', '', '#c=AbCdEfGhIjKlMnOpQr')).toEqual({ name: 'pair', code: 'AbCdEfGhIjKlMnOpQr' });
     expect(parseRoute('/pair', '', '#c=short')).toEqual({ name: 'pair', code: null });
     expect(parseRoute('/pair', '', '#c=<script>alert(1)</script>xxxxxxxx')).toEqual({ name: 'pair', code: null });

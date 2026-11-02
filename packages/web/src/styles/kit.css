@@ -59,20 +59,22 @@
     min-height: 0;
     overflow-y: auto;
   }
+  /* The list column's width is a variable, so fill (below) wins over every width by order alone. */
   .split[data-split] {
-    grid-template-columns: var(--list-w) minmax(0, 1fr);
+    --split-list: var(--list-w);
+    grid-template-columns: var(--split-list) minmax(0, 1fr);
   }
   .split[data-split][data-wide] {
-    grid-template-columns: var(--list-w-xl) minmax(0, 1fr);
+    --split-list: var(--list-w-xl);
   }
   .split[data-split][data-list='history'] {
-    grid-template-columns: var(--history-w) minmax(0, 1fr);
+    --split-list: var(--history-w);
   }
   .split[data-split] > .split-list {
     border-right: 1px solid var(--line);
     background: var(--surface);
   }
-  .split[data-fill] {
+  .split[data-split][data-fill] {
     grid-template-columns: minmax(0, 1fr);
   }
   .split[data-fill] > .split-list {

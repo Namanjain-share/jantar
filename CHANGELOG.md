@@ -12,6 +12,13 @@ What changed for people who use Jantar, newest first. Versions before
   card lists the sessions waiting on you longest. The Life places sit in a
   strip on top, and **Edit cards** orders and hides the cards on this
   device. A phone keeps the list.
+- **Alerts** fills a wide window with one table (it stopped at 1120 px),
+  and an alert opens beside the list instead of under its row: its full
+  text, when it happened, its session as it is now, Open session or Open
+  accounts, Mute pushes, and the session's earlier alerts. j and k move
+  through them; Esc or Close goes back. The address keeps the open alert
+  and the kind filter (`/alerts?kind=error&id=…`). In a narrow window a
+  row still opens under itself.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

@@ -13,7 +13,8 @@
  *                   session here"), &launch=<id> its receipt; hidden while
  *                   launching is off)
  *   /accounts       Accounts
- *   /alerts         Alerts
+ *   /alerts         Alerts (0.11: ?kind=limit|error|blocked|rejected filters it,
+ *                   ?id=<alert id> opens one beside the list)
  *   /devices        Devices, pairing, notifications, theme
  *   /pair#c=<code>  Claim a pairing code (the code never leaves the fragment)
  *
@@ -56,7 +57,7 @@ export type Route =
   | ({ name: 'files' } & FilesLocation)
   | { name: 'new'; root?: string; path?: string; start?: boolean; account?: number; launch?: string; from?: string }
   | { name: 'accounts' }
-  | { name: 'alerts' }
+  | { name: 'alerts'; kind?: AlertsKind; id?: string }
   | { name: 'devices' }
   | { name: 'pair'; code: string | null }
   // v0.4
@@ -95,6 +96,9 @@ export interface PlacesView {
 }
 export type PlacesSortKey = 'best' | 'recent' | 'visits' | 'name' | 'price' | 'work';
 const PLACES_SORTS: readonly string[] = ['best', 'recent', 'visits', 'name', 'price', 'work'];
+/** 0.11: Alerts' kind filter, as the address carries it (All is no `kind`). */
+export type AlertsKind = 'limit' | 'error' | 'blocked' | 'rejected';
+const ALERTS_KINDS: readonly string[] = ['limit', 'error', 'blocked', 'rejected'];
 /** Posts to make (idea and ready), or the posted and skipped ones. */
 export type PostsFilter = 'open' | 'done';
 
@@ -106,6 +110,8 @@ const DAY_KEY = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
 const DOSE_KEY = /^[0-9A-HJKMNP-TV-Z]{26}@([01]\d|2[0-3])[0-5]\d$/;
 const INTEL_ID = /^[\x21-\x7e]{1,160}$/;
+/** An alert's id, as the daemon writes it (printable, no spaces). */
+const ALERT_ID = /^[\x21-\x7e]{1,80}$/;
 
 /** The query value when it matches `re` (and is not too long), else nothing. */
 function matching(q: URLSearchParams, key: string, re: RegExp): string | undefined {
@@ -281,7 +287,10 @@ export function parseRoute(pathname: string, search = '', hash = ''): Route {
   // v0.10: Ask is Chat; an old link or a home-screen bookmark still lands on it.
   if (path === '/chat' || path === '/ask') return { name: 'chat' };
   if (path === '/accounts') return { name: 'accounts' };
-  if (path === '/alerts') return { name: 'alerts' };
+  if (path === '/alerts') {
+    const kind = q.get('kind');
+    return defined({ name: 'alerts' as const, kind: kind && ALERTS_KINDS.includes(kind) ? (kind as AlertsKind) : undefined, id: matching(q, 'id', ALERT_ID) });
+  }
   if (path === '/devices') return { name: 'devices' };
   const pm = /^\/people(?:\/([0-9A-HJKMNP-TV-Z]{26}))?$/.exec(path);
   if (pm) return defined({ name: 'people' as const, pid: pm[1], tab: matching(q, 'tab', /^[a-z]{3,10}$/), day: matching(q, 'day', DAY_KEY), id: matching(q, 'id', LIFE_ID) });
@@ -314,7 +323,7 @@ export function routePath(r: Route): string {
     case 'accounts':
       return '/accounts';
     case 'alerts':
-      return '/alerts';
+      return withQuery('/alerts', queryOf({ kind: r.kind, id: r.id }));
     case 'devices':
       return '/devices';
     case 'pair':

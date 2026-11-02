@@ -21,6 +21,8 @@
  * - targets: every control on screen, for the 44 pt check (c33).
  * - exempt: why this state isn't measured for width, when it isn't (an
  *   empty state, a place that is off).
+ * - selected: with an item open beside its list, whether the list's row for
+ *   it (aria-current) is in view in the list column; null with none.
  */
 import type { Named, Rect } from '../../packages/web/test/layout-metric.js';
 
@@ -32,6 +34,7 @@ export interface Probe {
   sideways: string[];
   targets: Named[];
   exempt: string | null;
+  selected: { inView: boolean; name: string } | null;
 }
 
 export function probeLayout(): Probe {
@@ -74,7 +77,7 @@ export function probeLayout(): Probe {
   const visible = (el: Element) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
 
   const main = document.querySelector('main#main');
-  const out: Probe = { vw, vh, region: null, boxes: [], sideways: [], targets: [], exempt: null };
+  const out: Probe = { vw, vh, region: null, boxes: [], sideways: [], targets: [], exempt: null, selected: null };
   if (main) {
     out.region = rectOf(cut(VIEW, boxOf(main.getBoundingClientRect())));
     const push = (el: Element, r: DOMRect) => {
@@ -115,6 +118,14 @@ export function probeLayout(): Probe {
       push(el, r);
     }
     if (main.querySelector('[data-empty-state]')) out.exempt = 'an empty state';
+    // The open item's row in the list beside it.
+    const list = main.querySelector('.split[data-split] > .split-list');
+    const row = list?.querySelector('[aria-current="true"]');
+    if (list && row) {
+      const l = list.getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      out.selected = { inView: r.bottom > l.top && r.top < l.bottom && r.bottom > 0 && r.top < vh, name: describe(row) };
+    }
   }
 
   // Sideways: the page, then every box that scrolls or cuts sideways.

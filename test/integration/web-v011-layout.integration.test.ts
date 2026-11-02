@@ -24,8 +24,9 @@
  *   7. No console message about the Content Security Policy, no error, no
  *      injected <style>.
  *  12. The user's four screens at 1440 x 960 (mac-1440 and touch-1440):
- *      Today, Chat (its empty thread too), Alerts and Intel are measured,
- *      never exempt.
+ *      Today, Chat (its empty thread too), Alerts (an alert open too) and
+ *      Intel are measured, never exempt; and wherever an item is open beside
+ *      its list, the list shows the item's row.
  *
  * Tier A sizes in light run by default; JANTAR_LAYOUT_FULL=1 adds tier B and
  * dark. On a failure the page's PNG goes to the OS temp folder, named in the
@@ -118,6 +119,7 @@ export const STATES: readonly State[] = [
   { name: 'meeting', path: `/meetings?id=${lid(501)}` },
   { name: 'accounts', path: '/accounts' },
   { name: 'alerts', path: '/alerts' },
+  { name: 'alert', path: '/alerts?id=al2' },
   { name: 'devices', path: '/devices' },
   { name: 'files', path: '/files' },
   { name: 'more', path: '/more' },
@@ -129,7 +131,7 @@ export const STATES: readonly State[] = [
 ];
 
 /** 6.2 #12: the user's four screens at 1440 x 960, never exempt. */
-const USERS_CASE = { sizes: ['mac-1440', 'touch-1440'], states: ['today', 'chat', 'chat-empty', 'alerts', 'intel', 'intel-item'] };
+const USERS_CASE = { sizes: ['mac-1440', 'touch-1440'], states: ['today', 'chat', 'chat-empty', 'alerts', 'alert', 'intel', 'intel-item'] };
 
 /**
  * Every place x size at 1024 and wider that still leaves more than 35 % of its width empty, with the
@@ -137,8 +139,8 @@ const USERS_CASE = { sizes: ['mac-1440', 'touch-1440'], states: ['today', 'chat'
  * removes its rows (c14 Today, c16 Alerts, c17 Intel, c15 Chat, ...); the list is empty at c23.
  *
  * A short list reads as empty however wide it is: with 3 rows (Alerts' fixture) no 4 px column has
- * 96 px of content, so Alerts measures 0.97-1. Its wide table and detail (c16) need either more rows in
- * view or the detail's text beside them to pass.
+ * 96 px of content, so Alerts measured 0.97-1. c16 made its table one card across the pane, which reads
+ * as the table it is (3 % empty at 1440).
  */
 export const KNOWN_WIDE_GAPS: Record<string, number> = {
   'todos@mac-1440': 0.85,
@@ -249,15 +251,6 @@ export const KNOWN_WIDE_GAPS: Record<string, number> = {
   'accounts@ipad-1024': 0.63,
   'accounts@ipad-13-l': 0.48,
   'accounts@safari-l': 0.54,
-  'alerts@mac-1440': 1,
-  'alerts@touch-1440': 0.97,
-  'alerts@desktop': 1,
-  'alerts@mac-1024': 1,
-  'alerts@ipad-air-l': 0.97,
-  'alerts@ipad-pro-l': 0.97,
-  'alerts@ipad-1024': 0.96,
-  'alerts@ipad-13-l': 0.97,
-  'alerts@safari-l': 0.97,
   'devices@mac-1440': 0.71,
   'devices@touch-1440': 0.73,
   'devices@desktop': 0.72,
@@ -450,6 +443,8 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
               const sidewaysKnown = KNOWN_SIDEWAYS[`${s.name}@${size}`] !== undefined;
               if (p.sideways.length && !sidewaysKnown) problems.push(`${at}: sideways: ${p.sideways.join('; ')} (${await shot()})`);
               if (!p.sideways.length && sidewaysKnown) problems.push(`${at}: nothing sideways now: take it out of KNOWN_SIDEWAYS`);
+              // 12. An item opened beside its list: the list shows its row (it scrolled to it).
+              if (p.selected && !p.selected.inView) problems.push(`${at}: the open item's row is out of view in the list (${p.selected.name}) (${await shot()})`);
               // 3. The width, at 1024 and wider.
               if (viewport.width >= WIDE_FROM && p.region) {
                 const users = USERS_CASE.sizes.includes(size) && USERS_CASE.states.includes(s.name);

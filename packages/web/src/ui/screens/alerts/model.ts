@@ -10,7 +10,7 @@
 import { machineName, type Alert, type AlertKind, type NodeView, type Session } from '@jantar/protocol';
 import { PRODUCT_NAME } from '../../../brand.js';
 import { accountId } from '../../../lib/format.js';
-import { routePath } from '../../../lib/router.js';
+import { routePath, type AlertsKind } from '../../../lib/router.js';
 import { dayLabel, dayStart } from '../accounts/time.js';
 
 /**
@@ -32,8 +32,38 @@ export const FILTER_LABEL: Record<KindFilter, string> = {
 };
 export const FILTER_ORDER: KindFilter[] = ['all', 'limit', 'error', 'blocked', 'rejected'];
 
-export function parseKind(v: string | null): KindFilter {
+export function parseKind(v: string | null | undefined): KindFilter {
   return v && (FILTER_ORDER as string[]).includes(v) ? (v as KindFilter) : 'all';
+}
+
+/** One alert's kind, as its detail names it. */
+export const KIND_WORD: Record<AlertKind, string> = { limit: 'Limit', error: 'API error', blocked: 'Blocked', rejected: 'Rejected' };
+
+/** 0.11: the list's address (its kind filter), and with `id` one alert open beside it. */
+export function alertsPath(kind: KindFilter, id?: string): string {
+  return routePath({ name: 'alerts', ...(kind !== 'all' ? { kind: kind as AlertsKind } : {}), ...(id ? { id } : {}) });
+}
+
+/**
+ * The other alerts of the same session (or, for an account's limit, of the
+ * same account), newest first: the detail's "Earlier from this session".
+ */
+export function relatedAlerts(alerts: readonly Alert[], a: Alert, max = 5): Alert[] {
+  const same = (b: Alert) => (a.sid ? b.sid === a.sid : a.account !== undefined && b.account === a.account && !b.sid);
+  return alerts
+    .filter((b) => b.id !== a.id && same(b))
+    .sort((x, y) => y.ts.localeCompare(x.ts))
+    .slice(0, max);
+}
+
+/**
+ * What the Mac wrote down, for the detail's terminal box: the longer text
+ * when there is one, else the label it was filed under and what happened.
+ */
+export function recordOf(a: Alert): string {
+  const full = a.full?.trim();
+  if (full) return full;
+  return [a.label.trim(), a.what.trim(), a.why?.trim()].filter(Boolean).join('\n');
 }
 
 /**

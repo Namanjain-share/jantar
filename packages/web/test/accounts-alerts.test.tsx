@@ -297,8 +297,8 @@ describe('alerts screen', () => {
     expect(screen.getByText('Nothing new')).toBeTruthy();
   });
 
-  it('expands a row inline to its full text', async () => {
-    viewport(1440);
+  it('expands a row inline to its full text in a pane too narrow to open it beside the list', async () => {
+    viewport(820);
     renderApp({ path: '/alerts', state: stateWith({ alerts, sessions: [session('web-app')] }) });
     await opened('Alerts');
     const row = screen.getByRole('button', { name: /API error 529/ });
@@ -354,6 +354,54 @@ describe('alerts screen', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Unmute' }));
     expect(api.mute).toHaveBeenLastCalledWith(0);
     expect(await screen.findByRole('button', { name: /Mute pushes/ })).toBeTruthy();
+  });
+
+  it('is one table across a wide pane, and a row opens its alert beside the list (0.11)', async () => {
+    viewport(1440);
+    const { router } = renderApp({ path: '/alerts', state: stateWith({ alerts, sessions: [session('web-app', { name: 'fix login' })] }) });
+    await opened('Alerts');
+    expect(screen.queryByRole('region', { name: 'Alert' })).toBeNull();
+    fireEvent.click(screen.getByRole('link', { name: /API error 529/ }));
+    expect(router.getState().route).toEqual({ name: 'alerts', id: 'a2' });
+    const detail = await screen.findByRole('region', { name: 'Alert' });
+    expect(within(detail).getByRole('heading', { name: 'web-app · fix login' })).toBeTruthy();
+    expect(within(detail).getByText('overloaded_error: try again').tagName).toBe('PRE');
+    expect(within(detail).getByRole('link', { name: 'Open session' }).getAttribute('href')).toBe('/s/web-app');
+    // The list beside it: two-line rows, the open one current.
+    const list = screen.getByRole('region', { name: 'All alerts' });
+    expect(within(list).getByRole('link', { name: /API error 529/ }).getAttribute('aria-current')).toBe('true');
+    fireEvent.click(within(detail).getByRole('button', { name: 'Close' }));
+    expect(router.getState().route).toEqual({ name: 'alerts' });
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Alert' })).toBeNull());
+  });
+
+  it('j and k open the next alert and the one before; Escape closes; an alert names the others of its session', async () => {
+    viewport(1440);
+    const more = [...alerts, alert('a4', { kind: 'error', ts: iso(10_000), sid: 'web-app', what: 'API error 500' })];
+    const { router } = renderApp({ path: '/alerts?id=a2', state: stateWith({ alerts: more, sessions: [session('web-app')] }) });
+    const detail = await screen.findByRole('region', { name: 'Alert' });
+    const earlier = within(detail).getByRole('region', { name: 'Earlier from this session' });
+    expect(within(earlier).getByRole('link', { name: /API error 500/ }).getAttribute('href')).toBe('/alerts?id=a4');
+    fireEvent.keyDown(window, { key: 'j' });
+    expect(router.getState().route).toEqual({ name: 'alerts', id: 'a1' });
+    fireEvent.keyDown(window, { key: 'k' });
+    fireEvent.keyDown(window, { key: 'k' });
+    expect(router.getState().route).toEqual({ name: 'alerts', id: 'a3' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(router.getState().route).toEqual({ name: 'alerts' });
+  });
+
+  it('opens an alert alone, with a way back, in a narrow pane; an unknown id shows the list', async () => {
+    viewport(820);
+    const a = renderApp({ path: '/alerts?id=a2', state: stateWith({ alerts, sessions: [session('web-app')] }) });
+    const detail = await screen.findByRole('article');
+    expect(within(detail).getByRole('link', { name: 'Alerts' }).getAttribute('href')).toBe('/alerts');
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    expect(document.querySelector('[data-alert]')).toBeNull();
+    a.unmount();
+    renderApp({ path: '/alerts?id=gone', state: stateWith({ alerts }) });
+    await opened('Alerts');
+    expect(document.querySelectorAll('[data-alert]')).toHaveLength(4);
   });
 
   it('has an empty state', async () => {
