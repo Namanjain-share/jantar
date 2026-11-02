@@ -632,7 +632,12 @@ export const FolderRecentSchema = z.object({
 export const FoldersRecentResponseSchema = z.object({ recent: z.array(FolderRecentSchema).max(8) });
 export const FolderPinBodySchema = z.strictObject({ root: RootParamSchema, path: RelPathSchema, pinned: z.boolean() });
 export type FolderPinBody = z.infer<typeof FolderPinBodySchema>;
-/** A new folder's name: no leading dot, no "/", no trailing space or dot. */
+/**
+ * A new folder's name: no leading dot, no "/", no trailing space or dot.
+ * ASCII only, on purpose (0.10.1, D5): no NFC/NFD pairs, confusables, bidi
+ * or zero-width characters, and a session name `nameFromFolder` can carry.
+ * Widening it is a security decision, recorded in SECURITY.md first.
+ */
 export const FolderNameSchema = z
   .string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9._ -]{0,59}$/)
@@ -1149,7 +1154,7 @@ export const ROUTES = {
   }),
   foldersCreate: route({
     method: 'POST', path: '/v1/folders', scope: 'launch', phase: 'v0.3', ctl: true, status: 201, feature: 'launch',
-    query: NodeQuerySchema, body: FolderCreateBodySchema, response: FolderCreateResponseSchema, summary: 'Create one folder (not recursive; 409 if it exists).',
+    query: NodeQuerySchema, body: FolderCreateBodySchema, response: FolderCreateResponseSchema, summary: 'Create one empty folder (not recursive; 409 if that name, in any letter case, is taken).',
   }),
   launchPreview: route({
     method: 'GET', path: '/v1/launch/preview', scope: 'control', phase: 'v0.3', ctl: true, feature: 'launch',

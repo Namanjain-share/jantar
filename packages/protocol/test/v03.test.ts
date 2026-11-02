@@ -9,6 +9,8 @@ import {
   V03_LAUNCH_FLAGS,
   ERROR_STATUS,
   EVENT,
+  FolderCreateBodySchema,
+  FolderNameSchema,
   FeaturesSchema,
   LAUNCH_CAP,
   LaunchFlagsSchema,
@@ -334,6 +336,51 @@ describe('state and reducer', () => {
     expect(s.sessions['sid-a']?.filesChanged).toBe(3);
     s = reduce(s, ev({ type: 'session.updated', sid: 'sid-a', data: { patch: {}, unset: ['filesChanged'] } }));
     expect(s.sessions['sid-a']?.filesChanged).toBeUndefined();
+  });
+});
+
+describe('FolderNameSchema (0.10.1 D5: ASCII on purpose)', () => {
+  it('refuses every Unicode sample, control character and path form; widening it must fail here first', () => {
+    const refused = [
+      'caf\u00e9', // NFC
+      'cafe\u0301', // NFD
+      '\uff50\uff52\uff4f\uff4a\uff45\uff43\uff54', // fullwidth
+      '\u202eevil', // RTL override
+      'a\u200bb', // zero-width space
+      '\u{1f680}app',
+      '\u0430pp', // Cyrillic a
+      '\u212Aeys', // KELVIN SIGN
+      'nul\u0000',
+      'tab\t',
+      'nl\n',
+      'del\u007f',
+      'nel\u0085',
+      '.',
+      '..',
+      '',
+      '.hidden',
+      'a/b',
+      'a\\b',
+      '../x',
+      '/x',
+      'x/',
+      'trailing ',
+      'trailing.',
+      '-dash',
+      '_lead',
+      'x'.repeat(61),
+    ];
+    for (const n of refused) expect(FolderNameSchema.safeParse(n).success, JSON.stringify(n)).toBe(false);
+    for (const n of ['new-project', 'My Project v2', 'a', 'x'.repeat(60), 'v1.2_final', '2026 notes']) {
+      expect(FolderNameSchema.safeParse(n).success, n).toBe(true);
+    }
+  });
+
+  it('the create body is strict: no recursive, no mode, no path in the name', () => {
+    expect(FolderCreateBodySchema.safeParse({ root: 'r.work', parent: '', name: 'x' }).success).toBe(true);
+    expect(FolderCreateBodySchema.safeParse({ root: 'r.work', parent: '', name: 'x', recursive: true }).success).toBe(false);
+    expect(FolderCreateBodySchema.safeParse({ root: 'r.work', parent: '', name: 'x', mode: 511 }).success).toBe(false);
+    expect(ROUTES.foldersCreate).toMatchObject({ method: 'POST', path: '/v1/folders', scope: 'launch', feature: 'launch', ctl: true, status: 201 });
   });
 });
 
