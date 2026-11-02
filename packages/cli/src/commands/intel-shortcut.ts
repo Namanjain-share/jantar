@@ -11,8 +11,8 @@
  *
  * `jantar intel` hands everything after `shortcut` here unparsed, so this
  * file owns its flags. The key goes to stdout once and nowhere else: never
- * a file, a log or the clipboard. docs/shortcut.md has the steps with
- * pictures of where each one is.
+ * a file, a log or the clipboard. docs/shortcut.md has the steps in more
+ * detail (where each setting is in the Shortcuts app).
  */
 import { CAPTURE_KEY_HEADER, CaptureKeyIdSchema, CaptureKeyNameSchema, ROUTES, type CaptureKeyAddReply, type CaptureKeyList, type CaptureKeyRevokeReply } from '@jantar/protocol';
 import { captureDoor } from '@jantar/daemon/auth/capture-keys';
@@ -40,13 +40,13 @@ const REVOKE_FLAGS = { all: { type: 'boolean', help: 'revoke every Shortcut key'
 export function shortcutSteps(url: string, cloudflare: boolean): string {
   const headers = cloudflare ? `${CAPTURE_KEY_HEADER} (the key), CF-Access-Client-Id and CF-Access-Client-Secret (the Access service token)` : `${CAPTURE_KEY_HEADER} (the key)`;
   return (
-    'In Shortcuts on the iPhone:\n' +
+    'In Shortcuts on the iPhone (or on this Mac, so you can paste the key; iCloud syncs it to the iPhone):\n' +
     '  1. + (new shortcut), name it "Save to Jantar".\n' +
-    '  2. Details: Show in Share Sheet on; it receives URLs, Text and Safari web pages; if there is no input: Get Clipboard.\n' +
-    `  3. Add "Get Contents of URL": ${url}, Method POST,\n` +
+    '  2. Details (i): Show in Share Sheet on. In the "Receive ... from Share Sheet" block at the top: URLs, Text and Safari web pages; if there is no input: Get Clipboard.\n' +
+    `  3. Add "Get Contents of URL": ${url}; tap its > (Show More) for Method POST,\n` +
     `     Headers ${headers},\n` +
-    '     Request Body JSON: text = Shortcut Input, depth = standard (or light, or full).\n' +
-    '  4. Add "Get Dictionary Value" for message, then "Show Notification".\n' +
+    '     Request Body JSON: text = Shortcut Input, depth = standard (a copy named "Save to Jantar (Full)" with full).\n' +
+    '  4. Add "Get Dictionary Value" for message, then "Show Notification" with it: the saved sentence, or what went wrong.\n' +
     'It answers "Saved to Jantar." Never share this shortcut: it carries the key.\n' +
     'Steps with more detail: docs/shortcut.md\n'
   );
@@ -65,6 +65,7 @@ async function add(argv: readonly string[], ctx: CliContext): Promise<number> {
   const { settings } = await readSettings(ctx);
   const io = ctx.io;
   io.out(`Shortcut key "${made.name}" (${made.id}). It is shown once: put it in the Shortcut now.\n\n  ${made.key}\n\n`);
+  io.out('To move it without typing it: select it here, copy (Cmd-C) and paste on the iPhone (Universal Clipboard: the same Apple ID, Handoff on).\n\n');
   if (made.saveUrl) {
     io.out(`The door: POST ${made.saveUrl}\n`);
     io.out(shortcutSteps(made.saveUrl, settings.remote.mode === 'cloudflare'));

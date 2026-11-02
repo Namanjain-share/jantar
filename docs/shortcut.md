@@ -25,6 +25,12 @@ and the steps below with your address filled in. Put the key into the
 Shortcut right away; Jantar keeps only a hash of it and can never show it
 again.
 
+Don't type the key by hand. Select it in Terminal, copy it (⌘C) and paste
+it on the iPhone: Universal Clipboard does this when the Mac and the iPhone
+use the same Apple ID with Handoff on. Or build the Shortcut in the
+Shortcuts app on the Mac, paste the key there, and let iCloud sync the
+Shortcut to the iPhone.
+
 ```sh
 jantar intel shortcut list               # ids, names, when each was last used; never a key
 jantar intel shortcut revoke <id>        # stop one key
@@ -37,16 +43,15 @@ an admin one, cannot make, list or revoke them.
 
 ## Build the Shortcut
 
-In the Shortcuts app on the iPhone:
+In the Shortcuts app on the iPhone (or on the Mac, as above):
 
 1. **+** (new shortcut), name it **Save to Jantar**.
-2. Tap **ⓘ** (Details): turn on **Show in Share Sheet**; under it, let it
-   receive **URLs**, **Text** and **Safari web pages**; and **If there's no
-   input: Get Clipboard**.
-3. Optional: **Choose from Menu** with Standard, Light and Full, each
-   setting a Text named `Depth` to `standard`, `light` or `full`. Or make a
-   second shortcut, "Save to Jantar (Full)", with `full` fixed.
-4. **Get Contents of URL**:
+2. Tap **ⓘ** (Details) and turn on **Show in Share Sheet**. A **Receive …
+   input from Share Sheet** block appears at the top of the editor: tap its
+   input types and keep **URLs**, **Text** and **Safari web pages**, and set
+   **If there's no input** to **Get Clipboard**.
+3. **Get Contents of URL**, then tap the **›** (Show More) on it to see
+   Method, Headers and Request Body:
    - URL: your door, `https://<your address>/v1/capture/save` (the add
      command printed it)
    - Method: **POST**
@@ -54,10 +59,18 @@ In the Shortcuts app on the iPhone:
      `CF-Access-Client-Id` and `CF-Access-Client-Secret` (the service
      token, below)
    - Request Body: **JSON**, with `text` = **Shortcut Input** and `depth` =
-     `Depth` (or the word `standard`). Everything as text: Jantar finds the
-     link in it, and the rest becomes the item's note.
-5. **Get Dictionary Value** for the key `message`, then **Show
-   Notification** with it.
+     the word `standard`. Everything as text: Jantar finds the link in it,
+     and the rest becomes the item's note.
+4. **Get Dictionary Value** for the key `message`, then **Show
+   Notification** with it. Every answer has a `message`: "Saved to
+   Jantar.", or what went wrong (below).
+
+Another depth: duplicate the finished Shortcut, name the copy **Save to
+Jantar (Full)** and change `depth` to `full` in its Request Body (the same
+for `light`). Both show in the Share sheet. (To pick each time instead: a
+**Choose from Menu** with Light, Standard and Full, a **Text** action with
+`light`, `standard` or `full` in each branch, and **Menu Result** as
+`depth`.)
 
 Share a reel from Instagram (or a page from Safari, a video from YouTube),
 pick **Save to Jantar**: "Saved to Jantar." The phone's Intel shelf shows
@@ -120,14 +133,18 @@ Jantar answers it (no Access in front) or Access answers with a login page
 
 ## When it doesn't work
 
-| The Shortcut shows | Why | What to do |
+The notification shows Jantar's own sentence (Shortcuts never shows the
+HTTP status):
+
+| The notification says | Why | What to do |
 |---|---|---|
-| A web page (HTML) instead of a message | Cloudflare Access refused it: the service token is missing, wrong or expired | check the two `CF-Access-…` headers; make a new token |
-| `401` | the key is missing, mistyped, revoked or older than 180 days unused | `jantar intel shortcut add`, and put the new key in |
-| `404` | the door is closed: loopback or LAN mode, the shelf off, or no active key | `jantar intel shortcut list`, `jantar intel on`, `jantar remote setup` |
-| `403` | the request carried an `Origin` (it came from a browser, not Shortcuts) | send it from the Shortcut |
-| `429` | too many saves in the hour (or the day), or too many wrong keys | wait; the reply says how long |
-| `400` "Only public https links can be read." | the link points inside a network | share the public link |
+| nothing (an empty notification) | Cloudflare Access refused it before Jantar (its 403 is a web page, with no `message`): the service token is missing, wrong or expired | check the two `CF-Access-…` headers; make a new token |
+| "This needs a Jantar Shortcut key. Make one at the Mac: jantar intel shortcut add" | the key is missing, mistyped, revoked or unused for 180 days | `jantar intel shortcut add`, and paste the new key in |
+| "not found" | the door is closed: loopback or LAN mode, the shelf off, or no active key | `jantar intel shortcut list`, `jantar intel on`, `jantar remote setup` |
+| "browsers cannot call this" | the request carried an `Origin` (it came from a browser, not Shortcuts) | send it from the Shortcut |
+| "Too many saves from this Shortcut; try again later" | 30 saves in the hour, or 200 in the day | wait an hour (or until tomorrow) |
+| "Too many wrong Shortcut keys; try again later" | 20 wrong keys in 10 minutes from this address | check the key; wait 10 minutes |
+| "Only public https links can be read." | the link points inside a network | share the public link |
 | It times out | the Mac is asleep, or the tunnel or Tailscale is down | wake the Mac; `jantar doctor` |
 
 The saved item shows at once on the phone; if it says "Couldn't read",

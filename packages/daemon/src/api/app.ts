@@ -79,6 +79,7 @@ import {
   lifeOn,
   secretFromSocketProtocols,
   settingsFeatures,
+  type ErrorBody,
   type ErrorCode,
   type FeatureSwitch,
   type RouteDef,
@@ -675,6 +676,16 @@ export function rawBodyErrorReply(err: unknown): ErrorReply {
   return toErrorReply(err);
 }
 
+/**
+ * v0.8: on the capture door an error reply also carries its sentence at the
+ * top (`message`, beside `error`), where the Shortcut's one Get Dictionary
+ * Value step reads it: Shortcuts never shows the status. It is the same
+ * sentence `error.message` holds, so it says nothing more.
+ */
+function doorBody(req: FastifyRequest, body: ErrorBody): ErrorBody | (ErrorBody & { message: string }) {
+  return pathOf(req).startsWith(CAPTURE_PREFIX) ? { ...body, message: body.error.message } : body;
+}
+
 function sendError(s: ApiServices, r: ErrorReply, err: unknown, req: FastifyRequest, reply: FastifyReply): void {
   if (r.unexpected) {
     s.log.error('request failed', {
@@ -684,7 +695,7 @@ function sendError(s: ApiServices, r: ErrorReply, err: unknown, req: FastifyRequ
       stack: err instanceof Error ? err.stack : undefined,
     });
   }
-  void reply.code(r.status).headers(r.headers).send(r.body);
+  void reply.code(r.status).headers(r.headers).send(doorBody(req, r.body));
 }
 
 /**
@@ -835,7 +846,7 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
           const r = toErrorReply(e);
           if (r.unexpected) throw e;
           for (const [k, v] of Object.entries(r.headers)) reply.header(k, v);
-          return { status: r.status, body: r.body };
+          return { status: r.status, body: doorBody(req, r.body) };
         }
       };
 
@@ -992,7 +1003,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
         captureCaller(auth, req, s, true);
       } catch (e) {
         const r = toErrorReply(e);
-        await reply.code(r.status).headers(r.headers).send(r.body);
+        await reply.code(r.status).headers(r.headers).send(doorBody(req, r.body));
         return reply;
       }
       return;
@@ -1049,7 +1060,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
 
   app.setNotFoundHandler((req, reply) => {
     if (transport === 'tcp' && serveIndexFallback(req, reply, s.webAvailable)) return;
-    void reply.code(404).send(errorBody('not_found', 'not found'));
+    void reply.code(404).send(doorBody(req, errorBody('not_found', 'not found')));
   });
 
   // GET /healthz: public liveness (no data).

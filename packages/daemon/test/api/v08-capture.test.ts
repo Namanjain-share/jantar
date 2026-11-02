@@ -140,7 +140,9 @@ describe('G13: the door does not exist outside a TLS mode, with Intel off, or wi
     const { key, id } = await addKey(api);
     expect((await door(api, withKey(key))).statusCode).toBe(202);
     await api.ctl.inject({ method: 'POST', url: ROUTES.captureKeyRevoke.path, payload: { id } });
-    expect((await door(api, withKey(key))).statusCode).toBe(404);
+    const closed = await door(api, withKey(key));
+    expect(closed.statusCode).toBe(404);
+    expect(closed.json()).toEqual({ error: { code: 'not_found', message: 'not found' }, message: 'not found' });
     const b = await addKey(api);
     expect((await door(api, withKey(b.key))).statusCode).toBe(202);
     api.ctx.clock.advance(INTEL_READ_LIMITS.captureKeyIdleMs + 1);
@@ -154,6 +156,8 @@ describe('G13: the door does not exist outside a TLS mode, with Intel off, or wi
     for (const [method, url] of [['GET', '/v1/capture/save'], ['POST', '/v1/capture/other'], ['PUT', '/v1/capture/save']] as const) {
       const res = await api.tcp.inject({ method, url, headers: { host: PUBLIC_HOST, ...withKey(key) } });
       expect(res.statusCode, `${method} ${url}`).toBe(404);
+      // The same body as the closed door's, its sentence at the top for the Shortcut.
+      expect(res.json()).toEqual({ error: { code: 'not_found', message: 'not found' }, message: 'not found' });
     }
   });
 });
@@ -177,7 +181,8 @@ describe('G13: the gate, before the body', () => {
     for (const key of [undefined, '', 'jcap_short', `jcap_${'!'.repeat(43)}`, `jcap_${'B'.repeat(43)}`, live.key.replace('jcap_', 'jext_'), old.key]) {
       const res = await door(api, { [CAPTURE_KEY_HEADER]: key });
       expect(res.statusCode, String(key)).toBe(401);
-      expect(ErrorBodySchema.parse(res.json()).error).toEqual({ code: 'unauthorized', message: CAPTURE_KEY_REFUSED });
+      // The sentence also at the top, where the Shortcut's one Get Dictionary Value step reads it.
+      expect(res.json()).toEqual({ error: { code: 'unauthorized', message: CAPTURE_KEY_REFUSED }, message: CAPTURE_KEY_REFUSED });
     }
     expect(f.calls).toHaveLength(0);
   });
@@ -255,6 +260,7 @@ describe('G13: one reply, whatever happened', () => {
     const res = await door(api, withKey(key), { text: 'http://192.168.1.10/admin' });
     expect(res.statusCode).toBe(400);
     expect(ErrorBodySchema.parse(res.json()).error.message).toBe(INTEL_READ_REASONS.badLink);
+    expect(res.json()).toMatchObject({ message: INTEL_READ_REASONS.badLink });
   });
 
   it('url and text: the url first (the link), the text after it (the note), the same link once, cut to 4,000', () => {
@@ -276,6 +282,7 @@ describe('G13: limits', () => {
     const limited = await door(api, withKey(a.key));
     expect(limited.statusCode).toBe(429);
     expect(ErrorBodySchema.parse(limited.json()).error.message).toBe(CAPTURE_LIMITED);
+    expect(limited.json()).toMatchObject({ message: CAPTURE_LIMITED });
     expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
     expect((await door(api, withKey(b.key))).statusCode).toBe(202);
     expect(f.calls).toHaveLength(INTEL_READ_LIMITS.capturePerHour + 1);
