@@ -69,6 +69,20 @@ export const FAKE_CLAUDE_MODES = [
   'read-hostile',
   'read-refuse-input',
   'read-init-tools',
+  // v0.10 Chat (runtime/fake-claude-chat.mjs; chat.ts)
+  'chat-read',
+  'chat-write',
+  'chat-delete',
+  'chat-taint',
+  'chat-link',
+  'chat-bypass',
+  'chat-flood',
+  'chat-init-bash',
+  'chat-init-nomcp',
+  'chat-photos',
+  'chat-slow',
+  'chat-marker',
+  'chat-refuse-option',
 ] as const;
 
 /**
@@ -138,6 +152,10 @@ export const FAKE_CLAUDE_MODES = [
  *   tags, 9 points, a creator not in the input, an unknown key
  * - read-refuse-input: "error: unknown option '--input-format'" while that flag is in argv, else read-ok
  * - read-init-tools: read-ok, with tools and an MCP server on the init line
+ *
+ * Chat modes (v0.10), only when the run's --system-prompt-file is chat-v<N>.md (stream-json in and
+ * out, an MCP client over the run's one server; the default there is chat-read; a FAKE_CHAT:<mode>
+ * marker in the message picks one too): see chat.ts and runtime/fake-claude-chat.mjs.
  */
 export type FakeClaudeMode = (typeof FAKE_CLAUDE_MODES)[number];
 

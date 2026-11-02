@@ -100,9 +100,13 @@
 //                       argv (claude's own words), else read-ok on the text stdin
 //   read-init-tools     read-ok, but the init line lists tools and an MCP server
 // plus slow, auth-error and empty as above. It is logged like every run.
+// Chat mode (v0.10): when --system-prompt-file ends in chat-v<N>.md it hands
+// over to fake-claude-chat.mjs (CHAT_MODES, an MCP client over the run's one
+// server; see that file). It is logged like every run.
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { runChat } from './fake-claude-chat.mjs';
 import { ENV_KEYS, matches, readJson, record, recordedEnv, sleep } from './lib.mjs';
 
 export const MODES = ['clean', 'auth-error', 'empty', 'invent', 'answer', 'preface', 'bang', 'slow', 'unknown-option', 'rate-limit'];
@@ -595,6 +599,9 @@ export async function runClaude({ root, args, stdin, account = null, via = 'clau
     process.stderr.write('Error: Fallback model cannot be the same as the main model. Please specify a different model for --fallback-model.\n');
     return 1;
   }
+
+  // v0.10 Chat (fake-claude-chat.mjs): MCP tools over the run's one server, streamed as it goes.
+  if (promptFile !== undefined && /chat-v\d+\.md$/.test(promptFile)) return runChat({ root, args, stdin, matches, account });
 
   const config = readJson(join(root, 'fake', 'claude.json'), {});
   const food = promptFile !== undefined && promptFile.endsWith('estimate-v1.md');

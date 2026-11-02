@@ -231,6 +231,8 @@ describe('fake claude modes', () => {
         ...['read-ok', 'read-fence', 'read-bad-json', 'read-no-title', 'read-hostile', 'read-refuse-input', 'read-init-tools'],
         ...['ask-ok', 'ask-fence', 'ask-bad-json', 'ask-answer', 'ask-not-object', 'ask-unknown-type', 'ask-extra-field'],
         ...['ask-too-many', 'ask-bad-values', 'ask-long-reply', 'ask-claims', 'ask-refuse-option'],
+        ...['chat-read', 'chat-write', 'chat-delete', 'chat-taint', 'chat-link', 'chat-bypass', 'chat-flood'],
+        ...['chat-init-bash', 'chat-init-nomcp', 'chat-photos', 'chat-slow', 'chat-marker', 'chat-refuse-option'],
       ].sort(),
     );
   });
