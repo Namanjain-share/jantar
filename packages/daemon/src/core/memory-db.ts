@@ -275,8 +275,8 @@ export function createMemoryDb(): Db & { closed: boolean } {
         for (const k of captureKeyRows.values()) if (k.keyHash === hash) return clone(k);
         return null;
       },
-      list() {
-        return clone([...captureKeyRows.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
+      list(scope) {
+        return clone([...captureKeyRows.values()].filter((k) => !scope || k.scope === scope).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
       },
       touch(id, at) {
         const k = captureKeyRows.get(id);
@@ -288,18 +288,18 @@ export function createMemoryDb(): Db & { closed: boolean } {
         if (!k.revokedAt) k.revokedAt = at;
         return clone(k);
       },
-      revokeAll(at) {
+      revokeAll(at, scope) {
         let n = 0;
         for (const k of captureKeyRows.values()) {
-          if (k.revokedAt) continue;
+          if (k.revokedAt || (scope && k.scope !== scope)) continue;
           k.revokedAt = at;
           n += 1;
         }
         return n;
       },
-      activeCount() {
+      activeCount(scope) {
         let n = 0;
-        for (const k of captureKeyRows.values()) if (!k.revokedAt) n += 1;
+        for (const k of captureKeyRows.values()) if (!k.revokedAt && (!scope || k.scope === scope)) n += 1;
         return n;
       },
     },

@@ -17,9 +17,23 @@
  * `{ ok }`), so the idempotency cache never keeps text. chatList is the
  * one reply with text: the thread itself.
  */
-import type { ChatItemParams, ChatListQuery, ChatSendBody } from '@jantar/protocol';
+import {
+  CHAT_VOICE_WAIT_MS,
+  type CaptureChatBody,
+  type CaptureChatReply,
+  type ChatItemParams,
+  type ChatKeyAddBody,
+  type ChatKeyAddReply,
+  type ChatKeyList,
+  type ChatKeyRevokeBody,
+  type ChatKeyRevokeReply,
+  type ChatListQuery,
+  type ChatSendBody,
+} from '@jantar/protocol';
+import { CHAT_KEY_DEFAULT_NAME, chatDoor } from '../../auth/capture-keys.js';
 import type { LifeResult } from '../../contracts.js';
-import { ApiError } from '../errors.js';
+import { auditResult } from '../audit.js';
+import { ApiError, toErrorReply } from '../errors.js';
 import { actorName } from '../request.js';
 import { lifeAudit, lifeValue, needActor, notImplementedRoute, type Call, type RawReply, type RouteTable } from '../route-kit.js';
 import { CHAT_LIMITS } from '../services.js';
@@ -111,9 +125,63 @@ export const CHAT_ROUTE_IMPLS: RouteTable = {
     audit: lifeAudit,
   },
 
-  // v0.10: the chat keys and the Siri door are wired with their own commit.
-  chatKeyAdd: notImplementedRoute('Chat keys'),
-  chatKeyList: notImplementedRoute('Chat keys'),
-  chatKeyRevoke: notImplementedRoute('Chat keys'),
-  captureChat: notImplementedRoute('The Siri door'),
+  // ---------------------------------------------------------------- the Siri door's keys (the Mac only)
+  // A key is shown once, in the add reply, with the door's URL (null while it can't exist); only its
+  // prefixed sha256 is stored. Never logged, audited, put in a URL, a cookie or an event: ids only.
+  chatKeyAdd: {
+    handle: (c: Call<Record<string, string>, unknown, ChatKeyAddBody>, s): ChatKeyAddReply => {
+      const made = s.chatKeys.issue(c.body.name ?? CHAT_KEY_DEFAULT_NAME);
+      c.scratch.keyId = made.id;
+      return { ...made, chatUrl: chatDoor(s.ctx.settings.get()).url };
+    },
+    audit: (c) => ({ target: typeof c.scratch.keyId === 'string' ? c.scratch.keyId : undefined, params: {} }),
+  },
+  chatKeyList: {
+    handle: (_c: Call, s): ChatKeyList => {
+      const door = chatDoor(s.ctx.settings.get());
+      return {
+        keys: s.chatKeys.list().map((k) => ({ id: k.id, name: k.name, createdAt: k.createdAt, lastSeenAt: k.lastSeenAt })),
+        chatUrl: door.url,
+        ...(door.open ? {} : { why: door.why }),
+      };
+    },
+  },
+  chatKeyRevoke: {
+    handle: (c: Call<Record<string, string>, unknown, ChatKeyRevokeBody>, s): ChatKeyRevokeReply => {
+      const body = c.body;
+      if ('all' in body) return { revoked: s.chatKeys.revokeAll() };
+      return { revoked: s.chatKeys.revoke(body.id) ? 1 : 0 };
+    },
+    audit: (c: Call<Record<string, string>, unknown, ChatKeyRevokeBody>, out) => ({
+      target: 'id' in c.body ? c.body.id : 'all',
+      params: { revoked: (out.body as { revoked?: unknown } | null)?.revoked ?? 0 },
+    }),
+  },
+
+  // ---------------------------------------------------------------- the Siri door (spec 0.10 B11)
+  // The pipeline has run the door's gate (TLS mode with an https address, Chat on, an active chat key, no
+  // Origin, the key before the body, the bad-key and per-key limits), --read-only and the strict body. The
+  // turn is queued as the key's actor and waited for at most CHAT_VOICE_WAIT_MS from now; a request that
+  // goes away does not cancel it. The audit row is capture.chat with the key's id and the turn's id.
+  captureChat: {
+    selfAudit: true,
+    handle: async (c: Call<Record<string, string>, unknown, CaptureChatBody>, s): Promise<CaptureChatReply> => {
+      const keyId = c.auth.capture?.id;
+      if (!keyId) throw new ApiError('unauthorized', 'a Siri key is needed');
+      const audit = (status: number, outcome: string, turnId?: string) =>
+        s.auditor.write({ actor: actorName(c.auth), action: 'capture.chat', ...(turnId ? { target: turnId } : {}), params: { keyId, ...(turnId ? { turnId } : {}), outcome }, result: auditResult(status) });
+      try {
+        // Life or chat.db that will not open: 503 with its sentence (the door's errors keep their status).
+        const broken = s.deps.chat.broken() ?? s.deps.life.broken();
+        if (broken) throw new ApiError('life_unavailable', broken);
+        const r = await s.deps.chat.voice(c.body.text, needActor(c.auth), CHAT_VOICE_WAIT_MS);
+        audit(200, r.outcome, r.turnId);
+        return { message: r.message.slice(0, 600) };
+      } catch (e) {
+        const r = toErrorReply(e);
+        audit(r.status, 'refused');
+        throw e;
+      }
+    },
+  },
 };

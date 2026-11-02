@@ -568,6 +568,13 @@ export interface ExtensionRecord {
 export interface CaptureKeyRecord {
   /** A ulid. */
   id: string;
+  /**
+   * v0.10 (spec 0.10 B11.2, proposed; migration 7): which door the key
+   * opens. 'capture' (`jcap_`, `/v1/capture/save`) or 'chat' (`jchat_`, the
+   * Siri door `/v1/capture/chat`), each with its own hash domain. Rows from
+   * 0.8 and 0.9 are 'capture'.
+   */
+  scope: CaptureKeyScope;
   /** The user's name for it ("iphone"), one line. */
   name: string;
   keyHash: string;
@@ -624,19 +631,26 @@ export interface ExtensionsRepo {
   revoke(id: string, at: string): ExtensionRecord | null;
 }
 
-/** v0.8: table `capture_keys` (auth/capture-keys.ts is its only user). */
+/** v0.10: the door a capture key opens. */
+export type CaptureKeyScope = 'capture' | 'chat';
+
+/**
+ * v0.8: table `capture_keys` (auth/capture-keys.ts is its only user).
+ * v0.10 (proposed): `list`, `revokeAll` and `activeCount` take a scope (all
+ * scopes when left out); `insert` keeps the record's.
+ */
 export interface CaptureKeysRepo {
   insert(rec: CaptureKeyRecord): void;
   byHash(keyHash: string): CaptureKeyRecord | null;
   /** Oldest first, revoked ones included. */
-  list(): CaptureKeyRecord[];
+  list(scope?: CaptureKeyScope): CaptureKeyRecord[];
   touch(id: string, at: string): void;
   /** Sets revokedAt (once); null for an unknown id. */
   revoke(id: string, at: string): CaptureKeyRecord | null;
-  /** Every live key revoked; the count. */
-  revokeAll(at: string): number;
-  /** Keys not revoked. */
-  activeCount(): number;
+  /** Every live key (of `scope`) revoked; the count. */
+  revokeAll(at: string, scope?: CaptureKeyScope): number;
+  /** Keys not revoked (of `scope`). */
+  activeCount(scope?: CaptureKeyScope): number;
 }
 
 export interface Db {

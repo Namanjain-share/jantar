@@ -379,6 +379,8 @@ export class ApiServices {
   readonly postCtlLimiter: SlidingWindowLimiter;
   /** v0.8: the iOS Shortcut's capture keys (auth/capture-keys.ts). */
   readonly captureKeys: CaptureKeyAuth;
+  /** v0.10: the Siri door's chat keys (auth/capture-keys.ts, scope chat). */
+  readonly chatKeys: CaptureKeyAuth;
   /** v0.8 (V08_LIMITS): the capture door's saves per key, an hour and a day, and its bad keys per caller. */
   readonly captureHourLimiter: SlidingWindowLimiter;
   readonly captureDayLimiter: SlidingWindowLimiter;
@@ -454,6 +456,7 @@ export class ApiServices {
     this.notifyTestLimiter = per(V053_LIMITS.notifyTest);
     this.postCtlLimiter = per(V07_LIMITS.postCtl);
     this.captureKeys = new CaptureKeyAuth({ db: ctx.db, clock: ctx.clock, log: this.log });
+    this.chatKeys = new CaptureKeyAuth({ db: ctx.db, clock: ctx.clock, log: this.log, scope: 'chat' });
     this.captureHourLimiter = per(V08_LIMITS.captureHour);
     this.captureDayLimiter = per(V08_LIMITS.captureDay);
     this.captureBadKeyLimiter = per(V08_LIMITS.captureBadKey);

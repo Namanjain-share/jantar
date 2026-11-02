@@ -200,6 +200,16 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 7,
+    name: 'v0.10 chat keys',
+    // Additive: 0.9 opens a file at this schema, warns, and carries on (it never reads the column; its
+    // key check refuses a jchat_ key outright, so a downgrade lets no chat key in anywhere).
+    sql: `
+      -- v0.10: which door a key opens: 'capture' (Intel's save door) or 'chat' (the Siri door).
+      ALTER TABLE capture_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'capture';
+    `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

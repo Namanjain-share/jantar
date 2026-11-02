@@ -28,7 +28,7 @@ afterEach(async () => {
 const ts = (s: number) => new Date(Date.parse('2026-11-02T10:00:00.000Z') + s * 1000).toISOString();
 
 function key(id: string, name: string, s = 0, over: Partial<CaptureKeyRecord> = {}): CaptureKeyRecord {
-  return { id, name, keyHash: `hash-${id}`, createdAt: ts(s), lastSeenAt: null, revokedAt: null, ...over };
+  return { id, scope: 'capture', name, keyHash: `hash-${id}`, createdAt: ts(s), lastSeenAt: null, revokedAt: null, ...over };
 }
 
 const A = '01JF1EETN0DEBV11D1000000A1';
@@ -47,8 +47,8 @@ const repos: [string, () => { db: Db; close(): void }][] = [
 ];
 
 describe('v0.8: migration 6', () => {
-  it('is the latest, additive, and makes the capture_keys table with no key column', () => {
-    expect(LATEST_SCHEMA_VERSION).toBe(6);
+  it('is additive, and makes the capture_keys table with no key column (v0.10 adds 7)', () => {
+    expect(LATEST_SCHEMA_VERSION).toBe(7);
     const m = MIGRATIONS.find((x) => x.version === 6);
     expect(m?.name).toBe('v0.8 capture keys');
     expect(m?.sql).toMatch(/CREATE TABLE IF NOT EXISTS capture_keys/);
@@ -58,7 +58,7 @@ describe('v0.8: migration 6', () => {
     expect(m?.sql).not.toMatch(/DROP|ALTER/i);
   });
 
-  it('moves a 0.7 file (schema 5) to 6, keeping every row', () => {
+  it('moves a 0.7 file (schema 5) to the latest, keeping every row', () => {
     const file = join(dir, 'v07.db');
     const raw = new DatabaseSync(file);
     raw.exec('CREATE TABLE migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)');
@@ -74,7 +74,7 @@ describe('v0.8: migration 6', () => {
 
     const db = openSqliteFile(file);
     try {
-      expect(db.schemaVersion()).toBe(6);
+      expect(db.schemaVersion()).toBe(7);
       expect(db.devices.get('old')?.name).toBe('Old phone');
       expect(db.nodes.get(A)?.name).toBe('build-1');
       expect(db.captureKeys.list()).toEqual([]);

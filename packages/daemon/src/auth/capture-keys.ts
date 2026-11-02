@@ -17,16 +17,39 @@
  * mode with an https public URL (both put TLS in front). In `loopback` the
  * iPhone can't reach the Mac, and `lan` is plain HTTP, where a bearer key
  * would cross the Wi-Fi in clear: no door.
+ *
+ * v0.10 (spec 0.10 B11.2): a second scope, `chat`, for the Siri door
+ * (`/v1/capture/chat`): `jchat_` keys stored as
+ * `sha256('jantar-chat-key:' + key)` (their own hash domain) in the same
+ * table with `scope = 'chat'`. One CaptureKeyAuth per scope: each matches
+ * its own prefix, its own hash domain AND the row's scope, so a key of one
+ * door never opens the other (a 0.9 daemon's key check refuses `jchat_`
+ * outright). At most five active per scope; a sixth revokes that scope's
+ * oldest; idle 180 days.
  */
-import { CAPTURE_KEY_PREFIX, CAPTURE_PREFIX, INTEL_READ_LIMITS, type Settings } from '@jantar/protocol';
-import type { CaptureKeyRecord, Clock, Db, Logger } from '../contracts.js';
+import { CAPTURE_CHAT_PATH, CAPTURE_KEY_PREFIX, CAPTURE_PREFIX, CHAT_KEY_PREFIX, INTEL_READ_LIMITS, type Settings } from '@jantar/protocol';
+import type { CaptureKeyRecord, CaptureKeyScope, Clock, Db, Logger } from '../contracts.js';
 import { sha256Hex } from '../core/hash.js';
 import { newId, randomToken } from '../core/ids.js';
 import { silentLogger } from '../core/log.js';
 import { TOUCH_EVERY_MS } from './devices.js';
 
-/** A capture key: the prefix and 32 random bytes, base64url (43 characters). */
-const KEY_RE = new RegExp(`^${CAPTURE_KEY_PREFIX}[A-Za-z0-9_-]{43}$`);
+/** Each scope's key prefix and hash domain. */
+const SCOPES: Readonly<Record<CaptureKeyScope, { prefix: string; domain: string }>> = {
+  capture: { prefix: CAPTURE_KEY_PREFIX, domain: 'jantar-capture-key:' },
+  chat: { prefix: CHAT_KEY_PREFIX, domain: 'jantar-chat-key:' },
+};
+
+/** A key: its scope's prefix and 32 random bytes, base64url (43 characters). */
+const keyRe = (scope: CaptureKeyScope) => new RegExp(`^${SCOPES[scope].prefix}[A-Za-z0-9_-]{43}$`);
+
+/** v0.10: what is stored for a chat key (never the key). */
+export function hashChatKey(key: string): string {
+  return sha256Hex(`${SCOPES.chat.domain}${key}`);
+}
+
+/** v0.10: the name a chat key gets when none is given. */
+export const CHAT_KEY_DEFAULT_NAME = 'iphone';
 
 /** The name a key gets when none is given. */
 export const CAPTURE_KEY_DEFAULT_NAME = 'iphone';
@@ -45,6 +68,8 @@ export type CaptureKeyAuthResult = { ok: true; key: CaptureKeyRecord } | { ok: f
 
 export interface CaptureKeyAuthOptions {
   db: Pick<Db, 'captureKeys'>;
+  /** v0.10: the door these keys open (default capture). */
+  scope?: CaptureKeyScope;
   clock: Pick<Clock, 'now' | 'iso'>;
   log?: Logger;
   /** Default INTEL_READ_LIMITS.captureKeyIdleMs. */
@@ -78,6 +103,12 @@ export function captureDoor(s: Pick<Settings, 'remote'>): CaptureDoor {
   return { open: true, url: `${u.origin}${CAPTURE_SAVE_PATH}` };
 }
 
+/** v0.10: the Siri door's URL for these settings (`<public origin>/v1/capture/chat`), or why there is none. */
+export function chatDoor(s: Pick<Settings, 'remote'>): CaptureDoor {
+  const d = captureDoor(s);
+  return d.open ? { open: true, url: d.url.replace(CAPTURE_SAVE_PATH, CAPTURE_CHAT_PATH) } : d;
+}
+
 /** Whether `remote.mode` puts TLS in front of the daemon (the door may exist). */
 export function captureModeOk(s: Pick<Settings, 'remote'>): boolean {
   return s.remote.mode === 'tailscale' || s.remote.mode === 'cloudflare';
@@ -88,8 +119,12 @@ export class CaptureKeyAuth {
   private readonly touchEveryMs: number;
   private readonly max: number;
   private readonly log: Logger;
+  readonly scope: CaptureKeyScope;
+  private readonly keyRe: RegExp;
 
   constructor(private readonly opts: CaptureKeyAuthOptions) {
+    this.scope = opts.scope ?? 'capture';
+    this.keyRe = keyRe(this.scope);
     this.idleMs = opts.idleMs ?? INTEL_READ_LIMITS.captureKeyIdleMs;
     this.touchEveryMs = opts.touchEveryMs ?? TOUCH_EVERY_MS;
     this.max = opts.max ?? INTEL_READ_LIMITS.captureKeysMax;
@@ -98,13 +133,14 @@ export class CaptureKeyAuth {
 
   /** A new key named `name`, returned once and stored only as its hash; past the cap the oldest active key is revoked. */
   issue(name: string): { id: string; key: string; name: string } {
-    const key = `${CAPTURE_KEY_PREFIX}${randomToken(32)}`;
+    const key = `${SCOPES[this.scope].prefix}${randomToken(32)}`;
     // Strictly after every key made before it, so the oldest is the one made first (keys made in one millisecond would tie, and ids don't order within it).
-    const latest = this.opts.db.captureKeys.list().reduce((m, k) => Math.max(m, Date.parse(k.createdAt) || 0), 0);
+    const latest = this.opts.db.captureKeys.list(this.scope).reduce((m, k) => Math.max(m, Date.parse(k.createdAt) || 0), 0);
     const rec: CaptureKeyRecord = {
       id: newId(),
+      scope: this.scope,
       name,
-      keyHash: hashCaptureKey(key),
+      keyHash: this.hash(key),
       createdAt: this.opts.clock.iso(Math.max(this.opts.clock.now(), latest + 1)),
       lastSeenAt: null,
       revokedAt: null,
@@ -121,9 +157,10 @@ export class CaptureKeyAuth {
   /** The key's record when it is live (lastSeenAt refreshed now and then). */
   authenticate(key: string | undefined | null): CaptureKeyAuthResult {
     if (!key) return { ok: false, reason: 'missing' };
-    if (!KEY_RE.test(key)) return { ok: false, reason: 'malformed' };
-    const rec = this.opts.db.captureKeys.byHash(hashCaptureKey(key));
-    if (!rec) return { ok: false, reason: 'unknown' };
+    if (!this.keyRe.test(key)) return { ok: false, reason: 'malformed' };
+    const rec = this.opts.db.captureKeys.byHash(this.hash(key));
+    // The prefix, the hash domain and the row's scope must all agree.
+    if (!rec || rec.scope !== this.scope) return { ok: false, reason: 'unknown' };
     if (rec.revokedAt) return { ok: false, reason: 'revoked' };
     const now = this.opts.clock.now();
     if (this.idle(rec, now)) {
@@ -142,7 +179,11 @@ export class CaptureKeyAuth {
 
   /** The active (not revoked) keys, oldest first. */
   list(): CaptureKeyRecord[] {
-    return this.opts.db.captureKeys.list().filter((k) => !k.revokedAt);
+    return this.opts.db.captureKeys.list(this.scope).filter((k) => !k.revokedAt);
+  }
+
+  private hash(key: string): string {
+    return this.scope === 'chat' ? hashChatKey(key) : hashCaptureKey(key);
   }
 
   /** Revoke one active key; false for an unknown or already revoked id. */
@@ -156,14 +197,14 @@ export class CaptureKeyAuth {
 
   /** Revoke every active key; returns how many. */
   revokeAll(): number {
-    const n = this.opts.db.captureKeys.revokeAll(this.opts.clock.iso());
+    const n = this.opts.db.captureKeys.revokeAll(this.opts.clock.iso(), this.scope);
     if (n > 0) this.log.info('capture keys revoked', { count: n });
     return n;
   }
 
   /** Keys that would work now: not revoked and not idle past captureKeyIdleMs (the door exists only while one does). */
   activeCount(): number {
-    if (this.opts.db.captureKeys.activeCount() === 0) return 0;
+    if (this.opts.db.captureKeys.activeCount(this.scope) === 0) return 0;
     const now = this.opts.clock.now();
     return this.list().filter((k) => !this.idle(k, now)).length;
   }

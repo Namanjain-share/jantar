@@ -769,9 +769,11 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
     created_at: string;
     last_seen_at: string | null;
     revoked_at: string | null;
+    scope?: string | null;
   };
   const captureKeyFrom = (r: CaptureKeyRow): CaptureKeyRecord => ({
     id: r.id,
+    scope: r.scope === 'chat' ? 'chat' : 'capture',
     name: r.name,
     keyHash: r.key_hash,
     createdAt: r.created_at,
@@ -785,16 +787,17 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
   const captureKeys: CaptureKeysRepo = {
     insert(k) {
       stmt(
-        'INSERT INTO capture_keys (id, name, key_hash, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?)',
-      ).run(k.id, k.name, k.keyHash, k.createdAt, k.lastSeenAt, k.revokedAt);
+        'INSERT INTO capture_keys (id, name, key_hash, created_at, last_seen_at, revoked_at, scope) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ).run(k.id, k.name, k.keyHash, k.createdAt, k.lastSeenAt, k.revokedAt, k.scope);
       wrote();
     },
     byHash(hash) {
       const r = stmt('SELECT * FROM capture_keys WHERE key_hash = ?').get(hash) as CaptureKeyRow | undefined;
       return r ? captureKeyFrom(r) : null;
     },
-    list() {
-      return (stmt('SELECT * FROM capture_keys ORDER BY created_at ASC, id ASC').all() as CaptureKeyRow[]).map(captureKeyFrom);
+    list(scope) {
+      const rows = (scope ? stmt('SELECT * FROM capture_keys WHERE scope = ? ORDER BY created_at ASC, id ASC').all(scope) : stmt('SELECT * FROM capture_keys ORDER BY created_at ASC, id ASC').all()) as CaptureKeyRow[];
+      return rows.map(captureKeyFrom);
     },
     touch(id, at) {
       stmt('UPDATE capture_keys SET last_seen_at = ? WHERE id = ?').run(at, id);
@@ -804,13 +807,17 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
       wrote();
       return captureKeyById(id);
     },
-    revokeAll(at) {
-      const r = stmt('UPDATE capture_keys SET revoked_at = ? WHERE revoked_at IS NULL').run(at);
+    revokeAll(at, scope) {
+      const r = scope
+        ? stmt('UPDATE capture_keys SET revoked_at = ? WHERE revoked_at IS NULL AND scope = ?').run(at, scope)
+        : stmt('UPDATE capture_keys SET revoked_at = ? WHERE revoked_at IS NULL').run(at);
       wrote();
       return Number(r.changes);
     },
-    activeCount() {
-      const r = stmt('SELECT COUNT(*) AS n FROM capture_keys WHERE revoked_at IS NULL').get() as { n: number } | undefined;
+    activeCount(scope) {
+      const r = (scope
+        ? stmt('SELECT COUNT(*) AS n FROM capture_keys WHERE revoked_at IS NULL AND scope = ?').get(scope)
+        : stmt('SELECT COUNT(*) AS n FROM capture_keys WHERE revoked_at IS NULL').get()) as { n: number } | undefined;
       return Number(r?.n ?? 0);
     },
   };

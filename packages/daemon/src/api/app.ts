@@ -59,6 +59,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 import {
+  CAPTURE_CHAT_PATH,
   CAPTURE_KEY_HEADER,
   CAPTURE_PREFIX,
   DEVICE_COOKIE,
@@ -88,7 +89,7 @@ import {
 } from '@jantar/protocol';
 import { NODE_ROUTES, isNodeRoute, type NodeCallActor } from '@jantar/protocol/node-link';
 import type { FleetTarget, ForwardCall } from '../contracts.js';
-import { captureModeOk } from '../auth/capture-keys.js';
+import { captureDoor, captureModeOk } from '../auth/capture-keys.js';
 import { proxyHeaderFor, rateLimitKey } from '../auth/client-ip.js';
 import { deviceSecretMatches } from '../auth/devices.js';
 import { hasScope } from '../auth/scopes.js';
@@ -378,6 +379,10 @@ function extensionCaller(
 
 /** v0.8: what the capture door answers without a working capture key (401). */
 export const CAPTURE_KEY_REFUSED = 'This needs a Jantar Shortcut key. Make one at the Mac: jantar intel shortcut add';
+/** v0.10: what the Siri door answers without a working chat key (401). */
+export const CHAT_KEY_REFUSED = 'This needs a Jantar Siri key. Make one at the Mac: jantar chat shortcut add';
+/** v0.10: past a chat key's messages a minute or a day (429). */
+export const CHAT_VOICE_LIMITED = 'Too many questions from this Shortcut; try again later';
 /** v0.8: past a key's saves an hour or a day (429). */
 export const CAPTURE_LIMITED = 'Too many saves from this Shortcut; try again later';
 /** v0.8: past the wrong keys one caller may send in a window (429). */
@@ -389,10 +394,15 @@ export const CAPTURE_BAD_KEYS = 'Too many wrong Shortcut keys; try again later';
  * iPhone and lan is plain http), the Intel shelf is on, and a capture key
  * that works now exists.
  */
-export function captureDoorOpen(s: Pick<ApiServices, 'ctx' | 'captureKeys'>): boolean {
+export function captureDoorOpen(s: Pick<ApiServices, 'ctx' | 'captureKeys' | 'chatKeys'>, kind: CaptureDoorKind = 'save'): boolean {
   const settings = s.ctx.settings.get();
+  // v0.10: the Siri door (spec 0.10 B11.1): TLS mode with an https public address, Chat on, an active chat key.
+  if (kind === 'chat') return captureDoor(settings).open && settings.ask.enabled && s.chatKeys.activeCount() > 0;
   return captureModeOk(settings) && settings.intel.enabled && s.captureKeys.activeCount() > 0;
 }
+
+/** v0.10: the doors under CAPTURE_PREFIX: Intel's save door and the Siri (chat) door. */
+export type CaptureDoorKind = 'save' | 'chat';
 
 function retryAfter(ms: number): Record<string, string> {
   return { 'retry-after': String(Math.max(1, Math.ceil(ms / 1000))) };
@@ -408,34 +418,37 @@ function retryAfter(ms: number): Record<string, string> {
  * handler's pass): the same door and Origin checks, and the key already
  * taken, counting nothing. Throws ApiError.
  */
-export function captureCaller(auth: RequestAuth, req: FastifyRequest, s: ApiServices, first: boolean): void {
-  if (!captureDoorOpen(s)) throw new ApiError('not_found', 'not found');
+export function captureCaller(auth: RequestAuth, req: FastifyRequest, s: ApiServices, first: boolean, kind: CaptureDoorKind = 'save'): void {
+  if (!captureDoorOpen(s, kind)) throw new ApiError('not_found', 'not found');
   if (req.headers.origin !== undefined) throw new ApiError('forbidden', 'browsers cannot call this');
+  const refused = kind === 'chat' ? CHAT_KEY_REFUSED : CAPTURE_KEY_REFUSED;
   if (!first) {
-    if (!auth.capture) throw new ApiError('unauthorized', CAPTURE_KEY_REFUSED);
+    if (!auth.capture) throw new ApiError('unauthorized', refused);
     return;
   }
   const bad = s.captureBadKeyLimiter.check(auth.rateKey);
   if (!bad.ok) throw new ApiError('rate_limited', CAPTURE_BAD_KEYS, retryAfter(bad.retryAfterMs));
-  const r = s.captureKeys.authenticate(headerValue(req.headers[CAPTURE_KEY_HEADER]));
+  // v0.10: each door takes only its own scope's keys; a key of the other door is refused like an unknown one.
+  const keys = kind === 'chat' ? s.chatKeys : s.captureKeys;
+  const r = keys.authenticate(headerValue(req.headers[CAPTURE_KEY_HEADER]));
   if (!r.ok) {
     s.captureBadKeyLimiter.hit(auth.rateKey);
-    throw new ApiError('unauthorized', CAPTURE_KEY_REFUSED);
+    throw new ApiError('unauthorized', refused);
   }
   auth.capture = { id: r.key.id };
   auth.actor = { kind: 'capture', keyId: r.key.id };
   const who = actorName(auth);
-  for (const limiter of [s.captureHourLimiter, s.captureDayLimiter]) {
+  const limits = kind === 'chat' ? ([[s.chatVoiceLimiter, CHAT_VOICE_LIMITED], [s.chatVoiceDayBudget, CHAT_VOICE_LIMITED]] as const) : ([[s.captureHourLimiter, CAPTURE_LIMITED], [s.captureDayLimiter, CAPTURE_LIMITED]] as const);
+  for (const [limiter, message] of limits) {
     const left = limiter.check(who);
-    if (!left.ok) throw new ApiError('rate_limited', CAPTURE_LIMITED, retryAfter(left.retryAfterMs));
+    if (!left.ok) throw new ApiError('rate_limited', message, retryAfter(left.retryAfterMs));
   }
-  s.captureHourLimiter.hit(who);
-  s.captureDayLimiter.hit(who);
+  for (const [limiter] of limits) limiter.hit(who);
 }
 
-/** v0.8: the routes captureCaller gates, by `<method> <path pattern>` as Fastify matched them. */
-const CAPTURE_GATED: ReadonlySet<string> = new Set(
-  (Object.values(ROUTES) as RouteDef[]).filter((def) => def.scope === 'capture').map((def) => `${def.method} ${def.path}`),
+/** v0.8: the routes captureCaller gates, by `<method> <path pattern>` as Fastify matched them; v0.10: each with its door. */
+const CAPTURE_GATED: ReadonlyMap<string, CaptureDoorKind> = new Map(
+  (Object.values(ROUTES) as RouteDef[]).filter((def) => def.scope === 'capture').map((def) => [`${def.method} ${def.path}`, def.path === CAPTURE_CHAT_PATH ? 'chat' : 'save'] as const),
 );
 
 /** The routes extensionCaller gates, by `<method> <path pattern>` as Fastify matched them. */
@@ -466,7 +479,7 @@ export function gate(def: Pick<RouteDef, 'scope' | 'method'>, auth: RequestAuth,
   }
   if (def.scope === 'capture') {
     // v0.8: the iOS Shortcut's door; onRequest already took the key (captureCaller), before the body.
-    captureCaller(auth, req, s, false);
+    captureCaller(auth, req, s, false, name === 'captureChat' ? 'chat' : 'save');
     return;
   }
   if (def.scope === 'extension') {
@@ -975,7 +988,8 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
       ),
     };
     const path = pathOf(req);
-    const capture = CAPTURE_GATED.has(`${req.routeOptions.method} ${req.routeOptions.url}`);
+    const door = CAPTURE_GATED.get(`${req.routeOptions.method} ${req.routeOptions.url}`);
+    const capture = door !== undefined;
     // v0.6: a server's own paths read no device cookie (and no secret, nor the extension's key); v0.8: nor the capture door's.
     if (isApiPath(path) && !path.startsWith(NODE_PREFIX) && !path.startsWith(CAPTURE_PREFIX) && !capture) {
       // A phone paired with ccw-v2 (imported with `jantar import-ccw-v2`) still sends the old cookie.
@@ -1008,7 +1022,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
     // v0.8: the capture door takes its key here, before Fastify reads the body; every refusal is answered now.
     if (capture) {
       try {
-        captureCaller(auth, req, s, true);
+        captureCaller(auth, req, s, true, door);
       } catch (e) {
         const r = toErrorReply(e);
         await reply.code(r.status).headers(r.headers).send(doorBody(req, r.body));
