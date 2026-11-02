@@ -6,11 +6,24 @@
  * Files and New session browse the same roots (folders.roots), so
  * `files roots ...` and `folders add-root | rm-root | list` are one list.
  */
+import type { Settings } from '@jantar/protocol';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand } from '../command.js';
 import { readSettings } from '../lib/settings.js';
 import { changeSettings, onOff, parseOnOff } from '../lib/switches.js';
 import { addRootCommand, listRoots, removeRootCommand } from './folders.js';
+
+/**
+ * Whether Files shows New folder (0.10.1): it makes a folder through the
+ * start sheet's route, so it needs launching on and a device with the
+ * launch scope (granted on the Mac only). No line while Files is off.
+ */
+export function newFolderLine(s: Pick<Settings, 'files' | 'launch'>): string | null {
+  if (!s.files.enabled) return null;
+  return s.launch.enabled
+    ? 'New folder in Files: on (a device needs the launch scope: jantar devices grant <device> launch)\n'
+    : 'New folder in Files: off (it needs launching on: jantar launch on)\n';
+}
 
 const FLAGS = {
   id: { type: 'string', help: 'roots add: the root id (default: from the folder name)' },
@@ -26,7 +39,7 @@ export default defineCommand(
     help:
       '  files on                      the phone shows which files sessions changed, and opens them read-only\n' +
       '  files off                     hide Files again\n' +
-      '  files status                  whether Files is on, and its roots\n' +
+      '  files status                  whether Files is on (and shows New folder), and its roots\n' +
       '  files roots                   the folders Files may browse (live sessions\' folders are always included)\n' +
       '  files roots add <path>        add a folder (refuses /, /Users, ~/Library and protected folders)\n' +
       '  files roots remove <id>       remove one\n' +
@@ -54,6 +67,8 @@ export default defineCommand(
         if (positionals.length > 1) throw new UsageError('status takes no argument');
         const { settings } = await readSettings(ctx);
         ctx.io.out(`Files: ${onOff(settings.files.enabled)}\n`);
+        const newFolder = newFolderLine(settings);
+        if (newFolder) ctx.io.out(newFolder);
         await listRoots(ctx, settings);
         return EXIT.ok;
       }

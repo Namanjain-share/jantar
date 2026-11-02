@@ -66,6 +66,24 @@ describe('jantar files', () => {
     expect(s.patches).toHaveLength(2);
   });
 
+  it('status says whether Files shows New folder (0.10.1): it needs launching on, and a device with the launch scope', async () => {
+    const line = (out: string) => out.split('\n').filter((l) => l.startsWith('New folder in Files'));
+    const on = contextFor(home, { ctl: daemon({ files: { enabled: true }, launch: { enabled: true } }).ctl });
+    expect(await files.run(['status'], on.ctx)).toBe(EXIT.ok);
+    expect(line(on.io.stdout)).toEqual(['New folder in Files: on (a device needs the launch scope: jantar devices grant <device> launch)']);
+    // Right after "Files: on".
+    expect(on.io.stdout.split('\n').slice(0, 2)).toEqual(['Files: on', line(on.io.stdout)[0]]);
+
+    const noLaunch = contextFor(home, { ctl: daemon({ files: { enabled: true }, launch: { enabled: false } }).ctl });
+    expect(await files.run(['status'], noLaunch.ctx)).toBe(EXIT.ok);
+    expect(line(noLaunch.io.stdout)).toEqual(['New folder in Files: off (it needs launching on: jantar launch on)']);
+
+    const filesOff = contextFor(home, { ctl: daemon({ files: { enabled: false }, launch: { enabled: true } }).ctl });
+    expect(await files.run(['status'], filesOff.ctx)).toBe(EXIT.ok);
+    expect(filesOff.io.stdout).toContain('Files: off');
+    expect(line(filesOff.io.stdout)).toEqual([]);
+  });
+
   it('writes config.json when the daemon is not running', async () => {
     const { ctx, io } = contextFor(home);
     expect(await files.run(['on'], ctx)).toBe(EXIT.ok);

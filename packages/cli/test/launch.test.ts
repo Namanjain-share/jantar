@@ -88,7 +88,14 @@ describe('jantar launch', () => {
     expect(io.stdout).toContain('Mode: cs-shell (types: cd -- <folder> && cs <account> -- <flags> ...)');
     expect(io.stdout).toContain("Pre-launch: /usr/bin/python3 -I /x/adopt.py adopt '{n}' (cswap-run mode only)");
     expect(io.stdout).toContain('permissions skip all checks · Chrome on · effort ultracode · model default');
-    expect(io.stdout).toContain('Limits: 4 starts per 10 min, 30 per day, 2 starting at once');
+    expect(io.stdout).toContain('Limits: 4 starts per 10 min, 30 per day, 2 starting at once, 10 new folders an hour');
+  });
+
+  it('status shows the new-folder limit as set (0.10.1: Files and the start sheet share it)', async () => {
+    const s = fakeSettings({ launch: { ...V03_MAC.launch, rate: { foldersPerHour: 3 } } });
+    const { ctx, io } = contextFor(home, { ctl: fakeCtl(s.routes) });
+    expect(await launch.run(['status'], ctx)).toBe(EXIT.ok);
+    expect(io.stdout).toMatch(/^Limits: .*, 3 new folders an hour$/m);
   });
 
   it('defaults takes picks from the fixed lists only, keeps the rest, and resets', async () => {

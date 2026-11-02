@@ -57,7 +57,8 @@ async function status(ctx: CliContext): Promise<number> {
   ctx.io.out(`Mode: ${modeLine(l)}\n`);
   ctx.io.out(`Pre-launch: ${l.preLaunchArgv ? `${shellQuote(l.preLaunchArgv)}${l.mode !== 'cswap-run' ? ' (cswap-run mode only)' : ''}` : 'none'}\n`);
   ctx.io.out(`Default flags (a device's first start; later it begins from its own last picks):\n${defaultsLines(l.defaultFlags)}`);
-  ctx.io.out(`Limits: ${l.rate.perTenMin} starts per 10 min, ${l.rate.perDay} per day, ${l.rate.inFlight} starting at once\n`);
+  // 0.10.1: the new-folder limit is shared by the start sheet's browser and Files' New folder.
+  ctx.io.out(`Limits: ${l.rate.perTenMin} starts per 10 min, ${l.rate.perDay} per day, ${l.rate.inFlight} starting at once, ${l.rate.foldersPerHour} new folders an hour\n`);
   return EXIT.ok;
 }
 
