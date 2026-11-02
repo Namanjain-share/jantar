@@ -436,10 +436,11 @@ const READS: Readonly<Record<string, ReadFn>> = {
     if (typeof r === 'string') return r;
     const q = typeof i.q === 'string' ? i.q.toLowerCase() : '';
     const posts = r.posts.filter((p) => !q || (p.title ?? '').toLowerCase().includes(q) || (p.where ?? '').toLowerCase().includes(q));
-    const out = [`This week (${r.week.from} to ${r.week.to}): ${r.week.posted} posted.`];
+    // A post's title can be someone else's words (a thread planned for a comment): framed as data, like Intel's titles.
+    const out = [`This week (${r.week.from} to ${r.week.to}): ${r.week.posted} posted.`, dataNote("posts' titles (some are other people's thread titles)")];
     for (const g of r.week.goals) out.push(`- Goal ${POST_PLATFORM_LABEL[g.platform]}${g.kind ? ` ${POST_KIND_LABEL[g.kind][1].toLowerCase()}` : ''}: ${g.done} of ${g.perWeek}`);
     for (const p of posts.slice(0, LIST_MAX)) {
-      out.push(`- ${POST_KIND_LABEL[p.kind][0]} on ${POST_PLATFORM_LABEL[p.platform]}${p.where ? ` ${nm(p.where, 40)}` : ''}${p.title ? ` "${nm(p.title, 80)}"` : ''} ${p.status}${p.due ? ` due ${p.due.day}${p.due.time ? ` ${p.due.time}` : ''}` : ''} ${idOf(p.id)}`);
+      out.push(`- ${POST_KIND_LABEL[p.kind][0]} on ${POST_PLATFORM_LABEL[p.platform]}${p.where ? ` ${nm(p.where, 40)}` : ''} ${p.status}${p.due ? ` due ${p.due.day}${p.due.time ? ` ${p.due.time}` : ''}` : ''} ${idOf(p.id)}${p.title ? `: ${data('post', p.id, nm(p.title, 80))}` : ''}`);
     }
     return out.join('\n');
   },
