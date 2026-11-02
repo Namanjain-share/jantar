@@ -39,13 +39,8 @@ import type { MeetingSite } from '../shared/sites.js';
 import { ARM_TIMING, WIRE_LIMITS } from '../shared/wire.js';
 import { ALWAYS, ARM, CALL_CHECK, JOIN_FIRST, NOT_RUNNING, NO_MEETING_TAB, READS, SHOT, TRY_AGAIN } from '../background/sentences.js';
 import { postOrigins } from '../shared/post-sites.js';
+import { noCaptions } from '../shared/captions.js';
 
-/** The sites' own way to turn captions on (the adapters' `howTo`, spec 3.4). */
-export const HOW_TO: Readonly<Record<MeetingSite, string>> = {
-  meet: "No captions on screen. Turn them on with the CC button, or press c. If they are on, Jantar can't read them on this page; screenshots still work.",
-  teams:
-    "No captions on screen. Turn them on: More (…) › Language and speech › Live captions, or Cmd+Shift+A. If they are on, Jantar can't read them on this page; screenshots still work.",
-};
 export const NOT_FOUND = "Can't read captions on this page. Screenshots still work.";
 /** Until the worker's `state` answers (its info read waits up to 5 s for a Jantar that hangs). */
 export const LOADING = 'Connecting to Jantar…';
@@ -146,7 +141,8 @@ function captionsWords(tab: Tab): string {
     case 'reading':
       return 'Reading captions';
     case 'none':
-      return HOW_TO[tab.site];
+      // v0.10: the page's own bubble, with the way to turn captions on in this client (shared/captions.ts).
+      return noCaptions(tab.site === 'meet' ? 'meet' : 'teams');
     case 'notFound':
       return NOT_FOUND;
     default:

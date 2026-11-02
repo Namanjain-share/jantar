@@ -25,6 +25,7 @@ import { MEETING_HOSTS, siteOf } from '../../src/shared/sites.js';
 import { TIMING } from '../../src/shared/wire.js';
 import { buildMeet, meetUrl } from '../fixtures/meet.js';
 import { buildTeams } from '../fixtures/teams.js';
+import { noCaptions } from '../../src/shared/captions.js';
 import { MEETING_MARKER, cameraHost, captureShadows, goTo, pageWorld, settle, trustedClick, watchConsole, type PageWorld } from './chrome.js';
 
 const FRAME = 16;
@@ -54,7 +55,7 @@ afterEach(() => {
   expect(console_.said()).toEqual([]);
 });
 
-function start(opts: { paired?: boolean; notes?: boolean; site?: 'meet' | 'teams' } = {}) {
+function start(opts: { paired?: boolean; notes?: boolean; site?: 'meet' | 'teams'; cc?: boolean } = {}) {
   world = pageWorld(opts);
   content = startContent({ adapter: opts.site === 'teams' ? teamsAdapter : meetAdapter, nonce: () => nonces.shift()! });
   return content!;
@@ -143,7 +144,7 @@ describe('MP6: nothing is read before Start', () => {
       ['pagenon1-1', 'Sam'],
       ['pagenon1-2', 'Priya'],
     ]);
-    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'reading' }]);
+    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'reading', client: 'meet' }]);
   });
 
   it('a CallAnswer with notes on resumes notes after a reload, with a new nonce', async () => {
@@ -184,6 +185,47 @@ describe('MP6: nothing is read before Start', () => {
     expect(content!.call.phase()).not.toBe('out');
     expect(content!.capture.on).toBe(false);
     expect(world.worker.of('captions')).toEqual([]);
+  });
+});
+
+describe('v0.10: captions on when notes start', () => {
+  it('`capture {on: true, cc: true}` switches them on and tells the worker how (`cc`); the captions state names the client', async () => {
+    const meet = buildMeet(document, { captions: false });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    expect(await world.toPage({ t: 'capture', on: true, cc: true })).toEqual({ ok: true });
+    await settle(1_000);
+    expect(meet.ccLog).toEqual(['button']);
+    expect(world.worker.of('cc')).toEqual([{ t: 'cc', result: 'turned-on', hook: 'meet:cc-button' }]);
+    meet.say('Sam', 'Notes from here');
+    await settle(TIMING.callPollMs + TIMING.linesEveryMs);
+    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'reading', client: 'meet' }]);
+  });
+
+  it('without `cc` (the switch off) nothing is clicked, and the minute without a line says so, naming the way', async () => {
+    goTo('/light-meetings/launch?anon=true&p=made-up');
+    const teams = buildTeams(document, { layout: 'guest', light: true, hangupId: true, captions: false });
+    start({ site: 'teams' });
+    await settle(3 * TIMING.callPollMs);
+    await world.toPage({ t: 'capture', on: true });
+    await settle(TIMING.noCaptionsMs);
+    expect(teams.ccLog).toEqual([]);
+    expect(world.worker.of('cc')).toEqual([]);
+    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'none', client: 'light' }]);
+    expect(tip()?.textContent).toBe(noCaptions('light'));
+  });
+
+  it('a reload that resumes notes switches them on too when the answer says `cc`; never before the call', async () => {
+    const meet = buildMeet(document, { state: 'lobby', captions: false });
+    start({ notes: true, cc: true });
+    await settle(5 * TIMING.callPollMs);
+    expect(meet.ccLog).toEqual([]);
+    meet.admit();
+    meet.captionsOff();
+    await settle(3 * TIMING.callPollMs);
+    expect(content!.capture.on).toBe(true);
+    expect(meet.ccLog).toEqual(['button']);
+    expect(meet.captionsShown()).toBe(true);
   });
 });
 

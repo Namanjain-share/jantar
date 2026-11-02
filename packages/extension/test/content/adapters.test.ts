@@ -13,7 +13,7 @@ import { TEAMS_LOBBY, teamsAdapter } from '../../src/content/adapters/teams.js';
 import { pageAt } from '../../src/content/adapters/dom.js';
 import { h } from '../fixtures/dom.js';
 import { buildMeet, meetUrl } from '../fixtures/meet.js';
-import { buildTeams } from '../fixtures/teams.js';
+import { buildTeams, type TeamsCc } from '../fixtures/teams.js';
 import { goTo } from './chrome.js';
 
 const said = (blocks: { speaker: string | null; text: string }[]) => blocks.map((b) => [b.speaker, b.text]);
@@ -142,8 +142,8 @@ describe('Meet', () => {
     });
   });
 
-  it('has its nudge and spot', () => {
-    expect(meetAdapter.howTo).toMatch(/^No captions on screen\. Turn them on with the CC button, or press c\./);
+  it('has its spot, and names Meet as the way to turn captions on', () => {
+    expect(meetAdapter.cc.client(document)).toBe('meet');
     expect(meetAdapter.spot).toEqual({ left: '12px', top: '50%' });
   });
 });
@@ -235,8 +235,14 @@ describe('Teams', () => {
     expect(said(teamsAdapter.blocks(region))).toEqual([['Alex', 'Older Teams']]);
   });
 
-  it('has its nudge and spot', () => {
-    expect(teamsAdapter.howTo).toContain('Language and speech › Live captions, or Cmd+Shift+A');
+  it('has its spot, and names signed-in Teams or a light-meetings guest as the way to turn captions on', () => {
+    goTo('/v2/');
+    expect(teamsAdapter.cc.client(document)).toBe('teams');
+    goTo('/light-meetings/launch?anon=true&p=made-up');
+    expect(teamsAdapter.cc.client(document)).toBe('light');
+    goTo('/v2/');
+    buildTeams(document, { layout: 'v2', anon: true });
+    expect(teamsAdapter.cc.client(document)).toBe('light');
     expect(teamsAdapter.spot).toEqual({ left: '76px', top: '50%' });
   });
 });
@@ -391,5 +397,226 @@ describe('v0.10: the screens around the call', () => {
     for (const spy of spies) expect(spy).not.toHaveBeenCalled();
     expect(JSON.stringify(outputs)).not.toContain(MEETING_MARKER);
     expect(JSON.stringify(outputs)).not.toMatch(/Sam|Priya|said/i);
+  });
+});
+
+describe('v0.10: light meetings (the guest client) and the call\'s captions control', () => {
+  const tries = (attempt = 1) => ({ wait: async () => undefined, attempt });
+
+  it('Teams light meetings: the guest tree (no Fluent UI item) reads each entry with its author; #hangup-button is in the call', () => {
+    goTo('/light-meetings/launch?anon=true&p=made-up');
+    const teams = buildTeams(document, { layout: 'guest', light: true, hangupId: true });
+    expect(teamsAdapter.inCallHook(document)).toBe('teams:hangup-button');
+    teams.say('Sam', 'Can everyone hear me?');
+    teams.say(null, 'Yes, loud and clear.');
+    teams.say('Priya', 'Then let us start.');
+    const region = teamsAdapter.region(document)!;
+    expect(region.getAttribute('data-tid')).toBe('closed-caption-renderer-wrapper');
+    expect(region.querySelector('.fui-ChatMessageCompact')).toBeNull();
+    expect(said(teamsAdapter.blocks(region))).toEqual([
+      ['Sam', 'Can everyone hear me?'],
+      [null, 'Yes, loud and clear.'],
+      ['Priya', 'Then let us start.'],
+    ]);
+  });
+
+  it('Teams: the virtual list alone is a region too (the last exact candidate); authors beside their texts pair by order', () => {
+    const list = h(
+      document,
+      'div',
+      { 'data-tid': 'closed-caption-v2-virtual-list-content' },
+      h(
+        document,
+        'div',
+        {},
+        h(document, 'span', { 'data-tid': 'author' }, 'Sam'),
+        h(document, 'span', { 'data-tid': 'closed-caption-text' }, 'First words.'),
+        h(document, 'span', { 'data-tid': 'closed-caption-text' }, 'More from Sam.'),
+        h(document, 'span', { 'data-tid': 'author' }, 'Priya'),
+        h(document, 'span', { 'data-tid': 'closed-caption-text' }, 'My turn.'),
+      ),
+    );
+    document.body.append(list);
+    expect(teamsAdapter.region(document)).toBe(list);
+    expect(teamsAdapter.inCallHook(document)).toBe('teams:caption-region');
+    expect(said(teamsAdapter.blocks(list))).toEqual([
+      ['Sam', 'First words.'],
+      [null, 'More from Sam.'],
+      ['Priya', 'My turn.'],
+    ]);
+  });
+
+  it('Meet, the old toggle: on and off from aria-pressed; a try clicks it only when off, and the last try presses c', async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document, { captions: false });
+    expect(meetAdapter.cc.state(document)).toEqual({ state: 'off', hook: 'meet:captions-button' });
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'meet:cc-button' });
+    expect(meet.captionsShown()).toBe(true);
+    meet.say('Sam', 'Now on');
+    expect(meetAdapter.cc.state(document)).toEqual({ state: 'on', hook: 'meet:caption-region' });
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'on', hook: 'meet:captions-button' });
+    expect(meet.ccLog).toEqual(['button']);
+    meet.captionsOff();
+    expect(await meetAdapter.cc.turnOn(document, tries(3))).toEqual({ result: 'clicked', hook: 'meet:key-c' });
+    expect(meet.ccLog).toEqual(['button', 'key-c']);
+    expect(meet.captionsShown()).toBe(true);
+  });
+
+  it("Meet, the old toggle: with neither aria-pressed, a known icon nor an English label, it is unknown and never touched", async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document, { captions: false });
+    const b = document.querySelector('button[jsname="RrG0hf"]')!;
+    b.removeAttribute('aria-pressed');
+    b.setAttribute('aria-label', 'Untertitel');
+    b.querySelector('i')!.textContent = 'closed_caption';
+    expect(meetAdapter.cc.state(document)).toEqual({ state: 'unknown', hook: 'meet:captions-button' });
+    expect(await meetAdapter.cc.turnOn(document, tries(3))).toEqual({ result: 'none', hook: 'meet:captions-button' });
+    expect(meet.ccLog).toEqual([]);
+    // The icon alone says off; the English label alone too.
+    b.querySelector('i')!.textContent = 'closed_caption_off';
+    expect(meetAdapter.cc.state(document).state).toBe('off');
+    b.querySelector('i')!.textContent = 'closed_caption';
+    b.setAttribute('aria-label', 'Turn on captions');
+    expect(meetAdapter.cc.state(document).state).toBe('off');
+    b.setAttribute('aria-label', 'Turn off captions');
+    expect(meetAdapter.cc.state(document).state).toBe('on');
+  });
+
+  it('Meet, "Captions and translation": a try opens the pop-up, turns the toggle on and closes the pop-up', async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document, { cc: 'popup', captions: false });
+    expect(meetAdapter.cc.state(document)).toEqual({ state: 'off', hook: 'meet:captions-icon' });
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'meet:cc-popup' });
+    expect(meet.ccLog).toEqual(['popup-open', 'toggle', 'popup-close']);
+    expect(meet.captionsShown()).toBe(true);
+    expect(meet.popupOpen()).toBe(false);
+    expect(meetAdapter.cc.state(document)).toEqual({ state: 'on', hook: 'meet:captions-icon' });
+    // On: nothing is opened or clicked.
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'on', hook: 'meet:captions-icon' });
+    expect(meet.ccLog).toHaveLength(3);
+  });
+
+  it('Meet: a pop-up he opened himself is left alone; a pop-up with no toggle falls back to c (the control said off)', async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document, { cc: 'popup', captions: false });
+    const button = document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement;
+    button.click();
+    meet.ccLog.length = 0;
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'busy', hook: 'meet:captions-icon' });
+    expect(meet.ccLog).toEqual([]);
+    button.click();
+    meet.ccLog.length = 0;
+    // A redesign that draws no toggle in the pop-up.
+    document.querySelector('[role="dialog"]')?.remove();
+    const lone = h(document, 'button', { 'aria-haspopup': 'dialog', 'aria-pressed': 'false', 'aria-label': 'Captions and translation' }, h(document, 'i', { class: 'google-symbols' }, 'translate_cc'));
+    button.replaceWith(lone);
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'meet:key-c' });
+    expect(meet.ccLog).toEqual(['key-c']);
+    expect(meet.captionsShown()).toBe(true);
+  });
+
+  it('Meet: no captions control at all is none, and an empty caption container is not "on"', async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document, { captions: false, emptyContainer: true });
+    expect(meetAdapter.region(document)?.getAttribute('jscontroller')).toBe('D1tHje');
+    expect(meetAdapter.cc.state(document).state).toBe('off');
+    meet.hooksOff();
+    expect(meetAdapter.cc.state(document)).toEqual({ state: 'unknown', hook: 'meet:no-cc' });
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'none', hook: 'meet:no-cc' });
+    expect(meet.ccLog).toEqual([]);
+  });
+
+  it('Teams, pinned in the toolbar: its data-tid says on or off; a try clicks it only when off', async () => {
+    goTo('/v2/');
+    const teams = buildTeams(document, { layout: '2026-bottom', captions: false });
+    expect(teamsAdapter.cc.state(document)).toEqual({ state: 'off', hook: 'teams:cc-toggle' });
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'teams:cc-pinned' });
+    expect(teams.captionsShown()).toBe(true);
+    expect(teamsAdapter.cc.state(document)).toEqual({ state: 'on', hook: 'teams:caption-region' });
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'on', hook: 'teams:cc-pinned' });
+    expect(teams.ccLog).toEqual(['pinned']);
+  });
+
+  const cases: [string, { cc: TeamsCc; light?: true }, string[], string][] = [
+    ['More › Captions, signed in (the item says off)', { cc: 'more' }, ['more-open', 'item'], 'teams:cc-more-item'],
+    ['More › Captions, a light-meetings guest (the item says nothing)', { cc: 'more', light: true }, ['more-open', 'item'], 'teams:cc-more-item'],
+    ['More › Language and speech › Show live captions', { cc: 'lang-speech' }, ['more-open', 'language-and-speech', 'item'], 'teams:cc-lang-speech'],
+  ];
+  for (const [name, o, log, hook] of cases) {
+    it(`Teams, ${name}: a try opens More, clicks the item, and the menu is closed after`, async () => {
+      goTo(o.light ? '/light-meetings/launch?anon=true&p=made-up' : '/v2/');
+      const teams = buildTeams(document, { layout: o.light ? 'guest' : 'v2', captions: false, lateRegion: true, ...o });
+      expect(teamsAdapter.cc.state(document).state).toBe('unknown');
+      expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook });
+      expect(teams.ccLog).toEqual(log);
+      expect(teams.captionsShown()).toBe(true);
+      expect(teams.menuOpen()).toBe(false);
+      expect(document.querySelector('[role="menu"]')).toBeNull();
+    });
+  }
+
+  it('Teams: an item that says on is never clicked; More is closed again', async () => {
+    goTo('/v2/');
+    const teams = buildTeams(document, { layout: 'v2', cc: 'more', lateRegion: true });
+    // Captions on, but nobody has spoken: nothing on the page says so until More is opened.
+    expect(teamsAdapter.cc.state(document).state).toBe('unknown');
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'on', hook: 'teams:cc-more-item' });
+    expect(teams.ccLog).toEqual(['more-open', 'more-close']);
+    expect(teams.captionsShown()).toBe(true);
+    expect(teams.menuOpen()).toBe(false);
+  });
+
+  it("Teams: More with no captions item (the organizer's policy) is none, and More is closed; More he opened himself is left alone; no More is none", async () => {
+    goTo('/v2/');
+    const teams = buildTeams(document, { layout: 'v2', cc: 'disabled', captions: false });
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'unavailable', hook: 'teams:no-cc-item' });
+    expect(teams.ccLog).toEqual(['more-open', 'more-close']);
+    expect(teams.menuOpen()).toBe(false);
+    (document.querySelector('#callingButtons-showMoreBtn') as HTMLButtonElement).click();
+    teams.ccLog.length = 0;
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'busy', hook: 'teams:more-open' });
+    expect(teams.ccLog).toEqual([]);
+    expect(teams.menuOpen()).toBe(true);
+    document.body.replaceChildren();
+    buildTeams(document, { layout: 'v2', cc: 'absent', captions: false });
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'none', hook: 'teams:no-more' });
+  });
+
+  it('Teams: Escape closes a menu that More did not close; an English item matches only exactly', async () => {
+    goTo('/v2/');
+    buildTeams(document, { layout: 'v2', cc: 'absent', captions: false });
+    // A More whose menu has only an item named in English, and which never says it is open.
+    const more = h(document, 'button', { 'aria-label': 'More actions' }, '…');
+    const items = [h(document, 'div', { role: 'menuitem' }, 'Captions settings'), h(document, 'div', { role: 'menuitem' }, '  Live   captions ')];
+    let clicked = '';
+    for (const item of items) item.addEventListener('click', () => (clicked = item.textContent ?? ''));
+    const menu = h(document, 'div', { role: 'menu' }, ...items);
+    let escaped = false;
+    menu.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') {
+        escaped = true;
+        menu.remove();
+      }
+    });
+    more.addEventListener('click', () => document.body.append(menu));
+    document.body.append(more);
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'teams:cc-text' });
+    expect(clicked).toBe('  Live   captions ');
+    expect(escaped).toBe(true);
+    expect(menu.isConnected).toBe(false);
+  });
+
+  it('MP6: the captions control never reads caption text into what it says', async () => {
+    goTo('/v2/');
+    const teams = buildTeams(document, { layout: 'v2', cc: 'more' });
+    teams.say('Sam', `Said ${MEETING_MARKER}`);
+    const outs = [teamsAdapter.cc.state(document), await teamsAdapter.cc.turnOn(document, tries())];
+    document.body.replaceChildren();
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document);
+    meet.say('Priya', `Said ${MEETING_MARKER}`);
+    outs.push(meetAdapter.cc.state(document), await meetAdapter.cc.turnOn(document, tries()));
+    expect(JSON.stringify(outs)).not.toContain(MEETING_MARKER);
+    expect(JSON.stringify(outs)).not.toMatch(/Sam|Priya/);
   });
 });

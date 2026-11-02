@@ -19,12 +19,11 @@ import { join } from 'node:path';
 import { MEETING_MARKER } from '@jantar/fixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALWAYS, ARM, BAD_CODE, CALL_CHECK, MISMATCH, NOT_RUNNING, PAIR_AGAIN, READS, TRY_AGAIN } from '../../src/background/sentences.js';
-import { meetAdapter } from '../../src/content/adapters/meet.js';
-import { teamsAdapter } from '../../src/content/adapters/teams.js';
 import { NOT_FOUND as PAGE_NOT_FOUND } from '../../src/content/capture.js';
+import { noCaptions } from '../../src/shared/captions.js';
 import type { ArmView, FromPopup, LastShot, PopupState } from '../../src/shared/messages.js';
 import { ARM_TIMING } from '../../src/shared/wire.js';
-import { HOW_TO, LOADING, NOT_FOUND, RECENT_SHOT_MS, SHORTCUTS_URL, TELL_PEOPLE, clockOf, inTheCall, mountPopup, tabFromSearch, type Popup } from '../../src/popup/app.js';
+import { LOADING, NOT_FOUND, RECENT_SHOT_MS, SHORTCUTS_URL, TELL_PEOPLE, clockOf, inTheCall, mountPopup, tabFromSearch, type Popup } from '../../src/popup/app.js';
 import { CAPTURE_PERMISSION_ERROR, createChromeFake, type ChromeFake, type ChromeModel } from '../helpers/chrome-fake.js';
 
 const PROJECT_A = '01JFZ8X8Y3T0V5G9WQK2M4N6PR';
@@ -306,10 +305,10 @@ describe('notes on', () => {
     noBadMarks();
   });
 
-  it("the captions state: the site's way to turn them on, can't read them, or nothing yet", async () => {
+  it("the captions state: no captions yet and the site's way to turn them on, can't read them, or nothing yet", async () => {
     for (const [tab, line] of [
-      [meetTab({ notes: true, captions: 'none' }), HOW_TO.meet],
-      [meetTab({ site: 'teams', notes: true, captions: 'none' }), HOW_TO.teams],
+      [meetTab({ notes: true, captions: 'none' }), noCaptions('meet')],
+      [meetTab({ site: 'teams', notes: true, captions: 'none' }), noCaptions('teams')],
       [meetTab({ notes: true, captions: 'notFound' }), NOT_FOUND],
     ] as const) {
       answers.state = state({ tab });
@@ -321,9 +320,7 @@ describe('notes on', () => {
     expect([...root.querySelectorAll('.view p')].map((p) => p.textContent)).toEqual(['Keeping notes · Weekly sync', '1 screenshot']);
   });
 
-  it("the captions sentences are the page's own (the adapters' howTo, capture.ts's not found)", () => {
-    expect(HOW_TO.meet).toBe(meetAdapter.howTo);
-    expect(HOW_TO.teams).toBe(teamsAdapter.howTo);
+  it("the captions sentences are the page's own (shared/captions.ts, capture.ts's not found)", () => {
     expect(NOT_FOUND).toBe(PAGE_NOT_FOUND);
   });
 

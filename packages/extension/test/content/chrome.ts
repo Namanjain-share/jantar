@@ -47,9 +47,10 @@ export interface PageWorld {
   done(): void;
 }
 
-const PAGE_TYPES = new Set(['call', 'lines', 'captions', 'shot']);
+const PAGE_TYPES = new Set(['call', 'lines', 'captions', 'cc', 'shot']);
 
-export function pageWorld(opts: { paired?: boolean; notes?: boolean } = {}): PageWorld {
+/** `cc`: the worker's Settings switch (captions on when notes start): its call answers with notes on say so. */
+export function pageWorld(opts: { paired?: boolean; notes?: boolean; cc?: boolean } = {}): PageWorld {
   const { chrome, model } = createChromeFake();
   const got: FromPage[] = [];
   // As the worker does: notes on or off for the tab before it tells the page so.
@@ -57,7 +58,7 @@ export function pageWorld(opts: { paired?: boolean; notes?: boolean } = {}): Pag
   const worker: FakeWorker = {
     got,
     of: <T extends FromPage['t']>(t: T) => got.filter((m): m is Of<T> => m.t === t),
-    call: () => ({ button: opts.paired ?? true, notes }),
+    call: () => ({ button: opts.paired ?? true, notes, ...(notes && opts.cc ? { cc: true as const } : {}) }),
     lines: () => ({ ok: true }),
     shot: () => ({ ok: true, text: 'Saved' }),
   };

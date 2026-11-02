@@ -16,10 +16,23 @@
  * this same URL and shows neither it nor the call), else the join link
  * alone. Off a join link (Teams v2's one /v2/ address, Chat, Calendar)
  * nothing but a real hook names a stage.
+ *
+ * v0.10, light meetings (the anonymous guest client at /light-meetings/,
+ * top frame, same hosts) and captions on when notes start (research
+ * captions-research.md 3 and 4; selector facts as of 2026-11-02, read from
+ * Live Captions Saver, Meeting Transcripts, Vexa, vibeconf, openclaw and
+ * Recall's sample bot, no code taken). Its caption tree is the v2 one
+ * without Fluent UI's item class: wrapper › window wrapper › virtual list ›
+ * one div per entry holding its author and its text. Captions are switched
+ * on through #closed-captions-button: pinned in the toolbar, an item in More
+ * (a guest's, and Teams 2026's), or behind Language and speech (classic).
+ * Its data-tid ends -on or -off where it says so; a guest's item says
+ * nothing, and is clicked only when nothing on the page said captions are
+ * on. More is opened only by Jantar's own try and closed again.
  */
 import { WIRE_LIMITS } from '../../shared/wire.js';
-import { collapse, first, firstAll, inButton, pageAt, textOf } from './dom.js';
-import type { Block, HookId, SiteAdapter } from './types.js';
+import { CC_STEP_MS, click, collapse, first, firstAll, inButton, labelOf, pageAt, poll, press, shown, textOf } from './dom.js';
+import type { Block, CaptionsControl, CcStep, CcTry, HookId, SiteAdapter } from './types.js';
 
 /** Hang-up controls, each with its hook id: in a call only (the last one is an anonymous guest's). The lobby has #prejoin-join-button instead. */
 const HANGUP: readonly (readonly [string, HookId])[] = [
@@ -45,6 +58,8 @@ const REGION = [
   '[data-tid="closed-caption-renderer-wrapper"]',
   '[data-tid="closed-caption-v2-window-wrapper"]',
   '[data-tid="closed-captions-renderer"]',
+  // v0.10: the virtual list itself (light meetings' tree holds it too).
+  '[data-tid="closed-caption-v2-virtual-list-content"]',
 ];
 /** A loose match also finds the toolbar's Captions control: taken only when it holds caption text. */
 const LOOSE_REGION = ['[data-tid*="closed-caption"]'];
@@ -54,6 +69,31 @@ const AUTHOR = ['[data-tid="author"]', '[data-tid="closed-caption-author"]'];
 const ITEM = ['.fui-ChatMessageCompact'];
 /** The list of utterances (the v2 virtual list, the 2026 list): an utterance is its child. */
 const LIST = ['[data-tid="closed-caption-v2-virtual-list-content"]', '[role="list"]'];
+
+/** v0.10: the captions control, its data-tid ending -on or -off where it says (pinned, or an item in More or Language and speech). */
+const CC_TOGGLE = ['[id="closed-captions-button"][data-tid^="closed-captions-button-"]', '#closed-captions-button'];
+/** v0.10: captions on, said without opening anything. */
+const CC_ON = [
+  '[data-tid="closed-captions-button-on"]',
+  '#closed-captions-button[aria-checked="true"]',
+  '#closed-captions-button[aria-pressed="true"]',
+  'button[data-tid="closed-captions-turn-off-button"]',
+  '#captions-panel-dismiss-button',
+];
+/** v0.10: More (…) in the call's toolbar; its English labels last. */
+const MORE = [
+  '#callingButtons-showMoreBtn',
+  'button[data-tid="more-button"]',
+  '[data-tid="callingButtons-showMoreBtn"]',
+  ...['More', 'More actions', 'More options'].map((l) => `button[aria-label="${l}"]`),
+];
+const MENU = ['[role="menu"]'];
+const MENU_ITEM = ['[role="menuitem"]', '[role="menuitemcheckbox"]', '[role="menuitemradio"]'];
+const LANG_SPEECH = ['#LanguageSpeechMenuControl-id'];
+/** v0.10: a captions item's English words, exactly (lower-cased): off (or a toggle saying nothing), and on. */
+const CC_ITEM_EN = new Set(['captions', 'live captions', 'show live captions', 'turn on live captions']);
+const CC_ITEM_ON_EN = new Set(['hide live captions', 'turn off live captions', 'turn off captions']);
+const CC_ITEM_OFF_EN = new Set(['show live captions', 'turn on live captions']);
 
 /** Title parts that name a Teams view, not a meeting. */
 const VIEWS = new Set(['microsoft teams', 'calendar', 'chat', 'activity']);
@@ -112,7 +152,18 @@ export const teamsAdapter: SiteAdapter = {
     return out;
   },
 
-  howTo: "No captions on screen. Turn them on: More (…) › Language and speech › Live captions, or Cmd+Shift+A. If they are on, Jantar can't read them on this page; screenshots still work.",
+  cc: {
+    state(doc) {
+      if (findRegion(doc) !== null) return { state: 'on', hook: 'teams:caption-region' };
+      if (first(doc, CC_ON) !== null) return { state: 'on', hook: 'teams:cc-on' };
+      const toggle = first(doc, CC_TOGGLE);
+      const says = toggle ? ccSays(toggle) : 'unknown';
+      return { state: says, hook: says === 'unknown' ? 'teams:no-cc' : 'teams:cc-toggle' };
+    },
+    turnOn: ccTurnOn,
+    // A guest: light meetings, or an anonymous hang-up.
+    client: (doc) => (doc.location?.pathname.toLowerCase().startsWith('/light-meetings/') || doc.querySelector('button[data-tid="anon-hangup-button"]') ? 'light' : 'teams'),
+  } satisfies CaptionsControl,
   // Right of the 68-px app bar.
   spot: Object.freeze({ left: '76px', top: '50%' }),
 };
@@ -128,6 +179,71 @@ function inCallHook(doc: Document): HookId | null {
 
 function lobbyOnly(doc: Document): boolean {
   return TEAMS_LOBBY.length > 0 && first(doc, TEAMS_LOBBY) !== null;
+}
+
+/** v0.10: what a captions control says: its data-tid, aria-checked or aria-pressed, else its English words; never caption text. */
+function ccSays(el: Element): 'on' | 'off' | 'unknown' {
+  const tid = el.getAttribute('data-tid') ?? '';
+  if (tid.endsWith('-on') || tid.endsWith('-off')) return tid.endsWith('-on') ? 'on' : 'off';
+  for (const attr of ['aria-checked', 'aria-pressed']) {
+    const v = el.getAttribute(attr);
+    if (v === 'true' || v === 'false') return v === 'true' ? 'on' : 'off';
+  }
+  const words = labelOf(el);
+  return CC_ITEM_ON_EN.has(words) ? 'on' : CC_ITEM_OFF_EN.has(words) ? 'off' : 'unknown';
+}
+
+/** v0.10: the captions item in a menu (or anywhere in one): its id, else its English words on a shown item. */
+function ccItem(root: ParentNode, hook: HookId): { el: Element; hook: HookId } | null {
+  const inMenu = (el: Element) => el.closest('[role="menu"]') !== null;
+  const byId = first(root, CC_TOGGLE, inMenu);
+  if (byId) return { el: byId, hook };
+  const words = first(root, MENU_ITEM, (el) => inMenu(el) && shown(el) && (CC_ITEM_EN.has(labelOf(el)) || CC_ITEM_ON_EN.has(labelOf(el))));
+  return words ? { el: words, hook: 'teams:cc-text' } : null;
+}
+
+/** v0.10: one try (see the header). */
+async function ccTurnOn(doc: Document, t: CcTry): Promise<CcStep> {
+  // Pinned in the toolbar: click it only when it says off.
+  const pinned = first(doc, CC_TOGGLE, (el) => el.closest('[role="menu"]') === null);
+  const pinnedSays = pinned ? ccSays(pinned) : 'unknown';
+  if (pinned && pinnedSays !== 'unknown') {
+    if (pinnedSays === 'off') click(pinned);
+    return { result: pinnedSays === 'on' ? 'on' : 'clicked', hook: 'teams:cc-pinned' };
+  }
+  const more = first(doc, MORE);
+  if (!more) return { result: 'none', hook: 'teams:no-more' };
+  // More is open: he is in it.
+  if (more.getAttribute('aria-expanded') === 'true') return { result: 'busy', hook: 'teams:more-open' };
+  const before = new Set(doc.querySelectorAll('[role="menu"]'));
+  click(more);
+  const menu = await poll(t.wait, () => first(doc, MENU, (m) => !before.has(m) && shown(m)));
+  // A menu with neither captions nor Language and speech: the organizer turned captions off.
+  let step: CcStep = menu ? { result: 'unavailable', hook: 'teams:no-cc-item' } : { result: 'none', hook: 'teams:no-menu' };
+  if (menu) {
+    let item = ccItem(menu, 'teams:cc-more-item');
+    if (!item) {
+      // Classic: More › Language and speech › Show live captions.
+      const lang = first(menu, LANG_SPEECH) ?? first(menu, MENU_ITEM, (el) => shown(el) && labelOf(el).includes('language') && labelOf(el).includes('speech'));
+      if (lang) {
+        step = { result: 'none', hook: 'teams:no-lang-item' };
+        click(lang);
+        item = await poll(t.wait, () => ccItem(doc, 'teams:cc-lang-speech'));
+      }
+    }
+    if (item) {
+      const says = ccSays(item.el);
+      // Off, or a guest's item that says nothing while nothing on the page said on: the one blind click (never twice).
+      if (says !== 'on') click(item.el);
+      step = { result: says === 'on' ? 'on' : 'clicked', hook: item.hook };
+    }
+  }
+  // Teams closes the menu on an item's click; else close it as he would.
+  await t.wait(CC_STEP_MS);
+  if (more.getAttribute('aria-expanded') === 'true') click(more);
+  const left = first(doc, MENU, (m) => !before.has(m));
+  if (left) press(left, 'Escape', 'Escape');
+  return step;
 }
 
 function joinLink(loc: Location): boolean {
@@ -167,6 +283,12 @@ function utterance(text: Element, region: Element, held: Map<Element, number>): 
     el = a;
     const author = first(a, AUTHOR, notHere);
     if (author) return { el: a, author };
+  }
+  // v0.10: authors and texts side by side in one container (paired by order): the nearest author before it, up to the previous text.
+  if (el === text) {
+    for (let p = text.previousElementSibling; p && !TEXT.some((sel) => p!.matches(sel)); p = p.previousElementSibling) {
+      if (AUTHOR.some((sel) => p!.matches(sel))) return { el, author: p };
+    }
   }
   return { el, author: null };
 }

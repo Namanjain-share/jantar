@@ -14,12 +14,22 @@
  * wait in this page's memory until the worker says the daemon took them:
  * there is no offline queue anywhere else. It keeps reading while the call
  * watch is leaving.
+ *
+ * v0.10: a start with `cc` (the worker's Settings switch, on by default)
+ * also switches the call's captions on (captions.ts), stopped with notes.
+ * The caption watch: no caption line in the first TIMING.noCaptionsMs of
+ * notes is `none`, with the bubble naming this client's way to turn captions
+ * on; still none TIMING.captionsRecheckMs later, the bubble once more. That
+ * is all: once lines came, a silence says nothing (nobody may be talking),
+ * only the captions gone for TIMING.noCaptionsMs does. A line clears it.
  */
 import type { LineUpsert } from '@jantar/protocol';
-import type { CaptionsState, FromPage, LinesAnswer } from '../shared/messages.js';
+import { noCaptions } from '../shared/captions.js';
+import type { CaptionsState, CcResult, FromPage, LinesAnswer } from '../shared/messages.js';
 import { TIMING, WIRE_LIMITS } from '../shared/wire.js';
 import { showsText } from './adapters/dom.js';
-import type { Block, SiteAdapter } from './adapters/types.js';
+import type { Block, HookId, SiteAdapter } from './adapters/types.js';
+import { switchCaptionsOn, type CaptionsSwitch } from './captions.js';
 import { createTracker, type Tracker } from './tracker.js';
 
 export type LinesMessage = Extract<FromPage, { t: 'lines' }>;
@@ -31,6 +41,8 @@ export const NOT_ANSWERING_MS = 10_000;
 export const NOT_ANSWERING = 'Jantar is not answering. Notes wait in this tab until it is back.';
 export const UNREACHABLE = 'Notes stopped: Jantar has been unreachable too long.';
 export const NOT_FOUND = "Can't read captions on this page. Screenshots still work.";
+/** v0.10: the no-captions bubble stays this long (it was easy to miss at 8 s). */
+export const NO_CAPTIONS_BUBBLE_MS = 20_000;
 
 export interface CaptureOptions {
   adapter: SiteAdapter;
@@ -39,8 +51,10 @@ export interface CaptureOptions {
   send(msg: LinesMessage): Promise<LinesAnswer | undefined>;
   /** The captions state changed (the page tells the worker). */
   captions(state: CaptionsState): void;
-  /** Show one bubble. */
-  bubble(text: string): void;
+  /** v0.10: how switching the captions on went (a start with `cc`). */
+  cc?(result: CcResult, hook: HookId): void;
+  /** Show one bubble (for `ms`, else the button's own time). */
+  bubble(text: string, ms?: number): void;
   /** Notes stopped here (the worker's `retry: false`, or too much waiting). */
   onStop?(): void;
   /** A fresh nonce per start (tests pass their own). */
@@ -49,7 +63,8 @@ export interface CaptureOptions {
 
 export interface Capture {
   readonly on: boolean;
-  start(): void;
+  /** v0.10: `cc`: also switch the call's captions on. */
+  start(opts?: { cc?: boolean }): void;
   /**
    * Stop reading. `final` (End, a leave): the open lines are closed and what
    * waits goes in one last `lines` message first. Otherwise what waits is
@@ -80,29 +95,48 @@ export function createCapture(o: CaptureOptions): Capture {
   let toldDown = false;
   let state: CaptionsState | null = null;
   let blocksSeen = 0;
-  let noRegionSince: number | null = null;
   let unreadSince: number | null = null;
   /** When the first change not read yet came. */
   let changedAt: number | null = null;
+  /** v0.10: when notes started here; whether a line was ever read since; the no-captions bubbles shown (two at most); since when the captions went after lines came. */
+  let startedAt = 0;
+  let everRead = false;
+  let nudges = 0;
+  let goneSince: number | null = null;
+  let ccSwitch: CaptionsSwitch | null = null;
 
   const setState = (next: CaptionsState) => {
     if (next === state) return;
     state = next;
     o.captions(next);
-    if (next === 'none') o.bubble(o.adapter.howTo);
+    if (next === 'none') o.bubble(noCaptions(o.adapter.cc.client(o.doc)), NO_CAPTIONS_BUBBLE_MS);
     else if (next === 'notFound') o.bubble(NOT_FOUND);
   };
 
   const judge = () => {
     const now = Date.now();
-    if (!region) {
-      noRegionSince ??= now;
-      if (now - noRegionSince >= TIMING.noCaptionsMs) setState('none');
+    if (region && blocksSeen > 0) {
+      everRead = true;
+      goneSince = null;
+      setState('reading');
       return;
     }
-    noRegionSince = null;
-    if (blocksSeen > 0) setState('reading');
-    else if (unreadSince !== null && now - unreadSince >= TIMING.notFoundMs) setState('notFound');
+    if (region && unreadSince !== null && now - unreadSince >= TIMING.notFoundMs) {
+      setState('notFound');
+      return;
+    }
+    if (!everRead) {
+      // The first minute of notes, then one recheck: nothing tells whether anyone is speaking, so no more than that.
+      if (nudges < 2 && now - startedAt >= TIMING.noCaptionsMs + nudges * TIMING.captionsRecheckMs) {
+        nudges += 1;
+        if (state === 'none') o.bubble(noCaptions(o.adapter.cc.client(o.doc)), NO_CAPTIONS_BUBBLE_MS);
+        else setState('none');
+      }
+      return;
+    }
+    // Lines came, and then the captions went (turned off, or lost on a reconnect).
+    if (region) goneSince = null;
+    else if (now - (goneSince ??= now) >= TIMING.noCaptionsMs) setState('none');
   };
 
   const keep = (ups: readonly LineUpsert[]) => {
@@ -238,6 +272,8 @@ export function createCapture(o: CaptureOptions): Capture {
   const halt = () => {
     on = false;
     run += 1;
+    ccSwitch?.stop();
+    ccSwitch = null;
     clearTimeout(poll);
     clearTimeout(debounce);
     clearTimeout(sendTimer);
@@ -257,7 +293,7 @@ export function createCapture(o: CaptureOptions): Capture {
     get on() {
       return on;
     },
-    start() {
+    start(opts = {}) {
       if (on) return;
       on = true;
       run += 1;
@@ -267,11 +303,15 @@ export function createCapture(o: CaptureOptions): Capture {
       region = null;
       state = null;
       blocksSeen = 0;
-      noRegionSince = Date.now();
+      startedAt = Date.now();
+      everRead = false;
+      nudges = 0;
+      goneSince = null;
       unreadSince = null;
       changedAt = null;
       failingSince = null;
       toldDown = false;
+      if (opts.cc) ccSwitch = switchCaptionsOn({ cc: o.adapter.cc, doc: o.doc, report: (result, hook) => o.cc?.(result, hook) });
       loop();
     },
     async stop(opts = {}) {

@@ -22,6 +22,11 @@
  * bubble shows at the button's spot even where no button is (a join screen).
  * On pagehide the call watch sends one last `call` (`hide`).
  *
+ * v0.10: `cc` on `capture {on: true}` (or on the answer that resumes notes
+ * after a reload) also switches the call's captions on (captions.ts); how
+ * it went goes to the worker as `cc`, and the captions state names whose
+ * way to turn them on the popup should show (`client`).
+ *
  * The page answers only the worker's messages (`capture`, `button`, `hide`,
  * `show`) and only from this extension; its own `FromPage` messages, which a
  * test's chrome reaches it with, and unknown `t` are ignored. After the
@@ -71,8 +76,9 @@ export function startContent(opts: ContentOptions = {}): Content | null {
   const askedAt = new WeakMap<CallAnswer, number>();
   /** No call answer has come since the page loaded. */
   let first = true;
-  /** The first answer had notes on: they resume once the call is on. */
+  /** The first answer had notes on: they resume once the call is on (`resumeCc`: switching captions on too). */
   let resume = false;
+  let resumeCc = false;
 
   const rt = createPageRuntime(() => {
     // The extension was reloaded: this page's chrome is gone for good.
@@ -98,24 +104,25 @@ export function startContent(opts: ContentOptions = {}): Content | null {
     adapter,
     doc,
     send: async (msg) => linesAnswer(await rt.send(msg)),
-    captions: (state) => void rt.send({ t: 'captions', state }),
-    bubble: (text) => button.bubble(text),
+    captions: (state) => void rt.send({ t: 'captions', state, client: adapter.cc.client(doc) }),
+    cc: (result, hook) => void rt.send({ t: 'cc', result, hook }),
+    bubble: (text, ms) => button.bubble(text, ms),
     onStop: () => button.setNotes(false),
     nonce: opts.nonce,
   });
 
   const sync = () => button.setShown(paired && !rt.dead && call.phase() !== 'out');
 
-  const notesOn = () => {
+  const notesOn = (cc: boolean) => {
     if (rt.dead) return;
     resume = false;
-    if (!capture.on) capture.start();
+    if (!capture.on) capture.start({ cc });
     button.setNotes(true);
   };
 
   // v0.10: on the stage (the in-call hooks held two polls), so a control that flashes up in the waiting room resumes nothing.
   const resumeInCall = () => {
-    if (resume && call.stage() === 'in') notesOn();
+    if (resume && call.stage() === 'in') notesOn(resumeCc);
   };
 
   const call = createCallWatch({
@@ -138,7 +145,10 @@ export function startContent(opts: ContentOptions = {}): Content | null {
             button.setNotes(false);
             void capture.stop();
           }
-        } else if (first) resume = true;
+        } else if (first) {
+          resume = true;
+          resumeCc = answer.cc === true;
+        }
       }
       first = false;
       resumeInCall();
@@ -168,7 +178,7 @@ export function startContent(opts: ContentOptions = {}): Content | null {
         heard += 1;
         resume = false;
         if (m.on) {
-          notesOn();
+          notesOn(m.cc === true);
           if (m.text && !rt.dead) button.bubble(m.text);
           respond({ ok: true });
           return undefined;
@@ -236,7 +246,7 @@ function toPage(msg: unknown): ToPage | null {
   const m = msg as Record<string, unknown>;
   switch (m.t) {
     case 'capture':
-      return { t: 'capture', on: m.on === true, text: typeof m.text === 'string' && m.text ? m.text : undefined };
+      return { t: 'capture', on: m.on === true, text: typeof m.text === 'string' && m.text ? m.text : undefined, ...(m.cc === true ? { cc: true as const } : {}) };
     case 'button':
       return { t: 'button', on: m.on === true };
     case 'hide':
@@ -251,7 +261,7 @@ function toPage(msg: unknown): ToPage | null {
 function callAnswer(a: unknown): CallAnswer | undefined {
   if (!a || typeof a !== 'object') return undefined;
   const m = a as Record<string, unknown>;
-  return { button: m.button === true, notes: m.notes === true };
+  return { button: m.button === true, notes: m.notes === true, ...(m.cc === true ? { cc: true as const } : {}) };
 }
 
 function linesAnswer(a: unknown): LinesAnswer | undefined {

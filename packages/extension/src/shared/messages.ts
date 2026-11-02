@@ -9,8 +9,26 @@
 import type { LineUpsert } from '@jantar/protocol';
 import type { MeetingSite } from './sites.js';
 
-/** What the page knows about the captions on screen. */
+/**
+ * What the page knows about the captions on screen. v0.10: `none` is no
+ * caption line in the first minute of notes (and still none at the one
+ * recheck), or the captions gone for a minute after lines came.
+ */
 export type CaptionsState = 'reading' | 'none' | 'notFound';
+
+/**
+ * v0.10: whose way to turn captions on the page names: Meet, Teams signed in,
+ * or Teams light meetings (a guest).
+ */
+export type CaptionsClient = 'meet' | 'teams' | 'light';
+
+/**
+ * v0.10: how switching the call's captions on went, when notes started:
+ * they were on already, Jantar turned them on (and saw them on), Jantar
+ * clicked but nothing on the page says on yet (Teams shows captions once
+ * someone speaks), or it found no way to.
+ */
+export type CcResult = 'was-on' | 'turned-on' | 'clicked' | 'failed';
 
 /**
  * v0.10: what the page shows, as the page's call watch judges it from fixed
@@ -31,12 +49,18 @@ export type FromPage =
   | { t: 'call'; site: MeetingSite; inCall: boolean; left?: true; callKey: string | null; title: string; stage?: CallStage; hook?: string }
   /** At most 200, the newest revision per lineId. Answered with LinesAnswer. */
   | { t: 'lines'; lines: LineUpsert[] }
-  | { t: 'captions'; state: CaptionsState }
+  /** v0.10: `client`, whose way to turn captions on the popup names. */
+  | { t: 'captions'; state: CaptionsState; client?: CaptionsClient }
+  /** v0.10: how switching the captions on went when notes started, and the fixed hook id that decided it. */
+  | { t: 'cc'; result: CcResult; hook: string }
   /** The page button, a trusted click. Answered with ShotAnswer. */
   | { t: 'shot' };
 
-/** button: the extension is paired (mount the camera button); notes: this tab's meeting reads captions. */
-export type CallAnswer = { button: boolean; notes: boolean };
+/**
+ * button: the extension is paired (mount the camera button); notes: this tab's meeting reads captions.
+ * v0.10: `cc` with notes on: switch the call's captions on when notes resume (Settings' switch is on).
+ */
+export type CallAnswer = { button: boolean; notes: boolean; cc?: true };
 /** retry: Jantar did not answer (keep the lines, try again); else notes stop, with `text` in the bubble. */
 export type LinesAnswer = { ok: true } | { ok: false; retry: boolean; text?: string };
 /** The flash: "Saved", or "Not saved: …". */
@@ -48,9 +72,10 @@ export type ShotAnswer = { ok: boolean; text: string };
 export type ToPage =
   /**
    * Start or stop reading captions, and the notes-on dot; `text`: a bubble saying why they stopped.
-   * v0.10: `text` with `on: true` is the bubble shown once notes started by themselves.
+   * v0.10: `text` with `on: true` is the bubble shown once notes started by themselves; `cc`: switch the
+   * call's captions on if they are off (Settings › Turn on captions when notes start).
    */
-  | { t: 'capture'; on: boolean; text?: string }
+  | { t: 'capture'; on: boolean; text?: string; cc?: true }
   /** After pairing, unpairing or a 401. */
   | { t: 'button'; on: boolean }
   /** Hide the camera button; answered { ok: true } after two animation frames. */

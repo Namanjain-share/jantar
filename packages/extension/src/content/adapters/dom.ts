@@ -61,3 +61,38 @@ export function showsText(root: Element): boolean {
 export function pageAt(loc: Location | null | undefined): string | null {
   return loc ? `${loc.pathname}${loc.search}${loc.hash}` : null;
 }
+
+/** v0.10: how long a try waits between its steps, and for a menu or pop-up to open. */
+export const CC_STEP_MS = 300;
+export const CC_OPEN_MS = 2_000;
+
+/** v0.10: not inside a hidden or aria-hidden subtree (jsdom has no layout, so no more than this is asked). */
+export function shown(el: Element): boolean {
+  return el.closest('[hidden], [aria-hidden="true"]') === null;
+}
+
+/** v0.10: a control's own label, lower-cased: its aria-label, else its text. */
+export function labelOf(el: Element): string {
+  return collapse(el.getAttribute('aria-label') ?? el.textContent).toLowerCase();
+}
+
+/** v0.10: a click as a page script makes one (HTMLElement.click()). */
+export function click(el: Element): void {
+  (el as HTMLElement).click();
+}
+
+/** v0.10: one keydown, bubbling from `target` (the site's own key handlers take untrusted ones). */
+export function press(target: EventTarget, key: string, code: string): void {
+  const view = (target as Node).ownerDocument?.defaultView ?? (target as Document).defaultView;
+  const Ctor = view?.KeyboardEvent ?? KeyboardEvent;
+  target.dispatchEvent(new Ctor('keydown', { key, code, bubbles: true, cancelable: true }));
+}
+
+/** v0.10: what `find` finds, asked again every CC_STEP_MS for up to `ms`; null when it never does. */
+export async function poll<T>(wait: (ms: number) => Promise<void>, find: () => T | null, ms = CC_OPEN_MS): Promise<T | null> {
+  for (let waited = 0; ; waited += CC_STEP_MS) {
+    const got = find();
+    if (got !== null || waited >= ms) return got;
+    await wait(CC_STEP_MS);
+  }
+}

@@ -48,7 +48,8 @@ describe('wire', () => {
       linesEveryMs: 1_500,
       linesRetryMs: 2_000,
       debounceMs: 250,
-      noCaptionsMs: 10_000,
+      noCaptionsMs: 60_000,
+      captionsRecheckMs: 180_000,
       notFoundMs: 60_000,
       shotGapMs: 550,
     });
