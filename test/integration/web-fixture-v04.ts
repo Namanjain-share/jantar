@@ -15,7 +15,8 @@
  * - Todos: five projects (two linked to Board folders, so Board rows carry
  *   their chip), reminders, a daily and a weekly repeat.
  * - Food: five entries, saved foods, 20 weights over 30 days, a goal.
- * - Cafés: six places, best first, two still to try.
+ * - Cafés: six places, best first, two still to try; v0.10: their stars,
+ *   prices, tags, sub-ratings and visits, and one café's screen (placeGet).
  * - Finance: this month in GBP, budgets (Food just over), four bills.
  * - Intel: 40 items over the ten types, from a bot's file and the captures.
  * - Resume: four past conversations in ~/Desktop/work/jantar, the newest
@@ -41,6 +42,10 @@ import {
   ROUTES,
   TodaySchema,
   launchFlagArgs,
+  normalizePlaceTags,
+  placeScore,
+  placeTagKey,
+  placeTagLabel,
   type Account,
   type Alert,
   type Bill,
@@ -59,6 +64,7 @@ import {
   type MoneyMonth,
   type PastSession,
   type Place,
+  type PlaceVisit,
   type ProjectView,
   type RouteDef,
   type SavedFood,
@@ -115,6 +121,8 @@ export interface V04Fixture {
   meds: MedsDay;
   food: FoodDay;
   places: Place[];
+  /** v0.10: each café's visits, newest first, by its id. */
+  visits: Record<string, PlaceVisit[]>;
   money: MoneyMonth;
   /** Newest first. */
   intel: IntelItem[];
@@ -142,9 +150,9 @@ export interface WebFixtureV04Options {
 
 const notFound = (message: string): V04Reply => ({ status: 404, body: { error: { code: 'not_found', message } } });
 
-/** The v0.4 routes as matchers: method, a path pattern with named groups, and the route. */
+/** The v0.4 routes (and v0.10's café routes) as matchers: method, a path pattern with named groups, and the route. */
 const V04_ROUTES = (Object.entries(ROUTES) as Array<[string, RouteDef]>)
-  .filter(([, r]) => r.phase === 'v0.4')
+  .filter(([, r]) => r.phase === 'v0.4' || (r.phase === 'v0.10' && r.feature === 'places'))
   .map(([name, r]) => ({ name, method: r.method, re: new RegExp(`^${r.path.replace(/:([A-Za-z]+)/g, '(?<$1>[^/]+)')}$`) }));
 
 function routeOf(method: string, path: string): { name: string; params: Record<string, string> } | null {
@@ -387,29 +395,70 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
     area,
     tried,
     dishes,
-    best: dishes.length ? Math.max(...dishes.map((x) => x.rating ?? 0)) : null,
+    best: dishes.some((x) => x.rating) ? Math.max(...dishes.map((x) => x.rating ?? 0)) : null,
     tags: [],
     visits: { count: 0, last: null, avgSpend: null },
     createdAt: iso(60 * 24 * (n - 680)),
     updatedAt: iso(60 * 24 * (n - 690 + 3)),
     ...over,
   });
+  /** v0.10: `n` visits to café `p`, `every` days apart from `from` days ago, the newest first (spends in pence). */
+  const visitsTo = (p: number, n: number, from: number, every: number, spends: number[], extra: Array<Partial<PlaceVisit>> = []): PlaceVisit[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: lid(p * 10 + i),
+      placeId: lid(p),
+      day: day(-(from + i * every)),
+      ...(spends[i % spends.length] ? { spend: spends[i % spends.length] as number } : {}),
+      createdAt: iso(60 * 24 * (from + i * every)),
+      updatedAt: iso(60 * 24 * (from + i * every)),
+      ...extra[i],
+    }));
+  const visits: Record<string, PlaceVisit[]> = {
+    [lid(701)]: visitsTo(701, 4, 3, 9, [1200, 1450], [{ stars: 5, had: ['Ghee roast dosa', 'Filter coffee'] }]),
+    [lid(702)]: visitsTo(702, 3, 1, 7, [1450, 980, 1610], [{ stars: 4, had: ['Cardamom bun', 'Flat white'], notes: 'Quiet before 11, sockets by the window.' }, { stars: 5 }]),
+    [lid(703)]: visitsTo(703, 2, 12, 20, [2600, 3100]),
+    [lid(704)]: visitsTo(704, 1, 25, 1, [1150]),
+  };
+  const summary = (pid: number): Place['visits'] => {
+    const v = visits[lid(pid)] ?? [];
+    const spent = v.filter((x) => x.spend !== undefined).map((x) => x.spend as number);
+    return { count: v.length, last: v[0]?.day ?? null, avgSpend: spent.length ? Math.round(spent.reduce((a, b) => a + b, 0) / spent.length) : null };
+  };
   const places: Place[] = [
     place(701, 'Sample Dosa House', 'Market Street', true, [
-      { name: 'Ghee roast dosa', rating: 5 },
-      { name: 'Filter coffee', rating: 5 },
+      { name: 'Ghee roast dosa', rating: 5, price: 650, again: true },
+      { name: 'Filter coffee', rating: 5, price: 250, again: true },
       { name: 'Rava idli', rating: 3 },
-    ], { link: 'https://maps.example.com/?q=sample-dosa-house', notes: 'Go before noon on weekends.' }),
+    ], {
+      link: 'https://maps.example.com/?q=sample-dosa-house',
+      notes: 'Go before noon on weekends.',
+      stars: 5,
+      price: 1,
+      again: 'yes',
+      ratings: { food: 5, drinks: 5, value: 5, service: 4, work: 3 },
+      tags: ['wifi', 'veg', 'breakfast', 'groups'],
+      visits: summary(701),
+    }),
     place(702, 'Example Café', 'Old Town', true, [
-      { name: 'Cardamom bun', rating: 5 },
-      { name: 'Flat white', rating: 4 },
-    ], { link: 'https://maps.example.com/?q=example-cafe' }),
+      { name: 'Cardamom bun', rating: 5, price: 380, again: true, notes: 'Warm before ten.' },
+      { name: 'Flat white', rating: 4, price: 340 },
+      { name: 'Sourdough toast' },
+    ], {
+      link: 'https://maps.example.com/?q=example-cafe',
+      stars: 4,
+      price: 2,
+      again: 'yes',
+      ratings: { food: 4, drinks: 5, ambience: 4, service: 4, value: 3, work: 5 },
+      tags: ['wifi', 'sockets', 'quiet', 'laptops', 'specialty-coffee'],
+      notes: 'The window seats have sockets.',
+      visits: summary(702),
+    }),
     place(703, 'Placeholder Pizza', 'Riverside', true, [
-      { name: 'Margherita', rating: 4 },
+      { name: 'Margherita', rating: 4, price: 1100 },
       { name: 'Garlic knots', rating: 3 },
-    ]),
-    place(704, 'Demo Noodle Bar', 'Station Road', true, [{ name: 'Dan dan noodles', rating: 4 }]),
-    place(705, 'Fixture Bakery', 'Hill Lane', false, [], { notes: 'Sourdough on Saturdays.' }),
+    ], { stars: 3, price: 3, again: 'maybe', tags: ['groups', 'late', 'outdoor'], visits: summary(703) }),
+    place(704, 'Demo Noodle Bar', 'Station Road', true, [{ name: 'Dan dan noodles', rating: 4, price: 950 }], { price: 2, again: 'no', tags: ['takeaway'], visits: summary(704) }),
+    place(705, 'Fixture Bakery', 'Hill Lane', false, [{ name: 'Cinnamon roll' }], { notes: 'Sourdough on Saturdays.', price: 1, tags: ['breakfast', 'desserts'] }),
     place(706, 'Mock Ramen', 'Canal Side', false, []),
   ];
 
@@ -670,6 +719,32 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
     });
   };
 
+  /** v0.10: the list as the daemon filters it (the fixture's order is already best first; other sorts keep it). */
+  const placesList = (q: URLSearchParams) => {
+    const f = q.get('filter');
+    const segment = places.filter((p) => (f === 'tried' ? p.tried : f === 'want' ? !p.tried : true));
+    const want = normalizePlaceTags((q.get('tags') ?? '').split(',').map(placeTagKey));
+    const price = Number(q.get('price') ?? 0);
+    const stars = Number(q.get('stars') ?? 0);
+    const area = q.get('area')?.toLowerCase();
+    const text = q.get('q')?.toLowerCase();
+    const shown = segment.filter(
+      (p) =>
+        want.every((t) => p.tags.includes(t)) &&
+        (!price || (p.price !== undefined && p.price <= price)) &&
+        (!stars || (placeScore(p) ?? 0) >= stars) &&
+        (q.get('again') !== '1' || p.again === 'yes') &&
+        (!area || p.area?.toLowerCase() === area) &&
+        (!text || [p.name, p.area ?? '', ...p.dishes.map((d) => d.name), ...p.tags, ...p.tags.map(placeTagLabel), p.notes ?? ''].join('\n').toLowerCase().includes(text)),
+    );
+    const count = <K extends string>(keys: K[]) => [...keys.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map<K, number>())].sort((a, b) => b[1] - a[1]);
+    return {
+      places: shown,
+      tags: count(segment.flatMap((p) => p.tags)).map(([tag, n]) => ({ tag, n })),
+      areas: count(segment.flatMap((p) => (p.area ? [p.area] : []))).map(([area, n]) => ({ area, n })),
+    };
+  };
+
   // ----- What each v0.4 route answers -----
   const answer = (method: string, url: URL): V04Reply | null => {
     const r = routeOf(method, url.pathname);
@@ -693,9 +768,11 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
         return ok({ day: medsDay(qDay && qDay <= today ? qDay : today), medicines });
       case 'foodDay':
         return ok(foodDay(qDay && qDay <= today ? qDay : today));
-      case 'placesList': {
-        const f = q.get('filter');
-        return ok({ places: places.filter((p) => (f === 'tried' ? p.tried : f === 'want' ? !p.tried : true)), tags: [], areas: [] });
+      case 'placesList':
+        return ok(placesList(q));
+      case 'placeGet': {
+        const p = places.find((x) => x.id === r.params.id);
+        return p ? ok({ place: p, visits: visits[p.id] ?? [], more: false }) : notFound('That café is gone.');
       }
       case 'moneyMonth':
         return ok(moneyMonth(q.get('month') ?? month));
@@ -739,6 +816,7 @@ export function webFixtureV04(opts: WebFixtureV04Options = {}): WebFixtureV04 {
       meds,
       food,
       places,
+      visits,
       money,
       intel,
       past,

@@ -14,7 +14,7 @@
  * - nothing in it points at a real home, address or account.
  */
 import { describe, expect, it } from 'vitest';
-import { ROUTES, StateSchema, buildPath, type RouteDef } from '@jantar/protocol';
+import { PlaceSchema, ROUTES, StateSchema, buildPath, type RouteDef } from '@jantar/protocol';
 import { V04_NOW, V04_TZ, RESUME_FOLDER, lid, webFixtureV04, webFixtureV04Single } from './web-fixture-v04.js';
 
 const BASE = 'http://127.0.0.1:1';
@@ -62,6 +62,25 @@ describe('webFixtureV04', () => {
     expect(done.todos.every((t) => t.doneAt)).toBe(true);
     expect(get('/v1/intel/items/intel%3Anone')!.status).toBe(404);
     expect((get(`/v1/launch/history?root=${RESUME_FOLDER.root}&path=elsewhere`)!.body as { sessions: unknown[] }).sessions).toEqual([]);
+  });
+
+  it('v0.10: the café routes answer with bodies their schemas accept; the list filters as the daemon does', () => {
+    for (const [name, r] of (Object.entries(ROUTES) as Array<[string, RouteDef]>).filter(([, x]) => x.phase === 'v0.10' && x.feature === 'places')) {
+      const reply = f.v04.answer(r.method, new URL(buildPath(r, { id: lid(702), visitId: lid(7020) }), BASE));
+      expect(reply?.status, name).toBe(200);
+      const parsed = r.response?.safeParse(reply!.body);
+      expect(parsed?.success, `${name}: ${parsed?.success ? '' : JSON.stringify(parsed?.error.issues.slice(0, 3))}`).toBe(true);
+    }
+    const detail = get(`/v1/places/${lid(702)}`)!.body as { place: { name: string; visits: { count: number } }; visits: Array<{ day: string }> };
+    expect(detail.place.name).toBe('Example Café');
+    expect(detail.visits).toHaveLength(detail.place.visits.count);
+    expect(detail.visits.map((v) => v.day)).toEqual([...detail.visits.map((v) => v.day)].sort().reverse());
+    expect(get(`/v1/places/${lid(799)}`)!.status).toBe(404);
+    const work = get('/v1/places?tags=wifi,sockets&price=2')!.body as { places: Array<{ name: string }>; tags: Array<{ tag: string; n: number }> };
+    expect(work.places.map((p) => p.name)).toEqual(['Example Café']);
+    expect(work.tags.find((t) => t.tag === 'wifi')?.n).toBe(2);
+    expect((get('/v1/places?q=dosa')!.body as { places: Array<{ name: string }> }).places.map((p) => p.name)).toEqual(['Sample Dosa House']);
+    for (const p of f.v04.places) expect(PlaceSchema.safeParse(p).success, p.name).toBe(true);
   });
 
   it('leaves every other path to the server', () => {
