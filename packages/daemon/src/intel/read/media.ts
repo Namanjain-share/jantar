@@ -14,7 +14,8 @@
  * dialog), and without /usr/bin/sandbox-exec the helper never runs.
  *
  * Run: `/usr/bin/sandbox-exec -f <profile> -D JOB=<real job dir> -D
- * HOME=<real home> -D HELPER=<real helper> <helper> <sub> …`, env exactly
+ * HOME=<real home> -D HELPER=<real helper> -D HELPER_DIR=<its folder>
+ * <helper> <sub> …`, env exactly
  * PATH, HOME (the job dir) and TMPDIR (<job>/tmp/), each with a timeout and
  * a 256 KB output cap, one JSON line out, checked with zod. The helper is
  * only ever given regular files inside the job dir (real path checked here
@@ -263,7 +264,7 @@ export class MediaHelper {
     await ensureDir(join(job, 'tmp'));
     return {
       file: sandbox,
-      args: ['-f', profile, '-D', `JOB=${job}`, '-D', `HOME=${home}`, '-D', `HELPER=${helper}`, helper, sub, ...args],
+      args: ['-f', profile, '-D', `JOB=${job}`, '-D', `HOME=${home}`, '-D', `HELPER=${helper}`, '-D', `HELPER_DIR=${dirname(helper)}`, helper, sub, ...args],
       env: { PATH: SAFE_PATH, HOME: job, TMPDIR: `${job}/tmp/` },
     };
   }

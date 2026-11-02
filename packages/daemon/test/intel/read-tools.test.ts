@@ -300,6 +300,8 @@ describe('G9: the media helper', () => {
       `HOME=${realpathSync(e.home)}`,
       '-D',
       `HELPER=${realpathSync(e.helper.helperPath)}`,
+      '-D',
+      `HELPER_DIR=${realpathSync(join(e.ctx.paths.intelDir, 'bin'))}`,
       realpathSync(e.helper.helperPath),
       'probe',
       realpathSync(video),
@@ -351,6 +353,7 @@ describe('G9: the media helper', () => {
     expect(rules.match(/\(allow [^)]*file-read[^\n]*/g)).toEqual([
       '(allow file-read* (literal (param "HELPER")) (subpath (param "JOB")))',
       '(allow file-read-metadata (path-ancestors (param "JOB")))',
+      '(allow file-read* (literal (param "HELPER_DIR")))',
     ]);
     for (const f of [...walk(join(SRC, 'intel')), ...walk(join(ASSETS, 'intel'))]) {
       const text = readFileSync(f, 'utf8').toLowerCase();

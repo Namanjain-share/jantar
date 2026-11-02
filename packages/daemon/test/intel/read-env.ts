@@ -98,7 +98,9 @@ export function fakeHelper(clt: string, o: { duration?: number; ocr?: (i: number
     }),
     onCommand('sw_vers', { stdout: '25G76\n' }),
     onCommand('sandbox-exec', (c) => {
-      const at = c.args.findIndex((a, i) => i > 0 && c.args[i - 1]?.startsWith('HELPER=') === true);
+      // The helper's own path comes after the -D params; the subcommand right after it.
+      const helper = c.args.find((a) => a.startsWith('HELPER='))?.slice('HELPER='.length);
+      const at = helper ? c.args.indexOf(helper) : -1;
       const sub = c.args[at + 1] as string;
       const args = c.args.slice(at + 2);
       switch (sub) {

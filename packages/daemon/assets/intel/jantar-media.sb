@@ -1,6 +1,6 @@
 ;; jantar-media's sandbox (spec 5.1). The daemon runs every helper step as
 ;;   /usr/bin/sandbox-exec -f jantar-media.sb -D JOB=<real job dir> -D HOME=<real home>
-;;     -D HELPER=<real helper path> <helper> <sub> ...
+;;     -D HELPER=<real helper path> -D HELPER_DIR=<its folder> <helper> <sub> ...
 ;; with env PATH=/usr/bin:/bin, HOME=<job dir>, TMPDIR=<job dir>/tmp/.
 ;;
 ;; A hostile mp4, image or PDF that exploits AVFoundation, ImageIO or PDFKit
@@ -26,6 +26,11 @@
 ;; contents or a listing, of the job dir's own ancestors, and nothing else
 ;; under HOME (a file beside them stays unreadable, even by stat).
 (allow file-read-metadata (path-ancestors (param "JOB")))
+;; The helper's own folder (the entry itself: its listing and metadata, never
+;; another file in it): the process reads it at start (its main bundle), and
+;; without it ImageIO's JPEG writer crashed the `image` step (SIGSEGV),
+;; checked under this profile with the real build.
+(allow file-read* (literal (param "HELPER_DIR")))
 (deny file-write*)
 (allow file-write* (subpath (param "JOB")) (literal "/dev/null"))
 (deny mach-lookup (global-name "com.apple.pasteboard.1")
