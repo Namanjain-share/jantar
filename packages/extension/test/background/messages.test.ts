@@ -211,12 +211,18 @@ describe('v0.10: captions on when notes start', () => {
       expect(acceptPage({ t: 'captions', state: 'none', client, extra: 1 }, sender)?.msg, client).toEqual({ t: 'captions', state: 'none', client });
     }
     expect(acceptPage({ t: 'captions', state: 'reading' }, sender)?.msg).toEqual({ t: 'captions', state: 'reading' });
-    for (const result of ['was-on', 'turned-on', 'clicked', 'failed']) {
+    expect(acceptPage({ t: 'captions', state: 'waiting', client: 'meet' }, sender)?.msg).toEqual({ t: 'captions', state: 'waiting', client: 'meet' });
+    for (const why of ['off', 'clicked', 'unsure', 'unavailable']) {
+      expect(acceptPage({ t: 'captions', state: 'none', client: 'light', why }, sender)?.msg, why).toEqual({ t: 'captions', state: 'none', client: 'light', why });
+    }
+    for (const result of ['was-on', 'turned-on', 'clicked', 'failed', 'unsure', 'unavailable', 'kept']) {
       expect(acceptPage({ t: 'cc', result, hook: 'teams:cc-more-item', extra: 1 }, sender)?.msg, result).toEqual({ t: 'cc', result, hook: 'teams:cc-more-item' });
     }
     for (const bad of [
       { t: 'captions', state: 'none', client: 'zoom' },
       { t: 'captions', state: 'none', client: 3 },
+      { t: 'captions', state: 'none', client: 'meet', why: 'loud' },
+      { t: 'captions', state: 'none', client: 'meet', why: 1 },
       { t: 'cc', result: 'on', hook: 'meet:cc-button' },
       { t: 'cc', result: 'turned-on' },
       { t: 'cc', result: 'turned-on', hook: 'Sam said something' },

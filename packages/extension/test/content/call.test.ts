@@ -71,6 +71,29 @@ describe('MX5: the call watch', () => {
     expect(w.sent.slice(2)).toEqual([{ t: 'call', site: 'meet', inCall: true, callKey: 'abc-defg-hij', title: 'Weekly sync', stage: 'in', hook: 'meet:captions-button' }]);
   });
 
+  it('v0.10: inSince is when the page came into the call (its first poll in it, before the stage holds), through a toolbar flicker; null once out', async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document, { state: 'waiting' });
+    watching(meetAdapter);
+    await settle(3 * TIMING.callPollMs);
+    expect(watch!.inSince()).toBeNull();
+    meet.join();
+    await settle(TIMING.callPollMs);
+    const came = Date.now();
+    expect(watch!.phase()).toBe('in');
+    expect(watch!.stage()).not.toBe('in');
+    expect(watch!.inSince()).toBe(came);
+    meet.hooksOff();
+    await settle(5 * TIMING.callPollMs);
+    meet.hooksOn();
+    await settle(5 * TIMING.callPollMs);
+    expect(watch!.inSince()).toBe(came);
+    meet.leave();
+    await settle(TIMING.leaveGraceMs + 2 * TIMING.callPollMs);
+    expect(watch!.phase()).toBe('out');
+    expect(watch!.inSince()).toBeNull();
+  });
+
   it(`${CALL_SCRIPTS[0]!.name}: no leave, the same call`, async () => {
     goTo(meetUrl('abc-defg-hij'));
     const script = CALL_SCRIPTS[0]!;

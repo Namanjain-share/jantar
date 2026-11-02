@@ -37,28 +37,40 @@ export interface CcState {
 
 /**
  * v0.10: one try to switch captions on: they were on (`on`), a control was
- * clicked or a key pressed (`clicked`), there was nothing to click (`none`:
- * maybe not drawn yet), the site's menu opened and holds no captions
- * (`unavailable`: the organizer's policy; no more tries), or a menu of the
- * site's was already open (`busy`: the user is in it).
+ * clicked or a key pressed (`clicked`; `blind`: an item that says nothing),
+ * there was nothing to click (`none`: maybe not drawn yet), the site's menu
+ * opened and holds no captions (`unavailable`: the organizer's policy; a
+ * second one ends the tries), a menu of the site's was already open
+ * (`busy`: the user is in it), or the captions item says nothing and a
+ * blind click is not allowed (`unsure`: they may be on).
  */
 export interface CcStep {
-  result: 'on' | 'clicked' | 'none' | 'unavailable' | 'busy';
+  result: 'on' | 'clicked' | 'none' | 'unavailable' | 'busy' | 'unsure';
   hook: HookId;
+  blind?: true;
 }
 
-/** v0.10: what a try may use: a wait on the page's own clock, and which try this is (1 first). */
+/**
+ * v0.10: what a try may use: a wait on the page's own clock, which try this
+ * is (1 first), whether one blind click is allowed (notes started just
+ * after the page came into the call, when captions are off), and `live()`,
+ * false once notes stopped: nothing more is clicked or pressed then, and
+ * only what is already open is closed.
+ */
 export interface CcTry {
   wait(ms: number): Promise<void>;
   attempt: number;
+  blind: boolean;
+  live(): boolean;
 }
 
 /**
  * v0.10: the call's own captions control (research captions-research.md
  * 6.2). Only ever used after notes start (MP6): it reads the control's
  * state first and clicks only a control that says off (on Teams, also a
- * captions item that says nothing, when nothing on the page said on),
- * closes any menu it opened, and never turns captions off.
+ * captions item that says nothing, only when the try allows a blind click
+ * and no caption container is on the page), closes any menu it opened, and
+ * never means to turn captions off.
  */
 export interface CaptionsControl {
   state(doc: Document): CcState;

@@ -11,10 +11,19 @@ import type { MeetingSite } from './sites.js';
 
 /**
  * What the page knows about the captions on screen. v0.10: `none` is no
- * caption line in the first minute of notes (and still none at the one
- * recheck), or the captions gone for a minute after lines came.
+ * caption line in the first minute of notes, or the captions gone for a
+ * minute after lines came, while the call's captions control does not say
+ * on; `waiting` is the same while it does (nobody has spoken yet: no nudge).
  */
-export type CaptionsState = 'reading' | 'none' | 'notFound';
+export type CaptionsState = 'reading' | 'waiting' | 'none' | 'notFound';
+
+/**
+ * v0.10: why `none`, as the page judged it, for its words: the control says
+ * off (`off`), Jantar clicked captions on and nothing confirms it yet
+ * (`clicked`), nothing says whether they are on (`unsure`), or the call
+ * offers no captions (`unavailable`: the organizer's settings).
+ */
+export type CaptionsWhy = 'off' | 'clicked' | 'unsure' | 'unavailable';
 
 /**
  * v0.10: whose way to turn captions on the page names: Meet, Teams signed in,
@@ -26,9 +35,12 @@ export type CaptionsClient = 'meet' | 'teams' | 'light';
  * v0.10: how switching the call's captions on went, when notes started:
  * they were on already, Jantar turned them on (and saw them on), Jantar
  * clicked but nothing on the page says on yet (Teams shows captions once
- * someone speaks), or it found no way to.
+ * someone speaks), or it found no way to. Also: a captions item that says
+ * nothing, left alone (`unsure`: a blind click could turn them off); no
+ * captions in the call's menu, twice (`unavailable`); captions were on
+ * earlier in this call and are left as they are (`kept`).
  */
-export type CcResult = 'was-on' | 'turned-on' | 'clicked' | 'failed';
+export type CcResult = 'was-on' | 'turned-on' | 'clicked' | 'failed' | 'unsure' | 'unavailable' | 'kept';
 /** v0.10: a CcResult with the fixed hook id that decided it. */
 export interface CcReport {
   result: CcResult;
@@ -54,8 +66,8 @@ export type FromPage =
   | { t: 'call'; site: MeetingSite; inCall: boolean; left?: true; callKey: string | null; title: string; stage?: CallStage; hook?: string }
   /** At most 200, the newest revision per lineId. Answered with LinesAnswer. */
   | { t: 'lines'; lines: LineUpsert[] }
-  /** v0.10: `client`, whose way to turn captions on the popup names. */
-  | { t: 'captions'; state: CaptionsState; client?: CaptionsClient }
+  /** v0.10: `client`, whose way to turn captions on the popup names; `why`, with `none`, its words. */
+  | { t: 'captions'; state: CaptionsState; client?: CaptionsClient; why?: CaptionsWhy }
   /** v0.10: how switching the captions on went when notes started, and the fixed hook id that decided it. */
   | { t: 'cc'; result: CcResult; hook: string }
   /** The page button, a trusted click. Answered with ShotAnswer. */
@@ -169,8 +181,9 @@ export interface PopupState {
     notes: boolean;
     shots: number;
     captions: CaptionsState | 'unknown';
-    /** v0.10: whose way to turn captions on (the page's last captions state said; else by site). */
+    /** v0.10: whose way to turn captions on (the page's last captions state said; else by site), and why `none`. */
     client: CaptionsClient;
+    why?: CaptionsWhy;
     /** v0.10: how switching captions on went when notes started (Settings › Call check), null before it said. */
     cc: CcReport | null;
     /** v0.10: what the page last said it shows, and the hook id that decided it ('' when none). */

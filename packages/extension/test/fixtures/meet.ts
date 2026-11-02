@@ -24,7 +24,8 @@
  * which opens a pop-up holding the toggle (and two buttons that open
  * more). The key `c` toggles captions in either shape. `emptyContainer`
  * leaves an empty caption container on the page while captions are off
- * (an unverified report: R-C3). `ccLog` lists what was clicked or pressed.
+ * (an unverified report: R-C3). `popupMs` opens the pop-up that long after
+ * the click (a slow page). `ccLog` lists what was clicked or pressed.
  *
  *   const meet = buildMeet(document, { state: 'call' });
  *   const t = meet.say('Sam', 'So the plan');
@@ -52,6 +53,8 @@ export interface MeetOptions {
   cc?: 'old' | 'popup';
   /** v0.10: an empty caption container stays on the page while captions are off. */
   emptyContainer?: true;
+  /** v0.10: the pop-up opens this long after the click. */
+  popupMs?: number;
 }
 
 export interface MeetTurn {
@@ -203,8 +206,12 @@ export function buildMeet(doc: Document, opts: MeetOptions = {}): MeetFixture {
       closePopup();
     } else {
       ccLog.push('popup-open');
-      root.append(ccDialog);
-      ccButton.setAttribute('aria-expanded', 'true');
+      const open = () => {
+        root.append(ccDialog);
+        ccButton.setAttribute('aria-expanded', 'true');
+      };
+      if (opts.popupMs) setTimeout(open, opts.popupMs);
+      else open();
     }
   });
   ccToggle.addEventListener('click', () => {

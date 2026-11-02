@@ -401,7 +401,14 @@ describe('v0.10: the screens around the call', () => {
 });
 
 describe('v0.10: light meetings (the guest client) and the call\'s captions control', () => {
-  const tries = (attempt = 1) => ({ wait: async () => undefined, attempt });
+  /** Keys pressed on the page from now on. */
+  const keys = () => {
+    const out: string[] = [];
+    document.addEventListener('keydown', (ev) => out.push(ev.key));
+    return out;
+  };
+  /** A try: `blind` allows the one blind click (default: notes started just after the page came into the call). */
+  const tries = (attempt = 1, o: { blind?: boolean } = {}) => ({ wait: async () => undefined, attempt, blind: o.blind ?? true, live: () => true });
 
   it('Teams light meetings: the guest tree (no Fluent UI item) reads each entry with its author; #hangup-button is in the call', () => {
     goTo('/light-meetings/launch?anon=true&p=made-up');
@@ -537,17 +544,17 @@ describe('v0.10: light meetings (the guest client) and the call\'s captions cont
     expect(teams.ccLog).toEqual(['pinned']);
   });
 
-  const cases: [string, { cc: TeamsCc; light?: true }, string[], string][] = [
+  const cases: [string, { cc: TeamsCc; light?: true }, string[], string, true?][] = [
     ['More › Captions, signed in (the item says off)', { cc: 'more' }, ['more-open', 'item'], 'teams:cc-more-item'],
-    ['More › Captions, a light-meetings guest (the item says nothing)', { cc: 'more', light: true }, ['more-open', 'item'], 'teams:cc-more-item'],
+    ['More › Captions, a light-meetings guest (the item says nothing: the blind click)', { cc: 'more', light: true }, ['more-open', 'item'], 'teams:cc-more-item', true],
     ['More › Language and speech › Show live captions', { cc: 'lang-speech' }, ['more-open', 'language-and-speech', 'item'], 'teams:cc-lang-speech'],
   ];
-  for (const [name, o, log, hook] of cases) {
+  for (const [name, o, log, hook, blind] of cases) {
     it(`Teams, ${name}: a try opens More, clicks the item, and the menu is closed after`, async () => {
       goTo(o.light ? '/light-meetings/launch?anon=true&p=made-up' : '/v2/');
       const teams = buildTeams(document, { layout: o.light ? 'guest' : 'v2', captions: false, lateRegion: true, ...o });
       expect(teamsAdapter.cc.state(document).state).toBe('unknown');
-      expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook });
+      expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook, ...(blind ? { blind } : {}) });
       expect(teams.ccLog).toEqual(log);
       expect(teams.captionsShown()).toBe(true);
       expect(teams.menuOpen()).toBe(false);
@@ -599,11 +606,93 @@ describe('v0.10: light meetings (the guest client) and the call\'s captions cont
       }
     });
     more.addEventListener('click', () => document.body.append(menu));
-    document.body.append(more);
-    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'teams:cc-text' });
+    // The English label counts only in the call's own bar (beside its hang-up).
+    document.querySelector('[role="toolbar"]')!.append(more);
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'teams:cc-text', blind: true });
     expect(clicked).toBe('  Live   captions ');
     expect(escaped).toBe(true);
     expect(menu.isConnected).toBe(false);
+  });
+
+  it("Teams: a guest's item that says nothing, without a blind click allowed, is \"unsure\": not clicked, More closed", async () => {
+    goTo('/light-meetings/launch?anon=true&p=made-up');
+    const teams = buildTeams(document, { layout: 'guest', light: true, hangupId: true, captions: true, lateRegion: true });
+    expect(await teamsAdapter.cc.turnOn(document, tries(1, { blind: false }))).toEqual({ result: 'unsure', hook: 'teams:cc-more-item' });
+    expect(teams.ccLog).toEqual(['more-open', 'more-close']);
+    expect(teams.captionsShown()).toBe(true);
+    // Allowed, it is the blind click, said so.
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'teams:cc-more-item', blind: true });
+    // An item that says off is no blind click.
+    document.body.replaceChildren();
+    goTo('/v2/');
+    buildTeams(document, { layout: 'v2', cc: 'more', captions: false, lateRegion: true });
+    expect(await teamsAdapter.cc.turnOn(document, tries(1, { blind: false }))).toEqual({ result: 'clicked', hook: 'teams:cc-more-item' });
+  });
+
+  it('Teams: a "More options" outside the call\'s bar (a tile\'s, a chat message\'s) is not More', async () => {
+    goTo('/v2/');
+    buildTeams(document, { layout: 'v2', cc: 'absent', captions: false });
+    const tile = h(document, 'button', { 'aria-label': 'More options' }, '…');
+    let opened = 0;
+    tile.addEventListener('click', () => (opened += 1));
+    document.body.prepend(h(document, 'div', { class: 'tile' }, tile));
+    expect(await teamsAdapter.cc.turnOn(document, tries())).toEqual({ result: 'none', hook: 'teams:no-more' });
+    expect(opened).toBe(0);
+  });
+
+  it('Meet: the pop-up is taken only when new and named as the button; its toggle is the first button that says what captions are', async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document, { cc: 'popup', captions: false });
+    // Someone asks to join: a dialog already on the page, before the click.
+    const asking = h(document, 'div', { role: 'dialog', 'aria-label': 'Captions and translation' }, h(document, 'button', { 'aria-label': 'Turn on captions' }, 'Admit'));
+    let admitted = 0;
+    asking.querySelector('button')!.addEventListener('click', () => (admitted += 1));
+    document.body.prepend(asking);
+    // A Close button first in the pop-up, saying nothing about captions.
+    const close = h(document, 'button', { 'aria-label': 'Close' }, 'x');
+    let closed = 0;
+    close.addEventListener('click', () => (closed += 1));
+    document.querySelector('button[aria-haspopup="dialog"]')!.addEventListener('click', () => {
+      const dialog = document.querySelector('[data-jantar-fixture] [role="dialog"]');
+      if (dialog && !dialog.contains(close)) dialog.prepend(close);
+    });
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'meet:cc-popup' });
+    expect(meet.ccLog).toEqual(['popup-open', 'toggle', 'popup-close']);
+    expect([admitted, closed]).toEqual([0, 0]);
+    expect(meet.captionsShown()).toBe(true);
+  });
+
+  it('Meet: the pop-up\'s toggle and the toolbar disagree: nothing is clicked or pressed, the pop-up is closed', async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    const meet = buildMeet(document, { cc: 'popup', captions: false });
+    // The toolbar says off (aria-pressed false); the toggle, once open, says on.
+    document.querySelector('button[aria-haspopup="dialog"]')!.addEventListener('click', () => {
+      document.querySelector('[role="dialog"] button:not([aria-haspopup])')?.setAttribute('aria-label', 'Turn off captions');
+    });
+    const pressed = keys();
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'none', hook: 'meet:cc-disagree' });
+    expect(meet.ccLog).toEqual(['popup-open', 'popup-close']);
+    expect(pressed).toEqual([]);
+    expect(meet.captionsShown()).toBe(false);
+  });
+
+  it('Meet: a control with aria-haspopup "true" or "menu" is no plain toggle: its pop-up is opened and closed again (a menu with no toggle, then c: it said off)', async () => {
+    goTo(meetUrl('abc-defg-hij'));
+    let meet = buildMeet(document, { cc: 'popup', captions: false });
+    document.querySelector('button[aria-haspopup="dialog"]')!.setAttribute('aria-haspopup', 'true');
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'meet:cc-popup' });
+    expect(meet.ccLog).toEqual(['popup-open', 'toggle', 'popup-close']);
+    expect(meet.popupOpen()).toBe(false);
+    document.body.replaceChildren();
+    meet = buildMeet(document, { cc: 'popup', captions: false });
+    const button = document.querySelector('button[aria-haspopup="dialog"]')!;
+    button.setAttribute('aria-haspopup', 'menu');
+    // What it opens is a menu, not a dialog.
+    button.addEventListener('click', () => document.querySelector('[data-jantar-fixture] [role="dialog"]')?.setAttribute('role', 'menu'));
+    expect(await meetAdapter.cc.turnOn(document, tries())).toEqual({ result: 'clicked', hook: 'meet:key-c' });
+    expect(meet.ccLog).toEqual(['popup-open', 'popup-close', 'key-c']);
+    expect(meet.popupOpen()).toBe(false);
+    expect(meet.captionsShown()).toBe(true);
   });
 
   it('MP6: the captions control never reads caption text into what it says', async () => {

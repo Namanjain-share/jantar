@@ -23,13 +23,16 @@
  * captions control is the old toggle (its jsname) or, since 2026-10-22,
  * "Captions and translation", found by its icon. Its `aria-pressed` says
  * whether captions are on; failing that its icon or English label. The
- * old toggle is clicked; the new button opens a pop-up whose first button
- * that opens nothing more is the toggle, and the pop-up is closed again.
- * The key `c` (Meet's own shortcut) is the last resort, only when the
- * control says off. A control whose state can't be read is never touched.
+ * old toggle is clicked; a control that opens a pop-up (any aria-haspopup)
+ * is opened, the pop-up taken only when it is new and named as the button,
+ * its toggle being the first button that opens nothing more and says what
+ * captions are, clicked only when it says off and the toolbar does not
+ * disagree; the pop-up is closed again. The key `c` (Meet's own shortcut,
+ * a toggle) is the last resort, only when the control says off. A control
+ * whose state can't be read is never touched.
  */
 import { WIRE_LIMITS } from '../../shared/wire.js';
-import { CC_STEP_MS, click, collapse, first, firstAll, holdsButton, inButton, labelOf, poll, press, textOf } from './dom.js';
+import { CC_STEP_MS, click, collapse, first, firstAll, heldBy, holdsButton, inButton, poll, press, saysOf, textOf } from './dom.js';
 import type { Block, CaptionsControl, CcStep, CcTry, HookId, SiteAdapter } from './types.js';
 
 /** The call's code in both URL forms: /abc-defg-hij and, once admitted, /meet/abc-defg-hij. */
@@ -49,9 +52,7 @@ const CC_ICONS = new Set(['translate_cc', 'closed_caption', 'closed_caption_off'
 const ICON_FONT = ['i.google-symbols', 'i.google-material-icons', 'i.material-icons-extended'];
 /** v0.10: the control by its English label, last (a UI in another language has none of these). */
 const CC_LABEL_EN = ['Captions and translation', 'Turn on captions', 'Turn off captions'].map((l) => `button[aria-label="${l}"]`);
-const CC_SAYS_ON_EN = new Set(['turn off captions', 'turn off live captions']);
-const CC_SAYS_OFF_EN = new Set(['turn on captions', 'turn on live captions']);
-/** v0.10: the pop-up (its aria-label is the button's) and its toggle: the first button that opens nothing more. */
+/** v0.10: the pop-up (new since the click, its aria-label the button's) and its toggle: the first button that opens nothing more and says what captions are. */
 const CC_DIALOG = ['[role="dialog"]'];
 const CC_POPUP_TOGGLE = ['button:not([aria-haspopup])'];
 /** v0.10: the try that presses `c` instead of clicking the old toggle again (a click that did nothing: Translate speech's hover panel). */
@@ -154,14 +155,8 @@ function ccControl(doc: Document): { el: Element; hook: HookId } | null {
   return en ? { el: en, hook: 'meet:captions-label' } : null;
 }
 
-/** v0.10: what a captions control says: pressed, else its icon, else its English label. */
-function ccSays(el: Element): 'on' | 'off' | 'unknown' {
-  const pressed = el.getAttribute('aria-pressed');
-  if (pressed === 'true' || pressed === 'false') return pressed === 'true' ? 'on' : 'off';
-  if (iconOf(el) === 'closed_caption_off') return 'off';
-  const label = labelOf(el);
-  return CC_SAYS_ON_EN.has(label) ? 'on' : CC_SAYS_OFF_EN.has(label) ? 'off' : 'unknown';
-}
+/** v0.10: what a captions control says: pressed (or checked), else its icon, else its English label. */
+const ccSays = (el: Element) => saysOf(el, iconOf(el) === 'closed_caption_off');
 
 /** v0.10: one try (see the header). */
 async function ccTurnOn(doc: Document, t: CcTry): Promise<CcStep> {
@@ -172,28 +167,34 @@ async function ccTurnOn(doc: Document, t: CcTry): Promise<CcStep> {
   if (el.getAttribute('aria-expanded') === 'true') return { result: 'busy', hook: control.hook };
   const says = ccSays(el);
   if (says === 'on') return { result: 'on', hook: control.hook };
-  if (el.getAttribute('aria-haspopup') !== 'dialog') {
+  const pops = el.getAttribute('aria-haspopup');
+  if (!pops || pops === 'false') {
     if (says !== 'off') return { result: 'none', hook: control.hook };
     if (t.attempt >= CC_KEY_TRY) return key(doc);
     click(el);
     return { result: 'clicked', hook: 'meet:cc-button' };
   }
-  // "Captions and translation": open its pop-up, turn the toggle on, close the pop-up.
+  // "Captions and translation": open its pop-up (a new dialog named as the button), turn the toggle on, close it.
   const label = el.getAttribute('aria-label');
+  const before = new Set(doc.querySelectorAll('[role="dialog"]'));
   click(el);
-  const dialog = await poll(t.wait, () => first(doc, CC_DIALOG, (d) => label === null || d.getAttribute('aria-label') === label));
-  const toggle = dialog ? first(dialog, CC_POPUP_TOGGLE) : null;
-  const toggleSays = says !== 'unknown' ? says : toggle && CC_SAYS_ON_EN.has(labelOf(toggle)) ? 'on' : toggle && CC_SAYS_OFF_EN.has(labelOf(toggle)) ? 'off' : 'unknown';
-  let step: CcStep | null = null;
-  if (toggle && toggleSays === 'off') {
-    click(toggle);
-    step = { result: 'clicked', hook: 'meet:cc-popup' };
-  } else if (toggleSays === 'on') step = { result: 'on', hook: 'meet:cc-popup' };
+  const dialog = label ? await poll(t.wait, () => first(doc, CC_DIALOG, (d) => !before.has(d) && d.getAttribute('aria-label') === label)) : null;
+  // The toggle says what captions are itself (a Close or Learn more button says nothing); the toolbar must not disagree.
+  const toggle = dialog ? first(dialog, CC_POPUP_TOGGLE, (b) => ccSays(b) !== 'unknown') : null;
+  const own = toggle ? ccSays(toggle) : 'unknown';
+  let step: CcStep | null = toggle ? { result: 'none', hook: 'meet:cc-disagree' } : null;
+  if (toggle && (says === 'unknown' || says === own)) {
+    if (own === 'on') step = { result: 'on', hook: 'meet:cc-popup' };
+    else if (t.live()) {
+      click(toggle);
+      step = { result: 'clicked', hook: 'meet:cc-popup' };
+    }
+  }
   await t.wait(CC_STEP_MS);
   if (el.getAttribute('aria-expanded') === 'true') click(el);
   else if (dialog?.isConnected) press(dialog, 'Escape', 'Escape');
   if (step) return step;
-  return says === 'off' ? key(doc) : { result: 'none', hook: 'meet:no-cc-toggle' };
+  return says === 'off' && t.live() ? key(doc) : { result: 'none', hook: 'meet:no-cc-toggle' };
 }
 
 /** v0.10: Meet's own shortcut for captions (it toggles: only ever sent when the control says off). */
@@ -219,10 +220,7 @@ function findRegion(doc: Document): Element | null {
  */
 function knownBlocks(region: Element, texts: Element[]): Block[] {
   // How many text elements each ancestor holds: one means it is inside a single turn.
-  const held = new Map<Element, number>();
-  for (const text of texts) {
-    for (let a = text.parentElement; a && a !== region; a = a.parentElement) held.set(a, (held.get(a) ?? 0) + 1);
-  }
+  const held = heldBy(texts, region);
   const turns = new Map<Element, Block>();
   for (const text of texts) {
     const nameIn = (a: Element) => first(a, NAME, (n) => !text.contains(n) && !inButton(n, region));

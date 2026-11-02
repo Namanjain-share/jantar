@@ -25,7 +25,10 @@
  * v0.10: `cc` on `capture {on: true}` (or on the answer that resumes notes
  * after a reload) also switches the call's captions on (captions.ts); how
  * it went goes to the worker as `cc`, and the captions state names whose
- * way to turn them on the popup should show (`client`).
+ * way to turn them on the popup should show (`client`) and why none came
+ * (`why`). The page keeps the switch's memory (captions.ts) for as long as
+ * it is loaded, so End then Start in the same call clicks nothing again;
+ * leaving the call (the call watch's `out`) forgets the call.
  *
  * The page answers only the worker's messages (`capture`, `button`, `hide`,
  * `show`) and only from this extension; its own `FromPage` messages, which a
@@ -40,6 +43,7 @@ import { teamsAdapter } from './adapters/teams.js';
 import type { SiteAdapter } from './adapters/types.js';
 import { createCameraButton, type CameraButton } from './button.js';
 import { createCallWatch, type CallWatch } from './call.js';
+import { ccCall, ccMemory } from './captions.js';
 import { createCapture, type Capture } from './capture.js';
 import { contextGone, createPageRuntime } from './runtime.js';
 
@@ -100,11 +104,15 @@ export function startContent(opts: ContentOptions = {}): Content | null {
     },
   });
 
+  // v0.10: what this page remembers of switching captions on, across notes runs; leaving the call forgets the call.
+  const memory = ccMemory();
   const capture = createCapture({
     adapter,
     doc,
     send: async (msg) => linesAnswer(await rt.send(msg)),
-    captions: (state) => void rt.send({ t: 'captions', state, client: adapter.cc.client(doc) }),
+    captions: (state, why) => void rt.send({ t: 'captions', state, client: adapter.cc.client(doc), why }),
+    memory,
+    inSince: () => call.inSince(),
     cc: (result, hook) => void rt.send({ t: 'cc', result, hook }),
     bubble: (text, ms) => button.bubble(text, ms),
     onStop: () => button.setNotes(false),
@@ -153,7 +161,8 @@ export function startContent(opts: ContentOptions = {}): Content | null {
       first = false;
       resumeInCall();
     },
-    onPhase: () => {
+    onPhase: (phase) => {
+      if (phase === 'out') ccCall(memory, null);
       sync();
       resumeInCall();
     },
@@ -242,8 +251,7 @@ function adapterFor(hostname: string): SiteAdapter | null {
 
 /** A worker message for the page, or null (the page's own messages, unknown `t`). */
 function toPage(msg: unknown): ToPage | null {
-  if (!msg || typeof msg !== 'object') return null;
-  const m = msg as Record<string, unknown>;
+  const m = fields(msg) ?? {};
   switch (m.t) {
     case 'capture':
       return { t: 'capture', on: m.on === true, text: typeof m.text === 'string' && m.text ? m.text : undefined, ...(m.cc === true ? { cc: true as const } : {}) };
@@ -258,24 +266,24 @@ function toPage(msg: unknown): ToPage | null {
   }
 }
 
+/** An answer's fields, or null when it is no object. */
+const fields = (a: unknown) => (a && typeof a === 'object' ? (a as Record<string, unknown>) : null);
+
 function callAnswer(a: unknown): CallAnswer | undefined {
-  if (!a || typeof a !== 'object') return undefined;
-  const m = a as Record<string, unknown>;
-  return { button: m.button === true, notes: m.notes === true, ...(m.cc === true ? { cc: true as const } : {}) };
+  const m = fields(a);
+  return m ? { button: m.button === true, notes: m.notes === true, ...(m.cc === true ? { cc: true as const } : {}) } : undefined;
 }
 
 function linesAnswer(a: unknown): LinesAnswer | undefined {
-  if (!a || typeof a !== 'object') return undefined;
-  const m = a as Record<string, unknown>;
-  if (m.ok === true) return { ok: true };
-  if (m.ok === false) return { ok: false, retry: m.retry === true, text: typeof m.text === 'string' ? m.text : undefined };
+  const m = fields(a);
+  if (m?.ok === true) return { ok: true };
+  if (m?.ok === false) return { ok: false, retry: m.retry === true, text: typeof m.text === 'string' ? m.text : undefined };
   return undefined;
 }
 
 function shotAnswer(a: unknown): ShotAnswer | undefined {
-  if (!a || typeof a !== 'object') return undefined;
-  const m = a as Record<string, unknown>;
-  return typeof m.text === 'string' ? { ok: m.ok === true, text: m.text } : undefined;
+  const m = fields(a);
+  return typeof m?.text === 'string' ? { ok: m.ok === true, text: m.text } : undefined;
 }
 
 startContent();

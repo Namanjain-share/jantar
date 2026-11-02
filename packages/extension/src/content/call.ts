@@ -65,6 +65,8 @@ export interface CallWatch {
   phase(): CallPhase;
   /** v0.10: the stage as the worker last heard it. */
   stage(): CallStage;
+  /** v0.10: when the page came into this call (its first poll in it; null while out of a call). */
+  inSince(): number | null;
   /** v0.10: the page is going away (a reload, a navigation, the tab closing): one last `call`, not awaited. */
   hide(): void;
 }
@@ -96,6 +98,7 @@ export function createCallWatch(o: CallWatchOptions): CallWatch {
   let leftFrom: string | null | undefined;
   /** Where this page last saw a join hook (path, query and hash, in memory only). */
   let joinHookAt: string | null = null;
+  let inAt = 0;
 
   const setStage = (next: CallStage, by: HookId) => {
     stage = next;
@@ -164,6 +167,7 @@ export function createCallWatch(o: CallWatchOptions): CallWatch {
       setPhase('out');
       left = true;
     }
+    if (entered) inAt = now;
 
     // v0.10: the stage, from this poll's raw stage once it held STAGE_STABLE_POLLS polls in a row.
     const raw: CallStage = inHook !== null ? 'in' : (wait?.stage ?? 'none');
@@ -224,6 +228,7 @@ export function createCallWatch(o: CallWatchOptions): CallWatch {
     },
     phase: () => phase,
     stage: () => stage,
+    inSince: () => (phase === 'out' ? null : inAt),
     hide() {
       if (!running) return;
       // What the worker last heard of the call, so a reload never reads as another call; the next poll (a page kept in

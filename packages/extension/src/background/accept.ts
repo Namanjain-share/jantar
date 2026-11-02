@@ -13,10 +13,11 @@
  * checked as `start` is, `disarm` as `end`, `always` as `reads`.
  *
  * v0.10, captions on when notes start: a page's `captions` may name its
- * client (one of three), and its `cc` names how switching them on went (one
- * of four) with a hook id; the popup's `autoCaptions` is checked as `reads`.
+ * client (one of three) and why none (one of four), and its `cc` names how
+ * switching them on went (one of seven) with a hook id; the popup's
+ * `autoCaptions` is checked as `reads`.
  */
-import type { CallStage, CaptionsClient, CcResult, FromPage, FromPopup } from '../shared/messages.js';
+import type { CallStage, CaptionsClient, CaptionsWhy, CcResult, FromPage, FromPopup } from '../shared/messages.js';
 import { siteOf, type MeetingSite } from '../shared/sites.js';
 
 export type PageMessage = { tabId: number; site: MeetingSite; msg: FromPage };
@@ -42,10 +43,11 @@ export function siteOfUrl(raw: string): MeetingSite | null {
  */
 export const onMeetingPage = (tab: { url?: string }): boolean => tab.url === undefined || siteOfUrl(tab.url) !== null;
 
-const CAPTIONS = new Set(['reading', 'none', 'notFound']);
+const CAPTIONS = new Set(['reading', 'waiting', 'none', 'notFound']);
+const WHYS = new Set(['off', 'clicked', 'unsure', 'unavailable']);
 const STAGES = new Set<string>(['none', 'prejoin', 'lobby', 'in', 'left']);
 const CLIENTS = new Set<string>(['meet', 'teams', 'light']);
-const CC_RESULTS = new Set<string>(['was-on', 'turned-on', 'clicked', 'failed']);
+const CC_RESULTS = new Set<string>(['was-on', 'turned-on', 'clicked', 'failed', 'unsure', 'unavailable', 'kept']);
 /** A hook id: one of the adapters' own fixed ids ("meet:call_end", "page:hide"), never page text. */
 export const HOOK_ID = /^[a-z0-9:_-]{1,40}$/;
 
@@ -128,8 +130,10 @@ export function acceptPage(msg: unknown, sender: Sender): PageMessage | null {
     case 'captions': {
       if (typeof msg.state !== 'string' || !CAPTIONS.has(msg.state)) return null;
       if (msg.client !== undefined && (typeof msg.client !== 'string' || !CLIENTS.has(msg.client))) return null;
+      if (msg.why !== undefined && (typeof msg.why !== 'string' || !WHYS.has(msg.why))) return null;
       const captions: FromPage = { t: 'captions', state: msg.state as 'reading' };
       if (msg.client !== undefined) captions.client = msg.client as CaptionsClient;
+      if (msg.why !== undefined) captions.why = msg.why as CaptionsWhy;
       return { tabId, site, msg: captions };
     }
     case 'cc':

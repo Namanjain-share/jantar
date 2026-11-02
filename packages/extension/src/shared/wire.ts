@@ -36,27 +36,32 @@ export const WIRE_LIMITS = Object.freeze({
 /** A screenshot, decoded (MEETING_SHOT_MAX_BYTES): 4 MiB. */
 export const MEETING_SHOT_MAX_BYTES = 4_194_304;
 
-/** How often things happen in the page and the worker (spec 3.2). */
+/**
+ * How often things happen in the page and the worker (spec 3.2). Said here
+ * and not beside each field, since the bundler keeps comments inside an
+ * object literal and this one ships in all three bundles:
+ * - callPollMs: the call watch's poll (a setTimeout, never requestAnimationFrame);
+ * - leaveGraceMs: the in-call hooks gone this long: the call is left;
+ * - keepAliveMs: while in a call, `call` again this often; the worker turns it into the meeting's keep-alive;
+ * - linesEveryMs: at most one `lines` message this often per tab;
+ * - linesRetryMs: after Jantar did not answer, try the pending lines again after this long;
+ * - debounceMs: a change in the caption region is read this long after it settles;
+ * - noCaptionsMs (v0.10): notes on and no caption line this long (or, after lines came, the captions gone this
+ *   long): the caption watch asks the captions control (`waiting` or `none`);
+ * - captionsRecheckMs (v0.10): still no caption line this long after the first bubble: the bubble once more (and never again);
+ * - notFoundMs: caption text on screen but no blocks read this long: the 'notFound' bubble;
+ * - shotGapMs: screenshots at least this far apart (Chrome allows two a second).
+ */
 export const TIMING = Object.freeze({
-  /** The call watch's poll (a setTimeout, never requestAnimationFrame). */
   callPollMs: 1_000,
-  /** The in-call hooks gone this long: the call is left. */
   leaveGraceMs: 60_000,
-  /** While in a call, `call` again this often; the worker turns it into the meeting's keep-alive. */
   keepAliveMs: 60_000,
-  /** At most one `lines` message this often per tab. */
   linesEveryMs: 1_500,
-  /** After Jantar did not answer, try the pending lines again after this long. */
   linesRetryMs: 2_000,
-  /** A change in the caption region is read this long after it settles. */
   debounceMs: 250,
-  /** v0.10: notes on and no caption line this long (or, after lines came, no caption region this long): the 'none' bubble. */
   noCaptionsMs: 60_000,
-  /** v0.10: still no caption line this long after that bubble: the bubble once more (and never again). */
   captionsRecheckMs: 180_000,
-  /** Caption text on screen but no blocks read this long: the 'notFound' bubble. */
   notFoundMs: 60_000,
-  /** Screenshots at least this far apart (Chrome allows two a second). */
   shotGapMs: 550,
 });
 

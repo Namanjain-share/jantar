@@ -40,7 +40,7 @@
  * `cc`, and the page switches the call's captions on. The page's captions
  * state (with its client) and how switching went (`cc`) are kept per tab.
  */
-import type { CallAnswer, CallStage, CaptionsClient, CcReport, Done, FromPage, FromPopup, ToPage } from '../shared/messages.js';
+import type { CallAnswer, CallStage, CaptionsClient, CaptionsWhy, CcReport, Done, FromPage, FromPopup, ToPage } from '../shared/messages.js';
 import type { MeetingSite } from '../shared/sites.js';
 import { ARM_TIMING, WIRE_LIMITS } from '../shared/wire.js';
 import { WAITING, newArm, type Arm, type Arms } from './arms.js';
@@ -140,7 +140,7 @@ export function doneError(reply: Reply): string {
 
 export interface Meetings {
   call(tabId: number, msg: CallMsg, site: MeetingSite): Promise<CallAnswer>;
-  captions(tabId: number, state: TabState['captions'], client?: CaptionsClient): Promise<void>;
+  captions(tabId: number, state: TabState['captions'], client?: CaptionsClient, why?: CaptionsWhy): Promise<void>;
   /** v0.10: how switching the captions on went. */
   cc(tabId: number, report: CcReport): Promise<void>;
   start(msg: StartMsg): Promise<Done>;
@@ -307,6 +307,8 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
           stage,
           hook: msg.hook ?? '',
           heardAt: now,
+          // v0.10: the page is going away (a reload): its captions state goes with it, until the next page says.
+          ...(msg.hook === 'page:hide' ? { captions: 'unknown' as const } : {}),
         }));
         if (!next) return next;
         const arm = await arms.onCall(tabId, next, { stage, hook: msg.hook ?? '', callKey: msg.callKey, was: prev?.stage ?? 'none' }, now);
@@ -335,8 +337,12 @@ export function createMeetings(ctx: Ctx, lines: Lines, arms: Arms): Meetings {
       return { button: paired, notes, ...(notes && (await autoCaptions()) ? { cc: true as const } : {}) };
     },
 
-    async captions(tabId, captions, client) {
-      await ctx.tabs.patch(tabId, (cur) => (cur ? { ...cur, captions, ...(client ? { client } : {}) } : cur));
+    async captions(tabId, captions, client, why) {
+      await ctx.tabs.patch(tabId, (cur) => {
+        if (!cur) return cur;
+        const { why: _was, ...rest } = cur;
+        return { ...rest, captions, ...(client ? { client } : {}), ...(why ? { why } : {}) };
+      });
     },
 
     async cc(tabId, report) {

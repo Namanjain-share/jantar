@@ -34,7 +34,8 @@
  * per entry holding its author and its text, no Fluent UI item class.
  * `lateRegion` mounts the captions only once someone has spoken; `hangupId`
  * gives the light-meetings guest #hangup-button (as seen live) instead of
- * anon-hangup-button. `ccLog` lists what was clicked or pressed.
+ * anon-hangup-button. `itemsMs` draws More's items that long after its
+ * menu. `ccLog` lists what was clicked or pressed.
  *
  *   const teams = buildTeams(document, { layout: 'v2' });
  *   const a = teams.say('Sam', 'Can everyone see my screen?');
@@ -68,6 +69,8 @@ export interface TeamsOptions {
   lateRegion?: true;
   /** v0.10: light meetings' guest hang-up is #hangup-button. */
   hangupId?: true;
+  /** v0.10: More's items come this long after its menu. */
+  itemsMs?: number;
 }
 
 export interface TeamsItem {
@@ -227,7 +230,11 @@ export function buildTeams(doc: Document, opts: TeamsOptions = {}): TeamsFixture
     }
     ccLog.push('more-open');
     const first = cc === 'more' ? [ccItem] : cc === 'lang-speech' ? [langItem] : [];
-    menu.replaceChildren(...first, ...others());
+    const fill = () => menu.replaceChildren(...first, ...others());
+    if (opts.itemsMs) {
+      menu.replaceChildren();
+      setTimeout(fill, opts.itemsMs);
+    } else fill();
     root.append(menu);
     more.setAttribute('aria-expanded', 'true');
   });

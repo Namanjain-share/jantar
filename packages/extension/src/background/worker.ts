@@ -190,6 +190,7 @@ export function createWorker(deps: WorkerDeps): Worker {
             shots: view.clientId ? view.shots : 0,
             captions: view.captions,
             client: view.client ?? (view.site === 'meet' ? 'meet' : 'teams'),
+            ...(view.captions === 'none' && view.why ? { why: view.why } : {}),
             cc: notes && view.cc ? view.cc : null,
             stage: view.stage ?? (view.inCall ? 'in' : 'none'),
             hook: view.hook ?? '',
@@ -219,7 +220,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       }
       case 'captions':
         // v0.10: the badge says `!` while notes are on with no captions yet, and clears with the first line.
-        return painted(m.tabId, await meetings.captions(m.tabId, m.msg.state, m.msg.client));
+        return painted(m.tabId, await meetings.captions(m.tabId, m.msg.state, m.msg.client, m.msg.why));
       case 'cc':
         return meetings.cc(m.tabId, { result: m.msg.result, hook: m.msg.hook });
       case 'shot':

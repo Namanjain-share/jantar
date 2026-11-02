@@ -4,8 +4,10 @@
  * `autoCaptions`), and then every `capture {on: true}` (Start, a start by
  * itself) and every call answer with notes on carries `cc`; switched off,
  * none does. The page's `cc` (how switching went) and its captions state's
- * client reach the popup; the badge says `!` while notes are on with no
- * captions yet, and ON again with the first line. Synthetic data only.
+ * client (and why none) reach the popup; the badge says `!` while notes
+ * are on with no captions yet (not while captions are on and nobody has
+ * spoken: `waiting`), and ON again with the first line; a reload's
+ * `page:hide` takes a stale `!` away. Synthetic data only.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { AUTO } from '../../src/background/sentences.js';
@@ -79,8 +81,12 @@ describe('Turn on captions when notes start', () => {
     await w.page(9, { t: 'call', site: 'teams', inCall: true, callKey: null, title: 'Weekly sync | Microsoft Teams', stage: 'in', hook: 'teams:hangup-button' });
     expect(await tabOf(9)).toMatchObject({ client: 'teams' });
     await start(9);
-    await w.page(9, { t: 'captions', state: 'none', client: 'light' });
-    expect(await tabOf(9)).toMatchObject({ client: 'light', captions: 'none' });
+    await w.page(9, { t: 'captions', state: 'none', client: 'light', why: 'clicked' });
+    expect(await tabOf(9)).toMatchObject({ client: 'light', captions: 'none', why: 'clicked' });
+    // Why goes with `none`.
+    await w.page(9, { t: 'captions', state: 'waiting', client: 'light' });
+    expect(await tabOf(9)).not.toHaveProperty('why');
+    expect(await tabOf(9)).toMatchObject({ captions: 'waiting' });
   });
 });
 
@@ -91,11 +97,30 @@ describe('the badge', () => {
     await start();
     expect(w.model.badge(7).text).toBe('ON');
     await w.page(7, { t: 'captions', state: 'none', client: 'meet' });
-    expect(w.model.badge(7)).toEqual({ text: '!', color: '#a67a0c', title: 'Jantar: keeping notes, but no captions yet. Open Jantar for how to turn them on.' });
+    expect(w.model.badge(7)).toEqual({ text: '!', color: '#a67a0c', title: 'Jantar: keeping notes, but no captions yet. Open Jantar for why.' });
     await w.page(7, { t: 'captions', state: 'reading', client: 'meet' });
     expect(w.model.badge(7)).toEqual({ text: 'ON', color: '#16203a', title: 'Jantar: keeping notes in this tab' });
     await w.page(7, { t: 'captions', state: 'none', client: 'meet' });
     await w.popup({ t: 'end', tabId: 7 });
     expect(w.model.badge(7).text).toBe('');
+  });
+
+  it('captions on and nobody speaking yet (`waiting`) is ON, no `!`', async () => {
+    w = setupWorker();
+    await w.meetTab(7);
+    await start();
+    await w.page(7, { t: 'captions', state: 'waiting', client: 'meet' });
+    expect(w.model.badge(7).text).toBe('ON');
+  });
+
+  it('a reload (the page going, `page:hide`) takes a stale `!` away until the next page says', async () => {
+    w = setupWorker();
+    await w.meetTab(7);
+    await start();
+    await w.page(7, { t: 'captions', state: 'none', client: 'meet', why: 'off' });
+    expect(w.model.badge(7).text).toBe('!');
+    await w.page(7, { t: 'call', site: 'meet', inCall: true, callKey: MEET_CODE, title: 'Weekly sync', stage: 'none', hook: 'page:hide' });
+    expect(await tabOf()).toMatchObject({ notes: true, captions: 'unknown' });
+    expect(w.model.badge(7).text).toBe('ON');
   });
 });

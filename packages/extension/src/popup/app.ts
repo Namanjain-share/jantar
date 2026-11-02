@@ -44,7 +44,7 @@ import type { MeetingSite } from '../shared/sites.js';
 import { ARM_TIMING, WIRE_LIMITS } from '../shared/wire.js';
 import { ALWAYS, ARM, CALL_CHECK, CC, JOIN_FIRST, NOT_RUNNING, NO_MEETING_TAB, READS, SHOT, TRY_AGAIN } from '../background/sentences.js';
 import { postOrigins } from '../shared/post-sites.js';
-import { noCaptions } from '../shared/captions.js';
+import { CC_WAITING, noCaptions } from '../shared/captions.js';
 
 export const NOT_FOUND = "Can't read captions on this page. Screenshots still work.";
 /** Until the worker's `state` answers (its info read waits up to 5 s for a Jantar that hangs). */
@@ -145,9 +145,11 @@ function captionsWords(tab: Tab): string {
   switch (tab.captions) {
     case 'reading':
       return 'Reading captions';
+    case 'waiting':
+      return CC_WAITING;
     case 'none':
-      // v0.10: the page's own bubble, with the way to turn captions on in this client (shared/captions.ts).
-      return noCaptions(tab.client);
+      // v0.10: the page's own bubble, in this client's words and for why (shared/captions.ts).
+      return noCaptions(tab.client, tab.why);
     case 'notFound':
       return NOT_FOUND;
     default:

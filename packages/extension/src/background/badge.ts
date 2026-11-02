@@ -4,7 +4,8 @@
  * `!` for a start by itself that failed in the last
  * ARM_TIMING.failedShowMs (the popup says why); and, v0.10, `!` while the
  * tab keeps notes but no caption line came in (the page's captions state
- * `none`: the popup says how to turn captions on). Chrome keeps a tab's badge
+ * `none`: the popup says why, and how to turn captions on when they are
+ * off; not `waiting`, captions on and nobody speaking yet). Chrome keeps a tab's badge
  * itself, so it outlives the worker's stops; it clears it when the tab
  * closes or navigates, and the page's next `call` paints it again.
  * chrome.action needs no permission. A badge is a glyph, not a sentence.
@@ -21,7 +22,7 @@ const JUP = '#a67a0c';
 const LOOK: Readonly<Record<BadgeKind, { text: string; color: string; title: string }>> = {
   arm: { text: 'ARM', color: JUP, title: 'Jantar: notes start when you are in the call' },
   on: { text: 'ON', color: INK, title: 'Jantar: keeping notes in this tab' },
-  nocc: { text: '!', color: JUP, title: 'Jantar: keeping notes, but no captions yet. Open Jantar for how to turn them on.' },
+  nocc: { text: '!', color: JUP, title: 'Jantar: keeping notes, but no captions yet. Open Jantar for why.' },
   failed: { text: '!', color: JUP, title: 'Jantar: notes did not start. Open Jantar for why.' },
   none: { text: '', color: INK, title: 'Jantar' },
 };

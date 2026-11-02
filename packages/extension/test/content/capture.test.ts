@@ -249,7 +249,7 @@ describe('the captions state', () => {
     const meet = buildMeet(document, { captions: false });
     const c = capturing();
     const nudge = noCaptions('meet');
-    expect(nudge).toBe("No captions yet: Jantar writes notes from the call's live captions. Turn them on: Captions and translation (CC) › Turn on captions, or press c.");
+    expect(nudge).toBe("No captions yet: Jantar writes notes from the call's live captions. Turn them on: Captions and translation (CC) › Turn on captions.");
     c.capture.start();
     await settle(TIMING.noCaptionsMs - TIMING.callPollMs);
     expect(c.states).toEqual([]);
@@ -292,18 +292,20 @@ describe('the captions state', () => {
     expect(c.bubbles).toEqual([]);
   });
 
-  it("the bubble names this client's way: a light-meetings guest's, and signed-in Teams'", async () => {
+  it("the bubble names this client's way: a light-meetings guest's (whose item says nothing: only if none show when people speak), and signed-in Teams'", async () => {
     goTo('/light-meetings/launch?anon=true&p=made-up');
     buildTeams(document, { layout: 'guest', light: true, captions: false });
     const c = capturing({ adapter: teamsAdapter });
     c.capture.start();
     await settle(TIMING.noCaptionsMs);
-    expect(c.bubbles).toEqual([noCaptions('light')]);
+    expect(c.bubbles).toEqual([noCaptions('light', 'unsure')]);
+    expect(noCaptions('light', 'unsure')).toMatch(/If none appear when people speak, turn them on: More \(…\) › Captions\.$/);
     expect(noCaptions('light')).toMatch(/Turn them on: More \(…\) › Captions\.$/);
     await c.capture.stop();
     document.body.replaceChildren();
     goTo('/v2/');
-    buildTeams(document, { layout: 'v2', captions: false });
+    // The toolbar's Captions says off.
+    buildTeams(document, { layout: '2026-bottom', captions: false });
     const d = capturing({ adapter: teamsAdapter });
     d.capture.start();
     await settle(TIMING.noCaptionsMs);
@@ -327,15 +329,15 @@ describe('the captions state', () => {
     expect(c.sent).toEqual([]);
   });
 
-  it('an empty region (only its controls show text) is never notFound; with no line in the first minute it is none (silence and no captions look alike)', async () => {
+  it('an empty region (only its controls show text) is never notFound; with no line in the first minute and the control saying on, it is waiting (nobody spoke): no bubble', async () => {
     buildMeet(document);
     const c = capturing();
     c.capture.start();
     await settle(TIMING.noCaptionsMs - TIMING.callPollMs);
     expect(c.states).toEqual([]);
     await settle(2 * TIMING.notFoundMs);
-    expect(c.states).toEqual(['none']);
-    expect(c.bubbles).toEqual([noCaptions('meet')]);
+    expect(c.states).toEqual(['waiting']);
+    expect(c.bubbles).toEqual([]);
   });
 
   it('flushes the tracker when the region goes; a region drawn again is read on, not flushed', async () => {

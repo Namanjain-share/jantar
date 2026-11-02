@@ -202,7 +202,7 @@ describe('v0.10: captions on when notes start', () => {
     expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'reading', client: 'meet' }]);
   });
 
-  it('without `cc` (the switch off) nothing is clicked, and the minute without a line says so, naming the way', async () => {
+  it("without `cc` (the switch off) nothing is clicked, and the minute without a line says so, naming the way (a guest's item says nothing: only if none show when people speak)", async () => {
     goTo('/light-meetings/launch?anon=true&p=made-up');
     const teams = buildTeams(document, { layout: 'guest', light: true, hangupId: true, captions: false });
     start({ site: 'teams' });
@@ -211,8 +211,61 @@ describe('v0.10: captions on when notes start', () => {
     await settle(TIMING.noCaptionsMs);
     expect(teams.ccLog).toEqual([]);
     expect(world.worker.of('cc')).toEqual([]);
-    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'none', client: 'light' }]);
-    expect(tip()?.textContent).toBe(noCaptions('light'));
+    expect(world.worker.of('captions')).toEqual([{ t: 'captions', state: 'none', client: 'light', why: 'unsure' }]);
+    expect(tip()?.textContent).toBe(noCaptions('light', 'unsure'));
+  });
+
+  it('Repro C, whole page: a guest who joined long before Start (captions on, nobody speaking) keeps them on: no blind click ("unsure"); one who starts at once gets it', async () => {
+    goTo('/light-meetings/launch?anon=true&p=made-up');
+    let teams = buildTeams(document, { layout: 'guest', light: true, hangupId: true, captions: true, lateRegion: true });
+    start({ site: 'teams' });
+    await settle(3 * TIMING.callPollMs);
+    expect(content!.call.stage()).toBe('in');
+    await settle(2 * 60_000);
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(30_000);
+    expect(teams.ccLog).toEqual(['more-open', 'more-close']);
+    expect(teams.captionsShown()).toBe(true);
+    expect(world.worker.of('cc')).toEqual([{ t: 'cc', result: 'unsure', hook: 'teams:cc-more-item' }]);
+    content!.stop();
+    world.done();
+    document.body.replaceChildren();
+    // Another page load: in the call, notes started by themselves seconds later (captions start off).
+    teams = buildTeams(document, { layout: 'guest', light: true, hangupId: true, captions: false, lateRegion: true });
+    start({ site: 'teams' });
+    await settle(3 * TIMING.callPollMs);
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(30_000);
+    expect(teams.ccLog).toEqual(['more-open', 'item']);
+    expect(teams.captionsShown()).toBe(true);
+    expect(world.worker.of('cc')).toEqual([{ t: 'cc', result: 'clicked', hook: 'teams:cc-more-item' }]);
+  });
+
+  it('Repro F, whole page: End then Start in the same call after he turned captions off clicks nothing; after leaving the call, a rejoin starts fresh', async () => {
+    const meet = buildMeet(document, { captions: false });
+    start();
+    await settle(2 * TIMING.callPollMs);
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(1_000);
+    expect(meet.ccLog).toEqual(['button']);
+    (document.querySelector('button[jsname="RrG0hf"]') as HTMLButtonElement).click();
+    await world.toPage({ t: 'capture', on: false });
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(30_000);
+    expect(meet.ccLog).toEqual(['button', 'button']);
+    expect(meet.captionsShown()).toBe(false);
+    expect(world.worker.of('cc').map((m) => m.result)).toEqual(['turned-on', 'kept']);
+    await world.toPage({ t: 'capture', on: false });
+    meet.leave();
+    await settle(TIMING.leaveGraceMs + 2 * TIMING.callPollMs);
+    expect(content!.call.phase()).toBe('out');
+    meet.admit();
+    meet.captionsOff();
+    await settle(2 * TIMING.callPollMs);
+    await world.toPage({ t: 'capture', on: true, cc: true });
+    await settle(1_000);
+    expect(meet.ccLog).toEqual(['button', 'button', 'button']);
+    expect(meet.captionsShown()).toBe(true);
   });
 
   it('a reload that resumes notes switches them on too when the answer says `cc`; never before the call', async () => {

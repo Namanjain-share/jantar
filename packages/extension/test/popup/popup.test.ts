@@ -20,7 +20,7 @@ import { MEETING_MARKER } from '@jantar/fixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALWAYS, ARM, BAD_CODE, CALL_CHECK, CC, MISMATCH, NOT_RUNNING, PAIR_AGAIN, READS, TRY_AGAIN } from '../../src/background/sentences.js';
 import { NOT_FOUND as PAGE_NOT_FOUND } from '../../src/content/capture.js';
-import { noCaptions } from '../../src/shared/captions.js';
+import { CC_WAITING, noCaptions } from '../../src/shared/captions.js';
 import type { ArmView, FromPopup, LastShot, PopupState } from '../../src/shared/messages.js';
 import { ARM_TIMING } from '../../src/shared/wire.js';
 import { LOADING, NOT_FOUND, RECENT_SHOT_MS, SHORTCUTS_URL, TELL_PEOPLE, clockOf, inTheCall, mountPopup, tabFromSearch, type Popup } from '../../src/popup/app.js';
@@ -321,10 +321,14 @@ describe('notes on', () => {
     noBadMarks();
   });
 
-  it("the captions state: no captions yet and the site's way to turn them on, can't read them, or nothing yet", async () => {
+  it("the captions state: no captions yet and the site's way to turn them on (in the words for why), on and waiting for speech, can't read them, or nothing yet", async () => {
     for (const [tab, line] of [
       [meetTab({ notes: true, captions: 'none' }), noCaptions('meet')],
       [meetTab({ site: 'teams', notes: true, captions: 'none' }), noCaptions('teams')],
+      [meetTab({ site: 'teams', client: 'light', notes: true, captions: 'none', why: 'clicked' }), noCaptions('light', 'clicked')],
+      [meetTab({ site: 'teams', client: 'light', notes: true, captions: 'none', why: 'unsure' }), noCaptions('light', 'unsure')],
+      [meetTab({ site: 'teams', notes: true, captions: 'none', why: 'unavailable' }), noCaptions('teams', 'unavailable')],
+      [meetTab({ notes: true, captions: 'waiting' }), CC_WAITING],
       [meetTab({ notes: true, captions: 'notFound' }), NOT_FOUND],
     ] as const) {
       answers.state = state({ tab });
@@ -1015,7 +1019,10 @@ describe('v0.10: captions on when notes start', () => {
       [{ result: 'turned-on', hook: 'teams:cc-more-item' }, 'Captions: turned on by Jantar · teams:cc-more-item'],
       [{ result: 'was-on', hook: 'meet:captions-button' }, 'Captions: were on · meet:captions-button'],
       [{ result: 'clicked', hook: 'teams:cc-more-item' }, 'Captions: Jantar clicked Captions; none on screen yet · teams:cc-more-item'],
-      [{ result: 'failed', hook: 'teams:no-cc-item' }, 'Captions: Jantar could not turn them on · teams:no-cc-item'],
+      [{ result: 'failed', hook: 'meet:no-cc' }, 'Captions: Jantar could not turn them on · meet:no-cc'],
+      [{ result: 'unsure', hook: 'teams:cc-more-item' }, "Captions: can't tell if they are on; Jantar left them · teams:cc-more-item"],
+      [{ result: 'unavailable', hook: 'teams:no-cc-item' }, "Captions: this meeting offers none (the organizer's settings) · teams:no-cc-item"],
+      [{ result: 'kept', hook: 'meet:captions-button' }, 'Captions: on earlier in this call; Jantar left them as they are · meet:captions-button'],
     ];
     for (const [cc, line] of cases) {
       answers.state = state({ tab: meetTab({ notes: true, cc }) });

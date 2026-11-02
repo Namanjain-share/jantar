@@ -124,10 +124,13 @@ export const CALL_CHECK = /* @__PURE__ */ Object.freeze({
  */
 export const CC = /* @__PURE__ */ Object.freeze({
   title: 'Turn on captions when notes start',
-  why: "Jantar writes notes from the call's live captions, so when notes start it turns them on in this call if they are off. Only you see them, and Jantar never turns them off.",
+  why: "Jantar writes notes from the call's live captions, so when notes start it turns them on in this call if they are off. Only you see them, and once they were on in a call Jantar leaves them as you set them.",
   'was-on': 'were on',
   'turned-on': 'turned on by Jantar',
   clicked: 'Jantar clicked Captions; none on screen yet',
   failed: 'Jantar could not turn them on',
+  unsure: "can't tell if they are on; Jantar left them",
+  unavailable: "this meeting offers none (the organizer's settings)",
+  kept: 'on earlier in this call; Jantar left them as they are',
   line: (words: string, hook: string) => `Captions: ${words}${hook ? ` · ${hook}` : ''}`,
 });
