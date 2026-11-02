@@ -1846,8 +1846,11 @@ the code, not of the prompt.
   and keeps a journal of the values an edit changed. The phone renders
   changes and cards from that journal, never from Claude's reply.
 - Undo works for 24 h, as the tapping device: an add is deleted as it is
-  now; an edit is put back only while every changed key still holds
-  Chat's value (else 409). A part that is off refuses its Undo too.
+  now, unless the user has added to it since (a café with visits, a
+  medicine with a dose logged: 409, its own screen deletes it, so Undo
+  never takes their history); an edit is put back only while every
+  changed key still holds Chat's value (else 409). A part that is off
+  refuses its Undo too.
 - Every delete, stopping a medicine, summarizing a meeting and reading a
   link again are **Confirm cards**: the run has no tool that does them.
   The tap runs the phone's own call, as the tapping device, within 24 h,

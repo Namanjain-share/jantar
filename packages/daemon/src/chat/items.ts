@@ -18,7 +18,7 @@ import {
   type ProjectView,
   type Todo,
 } from '@jantar/protocol';
-import { shiftMonths } from '@jantar/life-core';
+import { shiftDay, shiftMonths } from '@jantar/life-core';
 import { cut, line } from './text.js';
 import type { ChatDeps } from './types.js';
 
@@ -53,6 +53,29 @@ export function findProject(d: ChatDeps, id: string): ProjectView | null {
 
 export function findMedicine(d: ChatDeps, id: string): MedicineView | null {
   return ok(d.life.medicines.get())?.medicines.find((m) => m.id === id) ?? null;
+}
+
+/** Days of a medicine's checklists `medicineHasDoses` reads at most: an add's Undo is within a day of startedOn. */
+const DOSE_DAYS_MAX = 7;
+
+/**
+ * Whether a dose (taken or skipped) is logged for the medicine. A dose is only ever logged from its
+ * startedOn to today, and every logged one is on its day's checklist (one off the schedule too), so
+ * those days are read. Past DOSE_DAYS_MAX days it answers yes: it can't tell cheaply, and yes only
+ * keeps something.
+ */
+export function medicineHasDoses(d: ChatDeps, id: string): boolean {
+  const now = ok(d.life.medicines.get());
+  const med = now?.medicines.find((m) => m.id === id);
+  if (!now || !med) return false;
+  const today = now.day.today;
+  let day = med.startedOn;
+  for (let n = 0; day <= today; n++, day = shiftDay(day, 1)) {
+    if (n >= DOSE_DAYS_MAX) return true;
+    const groups = day === now.day.day ? now.day.groups : ok(d.life.medicines.get(day))?.day.groups;
+    if (groups?.some((g) => g.items.some((x) => x.medId === id && x.doseId !== undefined))) return true;
+  }
+  return false;
 }
 
 export function findMeal(d: ChatDeps, id: string, day: string | undefined): FoodEntry | null {

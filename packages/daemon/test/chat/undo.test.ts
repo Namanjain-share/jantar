@@ -194,6 +194,34 @@ describe('Undo', () => {
     expect(rig.life.places.get(added).ok).toBe(true);
   });
 
+  it("a medicine's add is not undone once a dose is logged (Undo would take the dose history with it); with no dose left it is", async () => {
+    rig = await chatRig();
+    const { tools, turnId } = rig.turn();
+    const medId = idIn((await tools.call('med_add', { name: 'Placebin', times: ['08:00', '21:00'], schedule: { freq: 'daily' } })).text);
+    const dose = rig.life.medicines.logDose(medId, { day: TODAY, slot: '08:00', status: 'skipped' }, PHONE);
+    const refused = { ok: false, code: 'conflict', reason: 'That medicine has doses logged now. Delete it in its own screen instead.' };
+    expect(await undo(rig, turnId, 0)).toMatchObject(refused);
+    const meds = () => {
+      const r = rig!.life.medicines.get();
+      return r.ok ? r.value : null;
+    };
+    expect(meds()?.medicines.map((m) => m.id)).toEqual([medId]);
+    expect(meds()?.day.groups.flatMap((g) => g.items).find((x) => x.slot === '08:00')?.status).toBe('skipped');
+    expect(rig.store.changes(turnId)[0]?.state).toBe('done');
+
+    // The next morning (still within the day Undo has): a dose of the day before still counts, and one of today.
+    rig.ctx.clock.set('2026-11-03T08:30:00.000Z');
+    expect(await undo(rig, turnId, 0)).toMatchObject(refused);
+    rig.life.medicines.undoDose(medId, dose.ok ? dose.value.id : '', PHONE);
+    const today = rig.life.medicines.logDose(medId, { day: '2026-11-03', slot: '08:00', status: 'taken' }, PHONE);
+    expect(await undo(rig, turnId, 0)).toMatchObject(refused);
+
+    // Every dose undone by hand: nothing of the user's would go with it, so Undo deletes it.
+    rig.life.medicines.undoDose(medId, today.ok ? today.value.id : '', PHONE);
+    expect(await undo(rig, turnId, 0)).toEqual({ ok: true, value: true });
+    expect(meds()?.medicines).toEqual([]);
+  });
+
   it('a dose logged over an existing one puts the first back; a new one is removed', async () => {
     rig = await chatRig();
     const med = rig.life.medicines.create({ name: 'Placebin', times: ['08:00'], schedule: { freq: 'daily' } }, PHONE);

@@ -53,7 +53,7 @@ import {
   type PostGoal,
 } from '@jantar/protocol';
 import type { Actor, LifeResult } from '../contracts.js';
-import { current, findMedicine, findMeeting, findPlace, findTodo, labelOf, type ItemRef } from './items.js';
+import { current, findMedicine, findMeeting, findPlace, findTodo, labelOf, medicineHasDoses, type ItemRef } from './items.js';
 import type { ChangeJson } from './store.js';
 import { cut, line } from './text.js';
 import type { ChatDeps } from './types.js';
@@ -78,6 +78,7 @@ export const ACTION_SENTENCES = {
   alreadyDone: 'That todo is already done.',
   alreadyOpen: 'That todo is already open.',
   hasVisits: 'That café has visits now. Delete it in its own screen instead.',
+  hasDoses: 'That medicine has doses logged now. Delete it in its own screen instead.',
 } as const;
 
 const Id = LifeIdSchema;
@@ -609,7 +610,8 @@ function stillChats(d: ChatDeps, s: Step): Refusal | null {
       return unchangedSince(cur, s.after) ? null : changed;
     }
     case 'remove': {
-      // An add's Undo never takes what the user added since with it: a café's visits.
+      // An add's Undo never takes what the user added since with it: a café's visits, a medicine's doses.
+      if (s.item.kind === 'medicine') return medicineHasDoses(d, s.item.id) ? refuse('conflict', ACTION_SENTENCES.hasDoses) : null;
       if (s.item.kind !== 'place') return null;
       const p = findPlace(d, s.item.id);
       return p && p.visits.count > 0 ? refuse('conflict', ACTION_SENTENCES.hasVisits) : null;
