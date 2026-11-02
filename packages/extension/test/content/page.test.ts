@@ -151,7 +151,8 @@ describe('MP6: nothing is read before Start', () => {
     meet.say('Sam', 'After the reload');
     start({ notes: true });
     nonces = ['reloadd1'];
-    await settle(TIMING.debounceMs + 10);
+    // v0.10: once the call held two polls (the stage), a poll after the page loaded.
+    await settle(TIMING.callPollMs + TIMING.debounceMs + 10);
     expect(content!.capture.on).toBe(true);
     expect(world.worker.of('lines').flatMap((m) => m.lines.map((l) => l.lineId))).toEqual(['reloadd1-1']);
   });
@@ -166,10 +167,23 @@ describe('MP6: nothing is read before Start', () => {
     expect(cameraHost()).toBeNull();
     meet.join();
     meet.say('Sam', 'Back in the call');
-    await settle(TIMING.callPollMs + TIMING.debounceMs + 10);
+    await settle(2 * TIMING.callPollMs + TIMING.debounceMs + 10);
     expect(content!.capture.on).toBe(true);
     expect(rootOf()!.querySelector('.dot')!.hasAttribute('hidden')).toBe(false);
     expect(world.worker.of('lines').flatMap((m) => m.lines.map((l) => [l.lineId, l.text]))).toEqual([['pagenon1-1', 'Back in the call']]);
+  });
+
+  it('v0.10: a reload into the waiting room: an in-call control that flashes up for one poll resumes nothing (the stage, not the phase)', async () => {
+    const meet = buildMeet(document, { state: 'lobby' });
+    start({ notes: true });
+    await settle(3 * TIMING.callPollMs);
+    meet.captionsButton(true);
+    await settle(TIMING.callPollMs);
+    meet.captionsButton(false);
+    await settle(5 * TIMING.callPollMs);
+    expect(content!.call.phase()).not.toBe('out');
+    expect(content!.capture.on).toBe(false);
+    expect(world.worker.of('captions')).toEqual([]);
   });
 });
 

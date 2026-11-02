@@ -8,7 +8,8 @@
  *   button shows only then, and only in a call) and whether this tab's
  *   meeting has notes on. Notes on in the first answer since the page
  *   loaded is a reload: they resume once the call is on again (not in the
- *   waiting room). Later answers never start notes (the page may have
+ *   waiting room: v0.10, once the stage is `in`, the in-call hooks held two
+ *   polls). Later answers never start notes (the page may have
  *   stopped them itself); notes off in one stops them. An answer to a
  *   `call` sent before the worker's last `capture` message is out of date
  *   on notes and changes nothing there;
@@ -112,8 +113,9 @@ export function startContent(opts: ContentOptions = {}): Content | null {
     button.setNotes(true);
   };
 
+  // v0.10: on the stage (the in-call hooks held two polls), so a control that flashes up in the waiting room resumes nothing.
   const resumeInCall = () => {
-    if (resume && call.phase() === 'in') notesOn();
+    if (resume && call.stage() === 'in') notesOn();
   };
 
   const call = createCallWatch({
