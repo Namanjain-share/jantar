@@ -25,8 +25,8 @@ import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import type { Duplex } from 'node:stream';
 import type {
   Account,
-  AskList,
-  AskWriteAction,
+  ChatList,
+  ChatStatus,
   AccountId,
   AccountsMode,
   BillBody,
@@ -2050,34 +2050,38 @@ export interface MeetingsService extends Service {
 }
 
 // ===========================================================================
-// v0.5.3: Ask
+// v0.10: Chat (replaces v0.5.3's Ask; spec 0.10 H, proposed)
 
 /**
- * The Ask part (ask/service.ts): this device's turns in memory, one headless
- * Claude run at a time (the shared runner), and the taps that add a card's
- * item to Life (through the Life modules, the tapping device as actor) or
- * undo it. Every call names the actor; a turn is its owner's alone (anyone
- * else gets not_found). Nothing here logs, emits or audits chat text: the
- * one event is `life.changed {}`.
+ * The Chat part (chat/service.ts): one thread per Mac in chat.db, shared by
+ * every control device and the Siri key; one headless Claude run at a time
+ * with Jantar's own tools over one strict MCP server (chat/dispatcher.ts);
+ * the phone's taps (Undo, a card, Dismiss) run as the tapping device.
+ * Nothing here logs, emits or audits chat text: the one event is
+ * `life.changed {}`. Sessions are read only: the part holds no writer,
+ * terminal, launcher, controls or hooks' decide.
  */
-export interface AskService extends Service {
-  /** This device's turns, oldest first, and whether Ask can run now. */
-  list(actor: Actor): LifeResult<AskList>;
-  /** Queue a turn (one unfinished per device); the value is its id. */
-  send(text: string, actor: Actor): LifeResult<{ id: string }>;
-  /** A waiting or running turn of this device becomes cancelled; a finished one is left as it is. */
+export interface ChatService extends Service {
+  /** The newest turns (before turn `before`), oldest first, and whether Chat can run now. */
+  list(actor: Actor, before?: string): LifeResult<ChatList>;
+  /** Queue a turn (photos already uploaded); the value is its id. */
+  send(body: { text: string; photos?: string[] }, actor: Actor, via?: 'phone' | 'voice'): LifeResult<{ id: string }>;
+  /** The Siri door: queue a voice turn and wait for it at most `waitMs`; what Siri speaks. */
+  voice(text: string, actor: Actor, waitMs: number): Promise<{ message: string; outcome: 'answered' | 'later' | 'busy' | 'refused'; turnId?: string }>;
+  /** A waiting or running turn becomes cancelled; a finished one is left as it is. */
   cancel(id: string, actor: Actor): LifeResult;
-  /** Forget this device's turns (its unfinished one is stopped). */
-  clear(actor: Actor): LifeResult;
-  /**
-   * Add card `n`'s item to Life (as `edit` says, when given); the value is
-   * the new item's id. v0.8: async, as a save card's Add saves to Intel
-   * (`intel.read`, the value then the Intel item's id).
-   */
-  add(id: string, n: number, edit: AskWriteAction | undefined, actor: Actor): Promise<LifeResult<{ id: string }>>;
-  skip(id: string, n: number, actor: Actor): LifeResult;
-  /** Delete the item card `n` added, as it is now. v0.8: async (a save card's Undo is `intel.remove`). */
-  undo(id: string, n: number, actor: Actor): Promise<LifeResult>;
+  /** Delete the thread, its photos and its journal (items added stay); `broken` moves a chat.db that will not open aside. */
+  clear(actor: Actor, opts?: { broken?: boolean }): Promise<LifeResult>;
+  undo(turnId: string, n: number, actor: Actor): Promise<LifeResult>;
+  card(turnId: string, n: number, actor: Actor): Promise<LifeResult>;
+  dismiss(turnId: string, n: number, actor: Actor): LifeResult;
+  photoAdd(bytes: Buffer, actor: Actor): Promise<LifeResult<{ id: string }>>;
+  photo(id: string): Promise<LifeResult<{ type: string; body: Buffer }>>;
+  photoDelete(id: string, actor: Actor): Promise<LifeResult>;
+  /** The history's size (no text) and whether chat.db opened. */
+  status(): ChatStatus;
+  /** Cheap and never throws: CHAT_BROKEN_REASON while chat.db will not open, else null. */
+  broken(): string | null;
 }
 
 // ===========================================================================
@@ -2321,8 +2325,8 @@ export interface Parts {
   intel: IntelService;
   /** v0.5 */
   meetings: MeetingsService;
-  /** v0.5.3 */
-  ask: AskService;
+  /** v0.10 (replaces v0.5.3's ask) */
+  chat: ChatService;
   notifications: NotificationRouter;
   /** v0.6: the hub's Fleet part (inert while Fleet is off; an inert stand-in on a node). */
   fleet: FleetService;
@@ -2404,12 +2408,25 @@ export interface Factories {
   /** v0.5 (WP0's shell; the builders are WP-MS's and WP-SU's). `life`: projects and todos; `usage` and `ccwLegacy`: the summary's account. */
   meetings: Factory<MeetingsService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
   /**
-   * v0.5.3. Only these: no writer, terminal, launcher, controls, files or
-   * settings patch, so a model's answer reaches nothing else. v0.8: Intel's
-   * read and remove only, for the save card (the typed fast path; Claude
-   * never proposes a save).
+   * v0.10 (spec 0.10 B7.4). Only these: Life, Intel's list, get, read,
+   * remove, reread and jobs, Meetings' library, summaries, status and
+   * broken, a read-only board (its state and transcript pages), usage, ccw's
+   * read-only view and the notifiers (Web Push only is used). No writer,
+   * terminal, launcher, controls, hooks' decide, files, uploads or settings
+   * patch: arch/v010-chat.test.ts pins it.
    */
-  ask: Factory<AskService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource; intel: Pick<IntelService, 'read' | 'remove'> }>;
+  chat: Factory<
+    ChatService,
+    {
+      life: LifeService;
+      intel: Pick<IntelService, 'list' | 'get' | 'read' | 'remove' | 'reread' | 'jobs'>;
+      meetings: Pick<MeetingsService, 'library' | 'summaries' | 'status' | 'broken'>;
+      board: { state(): Readonly<State>; page: TranscriptReader['page'] };
+      usage: UsageSource;
+      ccwLegacy: CcwLegacySource;
+      notifiers: Notifier[];
+    }
+  >;
   /**
    * v0.5.3: `terminal` and `panes` (the API's PaneLookup, shared) let the
    * router read Claude's countdown off an unattended ask's screen; it only

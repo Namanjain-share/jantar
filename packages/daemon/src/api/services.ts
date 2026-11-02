@@ -91,13 +91,17 @@ export const V05_LIMITS = {
 export type V05Limits = { [K in keyof typeof V05_LIMITS]: { limit: number; windowMs: number } };
 
 /**
- * v0.5.3 Ask's limits per device (key them by `actorName(auth)`): messages
- * a minute and a day (askSend counts them). Every Ask write from a device
- * also counts against V04_LIMITS.lifeWrite (the pipeline).
+ * v0.10 Chat's limits (Ask's, renamed; spec 0.10 B10): messages a minute
+ * and a day per device (chatSend counts them; key them by
+ * `actorName(auth)`), and the same per chat key on the Siri door
+ * (`capture:<id>`). Every Chat write from a device also counts against
+ * V04_LIMITS.lifeWrite (the pipeline).
  */
-export const ASK_LIMITS = {
+export const CHAT_LIMITS = {
   send: { limit: 10, windowMs: 60_000 },
   sendDay: { limit: 100, windowMs: 24 * 60 * 60_000 },
+  voice: { limit: 10, windowMs: 60_000 },
+  voiceDay: { limit: 100, windowMs: 24 * 60 * 60_000 },
 } as const;
 
 /**
@@ -358,9 +362,12 @@ export class ApiServices {
   readonly uploads: UploadStore;
   /** v0.4.2: raw bodies read so far. A refused upload never gets here (the tests check). */
   rawBodiesRead = 0;
-  /** v0.5.3 Ask's limits per device (ASK_LIMITS). */
-  readonly askLimiter: SlidingWindowLimiter;
-  readonly askDayBudget: SlidingWindowLimiter;
+  /** v0.10 Chat's limits per device (CHAT_LIMITS). */
+  readonly chatLimiter: SlidingWindowLimiter;
+  readonly chatDayBudget: SlidingWindowLimiter;
+  /** v0.10 the Siri door's messages per chat key (CHAT_LIMITS). */
+  readonly chatVoiceLimiter: SlidingWindowLimiter;
+  readonly chatVoiceDayBudget: SlidingWindowLimiter;
   /** v0.5 limits per extension (V05_LIMITS). */
   readonly extRequestLimiter: SlidingWindowLimiter;
   readonly extShotBytes: SlidingWindowBudget;
@@ -436,8 +443,10 @@ export class ApiServices {
     this.uploadBytesBudget = new SlidingWindowBudget({ ...V042_LIMITS.uploadBytes, clock: ctx.clock });
     this.uploadLimiter = per(V042_LIMITS.uploads);
     this.uploads = opts.uploads ?? new FileUploadStore(ctx);
-    this.askLimiter = per(ASK_LIMITS.send);
-    this.askDayBudget = per(ASK_LIMITS.sendDay);
+    this.chatLimiter = per(CHAT_LIMITS.send);
+    this.chatDayBudget = per(CHAT_LIMITS.sendDay);
+    this.chatVoiceLimiter = per(CHAT_LIMITS.voice);
+    this.chatVoiceDayBudget = per(CHAT_LIMITS.voiceDay);
     const v05 = { ...V05_LIMITS, ...opts.v05Limits };
     this.extRequestLimiter = per(v05.extRequest);
     this.extShotBytes = new SlidingWindowBudget({ ...v05.extShotBytes, clock: ctx.clock });

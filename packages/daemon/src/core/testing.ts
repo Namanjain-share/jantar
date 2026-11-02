@@ -19,7 +19,7 @@ import {
 } from '@jantar/protocol';
 import type {
   Actor,
-  AskService,
+  ChatService,
   Bins,
   CcwLegacySource,
   DaemonContext,
@@ -187,8 +187,8 @@ export function createTestContext(opts: TestContextOptions = {}): TestContext {
 
 /** The v0.3 parts. */
 export type V03Parts = Pick<Parts, 'files' | 'changes' | 'rewrite' | 'launcher' | 'controls'>;
-/** The parts notBuiltParts() gives: v0.3's, v0.4's (life, intel), v0.5's (meetings) and v0.5.3's (ask). */
-export type NotBuiltParts = V03Parts & Pick<Parts, 'life' | 'intel' | 'meetings' | 'ask'>;
+/** The parts notBuiltParts() gives: v0.3's, v0.4's (life, intel), v0.5's (meetings) and v0.10's (chat). */
+export type NotBuiltParts = V03Parts & Pick<Parts, 'life' | 'intel' | 'meetings' | 'chat'>;
 
 /**
  * v0.3, v0.4, v0.5 and v0.5.3 parts that start, stop and answer every call with
@@ -251,7 +251,7 @@ export function notBuiltParts(): NotBuiltParts {
       library: notBuilt<MeetingLibrary>('Meetings'),
       summaries: notBuilt<MeetingSummaries>('Meetings'),
     }),
-    ask: notBuilt<AskService>('Ask', { ...life }),
+    chat: notBuilt<ChatService>('Chat', { ...life }),
   };
 }
 

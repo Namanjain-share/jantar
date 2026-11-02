@@ -1,6 +1,6 @@
 /**
  * G14 (spec 6.1): the shared runner's `io` option is additive. Every caller
- * from before 0.8 (Rewrite, Ask, Meetings, the food estimate) leaves it out,
+ * from before 0.8 (Rewrite, Meetings, the food estimate; Ask until 0.10) leaves it out,
  * so its argv is exactly 0.7's: `--output-format json`, never stream-json or
  * --verbose. Only Intel's read passes `io: 'stream'`. Read from the source
  * and pinned on the argv itself, for both ways a run starts (cswap, claude).
@@ -12,7 +12,8 @@ import { describe, expect, it } from 'vitest';
 import { CORE_OPTIONS, rewriteArgv, type RunFlags } from '../../src/rewrite/run.js';
 
 const SRC = fileURLToPath(new URL('../../src', import.meta.url));
-const CALLERS = ['rewrite/service.ts', 'ask/service.ts', 'meetings/summary.ts', 'life/food/estimate.ts'];
+// v0.10: Ask is gone; Chat (chat/service.ts) runs in tools mode, pinned in tools.test.ts.
+const CALLERS = ['rewrite/service.ts', 'meetings/summary.ts', 'life/food/estimate.ts'];
 
 const FLAGS: RunFlags = { account: 3 as RunFlags['account'], model: 'sonnet', fallbackModel: 'haiku', effort: 'low', systemPromptFile: '/synthetic/run/prompt.md' };
 

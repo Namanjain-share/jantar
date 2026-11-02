@@ -22,8 +22,8 @@
  * 4. A reel at Standard that Chrome can't read (login): the headless
  *    browser reads the page (never the signed-in name around the post), the
  *    post's video file 404s, so yt-dlp's single file gives the frames.
- * 5. Ask: "save this: <link>" is one save card at once, no Claude run; Add
- *    saves and reads it.
+ * 5. Chat (Ask until 0.10): "save this: <link>" saves it at once with
+ *    Undo, no Claude run, and reads it.
  * 6. The Shortcut's door (G13) in each remote.mode: 404 in loopback and
  *    lan, open in tailscale and cloudflare with a key made at the Mac;
  *    Origin 403, no key 401; the same sentence for a new link, a duplicate
@@ -55,7 +55,7 @@ import {
   EXTENSION_ID,
   EXTENSION_KEY_HEADER,
   INTEL_READ_REASONS,
-  type AskList,
+  type ChatList,
   type ExtPairStartReply,
   type ExtReadNextReply,
   type IntelItem,
@@ -354,22 +354,22 @@ describe.skipIf(!ready)('v0.8 Intel reads links through jantard', () => {
     for (const a of calls) expect(a.join(' ')).not.toMatch(/ffmpeg|--cookies |--cookies-from-browser |--exec/);
   });
 
-  it('5. Ask: "save this: <link>" is one save card at once, no Claude run; Add saves and reads it', async () => {
+  it('5. Chat: "save this: <link>" saves it at once with Undo, no Claude run, and reads it', async () => {
     await run('ask', 'on');
     await run('life', 'on', 'todos');
     const claudeRuns = async () => (await readFile(join(d.home.root, 'calls', 'claude.jsonl'), 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
     const before = await claudeRuns();
-    await ok('POST', '/v1/ask', { text: `save this: ${GARDEN}` });
-    const turn = (await ok<AskList>('GET', '/v1/ask')).turns.at(-1);
-    expect(turn).toMatchObject({ state: 'done', reply: 'Save this to Intel?', cards: [{ state: 'proposed', action: { type: 'save' } }] });
+    const { id: turnId } = await ok<{ id: string }>('POST', '/v1/chat', { text: `save this: ${GARDEN}` });
+    const turn = await eventually(async () => {
+      const t = (await ok<ChatList>('GET', '/v1/chat')).turns.find((x) => x.id === turnId);
+      return t?.state === 'done' ? t : null;
+    }, 30_000, 'the fast save');
+    expect(turn).toMatchObject({ state: 'done', changes: [{ module: 'intel', op: 'save', state: 'done', undoable: true }], cards: [] });
     expect(await claudeRuns()).toBe(before);
-    await ok('POST', `/v1/ask/turns/${turn?.id}/actions/0`, {});
-    const added = (await ok<AskList>('GET', '/v1/ask')).turns.at(-1)?.cards[0];
-    expect(added).toMatchObject({ state: 'added' });
-    const id = added?.ref as string;
+    const id = turn.changes[0]?.ref as string;
     ids.garden = id;
-    expect((await finished(id, 'the Ask save read')).state).toBe('saved');
-    expect(await item(id)).toMatchObject({ url: GARDEN, fields: expect.arrayContaining([{ key: 'via', value: 'ask' }]) });
+    expect((await finished(id, 'the Chat save read')).state).toBe('saved');
+    expect(await item(id)).toMatchObject({ url: GARDEN, fields: expect.arrayContaining([{ key: 'via', value: 'chat' }]) });
   });
 
   it('6. the Shortcut door (G13): 404 in loopback and lan, open in tailscale and cloudflare; Origin 403, no key 401; one sentence always; 404 with Intel off', async () => {

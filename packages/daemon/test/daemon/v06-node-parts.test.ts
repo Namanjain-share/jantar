@@ -85,7 +85,7 @@ describe('v0.6: a node-mode daemon', () => {
     const clock = new FakeClock(Date.parse('2026-11-01T10:00:00.000Z'));
     const d = await boot(true, clock);
     const before = clock.pending();
-    for (const part of [d.parts.changes, d.parts.rewrite, d.parts.life, d.parts.intel, d.parts.meetings, d.parts.ask, d.parts.notifications, d.parts.fleet]) {
+    for (const part of [d.parts.changes, d.parts.rewrite, d.parts.life, d.parts.intel, d.parts.meetings, d.parts.chat, d.parts.notifications, d.parts.fleet]) {
       await part.start();
       await part.stop();
     }
@@ -102,7 +102,7 @@ describe('v0.6: a node-mode daemon', () => {
     expect(off(() => d.parts.meetings.status())).toBe(`not_implemented: ${NODE_PART_OFF}`);
     expect(off(() => d.parts.intel.list({ limit: 10 } as never))).toBe(`not_implemented: ${NODE_PART_OFF}`);
     // v0.5.3's Ask is the Mac's too: no headless Claude run on a server.
-    expect(off(() => d.parts.ask.list({ kind: 'cli' }))).toBe(`not_implemented: ${NODE_PART_OFF}`);
+    expect(off(() => d.parts.chat.list({ kind: 'cli' }))).toBe(`not_implemented: ${NODE_PART_OFF}`);
     expect(d.parts.life.broken()).toBeNull();
     expect(d.parts.meetings.broken()).toBeNull();
     expect(d.parts.rewrite.originFor('j', 's', 'h', { kind: 'cli' })).toBeNull();

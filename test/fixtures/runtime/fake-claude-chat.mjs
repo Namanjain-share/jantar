@@ -14,7 +14,7 @@
 // at --max-turns (subtype error_max_turns).
 //
 // Scenarios (CHAT_MODES), picked by a `FAKE_CHAT:<name>` marker in the
-// message, a rule in <root>/fake/claude.json with `mode`, $FAKE_CLAUDE_MODE,
+// <message> block (never the history's), a rule in <root>/fake/claude.json with `mode`, $FAKE_CLAUDE_MODE,
 // or the file's `mode`; default chat-read:
 //   chat-read           today, todos_find, places_find, money_month, sessions_find and
 //                       accounts_usage (those allowed); the reply quotes the first number
@@ -93,10 +93,11 @@ export function chatMessage(blocks) {
   return (m ? m[1] : '').replace(/<\\(\/?)/g, '<$1');
 }
 
-function pickChatMode(config, args, stdin, matches, account) {
+function pickChatMode(config, args, stdin, matches, account, message) {
   const rule = (config.rules || []).find((r) => r.mode && CHAT_MODES.includes(r.mode) && matches(r.match, args, stdin, { account }));
   if (rule) return rule.mode;
-  const marker = /FAKE_CHAT:([a-z-]+)/.exec(stdin)?.[1];
+  // The marker in this message only: the history block carries earlier messages' markers too.
+  const marker = /FAKE_CHAT:([a-z-]+)/.exec(message)?.[1];
   const mode = marker || process.env.FAKE_CLAUDE_MODE || config.mode;
   return CHAT_MODES.includes(mode) ? mode : 'chat-read';
 }
@@ -169,7 +170,7 @@ function answerText(msg) {
 
 export async function runChat({ root, args, stdin, matches, account }) {
   const config = readJson(join(root, 'fake', 'claude.json'), {});
-  const mode = pickChatMode(config, args, stdin, matches, account);
+  const mode = pickChatMode(config, args, stdin, matches, account, chatMessage(chatBlocks(stdin)));
   if (mode === 'chat-refuse-option' && args.includes('--mcp-config')) {
     process.stderr.write("error: unknown option '--mcp-config'\n");
     return 1;

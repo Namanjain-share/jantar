@@ -44,7 +44,7 @@
  */
 import { errorBody, type Pane, type PaneForeground, type PatchResult, type Settings } from '@jantar/protocol';
 import type {
-  AskService,
+  ChatService,
   CcwLegacySource,
   ChangesService,
   DaemonRole,
@@ -364,12 +364,12 @@ export interface NodeOffParts {
   life: LifeService;
   intel: IntelService;
   meetings: MeetingsService;
-  ask: AskService;
+  chat: ChatService;
   notifications: NotificationRouter;
 }
 
 /**
- * On a node: Changes, Rewrite, Life, Intel, Meetings, Ask and the push router.
+ * On a node: Changes, Rewrite, Life, Intel, Meetings, Chat and the push router.
  * Their switches are off in the node's daemon.version and the link serves
  * none of their routes; a CLI call on the node's own socket gets the 501
  * that says they live on the Mac. Nothing here opens a file or starts a timer.
@@ -382,7 +382,7 @@ export function nodeOffParts(): NodeOffParts {
     life: standIn<LifeService>({ broken: () => null }, nodeOff),
     intel: standIn<IntelService>({ sources: () => [] }, nodeOff),
     meetings: standIn<MeetingsService>({ broken: () => null }, nodeOff),
-    ask: standIn<AskService>({}, nodeOff),
+    chat: standIn<ChatService>({ broken: () => null }, nodeOff),
     notifications: { ...idle },
   };
 }

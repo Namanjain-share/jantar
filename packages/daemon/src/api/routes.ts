@@ -81,7 +81,6 @@ import { EXT_PAIR_ROUTE_IMPLS } from './routes/ext-pair.js';
 import { EXT_ROUTE_IMPLS } from './routes/ext.js';
 import { MEETING_ITEMS_ROUTE_IMPLS } from './routes/meeting-items.js';
 import { MEETINGS_ROUTE_IMPLS } from './routes/meetings.js';
-import { ASK_ROUTE_IMPLS } from './routes/ask.js';
 import { CHAT_ROUTE_IMPLS } from './routes/chat.js';
 import { NOTIFY_ROUTE_IMPLS } from './routes/notify.js';
 import { MACHINES_ROUTE_IMPLS } from './routes/machines.js';
@@ -109,7 +108,7 @@ const MAC_COMMAND: Record<MacOnlySettingGroup, string> = {
   intel: 'jantar intel',
   accounts: 'jantar accounts',
   meetings: 'jantar meetings',
-  ask: 'jantar ask',
+  ask: 'jantar chat',
   fleet: 'jantar fleet',
 };
 
@@ -624,7 +623,6 @@ export const ROUTE_IMPLS: RouteTable = {
   ...MEETINGS_ROUTE_IMPLS,
   ...MEETING_ITEMS_ROUTE_IMPLS,
   // v0.5.3 (the folder todos are in TODOS_ROUTE_IMPLS)
-  ...ASK_ROUTE_IMPLS,
   ...NOTIFY_ROUTE_IMPLS,
   // v0.6
   ...MACHINES_ROUTE_IMPLS,

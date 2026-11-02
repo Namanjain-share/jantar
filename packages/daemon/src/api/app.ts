@@ -143,8 +143,6 @@ export const READ_ONLY_REFUSED: ReadonlySet<RouteName> = new Set<RouteName>([
   'foodEstimate',
   // v0.5: so does a meeting's summary. Capture and the phone's edits still work.
   'meetingSummarize',
-  // v0.5.3: Ask runs a headless Claude too. Its Add, Skip, Undo, Cancel and Clear still work (Life writes).
-  'askSend',
   // v0.10: a Chat message runs a headless Claude (as does the Siri door's); a photo exists only to be sent.
   'chatSend',
   'chatPhotoAdd',
@@ -198,7 +196,8 @@ export const FEATURE_OFF: Readonly<Record<FeatureSwitch, { code: ErrorCode; mess
   // v0.5
   meetings: { code: 'forbidden', message: 'Meetings are off. Turn them on at your Mac: jantar meetings on' },
   // v0.5.3
-  ask: { code: 'forbidden', message: 'Ask is off. Turn it on at your Mac: jantar ask on' },
+  // v0.10: the switch keeps its name; the page is Chat.
+  ask: { code: 'forbidden', message: 'Chat is off. Turn it on at your Mac: jantar chat on' },
   // v0.6
   fleet: { code: 'forbidden', message: 'Fleet is off. Turn it on at your Mac: jantar fleet on' },
   // v0.8
@@ -244,7 +243,7 @@ export const EXTENSION_NOT_PAIRED = 'The Jantar extension is not paired. On your
 /** What a phone write on Meetings answers past V04_LIMITS.lifeWrite (Meetings share Life's per-device write limit). */
 export const MEETING_WRITES_LIMITED = 'Too many meeting changes from this device; try again in a minute';
 
-/** v0.5.3: what a phone write on Ask answers past V04_LIMITS.lifeWrite (Ask shares Life's per-device write limit). */
+/** v0.5.3: what a phone write on Chat (Ask until 0.10) answers past V04_LIMITS.lifeWrite (it shares Life's per-device write limit). */
 export const ASK_WRITES_LIMITED = 'Too many changes from this device; try again in a minute';
 
 /** The origin a pairing claim must come from: the published extension's. */

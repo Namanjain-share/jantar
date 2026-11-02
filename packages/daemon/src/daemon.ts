@@ -10,7 +10,7 @@
  *   3. parts: ccwLegacy -> sessions -> transcripts -> transcriptWatcher ->
  *      usage -> hooks -> terminal -> writer -> notifiers -> files -> changes
  *      -> rewrite -> launcher -> controls -> life -> intel -> meetings ->
- *      ask -> primer -> notifications -> api (the v0.3, v0.4, v0.5 and
+ *      chat -> primer -> notifications -> api (the v0.3, v0.4, v0.5 and
  *      v0.5.3 parts sit behind their switches; the API refuses their routes
  *      while a switch is off)
  *   4. startServices() in that order; stop() runs them down in reverse.
@@ -27,7 +27,7 @@
  *   -> usage -> hooks -> terminal (terminal/pick.ts: tmux on Linux, none on
  *   Windows) -> writer -> files (policy only) -> launcher -> controls -> api
  *   (the control socket and the link app, no TCP) -> nodeLink. No Changes,
- *   Rewrite, Life, Intel, Meetings, Ask, primer or pushes (modes.ts
+ *   Rewrite, Life, Intel, Meetings, Chat, primer or pushes (modes.ts
  *   stand-ins, which open no file and start no timer); `notifiers` is [].
  *
  * main.ts calls startDaemon() with the command-line flags; the end-to-end
@@ -36,7 +36,7 @@
  */
 import { errorBody } from '@jantar/protocol';
 import type {
-  AskService,
+  ChatService,
   ChangesService,
   Clock,
   DaemonContext,
@@ -93,7 +93,7 @@ import { createLifeService, LIFE_MODULE_BUILDERS } from './life/index.js';
 import { buildLifeService } from './life/service.js';
 import { createIntelService, type IntelOptions } from './intel/index.js';
 import { createMeetingsService } from './meetings/index.js';
-import { createAskService } from './ask/index.js';
+import { createChatService } from './chat/index.js';
 import { createPrimer } from './primer/index.js';
 import { WebPushNotifier, createNotificationRouter, createNotifiers, type PushSender } from './notify/index.js';
 import { PaneLookup, createApiServerWith, type ApiOptions, type ApiServerImpl } from './api/index.js';
@@ -231,9 +231,10 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     const intel: IntelService = off ? off.intel : createIntelService(ctx, { files, usage, ccwLegacy }, { readOnly, ...opts.intel });
     // v0.5. Meetings are told --read-only, not wrapped: capture and edits are Jantar's own files, summaries spend quota.
     const meetings: MeetingsService = off ? off.meetings : createMeetingsService(ctx, { life, usage, ccwLegacy }, { readOnly });
-    // v0.5.3. Ask is told --read-only too: its taps are Life writes (allowed), its runs spend quota (never).
-    // v0.8: and Intel's read and remove, for the save card.
-    const ask: AskService = off ? off.ask : createAskService(ctx, { life, usage, ccwLegacy, intel }, { readOnly });
+    // v0.10. Chat (replaces Ask) is told --read-only too: its taps are Life writes (allowed), its runs spend quota (never).
+    // Sessions reach it read only: the store's state and transcript pages, never the writer, terminal or hooks.
+    const board = { state: () => ctx.store.getState(), page: transcripts.page.bind(transcripts) };
+    const chat: ChatService = off ? off.chat : createChatService(ctx, { life, intel, meetings, board, usage, ccwLegacy, notifiers }, { readOnly });
     // v0.4. Primes free 5-hour windows while accounts.prime is on; never under --read-only (it runs cswap).
     const primer: Service | null = off ? null : createPrimer(ctx, { usage, ccwLegacy }, { readOnly });
     const panes = new PaneLookup(terminal, ctx, undefined, opts.api?.paneLookupTimeoutMs);
@@ -271,7 +272,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
         life,
         intel,
         meetings,
-        ask,
+        chat,
         panes,
         fleet,
         nodeLink,
@@ -297,7 +298,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
       life,
       intel,
       meetings,
-      ask,
+      chat,
       notifications,
       fleet,
       nodeLink,
@@ -326,7 +327,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
         ['life', life],
         ['intel', intel],
         ['meetings', meetings],
-        ['ask', ask],
+        ['chat', chat],
         ...(primer ? ([['primer', primer]] as NamedService[]) : []),
         ['notifications', notifications],
         ['fleet', fleet],

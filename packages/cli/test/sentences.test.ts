@@ -3,7 +3,7 @@
  * v0.5 or v0.5.3 jantar command ("Turn it on at your Mac: jantar files on",
  * "On your Mac run: jantar devices grant <device> launch", MAC_COMMAND's
  * "jantar folders", "jantar life on medicines", "jantar meetings on",
- * "jantar pair --extension", "jantar ask on", "jantar notify test", "jantar
+ * "jantar pair --extension", "jantar chat on", "jantar notify test", "jantar
  * mcp") names one that exists and does its job. The sentences are read from
  * the source, so a new one is checked as soon as it is written. A command
  * still a WP0 stub (`stub: true`) has its sentences skipped; they are
@@ -24,11 +24,12 @@ import { meetingDetail } from '@jantar/fixtures';
 import type { DevicePublic, IntelReadStatus, LifeStatus, MeetingsStatus } from '@jantar/protocol';
 import { INTEL_SHELLS } from '../src/commands/intel.js';
 import { SHORTCUT_SHELL } from '../src/commands/intel-shortcut.js';
+import { CHAT_SHORTCUT_SHELL } from '../src/commands/chat-shortcut.js';
 import { COMMANDS, EXIT, main, memoryIo } from '../src/index.js';
 import { contextFor, fakeCtl, fakeSettings, ok } from './helpers.js';
 
 const PACKAGES = fileURLToPath(new URL('../../', import.meta.url));
-const COMMAND = '(?:files|folders|launch|devices|rewrite|controls|screenshots|new|life|intel|accounts|init|meetings|ask|notify|mcp|pair(?= --extension))\\b';
+const COMMAND = '(?:files|folders|launch|devices|rewrite|controls|screenshots|new|life|intel|accounts|init|meetings|chat|ask|notify|mcp|pair(?= --extension))\\b';
 /** Commands WP0 registered as stubs, until their packages build them. */
 const STUBS = new Set(COMMANDS.filter((c) => c.stub).map((c) => c.name));
 /** A sentence's command when another command's package builds it (v0.5: WP-MC builds `pair --extension` with `meetings`). */
@@ -36,6 +37,8 @@ const BUILT_WITH: Readonly<Record<string, string>> = { pair: 'meetings' };
 /** v0.8 wave 0: a `jantar intel` action still a shell (its lane takes it out of INTEL_SHELLS, or sets SHORTCUT_SHELL false, as it builds it). */
 function intelShell(said: string): boolean {
   const [cmd, action] = said.split(' ');
+  // v0.10: `jantar chat shortcut ...` the same way, until the Siri door is built.
+  if (cmd === 'chat') return action === 'shortcut' && CHAT_SHORTCUT_SHELL;
   if (cmd !== 'intel' || action === undefined) return false;
   return action === 'shortcut' ? SHORTCUT_SHELL : INTEL_SHELLS.has(action);
 }
@@ -46,7 +49,7 @@ const OWN_HELP: Readonly<Record<string, string>> = { mcp: 'claude mcp add ' };
 /** Commands that only read from the daemon and write files on the Mac: they get `--out` and must write something. */
 const WRITES_FILES = /^meetings export\b/;
 /** v0.8: commands that only read from the daemon and print (the sentence points at them to see something, not to change it). */
-const READS_ONLY = /^intel (?:read status|shortcut list)$/;
+const READS_ONLY = /^(?:intel (?:read status|shortcut list)|chat (?:status|shortcut list))$/;
 /** Words after the command: a <placeholder>, or a plain word (paths like ~/Desktop included). */
 const WORDS = '(?: (?:<[a-z-]+>|[A-Za-z0-9~/._-]+))*';
 const LITERAL = new RegExp(`\\bjantar (${COMMAND}${WORDS})`, 'g');
@@ -181,9 +184,9 @@ describe('the commands the daemon and the web app name', () => {
         'meetings unpair',
         'meetings',
         'pair --extension',
-        // v0.5.3
-        'ask on',
-        'ask',
+        // v0.5.3 (v0.10: Ask is Chat)
+        'chat on',
+        'chat',
         'notify test',
         'notify done on',
         'notify urgent on',
@@ -238,6 +241,12 @@ describe('the commands the daemon and the web app name', () => {
         'POST /v1/intel/capture-keys': () => ok({ id: meetingDetail().meeting.id, key: `jcap_${'A'.repeat(43)}`, name: 'iphone', saveUrl: null }),
         'GET /v1/intel/capture-keys': () => ok({ keys: [{ id: meetingDetail().meeting.id, name: 'iphone', createdAt: at, lastSeenAt: null }] }),
         'POST /v1/intel/capture-keys/revoke': () => ok({ revoked: 1 }),
+        // v0.10: Chat at the Mac (its history and the Siri door's keys).
+        'GET /v1/chat/status': () => ok({ turns: 0, photos: 0, bytes: 0, broken: null }),
+        'DELETE /v1/chat': () => ok({ ok: true }),
+        'POST /v1/chat/keys': () => ok({ id: meetingDetail().meeting.id, key: `jchat_${'A'.repeat(43)}`, name: 'iphone', chatUrl: null }),
+        'GET /v1/chat/keys': () => ok({ keys: [{ id: meetingDetail().meeting.id, name: 'iphone', createdAt: at, lastSeenAt: null }], chatUrl: null, why: 'Synthetic: no door.' }),
+        'POST /v1/chat/keys/revoke': () => ok({ revoked: 1 }),
       });
       // A person at the Mac answers yes when a command asks (life restore asks before it replaces life.db).
       const { ctx, io } = contextFor(home, { ctl, ioOptions: { answers: ['y', 'y', 'y'] } });

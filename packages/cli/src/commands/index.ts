@@ -10,6 +10,7 @@
 import type { Command } from '../command.js';
 import accounts from './accounts.js';
 import ask from './ask.js';
+import chat from './chat.js';
 import controls from './controls.js';
 import devices from './devices.js';
 import doctor from './doctor.js';
@@ -67,6 +68,7 @@ export const COMMANDS: readonly Command[] = [
   // v0.5
   meetings,
   // v0.5.3
+  chat,
   ask,
   // v0.6
   fleet,
