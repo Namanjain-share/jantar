@@ -534,7 +534,7 @@ export function createApi(opts: ApiOptions = {}): Api {
       const code = (err?.code as ErrorCode | undefined) ?? statusCode(res.status);
       throw new ApiError(code, err?.message ?? `${res.status} ${res.statusText}`.trim(), res.status);
     }
-    if (json === undefined && text) throw new ApiError('bad_response', 'The daemon sent an unreadable reply.', res.status);
+    if (json === undefined && text) throw new ApiError('bad_response', 'The Mac sent a reply this app could not read.', res.status);
     return json as T;
   }
 

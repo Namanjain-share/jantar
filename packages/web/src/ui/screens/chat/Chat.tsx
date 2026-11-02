@@ -18,7 +18,7 @@
  * from the Mac's journal, never from the reply. Nothing is kept on the
  * phone but what is on screen.
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatTurn } from '@jantar/protocol';
 import { useDeps, useNow } from '../../context.js';
 import { Button } from '../../kit/Button.js';
@@ -147,7 +147,7 @@ export function Chat() {
                 list.ready.ok ? (
                   <div className="px-16 py-8">
                     <p className="type-small text-ink-2">{CHAT_COPY.empty}</p>
-                    <p className="mt-8 type-small text-pretty text-ink-3">{PRIVACY}</p>
+                    {/* The examples first: at 320 px the words below them may sit under the composer. */}
                     <div role="group" aria-label="Examples" className="mt-12 flex flex-wrap gap-6">
                       {EXAMPLES.map((x) => (
                         <button key={x} type="button" className={CHIP} onClick={() => fill(x)}>
@@ -155,6 +155,7 @@ export function Chat() {
                         </button>
                       ))}
                     </div>
+                    <p className="mt-12 type-small text-pretty text-ink-3">{PRIVACY}</p>
                   </div>
                 ) : null
               ) : (
@@ -219,23 +220,20 @@ export function Chat() {
   );
 }
 
-/** One line under the box; "What's sent" opens the full words under it. */
+/** One line under the box; "What's sent" opens the full words in a sheet (the pinned composer keeps its height). */
 function Privacy() {
-  const id = useId();
   const [open, setOpen] = useState(false);
   return (
     <>
       <p className="mt-4 flex flex-wrap items-center gap-x-8 type-small text-ink-3">
         <span>{PRIVACY_SHORT}</span>
-        <button type="button" className={LINK} aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}>
+        <button type="button" className={LINK} aria-haspopup="dialog" onClick={() => setOpen(true)}>
           What's sent
         </button>
       </p>
-      {open ? (
-        <p id={id} className="mt-4 type-small text-pretty text-ink-3">
-          {PRIVACY}
-        </p>
-      ) : null}
+      <Sheet open={open} onOpenChange={setOpen} title="What's sent">
+        <p className="pb-16 type-small text-pretty text-ink-2">{PRIVACY}</p>
+      </Sheet>
     </>
   );
 }

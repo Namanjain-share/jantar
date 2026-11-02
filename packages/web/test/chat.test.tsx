@@ -56,6 +56,18 @@ describe('Chat', () => {
     expect(api.chatSend).not.toHaveBeenCalled();
   });
 
+  it("the examples come before the privacy words; What's sent opens the full words in a sheet, not in the composer", async () => {
+    open(list([]));
+    const group = await screen.findByRole('group', { name: 'Examples' });
+    const words = screen.getAllByText(PRIVACY)[0]!;
+    expect(group.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByText(PRIVACY)).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: "What's sent" }));
+    const sheet = await screen.findByRole('dialog', { name: "What's sent" });
+    expect(within(sheet).getByText(PRIVACY)).toBeTruthy();
+    expect(document.querySelector('form[aria-label="Message Chat"]')?.parentElement?.textContent).not.toContain(PRIVACY);
+  });
+
   it('sends the text with a new Idempotency-Key and clears the box', async () => {
     const chatSend = vi.fn(async () => ({ id: tid(1) }));
     open(list([]), { chatSend });

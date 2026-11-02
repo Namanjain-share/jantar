@@ -124,7 +124,7 @@ export function uploadFile(req: UploadRequest, blob: Blob, opts: UploadOptions =
         return;
       }
       if (!accept(json)) {
-        reject(new ApiError('bad_response', 'The daemon sent an unreadable reply.', xhr.status));
+        reject(new ApiError('bad_response', 'The Mac sent a reply this app could not read.', xhr.status));
         return;
       }
       resolve(json as UploadResponse);
