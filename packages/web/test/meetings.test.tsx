@@ -607,7 +607,7 @@ describe('the meeting page', () => {
       // v0.10: notes ran, no caption line came in.
       [
         detail({ meeting: { notes: true, lines: 0 }, summary: { ...none, state: 'none' }, lines: [] }),
-        `Notes ran ${hm(D.meeting.startedAt)}-${hm(D.meeting.endedAt!)} but no captions came in. Jantar writes notes from the call's live captions; they were off or not visible.`,
+        `No captions came in while notes were on (meeting ${hm(D.meeting.startedAt)}-${hm(D.meeting.endedAt!)}). Jantar writes notes from the call's live captions; they were off or not visible.`,
         null,
       ],
       [detail({ meeting: { notes: false, lines: 0 }, summary: { ...none, state: 'none' }, lines: [] }), 'No transcript: notes were not started.', null],
