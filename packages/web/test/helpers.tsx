@@ -48,9 +48,16 @@ const LAZY_PLACES = {
   accounts: () => import('../src/ui/screens/Accounts.js'),
   alerts: () => import('../src/ui/screens/Alerts.js'),
   devices: () => import('../src/ui/screens/Devices.js'),
-  // 0.13.0: Work, its own chunk; Clients, and its import and duplicates sheets, and a meeting's clients, theirs.
+  // 0.13.0: Work, its own chunk; Clients, and its import, duplicates and new deal sheets, and a meeting's clients, theirs.
   work: () => import('../src/ui/screens/work/Work.js'),
-  clients: () => Promise.all([import('../src/ui/screens/work/Clients.js'), import('../src/ui/screens/work/ImportSheet.js'), import('../src/ui/screens/work/Duplicates.js'), import('../src/ui/screens/work/LogSheet.js')]),
+  clients: () =>
+    Promise.all([
+      import('../src/ui/screens/work/Clients.js'),
+      import('../src/ui/screens/work/ImportSheet.js'),
+      import('../src/ui/screens/work/Duplicates.js'),
+      import('../src/ui/screens/work/LogSheet.js'),
+      import('../src/ui/screens/work/DealSheet.js'),
+    ]),
   meetingClients: () => import('../src/ui/screens/work/MeetingClients.js'),
   // Deals, and its stage editor and the Log sheet it opens.
   deals: () => Promise.all([import('../src/ui/screens/work/Deals.js'), import('../src/ui/screens/work/StagesSheet.js'), import('../src/ui/screens/work/LogSheet.js')]),

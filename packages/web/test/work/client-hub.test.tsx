@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../src/lib/api.js';
 import { layoutAt } from '../../src/ui/shell/layout.js';
 import { fakeApi, measureAs, preloadPlaces, renderApp, stateWith } from '../helpers.js';
-import { IDS, SETTINGS, WORK_ON, clientAnswers, clientHub, contact, logRow, workRequest } from '../work-helpers.js';
+import { IDS, SETTINGS, STAGES, WORK_ON, clientAnswers, clientHub, contact, logRow, workRequest } from '../work-helpers.js';
 
 preloadPlaces('work', 'clients');
 
@@ -218,6 +218,26 @@ describe("a client's hub", () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     fireEvent.keyDown(window, { key: 'e' });
     expect(await screen.findByRole('dialog', { name: 'Edit Pat Example' })).toBeTruthy();
+  });
+
+  it('New deal with this client: the sheet reads the stages and sends the client by id; none yet: one line', async () => {
+    const api = fakeApi({
+      lifeStatus: vi.fn(async () => WORK_ON()),
+      request: workRequest(clientAnswers({ 'GET /v1/work/clients/:id': clientHub({ deals: [] }), 'GET /v1/work/stages': STAGES(), 'POST /v1/work/deals': { id: IDS.deal, clientId: IDS.pat } })),
+    });
+    const { toasts } = renderApp({ path: PATH, state: stateWith({ features: { life: true } }), api });
+    const deals = await screen.findByRole('region', { name: 'Deals' });
+    expect(deals.textContent).toMatch(/No deals yet\./);
+    fireEvent.click(within(deals).getByRole('button', { name: 'New deal' }));
+    const sheet = await screen.findByRole('dialog', { name: 'New deal with Pat Example' });
+    // The client is set: no Client field.
+    expect(within(sheet).queryByRole('combobox', { name: 'Client' })).toBeNull();
+    await waitFor(() => expect((within(sheet).getByRole('combobox', { name: 'Stage' }) as HTMLSelectElement).value).toBe('new'));
+    fireEvent.change(within(sheet).getByRole('textbox', { name: 'Title' }), { target: { value: 'Ops audit' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Add deal' }));
+    await waitFor(() => expect(requested(api, 'POST', '/v1/work/deals')).toHaveLength(1));
+    expect((requested(api, 'POST', '/v1/work/deals')[0] as { body: unknown }).body).toEqual({ clientId: IDS.pat, title: 'Ops audit', stage: 'new', currency: 'INR' });
+    await waitFor(() => expect(toasts.getState().toasts.map((t) => t.text)).toContain('Deal added.'));
   });
 
   it('a client that is gone says the daemon’s sentence; offline the page stays and writes are off', async () => {

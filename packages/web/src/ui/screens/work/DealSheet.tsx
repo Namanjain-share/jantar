@@ -13,7 +13,8 @@
  *
  * A client by name that isn't one of his is made as a company, a lead, in
  * the same save. Editing sends only what changed (PATCH; null clears); the
- * stage changes only by a move (DealMove.tsx).
+ * stage changes only by a move (DealMove.tsx). From a client's page (no
+ * pipeline loaded there) it reads the stages itself, and the client is set.
  */
 import { useId, useMemo, useState, type FormEvent } from 'react';
 import type { WorkDealCreateBody, WorkDealHub, WorkDealPatch, WorkSettings } from '@jantar/protocol/work';
@@ -34,20 +35,23 @@ export interface DealSheetProps {
   sheetKey: number;
   /** null: a new deal. */
   deal: WorkDealHub | null;
-  stages: readonly StageRef[];
+  /** The pipeline's stages; none (a client's page): the sheet reads them. */
+  stages?: readonly StageRef[] | undefined;
   /** A new deal for this client (from a client's page). */
   client?: { id: string; name: string } | undefined;
   /** Saved: the deal's id. */
   onSaved: (id: string) => void;
 }
 
-export function DealSheet({ open, onOpenChange, sheetKey, deal, stages, client, onSaved }: DealSheetProps) {
+export function DealSheet({ open, onOpenChange, sheetKey, deal, stages = NO_STAGES, client, onSaved }: DealSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={deal ? `Edit ${deal.deal.title}` : client ? `New deal with ${client.name}` : 'New deal'}>
       {open ? <DealForm key={sheetKey} hub={deal} stages={stages} client={client} onDone={() => onOpenChange(false)} onSaved={onSaved} /> : null}
     </Sheet>
   );
 }
+
+const NO_STAGES: readonly StageRef[] = [];
 
 /** A currency as ISO 4217 takes it: three capital letters. */
 const CURRENCY = /^[A-Z]{3}$/;
@@ -64,11 +68,15 @@ function DealForm({ hub, stages, client, onDone, onSaved }: { hub: WorkDealHub |
   // His clients, for the picker (a fixed client needs none).
   const clients = useLifeLoad(client ? null : 'work:clients:deal', () => w.clients({ sort: 'name' }));
   const rows = clients.data?.clients ?? [];
-  const open = stages.filter((s) => s.kind === 'open');
+  // A new deal from a client's page reads the stages (an edit never changes the stage).
+  const read = useLifeLoad(stages.length || hub ? null : 'work:stages:deal', () => w.stages());
+  const open = (stages.length ? stages : (read.data?.stages ?? [])).filter((s) => s.kind === 'open');
   const [title, setTitle] = useState(deal?.title ?? '');
   const [clientName, setClientName] = useState(hub?.client.name ?? '');
   const [clientId, setClientId] = useState(hub?.client.id ?? '');
-  const [stage, setStage] = useState(open[0]?.id ?? '');
+  // The first open stage until he picks one (the stages may still be loading).
+  const [picked, setStage] = useState('');
+  const stage = picked || (open[0]?.id ?? '');
   const [currency, setCurrency] = useState(deal?.currency ?? status?.currency ?? '');
   const [value, setValue] = useState(deal?.value !== undefined ? amountInput(deal.value, deal.currency ?? null) : '');
   const [close, setClose] = useState(deal?.expectedClose ?? '');

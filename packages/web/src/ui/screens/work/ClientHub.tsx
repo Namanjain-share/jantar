@@ -9,7 +9,9 @@
  *   NEXT  Call about scope · Thu 15:00   ✓       its earliest follow-up (W12)
  *   [ Log a call or meeting ]                    LogSheet.tsx, with its next step
  *   FOLLOW-UPS   the Todos rows (done, snooze, edit, delete with Undo); + Next step
- *   DEALS        its own, and a person's company's or a company's people's (labelled)
+ *   DEALS        its own, and a person's company's or a company's people's
+ *                (labelled); + New deal with this client (DealSheet.tsx,
+ *                loaded on first use)
  *   PROJECTS     its projects (a person's company's too), each to its hub
  *   PEOPLE       a company's people
  *   LOG          newest first, done follow-ups in between; Show older pages
@@ -67,6 +69,8 @@ import { dueWord, filesHref, logLine } from './model.js';
 import { FromTag, Framed } from './parts.js';
 
 const MergeSheet = lazy(() => import('./Duplicates.js').then((m) => ({ default: m.MergeSheet })));
+// The deals' sheet comes from their chunk on its first New deal.
+const DealSheet = lazy(() => import('./DealSheet.js').then((m) => ({ default: m.DealSheet })));
 
 export interface ClientHubProps {
   id: string;
@@ -103,6 +107,7 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
   const todoSheet = useSheet<Todo>();
   const confirm = useSheet<null>();
   const merge = useSheet<null>();
+  const dealSheet = useSheet<null>();
   const close = usePaneClose();
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
@@ -225,15 +230,28 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
                   </ul>
                 )}
               </Panel>,
-              h.deals.length ? (
-                <Panel key="deals" label="Deals" count={h.deals.length} card={cards}>
+              <Panel
+                key="deals"
+                label="Deals"
+                count={h.deals.length}
+                card={cards}
+                aside={
+                  <Button variant="text" size="sm" className="coarse:min-h-44" disabled={offline} onClick={() => dealSheet.show(null)}>
+                    <PlusIcon size={14} aria-hidden="true" />
+                    New deal
+                  </Button>
+                }
+              >
+                {h.deals.length ? (
                   <ul>
                     {h.deals.map((d) => (
                       <DealRow key={d.id} deal={d} own={d.client.id === c.id} today={now.day} />
                     ))}
                   </ul>
-                </Panel>
-              ) : null,
+                ) : (
+                  <LifeEmpty>No deals yet.</LifeEmpty>
+                )}
+              </Panel>,
               projects.length ? (
                 <Panel key="projects" label="Projects" count={projects.length} card={cards}>
                   <ul>
@@ -431,6 +449,21 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
               </Button>
             </SheetActions>
           </Sheet>
+          {dealSheet.key ? (
+            <Suspense fallback={null}>
+              <DealSheet
+                open={dealSheet.open}
+                onOpenChange={dealSheet.onOpenChange}
+                sheetKey={dealSheet.key}
+                deal={null}
+                client={{ id: hub.contact.id, name: hub.contact.name }}
+                onSaved={() => {
+                  reload();
+                  toast('Deal added.');
+                }}
+              />
+            </Suspense>
+          ) : null}
           {merge.key ? (
             <Suspense fallback={null}>
               <MergeSheet
