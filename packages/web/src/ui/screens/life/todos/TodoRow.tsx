@@ -18,6 +18,7 @@ import { useLongPress, type PressGuard, justLongPressed } from '../../../kit/lon
 import { Tag } from '../../../kit/Tag.js';
 import { RowMenu, type LifeClock } from '../today/parts.js';
 import { SNOOZES, type TodoActions } from './actions.js';
+import { rowKeys } from '../../../kit/rows.js';
 import { dueDay, isOverdue, overdueText } from './model.js';
 
 export interface TodoRowProps {
@@ -71,12 +72,19 @@ export function TodoRow({ todo, now, project, showDay = true, overdue, reminder 
   }
 
   return (
-    <li data-todo={todo.id} data-highlight={highlight || undefined} className={clsx('flex items-start gap-4 border-b border-line px-8 py-6 transition-colors duration-160 ease-ui', highlight && 'bg-select')}>
+    <li
+      data-todo={todo.id}
+      data-highlight={highlight || undefined}
+      className={clsx('flex items-start gap-4 border-b border-line px-8 py-6 transition-colors duration-160 ease-ui', highlight && 'bg-select')}
+      // c30: e edits, x marks done, ⌫ deletes (with Undo) while the focus is on the row.
+      {...rowKeys({ e: () => onEdit(todo), x: () => !offline && !busy && actions.done(todo), Backspace: () => !offline && !busy && actions.remove(todo), Delete: () => !offline && !busy && actions.remove(todo) })}
+    >
       <IconButton aria-label={`Mark done: ${todo.title}`} disabled={offline || busy} onClick={() => actions.done(todo)}>
         <CircleIcon size={18} aria-hidden="true" />
       </IconButton>
       <button
         type="button"
+        data-row={todo.id}
         className="min-w-0 flex-1 select-none py-4 text-left [-webkit-touch-callout:none] coarse:min-h-44 coarse:py-10"
         // The ember "overdue 2d" sits outside both buttons: Tab to the row says it too.
         aria-describedby={late ? overdueId : undefined}

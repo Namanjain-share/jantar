@@ -83,6 +83,7 @@ export function PostRow({ post, group, today, offline, actions, onOpen, current 
       <div className="min-w-0 flex-1">
         <button
           type="button"
+          data-row={post.id}
           aria-current={current ? 'true' : undefined}
           className="block w-full py-4 pr-8 text-left coarse:min-h-44 coarse:py-10"
           onClick={() => onOpen(post)}
@@ -117,7 +118,7 @@ export function DonePostRow({ post, tz, onOpen }: { post: Post; tz?: string | nu
         <Glyph size={18} aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1">
-        <button type="button" className="block w-full py-4 pr-8 text-left coarse:min-h-44 coarse:py-10" onClick={() => onOpen(post)}>
+        <button type="button" data-row={post.id} className="block w-full py-4 pr-8 text-left coarse:min-h-44 coarse:py-10" onClick={() => onOpen(post)}>
           <span className="flex flex-wrap items-baseline gap-x-8">
             <span className="min-w-0 break-words type-row text-ink-3">{label}</span>
             <span className="ml-auto flex-none type-mono text-ink-3">{doneText(post, tz)}</span>

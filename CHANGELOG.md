@@ -186,6 +186,22 @@ What changed for people who use Jantar, newest first. Versions before
   a meeting or a session is named to Chat by kind and id only, and Chat
   reads it with its tools as before. The turn shows what it was about. With
   a Mac on an older Jantar, the chip's words go at the start of the message.
+- **The whole key map, and ? to list it** (Keys and the legend, the keys of
+  the place you're in first; on an iPad also in the sidebar's ⋯). ↑ and ↓
+  (or j and k) move through a list, ↵ opens the row beside it, and Esc goes
+  back to that row. c starts a new todo, café, post, food or expense, and /
+  goes to the place's search. On a todo, e edits it, x marks it done and ⌫
+  deletes it (with Undo); on an open café 1–5 set its stars and v logs a
+  visit; on an open post ⌘C copies it, m marks it posted and l logs a
+  comment. In a session, t, s and f switch views, ⌥1–⌥4 pick a question's
+  option, ⌘↑ and ⌘↓ go through the sessions waiting on you, and with Keys
+  open ↑, ↓ and ↵ work the terminal's keypad. ⌘⇧A adds a photo to Chat.
+  **⌘Z** undoes the change shown on screen (the Undo line, or in Chat the
+  newest change of the newest turn), never one you can't see. Following a
+  link puts the focus on the new pane's heading, Tab starts at "Skip to
+  content", and a list is one stop for Tab. In a browser tab ⌘1–⌘9 and ⌘J
+  may stay the browser's; the list says so.
+- **Intel**: drop a link or some text on the shelf to save it, with Undo.
 
 ## 0.11.0 (3 November 2026)
 

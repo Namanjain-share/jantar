@@ -105,6 +105,7 @@ export function Food({ day }: FoodProps) {
                       <li key={e.id} className="flex items-center gap-4 border-b border-line pr-8">
                         <button
                           type="button"
+                          data-row={e.id}
                           onClick={() => edit.show(e)}
                           className="flex min-h-44 min-w-0 flex-1 items-center gap-12 py-6 pl-16 text-left transition-colors duration-120 ease-hover hover:bg-hover"
                         >
@@ -120,7 +121,7 @@ export function Food({ day }: FoodProps) {
               </>
             );
             const addFood = (
-              <Button disabled={offline} onClick={() => add.show()}>
+              <Button disabled={offline} data-new onClick={() => add.show()}>
                 <PlusIcon size={16} aria-hidden="true" />
                 Add food
               </Button>

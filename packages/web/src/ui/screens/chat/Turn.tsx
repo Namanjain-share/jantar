@@ -194,7 +194,7 @@ export function Change({ turn, change, nowMs, offline, onChanged }: { turn: Chat
         <span className={clsx('w-64 flex-none type-small', change.state === 'undone' ? 'text-ink-3' : 'text-ink-2')}>{changeWord(change)}</span>
         <span className={clsx('line-clamp-2 min-w-0 flex-1 break-words type-small', change.state === 'undone' ? 'text-ink-3 line-through' : 'text-ink')}>{change.label}</span>
         {can ? (
-          <Button variant="text" size="sm" disabled={offline || tap.busy} onClick={() => void tap.run((k) => api.chatUndo(turn.id, change.n, k)).then(onChanged)}>
+          <Button variant="text" size="sm" data-undo="change" disabled={offline || tap.busy} onClick={() => void tap.run((k) => api.chatUndo(turn.id, change.n, k)).then(onChanged)}>
             {tap.busy ? <Spinner label="Undoing" /> : null}
             Undo
           </Button>

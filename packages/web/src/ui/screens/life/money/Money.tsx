@@ -165,7 +165,7 @@ export function Money({ month, bill }: MoneyProps) {
                 })()}
 
                 <div className="flex gap-8 px-16 pt-12">
-                  <Button disabled={offline} onClick={() => add('expense')}>
+                  <Button disabled={offline} data-new onClick={() => add('expense')}>
                     <PlusIcon size={16} aria-hidden="true" />
                     Expense
                   </Button>
@@ -206,7 +206,7 @@ function Entries({ entries, currency, onOpen }: { entries: readonly MoneyEntry[]
     <ul aria-label="Entries">
       {entries.map((e) => (
         <li key={e.id} className="border-b border-line">
-          <button type="button" onClick={() => onOpen(e)} className="flex min-h-44 w-full items-center gap-12 px-16 py-6 text-left transition-colors duration-120 ease-hover hover:bg-hover">
+          <button type="button" data-row={e.id} onClick={() => onOpen(e)} className="flex min-h-44 w-full items-center gap-12 px-16 py-6 text-left transition-colors duration-120 ease-hover hover:bg-hover">
             <span className="w-48 flex-none type-mono text-ink-3">{dayLabel(e.day).replace(/^\S+ /, '')}</span>
             <span className="min-w-0 flex-1">
               <span className="block truncate type-row text-ink">{e.category}</span>

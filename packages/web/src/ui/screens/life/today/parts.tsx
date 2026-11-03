@@ -107,7 +107,7 @@ export function OfflineLine({ className }: { className?: string }) {
 /** The "+" in a page header. */
 export function AddButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <IconButton aria-label={label} onClick={onClick} disabled={disabled}>
+    <IconButton aria-label={label} data-new onClick={onClick} disabled={disabled}>
       <PlusIcon size={20} aria-hidden="true" />
     </IconButton>
   );
@@ -447,7 +447,7 @@ export function UndoLine({ offer, onUndo, ground = 'bg', className }: { offer: {
       )}
     >
       <span className="min-w-0 flex-1 truncate type-small text-ink-2">{offer.text}</span>
-      <Button variant="text" size="sm" onClick={onUndo}>
+      <Button variant="text" size="sm" data-undo="line" onClick={onUndo}>
         Undo
       </Button>
     </div>

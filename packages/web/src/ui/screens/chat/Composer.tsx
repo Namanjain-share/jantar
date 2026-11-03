@@ -157,6 +157,12 @@ export function Composer({
     if (can) onSend();
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // c30: ⌘⇧A adds a photo, from the box as from its button.
+    if (e.metaKey && e.shiftKey && !e.altKey && !e.ctrlKey && (e.code === 'KeyA' || e.key.toLowerCase() === 'a')) {
+      e.preventDefault();
+      file.current?.click();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();

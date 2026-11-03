@@ -6,13 +6,16 @@
  * from event.code.
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Keycap, KeyHints } from '../src/ui/kit/Keycap.js';
-import { digitOf, G_ROUTES } from '../src/ui/shell/keys.js';
+import { digitOf, G_ROUTES, undoOnScreen } from '../src/ui/shell/keys.js';
+import { groupsFor } from '../src/ui/shell/Shortcuts.js';
 import { createLayoutStore, layoutAt, LayoutProvider } from '../src/ui/shell/layout.js';
 import { offSentence } from '../src/ui/shell/Shell.js';
 import { NAV } from '../src/ui/shell/nav.js';
-import { fakeApi, pending, renderApp, session, stateWith } from './helpers.js';
+import { fakeApi, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+
+preloadPlaces('todos', 'today');
 
 const waiting = () => stateWith({ sessions: [session('a', { status: 'waiting' }), session('b')], pending: [pending('a')] });
 /** A phone-width window on a touch screen, with or without a keyboard seen. */
@@ -179,5 +182,113 @@ describe('keycaps only with a keyboard', () => {
     act(() => layout.setState(layoutAt(1180, { coarse: true, keyboard: true }), true));
     expect(document.querySelectorAll('kbd')).toHaveLength(3);
     expect(within(document.body).getByText('move')).toBeTruthy();
+  });
+});
+
+describe('0.11 c30: the whole key map', () => {
+  const life = {
+    open: true,
+    timezone: 'UTC',
+    today: '2026-01-15',
+    currency: null,
+    lockScreenDetails: false,
+    modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false },
+    estimate: { available: false },
+    backups: { last: null, count: 0 },
+    push: { devices: 1, webpush: true },
+  } as const;
+  const todo = (n: number) => ({ id: `01JFZ8X8Y3T0V5G9WQK2M4N${String(n).padStart(3, '0')}`, title: `Example todo ${n}`, priority: 'normal' as const, createdAt: '2026-01-14T10:00:00.000Z', updatedAt: '2026-01-14T10:00:00.000Z' });
+  function todos(api: Parameters<typeof fakeApi>[0] = {}) {
+    const a = fakeApi({
+      lifeStatus: vi.fn(async () => life),
+      todosList: vi.fn(async (q?: { done?: boolean }) => ({ today: '2026-01-15', todos: q?.done ? [] : [todo(1), todo(2)] })),
+      projectsList: vi.fn(async () => ({ projects: [] })),
+      todoDone: vi.fn(async () => ({ ok: true as const })),
+      ...api,
+    });
+    renderApp({ path: '/todos', api: a, state: stateWith({ features: { life: true } }) });
+    return a;
+  }
+
+  it('⌘Z undoes the Undo on screen, outside a field; with none on screen it does nothing', async () => {
+    const api = todos();
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark done: Example todo 1' }));
+    await waitFor(() => expect(api.todoDone).toHaveBeenCalledWith(todo(1).id, true));
+    await screen.findByRole('button', { name: 'Undo' });
+    fireEvent.keyDown(document.body, { key: 'z', code: 'KeyZ', metaKey: true });
+    await waitFor(() => expect(api.todoDone).toHaveBeenLastCalledWith(todo(1).id, false));
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    // Nothing undoable on screen: ⌘Z does nothing (and leaves the browser's own ⌘Z alone).
+    const calls = vi.mocked(api.todoDone).mock.calls.length;
+    const e = new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true });
+    document.body.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    expect(vi.mocked(api.todoDone).mock.calls.length).toBe(calls);
+  });
+
+  it("⌘Z in Chat reaches only the newest turn's newest Undo; over a sheet only the sheet's", () => {
+    document.body.innerHTML = `
+      <div data-pane="chat"><ol>
+        <li data-turn="1"><button data-undo="change" id="old">Undo</button></li>
+        <li data-turn="2"><button data-undo="change" id="a">Undo</button><button data-undo="change" id="b">Undo</button><button id="in">x</button></li>
+      </ol></div>
+      <div><button data-undo="line" id="line">Undo</button></div>`;
+    expect(undoOnScreen(document.getElementById('in'))?.id).toBe('b');
+    expect(undoOnScreen(document.body)?.id).toBe('line');
+    (document.getElementById('b') as HTMLButtonElement).disabled = true;
+    expect(undoOnScreen(document.getElementById('in'))?.id).toBe('a');
+    document.body.insertAdjacentHTML('beforeend', '<div role="dialog"><p>A sheet</p></div>');
+    expect(undoOnScreen(document.body)).toBeNull();
+    document.body.innerHTML = '';
+  });
+
+  it('a list moves by ↑ ↓ (and j k) from row to row, with one row in the tab order; x, e and ⌫ act on the todo', async () => {
+    const api = todos({ todoDelete: vi.fn(async () => ({ ok: true as const })) });
+    const first = (await screen.findByText('Example todo 1')).closest('button') as HTMLButtonElement;
+    const second = screen.getByText('Example todo 2').closest('button') as HTMLButtonElement;
+    await waitFor(() => expect([first.tabIndex, second.tabIndex]).toEqual([0, -1]));
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(second);
+    expect([first.tabIndex, second.tabIndex]).toEqual([-1, 0]);
+    fireEvent.keyDown(second, { key: 'k' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: 'x' });
+    await waitFor(() => expect(api.todoDone).toHaveBeenCalledWith(todo(1).id, true));
+    fireEvent.keyDown(second, { key: 'e' });
+    expect(await screen.findByRole('dialog', { name: 'Edit todo' })).toBeTruthy();
+  });
+
+  it('c opens the place\'s new item', async () => {
+    todos();
+    await screen.findByText('Example todo 1');
+    fireEvent.keyDown(document.body, { key: 'c' });
+    expect(await screen.findByRole('dialog', { name: 'New todo' })).toBeTruthy();
+  });
+
+  it('after an in-app link the new pane\'s heading has the focus', async () => {
+    renderApp({ path: '/', state: stateWith({ sessions: [session('a')], features: { life: true } }), api: fakeApi({ lifeStatus: vi.fn(async () => life), todosList: vi.fn(async () => ({ today: '2026-01-15', todos: [] })), projectsList: vi.fn(async () => ({ projects: [] })) }) });
+    const rail = screen.getByRole('navigation', { name: 'Main' });
+    fireEvent.click(within(rail).getByRole('link', { name: /Today/ }));
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.tagName).toBe('H1'));
+    expect(document.activeElement?.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('? opens the shortcuts with the place\'s own keys first; a browser tab says what the browser may keep', async () => {
+    renderApp({ path: '/', state: waiting() });
+    fireEvent.keyDown(document.body, { key: '?' });
+    const sheet = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    const groups = within(sheet).getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+    expect(groups[0]).toBe('Board');
+    expect(groups).toContain('Anywhere');
+    expect(groupsFor('posts').slice(0, 2).map((g) => g.id)).toEqual(['posts', 'lists']);
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Legend' }));
+    expect(within(sheet).getByText(/Claude asked a question/)).toBeTruthy();
+  });
+
+  it('a skip link goes to the place first', () => {
+    renderApp({ path: '/', state: waiting() });
+    const skip = screen.getByRole('link', { name: 'Skip to content' });
+    expect(skip.getAttribute('href')).toBe('#main');
   });
 });

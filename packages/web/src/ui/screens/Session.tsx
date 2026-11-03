@@ -86,7 +86,7 @@ import { answeredBy, type Receipt } from './session/decide.js';
 import { DockFrame, isLate } from './session/DockFrame.js';
 import { Header, PANEL_ID, TAB_ID, Tabs, type View } from './session/Header.js';
 import { cardMachine, hasMachines, machineLine, offlineStatus, screenReadable, SubagentAsk, subagentTitle } from './session/Info.js';
-import { PaneRoot } from './session/keys.js';
+import { PaneRoot, usePaneKeys } from './session/keys.js';
 import { MetaLine, Props } from './session/Meta.js';
 import { kindWord, needsQueue, openCard, stepsFor } from './session/order.js';
 import type { CardProps } from './session/Permission.js';
@@ -321,6 +321,8 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
     }
   };
   const openSession = (to: string) => navigate(sessionViewPath(to, 'transcript'));
+  // c30: t, s and f switch the view (f only where the session has a Files tab).
+  usePaneKeys({ t: () => setView('transcript'), s: () => setView('screen'), ...(features.files ? { f: () => setView('files') } : {}) }, Boolean(session) && !gone);
 
   if (!session) {
     if (state.seq === 0 && conn !== 'unauthorized') return <SkeletonRows count={4} />;

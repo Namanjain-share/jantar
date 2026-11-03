@@ -146,7 +146,7 @@ export function DoseSheet({ medId, slot, day, onClose, anchor }: DoseSheetProps)
         </form>
         {tookFuture ? <p className="mt-6 type-small text-ink-2">{TIME_NOT_YET}</p> : null}
         {item.doseId ? (
-          <Button variant="text" className="mt-12" disabled={blocked} onClick={() => void undo(item.doseId as string)}>
+          <Button variant="text" className="mt-12" data-undo="line" disabled={blocked} onClick={() => void undo(item.doseId as string)}>
             Undo
           </Button>
         ) : null}

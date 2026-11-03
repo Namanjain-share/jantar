@@ -145,7 +145,7 @@ function RootList({
 function EntryRow({ e, now, onOpen }: { e: FileEntry; now: number; onOpen: (e: FileEntry) => void }) {
   if (e.type === 'dir') {
     return (
-      <button type="button" className={clsx(ROW, 'h-44 border-b border-line')} onClick={() => onOpen(e)}>
+      <button type="button" data-row={e.name} className={clsx(ROW, 'h-44 border-b border-line')} onClick={() => onOpen(e)}>
         <FolderIcon size={20} aria-hidden="true" className="flex-none text-ink-3" />
         <span className="min-w-0 truncate type-row text-ink">
           <TextRun text={e.name} />
@@ -171,7 +171,7 @@ function EntryRow({ e, now, onOpen }: { e: FileEntry; now: number; onOpen: (e: F
     </>
   );
   return opens ? (
-    <button type="button" className={clsx(ROW, 'min-h-52 border-b border-line py-8')} onClick={() => onOpen(e)}>
+    <button type="button" data-row={e.name} className={clsx(ROW, 'min-h-52 border-b border-line py-8')} onClick={() => onOpen(e)}>
       {inner}
     </button>
   ) : (

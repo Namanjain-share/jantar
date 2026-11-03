@@ -49,8 +49,8 @@ export const LAZY_MAX = 80_000;
  */
 export const P_MAIN_JS_MAX = 120_000;
 export const P_MAIN_CSS_MAX = 12_000;
-/** The screens Shell.tsx loads lazily, by their file names (a chunk is named after its module). 0.11 adds Partner; 0.12 Accounts, Alerts and Devices, and the iPad's TouchShell (its sidebar and rail). */
-export const LAZY_SCREENS = ['Today', 'Todos', 'Meds', 'Food', 'Places', 'Money', 'Intel', 'Meetings', 'Chat', 'Posts', 'Partner', 'Accounts', 'Alerts', 'Devices', 'TouchShell'];
+/** The screens Shell.tsx loads lazily, by their file names (a chunk is named after its module). 0.11 adds Partner; 0.12 Accounts, Alerts and Devices, the iPad's TouchShell (its sidebar and rail), and the ? overlay (Shortcuts). */
+export const LAZY_SCREENS = ['Today', 'Todos', 'Meds', 'Food', 'Places', 'Money', 'Intel', 'Meetings', 'Chat', 'Posts', 'Partner', 'Accounts', 'Alerts', 'Devices', 'TouchShell', 'Shortcuts'];
 
 const STATIC_IMPORT = /^\s*(?:import|export)\s*(?:[^'"`;]*?\bfrom\s*)?(["'`])\.\/([^"'`]+)\1\s*;?/;
 const DYNAMIC_IMPORT = /\bimport\(\s*(["'`])\.\/([^"'`]+)\1\s*\)/g;

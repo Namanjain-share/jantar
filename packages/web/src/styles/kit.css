@@ -392,6 +392,24 @@
   [data-chrome='touch'] .toasts {
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
+
+  /* ---------- Skip to content (0.11 c30): off screen until Tab reaches it ---------- */
+  .skip-link {
+    position: fixed;
+    z-index: 60;
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    left: 50%;
+    padding: 10px 16px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-btn);
+    background: var(--raised);
+    color: var(--ink);
+    transform: translate(-50%, -200%);
+    @apply type-small;
+  }
+  .skip-link:focus-visible {
+    transform: translate(-50%, 0);
+  }
 }
 
 @keyframes ccw-step {

@@ -41,6 +41,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { useKey } from '../shell/keys.js';
 import { useLayout, type Layout } from '../shell/layout.js';
 import { usePaneScroll } from './Pane.js';
+import { focusRow, useRows } from './rows.js';
 
 export const SPLIT_AT = 800;
 export const WIDE_AT = 1180;
@@ -191,7 +192,16 @@ export function SplitPane({
   usePaneScroll(listBox, `${name}:list`, showList);
   usePaneScroll(detailBox, `${name}:detail:${selection ?? ''}`, showDetail);
   useCurrentInView(listBox, mode.split && selected, selection);
-  useKey('Escape', () => onClose?.(), mode.split && selected && Boolean(onClose) && escape);
+  // c30: the list's rows by keyboard (the ledger opens a session as the focus lands on it); Esc goes back to the item's row.
+  useRows(listBox, layout.keyboard && showList, { open: name === 'board' });
+  useKey(
+    'Escape',
+    () => {
+      onClose?.();
+      focusRow(listBox.current, selection);
+    },
+    mode.split && selected && Boolean(onClose) && escape,
+  );
 
   const ctx: SplitState = { split: mode.split, wide: mode.wide, selected, close: onClose, overlay: canOver ? { open: shownOver, set: setOver } : undefined };
   return (

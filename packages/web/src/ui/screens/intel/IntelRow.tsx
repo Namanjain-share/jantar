@@ -47,6 +47,7 @@ export function IntelRow({ item, filters, terms, now, current = false }: { item:
     <li className="border-b border-line">
       <Link
         href={shelfPath(filters, item.id)}
+        data-row={item.id}
         aria-current={current ? 'true' : undefined}
         className={clsx(
           'relative flex gap-12 px-16 py-10 transition-colors duration-120 ease-hover focus-visible:-outline-offset-2',
@@ -83,6 +84,7 @@ export function IntelCard({ item, filters, terms, now }: { item: IntelListItem; 
     <li className="min-w-0">
       <Link
         href={shelfPath(filters, item.id)}
+        data-row={item.id}
         className="flex h-full flex-col overflow-hidden rounded-dock border border-line bg-raised transition-colors duration-120 ease-hover hover:border-line-strong focus-visible:outline-offset-2"
       >
         {item.thumb ? <CardFrame id={item.id} /> : null}

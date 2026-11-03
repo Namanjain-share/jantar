@@ -222,6 +222,7 @@ export function Row({
       transition={FLIP}
       href={href}
       data-sid={row.sid}
+      data-row={row.sid}
       data-glyph={row.glyph}
       aria-current={selected ? 'page' : undefined}
       aria-describedby={menu?.hintId}

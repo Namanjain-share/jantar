@@ -285,6 +285,7 @@ function PlaceRow({ place: p, currency, current = false, onOpen }: { place: Plac
       <button
         type="button"
         onClick={onOpen}
+        data-row={p.id}
         aria-current={current ? 'true' : undefined}
         className={clsx('relative block w-full px-16 py-10 text-left transition-colors duration-120 ease-hover coarse:min-h-44', current ? 'row-tick' : 'hover:bg-hover')}
       >
@@ -327,6 +328,7 @@ function PlaceCard({ place: p, currency, onOpen }: { place: Place; currency: str
       <button
         type="button"
         onClick={onOpen}
+        data-row={p.id}
         className="flex h-full w-full flex-col rounded-dock border border-line bg-raised px-12 pb-12 pt-10 text-left transition-colors duration-120 ease-hover hover:border-line-strong focus-visible:outline-offset-2"
       >
         <span className="line-clamp-2 break-words type-row font-medium text-ink">{p.name}</span>

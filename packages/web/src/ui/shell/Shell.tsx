@@ -52,7 +52,8 @@ import { accountId } from '../../lib/format.js';
 import { routePath, type FilesLocation, type Route } from '../../lib/router.js';
 import { useAccountsMode, useCeiling, useFeatures, useNeedsCount, useNewAlerts, usePlaceFeatures, useStripItems, useUsagePairs } from './data.js';
 import { More } from '../screens/more/More.js';
-import { useGlobalKeys, useKey } from './keys.js';
+import { focusRow } from '../kit/rows.js';
+import { dialogOpen, isTyping, useGlobalKeys, useKey } from './keys.js';
 import { useLayout } from './layout.js';
 import { NAV, navItems, type NavItem } from './nav.js';
 import { LegendPopover, LegendSheet } from './LegendPopover.js';
@@ -75,6 +76,8 @@ const Alerts = lazy(() => import('../screens/Alerts.js').then((m) => ({ default:
 const Devices = lazy(() => import('../screens/Devices.js').then((m) => ({ default: m.Devices })));
 // Loaded on first use (Cmd-K, at any width once a keyboard has been seen): cmdk and the Base UI dialog.
 const Palette = lazy(() => import('./Palette.js').then((m) => ({ default: m.Palette })));
+// 0.11 (c30): the ? overlay, keys and the legend, its own chunk on first open.
+const Shortcuts = lazy(() => import('./Shortcuts.js').then((m) => ({ default: m.Shortcuts })));
 // v0.3 places, each its own chunk (the viewer, highlighter client and TanStack Virtual; the folder browser, start form and receipt).
 const FilesPlace = lazy(() => import('../screens/files/FilesPlace.js').then((m) => ({ default: m.FilesPlace })));
 const NewSession = lazy(() => import('../screens/new/NewSession.js').then((m) => ({ default: m.NewSession })));
@@ -119,6 +122,10 @@ export function Shell() {
   const single = useAccountsMode() === 'single';
   const [palette, setPalette] = useState(false);
   const [legend, setLegend] = useState(false);
+  // 0.11 (c30): the shortcuts and legend overlay (?, the iPad sidebar's ⋯, Devices).
+  const [shortcuts, setShortcuts] = useState(false);
+  const shortcutsUsed = useRef(false);
+  if (shortcuts) shortcutsUsed.current = true;
   // Where sheets, menus and the palette go: the shell's layer, so they move with it (kit/layer.ts).
   const [layer, setLayer] = useState<HTMLElement | null>(null);
   const paletteUsed = useRef(false);
@@ -136,7 +143,7 @@ export function Shell() {
   const navW = desk ? 56 : touch ? (sidebarIn ? 220 : 72) : 0;
   const winW = useWindowWidth(dockShown);
   const dockColumn = dockShown && dockFits(winW - navW);
-  useKey('Escape', () => setChatDock(false), dockShown && !dockColumn && !palette && !legend);
+  useKey('Escape', () => setChatDock(false), dockShown && !dockColumn && !palette && !legend && !shortcuts);
   // 0.11: keys work at every width once a keyboard has been seen (a Mac from the start).
   const keys = layout.keyboard;
   const bare = route.name === 'pair' || conn.status === 'unauthorized';
@@ -175,7 +182,7 @@ export function Shell() {
   useGlobalKeys({
     enabled: keys && !bare,
     onPalette: () => setPalette(true),
-    onLegend: () => setLegend((o) => !o),
+    onLegend: () => setShortcuts(true),
     navigate: (to) => goPlace(NAV.find((item) => item.href === to)),
     onPlace: (n) => goPlace(NAV[n - 1]),
     // ⌘\: the touch sidebar folds to the rail (regular), or shows over it (medium).
@@ -196,10 +203,31 @@ export function Shell() {
       const at = route.name === 'session' ? order.findIndex((s) => s.sid === route.sid) : -1;
       const next = e.key === 'j' ? Math.min(order.length - 1, at + 1) : Math.max(0, at < 0 ? 0 : at - 1);
       const s = order[next];
-      if (s) openSession(s.sid);
+      if (!s) return;
+      openSession(s.sid);
+      // The ledger's row for it takes the focus (a roving list: j and k go on from there).
+      focusRow(document.querySelector<HTMLElement>('#main .split-list'), s.sid);
     },
     ledgerKeys,
   );
+  // ⌘↑ / ⌘↓ (c30): the previous or next session waiting on you, outside a text field (there they move the caret).
+  useEffect(() => {
+    if (!ledgerKeys || typeof window === 'undefined') return;
+    const on = (e: KeyboardEvent) => {
+      if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      if (e.defaultPrevented || isTyping(e.target) || dialogOpen()) return;
+      const waiting = boardOrder(state).filter((s) => needsYou(state, s.sid));
+      if (!waiting.length) return;
+      const at = route.name === 'session' ? waiting.findIndex((s) => s.sid === route.sid) : -1;
+      const next = e.key === 'ArrowDown' ? (at + 1) % waiting.length : at <= 0 ? waiting.length - 1 : at - 1;
+      const s = waiting[next];
+      if (!s) return;
+      e.preventDefault();
+      openSession(s.sid);
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  });
   useKey(
     ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Enter'],
     (e) => {
@@ -365,7 +393,7 @@ export function Shell() {
         listLabel="Ledger"
         detailLabel="Detail"
         onClose={() => navigate('/')}
-        escape={!palette && !legend}
+        escape={!palette && !legend && !shortcuts}
       />
     ) : (
       <Pane key={route.name} name={route.name}>
@@ -378,6 +406,13 @@ export function Shell() {
   // only the chrome around it is swapped, and only classes change.
   return (
     <LayerContext.Provider value={layer}>
+      {/* Skip to content (c30): the first stop for Tab, shown only while focused. */}
+      <a href="#main" className="skip-link" onClick={(e) => {
+        e.preventDefault();
+        skipToContent();
+      }}>
+        Skip to content
+      </a>
       <div
         data-chrome={layout.chrome}
         data-dock={dockColumn ? '' : undefined}
@@ -420,7 +455,7 @@ export function Shell() {
               conn={conn}
               single={single}
               onPalette={() => setPalette(true)}
-              onShortcuts={() => setLegend(true)}
+              onShortcuts={() => setShortcuts(true)}
             />
           </Suspense>
         ) : null}
@@ -471,6 +506,11 @@ export function Shell() {
           />
         )}
         {desk ? null : <LegendSheet open={legend} onOpenChange={setLegend} />}
+        {shortcutsUsed.current ? (
+          <Suspense fallback={null}>
+            <Shortcuts open={shortcuts} onOpenChange={setShortcuts} route={route.name} />
+          </Suspense>
+        ) : null}
         {paletteUsed.current ? (
           <Suspense fallback={null}>
             <Palette open={palette} onOpenChange={setPalette} now={now} />
@@ -482,6 +522,15 @@ export function Shell() {
       </div>
     </LayerContext.Provider>
   );
+}
+
+/** Skip to content: the place's heading, else the place itself, takes the focus. */
+function skipToContent(): void {
+  const main = document.getElementById('main');
+  const target = main?.querySelector<HTMLElement>('h1, h2') ?? main;
+  if (!target) return;
+  if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+  target.focus();
 }
 
 /** The pairing screens own the window: no Chat beside them. */

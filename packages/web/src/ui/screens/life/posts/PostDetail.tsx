@@ -23,7 +23,7 @@
  * drafts store (`post:<id>:comment`) until the Mac has it.
  */
 import { POST_LINK_MAX, PostBodySchema, postPlaceOf, type Post, type PostBody } from '@jantar/protocol';
-import { useId, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type FormEvent, type ReactNode } from 'react';
 import { clearDraft, useDraft } from '../../../../lib/drafts.js';
 import { useDeps } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
@@ -40,6 +40,8 @@ import { copyOf, doneText, postLabel } from './model.js';
 import type { PostActions } from './Posts.js';
 import { CopyButton, OPEN } from './PostRow.js';
 import { useLookingAt } from '../../../shell/lookingAt.js';
+import { dialogOpen, isTyping, useKey } from '../../../shell/keys.js';
+import { useLayout } from '../../../shell/layout.js';
 
 /** The comments shown under a post: at most this many, newest first. */
 const COMMENTS = 5;
@@ -87,6 +89,35 @@ function Body({ post, back, tz, actions, onEdit, onClose }: Omit<PostDetailProps
   const label = postLabel(post);
   useLookingAt({ kind: 'post', id: post.id, label });
   const open = post.status === 'idea' || post.status === 'ready';
+  // c30: m marks it posted, l goes to the comment field, ⌘C with no text selected copies the post.
+  const article = useRef<HTMLElement>(null);
+  const keys = useLayout().keyboard;
+  useKey(
+    ['m', 'l'],
+    (e) => {
+      if (dialogOpen()) return;
+      e.preventDefault();
+      if (e.key === 'l') document.querySelector<HTMLInputElement>('form[aria-label="Log a comment"] input')?.focus();
+      else if (open && !offline && !actions.busy.has(post.id)) {
+        actions.mark(post, 'posted');
+        onClose();
+      }
+    },
+    keys,
+  );
+  useEffect(() => {
+    if (!keys) return;
+    const on = (e: KeyboardEvent) => {
+      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || (e.key.toLowerCase() !== 'c' && e.code !== 'KeyC')) return;
+      if (isTyping(e.target) || dialogOpen() || (window.getSelection()?.toString() ?? '') !== '') return;
+      const copy = article.current?.querySelector('button');
+      if (!copy) return;
+      e.preventDefault();
+      copy.click();
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [keys]);
   const due = post.due ? `due ${dayLabel(post.due.day)}${post.due.time ? ` ${post.due.time}` : ''}` : 'no date';
   const comments = commentsFor(post, done.data?.posts ?? []);
   const place = post.where ? `Comments in ${post.where}` : 'Comments';
@@ -105,7 +136,7 @@ function Body({ post, back, tz, actions, onEdit, onClose }: Omit<PostDetailProps
     >
       {/* From 900 the post reads on the left and its notes and comments stay beside it. */}
       <div className="grid gap-16 px-16 pb-16 @wide:grid-cols-[minmax(0,1fr)_300px] @wide:items-start">
-        <article aria-label="The post" className="min-w-0 rounded-dock border border-line bg-raised px-16 pb-16 pt-12">
+        <article ref={article} aria-label="The post" className="min-w-0 rounded-dock border border-line bg-raised px-16 pb-16 pt-12">
           <p className="flex flex-wrap items-center gap-8 type-mono text-ink-2">
             <Tag>{post.status === 'ready' ? 'Ready' : post.status === 'idea' ? 'Idea' : post.status === 'posted' ? 'Posted' : 'Skipped'}</Tag>
             {open ? due : doneText(post, tz)}

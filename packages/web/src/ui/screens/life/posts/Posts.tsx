@@ -220,7 +220,7 @@ function PostsList({ filter, id, target, load, actions, now, sheet }: PostsListP
     </button>
   ) : null;
   const addButton = (
-    <Button disabled={offline} onClick={add} aria-label="Add post">
+    <Button disabled={offline} data-new onClick={add} aria-label="Add post">
       <PlusIcon size={16} aria-hidden="true" />
       Post
     </Button>

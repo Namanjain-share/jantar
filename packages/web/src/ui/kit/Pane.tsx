@@ -12,6 +12,8 @@
  */
 import clsx from 'clsx';
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useLayout } from '../shell/layout.js';
+import { useRows } from './rows.js';
 
 const memory = new Map<string, number>();
 
@@ -65,6 +67,8 @@ export function usePaneScroll(ref: RefObject<HTMLElement | null>, key: string, a
 export function Pane({ name, children, className }: { name: string; children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   usePaneScroll(ref, name);
+  // 0.11 (c30): the place's rows by keyboard (a SplitPane in it keeps its list's own).
+  useRows(ref, useLayout().keyboard);
   return (
     <div ref={ref} data-pane={name} className={clsx('@container/pane h-full min-h-0 overflow-y-auto', className)}>
       {children}

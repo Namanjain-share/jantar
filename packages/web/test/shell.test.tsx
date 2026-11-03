@@ -92,7 +92,7 @@ describe('desktop shell', () => {
     expect(history.entries.at(-1)).toBe('/accounts');
   });
 
-  it('opens the palette with Cmd-K and the legend with ?', async () => {
+  it('opens the palette with Cmd-K, and the shortcuts and the legend with ? (c30)', async () => {
     const { history } = renderApp({ state: busy() });
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
     const input = await screen.findByPlaceholderText('Jump to a session or account');
@@ -102,7 +102,11 @@ describe('desktop shell', () => {
     await act(async () => {
       fireEvent.keyDown(document.body, { key: '?' });
     });
-    expect(await screen.findByText('What the squares mean')).toBeTruthy();
+    const sheet = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Legend' }));
+    expect(within(sheet).getByText(/Claude asked a question/)).toBeTruthy();
+    // The status bar's legend button still opens the legend over it.
+    expect(screen.getByRole('button', { name: 'Legend' })).toBeTruthy();
   });
 
   it('counts sessions and accounts in the top bar only once it has heard from the Mac', () => {

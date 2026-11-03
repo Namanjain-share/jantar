@@ -39,8 +39,10 @@
 import { ChatButton } from '../../shell/ChatButton.js';
 import { CaretRightIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { INTEL_PAGE_MAX, type IntelListItem, type IntelListResponse } from '@jantar/protocol';
+import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { INTEL_PAGE_MAX, type IntelCaptureBody, type IntelListItem, type IntelListResponse } from '@jantar/protocol';
+import { errorText } from '../../../lib/api.js';
+import { newIdempotencyKey } from '../../../lib/ids.js';
 import { useApp, useDeps, useNavigate, useNow, useToast } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Spinner } from '../../kit/Spinner.js';
@@ -56,11 +58,13 @@ import { ItemPage } from './ItemPage.js';
 import {
   ADDED,
   ADD_SOURCE_COMMAND,
+  ALREADY_THERE,
   NOTHING_MATCHES,
   NO_SOURCES,
   PAGE,
   SEARCH_DEBOUNCE_MS,
   hasFilters,
+  httpHref,
   itemsWord,
   matchesWord,
   shelfPath,
@@ -120,6 +124,27 @@ function Chip({ pressed, onClick, label, children }: { pressed?: boolean; onClic
     </button>
   );
 }
+
+/**
+ * What a drop on the shelf saves (c30; ipad-design.md 4.4): a link the user dropped (its text, when it has
+ * other words, as the title), or a text's first line as the title and the rest as its note. Nothing is
+ * fetched: only what the user dropped is kept, as Add does by hand.
+ */
+export function dropBody(uris: string, text: string): IntelCaptureBody | null {
+  const link = uris.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#'))?.trim() ?? '';
+  const plain = text.trim();
+  const url = link || (httpHref(plain) ? plain : '');
+  if (url && httpHref(url)) {
+    const words = plain && plain !== url ? (plain.split('\n')[0] ?? '').trim() : '';
+    return { title: (words || url).slice(0, 300), url };
+  }
+  if (!plain) return null;
+  const [first = '', ...rest] = plain.split('\n');
+  const note = rest.join('\n').trim();
+  return { title: first.trim().slice(0, 300), ...(note ? { note: note.slice(0, 2000) } : {}) };
+}
+
+const DROPPABLE = (e: DragEvent) => [...e.dataTransfer.types].some((t) => t === 'text/uri-list' || t === 'text/plain');
 
 /** Each id once, where it first shows. */
 function unique(items: readonly IntelListItem[]): IntelListItem[] {
@@ -184,6 +209,40 @@ function Shelf({ filters, offline, focus, open }: { filters: ShelfFilters; offli
   const [moreError, setMoreError] = useState<unknown>(null);
   /** Which add sheet is open: Add post (reading on), or the 0.7 form. */
   const [adding, setAdding] = useState<'post' | 'hand' | null>(null);
+  // c30: a link or text dropped on the shelf is saved at once, with 5 s to undo it.
+  const [dragging, setDragging] = useState(false);
+  const [dropped, setDropped] = useState<{ id: string; title: string } | null>(null);
+  useEffect(() => {
+    if (!dropped) return;
+    const t = setTimeout(() => setDropped(null), 5000);
+    return () => clearTimeout(t);
+  }, [dropped]);
+  const onDrop = async (e: DragEvent<HTMLDivElement>) => {
+    setDragging(false);
+    if (offline || !DROPPABLE(e)) return;
+    e.preventDefault();
+    const body = dropBody(e.dataTransfer.getData('text/uri-list'), e.dataTransfer.getData('text/plain'));
+    if (!body) return;
+    try {
+      const r = await api.intelCapture(body, newIdempotencyKey());
+      if (r.duplicate) toast(ALREADY_THERE, 'info');
+      else setDropped({ id: r.id, title: body.title });
+      list.reload();
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  };
+  const undoDrop = async () => {
+    if (!dropped) return;
+    const { id } = dropped;
+    setDropped(null);
+    try {
+      await api.intelDelete(id, newIdempotencyKey());
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+    list.reload();
+  };
   const [picking, setPicking] = useState(false);
 
   const data = list.data;
@@ -255,7 +314,7 @@ function Shelf({ filters, offline, focus, open }: { filters: ShelfFilters; offli
   const noSources = sources.data ? !sources.data.sources.some((s) => s.id !== 'captures') : false;
 
   const addButton = (
-    <Button variant="outline" onClick={() => setAdding(intelRead ? 'post' : 'hand')} disabled={offline}>
+    <Button variant="outline" data-new onClick={() => setAdding(intelRead ? 'post' : 'hand')} disabled={offline}>
       <PlusIcon size={16} aria-hidden="true" />
       Add
     </Button>
@@ -317,7 +376,18 @@ function Shelf({ filters, offline, focus, open }: { filters: ShelfFilters; offli
   }
 
   return (
-    <div className="pb-48 animate-enter">
+    <div
+      className={clsx('pb-48 animate-enter', dragging && 'outline-1 -outline-offset-8 outline-dashed outline-line-strong')}
+      onDragOver={(e) => {
+        if (offline || !DROPPABLE(e)) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(e) => void onDrop(e)}
+    >
       <header className="flex min-h-44 items-center gap-12 px-16 pb-8 pt-16 desk:pt-24">
         <h1 data-display className="min-w-0 flex-1 truncate type-display text-ink">
           Intel
@@ -426,6 +496,15 @@ function Shelf({ filters, offline, focus, open }: { filters: ShelfFilters; offli
           sources.reload();
         }}
       />
+      {dragging ? <p className="pointer-events-none sticky bottom-0 px-16 py-8 type-small text-ink-2">Drop to save it to the shelf</p> : null}
+      {dropped ? (
+        <div role="status" className="sticky bottom-0 z-3 flex min-h-40 items-center gap-8 border-t border-line bg-bg px-16 animate-fade">
+          <span className="min-w-0 flex-1 truncate type-small text-ink-2">Saved to the shelf: {dropped.title}</span>
+          <Button variant="text" size="sm" data-undo="line" onClick={() => void undoDrop()}>
+            Undo
+          </Button>
+        </div>
+      ) : null}
       <TagSheet
         open={picking}
         onOpenChange={setPicking}

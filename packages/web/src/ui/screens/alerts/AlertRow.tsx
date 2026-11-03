@@ -81,7 +81,7 @@ export function AlertRowTable({ alert: a, subject, sentence, action, unseen, hre
         <span className="w-24 flex-none">
           <StatusGlyph state={unseen ? 'needs' : 'turn'} label={unseen ? 'New' : undefined} />
         </span>
-        <Link href={href} className="flex min-w-0 flex-1 items-center self-stretch py-6 focus-visible:-outline-offset-2">
+        <Link href={href} data-row={a.id} className="flex min-w-0 flex-1 items-center self-stretch py-6 focus-visible:-outline-offset-2">
           <span className={clsx('w-200 flex-none truncate pr-16 type-row @xl:w-280', unseen ? 'font-strong text-ink' : 'text-ink-2')}>{subject}</span>
           <span className={clsx('line-clamp-2 min-w-0 flex-1 break-words pr-24 type-row', unseen ? 'text-ink-2' : 'text-ink-3')}>{sentence}</span>
         </Link>
@@ -97,6 +97,7 @@ export function AlertRowPick({ alert: a, subject, sentence, unseen, href, select
     <li className="border-b border-line" data-alert={a.id} data-unseen={unseen ? 'true' : undefined}>
       <Link
         href={href}
+        data-row={a.id}
         aria-current={selected ? 'true' : undefined}
         className={clsx('relative block px-16 py-12 transition-colors duration-120 ease-hover focus-visible:-outline-offset-2', selected ? 'row-tick bg-select' : 'hover:bg-hover')}
       >

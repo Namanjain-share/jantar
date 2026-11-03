@@ -152,7 +152,7 @@ export function Keypad({ sid, screen: read, phone, offline, onSent }: KeypadProp
         ) : null}
       </div>
       <div className="mt-8 flex flex-wrap items-center gap-8">
-        <Button variant="primary" size={size} className={phone ? 'flex-1' : undefined} disabled={off} onClick={() => void send('enter')}>
+        <Button variant="primary" size={size} data-key="enter" className={phone ? 'flex-1' : undefined} disabled={off} onClick={() => void send('enter')}>
           {busy ? <Spinner label="Sending" /> : null}
           Enter ⏎
         </Button>

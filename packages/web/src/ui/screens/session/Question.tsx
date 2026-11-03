@@ -22,12 +22,13 @@
  */
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useId, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
 import { CLARIFY_MESSAGE, type Question } from '@jantar/protocol';
 import { questionsOf } from '../../../lib/describe.js';
 import { Button } from '../../kit/Button.js';
 import { IconButton } from '../../kit/IconButton.js';
 import { Keycap } from '../../kit/Keycap.js';
+import { digitOf, dialogOpen, isTyping } from '../../shell/keys.js';
 import { useLayout } from '../../shell/layout.js';
 import { useDecide } from './decide.js';
 import { DockFrame } from './DockFrame.js';
@@ -91,7 +92,7 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
   const baseId = useId();
   const size = phone ? 'xl' : 'lg';
   // c27: the options fold while the on-screen keyboard is up and the focus is in the card.
-  const { kbUp } = useLayout();
+  const { kbUp, keyboard } = useLayout();
   const [inside, setInside] = useState(false);
   const [unfolded, setUnfolded] = useState(false);
   const folded = kbUp && inside && !unfolded;
@@ -125,6 +126,33 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
   const chat = () => void decide({ behavior: 'deny', message: CLARIFY_MESSAGE }, 'Asked to chat about this');
 
   usePaneKeys({ a: submit }, !disabled && complete);
+
+  // c30: ⌥1-⌥4 pick an option of the question shown (matched on event.code: ⌥1 types ¡ on a Mac).
+  const altPick = useRef<(n: number) => void>(() => undefined);
+  altPick.current = (n) => {
+    const qi = Math.min(page, questions.length - 1);
+    const shown = questions[qi];
+    const o = shown?.options[n - 1];
+    if (!shown || !o) return;
+    update(qi, (cur) =>
+      shown.multiSelect
+        ? { ...cur, picked: cur.picked.includes(o.label) ? cur.picked.filter((x) => x !== o.label) : [...cur.picked, o.label] }
+        : { ...cur, picked: [o.label], otherOn: false },
+    );
+    if (!shown.multiSelect && qi < questions.length - 1) setPage(qi + 1);
+  };
+  useEffect(() => {
+    if (!keyboard || disabled || typeof window === 'undefined') return;
+    const on = (e: globalThis.KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.defaultPrevented || isTyping(e.target) || dialogOpen()) return;
+      const n = digitOf(e);
+      if (n === null || n < 1 || n > 4) return;
+      e.preventDefault();
+      altPick.current(n);
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [keyboard, disabled]);
 
   const q = questions[Math.min(page, questions.length - 1)];
   const onKey = (e: KeyboardEvent) => {

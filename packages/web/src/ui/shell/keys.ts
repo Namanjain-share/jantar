@@ -20,7 +20,12 @@
  *                phone opens the Chat tab)
  *   g then b t c l a d i m f   Board, Today, Chat, Alerts, Accounts,
  *                Devices, Intel, Meetings, Files
- *   ?            the legend
+ *   ⌘Z           outside a field, the Undo on screen (c30): the newest
+ *                Undo line, or in Chat the newest undoable change of the
+ *                newest turn; never a change you can't see
+ *   /            the place's search field (c30)
+ *   c            the place's new item (c30): its [data-new] control
+ *   ?            the shortcuts and the legend (shell/Shortcuts.tsx, c30)
  *
  * In a text field only ⌘K, ⌘J, ⌘1-⌘9, ⌘\, ⌘. and Esc reach the shell;
  * everything a field uses stays with the field:
@@ -75,6 +80,39 @@ export const G_ROUTES: Record<string, string> = {
   m: '/meetings',
   f: '/files',
 };
+
+/** A modal over the screen (a sheet, the palette, a menu): the page's own keys wait. */
+export function dialogOpen(): boolean {
+  return typeof document !== 'undefined' && document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
+}
+
+const usable = (el: HTMLElement) => !(el as HTMLButtonElement).disabled && !el.closest('[hidden], [inert], [aria-hidden="true"]');
+
+/**
+ * What ⌘Z undoes (ipad-design.md 4.3): only a change shown on screen. Over a sheet, the sheet's own Undo
+ * line. With the focus in Chat (the place or the panel), the newest undoable change of the newest turn.
+ * Otherwise the newest Undo line on screen. Null when there is none: ⌘Z then does nothing.
+ */
+export function undoOnScreen(active: Element | null): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  const dialogs = document.querySelectorAll<HTMLElement>('[role="dialog"]');
+  const over = dialogs[dialogs.length - 1];
+  if (over) return [...over.querySelectorAll<HTMLElement>('[data-undo="line"]')].filter(usable).pop() ?? null;
+  const chat = active?.closest('[data-pane="chat"], [data-chat-dock]');
+  if (chat) {
+    const turns = chat.querySelectorAll('[data-turn]');
+    const newest = turns[turns.length - 1];
+    return newest ? ([...newest.querySelectorAll<HTMLElement>('[data-undo="change"]')].filter(usable).pop() ?? null) : null;
+  }
+  return [...document.querySelectorAll<HTMLElement>('[data-undo="line"]')].filter(usable).pop() ?? null;
+}
+
+/** The place's search field (Cafés, Intel, Meetings, Chat's history): `/` focuses it. */
+function searchField(active: Element | null): HTMLInputElement | null {
+  const inDock = active?.closest('[data-chat-dock]');
+  const scope = inDock ?? document.getElementById('main');
+  return [...(scope?.querySelectorAll<HTMLInputElement>('input[type="search"]') ?? [])].find(usable) ?? null;
+}
 
 /**
  * Esc for ⌘.: the same keydown a real Esc sends, to the same element, so
@@ -142,7 +180,33 @@ export function useGlobalKeys({
           return;
         }
       }
+      // ⌘Z outside a field: the Undo on screen, if there is one (a field keeps its own ⌘Z).
+      if (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && (k === 'z' || e.code === 'KeyZ') && !typing) {
+        const undo = undoOnScreen(document.activeElement);
+        if (undo) {
+          e.preventDefault();
+          undo.click();
+        }
+        return;
+      }
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || typing) return;
+      if (e.key === '/' && !dialogOpen()) {
+        const field = searchField(document.activeElement);
+        if (field) {
+          e.preventDefault();
+          field.focus();
+          field.select();
+        }
+        return;
+      }
+      if (e.key === 'c' && !(gAt && Date.now() - gAt < 900) && !dialogOpen()) {
+        const add = [...(document.getElementById('main')?.querySelectorAll<HTMLElement>('[data-new]') ?? [])].find(usable);
+        if (add) {
+          e.preventDefault();
+          add.click();
+        }
+        return;
+      }
       if (gAt && Date.now() - gAt < 900) {
         gAt = 0;
         const to = G_ROUTES[e.key];

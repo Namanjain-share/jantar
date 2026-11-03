@@ -152,7 +152,22 @@ export function ScreenView({
   const canKeys = keys && read !== undefined && screen !== null && !screen.dialog;
   return (
     // The panel itself, unless it sits inside another one (ShotView's Text side, v0.3).
-    <div id={id} role={id ? 'tabpanel' : undefined} aria-labelledby={labelledBy} className={clsx('flex min-h-0 flex-1 flex-col', phone ? 'p-16' : 'py-24')}>
+    <div
+      id={id}
+      role={id ? 'tabpanel' : undefined}
+      aria-labelledby={labelledBy}
+      className={clsx('flex min-h-0 flex-1 flex-col', phone ? 'p-16' : 'py-24')}
+      // c30: with Keys open and the screen focused, ↑ ↓ and ↵ are the keypad's own buttons (its guards and all).
+      onKeyDown={(e) => {
+        if (!keypad || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || !(e.target instanceof HTMLPreElement)) return;
+        const keys = e.currentTarget.querySelector('section[aria-label="Keys"]');
+        const sel = e.key === 'ArrowDown' ? 'button[aria-label="Down"]' : e.key === 'ArrowUp' ? 'button[aria-label="Up"]' : e.key === 'Enter' ? 'button[data-key="enter"]' : null;
+        const button = sel ? keys?.querySelector<HTMLButtonElement>(sel) : null;
+        if (!button) return;
+        e.preventDefault();
+        if (!button.disabled) button.click();
+      }}
+    >
       {screen ? <TermBox text={text} fill /> : <div className="min-h-0 flex-1 rounded-btn bg-term" />}
       {error ? (
         <p role="alert" className="mt-8 type-small text-signal-text">

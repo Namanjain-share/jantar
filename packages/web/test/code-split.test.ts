@@ -221,6 +221,12 @@ describe('code splitting', () => {
     expect(main.files.has('ui/shell/chatDock.ts')).toBe(true);
   });
 
+  it('0.11 c30: the ? overlay is its own chunk, loaded on first open; the list keys and the skip link stay in main', () => {
+    expect(main.files.has('ui/shell/Shortcuts.tsx')).toBe(false);
+    expect(readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8')).toContain("import('./Shortcuts.js')");
+    expect(main.files.has('ui/kit/rows.ts')).toBe(true);
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");

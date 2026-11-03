@@ -96,7 +96,7 @@ export function ChangeRow({
   if (opensViewer(c)) {
     return (
       <div className="border-b border-line">
-        <button type="button" className={rowClass} onClick={() => onOpen(c)}>
+        <button type="button" data-row={name} className={rowClass} onClick={() => onOpen(c)}>
           {content}
         </button>
       </div>
@@ -104,7 +104,7 @@ export function ChangeRow({
   }
   return (
     <div className="border-b border-line">
-      <button type="button" className={rowClass} aria-expanded={open} onClick={onToggle}>
+      <button type="button" data-row={name} className={rowClass} aria-expanded={open} onClick={onToggle}>
         {content}
       </button>
       {open && c.viewable !== 'yes' ? <p className="pb-12 pl-48 pr-16 type-small text-ink-2 animate-fade">{UNVIEWABLE[c.viewable]}</p> : null}

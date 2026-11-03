@@ -34,6 +34,7 @@ export function MeetingRow({ meeting: m, filters, offline, onDelete, current = f
     <li data-meeting={m.id} className={clsx('flex items-start border-b border-line', current && 'bg-select')}>
       <Link
         href={meetingsPath(filters, m.id)}
+        data-row={m.id}
         aria-current={current ? 'true' : undefined}
         className={clsx(
           'relative block min-h-44 min-w-0 flex-1 py-10 pl-16 pr-4 transition-colors duration-120 ease-hover focus-visible:-outline-offset-2',
@@ -87,6 +88,7 @@ export function MeetingCard({ meeting: m, filters, offline, onDelete }: Omit<Mee
     <li data-meeting={m.id} className="relative min-w-0">
       <Link
         href={meetingsPath(filters, m.id)}
+        data-row={m.id}
         className="flex h-full flex-col rounded-dock border border-line bg-raised px-12 pb-12 pt-10 transition-colors duration-120 ease-hover hover:border-line-strong focus-visible:outline-offset-2"
       >
         {/* Room on the right for the ··· menu, which sits over the card's corner. */}

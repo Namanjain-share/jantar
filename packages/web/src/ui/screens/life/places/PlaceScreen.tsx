@@ -41,6 +41,8 @@ import { AGAIN_LABEL, RATING_KEYS, RATING_LABELS, priceLabel, tagLabel, tagsOn }
 import { PlaceSheet } from './PlaceSheet.js';
 import { RateStars, Stars } from './Stars.js';
 import { VisitSheet } from './VisitSheet.js';
+import { dialogOpen, useKey } from '../../../shell/keys.js';
+import { useLayout } from '../../../shell/layout.js';
 import { useLookingAt } from '../../../shell/lookingAt.js';
 
 export interface PlaceScreenProps {
@@ -150,6 +152,29 @@ export function PlaceScreen({ id, back, currency, today, undo, held, customTags,
     });
     done();
   };
+
+  /** 1-5 on the keyboard (c30): the café's own stars, at once, with an Undo that puts the old ones back. */
+  const setStars = async (n: number) => {
+    const before = place?.stars;
+    if (!data || !place || before === n) return;
+    const r = await rate.run(`stars:${n}`, (key) => api.placeUpdate(id, { stars: n }, key));
+    if (!r.ok) return;
+    load.reload();
+    onRated?.();
+    undo.show(`Stars ${before ?? '–'} → ${n}`, () => {
+      void api.placeUpdate(id, { stars: before ?? null }).then(load.reload, load.reload);
+    });
+  };
+  useKey(
+    ['1', '2', '3', '4', '5', 'v'],
+    (e) => {
+      if (dialogOpen()) return;
+      e.preventDefault();
+      if (e.key === 'v') visitSheet.show(null);
+      else void setStars(Number(e.key));
+    },
+    useLayout().keyboard && Boolean(place) && !offline,
+  );
 
   const deleteVisit = (v: PlaceVisit) =>
     held.remove(`visit:${v.id}`, `Deleted: the visit of ${dayLabel(v.day)}`, async () => {
