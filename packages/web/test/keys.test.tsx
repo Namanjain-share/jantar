@@ -233,7 +233,7 @@ describe('0.12 c30: the whole key map', () => {
     today: '2026-01-15',
     currency: null,
     lockScreenDetails: false,
-    modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false },
+    modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false, work: false },
     estimate: { available: false },
     backups: { last: null, count: 0 },
     push: { devices: 1, webpush: true },

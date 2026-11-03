@@ -515,7 +515,7 @@ describe('0.12 c29: the "Looking at" chip', () => {
     const todo = { id: tid(70), title: 'Example todo 70', priority: 'normal' as const, createdAt: ago(0), updatedAt: ago(0) };
     const api = fakeApi({
       chatList: vi.fn(async () => list([])),
-      lifeStatus: vi.fn(async () => placeStatus({ modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false } })),
+      lifeStatus: vi.fn(async () => placeStatus({ modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false, work: false } })),
       todosList: vi.fn(async () => ({ today: '2026-01-15', todos: [todo] })),
       projectsList: vi.fn(async () => ({ projects: [] })),
     });
