@@ -243,9 +243,12 @@ changes. A phone looks as it did.
   half the window and scrolls inside, so the conversation keeps room above
   it. On a touch screen nothing sits in the bottom 24 px, where an iPad
   window's resize handle is (an iPhone's home indicator already leaves
-  more). A session beside the list in a narrow pane (an iPad at 1024 px
-  with its sidebar) keeps its header on one line: the session's name and
-  its arrows step aside, and the Chat button is an icon.
+  more), and nothing sits in that corner with a mouse either: the Mac's
+  status bar ends **? legend** short of it whatever the font, and in a
+  window under 768 px wide the tabs and Send keep 24 px under them. A
+  session beside the list in a narrow pane (an iPad at 1024 px with its
+  sidebar) keeps its header on one line: the session's name and its
+  arrows step aside, and the Chat button is an icon.
 - On a touch screen the small capitals (section names, tags, badges and
   the iPad's rail labels) are 12 px instead of 11, so nine characters in ten
   are 12 px or more on every screen. A Mac keeps 11.
