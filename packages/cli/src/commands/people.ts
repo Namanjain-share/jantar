@@ -6,7 +6,8 @@
  *
  *   people on [--name <your name>] | off
  *   people doctor
- *   people add <name> [--email <addr>] [--color <c>] [--no-food]
+ *   people add <name> [--email <addr>] [--color <c>] [--no-food] [--label <words>]
+ *   people label <name|id> [<words> | --default]   (no words: print it)
  *   people offer <name|id> [--preset light|standard|everything]
  *                [--see todos,plan,review=counts|full,meds=full|adherence,weight,food=counts|full,sleep,journal,chat]
  *                [--assign todos,plan,meds] [--edit-hers todos,plan,meds,weight] [--comment journal]
@@ -21,13 +22,15 @@
  *   people remove <name|id> [--now] [--forget]
  *   people todos <name|id>
  *
- * Nothing here prints a last-seen, an address or a user agent of theirs
+ * A label (what the space with them is called: "Cofounder", "Coach", or
+ * words of his own) is plain text on one line, so it can carry no terminal
+ * escape. Nothing here prints a last-seen, an address or a user agent of theirs
  * (C20), nor any text of their journal, comments, chat or sleep (O15).
  * Adding or removing an email prints the Cloudflare Access step: Jantar
  * holds no Cloudflare token and can't make that change.
  */
 import type { Settings } from '@jantar/protocol';
-import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
+import { PEOPLE_LABEL, PERSON_LABEL_PRESETS, personLabelProblem, spaceLabel } from '@jantar/protocol/people-core';
 import type { OwnerPeoplePrefs, PeopleDoctor, PeopleList, PersonInviteReply, PersonSetupAgain, PersonView } from '@jantar/protocol/people';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
@@ -35,7 +38,7 @@ import { callDaemon } from '../ctl.js';
 import { localBaseUrl } from '../lib/settings.js';
 import { localStatus, probeUrl } from '../lib/doctor.js';
 
-const USAGE = 'jantar people <on|off|doctor|add|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos> ...';
+const USAGE = 'jantar people <on|off|doctor|add|label|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos> ...';
 
 const FIELD_GROUPS = ['see', 'assign', 'editHers', 'comment'] as const;
 
@@ -93,9 +96,24 @@ export const FENCE: ReadonlyArray<{ on: 'hers' | 'his'; path: string; want: numb
 ];
 
 /**
+ * The Origin half of the fence, checked with no credential (C1): a write carrying the other host's Origin is
+ * refused before anything else runs. On his host, the public pairing claim with her Origin is a 403 (with
+ * his own Origin it is a 400: no body, so nothing is claimed, limited or audited). On her host, the join
+ * preview with his Origin is a 403 before her claim limiter counts it (People off: her join routes are 404).
+ * His other writes and her routes past joining ask for a device first (401), which needs a credential.
+ */
+export const ORIGIN_FENCE: ReadonlyArray<{ on: 'hers' | 'his'; path: string; origin: 'hers' | 'his'; want: number; what: string }> = [
+  { on: 'his', path: '/v1/pair/claim', origin: 'hers', want: 403, what: 'a write of yours with their Origin' },
+  { on: 'his', path: '/v1/pair/claim', origin: 'his', want: 400, what: 'the same write with your Origin' },
+  { on: 'hers', path: '/v1/p/join/preview', origin: 'his', want: 403, what: 'a write of theirs with your Origin' },
+];
+
+/**
  * `people doctor`'s checks past the daemon's own (spec 2.1 step 4): with her hostname set,
  * - the host fence, on this Mac: through her Host jantard serves her app and none of his (his board, app,
  *   service worker, Fleet's link), and through his none of her routes;
+ * - the Origin half of it (ORIGIN_FENCE), with no credential: each host refuses a write with the other's
+ *   Origin;
  * - in cloudflare mode, Access in front of her hostname: a credential-less GET of /healthz must be sent to
  *   Cloudflare Access sign-in (*.cloudflareaccess.com), never answered;
  * - in tailscale mode, the policy step Jantar can't check (a note).
@@ -123,6 +141,23 @@ export async function peopleHostChecks(ctx: CliContext, settings: Settings): Pro
   }
   if (!answered) out.push({ name: 'host fence', ok: false, detail: `jantard doesn't answer on ${base}: is it running? (jantar status)` });
   else out.push({ name: 'host fence', ok: wrong.length === 0, detail: wrong.length === 0 ? `${her.host} serves her app and none of yours; yours serves none of hers` : wrong.join('; ') });
+  if (answered) {
+    const hisOrigin = settings.remote.publicUrl ? new URL(settings.remote.publicUrl).origin : new URL(base).origin;
+    const off = !settings.people.enabled;
+    const leaks: string[] = [];
+    for (const o of ORIGIN_FENCE) {
+      const host = o.on === 'hers' ? her.host : his;
+      const status = await get(base, o.path, host, { method: 'POST', origin: o.origin === 'hers' ? her.origin : hisOrigin });
+      // People off: her join routes don't exist (404), which refuses every Origin.
+      const want = off && o.on === 'hers' ? 404 : o.want;
+      if (status !== want) leaks.push(`${host}${o.path} (${o.what}) answered ${status ?? 'nothing'}, not ${want}`);
+    }
+    out.push({
+      name: 'origin fence',
+      ok: leaks.length === 0,
+      detail: leaks.length === 0 ? `${his} refuses writes with ${her.origin}'s Origin, and ${her.host} with ${hisOrigin}'s` : leaks.join('; '),
+    });
+  }
   if (settings.remote.mode === 'cloudflare') {
     const r = await (ctx.deps.probe ?? probeUrl)(`${her.origin}/healthz`);
     let to = '';
@@ -187,6 +222,13 @@ function accessStep(email: string | undefined, add: boolean): string {
     : `In Zero Trust > Access > Applications > Accountability partner > Policies > Partner, remove ${who}. Optionally, My Team > Users > them > Revoke session.\n`;
 }
 
+/** A label from the command line, trimmed and checked here first (the daemon checks it again). */
+function labelArg(v: string): string {
+  const problem = personLabelProblem(v);
+  if (problem) throw new UsageError(`${problem} Presets: ${PERSON_LABEL_PRESETS.join(', ')}; or words of your own.`);
+  return v.trim();
+}
+
 /** The Access step for a remove with the 7-day window: only once it ends, or Access shuts them out of the download their page promises. */
 function accessStepAfter(email: string | undefined, until: string | undefined): string {
   const who = email ?? 'their email';
@@ -231,7 +273,8 @@ export default defineCommand(
     owner: 'WP-PEOPLE',
     help:
       `  people on [--name <your name>] | off      turn ${PEOPLE_LABEL} on (their exits always work) or off\n` +
-      '  people add <name> [--email <addr>] [--no-food]\n' +
+      '  people add <name> [--email <addr>] [--no-food] [--label <words>]\n' +
+      `  people label <name> [<words> | --default]  what the space with them is called (${PERSON_LABEL_PRESETS.join(', ')}, or your words)\n` +
       '  people offer <name> [--preset light|standard|everything] [--see ...] [--assign ...] [--edit-hers ...] [--comment journal]\n' +
       '      --see todos,plan,review=counts|full,meds=full|adherence,weight,food=counts|full,sleep,journal,chat (x=off turns one off)\n' +
       '      --assign todos,plan,meds   --edit-hers todos,plan,meds,weight   --comment journal\n' +
@@ -265,11 +308,14 @@ export default defineCommand(
         now: { type: 'boolean', help: 'end sharing at once (no 7-day window)' },
         forget: { type: 'boolean', help: 'delete their space at once' },
         'no-food': { type: 'boolean', help: 'add them without a food log' },
+        label: { type: 'string', help: `add: what the space with them is called (default "${PEOPLE_LABEL}")` },
+        default: { type: 'boolean', help: `label: back to "${PEOPLE_LABEL}"` },
         qr: { type: 'boolean', help: 'accepted for compatibility (the link is printed)' },
       },
-      { min: 1, max: 2 },
+      { min: 1, max: 3 },
     );
-    const [action, who] = positionals;
+    const [action, who, extra] = positionals;
+    if (extra !== undefined && action !== 'label') throw new UsageError(`${action} takes one name (quote a name with spaces)`);
     const io = ctx.io;
     const need = (what: string) => {
       if (!who) throw new UsageError(`${action} needs ${what}`);
@@ -303,12 +349,27 @@ export default defineCommand(
           name,
           ...(flags.email ? { email: flags.email } : {}),
           ...(flags.color ? { color: flags.color } : {}),
+          ...(flags.label !== undefined ? { label: labelArg(flags.label) } : {}),
           modules: { food: !flags['no-food'] && flags.food !== 'off' },
         };
         const r = await callDaemon<{ id: string }>(ctx.ctl, 'POST', '/v1/people', body);
         io.out(`Added ${name} (${r.id}). No invite yet.\n`);
+        io.out(`Their space is called "${spaceLabel(body.label)}" on your screens and theirs (change it: jantar people label ${name} <words>).\n`);
         io.out(accessStep(flags.email, true));
         io.out(`Next: jantar people offer ${name} (optional), then jantar people invite ${name}\n`);
+        return EXIT.ok;
+      }
+      case 'label': {
+        const p = await find(ctx, need('a person'));
+        if (extra === undefined && !flags.default) {
+          io.out(`${p.name}: "${spaceLabel(p.label)}"\n`);
+          return EXIT.ok;
+        }
+        if (extra !== undefined && flags.default) throw new UsageError('label takes words or --default, not both');
+        const label = flags.default ? null : labelArg(extra as string);
+        await callDaemon(ctx.ctl, 'PATCH', `/v1/people/${p.id}`, { label });
+        io.out(`The space with ${p.name} is now called "${spaceLabel(label)}".${p.state === 'active' || p.state === 'paused' ? ' Their app shows it now, and their Activity says you renamed it.' : ''}\n`);
+        io.out('Their Home Screen keeps the name it was added with; the new name shows inside the app.\n');
         return EXIT.ok;
       }
       case 'offer': {
@@ -394,8 +455,9 @@ export default defineCommand(
         const again = r.setupAgain ?? [];
         if (r.people.length === 0 && again.length === 0) io.out('Nobody yet. Add someone: jantar people add <name> --email <address>\n');
         for (const p of r.people) {
-          const extra = p.state === 'invited' && p.invite ? ` (link until ${p.invite.expiresAt})` : p.state === 'ending' && p.endingUntil ? ` (until ${p.endingUntil})` : '';
-          io.out(`  ${p.name}  ${p.state}${extra}  ${p.id}\n`);
+          const note = p.state === 'invited' && p.invite ? ` (link until ${p.invite.expiresAt})` : p.state === 'ending' && p.endingUntil ? ` (until ${p.endingUntil})` : '';
+          const named = spaceLabel(p.label) === PEOPLE_LABEL ? '' : ` (${spaceLabel(p.label)})`;
+          io.out(`  ${p.name}${named}  ${p.state}${note}  ${p.id}\n`);
         }
         for (const s of again) io.out(setupAgainNote(s));
         return EXIT.ok;

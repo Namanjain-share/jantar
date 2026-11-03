@@ -2,9 +2,14 @@
  * v0.11 People, the CLI against a real jantard (spec 9.5): cloudflare mode
  * with a people hostname, then `jantar people` end to end over ctl.sock.
  *
- * - `people on --name`, `add --email --no-food`, `offer --preset
- *   everything --see food=off` (the printed fields match, the offer is
- *   recorded once), `invite` (a /p/join#c= link on her host).
+ * - `people on --name`, `add --email --no-food --label Cofounder`, `offer
+ *   --preset everything --see food=off` (the printed fields match, the
+ *   offer is recorded once), `invite` (a /p/join#c= link on her host whose
+ *   page is called "Cofounder").
+ * - `people label` renames the space: her app reads it, her manifest
+ *   carries it, and her Activity says so.
+ * - `people doctor`'s Origin half against the real daemon, with no
+ *   credential: each host refuses a write with the other's Origin.
  * - She joins on her host over HTTP; `people list` carries no last-seen,
  *   `people devices` no last-seen or address.
  * - `people modules --food off` with rows is refused (none here: it works).
@@ -35,7 +40,9 @@ describe('v0.11 jantar people', () => {
 
   const cli = async (...args: string[]) => {
     const io = memoryIo();
-    const code = await main(['people', ...args], { io, context: { paths: d.ctx.paths, ctl, deps: defaultDeps(d.home.env) } });
+    // No probe of her public hostname from a test: Access in front answers as Cloudflare would.
+    const deps = { ...defaultDeps(d.home.env), probe: async () => ({ status: 302, location: 'https://team.cloudflareaccess.com/cdn-cgi/access/login/us.example.com', jantar: false }) };
+    const code = await main(['people', ...args], { io, context: { paths: d.ctx.paths, ctl, deps } });
     return { code, out: io.stdout, err: io.stderr };
   };
   const onHer = (method: string, path: string, body?: unknown, cookie?: string) =>
@@ -54,9 +61,10 @@ describe('v0.11 jantar people', () => {
 
   it('on, add, offer and invite at the Mac; she joins on her host', async () => {
     expect((await cli('on', '--name', 'Sam')).code).toBe(0);
-    const add = await cli('add', 'Asha', '--email', 'asha@example.com', '--no-food');
+    const add = await cli('add', 'Asha', '--email', 'asha@example.com', '--no-food', '--label', 'Cofounder');
     expect(add.code, add.err).toBe(0);
     expect(add.out).toContain('add asha@example.com');
+    expect(add.out).toContain('Their space is called "Cofounder"');
     const offer = await cli('offer', 'Asha', '--preset', 'everything', '--see', 'food=off');
     expect(offer.code, offer.err).toBe(0);
     expect(offer.out).toMatch(/see\.todos = true/);
@@ -70,6 +78,7 @@ describe('v0.11 jantar people', () => {
     const code = url.split('#c=')[1] as string;
     const preview = (await onHer('POST', '/v1/p/join/preview', { code })).body as JoinPreview;
     expect(preview.offer.see.food).toBe('off');
+    expect(preview.label).toBe('Cofounder');
     const listed = await callDaemon<{ people: { id: string }[] }>(ctl, 'GET', '/v1/people');
     const ledger = d.ctx.db.people.consents.listFor(listed.people[0]?.id ?? '');
     expect(ledger.filter((r) => r.action === 'offered')).toHaveLength(1);
@@ -94,6 +103,26 @@ describe('v0.11 jantar people', () => {
     expect(r.out).toContain('Water the plants');
     const act = (await onHer('GET', '/v1/p/activity', undefined, her)).body as PersonActivityResponse;
     expect(act.activity.some((a: PersonActivityResponse['activity'][number]) => a.action === 'view' && a.area === 'todos')).toBe(true);
+  });
+
+  it('people label renames the space: her app, her manifest and her Activity read it', async () => {
+    const r = await cli('label', 'Asha', 'Running coach');
+    expect(r.code, r.err).toBe(0);
+    expect((await cli('label', 'Asha')).out).toBe('Asha: "Running coach"\n');
+    expect((await cli('list')).out).toContain('Asha (Running coach)  active');
+    const me = (await onHer('GET', '/v1/p/me', undefined, her)).body as { label?: string };
+    expect(me.label).toBe('Running coach');
+    const manifest = await onHer('GET', '/v1/p/manifest', undefined, her);
+    expect(manifest.status).toBe(200);
+    expect(manifest.body).toMatchObject({ name: 'Running coach', short_name: 'Coach', start_url: '/p' });
+    const act = (await onHer('GET', '/v1/p/activity', undefined, her)).body as PersonActivityResponse;
+    expect(act.activity.find((a: PersonActivityResponse['activity'][number]) => a.action === 'label.changed')?.changes).toEqual([{ field: 'label', from: 'Cofounder', to: 'Running coach' }]);
+  });
+
+  it("people doctor's Origin half: with no credential, each host refuses a write carrying the other's Origin", async () => {
+    const r = await cli('doctor');
+    expect(r.out).toContain("ok   origin fence: jantar.example.com refuses writes with https://us.example.com's Origin, and us.example.com with https://jantar.example.com's");
+    expect(r.out).toContain('ok   Access in front:');
   });
 
   it('people ask and people prefs reach the daemon over ctl.sock (review 4, B1)', async () => {

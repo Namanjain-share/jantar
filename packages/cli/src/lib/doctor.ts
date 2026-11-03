@@ -894,9 +894,10 @@ async function readTextDefault(path: string): Promise<string | null> {
 /**
  * v0.11 People: one GET to the daemon on this Mac (`base`, loopback) with the
  * Host header a request through her hostname carries; the status, or null
- * when nothing answers. Never sends a credential.
+ * when nothing answers. Never sends a credential. With `method: 'POST'` and an
+ * `origin`, a body-less write carrying that Origin (the fence's Origin half).
  */
-export function localStatus(base: string, path: string, host: string): Promise<number | null> {
+export function localStatus(base: string, path: string, host: string, opts: { method?: 'GET' | 'POST'; origin?: string } = {}): Promise<number | null> {
   return new Promise((resolve) => {
     let url: URL;
     try {
@@ -906,7 +907,15 @@ export function localStatus(base: string, path: string, host: string): Promise<n
       return;
     }
     const req = httpRequest(
-      { hostname: url.hostname.replace(/^\[|\]$/g, ''), port: url.port, path: url.pathname, method: 'GET', headers: { host, accept: 'text/html,*/*' }, timeout: 3000 },
+      {
+        hostname: url.hostname.replace(/^\[|\]$/g, ''),
+        port: url.port,
+        path: url.pathname,
+        method: opts.method ?? 'GET',
+        // No credential ever: a body-less POST with an Origin is the doctor's Origin check (people doctor).
+        headers: { host, accept: 'text/html,*/*', ...(opts.origin ? { origin: opts.origin } : {}), ...(opts.method === 'POST' ? { 'content-length': '0' } : {}) },
+        timeout: 3000,
+      },
       (res) => {
         res.resume();
         resolve(res.statusCode ?? null);

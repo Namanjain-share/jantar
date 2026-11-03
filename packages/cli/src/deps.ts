@@ -39,8 +39,8 @@ export interface CliDeps {
   httpJson(url: string): Promise<unknown | null>;
   /** v0.11 People doctor: one credential-less GET of a public URL, no redirect followed (default probeUrl). */
   probe?(url: string): Promise<ProbeResult | null>;
-  /** v0.11 People doctor: the daemon's status for `path` on this Mac with a given Host header (default localStatus). */
-  localStatus?(base: string, path: string, host: string): Promise<number | null>;
+  /** v0.11 People doctor: the daemon's status for `path` on this Mac with a given Host header, and for its Origin half a body-less POST with a given Origin (default localStatus). */
+  localStatus?(base: string, path: string, host: string, opts?: { method?: 'GET' | 'POST'; origin?: string }): Promise<number | null>;
 }
 
 function locate(): PackageLocations {

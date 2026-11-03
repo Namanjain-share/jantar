@@ -184,14 +184,29 @@ describe('jantar people: the Accountability partner words, ask, prefs and the na
 
 describe('jantar people doctor: the host fence, Access in front, the Tailscale step (spec 2.1 step 4)', () => {
   const okDoctor = { checks: [{ name: 'switch', ok: true, detail: 'on' }] };
-  const FENCE_OK: Record<string, number> = { 'us.example.com/p': 200, 'us.example.com/v1/state': 404, 'us.example.com/index.html': 404, 'us.example.com/sw.js': 404, 'us.example.com/v1/node/link': 404, 'jantar.example.com/v1/p/me': 404 };
-  const run = async (mode: 'cloudflare' | 'tailscale', probe: { status: number; location: string | null; jantar: boolean } | null, fence: Record<string, number> = FENCE_OK) => {
-    const s = fakeSettings({ remote: { mode, publicUrl: 'https://jantar.example.com', peopleUrl: 'https://us.example.com' } });
+  const FENCE_OK: Record<string, number> = {
+    'us.example.com/p': 200,
+    'us.example.com/v1/state': 404,
+    'us.example.com/index.html': 404,
+    'us.example.com/sw.js': 404,
+    'us.example.com/v1/node/link': 404,
+    'jantar.example.com/v1/p/me': 404,
+    // The Origin half: a body-less POST with the other host's Origin (with his own on his pairing claim: 400, no body).
+    'POST jantar.example.com/v1/pair/claim https://us.example.com': 403,
+    'POST jantar.example.com/v1/pair/claim https://jantar.example.com': 400,
+    'POST us.example.com/v1/p/join/preview https://jantar.example.com': 403,
+  };
+  const run = async (mode: 'cloudflare' | 'tailscale', probe: { status: number; location: string | null; jantar: boolean } | null, fence: Record<string, number> = FENCE_OK, enabled = true) => {
+    const s = fakeSettings({ remote: { mode, publicUrl: 'https://jantar.example.com', peopleUrl: 'https://us.example.com' }, people: { enabled, ownerName: 'Sam' } });
     const ctl = fakeCtl({ ...s.routes, 'GET /v1/people/doctor': ok(okDoctor) });
     const asked: string[] = [];
     const c = contextFor({ env: ENV }, { ctl });
     c.ctx.deps.probe = async (url) => (asked.push(url), probe);
-    c.ctx.deps.localStatus = async (base, path, host) => (asked.push(`${base} ${host}${path}`), fence[`${host}${path}`] ?? null);
+    c.ctx.deps.localStatus = async (base, path, host, opts) => {
+      const key = opts?.method === 'POST' ? `POST ${host}${path} ${opts.origin}` : `${host}${path}`;
+      asked.push(`${base} ${key}`);
+      return fence[key] ?? null;
+    };
     const code = await people.run(['doctor'], c.ctx);
     return { code, out: c.io.stdout, asked };
   };
@@ -200,6 +215,9 @@ describe('jantar people doctor: the host fence, Access in front, the Tailscale s
     const r = await run('cloudflare', { status: 302, location: 'https://team.cloudflareaccess.com/cdn-cgi/access/login/us.example.com', jantar: false });
     expect(r.code).toBe(EXIT.ok);
     expect(r.out).toContain('ok   host fence: us.example.com serves her app and none of yours; yours serves none of hers');
+    expect(r.out).toContain("ok   origin fence: jantar.example.com refuses writes with https://us.example.com's Origin, and us.example.com with https://jantar.example.com's");
+    expect(r.asked).toContain('http://127.0.0.1:7420 POST jantar.example.com/v1/pair/claim https://us.example.com');
+    expect(r.asked).toContain('http://127.0.0.1:7420 POST us.example.com/v1/p/join/preview https://jantar.example.com');
     expect(r.out).toContain('ok   Access in front: us.example.com sends a visitor without a sign-in to Cloudflare Access');
     expect(r.asked).toContain('https://us.example.com/healthz');
     expect(r.asked).toContain('http://127.0.0.1:7420 us.example.com/v1/state');
@@ -221,10 +239,71 @@ describe('jantar people doctor: the host fence, Access in front, the Tailscale s
     expect(r.out).toContain('FIX  host fence: us.example.com/v1/state (his board) answered 200, not 404');
   });
 
+  it('FAIL when a write with the other Origin gets through, on either host', async () => {
+    const his = await run('cloudflare', { status: 302, location: 'https://team.cloudflareaccess.com/x', jantar: false }, { ...FENCE_OK, 'POST jantar.example.com/v1/pair/claim https://us.example.com': 400 });
+    expect(his.code).toBe(EXIT.failed);
+    expect(his.out).toContain('FIX  origin fence: jantar.example.com/v1/pair/claim (a write of yours with their Origin) answered 400, not 403');
+    const hers = await run('cloudflare', { status: 302, location: 'https://team.cloudflareaccess.com/x', jantar: false }, { ...FENCE_OK, 'POST us.example.com/v1/p/join/preview https://jantar.example.com': 400 });
+    expect(hers.out).toContain('FIX  origin fence: us.example.com/v1/p/join/preview (a write of theirs with your Origin) answered 400, not 403');
+    // A 403 for every Origin proves nothing: his own Origin must get past it.
+    const shut = await run('cloudflare', { status: 302, location: 'https://team.cloudflareaccess.com/x', jantar: false }, { ...FENCE_OK, 'POST jantar.example.com/v1/pair/claim https://jantar.example.com': 403 });
+    expect(shut.out).toContain('(the same write with your Origin) answered 403, not 400');
+  });
+
+  it('People off: her join routes are 404, which refuses every Origin', async () => {
+    const r = await run('cloudflare', { status: 302, location: 'https://team.cloudflareaccess.com/x', jantar: false }, { ...FENCE_OK, 'POST us.example.com/v1/p/join/preview https://jantar.example.com': 404 }, false);
+    expect(r.out).toContain('ok   origin fence:');
+  });
+
   it('tailscale: no Access probe, a note for the policy step', async () => {
     const r = await run('tailscale', null);
     expect(r.code).toBe(EXIT.ok);
     expect(r.asked.some((u) => u.endsWith('/healthz'))).toBe(false);
     expect(r.out).toContain("note Tailscale policy: share this Mac with their tailnet account and grant it us.example.com's port only");
+  });
+});
+
+describe('jantar people: what the space with someone is called (the label)', () => {
+  const asha = { id: ASHA, name: 'Asha', color: 'teal', label: 'Accountability partner', state: 'active', modules: { food: false }, invite: null, agreement: null, offer: null, pendingProposal: null };
+
+  it('add --label sends it trimmed and says what the space is called', async () => {
+    const added: unknown[] = [];
+    const ctl = fakeCtl({ 'POST /v1/people': (call) => (added.push(call.body), ok({ id: BEA })) });
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['add', 'Bea', '--email', 'bea@example.com', '--label', '  Cofounder '], c.ctx)).toBe(EXIT.ok);
+    expect(added).toEqual([{ name: 'Bea', email: 'bea@example.com', label: 'Cofounder', modules: { food: true } }]);
+    expect(c.io.stdout).toContain('Their space is called "Cofounder" on your screens and theirs (change it: jantar people label Bea <words>).');
+    const plain = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['add', 'Cy'], plain.ctx)).toBe(EXIT.ok);
+    expect(added.at(-1)).toEqual({ name: 'Cy', modules: { food: true } });
+    expect(plain.io.stdout).toContain('Their space is called "Accountability partner"');
+  });
+
+  it('label <name> <words> renames it; --default puts it back; no words prints it; a bad one is a usage error', async () => {
+    const patched: unknown[] = [];
+    const ctl = fakeCtl({ 'GET /v1/people': ok({ enabled: true, people: [{ ...asha, label: 'Coach' }] }), [`PATCH /v1/people/${ASHA}`]: (call) => (patched.push(call.body), ok({ ok: true })) });
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['label', 'Asha', 'Running coach'], c.ctx)).toBe(EXIT.ok);
+    expect(c.io.stdout).toBe('The space with Asha is now called "Running coach". Their app shows it now, and their Activity says you renamed it.\nTheir Home Screen keeps the name it was added with; the new name shows inside the app.\n');
+    const back = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['label', 'Asha', '--default'], back.ctx)).toBe(EXIT.ok);
+    expect(back.io.stdout).toContain('is now called "Accountability partner"');
+    expect(patched).toEqual([{ label: 'Running coach' }, { label: null }]);
+    const show = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['label', 'Asha'], show.ctx)).toBe(EXIT.ok);
+    expect(show.io.stdout).toBe('Asha: "Coach"\n');
+    for (const bad of [['label', 'Asha', 'x'.repeat(41)], ['label', 'Asha', '   '], ['label', 'Asha', `Coach${String.fromCharCode(0x1b)}[2J`], ['label', 'Asha', 'Coach', '--default'], ['invite', 'Asha', 'extra']]) {
+      const b = contextFor({ env: ENV }, { ctl });
+      expect(await people.run(bad, b.ctx), JSON.stringify(bad)).toBe(EXIT.usage);
+    }
+    expect(patched).toHaveLength(2);
+  });
+
+  it('list names a space that isn’t the default', async () => {
+    const ctl = fakeCtl({ 'GET /v1/people': ok({ enabled: true, people: [{ ...asha, label: 'Mentor' }, { ...asha, id: BEA, name: 'Bea' }] }) });
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['list'], c.ctx)).toBe(EXIT.ok);
+    expect(c.io.stdout).toContain(`  Asha (Mentor)  active  ${ASHA}\n`);
+    expect(c.io.stdout).toContain(`  Bea  active  ${BEA}\n`);
   });
 });
