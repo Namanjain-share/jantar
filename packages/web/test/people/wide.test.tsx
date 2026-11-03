@@ -4,7 +4,8 @@
  *
  * - From a pane of 800 his screen for her is a SplitPane: the header and the
  *   tabs one under the other in the list column, the tab (or the plan
- *   editor) beside them under its name. Below 800, and on a phone, it is
+ *   editor) beside them under its name: her Today as cards across the
+ *   detail, a tab of rows 720 wide at most. Below 800, and on a phone, it is
  *   0.11's one column: the header, the tabs in a row, the tab.
  * - The tab's section is the same at every width: a plan being written stays
  *   when the pane crosses 800 (an iPad turned, a window dragged).
@@ -76,7 +77,8 @@ const herClient = () =>
   client({
     list: vi.fn(async () => ({ enabled: true, people: [person()] })),
     today: vi.fn(async () => today()),
-    alerts: vi.fn(async () => ({ alerts: [], unseen: 2 })),
+    alerts: vi.fn(async () => ({ alerts: [], unseen: 2 }) as never),
+    todos: vi.fn(async () => ({ today: DAY, todos: [], projects: [] })),
     plan: vi.fn(async () => planView()),
     templates: vi.fn(async () => ({ templates: [] })),
   });
@@ -115,15 +117,24 @@ describe('his screen for her, by its pane', () => {
     expect(within(tab).getByRole('heading', { level: 2, name: 'Today' })).toBeTruthy();
     expect(within(tab).queryByRole('heading', { level: 1 })).toBeNull();
     expect(within(tab).queryByRole('tablist')).toBeNull();
-    // Her plan reads beside the tabs, 720 wide at most.
-    expect(await within(tab).findByText('08:00 Mock')).toBeTruthy();
-    expect(tab.firstElementChild?.className).toContain('max-w-720');
+    // Her Today beside the tabs is cards across the detail: her plan, and her day's other lines.
+    const plan = within(tab).getByRole('region', { name: 'Day plan' });
+    expect(await within(plan).findByText('08:00 Mock')).toBeTruthy();
+    expect(within(tab).getByRole('region', { name: 'Her day' }).textContent).toContain('To-do today: 0');
+    expect(tab.firstElementChild?.className).not.toContain('max-w-720');
     expect(screen.getAllByRole('tablist')).toHaveLength(1);
+  });
+
+  it('from 800, a tab of rows (To-do) reads 720 wide at most', async () => {
+    measureAs(1384);
+    render(<Wrapped c={herClient()} layout={layoutAt(1440)} tab="todos" />);
+    const tab = await screen.findByRole('region', { name: 'To-do' });
+    expect(tab.firstElementChild?.className).toContain('max-w-720');
   });
 
   it('below 800 and on a phone: one column, the header, the tabs in a row, the tab', async () => {
     for (const [layout, width] of [
-      [layoutAt(1440), 700],
+      [layoutAt(1440), 600],
       [layoutAt(390, { coarse: true }), 390],
     ] as const) {
       const spy = measureAs(width);
@@ -135,6 +146,8 @@ describe('his screen for her, by its pane', () => {
       expect(within(tabs).getAllByRole('tab')).toHaveLength(9);
       expect(screen.queryByRole('heading', { level: 2, name: 'Today' })).toBeNull();
       expect(await screen.findByText('08:00 Mock')).toBeTruthy();
+      // 0.11's one column: no cards below 640.
+      expect(screen.queryByRole('region', { name: 'Day plan' })).toBeNull();
       r.unmount();
       spy.mockRestore();
     }

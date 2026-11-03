@@ -69,7 +69,7 @@ import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type Pl
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { chipClass } from '../../../people-shared/chip.js';
 import { FoodRead, foodTodayLine } from '../../../people-shared/FoodRead.js';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
 import { MedsRead } from '../../../people-shared/MedsRead.js';
 import { PlanRead } from '../../../people-shared/PlanRead.js';
@@ -80,6 +80,8 @@ import clsx from 'clsx';
 import { useDeps, useNavigate } from '../../context.js';
 import { Badge } from '../../kit/Badge.js';
 import { Button } from '../../kit/Button.js';
+import { Columns, useCardWidth } from '../../kit/Columns.js';
+import { Panel } from '../../kit/Panel.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { SplitPane, useSplit } from '../../kit/SplitPane.js';
 import { ChatButton } from '../../shell/ChatButton.js';
@@ -364,7 +366,7 @@ function PartnerOf({
           </div>
         }
         detail={
-          <PartnerPane header={header} tabs={tabRow} title={TAB_LABEL[tab]}>
+          <PartnerPane header={header} tabs={tabRow} title={TAB_LABEL[tab]} cards={tab === 'today'}>
             {body}
           </PartnerPane>
         }
@@ -391,10 +393,11 @@ function PartnerOf({
  * alone beside them from a pane of 800, under its name (0.12). Its body keeps its place in the tree
  * either way, so crossing 800 (an iPad turned, a window dragged) never remounts what is being typed.
  */
-function PartnerPane({ header, tabs, title, children }: { header: ReactNode; tabs: ReactNode; title: string; children: ReactNode }) {
+function PartnerPane({ header, tabs, title, cards = false, children }: { header: ReactNode; tabs: ReactNode; title: string; cards?: boolean; children: ReactNode }) {
   const beside = useSplit()?.split === true;
+  // 720 at most, as a Life page reads; beside the tabs, a tab of cards (Today) takes the detail's width.
   return (
-    <div className="max-w-720 px-16 pb-48 pt-16 @md:px-32">
+    <div className={clsx('px-16 pb-48 pt-16 @md:px-32', !(beside && cards) && 'max-w-720')}>
       {beside ? (
         <div className="flex min-h-44 items-center gap-12">
           <h2 className="min-w-0 flex-1 break-words type-title text-ink">{title}</h2>
@@ -411,14 +414,41 @@ function PartnerPane({ header, tabs, title, children }: { header: ReactNode; tab
 
 function TodayTab({ client, pid, name, today, reload, canCarry, isToday }: { client: PeopleClient; pid: string; name: string; today: PersonToday | null; reload: () => void; canCarry: boolean; isToday: boolean }) {
   const [note, setNote] = useState<string | null>(null);
+  // 0.12: cards beside the tabs, or in a tab 640 wide or more; 0.11's one column below that and on a phone.
+  const box = useRef<HTMLDivElement>(null);
+  const roomy = useCardWidth(box);
+  const cards = useSplit()?.split === true || roomy;
   if (!today) return <p className="mt-12 type-small text-ink-2">Loading…</p>;
   const nudge = (s: PlanStep, day: string) =>
     void client.sendAlert({ to: pid, kind: 'nudge', ref: { type: 'step', id: s.id, day } }).then(
       (r) => setNote(r.delivery === 'sent' ? `Reminder sent: ${s.title}` : r.delivery === 'capped' ? `Saved: ${name}'s limit for reminders is reached.` : 'Held until the quiet time ends.'),
       (e: Error) => setNote(e.message),
     );
+  const plan = isLocked(today.plan) ? (
+    <Locked name={name} what="Day plan" />
+  ) : (
+    <PlanRead view={today.plan} name={name} {...(isToday && today.plan.plan?.sentAt ? { onNudge: (s: PlanStep) => nudge(s, today.day) } : {})} />
+  );
+  const review =
+    today.review === null ? null : isLocked(today.review) ? (
+      <Locked name={name} what="Evening review" />
+    ) : (
+      <ReviewRead client={client} pid={pid} name={name} v={today.review} canCarry={canCarry} done={reload} />
+    );
+  const todos = isLocked(today.todos) ? (
+    <Locked name={name} what="To-dos" />
+  ) : (
+    <p className={cards ? 'type-row text-ink' : 'mt-12 type-row text-ink'}>
+      {isToday ? 'To-do today' : `To-do by ${dayLabel(today.day)}`}: {today.todos.due.length}
+      {today.todos.overdue ? ` · overdue ${today.todos.overdue}` : ''}
+    </p>
+  );
+  const meds = today.meds === null ? null : isLocked(today.meds) ? <Locked name={name} what="Medicines" /> : <p className={cards ? 'type-row text-ink' : 'mt-8 type-row text-ink'}>{medsLine(today.meds)}</p>;
+  const weight = isLocked(today.weight) ? <Locked name={name} what="Weight" /> : today.weight.latest ? <p className="type-row text-ink">Weight {today.weight.latest.kg} kg ({today.weight.latest.day})</p> : null;
+  const food = today.food === null ? null : isLocked(today.food) ? <Locked name={name} what="Food" /> : <p className="type-row text-ink">{foodTodayLine(today.food)}</p>;
+  const lines = [todos, meds, weight, food].filter((x) => x !== null);
   return (
-    <div className="mt-12">
+    <div ref={box} className="mt-12">
       {note ? (
         <p role="status" className="type-small text-ink">
           {note}
@@ -431,27 +461,37 @@ function TodayTab({ client, pid, name, today, reload, canCarry, isToday }: { cli
           ))}
         </ul>
       ) : null}
-      {isLocked(today.plan) ? (
-        <Locked name={name} what="Day plan" />
+      {cards ? (
+        // Her plan, her day's other lines and the evening review as cards, dealt into columns of at least 340.
+        <Columns min={340} className="mt-12">
+          <Panel label="Day plan" card>
+            <div className="px-16 pb-12">{plan}</div>
+          </Panel>
+          <Panel label={`${name}'s day`} name="Her day" card>
+            <ul>
+              {lines.map((l, i) => (
+                <li key={i} className="flex min-h-44 items-center border-b border-line px-16 py-8">
+                  {l}
+                </li>
+              ))}
+            </ul>
+          </Panel>
+          {review ? (
+            <Panel label="Evening review" card>
+              <div className="px-16 pb-12">{review}</div>
+            </Panel>
+          ) : null}
+        </Columns>
       ) : (
-        <PlanRead view={today.plan} name={name} {...(isToday && today.plan.plan?.sentAt ? { onNudge: (s: PlanStep) => nudge(s, today.day) } : {})} />
+        <>
+          {plan}
+          {review}
+          {todos}
+          {meds}
+          {weight}
+          {food}
+        </>
       )}
-      {today.review === null ? null : isLocked(today.review) ? (
-        <Locked name={name} what="Evening review" />
-      ) : (
-        <ReviewRead client={client} pid={pid} name={name} v={today.review} canCarry={canCarry} done={reload} />
-      )}
-      {isLocked(today.todos) ? (
-        <Locked name={name} what="To-dos" />
-      ) : (
-        <p className="mt-12 type-row text-ink">
-          {isToday ? 'To-do today' : `To-do by ${dayLabel(today.day)}`}: {today.todos.due.length}
-          {today.todos.overdue ? ` · overdue ${today.todos.overdue}` : ''}
-        </p>
-      )}
-      {today.meds === null ? null : isLocked(today.meds) ? <Locked name={name} what="Medicines" /> : <p className="mt-8 type-row text-ink">{medsLine(today.meds)}</p>}
-      {isLocked(today.weight) ? <Locked name={name} what="Weight" /> : today.weight.latest ? <p className="type-row text-ink">Weight {today.weight.latest.kg} kg ({today.weight.latest.day})</p> : null}
-      {today.food === null ? null : isLocked(today.food) ? <Locked name={name} what="Food" /> : <p className="type-row text-ink">{foodTodayLine(today.food)}</p>}
     </div>
   );
 }
