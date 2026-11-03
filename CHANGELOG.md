@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.12.1 (unreleased)
+## 0.12.1 (4 November 2026)
 
 - **An invite opens after a One-time PIN sign-in.** Signing in to
   Cloudflare Access with a code by email brought the person you invited
@@ -18,8 +18,8 @@ What changed for people who use Jantar, newest first. Versions before
   before.
 - **A reload after joining doesn't ask for the link again.** A phone that
   has joined and comes back to the join page (a reload during Add to Home
-  Screen or Turn on notifications, a tab Safari dropped) goes on to their
-  Today, or back to the step it was on.
+  Screen or Turn on notifications, a tab Safari dropped, or the used link
+  opened again) goes on to their Today, or back to the step it was on.
 - In their app, fields are 16 px, so an iPhone no longer zooms in when one
   takes focus. The paste field's error is tied to it for a screen reader
   and said again when it repeats, and the page says "Loading…" while the
