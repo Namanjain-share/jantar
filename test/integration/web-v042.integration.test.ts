@@ -25,6 +25,11 @@
  *   Security Policy, no console error, no <style> element, nothing sticking
  *   out sideways.
  *
+ * 0.12.1: a phone's steps run in onPaired (browser.ts): a phone that loses
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) is
+ * opened again as the same device and the steps run once more; twice fails,
+ * saying so.
+ *
  * Every name and value is synthetic. Needs a built dist/ and a Chromium
  * (browser.ts).
  */
@@ -37,7 +42,7 @@ import { SAMPLE_TEXT, dialogFixture, NOT_DIALOG_SCREENS, perfBudgetMs } from '@j
 import { dialogOfScreen, rawSlice } from '@jantar/daemon/terminal/dialog';
 import type { PairStartResponse, SessionsResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, PHONE, browserReady, clean, expectSaneFocus, focusWalk, overflow, watchConsole, type Viewport, type Watch } from './browser.js';
+import { DESK, PHONE, browserReady, clean, expectSaneFocus, focusWalk, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
 import { FakeTabs, bootDaemon, fakeBinsSettings, type Daemon } from './harness.js';
 import { eventually } from './http.js';
 
@@ -90,8 +95,8 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
 
   const base = () => `http://127.0.0.1:${d.port}`;
 
-  /** A browser context paired through the pairing page, as a phone scanning the Mac's code would be. */
-  async function paired(vp: Viewport, name: string): Promise<{ page: Page; watch: Watch }> {
+  /** A browser context paired through the pairing page, as a phone scanning the Mac's code would be; 0.12.1: or, with `state`, that device again in a new one. */
+  async function paired(vp: Viewport, name: string, state?: StorageState): Promise<{ ctx: BrowserContext; page: Page; watch: Watch }> {
     const ctx = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       deviceScaleFactor: 2,
@@ -100,17 +105,26 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
       colorScheme: vp.scheme ?? 'light',
       locale: 'en-GB',
       serviceWorkers: 'block',
+      ...(state ? { storageState: state } : {}),
     });
     contexts.push(ctx);
     const page = await ctx.newPage();
+    if (vp.phone) touchPage(page);
     const watch = watchConsole(page);
+    if (state) return { ctx, page, watch };
     const start = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name, scopes: ['read', 'control'] });
     await page.goto(`${base()}/pair#c=${start.code}`, { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Pair this device' }).click();
     await page.getByRole('heading', { name: 'Paired' }).waitFor();
     // Before the claim the app's first calls answer 401: expected, and over now.
     watch.errors.length = 0;
-    return { page, watch };
+    return { ctx, page, watch };
+  }
+
+  /** 0.12.1: `steps` on a page paired at `vp`; a phone that drops its touch emulation is opened again as the same device and they run once more. */
+  async function onDevice(vp: Viewport, name: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>): Promise<void> {
+    const first = await paired(vp, name);
+    await onPaired(name, () => first, (state) => paired(vp, name, state), steps);
   }
 
   /** Clean console, no <style>, nothing past the sides of the viewport. */
@@ -167,128 +181,134 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
   it('the plan approval as buttons (phone and desk): Claude\'s three rows, the note field, and a tap that types one guarded Down', async () => {
     const screen = dialogFixture('PLAN_80COL').screen;
     for (const vp of [PHONE, { ...DESK, scheme: 'dark' as const }]) {
-      const { page, watch } = await paired(vp, `plan ${vp.width}`);
-      await openWaiting(page, screen, /^Yes, manually approve edits/);
-      expect(await row(page, /^Yes, and use auto mode/).count()).toBe(1);
-      await row(page, /^Tell Claude what to change/).click();
-      await page.getByLabel('What should change').waitFor();
-      await check(page, watch, `plan dock ${vp.width}`);
+      await onDevice(vp, `plan ${vp.width}`, async ({ page, watch }) => {
+        await openWaiting(page, screen, /^Yes, manually approve edits/);
+        expect(await row(page, /^Yes, and use auto mode/).count()).toBe(1);
+        await row(page, /^Tell Claude what to change/).click();
+        await page.getByLabel('What should change').waitFor();
+        await check(page, watch, `plan dock ${vp.width}`);
 
-      tabs.on(WAIT_TTY, { after: () => tabs.show(WAIT_TTY, WORKING) });
-      const before = tabs.writesTo(WAIT_TTY).length;
-      await row(page, /^Yes, manually approve edits/).click();
-      await page.getByRole('group', { name: 'Choices' }).waitFor({ state: 'detached' });
-      expect(tabs.writesTo(WAIT_TTY).slice(before)).toEqual([{ tty: WAIT_TTY, mode: 'typeif', bytes: ESC_B, expected: blockOf(screen), out: 'ok' }]);
-      await check(page, watch, `plan answered ${vp.width}`);
+        tabs.on(WAIT_TTY, { after: () => tabs.show(WAIT_TTY, WORKING) });
+        const before = tabs.writesTo(WAIT_TTY).length;
+        await row(page, /^Yes, manually approve edits/).click();
+        await page.getByRole('group', { name: 'Choices' }).waitFor({ state: 'detached' });
+        expect(tabs.writesTo(WAIT_TTY).slice(before)).toEqual([{ tty: WAIT_TTY, mode: 'typeif', bytes: ESC_B, expected: blockOf(screen), out: 'ok' }]);
+        await check(page, watch, `plan answered ${vp.width}`);
+      });
     }
   }, perfBudgetMs(90_000));
 
   it('a question as buttons: its options, and "Type something…" sends the arrows and the typed answer in one write', async () => {
     const screen = dialogFixture('Q_SINGLE').screen;
-    const { page, watch } = await paired(PHONE, 'question');
-    await openWaiting(page, screen, /^Red/);
-    for (const label of [/^Green/, /^Blue/, /^Chat about this/]) expect(await row(page, label).count()).toBe(1);
-    await row(page, /^Type something/).click();
-    await page.getByLabel('Your answer').fill(SAMPLE_TEXT);
-    await check(page, watch, 'question with its text field');
+    await onDevice(PHONE, 'question', async ({ page, watch }) => {
+      await openWaiting(page, screen, /^Red/);
+      for (const label of [/^Green/, /^Blue/, /^Chat about this/]) expect(await row(page, label).count()).toBe(1);
+      await row(page, /^Type something/).click();
+      await page.getByLabel('Your answer').fill(SAMPLE_TEXT);
+      await check(page, watch, 'question with its text field');
 
-    tabs.on(WAIT_TTY, { after: () => tabs.show(WAIT_TTY, WORKING) });
-    const before = tabs.writesTo(WAIT_TTY).length;
-    await page.getByRole('button', { name: 'Send answer' }).click();
-    await page.getByRole('group', { name: 'Choices' }).waitFor({ state: 'detached' });
-    expect(tabs.writesTo(WAIT_TTY).slice(before)).toEqual([{ tty: WAIT_TTY, mode: 'typeif', bytes: ESC_B.repeat(3) + SAMPLE_TEXT, expected: blockOf(screen), out: 'ok' }]);
-    await check(page, watch, 'question answered');
+      tabs.on(WAIT_TTY, { after: () => tabs.show(WAIT_TTY, WORKING) });
+      const before = tabs.writesTo(WAIT_TTY).length;
+      await page.getByRole('button', { name: 'Send answer' }).click();
+      await page.getByRole('group', { name: 'Choices' }).waitFor({ state: 'detached' });
+      expect(tabs.writesTo(WAIT_TTY).slice(before)).toEqual([{ tty: WAIT_TTY, mode: 'typeif', bytes: ESC_B.repeat(3) + SAMPLE_TEXT, expected: blockOf(screen), out: 'ok' }]);
+      await check(page, watch, 'question answered');
+    });
   }, perfBudgetMs(60_000));
 
   it('a screen with no buttons shows the keypad: ↓ then Enter is one guarded write', async () => {
     const form = NOT_DIALOG_SCREENS.MCP_FORM as string;
-    const { page, watch } = await paired(PHONE, 'keypad');
-    tabs.on(WAIT_TTY, {});
-    await tabs.show(WAIT_TTY, form);
-    await page.goto(`${base()}/s/${WAIT}`, { waitUntil: 'load' });
-    const keys = page.getByRole('region', { name: 'Keys' });
-    await keys.waitFor();
-    await page.waitForTimeout(700);
-    await keys.getByRole('button', { name: 'Down' }).click();
-    await keys.getByText('moves: ↓ 1').waitFor();
-    await check(page, watch, 'keypad with a move');
-    const before = tabs.writesTo(WAIT_TTY).length;
-    await keys.getByRole('button', { name: /Enter/ }).click();
-    await eventually(async () => tabs.writesTo(WAIT_TTY).length > before, 10_000, 'the keypad write');
-    const w = tabs.writesTo(WAIT_TTY).slice(before);
-    expect(w.map((x) => [x.mode, x.bytes, x.out])).toEqual([['typeif', ESC_B, 'ok']]);
-    expect(form).toContain(w[0]?.expected ?? '\u0000');
-    await check(page, watch, 'keypad sent');
+    await onDevice(PHONE, 'keypad', async ({ page, watch }) => {
+      tabs.on(WAIT_TTY, {});
+      await tabs.show(WAIT_TTY, form);
+      await page.goto(`${base()}/s/${WAIT}`, { waitUntil: 'load' });
+      const keys = page.getByRole('region', { name: 'Keys' });
+      await keys.waitFor();
+      await page.waitForTimeout(700);
+      await keys.getByRole('button', { name: 'Down' }).click();
+      await keys.getByText('moves: ↓ 1').waitFor();
+      await check(page, watch, 'keypad with a move');
+      const before = tabs.writesTo(WAIT_TTY).length;
+      await keys.getByRole('button', { name: /Enter/ }).click();
+      await eventually(async () => tabs.writesTo(WAIT_TTY).length > before, 10_000, 'the keypad write');
+      const w = tabs.writesTo(WAIT_TTY).slice(before);
+      expect(w.map((x) => [x.mode, x.bytes, x.out])).toEqual([['typeif', ESC_B, 'ok']]);
+      expect(form).toContain(w[0]?.expected ?? '\u0000');
+      await check(page, watch, 'keypad sent');
+    });
   }, perfBudgetMs(60_000));
 
   it('focus: Tab walks the dock in document order over visible, named stops with a ring (rows, then the keypad)', async () => {
-    const { page, watch } = await paired(PHONE, 'focus');
-    await openWaiting(page, dialogFixture('PERM_CREATE_2').screen, /^Yes$/);
-    const rows = await focusWalk(page);
-    await expectSaneFocus(page, rows, { what: 'the dock with rows' });
-    const names = rows.map((s) => s.what);
-    // Every row, then Show on Mac, each reached by Tab.
-    for (const want of ['button Yes', 'button No', 'button Show on Mac']) expect(names.some((n) => n.startsWith(want)), `${want}\n${names.join('\n')}`).toBe(true);
-    // The dock's own Show on Mac comes after its rows (the header has one too).
-    expect(names.findLastIndex((n) => n.startsWith('button Show on Mac')), names.join('\n')).toBeGreaterThan(names.findIndex((n) => n.startsWith('button No')));
-    await check(page, watch, 'dock focus walk');
+    await onDevice(PHONE, 'focus', async ({ page, watch }) => {
+      await openWaiting(page, dialogFixture('PERM_CREATE_2').screen, /^Yes$/);
+      const rows = await focusWalk(page);
+      await expectSaneFocus(page, rows, { what: 'the dock with rows' });
+      const names = rows.map((s) => s.what);
+      // Every row, then Show on Mac, each reached by Tab.
+      for (const want of ['button Yes', 'button No', 'button Show on Mac']) expect(names.some((n) => n.startsWith(want)), `${want}\n${names.join('\n')}`).toBe(true);
+      // The dock's own Show on Mac comes after its rows (the header has one too).
+      expect(names.findLastIndex((n) => n.startsWith('button Show on Mac')), names.join('\n')).toBeGreaterThan(names.findIndex((n) => n.startsWith('button No')));
+      await check(page, watch, 'dock focus walk');
 
-    tabs.on(WAIT_TTY, {});
-    await tabs.show(WAIT_TTY, NOT_DIALOG_SCREENS.MCP_FORM as string);
-    await page.goto(`${base()}/s/${WAIT}`, { waitUntil: 'load' });
-    const keys = page.getByRole('region', { name: 'Keys' });
-    await keys.waitFor();
-    const stops = await focusWalk(page);
-    await expectSaneFocus(page, stops, { what: 'the dock with the keypad' });
-    for (const want of ['button Down', 'button Show on Mac']) expect(stops.some((s) => s.what.startsWith(want)), `${want}\n${stops.map((s) => s.what).join('\n')}`).toBe(true);
-    await check(page, watch, 'keypad focus walk');
+      tabs.on(WAIT_TTY, {});
+      await tabs.show(WAIT_TTY, NOT_DIALOG_SCREENS.MCP_FORM as string);
+      await page.goto(`${base()}/s/${WAIT}`, { waitUntil: 'load' });
+      const keys = page.getByRole('region', { name: 'Keys' });
+      await keys.waitFor();
+      const stops = await focusWalk(page);
+      await expectSaneFocus(page, stops, { what: 'the dock with the keypad' });
+      for (const want of ['button Down', 'button Show on Mac']) expect(stops.some((s) => s.what.startsWith(want)), `${want}\n${stops.map((s) => s.what).join('\n')}`).toBe(true);
+      await check(page, watch, 'keypad focus walk');
+    });
   }, perfBudgetMs(60_000));
 
   it('the composer: + opens its sheet, a file from the folder goes in by name, a pasted image becomes a chip and goes with Send', async () => {
-    const { page, watch } = await paired(PHONE, 'composer');
-    await page.goto(`${base()}/s/${IDLE}`, { waitUntil: 'load' });
-    const box = page.getByLabel('Prompt for Claude');
-    await box.waitFor();
+    await onDevice(PHONE, 'composer', async ({ page, watch }) => {
+      await page.goto(`${base()}/s/${IDLE}`, { waitUntil: 'load' });
+      const box = page.getByLabel('Prompt for Claude');
+      await box.waitFor();
 
-    // Until the session's folder is listed, + is the file input's own label (which Chromium also names
-    // "Add files"); then it is the button that opens the sheet.
-    const plus = page.locator('button[aria-label="Add files"]');
-    await plus.waitFor();
-    await plus.click();
-    const sheet = page.getByRole('dialog', { name: 'Add to the prompt' });
-    await sheet.waitFor();
-    expect(await sheet.getByLabel('Photos, camera or files').count()).toBe(1);
-    await check(page, watch, 'the + sheet');
-    await sheet.getByRole('button', { name: "From this session's folder" }).click();
-    const folder = page.getByRole('dialog', { name: "From this session's folder" });
-    await folder.getByText('notes.md').click();
-    await folder.waitFor({ state: 'detached' });
-    await eventually(async () => (await box.inputValue()) === '@notes.md ', 10_000, 'the file mention in the box');
-    expect(await readdir(d.ctx.paths.uploadsDir).catch(() => [])).toEqual([]);
+      // Until the session's folder is listed, + is the file input's own label (which Chromium also names
+      // "Add files"); then it is the button that opens the sheet.
+      const plus = page.locator('button[aria-label="Add files"]');
+      await plus.waitFor();
+      await plus.click();
+      const sheet = page.getByRole('dialog', { name: 'Add to the prompt' });
+      await sheet.waitFor();
+      expect(await sheet.getByLabel('Photos, camera or files').count()).toBe(1);
+      await check(page, watch, 'the + sheet');
+      await sheet.getByRole('button', { name: "From this session's folder" }).click();
+      const folder = page.getByRole('dialog', { name: "From this session's folder" });
+      await folder.getByText('notes.md').click();
+      await folder.waitFor({ state: 'detached' });
+      await eventually(async () => (await box.inputValue()) === '@notes.md ', 10_000, 'the file mention in the box');
+      expect(await readdir(d.ctx.paths.uploadsDir).catch(() => [])).toEqual([]);
 
-    // A screenshot pasted into the box: a file on the clipboard, no text.
-    await box.fill('What is in this picture?');
-    const png = [...tinyPng()];
-    await box.evaluate((el, bytes) => {
-      const dt = new DataTransfer();
-      dt.items.add(new File([new Uint8Array(bytes)], 'screenshot.png', { type: 'image/png' }));
-      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-    }, png);
-    const chips = page.getByRole('list', { name: 'Attached files' });
-    await chips.getByLabel('on the Mac').waitFor();
-    expect(await chips.locator('img').first().getAttribute('src')).toMatch(/^blob:/);
-    const stored = await readdir(join(d.ctx.paths.uploadsDir, IDLE));
-    expect(stored).toHaveLength(1);
-    expect(stored[0]).toMatch(/^[0-9a-hjkmnp-tv-z]{26}\.png$/);
-    await check(page, watch, 'a chip in the composer');
+      // A screenshot pasted into the box: a file on the clipboard, no text. It is stored on the Mac: the pointer first.
+      await stillTouch(page, 'composer, before the paste');
+      await box.fill('What is in this picture?');
+      const png = [...tinyPng()];
+      await box.evaluate((el, bytes) => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([new Uint8Array(bytes)], 'screenshot.png', { type: 'image/png' }));
+        el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      }, png);
+      const chips = page.getByRole('list', { name: 'Attached files' });
+      await chips.getByLabel('on the Mac').waitFor();
+      expect(await chips.locator('img').first().getAttribute('src')).toMatch(/^blob:/);
+      const stored = await readdir(join(d.ctx.paths.uploadsDir, IDLE));
+      expect(stored).toHaveLength(1);
+      expect(stored[0]).toMatch(/^[0-9a-hjkmnp-tv-z]{26}\.png$/);
+      await check(page, watch, 'a chip in the composer');
 
-    const before = tabs.writesTo(IDLE_TTY).length;
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
-    const typed = await eventually(async () => tabs.writesTo(IDLE_TTY).slice(before).find((w) => w.mode === 'type' && w.bytes.includes('Attached files:')) ?? null, 15_000, 'the prompt typed');
-    // The writer pastes a prompt of several lines as one bracketed paste.
-    expect(typed.bytes).toBe(
-      `\u001b[200~${['What is in this picture?', '', 'Attached files:', `- "screenshot.png": ${join(d.ctx.paths.uploadsDir, IDLE, stored[0] as string)}`].join('\n')}\u001b[201~`,
-    );
-    await check(page, watch, 'sent with the chip');
+      const before = tabs.writesTo(IDLE_TTY).length;
+      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      const typed = await eventually(async () => tabs.writesTo(IDLE_TTY).slice(before).find((w) => w.mode === 'type' && w.bytes.includes('Attached files:')) ?? null, 15_000, 'the prompt typed');
+      // The writer pastes a prompt of several lines as one bracketed paste.
+      expect(typed.bytes).toBe(
+        `\u001b[200~${['What is in this picture?', '', 'Attached files:', `- "screenshot.png": ${join(d.ctx.paths.uploadsDir, IDLE, stored[0] as string)}`].join('\n')}\u001b[201~`,
+      );
+      await check(page, watch, 'sent with the chip');
+    });
   }, perfBudgetMs(90_000));
 });

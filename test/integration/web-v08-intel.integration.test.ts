@@ -29,6 +29,11 @@
  *
  * Everywhere: no console message about the Content Security Policy, no
  * console error, no <style> element, nothing past the sides at 390 px.
+ * 0.12.1: each check runs in onTouch (browser.ts): a phone that loses its
+ * coarse pointer (Chromium dropping Playwright's touch emulation) is opened
+ * again and the check runs once more; twice fails, saying so. It is asked
+ * before a write that can't be made twice.
+ *
  * Needs a built dist/ and a Chromium (browser.ts).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -44,7 +49,7 @@ import {
   OkReplySchema,
   StateSchema,
 } from '@jantar/protocol';
-import { DIST, PHONE, browserReady, clean, overflow, watchConsole, type Watch } from './browser.js';
+import { DIST, PHONE, browserReady, clean, onTouch, overflow, stillTouch, touchPage, watchConsole, type Watch } from './browser.js';
 import { DAL_URL, READ_IDS, webFixtureV08, type V08Answer, type WebFixtureV08 } from './web-fixture-v08.js';
 import { serveWebApp, type WebServer } from './web-server.js';
 
@@ -155,7 +160,7 @@ describe.skipIf(!ready)('v0.8 Intel reading links in Chromium at 390 px: the Rea
         return route.fulfill({ status: reply.status, contentType: 'application/json; charset=utf-8', body: JSON.stringify(reply.body) });
       },
     );
-    const page = await ctx.newPage();
+    const page = touchPage(await ctx.newPage());
     const watch = watchConsole(page);
     await page.goto(`${server.base}${path}`, { waitUntil: 'load' });
     return { page, watch };
@@ -181,91 +186,97 @@ describe.skipIf(!ready)('v0.8 Intel reading links in Chromium at 390 px: the Rea
 
   it('the shelf, light and dark: the Reading strip, the reel row with its picture, Retry at its depth', async () => {
     for (const scheme of ['light', 'dark'] as const) {
-      writes = [];
-      const { page, watch } = await open('/intel', scheme);
-      const strip = page.getByRole('region', { name: 'Reading' });
-      await strip.waitFor();
-      const rows = strip.locator('li[data-job]');
-      expect(await rows.count(), scheme).toBe(4);
-      const states = await rows.evaluateAll((els) => els.map((el) => el.querySelector('p')?.textContent?.trim()));
-      expect(states).toEqual(['Looking at frames · Standard', 'Waiting · Light', 'Saved · Full', "Couldn't read · Standard"]);
-      const failed = strip.locator(`li[data-job="${READ_IDS.failed}"]`);
-      await failed.getByText(INTEL_READ_REASONS.login, { exact: true }).waitFor();
-      // The reel's row: its first picture, and who made it.
-      const reel = page.locator('main li a', { hasText: 'Three ways to cook dal at home' });
-      await reel.getByText(/^Instagram · @example_cook · /).waitFor();
-      await loaded(page, `main a[href="/intel?item=${encodeURIComponent(READ_IDS.dal)}"]`, 1);
-      await check(page, watch, `shelf ${scheme}`);
-      if (scheme === 'light') {
-        await failed.getByRole('button', { name: 'Retry' }).click();
-        await expect.poll(() => writes.map((w) => [w.method, w.path, JSON.stringify(w.body)])).toEqual([['POST', `/v1/intel/items/${encodeURIComponent(READ_IDS.failed)}/read`, '{"depth":"standard"}']]);
-        expect(writes[0]!.key).toMatch(/\S{16,}/);
-      }
+      await onTouch(`the shelf, ${scheme}`, () => open('/intel', scheme), async ({ page, watch }) => {
+        writes = [];
+        const strip = page.getByRole('region', { name: 'Reading' });
+        await strip.waitFor();
+        const rows = strip.locator('li[data-job]');
+        expect(await rows.count(), scheme).toBe(4);
+        const states = await rows.evaluateAll((els) => els.map((el) => el.querySelector('p')?.textContent?.trim()));
+        expect(states).toEqual(['Looking at frames · Standard', 'Waiting · Light', 'Saved · Full', "Couldn't read · Standard"]);
+        const failed = strip.locator(`li[data-job="${READ_IDS.failed}"]`);
+        await failed.getByText(INTEL_READ_REASONS.login, { exact: true }).waitFor();
+        // The reel's row: its first picture, and who made it.
+        const reel = page.locator('main li a', { hasText: 'Three ways to cook dal at home' });
+        await reel.getByText(/^Instagram · @example_cook · /).waitFor();
+        await loaded(page, `main a[href="/intel?item=${encodeURIComponent(READ_IDS.dal)}"]`, 1);
+        await check(page, watch, `shelf ${scheme}`);
+        if (scheme === 'light') {
+          await failed.getByRole('button', { name: 'Retry' }).click();
+          await expect.poll(() => writes.map((w) => [w.method, w.path, JSON.stringify(w.body)])).toEqual([['POST', `/v1/intel/items/${encodeURIComponent(READ_IDS.failed)}/read`, '{"depth":"standard"}']]);
+          expect(writes[0]!.key).toMatch(/\S{16,}/);
+        }
+      });
     }
   });
 
   it('Add post: the text and the depth with an Idempotency-Key; the sheet closes and says so; the reel is "Already saved."', async () => {
-    writes = [];
-    const { page, watch } = await open('/intel');
-    await page.getByRole('region', { name: 'Reading' }).waitFor();
-    const add = page.getByRole('button', { name: 'Add', exact: true });
-    await add.click();
-    const sheet = page.getByRole('dialog', { name: 'Add post' });
-    await sheet.waitFor();
-    await sheet.getByText('A reel, video, post, article, PDF or any link, or just text.').waitFor();
-    await sheet.getByLabel('Link or text').fill('https://www.example.com/reel/Qw3rTy12345/ the paneer one');
-    await sheet.getByRole('group', { name: 'Depth' }).getByRole('button', { name: 'Full' }).click();
-    await sheet.getByText('Standard, plus what is said and links in your note').waitFor();
-    expect(await overflow(page), 'the sheet').toEqual([]);
-    await sheet.getByRole('button', { name: 'Save' }).click();
-    await sheet.waitFor({ state: 'hidden' });
-    await page.getByText('Saved. Reading it on your Mac.').waitFor();
-    const save = writes.filter((w) => w.path === '/v1/intel/reads');
-    expect(save.map((w) => w.body)).toEqual([{ text: 'https://www.example.com/reel/Qw3rTy12345/ the paneer one', depth: 'full' }]);
-    expect(save[0]!.key).toMatch(/\S{16,}/);
+    await onTouch('Add post', () => open('/intel'), async ({ page, watch }) => {
+      writes = [];
+      await page.getByRole('region', { name: 'Reading' }).waitFor();
+      const add = page.getByRole('button', { name: 'Add', exact: true });
+      await add.click();
+      const sheet = page.getByRole('dialog', { name: 'Add post' });
+      await sheet.waitFor();
+      await sheet.getByText('A reel, video, post, article, PDF or any link, or just text.').waitFor();
+      await sheet.getByLabel('Link or text').fill('https://www.example.com/reel/Qw3rTy12345/ the paneer one');
+      await sheet.getByRole('group', { name: 'Depth' }).getByRole('button', { name: 'Full' }).click();
+      await sheet.getByText('Standard, plus what is said and links in your note').waitFor();
+      // The pointer was asked just before (overflow): a save can't be made twice.
+      expect(await overflow(page), 'the sheet').toEqual([]);
+      await sheet.getByRole('button', { name: 'Save' }).click();
+      await sheet.waitFor({ state: 'hidden' });
+      await page.getByText('Saved. Reading it on your Mac.').waitFor();
+      const save = writes.filter((w) => w.path === '/v1/intel/reads');
+      expect(save.map((w) => w.body)).toEqual([{ text: 'https://www.example.com/reel/Qw3rTy12345/ the paneer one', depth: 'full' }]);
+      expect(save[0]!.key).toMatch(/\S{16,}/);
 
-    await add.click();
-    await sheet.waitFor();
-    await sheet.getByLabel('Link or text').fill(DAL_URL);
-    await sheet.getByRole('button', { name: 'Save' }).click();
-    await sheet.getByText('Already saved.', { exact: true }).waitFor();
-    expect(await sheet.getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(`/intel?item=${encodeURIComponent(READ_IDS.dal)}`);
-    await sheet.getByRole('button', { name: 'Read again as Standard' }).waitFor();
-    await check(page, watch, 'Add post');
+      await add.click();
+      await sheet.waitFor();
+      await sheet.getByLabel('Link or text').fill(DAL_URL);
+      await sheet.getByRole('button', { name: 'Save' }).click();
+      await sheet.getByText('Already saved.', { exact: true }).waitFor();
+      expect(await sheet.getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(`/intel?item=${encodeURIComponent(READ_IDS.dal)}`);
+      await sheet.getByRole('button', { name: 'Read again as Standard' }).waitFor();
+      await check(page, watch, 'Add post');
+    });
   });
 
   it("the reel's page, light and dark: pictures, Open original, the read, the parts, the transcript folded; Delete after a second tap", async () => {
     for (const scheme of ['light', 'dark'] as const) {
-      writes = [];
-      const { page, watch } = await open(`/intel?item=${encodeURIComponent(READ_IDS.dal)}`, scheme);
-      await page.getByRole('heading', { level: 1, name: 'Three ways to cook dal at home' }).waitFor();
-      await loaded(page, '[aria-label="Pictures"]', 4);
-      await page.getByText('@example_cook · Instagram · ', { exact: false }).waitFor();
-      const original = page.getByRole('link', { name: 'Open original' });
-      expect(await original.getAttribute('href')).toBe(DAL_URL);
-      expect(await original.getAttribute('target')).toBe('_blank');
-      expect(await original.getAttribute('rel')).toBe('noopener noreferrer');
-      await page.getByText('Read at Full', { exact: true }).waitFor();
-      const headings = await page.locator('article h2').allTextContents();
-      expect(headings).toEqual(['What it is', 'Key points', 'Caption', 'On screen', 'Why it matters', 'Transcript', 'From Claude, not from the post', 'Your note']);
-      expect(await page.getByText('[0:00] Three ways to make dal', { exact: false }).count()).toBe(0);
-      await check(page, watch, `item ${scheme}`);
-      if (scheme === 'dark') continue;
-      await page.getByRole('button', { name: 'Transcript' }).click();
-      await page.getByText('[0:00] Three ways to make dal', { exact: false }).waitFor();
-      await page.getByRole('button', { name: 'Picture 2 of 4' }).click();
-      const view = page.getByRole('dialog', { name: 'Picture 2 of 4' });
-      await view.waitFor();
-      await loaded(page, '[role="dialog"]', 1);
-      await page.keyboard.press('Escape');
-      await view.waitFor({ state: 'hidden' });
-      await check(page, watch, 'the larger picture');
-      await page.getByRole('button', { name: 'Delete', exact: true }).click();
-      expect(writes.filter((w) => w.method === 'DELETE')).toEqual([]);
-      await page.getByRole('button', { name: 'Delete for good' }).click();
-      await page.getByRole('region', { name: 'Reading' }).waitFor();
-      expect(writes.filter((w) => w.method === 'DELETE').map((w) => w.path)).toEqual([`/v1/intel/items/${encodeURIComponent(READ_IDS.dal)}`]);
-      expect(new URL(page.url()).pathname).toBe('/intel');
+      await onTouch(`the reel's page, ${scheme}`, () => open(`/intel?item=${encodeURIComponent(READ_IDS.dal)}`, scheme), async ({ page, watch }) => {
+        writes = [];
+        await page.getByRole('heading', { level: 1, name: 'Three ways to cook dal at home' }).waitFor();
+        await loaded(page, '[aria-label="Pictures"]', 4);
+        await page.getByText('@example_cook · Instagram · ', { exact: false }).waitFor();
+        const original = page.getByRole('link', { name: 'Open original' });
+        expect(await original.getAttribute('href')).toBe(DAL_URL);
+        expect(await original.getAttribute('target')).toBe('_blank');
+        expect(await original.getAttribute('rel')).toBe('noopener noreferrer');
+        await page.getByText('Read at Full', { exact: true }).waitFor();
+        const headings = await page.locator('article h2').allTextContents();
+        expect(headings).toEqual(['What it is', 'Key points', 'Caption', 'On screen', 'Why it matters', 'Transcript', 'From Claude, not from the post', 'Your note']);
+        expect(await page.getByText('[0:00] Three ways to make dal', { exact: false }).count()).toBe(0);
+        await check(page, watch, `item ${scheme}`);
+        if (scheme === 'dark') return;
+        await page.getByRole('button', { name: 'Transcript' }).click();
+        await page.getByText('[0:00] Three ways to make dal', { exact: false }).waitFor();
+        await page.getByRole('button', { name: 'Picture 2 of 4' }).click();
+        const view = page.getByRole('dialog', { name: 'Picture 2 of 4' });
+        await view.waitFor();
+        await loaded(page, '[role="dialog"]', 1);
+        await page.keyboard.press('Escape');
+        await view.waitFor({ state: 'hidden' });
+        await check(page, watch, 'the larger picture');
+        // Delete for good can't be taken twice: the pointer first.
+        await stillTouch(page, "the reel's page, before Delete");
+        await page.getByRole('button', { name: 'Delete', exact: true }).click();
+        expect(writes.filter((w) => w.method === 'DELETE')).toEqual([]);
+        await page.getByRole('button', { name: 'Delete for good' }).click();
+        await page.getByRole('region', { name: 'Reading' }).waitFor();
+        expect(writes.filter((w) => w.method === 'DELETE').map((w) => w.path)).toEqual([`/v1/intel/items/${encodeURIComponent(READ_IDS.dal)}`]);
+        expect(new URL(page.url()).pathname).toBe('/intel');
+      });
     }
   });
 });

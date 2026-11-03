@@ -60,7 +60,7 @@ import {
   type PairStartResponse,
 } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { PHONE, browserReady, clean, watchConsole, type Watch } from './browser.js';
+import { PHONE, browserReady, clean, onPaired, stillTouch, touchPage, watchConsole, type StorageState, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 import { browserSeam, netReady, netSeam, serveSites, type Answer, type BrowserSeen, type Sites } from './read-net.js';
@@ -157,6 +157,18 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
     return (r.body as ExtReadNextReply).job;
   };
 
+  /** The phone's context and page (the globals above); 0.12.1: with `state`, the paired phone again in a new one. */
+  async function openPhone(state?: StorageState): Promise<{ ctx: BrowserContext; page: Page }> {
+    ctx = await browser.newContext({ viewport: { width: PHONE.width, height: PHONE.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'light', locale: 'en-GB', serviceWorkers: 'block', ...(state ? { storageState: state } : {}) });
+    // The original post, as the phone's own browser would open it (answered here: nothing reaches the network).
+    await ctx.route('https://www.instagram.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<!doctype html><title>The original reel</title><p>The original reel.</p>' }));
+    page = touchPage(await ctx.newPage());
+    watch = watchConsole(page);
+    return { ctx, page };
+  }
+  /** 0.12.1: a phone step in onPaired (browser.ts): a phone that drops its touch emulation is opened again as the same device and the step runs once more. */
+  const onPhone = (what: string, steps: (o: { page: Page }) => Promise<void>) => onPaired(what, () => ({ ctx, page }), openPhone, steps);
+
   beforeAll(async () => {
     work = await realpath(await mkdtemp(join(tmpdir(), 'jantar-reel-')));
     const video = REAL ? await makeReel(work) : FAKE_MP4;
@@ -195,11 +207,7 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
 
     // The phone.
     browser = await chromium.launch();
-    ctx = await browser.newContext({ viewport: { width: PHONE.width, height: PHONE.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'light', locale: 'en-GB', serviceWorkers: 'block' });
-    // The original post, as the phone's own browser would open it (answered here: nothing reaches the network).
-    await ctx.route('https://www.instagram.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<!doctype html><title>The original reel</title><p>The original reel.</p>' }));
-    page = await ctx.newPage();
-    watch = watchConsole(page);
+    await openPhone();
     const phone = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name: 'Example phone', scopes: ['read', 'control'] });
     await page.goto(`http://127.0.0.1:${d.port}/pair#c=${phone.code}`, { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Pair this device' }).click();
@@ -218,14 +226,18 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
 
   it.skipIf(!browserTier || !CHROMIUM)('the phone saves a reel at Standard; Chrome needs a login, the headless browser reads it, the helper takes its frames; search finds it by its caption and by its frames; Open original is the reel', async () => {
     // 1. The phone: Add post, a shared link, Standard, Save.
-    await page.goto(`http://127.0.0.1:${d.port}/intel`, { waitUntil: 'load' });
-    // Read saved links on: the extension has asked, and there is nothing yet.
-    expect(await asks()).toBeNull();
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
-    const sheet = page.getByRole('dialog', { name: 'Add post' });
-    await sheet.getByLabel('Link or text').fill(REEL_SHARED);
-    await sheet.getByRole('button', { name: 'Save' }).click();
-    await page.getByText('Saved. Reading it on your Mac.').waitFor();
+    await onPhone('the phone saves a reel', async ({ page }) => {
+      await page.goto(`http://127.0.0.1:${d.port}/intel`, { waitUntil: 'load' });
+      // Read saved links on: the extension has asked, and there is nothing yet.
+      expect(await asks()).toBeNull();
+      await page.getByRole('button', { name: 'Add', exact: true }).click();
+      const sheet = page.getByRole('dialog', { name: 'Add post' });
+      await sheet.getByLabel('Link or text').fill(REEL_SHARED);
+      // A save can't be made twice: the pointer first.
+      await stillTouch(page, 'the phone saves a reel');
+      await sheet.getByRole('button', { name: 'Save' }).click();
+      await page.getByText('Saved. Reading it on your Mac.').waitFor();
+    });
     const id = await eventually(async () => (await search('AbC123xyz'))[0], 10_000, 'the reel on the shelf');
 
     // 2. Chrome first: the post rebuilt on the www host, never the link as typed; the strip says so.
@@ -277,33 +289,36 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
     await strip.locator(`li[data-job="${id}"]`).getByText(item.title).waitFor();
     expect(item.caption?.toLowerCase()).not.toContain('lassi');
     await callDaemon(ctl, 'POST', '/v1/intel/captures', captureBody());
-    const box = page.getByLabel('Search the shelf');
-    const row = page.locator('main li a', { hasText: item.title });
-    for (const word of ['turmeric', 'lassi']) {
-      await box.fill(word);
-      await page.waitForURL(new RegExp(`[?&]q=${word}(&|$)`));
-      await page.getByText('1 match', { exact: true }).waitFor();
-      await row.waitFor();
-      expect(await page.locator('main li a', { hasText: 'Example capture' }).count()).toBe(0);
-      expect(await search(word)).toEqual([id]);
-    }
+    await onPhone('the phone finds it again', async ({ page }) => {
+      if (new URL(page.url()).pathname !== '/intel') await page.goto(`http://127.0.0.1:${d.port}/intel`, { waitUntil: 'load' });
+      const box = page.getByLabel('Search the shelf');
+      const row = page.locator('main li a', { hasText: item.title });
+      for (const word of ['turmeric', 'lassi']) {
+        await box.fill(word);
+        await page.waitForURL(new RegExp(`[?&]q=${word}(&|$)`));
+        await page.getByText('1 match', { exact: true }).waitFor();
+        await row.waitFor();
+        expect(await page.locator('main li a', { hasText: 'Example capture' }).count()).toBe(0);
+        expect(await search(word)).toEqual([id]);
+      }
 
-    // Its page: the pictures, and Open original is the reel's own link, opening the original post.
-    await row.click();
-    await page.getByRole('heading', { level: 1, name: item.title }).waitFor();
-    await page.waitForFunction(() => {
-      const imgs = [...document.querySelectorAll<HTMLImageElement>('[aria-label="Pictures"] img')];
-      return imgs.length >= 1 && imgs.every((i) => i.complete && i.naturalWidth > 0);
+      // Its page: the pictures, and Open original is the reel's own link, opening the original post.
+      await row.click();
+      await page.getByRole('heading', { level: 1, name: item.title }).waitFor();
+      await page.waitForFunction(() => {
+        const imgs = [...document.querySelectorAll<HTMLImageElement>('[aria-label="Pictures"] img')];
+        return imgs.length >= 1 && imgs.every((i) => i.complete && i.naturalWidth > 0);
+      });
+      const original = page.getByRole('link', { name: 'Open original' });
+      expect(await original.getAttribute('href')).toBe(REEL);
+      expect(await original.getAttribute('target')).toBe('_blank');
+      expect(await original.getAttribute('rel')).toBe('noopener noreferrer');
+      const [tab] = await Promise.all([ctx.waitForEvent('page'), original.click()]);
+      await tab.waitForLoadState('load');
+      expect(tab.url()).toBe(REEL);
+      expect(await tab.title()).toBe('The original reel');
+      await tab.close();
+      await clean(page, watch);
     });
-    const original = page.getByRole('link', { name: 'Open original' });
-    expect(await original.getAttribute('href')).toBe(REEL);
-    expect(await original.getAttribute('target')).toBe('_blank');
-    expect(await original.getAttribute('rel')).toBe('noopener noreferrer');
-    const [tab] = await Promise.all([ctx.waitForEvent('page'), original.click()]);
-    await tab.waitForLoadState('load');
-    expect(tab.url()).toBe(REEL);
-    expect(await tab.title()).toBe('The original reel');
-    await tab.close();
-    await clean(page, watch);
   }, perfBudgetMs(REAL ? 300_000 : 120_000));
 });

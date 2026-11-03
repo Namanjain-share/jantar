@@ -24,6 +24,11 @@
  * - With Meetings switched off at the Mac nothing of them shows: no nav
  *   entry, and /meetings is not a page.
  *
+ * 0.12.1: the phone's steps run in onPaired (browser.ts): a phone that loses
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) is
+ * opened again as the same device and the steps run once more; twice fails,
+ * saying so. It is asked before a step that can't be taken twice.
+ *
  * Every name and line is synthetic. Needs a built dist/ and a Chromium
  * (browser.ts).
  */
@@ -34,7 +39,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { extLinesBody, extOpenBody, extShotBody, makeJpeg, perfBudgetMs, projectBody, setFakeClaude } from '@jantar/fixtures';
 import { DEVICE_COOKIE, EXTENSION_ID, EXTENSION_KEY_HEADER, type ExtPairStartReply, type LineUpsert, type MeetingDetail, type PairStartResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, PHONE, browserReady, clean, overflow, watchConsole, type Viewport, type Watch } from './browser.js';
+import { DESK, PHONE, browserReady, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 
@@ -83,7 +88,8 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     return extLinesBody(n, { nonce }).lines.map((l, i) => ({ ...l, at: t0 + i * 20_000, text: text(i), ...(speaker ? { speaker: speaker(i) } : {}) }));
   };
 
-  async function paired(vp: Viewport, name: string): Promise<{ ctx: BrowserContext; page: Page; watch: Watch }> {
+  /** A context paired as a phone scanning the Mac's code would be; 0.12.1: or, with `state`, that device again in a new one. */
+  async function paired(vp: Viewport, name: string, state?: StorageState): Promise<{ ctx: BrowserContext; page: Page; watch: Watch }> {
     const ctx = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       deviceScaleFactor: 2,
@@ -93,9 +99,12 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
       locale: 'en-GB',
       serviceWorkers: 'block',
       acceptDownloads: true,
+      ...(state ? { storageState: state } : {}),
     });
     const page = await ctx.newPage();
+    if (vp.phone) touchPage(page);
     const watch = watchConsole(page);
+    if (state) return { ctx, page, watch };
     const start = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name, scopes: ['read', 'control'] });
     await page.goto(`http://127.0.0.1:${d.port}/pair#c=${start.code}`, { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Pair this device' }).click();
@@ -113,14 +122,19 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     expect(await overflow(page), what).toEqual([]);
   }
 
+  /** 0.12.1: `steps` on `who`'s page; a phone that drops its touch emulation is opened again as the same device and they run once more. */
+  const on = (who: 'phone' | 'desk', what: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>) =>
+    onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who === 'phone' ? PHONE : DESK, who === 'phone' ? 'Example phone' : 'Example Mac browser', state)), steps);
+
   async function inEachView(path: string, fn: (page: Page, what: string) => Promise<void>) {
     for (const v of VIEWS) {
-      const { page, watch } = pages[v.who]!;
-      await page.emulateMedia({ colorScheme: v.scheme });
-      await page.goto(`http://127.0.0.1:${d.port}${path}`, { waitUntil: 'load' });
       const what = `${path} (${v.who}, ${v.scheme})`;
-      await fn(page, what);
-      await check(page, watch, what);
+      await on(v.who, what, async ({ page, watch }) => {
+        await page.emulateMedia({ colorScheme: v.scheme });
+        await page.goto(`http://127.0.0.1:${d.port}${path}`, { waitUntil: 'load' });
+        await fn(page, what);
+        await check(page, watch, what);
+      });
     }
   }
 
@@ -186,40 +200,41 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
       await page.getByRole('group', { name: 'Filter by project' }).getByRole('button', { name: 'Example launch' }).waitFor();
     });
 
-    const { page, watch } = pages.phone!;
-    await open(page, '/meetings');
-    // The daemon holds an open's time to the last five minutes, so the older calls list in the order they were
-    // made: call 1 is the oldest, past the first page. Exact: the name's own text, not a row's name and time run
-    // together ("Example older call 1" + "12:05" reads "Example older call 112:05").
-    const oldest = page.getByText('Example older call 1', { exact: true });
-    const more = page.getByRole('button', { name: 'Show more' });
-    await more.waitFor();
-    expect(await oldest.count()).toBe(0);
-    await more.click();
-    await oldest.waitFor();
-    await check(page, watch, 'after Show more');
+    await on('phone', 'the list on the phone', async ({ page, watch }) => {
+      await open(page, '/meetings');
+      // The daemon holds an open's time to the last five minutes, so the older calls list in the order they were
+      // made: call 1 is the oldest, past the first page. Exact: the name's own text, not a row's name and time run
+      // together ("Example older call 1" + "12:05" reads "Example older call 112:05").
+      const oldest = page.getByText('Example older call 1', { exact: true });
+      const more = page.getByRole('button', { name: 'Show more' });
+      await more.waitFor();
+      expect(await oldest.count()).toBe(0);
+      await more.click();
+      await oldest.waitFor();
+      await check(page, watch, 'after Show more');
 
-    await page.getByRole('group', { name: 'Filter by project' }).getByRole('button', { name: 'Example launch' }).click();
-    await expect.poll(() => page.locator('li[data-meeting]').count()).toBe(1);
-    await check(page, watch, 'the project chip');
+      await page.getByRole('group', { name: 'Filter by project' }).getByRole('button', { name: 'Example launch' }).click();
+      await expect.poll(() => page.locator('li[data-meeting]').count()).toBe(1);
+      await check(page, watch, 'the project chip');
 
-    await open(page, '/meetings');
-    await page.getByLabel('Search meetings').fill('zeppelin');
-    await expect.poll(() => page.locator('li[data-meeting]').evaluateAll((els) => els.map((e) => e.getAttribute('data-meeting')))).toEqual([ids.done]);
-    expect(page.url()).toContain('q=zeppelin');
-    await check(page, watch, 'search');
+      await open(page, '/meetings');
+      await page.getByLabel('Search meetings').fill('zeppelin');
+      await expect.poll(() => page.locator('li[data-meeting]').evaluateAll((els) => els.map((e) => e.getAttribute('data-meeting')))).toEqual([ids.done]);
+      expect(page.url()).toContain('q=zeppelin');
+      await check(page, watch, 'search');
 
-    // Delete asks nothing: the row goes, Undo brings it back, and nothing reached the Mac.
-    await open(page, '/meetings');
-    await menu(page, 'Quick check-in', 'Delete');
-    const line = page.getByRole('status').filter({ hasText: 'Deleted: Quick check-in' });
-    await line.waitFor();
-    expect(await page.locator(`li[data-meeting="${ids.none}"]`).count()).toBe(0);
-    await check(page, watch, 'the Undo line after Delete');
-    await line.getByRole('button', { name: 'Undo' }).click();
-    await page.locator(`li[data-meeting="${ids.none}"]`).waitFor();
-    await page.waitForTimeout(5_500);
-    expect((await http(d.port, 'GET', `/v1/meetings/${ids.none}`, { cookie: seed })).status).toBe(200);
+      // Delete asks nothing: the row goes, Undo brings it back, and nothing reached the Mac.
+      await open(page, '/meetings');
+      await menu(page, 'Quick check-in', 'Delete');
+      const line = page.getByRole('status').filter({ hasText: 'Deleted: Quick check-in' });
+      await line.waitFor();
+      expect(await page.locator(`li[data-meeting="${ids.none}"]`).count()).toBe(0);
+      await check(page, watch, 'the Undo line after Delete');
+      await line.getByRole('button', { name: 'Undo' }).click();
+      await page.locator(`li[data-meeting="${ids.none}"]`).waitFor();
+      await page.waitForTimeout(5_500);
+      expect((await http(d.port, 'GET', `/v1/meetings/${ids.none}`, { cookie: seed })).status).toBe(200);
+    });
   }, perfBudgetMs(120_000));
 
   it('a meeting done: summary, decisions, items in todos, the transcript with its screenshots, the viewer', async () => {
@@ -234,67 +249,70 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
       await expect.poll(() => page.locator('figure[data-shot] img[src^="blob:"]').count(), { timeout: 10_000 }).toBe(2);
     });
 
-    const { page, watch } = pages.phone!;
-    await open(page, `/meetings?id=${ids.done}`);
-    const summary = page.getByRole('region', { name: 'Summary' });
-    await expect.poll(() => summary.textContent()).toContain(`Sam ${HOSTILE}`);
-    const shot = page.getByRole('region', { name: 'Transcript' }).getByRole('button', { name: /^Open the screenshot from/ }).first();
-    await shot.scrollIntoViewIfNeeded();
-    await shot.locator('img[src^="blob:"]').waitFor();
-    await shot.click();
-    const viewer = page.getByRole('dialog');
-    await viewer.locator('img[src^="blob:"]').waitFor();
-    await check(page, watch, 'the viewer');
-    await viewer.getByRole('button', { name: 'Close' }).click();
-    await viewer.waitFor({ state: 'detached' });
+    await on('phone', 'a meeting done on the phone', async ({ page, watch }) => {
+      await open(page, `/meetings?id=${ids.done}`);
+      const summary = page.getByRole('region', { name: 'Summary' });
+      await expect.poll(() => summary.textContent()).toContain(`Sam ${HOSTILE}`);
+      const shot = page.getByRole('region', { name: 'Transcript' }).getByRole('button', { name: /^Open the screenshot from/ }).first();
+      await shot.scrollIntoViewIfNeeded();
+      await shot.locator('img[src^="blob:"]').waitFor();
+      await shot.click();
+      const viewer = page.getByRole('dialog');
+      await viewer.locator('img[src^="blob:"]').waitFor();
+      await check(page, watch, 'the viewer');
+      await viewer.getByRole('button', { name: 'Close' }).click();
+      await viewer.waitFor({ state: 'detached' });
+    });
   }, perfBudgetMs(120_000));
 
   it('action items: Remove waits under Undo, Undo keeps the todo, a Remove sent can be Added again', async () => {
-    const { page, watch } = pages.phone!;
-    await open(page, `/meetings?id=${ids.done}`);
-    const items = page.getByRole('region', { name: 'Action items' });
-    const first = (await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!;
-    await items.getByRole('button', { name: `Remove from todos: ${first.title}` }).click();
-    const undo = page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
-    await undo.waitFor();
-    await check(page, watch, 'the Undo line after Remove');
-    await undo.getByRole('button', { name: 'Undo' }).click();
-    await page.waitForTimeout(5_500);
-    expect((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId).toBe(first.todoId);
+    await on('phone', 'action items on the phone', async ({ page, watch }) => {
+      await open(page, `/meetings?id=${ids.done}`);
+      const items = page.getByRole('region', { name: 'Action items' });
+      const first = (await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!;
+      await items.getByRole('button', { name: `Remove from todos: ${first.title}` }).click();
+      const undo = page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
+      await undo.waitFor();
+      await check(page, watch, 'the Undo line after Remove');
+      await undo.getByRole('button', { name: 'Undo' }).click();
+      await page.waitForTimeout(5_500);
+      expect((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId).toBe(first.todoId);
 
-    await items.getByRole('button', { name: `Remove from todos: ${first.title}` }).click();
-    await eventually(async () => !(await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId, 10_000, 'the Remove to reach the Mac');
-    await items.getByRole('button', { name: `Add to Example launch: ${first.title}` }).click();
-    await eventually(async () => Boolean((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId), 10_000, 'the Add');
-    await items.getByRole('button', { name: `Remove from todos: ${first.title}` }).waitFor();
-    await check(page, watch, 'after Add');
+      await items.getByRole('button', { name: `Remove from todos: ${first.title}` }).click();
+      await eventually(async () => !(await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId, 10_000, 'the Remove to reach the Mac');
+      await items.getByRole('button', { name: `Add to Example launch: ${first.title}` }).click();
+      await eventually(async () => Boolean((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId), 10_000, 'the Add');
+      await items.getByRole('button', { name: `Remove from todos: ${first.title}` }).waitFor();
+      await check(page, watch, 'after Add');
+    });
   }, perfBudgetMs(60_000));
 
   it('Export text downloads the Markdown and shows the CLI line; Edit saves a new name', async () => {
-    const { page, watch } = pages.phone!;
-    await open(page, `/meetings?id=${ids.done}`);
-    await page.getByRole('heading', { level: 1 }).waitFor();
-    const download = page.waitForEvent('download');
-    await menu(page, `Launch review ${HOSTILE}`, 'Export text');
-    const file = await download;
-    expect(file.suggestedFilename()).toMatch(/\.md$/);
-    const md = await readFile((await file.path())!, 'utf8');
-    expect(md).toContain('## Transcript');
-    expect(md).toContain('zeppelin permit');
-    await page.getByRole('status').filter({ hasText: `meetings export ${ids.done}` }).waitFor();
-    await check(page, watch, 'Export text');
+    await on('phone', 'Export and Edit on the phone', async ({ page, watch }) => {
+      await open(page, `/meetings?id=${ids.done}`);
+      await page.getByRole('heading', { level: 1 }).waitFor();
+      const download = page.waitForEvent('download');
+      await menu(page, `Launch review ${HOSTILE}`, 'Export text');
+      const file = await download;
+      expect(file.suggestedFilename()).toMatch(/\.md$/);
+      const md = await readFile((await file.path())!, 'utf8');
+      expect(md).toContain('## Transcript');
+      expect(md).toContain('zeppelin permit');
+      await page.getByRole('status').filter({ hasText: `meetings export ${ids.done}` }).waitFor();
+      await check(page, watch, 'Export text');
 
-    await menu(page, `Launch review ${HOSTILE}`, 'Edit');
-    const sheet = page.getByRole('dialog');
-    await sheet.getByLabel('Name').fill('Launch review, renamed');
-    await check(page, watch, 'the edit sheet');
-    await sheet.getByRole('button', { name: 'Save' }).click();
-    await page.getByRole('heading', { name: 'Launch review, renamed', level: 1 }).waitFor();
-    expect((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).meeting.name).toBe('Launch review, renamed');
+      await menu(page, `Launch review ${HOSTILE}`, 'Edit');
+      const sheet = page.getByRole('dialog');
+      await sheet.getByLabel('Name').fill('Launch review, renamed');
+      await check(page, watch, 'the edit sheet');
+      // The new name can't be saved twice: the pointer was asked just before (check).
+      await sheet.getByRole('button', { name: 'Save' }).click();
+      await page.getByRole('heading', { name: 'Launch review, renamed', level: 1 }).waitFor();
+      expect((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).meeting.name).toBe('Launch review, renamed');
+    });
   }, perfBudgetMs(60_000));
 
   it('the other summary states: failed with Try again, none with Summarize, and a running meeting', async () => {
-    const { page, watch } = pages.phone!;
     await inEachView(`/meetings?id=${ids.failed}`, async (p) => {
       await p.getByText('The summary did not work. Try again.').waitFor();
     });
@@ -306,26 +324,32 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
       await p.getByText(/^Running · 3 lines · 1 screenshot/).waitFor();
     });
 
-    // Try again runs it (the fake claude answers properly now).
-    await open(page, `/meetings?id=${ids.failed}`);
-    await page.getByRole('button', { name: 'Try again' }).click();
-    await page.getByRole('region', { name: 'Decisions' }).waitFor({ timeout: 30_000 });
-    await check(page, watch, 'after Try again');
+    await on('phone', 'Try again on the phone', async ({ page, watch }) => {
+      // Try again runs it (the fake claude answers properly now).
+      await open(page, `/meetings?id=${ids.failed}`);
+      await page.getByRole('button', { name: 'Try again' }).waitFor();
+      // Try again can't be taken twice: the pointer first.
+      await stillTouch(page, 'Try again on the phone');
+      await page.getByRole('button', { name: 'Try again' }).click();
+      await page.getByRole('region', { name: 'Decisions' }).waitFor({ timeout: 30_000 });
+      await check(page, watch, 'after Try again');
+    });
   }, perfBudgetMs(120_000));
 
   it('switched off at the Mac, nothing of Meetings shows', async () => {
     await callDaemon(ctl, 'PATCH', '/v1/settings', { meetings: { enabled: false } });
     for (const who of ['phone', 'desk'] as const) {
-      const { page, watch } = pages[who]!;
-      // 0.12 (c22d): More is the phone's tab; on a desk window the rail lists every place, and /more goes to the board.
-      await open(page, who === 'phone' ? '/more' : '/');
-      if (who === 'phone') await page.getByRole('heading', { name: 'More', level: 1 }).waitFor();
-      else await page.getByRole('link', { name: /^Board/ }).first().waitFor();
-      expect(await page.getByRole('link', { name: 'Meetings' }).count(), who).toBe(0);
-      await open(page, '/meetings');
-      await page.getByRole('heading', { name: 'That is off on this Mac.' }).waitFor();
-      expect(await page.getByText('Meeting running').count()).toBe(0);
-      await check(page, watch, `Meetings off (${who})`);
+      await on(who, `Meetings off (${who})`, async ({ page, watch }) => {
+        // 0.12 (c22d): More is the phone's tab; on a desk window the rail lists every place, and /more goes to the board.
+        await open(page, who === 'phone' ? '/more' : '/');
+        if (who === 'phone') await page.getByRole('heading', { name: 'More', level: 1 }).waitFor();
+        else await page.getByRole('link', { name: /^Board/ }).first().waitFor();
+        expect(await page.getByRole('link', { name: 'Meetings' }).count(), who).toBe(0);
+        await open(page, '/meetings');
+        await page.getByRole('heading', { name: 'That is off on this Mac.' }).waitFor();
+        expect(await page.getByText('Meeting running').count()).toBe(0);
+        await check(page, watch, `Meetings off (${who})`);
+      });
     }
   }, perfBudgetMs(60_000));
 });

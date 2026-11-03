@@ -25,6 +25,11 @@
  *     the scheduler says once that it waits; with the network back one push,
  *     marked late, then never another; Done moves it a year on at its time.
  *
+ * 0.12.1: the phone's tap and each push run in onTouch (browser.ts): a
+ * phone that loses its coarse pointer (Chromium dropping Playwright's touch
+ * emulation) is opened again, with its service worker and its tap, and the
+ * step runs once more; twice fails, saying so.
+ *
  * Nothing runs osascript, claude or a real push service.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -42,7 +47,7 @@ import {
   type TodosResponse,
 } from '@jantar/protocol';
 import { callDaemon, createCtlClient, defaultDeps, main, memoryIo, type CtlClient } from '../../packages/cli/src/index.js';
-import { browserReady } from './browser.js';
+import { browserReady, onTouch, stillTouch, touchPage } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 import { ScriptedTerminal } from './scripted-terminal.js';
@@ -220,11 +225,9 @@ describe('v0.5.3 alerts: the groups, the countdown and the missed-push retry', (
     let registrationId = '';
     let ready = false;
 
-    beforeAll(async () => {
-      ready = await browserReady('v053-alerts');
-      if (!ready) return;
-      browser = await chromium.launch();
-      ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'allow', locale: 'en-GB' });
+    /** The phone: its context, page and service worker, with its push registration (the globals above). */
+    async function openPhone(): Promise<{ page: Page }> {
+      ctx = await browser!.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'allow', locale: 'en-GB' });
       // Web Audio and speech as recorders; this device's Sounds on, with Speak.
       await ctx.addInitScript((tones) => {
         const w = window as unknown as { __notes: number[]; __said: string[] };
@@ -257,7 +260,7 @@ describe('v0.5.3 alerts: the groups, the countdown and the missed-push retry', (
         speech.cancel = () => undefined;
         localStorage.setItem('jantar:alert-sounds', JSON.stringify({ v: 1, on: true, speak: true, tones }));
       }, DEFAULT_TONES);
-      page = await ctx.newPage();
+      page = touchPage(await ctx.newPage());
       cdp = await ctx.newCDPSession(page);
       const regs: Array<{ registrationId: string; isDeleted: boolean }> = [];
       cdp.on('ServiceWorker.workerRegistrationUpdated', (e: { registrations: typeof regs }) => regs.push(...e.registrations));
@@ -267,8 +270,35 @@ describe('v0.5.3 alerts: the groups, the countdown and the missed-push retry', (
       await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
       sw = ctx.serviceWorkers()[0] ?? (await swSeen);
       registrationId = (await eventually(async () => regs.find((r) => !r.isDeleted), 10_000, 'the registration')).registrationId;
-      // One tap: iOS (and so the app) opens audio only inside one.
-      await page.touchscreen.tap(195, 600);
+      // 0.12.1: the tap unlocks audio only once lib/sounds.js listens for taps (main.tsx loads it after the first render).
+      await page.waitForFunction(() => performance.getEntriesByType('resource').some((e) => /\/sounds-[\w-]+\.js$/.test(e.name)), null, { timeout: perfBudgetMs(10_000) });
+      await page.waitForTimeout(200);
+      return { page };
+    }
+
+    /** 0.12.1: the phone as it is, or (`again`) a new one with its tap: one tap, as iOS (and so the app) opens audio only inside one. */
+    async function phone(again: boolean): Promise<{ page: Page }> {
+      if (!again) return { page };
+      const o = await openPhone();
+      await stillTouch(o.page, 'the alerts phone, before its tap');
+      await o.page.touchscreen.tap(195, 600);
+      return o;
+    }
+
+    beforeAll(async () => {
+      ready = await browserReady('v053-alerts');
+      if (!ready) return;
+      browser = await chromium.launch();
+      await openPhone();
+      await onTouch(
+        'the alerts phone',
+        phone,
+        async (o) => {
+          await stillTouch(o.page, 'the alerts phone, before its tap');
+          await o.page.touchscreen.tap(195, 600);
+        },
+        { keep: true },
+      );
     }, perfBudgetMs(60_000));
 
     afterAll(async () => {
@@ -302,6 +332,11 @@ describe('v0.5.3 alerts: the groups, the countdown and the missed-push retry', (
         `the ${p.group} push shown`,
       );
       expect(shown.title).toBe(p.title);
+      // 0.12.1: Answer soon and care don't wait for the app's answer (sw.js), so their tone can come just after the
+      // push is shown: a moment for it, which a new page (a phone opened again) needed.
+      await page
+        .waitForFunction(() => (window as unknown as { __notes: number[] }).__notes.length > 0, null, { timeout: 2_000 })
+        .catch(() => undefined);
       const heard = await page.evaluate(() => {
         const w = window as unknown as { __notes: number[]; __said: string[] };
         return { hz: [...w.__notes], said: [...w.__said] };
@@ -317,9 +352,17 @@ describe('v0.5.3 alerts: the groups, the countdown and the missed-push retry', (
         const group = p.group as AlertGroup;
         // The same group within 3 s plays once (a repeat push and the dock's own mark): space the urgent ones out.
         if (group === 'urgent') await quiet(Math.max(0, lastUrgent + 3_200 - Date.now()));
-        const heard = await deliver(p);
-        if (group === 'urgent') lastUrgent = Date.now();
-        expect(heard, `${group}: ${p.title}`).toEqual({ hz: TONE_HZ[DEFAULT_TONES[group]], said: [ALERT_PHRASES[group]], silent: group !== 'care' && group !== 'urgent' });
+        await onTouch(
+          `the ${group} push`,
+          phone,
+          async (o) => {
+            await stillTouch(o.page, `the ${group} push`);
+            const heard = await deliver(p);
+            if (group === 'urgent') lastUrgent = Date.now();
+            expect(heard, `${group}: ${p.title}`).toEqual({ hz: TONE_HZ[DEFAULT_TONES[group]], said: [ALERT_PHRASES[group]], silent: group !== 'care' && group !== 'urgent' });
+          },
+          { keep: true },
+        );
       }
     }, perfBudgetMs(90_000));
   });
