@@ -60,7 +60,9 @@
  * through a context (run 41667870706, touch-1440 after Chat), and the page
  * then drew the Mac's chrome on a touch screen. Before each probe the page
  * is asked; a context that lost it is closed and the state measured again
- * in a new one (once per context; twice is a problem).
+ * in a new one (once per context; twice is a problem). 0.12.1: the c33
+ * tests below and every other touch suite do the same through browser.ts
+ * (onTouch, stillTouch), which says what is known of the cause.
  *
  * Tier A sizes in light run by default; JANTAR_LAYOUT_FULL=1 adds tier B and
  * dark. On a failure the page's PNG goes to the OS temp folder, named in the
@@ -80,7 +82,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
 import { emptyRanges, emptyShare, MAX_EMPTY, under44 } from '../../packages/web/test/layout-metric.js';
-import { browserReady, DIST, openTouchable, type Viewport, type Watch } from './browser.js';
+import { browserReady, DIST, hasCoarsePointer, onTouch, openTouchable, stillTouch, type Viewport, type Watch } from './browser.js';
 import { probeLayout, type Probe } from './layout-probe.js';
 import { PEOPLE_PID, withPeople } from './web-fixture-people.js';
 import { lid } from './web-fixture-v04.js';
@@ -405,7 +407,7 @@ describe.skipIf(!ready)('0.12: every place at every window size, in Chromium', (
               // c33: a state that needs a step; one this chrome can't take (the phone's palette) is skipped.
               if (s.steps && !(await s.steps(page).catch(() => false))) continue;
               if (s.steps) await page.waitForTimeout(300);
-              if (coarse && !(await page.evaluate(() => matchMedia('(pointer: coarse)').matches))) {
+              if (coarse && !(await hasCoarsePointer(page))) {
                 const lost = `${s.name} at ${size}: the browser dropped its touch emulation (no coarse pointer)`;
                 if (reopened) {
                   problems.push(`${lost} again in a new context; not measured`);
@@ -527,9 +529,13 @@ describe.skipIf(!ready)('0.12: every place at every window size, in Chromium', (
  *      set, the composer on the keyboard and the header in view, the key row out, the shell following a
  *      pan, a form sheet ending 16 above the keyboard; a 55 px shrink (the shortcut bar) turns the
  *      keyboard flag on and keeps the key row hidden; a 20 px shrink changes nothing.
- *  11. Hover: a mouse's move says data-input="mouse" and tints a ledger row; a star's hover previews
- *      and sends nothing.
+ *  11. Hover: a touch says data-input="touch", then a mouse's move says "mouse" and tints a ledger row;
+ *      a star's hover previews and sends nothing.
  *   8. Keycaps: none on a touch screen until a key is pressed; then the board's show.
+ *
+ * 0.12.1: each runs in onTouch (browser.ts): a touch context that loses its coarse pointer before a step
+ * that needs it (stillTouch), or fails without it, is closed and the test runs again in a new one; twice
+ * fails, saying so.
  */
 describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and keycaps', () => {
   let browser: Browser;
@@ -582,6 +588,17 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
     );
   const tagged = (page: Page, name: string) => page.evaluate((n) => document.querySelector(`[data-probe="${n}"]`) !== null, name);
 
+  /** 0.12.1: a finger down at (x, y) and taken off as cancelled: a touch's pointerdown, and no tap (nothing clicked). */
+  async function touchDown(page: Page, x: number, y: number) {
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    } finally {
+      await cdp.detach().catch(() => undefined);
+    }
+  }
+
   /** Resize and let the panes settle (a SplitPane measures in a layout effect, a ResizeObserver after). */
   async function resize(page: Page, width: number, height: number) {
     await page.setViewportSize({ width, height });
@@ -597,12 +614,14 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
 
   for (const c of CROSSINGS) {
     it(`9. ${c.name} keeps the session's draft, a card's own answer, a sheet's text and Chat's draft`, async () => {
-      const { page, watch, close } = await open(c.from, `/s/${sidOf(4)}`);
-      const there = async () => {
-        await resize(page, c.to.width, c.to.height);
-        await resize(page, c.from.width, c.from.height);
-      };
-      try {
+      await onTouch(`9. ${c.name}`, () => open(c.from, `/s/${sidOf(4)}`), async ({ page, watch }) => {
+        const there = async () => {
+          // The chrome on each side of the crossing is a touch screen's: the pointer is asked at both.
+          await resize(page, c.to.width, c.to.height);
+          await stillTouch(page, `9. ${c.name} at ${c.to.width}`);
+          await resize(page, c.from.width, c.from.height);
+          await stillTouch(page, `9. ${c.name} at ${c.from.width}`);
+        };
         // A session's draft, in the composer and its session around it.
         const box = page.getByLabel('Prompt for Claude');
         await box.fill('a draft the rotation must keep');
@@ -641,23 +660,20 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
         await there();
         expect(await page.getByRole('textbox', { name: 'A message to Chat' }).inputValue()).toBe('what did I eat today');
         expect(consoleProblems(watch, c.name)).toEqual([]);
-      } finally {
-        await close();
-      }
+      }, { close: (o) => o.close() });
     }, perfBudgetMs(120_000));
   }
 
   // New session's start form is in the pane beside the folders at 1180 and the sheet over them at 820: it is built
   // again in its new place, so this proves what it holds is read back, not the same node.
   it("9. rotating an 11-inch iPad keeps New session's Name and picks, there and back", async () => {
-    const { page, watch, close } = await open({ width: 1180, height: 820, touch: true, insets: IPAD }, '/new?root=r.work&path=jantar&start=1');
-    const form = () => page.locator('section[aria-label="Start a session"]').first();
-    const read = () =>
-      form().evaluate((el) => ({
-        name: (el.querySelector('input[id$="-name"]') as HTMLInputElement | null)?.value ?? null,
-        picks: [...el.querySelectorAll('[role="radiogroup"]')].slice(0, 4).map((g) => g.querySelector('[role="radio"][aria-checked="true"]')?.textContent ?? null),
-      }));
-    try {
+    await onTouch('9. New session rotation', () => open({ width: 1180, height: 820, touch: true, insets: IPAD }, '/new?root=r.work&path=jantar&start=1'), async ({ page, watch }) => {
+      const form = () => page.locator('section[aria-label="Start a session"]').first();
+      const read = () =>
+        form().evaluate((el) => ({
+          name: (el.querySelector('input[id$="-name"]') as HTMLInputElement | null)?.value ?? null,
+          picks: [...el.querySelectorAll('[role="radiogroup"]')].slice(0, 4).map((g) => g.querySelector('[role="radio"][aria-checked="true"]')?.textContent ?? null),
+        }));
       await form().getByRole('textbox', { name: 'Name' }).fill('my-named-session');
       await form().getByRole('radiogroup', { name: 'Effort' }).getByRole('radio', { name: 'high', exact: true }).click();
       await form().getByRole('radiogroup', { name: 'Permissions' }).getByRole('radio', { name: 'Plan', exact: true }).click();
@@ -665,16 +681,16 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
       const before = await read();
       expect(before).toEqual({ name: 'my-named-session', picks: ['Plan', expect.any(String), 'high', expect.any(String)] });
       await resize(page, 820, 1180);
+      await stillTouch(page, 'New session in portrait');
       expect(await page.getByRole('dialog').count(), 'portrait shows the form as a sheet').toBe(1);
       expect(await read(), 'the sheet in portrait').toEqual(before);
       await resize(page, 1180, 820);
+      await stillTouch(page, 'New session in landscape');
       expect(await page.getByRole('dialog').count(), 'landscape shows the form beside the folders').toBe(0);
       expect(await read(), 'the pane in landscape again').toEqual(before);
       expect(await form().getByRole('textbox', { name: 'First prompt (optional)' }).inputValue()).toBe('fix the login');
       expect(consoleProblems(watch, 'new session rotation')).toEqual([]);
-    } finally {
-      await close();
-    }
+    }, { close: (o) => o.close() });
   }, perfBudgetMs(90_000));
 
   /**
@@ -688,41 +704,41 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
   ] satisfies Array<{ name: string; v: Viewport; kb: number }>) {
     it(`10. a bottom sheet on ${at.name} keeps every field it focuses above the keyboard`, async () => {
       const H = at.v.height;
-      const { page, close } = await open(at.v, '/todos', true);
-      const vv = (height: number) =>
-        page.evaluate((h) => {
-          const v = (window as unknown as { __vv: EventTarget & Record<string, number> }).__vv;
-          v.height = h;
-          v.dispatchEvent(new Event('resize'));
-        }, height);
-      const hidden: string[] = [];
-      /** Every text field of the open sheet, one at a time: focus it, raise the keyboard, read where it is, put both away. */
-      const each = async (sheetName: string) => {
-        const sheet = page.getByRole('dialog').first();
-        await sheet.waitFor({ timeout: 5000 });
-        await page.waitForTimeout(500);
-        expect(await sheet.getAttribute('data-present'), 'the phone bottom sheet').toBe('bottom');
-        const fields = sheet.locator('input:not([type]), input[type="text"], input[type="search"], input[type="url"], input[type="number"], input[inputmode], textarea');
-        const n = await fields.count();
-        expect(n, `${sheetName} has fields`).toBeGreaterThan(1);
-        for (let i = 0; i < n; i += 1) {
-          const f = fields.nth(i);
-          if (!(await f.isVisible())) continue;
-          await f.focus();
-          await vv(H - at.kb);
-          await page.waitForTimeout(400);
-          const r = await f.evaluate((el) => {
-            const b = el.getBoundingClientRect();
-            return { top: Math.round(b.top), bottom: Math.round(b.bottom), name: el.getAttribute('aria-label') ?? (el as HTMLInputElement).labels?.[0]?.textContent?.trim() ?? el.getAttribute('placeholder') ?? el.tagName };
-          });
-          // Its first line: a text field's whole box, a textarea's first 32 px.
-          if (r.top < 0 || Math.min(r.bottom, r.top + 32) > H - at.kb + 1) hidden.push(`${sheetName} ${r.name}: ${r.top}-${r.bottom} with the keyboard from ${H - at.kb}`);
-          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-          await vv(H);
-          await page.waitForTimeout(1200);
-        }
-      };
-      try {
+      await onTouch(`10. a bottom sheet on ${at.name}`, () => open(at.v, '/todos', true), async ({ page }) => {
+        const vv = (height: number) =>
+          page.evaluate((h) => {
+            const v = (window as unknown as { __vv: EventTarget & Record<string, number> }).__vv;
+            v.height = h;
+            v.dispatchEvent(new Event('resize'));
+          }, height);
+        const hidden: string[] = [];
+        /** Every text field of the open sheet, one at a time: focus it, raise the keyboard, read where it is, put both away. */
+        const each = async (sheetName: string) => {
+          const sheet = page.getByRole('dialog').first();
+          await sheet.waitFor({ timeout: 5000 });
+          await page.waitForTimeout(500);
+          await stillTouch(page, `10. ${sheetName} on ${at.name}`);
+          expect(await sheet.getAttribute('data-present'), 'the phone bottom sheet').toBe('bottom');
+          const fields = sheet.locator('input:not([type]), input[type="text"], input[type="search"], input[type="url"], input[type="number"], input[inputmode], textarea');
+          const n = await fields.count();
+          expect(n, `${sheetName} has fields`).toBeGreaterThan(1);
+          for (let i = 0; i < n; i += 1) {
+            const f = fields.nth(i);
+            if (!(await f.isVisible())) continue;
+            await f.focus();
+            await vv(H - at.kb);
+            await page.waitForTimeout(400);
+            const r = await f.evaluate((el) => {
+              const b = el.getBoundingClientRect();
+              return { top: Math.round(b.top), bottom: Math.round(b.bottom), name: el.getAttribute('aria-label') ?? (el as HTMLInputElement).labels?.[0]?.textContent?.trim() ?? el.getAttribute('placeholder') ?? el.tagName };
+            });
+            // Its first line: a text field's whole box, a textarea's first 32 px.
+            if (r.top < 0 || Math.min(r.bottom, r.top + 32) > H - at.kb + 1) hidden.push(`${sheetName} ${r.name}: ${r.top}-${r.bottom} with the keyboard from ${H - at.kb}`);
+            await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+            await vv(H);
+            await page.waitForTimeout(1200);
+          }
+        };
         // The New todo sheet.
         await page.getByRole('button', { name: 'Add todo' }).first().click();
         await each('New todo');
@@ -733,24 +749,23 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
         await page.locator('main').getByRole('button', { name: /^Edit\b/ }).first().click();
         await each('the café sheet');
         expect(hidden, hidden.join('\n')).toEqual([]);
-      } finally {
-        await close();
-      }
+      }, { close: (o) => o.close() });
     }, perfBudgetMs(120_000));
   }
 
   it('10. the on-screen keyboard: the composer on it, the header in view, the key row, a pan, a form sheet; 55 and 20 px shrinks', async () => {
     const H = 1180;
-    const { page, close } = await open({ width: 820, height: H, touch: true, insets: IPAD }, `/s/${sidOf(4)}`, true);
-    const vv = (o: { height?: number; offsetTop?: number; event?: 'resize' | 'scroll' }) =>
-      page.evaluate((x) => {
-        const v = (window as unknown as { __vv: EventTarget & Record<string, number> }).__vv;
-        if (x.height !== undefined) v.height = x.height;
-        if (x.offsetTop !== undefined) v.offsetTop = x.offsetTop;
-        v.dispatchEvent(new Event(x.event ?? 'resize'));
-      }, o);
-    const vars = () => page.evaluate(() => ({ vvh: document.documentElement.style.getPropertyValue('--vvh'), kb: document.documentElement.style.getPropertyValue('--kb'), vvt: document.documentElement.style.getPropertyValue('--vvt') }));
-    try {
+    await onTouch('10. the on-screen keyboard', () => open({ width: 820, height: H, touch: true, insets: IPAD }, `/s/${sidOf(4)}`, true), async ({ page }) => {
+      const vv = (o: { height?: number; offsetTop?: number; event?: 'resize' | 'scroll' }) =>
+        page.evaluate((x) => {
+          const v = (window as unknown as { __vv: EventTarget & Record<string, number> }).__vv;
+          if (x.height !== undefined) v.height = x.height;
+          if (x.offsetTop !== undefined) v.offsetTop = x.offsetTop;
+          v.dispatchEvent(new Event(x.event ?? 'resize'));
+        }, o);
+      const vars = () => page.evaluate(() => ({ vvh: document.documentElement.style.getPropertyValue('--vvh'), kb: document.documentElement.style.getPropertyValue('--kb'), vvt: document.documentElement.style.getPropertyValue('--vvt') }));
+      // Only a coarse pointer guesses the keyboard (lib/input.ts): the pointer first.
+      await stillTouch(page, '10. the on-screen keyboard');
       // A 20 px shrink with a field focused: nothing (the floating keyboard, or a minimised bar).
       await page.getByLabel('Prompt for Claude').focus();
       await vv({ height: H - 20 });
@@ -798,23 +813,32 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
       await page.waitForTimeout(1200);
       await go(page, `/s/${sidOf(4)}`);
       await page.getByLabel('Prompt for Claude').focus();
+      await stillTouch(page, '10. the shortcut bar');
       await vv({ height: H - 55 });
       await page.waitForTimeout(300);
       expect(await page.evaluate(() => localStorage.getItem('jantar:kb'))).toBe('true');
       expect(await page.locator('[data-key-row]').count()).toBe(0);
-    } finally {
-      await close();
-    }
+    }, { close: (o) => o.close() });
   }, perfBudgetMs(120_000));
 
   it('11. hover: a mouse says so and tints a ledger row; a star previews and sends nothing', async () => {
-    const { page, close } = await open({ width: 1180, height: 820, touch: true, insets: IPAD }, '/');
-    try {
+    await onTouch('11. hover', () => open({ width: 1180, height: 820, touch: true, insets: IPAD }, '/'), async ({ page }) => {
       const patches: string[] = [];
       page.on('request', (r) => {
         if (r.method() !== 'GET') patches.push(`${r.method()} ${new URL(r.url()).pathname}`);
       });
-      expect(await page.evaluate(() => document.documentElement.dataset.input ?? '')).not.toBe('mouse');
+      const input = () => page.evaluate(() => document.documentElement.dataset.input ?? '');
+      // 0.12.1: a finger first, then the mouse. This asked "no mouse yet" of a page nothing had touched, and
+      // CI's Ubuntu run 41722107174 read "mouse" there. On Linux the headless shell is aura with no cursor
+      // client, its screen keeps the cursor at 0,0, and aura sends a synthesized mouse move to a view shown
+      // or uncovered under it, so a mouse can reach a page no one moved. (macOS has no aura: here no pointer
+      // event reaches the page before this step.) Its touch is asked too.
+      await stillTouch(page, '11. hover, before the finger');
+      const heading = await page.locator('#main h1').first().boundingBox();
+      if (!heading) throw new Error("no heading on the board to put a finger on");
+      await touchDown(page, heading.x + heading.width / 2, heading.y + heading.height / 2);
+      const touched = await input();
+      expect(touched, `a finger says touch (pointer: coarse ${await hasCoarsePointer(page)})`).toBe('touch');
       const row = page.locator('#main a[data-row]').nth(1);
       const before = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
       const r = await row.boundingBox();
@@ -832,21 +856,18 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
       await page.mouse.move(s.x + s.width / 2, s.y + s.height / 2);
       await page.waitForTimeout(400);
       expect(patches.filter((p) => p.includes('/v1/places')), 'a hover sent a change').toEqual([]);
-    } finally {
-      await close();
-    }
+    }, { close: (o) => o.close() });
   }, perfBudgetMs(90_000));
 
   it('8. keycaps: none on a touch screen until a key is pressed, then the board shows them', async () => {
-    const { page, close } = await open({ width: 1180, height: 820, touch: true, insets: IPAD }, '/');
-    const caps = () => page.evaluate(() => [...document.querySelectorAll('kbd')].filter((k) => k.checkVisibility()).length);
-    try {
+    await onTouch('8. keycaps', () => open({ width: 1180, height: 820, touch: true, insets: IPAD }, '/'), async ({ page }) => {
+      const caps = () => page.evaluate(() => [...document.querySelectorAll('kbd')].filter((k) => k.checkVisibility()).length);
+      // A fine pointer shows keycaps from the start: the pointer first.
+      await stillTouch(page, '8. keycaps');
       expect(await caps()).toBe(0);
       await page.keyboard.press('Shift');
       await expect.poll(caps).toBeGreaterThan(0);
-    } finally {
-      await close();
-    }
+    }, { close: (o) => o.close() });
   }, perfBudgetMs(60_000));
 });
 
@@ -894,7 +915,7 @@ describe.skipIf(!ready)('0.12.0: the resize corner with wider text', () => {
     await o.page.goto(`${server.base}${path}`, { waitUntil: 'networkidle' });
     await o.page.waitForFunction(() => document.querySelector('main#main') && !document.querySelector('main [aria-busy="true"]'), null, { timeout: perfBudgetMs(10_000) }).catch(() => undefined);
     await o.page.waitForTimeout(400);
-    if ((v.touch || v.phone) && !(await o.page.evaluate(() => matchMedia('(pointer: coarse)').matches))) {
+    if ((v.touch || v.phone) && !(await hasCoarsePointer(o.page))) {
       await o.close();
       return null;
     }

@@ -81,6 +81,7 @@ export function pageOpener(browser: Browser, base: () => string) {
     });
     contexts.push(ctx);
     const page = await ctx.newPage();
+    if (o.phone || o.touch) touchPage(page);
     await emulateInsets(page, o);
     const watch: Watch = { csp: [], errors: [] };
     page.on('console', (m) => {
@@ -103,8 +104,107 @@ export async function styleElements(page: Page): Promise<number> {
   return page.evaluate(() => document.querySelectorAll('style').length);
 }
 
+/**
+ * 0.12.1: a touch page is checked with its coarse pointer, or once more in a new context.
+ *
+ * Chromium sometimes drops Playwright's touch emulation part way through a context: CI's macOS run
+ * 41667870706 drew the Mac's chrome at touch-1440, as the page does with no (pointer: coarse). The
+ * emulation is one switch per page (Blink's DevToolsEmulator), and the Emulation agent of any DevTools
+ * session turns it off as that session goes, whichever session turned it on (the guard's own test shows
+ * it). Each cross-document navigation (RenderDocument) sends Playwright's session to the new document
+ * and lets the old one's go: when that lands after the new document has its touch back, the page has
+ * none. It was not caught happening here; nothing in these tests turns touch off.
+ *
+ * So a touch page is marked (touchPage) as it opens. stillTouch(page) throws TouchDropped once it has
+ * no coarse pointer; clean() and overflow() ask first, and a test asks before any step that needs the
+ * pointer. onTouch runs a test's steps on a page and, when they find the pointer gone (or fail with it
+ * gone), closes that context and runs them once more in a new one; a second drop fails, saying so.
+ *
+ * JANTAR_TOUCH_DROP=n turns the emulation off over CDP in the first n tries of every onTouch, at its
+ * first stillTouch: 1 shows a drop recovering, 2 a second drop failing.
+ */
+const touchPages = new WeakSet<Page>();
+
+/** 0.12.1: marks `page` as a touch page (hasTouch), checked by stillTouch, clean() and overflow(). */
+export function touchPage<P extends Page>(page: P): P {
+  touchPages.add(page);
+  return page;
+}
+
+export const hasCoarsePointer = (page: Page): Promise<boolean> => page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+
+export class TouchDropped extends Error {
+  constructor(what: string) {
+    super(`${what}: the browser dropped its touch emulation (no (pointer: coarse))`);
+    this.name = 'TouchDropped';
+  }
+}
+
+const SIMULATED_DROPS = Number(process.env.JANTAR_TOUCH_DROP ?? 0) || 0;
+/** A simulated drop is due at the next stillTouch (JANTAR_TOUCH_DROP). */
+let dropDue = false;
+
+/** Turns the page's touch emulation off from a DevTools session of its own, as Chromium has on CI. */
+export async function dropTouch(page: Page): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  } finally {
+    await cdp.detach().catch(() => undefined);
+  }
+}
+
+/** 0.12.1: throws TouchDropped if `page` is a touch page that has lost its coarse pointer; nothing for any other page. */
+export async function stillTouch(page: Page, what = 'a touch page'): Promise<void> {
+  if (!touchPages.has(page)) return;
+  if (dropDue) {
+    dropDue = false;
+    console.warn(`[touch] JANTAR_TOUCH_DROP: ${what}: touch emulation turned off over CDP`);
+    await dropTouch(page);
+  }
+  if (!(await hasCoarsePointer(page))) throw new TouchDropped(what);
+}
+
+/**
+ * 0.12.1: `steps` on the page `open` gives, with its coarse pointer. On a drop (stillTouch threw, or a
+ * step failed and the page has no coarse pointer) its context is closed, `open(true)` gives a new one
+ * and the steps run again from the start; a drop there too throws. The page is asked once more after the
+ * steps, so none passed with a fine pointer. `keep` leaves a page that passed open (a suite's paired
+ * phone, for the next test) and returns it; otherwise it is closed (`close`, else its context).
+ */
+export async function onTouch<T extends { page: Page }>(
+  what: string,
+  open: (again: boolean) => Promise<T>,
+  steps: (o: T) => Promise<void>,
+  opts: { keep?: boolean; close?: (o: T) => Promise<void> } = {},
+): Promise<T> {
+  const close = opts.close ?? ((o: T) => o.page.context().close());
+  for (let attempt = 1; ; attempt += 1) {
+    const o = await open(attempt > 1);
+    dropDue = attempt <= SIMULATED_DROPS && touchPages.has(o.page);
+    let dropped: string | null = null;
+    try {
+      await steps(o);
+      await stillTouch(o.page, what);
+      return o;
+    } catch (e) {
+      if (e instanceof TouchDropped) dropped = '';
+      else if (touchPages.has(o.page) && (await hasCoarsePointer(o.page).catch(() => true)) === false) {
+        dropped = ` (a step failed with it gone: ${String(e instanceof Error ? e.message : e).split('\n')[0]})`;
+      }
+      if (dropped === null) throw e;
+      if (attempt > 1) throw new Error(`${what}: the browser dropped its touch emulation (no (pointer: coarse)) in a new context too${dropped}; a touch check never runs with a fine pointer`, { cause: e });
+      console.warn(`[touch] ${what}: the browser dropped its touch emulation (no (pointer: coarse))${dropped}; once more in a new context`);
+    } finally {
+      dropDue = false;
+      if (!opts.keep || dropped !== null) await close(o).catch(() => undefined);
+    }
+  }
+}
+
 /** No message about the Content Security Policy, no console error, no <style> element. */
 export async function clean(page: Page, watch: Watch): Promise<void> {
+  await stillTouch(page);
   expect(watch.csp, watch.csp.join('\n')).toEqual([]);
   expect(watch.errors, watch.errors.join('\n')).toEqual([]);
   expect(await styleElements(page)).toBe(0);
@@ -119,6 +219,7 @@ export async function clean(page: Page, watch: Watch): Promise<void> {
  * viewport holds.
  */
 export async function overflow(page: Page): Promise<string[]> {
+  await stillTouch(page);
   return page.evaluate(() => {
     const vw = document.documentElement.clientWidth;
     const out: string[] = [];
@@ -351,6 +452,7 @@ export async function openTouchable(
     },
   );
   const page = await ctx.newPage();
+  if (touch) touchPage(page);
   await emulateInsets(page, o);
   const watch = watchConsole(page);
   return { page, watch, close: () => ctx.close() };
