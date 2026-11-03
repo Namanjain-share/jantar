@@ -1,6 +1,6 @@
 /**
- * 0.13.0 Follow-ups and Work on Today and Todos (design 7, 10, W11, W24)
- * against the fake API, with made-up clients:
+ * 0.13.0 Follow-ups and Work on Today, Todos and a meeting (design 7, 10,
+ * W11, W15, W24) against the fake API, with made-up clients:
  *
  * - Today: a follow-up is a Due todo with its client named on the row (from
  *   Today's own answer); the Work card lists what isn't a todo (check-ins,
@@ -9,15 +9,18 @@
  * - Todos: a follow-up names its client (one names read, ids only); the
  *   todo sheet's Client field lists his clients while Work is on, sets and
  *   clears a todo's client. With Work off: no names, no field.
+ * - A meeting: its clients, Unlink, Link a suggestion, and a client made
+ *   from one of its names (the meeting's words), while Work is on only.
  */
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Today } from '@jantar/protocol';
+import type { MeetingDetail, Today } from '@jantar/protocol';
+import { meetingDetail } from '@jantar/fixtures';
 import { workLines } from '../../src/ui/screens/life/today/Today.js';
 import { fakeApi, preloadPlaces, renderApp, stateWith } from '../helpers.js';
 import { CLIENTS, IDS, WORK_ON, clientRows, lifeStatus, todo, workRequest } from '../work-helpers.js';
 
-preloadPlaces('today', 'todos');
+preloadPlaces('today', 'todos', 'meetings', 'meetingClients');
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -117,6 +120,63 @@ describe('Todos: a follow-up names its client; the sheet has a Client field whil
     fireEvent.click(await screen.findByRole('button', { name: /^Call about scope/ }));
     const sheet = await screen.findByRole('dialog', { name: 'Edit todo' });
     expect(within(sheet).queryByLabelText('Client')).toBeNull();
+    expect((api.request as ReturnType<typeof workRequest>).mock.calls).toEqual([]);
+  });
+});
+
+describe("a meeting's clients", () => {
+  const D = meetingDetail();
+  const MID = D.meeting.id;
+
+  function render(work: boolean) {
+    const api = fakeApi({
+      lifeStatus: vi.fn(async () => (work ? WORK_ON() : lifeStatus({ todos: true }))),
+      meetingGet: vi.fn(async (): Promise<MeetingDetail> => D),
+      meetingsList: vi.fn(async () => ({ meetings: [D.meeting], next: null, running: null })),
+      projectsList: vi.fn(async () => ({ projects: [] })),
+      request: workRequest({
+        'GET /v1/work/meetings/:meetingId/suggest': {
+          linked: [{ id: IDS.client, name: 'Acme', auto: true }],
+          auto: { id: IDS.client, name: 'Acme' },
+          people: [
+            { index: 0, text: 'Pat E.', match: { id: IDS.pat, name: 'Pat Example' } },
+            { index: 1, text: 'Jordan Placeholder' },
+          ],
+        },
+        'PUT /v1/work/meetings/:meetingId/clients': { ok: true },
+        'POST /v1/work/meetings/:meetingId/clients/new': { id: '01JWRKC11ENT0000000000NEW0' },
+        'GET /v1/work/clients': CLIENTS(),
+      }),
+    });
+    return { ...renderApp({ path: `/meetings?id=${MID}`, api, state: stateWith({ features: { life: true, meetings: true } }) }), api };
+  }
+
+  it('linked through its project, Unlink, Link a suggestion, and a client made from its people', async () => {
+    const { api } = render(true);
+    const clients = await screen.findByRole('region', { name: 'Clients' });
+    const acme = await within(clients).findByRole('link', { name: /Acme/ });
+    expect(acme.textContent).toMatch(/through its project/);
+    expect(acme.getAttribute('href')).toBe(`/work?tab=clients&id=${IDS.client}`);
+    // Names from the meeting are marked as its words; nothing happens without a tap.
+    expect(clients.querySelector('[data-from="meeting"]')).not.toBeNull();
+    expect(calls(api, 'PUT', '/v1/work/meetings/:meetingId/clients')).toEqual([]);
+    fireEvent.click(within(clients).getByRole('button', { name: 'Link Pat Example' }));
+    await waitFor(() => expect(calls(api, 'PUT', '/v1/work/meetings/:meetingId/clients')[0]).toMatchObject({ params: { meetingId: MID }, body: { clientIds: [IDS.client, IDS.pat] } }));
+    fireEvent.click(within(clients).getByRole('button', { name: 'Unlink Acme' }));
+    await waitFor(() => expect(calls(api, 'PUT', '/v1/work/meetings/:meetingId/clients')[1]).toMatchObject({ body: { clientIds: [] } }));
+    fireEvent.click(within(clients).getByRole('button', { name: 'Add Jordan Placeholder as a client' }));
+    await waitFor(() => expect(calls(api, 'POST', '/v1/work/meetings/:meetingId/clients/new')).toEqual([expect.objectContaining({ params: { meetingId: MID }, body: { person: 1 } })]));
+    fireEvent.click(within(clients).getByRole('button', { name: 'Link another client…' }));
+    const pick = within(clients).getByRole('combobox', { name: 'Link a client' });
+    await waitFor(() => expect((pick as HTMLSelectElement).options.length).toBeGreaterThan(1));
+    fireEvent.change(pick, { target: { value: IDS.northwindCo } });
+    await waitFor(() => expect(calls(api, 'PUT', '/v1/work/meetings/:meetingId/clients').at(-1)).toMatchObject({ body: { clientIds: [IDS.client, IDS.northwindCo] } }));
+  });
+
+  it('Work off: no Clients field, nothing of Work asked', async () => {
+    const { api } = render(false);
+    expect(await screen.findByRole('heading', { level: 1, name: D.meeting.name })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Clients' })).toBeNull();
     expect((api.request as ReturnType<typeof workRequest>).mock.calls).toEqual([]);
   });
 });

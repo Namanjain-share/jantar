@@ -5,6 +5,7 @@
  *   Weekly sync                                 ···   Edit, Export text, Delete
  *   Thu 30 Oct · 10:00 to 10:42 · Google Meet         mono --ink-3
  *   Acme site · Sam, Priya                            --ink-2
+ *   CLIENTS        0.13.0, while Work is on: linked, suggested, Link another (work/MeetingClients.tsx)
  *   SUMMARY        the text, or its state's sentence (and Summarize or Try again)
  *   DECISIONS      one row each, once the summary is done
  *   ACTION ITEMS   ItemRow: Add to <project>, or ✓ In todos · Remove
@@ -30,7 +31,7 @@
 import { ChatButton } from '../../shell/ChatButton.js';
 import { CaretLeftIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CLI_NAME, type Meeting, type MeetingDetail, type MeetingShot, type ProjectView } from '@jantar/protocol';
 import { isApiError } from '../../../lib/api.js';
 import { useDeps, useNow } from '../../context.js';
@@ -40,7 +41,7 @@ import { RailLabel } from '../../kit/RailLabel.js';
 import { Link } from '../../shell/Link.js';
 import { Segmented } from '../accounts/Segmented.js';
 import { LifeLoading, NotSaved } from '../life/shared/states.js';
-import { useLifeLoad } from '../life/shared/useLife.js';
+import { useLifeLoad, useLifeStatus } from '../life/shared/useLife.js';
 import { Page, RowMenu, useOffline, useSheet, useWrite, type Undo } from '../life/today/parts.js';
 import { EditSheet } from './EditSheet.js';
 import { exportText } from './export.js';
@@ -69,6 +70,9 @@ import { ShotViewer, type ShotView } from './ShotViewer.js';
 import { MeetingsError } from './states.js';
 import { Transcript } from './Transcript.js';
 import { useLookingAt } from '../../shell/lookingAt.js';
+
+// 0.13.0 Work: a meeting's clients (W15), from Work's chunks; the Meetings chunk carries none of it.
+const MeetingClients = lazy(() => import('../work/MeetingClients.js').then((m) => ({ default: m.MeetingClients })));
 
 export interface MeetingPageProps {
   id: string;
@@ -216,6 +220,7 @@ function Body({ d, filters, undo, marks: itemMarks, todos, projects, onDelete, n
   // "Text exported" for EXPORTED_MS; a new export starts the time again.
   const [exported, setExported] = useState(0);
   const who = meetingWho(m);
+  const workOn = Boolean(useLifeStatus().status?.modules.work);
 
   useEffect(() => {
     if (!exported) return;
@@ -327,6 +332,12 @@ function Body({ d, filters, undo, marks: itemMarks, todos, projects, onDelete, n
             Running · {linesText(m.lines)} · {shotsText(m.shots)}
           </span>
         </p>
+      ) : null}
+      {/* 0.13.0: its clients, while Work is on (Work's own chunk, loaded here the first time). */}
+      {workOn ? (
+        <Suspense fallback={null}>
+          <MeetingClients meetingId={m.id} />
+        </Suspense>
       ) : null}
       {exported ? (
         <p role="status" className="mt-8 px-16 type-small text-ink-2">
