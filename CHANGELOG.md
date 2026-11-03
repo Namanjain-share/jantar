@@ -28,6 +28,13 @@ What changed for people who use Jantar, newest first. Versions before
 - `jantar people invite`, your People list and the People guide say that
   with the One-time PIN they open the link once more after signing in, or
   paste it.
+- Intel: a link's read is marked done only once its item says so, so the
+  phone never shows a finished read on an item still "Reading".
+- Keys and taps the moment a screen appears now count: **a** or **d** on a
+  question or permission card that has just come up, a reload right after
+  Show more in Meetings or the Intel shelf (it brings back every row you
+  had), and a name picked or a box ticked as the People sharing screen
+  opens.
 
 ## 0.12.0 (3 November 2026)
 
