@@ -32,9 +32,12 @@
  * opens beside the list from a pane of 800, where the list is rows with the
  * open one current, and over it below that. The Undo line and "Not saved"
  * show once, on the meeting while one is beside the list.
+ *
+ * 0.12.2: how many rows the list shows is kept in the commit, so a reload
+ * that comes the moment Show more's rows are on screen brings them all back.
  */
 import clsx from 'clsx';
-import { useEffect, useId, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { CLI_NAME, MEETING_LIMITS, type Meeting, type MeetingsList, type ProjectView } from '@jantar/protocol';
 import { isApiError } from '../../../lib/api.js';
 import { useDeps, useNavigate, useNow } from '../../context.js';
@@ -303,7 +306,11 @@ function List({
   const extra = more && more.base === data ? more : null;
   const all = data ? unique([...data.meetings, ...(extra?.meetings ?? [])]) : [];
   const next = extra ? extra.next : (data?.next ?? null);
-  useEffect(() => {
+  // 0.12.2: kept in the commit (a layout effect), so a reload the moment Show more's rows are on screen brings them
+  // all back. Show more's answer commits outside a user event, and React yields for paint before its passive
+  // effects: a reload in that gap (the page coming back into view) read the count from before and showed one
+  // page (the CI flake in meetings.test.tsx).
+  useLayoutEffect(() => {
     if (list.data) place.current = { key, n: all.length };
   }, [place, list.data, key, all.length]);
   const rows = visible(all);

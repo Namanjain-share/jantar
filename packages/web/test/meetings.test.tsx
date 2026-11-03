@@ -307,6 +307,36 @@ describe('the list', () => {
     expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
   });
 
+  it("0.12.2: a reload the moment Show more's rows are on screen brings them all back, before React's passive effects run", async () => {
+    // Show more's answer commits outside act(), and React 19 yields for paint before its passive effects: the test
+    // above came back into view there on a loaded CI runner (findBy returns on a 0 ms timer that fires first) and the
+    // reload asked for one page of 30. Here the page comes back into view in the very microtask the commit queued,
+    // when the 60 rows are in the DOM and the passive effects have not run.
+    const meetingsList = vi.fn(async (q: { before?: string; limit?: number } = {}) => {
+      const from = q.before ? Number(q.before) : 0;
+      const n = Math.min(q.limit ?? 30, 70 - from);
+      return list(
+        Array.from({ length: n }, (_, i) => meeting(from + i + 1)),
+        { next: from + n < 70 ? String(from + n) : null },
+      );
+    });
+    open('/meetings', meetingsApi({ meetingsList }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    const seen = new MutationObserver(() => {
+      if (!screen.queryByText('Example meeting 60')) return;
+      seen.disconnect();
+      meetingsList.mockClear();
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    seen.observe(document.body, { childList: true, subtree: true, characterData: true });
+    expect(await screen.findByText('Example meeting 60')).toBeTruthy();
+    await waitFor(() => expect(meetingsList).toHaveBeenCalledTimes(2));
+    expect(meetingsList.mock.calls).toEqual([[{ project: undefined, q: undefined, limit: 50 }], [{ project: undefined, q: undefined, before: '50', limit: 10 }]]);
+    expect(screen.getByText('Example meeting 60')).toBeTruthy();
+    expect(screen.queryByText('Example meeting 61')).toBeNull();
+  });
+
   it('a new search keeps the last rows on screen, dimmed and busy, until its own answer comes', async () => {
     let answer: (l: MeetingsList) => void = () => undefined;
     const meetingsList = vi.fn(async (q: { q?: string } = {}) => (q.q ? new Promise<MeetingsList>((r) => (answer = r)) : list([meeting(1), meeting(2)])));
