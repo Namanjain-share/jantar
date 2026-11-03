@@ -10,7 +10,10 @@
  * - Ask for more: what she doesn't share yet, one request at a time. A
  *   pending one reads "Waiting for {name}"; the daemon's cooling-off and
  *   "Don't ask me about this again" come back as its sentence. Nothing
- *   changes until she says yes. Needs a device paired with admin.
+ *   changes until she says yes. Asking needs a device paired with admin
+ *   (`jantar pair` gives read and control): on any other device the sheet
+ *   still lists what can be asked, and instead of a button that can only
+ *   fail it shows the Mac command for what is ticked.
  * - {name}'s devices: name, when added and the Access email (no last
  *   seen, C20).
  * - Your pushes about {name}: the day summary (off until he picks a time),
@@ -28,8 +31,28 @@ import { activityText, byDay, hisVoice } from '../../../people-shared/activity.j
 import { joinCopy } from '../../../people-shared/join-copy.js';
 import { dayLabel, hmOf } from '../../../people-shared/time.js';
 import { Button } from '../../kit/Button.js';
+import { readLocalDevice } from '../devices/local.js';
 import { useLifeLoad } from '../life/shared/useLife.js';
 import type { PeopleClient } from './client.js';
+
+/** This device was paired with admin, or doesn't know its scopes (the daemon decides then). */
+export function pairedWithAdmin(): boolean {
+  const scopes = readLocalDevice()?.scopes;
+  return !Array.isArray(scopes) || scopes.includes('admin');
+}
+
+/** CLI flags for each agreement group (cli/src/commands/people.ts fieldPatch). */
+const GROUP_FLAG: Record<string, string> = { see: '--see', assign: '--assign', editHers: '--edit-hers', comment: '--comment' };
+
+/** The Mac command that asks for what is ticked (`jantar people ask Asha --see sleep,meds=full`). */
+export function askCommand(name: string, picked: Readonly<Record<string, string | boolean>>): string {
+  const who = /^[\w.-]+$/.test(name) ? name : `"${name.replace(/["\\$`]/g, '')}"`;
+  const parts = Object.entries(proposePatch(picked)).map(([group, fields]) => {
+    const list = Object.entries(fields).map(([k, v]) => (typeof v === 'string' ? `${k}=${v}` : k));
+    return `${GROUP_FLAG[group] ?? `--${group}`} ${list.join(',')}`;
+  });
+  return `${CLI_NAME} people ask ${who} ${parts.length ? parts.join(' ') : '--see <area>'}`;
+}
 
 /** What asking for one field means, in his words. */
 const ASK_WORDS: Record<string, (n: string) => string> = {
@@ -154,6 +177,7 @@ function AskForMore({ client, pid, name, a, person, reload }: { client: PeopleCl
     );
   }
   const options = askable(a, person.modules.food);
+  const admin = pairedWithAdmin();
   const send = async () => {
     setBusy(true);
     setResult(null);
@@ -211,13 +235,22 @@ function AskForMore({ client, pid, name, a, person, reload }: { client: PeopleCl
               ),
             )}
           </ul>
-          <label className="mt-8 flex flex-col gap-4">
-            <span className="type-small text-ink-2">A note for {name} (optional)</span>
-            <input className="min-h-44 rounded-btn border border-line bg-bg px-8 type-row text-ink" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
-          </label>
-          <Button variant="outline" className="mt-8 min-h-44" disabled={busy || Object.keys(picked).length === 0} onClick={() => void send()}>
-            Ask {name}
-          </Button>
+          {admin ? (
+            <>
+              <label className="mt-8 flex flex-col gap-4">
+                <span className="type-small text-ink-2">A note for {name} (optional)</span>
+                <input className="min-h-44 rounded-btn border border-line bg-bg px-8 type-row text-ink" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
+              </label>
+              <Button variant="outline" className="mt-8 min-h-44" disabled={busy || Object.keys(picked).length === 0} onClick={() => void send()}>
+                Ask {name}
+              </Button>
+            </>
+          ) : (
+            <p className="mt-8 type-small text-ink-2">
+              Asking needs a device paired with admin, and this one isn't. At your Mac:{' '}
+              <code className="type-mono break-all text-ink [overflow-wrap:anywhere]">{askCommand(name, picked)}</code>
+            </p>
+          )}
         </>
       )}
       {result ? (
@@ -355,7 +388,7 @@ export function NotSharingRow({ client, p }: { client: PeopleClient; p: PersonVi
           <p className="type-small text-ink-2">
             Invited{p.invite ? ` · the link works once, until ${until(p.invite.expiresAt)}` : ' · no link yet'}. {p.name} joins from it on {p.name}'s own phone.
           </p>
-          {p.invite?.linkAvailable ? (
+          {p.invite?.linkAvailable && pairedWithAdmin() ? (
             <Button variant="outline" className="mt-4 min-h-44" onClick={() => void again()}>
               Copy link again
             </Button>

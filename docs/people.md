@@ -66,8 +66,9 @@ It needs your Mac reachable over HTTPS (`remote.mode` `cloudflare` or
    notifications are on.
 
 "Copy link again" for an invite that hasn't been used needs an admin device
-with its device secret, and each use is in your audit log (never the link
-itself). While the space is switched off, no invite or device-link code works.
+with its device secret (other devices don't show the button; `jantar people
+invite` at the Mac makes a new link), and each use is in your audit log
+(never the link itself). While the space is switched off, no invite or device-link code works.
 
 Their address is a different origin from yours, on purpose: a page on it can
 never write to your routes or open your event stream, and your cookie is
@@ -194,10 +195,14 @@ After they join:
   next look, and your screens refresh.
 - **You ask for more** from an admin device: your Accountability partner
   screen's Sharing tab, or `jantar people ask Asha --see sleep --note "For
-  the bedtime plan"` at the Mac. They see a card with each field that would
+  the bedtime plan"` at the Mac. A phone paired the default way (read and
+  control) lists what you could ask and shows that command for what you
+  tick instead of an Ask button. They see a card with each field that would
   change and answer Allow or No thanks. One request waits at a
   time; after a No, the same field can't be asked again for 7 days, and
-  "Don't ask me about this again" blocks it until they clear it.
+  "Don't ask me about this again" blocks it until they clear it. While they
+  are paused you can't ask; while their quiet hours or a mute hold your
+  alerts, the notification of your request waits too.
 - Every step (offered, joined, narrowed, asked, accepted, declined, paused,
   left) is a row in a ledger on your Mac that is only ever appended to.
 

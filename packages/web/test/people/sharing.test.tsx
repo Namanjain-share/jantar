@@ -25,7 +25,9 @@ import { createAppStore } from '../../src/store.js';
 import { AppProvider, createToastStore } from '../../src/ui/context.js';
 import type { PeopleClient } from '../../src/ui/screens/people/client.js';
 import { Partner } from '../../src/ui/screens/people/Partner.js';
-import { askable, proposePatch } from '../../src/ui/screens/people/PartnerSharing.js';
+import { askCommand, askable, proposePatch } from '../../src/ui/screens/people/PartnerSharing.js';
+import { writeLocal } from '../../src/lib/storage.js';
+import { LOCAL_DEVICE_KEY } from '../../src/ui/screens/devices/local.js';
 import { fakeApi } from '../helpers.js';
 
 const PID = '01JASHAAAAAAAAAAAAAAAAAAAA';
@@ -86,6 +88,22 @@ describe('his Sharing tab', () => {
     });
     await waitFor(() => expect(propose).toHaveBeenCalledWith(PID, { see: { sleep: true, review: 'full' }, note: 'For the bedtime plan' }));
     expect(await within(ask).findByRole('status')).toBeTruthy();
+  });
+
+  it('on a phone paired the default way (read, control), Ask for more shows the Mac command, not a button that can only fail (review 4, B2)', async () => {
+    writeLocal(LOCAL_DEVICE_KEY, { id: 'dev-1', name: 'iPhone', scopes: ['read', 'control'] });
+    const propose = vi.fn(async () => undefined);
+    const c = client({ list: vi.fn(async () => ({ enabled: true, people: [person()], ownerName: 'Sam', ownerPrefs: PREFS })), today: vi.fn(async () => today), propose, devices: vi.fn(async () => ({ devices: [] })) });
+    render(<Wrapped client={c} tab="sharing" />);
+    const ask = await screen.findByRole('region', { name: 'Ask for more' });
+    expect(within(ask).queryByRole('button', { name: 'Ask Asha' })).toBeNull();
+    expect(ask.textContent).toContain("Asking needs a device paired with admin, and this one isn't.");
+    expect(within(ask).getByText('jantar people ask Asha --see <area>')).toBeTruthy();
+    fireEvent.click(within(ask).getByLabelText("See Asha's sleep"));
+    fireEvent.click(within(ask).getByLabelText("See Asha's evening review: in full"));
+    expect(within(ask).getByText('jantar people ask Asha --see sleep,review=full')).toBeTruthy();
+    expect(propose).not.toHaveBeenCalled();
+    expect(askCommand('Asha B', { 'see.journal': true, 'assign.plan': true, 'editHers.todos': true })).toBe('jantar people ask "Asha B" --see journal --assign plan --edit-hers todos');
   });
 
   it("shows the daemon's sentence when Asha said not to ask again; a pending request is a wait", async () => {
@@ -200,6 +218,16 @@ describe('his People list: someone invited', () => {
     });
     expect(inviteLink).toHaveBeenCalledWith(PID);
     expect(await screen.findByText('https://us.example.com/p/join#c=synthetic')).toBeTruthy();
+  });
+
+  it('on a device without admin, no Copy link again: the Mac command is the way (review 4, B2)', async () => {
+    writeLocal(LOCAL_DEVICE_KEY, { id: 'dev-1', name: 'iPhone', scopes: ['read', 'control'] });
+    const invited = person({ state: 'invited', agreement: null, invite: { expiresAt: '2026-11-04T10:00:00.000Z', linkAvailable: true } });
+    const c = client({ list: vi.fn(async () => ({ enabled: true, people: [invited], ownerName: 'Sam' })) });
+    render(<Wrapped client={c} pid={null} />);
+    expect(await screen.findByText(/Invited · the link works once, until/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Copy link again' })).toBeNull();
+    expect(screen.getByText('jantar people invite Asha')).toBeTruthy();
   });
 
   it('nobody yet says how to add someone', async () => {
