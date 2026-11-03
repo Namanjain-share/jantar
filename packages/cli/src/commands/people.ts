@@ -325,7 +325,7 @@ export default defineCommand(
         if (flags.food !== 'on' && flags.food !== 'off') throw new UsageError('modules needs --food on or --food off');
         await callDaemon(ctx.ctl, 'PATCH', `/v1/people/${p.id}/modules`, { food: flags.food === 'on' });
         // Her food log is a later phase (AREAS.food): say so, rather than promise a screen this release lacks.
-        io.out(flags.food === 'on' ? `${p.name}'s food module is on. People has no food log in this release, so nothing changes for them yet.\n` : `${p.name}'s food log is off.\n`);
+        io.out(flags.food === 'on' ? `${p.name}'s food module is on. The accountability partner space has no food log in this release, so nothing changes for them yet.\n` : `${p.name}'s food log is off.\n`);
         return EXIT.ok;
       }
       case 'ask': {

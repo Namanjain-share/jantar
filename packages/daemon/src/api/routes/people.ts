@@ -29,7 +29,7 @@ const OK = { ok: true as const };
 export const NO_PERSON = 'No such person.';
 
 /** His base for her links: her host, which must be set before an invite can be made. */
-export const PEOPLE_URL_NEEDED = 'Set the people hostname first: jantar remote people-url <https-url>';
+export const PEOPLE_URL_NEEDED = 'Set their hostname first: jantar remote people-url <https-url>';
 
 function peopleUrl(s: ApiServices): string {
   const origin = s.origin.peopleOrigin();
@@ -170,12 +170,12 @@ export const PEOPLE_ROUTE_IMPLS: RouteTable = {
       const webpush = findWebPush(s.deps.notifiers);
       const checks = [
         { name: 'remote mode', ok: mode === 'cloudflare' || mode === 'tailscale', detail: `remote.mode is ${mode} (an accountability partner space needs cloudflare or tailscale)` },
-        { name: 'people hostname', ok: s.origin.peopleOrigin() !== null, detail: s.origin.peopleOrigin() ?? 'not set: jantar remote people-url <https-url>' },
+        { name: 'their hostname', ok: s.origin.peopleOrigin() !== null, detail: s.origin.peopleOrigin() ?? 'not set: jantar remote people-url <https-url>' },
         { name: 'settings', ok: problem === null, detail: problem ? `${problem.path}: ${problem.message}` : 'ok' },
         { name: "owner's name", ok: settings.people.ownerName !== null, detail: settings.people.ownerName ? 'set' : 'not set: jantar people on --name <your name>' },
         { name: 'switch', ok: settings.people.enabled, detail: settings.people.enabled ? 'on' : 'off: jantar people on' },
         { name: 'life data', ok: s.deps.life.people.lifeOpen() && s.deps.life.broken() === null, detail: s.deps.life.broken() ?? (s.deps.life.people.lifeOpen() ? 'open' : 'closed') },
-        { name: 'partner app', ok: s.peopleAssets.size > 0, detail: s.peopleAssets.size > 0 ? 'built' : 'not built: pnpm --filter @jantar/web build' },
+        { name: 'their app', ok: s.peopleAssets.size > 0, detail: s.peopleAssets.size > 0 ? 'built' : 'not built: pnpm --filter @jantar/web build' },
         { name: 'web push', ok: webpush?.publicKey() !== null && webpush !== null, detail: webpush ? 'ready' : 'no Web Push notifier' },
       ];
       return { checks };

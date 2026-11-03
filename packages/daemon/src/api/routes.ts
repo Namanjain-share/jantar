@@ -526,7 +526,7 @@ const CORE_ROUTE_IMPLS: RouteTable = {
       }
       c.reply.setCookie(DEVICE_COOKIE, r.key, s.cookieOptions());
       // C27: a device that can open her space is never added in silence.
-      if (hasScope(r.device.scopes, 'control')) s.deps.life.people?.ownerDeviceGained?.(r.device.name);
+      if (hasScope(r.device.scopes, 'control')) s.deps.life.people.ownerDeviceGained(r.device.name);
       audit('ok', `device:${r.device.id}`, {
         target: r.device.id,
         params: { name: r.device.name, scopes: r.device.scopes, pairId: r.pairId },

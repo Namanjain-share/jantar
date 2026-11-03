@@ -245,7 +245,7 @@ export function notBuiltParts(): NotBuiltParts {
       finance: notBuilt<FinanceModule>('Life'),
       posts: notBuilt<PostsModule>('Life'),
       // v0.11: no person can be reached without Life (the gate reads `gone`), and her stream has its ticks.
-      people: notBuilt<PeopleModule>('People', { ticks: new PersonTicks(), gateState: () => 'gone', ownerReach: () => null, person: () => null, lifeOpen: () => false }),
+      people: notBuilt<PeopleModule>('People', { ticks: new PersonTicks(), gateState: () => 'gone', ownerReach: () => null, person: () => null, lifeOpen: () => false, ownerDeviceGained: () => undefined }),
     }),
     intel: notBuilt<IntelService>('The Intel shelf', { ...life }),
     meetings: notBuilt<MeetingsService>('Meetings', {

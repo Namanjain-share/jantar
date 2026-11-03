@@ -213,12 +213,12 @@ export default defineCommand(
         if (flags.clear) {
           if (url) throw new UsageError('give a URL or --clear, not both');
           await callDaemon(ctx.ctl, 'PATCH', '/v1/settings', { remote: { peopleUrl: null } });
-          ctx.io.out('No people hostname: nothing of theirs can be reached.\n');
+          ctx.io.out('No hostname for an accountability partner: nothing of theirs can be reached.\n');
           return EXIT.ok;
         }
         if (!url) throw new UsageError('missing URL (or --clear)');
         await callDaemon(ctx.ctl, 'PATCH', '/v1/settings', { remote: { peopleUrl: url } });
-        ctx.io.out(`People hostname: ${url}. Its Origin is theirs alone; yours never is.\n`);
+        ctx.io.out(`Their hostname (Accountability partner): ${url}. Its Origin is theirs alone; yours never is.\n`);
         return EXIT.ok;
       }
       case 'url': {
