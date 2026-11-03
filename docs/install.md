@@ -262,7 +262,17 @@ that changes on every restart, with no Access in front. Then
 jantar remote status              # what is set up now (--json for scripts)
 jantar remote url https://HOST    # use HOST in pairing links and accept it as an Origin
 jantar remote url --clear         # back to loopback-only pairing links
+jantar remote people-url https://HOST   # Accountability partner: their own hostname (--clear: none)
 ```
+
+### Accountability partner: a second hostname
+
+Sharing a space with someone ([people.md](people.md)) needs a second
+hostname for their app, for example `us.example.com`, with its own
+Cloudflare Access application that lets in only their email: a DNS route on
+the same tunnel, an ingress rule, the Access application and policy, then
+`jantar remote people-url` and `jantar people doctor`. Every step is in
+[people.md › Their hostname](people.md#their-hostname).
 
 ### Pair the phone
 

@@ -20,28 +20,49 @@ daemon migrates `config.json` and its databases on start (moving settings
 to version 2 in v0.4 kept the old file as `config.json.v1`). The
 [changelog](../CHANGELOG.md) says what changed in each version.
 
-### 0.11.0: Life's third schema change (People)
+### 0.11.0: Life's third schema change (Accountability partner)
 
-Before moving life.db to schema 4 the daemon copies it to
-`backups/life-pre-<version>.db`. Schema 4 adds a `space` to every Life
-table (every existing row is yours, `''`, so nothing is rewritten), rebuilds
-`weights` and `foods_saved` keyed per space, and adds People's tables. An
-older daemon refuses a schema-4 file (Life answers 503 there); to go back,
-restore that copy: `jantar life restore life-pre-<version>.db`. Anything a
-partner added since the upgrade is lost then.
+Three databases change on the first start of 0.11.0, whether or not you
+turn the [Accountability partner](people.md) space on. Nothing needs doing
+by hand, and your own data reads exactly as before. With the space off
+(the default), that is all.
 
-chat.db moves to schema 2 (a `thread` on every row, so a partner's chat is
-apart from yours; every existing row is yours). The daemon first copies it to
-`backups/chat-pre-<version>.db`. An older daemon refuses a schema-2 chat.db
+**life.db, schema 3 to 4.** Before moving it, the daemon copies it to
+`backups/life-pre-0.11.0.db` (from the file as it was, with anything still
+in its write-ahead log), and moves nothing if that copy can't be written.
+Schema 4 adds a `space` to every Life table (every existing row is yours,
+`''`, so nothing is rewritten), rebuilds `weights` and `foods_saved` keyed
+per space, and adds the space's tables (the people, their Activity, alerts,
+plans, templates, sleep, the journal). `jantar life status` says "(life.db
+schema 4)". 0.10.x refuses a schema-4 file (Life answers 503 there); to go
+back, install 0.10.2 and restore that copy:
+
+```sh
+jantar life restore life-pre-0.11.0.db
+```
+
+Anything the person you share with added since the upgrade is lost then,
+and they are asked to set sharing up again.
+
+**chat.db, schema 1 to 2** (a `thread` on every row, so their chat is
+apart from yours; every existing row is yours). The daemon first copies it
+to `backups/chat-pre-0.11.0.db`. An older daemon refuses a schema-2 chat.db
 (Chat answers 503 there); to go back, put that copy back as chat.db at the
 Mac. Don't use `jantar chat clear --broken` for this: it would set both
 threads aside.
 
-jantar.db gains People's tables (their devices, link codes, push list,
-invites and the consent ledger) and an audit column. An older daemon warns
-and carries on, never reading them: a partner simply can't sign in there,
-and gets no pushes. Settings gain `remote.peopleUrl` and `people`; an older
-daemon drops both, so the people hostname answers 403 there.
+**jantar.db, migration 8** adds the space's tables (their devices, link
+codes, push list, invites and the consent ledger) and an audit column. It
+needs no copy: an older daemon warns and carries on, never reading them, so
+they simply can't sign in there and get no pushes. Settings gain
+`remote.peopleUrl` and `people`; an older daemon drops both, so their
+hostname answers 403 there.
+
+To start sharing after the upgrade: [Their hostname](people.md#their-hostname)
+(a DNS route, an ingress rule and an Access application for their address),
+then `jantar remote people-url`, `jantar people on --name <your name>`,
+`jantar people add`, `jantar people offer` and `jantar people invite`.
+`jantar people doctor` checks each step.
 
 ### 0.10.0: Life's second schema change
 

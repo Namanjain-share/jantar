@@ -182,14 +182,15 @@ jantar post log 'https://www.reddit.com/r/exampletools/s/AbCdEf1234' --text-file
 jantar post list                         # this week, then the posts to make (--done: posted and skipped, with links)
 ```
 
-## Spaces and shared lists (People, v0.11)
+## Spaces and shared lists (Accountability partner, v0.11)
 
 Every Life row has a space: `''` is yours (every row from before 0.11),
 `<id>` a person's own space, and `s:<id>` a space you share with them (one
 per person). Your screens, the CLI and `jantar mcp` read your own space; your
 Cafés and Chat also read the cafés you share, each marked shared. A shared
 list is a project in a shared space with its kind, and its items are to-dos
-there (no new table). Limits count per space. See [People](people.md).
+there (no new table). Limits count per space. See [Accountability
+partner](people.md).
 
 ## Settings
 

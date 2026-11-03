@@ -2048,9 +2048,10 @@ New folder, a name, then Start a session here.
   that Jantar made it is no reason to trust what is in it by the time a
   session starts.
 
-## v0.11: People
+## v0.11: Accountability partner (People)
 
-People (off by default) lets the owner share a space with one other person.
+The Accountability partner space (People in the code and in `jantar
+people`; off by default) lets the owner share a space with one other person.
 It adds a new asset: **another person's Life data, health data included**.
 
 - **The trust boundary doesn't move.** It is still the owner's macOS user.

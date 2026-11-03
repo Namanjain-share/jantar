@@ -137,6 +137,22 @@ More: [Life](docs/life.md), [Chat](docs/assistant.md),
 [Meetings](docs/extension.md), [the Intel shelf](docs/intel.md),
 [Save to Jantar from the iPhone](docs/shortcut.md).
 
+### Accountability partner (v0.11)
+
+Share a space with one other person who wants a hand keeping to their days.
+They get their own small app, "Accountability partner", on a hostname of
+their own behind its own Cloudflare Access application, holding none of
+your screens. You plan their day, add to-dos and reminders for them, and
+see what they agreed to share: their plan and check-ins, to-dos, medicines,
+weight, sleep, journal or chat, each only if they say yes. Their join page
+lists every one of those in plain words with a switch that only turns it
+down; their Activity lists every change you make and every time you look;
+they can pause, leave or download their data at any time. Alerts go both
+ways within limits each of you sets, and you share café and other lists.
+It is off until you run `jantar people on` at the Mac.
+
+More: [Accountability partner](docs/people.md).
+
 ## Requirements
 
 - A Mac with Terminal.app (the only terminal so far)
@@ -244,6 +260,7 @@ by this project. More in [How it is put together](docs/architecture.md).
 | [Answering from the phone](docs/phone-control.md) | Hook cards, terminal dialogs, the keypad, attachments, what stays at the Mac |
 | [Accounts](docs/accounts.md) and [the primer](docs/primer.md) | One login or cswap, usage, kept accounts, priming idle windows |
 | [Life](docs/life.md) | Today, todos, reminders, projects, medicines, food, cafés, finance, posts |
+| [Accountability partner](docs/people.md) | Sharing a space with one other person: their hostname and Access app, the offer they accept, their day plan, to-dos and medicines, what you see and ask for, pause, leave, download |
 | [Chat](docs/assistant.md) | Ask Jantar anything, by text, photo or Siri: it adds and changes things at once with Undo, asks before deleting, reads sessions without typing into them; what goes to Claude |
 | [Alerts and sounds](docs/alerts.md) | A tone per kind of alert, the 2-minute countdown alert, what the lock screen can do, `jantar notify` |
 | [Intel shelf](docs/intel.md) | The shelf, its search, its JSONL line format, and `jantar mcp` for Claude Code |

@@ -170,9 +170,10 @@ before any call), tools called that were never given (refused), a flood
 of writes (capped), a photo, a slow answer by voice, and a marker planted
 in your data that must never reach a log, an event or an audit row.
 
-## A partner's thread (People, v0.11)
+## Their thread (Accountability partner, v0.11)
 
-With People on, a partner has their own thread in the same chat.db, apart
+With [Accountability partner](people.md) on, the person you share with has
+their own thread in the same chat.db, apart
 by construction: every turn, change, card and photo row carries its thread
 (`''` yours, `p:<id>` theirs), every query names it, and an id from the
 other thread is 404. Clear clears only the caller's thread.

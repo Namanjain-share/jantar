@@ -5,191 +5,118 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## 0.11.0 (unreleased)
 
-**People** (off by default): share a space on your Jantar with one other
-person, on their own hostname, with an agreement they read and accept.
-With People off, nothing changes for you. Upgrade notes follow.
+**Accountability partner** (off by default; called People in the code, the
+routes and the `jantar people` command): share a space on your Jantar with
+one other person who wants a hand keeping to their days, and act as their
+accountability partner. They get their own app on their own hostname; you
+plan their day, add to-dos and reminders for them, and see only what they
+agree to share. With it off, nothing changes for you.
 
 **Before upgrading: nothing to copy by hand.** The daemon keeps
-`life-pre-<version>.db` in the backups folder before it moves life.db to
+`life-pre-0.11.0.db` in the backups folder before it moves life.db to
 schema 4 (Life's third schema change, which adds a space to every Life
-table; every existing row stays yours), and `chat-pre-<version>.db` before
-chat.db moves to schema 2. An older daemon can't open Life or Chat
-afterwards, and going back means restoring those copies. jantar.db gains
-People's tables and an audit column (0.10 keeps working on it, and a
-partner simply can't sign in there).
+table; every existing row stays yours), and `chat-pre-0.11.0.db` before
+chat.db moves to schema 2. 0.10 can't open Life or Chat afterwards, and
+going back means restoring those copies. jantar.db gains the space's
+tables and an audit column (migration 8; 0.10 keeps working on it, and the
+other person simply can't sign in there). [Upgrading](docs/upgrading.md)
+has the steps.
 
-- **People, the base** (P1): `remote.peopleUrl` names a second
-  hostname for the partner, with its own Origin: a page on it can never
-  drive your routes or open your event stream, and your cookie never
-  reaches theirs. On that hostname only the partner's routes, `/healthz`
-  and their app's files answer; everything else is 404. The partner signs
-  in with an invite link (24 hours, used once, made at the Mac) and gets
-  their own device, cookie, push list and event stream. The agreement is
-  a list of fields (presets Light, Standard and Everything fill it); they
-  can narrow it at any time, decline a request for more (a 7-day pause
-  before the same request, and "Don't ask me again"), pause, leave
-  (keep 30 days or delete now) and download their data, even while People
-  is off, in read-only mode or while Life data is damaged. Every look and
-  change you make in their space is in their Activity. Their own writes
-  reach your audit log as `person.write` with no detail.
-- **Their to-dos, reminders and weight** live in their own space on your
-  Mac. You can add to-dos and reminders for them (they show "From" you and
-  apply at once; mark one "no snooze" or ask for "Got it"); they can tick,
-  undo, snooze, skip with a reason, say "Got it" or ask to change one of
-  yours, and edit only their own. With their agreement you can edit their
-  own items too (each shows "Edited by" you, and their Activity keeps the
-  old and new values) and correct a weight they logged; you never create
-  one for them or tick anything in their name. Their reminders ring their
-  devices, not yours. "See what Sam sees" shows them exactly your view.
-- **Day plans** (P2): give them a plan for a day, steps in order with
-  times, lengths, an ask (Got it, a short report, a check-in) and up to four
-  check-betweens; templates apply at 00:05 on their weekdays. Their Today
-  shows Now, Next and Later with a tick on every row, a bottom bar (Got it,
-  then Done: the Now step), a 5-second Undo, skip and "Ask to change" with
-  one-tap reasons, focus steps, a rough day (you hear one line 10 seconds
-  later, after their Undo), and their status (Okay, Low, Need space). Your
-  changes to a sent plan reach them once per 2 minutes; your edits to their
-  own steps need their agreement and show "Edited by". "Tell me if not done
-  by" reaches only you, after re-checking what they share.
-- **The evening review** (P2): from their review time, every step as sent,
-  each check-between and their to-dos due, each done, skipped, moved, missed
-  or gone; they carry their own open steps, ask you to carry yours, add a
-  note and a mood, and send once. Unsent, it closes at noon with nothing
-  pushed or counted. You see counts or everything, as they share it.
-- **Alerts both ways** (P2): check in, call me, Urgent, good morning and
-  night, running late, reminders about an item, change requests and custom
-  lines, with one-tap replies for 24 hours and 90 days of history. One
-  resolver with tiers decides every People push: limits set by whoever
-  receives, holds for their pause, mute, Need space, focus, sleep and quiet
-  hours, one release line when a hold ends, and Urgent through quiet hours
-  unless they switch it off. Your quiet hours, limits and an opt-in day
-  summary for pushes about them are yours.
-- **Sleep and the journal** (P2): nights by hand or with Going to sleep and
-  Woke up (no time ever guessed), a week view, and "hold alerts while I
-  sleep"; a journal of entries and one-tap check-ins, comments both ways
-  with no text in any notification, and a streak they can hide. A 14-day
-  "Is this setup still working for you?" card whose answer is theirs unless
-  they share it. Moods, nights, entries and review outcomes never create an
-  item, an alert or a score. Someone who joined before these existed gets
-  them only by a request they accept.
-- **Your People screen** (P2, `/people`, loaded only when opened): their
-  status, "Asleep since" and progress in the header; Plan and Alert one tap
-  away; tabs for Today (their plan as they see it, Nudge, the review at
-  their level and Carry), Plan (an editor with templates, Copy yesterday or
-  last {weekday}, and Quick plan, a typed plan read as you type with no AI),
-  Health (their sleep week), Journal (read and comment) and Alerts. A line
-  for them on your Today, and their notifications open the right tab.
-- **At the Mac**: `jantar remote people-url <https-url>`, `jantar people
-  on|off|doctor|add|offer|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
-  ([People](docs/people.md)). Everything that lets someone in, shapes their
-  offer or ends their space runs only at the Mac.
-- **Their app** is its own web app (`/p` on their hostname), built apart
-  from yours: none of your screens or code are in it, and your app's first
-  load is unchanged by it. It has the join page (generated from the offer,
-  every area on its own line, switches that only turn down), Today (with
-  the plan, the review, sleep and check-in cards), To-do, Journal, Health
-  (sleep and weight), Alerts, and Me with Sharing (including what you are
-  told without looking), Activity, Devices (link another device with a
-  5-minute code), Notifications (lock screen, mute, quiet hours, times,
-  limits and ring switches), Pause and Leave. Journal, Health and Alerts
-  load when opened. Its own service worker opens only `/p` pages.
-- **Their assistant** (P3): a Chat of their own in their app, on your Mac and
-  your Claude accounts (the same picker and queue, so your account rules
-  apply). It reads and changes only their space: their plan, to-dos,
-  weight and sleep, with Undo; deletes and alerts to you are cards they
-  tap; it has no journal tool and nothing of yours. What you wrote reaches
-  it framed as data, and its writes then wait for their tap. 30 messages a
-  day by default (you set it on their Chat tab), at most 2 waiting, kept 1,
-  7 or 30 days as they choose; refusals never name an account or a reset.
-  Their photos lose location and camera details before they're kept. With
-  their chat shared, you read it on a read-only Chat tab (each look is in
-  their Activity) and their Chat says "Sam can read this chat" on every
-  visit; off, you see only how many messages they send a day. chat.db moves
-  to schema 2 after a copy to `backups/chat-pre-<version>.db`
-  ([Upgrading](docs/upgrading.md)). Your own assistant reading their space
-  is not part of this version.
-- **Shared cafés and lists** (P4): a space you share with each person.
-  Cafés: your list shows yours and the shared ones; either of you adds,
-  rates and changes dishes ("Edited by Asha"), each logs and changes only
-  their own visits, you share a café of yours (or all) and take back one you
-  added. Lists (shopping, to watch, to read, plain): either adds, ticks
-  ("Ticked by Asha · 18:20"), renames and deletes; Assign to them turns an
-  item into one of their to-dos from you. Deleting a café or list is a
-  Confirm, and the other is told. Their assistant reads and changes them;
-  in either assistant the other person's words are framed as data. When
-  someone is forgotten, the shared rows stay with you.
-- **Assign and To-do on your People screen**: an Assign button in the
-  header (title, due day and time, what it asks of them, no snooze, "Tell
-  me if not done by"), and a To-do tab with their items and yours for them,
-  Nudge, and Edit and Delete where their agreement allows. The tabs wrap
-  instead of scrolling out of sight, and a new alert from them shows in the
-  header. The plan editor gives each step's title its own line on a phone,
-  labels every field ("Tell me if not done by" too), keeps Send in a bar at
-  the bottom, and says "Saved. Asha gets it Wed 4 Nov at 07:00" instead of
-  "Sent." for a plan that waits for their plan time. Send is off with no
-  steps, and a Quick plan still open is used by Send. Shared list items can
-  be ticked, deleted and assigned again (their request went to the wrong
-  address).
-- **Their first steps, Sharing and Activity**: after joining, their phone
-  walks them through Add to Home Screen (iPhone) and turning on
-  notifications with a test, and Today keeps a card until they're on. The
-  join page and Sharing now name everything you see and get: check-ins,
-  their status and rough day, sleep taps as they happen, when they open
-  your alert and their reply, "no snooze" and "Tell me if not done by",
-  Urgent through their quiet hours, and the lists you share. "See what Sam
-  sees" opens each area just as you get it. Activity reads in plain words
-  under a header per day ("Sam planned Wed 4 Nov", "Sam changed the time of
-  'Mock' 08:00 → 08:30"), and every switch and button there is at least
-  44 px.
-- **Fixes to what you can see of them**: with their to-dos off, the evening
-  review leaves their to-dos out (sent reviews included); saving their plan
-  is a look at it and leaves a view mark, and your changes to your own
-  steps are in their Activity; with their chat private, their assistant no
-  longer refreshes your screens when it runs; a held alert names "asked for
-  space" or "focusing" only while you see their plan. Revoking one of their
-  devices voids the link codes it made; with People switched off no invite
-  or device-link code works; "Copy link again" needs an admin device's
-  secret and is in your audit log; you can't revoke their devices while
-  sharing is ending. A request for more that waited while they switched
-  something off no longer turns it back on. Now and Next keep your order:
-  a step with no time never jumps ahead of the timed step before it.
-- **Their medicines**: in their own space, apart from yours. They add, edit
-  and stop any of them and tick each dose Taken or Skip (with Undo) on
-  Today or Health › Medicines; their doses ring their devices only, never
-  merged with yours at the same minute. With the agreement's fields you
-  add one for them, and edit or stop yours and theirs ("Edited by Sam",
-  the old values in their Activity, their reminder moved at once). Your
-  People screen's Health tab shows them at the level they share (full, or
-  only how often with no names), your Today line and day summary count
-  doses not logged, and when doses go unlogged two days running one plain
-  line says so, worked out when you look. Only they log doses. At full you
-  see what their join page names: names, doses, times, each dose taken or
-  skipped and how often, the notes only on medicines you may change, never
-  their pill count or when they logged a dose; their "See what Sam sees"
-  shows the same, notes included.
-- **Their to-dos say what you asked**: a to-do you assign with "A short
-  report when done" opens the report sheet on their tick (Save note, or
-  Done without a note), and their row says "asks for a short report" and
-  "Sam asked to know by 08:45" while it is open. Their To-do page's Undo is
-  the same 5-second toast as Today's, and Undo takes a report back.
-- **44 px on both phones, the small ones too**: the tick and × on a shared
-  list item, each alert row and its reply buttons (OK, ♥), the chat limit
-  box on your Chat tab, and on their side ⓘ in Chat, the café stars, Quiet
-  hours, every time box and menu in Notifications, and the download links.
-- **After a Life restore that took their space out**: when a restore of an
-  older backup no longer has the space of someone still sharing, their
-  phone asks for a new invite, and now none of your routes reach that
-  space either: adding a to-do, medicine or anything else for them is
-  refused as for someone who isn't there, as looking already was. People
-  and `jantar people list` say "Restore removed … Invite them again" with
-  the commands to do it, and `jantar people remove <id>` clears the note.
-- **People in More**: your phone lists People in More (the rail on a wide
-  screen) while People is on, on a device paired with control.
-- **Nothing promised that isn't there**: a food log for them is not part of
-  this release, so the join page, Sharing and the presets no longer offer
-  one. While People is switched off, none of their reminders, doses or plan
-  rings go out; when it is back on, one missed in the last 6 hours rings
-  once, marked late.
+- **Setting it up: a second hostname behind its own Access.** Their app
+  lives on a hostname of its own (`us.example.com` next to your
+  `jantar.example.com`), on the same Cloudflare tunnel: a DNS route, an
+  ingress rule, and a Cloudflare Access application of its own whose
+  policy lets in only their email (One-time PIN, the longest session).
+  Then, at the Mac: `jantar remote people-url https://us.example.com`,
+  `jantar people on --name Sam`, `jantar people add Asha --email …`,
+  `jantar people offer Asha` and `jantar people invite Asha`, which prints
+  a link that works once, for 24 hours. `jantar people doctor` checks every
+  piece, including that their hostname serves their app and none of yours,
+  and that a visitor without a sign-in is sent to Cloudflare Access. With
+  Tailscale, their hostname gets its own port and your tailnet policy
+  limits them to it. [Accountability partner](docs/people.md#their-hostname)
+  has each step.
+- **Consent first.** The invite carries an offer: a list of fields (what
+  you would see, add or change), filled by a preset (Light, Standard,
+  Everything) and single flags. Their join page names every one in plain
+  words, each with a switch that only turns it down, plus what you can't do
+  and what is always theirs, and the honest limits (their space is stored
+  on your Mac). They can narrow it any time. You ask for more from your
+  screen's Sharing tab or `jantar people ask`; they answer Allow or No
+  thanks, one request at a time, with 7 days before the same field can be
+  asked again and "Don't ask me about this again". Every step is in a
+  ledger on your Mac that is only appended to, and every 14 days their
+  Today asks "Is this setup still working for you?", with an answer that
+  stays theirs unless they share it.
+- **What they get**: their own app, "Accountability partner" ("Partner"
+  under its Home Screen icon), with none of your screens or code in it.
+  After joining it walks them through Add to Home Screen and notifications.
+  Today runs their day plan (Now, Next and Later, a tick on every row, a
+  5-second Undo, one bottom bar for the thumb, steps of their own, focus
+  steps, a rough day, their status), their doses and what is due. To-do
+  takes their own reminders with a day and time; each item snoozes, skips
+  with a reason, asks you to change one of yours, or edits and deletes one
+  of theirs. Health holds their medicines (Taken or Skip with Undo), sleep
+  (Going to sleep and Woke up, never a guessed time) and weight (any past
+  day, with Undo on a delete, and "Corrected by Sam (was 72.4 kg)" on one
+  you corrected). Then the evening review, a journal with one-tap
+  check-ins, Alerts, their own assistant, the cafés and lists you share,
+  and Me: Sharing (with "See what Sam sees" for each area), Activity,
+  Devices, Notifications, Pause and Leave.
+- **What you see**: Accountability partner in More (the rail on a wide
+  screen), a line for them on your Today, and their screen: Plan (an editor
+  with templates and Quick plan, a typed plan read as you type with no AI),
+  Assign (a to-do with a due day and time, a repeat, "Got it" or a short
+  report, no snooze and "Tell me if not done by"), Alert, and tabs for
+  Today, To-do, Health (medicines at the level they share, weight with
+  Correct where they allow it, sleep), Journal (read, and comment if they
+  allow it), Chat (read only), Lists, Alerts, Sharing (what they agreed to,
+  Ask for more, their devices, your pushes about them: the opt-in day
+  summary, the review push, quiet hours) and Activity (their record, in
+  your words). An area they keep private is a grey tile, never a gap.
+  Someone invited shows with the link's expiry and Copy link again.
+- **Never in their name, never behind their back.** No screen, route or
+  command of yours ticks their items, logs or undoes a dose, adds a weight,
+  or pauses or narrows for them. Their Activity lists every change you make,
+  each time you look at an area (once an hour per area), and each device of
+  yours that can newly open their space. Their location, IP address and a
+  "last seen" are never collected. Their reminders and doses ring their
+  phone, not yours.
+- **Alerts both ways**: check in, call me, Urgent, good morning and night,
+  running late, a reminder about an item and a custom line, with one-tap
+  replies. One resolver decides every push between you: limits set by
+  whoever receives, holds for their pause, mute, Need space, focus, sleep
+  and quiet hours (one line when a hold ends), and Urgent through quiet
+  hours unless they switch that off. Their lock screen shows everything,
+  hides alert text (the default) or hides everything ("Accountability
+  partner · Medicine time").
+- **Their medicines**: in their own space. They add, edit and stop any and
+  log their doses; with the agreement's fields you add one for them, and
+  edit or stop yours and theirs ("Edited by Sam", the old values in their
+  Activity). You see them in full (names, doses, times, taken or skipped,
+  how often in 30 days) or as how often only, and one plain line when doses
+  went unlogged two days running. Your remove is Stop: their history stays.
+- **Their assistant**: a Chat of their own, on your Mac and your Claude
+  accounts (your account rules apply). It reads and changes only their
+  space, with Undo; deletes and alerts to you are cards they tap; it has no
+  journal tool and nothing of yours, and your words reach it as data. 30
+  messages a day by default (you set the number). With their chat shared
+  you read it; they see "Sam can read this chat" on every visit.
+- **Shared cafés and lists**: cafés and lists you both add to, tick and
+  rate ("Edited by Asha", "Ticked by Asha · 18:20"); deleting one is a
+  Confirm, and the other is told.
+- **Pause, Leave, Download**: theirs alone, working even while the space is
+  off, the daemon is read-only or Life data is damaged. Pause holds your
+  new items and alerts; Leave revokes their devices at once and keeps their
+  data 30 days or deletes it now; Download gives them their own space as a
+  readable page or a data file. From the Mac, `jantar people remove` gives
+  them 7 days to download first (`--now`, `--forget`), and prints the
+  Access step to remove their email.
+- **At the Mac**: `jantar people on|off|doctor|add|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
+  and `jantar remote people-url`. Everything that lets someone in, shapes
+  their offer or ends their space runs only at the Mac.
+- **Not in this version**: a food log for them, your own assistant reading
+  their space, and more than one person.
 
 ## 0.10.2 (3 November 2026)
 

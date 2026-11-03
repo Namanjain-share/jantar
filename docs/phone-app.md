@@ -29,7 +29,7 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
 | **Chat** | Right after Today: ask Jantar anything, or tell it what to add or change; each change has Undo, deletes wait for your tap ([Chat](assistant.md)) |
-| **People** | With [People](people.md) on: People in More (on the rail on a wide screen, on a device paired with control), a line for the person you share with on Today, and `/people` with their status, progress, Plan (the plan editor and Quick plan, Send in a bar at the bottom), Assign (a to-do for them) and Alert, and tabs for Today, To-do, Health (their medicines at the level they share, with Add, Edit and Stop where they allow it; weight; sleep), Journal, Chat, Lists and Alerts (the row wraps; a new alert from them shows in the header). Opened from More, from that line or from a notification about them |
+| **Accountability partner** | With [Accountability partner](people.md) on: Accountability partner in More (on the rail on a wide screen, on a device paired with control), a line for the person you share with on Today, and `/people` with their status, progress, Plan (the plan editor and Quick plan, Send in a bar at the bottom), Assign (a to-do for them, with a repeat) and Alert, and tabs for Today, To-do, Health (their medicines at the level they share, with Add, Edit and Stop where they allow it; weight, with Correct where they allow it; sleep), Journal, Chat, Lists, Alerts, Sharing (what they agreed to, Ask for more, their devices, your pushes about them) and Activity (the row wraps; a new alert from them shows in the header). Someone invited is a row with the link's expiry. Opened from More, from that line or from a notification about them |
 
 A session waiting on a dynamic workflow or a background agent it started
 shows under Working ("1 workflow running", the workflow's name and how
@@ -52,10 +52,12 @@ Devices. In a session, `a` allows (or sends the answer, or approves), `d`
 denies, `r` puts the cursor in the composer, `n` goes to the next one and
 `esc` back to the Desk.
 
-## Their app (People)
+## Their app (Accountability partner)
 
 The person you share with uses a separate app at `/p` on their own
-hostname ([People](people.md)): it holds none of your screens. Its tab bar
+hostname ([Accountability partner](people.md)), named "Accountability
+partner" ("Partner" under its Home Screen icon): it holds none of your
+screens. Its tab bar
 is Today, To-do, Journal, Chat and More (Health, Alerts, Lists, Me). Today runs
 their day plan, with a tick on every row, a 5-second Undo and one button at
 the bottom for the thumb (Got it, then Done: the Now step, or Start: on a
@@ -71,7 +73,7 @@ through Add to Home Screen (iPhone) and turning on notifications, and Today
 keeps a card until they're on. Me › Sharing has "See what Sam sees" for
 each area they share.
 
-On your People screen, the Chat tab shows their thread read only (no box,
+On your Accountability partner screen, the Chat tab shows their thread read only (no box,
 no Undo, no buttons) while they share it, and their messages a day. Lists
 shows the cafés you share (Share, Share all, Just me) and your shared lists,
 with ticks and Assign to them. Your Cafés list marks shared cafés "shared".

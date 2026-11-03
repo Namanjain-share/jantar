@@ -429,7 +429,7 @@ agents never drive it.
 | R-C6 | Teams v2 in Chrome on the Mac: does a real **Cmd+Shift+A** toggle captions, or open Chrome's tab search? | whether the docs name the shortcut again |
 | R-C7 | Teams v2 signed in: is Teams' own **Automatically turn on live captions** in the captions pane's settings, and does it work in the web client? | a way that needs no clicks from Jantar |
 
-### People (v0.11, P1)
+### Accountability partner (v0.11, P1)
 
 On real devices, with a second hostname behind its own Access app:
 
@@ -441,9 +441,16 @@ On real devices, with a second hostname behind its own Access app:
 - Leave revoking within a second; Leave while `jantar people off`.
 - A page on the people origin, open in the owner's own browser, failing to
   open `wss://<his host>/v1/events` or to POST to an owner route.
-- With Tailscale, a shared-in user reaching only the People port.
+- With Tailscale, a shared-in user reaching only their hostname's port.
+- `jantar people doctor` against the real hostname: "Access in front" ok
+  (a redirect to `*.cloudflareaccess.com`), and FIX with the Access
+  application's policy switched off for a minute.
+- The names: "Accountability partner" fits his More list and the rail's
+  tooltip; her Home Screen title reads "Partner", not cut off, and her
+  notifications are titled "Accountability partner" when the lock screen
+  hides the details.
 
-### People (v0.11, P2)
+### Accountability partner (v0.11, P2)
 
 On the same two phones (owner and partner):
 
@@ -461,7 +468,7 @@ On the same two phones (owner and partner):
   phone, and "Asha sent the evening review" on the owner's phone with no
   note text.
 
-### People (v0.11, P3)
+### Accountability partner (v0.11, P3)
 
 On the same two phones (owner and partner):
 
@@ -475,7 +482,7 @@ On the same two phones (owner and partner):
   shows it, and the stored file has no GPS (check it with `sips -g all` on
   the copy under the chat folder).
 
-### People (v0.11, P4)
+### Accountability partner (v0.11, P4)
 
 - A café added on the partner's phone shows on the owner's Cafés within a
   tick, tagged shared, and the reverse.

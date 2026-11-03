@@ -92,12 +92,13 @@ Turn it off with `jantar notify urgent off`; such asks then get the plain
 "needs you" push. The daemon remembers which asks it pushed only while it
 runs: restarted during a countdown, it may push that ask once more.
 
-## People alerts (v0.11)
+## Accountability partner alerts (v0.11)
 
-Alerts between you and a partner (People) are separate from session alerts:
-they live on the People pages, never on your Alerts screen, and travel only
+Alerts between you and the person you share with ([Accountability
+partner](people.md), People in the code) are separate from session alerts:
+they live on the Accountability partner pages, never on your Alerts screen, and travel only
 as Web Push to that person's own devices (never a Mac banner or Telegram).
-One resolver decides each of them, and every People ring, from its tier:
+One resolver decides each of them, and every ring of theirs, from its tier:
 
 | Tier | What | Quiet hours, focus or sleep | Paused |
 | --- | --- | --- | --- |
@@ -112,8 +113,9 @@ notification. Gentle alerts go at low priority and may wait 12 hours at the
 push service; the rest go at high priority. An Urgent alert stays on screen
 where the browser allows it and is never silent; on an iPhone's lock screen
 the phone plays its own sound, as for every web app. In-app tones for
-People alerts (a `people` group) are not built yet. See
-[People](people.md#alerts-both-ways).
+these alerts (a `people` group) are not built yet. Their notifications are
+titled "Accountability partner" when the lock screen hides the details.
+See [Accountability partner](people.md#alerts-both-ways).
 
 ## jantar notify
 

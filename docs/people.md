@@ -1,13 +1,16 @@
-# People: a shared space for someone else
+# Accountability partner
 
-People lets you share a space on your Jantar with one other person in your
-household: a partner, a family member, a flatmate, someone you help with
-their medicines. They get their own small app on their own address. You can
-add to-dos and reminders for them, and see what they agreed to share. They
-read exactly what that means before they join, can switch any of it off
-later, and can pause, leave or download their data at any time.
+Accountability partner (called People in earlier notes, in the code and in
+the `jantar people` command) lets you share a space on your Jantar with one
+other person who wants a hand keeping to their days: a partner, a family
+member, a flatmate, someone you help with their medicines. You act as their
+accountability partner. They get their own small app, "Accountability
+partner" ("Partner" under its icon), on their own address. You can plan
+their day, add to-dos and reminders for them, and see what they agreed to
+share. They read exactly what that means before they join, can switch any
+of it off later, and can pause, leave or download their data at any time.
 
-People is **off** by default. With it off, nothing about Jantar changes for
+It is **off** by default. With it off, nothing about Jantar changes for
 you.
 
 > This page describes what is built in this version: their space, to-dos
@@ -22,22 +25,24 @@ you.
 
 - **You (the owner)** run Jantar on your Mac. Your devices, the `jantar`
   command and everything you had before stay exactly as they were.
-- **Your partner** (the word Jantar uses for the other person, whoever they
-  are) has their own devices, their own cookie, their own address, their own
+- **The person you share with** (the code calls them the partner, whoever
+  they are) has their own devices, their own cookie, their own address, their own
   event stream and their own push list. Their app reaches their own space
   and nothing else of yours: no sessions, accounts, files, Intel, meetings,
   chat, finance or your own Life data.
-- You read their space only through your People screens
+- You read their space only through your Accountability partner screens
   (`/v1/people/<id>/…`), each area only while their agreement says so.
 
 ## Setting it up
 
-People needs your Mac reachable over HTTPS (`remote.mode` `cloudflare` or
+It needs your Mac reachable over HTTPS (`remote.mode` `cloudflare` or
 `tailscale`) and a **second hostname** for them, for example
 `us.example.com` next to your `jantar.example.com`.
 
-1. Give the second hostname its own Cloudflare Access application (or see
-   "Tailscale" below), with a policy that lets in only their email.
+1. Route the second hostname to your Mac and put its own Cloudflare Access
+   application in front of it, with a policy that lets in only their email:
+   [Their hostname](#their-hostname) below has every step (or see
+   [Tailscale](#tailscale)).
 2. On the Mac:
 
    ```sh
@@ -48,9 +53,12 @@ People needs your Mac reachable over HTTPS (`remote.mode` `cloudflare` or
    jantar people invite Asha
    ```
 
-   `people add` prints the Access step to do in Cloudflare (Jantar holds no
-   Cloudflare token). `people invite` prints a link that works once, for 24
-   hours: send it to them.
+   `people on --name` sets the name their page and app show for you
+   (`people invite` refuses until it is set). `people add` prints the
+   Access step to do in Cloudflare (Jantar holds no Cloudflare token).
+   `people invite` prints a link that works once, for 24 hours: send it to
+   them. Until they join, your Accountability partner screen shows them as
+   invited, with the link's expiry and Copy link again.
 3. They open the link, pass Access, read the join page and accept. Then,
    like your own pairing, their phone walks them through Add to Home Screen
    (on iPhone, where notifications only reach the Home Screen app) and Turn
@@ -59,7 +67,7 @@ People needs your Mac reachable over HTTPS (`remote.mode` `cloudflare` or
 
 "Copy link again" for an invite that hasn't been used needs an admin device
 with its device secret, and each use is in your audit log (never the link
-itself). While People is switched off, no invite or device-link code works.
+itself). While the space is switched off, no invite or device-link code works.
 
 Their address is a different origin from yours, on purpose: a page on it can
 never write to your routes or open your event stream, and your cookie is
@@ -67,33 +75,106 @@ never read there. On their hostname only their routes, `/healthz` and their
 app's files answer; everything else is 404. On your hostnames their routes
 don't exist.
 
-`jantar people doctor` checks each of these pieces.
+`jantar people doctor` checks each of these pieces: the settings, your
+name, the switch, Life data, their app's build and Web Push, then the host
+fence on this Mac (through their hostname jantard serves their app and none
+of yours, and through yours none of theirs), and in Cloudflare mode that
+Access is in front of their hostname (a visitor without a sign-in is sent
+to `*.cloudflareaccess.com`, never answered). Anything to fix is a `FIX`
+line with what to do.
+
+## Their hostname
+
+Their app lives on a hostname of its own. In Cloudflare mode (named tunnel,
+as in [install.md](install.md#cloudflare-tunnel-with-access) for yours), with `jantar` your
+tunnel's name and `us.example.com` theirs:
+
+1. **DNS.** Route the hostname to the same tunnel:
+
+   ```sh
+   cloudflared tunnel route dns jantar us.example.com
+   ```
+
+2. **Ingress.** In the tunnel's `config.yml` (`~/.cloudflared/config.yml`,
+   or the copy the service runs with), add a rule for it before the
+   catch-all, pointing at the same local port as yours:
+
+   ```yaml
+   ingress:
+     - hostname: jantar.example.com
+       service: http://127.0.0.1:7420
+     - hostname: us.example.com
+       service: http://127.0.0.1:7420
+     - service: http_status:404
+   ```
+
+   Check it with `cloudflared tunnel ingress validate`, then restart the
+   tunnel: stop and start `cloudflared tunnel run jantar`, or, for the
+   service, `sudo launchctl kickstart -k system/com.cloudflare.cloudflared`.
+
+3. **Access.** In Cloudflare Zero Trust, Access › Applications › Add an
+   application › Self-hosted:
+   - Name: **Accountability partner**; Application domain:
+     `us.example.com`.
+   - Session duration: the longest offered (a month), so their Home Screen
+     app doesn't ask for a code every day.
+   - Login method: **One-time PIN** (a code by email), unless they have an
+     identity provider you already use.
+   - Policy: name it **Partner**, action Allow, Include › Emails: their
+     address only. Keep your own Access application for your hostname as it
+     is: theirs never lets you in, and yours never lets them in.
+
+4. **On the Mac:** `jantar remote people-url https://us.example.com`, then
+   `jantar people doctor`. "Access in front" must be `ok` before you send
+   an invite.
+
+Removing them later: take their email out of the **Partner** policy too
+(`jantar people remove` prints the step), and optionally revoke their
+session under My Team › Users.
 
 ### Tailscale
 
 Sharing your Mac with them over Tailscale works too, but exposes every port
-your tailnet policy allows a shared-in user. Add a policy rule that limits
-`autogroup:shared` to the People port.
+your tailnet policy allows a shared-in user. Serve their hostname on its own
+port (for example 8443), share the Mac with their tailnet account, and add
+a policy rule that limits `autogroup:shared` to that port only. `jantar
+people doctor` reminds you of this step: Jantar can't check your tailnet
+policy.
 
 ## The offer and the agreement
 
 An invite carries an **offer**: a list of fields saying what you would see
-and do. A preset fills it, and flags change single fields after it:
+and do. A preset fills it, and flags change single fields after it
+(`--see`, `--assign`, `--edit-hers` and `--comment`, each a comma list; `x=off`
+turns one off):
 
 ```sh
 jantar people offer Asha --preset everything --see food=off
+jantar people offer Asha --preset light --see sleep,review=full --comment journal
 ```
 
-| Field | Light | Standard (default) | Everything |
-| --- | --- | --- | --- |
-| see their to-dos and reminders | on | on | on |
-| see their medicines | off | full | full |
-| see their weight | off | on | on |
-| add to-dos and reminders for them | on | on | on |
-| add medicines for them | off | on | on |
-| edit or remove to-dos they added | off | off | on |
-| edit or stop medicines they added | off | off | on |
-| correct or remove a weight they logged | off | off | on |
+| Field | Flag | Light | Standard (default) | Everything |
+| --- | --- | --- | --- | --- |
+| see their to-dos and reminders | `--see todos` | on | on | on |
+| see their day plan, check-ins and status | `--see plan` | on | on | on |
+| see their evening review | `--see review=counts\|full` | counts | counts | full |
+| see their medicines | `--see meds=adherence\|full` | off | full | full |
+| see their weight | `--see weight` | off | on | on |
+| see their sleep | `--see sleep` | off | off | on |
+| read their journal | `--see journal` | off | off | on |
+| read their chats with their assistant | `--see chat` | off | off | on |
+| add to-dos and reminders for them | `--assign todos` | on | on | on |
+| plan their day | `--assign plan` | on | on | on |
+| add medicines for them | `--assign meds` | off | on | on |
+| edit or remove to-dos they added | `--edit-hers todos` | off | off | on |
+| edit or remove plan steps they added | `--edit-hers plan` | off | off | on |
+| edit or stop medicines they added | `--edit-hers meds` | off | off | on |
+| correct or remove a weight they logged | `--edit-hers weight` | off | off | on |
+| comment on their journal | `--comment journal` | off | off | on |
+
+"Everything" is the name of a preset only: it is everything this version
+offers except a food log and your own assistant reading their space, which
+no preset has. The join page never uses the word.
 
 The preset is only a template: what is stored, shown on the join page and on
 their Sharing page is always the list of fields. Medicines have two levels:
@@ -111,8 +192,10 @@ After they join:
 
 - **They narrow** at any time under Me › Sharing. It applies before your
   next look, and your screens refresh.
-- **You ask for more** from an admin device. They see a card with each field
-  that would change and answer Allow or No thanks. One request waits at a
+- **You ask for more** from an admin device: your Accountability partner
+  screen's Sharing tab, or `jantar people ask Asha --see sleep --note "For
+  the bedtime plan"` at the Mac. They see a card with each field that would
+  change and answer Allow or No thanks. One request waits at a
   time; after a No, the same field can't be asked again for 7 days, and
   "Don't ask me about this again" blocks it until they clear it.
 - Every step (offered, joined, narrowed, asked, accepted, declined, paused,
@@ -123,11 +206,15 @@ After they join:
 Their to-dos, reminders, projects and weights live in their own space in
 your Mac's Life data. Each row remembers who added it.
 
-- **Items you add** show "From Sam" and apply at once. You can mark one "no
-  snooze" or ask for a "Got it". They can tick it, undo, snooze (unless you
-  said no snooze), skip it with a reason, say Got it, or **Ask to change**
-  (you see their note on the item). They can't edit or delete your items.
-- **Items they add** are theirs to change. With "edit or remove to-dos they
+- **Items you add** show "From Sam" and apply at once, with a due day and
+  time, a repeat (every day, week or month: one item that comes back after
+  each Done), "no snooze" or a "Got it" if you like. They can tick it, undo,
+  snooze (unless you said no snooze), skip it with a reason, say Got it, or
+  **Ask to change** (you see their note on the item). They can't edit or
+  delete your items.
+- **Items they add** are theirs to change: a tap on a to-do opens its
+  sheet (snooze, skip, edit, delete), and a day and time on one makes it a
+  reminder that rings their phone. With "edit or remove to-dos they
   added" on, you can change or remove them too: each shows "Edited by Sam",
   and their Activity keeps the old and new value of every field you changed.
 - **Medicines**: theirs, in their own space, apart from yours. They add,
@@ -140,21 +227,26 @@ your Mac's Life data. Each row remembers who added it.
   or pill count), and their phone moves its reminder at once. When they
   change one you added, you are told. Nobody deletes a medicine of theirs
   from your side, and only they log doses.
-- **Weight**: they log it. With "correct or remove a weight they logged" on,
-  you can correct or remove a day they logged, never add one.
+- **Weight**: they log it, for today or an earlier day, and delete a day
+  (with Undo). With "correct or remove a weight they logged" on, you can
+  correct or remove a day they logged (Health › Correct), never add one;
+  their day then reads "Corrected by Sam (was 72.4 kg)" until they log it
+  again, and their Activity keeps both values.
 - **Never in their name.** No screen, route or command of yours ticks their
   items done, snoozes or skips them, logs or undoes a dose, logs a weight
   for them, or pauses, resumes or narrows for them.
 - **Their reminders and doses ring their devices**, not yours, and open
   their app. Their 08:00 dose and yours are two separate notifications.
-  While People is off nothing of theirs rings; when it is back on, a
+  While the space is off nothing of theirs rings; when it is back on, a
   reminder missed in the last 6 hours rings once, marked late.
 
-## Your People screen
+## Your Accountability partner screen
 
-On your phone or browser, **People** is in More (and on the rail on a wide
-screen) while People is on, on a device paired with control. `/people`
-opens the person you share with (with more than one, a list). It is loaded
+On your phone or browser, **Accountability partner** is in More (and on the
+rail on a wide screen; "Partner" if it is a phone tab) while the space is
+on, on a device paired with control. `/people` opens the person you share
+with; while they are only invited, or their sharing is ending, it is a
+list that says so. It is loaded
 only when you open it. Your Today shows one line for them ("Asha · 3 of 7
 done · Now: Interview prep 11:00 · Low", or "Asleep since 23:40", and "1
 dose not logged" when you see their medicines), and every notification
@@ -163,9 +255,9 @@ about them opens the right tab here.
 - **Header**: their status and line, "Asleep since" while a night is open,
   the day's progress and the Now step, a line when an alert from them is
   new, and three buttons: **Plan** (today before 18:00, tomorrow after),
-  **Assign** (a to-do: title, due day and time, what it asks of them
-  (nothing, Got it, or a short report), no snooze, and "Tell me if not done
-  by") and **Alert**.
+  **Assign** (a to-do: title, due day and time, a repeat, what it asks of
+  them (nothing, Got it, or a short report), no snooze, and "Tell me if not
+  done by") and **Alert**.
 - **Today**: their plan as they see it, with each step's status, done time,
   report and check-in answers, a "late" label, Nudge on an open step, the
   check-betweens, and from their review time the evening review at the
@@ -192,10 +284,18 @@ about them opens the right tab here.
   how many of today's doses aren't logged, with no names. On both, when
   doses went unlogged two days running, one plain line: "Doses not logged 2
   days running. Worth checking in." It is worked out when you look, never
-  stored, and they see the same line on their side. Then their weights and
+  stored, and they see the same line on their side. Then their weights
+  (Correct on each day with "correct or remove a weight they logged") and
   their sleep week.
 - **Journal** (read, and comment if they allow it) and **Alerts** (both
   ways, with replies).
+- **Sharing**: what they agreed to, in the words their page used; **Ask for
+  more** (one request at a time; "Waiting for Asha's answer" while it is
+  open); their devices with the email each joined with; and your pushes
+  about them: the day summary (off until you pick a time), "Asha sent the
+  evening review", and quiet hours (`jantar people prefs` sets the same).
+- **Activity**: their record, the same rows they read, in your words ("You
+  looked at Asha's Today 2 times").
 - An area they keep private is a grey tile: "Asha keeps this private".
 
 ## Their day plan
@@ -286,7 +386,7 @@ kept 90 days.
   time".
 - **Lock screen.** Their choice: show everything, hide alert text (the
   default: "Alert from Sam"), or hide everything.
-- Every People notification is a Web Push to that person's own devices,
+- Every Accountability partner notification is a Web Push to that person's own devices,
   never a Mac banner or Telegram. One sent to you about them is checked
   against what they share at the moment it is sent.
 - **A day summary** for you is opt-in (one line at a time you pick, counts
@@ -343,7 +443,7 @@ switch on or off in the agreement.
   ones. Either of you adds, rates, notes and changes dishes; the last edit
   wins and shows "Edited by Asha · 2 Nov". Each of you logs your own visits
   ("You" or the other's name) and changes or deletes only your own. Cafés
-  they add are always shared. On your People screen's Lists tab you share a
+  they add are always shared. On your Accountability partner screen's Lists tab you share a
   café of yours (one, or Share all) and move one you added back to just
   you; one they added stays shared.
 - **Lists** (shopping, to watch, to read, plain): either of you adds,
@@ -393,7 +493,7 @@ accounts Jantar may use applies to their runs too.
   minutes.", "Today's messages are used up.") that never name an account,
   an email, a limit or a reset time.
 - **Who can read it.** With "Your chats with your assistant" on, you can
-  read their thread on your People screen (Chat tab): their messages, the
+  read their thread on your Accountability partner screen (Chat tab): their messages, the
   answers, photos they send and what it changed, read only, with no box to
   type in and no Undo. Each look is in their Activity ("Sam read your
   chat", once an hour). While it's on, their Chat says "Sam can read this
@@ -412,16 +512,18 @@ accounts Jantar may use applies to their runs too.
 
 ## What each side sees
 
-- Your People screens show each area they share. An area they keep private
+- Your Accountability partner screens show each area they share. An area they keep private
   is a grey tile: "Asha keeps this private". It is never just missing, and
   never counts how long it has been off.
 - **See what Sam sees**: under Me › Sharing they can open exactly the view
   you get of each area, drawn with the same pieces your screen uses. Both
   come from one function, so they can't differ.
-- **Activity** (theirs, and readable by you too) lists every change you make
-  in their space, each request and answer, devices linked or revoked, and
-  every time you look at an area (one line per area per hour), in plain
-  words under a header for each day.
+- **Activity** (theirs, and readable by you too on your Activity tab) lists
+  every change you make in their space, each request and answer, devices
+  linked or revoked, each device of yours that can newly open their space
+  (paired with control, or raised to it), and every time you look at an
+  area (one line per area per hour), in plain words under a header for each
+  day.
 - **The evening review** holds their to-dos only while they share their
   to-dos: switched off, the to-dos are out of what you see of the review
   and of its counts, sent reviews included.
@@ -444,15 +546,16 @@ your audit log as `person.write` with no detail.
 - **Remove** (the Mac only): `jantar people remove Asha` gives them 7 days to
   download their data; `--now` ends it at once; `--forget` deletes their
   space at once. Remove their email from the Access policy too.
-- **People off** (`jantar people off`): your People screens disappear, and
-  they can still download their data or leave.
+- **Off** (`jantar people off`): your Accountability partner screens
+  disappear, and they can still download their data or leave.
 
-Pause, Leave and Download keep working when People is off, when the daemon
+Pause, Leave and Download keep working when the space is off, when the daemon
 runs read-only, and (Leave and Pause) when Life data can't be opened.
 
-From your phone you can revoke one of their devices (a lost phone), but not
-their last one: ending sharing is `jantar people remove` at the Mac, which
-gives them their 7 days.
+At the Mac you can revoke one of their devices (a lost phone: `jantar people
+devices Asha`, then `jantar people revoke <device-id>`), but not their last
+one: ending sharing is `jantar people remove`, which gives them their 7
+days.
 
 ## Devices and notifications (theirs)
 
@@ -461,8 +564,8 @@ gives them their 7 days.
   most. Revoking a device also voids any code it made that wasn't used. They see each device's name, when it was last used, and the email it
   joined with; you see names and the email only.
 - **Notifications**: turn on and test, mute for an hour or eight, and the
-  lock screen: show everything, hide alert text, or hide everything ("Jantar
-  · Medicine time"). Their mute is theirs; yours never holds their pushes.
+  lock screen: show everything, hide alert text, or hide everything
+  ("Accountability partner · Medicine time"). Their mute is theirs; yours never holds their pushes.
   Also theirs: quiet hours, whether Urgent breaks through, their plan push
   and evening review times, holding alerts while they sleep, hiding the
   streak, the limits on your alerts, and ring switches for plan steps,
@@ -488,7 +591,7 @@ readable page (no scripts, nothing fetched) or a data file (JSON).
 - A Life restore can't bring back someone who was forgotten: the ledger
   wins. Someone still sharing whose space a restore removed is asked to set
   sharing up again, and you can neither see nor add anything in that space.
-  Your People screen and `jantar people list` say so (by id and the email
+  Your Accountability partner screen and `jantar people list` say so (by id and the email
   their phone joined with: the name was in what the restore took out). To
   invite them again: `jantar people add <name> --email <address>`, then
   `jantar people invite <name>`; once they have joined, `jantar people
