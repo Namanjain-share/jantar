@@ -52,8 +52,8 @@ const LAZY_PLACES = {
   work: () => import('../src/ui/screens/work/Work.js'),
   clients: () => Promise.all([import('../src/ui/screens/work/Clients.js'), import('../src/ui/screens/work/ImportSheet.js'), import('../src/ui/screens/work/Duplicates.js'), import('../src/ui/screens/work/LogSheet.js')]),
   meetingClients: () => import('../src/ui/screens/work/MeetingClients.js'),
-  // Deals, and the Log sheet it opens.
-  deals: () => Promise.all([import('../src/ui/screens/work/Deals.js'), import('../src/ui/screens/work/LogSheet.js')]),
+  // Deals, and its stage editor and the Log sheet it opens.
+  deals: () => Promise.all([import('../src/ui/screens/work/Deals.js'), import('../src/ui/screens/work/StagesSheet.js'), import('../src/ui/screens/work/LogSheet.js')]),
 };
 
 /**

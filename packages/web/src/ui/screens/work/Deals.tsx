@@ -28,8 +28,8 @@
  * Won and Lost ask first (DealMove.tsx).
  *
  * Today's Work card opens the deals it counts (`?show=nostep|quiet|
- * closing`), one list with Clear. ··· holds Export CSV (the share sheet or
- * a download).
+ * closing`), one list with Clear. ··· holds Edit stages (StagesSheet.tsx,
+ * loaded on first use) and Export CSV (the share sheet or a download).
  *
  * Every state of design 6.5: loading, empty ("No deals yet." with New deal),
  * an empty stage, Work off and life.db broken (Work.tsx and the daemon's
@@ -63,7 +63,8 @@ import { DealSheet } from './DealSheet.js';
 import { INSIGHTS_PATH, SHOW_LABEL, byStage, closeText, daysInStageText, dealPath, firstStage, nextStepText, pipelineTotals, showing, stageTotals, valueText } from './dealModel.js';
 import { FromTag } from './parts.js';
 
-// The Log sheet is the clients' chunk: it loads on first use.
+// Each loads on first use: stage editing is rare, and the Log sheet is the clients' chunk.
+const StagesSheet = lazy(() => import('./StagesSheet.js').then((m) => ({ default: m.StagesSheet })));
 const LogSheet = lazy(() => import('./LogSheet.js').then((m) => ({ default: m.LogSheet })));
 
 type WorkRoute = Extract<Route, { name: 'work' }>;
@@ -157,6 +158,7 @@ function DealsList({ w, tabs, load, closed, stage, show, businesses, business, o
   const now = useLifeClock(status);
   const undo = useUndo();
   const add = useSheet<null>();
+  const stagesSheet = useSheet<null>();
   const stages: StageRef[] = useMemo(() => (load.data?.stages ?? []).map((s) => ({ id: s.id, name: s.name, kind: s.kind })), [load.data]);
   const flow = useDealMove({ stages, undo, onMoved: onChanged });
   const log = useSheet<WorkDealCard>();
@@ -187,6 +189,7 @@ function DealsList({ w, tabs, load, closed, stage, show, businesses, business, o
       groups={[
         {
           items: [
+            { label: 'Edit stages', onSelect: () => stagesSheet.show(null), disabled: offline },
             { label: 'Export CSV', onSelect: () => void exportCsv(), disabled: offline },
           ],
         },
@@ -305,6 +308,11 @@ function DealsList({ w, tabs, load, closed, stage, show, businesses, business, o
         onChanged();
         navigate(dealPath(newId));
       }} />
+      {stagesSheet.key ? (
+        <Suspense fallback={null}>
+          <StagesSheet open={stagesSheet.open} onOpenChange={stagesSheet.onOpenChange} sheetKey={stagesSheet.key} onSaved={onChanged} />
+        </Suspense>
+      ) : null}
       {log.key && log.item ? (
         <Suspense fallback={null}>
           <LogSheet
