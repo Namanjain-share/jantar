@@ -35,11 +35,15 @@
  * an item opens beside it from a pane of 800 (the list becomes rows, the
  * open one ticked), and over it below that, with "< Intel". A phone keeps
  * the rows.
+ *
+ * 0.12.2: how many rows the shelf shows is kept in the commit, so a reload
+ * that comes the moment Show more's rows are on screen brings them all back
+ * (as on Meetings).
  */
 import { ChatButton } from '../../shell/ChatButton.js';
 import { CaretRightIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { INTEL_PAGE_MAX, type IntelCaptureBody, type IntelListItem, type IntelListResponse } from '@jantar/protocol';
 import { errorText } from '../../../lib/api.js';
 import { newIdempotencyKey } from '../../../lib/ids.js';
@@ -254,7 +258,11 @@ function Shelf({ filters, offline, focus, open }: { filters: ShelfFilters; offli
   // An item that moved between the fetches (a bot rewrote it) shows once.
   const items = data ? unique([...data.items, ...(extra?.items ?? [])]) : [];
   const next = extra ? extra.next : (data?.next ?? null);
-  useEffect(() => {
+  // 0.12.2: kept in the commit (a layout effect), so a reload the moment Show more's rows are on screen brings them
+  // all back. Show more's answer commits outside a user event, and React yields for paint before its passive
+  // effects: a reload in that gap (the page coming back into view) read the count from before and showed one page
+  // (as Meetings did, the CI flake in meetings.test.tsx).
+  useLayoutEffect(() => {
     shown.current = { key, n: items.length };
   }, [key, items.length]);
 

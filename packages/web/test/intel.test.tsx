@@ -344,6 +344,35 @@ describe('the shelf', () => {
     expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
   });
 
+  it("0.12.2: a reload the moment Show more's rows are on screen brings them all back, before React's passive effects run", async () => {
+    // As on Meetings: Show more's answer commits outside act(), and React 19 yields for paint before its passive
+    // effects. A reload in that gap (the page coming back into view) read the count from before and asked for one
+    // page of 50. Here the page comes back into view in the very microtask the commit queued, when the 60 rows are
+    // in the DOM and the passive effects have not run.
+    const first = page(Array.from({ length: 50 }, (_, i) => row(i, { id: `intel:p1-${i}`, title: `Row ${i}` })), { next: 'c1', total: 60 });
+    const more = page(Array.from({ length: 10 }, (_, i) => row(i, { id: `intel:p2-${i}`, title: `More ${i}` })), { next: null, total: 60 });
+    const intelList = vi.fn(async (q?: { before?: string }) => (q?.before ? more : first));
+    open('/intel', shelfApi({ intelList }));
+    await screen.findByText('Row 0');
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    const seen = new MutationObserver(() => {
+      if (!screen.queryByText('More 9')) return;
+      seen.disconnect();
+      intelList.mockClear();
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    seen.observe(document.body, { childList: true, subtree: true, characterData: true });
+    try {
+      expect(await screen.findByText('More 9')).toBeTruthy();
+      await waitFor(() => expect(intelList).toHaveBeenCalled());
+      expect(intelList.mock.calls[0]).toEqual([{ q: undefined, type: undefined, tag: undefined, limit: 60 }]);
+    } finally {
+      seen.disconnect();
+      Reflect.deleteProperty(document, 'visibilityState');
+    }
+  });
+
   it('a source the Mac refuses shows its sentence at the foot', async () => {
     const api = shelfApi({ intelSources: vi.fn(async () => ({ sources: [source('captures'), source('intel', { error: "Can't be read" })] })) });
     open('/intel', api);
