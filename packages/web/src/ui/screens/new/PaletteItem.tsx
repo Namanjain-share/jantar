@@ -16,7 +16,7 @@ export function NewSessionItem({ onSelect }: { onSelect: () => void }) {
       <Command.Item
         value="new session in a folder start launch"
         onSelect={onSelect}
-        className="flex h-40 cursor-pointer items-center gap-8 pl-16 pr-20 aria-selected:bg-select"
+        className="flex h-40 cursor-pointer items-center gap-8 pl-16 pr-20 aria-selected:bg-select coarse:h-44"
       >
         <PlusIcon size={16} weight="bold" aria-hidden="true" className="text-ink-2" />
         <span className="type-row font-medium">New session in…</span>

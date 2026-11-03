@@ -194,6 +194,15 @@
   --fs-read: 16px;
   --lh-read: 25px;
 }
+/* 0.11 c33 (ipad-design.md A5: at least 90 % of the characters on a touch screen at 12 px or more): rails,
+   tags, badges and keycaps are 12 / 16 on a touch screen, so a sparse page and the iPad's labelled rail
+   don't fall under the floor. A Mac keeps 11 in every window. */
+@media (pointer: coarse) {
+  :root {
+    --fs-rail: 12px;
+    --lh-rail: 16px;
+  }
+}
 @media (min-width: 768px) and (pointer: fine) {
   :root {
     --fs-display: 22px;

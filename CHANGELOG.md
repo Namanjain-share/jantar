@@ -219,6 +219,9 @@ What changed for people who use Jantar, newest first. Versions before
   more). A session beside the list in a narrow pane (an iPad at 1024 px
   with its sidebar) keeps its header on one line: the session's name and
   its arrows step aside, and the Chat button is an icon.
+- On a touch screen the small capitals (section names, tags, badges and
+  the iPad's rail labels) are 12 px instead of 11, so nine characters in ten
+  are 12 px or more on every screen. A Mac keeps 11.
 
 ## 0.11.0 (3 November 2026)
 

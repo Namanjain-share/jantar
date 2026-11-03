@@ -244,7 +244,7 @@ function Resets({ resets, accounts, now }: { resets: ResetModel[]; accounts: num
       ))}
       <Link
         href="/accounts"
-        className="mt-8 inline-flex h-32 items-center rounded-chip text-small font-medium text-ink-2 transition-colors duration-120 ease-hover hover:text-ink"
+        className="mt-8 inline-flex h-32 items-center rounded-chip text-small font-medium text-ink-2 transition-colors duration-120 ease-hover hover:text-ink coarse:h-44"
       >
         <Arrowed>{`All ${accounts} ${accounts === 1 ? 'account' : 'accounts'}`}</Arrowed>
       </Link>

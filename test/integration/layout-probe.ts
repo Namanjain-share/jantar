@@ -7,7 +7,8 @@
  * the page through page.evaluate, so it is one self-contained function; the
  * numbers are worked out in Node by packages/web/test/layout-metric.ts.
  *
- * - region: the content region, main#main, inside the viewport.
+ * - region: the content region, main#main and (c33) the Chat panel when it
+ *   is open beside it (6.2 #3), inside the viewport.
  * - boxes: the content boxes in it, each cut to the viewport and to every
  *   box that clips it: visible text runs (one per line), pictures (img, svg,
  *   canvas, video), form fields, and painted boxes (a background other than
@@ -32,6 +33,10 @@
  *   it (aria-current) is in view in the list column; null with none.
  * - scrollers (c32, 6.2 #6, A6): the boxes that scroll up and down inside
  *   the page and are shorter than 120 px, where a finger can't scroll them.
+ * - type (c33, 6.2 #5, A5): the characters on screen (in the open modal
+ *   when there is one), how many are under 12 px and under 11 px, and the
+ *   smallest size seen.
+ * - keycaps (c33, 6.2 #8, A4): the keycaps on screen.
  */
 import type { Named, Rect } from '../../packages/web/test/layout-metric.js';
 
@@ -49,6 +54,8 @@ export interface Probe {
   exempt: string | null;
   selected: { inView: boolean; name: string } | null;
   scrollers: string[];
+  type: { chars: number; under12: number; under11: number; smallest: string; small: string[] };
+  keycaps: number;
 }
 
 export function probeLayout(): Probe {
@@ -91,25 +98,31 @@ export function probeLayout(): Probe {
   const visible = (el: Element) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
 
   const main = document.querySelector('main#main');
-  const out: Probe = { vw, vh, chrome: document.querySelector('[data-chrome]')?.getAttribute('data-chrome') ?? null, region: null, boxes: [], sideways: [], targets: [], whole: [], fixed: [], exempt: null, selected: null, scrollers: [] };
+  const out: Probe = { vw, vh, chrome: document.querySelector('[data-chrome]')?.getAttribute('data-chrome') ?? null, region: null, boxes: [], sideways: [], targets: [], whole: [], fixed: [], exempt: null, selected: null, scrollers: [], type: { chars: 0, under12: 0, under11: 0, smallest: '', small: [] }, keycaps: 0 };
+  const dock = document.querySelector('aside[data-chat-dock]');
   if (main) {
-    out.region = rectOf(cut(VIEW, boxOf(main.getBoundingClientRect())));
+    const m = boxOf(main.getBoundingClientRect());
+    const d = dock ? boxOf(dock.getBoundingClientRect()) : null;
+    out.region = rectOf(cut(VIEW, d ? { l: Math.min(m.l, d.l), t: Math.min(m.t, d.t), r: Math.max(m.r, d.r), b: Math.max(m.b, d.b) } : m));
     const push = (el: Element, r: DOMRect) => {
       const b = rectOf(cut(clipOf(el), boxOf(r)));
       if (b) out.boxes.push(b);
     };
+    const roots = dock ? [main, dock] : [main];
     // Text runs, one box per line.
-    const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
     const range = document.createRange();
-    while (walker.nextNode()) {
-      const t = walker.currentNode as Text;
-      const el = t.parentElement;
-      if (!el || !(t.textContent ?? '').trim() || !visible(el)) continue;
-      range.selectNodeContents(t);
-      for (const r of range.getClientRects()) push(el, r);
+    for (const root of roots) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const t = walker.currentNode as Text;
+        const el = t.parentElement;
+        if (!el || !(t.textContent ?? '').trim() || !visible(el)) continue;
+        range.selectNodeContents(t);
+        for (const r of range.getClientRects()) push(el, r);
+      }
     }
     // Pictures and fields.
-    for (const el of main.querySelectorAll('img, svg, canvas, video, input:not([type=hidden]), textarea, select')) {
+    for (const el of roots.flatMap((r) => [...r.querySelectorAll('img, svg, canvas, video, input:not([type=hidden]), textarea, select')])) {
       if (el.tagName.toLowerCase() === 'svg' && el.parentElement?.closest('svg')) continue;
       if (visible(el)) push(el, el.getBoundingClientRect());
     }
@@ -121,12 +134,12 @@ export function probeLayout(): Probe {
       }
       return 'none';
     };
-    for (const el of main.querySelectorAll('*')) {
+    for (const el of roots.flatMap((r) => [...r.querySelectorAll('*')])) {
       const bg = style(el).backgroundColor;
       if (!bg || bg === 'transparent' || /rgba\([^)]*,\s*0\)$/.test(bg)) continue;
       if (bg === paint(el.parentElement) || !visible(el)) continue;
       const r = el.getBoundingClientRect();
-      const pane = el.parentElement?.closest('[data-pane], .split-list, .split-detail, main') ?? main;
+      const pane = el.parentElement?.closest('[data-pane], .split-list, .split-detail, main, aside[data-chat-dock]') ?? main;
       const pr = pane.getBoundingClientRect();
       if (r.width >= 0.9 * pr.width && r.height >= 0.9 * pr.height) continue;
       push(el, r);
@@ -151,6 +164,47 @@ export function probeLayout(): Probe {
     if (el.scrollWidth <= el.clientWidth + 1 || el.closest('[data-scroll-x]') || !visible(el)) continue;
     out.sideways.push(`${describe(el)}: ${el.scrollWidth} px in ${el.clientWidth}`);
   }
+
+  // Type (A5): every character on screen, by the size it is drawn at; with a modal open, the modal's (the page
+  // under it is measured in its own shot, as for the width).
+  {
+    const modal = [...document.querySelectorAll('[role="dialog"]')].filter((d) => visible(d)).pop();
+    const walker = document.createTreeWalker(modal ?? document.body, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    let least = Infinity;
+    let leastAt = '';
+    const by = new Map<string, number>();
+    while (walker.nextNode()) {
+      const t = walker.currentNode as Text;
+      const el = t.parentElement;
+      const n = (t.textContent ?? '').replace(/\s/g, '').length;
+      if (!el || !n || !visible(el)) continue;
+      range.selectNodeContents(t);
+      const shown = [...range.getClientRects()].some((r) => {
+        const c = cut(clipOf(el), boxOf(r));
+        return c.r - c.l > 0 && c.b - c.t > 0;
+      });
+      if (!shown) continue;
+      const px = parseFloat(style(el).fontSize);
+      out.type.chars += n;
+      if (px < 12) {
+        out.type.under12 += n;
+        // Tallied by the element's type class (or tag), so a failure says what is small.
+        const cls = typeof el.className === 'string' ? (el.className.match(/\b(?:type|text)-[a-z]+\b/)?.[0] ?? '') : '';
+        const key = `${cls || el.tagName.toLowerCase()} in ${el.closest('nav, header, [role="dialog"], main, aside')?.tagName.toLowerCase() ?? 'body'}`;
+        by.set(key, (by.get(key) ?? 0) + n);
+      }
+      if (px < 11) out.type.under11 += n;
+      if (px < least) {
+        least = px;
+        leastAt = `${px}px in ${describe(el)}: ${(t.textContent ?? '').trim().slice(0, 30)}`;
+      }
+    }
+    out.type.smallest = leastAt;
+    out.type.small = [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}: ${v}`);
+  }
+  // Keycap hints, not the ? list's keys (shell/Shortcuts.tsx, [data-keys-list]), which are the list itself.
+  out.keycaps = [...document.querySelectorAll('kbd')].filter((k) => !k.closest('[data-keys-list]') && visible(k) && k.getBoundingClientRect().width > 0).length;
 
   // Nested scrollers too short to scroll with a finger (A6): a box on screen that scrolls up and down, under 120 px tall.
   for (const el of document.querySelectorAll('body *')) {

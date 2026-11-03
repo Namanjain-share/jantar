@@ -60,7 +60,7 @@ test('every screen has a unique name, a path in the app, and two themes for each
 
 test('the screens the README and the docs promise are all taken, at the sizes they show', () => {
   const byName = new Map(SHOTS.map((s) => [s.name, s]));
-  const both = ['board', 'start', 'accounts'];
+  const both = ['start', 'accounts'];
   const phone = [
     'card',
     'dialog-plan',
@@ -68,7 +68,6 @@ test('the screens the README and the docs promise are all taken, at the sizes th
     'dialog-permission',
     'keypad',
     'attach',
-    'today',
     'chat',
     'todos',
     'reminders',
@@ -82,7 +81,6 @@ test('the screens the README and the docs promise are all taken, at the sizes th
     'place-filters',
     'posts',
     'money',
-    'intel',
     'intel-add',
     'intel-reading',
     'intel-item',
@@ -94,7 +92,10 @@ test('the screens the README and the docs promise are all taken, at the sizes th
   for (const n of phone) assert.deepEqual(sizesOf(byName.get(n) ?? {}).map((s) => s.key), ['phone'], n);
   // 0.11 (c22b): one login at the user's 1440 x 960 too, with each pointer.
   assert.deepEqual(sizesOf(byName.get('accounts-single') ?? {}).map((s) => s.key), ['phone', 'mac-1440', 'touch-1440']);
-  assert.equal(SHOTS.length, both.length + phone.length + 1, 'a screen no page shows');
+  // 0.11 (c33): the README's and phone-app.md's iPad and 1440 pictures.
+  const wide = { board: ['phone', 'desktop', 'ipad-air-l', 'ipad-air-p'], today: ['phone', 'mac-1440', 'ipad-air-l'], intel: ['phone', 'mac-1440'] };
+  for (const [n, keys] of Object.entries(wide)) assert.deepEqual(sizesOf(byName.get(n) ?? {}).map((s) => s.key), keys, n);
+  assert.equal(SHOTS.length, both.length + phone.length + 1 + Object.keys(wide).length, 'a screen no page shows');
   assert.equal(byName.get('accounts-single')?.accounts, 'single');
   for (const n of ['dialog-plan', 'dialog-question', 'dialog-permission']) assert.equal(byName.get(n)?.variant, 'phone-control', n);
   assert.equal(byName.get('keypad')?.variant, 'keypad');
@@ -129,11 +130,20 @@ test("session paths are the fixture's session ids", () => {
 test('--only takes a screen (every variant) or one file', () => {
   assert.deepEqual(
     variants(new Set(['today'])).map((v) => v.file),
-    ['today-phone', 'today-phone-dark'],
+    ['today-phone', 'today-phone-dark', 'today-mac-1440', 'today-mac-1440-dark', 'today-ipad-air-l', 'today-ipad-air-l-dark'],
   );
   assert.deepEqual(
     variants(new Set(['board'])).map((v) => v.file),
-    ['board-phone', 'board-phone-dark', 'board-desktop', 'board-desktop-dark'],
+    [
+      'board-phone',
+      'board-phone-dark',
+      'board-desktop',
+      'board-desktop-dark',
+      'board-ipad-air-l',
+      'board-ipad-air-l-dark',
+      'board-ipad-air-p',
+      'board-ipad-air-p-dark',
+    ],
   );
   assert.deepEqual(
     variants(new Set(['meds-phone-dark'])).map((v) => v.file),
@@ -151,6 +161,10 @@ test('--list prints the files it would write and starts nothing', () => {
     'docs/img/board-phone-dark.png',
     'docs/img/board-desktop.png',
     'docs/img/board-desktop-dark.png',
+    'docs/img/board-ipad-air-l.png',
+    'docs/img/board-ipad-air-l-dark.png',
+    'docs/img/board-ipad-air-p.png',
+    'docs/img/board-ipad-air-p-dark.png',
     'docs/img/keypad-phone.png',
     'docs/img/keypad-phone-dark.png',
   ]);

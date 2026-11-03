@@ -121,7 +121,8 @@ async function picturesLoaded(page, selector, n) {
  * fixture)`: what to do once the screen has loaded.
  */
 export const SHOTS = [
-  { name: 'board', path: '/' },
+  // 0.11 (c33): the 11-inch iPad both ways, with the Home Screen app's insets, as well as the phone and the Mac.
+  { name: 'board', path: '/', sizes: ['phone', 'desktop', 'ipad-air-l', 'ipad-air-p'] },
   // The Bash permission as a hook card: Yes, the always-allow row (held 2 s) and No.
   {
     name: 'card',
@@ -221,7 +222,8 @@ export const SHOTS = [
   { name: 'accounts', path: '/accounts' },
   // 0.11 (c22b): one login at the user's 1440 x 960 too, where it is a card across the pane.
   { name: 'accounts-single', path: '/accounts', accounts: 'single', sizes: ['phone', 'mac-1440', 'touch-1440'] },
-  { name: 'today', path: '/today', sizes: PHONE },
+  // 0.11 (c33): the user's 1440 x 960 window, and an iPad in landscape.
+  { name: 'today', path: '/today', sizes: ['phone', 'mac-1440', 'ipad-air-l'] },
   // v0.10: Chat on in its own variant, so no other picture gains its tab: a reminder added with Undo, a photo that rated
   // a café and logged a visit, a delete waiting for its Confirm. The page opens on its newest turn; the picture shows it
   // from the top.
@@ -277,7 +279,7 @@ export const SHOTS = [
   // v0.7: Posts on in its own variant, so no other picture changes (Today keeps its sections).
   { name: 'posts', path: '/posts', sizes: PHONE, variant: 'posts' },
   { name: 'money', path: '/money', sizes: PHONE },
-  { name: 'intel', path: '/intel', sizes: PHONE },
+  { name: 'intel', path: '/intel', sizes: ['phone', 'mac-1440'] },
   // v0.8: Intel reading links, in its own variant (the shelf above keeps its look): Add post with a link typed,
   // the shelf with the Reading strip and the rows' pictures, and "@example_cook"'s reel read at Full.
   {

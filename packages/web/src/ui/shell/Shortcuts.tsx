@@ -158,7 +158,8 @@ export function inBrowserTab(): boolean {
   return !standalone && !window.matchMedia('(display-mode: standalone)').matches && !window.matchMedia('(display-mode: window-controls-overlay)').matches;
 }
 
-const KEY = 'inline-flex h-24 min-w-24 flex-none items-center justify-center rounded-chip border border-line-strong px-6 type-key text-ink-2';
+// The list's keys are read, not hints: the mono type (12 px on a touch screen), not the 11 px keycap.
+const KEY = 'inline-flex h-24 min-w-24 flex-none items-center justify-center rounded-chip border border-line-strong px-6 type-mono text-ink-2';
 
 export function Shortcuts({ open, onOpenChange, route }: { open: boolean; onOpenChange: (open: boolean) => void; route: Route['name'] }) {
   const [tab, setTab] = useState<'keys' | 'legend'>('keys');
@@ -188,7 +189,7 @@ export function Shortcuts({ open, onOpenChange, route }: { open: boolean; onOpen
       {tab === 'legend' ? (
         <Legend layout="stacked" />
       ) : (
-        <div className="grid gap-16 pb-8">
+        <div data-keys-list className="grid gap-16 pb-8">
           {tabbed ? (
             <p className="type-small text-ink-2">
               In a browser tab, the browser may keep ⌘1–⌘9 and ⌘J. g then a letter, and the Chat button, always work.
