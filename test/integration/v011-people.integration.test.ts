@@ -95,6 +95,23 @@ describe('v0.11 jantar people', () => {
     expect(act.activity.some((a: PersonActivityResponse['activity'][number]) => a.action === 'view' && a.area === 'todos')).toBe(true);
   });
 
+  it('people ask and people prefs reach the daemon over ctl.sock (review 4, B1)', async () => {
+    expect((await onHer('POST', '/v1/p/agreement/narrow', { see: { sleep: false } }, her)).status).toBe(200);
+    const ask = await cli('ask', 'Asha', '--see', 'sleep', '--note', 'Please?');
+    expect(ask.code, ask.err).toBe(0);
+    expect(ask.out).toContain('Asked Asha.');
+    const me = (await onHer('GET', '/v1/p/me', undefined, her)).body as { pending: { fields: { see: { sleep: boolean } }; note?: string } | null };
+    expect(me.pending?.fields.see.sleep).toBe(true);
+    expect(me.pending?.note).toBe('Please?');
+    const set = await cli('prefs', '--summary', '20:30', '--quiet', '22:00-07:00');
+    expect(set.code, set.err).toBe(0);
+    expect(set.out).toContain('Day summary: 20:30');
+    expect(set.out).toContain('Quiet hours for pushes about them: 22:00-07:00');
+    const show = await cli('prefs');
+    expect(show.code, show.err).toBe(0);
+    expect(show.out).toContain('Day summary: 20:30');
+  });
+
   it('every mutating People route refuses over TCP, an admin device included', async () => {
     const start = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name: 'Sam admin', scopes: ['read', 'control', 'launch', 'admin'] });
     const claim = await http(d.port, 'POST', '/v1/pair/claim', { body: { code: start.code, name: 'Sam admin' } });

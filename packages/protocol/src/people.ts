@@ -1332,7 +1332,7 @@ export const PEOPLE_DAYS_ROUTES = {
     params: LifeIdParamsSchema, body: AlertReplyBodySchema, response: OkReplySchema, summary: 'One-tap reply to an alert from her.',
   }),
   peopleOwnerPrefs: route({
-    method: 'PATCH', path: '/v1/people/prefs', scope: 'control', phase: 'v0.11', ctl: false,
+    method: 'PATCH', path: '/v1/people/prefs', scope: 'control', phase: 'v0.11', ctl: true,
     body: OwnerPeoplePrefsPatchSchema, response: OwnerPeoplePrefsReplySchema, summary: 'His quiet hours, caps and mute for pushes about her, the day summary and the review push.',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1526,7 +1526,7 @@ const PEOPLE_ACCOUNT_ROUTES = {
     params: PidParamsSchema, query: ActivityQuerySchema, response: PersonActivityResponseSchema, summary: 'Her Activity: the same rows she sees.',
   }),
   personPropose: route({
-    method: 'POST', path: '/v1/people/:pid/agreement', scope: 'admin', phase: 'v0.11', ctl: false,
+    method: 'POST', path: '/v1/people/:pid/agreement', scope: 'admin', phase: 'v0.11', ctl: true,
     params: PidParamsSchema, body: PersonProposeBodySchema, response: OkReplySchema, summary: 'Ask her for more; waits for her Accept.',
   }),
   personOwnerDevices: route({

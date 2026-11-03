@@ -175,7 +175,7 @@ const REVIEWED_PEOPLE_OWNER_ROUTES: Record<string, { scope: string; ctl: boolean
   personOwnerActivity: { scope: 'control', ctl: false, localOnly: false, area: null },
   personOwnerDeviceRevoke: { scope: 'admin', ctl: true, localOnly: false, area: null },
   personOwnerDevices: { scope: 'control', ctl: true, localOnly: false, area: null },
-  personPropose: { scope: 'admin', ctl: false, localOnly: false, area: null },
+  personPropose: { scope: 'admin', ctl: true, localOnly: false, area: null },
   personRemove: { scope: 'admin', ctl: true, localOnly: true, area: null },
   // His reads and writes in her space, each with its area.
   personAssign: { scope: 'control', ctl: false, localOnly: false, area: 'todos' },
@@ -211,7 +211,7 @@ const REVIEWED_PEOPLE_OWNER_ROUTES: Record<string, { scope: string; ctl: boolean
   peopleAlertSeen: { scope: 'control', ctl: false, localOnly: false, area: null },
   peopleAlertSend: { scope: 'control', ctl: false, localOnly: false, area: null },
   peopleAlerts: { scope: 'control', ctl: false, localOnly: false, area: null },
-  peopleOwnerPrefs: { scope: 'control', ctl: false, localOnly: false, area: null },
+  peopleOwnerPrefs: { scope: 'control', ctl: true, localOnly: false, area: null },
   // P3: his read-only view of her chat (GET only, see.chat).
   personOwnerChat: { scope: 'control', ctl: false, localOnly: false, area: 'chat' },
   personOwnerChatPhoto: { scope: 'control', ctl: false, localOnly: false, area: 'chat' },
