@@ -45,7 +45,7 @@ import type {
   SleepWeek as Week,
   TodoAsk,
 } from '@jantar/protocol/people';
-import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse } from '@jantar/protocol';
+import { CLI_NAME, PEOPLE_LABEL, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { useEffect, useState } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
@@ -101,7 +101,7 @@ export function SetupAgainNote({ entry }: { entry: PersonSetupAgain }) {
   const email = entry.accessEmail;
   return (
     <section aria-label="Sharing needs to be set up again" className="mt-12 break-words rounded-btn bg-hover px-12 py-12">
-      <p className="type-row text-ink">Restore removed {email ? `the space you shared with ${email}` : "your partner's space"}. Invite them again.</p>
+      <p className="type-row text-ink">Restore removed {email ? `the space you shared with ${email}` : 'the space you shared'}. Invite them again.</p>
       <p className="mt-4 type-small text-ink-2">A Life restore from an older backup took it out, so sharing has stopped and their phone asks for a new invite.</p>
       <p className="mt-4 type-small text-ink-2">
         On your Mac: <code className="type-mono text-ink">{`${CLI_NAME} people add <name>${email ? ` --email ${email}` : ''}`}</code>, then{' '}
@@ -127,9 +127,9 @@ export function Partner({ pid, tab: tabIn, day: dayIn, id, client = peopleClient
     return (
       <div className="px-16 pb-48 pt-16 md:px-32">
         <h1 data-display className="type-display text-ink">
-          People
+          {PEOPLE_LABEL}
         </h1>
-        {list.data && !list.data.enabled ? <p className="mt-12 type-small text-ink-2">People is off. Turn it on at the Mac: jantar people on.</p> : null}
+        {list.data && !list.data.enabled ? <p className="mt-12 type-small text-ink-2">{PEOPLE_LABEL} is off. Turn it on at the Mac: {CLI_NAME} people on.</p> : null}
         {(gone ? [gone] : setupAgain).map((s) => (
           <SetupAgainNote key={s.id} entry={s} />
         ))}

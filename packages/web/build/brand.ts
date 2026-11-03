@@ -10,7 +10,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from '../src/brand.js';
+import { PERSON_APP_DESCRIPTION, PERSON_APP_NAME, PERSON_APP_SHORT_NAME, PRODUCT_DESCRIPTION, PRODUCT_NAME } from '../src/brand.js';
 
 export interface ThemeColours {
   /** --bg on :root (day, the default). */
@@ -48,6 +48,9 @@ export function readThemeColours(root: string): ThemeColours {
 /** Fill the {{...}} placeholders in index.html. */
 export function fillHtml(html: string, colours: ThemeColours): string {
   return html
+    .replaceAll('{{PERSON_APP_NAME}}', PERSON_APP_NAME)
+    .replaceAll('{{PERSON_APP_SHORT_NAME}}', PERSON_APP_SHORT_NAME)
+    .replaceAll('{{PERSON_APP_DESCRIPTION}}', PERSON_APP_DESCRIPTION)
     .replaceAll('{{PRODUCT_NAME}}', PRODUCT_NAME)
     .replaceAll('{{PRODUCT_DESCRIPTION}}', PRODUCT_DESCRIPTION)
     .replaceAll('{{BG_DAY}}', colours.day)

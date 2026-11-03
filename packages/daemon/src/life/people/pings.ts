@@ -24,6 +24,7 @@
  *   invented.
  * - `owner_summary`: his opt-in day summary (Q16).
  */
+import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import { dayKeyOf, hhmmOf, instantAt, resolveDelivery, shiftDay } from '@jantar/life-core';
 import type { LifeCore, LifePush, PingHandler, PingRow } from '../../contracts.js';
 import type { AlertsModule } from '../alerts/module.js';
@@ -136,7 +137,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
     },
     push(rows) {
       const hit = planById(core, rows[0]?.ref ?? '');
-      if (!hit) return { kind: 'life', title: 'Jantar', body: 'Your plan changed.', url: '/p', tag: 'people:plan', person: rows[0]?.person ?? '' };
+      if (!hit) return { kind: 'life', title: PEOPLE_LABEL, body: 'Your plan changed.', url: '/p', tag: 'people:plan', person: rows[0]?.person ?? '' };
       const { plan, space: pid } = hit;
       const text = plans.planPushText(pid, plan);
       const { pending: _p, ...rest } = plan;
@@ -185,7 +186,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
       const name = people.nameOf(pid);
       const details = core.settings().lockScreenDetails === true;
       const body = item && details ? `${name}: "${clipLine(item.title, 60)}" isn't done yet (${item.at}).` : `${name}: an item isn't done yet.`;
-      return { kind: 'life', title: 'Jantar', body, url: `/people/${pid}?tab=${item?.area === 'todos' ? 'todos' : 'today'}${item ? `&day=${item.day}` : ''}`, tag: `people:followup:${row.ref}` };
+      return { kind: 'life', title: PEOPLE_LABEL, body, url: `/people/${pid}?tab=${item?.area === 'todos' ? 'todos' : 'today'}${item ? `&day=${item.day}` : ''}`, tag: `people:followup:${row.ref}` };
     },
     next(row, after, sent) {
       // One push at that time (spec 4.4): once it went out, the row ends. Only a skip (his quiet hours) looks again.
@@ -213,7 +214,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
       const hit = planById(core, rows[0]?.ref ?? '');
       const pid = hit?.space ?? '';
       const name = people.nameOf(pid);
-      return { kind: 'life', title: 'Jantar', body: `${name} marked today a rough day.`, url: `/people/${pid}?tab=today`, tag: `people:rough:${pid}` };
+      return { kind: 'life', title: PEOPLE_LABEL, body: `${name} marked today a rough day.`, url: `/people/${pid}?tab=today`, tag: `people:rough:${pid}` };
     },
     next(row, after) {
       const hit = planById(core, row.ref);
@@ -281,7 +282,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
       return 'cancel';
     },
     push(): LifePush {
-      return { kind: 'life', title: 'Jantar', body: '', url: '/p', tag: 'people:release' };
+      return { kind: 'life', title: PEOPLE_LABEL, body: '', url: '/p', tag: 'people:release' };
     },
     next: () => null,
     resync() {
@@ -297,7 +298,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
       return 'cancel';
     },
     push(): LifePush {
-      return { kind: 'life', title: 'Jantar', body: '', url: '/p', tag: 'people:sleep' };
+      return { kind: 'life', title: PEOPLE_LABEL, body: '', url: '/p', tag: 'people:sleep' };
     },
     next: () => null,
     resync() {
@@ -316,7 +317,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
       return resolveDelivery('important', alerts.ownerState()).action === 'push' ? 'send' : 'skip';
     },
     push() {
-      return { kind: 'life', title: 'Jantar', body: alerts.summaryText() ?? '', url: '/people', tag: 'people:summary' };
+      return { kind: 'life', title: PEOPLE_LABEL, body: alerts.summaryText() ?? '', url: '/people', tag: 'people:summary' };
     },
     next(_row, after) {
       const at = people.ownerPrefs().summaryAt;

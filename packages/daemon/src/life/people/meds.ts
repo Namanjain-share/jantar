@@ -29,6 +29,7 @@
  *   name: lock screens), a tick of her stream. Her writes tick her stream,
  *   and his only while he sees her medicines.
  */
+import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import { computeMedEscalation } from '@jantar/life-core';
 import type { DoseBody, MedicineBody, MedicinePatch, MedsDay } from '@jantar/protocol';
 import { medsDayTotals, type OwnerDoseItem, type OwnerMedicine, type OwnerMedsDay, type OwnerMedsView, type PersonMedicine, type PersonMedicineView, type PersonMedicinesResponse } from '@jantar/protocol/people';
@@ -209,7 +210,7 @@ export class PersonMeds {
   private tellHim(pid: string, what: 'changed' | 'stopped'): void {
     const a = this.people.agreement(pid);
     if (a?.see.meds !== 'full') return;
-    this.people.pushOwner(pid, { kind: 'life', title: `${this.people.nameOf(pid)} ${what} a medicine you added`, body: 'Open People to see.', url: `/people/${pid}?tab=health`, tag: `people:meds:${pid}` });
+    this.people.pushOwner(pid, { kind: 'life', title: `${this.people.nameOf(pid)} ${what} a medicine you added`, body: `Open ${PEOPLE_LABEL} to see.`, url: `/people/${pid}?tab=health`, tag: `people:meds:${pid}` });
   }
 
   // --- his view ----------------------------------------------------------------------

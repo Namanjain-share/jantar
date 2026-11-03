@@ -18,6 +18,7 @@
  * - Each of his writes reaches her: an Activity row, a push, a tick of her
  *   stream. Her writes tick her stream and his only for areas he sees.
  */
+import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import type { SnoozePreset, TodoPatch, TodosQuery, WeightBody } from '@jantar/protocol';
 import type { Agreement, AssignTodoBody, AssignTodoPatch, PersonTodo, PersonWeight } from '@jantar/protocol/people';
 import type { Actor, LifeCore, LifeResult, TodosModule } from '../../contracts.js';
@@ -208,7 +209,7 @@ export class PersonSpace {
     // P2: a change request on his Alerts tab too (it pushes him within his caps and quiet hours).
     const alerts = this.people.alerts;
     if (alerts) return alerts.changeRequest(pid, { type: 'todo', id, title: t.title.slice(0, 120) }, note);
-    this.people.pushOwner(pid, { kind: 'life', title: `${this.people.nameOf(pid)} asks to change an item`, body: 'Open People to see.', url: `/people/${pid}?tab=todos&id=${id}`, tag: `people:ask:${pid}` });
+    this.people.pushOwner(pid, { kind: 'life', title: `${this.people.nameOf(pid)} asks to change an item`, body: `Open ${PEOPLE_LABEL} to see.`, url: `/people/${pid}?tab=todos&id=${id}`, tag: `people:ask:${pid}` });
     return OK;
   }
 

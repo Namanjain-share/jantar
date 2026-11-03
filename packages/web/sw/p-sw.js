@@ -63,7 +63,7 @@ self.addEventListener('push', (event) => {
   } catch {
     data = {};
   }
-  const title = str(data.title, 120) || 'Jantar';
+  const title = str(data.title, 120) || 'Accountability partner';
   const options = {
     body: str(data.body, 400),
     tag: str(data.tag, 120) || undefined,

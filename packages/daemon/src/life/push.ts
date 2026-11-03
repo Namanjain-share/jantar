@@ -19,6 +19,7 @@
  * The text was built by the module that owns the kind; this file adds only
  * the time stamp and the scope, and logs nothing of it.
  */
+import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import { LIFE_PUSH_DEADLINE_MS } from '@jantar/protocol';
 import type { Clock, DaemonContext, LifePush, Notification, Notifier } from '../contracts.js';
 import { sendDirect } from '../notify/direct.js';
@@ -50,7 +51,7 @@ export function lifeNotification(p: LifePush, ts: string): Notification {
 
 /**
  * v0.11 People: what a person's push says on her lock screen (C36), and her
- * own mute. `hide_all` strips titles ("Jantar", "Medicine time");
+ * own mute. `hide_all` strips titles ("Accountability partner", "Medicine time");
  * `hide_alerts` hides the text of the owner's alerts (P2) and leaves Life
  * pushes as they are; `all` shows everything.
  */
@@ -62,7 +63,7 @@ export interface PersonPushPrefs {
 export function personPushText(p: LifePush, prefs: PersonPushPrefs): LifePush {
   // Alerts from him are worded for her lock screen where they are built (life/alerts): "Alert from Sam".
   if (prefs.lockScreen !== 'hide_all' || p.tag.startsWith('people:alert')) return p;
-  return { ...p, title: 'Jantar', body: p.kind === 'med' ? 'Medicine time' : p.tag.startsWith('people:plan') ? 'Plan step' : 'Something new in your space' };
+  return { ...p, title: PEOPLE_LABEL, body: p.kind === 'med' ? 'Medicine time' : p.tag.startsWith('people:plan') ? 'Plan step' : 'Something new in your space' };
 }
 
 /** Web Push only, control scope only; a medicine ignores the mute. No deadline here: see `withDeadline`. */

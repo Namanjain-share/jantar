@@ -42,6 +42,14 @@ describe('M20: the join page', () => {
     }
   }
 
+  it('is titled "Accountability partner", names him as hers, and says it asks every two weeks', () => {
+    const c = joinCopy('Sam', closeDependents(presetAgreement('standard')), { built: BUILT_PHASE, foodModule: false });
+    expect(c.heading).toBe('Accountability partner');
+    expect(c.intro).toMatch(/^Sam invited you to a shared space for your days, as your accountability partner\. This page lists exactly what Sam can see and do\./);
+    expect(c.yours).toContain('Every two weeks the app asks whether this setup still works for you. Your answer stays with you unless you choose to tell Sam.');
+    expect(all(c)).not.toMatch(/Join Sam's Jantar/);
+  });
+
   it('names what he sees and gets at each level, so the copy can only grow (spec 2.5)', () => {
     const offer = closeDependents(presetAgreement('everything'));
     const text = all(joinCopy('Sam', offer, { built: BUILT_PHASE, foodModule: false }));

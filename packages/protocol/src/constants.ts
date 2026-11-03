@@ -6,6 +6,18 @@ export const PRODUCT_NAME = 'Jantar';
 
 /** Command line client. */
 export const CLI_NAME = 'jantar';
+
+/**
+ * v0.11: what the People space is called wherever someone reads it (the
+ * nav, page titles, her app, notifications, the CLI's words, the docs).
+ * Code ids, routes (`/v1/people`, `/v1/p`), config keys and the command
+ * `jantar people` keep the name People.
+ */
+export const PEOPLE_LABEL = 'Accountability partner';
+/** Her Home Screen title and the phone tab: short enough not to be cut off. */
+export const PEOPLE_SHORT_LABEL = 'Partner';
+/** Her side's words for the owner when he set no name (`jantar people on --name` sets one). */
+export const OWNER_FALLBACK_NAME = 'Your accountability partner';
 /** Long-running daemon. */
 export const DAEMON_NAME = 'jantard';
 /** Claude Code hook client (one short-lived process per hook event). */

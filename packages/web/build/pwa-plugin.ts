@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { Plugin } from 'vite';
+import { PERSON_APP_DESCRIPTION, PERSON_APP_NAME, PERSON_APP_SHORT_NAME } from '../src/brand.js';
 import { fillHtml, readThemeColours, webManifest, type ThemeColours } from './brand.js';
 
 /**
@@ -171,10 +172,22 @@ export const PERSON_APP_FILES = ['p.html', 'p-sw.js', 'p.webmanifest'] as const;
 /** v0.11: the build manifest of her app (its chunk set: the daemon's people host serves these and no other asset). */
 export const PERSON_MANIFEST = '.vite/p-manifest.json';
 
-/** Her app's manifest: its own id, start and scope (/p), so it installs apart from the owner's. */
+/**
+ * Her app's manifest: its own id, start and scope (/p), so it installs apart from the owner's, and its own
+ * name, Home Screen title and description ("Accountability partner", "Partner"): nothing of the owner's app.
+ */
 export function personManifest(colours: ThemeColours) {
   const { shortcuts: _none, ...rest } = webManifest(colours);
-  return { ...rest, id: '/p', start_url: '/p', scope: '/p', categories: ['productivity', 'lifestyle'] };
+  return {
+    ...rest,
+    id: '/p',
+    name: PERSON_APP_NAME,
+    short_name: PERSON_APP_SHORT_NAME,
+    description: PERSON_APP_DESCRIPTION,
+    start_url: '/p',
+    scope: '/p',
+    categories: ['productivity', 'lifestyle'],
+  };
 }
 
 export function personPwaPlugin(opts: { root: string }): Plugin[] {

@@ -5,9 +5,11 @@
  * lines render (O7), so the page never names something this build can't
  * do. The words "everything" and "full access" never appear (M20).
  *
- * Neutral household wording: `{owner}` is the owner's display name.
+ * Neutral household wording: `{owner}` is the owner's display name, and
+ * the page is titled "Accountability partner" (PEOPLE_LABEL), which is
+ * also her app's name.
  */
-import { AGREEMENT_FIELDS, CHAT_KEEP_DAYS_DEFAULT, chatDisclosure, phaseBuilt, type AgreementField, type AgreementFields, type BuildPhase } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, CHAT_KEEP_DAYS_DEFAULT, PEOPLE_LABEL, chatDisclosure, phaseBuilt, type AgreementField, type AgreementFields, type BuildPhase } from '@jantar/protocol/people-core';
 
 export interface CopyLine {
   /** The agreement field this line shows (null: a fixed line). */
@@ -147,8 +149,8 @@ export function joinCopy(owner: string, a: AgreementFields, opts: { built: Build
   doesLines.push({ key: null, text: `End sharing from the Mac. You normally get 7 days to download your data first, but ${owner} can also end it at once.` });
   const times = ['"Seen" marks', 'finish times', ...(p2 ? ['sleep taps', 'when you open an alert'] : [])];
   return {
-    heading: `Join ${owner}'s Jantar`,
-    intro: `${owner} invited you to a shared space for your days. This page lists exactly what ${owner} can see and do. You can switch any of it off now or later, pause, or leave at any time.`,
+    heading: PEOPLE_LABEL,
+    intro: `${owner} invited you to a shared space for your days, as your accountability partner. This page lists exactly what ${owner} can see and do. You can switch any of it off now or later, pause, or leave at any time.`,
     sees,
     does: doesLines,
     cant: [
@@ -165,6 +167,7 @@ export function joinCopy(owner: string, a: AgreementFields, opts: { built: Build
       `Activity lists every change ${owner} makes in your space, and each time ${owner} looks${p2 ? ', including reading your journal' : ''}${p3 ? ' or your chats' : ''}.`,
       `Pause holds ${owner}'s new items${p2 ? ', alerts and comments' : ''}. Leave ends it. Download your data first if you want it.`,
       `Things you delete are gone for both of you.`,
+      ...(p2 ? [`Every two weeks the app asks whether this setup still works for you. Your answer stays with you unless you choose to tell ${owner}.`] : []),
     ],
     smallPrint: [
       `Your space is stored on ${owner}'s Mac, in Jantar's nightly backups, and in any backups of the Mac itself. As the Mac's owner, ${owner}, or a program ${owner} runs on it, could open those files directly, whatever you switch off here. This page describes what Jantar shows, not what can be done with the files.`,

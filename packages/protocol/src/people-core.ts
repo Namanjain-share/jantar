@@ -7,6 +7,9 @@
  * first load. `people.ts` re-exports every one of them.
  */
 
+/** The name a person reads (her app, his screens, pushes), from constants.ts: her bundle imports it here. */
+export { OWNER_FALLBACK_NAME, PEOPLE_LABEL, PEOPLE_SHORT_LABEL } from './constants.js';
+
 /** The levels of `see.meds`. */
 export type MedsLevel = 'off' | 'adherence' | 'full';
 export const MEDS_LEVELS = ['off', 'adherence', 'full'] as const satisfies readonly MedsLevel[];

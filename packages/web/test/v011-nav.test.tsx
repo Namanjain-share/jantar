@@ -1,7 +1,8 @@
 /**
- * v0.11 People in his places (spec 4.1, 9.4): People comes last, after
- * Meetings, so on a phone it sits in More; the rail lists it on a wide
- * screen. It shows only while People is on at the Mac (Features.people) and
+ * v0.11 People in his places (spec 4.1, 9.4), labelled "Accountability
+ * partner" everywhere he reads it ("Partner" on a phone tab, if it is one):
+ * it comes last, after Meetings, so on a phone it sits in More; the rail
+ * lists it on a wide screen. It shows only while People is on at the Mac (Features.people) and
  * only on a device paired with control (every People route needs it). On
  * /people, People is the current place (More on a phone), not Today.
  */
@@ -35,13 +36,20 @@ describe('tabItems with People', () => {
   };
 
   it('last, in More once six places are on; absent while People is off', () => {
-    expect(labels({ life: true, people: true })).toEqual({ tabs: ['Board', 'Today', 'Accounts', 'Alerts', 'More'], more: ['Devices', 'People'] });
+    expect(labels({ life: true, people: true })).toEqual({ tabs: ['Board', 'Today', 'Accounts', 'Alerts', 'More'], more: ['Devices', 'Accountability partner'] });
     expect(labels({ files: true, life: true, intel: true, meetings: true, people: true })).toEqual({
       tabs: ['Board', 'Today', 'Files', 'Accounts', 'More'],
-      more: ['Alerts', 'Devices', 'Intel', 'Meetings', 'People'],
+      more: ['Alerts', 'Devices', 'Intel', 'Meetings', 'Accountability partner'],
     });
-    expect(navItems({ ...NO_FEATURES, life: true }).map((i) => i.label)).not.toContain('People');
-    expect(navItems({ ...NO_FEATURES, people: true }).find((i) => i.label === 'People')?.href).toBe('/people');
+    expect(navItems({ ...NO_FEATURES, life: true }).map((i) => i.label)).not.toContain('Accountability partner');
+    expect(navItems({ ...NO_FEATURES, people: true }).find((i) => i.label === 'Accountability partner')?.href).toBe('/people');
+  });
+
+  it('a phone tab says "Partner" when five places or fewer make it one', () => {
+    const t = tabItems({ ...NO_FEATURES, people: true });
+    const people = t.tabs.find((i) => i.route === 'people');
+    expect(people?.label).toBe('Accountability partner');
+    expect(people?.short).toBe('Partner');
   });
 
   it('on /people, People is the current place, not Today', () => {
@@ -60,7 +68,7 @@ describe('on a phone', () => {
     const { unmount } = renderApp({ path: '/more', state: stateWith({ sessions: [session('a')], features: on }) });
     const more = within(screen.getByRole('list')).getAllByRole('link');
     expect(more.map((l) => l.getAttribute('href'))).toEqual(['/alerts', '/devices', '/people']);
-    expect(more.at(-1)?.textContent).toMatch(/People/);
+    expect(more.at(-1)?.textContent).toMatch(/^Accountability partner$/);
     unmount();
     renderApp({ path: '/more', state: stateWith({ sessions: [session('a')], features: { files: true, life: true } }) });
     expect(within(screen.getByRole('list')).getAllByRole('link').map((l) => l.getAttribute('href'))).toEqual(['/alerts', '/devices']);
@@ -78,10 +86,18 @@ describe('on the rail', () => {
   it('People last while it is on; gone while it is off', () => {
     viewport(1440);
     const { unmount } = renderApp({ state: stateWith({ sessions: [session('a')], features: { files: true, life: true, intel: true, meetings: true, people: true } }) });
-    expect(places()).toEqual(['Board', 'Today', 'Files', 'Accounts', 'Alerts', 'Devices', 'Intel', 'Meetings', 'People']);
-    expect(within(nav()).getByRole('link', { name: 'People' }).getAttribute('href')).toBe('/people');
+    expect(places()).toEqual(['Board', 'Today', 'Files', 'Accounts', 'Alerts', 'Devices', 'Intel', 'Meetings', 'Accountability partner']);
+    expect(within(nav()).getByRole('link', { name: 'Accountability partner' }).getAttribute('href')).toBe('/people');
     unmount();
     renderApp({ state: stateWith({ sessions: [session('a')], features: { files: true, life: true } }) });
-    expect(places()).not.toContain('People');
+    expect(places()).not.toContain('Accountability partner');
+  });
+});
+
+describe('the tab bar', () => {
+  it('shows the short label on a phone tab', () => {
+    viewport(390);
+    renderApp({ state: stateWith({ sessions: [session('a')], features: { people: true } }) });
+    expect(within(nav()).getByRole('link', { name: /Partner/ }).textContent?.trim()).toBe('Partner');
   });
 });

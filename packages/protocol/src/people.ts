@@ -1543,11 +1543,11 @@ const PEOPLE_ACCOUNT_ROUTES = {
   }),
   peopleSwitch: route({
     method: 'POST', path: '/v1/people/switch', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true,
-    body: PeopleSwitchBodySchema, response: OkReplySchema, summary: 'Turn People on or off (her exits keep working).',
+    body: PeopleSwitchBodySchema, response: OkReplySchema, summary: 'Turn the accountability partner space on or off (her exits keep working).',
   }),
   peopleDoctor: route({
     method: 'GET', path: '/v1/people/doctor', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true,
-    response: PeopleDoctorSchema, summary: 'What People needs on this Mac, checked.',
+    response: PeopleDoctorSchema, summary: 'What the accountability partner space needs on this Mac, checked.',
   }),
 } as const satisfies Record<string, RouteDef>;
 

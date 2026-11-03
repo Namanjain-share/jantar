@@ -301,7 +301,8 @@ describe('a space a restore took out (T20, spec 2.7)', () => {
   it('is what their old /people/:pid shows: no name, none of his controls', async () => {
     const c = client({ list: vi.fn(async () => ({ enabled: true, people: [], setupAgain: [{ id: GONE }] })), today: vi.fn(async () => today()) });
     render(<Wrapped client={c} pid={GONE} />);
-    expect(await screen.findByText("Restore removed your partner's space. Invite them again.")).toBeTruthy();
+    expect(await screen.findByText('Restore removed the space you shared. Invite them again.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Accountability partner' })).toBeTruthy();
     expect(screen.getByText('jantar people add <name>')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Assign' })).toBeNull();
     expect(screen.queryByRole('tablist')).toBeNull();

@@ -1,7 +1,8 @@
 /**
  * The places, in rail and tab order, with their Phosphor icons (v0.4, D2):
  * Board, Today, Chat (v0.10, Ask in v0.5.3), Files, Accounts, Alerts, Devices, Intel,
- * Meetings (v0.5), People (v0.11); Today, Chat, Files, Intel, Meetings and People only
+ * Meetings (v0.5), Accountability partner (v0.11, `people`: its label is PEOPLE_LABEL,
+ * "Partner" on a phone tab); Today, Chat, Files, Intel, Meetings and People only
  * while their switch is on (and Chat and People only on a device paired with control:
  * the callers pass data.ts usePlaceFeatures). Chat sits right after Today, so with Life
  * and Chat on it is a phone tab and Accounts moves into More. The rail lists
@@ -22,7 +23,7 @@ import {
   VideoConferenceIcon,
   type Icon,
 } from '@phosphor-icons/react';
-import type { Features } from '@jantar/protocol';
+import { PEOPLE_LABEL, PEOPLE_SHORT_LABEL, type Features } from '@jantar/protocol';
 import { LIFE_ROUTES, type Route } from '../../lib/router.js';
 import { PeopleGlyph } from './people-glyph.js';
 
@@ -30,6 +31,8 @@ export interface NavItem {
   route: Route['name'];
   href: string;
   label: string;
+  /** A shorter label for a phone tab, where the full one would be cut off (the rail and More show `label`). */
+  short?: string;
   icon: Icon;
   /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Chat: v0.10, the `ask` switch; People: v0.11). */
   feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask' | 'people';
@@ -46,7 +49,7 @@ export const NAV: readonly NavItem[] = [
   { route: 'intel', href: '/intel', label: 'Intel', icon: BookmarksIcon, feature: 'intel' },
   { route: 'meetings', href: '/meetings', label: 'Meetings', icon: VideoConferenceIcon, feature: 'meetings' },
   // v0.11: last, so on a phone it sits in More.
-  { route: 'people', href: '/people', label: 'People', icon: PeopleGlyph, feature: 'people' },
+  { route: 'people', href: '/people', label: PEOPLE_LABEL, short: PEOPLE_SHORT_LABEL, icon: PeopleGlyph, feature: 'people' },
 ];
 
 /** The phone's fifth tab when more than five places are on. */

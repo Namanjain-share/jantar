@@ -100,11 +100,25 @@ describe('M12: who gets which push', () => {
     expect((await onHer(f.api, 'PATCH', '/v1/p/prefs', f.asha.full, { lockScreen: 'hide_all' })).statusCode).toBe(200);
     const r = await onHer(f.api, 'POST', '/v1/p/push/test', f.asha.full);
     expect(r.json()).toEqual({ delivered: 1 });
-    expect(to(EP.asha)[0]).toMatchObject({ title: 'Jantar', body: 'Something new in your space' });
+    expect(to(EP.asha)[0]).toMatchObject({ title: 'Accountability partner', body: 'Something new in your space' });
     f.api.fakes.pushed.length = 0;
     expect((await onHer(f.api, 'PATCH', '/v1/p/prefs', f.asha.full, { lockScreen: 'all' })).statusCode).toBe(200);
     await onHer(f.api, 'POST', '/v1/p/push/test', f.asha.full);
-    expect(to(EP.asha)[0]).toMatchObject({ title: 'Jantar', body: 'Notifications work.' });
+    expect(to(EP.asha)[0]).toMatchObject({ title: 'Accountability partner', body: 'Notifications work.' });
+  });
+
+  it('0.11 words: his People pushes say "Open Accountability partner"; her app falls back to "Your accountability partner" with no name', async () => {
+    await setup();
+    expect((await onHer(f.api, 'POST', '/v1/p/agreement/narrow', f.asha.full, { see: { weight: false } })).statusCode).toBe(200);
+    await vi.waitFor(() => expect(to(EP.sam)).toHaveLength(1));
+    expect(to(EP.sam)[0]).toMatchObject({ title: 'Asha changed what they share', body: 'Open Accountability partner to see.' });
+    expect(JSON.stringify(sent())).not.toMatch(/Open People|"title":"Jantar"/);
+    expect(f.life.people.ownerName()).toBe('Sam');
+    // People on needs a name (settings refuse to clear it), so the fallback shows only while it is off: her Me still opens then.
+    expect((await f.api.ctx.settings.patch({ people: { enabled: false, ownerName: null } })).ok).toBe(true);
+    expect(f.life.people.ownerName()).toBe('Your accountability partner');
+    const me = await onHer(f.api, 'GET', '/v1/p/me', f.asha.full);
+    expect((me.json() as { owner: { name: string } }).owner.name).toBe('Your accountability partner');
   });
 
   it('mute is per person', async () => {

@@ -42,7 +42,7 @@ describe('sending, seen and replies (spec 6.1, 6.4)', () => {
     expect(r.json()).toMatchObject({ delivery: 'sent' });
     const id = (r.json() as { id: string }).id;
     expect(k.to(EP.asha)).toHaveLength(1);
-    expect(k.to(EP.asha)[0]).toMatchObject({ title: 'Jantar', body: 'Alert from Sam', url: `/p/alerts?id=${id}` });
+    expect(k.to(EP.asha)[0]).toMatchObject({ title: 'Accountability partner', body: 'Alert from Sam', url: `/p/alerts?id=${id}` });
     expect(k.to(EP.sam)).toEqual([]);
     expect(k.to(EP.bea)).toEqual([]);
 
@@ -58,7 +58,7 @@ describe('sending, seen and replies (spec 6.1, 6.4)', () => {
     expect((await k.her('POST', `/v1/p/alerts/${id}/reply`, { kind: 'heart' })).statusCode).toBe(400);
     expect((await k.her('POST', `/v1/p/alerts/${id}/reply`, { kind: 'cant_now_safe', note: 'On a call' })).statusCode).toBe(200);
     await eventually(() => expect(k.to(EP.sam)).toHaveLength(1));
-    expect(k.to(EP.sam)[0]).toMatchObject({ title: 'Jantar', body: 'Reply from Asha' });
+    expect(k.to(EP.sam)[0]).toMatchObject({ title: 'Accountability partner', body: 'Reply from Asha' });
     expect((await hisList()).alerts[0]?.reply).toMatchObject({ kind: 'cant_now_safe', note: 'On a call' });
 
     // She can't mark seen or reply to her own; he can't to his own.
@@ -173,7 +173,7 @@ describe('holds and the release summary (spec 6.3)', () => {
     expect(k.to(EP.asha)).toHaveLength(1);
     await k.at(`${TODAY}T10:00:02.000Z`);
     await eventually(() => expect(k.to(EP.asha)).toHaveLength(2));
-    expect(k.to(EP.asha)[1]).toMatchObject({ title: 'Jantar', body: '2 alerts from Sam while you were in quiet hours.', url: '/p/alerts' });
+    expect(k.to(EP.asha)[1]).toMatchObject({ title: 'Accountability partner', body: '2 alerts from Sam while you were in quiet hours.', url: '/p/alerts' });
     expect((await herList()).alerts.filter((a) => a.delivery === 'released')).toHaveLength(2);
     // Nothing is re-sent one by one, and nothing repeats.
     await k.advance(3 * 3_600_000);

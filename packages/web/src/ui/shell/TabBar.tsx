@@ -27,7 +27,7 @@ export function TabBar({ route, badges }: { route: Route['name']; badges: Partia
             className={clsx('relative flex h-56 flex-col items-center justify-center gap-4', on ? 'text-ink' : 'text-ink-3')}
           >
             <Icon size={20} aria-hidden="true" />
-            <span className="text-rail font-medium">{item.label}</span>
+            <span className="text-rail font-medium">{item.short ?? item.label}</span>
             <Badge count={n} className="absolute left-1/2 top-4 ml-6" label={`${n} new`} />
           </Link>
         );

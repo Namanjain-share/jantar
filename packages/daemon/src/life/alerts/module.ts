@@ -19,6 +19,7 @@
  * - Seen only on open or reply; reply buttons close after 24 hours; alerts
  *   are kept 90 days.
  */
+import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import {
   ALERT_KINDS,
   ALERT_REPLY_HOURS,
@@ -358,7 +359,7 @@ export class AlertsModule {
       const show = p?.prefs.lockScreen === 'all';
       this.people.pushHer(a.to, {
         kind: 'life',
-        title: show ? owner : 'Jantar',
+        title: show ? owner : PEOPLE_LABEL,
         body: show ? full(owner).slice(owner.length + 2) : `${urgent ? 'Urgent alert' : 'Alert'} from ${owner}`,
         url: `/p/alerts?id=${a.id}`,
         tag: `people:alert:${a.id}`,
@@ -370,7 +371,7 @@ export class AlertsModule {
     const details = this.core()?.settings().lockScreenDetails === true;
     this.people.pushOwner(a.from, {
       kind: 'life',
-      title: details ? name : 'Jantar',
+      title: details ? name : PEOPLE_LABEL,
       body: details ? full(name).slice(name.length + 2) : `${urgent ? 'Urgent alert' : 'Alert'} from ${name}`,
       url: `/people/${a.from}?tab=alerts&id=${a.id}`,
       tag: `people:alert:${a.id}`,
@@ -515,11 +516,11 @@ export class AlertsModule {
     if (party === '') {
       const owner = this.people.ownerName();
       const show = this.people.person(a.from)?.prefs.lockScreen === 'all';
-      this.deliverPush(a.from, { kind: 'life', title: show ? owner : 'Jantar', body: show ? `Replied: ${words}` : `Reply from ${owner}`, url: `/p/alerts?id=${a.id}`, tag: `people:alert:${a.id}` }, { kind: 'reply' });
+      this.deliverPush(a.from, { kind: 'life', title: show ? owner : PEOPLE_LABEL, body: show ? `Replied: ${words}` : `Reply from ${owner}`, url: `/p/alerts?id=${a.id}`, tag: `people:alert:${a.id}` }, { kind: 'reply' });
     } else {
       const name = this.people.nameOf(party);
       const details = this.core()?.settings().lockScreenDetails === true;
-      this.deliverPush('', { kind: 'life', title: details ? name : 'Jantar', body: details ? `Replied: ${words}` : `Reply from ${name}`, url: `/people/${party}?tab=alerts&id=${a.id}`, tag: `people:alert:${a.id}` }, { kind: 'reply', about: party });
+      this.deliverPush('', { kind: 'life', title: details ? name : PEOPLE_LABEL, body: details ? `Replied: ${words}` : `Reply from ${name}`, url: `/people/${party}?tab=alerts&id=${a.id}`, tag: `people:alert:${a.id}` }, { kind: 'reply', about: party });
     }
     return OK;
   }
@@ -670,7 +671,7 @@ export class AlertsModule {
       for (const [pid, x] of byPerson) {
         if (!this.reachable(pid)) continue;
         const name = this.people.nameOf(pid);
-        this.people.pushOwner(pid, { kind: 'life', title: 'Jantar', body: `${summaryWords(x)} from ${name} ${words}.`, url: `/people/${pid}?tab=alerts`, tag: `people:release:${pid}` });
+        this.people.pushOwner(pid, { kind: 'life', title: PEOPLE_LABEL, body: `${summaryWords(x)} from ${name} ${words}.`, url: `/people/${pid}?tab=alerts`, tag: `people:release:${pid}` });
         this.people.ticks.bump(pid, 'alerts');
       }
       this.people.ownerChanged();
@@ -678,7 +679,7 @@ export class AlertsModule {
     }
     this.people.saveHeld(recipient, { comments: 0, reviews: 0 }, undefined);
     const x = { alerts: heldAlerts.length, comments: herHeld?.comments ?? 0, reviews: herHeld?.reviews ?? 0 };
-    this.people.pushHer(recipient, { kind: 'life', title: 'Jantar', body: `${summaryWords(x)} from ${this.people.ownerName()} ${words}.`, url: '/p/alerts', tag: 'people:release' });
+    this.people.pushHer(recipient, { kind: 'life', title: PEOPLE_LABEL, body: `${summaryWords(x)} from ${this.people.ownerName()} ${words}.`, url: '/p/alerts', tag: 'people:release' });
     this.people.ticks.bump(recipient, 'alerts');
     this.people.ownerChanged();
   }

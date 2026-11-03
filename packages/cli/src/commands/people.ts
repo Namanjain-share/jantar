@@ -1,5 +1,6 @@
 /**
- * jantar people (v0.11 People, spec 9.5): the people on this Mac, at the Mac
+ * jantar people (v0.11, spec 9.5): the Accountability partner space on this
+ * Mac (People in the code, the routes and this command's name), at the Mac
  * (ctl.sock). Every command that lets a person in, shapes what they are
  * offered or ends their space runs here only (`localOnly` routes):
  *
@@ -7,10 +8,12 @@
  *   people doctor
  *   people add <name> [--email <addr>] [--color <c>] [--no-food]
  *   people offer <name|id> [--preset light|standard|everything]
- *                [--see todos,meds=full|adherence|off,weight,food,...]
- *                [--assign todos,meds] [--edit-hers todos,meds,weight]
+ *                [--see todos,plan,review=counts|full,meds=full|adherence,weight,sleep,journal,chat]
+ *                [--assign todos,plan,meds] [--edit-hers todos,plan,meds,weight] [--comment journal]
+ *   people ask <name|id> [--see ...] [--assign ...] [--edit-hers ...] [--comment ...] [--note <text>]
+ *   people prefs [--summary HH:MM|off] [--review-push on|off] [--quiet HH:MM-HH:MM|off]
  *   people modules <name|id> --food on|off
- *   people invite <name|id> [--json]
+ *   people invite <name|id> [--json]      (needs your name: people on --name)
  *   people list
  *   people devices <name|id>
  *   people revoke <device-id>
@@ -23,14 +26,18 @@
  * Adding or removing an email prints the Cloudflare Access step: Jantar
  * holds no Cloudflare token and can't make that change.
  */
-import type { PeopleDoctor, PeopleList, PersonInviteReply, PersonSetupAgain, PersonView } from '@jantar/protocol/people';
+import { PEOPLE_LABEL } from '@jantar/protocol';
+import type { OwnerPeoplePrefs, PeopleDoctor, PeopleList, PersonInviteReply, PersonSetupAgain, PersonView } from '@jantar/protocol/people';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { callDaemon } from '../ctl.js';
 
-const USAGE = 'jantar people <on|off|doctor|add|offer|modules|invite|list|devices|revoke|revoke-invite|remove|todos> ...';
+const USAGE = 'jantar people <on|off|doctor|add|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos> ...';
 
-const FIELD_GROUPS = ['see', 'assign', 'editHers'] as const;
+const FIELD_GROUPS = ['see', 'assign', 'editHers', 'comment'] as const;
+
+/** What `invite` says while the owner's name is unset: their page and app show it. */
+export const NAME_FIRST = 'Set your name first: jantar people on --name <your name>. Their join page and app show it.';
 
 /** `todos,meds=adherence,weight=off` into a patch of one group (a bare name is on; `x=off` turns it off). */
 export function fieldList(group: (typeof FIELD_GROUPS)[number], value: string | undefined): Record<string, boolean | string> {
@@ -45,6 +52,44 @@ export function fieldList(group: (typeof FIELD_GROUPS)[number], value: string | 
   return out;
 }
 
+/** The `--see`, `--assign`, `--edit-hers` and `--comment` flags as an agreement patch (offer and ask). */
+export function fieldPatch(flags: { see?: string; assign?: string; 'edit-hers'?: string; comment?: string }): Record<string, Record<string, boolean | string>> {
+  const out: Record<string, Record<string, boolean | string>> = {};
+  const groups: Array<[(typeof FIELD_GROUPS)[number], string | undefined]> = [
+    ['see', flags.see],
+    ['assign', flags.assign],
+    ['editHers', flags['edit-hers']],
+    ['comment', flags.comment],
+  ];
+  for (const [group, value] of groups) {
+    const g = fieldList(group, value);
+    if (Object.keys(g).length) out[group] = g;
+  }
+  return out;
+}
+
+/** The owner's name as their page shows it, or null while unset. */
+async function ownerName(ctx: CliContext): Promise<string | null> {
+  const r = await callDaemon<{ settings: { people?: { ownerName?: string | null } } }>(ctx.ctl, 'GET', '/v1/settings');
+  return r.settings.people?.ownerName ?? null;
+}
+
+function hhmm(v: string, flag: string): string {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) throw new UsageError(`${flag} needs HH:MM (24-hour), or off`);
+  return v;
+}
+
+function onOff(v: string, flag: string): boolean {
+  if (v !== 'on' && v !== 'off') throw new UsageError(`${flag} needs on or off`);
+  return v === 'on';
+}
+
+function quiet(v: string): { from: string; to: string } {
+  const [from, to] = v.split('-');
+  if (!from || !to) throw new UsageError('--quiet needs HH:MM-HH:MM, or off');
+  return { from: hhmm(from, '--quiet'), to: hhmm(to, '--quiet') };
+}
+
 async function find(ctx: CliContext, who: string): Promise<PersonView> {
   const list = await callDaemon<PeopleList>(ctx.ctl, 'GET', '/v1/people');
   const hit = list.people.find((p) => p.id === who) ?? list.people.filter((p) => p.name.toLowerCase() === who.toLowerCase())[0];
@@ -55,15 +100,15 @@ async function find(ctx: CliContext, who: string): Promise<PersonView> {
 function accessStep(email: string | undefined, add: boolean): string {
   const who = email ?? 'their email';
   return add
-    ? `In Zero Trust > Access > Applications > Jantar people > Policies > People > Include > Emails, add ${who}, then Save. Jantar holds no Cloudflare token and can't do this for you.\n`
-    : `In Zero Trust > Access > Applications > Jantar people > Policies > People, remove ${who}. Optionally, My Team > Users > them > Revoke session.\n`;
+    ? `In Zero Trust > Access > Applications > Accountability partner > Policies > Partner > Include > Emails, add ${who}, then Save. Jantar holds no Cloudflare token and can't do this for you.\n`
+    : `In Zero Trust > Access > Applications > Accountability partner > Policies > Partner, remove ${who}. Optionally, My Team > Users > them > Revoke session.\n`;
 }
 
 /** T20 (spec 2.7): a space a Life restore took out, and the way back (his People screen says the same). */
 export function setupAgainNote(s: PersonSetupAgain): string {
   const email = s.accessEmail ? ` --email ${s.accessEmail}` : '';
   return (
-    `  Restore removed ${s.accessEmail ? `the space you shared with ${s.accessEmail}` : "your partner's space"}. Invite them again.  ${s.id}\n` +
+    `  Restore removed ${s.accessEmail ? `the space you shared with ${s.accessEmail}` : 'the space you shared'}. Invite them again.  ${s.id}\n` +
     `    jantar people add <name>${email}, then jantar people invite <name>.\n` +
     `    Once they have joined: jantar people remove ${s.id} clears this. A newer backup that still has their space brings sharing back instead.\n`
   );
@@ -92,14 +137,20 @@ const ON_WORDS: Record<string, string> = {
 export default defineCommand(
   {
     name: 'people',
-    summary: 'Share a space on this Mac with one other person (People): invite, the offer, devices, remove.',
+    summary: `${PEOPLE_LABEL}: share a space on this Mac with one other person (invite, the offer, devices, remove).`,
     usage: USAGE,
     owner: 'WP-PEOPLE',
     help:
-      '  people on [--name <your name>] | off      turn People on (their exits always work) or off\n' +
+      `  people on [--name <your name>] | off      turn ${PEOPLE_LABEL} on (their exits always work) or off\n` +
       '  people add <name> [--email <addr>] [--no-food]\n' +
-      '  people offer <name> [--preset light|standard|everything] [--see ...] [--assign ...] [--edit-hers ...]\n' +
-      '  people invite <name> [--json]             a 24-hour, single-use join link\n' +
+      '  people offer <name> [--preset light|standard|everything] [--see ...] [--assign ...] [--edit-hers ...] [--comment journal]\n' +
+      '      --see todos,plan,review=counts|full,meds=full|adherence,weight,sleep,journal,chat (x=off turns one off)\n' +
+      '      --assign todos,plan,meds   --edit-hers todos,plan,meds,weight   --comment journal\n' +
+      '  people ask <name> [--see ...] [--assign ...] [--edit-hers ...] [--comment ...] [--note <text>]\n' +
+      '                                            ask them for more; nothing changes until they accept\n' +
+      '  people prefs [--summary HH:MM|off] [--review-push on|off] [--quiet HH:MM-HH:MM|off]\n' +
+      '                                            your pushes about them (the day summary is off until you set a time)\n' +
+      '  people invite <name> [--json]             a 24-hour, single-use join link (needs your name)\n' +
       '  people list | devices <name> | todos <name>\n' +
       '  people revoke <device-id> | revoke-invite <name> | remove <name> [--now] [--forget]\n' +
       '  people modules <name> --food on|off | doctor',
@@ -113,9 +164,14 @@ export default defineCommand(
         color: { type: 'string', help: 'teal, violet, amber, rose, sky or lime' },
         food: { type: 'string', help: 'on or off (modules); --no-food on add' },
         preset: { type: 'string', help: 'light, standard (default) or everything' },
-        see: { type: 'string', help: 'todos,meds=full|adherence|off,weight,food' },
-        assign: { type: 'string', help: 'todos,meds' },
-        'edit-hers': { type: 'string', help: 'todos,meds,weight' },
+        see: { type: 'string', help: 'todos,plan,review=counts|full,meds=full|adherence|off,weight,sleep,journal,chat' },
+        assign: { type: 'string', help: 'todos,plan,meds' },
+        'edit-hers': { type: 'string', help: 'todos,plan,meds,weight' },
+        comment: { type: 'string', help: 'journal' },
+        note: { type: 'string', help: 'a short note with ask (up to 200 characters)' },
+        summary: { type: 'string', help: 'prefs: HH:MM for the day summary, or off' },
+        'review-push': { type: 'string', help: 'prefs: on or off' },
+        quiet: { type: 'string', help: 'prefs: HH:MM-HH:MM, or off' },
         json: { type: 'boolean', help: 'print JSON' },
         now: { type: 'boolean', help: 'end sharing at once (no 7-day window)' },
         forget: { type: 'boolean', help: 'delete their space at once' },
@@ -137,12 +193,13 @@ export default defineCommand(
           void r;
         }
         await callDaemon(ctx.ctl, 'POST', '/v1/people/switch', { on: true });
-        io.out('People is on.\n');
+        io.out(`${PEOPLE_LABEL} is on.\n`);
+        if (!flags.name && (await ownerName(ctx)) === null) io.out(`${NAME_FIRST}\n`);
         return EXIT.ok;
       }
       case 'off':
         await callDaemon(ctx.ctl, 'POST', '/v1/people/switch', { on: false });
-        io.out('People is off. Partners can still download their data or leave.\n');
+        io.out(`${PEOPLE_LABEL} is off. They can still download their data or leave.\n`);
         return EXIT.ok;
       case 'doctor': {
         const d = await callDaemon<PeopleDoctor>(ctx.ctl, 'GET', '/v1/people/doctor');
@@ -167,12 +224,7 @@ export default defineCommand(
         const p = await find(ctx, need('a person'));
         const body: Record<string, unknown> = {};
         if (flags.preset) body.preset = flags.preset;
-        const see = fieldList('see', flags.see);
-        const assign = fieldList('assign', flags.assign);
-        const editHers = fieldList('editHers', flags['edit-hers']);
-        if (Object.keys(see).length) body.see = see;
-        if (Object.keys(assign).length) body.assign = assign;
-        if (Object.keys(editHers).length) body.editHers = editHers;
+        Object.assign(body, fieldPatch(flags));
         const r = await callDaemon<{ version: number; on: string[]; fields: Record<string, Record<string, unknown>> }>(ctx.ctl, 'POST', `/v1/people/${p.id}/offer`, body);
         if (flags.json) {
           io.out(`${JSON.stringify(r)}\n`);
@@ -197,8 +249,33 @@ export default defineCommand(
         io.out(flags.food === 'on' ? `${p.name}'s food module is on. People has no food log in this release, so nothing changes for them yet.\n` : `${p.name}'s food log is off.\n`);
         return EXIT.ok;
       }
+      case 'ask': {
+        const p = await find(ctx, need('a person'));
+        const body: Record<string, unknown> = fieldPatch(flags);
+        if (Object.keys(body).length === 0) throw new UsageError('ask needs --see, --assign, --edit-hers or --comment');
+        if (flags.note) body.note = flags.note;
+        await callDaemon(ctx.ctl, 'POST', `/v1/people/${p.id}/agreement`, body);
+        io.out(`Asked ${p.name}. Nothing changes until they accept; they can also say no, or not to ask again.\n`);
+        return EXIT.ok;
+      }
+      case 'prefs': {
+        const body: Record<string, unknown> = {};
+        if (flags.summary !== undefined) body.summaryAt = flags.summary === 'off' ? null : hhmm(flags.summary, '--summary');
+        if (flags['review-push'] !== undefined) body.reviewPush = onOff(flags['review-push'], '--review-push');
+        if (flags.quiet !== undefined) body.quiet = flags.quiet === 'off' ? null : quiet(flags.quiet);
+        const r = await callDaemon<{ prefs: OwnerPeoplePrefs }>(ctx.ctl, 'PATCH', '/v1/people/prefs', body);
+        const q = r.prefs.quiet;
+        io.out(`Day summary: ${r.prefs.summaryAt ?? 'off'}\n`);
+        io.out(`Evening review push: ${r.prefs.reviewPush ? 'on' : 'off'}\n`);
+        io.out(`Quiet hours for pushes about them: ${q ? `${q.from}-${q.to}` : 'off'}\n`);
+        return EXIT.ok;
+      }
       case 'invite': {
         const p = await find(ctx, need('a person'));
+        if ((await ownerName(ctx)) === null) {
+          io.err(`${NAME_FIRST}\n`);
+          return EXIT.failed;
+        }
         const r = await callDaemon<PersonInviteReply>(ctx.ctl, 'POST', `/v1/people/${p.id}/invite`);
         if (flags.json) {
           io.out(`${JSON.stringify(r)}\n`);
@@ -214,7 +291,7 @@ export default defineCommand(
           io.out(`${JSON.stringify(r)}\n`);
           return EXIT.ok;
         }
-        io.out(`People is ${r.enabled ? 'on' : 'off'}.\n`);
+        io.out(`${PEOPLE_LABEL} is ${r.enabled ? 'on' : 'off'}.\n`);
         const again = r.setupAgain ?? [];
         if (r.people.length === 0 && again.length === 0) io.out('Nobody yet. Add someone: jantar people add <name> --email <address>\n');
         for (const p of r.people) {

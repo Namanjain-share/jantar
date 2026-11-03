@@ -194,7 +194,7 @@ export default defineCommand(
       '  remote setup --cloudflare  print the steps for a Cloudflare quick tunnel (fallback)\n' +
       '  remote url https://HOST    use HOST in pairing links and accept it as an Origin\n' +
       '  remote url --clear         back to loopback-only pairing links\n' +
-      '  remote people-url https://HOST   People: the partner\'s own hostname (--clear: none)',
+      '  remote people-url https://HOST   Accountability partner: their own hostname (--clear: none)',
   },
   async (argv, ctx) => {
     const { flags, positionals } = parseArgs(argv, FLAGS, { min: 1, max: 2 });

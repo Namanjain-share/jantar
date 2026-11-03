@@ -149,7 +149,7 @@ function FirstSteps({ api, owner, step, next }: { api: PersonApi; owner: string;
   if (step === 'home') {
     return (
       <Page title="Step 1 of 2: Add to your Home Screen">
-        <p>On iPhone, notifications from {owner || 'your space'} reach you only from the app on your Home Screen.</p>
+        <p>On iPhone, notifications from {owner || 'your accountability partner'} reach you only from the app on your Home Screen.</p>
         <ol className="mt-12 list-decimal pl-20">
           <li>Tap the Share button at the bottom of Safari.</li>
           <li>Tap Add to Home Screen, then Add.</li>
@@ -165,7 +165,7 @@ function FirstSteps({ api, owner, step, next }: { api: PersonApi; owner: string;
   }
   return (
     <Page title={needsHomeScreen() ? 'Step 2 of 2: Turn on notifications' : 'Turn on notifications'}>
-      <p>Your plan, its rings, reminders and alerts from {owner || 'the owner'} come as notifications. You choose what shows on the lock screen in Me › Notifications.</p>
+      <p>Your plan, its rings, reminders and alerts from {owner || 'your accountability partner'} come as notifications. You choose what shows on the lock screen in Me › Notifications.</p>
       {note ? (
         <p role="status" className="mt-12 font-medium">
           {note}

@@ -3,6 +3,7 @@
  * live reloads on her stream's ticks (WS /v1/p/events).
  */
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import type { PersonMe } from '@jantar/protocol/people';
 import { PersonApiError, type PersonApi } from './api.js';
 import { Sheet } from './ui.js';
@@ -104,7 +105,7 @@ export function App({ api }: { api: PersonApi }) {
       <Page title="Not linked yet">
         <p>{error ?? 'Loading…'}</p>
         <p className="mt-12 text-ink-2">
-          If this app isn't linked yet, open your invite link again, or on a linked device open Me › Devices › Link another device and
+          This is your {PEOPLE_LABEL} app. If it isn't linked yet, open your invite link again, or on a linked device open Me › Devices › Link another device and
           enter the code on <a className="underline" href="/p/link">this page</a>.
         </p>
       </Page>

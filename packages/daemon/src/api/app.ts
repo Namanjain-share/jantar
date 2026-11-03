@@ -54,6 +54,7 @@
  *   switches, read-only, zod, the node's own idempotency cache, handlers
  *   and audit as on a Mac.
  */
+import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import fastifyCookie from '@fastify/cookie';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
@@ -248,8 +249,8 @@ export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<AnyRouteName, string>>>
   personInvite: 'Make an invite at the Mac: jantar people invite <name>',
   personInviteRevoke: 'Void an invite at the Mac: jantar people revoke-invite <name>',
   personRemove: 'End sharing at the Mac: jantar people remove <name>',
-  peopleSwitch: 'Turn People on or off at the Mac: jantar people on',
-  peopleDoctor: 'Check People at the Mac: jantar people doctor',
+  peopleSwitch: `Turn ${PEOPLE_LABEL} on or off at the Mac: jantar people on`,
+  peopleDoctor: `Check ${PEOPLE_LABEL} at the Mac: jantar people doctor`,
 };
 
 /** What an `extension` route answers without a valid extension key (401). */

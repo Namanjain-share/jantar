@@ -2,11 +2,11 @@
  * v0.11 People (P2): the card on his Today (spec 4.1): "Asha · 3 of 7 done
  * · Now: Interview prep 11:00 · Low" (or "Asleep since 23:40" with
  * see.sleep), and with see.meds "1 dose not logged" (a count, never a name)
- * and the two-day concern. Every field obeys the agreement (it is her Today DTO, which
+ * and the two-day concern. Every field follows the agreement (it is her Today DTO, which
  * writes the same view mark as her Today tab); a tap opens her Today tab.
  * Nothing shows while People is off or nobody is sharing.
  */
-import { STATUS_LABELS } from '@jantar/protocol/people-core';
+import { PEOPLE_LABEL, STATUS_LABELS } from '@jantar/protocol/people-core';
 import type { OwnerMedsView, PersonToday } from '@jantar/protocol/people';
 import { hmOf } from '../../../people-shared/time.js';
 import { useNavigate } from '../../context.js';
@@ -47,7 +47,7 @@ export function PeopleCard({ client = peopleClient() }: { client?: PeopleClient 
   const rows = (load.data ?? []).filter((r): r is { id: string; today: PersonToday } => r.today !== null);
   if (rows.length === 0) return null;
   return (
-    <ul aria-label="People" className="border-b border-line">
+    <ul aria-label={PEOPLE_LABEL} className="border-b border-line">
       {rows.map((r) => (
         <li key={r.id}>
           <button type="button" className="flex min-h-48 w-full items-center px-16 text-left type-row text-ink hover:bg-hover" onClick={() => navigate(`/people/${r.id}?tab=today`)}>

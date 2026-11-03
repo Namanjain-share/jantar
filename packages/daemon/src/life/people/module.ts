@@ -17,6 +17,7 @@
  * caller may not see is the one not_found sentence (a refusal confirms
  * nothing). Logs carry ids and codes only, never her name or email.
  */
+import { OWNER_FALLBACK_NAME, PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import {
   BUILT_PHASE,
   GONE_BY,
@@ -87,7 +88,7 @@ const HOUR_MS = 60 * 60_000;
 /** Fixed daemon sentences; never her text. */
 export const PEOPLE_REASONS = {
   noPerson: 'No such person.',
-  full: `People holds ${PEOPLE_MAX} person on this Mac for now.`,
+  full: `An accountability partner space holds ${PEOPLE_MAX} person on this Mac for now.`,
   invalidCode: 'This invite link has expired or was already used. Ask for a new one.',
   invalidLink: 'This code has expired or was already used. Make a new one on your other device.',
   widen: 'The agreement asks for more than the invite offered.',
@@ -184,7 +185,7 @@ export class PeopleModule {
   }
 
   ownerName(): string {
-    return this.deps.ctx.settings.get().people.ownerName ?? 'The owner';
+    return this.deps.ctx.settings.get().people.ownerName ?? OWNER_FALLBACK_NAME;
   }
 
   private now(): number {
@@ -739,7 +740,7 @@ export class PeopleModule {
     const version = l.maxVersion + 1;
     this.appendLedger(pid, 'narrowed', by, next, version);
     this.tryRecord(pid, { actor: 'her', action: 'agreement.narrowed', fields: changed });
-    this.deps.push({ kind: 'life', title: `${this.nameOf(pid)} changed what they share`, body: 'Open People to see.', url: `/people/${pid}`, tag: `people:${pid}` });
+    this.deps.push({ kind: 'life', title: `${this.nameOf(pid)} changed what they share`, body: `Open ${PEOPLE_LABEL} to see.`, url: `/people/${pid}`, tag: `people:${pid}` });
     this.ticks.bump(pid, 'me');
     this.ownerChanged();
     return { ok: true, value: true };
@@ -786,7 +787,7 @@ export class PeopleModule {
     this.appendLedger(pid, 'accepted', by, l.pending.fields, version);
     this.clearPending(pid);
     this.tryRecord(pid, { actor: 'her', action: 'agreement.accepted', fields: fieldsChanged(stripVersion(l.agreement ?? { ...noAgreement(), version: 1 }), l.pending.fields) });
-    this.deps.push({ kind: 'life', title: `${this.nameOf(pid)} said yes`, body: 'Open People to see.', url: `/people/${pid}`, tag: `people:${pid}` });
+    this.deps.push({ kind: 'life', title: `${this.nameOf(pid)} said yes`, body: `Open ${PEOPLE_LABEL} to see.`, url: `/people/${pid}`, tag: `people:${pid}` });
     this.ticks.bump(pid, 'me');
     this.ownerChanged();
     return { ok: true, value: true };
