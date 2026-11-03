@@ -8,14 +8,38 @@
  * land in config.json, lib/settings.ts). `work seed <folder...>` makes one
  * project per folder he names (inside one of his configured folders), its
  * folder linked, through the daemon (POST /v1/work/seed); never automatic.
+ *
+ * P2 (the CLI writes only imports, design 5):
+ * - `work import <file> [--dry-run]`: a CSV or vCard file he names (at most
+ *   1 MB), previewed by the daemon with its duplicate warnings, then
+ *   imported as one batch with the defaults (a row with the same e-mail or
+ *   phone as a client is skipped; a name-only match is added and flagged).
+ *   It prints counts and row numbers, never a client's name.
+ * - `work import undo <batch>`, `work imports`: the batch's Undo (7 days),
+ *   and the newest imports.
+ * - `work export --csv <file>`: his clients as a CSV where he names (a new
+ *   file, 0600; never one that exists).
+ * - `work lockscreen names on|off`: a follow-up's push names its words on a
+ *   locked phone (life.workLockScreenNames; a Mac switch).
+ * - `work settings`: Work's settings as the phone sets them.
  */
-import { realpath } from 'node:fs/promises';
-import { basename, relative, sep } from 'node:path';
+import { open, realpath, stat, writeFile } from 'node:fs/promises';
+import { basename, extname, relative, resolve, sep } from 'node:path';
 import { workOn, type Settings } from '@jantar/protocol';
-import { WORK_LIMITS, WORK_ROUTES, type WorkSeedItem, type WorkSeedReply } from '@jantar/protocol/work';
+import {
+  WORK_LIMITS,
+  WORK_ROUTES,
+  type WorkImportPreviewReply,
+  type WorkImportReply,
+  type WorkImportsReply,
+  type WorkImportUndoReply,
+  type WorkSeedItem,
+  type WorkSeedReply,
+  type WorkSettings,
+} from '@jantar/protocol/work';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
-import { callDaemon } from '../ctl.js';
+import { DaemonError, callDaemon, isErrorBody } from '../ctl.js';
 import { expandPath } from '../lib/roots.js';
 import { readSettings } from '../lib/settings.js';
 import { changeSettings } from '../lib/switches.js';
@@ -23,6 +47,8 @@ import { plural } from '../lib/text.js';
 
 const FLAGS = {
   name: { type: 'string', help: 'seed: the project name, for one folder (default: from the folder name)' },
+  'dry-run': { type: 'boolean', help: 'import: show what the file holds and import nothing' },
+  csv: { type: 'string', help: 'export: the new file to write the clients to' },
 } as const;
 
 /** A project name from a folder name: "acme-web_app" is "Acme Web App" (at most 60 characters). */
@@ -75,9 +101,114 @@ async function seed(ctx: CliContext, folders: readonly string[], name: string | 
   return EXIT.ok;
 }
 
+/** A file's text for an import: a regular file of at most WORK_LIMITS.importBytes, BOM and CRLF as they are. */
+async function importText(file: string): Promise<string> {
+  const path = resolve(file);
+  const shown = basename(file).slice(0, 80);
+  let size: number;
+  try {
+    const st = await stat(path);
+    if (!st.isFile()) throw new UsageError(`${shown} is not a file`);
+    size = st.size;
+  } catch (e) {
+    if (e instanceof UsageError) throw e;
+    throw new UsageError(`cannot read ${shown}: ${(e as NodeJS.ErrnoException).code === 'ENOENT' ? 'there is no such file' : 'it cannot be opened'}`);
+  }
+  if (size > WORK_LIMITS.importBytes) throw new UsageError(`${shown} is over 1 MB. Split it and import each part.`);
+  const fh = await open(path, 'r');
+  try {
+    return await fh.readFile('utf8');
+  } finally {
+    await fh.close();
+  }
+}
+
+/** Row numbers as a person counts them (the file's first data row is 1), at most 20. */
+function rowList(rows: readonly { index: number }[]): string {
+  const n = rows.slice(0, 20).map((r) => String(r.index + 1));
+  return `${n.join(', ')}${rows.length > 20 ? ', …' : ''}`;
+}
+
+/** `jantar work import <file> [--dry-run]`: previewed, then imported with the defaults. Names no client. */
+async function importFile(ctx: CliContext, file: string, dryRun: boolean): Promise<number> {
+  const format = ['.vcf', '.vcard'].includes(extname(file).toLowerCase()) ? 'vcf' : 'csv';
+  const text = await importText(file);
+  const p = await callDaemon<WorkImportPreviewReply>(ctx.ctl, 'POST', WORK_ROUTES.workImportPreview.path, { format, text });
+  const skip = p.rows.filter((r) => r.action === 'skip');
+  const named = p.rows.filter((r) => r.action === 'add' && r.dup?.why === 'name');
+  const add = p.rows.filter((r) => r.action === 'add');
+  const lines = [`${plural(p.rows.length + p.skipped, 'row')} in the file: ${add.length} to add, ${skip.length} already here (the same e-mail or phone), skipped.`];
+  if (p.skipped) lines.push(`${plural(p.skipped, 'row')} with no name ${p.skipped === 1 ? 'is' : 'are'} left out.`);
+  if (skip.length) lines.push(`Already here: rows ${rowList(skip)}.`);
+  if (named.length) lines.push(`Same name as a client (added; check them on the phone): rows ${rowList(named)}.`);
+  if (dryRun) {
+    lines.push('Nothing imported (--dry-run).');
+    ctx.io.out(`${lines.join('\n')}\n`);
+    return EXIT.ok;
+  }
+  const r = await callDaemon<WorkImportReply>(ctx.ctl, 'POST', WORK_ROUTES.workImport.path, { previewId: p.previewId, rows: p.rows.map((x) => ({ index: x.index, action: x.action })) }, { idempotencyKey: ctx.deps.randomId() });
+  lines.push(`Added ${plural(r.added, 'client')}. Undo it within ${WORK_LIMITS.importUndoDays} days: jantar work import undo ${r.batch}`);
+  ctx.io.out(`${lines.join('\n')}\n`);
+  return EXIT.ok;
+}
+
+async function undoImport(ctx: CliContext, batch: string): Promise<number> {
+  const r = await callDaemon<WorkImportUndoReply>(ctx.ctl, 'DELETE', WORK_ROUTES.workImportUndo.path.replace(':batch', encodeURIComponent(batch)));
+  ctx.io.out(`Removed ${plural(r.removed, 'client')}.${r.kept ? ` Kept ${plural(r.kept, 'client')} changed or linked since.` : ''}\n`);
+  return EXIT.ok;
+}
+
+async function listImports(ctx: CliContext): Promise<number> {
+  const r = await callDaemon<WorkImportsReply>(ctx.ctl, 'GET', WORK_ROUTES.workImports.path);
+  if (r.imports.length === 0) {
+    ctx.io.out('No imports.\n');
+    return EXIT.ok;
+  }
+  for (const i of r.imports) ctx.io.out(`${i.batch}  ${i.at.slice(0, 16).replace('T', ' ')}  added ${i.added}, filled ${i.filled}  undo until ${i.undoUntil.slice(0, 10)}\n`);
+  return EXIT.ok;
+}
+
+/** `jantar work export --csv <file>`: a new file where he names (never one that exists), 0600. */
+async function exportCsv(ctx: CliContext, file: string): Promise<number> {
+  const path = resolve(file);
+  const res = await ctx.ctl.bytes(`${WORK_ROUTES.workExport.path}?what=clients`);
+  if (res.status < 200 || res.status >= 300) {
+    let body: unknown = null;
+    try {
+      body = JSON.parse(res.body.toString('utf8'));
+    } catch {
+      body = null;
+    }
+    if (isErrorBody(body)) throw new DaemonError(res.status, body.error.code, body.error.message);
+    throw new DaemonError(res.status, 'internal', `daemon answered HTTP ${res.status}`);
+  }
+  try {
+    await writeFile(path, res.body, { mode: 0o600, flag: 'wx' });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new UsageError(`${basename(file)} exists already. Name a new file.`);
+    throw new UsageError(`cannot write ${basename(file)}: ${(e as NodeJS.ErrnoException).code ?? 'it cannot be opened'}`);
+  }
+  const rows = Math.max(0, res.body.toString('utf8').trimEnd().split('\r\n').length - 1);
+  ctx.io.out(`Wrote ${plural(rows, 'client')} to ${path}\n`);
+  return EXIT.ok;
+}
+
+async function showSettings(ctx: CliContext): Promise<number> {
+  const s = await callDaemon<WorkSettings>(ctx.ctl, 'GET', WORK_ROUTES.workSettings.path);
+  ctx.io.out(
+    [
+      `Businesses: ${s.businesses.length ? s.businesses.map((b) => b.name).join(', ') : 'none (add them on the phone: Work › Settings)'}`,
+      `Dial code: ${s.dialCode ?? 'none'}`,
+      `Quiet after: ${plural(s.quietDays, 'day')} with no touch`,
+      `Lock screen: ${s.lockScreenNames ? 'follow-ups say their words' : 'follow-ups say only "Follow-up" (jantar work lockscreen names on)'}`,
+    ].join('\n') + '\n',
+  );
+  return EXIT.ok;
+}
+
 /** The status line: on, off, or on but waiting for Todos (a config.json edited by hand). */
 export function workLine(s: Pick<Settings, 'life'>): string {
-  if (workOn(s)) return 'Work: on (projects as a hub, and one search across Jantar on the phone)\n';
+  if (workOn(s)) return 'Work: on (projects, clients and follow-ups, and one search across Jantar on the phone)\n';
   if (s.life.work) return 'Work: off, because Todos is off (jantar work on turns both on)\n';
   return 'Work: off (turn it on: jantar work on)\n';
 }
@@ -88,25 +219,61 @@ export const TODOS_TOO = "Todos is on too: Work's projects and follow-ups are to
 export default defineCommand(
   {
     name: 'work',
-    summary: 'Turn Work (projects as a hub, search on the phone) on or off.',
-    usage: 'jantar work <on|off|status|seed <folder...> [--name NAME]>',
+    summary: 'Turn Work (projects, clients, follow-ups) on or off; import, export.',
+    usage: 'jantar work <on|off|status|seed <folder...> [--name NAME]|import <file> [--dry-run]|import undo <batch>|imports|export --csv <file>|lockscreen names <on|off>|settings>',
     owner: 'WP-WORK',
     help:
-      '  work on        the phone shows Work: each project as one screen, and search from every screen (turns Todos on too)\n' +
+      '  work on        the phone shows Work: projects, clients and follow-ups, and search from every screen (turns Todos on too)\n' +
       "  work off       hide Work again (Todos stays as it is; nothing is deleted)\n" +
       '  work status    whether Work is on\n' +
       '  work seed <folder...> [--name NAME]\n' +
       '                 one project per folder, linked to it (folders inside one of your folders; one already linked is skipped)\n' +
-      'The switch changes only here, at the Mac.',
+      '  work import <file.csv|file.vcf> [--dry-run]\n' +
+      '                 import clients from a file you name (a row with the same e-mail or phone as a client is skipped)\n' +
+      '  work import undo <batch>\n' +
+      '                 take an import back within 7 days (clients changed or linked since stay)\n' +
+      '  work imports   the newest imports\n' +
+      '  work export --csv <file>\n' +
+      '                 your clients as a CSV, in a new file you name\n' +
+      '  work lockscreen names <on|off>\n' +
+      "                 whether a follow-up's push says its words on a locked phone (off: \"Follow-up · 15:00\")\n" +
+      "  work settings  Work's businesses, dial code and quiet days (set on the phone)\n" +
+      'The switches change only here, at the Mac. Jantar never reads another app\'s contacts: only a file you name.',
   },
   async (argv, ctx) => {
     const { flags, positionals } = parseArgs(argv, FLAGS, { min: 1 });
     const [action, ...rest] = positionals;
-    if (action !== 'seed' && rest.length) throw new UsageError(`${action} takes no argument`);
+    const takes = (a: string | undefined) => a === 'seed' || a === 'import' || a === 'lockscreen';
+    if (!takes(action) && rest.length) throw new UsageError(`${action} takes no argument`);
     if (action !== 'seed' && flags.name !== undefined) throw new UsageError('--name goes with seed');
+    if (action !== 'import' && flags['dry-run']) throw new UsageError('--dry-run goes with import');
+    if (action !== 'export' && flags.csv !== undefined) throw new UsageError('--csv goes with export');
     switch (action) {
       case 'seed':
         return seed(ctx, rest, flags.name);
+      case 'import': {
+        if (rest[0] === 'undo') {
+          if (rest.length !== 2 || flags['dry-run']) throw new UsageError('import undo takes one batch id (jantar work imports lists them)');
+          return undoImport(ctx, rest[1] as string);
+        }
+        if (rest.length !== 1) throw new UsageError('import takes one file (a .csv or a .vcf)');
+        return importFile(ctx, rest[0] as string, flags['dry-run'] === true);
+      }
+      case 'imports':
+        return listImports(ctx);
+      case 'export':
+        if (flags.csv === undefined) throw new UsageError('export needs --csv <file>, a new file to write');
+        return exportCsv(ctx, flags.csv);
+      case 'lockscreen': {
+        const [what, value] = rest;
+        if (what !== 'names' || (value !== 'on' && value !== 'off') || rest.length !== 2) throw new UsageError('lockscreen takes: names on, or names off');
+        await changeSettings(ctx, { life: { workLockScreenNames: value === 'on' } }, (s) =>
+          s.life.workLockScreenNames ? "Follow-ups' pushes say their words on a locked phone.\n" : 'Follow-ups\' pushes say only "Follow-up" and the time on a locked phone.\n',
+        );
+        return EXIT.ok;
+      }
+      case 'settings':
+        return showSettings(ctx);
       case 'on': {
         const before = (await readSettings(ctx)).settings;
         await changeSettings(ctx, { life: { work: true, todos: true } }, (s) => `${workLine(s)}${before.life.todos ? '' : TODOS_TOO}`);
@@ -121,7 +288,7 @@ export default defineCommand(
         return EXIT.ok;
       }
       default:
-        throw new UsageError(`unknown action "${action}" (on, off, status or seed)`);
+        throw new UsageError(`unknown action "${action}" (on, off, status, seed, import, imports, export, lockscreen or settings)`);
     }
   },
 );

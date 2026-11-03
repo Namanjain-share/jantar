@@ -163,10 +163,10 @@ describe('the handshake and JSON-RPC', () => {
 });
 
 describe('tools/list', () => {
-  it('five tools in a fixed order, each with a strict input schema and its annotations; none takes a folder', async () => {
+  it('six tools in a fixed order, each with a strict input schema and its annotations; none takes a folder', async () => {
     const r = await ask(server(), 'tools/list');
     const tools = (r.result as { tools: { name: string; title: string; description: string; inputSchema: Record<string, unknown>; annotations: Record<string, unknown> }[] }).tools;
-    expect(tools.map((t) => t.name)).toEqual(['intel_search', 'intel_get', 'intel_add', 'todos_here', 'todo_add']);
+    expect(tools.map((t) => t.name)).toEqual(['intel_search', 'intel_get', 'intel_add', 'todos_here', 'client_here', 'todo_add']);
     for (const t of tools) {
       expect(t.inputSchema.type, t.name).toBe('object');
       expect(t.inputSchema.additionalProperties, t.name).toBe(false);
@@ -177,7 +177,7 @@ describe('tools/list', () => {
       expect(t.annotations.title).toBe(t.title);
     }
     const by = Object.fromEntries(tools.map((t) => [t.name, t]));
-    for (const name of ['intel_search', 'intel_get', 'todos_here']) expect(by[name]?.annotations, name).toEqual({ title: by[name]?.title, readOnlyHint: true, openWorldHint: false });
+    for (const name of ['intel_search', 'intel_get', 'todos_here', 'client_here']) expect(by[name]?.annotations, name).toEqual({ title: by[name]?.title, readOnlyHint: true, openWorldHint: false });
     for (const name of ['intel_add', 'todo_add']) {
       expect(by[name]?.annotations, name).toEqual({ title: by[name]?.title, readOnlyHint: false, destructiveHint: false, openWorldHint: false });
     }
@@ -253,6 +253,26 @@ describe('the shelf tools', () => {
     expect((await callTool(s, 'intel_add', { title: 'Again', url: 'https://example.com/tool' })).text).toBe('Already on the shelf: intel:t-104 (nothing added)');
     expect(ctl.calls.at(-1)?.opts).toEqual({ idempotencyKey: 'key-2' });
     expect(ctl.calls.at(-1)?.body).toEqual({ title: 'Again', via: 'claude', url: 'https://example.com/tool', cwd: FOLDER });
+  });
+});
+
+describe('client_here (v0.13 Work)', () => {
+  const CLIENT_HERE = `/v1/folder/client?folder=${encodeURIComponent(FOLDER)}`;
+  it("this folder's client, by the folder Claude Code gave (never an argument); null with the sentence", async () => {
+    const client = { id: PROJECT_ID, name: 'Acme Studio', kind: 'company', state: 'client', source: 'import', openDeals: 0, next: { title: 'Send the quote', due: { day: '2026-11-05' } } };
+    const ctl = daemon({ 'GET /v1/folder/client': ok({ client }) });
+    const r = await callTool(server(ctl), 'client_here');
+    expect(paths(ctl.calls)).toEqual([`GET ${CLIENT_HERE}`]);
+    expect(JSON.parse(r.text)).toEqual({ client });
+    const none = daemon({ 'GET /v1/folder/client': ok({ client: null }) });
+    expect(JSON.parse((await callTool(server(none), 'client_here')).text)).toEqual({ client: null, hint: MCP_SAYS.noClient });
+    expect(await callTool(server(ctl), 'client_here', { folder: '/synthetic/other' })).toEqual({ text: 'folder: not an argument of client_here.', isError: true });
+    expect((await callTool(server(ctl, null), 'client_here')).text).toBe(MCP_SAYS.noFolder);
+  });
+
+  it("Work off: the daemon's sentence, as the user's to act on", async () => {
+    const ctl = daemon({ 'GET /v1/folder/client': { status: 403, body: { error: { code: 'forbidden', message: 'Work is off. Turn it on at your Mac: jantar work on' } } } });
+    expect(await callTool(server(ctl), 'client_here')).toEqual({ text: `${MCP_SAYS.userOnly} Work is off. Turn it on at your Mac: jantar work on`, isError: true });
   });
 });
 
@@ -534,8 +554,8 @@ describe('jantar mcp on a terminal: the setup', () => {
     expect(out).toContain(`\n  claude mcp add --scope user jantar -- "${NODE}" "${BIN}" mcp\n`);
     expect(out).toMatch(/^jantar mcp is an MCP server for Claude Code: it talks JSON-RPC on stdin and stdout\.\n/);
     expect(out).toContain('With cswap, run that once in each profile you use.');
-    expect(out).toContain('  "mcp__jantar__intel_search", "mcp__jantar__intel_get", "mcp__jantar__todos_here"\n');
-    expect(out).toContain('Every session can read the whole Intel shelf. Todos are only those of the Life\nproject linked to the session\'s folder.\n');
+    expect(out).toContain('  "mcp__jantar__intel_search", "mcp__jantar__intel_get", "mcp__jantar__todos_here",\n  "mcp__jantar__client_here"\n');
+    expect(out).toContain("Every session can read the whole Intel shelf. Todos are only those of the Life\nproject linked to the session's folder, and client_here names only that folder's client.\n");
     // Never the write tools on the allow list.
     expect(out).not.toMatch(/mcp__jantar__(intel_add|todo_add)/);
   });

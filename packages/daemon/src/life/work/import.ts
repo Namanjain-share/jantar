@@ -1,6 +1,6 @@
 /**
  * Work's import (W27): a CSV or vCard file he hands over (the phone's file
- * picker, or `jantar work import <file>` at the Mac), read into rows that
+ * picker, or the CLI's `work import` at the Mac), read into rows that
  * fit Work's caps, each with its duplicate warning. Never another app's
  * database, never the web.
  *

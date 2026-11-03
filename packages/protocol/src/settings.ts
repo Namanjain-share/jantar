@@ -308,8 +308,8 @@ export const LifeSettingsSchema = z.object({
   lockScreenDetails: z.boolean().default(false),
   /**
    * v0.13 Work: a follow-up's push (a todo with a client) says its title (by notify.bodies), which can name
-   * the client. Off: "Follow-up · 15:00", no client words on the lock screen (`jantar work lockscreen names
-   * on`). An older daemon drops it.
+   * the client. Off: "Follow-up · 15:00", no client words on the lock screen. At the Mac:
+   * `jantar work lockscreen names on`. An older daemon drops it.
    */
   workLockScreenNames: z.boolean().default(false),
 });
