@@ -5,7 +5,7 @@
  * over its stdin and stdout the way Claude Code does, with
  * CLAUDE_PROJECT_DIR set to a synthetic folder.
  *
- * 1. The handshake and tools/list (five tools); intel_add saves a capture
+ * 1. The handshake and tools/list (six tools); intel_add saves a capture
  *    via claude with the folder kept on the Mac; intel_search finds it.
  * 2. todos_here before any project is linked: project null. A project is
  *    linked to the folder through the device API (the phone's way); then
@@ -136,13 +136,13 @@ describe.skipIf(!built)('jantar mcp: the real executable against jantard', () =>
     await d?.stop();
   }, perfBudgetMs(30_000));
 
-  it('1. the handshake, five tools, intel_add via claude and intel_search finds it', async () => {
+  it('1. the handshake, six tools, intel_add via claude and intel_search finds it', async () => {
     const init = await mcp.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'example-client', version: '1.0.0' } });
     expect(init.result).toMatchObject({ protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'jantar' } });
     mcp.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
     expect((await mcp.request('server/discover', {})).error?.code).toBe(-32601);
     const list = await mcp.request('tools/list');
-    expect((list.result?.tools as { name: string }[]).map((t) => t.name)).toEqual(['intel_search', 'intel_get', 'intel_add', 'todos_here', 'todo_add']);
+    expect((list.result?.tools as { name: string }[]).map((t) => t.name)).toEqual(['intel_search', 'intel_get', 'intel_add', 'todos_here', 'client_here', 'todo_add']);
 
     const added = await mcp.tool('intel_add', { title: 'Example zephyr toolkit', url: 'https://example.com/zephyr', tags: ['example'] });
     expect(added.isError, added.text).toBe(false);
