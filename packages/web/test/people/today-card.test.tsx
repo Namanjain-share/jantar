@@ -20,6 +20,8 @@ import { fakeApi, measureAs, preloadPlaces, renderApp, stateWith } from '../help
 preloadPlaces('today');
 
 const PID = '01JASHAAAAAAAAAAAAAAAAAAAA';
+/** How long a find waits for Today and its card (the default 1 s is short on a loaded Mac). */
+const LOAD_MS = 5_000;
 const DAY = '2026-01-15';
 
 const fake = vi.hoisted(() => ({ people: [] as unknown[] }));
@@ -78,7 +80,8 @@ describe('his Today with someone sharing', () => {
   it('a phone: her row on top of the list, a tap opens her Today tab', async () => {
     fake.people = [asha()];
     render({ people: true });
-    const rows = await screen.findByRole('list', { name: 'Accountability partner' });
+    // The first test pays for Today's chunk and the mocked client's import: a loaded Mac needs longer than 1 s.
+    const rows = await screen.findByRole('list', { name: 'Accountability partner' }, { timeout: LOAD_MS });
     expect(within(rows).getByRole('button').textContent).toBe('Accountability partner Asha · Low');
     expect(document.querySelector('[data-card]')).toBeNull();
   });
@@ -87,7 +90,7 @@ describe('his Today with someone sharing', () => {
     measureAs(1352);
     fake.people = [asha()];
     render({ people: true });
-    const card = await screen.findByRole('region', { name: 'Accountability partner' });
+    const card = await screen.findByRole('region', { name: 'Accountability partner' }, { timeout: LOAD_MS });
     expect(card.getAttribute('data-card')).toBe('people');
     // The header names the place; the row names the space only when he gave it a name of his own.
     expect(within(card).getByRole('button').textContent).toBe('Asha · Low');
@@ -102,7 +105,7 @@ describe('his Today with someone sharing', () => {
     measureAs(1352);
     fake.people = [asha()];
     render({ people: true });
-    await screen.findByRole('region', { name: 'Accountability partner' });
+    await screen.findByRole('region', { name: 'Accountability partner' }, { timeout: LOAD_MS });
     fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }));
     const edit = screen.getByRole('region', { name: 'Edit cards' });
     expect(within(edit).getAllByRole('button', { name: /^Move / })[0]!.getAttribute('aria-label')).toBe('Move Accountability partner');
