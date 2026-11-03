@@ -248,6 +248,41 @@ describe('his Partner screen', () => {
     );
   });
 
+  it('Assign repeats daily, weekly or monthly (it needs a due day); Edit keeps or clears it', async () => {
+    const assignTodo = vi.fn(async () => ({ id: '01JTODOAAAAAAAAAAAAAAAAAAA' }));
+    const updateTodo = vi.fn(async () => undefined);
+    const daily = { id: '01JTODOAAAAAAAAAAAAAAAAAA1', title: 'Water the plants', priority: 'normal', by: '', due: { day: DAY, time: '08:00' }, repeat: { freq: 'daily' }, createdAt: AT, updatedAt: AT } as const;
+    const c = client({
+      list: vi.fn(async () => ({ enabled: true, people: [person()] })),
+      today: vi.fn(async () => today()),
+      assignTodo,
+      updateTodo,
+      todos: vi.fn(async (_p: string, done?: boolean) => ({ today: DAY, todos: done ? [] : [daily], projects: [] })),
+    });
+    render(<Wrapped client={c} tab="todos" />);
+    expect(await screen.findByText(/every day · from you/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Assign a to-do' }));
+    let sheet = await screen.findByRole('dialog');
+    const repeat = within(sheet).getByLabelText('Repeat') as HTMLSelectElement;
+    expect(repeat.disabled).toBe(true);
+    fireEvent.change(within(sheet).getByLabelText('To-do'), { target: { value: 'Stretch' } });
+    fireEvent.change(within(sheet).getByLabelText('Due day'), { target: { value: '2026-11-04' } });
+    fireEvent.change(repeat, { target: { value: 'weekly' } });
+    expect(within(sheet).getByText(/every week after each Done/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Assign to Asha' }));
+    });
+    await waitFor(() => expect(assignTodo).toHaveBeenCalledWith(PID, { title: 'Stretch', due: { day: '2026-11-04' }, repeat: { freq: 'weekly' }, ask: 'none' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    sheet = await screen.findByRole('dialog');
+    expect((within(sheet).getByLabelText('Repeat') as HTMLSelectElement).value).toBe('daily');
+    fireEvent.change(within(sheet).getByLabelText('Repeat'), { target: { value: 'none' } });
+    await act(async () => {
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    });
+    await waitFor(() => expect(updateTodo).toHaveBeenCalledWith(PID, daily.id, expect.objectContaining({ repeat: null, due: { day: DAY, time: '08:00' } })));
+  });
+
   it('the To-do tab lists his items and hers; Edit only where he may (editHers.todos), Nudge on open ones', async () => {
     const mine = { id: '01JTODOAAAAAAAAAAAAAAAAAA1', title: 'From him', priority: 'normal', by: '', createdAt: AT, updatedAt: AT } as const;
     const hers = { id: '01JTODOAAAAAAAAAAAAAAAAAA2', title: 'Her own', priority: 'normal', by: PID, createdAt: AT, updatedAt: AT } as const;

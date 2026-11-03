@@ -104,6 +104,19 @@ describe('her to-dos and his assign', () => {
     expect(back?.skipped).toBeUndefined();
   });
 
+  it('his assign repeats: one daily item that comes back after each Done; his edit clears the repeat', async () => {
+    const id = ((await him('POST', `/v1/people/${f.asha.id}/todos`, { title: 'Water the plants', due: { day: '2026-11-03', time: '08:00' }, repeat: { freq: 'daily' } })).json() as { id: string }).id;
+    const first = ((await herCall('GET', '/v1/p/todos')).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === id);
+    expect(first?.repeat).toMatchObject({ freq: 'daily' });
+    expect((await herCall('POST', `/v1/p/todos/${id}/done`, { done: true })).statusCode).toBe(200);
+    const next = ((await herCall('GET', '/v1/p/todos')).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === id);
+    expect(next?.doneAt).toBeUndefined();
+    expect(next?.due?.day && next.due.day > '2026-11-03').toBe(true);
+    expect((await him('PATCH', `/v1/people/${f.asha.id}/todos/${id}`, { repeat: null })).statusCode).toBe(200);
+    const plain = ((await herCall('GET', '/v1/p/todos')).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === id);
+    expect(plain?.repeat).toBeUndefined();
+  });
+
   it('her own reminder: a to-do with a day and time; she snoozes it, and his "no snooze" is refused', async () => {
     const mine = ((await herCall('POST', '/v1/p/todos', { title: 'Call the bank', due: { day: '2026-11-05', time: '09:30' } })).json() as { id: string }).id;
     const listed = ((await herCall('GET', '/v1/p/todos')).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === mine);

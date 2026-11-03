@@ -21,6 +21,7 @@ export function todoSubline(t: PersonTodo, owner: string): string {
   const open = t.doneAt === undefined;
   return [
     t.due ? `${dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null,
+    t.repeat ? `every ${t.repeat.freq === 'daily' ? 'day' : t.repeat.freq.replace(/ly$/, '')}` : null,
     t.by === '' ? `From ${owner}` : null,
     t.by !== '' && t.editedBy === '' ? `Edited by ${owner}` : null,
     t.snoozable === false ? 'no snooze' : null,

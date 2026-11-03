@@ -938,6 +938,7 @@ function AlertSheet({ open, client, pid, name, close }: { open: boolean; client:
 function todoLine(t: PersonTodo, name: string): string {
   return [
     t.due ? `${t.due.day === localDay() ? 'Today' : dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null,
+    t.repeat ? `every ${t.repeat.freq === 'daily' ? 'day' : t.repeat.freq.replace(/ly$/, '')}` : null,
     t.by === '' ? 'from you' : `${name}'s own`,
     t.editedBy === '' && t.by !== '' ? 'edited by you' : null,
     t.snoozable === false ? 'no snooze' : null,
@@ -1024,9 +1025,19 @@ function TodosTab({ client, pid, name, sees, canAssign, editHers, onAssign }: { 
   );
 }
 
+/** His Assign sheet's repeat choices (a repeat needs a due day; weekly repeats on the due day's weekday). */
+export const REPEATS = [
+  ['none', 'Never'],
+  ['daily', 'Every day'],
+  ['weekly', 'Every week'],
+  ['monthly', 'Every month'],
+] as const;
+export type RepeatChoice = (typeof REPEATS)[number][0];
+
 /**
  * Assign a to-do to her (assign.todos), or edit one (his, or hers with editHers.todos): a title, a due day
- * and time, what it asks of her (nothing, Got it, a short report), no snooze, and "Tell me if not done by".
+ * and time, a repeat (daily, weekly, monthly: one item that comes back after each Done), what it asks of
+ * her (nothing, Got it, a short report), no snooze, and "Tell me if not done by".
  */
 function AssignSheet({ open, client, pid, name, close, done, edit = null }: { open: boolean; client: PeopleClient; pid: string; name: string; close: () => void; done: () => void; edit?: PersonTodo | null }) {
   const [title, setTitle] = useState('');
@@ -1035,11 +1046,13 @@ function AssignSheet({ open, client, pid, name, close, done, edit = null }: { op
   const [ask, setAsk] = useState<TodoAsk>('none');
   const [noSnooze, setNoSnooze] = useState(false);
   const [followUp, setFollowUp] = useState('');
+  const [repeat, setRepeat] = useState<RepeatChoice>('none');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!open) return;
     setTitle(edit?.title ?? '');
+    setRepeat(edit?.repeat && edit.repeat.freq !== 'yearly' ? edit.repeat.freq : 'none');
     setDay(edit?.due?.day ?? '');
     setTime(edit?.due?.time ?? '');
     setAsk(edit?.ask ?? 'none');
@@ -1052,10 +1065,20 @@ function AssignSheet({ open, client, pid, name, close, done, edit = null }: { op
     setError(null);
     try {
       const due = day ? { day, ...(time ? { time } : {}) } : undefined;
+      const rep = day && repeat !== 'none' ? { freq: repeat } : undefined;
       if (edit) {
-        await client.updateTodo(pid, edit.id, { title: title.trim(), due: due ?? null, ask, snoozable: !noSnooze, followUp: day && followUp ? followUp : null });
+        // A yearly repeat (set elsewhere) is kept as it is: this sheet has no yearly choice.
+        const keepYearly = edit.repeat?.freq === 'yearly' && day;
+        await client.updateTodo(pid, edit.id, {
+          title: title.trim(),
+          due: due ?? null,
+          ...(keepYearly ? {} : { repeat: rep ?? null }),
+          ask,
+          snoozable: !noSnooze,
+          followUp: day && followUp ? followUp : null,
+        });
       } else {
-        const body: AssignTodoBody = { title: title.trim(), ...(due ? { due } : {}), ask, ...(noSnooze ? { snoozable: false } : {}), ...(day && followUp ? { followUp } : {}) };
+        const body: AssignTodoBody = { title: title.trim(), ...(due ? { due } : {}), ...(rep ? { repeat: rep } : {}), ask, ...(noSnooze ? { snoozable: false } : {}), ...(day && followUp ? { followUp } : {}) };
         await client.assignTodo(pid, body);
       }
       done();
@@ -1083,6 +1106,16 @@ function AssignSheet({ open, client, pid, name, close, done, edit = null }: { op
             <span className="type-small text-ink-2">Time</span>
             <input type="time" className={field} value={time} disabled={!day} onChange={(e) => setTime(e.target.value)} />
           </label>
+          <label className="flex flex-col gap-4">
+            <span className="type-small text-ink-2">Repeat</span>
+            <select className={field} value={day ? repeat : 'none'} disabled={!day} onChange={(e) => setRepeat(e.target.value as RepeatChoice)}>
+              {REPEATS.map(([v, label]) => (
+                <option key={v} value={v}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <fieldset className="flex flex-col gap-4">
           <legend className="type-small text-ink-2">Ask {name} for</legend>
@@ -1107,6 +1140,7 @@ function AssignSheet({ open, client, pid, name, close, done, edit = null }: { op
         </label>
         <p className="type-small text-ink-3">
           {name} sees it at once, marked "From you"{noSnooze ? ' and "no snooze"' : ''}
+          {day && repeat !== 'none' ? `, ${REPEATS.find(([v]) => v === repeat)?.[1].toLowerCase()} after each Done` : ''}
           {day && followUp ? `, and that you asked to know by ${followUp}` : ''}. {name}'s Activity lists it.
         </p>
         {error ? <p role="alert">{error}</p> : null}
