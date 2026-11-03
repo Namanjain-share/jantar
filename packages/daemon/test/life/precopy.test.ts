@@ -102,8 +102,8 @@ describe('openLifeDb with preMigrateCopy', () => {
     });
     if (!r.ok) throw new Error(r.code);
     keep(r.db);
-    expect(asked).toEqual([[2, 4]]);
-    expect(r.precopy).toEqual({ from: 2, to: 4, file: 'life-pre-0.10.0.db' });
+    expect(asked).toEqual([[2, LIFE_SCHEMA_VERSION]]);
+    expect(r.precopy).toEqual({ from: 2, to: LIFE_SCHEMA_VERSION, file: 'life-pre-0.10.0.db' });
     expect(r.db.meta('schema')).toBe(String(LIFE_SCHEMA_VERSION));
     const copy = look(target);
     expect(copy.schema).toBe('2');
