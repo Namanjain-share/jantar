@@ -3,7 +3,7 @@
  *
  * Join reads the code from the fragment (it never reaches a log), previews
  * the offer without spending it, and renders the page from the offer's
- * explicit fields (join/copy.ts). Each `see` line has a switch that only
+ * explicit fields (people-shared/join-copy.ts). Each `see` line has a switch that only
  * goes down; Accept sends `acceptedVersion` and the agreement as she left
  * it (the daemon clamps it to the offer). "Not now" spends nothing.
  *
@@ -19,7 +19,7 @@ import { Button } from '../../ui/kit/Button.js';
 import { Page } from '../App.js';
 import { navigate } from '../nav.js';
 import type { PersonApi } from '../api.js';
-import { joinCopy, levelLabel, lowerLevels, switchLabel, type CopyLine } from '../join/copy.js';
+import { joinCopy, levelLabel, lowerLevels, switchLabel, type CopyLine } from '../../people-shared/join-copy.js';
 import { needsHomeScreen, turnOnNotifications } from '../notify.js';
 
 const codeFromHash = () => new URLSearchParams(location.hash.replace(/^#/, '')).get('c') ?? '';

@@ -51,7 +51,15 @@ export const PEOPLE_ROUTE_IMPLS: RouteTable = {
     handle: (_c: Call, s) => {
       const people = s.deps.life.people;
       const setupAgain = people.setupAgain();
-      return { enabled: s.ctx.settings.get().people.enabled, people: value(people.list()), ...(setupAgain.length > 0 ? { setupAgain } : {}) };
+      const settings = s.ctx.settings.get();
+      return {
+        enabled: settings.people.enabled,
+        people: value(people.list()),
+        ...(setupAgain.length > 0 ? { setupAgain } : {}),
+        ownerName: settings.people.ownerName,
+        // His Sharing tab's push settings; absent while Life is closed (the list then still answers).
+        ...(people.lifeOpen() ? { ownerPrefs: people.ownerPrefs() } : {}),
+      };
     },
   },
   personGet: {

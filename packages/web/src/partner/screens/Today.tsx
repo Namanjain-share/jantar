@@ -26,7 +26,7 @@ import { dayLabel, hmOf } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
 import type { PersonApi } from '../api.js';
 import { navigate } from '../nav.js';
-import { joinCopy } from '../join/copy.js';
+import { joinCopy } from '../../people-shared/join-copy.js';
 import { askForNotifications, needsHomeScreen, turnOnNotifications } from '../notify.js';
 import { Card, Field, ReasonChips, ReportSheet, Sheet, Tick, UndoToast, useUndo } from '../ui.js';
 import { DoseRow } from './DoseRow.js';

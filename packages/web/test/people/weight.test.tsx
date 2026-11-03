@@ -85,7 +85,7 @@ describe('his Partner › Health › Weight', () => {
     const c = fake<PeopleClient>({
       list: vi.fn(async () => ({ enabled: true, people: [person(true)] })),
       today: vi.fn(async () => today),
-      meds: vi.fn(async () => ({ level: 'adherence', pct: null, notLoggedToday: 0, concern: null })),
+      meds: vi.fn(async () => ({ level: 'adherence' as const, pct: null, notLoggedToday: 0, concern: null })),
       weights: vi.fn(async () => weights()),
       sleep: vi.fn(async () => ({ from: '2026-11-02', to: '2026-11-08', nights: [], open: null, avgMinutes: null, trend: null }) as never),
       weightUpdate,
@@ -118,7 +118,7 @@ describe('his Partner › Health › Weight', () => {
     const c = fake<PeopleClient>({
       list: vi.fn(async () => ({ enabled: true, people: [person(false)] })),
       today: vi.fn(async () => today),
-      meds: vi.fn(async () => ({ level: 'adherence', pct: null, notLoggedToday: 0, concern: null })),
+      meds: vi.fn(async () => ({ level: 'adherence' as const, pct: null, notLoggedToday: 0, concern: null })),
       weights: vi.fn(async () => weights()),
       sleep: vi.fn(async () => ({ from: '2026-11-02', to: '2026-11-08', nights: [], open: null, avgMinutes: null, trend: null }) as never),
     });

@@ -20,7 +20,12 @@ import type {
   SharedListKind,
   SharedListsResponse,
   PeopleList,
+  OwnerPeoplePrefs,
+  OwnerPeoplePrefsPatch,
   PersonActivityResponse,
+  PersonDevicePublic,
+  PersonInviteReply,
+  PersonProposeBody,
   PersonToday,
   PersonWeightsResponse,
   PlanApplyBody,
@@ -85,13 +90,18 @@ export const PEOPLE_PATHS = {
   // Her weights he may correct or remove (editHers.weight); never a new one.
   weightUpdate: ['PATCH', '/v1/people/:pid/weights/:day'],
   weightDelete: ['DELETE', '/v1/people/:pid/weights/:day'],
+  // Sharing: ask for more (an admin device), his pushes about her, her devices, and "Copy link again" (an admin device).
+  propose: ['POST', '/v1/people/:pid/agreement'],
+  prefs: ['PATCH', '/v1/people/prefs'],
+  devices: ['GET', '/v1/people/:pid/devices'],
+  inviteLink: ['POST', '/v1/people/:pid/invite/again'],
 } as const;
 type Key = keyof typeof PEOPLE_PATHS;
 
 export interface PeopleClient {
   list(): Promise<PeopleList>;
   today(pid: string, day?: string): Promise<PersonToday>;
-  activity(pid: string): Promise<PersonActivityResponse>;
+  activity(pid: string, before?: number): Promise<PersonActivityResponse>;
   plan(pid: string, day: string): Promise<PlanView>;
   putPlan(pid: string, day: string, body: PlanPutBody): Promise<PlanView>;
   applyTemplate(pid: string, day: string, body: PlanApplyBody): Promise<PlanView>;
@@ -138,6 +148,13 @@ export interface PeopleClient {
   weights(pid: string): Promise<PersonWeightsResponse>;
   weightUpdate(pid: string, day: string, kg: number): Promise<void>;
   weightDelete(pid: string, day: string): Promise<void>;
+  /** Sharing: ask her for more (waits for her Accept; one at a time, cooling-off and "Don't ask again" apply). */
+  propose(pid: string, body: PersonProposeBody): Promise<void>;
+  /** His quiet hours, the day summary and the review push for pushes about her. */
+  setPrefs(patch: OwnerPeoplePrefsPatch): Promise<{ prefs: OwnerPeoplePrefs }>;
+  devices(pid: string): Promise<{ devices: PersonDevicePublic[] }>;
+  /** An unspent invite link, shown again (an admin device; audited). */
+  inviteLink(pid: string): Promise<PersonInviteReply>;
 }
 
 /** A route pattern with its `:params` filled (camelCase names too: `:itemId`). */
@@ -185,7 +202,7 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
   return {
     list: () => call('list'),
     today: (pid, day) => call('today', { params: { pid }, query: { day } }),
-    activity: (pid) => call('activity', { params: { pid } }),
+    activity: (pid, before) => call('activity', { params: { pid }, query: { before: before === undefined ? undefined : String(before) } }),
     plan: (pid, day) => call('plan', { params: { pid, day } }),
     putPlan: (pid, day, body) => call('planPut', { params: { pid, day }, body }),
     applyTemplate: (pid, day, body) => call('planApply', { params: { pid, day }, body }),
@@ -226,6 +243,10 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
     weights: (pid) => call('weights', { params: { pid } }),
     weightUpdate: (pid, day, kg) => v(call('weightUpdate', { params: { pid, day }, body: { kg } })),
     weightDelete: (pid, day) => v(call('weightDelete', { params: { pid, day } })),
+    propose: (pid, body) => v(call('propose', { params: { pid }, body })),
+    setPrefs: (patch) => call('prefs', { body: patch }),
+    devices: (pid) => call('devices', { params: { pid } }),
+    inviteLink: (pid) => call('inviteLink', { params: { pid } }),
   };
 }
 

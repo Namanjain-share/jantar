@@ -5,7 +5,9 @@
  * - Header: her name, her status and line, "Asleep since" (see.sleep), and
  *   the day's progress with the Now step. Action row: Plan, Assign and
  *   Alert, one tap each; a new alert from her shows here and on the tab.
- * - Tabs (they wrap, none hidden): Today (her plan as she sees it, each
+ * - Tabs (they wrap, none hidden): Sharing (what she agreed to, Ask for
+ *   more, her devices, his pushes about her) and Activity (her record in his
+ *   voice) are PartnerSharing.tsx; Today (her plan as she sees it, each
  *   step's status, done time, report and check-in, late chips, Nudge on
  *   today's open steps; check-betweens; the concern lines; her evening
  *   review at his level, with Carry for his open steps), To-do (his items
@@ -21,6 +23,8 @@
  *   mark; he has no control here that writes in her name.
  * - Someone whose space a Life restore took out (T20) is a note on People,
  *   and on their old `/people/:pid`, with the way to invite them again.
+ * - Someone invited (the link's expiry, Copy link again) or whose sharing is
+ *   ending is a row on People (spec 2.3), not an empty heading.
  */
 import { ALERT_KINDS, ALERT_REPLY_LABELS, STATUS_LABELS, type AlertKind } from '@jantar/protocol/people-core';
 import type {
@@ -36,6 +40,7 @@ import type {
   PersonWeightsResponse,
   SharedItemsResponse,
   SharedListsResponse,
+  PeopleList,
   PersonAlert,
   PersonSetupAgain,
   PersonToday,
@@ -61,12 +66,24 @@ import { Sheet } from '../../kit/Sheet.js';
 import { useLifeLoad } from '../life/shared/useLife.js';
 import { peopleClient, type PeopleClient } from './client.js';
 import { PlanEditor, defaultPlanDay } from './PlanEditor.js';
+import { ActivityTab, NotSharingRow, SharingTab } from './PartnerSharing.js';
 
-export const PARTNER_TABS = ['today', 'todos', 'plan', 'health', 'journal', 'chat', 'lists', 'alerts'] as const;
+export const PARTNER_TABS = ['today', 'todos', 'plan', 'health', 'journal', 'chat', 'lists', 'alerts', 'sharing', 'activity'] as const;
 export type PartnerTab = (typeof PARTNER_TABS)[number];
 /** The tab row (the plan editor opens from the header's Plan, so it isn't a tab too). */
-const TAB_ROW: readonly PartnerTab[] = ['today', 'todos', 'health', 'journal', 'chat', 'lists', 'alerts'];
-const TAB_LABEL: Record<PartnerTab, string> = { today: 'Today', todos: 'To-do', plan: 'Plan', health: 'Health', journal: 'Journal', chat: 'Chat', lists: 'Lists', alerts: 'Alerts' };
+const TAB_ROW: readonly PartnerTab[] = ['today', 'todos', 'health', 'journal', 'chat', 'lists', 'alerts', 'sharing', 'activity'];
+const TAB_LABEL: Record<PartnerTab, string> = {
+  today: 'Today',
+  todos: 'To-do',
+  plan: 'Plan',
+  health: 'Health',
+  journal: 'Journal',
+  chat: 'Chat',
+  lists: 'Lists',
+  alerts: 'Alerts',
+  sharing: 'Sharing',
+  activity: 'Activity',
+};
 
 /** This device's date (his Mac's zone, which his app shares): Nudge is for today only. */
 function localDay(): string {
@@ -118,6 +135,7 @@ export function Partner({ pid, tab: tabIn, day: dayIn, id, client = peopleClient
   const navigate = useNavigate();
   const list = useLifeLoad('people', () => client.list());
   const sharing = (list.data?.people ?? []).filter((p) => p.state === 'active' || p.state === 'paused');
+  const notYet = (list.data?.people ?? []).filter((p) => p.state === 'invited' || p.state === 'ending');
   const setupAgain = list.data?.setupAgain ?? [];
   useEffect(() => {
     // With a set-up-again note to read, People stays on its list rather than opening the one person sharing.
@@ -143,16 +161,54 @@ export function Partner({ pid, tab: tabIn, day: dayIn, id, client = peopleClient
                 </button>
               </li>
             ))}
+            {notYet.map((p) => (
+              <NotSharingRow key={p.id} client={client} p={p} />
+            ))}
           </ul>
         )}
+        {list.data && list.data.enabled && list.data.people.length === 0 && setupAgain.length === 0 ? (
+          <p className="mt-12 type-small text-ink-2">
+            Nobody yet. At the Mac: <code className="type-mono text-ink">{`${CLI_NAME} people add <name> --email <address>`}</code>, then{' '}
+            <code className="type-mono text-ink">{`${CLI_NAME} people invite <name>`}</code>.
+          </p>
+        ) : null}
       </div>
     );
   }
   const person = list.data?.people.find((p) => p.id === pid) ?? null;
-  return <PartnerOf client={client} pid={pid} person={person} tab={(PARTNER_TABS as readonly string[]).includes(tabIn ?? '') ? (tabIn as PartnerTab) : 'today'} dayIn={dayIn} id={id} />;
+  return (
+    <PartnerOf
+      client={client}
+      pid={pid}
+      person={person}
+      list={list.data}
+      reloadList={list.reload}
+      tab={(PARTNER_TABS as readonly string[]).includes(tabIn ?? '') ? (tabIn as PartnerTab) : 'today'}
+      dayIn={dayIn}
+      id={id}
+    />
+  );
 }
 
-function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClient; pid: string; person: PersonView | null; tab: PartnerTab; dayIn?: string; id?: string }) {
+function PartnerOf({
+  client,
+  pid,
+  person,
+  list,
+  reloadList,
+  tab,
+  dayIn,
+  id,
+}: {
+  client: PeopleClient;
+  pid: string;
+  person: PersonView | null;
+  list: PeopleList | null;
+  reloadList: () => void;
+  tab: PartnerTab;
+  dayIn?: string;
+  id?: string;
+}) {
   const navigate = useNavigate();
   const today = useLifeLoad(`people:${pid}:today:${dayIn ?? ''}`, () => client.today(pid, dayIn));
   const alerts = useLifeLoad<AlertsResponse>(`people:${pid}:alerts`, () => client.alerts(pid));
@@ -233,6 +289,8 @@ function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClie
       {tab === 'chat' ? <ChatTab client={client} pid={pid} name={name} sees={a?.see.chat === true} perDay={person?.chatPerDay ?? null} /> : null}
       {tab === 'lists' ? <ListsTab client={client} pid={pid} name={name} space={person?.sharedSpace ?? null} canAssign={a?.assign.todos === true} id={id} /> : null}
       {tab === 'alerts' ? <AlertsTab client={client} pid={pid} name={name} id={id} /> : null}
+      {tab === 'sharing' ? <SharingTab client={client} pid={pid} name={name} person={person} list={list} reload={reloadList} /> : null}
+      {tab === 'activity' ? <ActivityTab client={client} pid={pid} name={name} /> : null}
       <AlertSheet open={alerting} client={client} pid={pid} name={name} close={() => setAlerting(false)} />
       <AssignSheet open={assigning} client={client} pid={pid} name={name} close={() => setAssigning(false)} done={() => (today.reload(), tab !== 'todos' ? go('todos') : null)} />
     </div>

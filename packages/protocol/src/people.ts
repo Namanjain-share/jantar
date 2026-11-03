@@ -54,6 +54,7 @@ import {
   OwnerAlertSendBodySchema,
   OwnerPeoplePrefsPatchSchema,
   OwnerPeoplePrefsReplySchema,
+  OwnerPeoplePrefsSchema,
   PersonP2PrefsPatchShape,
   PersonP2PrefsShape,
   PersonStatusBodySchema,
@@ -544,7 +545,15 @@ export const PersonSetupAgainSchema = z.object({
   accessEmail: z.string().optional(),
 });
 export type PersonSetupAgain = z.infer<typeof PersonSetupAgainSchema>;
-export const PeopleListSchema = z.object({ enabled: z.boolean(), people: z.array(PersonViewSchema), setupAgain: z.array(PersonSetupAgainSchema).optional() });
+export const PeopleListSchema = z.object({
+  enabled: z.boolean(),
+  people: z.array(PersonViewSchema),
+  setupAgain: z.array(PersonSetupAgainSchema).optional(),
+  /** His name as their page reads it (people.ownerName; null until `jantar people on --name`), for his Sharing tab. */
+  ownerName: z.string().nullable().optional(),
+  /** His prefs for pushes about them (quiet hours, caps, the day summary, the review push): his Sharing tab edits them. */
+  ownerPrefs: OwnerPeoplePrefsSchema.optional(),
+});
 export type PeopleList = z.infer<typeof PeopleListSchema>;
 export const PersonResponseSchema = z.object({ person: PersonViewSchema });
 export const PidParamsSchema = z.object({ pid: PersonIdSchema });

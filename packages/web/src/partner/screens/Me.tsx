@@ -13,17 +13,20 @@
  * - Notifications: turn on and test, lock screen, mute.
  * - Leave: download first, keep 30 days or delete now, type LEAVE.
  */
-import { AGREEMENT_FIELDS, ALERT_KINDS, AREAS, closeDependents, phaseBuilt, fieldsChanged, withField, type AgreementFields, type AgreementPatch, type AlertKind, CHAT_KEEP_DAYS } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, AREAS, closeDependents, phaseBuilt, fieldsChanged, withField, type AgreementFields, type AgreementPatch, CHAT_KEEP_DAYS } from '@jantar/protocol/people-core';
 import type { PersonActivity, PersonMe, PersonPrefsPatch } from '@jantar/protocol/people';
 import { Suspense, lazy, useEffect, useState } from 'react';
+import { activityText, byDay, localDayOf } from '../../people-shared/activity.js';
 import { dayLabel, hmOf } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
 import { navigate } from '../nav.js';
 import type { PersonApi, PersonDevice } from '../api.js';
-import { joinCopy, levelLabel, lowerLevels, switchLabel } from '../join/copy.js';
+import { joinCopy, levelLabel, lowerLevels, switchLabel } from '../../people-shared/join-copy.js';
 import { turnOnNotifications } from '../notify.js';
 import { ME_TABS, type MeTab } from '../router.js';
 import { ProposalCard } from './Today.js';
+
+export { activityText, byDay, groupViews } from '../../people-shared/activity.js';
 
 const TAB_LABEL: Record<MeTab, string> = { sharing: 'Sharing', activity: 'Activity', devices: 'Devices', notifications: 'Notifications', leave: 'Leave' };
 
@@ -184,131 +187,6 @@ export function Sharing({ me, api, reload }: { me: PersonMe; api: PersonApi; rel
       </div>
     </div>
   );
-}
-
-/** A day's or an area's name as the app says it ("your Today", "your plan"). */
-const AREA_WORDS: Record<string, string> = {
-  today: 'your Today',
-  todos: 'your to-dos',
-  meds: 'your medicines',
-  weight: 'your weight',
-  food: 'your food log',
-  plan: 'your plan',
-  review: 'your evening review',
-  sleep: 'your sleep',
-  journal: 'your journal',
-  chat: 'your chat',
-};
-const areaWords = (a: string | undefined) => (a ? (AREA_WORDS[a] ?? `your ${a}`) : 'your space');
-const dayOf = (ref: string | undefined) => (ref && /^\d{4}-\d{2}-\d{2}$/.test(ref) ? dayLabel(ref) : null);
-const quoted = (t: string | undefined) => (t ? `: ${t}` : '');
-const FIELD_WORDS: Record<string, string> = {
-  at: 'the time',
-  title: 'the name',
-  name: 'the name',
-  minutes: 'the length',
-  ask: 'what it asks',
-  notes: 'the notes',
-  due: 'the due day',
-  followUp: '"Tell me if not done by"',
-  focus: 'focus',
-  ring: 'the ring',
-  kg: 'the weight',
-  chatPerDay: 'messages a day',
-  dose: 'the dose',
-  times: 'the times',
-  schedule: 'the days',
-  pills: 'the pill count',
-};
-
-/** "changed the time of 'Mock' 08:00 → 08:30" (the first change named; more as "and 2 more"). */
-function changeWords(r: PersonActivity): string {
-  const c = r.changes ?? [];
-  const first = c[0];
-  const what = first ? `${FIELD_WORDS[first.field] ?? first.field} of "${r.title ?? 'a step'}"${first.from !== undefined || first.to !== undefined ? ` ${first.from ?? '–'} → ${first.to ?? '–'}` : ''}` : `"${r.title ?? 'a step'}"`;
-  return `${what}${c.length > 1 ? ` and ${c.length - 1} more` : ''}`;
-}
-
-const ACTION_WORDS: Record<string, (owner: string, r: PersonActivity) => string> = {
-  joined: () => 'You joined',
-  view: (o, r) => `${o} looked at ${areaWords(r.area ?? r.ref)}`,
-  paused: () => 'You paused',
-  resumed: () => 'You resumed',
-  left: () => 'You left',
-  ending: (o) => `${o} ended sharing`,
-  restore: (o) => `${o} restored Life data from a backup. Changes after it may be missing.`,
-  'agreement.narrowed': () => 'You changed what you share',
-  'agreement.proposed': (o) => `${o} asked to see more`,
-  'agreement.accepted': () => 'You said yes to a request',
-  'agreement.declined': () => 'You said no to a request',
-  'device.linked': (_o, r) => `You linked ${r.device ?? 'a device'}`,
-  'device.revoked': (o, r) => (r.actor === 'owner' ? `${o} revoked ${r.device ?? 'a device'}` : `You revoked ${r.device ?? 'a device'}`),
-  'module.changed': (o) => `${o} changed your modules`,
-  'todo.added': (o, r) => `${o} added a to-do${quoted(r.title)}`,
-  'todo.edited': (o, r) => (r.changes?.length ? `${o} changed ${changeWords(r)}` : `${o} changed a to-do${quoted(r.title)}`),
-  'todo.deleted': (o, r) => `${o} removed a to-do${quoted(r.title)}`,
-  'plan.set': (o, r) => `${o} planned ${dayOf(r.ref) ?? 'a day'}`,
-  'plan.changed': (o, r) => `${o} changed the plan for ${dayOf(r.ref) ?? 'a day'}${r.fields?.length ? ` (${r.fields.filter((f) => !f.startsWith('0 ')).join(', ')})` : ''}`,
-  'step.removed': (o, r) => `${o} removed a step${quoted(r.title)}${r.fields?.includes('was done') ? ' (it was done)' : ''}`,
-  'step.edited': (o, r) => `${o} changed ${changeWords(r)}`,
-  'step.carried': (o, r) => `${o} moved a step to a later day${quoted(r.title)}`,
-  'template.applied': (o, r) => (r.actor === 'owner' ? `${o} applied the template${quoted(r.title)}` : `Template applied${quoted(r.title)}`),
-  'journal.commented': (o, r) => `${o} commented on ${r.title ?? 'your journal'}`,
-  'alert.sent': (o, r) => {
-    const k = r.fields?.[0] as AlertKind | undefined;
-    return `${o} sent you an alert${k && ALERT_KINDS[k] ? `: ${ALERT_KINDS[k].label}` : ''}`;
-  },
-  'med.added': (o, r) => `${o} added a medicine${quoted(r.title)}`,
-  'med.edited': (o, r) => (r.changes?.length ? `${o} changed ${changeWords(r)}` : `${o} changed a medicine${quoted(r.title)}`),
-  'med.stopped': (o, r) => `${o} stopped a medicine${quoted(r.title)}`,
-  'weight.corrected': (o, r) => `${o} corrected your weight${dayOf(r.ref) ? ` for ${dayOf(r.ref)}` : ''}${r.changes?.[0] ? `: ${r.changes[0].from} → ${r.changes[0].to} kg` : ''}`,
-  'weight.deleted': (o, r) => `${o} removed your weight${dayOf(r.ref) ? ` for ${dayOf(r.ref)}` : ''}`,
-  'chat.limit': (o, r) => `${o} set your chat to ${r.changes?.[0]?.to ?? 'a new number of'} messages a day`,
-  'place.deleted': (o, r) => `${r.actor === 'owner' ? o : 'You'} deleted a café for both of you${quoted(r.title)}`,
-  'list.deleted': (o, r) => `${r.actor === 'owner' ? o : 'You'} deleted a list for both of you${quoted(r.title)}`,
-};
-
-export function activityText(owner: string, r: PersonActivity): string {
-  return ACTION_WORDS[r.action]?.(owner, r) ?? (r.actor === 'owner' ? `${owner} changed something in your space` : 'A change in your space');
-}
-
-/** His views grouped per day and area ("Sam looked at your Today 6 times · last 18:40"), C28. */
-export function groupViews(rows: readonly PersonActivity[]): { key: string; row: PersonActivity; count: number }[] {
-  const out: { key: string; row: PersonActivity; count: number }[] = [];
-  const seen = new Map<string, { key: string; row: PersonActivity; count: number }>();
-  for (const r of rows) {
-    if (r.action !== 'view') {
-      out.push({ key: String(r.seq), row: r, count: 1 });
-      continue;
-    }
-    const k = `${localDayOf(r.at)}|${r.area ?? ''}`;
-    const g = seen.get(k);
-    if (g) g.count += 1;
-    else {
-      const ng = { key: k, row: r, count: 1 };
-      seen.set(k, ng);
-      out.push(ng);
-    }
-  }
-  return out;
-}
-
-/** The device's day for an instant (her rows say when on her clock). */
-function localDayOf(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-/** Rows under day headers, newest first ("Tue 3 Nov"). */
-export function byDay(rows: readonly PersonActivity[]): { day: string; groups: ReturnType<typeof groupViews> }[] {
-  const out: { day: string; groups: ReturnType<typeof groupViews> }[] = [];
-  for (const g of groupViews(rows)) {
-    const day = localDayOf(g.row.at);
-    const last = out[out.length - 1];
-    if (last && last.day === day) last.groups.push(g);
-    else out.push({ day, groups: [g] });
-  }
-  return out;
 }
 
 function Activity({ api, owner }: { api: PersonApi; owner: string }) {

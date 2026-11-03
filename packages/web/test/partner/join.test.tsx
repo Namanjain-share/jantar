@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { AGREEMENT_FIELDS, BUILT_PHASE, applyAgreementPatch, closeDependents, phaseBuilt, presetAgreement, withField } from '@jantar/protocol/people-core';
-import { joinCopy, levelLabel, lowerLevels, switchLabel } from '../../src/partner/join/copy.js';
+import { joinCopy, levelLabel, lowerLevels, switchLabel } from '../../src/people-shared/join-copy.js';
 
 const all = (c: ReturnType<typeof joinCopy>) => [c.heading, c.intro, ...c.sees.map((l) => l.text), ...c.does.map((l) => l.text), ...c.cant, ...c.yours, ...c.smallPrint].join('\n');
 
