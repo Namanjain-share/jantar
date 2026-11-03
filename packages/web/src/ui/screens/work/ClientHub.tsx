@@ -15,9 +15,9 @@
  *   LOG          newest first, done follow-ups in between; Show older pages
  *   DETAILS      phones, e-mails, links, tags, city, source, folder, check-in, notes
  *
- * ··· holds Mark as past (or back to client) and Delete, whose Confirm
- * spells out what goes and what stays (W30, design 4.5) and offers Mark as
- * past first.
+ * ··· holds Mark as past (or back to client), Merge with… (Duplicates.tsx,
+ * loaded on first use) and Delete, whose Confirm spells out what goes and
+ * what stays (W30, design 4.5) and offers Mark as past first.
  *
  * Words someone else wrote come marked: an imported contact or log entry, a
  * name tapped from a meeting, a meeting's own name, a meeting's action item:
@@ -33,7 +33,7 @@
  */
 import { CaretLeftIcon, CaretRightIcon, CheckIcon, EnvelopeSimpleIcon, PhoneIcon, PlusIcon, WhatsappLogoIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { FilesRootsResponse, Todo } from '@jantar/protocol';
 import type { WorkClientHub, WorkDealCard, WorkLogRow } from '@jantar/protocol/work';
 import { formatAmount } from '../../../lib/money.js';
@@ -65,6 +65,8 @@ import { STATE_LABEL, askLogCall, clientPath, deleteLines, mailHref, telHref, to
 import { LogSheet, type LogStart } from './LogSheet.js';
 import { dueWord, filesHref, logLine } from './model.js';
 import { FromTag, Framed } from './parts.js';
+
+const MergeSheet = lazy(() => import('./Duplicates.js').then((m) => ({ default: m.MergeSheet })));
 
 export interface ClientHubProps {
   id: string;
@@ -100,6 +102,7 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
   const log = useSheet<LogStart>();
   const todoSheet = useSheet<Todo>();
   const confirm = useSheet<null>();
+  const merge = useSheet<null>();
   const close = usePaneClose();
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
@@ -180,6 +183,7 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
           {
             items: [
               contact.state === 'past' ? { label: 'Mark as client', onSelect: () => setState('client') } : { label: 'Mark as past', onSelect: () => setState('past') },
+              { label: 'Merge with…', onSelect: () => merge.show(null) },
               { label: 'Delete', onSelect: () => confirm.show(null) },
             ],
           },
@@ -427,6 +431,19 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
               </Button>
             </SheetActions>
           </Sheet>
+          {merge.key ? (
+            <Suspense fallback={null}>
+              <MergeSheet
+                open={merge.open}
+                onOpenChange={merge.onOpenChange}
+                sheetKey={merge.key}
+                keep={{ id: hub.contact.id, name: hub.contact.name, kind: hub.contact.kind }}
+                onMerged={() => {
+                  reload();
+                }}
+              />
+            </Suspense>
+          ) : null}
         </>
       ) : null}
     </Page>

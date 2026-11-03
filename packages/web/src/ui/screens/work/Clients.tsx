@@ -22,9 +22,9 @@
  * 1180), else over it with "‹ Clients" (ClientHub.tsx).
  *
  * + adds a client (ClientSheet.tsx: about ten seconds, a duplicate warns
- * and never blocks), then opens it. ··· holds Import a file (its sheet
- * loads on first use, ImportSheet.tsx) and Export CSV (the share sheet or
- * a download, never into a folder).
+ * and never blocks), then opens it. ··· holds Import a file and Find
+ * duplicates (their sheets load on first use) and Export CSV (the share
+ * sheet or a download, never into a folder).
  *
  * Every state of design 6.5: loading, empty ("No clients yet." with Add and
  * Import), nothing matching (Clear filters), Work off and life.db broken
@@ -64,8 +64,9 @@ import {
 } from './clientModel.js';
 import { Chips, FromTag } from './parts.js';
 
-// It loads on first use: an import is rare, and most of its code is its own.
+// Each loads on first use: import and merge are rare, and most of their code is theirs alone.
 const ImportSheet = lazy(() => import('./ImportSheet.js').then((m) => ({ default: m.ImportSheet })));
+const DuplicatesSheet = lazy(() => import('./Duplicates.js').then((m) => ({ default: m.DuplicatesSheet })));
 
 type WorkRoute = Extract<Route, { name: 'work' }>;
 type ListId = (typeof WORK_CLIENT_LISTS)[number];
@@ -152,6 +153,7 @@ function ClientsList({ w, tabs, load, lists, filter, sort, onSort, prefs, open, 
   const nowMs = useNow(60_000);
   const add = useSheet<null>();
   const importer = useSheet<null>();
+  const dups = useSheet<null>();
   const [showPast, setShowPast] = useState(false);
   const filtered = Boolean(filter.q || filter.state || filter.tag || filter.list);
   const go = (next: Filter) => navigate(clientPath(undefined, { ...filter, ...next }), { replace: true });
@@ -180,6 +182,7 @@ function ClientsList({ w, tabs, load, lists, filter, sort, onSort, prefs, open, 
           items: [
             { label: 'Import a file', onSelect: () => importer.show(null), disabled: offline },
             { label: 'Export CSV', onSelect: () => void exportCsv(), disabled: offline },
+            { label: 'Find duplicates', onSelect: () => dups.show(null), disabled: offline },
           ],
         },
       ]}
@@ -287,6 +290,11 @@ function ClientsList({ w, tabs, load, lists, filter, sort, onSort, prefs, open, 
       {importer.key ? (
         <Suspense fallback={null}>
           <ImportSheet open={importer.open} onOpenChange={importer.onOpenChange} sheetKey={importer.key} onImported={onSaved} />
+        </Suspense>
+      ) : null}
+      {dups.key ? (
+        <Suspense fallback={null}>
+          <DuplicatesSheet open={dups.open} onOpenChange={dups.onOpenChange} sheetKey={dups.key} onChanged={onSaved} />
         </Suspense>
       ) : null}
     </Page>
