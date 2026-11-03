@@ -85,6 +85,13 @@ const REVIEWED_PERSON_ROUTES = [
   'personWeightDelete',
   'personWeightSet',
   'personWeights',
+  // Her medicines and doses (area meds): only she logs a dose.
+  'personDoseDelete',
+  'personDoseLog',
+  'personMedCreate',
+  'personMedStop',
+  'personMedUpdate',
+  'personMeds',
   // P2: status and the sharing check-in, her plan and review, sleep, journal and alerts.
   'personAlertReply',
   'personAlertSeen',
@@ -179,6 +186,11 @@ const REVIEWED_PEOPLE_OWNER_ROUTES: Record<string, { scope: string; ctl: boolean
   personOwnerWeightDelete: { scope: 'control', ctl: false, localOnly: false, area: 'weight' },
   personOwnerWeightUpdate: { scope: 'control', ctl: false, localOnly: false, area: 'weight' },
   personOwnerWeights: { scope: 'control', ctl: false, localOnly: false, area: 'weight' },
+  // Her medicines at his level; his additions (assign.meds), his edits and Stop (editHers.meds for hers). No dose verb.
+  personMedAssign: { scope: 'control', ctl: false, localOnly: false, area: 'meds' },
+  personOwnerMedStop: { scope: 'control', ctl: false, localOnly: false, area: 'meds' },
+  personOwnerMedUpdate: { scope: 'control', ctl: false, localOnly: false, area: 'meds' },
+  personOwnerMeds: { scope: 'control', ctl: false, localOnly: false, area: 'meds' },
   // P2: her plan, templates, review, sleep and journal; alerts with her and his prefs (no :pid, no area).
   personOwnerJournal: { scope: 'control', ctl: false, localOnly: false, area: 'journal' },
   personOwnerJournalComment: { scope: 'control', ctl: false, localOnly: false, area: 'journal' },

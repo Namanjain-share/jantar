@@ -391,7 +391,7 @@ export const PersonTodaySchema = z.object({
   name: PersonNameSchema,
   state: PersonStateSchema,
   todos: z.union([LockedSchema, PersonTodayTodosSchema]),
-  /** null: not part of this build yet (her medicines join the space in a later commit of P1). */
+  /** Her medicines at his level (see.meds). null only from a build before her medicines were served. */
   meds: z.union([LockedSchema, OwnerMedsViewSchema]).nullable(),
   weight: z.union([LockedSchema, z.object({ latest: PersonWeightSchema.nullable() })]),
   /** null: her food module is off, so there is no food area at all (O6). */
@@ -902,8 +902,8 @@ export const PERSON_LIFE_ROUTES = {
 
 } as const satisfies Record<string, RouteDef>;
 
-/** Her medicines and food (spec 1.3.2): defined here, served when their handlers land (a later commit of P1). */
-export const PERSON_HEALTH_ROUTES = {
+/** Her medicines and doses (spec 1.3.2, 3.4): area meds. She edits or stops any of hers, his additions included; only she logs doses. */
+export const PERSON_MEDS_ROUTES = {
   personMeds: route({
     method: 'GET', path: '/v1/p/medicines', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds',
     query: DayQuerySchema, response: PersonMedicinesResponseSchema, summary: 'Her medicines and a day of doses.',
@@ -928,6 +928,14 @@ export const PERSON_HEALTH_ROUTES = {
     method: 'DELETE', path: '/v1/p/medicines/:id/doses/:doseId', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds',
     params: DoseParamsSchema, response: OkReplySchema, summary: 'Undo a dose.',
   }),
+} as const satisfies Record<string, RouteDef>;
+
+/**
+ * Her food log (spec 3.5): defined, never served in this release. Food is a later
+ * phase (AREAS.food), so no agreement, join line or screen offers it; these paths
+ * answer 404 like any path that isn't hers.
+ */
+export const PERSON_FOOD_ROUTES = {
   personFoodDay: route({
     method: 'GET', path: '/v1/p/food', scope: 'person', phase: 'v0.12', ctl: false, area: 'food',
     query: DayQuerySchema, response: FoodDaySchema, summary: 'Her food log (404 module_off while her food module is off).',
@@ -1142,8 +1150,8 @@ export const PEOPLE_LIFE_ROUTES = {
   }),
 } as const satisfies Record<string, RouteDef>;
 
-/** His reads and writes of her medicines and food: defined here, served when their handlers land. */
-export const PEOPLE_HEALTH_ROUTES = {
+/** His reads and writes of her medicines (spec 3.4, 9.3.4): area meds, at his level; his additions need assign.meds, hers editHers.meds. */
+export const PEOPLE_MEDS_ROUTES = {
   personOwnerMeds: route({
     method: 'GET', path: '/v1/people/:pid/medicines', scope: 'control', phase: 'v0.12', ctl: false, area: 'meds',
     params: PidParamsSchema, query: DayQuerySchema, response: OwnerMedsViewSchema, summary: 'Her medicines at the agreed level.',
@@ -1160,6 +1168,10 @@ export const PEOPLE_HEALTH_ROUTES = {
     method: 'POST', path: '/v1/people/:pid/medicines/:id/stop', scope: 'control', phase: 'v0.12', ctl: false, area: 'meds',
     params: PidIdParamsSchema, response: OkReplySchema, summary: 'Stop his addition (assign.meds) or hers (editHers.meds).',
   }),
+} as const satisfies Record<string, RouteDef>;
+
+/** His read of her food log: defined, never served in this release (food is a later phase). */
+export const PEOPLE_FOOD_ROUTES = {
   personOwnerFood: route({
     method: 'GET', path: '/v1/people/:pid/food', scope: 'control', phase: 'v0.12', ctl: false, area: 'food',
     params: PidParamsSchema, query: DayQuerySchema, response: OwnerFoodViewSchema, summary: 'Her food log (see.food; 404 while her module is off).',
@@ -1494,8 +1506,8 @@ const PEOPLE_ACCOUNT_ROUTES = {
 } as const satisfies Record<string, RouteDef>;
 
 /** Every route of hers this build serves (scope `person`; the arch test pins the list, T1). */
-export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES, ...PERSON_DAYS_ROUTES, ...PERSON_CHAT_ROUTES, ...PERSON_LIST_ROUTES } as const;
+export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES, ...PERSON_MEDS_ROUTES, ...PERSON_DAYS_ROUTES, ...PERSON_CHAT_ROUTES, ...PERSON_LIST_ROUTES } as const;
 export type PersonRouteName = keyof typeof PERSON_ROUTES;
 /** Every owner People route this build serves (the arch test pins each one's scope, ctl, localOnly and area). */
-export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_DAYS_ROUTES, ...PEOPLE_CHAT_ROUTES, ...PEOPLE_LIST_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
+export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_MEDS_ROUTES, ...PEOPLE_DAYS_ROUTES, ...PEOPLE_CHAT_ROUTES, ...PEOPLE_LIST_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
 export type PeopleRouteName = keyof typeof PEOPLE_ROUTES;

@@ -74,6 +74,7 @@ import { AlertsModule } from './alerts/module.js';
 import { JournalModule } from './journal/module.js';
 import { PeopleModule } from './people/module.js';
 import { peoplePingHandlers } from './people/pings.js';
+import { PersonMeds } from './people/meds.js';
 import { PersonSpace } from './people/space.js';
 import { SharedLists } from './lists/module.js';
 import { PeopleViews } from './people/views.js';
@@ -158,6 +159,9 @@ function macZoneOf(env: Readonly<Record<string, string | undefined>>): string {
  */
 const BACKUPS_RACY_MS = 2_000;
 
+/** v0.12: the Life kinds a person's rows use (her to-do reminders, her doses and refills). */
+const PERSON_LIFE_KINDS: readonly PingKind[] = ['todo', 'med', 'refill'];
+
 /** Which ping kinds belong to each module. */
 const MODULE_KINDS = new Map<LifeModuleName, PingKind[]>();
 for (const k of LIFE_PING_KINDS) MODULE_KINDS.set(KIND_MODULE[k], [...(MODULE_KINDS.get(KIND_MODULE[k]) ?? []), k]);
@@ -184,7 +188,7 @@ class LifeServiceImpl implements LifeService {
   private readonly closed: Modules = {
     todos: closedModule<TodosModule>('todos'),
     // v0.12: her space's module is closed too while life.db is (and finds nothing).
-    medicines: closedModule<MedicinesModule>('medicines', { inSpace: () => this.closed.medicines, find: () => null }),
+    medicines: closedModule<MedicinesModule>('medicines', { inSpace: () => this.closed.medicines, find: () => null, adherence: () => ({ pct: null, perDay: [] }) }),
     food: closedModule<FoodModule>('food', { estimateStatus: () => ({ available: false, reason: LIFE_CLOSED }) }),
     places: closedModule<PlacesModule>('places'),
     finance: closedModule<FinanceModule>('finance'),
@@ -205,7 +209,7 @@ class LifeServiceImpl implements LifeService {
       if (!this.handle) throw new Error('life.db is not open');
       return this.handle;
     };
-    this.scheduler = new LifeScheduler(ctx.clock, this.log, db, { send: this.send, kinds: () => this.ringingKinds() });
+    this.scheduler = new LifeScheduler(ctx.clock, this.log, db, { send: this.send, kinds: () => this.ringingKinds(), personKinds: () => this.personRingingKinds() });
     const self = this;
     this.core = {
       get db() {
@@ -229,6 +233,7 @@ class LifeServiceImpl implements LifeService {
     this.people.ownerChanged = () => this.changed();
     const lifeCore = () => (this.handle ? this.core : null);
     this.people.space = new PersonSpace(this.people, () => this.todos, lifeCore);
+    this.people.meds = new PersonMeds(this.people, () => this.medicines, lifeCore);
     this.people.views = new PeopleViews(this.people, this.people.space, () => this.todos, lifeCore);
     // P2: her day plans and review, alerts both ways, her journal and sleep log, and their scheduler kinds.
     this.people.plans = new PlansModule({ people: this.people, core: lifeCore });
@@ -472,6 +477,15 @@ class LifeServiceImpl implements LifeService {
     return kinds;
   }
 
+  /**
+   * v0.12: the kinds a person's rows ring for: her reminders, doses and refills, plan rings and People's own
+   * kinds, while People is on (whatever his own module switches say); none while it is off, so nothing of
+   * hers rings while People is switched off. Her rows stay and ring again (or catch up once) when it is back on.
+   */
+  private personRingingKinds(): PingKind[] {
+    return this.ctx.settings.get().people.enabled ? [...PERSON_LIFE_KINDS, ...PEOPLE_PING_KINDS] : [];
+  }
+
   private changed(): void {
     try {
       this.ctx.store.emit({ type: 'life.changed', data: {} });
@@ -568,7 +582,7 @@ class LifeServiceImpl implements LifeService {
       } else {
         const turnedOn = new Set<PingKind>();
         for (const m of LIFE_MODULES) if (next.life[m] && !prev.life[m]) for (const k of MODULE_KINDS.get(m) ?? []) turnedOn.add(k);
-        if (next.people.enabled && !prev.people.enabled) for (const k of PEOPLE_PING_KINDS) turnedOn.add(k);
+        if (next.people.enabled && !prev.people.enabled) for (const k of [...PEOPLE_PING_KINDS, ...PERSON_LIFE_KINDS]) turnedOn.add(k);
         if (before !== this.zone) this.scheduler.resyncAll();
         else if (turnedOn.size > 0) this.scheduler.resyncAll(turnedOn);
       }

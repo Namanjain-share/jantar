@@ -1837,6 +1837,11 @@ export interface MedicinesModule extends LifeModule {
   inSpace(space: string): MedicinesModule;
   /** `day` on or before today (default today); after it is invalid_request. */
   get(day?: string): LifeResult<MedicinesResponse>;
+  /**
+   * v0.12 People: this space's last 30 days, skips left out: the overall percentage (null when nothing was
+   * due and past) and each day's taken and missed counts (the two-day concern reads them). Names nothing.
+   */
+  adherence(): { pct: number | null; perDay: { day: string; taken: number; missed: number }[] };
   /** v0.12 People: one medicine of this space as stored (null: none here), for the People module's rules. */
   find(id: string): import('@jantar/protocol/people').PersonMedicine | null;
   /** v0.12: `opts.by` (the author, in a person space) comes from the People module; no route passes it. */

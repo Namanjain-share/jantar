@@ -14,6 +14,11 @@
  * Today the plan tile, status, the review from her review time, "Asleep
  * since" and the concern lines. Concerns are derived when he looks and
  * never come from sleep, the journal, moods or review outcomes (spec 3.2).
+ *
+ * Her medicines (spec 3.4) are at his level: `full` each medicine and the
+ * day's doses, `adherence` a percentage and a count that name nothing. The
+ * two-day concern ("Doses not logged 2 days running") is on both, and on
+ * Today's concern lines.
  */
 import {
   builtAreas,
@@ -23,6 +28,7 @@ import {
   type JournalList,
   type Locked,
   type OwnerChatView,
+  type OwnerMedsView,
   type OwnerTodosView,
   type PersonOwnToday,
   type PersonToday,
@@ -41,9 +47,9 @@ import type { PersonSpace } from './space.js';
 const LOCKED: Locked = { locked: true };
 
 /** The areas this build's views answer (the rest are a later commit's or phase's: 404). */
-const VIEW_AREAS: ReadonlySet<Area> = new Set<Area>(['today', 'todos', 'weight', 'plan', 'review', 'sleep', 'journal', 'chat']);
+const VIEW_AREAS: ReadonlySet<Area> = new Set<Area>(['today', 'todos', 'meds', 'weight', 'plan', 'review', 'sleep', 'journal', 'chat']);
 
-export type AreaView = OwnerTodosView | PersonWeightsResponse | PersonToday | PlanView | ReviewView | SleepWeek | JournalList | OwnerChatView | Locked;
+export type AreaView = OwnerTodosView | OwnerMedsView | PersonWeightsResponse | PersonToday | PlanView | ReviewView | SleepWeek | JournalList | OwnerChatView | Locked;
 
 export interface ViewOpts {
   day?: string | undefined;
@@ -103,19 +109,29 @@ export class PeopleViews {
   }
 
   /**
-   * Concern lines, derived when he looks (C22), from the plan only: a
-   * check-in step whose time went by unanswered, and late steps. Never from
-   * sleep, the journal, moods or review outcomes (the honesty rule).
+   * Concern lines, derived when he looks (C22): from the plan, a check-in
+   * step whose time went by unanswered and late steps; from her medicines
+   * (see.meds), doses not logged two days running. Never from sleep, the
+   * journal, moods or review outcomes (the honesty rule).
    */
-  private concerns(plan: PlanView | null): string[] {
+  private concerns(plan: PlanView | null, meds: string | null): string[] {
     const c = this.core();
-    if (!plan?.plan || !c || plan.day !== c.today()) return [];
+    if (!c) return [];
     const out: string[] = [];
-    const now = minuteOf(hhmmOf(c.now(), c.tz()));
-    const missedCheckin = plan.plan.steps.some((s) => s.ask === 'checkin' && !s.checkin && !s.carriedTo && s.status !== 'excused' && s.at !== undefined && minuteOf(s.at) < now && s.at < '12:00');
-    if (missedCheckin) out.push('No morning check-in yet');
-    if (plan.late.length >= 2) out.push(`${plan.late.length} steps late`);
+    if (plan?.plan && plan.day === c.today()) {
+      const now = minuteOf(hhmmOf(c.now(), c.tz()));
+      const missedCheckin = plan.plan.steps.some((s) => s.ask === 'checkin' && !s.checkin && !s.carriedTo && s.status !== 'excused' && s.at !== undefined && minuteOf(s.at) < now && s.at < '12:00');
+      if (missedCheckin) out.push('No morning check-in yet');
+      if (plan.late.length >= 2) out.push(`${plan.late.length} steps late`);
+    }
+    if (meds) out.push(meds);
     return out;
+  }
+
+  /** Her medicines at his level (null: life.db closed). */
+  private medsView(pid: string, a: Agreement, day?: string): OwnerMedsView | Locked {
+    if (a.see.meds === 'off' || !this.people.meds) return LOCKED;
+    return this.people.meds.view(pid, a.see.meds, day) ?? LOCKED;
   }
 
   /**
@@ -129,6 +145,8 @@ export class PeopleViews {
     switch (area) {
       case 'todos':
         return a.see.todos ? this.todosView(pid, opts.done) : LOCKED;
+      case 'meds':
+        return this.medsView(pid, a, opts.day);
       case 'weight':
         return a.see.weight ? this.space.weights(pid) : LOCKED;
       case 'plan':
@@ -164,6 +182,7 @@ export class PeopleViews {
           if (a.see.review === 'off' || !a.see.plan) review = LOCKED;
           else if (this.people.plans.reviewable(pid, day, { todos: a.see.todos })) review = this.reviewOf(pid, day, a);
         }
+        const meds = this.medsView(pid, a, day);
         let sleep: PersonToday['sleep'] = LOCKED;
         if (a.see.sleep) {
           const open = this.people.sleep?.openNight(pid) ?? null;
@@ -174,7 +193,7 @@ export class PeopleViews {
           name: p?.name ?? 'Your partner',
           state: st === 'paused' ? 'paused' : 'active',
           todos: a.see.todos ? this.todayTile(pid, day) : LOCKED,
-          meds: null,
+          meds,
           weight: a.see.weight ? { latest: this.space.weights(pid).latest } : LOCKED,
           // Food joins with its routes (a later commit of P1); with her food module off it never exists (O6).
           food: null,
@@ -182,7 +201,7 @@ export class PeopleViews {
           status: a.see.plan ? this.people.statusOf(p) : LOCKED,
           review,
           sleep,
-          concerns: this.concerns(plan),
+          concerns: this.concerns(plan, c && day === c.today() && !('locked' in meds) ? meds.concern : null),
         };
       }
       default:
@@ -235,7 +254,7 @@ export class PeopleViews {
     return {
       day: d,
       today,
-      meds: null,
+      meds: this.people.meds?.herDay(pid, d <= today ? d : today) ?? null,
       todos: tile.due,
       overdue: tile.overdue,
       plan,

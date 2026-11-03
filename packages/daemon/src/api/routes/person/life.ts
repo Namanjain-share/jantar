@@ -1,10 +1,11 @@
 /**
- * v0.12 People: her to-dos, reminders, projects, weights, Today and mirror
- * (scope `person`), thin handlers over life/people/space.ts and views.ts
- * with her as the caller. Every call works in her own space only; `space`
- * and `by` are daemon-set (no body carries them: strict schemas).
+ * v0.12 People: her to-dos, reminders, projects, medicines and doses,
+ * weights, Today and mirror (scope `person`), thin handlers over
+ * life/people/space.ts, meds.ts and views.ts with her as the caller. Every
+ * call works in her own space only; `space` and `by` are daemon-set (no body
+ * carries them: strict schemas).
  */
-import type { ProjectBody, ProjectPatch, SnoozeBody, TodoBody, TodoPatch, TodosQuery, WeightBody } from '@jantar/protocol';
+import type { DoseBody, MedicineBody, MedicinePatch, ProjectBody, ProjectPatch, SnoozeBody, TodoBody, TodoPatch, TodosQuery, WeightBody } from '@jantar/protocol';
 import type { Area, PersonTodoDoneBody } from '@jantar/protocol/people';
 import { ApiError } from '../../errors.js';
 import { lifeValue, needActor, type Call, type RouteTable } from '../../route-kit.js';
@@ -18,6 +19,12 @@ function space(s: ApiServices) {
   const sp = s.deps.life.people.space;
   if (!sp) throw new ApiError('unavailable', 'Life is not open right now. Try again in a moment.');
   return sp;
+}
+
+function meds(s: ApiServices) {
+  const m = s.deps.life.people.meds;
+  if (!m) throw new ApiError('unavailable', 'Life is not open right now. Try again in a moment.');
+  return m;
 }
 
 function views(s: ApiServices) {
@@ -92,6 +99,25 @@ export const PERSON_LIFE_ROUTE_IMPLS: RouteTable = {
       s.deps.life.people.ticks.bump(her(c.auth).personId, 'life');
       return OK;
     },
+  },
+  // Her medicines and doses (spec 3.4): any of hers, his additions included; only she logs doses.
+  personMeds: {
+    handle: (c: Call<Record<string, string>, { day?: string }>, s) => lifeValue(meds(s).herList(her(c.auth).personId, c.query.day)),
+  },
+  personMedCreate: {
+    handle: (c: Call<Record<string, string>, unknown, MedicineBody>, s) => lifeValue(meds(s).herCreate(her(c.auth).personId, c.body, needActor(c.auth))),
+  },
+  personMedUpdate: {
+    handle: (c: Call<Id, unknown, MedicinePatch>, s) => (lifeValue(meds(s).herUpdate(her(c.auth).personId, c.params.id, c.body, needActor(c.auth))), OK),
+  },
+  personMedStop: {
+    handle: (c: Call<Id>, s) => (lifeValue(meds(s).herStop(her(c.auth).personId, c.params.id, needActor(c.auth))), OK),
+  },
+  personDoseLog: {
+    handle: (c: Call<Id, unknown, DoseBody>, s) => lifeValue(meds(s).herDoseLog(her(c.auth).personId, c.params.id, c.body, needActor(c.auth))),
+  },
+  personDoseDelete: {
+    handle: (c: Call<{ id: string; doseId: string }>, s) => (lifeValue(meds(s).herDoseUndo(her(c.auth).personId, c.params.id, c.params.doseId, needActor(c.auth))), OK),
   },
   personWeights: {
     handle: (c: Call, s) => space(s).weights(her(c.auth).personId),

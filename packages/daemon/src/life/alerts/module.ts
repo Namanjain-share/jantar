@@ -702,7 +702,7 @@ export class AlertsModule {
     c.scheduler.poke();
   }
 
-  /** "Asha's day: 5 of 7 done · review sent", from the agreement as it is now; never journal, chat or sleep text. */
+  /** "Asha's day: 5 of 7 done · review sent · 1 dose not logged", from the agreement as it is now; never journal, chat or sleep text, never a medicine's name. */
   summaryText(): string | null {
     const c = this.core();
     if (!c) return null;
@@ -719,6 +719,8 @@ export class AlertsModule {
         const r = this.people.plans?.reviewView(pid, c.today(), 'counts', { todos: a.see.todos });
         if (r?.sent) parts.push('review sent');
       }
+      // Her medicines (see.meds): doses not logged today, and the two-day concern; counts only, never a name.
+      parts.push(...(this.people.meds?.summaryParts(pid) ?? []));
       if (parts.length > 0) lines.push(`${this.people.nameOf(pid)}'s day: ${parts.join(' · ')}`);
     }
     return lines.length > 0 ? lines.join('; ') : null;

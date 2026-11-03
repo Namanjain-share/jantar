@@ -152,6 +152,8 @@ export class PeopleModule {
   ownerChanged: () => void = () => {};
   /** Her to-dos and weights, as either side writes them (set by the Life service). */
   space: import('./space.js').PersonSpace | null = null;
+  /** Her medicines and doses, as either side writes them (set by the Life service). */
+  meds: import('./meds.js').PersonMeds | null = null;
   /** What he sees of her, and her mirror of it (set by the Life service). */
   views: import('./views.js').PeopleViews | null = null;
   /** P2: her day plans, templates and evening reviews; alerts both ways; her journal; her sleep log (set by the Life service). */

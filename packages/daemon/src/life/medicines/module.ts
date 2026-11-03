@@ -31,7 +31,7 @@
 import { consumeDose, hhmmOf, instantAt, shiftDay } from '@jantar/life-core';
 import { LIFE_LIMITS, type DoseBody, type MedSchedule, type MedScheduleBody, type MedicineBody, type MedicinePatch } from '@jantar/protocol';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, MedicinesModule } from '../../contracts.js';
-import { isDueOn, medViews, medsDay } from './day.js';
+import { adherenceReport, isDueOn, medViews, medsDay } from './day.js';
 import { armMed, medPings, refillPings, syncRefill } from './pings.js';
 import { HISTORY_MAX, MedsRepo, publicMed, type DoseRow, type StoredMedicine } from './repo.js';
 
@@ -144,6 +144,11 @@ function medicinesIn(core: LifeCore, repo: MedsRepo, inSpace: (space: string) =>
       if (d > today) return refuse('invalid_request', MED_SENTENCES.future);
       const meds = repo.all();
       return { ok: true, value: { day: medsDay(core, repo, meds, d), medicines: medViews(core, repo, meds) } };
+    },
+
+    adherence() {
+      const r = adherenceReport(core, repo, repo.all());
+      return { pct: r.overall, perDay: r.perDay };
     },
 
     find(id: string) {

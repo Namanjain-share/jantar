@@ -87,6 +87,22 @@ function marks(n: number): string {
   return Array.from({ length: n }, () => '?').join(', ');
 }
 
+/** The rows that may ring: the owner's of `kinds`, and (v0.12) a person's of `personKinds`. null: none. */
+function whoRings(kinds: readonly PingKind[], personKinds: readonly PingKind[] | undefined): { where: string | null; args: string[] } {
+  if (personKinds === undefined) return kinds.length === 0 ? { where: null, args: [] } : { where: `kind IN (${marks(kinds.length)})`, args: [...kinds] };
+  const parts: string[] = [];
+  const args: string[] = [];
+  if (kinds.length > 0) {
+    parts.push(`(person = '' AND kind IN (${marks(kinds.length)}))`);
+    args.push(...kinds);
+  }
+  if (personKinds.length > 0) {
+    parts.push(`(person <> '' AND kind IN (${marks(personKinds.length)}))`);
+    args.push(...personKinds);
+  }
+  return parts.length === 0 ? { where: null, args: [] } : { where: `(${parts.join(' OR ')})`, args };
+}
+
 export class PingsRepo {
   constructor(private readonly db: () => LifeDb) {}
 
@@ -124,24 +140,30 @@ export class PingsRepo {
    * Rows of `kinds` due at `nowIso` or before: medicine and refill rows
    * first, then oldest first. Muted reminders stay due, so a pile of them
    * never keeps a dose ping out of the `limit` read.
+   *
+   * v0.12 People: `personKinds` are the kinds whose rows of a person (her
+   * reminders and doses, `person` set) ring now; `kinds` holds the owner's
+   * rows. Absent, a person's row rings as an owner's of its kind would.
    */
-  due(kinds: readonly PingKind[], nowIso: string, limit = SWEEP_LIMIT): PingRow[] {
-    if (kinds.length === 0) return [];
+  due(kinds: readonly PingKind[], nowIso: string, limit = SWEEP_LIMIT, personKinds?: readonly PingKind[]): PingRow[] {
+    const { where, args } = whoRings(kinds, personKinds);
+    if (where === null) return [];
     const rows = this.db()
       .prepare(
-        `SELECT * FROM pings WHERE next_at IS NOT NULL AND next_at <= ? AND kind IN (${marks(kinds.length)})
+        `SELECT * FROM pings WHERE next_at IS NOT NULL AND next_at <= ? AND ${where}
          ORDER BY kind IN ('med', 'refill') DESC, next_at, id LIMIT ?`,
       )
-      .all(nowIso, ...kinds, limit) as unknown as RawRow[];
+      .all(nowIso, ...args, limit) as unknown as RawRow[];
     return rows.map(rowOf);
   }
 
-  /** The earliest next_at among `kinds` strictly after `afterIso`, or null (rows already due are the sweep's). */
-  earliest(kinds: readonly PingKind[], afterIso: string): string | null {
-    if (kinds.length === 0) return null;
+  /** The earliest next_at among `kinds` (and a person's rows among `personKinds`) strictly after `afterIso`, or null (rows already due are the sweep's). */
+  earliest(kinds: readonly PingKind[], afterIso: string, personKinds?: readonly PingKind[]): string | null {
+    const { where, args } = whoRings(kinds, personKinds);
+    if (where === null) return null;
     const r = this.db()
-      .prepare(`SELECT MIN(next_at) AS at FROM pings WHERE next_at > ? AND kind IN (${marks(kinds.length)})`)
-      .get(afterIso, ...kinds) as { at: string | null } | undefined;
+      .prepare(`SELECT MIN(next_at) AS at FROM pings WHERE next_at > ? AND ${where}`)
+      .get(afterIso, ...args) as { at: string | null } | undefined;
     return r?.at ?? null;
   }
 

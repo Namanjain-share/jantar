@@ -65,6 +65,11 @@ export interface LifeSchedulerOptions {
   send: LifeSend;
   /** The kinds that may ring now (their module is on). Default: every kind. */
   kinds?: () => readonly PingKind[];
+  /**
+   * v0.12 People: the kinds whose rows of a person (her reminders, doses and plan rings) may ring now: while
+   * People is on, whatever the owner's own module switches say; none while it is off. Default: as `kinds`.
+   */
+  personKinds?: () => readonly PingKind[];
   deadlineMs?: number;
 }
 
@@ -222,7 +227,7 @@ export class LifeScheduler implements Scheduler {
     const now = new Date(started);
     let rows: PingRow[];
     try {
-      rows = this.repo.due(this.activeKinds(), now.toISOString());
+      rows = this.repo.due(this.activeKinds(), now.toISOString(), undefined, this.activePersonKinds());
     } catch (e) {
       this.log.error('life sweep failed', { error: errorKind(e) });
       return;
@@ -259,6 +264,12 @@ export class LifeScheduler implements Scheduler {
   private activeKinds(): readonly PingKind[] {
     const on = this.opts.kinds?.() ?? PING_KINDS;
     return on.filter((k) => this.handlers.has(k));
+  }
+
+  /** v0.12: the kinds a person's rows ring for now (undefined: as the owner's). */
+  private activePersonKinds(): readonly PingKind[] | undefined {
+    const on = this.opts.personKinds?.();
+    return on?.filter((k) => this.handlers.has(k));
   }
 
   /** The occurrence a due row rings for: its next_at, or (a catch-up) the latest one at or before now. */
@@ -440,7 +451,7 @@ export class LifeScheduler implements Scheduler {
     const now = this.clock.now();
     let at: number | null;
     try {
-      const iso = this.repo.earliest(this.activeKinds(), new Date(now).toISOString());
+      const iso = this.repo.earliest(this.activeKinds(), new Date(now).toISOString(), this.activePersonKinds());
       at = iso ? Date.parse(iso) : null;
     } catch {
       // A read that failed (the database busy) keeps the timer a good read armed; the next sweep reads again.

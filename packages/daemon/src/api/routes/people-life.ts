@@ -6,7 +6,7 @@
  * not_found (only Today shows a locked tile). His writes follow the rules in
  * life/people/space.ts (assign, editHers, paused, never in her name).
  */
-import type { TodosQuery, WeightBody } from '@jantar/protocol';
+import type { MedicineBody, MedicinePatch, TodosQuery, WeightBody } from '@jantar/protocol';
 import type { AssignTodoBody, AssignTodoPatch } from '@jantar/protocol/people';
 import { ApiError } from '../errors.js';
 import { lifeValue, needActor, type Call, type RouteTable } from '../route-kit.js';
@@ -19,13 +19,13 @@ type PidDay = { pid: string; day: string };
 const OK = { ok: true as const };
 
 function services(s: ApiServices) {
-  const { space, views } = s.deps.life.people;
-  if (!space || !views) throw new ApiError('unavailable', 'Life is not open right now. Try again in a moment.');
-  return { space, views };
+  const { space, views, meds } = s.deps.life.people;
+  if (!space || !views || !meds) throw new ApiError('unavailable', 'Life is not open right now. Try again in a moment.');
+  return { space, views, meds };
 }
 
 /** His read of one area: the view, or the unknown-pid answer (off areas too, but Today's tiles). */
-function read(s: ApiServices, pid: string, area: 'today' | 'todos' | 'weight', opts: { day?: string; done?: boolean } = {}) {
+function read(s: ApiServices, pid: string, area: 'today' | 'todos' | 'meds' | 'weight', opts: { day?: string; done?: boolean } = {}) {
   const v = services(s).views.ownerViewOf(pid, area, opts);
   if (v === null || (area !== 'today' && 'locked' in v)) throw new ApiError('not_found', NO_PERSON);
   return v;
@@ -48,6 +48,22 @@ export const PEOPLE_LIFE_ROUTE_IMPLS: RouteTable = {
   },
   personOwnerTodoDelete: {
     handle: (c: Call<PidId>, s) => (lifeValue(services(s).space.ownerDelete(c.params.pid, c.params.id, needActor(c.auth))), OK),
+    audit: (c: Call<PidId>) => ({ target: c.params.id }),
+  },
+  // Her medicines at his level (see.meds); his additions (assign.meds), his edits and Stop (his: assign.meds; hers: editHers.meds).
+  personOwnerMeds: {
+    handle: (c: Call<Pid, { day?: string }>, s) => read(s, c.params.pid, 'meds', c.query.day ? { day: c.query.day } : {}),
+  },
+  personMedAssign: {
+    handle: (c: Call<Pid, unknown, MedicineBody>, s) => lifeValue(services(s).meds.assign(c.params.pid, c.body, needActor(c.auth))),
+    audit: (_c, out) => ({ target: (out.body as { id?: string } | null)?.id }),
+  },
+  personOwnerMedUpdate: {
+    handle: (c: Call<PidId, unknown, MedicinePatch>, s) => (lifeValue(services(s).meds.ownerUpdate(c.params.pid, c.params.id, c.body, needActor(c.auth))), OK),
+    audit: (c: Call<PidId>) => ({ target: c.params.id }),
+  },
+  personOwnerMedStop: {
+    handle: (c: Call<PidId>, s) => (lifeValue(services(s).meds.ownerStop(c.params.pid, c.params.id, needActor(c.auth))), OK),
     audit: (c: Call<PidId>) => ({ target: c.params.id }),
   },
   personOwnerWeights: {
