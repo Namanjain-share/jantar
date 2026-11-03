@@ -19,13 +19,13 @@ import {
   type Todo,
 } from '@jantar/protocol';
 import { shiftDay, shiftMonths } from '@jantar/life-core';
-import type { Contact, WorkLogRow } from '@jantar/protocol/work';
+import type { Contact, Deal, WorkLogRow } from '@jantar/protocol/work';
 import { MEETING_TODO_NOTES_START } from '../meetings/common.js';
 import { cut, line } from './text.js';
 import type { ChatDeps } from './types.js';
 
-/** The kinds of item a change or a card points at. v0.13: a Work client and one of his log rows. */
-export type ItemKind = 'todo' | 'project' | 'medicine' | 'meal' | 'place' | 'visit' | 'money' | 'bill' | 'post' | 'meeting' | 'intel' | 'client' | 'log';
+/** The kinds of item a change or a card points at. v0.13: a Work client, one of his log rows, a deal. */
+export type ItemKind = 'todo' | 'project' | 'medicine' | 'meal' | 'place' | 'visit' | 'money' | 'bill' | 'post' | 'meeting' | 'intel' | 'client' | 'log' | 'deal';
 
 /** One item: its id, and where it lives when that is needed to find it (a visit's café, a meal's day, an entry's day). */
 export interface ItemRef {
@@ -148,6 +148,21 @@ export function findLog(d: ChatDeps, id: string): WorkLogRow | null {
   }
 }
 
+/** v0.13 Work P3: one of his deals as stored, or null. */
+export function findDeal(d: ChatDeps, id: string): Deal | null {
+  try {
+    return d.life.work.dealRecord(id);
+  } catch {
+    return null;
+  }
+}
+
+/** v0.13 Work P3: a deal's words are someone else's when it was imported or its client's are. */
+export function dealSource(d: ChatDeps, deal: Deal | null): 'import' | 'meeting' | null {
+  if (!deal) return null;
+  return deal.from ?? clientSource(findClient(d, deal.contactId));
+}
+
 /** v0.13 Work: whose words a client's are when they aren't his (an import, a meeting's name), else null. */
 export function clientSource(c: Pick<Contact, 'from'> | null | undefined): 'import' | 'meeting' | null {
   return c?.from ?? null;
@@ -194,6 +209,10 @@ export function current(d: ChatDeps, ref: ItemRef): Record<string, unknown> | nu
     case 'log': {
       const r = findLog(d, ref.id);
       return r ? { ...r } : null;
+    }
+    case 'deal': {
+      const x = findDeal(d, ref.id);
+      return x ? { ...x } : null;
     }
   }
 }
@@ -267,6 +286,11 @@ export function labelOf(d: ChatDeps, ref: ItemRef, fallback = ''): string {
       const r = findLog(d, ref.id);
       const c = r?.contactId ? findClient(d, r.contactId) : null;
       return r ? parts(LOG_LABEL[r.kind] ?? 'Log', c ? name(c.name) : '', r.at.slice(0, 10)) : fallback;
+    }
+    case 'deal': {
+      const x = findDeal(d, ref.id);
+      const c = x ? findClient(d, x.contactId) : null;
+      return x ? parts('Deal', name(x.title), c ? name(c.name) : '') : fallback;
     }
   }
 }

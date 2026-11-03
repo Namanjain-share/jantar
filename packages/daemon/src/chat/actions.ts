@@ -58,6 +58,13 @@ import {
 } from '@jantar/protocol';
 import {
   ContactNameSchema,
+  DealCurrencySchema,
+  DealTitleSchema,
+  DealValueSchema,
+  WorkDealPatchSchema,
+  WorkLostCodeSchema,
+  WorkLostNoteSchema,
+  WorkStageIdSchema,
   ContactPhoneValueSchema,
   ContactEmailSchema,
   ContactKindSchema,
@@ -69,7 +76,7 @@ import {
   WorkLogPatchSchema,
 } from '@jantar/protocol/work';
 import type { Actor, LifeResult } from '../contracts.js';
-import { clientSource, current, findClient, findLog, findMedicine, findMeeting, findPlace, findTodo, fromMeeting, labelOf, medicineHasDoses, type ItemRef } from './items.js';
+import { clientSource, current, dealSource, findClient, findDeal, findLog, findMedicine, findMeeting, findPlace, findTodo, fromMeeting, labelOf, medicineHasDoses, type ItemRef } from './items.js';
 import { applyPersonWrite, describePersonWrite, stillPerson, undoPerson, type PersonStep } from './person-writes.js';
 import { ownerAuthored } from './person-reads.js';
 import { PERSON_WRITE_TOOLS, isPersonWriteTool, type PersonWriteTool } from './person-tools.js';
@@ -99,18 +106,32 @@ export const ACTION_SENTENCES = {
   hasVisits: 'That café has visits now. Delete it in its own screen instead.',
   hasDoses: 'That medicine has doses logged now. Delete it in its own screen instead.',
   clientUsed: 'That client has a log, follow-ups or changes now. Delete it in its own screen instead.',
+  dealUsed: 'That deal has moved or changed since. Delete it in its own screen instead.',
+  dealClient: 'Name the client by its id or by its name, not both.',
 } as const;
+
+/** v0.13 Work P3: a deal moved, changed or followed up since it was added (its add's Undo then refuses). */
+function dealUsedSince(d: ChatDeps, id: string): boolean {
+  const x = findDeal(d, id);
+  if (!x) return false;
+  if (x.updatedAt !== x.createdAt) return true;
+  const hub = d.life.work.deal(id, { kind: 'system' });
+  return !hub.ok || hub.value.followUps.length > 0 || hub.value.log.some((r) => r.kind !== 'created');
+}
 
 /**
  * v0.13 Work: a client changed, logged or followed up since it was added (its add's Undo then refuses), or a
- * company with people other than those the same Undo removes (`going`).
+ * company with people or deals other than those the same Undo removes (`going`).
  */
 function clientUsedSince(d: ChatDeps, id: string, going: ReadonlySet<string>): boolean {
   const c = findClient(d, id);
   if (!c) return false;
   if (c.updatedAt !== c.createdAt) return true;
   const hub = d.life.work.client(id, { kind: 'system' });
-  return !hub.ok || hub.value.log.length > 0 || hub.value.followUps.length > 0 || (hub.value.people ?? []).some((p) => !going.has(p.id));
+  if (!hub.ok) return true;
+  // A deal the same Undo removes (and its "added" row) doesn't count.
+  const v = hub.value;
+  return v.log.some((r) => !(r.dealId && going.has(r.dealId))) || v.followUps.length > 0 || (v.people ?? []).some((p) => !going.has(p.id)) || v.deals.some((x) => !going.has(x.id));
 }
 
 const Id = LifeIdSchema;
@@ -196,6 +217,27 @@ export const WRITE_INPUTS = {
     projectId: Id.optional(),
     dealId: Id.optional(),
   }),
+  // v0.13 Work P3: deals. A client by id or by name (one with that name, else a new company). Won makes a project
+  // only when the user asks (deal_move's project, never a folder); project_add stays as it is, because her Chat
+  // shares its schema (O13). Never stage editing.
+  deal_add: z.strictObject({
+    clientId: Id.optional(),
+    client: ContactNameSchema.optional(),
+    title: DealTitleSchema,
+    stage: WorkStageIdSchema.optional(),
+    value: DealValueSchema.optional(),
+    currency: DealCurrencySchema.optional(),
+    expectedClose: DayKeySchema.optional(),
+    source: z.string().trim().min(1).max(60).optional(),
+  }),
+  deal_edit: z.strictObject({ id: Id, ...WorkDealPatchSchema.omit({ projectId: true, business: true }).shape }),
+  deal_move: z.strictObject({
+    id: Id,
+    stage: WorkStageIdSchema,
+    lostCode: WorkLostCodeSchema.optional(),
+    lostNote: WorkLostNoteSchema.optional(),
+    project: z.strictObject({ name: ProjectBodySchema.shape.name }).optional(),
+  }),
 } as const;
 export type WriteTool = keyof typeof WRITE_INPUTS;
 export const WRITE_TOOLS = Object.keys(WRITE_INPUTS) as WriteTool[];
@@ -236,6 +278,9 @@ export const WRITE_MODULE: Readonly<Record<WriteTool, ChatModule>> = {
   client_edit: 'work',
   log_add: 'work',
   followup_add: 'work',
+  deal_add: 'work',
+  deal_edit: 'work',
+  deal_move: 'work',
 };
 
 /**
@@ -257,6 +302,8 @@ export type Step =
   /** After a visit's Undo: the café untried again, unless it has other visits by then. */
   | { do: 'untried'; placeId: string }
   | { do: 'meetingTodo'; id: string; n: number }
+  /** v0.13 Work P3: a deal moved back to `stage` (with the reason it had, if it was lost); Chat's move left it on `after`. */
+  | { do: 'dealMove'; id: string; stage: string; lostCode?: string; lostNote?: string; after: string }
   /** v0.11 People (P3): one of her own writes (her plan, status, sleep), put back as her (person-writes.ts). */
   | PersonStep;
 
@@ -345,6 +392,8 @@ function patchItem(d: ChatDeps, ref: ItemRef, patch: Record<string, unknown>, ac
       return parse(WorkClientPatchSchema, (p) => d.life.work.updateClient(ref.id, p, actor));
     case 'log':
       return parse(WorkLogPatchSchema, (p) => d.life.work.updateLog(ref.id, p, actor));
+    case 'deal':
+      return parse(WorkDealPatchSchema, (p) => d.life.work.updateDeal(ref.id, p, actor));
   }
 }
 
@@ -379,6 +428,10 @@ async function removeItem(d: ChatDeps, ref: ItemRef, actor: Actor): Promise<Life
     }
     case 'log':
       return d.life.work.removeLog(ref.id, actor);
+    case 'deal': {
+      const r = d.life.work.removeDeal(ref.id, actor);
+      return r.ok ? { ok: true, value: true } : r;
+    }
   }
 }
 
@@ -462,6 +515,8 @@ function writeLabelSource(d: ChatDeps, tool: WriteTool, ref: string): LabelSourc
     const t = findTodo(d, ref);
     return t?.contactId ? clientSource(findClient(d, t.contactId)) : null;
   }
+  // P3: a deal's label carries its title and its client's name.
+  if (tool === 'deal_add' || tool === 'deal_edit' || tool === 'deal_move') return dealSource(d, findDeal(d, ref));
   if (tool === 'todo_add' || tool === 'todo_edit' || tool === 'todo_done' || tool === 'todo_snooze') {
     const t = findTodo(d, ref);
     if (t && fromMeeting(t)) return 'meeting';
@@ -740,6 +795,45 @@ async function applyOne(d: ChatDeps, tool: WriteTool, raw: unknown, actor: Actor
       const { clientId, ...t } = WRITE_INPUTS.followup_add.parse(raw);
       return added(d, life.todos.createTodo({ ...t, contactId: clientId }, actor), (id) => ({ kind: 'todo', id }), module);
     }
+    case 'deal_add': {
+      const { clientId, client, ...body } = WRITE_INPUTS.deal_add.parse(raw);
+      if ((clientId === undefined) === (client === undefined)) return refuse('invalid_request', ACTION_SENTENCES.dealClient);
+      const r = d.life.work.createDeal({ ...body, ...(clientId !== undefined ? { clientId } : { clientName: client as string }) }, actor);
+      if (!r.ok) return r;
+      const ref: ItemRef = { kind: 'deal', id: r.value.id };
+      // Undo takes back a company this add made (the same instant), after the deal.
+      const steps: Step[] = [];
+      const co = clientId === undefined ? findClient(d, r.value.clientId) : null;
+      const made = findDeal(d, r.value.id);
+      if (co && made && co.createdAt === made.createdAt) steps.push({ do: 'remove', item: { kind: 'client', id: co.id } });
+      steps.push({ do: 'remove', item: ref });
+      return { ok: true, value: { change: { module, op: 'add', ref: ref.id, label: labelOf(d, ref), undoable: true }, journal: { steps } } };
+    }
+    case 'deal_edit': {
+      const i = WRITE_INPUTS.deal_edit.parse(raw);
+      return edit(d, { kind: 'deal', id: i.id }, split(i, 'id'), actor, module);
+    }
+    case 'deal_move': {
+      const i = WRITE_INPUTS.deal_move.parse(raw);
+      const before = findDeal(d, i.id);
+      if (!before) return refuse('not_found', ACTION_SENTENCES.gone);
+      const client = findClient(d, before.contactId);
+      const r = d.life.work.moveDeal(
+        i.id,
+        { stage: i.stage, ...(i.lostCode !== undefined ? { lostCode: i.lostCode } : {}), ...(i.lostNote !== undefined ? { lostNote: i.lostNote } : {}), ...(i.project ? { project: { name: i.project.name } } : {}) },
+        actor,
+      );
+      if (!r.ok) return r;
+      const ref: ItemRef = { kind: 'deal', id: i.id };
+      // Undo is a move back (with the reason it had); a lead Won made a client is a lead again; a project it made goes.
+      const steps: Step[] = [{ do: 'dealMove', id: i.id, stage: before.stage, ...(before.lostCode ? { lostCode: before.lostCode } : {}), ...(before.lostNote ? { lostNote: before.lostNote } : {}), after: i.stage }];
+      if (r.value.projectId) steps.push({ do: 'remove', item: { kind: 'project', id: r.value.projectId } });
+      const now = findClient(d, before.contactId);
+      if (client && now && client.state !== now.state) steps.push({ do: 'patch', item: { kind: 'client', id: client.id }, before: { state: client.state }, after: { state: now.state } });
+      const to = d.life.work.stagesGet({ kind: 'system' });
+      const stageName = to.ok ? (to.value.stages.find((x) => x.id === i.stage)?.name ?? i.stage) : i.stage;
+      return { ok: true, value: { change: { module, op: 'edit', ref: ref.id, label: cut(`${labelOf(d, ref)} · ${line(stageName)}`, 160), undoable: true }, journal: { steps } } };
+    }
     case 'intel_save': {
       const i = WRITE_INPUTS.intel_save.parse(raw);
       const r = await d.intel.read({ text: i.url, ...(i.depth ? { depth: i.depth } : {}) }, { via: 'chat' });
@@ -767,6 +861,8 @@ function stillChats(d: ChatDeps, s: Step, going: ReadonlySet<string> = new Set()
       if (s.item.kind === 'medicine') return medicineHasDoses(d, s.item.id) ? refuse('conflict', ACTION_SENTENCES.hasDoses) : null;
       // v0.13: an added client's Undo never takes what he logged, followed up or changed since.
       if (s.item.kind === 'client') return clientUsedSince(d, s.item.id, going) ? refuse('conflict', ACTION_SENTENCES.clientUsed) : null;
+      // v0.13 P3: nor an added deal's what he moved, changed or followed up since.
+      if (s.item.kind === 'deal') return dealUsedSince(d, s.item.id) ? refuse('conflict', ACTION_SENTENCES.dealUsed) : null;
       if (s.item.kind !== 'place') return null;
       const p = findPlace(d, s.item.id);
       return p && p.visits.count > 0 ? refuse('conflict', ACTION_SENTENCES.hasVisits) : null;
@@ -800,6 +896,11 @@ function stillChats(d: ChatDeps, s: Step, going: ReadonlySet<string> = new Set()
     case 'untried':
     case 'meetingTodo':
       return null;
+    case 'dealMove': {
+      const x = findDeal(d, s.id);
+      if (!x) return refuse('not_found', ACTION_SENTENCES.gone);
+      return x.stage === s.after ? null : changed;
+    }
     case 'person':
       return d.person ? stillPerson(d.person, s) : refuse('not_found', ACTION_SENTENCES.gone);
   }
@@ -807,8 +908,8 @@ function stillChats(d: ChatDeps, s: Step, going: ReadonlySet<string> = new Set()
 
 /** Undo a journal as `actor`: every step checked first (409 when changed since), then the steps last first. */
 export async function undoJournal(d: ChatDeps, journal: Journal, actor: Actor): Promise<LifeResult> {
-  // v0.13: the clients this Undo removes (a client and the company its add made).
-  const going = new Set(journal.steps.flatMap((s) => (s.do === 'remove' && s.item.kind === 'client' ? [s.item.id] : [])));
+  // v0.13: the clients and deals this Undo removes (a client or a deal, and the company its add made).
+  const going = new Set(journal.steps.flatMap((s) => (s.do === 'remove' && (s.item.kind === 'client' || s.item.kind === 'deal') ? [s.item.id] : [])));
   for (const s of journal.steps) {
     const no = stillChats(d, s, going);
     if (no) return no;
@@ -850,6 +951,11 @@ async function undoStep(d: ChatDeps, s: Step, actor: Actor): Promise<LifeResult>
     }
     case 'meetingTodo':
       return d.meetings.summaries.removeTodo(s.id, s.n, actor);
+    case 'dealMove': {
+      const lost = WorkLostCodeSchema.safeParse(s.lostCode);
+      const r = d.life.work.moveDeal(s.id, { stage: s.stage, ...(lost.success ? { lostCode: lost.data } : {}), ...(s.lostNote !== undefined ? { lostNote: s.lostNote } : {}) }, actor);
+      return r.ok ? { ok: true, value: true } : r;
+    }
     case 'person':
       return d.person ? undoPerson(d.person, s) : refuse('not_found', ACTION_SENTENCES.gone);
   }
@@ -857,7 +963,7 @@ async function undoStep(d: ChatDeps, s: Step, actor: Actor): Promise<LifeResult>
 
 // ------------------------------------------------------------------ cards: deletes and actions
 
-export const DELETE_KINDS = ['todo', 'project', 'medicine', 'dose', 'meal', 'saved_food', 'weight', 'place', 'visit', 'dish', 'money', 'budget', 'bill', 'post', 'meeting', 'meeting_todo', 'intel', 'client', 'log'] as const;
+export const DELETE_KINDS = ['todo', 'project', 'medicine', 'dose', 'meal', 'saved_food', 'weight', 'place', 'visit', 'dish', 'money', 'budget', 'bill', 'post', 'meeting', 'meeting_todo', 'intel', 'client', 'log', 'deal'] as const;
 export type DeleteKind = (typeof DELETE_KINDS)[number];
 export const ACTION_KINDS = ['stop_medicine', 'summarize_meeting', 'reread_link'] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
@@ -882,6 +988,7 @@ export const DELETE_MODULE: Readonly<Record<DeleteKind, ChatModule>> = {
   intel: 'intel',
   client: 'work',
   log: 'work',
+  deal: 'work',
 };
 export const ACTION_MODULE: Readonly<Record<ActionKind, ChatModule>> = { stop_medicine: 'medicines', summarize_meeting: 'meetings', reread_link: 'intel' };
 
@@ -1002,6 +1109,12 @@ export function describeDelete(d: ChatDeps, a: Extract<CardAction, { t: 'delete'
       const c = r.contactId ? findClient(d, r.contactId) : null;
       return out(`Delete the ${r.kind} logged on ${r.at.slice(0, 10)}${c ? ` with ${q(c.name)}` : ''}?`, a.id, clientSource(c) ?? undefined);
     }
+    case 'deal': {
+      const x = findDeal(d, a.id);
+      if (!x) return gone;
+      const c = findClient(d, x.contactId);
+      return out(`Delete deal ${q(x.title)}${c ? ` with ${q(c.name)}` : ''} and its moves? Its follow-ups stay.`, a.id, dealSource(d, x) ?? undefined);
+    }
   }
 }
 
@@ -1091,6 +1204,10 @@ export async function runCardAction(d: ChatDeps, a: Exclude<CardAction, { t: 'wr
     }
     case 'log':
       return d.life.work.removeLog(a.id, actor);
+    case 'deal': {
+      const r = d.life.work.removeDeal(a.id, actor);
+      return r.ok ? { ok: true, value: true } : r;
+    }
   }
 }
 
@@ -1133,6 +1250,9 @@ function writeTarget(tool: WriteTool, input: Record<string, unknown>): ItemRef |
     case 'log_add':
     case 'followup_add':
       return { kind: 'client', id: String(input.clientId ?? '') };
+    case 'deal_edit':
+    case 'deal_move':
+      return { kind: 'deal', id };
     default:
       return null;
   }
@@ -1176,6 +1296,7 @@ export function describeWrite(d: ChatDeps, tool: WriteTool | PersonWriteTool, in
     meeting_item_todo: `Add action item ${typeof input.n === 'number' ? input.n : ''} of ${name} to its todos`,
     log_add: `Log a ${s('kind') || 'note'} with ${name}${changes ? `: ${changes}` : ''}`,
     followup_add: `Add a follow-up with ${name}: ${s('title')}`,
+    deal_move: `Move ${name} to ${s('stage')}${input.lostCode ? ` (${s('lostCode')})` : ''}`,
   };
   if (target && named[tool]) return cut(`${named[tool]}?`, 200);
   if (target) return cut(`Change ${name}: ${changes || 'nothing'}?`, 200);
@@ -1190,6 +1311,7 @@ export function describeWrite(d: ChatDeps, tool: WriteTool | PersonWriteTool, in
     post_add: `Plan a ${s('kind') || 'post'}${s('title') ? ` ${s('title')}` : ''}`,
     intel_save: 'Save a link to Intel',
     client_add: `Add ${input.kind === 'company' ? 'company' : 'client'} ${s('name')}`,
+    deal_add: `Add deal ${s('title')}${input.client ? ` with ${s('client')}` : ''}`,
     weight_set: `Set the weight of ${s('day')} to ${typeof input.kg === 'number' ? input.kg : ''} kg`,
     food_targets_set: `Set the food targets: ${changes}`,
     budget_set: `Set the budget for ${s('category')} to ${typeof input.amount === 'number' ? input.amount / 100 : ''}`,
