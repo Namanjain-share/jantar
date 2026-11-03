@@ -24,9 +24,10 @@
  *   done, is a bar inside the visible area.
  * - The phone's tabs: Today is current on every Life screen, More holds
  *   the places past the fifth tab and opens them.
- * - v0.5.3: the phone header's magnifier opens the shelf with its search box
- *   focused; words list the best match first with the words marked, and ×
- *   clears the search. Devices with its Sounds section (a lazy chunk).
+ * - v0.5.3: the phone header's search (0.13.0: the search sheet's "Search
+ *   Intel only") opens the shelf with its search box focused; words list
+ *   the best match first with the words marked, and × clears the search.
+ *   Devices with its Sounds section (a lazy chunk).
  * - In grayscale, the five dose states (taken, skipped, overdue, due,
  *   pending) still read apart by glyph and words.
  * - Focus: Tab walks each screen in document order over visible, named
@@ -604,12 +605,14 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     });
   });
 
-  it("v0.5.3: the phone header's magnifier opens the shelf's search; words find the best match first, marked; × clears", async () => {
+  it("v0.5.3: the phone header's search reaches the shelf's search; words find the best match first, marked; × clears", async () => {
     await on('phone', 'the magnifier on the phone', async ({ page, watch }) => {
       await page.emulateMedia({ colorScheme: 'light' });
       await page.goto(`http://127.0.0.1:${d.port}/today`);
       await page.getByText('Example overdue todo').first().waitFor();
-      await page.getByRole('link', { name: 'Search the Intel shelf' }).click();
+      // 0.13.0: the magnifier opens the search sheet on every screen; its last row is the shelf's own search.
+      await page.getByRole('banner').getByRole('button', { name: 'Search', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Search or jump' }).getByRole('option', { name: /Search Intel only/ }).click();
       const box = page.getByRole('searchbox', { name: 'Search the shelf' });
       await box.waitFor();
       // The box is ready to type in, and the magnifier's word leaves the address.
