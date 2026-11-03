@@ -55,12 +55,15 @@ has the steps.
   Cofounder`) or later (their Sharing tab, or `jantar people label Asha
   Coach`; `--default` puts it back) you pick Cofounder, Partner, Coach,
   Mentor, Teammate, Family, Friend or words of your own (up to 40
-  characters, plain text on one line). It titles your screen for them,
+  characters, plain text on one line; their name and device names are
+  plain text on one line too). It titles your screen for them,
   your Today line and the pushes about the space, and on their side their
   join page ("as your cofounder"), the top of their Today, their app's
   name and the notifications they get. Installed after you named it, their
   Home Screen icon takes the name too (12 characters at most under the
-  icon); an icon added before keeps its name. A rename is a line in their
+  icon: its first words that fit, so "Partner in crime" is "Partner in";
+  their Sharing tab shows it before you save); an icon added before keeps
+  its name. A rename is a line in their
   Activity. The nav entry stays "Accountability partner".
 - **What they get**: their own app, "Accountability partner" ("Partner"
   under its Home Screen icon) or the name you gave the space, with none of
@@ -89,7 +92,10 @@ has the steps.
   with templates and Quick plan, a typed plan read as you type with no AI),
   Assign (a to-do with a due day and time, a repeat, one of their
   projects, "Got it" or a short report, no snooze and "Tell me if not done
-  by"), Alert, and tabs for Today, To-do (filtered by their projects),
+  by"), Alert, and tabs for Today, To-do (filtered by their projects: you
+  see each one's name and emoji, whether it is active, paused or done, and
+  how many of its to-dos are open or overdue, never its notes, due day or
+  when they changed it, as their join page says),
   Health (medicines at the level they share, their food log at the level
   they share, weight with Correct where they allow it, sleep), Journal
   (read, and comment if they
@@ -136,7 +142,12 @@ has the steps.
   offer it in full, Light leaves it off, and `jantar people offer --see
   food=counts` (or `full`, or `off`) sets it. Your Today line and your
   day summary follow the same level. Turning their food log on later
-  grants you nothing until they say yes to a request.
+  grants you nothing until they say yes to a request. While it is off, no
+  food level is agreed: their join page and their answer to your request
+  store food off whatever the offer or the request said, turning it off
+  takes food out of a request still waiting (and ends one that was only
+  about food), and `people doctor` says to put off any food level found
+  beside no food log.
 - **Their assistant**: a Chat of their own, on your Mac and your Claude
   accounts (your account rules apply). It reads and changes only their
   space, with Undo; deletes and alerts to you are cards they tap; it has no
@@ -159,7 +170,8 @@ has the steps.
   anything is written.
 - **At the Mac**: `jantar people on|off|doctor|add|label|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
   and `jantar remote people-url`. Everything that lets someone in, shapes
-  their offer or ends their space runs only at the Mac.
+  their offer or ends their space runs only at the Mac. Their name, device
+  names and to-do titles are printed with any escape sequence taken out.
 - **Not in this version**: your own assistant reading their space, and
   more than one person.
 

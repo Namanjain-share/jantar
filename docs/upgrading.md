@@ -70,7 +70,19 @@ space in the same tables, and their calorie target and goal weight are
 yours. `jantar people add` turns their food log on unless you pass
 `--no-food`; the Standard and Everything presets offer it in full (pass
 `--see food=counts` or `--see food=off` to `jantar people offer` for
-less), and `jantar people doctor` has a food line for each person.
+less), and `jantar people doctor` has a food line for each person. With
+their food log off, nothing agrees a food level for you: their join and
+their Allow store food off, and turning it off takes food out of a request
+still waiting. No schema change; a food level a pre-release build stored
+beside a food log that is off is a doctor `FIX`, and `jantar people
+modules <name> --food off` (or turning the log on) puts it off.
+
+You read of their projects only what their join page now names (each
+one's name, emoji, status and open and overdue counts), and their join
+page's to-do line names their projects. Their name and device names are
+plain text on one line: a join or a linked device with an escape sequence
+or a line break in either is a 400, and `jantar people` prints whatever is stored with
+escapes taken out.
 
 What you call each space (its label: `jantar people add --label`,
 `jantar people label`, or their Sharing tab) is a field of their person
@@ -78,7 +90,8 @@ row in life.db: no schema change, and a space without one reads
 "Accountability partner". Their app points its manifest at
 `/v1/p/manifest` once they are in and you named the space, so an icon they
 add after that takes the name; an icon already on their Home Screen keeps
-its name. `jantar people doctor` gains an "origin fence" line (no
+its name. A name longer than 12 characters gives the Home Screen its first
+words that fit (it gave the last word in pre-release builds). `jantar people doctor` gains an "origin fence" line (no
 credential needed). A day the calendar doesn't have (2026-02-30) in any
 People path is now a 400, where it could reach the handler before.
 

@@ -39,9 +39,12 @@ plain text on one line.
   title of their notifications (also when their lock screen hides
   everything).
 - **Their Home Screen**: added after you named the space, the icon takes
-  the name (at most 12 characters under it: the name, else its last word,
-  else its first 12 characters; "Partner" for the default). An icon added
-  before keeps its name: the phone owns it.
+  the name (at most 12 characters under it: the name, else its first words
+  that fit, cut where a word ends, so "Partner in crime" is "Partner in"
+  and "Study buddy for the exams" is "Study buddy", else its first 12
+  characters; "Partner" for the default). Their Sharing tab shows this
+  title under the name before you save. An icon added before keeps its
+  name: the phone owns it.
 - A rename after they joined is a line in their Activity ("Sam renamed
   this space: Accountability partner → Cofounder"). The name is yours to
   set and lives with their space on your Mac, never in what they agreed
@@ -114,8 +117,14 @@ carrying your Origin is refused; the probe writes nothing: the pairing
 claim has no body and the join preview is refused before its limiter), and
 in Cloudflare mode that
 Access is in front of their hostname (a visitor without a sign-in is sent
-to `*.cloudflareaccess.com`, never answered). Anything to fix is a `FIX`
-line with what to do.
+to `*.cloudflareaccess.com`, never answered). Then a line per person for
+their food log (on or off, and what you see of it); a food level beside a
+food log that is off is a `FIX` that says `jantar people modules Asha
+--food off` puts it off. Anything to fix is a `FIX` line with what to do.
+Their name, device names and to-do titles are theirs to write: every
+`jantar people` line prints them with any escape sequence or invisible
+terminal character taken out, and their join and a linked device refuse a name or
+device name that isn't plain text on one line.
 
 ## Their hostname
 
@@ -222,7 +231,11 @@ their target, never when they logged it) and **only how many meals** each
 day, naming nothing; a bare `--see food` is full. While their food log is
 off (`jantar people add --no-food`, or `people modules Asha --food off`),
 the offer and the join page carry no food line but "Food: not part of your
-space", and whatever a preset says, food stays off.
+space", and whatever a preset says, food stays off. That holds at every
+step: an invite already sent when you turn their food log off joins with
+food off (their join page says so), a request of yours still waiting loses
+its food level (a request that was only about food ends, and their Allow
+can't agree to it), and turning the food log on again grants nothing.
 
 The join page lists every field on its own line, in plain words, with a
 switch that can only turn it down. Whatever they switch off before joining
@@ -270,7 +283,10 @@ of their projects, never one of yours (the daemon refuses it).
   Rename, Archive (and Bring back) and Delete, which keeps its to-dos with
   no project. Their Add and Edit can put a to-do in one. Their own project
   changes leave no Activity row (they are theirs). You see their projects
-  with their to-dos, and your Assign can put a to-do in one of them; that
+  with their to-dos (the join page's to-do line names them): each one's
+  name and emoji, whether it is active, paused or done, and how many of its
+  to-dos are open or overdue; never its notes, due day or when they made or
+  changed it. Your Assign can put a to-do in one of them; that
   row in their Activity names the project ("Sam added a to-do: Water the
   basil in Garden"), as does moving one of theirs between projects with
   "edit or remove to-dos they added" on.

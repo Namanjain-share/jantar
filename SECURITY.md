@@ -2115,9 +2115,15 @@ It adds a new asset: **another person's Life data, health data included**.
   sets her target. He reads it only at the level she agreed to (`see.food`):
   `counts` carries how many meals per day and nothing else, `full` the
   items' names and calories, her target and the day totals, never when she
-  logged an item, her saved foods or her weight. An offer or an accept for
-  someone with no food log is stored with food off whatever the preset
-  says. Her food never leaves the Mac through his Ask Claude: there is no
+  logged an item, her saved foods or her weight. With no food log, no food
+  level is agreed at any step (`foodHeld`): her join preview and his view
+  of the offer read food off, her join stores food off whatever the offer
+  or her posted agreement says (an invite sent before the module went off
+  included), his ask is re-recorded without food at the same version when
+  the module goes off (an ask only about food ends), and her Allow stores
+  food off. Turning the module on first puts off any food level stored
+  beside no food log, and `people doctor` calls such a level a FIX that
+  `--food off` resolves. Her food never leaves the Mac through his Ask Claude: there is no
   estimate route in her space. Each read of his is a view mark; her writes
   tick his devices only while he sees it.
 - **The space's name (his label)** is owner-side: a field of her person
@@ -2141,7 +2147,17 @@ It adds a new asset: **another person's Life data, health data included**.
   his Assign or edit naming one that isn't hers, are refused and write
   nothing (C6). Her project bodies can't carry a folder (that would link a
   project to a folder on his Mac for `jantar mcp`). His Activity row names
-  her project by name, never by id.
+  her project by name, never by id. With `see.todos` he reads only what
+  her join page names of a project (`OwnerProjectViewSchema`: id, name,
+  emoji, status, open and overdue counts); never its notes, due day or
+  created and updated times. Her mirror is the same view.
+- **Her text in his terminal**: her name, device names and to-do titles
+  are hers to write. `jantar people` prints every one of them (and the
+  doctor's lines naming her) through `clean()`, which takes out escape
+  sequences and control characters; her join and a linked device refuse a
+  name or device name that isn't plain text on one line (the label's rule;
+  `PersonNameBodySchema`, `PersonDeviceNameSchema`), as does his `people
+  add`. Stored rows keep the plain schema, so an older name still reads.
 - **No owner-only record of her**: her own writes are audited as
   `person.write` with no route, target or params; the request log names her
   routes as `/v1/p/*`; no route or command shows her devices' last-seen,
@@ -2177,9 +2193,16 @@ It adds a new asset: **another person's Life data, health data included**.
   taints the turn (and his in hers); `jantar mcp` reads only his own space.
 
 Pinned by `packages/daemon/test/people/*` (`projects.test.ts`: C6 both
-ways; `label.test.ts`: the name's checks, its Activity rows, her manifest
-and push titles; `calendar-days.test.ts`), `test/life/people-medicines.test.ts`, `test/life/people-food.test.ts`
-(her food log both ways, each level, the module switch)
+ways, and the six fields he gets of a project; `label.test.ts`: the name's
+checks, its Activity rows, her manifest and push titles;
+`calendar-days.test.ts`; `lifecycle.test.ts`: a name or device name with
+a control character is a 400 that spends nothing),
+`test/life/people-medicines.test.ts`, `test/life/people-food.test.ts`
+(her food log both ways, each level, the module switch, and no food level
+agreed with the module off: the offer then the module off then her join,
+a stale join page, his ask then the module off then her Allow, a stored
+level put off by food on), `packages/cli/test/people.test.ts` (no escape
+of hers reaches his terminal)
 and `test/arch/v011-people.test.ts` (every owner route with her credential,
 every person route with his, both event streams, push routing, the Origin
 split, static files by host, her medicines both ways) and
