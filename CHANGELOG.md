@@ -55,8 +55,9 @@ has the steps.
   5-second Undo, one bottom bar for the thumb, steps of their own, focus
   steps, a rough day, their status), their doses and what is due. To-do
   takes their own reminders with a day and time; each item snoozes, skips
-  with a reason, asks you to change one of yours, or edits and deletes one
-  of theirs. Health holds their medicines (Taken or Skip with Undo), sleep
+  with a reason (you see it, and their page and Skip sheet say so), asks
+  you to change one of yours, or edits and deletes one of theirs. Undo on a
+  repeating item puts its date back and takes the reason back. Health holds their medicines (Taken or Skip with Undo), sleep
   (Going to sleep and Woke up, never a guessed time) and weight (any past
   day, with Undo on a delete, and "Corrected by Sam (was 72.4 kg)" on one
   you corrected). Then the evening review, a journal with one-tap
@@ -74,7 +75,10 @@ has the steps.
   Ask for more, their devices, your pushes about them: the opt-in day
   summary, the review push, quiet hours) and Activity (their record, in
   your words). An area they keep private is a grey tile, never a gap.
-  Someone invited shows with the link's expiry and Copy link again.
+  Someone invited (with the link's expiry, and Copy link again on an admin
+  device) or who left is a row with the next step. Asking for more from a
+  phone without admin shows the `jantar people ask` line for what you
+  tick.
 - **Never in their name, never behind their back.** No screen, route or
   command of yours ticks their items, logs or undoes a dose, adds a weight,
   or pauses or narrows for them. Their Activity lists every change you make,
@@ -84,10 +88,13 @@ has the steps.
   opened the app. Their reminders and doses ring their phone, not yours.
 - **Alerts both ways**: check in, call me, Urgent, good morning and night,
   running late, a reminder about an item and a custom line, with one-tap
-  replies. One resolver decides every push between you: limits set by
-  whoever receives, holds for their pause, mute, Need space, focus, sleep
-  and quiet hours (one line when a hold ends), and Urgent through quiet
-  hours unless they switch that off. Their lock screen shows everything,
+  replies. One resolver decides every alert, comment and ring between
+  you, and every notification your changes and requests send them: limits
+  set by whoever receives, holds for their pause, mute, Need space, focus,
+  sleep and quiet hours (one line when a hold ends, such as "1 alert, a
+  reminder and 2 updates from Sam while you were in quiet hours"), and
+  Urgent through quiet hours unless they switch that off. Their own
+  reminders and doses always ring. Their lock screen shows everything,
   hides alert text (the default) or hides everything ("Accountability
   partner · Medicine time").
 - **Their medicines**: in their own space. They add, edit and stop any and
@@ -107,11 +114,12 @@ has the steps.
   Confirm, and the other is told.
 - **Pause, Leave, Download**: theirs alone, working even while the space is
   off, the daemon is read-only or Life data is damaged. Pause holds your
-  new items and alerts; Leave revokes their devices at once and keeps their
+  new items, requests and alerts; Leave revokes their devices at once and keeps their
   data 30 days or deletes it now; Download gives them their own space as a
   readable page or a data file. From the Mac, `jantar people remove` gives
   them 7 days to download first (`--now`, `--forget`), and prints the
-  Access step to remove their email.
+  Access step to remove their email once sharing has ended (with the 7
+  days, the day to do it).
 - **At the Mac**: `jantar people on|off|doctor|add|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
   and `jantar remote people-url`. Everything that lets someone in, shapes
   their offer or ends their space runs only at the Mac.

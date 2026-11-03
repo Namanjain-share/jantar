@@ -347,12 +347,16 @@ next slot.
 - **Status.** Okay, Low or Need space, with a short line; it clears after
   12 hours. Need space holds your alerts except Urgent. Only they set it.
 
-**Rings** have tiers, decided by one resolver for every push either way.
-Their medicine doses and own reminders always ring. Step and check-between
-rings and the evening review prompt are dropped (never rung late) during
-their quiet hours, focus, an open night, a mute or a pause. The plan push
-and your reminders wait for those to end. Rings due in the same minute are
-one notification.
+**Rings** have tiers, decided by one resolver, the same one your alerts
+and comments go through. Their medicine doses and own reminders always
+ring. Step and check-between rings and the evening review prompt are
+dropped (never rung late) during their quiet hours, focus, an open night, a
+mute or a pause. The plan push waits for those to end; a to-do you gave
+them with a time doesn't ring then, and neither does the notification of a
+change of yours (an item, a medicine, a corrected weight, a deleted list,
+a request for more): each is counted in the one line they get when the
+hold ends ("A reminder and 2 updates from Sam while you were in quiet
+hours"). Rings due in the same minute are one notification.
 
 ## The evening review
 
