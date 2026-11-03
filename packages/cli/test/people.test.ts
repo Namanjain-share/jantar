@@ -307,3 +307,20 @@ describe('jantar people: what the space with someone is called (the label)', () 
     expect(c.io.stdout).toContain(`  Bea  active  ${BEA}\n`);
   });
 });
+
+describe('review 5: what `jantar people` prints of theirs', () => {
+  const asha = { id: ASHA, name: 'Asha', color: 'teal', state: 'active', modules: { food: false }, invite: null, agreement: null, offer: null, pendingProposal: null };
+
+  it('B1: modules --food on prints the level stored after the change, never "as they agreed" for one they never saw', async () => {
+    // Before: a food level beside no food log (an older ledger). The daemon puts it off as the log goes on.
+    let person: Record<string, unknown> = { ...asha, agreement: { version: 3, see: { food: 'full' } } };
+    const ctl = fakeCtl({
+      'GET /v1/people': () => ok({ enabled: true, people: [person] }),
+      [`PATCH /v1/people/${ASHA}/modules`]: () => ((person = { ...asha, modules: { food: true }, agreement: { version: 4, see: { food: 'off' } } }), ok({ ok: true })),
+    });
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['modules', 'Asha', '--food', 'on'], c.ctx)).toBe(EXIT.ok);
+    expect(c.io.stdout).toContain('You see none of it until they say yes: jantar people ask Asha --see food=counts');
+    expect(c.io.stdout).not.toContain('as they agreed');
+  });
+});

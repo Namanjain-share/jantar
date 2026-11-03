@@ -397,7 +397,9 @@ export default defineCommand(
         const p = await find(ctx, need('a person'));
         if (flags.food !== 'on' && flags.food !== 'off') throw new UsageError('modules needs --food on or --food off');
         await callDaemon(ctx.ctl, 'PATCH', `/v1/people/${p.id}/modules`, { food: flags.food === 'on' });
-        const level = p.agreement?.see.food ?? 'off';
+        // What they agreed to after the change (food on grants nothing, and puts off a level they never saw).
+        const after = await find(ctx, p.id).catch(() => null);
+        const level = after?.agreement?.see.food ?? 'off';
         if (flags.food === 'off') {
           io.out(`${p.name}'s food log is off: their app has no Food, and you see none of it.\n`);
           return EXIT.ok;

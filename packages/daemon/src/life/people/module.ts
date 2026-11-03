@@ -416,6 +416,7 @@ export class PeopleModule {
     if (l.state === 'forgotten') return null;
     const open = this.invites.open(p.id);
     const state: PersonState = l.state === null ? 'invited' : l.state;
+    const pending = state === 'active' || state === 'paused' ? this.pendingOf(l, p) : null;
     return {
       id: p.id,
       name: p.name,
@@ -429,8 +430,8 @@ export class PeopleModule {
       modules: p.modules,
       invite: open && state === 'invited' ? { expiresAt: open.invite.expiresAt, linkAvailable: open.code !== null } : null,
       agreement: state === 'active' || state === 'paused' ? l.agreement : null,
-      offer: l.offer ? { ...l.offer.fields, version: l.offer.version } : null,
-      pendingProposal: l.pending && (state === 'active' || state === 'paused') ? { version: l.pending.version, fields: l.pending.fields } : null,
+      offer: l.offer ? { ...foodHeld(l.offer.fields, p), version: l.offer.version } : null,
+      pendingProposal: pending ? { version: pending.version, fields: pending.fields } : null,
       chatPerDay: p.limits.chatPerDay,
       ...(state === 'active' || state === 'paused' ? { sharedSpace: p.sharedSpace } : {}),
     };
@@ -491,8 +492,7 @@ export class PeopleModule {
       if (unbuilt.length > 0) return { ok: false, code: 'invalid_request', reason: `${PEOPLE_REASONS.unbuilt} (${unbuilt.join(', ')})` };
       let fields = applyAgreementPatch(presetAgreement(preset ?? 'standard'), patch);
       // A field the owner turned off takes what needs it with it; one turned on needs what it hangs on.
-      fields = closeDependents(fields);
-      if (!p.modules.food) fields = { ...fields, see: { ...fields.see, food: 'off' } };
+      fields = foodHeld(closeDependents(fields), p);
       const problem = agreementProblem(fields);
       if (problem) return { ok: false, code: 'invalid_request', reason: problem };
       if (fields.assistant) return { ok: false, code: 'invalid_request', reason: 'assistant is never part of an offer (it is its own request).' };
@@ -607,28 +607,49 @@ export class PeopleModule {
     };
   }
 
-  /** Her food module (O6): turning it off while she has food rows is refused, so the switch never hides her own data. */
+  /**
+   * Her food module (O6): turning it off while she has food rows is refused, so the switch never hides her own
+   * data. Off takes see.food with it, and his open ask is re-recorded without it (D23); on grants nothing (a
+   * proposal does, O7), so a food level stored while she had no food log is put off first, never made real.
+   */
   setModules(pid: string, food: boolean, by: string): LifeResult {
     return this.guard(() => {
       const p = this.repo.get(pid);
       if (!p || this.gone(pid)) return this.notFound();
-      if (p.modules.food === food) return { ok: true, value: true };
+      const l = this.ledger(pid);
+      const sharing = l.state === 'active' || l.state === 'paused';
+      // A food level beside no food log (only a ledger written before this check could hold one): `--food off`
+      // or `--food on` puts it off, and the doctor says so.
+      const stray = sharing && !p.modules.food && l.agreement !== null && l.agreement.see.food !== 'off';
+      if (p.modules.food === food && !stray) return { ok: true, value: true };
       const core = this.lifeCore();
-      if (!food) {
+      if (!food && p.modules.food) {
         const n = (core.db.prepare('SELECT COUNT(*) AS n FROM food WHERE space = ?').get(pid) as { n: number }).n;
         if (Number(n) > 0) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.hasRows };
       }
-      this.repo.save({ ...p, modules: { ...p.modules, food }, updatedAt: this.iso() });
-      const l = this.ledger(pid);
-      if (l.state === 'active' || l.state === 'paused') {
-        // Food off takes see.food with it (D23); food on grants nothing (a proposal does, O7).
+      if (p.modules.food !== food) this.repo.save({ ...p, modules: { ...p.modules, food }, updatedAt: this.iso() });
+      if (sharing) {
         let agreement = l.agreement;
-        if (!food && agreement && agreement.see.food !== 'off') {
-          const next = { ...agreement, see: { ...agreement.see, food: 'off' as const } };
-          this.appendLedger(pid, 'narrowed', by, next, l.maxVersion + 1);
-          agreement = { ...next, version: l.maxVersion + 1 };
+        let version = l.maxVersion;
+        if ((!food || stray) && agreement && agreement.see.food !== 'off') {
+          const next = foodHeld(stripVersion(agreement), { modules: { food: false } });
+          version += 1;
+          this.appendLedger(pid, 'narrowed', by, next, version);
+          agreement = { ...next, version };
         }
-        this.appendLedger(pid, 'module_changed', by, agreement, agreement?.version ?? l.maxVersion);
+        // His open ask loses its food level with her food log, at the same version (her Allow still answers it);
+        // the ledger drops an ask that was only about food.
+        const pending = this.pendingOf({ ...l, agreement }, { modules: { food: false } });
+        if (!food && l.pending && pending !== l.pending) {
+          this.appendLedger(pid, 'proposed', by, pending ? pending.fields : agreement, l.pending.version);
+          if (!pending) this.clearPending(pid);
+        }
+        if (p.modules.food === food) {
+          this.ownerChanged();
+          this.ticks.bump(pid, 'me');
+          return { ok: true, value: true };
+        }
+        this.appendLedger(pid, 'module_changed', by, agreement, agreement?.version ?? version);
         this.record(pid, { actor: 'owner', action: 'module.changed', fields: [`food=${food ? 'on' : 'off'}`] });
         this.ticks.bump(pid, 'me');
         this.ticks.bump(pid, 'life');
@@ -654,7 +675,8 @@ export class PeopleModule {
       const p = this.repo.get(inv.personId);
       const l = this.ledger(inv.personId);
       if (!p || l.state !== null || !l.offer || l.offer.version !== inv.offerVersion) return { ok: false, code: 'not_found', reason: PEOPLE_REASONS.invalidCode };
-      const fields = clampToBuilt(l.offer.fields);
+      // Her page shows the offer as she would agree to it: no food level while she has no food log.
+      const fields = foodHeld(clampToBuilt(l.offer.fields), p);
       return {
         ok: true,
         value: {
@@ -690,9 +712,12 @@ export class PeopleModule {
       if (opts.cloudflare && email && p.emailLabel && email !== p.emailLabel.toLowerCase()) {
         return { ok: false, code: 'forbidden', reason: PEOPLE_REASONS.emailMismatch(email) };
       }
-      const offer = clampToBuilt(l.offer.fields);
-      const asked = closeDependents(body.agreement);
-      if (!agreementWithin(body.agreement, offer) || !agreementWithin(asked, offer)) return { ok: false, code: 'invalid_request', reason: PEOPLE_REASONS.widen };
+      // Her food module decides at the moment she joins (D23): a page loaded while it was on and posted after it
+      // went off stores food off, as her page now says; one loaded while it was off never offered a level.
+      const offer = foodHeld(clampToBuilt(l.offer.fields), p);
+      const given = foodHeld(body.agreement, p);
+      const asked = closeDependents(given);
+      if (!agreementWithin(given, offer) || !agreementWithin(asked, offer)) return { ok: false, code: 'invalid_request', reason: PEOPLE_REASONS.widen };
       const problem = agreementProblem(asked);
       if (problem) return { ok: false, code: 'invalid_request', reason: problem };
       if (!this.invites.spend(inv)) return { ok: false, code: 'not_found', reason: PEOPLE_REASONS.invalidCode };
@@ -741,6 +766,7 @@ export class PeopleModule {
     const l = this.ledger(pid);
     const p = this.person(pid);
     const state: PersonState = l.state === 'forgotten' || l.state === null ? 'left' : l.state;
+    const pending = this.pendingOf(l, p);
     const owner = { name: this.ownerName() };
     const ownerDevices = this.deps.ctx.db.devices
       .list()
@@ -764,7 +790,7 @@ export class PeopleModule {
         label: spaceLabel(p?.label),
         peopleOn: this.enabled(),
         agreement: state === 'active' || state === 'paused' ? l.agreement : null,
-        pending: l.pending && (state === 'active' || state === 'paused') ? { version: l.pending.version, fields: l.pending.fields, ...(p?.pendingProposal?.note ? { note: p.pendingProposal.note } : {}) } : null,
+        pending: pending && (state === 'active' || state === 'paused') ? { version: pending.version, fields: pending.fields, ...(p?.pendingProposal?.note ? { note: p.pendingProposal.note } : {}) } : null,
         ownerDevices,
         built: BUILT_PHASE,
         lifeBroken: broken,
@@ -820,13 +846,12 @@ export class PeopleModule {
       if (!p || (l.state !== 'active' && l.state !== 'paused') || !l.agreement) return this.notFound();
       // Her pause holds his asks as it holds his writes and alerts (spec 1.2: "can see but not add or send").
       if (l.state === 'paused') return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.pausedAsk(p.name) };
-      if (l.pending) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.pending };
+      if (this.pendingOf(l, p)) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.pending };
       const { note, ...patch } = body;
       const unbuilt = unbuiltFieldsIn(patch);
       if (unbuilt.length > 0) return { ok: false, code: 'invalid_request', reason: `${PEOPLE_REASONS.unbuilt} (${unbuilt.join(', ')})` };
       const current = stripVersion(l.agreement);
-      let next = applyAgreementPatch(current, patch);
-      if (!p.modules.food) next = { ...next, see: { ...next.see, food: 'off' } };
+      const next = foodHeld(applyAgreementPatch(current, patch), p);
       const problem = agreementProblem(next);
       if (problem) return { ok: false, code: 'invalid_request', reason: problem };
       const widened = AGREEMENT_FIELDS.filter((f) => levelOf(next, f) > levelOf(current, f));
@@ -851,10 +876,12 @@ export class PeopleModule {
 
   accept(pid: string, version: number, by: string): LifeResult {
     const l = this.ledger(pid);
-    if (!l.pending || l.pending.version !== version) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.noPending };
-    this.appendLedger(pid, 'accepted', by, l.pending.fields, version);
+    // Her Allow stores what her card showed: no food level while she has no food log (D23).
+    const pending = this.pendingOf(l, this.person(pid));
+    if (!pending || pending.version !== version) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.noPending };
+    this.appendLedger(pid, 'accepted', by, pending.fields, version);
     this.clearPending(pid);
-    this.tryRecord(pid, { actor: 'her', action: 'agreement.accepted', fields: fieldsChanged(stripVersion(l.agreement ?? { ...noAgreement(), version: 1 }), l.pending.fields) });
+    this.tryRecord(pid, { actor: 'her', action: 'agreement.accepted', fields: fieldsChanged(stripVersion(l.agreement ?? { ...noAgreement(), version: 1 }), pending.fields) });
     this.deps.push({ kind: 'life', title: `${this.nameOf(pid)} said yes`, body: `Open ${PEOPLE_LABEL} to see.`, url: `/people/${pid}`, tag: `people:${pid}` });
     this.ticks.bump(pid, 'me');
     this.ownerChanged();
@@ -863,10 +890,11 @@ export class PeopleModule {
 
   decline(pid: string, version: number, dontAsk: boolean, by: string): LifeResult {
     const l = this.ledger(pid);
-    if (!l.pending || l.pending.version !== version) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.noPending };
-    const changed = fieldsChanged(stripVersion(l.agreement ?? { ...noAgreement(), version: 1 }), l.pending.fields);
-    this.appendLedger(pid, 'declined', by, null, version);
     const p = this.person(pid);
+    const pending = this.pendingOf(l, p);
+    if (!pending || pending.version !== version) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.noPending };
+    const changed = fieldsChanged(stripVersion(l.agreement ?? { ...noAgreement(), version: 1 }), pending.fields);
+    this.appendLedger(pid, 'declined', by, null, version);
     if (p) {
       const dont = dontAsk ? [...new Set([...p.prefs.dontAsk, ...changed.map(dontAskKey)])] : p.prefs.dontAsk;
       try {
@@ -879,6 +907,18 @@ export class PeopleModule {
     this.ticks.bump(pid, 'me');
     this.ownerChanged();
     return { ok: true, value: true };
+  }
+
+  /**
+   * His open ask as she answers it: with no food log, no food level (foodHeld), and nothing left once that was
+   * all he asked for. setModules re-records the ask when her food log goes off, so the ledger says the same.
+   */
+  private pendingOf(l: LedgerView, p: Pick<Person, 'modules'> | null): LedgerView['pending'] {
+    if (!l.pending) return null;
+    const fields = foodHeld(l.pending.fields, p);
+    if (fields === l.pending.fields) return l.pending;
+    const now = l.agreement ? stripVersion(l.agreement) : noAgreement();
+    return fieldsChanged(now, fields).length > 0 ? { version: l.pending.version, fields } : null;
   }
 
   private clearPending(pid: string): void {
@@ -1442,6 +1482,16 @@ function rebase(asked: AgreementFields, from: AgreementFields, now: AgreementFie
   let out = stripVersion(now);
   for (const f of AGREEMENT_FIELDS) if (levelOf(asked, f) > levelOf(from, f) && levelOf(asked, f) > levelOf(out, f)) out = withField(out, f, fieldValue(asked, f));
   return closeDependents(out);
+}
+
+/**
+ * No food log, no food level (D23): while her food module is off, see.food is off in what she is offered, what
+ * he asks and what she agrees to, whatever a preset, an older offer or a pending ask says. Her join page and
+ * her answer to an ask then store exactly the "not part of your space" they showed her.
+ */
+function foodHeld<T extends AgreementFields>(fields: T, p: Pick<Person, 'modules'> | null): T {
+  if (!p || p.modules.food || fields.see.food === 'off') return fields;
+  return { ...fields, see: { ...fields.see, food: 'off' } };
 }
 
 function stripVersion(a: AgreementFields | Agreement): AgreementFields {

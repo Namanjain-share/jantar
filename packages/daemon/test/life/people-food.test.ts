@@ -21,8 +21,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FoodDay } from '@jantar/protocol';
-import type { OwnerFoodView, PersonActivityResponse, PersonOwnToday, PersonToday } from '@jantar/protocol/people';
-import { DAY, OWNER_HOST, OWNER_ORIGIN, credHeaders, makeFixture, onHer, type Cred, type Fixture } from '../people/isolation-fixture.js';
+import { PERSON_COOKIE, type JoinPreview, type OwnerFoodView, type PersonActivityResponse, type PersonOwnToday, type PersonToday } from '@jantar/protocol/people';
+import { DAY, NONE, OWNER_HOST, OWNER_ORIGIN, credHeaders, joinPerson, makeFixture, onHer, type Cred, type Fixture } from '../people/isolation-fixture.js';
 
 let f: Fixture;
 beforeEach(async () => {
@@ -136,6 +136,87 @@ describe('her food module (O6)', () => {
     const act = ((await herCall('GET', '/v1/p/activity')).json() as PersonActivityResponse).activity;
     expect(act.find((r) => r.action === 'module.changed')).toMatchObject({ actor: 'owner', fields: ['food=off'] });
     expect((await herCall('GET', '/v1/p/food')).statusCode).toBe(404);
+  });
+});
+
+describe('review 5, B1: no food level is agreed that her page showed as "not part of your space"', () => {
+  const joinAs = async (name: string, pid: string, agreement?: (offer: JoinPreview['offer']) => Promise<JoinPreview['offer']>) => {
+    const { url } = (await ctl('POST', `/v1/people/${pid}/invite`)).json() as { url: string };
+    const code = url.split('#c=')[1] as string;
+    const p = (await onHer(f.api, 'POST', '/v1/p/join/preview', NONE, { code })).json() as JoinPreview;
+    const r = await onHer(f.api, 'POST', '/v1/p/join', NONE, { code, acceptedVersion: p.version, agreement: agreement ? await agreement(p.offer) : p.offer, adult: true, name, deviceName: `${name} phone` });
+    const set = r.cookies.find((c) => c.name === PERSON_COOKIE);
+    const cred: Cred = { name, cookie: `${PERSON_COOKIE}=${set?.value}`, secret: r.statusCode === 200 ? (r.json() as { deviceSecret: string }).deviceSecret : '' };
+    return { preview: p, status: r.statusCode, body: r.body, cred };
+  };
+  const agreed = async (who: Cred) => ((await herCall('GET', '/v1/p/me', undefined, who)).json() as { agreement: { see: Record<string, unknown> }; pending: { version: number; fields: { see: Record<string, unknown> } } | null });
+
+  it('the food log off between his offer and the invite: her page and what she agrees to both hold food off; food on later grants nothing', async () => {
+    const pid = idOf(await ctl('POST', '/v1/people', { name: 'Hana', email: 'hana@example.com', modules: { food: true } }));
+    expect(((await ctl('POST', `/v1/people/${pid}/offer`, { preset: 'standard' })).json() as { fields: { see: { food: string } } }).fields.see.food).toBe('full');
+    expect((await ctl('PATCH', `/v1/people/${pid}/modules`, { food: false })).statusCode).toBe(200);
+    // His screens and the doctor read the offer as she would get it.
+    const list = (await ctl('GET', '/v1/people')).json() as { people: { id: string; offer: { see: { food: string } } | null }[] };
+    expect(list.people.find((x) => x.id === pid)?.offer?.see.food).toBe('off');
+    const hana = await joinAs('Hana', pid);
+    expect([hana.preview.modules.food, hana.preview.offer.see.food]).toEqual([false, 'off']);
+    expect(hana.status, hana.body).toBe(200);
+    expect((await agreed(hana.cred)).agreement.see.food).toBe('off');
+    const doctor = ((await ctl('GET', '/v1/people/doctor')).json() as { checks: { name: string; ok: boolean; detail: string }[] }).checks;
+    expect(doctor.find((c) => c.name === 'food log (Hana)')).toEqual({ name: 'food log (Hana)', ok: true, detail: 'off (to turn it on: jantar people modules Hana --food on)' });
+    expect((await ctl('PATCH', `/v1/people/${pid}/modules`, { food: true })).statusCode).toBe(200);
+    expect((await herCall('POST', '/v1/p/food', { day: DAY, name: 'Private meal', kcal: 640 }, hana.cred)).statusCode).toBe(201);
+    expect((await him('GET', `/v1/people/${pid}/food`)).statusCode).toBe(404);
+    expect((await agreed(hana.cred)).agreement.see.food).toBe('off');
+  });
+
+  it('a page loaded while the food log was on, sent after it went off: she joins, with food off', async () => {
+    const pid = idOf(await ctl('POST', '/v1/people', { name: 'Hana', email: 'hana@example.com', modules: { food: true } }));
+    const hana = await joinAs('Hana', pid, async (offer) => {
+      // Her page showed food in full (the module was on); he turns it off before she taps Join.
+      expect(offer.see.food).toBe('full');
+      expect((await ctl('PATCH', `/v1/people/${pid}/modules`, { food: false })).statusCode).toBe(200);
+      return offer;
+    });
+    expect(hana.status, hana.body).toBe(200);
+    expect((await agreed(hana.cred)).agreement.see.food).toBe('off');
+  });
+
+  it("his ask for food, then the food log off: the ask loses food (and goes when that was all of it); her Allow can't agree to it", async () => {
+    const ivy = await joinPerson(f.api, 'Ivy', { food: true, offer: { see: { food: 'off', sleep: false } } });
+    expect((await him('POST', `/v1/people/${ivy.id}/agreement`, { see: { food: 'full' } }, f.owner.admin)).statusCode).toBe(200);
+    expect((await agreed(ivy.full)).pending?.fields.see.food).toBe('full');
+    expect((await ctl('PATCH', `/v1/people/${ivy.id}/modules`, { food: false })).statusCode).toBe(200);
+    // Food was all he asked: nothing is left for her to answer, on her screen or his.
+    expect((await agreed(ivy.full)).pending).toBeNull();
+    const list = (await ctl('GET', '/v1/people')).json() as { people: { id: string; pendingProposal: unknown }[] };
+    expect(list.people.find((x) => x.id === ivy.id)?.pendingProposal).toBeNull();
+    expect((await herCall('POST', '/v1/p/agreement/accept', { version: 999 }, ivy.full)).statusCode).toBe(409);
+    // An ask for food and sleep keeps sleep; her Allow gives sleep and never food.
+    expect((await ctl('PATCH', `/v1/people/${ivy.id}/modules`, { food: true })).statusCode).toBe(200);
+    expect((await him('POST', `/v1/people/${ivy.id}/agreement`, { see: { food: 'full', sleep: true } }, f.owner.admin)).statusCode).toBe(200);
+    expect((await ctl('PATCH', `/v1/people/${ivy.id}/modules`, { food: false })).statusCode).toBe(200);
+    const me = await agreed(ivy.full);
+    expect([me.pending?.fields.see.food, me.pending?.fields.see.sleep]).toEqual(['off', true]);
+    expect((await herCall('POST', '/v1/p/agreement/accept', { version: me.pending?.version }, ivy.full)).statusCode).toBe(200);
+    expect((await ctl('PATCH', `/v1/people/${ivy.id}/modules`, { food: true })).statusCode).toBe(200);
+    expect((await herCall('POST', '/v1/p/food', { day: DAY, name: 'Ivy lunch', kcal: 500 }, ivy.full)).statusCode).toBe(201);
+    expect((await him('GET', `/v1/people/${ivy.id}/food`)).statusCode).toBe(404);
+    expect((await agreed(ivy.full)).agreement.see).toMatchObject({ food: 'off', sleep: true });
+  });
+
+  it('a food level stored beside no food log (an older ledger): the doctor says to put it off, and food on puts it off first', async () => {
+    // Bea has no food log; write the row an older build could have left: her agreement with food in full.
+    const { version: _v, ...me } = (await agreed(f.bea.full)).agreement as { version: number; see: Record<string, unknown> };
+    const rows = f.api.ctx.db.people.consents.listFor(f.bea.id);
+    const version = Math.max(...rows.map((r) => r.version)) + 1;
+    f.api.ctx.db.people.consents.append({ personId: f.bea.id, version, action: 'narrowed', by: 'test', at: '2026-11-03T09:00:00.000Z', json: { agreement: { ...me, see: { ...me.see, food: 'full' } } } as never });
+    const doctor = ((await ctl('GET', '/v1/people/doctor')).json() as { checks: { name: string; ok: boolean; detail: string }[] }).checks;
+    expect(doctor.find((c) => c.name === 'food log (Bea)')).toEqual({ name: 'food log (Bea)', ok: false, detail: 'off, yet see.food is full: jantar people modules Bea --food off puts it off' });
+    expect((await ctl('PATCH', `/v1/people/${f.bea.id}/modules`, { food: true })).statusCode).toBe(200);
+    expect((await agreed(f.bea.full)).agreement.see.food).toBe('off');
+    expect((await herCall('POST', '/v1/p/food', { day: DAY, name: 'Upma', kcal: 300 }, f.bea.full)).statusCode).toBe(201);
+    expect((await him('GET', `/v1/people/${f.bea.id}/food`)).statusCode).toBe(404);
   });
 });
 

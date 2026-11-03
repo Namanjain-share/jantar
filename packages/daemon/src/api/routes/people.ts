@@ -200,7 +200,8 @@ export const PEOPLE_ROUTE_IMPLS: RouteTable = {
 
 /**
  * `people doctor`'s food lines, one per person in the space (spec 3.5): whether their food log is on, and
- * what he sees of it. A level of see.food with the module off would be a promise the space can't keep: FIX.
+ * what he sees of it. A level of see.food with the module off would be a promise the space can't keep, and one
+ * she never saw on a food line (an invite's offer reads off while the module is off): FIX, by putting it off.
  */
 function foodChecks(s: ApiServices): { name: string; ok: boolean; detail: string }[] {
   const list = s.deps.life.people.list();
@@ -211,7 +212,12 @@ function foodChecks(s: ApiServices): { name: string; ok: boolean; detail: string
       const level = (p.state === 'invited' ? p.offer : p.agreement)?.see.food ?? 'off';
       const sees = level === 'full' ? 'what they eat, with calories' : level === 'counts' ? 'how many meals they log' : 'none of it';
       if (!p.modules.food) {
-        return { name: `food log (${p.name})`, ok: level === 'off', detail: level === 'off' ? `off (to turn it on: jantar people modules ${p.name} --food on)` : `off, yet see.food is ${level}: jantar people modules ${p.name} --food on` };
+        // A level beside no food log is one they never saw on a food line: the fix puts it off (food on grants nothing).
+        return {
+          name: `food log (${p.name})`,
+          ok: level === 'off',
+          detail: level === 'off' ? `off (to turn it on: jantar people modules ${p.name} --food on)` : `off, yet see.food is ${level}: jantar people modules ${p.name} --food off puts it off`,
+        };
       }
       return { name: `food log (${p.name})`, ok: true, detail: `on; ${p.state === 'invited' ? 'the invite offers' : 'you see'} ${sees}` };
     });
