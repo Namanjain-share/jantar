@@ -851,7 +851,7 @@ first use from Deals' ···), `Insights.tsx` (cards in `kit/Columns` of
 lines open Deals with `?show=`; the ? overlay (`shell/Shortcuts.tsx`, its
 own chunk) gains a Work group. The first load is 277.3 kB of
 `MAIN_JS_MAX` 280 kB (the route's stage and filters); Work 62.5 kB with
-what it pulls in (the milestones panel), Work › Deals 70.2, Insights 47.4,
+what it pulls in (the milestones panel), Work › Deals 70.4, Insights 47.5,
 the stage editor 46.1, the milestone editor 42.3, a client's deal sheet
 44.1. Tests:
 `packages/web/test/work/{deals,deal-board,deal-hub,deal-model,stages,insights,milestones}.test.ts(x)`,
