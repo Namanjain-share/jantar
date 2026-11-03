@@ -244,8 +244,9 @@ changes. A phone looks as it did.
   it. On a touch screen nothing sits in the bottom 24 px, where an iPad
   window's resize handle is (an iPhone's home indicator already leaves
   more), and nothing sits in that corner with a mouse either: the Mac's
-  status bar ends **? legend** short of it whatever the font, and in a
-  window under 768 px wide the tabs and Send keep 24 px under them. A
+  status bar ends **? legend** short of it (when its text is too long, the
+  left side clips first), and in a window under 768 px wide the tabs and
+  Send keep 24 px under them. A
   session beside the list in a narrow pane (an iPad at 1024 px with its
   sidebar) keeps its header on one line: the session's name and its
   arrows step aside, and the Chat button is an icon.

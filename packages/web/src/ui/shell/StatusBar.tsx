@@ -16,7 +16,10 @@
  * 0.12.0: the bar keeps the window's resize corner (its bottom-right
  * 24 x 24) free with any pointer: it pads its right side (pr-corner), and
  * only the left side shrinks and clips when the text is wider than the bar
- * (another font, a long link state), so "? legend" never moves past it.
+ * (another font, a long link state), so "? legend" stays clear of it. The
+ * right group (update notice, key hints, legend) does not shrink yet: if it
+ * alone is wider than the bar (a narrow window, very large text and the
+ * update notice), it still overflows into the padding.
  */
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
