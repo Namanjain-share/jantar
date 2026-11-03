@@ -730,7 +730,7 @@ export class AlertsModule {
     c.scheduler.poke();
   }
 
-  /** "Asha's day: 5 of 7 done · review sent · 1 dose not logged", from the agreement as it is now; never journal, chat or sleep text, never a medicine's name. */
+  /** "Asha's day: 5 of 7 done · review sent · 1 dose not logged · 2 meals logged", from the agreement as it is now; never journal, chat or sleep text, never a medicine's or a food's name. */
   summaryText(): string | null {
     const c = this.core();
     if (!c) return null;
@@ -749,6 +749,8 @@ export class AlertsModule {
       }
       // Her medicines (see.meds): doses not logged today, and the two-day concern; counts only, never a name.
       parts.push(...(this.people.meds?.summaryParts(pid) ?? []));
+      // Her food log (see.food): meals logged today, with the calories at full; never what she ate.
+      parts.push(...(this.people.food?.summaryParts(pid) ?? []));
       if (parts.length > 0) lines.push(`${this.people.nameOf(pid)}'s day: ${parts.join(' · ')}`);
     }
     return lines.length > 0 ? lines.join('; ') : null;

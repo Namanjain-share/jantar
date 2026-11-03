@@ -167,6 +167,8 @@ export class PeopleModule {
   space: import('./space.js').PersonSpace | null = null;
   /** Her medicines and doses, as either side writes them (set by the Life service). */
   meds: import('./meds.js').PersonMeds | null = null;
+  /** Her food log, which only she writes, while her food module is on (set by the Life service). */
+  food: import('./food.js').PersonFood | null = null;
   /** What he sees of her, and her mirror of it (set by the Life service). */
   views: import('./views.js').PeopleViews | null = null;
   /** P2: her day plans, templates and evening reviews; alerts both ways; her journal; her sleep log (set by the Life service). */
@@ -487,7 +489,7 @@ export class PeopleModule {
       let fields = applyAgreementPatch(presetAgreement(preset ?? 'standard'), patch);
       // A field the owner turned off takes what needs it with it; one turned on needs what it hangs on.
       fields = closeDependents(fields);
-      if (!p.modules.food) fields = { ...fields, see: { ...fields.see, food: false } };
+      if (!p.modules.food) fields = { ...fields, see: { ...fields.see, food: 'off' } };
       const problem = agreementProblem(fields);
       if (problem) return { ok: false, code: 'invalid_request', reason: problem };
       if (fields.assistant) return { ok: false, code: 'invalid_request', reason: 'assistant is never part of an offer (it is its own request).' };
@@ -585,14 +587,15 @@ export class PeopleModule {
       if (l.state === 'active' || l.state === 'paused') {
         // Food off takes see.food with it (D23); food on grants nothing (a proposal does, O7).
         let agreement = l.agreement;
-        if (!food && agreement?.see.food) {
-          const next = { ...agreement, see: { ...agreement.see, food: false } };
+        if (!food && agreement && agreement.see.food !== 'off') {
+          const next = { ...agreement, see: { ...agreement.see, food: 'off' as const } };
           this.appendLedger(pid, 'narrowed', by, next, l.maxVersion + 1);
           agreement = { ...next, version: l.maxVersion + 1 };
         }
         this.appendLedger(pid, 'module_changed', by, agreement, agreement?.version ?? l.maxVersion);
         this.record(pid, { actor: 'owner', action: 'module.changed', fields: [`food=${food ? 'on' : 'off'}`] });
         this.ticks.bump(pid, 'me');
+        this.ticks.bump(pid, 'life');
       }
       this.ownerChanged();
       return { ok: true, value: true };
@@ -785,7 +788,7 @@ export class PeopleModule {
       if (unbuilt.length > 0) return { ok: false, code: 'invalid_request', reason: `${PEOPLE_REASONS.unbuilt} (${unbuilt.join(', ')})` };
       const current = stripVersion(l.agreement);
       let next = applyAgreementPatch(current, patch);
-      if (!p.modules.food) next = { ...next, see: { ...next.see, food: false } };
+      if (!p.modules.food) next = { ...next, see: { ...next.see, food: 'off' } };
       const problem = agreementProblem(next);
       if (problem) return { ok: false, code: 'invalid_request', reason: problem };
       const widened = AGREEMENT_FIELDS.filter((f) => levelOf(next, f) > levelOf(current, f));
@@ -1013,6 +1016,9 @@ export class PeopleModule {
         return a.see.meds !== 'off';
       case 'review':
         return a.see.review !== 'off';
+      case 'food':
+        // Her food module off turns see.food off with it (setModules), so a level here means the module is on.
+        return a.see.food !== 'off';
       default:
         return (a.see as Record<string, unknown>)[area] === true;
     }

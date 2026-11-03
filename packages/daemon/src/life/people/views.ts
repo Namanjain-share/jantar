@@ -21,6 +21,11 @@
  * and a count that name nothing. The
  * two-day concern ("Doses not logged 2 days running") is on both, and on
  * Today's concern lines.
+ *
+ * Her food log (spec 3.5) is at his level too (people/food.ts): `full` the
+ * day's items with their calories and the week's totals, `counts` how many
+ * meals she logged. It is an area only while her food module is on: off,
+ * the view is null (404) and Today has no food tile at all (O6).
  */
 import {
   builtAreas,
@@ -30,6 +35,7 @@ import {
   type JournalList,
   type Locked,
   type OwnerChatView,
+  type OwnerFoodView,
   type OwnerMedsView,
   type OwnerTodosView,
   type PersonOwnToday,
@@ -48,10 +54,10 @@ import type { PersonSpace } from './space.js';
 
 const LOCKED: Locked = { locked: true };
 
-/** The areas this build's views answer (food is a later phase: 404). */
-const VIEW_AREAS: ReadonlySet<Area> = new Set<Area>(['today', 'todos', 'meds', 'weight', 'plan', 'review', 'sleep', 'journal', 'chat']);
+/** The areas this build's views answer (food only while her food module is on). */
+const VIEW_AREAS: ReadonlySet<Area> = new Set<Area>(['today', 'todos', 'meds', 'weight', 'food', 'plan', 'review', 'sleep', 'journal', 'chat']);
 
-export type AreaView = OwnerTodosView | OwnerMedsView | PersonWeightsResponse | PersonToday | PlanView | ReviewView | SleepWeek | JournalList | OwnerChatView | Locked;
+export type AreaView = OwnerTodosView | OwnerMedsView | PersonWeightsResponse | OwnerFoodView | PersonToday | PlanView | ReviewView | SleepWeek | JournalList | OwnerChatView | Locked;
 
 export interface ViewOpts {
   day?: string | undefined;
@@ -151,6 +157,13 @@ export class PeopleViews {
         return this.medsView(pid, a, opts.day);
       case 'weight':
         return a.see.weight ? this.space.weights(pid) : LOCKED;
+      case 'food': {
+        // No food area at all while her food module is off (O6): his route and her mirror answer 404.
+        const food = this.people.food;
+        if (!food?.on(pid)) return null;
+        if (a.see.food === 'off') return LOCKED;
+        return food.view(pid, a.see.food, opts.day) ?? null;
+      }
       case 'plan':
         return a.see.plan && this.people.plans ? this.people.plans.view(pid, opts.day ?? (c ? c.today() : '')) : LOCKED;
       case 'review': {
@@ -197,8 +210,8 @@ export class PeopleViews {
           todos: a.see.todos ? this.todayTile(pid, day) : LOCKED,
           meds,
           weight: a.see.weight ? { latest: this.space.weights(pid).latest } : LOCKED,
-          // Her food log is a later phase (AREAS.food): no tile until it is served.
-          food: null,
+          // Her food log at his level; null while her food module is off (O6).
+          food: this.people.food?.todayTile(pid, a, day) ?? null,
           plan: plan ?? LOCKED,
           status: a.see.plan ? this.people.statusOf(p) : LOCKED,
           review,
@@ -270,6 +283,7 @@ export class PeopleViews {
       sharingCheckin: d === today && this.people.sharingCheckinDue(pid),
       alertsUnseen: this.people.alerts?.unseenBy(pid) ?? 0,
       prompt: promptForDay(JOURNAL_PROMPTS, today || d),
+      food: this.people.food?.herToday(pid, d) ?? null,
     };
   }
 }

@@ -1870,6 +1870,8 @@ export interface MedicinesModule extends LifeModule {
 /** Food, calories and weight, and Ask Claude (WP-FF). */
 export interface FoodModule extends LifeModule {
   readonly name: 'food';
+  /** v0.11 People: the same module over one space (her food log; only the People module calls it). No Ask Claude there. */
+  inSpace(space: string): FoodModule;
   day(day?: string): LifeResult<FoodDay>;
   add(body: FoodBody, actor: Actor): LifeResult<{ id: string }>;
   update(id: string, patch: FoodPatch, actor: Actor): LifeResult;
@@ -1885,6 +1887,10 @@ export interface FoodModule extends LifeModule {
   estimate(text: string, signal: AbortSignal, actor: Actor): Promise<LifeResult<FoodEstimate>>;
   /** Whether Ask Claude can run on this Mac (LifeStatus.estimate). */
   estimateStatus(): { available: boolean; reason?: string };
+  /** v0.11: entries a day, for the days from `from` to `to` that have any (his counts of her food log). */
+  countsBetween(from: string, to: string): Map<string, number>;
+  /** v0.11: every entry in this space. */
+  entryCount(): number;
 }
 
 /**

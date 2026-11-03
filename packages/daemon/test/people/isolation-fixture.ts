@@ -1,7 +1,8 @@
 /**
  * v0.11 People: the isolation suites' fixture (spec 9.7.2). Synthetic people
- * only: the owner Sam, the partner Asha, a second partner Bea (PEOPLE_MAX is
- * raised inside the tests only), and one person per other state: Cara
+ * only: the owner Sam, the partner Asha (Everything, her food log on and
+ * shared in full), a second partner Bea (Standard, no food log; PEOPLE_MAX
+ * is raised inside the tests only), and one person per other state: Cara
  * paused, Dev ending, Eli left (keep 30 days), Fay forgotten, Gus invited.
  * His host is `jantar.test`, hers `us.test`, every email `@example.com`.
  *
@@ -163,7 +164,7 @@ export async function joinPerson(
     email: `${name.toLowerCase()}@example.com`,
     modules: { food: opts.food ?? false },
   });
-  await ctl(api, 'POST', `/v1/people/${id}/offer`, { preset: opts.preset ?? 'everything', ...(opts.food === true ? {} : { see: { food: false } }), ...opts.offer });
+  await ctl(api, 'POST', `/v1/people/${id}/offer`, { preset: opts.preset ?? 'everything', ...(opts.food === true ? {} : { see: { food: 'off' } }), ...opts.offer });
   const { url } = await ctl<{ url: string }>(api, 'POST', `/v1/people/${id}/invite`);
   const code = url.split('#c=')[1] as string;
   const preview = await onHer(api, 'POST', '/v1/p/join/preview', NONE, { code });
@@ -247,7 +248,7 @@ export async function makeFixture(opts: { api?: ApiOptions; ctx?: Partial<TestCo
   owner.cookieOnly = { name: 'owner:cookie-only', cookie: owner.admin.cookie as string };
   if (!owner.admin.cookie?.startsWith(`${DEVICE_COOKIE}=`)) throw new Error('owner cookie');
 
-  const ashaBase = await joinPerson(api, 'Asha');
+  const ashaBase = await joinPerson(api, 'Asha', { food: true });
   const second = await linkDevice(api, ashaBase, 'Asha old phone');
   // Her second device is revoked: its cookie must be inert everywhere.
   const rv = await onHer(api, 'DELETE', `/v1/p/devices/${second.deviceId}`, ashaBase.full);

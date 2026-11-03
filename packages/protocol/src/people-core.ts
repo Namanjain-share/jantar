@@ -26,11 +26,14 @@ export const MEDS_LEVELS = ['off', 'adherence', 'full'] as const satisfies reado
 /** The levels of `see.review` (P2). */
 export type ReviewLevel = 'off' | 'counts' | 'full';
 export const REVIEW_LEVELS = ['off', 'counts', 'full'] as const satisfies readonly ReviewLevel[];
+/** The levels of `see.food` (spec 3.5): `counts` is how many meals and days she logged; `full` what she ate, its calories and the day's total. */
+export type FoodLevel = 'off' | 'counts' | 'full';
+export const FOOD_LEVELS = ['off', 'counts', 'full'] as const satisfies readonly FoodLevel[];
 export type Preset = 'light' | 'standard' | 'everything';
 
 /** The agreement's fields (people.ts AgreementFieldsSchema parses exactly this shape; a type test pins it). */
 export interface AgreementFields {
-  see: { todos: boolean; meds: MedsLevel; weight: boolean; food: boolean; plan: boolean; review: ReviewLevel; sleep: boolean; journal: boolean; chat: boolean };
+  see: { todos: boolean; meds: MedsLevel; weight: boolean; food: FoodLevel; plan: boolean; review: ReviewLevel; sleep: boolean; journal: boolean; chat: boolean };
   assign: { todos: boolean; meds: boolean; plan: boolean };
   editHers: { todos: boolean; meds: boolean; weight: boolean; plan: boolean };
   comment: { journal: boolean };
@@ -235,9 +238,11 @@ export function chatLeftLine(left: number): string {
   return `${left} message${left === 1 ? '' : 's'} left today`;
 }
 
-/** What her assistant can see, in the disclosure's words (only what this build has). */
-export function chatReach(built: BuildPhase = BUILT_PHASE): string {
-  return phaseBuilt('P4', built) ? 'your plan, to-dos, weight, sleep and the lists you share' : 'your plan, to-dos, weight and sleep';
+/** What her assistant can see, in the disclosure's words (only what this build has; her food log while her food module is on). */
+export function chatReach(built: BuildPhase = BUILT_PHASE, food = false): string {
+  const parts = ['your plan', 'to-dos', 'weight', ...(food ? ['food log'] : []), 'sleep'];
+  if (phaseBuilt('P4', built)) parts.push('the lists you share');
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
 /**
@@ -245,7 +250,7 @@ export function chatReach(built: BuildPhase = BUILT_PHASE): string {
  * join page, in her chat header (ⓘ) and as the first message of a new
  * thread. It changes the moment she switches `see.chat`.
  */
-export function chatDisclosure(owner: string, keepDays: number, ownerCanRead: boolean, built: BuildPhase = BUILT_PHASE): string {
+export function chatDisclosure(owner: string, keepDays: number, ownerCanRead: boolean, built: BuildPhase = BUILT_PHASE, food = false): string {
   const kept = `${keepDays} day${keepDays === 1 ? '' : 's'}`;
   const read = ownerCanRead
     ? `${owner} can read this chat in Jantar: what you write, its answers, photos you send and what it changes for you. ${owner} can't write in it. You can switch this off in Sharing.`
@@ -254,7 +259,7 @@ export function chatDisclosure(owner: string, keepDays: number, ownerCanRead: bo
     `Your assistant runs on ${owner}'s Claude account, on ${owner}'s Mac.`,
     `What you write is sent to Anthropic to answer you and kept on ${owner}'s Mac for ${kept}.`,
     read,
-    `It can see ${chatReach(built)}, and nothing of ${owner}'s. It never reads your journal.`,
+    `It can see ${chatReach(built, food)}, and nothing of ${owner}'s. It never reads your journal.`,
   ].join(' ');
 }
 
@@ -306,8 +311,8 @@ export const AREAS = {
   sleep: 'P2',
   journal: 'P2',
   chat: 'P3',
-  // Her food log (spec 3.5) isn't served in this release: no agreement, join line, screen or route offers it.
-  food: 'later',
+  // Her food log (spec 3.5): served while her food module is on (O6); see.food is off, counts or full.
+  food: 'P1',
 } as const satisfies Record<string, BuildPhase>;
 export type Area = keyof typeof AREAS;
 export const AREA_NAMES = Object.keys(AREAS) as Area[];
@@ -328,7 +333,7 @@ export function agreementProblem(a: AgreementFields): string | null {
   if (a.editHers.plan && !a.see.plan) return 'editHers.plan needs see.plan';
   if (a.see.review !== 'off' && !a.see.plan) return 'see.review needs see.plan';
   if (a.comment.journal && !a.see.journal) return 'comment.journal needs see.journal';
-  if (a.assistant && !(a.see.todos || a.see.plan || a.see.meds !== 'off' || a.see.weight || a.see.sleep || a.see.food)) {
+  if (a.assistant && !(a.see.todos || a.see.plan || a.see.meds !== 'off' || a.see.weight || a.see.sleep || a.see.food !== 'off')) {
     return 'assistant needs at least one area other than journal and chat';
   }
   return null;
@@ -353,10 +358,10 @@ export const AGREEMENT_FIELDS: readonly AgreementField[] = [
   { key: 'see.review', path: ['see', 'review'], phase: 'P2', levels: REVIEW_LEVELS, area: 'review' },
   { key: 'see.meds', path: ['see', 'meds'], phase: 'P1', levels: MEDS_LEVELS, area: 'meds' },
   { key: 'see.weight', path: ['see', 'weight'], phase: 'P1', levels: ONOFF, area: 'weight' },
+  { key: 'see.food', path: ['see', 'food'], phase: 'P1', levels: FOOD_LEVELS, area: 'food' },
   { key: 'see.sleep', path: ['see', 'sleep'], phase: 'P2', levels: ONOFF, area: 'sleep' },
   { key: 'see.journal', path: ['see', 'journal'], phase: 'P2', levels: ONOFF, area: 'journal' },
   { key: 'see.chat', path: ['see', 'chat'], phase: 'P3', levels: ONOFF, area: 'chat' },
-  { key: 'see.food', path: ['see', 'food'], phase: 'later', levels: ONOFF, area: 'food' },
   { key: 'assign.todos', path: ['assign', 'todos'], phase: 'P1', levels: ONOFF, area: 'todos' },
   { key: 'assign.plan', path: ['assign', 'plan'], phase: 'P2', levels: ONOFF, area: 'plan' },
   { key: 'assign.meds', path: ['assign', 'meds'], phase: 'P1', levels: ONOFF, area: 'meds' },
@@ -435,21 +440,21 @@ export function clampToBuilt(a: AgreementFields, built: BuildPhase = BUILT_PHASE
 /** The full presets (spec 1.3.3), before the build's clamp. `assistant` is in none (D17). */
 const PRESETS: Readonly<Record<Preset, AgreementFields>> = {
   light: {
-    see: { todos: true, plan: true, review: 'counts', meds: 'off', weight: false, sleep: false, journal: false, chat: false, food: false },
+    see: { todos: true, plan: true, review: 'counts', meds: 'off', weight: false, sleep: false, journal: false, chat: false, food: 'off' },
     assign: { todos: true, plan: true, meds: false },
     editHers: { todos: false, plan: false, meds: false, weight: false },
     comment: { journal: false },
     assistant: false,
   },
   standard: {
-    see: { todos: true, plan: true, review: 'counts', meds: 'full', weight: true, sleep: false, journal: false, chat: false, food: false },
+    see: { todos: true, plan: true, review: 'counts', meds: 'full', weight: true, sleep: false, journal: false, chat: false, food: 'full' },
     assign: { todos: true, plan: true, meds: true },
     editHers: { todos: false, plan: false, meds: false, weight: false },
     comment: { journal: false },
     assistant: false,
   },
   everything: {
-    see: { todos: true, plan: true, review: 'full', meds: 'full', weight: true, sleep: true, journal: true, chat: true, food: true },
+    see: { todos: true, plan: true, review: 'full', meds: 'full', weight: true, sleep: true, journal: true, chat: true, food: 'full' },
     assign: { todos: true, plan: true, meds: true },
     editHers: { todos: true, plan: true, meds: true, weight: true },
     comment: { journal: true },
@@ -465,7 +470,7 @@ export function presetAgreement(preset: Preset, built: BuildPhase = BUILT_PHASE)
 /** The lowest agreement: nothing seen, assigned or edited. */
 export function noAgreement(): AgreementFields {
   return {
-    see: { todos: false, meds: 'off', weight: false, food: false, plan: false, review: 'off', sleep: false, journal: false, chat: false },
+    see: { todos: false, meds: 'off', weight: false, food: 'off', plan: false, review: 'off', sleep: false, journal: false, chat: false },
     assign: { todos: false, meds: false, plan: false },
     editHers: { todos: false, meds: false, weight: false, plan: false },
     comment: { journal: false },
@@ -487,7 +492,7 @@ export function applyAgreementPatch(a: AgreementFields, patch: AgreementPatch): 
 
 /**
  * The fields a patch asks for whose phase isn't built (an unbuilt field is a 400, O7). Naming one at its
- * lowest level asks for nothing (`--see food=off` while food is a later phase) and passes.
+ * lowest level asks for nothing (`assistant: false` while it is a later phase) and passes.
  */
 export function unbuiltFieldsIn(patch: AgreementPatch, built: BuildPhase = BUILT_PHASE): string[] {
   const named = new Map<string, unknown>();

@@ -6,7 +6,7 @@
  *   expired codes answer one sentence; a widened body or another Access
  *   email spends nothing; invites are the Mac's; "Copy link again" needs an
  *   admin device; link codes last 5 minutes, work once, stop at 5 devices.
- * - The agreement (M19): this owner's offer is Everything with food off,
+ * - The agreement (M19): this owner's offer is Everything with food on,
  *   clamped to what P1 builds; narrowing only lowers and applies before the
  *   next read; one proposal at a time, a 7-day cooling-off after a decline,
  *   "Don't ask again"; the ledger holds no free text.
@@ -88,7 +88,7 @@ describe('invites', () => {
     const { code } = await freshInvite(x, 'Kim', 'kim@example.com');
     const preview = (await onHer(x.api, 'POST', '/v1/p/join/preview', NONE, { code })).json() as JoinPreview;
     const base = { code, acceptedVersion: preview.version, agreement: preview.offer, adult: true, name: 'Kim', deviceName: 'phone' };
-    const widened = { ...base, agreement: { ...preview.offer, see: { ...preview.offer.see, food: true } } };
+    const widened = { ...base, agreement: { ...preview.offer, see: { ...preview.offer.see, sleep: true } } };
     expect((await onHer(x.api, 'POST', '/v1/p/join', NONE, widened)).statusCode).toBe(400);
     expect((await onHer(x.api, 'POST', '/v1/p/join', NONE, { ...base, acceptedVersion: preview.version + 1 })).statusCode).toBe(409);
     const otherEmail = await x.api.tcp.inject({
@@ -178,12 +178,12 @@ describe('invites', () => {
 });
 
 describe('the agreement', () => {
-  it("this owner's offer: Everything with food off, clamped to the built phase (P3: chat on, assistant off)", async () => {
+  it("this owner's offer: Everything with her food log on, clamped to the built phase (P3: chat on, assistant off)", async () => {
     const x = await fx();
     const me = (await onHer(x.api, 'GET', '/v1/p/me', x.asha.full)).json() as PersonMe;
     expect(me.agreement).toEqual({
       version: expect.any(Number),
-      see: { todos: true, meds: 'full', weight: true, food: false, plan: true, review: 'full', sleep: true, journal: true, chat: true },
+      see: { todos: true, meds: 'full', weight: true, food: 'full', plan: true, review: 'full', sleep: true, journal: true, chat: true },
       assign: { todos: true, meds: true, plan: true },
       editHers: { todos: true, meds: true, weight: true, plan: true },
       comment: { journal: true },
@@ -193,7 +193,8 @@ describe('the agreement', () => {
 
   it('narrowing only lowers, takes what depends on it, and applies before the next read', async () => {
     const x = await fx();
-    expect((await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { food: true } })).statusCode).toBe(400);
+    expect((await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { food: 'counts' } })).statusCode).toBe(200);
+    expect((await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { food: 'full' } })).statusCode).toBe(400);
     const steps: [object, (a: NonNullable<PersonView['agreement']>) => void][] = [
       [{ see: { meds: 'adherence' } }, (a) => expect([a.see.meds, a.assign.meds, a.editHers.meds]).toEqual(['adherence', false, false])],
       [{ see: { meds: 'off' } }, (a) => expect(a.see.meds).toBe('off')],
@@ -389,7 +390,7 @@ describe('T19: no owner-only record of her', () => {
     const x = await fx();
     await onHer(x.api, 'PATCH', '/v1/p/prefs', x.asha.full, { lockScreen: 'all' });
     await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { weight: false } });
-    await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { food: true } });
+    await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { food: 'counts' } });
     const rows = x.api.ctx.db.audit.list({ limit: 1000 }).filter((r) => r.actor.startsWith(`person:${x.asha.id}`));
     expect(rows.length).toBeGreaterThanOrEqual(3);
     for (const r of rows) {

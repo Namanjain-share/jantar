@@ -11,8 +11,8 @@
  *
  * v0.11 People: a repo works in one space (`''` the owner's), and every
  * query on `food` and `foods_saved` names it (T6), so the owner's food log
- * never lists a row of another space. Her food log is not in this build
- * (her food module stays off): only the owner's space is ever built here.
+ * never lists a row of another space. A person's targets are her own meta
+ * keys (`kcal_target:<pid>`, `goal_kg10:<pid>`; forget deletes them).
  */
 import { FoodEntrySchema, KCAL_TARGET_DEFAULT, SavedFoodSchema, type FoodEntry, type SavedFood } from '@jantar/protocol';
 import type { LifeCore, Logger } from '../../contracts.js';
@@ -20,6 +20,16 @@ import type { LifeCore, Logger } from '../../contracts.js';
 /** meta keys. */
 export const KCAL_TARGET_KEY = 'kcal_target';
 export const GOAL_KG10_KEY = 'goal_kg10';
+
+/** v0.11: a space's calorie target key (the owner's is the plain key, a person's carries her id). */
+export function kcalTargetKey(space: string): string {
+  return space === '' ? KCAL_TARGET_KEY : `${KCAL_TARGET_KEY}:${space}`;
+}
+
+/** v0.11: a space's goal weight key. */
+export function goalKey(space: string): string {
+  return space === '' ? GOAL_KG10_KEY : `${GOAL_KG10_KEY}:${space}`;
+}
 
 /** The key a saved food is found by: "Roti", " roti " and "ROTI" are one saved food. */
 export function savedKey(name: string): string {
@@ -53,6 +63,17 @@ export class FoodRepo {
 
   countOn(day: string): number {
     return (this.core.db.prepare('SELECT COUNT(*) AS n FROM food WHERE space = ? AND day = ?').get(this.space, day) as { n: number }).n;
+  }
+
+  /** v0.11: entries a day on each day from `from` to `to` (inclusive) that has any. */
+  countsBetween(from: string, to: string): Map<string, number> {
+    const rows = this.core.db.prepare('SELECT day, COUNT(*) AS n FROM food WHERE space = ? AND day >= ? AND day <= ? GROUP BY day').all(this.space, from, to) as { day: string; n: number }[];
+    return new Map(rows.map((r) => [r.day, Number(r.n)]));
+  }
+
+  /** v0.11: every entry in the space (her food module's switch refuses to go off while there are any). */
+  count(): number {
+    return (this.core.db.prepare('SELECT COUNT(*) AS n FROM food WHERE space = ?').get(this.space) as { n: number }).n;
   }
 
   /** The day's calories, from the entries that pass their check. */
@@ -121,7 +142,7 @@ export class FoodRepo {
 
   /** The daily calorie target (KCAL_TARGET_DEFAULT until one is set). */
   kcalTarget(): number {
-    const v = Number(this.core.db.meta(KCAL_TARGET_KEY));
+    const v = Number(this.core.db.meta(kcalTargetKey(this.space)));
     return Number.isInteger(v) && v > 0 ? v : KCAL_TARGET_DEFAULT;
   }
 

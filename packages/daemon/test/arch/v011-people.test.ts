@@ -92,6 +92,12 @@ const REVIEWED_PERSON_ROUTES = [
   'personMedStop',
   'personMedUpdate',
   'personMeds',
+  // Her food log (area food), while her food module is on: only she writes it.
+  'personFoodAdd',
+  'personFoodDay',
+  'personFoodDelete',
+  'personFoodTargets',
+  'personFoodUpdate',
   // P2: status and the sharing check-in, her plan and review, sleep, journal and alerts.
   'personAlertReply',
   'personAlertSeen',
@@ -191,6 +197,8 @@ const REVIEWED_PEOPLE_OWNER_ROUTES: Record<string, { scope: string; ctl: boolean
   personOwnerMedStop: { scope: 'control', ctl: false, localOnly: false, area: 'meds' },
   personOwnerMedUpdate: { scope: 'control', ctl: false, localOnly: false, area: 'meds' },
   personOwnerMeds: { scope: 'control', ctl: false, localOnly: false, area: 'meds' },
+  // Her food log at his level (see.food): a read, and no write of his at all.
+  personOwnerFood: { scope: 'control', ctl: false, localOnly: false, area: 'food' },
   // P2: her plan, templates, review, sleep and journal; alerts with her and his prefs (no :pid, no area).
   personOwnerJournal: { scope: 'control', ctl: false, localOnly: false, area: 'journal' },
   personOwnerJournalComment: { scope: 'control', ctl: false, localOnly: false, area: 'journal' },
@@ -358,8 +366,7 @@ describe('her route files and his stay apart', () => {
 /**
  * T6 (C5), the part this build pins: every SELECT, UPDATE and DELETE on a
  * table that holds person spaces names `space` (her to-dos, projects,
- * medicines, doses and weights; food and saved foods are keyed per space
- * though her food log isn't in this build), and every query on her
+ * medicines, doses, weights, food and saved foods), and every query on her
  * Activity names `person`. Cafés join this list as their module takes a
  * space.
  */

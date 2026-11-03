@@ -74,6 +74,7 @@ import { AlertsModule } from './alerts/module.js';
 import { JournalModule } from './journal/module.js';
 import { PeopleModule } from './people/module.js';
 import { peoplePingHandlers } from './people/pings.js';
+import { PersonFood } from './people/food.js';
 import { PersonMeds } from './people/meds.js';
 import { PersonSpace } from './people/space.js';
 import { SharedLists } from './lists/module.js';
@@ -189,7 +190,7 @@ class LifeServiceImpl implements LifeService {
     todos: closedModule<TodosModule>('todos'),
     // v0.11: her space's module is closed too while life.db is (and finds nothing).
     medicines: closedModule<MedicinesModule>('medicines', { inSpace: () => this.closed.medicines, find: () => null, adherence: () => ({ pct: null, perDay: [] }) }),
-    food: closedModule<FoodModule>('food', { estimateStatus: () => ({ available: false, reason: LIFE_CLOSED }) }),
+    food: closedModule<FoodModule>('food', { inSpace: () => this.closed.food, estimateStatus: () => ({ available: false, reason: LIFE_CLOSED }), countsBetween: () => new Map(), entryCount: () => 0 }),
     places: closedModule<PlacesModule>('places'),
     finance: closedModule<FinanceModule>('finance'),
     posts: closedModule<PostsModule>('posts'),
@@ -235,6 +236,7 @@ class LifeServiceImpl implements LifeService {
     const lifeCore = () => (this.handle ? this.core : null);
     this.people.space = new PersonSpace(this.people, () => this.todos, lifeCore);
     this.people.meds = new PersonMeds(this.people, () => this.medicines, lifeCore);
+    this.people.food = new PersonFood(this.people, () => this.food, lifeCore);
     this.people.views = new PeopleViews(this.people, this.people.space, () => this.todos, lifeCore);
     // P2: her day plans and review, alerts both ways, her journal and sleep log, and their scheduler kinds.
     this.people.plans = new PlansModule({ people: this.people, core: lifeCore });

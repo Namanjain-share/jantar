@@ -1,7 +1,7 @@
 /**
  * v0.11 People (P1): her medicines and doses, as each side reads and writes
  * them (spec 3.4, 8.2, 8.4, 9.7.3 people-medicines), on the isolation
- * fixture (Sam, Asha on Everything with food off, Bea on Standard).
+ * fixture (Sam, Asha on Everything with her food log on, Bea on Standard).
  *
  * - His add (assign.meds) shows "by ''"; she edits or stops any of hers, his
  *   included, and he hears of a change to one he added; his edit of hers

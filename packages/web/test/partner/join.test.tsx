@@ -117,7 +117,7 @@ describe('M20: the join page', () => {
   });
 
   it('every area the page offers is one this build serves: medicines are on it, with Add and Change for him', () => {
-    const c = joinCopy('Sam', applyAgreementPatch(presetAgreement('everything'), { see: { food: false } }), { built: BUILT_PHASE, foodModule: false });
+    const c = joinCopy('Sam', applyAgreementPatch(presetAgreement('everything'), { see: { food: 'off' } }), { built: BUILT_PHASE, foodModule: false });
     expect(c.sees.find((l) => l.key === 'see.meds')?.text).toBe('Your medicines: names, doses, times, the notes on them, whether you took each dose, and how often in the last 30 days');
     expect(all(c)).toMatch(/Add a medicine for you, and change or stop the ones Sam added \(their notes too\)\./);
     expect(all(c)).toMatch(/Change or stop medicines you added yourself, their notes included\./);

@@ -9,13 +9,18 @@ import { describe, expect, it } from 'vitest';
 import * as index from '../src/index.js';
 import {
   AGREEMENT_FIELDS,
+  AgreementPatchSchema,
   AgreementSchema,
   BUILT_PHASE,
+  OwnerFoodViewSchema,
+  PersonFoodBodySchema,
   agreementProblem,
   agreementWithin,
   applyAgreementPatch,
+  builtAreas,
   closeDependents,
   fieldValue,
+  fieldsOn,
   levelOf,
   noAgreement,
   presetAgreement,
@@ -48,14 +53,46 @@ describe('the agreement', () => {
   });
 
   it("Everything with food off is this build's offer field by field", () => {
-    const a = applyAgreementPatch(presetAgreement('everything'), { see: { food: false } });
+    const a = applyAgreementPatch(presetAgreement('everything'), { see: { food: 'off' } });
     expect(a).toEqual({
-      see: { todos: true, meds: 'full', weight: true, food: false, plan: true, review: 'full', sleep: true, journal: true, chat: true },
+      see: { todos: true, meds: 'full', weight: true, food: 'off', plan: true, review: 'full', sleep: true, journal: true, chat: true },
       assign: { todos: true, meds: true, plan: true },
       editHers: { todos: true, meds: true, weight: true, plan: true },
       comment: { journal: true },
       assistant: false,
     });
+  });
+
+  it('food is built: off, counts or full; Standard and Everything carry it in full, Light leaves it off', () => {
+    const f = AGREEMENT_FIELDS.find((x) => x.key === 'see.food');
+    expect(f?.phase).toBe('P1');
+    expect(f?.levels).toEqual(['off', 'counts', 'full']);
+    expect(presetAgreement('light').see.food).toBe('off');
+    expect(presetAgreement('standard').see.food).toBe('full');
+    expect(presetAgreement('everything').see.food).toBe('full');
+    expect(builtAreas()).toContain('food');
+    expect(fieldsOn(presetAgreement('standard'))).toContain('see.food');
+    // A level lower than another is within it; counts is not within off.
+    const counts = applyAgreementPatch(presetAgreement('standard'), { see: { food: 'counts' } });
+    expect(agreementWithin(counts, presetAgreement('standard'))).toBe(true);
+    expect(agreementWithin(counts, applyAgreementPatch(counts, { see: { food: 'off' } }))).toBe(false);
+  });
+
+  it('see.food stored as the old off switch reads off; a patch may name a level or the old switch', () => {
+    const stored = { version: 1, see: { todos: true, meds: 'full', weight: true, food: false }, assign: { todos: true, meds: true }, editHers: { todos: true } };
+    expect(AgreementSchema.parse(stored).see.food).toBe('off');
+    expect(AgreementSchema.parse({ ...stored, see: { todos: true, meds: 'full', weight: true } }).see.food).toBe('off');
+    expect(AgreementPatchSchema.parse({ see: { food: 'counts' } }).see?.food).toBe('counts');
+    expect(AgreementPatchSchema.parse({ see: { food: false } }).see?.food).toBe('off');
+    expect(AgreementPatchSchema.safeParse({ see: { food: 'some' } }).success).toBe(false);
+  });
+
+  it('her food body takes calories or leaves them out; his view at counts names nothing', () => {
+    expect(PersonFoodBodySchema.safeParse({ day: '2026-11-04', name: 'Dal and rice' }).success).toBe(true);
+    expect(PersonFoodBodySchema.safeParse({ day: '2026-11-04', name: 'Dal and rice', kcal: 450, save: true }).success).toBe(true);
+    expect(PersonFoodBodySchema.safeParse({ day: '2026-11-04', name: 'Dal', space: 'x' }).success).toBe(false);
+    const counts = OwnerFoodViewSchema.parse({ level: 'counts', day: '2026-11-04', today: '2026-11-04', meals: 2, days: [{ day: '2026-11-04', meals: 2, kcal: 900 }], items: [] });
+    expect(JSON.stringify(counts)).not.toMatch(/kcal|items/);
   });
 
   it('every dependency is enforced; closing a see field closes what needs it', () => {
@@ -73,7 +110,7 @@ describe('the agreement', () => {
   });
 
   it('an agreement stored before an area existed reads it off (D24)', () => {
-    const stored = { version: 1, see: { todos: true, meds: 'full', weight: true, food: false }, assign: { todos: true, meds: true }, editHers: { todos: true } };
+    const stored = { version: 1, see: { todos: true, meds: 'full', weight: true, food: 'off' }, assign: { todos: true, meds: true }, editHers: { todos: true } };
     const a = AgreementSchema.parse(stored);
     expect([a.see.plan, a.see.review, a.see.sleep, a.see.journal, a.see.chat, a.comment.journal, a.assistant, a.editHers.meds]).toEqual([false, 'off', false, false, false, false, false, false]);
   });
@@ -96,9 +133,9 @@ describe('the agreement', () => {
     expect(unbuiltFieldsIn({ see: { chat: true } }, 'P2')).toEqual(['see.chat']);
     expect(unbuiltFieldsIn({ assistant: true })).toEqual(['assistant']);
     expect(unbuiltFieldsIn({ see: { meds: 'off' } })).toEqual([]);
-    // Food is a later phase: naming it off asks for nothing; asking for it is refused.
-    expect(unbuiltFieldsIn({ see: { food: false } })).toEqual([]);
-    expect(unbuiltFieldsIn({ see: { food: true } })).toEqual(['see.food']);
+    // Food is built (spec 3.5): any level of it asks for nothing unbuilt.
+    expect(unbuiltFieldsIn({ see: { food: 'off' } })).toEqual([]);
+    expect(unbuiltFieldsIn({ see: { food: 'full' } })).toEqual([]);
     expect(unbuiltFieldsIn({ see: { chat: false } }, 'P2')).toEqual([]);
   });
 });

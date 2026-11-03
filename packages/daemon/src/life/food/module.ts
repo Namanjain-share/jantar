@@ -13,12 +13,18 @@
  * - Caps (LIFE_LIMITS) answer conflict with a fixed sentence. Every write
  *   ends with `core.changed()` (life.changed {}); replies carry ids only.
  * - Food has no pings, so it registers no handler.
+ * - v0.11 People: the module works in one space; `inSpace(pid)` is the same
+ *   module over her space (only the People module calls it): her entries,
+ *   saved foods, targets (her own meta keys) and weights. A write there
+ *   never emits his `life.changed` (the People module ticks her stream, and
+ *   his only while he sees her food log), and it has no Ask Claude, which
+ *   spends the owner's quota.
  */
 import { instantAt, shiftDay } from '@jantar/life-core';
 import { FoodEntrySchema, LIFE_LIMITS, type FoodBody, type FoodEntry, type FoodPatch, type FoodTargetsBody, type WeightBody } from '@jantar/protocol';
 import type { Actor, FoodModule, LifeCore, LifeModuleDeps, LifeResult } from '../../contracts.js';
 import { FoodEstimator } from './estimate.js';
-import { FoodRepo, GOAL_KG10_KEY, KCAL_TARGET_KEY } from './repo.js';
+import { FoodRepo, goalKey, kcalTargetKey } from './repo.js';
 import { kg10Of, latestWeight, removeWeight, setWeight, weightOn, weightSummary } from './weight.js';
 
 /** How many saved foods FoodDay lists. */
@@ -33,6 +39,7 @@ export const FOOD_SENTENCES = {
   dayFull: `You have ${LIFE_LIMITS.foodPerDay} foods logged that day. Delete one to add another.`,
   savedFull: `You have ${LIFE_LIMITS.savedFoods} saved foods. Forget one to save another.`,
   invalid: 'That food is not valid.',
+  noEstimate: 'Ask Claude is not part of this food log.',
 } as const;
 
 /** A day key that names a real date (the key's pattern lets 2026-02-31 through). */
@@ -50,20 +57,34 @@ function fail(code: 'invalid_request' | 'not_found' | 'conflict', reason: string
 
 export function buildFoodModule(core: LifeCore, deps: LifeModuleDeps): FoodModule {
   const log = deps.ctx.log.child({ part: 'life', module: 'food' });
-  const repo = new FoodRepo(core, log);
   const estimator = new FoodEstimator(deps);
+  const spaces = new Map<string, FoodModule>();
+  const owner: FoodModule = foodIn(core, new FoodRepo(core, log), estimator, (space) => {
+    if (space === '') return owner;
+    let m = spaces.get(space);
+    if (!m) spaces.set(space, (m = foodIn(core, new FoodRepo(core, log, space), null, () => owner)));
+    return m;
+  });
+  return owner;
+}
+
+/** The module over one space's repo; `estimator` is the owner's alone (null in a person space). */
+function foodIn(core: LifeCore, repo: FoodRepo, estimator: FoodEstimator | null, inSpace: (space: string) => FoodModule): FoodModule {
+  const space = repo.space;
 
   /** Now for today, else 12:00 that day in the Life zone. */
   const atFor = (day: string): string => (day === core.today() ? core.now() : instantAt(day, OTHER_DAY_AT, core.tz())).toISOString();
 
-  /** A write that went through: tell every screen (life.changed {}). */
+  /** A write that went through: tell his screens (life.changed {}), for his own space only. */
   const done = <T>(r: LifeResult<T>): LifeResult<T> => {
-    if (r.ok) core.changed();
+    if (r.ok && space === '') core.changed();
     return r;
   };
 
-  return {
+  const self: FoodModule = {
     name: 'food',
+
+    inSpace: (other: string) => (other === space ? self : inSpace(other)),
 
     day(day?: string) {
       const today = core.today();
@@ -79,7 +100,7 @@ export function buildFoodModule(core: LifeCore, deps: LifeModuleDeps): FoodModul
           kcal: entries.reduce((sum, e) => sum + e.kcal, 0),
           entries,
           saved: repo.topSaved(SAVED_SHOWN),
-          weight: weightSummary(core),
+          weight: weightSummary(core, space),
         },
       };
     },
@@ -133,43 +154,52 @@ export function buildFoodModule(core: LifeCore, deps: LifeModuleDeps): FoodModul
 
     setTargets(body: FoodTargetsBody, _actor: Actor) {
       core.db.tx(() => {
-        if (body.kcalTarget !== undefined) core.db.setMeta(KCAL_TARGET_KEY, String(body.kcalTarget));
-        if (body.goalKg === null) core.db.deleteMeta(GOAL_KG10_KEY);
-        else if (body.goalKg !== undefined) core.db.setMeta(GOAL_KG10_KEY, String(kg10Of(body.goalKg)));
+        if (body.kcalTarget !== undefined) core.db.setMeta(kcalTargetKey(space), String(body.kcalTarget));
+        if (body.goalKg === null) core.db.deleteMeta(goalKey(space));
+        else if (body.goalKg !== undefined) core.db.setMeta(goalKey(space), String(kg10Of(body.goalKg)));
       });
       return done({ ok: true, value: true });
     },
 
     setWeight(day: string, body: WeightBody, _actor: Actor) {
       if (!isRealDay(day)) return fail('invalid_request', FOOD_SENTENCES.noDay);
-      return done(setWeight(core, day, body.kg));
+      return done(setWeight(core, day, body.kg, space));
     },
 
     removeWeight(day: string, _actor: Actor) {
       if (!isRealDay(day)) return fail('invalid_request', FOOD_SENTENCES.noDay);
-      return done(removeWeight(core, day));
+      return done(removeWeight(core, day, space));
     },
 
     weightOn(day: string) {
       if (!isRealDay(day)) return fail('invalid_request', FOOD_SENTENCES.noDay);
-      return { ok: true, value: weightOn(core, day) };
+      return { ok: true, value: weightOn(core, day, space) };
     },
 
     estimate(text: string, signal: AbortSignal, actor: Actor) {
-      return estimator.estimate(text, signal, actor);
+      return estimator ? estimator.estimate(text, signal, actor) : Promise.resolve(fail('not_found', FOOD_SENTENCES.noEstimate));
     },
 
     estimateStatus() {
-      return estimator.status();
+      return estimator ? estimator.status() : { available: false, reason: FOOD_SENTENCES.noEstimate };
     },
 
     today(day: string) {
-      return { food: { kcal: repo.kcalOn(day), target: repo.kcalTarget(), weight: latestWeight(core) } };
+      return { food: { kcal: repo.kcalOn(day), target: repo.kcalTarget(), weight: latestWeight(core, space) } };
+    },
+
+    countsBetween(from: string, to: string) {
+      return repo.countsBetween(from, to);
+    },
+
+    entryCount() {
+      return repo.count();
     },
 
     /** The daemon is stopping: kill any Ask Claude run still going. */
     stop() {
-      estimator.stop();
+      estimator?.stop();
     },
   };
+  return self;
 }

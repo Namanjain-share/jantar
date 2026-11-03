@@ -91,6 +91,7 @@ import { PEOPLE_ROUTE_IMPLS, noteOwnerDevice } from './routes/people.js';
 import { PERSON_ACCOUNT_ROUTE_IMPLS } from './routes/person/account.js';
 import { PERSON_PUSH_ROUTE_IMPLS } from './routes/person/push.js';
 import { PERSON_LIFE_ROUTE_IMPLS } from './routes/person/life.js';
+import { PERSON_FOOD_ROUTE_IMPLS } from './routes/person/food.js';
 import { PEOPLE_LIFE_ROUTE_IMPLS } from './routes/people-life.js';
 import { PEOPLE_DAYS_ROUTE_IMPLS } from './routes/people-days.js';
 import { PERSON_PLAN_ROUTE_IMPLS } from './routes/person/plans.js';
@@ -652,6 +653,7 @@ export const ROUTE_IMPLS: RouteTable = {
   ...PERSON_ACCOUNT_ROUTE_IMPLS,
   ...PERSON_PUSH_ROUTE_IMPLS,
   ...PERSON_LIFE_ROUTE_IMPLS,
+  ...PERSON_FOOD_ROUTE_IMPLS,
   ...PEOPLE_LIFE_ROUTE_IMPLS,
   // v0.11 People P2: her plan, review, status, sleep, journal and alerts; his side of them.
   ...PERSON_PLAN_ROUTE_IMPLS,

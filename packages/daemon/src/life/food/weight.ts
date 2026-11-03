@@ -11,7 +11,7 @@
 import { shiftDay } from '@jantar/life-core';
 import { LIFE_LIMITS, type Weight, type WeightSummary } from '@jantar/protocol';
 import type { LifeCore, LifeResult } from '../../contracts.js';
-import { GOAL_KG10_KEY } from './repo.js';
+import { goalKey } from './repo.js';
 
 export const WEIGHT_SENTENCES = {
   future: "A weight can't be logged for a day after today.",
@@ -63,21 +63,22 @@ export function weightOn(core: LifeCore, day: string, space = ''): number | null
 }
 
 /** The newest weight on or before `day`, in kg x 10. */
-function onOrBefore(core: LifeCore, day: string): number | null {
-  const row = core.db.prepare("SELECT kg10 FROM weights WHERE space = '' AND day <= ? ORDER BY day DESC LIMIT 1").get(day) as { kg10: number } | undefined;
+function onOrBefore(core: LifeCore, day: string, space: string): number | null {
+  const row = core.db.prepare('SELECT kg10 FROM weights WHERE space = ? AND day <= ? ORDER BY day DESC LIMIT 1').get(space, day) as { kg10: number } | undefined;
   return row ? row.kg10 : null;
 }
 
-export function weightSummary(core: LifeCore): WeightSummary {
-  const rows = core.db.prepare("SELECT day, kg10 FROM weights WHERE space = '' ORDER BY day DESC LIMIT 30").all() as { day: string; kg10: number }[];
+/** A space's weight summary (v0.11: a person's food log reads hers, with her own goal). */
+export function weightSummary(core: LifeCore, space = ''): WeightSummary {
+  const rows = core.db.prepare('SELECT day, kg10 FROM weights WHERE space = ? ORDER BY day DESC LIMIT 30').all(space) as { day: string; kg10: number }[];
   const recent: Weight[] = rows.map((r) => ({ day: r.day, kg: kgOf(r.kg10) }));
   const latest = rows[0] ?? null;
   const change = (days: number): number | null => {
     if (!latest) return null;
-    const then = onOrBefore(core, shiftDay(latest.day, -days));
+    const then = onOrBefore(core, shiftDay(latest.day, -days), space);
     return then === null ? null : kgOf(latest.kg10 - then);
   };
-  const goal = Number(core.db.meta(GOAL_KG10_KEY));
+  const goal = Number(core.db.meta(goalKey(space)));
   return {
     latest: latest ? { day: latest.day, kg: kgOf(latest.kg10) } : null,
     change7: change(7),
@@ -88,8 +89,8 @@ export function weightSummary(core: LifeCore): WeightSummary {
 }
 
 /** The latest weight, for Today. */
-export function latestWeight(core: LifeCore): Weight | null {
-  const row = core.db.prepare("SELECT day, kg10 FROM weights WHERE space = '' ORDER BY day DESC LIMIT 1").get() as { day: string; kg10: number } | undefined;
+export function latestWeight(core: LifeCore, space = ''): Weight | null {
+  const row = core.db.prepare('SELECT day, kg10 FROM weights WHERE space = ? ORDER BY day DESC LIMIT 1').get(space) as { day: string; kg10: number } | undefined;
   return row ? { day: row.day, kg: kgOf(row.kg10) } : null;
 }
 

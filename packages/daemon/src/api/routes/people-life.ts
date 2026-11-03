@@ -25,7 +25,7 @@ function services(s: ApiServices) {
 }
 
 /** His read of one area: the view, or the unknown-pid answer (off areas too, but Today's tiles). */
-function read(s: ApiServices, pid: string, area: 'today' | 'todos' | 'meds' | 'weight', opts: { day?: string; done?: boolean } = {}) {
+function read(s: ApiServices, pid: string, area: 'today' | 'todos' | 'meds' | 'weight' | 'food', opts: { day?: string; done?: boolean } = {}) {
   const v = services(s).views.ownerViewOf(pid, area, opts);
   if (v === null || (area !== 'today' && 'locked' in v)) throw new ApiError('not_found', NO_PERSON);
   return v;
@@ -68,6 +68,10 @@ export const PEOPLE_LIFE_ROUTE_IMPLS: RouteTable = {
   },
   personOwnerWeights: {
     handle: (c: Call<Pid>, s) => read(s, c.params.pid, 'weight'),
+  },
+  // Her food log at his level (see.food counts or full); 404 while it is off or her food module is. He has no food verb.
+  personOwnerFood: {
+    handle: (c: Call<Pid, { day?: string }>, s) => read(s, c.params.pid, 'food', c.query.day ? { day: c.query.day } : {}),
   },
   personOwnerWeightUpdate: {
     handle: (c: Call<PidDay, unknown, WeightBody>, s) => (lifeValue(services(s).space.ownerWeightCorrect(c.params.pid, c.params.day, c.body)), OK),

@@ -26,6 +26,7 @@ import type { RouteDef } from './api.js';
 import {
   AREA_NAMES,
   BUILD_PHASES,
+  FOOD_LEVELS,
   MEDS_LEVELS,
   REVIEW_LEVELS,
   agreementProblem,
@@ -91,11 +92,13 @@ import {
   DueSchema,
   DoseBodySchema,
   DoseParamsSchema,
-  FoodBodySchema,
   FoodDaySchema,
+  FoodEntrySchema,
+  FoodNameSchema,
   FoodPatchSchema,
   FoodTargetsBodySchema,
   IdReplySchema,
+  KcalSchema,
   LifeIdParamsSchema,
   LifeIdSchema,
   MedicineBodySchema,
@@ -161,6 +164,12 @@ export type LockScreen = z.infer<typeof LockScreenSchema>;
 
 export const MedsLevelSchema = z.enum(MEDS_LEVELS);
 export const ReviewLevelSchema = z.enum(REVIEW_LEVELS);
+export const FoodLevelSchema = z.enum(FOOD_LEVELS);
+/**
+ * `see.food` as stored and asked for: a level. Before food was served it was a switch kept off, so a stored
+ * `false` reads as off (and a `true`, never stored by a release, as full).
+ */
+const FoodLevelInSchema = z.preprocess((v) => (v === false ? 'off' : v === true ? 'full' : v), FoodLevelSchema);
 
 /**
  * Every field a later phase adds defaults to off, so an agreement stored
@@ -172,7 +181,7 @@ export const AgreementFieldsSchema = z.strictObject({
     todos: z.boolean(),
     meds: MedsLevelSchema,
     weight: z.boolean(),
-    food: z.boolean(),
+    food: FoodLevelInSchema.default('off'),
     plan: z.boolean().default(false), // P2
     review: ReviewLevelSchema.default('off'), // P2
     sleep: z.boolean().default(false), // P2
@@ -223,7 +232,7 @@ export const AgreementPatchSchema = z.strictObject({
       sleep: z.boolean().optional(),
       journal: z.boolean().optional(),
       chat: z.boolean().optional(),
-      food: z.boolean().optional(),
+      food: FoodLevelInSchema.optional(),
     })
     .optional(),
   assign: z.strictObject({ todos: z.boolean().optional(), plan: z.boolean().optional(), meds: z.boolean().optional() }).optional(),
@@ -435,7 +444,42 @@ export const OwnerMedsViewSchema = z.discriminatedUnion('level', [
 export type OwnerMedsView = z.infer<typeof OwnerMedsViewSchema>;
 export const OwnerWeightViewSchema = PersonWeightsResponseSchema;
 export type OwnerWeightView = PersonWeightsResponse;
-export const OwnerFoodViewSchema = FoodDaySchema;
+/**
+ * Her food log as he sees it (spec 3.5, see.food). `full`, as her join page words it, "what you ate, its
+ * calories and each day's total against your target": the day's items (name and calories, in the order she
+ * logged them, never when) and the last 7 days' totals. `counts`, "only how many meals you log": the day's
+ * count and each of the last 7 days' counts, naming nothing. Never her saved foods or her weight (its own
+ * area).
+ */
+export const OwnerFoodItemSchema = FoodEntrySchema.pick({ id: true, name: true, kcal: true });
+export type OwnerFoodItem = z.infer<typeof OwnerFoodItemSchema>;
+export const FOOD_WEEK_DAYS = 7;
+export const OwnerFoodViewSchema = z.discriminatedUnion('level', [
+  z.object({
+    level: z.literal('full'),
+    day: DayKeySchema,
+    today: DayKeySchema,
+    target: z.number().int(),
+    kcal: z.number().int(),
+    items: z.array(OwnerFoodItemSchema),
+    /** The 7 days up to `day`, newest first. */
+    days: z.array(z.object({ day: DayKeySchema, meals: z.number().int(), kcal: z.number().int() })).max(FOOD_WEEK_DAYS),
+  }),
+  z.object({
+    level: z.literal('counts'),
+    day: DayKeySchema,
+    today: DayKeySchema,
+    meals: z.number().int(),
+    days: z.array(z.object({ day: DayKeySchema, meals: z.number().int() })).max(FOOD_WEEK_DAYS),
+  }),
+]);
+export type OwnerFoodView = z.infer<typeof OwnerFoodViewSchema>;
+/** Her food on his Today at his level (null: her food module is off, so there is no food area at all, O6). */
+export const PersonTodayFoodSchema = z.union([
+  LockedSchema,
+  z.object({ level: z.literal('full'), meals: z.number().int(), kcal: z.number().int(), target: z.number().int() }),
+  z.object({ level: z.literal('counts'), meals: z.number().int() }),
+]);
 
 export const PersonTodayTodosSchema = z.object({ open: z.number().int(), overdue: z.number().int(), due: z.array(PersonTodoSchema) });
 export const PersonTodaySchema = z.object({
@@ -447,7 +491,7 @@ export const PersonTodaySchema = z.object({
   meds: z.union([LockedSchema, OwnerMedsViewSchema]).nullable(),
   weight: z.union([LockedSchema, z.object({ latest: PersonWeightSchema.nullable() })]),
   /** null: her food module is off, so there is no food area at all (O6). */
-  food: z.union([LockedSchema, z.object({ kcal: z.number().int(), target: z.number().int() })]).nullable(),
+  food: PersonTodayFoodSchema.nullable(),
   /** P2: her day plan with what is derived on read (see.plan). */
   plan: z.union([LockedSchema, PlanViewSchema]),
   /** P2: her status line (part of the plan area). */
@@ -485,8 +529,21 @@ export const PersonOwnTodaySchema = z.object({
   alertsUnseen: z.number().int(),
   /** Today's journal prompt (optional to answer; no nudge, no count). */
   prompt: z.string(),
+  /** Her food log's day (meals, calories, her target), for the quick add; null while her food module is off (O6). */
+  food: z.object({ meals: z.number().int(), kcal: z.number().int(), target: z.number().int() }).nullable().optional(),
 });
 export type PersonOwnToday = z.infer<typeof PersonOwnTodaySchema>;
+
+/**
+ * POST /v1/p/food: what she ate, calories optional (an item without them counts as 0 and shows no number;
+ * `save` keeps it for one tap), or a saved food of hers by id. Her photo of a meal goes through her Chat,
+ * which logs it with these same fields.
+ */
+export const PersonFoodBodySchema = z.union([
+  z.strictObject({ day: DayKeySchema, name: FoodNameSchema, kcal: KcalSchema.optional(), save: z.boolean().optional() }),
+  z.strictObject({ day: DayKeySchema, savedId: LifeIdSchema }),
+]);
+export type PersonFoodBody = z.infer<typeof PersonFoodBodySchema>;
 
 // ---------------------------------------------------------------------------
 // Devices, invites, consent
@@ -1005,9 +1062,9 @@ export const PERSON_MEDS_ROUTES = {
 } as const satisfies Record<string, RouteDef>;
 
 /**
- * Her food log (spec 3.5): defined, never served in this release. Food is a later
- * phase (AREAS.food), so no agreement, join line or screen offers it; these paths
- * answer 404 like any path that isn't hers.
+ * Her food log (spec 3.5): area food. Hers alone to write (he has no food verb, D22); every route answers
+ * 404 (the "food log is off" sentence) while her food module is off (O6). No `food/estimate`: it would spend
+ * the owner's quota.
  */
 export const PERSON_FOOD_ROUTES = {
   personFoodDay: route({
@@ -1016,7 +1073,7 @@ export const PERSON_FOOD_ROUTES = {
   }),
   personFoodAdd: route({
     method: 'POST', path: '/v1/p/food', scope: 'person', phase: 'v0.11', ctl: false, area: 'food', status: 201,
-    body: FoodBodySchema, response: IdReplySchema, summary: 'Add a meal.',
+    body: PersonFoodBodySchema, response: IdReplySchema, summary: 'Log what she ate (calories optional), or a saved food of hers.',
   }),
   personFoodUpdate: route({
     method: 'PATCH', path: '/v1/p/food/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'food',
@@ -1244,11 +1301,11 @@ export const PEOPLE_MEDS_ROUTES = {
   }),
 } as const satisfies Record<string, RouteDef>;
 
-/** His read of her food log: defined, never served in this release (food is a later phase). */
+/** His read of her food log at his level (see.food counts or full); 404 while it is off or her food module is. */
 export const PEOPLE_FOOD_ROUTES = {
   personOwnerFood: route({
     method: 'GET', path: '/v1/people/:pid/food', scope: 'control', phase: 'v0.11', ctl: false, area: 'food',
-    params: PidParamsSchema, query: DayQuerySchema, response: OwnerFoodViewSchema, summary: 'Her food log (see.food; 404 while her module is off).',
+    params: PidParamsSchema, query: DayQuerySchema, response: OwnerFoodViewSchema, summary: 'Her food log at the agreed level (see.food; 404 while her module is off).',
   }),
 } as const satisfies Record<string, RouteDef>;
 
@@ -1580,8 +1637,8 @@ const PEOPLE_ACCOUNT_ROUTES = {
 } as const satisfies Record<string, RouteDef>;
 
 /** Every route of hers this build serves (scope `person`; the arch test pins the list, T1). */
-export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES, ...PERSON_MEDS_ROUTES, ...PERSON_DAYS_ROUTES, ...PERSON_CHAT_ROUTES, ...PERSON_LIST_ROUTES } as const;
+export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES, ...PERSON_MEDS_ROUTES, ...PERSON_FOOD_ROUTES, ...PERSON_DAYS_ROUTES, ...PERSON_CHAT_ROUTES, ...PERSON_LIST_ROUTES } as const;
 export type PersonRouteName = keyof typeof PERSON_ROUTES;
 /** Every owner People route this build serves (the arch test pins each one's scope, ctl, localOnly and area). */
-export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_MEDS_ROUTES, ...PEOPLE_DAYS_ROUTES, ...PEOPLE_CHAT_ROUTES, ...PEOPLE_LIST_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
+export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_MEDS_ROUTES, ...PEOPLE_FOOD_ROUTES, ...PEOPLE_DAYS_ROUTES, ...PEOPLE_CHAT_ROUTES, ...PEOPLE_LIST_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
 export type PeopleRouteName = keyof typeof PEOPLE_ROUTES;
