@@ -17,11 +17,11 @@
  * night") records the dose's own time, as "Took it at…" offers, so it is
  * not marked late.
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import type { DoseBody } from '@jantar/protocol';
 import { useDeps, useNow } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
-import { Sheet } from '../../../kit/Sheet.js';
+import { Choice } from '../../../kit/Popover.js';
 import { dayLabel } from '../shared/DayNav.js';
 import { LifeError, LifeLoading, NotSaved, OFFLINE_WRITE } from '../shared/states.js';
 import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
@@ -33,6 +33,8 @@ export interface DoseSheetProps {
   slot: string;
   day: string;
   onClose(): void;
+  /** 0.11 (c26): the dose's row: on an iPad or a Mac the dose opens as a popover beside it. Without one (a push), the sheet. */
+  anchor?: RefObject<HTMLElement | null>;
 }
 
 /** How long the sheet takes to close (Sheet: 260 ms) before `onClose` unmounts it. */
@@ -44,7 +46,8 @@ const INPUT =
   'h-40 min-w-0 rounded-btn border border-line-strong bg-bg px-12 type-input text-ink outline-none ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:text-ink-3 coarse:h-44';
 
-export function DoseSheet({ medId, slot, day, onClose }: DoseSheetProps) {
+export function DoseSheet({ medId, slot, day, onClose, anchor }: DoseSheetProps) {
+  const none = useRef<HTMLElement | null>(null);
   const { api } = useDeps();
   const { status } = useLifeStatus();
   const tz = status?.timezone ?? null;
@@ -154,12 +157,12 @@ export function DoseSheet({ medId, slot, day, onClose }: DoseSheetProps) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={(o) => (o ? undefined : close())} title={item ? medLabel(item) : 'Dose'}>
+    <Choice open={open} onOpenChange={(o) => (o ? undefined : close())} title={item ? medLabel(item) : 'Dose'} anchor={anchor ?? none}>
       <p className="mb-12 type-mono text-ink-3">
         {slot} · {dayLabel(day)}
         {state ? <span className="font-sans"> · {state}</span> : null}
       </p>
       {body}
-    </Sheet>
+    </Choice>
   );
 }

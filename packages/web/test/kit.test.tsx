@@ -23,6 +23,8 @@ import { DEFAULT_CEILING, needsWord, stripItems, usagePairs } from '../src/ui/sh
 import { isTyping } from '../src/ui/shell/keys.js';
 import { createLayoutStore, layoutAt, LayoutProvider, type LayoutStore } from '../src/ui/shell/layout.js';
 import { Sheet } from '../src/ui/kit/Sheet.js';
+import { Choice, placeFor, POPOVER_ROOM } from '../src/ui/kit/Popover.js';
+import { useRef } from 'react';
 import { account, iso, NOW, pending, session, stateWith } from './helpers.js';
 
 afterEach(() => {
@@ -475,5 +477,82 @@ describe('0.11 c12: the sheet, bottom on the phone and a form sheet wider', () =
       }
       r.unmount();
     }
+  });
+});
+
+describe('0.11 c26: one value in a popover beside its control', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('below while 220 is free under the anchor, else above, else the form sheet', () => {
+    const vv = { top: 0, height: 820 };
+    expect(POPOVER_ROOM).toBe(220);
+    expect(placeFor({ top: 100, bottom: 144 }, vv)).toBe('below');
+    expect(placeFor({ top: 600, bottom: 644 }, vv)).toBe('above');
+    // The on-screen keyboard leaves 402: an anchor in the middle has room neither way.
+    expect(placeFor({ top: 190, bottom: 234 }, { top: 0, height: 402 })).toBe('sheet');
+    // A panned visual viewport counts from its own top.
+    expect(placeFor({ top: 400, bottom: 444 }, { top: 200, height: 402 })).toBe('sheet');
+    expect(placeFor({ top: 230, bottom: 274 }, { top: 200, height: 402 })).toBe('below');
+  });
+
+  function Harness({ layout, rect, vv }: { layout: LayoutStore; rect: { top: number; bottom: number }; vv?: { offsetTop: number; height: number } }) {
+    const at = useRef<HTMLButtonElement>(null);
+    const [open, setOpen] = useState(false);
+    if (vv) vi.stubGlobal('visualViewport', { ...vv, scale: 1, addEventListener: () => undefined, removeEventListener: () => undefined });
+    return (
+      <LayoutProvider value={layout}>
+        <button
+          ref={(el) => {
+            at.current = el;
+            if (el) el.getBoundingClientRect = () => ({ ...rect, left: 16, right: 116, width: 100, height: rect.bottom - rect.top, x: 16, y: rect.top, toJSON: () => null }) as DOMRect;
+          }}
+          type="button"
+          onClick={() => setOpen(true)}
+        >
+          Sort
+        </button>
+        <Choice open={open} onOpenChange={setOpen} title="Sort" anchor={at}>
+          <button type="button">Best first</button>
+        </Choice>
+      </LayoutProvider>
+    );
+  }
+
+  it('the phone keeps its bottom sheet; wider, a popover beside the control, above it when the room is above', async () => {
+    const phone = render(<Harness layout={createLayoutStore(layoutAt(390, { coarse: true }))} rect={{ top: 100, bottom: 144 }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    expect((await screen.findByRole('dialog', { name: 'Sort' })).getAttribute('data-present')).toBe('bottom');
+    phone.unmount();
+    const below = render(<Harness layout={createLayoutStore(layoutAt(1180, { coarse: true }))} rect={{ top: 100, bottom: 144 }} vv={{ offsetTop: 0, height: 820 }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    const pop = await screen.findByRole('dialog', { name: 'Sort' });
+    expect(pop.hasAttribute('data-choice')).toBe(true);
+    expect(pop.getAttribute('data-side')).toBe('bottom');
+    below.unmount();
+    render(<Harness layout={createLayoutStore(layoutAt(1180, { coarse: true }))} rect={{ top: 600, bottom: 644 }} vv={{ offsetTop: 0, height: 820 }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    expect((await screen.findByRole('dialog', { name: 'Sort' })).getAttribute('data-side')).toBe('top');
+  });
+
+  it('with the keyboard up and no room either side, the form sheet', async () => {
+    render(<Harness layout={createLayoutStore(layoutAt(1180, { coarse: true }))} rect={{ top: 190, bottom: 234 }} vv={{ offsetTop: 0, height: 402 }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    expect((await screen.findByRole('dialog', { name: 'Sort' })).getAttribute('data-present')).toBe('form');
+  });
+
+  it('focuses nothing inside on open without a keyboard (A9); with one, its first control', async () => {
+    const touch = render(<Harness layout={createLayoutStore(layoutAt(1180, { coarse: true }))} rect={{ top: 100, bottom: 144 }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    const pop = await screen.findByRole('dialog', { name: 'Sort' });
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
+    expect(document.activeElement).toBe(pop);
+    touch.unmount();
+    render(<Harness layout={createLayoutStore(layoutAt(1180, { coarse: true, keyboard: true }))} rect={{ top: 100, bottom: 144 }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    await screen.findByRole('dialog', { name: 'Sort' });
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
+    expect(document.activeElement?.textContent).not.toBe('Sort');
+    expect(document.activeElement?.closest('[data-choice]')).toBeTruthy();
+    expect(document.activeElement?.hasAttribute('data-choice')).toBe(false);
   });
 });

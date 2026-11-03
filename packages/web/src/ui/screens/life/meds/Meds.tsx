@@ -51,6 +51,8 @@ export function Meds({ day, med }: MedsProps) {
   const write = useMedWrite();
   const load = useLifeLoad(`meds:${day ?? ''}`, () => api.medsGet(day));
   const [dose, setDose] = useState<MedsDayItem | null>(null);
+  // 0.11 (c26): the row the dose popover opens beside.
+  const doseAt = useRef<HTMLElement | null>(null);
   const [sheet, setSheet] = useState<{ open: boolean; med: MedicineView | null; n: number }>({ open: false, med: null, n: 0 });
   const openSheet = (m: MedicineView | null) => setSheet((s) => ({ open: true, med: m, n: s.n + 1 }));
 
@@ -113,7 +115,10 @@ export function Meds({ day, med }: MedsProps) {
                 due={shown === today && isDue(item, shown, now)}
                 tz={tz}
                 disabled={offline || write.busy}
-                onOpen={() => setDose(item)}
+                onOpen={(el) => {
+                  doseAt.current = el;
+                  setDose(item);
+                }}
                 onLog={(s) => void log(item, s)}
               />
             ))}
@@ -195,6 +200,7 @@ export function Meds({ day, med }: MedsProps) {
           medId={dose.medId}
           slot={dose.slot}
           day={shown}
+          anchor={doseAt}
           onClose={() => {
             setDose(null);
             load.reload();

@@ -7,7 +7,7 @@
  * later).
  */
 import { CheckIcon } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { MedsDay, MedsDayItem } from '@jantar/protocol';
 import { useDeps, useNow } from '../../../context.js';
 import { NotSaved } from '../shared/states.js';
@@ -33,6 +33,8 @@ export function MedsToday({ data, onChanged, max }: MedsTodayProps) {
   const write = useMedWrite();
   const [expanded, setExpanded] = useState(false);
   const [sheet, setSheet] = useState<MedsDayItem | null>(null);
+  // 0.11 (c26): the row the dose popover opens beside.
+  const doseAt = useRef<HTMLElement | null>(null);
 
   const items = dayItems(data);
   if (!items.length) return <p className="px-16 py-10 type-small text-ink-2">{NO_MEDS_TODAY}</p>;
@@ -50,7 +52,10 @@ export function MedsToday({ data, onChanged, max }: MedsTodayProps) {
       due={isDue(item, data.day, now)}
       tz={tz}
       disabled={offline || write.busy}
-      onOpen={() => setSheet(item)}
+      onOpen={(el) => {
+        doseAt.current = el;
+        setSheet(item);
+      }}
       onLog={(s) => void log(item, s)}
     />
   );
@@ -81,6 +86,7 @@ export function MedsToday({ data, onChanged, max }: MedsTodayProps) {
           medId={sheet.medId}
           slot={sheet.slot}
           day={data.day}
+          anchor={doseAt}
           onClose={() => {
             setSheet(null);
             onChanged();

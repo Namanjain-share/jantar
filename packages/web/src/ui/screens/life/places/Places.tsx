@@ -22,13 +22,13 @@
  */
 import { CheckIcon, MagnifyingGlassIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Place, PlacesResponse } from '@jantar/protocol';
 import { routePath, type PlacesFilter, type PlacesSortKey, type PlacesView } from '../../../../lib/router.js';
 import { useDeps, useNavigate } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
 import { IconButton } from '../../../kit/IconButton.js';
-import { Sheet } from '../../../kit/Sheet.js';
+import { Choice } from '../../../kit/Popover.js';
 import { SplitPane, useSplit } from '../../../kit/SplitPane.js';
 import { Tag } from '../../../kit/Tag.js';
 import { useLayout } from '../../../shell/layout.js';
@@ -205,6 +205,9 @@ function CafeList({ filter, view, load, places, currency, known, customTags, und
   const grid = !phone && !split?.selected;
   const count = filterCount(view);
   const narrowed = count > 0 || !!view.q;
+  // 0.11 (c26): Sort and Filters open beside their buttons on an iPad or a Mac.
+  const sortAt = useRef<HTMLButtonElement>(null);
+  const filtersAt = useRef<HTMLButtonElement>(null);
 
   const addButton = (
     <Button disabled={offline} onClick={() => sheet.show(null)}>
@@ -218,7 +221,7 @@ function CafeList({ filter, view, load, places, currency, known, customTags, und
       <div className="px-16 pb-8 @md:max-w-560">
         <Segmented<PlacesFilter> label="Show" fill value={filter} onChange={(f) => go(view, f)} segments={FILTERS} />
       </div>
-      <ViewBar view={view} count={count} onSort={() => setSorting(true)} onFilters={() => setFiltering(true)} onSearch={(q) => go({ ...view, q })} />
+      <ViewBar view={view} count={count} sortAt={sortAt} filtersAt={filtersAt} onSort={() => setSorting(true)} onFilters={() => setFiltering(true)} onSearch={(q) => go({ ...view, q })} />
       {count > 0 ? <ActiveFilters view={view} currency={currency} onChange={(v) => go(v)} /> : null}
       {error ? (
         <div className="px-16">
@@ -267,8 +270,8 @@ function CafeList({ filter, view, load, places, currency, known, customTags, und
         onDelete={onDelete}
         onDeleted={load.reload}
       />
-      <SortSheet open={sorting} onOpenChange={setSorting} value={view.sort ?? 'best'} onPick={(s) => go({ ...view, sort: s === 'best' ? undefined : s })} />
-      <FiltersSheet open={filtering} onOpenChange={setFiltering} view={view} known={known} currency={currency} onChange={(v) => go(v)} />
+      <SortSheet open={sorting} onOpenChange={setSorting} anchor={sortAt} value={view.sort ?? 'best'} onPick={(s) => go({ ...view, sort: s === 'best' ? undefined : s })} />
+      <FiltersSheet open={filtering} onOpenChange={setFiltering} anchor={filtersAt} view={view} known={known} currency={currency} onChange={(v) => go(v)} />
     </Page>
   );
 }
@@ -345,7 +348,23 @@ function PlaceCard({ place: p, currency, onOpen }: { place: Place; currency: str
 }
 
 /** Sort, Filters (with how many are on) and the search, which takes the bar's place while it is open. */
-function ViewBar({ view, count, onSort, onFilters, onSearch }: { view: PlacesView; count: number; onSort: () => void; onFilters: () => void; onSearch: (q: string | undefined) => void }) {
+function ViewBar({
+  view,
+  count,
+  sortAt,
+  filtersAt,
+  onSort,
+  onFilters,
+  onSearch,
+}: {
+  view: PlacesView;
+  count: number;
+  sortAt: RefObject<HTMLButtonElement | null>;
+  filtersAt: RefObject<HTMLButtonElement | null>;
+  onSort: () => void;
+  onFilters: () => void;
+  onSearch: (q: string | undefined) => void;
+}) {
   const [open, setOpen] = useState(!!view.q);
   const [text, setText] = useState(view.q ?? '');
   const box = useRef<HTMLInputElement>(null);
@@ -397,10 +416,10 @@ function ViewBar({ view, count, onSort, onFilters, onSearch }: { view: PlacesVie
   }
   return (
     <div className="flex items-center gap-8 px-16 pb-8">
-      <Button size="md" onClick={onSort}>
+      <Button ref={sortAt} size="md" aria-haspopup="dialog" onClick={onSort}>
         {`Sort: ${SORT_LABELS[view.sort ?? 'best']}`}
       </Button>
-      <Button size="md" onClick={onFilters} aria-label={count ? `Filters, ${count} on` : 'Filters'}>
+      <Button ref={filtersAt} size="md" aria-haspopup="dialog" onClick={onFilters} aria-label={count ? `Filters, ${count} on` : 'Filters'}>
         Filters
         {count ? <span className="type-mono text-ink-2">{count}</span> : null}
       </Button>
@@ -439,9 +458,21 @@ function ActiveFilters({ view, currency, onChange }: { view: PlacesView; currenc
 const ROW =
   'flex min-h-44 w-full items-center gap-12 border-b border-line px-4 text-left type-row text-ink transition-colors duration-120 ease-hover hover:bg-hover';
 
-function SortSheet({ open, onOpenChange, value, onPick }: { open: boolean; onOpenChange: (o: boolean) => void; value: PlacesSortKey; onPick: (s: PlacesSortKey) => void }) {
+function SortSheet({
+  open,
+  onOpenChange,
+  anchor,
+  value,
+  onPick,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  anchor: RefObject<HTMLElement | null>;
+  value: PlacesSortKey;
+  onPick: (s: PlacesSortKey) => void;
+}) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title="Sort">
+    <Choice open={open} onOpenChange={onOpenChange} title="Sort" anchor={anchor}>
       <div role="radiogroup" aria-label="Sort cafés" className="pb-16">
         {SORTS.map((s) => (
           <button
@@ -460,7 +491,7 @@ function SortSheet({ open, onOpenChange, value, onPick }: { open: boolean; onOpe
           </button>
         ))}
       </div>
-    </Sheet>
+    </Choice>
   );
 }
 
@@ -470,6 +501,7 @@ type StarsKey = 'any' | '3' | '4' | '5';
 function FiltersSheet({
   open,
   onOpenChange,
+  anchor,
   view,
   known,
   currency,
@@ -477,6 +509,7 @@ function FiltersSheet({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  anchor: RefObject<HTMLElement | null>;
   view: PlacesView;
   known: PlacesResponse | null;
   currency: string | null;
@@ -496,9 +529,10 @@ function FiltersSheet({
   const price: PriceKey = (view.price as PriceKey | undefined) ?? 'any';
   const stars: StarsKey = view.stars === '3' || view.stars === '4' || view.stars === '5' ? view.stars : 'any';
   return (
-    <Sheet
+    <Choice
       open={open}
       onOpenChange={onOpenChange}
+      anchor={anchor}
       title="Filters"
       actions={
         <Button variant="text" size="sm" onClick={() => onOpenChange(false)}>
@@ -566,6 +600,6 @@ function FiltersSheet({
           </Field>
         ) : null}
       </div>
-    </Sheet>
+    </Choice>
   );
 }

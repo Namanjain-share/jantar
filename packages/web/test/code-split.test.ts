@@ -202,6 +202,15 @@ describe('code splitting', () => {
     expect(readFileSync(join(src, 'main.tsx'), 'utf8')).toContain("import('./ui/shell/TouchShell.js')");
   });
 
+  it("0.11 c26: the one-value popover is lazy-only, and Base UI's Popover loads on the first one", () => {
+    for (const f of ['ui/kit/Popover.tsx', 'ui/kit/ChoicePopup.tsx']) {
+      expect(existsSync(join(src, f)), f).toBe(true);
+      expect(main.files.has(f), f).toBe(false);
+    }
+    // Base UI's Popover itself waits for the first popover: Choice loads it with import().
+    expect(readFileSync(join(src, 'ui/kit/Popover.tsx'), 'utf8')).toContain("import('./ChoicePopup.js')");
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");

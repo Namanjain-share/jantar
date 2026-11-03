@@ -152,6 +152,11 @@ What changed for people who use Jantar, newest first. Versions before
   terminal opens its session. A session then fills the pane, and
   **‹ Sessions** shows the list over it (a tap on a session, outside it or
   Esc puts it away); in Chat, **‹ Days** does the same for the days.
+- **A single choice opens beside its button** on an iPad or a Mac: Cafés'
+  Sort and Filters, and a dose of a medicine, open as a small popover next
+  to what you tapped instead of a sheet across the window (above it when
+  there is more room there, and the sheet again when the on-screen
+  keyboard leaves no room). A phone keeps its bottom sheets.
 
 ## 0.11.0 (3 November 2026)
 

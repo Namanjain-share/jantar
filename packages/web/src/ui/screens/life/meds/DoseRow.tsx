@@ -27,7 +27,8 @@ export interface DoseRowProps {
   tz: string | null;
   /** Offline or a write running. */
   disabled?: boolean;
-  onOpen(): void;
+  /** 0.11: the row's button, which the dose popover opens beside. */
+  onOpen(anchor: HTMLElement): void;
   onLog(status: 'taken' | 'skipped'): void;
 }
 
@@ -53,7 +54,7 @@ export function DoseRow({ item, due, tz, disabled = false, onOpen, onLog }: Dose
     >
       <button
         type="button"
-        onClick={onOpen}
+        onClick={(e) => onOpen(e.currentTarget)}
         aria-label={`${label} at ${item.slot}, ${doseWord(item, due, tz)}`}
         className="flex min-h-52 min-w-0 flex-1 items-center gap-8 pl-12 text-left transition-colors duration-120 ease-hover hover:bg-hover focus-visible:-outline-offset-2"
       >
