@@ -94,3 +94,4 @@ export {
   type SleepWeekSummary,
 } from './sleep-week.js';
 export { QUICK_BETWEEN_MAX, QUICK_STEPS_MAX, parseQuickPlan, type QuickBetween, type QuickPlan, type QuickStep } from './quick-plan.js';
+export { MED_ESCALATE_DAYS, computeMedEscalation, type MedDay, type MedEscalation, type MedEscalationLevel } from './med-escalation.js';
