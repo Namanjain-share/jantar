@@ -10,9 +10,9 @@
  * Adapted from Noblot's tier contract (`packages/core/src/notifications.ts`:
  * NOTIFICATION_TIERS, `quietWindowFor`, `resolveNotification`; critical
  * crosses quiet hours, important is held, standard is dropped), its quiet
- * window (`inQuietHours`, `packages/core/src/dynamics.ts`) and the
- * receiver-side wrapper `resolveUsPing` (`coupleEveryday.ts`, where need
- * space is checked before quiet hours). Jantar's tiers add `urgent` (an
+ * window check (`inQuietHours`) and its receiver-side wrapper
+ * `resolveUsPing` (where need space is checked before quiet hours), both
+ * from other files in Noblot's `packages/core/src/`. Jantar's tiers add `urgent` (an
  * Urgent alert, which crosses quiet hours only when the recipient allows
  * it), and its states add pause, focus and an open night.
  *

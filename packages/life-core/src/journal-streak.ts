@@ -44,7 +44,7 @@ export interface JournalPromptPack {
   prompts: readonly string[];
 }
 
-/** Jantar's own small, neutral pack (written fresh; never Noblot's couple decks). */
+/** Jantar's own small, neutral pack (written fresh; none of Noblot's prompt packs). */
 export const JOURNAL_PROMPTS: JournalPromptPack = {
   id: 'daily',
   cadence: 'daily',
