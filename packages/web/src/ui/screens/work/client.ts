@@ -14,6 +14,12 @@
  * e-mail never sits in a URL), the log, a meeting's clients, import (a
  * preview first, then the rows he decided, undoable for 7 days), the CSV
  * export (text), Work's settings read, and duplicates with merge.
+ *
+ * The third part adds his deals: the pipeline (cards and each stage's
+ * column), one deal as a hub, add, change, delete and move (Won may make
+ * the project in the same save; Lost takes a reason), the stages read and
+ * replaced, insights for a period, the deals CSV, and a project's
+ * milestones.
  */
 import type { OkReply } from '@jantar/protocol';
 import type {
@@ -31,6 +37,14 @@ import type {
   WorkClientSimilarBody,
   WorkClientSimilarReply,
   WorkClientsResponse,
+  WorkDealCreateBody,
+  WorkDealCreateReply,
+  WorkDealDeleteReply,
+  WorkDealHub,
+  WorkDealMoveBody,
+  WorkDealMoveReply,
+  WorkDealPatch,
+  WorkDealsResponse,
   WorkDuplicatesReply,
   WorkImportBody,
   WorkImportPreviewBody,
@@ -38,6 +52,8 @@ import type {
   WorkImportReply,
   WorkImportsReply,
   WorkImportUndoReply,
+  WorkInsightsReply,
+  WORK_INSIGHT_PERIODS,
   WorkLogAddBody,
   WorkLogAddReply,
   WorkLogPage,
@@ -47,9 +63,13 @@ import type {
   WorkMeetingSuggestReply,
   WorkMergeBody,
   WorkMergeConflictsReply,
+  WorkMilestonesBody,
   WorkSeedBody,
   WorkSeedReply,
   WorkSettings,
+  WorkStagesBody,
+  WorkStagesPutReply,
+  WorkStagesReply,
   ContactKind,
   ContactState,
 } from '@jantar/protocol/work';
@@ -85,12 +105,34 @@ export const WORK_PATHS = {
   workMergeConflicts: { method: 'GET', path: '/v1/work/clients/:id/merge' },
   workMerge: { method: 'POST', path: '/v1/work/clients/:id/merge' },
   workNotDuplicate: { method: 'POST', path: '/v1/work/clients/:id/not-duplicate' },
+  // --- his deals
+  workDeals: { method: 'GET', path: '/v1/work/deals' },
+  workDealCreate: { method: 'POST', path: '/v1/work/deals' },
+  workDealGet: { method: 'GET', path: '/v1/work/deals/:id' },
+  workDealUpdate: { method: 'PATCH', path: '/v1/work/deals/:id' },
+  workDealDelete: { method: 'DELETE', path: '/v1/work/deals/:id' },
+  workDealMove: { method: 'POST', path: '/v1/work/deals/:id/move' },
+  workStages: { method: 'GET', path: '/v1/work/stages' },
+  workStagesUpdate: { method: 'PUT', path: '/v1/work/stages' },
+  workInsights: { method: 'GET', path: '/v1/work/insights' },
+  workProjectMilestones: { method: 'PUT', path: '/v1/work/projects/:id/milestones' },
 } as const satisfies Record<string, ApiRoute>;
 
 /** The search's shortest query, once trimmed (WORK_LIMITS.searchMin). */
 export const SEARCH_MIN = 2;
 /** And its longest (WORK_LIMITS.searchMax). */
 export const SEARCH_MAX = 80;
+
+/** What the Deals list asks for (GET /v1/work/deals's query): open ones unless `open` is false. */
+export interface DealsFilter {
+  open?: boolean | undefined;
+  stage?: string | undefined;
+  client?: string | undefined;
+  business?: string | undefined;
+  closing?: 'week' | 'month' | undefined;
+  quiet?: boolean | undefined;
+  q?: string | undefined;
+}
 
 /** What the Clients list asks for (GET /v1/work/clients's query; the starter lists are P3b's). */
 export interface ClientsFilter {
@@ -149,6 +191,24 @@ export interface WorkClient {
   mergeConflicts(id: string, loser: string): Promise<WorkMergeConflictsReply>;
   merge(id: string, body: WorkMergeBody, idempotencyKey?: string): Promise<OkReply>;
   notDuplicate(id: string, otherId: string, idempotencyKey?: string): Promise<OkReply>;
+
+  /** His deals as cards (open ones unless asked otherwise), with every stage's column. */
+  deals(filter?: DealsFilter): Promise<WorkDealsResponse>;
+  dealCreate(body: WorkDealCreateBody, idempotencyKey?: string): Promise<WorkDealCreateReply>;
+  /** One deal as a hub: the deal, its card, client, project, open follow-ups and log. */
+  deal(id: string): Promise<WorkDealHub>;
+  dealUpdate(id: string, patch: WorkDealPatch, idempotencyKey?: string): Promise<OkReply>;
+  dealDelete(id: string, idempotencyKey?: string): Promise<WorkDealDeleteReply>;
+  /** To any stage: Won (with `project`, the project too), Lost (with a reason), or open again. The reply names the stage it left. */
+  dealMove(id: string, body: WorkDealMoveBody, idempotencyKey?: string): Promise<WorkDealMoveReply>;
+  stages(): Promise<WorkStagesReply>;
+  /** The whole list in its new order (a removed stage that holds deals names where they go). */
+  stagesUpdate(body: WorkStagesBody, idempotencyKey?: string): Promise<WorkStagesPutReply>;
+  insights(period: (typeof WORK_INSIGHT_PERIODS)[number], business?: string): Promise<WorkInsightsReply>;
+  /** Every deal as a CSV file's text. */
+  exportDealsCsv(): Promise<string>;
+  /** A project's milestones, the whole list in order (one without an id is new). */
+  milestones(projectId: string, body: WorkMilestonesBody, idempotencyKey?: string): Promise<OkReply>;
 }
 
 const k = (idempotencyKey?: string) => (idempotencyKey ? { idempotencyKey } : {});
@@ -186,5 +246,28 @@ export function workClient(api: Api): WorkClient {
     mergeConflicts: (id, loser) => api.request(P.workMergeConflicts, { params: { id }, query: { loser } }),
     merge: (id, body, key) => api.request(P.workMerge, { params: { id }, body, ...k(key) }),
     notDuplicate: (id, otherId, key) => api.request(P.workNotDuplicate, { params: { id }, body: { otherId }, ...k(key) }),
+
+    deals: (f = {}) =>
+      api.request(P.workDeals, {
+        query: {
+          open: f.open === false ? '0' : undefined,
+          stage: f.stage,
+          client: f.client,
+          business: f.business,
+          closing: f.closing,
+          quiet: f.quiet === undefined ? undefined : f.quiet ? '1' : '0',
+          q: f.q?.trim() || undefined,
+        },
+      }),
+    dealCreate: (body, key) => api.request(P.workDealCreate, { body, ...k(key) }),
+    deal: (id) => api.request(P.workDealGet, { params: { id } }),
+    dealUpdate: (id, patch, key) => api.request(P.workDealUpdate, { params: { id }, body: patch, ...k(key) }),
+    dealDelete: (id, key) => api.request(P.workDealDelete, { params: { id }, ...k(key) }),
+    dealMove: (id, body, key) => api.request(P.workDealMove, { params: { id }, body, ...k(key) }),
+    stages: () => api.request(P.workStages),
+    stagesUpdate: (body, key) => api.request(P.workStagesUpdate, { body, ...k(key) }),
+    insights: (period, business) => api.request(P.workInsights, { query: { period, business } }),
+    exportDealsCsv: () => api.request(P.workExport, { query: { what: 'deals' }, text: true }),
+    milestones: (projectId, body, key) => api.request(P.workProjectMilestones, { params: { id: projectId }, body, ...k(key) }),
   };
 }

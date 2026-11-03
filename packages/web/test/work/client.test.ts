@@ -80,4 +80,35 @@ describe("Work's client", () => {
     expect(await workClient(raw).exportCsv()).toBe(csv);
     expect(String((fetch.mock.calls[0] as unknown as [string])[0])).toBe('http://127.0.0.1:7420/v1/work/export.csv?what=clients');
   });
+
+  it('his deals: the filters as the daemon reads them, moves and stages as writes, insights for a period, the deals CSV', async () => {
+    const { api, calls } = recorder({ deals: [], more: 0, stages: [], id: 'x', from: 'new' });
+    const w = workClient(api);
+    const deal = '01JWRKDEA100000000000000AC';
+    await w.deals();
+    await w.deals({ open: false, stage: 'won', quiet: true, closing: 'week', q: ' site ' });
+    await w.dealMove(deal, { stage: 'won', project: { name: 'Site rebuild', folder: '/Users/example/acme' } }, 'key-4');
+    await w.dealUpdate(deal, { lostCode: 'price', lostNote: null }, 'key-5');
+    await w.stagesUpdate({ stages: [{ id: 'new', name: 'New' }, { id: 'won', name: 'Won' }, { id: 'lost', name: 'Lost' }], moves: [{ from: 'contacted', to: 'new' }] }, 'key-6');
+    await w.insights('fy');
+    await w.milestones('01JWRKPRJ0000000000000ACME', { milestones: [{ name: 'Design', target: '2026-02-01' }] }, 'key-7');
+    expect(calls.map((c) => `${c.init.method} ${c.url.replace('http://127.0.0.1:7420', '')}`)).toEqual([
+      'GET /v1/work/deals',
+      'GET /v1/work/deals?open=0&stage=won&closing=week&quiet=1&q=site',
+      `POST /v1/work/deals/${deal}/move`,
+      `PATCH /v1/work/deals/${deal}`,
+      'PUT /v1/work/stages',
+      'GET /v1/work/insights?period=fy',
+      'PUT /v1/work/projects/01JWRKPRJ0000000000000ACME/milestones',
+    ]);
+    expect(JSON.parse(String(calls[2]!.init.body))).toEqual({ stage: 'won', project: { name: 'Site rebuild', folder: '/Users/example/acme' } });
+    expect((calls[2]!.init.headers as Record<string, string>)['idempotency-key']).toBe('key-4');
+    expect(JSON.parse(String(calls[3]!.init.body))).toEqual({ lostCode: 'price', lostNote: null });
+
+    const csv = 'title,client\r\nSite rebuild,Acme\r\n';
+    const fetch = vi.fn(async () => new Response(csv, { status: 200, headers: { 'content-type': 'text/csv; charset=utf-8' } }));
+    const raw = createApi({ fetch: fetch as unknown as typeof globalThis.fetch, base: 'http://127.0.0.1:7420', credentials: { get: async () => null, set: async () => undefined, clear: async () => undefined } });
+    expect(await workClient(raw).exportDealsCsv()).toBe(csv);
+    expect(String((fetch.mock.calls[0] as unknown as [string])[0])).toBe('http://127.0.0.1:7420/v1/work/export.csv?what=deals');
+  });
 });
