@@ -13,7 +13,7 @@
  * - The Work place's states: Life off (the shell's off page), Work off (the
  *   daemon's sentence), no control, Life status failing, loading.
  */
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NO_FEATURES } from '@jantar/protocol';
 import { parseRoute, routePath } from '../../src/lib/router.js';
@@ -79,6 +79,8 @@ describe('Work in NAV', () => {
     const off = fakeApi({ lifeStatus: vi.fn(async () => lifeStatus({ todos: true })) });
     const a = renderApp({ state, api: off, layout: layoutAt(1440) });
     await waitFor(() => expect(off.lifeStatus).toHaveBeenCalled());
+    // Its answer is in: Work is off (before it, g w opens Work, whose screen says which: the next test).
+    await act(async () => undefined);
     expect(within(nav()).queryByRole('link', { name: 'Work' })).toBeNull();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'g' }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }));
@@ -93,6 +95,18 @@ describe('Work in NAV', () => {
     expect(api.lifeStatus).not.toHaveBeenCalled();
     expect(within(nav()).queryByRole('link', { name: 'Work' })).toBeNull();
     expect(offSentence(NAV.find((n) => n.route === 'work')!, false, false)).toBe('Work needs a device paired with control.');
+  });
+
+  it('g w before Life status answers opens Work, never "Work is off"', async () => {
+    const state = stateWith({ sessions: [session('a')], features: { life: true } });
+    const api = fakeApi({ lifeStatus: vi.fn(() => new Promise<never>(() => undefined)) });
+    const { history, toasts } = renderApp({ state, api, layout: layoutAt(1440) });
+    await waitFor(() => expect(api.lifeStatus).toHaveBeenCalled());
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'g' }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }));
+    expect(history.entries.at(-1)).toBe('/work');
+    expect(toasts.getState().toasts).toEqual([]);
+    expect(await screen.findByText('Opening Work…')).toBeTruthy();
   });
 });
 

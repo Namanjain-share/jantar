@@ -60,7 +60,7 @@ import { focusRow } from '../kit/rows.js';
 import { dialogOpen, isTyping, useGlobalKeys, useKey } from './keys.js';
 import { useLayout } from './layout.js';
 import { CMD_PLACES, NAV, navItems, type NavItem } from './nav.js';
-import { pairedWithControl } from './lifeStatus.js';
+import { pairedWithControl, useLifeStatusFeed } from './lifeStatus.js';
 import { LegendPopover, LegendSheet } from './LegendPopover.js';
 import { OfflineNotice, UpdateNotice } from './Notices.js';
 import { PhoneHeader } from './PhoneHeader.js';
@@ -123,6 +123,8 @@ export function Shell() {
   const newAlerts = useNewAlerts(route.name === 'alerts');
   const features = useFeatures();
   const placeFeatures = usePlaceFeatures();
+  // 0.13.0: Work's place waits on Life status (the same shared feed usePlaceFeatures reads).
+  const workKnown = useLifeStatusFeed(features.life && pairedWithControl()).status !== null;
   const toast = useToast();
   // v0.6: New session is there while a session can start somewhere (the Mac, or a paired server).
   const canStart = useCanStart();
@@ -191,7 +193,9 @@ export function Shell() {
   // ledger. A place that is off says so instead of opening.
   const goPlace = (item: NavItem | undefined) => {
     if (!item) return;
-    if (navItems(placeFeatures).includes(item)) navigate(item.href);
+    // Before Life status answers, Work is neither on nor off: g w opens it, and its screen says which.
+    const workUnknown = item.route === 'work' && features.life && pairedWithControl() && !workKnown;
+    if (navItems(placeFeatures).includes(item) || workUnknown) navigate(item.href);
     else toast(offSentence(item, features.ask, pairedWithControl()));
   };
   useGlobalKeys({
