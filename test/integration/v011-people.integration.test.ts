@@ -61,14 +61,15 @@ describe('v0.11 jantar people', () => {
     expect(offer.code, offer.err).toBe(0);
     expect(offer.out).toMatch(/see\.todos = true/);
     expect(offer.out).toMatch(/see\.meds = full/);
-    expect(offer.out).toMatch(/see\.food = false/);
+    // see.food is a level (off, counts or full), and with no food log it stays off whatever the preset says.
+    expect(offer.out).toMatch(/see\.food = off/);
     expect(offer.out).toMatch(/editHers\.weight = true/);
     const inv = await cli('invite', 'Asha', '--json');
     const { url } = JSON.parse(inv.out) as { url: string };
     expect(url.startsWith(`${PEOPLE}/p/join#c=`)).toBe(true);
     const code = url.split('#c=')[1] as string;
     const preview = (await onHer('POST', '/v1/p/join/preview', { code })).body as JoinPreview;
-    expect(preview.offer.see.food).toBe(false);
+    expect(preview.offer.see.food).toBe('off');
     const listed = await callDaemon<{ people: { id: string }[] }>(ctl, 'GET', '/v1/people');
     const ledger = d.ctx.db.people.consents.listFor(listed.people[0]?.id ?? '');
     expect(ledger.filter((r) => r.action === 'offered')).toHaveLength(1);
