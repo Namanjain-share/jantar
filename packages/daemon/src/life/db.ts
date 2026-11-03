@@ -211,6 +211,62 @@ export const LIFE_MIGRATIONS: readonly LifeMigration[] = [
       CREATE UNIQUE INDEX sleep_logs_open ON sleep_logs (space) WHERE wake_at IS NULL;
     `,
   },
+  {
+    // v0.13 Work: life.db's fourth schema change (after 0.11's 'people'), with every table Work's phases need
+    // (clients and companies, deals, the log, follow-ups as todos with a client). An older daemon refuses a
+    // schema-5 file (newer_schema); going back means restoring the copy the daemon wrote before migrating
+    // (backups/life-pre-<version>.db, docs/upgrading.md). Owner-only tables: named work_*, no `space` column,
+    // named only by life/work/** (and here: a source scan pins it). No REFERENCES, as before: the module keeps
+    // them consistent inside one transaction. todos.contact_id is the Todos repo's (a follow-up's client).
+    version: 5,
+    name: 'work',
+    sql: `
+      CREATE TABLE work_contacts (
+        id            TEXT PRIMARY KEY,
+        kind          TEXT NOT NULL,          -- person | company
+        state         TEXT NOT NULL,          -- lead | client | past
+        company_id    TEXT,                   -- a person's company (a work_contacts id); null for a company
+        name_key      TEXT NOT NULL,          -- the folded name, for duplicates and sort
+        last_touch_at TEXT,                   -- the newest touch, rebuilt from work_log
+        merged_into   TEXT,                   -- a merged-away contact: hidden, kept for links still pointing here
+        updated_at    TEXT NOT NULL,
+        json          TEXT NOT NULL
+      );
+      CREATE INDEX work_contacts_company ON work_contacts (company_id);
+      CREATE INDEX work_contacts_name    ON work_contacts (name_key);
+      CREATE INDEX work_contacts_state   ON work_contacts (state, last_touch_at);
+
+      CREATE TABLE work_deals (
+        id         TEXT PRIMARY KEY,
+        contact_id TEXT NOT NULL,             -- usually the company
+        stage      TEXT NOT NULL,             -- a stage id from meta('work_stages')
+        closed_at  TEXT,                      -- set on won or lost; null while open
+        updated_at TEXT NOT NULL,
+        json       TEXT NOT NULL
+      );
+      CREATE INDEX work_deals_open    ON work_deals (closed_at, stage);
+      CREATE INDEX work_deals_contact ON work_deals (contact_id);
+
+      CREATE TABLE work_log (
+        id         TEXT PRIMARY KEY,
+        contact_id TEXT,                      -- null only for a project's own note
+        deal_id    TEXT,
+        project_id TEXT,
+        meeting_id TEXT,                      -- a meetings.db id; may dangle (as meetings.project_id does)
+        at         TEXT NOT NULL,             -- an ISO instant
+        kind       TEXT NOT NULL,             -- call | meeting | email | message | note | stage | created
+        json       TEXT NOT NULL
+      );
+      CREATE INDEX work_log_contact ON work_log (contact_id, at);
+      CREATE INDEX work_log_deal    ON work_log (deal_id, at);
+      CREATE INDEX work_log_project ON work_log (project_id, at);
+      CREATE UNIQUE INDEX work_log_meeting ON work_log (meeting_id, contact_id) WHERE meeting_id IS NOT NULL;
+
+      -- Follow-ups: a todo with a client (its json carries contactId and dealId too).
+      ALTER TABLE todos ADD COLUMN contact_id TEXT;
+      CREATE INDEX todos_contact ON todos (contact_id, done_at);
+    `,
+  },
 ];
 
 /** The schema this build writes and reads. A file with a newer one is refused, never downgraded. */

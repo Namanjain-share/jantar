@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, openCheckedDb, openLifeDb } from '../../src/life/db.js';
+import { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, LIFE_SCHEMA_VERSION, openCheckedDb, openLifeDb } from '../../src/life/db.js';
 
 let dir: string;
 let file: string;
@@ -52,7 +52,7 @@ describe('life.db schema 4 (people)', () => {
     const r = openLifeDb(file, { preMigrateCopy: () => (copied = join(dir, 'backups', 'life-pre-test.db')) });
     if (!r.ok) throw new Error(r.code);
     try {
-      expect(r.db.meta('schema')).toBe('4');
+      expect(r.db.meta('schema')).toBe(String(LIFE_SCHEMA_VERSION));
       expect(r.precopy?.from).toBe(3);
       expect(copied).not.toBe('');
       const counts = Object.fromEntries(['projects', 'todos', 'medicines', 'doses', 'food', 'foods_saved', 'weights', 'places', 'place_visits', 'pings'].map((t) => [t, count(r.db, t)]));

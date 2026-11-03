@@ -30,7 +30,7 @@ import { SettingsSchema, TodaySchema, type Scope, type Settings } from '@jantar/
 import type { LifeModule, LifeModuleBuilders, LifePush, LifeService } from '../../src/contracts.js';
 import { createTestContext, type TestContext } from '../../src/core/testing.js';
 import { notBuilt } from '../../src/core/not-implemented.js';
-import { LIFE_BROKEN_REASON } from '../../src/life/db.js';
+import { LIFE_BROKEN_REASON, LIFE_SCHEMA_VERSION } from '../../src/life/db.js';
 import { LIFE_MODULE_BUILDERS } from '../../src/life/index.js';
 import type { LifeSendResult } from '../../src/life/push.js';
 import { LIFE_MISSING_REASON, LIFE_START_FAILED, buildLifeService, pushDevices } from '../../src/life/service.js';
@@ -362,7 +362,7 @@ describe('status', () => {
     const life = service({ settings: settings({ todos: true, currency: 'INR', lockScreenDetails: true, timezone: 'Asia/Kolkata' }) });
     await life.start();
     expect(life.status()).toEqual({
-      schema: 4,
+      schema: LIFE_SCHEMA_VERSION,
       open: true,
       timezone: 'Asia/Kolkata',
       today: '2026-10-30',
