@@ -121,3 +121,50 @@ describe('jantar people: the Accountability partner words, ask, prefs and the na
     expect(ctl.calls.at(-1)?.body).toEqual({ summaryAt: null });
   });
 });
+
+describe('jantar people doctor: the host fence, Access in front, the Tailscale step (spec 2.1 step 4)', () => {
+  const okDoctor = { checks: [{ name: 'switch', ok: true, detail: 'on' }] };
+  const FENCE_OK: Record<string, number> = { 'us.example.com/p': 200, 'us.example.com/v1/state': 404, 'us.example.com/index.html': 404, 'us.example.com/sw.js': 404, 'us.example.com/v1/node/link': 404, 'jantar.example.com/v1/p/me': 404 };
+  const run = async (mode: 'cloudflare' | 'tailscale', probe: { status: number; location: string | null; jantar: boolean } | null, fence: Record<string, number> = FENCE_OK) => {
+    const s = fakeSettings({ remote: { mode, publicUrl: 'https://jantar.example.com', peopleUrl: 'https://us.example.com' } });
+    const ctl = fakeCtl({ ...s.routes, 'GET /v1/people/doctor': ok(okDoctor) });
+    const asked: string[] = [];
+    const c = contextFor({ env: ENV }, { ctl });
+    c.ctx.deps.probe = async (url) => (asked.push(url), probe);
+    c.ctx.deps.localStatus = async (base, path, host) => (asked.push(`${base} ${host}${path}`), fence[`${host}${path}`] ?? null);
+    const code = await people.run(['doctor'], c.ctx);
+    return { code, out: c.io.stdout, asked };
+  };
+
+  it('all good: her host is fenced and Access sends a visitor to sign in', async () => {
+    const r = await run('cloudflare', { status: 302, location: 'https://team.cloudflareaccess.com/cdn-cgi/access/login/us.example.com', jantar: false });
+    expect(r.code).toBe(EXIT.ok);
+    expect(r.out).toContain('ok   host fence: us.example.com serves her app and none of yours; yours serves none of hers');
+    expect(r.out).toContain('ok   Access in front: us.example.com sends a visitor without a sign-in to Cloudflare Access');
+    expect(r.asked).toContain('https://us.example.com/healthz');
+    expect(r.asked).toContain('http://127.0.0.1:7420 us.example.com/v1/state');
+  });
+
+  it("FAIL when Access isn't in front: the daemon answered", async () => {
+    const r = await run('cloudflare', { status: 200, location: null, jantar: false });
+    expect(r.code).toBe(EXIT.failed);
+    expect(r.out).toContain("FIX  Access in front: Access isn't protecting us.example.com: it answered 200 without a sign-in.");
+    const none = await run('cloudflare', null);
+    expect(none.out).toContain("FIX  Access in front: nothing answers at https://us.example.com: check its DNS route and the tunnel's ingress rule");
+    const elsewhere = await run('cloudflare', { status: 302, location: 'https://evil.example/login', jantar: false });
+    expect(elsewhere.out).toContain("Access isn't protecting us.example.com: it answered 302 (to evil.example)");
+  });
+
+  it('FAIL when the fence leaks: her host serves his board', async () => {
+    const r = await run('cloudflare', { status: 302, location: 'https://team.cloudflareaccess.com/x', jantar: false }, { ...FENCE_OK, 'us.example.com/v1/state': 200 });
+    expect(r.code).toBe(EXIT.failed);
+    expect(r.out).toContain('FIX  host fence: us.example.com/v1/state (his board) answered 200, not 404');
+  });
+
+  it('tailscale: no Access probe, a note for the policy step', async () => {
+    const r = await run('tailscale', null);
+    expect(r.code).toBe(EXIT.ok);
+    expect(r.asked.some((u) => u.endsWith('/healthz'))).toBe(false);
+    expect(r.out).toContain("note Tailscale policy: share this Mac with their tailnet account and grant it us.example.com's port only");
+  });
+});

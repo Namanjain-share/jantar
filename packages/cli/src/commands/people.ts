@@ -26,11 +26,13 @@
  * Adding or removing an email prints the Cloudflare Access step: Jantar
  * holds no Cloudflare token and can't make that change.
  */
-import { PEOPLE_LABEL } from '@jantar/protocol';
+import { PEOPLE_LABEL, type Settings } from '@jantar/protocol';
 import type { OwnerPeoplePrefs, PeopleDoctor, PeopleList, PersonInviteReply, PersonSetupAgain, PersonView } from '@jantar/protocol/people';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { callDaemon } from '../ctl.js';
+import { localBaseUrl } from '../lib/settings.js';
+import { localStatus, probeUrl } from '../lib/doctor.js';
 
 const USAGE = 'jantar people <on|off|doctor|add|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos> ...';
 
@@ -64,6 +66,81 @@ export function fieldPatch(flags: { see?: string; assign?: string; 'edit-hers'?:
   for (const [group, value] of groups) {
     const g = fieldList(group, value);
     if (Object.keys(g).length) out[group] = g;
+  }
+  return out;
+}
+
+/** One line of `people doctor`: a check (ok or FIX) or a note to act on by hand. */
+export interface HostCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+  note?: true;
+}
+
+/** What jantard must answer on this Mac for a request through her hostname, and for one through his (spec 2.1 step 4, C15). */
+export const FENCE: ReadonlyArray<{ on: 'hers' | 'his'; path: string; want: number; what: string }> = [
+  { on: 'hers', path: '/p', want: 200, what: 'her app' },
+  { on: 'hers', path: '/v1/state', want: 404, what: 'his board' },
+  { on: 'hers', path: '/index.html', want: 404, what: 'his app' },
+  { on: 'hers', path: '/sw.js', want: 404, what: "his app's service worker" },
+  { on: 'hers', path: '/v1/node/link', want: 404, what: "Fleet's link" },
+  { on: 'his', path: '/v1/p/me', want: 404, what: 'her routes' },
+];
+
+/**
+ * `people doctor`'s checks past the daemon's own (spec 2.1 step 4): with her hostname set,
+ * - the host fence, on this Mac: through her Host jantard serves her app and none of his (his board, app,
+ *   service worker, Fleet's link), and through his none of her routes;
+ * - in cloudflare mode, Access in front of her hostname: a credential-less GET of /healthz must be sent to
+ *   Cloudflare Access sign-in (*.cloudflareaccess.com), never answered;
+ * - in tailscale mode, the policy step Jantar can't check (a note).
+ */
+export async function peopleHostChecks(ctx: CliContext, settings: Settings): Promise<HostCheck[]> {
+  const url = settings.remote.peopleUrl;
+  if (!url) return [];
+  let her: URL;
+  try {
+    her = new URL(url);
+  } catch {
+    return [];
+  }
+  const out: HostCheck[] = [];
+  const base = localBaseUrl(settings);
+  const get = ctx.deps.localStatus ?? localStatus;
+  const his = settings.remote.publicUrl ? new URL(settings.remote.publicUrl).host : new URL(base).host;
+  const wrong: string[] = [];
+  let answered = false;
+  for (const f of FENCE) {
+    const status = await get(base, f.path, f.on === 'hers' ? her.host : his);
+    if (status === null) continue;
+    answered = true;
+    if (status !== f.want) wrong.push(`${f.on === 'hers' ? her.host : his}${f.path} (${f.what}) answered ${status}, not ${f.want}`);
+  }
+  if (!answered) out.push({ name: 'host fence', ok: false, detail: `jantard doesn't answer on ${base}: is it running? (jantar status)` });
+  else out.push({ name: 'host fence', ok: wrong.length === 0, detail: wrong.length === 0 ? `${her.host} serves her app and none of yours; yours serves none of hers` : wrong.join('; ') });
+  if (settings.remote.mode === 'cloudflare') {
+    const r = await (ctx.deps.probe ?? probeUrl)(`${her.origin}/healthz`);
+    let to = '';
+    try {
+      to = r?.location ? new URL(r.location, her.origin).hostname : '';
+    } catch {
+      to = '';
+    }
+    if (r === null) {
+      out.push({ name: 'Access in front', ok: false, detail: `nothing answers at ${her.origin}: check its DNS route and the tunnel's ingress rule (docs/people.md#their-hostname)` });
+    } else if (r.status >= 300 && r.status < 400 && to.endsWith('.cloudflareaccess.com')) {
+      out.push({ name: 'Access in front', ok: true, detail: `${her.host} sends a visitor without a sign-in to Cloudflare Access` });
+    } else {
+      out.push({ name: 'Access in front', ok: false, detail: `Access isn't protecting ${her.host}: it answered ${r.status}${to ? ` (to ${to})` : ''} without a sign-in. Add an Access application for it (docs/people.md#their-hostname)` });
+    }
+  } else if (settings.remote.mode === 'tailscale') {
+    out.push({
+      name: 'Tailscale policy',
+      ok: true,
+      note: true,
+      detail: `share this Mac with their tailnet account and grant it ${her.host}'s port only, nothing else on the Mac (docs/people.md#tailscale)`,
+    });
   }
   return out;
 }
@@ -203,8 +280,10 @@ export default defineCommand(
         return EXIT.ok;
       case 'doctor': {
         const d = await callDaemon<PeopleDoctor>(ctx.ctl, 'GET', '/v1/people/doctor');
-        for (const c of d.checks) io.out(`${c.ok ? 'ok  ' : 'FIX '} ${c.name}: ${c.detail}\n`);
-        return d.checks.every((c) => c.ok) ? EXIT.ok : EXIT.failed;
+        const settings = (await callDaemon<{ settings: Settings }>(ctx.ctl, 'GET', '/v1/settings')).settings;
+        const checks: HostCheck[] = [...d.checks, ...(await peopleHostChecks(ctx, settings))];
+        for (const c of checks) io.out(`${c.note ? 'note' : c.ok ? 'ok  ' : 'FIX '} ${c.name}: ${c.detail}\n`);
+        return checks.every((c) => c.ok) ? EXIT.ok : EXIT.failed;
       }
       case 'add': {
         const name = need('a name');

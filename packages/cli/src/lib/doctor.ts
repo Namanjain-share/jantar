@@ -24,6 +24,7 @@
  * a chat key is made (`jantar chat shortcut list`).
  */
 import { open, readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
 import { basename, dirname, join } from 'node:path';
 import { CSWAP_SCRUB_ENV, isPipePath, scrubEnv, socketPathOk, type DaemonRole, type ExecFile, type NodeFile, type Paths } from '@jantar/daemon';
 import { MIN_CLAUDE_WINDOWS } from '@jantar/daemon/hooks/installer';
@@ -888,6 +889,33 @@ async function readTextDefault(path: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * v0.11 People: one GET to the daemon on this Mac (`base`, loopback) with the
+ * Host header a request through her hostname carries; the status, or null
+ * when nothing answers. Never sends a credential.
+ */
+export function localStatus(base: string, path: string, host: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    let url: URL;
+    try {
+      url = new URL(path, base);
+    } catch {
+      resolve(null);
+      return;
+    }
+    const req = httpRequest(
+      { hostname: url.hostname.replace(/^\[|\]$/g, ''), port: url.port, path: url.pathname, method: 'GET', headers: { host, accept: 'text/html,*/*' }, timeout: 3000 },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode ?? null);
+      },
+    );
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(null));
+    req.end();
+  });
 }
 
 /** Default door probe: one GET, no credentials, no redirect followed. */

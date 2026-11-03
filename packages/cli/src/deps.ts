@@ -9,7 +9,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { createExecFile, type ExecFile } from '@jantar/daemon';
 import { HOOK_CLIENT_PATH } from '@jantar/hook';
-import { fetchJson } from './lib/doctor.js';
+import { fetchJson, localStatus, probeUrl, type ProbeResult } from './lib/doctor.js';
 import type { BinFinder } from './lib/which.js';
 
 export interface PackageLocations {
@@ -37,6 +37,10 @@ export interface CliDeps {
   findBin?: BinFinder;
   /** GET a URL and parse its JSON body; null when nothing answers. */
   httpJson(url: string): Promise<unknown | null>;
+  /** v0.11 People doctor: one credential-less GET of a public URL, no redirect followed (default probeUrl). */
+  probe?(url: string): Promise<ProbeResult | null>;
+  /** v0.11 People doctor: the daemon's status for `path` on this Mac with a given Host header (default localStatus). */
+  localStatus?(base: string, path: string, host: string): Promise<number | null>;
 }
 
 function locate(): PackageLocations {
@@ -74,5 +78,7 @@ export function defaultDeps(env: Readonly<Record<string, string | undefined>> = 
     randomId: () => randomUUID(),
     locations: locate(),
     httpJson: fetchJson,
+    probe: probeUrl,
+    localStatus,
   };
 }

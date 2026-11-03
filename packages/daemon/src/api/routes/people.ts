@@ -169,7 +169,7 @@ export const PEOPLE_ROUTE_IMPLS: RouteTable = {
       const mode = settings.remote.mode;
       const webpush = findWebPush(s.deps.notifiers);
       const checks = [
-        { name: 'remote mode', ok: mode === 'cloudflare' || mode === 'tailscale', detail: `remote.mode is ${mode} (People needs cloudflare or tailscale)` },
+        { name: 'remote mode', ok: mode === 'cloudflare' || mode === 'tailscale', detail: `remote.mode is ${mode} (an accountability partner space needs cloudflare or tailscale)` },
         { name: 'people hostname', ok: s.origin.peopleOrigin() !== null, detail: s.origin.peopleOrigin() ?? 'not set: jantar remote people-url <https-url>' },
         { name: 'settings', ok: problem === null, detail: problem ? `${problem.path}: ${problem.message}` : 'ok' },
         { name: "owner's name", ok: settings.people.ownerName !== null, detail: settings.people.ownerName ? 'set' : 'not set: jantar people on --name <your name>' },
