@@ -17,7 +17,11 @@
  *   csv.ts (copied from Noblot with their tests), contacts.ts (adapted from
  *   Noblot with its tests: names, e-mails and phones compared, duplicate
  *   groups, the log line, touches, vCard), and ours, client-import.ts (an
- *   import row's fields and the duplicate warning).
+ *   import row's fields and the duplicate warning). P3: deal.ts (lost
+ *   reasons, sources, close days), pipeline.ts (the stage invariant,
+ *   deleting a stage, probabilities, the forecast), stage.ts (quiet deals),
+ *   insights.ts (win rate, cycle, revenue, funnel, forecast, trend, time in
+ *   stage) and milestones.ts, each adapted from Noblot with its tests.
  */
 export {
   DOSE_GRACE_MINUTES,
@@ -168,3 +172,79 @@ export {
   type SimilarProbe,
   type SimilarWhy,
 } from './work/client-import.js';
+export {
+  CLOSING_MONTH_DAYS,
+  CLOSING_SOON_DAYS,
+  LOST_REASON_CODES,
+  LOST_REASON_LABELS,
+  canonicalSource,
+  daysUntilClose,
+  expectedCloseState,
+  inClosingWindow,
+  lossCodeBreakdown,
+  lostReasonLabel,
+  normalizeSource,
+  sourceTypeahead,
+  type CloseState,
+  type ClosingWindow,
+  type LossCodeRow,
+  type LostDeal,
+  type LostReasonCode,
+} from './work/deal.js';
+export {
+  DEFAULT_QUIET_DAYS,
+  dealIsClosed,
+  pipelineForecast,
+  planStageDeletions,
+  resolveQuietDays,
+  stageInvariantError,
+  stageProbabilities,
+  weightedAmount,
+  type BlockedStageDeletion,
+  type ForecastColumn,
+  type PipelineForecast,
+  type PipelineStage,
+  type StageDeletionPlan,
+  type StageKind,
+  type StageMigration,
+} from './work/pipeline.js';
+export { resolveStageQuietDays, stageHealth, type StageHealth } from './work/stage.js';
+export {
+  ANALYTICS_PERIODS,
+  averageDaysToClose,
+  closedInPeriod,
+  dealClosedAt,
+  dealOutcome,
+  forecastByMonth,
+  groupByCurrency,
+  monthKey,
+  monthLabel,
+  monthRange,
+  pipelineTrend,
+  resolveAnalyticsPeriod,
+  revenueByMonth,
+  sourcePerformance,
+  stageFunnel,
+  timeInStage,
+  weekWindows,
+  winRateOf,
+  type AnalyticsDeal,
+  type AnalyticsPeriod,
+  type CycleStats,
+  type DealMove,
+  type DealOutcome,
+  type ForecastByMonth,
+  type ForecastMonth,
+  type FunnelRow,
+  type MonthBucket,
+  type OpenDealPosition,
+  type ResolvedPeriod,
+  type SourceRow,
+  type StageDwellRow,
+  type StageFunnel,
+  type StageTransition,
+  type TrendRow,
+  type TrendWeek,
+  type WinRate,
+} from './work/insights.js';
+export { MILESTONES_MAX, milestoneMissed, milestoneProgress, type MilestoneLike, type MilestoneProgress } from './work/milestones.js';
