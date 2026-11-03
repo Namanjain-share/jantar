@@ -144,6 +144,8 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
       'relative flex cursor-pointer items-center gap-12 border-b border-line transition-colors duration-120 ease-hover',
       'has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-ink',
       phone ? 'min-h-56 px-16 py-8' : 'min-h-44 px-20 py-4',
+      // 0.11: a touch screen's rows are the phone's at every width, so "Type something…" is a 44 target.
+      'coarse:min-h-56 coarse:py-6',
       on ? 'row-tick bg-select' : 'hover:bg-hover',
     );
 
@@ -199,7 +201,7 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
               );
             })}
             <div className={row(Boolean(a?.otherOn))}>
-              <label className="flex flex-none cursor-pointer items-center gap-12">
+              <label className="flex flex-none cursor-pointer items-center gap-12 self-stretch">
                 <input
                   type={type}
                   name={name}
@@ -227,7 +229,7 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
                 }}
                 className={clsx(
                   'min-w-0 flex-1 rounded-btn border border-line-strong bg-surface px-10 type-input text-ink focus-visible:outline-offset-0',
-                  phone ? 'h-44' : 'h-32',
+                  phone ? 'h-44' : 'h-32 coarse:h-44',
                 )}
               />
             </div>

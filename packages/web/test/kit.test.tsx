@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AutoswitchSettingsSchema } from '@jantar/protocol';
 import { documentTitle, screenTitle, setFavicon } from '../src/lib/favicon.js';
@@ -20,6 +21,8 @@ import { Strip, type StripItem } from '../src/ui/kit/Strip.js';
 import { Tag } from '../src/ui/kit/Tag.js';
 import { DEFAULT_CEILING, needsWord, stripItems, usagePairs } from '../src/ui/shell/data.js';
 import { isTyping } from '../src/ui/shell/keys.js';
+import { createLayoutStore, layoutAt, LayoutProvider, type LayoutStore } from '../src/ui/shell/layout.js';
+import { Sheet } from '../src/ui/kit/Sheet.js';
 import { account, iso, NOW, pending, session, stateWith } from './helpers.js';
 
 afterEach(() => {
@@ -373,5 +376,104 @@ describe('document chrome', () => {
     expect(isTyping(input)).toBe(true);
     expect(isTyping(div)).toBe(false);
     expect(isTyping(null)).toBe(false);
+  });
+});
+
+describe('0.11 c12: the sheet, bottom on the phone and a form sheet wider', () => {
+  function Form({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange} title="New example">
+        <label>
+          Title
+          <input aria-label="Title" />
+        </label>
+        <button type="button" onClick={() => onOpenChange(false)}>
+          Cancel
+        </button>
+      </Sheet>
+    );
+  }
+  function Harness({ layout }: { layout: LayoutStore }) {
+    const [open, setOpen] = useState(true);
+    return (
+      <LayoutProvider value={layout}>
+        <p>{open ? 'open' : 'closed'}</p>
+        <Form open={open} onOpenChange={setOpen} />
+      </LayoutProvider>
+    );
+  }
+  const popupOf = () => screen.getByRole('dialog', { name: 'New example' });
+
+  it('is a bottom sheet on the phone and a form sheet at any wider chrome; one popup either way', async () => {
+    const layout = createLayoutStore(layoutAt(390, { coarse: true }));
+    render(<Harness layout={layout} />);
+    const popup = await screen.findByRole('dialog', { name: 'New example' });
+    expect(popup.getAttribute('data-present')).toBe('bottom');
+    const field = screen.getByLabelText('Title') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'Typed before the turn' } });
+    act(() => layout.setState(layoutAt(820, { coarse: true, touchShell: true }), true));
+    expect(popupOf().getAttribute('data-present')).toBe('form');
+    // The same field, with what was typed: the presentation is a class, never a remount.
+    expect(screen.getByLabelText('Title')).toBe(field);
+    expect(field.value).toBe('Typed before the turn');
+    act(() => layout.setState(layoutAt(1440), true));
+    expect(popupOf().getAttribute('data-present')).toBe('form');
+    act(() => layout.setState(layoutAt(767), true));
+    expect(popupOf().getAttribute('data-present')).toBe('bottom');
+    expect(screen.getByLabelText('Title')).toBe(field);
+  });
+
+  it('a form sheet with a changed field asks before Esc closes it; Keep editing keeps it, Discard closes', async () => {
+    render(<Harness layout={createLayoutStore(layoutAt(1440))} />);
+    await screen.findByRole('dialog', { name: 'New example' });
+    fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'half a thought' } });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(await screen.findByRole('group', { name: 'Unsaved changes' })).toBeTruthy();
+    expect(screen.getByText('open')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect(screen.queryByRole('group', { name: 'Unsaved changes' })).toBeNull();
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('half a thought');
+    fireEvent.keyDown(screen.getByLabelText('Title'), { key: 'Escape' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+    expect(screen.getByText('closed')).toBeTruthy();
+  });
+
+  it('an unchanged form sheet closes at once; the form’s own Cancel never asks', async () => {
+    const layout = createLayoutStore(layoutAt(1440));
+    const { unmount } = render(<Harness layout={layout} />);
+    await screen.findByRole('dialog', { name: 'New example' });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(screen.getByText('closed')).toBeTruthy();
+    unmount();
+    render(<Harness layout={layout} />);
+    await screen.findByRole('dialog', { name: 'New example' });
+    fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByText('closed')).toBeTruthy();
+  });
+
+  it('the phone keeps its bottom sheet closing at once, as 0.10 did', async () => {
+    render(<Harness layout={createLayoutStore(layoutAt(390, { coarse: true }))} />);
+    await screen.findByRole('dialog', { name: 'New example' });
+    fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'x' } });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(screen.getByText('closed')).toBeTruthy();
+  });
+
+  it('focuses no field on open without a hardware keyboard (A9); the first field with one', async () => {
+    for (const [layout, field] of [
+      [createLayoutStore(layoutAt(1180, { coarse: true, keyboard: false })), false],
+      [createLayoutStore(layoutAt(1180, { coarse: true, keyboard: true })), true],
+    ] as const) {
+      const r = render(<Harness layout={layout} />);
+      const popup = await screen.findByRole('dialog', { name: 'New example' });
+      await act(async () => new Promise((done) => setTimeout(done, 50)));
+      if (field) expect(document.activeElement).toBe(screen.getByLabelText('Title'));
+      else {
+        expect(document.activeElement).not.toBe(screen.getByLabelText('Title'));
+        expect(popup.contains(document.activeElement)).toBe(true);
+      }
+      r.unmount();
+    }
   });
 });

@@ -209,7 +209,7 @@ function Chip({ pressed, disabled, onClick, children }: { pressed: boolean; disa
       disabled={disabled}
       onClick={onClick}
       className={clsx(
-        'inline-flex h-32 flex-none items-center gap-6 whitespace-nowrap rounded-chip border px-10 type-small transition-colors duration-120 ease-hover disabled:opacity-40 coarse:h-44',
+        'inline-flex h-32 flex-none items-center gap-6 whitespace-nowrap rounded-chip border px-10 type-small transition-colors duration-120 ease-hover disabled:opacity-40 coarse:h-44 coarse:min-w-44 coarse:justify-center',
         pressed ? 'border-line-strong bg-select text-ink' : 'border-line text-ink-2 hover:not-disabled:bg-hover hover:not-disabled:text-ink',
       )}
     >

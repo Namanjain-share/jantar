@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LifeStatus, ProjectView, Todo, TodosResponse } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { FLASH_MS } from '../src/ui/screens/life/todos/Todos.js';
+import { layoutAt, type Layout } from '../src/ui/shell/layout.js';
 import { fakeApi, iso, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
 preloadPlaces('todos');
@@ -55,7 +56,7 @@ const OPEN: Todo[] = [
   todo(5),
 ];
 
-function render(opts: { path?: string; todos?: Todo[]; list?: () => Promise<TodosResponse>; projects?: ProjectView[]; api?: Parameters<typeof fakeApi>[0]; conn?: 'live' | 'offline'; sessions?: ReturnType<typeof session>[] } = {}) {
+function render(opts: { path?: string; todos?: Todo[]; list?: () => Promise<TodosResponse>; projects?: ProjectView[]; api?: Parameters<typeof fakeApi>[0]; conn?: 'live' | 'offline'; sessions?: ReturnType<typeof session>[]; layout?: Layout } = {}) {
   const list = opts.todos ?? OPEN;
   const api = fakeApi({
     lifeStatus: vi.fn(async () => status),
@@ -63,7 +64,7 @@ function render(opts: { path?: string; todos?: Todo[]; list?: () => Promise<Todo
     projectsList: vi.fn(async () => ({ projects: opts.projects ?? [P1, P2] })),
     ...opts.api,
   });
-  return renderApp({ path: opts.path ?? '/todos', api, state: stateWith({ features: { life: true }, sessions: opts.sessions ?? [] }), ...(opts.conn ? { status: opts.conn } : {}) });
+  return renderApp({ path: opts.path ?? '/todos', api, state: stateWith({ features: { life: true }, sessions: opts.sessions ?? [] }), ...(opts.conn ? { status: opts.conn } : {}), ...(opts.layout ? { layout: opts.layout } : {}) });
 }
 
 const heading = (name = 'Todos') => screen.findByRole('heading', { level: 1, name });
@@ -601,5 +602,21 @@ describe('0.11: a wide pane', () => {
     await heading();
     expect((await rail('Overdue')).className).not.toContain('rounded-dock');
     expect(document.querySelector('[data-columns]')).toBeNull();
+  });
+});
+
+describe('0.11 c12: the editor is a form sheet beside the phone', () => {
+  it('opens TodoSheet as a form sheet on a wide window and an iPad, a bottom sheet on the phone', async () => {
+    for (const [layout, present] of [
+      [layoutAt(1440), 'form'],
+      [layoutAt(1180, { coarse: true }), 'form'],
+      [layoutAt(390, { coarse: true }), 'bottom'],
+    ] as const) {
+      const r = render({ layout });
+      await screen.findByText('Example todo 1');
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add todo' })[0]!);
+      expect((await dialog('New todo')).getAttribute('data-present')).toBe(present);
+      r.unmount();
+    }
   });
 });

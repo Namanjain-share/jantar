@@ -36,7 +36,7 @@ export function MeetingRow({ meeting: m, filters, offline, onDelete, current = f
         href={meetingsPath(filters, m.id)}
         aria-current={current ? 'true' : undefined}
         className={clsx(
-          'relative block min-w-0 flex-1 py-10 pl-16 pr-4 transition-colors duration-120 ease-hover focus-visible:-outline-offset-2',
+          'relative block min-h-44 min-w-0 flex-1 py-10 pl-16 pr-4 transition-colors duration-120 ease-hover focus-visible:-outline-offset-2',
           current ? 'row-tick' : 'hover:bg-hover',
         )}
       >

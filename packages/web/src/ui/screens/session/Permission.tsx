@@ -264,7 +264,7 @@ export function PermissionCard({ p, folder, phone, offline, age, late, aside, on
             }}
             className={clsx(
               'min-w-0 flex-1 rounded-btn border border-line-strong bg-surface px-10 type-input text-ink focus-visible:outline-offset-0',
-              phone ? 'h-48' : 'h-40',
+              phone ? 'h-48' : 'h-40 coarse:h-48',
             )}
           />
           <Button size={size} disabled={disabled} onClick={() => deny(false)}>

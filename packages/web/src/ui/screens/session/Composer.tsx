@@ -26,6 +26,7 @@ import { Button } from '../../kit/Button.js';
 import { Keycap } from '../../kit/Keycap.js';
 import { RewriteButton } from '../../rewrite/RewriteButton.js';
 import { useFeatures } from '../../shell/data.js';
+import { useLayout } from '../../shell/layout.js';
 import { AttachButton } from './attach/AttachButton.js';
 import { Chips } from './attach/Chips.js';
 import { usePaneKeys } from './keys.js';
@@ -86,6 +87,7 @@ export function Composer({
 }) {
   const { draft, setDraft, submit, area, attachments } = sends;
   const features = useFeatures();
+  const { coarse } = useLayout();
   const rewrite = features.rewrite && !machine;
   const [dropping, setDropping] = useState(false);
   const [mixed, setMixed] = useState<MixedPaste | null>(null);
@@ -99,11 +101,11 @@ export function Composer({
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
-    const min = phone ? 44 : 40;
+    const min = phone || coarse ? 44 : 40;
     el.style.height = 'auto';
     const max = LINE * MAX_LINES + 18;
     el.style.height = `${Math.max(min, Math.min(max, el.scrollHeight + 2))}px`;
-  }, [draft, phone, area]);
+  }, [draft, phone, coarse, area]);
 
   usePaneKeys({ r: () => area.current?.focus() }, !offline);
 
@@ -192,7 +194,7 @@ export function Composer({
             'no-scrollbar min-w-0 flex-1 resize-none rounded-btn border bg-surface px-12 type-input text-ink transition-colors duration-120',
             dropping ? 'border-ink' : 'border-line-strong',
             'focus-visible:outline-offset-0 disabled:border-line disabled:text-ink-3',
-            phone ? 'h-44 py-10' : 'h-40 py-8',
+            phone ? 'h-44 py-10' : 'h-40 py-8 coarse:h-44 coarse:py-10',
           )}
         />
         {rewrite ? <RewriteButton sid={sid} folder={folder} sends={sends} phone={phone} offline={offline} /> : null}
@@ -203,7 +205,7 @@ export function Composer({
           className={clsx(
             'flex flex-none items-center justify-center rounded-btn bg-ink text-bg transition duration-120 ease-hover',
             'hover:not-disabled:bg-ink-2 active:not-disabled:scale-97 motion-reduce:active:not-disabled:scale-100 disabled:bg-line disabled:text-ink-3',
-            phone ? 'size-44' : 'size-40',
+            phone ? 'size-44' : 'size-40 coarse:size-44',
           )}
         >
           <ArrowUpIcon size={phone ? 20 : 16} weight="bold" aria-hidden="true" />

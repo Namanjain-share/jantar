@@ -174,7 +174,7 @@ export function ResumeChoice({ labelledBy, value, lastOk, pickOk, onChange, onPi
             disabled={!ok(c.value)}
             onClick={() => (c.value === 'pick' ? onPick() : onChange(c.value))}
             className={clsx(
-              'h-28 whitespace-nowrap rounded-chip px-12 type-small font-medium transition-colors duration-120 ease-hover coarse:h-44',
+              'h-28 whitespace-nowrap rounded-chip px-12 type-small font-medium transition-colors duration-120 ease-hover coarse:h-44 coarse:min-w-44',
               on ? 'bg-select text-ink' : 'text-ink-3 hover:not-disabled:text-ink',
             )}
           >

@@ -50,7 +50,7 @@ export function NewFolder({ root, parent, offline, phone, onCreated }: { root: s
         }}
         className={clsx(
           'flex w-full items-center gap-12 border-b border-line px-16 text-left type-row text-ink-2 transition-colors duration-120 ease-hover hover:bg-hover hover:text-ink',
-          phone ? 'min-h-52' : 'min-h-40',
+          phone ? 'min-h-52' : 'min-h-40 coarse:min-h-52',
         )}
       >
         <FolderPlusIcon size={16} aria-hidden="true" className="flex-none" />

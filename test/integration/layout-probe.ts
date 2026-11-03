@@ -19,6 +19,9 @@
  *   meant to with data-scroll-x (the terminal mirror, the code view, the
  *   Accounts runway, the phone's chip strips).
  * - targets: every control on screen, for the 44 pt check (c33).
+ * - whole: the controls wholly on screen (not cut by the viewport or a box
+ *   that clips them), at their own size: the 44 pt check (6.2 #2, A1)
+ *   reads these, so a row half scrolled out of view isn't a small target.
  * - fixed: the controls among them that don't scroll (no box around them
  *   scrolls up and down): the chrome, a pane's header, a pinned composer.
  *   On an iPad they must stay out of the safe areas (6.2 #4, A2); content
@@ -37,6 +40,7 @@ export interface Probe {
   boxes: Rect[];
   sideways: string[];
   targets: Named[];
+  whole: Named[];
   fixed: Named[];
   exempt: string | null;
   selected: { inView: boolean; name: string } | null;
@@ -82,7 +86,7 @@ export function probeLayout(): Probe {
   const visible = (el: Element) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
 
   const main = document.querySelector('main#main');
-  const out: Probe = { vw, vh, region: null, boxes: [], sideways: [], targets: [], fixed: [], exempt: null, selected: null };
+  const out: Probe = { vw, vh, region: null, boxes: [], sideways: [], targets: [], whole: [], fixed: [], exempt: null, selected: null };
   if (main) {
     out.region = rectOf(cut(VIEW, boxOf(main.getBoundingClientRect())));
     const push = (el: Element, r: DOMRect) => {
@@ -154,7 +158,8 @@ export function probeLayout(): Probe {
   // Controls on screen (the 44 pt check reads them on touch).
   const SEL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=radio], [role=checkbox], [role=switch], [role=menuitem], [role=option], [role=slider], [role=link]';
   for (const el of document.querySelectorAll(SEL)) {
-    if (el.parentElement?.closest(SEL) || !visible(el)) continue;
+    // Not a control anyone reaches: hidden from assistive tech and taps alike (a kept-mounted file input).
+    if (el.parentElement?.closest(SEL) || !visible(el) || el.closest('[aria-hidden="true"], [inert]')) continue;
     let r = el.getBoundingClientRect();
     if (el instanceof HTMLInputElement && (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') && (r.width <= 2 || r.height <= 2)) {
       const label = el.closest('label') ?? (el.id ? document.querySelector(`label[for="${el.id}"]`) : null);
@@ -164,8 +169,11 @@ export function probeLayout(): Probe {
     const b = rectOf(cut(clipOf(el), boxOf(r)));
     if (!b) continue;
     const name = (el.getAttribute('aria-label') ?? (el as HTMLElement).innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
-    out.targets.push({ ...b, name: name || describe(el) });
-    if (!scrolls(el)) out.fixed.push({ ...b, name: name || describe(el) });
+    const named = { ...b, name: name || describe(el) };
+    out.targets.push(named);
+    if (!scrolls(el)) out.fixed.push(named);
+    const own = rectOf(boxOf(r));
+    if (own && own.w === b.w && own.h === b.h) out.whole.push({ ...named, name: `${named.name} <${describe(el)}>` });
   }
   return out;
 }

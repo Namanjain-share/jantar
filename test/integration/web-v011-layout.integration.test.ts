@@ -16,6 +16,11 @@
  *      is meant to (data-scroll-x: the terminal mirror, the code view, the
  *      Accounts runway, the phone's chip strips). KNOWN_SIDEWAYS lists what
  *      still does, with the commit that fixes it.
+ *   2. On a touch screen, no control smaller than 44 x 44 (A1), measured on
+ *      the controls wholly on screen. TARGET_SIZES says where it runs (c12
+ *      runs it at 1180 and 820; c33 at every touch size). KNOWN_UNDER_44
+ *      lists what still is, with the commit that fixes it; TARGET_ALLOW the
+ *      controls whose target is bigger than their box, each with its reason.
  *   3. At 1024 px and wider, no place leaves more than 35 % of its content
  *      width empty (layout-metric.ts). Empty states are exempt, and so are
  *      the states in WIDTH_EXEMPT, each with its reason. Every place that
@@ -49,7 +54,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
-import { emptyRanges, emptyShare, MAX_EMPTY } from '../../packages/web/test/layout-metric.js';
+import { emptyRanges, emptyShare, MAX_EMPTY, under44 } from '../../packages/web/test/layout-metric.js';
 import { browserReady, DIST, openTouchable, type Viewport, type Watch } from './browser.js';
 import { probeLayout, type Probe } from './layout-probe.js';
 import { lid } from './web-fixture-v04.js';
@@ -161,6 +166,26 @@ export const KNOWN_WIDE_GAPS: Record<string, number> = {};
 // at 1024 with the Mac's chrome gave its 44 pt header 628 px).
 export const KNOWN_SIDEWAYS: Record<string, string> = {};
 
+/** Where check 2 (44 pt on touch) runs: c12's two sizes, until c33 runs it at every touch size. */
+const TARGET_SIZES = new Set(['ipad-air-l', 'ipad-air-p']);
+
+/**
+ * Controls that are under 44 x 44 on a touch screen, by their name, with the commit that fixes them.
+ * Like the lists above, one that no longer is fails the test, so it is taken out.
+ */
+export const KNOWN_UNDER_44: Record<string, string> = {
+  // The Mac's status bar on a touch screen: 24 px buttons in a 24 px bar. The touch shell (c24) has none.
+  'Legend <': 'c24',
+  '5-hour usage per account. Open Accounts <': 'c24',
+};
+
+/** Controls whose target is bigger than their box (by the probe's name), each with its reason. */
+export const TARGET_ALLOW: Array<[RegExp, string]> = [
+  // The code view's line numbers: 44 wide under a finger (CodeView.tsx), a code line's own height tall; a
+  // 44 px line would show a third of the code. The line's link is also in the viewer's menu.
+  [/^Line \d+ </, "a code line's number is the line's height"],
+];
+
 const WIDE_FROM = 1024;
 
 /**
@@ -243,6 +268,7 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
         const problems: string[] = [];
         const wide: Record<string, number> = {};
         const measured = new Set<string>();
+        const seenSmall = new Set<string>();
         for (const [, states] of groups) {
           const fixture = fixtureOf(states[0]!);
           current = fixture;
@@ -285,6 +311,15 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
                 const inBands = p.fixed.filter((t) => t.y < top || t.y + t.h > p.vh - bottom);
                 if (inBands.length) problems.push(`${at}: in the safe areas: ${inBands.map((t) => `${t.name} (${t.x},${t.y} ${t.w}x${t.h})`).join('; ')} (${await shot()})`);
               }
+              // 2. 44 pt on touch (A1).
+              if (TARGET_SIZES.has(size) && (viewport.touch || viewport.phone)) {
+                const small = under44(p.whole).filter((t) => !TARGET_ALLOW.some(([re]) => re.test(t.name)));
+                for (const t of small) {
+                  const known = Object.keys(KNOWN_UNDER_44).find((k) => t.name.startsWith(k));
+                  if (known) seenSmall.add(known);
+                  else problems.push(`${at}: under 44: ${t.name} ${t.w}x${t.h}`);
+                }
+              }
               // 12. An item opened beside its list: the list shows its row (it scrolled to it).
               if (p.selected && !p.selected.inView) problems.push(`${at}: the open item's row is out of view in the list (${p.selected.name}) (${await shot()})`);
               // 3. The width, at 1024 and wider.
@@ -315,6 +350,9 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
             await close();
           }
         }
+        // 2. A known small control that no longer is: take it out of KNOWN_UNDER_44.
+        if (TARGET_SIZES.has(size) && (viewport.touch || viewport.phone) && !ONLY_STATES)
+          for (const k of Object.keys(KNOWN_UNDER_44)) if (!seenSmall.has(k)) problems.push(`${size}: "${k}" is 44 now: take it out of KNOWN_UNDER_44`);
         // 12. The user's four screens were measured at 1440 x 960.
         if (USERS_CASE.sizes.includes(size))
           for (const s of USERS_CASE.states) if ((!ONLY_STATES || ONLY_STATES.has(s)) && !measured.has(`${s}@${size}`)) problems.push(`${s} at ${size}: the user's case was not measured`);

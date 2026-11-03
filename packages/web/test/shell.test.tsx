@@ -144,7 +144,10 @@ describe('0.11: the chrome by width and pointer', () => {
     viewport(1180, { coarse: true });
     const a = renderApp({ state: busy() });
     expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
-    expect(screen.getByRole('listbox', { name: /All sessions/ })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy();
+    // c12: on a touch screen the top bar's strip is one 44 button that opens the legend (8 px cells are no targets).
+    expect(screen.queryByRole('listbox', { name: /All sessions/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Tap for the legend/ })).toBeTruthy();
     a.unmount();
     viewport(600, { coarse: true });
     renderApp({ state: busy() });

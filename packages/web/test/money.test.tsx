@@ -15,6 +15,7 @@ import { ApiError } from '../src/lib/api.js';
 import { formatAmount } from '../src/lib/money.js';
 import { AMOUNT_HINT, categoriesFor } from '../src/ui/screens/life/money/fields.js';
 import { NO_CURRENCY } from '../src/ui/screens/life/money/Money.js';
+import { layoutAt, type Layout } from '../src/ui/shell/layout.js';
 import { fakeApi, iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('money');
@@ -65,13 +66,13 @@ function month(over: Partial<MoneyMonth> = {}): MoneyMonth {
   };
 }
 
-function render(opts: { load?: (m?: string) => Promise<MoneyMonth>; status?: LifeStatus; path?: string; api?: Parameters<typeof fakeApi>[0]; conn?: 'live' | 'offline' } = {}) {
+function render(opts: { load?: (m?: string) => Promise<MoneyMonth>; status?: LifeStatus; path?: string; api?: Parameters<typeof fakeApi>[0]; conn?: 'live' | 'offline'; layout?: Layout } = {}) {
   const api = fakeApi({
     lifeStatus: vi.fn(async () => opts.status ?? status()),
     moneyMonth: vi.fn(opts.load ?? (async (m?: string) => month(m ? { month: m, entries: [], spent: 0, income: 0, byCategory: [] } : {}))),
     ...opts.api,
   });
-  return renderApp({ path: opts.path ?? '/money', api, state: stateWith({ features: { life: true } }), ...(opts.conn ? { status: opts.conn } : {}) });
+  return renderApp({ path: opts.path ?? '/money', api, state: stateWith({ features: { life: true } }), ...(opts.conn ? { status: opts.conn } : {}), ...(opts.layout ? { layout: opts.layout } : {}) });
 }
 
 const heading = () => screen.findByRole('heading', { level: 1, name: 'Finance' });
@@ -427,5 +428,20 @@ describe('0.11: a wide pane', () => {
     await heading();
     expect((await screen.findByRole('region', { name: 'Bills' })).className).not.toContain('rounded-dock');
     expect(document.querySelector('[data-columns]')).toBeNull();
+  });
+});
+
+describe('0.11 c12: the editor is a form sheet beside the phone', () => {
+  it('opens a budget as a form sheet on a wide window, a bottom sheet on the phone', async () => {
+    for (const [layout, present] of [
+      [layoutAt(1440), 'form'],
+      [layoutAt(390, { coarse: true }), 'bottom'],
+    ] as const) {
+      const r = render({ layout });
+      const cats = await screen.findByRole('region', { name: 'By category' });
+      fireEvent.click(within(cats).getByText('Rent'));
+      expect((await screen.findByRole('dialog', { name: 'Monthly budget for Rent' })).getAttribute('data-present')).toBe(present);
+      r.unmount();
+    }
   });
 });

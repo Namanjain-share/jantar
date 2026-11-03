@@ -291,7 +291,7 @@ function Body({
               <li key={t}>
                 <Link
                   href={shelfPath({ tag: t })}
-                  className="inline-flex h-28 items-center rounded-chip border border-line-strong px-8 font-mono text-rail font-data text-ink-2 transition-colors duration-120 ease-hover hover:bg-hover hover:text-ink coarse:h-44"
+                  className="inline-flex h-28 items-center rounded-chip border border-line-strong px-8 font-mono text-rail font-data text-ink-2 transition-colors duration-120 ease-hover hover:bg-hover hover:text-ink coarse:h-44 coarse:min-w-44 coarse:justify-center"
                 >
                   {t}
                 </Link>

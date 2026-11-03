@@ -15,6 +15,7 @@ import { ApiError } from '../src/lib/api.js';
 import { NO_PUSH, NO_PUSH_DEVICES, NO_PUSH_SWITCH } from '../src/ui/screens/life/shared/PushWarning.js';
 import { EMPTY, NO_CONTROL, OFFLINE, OFFLINE_WRITE } from '../src/ui/screens/life/shared/states.js';
 import { NOTHING_DUE, NO_MEDS_TODAY, zoneNote } from '../src/ui/screens/life/meds/data.js';
+import { layoutAt, type Layout } from '../src/ui/shell/layout.js';
 import { fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('meds');
@@ -100,8 +101,8 @@ function medsApi(resp: MedicinesResponse | ((day?: string) => Promise<MedicinesR
   });
 }
 
-function open(api = medsApi(), path = '/meds', conn: 'live' | 'offline' = 'live') {
-  return renderApp({ path, api, state: stateWith({ features: { life: true } }), status: conn });
+function open(api = medsApi(), path = '/meds', conn: 'live' | 'offline' = 'live', layout?: Layout) {
+  return renderApp({ path, api, state: stateWith({ features: { life: true } }), status: conn, ...(layout ? { layout } : {}) });
 }
 
 const heading = () => screen.findByRole('heading', { level: 1, name: 'Medicines' });
@@ -346,5 +347,18 @@ describe('0.11: a wide pane', () => {
     await heading();
     expect((await screen.findByRole('region', { name: 'Your medicines' })).className).not.toContain('rounded-dock');
     expect(screen.queryByRole('region', { name: 'Doses' })).toBeNull();
+  });
+});
+
+describe('0.11 c12: the editor is a form sheet beside the phone', () => {
+  it('opens a medicine as a form sheet on a wide window, a bottom sheet on the phone', async () => {
+    for (const [layout, present] of [
+      [layoutAt(1440), 'form'],
+      [layoutAt(390, { coarse: true }), 'bottom'],
+    ] as const) {
+      const r = open(medsApi(), `/meds?med=${PLACEBIN}`, 'live', layout);
+      expect((await screen.findByRole('dialog')).getAttribute('data-present')).toBe(present);
+      r.unmount();
+    }
   });
 });

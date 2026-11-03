@@ -29,7 +29,7 @@ export function Rail({ route, badges, onPalette }: { route: Route['name']; badge
             aria-current={on ? 'page' : undefined}
             title={item.label}
             className={clsx(
-              'relative flex size-40 items-center justify-center rounded-btn transition duration-120 ease-hover hover:bg-hover hover:text-ink',
+              'relative flex size-40 items-center justify-center rounded-btn transition duration-120 ease-hover hover:bg-hover hover:text-ink coarse:size-44',
               on ? 'rail-tick text-ink' : 'text-ink-3',
             )}
           >
@@ -40,7 +40,7 @@ export function Rail({ route, badges, onPalette }: { route: Route['name']; badge
       })}
       <button
         type="button"
-        className="mt-auto flex size-40 items-center justify-center rounded-btn text-ink-3 transition duration-120 ease-hover hover:bg-hover hover:text-ink"
+        className="mt-auto flex size-40 items-center justify-center rounded-btn text-ink-3 transition duration-120 ease-hover hover:bg-hover hover:text-ink coarse:size-44"
         aria-label="Jump to a session"
         title="Jump to a session (⌘K)"
         onClick={onPalette}

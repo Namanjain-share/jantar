@@ -17,7 +17,8 @@ import { Tag } from '../../kit/Tag.js';
 import { useWidth } from './hooks.js';
 import { burnText, resetIn, runwaySentence, type AccountRow, type Part } from './model.js';
 import { Runway, RunwayAxis } from './Runway.js';
-import { SessionCells, sessionCells } from './SessionCells.js';
+import { useLayout } from '../../shell/layout.js';
+import { SessionCells, sessionCells, SessionList } from './SessionCells.js';
 import { dayClock, hhmm } from './time.js';
 
 /** Column widths in px (dir-k.html .mx-r), the runway takes the rest. */
@@ -80,6 +81,8 @@ export function Matrix({
   onToggle: (id: number) => void;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>(MAX_WIDTH);
+  // 0.11: on a touch screen rows are 52, the alias a 44 button, and the sessions one 44 button that opens the row with them listed.
+  const { coarse } = useLayout();
   const fixed = COL.acct + COL.h5 + COL.burn + COL.sessions + COL.flags + (wide ? COL.resets + COL.d7 : 0);
   const runway = Math.max(160, width - fixed - RUNWAY_PAD - (wide ? 0 : LABEL_ROOM));
   const lead = COL.acct + COL.h5;
@@ -132,7 +135,7 @@ export function Matrix({
             <div
               role="row"
               className={clsx(
-                'flex h-40 cursor-pointer items-center border-b transition-colors duration-120 ease-hover hover:bg-hover',
+                'flex h-40 cursor-pointer items-center border-b transition-colors duration-120 ease-hover hover:bg-hover coarse:h-52',
                 isOpen ? 'border-transparent' : 'border-line',
               )}
               onClick={() => onToggle(r.id)}
@@ -143,7 +146,7 @@ export function Matrix({
                   aria-label={r.name}
                   aria-expanded={isOpen}
                   aria-controls={isOpen ? xid : undefined}
-                  className="-ml-8 flex h-28 min-w-0 items-center gap-12 rounded-chip px-8 text-left"
+                  className="-ml-8 flex h-28 min-w-0 items-center gap-12 rounded-chip px-8 text-left coarse:h-44"
                   onClick={(e) => {
                     e.stopPropagation();
                     onToggle(r.id);
@@ -183,7 +186,7 @@ export function Matrix({
                 {burnText(r.burnPerHour)}
               </span>
               <span role="cell" className="flex w-112 flex-none items-center">
-                <SessionCells cells={cells} moveTo={moveTo} />
+                <SessionCells cells={cells} moveTo={moveTo} {...(coarse ? { onCluster: () => onToggle(r.id), expanded: isOpen } : {})} />
               </span>
               <span role="cell" className="flex w-160 min-w-0 flex-none gap-6">
                 {r.flags.map((f) => (
@@ -201,6 +204,11 @@ export function Matrix({
                     <Sentence parts={runwaySentence(r, state, ceiling, now)} />
                   </p>
                   <Extra r={r} now={now} wide={wide} weeklyCeiling={weeklyCeiling} />
+                  {coarse ? (
+                    <div className="mt-8 px-16">
+                      <SessionList cells={cells} columns />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}

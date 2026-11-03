@@ -50,7 +50,7 @@ export function FoodToday({ kcal, target, weight, onWeight, weightBusy = false }
   if (onWeight) {
     return (
       <>
-        <Link href="/food" className="block px-16 pb-6 pt-10 transition-colors duration-120 ease-hover hover:bg-hover">
+        <Link href="/food" className="block min-h-44 px-16 pb-6 pt-10 transition-colors duration-120 ease-hover hover:bg-hover">
           {calories}
         </Link>
         <button

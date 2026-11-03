@@ -1,8 +1,9 @@
 /**
  * A small segmented control (dir-k.html .b-seg): a 32 px hairline box of
  * toggle buttons, the pressed one on --select. Used for the Accounts sort and
- * the Alerts kind filter. 44 px under a coarse pointer, and so is each
- * segment's hit area.
+ * the Alerts kind filter. 44 px under a coarse pointer, each segment the
+ * whole height (0.11: the box's hairline is drawn inside it there, so the
+ * segments fill the 44).
  */
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
@@ -35,7 +36,11 @@ export function Segmented<K extends string>({
     <div
       role="group"
       aria-label={label}
-      className={clsx('h-32 flex-none rounded-btn border border-line p-2 coarse:h-44', fill ? 'flex w-full' : 'inline-flex', className)}
+      className={clsx(
+        'h-32 flex-none rounded-btn border border-line p-2 coarse:h-44 coarse:border-0 coarse:p-0 coarse:ring-1 coarse:ring-inset coarse:ring-line',
+        fill ? 'flex w-full' : 'inline-flex',
+        className,
+      )}
     >
       {segments.map((s) => (
         <button
@@ -47,8 +52,7 @@ export function Segmented<K extends string>({
           className={clsx(
             'relative inline-flex items-center gap-6 whitespace-nowrap rounded-chip px-12 type-small font-medium transition-colors duration-120 ease-hover',
             fill && 'flex-1 justify-center',
-            // 38 px inside the 44 px box on touch: the hit area takes in the padding and border.
-            'coarse:before:absolute coarse:before:inset-x-0 coarse:before:-inset-y-3',
+            'coarse:h-full coarse:min-w-44 coarse:justify-center coarse:rounded-btn',
             // The ring keeps the picked one visible at night, where --select sits almost on --raised.
             s.key === value ? 'bg-select text-ink ring-1 ring-inset ring-line-strong' : 'text-ink-3 hover:text-ink',
           )}

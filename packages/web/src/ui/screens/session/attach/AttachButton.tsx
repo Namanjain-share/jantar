@@ -73,7 +73,7 @@ export function AttachButton({ sid, sends, phone, offline }: AttachButtonProps) 
   const square = clsx(
     'relative flex flex-none items-center justify-center rounded-btn border transition duration-120 ease-hover',
     'active:not-disabled:scale-97 motion-reduce:active:not-disabled:scale-100',
-    phone ? 'size-44' : 'size-40',
+    phone ? 'size-44' : 'size-40 coarse:size-44',
     offline ? 'border-line text-ink-3' : 'cursor-pointer border-line-strong text-ink hover:bg-hover',
   );
   const plus = <PlusIcon size={phone ? 20 : 16} weight="bold" aria-hidden="true" />;

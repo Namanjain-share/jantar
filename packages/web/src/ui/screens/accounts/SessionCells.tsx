@@ -3,6 +3,10 @@
  * tappable rows (the expanded phone row). Each cell is a link to the session;
  * hover or focus shows "web-app · fix login · Question · 4m". A session
  * moving off the account ends the cells with "→08".
+ *
+ * 0.11, on a touch screen (`onCluster`): 16 px cells named only on hover are
+ * no targets, so the cells are one 44 button that opens the account's row,
+ * which lists its sessions as 44 rows.
  */
 import type { Session, State } from '@jantar/protocol';
 import { useState } from 'react';
@@ -33,7 +37,18 @@ export function groupLabel(n: number): string {
   return `${n} session${n === 1 ? '' : 's'} on this account`;
 }
 
-export function SessionCells({ cells, moveTo }: { cells: SessionCell[]; moveTo: number | null }) {
+export function SessionCells({
+  cells,
+  moveTo,
+  onCluster,
+  expanded = false,
+}: {
+  cells: SessionCell[];
+  moveTo: number | null;
+  /** Touch: the cells are one button that opens the row with its sessions. */
+  onCluster?: () => void;
+  expanded?: boolean;
+}) {
   // The tooltip hangs left from the hovered cell: the column sits near the right edge.
   const [tip, setTip] = useState<{ i: number; right: number } | null>(null);
   const place = (i: number, el: HTMLElement) => {
@@ -41,6 +56,24 @@ export function SessionCells({ cells, moveTo }: { cells: SessionCell[]; moveTo: 
     setTip({ i, right: Math.max(0, groupW - (el.offsetLeft + el.offsetWidth) - 4) });
   };
   if (!cells.length) return <span className="type-mono text-ink-3">–</span>;
+  if (onCluster)
+    return (
+      <button
+        type="button"
+        aria-label={groupLabel(cells.length)}
+        aria-expanded={expanded}
+        className="-ml-8 flex h-44 min-w-44 items-center gap-3 overflow-hidden rounded-chip px-8 transition-colors duration-120 ease-hover hover:bg-select"
+        onClick={(e) => {
+          e.stopPropagation();
+          onCluster();
+        }}
+      >
+        {cells.map((c) => (
+          <StatusGlyph key={c.s.sid} state={c.glyph} size="cell" />
+        ))}
+        {moveTo !== null ? <span className="ml-4 type-mono text-ink-2">→{accountId(moveTo)}</span> : null}
+      </button>
+    );
   const shown = tip ? cells[tip.i] : undefined;
   return (
     <span role="group" aria-label={groupLabel(cells.length)} className="relative flex items-center gap-3">

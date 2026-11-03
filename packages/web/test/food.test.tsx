@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FoodDay, FoodEntry, FoodEstimate, LifeStatus } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { ESTIMATE_CHECK, NO_ESTIMATE } from '../src/ui/screens/life/food/AddFoodSheet.js';
+import { layoutAt, type Layout } from '../src/ui/shell/layout.js';
 import { fakeApi, iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('food', 'today');
@@ -55,13 +56,13 @@ function foodDay(over: Partial<FoodDay> = {}): FoodDay {
   };
 }
 
-function render(opts: { day?: (d?: string) => Promise<FoodDay>; status?: LifeStatus; path?: string; api?: Parameters<typeof fakeApi>[0]; conn?: 'live' | 'offline' } = {}) {
+function render(opts: { day?: (d?: string) => Promise<FoodDay>; status?: LifeStatus; path?: string; api?: Parameters<typeof fakeApi>[0]; conn?: 'live' | 'offline'; layout?: Layout } = {}) {
   const api = fakeApi({
     lifeStatus: vi.fn(async () => opts.status ?? status()),
     foodDay: vi.fn(opts.day ?? (async (d?: string) => foodDay(d && d !== DAY ? { day: d, entries: [], kcal: 0 } : {}))),
     ...opts.api,
   });
-  return renderApp({ path: opts.path ?? '/food', api, state: stateWith({ features: { life: true } }), ...(opts.conn ? { status: opts.conn } : {}) });
+  return renderApp({ path: opts.path ?? '/food', api, state: stateWith({ features: { life: true } }), ...(opts.conn ? { status: opts.conn } : {}), ...(opts.layout ? { layout: opts.layout } : {}) });
 }
 
 const heading = () => screen.findByRole('heading', { level: 1, name: 'Food' });
@@ -413,5 +414,18 @@ describe('0.11: a wide pane', () => {
     await screen.findByRole('list', { name: 'Eaten' });
     expect(screen.queryByRole('region', { name: 'Eaten' })).toBeNull();
     expect(document.querySelector('[data-columns]')).toBeNull();
+  });
+});
+
+describe('0.11 c12: the editor is a form sheet beside the phone', () => {
+  it('opens Add food as a form sheet on a wide window, a bottom sheet on the phone', async () => {
+    for (const [layout, present] of [
+      [layoutAt(1440), 'form'],
+      [layoutAt(390, { coarse: true }), 'bottom'],
+    ] as const) {
+      const r = render({ layout });
+      expect((await openAdd()).getAttribute('data-present')).toBe(present);
+      r.unmount();
+    }
   });
 });

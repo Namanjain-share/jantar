@@ -195,7 +195,8 @@ export function Field({ label, htmlFor, id, aside, children, className }: { labe
 
 /** The bottom row of a sheet: the main action first and wide, the others after it. */
 export function SheetActions({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={clsx('mt-16 flex flex-wrap items-center gap-8', className)}>{children}</div>;
+  // sheet-actions: a form sheet keeps this row in view at its foot (kit.css).
+  return <div className={clsx('sheet-actions mt-16 flex flex-wrap items-center gap-8', className)}>{children}</div>;
 }
 
 export type WriteResult<T> = { ok: true; value: T } | { ok: false };

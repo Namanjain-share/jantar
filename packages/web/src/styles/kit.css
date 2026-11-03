@@ -228,6 +228,41 @@
     transition-duration: calc(var(--drawer-swipe-strength, 0.62) * 420ms);
   }
 
+  /* ---------- Form sheet (0.11, kit/Sheet.tsx data-present="form") ----------
+     The same Drawer, placed near the top at every chrome wider than the
+     phone: --sheet-w wide, all corners rounded, no grabber, never taller
+     than the visual viewport (--vvh, lib/viewport.ts), its Save and Cancel
+     row kept in view at its foot. It drops in from just above. */
+  .sheet-viewport[data-present='form'] {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 48px);
+  }
+  .sheet-popup[data-present='form'] {
+    width: min(var(--sheet-w), calc(100% - 32px));
+    max-height: calc(var(--vvh, 100dvh) - env(safe-area-inset-top, 0px) - 48px - 16px - env(safe-area-inset-bottom, 0px));
+    border-radius: var(--radius-dock);
+    padding-top: 16px;
+    padding-bottom: 0;
+    transform: translateY(var(--drawer-swipe-movement-y, 0px));
+  }
+  .sheet-popup[data-present='form'][data-starting-style],
+  .sheet-popup[data-present='form'][data-ending-style] {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  .sheet-popup[data-present='form'] {
+    transition:
+      transform 420ms var(--ease-sheet),
+      opacity 200ms var(--ease-ui);
+  }
+  .sheet-popup[data-present='form'] .sheet-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin-top: 16px;
+    padding-block: 12px 16px;
+    background: var(--raised);
+  }
+
   /* ---------- Cmd-K palette (cmdk renders its own group headings) ---------- */
   .palette [cmdk-group-heading] {
     padding: 8px 20px 4px;

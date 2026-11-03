@@ -120,6 +120,19 @@ What changed for people who use Jantar, newest first. Versions before
   keyboards without one. In a text field only ⌘K, ⌘1–⌘9, ⌘. and Esc
   reach Jantar; ⌃K opens the palette only outside a field, since it
   deletes to the end of the line in one.
+- **Forms** open as a sheet near the top of the window on a Mac and an
+  iPad, 540 px wide, instead of a bottom sheet across the middle of a wide
+  window (a phone keeps its bottom sheet). Its Save and Cancel stay in
+  view, and once you have typed in it, tapping outside it, Esc or a swipe
+  asks before throwing that away. Resizing across the phone's width keeps
+  what you typed. On an iPad without a keyboard a sheet no longer raises
+  the on-screen keyboard until you tap a field.
+- On a touch screen every control is at least 44 pt at every width: the
+  session's composer, Send, attach and Rewrite, a question's own answer,
+  segmented controls (each segment the full height), Accounts' rows,
+  aliases and sessions (one button that opens the account's sessions),
+  filter chips, and the Mac-style rail and ⌘K button an iPad still shows
+  until its own sidebar.
 
 ## 0.11.0 (3 November 2026)
 

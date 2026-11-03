@@ -367,6 +367,7 @@ export function Shell() {
             dashed={dashed}
             onOpen={openSession}
             onPalette={() => setPalette(true)}
+            onLegend={() => setLegend(true)}
             onHome={() => connection?.kick()}
           />
         )}

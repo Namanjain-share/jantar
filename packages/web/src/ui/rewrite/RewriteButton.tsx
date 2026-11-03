@@ -37,7 +37,7 @@ export function RewriteButton({ sid, folder, sends, phone, offline }: RewriteBut
         aria-haspopup="dialog"
         disabled={!input || offline}
         onClick={() => rw.openFor(input)}
-        className={clsx(BUTTON_BASE, BUTTON_VARIANT.outline, 'flex-none px-12 text-small', phone ? 'h-44' : 'h-40')}
+        className={clsx(BUTTON_BASE, BUTTON_VARIANT.outline, 'flex-none px-12 text-small', phone ? 'h-44' : 'h-40 coarse:h-44')}
       >
         Rewrite
       </button>
