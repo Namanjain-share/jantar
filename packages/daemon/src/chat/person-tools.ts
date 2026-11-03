@@ -3,8 +3,9 @@
  *
  * `PERSON_CHAT_TOOLS` is the whole list her thread may ever list. Her run
  * gets `CHAT_TOOLS ∩ PERSON_CHAT_TOOLS` (the owner's to-do and weight tools,
- * over her space) plus the tools only she has (her plan, sleep, status and
- * a Do-it card to send {owner} an alert). Never a session, account, Intel,
+ * and his food tools while her food module is on, over her space) plus the
+ * tools only she has (her plan, sleep, status and a Do-it card to send
+ * {owner} an alert). Never a session, account, Intel,
  * meeting, money, post or journal tool, never `plan_set`, never anything
  * that assigns to anyone (spec 7.2's "Never" row; a test pins it).
  *
@@ -34,6 +35,7 @@ export const PERSON_CHAT_TOOLS: ReadonlySet<string> = new Set([
   'todos_find',
   'plan_get',
   'sleep_week',
+  'food_day',
   // Writes (Undo)
   'todo_add',
   'todo_edit',
@@ -42,6 +44,8 @@ export const PERSON_CHAT_TOOLS: ReadonlySet<string> = new Set([
   'project_add',
   'project_edit',
   'weight_set',
+  'food_add',
+  'food_edit',
   'step_state',
   'step_add',
   'between_tick',
@@ -74,6 +78,10 @@ export const PERSON_SHARED_TOOLS: ReadonlySet<string> = new Set([
   'project_add',
   'project_edit',
   'weight_set',
+  // Her food log (people/food.ts), listed only while her food module is on.
+  'food_day',
+  'food_add',
+  'food_edit',
   // P4: over her shared space's cafés (her deps' places module is that space's, as her).
   'places_find',
   'place_get',
@@ -84,8 +92,11 @@ export const PERSON_SHARED_TOOLS: ReadonlySet<string> = new Set([
   'visit_edit',
 ]);
 
-/** What she may ask to delete (a card; only her tap deletes). */
-export const PERSON_DELETE_KINDS = ['todo', 'project', 'weight', 'place', 'visit'] as const;
+/** What she may ask to delete (a card; only her tap deletes). A meal only while her food module is on. */
+export const PERSON_DELETE_KINDS = ['todo', 'project', 'weight', 'meal', 'place', 'visit'] as const;
+
+/** Her food log's tools: listed only while her food module is on (O6); people/food.ts refuses them anyway while it is off. */
+export const PERSON_FOOD_TOOLS: ReadonlySet<string> = new Set(['food_day', 'food_add', 'food_edit']);
 
 /** Her own writes (person-writes.ts applies them; each journals its Undo where one makes sense). */
 export const PERSON_WRITE_INPUTS = {
@@ -161,8 +172,8 @@ export const PERSON_ONLY_TOOLS: readonly ChatTool[] = [
     kind: 'card',
     part: 'cards',
     taints: false,
-    input: z.strictObject({ kind: z.enum(PERSON_DELETE_KINDS), id: z.string().min(1).max(200), parent: z.string().max(200).optional() }),
-    description: "Ask her to delete one of her to-dos or projects, a weight (its day as the id), a shared café, or one of her visits (the café's id as parent): a card appears in the chat and only her tap deletes.",
+    input: z.strictObject({ kind: z.enum(PERSON_DELETE_KINDS), id: z.string().min(1).max(200), parent: z.string().max(200).optional(), day: DayKeySchema.optional() }),
+    description: "Ask her to delete one of her to-dos or projects, a weight (its day as the id), a meal she logged (its id, with its day), a shared café, or one of her visits (the café's id as parent): a card appears in the chat and only her tap deletes.",
   },
   {
     name: 'list_find',
@@ -209,7 +220,18 @@ export function personPartOn(d: Pick<ChatDeps, 'life'>, part: ChatPart): boolean
   }
 }
 
-/** Her fixed <reach> list (C17): never the owner's switches. */
-export function personOnParts(): string[] {
-  return ['her day plan and status', 'her to-dos and projects', 'her weight', 'her sleep', 'the cafés and lists she shares with the owner', 'alerts to the owner (cards only)'];
+/** Her food module (O6): her food log and its tools exist only while it is on. */
+export function personFoodOn(d: Pick<ChatDeps, 'person'>): boolean {
+  const p = d.person;
+  if (!p) return false;
+  try {
+    return p.people.food?.on(p.pid) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Her fixed <reach> list (C17): never the owner's switches; her food log while her food module is on. */
+export function personOnParts(food = false): string[] {
+  return ['her day plan and status', 'her to-dos and projects', 'her weight', ...(food ? ['her food log'] : []), 'her sleep', 'the cafés and lists she shares with the owner', 'alerts to the owner (cards only)'];
 }

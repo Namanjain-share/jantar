@@ -92,8 +92,11 @@ function today(pc: PersonChat): string {
   return pc.people.openCore()?.today() ?? '';
 }
 
-/** P4: the owner's café reads, run over her deps (her shared space); a café he added or last edited taints the turn. */
-export const PERSON_DELEGATED_READS: ReadonlySet<string> = new Set(['places_find', 'place_get']);
+/**
+ * P4: the owner's café reads, run over her deps (her shared space); a café he added or last edited taints the
+ * turn. Her food log's day (food_day, over her deps' food log): only she writes it, so nothing in it is his.
+ */
+export const PERSON_DELEGATED_READS: ReadonlySet<string> = new Set(['places_find', 'place_get', 'food_day']);
 
 /** Her reads, by tool name. */
 export const PERSON_READS: Readonly<Record<string, PersonReadFn>> = {

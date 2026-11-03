@@ -53,6 +53,7 @@ import {
   type RewriteModel,
 } from '@jantar/protocol';
 import {
+  BUILT_PHASE,
   CHAT_KEEP_DAYS_DEFAULT,
   PERSON_CHAT_SENTENCES,
   PERSON_CHAT_UNFINISHED_MAX,
@@ -75,7 +76,7 @@ import { saveFastPath } from './fast.js';
 import { chatStdin, CHAT_HISTORY_TURNS, type HistoryTurn } from './input.js';
 import { ChatPhotos } from './photos.js';
 import { personChatDeps, personOfThread, threadOf } from './person-deps.js';
-import { personOnParts } from './person-tools.js';
+import { personFoodOn, personOnParts } from './person-tools.js';
 import { ChatStore, type PhotoRow, type TurnRecord } from './store.js';
 import { dismissCard, runCard, undoChange } from './taps.js';
 import { countSentence, replyText, speakable } from './text.js';
@@ -478,7 +479,8 @@ export class ChatServiceImpl implements ChatService {
       /* the neutral word */
     }
     const ready = l.value.ready.ok && left === 0 ? { ok: false, reason: PERSON_CHAT_SENTENCES.usedUp } : l.value.ready;
-    return { ok: true, value: { ...l.value, ready, left, perDay, ownerCanRead: canRead, disclosure: chatDisclosure(owner, l.value.keepDays, canRead) } };
+    const food = this.deps.life.people.food?.on(actor.personId) === true;
+    return { ok: true, value: { ...l.value, ready, left, perDay, ownerCanRead: canRead, disclosure: chatDisclosure(owner, l.value.keepDays, canRead, BUILT_PHASE, food) } };
   }
 
   /** v0.11 People: her thread's size (no text), messages left today, and whether it can run. */
@@ -974,7 +976,7 @@ export class ChatServiceImpl implements ChatService {
       const now = new Date(ctx.clock.now());
       const z = this.zone();
       // C17: her <reach> is a fixed person list, never his switches.
-      const on = pid !== null ? personOnParts() : onParts(s, this.deps);
+      const on = pid !== null ? personOnParts(personFoodOn(deps)) : onParts(s, this.deps);
       const input = chatStdin({
         ...(pid !== null ? { person: { owner: this.deps.life.people.ownerName(), ownerCanRead: this.ownerCanRead(pid), cafes: false } } : {}),
         today: dayKeyOf(now, z.timezone),

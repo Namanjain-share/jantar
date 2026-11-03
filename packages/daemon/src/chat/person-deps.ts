@@ -7,12 +7,13 @@
  * - `personChatDeps(base, pc)`: what her run and her taps see. Life is her
  *   space and nothing else: her to-dos and projects (through the People
  *   module's rules: his assigned items refuse an edit or a delete), her
- *   weights; every other Life module, Intel, Meetings, the board, usage and
+ *   weights, and her food log while her food module is on (people/food.ts
+ *   refuses every call while it is off); every other Life module, Intel, Meetings, the board, usage and
  *   pushes are denied (any call throws, so a tool listed by mistake fails
  *   closed, spec 7.3). She never reaches his space, his switches or his
  *   sessions, whatever the tool list says.
  */
-import type { ProjectBody, ProjectPatch, SnoozePreset, TodoBody, TodoPatch, TodosQuery, WeightBody } from '@jantar/protocol';
+import type { FoodBody, FoodPatch, ProjectBody, ProjectPatch, SnoozePreset, TodoBody, TodoPatch, TodosQuery, WeightBody } from '@jantar/protocol';
 import { chatThreadOf } from '@jantar/protocol/people';
 import type { Actor, LifeResult, LifeService, TodosModule } from '../contracts.js';
 import type { PeopleModule } from '../life/people/module.js';
@@ -106,10 +107,17 @@ function herTodos(pc: PersonChat): TodosModule {
   });
 }
 
-/** Her weights only (her food module, if any, is not her assistant's: spec 7.2 lists food only with the module, and P1 serves none). */
-function herWeights(pc: PersonChat): LifeService['food'] {
+/**
+ * Her weights, and her food log (spec 7.2: food only with her food module; people/food.ts answers its one 404
+ * while it is off). No targets, saved-food delete or Ask Claude: those stay out of her assistant's reach.
+ */
+function herFood(pc: PersonChat): LifeService['food'] {
   const { pid, people } = pc;
   const w: Record<string, unknown> = {
+    day: (day?: string) => people.food?.herDay(pid, day) ?? CLOSED,
+    add: (body: FoodBody, actor: Actor) => people.food?.herAdd(pid, body, actor) ?? CLOSED,
+    update: (id: string, patch: FoodPatch, actor: Actor) => people.food?.herUpdate(pid, id, patch, actor) ?? CLOSED,
+    remove: (id: string, actor: Actor) => people.food?.herDelete(pid, id, actor) ?? CLOSED,
     weightOn: (day: string): LifeResult<number | null> => {
       const sp = people.space;
       if (!sp) return CLOSED;
@@ -150,7 +158,7 @@ export function personChatDeps(base: ChatDeps, pc: PersonChat): ChatDeps {
       throw new Error('not_in_her_space:today');
     },
     todos: herTodos(pc),
-    food: herWeights(pc),
+    food: herFood(pc),
     medicines: denied<LifeService['medicines']>('medicines'),
     // P4: the cafés of her shared space, as her (her visits are hers; his can't be changed).
     places: herPlaces(base, pc),

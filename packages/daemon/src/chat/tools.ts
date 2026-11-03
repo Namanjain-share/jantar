@@ -71,7 +71,7 @@ import {
 } from './actions.js';
 import { fromMeeting } from './items.js';
 import { PERSON_DELEGATED_READS, PERSON_READS } from './person-reads.js';
-import { PERSON_CHAT_TOOLS, PERSON_ONLY_TOOLS, PERSON_SHARED_TOOLS, PERSON_WRITE_MODULE, isPersonWriteTool, personPartOn, type PersonWriteTool } from './person-tools.js';
+import { PERSON_CHAT_TOOLS, PERSON_FOOD_TOOLS, PERSON_ONLY_TOOLS, PERSON_SHARED_TOOLS, PERSON_WRITE_MODULE, isPersonWriteTool, personFoodOn, personPartOn, type PersonWriteTool } from './person-tools.js';
 import type { ChangeJson, ChatStore } from './store.js';
 import { clean, cut, data, dataNote, line } from './text.js';
 import type { ChatDeps, ChatPart, ChatWriteLimiter } from './types.js';
@@ -283,9 +283,12 @@ export function partOn(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings' | 'per
  */
 export const PERSON_TOOLS: readonly ChatTool[] = [...CHAT_TOOLS.filter((t) => PERSON_SHARED_TOOLS.has(t.name)), ...PERSON_ONLY_TOOLS].filter((t) => PERSON_CHAT_TOOLS.has(t.name));
 
-/** The tools of a turn: those whose part is on now. v0.11 People: on her deps, her tools only. */
+/** The tools of a turn: those whose part is on now. v0.11 People: on her deps, her tools only (her food log's while her food module is on). */
 export function toolsFor(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings' | 'person'>): ChatTool[] {
-  if (d.person) return PERSON_TOOLS.filter((t) => partOn(s, d, t.part));
+  if (d.person) {
+    const food = personFoodOn(d);
+    return PERSON_TOOLS.filter((t) => partOn(s, d, t.part) && (food || !PERSON_FOOD_TOOLS.has(t.name)));
+  }
   return CHAT_TOOLS.filter((t) => partOn(s, d, t.part));
 }
 

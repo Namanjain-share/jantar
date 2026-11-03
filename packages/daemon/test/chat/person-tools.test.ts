@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CHAT_MIGRATIONS, openChatDb } from '../../src/chat/db.js';
 import { personChatDeps, threadOf } from '../../src/chat/person-deps.js';
-import { PERSON_CHAT_TOOLS, PERSON_ONLY_TOOLS } from '../../src/chat/person-tools.js';
+import { PERSON_CHAT_TOOLS, PERSON_FOOD_TOOLS, PERSON_ONLY_TOOLS } from '../../src/chat/person-tools.js';
 import { ChatStore } from '../../src/chat/store.js';
 import { stripImageMetadata } from '../../src/chat/strip.js';
 import { CHAT_TOOLS, PERSON_TOOLS, TurnTools, toolsFor } from '../../src/chat/tools.js';
@@ -67,8 +67,8 @@ describe('her deps (spec 7.3)', () => {
     expect(() => her.intel.list({ limit: 5 })).toThrow(/not_in_her_space/);
     expect(() => her.board.state()).toThrow(/not_in_her_space/);
     expect(() => her.life.todos.forFolder('/tmp')).toThrow(/not_in_her_space/);
-    // Her tool list on her deps is hers alone, whatever his switches say.
-    expect(toolsFor(rig.ctx.settings.get(), her).map((t) => t.name).sort()).toEqual([...PERSON_CHAT_TOOLS].sort());
+    // Her tool list on her deps is hers alone, whatever his switches say (her food log's tools only with her food module on: none here).
+    expect(toolsFor(rig.ctx.settings.get(), her).map((t) => t.name).sort()).toEqual([...PERSON_CHAT_TOOLS].filter((n) => !PERSON_FOOD_TOOLS.has(n)).sort());
     // A turn whose list named money_month by mistake: the part is not hers and the read is not hers.
     const id = turnId();
     rig.store.inThread('p:01JASHA0000000000000000000').insertTurn({ id, at: rig.ctx.clock.iso(), via: 'phone', text: '', photos: [], state: 'running', tainted: false, refused: 0, by: 'person:01JASHA0000000000000000000:d' });
