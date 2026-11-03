@@ -16,12 +16,13 @@
  *   (and sits in no company).
  * - Duplicates warn and never block (W29): the same e-mail, then phone
  *   (its last 10 digits), then name (a hint). The default is Skip for an
- *   e-mail or phone match and Add otherwise.
+ *   e-mail or phone match and Add otherwise. The clients are folded once
+ *   per preview or import (life-core `similarIndex`), never once a row.
  *
  * A preview is kept in memory for 30 minutes (at most 2 at a time) so the
  * phone sends the file once; nothing of it is logged.
  */
-import { guessImportMapping, importRowFields, normalizeContactLink, normalizeContactPhone, normalizeTags, parseCsv, parseVCard, similarContacts, vcardRowFields, type ImportField, type ImportRow, type SimilarCandidate } from '@jantar/life-core';
+import { guessImportMapping, importRowFields, normalizeContactLink, normalizeContactPhone, normalizeTags, parseCsv, parseVCard, similarIn, similarIndex, vcardRowFields, type ImportField, type ImportRow, type SimilarCandidate } from '@jantar/life-core';
 import { ContactEmailSchema, ContactPhoneValueSchema, WORK_LIMITS, type WorkImportAction, type WorkImportField, type WorkImportFields, type WorkSimilarWhySchema } from '@jantar/protocol/work';
 import type { z } from 'zod';
 
@@ -127,10 +128,15 @@ export function fitRow(row: ImportRow): WorkImportFields | null {
   return out;
 }
 
-/** Every row of a file under `mapping`, with its warning against `book` and its default; and how many were skipped. */
+/**
+ * Every row of a file under `mapping`, with its warning against `book` and its default; and how many were skipped.
+ * v0.13: the book's e-mails, phones and names are folded once for the whole file (2,000 rows against 5,000
+ * clients held the event loop about 15 s when each row folded the book again).
+ */
 export function previewRows(src: ImportSource, mapping: readonly ImportField[], book: readonly (SimilarCandidate & { name: string })[]): { rows: PreviewRow[]; skipped: number } {
   const raw = src.format === 'vcf' ? src.cards : src.cells.map((cells) => importRowFields(cells, src.columns, mapping));
   const names = new Map(book.map((c) => [c.id, c.name]));
+  const folded = similarIndex(book);
   const rows: PreviewRow[] = [];
   let skipped = 0;
   raw.forEach((r, index) => {
@@ -139,7 +145,7 @@ export function previewRows(src: ImportSource, mapping: readonly ImportField[], 
       skipped += 1;
       return;
     }
-    const hit = similarContacts({ name: fields.name, emails: fields.emails, phones: fields.phones }, book, 1)[0];
+    const hit = similarIn(folded, { name: fields.name, emails: fields.emails, phones: fields.phones }, 1)[0];
     const row: PreviewRow = { index, fields, action: hit && hit.why !== 'name' ? 'skip' : 'add' };
     if (hit) row.dup = { id: hit.id, name: names.get(hit.id) ?? '', why: hit.why };
     rows.push(row);

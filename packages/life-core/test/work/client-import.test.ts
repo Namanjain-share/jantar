@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { guessImportMapping, importKind, importRowFields, importState, similarContacts, vcardRowFields } from '../../src/work/client-import.js';
+import {
+  guessImportMapping,
+  importKind,
+  importRowFields,
+  importState,
+  similarContacts,
+  similarIn,
+  similarIndex,
+  vcardRowFields,
+  type SimilarCandidate,
+  type SimilarProbe,
+  type SimilarWhy,
+} from '../../src/work/client-import.js';
 import { parseCsv } from '../../src/work/csv.js';
-import { parseVCard } from '../../src/work/contacts.js';
+import { normalizeContactEmail, normalizeContactName, normalizeContactPhone, parseVCard } from '../../src/work/contacts.js';
 
 describe('guessImportMapping', () => {
   it('maps common header names, any case or punctuation', () => {
@@ -116,5 +128,49 @@ describe('similarContacts (W29)', () => {
 
   it('finds nothing for a blank probe', () => {
     expect(similarContacts({ name: '  ', emails: [''], phones: ['12'] }, book)).toEqual([]);
+  });
+
+  it('a book folded once (similarIndex) answers every probe as a fresh check of the whole book does', () => {
+    // The check as it was before the index: every contact folded again for each probe.
+    const rank = { email: 0, phone: 1, name: 2 } as const;
+    const fresh = (probe: SimilarProbe, list: readonly SimilarCandidate[], limit = 5, skip: ReadonlySet<string> = new Set()) => {
+      const emails = new Set((probe.emails ?? []).map(normalizeContactEmail).filter(Boolean));
+      const phones = new Set((probe.phones ?? []).map(normalizeContactPhone).filter(Boolean));
+      const name = probe.name ? normalizeContactName(probe.name) : '';
+      const hits: { id: string; why: SimilarWhy; order: number }[] = [];
+      list.forEach((c, order) => {
+        if (skip.has(c.id)) return;
+        let why: SimilarWhy | null = null;
+        if (emails.size > 0 && c.emails.some((e) => emails.has(normalizeContactEmail(e)))) why = 'email';
+        else if (phones.size > 0 && c.phones.some((p) => phones.has(normalizeContactPhone(p)))) why = 'phone';
+        else if (name && normalizeContactName(c.name) === name) why = 'name';
+        if (why) hits.push({ id: c.id, why, order });
+      });
+      hits.sort((a, b) => rank[a.why] - rank[b.why] || a.order - b.order);
+      return hits.slice(0, limit).map(({ id, why }) => ({ id, why }));
+    };
+    // A made-up book with shared e-mails, phones and names, in a fixed pseudo-random order.
+    let seed = 7;
+    const pick = <T>(xs: readonly T[]): T => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return xs[seed % xs.length] as T;
+    };
+    const NAMES = ['Riya Kapoor', 'Dr. Riya Kapoor', 'R. Kapoor', 'Arjun Rao', 'arjun  rao', 'Acme Studio', 'ACME studio', '', '★'];
+    const EMAILS = ['riya@acme.test', 'RIYA@acme.test ', 'arjun@northwind.test', 'ops@acme.test', ''];
+    const PHONES = ['+91 98765 43210', '098765 43210', '9876543210', '+1 555 0100 222', '12', '5550100', ''];
+    const list: SimilarCandidate[] = Array.from({ length: 60 }, (_, i) => ({
+      id: `c${i % 50}`,
+      name: pick(NAMES),
+      emails: Array.from({ length: i % 3 }, () => pick(EMAILS)),
+      phones: Array.from({ length: (i + 1) % 3 }, () => pick(PHONES)),
+    }));
+    const index = similarIndex(list);
+    for (let i = 0; i < 200; i++) {
+      const probe: SimilarProbe = { name: pick(NAMES), emails: [pick(EMAILS), pick(EMAILS)].slice(0, i % 3), phones: [pick(PHONES)].slice(0, i % 2) };
+      const skip = new Set(i % 4 === 0 ? [`c${i % 50}`, 'c3'] : []);
+      const limit = (i % 6) + 1;
+      expect(similarIn(index, probe, limit, skip), JSON.stringify({ probe, limit, skip: [...skip] })).toEqual(fresh(probe, list, limit, skip));
+      expect(similarContacts(probe, list, limit, skip)).toEqual(fresh(probe, list, limit, skip));
+    }
   });
 });

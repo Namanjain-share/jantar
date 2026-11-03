@@ -11,11 +11,13 @@
  *   too (B3); an expired preview is a fixed sentence;
  * - Undo removes only the contacts nothing changed or linked since, counts
  *   the rest, and works once, for 7 days;
- * - the export is a CSV with formulas guarded.
+ * - the export is a CSV with formulas guarded;
+ * - a preview and an import at the caps (2,000 rows, 5,000 clients) each
+ *   take well under 3 s (the duplicate check folds the clients once).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { IMPORT_FIELDS } from '@jantar/life-core';
-import { WORK_IMPORT_FIELDS } from '@jantar/protocol/work';
+import { WORK_IMPORT_FIELDS, WORK_LIMITS } from '@jantar/protocol/work';
 import type { Actor, TodosModule, WorkModule } from '../../src/contracts.js';
 import { createTestContext, createTestLifeCore, type TestLifeCore } from '../../src/core/testing.js';
 import { LIFE_MODULE_BUILDERS } from '../../src/life/index.js';
@@ -218,4 +220,37 @@ describe('the export', () => {
       core2.close();
     }
   });
+});
+
+describe('the cost at the caps (W27, WORK_LIMITS)', () => {
+  // Before: each row's duplicate check folded every client again, so one preview of 2,000 rows against
+  // 5,000 clients held the daemon's event loop for about 15 s, and the import ran the check again.
+  it('a 2,000-row preview and its import against 5,000 clients each take well under 3 s (made-up names)', () => {
+    const pad = (i: number, n: number) => String(i).padStart(n, '0');
+    const file = (lines: string[]) => ['Name,Email,Phone,Title', ...lines].join('\n');
+    const client = (i: number) => `Client ${pad(i, 4)},c${i}@example.com,+91 98${pad(i, 8)},`;
+    for (const [from, to] of [[0, 2000], [2000, 4000], [4000, WORK_LIMITS.contacts]] as const) {
+      const p = ok(work.importPreview({ format: 'csv', text: file(Array.from({ length: to - from }, (_, k) => client(from + k))) }, PHONE));
+      ok(work.importRows({ previewId: p.previewId, rows: p.rows.map((r) => ({ index: r.index, action: 'add' as const })) }, PHONE));
+    }
+    expect(core.db.prepare('SELECT COUNT(*) AS n FROM work_contacts').get()).toEqual({ n: WORK_LIMITS.contacts });
+
+    // The same people again under other names: the first thousand by e-mail, the rest by phone only.
+    const again = Array.from({ length: WORK_LIMITS.importRows }, (_, i) =>
+      i < 1000 ? `Person ${pad(i, 4)},c${i}@example.com,,Head of Ops` : `Person ${pad(i, 4)},p${i}@example.org,098${pad(i, 8)},Head of Ops`,
+    );
+    let t0 = performance.now();
+    const p = ok(work.importPreview({ format: 'csv', text: file(again) }, PHONE));
+    const preview = performance.now() - t0;
+    expect(p.rows.map((r) => r.dup?.why)).toEqual(Array.from({ length: WORK_LIMITS.importRows }, (_, i) => (i < 1000 ? 'email' : 'phone')));
+    expect(p.rows.every((r, i) => r.dup?.name === `Client ${pad(i, 4)}` && r.action === 'skip')).toBe(true);
+
+    t0 = performance.now();
+    const done = ok(work.importRows({ previewId: p.previewId, rows: p.rows.map((r) => ({ index: r.index, action: 'fill' as const })) }, PHONE));
+    const imported = performance.now() - t0;
+    expect(done).toMatchObject({ added: 0, filled: WORK_LIMITS.importRows, skipped: 0 });
+
+    expect(preview, `preview ${preview.toFixed(0)} ms`).toBeLessThan(3000);
+    expect(imported, `import ${imported.toFixed(0)} ms`).toBeLessThan(3000);
+  }, 180_000);
 });

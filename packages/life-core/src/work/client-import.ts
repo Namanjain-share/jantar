@@ -226,10 +226,71 @@ export interface SimilarCandidate {
 }
 
 /**
+ * A book folded once: each e-mail, phone (its last 10 digits) and name
+ * key to the places in the book that have it. v0.13: an import checks up
+ * to 2,000 rows against up to 5,000 contacts; folding every contact again
+ * for each row held the daemon for about 15 s, so a caller with many
+ * probes builds this once and asks `similarIn` for each.
+ */
+export interface SimilarIndex {
+  readonly ids: readonly string[];
+  readonly emails: ReadonlyMap<string, readonly number[]>;
+  readonly phones: ReadonlyMap<string, readonly number[]>;
+  readonly names: ReadonlyMap<string, readonly number[]>;
+}
+
+export function similarIndex(book: readonly SimilarCandidate[]): SimilarIndex {
+  const emails = new Map<string, number[]>();
+  const phones = new Map<string, number[]>();
+  const names = new Map<string, number[]>();
+  const put = (map: Map<string, number[]>, keys: Iterable<string>, order: number) => {
+    for (const key of keys) {
+      if (!key) continue;
+      const at = map.get(key);
+      if (at) at.push(order);
+      else map.set(key, [order]);
+    }
+  };
+  book.forEach((c, order) => {
+    put(emails, new Set(c.emails.map(normalizeContactEmail)), order);
+    put(phones, new Set(c.phones.map(normalizeContactPhone)), order);
+    put(names, [normalizeContactName(c.name)], order);
+  });
+  return { ids: book.map((c) => c.id), emails, phones, names };
+}
+
+/** similarContacts against a book folded once (`similarIndex`): the same answer, a few lookups a probe. */
+export function similarIn(
+  index: SimilarIndex,
+  probe: SimilarProbe,
+  limit = 5,
+  skip: ReadonlySet<string> = new Set(),
+): { id: string; why: SimilarWhy }[] {
+  const name = probe.name ? normalizeContactName(probe.name) : '';
+  const rank: Record<SimilarWhy, number> = { email: 0, phone: 1, name: 2 };
+  // Each place once, by the first (strongest) reason that reaches it.
+  const best = new Map<number, SimilarWhy>();
+  const reach = (map: ReadonlyMap<string, readonly number[]>, keys: Iterable<string>, why: SimilarWhy) => {
+    for (const key of keys) {
+      if (!key) continue;
+      for (const order of map.get(key) ?? []) if (!best.has(order) && !skip.has(index.ids[order] ?? '')) best.set(order, why);
+    }
+  };
+  reach(index.emails, (probe.emails ?? []).map(normalizeContactEmail), 'email');
+  reach(index.phones, (probe.phones ?? []).map(normalizeContactPhone), 'phone');
+  reach(index.names, [name], 'name');
+  return [...best]
+    .sort(([a, wa], [b, wb]) => rank[wa] - rank[wb] || a - b)
+    .slice(0, limit)
+    .map(([order, why]) => ({ id: index.ids[order] ?? '', why }));
+}
+
+/**
  * The contacts `probe` may be, strongest first: a shared e-mail, then a
  * shared phone (its last 10 digits), then the same folded name (a hint).
  * Each contact once, by its strongest reason; at most `limit`. `skip` holds
  * ids never to offer (the probe itself, or his "not a duplicate" rulings).
+ * One probe; many against one book go through `similarIndex` once.
  */
 export function similarContacts(
   probe: SimilarProbe,
@@ -237,19 +298,5 @@ export function similarContacts(
   limit = 5,
   skip: ReadonlySet<string> = new Set(),
 ): { id: string; why: SimilarWhy }[] {
-  const emails = new Set((probe.emails ?? []).map(normalizeContactEmail).filter(Boolean));
-  const phones = new Set((probe.phones ?? []).map(normalizeContactPhone).filter(Boolean));
-  const name = probe.name ? normalizeContactName(probe.name) : '';
-  const rank: Record<SimilarWhy, number> = { email: 0, phone: 1, name: 2 };
-  const hits: { id: string; why: SimilarWhy; order: number }[] = [];
-  book.forEach((c, order) => {
-    if (skip.has(c.id)) return;
-    let why: SimilarWhy | null = null;
-    if (emails.size > 0 && c.emails.some((e) => emails.has(normalizeContactEmail(e)))) why = 'email';
-    else if (phones.size > 0 && c.phones.some((p) => phones.has(normalizeContactPhone(p)))) why = 'phone';
-    else if (name && normalizeContactName(c.name) === name) why = 'name';
-    if (why) hits.push({ id: c.id, why, order });
-  });
-  hits.sort((a, b) => rank[a.why] - rank[b.why] || a.order - b.order);
-  return hits.slice(0, limit).map(({ id, why }) => ({ id, why }));
+  return similarIn(similarIndex(book), probe, limit, skip);
 }
