@@ -9,7 +9,7 @@
  *                          (⌘\ or its button, remembered on this device)
  *   medium, or folded      the labelled rail, 72: the window-controls zone
  *                          (decorative mark), the sidebar button, the places
- *                          (icon over a rail label, 64 x 56), then Jump (⌘K)
+ *                          (icon over a rail label, 64 x 56), then Search (⌘K)
  *                          and the accounts glance at its foot. The sidebar
  *                          button shows the sidebar 300 wide over the panes,
  *                          with a scrim (plain markup: a tap on the scrim, a
@@ -77,14 +77,14 @@ function TouchRail({ route, badges, needs, features, pairs, active, conn, single
       </ul>
       <button
         type="button"
-        aria-label="Jump to a session"
-        title="Jump to a session (⌘K)"
+        aria-label="Search or jump"
+        title="Search or jump (⌘K)"
         onClick={onPalette}
         className="flex h-56 w-64 flex-none flex-col items-center justify-center gap-4 rounded-btn text-ink-3 transition-colors duration-120 ease-hover hover:bg-hover hover:text-ink"
       >
         <MagnifyingGlassIcon size={20} aria-hidden="true" />
         <span aria-hidden="true" className="type-rail">
-          Jump
+          Search
         </span>
       </button>
       <div className="flex-none pb-4">

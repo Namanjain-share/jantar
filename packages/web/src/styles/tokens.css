@@ -255,7 +255,7 @@
 
   --breakpoint-md: 768px; /* rail + full-width ledger */
   --breakpoint-lg: 1024px; /* ledger column 360 + detail pane */
-  --breakpoint-xl: 1280px; /* the top bar's "Jump to a session" words (TopBar xl:inline) */
+  --breakpoint-xl: 1280px; /* the top bar's "Search or jump" words (TopBar xl:inline) */
 
   /* 0.12: pane sizes for container queries (@md:, @split:, @wide:, ...), on
      @container elements; named here because the theme is wiped. Tailwind

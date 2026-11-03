@@ -96,7 +96,7 @@ describe('desktop shell', () => {
   it('opens the palette with Cmd-K, and the shortcuts and the legend with ? (c30)', async () => {
     const { history } = renderApp({ state: busy() });
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    const input = await screen.findByPlaceholderText('Jump to a session or account');
+    const input = await screen.findByPlaceholderText('Search or jump');
     fireEvent.change(input, { target: { value: 'infra' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(history.entries.at(-1)).toBe('/s/infra');
@@ -181,17 +181,18 @@ describe('phone shell', () => {
     expect(screen.queryByRole('button', { name: /Tap for the legend/ })).toBeNull();
   });
 
-  it('v0.5.3: a magnifier in the header while the shelf is on opens it with the search box focused', async () => {
+  it('0.13.0 (F1): the magnifier on every phone screen opens the search sheet; its last row opens the shelf with the box focused', async () => {
     const intelList = vi.fn(async () => ({ items: [], next: null, total: 0, types: [], tags: [] }));
     const api = fakeApi({ intelList, intelSources: vi.fn(async () => ({ sources: [] })) });
     const { router } = renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: true } }), api });
     const header = screen.getByRole('banner');
-    const glass = within(header).getByRole('link', { name: 'Search the Intel shelf' });
-    expect(glass.getAttribute('href')).toBe('/intel?focus=search');
+    const glass = within(header).getByRole('button', { name: 'Search' });
     // After the strip, a 44 px target.
     expect(glass.previousElementSibling?.getAttribute('aria-label')).toMatch(/Tap for the legend/);
     expect(glass.className).toContain('size-44');
     fireEvent.click(glass);
+    const sheet = await screen.findByRole('dialog', { name: 'Search or jump' });
+    fireEvent.click(within(sheet).getByRole('option', { name: /Search Intel only/ }));
     const box = await screen.findByLabelText('Search the shelf');
     await waitFor(() => expect(document.activeElement).toBe(box));
     // The word leaves the address once used.
@@ -199,28 +200,31 @@ describe('phone shell', () => {
     expect(intelList).toHaveBeenCalled();
   });
 
-  it('v0.5.3: on a filtered shelf the magnifier starts a new search (empty box, no type or tag); Back returns to the filtered view', async () => {
+  it('0.13.0: on a filtered shelf, "Search Intel only" with nothing typed starts a new search (empty box, no type or tag); Back returns to the filtered view', async () => {
     const intelList = vi.fn(async () => ({ items: [], next: null, total: 0, types: [], tags: [] }));
     const api = fakeApi({ intelList, intelSources: vi.fn(async () => ({ sources: [] })) });
     const { router } = renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: true } }), api, path: '/intel?q=hooks&type=tool&tag=cli' });
     const box = (await screen.findByLabelText('Search the shelf')) as HTMLInputElement;
     expect(box.value).toBe('hooks');
-    fireEvent.click(screen.getByRole('link', { name: 'Search the Intel shelf' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Search or jump' })).getByRole('option', { name: /Search Intel only/ }));
     await waitFor(() => expect(router.getState().route).toEqual({ name: 'intel' }));
     await waitFor(() => expect(document.activeElement).toBe(box));
     expect(box.value).toBe('');
-    // The magnifier pushed one entry (its focus word then left it in place): Back is the search the user had.
+    // The row pushed one entry (its focus word then left it in place): Back is the search the user had.
     act(() => router.getState().back());
     await waitFor(() => expect(router.getState().route).toEqual({ name: 'intel', q: 'hooks', type: 'tool', tag: 'cli' }));
     await waitFor(() => expect(box.value).toBe('hooks'));
   });
 
-  it('v0.5.3: no magnifier while the shelf is off, nor on an open session', () => {
+  it('0.13.0: the magnifier with the shelf off too (no "Search Intel only" then); none on an open session', async () => {
     const a = renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: false } }) });
-    expect(screen.queryByRole('link', { name: 'Search the Intel shelf' })).toBeNull();
+    fireEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Search' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Search or jump' });
+    expect(within(sheet).queryByRole('option', { name: /Search Intel only/ })).toBeNull();
     a.unmount();
     renderApp({ state: stateWith({ sessions: [session('web-app')], features: { intel: true } }), path: '/s/web-app' });
-    expect(screen.queryByRole('link', { name: 'Search the Intel shelf' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
   });
 
   it('gives an open session the whole screen', () => {
@@ -337,7 +341,7 @@ describe('0.12 c10: the shell follows the visual viewport', () => {
     expect(layer).toBeTruthy();
     // The palette's dialog portals into the layer.
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    const input = await screen.findByPlaceholderText('Jump to a session or account');
+    const input = await screen.findByPlaceholderText('Search or jump');
     expect(layer?.contains(input)).toBe(true);
     // A chrome change keeps the same shell box and layer.
     act(() => layout.setState(layoutAt(390), true));
@@ -371,7 +375,7 @@ describe('0.12 c24: the touch shell', () => {
         expect(screen.getByRole('button', { name: 'Search or jump' })).toBeTruthy();
       } else {
         expect(await screen.findByRole('button', { name: 'Show sidebar' })).toBeTruthy();
-        expect(screen.getByRole('button', { name: 'Jump to a session' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Search or jump' })).toBeTruthy();
       }
       expect(document.querySelector('header')).toBeNull();
       expect(screen.queryByRole('contentinfo')).toBeNull();

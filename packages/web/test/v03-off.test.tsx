@@ -76,7 +76,7 @@ describe('every v0.3 switch off', () => {
     expect(document.querySelector('[data-ghosts]')).toBeNull();
     expect(screen.queryByRole('link', { name: /^Files/ })).toBeNull();
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    await screen.findByPlaceholderText('Jump to a session or account');
+    await screen.findByPlaceholderText('Search or jump');
     expect(screen.queryByText('New session in…')).toBeNull();
     expect(calls()).toEqual([]);
   });

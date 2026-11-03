@@ -87,7 +87,7 @@ describe('the machine chip', () => {
     viewport(1280);
     const { history } = renderApp({ state: fleetState() });
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    const input = await screen.findByPlaceholderText('Jump to a session or account');
+    const input = await screen.findByPlaceholderText('Search or jump');
     const options = screen.getAllByRole('option');
     expect(options.some((o) => o.textContent?.includes('build-1'))).toBe(true);
     fireEvent.change(input, { target: { value: 'build-2' } });

@@ -142,7 +142,7 @@ describe('⌘K', () => {
     viewport(1440);
     const { history } = renderApp({ state: boardState(true) });
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    const input = await screen.findByPlaceholderText('Jump to a session or account');
+    const input = await screen.findByPlaceholderText('Search or jump');
     fireEvent.change(input, { target: { value: 'new session' } });
     fireEvent.click(await screen.findByText('New session in…'));
     expect(history.entries.at(-1)).toBe('/new');
@@ -152,7 +152,7 @@ describe('⌘K', () => {
     viewport(1440);
     renderApp({ state: boardState(false) });
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    await screen.findByPlaceholderText('Jump to a session or account');
+    await screen.findByPlaceholderText('Search or jump');
     expect(screen.queryByText('New session in…')).toBeNull();
   });
 });

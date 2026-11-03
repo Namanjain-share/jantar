@@ -32,7 +32,8 @@
  * load for the wide layouts. 0.13.0's Work too (its screens and
  * `@jantar/protocol/work` only ever load in its chunk): its place shows
  * while Life status says Work is on (lifeStatus.ts), and while it is, the
- * Todos addresses of a project open it in Work.
+ * Todos addresses of a project open it in Work. The phone header's
+ * magnifier opens the palette's search (the search sheet) on every screen.
  */
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { boardOrder, needsYou } from '@jantar/protocol';
@@ -449,7 +450,7 @@ export function Shell() {
           fullScreen ? (
             <div className="pt-safe flex-none" />
           ) : (
-            <PhoneHeader needs={needs} items={items} dashed={dashed} search={features.intel} onLegend={() => setLegend(true)} onHome={() => connection?.kick()} />
+            <PhoneHeader needs={needs} items={items} dashed={dashed} onSearch={() => setPalette(true)} onLegend={() => setLegend(true)} onHome={() => connection?.kick()} />
           )
         ) : null}
         {/* 2: the Mac's top bar */}

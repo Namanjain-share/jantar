@@ -41,8 +41,8 @@ export function Rail({ route, badges, onPalette }: { route: Route['name']; badge
       <button
         type="button"
         className="mt-auto flex size-40 items-center justify-center rounded-btn text-ink-3 transition duration-120 ease-hover hover:bg-hover hover:text-ink coarse:size-44"
-        aria-label="Jump to a session"
-        title="Jump to a session (⌘K)"
+        aria-label="Search or jump"
+        title="Search or jump (⌘K)"
         onClick={onPalette}
       >
         <MagnifyingGlassIcon size={20} aria-hidden="true" />

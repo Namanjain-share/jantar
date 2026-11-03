@@ -32,7 +32,7 @@ describe('at every width once a keyboard has been seen', () => {
     fireEvent.keyDown(document.body, { key: 'a' });
     await waitFor(() => expect(api.decide).toHaveBeenCalledWith(p.id, { behavior: 'allow' }));
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    expect(await screen.findByPlaceholderText('Jump to a session or account')).toBeTruthy();
+    expect(await screen.findByPlaceholderText('Search or jump')).toBeTruthy();
   });
 
   it("0.12.2: a card's keys work the moment it is on screen, before React's passive effects run", async () => {
@@ -85,7 +85,7 @@ describe('at every width once a keyboard has been seen', () => {
     await act(async () => undefined);
     expect(api.decide).not.toHaveBeenCalled();
     expect(history.entries.at(-1)).toBe('/s/a');
-    expect(screen.queryByPlaceholderText('Jump to a session or account')).toBeNull();
+    expect(screen.queryByPlaceholderText('Search or jump')).toBeNull();
   });
 
   it('the keyboard turning on mid-way turns the keys on', async () => {
@@ -115,16 +115,16 @@ describe('in a text field', () => {
       // fireEvent returns false when a listener called preventDefault.
       expect(fireEvent.keyDown(field, init)).toBe(true);
     }
-    expect(screen.queryByPlaceholderText('Jump to a session or account')).toBeNull();
+    expect(screen.queryByPlaceholderText('Search or jump')).toBeNull();
     expect(fireEvent.keyDown(field, { key: 'k', metaKey: true })).toBe(false);
-    expect(await screen.findByPlaceholderText('Jump to a session or account')).toBeTruthy();
+    expect(await screen.findByPlaceholderText('Search or jump')).toBeTruthy();
     field.remove();
   });
 
   it('⌃K opens the palette outside a field', async () => {
     renderApp({ state: waiting(), layout: layoutAt(1440) });
     fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
-    expect(await screen.findByPlaceholderText('Jump to a session or account')).toBeTruthy();
+    expect(await screen.findByPlaceholderText('Search or jump')).toBeTruthy();
   });
 
   it('single letters stay typing', () => {
@@ -188,9 +188,9 @@ describe('⌘. is Esc', () => {
   it('closes what Esc closes: the palette', async () => {
     renderApp({ state: waiting(), layout: layoutAt(1440) });
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    const input = await screen.findByPlaceholderText('Jump to a session or account');
+    const input = await screen.findByPlaceholderText('Search or jump');
     fireEvent.keyDown(input, { key: '.', metaKey: true });
-    await waitFor(() => expect(screen.queryByPlaceholderText('Jump to a session or account')).toBeNull());
+    await waitFor(() => expect(screen.queryByPlaceholderText('Search or jump')).toBeNull());
   });
 
   it('closes an open session beside the ledger, as Esc does', async () => {
