@@ -2084,7 +2084,15 @@ It adds a new asset: **another person's Life data, health data included**.
   writes only in areas the agreement shows him.
 - **Pushes** to her go only to her push list, by Web Push, with her lock
   screen choice applied; the Mac banner and Telegram never carry a person's
-  push.
+  push. Her reminders and dose pings are rows naming her: they ring only
+  her devices (her 08:00 never merges with his), are read across spaces
+  only by the scheduler's own sweep, and ring only while People is on.
+- **Her medicines and doses** live in her space; every query on
+  medicines, doses and food names the space (pinned by a source scan). He
+  reads them only at the level she shares (`adherence` names nothing), he
+  adds and edits only with the agreement's fields, every change of his is
+  in her Activity with the old values, and no route of his logs, undoes or
+  deletes a dose or deletes a medicine of hers.
 - **No owner-only record of her**: her own writes are audited as
   `person.write` with no route, target or params; the request log names her
   routes as `/v1/p/*`; no route or command shows her devices' last-seen,
@@ -2115,9 +2123,10 @@ It adds a new asset: **another person's Life data, health data included**.
   café's text she wrote or last edited is `<data source="partner">` and
   taints the turn (and his in hers); `jantar mcp` reads only his own space.
 
-Pinned by `packages/daemon/test/people/*` and `test/arch/v012-people.test.ts`
-(every owner route with her credential, every person route with his, both
-event streams, push routing, the Origin split, static files by host) and
+Pinned by `packages/daemon/test/people/*`, `test/life/people-medicines.test.ts`
+and `test/arch/v012-people.test.ts` (every owner route with her credential,
+every person route with his, both event streams, push routing, the Origin
+split, static files by host, her medicines both ways) and
 `packages/web/test/partner/import-graph.test.ts` (her app is a separate
 bundle holding no owner module), and for her chat by
 `packages/daemon/test/chat/person-chat.test.ts` and `person-tools.test.ts`.

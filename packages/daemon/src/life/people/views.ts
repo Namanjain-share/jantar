@@ -46,7 +46,7 @@ import type { PersonSpace } from './space.js';
 
 const LOCKED: Locked = { locked: true };
 
-/** The areas this build's views answer (the rest are a later commit's or phase's: 404). */
+/** The areas this build's views answer (food is a later phase: 404). */
 const VIEW_AREAS: ReadonlySet<Area> = new Set<Area>(['today', 'todos', 'meds', 'weight', 'plan', 'review', 'sleep', 'journal', 'chat']);
 
 export type AreaView = OwnerTodosView | OwnerMedsView | PersonWeightsResponse | PersonToday | PlanView | ReviewView | SleepWeek | JournalList | OwnerChatView | Locked;
@@ -195,7 +195,7 @@ export class PeopleViews {
           todos: a.see.todos ? this.todayTile(pid, day) : LOCKED,
           meds,
           weight: a.see.weight ? { latest: this.space.weights(pid).latest } : LOCKED,
-          // Food joins with its routes (a later commit of P1); with her food module off it never exists (O6).
+          // Her food log is a later phase (AREAS.food): no tile until it is served.
           food: null,
           plan: plan ?? LOCKED,
           status: a.see.plan ? this.people.statusOf(p) : LOCKED,
