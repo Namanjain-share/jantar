@@ -705,8 +705,8 @@ groups, the seed's body and reply, and `WORK_ROUTES` (`projectGet`,
 `search`, `foldersSeed`, phase `v0.13`), which the daemon serves through
 `ALL_ROUTES`; in the index only `life.work` and `workOn` (`settings.ts`),
 the `work` switch, and the owner-only `OwnerTodosQuerySchema` (her routes
-keep `TodosQuerySchema`). The first load is 279.2 kB of `MAIN_JS_MAX`
-280 kB (0.11.0's was 279.1). life-core:
+keep `TodosQuerySchema`). The first load is 275.3 kB of `MAIN_JS_MAX`
+280 kB on 0.12.0 (whose own is 275.1). life-core:
 `work/task-review.ts` (from Noblot) and `work/project-health.ts`. The
 daemon: life.db migration 5 (`work`) in `life/db.ts`; `life/work/module.ts`
 (the stub module, the seed, search's clients and deals, the project-delete

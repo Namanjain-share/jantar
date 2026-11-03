@@ -16,7 +16,7 @@ the phone's Work screens come with the app's next update.
 `life-pre-0.13.0.db` in the backups folder before it moves life.db to
 schema 5 (Life's fourth schema change, which adds Work's tables, all
 empty, and a column on todos for a follow-up's client; no existing row is
-rewritten). 0.11 can't open Life afterwards, and going back means
+rewritten). 0.12 can't open Life afterwards, and going back means
 restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
 
 - **A project on one screen.** `GET /v1/projects/<id>` answers a project

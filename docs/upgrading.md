@@ -32,8 +32,8 @@ in its write-ahead log), and moves nothing if that copy can't be written.
 Schema 5 adds Work's tables (clients and companies, deals, the log of
 calls and meetings), all empty, and a column on todos for a follow-up's
 client; no existing row is rewritten. `jantar life status` says "(life.db
-schema 5)". 0.11.x refuses a schema-5 file (Life answers 503 there); to go
-back, install 0.11 and restore that copy:
+schema 5)". 0.12.x and older refuse a schema-5 file (Life answers 503
+there); to go back, install 0.12 and restore that copy:
 
 ```sh
 jantar life restore life-pre-0.13.0.db
