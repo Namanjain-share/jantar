@@ -16,10 +16,14 @@
  * projects and people), that phones, e-mails, links and tags are joined,
  * and that the other is hidden for good. An imported client passes its
  * mark on, so its words stay data. Two people or two companies only.
+ *
+ * Two with the same name are told apart wherever the sheet names them (its
+ * Keep chips, the rows, the merge step, the toast): by their company and
+ * state, then by their place in the group ("Riya Kapoor · Acme · lead").
  */
 import { CaretRightIcon } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
-import type { ContactKind, WorkDuplicatesReply, WorkMergeConflictsReply } from '@jantar/protocol/work';
+import type { ContactKind, ContactState, WorkClientRow, WorkDuplicatesReply, WorkMergeConflictsReply } from '@jantar/protocol/work';
 import { useDeps, useToast } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
@@ -33,9 +37,35 @@ import { Chips, FromTag } from './parts.js';
 
 interface Who {
   id: string;
+  /** As the sheet names it: its name, with what tells it apart from another of the same name. */
   name: string;
   kind: ContactKind;
   from?: 'import' | 'meeting' | undefined;
+}
+
+interface Named {
+  id: string;
+  name: string;
+  state: ContactState;
+  company?: { name: string } | undefined;
+}
+
+/**
+ * Each client's name as the sheet says it: alone when no other in `clients` has it; else with its company and
+ * state ("Riya Kapoor · Acme · lead"), and, while that is still the same, its place among them ("(2)").
+ */
+export function namesApart(clients: readonly Named[]): Map<string, string> {
+  const same = (a: string, b: string) => a.toLocaleLowerCase() === b.toLocaleLowerCase();
+  const told = clients.map((c) =>
+    clients.filter((o) => same(o.name, c.name)).length > 1 ? [c.name, c.company?.name, STATE_LABEL[c.state].toLowerCase()].filter(Boolean).join(' · ') : c.name,
+  );
+  return new Map(
+    clients.map((c, i) => {
+      const twins = told.filter((t) => same(t, told[i]!)).length;
+      const nth = told.slice(0, i + 1).filter((t) => same(t, told[i]!)).length;
+      return [c.id, twins > 1 ? `${told[i]} (${nth})` : told[i]!];
+    }),
+  );
 }
 
 const WHY = { email: 'same e-mail', phone: 'same phone', name: 'same name' } as const;
@@ -93,13 +123,15 @@ function Groups({ onMerge, onChanged }: { onMerge: (keep: Who, loser: Who) => vo
               {d.groups.map((g) => {
                 const keepId = kept.get(g.key) ?? g.clients[0]!.id;
                 const keep = g.clients.find((c) => c.id === keepId) ?? g.clients[0]!;
+                const names = namesApart(g.clients);
+                const who = (c: (typeof g.clients)[number]): Who => ({ id: c.id, name: names.get(c.id) ?? c.name, kind: c.kind, from: c.from });
                 return (
                   <li key={g.key} data-group={g.key} className="border-b border-line py-12">
                     <p className="type-mono text-ink-3">{g.reasons.map((r) => WHY[r]).join(' · ')}</p>
                     <Chips<string>
                       label="Keep"
                       className="mt-8"
-                      chips={g.clients.map((c) => ({ key: c.id, label: `Keep ${c.name}` }))}
+                      chips={g.clients.map((c) => ({ key: c.id, label: `Keep ${names.get(c.id) ?? c.name}` }))}
                       value={keep.id}
                       onChange={(k) => k && setKept((m) => new Map(m).set(g.key, k))}
                     />
@@ -108,17 +140,18 @@ function Groups({ onMerge, onChanged }: { onMerge: (keep: Who, loser: Who) => vo
                         .filter((c) => c.id !== keep.id)
                         .map((c) => (
                           <li key={c.id} className="flex flex-wrap items-center gap-8 py-4">
-                            <span className="min-w-0 flex-1 truncate type-row text-ink">
+                            {/* The name on a line of its own: beside the buttons a 390 phone cut it to "Riya Ka…". */}
+                            <span className="min-w-0 basis-full truncate type-row text-ink">
                               {c.name}
                               <span className="text-ink-2">
                                 {c.company ? ` · ${c.company.name}` : ''} · {STATE_LABEL[c.state].toLowerCase()}
                               </span>
                             </span>
                             <FromTag from={c.from} />
-                            <Button size="sm" className="coarse:min-h-44" disabled={offline || w.busy || c.kind !== keep.kind} onClick={() => onMerge(keep, c)}>
-                              Merge into {keep.name}
+                            <Button size="sm" className="coarse:min-h-44" disabled={offline || w.busy || c.kind !== keep.kind} onClick={() => onMerge(who(keep), who(c))}>
+                              Merge into {who(keep).name}
                             </Button>
-                            <Button variant="text" size="sm" className="coarse:min-h-44" disabled={offline || w.busy} onClick={() => void apart(keep, c)}>
+                            <Button variant="text" size="sm" className="coarse:min-h-44" disabled={offline || w.busy} onClick={() => void apart(who(keep), who(c))}>
                               Not a duplicate
                             </Button>
                           </li>
@@ -141,35 +174,43 @@ export interface MergeSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sheetKey: number;
-  /** The client the other merges into (its page's). */
-  keep: Who;
+  /** The client the other merges into (its page's), with its state and company to tell it from one of the same name. */
+  keep: Who & { state: ContactState; company?: { name: string } | undefined };
   onMerged: () => void;
 }
 
 /** "Merge with…" from a client's page: find the other by name, then the merge step. */
 export function MergeSheet({ open, onOpenChange, sheetKey, keep, onMerged }: MergeSheetProps) {
-  const [loser, setLoser] = useState<Who | null>(null);
+  const [picked, setPicked] = useState<{ loser: Who; keepName: string } | null>(null);
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={`Merge into ${keep.name}`}>
-      {!open ? null : loser ? (
+      {!open ? null : picked ? (
         <MergeStep
-          key={loser.id}
-          keep={keep}
-          loser={loser}
-          onBack={() => setLoser(null)}
+          key={picked.loser.id}
+          keep={{ ...keep, name: picked.keepName }}
+          loser={picked.loser}
+          onBack={() => setPicked(null)}
           onMerged={() => {
             onMerged();
             onOpenChange(false);
           }}
         />
       ) : (
-        <Pick key={sheetKey} keep={keep} onPick={setLoser} />
+        <Pick
+          key={sheetKey}
+          keep={keep}
+          onPick={(c) => {
+            // The same name: each said with its company and state, in the merge step and its toast.
+            const names = namesApart([keep, c]);
+            setPicked({ loser: { id: c.id, name: names.get(c.id) ?? c.name, kind: c.kind, from: c.from }, keepName: names.get(keep.id) ?? keep.name });
+          }}
+        />
       )}
     </Sheet>
   );
 }
 
-function Pick({ keep, onPick }: { keep: Who; onPick: (w: Who) => void }) {
+function Pick({ keep, onPick }: { keep: Who; onPick: (c: WorkClientRow) => void }) {
   const { api } = useDeps();
   const [q, setQ] = useState('');
   const query = q.trim();
@@ -188,7 +229,7 @@ function Pick({ keep, onPick }: { keep: Who; onPick: (w: Who) => void }) {
               <ul aria-label="Clients to merge" className="mt-8">
                 {rows.map((c) => (
                   <li key={c.id} className="border-b border-line">
-                    <button type="button" onClick={() => onPick({ id: c.id, name: c.name, kind: c.kind, from: c.from })} className="flex min-h-44 w-full items-center gap-8 text-left hover:bg-hover">
+                    <button type="button" onClick={() => onPick(c)} className="flex min-h-44 w-full items-center gap-8 text-left hover:bg-hover">
                       <span className="min-w-0 flex-1 truncate type-row text-ink">
                         {c.name}
                         {c.company ? <span className="text-ink-2"> · {c.company.name}</span> : null}

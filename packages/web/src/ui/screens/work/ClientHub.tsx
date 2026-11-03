@@ -484,7 +484,7 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
                 open={merge.open}
                 onOpenChange={merge.onOpenChange}
                 sheetKey={merge.key}
-                keep={{ id: hub.contact.id, name: hub.contact.name, kind: hub.contact.kind }}
+                keep={{ id: hub.contact.id, name: hub.contact.name, kind: hub.contact.kind, state: hub.contact.state, company: hub.company }}
                 onMerged={() => {
                   reload();
                 }}

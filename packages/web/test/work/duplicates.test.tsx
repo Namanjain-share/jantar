@@ -12,6 +12,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkDuplicatesReply } from '@jantar/protocol/work';
+import { namesApart } from '../../src/ui/screens/work/Duplicates.js';
 import { fakeApi, preloadPlaces, renderApp, stateWith } from '../helpers.js';
 import { CLIENTS, IDS, WORK_ON, clientAnswers, clientRow, workRequest } from '../work-helpers.js';
 
@@ -93,6 +94,39 @@ describe('find duplicates', () => {
     expect(toasts.getState().toasts.map((t) => t.text)).toContain('Merged Acme into Acme Ltd.');
   });
 
+  it('two of the same name are told apart: by company and state on each Keep, the merge step and the toast', async () => {
+    const twins: WorkDuplicatesReply = {
+      groups: [
+        {
+          key: '01JWRKGR0VP000000000000002',
+          reasons: ['name'],
+          clients: [
+            { id: IDS.pat, name: 'Pat Example', kind: 'person', state: 'client', company: { id: IDS.client, name: 'Acme' } },
+            { id: IDS.sam, name: 'Pat Example', kind: 'person', state: 'lead' },
+          ],
+        },
+      ],
+    };
+    const { toasts } = setup({ request: { 'GET /v1/work/duplicates': twins, 'GET /v1/work/clients/:id/merge': { conflicts: [] } } });
+    const sheet = await openDuplicates();
+    await within(sheet).findByRole('list', { name: 'Possible duplicates' });
+    const keep = within(sheet).getByRole('group', { name: 'Keep' });
+    expect(within(keep).getAllByRole('button').map((b) => b.textContent)).toEqual(['Keep Pat Example · Acme · client', 'Keep Pat Example · lead']);
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Merge into Pat Example · Acme · client' }));
+    const step = await screen.findByRole('dialog', { name: 'Merge into Pat Example · Acme · client' });
+    expect(step.textContent).toMatch(/Pat Example · lead's deals, log, follow-ups, projects and people move to Pat Example · Acme · client\. .*Pat Example · lead is hidden for good\./);
+    await within(step).findByText(/No field differs/);
+    fireEvent.click(within(step).getByRole('button', { name: 'Merge' }));
+    await waitFor(() => expect(toasts.getState().toasts.map((t) => t.text)).toContain('Merged Pat Example · lead into Pat Example · Acme · client.'));
+  });
+
+  it('names apart: alone when unique; company and state when shared; then their place', () => {
+    const c = (id: string, name: string, state: 'lead' | 'client' | 'past', company?: string) => ({ id, name, state, ...(company ? { company: { name: company } } : {}) });
+    expect([...namesApart([c('a', 'Acme', 'client'), c('b', 'Acme Ltd', 'lead')]).values()]).toEqual(['Acme', 'Acme Ltd']);
+    expect([...namesApart([c('a', 'Pat Example', 'client', 'Acme'), c('b', 'pat example', 'client')]).values()]).toEqual(['Pat Example · Acme · client', 'pat example · client']);
+    expect([...namesApart([c('a', 'Pat Example', 'lead'), c('b', 'Pat Example', 'lead'), c('c', 'Sam Sample', 'lead')]).values()]).toEqual(['Pat Example · lead (1)', 'Pat Example · lead (2)', 'Sam Sample']);
+  });
+
   it('none: one line', async () => {
     setup({ request: { 'GET /v1/work/duplicates': { groups: [] } } });
     const sheet = await openDuplicates();
@@ -101,6 +135,25 @@ describe('find duplicates', () => {
 });
 
 describe('merge with… from a client', () => {
+  it('one of the same name is told apart from this one in the merge step', async () => {
+    setup({
+      path: `/work?tab=clients&id=${IDS.pat}`,
+      request: {
+        'GET /v1/work/clients': (init: { query?: Record<string, unknown> }) =>
+          init.query?.q === 'pat' ? CLIENTS([clientRow(IDS.sam, { name: 'Pat Example', kind: 'person', state: 'lead' })]) : CLIENTS(),
+        'GET /v1/work/clients/:id/merge': { conflicts: [] },
+      },
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Pat Example' });
+    fireEvent.click(screen.getByRole('button', { name: 'More for Pat Example' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Merge with…' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Merge into Pat Example' });
+    fireEvent.change(within(sheet).getByRole('searchbox', { name: 'Find a client' }), { target: { value: 'pat' } });
+    fireEvent.click(within(await within(sheet).findByRole('list', { name: 'Clients to merge' })).getByRole('button', { name: /Pat Example/ }));
+    expect(await within(sheet).findByText(/Pat Example · lead's deals, log, follow-ups, projects and people move to Pat Example · Acme · client\./)).toBeTruthy();
+  });
+
+
   it('finds the other among his clients of the same kind; an imported one passes its mark on', async () => {
     const { api } = setup({
       path: `/work?tab=clients&id=${IDS.pat}`,
