@@ -10,9 +10,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeFakeHome, type FakeHome } from '@jantar/fixtures';
 import life from '../src/commands/life.js';
-import work from '../src/commands/work.js';
+import work, { nameFromFolder } from '../src/commands/work.js';
 import { EXIT } from '../src/command.js';
-import { contextFor, fakeCtl, fakeSettings } from './helpers.js';
+import { contextFor, fakeCtl, fakeSettings, ok, type CtlCall } from './helpers.js';
 
 const ENV = { HOME: '/synthetic/home', JANTAR_HOME: '/synthetic/state' };
 
@@ -94,5 +94,60 @@ describe('with the daemon down', () => {
     expect(c.io.stdout).toContain('Saved to config.json');
     const config = JSON.parse(await readFile(join(home.jantarHome, 'config.json'), 'utf8'));
     expect(config.life).toMatchObject({ work: true, todos: true });
+  });
+});
+
+describe('jantar work seed', () => {
+  function seeding() {
+    const s = fakeSettings({ folders: { roots: [{ id: 'work', path: '~/work', label: 'Work' }, { id: 'client', path: '~/work/client', label: 'Clients' }] } });
+    const calls: CtlCall[] = [];
+    const ctl = fakeCtl({
+      ...s.routes,
+      'POST /v1/work/seed': (call) => {
+        calls.push(call);
+        const items = (call.body as { items: unknown[] }).items;
+        return ok({ projects: items.slice(1).map((_, i) => `01JZZZZZZZZZZZZZZZZZZZZZZ${i}`), skipped: 1 });
+      },
+    });
+    return { ctl, calls };
+  }
+
+  it('sends each folder under its deepest configured root, named from the folder', async () => {
+    const { ctl, calls } = seeding();
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await work.run(['seed', '~/work/client/acme-web', '/synthetic/home/work/client/northwind_ai', '~/work/internal'], c.ctx)).toBe(EXIT.ok);
+    expect(calls[0]?.body).toEqual({
+      items: [
+        { root: 'r.client', path: 'acme-web', name: 'Acme Web' },
+        { root: 'r.client', path: 'northwind_ai', name: 'Northwind Ai' },
+        { root: 'r.work', path: 'internal', name: 'Internal' },
+      ],
+    });
+    expect(calls[0]?.opts.idempotencyKey).toEqual(expect.any(String));
+    expect(c.io.stdout).toBe('Made 2 projects, each linked to its folder. 1 folder already had one.\n');
+  });
+
+  it('--name names one folder; a folder outside the roots, the root itself, none, or too many are refused before anything is sent', async () => {
+    const { ctl, calls } = seeding();
+    expect(await work.run(['seed', '~/work/client/globex', '--name', 'Globex audit'], contextFor({ env: ENV }, { ctl }).ctx)).toBe(EXIT.ok);
+    expect(calls[0]?.body).toEqual({ items: [{ root: 'r.client', path: 'globex', name: 'Globex audit' }] });
+    for (const bad of [
+      ['seed'],
+      ['seed', '/elsewhere/acme'],
+      ['seed', '~/work'],
+      ['seed', '~/work/client/a', '~/work/client/b', '--name', 'Both'],
+      ['seed', ...Array.from({ length: 51 }, (_, i) => `~/work/client/x${i}`)],
+      ['status', '--name', 'x'],
+    ]) {
+      const c = contextFor({ env: ENV }, { ctl });
+      expect(await work.run(bad, c.ctx), bad.slice(0, 3).join(' ')).toBe(EXIT.usage);
+    }
+    expect(calls).toHaveLength(1);
+  });
+
+  it('names a project from its folder', () => {
+    expect(nameFromFolder('/x/acme-web')).toBe('Acme Web');
+    expect(nameFromFolder('/x/northwind_ai.v2')).toBe('Northwind Ai V2');
+    expect(nameFromFolder(`/x/${'a'.repeat(80)}`)).toHaveLength(60);
   });
 });
