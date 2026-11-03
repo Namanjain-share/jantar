@@ -6,8 +6,14 @@
  * listener runs after this one, so the g is tracked here too). 0.12: at
  * every width once a hardware keyboard has been seen (shell/layout.ts
  * `keyboard`), not only from 768 px.
+ *
+ * 0.12.2: the listener goes on in the commit (a layout effect), so a card's
+ * keys work the moment it is on screen. A card that arrives by itself (its
+ * lazy chunk, a new request) commits outside a user event, and React yields
+ * for paint before its passive effects: in that gap a key pressed at the
+ * card was lost (the CI flake in keys.test.tsx).
  */
-import { createContext, useContext, useEffect, useRef, type RefObject } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, type RefObject } from 'react';
 import { isTyping } from '../../shell/keys.js';
 import { useLayout } from '../../shell/layout.js';
 
@@ -20,7 +26,7 @@ export function usePaneKeys(map: Record<string, () => void>, on = true): void {
   const handlers = useRef(map);
   handlers.current = map;
   const sig = Object.keys(map).sort().join(',');
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
     let gAt = 0;
     const on = (e: KeyboardEvent) => {

@@ -6,8 +6,10 @@
  * from event.code.
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
 import { Keycap, KeyHints } from '../src/ui/kit/Keycap.js';
+import { usePaneKeys } from '../src/ui/screens/session/keys.js';
 import { digitOf, G_ROUTES, undoOnScreen } from '../src/ui/shell/keys.js';
 import { groupsFor } from '../src/ui/shell/Shortcuts.js';
 import { createLayoutStore, layoutAt, LayoutProvider } from '../src/ui/shell/layout.js';
@@ -31,6 +33,45 @@ describe('at every width once a keyboard has been seen', () => {
     await waitFor(() => expect(api.decide).toHaveBeenCalledWith(p.id, { behavior: 'allow' }));
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
     expect(await screen.findByPlaceholderText('Jump to a session or account')).toBeTruthy();
+  });
+
+  it("0.12.2: a card's keys work the moment it is on screen, before React's passive effects run", async () => {
+    // A card that arrives by itself (its lazy chunk, a new request) commits outside act(). React 19 then yields for
+    // paint before its passive effects, and findBy returns on a 0 ms timer that a loaded CI runner fires first: the
+    // test above pressed a there with no listener yet and the press was lost. Here the key goes in the very microtask
+    // the commit queued, when the card is in the DOM and its passive effects have not run.
+    const allow = vi.fn();
+    function Card() {
+      usePaneKeys({ a: allow });
+      return <button type="button">Yes</button>;
+    }
+    const flag = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const was = flag.IS_REACT_ACT_ENVIRONMENT;
+    flag.IS_REACT_ACT_ENVIRONMENT = false;
+    const host = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(host);
+    try {
+      const pressed = new Promise<void>((resolve) => {
+        const seen = new MutationObserver(() => {
+          if (!host.querySelector('button')) return;
+          seen.disconnect();
+          document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true }));
+          resolve();
+        });
+        seen.observe(host, { childList: true, subtree: true });
+      });
+      root.render(
+        <LayoutProvider value={compact(true)}>
+          <Card />
+        </LayoutProvider>,
+      );
+      await pressed;
+      expect(allow).toHaveBeenCalledTimes(1);
+    } finally {
+      root.unmount();
+      host.remove();
+      flag.IS_REACT_ACT_ENVIRONMENT = was;
+    }
   });
 
   it('compact without a keyboard: no keys (a touch screen alone)', async () => {
