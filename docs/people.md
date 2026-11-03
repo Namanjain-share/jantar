@@ -11,12 +11,12 @@ People is **off** by default. With it off, nothing about Jantar changes for
 you.
 
 > This page describes what is built in this version: their space, to-dos
-> you assign, day plans, the evening review, alerts, sleep, the journal,
-> their assistant and the cafés and lists you share. Someone who joined
-> before an area existed gets it only by a request they accept. Their
-> medicines (and food, with their food module on) are still to come: the
-> fields are in the agreement already, and the screens and routes that read
-> them come with them.
+> you assign, their medicines, day plans, the evening review, alerts, sleep,
+> the journal, their assistant and the cafés and lists you share. Someone
+> who joined before an area existed gets it only by a request they accept.
+> A food log for them is not part of this release: no offer, join page,
+> screen or route has one, and `jantar people modules --food` changes
+> nothing they can see yet.
 
 ## Who is who
 
@@ -89,7 +89,6 @@ jantar people offer Asha --preset everything --see food=off
 | see their to-dos and reminders | on | on | on |
 | see their medicines | off | full | full |
 | see their weight | off | on | on |
-| see their food log | off | off | on |
 | add to-dos and reminders for them | on | on | on |
 | add medicines for them | off | on | on |
 | edit or remove to-dos they added | off | off | on |
@@ -99,7 +98,8 @@ jantar people offer Asha --preset everything --see food=off
 The preset is only a template: what is stored, shown on the join page and on
 their Sharing page is always the list of fields. Medicines have two levels:
 **full** (names, doses and each dose) and **only how often** (a percentage,
-no names).
+no names). `--see food=off` is accepted and asks for nothing: food isn't in
+this release.
 
 The join page lists every field on its own line, in plain words, with a
 switch that can only turn it down. Whatever they switch off before joining
@@ -128,20 +128,35 @@ your Mac's Life data. Each row remembers who added it.
 - **Items they add** are theirs to change. With "edit or remove to-dos they
   added" on, you can change or remove them too: each shows "Edited by Sam",
   and their Activity keeps the old and new value of every field you changed.
+- **Medicines**: theirs, in their own space, apart from yours. They add,
+  edit and stop any of them (yours for them included), and tick each dose
+  Taken or Skip on Today or Health › Medicines, with Undo. With "add
+  medicines for them" on, you can add one: it shows "added by Sam", and
+  you edit or stop your own additions. With "edit or stop medicines they
+  added" on, you can change or stop theirs too: each shows "Edited by Sam",
+  their Activity keeps the old and new value (the name, dose, times, days
+  or pill count), and their phone moves its reminder at once. When they
+  change one you added, you are told. Nobody deletes a medicine of theirs
+  from your side, and only they log doses.
 - **Weight**: they log it. With "correct or remove a weight they logged" on,
   you can correct or remove a day they logged, never add one.
 - **Never in their name.** No screen, route or command of yours ticks their
-  items done, snoozes or skips them, logs a weight for them, or pauses,
-  resumes or narrows for them.
-- **Their reminders ring their devices**, not yours, and open their app.
+  items done, snoozes or skips them, logs or undoes a dose, logs a weight
+  for them, or pauses, resumes or narrows for them.
+- **Their reminders and doses ring their devices**, not yours, and open
+  their app. Their 08:00 dose and yours are two separate notifications.
+  While People is off nothing of theirs rings; when it is back on, a
+  reminder missed in the last 6 hours rings once, marked late.
 
 ## Your People screen
 
-On your phone or browser, `/people` opens the person you share with (with
-more than one, a list). It is loaded only when you open it. Your Today shows
-one line for them ("Asha · 3 of 7 done · Now: Interview prep 11:00 · Low",
-or "Asleep since 23:40"), and every notification about them opens the right
-tab here.
+On your phone or browser, **People** is in More (and on the rail on a wide
+screen) while People is on, on a device paired with control. `/people`
+opens the person you share with (with more than one, a list). It is loaded
+only when you open it. Your Today shows one line for them ("Asha · 3 of 7
+done · Now: Interview prep 11:00 · Low", or "Asleep since 23:40", and "1
+dose not logged" when you see their medicines), and every notification
+about them opens the right tab here.
 
 - **Header**: their status and line, "Asleep since" while a night is open,
   the day's progress and the Now step, a line when an alert from them is
@@ -167,8 +182,17 @@ tab here.
   for their plan time. Every save is a look at their plan too, so it leaves
   a view mark in their Activity, and your changes to your own steps are
   listed there ("Sam changed the time of 'Mock' 08:00 → 08:30").
-- **Health** (their sleep week), **Journal** (read, and comment if they
-  allow it) and **Alerts** (both ways, with replies).
+- **Health**: their medicines at the level they share. At **full**, each
+  medicine ("added by you", or theirs, "edited by you"), the day's doses
+  (Taken 08:12, Skipped, Not logged) and Add a medicine for them, Edit and
+  Stop where the agreement allows; at **only how often**, a percentage and
+  how many of today's doses aren't logged, with no names. On both, when
+  doses went unlogged two days running, one plain line: "Doses not logged 2
+  days running. Worth checking in." It is worked out when you look, never
+  stored, and they see the same line on their side. Then their weights and
+  their sleep week.
+- **Journal** (read, and comment if they allow it) and **Alerts** (both
+  ways, with replies).
 - An area they keep private is a grey tile: "Asha keeps this private".
 
 ## Their day plan
@@ -260,7 +284,8 @@ kept 90 days.
   never a Mac banner or Telegram. One sent to you about them is checked
   against what they share at the moment it is sent.
 - **A day summary** for you is opt-in (one line at a time you pick, counts
-  only); their Sharing page lists it while it is on.
+  only: "Asha's day: 5 of 7 done · review sent · 1 dose not logged", never
+  a medicine's name); their Sharing page lists it while it is on.
 
 ## Sleep
 

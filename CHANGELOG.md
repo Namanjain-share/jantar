@@ -153,6 +153,23 @@ partner simply can't sign in there).
   sharing is ending. A request for more that waited while they switched
   something off no longer turns it back on. Now and Next keep your order:
   a step with no time never jumps ahead of the timed step before it.
+- **Their medicines**: in their own space, apart from yours. They add, edit
+  and stop any of them and tick each dose Taken or Skip (with Undo) on
+  Today or Health › Medicines; their doses ring their devices only, never
+  merged with yours at the same minute. With the agreement's fields you
+  add one for them, and edit or stop yours and theirs ("Edited by Sam",
+  the old values in their Activity, their reminder moved at once). Your
+  People screen's Health tab shows them at the level they share (full, or
+  only how often with no names), your Today line and day summary count
+  doses not logged, and when doses go unlogged two days running one plain
+  line says so, worked out when you look. Only they log doses.
+- **People in More**: your phone lists People in More (the rail on a wide
+  screen) while People is on, on a device paired with control.
+- **Nothing promised that isn't there**: a food log for them is not part of
+  this release, so the join page, Sharing and the presets no longer offer
+  one. While People is switched off, none of their reminders, doses or plan
+  rings go out; when it is back on, one missed in the last 6 hours rings
+  once, marked late.
 
 ## 0.10.2 (3 November 2026)
 
