@@ -202,6 +202,13 @@ What changed for people who use Jantar, newest first. Versions before
   content", and a list is one stop for Tab. In a browser tab ⌘1–⌘9 and ⌘J
   may stay the browser's; the list says so.
 - **Intel**: drop a link or some text on the shelf to save it, with Undo.
+- **An iPad says iPad**: iPadOS asks for the desktop site and calls itself a
+  Mac, so pairing named it "Mac (Safari)". It is now "iPad (Safari)",
+  pairing says "Pair this iPad", Devices says "This iPad" and "Safari ·
+  iPadOS" (a paired iPad too, by its name), and the Sounds note speaks of
+  the iPad. Devices › This device has a **Keyboard** row: Auto (shortcuts
+  once a keyboard has been used), On or Off on this device, and Show
+  shortcuts.
 
 ## 0.11.0 (3 November 2026)
 

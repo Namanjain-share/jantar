@@ -23,7 +23,7 @@ import { Button } from '../../kit/Button.js';
 import { Mark, Wordmark } from '../../kit/Mark.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { readKinds, registerKinds } from './kinds.js';
-import { userAgent } from './local.js';
+import { isIPad, userAgent } from './local.js';
 import { PUSH_TEXT, isBlocked, usePushState } from './Notifications.js';
 import { InlineError, Receipt, StepNumber } from './parts.js';
 
@@ -79,7 +79,7 @@ export function InstallStep({ device, step, onNext }: { device: DevicePublic; st
   const installEvent = useStore(pwaStore, (s) => s.installEvent);
   const promptInstall = useStore(pwaStore, (s) => s.promptInstall);
   const [busy, setBusy] = useState(false);
-  const iPad = /iPad/.test(userAgent());
+  const iPad = isIPad(userAgent());
   // Nothing to install with any more (the prompt was used, or the app got installed): move on.
   const nothing = !ios && !installEvent;
   useEffect(() => {

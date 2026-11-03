@@ -4,7 +4,8 @@ import type { PushEnv } from '../src/lib/push.js';
 import { ApiError } from '../src/lib/api.js';
 import { pwaStore } from '../src/lib/pwa.js';
 import { guessDeviceName } from '../src/ui/screens/Pair.js';
-import { describeAgent } from '../src/ui/screens/devices/local.js';
+import { describeAgent, deviceNoun, isIPad } from '../src/ui/screens/devices/local.js';
+import { keyboardOn, keyboardStore, setKeyboardMode } from '../src/lib/input.js';
 import { countdown } from '../src/ui/screens/devices/PairNew.js';
 import { NOW, fakeApi, fakeConnection, fakePushEnv, iso, opened, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
@@ -323,5 +324,51 @@ describe('notifications', () => {
     const { env } = pushEnvWith({ subscribed: true });
     renderApp({ api, pushEnv: env, state: stateWith({}) });
     await waitFor(() => expect(api.pushSubscribe).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('0.11 c31: the iPad says iPad; a Keyboard row in Devices', () => {
+  /** iPadOS 26's Safari: it asks for the desktop site, so it says Macintosh. */
+  const IPAD = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15';
+
+  it('five touch points make a Macintosh Safari an iPad: its name, its noun and its line', () => {
+    expect(isIPad(IPAD, 5)).toBe(true);
+    expect(isIPad(IPAD, 0)).toBe(false);
+    expect(guessDeviceName(IPAD, 5)).toBe('iPad (Safari)');
+    expect(guessDeviceName(IPAD, 0)).toBe('Mac (Safari)');
+    expect(deviceNoun(IPAD, 5)).toBe('iPad');
+    expect(deviceNoun(IPAD, 0)).toBe('browser');
+    expect(describeAgent(IPAD, { touchPoints: 5 })).toBe('Safari · iPadOS');
+    // Another device's line, from the name it paired with (the daemon keeps only the user agent).
+    expect(describeAgent(IPAD, { name: 'iPad (Safari)' })).toBe('Safari · iPadOS');
+    expect(describeAgent(IPAD)).toBe('Safari · macOS');
+    expect(describeAgent('Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit Version/17.4 Mobile Safari/604.1')).toBe('Safari · iPadOS 17.4');
+  });
+
+  it('Devices says "This iPad" and "Safari · iPadOS" on an iPad, and keeps the keyboard mode on this device', async () => {
+    const ua = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(IPAD);
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: 5, configurable: true });
+    try {
+      renderApp({ path: '/devices', api: fakeApi(), state: stateWith({}) });
+      const me = await screen.findByRole('region', { name: 'This iPad' });
+      expect(within(me).getByText('Safari · iPadOS')).toBeTruthy();
+      const keys = within(me).getByRole('group', { name: 'Keyboard shortcuts' });
+      expect(within(keys).getByRole('button', { name: 'Auto' }).getAttribute('aria-pressed')).toBe('true');
+      fireEvent.click(within(keys).getByRole('button', { name: 'Off' }));
+      expect(keyboardStore.getState().mode).toBe('off');
+      expect(localStorage.getItem('jantar:kb-mode')).toBe('"off"');
+      expect(keyboardOn(keyboardStore.getState(), false)).toBe(false);
+      fireEvent.click(within(keys).getByRole('button', { name: 'On' }));
+      expect(keyboardOn(keyboardStore.getState(), true)).toBe(true);
+      fireEvent.click(within(keys).getByRole('button', { name: 'Auto' }));
+      expect(keyboardOn({ keyboard: false, mode: 'auto' }, true)).toBe(false);
+      expect(keyboardOn({ keyboard: false, mode: 'auto' }, false)).toBe(true);
+      fireEvent.click(within(me).getByRole('button', { name: 'Show shortcuts' }));
+      expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeTruthy();
+    } finally {
+      ua.mockRestore();
+      Reflect.deleteProperty(navigator, 'maxTouchPoints');
+      act(() => setKeyboardMode('auto'));
+    }
   });
 });

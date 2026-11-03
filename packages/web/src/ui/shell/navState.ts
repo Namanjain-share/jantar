@@ -64,3 +64,14 @@ export function toggleSidebar(size: 'compact' | 'medium' | 'regular'): void {
   if (size === 'regular') setFolded(!s.folded);
   else setOverlay(!s.overlay);
 }
+
+/** The ? overlay (shell/Shortcuts.tsx, c30): opened by ?, the iPad sidebar's ⋯ and Devices (c31). */
+export const shortcutsStore = createStore<{ open: boolean }>()(() => ({ open: false }));
+
+export function setShortcuts(open: boolean): void {
+  shortcutsStore.setState({ open });
+}
+
+export function useShortcutsOpen(): boolean {
+  return useStore(shortcutsStore, (s) => s.open);
+}

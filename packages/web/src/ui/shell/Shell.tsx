@@ -64,7 +64,7 @@ import { StatusBar } from './StatusBar.js';
 import { TabBar } from './TabBar.js';
 import { Toasts } from './Toasts.js';
 import { TopBar } from './TopBar.js';
-import { toggleSidebar, useSidebar } from './navState.js';
+import { setShortcuts, toggleSidebar, useShortcutsOpen, useSidebar } from './navState.js';
 import { dockFits, setChatDock, toggleChatDock, useChatDock } from './chatDock.js';
 import { useChatBeside } from './ChatButton.js';
 
@@ -123,7 +123,7 @@ export function Shell() {
   const [palette, setPalette] = useState(false);
   const [legend, setLegend] = useState(false);
   // 0.11 (c30): the shortcuts and legend overlay (?, the iPad sidebar's ⋯, Devices).
-  const [shortcuts, setShortcuts] = useState(false);
+  const shortcuts = useShortcutsOpen();
   const shortcutsUsed = useRef(false);
   if (shortcuts) shortcutsUsed.current = true;
   // Where sheets, menus and the palette go: the shell's layer, so they move with it (kit/layer.ts).

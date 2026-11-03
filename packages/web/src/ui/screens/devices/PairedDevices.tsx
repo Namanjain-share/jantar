@@ -59,7 +59,7 @@ function DeviceRow({
   const panelId = useId();
   const more = useRef<HTMLButtonElement>(null);
   const revoked = Boolean(d.revokedAt);
-  const agent = describeAgent(d.userAgent);
+  const agent = describeAgent(d.userAgent, { name: d.name });
   return (
     <li className="border-b border-line">
       <div className="flex min-h-56 items-center gap-12 py-8 @md:gap-16">

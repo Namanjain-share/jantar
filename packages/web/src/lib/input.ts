@@ -13,6 +13,9 @@
  *   shortcut bar minimised, or the floating keyboard) and changes nothing.
  *   It is kept per device as `jantar:kb`. Only a coarse pointer asks: a fine
  *   pointer has a keyboard from the start (shell/layout.ts).
+ * - `mode` (0.11 c31, Devices › This device › Keyboard): Auto is the guess
+ *   above; On and Off overrule it on this device (`jantar:kb-mode`), for an
+ *   iPad whose keyboard the guess misses, or a Mac that wants no shortcuts.
  */
 import { createStore } from 'zustand/vanilla';
 import { readLocal, writeLocal } from './storage.js';
@@ -20,8 +23,28 @@ import { readLocal, writeLocal } from './storage.js';
 export type InputKind = 'mouse' | 'touch' | 'pen';
 
 export const KB_KEY = 'kb';
+export const KB_MODE_KEY = 'kb-mode';
 
-export const keyboardStore = createStore<{ keyboard: boolean }>()(() => ({ keyboard: readLocal<boolean>(KB_KEY, false) === true }));
+export type KeyboardMode = 'auto' | 'on' | 'off';
+const MODES: readonly KeyboardMode[] = ['auto', 'on', 'off'];
+
+function savedMode(): KeyboardMode {
+  const m = readLocal<string>(KB_MODE_KEY, 'auto');
+  return (MODES as readonly string[]).includes(m) ? (m as KeyboardMode) : 'auto';
+}
+
+export const keyboardStore = createStore<{ keyboard: boolean; mode: KeyboardMode }>()(() => ({ keyboard: readLocal<boolean>(KB_KEY, false) === true, mode: savedMode() }));
+
+/** The keyboard flag a window with this pointer gets: the mode's, or with Auto the guess (a fine pointer always). */
+export function keyboardOn(s: { keyboard: boolean; mode: KeyboardMode }, coarse: boolean): boolean {
+  return s.mode === 'on' ? true : s.mode === 'off' ? false : !coarse || s.keyboard;
+}
+
+export function setKeyboardMode(mode: KeyboardMode): void {
+  if (keyboardStore.getState().mode === mode) return;
+  keyboardStore.setState({ mode });
+  writeLocal(KB_MODE_KEY, mode);
+}
 
 export function setKeyboard(on: boolean): void {
   if (keyboardStore.getState().keyboard === on) return;

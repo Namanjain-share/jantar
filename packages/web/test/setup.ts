@@ -1,6 +1,7 @@
 import { cleanup, configure } from '@testing-library/react';
 import { afterEach, beforeAll } from 'vitest';
 import { forgetDrafts } from '../src/lib/drafts.js';
+import { setShortcuts } from '../src/ui/shell/navState.js';
 
 const dom = typeof window !== 'undefined';
 
@@ -32,4 +33,6 @@ afterEach(() => {
   }
   // After cleanup(): an unmounting composer puts its draft aside, which the next test must not find.
   forgetDrafts();
+  // The ? overlay's open flag is the shell's, kept outside React (c31).
+  setShortcuts(false);
 });

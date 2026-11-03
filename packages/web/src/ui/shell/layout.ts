@@ -28,7 +28,7 @@
 import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import { keyboardStore } from '../../lib/input.js';
+import { keyboardOn, keyboardStore } from '../../lib/input.js';
 import { viewportStore } from '../../lib/viewport.js';
 
 export type Size = 'compact' | 'medium' | 'regular';
@@ -93,7 +93,7 @@ const hasMedia = () => typeof window !== 'undefined' && typeof window.matchMedia
 function fromQueries(matches: (q: string) => boolean): Layout {
   const width = matches(QUERIES.regular) ? 1024 : matches(QUERIES.desk) ? 768 : matches(QUERIES.medium) ? 640 : 0;
   const coarse = matches(QUERIES.coarse);
-  return layoutAt(width, { coarse, keyboard: !coarse || keyboardStore.getState().keyboard, kbUp: viewportStore.getState().kbUp });
+  return layoutAt(width, { coarse, keyboard: keyboardOn(keyboardStore.getState(), coarse), kbUp: viewportStore.getState().kbUp });
 }
 
 function readWindow(): Layout {

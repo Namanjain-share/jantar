@@ -9,6 +9,7 @@
  * Its own chunk (Notifications.tsx loads it with import()), so the first
  * load stays as it was.
  */
+import { isIPad, userAgent } from './local.js';
 import { useId, useState } from 'react';
 import type { AlertGroup, AlertTone } from '@jantar/protocol';
 import { PRODUCT_NAME } from '../../../brand.js';
@@ -36,6 +37,8 @@ export const PLAY_SOUNDS = `Play sounds while ${PRODUCT_NAME} is open`;
 export const SPEAK_NOTE =
   'Says only "Answer soon", "Claude needs you", "Done", "Reminder" or "Something needs a look". Never what Claude asked, a folder or a medicine.';
 export const LOCK_SCREEN_LINE = `Tones and the voice play only while ${PRODUCT_NAME} is open on screen, and follow the silent switch. On the lock screen your iPhone plays its own alert sound for every app (Settings › Sounds & Haptics).`;
+/** 0.11 (c31): an iPad's own words (no silent switch on most, and its settings say Sounds). */
+export const LOCK_SCREEN_LINE_IPAD = `Tones and the voice play only while ${PRODUCT_NAME} is open on screen. On the lock screen your iPad plays its own alert sound for every app (Settings › Sounds).`;
 /** Under Done whenever the kinds list shows above: a phone can't read or change the Mac's kinds. */
 export const DONE_COMMAND = 'jantar notify done on';
 
@@ -114,7 +117,7 @@ export function SoundsRow({ doneHere }: { doneHere: boolean | null }) {
           <p id={noteId} className="max-w-560 type-small text-ink-3">
             {SPEAK_NOTE}
           </p>
-          <p className="mt-12 max-w-560 type-small text-ink-3">{LOCK_SCREEN_LINE}</p>
+          <p className="mt-12 max-w-560 type-small text-ink-3">{isIPad(userAgent()) ? LOCK_SCREEN_LINE_IPAD : LOCK_SCREEN_LINE}</p>
         </>
       }
     >
