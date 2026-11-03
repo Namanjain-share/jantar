@@ -1067,6 +1067,11 @@ export const FeaturesSchema = z.object({
   ask: z.boolean().default(false),
   /** v0.6: Fleet is on at the Mac (settings fleet.enabled): paired servers may link. */
   fleet: z.boolean().default(false),
+  /**
+   * v0.12: People is on at the Mac (settings people.enabled): his app lists People in More and the rail. Who
+   * the people are, and anything of theirs, stay control reads (GET /v1/people).
+   */
+  people: z.boolean().default(false),
 });
 export type Features = z.infer<typeof FeaturesSchema>;
 
@@ -1086,6 +1091,7 @@ export const NO_FEATURES: Readonly<Features> = Object.freeze({
   meetings: false,
   ask: false,
   fleet: false,
+  people: false,
 });
 
 // ===========================================================================

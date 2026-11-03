@@ -164,7 +164,7 @@ describe('v0.3 settings', () => {
       controls: { escapeVerified: true, clearVerified: true },
     });
     // v0.4's life and intel stay off here (v04.test.ts), v0.5's meetings (v05.test.ts), v0.5.3's ask (v053.test.ts), v0.6's fleet (v06.test.ts) and v0.8's intelRead (v08-intel-read.test.ts).
-    expect(settingsFeatures(on)).toEqual({ files: true, launch: true, rewrite: true, controls: true, screenshots: true, screenshotSelect: true, escape: true, clearDraft: true, life: false, intel: false, intelRead: false, meetings: false, ask: false, fleet: false });
+    expect(settingsFeatures(on)).toEqual({ files: true, launch: true, rewrite: true, controls: true, screenshots: true, screenshotSelect: true, escape: true, clearDraft: true, life: false, intel: false, intelRead: false, meetings: false, ask: false, fleet: false, people: false });
     // Neither key while controls are off.
     expect(settingsFeatures(SettingsSchema.parse({ controls: { enabled: false, escapeVerified: true, clearVerified: true } }))).toMatchObject({ escape: false, clearDraft: false });
     // A daemon from before clearDraft existed sends no such key: off.

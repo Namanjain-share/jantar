@@ -76,7 +76,7 @@ describe('v0.6: a node-mode daemon', () => {
     expect(existsSync(join(home!.jantarHome, LIFE_DB_FILE))).toBe(false);
     expect(existsSync(join(home!.jantarHome, MEETINGS_DB_FILE))).toBe(false);
     const features = d.ctx.store.getState().daemon?.features;
-    expect(features).toMatchObject({ files: false, rewrite: false, screenshots: false, screenshotSelect: false, life: false, intel: false, intelRead: false, meetings: false, ask: false, fleet: false, launch: true });
+    expect(features).toMatchObject({ files: false, rewrite: false, screenshots: false, screenshotSelect: false, life: false, intel: false, intelRead: false, meetings: false, ask: false, fleet: false, people: false, launch: true });
     expect(d.parts.notifiers).toEqual([]);
     expect(d.parts.ccwLegacy.present()).toBe(false);
   });

@@ -1,9 +1,9 @@
 /**
  * The places, in rail and tab order, with their Phosphor icons (v0.4, D2):
  * Board, Today, Chat (v0.10, Ask in v0.5.3), Files, Accounts, Alerts, Devices, Intel,
- * Meetings (v0.5); Today, Chat, Files, Intel and Meetings only while their
- * switch is on (and Chat only on a device paired with control: the callers
- * pass data.ts usePlaceFeatures). Chat sits right after Today, so with Life
+ * Meetings (v0.5), People (v0.12); Today, Chat, Files, Intel, Meetings and People only
+ * while their switch is on (and Chat and People only on a device paired with control:
+ * the callers pass data.ts usePlaceFeatures). Chat sits right after Today, so with Life
  * and Chat on it is a phone tab and Accounts moves into More. The rail lists
  * every place that is on. The phone has room for five tabs: with more
  * places on, the fifth tab is More, holding the rest (its badge is theirs
@@ -19,6 +19,7 @@ import {
   FilesIcon,
   ListBulletsIcon,
   SunIcon,
+  UsersIcon,
   VideoConferenceIcon,
   type Icon,
 } from '@phosphor-icons/react';
@@ -30,8 +31,8 @@ export interface NavItem {
   href: string;
   label: string;
   icon: Icon;
-  /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Chat: v0.10, the `ask` switch). */
-  feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask';
+  /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Chat: v0.10, the `ask` switch; People: v0.12). */
+  feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask' | 'people';
 }
 
 export const NAV: readonly NavItem[] = [
@@ -44,6 +45,8 @@ export const NAV: readonly NavItem[] = [
   { route: 'devices', href: '/devices', label: 'Devices', icon: DeviceMobileIcon },
   { route: 'intel', href: '/intel', label: 'Intel', icon: BookmarksIcon, feature: 'intel' },
   { route: 'meetings', href: '/meetings', label: 'Meetings', icon: VideoConferenceIcon, feature: 'meetings' },
+  // v0.12: last, so on a phone it sits in More.
+  { route: 'people', href: '/people', label: 'People', icon: UsersIcon, feature: 'people' },
 ];
 
 /** The phone's fifth tab when more than five places are on. */

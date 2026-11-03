@@ -93,6 +93,7 @@ export function reportedFeatures(settings: Settings, mode: Pick<DaemonMode, 'rol
     meetings: false,
     ask: false,
     fleet: false,
+    people: false,
     controls: f.controls && typing,
     launch: f.launch && typing,
     escape: f.escape && typing,

@@ -551,6 +551,7 @@ export function settingsFeatures(s: Settings): Features {
     meetings: s.meetings.enabled,
     ask: s.ask.enabled,
     fleet: s.fleet.enabled,
+    people: s.people.enabled,
   };
 }
 

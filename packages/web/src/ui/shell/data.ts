@@ -40,15 +40,16 @@ export function useFeatures(): Readonly<Features> {
 }
 
 /**
- * The switches as the places (rail, tabs, More) list them: Ask only on a
- * device paired with control (v0.5.3), as every Ask call needs it. A
- * browser that kept no record of its pairing (or an unreadable one) is
- * taken to have it, as the session's answer rows do.
+ * The switches as the places (rail, tabs, More) list them: Ask and (v0.12)
+ * People only on a device paired with control (v0.5.3), as every Ask call
+ * and every People route needs it. A browser that kept no record of its
+ * pairing (or an unreadable one) is taken to have it, as the session's
+ * answer rows do.
  */
 export function usePlaceFeatures(): Readonly<Features> {
   const features = useFeatures();
-  const scopes = features.ask ? readLocalDevice()?.scopes : undefined;
-  return Array.isArray(scopes) && !scopes.includes('control') ? { ...features, ask: false } : features;
+  const scopes = features.ask || features.people ? readLocalDevice()?.scopes : undefined;
+  return Array.isArray(scopes) && !scopes.includes('control') ? { ...features, ask: false, people: false } : features;
 }
 
 /**

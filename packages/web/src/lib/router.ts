@@ -99,7 +99,7 @@ const PLACES_SORTS: readonly string[] = ['best', 'recent', 'visits', 'name', 'pr
 export type PostsFilter = 'open' | 'done';
 
 /** The Life screens (v0.4): Today's place in the tabs stands for all of them. */
-export const LIFE_ROUTES: readonly Route['name'][] = ['today', 'todos', 'meds', 'food', 'places', 'money', 'posts', 'people'];
+export const LIFE_ROUTES: readonly Route['name'][] = ['today', 'todos', 'meds', 'food', 'places', 'money', 'posts'];
 
 const LIFE_ID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const DAY_KEY = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;

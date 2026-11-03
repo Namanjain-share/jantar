@@ -212,12 +212,13 @@ export function Shell() {
       case 'posts':
       case 'people':
       case 'intel': {
-        const on = route.name === 'intel' ? features.intel : features.life;
-        const caption = route.name === 'intel' ? 'Opening the shelf…' : 'Opening Life…';
+        // v0.12: People while it is on (its own switch: Life modules may all be off).
+        const on = route.name === 'intel' ? features.intel : route.name === 'people' ? features.people : features.life;
+        const caption = route.name === 'intel' ? 'Opening the shelf…' : route.name === 'people' ? 'Opening People…' : 'Opening Life…';
         screen = on ? (
           <Suspense fallback={<SkeletonRows count={5} caption={caption} />}>{lifeScreen(route)}</Suspense>
         ) : featuresKnown ? (
-          <NotFound off={route.name === 'intel' ? 'intel on' : 'life on <module>'} />
+          <NotFound off={route.name === 'intel' ? 'intel on' : route.name === 'people' ? 'people on' : 'life on <module>'} />
         ) : (
           <SkeletonRows count={5} caption={caption} />
         );
