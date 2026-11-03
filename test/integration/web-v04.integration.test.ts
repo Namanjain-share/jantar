@@ -608,8 +608,10 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     expect(await tabs.getByRole('link', { name: 'More' }).getAttribute('aria-current')).toBe('page');
     await check(page, watch, 'Intel from More');
 
-    await inEachView('/more', async (p) => {
-      await p.getByRole('heading', { name: 'More', level: 1 }).waitFor();
+    // 0.11 (c22d): More is the phone's tab. A desk window's rail lists every place, so /more goes to the board there.
+    await inEachView('/more', async (p, what) => {
+      if (what.includes('(desk')) await p.waitForURL((u) => u.pathname === '/');
+      else await p.getByRole('heading', { name: 'More', level: 1 }).waitFor();
     });
   });
 

@@ -33,9 +33,15 @@
  * on the machine they belong to. With the Mac's starting off the first
  * machine that can start is picked. The row shows only while some paired
  * machine can start sessions; until then this screen is as before.
+ *
+ * 0.11 (build plan 2.13): a SplitPane ("new"), by the pane's width instead
+ * of the window's frame: from a pane of 800 the browser is the list column
+ * (340, 440 from 1180) and the form, then the receipt, the detail (at most
+ * 640 wide), with "Pick a folder" there while nothing is chosen; below 800
+ * the browser fills the pane and the form is the sheet over it, as before.
  */
 import { XIcon } from '@phosphor-icons/react';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { HUB_MACHINE_NAME, type LaunchJob, type State } from '@jantar/protocol';
 import { errorText } from '../../../lib/api.js';
 import { routePath } from '../../../lib/router.js';
@@ -43,7 +49,7 @@ import { AppProvider, useApp, useDeps, useNavigate, useToast } from '../../conte
 import { IconButton } from '../../kit/IconButton.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { useFeatures } from '../../shell/data.js';
-import { isSplit, useFrame } from '../../shell/layout.js';
+import { SplitPane, useSplit } from '../../kit/SplitPane.js';
 import { Segmented } from '../accounts/Segmented.js';
 import { Receipt } from '../launch/Receipt.js';
 import { SESSIONS_VIEW, WhereContext, basename, dirname, onMachine, peekPrompt, relUnder, useRequest, useWhere, type Where } from './data.js';
@@ -153,7 +159,6 @@ function NewSessionPlace({ root, path = '', start = false, account, launch, from
   const where = useWhere();
   const navigate = useNavigate();
   const toast = useToast();
-  const split = isSplit(useFrame());
   const offline = useApp((s) => s.conn.status === 'offline');
   // Own keys only: an id from the URL such as "constructor" is no launch.
   const launchRoot = useApp((s) => (launch && Object.hasOwn(s.state.launches, launch) ? s.state.launches[launch]?.rootId : undefined));
@@ -252,47 +257,50 @@ function NewSessionPlace({ root, path = '', start = false, account, launch, from
     target && target.root === shownRoot && dirname(target.path) === shownPath && target.path
       ? listing.data?.entries.find((e) => e.name === basename(target.path))
       : undefined;
-  const closeButton = split ? (
-    <IconButton aria-label="Close" onClick={close}>
-      <XIcon size={16} aria-hidden="true" />
-    </IconButton>
-  ) : undefined;
+  // The form or the receipt, beside the browser (`split`) or in the sheet over it.
+  const bodyFor = (split: boolean): ReactNode => {
+    const closeButton = split ? (
+      <IconButton aria-label="Close" onClick={close}>
+        <XIcon size={16} aria-hidden="true" />
+      </IconButton>
+    ) : undefined;
 
-  let body: ReactNode = null;
-  if (launch) {
-    const receipt = <Receipt key={launch} id={launch} phone={!split} retryTo={retryTo} aside={closeButton} />;
-    // v0.6: a machine's launch says where it runs.
-    body = where ? (
-      <>
-        <p data-machine-line className="pb-8 type-mono text-ink-3">
-          On {where.name}
-        </p>
-        {receipt}
-      </>
-    ) : (
-      receipt
-    );
-  } else if (target) {
-    body = (
-      <StartForm
-        key={`${target.root}\n${target.path}\n${startAccount ?? 'auto'}\n${again?.id ?? ''}`}
-        root={target.root}
-        path={target.path}
-        entry={entry}
-        {...(startAccount !== undefined ? { initialAccount: startAccount } : {})}
-        {...(again ? { initialName: again.name, retryOf: again.id } : {})}
-        {...(keptPrompt ? { initialPrompt: keptPrompt } : {})}
-        phone={!split}
-        aside={closeButton}
-        onStarted={(job) => navigate(to(target.root, target.path, { launch: job.id }), { replace: true })}
-      />
-    );
-  }
+    let body: ReactNode = null;
+    if (launch) {
+      const receipt = <Receipt key={launch} id={launch} phone={!split} retryTo={retryTo} aside={closeButton} />;
+      // v0.6: a machine's launch says where it runs.
+      body = where ? (
+        <>
+          <p data-machine-line className="pb-8 type-mono text-ink-3">
+            On {where.name}
+          </p>
+          {receipt}
+        </>
+      ) : (
+        receipt
+      );
+    } else if (target) {
+      body = (
+        <StartForm
+          key={`${target.root}\n${target.path}\n${startAccount ?? 'auto'}\n${again?.id ?? ''}`}
+          root={target.root}
+          path={target.path}
+          entry={entry}
+          {...(startAccount !== undefined ? { initialAccount: startAccount } : {})}
+          {...(again ? { initialName: again.name, retryOf: again.id } : {})}
+          {...(keptPrompt ? { initialPrompt: keptPrompt } : {})}
+          phone={!split}
+          aside={closeButton}
+          onStarted={(job) => navigate(to(target.root, target.path, { launch: job.id }), { replace: true })}
+        />
+      );
+    }
+    return body;
+  };
   // The sheet keeps its last body while it slides away.
   const lastBody = useRef<ReactNode>(null);
-  if (body) lastBody.current = body;
 
-  const browser = (
+  const browser = (split: boolean) => (
     <FolderBrowser
       phone={!split}
       whereRow={whereRow}
@@ -315,33 +323,62 @@ function NewSessionPlace({ root, path = '', start = false, account, launch, from
     />
   );
 
-  if (split) {
-    return (
-      <div className="flex h-full min-h-0 animate-enter">
-        <section aria-labelledby="new-session-title" className="no-scrollbar w-440 flex-none overflow-y-auto border-r border-line bg-surface pb-24">
-          {browser}
-        </section>
-        <section aria-label="Detail" className="min-w-0 flex-1 overflow-y-auto px-32 pb-32 pt-24">
-          <div className="max-w-640">
-            {body ?? (
-              <>
-                <h2 className="type-title text-ink">Pick a folder</h2>
-                <p className="mt-6 max-w-560 type-small text-ink-2">
-                  Choose Start beside a folder, or Start here for the one you are in. The account, the flags and a first prompt come next.
-                </p>
-              </>
-            )}
-          </div>
-        </section>
-      </div>
-    );
-  }
+  const open = launch !== undefined || target !== null;
+  const detail = (content: ReactNode) => (
+    <div className="px-32 pb-32 pt-24 animate-enter">
+      <div className="max-w-640">{content}</div>
+    </div>
+  );
+  return (
+    <SplitPane
+      name="new"
+      list={<NewList browser={browser} body={open ? bodyFor : null} lastBody={lastBody} title={launch ? 'Launch' : 'Start a session'} onClose={close} />}
+      detail={open ? detail(bodyFor(true)) : null}
+      selection={launch ?? (target ? `${target.root}\n${target.path}` : undefined)}
+      empty={detail(
+        <>
+          <h2 className="type-title text-ink">Pick a folder</h2>
+          <p className="mt-6 max-w-560 type-small text-ink-2">
+            Choose Start beside a folder, or Start here for the one you are in. The account, the flags and a first prompt come next.
+          </p>
+        </>,
+      )}
+      alone={false}
+      listLabel="Folders"
+      detailLabel="Detail"
+      onClose={close}
+    />
+  );
+}
 
+/**
+ * The browser. Beside the form (a split pane) it is the list column; alone
+ * (single) it fills the pane and the form or the receipt is the sheet over
+ * it, which keeps its last body while it slides away.
+ */
+function NewList({
+  browser,
+  body,
+  lastBody,
+  title,
+  onClose,
+}: {
+  browser: (split: boolean) => ReactNode;
+  /** The form or the receipt for this mode, while one is open. */
+  body: ((split: boolean) => ReactNode) | null;
+  lastBody: MutableRefObject<ReactNode>;
+  title: string;
+  onClose: () => void;
+}) {
+  const split = Boolean(useSplit()?.split);
+  if (split) return <div className="no-scrollbar pb-24 animate-enter">{browser(true)}</div>;
+  const shown = body ? body(false) : null;
+  if (shown) lastBody.current = shown;
   return (
     <section aria-labelledby="new-session-title" className="pb-24 animate-enter">
-      {browser}
-      <Sheet open={body !== null} onOpenChange={(o) => !o && close()} title={launch ? 'Launch' : 'Start a session'} hideTitle>
-        {body ?? lastBody.current}
+      {browser(false)}
+      <Sheet open={shown !== null} onOpenChange={(o) => !o && onClose()} title={title} hideTitle>
+        {shown ?? lastBody.current}
       </Sheet>
     </section>
   );

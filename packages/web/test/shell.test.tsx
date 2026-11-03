@@ -277,17 +277,17 @@ describe('0.11 c08: one shell tree', () => {
       },
     });
     try {
-      const { router } = renderApp({ state: busy(), path: '/more', layout: layoutAt(1440) });
-      const more = document.querySelector('[data-pane="more"]') as HTMLElement;
-      expect(more).toBeTruthy();
-      more.scrollTop = 900;
-      fireEvent.scroll(more);
+      const { router } = renderApp({ state: busy(), path: '/devices', layout: layoutAt(1440) });
+      const devices = document.querySelector('[data-pane="devices"]') as HTMLElement;
+      expect(devices).toBeTruthy();
+      devices.scrollTop = 900;
+      fireEvent.scroll(devices);
       act(() => router.getState().navigate('/alerts'));
       const alerts = document.querySelector('[data-pane="alerts"]') as HTMLElement;
-      expect(alerts).not.toBe(more);
+      expect(alerts).not.toBe(devices);
       expect(alerts.scrollTop).toBe(0);
-      act(() => router.getState().navigate('/more'));
-      expect((document.querySelector('[data-pane="more"]') as HTMLElement).scrollTop).toBe(900);
+      act(() => router.getState().navigate('/devices'));
+      expect((document.querySelector('[data-pane="devices"]') as HTMLElement).scrollTop).toBe(900);
     } finally {
       Reflect.deleteProperty(HTMLElement.prototype, 'scrollTop');
     }
@@ -302,5 +302,16 @@ describe('0.11 c08: one shell tree', () => {
     act(() => layout.setState(layoutAt(390), true));
     expect(screen.getByRole('main')).toBe(main);
     expect(document.querySelector('[data-chrome]')?.getAttribute('data-chrome')).toBe('phone');
+  });
+});
+
+describe('0.11: More is the phone tab', () => {
+  it('a wider chrome sends /more to the board; the phone keeps it', async () => {
+    const wide = renderApp({ state: busy(), path: '/more', layout: layoutAt(1440) });
+    await waitFor(() => expect(wide.router.getState().route).toEqual({ name: 'board' }));
+    wide.unmount();
+    const phone = renderApp({ state: busy(), path: '/more', layout: layoutAt(390, { coarse: true }) });
+    expect(await screen.findByRole('heading', { level: 1, name: 'More' })).toBeTruthy();
+    expect(phone.router.getState().route).toEqual({ name: 'more' });
   });
 });

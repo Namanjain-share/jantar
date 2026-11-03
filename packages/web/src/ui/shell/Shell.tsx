@@ -116,6 +116,11 @@ export function Shell() {
     document.title = documentTitle(needs);
   }, [needs, route.name]);
   useEffect(() => setFavicon(needs > 0), [needs]);
+  // 0.11 (build plan 2.13): More is the phone's tab. A wider chrome's rail lists every place, so /more goes to the board.
+  const lostMore = route.name === 'more' && !phone;
+  useEffect(() => {
+    if (lostMore) navigate('/', { replace: true });
+  }, [lostMore, navigate]);
 
   // Once connected, quietly make sure the daemon still has this device's push subscription.
   const [pushSynced, setPushSynced] = useState(false);
@@ -273,7 +278,7 @@ export function Shell() {
         );
         break;
       case 'more':
-        screen = <More />;
+        screen = phone ? <More /> : null;
         break;
       case 'notFound':
         screen = <NotFound />;

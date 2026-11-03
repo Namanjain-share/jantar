@@ -74,6 +74,10 @@ What changed for people who use Jantar, newest first. Versions before
 - **Devices** uses two columns of cards from about 900 px of content:
   this device, its notifications and sounds on the left; paired devices,
   machines and pairing on the right (it stopped at 880 px).
+- **New session** puts the folders beside the start form by the space it
+  has, not the window: from about 800 px of content (was a 1024 px
+  window). In a wide window /more goes to the board: the rail already lists
+  every place.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

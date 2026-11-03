@@ -139,24 +139,16 @@ const USERS_CASE = { sizes: ['mac-1440', 'touch-1440'], states: ['today', 'chat'
 
 /**
  * Every place x size at 1024 and wider that still leaves more than 35 % of its width empty, with the
- * share measured when it was listed (chunk 1, the screenshot fixture). Chunk 2 widens each place and
- * removes its rows (c14 Today, c16 Alerts, c17 Intel, c15 Chat, ...); the list is empty at c23.
+ * share measured when it was listed. Chunk 1 listed every place that did (the screenshot fixture);
+ * each chunk-2 commit widened its place and took its rows out (c14 Today, c16 Alerts, c17 Intel,
+ * c15 Chat, c18 Meetings, c19 Cafés, c20 the Life lists, c21 Posts, c22a Files, c22b Accounts,
+ * c22c Devices, c22d More), and it is empty from c22d. A place that regresses fails the test.
  *
  * A short list reads as empty however wide it is: with 3 rows (Alerts' fixture) no 4 px column has
  * 96 px of content, so Alerts measured 0.97-1. c16 made its table one card across the pane, which reads
  * as the table it is (3 % empty at 1440).
  */
-export const KNOWN_WIDE_GAPS: Record<string, number> = {
-  'more@mac-1440': 0.99,
-  'more@touch-1440': 0.99,
-  'more@desktop': 0.99,
-  'more@mac-1024': 0.98,
-  'more@ipad-air-l': 0.98,
-  'more@ipad-pro-l': 0.98,
-  'more@ipad-1024': 0.98,
-  'more@ipad-13-l': 0.98,
-  'more@safari-l': 0.98,
-};
+export const KNOWN_WIDE_GAPS: Record<string, number> = {};
 
 /**
  * What still scrolls or cuts sideways, by place x size, with the commit that fixes it. Like
