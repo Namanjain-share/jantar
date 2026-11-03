@@ -406,6 +406,18 @@ describe('0.11 c12: the sheet, bottom on the phone and a form sheet wider', () =
   }
   const popupOf = () => screen.getByRole('dialog', { name: 'New example' });
 
+  it('c27: with the on-screen keyboard up a form sheet sits at safe top + 16 (data-kb); the phone sheet is left alone', async () => {
+    const layout = createLayoutStore(layoutAt(1180, { coarse: true }));
+    render(<Harness layout={layout} />);
+    const popup = await screen.findByRole('dialog', { name: 'New example' });
+    const viewport = () => popup.closest('[data-present]')?.parentElement?.closest('.sheet-viewport') ?? popup.parentElement;
+    expect(viewport()?.hasAttribute('data-kb')).toBe(false);
+    act(() => layout.setState(layoutAt(1180, { coarse: true, kbUp: true }), true));
+    expect(viewport()?.hasAttribute('data-kb')).toBe(true);
+    act(() => layout.setState(layoutAt(390, { coarse: true, kbUp: true }), true));
+    expect(viewport()?.hasAttribute('data-kb')).toBe(false);
+  });
+
   it('is a bottom sheet on the phone and a form sheet at any wider chrome; one popup either way', async () => {
     const layout = createLayoutStore(layoutAt(390, { coarse: true }));
     render(<Harness layout={layout} />);

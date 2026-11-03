@@ -291,6 +291,13 @@
     padding-bottom: 0;
     transform: translateY(var(--drawer-swipe-movement-y, 0px));
   }
+  /* With the on-screen keyboard up (c27): safe top + 16, and the sheet ends 16 above the keyboard. */
+  .sheet-viewport[data-present='form'][data-kb] {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+  }
+  .sheet-viewport[data-kb] > .sheet-popup[data-present='form'] {
+    max-height: calc(var(--vvh, 100dvh) - env(safe-area-inset-top, 0px) - 16px - 16px);
+  }
   .sheet-popup[data-present='form'][data-starting-style],
   .sheet-popup[data-present='form'][data-ending-style] {
     opacity: 0;
@@ -310,7 +317,16 @@
     background: var(--raised);
   }
 
-  /* ---------- Cmd-K palette (cmdk renders its own group headings) ---------- */
+  /* ---------- Cmd-K palette (cmdk renders its own group headings) ----------
+     0.11 (c27): never centred, so the keyboard can't hide it: 600 wide at safe top + 56, and the
+     list as tall as the visual viewport leaves under the input (16 to spare), 352 at most. */
+  .palette-popup {
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    width: min(var(--palette-w), calc(100% - 32px));
+  }
+  .palette [cmdk-list] {
+    max-height: min(352px, calc(var(--vvh, 100dvh) - env(safe-area-inset-top, 0px) - 56px - 52px - 16px));
+  }
   .palette [cmdk-group-heading] {
     padding: 8px 20px 4px;
     font-family: var(--font-mono);

@@ -10,7 +10,8 @@
  *
  *   bottom  the phone: a bottom sheet, 10 px top radius and a 36x4 grabber.
  *   form    any wider chrome, either pointer: a form sheet, --sheet-w (540)
- *           wide, near the top (safe top + 48), all corners rounded, no
+ *           wide, near the top (safe top + 48; + 16 while the on-screen
+ *           keyboard is up, so the form gets the room), all corners rounded, no
  *           grabber, never taller than the visual viewport, its Save and
  *           Cancel row kept in view at its foot (.sheet-actions).
  *
@@ -53,7 +54,7 @@ const ASKS = new Set(['outside-press', 'escape-key', 'swipe', 'close-watcher', '
 
 export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, children, className, initialFocus, finalFocus }: SheetProps) {
   const layer = useLayer();
-  const { chrome, keyboard } = useLayout();
+  const { chrome, keyboard, kbUp } = useLayout();
   const form = chrome !== 'phone';
   const present = form ? 'form' : 'bottom';
   const popup = useRef<HTMLDivElement>(null);
@@ -85,7 +86,7 @@ export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, c
     >
       <Drawer.Portal container={layer}>
         <Drawer.Backdrop className="sheet-backdrop fixed inset-0 bg-scrim" />
-        <Drawer.Viewport data-present={present} className={clsx('sheet-viewport fixed inset-0 flex justify-center', form ? 'items-start' : 'items-end')}>
+        <Drawer.Viewport data-present={present} data-kb={form && kbUp ? '' : undefined} className={clsx('sheet-viewport fixed inset-0 flex justify-center', form ? 'items-start' : 'items-end')}>
           <Drawer.Popup
             ref={popup}
             data-present={present}

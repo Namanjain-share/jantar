@@ -78,6 +78,7 @@ import { useLayout } from '../shell/layout.js';
 import { backgroundLine } from './board/model.js';
 import { Composer, carriesFiles } from './session/Composer.js';
 import { ControlBar } from './session/controls/ControlBar.js';
+import { KeyRow } from './session/KeyRow.js';
 import { ModeChip } from './session/controls/ModeChip.js';
 import { FilesTab } from './session/FilesTab.js';
 import { takeAsk } from './session/ask.js';
@@ -486,8 +487,11 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   }
 
   // v0.3: the control bar (with its mode chip) above the bottom block, while no card or dialog dock is open.
+  // 0.11 (c27): while the on-screen keyboard is up, the terminal key row (KeyRow) takes the bar's place.
   const controlBar =
-    features.controls && typable && !gone && !ended && !target && !dock ? (
+    features.controls && typable && !gone && !ended && !target && !dock && layout.kbUp ? (
+      <KeyRow sid={sid} offline={offline} />
+    ) : features.controls && typable && !gone && !ended && !target && !dock ? (
       <ControlBar
         sid={sid}
         session={session}
@@ -629,7 +633,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
         {header}
         {bgLine}
         {whereLine}
-        {phone && !reading ? <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone modeOnChip={modeOnChip} noUsage={noUsage} /> : null}
+        {phone && !reading && !layout.kbUp ? <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone modeOnChip={modeOnChip} noUsage={noUsage} /> : null}
         {phone ? (
           <div className="flex-none border-b border-line px-16 py-8">
             <Tabs sid={sid} view={view} onView={(v) => setView(v)} phone files={filesTab} />
@@ -638,7 +642,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
         {focusLine}
         <div className={phone ? 'contents' : 'flex min-h-0 flex-1 justify-between gap-32 px-32'}>
           <div className={phone ? 'contents' : 'flex min-h-0 min-w-0 max-w-640 flex-1 flex-col'}>
-            {phone || wide ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone={false} modeOnChip={modeOnChip} noUsage={noUsage} />}
+            {phone || wide || layout.kbUp ? null : <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone={false} modeOnChip={modeOnChip} noUsage={noUsage} />}
             {goneNotice}
             {panel}
             {reading ? null : controlBar}

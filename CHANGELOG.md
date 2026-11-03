@@ -157,6 +157,18 @@ What changed for people who use Jantar, newest first. Versions before
   to what you tapped instead of a sheet across the window (above it when
   there is more room there, and the sheet again when the on-screen
   keyboard leaves no room). A phone keeps its bottom sheets.
+- **The on-screen keyboard** on an iPad: a sheet moves up to just below
+  the status bar while it is out, and ends above it. ⌘K's search sits near
+  the top (never in the middle, where the keyboard would hide it), 600 px
+  wide, and its list stops above the keyboard. In a session, a row of
+  terminal keys (esc, ⇧⇥, and ^C held) takes the controls' place above the
+  composer while you type, and the meta line steps aside; typing your own
+  answer to a question folds its options into one line with your pick (tap
+  it to see them). A sheet no longer raises the keyboard by itself on an
+  iPad without a keyboard attached (Intel's Add post, Posts' Log a
+  comment).
+- A question card's "Chat about this" is now **Clarify with Claude**, so it
+  isn't mistaken for Jantar's Chat. It still sends Claude's own words.
 
 ## 0.11.0 (3 November 2026)
 

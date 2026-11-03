@@ -23,6 +23,7 @@ import { useDeps } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
 import { Sheet } from '../../../kit/Sheet.js';
 import { Spinner } from '../../../kit/Spinner.js';
+import { useLayout } from '../../../shell/layout.js';
 import { NotSaved } from '../shared/states.js';
 import { Field, INPUT, OfflineLine, SheetActions, TEXTAREA, useOffline, useWrite } from '../today/parts.js';
 import { postLabel } from './model.js';
@@ -56,6 +57,8 @@ export function LogCommentSheet({ open, onOpenChange, sheetKey, onLogged }: LogC
 
 function LogForm({ onDone, onLogged }: { onDone: () => void; onLogged: (id: string, label: string) => void }) {
   const { api } = useDeps();
+  // 0.11 (c27, A9): the field takes the focus on open only with a hardware keyboard.
+  const { keyboard } = useLayout();
   const offline = useOffline();
   const w = useWrite();
   const id = useId();
@@ -91,7 +94,7 @@ function LogForm({ onDone, onLogged }: { onDone: () => void; onLogged: (id: stri
           className={INPUT}
           type="url"
           inputMode="url"
-          autoFocus
+          autoFocus={keyboard}
           enterKeyHint="done"
           autoCapitalize="off"
           autoCorrect="off"

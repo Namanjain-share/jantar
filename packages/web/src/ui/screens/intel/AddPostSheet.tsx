@@ -16,6 +16,7 @@ import { useDeps } from '../../context.js';
 import { Button, buttonClass } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { Spinner } from '../../kit/Spinner.js';
+import { useLayout } from '../../shell/layout.js';
 import { Link } from '../../shell/Link.js';
 import { NotSaved, OFFLINE_WRITE } from '../life/shared/states.js';
 import { useWrite } from '../life/today/parts.js';
@@ -46,6 +47,8 @@ export function AddPostSheet({
   onByHand: () => void;
 }) {
   const { api } = useDeps();
+  // 0.11 (c27, A9): the field takes the focus on open only with a hardware keyboard.
+  const { keyboard } = useLayout();
   const id = useId();
   const [text, setText] = useState('');
   const [depth, setDepth] = useState<IntelDepth>(INTEL_DEPTH_DEFAULT);
@@ -110,7 +113,7 @@ export function AddPostSheet({
             }}
             maxLength={INTEL_READ_LIMITS.textMax}
             rows={3}
-            autoFocus
+            autoFocus={keyboard}
             autoCapitalize="off"
             spellCheck={false}
             placeholder="https://"

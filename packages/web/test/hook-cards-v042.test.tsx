@@ -5,6 +5,7 @@
  * (`planModes`); the permission card folds every session-scoped suggestion
  * into Claude's one "for this session" row.
  */
+import { layoutAt } from '../src/ui/shell/layout.js';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CLARIFY_MESSAGE, DIALOG_HOLD_COPY } from '@jantar/protocol';
@@ -227,11 +228,15 @@ describe('question card', () => {
     await waitFor(() => expect(api.decide).toHaveBeenCalledWith(p.id, { behavior: 'allow', answers: { 'Which level?': 'Mid level' } }));
   });
 
-  it("Chat about this declines with Claude's own sentence; Decline still declines plainly", async () => {
+  it("Clarify with Claude (the terminal's Chat about this) declines with Claude's own sentence; Decline still declines plainly", async () => {
     const api = fakeApi();
     const p = pending('a', { kind: 'question', tool: 'AskUserQuestion', input: { questions }, questions });
     const { unmount } = renderApp({ path: '/s/a', api, state: stateWith({ sessions: [session('a')], pending: [p] }) });
-    fireEvent.click(within(card()).getByRole('button', { name: 'Chat about this' }));
+    // 0.11 (OQ8): renamed so it isn't taken for Jantar's Chat; its description keeps Claude's words.
+    expect(within(card()).queryByRole('button', { name: 'Chat about this' })).toBeNull();
+    const clarify = within(card()).getByRole('button', { name: 'Clarify with Claude' });
+    expect(clarify.getAttribute('aria-description')).toContain('Chat about this');
+    fireEvent.click(clarify);
     await waitFor(() => expect(api.decide).toHaveBeenCalledWith(p.id, { behavior: 'deny', message: CLARIFY_MESSAGE }));
     unmount();
     renderApp({ path: '/s/a', api, state: stateWith({ sessions: [session('a')], pending: [p] }) });
@@ -254,5 +259,22 @@ describe('question card', () => {
     const p = pending('a', { kind: 'question', tool: 'AskUserQuestion', input: { questions: 'not a list' } });
     renderApp({ path: '/s/a', status: 'offline', state: stateWith({ sessions: [session('a')], pending: [p] }) });
     expect((within(card()).getByRole('button', { name: 'Decline' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('0.11 c27: a Question card with the on-screen keyboard up', () => {
+  it('folds its options to one row while you type your own answer; a tap shows them; nothing picked is lost', async () => {
+    const qs = [{ question: 'Which module?', options: [{ label: 'auth/session.ts' }, { label: 'middleware/cookies.ts' }] }];
+    const p = pending('a', { kind: 'question', tool: 'AskUserQuestion', input: { questions: qs }, questions: qs });
+    renderApp({ path: '/s/a', state: stateWith({ sessions: [session('a')], pending: [p] }), layout: layoutAt(820, { coarse: true, kbUp: true }) });
+    fireEvent.click(await within(card()).findByRole('radio', { name: /auth\/session\.ts/ }));
+    const own = within(card()).getByPlaceholderText('Your own answer');
+    fireEvent.focus(own);
+    const fold = within(card()).getByRole('button', { name: /2 options/ });
+    expect(fold.textContent).toContain('auth/session.ts');
+    expect(within(card()).queryByRole('radio', { name: /middleware/ })).toBeNull();
+    fireEvent.click(fold);
+    expect(within(card()).getByRole('radio', { name: /middleware/ })).toBeTruthy();
+    expect((within(card()).getByRole('radio', { name: /auth\/session\.ts/ }) as HTMLInputElement).checked).toBe(true);
   });
 });

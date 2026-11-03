@@ -12,6 +12,7 @@ import type { Session } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { INTERRUPT_HOLD_MS } from '../src/ui/screens/session/controls/ControlBar.js';
 import { resetUnavailable } from '../src/ui/screens/session/controls/modes.js';
+import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
 import { emit, fakeApi, iso, measureAs, pending, renderApp, session, stateWith } from './helpers.js';
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */
@@ -385,5 +386,34 @@ describe('design rules for session/controls (spec 5.0)', () => {
   it('has no colour literals, arbitrary sizes, em dashes or exclamation marks in strings', () => {
     expect(code.filter((c) => /#[0-9a-fA-F]{3,8}\b|\brgba?\(|oklch\(|-\[|—/.test(c.text)).map((c) => c.f)).toEqual([]);
     expect(code.filter((c) => /[a-z]![\s'"`<]/i.test(c.text)).map((c) => c.f)).toEqual([]);
+  });
+});
+
+describe('0.11 c27: the terminal key row while the on-screen keyboard is up', () => {
+  it('takes the control bar’s place and the meta line goes; Esc and Shift+Tab press their keys; a refusal says why', async () => {
+    const sessionKey = vi.fn(async (_sid: string, key: string) => {
+      if (key === 'shiftTab') throw new ApiError('dialog_open', 'a dialog is open in the terminal; answer it there first', 409);
+    });
+    const api = fakeApi({ sessionKey });
+    const layout = createLayoutStore(layoutAt(820, { coarse: true }));
+    renderApp({ path: '/s/a', api, state: on(), layout });
+    expect(await screen.findByRole('group', { name: 'Controls' })).toBeTruthy();
+    act(() => layout.setState(layoutAt(820, { coarse: true, kbUp: true }), true));
+    const keys = screen.getByRole('group', { name: 'Terminal keys' });
+    expect(screen.queryByRole('group', { name: 'Controls' })).toBeNull();
+    expect(within(keys).getAllByRole('button').map((b) => b.textContent)).toEqual(['esc', '⇧⇥', '^C^C'].map((t, i) => (i === 2 ? expect.stringContaining('^C') : t)));
+    await act(async () => {
+      fireEvent.click(within(keys).getByRole('button', { name: 'Escape' }));
+    });
+    expect(sessionKey).toHaveBeenCalledWith('a', 'escape');
+    expect(within(keys).getByRole('status').textContent).toBe('Esc sent');
+    await act(async () => {
+      fireEvent.click(within(keys).getByRole('button', { name: 'Shift Tab: next mode' }));
+    });
+    expect(within(keys).getByRole('status').textContent).toMatch(/^Not sent: a dialog is open in the terminal/);
+    // The keyboard down: the bar is back.
+    act(() => layout.setState(layoutAt(820, { coarse: true }), true));
+    expect(screen.getByRole('group', { name: 'Controls' })).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Terminal keys' })).toBeNull();
   });
 });

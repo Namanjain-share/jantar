@@ -1,7 +1,10 @@
 /**
  * Cmd-K: jump to a session or an account. cmdk's <Command> inside a Base UI
- * Dialog (never Command.Dialog, which is Radix and injects styles). Desktop
- * only. --raised, 10 px radius, the one shadow, over the scrim.
+ * Dialog (never Command.Dialog, which is Radix and injects styles). --raised,
+ * 10 px radius, the one shadow, over the scrim. 0.11: in every chrome (c11),
+ * 600 wide at safe top + 56 and never centred, its list as tall as the
+ * visual viewport leaves (the on-screen keyboard can't hide it), 44 rows on
+ * touch (kit.css .palette-popup, c27).
  */
 import { Dialog } from '@base-ui/react/dialog';
 import { Command } from 'cmdk';
@@ -32,14 +35,14 @@ export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChan
     <Dialog.Root open={open} onOpenChange={(o) => onOpenChange(o)}>
       <Dialog.Portal container={layer}>
         <Dialog.Backdrop className="fixed inset-0 z-35 bg-scrim animate-fade" />
-        <Dialog.Popup className="palette fixed left-1/2 top-96 z-40 w-560 max-w-full -translate-x-1/2 overflow-hidden rounded-dock bg-raised text-ink shadow-float outline-none animate-pop">
+        <Dialog.Popup className="palette palette-popup fixed left-1/2 z-40 -translate-x-1/2 overflow-hidden rounded-dock bg-raised text-ink shadow-float outline-none animate-pop">
           <Dialog.Title className="sr-only">Jump to a session</Dialog.Title>
           <Command label="Jump to a session or account" loop>
             <Command.Input
               placeholder="Jump to a session or account"
               className="block h-52 w-full border-b border-line bg-transparent px-20 type-input text-ink outline-none"
             />
-            <Command.List className="no-scrollbar max-h-352 overflow-auto py-4">
+            <Command.List className="no-scrollbar overflow-auto py-4">
               <Command.Empty className="px-20 py-12 type-small text-ink-3">Nothing matches.</Command.Empty>
               <NewSessionItem onSelect={() => go('/new')} />
               {sessions.length ? (
@@ -49,7 +52,7 @@ export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChan
                       key={s.sid}
                       value={`${s.folder} ${s.name ?? ''} ${machines ? machineName(state, s.node) : ''} ${s.sid}`}
                       onSelect={() => go(`/s/${encodeURIComponent(s.sid)}`)}
-                      className="flex h-40 cursor-pointer items-center gap-8 pl-16 pr-20 aria-selected:bg-select"
+                      className="flex h-40 cursor-pointer items-center gap-8 pl-16 pr-20 aria-selected:bg-select coarse:h-44"
                     >
                       <StatusGlyph state={glyphStateOf(state, s, now)} />
                       <span className="type-row font-medium">{s.folder}</span>
@@ -69,7 +72,7 @@ export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChan
                         key={a.id}
                         value={`account ${accountName(a.id, a)}`}
                         onSelect={() => go('/accounts')}
-                        className="flex h-40 cursor-pointer items-center gap-8 pl-16 pr-20 aria-selected:bg-select"
+                        className="flex h-40 cursor-pointer items-center gap-8 pl-16 pr-20 aria-selected:bg-select coarse:h-44"
                       >
                         <span className="w-16 type-mono text-ink">{accountId(a.id)}</span>
                         <span className="min-w-0 truncate type-row text-ink-2">{a.alias ?? a.emailMasked}</span>

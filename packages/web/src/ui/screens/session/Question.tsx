@@ -5,8 +5,15 @@
  * something…" takes a typed answer inline. Several questions page one at a
  * time ("1 of 3 questions"); picking a single-choice answer moves on, as the
  * terminal does. "Send answer" is enabled once every question has an answer.
- * "Chat about this" is Claude's own way out: it declines with Claude's
- * sentence (CLARIFY_MESSAGE) and Claude asks what to clarify.
+ * "Clarify with Claude" is Claude's own way out ("Chat about this" in the
+ * terminal, kept as its description; 0.11 renamed it so it isn't taken for
+ * Jantar's Chat, open question 8): it declines with Claude's sentence
+ * (CLARIFY_MESSAGE) and Claude asks what to clarify.
+ *
+ * 0.11 (c27): while the on-screen keyboard is up and the focus is in the
+ * card (its own answer), the options fold to one 44 row with the pick
+ * ("auth/session.ts · 2 options"); a tap shows them again. They stay
+ * mounted, so nothing picked is lost.
  *
  * v0.6: a paired machine's card is headed with the Mac's name for it, says
  * where to answer questions it doesn't carry (that machine; the Mac cuts
@@ -15,12 +22,13 @@
  */
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useId, useState, type KeyboardEvent } from 'react';
+import { useId, useState, type FocusEvent, type KeyboardEvent } from 'react';
 import { CLARIFY_MESSAGE, type Question } from '@jantar/protocol';
 import { questionsOf } from '../../../lib/describe.js';
 import { Button } from '../../kit/Button.js';
 import { IconButton } from '../../kit/IconButton.js';
 import { Keycap } from '../../kit/Keycap.js';
+import { useLayout } from '../../shell/layout.js';
 import { useDecide } from './decide.js';
 import { DockFrame } from './DockFrame.js';
 import { Actions, InlineError, OfflineLine } from './Fields.js';
@@ -82,6 +90,18 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
   const disabled = busy || p.state !== 'open' || offline || Boolean(machine?.blocked);
   const baseId = useId();
   const size = phone ? 'xl' : 'lg';
+  // c27: the options fold while the on-screen keyboard is up and the focus is in the card.
+  const { kbUp } = useLayout();
+  const [inside, setInside] = useState(false);
+  const [unfolded, setUnfolded] = useState(false);
+  const folded = kbUp && inside && !unfolded;
+  const onFocus = () => setInside(true);
+  const onBlur = (e: FocusEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setInside(false);
+      setUnfolded(false);
+    }
+  };
 
   const update = (qi: number, fn: (a: Answer) => Answer) =>
     setAnswers((prev) => ({ ...prev, [qi]: fn(prev[qi] ?? { picked: [], other: '', otherOn: false }) }));
@@ -151,7 +171,7 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
 
   return (
     <DockFrame phone={phone} title={cardTitle('Question', machine)} age={age} late={late} aside={aside} peek={q.question}>
-      <div onKeyDown={onKey}>
+      <div onKeyDown={onKey} onFocus={onFocus} onBlur={onBlur}>
         {questions.length > 1 ? (
           <div className="mt-8 flex h-28 items-center gap-4 type-mono text-ink-3">
             <span>
@@ -172,10 +192,24 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
             {q.multiSelect ? <span className="type-small font-regular text-ink-3"> pick any</span> : null}
           </legend>
           <div className={clsx('mt-12 border-t border-line', rowPad)}>
+            {folded ? (
+              <button
+                type="button"
+                aria-expanded={false}
+                onClick={() => setUnfolded(true)}
+                className={clsx(row(false), 'w-full text-left')}
+              >
+                <Box on={Boolean(a?.picked.length)} multi={Boolean(q.multiSelect)} />
+                <span className="min-w-0 flex-1 truncate type-row text-ink">
+                  {a?.picked.length ? a.picked.join(', ') : 'No option picked'}
+                  <span className="text-ink-3"> · {q.options.length} options</span>
+                </span>
+              </button>
+            ) : null}
             {q.options.map((o, oi) => {
               const checked = Boolean(a?.picked.includes(o.label)) && !(type === 'radio' && a?.otherOn);
               return (
-                <label key={oi} className={row(checked)}>
+                <label key={oi} className={row(checked)} hidden={folded}>
                   <input
                     type={type}
                     name={name}
@@ -236,8 +270,8 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
           </div>
         </fieldset>
         {/* Claude lists it under its own rule, after the options: a way out, not an answer. */}
-        <Button variant="text" size={size} className="-ml-8 mt-8" disabled={disabled} onClick={chat}>
-          Chat about this
+        <Button variant="text" size={size} className="-ml-8 mt-8" disabled={disabled} onClick={chat} aria-description="Chat about this: Claude's own words for it">
+          Clarify with Claude
         </Button>
 
         <Actions phone={phone}>
