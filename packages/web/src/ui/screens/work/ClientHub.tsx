@@ -38,6 +38,7 @@ import clsx from 'clsx';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { FilesRootsResponse, Todo } from '@jantar/protocol';
 import type { WorkClientHub, WorkDealCard, WorkLogRow } from '@jantar/protocol/work';
+import { errorText } from '../../../lib/api.js';
 import { formatAmount } from '../../../lib/money.js';
 import { routePath } from '../../../lib/router.js';
 import { useApp, useDeps, useNow, useToast } from '../../context.js';
@@ -294,7 +295,15 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
                         stages={stageNames}
                         offline={offline}
                         onEdit={() => startLog({ row })}
-                        onDelete={() => held.remove(row.id, 'Deleted a log entry', () => w.logDelete(row.id).then(() => (reload(), true), () => false))}
+                        onDelete={() =>
+                          held.remove(row.id, 'Deleted a log entry', () =>
+                            w.logDelete(row.id).then(
+                              () => (reload(), true),
+                              // The entry comes back; say why, or it looks as if the delete never happened.
+                              (e: unknown) => (toast(`Not deleted. ${errorText(e)}`, 'error'), false),
+                            ),
+                          )
+                        }
                       />
                     ))}
                   </ul>

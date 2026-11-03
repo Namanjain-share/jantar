@@ -167,4 +167,19 @@ describe('the Log sheet', () => {
     });
     await waitFor(() => expect(calls(api, 'DELETE', '/v1/work/log/:id')).toEqual([expect.objectContaining({ params: { id: IDS.log1 } })]));
   });
+
+  it('a delete the Mac refuses: the entry comes back, and a toast says why', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { api, toasts } = setup({ 'DELETE /v1/work/log/:id': new ApiError('network', 'Failed to fetch', 0) });
+    const log = await screen.findByRole('list', { name: 'Its log' });
+    fireEvent.click(within(log).getByRole('button', { name: 'Actions for this call' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await waitFor(() => expect(document.querySelector(`[data-log="${IDS.log1}"]`)).toBeNull());
+    await act(async () => {
+      vi.advanceTimersByTime(5_100);
+    });
+    await waitFor(() => expect(calls(api, 'DELETE', '/v1/work/log/:id')).toHaveLength(1));
+    await waitFor(() => expect(document.querySelector(`[data-log="${IDS.log1}"]`)).not.toBeNull());
+    expect(toasts.getState().toasts.map((t) => t.text)).toContain('Not deleted. Could not reach the Mac. Check the connection and try again.');
+  });
 });
