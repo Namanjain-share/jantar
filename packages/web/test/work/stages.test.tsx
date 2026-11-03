@@ -62,6 +62,12 @@ describe("Work's stages", () => {
     expect(p.map((i) => i.value)).toEqual(['', '', '60', '']);
     expect(p.map((i) => i.placeholder)).toEqual(['40', '20', '60', '80']);
     expect((within(sheet).getAllByRole('textbox', { name: 'Quiet after (days)' })[0] as HTMLInputElement).placeholder).toBe('14');
+    // A stage's two fields leave a 390 phone's sheet (358 inside) room for "12 deals" (8 mono characters, 7.2 each)
+    // on their line: Proposal sent's "2 deals" no longer wraps under them while the others' count sits beside.
+    const fields = p[0]!.closest('li')!.querySelector('div.mt-6')!;
+    const widths = [...fields.children].slice(0, 2).map((f) => Number(/\bw-(\d+)\b/.exec((f as HTMLElement).className)?.[1]));
+    expect(widths.every((w) => w > 0)).toBe(true);
+    expect(widths[0]! + widths[1]! + 2 * 12 + 8 * 7.2).toBeLessThanOrEqual(358);
   });
 
   it('rename, reorder and add (before Won): Save sends the whole list, kept stages by id, a new one without', async () => {

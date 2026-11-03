@@ -141,8 +141,9 @@ function StagesForm({ reply, onDone, onSaved }: { reply: WorkStagesReply; onDone
               )}
             </div>
             {r.kind === 'open' ? (
+              // 112 + 144 and their gaps leave a 390 phone's sheet room for "12 deals" on the same line.
               <div className="mt-6 flex flex-wrap gap-12">
-                <Field label="Probability %" htmlFor={`${id}-${r.key}-p`} className="w-128 flex-none py-0">
+                <Field label="Probability %" htmlFor={`${id}-${r.key}-p`} className="w-112 flex-none py-0">
                   <input
                     id={`${id}-${r.key}-p`}
                     className={INPUT}
@@ -153,7 +154,7 @@ function StagesForm({ reply, onDone, onSaved }: { reply: WorkStagesReply; onDone
                     onChange={(e) => set(r.key, { probability: e.target.value })}
                   />
                 </Field>
-                <Field label="Quiet after (days)" htmlFor={`${id}-${r.key}-q`} className="w-160 flex-none py-0">
+                <Field label="Quiet after (days)" htmlFor={`${id}-${r.key}-q`} className="w-144 flex-none py-0">
                   <input
                     id={`${id}-${r.key}-q`}
                     className={INPUT}
