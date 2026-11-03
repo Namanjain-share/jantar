@@ -323,6 +323,9 @@ describe('0.12 c30: the whole key map', () => {
     expect(groups[0]).toBe('Board');
     expect(groups).toContain('Anywhere');
     expect(groupsFor('posts').slice(0, 2).map((g) => g.id)).toEqual(['posts', 'lists']);
+    // 0.13.0: Work's own keys first on Work (design 6.4).
+    expect(groupsFor('work').slice(0, 2).map((g) => g.id)).toEqual(['work', 'lists']);
+    expect(groupsFor('work')[0]!.rows.map((r) => r.keys.join(' '))).toEqual(['c', 'l', 'n', 'e', 'm', '← →']);
     fireEvent.click(within(sheet).getByRole('button', { name: 'Legend' }));
     expect(within(sheet).getByText(/Claude asked a question/)).toBeTruthy();
   });

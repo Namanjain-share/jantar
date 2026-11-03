@@ -24,7 +24,7 @@ export interface KeyRow {
 }
 
 export interface KeyGroup {
-  id: 'anywhere' | 'board' | 'session' | 'lists' | 'life' | 'places' | 'posts' | 'chat' | 'sheets';
+  id: 'anywhere' | 'board' | 'session' | 'lists' | 'life' | 'places' | 'posts' | 'work' | 'chat' | 'sheets';
   title: string;
   rows: readonly KeyRow[];
 }
@@ -108,6 +108,19 @@ export const KEY_GROUPS: readonly KeyGroup[] = [
       { keys: ['l'], does: 'Log a comment' },
     ],
   },
+  // 0.13.0 Work (design 6.4): the page's own keys; its lists take the Lists keys.
+  {
+    id: 'work',
+    title: 'Work',
+    rows: [
+      { keys: ['c'], does: "New: the page's +" },
+      { keys: ['l'], does: 'Log a call or meeting (a client or a deal)' },
+      { keys: ['n'], does: 'Next step' },
+      { keys: ['e'], does: 'Edit the open client or deal' },
+      { keys: ['m'], does: 'Move a deal to another stage' },
+      { keys: ['←', '→'], does: "The deals board's next column" },
+    ],
+  },
   {
     id: 'chat',
     title: 'Chat',
@@ -143,6 +156,7 @@ const FIRST: Partial<Record<Route['name'], readonly KeyGroup['id'][]>> = {
   alerts: ['lists'],
   files: ['lists'],
   chat: ['chat'],
+  work: ['work', 'lists'],
 };
 
 /** Every group, the current place's first, then the rest in their own order. */
