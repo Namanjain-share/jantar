@@ -27,9 +27,28 @@ function fileName(name: string, day: string, ext: string): string {
   return `jantar-${slug}-${day}.${ext}`;
 }
 
+/** P3: every turn of her chat thread, oldest first (chat.db; none while it won't open). */
+function chatTurns(s: ApiServices, pid: string): unknown[] {
+  const out: unknown[] = [];
+  let before: string | undefined;
+  for (let pages = 0; pages < 400; pages++) {
+    let r;
+    try {
+      r = s.deps.chat.threadView(pid, before);
+    } catch {
+      break;
+    }
+    if (!r.ok) break;
+    out.unshift(...r.value.turns);
+    if (!r.value.older) break;
+    before = r.value.older;
+  }
+  return out;
+}
+
 export function personExport(s: ApiServices, pid: string, format: 'html' | 'json'): RawReply {
   if (s.deps.life.broken() !== null || !s.deps.life.people.lifeOpen()) throw new ApiError('life_unavailable', EXPORT_BROKEN);
-  const data = exportSections(s.ctx, s.deps.life.people, pid);
+  const data = { ...exportSections(s.ctx, s.deps.life.people, pid), chat: chatTurns(s, pid) };
   const day = s.ctx.clock.iso().slice(0, 10);
   const name = data.person?.name ?? 'export';
   if (format === 'json') {
@@ -63,6 +82,7 @@ export function personExport(s: ApiServices, pid: string, format: 'html' | 'json
     section('Journal', data.journal) +
     section('Journal comments', data.journalComments) +
     section('Alerts', data.alerts) +
+    section('Chat with your assistant', data.chat) +
     section('Activity', data.activity) +
     '</body></html>';
   return {

@@ -3,7 +3,7 @@
  * sockets.
  *
  * Her event stream (api/person-events.ts) sends `tick {seq, life, plan,
- * alerts, me}`: counters only, never State, an id or a title. They move
+ * alerts, chat, me}`: counters only, never State, an id or a title. They move
  * only on writes into her space (`life`: to-dos and weights; `plan`: her
  * plan, review, status, sleep and journal, P2), on alerts between them
  * (`alerts`, P2), or on her account (`me`: state, agreement, devices). His writes to his own space never touch them, so her stream
@@ -20,11 +20,13 @@ export interface PersonCounters {
   life: number;
   plan: number;
   alerts: number;
+  /** P3: her chat thread. */
+  chat: number;
   me: number;
 }
 
-export type PersonCounter = 'life' | 'plan' | 'alerts' | 'me';
-const ZERO: PersonCounters = { seq: 0, life: 0, plan: 0, alerts: 0, me: 0 };
+export type PersonCounter = 'life' | 'plan' | 'alerts' | 'chat' | 'me';
+const ZERO: PersonCounters = { seq: 0, life: 0, plan: 0, alerts: 0, chat: 0, me: 0 };
 
 export type PersonTickListener = (c: PersonCounters) => void;
 export type PersonCloseListener = (deviceId: string | null) => void;

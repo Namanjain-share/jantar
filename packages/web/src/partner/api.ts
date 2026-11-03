@@ -19,6 +19,7 @@ import type {
   JournalList,
   JournalPatchBody,
   PersonActivityResponse,
+  PersonChatList,
   PersonMe,
   PersonOwnToday,
   PersonPrefsPatch,
@@ -109,6 +110,19 @@ export const PERSON_PATHS = {
   alertSend: ['POST', '/v1/p/alerts'],
   alertSeen: ['POST', '/v1/p/alerts/:id/seen'],
   alertReply: ['POST', '/v1/p/alerts/:id/reply'],
+  // P3: her chat thread.
+  chat: ['GET', '/v1/p/chat'],
+  chatSend: ['POST', '/v1/p/chat'],
+  chatClear: ['DELETE', '/v1/p/chat'],
+  chatStatus: ['GET', '/v1/p/chat/status'],
+  chatCancel: ['POST', '/v1/p/chat/turns/:id/cancel'],
+  chatTurnDelete: ['DELETE', '/v1/p/chat/turns/:id'],
+  chatUndo: ['POST', '/v1/p/chat/turns/:id/changes/:n/undo'],
+  chatCard: ['POST', '/v1/p/chat/turns/:id/cards/:n'],
+  chatDismiss: ['POST', '/v1/p/chat/turns/:id/cards/:n/dismiss'],
+  chatPhotoCreate: ['POST', '/v1/p/chat/photos'],
+  chatPhoto: ['GET', '/v1/p/chat/photos/:id'],
+  chatPhotoDelete: ['DELETE', '/v1/p/chat/photos/:id'],
 } as const;
 type PathKey = keyof typeof PERSON_PATHS;
 
@@ -200,6 +214,19 @@ export interface PersonApi {
   alertSend(body: AlertSendBody): Promise<{ id: string; delivery: string }>;
   alertSeen(id: string): Promise<void>;
   alertReply(id: string, body: AlertReplyBody): Promise<void>;
+  // P3
+  chat(before?: string): Promise<PersonChatList>;
+  chatSend(text: string, photos?: string[]): Promise<{ id: string }>;
+  chatClear(): Promise<void>;
+  chatCancel(id: string): Promise<void>;
+  chatTurnDelete(id: string): Promise<void>;
+  chatUndo(id: string, n: number): Promise<void>;
+  chatCard(id: string, n: number): Promise<void>;
+  chatDismiss(id: string, n: number): Promise<void>;
+  /** One photo's bytes (JPEG, PNG, WebP or GIF); the Mac strips its location and camera details before keeping it. */
+  chatPhotoAdd(bytes: Blob): Promise<{ id: string }>;
+  chatPhotoUrl(id: string): string;
+  chatPhotoDelete(id: string): Promise<void>;
 }
 
 /** A client id: a double tap sends the same one, so the daemon makes one row (sleep and journal). */
@@ -218,13 +245,14 @@ export function createPersonApi(opts: { fetch?: typeof fetch; base?: string; cre
   const base = opts.base ?? (typeof location === 'undefined' ? 'http://localhost' : location.origin);
   const creds = opts.credentials ?? personCredentialStore();
 
-  async function call<T>(key: PathKey, init: { params?: Record<string, string>; query?: Record<string, string | number | undefined>; body?: unknown } = {}): Promise<T> {
+  async function call<T>(key: PathKey, init: { params?: Record<string, string>; query?: Record<string, string | number | undefined>; body?: unknown; raw?: Blob } = {}): Promise<T> {
     const [method, pattern] = PERSON_PATHS[key];
     let path: string = pattern.replace(/:([a-zA-Z]+)/g, (_m, n: string) => encodeURIComponent(init.params?.[n] ?? ''));
     const q = Object.entries(init.query ?? {}).filter(([, v]) => v !== undefined);
     if (q.length) path += `?${q.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')}`;
     const headers: Record<string, string> = { accept: 'application/json' };
-    if (init.body !== undefined) headers['content-type'] = 'application/json';
+    if (init.raw !== undefined) headers['content-type'] = 'application/octet-stream';
+    else if (init.body !== undefined) headers['content-type'] = 'application/json';
     if (method !== 'GET') {
       headers['idempotency-key'] = idemKey();
       const c = await creds.get();
@@ -237,7 +265,7 @@ export function createPersonApi(opts: { fetch?: typeof fetch; base?: string; cre
         headers,
         credentials: 'same-origin',
         cache: 'no-store',
-        ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+        ...(init.raw !== undefined ? { body: init.raw } : init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
       });
     } catch {
       throw new PersonApiError('network', "Can't reach the Mac right now.", 0);
@@ -325,5 +353,16 @@ export function createPersonApi(opts: { fetch?: typeof fetch; base?: string; cre
     alertSend: (body) => call('alertSend', { body }),
     alertSeen: async (id) => void (await call('alertSeen', { params: { id } })),
     alertReply: async (id, body) => void (await call('alertReply', { params: { id }, body })),
+    chat: (before) => call('chat', { query: { before } }),
+    chatSend: (text, photos) => call('chatSend', { body: { text, ...(photos?.length ? { photos } : {}) } }),
+    chatClear: async () => void (await call('chatClear')),
+    chatCancel: async (id) => void (await call('chatCancel', { params: { id } })),
+    chatTurnDelete: async (id) => void (await call('chatTurnDelete', { params: { id } })),
+    chatUndo: async (id, n) => void (await call('chatUndo', { params: { id, n: String(n) } })),
+    chatCard: async (id, n) => void (await call('chatCard', { params: { id, n: String(n) } })),
+    chatDismiss: async (id, n) => void (await call('chatDismiss', { params: { id, n: String(n) } })),
+    chatPhotoAdd: (bytes) => call('chatPhotoCreate', { raw: bytes }),
+    chatPhotoUrl: (id) => PERSON_PATHS.chatPhoto[1].replace(':id', encodeURIComponent(id)),
+    chatPhotoDelete: async (id) => void (await call('chatPhotoDelete', { params: { id } })),
   };
 }

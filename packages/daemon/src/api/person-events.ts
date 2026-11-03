@@ -58,8 +58,8 @@ export function openPersonEventStream(socket: WsLike, s: ApiServices, auth: Requ
 
   send({ kind: 'hello', protocol: s.ctx.version.protocol, daemonVersion: s.ctx.version.daemon, webHash: s.webHash, personEpoch: PERSON_EPOCH });
   const c = people.ticks.of(me.personId);
-  send({ kind: 'tick', seq: c.seq, life: c.life, plan: c.plan, alerts: c.alerts, me: c.me });
-  unsubs.push(people.ticks.subscribe(me.personId, (t) => send({ kind: 'tick', seq: t.seq, life: t.life, plan: t.plan, alerts: t.alerts, me: t.me })));
+  send({ kind: 'tick', seq: c.seq, life: c.life, plan: c.plan, alerts: c.alerts, chat: c.chat, me: c.me });
+  unsubs.push(people.ticks.subscribe(me.personId, (t) => send({ kind: 'tick', seq: t.seq, life: t.life, plan: t.plan, alerts: t.alerts, chat: t.chat, me: t.me })));
   unsubs.push(
     people.ticks.onClose(me.personId, (deviceId) => {
       if (deviceId !== null && deviceId !== me.deviceId) return;

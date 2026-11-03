@@ -34,6 +34,7 @@
  * `chat.run` audit row per run with ids and counts; logs carry codes.
  */
 import { randomBytes } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
 import { chmod, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { dayKeyOf, hhmmOf, isValidTimeZone } from '@jantar/life-core';
@@ -50,6 +51,16 @@ import {
   type ChatStatus,
   type RewriteModel,
 } from '@jantar/protocol';
+import {
+  CHAT_KEEP_DAYS_DEFAULT,
+  PERSON_CHAT_SENTENCES,
+  PERSON_CHAT_UNFINISHED_MAX,
+  chatDisclosure,
+  chatThreadOf,
+  type OwnerChatView,
+  type PersonChatList,
+  type PersonChatStatus,
+} from '@jantar/protocol/people';
 import type { Actor, ChatService, DaemonContext, LifeResult, Logger, TimerId, Unsubscribe } from '../contracts.js';
 import { actorId } from '../core/actor.js';
 import { newId } from '../core/ids.js';
@@ -57,12 +68,14 @@ import { sendLifePush } from '../life/push.js';
 import { pickSharedRunAccount, runVia } from '../rewrite/pick.js';
 import { DROPPABLE_OPTIONS, execRewrite, initOfLine, initProblem, lineSplitter, prepareRunDir, runDroppingRefused, type RunOutcome } from '../rewrite/run.js';
 import { applyWrite, undoJournal, type Journal } from './actions.js';
-import { CHAT_BROKEN_REASON, openChatDb } from './db.js';
+import { CHAT_BROKEN_REASON, chatPreUpgradeName, openChatDb } from './db.js';
 import { Dispatcher } from './dispatcher.js';
 import { saveFastPath } from './fast.js';
 import { chatStdin, CHAT_HISTORY_TURNS, type HistoryTurn } from './input.js';
 import { ChatPhotos } from './photos.js';
-import { ChatStore, type TurnRecord } from './store.js';
+import { personChatDeps, personOfThread, threadOf } from './person-deps.js';
+import { personOnParts } from './person-tools.js';
+import { ChatStore, type PhotoRow, type TurnRecord } from './store.js';
 import { dismissCard, runCard, undoChange } from './taps.js';
 import { countSentence, replyText, speakable } from './text.js';
 import { audit, partOn, recordChange, toolsFor, TurnTools } from './tools.js';
@@ -70,6 +83,8 @@ import type { ChatDeps, ChatWriteLimiter } from './types.js';
 
 export const CHAT_PROMPT_VERSION = 'v1';
 export const CHAT_PROMPT_ASSET = `chat/chat-${CHAT_PROMPT_VERSION}.md`;
+/** v0.12 People (P3, spec 7.4): her run's prompt. */
+export const PERSON_CHAT_PROMPT_ASSET = `chat/person-${CHAT_PROMPT_VERSION}.md`;
 export const CHAT_BRIDGE_ASSET = 'chat/bridge.mjs';
 export const CHAT_EFFORT = 'low';
 /** Phone runs: 12 turns, 120 s; voice: 6 turns, 60 s. The account pick has as long again. */
@@ -118,6 +133,8 @@ type AuditOutcome = 'ok' | 'unavailable' | 'no_account' | 'timeout' | 'failed' |
 
 interface Run {
   turnId: string;
+  /** v0.12: the turn's thread ('' his, 'p:<pid>' hers). */
+  thread: string;
   epoch: number;
   abort: AbortController;
   why?: 'cancelled' | 'stopped';
@@ -129,6 +146,21 @@ const unfinished = (t: Pick<TurnRecord, 'state'>) => t.state === 'queued' || t.s
 function errorKind(e: unknown): string {
   const code = (e as { code?: unknown } | null)?.code;
   return typeof code === 'string' ? code : e instanceof Error ? e.name : 'unknown';
+}
+
+/** v0.12 People (C17): her turns' failure words, from a fixed set that never names an account, a limit or a reset. */
+function personFailedReason(o: AuditOutcome): string {
+  switch (o) {
+    case 'no_account':
+      return PERSON_CHAT_SENTENCES.busy;
+    case 'timeout':
+      return PERSON_CHAT_SENTENCES.slow;
+    case 'cancelled':
+    case 'stopped':
+      return PERSON_CHAT_SENTENCES.cancelled;
+    default:
+      return PERSON_CHAT_SENTENCES.failed;
+  }
 }
 
 function failedReason(o: AuditOutcome): string {
@@ -168,6 +200,9 @@ export class ChatServiceImpl implements ChatService {
   private readonly pushWhenDone = new Set<string>();
   /** Who sent each unfinished turn: its run's writes are theirs. */
   private readonly senders = new Map<string, Actor>();
+  /** v0.12: each unfinished turn's thread. */
+  private readonly turnThreads = new Map<string, string>();
+  private unforget: (() => void) | null = null;
   private unsubscribe: Unsubscribe | null = null;
   private sweepTimer: TimerId | undefined;
   private readonly log: Logger;
@@ -200,11 +235,29 @@ export class ChatServiceImpl implements ChatService {
       if (!prev.ask.enabled && next.ask.enabled && !this.store) this.open();
     });
     this.sweepTimer ??= this.ctx.clock.setInterval(() => void this.sweep(), CHAT_SWEEP_MS);
+    // v0.12 People: her thread is forgotten with her space (Leave with delete, remove --forget, the 30-day forget),
+    // and his read-only view and her mirror read it through life/people/views.ts (which checks see.chat).
+    try {
+      this.unforget ??= this.deps.life.people.onForget((pid) => void this.forgetThread(pid));
+      this.deps.life.people.chatThread = (pid, before) => {
+        const r = this.threadView(pid, before);
+        return r.ok ? r.value : null;
+      };
+    } catch {
+      // a stand-in Life (no People): nothing of hers to read or forget
+    }
   }
 
   async stop(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.unforget?.();
+    this.unforget = null;
+    try {
+      this.deps.life.people.chatThread = null;
+    } catch {
+      // a stand-in Life
+    }
     this.ctx.clock.clearInterval(this.sweepTimer);
     this.sweepTimer = undefined;
     const run = this.running;
@@ -224,7 +277,12 @@ export class ChatServiceImpl implements ChatService {
   }
 
   private open(): void {
-    const r = openChatDb(this.ctx.paths.chatDb);
+    // v0.12: chat.db is copied before it moves to a newer schema (backups/chat-pre-<version>.db).
+    const preMigrateCopy = () => {
+      mkdirSync(this.ctx.paths.backupsDir, { recursive: true, mode: 0o700 });
+      return join(this.ctx.paths.backupsDir, chatPreUpgradeName(this.ctx.version.daemon));
+    };
+    const r = this.ctx.paths.chatDb === ':memory:' ? openChatDb(this.ctx.paths.chatDb) : openChatDb(this.ctx.paths.chatDb, { preMigrateCopy });
     if (r.ok) {
       this.store = new ChatStore(r.db);
       this.brokenReason = null;
@@ -256,42 +314,120 @@ export class ChatServiceImpl implements ChatService {
     }
   }
 
-  /** Turns a restart left queued or running: failed, with the sentence. */
+  /** Turns a restart left queued or running, in every thread: failed, with the sentence (hers from her fixed set). */
   private failLeftOver(): void {
-    const s = this.store;
-    if (!s) return;
-    for (const t of s.unfinished()) s.updateTurn(t.id, (x) => ({ ...x, state: 'failed', reason: CHAT_SENTENCES.restarted }));
+    const root = this.store;
+    if (!root) return;
+    for (const thread of root.threads()) {
+      const s = root.inThread(thread);
+      const reason = thread === '' ? CHAT_SENTENCES.restarted : PERSON_CHAT_SENTENCES.restarted;
+      for (const t of s.unfinished()) s.updateTurn(t.id, (x) => ({ ...x, state: 'failed', reason }));
+    }
   }
 
-  /** The retention sweep (B3); photos past the store cap mark their turn's photo gone. */
+  /** v0.12 People (C17): a thread's keep, in days: his `ask.keepDays`, or her own `chatKeepDays`; 0 for a person who is gone. */
+  private keepDaysOf(thread: string): number {
+    const pid = personOfThread(thread);
+    if (pid === null) return this.ctx.settings.get().ask.keepDays;
+    let p = null;
+    try {
+      p = this.deps.life.people.person(pid);
+    } catch {
+      return CHAT_KEEP_DAYS_DEFAULT;
+    }
+    if (!p) return this.deps.life.broken() === null ? 0 : CHAT_KEEP_DAYS_DEFAULT;
+    return p.prefs.chatKeepDays;
+  }
+
+  /** The retention sweep (B3), thread by thread with each thread's own keep (C17); photos past the folder's cap mark their turn's photo gone. */
   async sweep(): Promise<void> {
-    const s = this.store;
-    if (!s) return;
+    const root = this.store;
+    if (!root) return;
     try {
       const now = this.ctx.clock.now();
-      const keepDays = this.ctx.settings.get().ask.keepDays;
-      const r = s.sweep({
-        cutoffIso: this.ctx.clock.iso(now - keepDays * DAY_MS),
-        maxTurns: CHAT_TURNS_MAX,
-        undoCutoffIso: this.ctx.clock.iso(now - CHAT_UNDO_WITHIN_MS),
-        unattachedCutoffIso: this.ctx.clock.iso(now - CHAT_UNATTACHED_MS),
-      });
-      await this.photos.removeFiles(r.photos);
-      const capped = await this.photos.cap(s);
-      this.markGone(capped.map((p) => p.turnId).filter((x): x is string => x !== null), new Set(capped.map((p) => p.id)));
-      if (r.turns > 0 || capped.length > 0) this.changed();
+      for (const thread of root.threads()) {
+        const s = root.inThread(thread);
+        const keepDays = this.keepDaysOf(thread);
+        const r = s.sweep({
+          cutoffIso: this.ctx.clock.iso(now - keepDays * DAY_MS),
+          maxTurns: CHAT_TURNS_MAX,
+          undoCutoffIso: this.ctx.clock.iso(now - CHAT_UNDO_WITHIN_MS),
+          unattachedCutoffIso: this.ctx.clock.iso(now - CHAT_UNATTACHED_MS),
+        });
+        await this.photos.removeFiles(r.photos);
+        if (r.turns > 0) this.changed(thread);
+      }
+      const capped = await this.photos.cap(root);
+      this.markGone(capped);
     } catch (e) {
       this.log.warn('chat: the sweep failed', { code: errorKind(e) });
     }
   }
 
-  private markGone(turnIds: string[], ids: Set<string>): void {
-    for (const id of new Set(turnIds)) this.store?.updateTurn(id, (t) => ({ ...t, photos: t.photos.map((p) => (ids.has(p.id) ? { ...p, gone: true } : p)) }));
+  private markGone(capped: readonly (PhotoRow & { thread: string })[]): void {
+    const ids = new Set(capped.map((p) => p.id));
+    const byThread = new Map<string, Set<string>>();
+    for (const p of capped) if (p.turnId !== null) byThread.set(p.thread, (byThread.get(p.thread) ?? new Set()).add(p.turnId));
+    for (const [thread, turnIds] of byThread) {
+      const s = this.store?.inThread(thread);
+      for (const id of turnIds) s?.updateTurn(id, (t) => ({ ...t, photos: t.photos.map((p) => (ids.has(p.id) ? { ...p, gone: true } : p)) }));
+      this.changed(thread);
+    }
+  }
+
+  /** v0.12 People: her thread forgotten (rows and photo files), its turns stopped. Idempotent. */
+  async forgetThread(pid: string): Promise<void> {
+    const root = this.store;
+    if (!root) return;
+    const thread = chatThreadOf(pid);
+    const run = this.running;
+    this.stopThread(thread, 'cancelled');
+    if (run?.thread === thread) await run.done;
+    const s = root.inThread(thread);
+    const files = s.photosAll();
+    s.clear();
+    await this.photos.removeFiles(files);
+  }
+
+  /** The deps a turn or tap of `actor` reaches: hers are her space alone (person-deps.ts), never his. */
+  private depsFor(actor: Actor): ChatDeps {
+    return actor.kind === 'person' ? personChatDeps(this.deps, { pid: actor.personId, people: this.deps.life.people }) : this.deps;
+  }
+
+  /** v0.12 People: messages she has left today (her `chatPerDay`, counted in the Life zone's day). */
+  private leftToday(pid: string, store: ChatStore): { left: number; perDay: number } {
+    let perDay = 0;
+    try {
+      perDay = this.deps.life.people.person(pid)?.limits.chatPerDay ?? 0;
+    } catch {
+      perDay = 0;
+    }
+    const now = this.ctx.clock.now();
+    const tz = this.zone().timezone;
+    const today = dayKeyOf(new Date(now), tz);
+    const used = store.turnTimesSince(this.ctx.clock.iso(now - 2 * DAY_MS)).filter((at) => dayKeyOf(new Date(at), tz) === today).length;
+    return { left: Math.max(0, perDay - used), perDay };
+  }
+
+  /** Whether {owner} can read her chat now (see.chat). */
+  private ownerCanRead(pid: string): boolean {
+    try {
+      return this.deps.life.people.agreement(pid)?.see.chat === true;
+    } catch {
+      return false;
+    }
   }
 
   // ------------------------------------------------------------------ the thread
 
-  private notReady(): Refusal | null {
+  /** Why Chat can't take a message now. Hers is one fixed sentence (C17): never his switch, his CLI or his runner. */
+  private notReady(actor?: Actor): Refusal | null {
+    const r = this.notReadyOwner();
+    if (r && actor?.kind === 'person') return refuse(r.code, r.code === 'life_unavailable' ? PERSON_CHAT_SENTENCES.off : PERSON_CHAT_SENTENCES.off);
+    return r;
+  }
+
+  private notReadyOwner(): Refusal | null {
     const s = this.ctx.settings.get();
     if (!s.ask.enabled) return refuse('forbidden', CHAT_SENTENCES.off);
     if (this.brokenReason) return refuse('life_unavailable', this.brokenReason);
@@ -308,32 +444,112 @@ export class ChatServiceImpl implements ChatService {
     return this.store ?? refuse('life_unavailable', this.brokenReason ?? CHAT_BROKEN_REASON);
   }
 
-  list(_actor: Actor, before?: string): LifeResult<ChatList> {
-    const store = this.needStore();
-    if ('ok' in store) return store;
+  list(actor: Actor, before?: string): LifeResult<ChatList> {
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const thread = threadOf(actor);
+    const store = root.inThread(thread);
     const page = store.page(before, CHAT_PAGE);
-    const notReady = this.notReady();
+    const notReady = this.notReady(actor);
     return {
       ok: true,
       value: {
         turns: page.turns.map((t) => store.full(t)),
         older: page.older,
         ready: notReady ? { ok: false, reason: notReady.reason } : { ok: true },
-        keepDays: this.ctx.settings.get().ask.keepDays,
+        keepDays: this.keepDaysOf(thread),
       },
     };
+  }
+
+  /** v0.12 People (spec 7.5, 7.6): her thread, messages left today, and the disclosure from the live agreement. */
+  personList(actor: Actor, before?: string): LifeResult<PersonChatList> {
+    if (actor.kind !== 'person') return refuse('not_found', CHAT_SENTENCES.noTurn);
+    const l = this.list(actor, before);
+    if (!l.ok) return l;
+    const store = (this.store as ChatStore).inThread(threadOf(actor));
+    const { left, perDay } = this.leftToday(actor.personId, store);
+    const canRead = this.ownerCanRead(actor.personId);
+    let owner = 'The owner';
+    try {
+      owner = this.deps.life.people.ownerName();
+    } catch {
+      /* the neutral word */
+    }
+    const ready = l.value.ready.ok && left === 0 ? { ok: false, reason: PERSON_CHAT_SENTENCES.usedUp } : l.value.ready;
+    return { ok: true, value: { ...l.value, ready, left, perDay, ownerCanRead: canRead, disclosure: chatDisclosure(owner, l.value.keepDays, canRead) } };
+  }
+
+  /** v0.12 People: her thread's size (no text), messages left today, and whether it can run. */
+  personStatus(actor: Actor): LifeResult<PersonChatStatus> {
+    if (actor.kind !== 'person') return refuse('not_found', CHAT_SENTENCES.noTurn);
+    const root = this.needStore();
+    if ('ok' in root) return refuse('life_unavailable', PERSON_CHAT_SENTENCES.off);
+    const store = root.inThread(threadOf(actor));
+    const { left, perDay } = this.leftToday(actor.personId, store);
+    const notReady = this.notReady(actor);
+    const ready = notReady ? { ok: false, reason: notReady.reason } : left === 0 ? { ok: false, reason: PERSON_CHAT_SENTENCES.usedUp } : { ok: true };
+    return { ok: true, value: { turns: store.turnCount(), left, perDay, ready } };
+  }
+
+  /**
+   * v0.12 People (spec 7.8): her thread as she sees it, read only, for {owner}'s view and her mirror. The
+   * caller (life/people/views.ts ownerViewOf) has checked `see.chat` and writes the view mark.
+   */
+  threadView(pid: string, before?: string): LifeResult<OwnerChatView> {
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const thread = chatThreadOf(pid);
+    const store = root.inThread(thread);
+    const page = store.page(before, CHAT_PAGE);
+    const keep = this.keepDaysOf(thread);
+    return { ok: true, value: { turns: page.turns.map((t) => store.full(t)), older: page.older, keepDays: (keep === 1 || keep === 7 ? keep : 30) as OwnerChatView['keepDays'] } };
+  }
+
+  /** v0.12 People (spec 7.8): one photo of her thread (another thread's: 404). */
+  async threadPhoto(pid: string, id: string): Promise<LifeResult<{ type: string; body: Buffer }>> {
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const p = root.inThread(chatThreadOf(pid)).photo(id);
+    if (!p) return refuse('not_found', CHAT_SENTENCES.noPhoto);
+    const body = await this.photos.read(p);
+    return body ? { ok: true, value: { type: p.type, body } } : refuse('not_found', CHAT_SENTENCES.noPhoto);
+  }
+
+  /** v0.12 People (O21): she deletes one turn of hers: gone for both, with no trace. */
+  async deleteTurn(id: string, actor: Actor): Promise<LifeResult> {
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const thread = threadOf(actor);
+    const store = root.inThread(thread);
+    const t = store.turn(id);
+    if (!t) return refuse('not_found', CHAT_SENTENCES.noTurn);
+    if (unfinished(t)) return refuse('conflict', actor.kind === 'person' ? PERSON_CHAT_SENTENCES.wait : CHAT_SENTENCES.busy);
+    const files = store.deleteTurn(id);
+    if (files === null) return refuse('not_found', CHAT_SENTENCES.noTurn);
+    await this.photos.removeFiles(files);
+    this.changed(thread);
+    return OK;
   }
 
   send(body: { text: string; photos?: string[] }, actor: Actor, via: 'phone' | 'voice' = 'phone'): LifeResult<{ id: string }> {
     const text = body.text.trim();
     const photoIds = [...new Set(body.photos ?? [])];
+    const person = actor.kind === 'person' ? actor.personId : null;
+    // v0.12 People: her thread is phone only (no Siri door for her, spec 7.5).
+    if (person && via !== 'phone') return refuse('forbidden', PERSON_CHAT_SENTENCES.off);
     if (!text && photoIds.length === 0) return refuse('invalid_request', CHAT_SENTENCES.noText);
     if (text.length > (via === 'voice' ? CHAT_VOICE_TEXT_MAX : CHAT_TEXT_MAX)) return refuse('invalid_request', via === 'voice' ? CHAT_SENTENCES.voiceTooLong : CHAT_SENTENCES.tooLong);
     if (photoIds.length > CHAT_PHOTOS_MAX || (via === 'voice' && photoIds.length > 0)) return refuse('invalid_request', CHAT_SENTENCES.tooManyPhotos);
-    const notReady = this.notReady();
+    const notReady = this.notReady(actor);
     if (notReady) return notReady;
-    const store = this.store as ChatStore;
-    if (store.unfinished().length >= CHAT_QUEUE_MAX) return refuse('conflict', CHAT_SENTENCES.busy);
+    const thread = threadOf(actor);
+    const store = (this.store as ChatStore).inThread(thread);
+    if (person) {
+      // At most 2 unfinished turns in her thread, and her daily cap (spec 7.5).
+      if (store.unfinished().length >= PERSON_CHAT_UNFINISHED_MAX) return refuse('conflict', PERSON_CHAT_SENTENCES.wait);
+      if (this.leftToday(person, store).left <= 0) return refuse('rate_limited', PERSON_CHAT_SENTENCES.usedUp);
+    } else if (store.unfinished().length >= CHAT_QUEUE_MAX) return refuse('conflict', CHAT_SENTENCES.busy);
     for (const id of photoIds) {
       const p = store.photo(id);
       // Try again: a photo of a turn that failed goes with the new message (B14); one sent and answered does not.
@@ -341,7 +557,7 @@ export class ChatServiceImpl implements ChatService {
     }
     const id = newId();
     const at = this.ctx.clock.iso();
-    const fast = this.readingLinks() && photoIds.length === 0 ? saveFastPath(text) : null;
+    const fast = !person && this.readingLinks() && photoIds.length === 0 ? saveFastPath(text) : null;
     store.tx(() => {
       const photos = store
         .attach(id, photoIds)
@@ -353,10 +569,11 @@ export class ChatServiceImpl implements ChatService {
     if (fast) void this.saveFast(id, fast, actor);
     else {
       this.senders.set(id, actor);
+      this.turnThreads.set(id, thread);
       this.queue.push(id);
       this.kick();
     }
-    this.changed();
+    this.changed(thread);
     return { ok: true, value: { id } };
   }
 
@@ -376,30 +593,36 @@ export class ChatServiceImpl implements ChatService {
     return s.intel.enabled && s.intel.read;
   }
 
-  cancel(id: string, _actor: Actor): LifeResult {
-    const store = this.needStore();
-    if ('ok' in store) return store;
+  cancel(id: string, actor: Actor): LifeResult {
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const thread = threadOf(actor);
+    const store = root.inThread(thread);
     const turn = store.turn(id);
     if (!turn) return refuse('not_found', CHAT_SENTENCES.noTurn);
     if (!unfinished(turn)) return OK;
     this.halt(id);
-    store.updateTurn(id, (t) => ({ ...t, state: 'cancelled', reason: CHAT_SENTENCES.cancelled }));
+    store.updateTurn(id, (t) => ({ ...t, state: 'cancelled', reason: thread === '' ? CHAT_SENTENCES.cancelled : PERSON_CHAT_SENTENCES.cancelled }));
     this.ended(id);
-    this.changed();
+    this.changed(thread);
     return OK;
   }
 
+  /** Clear the caller's thread only (v0.12: the other thread, its runs and its photos stay). */
   async clear(actor: Actor, opts: { broken?: boolean } = {}): Promise<LifeResult> {
     if (opts.broken) return this.moveBroken(actor);
-    const store = this.needStore();
-    if ('ok' in store) return store;
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const thread = threadOf(actor);
+    const store = root.inThread(thread);
     const run = this.running;
-    this.stopAll('cancelled');
-    await run?.done;
+    this.stopThread(thread, 'cancelled');
+    if (run?.thread === thread) await run.done;
+    const files = store.photosAll();
     store.clear();
-    await this.photos.removeAll();
+    await this.photos.removeFiles(files);
     audit(this.ctx, actorId(actor), 'chat.clear', 'chat', {}, 'ok');
-    this.changed();
+    this.changed(thread);
     return OK;
   }
 
@@ -424,51 +647,58 @@ export class ChatServiceImpl implements ChatService {
   }
 
   async undo(turnId: string, n: number, actor: Actor): Promise<LifeResult> {
-    const store = this.needStore();
-    if ('ok' in store) return store;
-    return undoChange({ ctx: this.ctx, deps: this.deps, store }, turnId, n, actor, actorId(actor));
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const thread = threadOf(actor);
+    const r = await undoChange({ ctx: this.ctx, deps: this.depsFor(actor), store: root.inThread(thread) }, turnId, n, actor, actorId(actor));
+    if (thread !== '') this.changed(thread);
+    return r;
   }
 
   async card(turnId: string, n: number, actor: Actor): Promise<LifeResult> {
-    const store = this.needStore();
-    if ('ok' in store) return store;
-    const r = await runCard({ ctx: this.ctx, deps: this.deps, store }, turnId, n, actor, actorId(actor));
-    this.changed();
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const thread = threadOf(actor);
+    const r = await runCard({ ctx: this.ctx, deps: this.depsFor(actor), store: root.inThread(thread) }, turnId, n, actor, actorId(actor));
+    this.changed(thread);
     return r;
   }
 
   dismiss(turnId: string, n: number, actor: Actor): LifeResult {
-    const store = this.needStore();
-    if ('ok' in store) return store;
-    const r = dismissCard({ ctx: this.ctx, deps: this.deps, store }, turnId, n, actorId(actor));
-    this.changed();
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const thread = threadOf(actor);
+    const r = dismissCard({ ctx: this.ctx, deps: this.depsFor(actor), store: root.inThread(thread) }, turnId, n, actorId(actor));
+    this.changed(thread);
     return r;
   }
 
-  async photoAdd(bytes: Buffer, _actor: Actor): Promise<LifeResult<{ id: string }>> {
-    const notReady = this.notReady();
+  async photoAdd(bytes: Buffer, actor: Actor): Promise<LifeResult<{ id: string }>> {
+    const notReady = this.notReady(actor);
     if (notReady) return notReady;
-    const store = this.store as ChatStore;
-    const r = await this.photos.add(bytes, store);
-    if (r.ok) {
-      const capped = await this.photos.cap(store);
-      this.markGone(capped.map((p) => p.turnId).filter((x): x is string => x !== null), new Set(capped.map((p) => p.id)));
-    }
+    const root = this.store as ChatStore;
+    const store = root.inThread(threadOf(actor));
+    // v0.12 People (O19): hers is stripped of location, camera details and thumbnails before it is kept.
+    const r = actor.kind === 'person' ? await this.photos.addStripped(bytes, store) : await this.photos.add(bytes, store);
+    if (r.ok) this.markGone(await this.photos.cap(root));
     return r;
   }
 
-  async photo(id: string): Promise<LifeResult<{ type: string; body: Buffer }>> {
-    const store = this.needStore();
-    if ('ok' in store) return store;
+  /** A photo of the caller's thread (the owner's routes pass no actor: his thread). Another thread's: 404. */
+  async photo(id: string, actor?: Actor): Promise<LifeResult<{ type: string; body: Buffer }>> {
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const store = root.inThread(actor ? threadOf(actor) : '');
     const p = store.photo(id);
     if (!p) return refuse('not_found', CHAT_SENTENCES.noPhoto);
     const body = await this.photos.read(p);
     return body ? { ok: true, value: { type: p.type, body } } : refuse('not_found', CHAT_SENTENCES.noPhoto);
   }
 
-  async photoDelete(id: string, _actor: Actor): Promise<LifeResult> {
-    const store = this.needStore();
-    if ('ok' in store) return store;
+  async photoDelete(id: string, actor: Actor): Promise<LifeResult> {
+    const root = this.needStore();
+    if ('ok' in root) return root;
+    const store = root.inThread(threadOf(actor));
     const p = store.photo(id);
     if (!p) return refuse('not_found', CHAT_SENTENCES.noPhoto);
     if (p.turnId !== null) return refuse('conflict', CHAT_SENTENCES.photoSent);
@@ -530,6 +760,7 @@ export class ChatServiceImpl implements ChatService {
   /** A turn ended: its Siri waiters hear it, and a voice turn whose request gave up pushes. */
   private ended(turnId: string): void {
     this.senders.delete(turnId);
+    this.turnThreads.delete(turnId);
     const set = this.waiters.get(turnId);
     this.waiters.delete(turnId);
     for (const w of [...(set ?? [])]) w();
@@ -556,32 +787,55 @@ export class ChatServiceImpl implements ChatService {
     }
   }
 
-  /** Off, Clear or stop(): the run stopped, the queue's turns cancelled. */
+  /** Off or stop(): every thread's run stopped and queued turns cancelled. */
   private stopAll(why: 'cancelled' | 'stopped'): void {
     this.epoch += 1;
-    const store = this.store;
-    for (const id of this.queue.splice(0)) {
-      store?.updateTurn(id, (t) => ({ ...t, state: 'cancelled', reason: CHAT_SENTENCES.cancelled }));
+    this.stopThread(null, why);
+  }
+
+  /** One thread's queued turns cancelled and its run stopped (null: every thread). Clear stops only the caller's. */
+  private stopThread(thread: string | null, why: 'cancelled' | 'stopped'): void {
+    const root = this.store;
+    const reason = (t: string) => (t === '' ? CHAT_SENTENCES.cancelled : PERSON_CHAT_SENTENCES.cancelled);
+    for (const id of [...this.queue]) {
+      const t = this.turnThreads.get(id) ?? '';
+      if (thread !== null && t !== thread) continue;
+      this.queue.splice(this.queue.indexOf(id), 1);
+      root?.inThread(t).updateTurn(id, (x) => ({ ...x, state: 'cancelled', reason: reason(t) }));
       this.ended(id);
     }
     const run = this.running;
-    if (run) {
+    if (run && (thread === null || run.thread === thread)) {
       run.why ??= why;
       run.abort.abort();
-      store?.updateTurn(run.turnId, (t) => (unfinished(t) ? { ...t, state: 'cancelled', reason: CHAT_SENTENCES.cancelled } : t));
+      root?.inThread(run.thread).updateTurn(run.turnId, (t) => (unfinished(t) ? { ...t, state: 'cancelled', reason: reason(run.thread) } : t));
       this.ended(run.turnId);
     }
   }
 
-  private changed(): void {
-    this.ctx.store.emit({ type: 'life.changed', data: {} });
+  /**
+   * A thread changed. His: `life.changed {}` as before. Hers (v0.12, spec 7.8): her stream's chat counter,
+   * and his devices only while `see.chat` is on, so his stream can't tell him when she chats (C20).
+   */
+  private changed(thread = ''): void {
+    const pid = personOfThread(thread);
+    if (pid === null) {
+      this.ctx.store.emit({ type: 'life.changed', data: {} });
+      return;
+    }
+    try {
+      this.deps.life.people.ticks.bump(pid, 'chat');
+      if (this.ownerCanRead(pid)) this.deps.life.people.ownerChanged();
+    } catch {
+      /* Life closed: her app reloads on its next tick */
+    }
   }
 
   private kick(): void {
     if (this.running) return;
     const next = this.queue.shift();
     if (!next) return;
-    const run: Run = { turnId: next, epoch: this.epoch, abort: new AbortController() };
+    const run: Run = { turnId: next, thread: this.turnThreads.get(next) ?? '', epoch: this.epoch, abort: new AbortController() };
     this.running = run;
     run.done = Promise.resolve()
       .then(() => this.run(run))
@@ -598,7 +852,7 @@ export class ChatServiceImpl implements ChatService {
   /** The turn while `run` still counts: null after Cancel, Clear, the switch turning off or stop(). */
   private live(run: Run): TurnRecord | null {
     if (run.epoch !== this.epoch || run.abort.signal.aborted) return null;
-    const t = this.store?.turn(run.turnId);
+    const t = this.store?.inThread(run.thread).turn(run.turnId);
     return t && unfinished(t) ? t : null;
   }
 
@@ -640,7 +894,7 @@ export class ChatServiceImpl implements ChatService {
 
   private async run(run: Run): Promise<void> {
     const { ctx } = this;
-    const store = this.store;
+    const store = this.store?.inThread(run.thread) ?? null;
     const queued = this.live(run);
     if (!store || !queued || queued.state !== 'queued') return;
     const via = queued.via;
@@ -672,8 +926,15 @@ export class ChatServiceImpl implements ChatService {
 
     const single = 'claude' in program;
     const actor: Actor = this.senders.get(run.turnId) ?? { kind: 'system' };
-    const list = toolsFor(s, this.deps);
-    const tools = new TurnTools({ ctx, deps: this.deps, store, turnId: run.turnId, actor, actorName: queued.by, message: queued.text, tools: list, lifeWrites: this.lifeWrites, live: () => this.live(run) !== null });
+    // v0.12 People: her run reaches her space alone (her deps, her tools, her prompt); his is unchanged.
+    const pid = personOfThread(run.thread);
+    if (pid !== null && (actor.kind !== 'person' || actor.personId !== pid)) {
+      this.finish(run, { failed: 'failed' });
+      return;
+    }
+    const deps = this.depsFor(actor);
+    const list = toolsFor(s, deps);
+    const tools = new TurnTools({ ctx, deps, store, turnId: run.turnId, actor, actorName: queued.by, message: queued.text, tools: list, lifeWrites: this.lifeWrites, live: () => this.live(run) !== null });
     const allowed = list.map((t) => `mcp__jantar__${t.name}`);
     const rid = randomBytes(4).toString('hex');
     const runDir = join(ctx.paths.chatDir, 'run', rid);
@@ -694,7 +955,7 @@ export class ChatServiceImpl implements ChatService {
       await mkdir(join(ctx.paths.chatDir, 'run'), { recursive: true, mode: 0o700 });
       await chmod(ctx.paths.chatDir, 0o700);
       await chmod(join(ctx.paths.chatDir, 'run'), 0o700);
-      const dir = await prepareRunDir(ctx.paths, { dir: runDir, asset: CHAT_PROMPT_ASSET });
+      const dir = await prepareRunDir(ctx.paths, { dir: runDir, asset: pid !== null ? PERSON_CHAT_PROMPT_ASSET : CHAT_PROMPT_ASSET });
       const mcpConfig = join(runDir, 'mcp.json');
       const server = { type: 'stdio', command: ctx.bins.node, args: [join(ctx.paths.assetsDir, CHAT_BRIDGE_ASSET)], env: { JANTAR_CHAT_SOCK: sock, JANTAR_CHAT_TOKEN: token } };
       await writeFile(mcpConfig, JSON.stringify({ mcpServers: { jantar: server } }), { mode: 0o600 });
@@ -710,8 +971,10 @@ export class ChatServiceImpl implements ChatService {
       }
       const now = new Date(ctx.clock.now());
       const z = this.zone();
-      const on = onParts(s, this.deps);
+      // C17: her <reach> is a fixed person list, never his switches.
+      const on = pid !== null ? personOnParts() : onParts(s, this.deps);
       const input = chatStdin({
+        ...(pid !== null ? { person: { owner: this.deps.life.people.ownerName(), ownerCanRead: this.ownerCanRead(pid), cafes: false } } : {}),
         today: dayKeyOf(now, z.timezone),
         now: hhmmOf(now, z.timezone),
         timezone: z.timezone,
@@ -759,7 +1022,7 @@ export class ChatServiceImpl implements ChatService {
     const ms = Math.max(0, ctx.clock.now() - started);
     // The second belt: the whole stdout's init line, checked again (a run that never printed one, too).
     if (!isolation && outcome?.kind === 'ok' && initProblem(finalInit, 'jantar', allowed) !== null) isolation = 'not_isolated';
-    if (isolation) await this.undoTurn(run.turnId, actor);
+    if (isolation) await this.undoTurn(run, actor, deps);
     const kept = this.live(run) !== null || (isolation !== null && run.why === undefined);
     let kind: AuditOutcome;
     if (isolation) kind = 'not_isolated';
@@ -783,21 +1046,22 @@ export class ChatServiceImpl implements ChatService {
   }
 
   /** Every change of a turn undone through its journal (the init check failed at the end). */
-  private async undoTurn(turnId: string, actor: Actor): Promise<void> {
-    const store = this.store;
+  private async undoTurn(run: Run, actor: Actor, deps: ChatDeps): Promise<void> {
+    const store = this.store?.inThread(run.thread);
     if (!store) return;
+    const turnId = run.turnId;
     for (const c of [...store.changes(turnId)].reverse()) {
       if (c.state !== 'done') continue;
       const j = store.change(turnId, c.n)?.journal;
       if (!j) continue;
-      const r = await undoJournal(this.deps, j as Journal, actor);
+      const r = await undoJournal(deps, j as Journal, actor);
       if (r.ok) store.setChangeState(turnId, c.n, 'undone');
     }
     for (const card of store.cards(turnId)) if (card.state === 'waiting') store.setCardState(turnId, card.n, 'expired');
   }
 
   private finish(run: Run, end: { reply: string; isolationFailed: boolean } | { failed: AuditOutcome }, force = false): void {
-    const store = this.store;
+    const store = this.store?.inThread(run.thread);
     if (!store) return;
     const turn = store.turn(run.turnId);
     if (!turn || (!force && !this.live(run))) {
@@ -808,9 +1072,9 @@ export class ChatServiceImpl implements ChatService {
       const changes = store.changes(run.turnId).length + store.cards(run.turnId).length;
       const reply = replyText(end.reply) || (changes > 0 ? CHAT_SENTENCES.done : '');
       store.updateTurn(run.turnId, (t) => ({ ...t, state: 'done', ...(reply ? { reply } : {}) }));
-    } else store.updateTurn(run.turnId, (t) => ({ ...t, state: 'failed', reason: failedReason(end.failed) }));
+    } else store.updateTurn(run.turnId, (t) => ({ ...t, state: 'failed', reason: run.thread === '' ? failedReason(end.failed) : personFailedReason(end.failed) }));
     this.ended(run.turnId);
-    this.changed();
+    this.changed(run.thread);
   }
 
   private refused(option: string | null): void {

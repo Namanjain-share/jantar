@@ -22,6 +22,7 @@ import {
   type JournalEntryFull,
   type JournalList,
   type Locked,
+  type OwnerChatView,
   type OwnerTodosView,
   type PersonOwnToday,
   type PersonToday,
@@ -40,9 +41,9 @@ import type { PersonSpace } from './space.js';
 const LOCKED: Locked = { locked: true };
 
 /** The areas this build's views answer (the rest are a later commit's or phase's: 404). */
-const VIEW_AREAS: ReadonlySet<Area> = new Set<Area>(['today', 'todos', 'weight', 'plan', 'review', 'sleep', 'journal']);
+const VIEW_AREAS: ReadonlySet<Area> = new Set<Area>(['today', 'todos', 'weight', 'plan', 'review', 'sleep', 'journal', 'chat']);
 
-export type AreaView = OwnerTodosView | PersonWeightsResponse | PersonToday | PlanView | ReviewView | SleepWeek | JournalList | Locked;
+export type AreaView = OwnerTodosView | PersonWeightsResponse | PersonToday | PlanView | ReviewView | SleepWeek | JournalList | OwnerChatView | Locked;
 
 export interface ViewOpts {
   day?: string | undefined;
@@ -141,6 +142,12 @@ export class PeopleViews {
         if (!a.see.journal || !this.people.journal) return LOCKED;
         const r = this.people.journal.list(pid, { before: opts.before, day: opts.day });
         return r.ok ? r.value : LOCKED;
+      }
+      case 'chat': {
+        // P3 (spec 7.8): her thread, read only, from chat.db (the Chat part sets the reader at start).
+        if (!a.see.chat || !this.people.chatThread) return LOCKED;
+        const r = this.people.chatThread(pid, opts.before);
+        return r ?? LOCKED;
       }
       case 'today': {
         const day = opts.day ?? (c ? c.today() : '');

@@ -2249,8 +2249,20 @@ export interface ChatService extends Service {
   card(turnId: string, n: number, actor: Actor): Promise<LifeResult>;
   dismiss(turnId: string, n: number, actor: Actor): LifeResult;
   photoAdd(bytes: Buffer, actor: Actor): Promise<LifeResult<{ id: string }>>;
-  photo(id: string): Promise<LifeResult<{ type: string; body: Buffer }>>;
+  /** A photo of the caller's thread; no actor: the owner's thread (his routes). Another thread's: not_found. */
+  photo(id: string, actor?: Actor): Promise<LifeResult<{ type: string; body: Buffer }>>;
   photoDelete(id: string, actor: Actor): Promise<LifeResult>;
+  /**
+   * v0.12 People (P3, spec 7): every call above works in the caller's thread (`threadOf(actor)`: hers is
+   * `p:<pid>`, every other actor's the owner's). These are hers and his read-only view of hers.
+   */
+  personList(actor: Actor, before?: string): LifeResult<import('@jantar/protocol/people').PersonChatList>;
+  personStatus(actor: Actor): LifeResult<import('@jantar/protocol/people').PersonChatStatus>;
+  /** Delete one finished turn of the caller's thread: gone for both sides, with no trace (O21). */
+  deleteTurn(id: string, actor: Actor): Promise<LifeResult>;
+  /** Her thread, read only (the caller has checked see.chat and writes the view mark: views.ts). */
+  threadView(pid: string, before?: string): LifeResult<import('@jantar/protocol/people').OwnerChatView>;
+  threadPhoto(pid: string, id: string): Promise<LifeResult<{ type: string; body: Buffer }>>;
   /** The history's size (no text) and whether chat.db opened. */
   status(): ChatStatus;
   /** Cheap and never throws: CHAT_BROKEN_REASON while chat.db will not open, else null. */

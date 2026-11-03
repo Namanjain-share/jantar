@@ -11,7 +11,7 @@
  * - Notifications: turn on and test, lock screen, mute.
  * - Leave: download first, keep 30 days or delete now, type LEAVE.
  */
-import { AGREEMENT_FIELDS, closeDependents, fieldsChanged, withField, type AgreementFields, type AgreementPatch } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, closeDependents, fieldsChanged, withField, type AgreementFields, type AgreementPatch, CHAT_KEEP_DAYS } from '@jantar/protocol/people-core';
 import type { PersonActivity, PersonMe, PersonPrefsPatch } from '@jantar/protocol/people';
 import { useEffect, useState } from 'react';
 import { Button } from '../../ui/kit/Button.js';
@@ -348,6 +348,16 @@ function P2Prefs({ me, api, reload }: { me: PersonMe; api: PersonApi; reload: ()
       <label className={row}>
         <span>Hide my journal streak (on my screens and {owner}'s)</span>
         <input type="checkbox" checked={p.hideStreaks} onChange={(e) => save({ hideStreaks: e.target.checked })} />
+      </label>
+      <label className={row}>
+        <span>Keep my assistant chat for</span>
+        <select className={select} value={String(p.chatKeepDays)} onChange={(e) => save({ chatKeepDays: Number(e.target.value) as 1 | 7 | 30 })}>
+          {CHAT_KEEP_DAYS.map((d) => (
+            <option key={d} value={String(d)}>
+              {d === 1 ? '1 day' : `${d} days`}
+            </option>
+          ))}
+        </select>
       </label>
       <h2 className="mt-12 font-semibold">From your plan</h2>
       {(

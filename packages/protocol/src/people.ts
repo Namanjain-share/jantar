@@ -34,6 +34,7 @@ import {
   type Area,
 } from './people-core.js';
 import { IsoDateSchema, ScopeSchema } from './models.js';
+import { CHAT_PHOTO_MAX_BYTES, ChatItemParamsSchema, ChatListQuerySchema, ChatListSchema, ChatPhotoParamsSchema, ChatSendBodySchema, ChatTurnParamsSchema, ChatTurnSchema } from './chat.js';
 import {
   AlertSendBodySchema,
   AlertReplyBodySchema,
@@ -41,6 +42,7 @@ import {
   AlertsQuerySchema,
   AlertsResponseSchema,
   BetweenTickBodySchema,
+  ChatKeepDaysSchema,
   JournalCommentBodySchema,
   JournalCommentSchema,
   JournalCreateBodySchema,
@@ -477,6 +479,8 @@ export const PersonViewSchema = z.object({
   /** The offer the next invite carries. */
   offer: AgreementSchema.nullable(),
   pendingProposal: z.object({ version: z.number().int(), fields: AgreementFieldsSchema }).nullable(),
+  /** P3: her chat's messages a day. */
+  chatPerDay: z.number().int().optional(),
 });
 export type PersonView = z.infer<typeof PersonViewSchema>;
 export const PeopleListSchema = z.object({ enabled: z.boolean(), people: z.array(PersonViewSchema) });
@@ -500,7 +504,10 @@ export const PersonOfferReplySchema = z.object({ version: z.number().int(), fiel
 export const PersonInviteReplySchema = z.object({ url: z.string(), expiresAt: IsoDateSchema });
 export type PersonInviteReply = z.infer<typeof PersonInviteReplySchema>;
 export const PersonModulesBodySchema = z.strictObject({ food: z.boolean() });
-export const PersonColorBodySchema = z.strictObject({ color: PersonColorSchema });
+/** Her colour on his screens, and (P3) her chat's daily cap (an Activity row). */
+export const PersonColorBodySchema = z
+  .strictObject({ color: PersonColorSchema.optional(), chatPerDay: z.number().int().min(0).max(200).optional() })
+  .refine((b) => b.color !== undefined || b.chatPerDay !== undefined, { message: 'name a colour or a daily cap' });
 export const PersonRemoveBodySchema = z.strictObject({ mode: z.enum(['window', 'now']), forget: z.boolean().default(false) });
 export type PersonRemoveBody = z.infer<typeof PersonRemoveBodySchema>;
 export const PeopleSwitchBodySchema = z.strictObject({ on: z.boolean() });
@@ -602,6 +609,8 @@ export const PersonTickSchema = z.object({
   plan: z.number().int(),
   /** P2: alerts with the owner. */
   alerts: z.number().int(),
+  /** P3: her chat thread. */
+  chat: z.number().int(),
   me: z.number().int(),
 });
 export type PersonTick = z.infer<typeof PersonTickSchema>;
@@ -626,6 +635,36 @@ export function medsDayTotals(day: MedsDay): { slots: number; logged: number; mi
   }
   return { slots, logged, missed };
 }
+
+// ---------------------------------------------------------------------------
+// P3: her Chat (spec 7)
+
+/** Her thread as she sees it: the owner's chat list plus her daily cap and what {owner} can read. */
+export const PersonChatListSchema = ChatListSchema.extend({
+  /** Messages left today, and her daily cap. */
+  left: z.number().int().min(0),
+  perDay: z.number().int().min(0),
+  /** {owner} can read this chat now (see.chat): the header line shows on every visit. */
+  ownerCanRead: z.boolean(),
+  /** The disclosure, built from the live agreement (spec 7.6). */
+  disclosure: z.string(),
+});
+export type PersonChatList = z.infer<typeof PersonChatListSchema>;
+/** Her chat's size (no text), messages left today and whether it can run now. */
+export const PersonChatStatusSchema = z.object({
+  turns: z.number().int().min(0),
+  left: z.number().int().min(0),
+  perDay: z.number().int().min(0),
+  ready: z.object({ ok: z.boolean(), reason: z.string().optional() }),
+});
+export type PersonChatStatus = z.infer<typeof PersonChatStatusSchema>;
+/** His read-only view of her chat (spec 7.8): the turns as she sees them; her mirror returns the same. */
+export const OwnerChatViewSchema = z.object({
+  turns: z.array(ChatTurnSchema),
+  older: z.string().nullable(),
+  keepDays: ChatKeepDaysSchema,
+});
+export type OwnerChatView = z.infer<typeof OwnerChatViewSchema>;
 
 // ---------------------------------------------------------------------------
 // Route tables (each route lands in the commit of its handler; the arch test pins both lists)
@@ -1149,6 +1188,71 @@ export const PEOPLE_DAYS_ROUTES = {
   }),
 } as const satisfies Record<string, RouteDef>;
 
+/** Her chat (P3, spec 1.3.2): her thread only; area `chat` decides only whether {owner} can read it. */
+const chatN = ChatItemParamsSchema;
+export const PERSON_CHAT_ROUTES = {
+  personChatList: route({
+    method: 'GET', path: '/v1/p/chat', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    query: ChatListQuerySchema, response: PersonChatListSchema, summary: 'Her thread: the newest turns, messages left today and the disclosure.',
+  }),
+  personChatSend: route({
+    method: 'POST', path: '/v1/p/chat', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat', status: 202,
+    body: ChatSendBodySchema, response: IdReplySchema, summary: 'Send a message to her assistant (her daily cap applies).',
+  }),
+  personChatClear: route({
+    method: 'DELETE', path: '/v1/p/chat', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    response: OkReplySchema, summary: 'Clear her thread (his is untouched): gone for both, with no trace.',
+  }),
+  personChatStatus: route({
+    method: 'GET', path: '/v1/p/chat/status', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    response: PersonChatStatusSchema, summary: 'Her thread\'s size, messages left today and whether it can run.',
+  }),
+  personChatCancel: route({
+    method: 'POST', path: '/v1/p/chat/turns/:id/cancel', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    params: ChatTurnParamsSchema, response: OkReplySchema, summary: 'Stop a waiting or running turn of hers.',
+  }),
+  personChatTurnDelete: route({
+    method: 'DELETE', path: '/v1/p/chat/turns/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    params: ChatTurnParamsSchema, response: OkReplySchema, summary: 'Delete one turn of hers: gone for both, with no trace.',
+  }),
+  personChatUndo: route({
+    method: 'POST', path: '/v1/p/chat/turns/:id/changes/:n/undo', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    params: chatN, response: OkReplySchema, summary: 'Undo one change her assistant made.',
+  }),
+  personChatCard: route({
+    method: 'POST', path: '/v1/p/chat/turns/:id/cards/:n', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    params: chatN, response: OkReplySchema, summary: 'Run a card of hers (Confirm or Do it).',
+  }),
+  personChatDismiss: route({
+    method: 'POST', path: '/v1/p/chat/turns/:id/cards/:n/dismiss', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    params: chatN, response: OkReplySchema, summary: 'Dismiss a card of hers.',
+  }),
+  personChatPhotoCreate: route({
+    method: 'POST', path: '/v1/p/chat/photos', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat', rawBody: { maxBytes: CHAT_PHOTO_MAX_BYTES },
+    response: IdReplySchema, summary: 'Store one photo for her next message (location and camera details stripped first).',
+  }),
+  personChatPhotoGet: route({
+    method: 'GET', path: '/v1/p/chat/photos/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat', rawResponse: true,
+    params: ChatPhotoParamsSchema, summary: 'A photo of her thread (another thread\'s: 404).',
+  }),
+  personChatPhotoDelete: route({
+    method: 'DELETE', path: '/v1/p/chat/photos/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    params: ChatPhotoParamsSchema, response: OkReplySchema, summary: 'Drop a photo of hers not yet sent.',
+  }),
+} as const satisfies Record<string, RouteDef>;
+
+/** His read-only view of her chat (P3, spec 7.8): GET only, area `chat`. No owner route writes to her thread (T14). */
+export const PEOPLE_CHAT_ROUTES = {
+  personOwnerChat: route({
+    method: 'GET', path: '/v1/people/:pid/chat', scope: 'control', phase: 'v0.12', ctl: false, area: 'chat',
+    params: PidParamsSchema, query: ChatListQuerySchema, response: OwnerChatViewSchema, summary: 'Her chat, read only (see.chat): her messages, the answers, photos and changes.',
+  }),
+  personOwnerChatPhoto: route({
+    method: 'GET', path: '/v1/people/:pid/chat/photos/:id', scope: 'control', phase: 'v0.12', ctl: false, area: 'chat', rawResponse: true,
+    params: z.object({ pid: LifeIdSchema, id: ChatPhotoParamsSchema.shape.id }), summary: 'A photo of her chat (see.chat).',
+  }),
+} as const satisfies Record<string, RouteDef>;
+
 const PEOPLE_ACCOUNT_ROUTES = {
   personOwnerActivity: route({
     method: 'GET', path: '/v1/people/:pid/activity', scope: 'control', phase: 'v0.12', ctl: false,
@@ -1172,7 +1276,7 @@ const PEOPLE_ACCOUNT_ROUTES = {
   }),
   personColor: route({
     method: 'PATCH', path: '/v1/people/:pid', scope: 'control', phase: 'v0.12', ctl: false,
-    params: PidParamsSchema, body: PersonColorBodySchema, response: OkReplySchema, summary: 'Her colour on his screens.',
+    params: PidParamsSchema, body: PersonColorBodySchema, response: OkReplySchema, summary: "Her colour on his screens, and her chat's daily cap.",
   }),
   personAdd: route({
     method: 'POST', path: '/v1/people', scope: 'admin', phase: 'v0.12', ctl: true, localOnly: true, status: 201,
@@ -1209,8 +1313,8 @@ const PEOPLE_ACCOUNT_ROUTES = {
 } as const satisfies Record<string, RouteDef>;
 
 /** Every route of hers this build serves (scope `person`; the arch test pins the list, T1). */
-export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES, ...PERSON_DAYS_ROUTES } as const;
+export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES, ...PERSON_DAYS_ROUTES, ...PERSON_CHAT_ROUTES } as const;
 export type PersonRouteName = keyof typeof PERSON_ROUTES;
 /** Every owner People route this build serves (the arch test pins each one's scope, ctl, localOnly and area). */
-export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_DAYS_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
+export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_DAYS_ROUTES, ...PEOPLE_CHAT_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
 export type PeopleRouteName = keyof typeof PEOPLE_ROUTES;

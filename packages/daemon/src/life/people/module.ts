@@ -151,6 +151,8 @@ export class PeopleModule {
   alerts: import('../alerts/module.js').AlertsModule | null = null;
   journal: import('../journal/module.js').JournalModule | null = null;
   sleep: import('../sleep/module.js').SleepModule | null = null;
+  /** P3: her chat thread, read only (set by the Chat part at start; views.ts is its only caller). */
+  chatThread: ((pid: string, before?: string) => import('@jantar/protocol/people').OwnerChatView | null) | null = null;
 
   constructor(private readonly deps: PeopleDeps) {
     const { ctx } = deps;
@@ -360,6 +362,7 @@ export class PeopleModule {
       agreement: state === 'active' || state === 'paused' ? l.agreement : null,
       offer: l.offer ? { ...l.offer.fields, version: l.offer.version } : null,
       pendingProposal: l.pending && (state === 'active' || state === 'paused') ? { version: l.pending.version, fields: l.pending.fields } : null,
+      chatPerDay: p.limits.chatPerDay,
     };
   }
 
@@ -474,6 +477,29 @@ export class PeopleModule {
       this.ownerChanged();
       return { ok: true, value: true };
     });
+  }
+
+  /** P3: her chat's messages a day ({owner} sets it on Sharing; an Activity row, and her stream ticks). */
+  setChatPerDay(pid: string, perDay: number): LifeResult {
+    return this.guard(() => {
+      const p = this.repo.get(pid);
+      if (!p || this.gone(pid)) return this.notFound();
+      if (p.limits.chatPerDay === perDay) return { ok: true, value: true };
+      this.repo.save({ ...p, limits: { ...p.limits, chatPerDay: perDay }, updatedAt: this.iso() });
+      this.record(pid, { actor: 'owner', action: 'chat.limit', area: 'chat', changes: [{ field: 'chatPerDay', from: String(p.limits.chatPerDay), to: String(perDay) }] });
+      this.ticks.bump(pid, 'me');
+      this.ownerChanged();
+      return { ok: true, value: true };
+    });
+  }
+
+  private readonly forgetListeners = new Set<(pid: string) => void>();
+  /** P3: a store outside life.db (her chat thread in chat.db) forgets her with her space. */
+  onForget(fn: (pid: string) => void): () => void {
+    this.forgetListeners.add(fn);
+    return () => {
+      this.forgetListeners.delete(fn);
+    };
   }
 
   /** Her food module (O6): turning it off while she has food rows is refused, so the switch never hides her own data. */
@@ -1035,6 +1061,13 @@ export class PeopleModule {
     if (l.state !== 'forgotten') this.appendLedger(pid, 'forgotten', by, null, l.maxVersion);
     this.devices.revokeAllFor(pid, 'forgotten');
     this.invites.revokeAll(pid);
+    for (const fn of [...this.forgetListeners]) {
+      try {
+        fn(pid);
+      } catch {
+        // a store that can't forget now forgets on its own next sweep (her thread's person is gone)
+      }
+    }
     const core = this.deps.core();
     if (!core) return;
     forgetSpace(core, pid);

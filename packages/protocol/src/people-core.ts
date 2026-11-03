@@ -187,12 +187,80 @@ export const SKIP_REASONS = ['Ran out of time', 'Not feeling well', 'Plans chang
 export const ASK_REASONS = ['Move it later', 'Too much today', 'Need help'] as const;
 
 // ---------------------------------------------------------------------------
+// P3: her Chat (spec 7)
+
+/** How long her chat thread is kept, in days (her choice, C17): his `ask.keepDays` never applies to it. */
+export const CHAT_KEEP_DAYS = [1, 7, 30] as const;
+export type ChatKeepDays = (typeof CHAT_KEEP_DAYS)[number];
+export const CHAT_KEEP_DAYS_DEFAULT: ChatKeepDays = 30;
+/** Her messages a day, by default ({owner} changes it on Sharing; an Activity row). */
+export const PERSON_CHAT_PER_DAY_DEFAULT = 30;
+/** Unfinished turns in her thread at most. */
+export const PERSON_CHAT_UNFINISHED_MAX = 2;
+/** Her thread's id in chat.db (`''` is the owner's). */
+export function chatThreadOf(personId: string | null): string {
+  return personId ? `p:${personId}` : '';
+}
+
+/**
+ * Her turns' failure words (C17): a fixed set that never names an account,
+ * an email, a model limit or a reset time of his.
+ */
+export const PERSON_CHAT_SENTENCES = {
+  busy: 'The assistant is busy. Try again in a few minutes.',
+  usedUp: "Today's messages are used up.",
+  off: "The assistant isn't available right now.",
+  failed: "The assistant couldn't answer. Try again.",
+  slow: 'The assistant took too long to answer. Try again.',
+  cancelled: 'Stopped.',
+  restarted: 'The assistant stopped when Jantar restarted. Try again.',
+  wait: 'Wait for an answer, or stop one.',
+} as const;
+
+/** "12 messages left today". */
+export function chatLeftLine(left: number): string {
+  return `${left} message${left === 1 ? '' : 's'} left today`;
+}
+
+/** What her assistant can see, in the disclosure's words (only what this build has). */
+export function chatReach(built: BuildPhase = BUILT_PHASE): string {
+  return phaseBuilt('P4', built) ? 'your plan, to-dos, weight, sleep and the lists you share' : 'your plan, to-dos, weight and sleep';
+}
+
+/**
+ * The chat disclosure (spec 7.6), built from the live agreement: on the
+ * join page, in her chat header (ⓘ) and as the first message of a new
+ * thread. It changes the moment she switches `see.chat`.
+ */
+export function chatDisclosure(owner: string, keepDays: number, ownerCanRead: boolean, built: BuildPhase = BUILT_PHASE): string {
+  const kept = `${keepDays} day${keepDays === 1 ? '' : 's'}`;
+  const read = ownerCanRead
+    ? `${owner} can read this chat in Jantar: what you write, its answers, photos you send and what it changes for you. ${owner} can't write in it. You can switch this off in Sharing.`
+    : `${owner} can't open this chat in Jantar, and sees only how many messages you send each day. As the Mac's owner, ${owner} could read the file it's stored in.`;
+  return [
+    `Your assistant runs on ${owner}'s Claude account, on ${owner}'s Mac.`,
+    `What you write is sent to Anthropic to answer you and kept on ${owner}'s Mac for ${kept}.`,
+    read,
+    `It can see ${chatReach(built)}, and nothing of ${owner}'s. It never reads your journal.`,
+  ].join(' ');
+}
+
+/** The permanent line above her composer while `see.chat` is on (not a dismissible banner). */
+export function chatHeaderLine(owner: string): string {
+  return `${owner} can read this chat`;
+}
+
+// ---------------------------------------------------------------------------
 // Build phases (spec 9.8): only the built phase's areas, fields, routes and join lines exist.
 
-export const BUILD_PHASES = ['P1', 'P2', 'P3', 'P4'] as const;
+/**
+ * `later`: a field this release doesn't build at all. P3's `assistant` (his assistant reading her space,
+ * spec 7.7) is one: it stays unofferable (never in a preset, a proposal or the join page) until it is built.
+ */
+export const BUILD_PHASES = ['P1', 'P2', 'P3', 'P4', 'later'] as const;
 export type BuildPhase = (typeof BUILD_PHASES)[number];
 /** The phase this build ships. A later phase's field is never offered, filled by a preset or granted by an upgrade (O7, D24). */
-export const BUILT_PHASE: BuildPhase = 'P2';
+export const BUILT_PHASE: BuildPhase = 'P3';
 
 export function phaseBuilt(phase: BuildPhase, built: BuildPhase = BUILT_PHASE): boolean {
   return BUILD_PHASES.indexOf(phase) <= BUILD_PHASES.indexOf(built);
@@ -271,7 +339,7 @@ export const AGREEMENT_FIELDS: readonly AgreementField[] = [
   { key: 'editHers.meds', path: ['editHers', 'meds'], phase: 'P1', levels: ONOFF, area: 'meds' },
   { key: 'editHers.weight', path: ['editHers', 'weight'], phase: 'P1', levels: ONOFF, area: 'weight' },
   { key: 'comment.journal', path: ['comment', 'journal'], phase: 'P2', levels: ONOFF, area: 'journal' },
-  { key: 'assistant', path: ['assistant'], phase: 'P3', levels: ONOFF, area: null },
+  { key: 'assistant', path: ['assistant'], phase: 'later', levels: ONOFF, area: null },
 ];
 
 export function fieldValue(a: AgreementFields, f: AgreementField): boolean | string {

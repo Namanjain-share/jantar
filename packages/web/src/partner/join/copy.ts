@@ -7,7 +7,7 @@
  *
  * Neutral household wording: `{owner}` is the owner's display name.
  */
-import { AGREEMENT_FIELDS, phaseBuilt, type AgreementField, type AgreementFields, type BuildPhase } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, CHAT_KEEP_DAYS_DEFAULT, chatDisclosure, phaseBuilt, type AgreementField, type AgreementFields, type BuildPhase } from '@jantar/protocol/people-core';
 
 export interface CopyLine {
   /** The agreement field this line shows (null: a fixed line). */
@@ -108,6 +108,8 @@ export function joinCopy(owner: string, a: AgreementFields, opts: { built: Build
       `Your space is stored on ${owner}'s Mac, in Jantar's nightly backups, and in any backups of the Mac itself. As the Mac's owner, ${owner}, or a program ${owner} runs on it, could open those files directly, whatever you switch off here. This page describes what Jantar shows, not what can be done with the files.`,
       `Reminders ring only while ${owner}'s Mac is on and online. Leaving and downloading your data also need it on.`,
       `Cloudflare carries the connection to ${owner}'s Mac.`,
+      // P3 (spec 7.6): the chat disclosure, from the same words her chat shows.
+      ...(phaseBuilt('P3', opts.built) ? [chatDisclosure(owner, CHAT_KEEP_DAYS_DEFAULT, a.see.chat, opts.built)] : []),
     ],
   };
 }

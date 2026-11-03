@@ -62,6 +62,11 @@ export class PersonSpace {
     return this.todosModule().inSpace(pid);
   }
 
+  /** Her space's Todos module (her projects; her chat's deps, P3). Her to-dos go through the her* calls below. */
+  todosOf(pid: string): TodosModule {
+    return this.todos(pid);
+  }
+
   private stamp(): string {
     const c = this.core();
     return (c ? c.now() : new Date()).toISOString();

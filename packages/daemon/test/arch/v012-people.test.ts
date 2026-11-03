@@ -119,6 +119,19 @@ const REVIEWED_PERSON_ROUTES = [
   'personStepDelete',
   'personStepState',
   'personStepUpdate',
+  // P3: her chat thread (area chat decides only whether he can read it).
+  'personChatCancel',
+  'personChatCard',
+  'personChatClear',
+  'personChatDismiss',
+  'personChatList',
+  'personChatPhotoCreate',
+  'personChatPhotoDelete',
+  'personChatPhotoGet',
+  'personChatSend',
+  'personChatStatus',
+  'personChatTurnDelete',
+  'personChatUndo',
 ];
 
 /** T1: his People routes, reviewed: scope, ctl, localOnly, area. */
@@ -169,6 +182,9 @@ const REVIEWED_PEOPLE_OWNER_ROUTES: Record<string, { scope: string; ctl: boolean
   peopleAlertSend: { scope: 'control', ctl: false, localOnly: false, area: null },
   peopleAlerts: { scope: 'control', ctl: false, localOnly: false, area: null },
   peopleOwnerPrefs: { scope: 'control', ctl: false, localOnly: false, area: null },
+  // P3: his read-only view of her chat (GET only, see.chat).
+  personOwnerChat: { scope: 'control', ctl: false, localOnly: false, area: 'chat' },
+  personOwnerChatPhoto: { scope: 'control', ctl: false, localOnly: false, area: 'chat' },
 };
 
 /** M9: the `:pid` routes about the person, not her data (no area). */

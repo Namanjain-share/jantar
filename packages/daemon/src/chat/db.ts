@@ -10,7 +10,9 @@
  * - A new file is created 0600 inside the 0700 state dir.
  * - secure_delete is on: a deleted turn's text is overwritten in the file,
  *   not left in free pages.
- * - Never in the nightly Life backup: chat text never lands in backups/.
+ * - Never in the nightly Life backup: chat text never lands in backups/,
+ *   except the one copy kept before a schema change (v0.12:
+ *   backups/chat-pre-<version>.db, 0600, which Life's restore never reads).
  *
  * Rows: `turns` (a turn without its changes and cards, zod-checked JSON),
  * `changes` (each direct write and, while Undo works, its journal of prior
@@ -70,12 +72,39 @@ export const CHAT_MIGRATIONS: readonly LifeMigration[] = [
       CREATE INDEX photos_at ON photos (at, id);
     `,
   },
+  {
+    // v0.12 People (P3, spec 9.1.3): a thread on every row. '' is the owner's thread (every existing row),
+    // 'p:<pid>' a partner's. Every query in store.ts names it. An older daemon refuses a schema-2 file;
+    // going back means restoring backups/chat-pre-<version>.db.
+    version: 2,
+    name: 'threads',
+    sql: `
+      ALTER TABLE turns    ADD COLUMN thread TEXT NOT NULL DEFAULT '';
+      ALTER TABLE photos   ADD COLUMN thread TEXT NOT NULL DEFAULT '';
+      ALTER TABLE changes  ADD COLUMN thread TEXT NOT NULL DEFAULT '';
+      ALTER TABLE confirms ADD COLUMN thread TEXT NOT NULL DEFAULT '';
+      CREATE INDEX turns_thread ON turns (thread, at, id);
+    `,
+  },
 ];
 
 /** The schema this build writes and reads. A file with a newer one is refused, never downgraded. */
 export const CHAT_SCHEMA_VERSION = Math.max(...CHAT_MIGRATIONS.map((m) => m.version));
 
-/** Open (creating and migrating) chat.db at `path`, or ":memory:" (tests). A refusal answers CHAT_BROKEN_REASON. */
-export function openChatDb(path: string): LifeOpenResult {
-  return openCheckedDb(path, { migrations: CHAT_MIGRATIONS, brokenReason: CHAT_BROKEN_REASON, pragmas: ['PRAGMA secure_delete = ON'] });
+/** The copy kept before chat.db moves to a newer schema (v0.12: in backups/, beside life's; never restored by Life). */
+export function chatPreUpgradeName(version: string): string {
+  return `chat-pre-${version}.db`;
+}
+
+/**
+ * Open (creating and migrating) chat.db at `path`, or ":memory:" (tests). A refusal answers CHAT_BROKEN_REASON.
+ * v0.12: `preMigrateCopy` names the copy an existing file is kept as before it migrates (backups/chat-pre-<version>.db).
+ */
+export function openChatDb(path: string, opts: { preMigrateCopy?: (from: number, to: number) => string | null } = {}): LifeOpenResult {
+  return openCheckedDb(path, {
+    migrations: CHAT_MIGRATIONS,
+    brokenReason: CHAT_BROKEN_REASON,
+    pragmas: ['PRAGMA secure_delete = ON'],
+    ...(opts.preMigrateCopy ? { preMigrateCopy: opts.preMigrateCopy } : {}),
+  });
 }

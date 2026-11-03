@@ -25,6 +25,11 @@ export interface ChatDeps {
   ccwLegacy: CcwLegacySource;
   /** Only the Web Push one is used (life/push.ts sendLifePush): "Your answer is in Chat." */
   notifiers: Notifier[];
+  /**
+   * v0.12 People (P3): set only on the deps of her run and her taps (person-deps.ts): her id and the
+   * People module. Its presence switches the parts, reads and writes to hers (spec 7.2, 7.3).
+   */
+  person?: import('./person-deps.js').PersonChat;
 }
 
 /**
@@ -41,4 +46,4 @@ export interface ChatWriteLimiter {
  * `cards` (request_delete, request_action) is on while any part with a delete or an action is: a Life
  * module, Intel or Meetings (each card is checked against its own part again).
  */
-export type ChatPart = 'life' | 'todos' | 'medicines' | 'food' | 'places' | 'finance' | 'posts' | 'intel' | 'meetings' | 'sessions' | 'cards';
+export type ChatPart = 'life' | 'todos' | 'medicines' | 'food' | 'places' | 'finance' | 'posts' | 'intel' | 'meetings' | 'sessions' | 'cards' | 'plan' | 'sleep' | 'alerts';

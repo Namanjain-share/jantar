@@ -39,6 +39,9 @@
 //   chat-marker         every read it may call (ids from the finds) and copies every
 //                       tool result into its reply
 //   chat-refuse-option  "error: unknown option '--mcp-config'" (claude's own words)
+//   chat-person         v0.12 People: a partner's run: her reads (today, todos_find, plan_get, sleep_week),
+//                       adds a step at 18:00 today, offers an alert card, then tries money_month and
+//                       sessions_find (never listed for her: denied)
 // Every run's tool calls are appended to <root>/calls/claude-chat.jsonl as
 // {scenario, calls:[{name, input, isError, text}], denials, images, ts}.
 import { spawn } from 'node:child_process';
@@ -60,6 +63,7 @@ export const CHAT_MODES = [
   'chat-slow',
   'chat-marker',
   'chat-refuse-option',
+  'chat-person',
 ];
 
 const DEFAULT_SLOW_MS = 25_000;
@@ -333,6 +337,29 @@ export async function runChat({ root, args, stdin, matches, account }) {
         const gets = pairs.map(([, g], i) => [g, idOf(found[i])]).filter(([, id]) => id).map(([g, id]) => [g, { id }]);
         if (gets.length) keep(await round(gets));
         reply = texts.join('\n');
+        break;
+      }
+      case 'chat-person': {
+        const parts = [];
+        for (const name of ['today', 'todos_find', 'plan_get', 'sleep_week']) {
+          if (!allowed.includes(full(name))) continue;
+          const a = await one(name, {});
+          parts.push(`${name} ${a.isError ? 'error' : 'ok'}`);
+        }
+        const day = /Today: \w+ (\d{4}-\d{2}-\d{2})/.exec(blocks[0]?.text ?? '')?.[1];
+        if (day && allowed.includes(full('step_add'))) {
+          const a = await one('step_add', { day, title: 'Stretch', at: '18:00' });
+          parts.push(`step ${a.isError ? 'refused' : 'added'}`);
+        }
+        if (allowed.includes(full('alert_send'))) {
+          const a = await one('alert_send', { kind: 'running_late' });
+          parts.push(`alert ${a.isError ? 'refused' : 'asked'}`);
+        }
+        for (const name of ['money_month', 'sessions_find']) {
+          const a = await one(name, {});
+          parts.push(`${name} ${a.isError ? 'denied' : 'ran'}`);
+        }
+        reply = `Person: ${parts.join('; ')}.`;
         break;
       }
       default:

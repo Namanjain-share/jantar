@@ -16,7 +16,9 @@
  *   mark; he has no control here that writes in her name.
  */
 import { ALERT_KINDS, ALERT_REPLY_LABELS, STATUS_LABELS, type AlertKind } from '@jantar/protocol/people-core';
-import type { AlertsResponse, JournalEntryFull, JournalList, PersonAlert, PersonToday, PersonView, PlanStep, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
+import type { AlertsResponse, JournalEntryFull, JournalList, OwnerChatView, PersonAlert, PersonToday, PersonView, PlanStep, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
+import type { ChatTurn } from '@jantar/protocol';
+import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { useEffect, useState } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
 import { ReviewList } from '../../../people-shared/ReviewList.js';
@@ -29,9 +31,9 @@ import { useLifeLoad } from '../life/shared/useLife.js';
 import { peopleClient, type PeopleClient } from './client.js';
 import { PlanEditor, defaultPlanDay } from './PlanEditor.js';
 
-export const PARTNER_TABS = ['today', 'plan', 'health', 'journal', 'alerts'] as const;
+export const PARTNER_TABS = ['today', 'plan', 'health', 'journal', 'chat', 'alerts'] as const;
 export type PartnerTab = (typeof PARTNER_TABS)[number];
-const TAB_LABEL: Record<PartnerTab, string> = { today: 'Today', plan: 'Plan', health: 'Health', journal: 'Journal', alerts: 'Alerts' };
+const TAB_LABEL: Record<PartnerTab, string> = { today: 'Today', plan: 'Plan', health: 'Health', journal: 'Journal', chat: 'Chat', alerts: 'Alerts' };
 
 export interface PartnerProps {
   pid?: string;
@@ -134,6 +136,7 @@ function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClie
       ) : null}
       {tab === 'health' ? <HealthTab client={client} pid={pid} name={name} sees={a?.see.sleep === true} /> : null}
       {tab === 'journal' ? <JournalTab client={client} pid={pid} name={name} sees={a?.see.journal === true} canComment={a?.comment.journal === true} id={id} /> : null}
+      {tab === 'chat' ? <ChatTab client={client} pid={pid} name={name} sees={a?.see.chat === true} perDay={person?.chatPerDay ?? null} /> : null}
       {tab === 'alerts' ? <AlertsTab client={client} pid={pid} name={name} id={id} /> : null}
       <AlertSheet open={alerting} client={client} pid={pid} name={name} close={() => setAlerting(false)} />
     </div>
@@ -271,6 +274,74 @@ function HealthTab({ client, pid, name, sees }: { client: PeopleClient; pid: str
   const load = useLifeLoad<Week>(sees ? `people:${pid}:sleep:${week ?? ''}` : null, () => client.sleep(pid, week));
   if (!sees) return <Locked name={name} what="Sleep" />;
   return <div className="mt-12">{load.data ? <SleepWeek week={load.data} onWeek={setWeek} /> : <p className="type-small text-ink-2">Loading…</p>}</div>;
+}
+
+/**
+ * P3 (spec 7.8): her chat, read only, while she shares it: no composer, no Undo, no card button, no delete.
+ * Her messages and the answers render through markdown.tsx's default mode (people-shared/ChatRead.tsx).
+ */
+function ChatTab({ client, pid, name, sees, perDay }: { client: PeopleClient; pid: string; name: string; sees: boolean; perDay: number | null }) {
+  const load = useLifeLoad<OwnerChatView>(sees ? `people:${pid}:chat` : null, () => client.chat(pid));
+  const [earlier, setEarlier] = useState<{ turns: ChatTurn[]; older: string | null } | null>(null);
+  const [cap, setCap] = useState(perDay === null ? '' : String(perDay));
+  const [note, setNote] = useState<string | null>(null);
+  const older = earlier ? earlier.older : (load.data?.older ?? null);
+  const more = async () => {
+    if (!older) return;
+    const r = await client.chat(pid, older);
+    setEarlier({ turns: [...r.turns, ...(earlier?.turns ?? [])], older: r.older });
+  };
+  const saveCap = async () => {
+    const n = Number(cap);
+    if (!Number.isInteger(n) || n < 0 || n > 200) return setNote('A whole number from 0 to 200.');
+    try {
+      await client.setChatPerDay(pid, n);
+      setNote(`Saved. ${name} sees it in Activity.`);
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const capRow = (
+    <div className="mt-16 flex flex-wrap items-center gap-8 type-small text-ink-2">
+      <label htmlFor="chat-cap">Her messages a day</label>
+      <input id="chat-cap" inputMode="numeric" value={cap} onChange={(e) => setCap(e.target.value)} className="w-[4.5rem] rounded-btn border border-line bg-bg px-8 py-4 type-row text-ink" />
+      <Button variant="text" onClick={() => void saveCap()}>
+        Save
+      </Button>
+      {note ? <span role="status">{note}</span> : null}
+    </div>
+  );
+  if (!sees) return (
+    <>
+      <Locked name={name} what="Chat" />
+      {capRow}
+    </>
+  );
+  const turns = [...(earlier?.turns ?? []), ...(load.data?.turns ?? [])];
+  return (
+    <div className="mt-12">
+      <p className="type-small text-ink-2">Read only. {name}'s assistant runs on your Claude account. Messages older than {load.data?.keepDays ?? 30} days are gone for both of you.</p>
+      {older ? (
+        <Button variant="text" onClick={() => void more()}>
+          Earlier
+        </Button>
+      ) : null}
+      {load.data ? (
+        turns.length ? (
+          <ul className="mt-8">
+            {turns.map((t) => (
+              <ChatRead key={t.id} turn={t} name={name} photoUrl={(id) => client.chatPhotoUrl(pid, id)} />
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-12 type-row text-ink-2">No messages.</p>
+        )
+      ) : (
+        <p className="mt-12 type-small text-ink-2">Loading…</p>
+      )}
+      {capRow}
+    </div>
+  );
 }
 
 function JournalTab({ client, pid, name, sees, canComment, id }: { client: PeopleClient; pid: string; name: string; sees: boolean; canComment: boolean; id?: string }) {

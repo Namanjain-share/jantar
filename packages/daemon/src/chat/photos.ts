@@ -23,6 +23,7 @@ import type { DaemonContext, LifeResult } from '../contracts.js';
 import { newId } from '../core/ids.js';
 import { sniffUpload } from '../uploads/sniff.js';
 import type { ChatStore, PhotoRow } from './store.js';
+import { stripImageMetadata } from './strip.js';
 
 /** A photo past this is re-encoded even when its edge is small enough. */
 export const CHAT_PHOTO_REENCODE_BYTES = 1.5 * 1024 * 1024;
@@ -219,19 +220,29 @@ export class ChatPhotos {
     await rm(this.dir, { recursive: true, force: true }).catch(() => {});
   }
 
-  /** The folder under the cap: the oldest photos go first; returns them (their turns mark them gone). */
-  async cap(store: ChatStore, max = CHAT_PHOTOS_STORE_MAX_BYTES): Promise<PhotoRow[]> {
+  /** The folder under the cap (every thread's photos): the oldest go first; returns them with their thread (their turns mark them gone). */
+  async cap(store: ChatStore, max = CHAT_PHOTOS_STORE_MAX_BYTES): Promise<(PhotoRow & { thread: string })[]> {
     let total = store.photoBytes();
     if (total <= max) return [];
-    const gone: PhotoRow[] = [];
+    const gone: (PhotoRow & { thread: string })[] = [];
     for (const p of store.photosOldestFirst()) {
       if (total <= max) break;
-      store.removePhoto(p.id);
+      store.inThread(p.thread).removePhoto(p.id);
       total -= p.bytes;
       gone.push(p);
     }
     await this.removeFiles(gone);
     return gone;
+  }
+
+  /**
+   * v0.12 People (O19): her photo with its location, camera details and embedded thumbnails stripped, before
+   * it is stored (strip.ts). A photo that can't be read whole is refused rather than kept with them.
+   */
+  async addStripped(bytes: Buffer, store: ChatStore): Promise<LifeResult<{ id: string }>> {
+    const clean = stripImageMetadata(bytes);
+    if (!clean) return refuse('invalid_request', CHAT_PHOTO_SENTENCES.unreadable);
+    return this.add(clean, store);
   }
 
   /** Bytes of the photo folder on disk (status). */

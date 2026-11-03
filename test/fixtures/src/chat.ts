@@ -32,6 +32,7 @@ export const CHAT_SCENARIOS = [
   'chat-slow',
   'chat-marker',
   'chat-refuse-option',
+  'chat-person',
 ] as const;
 export type ChatScenario = (typeof CHAT_SCENARIOS)[number];
 

@@ -89,9 +89,10 @@ export const PEOPLE_ROUTE_IMPLS: RouteTable = {
     audit: (c: Call<Pid>) => ({ target: c.params.pid }),
   },
   personColor: {
-    handle: (c: Call<Pid, unknown, { color: (typeof PERSON_COLORS)[number] }>, s) => {
+    handle: (c: Call<Pid, unknown, { color?: (typeof PERSON_COLORS)[number]; chatPerDay?: number }>, s) => {
       aboutPerson(s, c.params.pid);
-      value(s.deps.life.people.setColor(c.params.pid, c.body.color));
+      if (c.body.color !== undefined) value(s.deps.life.people.setColor(c.params.pid, c.body.color));
+      if (c.body.chatPerDay !== undefined) value(s.deps.life.people.setChatPerDay(c.params.pid, c.body.chatPerDay));
       return OK;
     },
     audit: (c: Call<Pid>) => ({ target: c.params.pid }),

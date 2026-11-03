@@ -221,8 +221,9 @@ describe('T10 / M21: his view equals her mirror', () => {
     await pairs();
     await herCall('POST', '/v1/p/agreement/narrow', { see: { weight: false } });
     await pairs();
-    // An area this build doesn't have is 404 on both sides.
-    expect((await herCall('GET', '/v1/p/mirror/chat')).statusCode).toBe(404);
+    // P3: her chat is an area now; with no Chat part on this fixture it reads locked on her mirror and 404 for him.
+    expect((await herCall('GET', '/v1/p/mirror/chat')).statusCode).toBe(200);
+    expect((await him('GET', `/v1/people/${f.asha.id}/chat`)).statusCode).toBe(404);
   });
 });
 

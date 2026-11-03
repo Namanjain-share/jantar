@@ -65,10 +65,24 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : String(v ?? '')
 const num = (v: unknown): number => (typeof v === 'number' ? v : typeof v === 'bigint' ? Number(v) : Number(v ?? 0));
 
 export class ChatStore {
-  constructor(private readonly db: LifeDb) {}
+  /**
+   * v0.12 People (spec 7.1): a store works in one thread (`''` the owner's, `p:<pid>` hers). Every query
+   * names it, so a turn, change, card or photo of the other thread is not there (404). `inThread` gives the
+   * same file in another thread; only the root store closes it.
+   */
+  constructor(
+    private readonly db: LifeDb,
+    readonly thread = '',
+    private readonly root = true,
+  ) {}
+
+  /** The same file, in another thread. */
+  inThread(thread: string): ChatStore {
+    return thread === this.thread ? this : new ChatStore(this.db, thread, false);
+  }
 
   close(): void {
-    this.db.close();
+    if (this.root) this.db.close();
   }
 
   tx<T>(fn: () => T): T {
@@ -78,11 +92,11 @@ export class ChatStore {
   // ------------------------------------------------------------------ turns
 
   insertTurn(t: TurnRecord): void {
-    this.db.prepare('INSERT INTO turns (id, at, state, json) VALUES (?, ?, ?, ?)').run(t.id, t.at, t.state, JSON.stringify(TurnRecordSchema.parse(t)));
+    this.db.prepare('INSERT INTO turns (id, at, state, json, thread) VALUES (?, ?, ?, ?, ?)').run(t.id, t.at, t.state, JSON.stringify(TurnRecordSchema.parse(t)), this.thread);
   }
 
   turn(id: string): TurnRecord | null {
-    const row = this.db.prepare('SELECT json FROM turns WHERE id = ?').get(id) as Row | undefined;
+    const row = this.db.prepare('SELECT json FROM turns WHERE thread = ? AND id = ?').get(this.thread, id) as Row | undefined;
     return row ? parse(TurnRecordSchema, str(row.json)) : null;
   }
 
@@ -92,7 +106,7 @@ export class ChatStore {
       const cur = this.turn(id);
       if (!cur) return false;
       const next = TurnRecordSchema.parse(fn(cur));
-      this.db.prepare('UPDATE turns SET state = ?, json = ? WHERE id = ?').run(next.state, JSON.stringify(next), id);
+      this.db.prepare('UPDATE turns SET state = ?, json = ? WHERE thread = ? AND id = ?').run(next.state, JSON.stringify(next), this.thread, id);
       return true;
     });
   }
@@ -101,12 +115,12 @@ export class ChatStore {
   page(before: string | undefined, limit = CHAT_PAGE): { turns: TurnRecord[]; older: string | null } {
     let rows: Row[];
     if (before) {
-      const b = this.db.prepare('SELECT at, id FROM turns WHERE id = ?').get(before) as Row | undefined;
+      const b = this.db.prepare('SELECT at, id FROM turns WHERE thread = ? AND id = ?').get(this.thread, before) as Row | undefined;
       if (!b) return { turns: [], older: null };
       rows = this.db
-        .prepare('SELECT json FROM turns WHERE at < ? OR (at = ? AND id < ?) ORDER BY at DESC, id DESC LIMIT ?')
-        .all(str(b.at), str(b.at), str(b.id), limit + 1) as Row[];
-    } else rows = this.db.prepare('SELECT json FROM turns ORDER BY at DESC, id DESC LIMIT ?').all(limit + 1) as Row[];
+        .prepare('SELECT json FROM turns WHERE thread = ? AND (at < ? OR (at = ? AND id < ?)) ORDER BY at DESC, id DESC LIMIT ?')
+        .all(this.thread, str(b.at), str(b.at), str(b.id), limit + 1) as Row[];
+    } else rows = this.db.prepare('SELECT json FROM turns WHERE thread = ? ORDER BY at DESC, id DESC LIMIT ?').all(this.thread, limit + 1) as Row[];
     const more = rows.length > limit;
     const turns = rows
       .slice(0, limit)
@@ -123,28 +137,39 @@ export class ChatStore {
 
   /** Turns queued or running, oldest first. */
   unfinished(): TurnRecord[] {
-    const rows = this.db.prepare("SELECT json FROM turns WHERE state IN ('queued', 'running') ORDER BY at, id").all() as Row[];
+    const rows = this.db.prepare("SELECT json FROM turns WHERE thread = ? AND state IN ('queued', 'running') ORDER BY at, id").all(this.thread) as Row[];
     return rows.map((r) => parse(TurnRecordSchema, str(r.json))).filter((t): t is TurnRecord => t !== null);
   }
 
   turnCount(): number {
-    return num((this.db.prepare('SELECT COUNT(*) AS n FROM turns').get() as Row).n);
+    return num((this.db.prepare('SELECT COUNT(*) AS n FROM turns WHERE thread = ?').get(this.thread) as Row).n);
+  }
+
+  /** v0.12 People: when each turn of this thread at or after `sinceIso` was sent (her daily cap counts today's). */
+  turnTimesSince(sinceIso: string): string[] {
+    return (this.db.prepare('SELECT at FROM turns WHERE thread = ? AND at >= ?').all(this.thread, sinceIso) as Row[]).map((r) => str(r.at));
+  }
+
+  /** v0.12 People: every thread that holds a row (the sweep keeps each by its own keep days). */
+  threads(): string[] {
+    const rows = this.db.prepare('SELECT DISTINCT thread FROM turns UNION SELECT DISTINCT thread FROM photos').all() as Row[];
+    return rows.map((r) => str(r.thread));
   }
 
   // ------------------------------------------------------------------ changes
 
   addChange(turnId: string, at: string, c: ChangeJson, journal: unknown): number {
     return this.db.tx(() => {
-      const n = num((this.db.prepare('SELECT COUNT(*) AS n FROM changes WHERE turn_id = ?').get(turnId) as Row).n);
+      const n = num((this.db.prepare('SELECT COUNT(*) AS n FROM changes WHERE thread = ? AND turn_id = ?').get(this.thread, turnId) as Row).n);
       this.db
-        .prepare("INSERT INTO changes (turn_id, n, at, state, json, journal) VALUES (?, ?, ?, 'done', ?, ?)")
-        .run(turnId, n, at, JSON.stringify(ChangeJsonSchema.parse(c)), journal === undefined ? null : JSON.stringify(journal));
+        .prepare("INSERT INTO changes (turn_id, n, at, state, json, journal, thread) VALUES (?, ?, ?, 'done', ?, ?, ?)")
+        .run(turnId, n, at, JSON.stringify(ChangeJsonSchema.parse(c)), journal === undefined ? null : JSON.stringify(journal), this.thread);
       return n;
     });
   }
 
   changes(turnId: string): ChatChange[] {
-    const rows = this.db.prepare('SELECT n, state, json FROM changes WHERE turn_id = ? ORDER BY n').all(turnId) as Row[];
+    const rows = this.db.prepare('SELECT n, state, json FROM changes WHERE thread = ? AND turn_id = ? ORDER BY n').all(this.thread, turnId) as Row[];
     const out: ChatChange[] = [];
     for (const r of rows) {
       const j = parse(ChangeJsonSchema, str(r.json));
@@ -154,7 +179,7 @@ export class ChatStore {
   }
 
   change(turnId: string, n: number): { change: ChatChange; at: string; journal: unknown } | null {
-    const r = this.db.prepare('SELECT n, at, state, json, journal FROM changes WHERE turn_id = ? AND n = ?').get(turnId, n) as Row | undefined;
+    const r = this.db.prepare('SELECT n, at, state, json, journal FROM changes WHERE thread = ? AND turn_id = ? AND n = ?').get(this.thread, turnId, n) as Row | undefined;
     if (!r) return null;
     const j = parse(ChangeJsonSchema, str(r.json));
     if (!j) return null;
@@ -170,21 +195,21 @@ export class ChatStore {
   }
 
   setChangeState(turnId: string, n: number, state: ChangeState): void {
-    this.db.prepare('UPDATE changes SET state = ? WHERE turn_id = ? AND n = ?').run(state, turnId, n);
+    this.db.prepare('UPDATE changes SET state = ? WHERE thread = ? AND turn_id = ? AND n = ?').run(state, this.thread, turnId, n);
   }
 
   // ------------------------------------------------------------------ cards
 
   addCard(turnId: string, at: string, c: CardJson): number {
     return this.db.tx(() => {
-      const n = num((this.db.prepare('SELECT COUNT(*) AS n FROM confirms WHERE turn_id = ?').get(turnId) as Row).n);
-      this.db.prepare("INSERT INTO confirms (turn_id, n, at, state, json) VALUES (?, ?, ?, 'waiting', ?)").run(turnId, n, at, JSON.stringify(CardJsonSchema.parse(c)));
+      const n = num((this.db.prepare('SELECT COUNT(*) AS n FROM confirms WHERE thread = ? AND turn_id = ?').get(this.thread, turnId) as Row).n);
+      this.db.prepare("INSERT INTO confirms (turn_id, n, at, state, json, thread) VALUES (?, ?, ?, 'waiting', ?, ?)").run(turnId, n, at, JSON.stringify(CardJsonSchema.parse(c)), this.thread);
       return n;
     });
   }
 
   cards(turnId: string): ChatCard[] {
-    const rows = this.db.prepare('SELECT n, state, json FROM confirms WHERE turn_id = ? ORDER BY n').all(turnId) as Row[];
+    const rows = this.db.prepare('SELECT n, state, json FROM confirms WHERE thread = ? AND turn_id = ? ORDER BY n').all(this.thread, turnId) as Row[];
     const out: ChatCard[] = [];
     for (const r of rows) {
       const j = parse(CardJsonSchema, str(r.json));
@@ -195,7 +220,7 @@ export class ChatStore {
   }
 
   card(turnId: string, n: number): { card: CardJson; state: CardState; at: string } | null {
-    const r = this.db.prepare('SELECT at, state, json FROM confirms WHERE turn_id = ? AND n = ?').get(turnId, n) as Row | undefined;
+    const r = this.db.prepare('SELECT at, state, json FROM confirms WHERE thread = ? AND turn_id = ? AND n = ?').get(this.thread, turnId, n) as Row | undefined;
     if (!r) return null;
     const j = parse(CardJsonSchema, str(r.json));
     return j ? { card: j, state: str(r.state) as CardState, at: str(r.at) } : null;
@@ -207,7 +232,7 @@ export class ChatStore {
       if (!cur) return;
       const json = { ...cur.card, ...(reason ? { reason } : {}) };
       if (!reason) delete json.reason;
-      this.db.prepare('UPDATE confirms SET state = ?, json = ? WHERE turn_id = ? AND n = ?').run(state, JSON.stringify(json), turnId, n);
+      this.db.prepare('UPDATE confirms SET state = ?, json = ? WHERE thread = ? AND turn_id = ? AND n = ?').run(state, JSON.stringify(json), this.thread, turnId, n);
     });
   }
 
@@ -220,16 +245,16 @@ export class ChatStore {
   // ------------------------------------------------------------------ photos
 
   addPhoto(p: PhotoRow): void {
-    this.db.prepare('INSERT INTO photos (id, turn_id, at, bytes, w, h, type) VALUES (?, ?, ?, ?, ?, ?, ?)').run(p.id, p.turnId, p.at, p.bytes, p.w, p.h, p.type);
+    this.db.prepare('INSERT INTO photos (id, turn_id, at, bytes, w, h, type, thread) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(p.id, p.turnId, p.at, p.bytes, p.w, p.h, p.type, this.thread);
   }
 
   photo(id: string): PhotoRow | null {
-    const r = this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type FROM photos WHERE id = ?').get(id) as Row | undefined;
+    const r = this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type FROM photos WHERE thread = ? AND id = ?').get(this.thread, id) as Row | undefined;
     return r ? this.photoRow(r) : null;
   }
 
   photosOf(turnId: string): PhotoRow[] {
-    return (this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type FROM photos WHERE turn_id = ? ORDER BY at, id').all(turnId) as Row[]).map((r) => this.photoRow(r));
+    return (this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type FROM photos WHERE thread = ? AND turn_id = ? ORDER BY at, id').all(this.thread, turnId) as Row[]).map((r) => this.photoRow(r));
   }
 
   /**
@@ -241,8 +266,8 @@ export class ChatStore {
       const taken: string[] = [];
       for (const id of ids) {
         const r = this.db
-          .prepare("UPDATE photos SET turn_id = ? WHERE id = ? AND (turn_id IS NULL OR turn_id IN (SELECT id FROM turns WHERE state = 'failed'))")
-          .run(turnId, id);
+          .prepare("UPDATE photos SET turn_id = ? WHERE thread = ? AND id = ? AND (turn_id IS NULL OR turn_id IN (SELECT id FROM turns WHERE thread = ? AND state = 'failed'))")
+          .run(turnId, this.thread, id, this.thread);
         if (num(r.changes) === 1) taken.push(id);
       }
       return taken;
@@ -250,20 +275,26 @@ export class ChatStore {
   }
 
   removePhoto(id: string): void {
-    this.db.prepare('DELETE FROM photos WHERE id = ?').run(id);
+    this.db.prepare('DELETE FROM photos WHERE thread = ? AND id = ?').run(this.thread, id);
   }
 
+  /** Every photo row of this thread (Clear and forget remove their files). */
+  photosAll(): PhotoRow[] {
+    return (this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type FROM photos WHERE thread = ? ORDER BY at, id').all(this.thread) as Row[]).map((r) => this.photoRow(r));
+  }
+
+  /** The photo folder's bytes, every thread (the folder's cap is one). */
   photoBytes(): number {
     return num((this.db.prepare('SELECT COALESCE(SUM(bytes), 0) AS n FROM photos').get() as Row).n);
   }
 
   photoCount(): number {
-    return num((this.db.prepare('SELECT COUNT(*) AS n FROM photos').get() as Row).n);
+    return num((this.db.prepare('SELECT COUNT(*) AS n FROM photos WHERE thread = ?').get(this.thread) as Row).n);
   }
 
-  /** Every photo, oldest first (the store-wide cap). */
-  photosOldestFirst(): PhotoRow[] {
-    return (this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type FROM photos ORDER BY at, id').all() as Row[]).map((r) => this.photoRow(r));
+  /** Every photo of every thread, oldest first, with its thread (the folder-wide cap). */
+  photosOldestFirst(): (PhotoRow & { thread: string })[] {
+    return (this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type, thread FROM photos ORDER BY at, id').all() as Row[]).map((r) => ({ ...this.photoRow(r), thread: str(r.thread) }));
   }
 
   private photoRow(r: Row): PhotoRow {
@@ -298,34 +329,54 @@ export class ChatStore {
 
   private removeOld(o: { cutoffIso: string; maxTurns: number; undoCutoffIso: string; unattachedCutoffIso: string }): { photos: PhotoRow[]; turns: number } {
     return this.db.tx(() => {
-      const old = (this.db.prepare("SELECT id FROM turns WHERE at < ? AND state NOT IN ('queued', 'running')").all(o.cutoffIso) as Row[]).map((r) => str(r.id));
+      const old = (this.db.prepare("SELECT id FROM turns WHERE thread = ? AND at < ? AND state NOT IN ('queued', 'running')").all(this.thread, o.cutoffIso) as Row[]).map((r) => str(r.id));
       const overflow = (
         this.db
-          .prepare("SELECT id FROM turns WHERE state NOT IN ('queued', 'running') ORDER BY at DESC, id DESC LIMIT -1 OFFSET ?")
-          .all(o.maxTurns) as Row[]
+          .prepare("SELECT id FROM turns WHERE thread = ? AND state NOT IN ('queued', 'running') ORDER BY at DESC, id DESC LIMIT -1 OFFSET ?")
+          .all(this.thread, o.maxTurns) as Row[]
       ).map((r) => str(r.id));
       const gone = [...new Set([...old, ...overflow])];
       const photos: PhotoRow[] = [];
-      for (const id of gone) {
-        photos.push(...this.photosOf(id));
-        this.db.prepare('DELETE FROM photos WHERE turn_id = ?').run(id);
-        this.db.prepare('DELETE FROM changes WHERE turn_id = ?').run(id);
-        this.db.prepare('DELETE FROM confirms WHERE turn_id = ?').run(id);
-        this.db.prepare('DELETE FROM turns WHERE id = ?').run(id);
-      }
-      this.db.prepare("UPDATE changes SET journal = NULL, state = CASE WHEN state = 'done' THEN 'expired' ELSE state END WHERE at < ? AND (journal IS NOT NULL OR state = 'done')").run(o.undoCutoffIso);
-      this.db.prepare("UPDATE confirms SET state = 'expired' WHERE at < ? AND state = 'waiting'").run(o.undoCutoffIso);
-      const loose = (this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type FROM photos WHERE turn_id IS NULL AND at < ?').all(o.unattachedCutoffIso) as Row[]).map((r) => this.photoRow(r));
+      for (const id of gone) photos.push(...this.dropTurn(id));
+      this.db
+        .prepare("UPDATE changes SET journal = NULL, state = CASE WHEN state = 'done' THEN 'expired' ELSE state END WHERE thread = ? AND at < ? AND (journal IS NOT NULL OR state = 'done')")
+        .run(this.thread, o.undoCutoffIso);
+      this.db.prepare("UPDATE confirms SET state = 'expired' WHERE thread = ? AND at < ? AND state = 'waiting'").run(this.thread, o.undoCutoffIso);
+      const loose = (this.db.prepare('SELECT id, turn_id, at, bytes, w, h, type FROM photos WHERE thread = ? AND turn_id IS NULL AND at < ?').all(this.thread, o.unattachedCutoffIso) as Row[]).map((r) => this.photoRow(r));
       for (const p of loose) this.removePhoto(p.id);
       photos.push(...loose);
       return { photos, turns: gone.length };
     });
   }
 
-  /** Clear: every row goes, then VACUUM (secure_delete has overwritten the freed pages). */
+  /** One turn and its changes, cards and photo rows (the photo rows are returned: their files are the caller's). */
+  private dropTurn(id: string): PhotoRow[] {
+    const photos = this.photosOf(id);
+    this.db.prepare('DELETE FROM photos WHERE thread = ? AND turn_id = ?').run(this.thread, id);
+    this.db.prepare('DELETE FROM changes WHERE thread = ? AND turn_id = ?').run(this.thread, id);
+    this.db.prepare('DELETE FROM confirms WHERE thread = ? AND turn_id = ?').run(this.thread, id);
+    this.db.prepare('DELETE FROM turns WHERE thread = ? AND id = ?').run(this.thread, id);
+    return photos;
+  }
+
+  /**
+   * v0.12 People (O21): delete one finished turn of this thread with its changes, cards and photos: gone for
+   * both sides, with no trace. Null when there is no such turn here (or it is still running).
+   */
+  deleteTurn(id: string): PhotoRow[] | null {
+    const out = this.db.tx(() => {
+      const t = this.turn(id);
+      if (!t || t.state === 'queued' || t.state === 'running') return null;
+      return this.dropTurn(id);
+    });
+    if (out) this.checkpoint();
+    return out;
+  }
+
+  /** Clear: every row of this thread goes, then VACUUM (secure_delete has overwritten the freed pages). The other thread stays. */
   clear(): void {
     this.db.tx(() => {
-      for (const t of ['photos', 'changes', 'confirms', 'turns']) this.db.prepare(`DELETE FROM ${t}`).run();
+      for (const t of ['photos', 'changes', 'confirms', 'turns']) this.db.prepare(`DELETE FROM ${t} WHERE thread = ?`).run(this.thread);
     });
     try {
       this.db.raw.exec('VACUUM');

@@ -1,7 +1,7 @@
 /**
  * v0.12 People: her app's paths (spec 1.3.1): /p (Today; `?review=1&day=`
  * opens the evening review), /p/todos, /p/health (`?tab=sleep&week=`),
- * /p/journal (`?id=`, `?checkin=1`), /p/alerts (`?id=`), /p/join, /p/link,
+ * /p/journal (`?id=`, `?checkin=1`), /p/alerts (`?id=`), /p/chat (P3), /p/join, /p/link,
  * /p/me (?tab=sharing|activity|devices|notifications|leave), /p/left.
  * Anything else is her NotFound; the owner's screens don't exist in this
  * bundle.
@@ -13,6 +13,7 @@ export type PersonRoute =
   | { name: 'health'; tab: HealthTab; week: string | null }
   | { name: 'journal'; id: string | null; checkin: boolean }
   | { name: 'alerts'; id: string | null }
+  | { name: 'chat' }
   | { name: 'join' }
   | { name: 'link' }
   | { name: 'me'; tab: MeTab }
@@ -46,6 +47,7 @@ export function parsePersonRoute(pathname: string, search: string): PersonRoute 
   }
   if (path === '/p/journal') return { name: 'journal', id: id(), checkin: q.get('checkin') === '1' };
   if (path === '/p/alerts') return { name: 'alerts', id: id() };
+  if (path === '/p/chat') return { name: 'chat' };
   if (path === '/p/join') return { name: 'join' };
   if (path === '/p/link') return { name: 'link' };
   if (path === '/p/left') return { name: 'left' };

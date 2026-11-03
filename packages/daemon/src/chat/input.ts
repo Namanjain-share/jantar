@@ -47,6 +47,11 @@ export interface ChatInput {
   history: HistoryTurn[];
   text: string;
   photos: ChatPhotoBlock[];
+  /**
+   * v0.12 People (P3, C17): her run. <reach> is then a fixed person list (never the owner's switches,
+   * currency or categories) with the owner's name and whether the owner can read this chat now.
+   */
+  person?: { owner: string; ownerCanRead: boolean; cafes: boolean };
 }
 
 /** The <history> block's lines, newest last, cut to the budget from the oldest end. */
@@ -76,6 +81,22 @@ function textBlock(i: ChatInput, left: number): string {
     return out.join(', ');
   };
   const tags = PLACE_TAGS.map((k) => `${PLACE_TAG_LABELS[k]} (${k})`).join(', ');
+  const reach = i.person
+    ? [
+        `On: ${i.on.join(', ')}`,
+        `Tools: ${i.tools.join(', ')}`,
+        `The owner: ${clean(i.person.owner)}`,
+        `The owner can read this chat in Jantar: ${i.person.ownerCanRead ? 'yes' : 'no'}`,
+        ...(i.person.cafes ? [`Café tags: ${tags}`] : []),
+      ]
+    : [
+        `On: ${i.on.length ? i.on.join(', ') : 'nothing but sessions (read only)'}`,
+        `Tools: ${i.tools.join(', ')}`,
+        `Currency: ${i.currency ?? 'not set'}`,
+        `Expense categories: ${DEFAULT_CATEGORIES.expense.join(', ')}`,
+        `Income categories: ${DEFAULT_CATEGORIES.income.join(', ')}`,
+        `Café tags: ${tags}`,
+      ];
   return [
     '<now>',
     `Today: ${dayWithWeekday(i.today)}`,
@@ -85,12 +106,7 @@ function textBlock(i: ChatInput, left: number): string {
     '</now>',
     `<channel>${i.channel}</channel>`,
     '<reach>',
-    `On: ${i.on.length ? i.on.join(', ') : 'nothing but sessions (read only)'}`,
-    `Tools: ${i.tools.join(', ')}`,
-    `Currency: ${i.currency ?? 'not set'}`,
-    `Expense categories: ${DEFAULT_CATEGORIES.expense.join(', ')}`,
-    `Income categories: ${DEFAULT_CATEGORIES.income.join(', ')}`,
-    `Café tags: ${tags}`,
+    ...reach,
     '</reach>',
     '<history>',
     historyLines(i.history),

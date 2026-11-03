@@ -70,6 +70,8 @@ import {
   type WriteTool,
 } from './actions.js';
 import { fromMeeting } from './items.js';
+import { PERSON_READS } from './person-reads.js';
+import { PERSON_CHAT_TOOLS, PERSON_ONLY_TOOLS, PERSON_SHARED_TOOLS, PERSON_WRITE_MODULE, isPersonWriteTool, personPartOn, type PersonWriteTool } from './person-tools.js';
 import type { ChangeJson, ChatStore } from './store.js';
 import { clean, cut, data, dataNote, line } from './text.js';
 import type { ChatDeps, ChatPart, ChatWriteLimiter } from './types.js';
@@ -100,6 +102,9 @@ export const TOOL_SENTENCES = {
 const LABEL_NOTE: Readonly<Record<LabelSource, string>> = {
   meeting: "a meeting (its name, an action item or a todo made from one)",
   intel: "the Intel shelf (a saved page's title)",
+  // v0.12 People (C19): framed by authorship, whichever screen the words are on.
+  owner: 'the owner (an item or step the owner added or last edited)',
+  partner: 'the partner (an item or note the partner wrote or last edited)',
 };
 
 /** Timed todos or posts one turn may add (each rings the phone). */
@@ -236,8 +241,9 @@ export function listed(t: ChatTool): Record<string, unknown> {
 type Settings = ReturnType<DaemonContext['settings']['get']>;
 const LIFE_PARTS = ['todos', 'medicines', 'food', 'places', 'finance', 'posts'] as const;
 
-/** Whether `part` is on now (and its data opens). */
-export function partOn(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings'>, part: ChatPart): boolean {
+/** Whether `part` is on now (and its data opens). v0.12 People: on her deps, her parts (never the owner's switches). */
+export function partOn(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings' | 'person'>, part: ChatPart): boolean {
+  if (d.person) return personPartOn(d, part);
   const lifeOk = () => {
     try {
       return d.life.broken() === null;
@@ -260,14 +266,32 @@ export function partOn(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings'>, part
       return LIFE_PARTS.some((p) => s.life[p]) && lifeOk();
     case 'cards':
       return partOn(s, d, 'life') || partOn(s, d, 'intel') || partOn(s, d, 'meetings');
+    case 'plan':
+    case 'sleep':
+    case 'alerts':
+      // Hers alone (her plan, sleep and alerts): never a part of the owner's thread.
+      return false;
     default:
       return s.life[part] && lifeOk();
   }
 }
 
-/** The tools of a turn: those whose part is on now. */
-export function toolsFor(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings'>): ChatTool[] {
+/**
+ * v0.12 People (spec 7.2): her run's tools, `CHAT_TOOLS ∩ PERSON_CHAT_TOOLS` (the owner's to-do and weight
+ * tools, over her space) and the tools only she has. Never a session, account, Intel, meeting, money, post,
+ * journal or assigning tool.
+ */
+export const PERSON_TOOLS: readonly ChatTool[] = [...CHAT_TOOLS.filter((t) => PERSON_SHARED_TOOLS.has(t.name)), ...PERSON_ONLY_TOOLS].filter((t) => PERSON_CHAT_TOOLS.has(t.name));
+
+/** The tools of a turn: those whose part is on now. v0.12 People: on her deps, her tools only. */
+export function toolsFor(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings' | 'person'>): ChatTool[] {
+  if (d.person) return PERSON_TOOLS.filter((t) => partOn(s, d, t.part));
   return CHAT_TOOLS.filter((t) => partOn(s, d, t.part));
+}
+
+/** The part a write needs on. */
+function writeModule(tool: WriteTool | PersonWriteTool): ChatModule {
+  return isPersonWriteTool(tool) ? PERSON_WRITE_MODULE[tool] : WRITE_MODULE[tool];
 }
 
 /** The words a part is called by in a refusal. */
@@ -283,6 +307,9 @@ const PART_NAME: Readonly<Record<ChatPart, string>> = {
   meetings: 'Meetings',
   sessions: 'Sessions',
   cards: 'Life, Intel and Meetings',
+  plan: 'The day plan',
+  sleep: 'Sleep',
+  alerts: 'Alerts',
 };
 
 // ------------------------------------------------------------------ the reads
@@ -620,12 +647,14 @@ export interface ToolAnswer {
 }
 
 /** Every URL an input carries where a write would keep it (and the Mac might fetch it). */
-function linksOf(tool: WriteTool, input: Record<string, unknown>): string[] {
+function linksOf(tool: WriteTool | PersonWriteTool, input: Record<string, unknown>): string[] {
   const keys = tool === 'intel_save' ? ['url'] : tool === 'place_add' || tool === 'place_edit' ? ['link'] : tool === 'post_add' || tool === 'post_edit' ? ['link', 'postedUrl'] : [];
   return keys.map((k) => input[k]).filter((v): v is string => typeof v === 'string');
 }
 
-function timedOf(tool: WriteTool, input: Record<string, unknown>): boolean {
+function timedOf(tool: WriteTool | PersonWriteTool, input: Record<string, unknown>): boolean {
+  // v0.12 People: a timed step she adds rings her phone like a timed todo.
+  if (tool === 'step_add') return typeof input.at === 'string';
   if (tool !== 'todo_add' && tool !== 'post_add' && tool !== 'todo_edit' && tool !== 'post_edit') return false;
   const due = input.due as { time?: unknown } | null | undefined;
   return !!due && typeof due === 'object' && typeof due.time === 'string';
@@ -688,7 +717,7 @@ export class TurnTools {
     let answer: ToolAnswer;
     try {
       if (t.kind === 'read') answer = await this.read(t, input, s);
-      else if (t.kind === 'write') answer = await this.write(t.name as WriteTool, input);
+      else if (t.kind === 'write') answer = await this.write(t.name as WriteTool | PersonWriteTool, input);
       else answer = this.card(t.name, input);
     } catch {
       answer = this.refused(TOOL_SENTENCES.failed);
@@ -697,6 +726,17 @@ export class TurnTools {
   }
 
   private async read(t: ChatTool, input: Record<string, unknown>, s: Settings): Promise<ToolAnswer> {
+    // v0.12 People: her reads are hers alone (her space, framed by authorship); the owner's never run for her.
+    const person = this.o.deps.person;
+    if (person) {
+      const pf = PERSON_READS[t.name];
+      if (!pf) return this.refused(TOOL_SENTENCES.failed);
+      this.counts.reads += 1;
+      const po = pf(person, input);
+      const r = typeof po === 'string' ? { text: po, taints: false } : po;
+      if (t.taints || r.taints) this.counts.tainted = true;
+      return { text: r.text, isError: false };
+    }
     const fn = READS[t.name];
     if (!fn) return this.refused(TOOL_SENTENCES.failed);
     this.counts.reads += 1;
@@ -715,7 +755,7 @@ export class TurnTools {
     return [head, dataNote(LABEL_NOTE[third]), data(third, ref, label)].join('\n');
   }
 
-  private async write(tool: WriteTool, input: Record<string, unknown>): Promise<ToolAnswer> {
+  private async write(tool: WriteTool | PersonWriteTool, input: Record<string, unknown>): Promise<ToolAnswer> {
     // A link the model wrote could carry data out (saving makes the Mac fetch it): only the user's own.
     for (const url of linksOf(tool, input)) if (!this.o.message.includes(url)) return this.refused(TOOL_SENTENCES.link);
     if (timedOf(tool, input)) {
@@ -726,7 +766,7 @@ export class TurnTools {
     if (this.counts.tainted) {
       if (this.counts.cards >= CHAT_CARDS_MAX) return this.refused(TOOL_SENTENCES.limit);
       const action: CardAction = { t: 'write', tool, input };
-      this.addCard('do', WRITE_MODULE[tool], tool.replace(/_.*$/, ''), null, describeWrite(this.o.deps, tool, input), action);
+      this.addCard('do', writeModule(tool), tool.replace(/_.*$/, ''), null, describeWrite(this.o.deps, tool, input), action);
       return { text: TOOL_SENTENCES.card, isError: false };
     }
     if (this.counts.writes >= CHAT_WRITES_MAX) return this.refused(TOOL_SENTENCES.limit);
@@ -753,6 +793,13 @@ export class TurnTools {
 
   private card(name: string, input: Record<string, unknown>): ToolAnswer {
     if (this.counts.cards >= CHAT_CARDS_MAX) return this.refused(TOOL_SENTENCES.limit);
+    // v0.12 People: her alert to the owner rings his phone, so it is always a Do-it card ("Send Sam 'Running late'?").
+    if (name === 'alert_send') {
+      if (!this.o.deps.person) return this.refused(TOOL_SENTENCES.failed);
+      const label = describeWrite(this.o.deps, 'alert_send', input);
+      this.addCard('do', 'alerts', 'alert', null, label, { t: 'write', tool: 'alert_send', input });
+      return { text: `${TOOL_SENTENCES.card} It asks: ${label}`, isError: false };
+    }
     const action = CardActionSchema.safeParse(name === 'request_delete' ? { t: 'delete', ...input } : { t: 'action', ...input });
     if (!action.success) return this.refused(TOOL_SENTENCES.failed);
     const a = action.data;
@@ -786,6 +833,14 @@ export function recordChange(o: Pick<TurnToolsOptions, 'ctx' | 'store' | 'turnId
 /** One audit row (ids and counts only); a failed write is never fatal. */
 export function audit(ctx: Pick<DaemonContext, 'clock' | 'db'>, actor: string, action: string, target: string, params: Record<string, unknown>, result: 'ok' | 'failed'): void {
   try {
+    // v0.12 People (C8, spec 7.5): her chat leaves one row per run, `chat.run` under her person, by the `chat`
+    // actor, with no target and no params, so he can count her runs per day and learns nothing else. Her own
+    // routes' rows are `person.write` (the pipeline's); what a run read, changed or asked is never audited.
+    if (actor.startsWith('person:')) {
+      if (action !== 'chat.run') return;
+      ctx.db.audit.append({ ts: ctx.clock.iso(), actor: 'chat', action, params: {}, result }, actor.split(':')[1] ?? '');
+      return;
+    }
     ctx.db.audit.append({ ts: ctx.clock.iso(), actor, action, target, params, result });
   } catch {
     // the audit log is full or closed: the write stands

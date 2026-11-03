@@ -11,6 +11,7 @@ import type {
   JournalEntryFull,
   JournalList,
   OwnerAlertSendBody,
+  OwnerChatView,
   PeopleList,
   PersonActivityResponse,
   PersonToday,
@@ -47,6 +48,11 @@ export const PEOPLE_PATHS = {
   alertSend: ['POST', '/v1/people/alerts'],
   alertSeen: ['POST', '/v1/people/alerts/:id/seen'],
   alertReply: ['POST', '/v1/people/alerts/:id/reply'],
+  // P3: her chat, read only.
+  chat: ['GET', '/v1/people/:pid/chat'],
+  chatPhoto: ['GET', '/v1/people/:pid/chat/photos/:id'],
+  // P3: her chat's daily cap (with her colour).
+  person: ['PATCH', '/v1/people/:pid'],
 } as const;
 type Key = keyof typeof PEOPLE_PATHS;
 
@@ -71,6 +77,11 @@ export interface PeopleClient {
   sendAlert(body: OwnerAlertSendBody): Promise<{ id: string; delivery: string }>;
   seen(id: string): Promise<void>;
   reply(id: string, body: AlertReplyBody): Promise<void>;
+  /** P3: her chat, read only (see.chat). */
+  chat(pid: string, before?: string): Promise<OwnerChatView>;
+  chatPhotoUrl(pid: string, id: string): string;
+  /** P3: her chat's messages a day. */
+  setChatPerDay(pid: string, chatPerDay: number): Promise<void>;
 }
 
 export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; credentials?: CredentialStore } = {}): PeopleClient {
@@ -131,6 +142,9 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
     sendAlert: (body) => call('alertSend', { body }),
     seen: (id) => v(call('alertSeen', { params: { id } })),
     reply: (id, body) => v(call('alertReply', { params: { id }, body })),
+    chat: (pid, before) => call('chat', { params: { pid }, query: { before } }),
+    chatPhotoUrl: (pid, id) => PEOPLE_PATHS.chatPhoto[1].replace(':pid', encodeURIComponent(pid)).replace(':id', encodeURIComponent(id)),
+    setChatPerDay: (pid, chatPerDay) => v(call('person', { params: { pid }, body: { chatPerDay } })),
   };
 }
 

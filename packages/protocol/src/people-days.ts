@@ -69,6 +69,9 @@ export const RingsSchema = z.object({
   planChanges: z.boolean().default(true),
 });
 
+/** P3 (C17): her chat thread's keep, in days. */
+export const ChatKeepDaysSchema = z.union([z.literal(1), z.literal(7), z.literal(30)]);
+
 export const ReviewAtSchema = HhMmSchema.refine((v) => v >= REVIEW_AT_RANGE[0] && v <= REVIEW_AT_RANGE[1], { message: 'between 17:00 and 23:30' });
 
 /** Her P2 preferences (spec 3.8). Each has a default, so a P1 person row parses with them. */
@@ -83,6 +86,8 @@ export const PersonP2PrefsShape = {
   hideStreaks: z.boolean().default(false),
   alertCaps: AlertCapsSchema.default({ ...ALERT_CAPS_DEFAULT }),
   rings: RingsSchema.prefault({}),
+  /** P3 (C17): how long her chat thread is kept; his `ask.keepDays` never applies to it. */
+  chatKeepDays: ChatKeepDaysSchema.default(30),
 };
 export const PersonP2PrefsPatchShape = {
   quiet: QuietSchema.nullable().optional(),
@@ -93,6 +98,7 @@ export const PersonP2PrefsPatchShape = {
   hideStreaks: z.boolean().optional(),
   alertCaps: AlertCapsSchema.optional(),
   rings: z.strictObject({ steps: z.boolean().optional(), between: z.boolean().optional(), planChanges: z.boolean().optional() }).optional(),
+  chatKeepDays: ChatKeepDaysSchema.optional(),
 };
 
 /** His preferences for pushes about her (spec 6.3 "To him", Q16), kept in life.db. */

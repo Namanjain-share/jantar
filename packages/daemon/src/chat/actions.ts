@@ -54,6 +54,9 @@ import {
 } from '@jantar/protocol';
 import type { Actor, LifeResult } from '../contracts.js';
 import { current, findMedicine, findMeeting, findPlace, findTodo, fromMeeting, labelOf, medicineHasDoses, type ItemRef } from './items.js';
+import { applyPersonWrite, describePersonWrite, stillPerson, undoPerson, type PersonStep } from './person-writes.js';
+import { ownerAuthored } from './person-reads.js';
+import { PERSON_WRITE_TOOLS, isPersonWriteTool, type PersonWriteTool } from './person-tools.js';
 import type { ChangeJson } from './store.js';
 import { cut, line } from './text.js';
 import type { ChatDeps } from './types.js';
@@ -189,7 +192,9 @@ export type Step =
   | { do: 'dose'; medId: string; doseId: string; prev: DoseBody | null; day: string; slot: string; status: DoseBody['status'] }
   /** After a visit's Undo: the café untried again, unless it has other visits by then. */
   | { do: 'untried'; placeId: string }
-  | { do: 'meetingTodo'; id: string; n: number };
+  | { do: 'meetingTodo'; id: string; n: number }
+  /** v0.12 People (P3): one of her own writes (her plan, status, sleep), put back as her (person-writes.ts). */
+  | PersonStep;
 
 export interface Journal {
   steps: Step[];
@@ -200,7 +205,7 @@ export interface Journal {
  * action item, a todo made from one) or a saved page's title. The run's answer frames such a label as data
  * and taints the message (B9).
  */
-export type LabelSource = 'meeting' | 'intel';
+export type LabelSource = 'meeting' | 'intel' | 'owner' | 'partner';
 
 export interface Applied {
   change: ChangeJson;
@@ -361,7 +366,9 @@ function doseNow(d: ChatDeps, medId: string, day: string, slot: string): { doseI
 }
 
 /** Apply one write tool's checked input as `actor`; `third` says when its label is someone else's words. */
-export async function applyWrite(d: ChatDeps, tool: WriteTool, raw: unknown, actor: Actor): Promise<LifeResult<Applied>> {
+export async function applyWrite(d: ChatDeps, tool: WriteTool | PersonWriteTool, raw: unknown, actor: Actor): Promise<LifeResult<Applied>> {
+  // v0.12 People (P3): her own tools exist only on her deps (her space); anywhere else they are refused.
+  if (isPersonWriteTool(tool)) return d.person ? applyPersonWrite(d.person, tool, raw) : refuse('forbidden', ACTION_SENTENCES.bad);
   const r = await applyOne(d, tool, raw, actor);
   if (!r.ok || r.value.third) return r;
   const third = writeLabelSource(d, tool, r.value.change.ref);
@@ -373,7 +380,10 @@ function writeLabelSource(d: ChatDeps, tool: WriteTool, ref: string): LabelSourc
   if (tool === 'meeting_edit' || tool === 'meeting_item_todo') return 'meeting';
   if (tool === 'todo_add' || tool === 'todo_edit' || tool === 'todo_done' || tool === 'todo_snooze') {
     const t = findTodo(d, ref);
-    return t && fromMeeting(t) ? 'meeting' : null;
+    if (t && fromMeeting(t)) return 'meeting';
+    // v0.12 People (C19): in her thread, a to-do the owner added or last edited is his words.
+    if (t && d.person && ownerAuthored(t as { by?: string; editedBy?: string })) return 'owner';
+    return null;
   }
   return null;
 }
@@ -672,6 +682,8 @@ function stillChats(d: ChatDeps, s: Step): Refusal | null {
     case 'untried':
     case 'meetingTodo':
       return null;
+    case 'person':
+      return d.person ? stillPerson(d.person, s) : refuse('not_found', ACTION_SENTENCES.gone);
   }
 }
 
@@ -718,6 +730,8 @@ async function undoStep(d: ChatDeps, s: Step, actor: Actor): Promise<LifeResult>
     }
     case 'meetingTodo':
       return d.meetings.summaries.removeTodo(s.id, s.n, actor);
+    case 'person':
+      return d.person ? undoPerson(d.person, s) : refuse('not_found', ACTION_SENTENCES.gone);
   }
 }
 
@@ -753,7 +767,7 @@ export const ACTION_MODULE: Readonly<Record<ActionKind, ChatModule>> = { stop_me
 export const CardActionSchema = z.discriminatedUnion('t', [
   z.strictObject({ t: z.literal('delete'), kind: z.enum(DELETE_KINDS), id: z.string().min(1).max(200), parent: z.string().max(200).optional(), day: DayKeySchema.optional() }),
   z.strictObject({ t: z.literal('action'), kind: z.enum(ACTION_KINDS), id: z.string().min(1).max(200), depth: IntelDepthSchema.optional() }),
-  z.strictObject({ t: z.literal('write'), tool: z.enum(WRITE_TOOLS as [WriteTool, ...WriteTool[]]), input: z.unknown() }),
+  z.strictObject({ t: z.literal('write'), tool: z.enum([...WRITE_TOOLS, ...PERSON_WRITE_TOOLS] as [WriteTool | PersonWriteTool, ...(WriteTool | PersonWriteTool)[]]), input: z.unknown() }),
 ]);
 export type CardAction = z.infer<typeof CardActionSchema>;
 
@@ -998,7 +1012,8 @@ const WHERE_KEYS = new Set(['id', 'placeId', 'visitId', 'medId']);
  * item's own label (as the change list would) and lists what it changes, so a tap after someone else's
  * text is never a blind one: "Change Medicine · Placebin · 08:00: times 23:00?".
  */
-export function describeWrite(d: ChatDeps, tool: WriteTool, input: Record<string, unknown>): string {
+export function describeWrite(d: ChatDeps, tool: WriteTool | PersonWriteTool, input: Record<string, unknown>): string {
+  if (isPersonWriteTool(tool)) return d.person ? describePersonWrite(d.person, tool, input) : 'That can\'t be done here.';
   const s = (k: string) => (typeof input[k] === 'string' ? q(input[k] as string) : '');
   const target = writeTarget(tool, input);
   const name = target ? labelOf(d, target, 'an item that is not there now') : '';

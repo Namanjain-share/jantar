@@ -21,9 +21,12 @@ import { join } from 'node:path';
 import { DEVICE_COOKIE, DEVICE_SECRET_HEADER, SettingsSchema, type RouteDef, type Scope } from '@jantar/protocol';
 import { PERSON_COOKIE, type JoinPreview } from '@jantar/protocol/people';
 import { ALL_ROUTES, type AnyRouteName } from '../../src/api/all-routes.js';
-import type { ApiOptions } from '../../src/api/services.js';
+import { V04_LIMITS, type ApiOptions } from '../../src/api/services.js';
 import { SlidingWindowBudget, SlidingWindowLimiter } from '../../src/auth/rate-limit.js';
-import type { LifeService } from '../../src/contracts.js';
+import { buildChatService } from '../../src/chat/service.js';
+import type { ChatService, LifeService } from '../../src/contracts.js';
+import type { TestContextOptions } from '../../src/core/testing.js';
+import { FakeIntel, fakeMeetings } from '../chat/helpers.js';
 import { LIFE_MODULE_BUILDERS } from '../../src/life/index.js';
 import { setPeopleMaxForTests } from '../../src/life/people/module.js';
 import { buildLifeService } from '../../src/life/service.js';
@@ -201,10 +204,11 @@ export async function linkDevice(api: TestApi, who: PersonCreds, deviceName: str
 
 export { onHer };
 
-export async function makeFixture(opts: { api?: ApiOptions } = {}): Promise<Fixture> {
+export async function makeFixture(opts: { api?: ApiOptions; ctx?: Partial<TestContextOptions>; chat?: boolean } = {}): Promise<Fixture> {
   setPeopleMaxForTests(10);
   const dir = await realpath(await mkdtemp(join(await realpath(tmpdir()), 'jantar-people-')));
   let life!: LifeService;
+  let chat: ChatService | null = null;
   const api = await makeApi({
     ctx: {
       home: dir,
@@ -212,16 +216,27 @@ export async function makeFixture(opts: { api?: ApiOptions } = {}): Promise<Fixt
         remote: { mode: 'cloudflare', publicUrl: OWNER_ORIGIN, peopleUrl: PEOPLE_ORIGIN },
         people: { enabled: true, ownerName: 'Sam' },
         life: { todos: true, medicines: true, food: true },
+        ...(opts.chat ? { ask: { enabled: true } } : {}),
       }),
+      ...opts.ctx,
     },
     ...(opts.api ? { api: opts.api } : {}),
     deps: (ctx, f) => {
       life = buildLifeService(ctx, { sessions: f.sessions, usage: f.usage, ccwLegacy: f.ccwLegacy, notifiers: f.notifiers }, LIFE_MODULE_BUILDERS, { macZone: 'UTC' });
-      return { life };
+      if (!opts.chat) return { life };
+      // P3: a real Chat part (his thread and hers) on the same Life, with an empty Intel shelf and meetings library.
+      chat = buildChatService(
+        ctx,
+        { life, intel: new FakeIntel(), meetings: fakeMeetings(() => life), board: { state: () => ctx.store.getState(), page: async () => ({ items: [], nextBefore: null }) }, usage: f.usage, ccwLegacy: f.ccwLegacy, notifiers: f.notifiers },
+        { lifeWrites: new SlidingWindowLimiter({ ...V04_LIMITS.lifeWrite, clock: ctx.clock }) },
+      );
+      return { life, chat };
     },
   });
   api.ctx.clock.set(`${DAY}T09:00:00.000Z`);
   await life.start();
+  const chatPart = chat as ChatService | null;
+  if (chatPart) await chatPart.start();
 
   const owner = {} as Fixture['owner'];
   for (const scope of ['read', 'control', 'launch', 'admin'] as Scope[]) {
@@ -265,6 +280,7 @@ export async function makeFixture(opts: { api?: ApiOptions } = {}): Promise<Fixt
     gus: { id: gus.id, inviteUrl: gusInvite.url },
     async close() {
       setPeopleMaxForTests(undefined);
+      if (chatPart) await chatPart.stop();
       await life.stop();
       await api.close();
       await rm(dir, { recursive: true, force: true });
