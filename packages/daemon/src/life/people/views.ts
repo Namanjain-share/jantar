@@ -91,11 +91,15 @@ export class PeopleViews {
     return { open: todos.length, overdue: overdue.length, due };
   }
 
-  /** The review he sees on a day, at his level (null: off, or nothing to review). */
+  /**
+   * The review he sees on a day, at his level (null: off, or nothing to
+   * review). Her to-dos are in it only while `see.todos` is on: the review
+   * is no way round her to-dos being off.
+   */
   private reviewOf(pid: string, day: string, a: Agreement): ReviewView | null {
     const plans = this.people.plans;
     if (!plans || a.see.review === 'off' || !a.see.plan) return null;
-    return plans.reviewView(pid, day, a.see.review);
+    return plans.reviewView(pid, day, a.see.review, { todos: a.see.todos });
   }
 
   /**
@@ -158,7 +162,7 @@ export class PeopleViews {
         let review: PersonToday['review'] = null;
         if (c && this.people.plans && (day < c.today() || hhmmOf(c.now(), c.tz()) >= (p?.prefs.reviewAt ?? '21:00'))) {
           if (a.see.review === 'off' || !a.see.plan) review = LOCKED;
-          else if (this.people.plans.reviewable(pid, day)) review = this.reviewOf(pid, day, a);
+          else if (this.people.plans.reviewable(pid, day, { todos: a.see.todos })) review = this.reviewOf(pid, day, a);
         }
         let sleep: PersonToday['sleep'] = LOCKED;
         if (a.see.sleep) {

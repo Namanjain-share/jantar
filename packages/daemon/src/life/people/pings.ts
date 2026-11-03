@@ -255,7 +255,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
     (pid, late) => {
       if (late) return 'skip';
       const today = core.today();
-      const v = plans.reviewView(pid, today, 'counts');
+      const v = plans.reviewView(pid, today, 'counts', { todos: true });
       if (v.sent || !plans.reviewable(pid, today)) return 'skip';
       return resolveDelivery('standard', alerts.herState(pid)).action === 'push' ? 'send' : 'skip';
     },

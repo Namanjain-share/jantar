@@ -22,7 +22,7 @@ import { writeFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PERSON_COOKIE, type JoinPreview, type PersonMe, type PersonView } from '@jantar/protocol/people';
 import { setPeopleMaxForTests } from '../../src/life/people/module.js';
-import { NONE, OWNER_HOST, OWNER_ORIGIN, credHeaders, joinPerson, linkDevice, makeFixture, onHer, type Fixture } from './isolation-fixture.js';
+import { LOOPBACK_HOST, LOOPBACK_ORIGIN, NONE, OWNER_HOST, OWNER_ORIGIN, credHeaders, joinPerson, linkDevice, makeFixture, onHer, resetLimiters, type Fixture } from './isolation-fixture.js';
 
 let f: Fixture | null = null;
 afterEach(async () => {
@@ -110,15 +110,27 @@ describe('invites', () => {
     expect(set?.domain).toBeUndefined();
   });
 
-  it("invites are the Mac's; Copy link again needs an admin device", async () => {
+  it("invites are the Mac's; Copy link again needs an admin device with its secret, and is audited (C14)", async () => {
     const x = await fx();
     const { id } = await freshInvite(x, 'Lu');
     expect((await him(x, 'POST', `/v1/people/${id}/invite`, x.owner.admin)).statusCode).toBe(403);
     expect((await him(x, 'POST', '/v1/people', x.owner.admin, { name: 'Mo' })).statusCode).toBe(403);
-    expect((await him(x, 'GET', `/v1/people/${id}/invite`, x.owner.control)).statusCode).toBe(403);
-    const again = await him(x, 'GET', `/v1/people/${id}/invite`, x.owner.admin);
-    expect(again.statusCode).toBe(200);
+    expect((await him(x, 'POST', `/v1/people/${id}/invite/again`, x.owner.control)).statusCode).toBe(403);
+    // A read can't lift it: there is no GET.
+    expect((await him(x, 'GET', `/v1/people/${id}/invite`, x.owner.admin)).statusCode).toBe(404);
+    // The admin cookie alone (no device secret) where the cookie isn't bound to his https host: refused, like every admin write (SEC-2).
+    resetLimiters(x.api);
+    const bare = await x.api.tcp.inject({ method: 'POST', url: `/v1/people/${id}/invite/again`, headers: { host: LOOPBACK_HOST, origin: LOOPBACK_ORIGIN, ...credHeaders(x.owner.cookieOnly) } });
+    expect(bare.statusCode).toBe(401);
+    expect(bare.body).not.toContain('#c=');
+    const before = x.api.ctx.db.audit.list({ limit: 1000 }).filter((r) => r.action === 'personInviteLink').length;
+    const again = await him(x, 'POST', `/v1/people/${id}/invite/again`, x.owner.admin);
+    expect(again.statusCode, again.body).toBe(200);
     expect((again.json() as { url: string }).url).toMatch(/^https:\/\/us\.test\/p\/join#c=/);
+    const rows = x.api.ctx.db.audit.list({ limit: 1000 }).filter((r) => r.action === 'personInviteLink');
+    expect(rows.length).toBe(before + 1);
+    expect(rows.find((r) => r.result === 'ok')).toMatchObject({ target: id });
+    expect(JSON.stringify(rows)).not.toContain('#c=');
   });
 
   it('PEOPLE_MAX holds (1 in this build)', async () => {
@@ -136,6 +148,30 @@ describe('invites', () => {
     for (let i = 0; i < 4; i++) await linkDevice(x.api, x.asha, `d${i}`);
     const full = await onHer(x.api, 'POST', '/v1/p/devices/link', x.asha.full);
     expect(full.statusCode).toBe(409);
+  });
+
+  it('M4: revoking a device voids the link codes it minted (the one invalid answer)', async () => {
+    const x = await fx();
+    const stolen = await linkDevice(x.api, x.asha, 'Stolen phone');
+    const minted = await onHer(x.api, 'POST', '/v1/p/devices/link', stolen.cred);
+    expect(minted.statusCode).toBe(200);
+    const code = (minted.json() as { code: string }).code;
+    // A code her own phone minted stays good.
+    const mine = (await onHer(x.api, 'POST', '/v1/p/devices/link', x.asha.full)).json() as { code: string };
+    expect((await onHer(x.api, 'DELETE', `/v1/p/devices/${stolen.deviceId}`, x.asha.full)).statusCode).toBe(200);
+    const bogus = await onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code: 'A'.repeat(code.length), deviceName: 'x' });
+    resetLimiters(x.api);
+    const claim = await onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code, deviceName: 'Thief' });
+    expect([claim.statusCode, claim.json()]).toEqual([bogus.statusCode, bogus.json()]);
+    expect(claim.cookies.find((c) => c.name === PERSON_COOKIE)).toBeUndefined();
+    // His revoke (an admin device, C18) voids them too.
+    const other = await linkDevice(x.api, x.asha, 'Old tablet');
+    const code2 = ((await onHer(x.api, 'POST', '/v1/p/devices/link', other.cred)).json() as { code: string }).code;
+    expect((await him(x, 'DELETE', `/v1/people/${x.asha.id}/devices/${other.deviceId}`, x.owner.admin)).statusCode).toBe(200);
+    resetLimiters(x.api);
+    expect((await onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code: code2, deviceName: 'Thief 2' })).statusCode).toBe(bogus.statusCode);
+    resetLimiters(x.api);
+    expect((await onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code: mine.code, deviceName: 'Her laptop' })).statusCode).toBe(200);
   });
 });
 
@@ -198,12 +234,43 @@ describe('the agreement', () => {
     expect((await him(x, 'POST', `/v1/people/${x.asha.id}/agreement`, x.owner.admin, { see: { weight: true } })).json().error.message).toMatch(/Don't ask/);
     for (const row of x.api.ctx.db.people.consents.listFor(x.asha.id)) expect(JSON.stringify(row.json)).not.toContain('NOTE-CANARY');
   });
+
+  it('a proposal made before she narrows asks only for what he widened: accepting it never re-opens what she closed', async () => {
+    const x = await fx();
+    await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { sleep: false } });
+    expect((await him(x, 'POST', `/v1/people/${x.asha.id}/agreement`, x.owner.admin, { see: { sleep: true }, note: 'just sleep please' })).statusCode).toBe(200);
+    // She switches her journal off while it waits.
+    await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { journal: false } });
+    const me = (await onHer(x.api, 'GET', '/v1/p/me', x.asha.full)).json() as PersonMe;
+    // The card shows her agreement as it is now, with only sleep raised.
+    expect(me.pending?.fields.see).toMatchObject({ sleep: true, journal: false });
+    expect((await onHer(x.api, 'POST', '/v1/p/agreement/accept', x.asha.full, { version: me.pending?.version })).statusCode).toBe(200);
+    const after = ((await onHer(x.api, 'GET', '/v1/p/me', x.asha.full)).json() as PersonMe).agreement;
+    expect([after?.see.sleep, after?.see.journal]).toEqual([true, false]);
+    expect((await him(x, 'GET', `/v1/people/${x.asha.id}/journal`, x.owner.control)).statusCode).toBe(404);
+    // A narrowing after he asked carries into the card as well.
+    await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { weight: false } });
+    expect((await him(x, 'POST', `/v1/people/${x.asha.id}/agreement`, x.owner.admin, { see: { weight: true } })).statusCode).toBe(200);
+    await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { plan: false } });
+    expect(((await onHer(x.api, 'GET', '/v1/p/me', x.asha.full)).json() as PersonMe).pending?.fields.see).toMatchObject({ weight: true, plan: false });
+  });
 });
 
 describe('her exits (T21, C12)', () => {
   it('People switched off: her exits work, everything else of hers and of his is 404', async () => {
     const x = await fx();
+    // An invite and a device-link code made before the switch.
+    const { code } = await freshInvite(x, 'Hal');
+    const link = ((await onHer(x.api, 'POST', '/v1/p/devices/link', x.asha.full)).json() as { code: string }).code;
     expect((await ctl(x, 'POST', '/v1/people/switch', { on: false })).statusCode).toBe(200);
+    // M4: no one new gets in while it is off: the join routes are 404 and spend nothing.
+    const preview = await onHer(x.api, 'POST', '/v1/p/join/preview', NONE, { code });
+    expect(preview.statusCode).toBe(404);
+    const join = await onHer(x.api, 'POST', '/v1/p/join', NONE, { code, acceptedVersion: 1, agreement: {}, adult: true, name: 'Hal', deviceName: 'Hal phone' });
+    expect(join.statusCode).toBe(404);
+    const claim = await onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code: link, deviceName: 'Linked while off' });
+    expect(claim.statusCode).toBe(404);
+    expect(claim.cookies.find((c) => c.name === PERSON_COOKIE)).toBeUndefined();
     expect((await onHer(x.api, 'GET', '/v1/p/me', x.asha.full)).json().peopleOn).toBe(false);
     expect((await onHer(x.api, 'GET', '/v1/p/activity', x.asha.full)).statusCode).toBe(200);
     expect((await onHer(x.api, 'GET', '/v1/p/export', x.asha.full)).statusCode).toBe(200);
@@ -215,6 +282,10 @@ describe('her exits (T21, C12)', () => {
     expect((await onHer(x.api, 'POST', '/v1/p/leave', x.asha.full, { data: 'keep30', confirm: 'LEAVE' })).statusCode).toBe(200);
     expect(x.api.ctx.db.people.devices.listFor(x.asha.id).every((d) => d.revokedAt !== null)).toBe(true);
     expect(x.api.ctx.db.people.consents.latestFor(x.asha.id)?.action).toBe('left');
+    // Switched on again, the invite made before is still unspent.
+    expect((await ctl(x, 'POST', '/v1/people/switch', { on: true })).statusCode).toBe(200);
+    resetLimiters(x.api);
+    expect((await onHer(x.api, 'POST', '/v1/p/join/preview', NONE, { code })).statusCode).toBe(200);
   });
 
   it('--read-only: her exits and her Life writes are not refused', async () => {
@@ -251,6 +322,9 @@ describe('states', () => {
     expect((await onHer(x.api, 'PATCH', '/v1/p/prefs', x.dev.full, { lockScreen: 'all' })).statusCode).toBe(404);
     expect((await him(x, 'GET', `/v1/people/${x.dev.id}`, x.owner.control)).statusCode).toBe(404);
     expect((await onHer(x.api, 'POST', '/v1/p/devices/link', x.dev.full)).statusCode).toBe(404);
+    // M8: his admin device can't revoke a device of hers in her window either (his list of them is 404 too).
+    expect((await him(x, 'GET', `/v1/people/${x.dev.id}/devices`, x.owner.admin)).statusCode).toBe(404);
+    expect((await him(x, 'DELETE', `/v1/people/${x.dev.id}/devices/${x.dev.deviceId}`, x.owner.admin)).statusCode).toBe(404);
     x.api.ctx.clock.advance(7 * 24 * 3600_000 + 1);
     expect((await onHer(x.api, 'GET', '/v1/p/me', x.dev.full)).statusCode).toBe(404);
     expect((await onHer(x.api, 'GET', '/v1/p/me', x.dev.full)).statusCode).toBe(401);

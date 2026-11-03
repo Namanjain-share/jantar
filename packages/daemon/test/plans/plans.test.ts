@@ -126,6 +126,85 @@ describe('his plan and srev', () => {
   });
 });
 
+describe('spec 8.5: his writes that answer her plan are reads too', () => {
+  const marks = async () => ((await k.her('GET', '/v1/p/activity')).json() as PersonActivityResponse).activity.filter((a) => a.action === 'view' && a.ref === 'plan');
+
+  it('a PUT (changed or not) and a template apply each leave a view mark; his own step edits are on her record', async () => {
+    const first = await put({ srev: 0, steps: [{ title: 'Walk', at: '10:00' }, { title: 'Call mum', at: '11:30', ask: 'checkin' }], send: 'quiet' });
+    expect(first.statusCode).toBe(200);
+    expect(await marks()).toHaveLength(1);
+    const [walk, call] = (first.json() as PlanView).plan?.steps ?? [];
+    // A new hour: she reports, checks in and adds her own step.
+    await k.at(`${TODAY}T12:10:00.000Z`);
+    await k.her('POST', `/v1/p/plans/${TODAY}/steps/${walk?.id}/state`, { to: 'done', report: 'CANARY-HER-REPORT' });
+    await k.her('POST', `/v1/p/plans/${TODAY}/steps/${call?.id}/checkin`, { mood: 1, energy: 1, line: 'CANARY-HER-CHECKIN', need: 'CANARY-HER-NEED' });
+    await k.her('POST', `/v1/p/plans/${TODAY}/steps`, { title: 'CANARY-HER-OWN-STEP' });
+    const cur = await herPlan();
+    const same = cur.plan?.steps.map((x) => ({ id: x.id, title: x.title, ...(x.at ? { at: x.at } : {}), ask: x.ask, ring: x.ring, focus: x.focus }));
+    const again = await put({ srev: cur.plan?.srev, steps: same, send: 'quiet' });
+    expect(again.statusCode, again.body).toBe(200);
+    expect(again.body).toMatch(/CANARY-HER-REPORT/);
+    expect(await marks()).toHaveLength(2);
+    // Template apply answers the plan too.
+    await k.at(`${TODAY}T13:10:00.000Z`);
+    const tid = ((await k.him('POST', `/v1/people/${f.asha.id}/templates`, { name: 'Extra', steps: [{ title: 'Stretch' }] })).json() as { id: string }).id;
+    const ap = await k.him('POST', `${planUrl()}/apply`, { templateId: tid, mode: 'append', srev: (await herPlan()).plan?.srev });
+    expect(ap.statusCode, ap.body).toBe(200);
+    expect(await marks()).toHaveLength(3);
+    // His time change on his own step: "Sam changed the time of 'Walk'" with old and new.
+    const v = await herPlan();
+    const steps = v.plan?.steps.map((x) => ({ id: x.id, title: x.title, ...(x.at ? { at: x.title === 'Walk' ? '10:30' : x.at } : {}), ask: x.ask, ring: x.ring, focus: x.focus }));
+    expect((await put({ srev: v.plan?.srev, steps, send: 'quiet' })).statusCode).toBe(200);
+    const act = ((await k.her('GET', '/v1/p/activity')).json() as PersonActivityResponse).activity;
+    expect(act.find((a) => a.action === 'step.edited')).toMatchObject({ actor: 'owner', title: 'Walk', changes: [{ field: 'at', from: '10:00', to: '10:30' }] });
+    // Refused writes (stale) answer no plan and mark nothing new.
+    const stale = await put({ srev: 0, steps: [{ title: 'x' }] });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.body).not.toMatch(/CANARY/);
+  });
+});
+
+describe("his save says when she gets it", () => {
+  it('a plan for tomorrow answers when its push is lined up; a sent one answers none', async () => {
+    const r = await put({ srev: 0, steps: [{ title: 'Run' }] }, TOMORROW);
+    expect(r.statusCode).toBe(200);
+    const v = r.json() as PlanView;
+    expect(v.plan?.sentAt).toBeUndefined();
+    const prefs = ((await k.her('GET', '/v1/p/me')).json() as { person: { prefs: { planPushAt: string } } }).person.prefs;
+    expect(v.sendsAt).toBe(`${TOMORROW}T${prefs.planPushAt}:00.000Z`);
+    // The GET (his view, her mirror) never carries it.
+    expect((await k.him('GET', planUrl(TOMORROW))).json()).not.toHaveProperty('sendsAt');
+    await k.at(`${TOMORROW}T${prefs.planPushAt}:30.000Z`);
+    await eventually(async () => expect((await herPlan(TOMORROW)).plan?.sentAt).toBeDefined());
+    const again = await put({ srev: (await herPlan(TOMORROW)).plan?.srev, steps: [{ title: 'Run' }, { title: 'Swim' }] }, TOMORROW);
+    expect((again.json() as PlanView).sendsAt).toBeUndefined();
+  });
+});
+
+describe('Now and Next follow his order', () => {
+  it('an untimed step never jumps ahead of the timed step he planned before it', async () => {
+    const r = await put({ srev: 0, steps: [{ title: 'Mock', at: '10:00' }, { title: 'Analysis' }, { title: 'Interview prep', at: '14:00' }], send: 'quiet' });
+    const ids = Object.fromEntries(((r.json() as PlanView).plan?.steps ?? []).map((s) => [s.title, s.id]));
+    // 09:00, before the first timed step: no Now, and Next is the first step in his order.
+    let v = await herPlan();
+    expect([v.now, v.next]).toEqual([null, ids.Mock]);
+    // 10:05: Mock is due, Analysis follows it.
+    await k.at(`${TODAY}T10:05:00.000Z`);
+    v = await herPlan();
+    expect([v.now, v.next]).toEqual([ids.Mock, ids.Analysis]);
+    // Mock done: Analysis (no time of its own) is Now, before Interview prep's time.
+    await k.her('POST', `/v1/p/plans/${TODAY}/steps/${ids.Mock}/state`, { to: 'done' });
+    v = await herPlan();
+    expect([v.now, v.next]).toEqual([ids.Analysis, ids['Interview prep']]);
+    // An untimed first step is due at once.
+    const first = await put({ srev: 0, steps: [{ title: 'Read' }, { title: 'Lunch', at: '13:00' }] }, '2026-11-05');
+    expect(first.statusCode).toBe(200);
+    await k.at('2026-11-05T09:00:00.000Z');
+    v = await herPlan('2026-11-05');
+    expect([v.now, v.next]).toEqual([(first.json() as PlanView).plan?.steps[0]?.id, (first.json() as PlanView).plan?.steps[1]?.id]);
+  });
+});
+
 describe('rough day (spec 3.7, C35)', () => {
   it('excuses her open steps, sets Low, holds his adds to today, and reaches him after 10 s unless undone', async () => {
     await k.subscribeAll();

@@ -306,8 +306,8 @@ export class AlertsModule {
     }
     const urgency = body.kind === 'custom' ? (body.urgency ?? 'normal') : kind.urgency;
     const r = this.deliverAlert({ from, to, kind: body.kind, urgency, ...(body.text ? { text: body.text } : {}), ...(ref ? { ref } : {}) });
-    // His answer names "asleep" only while he can see her sleep (spec 6.2); otherwise it reads "quiet time".
-    if (r.ok && from === '' && r.value.delivery === 'held_sleep' && !this.people.agreement(to)?.see.sleep) return { ok: true, value: { ...r.value, delivery: 'held_quiet' } };
+    // His answer names a held reason only while he sees the area behind it (spec 6.2); otherwise it reads "quiet time".
+    if (r.ok && from === '') return { ok: true, value: { ...r.value, delivery: this.ownerDelivery(to, r.value.delivery) } };
     return r;
   }
 
@@ -417,10 +417,22 @@ export class AlertsModule {
     return { ok: true, value: { alerts, unseen: alerts.filter((a) => a.to === party && !a.seenAt).length, sheet: this.sheet(party, '') } };
   }
 
-  /** His view of one alert: "asleep" shows only with see.sleep, otherwise "quiet time" (spec 6.2). */
+  /**
+   * A held reason as he may see it (spec 6.2): "asleep" needs `see.sleep`;
+   * "asked for space" and "focusing" are her status and her plan, so they
+   * need `see.plan`. Otherwise it reads "quiet time".
+   */
+  private ownerDelivery<D extends PersonAlert['delivery']>(pid: string, delivery: D): D | 'held_quiet' {
+    const a = this.people.agreement(pid);
+    if (delivery === 'held_sleep' && !a?.see.sleep) return 'held_quiet';
+    if ((delivery === 'held_space' || delivery === 'held_focus') && !a?.see.plan) return 'held_quiet';
+    return delivery;
+  }
+
+  /** His view of one alert, its held reason through `ownerDelivery`. */
   private forOwner(pid: string, a: PersonAlert): PersonAlert {
-    if (a.delivery !== 'held_sleep' || this.people.agreement(pid)?.see.sleep) return a;
-    return { ...a, delivery: 'held_quiet' };
+    const delivery = this.ownerDelivery(pid, a.delivery);
+    return delivery === a.delivery ? a : { ...a, delivery };
   }
 
   private emptySheet(): AlertsResponse['sheet'] {
@@ -447,12 +459,19 @@ export class AlertsModule {
           hold = `${name} muted notifications until ${until}. Urgent still goes through.`;
           break;
         case 'space':
-          hold = `${name} asked for space until ${until}. ${urgentLine}`;
-          break;
         case 'focus': {
-          const f = this.people.plans?.focusOf(recipient);
-          const sees = this.people.agreement(recipient)?.see.plan === true;
-          hold = f && sees ? `${name} is in ${clipLine(f.title, 40)} (focus) until about ${until}. ${urgentLine}` : `${name} is focusing until about ${until}. ${urgentLine}`;
+          // Her status and her focus step are her plan: named only while he sees it (spec 6.2).
+          const sees = recipient === '' || this.people.agreement(recipient)?.see.plan === true;
+          if (!sees) {
+            hold = `${name} has quiet time on. ${urgentLine}`;
+            break;
+          }
+          if (d.reason === 'space') {
+            hold = `${name} asked for space until ${until}. ${urgentLine}`;
+            break;
+          }
+          const f = recipient === '' ? null : this.people.plans?.focusOf(recipient);
+          hold = f ? `${name} is in ${clipLine(f.title, 40)} (focus) until about ${until}. ${urgentLine}` : `${name} is focusing until about ${until}. ${urgentLine}`;
           break;
         }
         case 'sleep': {
@@ -697,7 +716,7 @@ export class AlertsModule {
         if (v?.plan) parts.push(`${v.counts.done} of ${v.counts.total} done`);
       }
       if (a.see.review !== 'off') {
-        const r = this.people.plans?.reviewView(pid, c.today(), 'counts');
+        const r = this.people.plans?.reviewView(pid, c.today(), 'counts', { todos: a.see.todos });
         if (r?.sent) parts.push('review sent');
       }
       if (parts.length > 0) lines.push(`${this.people.nameOf(pid)}'s day: ${parts.join(' · ')}`);

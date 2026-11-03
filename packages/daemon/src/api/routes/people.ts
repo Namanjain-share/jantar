@@ -85,7 +85,7 @@ export const PEOPLE_ROUTE_IMPLS: RouteTable = {
       aboutPerson(s, c.params.pid);
       return value(s.deps.life.people.inviteLink(c.params.pid, peopleUrl(s)));
     },
-    // Showing a live link again is recorded (C14), without the link.
+    // A POST, so the write pipeline asks for the device secret and the Origin, and records it (C14), without the link.
     audit: (c: Call<Pid>) => ({ target: c.params.pid }),
   },
   personColor: {

@@ -288,6 +288,11 @@ export const PlanViewSchema = z.object({
   focus: z.object({ stepId: StepIdSchema, title: z.string(), until: IsoDateSchema }).nullable(),
   slots: z.record(z.string(), z.array(SlotSchema)),
   counts: z.object({ done: z.number().int(), total: z.number().int() }),
+  /**
+   * His save's answer only (put, apply): when the plan push to her is lined up, so his editor can say
+   * "Saved. Asha gets it Wed 4 Nov at 07:00" instead of "Sent" for a plan that hasn't gone yet.
+   */
+  sendsAt: IsoDateSchema.optional(),
 });
 export type PlanView = z.infer<typeof PlanViewSchema>;
 

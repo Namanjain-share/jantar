@@ -751,6 +751,8 @@ export interface PeopleDbRepos {
     /** Spend it once: true only for the call that marked it used. */
     use(id: string, at: string): boolean;
     revokeAllFor(personId: string, at: string): number;
+    /** Void the unspent codes one device minted (its revoke). */
+    revokeByDevice(deviceId: string, at: string): number;
   };
   invites: {
     insert(r: PersonInviteRecord): void;

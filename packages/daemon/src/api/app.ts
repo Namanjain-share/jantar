@@ -286,9 +286,10 @@ export const SHOT_UPLOAD_LOG = 'meetings: screenshot upload';
 
 /**
  * Writes whose reply is never kept for an Idempotency-Key replay: Ask Claude's meal estimate (model output)
- * and a new Shortcut or Siri key (the reply holds the key itself, shown once: spec 0.10 B5, B12).
+ * and a new Shortcut or Siri key (the reply holds the key itself, shown once: spec 0.10 B5, B12). v0.12:
+ * "Copy link again" (the reply holds a live invite link).
  */
-export const NEVER_REPLAYED: ReadonlySet<RouteName> = new Set<RouteName>(['foodEstimate', 'captureKeyAdd', 'chatKeyAdd']);
+export const NEVER_REPLAYED: ReadonlySet<AnyRouteName> = new Set<AnyRouteName>(['foodEstimate', 'captureKeyAdd', 'chatKeyAdd', 'personInviteLink']);
 
 /**
  * Whether a route's switch is on (routes without one are always on). Read
@@ -554,7 +555,8 @@ export const PERSON_SETUP_AGAIN = 'Sharing needs to be set up again. Ask for a n
 /**
  * v0.12 People: her gate (spec 9.3.2). Her routes exist only on the people
  * host (404 elsewhere, also fenced in onRequest). In order:
- * - a `join` route takes no credential; its writes carry the people origin,
+ * - a `join` route takes no credential (404 while People is switched off:
+ *   no new person or device gets in); its writes carry the people origin,
  *   and it counts against the claim limiter;
  * - her device (cookie, read only here; 401 without it);
  * - the ledger, then her state (D19): left, removed or forgotten is 404; an
@@ -569,6 +571,8 @@ function personGate(def: Pick<RouteDef, 'scope' | 'method' | 'join' | 'exit'>, a
   const writeOrSocket = def.method !== 'GET';
   const origin = headerValue(req.headers.origin);
   if (def.join) {
+    // People switched off lets no one new in: the invite, its preview and a device-link claim are 404 (M4, C12).
+    if (!s.ctx.settings.get().people.enabled) throw new ApiError('not_found', 'not found');
     if (writeOrSocket && !s.origin.originAllowedFor('person', origin)) throw new ApiError('forbidden', 'request origin is not allowed');
     const limited = s.claimLimiter.hit(`person:${auth.rateKey}`);
     if (!limited.ok) throw new ApiError('rate_limited', 'Too many tries; wait a minute', retryAfter(limited.retryAfterMs));

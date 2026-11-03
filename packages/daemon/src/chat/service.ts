@@ -922,7 +922,8 @@ export class ChatServiceImpl implements ChatService {
       return;
     }
     store.updateTurn(run.turnId, (t) => ({ ...t, state: 'running' }));
-    this.changed();
+    // Her turn ticks her stream, and his only while see.chat is on (C20): never a bare `life.changed`.
+    this.changed(run.thread);
 
     const single = 'claude' in program;
     const actor: Actor = this.senders.get(run.turnId) ?? { kind: 'system' };

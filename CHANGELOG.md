@@ -118,6 +118,18 @@ partner simply can't sign in there).
   Confirm, and the other is told. Their assistant reads and changes them;
   in either assistant the other person's words are framed as data. When
   someone is forgotten, the shared rows stay with you.
+- **Fixes to what you can see of them**: with their to-dos off, the evening
+  review leaves their to-dos out (sent reviews included); saving their plan
+  is a look at it and leaves a view mark, and your changes to your own
+  steps are in their Activity; with their chat private, their assistant no
+  longer refreshes your screens when it runs; a held alert names "asked for
+  space" or "focusing" only while you see their plan. Revoking one of their
+  devices voids the link codes it made; with People switched off no invite
+  or device-link code works; "Copy link again" needs an admin device's
+  secret and is in your audit log; you can't revoke their devices while
+  sharing is ending. A request for more that waited while they switched
+  something off no longer turns it back on. Now and Next keep your order:
+  a step with no time never jumps ahead of the timed step before it.
 
 ## 0.10.2 (3 November 2026)
 

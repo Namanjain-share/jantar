@@ -120,12 +120,18 @@ export class PersonDeviceAuth {
     return this.active(personId).length < PERSON_DEVICES_MAX;
   }
 
-  /** Revoke one device and drop its push subscriptions. Null for an unknown id. */
+  /**
+   * Revoke one device, drop its push subscriptions and void the unspent
+   * link codes it minted (M4: a stolen phone's code dies with it). Null for
+   * an unknown id.
+   */
   revoke(id: string, why = 'revoked'): PersonDeviceRecord | null {
-    const d = this.opts.db.people.devices.revoke(id, this.opts.clock.iso());
+    const at = this.opts.clock.iso();
+    const d = this.opts.db.people.devices.revoke(id, at);
     if (!d) return null;
     const subs = this.opts.db.people.pushSubs.removeForDevice(id);
-    this.log.info('person device revoked', { deviceId: id, why, pushSubsRemoved: subs });
+    const codes = this.opts.db.people.linkCodes.revokeByDevice(id, at);
+    this.log.info('person device revoked', { deviceId: id, why, pushSubsRemoved: subs, linkCodesVoided: codes });
     return d;
   }
 

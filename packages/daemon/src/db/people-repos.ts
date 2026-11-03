@@ -155,6 +155,11 @@ export function createPeopleRepos(prepare: Prepare, wrote: () => void = () => {}
       wrote();
       return n;
     },
+    revokeByDevice(deviceId, at) {
+      const n = Number(prepare('UPDATE person_link_codes SET used_at = ? WHERE by_device = ? AND used_at IS NULL').run(at, deviceId).changes);
+      wrote();
+      return n;
+    },
   };
 
   const invites: PeopleDbRepos['invites'] = {

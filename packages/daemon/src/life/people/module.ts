@@ -40,6 +40,7 @@ import {
   clampToBuilt,
   closeDependents,
   fieldsChanged,
+  fieldValue,
   fieldsOn,
   levelOf,
   noAgreement,
@@ -47,6 +48,7 @@ import {
   presetAgreement,
   sharedSpaceId,
   unbuiltFieldsIn,
+  withField,
   type Agreement,
   type AgreementFields,
   type AgreementPatch,
@@ -118,6 +120,11 @@ interface LedgerView {
   until?: string;
   agreement: Agreement | null;
   offer: { version: number; fields: AgreementFields } | null;
+  /**
+   * His open proposal, rebased on her live agreement: only the fields he
+   * widened from the agreement he asked from are raised. A narrowing she
+   * made after he asked stays (an older proposal can't re-grant it).
+   */
   pending: { version: number; fields: AgreementFields } | null;
   maxVersion: number;
   declinedAt: Map<string, string>;
@@ -225,6 +232,7 @@ export class PeopleModule {
   private ledger(pid: string): LedgerView {
     const rows = this.deps.ctx.db.people.consents.listFor(pid);
     const out: LedgerView = { state: null, agreement: null, offer: null, pending: null, maxVersion: 0, declinedAt: new Map() };
+    let proposedFrom: AgreementFields | null = null;
     for (const r of rows) {
       out.maxVersion = Math.max(out.maxVersion, r.version);
       const fields = r.json.agreement ? AgreementFieldsSchema.safeParse(r.json.agreement) : null;
@@ -245,12 +253,16 @@ export class PeopleModule {
           if (agreement) out.agreement = agreement;
           break;
         case 'proposed':
-          if (fields?.success) out.pending = { version: r.version, fields: fields.data };
+          if (fields?.success) {
+            out.pending = { version: r.version, fields: fields.data };
+            proposedFrom = out.agreement ? stripVersion(out.agreement) : noAgreement();
+          }
           break;
         case 'declined':
           if (out.pending) {
             const base = out.agreement ?? noAgreement();
-            for (const k of fieldsChanged(base, out.pending.fields)) out.declinedAt.set(k, r.at);
+            const asked = rebase(out.pending.fields, proposedFrom ?? base, base);
+            for (const k of fieldsChanged(base, asked)) out.declinedAt.set(k, r.at);
           }
           out.pending = null;
           break;
@@ -276,6 +288,12 @@ export class PeopleModule {
         default:
           break;
       }
+    }
+    if (out.pending && out.agreement) {
+      const now = stripVersion(out.agreement);
+      const fields = rebase(out.pending.fields, proposedFrom ?? now, now);
+      // Nothing he asked for is still above what she shares: the proposal has nothing left to answer.
+      out.pending = fieldsChanged(now, fields).length > 0 ? { version: out.pending.version, fields } : null;
     }
     return out;
   }
@@ -619,10 +637,12 @@ export class PeopleModule {
     if (!r) return { ok: false, code: 'not_found', reason: PEOPLE_REASONS.invalidLink };
     const st = this.gateState(r.personId);
     if (st !== 'active' && st !== 'paused') return { ok: false, code: 'not_found', reason: PEOPLE_REASONS.invalidLink };
+    // The device that minted the code must still be one of hers (a revoked phone's codes are void, M4).
+    const by = this.devices.get(r.byDevice);
+    if (!by || by.revokedAt || by.personId !== r.personId) return { ok: false, code: 'not_found', reason: PEOPLE_REASONS.invalidLink };
     if (!this.devices.roomForAnother(r.personId)) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.devicesFull };
     if (!this.linkCodes.spend(r)) return { ok: false, code: 'not_found', reason: PEOPLE_REASONS.invalidLink };
-    const by = this.devices.get(r.byDevice);
-    const issued = this.devices.issue({ personId: r.personId, name: deviceName, userAgent, accessEmail: by?.accessEmail ?? undefined });
+    const issued = this.devices.issue({ personId: r.personId, name: deviceName, userAgent, accessEmail: by.accessEmail ?? undefined });
     this.tryRecord(r.personId, { actor: 'her', action: 'device.linked', device: issued.device.name });
     this.deps.push({ person: r.personId, kind: 'life', title: 'A device was linked', body: `${issued.device.name} can now open your space.`, url: '/p/me?tab=devices', tag: 'people:device' });
     this.ticks.bump(r.personId, 'me');
@@ -1141,7 +1161,9 @@ export class PeopleModule {
 
   /** His revoke of one of her devices (an admin device; never her last one, C18). */
   revokeByOwner(pid: string, did: string): LifeResult {
-    if (this.gateState(pid) === 'gone') return this.notFound();
+    // Only a person he may reach (ending is the unknown-pid answer, M8, like his device list).
+    const reach = this.ownerReach(pid);
+    if (reach !== 'active' && reach !== 'paused') return this.notFound();
     const r = this.devices.revokeByOwner(pid, did);
     if (r === 'not_found') return this.notFound();
     if (r === 'last_device') return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.lastDevice };
@@ -1293,6 +1315,17 @@ export const OWNER_PREFS_KEY = 'people_owner_prefs';
 let testPeopleMax: number | undefined;
 export function setPeopleMaxForTests(n: number | undefined): void {
   testPeopleMax = n;
+}
+
+/**
+ * A proposal on her live agreement: each field he widened from the one he
+ * asked from (`from`) is raised on `now`; everything else is hers as it is
+ * now, so a field she narrowed after he asked stays narrowed.
+ */
+function rebase(asked: AgreementFields, from: AgreementFields, now: AgreementFields): AgreementFields {
+  let out = stripVersion(now);
+  for (const f of AGREEMENT_FIELDS) if (levelOf(asked, f) > levelOf(from, f) && levelOf(asked, f) > levelOf(out, f)) out = withField(out, f, fieldValue(asked, f));
+  return closeDependents(out);
 }
 
 function stripVersion(a: AgreementFields | Agreement): AgreementFields {

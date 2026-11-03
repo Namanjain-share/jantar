@@ -169,6 +169,12 @@ describe('two threads (T12, M15)', () => {
     for (const tag of ['eXIf', 'tEXt', 'iTXt', 'tIME', 'GPS-SYNTHETIC']) expect(bytes.includes(Buffer.from(tag)), tag).toBe(false);
     expect(bytes.includes(Buffer.from('IDAT'))).toBe(true);
     expect((await k.him('GET', `/v1/chat/photos/${id}`)).statusCode).toBe(404);
+    // On his People route (see.chat on) her photo is a read of her chat: a view mark, like the list.
+    await k.advance(3_600_000);
+    const marks = async () => ((await k.her('GET', '/v1/p/activity')).json() as PersonActivityResponse).activity.filter((a) => a.action === 'view' && a.ref === 'chat').length;
+    const before = await marks();
+    expect((await k.him('GET', `/v1/people/${f.asha.id}/chat/photos/${id}`)).statusCode).toBe(200);
+    expect(await marks()).toBe(before + 1);
     expect((await k.her('DELETE', `/v1/p/chat/photos/${id}`)).statusCode).toBe(200);
   });
 
@@ -209,6 +215,14 @@ describe('his read-only view (spec 7.8)', () => {
       ticks += 1;
       was();
     };
+    // T12 / M15: watch what reaches his event stream itself (life.changed on the owner's store), not only ownerChanged.
+    const store = f.api.ctx.store as unknown as { emit: (e: { type: string }) => void };
+    const emit = store.emit.bind(store);
+    const emitted: string[] = [];
+    store.emit = (e) => {
+      emitted.push(e.type);
+      emit(e as never);
+    };
     try {
       await herAsk(chatText('chat-read', 'one'));
       expect(ticks).toBeGreaterThan(0);
@@ -216,8 +230,10 @@ describe('his read-only view (spec 7.8)', () => {
       expect((await herList()).ownerCanRead).toBe(true);
       expect((await k.her('POST', '/v1/p/agreement/narrow', { see: { chat: false } })).statusCode).toBe(200);
       ticks = 0;
+      emitted.length = 0;
       await herAsk(chatText('chat-read', 'two'));
       expect(ticks).toBe(0);
+      expect(emitted.filter((t) => t === 'life.changed')).toEqual([]);
       expect((await k.him('GET', `/v1/people/${f.asha.id}/chat`)).statusCode).toBe(404);
       const list = await herList();
       expect((await k.him('GET', `/v1/people/${f.asha.id}/chat/photos/${list.turns[0]?.id ?? '01JZZZZZZZZZZZZZZZZZZZZZZZ'}`)).statusCode).toBe(404);
@@ -227,6 +243,7 @@ describe('his read-only view (spec 7.8)', () => {
       expect(list.disclosure).toMatch(/It never reads your journal\./);
     } finally {
       people.ownerChanged = was;
+      store.emit = emit;
     }
   });
 });

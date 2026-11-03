@@ -76,7 +76,7 @@ export const PERSON_PLAN_ROUTE_IMPLS: RouteTable = {
     handle: (c: Call<Day>, s) => (lifeValue(plans(s).roughUndo(her(c.auth).personId, c.params.day)), OK),
   },
   personReviewGet: {
-    handle: (c: Call<Day>, s) => plans(s).reviewView(her(c.auth).personId, c.params.day, 'full'),
+    handle: (c: Call<Day>, s) => plans(s).reviewView(her(c.auth).personId, c.params.day, 'full', { todos: true }),
   },
   personReviewSend: {
     handle: (c: Call<Day, unknown, ReviewSendBody>, s) => (lifeValue(plans(s).reviewSend(her(c.auth).personId, c.params.day, c.body)), OK),

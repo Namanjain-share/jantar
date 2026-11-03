@@ -1452,8 +1452,8 @@ const PEOPLE_ACCOUNT_ROUTES = {
     params: PidDidParamsSchema, response: OkReplySchema, summary: 'Revoke one of her devices (409 last_device for her last one).',
   }),
   personInviteLink: route({
-    method: 'GET', path: '/v1/people/:pid/invite', scope: 'admin', phase: 'v0.12', ctl: false,
-    params: PidParamsSchema, response: PersonInviteReplySchema, summary: 'Show an unspent invite link again (an admin device, C14).',
+    method: 'POST', path: '/v1/people/:pid/invite/again', scope: 'admin', phase: 'v0.12', ctl: false,
+    params: PidParamsSchema, response: PersonInviteReplySchema, summary: 'Show an unspent invite link again (an admin device with its secret, audited, C14).',
   }),
   personColor: route({
     method: 'PATCH', path: '/v1/people/:pid', scope: 'control', phase: 'v0.12', ctl: false,

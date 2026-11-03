@@ -28,6 +28,8 @@ export const PEOPLE_CHAT_ROUTE_IMPLS: RouteTable = {
       const reach = people.ownerReach(c.params.pid);
       if ((reach !== 'active' && reach !== 'paused') || people.agreement(c.params.pid)?.see.chat !== true) throw new ApiError('not_found', NO_PERSON);
       const r = lifeValue(await s.deps.chat.threadPhoto(c.params.pid, c.params.id));
+      // Her photo's bytes are a read of her chat like the list: the same view mark (spec 8.5).
+      people.viewMark(c.params.pid, 'chat');
       return { kind: 'raw', type: r.type, body: r.body, headers: { 'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'", 'x-content-type-options': 'nosniff' } };
     },
   },

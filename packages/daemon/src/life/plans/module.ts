@@ -106,6 +106,27 @@ export function isOpen(s: PlanStep): boolean {
   return (s.status === 'todo' || s.status === 'doing') && !s.carriedTo;
 }
 
+/**
+ * The steps due by `minute`, in plan order (Now is the first open one). A
+ * timed step is due from its time. An untimed step follows the step before
+ * it: due once that one is due or closed (done, skipped, excused), so it
+ * never jumps ahead of a timed step he planned before it ("Mock 08:00, then
+ * Analysis" has no Now before 08:00, and Next is Mock). A first step with no
+ * time is due at once.
+ */
+export function dueSteps(steps: readonly PlanStep[], minute: number): Set<string> {
+  const out = new Set<string>();
+  let prev: PlanStep | null = null;
+  let prevDue = true;
+  for (const s of steps) {
+    const due: boolean = s.at !== undefined ? minuteOf(s.at) <= minute : prev === null || prevDue || !(prev.status === 'todo' || prev.status === 'doing');
+    if (due) out.add(s.id);
+    prev = s;
+    prevDue = due;
+  }
+  return out;
+}
+
 /** When a focus step's focus ends (C32): its length plus 30 minutes after Start, or 90 minutes with no length. */
 export function focusUntil(s: PlanStep): number | null {
   if (!(s.focus || s.focusByHer) || s.status !== 'doing' || !s.startedAt) return null;
@@ -214,7 +235,8 @@ export class PlansModule {
     if (day === today && now) {
       const open = steps.filter((s) => s.status === 'todo' || s.status === 'doing');
       const doing = open.find((s) => s.status === 'doing');
-      const due = open.find((s) => s.status === 'todo' && (s.at === undefined || minuteOf(s.at) <= now.minute));
+      const dueIds = dueSteps(steps, now.minute);
+      const due = open.find((s) => s.status === 'todo' && dueIds.has(s.id));
       const nowStep = doing ?? due ?? null;
       nowId = nowStep?.id ?? null;
       nextId = open.find((s) => s.status === 'todo' && s.id !== nowId && (!nowStep || steps.indexOf(s) > steps.indexOf(nowStep)))?.id ?? null;
@@ -574,20 +596,32 @@ export class PlansModule {
     return out;
   }
 
-  /** Whether a day has anything to review (steps, check-betweens or todos due). */
-  reviewable(pid: string, day: string): boolean {
+  /**
+   * Whether a day has anything to review (steps, check-betweens or todos
+   * due). `todos: false` (his view with `see.todos` off) leaves her to-dos
+   * out, so a day with only to-dos reads as nothing to review.
+   */
+  reviewable(pid: string, day: string, opts: { todos: boolean } = { todos: true }): boolean {
     const c = this.core();
     if (!c) return false;
     const plan = getPlan(c, pid, day);
-    return (plan?.steps.length ?? 0) > 0 || (plan?.between.length ?? 0) > 0 || (plan?.sentSteps?.length ?? 0) > 0 || this.todosOf(pid, day).length > 0;
+    if ((plan?.steps.length ?? 0) > 0 || (plan?.between.length ?? 0) > 0 || (plan?.sentSteps?.length ?? 0) > 0) return true;
+    return opts.todos && (this.todosOf(pid, day).length > 0 || (plan?.review?.outcomes.some((i) => i.kind === 'todo') ?? false));
   }
 
-  /** The review at a level: live until she sends it (or it closes), stored after. `counts` names no title, note or mood. */
-  reviewView(pid: string, day: string, level: 'full' | 'counts'): ReviewView {
+  /**
+   * The review at a level: live until she sends it (or it closes), stored
+   * after. `counts` names no title, note or mood. `todos: false` (his view
+   * and her mirror with `see.todos` off) drops every to-do item and its
+   * share of the counts, the stored outcomes too: a sent review still holds
+   * them, and the to-dos are their own area.
+   */
+  reviewView(pid: string, day: string, level: 'full' | 'counts', opts: { todos: boolean }): ReviewView {
     const c = this.core();
     const plan = c ? getPlan(c, pid, day) : null;
     const stored = plan?.review;
-    const items = stored ? stored.outcomes : this.reviewItems(pid, day, plan, false);
+    const all = stored ? stored.outcomes : this.reviewItems(pid, day, plan, false);
+    const items = opts.todos ? all : all.filter((i) => i.kind !== 'todo');
     const scored = items.filter((i) => i.kind !== 'between');
     const counts = reviewCounts(scored.map((i) => i.outcome));
     const open = scored.filter((i) => i.outcome === undefined).length;
@@ -657,7 +691,7 @@ export class PlansModule {
     for (const cand of candidates) {
       const plan = getPlan(c, pid, cand.day);
       if (plan?.review || !this.reviewable(pid, cand.day)) continue;
-      const v = this.reviewView(pid, cand.day, 'full');
+      const v = this.reviewView(pid, cand.day, 'full', { todos: true });
       const open = v.level === 'full' ? v.items.filter((i) => i.kind !== 'between' && i.outcome === undefined).length : 0;
       return { day: cand.day, line: `${v.counts.done} done · ${open} open`, done: v.counts.done, open, yesterday: cand.yesterday };
     }
@@ -708,6 +742,7 @@ export class PlansModule {
     const seen = new Set<string>();
     const steps: PlanStep[] = [];
     const herEdits: { title: string; changes: ReturnType<typeof stepChanges> }[] = [];
+    const hisEdits: { title: string; changes: ReturnType<typeof stepChanges> }[] = [];
     let added = 0;
     let edited = 0;
     const at = this.iso();
@@ -717,7 +752,11 @@ export class PlansModule {
         seen.add(ex.id);
         if (ex.by === '') {
           const next = withPlanned(ex, plannedFields(s));
-          if (stepChanges(ex, next).length > 0) edited += 1;
+          const changes = stepChanges(ex, next);
+          if (changes.length > 0) {
+            hisEdits.push({ title: next.title, changes });
+            edited += 1;
+          }
           steps.push(next);
         } else if (editHers) {
           const next = withPlanned(ex, plannedFields(s));
@@ -759,8 +798,18 @@ export class PlansModule {
       sentSteps: this.snapshot(plan, steps),
     };
     const saved = this.afterHisWrite(c, pid, plan, next, body.send, { added, removed: removed.length, moved, edited });
-    this.recordHis(pid, day, current === null, { added, removed, moved, herEdits });
-    return { ok: true, value: this.derive(day, saved) };
+    this.recordHis(pid, day, current === null, { added, removed, moved, herEdits, hisEdits: current === null ? [] : hisEdits });
+    // His answer carries her plan (her reports, check-ins, her own steps): a read like any other, so it leaves a view mark (spec 8.5).
+    this.people.viewMark(pid, 'plan');
+    return { ok: true, value: this.answer(c, day, saved) };
+  }
+
+  /** His save's answer: the plan as his view derives it, and when its push to her is lined up (if not sent yet). */
+  private answer(c: LifeCore, day: string, saved: DayPlan): PlanView {
+    const view = this.derive(day, saved);
+    if (saved.sentAt) return view;
+    const row = c.db.prepare("SELECT next_at FROM pings WHERE kind = 'plan_send' AND ref = ? AND sub = ''").get(saved.id) as { next_at: string | null } | undefined;
+    return row?.next_at ? { ...view, sendsAt: row.next_at } : view;
   }
 
   /** His steps as sent: the union of earlier snapshots and this one (a step he removed then reads "gone"; her own deletes are hers). */
@@ -810,7 +859,12 @@ export class PlansModule {
     c.scheduler.poke();
   }
 
-  private recordHis(pid: string, day: string, created: boolean, w: { added: number; removed: PlanStep[]; moved: number; herEdits: { title: string; changes: ReturnType<typeof stepChanges> }[] }): void {
+  private recordHis(
+    pid: string,
+    day: string,
+    created: boolean,
+    w: { added: number; removed: PlanStep[]; moved: number; herEdits: { title: string; changes: ReturnType<typeof stepChanges> }[]; hisEdits?: { title: string; changes: ReturnType<typeof stepChanges> }[] },
+  ): void {
     const label = dayLabel(day);
     if (created) this.people.record(pid, { actor: 'owner', action: 'plan.set', area: 'plan', ref: day, title: `Plan for ${label}`, fields: [`${w.added} steps`] });
     else if (w.added + w.removed.length + w.moved > 0) {
@@ -818,6 +872,8 @@ export class PlansModule {
     }
     for (const r of w.removed) this.people.record(pid, { actor: 'owner', action: 'step.removed', area: 'plan', ref: day, title: r.title, ...(r.status === 'done' ? { fields: ['was done'] } : {}) });
     for (const e of w.herEdits) this.people.record(pid, { actor: 'owner', action: 'step.edited', area: 'plan', ref: day, title: e.title, changes: e.changes.slice(0, 12) });
+    // His own steps' changes too ("Sam changed the time of 'Mock' 08:00 → 08:30"): every write into her space is on her record (spec 8.3).
+    for (const e of w.hisEdits ?? []) this.people.record(pid, { actor: 'owner', action: 'step.edited', area: 'plan', ref: day, title: e.title, changes: e.changes.slice(0, 12) });
   }
 
   /** Remove his steps from a day (hers too with `editHers.plan`); the row stays while anything of hers or a review is left. */
@@ -861,7 +917,8 @@ export class PlansModule {
     const next: DayPlan = { ...plan, steps, between, templateId: t.id, templateName: t.name, ...(t.note && !plan.note ? { note: t.note } : {}), sentSteps: this.snapshot(plan, steps) };
     const saved = this.afterHisWrite(c, pid, plan, next, 'atPushTime', { added: fromTemplate.length, removed, moved: 0, edited: 0 });
     this.people.record(pid, { actor, action: 'template.applied', area: 'plan', ref: day, title: t.name });
-    return { ok: true, value: this.derive(day, saved) };
+    if (actor === 'owner') this.people.viewMark(pid, 'plan');
+    return { ok: true, value: this.answer(c, day, saved) };
   }
 
   /** His carry from a sent review: his open steps (and hers with `editHers.plan`) move to a later day. */

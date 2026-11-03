@@ -164,6 +164,42 @@ describe('his levels (see.review)', () => {
     expect(((await k.him('GET', `/v1/people/${f.asha.id}/today`)).json() as { review: unknown }).review).toEqual({ locked: true });
   });
 
+  it('M5 / T10: with see.todos off the review holds none of her to-dos, at full and at counts, live and sent', async () => {
+    await put({ srev: 0, steps: [{ title: 'Walk' }] });
+    const todo = async (title: string) => ((await k.her('POST', '/v1/p/todos', { title, due: { day: TODAY } })).json() as { id: string }).id;
+    const a = await todo('CANARY-PRIVATE-TODO-A');
+    const b = await todo('CANARY-PRIVATE-TODO-B');
+    await k.her('POST', `/v1/p/todos/${a}/done`, { done: true, report: 'CANARY-PRIVATE-REPORT' });
+    await k.her('POST', `/v1/p/todos/${b}/skip`, { reason: 'CANARY-PRIVATE-SKIP-REASON' });
+    const canary = /CANARY-PRIVATE/;
+    const url = `/v1/people/${f.asha.id}/plans/${TODAY}/review`;
+    // On: he sees them, as she does.
+    expect((await k.him('GET', url)).body).toMatch(canary);
+    await k.her('POST', '/v1/p/agreement/narrow', { see: { todos: false } });
+    const check = async (level: 'full' | 'counts') => {
+      const his = await k.him('GET', url);
+      expect(his.statusCode).toBe(200);
+      expect(his.body).not.toMatch(canary);
+      const v = his.json() as ReviewView;
+      expect(v.level).toBe(level);
+      // Her to-dos are no part of his counts either: only the step.
+      expect(v.counts.done + v.counts.skipped).toBe(0);
+      if (v.level === 'full') expect(v.items.map((i) => i.kind)).toEqual(['step']);
+      // Her mirror shows what he sees; her own review still has them.
+      expect(his.json()).toEqual((await k.her('GET', `/v1/p/mirror/review?day=${TODAY}`)).json());
+      await k.at(`${TODAY}T21:30:00.000Z`).catch(() => undefined);
+      expect((await k.him('GET', `/v1/people/${f.asha.id}/today?day=${TODAY}`)).body).not.toMatch(canary);
+    };
+    await check('full');
+    expect(JSON.stringify(await herReview())).toMatch(canary);
+    // Sent: the stored outcomes are filtered when read.
+    expect((await k.her('POST', `/v1/p/plans/${TODAY}/review`, {})).statusCode).toBe(200);
+    await check('full');
+    await k.her('POST', '/v1/p/agreement/narrow', { see: { review: 'counts' } });
+    await check('counts');
+    expect((await herReview()).items.filter((i) => i.kind === 'todo')).toHaveLength(2);
+  });
+
   it('the "review sent" push is dropped when review is off by the time it is sent (C7)', async () => {
     await k.subscribeAll();
     await k.him('PATCH', '/v1/people/prefs', { quiet: { from: '08:00', to: '10:00' } });
