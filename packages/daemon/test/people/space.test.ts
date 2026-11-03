@@ -117,6 +117,45 @@ describe('her to-dos and his assign', () => {
     expect(plain?.repeat).toBeUndefined();
   });
 
+  it('Undo on a repeating item puts its date back: his Skip takes its reason with it, her Done its report (review 4, B3)', async () => {
+    const hisToday = { day: '2026-11-03', time: '18:00' };
+    const id = ((await him('POST', `/v1/people/${f.asha.id}/todos`, { title: 'Daily stretch', due: hisToday, repeat: { freq: 'daily' } })).json() as { id: string }).id;
+    const hisRead = async () => ((await him('GET', `/v1/people/${f.asha.id}/todos`)).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === id);
+
+    // Skip, then Undo: the date is back and the reason she typed is gone from his read.
+    expect((await herCall('POST', `/v1/p/todos/${id}/skip`, { reason: 'Knee hurts' })).statusCode).toBe(200);
+    expect(await hisRead()).toMatchObject({ due: { day: '2026-11-04', time: '18:00' }, lastSkip: { reason: 'Knee hurts' } });
+    const undo = await herCall('POST', `/v1/p/todos/${id}/done`, { done: false });
+    expect(undo.statusCode, undo.body).toBe(200);
+    const back = await hisRead();
+    expect(back?.due).toEqual(hisToday);
+    expect(back?.lastSkip).toBeUndefined();
+    expect(back?.undoDue).toBeUndefined();
+    expect(back?.repeat).toMatchObject({ freq: 'daily' });
+
+    // Done with a report, then Undo: the report goes too. A second Undo has nothing to put back.
+    expect((await herCall('POST', `/v1/p/todos/${id}/done`, { done: true, report: 'Ten minutes' })).statusCode).toBe(200);
+    expect((await hisRead())?.report).toBe('Ten minutes');
+    expect((await herCall('POST', `/v1/p/todos/${id}/done`, { done: false })).statusCode).toBe(200);
+    expect(await hisRead()).toMatchObject({ due: hisToday });
+    expect((await hisRead())?.report).toBeUndefined();
+    const again = await herCall('POST', `/v1/p/todos/${id}/done`, { done: false });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.message).toBe('This item has changed since, so Undo can no longer put it back.');
+
+    // Once he moved it after her Done, Undo leaves his date alone.
+    expect((await herCall('POST', `/v1/p/todos/${id}/done`, { done: true })).statusCode).toBe(200);
+    expect((await him('PATCH', `/v1/people/${f.asha.id}/todos/${id}`, { due: { day: '2026-11-06', time: '18:00' } })).statusCode).toBe(200);
+    expect((await herCall('POST', `/v1/p/todos/${id}/done`, { done: false })).statusCode).toBe(409);
+    expect((await hisRead())?.due).toEqual({ day: '2026-11-06', time: '18:00' });
+
+    // Her own repeating item: the same Undo.
+    const mine = ((await herCall('POST', '/v1/p/todos', { title: 'Journal', due: { day: '2026-11-03' }, repeat: { freq: 'weekly' } })).json() as { id: string }).id;
+    expect((await herCall('POST', `/v1/p/todos/${mine}/done`, { done: true })).statusCode).toBe(200);
+    expect((await herCall('POST', `/v1/p/todos/${mine}/done`, { done: false })).statusCode).toBe(200);
+    expect(((await herCall('GET', '/v1/p/todos')).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === mine)?.due).toEqual({ day: '2026-11-03' });
+  });
+
   it('her own reminder: a to-do with a day and time; she snoozes it, and his "no snooze" is refused', async () => {
     const mine = ((await herCall('POST', '/v1/p/todos', { title: 'Call the bank', due: { day: '2026-11-05', time: '09:30' } })).json() as { id: string }).id;
     const listed = ((await herCall('GET', '/v1/p/todos')).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === mine);

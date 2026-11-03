@@ -34,6 +34,7 @@ export const SPACE_REASONS = {
   paused: (name: string) => `${name} has paused. New items wait until sharing resumes.`,
   noSnooze: (owner: string) => `${owner} marked this "no snooze".`,
   notAssigned: 'Only items added for you take "Got it" or "Ask to change".',
+  undoGone: 'This item has changed since, so Undo can no longer put it back.',
 } as const;
 
 type Refusal = Extract<LifeResult, { ok: false }>;
@@ -160,12 +161,42 @@ export class PersonSpace {
   herDone(pid: string, id: string, done: boolean, report: string | undefined, actor: Actor): LifeResult {
     const t = this.findTodo(pid, id);
     if (!t) return refuse('not_found', SPACE_REASONS.noTodo);
+    if (!done && t.repeat && t.due) return this.undoRepeating(pid, t, actor);
     const r = this.todos(pid).setDone(id, done, actor);
     if (!r.ok) return r;
     // Undo takes her report back with the tick (as a plan step's does), so he never reads one on an open item,
     // and a skip with it: Undo after Skip opens the item again, not "skipped".
-    if (report !== undefined && done) this.patchExtra(pid, id, { report });
+    const moved = done ? this.movedOn(pid, t, { ...(report !== undefined ? { report: true } : {}) }) : {};
+    if (report !== undefined && done) this.patchExtra(pid, id, { report, ...moved });
+    else if (done && moved.undoDue) this.patchExtra(pid, id, moved);
     else if (!done && (t.report !== undefined || t.skipped !== undefined)) this.patchExtra(pid, id, { report: undefined, skipped: undefined });
+    this.herWrite(pid, 'todos');
+    return OK;
+  }
+
+  /**
+   * A repeating item her Done or Skip just moved on: where it was and where it went (`undoDue`), so her
+   * Undo can put it back. `flags` say what that tap wrote (a skip's reason, a report), which Undo takes back.
+   */
+  private movedOn(pid: string, before: PersonTodo, flags: { skip?: true; report?: true }): Pick<PersonTodo, 'undoDue'> {
+    if (!before.repeat || !before.due) return {};
+    const after = this.findTodo(pid, before.id);
+    if (!after?.due) return {};
+    return { undoDue: { from: before.due, to: after.due, ...flags } };
+  }
+
+  /**
+   * Her Undo of Done or Skip on a repeating item (hers or his; he edits his, she can't): the due goes back
+   * to where it was, while the item still sits where that tap moved it, and the skip's reason or the report
+   * she wrote with it goes too, so he never reads one she took back. The owner's own phone puts a repeating
+   * todo back by PATCHing its due; hers has no edit on his items, so this is her way.
+   */
+  private undoRepeating(pid: string, t: PersonTodo, actor: Actor): LifeResult {
+    const u = t.undoDue;
+    if (!u || t.due?.day !== u.to.day || t.due?.time !== u.to.time) return refuse('conflict', SPACE_REASONS.undoGone);
+    const r = this.todos(pid).updateTodo(t.id, { due: u.from }, actor);
+    if (!r.ok) return r;
+    this.patchExtra(pid, t.id, { undoDue: undefined, ...(u.skip ? { lastSkip: undefined } : {}), ...(u.report ? { report: undefined } : {}) });
     this.herWrite(pid, 'todos');
     return OK;
   }
@@ -189,7 +220,7 @@ export class PersonSpace {
     const skip = { at: this.stamp(), ...(reason ? { reason } : {}) };
     const r = this.todos(pid).setDone(id, true, actor);
     if (!r.ok) return r;
-    this.patchExtra(pid, id, t.repeat ? { lastSkip: skip } : { skipped: skip });
+    this.patchExtra(pid, id, t.repeat ? { lastSkip: skip, ...this.movedOn(pid, t, { skip: true }) } : { skipped: skip });
     this.herWrite(pid, 'todos');
     return OK;
   }

@@ -88,6 +88,7 @@ import {
 import {
   DayKeySchema,
   DayQuerySchema,
+  DueSchema,
   DoseBodySchema,
   DoseParamsSchema,
   FoodBodySchema,
@@ -340,6 +341,12 @@ export const PersonTodoSchema = TodoSchema.extend({
   snoozable: z.boolean().optional(),
   skipped: z.object({ at: IsoDateSchema, reason: z.string().max(200).optional() }).optional(),
   lastSkip: z.object({ at: IsoDateSchema, reason: z.string().max(200).optional() }).optional(),
+  /**
+   * Daemon-set on her Done or Skip of a repeating item (hers or his): the due it had and the one it moved
+   * to, so her Undo puts the date back while it still sits there, and takes back what that tap wrote (a
+   * skip's reason, a report). No body sets it.
+   */
+  undoDue: z.object({ from: DueSchema, to: DueSchema, skip: z.literal(true).optional(), report: z.literal(true).optional() }).optional(),
   editedBy: SpaceSchema.optional(),
   editedAt: IsoDateSchema.optional(),
   /** A change she asked for (`personTodoAsk`): shown on the item on his To-do tab, and on the Alerts page (P2). */
