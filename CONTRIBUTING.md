@@ -106,7 +106,9 @@ what they want. A change to one of them keeps it that way:
 - Keep each module small. Left out on purpose: subtasks, labels and saved
   views in todos; as-needed medicines and streaks; macros and a food
   database; bank import, balances and more than one currency; contacts,
-  deals or a pipeline in projects (they are not a CRM); posting, a social
+  deals or a pipeline in the Todos module's projects (v0.13: clients and
+  deals are Work's, an owner-only module of their own, whose tables are
+  named `work_*` and only `life/work/` touches); posting, a social
   network's API, logos, media and analytics in posts (Jantar never posts).
   Ask before adding a field, a setting or a screen.
 - Deleting a todo, a meal, a weight, a saved food, a café with no visits, a

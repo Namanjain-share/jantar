@@ -44,6 +44,8 @@ jantar/
       src/log-rotate.ts  keeps launchd's daemon.{out,err}.log bounded
       src/files/ rewrite/ launcher/ controls/   v0.3 parts
       src/life/          v0.4 Life: life.db, the scheduler and pushes, backups, one folder per module
+                         (v0.13: life/work/, Work, owner-only; the only code that names a work_ table)
+      src/search/        v0.13 one search across Jantar: each group asks its own part, no SQL here
       src/intel/         v0.4 Intel shelf: JSONL sources followed for appends, the captures file
       src/primer/        v0.4 window primer (opt-in, cswap only)
       src/uploads/       v0.4.2 files from the phone: the store, type sniffing, the sweep and the
@@ -693,3 +695,23 @@ areas and the corners, nested scrollers, type, keycaps, rotation by DOM
 identity, the on-screen keyboard and hover, labels that run out of their
 controls and headers too full for their pane), with its probe in
 `layout-probe.ts`.
+
+### v0.13.0 (unreleased)
+
+Work's first part (v0.13 P1, the Mac side). The protocol (`work.ts`):
+`WORK_LIMITS`, the project hub, the search's query and groups, the seed's
+body and reply; `life.work` and `workOn` in `settings.ts`; three routes in
+phase `v0.13` (`projectGet`, `search`, `foldersSeed`), and the owner-only
+`OwnerTodosQuerySchema` (her routes keep `TodosQuerySchema`). life-core:
+`work/task-review.ts` (from Noblot) and `work/project-health.ts`. The
+daemon: life.db migration 5 (`work`) in `life/db.ts`; `life/work/module.ts`
+(the stub module, the seed, search's clients and deals, the project-delete
+hook); the Todos module's `hub`, `q` and `onProjectDeleted`;
+`search/index.ts` and `core/fold.ts`; Meetings' name-and-people `search`;
+`api/routes/{search,work}.ts`. The CLI: `jantar work on|off|status|seed`
+(`work.ts`). Tests: `packages/protocol/test/v013-work.test.ts`,
+`packages/life-core/test/work/**`,
+`packages/daemon/test/life/{work,v5-migration,project-hub,work-seed-route}.test.ts`,
+`packages/daemon/test/search/search.test.ts`,
+`packages/daemon/test/arch/v013-work-owner-only.test.ts`,
+`packages/cli/test/work.test.ts`.

@@ -20,6 +20,29 @@ daemon migrates `config.json` and its databases on start (moving settings
 to version 2 in v0.4 kept the old file as `config.json.v1`). The
 [changelog](../CHANGELOG.md) says what changed in each version.
 
+### 0.13.0: Life's fourth schema change (Work)
+
+life.db changes on the first start of 0.13.0, whether or not you turn
+[Work](work.md) on. Nothing needs doing by hand, and everything you have
+reads exactly as before.
+
+**life.db, schema 4 to 5.** Before moving it, the daemon copies it to
+`backups/life-pre-0.13.0.db` (from the file as it was, with anything still
+in its write-ahead log), and moves nothing if that copy can't be written.
+Schema 5 adds Work's tables (clients and companies, deals, the log of
+calls and meetings), all empty, and a column on todos for a follow-up's
+client; no existing row is rewritten. `jantar life status` says "(life.db
+schema 5)". 0.11.x refuses a schema-5 file (Life answers 503 there); to go
+back, install 0.11 and restore that copy:
+
+```sh
+jantar life restore life-pre-0.13.0.db
+```
+
+Anything added to Life since the upgrade is lost then, Work's included.
+The `life.work` setting is dropped by an older daemon, which leaves Work
+off.
+
 ### 0.11.0: Life's third schema change (Accountability partner)
 
 Three databases change on the first start of 0.11.0, whether or not you

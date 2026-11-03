@@ -56,11 +56,13 @@ Each of these is a Mac-only setting: a phone can never change it.
 | Command | What it does |
 |---|---|
 | `jantar life status` | modules, zone, currency, who gets medicine pings, backups, life.db's schema and the pre-upgrade copy |
-| `jantar life on \| off <module...> \| all` | `todos`, `medicines`, `food`, `places`, `finance`, `posts` ([Life](life.md)) |
+| `jantar life on \| off <module...> \| all` | `todos`, `medicines`, `food`, `places`, `finance`, `posts`, `work` ([Life](life.md); `work` brings `todos`, and `todos` off takes `work`) |
 | `jantar life set timezone <IANA> \| none` | the zone days and ping times follow (none: the Mac's) |
 | `jantar life set currency <XXX> \| none` | a label for amounts |
 | `jantar life set lock-screen-details on \| off` | names on the lock screen: medicine and bill names, and where a post goes (off: "Medicine due", "Bill due", "Post due") |
 | `jantar life backup` / `restore <file> [--yes]` | copy `life.db` now; put a backup back |
+| `jantar work on \| off \| status` | [Work](work.md): projects as one screen and one search (on turns Todos on too) |
+| `jantar work seed <folder...> [--name NAME]` | one project per folder inside one of your folders, linked to it (never automatic) |
 | `jantar post add --platform <p> [--where W] [--kind K] [--at "YYYY-MM-DD HH:MM"] [--title T] [--text-file F \| --text T] [--notes N] [--link URL] [--status idea\|ready]` | add a post to make; with a time it rings on the phone; at most 30 an hour from the Mac ([Posts](life.md#posts)) |
 | `jantar post log '<link>' [--text T \| --text-file F] [--where W]` | log a comment you made; it counts as posted now; quote the link |
 | `jantar post list [--done] [--json]` | this week against the goals, then the posts to make (`--done`: posted and skipped, with their links) |
@@ -184,7 +186,7 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 | `files`, `rewrite`, `screenshots`, `meetings`, `ask` | `enabled` (off), plus `rewrite.model` (also Chat's model on the phone), `rewrite.glossary`, `screenshots.allowSelect`; 0.10: `ask` is Chat's group (the name stays for 0.9), with `keepDays` (30, 1-365: how long the history is kept) and `voiceModel` (`sonnet`: the model a Siri question runs on) | the Mac |
 | `launch` | `enabled` (off), `mode` (`claude`), `defaultFlags`, `preLaunchArgv`, `csCommand`, rate limits | the Mac |
 | `controls` | `enabled`, `escapeVerified`, `clearVerified` (all on), `interruptKey` (`interrupt` or `escape`) | the Mac |
-| `life` | one switch per module (off), `timezone`, `currency`, `lockScreenDetails` | the Mac |
+| `life` | one switch per module (off; v0.13 `work` counts only with `todos` on), `timezone`, `currency`, `lockScreenDetails` | the Mac |
 | `intel` | `enabled` (off), `sources` (up to 10 files); 0.8: `read` (off: reading saved links), `speechLocale` (`en-IN`) | the Mac |
 | `accounts` | `kept`, `prime`, `primeKept` | the Mac |
 | `fleet` | v0.6: `enabled` (off); the pairings themselves are in `jantar.db` | the Mac (`jantar fleet`) |

@@ -37,8 +37,9 @@ jantar new <folder>                   start a session from the Mac, as the start
 jantar rewrite on|off                 dictated text into a prompt (glossary, model)
 jantar controls on|off                keys, mode switching and slash commands, on by default (status, escape, clear-draft)
 jantar screenshots on|off             a Picture view of the session's window (allow-select)
-jantar life on <module...>            Life: todos, medicines, food, places, finance, posts (status, off, set, backup, restore)
+jantar life on <module...>            Life: todos, medicines, food, places, finance, posts, work (status, off, set, backup, restore)
 jantar post add --platform <p>       Posts: a post to make by hand, with its text and a reminder (list); Jantar never posts
+jantar work on|off                    Work: each project on one screen, one search (turns Todos on too; status, seed <folder...>)
 jantar intel on|off                   the Intel shelf (sources, source add <file.jsonl>, source rm, add, list)
 jantar accounts                       one Claude login or cswap, the kept accounts and ccw's hold list
 jantar accounts keep <n...>           keep accounts for other work: Auto, Rewrite, Ask Claude and Ask never pick them
@@ -75,6 +76,8 @@ prompt was not sent or not proven), `2` usage error, `3` daemon not running.
 | `ask on/off` | settings, through the daemon (or `config.json` while it is down); `on` says what goes to Claude and what stays on the Mac, `off` makes the daemon forget Ask's history (kept in its memory only) | nothing; with Ask on, the daemon runs one headless `claude -p` per message, on Rewrite's model |
 | `pair --extension` | a one-time code in the daemon, printed as `jantar-ext:<port>:<code>` | nothing |
 | `life backup` / `restore` | a copy of `life.db` in `~/.jantar/backups` / `life.db` from a backup (the old one kept beside it), through the daemon | nothing |
+| `work on/off` | settings (`life.work`, and `life.todos` with `on`), through the daemon (or `config.json` while it is down) | nothing |
+| `work seed <folder...>` | one project per folder in `life.db`, through the daemon (each folder inside a configured root; never in the folder itself) | nothing |
 | `intel add` | one line in `~/.jantar/intel/captures.jsonl`, through the daemon | nothing |
 | `notify urgent` / `done` | settings (`notify.urgent`, `notify.kinds`), through the daemon (or `config.json` while it is down) | nothing |
 | `notify test` | nothing itself; the daemon sends one test push to your paired devices | nothing |

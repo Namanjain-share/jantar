@@ -3,6 +3,45 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.13.0 (unreleased)
+
+**Work** (off by default; `jantar work on`, which turns Todos on too): a
+place for the work you do for clients, owner-only. This first part is the
+Mac side of projects and search; the phone's Work screens come with the
+app's next update, and clients, the log of calls and meetings, follow-ups
+and deals come in later parts of 0.13. [Work](docs/work.md) has it all.
+
+**Before upgrading: nothing to copy by hand.** The daemon keeps
+`life-pre-0.13.0.db` in the backups folder before it moves life.db to
+schema 5 (Life's fourth schema change, which adds Work's tables, all
+empty, and a column on todos for a follow-up's client; no existing row is
+rewritten). 0.11 can't open Life afterwards, and going back means
+restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
+
+- **A project on one screen.** `GET /v1/projects/<id>` answers a project
+  with its open todos, how many were done this week, the ten done last,
+  and a health line: overdue (the same rule as the project's own count),
+  the next one due, eight weeks of done todos, and how many days an active
+  project has been quiet once nothing in it changed for more than 14.
+- **One search across Jantar.** `GET /v1/search?q=` finds projects, todos,
+  meetings (by name and people), sessions, Intel items, cafés and posts,
+  each part only while it is on, five a part, any case or accent. The
+  query is never logged, and a person's space never shows. The todos list
+  takes `?q=` too.
+- **Start from your client folders.** `jantar work seed <folder...>` (and
+  the phone's sheet, through `POST /v1/work/seed`) makes one project per
+  folder you pick inside one of your folders, linked to it; a folder a
+  project already links is skipped. Never automatic, and it needs Files or
+  New session on.
+- **Up to 500 projects** (was 200).
+- `jantar life on work` brings Todos with it, and `jantar life off todos`
+  turns Work off too and says so.
+- **Only yours.** Work's routes are all owner routes on your hostname,
+  Work's data has tables of its own that only its code names, nothing of
+  it is in the partner's app or Chat, and a log line, audit row or event
+  never names a client or a folder. Tests read the route tables and the
+  source to keep it so.
+
 ## 0.12.2 (4 November 2026)
 
 - **Linking another device gives them the link, not only a code.** In the
