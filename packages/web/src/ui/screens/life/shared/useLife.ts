@@ -4,11 +4,11 @@
  * Life and the shelf) and when the page comes back into view. Nothing is
  * kept in IndexedDB or the service worker.
  */
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LifeStatus } from '@jantar/protocol';
-import type { Api } from '../../../../lib/api.js';
-import { useApp, useDeps } from '../../../context.js';
+import { useApp } from '../../../context.js';
 import { useFeatures } from '../../../shell/data.js';
+import { useLifeStatusFeed } from '../../../shell/lifeStatus.js';
 import { useReloadOn } from '../../files/data.js';
 
 /** `state.lifeTick` (0 from a daemon before v0.4). */
@@ -81,59 +81,7 @@ export function useLifeLoad<T>(key: string | null, load: () => Promise<T>): Life
 }
 
 // ---------------------------------------------------------------------------
-// The one shared LifeStatus
-
-interface StatusStore {
-  status: LifeStatus | null;
-  error: unknown;
-  /** The lifeTick the last fetch answered for. */
-  tick: number | null;
-  /** The newest lifeTick asked for: one that moves during a fetch is fetched when that one ends. */
-  wanted: number | null;
-  inflight: boolean;
-  listeners: Set<() => void>;
-  version: number;
-}
-
-const stores = new WeakMap<Api, StatusStore>();
-
-function storeFor(api: Api): StatusStore {
-  let s = stores.get(api);
-  if (!s) {
-    s = { status: null, error: null, tick: null, wanted: null, inflight: false, listeners: new Set(), version: 0 };
-    stores.set(api, s);
-  }
-  return s;
-}
-
-function notify(s: StatusStore): void {
-  s.version += 1;
-  for (const l of [...s.listeners]) l();
-}
-
-/** One fetch at a time; a tick asked for meanwhile is fetched as soon as it ends. */
-function refresh(api: Api, s: StatusStore, tick: number): void {
-  s.wanted = tick;
-  if (s.inflight) return;
-  s.inflight = true;
-  const done = () => {
-    s.inflight = false;
-    s.tick = tick;
-    notify(s);
-    if (s.wanted !== null && s.wanted !== tick) refresh(api, s, s.wanted);
-  };
-  api.lifeStatus().then(
-    (status) => {
-      s.status = status;
-      s.error = null;
-      done();
-    },
-    (error: unknown) => {
-      s.error = error;
-      done();
-    },
-  );
-}
+// The one shared LifeStatus (0.13.0: its store is the shell's, shell/lifeStatus.ts, which asks it for Work)
 
 /**
  * GET /v1/life/status, shared by every screen that asks (which modules are
@@ -141,24 +89,6 @@ function refresh(api: Api, s: StatusStore, tick: number): void {
  * while Life or the shelf is on; again when lifeTick moves.
  */
 export function useLifeStatus(): { status: LifeStatus | null; error: unknown; reload: () => void } {
-  const { api } = useDeps();
   const { life, intel } = useFeatures();
-  const tick = useLifeTick();
-  const store = storeFor(api);
-  // A stable subscribe: a new one each render would unsubscribe and subscribe again every time.
-  const subscribe = useCallback(
-    (fn: () => void) => {
-      store.listeners.add(fn);
-      return () => {
-        store.listeners.delete(fn);
-      };
-    },
-    [store],
-  );
-  useSyncExternalStore(subscribe, () => store.version);
-  useEffect(() => {
-    if ((life || intel) && store.tick !== tick) refresh(api, store, tick);
-  }, [api, store, life, intel, tick]);
-  const reload = useCallback(() => refresh(api, store, tick), [api, store, tick]);
-  return { status: store.status, error: store.error, reload };
+  return useLifeStatusFeed(life || intel);
 }

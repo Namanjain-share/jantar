@@ -29,7 +29,10 @@
  * v0.5's Meetings, shown only while Meetings are on, v0.10's Chat (v0.5.3's
  * Ask), shown only while Chat is on, and v0.7's Posts, a Life screen. 0.12
  * loads Accounts, Alerts and Devices the same way, to make room in the main
- * load for the wide layouts.
+ * load for the wide layouts. 0.13.0's Work too (its screens and
+ * `@jantar/protocol/work` only ever load in its chunk): its place shows
+ * while Life status says Work is on (lifeStatus.ts), and while it is, the
+ * Todos addresses of a project open it in Work.
  */
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { boardOrder, needsYou } from '@jantar/protocol';
@@ -55,7 +58,8 @@ import { More } from '../screens/more/More.js';
 import { focusRow } from '../kit/rows.js';
 import { dialogOpen, isTyping, useGlobalKeys, useKey } from './keys.js';
 import { useLayout } from './layout.js';
-import { NAV, navItems, type NavItem } from './nav.js';
+import { CMD_PLACES, NAV, navItems, type NavItem } from './nav.js';
+import { pairedWithControl } from './lifeStatus.js';
 import { LegendPopover, LegendSheet } from './LegendPopover.js';
 import { OfflineNotice, UpdateNotice } from './Notices.js';
 import { PhoneHeader } from './PhoneHeader.js';
@@ -99,6 +103,8 @@ const Chat = lazy(() => import('../screens/chat/Chat.js').then((m) => ({ default
 const ChatDock = lazy(() => import('../screens/chat/Chat.js').then((m) => ({ default: m.ChatDock })));
 // v0.11 People: his Partner screen, its own chunk.
 const Partner = lazy(() => import('../screens/people/Partner.js').then((m) => ({ default: m.Partner })));
+// 0.13.0 Work: his projects (and clients and deals), its own chunk.
+const Work = lazy(() => import('../screens/work/Work.js').then((m) => ({ default: m.Work })));
 
 export function Shell() {
   const { api, connection, pushEnv } = useDeps();
@@ -163,6 +169,14 @@ export function Shell() {
   useEffect(() => {
     if (lostMore) navigate('/', { replace: true });
   }, [lostMore, navigate]);
+  // 0.13.0 (W20): while Work is on, a project is Work's: Todos' Projects tab and a project's old address land there.
+  const toWork =
+    placeFeatures.work && route.name === 'todos' && (route.project || route.tab === 'projects')
+      ? routePath({ name: 'work', ...(route.project ? { id: route.project } : {}) })
+      : null;
+  useEffect(() => {
+    if (toWork) navigate(toWork, { replace: true });
+  }, [toWork, navigate]);
 
   // Once connected, quietly make sure the daemon still has this device's push subscription.
   const [pushSynced, setPushSynced] = useState(false);
@@ -177,14 +191,14 @@ export function Shell() {
   const goPlace = (item: NavItem | undefined) => {
     if (!item) return;
     if (navItems(placeFeatures).includes(item)) navigate(item.href);
-    else toast(offSentence(item, features.ask));
+    else toast(offSentence(item, features.ask, pairedWithControl()));
   };
   useGlobalKeys({
     enabled: keys && !bare,
     onPalette: () => setPalette(true),
     onLegend: () => setShortcuts(true),
     navigate: (to) => goPlace(NAV.find((item) => item.href === to)),
-    onPlace: (n) => goPlace(NAV[n - 1]),
+    onPlace: (n) => goPlace(NAV.find((item) => item.route === CMD_PLACES[n - 1])),
     // ⌘\: the touch sidebar folds to the rail (regular), or shows over it (medium).
     ...(touch ? { onSidebar: () => toggleSidebar(layout.size) } : {}),
     // ⌘J: Chat beside this screen (the phone opens its tab); nothing where Chat isn't.
@@ -341,6 +355,18 @@ export function Shell() {
           <NotFound off="meetings on" />
         ) : (
           <SkeletonRows count={5} caption="Opening Meetings…" />
+        );
+        break;
+      // 0.13.0: Work while it is on. Life must be on; whether Work is, the screen asks Life status and says.
+      case 'work':
+        screen = features.life ? (
+          <Suspense fallback={<SkeletonRows count={5} caption="Opening Work…" />}>
+            <Work tab={route.tab} id={route.id} />
+          </Suspense>
+        ) : featuresKnown ? (
+          <NotFound off="work on" />
+        ) : (
+          <SkeletonRows count={5} caption="Opening Work…" />
         );
         break;
       // v0.10: Chat (v0.5.3's Ask) while it is on.
@@ -557,10 +583,11 @@ function NavPlaceholder() {
   return <nav aria-label="Main" aria-busy="true" className={useSidebar() ? 'h-full w-220 border-r border-line bg-page' : 'h-full w-72 border-r border-line bg-page'} />;
 }
 
-/** What Cmd-n or a g chord says for a place that is off (or, for Chat, a device without control). */
-export function offSentence(item: NavItem, askOn: boolean): string {
+/** What Cmd-n or a g chord says for a place that is off (or, for Chat and 0.13.0's Work, a device without control). */
+export function offSentence(item: NavItem, askOn: boolean, control = true): string {
   if (item.route === 'chat' && askOn) return 'Chat needs a device paired with control.';
-  const cmd: Partial<Record<NavItem['route'], string>> = { today: 'life on <module>', chat: 'chat on', files: 'files on', intel: 'intel on', meetings: 'meetings on' };
+  if (item.route === 'work' && !control) return 'Work needs a device paired with control.';
+  const cmd: Partial<Record<NavItem['route'], string>> = { today: 'life on <module>', chat: 'chat on', work: 'work on', files: 'files on', intel: 'intel on', meetings: 'meetings on' };
   return `${item.label} is off on this Mac. Turn it on at the Mac: ${CLI_NAME} ${cmd[item.route] ?? ''}`.trim();
 }
 

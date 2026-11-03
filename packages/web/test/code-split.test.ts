@@ -235,6 +235,15 @@ describe('code splitting', () => {
     expect(main.files.has('ui/kit/rows.ts')).toBe(true);
   });
 
+  it('0.13.0: Work and @jantar/protocol/work load only in lazy chunks; main keeps its nav entry, route and the Life status feed', () => {
+    const lazyOnly = ['ui/screens/work/Work.tsx', 'ui/screens/work/client.ts'];
+    for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
+    expect([...main.files].filter((f) => f.startsWith('ui/screens/work/'))).toEqual([]);
+    expect([...main.packages].filter((p) => p.startsWith('@jantar/protocol/'))).toEqual([]);
+    expect(readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8')).toContain("import('../screens/work/Work.js')");
+    expect(main.files.has('ui/shell/lifeStatus.ts')).toBe(true);
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");

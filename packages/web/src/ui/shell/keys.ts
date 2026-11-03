@@ -9,17 +9,17 @@
  *
  *   ⌘K           the palette (⌃K too, but only outside a field: on Apple
  *                platforms ⌃K deletes to the end of the line)
- *   ⌘1 … ⌘9      the places in nav order, fixed: Board, Today, Chat, Files,
- *                Accounts, Alerts, Devices, Intel, Meetings (a place that is
- *                off says so; matched on event.code, like every digit with a
- *                modifier: ⌥1 types ¡ on Apple layouts)
+ *   ⌘1 … ⌘9      the places, fixed (nav.ts CMD_PLACES): Board, Today, Chat,
+ *                Files, Accounts, Alerts, Devices, Intel, Meetings (a place
+ *                that is off says so; matched on event.code, like every digit
+ *                with a modifier: ⌥1 types ¡ on Apple layouts)
  *   ⌘.           Esc, for keyboards without one (the iPad's system Escape)
  *   ⌘\           the touch sidebar: fold it to the rail, or show it over
  *                the rail (c24)
  *   ⌘J           Chat beside this screen, its composer focused (c28; the
  *                phone opens the Chat tab)
  *   g then b t c l a d i m f   Board, Today, Chat, Alerts, Accounts,
- *                Devices, Intel, Meetings, Files
+ *                Devices, Intel, Meetings, Files (0.13.0: w, Work)
  *   ⌘Z           outside a field, the Undo on screen (c30): the newest
  *                Undo line, or in Chat the newest undoable change of the
  *                newest turn; never a change you can't see
@@ -79,6 +79,8 @@ export const G_ROUTES: Record<string, string> = {
   i: '/intel',
   m: '/meetings',
   f: '/files',
+  // 0.13.0: Work has no ⌘ number (CMD_PLACES keeps 0.12's nine).
+  w: '/work',
 };
 
 /** A modal over the screen (a sheet, the palette, a menu): the page's own keys wait. */
@@ -136,7 +138,7 @@ export function useGlobalKeys({
   onPalette: () => void;
   onLegend: () => void;
   navigate: (to: string) => void;
-  /** ⌘1 … ⌘9: the place with that number in nav order (shell/nav.ts). */
+  /** ⌘1 … ⌘9: the place with that number (shell/nav.ts CMD_PLACES). */
   onPlace?: (n: number) => void;
   /** ⌘\: the touch sidebar. */
   onSidebar?: (() => void) | undefined;

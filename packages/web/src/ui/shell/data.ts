@@ -26,6 +26,8 @@ import { ALERTS_SEEN_KEY } from '../screens/alerts/model.js';
 import { readLocalDevice } from '../screens/devices/local.js';
 import { useCanStart } from '../screens/new/machines.js';
 import { hasMachines } from '../screens/session/Info.js';
+import { useWorkOn } from './lifeStatus.js';
+import type { PlaceFeatures } from './nav.js';
 
 /** The autoswitch ceiling: read from /v1/plan through one shared feed. */
 export { DEFAULT_CEILING, useCeiling } from '../plan.js';
@@ -44,12 +46,15 @@ export function useFeatures(): Readonly<Features> {
  * People only on a device paired with control (v0.5.3), as every Ask call
  * and every People route needs it. A browser that kept no record of its
  * pairing (or an unreadable one) is taken to have it, as the session's
- * answer rows do.
+ * answer rows do. 0.13.0: `work` from Life status (lifeStatus.ts), on a
+ * device with control too.
  */
-export function usePlaceFeatures(): Readonly<Features> {
+export function usePlaceFeatures(): Readonly<PlaceFeatures> {
   const features = useFeatures();
+  const work = useWorkOn(features.life);
+  const placed = useMemo(() => ({ ...features, work }), [features, work]);
   const scopes = features.ask || features.people ? readLocalDevice()?.scopes : undefined;
-  return Array.isArray(scopes) && !scopes.includes('control') ? { ...features, ask: false, people: false } : features;
+  return Array.isArray(scopes) && !scopes.includes('control') ? { ...placed, ask: false, people: false } : placed;
 }
 
 /**

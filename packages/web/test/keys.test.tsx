@@ -171,7 +171,7 @@ describe('⌘1 … ⌘9 and the g chords', () => {
   it('every g chord names a place in the nav', () => {
     const hrefs = NAV.map((n) => n.href);
     for (const to of Object.values(G_ROUTES)) expect(hrefs).toContain(to);
-    expect(Object.keys(G_ROUTES).sort()).toEqual(['a', 'b', 'c', 'd', 'f', 'i', 'l', 'm', 't']);
+    expect(Object.keys(G_ROUTES).sort()).toEqual(['a', 'b', 'c', 'd', 'f', 'i', 'l', 'm', 't', 'w']);
     expect(offSentence(NAV[2]!, true)).toBe('Chat needs a device paired with control.');
   });
 

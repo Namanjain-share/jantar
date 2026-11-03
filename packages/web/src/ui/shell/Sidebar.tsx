@@ -23,7 +23,7 @@
 import { CaretDownIcon, CaretRightIcon, DotsThreeIcon, MagnifyingGlassIcon, SidebarSimpleIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { lazy, Suspense, useRef, useState } from 'react';
-import type { Features } from '@jantar/protocol';
+import type { PlaceFeatures } from './nav.js';
 import type { Route } from '../../lib/router.js';
 import type { ConnInfo } from '../../store.js';
 import { Badge } from '../kit/Badge.js';
@@ -42,7 +42,7 @@ export interface TouchNavProps {
   route: Route['name'];
   badges: Partial<Record<Route['name'], number>>;
   needs: number;
-  features: Readonly<Features>;
+  features: Readonly<PlaceFeatures>;
   pairs: readonly UsagePair[];
   active: string | null;
   conn: ConnInfo;

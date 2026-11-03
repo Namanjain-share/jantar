@@ -19,10 +19,19 @@
  * Accountability partner is the top list's last place there, as "Partner"
  * (its `short`) in the 220 sidebar and the 64 wide rail label, with the full
  * label as its name.
+ *
+ * 0.13.0: Work, right after Chat (W18), only while Work is on at the Mac and
+ * on a device paired with control (`PlaceFeatures.work`: which Life modules
+ * are on is a control read, so the shell asks Life status, shell/lifeStatus.ts).
+ * With Life, Chat and Work on, a phone's tabs are Board, Today, Chat, Work and
+ * More, and Files moves into More. On the iPad it is one row between Chat and
+ * Files; on the Mac a rail item. ⌘1-⌘9 keep 0.12's places (`CMD_PLACES`), so
+ * Work is `g w` and ⌘K.
  */
 import {
   BellIcon,
   BookmarksIcon,
+  BriefcaseIcon,
   ChartBarHorizontalIcon,
   ChatCircleDotsIcon,
   DeviceMobileIcon,
@@ -44,18 +53,26 @@ export interface NavItem {
   /** A shorter label for a phone tab, where the full one would be cut off (the rail and More show `label`). */
   short?: string;
   icon: Icon;
-  /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Chat: v0.10, the `ask` switch; People: v0.11). */
-  feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask' | 'people';
+  /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Chat: v0.10, the `ask` switch; People: v0.11; Work: 0.13.0). */
+  feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask' | 'people' | 'work';
   /** 0.12, the touch sidebar: the top list or the Library. */
   group?: 'top' | 'library';
   /** 0.12: false keeps it out of the touch sidebar and rail (Accounts: the strip; Devices: ⋯). */
   touch?: boolean;
 }
 
+/**
+ * The switches the places follow: the daemon's (Features), and 0.13.0's `work`, which no feature list
+ * carries (a Life module: Life status says it, to a device with control). Absent is off.
+ */
+export type PlaceFeatures = Features & { work?: boolean };
+
 export const NAV: readonly NavItem[] = [
   { route: 'board', href: '/', label: 'Board', icon: ListBulletsIcon },
   { route: 'today', href: '/today', label: 'Today', icon: SunIcon, feature: 'life' },
   { route: 'chat', href: '/chat', label: 'Chat', icon: ChatCircleDotsIcon, feature: 'ask' },
+  // 0.13.0: after Chat (W18), so with Life, Chat and Work on it is a phone tab and Files moves into More.
+  { route: 'work', href: '/work', label: 'Work', icon: BriefcaseIcon, feature: 'work' },
   { route: 'files', href: '/files', label: 'Files', icon: FilesIcon, feature: 'files' },
   { route: 'accounts', href: '/accounts', label: 'Accounts', icon: ChartBarHorizontalIcon, touch: false },
   { route: 'alerts', href: '/alerts', label: 'Alerts', icon: BellIcon },
@@ -69,11 +86,17 @@ export const NAV: readonly NavItem[] = [
 ];
 
 /**
+ * ⌘1 … ⌘9, fixed as 0.12 shipped them (W19): Board, Today, Chat, Files, Accounts, Alerts, Devices, Intel,
+ * Meetings. 0.13.0 puts Work in NAV after Chat, so the map is its own list, never NAV's order.
+ */
+export const CMD_PLACES: readonly Route['name'][] = ['board', 'today', 'chat', 'files', 'accounts', 'alerts', 'devices', 'intel', 'meetings'];
+
+/**
  * The places the touch sidebar and rail list (no Accounts, no Devices): the top list, then the Library,
  * each in nav order, so the rail keeps the sidebar's order (Accountability partner, last in NAV, is the
  * top list's last place, above Intel and Meetings).
  */
-export function touchItems(features: Readonly<Features>): NavItem[] {
+export function touchItems(features: Readonly<PlaceFeatures>): NavItem[] {
   const items = navItems(features).filter((item) => item.touch !== false);
   return [...items.filter((item) => item.group !== 'library'), ...items.filter((item) => item.group === 'library')];
 }
@@ -85,12 +108,12 @@ export const MORE: NavItem = { route: 'more', href: '/more', label: 'More', icon
 export const MAX_TABS = 5;
 
 /** The places this daemon offers: every one whose switch is on (the rail). */
-export function navItems(features: Readonly<Features>): NavItem[] {
-  return NAV.filter((item) => !item.feature || features[item.feature]);
+export function navItems(features: Readonly<PlaceFeatures>): NavItem[] {
+  return NAV.filter((item) => !item.feature || features[item.feature] === true);
 }
 
 /** The phone's tabs: every place when five or fewer are on, else the first four and More with the rest. */
-export function tabItems(features: Readonly<Features>): { tabs: NavItem[]; more: NavItem[] } {
+export function tabItems(features: Readonly<PlaceFeatures>): { tabs: NavItem[]; more: NavItem[] } {
   const on = navItems(features);
   if (on.length <= MAX_TABS) return { tabs: on, more: [] };
   return { tabs: [...on.slice(0, MAX_TABS - 1), MORE], more: on.slice(MAX_TABS - 1) };

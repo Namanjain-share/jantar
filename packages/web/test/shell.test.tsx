@@ -4,6 +4,7 @@ import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
 import { NAV } from '../src/ui/shell/nav.js';
 import { navStore } from '../src/ui/shell/navState.js';
 import { account, alert, fakeApi, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+import { WORK_ON } from './work-helpers.js';
 
 /** Pretend the window is `width` px wide, with a fine pointer unless `coarse` (jsdom has no matchMedia). */
 function viewport(width: number, { coarse = false } = {}) {
@@ -383,9 +384,12 @@ describe('0.12 c24: the touch shell', () => {
     const touch = NAV.filter((n) => n.touch !== false);
     const order = [...touch.filter((n) => n.group !== 'library'), ...touch.filter((n) => n.group === 'library')].map((n) => n.label);
     expect(order.slice(-3)).toEqual(['Accountability partner', 'Intel', 'Meetings']);
-    const side = renderApp({ state: allOn(), layout: touchAt(1180) });
+    // 0.13.0: Work is on (Life status says so), one row between Chat and Files.
+    const side = renderApp({ state: allOn(), layout: touchAt(1180), api: fakeApi({ lifeStatus: vi.fn(async () => WORK_ON()) }) });
     await screen.findByRole('button', { name: 'Hide sidebar' });
+    await within(screen.getByRole('navigation', { name: 'Main' })).findByRole('link', { name: 'Work' });
     const names = navNames(screen.getByRole('navigation', { name: 'Main' }));
+    expect(names.indexOf('Work')).toBe(names.indexOf('Chat') + 1);
     expect(names.filter((n) => order.includes(n))).toEqual(order);
     expect(names).not.toContain('Accounts');
     expect(names).not.toContain('Devices');
@@ -398,13 +402,16 @@ describe('0.12 c24: the touch shell', () => {
     // Today's places under Today, in Today's order.
     expect(within(screen.getByRole('list', { name: "Today's places" })).getAllByRole('link').map((a) => a.textContent?.trim())).toEqual(['Todos', 'Medicines', 'Food', 'Cafés', 'Finance', 'Posts']);
     side.unmount();
-    const rail = renderApp({ state: allOn(), layout: touchAt(820) });
+    const rail = renderApp({ state: allOn(), layout: touchAt(820), api: fakeApi({ lifeStatus: vi.fn(async () => WORK_ON()) }) });
     await screen.findByRole('button', { name: 'Show sidebar' });
+    await within(screen.getByRole('navigation', { name: 'Main' })).findByRole('link', { name: 'Work' });
     expect(navNames(screen.getByRole('navigation', { name: 'Main' })).filter((n) => order.includes(n))).toEqual(order);
     // The 64 wide rail label is the short word too.
     expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Accountability partner' }).textContent?.trim()).toBe('Partner');
     rail.unmount();
-    renderApp({ state: allOn(), layout: touchAt(390) });
+    // The phone's tabs: Board, Today, Chat, Work, More (Files moves into More, W18).
+    renderApp({ state: allOn(), layout: touchAt(390), api: fakeApi({ lifeStatus: vi.fn(async () => WORK_ON()) }) });
+    await within(screen.getByRole('navigation', { name: 'Main' })).findByRole('link', { name: /Work/ });
     expect(navNames(screen.getByRole('navigation', { name: 'Main' })).slice(0, 4)).toEqual(order.slice(0, 4));
   });
 

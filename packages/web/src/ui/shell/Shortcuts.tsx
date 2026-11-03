@@ -39,7 +39,7 @@ export const KEY_GROUPS: readonly KeyGroup[] = [
       { keys: ['⌘J'], does: 'Chat beside this screen' },
       { keys: ['⌘\\'], does: 'Show or hide the sidebar (iPad)' },
       { keys: ['⌘1–⌘9'], does: 'Board, Today, Chat, Files, Accounts, Alerts, Devices, Intel, Meetings' },
-      { keys: ['g', 'b t c l a d i m f'], does: 'Board, Today, Chat, Alerts, Accounts, Devices, Intel, Meetings, Files' },
+      { keys: ['g', 'b t c l a d i m f w'], does: 'Board, Today, Chat, Alerts, Accounts, Devices, Intel, Meetings, Files, Work' },
       { keys: ['Esc', '⌘.'], does: 'Back: close what is open' },
       { keys: ['⌘Z'], does: 'Undo the change shown on screen (outside a text field)' },
       { keys: ['?'], does: 'This list' },
