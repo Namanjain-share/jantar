@@ -343,6 +343,8 @@ export function fakeApi(over: Partial<Api> = {}) {
     // v0.6 Fleet: no paired machines unless the test passes its own.
     machinesList: vi.fn(async () => ({ machines: [] })),
     machineRevoke: notBuilt(),
+    // 0.13.0: a lazy part's own routes (Work's); test/work-helpers.ts answers them by path.
+    request: notBuilt(),
   };
   return Object.assign(base, over) as typeof base & Api;
 }

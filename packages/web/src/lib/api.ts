@@ -441,6 +441,28 @@ export interface Api {
   // --- v0.6 Fleet (admin): the paired machines, and Remove (two taps). Pairing is at the Mac only.
   machinesList(): Promise<MachinesResponse>;
   machineRevoke(id: string, idempotencyKey?: string): Promise<MachineResponse>;
+
+  /**
+   * 0.13.0: a route outside ROUTES, by its method and path pattern: a lazy part's own table (Work's,
+   * screens/work/client.ts), so its paths and shapes stay in its chunk. The same headers as every call
+   * (the device secret and an Idempotency-Key on a write).
+   */
+  request<T>(route: ApiRoute, init?: ApiRequest): Promise<T>;
+}
+
+/** 0.13.0: a route as `request` takes it. */
+export interface ApiRoute {
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  path: string;
+}
+
+/** 0.13.0: what `request` sends: the path's `:params`, the query (undefined values left out), a JSON body, the write's kept key. */
+export interface ApiRequest {
+  params?: Record<string, string>;
+  query?: Record<string, string | number | undefined>;
+  body?: unknown;
+  idempotencyKey?: string;
+  signal?: AbortSignal;
 }
 
 /** v0.6: which machine a folder, start-sheet or usage call is for (absent: the Mac). */
@@ -808,6 +830,7 @@ export function createApi(opts: ApiOptions = {}): Api {
     },
     machinesList: () => call(ROUTES.machinesList),
     machineRevoke: (id, k) => call(ROUTES.machineRevoke, { params: { id }, ...key(k) }),
+    request: (route, init = {}) => call(route, init),
   };
 }
 
