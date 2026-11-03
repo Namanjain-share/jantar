@@ -17,7 +17,7 @@
  * Ask), shown only while Chat is on, and v0.7's Posts, a Life screen.
  */
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
-import { PEOPLE_LABEL, boardOrder, needsYou } from '@jantar/protocol';
+import { boardOrder, needsYou } from '@jantar/protocol';
 import { documentTitle, setFavicon } from '../../lib/favicon.js';
 import { resyncPush } from '../../lib/push.js';
 import { useApp, useDeps, useNavigate, useNow, useRoute } from '../context.js';
@@ -214,7 +214,7 @@ export function Shell() {
       case 'intel': {
         // v0.11: People while it is on (its own switch: Life modules may all be off).
         const on = route.name === 'intel' ? features.intel : route.name === 'people' ? features.people : features.life;
-        const caption = route.name === 'intel' ? 'Opening the shelf…' : route.name === 'people' ? `Opening ${PEOPLE_LABEL}…` : 'Opening Life…';
+        const caption = route.name === 'intel' ? 'Opening the shelf…' : route.name === 'people' ? 'Opening Accountability partner…' : 'Opening Life…';
         screen = on ? (
           <Suspense fallback={<SkeletonRows count={5} caption={caption} />}>{lifeScreen(route)}</Suspense>
         ) : featuresKnown ? (

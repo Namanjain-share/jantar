@@ -26,7 +26,8 @@
  * Adding or removing an email prints the Cloudflare Access step: Jantar
  * holds no Cloudflare token and can't make that change.
  */
-import { PEOPLE_LABEL, type Settings } from '@jantar/protocol';
+import type { Settings } from '@jantar/protocol';
+import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import type { OwnerPeoplePrefs, PeopleDoctor, PeopleList, PersonInviteReply, PersonSetupAgain, PersonView } from '@jantar/protocol/people';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';

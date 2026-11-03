@@ -9,6 +9,7 @@
 import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NO_FEATURES } from '@jantar/protocol';
+import { PEOPLE_LABEL, PEOPLE_SHORT_LABEL } from '@jantar/protocol/people-core';
 import { writeLocal } from '../src/lib/storage.js';
 import { LOCAL_DEVICE_KEY } from '../src/ui/screens/devices/local.js';
 import { isCurrent, navItems, tabItems } from '../src/ui/shell/nav.js';
@@ -50,6 +51,9 @@ describe('tabItems with People', () => {
     const people = t.tabs.find((i) => i.route === 'people');
     expect(people?.label).toBe('Accountability partner');
     expect(people?.short).toBe('Partner');
+    // nav.ts spells people-core's words out (so the main load doesn't carry people-core): they must stay the same.
+    expect(people?.label).toBe(PEOPLE_LABEL);
+    expect(people?.short).toBe(PEOPLE_SHORT_LABEL);
   });
 
   it('on /people, People is the current place, not Today', () => {

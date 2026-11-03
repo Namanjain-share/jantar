@@ -26,7 +26,7 @@
  * - Someone invited (the link's expiry, Copy link again) or whose sharing is
  *   ending is a row on People (spec 2.3), not an empty heading.
  */
-import { ALERT_KINDS, ALERT_REPLY_LABELS, STATUS_LABELS, type AlertKind } from '@jantar/protocol/people-core';
+import { ALERT_KINDS, ALERT_REPLY_LABELS, PEOPLE_LABEL, STATUS_LABELS, type AlertKind } from '@jantar/protocol/people-core';
 import type {
   AlertsResponse,
   AssignTodoBody,
@@ -51,7 +51,7 @@ import type {
   SleepWeek as Week,
   TodoAsk,
 } from '@jantar/protocol/people';
-import { CLI_NAME, PEOPLE_LABEL, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse } from '@jantar/protocol';
+import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { useEffect, useState } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
