@@ -29,6 +29,7 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
 | **Chat** | Right after Today: ask Jantar anything, or tell it what to add or change; each change has Undo, deletes wait for your tap ([Chat](assistant.md)) |
+| **People** | With [People](people.md) on: a line for the person you share with on Today, and `/people` with their status, progress, Plan and Alert, and tabs for Today, Plan (the plan editor and Quick plan), Health (sleep), Journal and Alerts. Opened from that line or from a notification about them |
 
 A session waiting on a dynamic workflow or a background agent it started
 shows under Working ("1 workflow running", the workflow's name and how
@@ -50,6 +51,16 @@ legend. `g b`, `g a`, `g l` and `g d` go to the Board, Accounts, Alerts and
 Devices. In a session, `a` allows (or sends the answer, or approves), `d`
 denies, `r` puts the cursor in the composer, `n` goes to the next one and
 `esc` back to the Desk.
+
+## Their app (People)
+
+The person you share with uses a separate app at `/p` on their own
+hostname ([People](people.md)): it holds none of your screens. Its tab bar
+is Today, To-do, Journal and More (Health, Alerts, Me). Today runs their
+day plan, with a tick on every row, a 5-second Undo and one button at the
+bottom for the thumb (Got it, then Done: the Now step); from their review
+time it shows the evening review, and in the evening Going to sleep.
+Journal, Health and Alerts load when opened.
 
 ## Turn it on at your Mac
 
