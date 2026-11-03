@@ -3,7 +3,8 @@
  * no-side-effect check, the refusals, the select-capture-restore path, the
  * fixed screencapture and sips argv, sizes and formats, and the temp files
  * (C6, C7). Fake osascript, screencapture and sips answer through the fake
- * exec; the images are written to a temp dir. Nothing real runs.
+ * exec; the images are written to a temp dir. Nothing real runs (0.12.1:
+ * but mkfifo, for holdFs's slow disk in a temp dir of its own).
  */
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,6 +16,7 @@ import { TERMINAL_APP_SCRIPT, TerminalAppBackend } from '../../src/terminal/term
 import { PNG_SOFT_MAX, REDRAW_MS, imageInfo, parseShotInfo } from '../../src/terminal/terminal-app/shot.js';
 import { SHOT_SCRIPT } from '../../src/terminal/terminal-app/shot-script.js';
 import { drive } from '../controls/helpers.js';
+import { holdFs } from '../controls/slow-fs.js';
 
 const TTY = '/dev/ttys003';
 const OTHER_TTY = '/dev/ttys002';
@@ -204,6 +206,17 @@ describe('screenshots on Terminal.app', () => {
     expect(m.order).toEqual(['shotinfo', 'select', 'screencapture showing=ours', 'restore', 'sips -Z']);
     expect(m.win.showing).toBe(OTHER_TTY);
     expect(ctx.clock.now() - started).toBeGreaterThanOrEqual(REDRAW_MS);
+  });
+
+  it('C6: 0.12.1: select still settles when every fs call is slow (a held threadpool, as on a busy CI runner)', async () => {
+    const { backend, ctx, m } = rig({}, { showing: OTHER_TTY });
+    const held = holdFs(300);
+    const r = await drive(ctx.clock, backend.getScreenshot(pane, { select: 'if-safe' }));
+    await held;
+    expect(r).toMatchObject({ ok: true, disturbed: true });
+    expect(m.order).toEqual(['shotinfo', 'select', 'screencapture showing=ours', 'restore', 'sips -Z']);
+    expect(m.win.showing).toBe(OTHER_TTY);
+    expect(shotFiles(ctx)).toEqual([]);
   });
 
   it('C6: select is refused while Terminal is the active app with that window in front (it would take keystrokes)', async () => {
