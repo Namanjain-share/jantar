@@ -18,8 +18,9 @@
  * from Today's Work card opens the list it names; the sort is this
  * screen's. A SplitPane ("work-clients", fill): with nothing open a pane
  * of 800 or more shows a table (Name, Company, State, Next step, Last
- * touch, Open deals, Tags); a client opens beside the list (340, 440 from
- * 1180), else over it with "‹ Clients" (ClientHub.tsx).
+ * touch, Open deals from 960, Tags from 1180: the name keeps 200); a
+ * client opens beside the list (340, 440 from 1180), else over it with
+ * "‹ Clients" (ClientHub.tsx).
  *
  * + adds a client (ClientSheet.tsx: about ten seconds, a duplicate warns
  * and never blocks), then opens it. ··· holds Import a file and Find
@@ -427,32 +428,46 @@ function ClientRows({ label, rows, showState = false, today, nowMs, quietDays, o
   );
 }
 
+/**
+ * The table's columns past the name, each with the pane width it shows from: the name keeps 200 at every
+ * pane of 800 or more (an iPad's 804 beside the sidebar, a 900 Mac window), so Open deals waits for a pane
+ * of 960 (@lg) and Tags for 1180 (@xl). Every column's width is fixed, so the rows line up.
+ */
+const COLUMNS = {
+  company: 'w-160 flex-none',
+  state: 'w-64 flex-none',
+  next: 'w-120 flex-none',
+  touch: 'w-120 flex-none',
+  deals: 'hidden w-160 flex-none @lg:block',
+  tags: 'hidden w-120 flex-none @xl:block',
+} as const;
+
 /** A wide pane with nothing open (D2): one row per client across the table's columns; the name is the row's link. */
 function ClientTable({ label, rows, today, nowMs, quietDays, filter }: RowsProps & { label: string }) {
   const navigate = useNavigate();
-  const cell = 'flex-none truncate type-mono';
+  const cell = 'truncate type-mono';
   return (
     <div role="table" aria-label={label}>
       <div role="row" className="flex h-32 items-center gap-12 border-b border-line px-16 type-small text-ink-3">
-        <span role="columnheader" className="min-w-0 flex-1">
+        <span role="columnheader" className="min-w-200 flex-1">
           Name
         </span>
-        <span role="columnheader" className="w-160 flex-none">
+        <span role="columnheader" className={COLUMNS.company}>
           Company
         </span>
-        <span role="columnheader" className="w-64 flex-none">
+        <span role="columnheader" className={COLUMNS.state}>
           State
         </span>
-        <span role="columnheader" className="w-120 flex-none">
+        <span role="columnheader" className={COLUMNS.next}>
           Next step
         </span>
-        <span role="columnheader" className="w-120 flex-none">
+        <span role="columnheader" className={COLUMNS.touch}>
           Last touch
         </span>
-        <span role="columnheader" className="w-160 flex-none">
+        <span role="columnheader" className={COLUMNS.deals}>
           Open deals
         </span>
-        <span role="columnheader" className="w-120 flex-none">
+        <span role="columnheader" className={COLUMNS.tags}>
           Tags
         </span>
       </div>
@@ -470,28 +485,29 @@ function ClientTable({ label, rows, today, nowMs, quietDays, filter }: RowsProps
               navigate(href);
             }}
           >
-            <span role="cell" className="flex min-w-0 flex-1 items-center gap-8 self-stretch">
-              <Link href={href} data-row={c.id} className="flex min-w-0 flex-1 items-center truncate py-6 type-row font-medium text-ink focus-visible:-outline-offset-2">
-                {c.name}
+            <span role="cell" className="flex min-w-200 flex-1 items-center gap-8 self-stretch">
+              {/* The words in a span of their own: a flex box's text never shows the ellipsis. */}
+              <Link href={href} data-row={c.id} className="flex min-w-0 flex-1 items-center py-6 type-row font-medium text-ink focus-visible:-outline-offset-2">
+                <span className="truncate">{c.name}</span>
               </Link>
               <FromTag from={c.from} className="flex-none" />
             </span>
-            <span role="cell" className="w-160 flex-none truncate type-small text-ink-2">
+            <span role="cell" className={clsx(COLUMNS.company, 'truncate type-small text-ink-2')}>
               {c.company?.name ?? ''}
             </span>
-            <span role="cell" className={clsx(cell, 'w-64 text-ink-2')}>
+            <span role="cell" className={clsx(COLUMNS.state, cell, 'text-ink-2')}>
               {STATE_LABEL[c.state].toLowerCase()}
             </span>
-            <span role="cell" className={clsx(cell, 'w-120', nextLate(c.next, today) ? 'text-signal-text' : 'text-ink-2')}>
+            <span role="cell" className={clsx(COLUMNS.next, cell, nextLate(c.next, today) ? 'text-signal-text' : 'text-ink-2')}>
               {nextText(c.next, today)?.replace(/^next:? /, '') ?? (needsStep(c) ? 'none' : '')}
             </span>
-            <span role="cell" className={clsx(cell, 'w-120 text-ink-3')}>
+            <span role="cell" className={clsx(COLUMNS.touch, cell, 'text-ink-3')}>
               {c.lastTouchAt ? touch.text : ''}
             </span>
-            <span role="cell" className={clsx(cell, 'w-160 text-ink-2')}>
+            <span role="cell" className={clsx(COLUMNS.deals, cell, 'text-ink-2')}>
               {openDealsText(c.openDeals)}
             </span>
-            <span role="cell" className={clsx(cell, 'w-120 text-ink-3')}>
+            <span role="cell" className={clsx(COLUMNS.tags, cell, 'text-ink-3')}>
               {c.tags.map((t) => `#${t}`).join(' ')}
             </span>
           </div>

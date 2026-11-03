@@ -182,7 +182,50 @@ describe('Work › Clients on a phone', () => {
   });
 });
 
+/**
+ * The width a table row leaves its name at a pane `pane` wide, read from its columns' classes (jsdom lays
+ * nothing out): the pane less its padding (16 each side), the card's border (1 each side) and the row's
+ * padding (16 each side), less each column shown there (its w-N and the 12 gap before it). A column with
+ * `hidden` shows from its @lg (960) or @xl (1180) on.
+ */
+function nameRoom(row: HTMLElement, pane: number): number {
+  const from: Record<string, number> = { '@md': 640, '@split': 800, '@wide': 900, '@lg': 960, '@xl': 1180 };
+  let room = pane - 32 - 2 - 32;
+  for (const col of [...row.children].slice(1)) {
+    const cls = col.className.split(/\s+/);
+    const shownFrom = cls.includes('hidden') ? Math.min(...cls.map((c) => from[c.replace(/:.*$/, '')] ?? Infinity)) : 0;
+    if (pane < shownFrom) continue;
+    const w = cls.map((c) => /^w-(\d+)$/.exec(c)?.[1]).find(Boolean);
+    expect(w, `${col.textContent}: a fixed width`).toBeTruthy();
+    room -= Number(w) + 12;
+  }
+  return room;
+}
+
 describe('Work › Clients on wide panes', () => {
+  it('the table keeps the name 200 wide at every pane it shows in, with an ellipsis when it runs out', async () => {
+    measureAs(1180);
+    setup({ layout: layoutAt(1440) });
+    const table = await screen.findByRole('table', { name: 'Clients' });
+    const [head, ...rows] = within(table).getAllByRole('row');
+    expect(head!.firstElementChild!.className).toContain('min-w-200');
+    // An iPad's 804 beside the sidebar, a 900 Mac window, an iPad's 1180 beside the sidebar, a 1440 Mac.
+    for (const pane of [800, 804, 900, 960, 1024, 1180, 1440]) {
+      for (const row of [head!, ...rows]) expect(nameRoom(row, pane), `${row.textContent} at ${pane}`).toBeGreaterThanOrEqual(200);
+    }
+    // Wide enough, every column shows.
+    expect(nameRoom(head!, 1180)).toBe(298);
+    for (const row of rows) {
+      const cell = row.firstElementChild as HTMLElement;
+      expect(cell.className).toContain('min-w-200');
+      // The ellipsis needs the words in a box of their own: a flex box's own text never shows one.
+      const words = within(cell).getByRole('link').firstElementChild as HTMLElement;
+      expect(words.tagName).toBe('SPAN');
+      expect(words.className).toContain('truncate');
+    }
+  });
+
+
   it('a pane of 800 or more with nothing open: one table; a client open beside the rows', async () => {
     measureAs(1180);
     const { history } = setup({ layout: layoutAt(1440) });

@@ -137,6 +137,8 @@ describe('Work › Projects in a wide pane', () => {
     expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Name', 'Client', 'Open', 'Overdue', 'Next', 'Due', 'Live']);
     const link = within(table).getByRole('link', { name: 'Site rebuild' });
     expect(link.getAttribute('href')).toBe(`/work?id=${IDS.acme}`);
+    // A long name ends in an ellipsis: its words in a box of their own (a flex box's own text never shows one).
+    expect((link.firstElementChild as HTMLElement).className).toContain('truncate');
     fireEvent.click(link);
     expect(await screen.findByRole('heading', { level: 1, name: 'Site rebuild' })).toBeTruthy();
     const list = screen.getByRole('region', { name: 'All projects' });

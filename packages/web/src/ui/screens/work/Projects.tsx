@@ -251,8 +251,9 @@ function ProjectTable({
             }}
           >
             <span role="cell" className="flex min-w-0 flex-1 self-stretch">
-              <Link href={href} data-row={p.id} className="flex min-w-0 flex-1 items-center truncate py-6 type-row font-medium text-ink focus-visible:-outline-offset-2">
-                {projectLabel(p)}
+              {/* The words in a span of their own: a flex box's text never shows the ellipsis. */}
+              <Link href={href} data-row={p.id} className="flex min-w-0 flex-1 items-center py-6 type-row font-medium text-ink focus-visible:-outline-offset-2">
+                <span className="truncate">{projectLabel(p)}</span>
               </Link>
             </span>
             <span role="cell" className="w-160 flex-none truncate type-small text-ink-2">
