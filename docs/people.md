@@ -555,7 +555,12 @@ your audit log as `person.write` with no detail.
   LEAVE. Their devices are revoked at once.
 - **Remove** (the Mac only): `jantar people remove Asha` gives them 7 days to
   download their data; `--now` ends it at once; `--forget` deletes their
-  space at once. Remove their email from the Access policy too.
+  space at once. Remove their email from the Access policy once sharing has
+  ended: the command prints the step, and with the 7 days it names the day.
+  Not before, or Access shuts them out of the download their page promises.
+- **After it ends**, your People list keeps a row for them while their data
+  is kept (30 days), with the way to invite them again or to delete it now
+  (`jantar people remove <id> --forget`).
 - **Off** (`jantar people off`): your Accountability partner screens
   disappear, and they can still download their data or leave.
 

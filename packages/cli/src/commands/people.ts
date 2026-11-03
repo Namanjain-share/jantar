@@ -170,7 +170,9 @@ function quiet(v: string): { from: string; to: string } {
 
 async function find(ctx: CliContext, who: string): Promise<PersonView> {
   const list = await callDaemon<PeopleList>(ctx.ctl, 'GET', '/v1/people');
-  const hit = list.people.find((p) => p.id === who) ?? list.people.filter((p) => p.name.toLowerCase() === who.toLowerCase())[0];
+  // By name, someone still in the space wins over someone who left with the same name (their id reaches either).
+  const named = list.people.filter((p) => p.name.toLowerCase() === who.toLowerCase());
+  const hit = list.people.find((p) => p.id === who) ?? named.find((p) => p.state !== 'left') ?? named[0];
   if (!hit) throw new UsageError(`no person "${who}" (see: jantar people list)`);
   return hit;
 }
@@ -180,6 +182,12 @@ function accessStep(email: string | undefined, add: boolean): string {
   return add
     ? `In Zero Trust > Access > Applications > Accountability partner > Policies > Partner > Include > Emails, add ${who}, then Save. Jantar holds no Cloudflare token and can't do this for you.\n`
     : `In Zero Trust > Access > Applications > Accountability partner > Policies > Partner, remove ${who}. Optionally, My Team > Users > them > Revoke session.\n`;
+}
+
+/** The Access step for a remove with the 7-day window: only once it ends, or Access shuts them out of the download their page promises. */
+function accessStepAfter(email: string | undefined, until: string | undefined): string {
+  const who = email ?? 'their email';
+  return `After ${until ?? 'the 7 days'}, in Zero Trust > Access > Applications > Accountability partner > Policies > Partner, remove ${who}. Not before: until then Access must let them in to download their data.\n`;
 }
 
 /** T20 (spec 2.7): a space a Life restore took out, and the way back (his People screen says the same). */
@@ -420,7 +428,15 @@ export default defineCommand(
         }
         const p = await find(ctx, target);
         await callDaemon(ctx.ctl, 'POST', `/v1/people/${p.id}/remove`, { mode: flags.now ? 'now' : 'window', forget: Boolean(flags.forget) });
-        io.out(flags.now || flags.forget ? `${p.name} is removed${flags.forget ? ', and their space deleted' : ''}.\n` : `Sharing with ${p.name} ends in 7 days; they can download their data until then.\n`);
+        // What the daemon did decides the words: a window (ending) keeps Access open until it ends; anything else ended it now.
+        const after = (await callDaemon<PeopleList>(ctx.ctl, 'GET', '/v1/people')).people.find((x) => x.id === p.id);
+        if (after?.state === 'ending') {
+          const until = after.endingUntil?.slice(0, 10);
+          io.out(`Sharing with ${p.name} ends ${until ? `on ${until}` : 'in 7 days'}; they can download their data until then.\n`);
+          io.out(accessStepAfter(p.emailLabel, until));
+          return EXIT.ok;
+        }
+        io.out(`${p.name} is removed${flags.forget ? ', and their space deleted' : ''}.\n`);
         io.out(accessStep(p.emailLabel, false));
         return EXIT.ok;
       }

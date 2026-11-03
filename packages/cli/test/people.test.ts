@@ -107,6 +107,40 @@ describe('jantar people: the Accountability partner words, ask, prefs and the na
     expect(await people.run(['ask', 'Asha'], none.ctx)).toBe(EXIT.usage);
   });
 
+  it('remove with the 7-day window names its end, and the Access step waits for it; --now gives the step at once (review 4, B5)', async () => {
+    const withEmail = { ...asha, emailLabel: 'asha@example.com' };
+    let state: Record<string, unknown> = withEmail;
+    const ctl = fakeCtl({
+      'GET /v1/people': () => ok({ enabled: true, people: [state] }),
+      [`POST /v1/people/${ASHA}/remove`]: (call) => {
+        const body = call.body as { mode: string; forget: boolean };
+        state = body.mode === 'window' && !body.forget ? { ...withEmail, state: 'ending', endingUntil: '2026-11-10T09:00:00.000Z' } : { ...withEmail, state: 'left' };
+        return ok({ ok: true });
+      },
+    });
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['remove', 'Asha'], c.ctx)).toBe(EXIT.ok);
+    expect(c.io.stdout).toBe(
+      'Sharing with Asha ends on 2026-11-10; they can download their data until then.\n' +
+        'After 2026-11-10, in Zero Trust > Access > Applications > Accountability partner > Policies > Partner, remove asha@example.com. Not before: until then Access must let them in to download their data.\n',
+    );
+    state = withEmail;
+    const now = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['remove', 'Asha', '--now'], now.ctx)).toBe(EXIT.ok);
+    expect(now.io.stdout).toBe('Asha is removed.\nIn Zero Trust > Access > Applications > Accountability partner > Policies > Partner, remove asha@example.com. Optionally, My Team > Users > them > Revoke session.\n');
+  });
+
+  it('by name, someone still sharing wins over someone of the same name who left; an id reaches either (review 4, B4)', async () => {
+    const LEFT = '01JASHALEFTAAAAAAAAAAAAAAA';
+    const two = { enabled: true, people: [{ ...asha, id: LEFT, state: 'left' }, { ...asha, state: 'invited' }] };
+    const ctl = fakeCtl({ 'GET /v1/people': ok(two), [`POST /v1/people/${ASHA}/agreement`]: ok({ ok: true }), [`POST /v1/people/${LEFT}/remove`]: ok({ ok: true }) });
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['ask', 'Asha', '--see', 'sleep'], c.ctx)).toBe(EXIT.ok);
+    expect(ctl.calls.some((x) => x.path === `/v1/people/${ASHA}/agreement`)).toBe(true);
+    expect(await people.run(['remove', LEFT, '--forget'], c.ctx)).toBe(EXIT.ok);
+    expect(ctl.calls.find((x) => x.method === 'POST' && x.path.endsWith('/remove'))?.path).toBe(`/v1/people/${LEFT}/remove`);
+  });
+
   it('prefs sets the day summary, the review push and quiet hours, and prints them', async () => {
     const prefs = { urgentBreaksQuiet: true, alertCaps: { hour: 3, day: 10, urgentDay: 2 }, muteUntil: null, reviewPush: false, summaryAt: '21:00', quiet: { from: '23:00', to: '07:00' } };
     const ctl = fakeCtl({ 'PATCH /v1/people/prefs': ok({ prefs }) });
