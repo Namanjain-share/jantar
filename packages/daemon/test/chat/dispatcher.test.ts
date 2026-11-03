@@ -83,7 +83,8 @@ describe('Dispatcher', () => {
     expect(statSync(path).mode & 0o777).toBe(0o600);
     const c = client(path);
     c.send(JSON.stringify({ token: 'wrong' }));
-    await settle();
+    // 0.12.1: wait for the close itself (a loaded runner took longer than settle's 50 ms), at most 5 s.
+    for (let i = 0; i < 100 && !c.closed(); i++) await settle();
     expect(c.closed()).toBe(true);
     expect(fails).toEqual(['not_isolated']);
   });

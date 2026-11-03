@@ -112,6 +112,8 @@ describe('the read queue', () => {
     ]);
     // When each line was written its job was not yet listed as ended.
     for (const s of t.listedAtWrite) expect(s === 'saved' || s === 'failed', `listed ${s} before its line was written`).toBe(false);
+    // 0.12.1: and it was still listed: a stopped job is never missing from the list while its line is written.
+    for (const s of t.listedAtWrite) expect(s, 'a job missing from the list while its failed line was written').not.toBeNull();
     expect(t.queue.list()).toMatchObject([
       { id: `captures:${RID_A}`, state: 'failed', reason: INTEL_READ_REASONS.stopped },
       { id: `captures:${RID_B}`, state: 'failed', reason: INTEL_READ_REASONS.stopped },
