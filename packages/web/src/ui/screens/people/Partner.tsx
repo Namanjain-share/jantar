@@ -59,6 +59,7 @@ import type {
 } from '@jantar/protocol/people';
 import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
+import { chipClass } from '../../../people-shared/chip.js';
 import { FoodRead, foodTodayLine } from '../../../people-shared/FoodRead.js';
 import { useEffect, useState } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
@@ -1189,13 +1190,14 @@ function TodosTab({ client, pid, name, sees, canAssign, editHers, onAssign }: { 
       ) : null}
       {active.length ? (
         <div role="group" aria-label={`${name}'s projects`} className="mt-12 flex flex-wrap gap-8">
-          <Button variant={only === null ? 'primary' : 'outline'} className="min-h-44" aria-pressed={only === null} onClick={() => setOnly(null)}>
+          {/* Chips that wrap (people-shared/chip): a 60-character project name stays whole, with its count. */}
+          <button type="button" className={chipClass(only === null ? 'primary' : 'outline')} aria-pressed={only === null} onClick={() => setOnly(null)}>
             All
-          </Button>
+          </button>
           {active.map((p) => (
-            <Button key={p.id} variant={only === p.id ? 'primary' : 'outline'} className="min-h-44" aria-pressed={only === p.id} onClick={() => setOnly(only === p.id ? null : p.id)}>
+            <button key={p.id} type="button" className={chipClass(only === p.id ? 'primary' : 'outline')} aria-pressed={only === p.id} onClick={() => setOnly(only === p.id ? null : p.id)}>
               {names.get(p.id)} · {p.open}
-            </Button>
+            </button>
           ))}
         </div>
       ) : null}
@@ -1341,9 +1343,9 @@ function AssignSheet({
           </label>
         </div>
         {choices.length ? (
-          <label className="flex flex-col gap-4">
+          <label className="flex min-w-0 max-w-full flex-col gap-4">
             <span className="type-small text-ink-2">{name}'s project (optional)</span>
-            <select className={field} value={project} onChange={(e) => setProject(e.target.value)}>
+            <select className={`${field} w-full min-w-0 max-w-full`} value={project} onChange={(e) => setProject(e.target.value)}>
               <option value="">None</option>
               {choices.map((p) => (
                 <option key={p.id} value={p.id}>

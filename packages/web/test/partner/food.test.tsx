@@ -127,7 +127,13 @@ describe('her food log (Health › Food)', () => {
     fireEvent.click(screen.getByLabelText('Keep for one tap'));
     fireEvent.click(screen.getByRole('button', { name: 'Log' }));
     await waitFor(() => expect(foodAdd).toHaveBeenCalledWith({ day: DAY, name: 'Rice', kcal: 200, save: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'Dal · 250' }));
+    // Review 5, UX 1: a saved food's chip wraps within her screen (an 80-character name never pushes it sideways).
+    const chip = screen.getByRole('button', { name: 'Dal · 250' });
+    expect(chip.className).not.toMatch(/whitespace-nowrap|(^|\s)h-\d/);
+    expect(chip.className).toEqual(expect.stringContaining('max-w-full'));
+    expect(chip.className).toEqual(expect.stringContaining('[overflow-wrap:anywhere]'));
+    expect(chip.className).toEqual(expect.stringContaining('min-h-44'));
+    fireEvent.click(chip);
     await waitFor(() => expect(foodAdd).toHaveBeenCalledWith({ day: DAY, savedId: DAL }));
     // Edit: calories emptied is none (0).
     fireEvent.click(screen.getByRole('button', { name: 'Edit Poha' }));

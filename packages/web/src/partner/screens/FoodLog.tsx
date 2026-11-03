@@ -12,6 +12,7 @@ import type { FoodDay, FoodEntry } from '@jantar/protocol';
 import type { FoodLevel } from '@jantar/protocol/people-core';
 import { useCallback, useEffect, useState } from 'react';
 import { kcalWord, mealsWord } from '../../people-shared/FoodRead.js';
+import { chipClass } from '../../people-shared/chip.js';
 import { dayLabel, shiftDay } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
 import type { PersonApi } from '../api.js';
@@ -69,10 +70,10 @@ export function FoodLog({ api, owner, level, day: dayIn, chat, tick }: { api: Pe
       {data.saved.length ? (
         <div className="mt-8 flex flex-wrap gap-8" aria-label="Saved foods">
           {data.saved.map((s) => (
-            <Button key={s.id} variant="outline" className="min-h-44" onClick={() => run(api.foodAdd({ day, savedId: s.id }))}>
+            <button key={s.id} type="button" className={chipClass()} onClick={() => run(api.foodAdd({ day, savedId: s.id }))}>
               {s.name}
               {s.kcal > 0 ? ` · ${s.kcal}` : ''}
-            </Button>
+            </button>
           ))}
         </div>
       ) : null}

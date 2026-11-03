@@ -131,9 +131,9 @@ export function TodoSheet({ t, owner, shared, api, close, run, undo, projects }:
               </label>
             </div>
             {projects && projects.length ? (
-              <label className="flex flex-col gap-4">
+              <label className="flex min-w-0 max-w-full flex-col gap-4">
                 <span className="text-small text-ink-2">Project</span>
-                <select className={field} value={project} onChange={(e) => setProject(e.target.value)}>
+                <select className={`${field} w-full min-w-0 max-w-full`} value={project} onChange={(e) => setProject(e.target.value)}>
                   <option value="">None</option>
                   {projects
                     .filter((p) => p.status === 'active' || p.id === t.projectId)

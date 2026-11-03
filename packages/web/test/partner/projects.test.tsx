@@ -158,6 +158,9 @@ describe('her To-dos and Reminders with projects', () => {
     // Only active projects are offered.
     const pick = screen.getByLabelText('Project (optional)') as HTMLSelectElement;
     expect([...pick.options].map((o) => o.textContent)).toEqual(['None', '🌱 Garden', 'Study']);
+    // Review 5, UX 3: a 60-character project name never widens her Add row (or her Edit sheet) past her screen.
+    const fits = (el: HTMLElement) => ['w-full', 'min-w-0', 'max-w-full'].every((c) => el.classList.contains(c)) && ['min-w-0', 'max-w-full'].every((c) => el.parentElement?.classList.contains(c));
+    expect(fits(pick)).toBe(true);
     fireEvent.change(screen.getByLabelText('New to-do'), { target: { value: 'Read chapter 3' } });
     fireEvent.change(pick, { target: { value: STUDY } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
@@ -166,6 +169,7 @@ describe('her To-dos and Reminders with projects', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More for Buy seeds' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Buy seeds' })).getByRole('button', { name: 'Edit' }));
     const sheet = screen.getByRole('dialog', { name: 'Buy seeds' });
+    expect(fits(within(sheet).getByLabelText('Project'))).toBe(true);
     fireEvent.change(within(sheet).getByLabelText('Project'), { target: { value: STUDY } });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(updateTodo).toHaveBeenCalledWith(SEEDS, { title: 'Buy seeds', due: null, projectId: STUDY }));
@@ -219,6 +223,11 @@ describe('his side of her projects', () => {
     expect(await screen.findByText(/in 🌱 Garden/)).toBeTruthy();
     const chips = screen.getByRole('group', { name: "Asha's projects" });
     expect(within(chips).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', '🌱 Garden · 1', 'Study · 0']);
+    // Review 5, UX 3 and 4: each chip wraps a long name with its count, and is at least 44 by 44 ("All" too).
+    for (const b of within(chips).getAllByRole('button')) {
+      expect(b.className, b.textContent ?? '').not.toMatch(/whitespace-nowrap|(^|\s)h-\d/);
+      for (const c of ['min-h-44', 'min-w-44', 'max-w-full', '[overflow-wrap:anywhere]']) expect(b.classList.contains(c), `${b.textContent} ${c}`).toBe(true);
+    }
     fireEvent.click(within(chips).getByRole('button', { name: '🌱 Garden · 1' }));
     expect(screen.getByRole('heading', { name: 'Open in 🌱 Garden' })).toBeTruthy();
     expect(screen.queryByText('Call the bank')).toBeNull();
@@ -243,6 +252,7 @@ describe('his side of her projects', () => {
     const sheet = await screen.findByRole('dialog', { name: 'Assign to Asha' });
     const pick = (await within(sheet).findByLabelText("Asha's project (optional)")) as HTMLSelectElement;
     expect([...pick.options].map((o) => o.textContent)).toEqual(['None', '🌱 Garden', 'Study']);
+    expect(['w-full', 'min-w-0', 'max-w-full'].every((c) => pick.classList.contains(c))).toBe(true);
     fireEvent.change(within(sheet).getByLabelText('To-do'), { target: { value: 'Water the basil' } });
     fireEvent.change(pick, { target: { value: GARDEN } });
     expect(within(sheet).getByText(/Asha sees it at once in 🌱 Garden, marked "From you"/)).toBeTruthy();

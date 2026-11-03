@@ -202,9 +202,10 @@ function AddTodo({ api, run, projects, projectId, reminder = false }: { api: Per
           <input type="time" className={field} value={time} disabled={!day} onChange={(e) => setTime(e.target.value)} />
         </label>
         {!projectId && projects.length ? (
-          <label className="flex flex-col gap-4">
+          // A 60-character project name never widens the row past her screen (review 5, UX 3).
+          <label className="flex min-w-0 max-w-full flex-col gap-4">
             <span className="text-small text-ink-2">Project (optional)</span>
-            <select className={field} value={pick} onChange={(e) => setPick(e.target.value)}>
+            <select className={`${field} w-full min-w-0 max-w-full`} value={pick} onChange={(e) => setPick(e.target.value)}>
               <option value="">None</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
