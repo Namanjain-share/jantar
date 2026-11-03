@@ -51,6 +51,8 @@ import { useTodoClients } from '../life/todos/clients.js';
 import { workClient } from './client.js';
 import { filesHref, healthParts, logLine, newSessionHref } from './model.js';
 
+const NO_TODOS: readonly Todo[] = [];
+
 // The Log sheet is the clients chunk's: a project's hub loads it on its first Log.
 const LogSheet = lazy(() => import('./LogSheet.js').then((m) => ({ default: m.LogSheet })));
 
@@ -96,7 +98,8 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
   const todoSheet = useSheet<Todo>();
   const projectSheet = useSheet<ProjectView>();
   const logSheet = useSheet<null>();
-  const clients = useTodoClients(hub?.open ?? [], todoSheet.open);
+  // Only the sheet's Client list: its todos' rows don't name a client (most are the project's own).
+  const clients = useTodoClients(NO_TODOS, todoSheet.open);
   const close = usePaneClose();
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
