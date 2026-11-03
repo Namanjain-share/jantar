@@ -234,6 +234,23 @@ describe('follow-ups and projects with a client: his space only (O13, W-T4)', ()
     expect(core.db.prepare('SELECT contact_id FROM todos WHERE id = ?').get(t.id)).toEqual({ contact_id: null });
   });
 
+  it("his todos list takes ?contact= (one client's follow-ups), with the project and text filters", () => {
+    const c = add('Riya Sharma');
+    const other = add('Sam Lee');
+    const p = ok(todos.createProject({ name: 'Site' }, PHONE)).id;
+    const a = ok(todos.createTodo({ title: 'Send the quote', contactId: c.id, projectId: p, due: { day: '2026-11-05' } }, PHONE)).id;
+    const b = ok(todos.createTodo({ title: 'Call back', contactId: c.id, due: { day: '2026-11-04' } }, PHONE)).id;
+    ok(todos.createTodo({ title: 'Call back', contactId: other.id }, PHONE));
+    ok(todos.createTodo({ title: 'Plain' }, PHONE));
+    const ids = (q: Record<string, unknown>) => ok(todos.listTodos({ done: false, ...q } as never)).todos.map((t) => t.id);
+    expect(ids({ contact: c.id })).toEqual([b, a]);
+    expect(ids({ contact: c.id, project: p })).toEqual([a]);
+    expect(ids({ contact: c.id, project: 'none' })).toEqual([b]);
+    expect(ids({ contact: c.id, q: 'QUOTE' })).toEqual([a]);
+    ok(todos.setDone(b, true, PHONE));
+    expect(ids({ contact: c.id, done: true })).toEqual([b]);
+  });
+
   it('a todo or a project outside his space never takes a client, a deal or a business', () => {
     const c = add('Riya Sharma');
     const hers = todos.inSpace(HER_ID);

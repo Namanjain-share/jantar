@@ -84,7 +84,8 @@ import { hhmmOf, nextRepeat, projectHealth, projectWeeks, shiftMonths, snoozeTar
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule, TodosWorkLinks } from '../../contracts.js';
 import type { PersonTodo } from '@jantar/protocol/people';
 import { armTodo, personOfSpace, todoPingHandler } from './pings.js';
-import { TodosRepo } from './repo.js';
+import { DONE_LIST_MAX, TodosRepo } from './repo.js';
+import { foldText, holdsFolded } from '../../core/fold.js';
 
 const count = (n: number) => n.toLocaleString('en-US');
 const MINUTE_MS = 60_000;
@@ -371,6 +372,15 @@ class Todos implements TodosModule {
     const today = this.core.today();
     // v0.13: the owner's ?q= (title and notes, any case); her routes never pass one.
     const text = 'q' in q && q.q !== undefined ? q.q : undefined;
+    // v0.13 Work P2: the owner's ?contact= (one client's follow-ups, his space only).
+    const contact = 'contact' in q && q.contact !== undefined ? q.contact : undefined;
+    if (contact !== undefined) {
+      const needle = text !== undefined ? foldText(text) : null;
+      const todos = this.followUps(contact, q.done).filter(
+        (t) => (q.project === undefined || (q.project === 'none' ? t.projectId === undefined : t.projectId === q.project)) && (needle === null || holdsFolded(needle, t.title, t.notes)),
+      );
+      return { ok: true, value: { today, todos: q.done ? todos.slice(0, DONE_LIST_MAX) : todos } };
+    }
     if (text !== undefined) {
       const todos = this.repo.matching(text, q.done, q.project);
       return { ok: true, value: { today, todos: q.done ? todos : todos.sort(byDue) } };

@@ -26,6 +26,8 @@ import {
   TodaySchema,
   TodoBodySchema,
   TodoPatchSchema,
+  TodosQuerySchema,
+  OwnerTodosQuerySchema,
   ChatModuleSchema,
 } from '../src/index.js';
 import {
@@ -74,6 +76,12 @@ describe('v0.13 P2: owner-only Work fields on his todo and project routes', () =
     expect(ProjectPatchSchema.safeParse({ business: null }).success).toBe(false);
     expect(Object.keys(TodoBodySchema.shape).sort()).toEqual(['due', 'notes', 'priority', 'projectId', 'repeat', 'title']);
     expect(Object.keys(ProjectBodySchema.shape).sort()).toEqual(['due', 'emoji', 'folder', 'name', 'notes', 'status']);
+  });
+
+  it("his todos list takes ?contact=; the base query her routes reuse does not", () => {
+    expect(OwnerTodosQuerySchema.parse({ contact: ID })).toMatchObject({ contact: ID, done: false });
+    expect(OwnerTodosQuerySchema.safeParse({ contact: 'acme' }).success).toBe(false);
+    expect(TodosQuerySchema.parse({ contact: ID })).not.toHaveProperty('contact');
   });
 
   it('the lock-screen setting is off by default (no client words on a locked phone)', () => {

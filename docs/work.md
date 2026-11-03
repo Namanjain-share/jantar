@@ -128,7 +128,8 @@ While Work is on, tapping it opens the client.
 
 A project can have a client too (and a business, from Work's settings).
 Only your own todos and projects take a client: a shared list or your
-partner's to-do never can.
+partner's to-do never can. The todos list takes `?contact=<id>` for one
+client's follow-ups.
 
 ### Meetings and clients
 
