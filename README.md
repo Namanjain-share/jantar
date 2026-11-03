@@ -38,6 +38,17 @@ shows the cards to answer and the next usage resets.
 
 More: [the app, screen by screen](docs/phone-app.md).
 
+### On an iPad, and in a wide window
+
+On an iPad Jantar has a sidebar with names, phone-size type and 44 pt
+targets, and keeps what you typed when you turn it. In a wide window, on
+an iPad or a Mac, lists open their items beside them, Today is a page of
+cards, and Chat opens beside any screen (⌘J).
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/board-ipad-air-l-dark.png"><img src="docs/img/board-ipad-air-l.png" alt="The Board on an 11-inch iPad in landscape: the sidebar with names, the ledger, and beside it the question, plan and command waiting on you and the next resets."></picture>
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/today-mac-1440-dark.png"><img src="docs/img/today-mac-1440.png" alt="Today in a 1440 px Mac window: medicines, Claude, what's due, food and bills as cards in three columns, under the strip of Life's places."></picture>
+
 ### Answer from your phone
 
 Permission prompts, plans and questions show as buttons in Claude's own

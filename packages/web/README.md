@@ -44,9 +44,32 @@ pnpm --filter @jantar/web typecheck
 | `/devices` | **Devices**: this device (theme, install, notifications and their kinds), paired devices (admin: revoke by holding), pair a device (QR dialog with a countdown) |
 | `/pair#c=<code>` | **Pair** a phone or browser, then the Home Screen and notifications steps. The code stays in the fragment, is removed from the address bar at once, and is only sent (in a POST body) after a tap |
 
-Cmd-K jumps to any session or account; `j`/`k`, `↵`, `1`-`9`, `a`, `d`, `r`,
-`?` and `g b/a/l/d` work on a desk (direction 5.9). From 1024 px a session
-opens beside the ledger; the phone gets a header, the strip and a tab bar.
+Cmd-K jumps to any session or account; the keys (`src/ui/shell/keys.ts`,
+the `?` list in `Shortcuts.tsx`) work at any width once a keyboard has been
+seen (direction 5.9; build plan 0.11 3.1).
+
+## Size classes and the chrome (0.11)
+
+`src/ui/shell/layout.ts` is the one layout context (`useLayout()`): the
+window's `size` (compact under 640, medium, regular from 1024), whether
+the pointer is `coarse`, the `chrome` it gets, `keyboard` (a hardware
+keyboard has been seen: `lib/input.ts`) and `kbUp` (the on-screen keyboard
+is up: `lib/viewport.ts`). The chrome is the only thing that follows the
+window:
+
+| chrome | when | what |
+|---|---|---|
+| `phone` | under 768 with a fine pointer, under 640 with a coarse one | the header, the strip and the tab bar; a session full screen |
+| `desk` | a fine pointer from 768 (a Mac) | the 56 rail, the 48 top bar, the 24 status bar, the Mac's density (`desk:`) |
+| `touch` | a coarse pointer from 640 (an iPad) | the sidebar (from 1024) or the labelled rail, from `TouchShell.tsx`'s own chunk; the phone's type and 44 pt targets |
+
+Everything inside the chrome lays out by its own pane: each pane is a
+query container and screens use `@md:` and the other container sizes
+(`styles/tokens.css`), never `md:` or `useMedia`. `kit/SplitPane.tsx` puts
+a list beside its open item from a pane of 800 and lets the list fill the
+pane with nothing open; `kit/Columns.tsx` deals cards into columns;
+`kit/Pane.tsx` is every other place's scroll box. The shell is one tree at
+every chrome, so a rotation or a window drag never remounts the place.
 
 ## How it talks to the daemon
 

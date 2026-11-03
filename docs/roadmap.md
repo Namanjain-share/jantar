@@ -66,4 +66,10 @@ which of these you need, and why, helps decide.
 
 ## Later
 
+- Today's Next meeting, Cafés and Money month cards (0.11 shows the cards
+  Today's one call already has data for).
+- A desk mode for an iPad on a stand: the Board, a session and Chat side
+  by side.
+- A form sheet's swipe down, checked on a real iPad (0.11 takes it from
+  the phone's sheet and has tested it in Chromium only).
 - A native app.

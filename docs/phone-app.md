@@ -39,18 +39,73 @@ long), even though its turn is over. Its header says "1 workflow running ·
 
 On a phone the tab bar holds Board, Today, Files, Accounts and More. With
 Chat on it holds Board, Today, Chat, Files and More, and Accounts moves into
-More. On a Mac a session opens beside the board from 1024 px wide.
+More. On a Mac a session opens beside the board once the board's pane is
+800 px wide (a window of about 856).
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="img/board-desktop-dark.png"><img src="img/board-desktop.png" alt="The Board on a Mac: the sessions, the cards waiting on you, the next resets and new alerts."></picture>
 
-### Keys on a Mac
+### Wide windows and the iPad
 
-`⌘K` jumps to any session or account, `j`/`k` and `↵` move through the
-board, `1`-`9` open the nth session that needs you, and `?` shows the
-legend. `g b`, `g a`, `g l` and `g d` go to the Board, Accounts, Alerts and
-Devices. In a session, `a` allows (or sends the answer, or approves), `d`
-denies, `r` puts the cursor in the composer, `n` goes to the next one and
-`esc` back to the Desk.
+Every screen lays itself out by the room it has, on a Mac or an iPad
+(0.11). Where a place shows one item at a time (Alerts, Intel, Meetings,
+Cafés, Posts, Files), the list fills the window as a table or cards, and
+opening an item turns the list into a column beside it; Close or Esc goes
+back. Today is a page of cards, Todos, Medicines, Food and Finance put
+their sections side by side, and Chat keeps its days on the left and,
+from about 1180 px, what it changed and its photos on the right.
+
+| | Mac (a mouse or trackpad) | iPad (touch) |
+|---|---|---|
+| The frame | The rail, the top bar and the status bar from 768 px; a phone's tabs below | From 640 px: a sidebar with names from 1024 px (⌘\ folds it to a rail), a labelled rail below, the accounts strip and ⋯ (Devices, Keyboard shortcuts, the theme, Reload app) at its foot; a phone's tabs below 640 |
+| Text and targets | The Mac's type and density | The phone's type, and every control at least 44 pt |
+| Forms | A sheet near the top, 540 px wide | The same; a phone keeps its bottom sheet |
+| Chat beside the screen | The Chat button in the top bar, or ⌘J | The Chat button at the end of a screen's header, or ⌘J |
+
+Rotating an iPad or resizing a window keeps what you typed, a card's pick
+and its own answer, the open session and where you were in the list. With
+the on-screen keyboard up, the app fits above it. In the Home Screen app
+nothing sits under the status bar, the home indicator or the window
+controls.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="img/today-mac-1440-dark.png"><img src="img/today-mac-1440.png" alt="Today in a 1440 px Mac window: medicines, Claude, what's due, food and bills as cards in three columns."></picture>
+
+### Keys
+
+Keys work at any width once you have used a keyboard (a Mac from the
+start, an iPad after its first key press), and only then show their
+keycaps. **?** lists them all, the place you are in first; it is also in
+the iPad sidebar's ⋯ and in Devices. Every key has a control on screen.
+
+| Where | Keys | What it does |
+|---|---|---|
+| Anywhere | ⌘K (⌃K outside a text field) | Search or jump |
+| | ⌘J | Chat beside this screen |
+| | ⌘\ | Show or hide the iPad's sidebar |
+| | ⌘1 … ⌘9 | Board, Today, Chat, Files, Accounts, Alerts, Devices, Intel, Meetings (one that is off says so) |
+| | g then b t c l a d i m f | Board, Today, Chat, Alerts, Accounts, Devices, Intel, Meetings, Files |
+| | Esc, ⌘. | Back: close what is open |
+| | ⌘Z (outside a text field) | Undo the change shown on screen, never one you can't see |
+| Board | j / k, 1-9, ↵ | Next / previous session; open the nth waiting; open the first |
+| Session | a / d | Allow, approve or send the answer / deny |
+| | ⌥1-⌥4, ⌘↵ | Pick a question's option; send |
+| | r, n | Type to Claude; the next session needing you |
+| | t / s / f | Transcript, Screen, Files |
+| | ⌘↑ / ⌘↓ | Previous / next session waiting on you |
+| | ↑ ↓ ↵ | With Keys open on the screen: move and Enter |
+| Lists | ↑ / ↓ (or j / k), ↵, Esc | Move, open beside the list, back to the row |
+| | c, / | New; search this list |
+| Todos | e / x / ⌫ | Edit, done, delete (with Undo) |
+| Cafés | 1-5, v | The open café's stars (with Undo); log a visit |
+| Posts | ⌘C, m, l | Copy the open post, mark it posted, log a comment |
+| Chat | ↵ / ⇧↵, ⌘⇧A | Send / new line; add a photo |
+| Sheets | ⌘↵, Esc | Save, cancel |
+
+In a text field only ⌘K, ⌘J, ⌘\, ⌘1-⌘9, ⌘↵, Esc and ⌘. reach Jantar;
+the field keeps ⌘Z, ⌘ and ⌥ with an arrow, and every ⌃ key (⌃K deletes to
+the end of the line there). In a browser tab, the browser may keep ⌘1-⌘9
+(its tabs) and ⌘J (Safari's Jump to Selection): g then a letter and the
+Chat button always work. To turn the keys on or off on one device:
+Devices › This device › Keyboard.
 
 ## Their app (Accountability partner)
 
@@ -262,6 +317,15 @@ jantar chat clear    # deletes the history (what it added stays)
 
 The thread is one per Mac, the same on every phone and for Siri, kept on
 the Mac for 30 days. Everything about it: [Chat](assistant.md).
+
+On a wide window (0.11) Chat lists its days on the left, with a search,
+and from about 1180 px what it changed that can still be undone and its
+photos on the right; a narrow one keeps them behind **‹ Days**. The
+**Chat** button, or ⌘J, opens the same thread beside any screen, on an
+iPad or a Mac: a 360 px column where the screen keeps 560 beside it,
+otherwise over its right edge. There a **Looking at** chip above the box
+names the café, post, Intel item, meeting or session on screen, so "rate
+this 4" knows what you mean; × takes it off.
 
 ## Controls and screenshots
 

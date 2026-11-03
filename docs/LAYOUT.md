@@ -588,3 +588,85 @@ Tests: `packages/protocol/test/v010-chat.test.ts`,
 `test/fixtures/test/fake-claude-chat.test.ts` (the fake claude's Chat
 mode: an MCP client over the run's one server), and end to end in
 `test/integration/{v010-chat,v010-siri,web-v010-chat}.integration.test.ts`.
+
+### v0.11.0
+
+Wide windows and the iPad, in the web app only: no protocol or daemon
+change except Chat's `context` (below), and no data change.
+
+**Size classes and the chrome** (`ui/shell/layout.ts`, one
+`LayoutProvider` with four `matchMedia` listeners; `useLayout()` gives
+`size`, `coarse`, `chrome`, `keyboard` and `kbUp`). The chrome follows the
+pointer and the window: a fine pointer gets the phone's chrome below 768
+and the Mac's (`desk`: 56 rail, 48 top bar, 24 status bar) from 768; a
+coarse pointer gets the phone's below 640 and the touch shell from 640
+(`ui/shell/TouchShell.tsx`, its own chunk: a 220 sidebar from 1024 with
+the accounts strip and a `⋯` menu, a labelled 72 rail below). The Mac's
+density (`desk:`) needs a fine pointer; a touch screen keeps the phone's
+type scale and 44 pt targets at every width. `lib/input.ts` sets
+`data-input` from the last pointer (hover styles key on it, as an iPad
+says `hover: none` with a trackpad) and guesses `keyboard` (a key outside
+a field, a modifier, an arrow, Tab or Esc, or a 30-120 px shrink of the
+visual viewport with a field focused); Devices can set it On or Off.
+`lib/viewport.ts` follows the visual viewport while a field has focus
+(`--vvh`, `--vvt`, `--kb`, `kbUp`), and popups portal into the shell's
+layer (`kit/layer.ts`), so the on-screen keyboard never covers a pane's
+bottom.
+
+**Panes by their own width** (D1). Every pane is a query container, so a
+screen's `@md:` and the rest (`--container-*` in `styles/tokens.css`: sm
+480, md 640, two 760, split 800, wide 900, props 940, lg 960, xl 1180)
+read the pane, never the window; `md:` and `useMedia(` outside the chrome
+are refused by `test/design-rules.test.ts`. `kit/SplitPane.tsx` is a list
+and its detail: split from a pane of 800 (one ResizeObserver that sets
+state only at 800 and 1180), the list column 340, or 440 from 1180,
+Chat's 300; with nothing open the list fills the pane (`empty="fill"`,
+D2); in single mode the inactive slot renders nothing; `overlay` calls the
+list over an open item (Board, Chat; D8). `kit/Columns.tsx` deals cards
+into columns. `kit/Pane.tsx` is every other place's keyed scroll box;
+`usePaneScroll` keeps each scroll by key. One shell tree at every chrome
+(the place is always slot 4, and the session is one tree for the phone
+and the desk), and `lib/drafts.ts` keeps a session's, Chat's and a new
+session's draft and chips across remounts and reloads, so a rotation or a
+window drag loses nothing. Form sheets are the phone's Base UI Drawer,
+placed top-anchored and 540 wide by CSS (D9), so a resize across 640 / 768
+keeps the form's own fields.
+
+**Keys** (`ui/shell/keys.ts`, `ui/kit/rows.ts`, `ui/shell/Shortcuts.tsx`):
+keys at every width once `keyboard` is on, keycaps only then; the field
+pass-list; ⌘1-⌘9 in `NAV` order; ⌘. as Esc; ⌘Z scoped to the Undo on
+screen (`[data-undo]`); lists by `[data-row]` with a roving tabindex;
+`c` clicks the place's `[data-new]`, `/` its search field; the `?`
+overlay in its own chunk; an in-app `Link` focuses the new pane's heading.
+
+**Chat beside any screen** (`screens/chat/ChatDock.tsx`, re-exported from
+`Chat.tsx` so it shares Chat's chunk): a 360 column where the panes keep
+560, else over their right edge; open or closed per device
+(`shell/chatDock.ts`). The "Looking at" chip (`shell/lookingAt.ts`) sends
+`context: { kind, id }` on `POST /v1/chat` to a daemon from 0.11 on
+(`packages/protocol/src/chat.ts`); the daemon resolves the id itself
+(`chat/service.ts` `lookingAt`), keeps the label on the turn and writes
+one `<looking>` line for the run (`chat/input.ts` `lookingLine`): a Life
+item by its own label, Intel, a meeting or a session by kind and id only.
+
+**Performance.** 0.10's first load was 278.4 kB of `MAIN_JS_MAX`
+280 kB. 0.11 made room first: Accounts, Alerts and Devices load from their
+own chunks (c01), which brought main to about 266 kB; the wide panes are in
+the screens' chunks, the touch shell, the `⋯` menu, the popovers
+(`kit/Popover.tsx`) and the `?` overlay in chunks of their own, and main
+ends at 274.6 kB with 13.7 kB of CSS. `MAIN_JS_MAX` was not raised. The
+Drawer and Base UI's shared popup runtime (about 20 kB) stay in main on
+purpose (D12): out of main they would be charged to every lazy screen and
+put Today over its 80 kB. The lazy screens at 0.11: Today 69.3, Places
+55.8, Posts 52.1, Intel 50.4, Meetings 49.9, Chat 49.7, Todos 50.0, Food
+48.0, Money 46.7, Meds 16.0, Accounts 11.0, Devices 10.6, TouchShell 8.8,
+Alerts 5.5, Shortcuts 2.5 (kB with what each pulls in).
+
+Tests: `packages/web/test/{layout,input,viewport,split-pane,columns,drafts,keys,layout-metric}.test.ts(x)`
+and the screens' own files; end to end in
+`test/integration/web-v011-layout.integration.test.ts` (every place at
+the iPad and Mac sizes, fine and touch, light and dark: no sideways
+scroll, 44 pt on touch, the 35 % empty-width rule from 1024 px, the safe
+areas and the corners, nested scrollers, type, keycaps, rotation by DOM
+identity, the on-screen keyboard and hover), with its probe in
+`layout-probe.ts`.

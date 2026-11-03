@@ -1819,6 +1819,19 @@ tty, pid or process start; an account never its email, masked or not.
 Photos go inline as base64 image blocks after a daemon-written label;
 the run never gets a path.
 
+0.11 adds the "Looking at" chip (Chat beside a screen). `POST /v1/chat`
+may carry `context: { kind, id }` (`ChatSendBodySchema` stays strict: nine
+kinds, and an id of 1-80 letters, digits, `-` and `_`, so never a URL, a
+path or words). The client sends only that. The daemon finds the item
+itself, drops an id it doesn't know or whose part is off, keeps its label
+on the turn for the phone, and writes the one `<looking>` line the run
+reads, outside `<message>` and escaped like every other tag. A Life item
+is named by the label the daemon builds for it, as in a change row; an
+Intel item, a meeting or a session by its kind and id only, so no title,
+transcript or folder reaches the run without the tools' framing, and
+reading one taints the turn exactly as in 0.10. The link rule is
+unchanged: the chip never makes a link the user's.
+
 ### The run, the bridge and the init gate
 
 - One headless `claude -p` per message through the shared runner, on an

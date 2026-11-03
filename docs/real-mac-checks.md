@@ -489,6 +489,46 @@ On the same two phones (owner and partner):
 - A list item ticked on one phone shows "Ticked by …" on the other.
 - A café deleted on one phone: the other gets one notification.
 
+## iPad checks (0.11)
+
+0.11 was built and tested in Chromium (Playwright's iPad contexts: touch,
+the iPadOS 26 user agent, five touch points, the Home Screen app's insets
+through the DevTools protocol, and a stand-in visual viewport for the
+on-screen keyboard). Chromium is not WebKit, and Chrome's device toolbar
+emulates the width, the pixel ratio and touch, not Safari, the insets or
+the keyboard. **None of these has been run on a real iPad yet.** Until
+each is, 0.11 uses the default in its row.
+
+| # | Check | Default until checked | If the check says otherwise |
+|---|---|---|---|
+| 1 | `pointer`, `hover`, `any-pointer`, `any-hover` with the Magic Keyboard's trackpad, a mouse and a Pencil; does `pointermove` say `mouse` from the trackpad? | every iPad is `coarse`; hover tints only once `data-input="mouse"` | if the trackpad says `touch`, hover tints never show (hover is never needed) |
+| 2 | `env(safe-area-inset-*)` in the Home Screen app: full screen both ways, windowed, Slide Over | 24 top, 20 bottom, 0 at the sides | the values come from `env()` anyway; only the tests' insets change |
+| 3 | the window controls' size and place, and the resize handle's grab area | the top-left 80 x 52 and the bottom-right 24 x 24 stay free | the sidebar's 52 px header and its leading 80 (`shell/Sidebar.tsx`), the tab bar's 24 (`shell/TabBar.tsx`), and the layout suite's corners |
+| 4 | the status bar's text over the light theme with `black-translucent` | keep `black-translucent` | `lib/theme.ts` sets `default` for the light theme |
+| 5 | `innerHeight - visualViewport.height` and `offsetTop` with the docked, floating and hardware keyboards (the shortcut bar), both ways, and after dismissing | a 30-120 px shrink is the shortcut bar (a keyboard is attached), over 200 the on-screen keyboard; `offsetTop` clamped, and reset when the field loses focus | the thresholds in `lib/input.ts` and `lib/viewport.ts`, and the browser test's numbers |
+| 6, 11 | which of ⌘K, ⌘J, ⌘\, ⌘1-⌘9, ⌘., ⌘Z, ⌘↑, ⌘⇧A and ⌘↵ reach the page, in the Home Screen app and in a Safari tab; does `preventDefault` stop Safari's own action; what Esc and ⌘. send | the whole key map ships; every key has a control on screen | a key the device keeps is dropped from the `?` list there |
+| 7 | the width of a half-screen window and of Slide Over (iPadOS 26) | narrower than 640 is a phone's layout | `(min-width: 640px)` and the test sizes |
+| 8 | `contextmenu` on a two-finger click and on a long press; do the long-press menu and iOS's callout both show? | long press 500 ms; a `contextmenu` within a second of it is ignored; rows set `-webkit-touch-callout: none` | nothing, if `contextmenu` never fires on touch |
+| 9 | dragging photos and files from Photos and Files into Chat (windowed): their types and names, several at once | `image/*` only; HEIC goes through `session/attach/convert.ts` | the photo button stays the way in |
+| 10 | does a left-edge swipe fight a system gesture in the Home Screen app? | the list over an item opens from "‹ Sessions" or "‹ Days" | nothing (0.11 has no swipe) |
+| 12 | the docked keyboard over a windowed app: what `visualViewport` says, and does `offsetTop` pan? | trust `visualViewport` | if it is wrong, a sheet stays at the top whenever a field has focus |
+| 13 | does Tab reach buttons in Safari, or only fields? | j / k and the arrows are the keyboard's way through lists | nothing |
+| 14 | does `paste` in a field carry an image `File` (from Photos, a screenshot)? | Chat reads `clipboardData.files` | the photo button remains |
+| 15 | Safari's form sheets: a swipe down on a top-anchored sheet | a swipe closes it, asking first when a field changed | refuse the `swipe` close reason (the sheet springs back) |
+
+**How to run them.** A small static page (the media queries above, `env()`
+insets and `visualViewport` numbers live, a log of `keydown`,
+`pointermove`, `contextmenu`, `paste` and `drop`, a 44 pt grid, and a
+manifest so Add to Home Screen opens it standalone), served from the Mac on
+the LAN with `python3 -m http.server 8790 --bind <the Mac's LAN address>`.
+It is not the daemon, so `~/.jantar` is untouched. Open it once in a Safari
+tab and once from the Home Screen, both ways, full screen and windowed.
+Then open Jantar itself in the Home Screen app on the iPad, rotate with a
+draft typed in a session and in Chat, open a todo and rotate, and type with
+the on-screen keyboard in a sheet, Chat and the palette: nothing may be
+lost or covered. Write what you saw in this table, with the iPad, iPadOS
+and Safari versions.
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear

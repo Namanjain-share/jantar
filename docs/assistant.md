@@ -62,6 +62,31 @@ Every example here is made up:
 Photos: tap the photo button (up to four a message). A receipt can
 become an expense, a menu a café's dishes, a whiteboard a todo list.
 
+## Chat beside any screen
+
+On an iPad or a Mac (0.11), the **Chat** button (in the Mac's top bar, at
+the end of a screen's header on an iPad) or ⌘J opens this same thread
+beside what you are looking at: a 360 px column where the screen keeps at
+least 560 px beside it, otherwise over its right edge (Esc, × or ⌘J
+closes it). It is closed until you open it and remembers that on this
+device; its box shares the Chat page's draft, and **Open in Chat** takes
+it full size. A phone's ⌘J opens the Chat tab.
+
+Beside a café, a post, an Intel item, a meeting or a session (or a todo
+or medicine a notification opened), a **Looking at** chip above the box
+names it, so "rate this 4 for vibe" or "add its first action item" knows
+what you mean. It goes with your message only while it shows; × takes it
+off. The phone sends only the item's kind and its id (`context: { kind,
+id }`, never a link or its words). Your Mac finds the item itself, drops
+an id it doesn't know, and adds one line of its own outside your message
+("The user is looking at Café · Sample Dosa House · 4★ (place id …)"). An
+Intel item, a meeting or a session is named by its kind and id only, since
+its title is someone else's text; Chat reads it with its tools, and that
+read marks the turn as 0.10 does, so its writes wait as Do it cards. The
+turn shows what it was about. A Mac on Jantar before 0.11 refuses the
+field, so the phone puts the chip's words at the start of your message
+instead.
+
 ## Changes, Undo and cards
 
 Under Chat's answer is the list of what it did, from the Mac's own record

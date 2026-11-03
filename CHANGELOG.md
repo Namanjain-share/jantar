@@ -5,6 +5,13 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## 0.12.0 (unreleased)
 
+Jantar uses the whole window. On a wide Mac window and on an iPad, lists
+open their items beside them, Today is a page of cards, and Chat keeps its
+days and changes in view. On an iPad it gets a labelled sidebar, phone-size
+type and 44 pt targets, keeps what you typed when you rotate, and stays
+clear of the on-screen keyboard. Nothing to do before upgrading: no data
+changes. A phone looks as it did.
+
 - **Today is a page of cards** on a wide window (from about 640 px of
   content, on a Mac or an iPad): Medicines, Claude, Due, Food, Bills and
   Posts side by side, three columns on a 1440 px Mac window and two at
