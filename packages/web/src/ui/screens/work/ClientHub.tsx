@@ -65,7 +65,7 @@ import type { WorkPrefs } from './Clients.js';
 import { workClient } from './client.js';
 import { STATE_LABEL, askLogCall, clientPath, deleteLines, mailHref, telHref, touchText, waHref } from './clientModel.js';
 import { LogSheet, type LogStart } from './LogSheet.js';
-import { dueWord, filesHref, logLine } from './model.js';
+import { dueWord, filesHref, inStageText, logLine } from './model.js';
 import { FromTag, Framed, useStageNames } from './parts.js';
 
 const MergeSheet = lazy(() => import('./Duplicates.js').then((m) => ({ default: m.MergeSheet })));
@@ -531,7 +531,7 @@ function useCallAsk() {
 function DealRow({ deal, own, today }: { deal: WorkDealCard; own: boolean; today: string }) {
   const facts = [
     deal.value !== undefined ? formatAmount(deal.value, deal.currency) : null,
-    deal.kind === 'open' ? `${deal.daysInStage} ${deal.daysInStage === 1 ? 'day' : 'days'} in stage` : null,
+    deal.kind === 'open' ? inStageText(deal.daysInStage) : null,
     deal.kind === 'open' ? (deal.next ? (deal.next.due ? `next ${dueWord(deal.next.due, today)}` : `next: ${deal.next.title}`) : 'no next step') : null,
   ].filter((x): x is string => x !== null);
   return (

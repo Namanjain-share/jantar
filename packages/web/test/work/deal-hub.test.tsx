@@ -51,6 +51,12 @@ const LOST = () =>
   });
 
 describe("a deal's page", () => {
+  it('a deal moved today says "in stage since today", never "new today in stage"', async () => {
+    setup({ request: { 'GET /v1/work/deals/:id': dealHub({ card: dealCard(IDS.deal, { client: { id: IDS.client, name: 'Acme' }, daysInStage: 0 }) }) } });
+    expect(await screen.findByText('in stage since today')).toBeTruthy();
+    expect(screen.queryByText(/new today/)).toBeNull();
+  });
+
   it('from one read: client, stage and days in it, value, source and close day; next step; follow-ups, project and log', async () => {
     setup();
     const title = await screen.findByRole('heading', { level: 1, name: 'Site rebuild' });

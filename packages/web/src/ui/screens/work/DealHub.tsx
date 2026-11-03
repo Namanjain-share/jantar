@@ -50,8 +50,8 @@ import { workClient } from './client.js';
 import { clientPath } from './clientModel.js';
 import { moveDeal, useDealMove, type StageRef } from './DealMove.js';
 import { DealSheet } from './DealSheet.js';
-import { closeText, closedText, daysInStageText, lostLabel, valueText } from './dealModel.js';
-import { dueWord, logLine } from './model.js';
+import { closeText, closedText, lostLabel, valueText } from './dealModel.js';
+import { dueWord, inStageText, logLine } from './model.js';
 import { Framed, FromTag } from './parts.js';
 
 // The Log sheet is the clients' chunk: a deal loads it on its first Log.
@@ -241,7 +241,7 @@ export function DealHub({ id, back, stages, onChanged, onDeleted }: DealHubProps
                   <span data-stage className="type-mono text-ink">
                     {c.stageName}
                   </span>
-                  {c.kind === 'open' ? <span className="type-mono text-ink-3">{daysInStageText(c.daysInStage)} in stage</span> : closedAt ? <span className="type-mono text-ink-3">{closedAt}</span> : null}
+                  {c.kind === 'open' ? <span className="type-mono text-ink-3">{inStageText(c.daysInStage)}</span> : closedAt ? <span className="type-mono text-ink-3">{closedAt}</span> : null}
                   <FromTag from={h.deal.from} />
                 </p>
                 {facts.length || closeAt ? (

@@ -245,7 +245,7 @@ function Funnel({ reply, card }: { reply: WorkInsightsReply; card: boolean }) {
       ) : (
         <ul aria-label="Funnel">
           {rows.map((r) => (
-            <Row key={r.stageId} label={r.name} value={pct(r.conversionRate)} sub={`${r.entered} in · ${r.advanced} on${r.lostFrom ? ` · ${r.lostFrom} lost` : ''}`} />
+            <Row key={r.stageId} label={r.name} value={pct(r.conversionRate)} sub={`${r.entered} came in · ${r.advanced} moved on${r.lostFrom ? ` · ${r.lostFrom} lost` : ''}`} />
           ))}
         </ul>
       )}

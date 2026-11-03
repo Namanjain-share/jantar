@@ -25,11 +25,14 @@ import {
   stagesPlan,
   type StageDraft,
 } from '../../src/ui/screens/work/dealModel.js';
+import { inStageText } from '../../src/ui/screens/work/model.js';
 import { IDS, dealCard, dealCards, stageCol, stageCols } from '../work-helpers.js';
 
 describe("a card's words", () => {
   it('days in stage, the next step (W12) and the close day', () => {
     expect([0, 1, 12].map(daysInStageText)).toEqual(['new today', '1 day', '12 days']);
+    // A page's line says it whole: never "new today in stage" (a deal's page) nor "0 days in stage" (a client's).
+    expect([0, 1, 12].map(inStageText)).toEqual(['in stage since today', '1 day in stage', '12 days in stage']);
     expect(nextStepText({ next: { todoId: IDS.todo1, title: 'Call', due: { day: '2026-01-16', time: '15:00' } } }, '2026-01-15')).toBe('next Tomorrow 15:00');
     expect(nextStepText({ next: { todoId: IDS.todo1, title: 'Send the deck' } }, '2026-01-15')).toBe('next: Send the deck');
     expect(nextStepText({}, '2026-01-15')).toBe('no next step');

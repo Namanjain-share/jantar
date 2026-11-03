@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../src/lib/api.js';
 import { layoutAt } from '../../src/ui/shell/layout.js';
 import { fakeApi, measureAs, preloadPlaces, renderApp, stateWith } from '../helpers.js';
-import { IDS, SETTINGS, STAGES, WORK_ON, clientAnswers, clientHub, contact, logRow, workRequest } from '../work-helpers.js';
+import { IDS, SETTINGS, STAGES, WORK_ON, clientAnswers, clientHub, contact, dealCard, logRow, workRequest } from '../work-helpers.js';
 
 preloadPlaces('work', 'clients');
 
@@ -111,6 +111,12 @@ describe("a client's hub", () => {
     await waitFor(() => expect(within(log).getByText('Stage · Proposal sent → Demo booked · 13 Jan')).toBeTruthy());
     expect(log.textContent).not.toContain(DEMO);
     expect(requested(api, 'GET', '/v1/work/stages')).toHaveLength(1);
+  });
+
+  it('a deal moved today says "in stage since today", never "0 days in stage"', async () => {
+    setup({ request: { 'GET /v1/work/clients/:id': clientHub({ deals: [dealCard(IDS.deal, { daysInStage: 0 })] }) } });
+    const deals = await screen.findByRole('region', { name: 'Deals' });
+    expect(deals.textContent).toMatch(/₹4,50,000 · in stage since today · no next step/);
   });
 
   it('a log with no stage move never reads the stages', async () => {

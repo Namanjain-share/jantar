@@ -62,6 +62,11 @@ export function healthParts(hub: Pick<ProjectHub, 'open' | 'health' | 'doneThisW
   return out;
 }
 
+/** "12 days in stage", "1 day in stage", "in stage since today" (never "0 days", nor "new today in stage"). */
+export function inStageText(days: number): string {
+  return days === 0 ? 'in stage since today' : `${days} ${days === 1 ? 'day' : 'days'} in stage`;
+}
+
 const LOG_KIND: Record<WorkLogRow['kind'], string> = {
   call: 'Call',
   meeting: 'Meeting',

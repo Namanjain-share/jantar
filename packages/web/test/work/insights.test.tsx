@@ -109,7 +109,7 @@ describe('Insights', () => {
     setup();
     await screen.findByRole('region', { name: 'Funnel' });
     const funnel = within(screen.getByRole('list', { name: 'Funnel' })).getAllByRole('listitem');
-    expect(funnel.map((r) => r.textContent)).toEqual(['New lead75%4 in · 3 on', 'Proposal sent–3 in · 1 on']);
+    expect(funnel.map((r) => r.textContent)).toEqual(['New lead75%4 came in · 3 moved on', 'Proposal sent–3 came in · 1 moved on']);
     const time = within(screen.getByRole('list', { name: 'Time in stage' })).getByRole('listitem');
     expect(time.textContent).toBe('Proposal sent10.5 daysmedian 9 days · 2 there now, oldest 12 days');
   });
