@@ -5,6 +5,7 @@
  * render as plain text (React escapes it; no HTML).
  */
 import type { PersonTodo } from '@jantar/protocol/people';
+import { dayLabel } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
 
 export function TodoRow({ t, owner, onDone, onAck }: { t: PersonTodo; owner: string; onDone: (done: boolean) => void; onAck?: () => void }) {
@@ -22,14 +23,14 @@ export function TodoRow({ t, owner, onDone, onAck }: { t: PersonTodo; owner: str
       <div className="min-w-0 flex-1 py-8">
         <p className={`break-words ${done ? 'text-ink-3 line-through' : ''}`}>{t.title}</p>
         <p className="text-small text-ink-2">
-          {t.due ? `${t.due.day}${t.due.time ? ` ${t.due.time}` : ''}` : null}
+          {t.due ? `${dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null}
           {t.by === '' ? ` · From ${owner}` : null}
           {t.by !== '' && t.editedBy === '' ? ` · Edited by ${owner}` : null}
           {t.snoozable === false ? ' · no snooze' : null}
         </p>
       </div>
       {t.by === '' && t.ask === 'ack' && !t.ackAt && onAck ? (
-        <Button variant="outline" size="sm" onClick={onAck}>
+        <Button variant="outline" className="min-h-44" onClick={onAck}>
           Got it
         </Button>
       ) : null}

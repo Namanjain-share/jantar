@@ -3,24 +3,44 @@
  * 4.1, 4.2), a lazy chunk: his main load doesn't carry it.
  *
  * - Header: her name, her status and line, "Asleep since" (see.sleep), and
- *   the day's progress with the Now step. Action row: Plan and Alert, one
- *   tap each.
- * - Tabs: Today (her plan as she sees it, each step's status, done time,
- *   report and check-in, late chips, Nudge; check-betweens; the concern
- *   lines; her evening review at his level, with Carry for his open
- *   steps), Plan (the editor), Health (the sleep week), Journal (read, and
- *   comment with comment.journal) and Alerts (both ways).
+ *   the day's progress with the Now step. Action row: Plan, Assign and
+ *   Alert, one tap each; a new alert from her shows here and on the tab.
+ * - Tabs (they wrap, none hidden): Today (her plan as she sees it, each
+ *   step's status, done time, report and check-in, late chips, Nudge on
+ *   today's open steps; check-betweens; the concern lines; her evening
+ *   review at his level, with Carry for his open steps), To-do (his items
+ *   and hers, Nudge, edit his, and hers with editHers.todos), Health (the
+ *   sleep week), Journal (read, and comment with comment.journal), Chat,
+ *   Lists and Alerts (both ways). The plan editor opens from Plan.
  * - An area she keeps private is a grey tile, "{name} keeps this private":
  *   never just absent, never a warning colour, never a count of days.
  * - Every read goes through his People routes, so each writes her view
  *   mark; he has no control here that writes in her name.
  */
 import { ALERT_KINDS, ALERT_REPLY_LABELS, STATUS_LABELS, type AlertKind } from '@jantar/protocol/people-core';
-import type { AlertsResponse, JournalEntryFull, JournalList, OwnerChatView, SharedItemsResponse, SharedListsResponse, PersonAlert, PersonToday, PersonView, PlanStep, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
+import type {
+  AlertsResponse,
+  AssignTodoBody,
+  JournalEntryFull,
+  JournalList,
+  OwnerChatView,
+  OwnerTodosView,
+  SharedItemsResponse,
+  SharedListsResponse,
+  PersonAlert,
+  PersonToday,
+  PersonTodo,
+  PersonView,
+  PlanStep,
+  ReviewView,
+  SleepWeek as Week,
+  TodoAsk,
+} from '@jantar/protocol/people';
 import type { ChatTurn, PlacesResponse } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { useEffect, useState } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
+import { PlanRead } from '../../../people-shared/PlanRead.js';
 import { ReviewList } from '../../../people-shared/ReviewList.js';
 import { SleepWeek } from '../../../people-shared/SleepWeek.js';
 import { dayLabel, hmOf } from '../../../people-shared/time.js';
@@ -31,9 +51,17 @@ import { useLifeLoad } from '../life/shared/useLife.js';
 import { peopleClient, type PeopleClient } from './client.js';
 import { PlanEditor, defaultPlanDay } from './PlanEditor.js';
 
-export const PARTNER_TABS = ['today', 'plan', 'health', 'journal', 'chat', 'lists', 'alerts'] as const;
+export const PARTNER_TABS = ['today', 'todos', 'plan', 'health', 'journal', 'chat', 'lists', 'alerts'] as const;
 export type PartnerTab = (typeof PARTNER_TABS)[number];
-const TAB_LABEL: Record<PartnerTab, string> = { today: 'Today', plan: 'Plan', health: 'Health', journal: 'Journal', chat: 'Chat', lists: 'Lists', alerts: 'Alerts' };
+/** The tab row (the plan editor opens from the header's Plan, so it isn't a tab too). */
+const TAB_ROW: readonly PartnerTab[] = ['today', 'todos', 'health', 'journal', 'chat', 'lists', 'alerts'];
+const TAB_LABEL: Record<PartnerTab, string> = { today: 'Today', todos: 'To-do', plan: 'Plan', health: 'Health', journal: 'Journal', chat: 'Chat', lists: 'Lists', alerts: 'Alerts' };
+
+/** This device's date (his Mac's zone, which his app shares): Nudge is for today only. */
+function localDay(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export interface PartnerProps {
   pid?: string;
@@ -86,7 +114,9 @@ export function Partner({ pid, tab: tabIn, day: dayIn, id, client = peopleClient
 function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClient; pid: string; person: PersonView | null; tab: PartnerTab; dayIn?: string; id?: string }) {
   const navigate = useNavigate();
   const today = useLifeLoad(`people:${pid}:today:${dayIn ?? ''}`, () => client.today(pid, dayIn));
+  const alerts = useLifeLoad<AlertsResponse>(`people:${pid}:alerts`, () => client.alerts(pid));
   const [alerting, setAlerting] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const t = today.data;
   const name = t?.name ?? person?.name ?? 'Partner';
   const go = (next: PartnerTab, extra = '') => navigate(`/people/${pid}?tab=${next}${extra}`);
@@ -97,6 +127,7 @@ function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClie
   const status = t && !isLocked(t.status) ? t.status : null;
   const asleep = t && !isLocked(t.sleep) ? t.sleep.open : null;
   const a = person?.agreement;
+  const unseen = alerts.data?.unseen ?? 0;
   return (
     <div className="px-16 pb-48 pt-16 md:px-32">
       <header>
@@ -108,29 +139,39 @@ function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClie
             t?.state === 'paused' ? 'Paused' : null,
             status ? `${STATUS_LABELS[status.level]}${status.line ? ` "${status.line}"` : ''}` : null,
             asleep ? `Asleep since ${hmOf(asleep.since)}` : null,
-            plan?.plan ? `${plan.counts.done} of ${plan.counts.total}` : null,
+            plan?.plan && plan.counts.total > 0 ? `${plan.counts.done} of ${plan.counts.total}` : null,
             nowStep ? `Now: ${nowStep.title}` : null,
           ]
             .filter(Boolean)
             .join(' · ')}
         </p>
-        <div className="mt-8 flex gap-8">
-          <Button variant="outline" disabled={!a?.assign.plan} onClick={() => go('plan', planDay ? `&day=${planDay}` : '')}>
+        {unseen > 0 ? (
+          <button type="button" className="mt-4 min-h-44 type-row text-ink underline" onClick={() => go('alerts')}>
+            {unseen === 1 ? `A new alert from ${name}` : `${unseen} new alerts from ${name}`}
+          </button>
+        ) : null}
+        <div className="mt-8 flex flex-wrap gap-8">
+          <Button variant="outline" className="min-h-44" disabled={!a?.assign.plan} onClick={() => go('plan', planDay ? `&day=${planDay}` : '')}>
             Plan
           </Button>
-          <Button variant="outline" onClick={() => setAlerting(true)}>
+          <Button variant="outline" className="min-h-44" disabled={!a?.assign.todos} onClick={() => setAssigning(true)}>
+            Assign
+          </Button>
+          <Button variant="outline" className="min-h-44" onClick={() => setAlerting(true)}>
             Alert
           </Button>
         </div>
       </header>
-      <div role="tablist" className="mt-12 flex gap-4 overflow-x-auto border-b border-line">
-        {PARTNER_TABS.map((x) => (
+      <div role="tablist" className="mt-12 flex flex-wrap gap-x-4 border-b border-line">
+        {TAB_ROW.map((x) => (
           <button key={x} type="button" role="tab" aria-selected={tab === x} onClick={() => go(x)} className={`min-h-44 shrink-0 px-12 type-row ${tab === x ? 'border-b-2 border-ink text-ink' : 'text-ink-2'}`}>
             {TAB_LABEL[x]}
+            {x === 'alerts' && unseen > 0 ? <span aria-label={`, ${unseen} new`}> ●</span> : null}
           </button>
         ))}
       </div>
-      {tab === 'today' ? <TodayTab client={client} pid={pid} name={name} today={t} reload={today.reload} canCarry={a?.assign.plan === true} /> : null}
+      {tab === 'today' ? <TodayTab client={client} pid={pid} name={name} today={t} reload={today.reload} canCarry={a?.assign.plan === true} isToday={!dayIn || dayIn === localDay()} /> : null}
+      {tab === 'todos' ? <TodosTab client={client} pid={pid} name={name} sees={a?.see.todos === true} canAssign={a?.assign.todos === true} editHers={a?.editHers.todos === true} onAssign={() => setAssigning(true)} /> : null}
       {tab === 'plan' && planDay ? (
         a?.see.plan && a.assign.plan ? <PlanEditor client={client} pid={pid} name={name} day={planDay} editHers={a.editHers.plan} onDay={(d) => go('plan', `&day=${d}`)} /> : <Locked name={name} what="Day plan" />
       ) : null}
@@ -140,11 +181,12 @@ function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClie
       {tab === 'lists' ? <ListsTab client={client} pid={pid} name={name} space={person?.sharedSpace ?? null} canAssign={a?.assign.todos === true} id={id} /> : null}
       {tab === 'alerts' ? <AlertsTab client={client} pid={pid} name={name} id={id} /> : null}
       <AlertSheet open={alerting} client={client} pid={pid} name={name} close={() => setAlerting(false)} />
+      <AssignSheet open={assigning} client={client} pid={pid} name={name} close={() => setAssigning(false)} done={() => (today.reload(), tab !== 'todos' ? go('todos') : null)} />
     </div>
   );
 }
 
-function TodayTab({ client, pid, name, today, reload, canCarry }: { client: PeopleClient; pid: string; name: string; today: PersonToday | null; reload: () => void; canCarry: boolean }) {
+function TodayTab({ client, pid, name, today, reload, canCarry, isToday }: { client: PeopleClient; pid: string; name: string; today: PersonToday | null; reload: () => void; canCarry: boolean; isToday: boolean }) {
   const [note, setNote] = useState<string | null>(null);
   if (!today) return <p className="mt-12 type-small text-ink-2">Loading…</p>;
   const nudge = (s: PlanStep, day: string) =>
@@ -166,75 +208,26 @@ function TodayTab({ client, pid, name, today, reload, canCarry }: { client: Peop
           ))}
         </ul>
       ) : null}
-      {isLocked(today.plan) ? <Locked name={name} what="Day plan" /> : <PlanReadView view={today.plan} name={name} onNudge={(s) => nudge(s, today.day)} />}
+      {isLocked(today.plan) ? (
+        <Locked name={name} what="Day plan" />
+      ) : (
+        <PlanRead view={today.plan} name={name} {...(isToday && today.plan.plan?.sentAt ? { onNudge: (s: PlanStep) => nudge(s, today.day) } : {})} />
+      )}
       {today.review === null ? null : isLocked(today.review) ? (
         <Locked name={name} what="Evening review" />
       ) : (
         <ReviewRead client={client} pid={pid} name={name} v={today.review} canCarry={canCarry} done={reload} />
       )}
-      {isLocked(today.todos) ? <Locked name={name} what="To-dos" /> : <p className="mt-12 type-row text-ink">To-do today: {today.todos.due.length}{today.todos.overdue ? ` · overdue ${today.todos.overdue}` : ''}</p>}
+      {isLocked(today.todos) ? (
+        <Locked name={name} what="To-dos" />
+      ) : (
+        <p className="mt-12 type-row text-ink">
+          {isToday ? 'To-do today' : `To-do by ${dayLabel(today.day)}`}: {today.todos.due.length}
+          {today.todos.overdue ? ` · overdue ${today.todos.overdue}` : ''}
+        </p>
+      )}
       {isLocked(today.weight) ? <Locked name={name} what="Weight" /> : today.weight.latest ? <p className="type-row text-ink">Weight {today.weight.latest.kg} kg ({today.weight.latest.day})</p> : null}
     </div>
-  );
-}
-
-function PlanReadView({ view, name, onNudge }: { view: PlanView; name: string; onNudge: (s: PlanStep) => void }) {
-  const plan = view.plan;
-  if (!plan) return <p className="mt-12 type-row text-ink-2">No plan for {dayLabel(view.day)}.</p>;
-  return (
-    <section aria-label="Her plan" className="mt-12">
-      {plan.note ? <p className="type-small text-ink-2">"{plan.note}"</p> : null}
-      <p className="type-small text-ink-2">
-        {plan.sentAt ? `Sent ${hmOf(plan.sentAt)}` : 'Not sent yet'}
-        {plan.seenAt ? ` · Seen ${hmOf(plan.seenAt)}` : ''}
-        {plan.ackAt ? ` · Got it ${hmOf(plan.ackAt)}` : ''}
-        {plan.rough ? ` · ${name} marked today a rough day` : ''}
-        {view.focus ? ` · In ${view.focus.title} (focus) until about ${hmOf(view.focus.until)}` : ''}
-      </p>
-      <ul className="mt-8 border-t border-line">
-        {plan.steps
-          .filter((s) => !s.carriedTo)
-          .map((s) => {
-            const open = s.status === 'todo' || s.status === 'doing';
-            return (
-              <li key={s.id} className="flex items-start gap-8 border-b border-line py-8">
-                <span aria-hidden="true" className="w-16 text-ink-2">
-                  {s.status === 'done' ? '✓' : s.status === 'skipped' || s.status === 'excused' ? '–' : s.status === 'doing' ? '◐' : '○'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="break-words type-row text-ink">
-                    {s.at ? `${s.at} ` : ''}
-                    {s.title}
-                    {s.by !== '' ? ` · ${name}'s` : ''}
-                  </p>
-                  <p className="break-words type-small text-ink-2">
-                    {[
-                      s.status === 'done' && s.doneAt ? `done ${hmOf(s.doneAt)}` : s.status !== 'todo' ? s.status : null,
-                      s.report ? `"${s.report}"` : null,
-                      s.skip?.reason ? s.skip.reason : null,
-                      s.checkin ? `mood ${s.checkin.mood}/5 · energy ${s.checkin.energy}/5${s.checkin.line ? ` · "${s.checkin.line}"` : ''}${s.checkin.need ? ` · needs: "${s.checkin.need}"` : ''}` : null,
-                      s.ackAt ? 'Got it' : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
-                </div>
-                {view.late.includes(s.id) ? <span className="rounded-chip border border-line-strong px-8 type-small text-ink-2">late</span> : null}
-                {open ? (
-                  <Button variant="text" size="sm" onClick={() => onNudge(s)}>
-                    Nudge
-                  </Button>
-                ) : null}
-              </li>
-            );
-          })}
-      </ul>
-      {plan.between.map((b) => (
-        <p key={b.id} className="mt-8 type-small text-ink-2">
-          {b.title}: {(view.slots[b.id] ?? []).map((x) => `${x.slot} ${x.state === 'done' ? '✓' : x.state === 'later' ? '·' : '○'}`).join('  ')}
-        </p>
-      ))}
-    </section>
   );
 }
 
@@ -304,7 +297,7 @@ function ChatTab({ client, pid, name, sees, perDay }: { client: PeopleClient; pi
   };
   const capRow = (
     <div className="mt-16 flex flex-wrap items-center gap-8 type-small text-ink-2">
-      <label htmlFor="chat-cap">Her messages a day</label>
+      <label htmlFor="chat-cap">{name}'s messages a day</label>
       <input id="chat-cap" inputMode="numeric" value={cap} onChange={(e) => setCap(e.target.value)} className="w-[4.5rem] rounded-btn border border-line bg-bg px-8 py-4 type-row text-ink" />
       <Button variant="text" onClick={() => void saveCap()}>
         Save
@@ -672,6 +665,190 @@ function AlertSheet({ open, client, pid, name, close }: { open: boolean; client:
         {result ? <p role="status">{result}</p> : null}
         <Button variant="primary" size="xl" disabled={!kind || (kind === 'custom' && !text.trim())} onClick={send}>
           Send
+        </Button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** One to-do's line under its title: due, who added it, and where it stands. */
+function todoLine(t: PersonTodo, name: string): string {
+  return [
+    t.due ? `${t.due.day === localDay() ? 'Today' : dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null,
+    t.by === '' ? 'from you' : `${name}'s own`,
+    t.editedBy === '' && t.by !== '' ? 'edited by you' : null,
+    t.snoozable === false ? 'no snooze' : null,
+    t.followUp ? `tell you if not done by ${t.followUp}` : null,
+    t.ask === 'ack' ? (t.ackAt ? 'Got it' : 'asks for Got it') : null,
+    t.ask === 'report' && !t.doneAt ? 'asks for a report' : null,
+    t.doneAt ? `done ${dayLabel(t.doneAt.slice(0, 10))} ${hmOf(t.doneAt)}` : null,
+    t.report ? `"${t.report}"` : null,
+    t.skipped ? `skipped${t.skipped.reason ? `: ${t.skipped.reason}` : ''}` : null,
+    t.askedChange ? `asks to change: "${t.askedChange.note}"` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * Her to-dos as he may see them (see.todos): his items and hers, open first. Nudge an open one (her caps
+ * apply); edit or delete his own (assign.todos), and hers only with editHers.todos ("Edited by" on her side,
+ * the old values in her Activity).
+ */
+function TodosTab({ client, pid, name, sees, canAssign, editHers, onAssign }: { client: PeopleClient; pid: string; name: string; sees: boolean; canAssign: boolean; editHers: boolean; onAssign: () => void }) {
+  const open = useLifeLoad<OwnerTodosView>(sees ? `people:${pid}:todos` : null, () => client.todos(pid));
+  const done = useLifeLoad<OwnerTodosView>(sees ? `people:${pid}:todos:done` : null, () => client.todos(pid, true));
+  const [editing, setEditing] = useState<PersonTodo | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  if (!sees) return <Locked name={name} what="To-dos" />;
+  const reload = () => (open.reload(), done.reload());
+  const nudge = (t: PersonTodo) =>
+    void client.sendAlert({ to: pid, kind: 'nudge', ref: { type: 'todo', id: t.id } }).then(
+      (r) => setNote(r.delivery === 'sent' ? `Reminder sent: ${t.title}` : r.delivery === 'capped' ? `Saved: ${name}'s limit for reminders is reached.` : 'Held until the quiet time ends.'),
+      (e: Error) => setNote(e.message),
+    );
+  const remove = (t: PersonTodo) => void client.deleteTodo(pid, t.id).then(() => (setNote(`Deleted: ${t.title}`), reload()), (e: Error) => setNote(e.message));
+  const canEdit = (t: PersonTodo) => (t.by === '' ? canAssign : editHers);
+  const row = (t: PersonTodo, isOpen: boolean) => (
+    <li key={t.id} className="flex flex-wrap items-start gap-8 border-b border-line py-8">
+      <div className="min-w-0 flex-1 basis-[12rem]">
+        <p className={`break-words type-row [overflow-wrap:anywhere] ${isOpen ? 'text-ink' : 'text-ink-2'}`}>{t.title}</p>
+        <p className="break-words type-small text-ink-2">{todoLine(t, name)}</p>
+      </div>
+      <div className="flex flex-wrap gap-4">
+        {isOpen ? (
+          <Button variant="outline" className="min-h-44" onClick={() => nudge(t)}>
+            Nudge
+          </Button>
+        ) : null}
+        {canEdit(t) ? (
+          <Button variant="outline" className="min-h-44" onClick={() => setEditing(t)}>
+            Edit
+          </Button>
+        ) : null}
+        {canEdit(t) ? (
+          <Button variant="text" className="min-h-44" onClick={() => remove(t)}>
+            Delete
+          </Button>
+        ) : null}
+      </div>
+    </li>
+  );
+  const openList = open.data?.todos ?? [];
+  const doneList = (done.data?.todos ?? []).slice(0, 20);
+  return (
+    <div className="mt-12">
+      {canAssign ? (
+        <Button variant="primary" className="min-h-44" onClick={onAssign}>
+          Assign a to-do
+        </Button>
+      ) : null}
+      {note ? (
+        <p role="status" className="mt-8 type-small text-ink">
+          {note}
+        </p>
+      ) : null}
+      <h2 className="mt-12 type-row font-semibold text-ink">Open</h2>
+      {openList.length ? <ul className="border-t border-line">{openList.map((t) => row(t, true))}</ul> : <p className="type-small text-ink-2">{open.data ? 'Nothing open.' : 'Loading…'}</p>}
+      {doneList.length ? (
+        <>
+          <h2 className="mt-16 type-row font-semibold text-ink">Done lately</h2>
+          <ul className="border-t border-line">{doneList.map((t) => row(t, false))}</ul>
+        </>
+      ) : null}
+      <AssignSheet open={editing !== null} client={client} pid={pid} name={name} edit={editing} close={() => setEditing(null)} done={reload} />
+    </div>
+  );
+}
+
+/**
+ * Assign a to-do to her (assign.todos), or edit one (his, or hers with editHers.todos): a title, a due day
+ * and time, what it asks of her (nothing, Got it, a short report), no snooze, and "Tell me if not done by".
+ */
+function AssignSheet({ open, client, pid, name, close, done, edit = null }: { open: boolean; client: PeopleClient; pid: string; name: string; close: () => void; done: () => void; edit?: PersonTodo | null }) {
+  const [title, setTitle] = useState('');
+  const [day, setDay] = useState('');
+  const [time, setTime] = useState('');
+  const [ask, setAsk] = useState<TodoAsk>('none');
+  const [noSnooze, setNoSnooze] = useState(false);
+  const [followUp, setFollowUp] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setTitle(edit?.title ?? '');
+    setDay(edit?.due?.day ?? '');
+    setTime(edit?.due?.time ?? '');
+    setAsk(edit?.ask ?? 'none');
+    setNoSnooze(edit?.snoozable === false);
+    setFollowUp(edit?.followUp ?? '');
+    setError(null);
+  }, [open, edit]);
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const due = day ? { day, ...(time ? { time } : {}) } : undefined;
+      if (edit) {
+        await client.updateTodo(pid, edit.id, { title: title.trim(), due: due ?? null, ask, snoozable: !noSnooze, followUp: day && followUp ? followUp : null });
+      } else {
+        const body: AssignTodoBody = { title: title.trim(), ...(due ? { due } : {}), ask, ...(noSnooze ? { snoozable: false } : {}), ...(day && followUp ? { followUp } : {}) };
+        await client.assignTodo(pid, body);
+      }
+      done();
+      close();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const field = 'min-h-44 rounded-btn border border-line bg-bg px-8 type-row text-ink';
+  return (
+    <Sheet open={open} onOpenChange={(o) => (o ? null : close())} title={edit ? `Edit: ${edit.title}` : `Assign to ${name}`}>
+      <div className="flex flex-col gap-12 pb-24">
+        <label className="flex flex-col gap-4">
+          <span className="type-small text-ink-2">To-do</span>
+          <input className={field} maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </label>
+        <div className="flex flex-wrap gap-8">
+          <label className="flex flex-col gap-4">
+            <span className="type-small text-ink-2">Due day</span>
+            <input type="date" className={field} value={day} onChange={(e) => setDay(e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-4">
+            <span className="type-small text-ink-2">Time</span>
+            <input type="time" className={field} value={time} disabled={!day} onChange={(e) => setTime(e.target.value)} />
+          </label>
+        </div>
+        <fieldset className="flex flex-col gap-4">
+          <legend className="type-small text-ink-2">Ask {name} for</legend>
+          {(
+            [
+              ['none', 'Nothing'],
+              ['ack', 'Got it'],
+              ['report', 'A short report when done'],
+            ] as const
+          ).map(([v, label]) => (
+            <label key={v} className="flex min-h-44 items-center gap-8 type-row">
+              <input type="radio" className="size-20" name="assign-ask" checked={ask === v} onChange={() => setAsk(v)} /> {label}
+            </label>
+          ))}
+        </fieldset>
+        <label className="flex min-h-44 items-center gap-8 type-row">
+          <input type="checkbox" className="size-20" checked={noSnooze} onChange={(e) => setNoSnooze(e.target.checked)} /> No snooze
+        </label>
+        <label className="flex flex-col gap-4">
+          <span className="type-small text-ink-2">Tell me if not done by (needs a due day)</span>
+          <input type="time" className={field} value={followUp} disabled={!day} onChange={(e) => setFollowUp(e.target.value)} />
+        </label>
+        <p className="type-small text-ink-3">
+          {name} sees it at once, marked "From you"{noSnooze ? ' and "no snooze"' : ''}
+          {day && followUp ? `, and that you asked to know by ${followUp}` : ''}. {name}'s Activity lists it.
+        </p>
+        {error ? <p role="alert">{error}</p> : null}
+        <Button variant="primary" size="xl" disabled={!title.trim() || busy} onClick={() => void save()}>
+          {edit ? 'Save' : `Assign to ${name}`}
         </Button>
       </div>
     </Sheet>

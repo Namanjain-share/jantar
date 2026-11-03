@@ -69,6 +69,14 @@ const ON_WORDS: Record<string, string> = {
   'editHers.todos': 'edits or removes to-dos they added',
   'editHers.meds': 'edits or stops medicines they added',
   'editHers.weight': 'corrects or removes a weight they logged',
+  'see.plan': 'sees their day plan, check-ins and status',
+  'see.review': 'sees their evening review',
+  'see.sleep': 'sees their sleep, as they tap it',
+  'see.journal': 'reads their journal',
+  'see.chat': 'reads their chats with their assistant',
+  'assign.plan': 'plans their day',
+  'editHers.plan': 'edits or removes plan steps they added',
+  'comment.journal': 'comments on their journal entries',
 };
 
 export default defineCommand(
@@ -140,7 +148,7 @@ export default defineCommand(
           modules: { food: !flags['no-food'] && flags.food !== 'off' },
         };
         const r = await callDaemon<{ id: string }>(ctx.ctl, 'POST', '/v1/people', body);
-        io.out(`Added ${name} (${r.id}), invited.\n`);
+        io.out(`Added ${name} (${r.id}). No invite yet.\n`);
         io.out(accessStep(flags.email, true));
         io.out(`Next: jantar people offer ${name} (optional), then jantar people invite ${name}\n`);
         return EXIT.ok;

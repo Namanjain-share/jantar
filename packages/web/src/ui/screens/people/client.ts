@@ -8,10 +8,13 @@ import { DEVICE_SECRET_HEADER } from '@jantar/protocol';
 import type {
   AlertReplyBody,
   AlertsResponse,
+  AssignTodoBody,
+  AssignTodoPatch,
   JournalEntryFull,
   JournalList,
   OwnerAlertSendBody,
   OwnerChatView,
+  OwnerTodosView,
   SharedItemsResponse,
   SharedListKind,
   SharedListsResponse,
@@ -66,6 +69,11 @@ export const PEOPLE_PATHS = {
   listItemDelete: ['DELETE', '/v1/people/:pid/lists/:id/items/:itemId'],
   listItemTick: ['POST', '/v1/people/:pid/lists/:id/items/:itemId/tick'],
   listItemAssign: ['POST', '/v1/people/:pid/lists/:id/items/:itemId/assign'],
+  // P1: her to-dos (see.todos), his assign (assign.todos), his edits (his, or hers with editHers.todos).
+  todos: ['GET', '/v1/people/:pid/todos'],
+  todoAssign: ['POST', '/v1/people/:pid/todos'],
+  todoUpdate: ['PATCH', '/v1/people/:pid/todos/:id'],
+  todoDelete: ['DELETE', '/v1/people/:pid/todos/:id'],
 } as const;
 type Key = keyof typeof PEOPLE_PATHS;
 
@@ -105,6 +113,16 @@ export interface PeopleClient {
   listItemDelete(pid: string, id: string, itemId: string): Promise<void>;
   listItemTick(pid: string, id: string, itemId: string, done: boolean): Promise<void>;
   listItemAssign(pid: string, id: string, itemId: string): Promise<{ id: string }>;
+  /** P1: her to-dos, and his assign and edits. */
+  todos(pid: string, done?: boolean): Promise<OwnerTodosView>;
+  assignTodo(pid: string, body: AssignTodoBody): Promise<{ id: string }>;
+  updateTodo(pid: string, id: string, patch: AssignTodoPatch): Promise<void>;
+  deleteTodo(pid: string, id: string): Promise<void>;
+}
+
+/** A route pattern with its `:params` filled (camelCase names too: `:itemId`). */
+export function fillPath(pattern: string, params: Record<string, string> = {}): string {
+  return pattern.replace(/:([a-zA-Z]+)/g, (_m, n: string) => encodeURIComponent(params[n] ?? ''));
 }
 
 export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; credentials?: CredentialStore } = {}): PeopleClient {
@@ -114,7 +132,7 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
 
   async function call<T>(key: Key, init: { params?: Record<string, string>; query?: Record<string, string | undefined>; body?: unknown } = {}): Promise<T> {
     const [method, pattern] = PEOPLE_PATHS[key];
-    let path: string = pattern.replace(/:([a-z]+)/g, (_m, n: string) => encodeURIComponent(init.params?.[n] ?? ''));
+    let path: string = fillPath(pattern, init.params);
     const q = Object.entries(init.query ?? {}).filter(([, v]) => v !== undefined) as [string, string][];
     if (q.length) path += `?${new URLSearchParams(q).toString()}`;
     const headers: Record<string, string> = { accept: 'application/json' };
@@ -177,6 +195,10 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
     listItemDelete: (pid, id, itemId) => v(call('listItemDelete', { params: { pid, id, itemId } })),
     listItemTick: (pid, id, itemId, done) => v(call('listItemTick', { params: { pid, id, itemId }, body: { done } })),
     listItemAssign: (pid, id, itemId) => call('listItemAssign', { params: { pid, id, itemId }, body: {} }),
+    todos: (pid, done) => call('todos', { params: { pid }, query: { done: done ? '1' : undefined } }),
+    assignTodo: (pid, body) => call('todoAssign', { params: { pid }, body }),
+    updateTodo: (pid, id, patch) => v(call('todoUpdate', { params: { pid, id }, body: patch })),
+    deleteTodo: (pid, id) => v(call('todoDelete', { params: { pid, id } })),
   };
 }
 

@@ -2,12 +2,13 @@
 import type { PersonMe } from '@jantar/protocol/people';
 import { Page } from '../App.js';
 import type { PersonApi } from '../api.js';
+import { dayLabel } from '../../people-shared/time.js';
 
 export function Left({ me, api }: { me: PersonMe | null; api: PersonApi }) {
   if (me && me.person.state === 'ending') {
     return (
       <Page title="Sharing is ending">
-        <p>Download your data before {me.person.endingUntil?.slice(0, 10)}.</p>
+        <p>Download your data before {me.person.endingUntil ? dayLabel(me.person.endingUntil.slice(0, 10)) : 'the end of the week'}.</p>
         <p className="mt-12">
           <a className="underline" href={api.exportUrl('html')}>Download as a page</a> ·{' '}
           <a className="underline" href={api.exportUrl('json')}>data file (JSON)</a>

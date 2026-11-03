@@ -2,7 +2,8 @@
  * v0.12 People: her app's paths (spec 1.3.1): /p (Today; `?review=1&day=`
  * opens the evening review), /p/todos, /p/health (`?tab=sleep&week=`),
  * /p/journal (`?id=`, `?checkin=1`), /p/alerts (`?id=`), /p/chat (P3), /p/join, /p/link,
- * /p/me (?tab=sharing|activity|devices|notifications|leave), /p/left.
+ * /p/me (?tab=sharing|activity|devices|notifications|leave; Sharing's
+ * `&see=<area>` is "See what {owner} sees"), /p/left.
  * Anything else is her NotFound; the owner's screens don't exist in this
  * bundle.
  */
@@ -17,12 +18,15 @@ export type PersonRoute =
   | { name: 'lists'; tab: 'cafes' | 'lists'; id: string | null; list: string | null }
   | { name: 'join' }
   | { name: 'link' }
-  | { name: 'me'; tab: MeTab }
+  | { name: 'me'; tab: MeTab; see?: MirrorArea }
   | { name: 'left' }
   | { name: 'notFound' };
 
 export const ME_TABS = ['sharing', 'activity', 'devices', 'notifications', 'leave'] as const;
 export type MeTab = (typeof ME_TABS)[number];
+/** The areas "See what {owner} sees" opens (`/p/me?tab=sharing&see=`). */
+export const MIRROR_AREAS = ['today', 'todos', 'weight', 'plan', 'review', 'sleep', 'journal', 'chat'] as const;
+export type MirrorArea = (typeof MIRROR_AREAS)[number];
 export const HEALTH_TABS = ['weight', 'sleep'] as const;
 export type HealthTab = (typeof HEALTH_TABS)[number];
 
@@ -58,7 +62,9 @@ export function parsePersonRoute(pathname: string, search: string): PersonRoute 
   if (path === '/p/left') return { name: 'left' };
   if (path === '/p/me') {
     const tab = q.get('tab');
-    return { name: 'me', tab: (ME_TABS as readonly string[]).includes(tab ?? '') ? (tab as MeTab) : 'sharing' };
+    const see = q.get('see');
+    const t = (ME_TABS as readonly string[]).includes(tab ?? '') ? (tab as MeTab) : 'sharing';
+    return t === 'sharing' && (MIRROR_AREAS as readonly string[]).includes(see ?? '') ? { name: 'me', tab: t, see: see as MirrorArea } : { name: 'me', tab: t };
   }
   return { name: 'notFound' };
 }

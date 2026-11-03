@@ -132,8 +132,8 @@ describe('his Chat tab (spec 7.8)', () => {
     const view: OwnerChatView = { turns: [turn({ text: HOSTILE, reply: 'See [the docs](https://example.com/docs).' })], older: null, keepDays: 30 };
     const { container } = render(<Wrapped client={peopleClient({ list: vi.fn(async () => ({ enabled: true, people: [person(true)] })), today: vi.fn(async () => TODAY), chat: vi.fn(async () => view), chatPhotoUrl: (pid, id) => `/v1/people/${pid}/chat/photos/${id}` })} />);
     expect(await screen.findByText(/Read only\. Asha's assistant runs on your Claude account\./)).toBeTruthy();
-    expect(await screen.findByText(/Her assistant: Added · Step · Stretch/)).toBeTruthy();
-    expect(screen.getByText(/Asked her: Send Sam "Running late"\? · Waiting for her tap/)).toBeTruthy();
+    expect(await screen.findByText(/Asha's assistant: Added · Step · Stretch/)).toBeTruthy();
+    expect(screen.getByText(/Asked Asha: Send Sam "Running late"\? · Waiting for Asha's tap/)).toBeTruthy();
     for (const name of ['Undo', 'Do it', 'Confirm', 'Dismiss', 'Delete', 'Send', 'Clear']) expect(screen.queryByRole('button', { name }), name).toBeNull();
     expect(screen.queryByRole('textbox', { name: 'Message' })).toBeNull();
     expect(container.querySelector('script')).toBeNull();

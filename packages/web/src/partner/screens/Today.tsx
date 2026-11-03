@@ -24,6 +24,7 @@ import { Button } from '../../ui/kit/Button.js';
 import type { PersonApi } from '../api.js';
 import { navigate } from '../nav.js';
 import { joinCopy } from '../join/copy.js';
+import { askForNotifications, needsHomeScreen, turnOnNotifications } from '../notify.js';
 import { Card, Field, ReasonChips, Sheet, Tick, UndoToast, useUndo } from '../ui.js';
 import { TodoRow } from './TodoRow.js';
 
@@ -91,7 +92,7 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
             className="flex min-h-44 items-center gap-4 px-8 text-small"
             aria-label={today.alertsUnseen > 0 ? `Alerts: ${today.alertsUnseen} new` : 'Alerts'}
           >
-            {today.alertsUnseen > 0 ? <span aria-hidden="true">●</span> : null} {owner}
+            Alerts{today.alertsUnseen > 0 ? <span aria-hidden="true"> ●</span> : null}
           </a>
         </div>
       </header>
@@ -106,6 +107,7 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
         </p>
       ) : null}
       {me.pending && me.agreement ? <ProposalCard me={me} api={api} reload={reload} /> : null}
+      <NotificationsCard api={api} owner={owner} />
       {today.sharingCheckin ? <SharingCheckin owner={owner} api={api} done={() => void load()} /> : null}
       {today.review ? (
         <Card label="Evening review">
@@ -219,6 +221,7 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
         now={nowStep}
         onAck={() => void run(api.planAck(day))}
         onDone={() => nowStep && tickStep(nowStep)}
+        onStart={() => nowStep && setState(nowStep, 'doing')}
         onMore={() => nowStep && setSheet({ kind: 'step', step: nowStep })}
       />
       <UndoToast toast={undo.toast} close={undo.close} />
@@ -281,7 +284,9 @@ function StepRow({ s, owner, late, onTick, onMore }: { s: PlanStep; owner: strin
   );
 }
 
-function StickyBar({ unacked, now, onAck, onDone, onMore }: { unacked: boolean; now: PlanStep | null; onAck: () => void; onDone: () => void; onMore: () => void }) {
+function StickyBar({ unacked, now, onAck, onDone, onStart, onMore }: { unacked: boolean; now: PlanStep | null; onAck: () => void; onDone: () => void; onStart: () => void; onMore: () => void }) {
+  // A focus step not started yet: Start is the one tap (focus holds normal alerts from then, C32).
+  const start = now !== null && now.status === 'todo' && (now.focus || now.focusByHer === true);
   if (!unacked && !now) return null;
   return (
     <div className="fixed inset-x-0 bottom-[calc(44px+env(safe-area-inset-bottom))] z-10 border-t border-line bg-bg px-16 py-8">
@@ -292,8 +297,10 @@ function StickyBar({ unacked, now, onAck, onDone, onMore }: { unacked: boolean; 
           </Button>
         ) : now ? (
           <>
-            <Button variant="primary" size="xl" className="min-w-0 flex-1" onClick={onDone}>
-              <span className="truncate">Done: {now.title}</span>
+            <Button variant="primary" size="xl" className="min-w-0 flex-1" onClick={start ? onStart : onDone}>
+              <span className="truncate">
+                {start ? 'Start' : 'Done'}: {now.title}
+              </span>
             </Button>
             <Button variant="outline" size="xl" aria-label={`More for ${now.title}`} onClick={onMore}>
               …
@@ -524,8 +531,8 @@ function RoughSheet({ open, owner, close, onConfirm }: { open: boolean; owner: s
 function GoingToSleep({ api, done, show }: { api: PersonApi; done: () => void; show: (text: string, undo: () => void) => void }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div className="fixed inset-x-0 bottom-[calc(108px+env(safe-area-inset-bottom))] z-10 px-16">
-      <div className="mx-auto max-w-[42rem]">
+    <div className="mt-16">
+      <div>
         <Button
           variant="outline"
           size="xl"
@@ -611,5 +618,34 @@ export function ProposalCard({ me, api, reload }: { me: PersonMe; api: PersonApi
         </Button>
       </div>
     </section>
+  );
+}
+
+/** Until notifications are on: one card, so plan pushes, rings and alerts can reach her (spec 2.4). */
+function NotificationsCard({ api, owner }: { api: PersonApi; owner: string }) {
+  const [show, setShow] = useState(askForNotifications);
+  const [note, setNote] = useState<string | null>(null);
+  if (!show) return null;
+  const home = needsHomeScreen();
+  return (
+    <Card label="Notifications">
+      <p className="font-medium">{home ? 'Add the app to your Home Screen' : 'Turn on notifications'}</p>
+      <p className="text-small text-ink-2">
+        {home
+          ? `On iPhone, your plan, its rings and alerts from ${owner} arrive only in the app on your Home Screen: tap Share, then Add to Home Screen, and open it from there.`
+          : `Your plan, its rings and alerts from ${owner} arrive as notifications.`}
+      </p>
+      {note ? <p role="status" className="mt-4 text-small">{note}</p> : null}
+      <div className="mt-8 flex flex-wrap gap-8">
+        {home || note?.startsWith('Done') ? null : (
+          <Button variant="primary" className="min-h-44" onClick={() => void turnOnNotifications(api).then(setNote)}>
+            Turn on
+          </Button>
+        )}
+        <Button variant="text" className="min-h-44" onClick={() => setShow(false)}>
+          {note?.startsWith('Done') ? 'Close' : 'Not now'}
+        </Button>
+      </div>
+    </Card>
   );
 }

@@ -10,11 +10,17 @@
  *   never in his body (the daemon keeps it from the stored step).
  * - A save carries `srev`; a stale one (409) reloads with "{name} changed
  *   the plan, check it". A hint shows when times run out of order.
+ * - Send says what happened: "Sent." only when the push goes now, "Saved.
+ *   {name} gets it Wed 4 Nov at 07:00" when it waits for her plan time. It
+ *   is off with no steps, and a Quick plan still open is applied first.
+ * - On a phone each step is two lines (its title on its own line, then
+ *   time, minutes, ask, focus and "Tell me if not done by", each labelled),
+ *   and Send sits in a bar pinned to the bottom, in thumb reach.
  */
 import { parseQuickPlan, type QuickPlan } from '@jantar/life-core';
 import type { PlanPutBody, PlanStep, PlanTemplate, PlanView, StepAsk } from '@jantar/protocol/people';
 import { useEffect, useMemo, useState } from 'react';
-import { dayLabel, shiftDay, weekdayOf } from '../../../people-shared/time.js';
+import { dayLabel, hmOf, shiftDay, weekdayOf } from '../../../people-shared/time.js';
 import { Button } from '../../kit/Button.js';
 import type { PeopleClient } from './client.js';
 
@@ -39,6 +45,14 @@ export function orderHint(steps: readonly { at: string }[]): string | null {
     last = s.at;
   }
   return null;
+}
+
+/** What Send says, from the daemon's answer: sent now, or when she gets it. */
+export function sentMessage(v: PlanView, name: string, nowMs = Date.now()): string {
+  if (v.plan?.sentAt) return `Saved. ${name}'s plan is up to date.`;
+  if (!v.sendsAt) return 'Saved.';
+  if (Date.parse(v.sendsAt) - nowMs <= 60_000) return 'Sent.';
+  return `Saved. ${name} gets it ${dayLabel(v.day)} at ${hmOf(v.sendsAt)}.`;
 }
 
 /** Today before 18:00, tomorrow after: planning the night before is the natural path. */
@@ -99,11 +113,25 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
       () => (setMenu(false), load(`${t.name} applied.`)),
       (e: Error) => load(e.message),
     );
+  /** Quick plan's steps in place of his open ones (his done steps and hers stay). */
+  const withQuick = (cur: Draft[], q: ReturnType<typeof fromQuick>): Draft[] => [...cur.filter((d) => d.by !== '' || d.status === 'done'), ...q.steps];
+  const applyQuick = (): { steps: Draft[]; between: DraftBetween[] } | null => {
+    if (!preview || preview.steps.length + preview.between.length === 0) return null;
+    const q = fromQuick(preview);
+    const next = { steps: withQuick(steps, q), between: q.between.length ? q.between.slice(0, 4) : between };
+    setSteps(next.steps);
+    setBetween(next.between);
+    setQuick(null);
+    return next;
+  };
   const send = () => {
+    // A Quick plan still open is what he means to send: apply it first.
+    const draft = quick !== null ? (applyQuick() ?? { steps, between }) : { steps, between };
+    if (draft.steps.length + draft.between.length === 0) return setMessage('Add a step first.');
     const body: PlanPutBody = {
       srev: view?.plan?.srev ?? 0,
       note: note.trim() || null,
-      steps: steps.map((d) => ({
+      steps: draft.steps.map((d) => ({
         ...(d.id ? { id: d.id } : {}),
         title: d.title.trim().slice(0, 120) || 'Step',
         ...(d.at ? { at: d.at } : {}),
@@ -112,13 +140,13 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
         focus: d.focus,
         ...(d.followUp && d.by === '' ? { followUp: d.followUp } : {}),
       })),
-      between: between.map((b) => ({ ...(b.id ? { id: b.id } : {}), title: b.title, every: b.every, from: b.from, to: b.to })),
+      between: draft.between.map((b) => ({ ...(b.id ? { id: b.id } : {}), title: b.title, every: b.every, from: b.from, to: b.to })),
     };
     setBusy(true);
     client.putPlan(pid, day, body).then(
-      () => {
+      (v) => {
         setBusy(false);
-        load('Sent.');
+        load(sentMessage(v, name));
       },
       (e: Error & { status?: number }) => {
         setBusy(false);
@@ -145,18 +173,15 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
   return (
     <section aria-label="Plan editor" className="mt-12">
       <div className="flex flex-wrap items-center gap-8">
-        <Button variant="text" aria-label="Day before" onClick={() => onDay(shiftDay(day, -1))}>
+        <Button variant="text" className="size-44" aria-label="Day before" onClick={() => onDay(shiftDay(day, -1))}>
           ◀
         </Button>
         <span className="type-row text-ink">{dayLabel(day)}</span>
-        <Button variant="text" aria-label="Day after" onClick={() => onDay(shiftDay(day, 1))}>
+        <Button variant="text" className="size-44" aria-label="Day after" onClick={() => onDay(shiftDay(day, 1))}>
           ▶
         </Button>
-        <Button variant="outline" onClick={() => setMenu((m) => !m)} aria-expanded={menu}>
+        <Button variant="outline" className="min-h-44" onClick={() => setMenu((m) => !m)} aria-expanded={menu}>
           Start from ▾
-        </Button>
-        <Button variant="primary" disabled={busy} onClick={send}>
-          Send ▸
         </Button>
       </div>
       {menu ? (
@@ -177,7 +202,7 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
             .map((t) => (
               <li key={t.id} className="flex">
                 <MenuItem onClick={() => applyTemplate(t)}>{t.name}</MenuItem>
-                <Button variant="text" size="sm" aria-label={`Delete template ${t.name}`} onClick={() => void client.deleteTemplate(pid, t.id).then(() => setTemplates((c) => c.filter((x) => x.id !== t.id)))}>
+                <Button variant="text" className="size-44" aria-label={`Delete template ${t.name}`} onClick={() => void client.deleteTemplate(pid, t.id).then(() => setTemplates((c) => c.filter((x) => x.id !== t.id)))}>
                   ✕
                 </Button>
               </li>
@@ -215,20 +240,10 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
             </ul>
           ) : null}
           <div className="flex gap-8">
-            <Button
-              variant="primary"
-              disabled={!preview || preview.steps.length + preview.between.length === 0}
-              onClick={() => {
-                if (!preview) return;
-                const q = fromQuick(preview);
-                setSteps((cur) => [...cur.filter((d) => d.by !== '' || d.status === 'done'), ...q.steps]);
-                if (q.between.length) setBetween(q.between.slice(0, 4));
-                setQuick(null);
-              }}
-            >
+            <Button variant="primary" className="min-h-44" disabled={!preview || preview.steps.length + preview.between.length === 0} onClick={() => void applyQuick()}>
               Use these steps
             </Button>
-            <Button variant="outline" onClick={() => setQuick(null)}>
+            <Button variant="outline" className="min-h-44" onClick={() => setQuick(null)}>
               Cancel
             </Button>
           </div>
@@ -236,7 +251,7 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
       ) : null}
       <label className="mt-12 flex flex-col gap-4">
         <span className="type-small text-ink-2">Line for the day</span>
-        <input className="h-40 rounded-btn border border-line bg-bg px-8" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
+        <input className="min-h-44 rounded-btn border border-line bg-bg px-8" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
       {message ? (
         <p role="status" className="mt-8 type-small text-ink">
@@ -246,42 +261,64 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
       {hint ? <p className="mt-8 type-small text-ink-2">{hint}</p> : null}
       <ol className="mt-8 border-t border-line">
         {steps.map((d, i) => (
-          <li key={d.key} className="flex flex-wrap items-center gap-8 border-b border-line py-8">
-            <span className="flex flex-col">
-              <Button variant="text" size="sm" aria-label={`Move up: ${d.title}`} disabled={i === 0} onClick={() => move(i, -1)}>
+          <li key={d.key} className="flex items-start gap-4 border-b border-line py-8">
+            <span className="flex shrink-0 flex-col">
+              <Button variant="text" className="size-44 px-0" aria-label={`Move up: ${d.title}`} disabled={i === 0} onClick={() => move(i, -1)}>
                 ▲
               </Button>
-              <Button variant="text" size="sm" aria-label={`Move down: ${d.title}`} disabled={i === steps.length - 1} onClick={() => move(i, 1)}>
+              <Button variant="text" className="size-44 px-0" aria-label={`Move down: ${d.title}`} disabled={i === steps.length - 1} onClick={() => move(i, 1)}>
                 ▼
               </Button>
             </span>
             {mine(d) ? (
-              <>
-                <input aria-label="Time" type="time" className="h-32 rounded-btn border border-line bg-bg px-4" value={d.at} onChange={(e) => patch(d.key, { at: e.target.value })} />
-                <input aria-label="Step" className="h-32 min-w-0 flex-1 rounded-btn border border-line bg-bg px-8" maxLength={120} value={d.title} onChange={(e) => patch(d.key, { title: e.target.value })} />
-                <input aria-label="Minutes" inputMode="numeric" placeholder="min" className="h-32 w-56 rounded-btn border border-line bg-bg px-4" value={d.minutes} onChange={(e) => patch(d.key, { minutes: e.target.value.replace(/\D/g, '') })} />
-                <select aria-label="Ask" className="h-32 rounded-btn border border-line bg-bg px-4" value={d.ask} onChange={(e) => patch(d.key, { ask: e.target.value as StepAsk })}>
-                  <option value="none">ask: none</option>
-                  <option value="ack">Got it</option>
-                  <option value="report">report</option>
-                  <option value="checkin">check-in</option>
-                </select>
-                <label className="flex items-center gap-4 type-small">
-                  <input type="checkbox" checked={d.focus} onChange={(e) => patch(d.key, { focus: e.target.checked })} /> focus
+              <div className="flex min-w-0 flex-1 flex-col gap-8 md:flex-row md:flex-wrap md:items-end">
+                <label className="flex min-w-0 flex-col gap-4 md:flex-1 md:basis-[14rem]">
+                  <span className="type-small text-ink-2">Step</span>
+                  <input aria-label="Step" className="min-h-44 w-full min-w-0 rounded-btn border border-line bg-bg px-8 type-row" maxLength={120} value={d.title} onChange={(e) => patch(d.key, { title: e.target.value })} />
                 </label>
-                {d.by === '' ? <input aria-label="Tell me if not done by" title="Tell me if not done by" type="time" className="h-32 rounded-btn border border-line bg-bg px-4" value={d.followUp} onChange={(e) => patch(d.key, { followUp: e.target.value })} /> : null}
-                <Button variant="text" size="sm" aria-label={`Remove ${d.title}`} onClick={() => setSteps((cur) => cur.filter((x) => x.key !== d.key))}>
-                  ✕
-                </Button>
-              </>
+                <div className="flex flex-wrap items-end gap-8">
+                  <label className="flex flex-col gap-4">
+                    <span className="type-small text-ink-2">Time</span>
+                    <input aria-label="Time" type="time" className="min-h-44 rounded-btn border border-line bg-bg px-4" value={d.at} onChange={(e) => patch(d.key, { at: e.target.value })} />
+                  </label>
+                  <label className="flex flex-col gap-4">
+                    <span className="type-small text-ink-2">Minutes</span>
+                    <input aria-label="Minutes" inputMode="numeric" placeholder="min" className="min-h-44 w-64 rounded-btn border border-line bg-bg px-4" value={d.minutes} onChange={(e) => patch(d.key, { minutes: e.target.value.replace(/\D/g, '') })} />
+                  </label>
+                  <label className="flex flex-col gap-4">
+                    <span className="type-small text-ink-2">Ask</span>
+                    <select aria-label="Ask" className="min-h-44 rounded-btn border border-line bg-bg px-4" value={d.ask} onChange={(e) => patch(d.key, { ask: e.target.value as StepAsk })}>
+                      <option value="none">Nothing</option>
+                      <option value="ack">Got it</option>
+                      <option value="report">A report</option>
+                      <option value="checkin">A check-in</option>
+                    </select>
+                  </label>
+                  <label className="flex min-h-44 items-center gap-8 type-row">
+                    <input type="checkbox" className="size-20" checked={d.focus} onChange={(e) => patch(d.key, { focus: e.target.checked })} /> Focus
+                  </label>
+                  {d.by === '' ? (
+                    <label className="flex flex-col gap-4">
+                      <span className="type-small text-ink-2">Tell me if not done by</span>
+                      <input aria-label="Tell me if not done by" type="time" className="min-h-44 rounded-btn border border-line bg-bg px-4" value={d.followUp} onChange={(e) => patch(d.key, { followUp: e.target.value })} />
+                    </label>
+                  ) : null}
+                </div>
+                {d.status && d.status !== 'todo' ? <span className="type-small text-ink-2">{d.status === 'doing' ? 'started' : d.status}</span> : null}
+                {d.by !== '' && editHers ? <span className="type-small text-ink-2">{name}'s step: your change says "Edited by"</span> : null}
+              </div>
             ) : (
-              <span className="flex-1 type-row text-ink-2">
+              <span className="min-w-0 flex-1 self-center type-row text-ink-2">
                 {d.at ? `${d.at} ` : ''}
                 {d.title} · {name}'s own step
+                {d.status && d.status !== 'todo' ? ` · ${d.status === 'doing' ? 'started' : d.status}` : ''}
               </span>
             )}
-            {d.status && d.status !== 'todo' ? <span className="type-small text-ink-2">{d.status}</span> : null}
-            {d.by !== '' && editHers ? <span className="type-small text-ink-2">{name}'s step: your change says "Edited by"</span> : null}
+            {mine(d) ? (
+              <Button variant="text" className="size-44 shrink-0 px-0" aria-label={`Remove ${d.title}`} onClick={() => setSteps((cur) => cur.filter((x) => x.key !== d.key))}>
+                ✕
+              </Button>
+            ) : null}
           </li>
         ))}
       </ol>
@@ -294,8 +331,8 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
           setAdding('');
         }}
       >
-        <input aria-label="Add step" placeholder="+ Add step" className="h-40 min-w-0 flex-1 rounded-btn border border-line bg-bg px-8" maxLength={120} value={adding} onChange={(e) => setAdding(e.target.value)} />
-        <Button type="submit" variant="outline">
+        <input aria-label="Add step" placeholder="+ Add step" className="min-h-44 min-w-0 flex-1 rounded-btn border border-line bg-bg px-8" maxLength={120} value={adding} onChange={(e) => setAdding(e.target.value)} />
+        <Button type="submit" variant="outline" className="min-h-44">
           Add
         </Button>
       </form>
@@ -306,13 +343,21 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
               <span>
                 Every {b.every >= 60 && b.every % 60 === 0 ? `${b.every / 60} h` : `${b.every} min`} {b.from}–{b.to}: {b.title}
               </span>
-              <Button variant="text" size="sm" aria-label={`Remove ${b.title}`} onClick={() => setBetween((c) => c.filter((x) => x.key !== b.key))}>
+              <Button variant="text" className="size-44 px-0" aria-label={`Remove ${b.title}`} onClick={() => setBetween((c) => c.filter((x) => x.key !== b.key))}>
                 ✕
               </Button>
             </li>
           ))}
         </ul>
       ) : null}
+      <div className="sticky bottom-0 z-3 -mx-16 mt-16 flex items-center gap-12 border-t border-line bg-bg px-16 py-8 md:-mx-32 md:px-32">
+        <p className="min-w-0 flex-1 type-small text-ink-2">
+          {steps.length + between.length === 0 && quick === null ? 'Add a step to send.' : quick !== null ? 'Send uses the Quick plan above.' : `${steps.length} step${steps.length === 1 ? '' : 's'} for ${dayLabel(day)}`}
+        </p>
+        <Button variant="primary" size="xl" disabled={busy || (steps.length + between.length === 0 && !(preview && preview.steps.length + preview.between.length > 0))} onClick={send}>
+          Send ▸
+        </Button>
+      </div>
     </section>
   );
 }

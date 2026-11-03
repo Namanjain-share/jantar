@@ -23,7 +23,7 @@ export function changeWordOf(c: Pick<ChatChange, 'op' | 'state'>): string {
   return 'Changed';
 }
 
-const CARD_STATE: Record<string, string> = { waiting: 'Waiting for her tap', done: 'Done', dismissed: 'Dismissed', expired: 'Expired', failed: 'Failed' };
+const CARD_STATE: Record<string, (name: string) => string> = { waiting: (n) => `Waiting for ${n}'s tap`, done: () => 'Done', dismissed: () => 'Dismissed', expired: () => 'Expired', failed: () => 'Failed' };
 
 export function ChatRead({ turn, name, photoUrl }: { turn: ChatTurn; name: string; photoUrl: (id: string) => string }) {
   return (
@@ -41,7 +41,7 @@ export function ChatRead({ turn, name, photoUrl }: { turn: ChatTurn; name: strin
               </span>
             ) : (
               <a key={p.id} href={photoUrl(p.id)} target="_blank" rel="noopener noreferrer">
-                <img src={photoUrl(p.id)} alt="Photo she sent" width={96} height={Math.max(1, Math.round((96 * p.h) / Math.max(1, p.w)))} className="max-h-[8rem] w-[6rem] rounded-md object-cover" />
+                <img src={photoUrl(p.id)} alt={`Photo ${name} sent`} width={96} height={Math.max(1, Math.round((96 * p.h) / Math.max(1, p.w)))} className="max-h-[8rem] w-[6rem] rounded-md object-cover" />
               </a>
             ),
           )}
@@ -54,12 +54,12 @@ export function ChatRead({ turn, name, photoUrl }: { turn: ChatTurn; name: strin
         <ul className="flex flex-col gap-4">
           {turn.changes.map((c) => (
             <li key={`c${c.n}`} className="min-w-0 break-words type-small text-ink-2 [overflow-wrap:anywhere]">
-              Her assistant: {changeWordOf(c)} · {c.label}
+              {name}'s assistant: {changeWordOf(c)} · {c.label}
             </li>
           ))}
           {turn.cards.map((c) => (
             <li key={`k${c.n}`} className="min-w-0 break-words type-small text-ink-2 [overflow-wrap:anywhere]">
-              Asked her: {c.label} · {CARD_STATE[c.state] ?? c.state}
+              Asked {name}: {c.label} · {CARD_STATE[c.state]?.(name) ?? c.state}
             </li>
           ))}
         </ul>

@@ -46,8 +46,8 @@ export function minutesLabel(m: number): string {
   return h > 0 ? `${h} h ${String(r).padStart(2, '0')} m` : `${r} m`;
 }
 
-/** Faces for a 1–5 mood or quality, saddest first (never colours). */
-export const FACES = ['☹', '◔', '◑', '◕', '☺'] as const;
+/** Faces for a 1–5 mood or quality, saddest first (never colours; real faces, not progress glyphs). */
+export const FACES = ['😞', '🙁', '😐', '🙂', '😄'] as const;
 export function face(n: number | undefined): string {
   return n !== undefined && n >= 1 && n <= 5 ? (FACES[n - 1] ?? '') : '';
 }

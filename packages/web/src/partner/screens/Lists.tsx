@@ -13,7 +13,7 @@ import type { Place, PlaceDetail } from '@jantar/protocol';
 import type { PersonMe, SharedItem, SharedItemsResponse, SharedList, SharedListKind } from '@jantar/protocol/people';
 import { SHARED_LIST_KINDS } from '@jantar/protocol/people-core';
 import { useCallback, useEffect, useState } from 'react';
-import { hmOf } from '../../people-shared/time.js';
+import { dayLabel, hmOf } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
 import type { PersonApi } from '../api.js';
 import { navigate } from '../nav.js';
@@ -123,7 +123,7 @@ function Cafe({ api, me, id, tick }: { api: PersonApi; me: PersonMe; id: string;
       <h2 className="text-row font-semibold">{p.name}</h2>
       <p className="text-small text-ink-2">
         Added by {whoName(p.by, me)}
-        {p.editedBy !== undefined && p.editedAt ? ` · Edited by ${whoName(p.editedBy, me)} · ${p.editedAt.slice(0, 10)}` : ''}
+        {p.editedBy !== undefined && p.editedAt ? ` · Edited by ${whoName(p.editedBy, me)} · ${dayLabel(p.editedAt.slice(0, 10))}` : ''}
       </p>
       {p.notes ? <p className="whitespace-pre-wrap break-words text-row text-ink [overflow-wrap:anywhere]">{p.notes}</p> : null}
       <div role="group" aria-label="Stars" className="flex gap-4">
@@ -139,7 +139,7 @@ function Cafe({ api, me, id, tick }: { api: PersonApi; me: PersonMe; id: string;
         {r.data.visits.map((v) => (
           <li key={v.id} className="flex items-center justify-between gap-8 border-b border-line py-8 text-small">
             <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-              {v.day} · {v.by === me.person.id ? 'You' : me.owner.name}
+              {dayLabel(v.day)} · {v.by === me.person.id ? 'You' : me.owner.name}
               {v.notes ? ` · ${v.notes}` : ''}
             </span>
             {v.by === me.person.id ? (

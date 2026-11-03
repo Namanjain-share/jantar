@@ -63,7 +63,7 @@ describe('her shared cafés', () => {
     };
     const placeDelete = vi.fn(async () => {});
     render(<Lists me={me()} api={proxy<PersonApi>({ place: vi.fn(async () => detail), placeDelete })} tab="cafes" id={CAFE} list={null} tick={0} />);
-    expect(await screen.findByText(/Added by Sam · Edited by you · 2026-11-03/)).toBeTruthy();
+    expect(await screen.findByText(/Added by Sam · Edited by you · Tue 3 Nov/)).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Delete café' }));
     expect(await screen.findByText('Delete Blue Door for both of you?')).toBeTruthy();

@@ -12,14 +12,14 @@
  * - The card on his Today.
  * - /people routes parse and print back.
  */
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { PEOPLE_ROUTES, type PersonToday, type PersonView, type PlanView } from '@jantar/protocol/people';
 import { presetAgreement } from '@jantar/protocol/people-core';
 import { parseRoute, routePath } from '../../src/lib/router.js';
-import { PEOPLE_PATHS, type PeopleClient } from '../../src/ui/screens/people/client.js';
-import { PlanEditor, defaultPlanDay, orderHint } from '../../src/ui/screens/people/PlanEditor.js';
+import { PEOPLE_PATHS, createPeopleClient, fillPath, type PeopleClient } from '../../src/ui/screens/people/client.js';
+import { PlanEditor, defaultPlanDay, orderHint, sentMessage } from '../../src/ui/screens/people/PlanEditor.js';
 import { peopleLine } from '../../src/ui/screens/people/PeopleCard.js';
 import { Partner } from '../../src/ui/screens/people/Partner.js';
 import { createRouter, memoryHistory } from '../../src/lib/router.js';
@@ -90,6 +90,35 @@ describe('his People client', () => {
       expect(routes.has(`${method} ${path}`), key).toBe(true);
     }
   });
+
+  it('builds the real URL for every list item action (camelCase :itemId filled, never left in)', async () => {
+    const LIST = '01JLISTAAAAAAAAAAAAAAAAAAA';
+    const ITEM = '01JITEMAAAAAAAAAAAAAAAAAAA';
+    const TODO = '01JTODOAAAAAAAAAAAAAAAAAAA';
+    const calls: string[] = [];
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push(`${init.method} ${url}`);
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const c = createPeopleClient({ fetch: fetch as unknown as typeof globalThis.fetch, base: 'https://jantar.test', credentials: { get: async () => null, set: async () => {}, clear: async () => {} } });
+    await c.listItemTick(PID, LIST, ITEM, true);
+    await c.listItemDelete(PID, LIST, ITEM);
+    await c.listItemAssign(PID, LIST, ITEM);
+    await c.assignTodo(PID, { title: 'Call the bank' });
+    await c.updateTodo(PID, TODO, { title: 'Call the bank today' });
+    await c.deleteTodo(PID, TODO);
+    await c.todos(PID, true);
+    expect(calls).toEqual([
+      `POST https://jantar.test/v1/people/${PID}/lists/${LIST}/items/${ITEM}/tick`,
+      `DELETE https://jantar.test/v1/people/${PID}/lists/${LIST}/items/${ITEM}`,
+      `POST https://jantar.test/v1/people/${PID}/lists/${LIST}/items/${ITEM}/assign`,
+      `POST https://jantar.test/v1/people/${PID}/todos`,
+      `PATCH https://jantar.test/v1/people/${PID}/todos/${TODO}`,
+      `DELETE https://jantar.test/v1/people/${PID}/todos/${TODO}`,
+      `GET https://jantar.test/v1/people/${PID}/todos?done=1`,
+    ]);
+    for (const [, pattern] of Object.values(PEOPLE_PATHS)) expect(fillPath(pattern, { pid: 'p', id: 'i', itemId: 'x', day: 'd', tid: 't', cid: 'c' })).not.toMatch(/:/);
+  });
 });
 
 describe('the plan editor', () => {
@@ -113,6 +142,8 @@ describe('the plan editor', () => {
     expect(preview.textContent).toMatch(/analysis · 45 min · report/i);
     expect(preview.textContent).toMatch(/Every 120 min 10:00–18:00: check applications/i);
     fireEvent.click(screen.getByRole('button', { name: 'Use these steps' }));
+    // Each step's fields are labelled on screen; the follow-up says what it is.
+    expect(screen.getAllByText('Tell me if not done by').length).toBeGreaterThan(0);
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Send ▸' }));
     });
@@ -127,6 +158,36 @@ describe('the plan editor', () => {
       [null, 'Analysis'],
     ]);
     expect(body.between).toHaveLength(1);
+  });
+});
+
+describe('the plan editor says what Send did', () => {
+  it('"Sent." only when it goes now; "Saved. … gets it" when it waits; a sent plan says it is up to date', () => {
+    const now = Date.parse('2026-11-03T18:31:00.000Z');
+    const base = { ...planView({ sentAt: undefined }), day: '2026-11-04' };
+    expect(sentMessage({ ...base, sendsAt: '2026-11-04T07:00:00.000Z' }, 'Asha', now)).toMatch(/^Saved\. Asha gets it Wed 4 Nov at \d\d:\d\d\.$/);
+    expect(sentMessage({ ...base, sendsAt: '2026-11-03T18:31:01.000Z' }, 'Asha', now)).toBe('Sent.');
+    expect(sentMessage(base, 'Asha', now)).toBe('Saved.');
+    expect(sentMessage(planView(), 'Asha', now)).toBe("Saved. Asha's plan is up to date.");
+  });
+
+  it('Send is off with no steps, and a Quick plan typed but not applied is applied by Send', async () => {
+    const empty: PlanView = { day: DAY, plan: null, now: null, next: null, late: [], focus: null, slots: {}, counts: { done: 0, total: 0 } };
+    const putPlan = vi.fn(async () => ({ ...empty, sendsAt: '2026-11-04T07:00:00.000Z' }));
+    const c = client({ plan: vi.fn(async () => empty), templates: vi.fn(async () => ({ templates: [] })), putPlan });
+    render(<PlanEditor client={c} pid={PID} name="Asha" day={DAY} editHers={false} onDay={() => {}} />);
+    const sendBtn = await screen.findByRole('button', { name: 'Send ▸' });
+    expect((sendBtn as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Start from ▾' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Quick plan' }));
+    fireEvent.change(screen.getByLabelText('Quick plan'), { target: { value: 'Run at 7, then groceries' } });
+    expect((screen.getByRole('button', { name: 'Send ▸' }) as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send ▸' }));
+    });
+    await waitFor(() => expect(putPlan).toHaveBeenCalled());
+    const [, , body] = putPlan.mock.calls[0] as unknown as [string, string, { steps: { title: string; at?: string }[] }];
+    expect(body.steps.map((x) => x.title.toLowerCase())).toEqual(['run', 'groceries']);
   });
 });
 
@@ -163,6 +224,48 @@ describe('his Partner screen', () => {
     const c = client({ list: vi.fn(async () => ({ enabled: true, people: [person(off)] })), today: vi.fn(async () => today()) });
     render(<Wrapped client={c} tab="journal" />);
     expect(await screen.findByText('Journal: Asha keeps this private')).toBeTruthy();
+  });
+
+  it('Assign: the header action opens the sheet; it sends the title, due, ask, no snooze and the follow-up', async () => {
+    const assignTodo = vi.fn(async () => ({ id: '01JTODOAAAAAAAAAAAAAAAAAAA' }));
+    const c = client({ list: vi.fn(async () => ({ enabled: true, people: [person()] })), today: vi.fn(async () => today()), assignTodo, todos: vi.fn(async () => ({ today: DAY, todos: [], projects: [] })) });
+    render(<Wrapped client={c} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Assign' }));
+    const sheet = await screen.findByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('To-do'), { target: { value: 'Call the bank' } });
+    fireEvent.change(within(sheet).getByLabelText('Due day'), { target: { value: '2026-11-04' } });
+    fireEvent.change(within(sheet).getByLabelText('Time'), { target: { value: '17:00' } });
+    fireEvent.click(within(sheet).getByLabelText('A short report when done'));
+    fireEvent.click(within(sheet).getByLabelText('No snooze'));
+    fireEvent.change(within(sheet).getByLabelText(/Tell me if not done by/), { target: { value: '18:00' } });
+    await act(async () => {
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Assign to Asha' }));
+    });
+    await waitFor(() =>
+      expect(assignTodo).toHaveBeenCalledWith(PID, { title: 'Call the bank', due: { day: '2026-11-04', time: '17:00' }, ask: 'report', snoozable: false, followUp: '18:00' }),
+    );
+  });
+
+  it('the To-do tab lists his items and hers; Edit only where he may (editHers.todos), Nudge on open ones', async () => {
+    const mine = { id: '01JTODOAAAAAAAAAAAAAAAAAA1', title: 'From him', priority: 'normal', by: '', createdAt: AT, updatedAt: AT } as const;
+    const hers = { id: '01JTODOAAAAAAAAAAAAAAAAAA2', title: 'Her own', priority: 'normal', by: PID, createdAt: AT, updatedAt: AT } as const;
+    const sendAlert = vi.fn(async () => ({ id: 'x', delivery: 'sent' }));
+    for (const editHers of [true, false]) {
+      const base = presetAgreement('everything', 'P2');
+      const a = { ...base, version: 1, editHers: { ...base.editHers, todos: editHers } };
+      const c = client({
+        list: vi.fn(async () => ({ enabled: true, people: [person(a)] })),
+        today: vi.fn(async () => today()),
+        todos: vi.fn(async (_p: string, done?: boolean) => ({ today: DAY, todos: done ? [] : [mine, hers], projects: [] })),
+        sendAlert,
+      });
+      const r = render(<Wrapped client={c} tab="todos" />);
+      expect(await screen.findByText('From him')).toBeTruthy();
+      expect(screen.getByText('Her own')).toBeTruthy();
+      expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(editHers ? 2 : 1);
+      expect(screen.getAllByRole('button', { name: 'Nudge' })).toHaveLength(2);
+      r.unmount();
+    }
   });
 
   it('partial data renders a locked tile or nothing, and never throws', async () => {

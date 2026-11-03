@@ -8,7 +8,7 @@ import type { PersonWeightsResponse, SleepNight, SleepWeek as Week } from '@jant
 import { useCallback, useEffect, useState } from 'react';
 import { Faces } from '../../people-shared/Faces.js';
 import { SleepWeek } from '../../people-shared/SleepWeek.js';
-import { shiftDay } from '../../people-shared/time.js';
+import { dayLabel, shiftDay } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
 import type { PersonApi } from '../api.js';
 import { navigate } from '../nav.js';
@@ -39,6 +39,11 @@ const toLocal = (iso: string) => {
 };
 const fromLocal = (v: string) => new Date(v).toISOString();
 /** The night a bedtime belongs to: from 12:00 that day, before 12:00 the day before (the daemon checks it too). */
+/** 20:00 to 04:00 on this device: when "Going to sleep" is the main button (Today shows it then too). */
+const eveningNow = () => {
+  const h = new Date().getHours();
+  return h >= 20 || h < 4;
+};
 const nightOf = (v: string) => (Number(v.slice(11, 13)) >= 12 ? v.slice(0, 10) : shiftDay(v.slice(0, 10), -1));
 
 function Sleep({ api, week, tick }: { api: PersonApi; week: string | null; tick: number }) {
@@ -65,7 +70,8 @@ function Sleep({ api, week, tick }: { api: PersonApi; week: string | null; tick:
       {error ? <p role="alert">{error}</p> : null}
       <div className="mt-12 flex flex-wrap gap-8">
         {w && !w.open ? (
-          <Button variant="primary" size="lg" onClick={() => void api.sleepStart().then(load, (e: Error) => setError(e.message))}>
+          // The main button only in the evening and night (as on Today); by day, Add a night is the way in.
+          <Button variant={eveningNow() ? 'primary' : 'outline'} size="lg" onClick={() => void api.sleepStart().then(load, (e: Error) => setError(e.message))}>
             Going to sleep
           </Button>
         ) : null}
@@ -193,7 +199,7 @@ function Weight({ api, tick }: { api: PersonApi; tick: number }) {
       <ul className="mt-12">
         {(w?.weights ?? []).slice(0, 30).map((x) => (
           <li key={x.day} className="flex justify-between py-4">
-            <span>{x.day}</span>
+            <span>{dayLabel(x.day)}</span>
             <span>{x.kg} kg</span>
           </li>
         ))}

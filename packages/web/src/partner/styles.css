@@ -16,3 +16,22 @@
 @source "../ui/kit";
 
 @custom-variant coarse (@media (pointer: coarse));
+
+/*
+ * Her app is phone-first (spec 3.1): every control she taps is at least
+ * 44 px, her privacy switches and one-tap buttons included, under a mouse
+ * as well as a finger. Utilities still set widths and paddings.
+ */
+@layer base {
+  button,
+  select,
+  textarea,
+  input:not([type='checkbox']):not([type='radio']):not([type='hidden']) {
+    min-height: 44px;
+  }
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 24px;
+    height: 24px;
+  }
+}

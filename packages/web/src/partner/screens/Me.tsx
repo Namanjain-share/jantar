@@ -4,26 +4,44 @@
  *
  * - Sharing is rendered from `me.agreement`, the object every view of her
  *   reads (no second copy). Its switches only lower (narrow applies before
- *   his next read). It lists his devices that can open her space.
- * - Activity: newest first; his views of an area are grouped per day (C28).
+ *   his next read). It lists his devices that can open her space, and
+ *   "See what {owner} sees" opens each area as he gets it (her mirror).
+ * - Activity: newest first, under day headers, in plain words with HH:MM;
+ *   his views of an area are grouped per day (C28).
  * - Devices: hers, with last seen and the Access email they joined with;
  *   Revoke; Link another device (a 5-minute code).
  * - Notifications: turn on and test, lock screen, mute.
  * - Leave: download first, keep 30 days or delete now, type LEAVE.
  */
-import { AGREEMENT_FIELDS, closeDependents, fieldsChanged, withField, type AgreementFields, type AgreementPatch, CHAT_KEEP_DAYS } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, ALERT_KINDS, closeDependents, fieldsChanged, withField, type AgreementFields, type AgreementPatch, type AlertKind, CHAT_KEEP_DAYS } from '@jantar/protocol/people-core';
 import type { PersonActivity, PersonMe, PersonPrefsPatch } from '@jantar/protocol/people';
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { dayLabel, hmOf } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
 import { navigate } from '../nav.js';
 import type { PersonApi, PersonDevice } from '../api.js';
-import { joinCopy, lowerLevels } from '../join/copy.js';
+import { joinCopy, levelLabel, lowerLevels, switchLabel } from '../join/copy.js';
+import { turnOnNotifications } from '../notify.js';
 import { ME_TABS, type MeTab } from '../router.js';
 import { ProposalCard } from './Today.js';
 
 const TAB_LABEL: Record<MeTab, string> = { sharing: 'Sharing', activity: 'Activity', devices: 'Devices', notifications: 'Notifications', leave: 'Leave' };
 
-export function Me({ me, api, reload, tab }: { me: PersonMe; api: PersonApi; reload: () => void; tab: MeTab }) {
+// "See what {owner} sees": loads when she opens one area.
+const Mirror = lazy(() => import('./Mirror.js'));
+
+/** The `see` fields with a view in this build, and the mirror area each opens. */
+const MIRROR_AREA: Record<string, string> = {
+  'see.todos': 'todos',
+  'see.weight': 'weight',
+  'see.plan': 'plan',
+  'see.review': 'review',
+  'see.sleep': 'sleep',
+  'see.journal': 'journal',
+  'see.chat': 'chat',
+};
+
+export function Me({ me, api, reload, tab, see }: { me: PersonMe; api: PersonApi; reload: () => void; tab: MeTab; see?: string | null }) {
   return (
     <div>
       <div role="tablist" className="flex flex-wrap gap-4 border-b border-line">
@@ -40,7 +58,12 @@ export function Me({ me, api, reload, tab }: { me: PersonMe; api: PersonApi; rel
         ))}
       </div>
       <div className="pt-16">
-        {tab === 'sharing' ? <Sharing me={me} api={api} reload={reload} /> : null}
+        {tab === 'sharing' && see ? (
+          <Suspense fallback={<p className="text-ink-2">Loading…</p>}>
+            <Mirror me={me} api={api} area={see} />
+          </Suspense>
+        ) : null}
+        {tab === 'sharing' && !see ? <Sharing me={me} api={api} reload={reload} /> : null}
         {tab === 'activity' ? <Activity api={api} owner={me.owner.name} /> : null}
         {tab === 'devices' ? <Devices api={api} /> : null}
         {tab === 'notifications' ? <Notifications me={me} api={api} reload={reload} /> : null}
@@ -64,10 +87,12 @@ function patchOf(from: AgreementFields, to: AgreementFields): AgreementPatch {
   return out as AgreementPatch;
 }
 
-/** The pushes he gets about her unasked (spec 3.8), so none of them is ever a surprise. */
+/** The pushes the owner gets about her unasked (spec 3.8), so none of them is ever a surprise. */
 export function toldWithoutLooking(me: PersonMe): string[] {
   const a = me.agreement;
-  const out = ['When you join, pause, resume, leave or change what you share', 'Alerts you send, and your replies to his'];
+  const o = me.owner.name;
+  const out = ['When you join, pause, resume, leave or change what you share', `Alerts you send ${o}, and your replies to ${o}'s alerts`];
+  if (a?.assign.todos || a?.assign.plan) out.push(`When an item ${o} asked about ("Tell me if not done by") is still open at that time: its title only`);
   if (a?.see.plan) out.push('When you mark a rough day (one line, no details)');
   if (a?.see.review !== 'off' && me.ownerTells?.reviewPush !== false) out.push('When you send your evening review (no note text)');
   if (a?.see.journal) out.push('When you reply to a comment in your journal (no text)');
@@ -84,14 +109,24 @@ export function Sharing({ me, api, reload }: { me: PersonMe; api: PersonApi; rel
     <div>
       {me.pending ? <ProposalCard me={me} api={api} reload={reload} /> : null}
       <h2 className="mt-8 font-semibold">What {me.owner.name} can see</h2>
-      <ul className="mt-8 flex flex-col gap-8">
+      <p className="mt-4">
+        <SeeLink owner={me.owner.name} area="today" label={`See ${me.owner.name}'s Today of you`} />
+      </p>
+      <ul className="mt-8 flex flex-col gap-12">
         {copy.sees.map((line) => (
-          <li key={line.text} className="flex items-start justify-between gap-12">
-            <span>{line.text}</span>
+          <li key={line.text} className="flex flex-wrap items-start justify-between gap-x-12 gap-y-4">
+            <span className="min-w-0 flex-1 basis-[14rem]">
+              {line.text}
+              {line.key && MIRROR_AREA[line.key] && line.level !== false && line.level !== 'off' ? (
+                <span className="block">
+                  <SeeLink owner={me.owner.name} area={MIRROR_AREA[line.key] as string} />
+                </span>
+              ) : null}
+            </span>
             {lowerLevels(line).length > 0 ? (
               <select
-                aria-label={`Level for ${line.key}`}
-                className="rounded-btn border border-line bg-bg px-8 text-small"
+                aria-label={switchLabel(me.owner.name, line.key)}
+                className="min-h-44 rounded-btn border border-line bg-bg px-8"
                 value={String(line.level)}
                 onChange={(e) => {
                   const field = AGREEMENT_FIELDS.find((f) => f.key === line.key);
@@ -103,7 +138,7 @@ export function Sharing({ me, api, reload }: { me: PersonMe; api: PersonApi; rel
               >
                 {[...lowerLevels(line), line.level].map((l) => (
                   <option key={String(l)} value={String(l)}>
-                    {l === true ? 'On' : l === false || l === 'off' ? 'Off' : l === 'adherence' ? 'Only how often' : 'All'}
+                    {levelLabel(l as string | boolean)}
                   </option>
                 ))}
               </select>
@@ -146,11 +181,38 @@ export function Sharing({ me, api, reload }: { me: PersonMe; api: PersonApi; rel
   );
 }
 
+/** A day's or an area's name as the app says it ("your Today", "your plan"). */
+const AREA_WORDS: Record<string, string> = {
+  today: 'your Today',
+  todos: 'your to-dos',
+  meds: 'your medicines',
+  weight: 'your weight',
+  food: 'your food log',
+  plan: 'your plan',
+  review: 'your evening review',
+  sleep: 'your sleep',
+  journal: 'your journal',
+  chat: 'your chat',
+};
+const areaWords = (a: string | undefined) => (a ? (AREA_WORDS[a] ?? `your ${a}`) : 'your space');
+const dayOf = (ref: string | undefined) => (ref && /^\d{4}-\d{2}-\d{2}$/.test(ref) ? dayLabel(ref) : null);
+const quoted = (t: string | undefined) => (t ? `: ${t}` : '');
+const FIELD_WORDS: Record<string, string> = { at: 'the time', title: 'the name', minutes: 'the length', ask: 'what it asks', notes: 'the notes', due: 'the due day', followUp: '"Tell me if not done by"', focus: 'focus', ring: 'the ring', kg: 'the weight', chatPerDay: 'messages a day' };
+
+/** "changed the time of 'Mock' 08:00 → 08:30" (the first change named; more as "and 2 more"). */
+function changeWords(r: PersonActivity): string {
+  const c = r.changes ?? [];
+  const first = c[0];
+  const what = first ? `${FIELD_WORDS[first.field] ?? first.field} of "${r.title ?? 'a step'}"${first.from !== undefined || first.to !== undefined ? ` ${first.from ?? '–'} → ${first.to ?? '–'}` : ''}` : `"${r.title ?? 'a step'}"`;
+  return `${what}${c.length > 1 ? ` and ${c.length - 1} more` : ''}`;
+}
+
 const ACTION_WORDS: Record<string, (owner: string, r: PersonActivity) => string> = {
   joined: () => 'You joined',
-  view: (o, r) => `${o} looked at your ${r.area ?? 'space'}`,
+  view: (o, r) => `${o} looked at ${areaWords(r.area ?? r.ref)}`,
   paused: () => 'You paused',
   resumed: () => 'You resumed',
+  left: () => 'You left',
   ending: (o) => `${o} ended sharing`,
   restore: (o) => `${o} restored Life data from a backup. Changes after it may be missing.`,
   'agreement.narrowed': () => 'You changed what you share',
@@ -160,13 +222,32 @@ const ACTION_WORDS: Record<string, (owner: string, r: PersonActivity) => string>
   'device.linked': (_o, r) => `You linked ${r.device ?? 'a device'}`,
   'device.revoked': (o, r) => (r.actor === 'owner' ? `${o} revoked ${r.device ?? 'a device'}` : `You revoked ${r.device ?? 'a device'}`),
   'module.changed': (o) => `${o} changed your modules`,
+  'todo.added': (o, r) => `${o} added a to-do${quoted(r.title)}`,
+  'todo.edited': (o, r) => (r.changes?.length ? `${o} changed ${changeWords(r)}` : `${o} changed a to-do${quoted(r.title)}`),
+  'todo.deleted': (o, r) => `${o} removed a to-do${quoted(r.title)}`,
+  'plan.set': (o, r) => `${o} planned ${dayOf(r.ref) ?? 'a day'}`,
+  'plan.changed': (o, r) => `${o} changed the plan for ${dayOf(r.ref) ?? 'a day'}${r.fields?.length ? ` (${r.fields.filter((f) => !f.startsWith('0 ')).join(', ')})` : ''}`,
+  'step.removed': (o, r) => `${o} removed a step${quoted(r.title)}${r.fields?.includes('was done') ? ' (it was done)' : ''}`,
+  'step.edited': (o, r) => `${o} changed ${changeWords(r)}`,
+  'step.carried': (o, r) => `${o} moved a step to a later day${quoted(r.title)}`,
+  'template.applied': (o, r) => (r.actor === 'owner' ? `${o} applied the template${quoted(r.title)}` : `Template applied${quoted(r.title)}`),
+  'journal.commented': (o, r) => `${o} commented on ${r.title ?? 'your journal'}`,
+  'alert.sent': (o, r) => {
+    const k = r.fields?.[0] as AlertKind | undefined;
+    return `${o} sent you an alert${k && ALERT_KINDS[k] ? `: ${ALERT_KINDS[k].label}` : ''}`;
+  },
+  'weight.corrected': (o, r) => `${o} corrected your weight${dayOf(r.ref) ? ` for ${dayOf(r.ref)}` : ''}${r.changes?.[0] ? `: ${r.changes[0].from} → ${r.changes[0].to} kg` : ''}`,
+  'weight.deleted': (o, r) => `${o} removed your weight${dayOf(r.ref) ? ` for ${dayOf(r.ref)}` : ''}`,
+  'chat.limit': (o, r) => `${o} set your chat to ${r.changes?.[0]?.to ?? 'a new number of'} messages a day`,
+  'place.deleted': (o, r) => `${r.actor === 'owner' ? o : 'You'} deleted a café for both of you${quoted(r.title)}`,
+  'list.deleted': (o, r) => `${r.actor === 'owner' ? o : 'You'} deleted a list for both of you${quoted(r.title)}`,
 };
 
 export function activityText(owner: string, r: PersonActivity): string {
-  return ACTION_WORDS[r.action]?.(owner, r) ?? r.action;
+  return ACTION_WORDS[r.action]?.(owner, r) ?? (r.actor === 'owner' ? `${owner} changed something in your space` : 'A change in your space');
 }
 
-/** His views grouped per day and area ("Sam looked at your todos 6 times · last 18:40"), C28. */
+/** His views grouped per day and area ("Sam looked at your Today 6 times · last 18:40"), C28. */
 export function groupViews(rows: readonly PersonActivity[]): { key: string; row: PersonActivity; count: number }[] {
   const out: { key: string; row: PersonActivity; count: number }[] = [];
   const seen = new Map<string, { key: string; row: PersonActivity; count: number }>();
@@ -175,7 +256,7 @@ export function groupViews(rows: readonly PersonActivity[]): { key: string; row:
       out.push({ key: String(r.seq), row: r, count: 1 });
       continue;
     }
-    const k = `${r.at.slice(0, 10)}|${r.area ?? ''}`;
+    const k = `${localDayOf(r.at)}|${r.area ?? ''}`;
     const g = seen.get(k);
     if (g) g.count += 1;
     else {
@@ -183,6 +264,24 @@ export function groupViews(rows: readonly PersonActivity[]): { key: string; row:
       seen.set(k, ng);
       out.push(ng);
     }
+  }
+  return out;
+}
+
+/** The device's day for an instant (her rows say when on her clock). */
+function localDayOf(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Rows under day headers, newest first ("Tue 3 Nov"). */
+export function byDay(rows: readonly PersonActivity[]): { day: string; groups: ReturnType<typeof groupViews> }[] {
+  const out: { day: string; groups: ReturnType<typeof groupViews> }[] = [];
+  for (const g of groupViews(rows)) {
+    const day = localDayOf(g.row.at);
+    const last = out[out.length - 1];
+    if (last && last.day === day) last.groups.push(g);
+    else out.push({ day, groups: [g] });
   }
   return out;
 }
@@ -195,15 +294,37 @@ function Activity({ api, owner }: { api: PersonApi; owner: string }) {
   if (!rows) return <p>Loading…</p>;
   if (rows.length === 0) return <p>Nothing yet.</p>;
   return (
-    <ul className="flex flex-col gap-8">
-      {groupViews(rows).map((g) => (
-        <li key={g.key}>
-          {activityText(owner, g.row)}
-          {g.count > 1 ? ` ${g.count} times` : ''} · <span className="text-ink-2">{g.row.at.slice(0, 16).replace('T', ' ')}</span>
-          {g.row.title ? <span className="block break-words text-small text-ink-2">{g.row.title}</span> : null}
-        </li>
+    <div className="flex flex-col gap-16">
+      {byDay(rows).map(({ day, groups }) => (
+        <section key={day} aria-label={dayLabel(day)}>
+          <h2 className="text-small font-semibold text-ink-2">{dayLabel(day)}</h2>
+          <ul className="mt-4 flex flex-col gap-8">
+            {groups.map((g) => (
+              <li key={g.key} className="break-words">
+                <span className="text-ink-2">{hmOf(g.row.at)}</span> {activityText(owner, g.row)}
+                {g.count > 1 ? ` ${g.count} times · last ${hmOf(g.row.at)}` : ''}
+              </li>
+            ))}
+          </ul>
+        </section>
       ))}
-    </ul>
+    </div>
+  );
+}
+
+/** "See what {owner} sees" of one area: her mirror, exactly his view. */
+function SeeLink({ owner, area, label }: { owner: string; area: string; label?: string }) {
+  return (
+    <a
+      href={`/p/me?tab=sharing&see=${area}`}
+      className="inline-flex min-h-44 items-center text-small text-ink-2 underline"
+      onClick={(e) => {
+        e.preventDefault();
+        navigate(`/p/me?tab=sharing&see=${area}`);
+      }}
+    >
+      {label ?? `See what ${owner} sees`}
+    </a>
   );
 }
 
@@ -224,11 +345,11 @@ function Devices({ api }: { api: PersonApi }) {
               {d.name}
               {d.current ? ' (this one)' : ''}
               <span className="block text-small text-ink-2">
-                Last used {d.lastSeenAt.slice(0, 10)}
+                Last used {dayLabel(localDayOf(d.lastSeenAt))}
                 {d.accessEmail ? ` · ${d.accessEmail}` : ''}
               </span>
             </span>
-            <Button variant="outline" size="sm" onClick={() => void api.revokeDevice(d.id).then(load)}>
+            <Button variant="outline" className="min-h-44" onClick={() => void api.revokeDevice(d.id).then(load)}>
               Revoke
             </Button>
           </li>
@@ -249,23 +370,7 @@ function Devices({ api }: { api: PersonApi }) {
 
 function Notifications({ me, api, reload }: { me: PersonMe; api: PersonApi; reload: () => void }) {
   const [note, setNote] = useState<string | null>(null);
-  const turnOn = async () => {
-    try {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('This browser has no notifications. Add the app to your Home Screen first.');
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') throw new Error('Notifications are blocked for this app.');
-      const reg = await navigator.serviceWorker.ready;
-      const { publicKey } = await api.pushKey();
-      const raw = atob(publicKey.replace(/-/g, '+').replace(/_/g, '/'));
-      const key = Uint8Array.from(raw, (c) => c.charCodeAt(0));
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-      await api.pushSubscribe(sub.toJSON());
-      const r = await api.pushTest();
-      setNote(r.delivered > 0 ? 'Done: a test notification is on its way.' : 'Turned on, but the test did not arrive.');
-    } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e));
-    }
-  };
+  const turnOn = async () => setNote(await turnOnNotifications(api));
   const mute = (hours: number | null) => {
     const until = hours === null ? null : new Date(Date.now() + hours * 3600_000).toISOString();
     void api.prefs({ muteUntil: until }).then(reload);
@@ -289,17 +394,17 @@ function Notifications({ me, api, reload }: { me: PersonMe; api: PersonApi; relo
         </select>
       </label>
       <div className="flex flex-wrap gap-8">
-        <Button variant="outline" size="sm" onClick={() => mute(1)}>
+        <Button variant="outline" className="min-h-44" onClick={() => mute(1)}>
           Mute 1 h
         </Button>
-        <Button variant="outline" size="sm" onClick={() => mute(8)}>
+        <Button variant="outline" className="min-h-44" onClick={() => mute(8)}>
           Mute 8 h
         </Button>
-        <Button variant="text" size="sm" onClick={() => mute(null)}>
+        <Button variant="text" className="min-h-44" onClick={() => mute(null)}>
           Unmute
         </Button>
       </div>
-      {me.person.prefs.muteUntil ? <p className="text-small text-ink-2">Muted until {me.person.prefs.muteUntil.slice(11, 16)}</p> : null}
+      {me.person.prefs.muteUntil ? <p className="text-small text-ink-2">Muted until {hmOf(me.person.prefs.muteUntil)}</p> : null}
       <P2Prefs me={me} api={api} reload={reload} />
     </div>
   );

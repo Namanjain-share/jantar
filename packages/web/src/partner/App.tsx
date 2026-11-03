@@ -24,6 +24,7 @@ const Chat = lazy(() => import('./screens/Chat.js'));
 const Lists = lazy(() => import('./screens/Lists.js'));
 
 import { navigate } from './nav.js';
+import { dayLabel } from '../people-shared/time.js';
 
 export { navigate };
 
@@ -123,7 +124,7 @@ export function App({ api }: { api: PersonApi }) {
           {route.name === 'alerts' ? <Alerts me={me} api={api} id={route.id} tick={tick} /> : null}
           {route.name === 'chat' ? <Chat me={me} api={api} tick={tick} /> : null}
           {route.name === 'lists' ? <Lists me={me} api={api} tab={route.tab} id={route.id} list={route.list} tick={tick} /> : null}
-          {route.name === 'me' ? <Me me={me} api={api} reload={load} tab={route.tab} /> : null}
+          {route.name === 'me' ? <Me me={me} api={api} reload={load} tab={route.tab} see={route.see ?? null} /> : null}
         </Suspense>
       </main>
       <TabBar route={route} />
@@ -179,7 +180,7 @@ function Banner({ me }: { me: PersonMe }) {
   let text: string | null = null;
   if (!me.peopleOn) text = `${owner} turned sharing off for now. You can still download your data or leave.`;
   else if (me.person.state === 'paused') text = `Paused: ${owner} can see but not add or send.`;
-  else if (me.person.state === 'ending') text = `${owner} ended sharing. Download your data before ${me.person.endingUntil?.slice(0, 10) ?? 'the end of the week'}.`;
+  else if (me.person.state === 'ending') text = `${owner} ended sharing. Download your data before ${me.person.endingUntil ? dayLabel(me.person.endingUntil.slice(0, 10)) : 'the end of the week'}.`;
   if (!text) return null;
   return (
     <div role="status" className="border-b border-line bg-hover px-16 py-12 text-small">

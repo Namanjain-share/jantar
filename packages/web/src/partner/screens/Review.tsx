@@ -116,6 +116,13 @@ export function Review({ me, api, day: asked, tick }: { me: PersonMe; api: Perso
           <label className="flex min-h-44 items-center gap-8">
             <input type="checkbox" checked={toJournal} onChange={(e) => setToJournal(e.target.checked)} /> Also save to my journal
           </label>
+          <p className="text-small text-ink-2">
+            {me.agreement?.see.review === 'full'
+              ? `${owner} sees this review, your note and your mood.`
+              : me.agreement?.see.review === 'counts'
+                ? `${owner} sees only the counts, never your note or mood.`
+                : `${owner} doesn't see your review.`}
+          </p>
           <div className="fixed inset-x-0 bottom-[calc(44px+env(safe-area-inset-bottom))] z-10 border-t border-line bg-bg px-16 py-8">
             <div className="mx-auto max-w-[42rem]">
               <Button variant="primary" size="xl" className="w-full" disabled={busy} onClick={send}>

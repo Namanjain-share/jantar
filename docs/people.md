@@ -10,17 +10,13 @@ later, and can pause, leave or download their data at any time.
 People is **off** by default. With it off, nothing about Jantar changes for
 you.
 
-> This page describes what is built in this version: their space, day
-> plans, the evening review, alerts, sleep and the journal. Their assistant
-> and shared lists are later parts of 0.12 and are not offered yet: nobody
-> is asked about them, and no setting of yours turns them on. Someone who
-> joined before day plans, the review, sleep or the journal existed gets
-> them only by a request they accept. Their medicines (and food, with their
-> food module on) are still to come: the fields are in the agreement
-> already, and the screens and routes that read them come with them. Your
-> People screen covers their day so far (Today, Plan, Health, Journal,
-> Alerts); assigning to-dos and the Sharing and Activity tabs there are
-> still to come, and until then `jantar people` at the Mac does those.
+> This page describes what is built in this version: their space, to-dos
+> you assign, day plans, the evening review, alerts, sleep, the journal,
+> their assistant and the cafés and lists you share. Someone who joined
+> before an area existed gets it only by a request they accept. Their
+> medicines (and food, with their food module on) are still to come: the
+> fields are in the agreement already, and the screens and routes that read
+> them come with them.
 
 ## Who is who
 
@@ -55,7 +51,15 @@ People needs your Mac reachable over HTTPS (`remote.mode` `cloudflare` or
    `people add` prints the Access step to do in Cloudflare (Jantar holds no
    Cloudflare token). `people invite` prints a link that works once, for 24
    hours: send it to them.
-3. They open the link, pass Access, read the join page and accept.
+3. They open the link, pass Access, read the join page and accept. Then,
+   like your own pairing, their phone walks them through Add to Home Screen
+   (on iPhone, where notifications only reach the Home Screen app) and Turn
+   on notifications with a test, and their Today keeps a card until
+   notifications are on.
+
+"Copy link again" for an invite that hasn't been used needs an admin device
+with its device secret, and each use is in your audit log (never the link
+itself). While People is switched off, no invite or device-link code works.
 
 Their address is a different origin from yours, on purpose: a page on it can
 never write to your routes or open your event stream, and your cookie is
@@ -140,18 +144,29 @@ or "Asleep since 23:40"), and every notification about them opens the right
 tab here.
 
 - **Header**: their status and line, "Asleep since" while a night is open,
-  the day's progress and the Now step, and two buttons: **Plan** (today
-  before 18:00, tomorrow after) and **Alert**.
+  the day's progress and the Now step, a line when an alert from them is
+  new, and three buttons: **Plan** (today before 18:00, tomorrow after),
+  **Assign** (a to-do: title, due day and time, what it asks of them
+  (nothing, Got it, or a short report), no snooze, and "Tell me if not done
+  by") and **Alert**.
 - **Today**: their plan as they see it, with each step's status, done time,
   report and check-in answers, a "late" label, Nudge on an open step, the
   check-betweens, and from their review time the evening review at the
   level they share (with "Carry your open steps to tomorrow").
+- **To-do**: their items and yours for them, open first, with Nudge on an
+  open one, and Edit and Delete on yours (and on theirs with "edit or
+  remove to-dos they added" on).
 - **Plan**: the editor. Start from the weekday's template, Copy yesterday,
   Copy last {weekday}, any template, or **Quick plan**: type "Mock at 8,
   then analysis 45m !report, every 2h 10-18 check applications" and the
   steps appear as you type (no AI, nothing leaves your Mac; anything it
   can't read becomes a plain step). Reorder with Move up and Move down; a
-  quiet hint says when times run out of order. Save as template, and Send.
+  quiet hint says when times run out of order. Save as template, and Send
+  (in a bar at the bottom on a phone). Send says what happened: "Sent." when
+  it goes now, or "Saved. Asha gets it Wed 4 Nov at 07:00" when it waits
+  for their plan time. Every save is a look at their plan too, so it leaves
+  a view mark in their Activity, and your changes to your own steps are
+  listed there ("Sam changed the time of 'Mock' 08:00 → 08:30").
 - **Health** (their sleep week), **Journal** (read, and comment if they
   allow it) and **Alerts** (both ways, with replies).
 - An area they keep private is a grey tile: "Asha keeps this private".
@@ -370,11 +385,17 @@ accounts Jantar may use applies to their runs too.
   is a grey tile: "Asha keeps this private". It is never just missing, and
   never counts how long it has been off.
 - **See what Sam sees**: under Me › Sharing they can open exactly the view
-  you get of each area. Both come from one function, so they can't differ.
+  you get of each area, drawn with the same pieces your screen uses. Both
+  come from one function, so they can't differ.
 - **Activity** (theirs, and readable by you too) lists every change you make
   in their space, each request and answer, devices linked or revoked, and
-  every time you look at an area (one line per area per hour, grouped by
-  day).
+  every time you look at an area (one line per area per hour), in plain
+  words under a header for each day.
+- **The evening review** holds their to-dos only while they share their
+  to-dos: switched off, the to-dos are out of what you see of the review
+  and of its counts, sent reviews included.
+- **A held alert** names why it is held (asleep, asked for space, focusing)
+  only while you see the area behind it; otherwise it says "quiet time".
 - Your stream refreshes for their changes only in areas you can see, and
   theirs never tells them when you are busy elsewhere.
 
@@ -406,7 +427,7 @@ gives them their 7 days.
 
 - **Link another device**: Me › Devices makes a code that works once, for 5
   minutes; they enter it on the new device at `/p/link`. Five devices at
-  most. They see each device's name, when it was last used, and the email it
+  most. Revoking a device also voids any code it made that wasn't used. They see each device's name, when it was last used, and the email it
   joined with; you see names and the email only.
 - **Notifications**: turn on and test, mute for an hour or eight, and the
   lock screen: show everything, hide alert text, or hide everything ("Jantar

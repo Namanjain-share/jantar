@@ -118,6 +118,29 @@ partner simply can't sign in there).
   Confirm, and the other is told. Their assistant reads and changes them;
   in either assistant the other person's words are framed as data. When
   someone is forgotten, the shared rows stay with you.
+- **Assign and To-do on your People screen**: an Assign button in the
+  header (title, due day and time, what it asks of them, no snooze, "Tell
+  me if not done by"), and a To-do tab with their items and yours for them,
+  Nudge, and Edit and Delete where their agreement allows. The tabs wrap
+  instead of scrolling out of sight, and a new alert from them shows in the
+  header. The plan editor gives each step's title its own line on a phone,
+  labels every field ("Tell me if not done by" too), keeps Send in a bar at
+  the bottom, and says "Saved. Asha gets it Wed 4 Nov at 07:00" instead of
+  "Sent." for a plan that waits for their plan time. Send is off with no
+  steps, and a Quick plan still open is used by Send. Shared list items can
+  be ticked, deleted and assigned again (their request went to the wrong
+  address).
+- **Their first steps, Sharing and Activity**: after joining, their phone
+  walks them through Add to Home Screen (iPhone) and turning on
+  notifications with a test, and Today keeps a card until they're on. The
+  join page and Sharing now name everything you see and get: check-ins,
+  their status and rough day, sleep taps as they happen, when they open
+  your alert and their reply, "no snooze" and "Tell me if not done by",
+  Urgent through their quiet hours, and the lists you share. "See what Sam
+  sees" opens each area just as you get it. Activity reads in plain words
+  under a header per day ("Sam planned Wed 4 Nov", "Sam changed the time of
+  'Mock' 08:00 → 08:30"), and every switch and button there is at least
+  44 px.
 - **Fixes to what you can see of them**: with their to-dos off, the evening
   review leaves their to-dos out (sent reviews included); saving their plan
   is a look at it and leaves a view mark, and your changes to your own

@@ -29,7 +29,7 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
 | **Chat** | Right after Today: ask Jantar anything, or tell it what to add or change; each change has Undo, deletes wait for your tap ([Chat](assistant.md)) |
-| **People** | With [People](people.md) on: a line for the person you share with on Today, and `/people` with their status, progress, Plan and Alert, and tabs for Today, Plan (the plan editor and Quick plan), Health (sleep), Journal and Alerts. Opened from that line or from a notification about them |
+| **People** | With [People](people.md) on: a line for the person you share with on Today, and `/people` with their status, progress, Plan (the plan editor and Quick plan, Send in a bar at the bottom), Assign (a to-do for them) and Alert, and tabs for Today, To-do, Health (sleep), Journal, Chat, Lists and Alerts (the row wraps; a new alert from them shows in the header). Opened from that line or from a notification about them |
 
 A session waiting on a dynamic workflow or a background agent it started
 shows under Working ("1 workflow running", the workflow's name and how
@@ -58,12 +58,16 @@ The person you share with uses a separate app at `/p` on their own
 hostname ([People](people.md)): it holds none of your screens. Its tab bar
 is Today, To-do, Journal, Chat and More (Health, Alerts, Lists, Me). Today runs
 their day plan, with a tick on every row, a 5-second Undo and one button at
-the bottom for the thumb (Got it, then Done: the Now step); from their
+the bottom for the thumb (Got it, then Done: the Now step, or Start: on a
+focus step); from their
 review time it shows the evening review, and in the evening Going to sleep.
 Chat is their own assistant: "N messages left today" under the box, Undo on
 each change, cards for deletes and alerts, ⓘ for who can read it, and, while
 you can, "Sam can read this chat" above the box on every visit. Journal,
-Chat, Health and Alerts load when opened.
+Chat, Health and Alerts load when opened. After joining, it walks them
+through Add to Home Screen (iPhone) and turning on notifications, and Today
+keeps a card until they're on. Me › Sharing has "See what Sam sees" for
+each area they share.
 
 On your People screen, the Chat tab shows their thread read only (no box,
 no Undo, no buttons) while they share it, and their messages a day. Lists
