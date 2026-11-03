@@ -21,7 +21,9 @@
  *   reasons, sources, close days), pipeline.ts (the stage invariant,
  *   deleting a stage, probabilities, the forecast), stage.ts (quiet deals),
  *   insights.ts (win rate, cycle, revenue, funnel, forecast, trend, time in
- *   stage) and milestones.ts, each adapted from Noblot with its tests.
+ *   stage) and milestones.ts, each adapted from Noblot with its tests; P3b:
+ *   merge.ts (the merge plan and its conflicts) and segments.ts (client
+ *   lists as an in-memory predicate, and the starter lists).
  */
 export {
   DOSE_GRACE_MINUTES,
@@ -248,3 +250,15 @@ export {
   type WinRate,
 } from './work/insights.js';
 export { MILESTONES_MAX, milestoneMissed, milestoneProgress, type MilestoneLike, type MilestoneProgress } from './work/milestones.js';
+export {
+  MERGE_FIELDS,
+  MERGE_FIELD_LABELS,
+  contactMergeConflicts,
+  planContactMerge,
+  type MergeConflict,
+  type MergeField,
+  type MergeState,
+  type MergeableContact,
+  type MergedContactFields,
+} from './work/merge.js';
+export { describeClientList, matchesClientList, starterClientLists, type ClientListFilters, type ListClient, type StarterList } from './work/segments.js';
