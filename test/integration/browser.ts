@@ -108,12 +108,14 @@ export async function styleElements(page: Page): Promise<number> {
  * 0.12.1: a touch page is checked with its coarse pointer, or once more in a new context.
  *
  * Chromium sometimes drops Playwright's touch emulation part way through a context: CI's macOS run
- * 41667870706 drew the Mac's chrome at touch-1440, as the page does with no (pointer: coarse). The
- * emulation is one switch per page (Blink's DevToolsEmulator), and the Emulation agent of any DevTools
- * session turns it off as that session goes, whichever session turned it on (the guard's own test shows
- * it). Each cross-document navigation (RenderDocument) sends Playwright's session to the new document
- * and lets the old one's go: when that lands after the new document has its touch back, the page has
- * none. It was not caught happening here; nothing in these tests turns touch off.
+ * 41667870706 drew the Mac's chrome at touch-1440, as the page does with no (pointer: coarse). Blink
+ * keeps one touch switch per page (DevToolsEmulator), and a DevTools session whose Emulation agent
+ * turned it on turns it off for the whole page as that session goes, while Playwright's own session
+ * still has it on (a second CDP session shows it: touch on, detach, no coarse pointer until the next
+ * document). The likely way on CI: a cross-document navigation (RenderDocument) moves Playwright's
+ * session to the new document and lets the old document's copy go, and when that lands after the new
+ * document turned touch back on, the page has none. Not caught here; nothing in these tests turns
+ * touch off.
  *
  * So a touch page is marked (touchPage) as it opens. stillTouch(page) throws TouchDropped once it has
  * no coarse pointer; clean() and overflow() ask first, and a test asks before any step that needs the
