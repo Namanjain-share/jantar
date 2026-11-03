@@ -33,10 +33,12 @@
  * 0.12, the wide layouts (spec 9.10): someone's screen is a SplitPane. From
  * a pane of 800 the header and the tabs, one under the other, are the list
  * column (340, 440 from 1180) and the tab or the plan editor is beside them,
- * 720 at most; below 800, and on a phone, it is the one column above. The
- * tab's section is the same at every width, so a rotation across 800 keeps a
- * plan being written or a comment being typed. The People list is 720 wide
- * at most.
+ * 720 at most, except her Today, whose cards (Day plan, her day, the evening
+ * review; kit/Columns.tsx) take the detail's width; below 800, and on a
+ * phone, it is the one column above (her Today's cards from a tab 640 wide).
+ * The tab's section is the same at every width, so a rotation across 800
+ * keeps a plan being written or a comment being typed. The People list is
+ * 720 wide at most.
  */
 import { ALERT_KINDS, ALERT_REPLY_LABELS, PEOPLE_LABEL, STATUS_LABELS, spaceLabel, type AlertKind } from '@jantar/protocol/people-core';
 import type {
@@ -69,6 +71,7 @@ import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type Pl
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { chipClass } from '../../../people-shared/chip.js';
 import { FoodRead, foodTodayLine } from '../../../people-shared/FoodRead.js';
+import clsx from 'clsx';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
 import { MedsRead } from '../../../people-shared/MedsRead.js';
@@ -76,7 +79,6 @@ import { PlanRead } from '../../../people-shared/PlanRead.js';
 import { ReviewList } from '../../../people-shared/ReviewList.js';
 import { SleepWeek } from '../../../people-shared/SleepWeek.js';
 import { dayLabel, hmOf, shiftDay } from '../../../people-shared/time.js';
-import clsx from 'clsx';
 import { useDeps, useNavigate } from '../../context.js';
 import { Badge } from '../../kit/Badge.js';
 import { Button } from '../../kit/Button.js';
