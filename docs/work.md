@@ -58,7 +58,10 @@ has **Open project** in its menu (long press, or right click on a Mac),
 and a session's screen names its project under the title.
 
 **Search.** The magnifier in the phone's header (and ⌘K, or "Search or
-jump" in the iPad's sidebar) searches everything below as you type.
+jump" in the iPad's sidebar) searches everything below as you type. On
+the phone, **Cancel** beside the box closes it. When the Mac can't answer
+(out of reach, or life.db broken) the sheet says so instead of "Nothing
+matches".
 
 **Milestones in the app.** While Work is on, a project's screen lists
 its milestones: tick one done with a tap, see its target day (marked once
@@ -74,8 +77,9 @@ currency on its own) and when you last talked, or "quiet 21 days" past
 Work's quiet days. Filter by words (a name, company, e-mail or phone), by
 state, by a tag or by a starter list; the filters are in the page's
 address, so a link from Today's Work card opens the list it names. On a
-wide window the list is a table until you open a client; then the client
-opens beside the list.
+wide window the list is a table until you open a client (the name keeps
+its room: Open deals shows from a pane of 960 px, Tags from 1180); then
+the client opens beside the list.
 
 A client's page has, from the top: its company and state; **Call**,
 **WhatsApp** and **Email**, which open your phone's own apps with the
@@ -288,7 +292,8 @@ joined, and the other's deals, log, follow-ups, projects and people move
 over, all in one save. The merged-away client is hidden for good. A
 client imported from a file passes its mark on to the one it is merged
 into, so Chat still treats those words as data. Two people or two
-companies only; Chat never merges.
+companies only; Chat never merges. Two of the same name are told apart by
+their company and state wherever the sheet names them.
 
 **Starter lists** on Clients: Needs a check-in, Open deals, Quiet leads
 (14 days), Gone quiet (30 days) and Missing an email, each with how many
