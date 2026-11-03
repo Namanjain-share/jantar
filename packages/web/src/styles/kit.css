@@ -11,16 +11,19 @@
 /*
  * 0.12 c32: on a touch screen a bottom bar keeps at least 24 px under it, so nothing sits in an iPad
  * window's resize corner (its bottom-right 24 x 24). An iPhone's home indicator already leaves 34.
+ * 0.12.0: below 768 with any pointer too, where the phone's chrome shows (shell/layout.ts), so its
+ * tab bar, a session's composer and a bottom sheet keep the corner free in a narrow Mac window as
+ * well. From 768 a fine pointer gets the Mac's chrome, whose status bar keeps it with pr-corner.
  */
 @utility pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  @media (pointer: coarse) {
+  @media (pointer: coarse), (width < 768px) {
     padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
   }
 }
 @utility pb-safe-16 {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-  @media (pointer: coarse) {
+  @media (pointer: coarse), (width < 768px) {
     padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 16px), 24px);
   }
 }
@@ -30,6 +33,14 @@
 }
 @utility pr-safe {
   padding-right: env(safe-area-inset-right, 0px);
+}
+/*
+ * 0.12.0: a bar along the window's bottom edge that is too short to keep 24 px under it (the Mac's
+ * 24 px status bar) keeps the resize corner free on its right instead, with any pointer: its last
+ * control ends 28 px from the edge (the corner's 24 and 4 to spare), or the right safe area's width.
+ */
+@utility pr-corner {
+  padding-right: max(env(safe-area-inset-right, 0px), 28px);
 }
 @utility no-scrollbar {
   scrollbar-width: none;
@@ -319,8 +330,9 @@
     transition: transform 420ms var(--ease-sheet);
     will-change: transform;
   }
-  /* 0.12 c32: on a touch screen a bottom sheet's last row also clears an iPad window's resize corner. */
-  @media (pointer: coarse) {
+  /* 0.12 c32: on a touch screen a bottom sheet's last row also clears an iPad window's resize corner;
+     0.12.0: below 768 with any pointer too (pb-safe). */
+  @media (pointer: coarse), (width < 768px) {
     .sheet-popup {
       padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 16px), 24px);
     }

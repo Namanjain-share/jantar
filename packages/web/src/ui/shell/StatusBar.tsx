@@ -12,6 +12,11 @@
  *
  * 0.12: the grid row is 24 plus the bottom safe area, and the bar pads it,
  * so on an iPad nothing sits over the home indicator.
+ *
+ * 0.12.0: the bar keeps the window's resize corner (its bottom-right
+ * 24 x 24) free with any pointer: it pads its right side (pr-corner), and
+ * only the left side shrinks and clips when the text is wider than the bar
+ * (another font, a long link state), so "? legend" never moves past it.
  */
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
@@ -90,38 +95,41 @@ export function StatusBar({
 }) {
   const live = conn.status === 'live' || conn.status === 'polling';
   return (
-    <footer className="pb-safe col-span-full row-start-3 flex h-full min-w-0 items-center gap-12 overflow-hidden whitespace-nowrap border-t border-line pl-16 pr-12 type-mono text-ink-3">
-      <span className="inline-flex flex-none items-center gap-8 text-ink-2" role="status" aria-live="polite" aria-label="Connection">
-        {/* Remounts on every event, so the blink plays once per event. */}
-        <i key={seq} aria-hidden="true" className={clsx('block size-6 flex-none', live ? 'bg-jup animate-blink' : 'border border-ink-3')} />
-        <span>{connWord(conn, now)}</span>
+    <footer className="pb-safe pr-corner col-span-full row-start-3 flex h-full min-w-0 items-center gap-12 overflow-hidden whitespace-nowrap border-t border-line pl-16 type-mono text-ink-3">
+      {/* The left side: it shrinks and clips, never the right one. */}
+      <span className="flex h-full min-w-0 flex-1 items-center gap-12 overflow-hidden">
+        <span className="inline-flex flex-none items-center gap-8 text-ink-2" role="status" aria-live="polite" aria-label="Connection">
+          {/* Remounts on every event, so the blink plays once per event. */}
+          <i key={seq} aria-hidden="true" className={clsx('block size-6 flex-none', live ? 'bg-jup animate-blink' : 'border border-ink-3')} />
+          <span>{connWord(conn, now)}</span>
+        </span>
+        {single ? null : (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="flex-none">cswap {fetchedAt ? ago(fetchedAt, now) || 'now' : '–'}</span>
+          </>
+        )}
+        {pairs.length && !single ? (
+          <>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              className="inline-flex h-full min-w-0 items-center gap-12 overflow-hidden rounded-chip px-4 transition duration-120 ease-hover hover:bg-hover"
+              aria-label="5-hour usage per account. Open Accounts"
+              onClick={onAccounts}
+            >
+              <span>5h</span>
+              {pairs.map((p) => (
+                <span key={p.id} className="flex-none">
+                  {p.id}
+                  <b className={clsx('ml-4 font-data', pastCeiling(p.pct, ceiling) ? 'text-signal-text' : 'text-ink')}>{p.pct ?? '–'}</b>
+                </span>
+              ))}
+            </button>
+          </>
+        ) : null}
       </span>
-      {single ? null : (
-        <>
-          <span aria-hidden="true">·</span>
-          <span className="flex-none">cswap {fetchedAt ? ago(fetchedAt, now) || 'now' : '–'}</span>
-        </>
-      )}
-      {pairs.length && !single ? (
-        <>
-          <span aria-hidden="true">·</span>
-          <button
-            type="button"
-            className="inline-flex h-full min-w-0 items-center gap-12 overflow-hidden rounded-chip px-4 transition duration-120 ease-hover hover:bg-hover"
-            aria-label="5-hour usage per account. Open Accounts"
-            onClick={onAccounts}
-          >
-            <span>5h</span>
-            {pairs.map((p) => (
-              <span key={p.id} className="flex-none">
-                {p.id}
-                <b className={clsx('ml-4 font-data', pastCeiling(p.pct, ceiling) ? 'text-signal-text' : 'text-ink')}>{p.pct ?? '–'}</b>
-              </span>
-            ))}
-          </button>
-        </>
-      ) : null}
-      <span className="ml-auto flex flex-none items-center gap-12">
+      <span className="flex flex-none items-center gap-12">
         {updateAvailable ? (
           <span className="inline-flex items-center gap-6 text-ink-2">
             New version ready ·
