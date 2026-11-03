@@ -26,7 +26,7 @@ import type { PersonApi } from '../api.js';
 import { navigate } from '../nav.js';
 import { joinCopy } from '../join/copy.js';
 import { askForNotifications, needsHomeScreen, turnOnNotifications } from '../notify.js';
-import { Card, Field, ReasonChips, Sheet, Tick, UndoToast, useUndo } from '../ui.js';
+import { Card, Field, ReasonChips, ReportSheet, Sheet, Tick, UndoToast, useUndo } from '../ui.js';
 import { DoseRow } from './DoseRow.js';
 import { TodoRow } from './TodoRow.js';
 
@@ -217,7 +217,22 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
           <h2 className="font-semibold">Reminders and to-dos{today.overdue > 0 ? ` · ${today.overdue} overdue` : ''}</h2>
           <ul className="divide-y divide-line">
             {today.todos.map((t) => (
-              <TodoRow key={t.id} t={t} owner={owner} onDone={(d) => void run(api.done(t.id, d))} onAck={() => void run(api.ack(t.id))} />
+              <TodoRow
+                key={t.id}
+                t={t}
+                owner={owner}
+                onDone={(d, report) =>
+                  void api.done(t.id, d, report).then(
+                    () => {
+                      setError(null);
+                      void load();
+                      if (d) undo.show(`Done: ${t.title}`, () => void run(api.done(t.id, false)));
+                    },
+                    (e: Error) => setError(e.message),
+                  )
+                }
+                onAck={() => void run(api.ack(t.id))}
+              />
             ))}
           </ul>
         </section>
@@ -375,21 +390,7 @@ function StepSheet({
   if (!step || !sheet) return null;
   const finish = () => close();
   if (sheet.kind === 'report') {
-    return (
-      <Sheet open onOpenChange={(o) => !o && close()} title={`Done: ${step.title}`}>
-        <div className="flex flex-col gap-12 pb-24">
-          <Field label={`A short note for ${owner} (optional)`} value={note} onChange={setNote} max={500} multiline />
-          <div className="flex gap-8">
-            <Button variant="primary" size="xl" className="flex-1" disabled={!note.trim()} onClick={() => (setState(step, 'done', { report: note.trim() }), finish())}>
-              Save note
-            </Button>
-            <Button variant="outline" size="xl" className="flex-1" onClick={() => (setState(step, 'done'), finish())}>
-              Done without a note
-            </Button>
-          </div>
-        </div>
-      </Sheet>
-    );
+    return <ReportSheet open title={step.title} owner={owner} close={close} onDone={(report) => (setState(step, 'done', report ? { report } : {}), finish())} />;
   }
   if (sheet.kind === 'checkin') {
     return (

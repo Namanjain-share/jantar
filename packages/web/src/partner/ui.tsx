@@ -1,9 +1,11 @@
 /**
  * v0.12 People: her app's small shared pieces: the 5-second Undo toast
  * (the one-thumb fix for a mis-tap, spec 3.1), one-tap reason chips
- * (typing is optional), and a tick circle with a 44 px target.
+ * (typing is optional), a tick circle with a 44 px target, and the report
+ * sheet for an item that asks for a short report.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Button } from '../ui/kit/Button.js';
 
 export interface UndoState {
   text: string;
@@ -94,6 +96,33 @@ export function Field({ label, value, onChange, max, multiline = false }: { labe
         <input className="min-h-44 rounded-btn border border-line bg-bg px-8" maxLength={max} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
     </label>
+  );
+}
+
+/**
+ * "Done" on an item that asks for a short report (a plan step, or a to-do
+ * he assigned with one): a note for {owner} and two equal buttons; Done
+ * without a note sends none.
+ */
+export function ReportSheet({ open, title, owner, close, onDone }: { open: boolean; title: string; owner: string; close: () => void; onDone: (report?: string) => void }) {
+  const [note, setNote] = useState('');
+  useEffect(() => {
+    if (open) setNote('');
+  }, [open, title]);
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && close()} title={`Done: ${title}`}>
+      <div className="flex flex-col gap-12 pb-24">
+        <Field label={`A short note for ${owner} (optional)`} value={note} onChange={setNote} max={500} multiline />
+        <div className="flex gap-8">
+          <Button variant="primary" size="xl" className="flex-1" disabled={!note.trim()} onClick={() => onDone(note.trim())}>
+            Save note
+          </Button>
+          <Button variant="outline" size="xl" className="flex-1" onClick={() => onDone()}>
+            Done without a note
+          </Button>
+        </div>
+      </div>
+    </Sheet>
   );
 }
 

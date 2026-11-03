@@ -159,7 +159,9 @@ export class PersonSpace {
     if (!t) return refuse('not_found', SPACE_REASONS.noTodo);
     const r = this.todos(pid).setDone(id, done, actor);
     if (!r.ok) return r;
+    // Undo takes her report back with the tick (as a plan step's does), so he never reads one on an open item.
     if (report !== undefined && done) this.patchExtra(pid, id, { report });
+    else if (!done && t.report !== undefined) this.patchExtra(pid, id, { report: undefined });
     this.herWrite(pid, 'todos');
     return OK;
   }

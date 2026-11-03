@@ -1,39 +1,52 @@
 /**
  * v0.12 People: one to-do row of hers: a tick circle (at least 44 px), the
- * title, "From {owner}" on an item he added, "Edited by {owner}" on one of
- * hers he changed, and "Got it" when he asked for an ack. Her text and his
- * render as plain text (React escapes it; no HTML).
+ * title, and under it what the item carries: "From {owner}" on an item he
+ * added, "Edited by {owner}" on one of hers he changed, "no snooze", "asks
+ * for a short report" and "{owner} asked to know by 08:45" while it is open
+ * (his join-page promise: "You see both on the item"), and her report once
+ * done. "Got it" when he asked for an ack. A tick on an item that asks for a
+ * report opens the report sheet (Save note, or Done without a note). Her
+ * text and his render as plain text (React escapes it; no HTML).
  */
 import type { PersonTodo } from '@jantar/protocol/people';
+import { useState } from 'react';
 import { dayLabel } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
+import { ReportSheet, Tick } from '../ui.js';
 
-export function TodoRow({ t, owner, onDone, onAck }: { t: PersonTodo; owner: string; onDone: (done: boolean) => void; onAck?: () => void }) {
+/** The line under a to-do's title, as she reads it. */
+export function todoSubline(t: PersonTodo, owner: string): string {
+  const open = t.doneAt === undefined;
+  return [
+    t.due ? `${dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null,
+    t.by === '' ? `From ${owner}` : null,
+    t.by !== '' && t.editedBy === '' ? `Edited by ${owner}` : null,
+    t.snoozable === false ? 'no snooze' : null,
+    t.ask === 'report' && open ? 'asks for a short report' : null,
+    t.followUp && open ? `${owner} asked to know by ${t.followUp}` : null,
+    t.report && !open ? `"${t.report}"` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+export function TodoRow({ t, owner, onDone, onAck }: { t: PersonTodo; owner: string; onDone: (done: boolean, report?: string) => void; onAck?: () => void }) {
   const done = t.doneAt !== undefined;
+  const [reporting, setReporting] = useState(false);
+  const sub = todoSubline(t, owner);
   return (
     <li className="flex items-start gap-8 py-8">
-      <button
-        aria-label={done ? `Undo ${t.title}` : `Done: ${t.title}`}
-        aria-pressed={done}
-        className="flex size-44 shrink-0 items-center justify-center"
-        onClick={() => onDone(!done)}
-      >
-        <span className={`block size-20 rounded-full border-2 ${done ? 'border-ink bg-ink' : 'border-line-strong'}`} />
-      </button>
+      <Tick done={done} label={done ? `Undo ${t.title}` : `Done: ${t.title}`} onClick={() => (!done && t.ask === 'report' ? setReporting(true) : onDone(!done))} />
       <div className="min-w-0 flex-1 py-8">
         <p className={`break-words ${done ? 'text-ink-3 line-through' : ''}`}>{t.title}</p>
-        <p className="text-small text-ink-2">
-          {t.due ? `${dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null}
-          {t.by === '' ? ` · From ${owner}` : null}
-          {t.by !== '' && t.editedBy === '' ? ` · Edited by ${owner}` : null}
-          {t.snoozable === false ? ' · no snooze' : null}
-        </p>
+        {sub ? <p className="break-words text-small text-ink-2">{sub}</p> : null}
       </div>
       {t.by === '' && t.ask === 'ack' && !t.ackAt && onAck ? (
         <Button variant="outline" className="min-h-44" onClick={onAck}>
           Got it
         </Button>
       ) : null}
+      <ReportSheet open={reporting} title={t.title} owner={owner} close={() => setReporting(false)} onDone={(report) => (setReporting(false), onDone(true, report))} />
     </li>
   );
 }

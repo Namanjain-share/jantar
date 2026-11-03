@@ -59,6 +59,11 @@ describe('her to-dos and his assign', () => {
     expect((await herCall('POST', `/v1/p/todos/${id}/done`, { done: true, report: 'Done, all sorted' })).statusCode).toBe(200);
     const done = (await herCall('GET', '/v1/p/todos?done=1')).json() as { todos: PersonTodo[] };
     expect(done.todos.find((t) => t.id === id)).toMatchObject({ doneAt: expect.any(String), report: 'Done, all sorted' });
+    // Undo takes the report back with the tick: he never reads a report on an open item.
+    expect((await herCall('POST', `/v1/p/todos/${id}/done`, { done: false })).statusCode).toBe(200);
+    const reopened = ((await him('GET', `/v1/people/${f.asha.id}/todos`)).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === id);
+    expect(reopened?.doneAt).toBeUndefined();
+    expect(reopened?.report).toBeUndefined();
     const rows = (await activity()).activity;
     expect(rows.some((r) => r.action === 'todo.added' && r.title === 'Call the bank' && r.actor === 'owner')).toBe(true);
   });

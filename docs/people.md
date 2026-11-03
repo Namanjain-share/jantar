@@ -228,8 +228,11 @@ next slot.
   90 minutes), your gentle and normal alerts and nudges wait, and their own
   rings stay quiet. Urgent follows their quiet-hours setting.
 - **Follow-ups.** On a step or to-do you gave them, "Tell me if not done by
-  13:00" pushes you at that time if it is still open, after checking again
-  that they still share that area. It is never sent to them.
+  13:00" pushes you once at that time if it is still open, after checking
+  again that they still share that area. It is never sent to them; their
+  item says "Sam asked to know by 13:00". A to-do that asks for a short
+  report says so on their row, and their tick opens the report sheet (Save
+  note, or Done without a note), as a plan step's does.
 - **Rough day.** One tap clears the rest of their day (each open step reads
   "rough day"), stops today's rings and sets their status to Low. You get
   one line, "Asha marked today a rough day", 10 seconds later, so a stray

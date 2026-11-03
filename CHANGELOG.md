@@ -167,6 +167,11 @@ partner simply can't sign in there).
   skipped and how often, the notes only on medicines you may change, never
   their pill count or when they logged a dose; their "See what Sam sees"
   shows the same, notes included.
+- **Their to-dos say what you asked**: a to-do you assign with "A short
+  report when done" opens the report sheet on their tick (Save note, or
+  Done without a note), and their row says "asks for a short report" and
+  "Sam asked to know by 08:45" while it is open. Their To-do page's Undo is
+  the same 5-second toast as Today's, and Undo takes a report back.
 - **People in More**: your phone lists People in More (the rail on a wide
   screen) while People is on, on a device paired with control.
 - **Nothing promised that isn't there**: a food log for them is not part of
