@@ -1,11 +1,16 @@
 /**
  * A keyboard hint: mono 11 px in a 3 px-radius box. Shown in the status bar,
- * the Cmd-K footer and next to dock actions. Desktop only; hide it on phones.
+ * the Cmd-K footer and next to dock actions. 0.11: only once a hardware
+ * keyboard has been seen (shell/layout.ts `keyboard`: a Mac from the start,
+ * an iPad after its first key press), at any width; nothing otherwise, so
+ * no caller has to ask.
  */
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
+import { useLayout } from '../shell/layout.js';
 
 export function Keycap({ children, size = 'md', className }: { children: ReactNode; size?: 'sm' | 'md'; className?: string }) {
+  if (!useLayout().keyboard) return null;
   return (
     <kbd
       className={clsx(
@@ -19,8 +24,9 @@ export function Keycap({ children, size = 'md', className }: { children: ReactNo
   );
 }
 
-/** "j k move · ↵ open": keycaps and words, separated by middots. */
+/** "j k move · ↵ open": keycaps and words, separated by middots; nothing without a keyboard. */
 export function KeyHints({ hints, className }: { hints: { keys: string[]; label: string }[]; className?: string }) {
+  if (!useLayout().keyboard) return null;
   return (
     <span className={clsx('inline-flex items-center gap-6 text-ink-3', className)}>
       {hints.map((h, i) => (

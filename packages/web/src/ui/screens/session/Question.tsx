@@ -104,7 +104,7 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
   const decline = () => void decide({ behavior: 'deny' }, 'Declined the question');
   const chat = () => void decide({ behavior: 'deny', message: CLARIFY_MESSAGE }, 'Asked to chat about this');
 
-  usePaneKeys({ a: submit }, !phone && !disabled && complete);
+  usePaneKeys({ a: submit }, !disabled && complete);
 
   const q = questions[Math.min(page, questions.length - 1)];
   const onKey = (e: KeyboardEvent) => {

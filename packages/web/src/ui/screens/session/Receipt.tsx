@@ -43,7 +43,7 @@ export function AnswerReceipt({
   /** Phone: the composer follows, so it owns the bottom safe area. */
   composerBelow?: boolean;
 }) {
-  usePaneKeys({ n: onNext }, !phone && Boolean(next));
+  usePaneKeys({ n: onNext }, Boolean(next));
   const meta = [clock(new Date(receipt.at).toISOString(), now), phase === 'waiting' ? 'waiting for Claude' : receipt.stop ? 'Claude stopped' : 'Claude picked it up'];
   return (
     <section

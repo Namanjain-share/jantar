@@ -111,7 +111,7 @@ export function PermissionCard({ p, folder, phone, offline, age, late, aside, on
     requestAnimationFrame(() => noteRef.current?.focus());
   };
 
-  usePaneKeys({ a: () => !disabled && allowOnce(), d: () => !disabled && openDeny() }, !phone && !disabled);
+  usePaneKeys({ a: () => !disabled && allowOnce(), d: () => !disabled && openDeny() }, !disabled);
 
   const suggestionButton = (i: number, info: SuggestionInfo, cls?: string, full = false) => {
     const label = full ? info.text : shortLabel(info);

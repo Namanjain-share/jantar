@@ -111,6 +111,15 @@ What changed for people who use Jantar, newest first. Versions before
   headers stay in view when iOS moves the page, and a focused field
   scrolls into view. Sheets and menus move with the app. Pinch zoom is
   left alone.
+- **Keys at any width**: once you have used a keyboard (a Mac from the
+  start, an iPad after its first key press), the shortcuts work in a
+  narrow window too, and only then show their keys. New: ⌘1–⌘9 open the
+  places in their order (Board, Today, Chat, Files, Accounts, Alerts,
+  Devices, Intel, Meetings; a place that is off says so), g then t, c, i,
+  m or f for Today, Chat, Intel, Meetings and Files, and ⌘. as Esc for
+  keyboards without one. In a text field only ⌘K, ⌘1–⌘9, ⌘. and Esc
+  reach Jantar; ⌃K opens the palette only outside a field, since it
+  deletes to the end of the line in one.
 
 ## 0.11.0 (3 November 2026)
 

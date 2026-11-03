@@ -75,7 +75,7 @@ export function PlanCard({ p, phone, offline, age, late, aside, onDecided, onSho
   // The a key never switches to auto mode: it takes the first row that needs no hold.
   const keyMode = modes.find((m) => m !== 'auto');
 
-  usePaneKeys({ a: () => !disabled && keyMode !== undefined && approve(keyMode) }, !phone && !disabled && keyMode !== undefined);
+  usePaneKeys({ a: () => !disabled && keyMode !== undefined && approve(keyMode) }, !disabled && keyMode !== undefined);
 
   return (
     <DockFrame

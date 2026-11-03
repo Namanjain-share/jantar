@@ -3,14 +3,19 @@
  * approve, d deny, r focus the composer, n next. They act only when focus is
  * in the session pane (or nowhere), never while typing, never with a dialog
  * open, and never as the second key of the shell's "g a" jump (the shell's
- * listener runs after this one, so the g is tracked here too).
+ * listener runs after this one, so the g is tracked here too). 0.11: at
+ * every width once a hardware keyboard has been seen (shell/layout.ts
+ * `keyboard`), not only from 768 px.
  */
 import { createContext, useContext, useEffect, useRef, type RefObject } from 'react';
 import { isTyping } from '../../shell/keys.js';
+import { useLayout } from '../../shell/layout.js';
 
 export const PaneRoot = createContext<RefObject<HTMLElement | null> | null>(null);
 
-export function usePaneKeys(map: Record<string, () => void>, enabled = true): void {
+export function usePaneKeys(map: Record<string, () => void>, on = true): void {
+  const { keyboard } = useLayout();
+  const enabled = on && keyboard;
   const root = useContext(PaneRoot);
   const handlers = useRef(map);
   handlers.current = map;

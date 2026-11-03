@@ -105,7 +105,7 @@ export function Composer({
     el.style.height = `${Math.max(min, Math.min(max, el.scrollHeight + 2))}px`;
   }, [draft, phone, area]);
 
-  usePaneKeys({ r: () => area.current?.focus() }, !phone && !offline);
+  usePaneKeys({ r: () => area.current?.focus() }, !offline);
 
   const send = (e?: FormEvent) => {
     e?.preventDefault();

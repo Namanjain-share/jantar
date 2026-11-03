@@ -34,7 +34,8 @@ import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'rea
 import { boardOrder, needsYou } from '@jantar/protocol';
 import { documentTitle, setFavicon } from '../../lib/favicon.js';
 import { resyncPush } from '../../lib/push.js';
-import { useApp, useDeps, useNavigate, useNow, useRoute } from '../context.js';
+import { CLI_NAME } from '@jantar/protocol';
+import { useApp, useDeps, useNavigate, useNow, useRoute, useToast } from '../context.js';
 import { LayerContext } from '../kit/layer.js';
 import { Pane } from '../kit/Pane.js';
 import { SkeletonRows } from '../kit/Skeleton.js';
@@ -47,10 +48,11 @@ import { NotPaired, PairScreen } from '../screens/Pair.js';
 import { SessionScreen } from '../screens/Session.js';
 import { savedKinds } from '../screens/devices/kinds.js';
 import { routePath, type FilesLocation, type Route } from '../../lib/router.js';
-import { useAccountsMode, useCeiling, useFeatures, useNeedsCount, useNewAlerts, useStripItems, useUsagePairs } from './data.js';
+import { useAccountsMode, useCeiling, useFeatures, useNeedsCount, useNewAlerts, usePlaceFeatures, useStripItems, useUsagePairs } from './data.js';
 import { More } from '../screens/more/More.js';
 import { useGlobalKeys, useKey } from './keys.js';
 import { useLayout } from './layout.js';
+import { NAV, navItems, type NavItem } from './nav.js';
 import { LegendPopover, LegendSheet } from './LegendPopover.js';
 import { OfflineNotice, UpdateNotice } from './Notices.js';
 import { PhoneHeader } from './PhoneHeader.js';
@@ -64,7 +66,7 @@ import { TopBar } from './TopBar.js';
 const Accounts = lazy(() => import('../screens/Accounts.js').then((m) => ({ default: m.Accounts })));
 const Alerts = lazy(() => import('../screens/Alerts.js').then((m) => ({ default: m.Alerts })));
 const Devices = lazy(() => import('../screens/Devices.js').then((m) => ({ default: m.Devices })));
-// Desktop-only and loaded on first use: cmdk and the Base UI dialog.
+// Loaded on first use (Cmd-K, at any width once a keyboard has been seen): cmdk and the Base UI dialog.
 const Palette = lazy(() => import('./Palette.js').then((m) => ({ default: m.Palette })));
 // v0.3 places, each its own chunk (the viewer, highlighter client and TanStack Virtual; the folder browser, start form and receipt).
 const FilesPlace = lazy(() => import('../screens/files/FilesPlace.js').then((m) => ({ default: m.FilesPlace })));
@@ -101,6 +103,8 @@ export function Shell() {
   const ceiling = useCeiling();
   const newAlerts = useNewAlerts(route.name === 'alerts');
   const features = useFeatures();
+  const placeFeatures = usePlaceFeatures();
+  const toast = useToast();
   // v0.6: New session is there while a session can start somewhere (the Mac, or a paired server).
   const canStart = useCanStart();
   const single = useAccountsMode() === 'single';
@@ -112,6 +116,8 @@ export function Shell() {
   if (palette) paletteUsed.current = true;
 
   const phone = layout.chrome === 'phone';
+  // 0.11: keys work at every width once a keyboard has been seen (a Mac from the start).
+  const keys = layout.keyboard;
   const bare = route.name === 'pair' || conn.status === 'unauthorized';
   const offline = conn.status === 'offline';
   const dashed = offline || conn.status === 'connecting';
@@ -138,14 +144,21 @@ export function Shell() {
     void resyncPush(api, pushEnv, savedKinds()).catch(() => undefined);
   }, [conn.status, pushSynced, api, pushEnv]);
 
-  // Desktop keys: Cmd-K, ?, g b/a/l/d (keys.ts), and moving through the ledger.
+  // Keys (keys.ts): Cmd-K, ?, Cmd-1 to Cmd-9 and the g chords for the places, and moving through the
+  // ledger. A place that is off says so instead of opening.
+  const goPlace = (item: NavItem | undefined) => {
+    if (!item) return;
+    if (navItems(placeFeatures).includes(item)) navigate(item.href);
+    else toast(offSentence(item, features.ask));
+  };
   useGlobalKeys({
-    enabled: !phone && !bare,
+    enabled: keys && !bare,
     onPalette: () => setPalette(true),
     onLegend: () => setLegend((o) => !o),
-    navigate: (to) => navigate(to),
+    navigate: (to) => goPlace(NAV.find((item) => item.href === to)),
+    onPlace: (n) => goPlace(NAV[n - 1]),
   });
-  const ledgerKeys = !phone && !bare && (route.name === 'board' || route.name === 'session');
+  const ledgerKeys = keys && !bare && (route.name === 'board' || route.name === 'session');
   useKey(
     ['j', 'k'],
     (e) => {
@@ -391,7 +404,7 @@ export function Shell() {
           />
         )}
         {phone ? <LegendSheet open={legend} onOpenChange={setLegend} /> : null}
-        {!phone && paletteUsed.current ? (
+        {paletteUsed.current ? (
           <Suspense fallback={null}>
             <Palette open={palette} onOpenChange={setPalette} now={now} />
           </Suspense>
@@ -402,6 +415,13 @@ export function Shell() {
       </div>
     </LayerContext.Provider>
   );
+}
+
+/** What Cmd-n or a g chord says for a place that is off (or, for Chat, a device without control). */
+export function offSentence(item: NavItem, askOn: boolean): string {
+  if (item.route === 'chat' && askOn) return 'Chat needs a device paired with control.';
+  const cmd: Partial<Record<NavItem['route'], string>> = { today: 'life on <module>', chat: 'chat on', files: 'files on', intel: 'intel on', meetings: 'meetings on' };
+  return `${item.label} is off on this Mac. Turn it on at the Mac: ${CLI_NAME} ${cmd[item.route] ?? ''}`.trim();
 }
 
 /** The v0.4 screen for a Life or Intel route (Shell renders it only while its switch is on). */
