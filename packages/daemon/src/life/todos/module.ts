@@ -51,7 +51,9 @@
  *   never reads these tables, checks the ids it owns through the links it
  *   registers (`useWork`) and hears of a project's client changing inside
  *   the same transaction. It reads follow-ups and unlinks a deleted client
- *   through the methods below.
+ *   through the methods below. A todo with a deal always has a client
+ *   (W11): given a deal and no client, it takes the deal's; letting go of
+ *   its client lets go of its deal too, unless the same change names one.
  * - Every write saves, re-arms its ping (pings.ts), then emits life.changed.
  *   Replies carry ids only; refusals are the fixed sentences below.
  */
@@ -423,8 +425,15 @@ class Todos implements TodosModule {
     if (!client && !deal) return null;
     if (this.repo.space !== '') return refuse('invalid_request', TODO_REASONS.ownTodosOnly);
     if (client && !this.work?.contact(contactId)) return refuse('invalid_request', TODO_REASONS.clientGone);
-    if (deal && !this.work?.deal(dealId)) return refuse('invalid_request', TODO_REASONS.dealGone);
+    if (deal && !this.work?.dealClient(dealId)) return refuse('invalid_request', TODO_REASONS.dealGone);
     return null;
+  }
+
+  /** v0.13 (W11): a todo with a deal and no client takes the deal's client, so it rings, lists and shows as that client's follow-up. */
+  private withDealClient(t: Todo): void {
+    if (t.dealId === undefined || t.contactId !== undefined) return;
+    const client = this.work?.dealClient(t.dealId);
+    if (client) t.contactId = client;
   }
 
   // --- todos -----------------------------------------------------------------
@@ -508,6 +517,7 @@ class Todos implements TodosModule {
     if (body.projectId !== undefined) t.projectId = body.projectId;
     if (links.contactId !== undefined) t.contactId = links.contactId;
     if (links.dealId !== undefined) t.dealId = links.dealId;
+    this.withDealClient(t);
     if (body.repeat !== undefined && body.due !== undefined) {
       // A monthly or yearly date the client named stays; otherwise the due day's. The series' time is the due time.
       t.repeat = withAt(body.repeat.byMonthDay !== undefined ? body.repeat : withMonthDay(body.repeat, body.due.day), body.due);
@@ -529,6 +539,9 @@ class Todos implements TodosModule {
       if (v === null) delete next[key];
       else if (v !== undefined) next[key] = v;
     }
+    // v0.13 (W11): no follow-up keeps a deal without a client, as a client's delete lets go of both.
+    if (links.contactId === null && links.dealId === undefined) delete next.dealId;
+    this.withDealClient(next);
     if (patch.title !== undefined) next.title = patch.title;
     if (patch.priority !== undefined) next.priority = patch.priority;
     if (patch.notes === null) delete next.notes;

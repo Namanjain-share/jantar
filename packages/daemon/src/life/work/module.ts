@@ -338,8 +338,9 @@ class Work implements WorkModule {
     return this.repo.hasContact(id);
   }
 
-  hasDeal(id: string): boolean {
-    return this.repo.hasDeal(id);
+  /** A deal's client: a todo with the deal is that client's follow-up. null when there is no such deal. */
+  dealClient(id: string): string | null {
+    return this.repo.deal(id)?.contactId ?? null;
   }
 
   hasBusiness(id: string): boolean {
@@ -1766,7 +1767,7 @@ export function buildWorkModule(core: LifeCore, deps: LifeModuleDeps, todos: Tod
   todos.onProjectDeleted((id) => work.projectDeleted(id));
   todos.useWork({
     contact: (id) => work.hasContact(id),
-    deal: (id) => work.hasDeal(id),
+    dealClient: (id) => work.dealClient(id),
     business: (id) => work.hasBusiness(id),
     projectClient: (projectId, before, after) => work.projectClient(projectId, before, after),
   });

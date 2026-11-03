@@ -137,6 +137,39 @@ describe('a deal', () => {
     expect(work.dealRecord(id)).toBeNull();
     expect(ok(todos.listTodos({ done: false })).todos.find((x) => x.id === t)?.dealId).toBeUndefined();
   });
+
+  it("a todo given a deal and no client is the deal's client's follow-up; letting go of the client lets go of the deal (W11)", () => {
+    const acme = client('Acme Studio', { kind: 'company' });
+    const id = deal(acme, 'Site rebuild');
+    const contactOf = (t: string) => core.db.prepare('SELECT contact_id FROM todos WHERE id = ?').get(t);
+    const linksOf = (t: string) => {
+      const x = ok(todos.listTodos({ done: false })).todos.find((y) => y.id === t);
+      return { contactId: x?.contactId, dealId: x?.dealId };
+    };
+    // Made with its deal alone: the deal's client is its client.
+    const quote = ok(todos.createTodo({ title: 'Send the quote', dealId: id, due: { day: '2026-11-05', time: '15:00' } }, PHONE)).id;
+    expect(linksOf(quote)).toEqual({ contactId: acme, dealId: id });
+    expect(contactOf(quote)).toEqual({ contact_id: acme });
+    // A plain todo given the deal later: the same.
+    const chase = ok(todos.createTodo({ title: 'Chase' }, PHONE)).id;
+    ok(todos.updateTodo(chase, { dealId: id }, PHONE));
+    expect(linksOf(chase)).toEqual({ contactId: acme, dealId: id });
+    expect(todos.followUps(acme, false).map((t) => t.id)).toEqual([quote, chase]);
+    expect(ok(work.client(acme, PHONE)).followUps.map((t) => t.id)).toEqual([quote, chase]);
+    // A client named with the deal stays (a person at the company, say).
+    const riya = client('Riya Sharma', { companyId: acme });
+    const call = ok(todos.createTodo({ title: 'Call Riya', contactId: riya, dealId: id }, PHONE)).id;
+    expect(linksOf(call)).toEqual({ contactId: riya, dealId: id });
+    // Letting go of the client lets go of the deal: no todo keeps a deal without a client.
+    ok(todos.updateTodo(chase, { contactId: null }, PHONE));
+    expect(linksOf(chase)).toEqual({ contactId: undefined, dealId: undefined });
+    expect(contactOf(chase)).toEqual({ contact_id: null });
+    // ...unless the same change names a deal, whose client comes with it.
+    ok(todos.updateTodo(chase, { contactId: null, dealId: id }, PHONE));
+    expect(linksOf(chase)).toEqual({ contactId: acme, dealId: id });
+    // A deal that isn't there is still refused.
+    expect(todos.createTodo({ title: 'Lost', dealId: '01JZZZZZZZZZZZZZZZZZZZZZZX' }, PHONE)).toMatchObject({ ok: false });
+  });
 });
 
 describe('moves', () => {

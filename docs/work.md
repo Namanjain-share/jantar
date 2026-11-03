@@ -145,7 +145,9 @@ note; editing a client never counts. Up to 50,000 entries.
 
 A follow-up is an ordinary todo with a client: it shows in Today's Due,
 rings at its time, snoozes and catches up after sleep like any reminder,
-and Chat sees it. There is no second scheduler. On a locked phone a
+and Chat sees it. There is no second scheduler. A todo given a deal and
+no client takes the deal's client; taking the client off a follow-up
+takes its deal off too. On a locked phone a
 follow-up's push says only **"Follow-up · 15:00"**; turn its words on at
 the Mac if you want them there:
 

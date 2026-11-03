@@ -1930,12 +1930,13 @@ export interface TodosModule extends LifeModule {
 
 /**
  * v0.13 Work P2: what the Todos module asks Work (registered by Work when it is built): whether an id is
- * one of his clients, deals or businesses, and Work's hook when a project's client changes (inside the
- * project write's transaction).
+ * one of his clients or businesses, a deal's client (null: no such deal), and Work's hook when a project's
+ * client changes (inside the project write's transaction).
  */
 export interface TodosWorkLinks {
   contact(id: string): boolean;
-  deal(id: string): boolean;
+  /** The client a deal is with, so a todo with that deal is that client's follow-up; null when Work has no such deal. */
+  dealClient(id: string): string | null;
   business(id: string): boolean;
   projectClient(projectId: string, before: string | undefined, after: string | undefined): void;
 }

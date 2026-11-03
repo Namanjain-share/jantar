@@ -201,6 +201,20 @@ describe('opening and closing with the switches', () => {
     expect(pushes).toEqual([expect.objectContaining({ kind: 'life', title: 'Todo due', body: 'Example todo · 11:00' })]);
   });
 
+  it("v0.13 Work (W23): a todo given only a deal rings as its client's follow-up, with no client words while names are off", async () => {
+    const life = service({ settings: settings({ todos: true, work: true }), builders: LIFE_MODULE_BUILDERS, at: '2026-10-30T10:58:00.000Z' });
+    await life.start();
+    const co = life.work.createClient({ name: 'Zentrix Works', kind: 'company' }, { kind: 'cli' });
+    if (!co.ok) throw new Error(co.reason);
+    const deal = life.work.createDeal({ clientId: co.value.id, title: 'Zentrix retainer' }, { kind: 'cli' });
+    if (!deal.ok) throw new Error(deal.reason);
+    const t = life.todos.createTodo({ title: 'Send Zentrix the quote', dealId: deal.value.id, due: { day: '2026-10-30', time: '11:00' } }, { kind: 'cli' });
+    expect(t.ok).toBe(true);
+    for (let i = 0; i < 6; i++) await ctx.clock.tick(MIN);
+    expect(pushes).toEqual([expect.objectContaining({ kind: 'life', title: 'Todo due', body: 'Follow-up · 11:00', url: `/work?tab=clients&id=${co.value.id}` })]);
+    expect(JSON.stringify(pushes)).not.toContain('Zentrix');
+  });
+
   it('a zone change moves every ring and emits life.changed', async () => {
     const life = service({ at: '2026-10-30T00:00:00.000Z' });
     await life.start();

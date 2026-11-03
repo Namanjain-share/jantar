@@ -323,6 +323,18 @@ describe('follow-ups and projects with a client: his space only (O13, W-T4)', ()
     const plain = { ...t, contactId: undefined };
     expect(todoPush(plain, t.id, at, false, 'UTC', 'full', undefined, { work: true, names: false }).body).toBe('Call Riya at Acme · 15:00');
   });
+
+  it("a todo with a deal and no client is a follow-up too: no title while names are off, and it opens the deal (W23)", () => {
+    // Todos fills a deal's client in on every write; a todo stored before that, with its deal alone, still says nothing.
+    const t = { id: '01JZZZZZZZZZZZZZZZZZZZZZZV', title: 'Send Acme the quote', priority: 'normal' as const, dealId: '01JZZZZZZZZZZZZZZZZZZZZZZS', createdAt: 'x', updatedAt: 'x' };
+    const at = new Date('2026-11-03T15:00:00.000Z');
+    expect(todoPush(t, t.id, at, false, 'UTC', 'full', undefined, { work: true, names: false })).toMatchObject({ body: 'Follow-up · 15:00', url: `/work?tab=deals&id=${t.dealId}` });
+    expect(todoPush(t, t.id, at, false, 'UTC', 'short', undefined, { work: true, names: false }).body).toBe('Follow-up · 15:00');
+    expect(todoPush(t, t.id, at, false, 'UTC', 'full', undefined, { work: false, names: false })).toMatchObject({ body: 'Follow-up · 15:00', url: `/todos?id=${t.id}` });
+    expect(todoPush(t, t.id, at, false, 'UTC', 'full', undefined, { work: true, names: true }).body).toBe('Send Acme the quote · 15:00');
+    // With a client too, the tap opens the client.
+    expect(todoPush({ ...t, contactId: '01JZZZZZZZZZZZZZZZZZZZZZZT' }, t.id, at, false, 'UTC', 'full', undefined, { work: true, names: false }).url).toBe('/work?tab=clients&id=01JZZZZZZZZZZZZZZZZZZZZZZT');
+  });
 });
 
 describe("Today's card, settings and client_here", () => {
