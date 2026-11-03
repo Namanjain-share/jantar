@@ -72,7 +72,18 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
     let live = true;
     api.joinPreview(code).then(
       (p) => live && show(p),
-      (e: Error) => live && setError(e.message),
+      // 0.12.1: a device that is in already and opens its spent link goes on to Today, not to the spent-link page.
+      (e: Error) => {
+        if (!live) return;
+        api.me().then(
+          (m: PersonMe | undefined) => {
+            if (!live) return;
+            if (m?.person && m.person.state !== 'left') return navigate('/p', { replace: true });
+            setError(e.message);
+          },
+          () => live && setError(e.message),
+        );
+      },
     );
     return () => {
       live = false;

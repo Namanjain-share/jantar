@@ -327,4 +327,24 @@ describe('/p/join without a code on a device that is in already (0.12.1 after re
     expect(await screen.findByRole('heading', { name: 'Turn on notifications' })).toBeTruthy();
     expect(screen.queryByLabelText('Paste your invite link')).toBeNull();
   });
+
+  it('a device that is in already and opens its spent link goes on to Today', async () => {
+    history.replaceState(null, '', `/p/join#c=${CODE}`);
+    const spent = vi.fn(async (): Promise<JoinPreview> => {
+      throw new PersonApiError('not_found', 'This invite link has expired or was already used. Ask for a new one.', 404);
+    });
+    render(<Join api={fakeApi({ joinPreview: spent, me: vi.fn(async () => asha) })} mode="join" />);
+    await waitFor(() => expect(location.pathname).toBe('/p'));
+    expect(screen.queryByText(/expired or was already used/)).toBeNull();
+  });
+
+  it('a device that is not in and opens a spent link still reads why', async () => {
+    history.replaceState(null, '', `/p/join#c=${CODE}`);
+    const spent = vi.fn(async (): Promise<JoinPreview> => {
+      throw new PersonApiError('not_found', 'This invite link has expired or was already used. Ask for a new one.', 404);
+    });
+    render(<Join api={fakeApi({ joinPreview: spent })} mode="join" />);
+    expect(await screen.findByText('This invite link has expired or was already used. Ask for a new one.')).toBeTruthy();
+    expect(location.pathname).toBe('/p/join');
+  });
 });
