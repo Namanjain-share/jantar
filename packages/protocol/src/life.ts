@@ -231,6 +231,14 @@ export const TodosQuerySchema = z.object({
   done: flag01.default(false),
 });
 export type TodosQuery = z.infer<typeof TodosQuerySchema>;
+/**
+ * v0.13 (Work): the owner's `GET /v1/todos` also takes `?q=`, 1 to 80
+ * characters matched in a todo's title and notes, any case (open ones by
+ * due; with done=1 the newest 100 done that match). Her routes reuse
+ * TodosQuerySchema as it is, so this owner-only extension never widens them.
+ */
+export const OwnerTodosQuerySchema = TodosQuerySchema.extend({ q: z.string().trim().min(1).max(80).optional() });
+export type OwnerTodosQuery = z.infer<typeof OwnerTodosQuerySchema>;
 /** Open todos by due (day, then time, undated last), then createdAt; with done=1 the newest 100 done. */
 export const TodosResponseSchema = z.object({ today: DayKeySchema, todos: z.array(TodoSchema) });
 export type TodosResponse = z.infer<typeof TodosResponseSchema>;

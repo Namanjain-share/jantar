@@ -37,6 +37,8 @@
  *   counts today's comments, a comment goal names its platform, Done shows the newest 300
  * - v0.10 Chat (in chat, settings, api): one thread per Mac replacing Ask, its changes with Undo,
  *   Confirm and Do-it cards, photos, the chat keys and the Siri door (`POST /v1/capture/chat`)
+ * - v0.13 Work (in work, life, settings, api): a seventh Life module, owner-only: the project hub,
+ *   one search across Jantar, projects from client folders (P1)
  */
 export * from './constants.js';
 export * from './models.js';
@@ -54,3 +56,4 @@ export * from './primer.js';
 export * from './meetings.js';
 export * from './chat.js';
 export * from './alerts.js';
+export * from './work.js';

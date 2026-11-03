@@ -160,6 +160,50 @@ export class TodosRepo {
     return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
   }
 
+  /**
+   * v0.13: open todos (of one project, or of none), or the newest `limit`
+   * done ones, whose title or notes hold `q`, any case. `q` never reaches
+   * the SQL: rows are read by the bound space and project, matched here.
+   */
+  matching(q: string, done: boolean, project?: string, limit = DONE_LIST_MAX): Todo[] {
+    const needle = q.toLowerCase();
+    const holds = (t: { title?: unknown; notes?: unknown }) =>
+      (typeof t.title === 'string' && t.title.toLowerCase().includes(needle)) || (typeof t.notes === 'string' && t.notes.toLowerCase().includes(needle));
+    if (!done) return this.open(project).filter(holds);
+    const db = this.core.db;
+    const all = (
+      project === undefined
+        ? db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NOT NULL ORDER BY done_at DESC, id DESC').all(this.space)
+        : project === 'none'
+          ? db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NOT NULL AND project_id IS NULL ORDER BY done_at DESC, id DESC').all(this.space)
+          : db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NOT NULL AND project_id = ? ORDER BY done_at DESC, id DESC').all(this.space, project)
+    ) as unknown as JsonRow[];
+    const hits: JsonRow[] = [];
+    for (const r of all) {
+      if (hits.length >= limit) break;
+      let value: unknown;
+      try {
+        value = JSON.parse(r.json);
+      } catch {
+        continue;
+      }
+      if (value && typeof value === 'object' && holds(value)) hits.push(r);
+    }
+    return this.parse('todos', hits, PersonTodoSchema);
+  }
+
+  /** v0.13 (the project hub): when each of a project's todos done since `sinceIso` was done. */
+  doneAtSince(project: string, sinceIso: string): string[] {
+    const rows = this.core.db.prepare('SELECT done_at FROM todos WHERE space = ? AND project_id = ? AND done_at >= ?').all(this.space, project, sinceIso) as unknown as { done_at: string }[];
+    return rows.map((r) => r.done_at);
+  }
+
+  /** v0.13 (the project hub): the newest change to any of a project's todos, or null when it has none. */
+  lastTodoChange(project: string): string | null {
+    const r = this.core.db.prepare('SELECT MAX(updated_at) AS at FROM todos WHERE space = ? AND project_id = ?').get(this.space, project) as { at: string | null } | undefined;
+    return r?.at ?? null;
+  }
+
   openCount(): number {
     return Number((this.core.db.prepare('SELECT COUNT(*) AS n FROM todos WHERE space = ? AND done_at IS NULL').get(this.space) as { n: number }).n);
   }

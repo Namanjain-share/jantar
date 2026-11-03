@@ -133,10 +133,11 @@ import {
   TodoBodySchema,
   TodoDoneBodySchema,
   TodoPatchSchema,
-  TodosQuerySchema,
+  OwnerTodosQuerySchema,
   TodosResponseSchema,
   WeightBodySchema,
 } from './life.js';
+import { ProjectHubSchema } from './work.js';
 import {
   CaptureKeyAddBodySchema,
   CaptureKeyAddReplySchema,
@@ -1266,7 +1267,7 @@ export const ROUTES = {
   }),
   todosList: route({
     method: 'GET', path: '/v1/todos', scope: 'control', phase: 'v0.4', ctl: false, feature: 'todos',
-    query: TodosQuerySchema, response: TodosResponseSchema, summary: 'Open todos by due, or the newest done ones (?done=1).',
+    query: OwnerTodosQuerySchema, response: TodosResponseSchema, summary: 'Open todos by due, or the newest done ones (?done=1); v0.13 ?q= matches title and notes.',
   }),
   todoCreate: route({
     method: 'POST', path: '/v1/todos', scope: 'control', phase: 'v0.4', ctl: false, feature: 'todos',
@@ -1764,6 +1765,14 @@ export const ROUTES = {
     bodyLimit: INTEL_READ_LIMITS.extResultBytes,
     params: ExtReadParamsSchema, body: ExtReadResultBodySchema, response: OkReplySchema,
     summary: 'What Chrome read of a post, or why it could not.',
+  }),
+
+  // --- v0.13 Work, P1 (owner-only, never under /v1/p/): one project as a hub, one search across Jantar, and
+  // projects made from client folders. Control scope, reads included; only the seed is on ctl.sock (the CLI).
+  projectGet: route({
+    method: 'GET', path: '/v1/projects/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'todos',
+    params: LifeIdParamsSchema, response: ProjectHubSchema,
+    summary: 'One project as a hub: its counts, open todos, the newest done, this week and its health.',
   }),
 } as const satisfies Record<string, RouteDef>;
 

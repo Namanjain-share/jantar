@@ -1,7 +1,8 @@
 /**
  * Projects and todos (feature `todos`; a reminder is a todo with a time).
  * Device routes only, never on ctl.sock. Each calls `s.deps.life.todos`
- * (life/todos/module.ts).
+ * (life/todos/module.ts). v0.13 Work: projectGet, one project as a hub,
+ * and the todos list's `q`, both the owner's (his space).
  *
  * The one exception (v0.5.3): folderTodos and folderTodoCreate, ctl.sock
  * only (localOnly: TCP answers 403 before any handler), for `jantar mcp`:
@@ -18,7 +19,7 @@
  * audit records the target id and nothing else (`lifeAudit`). The pipeline
  * has counted every write against s.lifeWriteLimiter already.
  */
-import type { FolderTodoBody, FolderTodosQuery, FolderTodosResponse, ProjectBody, ProjectPatch, SnoozeBody, TodoBody, TodoDoneBody, TodoPatch, TodosQuery } from '@jantar/protocol';
+import type { FolderTodoBody, FolderTodosQuery, FolderTodosResponse, OwnerTodosQuery, ProjectBody, ProjectPatch, SnoozeBody, TodoBody, TodoDoneBody, TodoPatch } from '@jantar/protocol';
 import type { LifeResult } from '../../contracts.js';
 import { ApiError } from '../errors.js';
 import { actorName } from '../request.js';
@@ -46,6 +47,10 @@ export const TODOS_ROUTE_IMPLS: RouteTable = {
     },
     audit: lifeAudit,
   },
+  // v0.13 Work: one project as a hub.
+  projectGet: {
+    handle: (c: Call<Id>, s) => lifeValue(s.deps.life.todos.hub(c.params.id)),
+  },
   projectDelete: {
     handle: (c: Call<Id>, s) => {
       lifeValue(s.deps.life.todos.removeProject(c.params.id, needActor(c.auth)));
@@ -55,7 +60,7 @@ export const TODOS_ROUTE_IMPLS: RouteTable = {
   },
 
   todosList: {
-    handle: (c: Call<Id, TodosQuery>, s) => lifeValue(s.deps.life.todos.listTodos(c.query)),
+    handle: (c: Call<Id, OwnerTodosQuery>, s) => lifeValue(s.deps.life.todos.listTodos(c.query)),
   },
   todoCreate: {
     handle: (c: Call<Id, unknown, TodoBody>, s) => lifeValue(s.deps.life.todos.createTodo(c.body, needActor(c.auth))),

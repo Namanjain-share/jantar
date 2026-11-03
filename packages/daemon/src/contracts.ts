@@ -61,6 +61,7 @@ import type {
   MoneyBody,
   MoneyMonth,
   MoneyPatch,
+  OwnerTodosQuery,
   PlaceBody,
   PlaceDetail,
   PlacePatch,
@@ -74,6 +75,7 @@ import type {
   PostsQuery,
   PostsResponse,
   ProjectBody,
+  ProjectHub,
   ProjectPatch,
   ProjectsResponse,
   SnoozePreset,
@@ -1818,7 +1820,13 @@ export interface TodosModule extends LifeModule {
   updateProject(id: string, patch: ProjectPatch, actor: Actor): LifeResult;
   /** Its todos move to no project. */
   removeProject(id: string, actor: Actor): LifeResult;
-  listTodos(q: TodosQuery): LifeResult<TodosResponse>;
+  /** v0.13: the owner's route also passes `q` (title and notes, any case); her routes pass a TodosQuery. */
+  listTodos(q: TodosQuery | OwnerTodosQuery): LifeResult<TodosResponse>;
+  /**
+   * v0.13 Work (GET /v1/projects/:id): one project as a hub, in this module's space: its counts, open todos
+   * by due, how many were done this week, the newest done, and its health (life-core projectHealth).
+   */
+  hub(id: string): LifeResult<ProjectHub>;
   /**
    * `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. v0.11: `opts.by`
    * (the author, in a person space) and `opts.extra` (People's daemon-set fields) come from the People module.

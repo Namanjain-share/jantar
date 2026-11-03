@@ -42,18 +42,24 @@
  * - v0.10 `from: 'meeting'`: the daemon's mark on a todo made from a
  *   meeting's action item (createTodo's `opts`, which no route passes);
  *   every edit keeps it.
+ * - v0.13 Work: one project as a hub (`hub`: its counts, open todos, the
+ *   newest done, this week and life-core's health line), and the owner's
+ *   `q` on the todos list (title and notes, any case; never in the SQL).
  * - Every write saves, re-arms its ping (pings.ts), then emits life.changed.
  *   Replies carry ids only; refusals are the fixed sentences below.
  */
 import { posix } from 'node:path';
 import {
   LIFE_LIMITS,
+  WORK_LIMITS,
   projectFor,
   type Due,
   type FolderTodoBody,
   type FolderTodosResponse,
   type Project,
+  type OwnerTodosQuery,
   type ProjectBody,
+  type ProjectHub,
   type ProjectPatch,
   type ProjectView,
   type Repeat,
@@ -64,7 +70,7 @@ import {
   type TodoPatch,
   type TodosQuery,
 } from '@jantar/protocol';
-import { hhmmOf, nextRepeat, shiftMonths, snoozeTarget } from '@jantar/life-core';
+import { hhmmOf, nextRepeat, projectHealth, projectWeeks, shiftMonths, snoozeTarget } from '@jantar/life-core';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule } from '../../contracts.js';
 import type { PersonTodo } from '@jantar/protocol/people';
 import { armTodo, personOfSpace, todoPingHandler } from './pings.js';
@@ -252,10 +258,59 @@ class Todos implements TodosModule {
 
   // --- todos -----------------------------------------------------------------
 
-  listTodos(q: TodosQuery): LifeResult<{ today: string; todos: Todo[] }> {
+  listTodos(q: TodosQuery | OwnerTodosQuery): LifeResult<{ today: string; todos: Todo[] }> {
     const today = this.core.today();
+    // v0.13: the owner's ?q= (title and notes, any case); her routes never pass one.
+    const text = 'q' in q && q.q !== undefined ? q.q : undefined;
+    if (text !== undefined) {
+      const todos = this.repo.matching(text, q.done, q.project);
+      return { ok: true, value: { today, todos: q.done ? todos : todos.sort(byDue) } };
+    }
     const todos = q.done ? this.repo.done(q.project) : this.repo.open(q.project).sort(byDue);
     return { ok: true, value: { today, todos } };
+  }
+
+  /** v0.13 Work: one project as a hub (GET /v1/projects/:id). Its counts and its health use the same overdue rule. */
+  hub(id: string): LifeResult<ProjectHub> {
+    const p = this.repo.project(id);
+    if (!p) return refuse('not_found', TODO_REASONS.noProject);
+    const today = this.core.today();
+    const nowHhmm = this.nowHhmm();
+    const tz = this.core.tz();
+    const now = this.core.now();
+    const counts = this.repo.counts(today, nowHhmm).get(id) ?? { open: 0, overdue: 0 };
+    const open = this.repo.open(id).sort(byDue);
+    const weeks = projectWeeks(today, tz, WORK_LIMITS.hubWeeks);
+    const since = weeks[0]?.start.toISOString() ?? now.toISOString();
+    const lastTodo = this.repo.lastTodoChange(id);
+    const health = projectHealth({
+      open,
+      doneAt: this.repo.doneAtSince(id, since),
+      lastChange: lastTodo !== null && lastTodo > p.updatedAt ? lastTodo : p.updatedAt,
+      status: p.status,
+      now,
+      today,
+      nowHhmm,
+      tz,
+      weeks: WORK_LIMITS.hubWeeks,
+      quietAfterDays: WORK_LIMITS.projectQuietDays,
+    });
+    const { list: _list, ...project } = p;
+    return {
+      ok: true,
+      value: {
+        project: { ...project, open: counts.open, overdue: counts.overdue },
+        open,
+        doneThisWeek: health.doneByWeek.at(-1) ?? 0,
+        recentDone: this.repo.done(id, WORK_LIMITS.hubRecentDone),
+        health: {
+          overdue: health.overdue,
+          ...(health.nextDue ? { nextDue: health.nextDue } : {}),
+          ...(health.quietDays !== null ? { quietDays: health.quietDays } : {}),
+          doneByWeek: health.doneByWeek,
+        },
+      },
+    };
   }
 
   createTodo(body: TodoBody, _actor: Actor, opts: { from?: TodoFrom; by?: string; extra?: Partial<PersonTodo> } = {}): LifeResult<{ id: string }> {
