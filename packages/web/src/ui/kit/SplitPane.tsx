@@ -115,9 +115,11 @@ export interface SplitPaneProps {
   onClose?: () => void;
   /** Esc closes the detail in split mode (default true). */
   escape?: boolean;
+  /** No list column for now: the detail takes the pane (Chat, until it has a day to list). The list's section stays in place, empty. */
+  noList?: boolean;
 }
 
-export function SplitPane({ name, list, detail, selection, empty = 'fill', listLabel, detailLabel, listWidth = 'list', onClose, escape = true }: SplitPaneProps) {
+export function SplitPane({ name, list, detail, selection, empty = 'fill', listLabel, detailLabel, listWidth = 'list', onClose, escape = true, noList = false }: SplitPaneProps) {
   const layout = useLayout();
   const box = useRef<HTMLDivElement>(null);
   const listBox = useRef<HTMLElement>(null);
@@ -143,7 +145,7 @@ export function SplitPane({ name, list, detail, selection, empty = 'fill', listL
   const mode = layout.chrome === 'phone' ? { split: false, wide: false } : (measured ?? guessSplit(layout));
   const selected = detail !== null && detail !== undefined;
   const fill = empty === 'fill';
-  const showList = mode.split || !selected;
+  const showList = (mode.split || !selected) && !noList;
   const showDetail = selected || (mode.split && !fill);
   usePaneScroll(listBox, `${name}:list`, showList);
   usePaneScroll(detailBox, `${name}:detail:${selection ?? ''}`, showDetail);
@@ -159,6 +161,7 @@ export function SplitPane({ name, list, detail, selection, empty = 'fill', listL
         data-split={mode.split ? '' : undefined}
         data-wide={mode.wide ? '' : undefined}
         data-fill={mode.split && fill && !selected ? '' : undefined}
+        data-nolist={noList ? '' : undefined}
         data-list={listWidth}
       >
         <section

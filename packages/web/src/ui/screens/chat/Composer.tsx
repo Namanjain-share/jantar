@@ -138,7 +138,8 @@ export function Composer({
   chips: ReturnType<typeof useChips>;
 }) {
   const id = useId();
-  const phone = useLayout().chrome === 'phone';
+  // 0.11: 44 on touch at every width, 40 with a mouse (it followed the phone frame).
+  const coarse = useLayout().coarse;
   const file = useRef<HTMLInputElement>(null);
   // A failed photo holds Send: the message would go without it, and Claude would answer as if it had seen it.
   const can = canSend && !chips.uploading && chips.failed === 0 && (draft.trim().length > 0 || chips.ready > 0);
@@ -148,8 +149,8 @@ export function Composer({
     const el = area.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.max(phone ? 44 : 40, Math.min(LINE * MAX_LINES + 18, el.scrollHeight + 2))}px`;
-  }, [draft, phone, area]);
+    el.style.height = `${Math.max(coarse ? 44 : 40, Math.min(LINE * MAX_LINES + 18, el.scrollHeight + 2))}px`;
+  }, [draft, coarse, area]);
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
@@ -161,7 +162,7 @@ export function Composer({
       submit();
     }
   };
-  const square = phone ? 'size-44' : 'size-40';
+  const square = 'size-40 coarse:size-44';
 
   return (
     <form onSubmit={submit} aria-label="Message Chat">
@@ -217,7 +218,7 @@ export function Composer({
           onClick={() => file.current?.click()}
           className={clsx('flex flex-none items-center justify-center rounded-btn border border-line-strong text-ink-2 transition duration-120 hover:not-disabled:text-ink disabled:text-ink-3', square)}
         >
-          <ImageIcon size={phone ? 20 : 16} aria-hidden="true" />
+          <ImageIcon size={coarse ? 20 : 16} aria-hidden="true" />
         </button>
         <label htmlFor={`${id}-text`} className="sr-only">
           A message to Chat
@@ -237,7 +238,7 @@ export function Composer({
           className={clsx(
             'no-scrollbar min-w-0 flex-1 resize-none rounded-btn border border-line-strong bg-surface px-12 type-input text-ink transition-colors duration-120',
             'focus-visible:outline-offset-0 disabled:border-line disabled:text-ink-3',
-            phone ? 'h-44 py-10' : 'h-40 py-8',
+            'h-40 py-8 coarse:h-44 coarse:py-10',
           )}
         />
         <button
@@ -250,7 +251,7 @@ export function Composer({
             square,
           )}
         >
-          {sending ? <Spinner label="Sending" delayMs={0} /> : <ArrowUpIcon size={phone ? 20 : 16} weight="bold" aria-hidden="true" />}
+          {sending ? <Spinner label="Sending" delayMs={0} /> : <ArrowUpIcon size={coarse ? 20 : 16} weight="bold" aria-hidden="true" />}
         </button>
       </div>
       {draft.length > COUNT_FROM ? (

@@ -25,6 +25,15 @@ What changed for people who use Jantar, newest first. Versions before
   item opens beside the list, which keeps your search and filters; Close or
   Esc goes back to them. A reel's pictures are shown four across the
   reading column, about 120 x 213 instead of 52 x 90.
+- **Chat** keeps its days beside the thread on a wide window: search the
+  chat, the turns by day (what each said, its photos and changes, a card
+  still waiting in ember, Siri's), and a tap takes the thread to that
+  turn. From about 1240 px, what Chat changed that can still be undone and
+  its photos have a column of their own; with an empty thread that column
+  says what Chat can see. The thread reads in a 680 px column with the
+  composer under it.
+- Chat's Confirm button now says what it does: **Delete**, **Stop**,
+  **Summarize** or **Re-read**.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

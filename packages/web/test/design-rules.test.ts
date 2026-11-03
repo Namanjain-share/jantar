@@ -91,6 +91,8 @@ describe('design rules (direction.md 7)', () => {
         // v0.10: a Chat turn that failed, a refused tap, a card's Confirm (a delete), and a photo the phone refused.
         'ui/screens/chat/Turn.tsx',
         'ui/screens/chat/Composer.tsx',
+        // 0.11: a day in Chat's history with a card still waiting for your tap.
+        'ui/screens/chat/History.tsx',
         // v0.7 (spec 5.6): the check of a post due today or before.
         'ui/screens/life/posts/PostRow.tsx',
         // 0.11: Today's cards say how many sessions need you, with the Board's waiting age.

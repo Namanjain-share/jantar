@@ -13,7 +13,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatCard, ChatChange, ChatList, ChatTurn } from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { createRouter, parseRoute, routePath } from '../src/lib/router.js';
-import { EXAMPLES, PRIVACY, PRIVACY_SHORT } from '../src/ui/screens/chat/model.js';
+import { EXAMPLES, PRIVACY, PRIVACY_SHORT, byDay, confirmVerb, dayOf, matches, photosOf, turnMeta, undoableChanges } from '../src/ui/screens/chat/model.js';
+import { layoutAt } from '../src/ui/shell/layout.js';
 import { NAV } from '../src/ui/shell/nav.js';
 import { NOW, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
@@ -111,7 +112,8 @@ describe('Chat', () => {
     open(list([turn(1, { cards: [card(), card({ n: 1, kind: 'do', module: 'todos', op: 'todo', ref: null, label: 'Add todo Follow up on the page?' })] })]), { chatCard, chatCardDismiss });
     const cards = within(await screen.findByRole('list', { name: 'Waiting for your tap' })).getAllByRole('listitem');
     expect(within(cards[0]!).getByText('Delete café Example Café and its 3 visits?')).toBeTruthy();
-    fireEvent.click(within(cards[0]!).getByRole('button', { name: 'Confirm' }));
+    // 0.11: the Confirm button says its verb (open question 11).
+    fireEvent.click(within(cards[0]!).getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(chatCard).toHaveBeenCalledWith(tid(1), 0, expect.any(String)));
     fireEvent.click(within(cards[1]!).getByRole('button', { name: 'Do it' }));
     await waitFor(() => expect(chatCard).toHaveBeenCalledWith(tid(1), 1, expect.any(String)));
@@ -267,11 +269,93 @@ describe('the address and the nav', () => {
   it('/ask is read as Chat and replaced with /chat; the nav says Chat', () => {
     expect(parseRoute('/ask', '', '')).toEqual({ name: 'chat' });
     expect(routePath({ name: 'chat' })).toBe('/chat');
+    // 0.11: the day the history has open; anything but a day is left out.
+    expect(parseRoute('/chat', '?day=2026-01-14', '')).toEqual({ name: 'chat', day: '2026-01-14' });
+    expect(parseRoute('/chat', '?day=yesterday', '')).toEqual({ name: 'chat' });
+    expect(routePath({ name: 'chat', day: '2026-01-14' })).toBe('/chat?day=2026-01-14');
     const replaced: string[] = [];
     const history = { location: { pathname: '/ask', search: '', hash: '' }, depth: 0, push: vi.fn(), replace: (p: string) => replaced.push(p), back: vi.fn(), listen: () => () => undefined };
     createRouter(history as unknown as Parameters<typeof createRouter>[0]);
     expect(replaced).toEqual(['/chat']);
     const item = NAV.find((n) => n.route === 'chat');
     expect(item).toMatchObject({ href: '/chat', label: 'Chat', feature: 'ask' });
+  });
+});
+
+describe('0.11: the history and This chat (pure)', () => {
+  const day = (ms: number) => dayOf(ago(ms));
+  const turns = [
+    turn(1, { at: ago(2 * 86_400_000), text: 'Rate the dosa place\nfour stars', photos: [{ id: tid(80), w: 4, h: 3, gone: false }], changes: [change({ label: 'Café · Sample Dosa House · 4★' })] }),
+    turn(2, { at: ago(3_600_000), text: 'Add oat milk', changes: [change(), change({ n: 1, state: 'undone' })], cards: [card()] }),
+    turn(3, { at: ago(60_000), text: '', photos: [{ id: tid(81), w: 4, h: 3, gone: true }], via: 'voice' }),
+  ];
+
+  it('groups by day, newest day and newest turn first', () => {
+    const days = byDay(turns);
+    expect(days.map((d) => d.day)).toEqual([...new Set([day(60_000), day(3_600_000), day(2 * 86_400_000)])]);
+    expect(days[0]!.turns[0]!.id).toBe(tid(3));
+  });
+
+  it('searches every word in what was said, the reply and the changes, any case', () => {
+    expect(turns.filter((t) => matches(t, 'DOSA four')).map((t) => t.id)).toEqual([tid(1)]);
+    expect(turns.filter((t) => matches(t, 'oat milk')).map((t) => t.id)).toEqual([tid(2)]);
+    expect(turns.filter((t) => matches(t, '  ')).length).toBe(3);
+    expect(turns.filter((t) => matches(t, 'reply 3.')).map((t) => t.id)).toEqual([tid(3)]);
+  });
+
+  it('lists the changes still undoable (a day), newest first, and the photos still there', () => {
+    expect(undoableChanges(turns, NOW).map((c) => `${c.turn.id}:${c.change.n}`)).toEqual([`${tid(2)}:0`]);
+    expect(photosOf(turns).map((p) => p.photo.id)).toEqual([tid(80)]);
+  });
+
+  it("says a turn's photos, changes and time in one mono line", () => {
+    expect(turnMeta(turns[0]!)).toMatch(/^photo · 1 change · \d\d:\d\d$/);
+    expect(turnMeta(turns[1]!)).toMatch(/^1 change · \d\d:\d\d$/);
+  });
+
+  it('names the Confirm button by its verb, and Confirm for an op it does not know', () => {
+    expect(['delete', 'stop', 'summarize', 'reread', 'archive'].map(confirmVerb)).toEqual(['Delete', 'Stop', 'Summarize', 'Re-read', 'Confirm']);
+  });
+});
+
+describe('0.11: Chat in a wide window', () => {
+  const wide = (first: ChatList, over: Partial<Api> = {}) => {
+    const api = fakeApi({ chatList: vi.fn(async () => first), chatPhoto: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })), ...over });
+    return { ...renderApp({ path: '/chat', api, state: ON, layout: layoutAt(1440) }), api };
+  };
+
+  it('lists the days beside the thread and This chat beside it; a day row scrolls the thread to its turn', async () => {
+    const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const { router } = wide(list([turn(1, { at: ago(2 * 86_400_000), text: 'An older question' }), turn(2, { changes: [change()] })]));
+    const days = await screen.findByRole('region', { name: 'Days' });
+    expect(within(days).getByRole('searchbox', { name: 'Search the chat' })).toBeTruthy();
+    // No segments: This chat has its own column at 1440.
+    expect(within(days).queryByRole('group', { name: 'The history shows' })).toBeNull();
+    const side = screen.getByRole('complementary', { name: 'This chat' });
+    expect(within(within(side).getByRole('region', { name: 'Changes' })).getByText('Todo · Buy oat milk')).toBeTruthy();
+    scrolled.mockClear();
+    fireEvent.click(within(days).getByRole('button', { name: /An older question/ }));
+    expect(scrolled.mock.contexts[0]).toBe(document.querySelector(`[data-turn="${tid(1)}"]`));
+    expect(router.getState().route).toEqual({ name: 'chat', day: dayOf(ago(2 * 86_400_000)) });
+    expect(within(days).getByRole('button', { name: /An older question/ }).getAttribute('aria-current')).toBe('true');
+    scrolled.mockRestore();
+  });
+
+  it('the search keeps only the turns with every word', async () => {
+    wide(list([turn(1, { text: 'Rate the dosa place' }), turn(2, { text: 'Add oat milk' })]));
+    const days = await screen.findByRole('region', { name: 'Days' });
+    fireEvent.change(within(days).getByRole('searchbox', { name: 'Search the chat' }), { target: { value: 'dosa' } });
+    expect(within(days).getAllByRole('button', { name: /dosa|oat/ }).map((b) => b.textContent)).toEqual([expect.stringContaining('Rate the dosa place')]);
+  });
+
+  it('with no turns: no days column, three example rows, and This chat says what Chat can see', async () => {
+    wide(list([]));
+    expect(await screen.findByText('Ask Jantar anything, or tell it what to add or change.')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Days' })).toBeNull();
+    const side = screen.getByRole('complementary', { name: 'This chat' });
+    expect(within(side).getByRole('heading', { name: 'What Chat can see' })).toBeTruthy();
+    expect(within(side).getByText(PRIVACY)).toBeTruthy();
+    expect(within(side).getByRole('heading', { name: 'Kept 30 days' })).toBeTruthy();
+    expect(within(screen.getByRole('group', { name: 'Examples' })).getAllByRole('button')).toHaveLength(3);
   });
 });

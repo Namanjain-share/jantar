@@ -230,7 +230,7 @@ export const SHOTS = [
     sizes: PHONE,
     variant: 'chat',
     steps: async (page) => {
-      await page.getByRole('button', { name: 'Confirm' }).waitFor();
+      await page.getByRole('button', { name: 'Delete', exact: true }).waitFor();
       await page.locator('img[src^="blob:"]').first().waitFor();
       await page.evaluate(() => {
         for (const el of document.querySelectorAll('*')) if (el.scrollHeight > el.clientHeight + 1 && el.scrollTop > 0) el.scrollTop = 0;

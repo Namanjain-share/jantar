@@ -132,6 +132,15 @@ describe('the two sections', () => {
     expect(detail!.childElementCount).toBe(0);
   });
 
+  it('noList: in split, the detail takes the pane and the list section stays in place, empty (Chat before its first day)', () => {
+    const { container } = show(createLayoutStore(layoutAt(1440)), { detail: <Item id="t" />, selection: 't', noList: true });
+    const [list, detail] = sections(container);
+    expect(container.querySelector('.split')?.hasAttribute('data-nolist')).toBe(true);
+    expect(list!.hidden).toBe(true);
+    expect(list!.childElementCount).toBe(0);
+    expect(within(detail!).getByText('Note on t')).toBeTruthy();
+  });
+
   it('single: the inactive section stays in its place, empty and hidden; nothing behind the open item renders', () => {
     const layout = createLayoutStore(layoutAt(900));
     const { container, again } = show(layout, { empty: <p>Desk</p> });

@@ -4,7 +4,8 @@
  * it runs; the reply as plain text (never Markdown, never a link); then one
  * row per change Chat made, from the Mac's journal ("Added", "Changed",
  * "Logged", "Undone") with Undo while it is fresh; then the cards: Confirm
- * (a delete or an action, only the tap runs it) or Do it (a write held back
+ * (a delete or an action, only the tap runs it; 0.11: named by its verb,
+ * Delete, Stop, Summarize, Re-read) or Do it (a write held back
  * after Chat read someone else's text), and Dismiss. A failed turn shows
  * its reason and Try again. Every tap has its own Idempotency-Key.
  *
@@ -21,7 +22,7 @@ import { Button } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { Tag } from '../../kit/Tag.js';
-import { CHAT_COPY, changeWord, undoable } from './model.js';
+import { CHAT_COPY, changeWord, confirmVerb, undoable } from './model.js';
 
 /** A failure, in ember: the Mac's sentence for a refused tap, or a failed turn's reason. */
 export function Refused({ children, className }: { children: ReactNode; className?: string }) {
@@ -82,13 +83,13 @@ function usePhoto(id: string | null): string | null {
   return url;
 }
 
-function Thumb({ photo, onOpen }: { photo: ChatPhotoRef; onOpen: (p: ChatPhotoRef) => void }) {
+export function Thumb({ photo, onOpen, label = 'Open the photo' }: { photo: ChatPhotoRef; onOpen: (p: ChatPhotoRef) => void; label?: string }) {
   const url = usePhoto(photo.gone ? null : photo.id);
   if (photo.gone) {
     return <span className="flex size-64 items-center justify-center rounded-btn border border-line px-4 text-center type-small text-ink-3">{CHAT_COPY.photoGone}</span>;
   }
   return (
-    <button type="button" aria-label="Open the photo" className="size-64 overflow-hidden rounded-btn border border-line bg-surface" onClick={() => onOpen(photo)}>
+    <button type="button" aria-label={label} className="size-64 overflow-hidden rounded-btn border border-line bg-surface" onClick={() => onOpen(photo)}>
       {url ? <img src={url} alt="" className="size-full object-cover" /> : null}
     </button>
   );
@@ -120,7 +121,7 @@ export function Turn({ turn, nowMs, offline, canSend, retried = false, onRetry, 
   const [open, setOpen] = useState<ChatPhotoRef | null>(null);
   const running = turn.state === 'queued' || turn.state === 'running';
   return (
-    <li className="border-b border-line px-16 py-12" aria-label={turn.via === 'voice' ? 'A question by Siri' : 'A message'}>
+    <li data-turn={turn.id} className="border-b border-line px-16 py-12" aria-label={turn.via === 'voice' ? 'A question by Siri' : 'A message'}>
       <div className="flex flex-col items-end gap-6">
         {turn.via === 'voice' ? <Tag>{CHAT_COPY.siri}</Tag> : null}
         {turn.text ? <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-card bg-surface px-12 py-8 type-body text-ink">{turn.text}</p> : null}
@@ -182,7 +183,7 @@ export function Turn({ turn, nowMs, offline, canSend, retried = false, onRetry, 
  * A refused Undo says why on its own line under the row, at full width; after a 409 (changed since, already
  * undone) Undo goes, as it would only be refused again.
  */
-function Change({ turn, change, nowMs, offline, onChanged }: { turn: ChatTurn; change: ChatChange; nowMs: number; offline: boolean; onChanged: () => void }) {
+export function Change({ turn, change, nowMs, offline, onChanged }: { turn: ChatTurn; change: ChatChange; nowMs: number; offline: boolean; onChanged: () => void }) {
   const { api } = useDeps();
   const tap = useTap();
   const can = undoable(change, turn, nowMs) && !isApiError(tap.error, 'conflict');
@@ -216,7 +217,7 @@ function Card({ turn, card, offline, onChanged }: { turn: ChatTurn; card: ChatCa
         <div className="mt-8 flex flex-wrap items-center gap-8">
           <Button variant={card.kind === 'confirm' ? 'outline' : 'primary'} size="md" className={card.kind === 'confirm' ? 'text-signal-text' : undefined} disabled={offline || run.busy} onClick={() => void run.run((k) => api.chatCard(turn.id, card.n, k)).then(onChanged)}>
             {run.busy ? <Spinner label="Running" /> : null}
-            {card.kind === 'confirm' ? CHAT_COPY.confirm : CHAT_COPY.doIt}
+            {card.kind === 'confirm' ? confirmVerb(card.op) : CHAT_COPY.doIt}
           </Button>
           <Button variant="text" size="md" disabled={offline || dismiss.busy} onClick={() => void dismiss.run((k) => api.chatCardDismiss(turn.id, card.n, k)).then(onChanged)}>
             {CHAT_COPY.dismiss}

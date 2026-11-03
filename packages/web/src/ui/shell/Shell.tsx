@@ -264,7 +264,7 @@ export function Shell() {
       case 'chat':
         screen = features.ask ? (
           <Suspense fallback={<SkeletonRows count={5} caption="Opening Chat…" />}>
-            <Chat />
+            <Chat day={route.day} />
           </Suspense>
         ) : featuresKnown ? (
           <NotFound off="chat on" />

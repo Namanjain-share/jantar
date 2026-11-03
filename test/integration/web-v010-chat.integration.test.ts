@@ -6,7 +6,7 @@
  * harness.ts) with its real headers and the build's strict policy. The
  * thread is made by real turns: the fake claude through the real bridge and
  * dispatcher (a todo added, a café rated, a visit logged, a delete waiting
- * for its Confirm, a photo). Each browser pairs the way a phone does.
+ * for its Confirm, named Delete since 0.11, a photo). Each browser pairs the way a phone does.
  *
  * - At 320 px, 390 px and 1440 px, light and dark: the empty thread, the
  *   thread with a reply, changes, a card and a photo, and the composer with
@@ -143,7 +143,7 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
       const { page, watch } = pages[v.who]!;
       await page.emulateMedia({ colorScheme: v.scheme });
       await page.goto(`http://127.0.0.1:${d.port}/chat`, { waitUntil: 'load' });
-      await page.getByRole('button', { name: 'Confirm' }).waitFor();
+      await page.getByRole('button', { name: 'Delete', exact: true }).waitFor();
       await page.locator('img[src^="blob:"]').first().waitFor();
       await check(page, watch, `thread ${v.who} ${v.scheme}`);
       await page.locator('input[type="file"]').setInputFiles([
@@ -183,7 +183,7 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
     const { page, watch } = pages.p320!;
     await page.emulateMedia({ colorScheme: 'light' });
     await page.goto(`http://127.0.0.1:${d.port}/chat`, { waitUntil: 'load' });
-    await page.getByRole('button', { name: 'Confirm' }).waitFor();
+    await page.getByRole('button', { name: 'Delete', exact: true }).waitFor();
     const reason = 'Chat takes photos only (JPEG, PNG, WebP or GIF).';
     await page.route('**/v1/chat/photos', (r) => r.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: { code: 'refused', message: reason } }) }));
     try {
@@ -233,12 +233,12 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
     const { page } = pages.p320!;
     await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
     await page.goto(`http://127.0.0.1:${d.port}/chat`, { waitUntil: 'load' });
-    await page.getByRole('button', { name: 'Confirm' }).waitFor();
+    await page.getByRole('button', { name: 'Delete', exact: true }).waitFor();
     const tall = async (target: Locator, what: string) => expect((await target.boundingBox())?.height ?? 0, what).toBeGreaterThanOrEqual(44);
     await tall(page.getByRole('button', { name: 'Add a photo' }), 'photo');
     await tall(page.getByRole('button', { name: 'Send' }), 'send');
     await tall(page.getByRole('button', { name: 'Undo' }).first(), 'undo');
-    await tall(page.getByRole('button', { name: 'Confirm' }), 'confirm');
+    await tall(page.getByRole('button', { name: 'Delete', exact: true }), 'confirm');
     await tall(page.getByRole('button', { name: 'Dismiss' }), 'dismiss');
     // A chip's × shows at 24 px; touch reaches it 20 px out from its middle (its ::before), inside the chip and the gap.
     await page.locator('input[type="file"]').setInputFiles([{ name: 'one.png', mimeType: 'image/png', buffer: makePng(40, 30) }]);

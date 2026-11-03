@@ -74,7 +74,8 @@
     border-right: 1px solid var(--line);
     background: var(--surface);
   }
-  .split[data-split][data-fill] {
+  .split[data-split][data-fill],
+  .split[data-split][data-nolist] {
     grid-template-columns: minmax(0, 1fr);
   }
   .split[data-fill] > .split-list {
