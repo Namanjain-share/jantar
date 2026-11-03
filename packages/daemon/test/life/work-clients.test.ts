@@ -70,6 +70,29 @@ describe('clients and companies', () => {
     expect(core.changedCount).toBeGreaterThanOrEqual(2);
   });
 
+  it('a name in any script is its own company; a symbols-only name is reused only by the same text (made-up names)', () => {
+    // Before: anything outside a-z0-9 folded to "", so every non-Latin company was the first one.
+    const asha = add('Asha', { companyName: 'डेल्टा ट्रेडर्स' });
+    const ravi = add('Ravi', { companyName: 'ग्लोबल सॉल्यूशंस' });
+    expect(ravi.companyId).not.toBe(asha.companyId);
+    expect(add('Meera', { companyName: ' डेल्टा  ट्रेडर्स ' }).companyId).toBe(asha.companyId);
+    const star = add('Ana', { companyName: '★' });
+    expect(add('Ben', { companyName: '—' }).companyId).not.toBe(star.companyId);
+    expect(add('Cy', { companyName: '★' }).companyId).toBe(star.companyId);
+    // A deal by a client's name: never an unrelated non-Latin client.
+    const mehta = add('मेहता एंटरप्राइज़', { kind: 'company' });
+    const deal = ok(work.createDeal({ clientName: '山田商事', title: 'Site rebuild' }, PHONE));
+    expect(deal.clientId).not.toBe(mehta.id);
+    expect(ok(work.createDeal({ clientName: 'मेहता एंटरप्राइज़', title: 'Audit' }, PHONE)).clientId).toBe(mehta.id);
+    expect(ok(work.createDeal({ clientName: '山田商事', title: 'Audit' }, PHONE)).clientId).toBe(deal.clientId);
+    // Through an import: two people at two Devanagari companies are at two companies.
+    const p = ok(work.importPreview({ format: 'csv', text: 'Name,Company\nDev,अल्फ़ा ग्रुप\nIra,बीटा ग्रुप\nJai,अल्फ़ा ग्रुप\n' }, PHONE));
+    ok(work.importRows({ previewId: p.previewId, rows: p.rows.map((r) => ({ index: r.index, action: 'add' as const })) }, PHONE));
+    const all = ok(work.clients({ sort: 'name' }, PHONE)).clients;
+    const at = (n: string) => all.find((c) => c.name === n)?.company?.name;
+    expect([at('Dev'), at('Ira'), at('Jai')]).toEqual(['अल्फ़ा ग्रुप', 'बीटा ग्रुप', 'अल्फ़ा ग्रुप']);
+  });
+
   it('a company id must be a company; a company sits in none; a company with people stays one', () => {
     const person = add('Riya Sharma');
     expect(work.createClient({ name: 'Sam', companyId: person.id }, PHONE)).toMatchObject({ ok: false, reason: WORK_REASONS.notCompany });

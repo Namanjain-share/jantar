@@ -24,6 +24,19 @@ describe("normalizers", () => {
     expect(normalizeContactName("   ")).toBe("");
   });
 
+  it("keeps a name in any script, so two different non-Latin names never fold to one key", () => {
+    // Made-up companies. Before: everything outside a-z0-9 folded to "", so all of these were one name.
+    expect(normalizeContactName("डेल्टा ट्रेडर्स")).toBe("डेल्टा ट्रेडर्स");
+    expect(normalizeContactName("ग्लोबल सॉल्यूशंस")).not.toBe(normalizeContactName("डेल्टा ट्रेडर्स"));
+    expect(normalizeContactName("山田商事")).toBe("山田商事");
+    expect(normalizeContactName("  Мир-Стандарт ")).toBe("мир стандарт");
+    expect(normalizeContactName("Δέλτα")).toBe(normalizeContactName("δελτα"));
+    expect(normalizeContactName("Shri  डेल्टा")).toBe("डेल्टा");
+    // A name of symbols alone has no identity: "" (callers never match on it).
+    expect(normalizeContactName("★")).toBe("");
+    expect(normalizeContactName("— & —")).toBe("");
+  });
+
   it("compares phones on their last 10 digits so +91 and 0 prefixes match", () => {
     expect(normalizeContactPhone("+91 98765-43210")).toBe("9876543210");
     expect(normalizeContactPhone("098765 43210")).toBe("9876543210");
@@ -81,6 +94,10 @@ describe("contactInitials / contactAvatarColor", () => {
     expect(contactInitials("Nimbus")).toBe("NI");
     expect(contactInitials("é")).toBe("E");
     expect(contactInitials("   ")).toBe("?");
+    expect(contactInitials("★")).toBe("?");
+    expect(contactInitials("山田商事")).toBe("山田");
+    expect(contactInitials("डेल्टा ट्रेडर्स")).toBe("डट");
+    expect(contactInitials("𠀋𠀌 Ltd")).toBe("𠀋L");
   });
 
   it("is deterministic and case/whitespace-insensitive", () => {

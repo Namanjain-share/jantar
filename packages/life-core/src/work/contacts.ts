@@ -16,14 +16,19 @@ const HONORIFICS = new Set(["dr", "mr", "mrs", "ms", "miss", "prof", "shri", "sm
 /**
  * The identity a name is compared BY: case-folded, accent-folded, punctuation-folded and
  * honorific-stripped. "Dr. Riya Sharma" and "riya sharma" are the same person.
+ *
+ * Letters and digits of ANY script are kept ("डेल्टा ट्रेडर्स", "山田商事"), with the marks a
+ * script needs inside its words (a Devanagari vowel sign is a mark, not punctuation). A name made
+ * only of symbols ("★", "—") folds to "", and "" is never an identity: callers must not match on it.
  */
 export function normalizeContactName(raw: string): string {
   const folded = raw
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // combining marks: José → Jose
+    .replace(/[̀-ͯ]/g, "") // Latin combining accents: José → Jose
+    .normalize("NFC")
     .toLowerCase()
     .replace(/['’]/g, "") // O'Brien → obrien (not "o brien")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .trim();
   if (!folded) return "";
   const words = folded.split(" ");
@@ -111,9 +116,10 @@ export function normalizeContactLink(input: ContactLinkInput): ContactLink | nul
 export function contactInitials(name: string): string {
   const words = normalizeContactName(name).split(" ").filter(Boolean);
   if (words.length === 0) return "?";
-  const first = words[0]!;
-  const last = words[words.length - 1]!;
-  const initials = words.length === 1 ? first.slice(0, 2) : `${first[0]}${last[0]}`;
+  // By code point, so a letter outside the BMP is never cut in half.
+  const first = Array.from(words[0]!);
+  const last = Array.from(words[words.length - 1]!);
+  const initials = words.length === 1 ? first.slice(0, 2).join("") : `${first[0]}${last[0]}`;
   return initials.toUpperCase();
 }
 

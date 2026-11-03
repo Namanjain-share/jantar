@@ -96,7 +96,9 @@ when the work ends). A client keeps up to five phones and e-mails, links
 notes, and, for a company, its client folder.
 
 - **Add one in about ten seconds:** a name, and a company by name if you
-  like (Work reuses a company with the same name, any case, or makes it).
+  like (Work reuses a company with the same name, any case or script,
+  or makes it; a name of symbols alone is reused only when it is the very
+  same text).
 - **Duplicates warn, never block.** While you type, Work says which client
   this may already be: the same e-mail, then the same phone (by its last
   10 digits, so "+91 98765 43210" and "098765 43210" are one), then the

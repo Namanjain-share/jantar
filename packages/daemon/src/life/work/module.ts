@@ -556,6 +556,20 @@ class Work implements WorkModule {
     return { ok: true, value: { clients: rows.slice(0, WORK_LIMITS.clientsPage), more: Math.max(0, rows.length - WORK_LIMITS.clientsPage) } };
   }
 
+  /**
+   * The contacts a typed name is (a company's, or any): those with its folded key. A name that folds
+   * to nothing (symbols only, "★") is never an identity: only a contact with the very same text is
+   * it. Without this, every such name, and before any script was kept every non-Latin one, would be
+   * the first contact with an empty key.
+   */
+  private namedAs(name: string, kind?: 'company'): ContactRecord[] {
+    const key = normalizeContactName(name);
+    const pool = kind === 'company' ? this.repo.companiesNamed(key) : this.repo.named(key);
+    if (key !== '') return pool;
+    const exact = name.trim();
+    return exact === '' ? [] : pool.filter((c) => c.name.trim() === exact);
+  }
+
   /** The company a body names: an id of a company, or a name (reused when one has it, else made). */
   private companyFor(body: { companyId?: string | undefined; companyName?: string | undefined; state?: Contact['state'] | undefined }, at: string, opts: { from?: Contact['from']; importBatch?: string }): { id: string; made: Contact | null } | Refusal | null {
     if (body.companyId !== undefined) {
@@ -565,7 +579,7 @@ class Work implements WorkModule {
       return { id: co.id, made: null };
     }
     if (body.companyName === undefined) return null;
-    const existing = this.repo.companiesNamed(normalizeContactName(body.companyName))[0];
+    const existing = this.namedAs(body.companyName, 'company')[0];
     if (existing) return { id: existing.id, made: null };
     const made: Contact = {
       id: this.core.newId(),
@@ -1501,7 +1515,7 @@ class Work implements WorkModule {
       // A client by name: one with that name (a company first), else a new company, a lead.
       let contactId = body.clientId;
       if (contactId === undefined) {
-        const named = this.repo.named(normalizeContactName(body.clientName ?? ''));
+        const named = this.namedAs(body.clientName ?? '');
         const found = named.find((c) => c.kind === 'company') ?? named[0];
         if (found) contactId = found.id;
         else {
