@@ -1,12 +1,13 @@
 /**
  * 0.13.0 Work, pure helpers for its screens: a project's next todo and its
- * group on the list, the hub's health and log lines, where a project's
- * folder sits under the Mac's roots (for "New session here" and "Open
- * folder in Files"), and the names the seed sheet suggests for folders.
+ * group on the list, the hub's health and log lines, a milestone ticked
+ * done (the list that sends), where a project's folder sits under the
+ * Mac's roots (for "New session here" and "Open folder in Files"), and the
+ * names the seed sheet suggests for folders.
  * Day keys and times are the Life clock's (the daemon's own zone).
  */
 import type { FileRoot, ProjectStatus, ProjectView, Session, Todo } from '@jantar/protocol';
-import type { ProjectHub, WorkLogRow } from '@jantar/protocol/work';
+import type { ProjectHub, WorkLogRow, WorkMilestone, WorkMilestonesBody } from '@jantar/protocol/work';
 import { routePath } from '../../../lib/router.js';
 import { dayLabel } from '../life/shared/DayNav.js';
 import { clockIn, type LifeClock } from '../life/today/parts.js';
@@ -137,6 +138,16 @@ export function nameFromFolder(name: string): string {
 /** The folders a project links already, as `~/…` paths (the seed sheet marks them). */
 export function linkedFolders(projects: readonly Pick<ProjectView, 'folder'>[]): Set<string> {
   return new Set(projects.flatMap((p) => (p.folder ? [tildePath(p.folder).replace(/\/+$/, '')] : [])));
+}
+
+/**
+ * A project's milestones as PUT /v1/work/projects/:id/milestones takes them (the whole list, in order, by
+ * id), with the one `id` names ticked done or not.
+ */
+export function milestonesWith(items: readonly WorkMilestone[], id: string, done: boolean): WorkMilestonesBody {
+  return {
+    milestones: items.map((m) => ({ id: m.id, name: m.name, ...(m.target ? { target: m.target } : {}), ...((m.id === id ? done : m.done) ? { done: true } : {}) })),
+  };
 }
 
 /** A project's place in Work (`/work?id=`), Projects being Work's first part. */

@@ -10,6 +10,9 @@
  *   the deal (P3, a link to it) with its stage and next step
  *   Todos (the Todos rows: done, snooze, edit, delete with Undo; + adds one
  *     in this project), then the newest done
+ *   Milestones (P3, while Work is on: each one ticked done in one tap, its
+ *     target day, ember once missed; Edit names, orders, dates and removes
+ *     them, twelve at most, in MilestonesSheet.tsx, loaded on first use)
  *   Sessions in its folder (the Board's own state), with "New session
  *     here" while Launch is on and this device may start one
  *   Meetings in the project (`GET /v1/meetings?project=`, while Meetings is on)
@@ -24,7 +27,7 @@ import { CaretLeftIcon, CaretRightIcon, FolderOpenIcon, PlusIcon } from '@phosph
 import clsx from 'clsx';
 import { lazy, Suspense, useCallback, useMemo, useRef } from 'react';
 import type { FilesRootsResponse, MeetingsList, ProjectStatus, ProjectView, Todo } from '@jantar/protocol';
-import type { ProjectHub as Hub } from '@jantar/protocol/work';
+import type { ProjectHub as Hub, WorkMilestone } from '@jantar/protocol/work';
 import { formatAmount } from '../../../lib/money.js';
 import { routePath } from '../../../lib/router.js';
 import { useApp, useDeps, useNow } from '../../context.js';
@@ -49,12 +52,14 @@ import { DoneRow, TodoRow } from '../life/todos/TodoRow.js';
 import { TodoSheet } from '../life/todos/TodoSheet.js';
 import { useTodoClients } from '../life/todos/clients.js';
 import { workClient } from './client.js';
-import { filesHref, healthParts, logLine, newSessionHref } from './model.js';
+import { filesHref, healthParts, logLine, milestonesWith, newSessionHref } from './model.js';
+import { SaveError } from './parts.js';
 
 const NO_TODOS: readonly Todo[] = [];
 
-// The Log sheet is the clients chunk's: a project's hub loads it on its first Log.
+// The Log sheet is the clients chunk's: a project's hub loads it on its first Log. The milestones' editor, on its first Edit.
 const LogSheet = lazy(() => import('./LogSheet.js').then((m) => ({ default: m.LogSheet })));
+const MilestonesSheet = lazy(() => import('./MilestonesSheet.js').then((m) => ({ default: m.MilestonesSheet })));
 
 export interface ProjectHubProps {
   id: string;
@@ -98,12 +103,22 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
   const todoSheet = useSheet<Todo>();
   const projectSheet = useSheet<ProjectView>();
   const logSheet = useSheet<null>();
+  const milestonesSheet = useSheet<null>();
+  const tick = useWrite();
   // Only the sheet's Client list: its todos' rows don't name a client (most are the project's own).
   const clients = useTodoClients(NO_TODOS, todoSheet.open);
   const close = usePaneClose();
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
   const live = useMemo(() => liveIn(Object.values(state.sessions), project?.folder), [state.sessions, project?.folder]);
+
+  /** A milestone ticked done or not: the whole list, that one changed (one write at a time). */
+  const setDone = (m: WorkMilestone, done: boolean) => {
+    const items = hub?.milestones?.items;
+    if (!items || offline || tick.busy) return;
+    const body = milestonesWith(items, m.id, done);
+    void tick.run(JSON.stringify(body), (key) => workClient(api).milestones(id, body, key)).then((r) => r.ok && reload());
+  };
 
   const setStatus = (next: ProjectStatus) => {
     if (!project || next === project.status || offline) return;
@@ -151,6 +166,7 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
                 const inFiles = features.files ? filesHref(folder, rootList) : null;
                 const open = actions.visible(h.open);
                 const done = actions.visible(h.recentDone);
+                const ms = h.milestones?.items.length ? h.milestones : undefined;
                 const parts = [
                   <Panel key="todos" label="Todos" name="Its todos" count={open.length} card={cards}>
                     {actions.error ? (
@@ -175,6 +191,59 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
                           <DoneRow key={t.id} todo={t} offline={offline} actions={actions} />
                         ))}
                       </ul>
+                    </Panel>
+                  ) : null,
+                  ms || h.log ? (
+                    <Panel
+                      key="milestones"
+                      label="Milestones"
+                      count={ms?.items.length}
+                      card={cards}
+                      aside={
+                        <Button variant="text" size="sm" className="coarse:min-h-44" disabled={offline} onClick={() => milestonesSheet.show(null)}>
+                          {ms ? 'Edit' : (
+                            <>
+                              <PlusIcon size={14} aria-hidden="true" />
+                              Add
+                            </>
+                          )}
+                        </Button>
+                      }
+                    >
+                      {tick.error ? (
+                        <div className="px-16">
+                          <SaveError error={tick.error} />
+                        </div>
+                      ) : null}
+                      {!ms ? (
+                        <LifeEmpty>No milestones. Up to twelve steps, each with a day if you like.</LifeEmpty>
+                      ) : (
+                        <ul aria-label="Its milestones">
+                          {ms.items.map((m) => {
+                            const missed = ms.missed.includes(m.id);
+                            return (
+                              <li key={m.id} data-milestone={m.id} className="border-b border-line">
+                                <label className="flex min-h-44 cursor-pointer items-center gap-12 px-16 py-6">
+                                  <input
+                                    type="checkbox"
+                                    className="size-20 flex-none accent-ink"
+                                    checked={m.done === true}
+                                    disabled={offline || tick.busy}
+                                    onChange={(e) => setDone(m, e.target.checked)}
+                                  />
+                                  <span className={clsx('min-w-0 flex-1 truncate type-row', m.done ? 'text-ink-3 line-through' : 'text-ink')}>{m.name}</span>
+                                  {m.target ? (
+                                    <span className={clsx('flex-none type-mono', missed ? 'text-signal-text' : 'text-ink-3')}>
+                                      {missed ? 'missed ' : ''}
+                                      {dayLabel(m.target).replace(/^\w+ /, '')}
+                                    </span>
+                                  ) : null}
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </Panel>
                   ) : null,
                   folder ? (
@@ -310,6 +379,18 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
             deals={hub.deal && hub.deal.kind === 'open' ? [hub.deal] : []}
             start={{ projectId: id, ...(hub.deal && hub.deal.kind === 'open' ? { dealId: hub.deal.id } : {}) }}
             now={now}
+            onSaved={reload}
+          />
+        </Suspense>
+      ) : null}
+      {milestonesSheet.key ? (
+        <Suspense fallback={null}>
+          <MilestonesSheet
+            open={milestonesSheet.open}
+            onOpenChange={milestonesSheet.onOpenChange}
+            sheetKey={milestonesSheet.key}
+            projectId={id}
+            items={hub?.milestones?.items ?? []}
             onSaved={reload}
           />
         </Suspense>
