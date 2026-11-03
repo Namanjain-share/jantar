@@ -23,8 +23,9 @@
  * Activity: her record in his voice ("You looked at Asha's Today"), newest
  * first, his views grouped per day (C28): the same rows she reads.
  *
- * 0.12.2: the space's name follows the saved one in the commit, so a name
- * picked the moment Sharing is on screen stays picked.
+ * 0.12.2: the space's name and his pushes follow what he saved in the
+ * commit, so a name picked or a box ticked the moment Sharing is on screen
+ * stays.
  */
 import {
   AGREEMENT_FIELDS,
@@ -44,7 +45,7 @@ import {
 } from '@jantar/protocol/people-core';
 import type { OwnerPeoplePrefs, PeopleList, PersonActivity, PersonView } from '@jantar/protocol/people';
 import { CLI_NAME } from '@jantar/protocol';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { activityText, byDay, hisVoice } from '../../../people-shared/activity.js';
 import { joinCopy } from '../../../people-shared/join-copy.js';
 import { dayLabel, hmOf } from '../../../people-shared/time.js';
@@ -367,7 +368,11 @@ function OwnerPrefs({ client, name, prefs, reload }: { client: PeopleClient; nam
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [note, setNote] = useState<string | null>(null);
-  useEffect(() => {
+  // 0.12.2: in the commit (a layout effect), so a box ticked the moment Sharing is on screen stays ticked, and the
+  // form never shows the defaults for his saved pushes. Sharing comes with the list's answer, outside a user event,
+  // and React yields for paint before its passive effects: a change in that gap was put back to what he had saved
+  // (sharing.test.tsx failed there with a loop turn over 1 ms).
+  useLayoutEffect(() => {
     if (!prefs) return;
     setSummary(prefs.summaryAt !== undefined);
     setSummaryAt(prefs.summaryAt ?? '21:00');

@@ -147,6 +147,34 @@ describe('his Sharing tab', () => {
     await waitFor(() => expect(setPrefs).toHaveBeenCalledWith({ summaryAt: '21:30', reviewPush: false, quiet: { from: '23:00', to: '07:00' } }));
   });
 
+  it("0.12.2: a box ticked the moment his pushes are on screen stays ticked, before React's passive effects run", async () => {
+    // Sharing comes with the list's answer, outside act(), and React 19 yields for paint before its passive effects:
+    // the test above ticked the day summary there on a loaded CI runner (findBy returns on a 0 ms timer that fires
+    // first), and the effect that copies his saved pushes into the form then unticked it. Here the box is ticked in
+    // the very microtask the commit queued, when the section is in the DOM and its passive effects have not run.
+    const setPrefs = vi.fn(async () => ({ prefs: PREFS }));
+    const c = client({ list: vi.fn(async () => ({ enabled: true, people: [person()], ownerName: 'Sam', ownerPrefs: PREFS })), today: vi.fn(async () => today), setPrefs, devices: vi.fn(async () => ({ devices: [] })) });
+    const ticked = new Promise<void>((resolve) => {
+      const seen = new MutationObserver(() => {
+        const box = document.querySelector<HTMLElement>('section[aria-label="Your pushes about Asha"]');
+        if (!box) return;
+        seen.disconnect();
+        fireEvent.click(within(box).getByLabelText(/A day summary at/));
+        resolve();
+      });
+      seen.observe(document.body, { childList: true, subtree: true });
+    });
+    render(<Wrapped client={c} tab="sharing" />);
+    await ticked;
+    const box = await screen.findByRole('region', { name: 'Your pushes about Asha' });
+    expect((within(box).getByLabelText(/A day summary at/) as HTMLInputElement).checked).toBe(true);
+    expect((within(box).getByLabelText('Day summary time') as HTMLInputElement).disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(within(box).getByRole('button', { name: 'Save' }));
+    });
+    await waitFor(() => expect(setPrefs).toHaveBeenCalledWith({ summaryAt: '21:00', reviewPush: true, quiet: null }));
+  });
+
   it('a field with two levels above hers is a choice of level (Light: medicines off)', async () => {
     const propose = vi.fn(async () => undefined);
     const light = { ...presetAgreement('light'), version: 2 };
