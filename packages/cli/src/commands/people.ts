@@ -429,9 +429,12 @@ export default defineCommand(
         const p = await find(ctx, target);
         await callDaemon(ctx.ctl, 'POST', `/v1/people/${p.id}/remove`, { mode: flags.now ? 'now' : 'window', forget: Boolean(flags.forget) });
         // What the daemon did decides the words: a window (ending) keeps Access open until it ends; anything else ended it now.
-        const after = (await callDaemon<PeopleList>(ctx.ctl, 'GET', '/v1/people')).people.find((x) => x.id === p.id);
-        if (after?.state === 'ending') {
-          const until = after.endingUntil?.slice(0, 10);
+        const after = await callDaemon<PeopleList>(ctx.ctl, 'GET', '/v1/people').then(
+          (l) => l.people.find((x) => x.id === p.id) ?? null,
+          () => undefined,
+        );
+        if (after === undefined ? !flags.now && !flags.forget : after?.state === 'ending') {
+          const until = after?.endingUntil?.slice(0, 10);
           io.out(`Sharing with ${p.name} ends ${until ? `on ${until}` : 'in 7 days'}; they can download their data until then.\n`);
           io.out(accessStepAfter(p.emailLabel, until));
           return EXIT.ok;
