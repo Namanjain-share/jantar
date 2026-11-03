@@ -2053,7 +2053,9 @@ export interface PostsModule extends LifeModule {
  * schema 5) have no `space` column and only life/work/** names them; it
  * never runs SQL on `todos` or `projects`: it calls the Todos module, inside
  * its own transaction. Every method that takes an actor answers not_found
- * for anyone but the owner (a person's actor). P1: no Today part yet.
+ * for anyone but the owner (a person's actor). Its Today part is the Work
+ * card: check-ins (P2) and the open deals with no next step, quiet or
+ * closing this week (P3).
  */
 export interface WorkModule extends LifeModule {
   readonly name: 'work';
