@@ -80,25 +80,13 @@ export const PERSON_LIFE_ROUTE_IMPLS: RouteTable = {
     handle: (c: Call, s) => lifeValue(todos(c, s).listProjects()),
   },
   personProjectCreate: {
-    handle: (c: Call<Record<string, string>, unknown, ProjectBody>, s) => {
-      const r = lifeValue(todos(c, s).createProject(c.body, needActor(c.auth)));
-      s.deps.life.people.ticks.bump(her(c.auth).personId, 'life');
-      return r;
-    },
+    handle: (c: Call<Record<string, string>, unknown, ProjectBody>, s) => lifeValue(space(s).herProjectCreate(her(c.auth).personId, c.body, needActor(c.auth))),
   },
   personProjectUpdate: {
-    handle: (c: Call<Id, unknown, ProjectPatch>, s) => {
-      lifeValue(todos(c, s).updateProject(c.params.id, c.body, needActor(c.auth)));
-      s.deps.life.people.ticks.bump(her(c.auth).personId, 'life');
-      return OK;
-    },
+    handle: (c: Call<Id, unknown, ProjectPatch>, s) => (lifeValue(space(s).herProjectUpdate(her(c.auth).personId, c.params.id, c.body, needActor(c.auth))), OK),
   },
   personProjectDelete: {
-    handle: (c: Call<Id>, s) => {
-      lifeValue(todos(c, s).removeProject(c.params.id, needActor(c.auth)));
-      s.deps.life.people.ticks.bump(her(c.auth).personId, 'life');
-      return OK;
-    },
+    handle: (c: Call<Id>, s) => (lifeValue(space(s).herProjectDelete(her(c.auth).personId, c.params.id, needActor(c.auth))), OK),
   },
   // Her medicines and doses (spec 3.4): any of hers, his additions included; only she logs doses.
   personMeds: {

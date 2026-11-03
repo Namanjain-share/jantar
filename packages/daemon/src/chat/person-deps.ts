@@ -57,38 +57,12 @@ function herTodos(pc: PersonChat): TodosModule {
     const sp = people.space;
     return sp ? sp.todosOf(pid) : null;
   };
-  const wrote = (r: LifeResult<unknown>) => {
-    if (r.ok) {
-      people.ticks.bump(pid, 'life');
-      if (people.agreement(pid)?.see.todos) people.ownerChanged();
-    }
-  };
   const t: Partial<TodosModule> = {
     name: 'todos',
     listProjects: () => inner()?.listProjects() ?? CLOSED,
-    createProject: (body: ProjectBody, actor: Actor) => {
-      const m = inner();
-      if (!m) return CLOSED;
-      const { folder: _no, ...rest } = body;
-      const r = m.createProject(rest, actor);
-      wrote(r);
-      return r;
-    },
-    updateProject: (id: string, patch: ProjectPatch, actor: Actor) => {
-      const m = inner();
-      if (!m) return CLOSED;
-      const { folder: _no, ...rest } = patch;
-      const r = m.updateProject(id, rest, actor);
-      wrote(r);
-      return r;
-    },
-    removeProject: (id: string, actor: Actor) => {
-      const m = inner();
-      if (!m) return CLOSED;
-      const r = m.removeProject(id, actor);
-      wrote(r);
-      return r;
-    },
+    createProject: (body: ProjectBody, actor: Actor) => space()?.herProjectCreate(pid, body, actor) ?? CLOSED,
+    updateProject: (id: string, patch: ProjectPatch, actor: Actor) => space()?.herProjectUpdate(pid, id, patch, actor) ?? CLOSED,
+    removeProject: (id: string, actor: Actor) => space()?.herProjectDelete(pid, id, actor) ?? CLOSED,
     listTodos: (q: TodosQuery) => space()?.herList(pid, q) ?? CLOSED,
     createTodo: (body: TodoBody, actor: Actor) => space()?.herCreate(pid, body, actor) ?? CLOSED,
     updateTodo: (id: string, patch: TodoPatch, actor: Actor) => space()?.herUpdate(pid, id, patch, actor) ?? CLOSED,

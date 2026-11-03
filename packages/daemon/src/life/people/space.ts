@@ -21,7 +21,7 @@
  *   stream and his only for areas he sees.
  */
 import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
-import type { SnoozePreset, TodoPatch, TodosQuery, WeightBody } from '@jantar/protocol';
+import type { ProjectBody, ProjectPatch, SnoozePreset, TodoPatch, TodosQuery, WeightBody } from '@jantar/protocol';
 import type { Agreement, AssignTodoBody, AssignTodoPatch, PersonTodo, PersonWeight } from '@jantar/protocol/people';
 import type { Actor, LifeCore, LifeResult, TodosModule } from '../../contracts.js';
 import { removeWeight, setWeight, weightsOf } from '../food/weight.js';
@@ -76,14 +76,33 @@ export class PersonSpace {
     return (c ? c.now() : new Date()).toISOString();
   }
 
-  /** His write lands: her Activity, her stream, his devices' re-fetch, one push to her. */
-  private hisWrite(pid: string, action: string, title: string | undefined, changes?: { field: string; from?: string; to?: string }[]): void {
-    this.people.record(pid, { actor: 'owner', action, area: 'todos', ...(title ? { title: title.slice(0, TITLE_MAX) } : {}), ...(changes ? { changes: changes.slice(0, 12) } : {}) });
+  /**
+   * His write lands: her Activity, her stream, his devices' re-fetch, one push to her. `project`: the name of
+   * her project he added the item to (Activity keeps it as a `project` change, the push names it).
+   */
+  private hisWrite(pid: string, action: string, title: string | undefined, changes?: { field: string; from?: string; to?: string }[], project?: string | null): void {
+    const all = [...(project ? [{ field: 'project', to: project.slice(0, 200) }] : []), ...(changes ?? [])];
+    this.people.record(pid, { actor: 'owner', action, area: 'todos', ...(title ? { title: title.slice(0, TITLE_MAX) } : {}), ...(all.length ? { changes: all.slice(0, 12) } : {}) });
     this.people.ticks.bump(pid, 'life');
     this.people.ownerChanged();
     const owner = this.people.ownerName();
-    const words = action === 'todo.added' ? `${owner} added "${(title ?? '').slice(0, 60)}"` : action === 'todo.deleted' ? `${owner} removed an item` : `${owner} changed "${(title ?? '').slice(0, 60)}"`;
+    const words =
+      action === 'todo.added'
+        ? `${owner} added "${(title ?? '').slice(0, 60)}"${project ? ` to ${project.slice(0, 40)}` : ''}`
+        : action === 'todo.deleted'
+          ? `${owner} removed an item`
+          : `${owner} changed "${(title ?? '').slice(0, 60)}"`;
     this.people.noticeHer(pid, { kind: 'life', title: 'From ' + owner, body: words, url: '/p/todos', tag: `people:todos:${pid}` });
+  }
+
+  /** His edit's changes in her words: a move between her projects names them (never a raw id). */
+  private namedChanges(pid: string, changes: { field: string; from?: string; to?: string }[]): { field: string; from?: string; to?: string }[] {
+    return changes.map((c) => {
+      if (c.field !== 'projectId') return c;
+      const from = this.projectName(pid, c.from);
+      const to = this.projectName(pid, c.to);
+      return { field: 'project', ...(from ? { from } : {}), ...(to ? { to } : {}) };
+    });
   }
 
   /** Her write lands: her stream; his devices only while he sees the area. */
@@ -97,6 +116,37 @@ export class PersonSpace {
 
   herList(pid: string, q: TodosQuery): LifeResult<{ today: string; todos: PersonTodo[] }> {
     return this.todos(pid).listTodos(q) as LifeResult<{ today: string; todos: PersonTodo[] }>;
+  }
+
+  // Her projects (spec 3.3, the todos area): hers alone to make, rename, archive or delete; never a folder
+  // (that links a project to a folder on his Mac). Each write reaches his screens while he sees her to-dos,
+  // as her to-dos do; deleting one leaves its to-dos in place with no project.
+
+  herProjectCreate(pid: string, body: ProjectBody, actor: Actor): LifeResult<{ id: string }> {
+    const { folder: _no, ...rest } = body;
+    const r = this.todos(pid).createProject(rest, actor);
+    if (r.ok) this.herWrite(pid, 'todos');
+    return r;
+  }
+
+  herProjectUpdate(pid: string, id: string, patch: ProjectPatch, actor: Actor): LifeResult {
+    const { folder: _no, ...rest } = patch;
+    const r = this.todos(pid).updateProject(id, rest, actor);
+    if (r.ok) this.herWrite(pid, 'todos');
+    return r;
+  }
+
+  herProjectDelete(pid: string, id: string, actor: Actor): LifeResult {
+    const r = this.todos(pid).removeProject(id, actor);
+    if (r.ok) this.herWrite(pid, 'todos');
+    return r;
+  }
+
+  /** The name of one of her projects (null: none of hers by that id). */
+  private projectName(pid: string, id: string | undefined): string | null {
+    if (!id) return null;
+    const r = this.todos(pid).listProjects();
+    return (r.ok ? r.value.projects.find((p) => p.id === id)?.name : undefined) ?? null;
   }
 
   herCreate(pid: string, body: Parameters<TodosModule['createTodo']>[0], actor: Actor): LifeResult<{ id: string }> {
@@ -302,7 +352,7 @@ export class PersonSpace {
       extra: { ...(ask && ask !== 'none' ? { ask } : {}), ...(snoozable === false ? { snoozable: false } : {}), ...(followUp ? { followUp } : {}) },
     });
     if (r.ok) {
-      this.hisWrite(pid, 'todo.added', body.title);
+      this.hisWrite(pid, 'todo.added', body.title, undefined, this.projectName(pid, body.projectId));
       this.people.plans?.armTodoFollowUps(pid);
     }
     return r;
@@ -327,7 +377,7 @@ export class PersonSpace {
     this.patchExtra(pid, id, extra);
     const after = this.findTodo(pid, id) ?? t;
     this.noteMoved(pid, t);
-    this.hisWrite(pid, 'todo.edited', after.title, mine ? undefined : changesOf(t, after));
+    this.hisWrite(pid, 'todo.edited', after.title, mine ? undefined : this.namedChanges(pid, changesOf(t, after)));
     this.people.plans?.armTodoFollowUps(pid);
     return OK;
   }
