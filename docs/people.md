@@ -286,6 +286,54 @@ Let's talk or tick "Tell Sam my answer"; skipping it counts for nothing.
 **Never from these.** Moods, check-ins, nights, journal entries and review
 outcomes never create an item, an alert, a score or a concern line.
 
+## Their assistant (Chat)
+
+Their app has its own Chat: an assistant for their day, in a thread of
+their own. It runs on your Mac, with your Claude accounts, through the same
+picker and one-run-at-a-time queue as yours, so every rule you set for which
+accounts Jantar may use applies to their runs too.
+
+- **What it can do.** It reads their plan, to-dos, weight and sleep, and
+  only theirs: it adds and changes their own to-dos and projects, starts,
+  finishes, skips and adds plan steps, ticks check-betweens, answers
+  check-ins, sets their status and logs a night, each with Undo. A delete
+  is a card they tap, and so is an alert to you ("Send Sam 'Running
+  late'?"). Items and steps you added are theirs to do, never to change:
+  it can tick or skip them, not edit or delete them.
+- **What it can't.** It has no journal tool (their journal stays out of
+  every assistant, theirs included), and nothing of yours: no sessions,
+  accounts, Intel, meetings, money, posts, and no way to assign anything to
+  anyone. Its tools are a fixed list; even a tool listed by mistake reaches
+  only their space.
+- **Your words are data.** Anything you wrote or last edited (an item's
+  title and notes, a plan step, the plan's note) reaches their assistant
+  inside `<data source="owner">`, and after reading it the assistant's
+  writes become cards they tap. A line in a step can't make it act.
+- **Their limits.** 30 messages a day by default ("12 messages left
+  today"); you change the number on their Chat tab, and it shows in their
+  Activity. At most 2 messages wait at once. Their thread is kept 1, 7 or
+  30 days, as they choose (your own keep never applies to it). Refusals use
+  a fixed set of words ("The assistant is busy. Try again in a few
+  minutes.", "Today's messages are used up.") that never name an account,
+  an email, a limit or a reset time.
+- **Who can read it.** With "Your chats with your assistant" on, you can
+  read their thread on your People screen (Chat tab): their messages, the
+  answers, photos they send and what it changed, read only, with no box to
+  type in and no Undo. Each look is in their Activity ("Sam read your
+  chat", once an hour). While it's on, their Chat says "Sam can read this
+  chat" above the box on every visit. With it off, you can't open it, your
+  devices don't refresh when they chat, and you see only how many messages
+  they send a day (the audit log's `chat.run` rows, with no text). The
+  disclosure is on the join page, behind ⓘ in their Chat, and is the first
+  message of a new thread.
+- **Photos** they send are stripped of location, camera details and embedded
+  thumbnails before they're kept.
+- **Delete and Clear** are theirs: a message they delete, or a thread they
+  clear, is gone for both of you. Their thread is in their download, and
+  forgotten with their space.
+- **Not in this version:** your own assistant reading their space (the
+  `assistant` field). It isn't offered, in any preset or request.
+
 ## What each side sees
 
 - Your People screens show each area they share. An area they keep private

@@ -461,6 +461,20 @@ On the same two phones (owner and partner):
   phone, and "Asha sent the evening review" on the owner's phone with no
   note text.
 
+### People (v0.12, P3)
+
+On the same two phones (owner and partner):
+
+- The disclosure as the first message of the partner's new Chat thread,
+  and behind ⓘ.
+- "Sam can read this chat" above the box on the partner's iPhone on every
+  visit while it's shared; gone the moment they switch it off in Sharing.
+- A canary sentence planted in the owner's `~/.claude/CLAUDE.md` and in
+  auto-memory never appears in the partner's run (watch the run's stream).
+- A photo with location sent from the partner's iPhone: the owner's Chat tab
+  shows it, and the stored file has no GPS (check it with `sips -g all` on
+  the copy under the chat folder).
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear

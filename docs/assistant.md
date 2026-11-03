@@ -169,3 +169,34 @@ a delete that becomes a card, a run whose tools include a shell (stopped
 before any call), tools called that were never given (refused), a flood
 of writes (capped), a photo, a slow answer by voice, and a marker planted
 in your data that must never reach a log, an event or an audit row.
+
+## A partner's thread (People, v0.12)
+
+With People on, a partner has their own thread in the same chat.db, apart
+by construction: every turn, change, card and photo row carries its thread
+(`''` yours, `p:<id>` theirs), every query names it, and an id from the
+other thread is 404. Clear clears only the caller's thread.
+
+- **Their tools** are a fixed list (`PERSON_CHAT_TOOLS` in
+  `packages/daemon/src/chat/person-tools.ts`): their Today, to-dos, plan and
+  sleep week; their to-do, project, weight, step, check-between, check-in,
+  status and sleep writes; a delete card and an alert card. Never a session,
+  account, Intel, meeting, money, post, assigning or journal tool. Their run
+  gets deps that hold their space alone: every other module is denied, so
+  a tool listed by mistake fails closed.
+- **Prompt and reach.** Their run uses `assets/chat/person-v1.md`; its
+  `<reach>` block is a fixed list (never your switches, currency or
+  categories), with your name and whether you can read the thread. History
+  comes from their thread only. The run keeps every isolation flag yours
+  has.
+- **Taint by authorship.** Text you wrote or last edited reaches their run
+  as `<data source="owner">` and taints the turn: its later writes become
+  Do-it cards.
+- **Cost.** Their runs use your accounts through the same picker and queue,
+  at most 2 unfinished at once, and a daily cap (30 by default, set on their
+  Chat tab). One `chat.run` audit row per run, by `chat`, under their
+  person, with no target and no params.
+- **Keep.** Their own choice of 1, 7 or 30 days; `ask.keepDays` is yours
+  alone.
+- **No Siri door** for them; chat keys stay yours.
+

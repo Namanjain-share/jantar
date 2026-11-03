@@ -2096,8 +2096,22 @@ It adds a new asset: **another person's Life data, health data included**.
   reads People's jantar.db tables, and drops the people settings (her host
   then answers 403).
 
+- **Her assistant (P3) is a new injection path, handled by authorship.**
+  Text the owner wrote or last edited reaches her run framed as
+  `<data source="owner">` and taints the turn (its writes become cards she
+  taps). Her run gets a fixed tool list and deps that hold her space alone
+  (every other module, Intel, meetings and the board are denied), so a tool
+  listed by mistake fails closed; there is no journal tool for anyone. Her
+  turns' refusals come from a fixed set that names no account, limit or
+  reset. Her photos are stripped of location, camera details and thumbnails
+  before they are stored. The owner reads her thread only through GET
+  routes, only while `see.chat` is on, each read leaving a view mark; no
+  owner route or tool writes to her thread. chat.db's threads are apart in
+  every query (`thread`), and an id of the other thread is 404.
+
 Pinned by `packages/daemon/test/people/*` and `test/arch/v012-people.test.ts`
 (every owner route with her credential, every person route with his, both
 event streams, push routing, the Origin split, static files by host) and
 `packages/web/test/partner/import-graph.test.ts` (her app is a separate
-bundle holding no owner module).
+bundle holding no owner module), and for her chat by
+`packages/daemon/test/chat/person-chat.test.ts` and `person-tools.test.ts`.

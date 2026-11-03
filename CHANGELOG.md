@@ -12,8 +12,9 @@ With People off, nothing changes for you. Upgrade notes follow.
 **Before upgrading: nothing to copy by hand.** The daemon keeps
 `life-pre-<version>.db` in the backups folder before it moves life.db to
 schema 4 (Life's third schema change, which adds a space to every Life
-table; every existing row stays yours). An older daemon can't open Life
-afterwards, and going back means restoring that copy. jantar.db gains
+table; every existing row stays yours), and `chat-pre-<version>.db` before
+chat.db moves to schema 2. An older daemon can't open Life or Chat
+afterwards, and going back means restoring those copies. jantar.db gains
 People's tables and an audit column (0.10 keeps working on it, and a
 partner simply can't sign in there).
 
@@ -92,6 +93,21 @@ partner simply can't sign in there).
   5-minute code), Notifications (lock screen, mute, quiet hours, times,
   limits and ring switches), Pause and Leave. Journal, Health and Alerts
   load when opened. Its own service worker opens only `/p` pages.
+- **Their assistant** (P3): a Chat of their own in their app, on your Mac and
+  your Claude accounts (the same picker and queue, so your account rules
+  apply). It reads and changes only their space: their plan, to-dos,
+  weight and sleep, with Undo; deletes and alerts to you are cards they
+  tap; it has no journal tool and nothing of yours. What you wrote reaches
+  it framed as data, and its writes then wait for their tap. 30 messages a
+  day by default (you set it on their Chat tab), at most 2 waiting, kept 1,
+  7 or 30 days as they choose; refusals never name an account or a reset.
+  Their photos lose location and camera details before they're kept. With
+  their chat shared, you read it on a read-only Chat tab (each look is in
+  their Activity) and their Chat says "Sam can read this chat" on every
+  visit; off, you see only how many messages they send a day. chat.db moves
+  to schema 2 after a copy to `backups/chat-pre-<version>.db`
+  ([Upgrading](docs/upgrading.md)). Your own assistant reading their space
+  is not part of this version.
 
 ## 0.10.2 (3 November 2026)
 

@@ -30,6 +30,13 @@ older daemon refuses a schema-4 file (Life answers 503 there); to go back,
 restore that copy: `jantar life restore life-pre-<version>.db`. Anything a
 partner added since the upgrade is lost then.
 
+chat.db moves to schema 2 (a `thread` on every row, so a partner's chat is
+apart from yours; every existing row is yours). The daemon first copies it to
+`backups/chat-pre-<version>.db`. An older daemon refuses a schema-2 chat.db
+(Chat answers 503 there); to go back, put that copy back as chat.db at the
+Mac. Don't use `jantar chat clear --broken` for this: it would set both
+threads aside.
+
 jantar.db gains People's tables (their devices, link codes, push list,
 invites and the consent ledger) and an audit column. An older daemon warns
 and carries on, never reading them: a partner simply can't sign in there,
