@@ -26,7 +26,7 @@
  * then it goes on to her Today, or back to her first steps, which Accept
  * keeps in the address (`/p/join?step=home|notify`) so a reload finds them.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { AGREEMENT_FIELDS, closeDependents, withField, yourLabel, type AgreementFields } from '@jantar/protocol/people-core';
 import type { JoinPreview, PersonMe } from '@jantar/protocol/people';
 import { Button } from '../../ui/kit/Button.js';
@@ -285,10 +285,30 @@ function FirstSteps({ api, owner, label, step, next }: { api: PersonApi; owner: 
 
 export const NOT_AN_INVITE = "That isn't an invite link. Paste the whole link you were sent.";
 
+/**
+ * 0.12.1: a field's error under it: the field says it is invalid and is
+ * described by the error (aria-invalid, aria-describedby), and the same words
+ * a second time are a new alert, so a screen reader says them again.
+ */
+function useFieldError() {
+  const id = useId();
+  const [error, setError] = useState<{ text: string; n: number } | null>(null);
+  return {
+    fail: (text: string) => setError((e) => ({ text, n: (e?.n ?? 0) + 1 })),
+    clear: () => setError(null),
+    field: error ? { 'aria-invalid': true, 'aria-describedby': id } : {},
+    alert: error ? (
+      <p key={error.n} id={id} role="alert" className="mt-8 font-medium text-ink">
+        {error.text}
+      </p>
+    ) : null,
+  };
+}
+
 /** 0.12.1: the join page without its code. A pasted link (or its code) loads the preview here; a wrong one says so and she tries again. */
 function PasteInvite({ api, onPreview }: { api: PersonApi; onPreview: (code: string, preview: JoinPreview) => void }) {
   const [text, setText] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const error = useFieldError();
   const [busy, setBusy] = useState(false);
   return (
     <Page title="Open your invite link once more">
@@ -298,16 +318,13 @@ function PasteInvite({ api, onPreview }: { api: PersonApi; onPreview: (code: str
         onSubmit={(e) => {
           e.preventDefault();
           const c = inviteCode(text);
-          if (!c) {
-            setError(NOT_AN_INVITE);
-            return;
-          }
-          setError(null);
+          if (!c) return error.fail(NOT_AN_INVITE);
+          error.clear();
           setBusy(true);
           api.joinPreview(c).then(
             (p) => onPreview(c, p),
             (err: Error) => {
-              setError(err.message);
+              error.fail(err.message);
               setBusy(false);
             },
           );
@@ -323,10 +340,14 @@ function PasteInvite({ api, onPreview }: { api: PersonApi; onPreview: (code: str
             autoCorrect="off"
             autoComplete="off"
             spellCheck={false}
+            {...error.field}
             onChange={(e) => setText(e.target.value)}
           />
         </label>
-        {error ? <p role="alert" className="mt-8 font-medium text-ink">{error}</p> : null}
+        {error.alert}
+        <p role="status" className={busy ? 'mt-8 text-ink-2' : undefined}>
+          {busy ? 'Loading…' : null}
+        </p>
         <Button className="mt-12" variant="primary" size="xl" type="submit" disabled={busy || !text.trim()}>
           Continue
         </Button>

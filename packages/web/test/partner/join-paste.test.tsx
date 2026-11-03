@@ -134,6 +134,40 @@ describe('/p/join without its code (after a one-time PIN sign-in)', () => {
   });
 });
 
+describe('the paste form, to a screen reader (0.12.1 after review)', () => {
+  beforeEach(() => history.replaceState(null, '', '/p/join'));
+
+  it('the field is invalid and described by the error, and the same error twice is a new alert', async () => {
+    render(<Join api={fakeApi({ joinPreview: vi.fn(async () => preview) })} mode="join" />);
+    const field = await screen.findByLabelText('Paste your invite link');
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+    expect(field.getAttribute('aria-describedby')).toBeNull();
+    await paste('hello');
+    const first = screen.getByRole('alert');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(field.getAttribute('aria-describedby')).toBe(first.id);
+    expect(first.id).not.toBe('');
+    await paste('hello again');
+    const second = screen.getByRole('alert');
+    expect(second.textContent).toBe(NOT_AN_INVITE);
+    // A new node, so it is announced again.
+    expect(second).not.toBe(first);
+    expect(first.isConnected).toBe(false);
+    expect(field.getAttribute('aria-describedby')).toBe(second.id);
+  });
+
+  it('says Loading… while the preview loads', async () => {
+    let answer: (p: JoinPreview) => void = () => undefined;
+    const joinPreview = vi.fn(() => new Promise<JoinPreview>((r) => (answer = r)));
+    render(<Join api={fakeApi({ joinPreview })} mode="join" />);
+    await paste(CODE);
+    expect(screen.getByRole('status').textContent).toBe('Loading…');
+    expect((screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => answer(preview));
+    expect(await screen.findByRole('heading', { name: 'Accountability partner' })).toBeTruthy();
+  });
+});
+
 describe('/p/join: the link opened again in the same tab (0.12.1 after review)', () => {
   beforeEach(() => history.replaceState(null, '', '/p/join'));
 
