@@ -97,7 +97,8 @@ describe('Dispatcher', () => {
     expect(init).toMatchObject({ result: { serverInfo: { name: 'jantar' } } });
     const second = client(path);
     second.send(JSON.stringify({ token: TOKEN }));
-    await settle();
+    // 0.12.1: wait for the refusal's close itself, at most 5 s (a fixed 50 ms can be too short on a busy runner).
+    for (let i = 0; i < 100 && !second.closed(); i++) await settle();
     expect(second.closed()).toBe(true);
     expect(d.refusedConnections).toBe(1);
     const list = (await c.request('tools/list')) as { result: { tools: Array<{ name: string }> } };

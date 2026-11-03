@@ -88,7 +88,8 @@ export class ReadQueue {
   private reads = 0;
   private fulls = 0;
   /** No new job starts (stopping). */
-  private paused = false;
+  /** 0.12.1: how many stopAll calls are running: a count, so the first of two overlapping stops can't let jobs start. */
+  private paused = 0;
 
   constructor(private readonly d: QueueDeps) {}
 
@@ -146,28 +147,31 @@ export class ReadQueue {
 
   /** Abort the running job and fail every waiting one ("Stopped before it finished."); waits for the running one to end (≤ 5 s). */
   async stopAll(): Promise<void> {
-    this.paused = true;
+    this.paused += 1;
     // 0.12.1: each waiting job stays listed (waiting) until its failed line is written and it ends, so a stopped job
     // is never in neither list while it stops (the paused queue starts none of them). A Delete in between takes it
     // out as before, and then it ends nowhere.
     const waiting = [...this.waiting];
     const running = this.running;
-    if (running) this.abort(running, 'stopped');
-    for (const j of waiting) {
-      if (!this.waiting.includes(j)) continue;
-      // 0.12.2: its line first, then the end, as every other job: never listed failed while the item reads queued.
-      await this.d.write(this.d.failedLine(j, INTEL_READ_REASONS.stopped)).catch((e: unknown) => this.logError(e));
-      const at = this.waiting.indexOf(j);
-      if (at < 0) continue;
-      this.waiting.splice(at, 1);
-      this.end(j, 'failed', INTEL_READ_REASONS.stopped);
+    try {
+      if (running) this.abort(running, 'stopped');
+      for (const j of waiting) {
+        if (!this.waiting.includes(j)) continue;
+        // 0.12.2: its line first, then the end, as every other job: never listed failed while the item reads queued.
+        await this.d.write(this.d.failedLine(j, INTEL_READ_REASONS.stopped)).catch((e: unknown) => this.logError(e));
+        const at = this.waiting.indexOf(j);
+        if (at < 0) continue;
+        this.waiting.splice(at, 1);
+        this.end(j, 'failed', INTEL_READ_REASONS.stopped);
+      }
+      if (this.runningDone) {
+        let timer: TimerId | undefined;
+        await Promise.race([this.runningDone, new Promise<void>((r) => (timer = this.d.clock.setTimeout(r, 5_000)))]);
+        this.d.clock.clearTimeout(timer);
+      }
+    } finally {
+      this.paused -= 1;
     }
-    if (this.runningDone) {
-      let timer: TimerId | undefined;
-      await Promise.race([this.runningDone, new Promise<void>((r) => (timer = this.d.clock.setTimeout(r, 5_000)))]);
-      this.d.clock.clearTimeout(timer);
-    }
-    this.paused = false;
     if (waiting.length || running) this.d.changed();
     // A link saved while this waited is started now (the running job's own kick saw the pause).
     this.kick();
@@ -213,7 +217,7 @@ export class ReadQueue {
   }
 
   private kick(): void {
-    if (this.running || this.paused) return;
+    if (this.running || this.paused > 0) return;
     const job = this.waiting.shift();
     if (!job) return;
     this.running = job;

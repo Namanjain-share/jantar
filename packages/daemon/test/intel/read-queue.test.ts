@@ -33,6 +33,8 @@ function setup() {
   const listedAtWrite: (string | null)[] = [];
   const ran: string[] = [];
   const pending = new Map<string, (line: CaptureLine | null) => void>();
+  /** 0.12.1: a write of this rid's line waits for this promise. */
+  const holds = new Map<string, Promise<void>>();
   const queue: ReadQueue = new ReadQueue({
     clock,
     log: memoryLogger(),
@@ -42,6 +44,7 @@ function setup() {
         pending.set(job.rid, resolve);
       }),
     write: async (line) => {
+      await holds.get(line.id);
       listedAtWrite.push(queue.list().find((j) => j.id === `captures:${line.id}`)?.state ?? null);
       written.push(line);
     },
@@ -56,7 +59,7 @@ function setup() {
     resolve(line(job));
     await until(() => !queue.busy(rid), 2_000, 'the run to end');
   }
-  return { clock, queue, written, listedAtWrite, ran, pending, settle };
+  return { clock, queue, written, listedAtWrite, ran, pending, holds, settle };
 }
 
 describe('the read queue', () => {
@@ -118,6 +121,26 @@ describe('the read queue', () => {
       { id: `captures:${RID_A}`, state: 'failed', reason: INTEL_READ_REASONS.stopped },
       { id: `captures:${RID_B}`, state: 'failed', reason: INTEL_READ_REASONS.stopped },
     ]);
+  });
+
+  it('0.12.1: of two overlapping stops, the first to end never starts a job the second is failing', async () => {
+    const t = setup();
+    t.queue.push(spec(RID_A));
+    await until(() => t.pending.get(RID_A), 2_000, 'A to run');
+    const first = t.queue.stopAll();
+    // Saved while the first stop waits for A's run to end; the second stop fails it, its line held.
+    t.queue.push(spec(RID_B));
+    let release = (): void => {};
+    t.holds.set(RID_B, new Promise<void>((r) => (release = r)));
+    const second = t.queue.stopAll();
+    t.pending.get(RID_A)?.(null);
+    t.pending.delete(RID_A);
+    await first;
+    expect(t.ran).toEqual([RID_A]);
+    release();
+    await second;
+    expect(t.ran).toEqual([RID_A]);
+    expect(t.queue.list().find((j) => j.id === `captures:${RID_B}`)).toMatchObject({ state: 'failed', reason: INTEL_READ_REASONS.stopped });
   });
 
   it("a deleted waiting job gives today's read back", async () => {
