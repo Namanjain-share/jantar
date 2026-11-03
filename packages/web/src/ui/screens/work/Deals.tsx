@@ -215,9 +215,11 @@ function DealsList({ w, tabs, load, closed, stage, show, businesses, business, o
       <Loaded load={load}>
         {(d) => {
           const totals = pipelineTotals(d.stages, status?.currency);
+          // The totals ask for 240 before the business and Insights wrap under them: as flex-1 alone (a basis
+          // of 0) they shrank to a word a line beside them on a narrow pane.
           const head = (
             <div className="flex flex-wrap items-center gap-x-12 gap-y-4 px-16 pb-8">
-              <div data-totals className="min-w-0 flex-1">
+              <div data-totals className="min-w-0 grow basis-240">
                 {totals.length ? (
                   totals.map((t) => (
                     <p key={t} className="type-mono text-ink-2">

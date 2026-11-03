@@ -73,6 +73,10 @@ describe('Work › Deals on a phone', () => {
     // The pipeline's totals: one line per currency, rupees (the Life currency) first.
     const totals = document.querySelector('[data-totals]') as HTMLElement;
     expect([...totals.querySelectorAll('p')].map((p) => p.textContent)).toEqual(['Open ₹6,50,000 · weighted ₹3,90,000 · won in 30 days ₹3,00,000', 'Open $2,000 · weighted $400']);
+    // They ask for 240 before Insights (and the business) wrap under them, never a basis of 0 (flex-1), which
+    // squeezed them to a word a line beside Insights on a 320 phone or a 340 list.
+    expect(totals.className.split(' ')).toEqual(expect.arrayContaining(['grow', 'basis-240', 'min-w-0']));
+    expect(totals.className).not.toMatch(/\bflex-1\b/);
     expect(screen.queryByRole('region', { name: 'Pipeline' })).toBeNull();
     // A card whose close day passed says so in ember.
     const globex = within(screen.getByRole('list', { name: 'New lead' })).getByRole('link', { name: /Globex/ });
