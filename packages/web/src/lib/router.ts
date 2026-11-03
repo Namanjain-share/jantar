@@ -38,8 +38,10 @@
  *   /ask            the 0.9 address: read as /chat, and the router puts /chat in its place
  * 0.13.0, shown only while Work is on (a Life module, so Life status says so):
  *   /work           Work (?tab=projects|clients|deals|insights, ?id=<ulid> the
- *                   project, client or deal open on that tab). While Work is
- *                   on, /todos?tab=projects and /todos?project=<id> land here.
+ *                   project, client or deal open on that tab; Clients' filters
+ *                   ?q=, ?state=lead|client|past, ?tag=, ?list=<starter list>).
+ *                   While Work is on, /todos?tab=projects and
+ *                   /todos?project=<id> land here.
  * Ids in a query are read only when they match their pattern (LifeId,
  * IntelId, day and month keys); anything else is left out.
  *
@@ -82,8 +84,8 @@ export type Route =
   | { name: 'chat'; day?: string }
   /** v0.11 People: his Partner screen (lazy; `/people` picks the one partner). */
   | { name: 'people'; pid?: string; tab?: string; day?: string; id?: string }
-  /** 0.13.0 Work: his projects, clients and deals (lazy; owner-only). */
-  | { name: 'work'; tab?: WorkTab; id?: string }
+  /** 0.13.0 Work: his projects, clients and deals (lazy; owner-only). Clients' filters: `q`, `state`, `tag`, `list` (W20). */
+  | { name: 'work'; tab?: WorkTab; id?: string; q?: string; state?: WorkClientState; tag?: string; list?: string }
   | { name: 'notFound'; path: string };
 
 export type TodosTab = 'todos' | 'reminders' | 'projects';
@@ -111,6 +113,9 @@ export type PostsFilter = 'open' | 'done';
 /** 0.13.0: Work's parts, as the address carries them (Projects is no `tab`). */
 export type WorkTab = 'projects' | 'clients' | 'deals' | 'insights';
 const WORK_TABS: readonly string[] = ['projects', 'clients', 'deals', 'insights'];
+/** 0.13.0: Clients' state filter (All is no `state`). */
+export type WorkClientState = 'lead' | 'client' | 'past';
+const WORK_STATES: readonly string[] = ['lead', 'client', 'past'];
 
 /** The Life screens (v0.4): Today's place in the tabs stands for all of them. */
 export const LIFE_ROUTES: readonly Route['name'][] = ['today', 'todos', 'meds', 'food', 'places', 'money', 'posts'];
@@ -304,7 +309,17 @@ export function parseRoute(pathname: string, search = '', hash = ''): Route {
   if (path === '/devices') return { name: 'devices' };
   if (path === '/work') {
     const tab = q.get('tab');
-    return defined({ name: 'work' as const, tab: tab && WORK_TABS.includes(tab) ? (tab as WorkTab) : undefined, id: matching(q, 'id', LIFE_ID) });
+    const state = q.get('state');
+    return defined({
+      name: 'work' as const,
+      tab: tab && WORK_TABS.includes(tab) ? (tab as WorkTab) : undefined,
+      id: matching(q, 'id', LIFE_ID),
+      q: matching(q, 'q', /^[^\n]{1,80}$/),
+      state: state && WORK_STATES.includes(state) ? (state as WorkClientState) : undefined,
+      tag: matching(q, 'tag', /^[^\n]{1,30}$/),
+      // A starter list's id (Clients keeps the ones it knows).
+      list: matching(q, 'list', /^[a-z][a-z-]{2,19}$/),
+    });
   }
   const pm = /^\/people(?:\/([0-9A-HJKMNP-TV-Z]{26}))?$/.exec(path);
   if (pm) return defined({ name: 'people' as const, pid: pm[1], tab: matching(q, 'tab', /^[a-z]{3,10}$/), day: matching(q, 'day', DAY_KEY), id: matching(q, 'id', LIFE_ID) });
@@ -370,7 +385,7 @@ export function routePath(r: Route): string {
     case 'people':
       return withQuery(r.pid ? `/people/${r.pid}` : '/people', queryOf({ tab: r.tab, day: r.day, id: r.id }));
     case 'work':
-      return withQuery('/work', queryOf({ tab: r.tab === 'projects' ? undefined : r.tab, id: r.id }));
+      return withQuery('/work', queryOf({ tab: r.tab === 'projects' ? undefined : r.tab, id: r.id, q: r.q, state: r.state, tag: r.tag, list: r.list }));
     case 'notFound':
       return r.path;
   }

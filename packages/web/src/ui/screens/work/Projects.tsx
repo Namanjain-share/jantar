@@ -12,6 +12,8 @@
  * opens over the list with "‹ Projects". Editors are the Todos sheets (a
  * bottom sheet on a phone, a form sheet from 640).
  *
+ * Projects · Clients sit under the title (parts.tsx WorkTabs).
+ *
  * Empty (W28): "No projects yet." with "Start from your client folders"
  * (while Launch or Files can list his folders, SeedSheet.tsx) and "New
  * project"; under a list, the same sheet as a text button. Clients' names
@@ -39,6 +41,7 @@ import { ProjectSheet } from '../life/todos/ProjectSheet.js';
 import { workClient } from './client.js';
 import { STATUS_GROUPS, byStatus, dueWord, nextByProject } from './model.js';
 import { ProjectHub } from './ProjectHub.js';
+import { WorkTabs } from './WorkTabs.js';
 import { SeedSheet } from './SeedSheet.js';
 
 export function Projects({ id }: { id?: string | undefined }) {
@@ -111,6 +114,7 @@ function ProjectsList({ projects, todos, clients, open, onSaved }: ProjectsListP
 
   return (
     <Page title="Work" aside={<AddButton label="New project" disabled={offline} onClick={() => sheet.show(null)} />} wide>
+      <WorkTabs tab="projects" />
       <Loaded load={projects}>
         {(d) => {
           if (d.projects.length === 0)

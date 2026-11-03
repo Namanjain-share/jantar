@@ -48,8 +48,9 @@ const LAZY_PLACES = {
   accounts: () => import('../src/ui/screens/Accounts.js'),
   alerts: () => import('../src/ui/screens/Alerts.js'),
   devices: () => import('../src/ui/screens/Devices.js'),
-  // 0.13.0: Work, its own chunk.
+  // 0.13.0: Work, its own chunk; Clients and the Log sheet, theirs.
   work: () => import('../src/ui/screens/work/Work.js'),
+  clients: () => Promise.all([import('../src/ui/screens/work/Clients.js'), import('../src/ui/screens/work/LogSheet.js')]),
 };
 
 /**

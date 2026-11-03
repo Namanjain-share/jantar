@@ -9,9 +9,14 @@
  * save, so editing the due moves them, while Undo's due alone never does.
  * The repeat goes as the phone chose it (freq and days): the Mac sets its
  * date and time itself.
+ *
+ * 0.13.0 (Work, design 7): while Work is on the screen hands the sheet his
+ * clients, and a Client field makes the todo a follow-up with one (None
+ * clears it, and its deal with it). Work's "Next step" opens it as "Next
+ * step", its client set.
  */
 import { useId, useState, type FormEvent } from 'react';
-import type { ProjectView, Repeat, Todo, TodoBody, TodoPatch, TodoPriority } from '@jantar/protocol';
+import type { OwnerTodoBody, OwnerTodoPatch, ProjectView, Repeat, Todo, TodoPriority } from '@jantar/protocol';
 import { useDeps } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
 import { Sheet } from '../../../kit/Sheet.js';
@@ -24,6 +29,9 @@ import { nextFullHour, projectLabel } from './model.js';
 
 export interface TodoStart {
   projectId?: string;
+  /** 0.13.0: a follow-up with this client (and deal), from Work's "Next step". */
+  contactId?: string;
+  dealId?: string;
   /** A reminder: the due date and time first, at the next full hour. */
   reminder?: boolean;
   /** v0.5.3: due this day, with no time (Today's Add todo). */
@@ -40,14 +48,19 @@ export interface TodoSheetProps {
   projects: readonly ProjectView[];
   now: LifeClock;
   start?: TodoStart | undefined;
+  /**
+   * 0.13.0, while Work is on: the clients a todo can follow up (their ids and names; the screen loads
+   * them). With them the sheet has a Client field; a todo's own client stays listed even when it isn't.
+   */
+  clients?: readonly { id: string; name: string }[] | undefined;
   onSaved: () => void;
 }
 
-export function TodoSheet({ open, onOpenChange, sheetKey, todo, projects, now, start, onSaved }: TodoSheetProps) {
-  const title = todo ? 'Edit todo' : start?.reminder ? 'New reminder' : 'New todo';
+export function TodoSheet({ open, onOpenChange, sheetKey, todo, projects, now, start, clients, onSaved }: TodoSheetProps) {
+  const title = todo ? 'Edit todo' : start?.contactId ? 'Next step' : start?.reminder ? 'New reminder' : 'New todo';
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={title}>
-      <TodoForm key={sheetKey} todo={todo} projects={projects} now={now} start={start} onDone={() => onOpenChange(false)} onSaved={onSaved} />
+      <TodoForm key={sheetKey} todo={todo} projects={projects} now={now} start={start} clients={clients} onDone={() => onOpenChange(false)} onSaved={onSaved} />
     </Sheet>
   );
 }
@@ -58,7 +71,23 @@ const sameRepeat = (a: Repeat | null, b: Repeat | null) =>
 /** What the phone chooses of a repeat: its freq and days. The date (byMonthDay) and time (at) are the Mac's to set from the due. */
 const chosen = (r: Repeat): Repeat => (r.byWeekday ? { freq: r.freq, byWeekday: r.byWeekday } : { freq: r.freq });
 
-function TodoForm({ todo, projects, now, start, onDone, onSaved }: { todo: Todo | null; projects: readonly ProjectView[]; now: LifeClock; start?: TodoStart | undefined; onDone: () => void; onSaved: () => void }) {
+function TodoForm({
+  todo,
+  projects,
+  now,
+  start,
+  clients,
+  onDone,
+  onSaved,
+}: {
+  todo: Todo | null;
+  projects: readonly ProjectView[];
+  now: LifeClock;
+  start?: TodoStart | undefined;
+  clients?: readonly { id: string; name: string }[] | undefined;
+  onDone: () => void;
+  onSaved: () => void;
+}) {
   const { api } = useDeps();
   const offline = useOffline();
   const w = useWrite();
@@ -72,7 +101,11 @@ function TodoForm({ todo, projects, now, start, onDone, onSaved }: { todo: Todo 
   const [repeat, setRepeat] = useState<Repeat | undefined>(todo?.repeat);
   const [priority, setPriority] = useState<TodoPriority>(todo?.priority ?? 'normal');
   const [projectId, setProjectId] = useState(todo?.projectId ?? start?.projectId ?? '');
+  const [contactId, setContactId] = useState(todo ? (todo.contactId ?? '') : (start?.contactId ?? ''));
 
+  // 0.13.0: the clients to pick from (Work on), the todo's own first when the list doesn't hold it.
+  const own = todo?.contactId ?? start?.contactId;
+  const clientList = clients ? (own && !clients.some((c) => c.id === own) ? [{ id: own, name: 'Its client' }, ...clients] : clients) : [];
   const due = day ? { day, ...(time ? { time } : {}) } : null;
   const rep = day && repeat ? repeat : null;
   const ok = title.trim().length > 0;
@@ -81,24 +114,28 @@ function TodoForm({ todo, projects, now, start, onDone, onSaved }: { todo: Todo 
     e.preventDefault();
     if (!ok || w.busy || offline) return;
     if (!todo) {
-      const body: TodoBody = {
+      const body: OwnerTodoBody = {
         title: title.trim(),
         priority,
         ...(notes.trim() ? { notes } : {}),
         ...(due ? { due } : {}),
         ...(projectId ? { projectId } : {}),
         ...(rep ? { repeat: rep } : {}),
+        ...(contactId ? { contactId } : {}),
+        ...(contactId && start?.dealId ? { dealId: start.dealId } : {}),
       };
       const r = await w.run(JSON.stringify(body), (key) => api.todoCreate(body, key));
       if (!r.ok) return;
     } else {
-      const patch: TodoPatch = {};
+      const patch: OwnerTodoPatch = {};
       if (title.trim() !== todo.title) patch.title = title.trim();
       if (notes !== (todo.notes ?? '')) patch.notes = notes.trim() ? notes : null;
       const dueChanged = JSON.stringify(due) !== JSON.stringify(todo.due ?? null);
       if (dueChanged) patch.due = due;
       if (priority !== todo.priority) patch.priority = priority;
       if (projectId !== (todo.projectId ?? '')) patch.projectId = projectId || null;
+      // Taking the client off a follow-up takes its deal off too (the Mac does).
+      if (contactId !== (todo.contactId ?? '')) patch.contactId = contactId || null;
       // A changed due on a repeating todo carries its repeat, so the Mac moves the series' time (and date) with it.
       if (!sameRepeat(rep, todo.repeat ?? null) || (dueChanged && rep)) patch.repeat = rep ? chosen(rep) : null;
       if (Object.keys(patch).length) {
@@ -183,6 +220,18 @@ function TodoForm({ todo, projects, now, start, onDone, onSaved }: { todo: Todo 
             ))}
         </select>
       </Field>
+      {clientList.length ? (
+        <Field label="Client" htmlFor={`${id}-client`}>
+          <select id={`${id}-client`} className={INPUT} value={contactId} onChange={(e) => setContactId(e.target.value)}>
+            <option value="">None</option>
+            {clientList.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
       {w.error ? <NotSaved error={w.error} /> : null}
       <SheetActions>
         <Button type="submit" variant="primary" size="lg" className="flex-1" disabled={!ok || w.busy || offline}>

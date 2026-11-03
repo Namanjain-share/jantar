@@ -362,7 +362,7 @@ export function Shell() {
       case 'work':
         screen = features.life ? (
           <Suspense fallback={<SkeletonRows count={5} caption="Opening Work…" />}>
-            <Work tab={route.tab} id={route.id} />
+            <Work route={route} />
           </Suspense>
         ) : featuresKnown ? (
           <NotFound off="work on" />
