@@ -37,8 +37,10 @@
  *   counts today's comments, a comment goal names its platform, Done shows the newest 300
  * - v0.10 Chat (in chat, settings, api): one thread per Mac replacing Ask, its changes with Undo,
  *   Confirm and Do-it cards, photos, the chat keys and the Siri door (`POST /v1/capture/chat`)
- * - v0.13 Work (in work, life, settings, api): a seventh Life module, owner-only: the project hub,
- *   one search across Jantar, projects from client folders (P1)
+ * - v0.13 Work (in life, settings, api): a seventh Life module, owner-only (`life.work`, `workOn`,
+ *   the `work` switch, the owner's `?q=` on the todos list). Its own shapes and routes (the project
+ *   hub, one search across Jantar, projects from client folders) are the subpath
+ *   `@jantar/protocol/work`, never exported here: none of it belongs in the main bundle
  */
 export * from './constants.js';
 export * from './models.js';
@@ -56,4 +58,3 @@ export * from './primer.js';
 export * from './meetings.js';
 export * from './chat.js';
 export * from './alerts.js';
-export * from './work.js';

@@ -17,19 +17,8 @@
  * - Labels are the items' own words (a control read on his host); links
  *   are app paths with ids only.
  */
-import {
-  IntelListQuerySchema,
-  PlacesQuerySchema,
-  SEARCH_KINDS,
-  workOn,
-  type ProjectView,
-  type SearchItem,
-  type SearchKind,
-  type SearchResponse,
-  type Session,
-  type Settings,
-  type Todo,
-} from '@jantar/protocol';
+import { IntelListQuerySchema, PlacesQuerySchema, workOn, type ProjectView, type Session, type Settings, type Todo } from '@jantar/protocol';
+import { SEARCH_KINDS, type SearchItem, type SearchKind, type SearchResponse } from '@jantar/protocol/work';
 import type { Actor, IntelService, LifeResult, LifeService, Logger, MeetingsService } from '../contracts.js';
 import { foldText, holdsFolded } from '../core/fold.js';
 

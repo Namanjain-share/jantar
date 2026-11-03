@@ -51,7 +51,6 @@
 import { posix } from 'node:path';
 import {
   LIFE_LIMITS,
-  WORK_LIMITS,
   projectFor,
   type Due,
   type FolderTodoBody,
@@ -59,7 +58,6 @@ import {
   type Project,
   type OwnerTodosQuery,
   type ProjectBody,
-  type ProjectHub,
   type ProjectPatch,
   type ProjectView,
   type Repeat,
@@ -70,6 +68,7 @@ import {
   type TodoPatch,
   type TodosQuery,
 } from '@jantar/protocol';
+import { WORK_LIMITS, type ProjectHub } from '@jantar/protocol/work';
 import { hhmmOf, nextRepeat, projectHealth, projectWeeks, shiftMonths, snoozeTarget } from '@jantar/life-core';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule } from '../../contracts.js';
 import type { PersonTodo } from '@jantar/protocol/people';

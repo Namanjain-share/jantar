@@ -75,10 +75,8 @@ import type {
   PostsQuery,
   PostsResponse,
   ProjectBody,
-  ProjectHub,
   ProjectPatch,
   ProjectsResponse,
-  SearchItem,
   SnoozePreset,
   Today,
   TodoBody,
@@ -169,6 +167,7 @@ import type {
   RouteName,
 } from '@jantar/protocol';
 import type { NodeCallActor, NodeCallReply, NodeCallRequest, NodeRouteName, NodeSnapshot } from '@jantar/protocol/node-link';
+import type { ProjectHub, SearchItem } from '@jantar/protocol/work';
 
 export type Unsubscribe = () => void;
 

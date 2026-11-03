@@ -5,7 +5,7 @@
  * request log keeps the route and status only, never the query string, and
  * a read writes no audit row.
  */
-import type { SearchQuery } from '@jantar/protocol';
+import type { SearchQuery } from '@jantar/protocol/work';
 import { searchAll } from '../../search/index.js';
 import { needActor, type Call, type RouteTable } from '../route-kit.js';
 

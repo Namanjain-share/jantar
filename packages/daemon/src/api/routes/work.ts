@@ -17,7 +17,7 @@
  * the audit row has no target and no params: a folder's name can be a
  * client's.
  */
-import type { WorkSeedBody } from '@jantar/protocol';
+import type { WorkSeedBody } from '@jantar/protocol/work';
 import { isRefusal, refusalResult } from '../../launcher/folders.js';
 import { ApiError } from '../errors.js';
 import { lifeValue, needActor, type Call, type RouteTable } from '../route-kit.js';

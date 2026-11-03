@@ -5,7 +5,9 @@
  * say so:
  *
  * - W-T1: every v0.13 route is a `control` route on his host: none under
- *   her prefix, none of scope `person`, and no person route is v0.13.
+ *   her prefix, none of scope `person`, and no person route is v0.13. They
+ *   are WORK_ROUTES (the `@jantar/protocol/work` subpath, served with the
+ *   rest through ALL_ROUTES), never in the index's ROUTES.
  * - W-T2: only life/work/** (and the migration in life/db.ts) names a
  *   `work_` table; no SQL under life/work/** touches `todos` or `projects`
  *   (Work calls the Todos module); there is no SQL in search/ at all.
@@ -24,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { ProjectBodySchema, ProjectPatchSchema, ROUTES, TodoBodySchema, TodoPatchSchema, TodosQuerySchema, type RouteDef } from '@jantar/protocol';
+import { WORK_ROUTES } from '@jantar/protocol/work';
 import { AREA_NAMES, PEOPLE_ROUTES, PERSON_PREFIX, PERSON_ROUTES } from '@jantar/protocol/people';
 import { ALL_ROUTES } from '../../src/api/all-routes.js';
 import { PERSON_CHAT_TOOLS } from '../../src/chat/person-tools.js';
@@ -66,8 +69,14 @@ describe('W-T1: every Work route is his', () => {
       expect(def.scope, name).toBe('control');
       expect(def.path.startsWith(PERSON_PREFIX), name).toBe(false);
       expect(def.path.startsWith('/v1/people'), name).toBe(false);
-      expect(Object.hasOwn(ROUTES, name), `${name} is in the owner's table`).toBe(true);
+      expect(Object.hasOwn(WORK_ROUTES, name), `${name} is in Work's table`).toBe(true);
     }
+  });
+
+  it("Work's routes are not in the package index's table (they stay out of the main bundle), and no path collides", () => {
+    for (const name of Object.keys(WORK_ROUTES)) expect(Object.hasOwn(ROUTES, name), name).toBe(false);
+    const owner = new Set((Object.values(ROUTES) as RouteDef[]).map((d) => `${d.method} ${d.path}`));
+    for (const [name, def] of Object.entries(WORK_ROUTES) as [string, RouteDef][]) expect(owner.has(`${def.method} ${def.path}`), name).toBe(false);
   });
 
   it('no person route and no People route is v0.13', () => {

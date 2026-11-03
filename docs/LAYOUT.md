@@ -698,11 +698,15 @@ controls and headers too full for their pane), with its probe in
 
 ### v0.13.0 (unreleased)
 
-Work's first part (v0.13 P1, the Mac side). The protocol (`work.ts`):
-`WORK_LIMITS`, the project hub, the search's query and groups, the seed's
-body and reply; `life.work` and `workOn` in `settings.ts`; three routes in
-phase `v0.13` (`projectGet`, `search`, `foldersSeed`), and the owner-only
-`OwnerTodosQuerySchema` (her routes keep `TodosQuerySchema`). life-core:
+Work's first part (v0.13 P1, the Mac side). The protocol: the subpath
+`@jantar/protocol/work` (`work.ts`, never exported from the index, as
+`people` is not): `WORK_LIMITS`, the project hub, the search's query and
+groups, the seed's body and reply, and `WORK_ROUTES` (`projectGet`,
+`search`, `foldersSeed`, phase `v0.13`), which the daemon serves through
+`ALL_ROUTES`; in the index only `life.work` and `workOn` (`settings.ts`),
+the `work` switch, and the owner-only `OwnerTodosQuerySchema` (her routes
+keep `TodosQuerySchema`). The first load is 279.2 kB of `MAIN_JS_MAX`
+280 kB (0.11.0's was 279.1). life-core:
 `work/task-review.ts` (from Noblot) and `work/project-health.ts`. The
 daemon: life.db migration 5 (`work`) in `life/db.ts`; `life/work/module.ts`
 (the stub module, the seed, search's clients and deals, the project-delete

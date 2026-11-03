@@ -11,7 +11,8 @@
  */
 import { realpath } from 'node:fs/promises';
 import { basename, relative, sep } from 'node:path';
-import { ROUTES, WORK_LIMITS, workOn, type Settings, type WorkSeedItem, type WorkSeedReply } from '@jantar/protocol';
+import { workOn, type Settings } from '@jantar/protocol';
+import { WORK_LIMITS, WORK_ROUTES, type WorkSeedItem, type WorkSeedReply } from '@jantar/protocol/work';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { callDaemon } from '../ctl.js';
@@ -68,7 +69,7 @@ async function seed(ctx: CliContext, folders: readonly string[], name: string | 
     if (!at) throw new UsageError(`${f} is not inside one of your folders. Add one first: jantar folders add-root <path>`);
     items.push({ ...at, name: (name ?? nameFromFolder(abs)).trim() || 'Project' });
   }
-  const r = await callDaemon<WorkSeedReply>(ctx.ctl, 'POST', ROUTES.foldersSeed.path, { items }, { idempotencyKey: ctx.deps.randomId() });
+  const r = await callDaemon<WorkSeedReply>(ctx.ctl, 'POST', WORK_ROUTES.foldersSeed.path, { items }, { idempotencyKey: ctx.deps.randomId() });
   const made = r.projects.length;
   ctx.io.out(`Made ${plural(made, 'project')}, each linked to its folder.${r.skipped ? ` ${plural(r.skipped, 'folder')} already had one.` : ''}\n`);
   return EXIT.ok;

@@ -39,6 +39,11 @@
       "types": "./dist/people.d.ts",
       "default": "./dist/people.js"
     },
+    "./work": {
+      "@jantar/source": "./src/work.ts",
+      "types": "./dist/work.d.ts",
+      "default": "./dist/work.js"
+    },
     "./page-read": {
       "@jantar/source": "./src/page-read.ts",
       "types": "./dist/page-read.d.ts",

@@ -17,7 +17,8 @@
  * made from client folders (`seed`), and a deleted project's links in
  * Work cleared inside the delete's transaction.
  */
-import { LIFE_LIMITS, type SearchItem } from '@jantar/protocol';
+import { LIFE_LIMITS } from '@jantar/protocol';
+import type { SearchItem } from '@jantar/protocol/work';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule, WorkModule } from '../../contracts.js';
 import { TODO_REASONS, folderKey } from '../todos/module.js';
 

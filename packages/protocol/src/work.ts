@@ -1,7 +1,13 @@
 /**
  * v0.13 Work: the owner's projects as a hub, one search across Jantar, and
  * projects made from his client folders (P1). Clients, the log and
- * follow-ups (P2), deals and insights (P3) add their shapes here.
+ * follow-ups (P2), deals and insights (P3) add their shapes and routes here.
+ *
+ * This is the subpath `@jantar/protocol/work`, never exported from the
+ * package index (as `@jantar/protocol/people` is not): none of it lands in
+ * the owner's main bundle, only in Work's own lazy chunks. The daemon
+ * serves WORK_ROUTES with the rest (its ALL_ROUTES), so every isolation
+ * suite that walks that table covers them.
  *
  * Rules (life.ts's, and these):
  * - Owner-only. Every Work route is a `control` route on his host, never
@@ -13,7 +19,8 @@
  *   fixed daemon sentence, never a client's name, phone or e-mail.
  */
 import { z } from 'zod';
-import { DueSchema, LifeIdSchema, ProjectBodySchema, ProjectViewSchema, TodoSchema } from './life.js';
+import type { RouteDef } from './api.js';
+import { DueSchema, LifeIdParamsSchema, LifeIdSchema, ProjectBodySchema, ProjectViewSchema, TodoSchema } from './life.js';
 
 /** Work's caps (LIFE_LIMITS' style); a call past one is refused with a fixed sentence. */
 export const WORK_LIMITS = Object.freeze({
@@ -113,3 +120,36 @@ export type WorkSeedBody = z.infer<typeof WorkSeedBodySchema>;
 /** The new projects' ids, in the order given; `skipped`: folders a project already links. */
 export const WorkSeedReplySchema = z.object({ projects: z.array(LifeIdSchema), skipped: z.number().int().nonnegative() });
 export type WorkSeedReply = z.infer<typeof WorkSeedReplySchema>;
+
+// ---------------------------------------------------------------------------
+// Route tables (owner-only: control scope, his host, never under /v1/p/; the arch test pins them)
+
+function route<T extends RouteDef>(r: T): T {
+  return r;
+}
+
+/**
+ * P1: one project as a hub, one search across Jantar, and projects made from
+ * client folders. Reads need control too; only the seed is on ctl.sock (the
+ * CLI). The search has no switch of its own: each group answers only while
+ * its own part is on.
+ */
+export const WORK_ROUTES = {
+  projectGet: route({
+    method: 'GET', path: '/v1/projects/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'todos',
+    params: LifeIdParamsSchema, response: ProjectHubSchema,
+    summary: 'One project as a hub: its counts, open todos, the newest done, this week and its health.',
+  }),
+  search: route({
+    method: 'GET', path: '/v1/search', scope: 'control', phase: 'v0.13', ctl: false,
+    query: SearchQuerySchema, response: SearchResponseSchema,
+    summary: 'Find a project, todo, meeting, session, Intel item, café or post (each group only while its part is on).',
+  }),
+  // Never automatic: the phone's sheet (folders picked from Launch's or Files' browser) or the Mac's CLI.
+  foldersSeed: route({
+    method: 'POST', path: '/v1/work/seed', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work',
+    body: WorkSeedBodySchema, response: WorkSeedReplySchema,
+    summary: 'One project per folder under a configured root, its folder linked (a folder a project links already is skipped).',
+  }),
+} as const satisfies Record<string, RouteDef>;
+export type WorkRouteName = keyof typeof WORK_ROUTES;

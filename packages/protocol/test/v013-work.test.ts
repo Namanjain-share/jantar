@@ -5,23 +5,9 @@
  * TodosQuerySchema as it is).
  */
 import { describe, expect, it } from 'vitest';
-import {
-  LIFE_LIMITS,
-  LIFE_MODULES,
-  LifeSettingsSchema,
-  OwnerTodosQuerySchema,
-  ProjectHubSchema,
-  ROUTES,
-  SEARCH_KINDS,
-  SearchQuerySchema,
-  SearchResponseSchema,
-  SettingsSchema,
-  TodosQuerySchema,
-  WorkSeedBodySchema,
-  lifeOn,
-  settingsFeatures,
-  workOn,
-} from '../src/index.js';
+import * as index from '../src/index.js';
+import { LIFE_LIMITS, LIFE_MODULES, LifeSettingsSchema, OwnerTodosQuerySchema, ROUTES, SettingsSchema, TodosQuerySchema, lifeOn, settingsFeatures, workOn } from '../src/index.js';
+import { ProjectHubSchema, SEARCH_KINDS, SearchQuerySchema, SearchResponseSchema, WORK_ROUTES, WorkSeedBodySchema } from '../src/work.js';
 
 describe('v0.13 the work switch', () => {
   it('is a seventh Life module, last, off by default', () => {
@@ -49,6 +35,13 @@ describe('v0.13 the work switch', () => {
 const ID = '01JZZZZZZZZZZZZZZZZZZZZZZY';
 const AT = '2026-11-03T09:00:00.000Z';
 
+describe("v0.13 Work's own shapes and routes are a subpath", () => {
+  it('the package index exports none of them, so the main bundle carries none', () => {
+    for (const name of ['WORK_ROUTES', 'WORK_LIMITS', 'ProjectHubSchema', 'SearchQuerySchema', 'SearchResponseSchema', 'WorkSeedBodySchema', 'SEARCH_KINDS']) expect(index, name).not.toHaveProperty(name);
+    for (const name of Object.keys(WORK_ROUTES)) expect(Object.hasOwn(ROUTES, name), name).toBe(false);
+  });
+});
+
 describe('v0.13 the project hub', () => {
   const hub = () => ({
     project: { id: ID, name: 'Site rebuild', status: 'active', createdAt: AT, updatedAt: AT, open: 1, overdue: 0 },
@@ -66,7 +59,7 @@ describe('v0.13 the project hub', () => {
   });
 
   it('is GET /v1/projects/:id, an owner route behind the todos switch', () => {
-    expect(ROUTES.projectGet).toMatchObject({ method: 'GET', path: '/v1/projects/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'todos' });
+    expect(WORK_ROUTES.projectGet).toMatchObject({ method: 'GET', path: '/v1/projects/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'todos' });
   });
 });
 
@@ -86,8 +79,8 @@ describe('v0.13 ?q= on the todos list (owner-only)', () => {
 
 describe('v0.13 one search across Jantar', () => {
   it('is GET /v1/search, an owner route with no switch of its own', () => {
-    expect(ROUTES.search).toMatchObject({ method: 'GET', path: '/v1/search', scope: 'control', phase: 'v0.13', ctl: false });
-    expect(ROUTES.search).not.toHaveProperty('feature');
+    expect(WORK_ROUTES.search).toMatchObject({ method: 'GET', path: '/v1/search', scope: 'control', phase: 'v0.13', ctl: false });
+    expect(WORK_ROUTES.search).not.toHaveProperty('feature');
   });
 
   it('takes q of 2 to 80 characters once trimmed, and at most 5 a group', () => {
@@ -109,7 +102,7 @@ describe('v0.13 one search across Jantar', () => {
 
 describe('v0.13 projects from client folders', () => {
   it('is POST /v1/work/seed: an owner route behind the work switch, on ctl.sock for the CLI', () => {
-    expect(ROUTES.foldersSeed).toMatchObject({ method: 'POST', path: '/v1/work/seed', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work' });
+    expect(WORK_ROUTES.foldersSeed).toMatchObject({ method: 'POST', path: '/v1/work/seed', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work' });
   });
 
   it('takes 1 to 50 folders as the browsers address them (a root and a path in it), each with a name; strict', () => {

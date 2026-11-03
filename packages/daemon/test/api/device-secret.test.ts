@@ -19,8 +19,13 @@ import {
   eventsSocketProtocols,
   secretFromSocketProtocols,
   type RouteDef,
-  type RouteName,
+  type RouteName as IndexRouteName,
 } from '@jantar/protocol';
+import { WORK_ROUTES, type WorkRouteName } from '@jantar/protocol/work';
+
+/** Every owner route: the index's table and v0.13 Work's (the `@jantar/protocol/work` subpath). */
+type RouteName = IndexRouteName | WorkRouteName;
+const OWNER_ROUTES: Readonly<Record<RouteName, RouteDef>> = { ...ROUTES, ...WORK_ROUTES };
 import { hashDeviceSecret } from '../../src/auth/devices.js';
 import { needsDeviceSecret } from '../../src/api/app.js';
 import { HOST, ORIGIN, bare, h, makeApi, makeCard, pairCookie, type TestApi } from './fakes.js';
@@ -53,7 +58,7 @@ function urlOf(def: RouteDef): string {
   return def.path.replace(/:([A-Za-z]+)/g, (_m, n: string) => PARAMS[n] ?? 'x');
 }
 
-const httpRoutes = (Object.entries(ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.method !== 'WS');
+const httpRoutes = (Object.entries(OWNER_ROUTES) as [RouteName, RouteDef][]).filter(([, d]) => d.method !== 'WS');
 const secretWrites = httpRoutes.filter(([, d]) => needsDeviceSecret(d));
 const reads = httpRoutes.filter(([, d]) => d.method === 'GET' && d.scope !== 'public');
 
@@ -63,7 +68,7 @@ afterEach(async () => {
 });
 
 function call(name: RouteName, headers: Record<string, string>) {
-  const def = ROUTES[name] as RouteDef;
+  const def = OWNER_ROUTES[name] as RouteDef;
   const body = BODIES[name];
   return api.tcp.inject({
     method: def.method as Method,
