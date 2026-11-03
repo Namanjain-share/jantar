@@ -632,6 +632,7 @@ export class PeopleModule {
         ownerDevices,
         built: BUILT_PHASE,
         lifeBroken: broken,
+        ...(broken || !this.deps.core() ? {} : { ownerTells: { summaryAt: this.ownerPrefs().summaryAt ?? null, reviewPush: this.ownerPrefs().reviewPush } }),
       },
     };
   }

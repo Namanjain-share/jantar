@@ -3,21 +3,26 @@
  * join as their routes land); a banner for paused, ending and People off;
  * live reloads on her stream's ticks (WS /v1/p/events).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import type { PersonMe } from '@jantar/protocol/people';
 import { PersonApiError, type PersonApi } from './api.js';
+import { Sheet } from './ui.js';
 import { parsePersonRoute, type PersonRoute } from './router.js';
 import { Join } from './screens/Join.js';
 import { Left } from './screens/Left.js';
 import { Me } from './screens/Me.js';
-import { Health } from './screens/Health.js';
+import { Review } from './screens/Review.js';
 import { Today } from './screens/Today.js';
 import { Todos } from './screens/Todos.js';
 
-export function navigate(to: string): void {
-  history.pushState(null, '', to);
-  dispatchEvent(new PopStateEvent('popstate'));
-}
+// Her Journal, Health and Alerts load when opened (spec 9.4): her first load stays Today.
+const Journal = lazy(() => import('./screens/Journal.js'));
+const Health = lazy(() => import('./screens/Health.js'));
+const Alerts = lazy(() => import('./screens/Alerts.js'));
+
+import { navigate } from './nav.js';
+
+export { navigate };
 
 function useRoute(): PersonRoute {
   const read = () => parsePersonRoute(location.pathname, location.search);
@@ -106,20 +111,43 @@ export function App({ api }: { api: PersonApi }) {
     <div className="mx-auto flex min-h-dvh max-w-[42rem] flex-col">
       <Banner me={me} />
       <main className="flex-1 px-16 pb-96 pt-16">
-        {route.name === 'today' ? <Today me={me} api={api} reload={load} tick={tick} /> : null}
-        {route.name === 'todos' ? <Todos me={me} api={api} tick={tick} /> : null}
-        {route.name === 'health' ? <Health api={api} tick={tick} /> : null}
-        {route.name === 'me' ? <Me me={me} api={api} reload={load} tab={route.tab} /> : null}
+        <Suspense fallback={<p className="text-ink-2">Loading…</p>}>
+          {route.name === 'today' ? <Today me={me} api={api} reload={load} tick={tick} /> : null}
+          {route.name === 'review' ? <Review me={me} api={api} day={route.day} tick={tick} /> : null}
+          {route.name === 'todos' ? <Todos me={me} api={api} tick={tick} /> : null}
+          {route.name === 'health' ? <Health api={api} tab={route.tab} week={route.week} tick={tick} /> : null}
+          {route.name === 'journal' ? <Journal me={me} api={api} id={route.id} checkin={route.checkin} tick={tick} /> : null}
+          {route.name === 'alerts' ? <Alerts me={me} api={api} id={route.id} tick={tick} /> : null}
+          {route.name === 'me' ? <Me me={me} api={api} reload={load} tab={route.tab} /> : null}
+        </Suspense>
       </main>
-      <nav className="fixed inset-x-0 bottom-0 border-t border-line bg-bg pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto flex max-w-[42rem]">
-          <TabLink to="/p" label="Today" on={route.name === 'today'} />
-          <TabLink to="/p/todos" label="To-do" on={route.name === 'todos'} />
+      <TabBar route={route} />
+    </div>
+  );
+}
+
+/** Today · To-do · Journal · More (P2: Chat joins in P3; More holds Health, Alerts and Me, and Lists in P4). */
+function TabBar({ route }: { route: PersonRoute }) {
+  const [more, setMore] = useState(false);
+  const inMore = route.name === 'health' || route.name === 'alerts' || route.name === 'me';
+  return (
+    <nav className="fixed inset-x-0 bottom-0 border-t border-line bg-bg pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto flex max-w-[42rem]">
+        <TabLink to="/p" label="Today" on={route.name === 'today' || route.name === 'review'} />
+        <TabLink to="/p/todos" label="To-do" on={route.name === 'todos'} />
+        <TabLink to="/p/journal" label="Journal" on={route.name === 'journal'} />
+        <button type="button" aria-current={inMore ? 'page' : undefined} onClick={() => setMore(true)} className={`flex min-h-44 flex-1 items-center justify-center text-row ${inMore ? 'font-medium text-ink' : 'text-ink-2'}`}>
+          More
+        </button>
+      </div>
+      <Sheet open={more} onOpenChange={setMore} title="More">
+        <div className="flex flex-col pb-24" onClick={() => setMore(false)}>
           <TabLink to="/p/health" label="Health" on={route.name === 'health'} />
+          <TabLink to="/p/alerts" label="Alerts" on={route.name === 'alerts'} />
           <TabLink to="/p/me" label="Me" on={route.name === 'me'} />
         </div>
-      </nav>
-    </div>
+      </Sheet>
+    </nav>
   );
 }
 

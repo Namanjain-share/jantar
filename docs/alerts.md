@@ -92,6 +92,29 @@ Turn it off with `jantar notify urgent off`; such asks then get the plain
 "needs you" push. The daemon remembers which asks it pushed only while it
 runs: restarted during a countdown, it may push that ask once more.
 
+## People alerts (v0.12)
+
+Alerts between you and a partner (People) are separate from session alerts:
+they live on the People pages, never on your Alerts screen, and travel only
+as Web Push to that person's own devices (never a Mac banner or Telegram).
+One resolver decides each of them, and every People ring, from its tier:
+
+| Tier | What | Quiet hours, focus or sleep | Paused |
+| --- | --- | --- | --- |
+| critical | Their medicine doses and their own reminders | rings | rings |
+| urgent | An Urgent alert, either way | rings unless they switched that off | held |
+| important | Normal and gentle alerts, reminders about an item, change requests, journal comments, "review sent", the plan push, the day summary | held | held |
+| standard | Plan step and check-between rings, the evening review prompt | dropped | dropped |
+
+Held alerts come back as one line when the hold ends. Each person sets the
+limits on alerts sent to them; over a limit an alert is saved with no
+notification. Gentle alerts go at low priority and may wait 12 hours at the
+push service; the rest go at high priority. An Urgent alert stays on screen
+where the browser allows it and is never silent; on an iPhone's lock screen
+the phone plays its own sound, as for every web app. In-app tones for
+People alerts (a `people` group) are not built yet. See
+[People](people.md#alerts-both-ways).
+
 ## jantar notify
 
 | Command | What it does |

@@ -12,10 +12,10 @@
  * - Leave: download first, keep 30 days or delete now, type LEAVE.
  */
 import { AGREEMENT_FIELDS, closeDependents, fieldsChanged, withField, type AgreementFields, type AgreementPatch } from '@jantar/protocol/people-core';
-import type { PersonActivity, PersonMe } from '@jantar/protocol/people';
+import type { PersonActivity, PersonMe, PersonPrefsPatch } from '@jantar/protocol/people';
 import { useEffect, useState } from 'react';
 import { Button } from '../../ui/kit/Button.js';
-import { navigate } from '../App.js';
+import { navigate } from '../nav.js';
 import type { PersonApi, PersonDevice } from '../api.js';
 import { joinCopy, lowerLevels } from '../join/copy.js';
 import { ME_TABS, type MeTab } from '../router.js';
@@ -62,6 +62,17 @@ function patchOf(from: AgreementFields, to: AgreementFields): AgreementPatch {
     else out[group] = { ...((out[group] as Record<string, unknown>) ?? {}), [name]: value };
   }
   return out as AgreementPatch;
+}
+
+/** The pushes he gets about her unasked (spec 3.8), so none of them is ever a surprise. */
+export function toldWithoutLooking(me: PersonMe): string[] {
+  const a = me.agreement;
+  const out = ['When you join, pause, resume, leave or change what you share', 'Alerts you send, and your replies to his'];
+  if (a?.see.plan) out.push('When you mark a rough day (one line, no details)');
+  if (a?.see.review !== 'off' && me.ownerTells?.reviewPush !== false) out.push('When you send your evening review (no note text)');
+  if (a?.see.journal) out.push('When you reply to a comment in your journal (no text)');
+  if (me.ownerTells?.summaryAt) out.push(`A day summary at ${me.ownerTells.summaryAt} (counts only: never journal, chat or sleep)`);
+  return out;
 }
 
 export function Sharing({ me, api, reload }: { me: PersonMe; api: PersonApi; reload: () => void }) {
@@ -111,6 +122,12 @@ export function Sharing({ me, api, reload }: { me: PersonMe; api: PersonApi; rel
         <li>{me.owner.name}'s Mac (the jantar command, and programs {me.owner.name} runs there)</li>
       </ul>
       <p className="mt-16 text-small text-ink-2">Food: {me.person.modules.food ? 'on' : `off (${me.owner.name} set this up without a food log)`}</p>
+      <h2 className="mt-24 font-semibold">What {me.owner.name} is told without looking</h2>
+      <ul className="mt-8 list-disc pl-20">
+        {toldWithoutLooking(me).map((l) => (
+          <li key={l}>{l}</li>
+        ))}
+      </ul>
       <div className="mt-24 flex gap-12">
         {me.person.state === 'paused' ? (
           <Button variant="primary" onClick={() => void api.resume().then(reload)}>
@@ -283,6 +300,96 @@ function Notifications({ me, api, reload }: { me: PersonMe; api: PersonApi; relo
         </Button>
       </div>
       {me.person.prefs.muteUntil ? <p className="text-small text-ink-2">Muted until {me.person.prefs.muteUntil.slice(11, 16)}</p> : null}
+      <P2Prefs me={me} api={api} reload={reload} />
+    </div>
+  );
+}
+
+/** Her P2 notification settings (spec 3.6, 3.8, 6.3): quiet hours, Urgent, times, holds, caps and ring switches. */
+function P2Prefs({ me, api, reload }: { me: PersonMe; api: PersonApi; reload: () => void }) {
+  const p = me.person.prefs;
+  const owner = me.owner.name;
+  const [error, setError] = useState<string | null>(null);
+  const save = (patch: PersonPrefsPatch) => void api.prefs(patch).then(() => (setError(null), reload()), (e: Error) => setError(e.message));
+  const caps = p.alertCaps;
+  const row = 'flex min-h-44 items-center justify-between gap-12';
+  const select = 'rounded-btn border border-line bg-bg px-8';
+  const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  return (
+    <div className="mt-12 flex flex-col gap-8">
+      <h2 className="font-semibold">Quiet hours</h2>
+      <div className={row}>
+        <label className="flex items-center gap-8">
+          <input type="checkbox" checked={p.quiet !== undefined} onChange={(e) => save({ quiet: e.target.checked ? { from: '22:00', to: '07:00' } : null })} /> Quiet hours
+        </label>
+        {p.quiet ? (
+          <span className="flex items-center gap-4">
+            <input aria-label="Quiet from" type="time" className={select} value={p.quiet.from} onChange={(e) => p.quiet && save({ quiet: { ...p.quiet, from: e.target.value } })} />–
+            <input aria-label="Quiet to" type="time" className={select} value={p.quiet.to} onChange={(e) => p.quiet && save({ quiet: { ...p.quiet, to: e.target.value } })} />
+          </span>
+        ) : null}
+      </div>
+      <label className={row}>
+        <span>Urgent from {owner} breaks through quiet hours</span>
+        <input type="checkbox" checked={p.urgentBreaksQuiet} onChange={(e) => save({ urgentBreaksQuiet: e.target.checked })} />
+      </label>
+      <label className={row}>
+        <span>Hold alerts while I sleep</span>
+        <input type="checkbox" checked={p.sleepHolds} onChange={(e) => save({ sleepHolds: e.target.checked })} />
+      </label>
+      <label className={row}>
+        <span>Plan push time</span>
+        <input type="time" className={select} value={p.planPushAt} onChange={(e) => save({ planPushAt: e.target.value })} />
+      </label>
+      <label className={row}>
+        <span>Evening review time</span>
+        <input type="time" min="17:00" max="23:30" className={select} value={p.reviewAt} onChange={(e) => save({ reviewAt: e.target.value })} />
+      </label>
+      <label className={row}>
+        <span>Hide my journal streak (on my screens and {owner}'s)</span>
+        <input type="checkbox" checked={p.hideStreaks} onChange={(e) => save({ hideStreaks: e.target.checked })} />
+      </label>
+      <h2 className="mt-12 font-semibold">From your plan</h2>
+      {(
+        [
+          ['steps', 'Ring for plan steps'],
+          ['between', 'Ring for check-betweens'],
+          ['planChanges', `Tell me when ${owner} changes my plan`],
+        ] as const
+      ).map(([k, label]) => (
+        <label key={k} className={row}>
+          <span>{label}</span>
+          <input type="checkbox" checked={p.rings[k]} onChange={(e) => save({ rings: { [k]: e.target.checked } })} />
+        </label>
+      ))}
+      <h2 className="mt-12 font-semibold">Limits on alerts from {owner}</h2>
+      {(
+        [
+          ['hour', 'Alerts an hour', range(1, 12)],
+          ['day', 'Alerts a day', range(3, 40)],
+          ['urgentDay', 'Urgent a day', range(1, 6)],
+          ['nudgeDay', 'Reminders a day', range(0, 15)],
+        ] as const
+      ).map(([k, label, values]) => (
+        <label key={k} className={row}>
+          <span>{label}</span>
+          <select className={select} value={caps[k]} onChange={(e) => save({ alertCaps: { ...caps, [k]: Number(e.target.value) } })}>
+            {values.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+      <label className={row}>
+        <span>Reminders about one item</span>
+        <select className={select} value={caps.nudgeGapMin} onChange={(e) => save({ alertCaps: { ...caps, nudgeGapMin: Number(e.target.value) === 30 ? 30 : 60 } })}>
+          <option value={60}>1 an hour</option>
+          <option value={30}>1 per 30 min</option>
+        </select>
+      </label>
+      {error ? <p role="alert">{error}</p> : null}
     </div>
   );
 }

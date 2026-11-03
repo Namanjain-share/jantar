@@ -68,7 +68,9 @@ self.addEventListener('push', (event) => {
     body: str(data.body, 400),
     tag: str(data.tag, 120) || undefined,
     data: { url: targetPath(data.url) },
-    requireInteraction: NEEDS_YOU.has(data.kind),
+    // v0.12 People (spec 6.3): an Urgent alert stays on screen where the browser allows, and is never silent.
+    requireInteraction: NEEDS_YOU.has(data.kind) || data.urgent === true,
+    silent: false,
     icon: '/icons/icon-192.png',
   };
   event.waitUntil(self.registration.showNotification(title, options));

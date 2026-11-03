@@ -443,6 +443,24 @@ On real devices, with a second hostname behind its own Access app:
   open `wss://<his host>/v1/events` or to POST to an owner route.
 - With Tailscale, a shared-in user reaching only the People port.
 
+### People (v0.12, P2)
+
+On the same two phones (owner and partner):
+
+- A plan for today saved after the plan push time arrives at once; a
+  first step within 15 minutes carries "Today's plan: N steps" instead.
+- The sticky bar reaches with one thumb at 390 × 844; Got it, then Done:
+  {Now}; the 5-second Undo after a tick.
+- Quiet hours drop a step ring and hold a normal alert; one release line
+  when they end; Urgent breaks through (and doesn't with the switch off).
+- Pause holding an Urgent alert until Resume.
+- A focus step holding a nudge and a normal alert, released on Done.
+- "Going to sleep" holding a normal alert until "Woke up".
+- A journal comment push showing no text at each lock-screen level.
+- The evening review prompt at the review time, the review sent from the
+  phone, and "Asha sent the evening review" on the owner's phone with no
+  note text.
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear

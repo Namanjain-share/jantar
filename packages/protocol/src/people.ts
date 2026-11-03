@@ -561,6 +561,8 @@ export const PersonMeSchema = z.object({
   built: z.enum(BUILD_PHASES),
   /** Life data can't be read right now (her exits still work). */
   lifeBroken: z.boolean(),
+  /** P2: what {owner} is told without looking, beyond the fixed list (spec 3.8): his opt-in day summary and the "review sent" push. */
+  ownerTells: z.object({ summaryAt: z.string().nullable(), reviewPush: z.boolean() }).optional(),
 });
 export type PersonMe = z.infer<typeof PersonMeSchema>;
 

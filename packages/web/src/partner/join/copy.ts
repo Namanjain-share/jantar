@@ -42,7 +42,7 @@ const see = (owner: string): Record<string, (v: string | boolean) => string | nu
   'see.plan': (v) => (v ? 'Your day plan: when you open it, each step you finish and when, and the notes you write' : 'Your day plan: off'),
   'see.review': (v) => (v === 'full' ? 'Your evening review: each item and what you write in it' : v === 'counts' ? 'Your evening review: only the counts' : 'Your evening review: off'),
   'see.sleep': (v) => (v ? 'Your sleep: bedtime, wake time, how you slept and your notes' : 'Your sleep: off'),
-  'see.journal': (v) => (v ? 'Your journal: everything you write in it, your moods and check-ins' : 'Your journal: off'),
+  'see.journal': (v) => (v ? 'Your journal: each entry you write, your moods and check-ins' : 'Your journal: off'),
   'see.chat': (v) => (v ? `Your chats with your assistant: ${owner} can read them, and can't write in them` : `Your chats with your assistant: off (${owner} sees only how many messages you send each day)`),
 });
 

@@ -17,7 +17,7 @@ afterwards, and going back means restoring that copy. jantar.db gains
 People's tables and an audit column (0.10 keeps working on it, and a
 partner simply can't sign in there).
 
-- **People, the base** (P1 so far): `remote.peopleUrl` names a second
+- **People, the base** (P1): `remote.peopleUrl` names a second
   hostname for the partner, with its own Origin: a page on it can never
   drive your routes or open your event stream, and your cookie never
   reaches theirs. On that hostname only the partner's routes, `/healthz`
@@ -40,6 +40,37 @@ partner simply can't sign in there).
   old and new values) and correct a weight they logged; you never create
   one for them or tick anything in their name. Their reminders ring their
   devices, not yours. "See what Sam sees" shows them exactly your view.
+- **Day plans** (P2): give them a plan for a day, steps in order with
+  times, lengths, an ask (Got it, a short report, a check-in) and up to four
+  check-betweens; templates apply at 00:05 on their weekdays. Their Today
+  shows Now, Next and Later with a tick on every row, a bottom bar (Got it,
+  then Done: the Now step), a 5-second Undo, skip and "Ask to change" with
+  one-tap reasons, focus steps, a rough day (you hear one line 10 seconds
+  later, after their Undo), and their status (Okay, Low, Need space). Your
+  changes to a sent plan reach them once per 2 minutes; your edits to their
+  own steps need their agreement and show "Edited by". "Tell me if not done
+  by" reaches only you, after re-checking what they share.
+- **The evening review** (P2): from their review time, every step as sent,
+  each check-between and their to-dos due, each done, skipped, moved, missed
+  or gone; they carry their own open steps, ask you to carry yours, add a
+  note and a mood, and send once. Unsent, it closes at noon with nothing
+  pushed or counted. You see counts or everything, as they share it.
+- **Alerts both ways** (P2): check in, call me, Urgent, good morning and
+  night, running late, reminders about an item, change requests and custom
+  lines, with one-tap replies for 24 hours and 90 days of history. One
+  resolver with tiers decides every People push: limits set by whoever
+  receives, holds for their pause, mute, Need space, focus, sleep and quiet
+  hours, one release line when a hold ends, and Urgent through quiet hours
+  unless they switch it off. Your quiet hours, limits and an opt-in day
+  summary for pushes about them are yours.
+- **Sleep and the journal** (P2): nights by hand or with Going to sleep and
+  Woke up (no time ever guessed), a week view, and "hold alerts while I
+  sleep"; a journal of entries and one-tap check-ins, comments both ways
+  with no text in any notification, and a streak they can hide. A 14-day
+  "Is this setup still working for you?" card whose answer is theirs unless
+  they share it. Moods, nights, entries and review outcomes never create an
+  item, an alert or a score. Someone who joined before these existed gets
+  them only by a request they accept.
 - **At the Mac**: `jantar remote people-url <https-url>`, `jantar people
   on|off|doctor|add|offer|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
   ([People](docs/people.md)). Everything that lets someone in, shapes their
@@ -47,10 +78,13 @@ partner simply can't sign in there).
 - **Their app** is its own web app (`/p` on their hostname), built apart
   from yours: none of your screens or code are in it, and your app's first
   load is unchanged by it. It has the join page (generated from the offer,
-  every area on its own line, switches that only turn down), Today, and Me
-  with Sharing, Activity, Devices (link another device with a 5-minute
-  code), Notifications (lock screen, mute), Pause and Leave. Its own service
-  worker opens only `/p` pages.
+  every area on its own line, switches that only turn down), Today (with
+  the plan, the review, sleep and check-in cards), To-do, Journal, Health
+  (sleep and weight), Alerts, and Me with Sharing (including what you are
+  told without looking), Activity, Devices (link another device with a
+  5-minute code), Notifications (lock screen, mute, quiet hours, times,
+  limits and ring switches), Pause and Leave. Journal, Health and Alerts
+  load when opened. Its own service worker opens only `/p` pages.
 
 ## 0.10.2 (3 November 2026)
 

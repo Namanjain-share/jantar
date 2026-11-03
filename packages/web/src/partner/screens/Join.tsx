@@ -11,7 +11,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { AGREEMENT_FIELDS, closeDependents, withField, type AgreementFields } from '@jantar/protocol/people-core';
 import type { JoinPreview } from '@jantar/protocol/people';
 import { Button } from '../../ui/kit/Button.js';
-import { navigate, Page } from '../App.js';
+import { Page } from '../App.js';
+import { navigate } from '../nav.js';
 import type { PersonApi } from '../api.js';
 import { joinCopy, lowerLevels, type CopyLine } from '../join/copy.js';
 
