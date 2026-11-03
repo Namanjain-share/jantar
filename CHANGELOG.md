@@ -53,24 +53,31 @@ has the steps.
   After joining it walks them through Add to Home Screen and notifications.
   Today runs their day plan (Now, Next and Later, a tick on every row, a
   5-second Undo, one bottom bar for the thumb, steps of their own, focus
-  steps, a rough day, their status), their doses and what is due. To-do
-  takes their own reminders with a day and time; each item snoozes, skips
-  with a reason (you see it, and their page and Skip sheet say so), asks
-  you to change one of yours, or edits and deletes one of theirs. Undo on a
-  repeating item puts its date back and takes the reason back. Health holds their medicines (Taken or Skip with Undo), sleep
-  (Going to sleep and Woke up, never a guessed time) and weight (any past
-  day, with Undo on a delete, and "Corrected by Sam (was 72.4 kg)" on one
-  you corrected). Then the evening review, a journal with one-tap
+  steps, a rough day, their status), their doses, a quick food add while
+  their food log is on, and what is due. To-do has To-dos, Reminders and
+  Projects: their own reminders with a day and time, and projects of their
+  own (create, rename, archive and bring back, or delete, which keeps the
+  to-dos) that group their to-dos, each with a page of its to-dos. Each
+  item snoozes, skips with a reason (you see it, and their page and Skip
+  sheet say so), asks you to change one of yours, or edits (its project
+  too) and deletes one of theirs. Undo on a repeating item puts its date
+  back and takes the reason back. Health holds their medicines (Taken or
+  Skip with Undo), their food log while it is on, sleep (Going to sleep
+  and Woke up, never a guessed time) and weight (any past day, with Undo
+  on a delete, and "Corrected by Sam (was 72.4 kg)" on one you corrected).
+  Then the evening review, a journal with one-tap
   check-ins, Alerts, their own assistant, the cafés and lists you share,
   and Me: Sharing (with "See what Sam sees" for each area), Activity,
   Devices, Notifications, Pause and Leave.
 - **What you see**: Accountability partner in More (the rail on a wide
   screen), a line for them on your Today, and their screen: Plan (an editor
   with templates and Quick plan, a typed plan read as you type with no AI),
-  Assign (a to-do with a due day and time, a repeat, "Got it" or a short
-  report, no snooze and "Tell me if not done by"), Alert, and tabs for
-  Today, To-do, Health (medicines at the level they share, weight with
-  Correct where they allow it, sleep), Journal (read, and comment if they
+  Assign (a to-do with a due day and time, a repeat, one of their
+  projects, "Got it" or a short report, no snooze and "Tell me if not done
+  by"), Alert, and tabs for Today, To-do (filtered by their projects),
+  Health (medicines at the level they share, their food log at the level
+  they share, weight with Correct where they allow it, sleep), Journal
+  (read, and comment if they
   allow it), Chat (read only), Lists, Alerts, Sharing (what they agreed to,
   Ask for more, their devices, your pushes about them: the opt-in day
   summary, the review push, quiet hours) and Activity (their record, in
@@ -103,6 +110,18 @@ has the steps.
   Activity). You see them in full (names, doses, times, taken or skipped,
   how often in 30 days) or as how often only, and one plain line when doses
   went unlogged two days running. Your remove is Stop: their history stays.
+- **Their food log** (on unless you add them with `--no-food`; `jantar
+  people modules Asha --food on|off`, and off is refused while they have
+  entries): what they ate with calories if they know them (an item without
+  them shows no number), edit, delete with Undo, one-tap saved foods,
+  their own daily target, and a photo of a meal through their Chat. Only
+  they write it. You see it at the level they agree to: in full (what they
+  ate, its calories and each day's total against their target, never when
+  they logged it) or only how many meals each day; Standard and Everything
+  offer it in full, Light leaves it off, and `jantar people offer --see
+  food=counts` (or `full`, or `off`) sets it. Your Today line and your
+  day summary follow the same level. Turning their food log on later
+  grants you nothing until they say yes to a request.
 - **Their assistant**: a Chat of their own, on your Mac and your Claude
   accounts (your account rules apply). It reads and changes only their
   space, with Undo; deletes and alerts to you are cards they tap; it has no
@@ -123,8 +142,8 @@ has the steps.
 - **At the Mac**: `jantar people on|off|doctor|add|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
   and `jantar remote people-url`. Everything that lets someone in, shapes
   their offer or ends their space runs only at the Mac.
-- **Not in this version**: a food log for them, your own assistant reading
-  their space, and more than one person.
+- **Not in this version**: your own assistant reading their space, and
+  more than one person.
 
 ## 0.10.2 (3 November 2026)
 

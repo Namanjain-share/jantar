@@ -102,6 +102,10 @@ describe('her food module (O6)', () => {
     expect((await him('GET', `/v1/people/${f.bea.id}/food`)).statusCode).toBe(404);
     expect((await herCall('GET', '/v1/p/mirror/food', undefined, f.bea.full)).statusCode).toBe(404);
     expect(((await him('GET', `/v1/people/${f.bea.id}/today`)).json() as PersonToday).food).toBeNull();
+    // Consent: Bea joined on Standard, which carries food in full, but with no food log the offer and what
+    // she accepted both hold it off, so nothing of a food log is agreed before there is one.
+    const bea = (await herCall('GET', '/v1/p/me', undefined, f.bea.full)).json() as { agreement: { see: { food: string } }; person: { modules: { food: boolean } } };
+    expect([bea.person.modules.food, bea.agreement.see.food]).toEqual([false, 'off']);
   });
 
   it('on at the Mac: her log opens; he sees nothing until she accepts a request (D24); off is refused while she has entries', async () => {

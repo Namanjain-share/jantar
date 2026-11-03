@@ -64,6 +64,14 @@ then `jantar remote people-url`, `jantar people on --name <your name>`,
 `jantar people add`, `jantar people offer` and `jantar people invite`.
 `jantar people doctor` checks each step.
 
+Their projects and food log need nothing more: they are rows of their
+space in the same tables, and their calorie target and goal weight are
+`meta` keys named for them (`kcal_target:<id>`, `goal_kg10:<id>`), never
+yours. `jantar people add` turns their food log on unless you pass
+`--no-food`; the Standard and Everything presets offer it in full (pass
+`--see food=counts` or `--see food=off` to `jantar people offer` for
+less), and `jantar people doctor` has a food line for each person.
+
 ### 0.10.0: Life's second schema change
 
 0.10.0 adds a table for cafés' visits to `life.db`. Nothing to copy by

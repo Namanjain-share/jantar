@@ -2099,6 +2099,26 @@ It adds a new asset: **another person's Life data, health data included**.
   and her notes only on a medicine the agreement lets him change; her
   mirror is the same DTO, notes included. His edit sends only the fields
   he changed.
+- **Her food log** is the Food module over her space, served only while
+  her food module is on: off, every route of hers is one "food log is off"
+  404, his read is the unknown-pid 404, her chat lists no food tool and a
+  food call writes nothing; it can't be switched off while she has
+  entries, and turning it on grants him nothing (D24). Only she writes it:
+  no route, tool or command of his creates, edits or deletes a meal or
+  sets her target. He reads it only at the level she agreed to (`see.food`):
+  `counts` carries how many meals per day and nothing else, `full` the
+  items' names and calories, her target and the day totals, never when she
+  logged an item, her saved foods or her weight. An offer or an accept for
+  someone with no food log is stored with food off whatever the preset
+  says. Her food never leaves the Mac through his Ask Claude: there is no
+  estimate route in her space. Each read of his is a view mark; her writes
+  tick his devices only while he sees it.
+- **Her projects** are rows of her space. A to-do can name only a project
+  in its own space: her to-do naming his project or another person's, and
+  his Assign or edit naming one that isn't hers, are refused and write
+  nothing (C6). Her project bodies can't carry a folder (that would link a
+  project to a folder on his Mac for `jantar mcp`). His Activity row names
+  her project by name, never by id.
 - **No owner-only record of her**: her own writes are audited as
   `person.write` with no route, target or params; the request log names her
   routes as `/v1/p/*`; no route or command shows her devices' last-seen,
@@ -2133,10 +2153,13 @@ It adds a new asset: **another person's Life data, health data included**.
   café's text she wrote or last edited is `<data source="partner">` and
   taints the turn (and his in hers); `jantar mcp` reads only his own space.
 
-Pinned by `packages/daemon/test/people/*`, `test/life/people-medicines.test.ts`
+Pinned by `packages/daemon/test/people/*` (`projects.test.ts`: C6 both
+ways), `test/life/people-medicines.test.ts`, `test/life/people-food.test.ts`
+(her food log both ways, each level, the module switch)
 and `test/arch/v011-people.test.ts` (every owner route with her credential,
 every person route with his, both event streams, push routing, the Origin
 split, static files by host, her medicines both ways) and
 `packages/web/test/partner/import-graph.test.ts` (her app is a separate
 bundle holding no owner module), and for her chat by
-`packages/daemon/test/chat/person-chat.test.ts` and `person-tools.test.ts`.
+`packages/daemon/test/chat/person-chat.test.ts`, `person-tools.test.ts` and
+`person-food-tools.test.ts`.

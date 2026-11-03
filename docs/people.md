@@ -14,12 +14,10 @@ It is **off** by default. With it off, nothing about Jantar changes for
 you.
 
 > This page describes what is built in this version: their space, to-dos
-> you assign, their medicines, day plans, the evening review, alerts, sleep,
-> the journal, their assistant and the cafés and lists you share. Someone
-> who joined before an area existed gets it only by a request they accept.
-> A food log for them is not part of this release: no offer, join page,
-> screen or route has one, and `jantar people modules --food` changes
-> nothing they can see yet.
+> and projects, to-dos you assign, their medicines, their food log, day
+> plans, the evening review, alerts, sleep, the journal, their assistant
+> and the cafés and lists you share. Someone who joined before an area
+> existed gets it only by a request they accept.
 
 ## Who is who
 
@@ -48,7 +46,7 @@ It needs your Mac reachable over HTTPS (`remote.mode` `cloudflare` or
    ```sh
    jantar remote people-url https://us.example.com
    jantar people on --name Sam
-   jantar people add Asha --email asha@example.com --no-food
+   jantar people add Asha --email asha@example.com
    jantar people offer Asha --preset standard
    jantar people invite Asha
    ```
@@ -150,7 +148,7 @@ and do. A preset fills it, and flags change single fields after it
 turns one off):
 
 ```sh
-jantar people offer Asha --preset everything --see food=off
+jantar people offer Asha --preset everything --see food=counts
 jantar people offer Asha --preset light --see sleep,review=full --comment journal
 ```
 
@@ -164,6 +162,7 @@ jantar people offer Asha --preset light --see sleep,review=full --comment journa
 | see their sleep | `--see sleep` | off | off | on |
 | read their journal | `--see journal` | off | off | on |
 | read their chats with their assistant | `--see chat` | off | off | on |
+| see their food log | `--see food=counts\|full` | off | full | full |
 | add to-dos and reminders for them | `--assign todos` | on | on | on |
 | plan their day | `--assign plan` | on | on | on |
 | add medicines for them | `--assign meds` | off | on | on |
@@ -174,16 +173,21 @@ jantar people offer Asha --preset light --see sleep,review=full --comment journa
 | comment on their journal | `--comment journal` | off | off | on |
 
 "Everything" is the name of a preset only: it is everything this version
-offers except a food log and your own assistant reading their space, which
-no preset has. The join page never uses the word.
+offers except your own assistant reading their space, which no preset has.
+The join page never uses the word.
 
 The preset is only a template: what is stored, shown on the join page and on
 their Sharing page is always the list of fields. Medicines have two levels:
 **full** (names, doses, times, whether each dose was taken or skipped, and
 the 30-day percentage; never when a dose was logged nor the pill count; the
 notes only on medicines you may change, and the join page says which) and
-**only how often** (a percentage, no names). `--see food=off` is accepted
-and asks for nothing: food isn't in this release.
+**only how often** (a percentage, no names). Their food log has two levels
+too: **full** (what they ate, its calories and each day's total against
+their target, never when they logged it) and **only how many meals** each
+day, naming nothing; a bare `--see food` is full. While their food log is
+off (`jantar people add --no-food`, or `people modules Asha --food off`),
+the offer and the join page carry no food line but "Food: not part of your
+space", and whatever a preset says, food stays off.
 
 The join page lists every field on its own line, in plain words, with a
 switch that can only turn it down. Whatever they switch off before joining
@@ -208,8 +212,10 @@ After they join:
 
 ## Their space
 
-Their to-dos, reminders, projects and weights live in their own space in
-your Mac's Life data. Each row remembers who added it.
+Their to-dos, reminders, projects, food log and weights live in their own
+space in your Mac's Life data. Each row remembers who added it, and a row
+can point only at a row in the same space: a to-do of theirs can be in one
+of their projects, never one of yours (the daemon refuses it).
 
 - **Items you add** show "From Sam" and apply at once, with a due day and
   time, a repeat (every day, week or month: one item that comes back after
@@ -224,6 +230,25 @@ your Mac's Life data. Each row remembers who added it.
   reminder that rings their phone. With "edit or remove to-dos they
   added" on, you can change or remove them too: each shows "Edited by Sam",
   and their Activity keeps the old and new value of every field you changed.
+- **Projects**: theirs to make. To-do › Projects lists them with "2 open ·
+  1 overdue"; a project's page (`/p/todos?project=…`) holds its to-dos, and
+  Rename, Archive (and Bring back) and Delete, which keeps its to-dos with
+  no project. Their Add and Edit can put a to-do in one. Their own project
+  changes leave no Activity row (they are theirs). You see their projects
+  with their to-dos, and your Assign can put a to-do in one of them; that
+  row in their Activity names the project ("Sam added a to-do: Water the
+  basil in Garden"), as does moving one of theirs between projects with
+  "edit or remove to-dos they added" on.
+- **Food log**: while it is on (`jantar people modules Asha --food on`,
+  the default for `people add`), Health › Food and a quick add on Today:
+  what they ate, with calories if they know them (an item without them
+  shows no number), Edit, Delete with Undo, one-tap saved foods, their own
+  daily target, and a photo of a meal through their Chat, which logs it.
+  Only they write it: you have no food action at all. You see it at the
+  level they agree to (above). `--food off` is refused while they have
+  entries, so the switch never hides their own data from them, and turns
+  your food level off with it; turning it on grants you nothing until they
+  accept a request.
 - **Medicines**: theirs, in their own space, apart from yours. They add,
   edit and stop any of them (yours for them included), and tick each dose
   Taken or Skip on Today or Health › Medicines, with Undo. With "add
@@ -262,16 +287,17 @@ about them opens the right tab here.
 - **Header**: their status and line, "Asleep since" while a night is open,
   the day's progress and the Now step, a line when an alert from them is
   new, and three buttons: **Plan** (today before 18:00, tomorrow after),
-  **Assign** (a to-do: title, due day and time, a repeat, what it asks of
-  them (nothing, Got it, or a short report), no snooze, and "Tell me if not
-  done by") and **Alert**.
+  **Assign** (a to-do: title, due day and time, a repeat, one of their
+  projects, what it asks of them (nothing, Got it, or a short report), no
+  snooze, and "Tell me if not done by") and **Alert**.
 - **Today**: their plan as they see it, with each step's status, done time,
   report and check-in answers, a "late" label, Nudge on an open step, the
   check-betweens, and from their review time the evening review at the
   level they share (with "Carry your open steps to tomorrow").
-- **To-do**: their items and yours for them, open first, with Nudge on an
-  open one, and Edit and Delete on yours (and on theirs with "edit or
-  remove to-dos they added" on).
+- **To-do**: their items and yours for them, open first, each naming its
+  project, with their projects as filters, Nudge on an open one, and Edit
+  and Delete on yours (and on theirs with "edit or remove to-dos they
+  added" on).
 - **Plan**: the editor. Start from the weekday's template, Copy yesterday,
   Copy last {weekday}, any template, or **Quick plan**: type "Mock at 8,
   then analysis 45m !report, every 2h 10-18 check applications" and the
@@ -292,8 +318,13 @@ about them opens the right tab here.
   doses went unlogged two days running, one plain line: "Doses not logged 2
   days running. Worth checking in." It is worked out when you look, never
   stored, and they see the same line on their side. Then their weights
-  (Correct on each day with "correct or remove a weight they logged") and
-  their sleep week.
+  (Correct on each day with "correct or remove a weight they logged"),
+  their food log at the level they share (a day at a time: at **full** what
+  they ate with its calories, the day's total against their target and
+  the week's totals; at **only how many meals** the counts; nothing at all
+  while their food log is off), and their sleep week. Your Today line for
+  them carries the food line at the same level ("Food: 3 meals · 1240 of
+  1800 kcal", or "Food: 3 meals logged").
 - **Journal** (read, and comment if they allow it) and **Alerts** (both
   ways, with replies).
 - **Sharing**: what they agreed to, in the words their page used; **Ask for
@@ -480,8 +511,10 @@ their own. It runs on your Mac, with your Claude accounts, through the same
 picker and one-run-at-a-time queue as yours, so every rule you set for which
 accounts Jantar may use applies to their runs too.
 
-- **What it can do.** It reads their plan, to-dos, weight and sleep, and
-  only theirs: it adds and changes their own to-dos and projects, starts,
+- **What it can do.** It reads their plan, to-dos, weight, sleep and,
+  while it is on, their food log, and only theirs: it adds and changes
+  their own to-dos and projects, logs and edits what they ate (a photo of
+  a meal becomes logged items), starts,
   finishes, skips and adds plan steps, ticks check-betweens, answers
   check-ins, sets their status and logs a night, each with Undo. A delete
   is a card they tap, and so is an alert to you ("Send Sam 'Running
@@ -593,7 +626,10 @@ days.
 ## Download
 
 Me › Leave (and the ending banner) downloads everything in their space: a
-readable page (no scripts, nothing fetched) or a data file (JSON).
+readable page (no scripts, nothing fetched) or a data file (JSON). It holds
+their to-dos, projects, medicines and doses, weights, food log, saved foods
+and target, plans, reviews, sleep, journal, alerts, chat, every version of
+what they agreed to, and their Activity.
 
 ## The honest limits
 
