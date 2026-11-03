@@ -74,6 +74,9 @@ describe('deals through the API', () => {
     const project = ProjectHubSchema.parse(await json('GET', `/v1/projects/${won.projectId}`));
     expect(project.client).toEqual({ id: acme.id, name: 'Acme Studio', state: 'client' });
     expect(project.deal).toMatchObject({ id: made.id, title: 'Site rebuild', kind: 'won' });
+    expect(await json('PUT', `/v1/work/projects/${won.projectId}/milestones`, { milestones: [{ name: 'Wireframes', target: '2026-11-10' }, { name: 'Launch', done: true }] })).toEqual({ ok: true });
+    expect(ProjectHubSchema.parse(await json('GET', `/v1/projects/${won.projectId}`)).milestones).toMatchObject({ done: 1, percent: 50, missed: [] });
+    expect(api.ctx.db.audit.list().find((a) => a.action === 'workProjectMilestones')).toMatchObject({ target: won.projectId });
     expect(await json('POST', `/v1/work/deals/${made.id}/move`, { stage: 'lost', lostCode: 'timing', lostNote: 'Next quarter' })).toEqual({ id: made.id, from: 'won' });
     expect(WorkDealHubSchema.parse(await json('GET', `/v1/work/deals/${made.id}`)).deal).toMatchObject({ lostCode: 'timing', lostNote: 'Next quarter' });
     expect(await json('DELETE', `/v1/work/deals/${made.id}`)).toEqual({ ok: true, removed: { log: 3 } });

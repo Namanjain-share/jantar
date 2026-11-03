@@ -7,6 +7,8 @@
  *   hundredths in an ISO currency; a close day is a day key.
  * - The six default stages hold the invariant (one Won, one Lost); the
  *   stage list is 3 to 12.
+ * - Milestones: at most 12, set through Work's own route; the index's
+ *   project shapes never name them.
  * - Every P3 route is an owner `control` route behind the work switch, on
  *   his host only; none is in the package index.
  */
@@ -26,6 +28,7 @@ import {
   WorkDealsQuerySchema,
   WorkExportQuerySchema,
   WorkInsightsQuerySchema,
+  WorkMilestonesBodySchema,
   WorkStageSchema,
   WorkStagesBodySchema,
 } from '../src/work.js';
@@ -107,8 +110,20 @@ describe('v0.13 P3: stages and insights', () => {
   });
 });
 
+describe('v0.13 P3: milestones', () => {
+  it('at most 12, each a name and an optional target day; the body never carries a project field', () => {
+    expect(WorkMilestonesBodySchema.safeParse({ milestones: [{ name: 'Wireframes', target: '2026-11-10' }, { id: ID, name: 'Launch', done: true }] }).success).toBe(true);
+    expect(WorkMilestonesBodySchema.safeParse({ milestones: Array.from({ length: 13 }, (_, i) => ({ name: `M${i}` })) }).success).toBe(false);
+    expect(WorkMilestonesBodySchema.safeParse({ milestones: [{ name: 'x', clientId: ID }] }).success).toBe(false);
+    expect(WorkMilestonesBodySchema.safeParse({ milestones: [{ name: 'x', target: '10/11/2026' }] }).success).toBe(false);
+    // Stored on his project by the daemon; the index's project shapes (her routes' too) never name them.
+    expect(Object.keys(index.ProjectSchema.shape)).not.toContain('milestones');
+    expect(Object.keys(index.OwnerProjectBodySchema.shape)).not.toContain('milestones');
+  });
+});
+
 describe('v0.13 P3 routes', () => {
-  const P3 = ['workDeals', 'workDealCreate', 'workDealGet', 'workDealUpdate', 'workDealDelete', 'workDealMove', 'workStages', 'workStagesUpdate', 'workInsights'] as const;
+  const P3 = ['workDeals', 'workDealCreate', 'workDealGet', 'workDealUpdate', 'workDealDelete', 'workDealMove', 'workStages', 'workStagesUpdate', 'workInsights', 'workProjectMilestones'] as const;
 
   it('are owner control routes behind the work switch, on his host only', () => {
     for (const name of P3) {

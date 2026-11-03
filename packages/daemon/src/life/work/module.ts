@@ -43,6 +43,7 @@
 import {
   canonicalSource,
   inClosingWindow,
+  milestoneProgress,
   normalizeContactEmail,
   normalizeContactName,
   normalizeContactPhone,
@@ -101,6 +102,9 @@ import {
   type WorkStage,
   type WorkStagesBody,
   type WorkStagesReply,
+  type WorkMilestone,
+  type WorkMilestonesBody,
+  type WorkMilestonesView,
 } from '@jantar/protocol/work';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, Logger, TodosModule, WorkMeetingRef, WorkModule } from '../../contracts.js';
 import { foldText, holdsFolded } from '../../core/fold.js';
@@ -850,10 +854,34 @@ class Work implements WorkModule {
   projectPart(projectId: string, clientId: string | undefined, actor: Actor): LifeResult<{ client?: WorkClientRef; log: WorkLogRow[]; deal?: WorkDealCard }> {
     if (!isOwner(actor)) return notFound;
     const c = clientId ? this.repo.contact(clientId) : null;
-    // P3: its deal, an open one first, else the newest.
+    // P3: its deal, an open one first, else the newest; its milestones with their progress.
     const mine = this.repo.allDeals().filter((d) => d.projectId === projectId);
     const deal = mine.length > 0 ? this.sortedCards(mine, this.cardContext())[0] : undefined;
-    return { ok: true, value: { ...(c ? { client: this.ref(c) } : {}), log: this.repo.logOfProject(projectId, WORK_LIMITS.projectLog).map(logView), ...(deal ? { deal } : {}) } };
+    const steps = this.todos.milestones(projectId) ?? [];
+    let milestones: WorkMilestonesView | undefined;
+    if (steps.length > 0) {
+      const p = milestoneProgress(steps, this.core.today());
+      milestones = { items: steps, done: p.done, percent: p.percent, missed: p.missed, ...(p.next ? { next: p.next.id } : {}) };
+    }
+    return {
+      ok: true,
+      value: { ...(c ? { client: this.ref(c) } : {}), log: this.repo.logOfProject(projectId, WORK_LIMITS.projectLog).map(logView), ...(deal ? { deal } : {}), ...(milestones ? { milestones } : {}) },
+    };
+  }
+
+  setMilestones(projectId: string, body: WorkMilestonesBody, actor: Actor): LifeResult {
+    if (!isOwner(actor)) return notFound;
+    const now = this.todos.milestones(projectId);
+    if (now === null) return refuse('not_found', TODO_REASONS.noProject);
+    // A kept id stays (once each); anything else is a new milestone.
+    const known = new Set(now.map((m) => m.id));
+    const seen = new Set<string>();
+    const list: WorkMilestone[] = body.milestones.map((m) => {
+      const id = m.id !== undefined && known.has(m.id) && !seen.has(m.id) ? m.id : this.core.newId();
+      seen.add(id);
+      return { id, name: m.name, ...(m.target !== undefined ? { target: m.target } : {}), ...(m.done ? { done: true as const } : {}) };
+    });
+    return this.todos.setMilestones(projectId, list, actor);
   }
 
   // --- P2: meetings linked to clients (W15) ------------------------------------------------

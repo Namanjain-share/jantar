@@ -51,6 +51,7 @@ import type {
   WorkSeedBody,
   WorkSettingsPatch,
   WorkInsightsQuery,
+  WorkMilestonesBody,
   WorkStagesBody,
 } from '@jantar/protocol/work';
 import type { LifeResult } from '../../contracts.js';
@@ -244,6 +245,14 @@ export const WORK_ROUTE_IMPLS: RouteTable = {
   },
   workInsights: {
     handle: (c: Call<Id, WorkInsightsQuery>, s) => lifeValue(s.deps.life.work.insights(c.query, needActor(c.auth))),
+  },
+  workProjectMilestones: {
+    handle: (c: Call<Id, unknown, WorkMilestonesBody>, s) => {
+      lifeValue(s.deps.life.work.setMilestones(c.params.id, c.body, needActor(c.auth)));
+      return OK;
+    },
+    // The project's id; the milestones' names stay out.
+    audit: lifeAudit,
   },
 
   workClientHere: {

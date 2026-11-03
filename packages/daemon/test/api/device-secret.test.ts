@@ -144,6 +144,7 @@ describe('which routes need the device secret', () => {
         'workDealDelete',
         'workDealMove',
         'workDealUpdate',
+        'workProjectMilestones',
         'workStagesUpdate',
       ].sort(),
     );

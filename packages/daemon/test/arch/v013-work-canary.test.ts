@@ -142,6 +142,8 @@ describe('W-T6: no client words in logs, audit, events or errors', () => {
     await run('workStagesUpdate', 'PUT', '/v1/work/stages', { stages: [{ id: 'new', name: 'Lead' }, { id: 'won', name: 'Won' }, { id: 'lost', name: 'Lost' }] });
     await run('workStagesUpdate', 'PUT', '/v1/work/stages', { stages: [{ id: 'new', name: 'Lead' }, { id: 'won', name: 'Won' }, { id: 'lost', name: 'Lost' }], moves: [{ from: 'proposal', to: 'new' }, { from: 'contacted', to: 'new' }, { from: 'negotiation', to: 'new' }] });
     await run('workInsights', 'GET', '/v1/work/insights?period=all');
+    await run('workProjectMilestones', 'PUT', `/v1/work/projects/${project}/milestones`, { milestones: [{ name: `${NAME} sign-off`, target: '2026-11-20' }] });
+    await run('workProjectMilestones', 'PUT', '/v1/work/projects/01JZZZZZZZZZZZZZZZZZZZZZZX/milestones', { milestones: [{ name: NAME }] });
     await run('workExport', 'GET', '/v1/work/export.csv?what=deals');
     await run('search', 'GET', `/v1/search?q=${NAME}`);
     await run('projectGet', 'GET', `/v1/projects/${project}`);

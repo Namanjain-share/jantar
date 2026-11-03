@@ -16,10 +16,18 @@
  * reads across spaces (`anySpace`), to ring each todo on its own person's
  * devices.
  */
+import { z } from 'zod';
 import type { Project, Todo } from '@jantar/protocol';
-import { PersonTodoSchema, StoredProjectSchema as ProjectSchema } from '@jantar/protocol/people';
+import { PersonTodoSchema, StoredProjectSchema } from '@jantar/protocol/people';
+import { WORK_LIMITS, WorkMilestoneSchema } from '@jantar/protocol/work';
 import type { LifeCore, Logger } from '../../contracts.js';
 import { foldText, holdsFolded } from '../../core/fold.js';
+
+/**
+ * A project as stored. v0.13 Work P3: his projects may carry milestones (set only through Work's route, his
+ * space only). The schema is the daemon's, so neither his main bundle nor any route of hers knows the key.
+ */
+const ProjectSchema = StoredProjectSchema.extend({ milestones: z.array(WorkMilestoneSchema).max(WORK_LIMITS.milestones).optional() });
 
 interface JsonRow {
   json: string;

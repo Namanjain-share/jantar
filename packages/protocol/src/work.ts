@@ -111,6 +111,8 @@ export const WORK_LIMITS = Object.freeze({
   lostNote: 200,
   /** A deal's value at most (integer hundredths). */
   dealValueMax: 1e13,
+  /** Milestones on one project. */
+  milestones: 12,
 });
 
 // ---------------------------------------------------------------------------
@@ -903,6 +905,29 @@ export const FolderClientResponseSchema = z.object({
 export type FolderClientResponse = z.infer<typeof FolderClientResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// P3: a project's milestones (stored on his project; set through Work, never through her routes)
+
+/** One milestone: a step of the project with an optional target day (Life zone); done or not. */
+export const WorkMilestoneSchema = z.object({ id: LifeIdSchema, name: z.string().trim().min(1).max(60), target: DayKeySchema.optional(), done: z.literal(true).optional() });
+export type WorkMilestone = z.infer<typeof WorkMilestoneSchema>;
+/** PUT /v1/work/projects/:id/milestones: the list in order, replacing it (one without an id is new). */
+export const WorkMilestonesBodySchema = z.strictObject({
+  milestones: z
+    .array(z.strictObject({ id: LifeIdSchema.optional(), name: WorkMilestoneSchema.shape.name, target: DayKeySchema.optional(), done: z.boolean().optional() }))
+    .max(WORK_LIMITS.milestones),
+});
+export type WorkMilestonesBody = z.infer<typeof WorkMilestonesBodySchema>;
+/** A project's milestones with their progress: done of total, the ones past their day and not done, the next one. */
+export const WorkMilestonesViewSchema = z.object({
+  items: z.array(WorkMilestoneSchema).max(WORK_LIMITS.milestones),
+  done: z.number().int().nonnegative(),
+  percent: z.number().int().min(0).max(100),
+  missed: z.array(LifeIdSchema),
+  next: LifeIdSchema.optional(),
+});
+export type WorkMilestonesView = z.infer<typeof WorkMilestonesViewSchema>;
+
+// ---------------------------------------------------------------------------
 // The project hub (GET /v1/projects/:id)
 
 export const ProjectHealthSchema = z.object({
@@ -934,6 +959,8 @@ export const ProjectHubSchema = z.object({
   log: z.array(WorkLogRowSchema).max(WORK_LIMITS.projectLog).optional(),
   /** P3, while Work is on: the project's deal (an open one first, else the newest). */
   deal: WorkDealCardSchema.optional(),
+  /** P3, while Work is on and it has some: its milestones. */
+  milestones: WorkMilestonesViewSchema.optional(),
 });
 export type ProjectHub = z.infer<typeof ProjectHubSchema>;
 
@@ -1181,6 +1208,11 @@ export const WORK_ROUTES = {
     method: 'PUT', path: '/v1/work/stages', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
     body: WorkStagesBodySchema, response: WorkStagesPutReplySchema,
     summary: 'Rename, reorder, add or remove stages (a removed stage with deals names where they go).',
+  }),
+  workProjectMilestones: route({
+    method: 'PUT', path: '/v1/work/projects/:id/milestones', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, body: WorkMilestonesBodySchema, response: OkReplySchema,
+    summary: "Set one of his projects' milestones (at most 12, in order; each with an optional target day).",
   }),
   workInsights: route({
     method: 'GET', path: '/v1/work/insights', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',

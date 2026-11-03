@@ -104,6 +104,7 @@ describe('W-T1: every Work route is his', () => {
         'workMeetingClientNew',
         'workMeetingClients',
         'workMeetingSuggest',
+        'workProjectMilestones',
         'workSettings',
         'workSettingsUpdate',
         'workStages',
@@ -257,6 +258,7 @@ describe('W-T4: Work is his space only, and answers no one else', () => {
         ['stagesPut', () => work.stagesPut({ stages: [{ id: 'new', name: 'X' }, { id: 'won', name: 'Won' }, { id: 'lost', name: 'Lost' }] }, HER)],
         ['insights', () => work.insights({ period: '90d' }, HER)],
         ['exportCsv deals', () => work.exportCsv(HER, 'deals')],
+        ['setMilestones', () => work.setMilestones(id, { milestones: [{ name: 'X' }] }, HER)],
       ];
       for (const [name, call] of calls) expect(call(), name).toEqual({ ok: false, code: 'not_found', reason: 'Not found.' });
       // Nothing of his changed meanwhile.

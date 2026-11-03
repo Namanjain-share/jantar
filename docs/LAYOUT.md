@@ -753,8 +753,10 @@ The protocol, in the same subpath: a deal as stored (`DealSchema`), its
 card, the deals list with each stage's column, a deal's hub, its move,
 the stage list (`DEFAULT_WORK_STAGES`, `WORK_LOST_CODES`), the insights
 reply, and P3's `WORK_ROUTES`; the client hub, the project hub and
-client_here gain deals, and the export takes `what=deals`. Nothing new in
-the index. life-core: `work/{deal,pipeline,stage,insights,milestones}.ts`
+client_here gain deals, the project hub its milestones (set through
+`workProjectMilestones`; the daemon's own project schema in
+`life/todos/repo.ts` stores them, so the index's project shapes never name
+them), and the export takes `what=deals`. Nothing new in the index. life-core: `work/{deal,pipeline,stage,insights,milestones}.ts`
 (from Noblot). The daemon: `life/work/deals.ts` (cards, columns, the CSV
 and the insights from rows already read; no SQL), the deal and stage
 methods in `life/work/module.ts`, `work_deals` reads and writes in

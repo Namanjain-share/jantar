@@ -21,6 +21,9 @@
  *   open stage that stays), Won and Lost never removed;
  * - insights: one book per currency, no data as null, the funnel and time in
  *   stage from the moves;
+ * - milestones on his project (P3): set in order (kept ids stay), shown on
+ *   the hub with their progress, never on a project of hers or a shared
+ *   list;
  * - caps answer fixed sentences.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -433,5 +436,38 @@ describe('caps', () => {
     expect(work.createDeal({ clientId: acme, title: 'One more' }, PHONE)).toMatchObject({ ok: false, code: 'conflict', reason: WORK_REASONS.openDealsFull });
     expect(work.moveDeal(first, { stage: 'new' }, PHONE)).toMatchObject({ ok: false, reason: WORK_REASONS.openDealsFull });
     expect(WORK_REASONS.openDealsFull).toBe('Work holds 500 open deals at most. Close some (Won or Lost) first.');
+  });
+});
+
+describe('milestones', () => {
+  it("set in order on his project; kept ids stay; the hub's progress names the missed ones and the next", () => {
+    const p = ok(todos.createProject({ name: 'Site rebuild' }, PHONE)).id;
+    expect(ok(work.projectPart(p, undefined, PHONE)).milestones).toBeUndefined();
+    ok(work.setMilestones(p, { milestones: [{ name: 'Wireframes', target: '2026-11-01' }, { name: 'Build', target: '2026-11-20' }, { name: 'Launch' }] }, PHONE));
+    let m = ok(work.projectPart(p, undefined, PHONE)).milestones;
+    expect(m?.items.map((x) => x.name)).toEqual(['Wireframes', 'Build', 'Launch']);
+    const [wire, build] = m?.items ?? [];
+    expect(m).toMatchObject({ done: 0, percent: 0, missed: [wire?.id], next: wire?.id });
+    ok(work.setMilestones(p, { milestones: [{ id: wire?.id, name: 'Wireframes', target: '2026-11-01', done: true }, { id: build?.id, name: 'Build', target: '2026-11-20' }, { id: '01JZZZZZZZZZZZZZZZZZZZZZZX', name: 'Launch' }] }, PHONE));
+    m = ok(work.projectPart(p, undefined, PHONE)).milestones;
+    expect(m?.items.map((x) => x.id).slice(0, 2)).toEqual([wire?.id, build?.id]);
+    expect(m?.items[2]?.id).not.toBe('01JZZZZZZZZZZZZZZZZZZZZZZX');
+    expect(m).toMatchObject({ done: 1, percent: 33, missed: [], next: build?.id });
+    expect(m?.items[0]?.done).toBe(true);
+    // A project edit keeps them; an empty list clears them.
+    ok(todos.updateProject(p, { notes: 'Diwali launch' }, PHONE));
+    expect(ok(work.projectPart(p, undefined, PHONE)).milestones?.items).toHaveLength(3);
+    ok(work.setMilestones(p, { milestones: [] }, PHONE));
+    expect(ok(work.projectPart(p, undefined, PHONE)).milestones).toBeUndefined();
+  });
+
+  it('never on a project that is not his: her space, a shared list, or none', () => {
+    const HER = '01JZZZZZZZZZZZZZZZZZZZZZZZ';
+    expect(work.setMilestones('01JZZZZZZZZZZZZZZZZZZZZZZX', { milestones: [{ name: 'x' }] }, PHONE)).toMatchObject({ ok: false, code: 'not_found' });
+    const hers = todos.inSpace(HER);
+    const p = ok(hers.createProject({ name: 'Her project' }, { kind: 'person', personId: HER, deviceId: 'd' })).id;
+    expect(hers.setMilestones(p, [{ id: p, name: 'x' }], PHONE)).toMatchObject({ ok: false, reason: 'Only your own projects can have milestones.' });
+    expect(hers.milestones(p)).toBeNull();
+    expect(work.setMilestones(p, { milestones: [{ name: 'x' }] }, PHONE)).toMatchObject({ ok: false, code: 'not_found' });
   });
 });

@@ -1899,6 +1899,10 @@ export interface TodosModule extends LifeModule {
   dealFollowUps(dealId: string | null, done: boolean): Todo[];
   /** v0.13 Work P3: a deleted deal's todos let go of it (inside Work's transaction). How many. */
   unlinkDeal(dealId: string): number;
+  /** v0.13 Work P3: one of his projects' milestones ([] when none), or null when he has no such project. */
+  milestones(projectId: string): import('@jantar/protocol/work').WorkMilestone[] | null;
+  /** v0.13 Work P3: one of his projects' milestones replaced (his space only; never a shared list). */
+  setMilestones(projectId: string, list: readonly import('@jantar/protocol/work').WorkMilestone[], actor: Actor): LifeResult;
   /**
    * `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. v0.11: `opts.by`
    * (the author, in a person space) and `opts.extra` (People's daemon-set fields) come from the People module.
@@ -2082,8 +2086,14 @@ export interface WorkModule extends LifeModule {
   removeLog(id: string, actor: Actor): LifeResult;
   /** One of his log rows (Chat's Undo), or null. */
   logRow(id: string): WorkLogRow | null;
-  /** The project hub's Work part (his own project): its client, newest log rows and (P3) its deal. */
-  projectPart(projectId: string, clientId: string | undefined, actor: Actor): LifeResult<{ client?: WorkClientRef; log: WorkLogRow[]; deal?: WorkDealCard }>;
+  /** The project hub's Work part (his own project): its client, newest log rows and (P3) its deal and milestones. */
+  projectPart(
+    projectId: string,
+    clientId: string | undefined,
+    actor: Actor,
+  ): LifeResult<{ client?: WorkClientRef; log: WorkLogRow[]; deal?: WorkDealCard; milestones?: import('@jantar/protocol/work').WorkMilestonesView }>;
+  /** P3: one of his projects' milestones, in order (one without an id is new). */
+  setMilestones(projectId: string, body: import('@jantar/protocol/work').WorkMilestonesBody, actor: Actor): LifeResult;
   // --- P2: meetings linked to clients (W15). Work never reads meetings.db: Meetings tells it, or the route does.
   /** A meeting's project was set or cleared: its automatic link follows the project's client. */
   meetingProject(meeting: WorkMeetingRef): void;

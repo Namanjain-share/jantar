@@ -43,8 +43,15 @@ needs one round trip:
 
 A project's meetings come from Meetings (`GET /v1/meetings?project=`,
 while Meetings is on), and its live sessions from the Board. While Work is
-on, the project also carries its client, its newest log entries and its
-deal (an open one first, else the newest).
+on, the project also carries its client, its newest log entries, its deal
+(an open one first, else the newest) and its milestones.
+
+**Milestones.** A project can have up to 12 milestones in order
+("Wireframes", "Build", "Launch"), each with an optional target day, ticked
+when done (`PUT /v1/work/projects/<id>/milestones`). The project shows how
+many are done, the next one, and any whose day has passed while not done.
+Todos stay flat: a milestone is its own step, not a group of todos. Only
+your own projects take milestones, never a shared list.
 
 You can have up to 500 projects (it was 200): finished client projects
 pile up.

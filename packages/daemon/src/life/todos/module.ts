@@ -79,7 +79,7 @@ import {
   type TodoPatch,
   type TodosQuery,
 } from '@jantar/protocol';
-import { WORK_LIMITS, type ProjectHub } from '@jantar/protocol/work';
+import { WORK_LIMITS, type ProjectHub, type WorkMilestone } from '@jantar/protocol/work';
 import { hhmmOf, nextRepeat, projectHealth, projectWeeks, shiftMonths, snoozeTarget } from '@jantar/life-core';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule, TodosWorkLinks } from '../../contracts.js';
 import type { PersonTodo } from '@jantar/protocol/people';
@@ -105,6 +105,7 @@ export const TODO_REASONS = {
   // v0.13 Work (O13): a client, a deal or a business only on his own todos and projects.
   ownTodosOnly: 'Only your own todos can have a client.',
   ownProjectsOnly: 'Only your own projects can have a client.',
+  ownMilestonesOnly: 'Only your own projects can have milestones.',
   sharedList: "A shared list can't have a client.",
   clientGone: "That client doesn't exist any more.",
   dealGone: "That deal doesn't exist any more.",
@@ -353,6 +354,27 @@ class Todos implements TodosModule {
       if (todos.length > 0 || projects.length > 0) this.changed();
       return { todos: todos.length, projects: projects.length };
     });
+  }
+
+  /** v0.13 Work P3: one of his projects' milestones (none: []), or null when he has no such project. */
+  milestones(projectId: string): WorkMilestone[] | null {
+    if (this.repo.space !== '') return null;
+    const p = this.repo.project(projectId) as (Project & { milestones?: WorkMilestone[] }) | null;
+    return p ? (p.milestones ?? []) : null;
+  }
+
+  /** v0.13 Work P3: one of his projects' milestones replaced (Work's route; never a project of hers or a shared list). */
+  setMilestones(projectId: string, list: readonly WorkMilestone[], _actor: Actor): LifeResult {
+    if (this.repo.space !== '') return refuse('invalid_request', TODO_REASONS.ownMilestonesOnly);
+    const p = this.repo.project(projectId) as (Project & { milestones?: WorkMilestone[] }) | null;
+    if (!p) return refuse('not_found', TODO_REASONS.noProject);
+    if (p.list !== undefined) return refuse('invalid_request', TODO_REASONS.ownMilestonesOnly);
+    const next: Project & { milestones?: WorkMilestone[] } = { ...p, updatedAt: this.stamp() };
+    if (list.length === 0) delete next.milestones;
+    else next.milestones = [...list];
+    this.repo.saveProject(next);
+    this.changed();
+    return OK;
   }
 
   /** v0.13 Work P3: todos with a deal in his space: open ones by due (of every deal, or one), or one deal's done ones, newest first. */
