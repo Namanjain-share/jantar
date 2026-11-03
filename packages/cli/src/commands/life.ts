@@ -1,6 +1,7 @@
 /**
  * jantar life (v0.4): the Mac-only side of Life (settings life.*; a phone can
- * never change them). Turn the six modules on or off, set the Life time
+ * never change them). Turn the modules on or off (v0.13: work brings todos
+ * with it, and todos off takes work with it), set the Life time
  * zone, the currency label and whether names reach the lock screen, back
  * life.db up and put a backup back.
  *
@@ -26,9 +27,10 @@ import {
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { CtlUnavailableError, callDaemon } from '../ctl.js';
-import { readSettingsFile } from '../lib/settings.js';
+import { readSettings, readSettingsFile } from '../lib/settings.js';
 import { changeSettings, onOff, parseOnOff } from '../lib/switches.js';
 import { ago, clean, plural } from '../lib/text.js';
+import { TODOS_TOO } from './work.js';
 
 const FLAGS = {
   yes: { type: 'boolean', short: 'y', help: 'restore: do not ask first' },
@@ -122,10 +124,21 @@ async function status(ctx: CliContext): Promise<number> {
 
 async function switchModules(ctx: CliContext, on: boolean, words: readonly string[]): Promise<number> {
   const mods = parseModules(words, on ? 'on' : 'off');
-  const patch = Object.fromEntries(mods.map((m) => [m, on]));
+  const patch: Partial<Record<LifeModule, boolean>> = Object.fromEntries(mods.map((m) => [m, on]));
+  // v0.13: Work needs Todos (its projects and follow-ups are todos): on brings Todos with it, off takes Work with it.
+  const before = (on && patch.work && !patch.todos) || (!on && patch.todos === false && patch.work === undefined) ? (await readSettings(ctx)).settings : null;
+  let also = '';
+  if (on && patch.work && patch.todos === undefined) {
+    patch.todos = true;
+    if (before && !before.life.todos) also = TODOS_TOO;
+  }
+  if (!on && patch.todos === false && patch.work === undefined) {
+    patch.work = false;
+    if (before?.life.work) also = 'Work is off too: it needs Todos.\n';
+  }
   await changeSettings(ctx, { life: patch }, (s) => {
     const what = mods.map((m) => `${m} (${MODULE_WORDS[m]})`).join(', ');
-    return `${on ? 'On' : 'Off'}: ${what}.\n${modulesLine(s.life)}`;
+    return `${on ? 'On' : 'Off'}: ${what}.\n${also}${modulesLine(s.life)}`;
   });
   return EXIT.ok;
 }

@@ -1,6 +1,6 @@
 /**
  * Every sentence the daemon or the web app shows that names a v0.3, v0.4,
- * v0.5 or v0.5.3 jantar command ("Turn it on at your Mac: jantar files on",
+ * v0.5, v0.5.3 or v0.13 jantar command ("Turn it on at your Mac: jantar files on",
  * "On your Mac run: jantar devices grant <device> launch", MAC_COMMAND's
  * "jantar folders", "jantar life on medicines", "jantar meetings on",
  * "jantar pair --extension", "jantar chat on", "jantar notify test", "jantar
@@ -29,7 +29,7 @@ import { COMMANDS, EXIT, main, memoryIo } from '../src/index.js';
 import { contextFor, fakeCtl, fakeSettings, ok } from './helpers.js';
 
 const PACKAGES = fileURLToPath(new URL('../../', import.meta.url));
-const COMMAND = '(?:files|folders|launch|devices|rewrite|controls|screenshots|new|life|intel|accounts|init|meetings|chat|ask|notify|mcp|pair(?= --extension))\\b';
+const COMMAND = '(?:files|folders|launch|devices|rewrite|controls|screenshots|new|life|intel|accounts|init|meetings|chat|ask|notify|mcp|work|pair(?= --extension))\\b';
 /** Commands WP0 registered as stubs, until their packages build them. */
 const STUBS = new Set(COMMANDS.filter((c) => c.stub).map((c) => c.name));
 /** A sentence's command when another command's package builds it (v0.5: WP-MC builds `pair --extension` with `meetings`). */
@@ -191,6 +191,8 @@ describe('the commands the daemon and the web app name', () => {
         'notify done on',
         'notify urgent on',
         'mcp',
+        // v0.13
+        'work on',
       ]),
     );
   });
