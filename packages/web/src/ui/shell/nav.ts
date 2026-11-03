@@ -19,12 +19,12 @@ import {
   FilesIcon,
   ListBulletsIcon,
   SunIcon,
-  UsersIcon,
   VideoConferenceIcon,
   type Icon,
 } from '@phosphor-icons/react';
 import type { Features } from '@jantar/protocol';
 import { LIFE_ROUTES, type Route } from '../../lib/router.js';
+import { PeopleGlyph } from './people-glyph.js';
 
 export interface NavItem {
   route: Route['name'];
@@ -46,7 +46,7 @@ export const NAV: readonly NavItem[] = [
   { route: 'intel', href: '/intel', label: 'Intel', icon: BookmarksIcon, feature: 'intel' },
   { route: 'meetings', href: '/meetings', label: 'Meetings', icon: VideoConferenceIcon, feature: 'meetings' },
   // v0.12: last, so on a phone it sits in More.
-  { route: 'people', href: '/people', label: 'People', icon: UsersIcon, feature: 'people' },
+  { route: 'people', href: '/people', label: 'People', icon: PeopleGlyph, feature: 'people' },
 ];
 
 /** The phone's fifth tab when more than five places are on. */
