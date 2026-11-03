@@ -48,7 +48,7 @@ Cmd-K jumps to any session or account; the keys (`src/ui/shell/keys.ts`,
 the `?` list in `Shortcuts.tsx`) work at any width once a keyboard has been
 seen (direction 5.9; build plan 0.11 3.1).
 
-## Size classes and the chrome (0.11)
+## Size classes and the chrome (0.12)
 
 `src/ui/shell/layout.ts` is the one layout context (`useLayout()`): the
 window's `size` (compact under 640, medium, regular from 1024), whether

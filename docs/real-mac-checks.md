@@ -489,15 +489,15 @@ On the same two phones (owner and partner):
 - A list item ticked on one phone shows "Ticked by …" on the other.
 - A café deleted on one phone: the other gets one notification.
 
-## iPad checks (0.11)
+## iPad checks (0.12)
 
-0.11 was built and tested in Chromium (Playwright's iPad contexts: touch,
+0.12 was built and tested in Chromium (Playwright's iPad contexts: touch,
 the iPadOS 26 user agent, five touch points, the Home Screen app's insets
 through the DevTools protocol, and a stand-in visual viewport for the
 on-screen keyboard). Chromium is not WebKit, and Chrome's device toolbar
 emulates the width, the pixel ratio and touch, not Safari, the insets or
 the keyboard. **None of these has been run on a real iPad yet.** Until
-each is, 0.11 uses the default in its row.
+each is, 0.12 uses the default in its row.
 
 | # | Check | Default until checked | If the check says otherwise |
 |---|---|---|---|
@@ -510,11 +510,12 @@ each is, 0.11 uses the default in its row.
 | 7 | the width of a half-screen window and of Slide Over (iPadOS 26) | narrower than 640 is a phone's layout | `(min-width: 640px)` and the test sizes |
 | 8 | `contextmenu` on a two-finger click and on a long press; do the long-press menu and iOS's callout both show? | long press 500 ms; a `contextmenu` within a second of it is ignored; rows set `-webkit-touch-callout: none` | nothing, if `contextmenu` never fires on touch |
 | 9 | dragging photos and files from Photos and Files into Chat (windowed): their types and names, several at once | `image/*` only; HEIC goes through `session/attach/convert.ts` | the photo button stays the way in |
-| 10 | does a left-edge swipe fight a system gesture in the Home Screen app? | the list over an item opens from "‹ Sessions" or "‹ Days" | nothing (0.11 has no swipe) |
+| 10 | does a left-edge swipe fight a system gesture in the Home Screen app? | the list over an item opens from "‹ Sessions" or "‹ Days" | nothing (0.12 has no swipe) |
 | 12 | the docked keyboard over a windowed app: what `visualViewport` says, and does `offsetTop` pan? | trust `visualViewport` | if it is wrong, a sheet stays at the top whenever a field has focus |
 | 13 | does Tab reach buttons in Safari, or only fields? | j / k and the arrows are the keyboard's way through lists | nothing |
 | 14 | does `paste` in a field carry an image `File` (from Photos, a screenshot)? | Chat reads `clipboardData.files` | the photo button remains |
 | 15 | Safari's form sheets: a swipe down on a top-anchored sheet | a swipe closes it, asking first when a field changed | refuse the `swipe` close reason (the sheet springs back) |
+| 16 | Accountability partner on the iPad (with someone sharing): his screen for her at 820 x 1180 and 1180 x 820, rotated with a plan half written in Plan; her Today card on his Today; "Partner" in the sidebar and the rail | the plan stays through the rotation; her tabs beside her Today from a pane of 800 | the Partner screen keeps one column (`screens/people/Partner.tsx`) |
 
 **How to run them.** A small static page (the media queries above, `env()`
 insets and `visualViewport` numbers live, a log of `keydown`,

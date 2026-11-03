@@ -64,7 +64,7 @@ become an expense, a menu a café's dishes, a whiteboard a todo list.
 
 ## Chat beside any screen
 
-On an iPad or a Mac (0.11), the **Chat** button (in the Mac's top bar, at
+On an iPad or a Mac (0.12), the **Chat** button (in the Mac's top bar, at
 the end of a screen's header on an iPad) or ⌘J opens this same thread
 beside what you are looking at: a 360 px column where the screen keeps at
 least 560 px beside it, otherwise over its right edge (Esc, × or ⌘J
@@ -83,7 +83,7 @@ an id it doesn't know, and adds one line of its own outside your message
 Intel item, a meeting or a session is named by its kind and id only, since
 its title is someone else's text; Chat reads it with its tools, and that
 read marks the turn as 0.10 does, so its writes wait as Do it cards. The
-turn shows what it was about. A Mac on Jantar before 0.11 refuses the
+turn shows what it was about. A Mac on Jantar before 0.12 refuses the
 field, so the phone puts the chip's words at the start of your message
 instead.
 

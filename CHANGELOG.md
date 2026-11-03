@@ -150,15 +150,16 @@ changes. A phone looks as it did.
 - **iPad**: from 640 px wide a touch screen gets its own shell instead of
   the Mac's top bar, rail and status bar. In landscape (1024 and wider) a
   220 px sidebar with names: Search or jump, Board, Today with its six
-  places under it (a caret hides them), Chat, Files, Alerts, then the
-  Library (Intel, Meetings); at its foot the accounts strip (each
-  account's 5-hour use, and whether Jantar is live), which opens Accounts,
-  and ⋯ with Devices, the legend, the theme and Reload app. ⌘\ or its
-  button folds it to a 72 px rail of labelled places, remembered on this
-  device. In portrait the rail, whose top button shows the whole sidebar
-  over the screen. The window controls' corner is left free. Today's strip
-  of places shows whenever the nav doesn't list them. The sidebar loads on
-  its own, so a Mac or a phone never downloads it.
+  places under it (a caret hides them), Chat, Files, Alerts, Partner (with
+  Accountability partner on), then the Library (Intel, Meetings); at its
+  foot the accounts strip (each account's 5-hour use, and whether Jantar
+  is live), which opens Accounts, and ⋯ with Devices, the legend, the
+  theme and Reload app. ⌘\ or its button folds it to a 72 px rail of
+  labelled places, remembered on this device. In portrait the rail, whose
+  top button shows the whole sidebar over the screen. The window controls'
+  corner is left free. Today's strip of places shows whenever the nav
+  doesn't list them. The sidebar loads on its own, so a Mac or a phone
+  never downloads it.
 - **Board in portrait** (an iPad, or a Board narrower than about 800 px
   beside the phone): the sessions waiting on you sit above the list, oldest
   first. A question with one set of options can be answered there (a tap
@@ -199,7 +200,9 @@ changes. A phone looks as it did.
   the line Chat reads itself, and drops one it doesn't know. An Intel item,
   a meeting or a session is named to Chat by kind and id only, and Chat
   reads it with its tools as before. The turn shows what it was about. With
-  a Mac on an older Jantar, the chip's words go at the start of the message.
+  a Mac on an older Jantar (0.11 included), the chip's words go at the
+  start of the message. The person you share with can't send one: their
+  Chat names nothing of yours.
 - **The whole key map, and ? to list it** (Keys and the legend, the keys of
   the place you're in first; on an iPad also in the sidebar's ⋯). ↑ and ↓
   (or j and k) move through a list, ↵ opens the row beside it, and Esc goes
@@ -223,6 +226,16 @@ changes. A phone looks as it did.
   the iPad. Devices › This device has a **Keyboard** row: Auto (shortcuts
   once a keyboard has been used), On or Off on this device, and Show
   shortcuts.
+- **Accountability partner** (0.11) uses the width too. It is "Partner" in
+  the iPad's sidebar and rail (its full name everywhere else), and on a
+  wide Today the person sharing with you is the first card (Edit cards
+  moves or hides it, and lists it only while it is on). Their screen keeps
+  their name, status, Plan, Assign, Alert and the tabs in a column on the
+  left from about 800 px, with the tab beside it: their Today as cards
+  (the day's plan with Nudge, their to-dos, medicines and weight, the
+  evening review), every other tab at most 720 px wide. Rotating an iPad
+  keeps a plan you are writing. A café in the shared space says "shared"
+  on its card as on its row. Their own app is unchanged.
 - On an iPad, when the connection drops, the sidebar's foot says
   **Reconnecting…** with a Reconnect button. An empty place sits in the
   middle of a wide pane instead of its top-left corner. In a short window

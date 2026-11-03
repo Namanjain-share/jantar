@@ -47,12 +47,16 @@ More. On a Mac a session opens beside the board once the board's pane is
 ### Wide windows and the iPad
 
 Every screen lays itself out by the room it has, on a Mac or an iPad
-(0.11). Where a place shows one item at a time (Alerts, Intel, Meetings,
+(0.12). Where a place shows one item at a time (Alerts, Intel, Meetings,
 Cafés, Posts, Files), the list fills the window as a table or cards, and
 opening an item turns the list into a column beside it; Close or Esc goes
 back. Today is a page of cards, Todos, Medicines, Food and Finance put
 their sections side by side, and Chat keeps its days on the left and,
-from about 1180 px, what it changed and its photos on the right.
+from about 1180 px, what it changed and its photos on the right. With
+[Accountability partner](people.md) on, it is "Partner" in the iPad's
+sidebar and rail, the first of Today's cards, and its screen keeps their
+name, Plan, Assign, Alert and the tabs in a column on the left with the
+tab beside them (their Today as cards).
 
 | | Mac (a mouse or trackpad) | iPad (touch) |
 |---|---|---|
@@ -318,7 +322,7 @@ jantar chat clear    # deletes the history (what it added stays)
 The thread is one per Mac, the same on every phone and for Siri, kept on
 the Mac for 30 days. Everything about it: [Chat](assistant.md).
 
-On a wide window (0.11) Chat lists its days on the left, with a search,
+On a wide window (0.12) Chat lists its days on the left, with a search,
 and from about 1180 px what it changed that can still be undone and its
 photos on the right; a narrow one keeps them behind **‹ Days**. The
 **Chat** button, or ⌘J, opens the same thread beside any screen, on an

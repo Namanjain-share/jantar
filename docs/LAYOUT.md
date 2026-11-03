@@ -589,7 +589,7 @@ Tests: `packages/protocol/test/v010-chat.test.ts`,
 mode: an MCP client over the run's one server), and end to end in
 `test/integration/{v010-chat,v010-siri,web-v010-chat}.integration.test.ts`.
 
-### v0.11.0
+### v0.12.0
 
 Wide windows and the iPad, in the web app only: no protocol or daemon
 change except Chat's `context` (below), and no data change.
@@ -648,24 +648,41 @@ overlay in its own chunk; an in-app `Link` focuses the new pane's heading.
 `Chat.tsx` so it shares Chat's chunk): a 360 column where the panes keep
 560, else over their right edge; open or closed per device
 (`shell/chatDock.ts`). The "Looking at" chip (`shell/lookingAt.ts`) sends
-`context: { kind, id }` on `POST /v1/chat` to a daemon from 0.11 on
+`context: { kind, id }` on `POST /v1/chat` to a daemon from 0.12 on
 (`packages/protocol/src/chat.ts`); the daemon resolves the id itself
 (`chat/service.ts` `lookingAt`), keeps the label on the turn and writes
 one `<looking>` line for the run (`chat/input.ts` `lookingLine`): a Life
 item by its own label, Intel, a meeting or a session by kind and id only.
+Her `POST /v1/p/chat` body (`PersonChatSendBodySchema`) has no `context`.
+
+**Accountability partner** (v0.11 People, its spec's 9.10) in the wide
+layouts: its place closes the touch nav's top list, as "Partner" (its
+`short`) in the 220 sidebar and under its icon in the 72 rail; ⌘1-⌘9 stay
+`NAV`'s first nine. His screen for her (`screens/people/Partner.tsx`) is
+a SplitPane from a pane of 800: the header and the tabs one under the
+other in the list column, the tab or the plan editor beside them, the tab
+being the same section at every width so a rotation keeps a plan being
+written; her Today tab is cards (`kit/Columns.tsx`, `kit/Panel.tsx`) beside
+the tabs or from a tab 640 wide, the other tabs rows 720 at most. On his
+Today her rows are the first card from 640 (`Dashboard.tsx` `people`),
+which Edit cards lists only while People is on. Her app (`p.html`) stays
+one column, centred.
 
 **Performance.** 0.10's first load was 278.4 kB of `MAIN_JS_MAX`
-280 kB. 0.11 made room first: Accounts, Alerts and Devices load from their
+280 kB. 0.12 made room first: Accounts, Alerts and Devices load from their
 own chunks (c01), which brought main to about 266 kB; the wide panes are in
 the screens' chunks, the touch shell, the `⋯` menu, the popovers
 (`kit/Popover.tsx`) and the `?` overlay in chunks of their own, and main
 ends at 274.6 kB with 13.7 kB of CSS. `MAIN_JS_MAX` was not raised. The
 Drawer and Base UI's shared popup runtime (about 20 kB) stay in main on
 purpose (D12): out of main they would be charged to every lazy screen and
-put Today over its 80 kB. The lazy screens at 0.11: Today 69.3, Places
+put Today over its 80 kB. The lazy screens at 0.12: Today 69.3, Places
 55.8, Posts 52.1, Intel 50.4, Meetings 49.9, Chat 49.7, Todos 50.0, Food
 48.0, Money 46.7, Meds 16.0, Accounts 11.0, Devices 10.6, TouchShell 8.8,
-Alerts 5.5, Shortcuts 2.5 (kB with what each pulls in).
+Alerts 5.5, Shortcuts 2.5 (kB with what each pulls in). On top of 0.11.0
+(Accountability partner: its place in the nav, its route and its icon in
+main, about 0.5 kB) main is 275.1 kB with 14.0 kB of CSS, Today 74.5 kB
+with her card's rows and Partner 33.9 kB, its SplitPane from main.
 
 Tests: `packages/web/test/{layout,input,viewport,split-pane,columns,drafts,keys,layout-metric}.test.ts(x)`
 and the screens' own files; end to end in
