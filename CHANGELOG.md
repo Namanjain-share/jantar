@@ -3,6 +3,19 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.12.1 (unreleased)
+
+- **An invite opens after a one-time PIN sign-in.** Signing in to
+  Cloudflare Access with a code by email brought the person you invited
+  back to the join page without the part of the link that holds the
+  invite, and the page only said "This page needs the link you were
+  sent". It now says they are signed in and to open the link once more,
+  or paste it there: the whole link or just its code shows the same page
+  to read and accept, a wrong one says so, and nothing is shared before
+  Accept and join. A sign-in through an identity provider such as Google
+  keeps the link whole, as before.
+- `jantar people invite` and the People guide say the same.
+
 ## 0.12.0 (3 November 2026)
 
 Jantar uses the whole window. On a wide Mac window and on an iPad, lists

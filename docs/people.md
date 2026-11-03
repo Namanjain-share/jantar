@@ -90,11 +90,14 @@ It needs your Mac reachable over HTTPS (`remote.mode` `cloudflare` or
    `people invite` prints a link that works once, for 24 hours: send it to
    them. Until they join, your Accountability partner screen shows them as
    invited, with the link's expiry and Copy link again.
-3. They open the link, pass Access, read the join page and accept. Then,
-   like your own pairing, their phone walks them through Add to Home Screen
-   (on iPhone, where notifications only reach the Home Screen app) and Turn
-   on notifications with a test, and their Today keeps a card until
-   notifications are on.
+3. They open the link, pass Access, read the join page and accept. With
+   the One-time PIN login, signing in drops the part of the link that
+   holds the invite: after signing in they open the link once more, or
+   paste it on the page that asks for it (an identity provider such as
+   Google keeps the link whole). Then, like your own pairing, their phone
+   walks them through Add to Home Screen (on iPhone, where notifications
+   only reach the Home Screen app) and Turn on notifications with a test,
+   and their Today keeps a card until notifications are on.
 
 "Copy link again" for an invite that hasn't been used needs an admin device
 with its device secret (other devices don't show the button; `jantar people
