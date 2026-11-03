@@ -469,8 +469,8 @@ describe('0.11 c29: the "Looking at" chip', () => {
   }
   const chip = async () => within(await screen.findByRole('complementary', { name: 'Chat panel' })).findByText('Example Café 1');
 
-  it("beside a café it names the café; Send carries its kind and id to a 0.11 daemon, and the box's words stay the user's", async () => {
-    const api = besideCafe('0.11.0');
+  it("beside a café it names the café; Send carries its kind and id to a 0.12 daemon, and the box's words stay the user's", async () => {
+    const api = besideCafe('0.12.0');
     expect((await chip()).parentElement?.textContent).toBe('Looking at: Example Café 1');
     const p = screen.getByRole('complementary', { name: 'Chat panel' });
     const area = within(p).getByRole('textbox', { name: 'A message to Chat' });
@@ -479,8 +479,8 @@ describe('0.11 c29: the "Looking at" chip', () => {
     await waitFor(() => expect(api.chatSend).toHaveBeenCalledWith('rate this 4 for vibe', [], expect.any(String), { kind: 'place', id: placeId(1) }));
   });
 
-  it("an older daemon gets the chip's words at the start of the message instead", async () => {
-    const api = besideCafe('0.10.0');
+  it("an older daemon (0.11.0's send body has no context) gets the chip's words at the start of the message instead", async () => {
+    const api = besideCafe('0.11.0');
     await chip();
     const p = screen.getByRole('complementary', { name: 'Chat panel' });
     fireEvent.change(within(p).getByRole('textbox', { name: 'A message to Chat' }), { target: { value: 'rate this 4' } });
@@ -489,7 +489,7 @@ describe('0.11 c29: the "Looking at" chip', () => {
   });
 
   it('× takes the chip off (a 44 target), and the message goes without it', async () => {
-    const api = besideCafe('0.11.0');
+    const api = besideCafe('0.12.0');
     await chip();
     const p = screen.getByRole('complementary', { name: 'Chat panel' });
     const x = within(p).getByRole('button', { name: "Don't send what you're looking at: Example Café 1" });
@@ -524,8 +524,8 @@ describe('0.11 c29: the "Looking at" chip', () => {
     expect((await within(p).findByText('Example todo 70')).parentElement?.textContent).toBe('Looking at: Example todo 70');
   });
 
-  it('a 0.11 daemon is told by its version (and a pre-release of it)', () => {
-    expect(['0.10.2', '0.0.0-test', '', undefined].map((v) => takesContext(v))).toEqual([false, false, false, false]);
-    expect(['0.11.0', '0.11.0-rc.1', '0.12.3', '1.0.0'].map((v) => takesContext(v))).toEqual([true, true, true, true]);
+  it('a 0.12 daemon is told by its version (and a pre-release of it); 0.11 is not one', () => {
+    expect(['0.10.2', '0.11.0', '0.11.4', '0.0.0-test', '', undefined].map((v) => takesContext(v))).toEqual([false, false, false, false, false, false]);
+    expect(['0.12.0', '0.12.0-rc.1', '0.13.3', '1.0.0'].map((v) => takesContext(v))).toEqual([true, true, true, true]);
   });
 });

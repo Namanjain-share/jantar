@@ -420,7 +420,7 @@ export interface Api {
   /** The thread: the newest turns (before turn `before`), oldest first, and whether Chat can run now. */
   chatList(before?: string): Promise<ChatList>;
   /** The reply is the new turn's id; its answer comes in a later chatList. */
-  /** 0.11: `context`, the "Looking at" chip's kind and id (a daemon from 0.11 on). */
+  /** 0.12: `context`, the "Looking at" chip's kind and id (a daemon from 0.12 on). */
   chatSend(text: string, photos: readonly string[], idempotencyKey?: string, context?: ChatContext): Promise<IdReply>;
   /** Delete the whole thread (what it added stays). */
   chatClear(idempotencyKey?: string): Promise<OkReply>;

@@ -17,12 +17,16 @@ export const PRIVACY =
   'Chat adds and changes things at once and shows each change with Undo; it never deletes without your tap, and never types into a session. ' +
   'History stays on the Mac.';
 
-/** 0.11: a daemon from 0.11 on takes the "Looking at" chip as `context`; an older one gets its words at the start of the message. */
+/**
+ * 0.12: a daemon from 0.12 on takes the "Looking at" chip as `context`; an older one gets its words at the
+ * start of the message. 0.11.0 (Accountability partner) has no `context`, and its send body is strict: it
+ * would refuse the message.
+ */
 export function takesContext(daemonVersion: string | undefined | null): boolean {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(daemonVersion ?? '');
   if (!m) return false;
   const [a, b] = [Number(m[1]), Number(m[2])];
-  return a > 0 || b >= 11;
+  return a > 0 || b >= 12;
 }
 
 /** The chip's words, as an older daemon gets them at the start of the message. */
