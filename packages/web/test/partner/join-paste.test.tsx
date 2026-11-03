@@ -1,6 +1,6 @@
 /**
  * 0.12.1: the join page without its code. Signing in to Access with the
- * one-time PIN brings her to /p/join without the `#c=`; the page says she is
+ * One-time PIN brings her to /p/join without the `#c=`; the page says she is
  * signed in and to open the link once more, or paste it. A pasted link loads
  * the same preview, junk says so, and nothing joins before Accept and join.
  *
@@ -45,7 +45,7 @@ const openAgain = async (hash: string, event: 'hashchange' | 'popstate' = 'hashc
   });
 };
 
-describe('/p/join without its code (after a one-time PIN sign-in)', () => {
+describe('/p/join without its code (after a One-time PIN sign-in)', () => {
   beforeEach(() => history.replaceState(null, '', '/p/join'));
 
   it('says she is signed in and to open the link once more, or paste it; nothing is asked of the daemon yet', async () => {

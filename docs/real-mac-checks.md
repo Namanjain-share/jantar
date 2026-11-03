@@ -433,9 +433,16 @@ agents never drive it.
 
 On real devices, with a second hostname behind its own Access app:
 
-- Access's emailed code on an iPhone, then the join page and Accept; Add to
-  Home Screen; the Access session expiring inside the Home Screen app, and
-  the code round trip from there.
+- Access's One-time PIN (a code by email) on an iPhone: after signing in,
+  the page asks to open the link again or paste it. Open the link again
+  (from Mail, and once pasted into the same tab's address bar), and with a
+  second invite paste it instead; then the join page and Accept. A reload
+  during Add to Home Screen comes back to that step. Add to Home Screen;
+  the Access session expiring inside the Home Screen app, and the code
+  round trip from there.
+- The same One-time PIN sign-in on Android Chrome, opening the link again
+  from the mail app (Chrome reuses the tab): the join page, not the paste
+  page. An invite link from Outlook (its Safe Links wrapper) pasted whole.
 - Linking the Home Screen app with a code from Safari (Me › Devices).
 - Turn on notifications; a test push at each lock-screen level.
 - Leave revoking within a second; Leave while `jantar people off`.

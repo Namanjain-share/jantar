@@ -12,7 +12,7 @@
  * notifications with a test push, then Today. Plan pushes, step rings and
  * alerts can't reach her phone before that.
  *
- * 0.12.1: /p/join without its code. Signing in to Access with the one-time
+ * 0.12.1: /p/join without its code. Signing in to Access with the One-time
  * PIN brings her back here without the `#c=` (an identity provider that
  * carries state, like Google, keeps the link whole), so the page says to
  * open the link once more, or paste it. A pasted link shows the same

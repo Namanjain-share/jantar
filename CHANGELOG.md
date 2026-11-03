@@ -5,16 +5,29 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## 0.12.1 (unreleased)
 
-- **An invite opens after a one-time PIN sign-in.** Signing in to
+- **An invite opens after a One-time PIN sign-in.** Signing in to
   Cloudflare Access with a code by email brought the person you invited
   back to the join page without the part of the link that holds the
   invite, and the page only said "This page needs the link you were
   sent". It now says they are signed in and to open the link once more,
-  or paste it there: the whole link or just its code shows the same page
-  to read and accept, a wrong one says so, and nothing is shared before
-  Accept and join. A sign-in through an identity provider such as Google
-  keeps the link whole, as before.
-- `jantar people invite` and the People guide say the same.
+  or paste it there: the whole link, one a mail app wrapped or encoded
+  (Outlook's Safe Links), or just its code shows the same page to read
+  and accept, a wrong one says so, and nothing is shared before Accept
+  and join. Opening the link again in the same tab works too. A sign-in
+  through an identity provider such as Google keeps the link whole, as
+  before.
+- **A reload after joining doesn't ask for the link again.** A phone that
+  has joined and comes back to the join page (a reload during Add to Home
+  Screen or Turn on notifications, a tab Safari dropped) goes on to their
+  Today, or back to the step it was on.
+- In their app, fields are 16 px, so an iPhone no longer zooms in when one
+  takes focus. The paste field's error is tied to it for a screen reader
+  and said again when it repeats, and the page says "Loading…" while the
+  link loads. The link-code page (`/p/link`) takes the whole link as well
+  as its code.
+- `jantar people invite`, your People list and the People guide say that
+  with the One-time PIN they open the link once more after signing in, or
+  paste it.
 
 ## 0.12.0 (3 November 2026)
 

@@ -234,9 +234,9 @@ Below, `jantar.example.com` stands for your own hostname.
 
 3. In Cloudflare Zero Trust, under Access > Applications, add a self-hosted
    application for `jantar.example.com` with a policy that allows only your
-   own e-mail address (a one-time PIN, or your identity provider). Give it a
-   long session duration, so the Home Screen app is not signed out every
-   day.
+   own e-mail address (the One-time PIN login, or your identity provider).
+   Give it a long session duration, so the Home Screen app is not signed
+   out every day.
 4. Run the tunnel (`cloudflared tunnel run jantar`, or
    `cloudflared service install` to keep it running), then:
 
