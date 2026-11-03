@@ -12,11 +12,12 @@
  * - A meeting: its clients, Unlink, Link a suggestion, and a client made
  *   from one of its names (the meeting's words), while Work is on only.
  */
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MeetingDetail, Today } from '@jantar/protocol';
 import { meetingDetail } from '@jantar/fixtures';
 import { workLines } from '../../src/ui/screens/life/today/Today.js';
+import { ApiError } from '../../src/lib/api.js';
 import { fakeApi, preloadPlaces, renderApp, stateWith } from '../helpers.js';
 import { CLIENTS, IDS, WORK_ON, clientRows, lifeStatus, todo, workRequest } from '../work-helpers.js';
 
@@ -171,6 +172,42 @@ describe("a meeting's clients", () => {
     await waitFor(() => expect((pick as HTMLSelectElement).options.length).toBeGreaterThan(1));
     fireEvent.change(pick, { target: { value: IDS.northwindCo } });
     await waitFor(() => expect(calls(api, 'PUT', '/v1/work/meetings/:meetingId/clients').at(-1)).toMatchObject({ body: { clientIds: [IDS.client, IDS.northwindCo] } }));
+  });
+
+  it('a retry keeps its key only for the same set: after the list changed, the same Link sends a new one', async () => {
+    let reads = 0;
+    let fail = true;
+    const api = fakeApi({
+      lifeStatus: vi.fn(async () => WORK_ON()),
+      meetingGet: vi.fn(async (): Promise<MeetingDetail> => D),
+      meetingsList: vi.fn(async () => ({ meetings: [D.meeting], next: null, running: null })),
+      projectsList: vi.fn(async () => ({ projects: [] })),
+      request: workRequest({
+        // The second read: Northwind was linked meanwhile (on another device; this one hears of it by lifeTick).
+        'GET /v1/work/meetings/:meetingId/suggest': () => ({
+          linked: reads++ === 0 ? [{ id: IDS.client, name: 'Acme', auto: true }] : [{ id: IDS.client, name: 'Acme', auto: true }, { id: IDS.northwindCo, name: 'Northwind' }],
+          people: [
+            { index: 0, text: 'Pat E.', match: { id: IDS.pat, name: 'Pat Example' } },
+            { index: 1, text: 'Jordan Placeholder' },
+          ],
+        }),
+        'PUT /v1/work/meetings/:meetingId/clients': () => (fail ? new ApiError('network', 'Failed to fetch', 0) : { ok: true }),
+      }),
+    });
+    const { store } = renderApp({ path: `/meetings?id=${MID}`, api, state: stateWith({ features: { life: true, meetings: true } }) });
+    const clients = await screen.findByRole('region', { name: 'Clients' });
+    fireEvent.click(await within(clients).findByRole('button', { name: 'Link Pat Example' }));
+    await waitFor(() => expect(calls(api, 'PUT', '/v1/work/meetings/:meetingId/clients')).toHaveLength(1));
+    act(() => store.setState((s) => ({ state: { ...s.state, lifeTick: (s.state.lifeTick ?? 0) + 1 } })));
+    await within(clients).findByRole('link', { name: /Northwind/ });
+    fail = false;
+    fireEvent.click(within(clients).getByRole('button', { name: 'Link Pat Example' }));
+    await waitFor(() => expect(calls(api, 'PUT', '/v1/work/meetings/:meetingId/clients')).toHaveLength(2));
+    const [first, second] = calls(api, 'PUT', '/v1/work/meetings/:meetingId/clients');
+    expect(first).toMatchObject({ body: { clientIds: [IDS.client, IDS.pat] } });
+    expect(second).toMatchObject({ body: { clientIds: [IDS.client, IDS.northwindCo, IDS.pat] } });
+    expect(second!.idempotencyKey).toBeTruthy();
+    expect(second!.idempotencyKey).not.toBe(first!.idempotencyKey);
   });
 
   it('Work off: no Clients field, nothing of Work asked', async () => {

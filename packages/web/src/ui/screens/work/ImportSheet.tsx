@@ -97,7 +97,9 @@ function ImportFlow({ onDone, onImported }: { onDone: () => void; onImported: ()
   const preview = async (text: string, format: 'csv' | 'vcf', mapping?: WorkImportField[]) => {
     setProblem(null);
     const body = { format, text, ...(mapping ? { mapping } : {}) };
-    const r = await w.run(`preview:${format}:${text.length}:${mapping?.join() ?? ''}`, (key) => client.importPreview(body, key));
+    // The key's signature holds the words themselves: another file of the same length is another body, and a
+    // retry after a failure must not send it under the old key (the daemon refuses that with 409).
+    const r = await w.run(`preview:${format}:${mapping?.join() ?? ''}:${text}`, (key) => client.importPreview(body, key));
     if (!r.ok) return;
     setActions(new Map(r.value.rows.map((row) => [row.index, row.action])));
     setStep({ at: 'preview', preview: r.value, text, changed: Boolean(mapping) });

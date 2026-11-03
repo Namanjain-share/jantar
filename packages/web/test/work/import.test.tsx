@@ -135,6 +135,23 @@ describe('import clients', () => {
     await waitFor(() => expect(calls(api, 'POST', '/v1/work/import/preview')[1]?.body).toEqual({ format: 'csv', text: 'name\nInitech\n' }));
   });
 
+  it('a retry after a failed preview keeps its key only for the same words: another file of the same length gets a new one', async () => {
+    let fail = true;
+    const { api } = setup({ 'POST /v1/work/import/preview': () => (fail ? new ApiError('network', 'Failed to fetch', 0) : preview()) });
+    const sheet = await openImport();
+    choose(sheet, new File(['name\nAcme\n'], 'a.csv'));
+    await waitFor(() => expect(calls(api, 'POST', '/v1/work/import/preview')).toHaveLength(1));
+    choose(sheet, new File(['name\nAcme\n'], 'a.csv'));
+    await waitFor(() => expect(calls(api, 'POST', '/v1/work/import/preview')).toHaveLength(2));
+    fail = false;
+    choose(sheet, new File(['name\nInit\n'], 'b.csv'));
+    await waitFor(() => expect(calls(api, 'POST', '/v1/work/import/preview')).toHaveLength(3));
+    const keys = calls(api, 'POST', '/v1/work/import/preview').map((c) => c?.idempotencyKey);
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+
   it('an expired preview says so; the newest imports are listed with Undo for 7 days', async () => {
     setup({
       'POST /v1/work/import/preview': preview(),

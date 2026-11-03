@@ -43,8 +43,11 @@ export function MeetingClients({ meetingId }: { meetingId: string }) {
   const [picking, setPicking] = useState(false);
   const pick = useLifeLoad(picking ? 'work:clients:pick' : null, () => w.clients({ sort: 'name' }));
 
-  const set = async (ids: string[], sig: string) => {
-    const r = await write.run(sig, (key) => w.meetingClients(meetingId, { clientIds: ids.slice(0, MEETING_CLIENTS_MAX) }, key));
+  // The key's signature is the whole set sent: a retry after a failure reuses the key only for the same body
+  // (the daemon refuses one key with two bodies, 409, until the sheet reopens).
+  const set = async (ids: string[]) => {
+    const body = { clientIds: ids.slice(0, MEETING_CLIENTS_MAX) };
+    const r = await write.run(`set:${body.clientIds.join()}`, (key) => w.meetingClients(meetingId, body, key));
     if (r.ok) load.reload();
     return r.ok;
   };
@@ -61,7 +64,7 @@ export function MeetingClients({ meetingId }: { meetingId: string }) {
           const linked = d.linked.map((c) => c.id);
           const full = linked.length >= MEETING_CLIENTS_MAX;
           const busy = offline || write.busy;
-          const link = (cid: string) => void set([...linked, cid], `link:${cid}`);
+          const link = (cid: string) => void set([...linked, cid]);
           const people = d.people.filter((p) => !p.match || !linked.includes(p.match.id));
           const auto = d.auto && !linked.includes(d.auto.id) ? d.auto : null;
           const others = (pick.data?.clients ?? []).filter((c) => !linked.includes(c.id));
@@ -76,7 +79,7 @@ export function MeetingClients({ meetingId }: { meetingId: string }) {
                       {c.auto ? <span className="flex-none type-mono text-ink-3">through its project</span> : null}
                       <CaretRightIcon size={12} aria-hidden="true" className="flex-none text-ink-3" />
                     </Link>
-                    <IconButton aria-label={`Unlink ${c.name}`} disabled={busy} onClick={() => void set(linked.filter((x) => x !== c.id), `unlink:${c.id}`)}>
+                    <IconButton aria-label={`Unlink ${c.name}`} disabled={busy} onClick={() => void set(linked.filter((x) => x !== c.id))}>
                       <XIcon size={16} aria-hidden="true" />
                     </IconButton>
                   </li>
