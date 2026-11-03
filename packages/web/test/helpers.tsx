@@ -54,6 +54,7 @@ const LAZY_PLACES = {
   meetingClients: () => import('../src/ui/screens/work/MeetingClients.js'),
   // Deals, and its stage editor and the Log sheet it opens.
   deals: () => Promise.all([import('../src/ui/screens/work/Deals.js'), import('../src/ui/screens/work/StagesSheet.js'), import('../src/ui/screens/work/LogSheet.js')]),
+  insights: () => import('../src/ui/screens/work/Insights.js'),
 };
 
 /**

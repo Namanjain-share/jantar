@@ -21,8 +21,8 @@
  * sheets, import and merge: Clients.tsx) and Deals (the pipeline, a deal's
  * hub, moves, Won and Lost, the stages: Deals.tsx), each a chunk of its own
  * that loads on the first visit, so a phone opening Projects never fetches
- * them. Insights, inside Deals, comes with its screen; until then its
- * address opens the projects.
+ * them. Insights, inside Deals (`?tab=insights`, "‹ Deals"), is one more
+ * (Insights.tsx).
  */
 import { lazy, Suspense, type ReactNode } from 'react';
 import { pairedWithControl } from '../../shell/lifeStatus.js';
@@ -37,6 +37,7 @@ import { WorkTabs } from './WorkTabs.js';
 // Work's first load stays the projects'.
 const Clients = lazy(() => import('./Clients.js').then((m) => ({ default: m.Clients })));
 const Deals = lazy(() => import('./Deals.js').then((m) => ({ default: m.Deals })));
+const Insights = lazy(() => import('./Insights.js').then((m) => ({ default: m.Insights })));
 
 /** The daemon's own sentence for Work switched off (FEATURE_OFF.work), said before any call is refused. */
 export const WORK_OFF = 'Work is off. Turn it on at your Mac: jantar work on';
@@ -62,7 +63,12 @@ export function Work({ route }: WorkProps) {
           <Deals route={route} tabs={<WorkTabs tab="deals" />} />
         </Suspense>
       );
-    // Insights' address opens the projects for now (no project is open).
+    if (tab === 'insights')
+      return (
+        <Suspense fallback={<Page title="Insights"><LifeLoading caption="Opening Insights…" /></Page>}>
+          <Insights />
+        </Suspense>
+      );
     return <Projects id={!tab || tab === 'projects' ? id : undefined} />;
   }
   let body: ReactNode;

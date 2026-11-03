@@ -8,7 +8,7 @@
  * insights' periods and their words for no data ("—", never 0 %), and the
  * plans the stage and milestone editors send.
  */
-import type { WorkDealCard, WorkLostCode, WorkStageColumn, WorkStageKind, WorkSum } from '@jantar/protocol/work';
+import type { WorkDealCard, WorkInsightsBook, WorkLostCode, WorkStageColumn, WorkStageKind, WorkSum } from '@jantar/protocol/work';
 import { formatAmount } from '../../../lib/money.js';
 import { routePath, type WorkDealsShow } from '../../../lib/router.js';
 import { dayLabel } from '../life/shared/DayNav.js';
@@ -193,6 +193,34 @@ export function daysText(days: number | null | undefined): string {
 /** An amount in a book's currency. */
 export function money(amount: number, currency: string | null): string {
   return formatAmount(amount, currency);
+}
+
+/** "17 Oct 2025 – 15 Jan 2026" for the period's days (in the Life zone, by `dayOf`), or "All time". */
+export function rangeText(period: { preset: string; from: string; to: string }, dayOf: (iso: string) => string): string {
+  if (period.preset === 'all') return 'All time';
+  const say = (iso: string) => new Date(`${dayOf(iso)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return `${say(period.from)} – ${say(period.to)}`;
+}
+
+/** A card's name: "Win rate", or "Win rate · USD" once there are books in two currencies or more. */
+export function bookLabel(label: string, currency: string | null, books: number): string {
+  return books > 1 ? `${label} · ${currency ?? 'no currency'}` : label;
+}
+
+/** Whether a period has anything to read: a deal closed, open, or started in it, in any currency. */
+export function anyDeals(books: readonly Pick<WorkInsightsBook, 'winRate' | 'open' | 'sources'>[]): boolean {
+  return books.some((b) => b.winRate.closed > 0 || b.open.count > 0 || b.sources.length > 0);
+}
+
+/** "2 won · 1 lost of 3 closed", or "Nothing closed" (W36: the rate is then "—"). */
+export function closedLine(w: WorkInsightsBook['winRate']): string {
+  if (w.closed === 0) return 'Nothing closed';
+  return `${w.won} won · ${w.lost} lost of ${w.closed} closed`;
+}
+
+/** "1 deal", "3 deals". */
+export function dealsText(n: number): string {
+  return plural(n, 'deal', 'deals');
 }
 
 // ---------------------------------------------------------------------------
