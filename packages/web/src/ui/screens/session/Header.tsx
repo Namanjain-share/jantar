@@ -16,6 +16,7 @@ import { GLYPH_WORD, type GlyphState } from '../../kit/glyph.js';
 import { IconButton } from '../../kit/IconButton.js';
 import { StatusGlyph } from '../../kit/StatusGlyph.js';
 import { ChatButton } from '../../shell/ChatButton.js';
+import { useLayout } from '../../shell/layout.js';
 
 export type View = SessionView;
 
@@ -119,6 +120,7 @@ export function Header(props: HeaderProps) {
   const { sid, folder, name, glyph, dashed, phone, view, onView, step, onStep, onShowOnMac, showOnMacBusy, canShowOnMac, showOn, onBack, back, files, onSessions, sessionsOpen } = props;
   const word = GLYPH_WORD[glyph];
   const showLabel = `Show on ${showOn ?? 'Mac'}`;
+  const { coarse } = useLayout();
   if (phone) {
     return (
       <header className="flex h-52 flex-none items-center pl-4 pr-8">
@@ -145,7 +147,9 @@ export function Header(props: HeaderProps) {
   }
   return (
     // c32: under a 640 pane (a session beside the ledger and the iPad's sidebar at 1024) the name and the steppers
-    // step aside and the folder may truncate, so the header never pushes the pane sideways.
+    // step aside and the folder may truncate, so the header never pushes the pane sideways. The buttons never
+    // shrink: the session's name truncates first, then the folder. On a touch screen (44 pt tabs and buttons, and
+    // the Chat button) the steppers wait for a 900 pane, so an iPad's portrait and Split View fit.
     <header className={clsx('flex h-pane flex-none items-center border-b border-line pr-16', back ? 'pl-16' : 'pl-16 @md:pl-32')}>
       {back && onSessions ? (
         <Button variant="text" className="-ml-8 mr-4 flex-none gap-2 px-8" aria-expanded={Boolean(sessionsOpen)} onClick={onSessions}>
@@ -158,12 +162,14 @@ export function Header(props: HeaderProps) {
         </IconButton>
       ) : null}
       <StatusGlyph state={glyph} dashed={dashed} label={word} className="mr-8" />
-      <h1 className="min-w-0 truncate type-title text-ink @md:flex-none @md:overflow-visible">{folder}</h1>
-      <p className="ml-8 hidden min-w-0 truncate text-title font-regular text-ink-2 @md:block">{name}</p>
-      <span className="min-w-16 flex-1" />
+      {/* What the buttons leave: the folder whole while it fits, the name in the rest. */}
+      <div className="mr-16 flex min-w-0 flex-1 items-center">
+        <h1 className="min-w-0 truncate type-title text-ink">{folder}</h1>
+        <p className="ml-8 hidden min-w-0 flex-1 truncate text-title font-regular text-ink-2 @md:block">{name}</p>
+      </div>
       <Tabs sid={sid} view={view} onView={onView} phone={false} files={files} />
       {step ? (
-        <span className="ml-16 hidden flex-none items-center gap-2 text-ink-3 @md:flex">
+        <span className={clsx('ml-16 hidden flex-none items-center gap-2 text-ink-3', coarse ? '@wide:flex' : '@md:flex')}>
           <span className="mr-6 type-mono" aria-label={`Session ${step.at} of ${step.of}`}>
             {step.at} / {step.of}
           </span>
@@ -177,7 +183,8 @@ export function Header(props: HeaderProps) {
       ) : null}
       {showOn === null ? null : (
         // 0.11: an icon where the session's pane is under 640 (its name stays), so the header fits beside a 340 ledger.
-        <Button className="ml-12 coarse:min-w-44" aria-label={showLabel} onClick={onShowOnMac} disabled={showOnMacBusy || !canShowOnMac}>
+        // Never shrunk below its label (flex-none): the folder's name truncates instead.
+        <Button className="ml-12 flex-none coarse:min-w-44" aria-label={showLabel} onClick={onShowOnMac} disabled={showOnMacBusy || !canShowOnMac}>
           <MonitorIcon size={16} aria-hidden="true" className="@md:hidden" />
           <span className="hidden @md:inline">{showLabel}</span>
         </Button>

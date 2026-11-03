@@ -66,7 +66,7 @@ import {
   type LaunchStartBody,
 } from '@jantar/protocol';
 import { errorText, isApiError } from '../../../lib/api.js';
-import { clearDraft, useDraft } from '../../../lib/drafts.js';
+import { clearDraft, getAside, setAside, useDraft } from '../../../lib/drafts.js';
 import { accountId } from '../../../lib/format.js';
 import { newIdempotencyKey } from '../../../lib/ids.js';
 import { useApp, useDeps, useNow } from '../../context.js';
@@ -129,7 +129,30 @@ export interface StartFormProps {
   onStarted: (job: LaunchJob) => void;
 }
 
+/**
+ * What the form holds beside its first prompt (0.11), kept with the prompt's draft (`new:<root>:<path>`,
+ * memory only): where the form shows changes with the pane's width (beside the folders from 800, the sheet
+ * below), so a rotation, a Split View drag or a window crossing 800 builds it again there, and it starts as it
+ * was. `from` is how it was opened (its account, Try again's Name and launch): another opening of the folder (a
+ * Board row's "New session here" on another account, Try again) starts from its own values instead.
+ */
+interface StartKept {
+  from: string;
+  account: AccountChoice;
+  picks: Partial<LaunchFlags>;
+  name: string;
+  resumeMode: ResumeMode;
+  picked: string | null;
+}
+
 export function StartForm({ root, path, entry, initialAccount = 'auto', initialName = '', initialPrompt = '', retryOf, phone, aside, onStarted }: StartFormProps) {
+  // 0.11: the first prompt is this folder's draft (lib/drafts.ts), cleared once a start is accepted; without one, Try again's prompt.
+  const promptKey = `new:${root}:${path}`;
+  const from = `${initialAccount}\n${initialName}\n${retryOf ?? ''}`;
+  const [kept] = useState(() => {
+    const k = getAside<StartKept>(promptKey);
+    return k?.from === from ? k : undefined;
+  });
   const { api } = useDeps();
   const offline = useApp((s) => s.conn.status === 'offline');
   const where = useWhere();
@@ -141,21 +164,23 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
   const on = where ? ` on ${where.name}` : '';
   const now = useNow(60_000);
   const ids = useId();
-  const [accountPick, setAccount] = useState<AccountChoice>(initialAccount);
+  const [accountPick, setAccount] = useState<AccountChoice>(kept?.account ?? initialAccount);
   // One login: Auto is it, whatever the URL asked for (there is no Account row to change it).
   const account: AccountChoice = single ? 'auto' : accountPick;
   const [heldOk, setHeldOk] = useState(false);
-  const [picks, setPicks] = useState<Partial<LaunchFlags>>({});
-  const [name, setName] = useState(initialName);
-  // 0.11: the first prompt is this folder's draft (lib/drafts.ts), cleared once a start is accepted; without one, Try again's prompt.
-  const promptKey = `new:${root}:${path}`;
+  const [picks, setPicks] = useState<Partial<LaunchFlags>>(kept?.picks ?? {});
+  const [name, setName] = useState(kept?.name ?? initialName);
   const [prompt, setPrompt] = useDraft(promptKey, initialPrompt);
   const [picking, setPicking] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<unknown>(null);
   const [auto, setAuto] = useState<AutoPick | null>(null);
-  const [resumeMode, setResumeMode] = useState<ResumeMode>('off');
-  const [picked, setPicked] = useState<string | null>(null);
+  const [resumeMode, setResumeMode] = useState<ResumeMode>(kept?.resumeMode ?? 'off');
+  const [picked, setPicked] = useState<string | null>(kept?.picked ?? null);
+  // Kept as it changes (a start that is accepted clears it with the prompt).
+  useEffect(() => {
+    setAside(promptKey, { from, account: accountPick, picks, name, resumeMode, picked } satisfies StartKept);
+  }, [promptKey, from, accountPick, picks, name, resumeMode, picked]);
   const [pickingPast, setPickingPast] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const resumeRow = useRef<HTMLDivElement>(null);

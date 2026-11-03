@@ -5,7 +5,9 @@
  *
  *   s:<sid>            a session's prompt (session/sends.ts) and its chips
  *   chat               Chat's box and its photo chips
- *   new:<root>:<path>  New session's first prompt
+ *   new:<root>:<path>  New session's first prompt, and aside its Name,
+ *                      account and picks (the form is built again when it
+ *                      moves between the pane and the sheet)
  *   post:<id>:comment  a post's comment (c21)
  *
  * The text is mirrored to sessionStorage, a per-viewer convenience: it can

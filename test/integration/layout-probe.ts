@@ -37,6 +37,12 @@
  *   when there is one), how many are under 12 px and under 11 px, and the
  *   smallest size seen.
  * - keycaps (c33, 6.2 #8, A4): the keycaps on screen.
+ * - spill: the controls whose own label, as drawn, runs past their box (a
+ *   button a flex row shrank below its label, its words over its outline).
+ *   A label cut by its control or a box inside it (truncated, scrolled) is
+ *   not: only what shows counts.
+ * - crowded: the headers whose controls run past their right padding (a
+ *   header too full for its pane: the last buttons cut off or pushed out).
  */
 import type { Named, Rect } from '../../packages/web/test/layout-metric.js';
 
@@ -56,6 +62,8 @@ export interface Probe {
   scrollers: string[];
   type: { chars: number; under12: number; under11: number; smallest: string; small: string[] };
   keycaps: number;
+  spill: string[];
+  crowded: string[];
 }
 
 export function probeLayout(): Probe {
@@ -98,7 +106,7 @@ export function probeLayout(): Probe {
   const visible = (el: Element) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
 
   const main = document.querySelector('main#main');
-  const out: Probe = { vw, vh, chrome: document.querySelector('[data-chrome]')?.getAttribute('data-chrome') ?? null, region: null, boxes: [], sideways: [], targets: [], whole: [], fixed: [], exempt: null, selected: null, scrollers: [], type: { chars: 0, under12: 0, under11: 0, smallest: '', small: [] }, keycaps: 0 };
+  const out: Probe = { vw, vh, chrome: document.querySelector('[data-chrome]')?.getAttribute('data-chrome') ?? null, region: null, boxes: [], sideways: [], targets: [], whole: [], fixed: [], exempt: null, selected: null, scrollers: [], type: { chars: 0, under12: 0, under11: 0, smallest: '', small: [] }, keycaps: 0, spill: [], crowded: [] };
   const dock = document.querySelector('aside[data-chat-dock]');
   if (main) {
     const m = boxOf(main.getBoundingClientRect());
@@ -205,6 +213,56 @@ export function probeLayout(): Probe {
   }
   // Keycap hints, not the ? list's keys (shell/Shortcuts.tsx, [data-keys-list]), which are the list itself.
   out.keycaps = [...document.querySelectorAll('kbd')].filter((k) => !k.closest('[data-keys-list]') && visible(k) && k.getBoundingClientRect().width > 0).length;
+
+  // Labels spilling out of their control: its text as drawn (cut by every box that clips it, the text's own
+  // element included) reaching more than 2 px past either side of the control's box.
+  {
+    const range = document.createRange();
+    for (const el of document.querySelectorAll('button, a[href], [role=button], [role=tab], [role=radio]')) {
+      if (!visible(el)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      let left = Infinity;
+      let right = -Infinity;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const t = walker.currentNode as Text;
+        const p = t.parentElement;
+        if (!p || !(t.textContent ?? '').trim() || !visible(p)) continue;
+        const own = style(p);
+        const c = own.overflowX !== 'visible' || own.overflowY !== 'visible' ? cut(clipOf(p), boxOf(p.getBoundingClientRect())) : clipOf(p);
+        range.selectNodeContents(t);
+        for (const tr of range.getClientRects()) {
+          const x = cut(c, boxOf(tr));
+          if (x.r - x.l <= 0 || x.b - x.t <= 0) continue;
+          left = Math.min(left, x.l);
+          right = Math.max(right, x.r);
+        }
+      }
+      if (left === Infinity) continue;
+      const over = Math.max(r.left - left, right - r.right);
+      if (over > 2) out.spill.push(`${(el.getAttribute('aria-label') ?? (el as HTMLElement).innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 30) || describe(el)}: its label is ${Math.round(right - left)} px in a ${Math.round(r.width)} px box (${Math.round(over)} px over)`);
+    }
+  }
+
+  // Headers too full for their pane: a child (a button, the tabs) reaching past the header's right padding.
+  for (const h of document.querySelectorAll('header')) {
+    if (!visible(h)) continue;
+    const hr = h.getBoundingClientRect();
+    if (hr.width < 2) continue;
+    const edge = hr.right - parseFloat(style(h).paddingRight || '0');
+    let right = -Infinity;
+    let last = '';
+    for (const c of h.children) {
+      const r = c.getBoundingClientRect();
+      if (r.width === 0 || !visible(c)) continue;
+      if (r.right > right) {
+        right = r.right;
+        last = describe(c);
+      }
+    }
+    if (right > edge + 1) out.crowded.push(`${describe(h)} ${Math.round(hr.width)} px: ${last} ends ${Math.round(right - edge)} px past it`);
+  }
 
   // Nested scrollers too short to scroll with a finger (A6): a box on screen that scrolls up and down, under 120 px tall.
   for (const el of document.querySelectorAll('body *')) {

@@ -628,9 +628,14 @@ into columns. `kit/Pane.tsx` is every other place's keyed scroll box;
 (the place is always slot 4, and the session is one tree for the phone
 and the desk), and `lib/drafts.ts` keeps a session's, Chat's and a new
 session's draft and chips across remounts and reloads, so a rotation or a
-window drag loses nothing. Form sheets are the phone's Base UI Drawer,
-placed top-anchored and 540 wide by CSS (D9), so a resize across 640 / 768
-keeps the form's own fields.
+window drag loses nothing. New session's start form moves between the
+detail pane and a sheet at 800, so it is built again: its Name, account and
+picks are kept aside with its draft (in memory) and read back. Form sheets
+are the phone's Base UI Drawer, placed top-anchored and 540 wide by CSS
+(D9), so a resize across 640 / 768 keeps the form's own fields. Both
+presentations are capped at the visual viewport (`--vvh`): with the
+on-screen keyboard up a sheet scrolls, and the focused field is scrolled
+into view in it.
 
 **Keys** (`ui/shell/keys.ts`, `ui/kit/rows.ts`, `ui/shell/Shortcuts.tsx`):
 keys at every width once `keyboard` is on, keycaps only then; the field
@@ -668,5 +673,6 @@ and the screens' own files; end to end in
 the iPad and Mac sizes, fine and touch, light and dark: no sideways
 scroll, 44 pt on touch, the 35 % empty-width rule from 1024 px, the safe
 areas and the corners, nested scrollers, type, keycaps, rotation by DOM
-identity, the on-screen keyboard and hover), with its probe in
+identity, the on-screen keyboard and hover, labels that run out of their
+controls and headers too full for their pane), with its probe in
 `layout-probe.ts`.

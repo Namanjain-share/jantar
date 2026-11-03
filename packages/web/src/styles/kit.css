@@ -308,8 +308,10 @@
       position: absolute;
     }
   }
+  /* Never taller than the shell it sits in (the visual viewport, lib/viewport.ts): with the on-screen keyboard
+     up it scrolls, and the focused field is scrolled into view, instead of its top going above the screen. */
   .sheet-popup {
-    max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px));
+    max-height: calc(var(--vvh, 100dvh) - 48px - env(safe-area-inset-top, 0px));
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);

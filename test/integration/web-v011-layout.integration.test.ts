@@ -47,6 +47,11 @@
  *      Today, Chat (its empty thread too), Alerts (an alert open too) and
  *      Intel are measured, never exempt; and wherever an item is open beside
  *      its list, the list shows the item's row.
+ *  13. No control's label runs out of it (the review's Show on Mac at 820 and
+ *      795, a button shrunk to 44 under an 84 px label), and no header is too
+ *      full for its pane (its last buttons cut off): every size. A session
+ *      is measured with Chat on too (session-chat), whose button the iPad's
+ *      pane header carries.
  *
  * Tier A sizes in light run by default; JANTAR_LAYOUT_FULL=1 adds tier B and
  * dark. On a failure the page's PNG goes to the OS temp folder, named in the
@@ -164,6 +169,8 @@ export const STATES: readonly State[] = [
   { name: 'more', path: '/more' },
   { name: 'chat', path: '/chat', variant: 'chat' },
   { name: 'chat-empty', path: '/chat', variant: 'chat', chatEmpty: true },
+  // A session with Chat on: the iPad's pane header carries the Chat button too.
+  { name: 'session-chat', path: `/s/${sidOf(4)}`, variant: 'chat' },
   { name: 'posts', path: '/posts', variant: 'posts' },
   { name: 'post', path: `/posts?id=${lid(1201)}`, variant: 'posts' },
   { name: 'intel-item', path: `/intel?item=${encodeURIComponent(READ_IDS.dal)}`, variant: 'intel-read' },
@@ -401,6 +408,9 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
                 const corner = p.fixed.filter((t) => t.x + t.w > p.vw - 24 && t.y + t.h > p.vh - 24);
                 if (corner.length) problems.push(`${at}: in the resize corner: ${corner.map((t) => `${t.name} (${t.x},${t.y} ${t.w}x${t.h})`).join('; ')} (${await shot()})`);
               }
+              // 13. No label spilling out of its control.
+              if (p.spill.length) problems.push(`${at}: a label runs out of its control: ${p.spill.join('; ')} (${await shot()})`);
+              if (p.crowded.length) problems.push(`${at}: a header too full for its pane: ${p.crowded.join('; ')} (${await shot()})`);
               // 6. No nested scroller under 120 px (A6).
               if (p.scrollers.length) problems.push(`${at}: a scroller under 120 px: ${p.scrollers.join('; ')} (${await shot()})`);
               // 5. Type on a touch screen (A5): 90 % at 12 px or more, none under 11.
@@ -590,6 +600,98 @@ describe.skipIf(!ready)('0.11 c33: rotation, the on-screen keyboard, hover and k
         await there();
         expect(await page.getByRole('textbox', { name: 'A message to Chat' }).inputValue()).toBe('what did I eat today');
         expect(consoleProblems(watch, c.name)).toEqual([]);
+      } finally {
+        await close();
+      }
+    }, perfBudgetMs(120_000));
+  }
+
+  // New session's start form is in the pane beside the folders at 1180 and the sheet over them at 820: it is built
+  // again in its new place, so this proves what it holds is read back, not the same node.
+  it("9. rotating an 11-inch iPad keeps New session's Name and picks, there and back", async () => {
+    const { page, watch, close } = await open({ width: 1180, height: 820, touch: true, insets: IPAD }, '/new?root=r.work&path=jantar&start=1');
+    const form = () => page.locator('section[aria-label="Start a session"]').first();
+    const read = () =>
+      form().evaluate((el) => ({
+        name: (el.querySelector('input[id$="-name"]') as HTMLInputElement | null)?.value ?? null,
+        picks: [...el.querySelectorAll('[role="radiogroup"]')].slice(0, 4).map((g) => g.querySelector('[role="radio"][aria-checked="true"]')?.textContent ?? null),
+      }));
+    try {
+      await form().getByRole('textbox', { name: 'Name' }).fill('my-named-session');
+      await form().getByRole('radiogroup', { name: 'Effort' }).getByRole('radio', { name: 'high', exact: true }).click();
+      await form().getByRole('radiogroup', { name: 'Permissions' }).getByRole('radio', { name: 'Plan', exact: true }).click();
+      await form().getByRole('textbox', { name: 'First prompt (optional)' }).fill('fix the login');
+      const before = await read();
+      expect(before).toEqual({ name: 'my-named-session', picks: ['Plan', expect.any(String), 'high', expect.any(String)] });
+      await resize(page, 820, 1180);
+      expect(await page.getByRole('dialog').count(), 'portrait shows the form as a sheet').toBe(1);
+      expect(await read(), 'the sheet in portrait').toEqual(before);
+      await resize(page, 1180, 820);
+      expect(await page.getByRole('dialog').count(), 'landscape shows the form beside the folders').toBe(0);
+      expect(await read(), 'the pane in landscape again').toEqual(before);
+      expect(await form().getByRole('textbox', { name: 'First prompt (optional)' }).inputValue()).toBe('fix the login');
+      expect(consoleProblems(watch, 'new session rotation')).toEqual([]);
+    } finally {
+      await close();
+    }
+  }, perfBudgetMs(90_000));
+
+  /**
+   * 10, on the phone's bottom sheet (the phone, and an iPad's half-width Split View): with the keyboard up the
+   * sheet is no taller than what is above it, scrolls, and the focused field is brought into view: its top on
+   * screen and its first line above the keyboard.
+   */
+  for (const at of [
+    { name: 'a phone', v: { width: 390, height: 844, phone: true }, kb: 380 },
+    { name: 'half an 11-inch iPad (Split View)', v: { width: 585, height: 820, touch: true }, kb: 420 },
+  ] satisfies Array<{ name: string; v: Viewport; kb: number }>) {
+    it(`10. a bottom sheet on ${at.name} keeps every field it focuses above the keyboard`, async () => {
+      const H = at.v.height;
+      const { page, close } = await open(at.v, '/todos', true);
+      const vv = (height: number) =>
+        page.evaluate((h) => {
+          const v = (window as unknown as { __vv: EventTarget & Record<string, number> }).__vv;
+          v.height = h;
+          v.dispatchEvent(new Event('resize'));
+        }, height);
+      const hidden: string[] = [];
+      /** Every text field of the open sheet, one at a time: focus it, raise the keyboard, read where it is, put both away. */
+      const each = async (sheetName: string) => {
+        const sheet = page.getByRole('dialog').first();
+        await sheet.waitFor({ timeout: 5000 });
+        await page.waitForTimeout(500);
+        expect(await sheet.getAttribute('data-present'), 'the phone bottom sheet').toBe('bottom');
+        const fields = sheet.locator('input:not([type]), input[type="text"], input[type="search"], input[type="url"], input[type="number"], input[inputmode], textarea');
+        const n = await fields.count();
+        expect(n, `${sheetName} has fields`).toBeGreaterThan(1);
+        for (let i = 0; i < n; i += 1) {
+          const f = fields.nth(i);
+          if (!(await f.isVisible())) continue;
+          await f.focus();
+          await vv(H - at.kb);
+          await page.waitForTimeout(400);
+          const r = await f.evaluate((el) => {
+            const b = el.getBoundingClientRect();
+            return { top: Math.round(b.top), bottom: Math.round(b.bottom), name: el.getAttribute('aria-label') ?? (el as HTMLInputElement).labels?.[0]?.textContent?.trim() ?? el.getAttribute('placeholder') ?? el.tagName };
+          });
+          // Its first line: a text field's whole box, a textarea's first 32 px.
+          if (r.top < 0 || Math.min(r.bottom, r.top + 32) > H - at.kb + 1) hidden.push(`${sheetName} ${r.name}: ${r.top}-${r.bottom} with the keyboard from ${H - at.kb}`);
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await vv(H);
+          await page.waitForTimeout(1200);
+        }
+      };
+      try {
+        // The New todo sheet.
+        await page.getByRole('button', { name: 'Add todo' }).first().click();
+        await each('New todo');
+        await page.getByRole('dialog', { name: 'New todo' }).getByRole('button', { name: 'Cancel' }).click();
+        await page.waitForTimeout(500);
+        // A café's Edit, the tallest: its Name, Area and Link were under the screen's top.
+        await go(page, `/places?id=${lid(701)}`);
+        await page.locator('main').getByRole('button', { name: /^Edit\b/ }).first().click();
+        await each('the café sheet');
+        expect(hidden, hidden.join('\n')).toEqual([]);
       } finally {
         await close();
       }

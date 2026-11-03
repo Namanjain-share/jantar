@@ -89,8 +89,11 @@ changes. A phone looks as it did.
   column shows once the session has about 940 px (beside the list on a
   1440 px Mac window; it asked for a 1360 px window), and the Board's
   alerts and legend once it has 900. Where a session has less than 640 px,
-  Show on Mac is an icon, so its header fits. Claude's replies in a
-  session read in the reading type, at most 640 px wide.
+  Show on Mac is an icon, so its header fits. A session header's buttons
+  never shrink under their labels: the session's name, then the folder,
+  shortens instead, and on a touch screen the 1 / 3 steppers show once the
+  session has about 900 px (j and k still step with a keyboard). Claude's
+  replies in a session read in the reading type, at most 640 px wide.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.
@@ -101,7 +104,9 @@ changes. A phone looks as it did.
   scrolled, and going back finds it where you left it.
 - Resizing the window, or turning a phone or an iPad, no longer resets the
   open session: what you typed, a card's picked option and typed answer,
-  and the transcript's place all stay.
+  and the transcript's place all stay. New session's start form keeps its
+  Name, account and picks the same way when it moves between the pane
+  beside the folders and its sheet.
 - On an iPad with a trackpad or a mouse, rows and buttons show their hover
   tint, as on a Mac (iPadOS says it can't hover, so Jantar now watches the
   pointer itself).
@@ -117,7 +122,9 @@ changes. A phone looks as it did.
   keyboard: the composer and what a pane pins at its bottom sit on it, the
   headers stay in view when iOS moves the page, and a focused field
   scrolls into view. Sheets and menus move with the app. Pinch zoom is
-  left alone.
+  left alone. A bottom sheet (a phone, or an iPad's narrow Split View or
+  Slide Over) is never taller than the room above the keyboard: it
+  scrolls, and the field you tapped stays in view.
 - **Keys at any width**: once you have used a keyboard (a Mac from the
   start, an iPad after its first key press), the shortcuts work in a
   narrow window too, and only then show their keys. New: ⌘1–⌘9 open the

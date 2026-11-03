@@ -10,6 +10,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { V03_LAUNCH_FLAGS, LaunchStartBodySchema, type LaunchFlags, type LaunchStartBody } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
+import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
 import { preloadPlaces, renderApp, stateWith } from './helpers.js';
 import { commandFor, job, launchApi, previewFake, viewport } from './launch-fixtures.js';
 
@@ -441,6 +442,62 @@ describe('start form: desktop', () => {
     await waitFor(() => expect(api.launchPreview).toHaveBeenLastCalledWith({ root: 'r.1', path: 'api', account: 8 }));
     fireEvent.click(within(pane).getByRole('button', { name: 'Close' }));
     expect(history.entries.at(-1)).toBe('/new?root=r.1');
+  });
+});
+
+describe('start form: a rotation (0.11)', () => {
+  // Beside the folders at 1180, the sheet over them at 820: the form is built again in its new place, so what it
+  // holds beside the first prompt is kept with the prompt's draft (lib/drafts.ts) and read back.
+  it('keeps the Name, the account and every pick when the form moves between the pane and the sheet', async () => {
+    const layout = createLayoutStore(layoutAt(1180, { coarse: true }));
+    const api = launchApi();
+    renderApp({ path: FORM, api, state: state(), layout });
+    const pane = await screen.findByRole('region', { name: 'Detail' });
+    await waitFor(() => expect(within(pane).getByRole('heading', { name: 'Start in api' })).toBeTruthy());
+    const pickIn = (root: HTMLElement, group: string, option: string) => fireEvent.click(within(within(root).getByRole('radiogroup', { name: group })).getByRole('radio', { name: option }));
+    fireEvent.change(within(pane).getByRole('textbox', { name: 'Name' }), { target: { value: 'my-named-session' } });
+    pickIn(pane, 'Permissions', 'Plan');
+    pickIn(pane, 'Chrome', 'Off');
+    pickIn(pane, 'Effort', 'high');
+    pickIn(pane, 'Model', 'opus');
+    fireEvent.click(within(pane).getByRole('button', { name: /^Account/ }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Pick an account' })).getByRole('button', { name: /^08/ }));
+    fireEvent.change(within(pane).getByRole('textbox', { name: 'First prompt (optional)' }), { target: { value: 'fix the login' } });
+    const kept = (root: HTMLElement) => ({
+      name: (within(root).getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value,
+      prompt: (within(root).getByRole('textbox', { name: 'First prompt (optional)' }) as HTMLTextAreaElement).value,
+      picks: ['Permissions', 'Chrome', 'Effort', 'Model'].map((g) => within(within(root).getByRole('radiogroup', { name: g })).getByRole('radio', { checked: true }).textContent),
+      account: within(root).getByRole('button', { name: /^Account/ }).textContent,
+    });
+    const before = kept(pane);
+    expect(before).toEqual({ name: 'my-named-session', prompt: 'fix the login', picks: ['Plan', 'Off', 'high', 'opus'], account: expect.stringContaining('08') });
+
+    // Portrait: the sheet, built afresh, as it was.
+    act(() => layout.setState(layoutAt(820, { coarse: true, touchShell: true }), true));
+    await waitFor(() => expect(within(sheet()).getByRole('heading', { name: 'Start in api' })).toBeTruthy());
+    expect(kept(sheet())).toEqual(before);
+    // Landscape again: the pane, as it was.
+    act(() => layout.setState(layoutAt(1180, { coarse: true }), true));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const back = screen.getByRole('region', { name: 'Detail' });
+    await waitFor(() => expect(within(back).getByRole('heading', { name: 'Start in api' })).toBeTruthy());
+    expect(kept(back)).toEqual(before);
+    expect(api.launchPreview).toHaveBeenLastCalledWith({ root: 'r.1', path: 'api', account: 8, flags: { permission: 'plan', chrome: false, effort: 'high', model: 'opus' }, name: 'my-named-session' });
+  });
+
+  it("a Board row's account or Try again is not overruled by what another opening of the folder left", async () => {
+    const api = launchApi();
+    const first = renderApp({ path: FORM, api, state: state() });
+    await ready();
+    fireEvent.change(within(sheet()).getByRole('textbox', { name: 'Name' }), { target: { value: 'left-here' } });
+    fireEvent.click(within(group('Effort')).getByRole('radio', { name: 'low' }));
+    first.unmount();
+    // The same folder from a Board row's "New session here" on 08: its own account, and the form's defaults.
+    renderApp({ path: `${FORM}&account=8`, api, state: state() });
+    await ready();
+    expect((within(sheet()).getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value).toBe('');
+    expect(checked('Effort')).toBe('ultracode');
+    expect(within(sheet()).getByRole('button', { name: /^Account/ }).textContent).toContain('08');
   });
 });
 
