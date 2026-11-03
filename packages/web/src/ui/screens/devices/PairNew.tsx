@@ -21,6 +21,7 @@ import { RailLabel } from '../../kit/RailLabel.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { Tag } from '../../kit/Tag.js';
 import { InlineError, SCOPE_TEXT, StepNumber, copyText, useFlash } from './parts.js';
+import { useDeviceSection } from './card.js';
 
 const QrCard = lazy(() => import('./Qr.js').then((m) => ({ default: m.QrCard })));
 
@@ -127,9 +128,10 @@ export function PairNew() {
     }
   };
 
+  const look = useDeviceSection('mt-40');
   return (
-    <section aria-label="Pair a device">
-      <RailLabel ground="bg" sticky={false} inset={false} className="mt-40">
+    <section aria-label="Pair a device" className={look.section}>
+      <RailLabel ground={look.ground} sticky={false} inset={false} className={look.rail}>
         Pair a device
       </RailLabel>
       <p className="mt-12 max-w-560 type-small text-ink-2">Show a one-time code here, then scan it with the phone's camera. Every paired device can:</p>

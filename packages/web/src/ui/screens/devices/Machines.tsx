@@ -28,6 +28,7 @@ import { BACKEND_WORD, OS_WORD, offlineSince } from '../session/Info.js';
 import { TwoTap } from '../session/TwoTap.js';
 import { readLocalDevice } from './local.js';
 import { InlineError, Receipt } from './parts.js';
+import { useDeviceSection } from './card.js';
 
 export const PAIR_LINE = `${CLI_NAME} node pair`;
 
@@ -115,9 +116,10 @@ export function Machines() {
     }
   };
 
+  const look = useDeviceSection('mt-40');
   return (
-    <section aria-labelledby={headingId}>
-      <RailLabel id={headingId} ground="bg" sticky={false} inset={false} count={list.length} className="mt-40">
+    <section aria-labelledby={headingId} className={look.section}>
+      <RailLabel id={headingId} ground={look.ground} sticky={false} inset={false} count={list.length} className={look.rail}>
         Machines
       </RailLabel>
       <ul>

@@ -13,6 +13,7 @@ import { Tag } from '../../kit/Tag.js';
 import { guessDeviceName, userAgent, type LocalDevice } from './local.js';
 import { NotificationsRow } from './Notifications.js';
 import { NowMark, PropRow, ThemeRadios } from './parts.js';
+import { useDeviceSection } from './card.js';
 
 function InstallState() {
   const installEvent = useStore(pwaStore, (s) => s.installEvent);
@@ -39,9 +40,10 @@ function InstallState() {
 }
 
 export function ThisDevice({ me }: { me: LocalDevice | null }) {
+  const look = useDeviceSection('mt-32');
   return (
-    <section aria-label="This device">
-      <RailLabel ground="bg" sticky={false} inset={false} className="mt-32">
+    <section aria-label="This device" className={look.section}>
+      <RailLabel ground={look.ground} sticky={false} inset={false} className={look.rail}>
         This device
       </RailLabel>
       <PropRow label="Name">

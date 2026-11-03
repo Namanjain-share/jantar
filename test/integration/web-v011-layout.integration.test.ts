@@ -147,15 +147,6 @@ const USERS_CASE = { sizes: ['mac-1440', 'touch-1440'], states: ['today', 'chat'
  * as the table it is (3 % empty at 1440).
  */
 export const KNOWN_WIDE_GAPS: Record<string, number> = {
-  'devices@mac-1440': 0.71,
-  'devices@touch-1440': 0.73,
-  'devices@desktop': 0.72,
-  'devices@mac-1024': 0.68,
-  'devices@ipad-air-l': 0.7,
-  'devices@ipad-pro-l': 0.71,
-  'devices@ipad-1024': 0.65,
-  'devices@ipad-13-l': 0.63,
-  'devices@safari-l': 0.72,
   'more@mac-1440': 0.99,
   'more@touch-1440': 0.99,
   'more@desktop': 0.99,

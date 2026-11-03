@@ -16,11 +16,11 @@ export function PropRow({ label, children, aside, below, className }: { label: R
   return (
     <div className={clsx('border-b border-line py-12 desk:py-8', className)}>
       <div className="flex flex-col gap-8 @md:min-h-32 @md:flex-row @md:items-center @md:gap-16">
-        <div className="type-small text-ink-3 @md:w-128 @md:flex-none">{label}</div>
+        <div className="type-small text-ink-3 @md:w-160 @md:flex-none">{label}</div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-12 gap-y-8">{children}</div>
         {aside ? <div className="-mx-8 flex flex-wrap items-center @md:mx-0 @md:ml-auto @md:justify-end">{aside}</div> : null}
       </div>
-      {below ? <div className="mt-12 @md:ml-144">{below}</div> : null}
+      {below ? <div className="mt-12 @md:ml-176">{below}</div> : null}
     </div>
   );
 }

@@ -19,6 +19,7 @@ import { Spinner } from '../../kit/Spinner.js';
 import { Tag } from '../../kit/Tag.js';
 import { describeAgent, readLocalDevice } from './local.js';
 import { InlineError, NowMark, Receipt, shortDate } from './parts.js';
+import { useDeviceSection } from './card.js';
 
 const NOW_MS = 2 * 60_000;
 const WEEK_MS = 7 * 24 * 60 * 60_000;
@@ -178,9 +179,10 @@ export function PairedDevices({ onCount }: { onCount?: (active: number | null) =
     }
   };
 
+  const look = useDeviceSection('mt-40');
   return (
-    <section aria-label="Paired devices">
-      <RailLabel ground="bg" sticky={false} inset={false} count={active ?? undefined} className="mt-40">
+    <section aria-label="Paired devices" className={look.section}>
+      <RailLabel ground={look.ground} sticky={false} inset={false} count={active ?? undefined} className={look.rail}>
         Paired devices
       </RailLabel>
       {problem ? <p className="max-w-640 py-12 type-small text-ink-2">{problem}</p> : null}

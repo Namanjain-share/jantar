@@ -7,10 +7,18 @@
  * v0.6 (Fleet): once a machine is paired, Machines (devices/Machines.tsx,
  * its own chunk) follows the paired devices. It stays for the rest of the
  * visit once shown, so removing the last machine still shows its receipt.
+ *
+ * 0.11 (build plan 2.11): no 880 cap. From a pane of 900 two columns, this
+ * device on the left and the paired devices, machines and pairing on the
+ * right, each section a card (devices/card.ts) and each column a container
+ * of its own, so its rows lay out by the column's width; the product line
+ * stays under both. One measure of the pane decides (none in jsdom: 0.10).
  */
 import { lazy, Suspense, useRef, useState } from 'react';
 import { PRODUCT_NAME } from '../../brand.js';
 import { useApp } from '../context.js';
+import { useBucket } from '../kit/Columns.js';
+import { DeviceCards } from './devices/card.js';
 import { readLocalDevice } from './devices/local.js';
 import { PairedDevices } from './devices/PairedDevices.js';
 import { PairNew } from './devices/PairNew.js';
@@ -33,9 +41,11 @@ export function Devices() {
   const machinesShown = useRef(false);
   if (machines) machinesShown.current = true;
   const [paired, setPaired] = useState<number | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const two = useBucket(box, (w) => w >= 900);
   return (
-    <div className="px-16 pb-48 pt-16 animate-enter desk:px-32 desk:pt-24">
-      <div className="max-w-880">
+    <div ref={box} className="px-16 pb-48 pt-16 animate-enter desk:px-32 desk:pt-24">
+      <div>
         <h1 data-display className="type-display text-ink">
           Devices
         </h1>
@@ -56,14 +66,22 @@ export function Devices() {
             protocol <span className="text-ink-2">{daemon?.protocol ?? '?'}</span>
           </span>
         </p>
-        <ThisDevice me={me} />
-        <PairedDevices onCount={setPaired} />
-        {machinesShown.current ? (
-          <Suspense fallback={null}>
-            <Machines />
-          </Suspense>
-        ) : null}
-        <PairNew />
+        <DeviceCards.Provider value={two}>
+          <div className={two ? 'mt-32 grid grid-cols-2 items-start gap-x-24' : undefined}>
+            <div className="@container min-w-0">
+              <ThisDevice me={me} />
+            </div>
+            <div className="@container min-w-0">
+              <PairedDevices onCount={setPaired} />
+              {machinesShown.current ? (
+                <Suspense fallback={null}>
+                  <Machines />
+                </Suspense>
+              ) : null}
+              <PairNew />
+            </div>
+          </div>
+        </DeviceCards.Provider>
         <p className="mt-40 type-small text-ink-3">{PRODUCT_NAME} is not affiliated with or endorsed by Anthropic.</p>
       </div>
     </div>

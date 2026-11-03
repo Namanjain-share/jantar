@@ -71,6 +71,9 @@ What changed for people who use Jantar, newest first. Versions before
   ground of its own), with Resets and 7-day columns from about 1180. With
   one Claude login the login is a card across the window, its sessions in
   columns; paired machines sit two across.
+- **Devices** uses two columns of cards from about 900 px of content:
+  this device, its notifications and sounds on the left; paired devices,
+  machines and pairing on the right (it stopped at 880 px).
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.
