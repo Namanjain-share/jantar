@@ -236,7 +236,7 @@ describe('code splitting', () => {
   });
 
   it('0.13.0: Work and @jantar/protocol/work load only in lazy chunks; main keeps its nav entry, route and the Life status feed', () => {
-    const lazyOnly = ['ui/screens/work/Work.tsx', 'ui/screens/work/client.ts'];
+    const lazyOnly = ['ui/screens/work/Work.tsx', 'ui/screens/work/Projects.tsx', 'ui/screens/work/ProjectHub.tsx', 'ui/screens/work/client.ts', 'ui/screens/work/model.ts'];
     for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
     expect([...main.files].filter((f) => f.startsWith('ui/screens/work/'))).toEqual([]);
     expect([...main.packages].filter((p) => p.startsWith('@jantar/protocol/'))).toEqual([]);

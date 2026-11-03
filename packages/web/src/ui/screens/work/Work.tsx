@@ -16,6 +16,9 @@
  *   broken    life.db's 503 sentence (each load's LifeError)
  *   offline   the last list stays; add and save are off
  *
+ * The parts: Projects (P1: the list and a project's hub, Projects.tsx).
+ * Clients, Deals and Insights come in the next part of 0.13; until then
+ * their addresses open the projects.
  */
 import type { ReactNode } from 'react';
 import { pairedWithControl } from '../../shell/lifeStatus.js';
@@ -23,6 +26,7 @@ import type { WorkTab } from '../../../lib/router.js';
 import { CommandSentence, LifeError, LifeLoading, NO_CONTROL } from '../life/shared/states.js';
 import { useLifeStatus } from '../life/shared/useLife.js';
 import { Page } from '../life/today/parts.js';
+import { Projects } from './Projects.js';
 
 /** The daemon's own sentence for Work switched off (FEATURE_OFF.work), said before any call is refused. */
 export const WORK_OFF = 'Work is off. Turn it on at your Mac: jantar work on';
@@ -36,10 +40,8 @@ export function Work({ tab, id }: WorkProps) {
   const { status, error, reload } = useLifeStatus();
   const control = pairedWithControl();
   if (control && status?.modules.work) {
-    // P1's parts are the next commits.
-    void tab;
-    void id;
-    return <Page title="Work" wide>{null}</Page>;
+    // P1: Projects only. A client's, deal's or Insights' address opens the projects for now (no project is open).
+    return <Projects id={!tab || tab === 'projects' ? id : undefined} />;
   }
   let body: ReactNode;
   if (!control) body = <Said>{NO_CONTROL}</Said>;

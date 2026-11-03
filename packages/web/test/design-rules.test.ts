@@ -98,6 +98,9 @@ describe('design rules (direction.md 7)', () => {
         // 0.12: Today's cards say how many sessions need you, with the Board's waiting age.
         'ui/screens/life/today/Dashboard.tsx',
         'ui/screens/life/today/Today.tsx',
+        // 0.13.0 Work: an overdue project's count and due day, and the hub's overdue todos.
+        'ui/screens/work/Projects.tsx',
+        'ui/screens/work/ProjectHub.tsx',
       ]),
     ).toEqual([]);
     // Never a border, an outline or a focus ring.

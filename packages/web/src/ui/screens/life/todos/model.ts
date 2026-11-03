@@ -37,6 +37,14 @@ export function dueDay(day: string, today: string): string {
   return dayLabel(day);
 }
 
+/** 0.13.0, short: "Today", "Tomorrow", a weekday within the week ("Thu"), else "31 Oct" (overdue: its day, "28 Oct"). */
+export function shortDue(day: string, today: string): string {
+  const d = dueDay(day, today);
+  if (d === 'Today' || d === 'Tomorrow') return d;
+  const n = daysBetween(today, day);
+  return n > 0 && n < 7 ? d.replace(/ .*$/, '') : d.replace(/^\w+ /, '');
+}
+
 export type TodoRail = 'overdue' | 'today' | 'upcoming' | 'none';
 
 export const RAIL_LABEL: Record<TodoRail, string> = {
