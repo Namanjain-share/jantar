@@ -30,6 +30,10 @@ import {
   WorkInsightsQuerySchema,
   WorkMilestonesBodySchema,
   WorkStageSchema,
+  WORK_CLIENT_LISTS,
+  WorkClientsQuerySchema,
+  WorkMergeBodySchema,
+  WorkNotDuplicateBodySchema,
   WorkStagesBodySchema,
 } from '../src/work.js';
 
@@ -122,8 +126,37 @@ describe('v0.13 P3: milestones', () => {
   });
 });
 
+describe('v0.13 P3b: merge and lists', () => {
+  it('a merge names its loser and the picked fields only', () => {
+    expect(WorkMergeBodySchema.safeParse({ loserId: ID, picks: ['name', 'companyId'] }).success).toBe(true);
+    expect(WorkMergeBodySchema.safeParse({ loserId: ID, picks: ['state'] }).success).toBe(false);
+    expect(WorkMergeBodySchema.safeParse({ loserId: ID, from: 'import' }).success).toBe(false);
+    expect(WorkNotDuplicateBodySchema.safeParse({ otherId: ID }).success).toBe(true);
+    expect(WorkClientsQuerySchema.parse({ list: 'check-in' })).toMatchObject({ list: 'check-in' });
+    expect(WorkClientsQuerySchema.safeParse({ list: 'vip' }).success).toBe(false);
+    expect(WORK_CLIENT_LISTS[0]).toBe('check-in');
+  });
+});
+
 describe('v0.13 P3 routes', () => {
-  const P3 = ['workDeals', 'workDealCreate', 'workDealGet', 'workDealUpdate', 'workDealDelete', 'workDealMove', 'workStages', 'workStagesUpdate', 'workInsights', 'workProjectMilestones'] as const;
+  const P3 = [
+    'workDeals',
+    'workDealCreate',
+    'workDealGet',
+    'workDealUpdate',
+    'workDealDelete',
+    'workDealMove',
+    'workStages',
+    'workStagesUpdate',
+    'workInsights',
+    'workProjectMilestones',
+    // P3b
+    'workClientLists',
+    'workDuplicates',
+    'workMergeConflicts',
+    'workMerge',
+    'workNotDuplicate',
+  ] as const;
 
   it('are owner control routes behind the work switch, on his host only', () => {
     for (const name of P3) {

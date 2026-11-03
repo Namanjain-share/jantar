@@ -113,6 +113,8 @@ export const WORK_LIMITS = Object.freeze({
   dealValueMax: 1e13,
   /** Milestones on one project. */
   milestones: 12,
+  /** GET /v1/work/duplicates: groups at most. */
+  duplicateGroups: 100,
 });
 
 // ---------------------------------------------------------------------------
@@ -212,6 +214,9 @@ export const WorkClientRowSchema = z.object({
 export type WorkClientRow = z.infer<typeof WorkClientRowSchema>;
 
 export const WORK_CLIENT_SORTS = ['name', 'touch', 'next'] as const;
+/** P3b: the starter lists on Clients (life-core starterClientLists; a test pins them equal). */
+export const WORK_CLIENT_LISTS = ['check-in', 'open-deals', 'quiet-leads', 'gone-quiet', 'no-email'] as const;
+export const WorkClientListIdSchema = z.enum(WORK_CLIENT_LISTS);
 /**
  * `?q=` (name, company, e-mails, phones by digits), `state`, `kind`, `tag`, `company` (a company's people),
  * `quiet` (no touch in that many days), `business` (a project of that business), `checkIn=1` (a check-in
@@ -226,6 +231,8 @@ export const WorkClientsQuerySchema = z.object({
   quiet: z.coerce.number().int().min(1).max(365).optional(),
   business: LifeIdSchema.optional(),
   checkIn: z.enum(['0', '1']).transform((v) => v === '1').optional(),
+  /** P3b: one of the starter lists (GET /v1/work/clients/lists names them). */
+  list: WorkClientListIdSchema.optional(),
   sort: z.enum(WORK_CLIENT_SORTS).default('name'),
 });
 export type WorkClientsQuery = z.infer<typeof WorkClientsQuerySchema>;
@@ -746,6 +753,48 @@ export const WorkClientHubSchema = z.object({
 export type WorkClientHub = z.infer<typeof WorkClientHubSchema>;
 
 // ---------------------------------------------------------------------------
+// P3b: duplicates, merge, and the starter lists
+
+/** GET /v1/work/clients/lists: the starter lists, each with what it holds and how many. */
+export const WorkClientListsReplySchema = z.object({
+  lists: z.array(z.object({ id: WorkClientListIdSchema, name: z.string(), description: z.string(), count: z.number().int().nonnegative() })),
+});
+export type WorkClientListsReply = z.infer<typeof WorkClientListsReplySchema>;
+
+/** GET /v1/work/duplicates: clients that share an e-mail, a phone (its last 10 digits) or a name, in groups, minus his "not a duplicate" rulings. */
+export const WorkDuplicatesReplySchema = z.object({
+  groups: z
+    .array(
+      z.object({
+        key: LifeIdSchema,
+        reasons: z.array(WorkSimilarWhySchema),
+        clients: z.array(z.object({ id: LifeIdSchema, name: z.string(), kind: ContactKindSchema, state: ContactStateSchema, company: z.object({ id: LifeIdSchema, name: z.string() }).optional(), from: ContactFromSchema.optional() })),
+      }),
+    )
+    .max(WORK_LIMITS.duplicateGroups),
+});
+export type WorkDuplicatesReply = z.infer<typeof WorkDuplicatesReplySchema>;
+
+/** What a merge can take from the other client (life-core MERGE_FIELDS; a test pins them equal). */
+export const WORK_MERGE_FIELDS = ['name', 'companyId', 'title', 'city', 'source', 'notes', 'folder', 'checkInDays'] as const;
+export const WorkMergeFieldSchema = z.enum(WORK_MERGE_FIELDS);
+/** GET /v1/work/clients/:id/merge?loser=: the fields both hold differently, for the picker. */
+export const WorkMergeQuerySchema = z.object({ loser: LifeIdSchema });
+export type WorkMergeQuery = z.infer<typeof WorkMergeQuerySchema>;
+export const WorkMergeConflictsReplySchema = z.object({ conflicts: z.array(z.object({ field: WorkMergeFieldSchema, label: z.string(), survivor: z.string(), loser: z.string() })) });
+export type WorkMergeConflictsReply = z.infer<typeof WorkMergeConflictsReplySchema>;
+/**
+ * POST /v1/work/clients/:id/merge: the loser's deals, log, follow-ups, projects and people move to this
+ * client, which keeps its own values and takes the loser's where it has none (or where `picks` says); the
+ * loser is kept hidden (a tombstone). Two people or two companies.
+ */
+export const WorkMergeBodySchema = z.strictObject({ loserId: LifeIdSchema, picks: z.array(WorkMergeFieldSchema).max(WORK_MERGE_FIELDS.length).optional() });
+export type WorkMergeBody = z.infer<typeof WorkMergeBodySchema>;
+/** POST /v1/work/clients/:id/not-duplicate: his ruling that the two are different clients. */
+export const WorkNotDuplicateBodySchema = z.strictObject({ otherId: LifeIdSchema });
+export type WorkNotDuplicateBody = z.infer<typeof WorkNotDuplicateBodySchema>;
+
+// ---------------------------------------------------------------------------
 // P2: meetings linked to clients (W15). The link lives in Work (work_log rows with a meeting id).
 
 export const WorkMeetingParamsSchema = z.object({ meetingId: LifeIdSchema });
@@ -1208,6 +1257,32 @@ export const WORK_ROUTES = {
     method: 'PUT', path: '/v1/work/stages', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
     body: WorkStagesBodySchema, response: WorkStagesPutReplySchema,
     summary: 'Rename, reorder, add or remove stages (a removed stage with deals names where they go).',
+  }),
+  // --- P3b: duplicates, merge and the starter lists (never in Chat).
+  workClientLists: route({
+    method: 'GET', path: '/v1/work/clients/lists', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    response: WorkClientListsReplySchema,
+    summary: 'The starter lists on Clients (needs a check-in, open deals, quiet leads, gone quiet, missing an e-mail), with how many each holds.',
+  }),
+  workDuplicates: route({
+    method: 'GET', path: '/v1/work/duplicates', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    response: WorkDuplicatesReplySchema,
+    summary: 'Clients that may be one: the same e-mail, phone or name, in groups (minus his "not a duplicate" rulings).',
+  }),
+  workMergeConflicts: route({
+    method: 'GET', path: '/v1/work/clients/:id/merge', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, query: WorkMergeQuerySchema, response: WorkMergeConflictsReplySchema,
+    summary: 'The fields two clients hold differently, for the merge picker.',
+  }),
+  workMerge: route({
+    method: 'POST', path: '/v1/work/clients/:id/merge', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, body: WorkMergeBodySchema, response: OkReplySchema,
+    summary: "Merge another client into this one: its deals, log, follow-ups, projects and people move here; it is kept hidden.",
+  }),
+  workNotDuplicate: route({
+    method: 'POST', path: '/v1/work/clients/:id/not-duplicate', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, body: WorkNotDuplicateBodySchema, response: OkReplySchema,
+    summary: 'Mark two clients as different (they stop showing as possible duplicates).',
   }),
   workProjectMilestones: route({
     method: 'PUT', path: '/v1/work/projects/:id/milestones', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',

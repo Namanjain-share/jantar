@@ -42,8 +42,17 @@
  */
 import {
   canonicalSource,
+  contactMergeConflicts,
+  describeClientList,
+  duplicatePairKey,
+  findDuplicateGroups,
   inClosingWindow,
+  matchesClientList,
   milestoneProgress,
+  planContactMerge,
+  starterClientLists,
+  type ListClient,
+  type MergeableContact,
   normalizeContactEmail,
   normalizeContactName,
   normalizeContactPhone,
@@ -105,6 +114,10 @@ import {
   type WorkMilestone,
   type WorkMilestonesBody,
   type WorkMilestonesView,
+  type WorkClientListsReply,
+  type WorkDuplicatesReply,
+  type WorkMergeBody,
+  type WorkMergeConflictsReply,
 } from '@jantar/protocol/work';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, Logger, TodosModule, WorkMeetingRef, WorkModule } from '../../contracts.js';
 import { foldText, holdsFolded } from '../../core/fold.js';
@@ -159,6 +172,9 @@ export const WORK_REASONS = {
   keepEnds: 'Won and Lost can be renamed or moved, never removed.',
   stageHasDeals: 'A stage you removed still has deals. Pick an open stage that stays for them.',
   moveToOpen: "A removed stage's deals go to an open stage that stays.",
+  // P3b: merge
+  mergeSelf: "A client can't be merged into itself.",
+  mergeKinds: 'Merge two people or two companies.',
 } as const;
 
 const PROBLEM: Readonly<Record<ImportProblem, string>> = {
@@ -514,6 +530,10 @@ class Work implements WorkModule {
     const qDigits = q.q ? digits(q.q) : '';
     const tag = q.tag ? normalizeTags([q.tag])[0] : undefined;
     const ofBusiness = q.business ? new Set(this.projects().flatMap((p) => (p.business === q.business && p.clientId ? [p.clientId] : []))) : null;
+    // P3b: a starter list, through the one predicate its count uses.
+    const list = q.list ? starterClientLists().find((l) => l.id === q.list)?.filters : undefined;
+    const listed = list ? this.listClients(all) : null;
+    const at = new Date(ctx.now);
     const rows = all
       .filter((c) => {
         if (q.q && !this.matches(c, folded, qDigits, ctx.names)) return false;
@@ -524,6 +544,7 @@ class Work implements WorkModule {
         if (ofBusiness && !ofBusiness.has(c.id) && !(c.companyId && ofBusiness.has(c.companyId))) return false;
         if (q.quiet !== undefined && daysSince(c.lastTouchAt ?? c.createdAt, ctx.now) < q.quiet) return false;
         if (q.checkIn && !this.checkIn(c, ctx.now)?.due) return false;
+        if (list && listed && !matchesClientList(listed.get(c.id) as ListClient, list, at)) return false;
         return true;
       })
       .map((c) => this.row(c, ctx));
@@ -1265,6 +1286,164 @@ class Work implements WorkModule {
         ...(open.length > 0 ? { deals: open.map((d) => ({ title: d.title, stage: d.stageName, ...(d.from ? { source: d.from } : {}) })) } : {}),
       },
     };
+  }
+
+  // --- P3b: the starter lists, duplicates and merge ---------------------------------------
+
+  /** Each client as a list reads it, with the stages of its open deals. */
+  private listClients(all: readonly ContactRecord[]): Map<string, ListClient> {
+    const stages = stageIndex(this.stages());
+    const open = new Map<string, string[]>();
+    for (const d of this.repo.allDeals()) {
+      if (dealKind(d, stages) !== 'open') continue;
+      const list = open.get(d.contactId) ?? [];
+      list.push(d.stage);
+      open.set(d.contactId, list);
+    }
+    return new Map(
+      all.map((c) => [
+        c.id,
+        { state: c.state, kind: c.kind, tags: c.tags, emails: c.emails, source: c.source, checkInDays: c.checkInDays, lastTouchAt: c.lastTouchAt, createdAt: c.createdAt, openDealStages: open.get(c.id) ?? [] },
+      ]),
+    );
+  }
+
+  clientLists(actor: Actor): LifeResult<WorkClientListsReply> {
+    if (!isOwner(actor)) return notFound;
+    const listed = [...this.listClients(this.repo.allContacts()).values()];
+    const now = this.core.now();
+    const names = Object.fromEntries(this.stages().map((x) => [x.id, x.name]));
+    return {
+      ok: true,
+      value: {
+        lists: starterClientLists().map((l) => ({
+          id: l.id as WorkClientListsReply['lists'][number]['id'],
+          name: l.name,
+          description: describeClientList(l.filters, names),
+          count: listed.filter((c) => matchesClientList(c, l.filters, now)).length,
+        })),
+      },
+    };
+  }
+
+  duplicates(actor: Actor): LifeResult<WorkDuplicatesReply> {
+    if (!isOwner(actor)) return notFound;
+    const all = this.repo.allContacts();
+    const byId = new Map(all.map((c) => [c.id, c]));
+    // His "not a duplicate" rulings, either way round.
+    const dismissed = new Set(all.flatMap((c) => (c.notDuplicateOf ?? []).map((o) => duplicatePairKey(c.id, o))));
+    const groups = findDuplicateGroups(
+      all.map((c) => ({ id: c.id, name: c.name, emails: c.emails, phones: c.phones.map((p) => p.value) })),
+      dismissed,
+    );
+    return {
+      ok: true,
+      value: {
+        groups: groups.slice(0, WORK_LIMITS.duplicateGroups).map((g) => ({
+          key: g.key,
+          reasons: g.reasons,
+          clients: g.contactIds.flatMap((id) => {
+            const c = byId.get(id);
+            if (!c) return [];
+            const co = c.companyId ? byId.get(c.companyId) : undefined;
+            return [{ id: c.id, name: c.name, kind: c.kind, state: c.state, ...(co ? { company: { id: co.id, name: co.name } } : {}), ...(c.from ? { from: c.from } : {}) }];
+          }),
+        })),
+      },
+    };
+  }
+
+  /** The two clients a merge names: this one and the loser (two people or two companies), or a refusal. */
+  private mergePair(id: string, loserId: string): { w: ContactRecord; l: ContactRecord } | Refusal {
+    const w = this.repo.contact(id);
+    if (!w) return refuse('not_found', WORK_REASONS.noClient);
+    if (loserId === id) return refuse('invalid_request', WORK_REASONS.mergeSelf);
+    const l = this.repo.contact(loserId);
+    if (!l) return refuse('invalid_request', WORK_REASONS.clientGone);
+    if (w.kind !== l.kind) return refuse('invalid_request', WORK_REASONS.mergeKinds);
+    return { w, l };
+  }
+
+  private mergeable(c: ContactRecord): MergeableContact {
+    return { ...c, phones: c.phones, emails: c.emails, links: c.links, tags: c.tags };
+  }
+
+  mergeConflicts(id: string, loserId: string, actor: Actor): LifeResult<WorkMergeConflictsReply> {
+    if (!isOwner(actor)) return notFound;
+    const pair = this.mergePair(id, loserId);
+    if ('ok' in pair) return pair;
+    // A company reads by its name, not its id.
+    const company = (cid: string) => this.repo.contact(cid)?.name ?? '';
+    const conflicts = contactMergeConflicts(this.mergeable(pair.w), this.mergeable(pair.l)).map((c) =>
+      c.field === 'companyId' ? { ...c, survivor: company(c.survivor), loser: company(c.loser) } : c,
+    );
+    return { ok: true, value: { conflicts } };
+  }
+
+  merge(id: string, body: WorkMergeBody, actor: Actor): LifeResult {
+    if (!isOwner(actor)) return notFound;
+    const pair = this.mergePair(id, body.loserId);
+    if ('ok' in pair) return pair;
+    const { w, l } = pair;
+    const plan = planContactMerge(this.mergeable(w), this.mergeable(l), body.picks ?? []);
+    const at = this.stamp();
+    const { lastTouchAt: _t, ...stored } = w;
+    const next: Contact = {
+      ...stored,
+      name: plan.name,
+      state: plan.state,
+      phones: plan.phones.slice(0, WORK_LIMITS.phones),
+      emails: plan.emails.slice(0, WORK_LIMITS.emails),
+      links: plan.links.slice(0, WORK_LIMITS.links),
+      tags: plan.tags.slice(0, WORK_LIMITS.tags),
+      updatedAt: at,
+    };
+    for (const key of ['title', 'city', 'source', 'notes', 'folder', 'checkInDays', 'companyId', 'from'] as const) {
+      const v = plan[key];
+      if (v === undefined) delete next[key];
+      else (next as Record<string, unknown>)[key] = v;
+    }
+    // A company that is still one (never the survivor itself).
+    if (next.companyId !== undefined) {
+      const co = this.repo.contact(next.companyId);
+      if (!co || co.kind !== 'company' || co.id === w.id || next.kind === 'company') delete next.companyId;
+    }
+    if (plan.notDuplicateOf.length > 0) next.notDuplicateOf = plan.notDuplicateOf.slice(-WORK_LIMITS.notDuplicateOf);
+    else delete next.notDuplicateOf;
+    this.core.db.tx(() => {
+      this.repo.saveContact(next);
+      // Everything that named the loser names the survivor: deals, the log, follow-ups, projects, people.
+      this.repo.repointContact(l.id, w.id, at);
+      this.todos.relinkClient(l.id, w.id);
+      for (const p of this.repo.peopleOf(l.id)) {
+        const { lastTouchAt: _p, ...rest } = p;
+        this.repo.saveContact({ ...rest, companyId: w.id, updatedAt: at });
+      }
+      this.repo.tombstone(l.id, w.id, at);
+      this.repo.retouch(w.id);
+    });
+    this.core.changed();
+    return OK;
+  }
+
+  notDuplicate(id: string, otherId: string, actor: Actor): LifeResult {
+    if (!isOwner(actor)) return notFound;
+    const a = this.repo.contact(id);
+    if (!a) return refuse('not_found', WORK_REASONS.noClient);
+    const b = otherId === id ? null : this.repo.contact(otherId);
+    if (!b) return refuse('invalid_request', WORK_REASONS.clientGone);
+    const at = this.stamp();
+    const ruled = (c: ContactRecord, other: string): Contact => {
+      const { lastTouchAt: _t, ...rest } = c;
+      const list = [...(c.notDuplicateOf ?? []).filter((x) => x !== other), other].slice(-WORK_LIMITS.notDuplicateOf);
+      return { ...rest, notDuplicateOf: list, updatedAt: at };
+    };
+    this.core.db.tx(() => {
+      this.repo.saveContact(ruled(a, b.id));
+      this.repo.saveContact(ruled(b, a.id));
+    });
+    this.core.changed();
+    return OK;
   }
 
   // --- P3: deals ------------------------------------------------------------------------

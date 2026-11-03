@@ -51,6 +51,9 @@ import type {
   WorkSeedBody,
   WorkSettingsPatch,
   WorkInsightsQuery,
+  WorkMergeBody,
+  WorkMergeQuery,
+  WorkNotDuplicateBody,
   WorkMilestonesBody,
   WorkStagesBody,
 } from '@jantar/protocol/work';
@@ -245,6 +248,30 @@ export const WORK_ROUTE_IMPLS: RouteTable = {
   },
   workInsights: {
     handle: (c: Call<Id, WorkInsightsQuery>, s) => lifeValue(s.deps.life.work.insights(c.query, needActor(c.auth))),
+  },
+  // --- P3b: the starter lists, duplicates and merge (audit rows: the client's id alone)
+  workClientLists: {
+    handle: (c: Call, s) => lifeValue(s.deps.life.work.clientLists(needActor(c.auth))),
+  },
+  workDuplicates: {
+    handle: (c: Call, s) => lifeValue(s.deps.life.work.duplicates(needActor(c.auth))),
+  },
+  workMergeConflicts: {
+    handle: (c: Call<Id, WorkMergeQuery>, s) => lifeValue(s.deps.life.work.mergeConflicts(c.params.id, c.query.loser, needActor(c.auth))),
+  },
+  workMerge: {
+    handle: (c: Call<Id, unknown, WorkMergeBody>, s) => {
+      lifeValue(s.deps.life.work.merge(c.params.id, c.body, needActor(c.auth)));
+      return OK;
+    },
+    audit: lifeAudit,
+  },
+  workNotDuplicate: {
+    handle: (c: Call<Id, unknown, WorkNotDuplicateBody>, s) => {
+      lifeValue(s.deps.life.work.notDuplicate(c.params.id, c.body.otherId, needActor(c.auth)));
+      return OK;
+    },
+    audit: lifeAudit,
   },
   workProjectMilestones: {
     handle: (c: Call<Id, unknown, WorkMilestonesBody>, s) => {

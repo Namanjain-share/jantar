@@ -356,6 +356,23 @@ class Todos implements TodosModule {
     });
   }
 
+  /**
+   * v0.13 Work P3b: a merged client's todos and projects move to the client it was merged into (Work's
+   * transaction, which this joins). How many of each moved.
+   */
+  relinkClient(from: string, to: string): { todos: number; projects: number } {
+    if (this.repo.space !== '') return { todos: 0, projects: 0 };
+    return this.core.db.tx(() => {
+      const at = this.stamp();
+      const todos = this.repo.allOfContact(from);
+      for (const t of todos) this.repo.saveTodo({ ...t, contactId: to, updatedAt: at });
+      const projects = this.repo.projects().filter((p) => p.clientId === from);
+      for (const p of projects) this.repo.saveProject({ ...p, clientId: to, updatedAt: at });
+      if (todos.length > 0 || projects.length > 0) this.changed();
+      return { todos: todos.length, projects: projects.length };
+    });
+  }
+
   /** v0.13 Work P3: one of his projects' milestones (none: []), or null when he has no such project. */
   milestones(projectId: string): WorkMilestone[] | null {
     if (this.repo.space !== '') return null;

@@ -1899,6 +1899,8 @@ export interface TodosModule extends LifeModule {
   dealFollowUps(dealId: string | null, done: boolean): Todo[];
   /** v0.13 Work P3: a deleted deal's todos let go of it (inside Work's transaction). How many. */
   unlinkDeal(dealId: string): number;
+  /** v0.13 Work P3b: a merged client's todos and projects move to the client it went into (inside Work's transaction). */
+  relinkClient(from: string, to: string): { todos: number; projects: number };
   /** v0.13 Work P3: one of his projects' milestones ([] when none), or null when he has no such project. */
   milestones(projectId: string): import('@jantar/protocol/work').WorkMilestone[] | null;
   /** v0.13 Work P3: one of his projects' milestones replaced (his space only; never a shared list). */
@@ -2130,6 +2132,13 @@ export interface WorkModule extends LifeModule {
   insights(q: WorkInsightsQuery, actor: Actor): LifeResult<WorkInsightsReply>;
   /** P3: the export takes `what` (clients, or deals). */
   exportCsv(actor: Actor, what?: 'clients' | 'deals'): LifeResult<string>;
+  // --- P3b: duplicates, merge and the starter lists (never in Chat)
+  clientLists(actor: Actor): LifeResult<import('@jantar/protocol/work').WorkClientListsReply>;
+  duplicates(actor: Actor): LifeResult<import('@jantar/protocol/work').WorkDuplicatesReply>;
+  mergeConflicts(id: string, loserId: string, actor: Actor): LifeResult<import('@jantar/protocol/work').WorkMergeConflictsReply>;
+  /** The loser's deals, log, follow-ups, projects and people move to `id`; the loser is kept hidden (merged_into). */
+  merge(id: string, body: import('@jantar/protocol/work').WorkMergeBody, actor: Actor): LifeResult;
+  notDuplicate(id: string, otherId: string, actor: Actor): LifeResult;
 }
 
 /** v0.13 Work P2: a meeting as Work needs it (from meetings.db, through Meetings or the route): its id, project and start. */

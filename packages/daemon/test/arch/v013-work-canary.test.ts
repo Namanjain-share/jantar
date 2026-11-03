@@ -150,6 +150,19 @@ describe('W-T6: no client words in logs, audit, events or errors', () => {
     await run('workClientHere', 'GET', `/v1/folder/client?folder=${encodeURIComponent(join(base, 'work', 'client', 'qzvcanary'))}`, undefined, true);
     await api.tcp.inject({ method: 'GET', url: '/v1/life/today', headers: h(cookie) });
     await run('workDealDelete', 'DELETE', `/v1/work/deals/${dealId}`);
+    // P3b: lists, duplicates (the imported Priya and the planted person share the phone), conflicts, a
+    // ruling and a merge, with refusals.
+    await run('workClientLists', 'GET', '/v1/work/clients/lists');
+    await run('workClients', 'GET', '/v1/work/clients?list=no-email');
+    const dupes = (await run('workDuplicates', 'GET', '/v1/work/duplicates')).json() as { groups: { clients: { id: string }[] }[] };
+    expect(dupes.groups.length).toBeGreaterThan(0);
+    const twin = await id(run('workClientCreate', 'POST', '/v1/work/clients', { name: `Riya ${NAME}`, email: `riya.${EMAIL}`, title: `${NAME} again` }));
+    await run('workMergeConflicts', 'GET', `/v1/work/clients/${person}/merge?loser=${twin}`);
+    await run('workMergeConflicts', 'GET', `/v1/work/clients/${person}/merge?loser=${co}`);
+    await run('workNotDuplicate', 'POST', `/v1/work/clients/${person}/not-duplicate`, { otherId: twin });
+    await run('workNotDuplicate', 'POST', `/v1/work/clients/${person}/not-duplicate`, { otherId: '01JZZZZZZZZZZZZZZZZZZZZZZX' });
+    await run('workMerge', 'POST', `/v1/work/clients/${person}/merge`, { loserId: twin, picks: ['title'] });
+    await run('workMerge', 'POST', `/v1/work/clients/${person}/merge`, { loserId: co });
 
     // Deletes last.
     await run('workLogDelete', 'DELETE', `/v1/work/log/${logId}`);

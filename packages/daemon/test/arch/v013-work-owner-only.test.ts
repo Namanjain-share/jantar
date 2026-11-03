@@ -81,6 +81,7 @@ describe('W-T1: every Work route is his', () => {
         'workClientDelete',
         'workClientGet',
         'workClientHere',
+        'workClientLists',
         'workClientLog',
         'workClientNames',
         'workClientSimilar',
@@ -92,6 +93,7 @@ describe('W-T1: every Work route is his', () => {
         'workDealMove',
         'workDealUpdate',
         'workDeals',
+        'workDuplicates',
         'workExport',
         'workImport',
         'workImportPreview',
@@ -104,6 +106,9 @@ describe('W-T1: every Work route is his', () => {
         'workMeetingClientNew',
         'workMeetingClients',
         'workMeetingSuggest',
+        'workMerge',
+        'workMergeConflicts',
+        'workNotDuplicate',
         'workProjectMilestones',
         'workSettings',
         'workSettingsUpdate',
@@ -259,6 +264,12 @@ describe('W-T4: Work is his space only, and answers no one else', () => {
         ['insights', () => work.insights({ period: '90d' }, HER)],
         ['exportCsv deals', () => work.exportCsv(HER, 'deals')],
         ['setMilestones', () => work.setMilestones(id, { milestones: [{ name: 'X' }] }, HER)],
+        // P3b: the starter lists, duplicates and merge.
+        ['clientLists', () => work.clientLists(HER)],
+        ['duplicates', () => work.duplicates(HER)],
+        ['mergeConflicts', () => work.mergeConflicts(id, id, HER)],
+        ['merge', () => work.merge(id, { loserId: id }, HER)],
+        ['notDuplicate', () => work.notDuplicate(id, id, HER)],
       ];
       for (const [name, call] of calls) expect(call(), name).toEqual({ ok: false, code: 'not_found', reason: 'Not found.' });
       // Nothing of his changed meanwhile.

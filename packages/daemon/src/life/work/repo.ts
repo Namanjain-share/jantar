@@ -163,6 +163,19 @@ export class WorkRepo {
       .run(c.id, c.kind, c.state, c.companyId ?? null, normalizeContactName(c.name), c.updatedAt, json);
   }
 
+  /** P3b: a merged client is kept hidden (every read leaves it out), pointing at the one it went into. */
+  tombstone(id: string, into: string, at: string): void {
+    this.core.db.prepare('UPDATE work_contacts SET merged_into = ?, updated_at = ? WHERE id = ?').run(into, at, id);
+  }
+
+  /** P3b: a merged client's deals and log rows move to the one it went into (a meeting both were linked to keeps one row). */
+  repointContact(from: string, to: string, at: string): void {
+    const db = this.core.db;
+    db.prepare("UPDATE work_deals SET contact_id = ?, json = json_set(json, '$.contactId', ?), updated_at = ? WHERE contact_id = ?").run(to, to, at, from);
+    db.prepare('DELETE FROM work_log WHERE contact_id = ? AND meeting_id IS NOT NULL AND meeting_id IN (SELECT meeting_id FROM work_log WHERE contact_id = ? AND meeting_id IS NOT NULL)').run(from, to);
+    db.prepare('UPDATE work_log SET contact_id = ? WHERE contact_id = ?').run(to, from);
+  }
+
   deleteContact(id: string): boolean {
     return Number(this.core.db.prepare('DELETE FROM work_contacts WHERE id = ?').run(id).changes) === 1;
   }
