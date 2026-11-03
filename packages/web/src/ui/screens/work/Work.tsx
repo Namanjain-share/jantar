@@ -17,11 +17,12 @@
  *   offline   the last list stays; add and save are off
  *
  * The parts, as segments under the title: Projects (P1: the list and a
- * project's hub, Projects.tsx) and Clients (the list, a client's hub, its
- * sheets, import and merge: Clients.tsx, a chunk of its own that loads on
- * the first visit, so a phone opening Projects never fetches it). Deals and
- * Insights come with their screens; until then their addresses open the
- * projects.
+ * project's hub, Projects.tsx), Clients (the list, a client's hub, its
+ * sheets, import and merge: Clients.tsx) and Deals (the pipeline, a deal's
+ * hub, moves, Won and Lost, the stages: Deals.tsx), each a chunk of its own
+ * that loads on the first visit, so a phone opening Projects never fetches
+ * them. Insights, inside Deals, comes with its screen; until then its
+ * address opens the projects.
  */
 import { lazy, Suspense, type ReactNode } from 'react';
 import { pairedWithControl } from '../../shell/lifeStatus.js';
@@ -32,8 +33,10 @@ import { Page } from '../life/today/parts.js';
 import { Projects } from './Projects.js';
 import { WorkTabs } from './WorkTabs.js';
 
-// Clients (its list, hub, sheets) loads on its first visit: Work's first load stays the projects'.
+// Clients (its list, hub, sheets) and Deals (the pipeline, a deal, its moves) load on their first visit:
+// Work's first load stays the projects'.
 const Clients = lazy(() => import('./Clients.js').then((m) => ({ default: m.Clients })));
+const Deals = lazy(() => import('./Deals.js').then((m) => ({ default: m.Deals })));
 
 /** The daemon's own sentence for Work switched off (FEATURE_OFF.work), said before any call is refused. */
 export const WORK_OFF = 'Work is off. Turn it on at your Mac: jantar work on';
@@ -53,7 +56,13 @@ export function Work({ route }: WorkProps) {
           <Clients route={route} tabs={<WorkTabs tab="clients" />} />
         </Suspense>
       );
-    // A deal's or Insights' address opens the projects for now (no project is open).
+    if (tab === 'deals')
+      return (
+        <Suspense fallback={<Page title="Work"><LifeLoading caption="Opening Deals…" /></Page>}>
+          <Deals route={route} tabs={<WorkTabs tab="deals" />} />
+        </Suspense>
+      );
+    // Insights' address opens the projects for now (no project is open).
     return <Projects id={!tab || tab === 'projects' ? id : undefined} />;
   }
   let body: ReactNode;
