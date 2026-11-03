@@ -13,6 +13,7 @@ import type { PersonApi } from '../../src/partner/api.js';
 import { Join, NOT_AN_INVITE } from '../../src/partner/screens/Join.js';
 
 const CODE = 'synthetic-invite_code1';
+const joined = { personId: '01JASHAAAAAAAAAAAAAAAAAAAA', deviceId: '01JDEVICEAAAAAAAAAAAAAAAAA', deviceSecret: 's' };
 const preview = { owner: 'Sam', name: 'Asha', version: 1, offer: presetAgreement('standard'), fields: [], built: 'P4', modules: { food: false } } as unknown as JoinPreview;
 
 function fakeApi(over: Partial<PersonApi> = {}): PersonApi {
@@ -32,7 +33,7 @@ describe('/p/join without its code (after a one-time PIN sign-in)', () => {
 
   it('says she is signed in and to open the link once more, or paste it; nothing is asked of the daemon yet', () => {
     const joinPreview = vi.fn(async () => preview);
-    const join = vi.fn(async () => ({}));
+    const join = vi.fn(async () => joined);
     render(<Join api={fakeApi({ joinPreview, join })} mode="join" />);
     expect(screen.getByRole('heading', { name: 'Open your invite link once more' })).toBeTruthy();
     expect(screen.getByText(/You're signed in\. Signing in drops the part of the link that holds your invite, so open the link you were sent once more, or paste it here\./)).toBeTruthy();
@@ -44,7 +45,7 @@ describe('/p/join without its code (after a one-time PIN sign-in)', () => {
 
   it('a pasted link loads the preview; only Accept and join joins, and the code leaves the address', async () => {
     const joinPreview = vi.fn(async () => preview);
-    const join = vi.fn(async () => ({ personId: '01JASHAAAAAAAAAAAAAAAAAAAA', deviceId: '01JDEVICEAAAAAAAAAAAAAAAAA', deviceSecret: 's' }));
+    const join = vi.fn(async () => joined);
     render(<Join api={fakeApi({ joinPreview, join })} mode="join" />);
     paste(`  https://us.example.com/p/join#c=${CODE}\n`);
     expect(await screen.findByRole('heading', { name: 'Accountability partner' })).toBeTruthy();
@@ -75,7 +76,7 @@ describe('/p/join without its code (after a one-time PIN sign-in)', () => {
 
   it('junk says so in plain words and asks the daemon nothing', () => {
     const joinPreview = vi.fn(async () => preview);
-    const join = vi.fn(async () => ({}));
+    const join = vi.fn(async () => joined);
     render(<Join api={fakeApi({ joinPreview, join })} mode="join" />);
     for (const junk of ['hello', 'https://us.example.com/p/join', 'https://us.example.com/p/join#c=short']) {
       paste(junk);
