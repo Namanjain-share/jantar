@@ -23,7 +23,7 @@
  * Adding or removing an email prints the Cloudflare Access step: Jantar
  * holds no Cloudflare token and can't make that change.
  */
-import type { PeopleDoctor, PeopleList, PersonInviteReply, PersonView } from '@jantar/protocol/people';
+import type { PeopleDoctor, PeopleList, PersonInviteReply, PersonSetupAgain, PersonView } from '@jantar/protocol/people';
 import { UsageError, parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { callDaemon } from '../ctl.js';
@@ -57,6 +57,16 @@ function accessStep(email: string | undefined, add: boolean): string {
   return add
     ? `In Zero Trust > Access > Applications > Jantar people > Policies > People > Include > Emails, add ${who}, then Save. Jantar holds no Cloudflare token and can't do this for you.\n`
     : `In Zero Trust > Access > Applications > Jantar people > Policies > People, remove ${who}. Optionally, My Team > Users > them > Revoke session.\n`;
+}
+
+/** T20 (spec 2.7): a space a Life restore took out, and the way back (his People screen says the same). */
+export function setupAgainNote(s: PersonSetupAgain): string {
+  const email = s.accessEmail ? ` --email ${s.accessEmail}` : '';
+  return (
+    `  Restore removed ${s.accessEmail ? `the space you shared with ${s.accessEmail}` : "your partner's space"}. Invite them again.  ${s.id}\n` +
+    `    jantar people add <name>${email}, then jantar people invite <name>.\n` +
+    `    Once they have joined: jantar people remove ${s.id} clears this. A newer backup that still has their space brings sharing back instead.\n`
+  );
 }
 
 const ON_WORDS: Record<string, string> = {
@@ -205,11 +215,13 @@ export default defineCommand(
           return EXIT.ok;
         }
         io.out(`People is ${r.enabled ? 'on' : 'off'}.\n`);
-        if (r.people.length === 0) io.out('Nobody yet. Add someone: jantar people add <name> --email <address>\n');
+        const again = r.setupAgain ?? [];
+        if (r.people.length === 0 && again.length === 0) io.out('Nobody yet. Add someone: jantar people add <name> --email <address>\n');
         for (const p of r.people) {
           const extra = p.state === 'invited' && p.invite ? ` (link until ${p.invite.expiresAt})` : p.state === 'ending' && p.endingUntil ? ` (until ${p.endingUntil})` : '';
           io.out(`  ${p.name}  ${p.state}${extra}  ${p.id}\n`);
         }
+        for (const s of again) io.out(setupAgainNote(s));
         return EXIT.ok;
       }
       case 'devices': {
@@ -240,7 +252,16 @@ export default defineCommand(
         return EXIT.ok;
       }
       case 'remove': {
-        const p = await find(ctx, need('a person'));
+        const target = need('a person');
+        // T20: someone whose space a restore took out is in no list by name; their id clears the note (no window: nothing is left to download).
+        const again = (await callDaemon<PeopleList>(ctx.ctl, 'GET', '/v1/people')).setupAgain?.find((s) => s.id === target);
+        if (again) {
+          await callDaemon(ctx.ctl, 'POST', `/v1/people/${again.id}/remove`, { mode: 'now', forget: Boolean(flags.forget) });
+          // No Access step: they may be sharing again under a new invite with the same email.
+          io.out(`Cleared ${again.id}: its old devices no longer open anything.\n`);
+          return EXIT.ok;
+        }
+        const p = await find(ctx, target);
         await callDaemon(ctx.ctl, 'POST', `/v1/people/${p.id}/remove`, { mode: flags.now ? 'now' : 'window', forget: Boolean(flags.forget) });
         io.out(flags.now || flags.forget ? `${p.name} is removed${flags.forget ? ', and their space deleted' : ''}.\n` : `Sharing with ${p.name} ends in 7 days; they can download their data until then.\n`);
         io.out(accessStep(p.emailLabel, false));

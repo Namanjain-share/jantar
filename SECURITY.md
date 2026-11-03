@@ -2104,7 +2104,11 @@ It adds a new asset: **another person's Life data, health data included**.
   user agent or any address.
 - **Consent is a ledger** in jantar.db (append-only), authoritative over
   life.db for left and forgotten: a Life restore can't bring back a
-  forgotten person.
+  forgotten person. When a restore of an older backup takes out the space
+  of someone still sharing, her devices get 401 "set up again", and the
+  agreement reads as none: every route of his into that pid, reads and
+  writes alike, is the unknown-pid answer, until she is invited again. His
+  People screen says so, by id and Access email only.
 - **Downgrade fails closed**: an older daemon refuses life.db schema 4, never
   reads People's jantar.db tables, and drops the people settings (her host
   then answers 403).

@@ -48,7 +48,11 @@ function value<T>(r: LifeResult<T>): T {
 
 export const PEOPLE_ROUTE_IMPLS: RouteTable = {
   peopleList: {
-    handle: (_c: Call, s) => ({ enabled: s.ctx.settings.get().people.enabled, people: value(s.deps.life.people.list()) }),
+    handle: (_c: Call, s) => {
+      const people = s.deps.life.people;
+      const setupAgain = people.setupAgain();
+      return { enabled: s.ctx.settings.get().people.enabled, people: value(people.list()), ...(setupAgain.length > 0 ? { setupAgain } : {}) };
+    },
   },
   personGet: {
     handle: (c: Call<Pid>, s) => {
@@ -134,8 +138,10 @@ export const PEOPLE_ROUTE_IMPLS: RouteTable = {
   personRemove: {
     handle: (c: Call<Pid, unknown, PersonRemoveBody>, s) => {
       const people = s.deps.life.people;
-      // Remove reaches an ending or left person too (to cut the window short, or forget).
-      if (people.person(c.params.pid) === null && people.ownerReach(c.params.pid) === null) throw new ApiError('not_found', NO_PERSON);
+      // Remove reaches an ending or left person too (to cut the window short, or forget), and one whose space a restore took out (T20).
+      if (people.person(c.params.pid) === null && people.ownerReach(c.params.pid) === null && people.gateState(c.params.pid) !== 'setup_again') {
+        throw new ApiError('not_found', NO_PERSON);
+      }
       value(people.remove(c.params.pid, c.body.mode, c.body.forget, actorName(c.auth)));
       return OK;
     },

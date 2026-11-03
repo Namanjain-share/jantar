@@ -62,6 +62,7 @@ import {
   type PersonMe,
   type PersonOfferBody,
   type PersonProposeBody,
+  type PersonSetupAgain,
   type PersonState,
   type PersonStatus,
   type PersonStatusBody,
@@ -305,11 +306,32 @@ export class PeopleModule {
     return this.deps.ctx.db.people.consents.append({ personId: pid, version, action, by, at: this.iso(), json: { agreement: fields, ...extra } as ConsentRecord['json'] });
   }
 
-  /** The live agreement (the object every Viewer reads; spec 8.4), or null. Areas a later phase adds read off (D24). */
+  /**
+   * The live agreement (the object every Viewer reads; spec 8.4), or null.
+   * Areas a later phase adds read off (D24). It is the gate every write of
+   * his into her space passes ("ownerOf: the agreement decides"), so it is
+   * null wherever his reads are the unknown-pid answer: not sharing, and
+   * `setup_again` (a restore took her space out of life.db, T20), where
+   * nothing is shared until she is invited again.
+   */
   agreement(pid: string): Agreement | null {
     const l = this.ledger(pid);
     if (l.state !== 'active' && l.state !== 'paused') return null;
+    if (this.spaceRemoved(pid)) return null;
     return l.agreement;
+  }
+
+  /**
+   * T20: life.db is open and has no row for her (a restore of an older
+   * backup). An unreadable life.db is not this: her exits must still work.
+   */
+  private spaceRemoved(pid: string): boolean {
+    if (!this.deps.core()) return false;
+    try {
+      return this.repo.get(pid) === null;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -329,15 +351,7 @@ export class PeopleModule {
       return 'ending';
     }
     if (l.state !== 'active' && l.state !== 'paused') return 'gone';
-    const core = this.deps.core();
-    if (core) {
-      try {
-        if (!this.repo.get(pid)) return 'setup_again';
-      } catch {
-        // life.db unreadable: her exits must still work.
-      }
-    }
-    return l.state;
+    return this.spaceRemoved(pid) ? 'setup_again' : l.state;
   }
 
   /** The person row, or null (life.db closed counts as none). */
@@ -355,6 +369,23 @@ export class PeopleModule {
 
   list(): LifeResult<PersonView[]> {
     return this.guard(() => ({ ok: true, value: this.repo.list().flatMap((p) => this.viewOf(p) ?? []) }));
+  }
+
+  /**
+   * T20 (spec 2.7): who the ledger says still shares but whose space a
+   * restore took out of life.db. His People screen and `jantar people
+   * list` say "Invite them again". Only what jantar.db still holds: the id
+   * and the Access email their devices joined with (no name: it was in the
+   * row the restore removed).
+   */
+  setupAgain(): PersonSetupAgain[] {
+    if (!this.deps.core()) return [];
+    return this.deps.ctx.db.people.consents.persons().flatMap((pid) => {
+      const s = this.ledger(pid).state;
+      if ((s !== 'active' && s !== 'paused') || !this.spaceRemoved(pid)) return [];
+      const email = this.devices.list(pid).find((d) => d.accessEmail)?.accessEmail;
+      return [{ id: pid, ...(email ? { accessEmail: email } : {}) }];
+    });
   }
 
   /** One person as his screens show them (null once forgotten). No last-seen, ever (C20). */
@@ -1045,7 +1076,8 @@ export class PeopleModule {
       if (forget) this.forget(pid, by);
       return { ok: true, value: true };
     }
-    if (mode === 'window' && !forget && l.state !== 'ending') {
+    // A space a restore took out (T20) has nothing to download: no window; its old devices go now.
+    if (mode === 'window' && !forget && l.state !== 'ending' && !this.spaceRemoved(pid)) {
       const until = this.iso(this.now() + PERSON_ENDING_DAYS * DAY_MS);
       this.appendLedger(pid, 'ending', by, l.agreement, l.maxVersion, { until });
       this.mirrorState(pid, 'ending', { endingUntil: until });

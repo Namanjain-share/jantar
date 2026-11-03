@@ -14,13 +14,15 @@
  *   People is off, in --read-only and (Leave, Pause, Me) while life.db is
  *   broken; with People off, every /v1/people/* is 404 on TCP.
  * - States: ending reaches her exits only and turns into left at the end
- *   of the window; forget deletes her row and stays forgotten (reconcile).
+ *   of the window; forget deletes her row and stays forgotten (reconcile);
+ *   a space a restore took out is "set up again" for her and a note on his
+ *   People list (T20), which remove clears.
  * - No owner-only record of her (T19, C8): his audit rows for her writes
  *   are `person.write` with no target and no params.
  */
 import { writeFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PERSON_COOKIE, type JoinPreview, type PersonMe, type PersonView } from '@jantar/protocol/people';
+import { PERSON_COOKIE, type JoinPreview, type PeopleList, type PersonMe, type PersonView } from '@jantar/protocol/people';
 import { setPeopleMaxForTests } from '../../src/life/people/module.js';
 import { LOOPBACK_HOST, LOOPBACK_ORIGIN, NONE, OWNER_HOST, OWNER_ORIGIN, credHeaders, joinPerson, linkDevice, makeFixture, onHer, resetLimiters, type Fixture } from './isolation-fixture.js';
 
@@ -359,6 +361,26 @@ describe('states', () => {
     const r = await onHer(x.api, 'GET', '/v1/p/me', x.bea.full);
     expect(r.statusCode).toBe(401);
     expect(r.json().error.message).toBe('Sharing needs to be set up again. Ask for a new invite.');
+  });
+
+  it('T20: his People list says whose space a restore removed (id only, no name); remove clears it at once, with no window', async () => {
+    const x = await fx();
+    const core = x.life.people.openCore();
+    core?.db.prepare('DELETE FROM people WHERE id = ?').run(x.bea.id);
+    const list = (await him(x, 'GET', '/v1/people', x.owner.control)).json() as PeopleList;
+    expect(list.setupAgain).toEqual([{ id: x.bea.id }]);
+    expect(list.people.map((p) => p.id)).not.toContain(x.bea.id);
+    // Everything else of his about her is the unknown-pid answer (M8 has every write).
+    const unknown = await him(x, 'GET', '/v1/people/01JZZZZZZZZZZZZZZZZZZZZZZZ', x.owner.control);
+    const get = await him(x, 'GET', `/v1/people/${x.bea.id}`, x.owner.control);
+    expect([get.statusCode, get.body]).toEqual([unknown.statusCode, unknown.body]);
+    // The CLI's default is a window; a space with nothing in it to download has none.
+    expect((await ctl(x, 'POST', `/v1/people/${x.bea.id}/remove`, { mode: 'window', forget: false })).statusCode).toBe(200);
+    expect(x.life.people.gateState(x.bea.id)).toBe('gone');
+    expect(((await him(x, 'GET', '/v1/people', x.owner.control)).json() as PeopleList).setupAgain).toBeUndefined();
+    expect((await onHer(x.api, 'GET', '/v1/p/me', x.bea.full)).json().error.message).toBe('Open your invite link again.');
+    // A pid that never was stays the unknown answer on remove too.
+    expect((await ctl(x, 'POST', '/v1/people/01JZZZZZZZZZZZZZZZZZZZZZZZ/remove', { mode: 'now', forget: false })).statusCode).toBe(404);
   });
 });
 

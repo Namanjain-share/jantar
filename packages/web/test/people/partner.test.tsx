@@ -9,6 +9,8 @@
  * - The Partner screen: the header (status, Asleep since, progress), locked
  *   tiles for areas she keeps private, Nudge on an open step, the journal's
  *   comment box only with comment.journal; partial data never throws.
+ * - A space a Life restore took out (T20): a note on People and on its old
+ *   page with the way to invite them again (synthetic Bea).
  * - The card on his Today.
  * - /people routes parse and print back.
  */
@@ -279,6 +281,33 @@ describe('his Partner screen', () => {
   });
 });
 
+describe('a space a restore took out (T20, spec 2.7)', () => {
+  const GONE = '01JBEAAAAAAAAAAAAAAAAAAAAA';
+
+  it('is a note on People with the way to invite them again; People stays on its list', async () => {
+    const history = memoryHistory('/people');
+    const c = client({ list: vi.fn(async () => ({ enabled: true, people: [person()], setupAgain: [{ id: GONE, accessEmail: 'bea@example.com' }] })) });
+    render(<Wrapped client={c} pid={null} history={history} />);
+    const note = await screen.findByRole('region', { name: 'Sharing needs to be set up again' });
+    expect(within(note).getByText('Restore removed the space you shared with bea@example.com. Invite them again.')).toBeTruthy();
+    expect(within(note).getByText('jantar people add <name> --email bea@example.com')).toBeTruthy();
+    expect(within(note).getByText('jantar people invite <name>')).toBeTruthy();
+    expect(within(note).getByText(`jantar people remove ${GONE}`)).toBeTruthy();
+    // The one person sharing is still listed, and People doesn't jump to her screen over the note.
+    expect(screen.getByRole('button', { name: 'Asha' })).toBeTruthy();
+    expect(history.entries).toEqual(['/people']);
+  });
+
+  it('is what their old /people/:pid shows: no name, none of his controls', async () => {
+    const c = client({ list: vi.fn(async () => ({ enabled: true, people: [], setupAgain: [{ id: GONE }] })), today: vi.fn(async () => today()) });
+    render(<Wrapped client={c} pid={GONE} />);
+    expect(await screen.findByText("Restore removed your partner's space. Invite them again.")).toBeTruthy();
+    expect(screen.getByText('jantar people add <name>')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Assign' })).toBeNull();
+    expect(screen.queryByRole('tablist')).toBeNull();
+  });
+});
+
 describe('the card on his Today and the routes', () => {
   it('one line, per the agreement', () => {
     expect(peopleLine(today())).toBe('Asha · 1 of 3 done · Now: Interview prep 11:00 · Low');
@@ -296,11 +325,11 @@ describe('the card on his Today and the routes', () => {
 });
 
 /** The screen inside the app's providers (useNavigate needs the router; Life loads read the store's tick). */
-function Wrapped({ client: c, tab, id }: { client: PeopleClient; tab?: string; id?: string }) {
-  const [deps] = useState(() => ({ store: createAppStore(), api: fakeApi(), router: createRouter(memoryHistory(`/people/${PID}`)), toasts: createToastStore() }));
+function Wrapped({ client: c, tab, id, pid = PID, history }: { client: PeopleClient; tab?: string; id?: string; pid?: string | null; history?: ReturnType<typeof memoryHistory> }) {
+  const [deps] = useState(() => ({ store: createAppStore(), api: fakeApi(), router: createRouter(history ?? memoryHistory(pid ? `/people/${pid}` : '/people')), toasts: createToastStore() }));
   return (
     <AppProvider deps={deps}>
-      <Partner pid={PID} client={c} {...(tab ? { tab } : {})} {...(id ? { id } : {})} />
+      <Partner {...(pid ? { pid } : {})} client={c} {...(tab ? { tab } : {})} {...(id ? { id } : {})} />
     </AppProvider>
   );
 }

@@ -176,6 +176,13 @@ partner simply can't sign in there).
   list item, each alert row and its reply buttons (OK, ♥), the chat limit
   box on your Chat tab, and on their side ⓘ in Chat, the café stars, Quiet
   hours, every time box and menu in Notifications, and the download links.
+- **After a Life restore that took their space out**: when a restore of an
+  older backup no longer has the space of someone still sharing, their
+  phone asks for a new invite, and now none of your routes reach that
+  space either: adding a to-do, medicine or anything else for them is
+  refused as for someone who isn't there, as looking already was. People
+  and `jantar people list` say "Restore removed … Invite them again" with
+  the commands to do it, and `jantar people remove <id>` clears the note.
 - **People in More**: your phone lists People in More (the rail on a wide
   screen) while People is on, on a device paired with control.
 - **Nothing promised that isn't there**: a food log for them is not part of

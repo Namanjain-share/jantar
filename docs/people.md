@@ -487,4 +487,10 @@ readable page (no scripts, nothing fetched) or a data file (JSON).
   does not verify Access's token).
 - A Life restore can't bring back someone who was forgotten: the ledger
   wins. Someone still sharing whose space a restore removed is asked to set
-  sharing up again.
+  sharing up again, and you can neither see nor add anything in that space.
+  Your People screen and `jantar people list` say so (by id and the email
+  their phone joined with: the name was in what the restore took out). To
+  invite them again: `jantar people add <name> --email <address>`, then
+  `jantar people invite <name>`; once they have joined, `jantar people
+  remove <id>` clears the note. If a newer backup still has their space,
+  restoring that brings sharing back instead.

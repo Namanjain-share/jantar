@@ -19,6 +19,8 @@
  *   never just absent, never a warning colour, never a count of days.
  * - Every read goes through his People routes, so each writes her view
  *   mark; he has no control here that writes in her name.
+ * - Someone whose space a Life restore took out (T20) is a note on People,
+ *   and on their old `/people/:pid`, with the way to invite them again.
  */
 import { ALERT_KINDS, ALERT_REPLY_LABELS, STATUS_LABELS, type AlertKind } from '@jantar/protocol/people-core';
 import type {
@@ -34,6 +36,7 @@ import type {
   SharedItemsResponse,
   SharedListsResponse,
   PersonAlert,
+  PersonSetupAgain,
   PersonToday,
   PersonTodo,
   PersonView,
@@ -42,7 +45,7 @@ import type {
   SleepWeek as Week,
   TodoAsk,
 } from '@jantar/protocol/people';
-import type { ChatTurn, MedicineBody, MedicinePatch, PlacesResponse } from '@jantar/protocol';
+import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { useEffect, useState } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
@@ -88,29 +91,59 @@ function Locked({ name, what }: { name: string; what: string }) {
 
 const isLocked = (v: unknown): v is { locked: true } => typeof v === 'object' && v !== null && 'locked' in v;
 
+/**
+ * T20 (spec 2.7): a Life restore of an older backup took out the space of
+ * someone still sharing. Nothing of theirs is left to show (no name: it was
+ * in the row the restore removed), and every route of his about them is the
+ * unknown-pid answer, so this note is what he sees, with the way back.
+ */
+export function SetupAgainNote({ entry }: { entry: PersonSetupAgain }) {
+  const email = entry.accessEmail;
+  return (
+    <section aria-label="Sharing needs to be set up again" className="mt-12 break-words rounded-btn bg-hover px-12 py-12">
+      <p className="type-row text-ink">Restore removed {email ? `the space you shared with ${email}` : "your partner's space"}. Invite them again.</p>
+      <p className="mt-4 type-small text-ink-2">A Life restore from an older backup took it out, so sharing has stopped and their phone asks for a new invite.</p>
+      <p className="mt-4 type-small text-ink-2">
+        On your Mac: <code className="type-mono text-ink">{`${CLI_NAME} people add <name>${email ? ` --email ${email}` : ''}`}</code>, then{' '}
+        <code className="type-mono text-ink">{`${CLI_NAME} people invite <name>`}</code>. Once they have joined, <code className="type-mono text-ink">{`${CLI_NAME} people remove ${entry.id}`}</code> clears this
+        note.
+      </p>
+      <p className="mt-4 type-small text-ink-2">If a newer backup still has their space, restoring that instead brings sharing back.</p>
+    </section>
+  );
+}
+
 export function Partner({ pid, tab: tabIn, day: dayIn, id, client = peopleClient() }: PartnerProps) {
   const navigate = useNavigate();
   const list = useLifeLoad('people', () => client.list());
   const sharing = (list.data?.people ?? []).filter((p) => p.state === 'active' || p.state === 'paused');
+  const setupAgain = list.data?.setupAgain ?? [];
   useEffect(() => {
-    if (!pid && sharing.length === 1 && sharing[0]) navigate(`/people/${sharing[0].id}`, { replace: true });
-  }, [pid, sharing, navigate]);
-  if (!pid) {
+    // With a set-up-again note to read, People stays on its list rather than opening the one person sharing.
+    if (!pid && sharing.length === 1 && sharing[0] && setupAgain.length === 0) navigate(`/people/${sharing[0].id}`, { replace: true });
+  }, [pid, sharing, setupAgain.length, navigate]);
+  const gone = pid ? setupAgain.find((s) => s.id === pid) : undefined;
+  if (!pid || gone) {
     return (
       <div className="px-16 pb-48 pt-16 md:px-32">
         <h1 data-display className="type-display text-ink">
           People
         </h1>
         {list.data && !list.data.enabled ? <p className="mt-12 type-small text-ink-2">People is off. Turn it on at the Mac: jantar people on.</p> : null}
-        <ul className="mt-12 border-t border-line">
-          {sharing.map((p) => (
-            <li key={p.id} className="border-b border-line">
-              <button type="button" className="flex h-48 w-full items-center type-row" onClick={() => navigate(`/people/${p.id}`)}>
-                {p.name}
-              </button>
-            </li>
-          ))}
-        </ul>
+        {(gone ? [gone] : setupAgain).map((s) => (
+          <SetupAgainNote key={s.id} entry={s} />
+        ))}
+        {gone ? null : (
+          <ul className="mt-12 border-t border-line">
+            {sharing.map((p) => (
+              <li key={p.id} className="border-b border-line">
+                <button type="button" className="flex h-48 w-full items-center type-row" onClick={() => navigate(`/people/${p.id}`)}>
+                  {p.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   }

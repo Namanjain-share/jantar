@@ -532,7 +532,19 @@ export const PersonViewSchema = z.object({
   sharedSpace: z.string().optional(),
 });
 export type PersonView = z.infer<typeof PersonViewSchema>;
-export const PeopleListSchema = z.object({ enabled: z.boolean(), people: z.array(PersonViewSchema) });
+/**
+ * T20 (spec 2.7): someone the ledger says still shares whose space a Life
+ * restore of an older backup took out of life.db. Nothing of theirs is
+ * left to show (no name either), and every route of his about them is the
+ * unknown-pid answer; his People screen says "Invite them again".
+ */
+export const PersonSetupAgainSchema = z.object({
+  id: PersonIdSchema,
+  /** The Access email their devices joined with, when Access sent one (his device list of theirs shows it too, C20). */
+  accessEmail: z.string().optional(),
+});
+export type PersonSetupAgain = z.infer<typeof PersonSetupAgainSchema>;
+export const PeopleListSchema = z.object({ enabled: z.boolean(), people: z.array(PersonViewSchema), setupAgain: z.array(PersonSetupAgainSchema).optional() });
 export type PeopleList = z.infer<typeof PeopleListSchema>;
 export const PersonResponseSchema = z.object({ person: PersonViewSchema });
 export const PidParamsSchema = z.object({ pid: PersonIdSchema });
