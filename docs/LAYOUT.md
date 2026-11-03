@@ -796,3 +796,31 @@ is 277.1 kB of `MAIN_JS_MAX` 280 kB (0.12.0: 275.3; Work's place, its
 icon, the Life status feed, the project line and menu entry), and the
 Work chunk 58.4 kB with what it pulls in. Tests:
 `packages/web/test/work/{nav,client,projects,seed,board-project,search,isolation}.test.ts(x)`.
+
+Work's clients in the app (0.13.0, its second web part). `lib/router.ts`'s
+Work route carries Clients' filters (`?q=&state=&tag=&list=`, W20), and
+`Shell.tsx` hands Work the whole route. `Api.request` takes `text` (the
+export's CSV); the todo writes are typed `OwnerTodoBody`/`OwnerTodoPatch`.
+The screens: `Work.tsx` loads `Clients.tsx` with import(), its own chunk
+`Clients` (Work's segments, `WorkTabs.tsx`, are handed to it, so it
+imports nothing from Work's chunk); `Clients.tsx` is a SplitPane
+"work-clients" (fill: a table across a wide pane with nothing open, the
+rows beside an open client), `ClientHub.tsx` (one
+`GET /v1/work/clients/:id`; `kit/Panel` cards in `kit/Columns` from 640),
+`ClientSheet.tsx`, `LogSheet.tsx` (its own chunk too: a project's hub
+loads it with import()), `clientModel.ts`, `parts.tsx` (chips that wrap,
+the marks of words someone else wrote, W35's line); `ImportSheet.tsx` and
+`Duplicates.tsx` load on first use, and `MeetingClients.tsx` from a
+meeting's page (`meetings/MeetingPage.tsx`), so Meetings carries none of
+Work. `client.ts` names every P2 and P3b route it calls, still as words.
+Follow-ups: `life/todos/clients.ts` (`useTodoClients`: the names on rows,
+the sheet's Client list) in Todos, Today and a project's hub;
+`TodoRow`'s `client`, `TodoSheet`'s Client field (`clients`, and
+`start.contactId`); Today's Work card (`workLines`, the card id `work` in
+`today/Dashboard.tsx`). The meeting export's share-or-download moved to
+`lib/share-file.ts`. The first load is 277.2 kB of `MAIN_JS_MAX` 280 kB
+(the route's filters); Work 60.9 kB with what it pulls in, Work › Clients
+71.5, its import 47.1 and duplicates 45.3, the Log sheet 45.4, a
+meeting's clients 44.4, Today 76.2 (its card and the follow-up names).
+Tests: `packages/web/test/work/{clients,client-hub,client-sheet,log-sheet,client-model,followups,import,duplicates}.test.ts(x)`,
+and the clients' parts of `code-split.test.ts` and `work/isolation.test.ts`.

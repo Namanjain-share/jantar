@@ -9,8 +9,10 @@ What changed for people who use Jantar, newest first. Versions before
 place for the work you do for clients, owner-only. This build has the Mac
 side of projects and search, of clients, the log of calls and meetings,
 follow-ups, import and export, and of deals, their stages and insights;
-in the app, Work's place, your projects, a project as one screen and one
-search from every phone header. The client and deal screens come with the
+in the app, Work's place, your projects, a project as one screen, one
+search from every phone header, and your clients: the list, a client's
+page, the Log sheet, follow-ups on Today and Todos, a meeting's clients,
+import, export and merging duplicates. The deal screens come with the
 app's next update. [Work](docs/work.md) has it all.
 
 **Before upgrading: nothing to copy by hand.** The daemon keeps
@@ -55,6 +57,31 @@ restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
   screen names its project under the title.
 - **Start from your client folders** in the app too: tick folders, name
   them, and Create makes a project each (and a client each, if you want).
+- **Clients in the app.** Work › Clients lists your clients under Needs a
+  step (an open deal and no follow-up), Clients, Leads and Past, each with
+  its next step, open deals and last touch; filter by words, state, tag or
+  a starter list (the filters are the address, so Today's links open the
+  list they name). A client's page has Call, WhatsApp and Email (your
+  phone's own apps; WhatsApp needs a country code, from Work's dial code),
+  its next step, follow-ups, deals, projects, people, the log with older
+  pages, and its details; coming back from a call asks "Log the call?".
+  Add a client in about ten seconds (a possible duplicate warns, never
+  blocks); delete one with what goes and what stays spelled out, or mark
+  it past. Words from an import or a meeting are marked as such. On a wide
+  window the list is a table until you open one.
+- **The Log sheet.** A call, meeting, e-mail, message or note, and its
+  next step (Tomorrow, In 3 days, Next week or a day you pick), in one
+  save; what you typed is kept on the phone when the Mac can't be reached.
+- **Follow-ups on Today and Todos.** A follow-up names its client on its
+  row, and the todo sheet has a Client field. Today's Work card lists
+  check-ins due, deals with no next step, quiet ones and ones closing this
+  week, only on a day it has some.
+- **A meeting's clients**, on its page: linked through its project or by
+  you, suggested from its names (nothing without your tap), Unlink.
+- **Import and export in the app**: a CSV or vCard from Files with a
+  preview and a decision per possible duplicate, Undo for 7 days; the CSV
+  export goes to the share sheet. **Find duplicates** and **Merge with…**:
+  pick what the kept client takes, or say "not a duplicate".
 - `jantar life on work` brings Todos with it, and `jantar life off todos`
   turns Work off too and says so.
 - **Clients and companies.** A client is a person or a company (a person

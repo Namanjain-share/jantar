@@ -530,7 +530,7 @@ people hostname behind its Access app with the One-time PIN:
 
 | # | Check | What it settles |
 |---|---|---|
-| WK1 | With Work on, log a call with a made-up client and a next step for two minutes from now (or `followup_add` in Chat). Lock the iPhone: the push says "Todo due" and "Follow-up · HH:MM", with no client name. Run `jantar work lockscreen names on` and try again: the title shows. Tap it: Jantar opens the client (or Todos, until the phone's Work screens arrive) | the lock screen (W23) |
+| WK1 | With Work on, log a call with a made-up client and a next step for two minutes from now (or `followup_add` in Chat). Lock the iPhone: the push says "Todo due" and "Follow-up · HH:MM", with no client name. Run `jantar work lockscreen names on` and try again: the title shows. Tap it: Jantar opens the client | the lock screen (W23) |
 | WK2 | In a session started in a client's project folder, `client_here` names the client and its next step, and no phone or e-mail | client_here |
 | WK3 | `jantar work import` of a `.vcf` saved from the iPhone's Contacts (share, Save to Files, AirDrop to the Mac): the preview's rows match the cards, photos are dropped, and `jantar work import undo <batch>` takes them back | vCard import |
 | WK4 | In Chat, with a made-up client: "add a deal Site rebuild for Acme, 4.5 lakh, closing the 30th", then "we won it, make the project". The deal is Won, Acme is a client, and the project has Acme as its client; Undo on the change puts all three back. `jantar work export --csv ~/Desktop/deals.csv --deals` opens in Numbers with the value as 450000.00 and the stage's name | deals in Chat, Won → project, the deals CSV |
@@ -545,6 +545,17 @@ people hostname behind its Access app with the One-time PIN:
 | WK8 | iPad 11-inch, landscape, sidebar: Work is one row between Chat and Files; with Today's group open the middle of the sidebar scrolls by no more than about 35 pt; Projects is a table, and a project opens beside it. Portrait (rail): Work under its icon, the project over the list with "‹ Projects" | the sidebar (W19), the split view |
 | WK9 | Mac: `g w` opens Work, ⌘4 is still Files, ⌘K "acme" finds the made-up client's project; in Projects, ↓ and ↵ open a project beside the list, Esc goes back to its row, `c` opens New project | Mac keys |
 | WK10 | Start from your client folders on an empty Work, with New session on: the folders under a made-up client folder show unticked; tick two, Create; both projects link their folders and their live sessions show on them | the seed sheet (W28) |
+
+### Work in the app (v0.13, P2's screens: clients)
+
+| # | Check | What it settles |
+|---|---|---|
+| WK11 | iPhone (Home Screen app), Work's dial code set to +91: a made-up client with a 10-digit number. Call opens the phone's call sheet with the number; WhatsApp opens WhatsApp's chat with it (a `wa.me` link from the app); Email opens Mail with the address. Let a call ring and hang up after 15 s: back in Jantar, "Log the call with …?" shows; cancel the call sheet at once instead: it doesn't | Call, WhatsApp, Email and "Log the call?" (W31), the `visibilitychange` coming back |
+| WK12 | iPhone, 390 and 320 pt wide (Display Zoom): Work › Clients, a client, the Add and Log sheets and the import preview scroll with no sideways scroll, and every button, chip and row (the phones and e-mails in Details too) is at least 44 pt | F8 |
+| WK13 | iPhone: add a made-up client in five taps (+, name, phone, Client, Add client): it opens; type the same phone in a second one: "Already here: … (same phone)" shows, and Add client still saves | add a client (W29) |
+| WK14 | iPhone: log a call with a next step for two minutes from now, in one Save; it rings like any reminder and shows on Today's Due with the client's name; with the Mac asleep, Save says "Not saved. Kept on this phone until you close Jantar." and the note is still there after closing and opening the sheet | the Log sheet (W13, W35) |
+| WK15 | iPhone: a `.vcf` saved from Contacts to Files imports through Work › Clients › ··· › Import a file; the preview's matches default to Skip; Undo import takes the new ones back. Export CSV opens the share sheet | import and export in the app |
+| WK16 | iPad 11-inch, landscape: Clients is a table until a client opens; then the client opens beside the rows, its parts as cards. Mac: ↓ ↵ open a client, `l` opens the Log sheet, `n` a next step, `/` the filter box, `c` a new client, Esc back to its row | the split view, Mac keys |
 
 ## iPad checks (0.12)
 

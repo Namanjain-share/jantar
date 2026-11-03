@@ -21,10 +21,11 @@ and `jantar life off todos` turns Work off with Todos (it says so).
 The Mac side of all of Work: projects and search; clients, the log,
 follow-ups, meetings linked to clients, import and export; deals, their
 stages and insights. In the app: Work's place, its projects and a
-project's screen, search from every phone header, and projects from your
-client folders (below). The client and deal screens, the Log sheet, the
-deal stages and Insights come with the app's next update; until then Chat
-and the CLI reach your clients and deals.
+project's screen, search from every phone header, projects from your
+client folders, and your clients (below): the list, a client's page, the
+Log sheet, follow-ups on Today and Todos, a meeting's clients, import,
+export and merging. The deal screens, the deal stages and Insights come
+with the app's next update; until then Chat and the CLI reach your deals.
 
 ### In the app
 
@@ -57,6 +58,72 @@ and a session's screen names its project under the title.
 
 **Search.** The magnifier in the phone's header (and ⌘K, or "Search or
 jump" in the iPad's sidebar) searches everything below as you type.
+
+**Clients.** Work › Clients (Projects · Clients sit under Work's title)
+lists your clients and companies under **Needs a step** (one with an open
+deal and no follow-up), **Clients**, **Leads** and **Past** (folded). Each
+row has its next step (marked once it is overdue), its open deals (each
+currency on its own) and when you last talked, or "quiet 21 days" past
+Work's quiet days. Filter by words (a name, company, e-mail or phone), by
+state, by a tag or by a starter list; the filters are in the page's
+address, so a link from Today's Work card opens the list it names. On a
+wide window the list is a table until you open a client; then the client
+opens beside the list.
+
+A client's page has, from the top: its company and state; **Call**,
+**WhatsApp** and **Email**, which open your phone's own apps with the
+number or address filled in (you press send there; WhatsApp needs a
+country code, so a 10-digit number gets Work's dial code, and without one
+the button isn't there); its next step with Done; **Log a call or
+meeting**; its follow-ups (**+ Next step**); its deals (a company's people's
+are labelled with the person); its projects; a company's people; the log,
+newest first, with its done follow-ups and its meetings in between and
+**Show older** for the rest; and its details (phones, e-mails, links,
+tags, city, source, folder with **Open folder in Files**, the check-in and
+notes). Come back to Jantar within two hours of a call you let ring for
+ten seconds or more and it asks "Log the call with …?". With a keyboard,
+`l` logs, `n` sets a next step and `e` edits.
+
+**+** adds a client in about ten seconds: a name, a phone, a company by
+name ("New company: …" when it is one), Lead or Client, and More fields
+for the rest. While you type, a client it may already be shows under the
+name ("Already here: … (same phone)"); it never stops the save. Delete is
+in the page's **···**, with what goes and what stays spelled out and
+**Mark as past instead** first.
+
+Words someone else wrote are marked: a client or log entry from an import
+says "imported", a name tapped from a meeting "from a meeting", and their
+notes show in a quoted block that says where they came from, the way Chat
+treats them as data.
+
+**The Log sheet** logs a call, meeting, e-mail, message or note (in or
+out, how long, how it went), its note and, if it has open deals, which
+one; then the next step: Tomorrow, In 3 days, Next week (the coming
+Monday) or a day you pick, a time if you like, and its title. **Log and
+set next step** saves both in one go. If your Mac can't be reached the
+sheet says "Not saved. Kept on this phone until you close Jantar." and
+keeps what you typed; it is still there if you close the sheet and come
+back. From a project's screen, **+ Log** in its Log logs with the
+project's client, for that project. Your own entries have Edit and Delete
+(with Undo) in their **···**.
+
+**Follow-ups in the app.** A follow-up names its client on its row in
+Today's Due, in Todos and in Reminders, and the todo sheet has a
+**Client** field while Work is on. Today's **Work** card shows only on a
+day it has something: clients due a check-in ("Check in: Northwind (every
+30 days, 34 since)"), then how many deals have no next step, are quiet or
+close this week; each line opens the list it names.
+
+**A meeting's clients.** With Work on, a meeting's page has a Clients
+field: the client of its project (marked "through its project"), the
+ones you linked, each with Unlink, and suggestions from the meeting's
+names (Link one that matches a client, or Add one as a new client).
+Nothing links or is made without your tap.
+
+**Import, export and duplicates.** Clients' **···** has **Import a
+file** (Choose a file, or Paste CSV; the preview, its decisions and Undo
+are below), **Export CSV** (the share sheet, or a download) and **Find
+duplicates**. A client's **···** has **Merge with…**.
 
 ### A project on one screen
 
