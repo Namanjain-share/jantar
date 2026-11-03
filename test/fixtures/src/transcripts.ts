@@ -233,14 +233,20 @@ export function agentPromptDeniedSaid(said: string): string {
   return `${AGENT_DENIED_HEAD} The user said:\n${said}`;
 }
 
+/**
+ * What Claude Code 2.1.31x writes for a running call stopped by a remote
+ * cancel: the stop record plus its own correction that nothing was refused.
+ */
+export const TOOL_STOPPED_RUNNING = `${TOOL_DECLINED} Correction to the text above: this call was stopped while running, not refused before it ran. It may have run in part or in full, and its changes may have been written. No permission prompt was involved. Work it started elsewhere (a remote command, a background process) may still be running, so check before starting the same work again. The instruction to stop and wait still stands.`;
 
 /**
  * A call Claude stopped: Esc on a running call, TaskStop, a stop from the
  * UI, a shutdown. A "No" at the dialog with nothing typed is written the
- * same way.
+ * same way. `running` writes the remote-cancel wording instead.
  */
-export function toolStopped(ctx: EntryContext, toolUseId: string, opts: { note?: boolean } = {}): Entry {
-  const text = opts.note ? TOOL_DECLINED + CORRECTION_NOTE : TOOL_DECLINED;
+export function toolStopped(ctx: EntryContext, toolUseId: string, opts: { note?: boolean; running?: boolean } = {}): Entry {
+  const base = opts.running ? TOOL_STOPPED_RUNNING : TOOL_DECLINED;
+  const text = opts.note ? base + CORRECTION_NOTE : base;
   return { ...toolResultWith(ctx, toolUseId, text, 'User rejected tool use', true), toolDenialKind: 'user-rejected' };
 }
 

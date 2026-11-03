@@ -23,6 +23,7 @@ import {
   toolResultWith,
   toolStopped,
   TOOL_DECLINED,
+  TOOL_STOPPED_RUNNING,
   userPrompt,
   workflowLaunched,
   type Entry,
@@ -134,6 +135,25 @@ describe('a stopped call is not "you rejected"', () => {
       interruptedForToolUse(tl.next()),
     ]);
     expect(kinds(found)).toEqual([['rejected', 'you rejected: Bash · git log', undefined]]);
+  });
+
+  it('Claude’s own "stopped while running, not refused" record is a stop in every mode, no mode known too', () => {
+    for (const mode of ['default', 'plan', 'acceptEdits', undefined]) {
+      for (const note of [false, true]) {
+        const tl = timeline('2026-01-15T10:00:00.000Z', SID, CWD);
+        const found = scanAll(
+          [
+            ...(mode ? [prompt(tl.next(), 'Deploy it.', mode)] : []),
+            assistantToolUse(tl.next(), 'Bash', { command: 'make deploy' }, 'toolu_y'),
+            toolStopped(tl.next(), 'toolu_y', { running: true, note }),
+            interruptedForToolUse(tl.next()),
+          ],
+          { mode: () => undefined },
+        );
+        expect(found, `${String(mode)} note=${note}`).toEqual([]);
+      }
+    }
+    expect(denialKind(TOOL_STOPPED_RUNNING)).toBe('rejected'); // text alone: Files reads it as before
   });
 });
 

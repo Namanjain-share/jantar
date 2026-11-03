@@ -23,6 +23,8 @@
  *   mode;
  * - otherwise (default, plan, acceptEdits or no mode known) it stays a
  *   rejection, as before: a "No" and an Esc on a running call look alike.
+ * A record Claude Code itself marks "stopped while running, not refused"
+ * (a remote cancel of a running call) is a stop in every mode.
  *
  * The match strings are Claude Code's own messages; they are used only to
  * recognise them.
@@ -79,6 +81,13 @@ const DENIALS: readonly Denial[] = [
  * it is for the model, so it is left out of the alert.
  */
 const CORRECTION_NOTE = /\n\nNote: The user['\u2019]s next message may contain a correction[\s\S]*$/;
+
+/**
+ * What Claude Code (2.1.31x) adds to that record for a running call stopped
+ * by a remote cancel: it says no permission prompt was involved, so the
+ * record is a stop in every mode.
+ */
+const STOPPED_NOT_REFUSED = 'Correction to the text above: this call was stopped while running, not refused';
 
 /** Tools whose dialog shows in every permission mode: a stopped one was a dialog the user dismissed. */
 const ALWAYS_ASKS: ReadonlySet<string> = new Set(['AskUserQuestion', 'ExitPlanMode']);
@@ -201,6 +210,7 @@ export class AlertScanner {
         if (!hit) return;
         const { denial: d, m } = hit;
         const call = typeof b.tool_use_id === 'string' ? this.tools.get(b.tool_use_id) : undefined;
+        if (d.alsoStop && text.includes(STOPPED_NOT_REFUSED)) return;
         if (d.alsoStop && !provenRejection(e, !!m[1]?.trim()) && this.stopped(e, call?.name ?? '')) return;
         const tool = call?.desc ?? '';
         const what =
