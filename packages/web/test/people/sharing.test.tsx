@@ -17,7 +17,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import type { PersonActivity, PersonToday, PersonView } from '@jantar/protocol/people';
+import { OwnerPeoplePrefsSchema, type PersonActivity, type PersonToday, type PersonView } from '@jantar/protocol/people';
 import { AGREEMENT_FIELDS, presetAgreement } from '@jantar/protocol/people-core';
 import { activityText, herVoice, hisVoice } from '../../src/people-shared/activity.js';
 import { createRouter, memoryHistory } from '../../src/lib/router.js';
@@ -31,7 +31,7 @@ import { fakeApi } from '../helpers.js';
 const PID = '01JASHAAAAAAAAAAAAAAAAAAAA';
 const DAY = '2026-11-03';
 const AT = '2026-11-03T08:00:00.000Z';
-const PREFS = { urgentBreaksQuiet: true, alertCaps: { hour: 3, day: 10, urgentDay: 2 }, muteUntil: null, reviewPush: true };
+const PREFS = OwnerPeoplePrefsSchema.parse({});
 
 function client(over: Partial<PeopleClient> = {}): PeopleClient {
   const base: Partial<PeopleClient> = {};
