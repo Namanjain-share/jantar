@@ -11,7 +11,8 @@
  *   step's status, done time, report and check-in, late chips, Nudge on
  *   today's open steps; check-betweens; the concern lines; her evening
  *   review at his level, with Carry for his open steps), To-do (his items
- *   and hers, Nudge, edit his, and hers with editHers.todos), Health (her
+ *   and hers, filtered by her projects, Nudge, edit his, and hers with
+ *   editHers.todos; Assign can put one in a project of hers), Health (her
  *   medicines at his level with the two-day concern, Add for her with
  *   assign.meds, Edit and Stop on his additions and, with editHers.meds, on
  *   hers; her weight; her food log at his level (see.food: counts or
@@ -55,7 +56,7 @@ import type {
   SleepWeek as Week,
   TodoAsk,
 } from '@jantar/protocol/people';
-import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse } from '@jantar/protocol';
+import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse, type ProjectView } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { FoodRead, foodTodayLine } from '../../../people-shared/FoodRead.js';
 import { useEffect, useState } from 'react';
@@ -220,6 +221,9 @@ function PartnerOf({
   const alerts = useLifeLoad<AlertsResponse>(`people:${pid}:alerts`, () => client.alerts(pid));
   const [alerting, setAlerting] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const a = person?.agreement;
+  // Her projects for the header's Assign sheet, read when it opens (his To-do tab reads its own).
+  const herTodos = useLifeLoad<OwnerTodosView>(assigning && a?.see.todos ? `people:${pid}:todos` : null, () => client.todos(pid));
   const t = today.data;
   const name = t?.name ?? person?.name ?? 'Partner';
   const go = (next: PartnerTab, extra = '') => navigate(`/people/${pid}?tab=${next}${extra}`);
@@ -229,7 +233,6 @@ function PartnerOf({
   const planDay = dayIn ?? (t ? defaultPlanDay(t.day, `${String(nowHm.getHours()).padStart(2, '0')}:${String(nowHm.getMinutes()).padStart(2, '0')}`) : undefined);
   const status = t && !isLocked(t.status) ? t.status : null;
   const asleep = t && !isLocked(t.sleep) ? t.sleep.open : null;
-  const a = person?.agreement;
   const unseen = alerts.data?.unseen ?? 0;
   return (
     <div className="px-16 pb-48 pt-16 md:px-32">
@@ -299,7 +302,15 @@ function PartnerOf({
       {tab === 'sharing' ? <SharingTab client={client} pid={pid} name={name} person={person} list={list} reload={reloadList} /> : null}
       {tab === 'activity' ? <ActivityTab client={client} pid={pid} name={name} /> : null}
       <AlertSheet open={alerting} client={client} pid={pid} name={name} close={() => setAlerting(false)} />
-      <AssignSheet open={assigning} client={client} pid={pid} name={name} close={() => setAssigning(false)} done={() => (today.reload(), tab !== 'todos' ? go('todos') : null)} />
+      <AssignSheet
+        open={assigning}
+        client={client}
+        pid={pid}
+        name={name}
+        projects={herTodos.data?.projects ?? []}
+        close={() => setAssigning(false)}
+        done={() => (today.reload(), tab !== 'todos' ? go('todos') : null)}
+      />
     </div>
   );
 }
@@ -1090,10 +1101,11 @@ function AlertSheet({ open, client, pid, name, close }: { open: boolean; client:
 }
 
 /** One to-do's line under its title: due, who added it, and where it stands. */
-function todoLine(t: PersonTodo, name: string): string {
+function todoLine(t: PersonTodo, name: string, project?: string): string {
   return [
     t.due ? `${t.due.day === localDay() ? 'Today' : dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null,
     t.repeat ? `every ${t.repeat.freq === 'daily' ? 'day' : t.repeat.freq.replace(/ly$/, '')}` : null,
+    project ? `in ${project}` : null,
     t.by === '' ? 'from you' : `${name}'s own`,
     t.editedBy === '' && t.by !== '' ? 'edited by you' : null,
     t.snoozable === false ? 'no snooze' : null,
@@ -1119,7 +1131,10 @@ function TodosTab({ client, pid, name, sees, canAssign, editHers, onAssign }: { 
   const done = useLifeLoad<OwnerTodosView>(sees ? `people:${pid}:todos:done` : null, () => client.todos(pid, true));
   const [editing, setEditing] = useState<PersonTodo | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [only, setOnly] = useState<string | null>(null);
   if (!sees) return <Locked name={name} what="To-dos" />;
+  const projects = open.data?.projects ?? [];
+  const names = new Map(projects.map((p) => [p.id, `${p.emoji ? `${p.emoji} ` : ''}${p.name}`]));
   const reload = () => (open.reload(), done.reload());
   const nudge = (t: PersonTodo) =>
     void client.sendAlert({ to: pid, kind: 'nudge', ref: { type: 'todo', id: t.id } }).then(
@@ -1132,7 +1147,7 @@ function TodosTab({ client, pid, name, sees, canAssign, editHers, onAssign }: { 
     <li key={t.id} className="flex flex-wrap items-start gap-8 border-b border-line py-8">
       <div className="min-w-0 flex-1 basis-[12rem]">
         <p className={`break-words type-row [overflow-wrap:anywhere] ${isOpen ? 'text-ink' : 'text-ink-2'}`}>{t.title}</p>
-        <p className="break-words type-small text-ink-2">{todoLine(t, name)}</p>
+        <p className="break-words type-small text-ink-2">{todoLine(t, name, t.projectId ? names.get(t.projectId) : undefined)}</p>
       </div>
       <div className="flex flex-wrap gap-4">
         {isOpen ? (
@@ -1153,7 +1168,8 @@ function TodosTab({ client, pid, name, sees, canAssign, editHers, onAssign }: { 
       </div>
     </li>
   );
-  const openList = open.data?.todos ?? [];
+  const openList = (open.data?.todos ?? []).filter((t) => only === null || t.projectId === only);
+  const active = projects.filter((p) => p.status === 'active' || p.id === only);
   const doneList = (done.data?.todos ?? []).slice(0, 20);
   return (
     <div className="mt-12">
@@ -1167,7 +1183,19 @@ function TodosTab({ client, pid, name, sees, canAssign, editHers, onAssign }: { 
           {note}
         </p>
       ) : null}
-      <h2 className="mt-12 type-row font-semibold text-ink">Open</h2>
+      {active.length ? (
+        <div role="group" aria-label={`${name}'s projects`} className="mt-12 flex flex-wrap gap-8">
+          <Button variant={only === null ? 'primary' : 'outline'} className="min-h-44" aria-pressed={only === null} onClick={() => setOnly(null)}>
+            All
+          </Button>
+          {active.map((p) => (
+            <Button key={p.id} variant={only === p.id ? 'primary' : 'outline'} className="min-h-44" aria-pressed={only === p.id} onClick={() => setOnly(only === p.id ? null : p.id)}>
+              {names.get(p.id)} · {p.open}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+      <h2 className="mt-12 type-row font-semibold text-ink">{only ? `Open in ${names.get(only) ?? 'this project'}` : 'Open'}</h2>
       {openList.length ? <ul className="border-t border-line">{openList.map((t) => row(t, true))}</ul> : <p className="type-small text-ink-2">{open.data ? 'Nothing open.' : 'Loading…'}</p>}
       {doneList.length ? (
         <>
@@ -1175,7 +1203,7 @@ function TodosTab({ client, pid, name, sees, canAssign, editHers, onAssign }: { 
           <ul className="border-t border-line">{doneList.map((t) => row(t, false))}</ul>
         </>
       ) : null}
-      <AssignSheet open={editing !== null} client={client} pid={pid} name={name} edit={editing} close={() => setEditing(null)} done={reload} />
+      <AssignSheet open={editing !== null} client={client} pid={pid} name={name} edit={editing} projects={projects} close={() => setEditing(null)} done={reload} />
     </div>
   );
 }
@@ -1191,10 +1219,30 @@ export type RepeatChoice = (typeof REPEATS)[number][0];
 
 /**
  * Assign a to-do to her (assign.todos), or edit one (his, or hers with editHers.todos): a title, a due day
- * and time, a repeat (daily, weekly, monthly: one item that comes back after each Done), what it asks of
- * her (nothing, Got it, a short report), no snooze, and "Tell me if not done by".
+ * and time, a repeat (daily, weekly, monthly: one item that comes back after each Done), which of her
+ * projects it goes in (hers only: the daemon refuses any other, C6), what it asks of her (nothing, Got it,
+ * a short report), no snooze, and "Tell me if not done by".
  */
-function AssignSheet({ open, client, pid, name, close, done, edit = null }: { open: boolean; client: PeopleClient; pid: string; name: string; close: () => void; done: () => void; edit?: PersonTodo | null }) {
+function AssignSheet({
+  open,
+  client,
+  pid,
+  name,
+  close,
+  done,
+  edit = null,
+  projects = [],
+}: {
+  open: boolean;
+  client: PeopleClient;
+  pid: string;
+  name: string;
+  close: () => void;
+  done: () => void;
+  edit?: PersonTodo | null;
+  /** Her projects (from her to-dos view): the active ones, and the item's own. */
+  projects?: readonly ProjectView[];
+}) {
   const [title, setTitle] = useState('');
   const [day, setDay] = useState('');
   const [time, setTime] = useState('');
@@ -1202,11 +1250,18 @@ function AssignSheet({ open, client, pid, name, close, done, edit = null }: { op
   const [noSnooze, setNoSnooze] = useState(false);
   const [followUp, setFollowUp] = useState('');
   const [repeat, setRepeat] = useState<RepeatChoice>('none');
+  const [project, setProject] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const choices = projects.filter((p) => p.status === 'active' || p.id === edit?.projectId);
+  const projectName = (id: string) => {
+    const p = projects.find((x) => x.id === id);
+    return p ? `${p.emoji ? `${p.emoji} ` : ''}${p.name}` : null;
+  };
   useEffect(() => {
     if (!open) return;
     setTitle(edit?.title ?? '');
+    setProject(edit?.projectId ?? '');
     setRepeat(edit?.repeat && edit.repeat.freq !== 'yearly' ? edit.repeat.freq : 'none');
     setDay(edit?.due?.day ?? '');
     setTime(edit?.due?.time ?? '');
@@ -1231,9 +1286,18 @@ function AssignSheet({ open, client, pid, name, close, done, edit = null }: { op
           ask,
           snoozable: !noSnooze,
           followUp: day && followUp ? followUp : null,
+          ...(project !== (edit.projectId ?? '') ? { projectId: project || null } : {}),
         });
       } else {
-        const body: AssignTodoBody = { title: title.trim(), ...(due ? { due } : {}), ...(rep ? { repeat: rep } : {}), ask, ...(noSnooze ? { snoozable: false } : {}), ...(day && followUp ? { followUp } : {}) };
+        const body: AssignTodoBody = {
+          title: title.trim(),
+          ...(due ? { due } : {}),
+          ...(rep ? { repeat: rep } : {}),
+          ...(project ? { projectId: project } : {}),
+          ask,
+          ...(noSnooze ? { snoozable: false } : {}),
+          ...(day && followUp ? { followUp } : {}),
+        };
         await client.assignTodo(pid, body);
       }
       done();
@@ -1272,6 +1336,19 @@ function AssignSheet({ open, client, pid, name, close, done, edit = null }: { op
             </select>
           </label>
         </div>
+        {choices.length ? (
+          <label className="flex flex-col gap-4">
+            <span className="type-small text-ink-2">{name}'s project (optional)</span>
+            <select className={field} value={project} onChange={(e) => setProject(e.target.value)}>
+              <option value="">None</option>
+              {choices.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {projectName(p.id)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <fieldset className="flex flex-col gap-4">
           <legend className="type-small text-ink-2">Ask {name} for</legend>
           {(
@@ -1294,7 +1371,7 @@ function AssignSheet({ open, client, pid, name, close, done, edit = null }: { op
           <input type="time" className={field} value={followUp} disabled={!day} onChange={(e) => setFollowUp(e.target.value)} />
         </label>
         <p className="type-small text-ink-3">
-          {name} sees it at once, marked "From you"{noSnooze ? ' and "no snooze"' : ''}
+          {name} sees it at once{project && projectName(project) ? ` in ${projectName(project)}` : ''}, marked "From you"{noSnooze ? ' and "no snooze"' : ''}
           {day && repeat !== 'none' ? `, ${REPEATS.find(([v]) => v === repeat)?.[1].toLowerCase()} after each Done` : ''}
           {day && followUp ? `, and that you asked to know by ${followUp}` : ''}. {name}'s Activity lists it.
         </p>

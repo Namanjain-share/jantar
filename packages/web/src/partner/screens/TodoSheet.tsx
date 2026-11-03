@@ -9,12 +9,12 @@
  *   to-dos, the sheet says the reason is shown to {owner}.
  * - On his items, Ask to change: reasons and a note go to him (his To-do
  *   and Alerts show it on the item). Editing or deleting his is his to do.
- * - On hers, Edit (title, day and time) and Delete (a second tap confirms:
- *   it is gone for both of them).
+ * - On hers, Edit (title, day and time, and which of her projects it is
+ *   in) and Delete (a second tap confirms: it is gone for both of them).
  */
 import { ASK_REASONS, SKIP_REASONS } from '@jantar/protocol/people-core';
 import type { PersonTodo } from '@jantar/protocol/people';
-import type { SnoozePreset } from '@jantar/protocol';
+import type { ProjectView, SnoozePreset } from '@jantar/protocol';
 import { useEffect, useState } from 'react';
 import { Button } from '../../ui/kit/Button.js';
 import type { PersonApi } from '../api.js';
@@ -38,17 +38,20 @@ export interface TodoSheetProps {
   run: (p: Promise<unknown>) => void;
   /** The screen's 5-second Undo. */
   undo: (text: string, back: () => void) => void;
+  /** Her projects, for Edit's project choice (left out: no choice shown). */
+  projects?: readonly ProjectView[];
 }
 
 const field = 'min-h-44 rounded-btn border border-line bg-bg px-8';
 
-export function TodoSheet({ t, owner, shared, api, close, run, undo }: TodoSheetProps) {
+export function TodoSheet({ t, owner, shared, api, close, run, undo, projects }: TodoSheetProps) {
   const [mode, setMode] = useState<'menu' | 'skip' | 'ask' | 'edit'>('menu');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [title, setTitle] = useState('');
   const [day, setDay] = useState('');
   const [time, setTime] = useState('');
+  const [project, setProject] = useState('');
   const [sure, setSure] = useState(false);
   useEffect(() => {
     setMode('menu');
@@ -57,6 +60,7 @@ export function TodoSheet({ t, owner, shared, api, close, run, undo }: TodoSheet
     setTitle(t?.title ?? '');
     setDay(t?.due?.day ?? '');
     setTime(t?.due?.time ?? '');
+    setProject(t?.projectId ?? '');
     setSure(false);
   }, [t]);
   if (!t) return null;
@@ -126,12 +130,29 @@ export function TodoSheet({ t, owner, shared, api, close, run, undo }: TodoSheet
                 <input type="time" className={field} value={time} disabled={!day} onChange={(e) => setTime(e.target.value)} />
               </label>
             </div>
+            {projects && projects.length ? (
+              <label className="flex flex-col gap-4">
+                <span className="text-small text-ink-2">Project</span>
+                <select className={field} value={project} onChange={(e) => setProject(e.target.value)}>
+                  <option value="">None</option>
+                  {projects
+                    .filter((p) => p.status === 'active' || p.id === t.projectId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.emoji ? `${p.emoji} ` : ''}
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            ) : null}
             <Button
               variant="primary"
               size="xl"
               disabled={!title.trim()}
               onClick={() => {
-                run(api.updateTodo(t.id, { title: title.trim(), due: day ? { day, ...(time ? { time } : {}) } : null }));
+                const moved = project !== (t.projectId ?? '');
+                run(api.updateTodo(t.id, { title: title.trim(), due: day ? { day, ...(time ? { time } : {}) } : null, ...(moved ? { projectId: project || null } : {}) }));
                 close();
               }}
             >

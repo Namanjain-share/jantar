@@ -4,7 +4,8 @@
  * added, "Edited by {owner}" on one of hers he changed, "no snooze", "asks
  * for a short report" and "{owner} asked to know by 08:45" while it is open
  * (his join-page promise: "You see both on the item"), and her report once
- * done, or "skipped" and its reason. "Got it" when he asked for an ack. A
+ * done, or "skipped" and its reason; the project of hers it is in. "Got
+ * it" when he asked for an ack. A
  * tick on an item that asks for a report opens the report sheet (Save note,
  * or Done without a note). A tap on the title opens its sheet (TodoSheet:
  * snooze, skip, ask to change, edit, delete). Her text and his render as
@@ -16,12 +17,13 @@ import { dayLabel } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
 import { ReportSheet, Tick } from '../ui.js';
 
-/** The line under a to-do's title, as she reads it. */
-export function todoSubline(t: PersonTodo, owner: string): string {
+/** The line under a to-do's title, as she reads it; `project`: the name of her project it is in. */
+export function todoSubline(t: PersonTodo, owner: string, project?: string): string {
   const open = t.doneAt === undefined;
   return [
     t.due ? `${dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null,
     t.repeat ? `every ${t.repeat.freq === 'daily' ? 'day' : t.repeat.freq.replace(/ly$/, '')}` : null,
+    project ? `in ${project}` : null,
     t.by === '' ? `From ${owner}` : null,
     t.by !== '' && t.editedBy === '' ? `Edited by ${owner}` : null,
     t.snoozable === false ? 'no snooze' : null,
@@ -35,10 +37,25 @@ export function todoSubline(t: PersonTodo, owner: string): string {
     .join(' · ');
 }
 
-export function TodoRow({ t, owner, onDone, onAck, onMore }: { t: PersonTodo; owner: string; onDone: (done: boolean, report?: string) => void; onAck?: () => void; onMore?: () => void }) {
+export function TodoRow({
+  t,
+  owner,
+  project,
+  onDone,
+  onAck,
+  onMore,
+}: {
+  t: PersonTodo;
+  owner: string;
+  /** The name of her project it is in (left out on that project's own page). */
+  project?: string;
+  onDone: (done: boolean, report?: string) => void;
+  onAck?: () => void;
+  onMore?: () => void;
+}) {
   const done = t.doneAt !== undefined;
   const [reporting, setReporting] = useState(false);
-  const sub = todoSubline(t, owner);
+  const sub = todoSubline(t, owner, project);
   return (
     <li className="flex items-start gap-8 py-8">
       <Tick done={done} label={done ? `Undo ${t.title}` : `Done: ${t.title}`} onClick={() => (!done && t.ask === 'report' ? setReporting(true) : onDone(!done))} />

@@ -93,6 +93,10 @@ describe('Activity', () => {
       [row(8, AT, 'todo.deleted', { title: 'Old' }), 'Sam removed a to-do: Old'],
       [row(9, AT, 'weight.corrected', { ref: '2026-11-02', changes: [{ field: 'kg', from: '61.4', to: '61.2' }] }), 'Sam corrected your weight for Mon 2 Nov: 61.4 → 61.2 kg'],
       [row(10, AT, 'list.deleted', { title: 'Groceries' }), 'Sam deleted a list for both of you: Groceries'],
+      // Her projects: his Assign into one, and his move of hers between two, name them (never an id).
+      [row(12, AT, 'todo.added', { title: 'Water the basil', changes: [{ field: 'project', to: 'Garden' }] }), 'Sam added a to-do: Water the basil in Garden'],
+      [row(13, AT, 'todo.edited', { title: 'Buy seeds', changes: [{ field: 'project', from: 'Garden', to: 'Study' }] }), 'Sam changed the project of "Buy seeds" Garden → Study'],
+      [row(14, AT, 'view', { area: 'food', ref: 'food' }), 'Sam looked at your food log'],
     ];
     for (const [r, text] of cases) expect(activityText('Sam', r)).toBe(text);
     expect(activityText('Sam', row(11, AT, 'something.new'))).toBe('Sam changed something in your space');

@@ -65,6 +65,7 @@ const FIELD_WORDS: Record<string, string> = {
   schedule: 'the days',
   pills: 'the pill count',
   repeat: 'the repeat',
+  project: 'the project',
 };
 
 /** "changed the time of 'Mock' 08:00 → 08:30" (the first change named; more as "and 2 more"). */
@@ -92,7 +93,10 @@ const ACTION_WORDS: Record<string, (v: ActivityVoice, r: PersonActivity) => stri
   // C27: one of his devices can now open her space (paired with control, or raised to it).
   'owner.device': (v, r) => `${v.owner} added a device that can open ${v.her} space${quoted(r.device)}`,
   'module.changed': (v) => `${v.owner} changed ${v.her} modules`,
-  'todo.added': (v, r) => `${v.owner} added a to-do${quoted(r.title)}`,
+  'todo.added': (v, r) => {
+    const project = r.changes?.find((c) => c.field === 'project')?.to;
+    return `${v.owner} added a to-do${quoted(r.title)}${project ? ` in ${project}` : ''}`;
+  },
   'todo.edited': (v, r) => (r.changes?.length ? `${v.owner} changed ${changeWords(r)}` : `${v.owner} changed a to-do${quoted(r.title)}`),
   'todo.deleted': (v, r) => `${v.owner} removed a to-do${quoted(r.title)}`,
   'plan.set': (v, r) => `${v.owner} planned ${dayOf(r.ref) ?? 'a day'}`,

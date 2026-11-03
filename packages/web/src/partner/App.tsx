@@ -119,7 +119,7 @@ export function App({ api }: { api: PersonApi }) {
         <Suspense fallback={<p className="text-ink-2">Loading…</p>}>
           {route.name === 'today' ? <Today me={me} api={api} reload={load} tick={tick} /> : null}
           {route.name === 'review' ? <Review me={me} api={api} day={route.day} tick={tick} /> : null}
-          {route.name === 'todos' ? <Todos me={me} api={api} tick={tick} /> : null}
+          {route.name === 'todos' ? <Todos me={me} api={api} tab={route.tab} project={route.project} tick={tick} /> : null}
           {route.name === 'health' ? (
             <Health
               api={api}
