@@ -278,6 +278,39 @@ describe('code splitting', () => {
       expect(read(f), f).not.toMatch(/^import (?!type)[^;]*from '@jantar\/protocol\/work'/m);
   });
 
+  it("0.13.0 Work's deals: a chunk of their own off Work's, Insights another; the stage and milestone editors and the client's deal sheet load on first use", () => {
+    const lazyOnly = [
+      'ui/screens/work/Deals.tsx',
+      'ui/screens/work/DealHub.tsx',
+      'ui/screens/work/DealMove.tsx',
+      'ui/screens/work/DealSheet.tsx',
+      'ui/screens/work/StagesSheet.tsx',
+      'ui/screens/work/Insights.tsx',
+      'ui/screens/work/MilestonesSheet.tsx',
+      'ui/screens/work/dealModel.ts',
+    ];
+    for (const f of lazyOnly) {
+      expect(existsSync(join(src, f)), f).toBe(true);
+      expect(main.files.has(f), f).toBe(false);
+    }
+    const read = (f: string) => readFileSync(join(src, f), 'utf8');
+    // Work's first chunk (the projects) reaches none of them statically.
+    const projects = reachable(join(src, 'ui/screens/work/Work.tsx'));
+    expect([...projects.files].filter((f) => lazyOnly.includes(f))).toEqual([]);
+    expect(read('ui/screens/work/Work.tsx')).toContain("import('./Deals.js')");
+    expect(read('ui/screens/work/Work.tsx')).toContain("import('./Insights.js')");
+    expect(read('ui/screens/work/Deals.tsx')).toContain("import('./StagesSheet.js')");
+    expect(read('ui/screens/work/ProjectHub.tsx')).toContain("import('./MilestonesSheet.js')");
+    // Clients never carry the pipeline: a client's New deal loads the sheet with import().
+    const clients = reachable(join(src, 'ui/screens/work/Clients.tsx'));
+    expect([...clients.files].filter((f) => lazyOnly.includes(f))).toEqual([]);
+    expect(read('ui/screens/work/ClientHub.tsx')).toContain("import('./DealSheet.js')");
+    // Insights is not the pipeline's: neither reaches the other.
+    expect([...reachable(join(src, 'ui/screens/work/Insights.tsx')).files].filter((f) => /work\/(Deals|DealHub|DealMove|StagesSheet)\.tsx$/.test(f))).toEqual([]);
+    // The deals' chunks take the protocol's types only: no schema rides into them.
+    for (const f of lazyOnly) expect(read(f), f).not.toMatch(/^import (?!type)[^;]*from '@jantar\/protocol\/work'/m);
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");

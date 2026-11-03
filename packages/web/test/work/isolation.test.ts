@@ -92,6 +92,13 @@ describe('her app never reaches Work (source)', () => {
     expect(words.test(readFileSync(join(src, 'ui', 'screens', 'work', 'client.ts'), 'utf8'))).toBe(true);
   });
 
+  it("0.13.0's deals, Insights and milestones are Work's own modules, and her walk reaches none of them", () => {
+    const deals = ['Deals.tsx', 'DealHub.tsx', 'DealMove.tsx', 'DealSheet.tsx', 'StagesSheet.tsx', 'Insights.tsx', 'MilestonesSheet.tsx', 'dealModel.ts'].map((f) => `ui/screens/work/${f}`);
+    for (const f of deals) expect(existsSync(join(src, f)), f).toBe(true);
+    expect(deals.every((f) => WORK_ONLY.some((re) => re.test(f)))).toBe(true);
+    expect(deals.filter((f) => her.files.has(f))).toEqual([]);
+  });
+
   it("his People screens (what he sees of her) don't reach Work either", () => {
     const partner = reach(join(src, 'ui', 'screens', 'people', 'Partner.tsx'));
     expect([...partner.files].filter((f) => /^ui\/screens\/work\/|^ui\/screens\/life\/todos\/clients\.ts$/.test(f))).toEqual([]);
@@ -150,7 +157,8 @@ describe.skipIf(!built)('her app never reaches Work (as built)', () => {
     }
   });
 
-  it("none of her chunks is his Work chunk", () => {
-    expect([...chunks].filter((f) => /(^|\/)Work-[A-Za-z0-9_-]{8}\.js$/.test(f))).toEqual([]);
+  it("none of her chunks is one of his Work chunks (Work, Clients, Deals, Insights, their sheets)", () => {
+    const his = /(^|\/)(Work|Clients|Deals|Insights|StagesSheet|MilestonesSheet|DealSheet|LogSheet|ImportSheet|Duplicates|MeetingClients)-[A-Za-z0-9_-]{8}\.js$/;
+    expect([...chunks].filter((f) => his.test(f))).toEqual([]);
   });
 });
