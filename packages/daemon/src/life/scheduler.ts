@@ -327,7 +327,7 @@ export class LifeScheduler implements Scheduler {
         const after = new Date(Math.max(now.getTime(), d.dueAt.getTime()));
         let next: Date | null = null;
         try {
-          next = d.handler.next(d.row, after);
+          next = d.handler.next(d.row, after, sent);
         } catch (e) {
           this.log.error('life ping next failed', { kind: d.row.kind, error: errorKind(e) });
         }

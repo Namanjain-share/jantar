@@ -442,6 +442,29 @@ describe('follow-ups (spec 4.4, C7)', () => {
     await eventually(() => expect(k.to(EP.sam)).toHaveLength(1));
     expect(k.to(EP.sam)[0]?.url).toBe(`/people/${f.asha.id}?tab=todos&day=${TODAY}`);
   });
+
+  it('is one push at that time: still open 45 minutes on, he gets no second one (a to-do and a step)', async () => {
+    await k.subscribeAll();
+    await k.him('POST', `/v1/people/${f.asha.id}/todos`, { title: 'Renew the form', due: { day: TODAY }, followUp: '10:45' });
+    await put({ srev: 0, steps: [{ title: 'Call the bank', followUp: '10:50' }], send: 'quiet' });
+    // Walk the clock a few minutes at a time, so every 15-minute recheck gets its sweep.
+    for (let m = 40; m <= 60 + 45; m += 5) await k.at(`${TODAY}T${String(10 + Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00.000Z`);
+    await eventually(() => expect(k.to(EP.sam).filter((p) => /isn't done yet/.test(p.body))).toHaveLength(2));
+    await k.at(`${TODAY}T12:30:00.000Z`);
+    const followUps = k.to(EP.sam).filter((p) => /isn't done yet/.test(p.body));
+    expect(followUps.map((p) => p.url)).toEqual([`/people/${f.asha.id}?tab=todos&day=${TODAY}`, `/people/${f.asha.id}?tab=today&day=${TODAY}`]);
+    expect(k.to(EP.asha).filter((p) => /isn't done yet/.test(p.body))).toEqual([]);
+  });
+
+  it('skipped in his quiet hours, it goes once when they end, then never again', async () => {
+    await k.subscribeAll();
+    expect((await k.him('PATCH', '/v1/people/prefs', { quiet: { from: '10:00', to: '11:00' } })).statusCode).toBe(200);
+    await k.him('POST', `/v1/people/${f.asha.id}/todos`, { title: 'Pay the fee', due: { day: TODAY }, followUp: '10:15' });
+    for (let m = 10; m <= 60 + 50; m += 5) await k.at(`${TODAY}T${String(10 + Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00.000Z`);
+    await eventually(() => expect(k.to(EP.sam).filter((p) => /isn't done yet/.test(p.body))).toHaveLength(1));
+    await k.at(`${TODAY}T13:00:00.000Z`);
+    expect(k.to(EP.sam).filter((p) => /isn't done yet/.test(p.body))).toHaveLength(1);
+  });
 });
 
 describe('her steps: ack, check-in, ask, carry', () => {

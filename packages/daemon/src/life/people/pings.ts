@@ -11,8 +11,10 @@
  *   over 2 minutes (`important`: held while she holds, then sent). Skipped
  *   when the first step rings within 15 minutes: that ring carries "Today's
  *   plan: N steps".
- * - `plan_followup`: "Tell me if not done by" reaches him, after checking
- *   the agreement again when it fires (C7). Never sent to her.
+ * - `plan_followup`: "Tell me if not done by" reaches him once, after
+ *   checking the agreement again when it fires (C7). A skip (his quiet
+ *   hours) looks again every 15 minutes until the day ends; a sent one is
+ *   done. Never sent to her.
  * - `plan_rough`: her rough day reaches him 10 s after her tap, unless she
  *   undid it (C35).
  * - `plan_autoapply` (00:05), `plan_review_prompt` (her review time),
@@ -185,7 +187,9 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
       const body = item && details ? `${name}: "${clipLine(item.title, 60)}" isn't done yet (${item.at}).` : `${name}: an item isn't done yet.`;
       return { kind: 'life', title: 'Jantar', body, url: `/people/${pid}?tab=${item?.area === 'todos' ? 'todos' : 'today'}${item ? `&day=${item.day}` : ''}`, tag: `people:followup:${row.ref}` };
     },
-    next(row, after) {
+    next(row, after, sent) {
+      // One push at that time (spec 4.4): once it went out, the row ends. Only a skip (his quiet hours) looks again.
+      if (sent) return null;
       const item = followUpItem(row);
       if (!item) return null;
       const end = instantAt(shiftDay(item.day, 1), '00:00', tz()).getTime();

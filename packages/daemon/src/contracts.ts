@@ -1734,8 +1734,13 @@ export interface PingHandler {
   check(row: PingRow, dueAt: Date, late: boolean): 'send' | 'skip' | 'cancel';
   /** The push for one or more rows. */
   push(rows: readonly PingRow[], dueAt: Date, late: boolean): LifePush;
-  /** The next time strictly after `after`, or null when there is none. */
-  next(row: PingRow, after: Date): Date | null;
+  /**
+   * The next time strictly after `after`, or null when there is none.
+   * `sent`: the scheduler is moving the row on after this occurrence's push
+   * went out (false or absent: skipped, given up, too late, or a catch-up's
+   * walk), so a one-shot row can end once it has been sent.
+   */
+  next(row: PingRow, after: Date, sent?: boolean): Date | null;
   /** Rebuild every row of this kind from the sources (start, timezone change, restore). */
   resync(): void;
 }
