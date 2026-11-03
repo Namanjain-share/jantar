@@ -6,7 +6,7 @@
 import { vi } from 'vitest';
 import type { LifeModule, LifeStatus, ProjectView, Todo } from '@jantar/protocol';
 import type { ProjectHub, SearchResponse } from '@jantar/protocol/work';
-import { ApiError, type ApiRequest, type ApiRoute } from '../src/lib/api.js';
+import { ApiError, type Api, type ApiRequest, type ApiRoute } from '../src/lib/api.js';
 
 /** Life status with these modules on (the rest off); `work` needs `todos` on the Mac, as here. */
 export function lifeStatus(on: Partial<Record<LifeModule, boolean>> = {}, over: Partial<LifeStatus> = {}): LifeStatus {
@@ -67,7 +67,7 @@ type Answer = (init: ApiRequest) => unknown;
  * any other route answers the daemon's 501. The mock records every call.
  */
 export function workRequest(answers: Record<string, unknown | Answer>) {
-  return vi.fn(async (route: ApiRoute, init: ApiRequest = {}) => {
+  const fn = vi.fn(async (route: ApiRoute, init: ApiRequest = {}): Promise<unknown> => {
     const key = `${route.method} ${route.path}`;
     if (!(key in answers)) throw new ApiError('not_implemented', 'not built yet', 501);
     const a = answers[key];
@@ -75,6 +75,8 @@ export function workRequest(answers: Record<string, unknown | Answer>) {
     if (v instanceof Error) throw v;
     return v;
   });
+  // The mock answers whatever the route's reply is; Api['request'] is generic in it.
+  return fn as typeof fn & Api['request'];
 }
 
 export const NO_RESULTS: SearchResponse = { groups: [] };

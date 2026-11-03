@@ -43,7 +43,7 @@ const PROJECTS = [
   project(IDS.globex, { name: 'Brand refresh', status: 'done' }),
 ];
 
-function setup(o: { features?: Partial<Features>; projects?: ReturnType<typeof project>[]; request?: Record<string, unknown>; path?: string; layout?: Parameters<typeof renderApp>[0]['layout']; status?: 'live' | 'offline'; over?: Parameters<typeof fakeApi>[0]; sessions?: ReturnType<typeof session>[] } = {}) {
+function setup(o: { features?: Partial<Features>; projects?: ReturnType<typeof project>[]; request?: Record<string, unknown>; path?: string; layout?: NonNullable<Parameters<typeof renderApp>[0]>['layout']; status?: 'live' | 'offline'; over?: Parameters<typeof fakeApi>[0]; sessions?: ReturnType<typeof session>[] } = {}) {
   const api = fakeApi({
     lifeStatus: vi.fn(async () => WORK_ON()),
     projectsList: vi.fn(async () => ({ projects: o.projects ?? PROJECTS })),
@@ -213,10 +213,10 @@ describe('a project’s hub', () => {
 
   it('"New session here" with Launch on and the launch scope; "Open folder in Files" with Files on; meetings with Meetings on', async () => {
     const meetings: MeetingsList = {
-      meetings: [{ id: IDS.meeting, site: 'meet', name: 'Kickoff call', autoTodos: false, notes: true, startedAt: '2026-01-13T09:00:00.000Z', endedAt: '2026-01-13T09:40:00.000Z', lines: 10, shots: 0, summary: 'ready', projectId: IDS.acme }],
+      meetings: [{ id: IDS.meeting, site: 'meet', name: 'Kickoff call', autoTodos: false, notes: true, startedAt: '2026-01-13T09:00:00.000Z', endedAt: '2026-01-13T09:40:00.000Z', lines: 10, shots: 0, summary: 'done', projectId: IDS.acme }],
       next: null,
       running: null,
-    } as MeetingsList;
+    };
     const { api } = setup({ path: PATH, features: { launch: true, files: true, meetings: true }, over: { meetingsList: vi.fn(async () => meetings) } });
     const here = await screen.findByRole('link', { name: 'New session here' });
     expect(here.getAttribute('href')).toBe('/new?root=r.work&path=client%2Facme&start=1');
