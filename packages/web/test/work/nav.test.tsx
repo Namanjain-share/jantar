@@ -161,8 +161,19 @@ describe('the Work place’s states (design 6.5)', () => {
   });
 
   it('Life status unreachable: the offline sentence with Try again; still loading: the skeleton', async () => {
-    renderApp({ path: '/work', state, api: fakeApi({ lifeStatus: vi.fn(async () => Promise.reject(new ApiError('network', 'down', 0))) }) });
+    const a = renderApp({ path: '/work', state, api: fakeApi({ lifeStatus: vi.fn(async () => Promise.reject(new ApiError('network', 'down', 0))) }) });
     expect(await screen.findByText(/Can't reach the Mac/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    a.unmount();
+    renderApp({ path: '/work', state, api: fakeApi({ lifeStatus: vi.fn(() => new Promise<never>(() => undefined)) }) });
+    expect(await screen.findByText('Opening Work…')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Work' })).toBeTruthy();
+  });
+
+  it("a project's hub while it loads: the skeleton under the title", async () => {
+    const api = workApi({ request: vi.fn(() => new Promise<never>(() => undefined)) });
+    renderApp({ path: '/work?id=01JWRKPRJ0000000000000ACME', state, api });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Project' })).toBeTruthy();
+    expect(await screen.findByText('Asking the Mac…')).toBeTruthy();
   });
 });
