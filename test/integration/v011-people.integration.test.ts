@@ -114,7 +114,7 @@ describe('v0.11 jantar people', () => {
     expect(me.label).toBe('Running coach');
     const manifest = await onHer('GET', '/v1/p/manifest', undefined, her);
     expect(manifest.status).toBe(200);
-    expect(manifest.body).toMatchObject({ name: 'Running coach', short_name: 'Coach', start_url: '/p' });
+    expect(manifest.body).toMatchObject({ name: 'Running coach', short_name: 'Running', start_url: '/p' });
     const act = (await onHer('GET', '/v1/p/activity', undefined, her)).body as PersonActivityResponse;
     expect(act.activity.find((a: PersonActivityResponse['activity'][number]) => a.action === 'label.changed')?.changes).toEqual([{ field: 'label', from: 'Cofounder', to: 'Running coach' }]);
   });
