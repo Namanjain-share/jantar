@@ -14,6 +14,8 @@
  * WP-MD's MedsToday and DoseSheet are stand-ins here, so the test pins
  * what Today hands them whatever WP-MD's real ones render.
  */
+import { layoutAt, type Layout } from '../src/ui/shell/layout.js';
+import { navStore } from '../src/ui/shell/navState.js';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Bill, LifeStatus, MedsDay, Today, Todo } from '@jantar/protocol';
@@ -90,14 +92,14 @@ function today(over: Partial<Today> = {}): Today {
   };
 }
 
-function render(opts: { today?: Today | (() => Promise<Today>); status?: LifeStatus; path?: string; state?: Parameters<typeof stateWith>[0]; api?: Parameters<typeof fakeApi>[0]; conn?: 'live' | 'offline' } = {}) {
+function render(opts: { today?: Today | (() => Promise<Today>); status?: LifeStatus; path?: string; state?: Parameters<typeof stateWith>[0]; api?: Parameters<typeof fakeApi>[0]; conn?: 'live' | 'offline'; layout?: Layout } = {}) {
   const t = opts.today ?? today();
   const api = fakeApi({
     lifeStatus: vi.fn(async () => opts.status ?? status()),
     lifeToday: typeof t === 'function' ? vi.fn(t) : vi.fn(async () => t),
     ...opts.api,
   });
-  return renderApp({ path: opts.path ?? '/today', api, state: stateWith({ features: { life: true }, ...opts.state }), ...(opts.conn ? { status: opts.conn } : {}) });
+  return renderApp({ path: opts.path ?? '/today', api, state: stateWith({ features: { life: true }, ...opts.state }), ...(opts.conn ? { status: opts.conn } : {}), ...(opts.layout ? { layout: opts.layout } : {}) });
 }
 
 const heading = () => screen.findByRole('heading', { level: 1, name: 'Today' });
@@ -543,6 +545,27 @@ describe('Today: cards (0.11)', () => {
     const strip = await screen.findByRole('navigation', { name: 'Life' });
     await waitFor(() => expect(within(strip).getAllByRole('link').map((l) => l.textContent)).toEqual(['Todos2', 'Medicines1', 'Food', 'Finance', 'Intel']));
     expect(within(strip).getByRole('link', { name: /Todos/ }).getAttribute('href')).toBe('/todos');
+  });
+
+  it('c24: no strip while the iPad sidebar lists Today\u2019s places; the strip again when it doesn\u2019t', async () => {
+    wide();
+    navStore.setState({ folded: false, lifeOpen: true, overlay: false });
+    const strip = () => screen.queryByRole('navigation', { name: 'Life' });
+    const t = render({ layout: layoutAt(1180, { coarse: true }) });
+    await section('Medicines');
+    await screen.findByRole('button', { name: 'Hide sidebar' });
+    expect(strip()).toBeNull();
+    // Today's group closed: the strip is back.
+    fireEvent.click(screen.getByRole('button', { name: "Hide Today's places" }));
+    expect(await screen.findByRole('navigation', { name: 'Life' })).toBeTruthy();
+    t.unmount();
+    // The rail (820) lists no Life places, nor does the Mac.
+    navStore.setState({ lifeOpen: true });
+    const r = render({ layout: layoutAt(820, { coarse: true }) });
+    expect(await screen.findByRole('navigation', { name: 'Life' })).toBeTruthy();
+    r.unmount();
+    render({ layout: layoutAt(1440) });
+    expect(await screen.findByRole('navigation', { name: 'Life' })).toBeTruthy();
   });
 
   it('shows five todos in the Due card and links the rest to Todos; Add todo stays', async () => {

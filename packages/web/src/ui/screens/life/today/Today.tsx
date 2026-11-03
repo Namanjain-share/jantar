@@ -32,18 +32,7 @@
  * turn · 8 working"; the Life strip on top replaces the LIFE list; "Edit
  * cards" orders and hides them on this device. Below 640, 0.10's list.
  */
-import {
-  BookmarksIcon,
-  CaretRightIcon,
-  CheckSquareIcon,
-  CoffeeIcon,
-  ForkKnifeIcon,
-  MegaphoneIcon,
-  PillIcon,
-  PlusIcon,
-  WalletIcon,
-  type Icon,
-} from '@phosphor-icons/react';
+import { BookmarksIcon, CaretRightIcon, PlusIcon, type Icon } from '@phosphor-icons/react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { FoodDay, LifeModule, Today as TodayData, Todo } from '@jantar/protocol';
 import { routePath } from '../../../../lib/router.js';
@@ -55,6 +44,8 @@ import { RailLabel } from '../../../kit/RailLabel.js';
 import { StatusGlyph } from '../../../kit/StatusGlyph.js';
 import { useFeatures, useNeedsCount } from '../../../shell/data.js';
 import { Link } from '../../../shell/Link.js';
+import { LIFE } from '../../../shell/life.js';
+import { useLifeInNav } from '../../../shell/navState.js';
 import { groupRows, ledgerGroups } from '../../board/model.js';
 import { AddFoodSheet } from '../food/AddFoodSheet.js';
 import { FoodToday } from '../food/FoodToday.js';
@@ -79,15 +70,8 @@ export interface TodayProps {
   dose?: string | undefined;
 }
 
-/** The modules in Today's LIFE list, in nav order, with their one icon each (spec 5.0). */
-const MODULES: readonly { module: LifeModule; label: string; href: string; icon: Icon }[] = [
-  { module: 'todos', label: 'Todos', href: '/todos', icon: CheckSquareIcon },
-  { module: 'medicines', label: 'Medicines', href: '/meds', icon: PillIcon },
-  { module: 'food', label: 'Food', href: '/food', icon: ForkKnifeIcon },
-  { module: 'places', label: 'Cafés', href: '/places', icon: CoffeeIcon },
-  { module: 'finance', label: 'Finance', href: '/money', icon: WalletIcon },
-  { module: 'posts', label: 'Posts', href: '/posts', icon: MegaphoneIcon },
-];
+/** The modules in Today's LIFE list, in nav order, with their one icon each (spec 5.0; 0.11: shell/nav.ts LIFE, which the touch sidebar lists too). */
+const MODULES: readonly { module: LifeModule; label: string; href: string; icon: Icon }[] = LIFE;
 
 /** Today's sections become cards from a pane this wide (the container size md); below it they are 0.10's list. */
 export const CARDS_FROM = 640;
@@ -128,6 +112,7 @@ export function Today({ dose }: TodayProps) {
   const offline = useOffline();
   const { status } = useLifeStatus();
   const features = useFeatures();
+  const lifeInNav = useLifeInNav();
   const needs = useNeedsCount();
   const state = useApp((s) => s.state);
   const nowMs = useNow(15_000);
@@ -412,7 +397,8 @@ export function Today({ dose }: TodayProps) {
     const order = shownCards(prefs, (id) => parts.has(id));
     content = (
       <>
-        <LifeStrip items={strip} />
+        {/* 0.11: not while the iPad's sidebar lists them under Today. */}
+        {lifeInNav ? null : <LifeStrip items={strip} />}
         <div className="px-16">
           <Loaded load={load}>{() => null}</Loaded>
         </div>

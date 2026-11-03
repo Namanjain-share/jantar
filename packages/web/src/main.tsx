@@ -19,6 +19,9 @@ watchInput();
 // 0.11: the shell follows the visual viewport while a field has focus (the iPad's on-screen keyboard, a pan).
 watchViewport();
 
+// 0.11: on a touch screen 640 or wider (an iPad) the sidebar is its own chunk: start it before the first render.
+if (typeof matchMedia === 'function' && matchMedia('(pointer: coarse) and (min-width: 640px)').matches) void import('./ui/shell/TouchShell.js');
+
 const store = createAppStore();
 // Paint the last known state at once, whichever screen opens first (a push opens a session).
 wireStateCache(store);

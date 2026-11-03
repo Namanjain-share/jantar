@@ -125,7 +125,7 @@ export function Board() {
     if (state.seq === 0 && (conn === 'connecting' || conn === 'offline')) {
       return (
         <section aria-label="Sessions" aria-busy="true" className="flex h-full min-h-0 flex-col">
-          <div className="flex h-56 flex-none items-center border-b border-line px-16" aria-hidden="true">
+          <div className="flex h-pane flex-none items-center border-b border-line px-16" aria-hidden="true">
             <span className="h-12 w-136 bg-line" />
           </div>
           <SkeletonRows />

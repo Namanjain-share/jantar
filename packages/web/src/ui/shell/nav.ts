@@ -9,6 +9,13 @@
  * every place that is on. The phone has room for five tabs: with more
  * places on, the fifth tab is More, holding the rest (its badge is theirs
  * added up).
+ *
+ * 0.11: the touch sidebar and rail (TouchNav.tsx) follow the same order.
+ * `group` places each in the sidebar: the top list, or the Library (Intel,
+ * Meetings); Accounts and Devices leave the touch list for the accounts
+ * strip and the ⋯ menu (`touch: false`), and stay in ⌘K, ⌘5, ⌘7 and the g
+ * chords. Today's six places, nested under Today in the sidebar, are in
+ * life.ts (their icons load with the sidebar and Today, not the shell).
  */
 import {
   BellIcon,
@@ -36,6 +43,10 @@ export interface NavItem {
   icon: Icon;
   /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Chat: v0.10, the `ask` switch; People: v0.11). */
   feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask' | 'people';
+  /** 0.11, the touch sidebar: the top list or the Library. */
+  group?: 'top' | 'library';
+  /** 0.11: false keeps it out of the touch sidebar and rail (Accounts: the strip; Devices: ⋯). */
+  touch?: boolean;
 }
 
 export const NAV: readonly NavItem[] = [
@@ -43,16 +54,21 @@ export const NAV: readonly NavItem[] = [
   { route: 'today', href: '/today', label: 'Today', icon: SunIcon, feature: 'life' },
   { route: 'chat', href: '/chat', label: 'Chat', icon: ChatCircleDotsIcon, feature: 'ask' },
   { route: 'files', href: '/files', label: 'Files', icon: FilesIcon, feature: 'files' },
-  { route: 'accounts', href: '/accounts', label: 'Accounts', icon: ChartBarHorizontalIcon },
+  { route: 'accounts', href: '/accounts', label: 'Accounts', icon: ChartBarHorizontalIcon, touch: false },
   { route: 'alerts', href: '/alerts', label: 'Alerts', icon: BellIcon },
-  { route: 'devices', href: '/devices', label: 'Devices', icon: DeviceMobileIcon },
-  { route: 'intel', href: '/intel', label: 'Intel', icon: BookmarksIcon, feature: 'intel' },
-  { route: 'meetings', href: '/meetings', label: 'Meetings', icon: VideoConferenceIcon, feature: 'meetings' },
+  { route: 'devices', href: '/devices', label: 'Devices', icon: DeviceMobileIcon, touch: false },
+  { route: 'intel', href: '/intel', label: 'Intel', icon: BookmarksIcon, feature: 'intel', group: 'library' },
+  { route: 'meetings', href: '/meetings', label: 'Meetings', icon: VideoConferenceIcon, feature: 'meetings', group: 'library' },
   // v0.11: last, so on a phone it sits in More.
   // The words are people-core's PEOPLE_LABEL and PEOPLE_SHORT_LABEL, spelled out: importing them here would pull
   // people-core into the main load (test/v011-nav.test.tsx compares).
   { route: 'people', href: '/people', label: 'Accountability partner', short: 'Partner', icon: PeopleGlyph, feature: 'people' },
 ];
+
+/** The places the touch sidebar and rail list, in nav order (no Accounts, no Devices). */
+export function touchItems(features: Readonly<Features>): NavItem[] {
+  return navItems(features).filter((item) => item.touch !== false);
+}
 
 /** The phone's fifth tab when more than five places are on. */
 export const MORE: NavItem = { route: 'more', href: '/more', label: 'More', icon: DotsThreeIcon };

@@ -192,6 +192,16 @@ describe('code splitting', () => {
     expect(main.files.has('ui/kit/Sheet.tsx')).toBe(true);
   });
 
+  it("0.11 c24: the iPad's sidebar and rail are their own chunk; the Mac and the phone never load them", () => {
+    const lazyOnly = ['ui/shell/TouchShell.tsx', 'ui/shell/Sidebar.tsx', 'ui/shell/AccountsStrip.tsx', 'ui/shell/MoreMenu.tsx', 'ui/shell/life.ts'];
+    for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
+    expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
+    // Main keeps only the fold state (Today asks it) and starts the chunk early on a touch screen.
+    expect(main.files.has('ui/shell/navState.ts')).toBe(true);
+    expect(readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8')).toContain("import('./TouchShell.js')");
+    expect(readFileSync(join(src, 'main.tsx'), 'utf8')).toContain("import('./ui/shell/TouchShell.js')");
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");

@@ -74,7 +74,7 @@ export function AlertDetail({ alert: a, subject, sentence, action, unseen, listH
 
   return (
     <article aria-labelledby="alert-title" className="px-16 pb-32 animate-enter desk:px-24">
-      <header className="flex min-h-56 items-center gap-8 border-b border-line">
+      <header className="flex min-h-pane items-center gap-8 border-b border-line">
         {closing ? null : (
           <Link href={listHref} className="-ml-8 inline-flex h-44 flex-none items-center gap-4 px-8 type-small text-ink-2 transition-colors duration-120 ease-hover hover:text-ink">
             <CaretLeftIcon size={16} aria-hidden="true" />

@@ -34,6 +34,18 @@
   grid-template-columns: calc(var(--rail-desk-w) + env(safe-area-inset-left, 0px)) minmax(0, 1fr);
   grid-template-rows: calc(48px + env(safe-area-inset-top, 0px)) minmax(0, 1fr) calc(24px + env(safe-area-inset-bottom, 0px));
 }
+/* 0.11 touch shell (c24): the sidebar (220) or the labelled rail (72), sized by the nav itself, then the panes. */
+@utility grid-touch {
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+/* 0.11: a pane's header row (--pane-header-h, 56), the same in every pane, so the hairlines under list and detail meet. */
+@utility h-pane {
+  height: var(--pane-header-h);
+}
+@utility min-h-pane {
+  min-height: var(--pane-header-h);
+}
 @utility grid-cols-legend {
   grid-template-columns: 16px 96px minmax(0, 1fr);
 }
@@ -280,6 +292,9 @@
   }
   [data-chrome='desk'] .toasts {
     bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  }
+  [data-chrome='touch'] .toasts {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
 }
 

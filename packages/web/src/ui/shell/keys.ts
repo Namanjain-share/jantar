@@ -14,12 +14,14 @@
  *                off says so; matched on event.code, like every digit with a
  *                modifier: ⌥1 types ¡ on Apple layouts)
  *   ⌘.           Esc, for keyboards without one (the iPad's system Escape)
+ *   ⌘\           the touch sidebar: fold it to the rail, or show it over
+ *                the rail (c24)
  *   g then b t c l a d i m f   Board, Today, Chat, Alerts, Accounts,
  *                Devices, Intel, Meetings, Files
  *   ?            the legend
  *
- * In a text field only ⌘K, ⌘1-⌘9, ⌘. and Esc reach the shell (and, from
- * c24 and c28, ⌘\ and ⌘J); everything a field uses stays with the field:
+ * In a text field only ⌘K, ⌘1-⌘9, ⌘\, ⌘. and Esc reach the shell (and,
+ * from c28, ⌘J); everything a field uses stays with the field:
  * ⌘A, ⌘C, ⌘V, ⌘X, ⌘Z, ⌘ or ⌥ with an arrow, ⌘⌫ and every ⌃ chord.
  */
 import { useEffect, useRef } from 'react';
@@ -87,6 +89,7 @@ export function useGlobalKeys({
   onLegend,
   navigate,
   onPlace,
+  onSidebar,
 }: {
   enabled: boolean;
   onPalette: () => void;
@@ -94,9 +97,11 @@ export function useGlobalKeys({
   navigate: (to: string) => void;
   /** ⌘1 … ⌘9: the place with that number in nav order (shell/nav.ts). */
   onPlace?: (n: number) => void;
+  /** ⌘\: the touch sidebar. */
+  onSidebar?: (() => void) | undefined;
 }): void {
-  const h = useRef({ onPalette, onLegend, navigate, onPlace });
-  h.current = { onPalette, onLegend, navigate, onPlace };
+  const h = useRef({ onPalette, onLegend, navigate, onPlace, onSidebar });
+  h.current = { onPalette, onLegend, navigate, onPlace, onSidebar };
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
     let gAt = 0;
@@ -113,6 +118,11 @@ export function useGlobalKeys({
         if (e.key === '.') {
           e.preventDefault();
           escapeFrom(e.target);
+          return;
+        }
+        if ((e.key === '\\' || e.code === 'Backslash') && h.current.onSidebar) {
+          e.preventDefault();
+          h.current.onSidebar();
           return;
         }
         const n = digitOf(e);

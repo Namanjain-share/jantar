@@ -1,6 +1,8 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
+import { NAV } from '../src/ui/shell/nav.js';
+import { navStore } from '../src/ui/shell/navState.js';
 import { account, alert, fakeApi, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
 /** Pretend the window is `width` px wide, with a fine pointer unless `coarse` (jsdom has no matchMedia). */
@@ -140,18 +142,18 @@ describe('tablet shell', () => {
 describe('0.11: the chrome by width and pointer', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("a touch screen keeps the Mac's chrome from 768 until the touch shell is built, and the phone's below", () => {
+  it('c24: a touch screen gets the touch shell from 640 (no top bar, no status bar), and the phone below', async () => {
     viewport(1180, { coarse: true });
     const a = renderApp({ state: busy() });
+    expect(document.querySelector('[data-chrome]')?.getAttribute('data-chrome')).toBe('touch');
+    expect(await screen.findByRole('button', { name: 'Hide sidebar' })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy();
-    // c12: on a touch screen the top bar's strip is one 44 button that opens the legend (8 px cells are no targets).
-    expect(screen.queryByRole('listbox', { name: /All sessions/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /Tap for the legend/ })).toBeTruthy();
+    expect(screen.queryByRole('contentinfo')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Tap for the legend/ })).toBeNull();
     a.unmount();
     viewport(600, { coarse: true });
     renderApp({ state: busy() });
-    expect(screen.queryByRole('listbox', { name: /All sessions/ })).toBeNull();
+    expect(document.querySelector('[data-chrome]')?.getAttribute('data-chrome')).toBe('phone');
     expect(screen.getByRole('button', { name: /Tap for the legend/ })).toBeTruthy();
   });
 });
@@ -335,5 +337,94 @@ describe('0.11 c10: the shell follows the visual viewport', () => {
     act(() => layout.setState(layoutAt(390), true));
     expect(document.querySelector('[data-chrome]')).toBe(shell);
     expect(shell?.classList.contains('shell')).toBe(true);
+  });
+});
+
+describe('0.11 c24: the touch shell', () => {
+  const touchAt = (width: number) => layoutAt(width, { coarse: true });
+  const allOn = () => stateWith({ sessions: [session('web-app', { status: 'waiting' })], pending: [pending('web-app')], features: { files: true, life: true, intel: true, meetings: true, ask: true } });
+  const navNames = (nav: HTMLElement) =>
+    within(nav)
+      .getAllByRole('link')
+      .map((a) => a.getAttribute('aria-label') ?? a.querySelector('span')?.textContent?.trim() ?? '');
+  beforeEach(() => {
+    localStorage.clear();
+    navStore.setState({ folded: false, lifeOpen: true, overlay: false });
+  });
+
+  it('640 and 820: the labelled rail; 1180 and 1440: the sidebar', async () => {
+    for (const [width, kind] of [
+      [640, 'rail'],
+      [820, 'rail'],
+      [1180, 'sidebar'],
+      [1440, 'sidebar'],
+    ] as const) {
+      const r = renderApp({ state: allOn(), layout: touchAt(width) });
+      if (kind === 'sidebar') {
+        expect(await screen.findByRole('button', { name: 'Hide sidebar' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Search or jump' })).toBeTruthy();
+      } else {
+        expect(await screen.findByRole('button', { name: 'Show sidebar' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Jump to a session' })).toBeTruthy();
+      }
+      expect(document.querySelector('header')).toBeNull();
+      expect(screen.queryByRole('contentinfo')).toBeNull();
+      r.unmount();
+    }
+  });
+
+  it('one nav order: the sidebar, the rail and the tabs all follow NAV (Accounts and Devices leave the touch list)', async () => {
+    const order = NAV.filter((n) => n.touch !== false).map((n) => n.label);
+    const side = renderApp({ state: allOn(), layout: touchAt(1180) });
+    await screen.findByRole('button', { name: 'Hide sidebar' });
+    const names = navNames(screen.getByRole('navigation', { name: 'Main' }));
+    expect(names.filter((n) => order.includes(n))).toEqual(order);
+    expect(names).not.toContain('Accounts');
+    expect(names).not.toContain('Devices');
+    // Today's places under Today, in Today's order.
+    expect(within(screen.getByRole('list', { name: "Today's places" })).getAllByRole('link').map((a) => a.textContent?.trim())).toEqual(['Todos', 'Medicines', 'Food', 'Cafés', 'Finance', 'Posts']);
+    side.unmount();
+    const rail = renderApp({ state: allOn(), layout: touchAt(820) });
+    await screen.findByRole('button', { name: 'Show sidebar' });
+    expect(navNames(screen.getByRole('navigation', { name: 'Main' })).filter((n) => order.includes(n))).toEqual(order);
+    rail.unmount();
+    renderApp({ state: allOn(), layout: touchAt(390) });
+    expect(navNames(screen.getByRole('navigation', { name: 'Main' })).slice(0, 4)).toEqual(order.slice(0, 4));
+  });
+
+  it('⌘\\ and the button fold the sidebar to the rail, remembered on this device; the rail’s button unfolds it', async () => {
+    const r = renderApp({ state: allOn(), layout: layoutAt(1180, { coarse: true, keyboard: true }) });
+    await screen.findByRole('button', { name: 'Hide sidebar' });
+    fireEvent.keyDown(window, { key: '\\', code: 'Backslash', metaKey: true });
+    expect(await screen.findByRole('button', { name: 'Show sidebar' })).toBeTruthy();
+    expect(localStorage.getItem('jantar:sidebar-folded')).toBe('true');
+    r.unmount();
+    navStore.setState({ folded: true });
+    renderApp({ state: allOn(), layout: touchAt(1180) });
+    fireEvent.click(await screen.findByRole('button', { name: 'Show sidebar' }));
+    expect(await screen.findByRole('button', { name: 'Hide sidebar' })).toBeTruthy();
+    expect(localStorage.getItem('jantar:sidebar-folded')).toBe('false');
+  });
+
+  it('at 820 the rail’s button shows the sidebar over the panes; a place, Esc or ⌘\\ closes it', async () => {
+    const { history } = renderApp({ state: allOn(), layout: layoutAt(820, { coarse: true, keyboard: true }) });
+    fireEvent.click(await screen.findByRole('button', { name: 'Show sidebar' }));
+    const over = await screen.findByRole('navigation', { name: 'Sidebar' });
+    fireEvent.click(within(over).getByRole('link', { name: 'Alerts' }));
+    expect(history.entries.at(-1)).toBe('/alerts');
+    expect(screen.queryByRole('navigation', { name: 'Sidebar' })).toBeNull();
+    fireEvent.keyDown(window, { key: '\\', code: 'Backslash', metaKey: true });
+    expect(await screen.findByRole('navigation', { name: 'Sidebar' })).toBeTruthy();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByRole('navigation', { name: 'Sidebar' })).toBeNull();
+  });
+
+  it('the accounts strip opens Accounts; ⋯ holds Devices', async () => {
+    const { history } = renderApp({ state: allOn(), layout: touchAt(1180) });
+    fireEvent.click(await screen.findByRole('link', { name: /5-hour usage per account/ }));
+    expect(history.entries.at(-1)).toBe('/accounts');
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Devices' }));
+    expect(history.entries.at(-1)).toBe('/devices');
   });
 });

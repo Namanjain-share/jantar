@@ -30,6 +30,8 @@
  *   4. With the iPad's safe areas (24 top, 20 bottom), no control that
  *      doesn't scroll sits in them (A2): nothing under the status bar or
  *      over the home indicator. Content in a scroll box may pass under.
+ *      In the touch shell (c24) the window controls' top-left 80 x 52 is
+ *      kept free too.
  *   7. No console message about the Content Security Policy, no error, no
  *      injected <style>.
  *  12. The user's four screens at 1440 x 960 (mac-1440 and touch-1440):
@@ -173,11 +175,8 @@ const TARGET_SIZES = new Set(['ipad-air-l', 'ipad-air-p']);
  * Controls that are under 44 x 44 on a touch screen, by their name, with the commit that fixes them.
  * Like the lists above, one that no longer is fails the test, so it is taken out.
  */
-export const KNOWN_UNDER_44: Record<string, string> = {
-  // The Mac's status bar on a touch screen: 24 px buttons in a 24 px bar. The touch shell (c24) has none.
-  'Legend <': 'c24',
-  '5-hour usage per account. Open Accounts <': 'c24',
-};
+// Empty from c24: the touch shell has no status bar (its two 24 px buttons were the last).
+export const KNOWN_UNDER_44: Record<string, string> = {};
 
 /** Controls whose target is bigger than their box (by the probe's name), each with its reason. */
 export const TARGET_ALLOW: Array<[RegExp, string]> = [
@@ -310,6 +309,11 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
                 const { top, bottom } = viewport.insets;
                 const inBands = p.fixed.filter((t) => t.y < top || t.y + t.h > p.vh - bottom);
                 if (inBands.length) problems.push(`${at}: in the safe areas: ${inBands.map((t) => `${t.name} (${t.x},${t.y} ${t.w}x${t.h})`).join('; ')} (${await shot()})`);
+              }
+              // 4. The touch shell keeps the window controls' corner free: no control in the top-left 80 x 52.
+              if (p.chrome === 'touch') {
+                const corner = p.fixed.filter((t) => t.x < 80 && t.y < 52);
+                if (corner.length) problems.push(`${at}: in the window controls' corner: ${corner.map((t) => `${t.name} (${t.x},${t.y})`).join('; ')} (${await shot()})`);
               }
               // 2. 44 pt on touch (A1).
               if (TARGET_SIZES.has(size) && (viewport.touch || viewport.phone)) {

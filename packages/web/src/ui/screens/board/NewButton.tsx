@@ -26,13 +26,15 @@ export function NewButton({
   className?: string;
 }) {
   const navigate = useNavigate();
-  const phone = useLayout().chrome === 'phone';
+  const { chrome } = useLayout();
+  const phone = chrome === 'phone';
   const on = useCanStart();
   if (!on) return null;
+  // 0.11: the icon alone on an iPad too (its 340 ledger), as on the phone.
   return (
-    <Button size={phone ? 'lg' : 'md'} className={className} aria-label="New session" onClick={() => navigate('/new')}>
+    <Button size={phone ? 'lg' : 'md'} className={clsx('coarse:min-w-44', className)} aria-label="New session" onClick={() => navigate('/new')}>
       <PlusIcon size={phone ? 16 : 14} weight="bold" aria-hidden="true" />
-      {wide ? 'New session' : phone ? null : 'New'}
+      {wide ? 'New session' : chrome === 'desk' ? 'New' : null}
     </Button>
   );
 }
@@ -43,7 +45,7 @@ export function WithNewButton({ ground, children }: { ground: 'surface' | 'bg'; 
   return (
     <div className="flex flex-none">
       <div className="min-w-0 flex-1">{children}</div>
-      <div className={clsx('flex h-56 flex-none items-center border-b border-line pr-16', ground === 'surface' ? 'bg-surface' : 'bg-bg')}>
+      <div className={clsx('flex h-pane flex-none items-center border-b border-line pr-16', ground === 'surface' ? 'bg-surface' : 'bg-bg')}>
         <NewButton />
       </div>
     </div>

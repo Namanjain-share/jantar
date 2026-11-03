@@ -5,11 +5,10 @@
  *   size      compact < 640 <= medium < 1024 <= regular, by the window's width
  *   coarse    (pointer: coarse): a touch screen (an iPad, even with a trackpad)
  *   chrome    the shell around the panes: phone (header and tabs), touch (the
- *             iPad's sidebar and rail, once TOUCH_SHELL is on) or desk (the
+ *             iPad's sidebar and rail, shell/TouchNav.tsx) or desk (the
  *             Mac's rail, top bar and status bar). A fine pointer gets the
  *             phone below 768 and desk from 768, as before; a coarse pointer
- *             gets the same until the touch shell exists, then the phone below
- *             640 and touch from 640.
+ *             gets the phone below 640 and touch from 640 (0.11 c24).
  *   keyboard  a hardware keyboard has been seen: a fine pointer from the start,
  *             a coarse one once lib/input.ts has seen it
  *   kbUp      the on-screen keyboard is up (lib/viewport.ts: the visual
@@ -44,8 +43,8 @@ export interface Layout {
 }
 export type LayoutStore = StoreApi<Layout>;
 
-/** The touch shell (sidebar, labelled rail) is not built yet: until it is, a coarse pointer gets the Mac's chrome from 768. */
-export const TOUCH_SHELL = false;
+/** The touch shell (c24: sidebar, labelled rail): a coarse pointer gets it from 640, and the phone below. */
+export const TOUCH_SHELL = true;
 
 /** What the provider listens to: one listener each, for the whole app. */
 export const QUERIES = {

@@ -9,6 +9,7 @@
 import { ArrowRightIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { Button } from '../../kit/Button.js';
+import { useLayout } from '../../shell/layout.js';
 
 export function DisplayLine({
   needs,
@@ -23,10 +24,12 @@ export function DisplayLine({
   phone: boolean;
   onStart: () => void;
 }) {
+  // 0.11: on an iPad's 340 ledger "Start" alone, so "3 need you" keeps its words at the touch type size.
+  const touch = useLayout().chrome === 'touch';
   return (
     <div
       className={clsx(
-        'flex h-56 flex-none items-center justify-between gap-12 border-b border-line px-16',
+        'flex h-pane flex-none items-center justify-between gap-12 border-b border-line px-16',
         ground === 'surface' ? 'bg-surface' : 'bg-bg',
       )}
     >
@@ -46,7 +49,7 @@ export function DisplayLine({
         <Button variant={phone ? 'primary' : 'outline'} size={phone ? 'lg' : 'md'} className="flex-none" onClick={onStart}>
           <span className="inline-flex items-center gap-4">
             Start
-            <ArrowRightIcon size={phone ? 16 : 14} weight="bold" aria-hidden="true" />
+            {touch ? null : <ArrowRightIcon size={phone ? 16 : 14} weight="bold" aria-hidden="true" />}
           </span>
         </Button>
       ) : null}

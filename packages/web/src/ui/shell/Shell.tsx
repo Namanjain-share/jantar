@@ -3,7 +3,8 @@
  * chrome to the store and router, and places the current screen.
  *
  *   phone   PhoneHeader / notices / place / TabBar     (a session is full screen)
- *   desk    TopBar / Rail + place / StatusBar
+ *   desk    TopBar / Rail + place / StatusBar           (the Mac, a fine pointer from 768)
+ *   touch   TouchNav (sidebar or labelled rail) + place (an iPad from 640, 0.11 c24)
  *
  * 0.11: one tree for every chrome (the place is always slot 4, so a resize
  * never remounts it), and the place lays itself out by its own width: the
@@ -47,6 +48,7 @@ import { NotFound } from '../screens/NotFound.js';
 import { NotPaired, PairScreen } from '../screens/Pair.js';
 import { SessionScreen } from '../screens/Session.js';
 import { savedKinds } from '../screens/devices/kinds.js';
+import { accountId } from '../../lib/format.js';
 import { routePath, type FilesLocation, type Route } from '../../lib/router.js';
 import { useAccountsMode, useCeiling, useFeatures, useNeedsCount, useNewAlerts, usePlaceFeatures, useStripItems, useUsagePairs } from './data.js';
 import { More } from '../screens/more/More.js';
@@ -61,7 +63,10 @@ import { StatusBar } from './StatusBar.js';
 import { TabBar } from './TabBar.js';
 import { Toasts } from './Toasts.js';
 import { TopBar } from './TopBar.js';
+import { toggleSidebar, useSidebar } from './navState.js';
 
+// 0.11 c24: the iPad's sidebar and labelled rail, its own chunk (main.tsx starts it early on a touch screen).
+const TouchNav = lazy(() => import('./TouchShell.js').then((m) => ({ default: m.TouchNav })));
 // 0.11: Accounts, Alerts and Devices, each its own chunk (room in the main load for the wide layouts).
 const Accounts = lazy(() => import('../screens/Accounts.js').then((m) => ({ default: m.Accounts })));
 const Alerts = lazy(() => import('../screens/Alerts.js').then((m) => ({ default: m.Alerts })));
@@ -116,6 +121,8 @@ export function Shell() {
   if (palette) paletteUsed.current = true;
 
   const phone = layout.chrome === 'phone';
+  const touch = layout.chrome === 'touch';
+  const desk = layout.chrome === 'desk';
   // 0.11: keys work at every width once a keyboard has been seen (a Mac from the start).
   const keys = layout.keyboard;
   const bare = route.name === 'pair' || conn.status === 'unauthorized';
@@ -157,6 +164,8 @@ export function Shell() {
     onLegend: () => setLegend((o) => !o),
     navigate: (to) => goPlace(NAV.find((item) => item.href === to)),
     onPlace: (n) => goPlace(NAV[n - 1]),
+    // ⌘\: the touch sidebar folds to the rail (regular), or shows over it (medium).
+    ...(touch ? { onSidebar: () => toggleSidebar(layout.size) } : {}),
   });
   const ledgerKeys = keys && !bare && (route.name === 'board' || route.name === 'session');
   useKey(
@@ -348,7 +357,7 @@ export function Shell() {
   // only the chrome around it is swapped, and only classes change.
   return (
     <LayerContext.Provider value={layer}>
-      <div data-chrome={layout.chrome} className={phone ? 'shell flex flex-col bg-bg' : 'shell grid-shell grid bg-bg'}>
+      <div data-chrome={layout.chrome} className={phone ? 'shell flex flex-col bg-bg' : desk ? 'shell grid-shell grid bg-bg' : 'shell grid-touch grid bg-bg'}>
         {/* 1: the phone's header */}
         {phone ? (
           fullScreen ? (
@@ -358,7 +367,7 @@ export function Shell() {
           )
         ) : null}
         {/* 2: the Mac's top bar */}
-        {phone ? null : (
+        {!desk ? null : (
           <TopBar
             needs={needs}
             items={items}
@@ -371,24 +380,49 @@ export function Shell() {
             onHome={() => connection?.kick()}
           />
         )}
-        {/* 3: the rail */}
-        {phone ? null : <Rail route={route.name} badges={badges} onPalette={() => setPalette(true)} />}
+        {/* 3: the Mac's rail, or the iPad's sidebar or labelled rail */}
+        {desk ? (
+          <Rail route={route.name} badges={badges} onPalette={() => setPalette(true)} />
+        ) : touch ? (
+          <Suspense fallback={<NavPlaceholder />}>
+            <TouchNav
+              route={route.name}
+              badges={badges}
+              needs={needs}
+              features={placeFeatures}
+              pairs={pairs}
+              active={state.activeAccount !== null ? accountId(state.activeAccount) : null}
+              conn={conn}
+              single={single}
+              onPalette={() => setPalette(true)}
+              onShortcuts={() => setLegend(true)}
+            />
+          </Suspense>
+        ) : null}
         {/* 4: the place, always here */}
-        <div className={phone ? 'flex min-h-0 flex-1 flex-col' : 'col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col'}>
+        <div
+          className={
+            phone
+              ? 'flex min-h-0 flex-1 flex-col'
+              : desk
+                ? 'col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col'
+                : 'pt-safe pb-safe pr-safe col-start-2 row-start-1 flex min-h-0 min-w-0 flex-col'
+          }
+        >
           {offline ? <OfflineNotice /> : null}
-          {phone && updateAvailable ? <UpdateNotice /> : null}
+          {!desk && updateAvailable ? <UpdateNotice /> : null}
           <main id="main" className="relative min-h-0 flex-1">
             {place}
           </main>
         </div>
         {/* 5: Chat beside any screen (build plan c28) */}
         {null}
-        {/* 6: the phone's tabs, or the Mac's status bar */}
+        {/* 6: the phone's tabs, or the Mac's status bar (the iPad's nav has what it says) */}
         {phone ? (
           fullScreen ? null : (
             <TabBar route={route.name} badges={badges} />
           )
-        ) : (
+        ) : !desk ? null : (
           <StatusBar
             conn={conn}
             seq={state.seq}
@@ -404,7 +438,7 @@ export function Shell() {
             legend={<LegendPopover open={legend} onOpenChange={setLegend} />}
           />
         )}
-        {phone ? <LegendSheet open={legend} onOpenChange={setLegend} /> : null}
+        {desk ? null : <LegendSheet open={legend} onOpenChange={setLegend} />}
         {paletteUsed.current ? (
           <Suspense fallback={null}>
             <Palette open={palette} onOpenChange={setPalette} now={now} />
@@ -416,6 +450,11 @@ export function Shell() {
       </div>
     </LayerContext.Provider>
   );
+}
+
+/** The touch nav's ground while its chunk loads: the sidebar's or the rail's width, nothing in it. */
+function NavPlaceholder() {
+  return <nav aria-label="Main" aria-busy="true" className={useSidebar() ? 'h-full w-220 border-r border-line bg-page' : 'h-full w-72 border-r border-line bg-page'} />;
 }
 
 /** What Cmd-n or a g chord says for a place that is off (or, for Chat, a device without control). */

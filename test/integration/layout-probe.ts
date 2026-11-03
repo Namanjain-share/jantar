@@ -36,6 +36,8 @@ import type { Named, Rect } from '../../packages/web/test/layout-metric.js';
 export interface Probe {
   vw: number;
   vh: number;
+  /** The shell's chrome (phone, touch, desk), or null on a bare screen. */
+  chrome: string | null;
   region: Rect | null;
   boxes: Rect[];
   sideways: string[];
@@ -86,7 +88,7 @@ export function probeLayout(): Probe {
   const visible = (el: Element) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
 
   const main = document.querySelector('main#main');
-  const out: Probe = { vw, vh, region: null, boxes: [], sideways: [], targets: [], whole: [], fixed: [], exempt: null, selected: null };
+  const out: Probe = { vw, vh, chrome: document.querySelector('[data-chrome]')?.getAttribute('data-chrome') ?? null, region: null, boxes: [], sideways: [], targets: [], whole: [], fixed: [], exempt: null, selected: null };
   if (main) {
     out.region = rectOf(cut(VIEW, boxOf(main.getBoundingClientRect())));
     const push = (el: Element, r: DOMRect) => {

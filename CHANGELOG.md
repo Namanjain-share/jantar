@@ -133,6 +133,18 @@ What changed for people who use Jantar, newest first. Versions before
   aliases and sessions (one button that opens the account's sessions),
   filter chips, and the Mac-style rail and ⌘K button an iPad still shows
   until its own sidebar.
+- **iPad**: from 640 px wide a touch screen gets its own shell instead of
+  the Mac's top bar, rail and status bar. In landscape (1024 and wider) a
+  220 px sidebar with names: Search or jump, Board, Today with its six
+  places under it (a caret hides them), Chat, Files, Alerts, then the
+  Library (Intel, Meetings); at its foot the accounts strip (each
+  account's 5-hour use, and whether Jantar is live), which opens Accounts,
+  and ⋯ with Devices, the legend, the theme and Reload app. ⌘\ or its
+  button folds it to a 72 px rail of labelled places, remembered on this
+  device. In portrait the rail, whose top button shows the whole sidebar
+  over the screen. The window controls' corner is left free. Today's strip
+  of places shows whenever the nav doesn't list them. The sidebar loads on
+  its own, so a Mac or a phone never downloads it.
 
 ## 0.11.0 (3 November 2026)
 

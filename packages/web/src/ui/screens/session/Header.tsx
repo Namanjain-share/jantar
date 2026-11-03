@@ -140,7 +140,7 @@ export function Header(props: HeaderProps) {
     );
   }
   return (
-    <header className={clsx('flex h-56 flex-none items-center border-b border-line pr-16', back ? 'pl-16' : 'pl-32')}>
+    <header className={clsx('flex h-pane flex-none items-center border-b border-line pr-16', back ? 'pl-16' : 'pl-32')}>
       {back ? (
         <IconButton aria-label="Back to the board" onClick={onBack} className="mr-8">
           <CaretLeftIcon size={20} />

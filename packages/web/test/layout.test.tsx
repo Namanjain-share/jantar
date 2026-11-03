@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keyboardStore, setKeyboard } from '../src/lib/input.js';
 import { viewportStore } from '../src/lib/viewport.js';
 import * as layoutModule from '../src/ui/shell/layout.js';
-import { QUERIES, chromeFor, createLayoutStore, layoutAt, sizeFor, useLayout, type Chrome, type Size } from '../src/ui/shell/layout.js';
+import { QUERIES, TOUCH_SHELL, chromeFor, createLayoutStore, layoutAt, sizeFor, useLayout, type Chrome, type Size } from '../src/ui/shell/layout.js';
 import { renderApp, session, stateWith } from './helpers.js';
 
 /** A window `width` wide with a fine or coarse pointer; counts the change listeners added and removed. */
@@ -59,9 +59,12 @@ describe('size classes and chrome', () => {
     expect(chromeFor(width, true, true)).toBe(touch);
   });
 
-  it('the Mac keeps its chrome until the touch shell is built, and has a keyboard from the start', () => {
+  it('c24: the Mac keeps its chrome and has a keyboard from the start; an iPad gets the touch shell from 640', () => {
+    expect(TOUCH_SHELL).toBe(true);
     expect(layoutAt(1440)).toEqual({ size: 'regular', coarse: false, chrome: 'desk', keyboard: true, kbUp: false });
-    expect(layoutAt(820, { coarse: true })).toEqual({ size: 'medium', coarse: true, chrome: 'desk', keyboard: false, kbUp: false });
+    expect(layoutAt(820, { coarse: true })).toEqual({ size: 'medium', coarse: true, chrome: 'touch', keyboard: false, kbUp: false });
+    expect(layoutAt(639, { coarse: true }).chrome).toBe('phone');
+    expect(layoutAt(767).chrome).toBe('phone');
   });
 
   it('c23: the older frames are gone, and so is the 1280 query only they asked', () => {
