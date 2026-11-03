@@ -112,6 +112,30 @@ describe('her Today (P2)', () => {
     expect(await screen.findByRole('button', { name: 'Done: Mock' })).toBeTruthy();
   });
 
+  it('Add a step: one of her own, with or without his plan (Q7): a title, a time that rings her and minutes', async () => {
+    const stepAdd = vi.fn(async () => ({ id: S4 }));
+    // No plan from him yet: she can still add her own step.
+    const api = fakeApi({ today: vi.fn(async () => today({ ...view([]), plan: null })), stepAdd });
+    render(<Today me={me()} api={api} reload={() => {}} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add a step' }));
+    const sheet = screen.getByRole('dialog', { name: 'Add a step' });
+    const add = screen.getByRole('button', { name: 'Add step' }) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Step'), { target: { value: ' Walk ' } });
+    fireEvent.change(screen.getByLabelText('Time (optional)'), { target: { value: '18:30' } });
+    expect(screen.getByLabelText('Ring me at 18:30')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Minutes (optional)'), { target: { value: '3' } });
+    expect(add.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Minutes (optional)'), { target: { value: '30' } });
+    fireEvent.click(add);
+    await waitFor(() => expect(stepAdd).toHaveBeenCalledWith(DAY, { title: 'Walk', at: '18:30', ring: true, minutes: 30 }));
+    expect(sheet.isConnected).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '+ Add a step' }));
+    fireEvent.change(screen.getByLabelText('Step'), { target: { value: 'Read' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add step' }));
+    await waitFor(() => expect(stepAdd).toHaveBeenLastCalledWith(DAY, { title: 'Read' }));
+  });
+
   it('a report step opens the report sheet with two equal buttons; Done without a note sends no report', async () => {
     const steps = [step(S1, 'Analysis', { ask: 'report' })];
     const api = fakeApi({ today: vi.fn(async () => today(view(steps, { now: S1 }, { ackAt: AT }))), stepState: vi.fn(async () => undefined) });

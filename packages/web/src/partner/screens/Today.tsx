@@ -15,9 +15,11 @@
  *   is five large targets per row. Reasons are one-tap chips.
  * - "Going to sleep" from 20:00 to 04:00 (5-second Undo); Rough day with
  *   its Undo; a quiet line into her journal. No nudge, no count of misses.
+ * - "Add a step" adds one of her own to the day (title, a time that can
+ *   ring her, minutes), with or without a plan from him (Q7).
  */
 import { ASK_REASONS, SKIP_REASONS, STATUS_LABELS, fieldsChanged } from '@jantar/protocol/people-core';
-import type { PersonMe, PersonOwnToday, PersonTodo, PlanStep, PlanView } from '@jantar/protocol/people';
+import type { PersonMe, PersonOwnToday, PersonTodo, PlanStep, PlanView, StepBody } from '@jantar/protocol/people';
 import { useCallback, useEffect, useState } from 'react';
 import { Faces } from '../../people-shared/Faces.js';
 import { dayLabel, hmOf } from '../../people-shared/time.js';
@@ -31,7 +33,7 @@ import { DoseRow } from './DoseRow.js';
 import { TodoRow } from './TodoRow.js';
 import { TodoSheet } from './TodoSheet.js';
 
-type OpenSheet = { kind: 'step'; step: PlanStep } | { kind: 'report'; step: PlanStep } | { kind: 'checkin'; step: PlanStep } | { kind: 'status' } | { kind: 'wake' } | { kind: 'rough' } | null;
+type OpenSheet = { kind: 'step'; step: PlanStep } | { kind: 'report'; step: PlanStep } | { kind: 'checkin'; step: PlanStep } | { kind: 'status' } | { kind: 'wake' } | { kind: 'rough' } | { kind: 'add' } | null;
 
 export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi; reload: () => void; tick: number }) {
   const [today, setToday] = useState<PersonOwnToday | null>(null);
@@ -166,6 +168,13 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
           </section>
         ) : null,
       )}
+      {day === today.today && !plan?.rough ? (
+        <p className="mt-8">
+          <button type="button" className="min-h-44 text-ink-2 underline" onClick={() => setSheet({ kind: 'add' })}>
+            + Add a step
+          </button>
+        </p>
+      ) : null}
       {(plan?.between ?? []).map((b) => (
         <section key={b.id} aria-label={b.title} className="mt-16">
           <p className="font-medium">
@@ -240,7 +249,7 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
           </ul>
         </section>
       ) : steps.length === 0 && !today.meds?.groups.length ? (
-        <p className="mt-24 text-ink-2">Nothing planned or due right now.</p>
+        <p className="mt-16 text-ink-2">Nothing planned or due right now.</p>
       ) : null}
       <p className="mt-16">
         <a
@@ -275,6 +284,7 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
       <StepSheet sheet={sheet} day={day} owner={owner} api={api} close={() => setSheet(null)} run={run} setState={setState} />
       <StatusSheet open={sheet?.kind === 'status'} api={api} close={() => setSheet(null)} run={run} current={today.status?.level ?? 'ok'} />
       <WakeSheet open={sheet?.kind === 'wake'} api={api} close={() => setSheet(null)} run={run} />
+      <AddStepSheet open={sheet?.kind === 'add'} close={() => setSheet(null)} onAdd={(body) => void run(api.stepAdd(day, body))} />
       <RoughSheet open={sheet?.kind === 'rough'} owner={owner} close={() => setSheet(null)} onConfirm={(note) => {
         setSheet(null);
         void run(api.rough(day, note || undefined));
@@ -488,6 +498,59 @@ function StepSheet({
             </Button>
           </>
         )}
+      </div>
+    </Sheet>
+  );
+}
+
+/** One step of her own (Q7): a title, and a time (it rings her unless she unticks it) and minutes if she wants. */
+export function AddStepSheet({ open, close, onAdd }: { open: boolean; close: () => void; onAdd: (body: StepBody) => void }) {
+  const [title, setTitle] = useState('');
+  const [at, setAt] = useState('');
+  const [minutes, setMinutes] = useState('');
+  const [ring, setRing] = useState(true);
+  useEffect(() => {
+    if (!open) return;
+    setTitle('');
+    setAt('');
+    setMinutes('');
+    setRing(true);
+  }, [open]);
+  if (!open) return null;
+  const mins = Number(minutes);
+  const minsOk = minutes === '' || (Number.isInteger(mins) && mins >= 5 && mins <= 600);
+  const field = 'min-h-44 rounded-btn border border-line bg-bg px-8';
+  return (
+    <Sheet open onOpenChange={(o) => !o && close()} title="Add a step">
+      <div className="flex flex-col gap-12 pb-24">
+        <Field label="Step" value={title} onChange={setTitle} max={120} />
+        <div className="flex flex-wrap gap-8">
+          <label className="flex flex-col gap-4">
+            <span className="text-small text-ink-2">Time (optional)</span>
+            <input type="time" className={field} value={at} onChange={(e) => setAt(e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-4">
+            <span className="text-small text-ink-2">Minutes (optional)</span>
+            <input inputMode="numeric" className={`${field} w-[6rem]`} value={minutes} onChange={(e) => setMinutes(e.target.value.replace(/\D/g, '').slice(0, 3))} />
+          </label>
+        </div>
+        {at ? (
+          <label className="flex min-h-44 items-center gap-8 text-small">
+            <input type="checkbox" checked={ring} onChange={(e) => setRing(e.target.checked)} /> Ring me at {at}
+          </label>
+        ) : null}
+        {!minsOk ? <p className="text-small text-ink-2">Minutes: from 5 to 600.</p> : null}
+        <Button
+          variant="primary"
+          size="xl"
+          disabled={!title.trim() || !minsOk}
+          onClick={() => {
+            onAdd({ title: title.trim(), ...(at ? { at, ring } : {}), ...(minutes ? { minutes: mins } : {}) });
+            close();
+          }}
+        >
+          Add step
+        </Button>
       </div>
     </Sheet>
   );
