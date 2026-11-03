@@ -138,3 +138,46 @@ describe('Accounts with one Claude login', () => {
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy();
   });
 });
+
+describe('0.11: Accounts by its pane', () => {
+  /** The pane measures `width` (jsdom has no layout). */
+  const pane = (width: number) =>
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: width, bottom: 800, width, height: 800, toJSON: () => ({}) });
+  afterEach(() => vi.restoreAllMocks());
+  const cswap = () => stateWith({ features: {}, accountsMode: 'cswap', accounts: [account(1), account(2)] });
+
+  it('the matrix from a pane of 640, with RESETS and 7D from 1180, whatever the window', async () => {
+    viewport(1440);
+    pane(1300);
+    const wide = renderApp({ path: '/accounts', state: cswap() });
+    await opened('Accounts');
+    expect(screen.getByRole('table', { name: 'Accounts' }).className).toContain('bg-raised');
+    expect(screen.getByRole('columnheader', { name: 'Resets' })).toBeTruthy();
+    wide.unmount();
+    vi.restoreAllMocks();
+    pane(900);
+    const mid = renderApp({ path: '/accounts', state: cswap() });
+    await opened('Accounts');
+    expect(screen.getByRole('table', { name: 'Accounts' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Resets' })).toBeNull();
+    mid.unmount();
+    vi.restoreAllMocks();
+    pane(560);
+    renderApp({ path: '/accounts', state: cswap() });
+    await opened('Accounts');
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy();
+  });
+
+  it('one login: from a pane of 640 a card at the pane width, its sessions in columns', async () => {
+    viewport(1440);
+    pane(1300);
+    renderApp({ path: '/accounts', state: single() });
+    await opened('Accounts');
+    const login = document.querySelector('[data-account="single"]') as HTMLElement;
+    expect(login.className).toContain('rounded-dock');
+    expect(within(login).getByRole('group').className).toContain('grid');
+    expect(login.closest('.max-w-640')).toBeNull();
+    expectNoUsage();
+  });
+});

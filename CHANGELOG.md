@@ -66,6 +66,11 @@ What changed for people who use Jantar, newest first. Versions before
   file opens beside the list; **Hide browser** in the viewer's header gives
   the file the whole window, and Esc closes it. The viewer's back and ···
   buttons are 44 pt on a touch screen at every width.
+- **Accounts** lays itself out by its own width: the matrix from about
+  640 px of content (it stopped at 1320 px; now it spans the window, on a
+  ground of its own), with Resets and 7-day columns from about 1180. With
+  one Claude login the login is a card across the window, its sessions in
+  columns; paired machines sit two across.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

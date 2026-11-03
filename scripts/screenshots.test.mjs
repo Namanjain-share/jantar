@@ -68,7 +68,6 @@ test('the screens the README and the docs promise are all taken, at the sizes th
     'dialog-permission',
     'keypad',
     'attach',
-    'accounts-single',
     'today',
     'chat',
     'todos',
@@ -93,7 +92,9 @@ test('the screens the README and the docs promise are all taken, at the sizes th
   ];
   for (const n of both) assert.deepEqual(sizesOf(byName.get(n) ?? {}).map((s) => s.key), ['phone', 'desktop'], n);
   for (const n of phone) assert.deepEqual(sizesOf(byName.get(n) ?? {}).map((s) => s.key), ['phone'], n);
-  assert.equal(SHOTS.length, both.length + phone.length, 'a screen no page shows');
+  // 0.11 (c22b): one login at the user's 1440 x 960 too, with each pointer.
+  assert.deepEqual(sizesOf(byName.get('accounts-single') ?? {}).map((s) => s.key), ['phone', 'mac-1440', 'touch-1440']);
+  assert.equal(SHOTS.length, both.length + phone.length + 1, 'a screen no page shows');
   assert.equal(byName.get('accounts-single')?.accounts, 'single');
   for (const n of ['dialog-plan', 'dialog-question', 'dialog-permission']) assert.equal(byName.get(n)?.variant, 'phone-control', n);
   assert.equal(byName.get('keypad')?.variant, 'keypad');

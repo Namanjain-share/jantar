@@ -21,8 +21,13 @@
  * cswap" above it) and each machine's accounts follow, by name
  * (accounts/Machines.tsx, its own chunk). Until then the screen is as
  * before.
+ *
+ * 0.11 (build plan 2.9): laid out by the pane's width, not the window's:
+ * the matrix from a pane of 640, with RESETS and 7D columns from 1180, at
+ * the pane's full width on a raised ground of its own (the 1320 cap is
+ * gone). Without a measure (jsdom, a hidden box) 0.10's frames decide.
  */
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PRODUCT_NAME } from '../../brand.js';
 import { errorText } from '../../lib/api.js';
 import { accountId } from '../../lib/format.js';
@@ -33,7 +38,8 @@ import { SkeletonRows } from '../kit/Skeleton.js';
 import { Spinner } from '../kit/Spinner.js';
 import { Tag } from '../kit/Tag.js';
 import { useAccountsMode } from '../shell/data.js';
-import { useFrame } from '../shell/layout.js';
+import { useLayout } from '../shell/layout.js';
+import { useBucket } from '../kit/Columns.js';
 import { ceilingOf, usePlan } from './accounts/hooks.js';
 import { Matrix } from './accounts/Matrix.js';
 import { buildRows, displayLine, LEGACY_TOOL, sortRows, type SortKey } from './accounts/model.js';
@@ -76,7 +82,10 @@ function CswapAccounts({ machines }: { machines: boolean }) {
   const { api } = useDeps();
   const toast = useToast();
   const navigate = useNavigate();
-  const frame = useFrame();
+  const layout = useLayout();
+  // The pane's width: 'sm' under 640, 'md' to 1179, 'xl' from 1180; 'none' without a measure.
+  const box = useRef<HTMLDivElement>(null);
+  const pane = useBucket(box, (w) => (w <= 0 ? 'none' : w >= 1180 ? 'xl' : w >= 640 ? 'md' : 'sm'));
   const now = useNow(30_000);
   const state = useApp((s) => s.state);
   const conn = useApp((s) => s.conn);
@@ -95,8 +104,9 @@ function CswapAccounts({ machines }: { machines: boolean }) {
   // Only the legacy ccw tool moves sessions between accounts; without it there is no autoswitch to name.
   const legacy = plan?.source === 'ccw-legacy';
   const next = legacy ? plan.next : null;
-  const matrix = frame === 'desk' || frame === 'wide';
-  const phone = frame === 'phone';
+  const phone = layout.chrome === 'phone';
+  const matrix = !phone && (pane === 'none' ? layout.size === 'regular' : pane !== 'sm');
+  const wide = !phone && (pane === 'none' ? layout.wide : pane === 'xl');
 
   // In the matrix, an account that runs out before its reset opens with the
   // reason in words (dir-k.html); phone rows already say "full ~17:05".
@@ -138,9 +148,12 @@ function CswapAccounts({ machines }: { machines: boolean }) {
     </h1>
   );
 
+  // One box in every state, so the pane's measure follows from the first render on.
+  const measured = (content: ReactNode) => <div ref={box}>{content}</div>;
+
   if (!rows.length) {
     const first = state.seq === 0 && conn.status !== 'offline';
-    return (
+    return measured(
       <section aria-labelledby="accounts-title" className="animate-enter">
         {heading}
         {first ? (
@@ -150,7 +163,7 @@ function CswapAccounts({ machines }: { machines: boolean }) {
             <p>{PRODUCT_NAME} reads cswap's usage cache. Accounts appear after the first reading.</p>
           </EmptyState>
         )}
-      </section>
+      </section>,
     );
   }
 
@@ -187,7 +200,7 @@ function CswapAccounts({ machines }: { machines: boolean }) {
   const sortControl = <Segmented label="Sort accounts" segments={SORTS} value={sort} onChange={changeSort} />;
 
   if (phone || !matrix) {
-    return (
+    return measured(
       <section aria-labelledby="accounts-title" className={phone ? 'pb-24 animate-enter' : 'px-32 pb-32 pt-24 animate-enter'}>
         {heading}
         <div className={phone ? '' : 'max-w-640'}>
@@ -218,14 +231,14 @@ function CswapAccounts({ machines }: { machines: boolean }) {
           />
           <Moves state={state} now={now} phone legacy={legacy} />
         </div>
-      </section>
+      </section>,
     );
   }
 
-  return (
+  return measured(
     <section aria-labelledby="accounts-title" className="px-32 pb-32 pt-24 animate-enter">
       {heading}
-      <header className="mb-20 max-w-1320">
+      <header className="mb-20">
         {machines ? <MacLabel mode="cswap" /> : null}
         <p data-display className="type-display text-ink">
           {displayLine(rows)}
@@ -249,11 +262,11 @@ function CswapAccounts({ machines }: { machines: boolean }) {
         ceiling={ceiling}
         weeklyCeiling={weeklyCeiling}
         now={now}
-        wide={frame === 'wide'}
+        wide={wide}
         open={open}
         onToggle={toggle}
       />
       <Moves state={state} now={now} phone={false} legacy={legacy} />
-    </section>
+    </section>,
   );
 }

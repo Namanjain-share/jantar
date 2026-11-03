@@ -147,15 +147,6 @@ const USERS_CASE = { sizes: ['mac-1440', 'touch-1440'], states: ['today', 'chat'
  * as the table it is (3 % empty at 1440).
  */
 export const KNOWN_WIDE_GAPS: Record<string, number> = {
-  'accounts@mac-1440': 0.47,
-  'accounts@touch-1440': 0.47,
-  'accounts@desktop': 0.47,
-  'accounts@mac-1024': 0.64,
-  'accounts@ipad-air-l': 0.54,
-  'accounts@ipad-pro-l': 0.52,
-  'accounts@ipad-1024': 0.63,
-  'accounts@ipad-13-l': 0.48,
-  'accounts@safari-l': 0.54,
   'devices@mac-1440': 0.71,
   'devices@touch-1440': 0.73,
   'devices@desktop': 0.72,
@@ -174,15 +165,6 @@ export const KNOWN_WIDE_GAPS: Record<string, number> = {
   'more@ipad-1024': 0.98,
   'more@ipad-13-l': 0.98,
   'more@safari-l': 0.98,
-  'accounts-single@mac-1440': 0.86,
-  'accounts-single@touch-1440': 0.86,
-  'accounts-single@desktop': 0.86,
-  'accounts-single@mac-1024': 0.81,
-  'accounts-single@ipad-air-l': 0.82,
-  'accounts-single@ipad-pro-l': 0.83,
-  'accounts-single@ipad-1024': 0.79,
-  'accounts-single@ipad-13-l': 0.85,
-  'accounts-single@safari-l': 0.82,
 };
 
 /**

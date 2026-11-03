@@ -74,10 +74,11 @@ export function SessionCells({ cells, moveTo }: { cells: SessionCell[]; moveTo: 
 }
 
 /** The expanded phone row: one 44 px link per session. */
-export function SessionList({ cells }: { cells: SessionCell[] }) {
+export function SessionList({ cells, columns = false }: { cells: SessionCell[]; columns?: boolean }) {
   if (!cells.length) return null;
   return (
-    <ul role="group" aria-label={groupLabel(cells.length)} className="-mx-16">
+    // 0.11, `columns`: the sessions in columns of at least 280 across a wide pane (one login).
+    <ul role="group" aria-label={groupLabel(cells.length)} className={columns ? '-mx-16 grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))]' : '-mx-16'}>
       {cells.map((c) => (
         <li key={c.s.sid}>
           <Link

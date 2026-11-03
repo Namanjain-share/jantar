@@ -219,7 +219,8 @@ export const SHOTS = [
     },
   },
   { name: 'accounts', path: '/accounts' },
-  { name: 'accounts-single', path: '/accounts', accounts: 'single', sizes: PHONE },
+  // 0.11 (c22b): one login at the user's 1440 x 960 too, where it is a card across the pane.
+  { name: 'accounts-single', path: '/accounts', accounts: 'single', sizes: ['phone', 'mac-1440', 'touch-1440'] },
   { name: 'today', path: '/today', sizes: PHONE },
   // v0.10: Chat on in its own variant, so no other picture gains its tab: a reminder added with Undo, a photo that rated
   // a café and logged a visit, a delete waiting for its Confirm. The page opens on its newest turn; the picture shows it

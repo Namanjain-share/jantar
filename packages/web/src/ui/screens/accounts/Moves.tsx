@@ -85,7 +85,7 @@ export function Moves({ state, now, phone, legacy = true }: { state: State; now:
   const quiet = !legacy && !moves.length && !held.length;
 
   return (
-    <section aria-labelledby={quiet ? undefined : 'moves-title'} className={clsx(phone ? 'mt-24 px-16' : 'mt-28 max-w-1320')}>
+    <section aria-labelledby={quiet ? undefined : 'moves-title'} className={clsx(phone ? 'mt-24 px-16' : 'mt-28')}>
       {quiet ? null : (
         <div className="flex h-28 items-center gap-8 border-b border-line">
           <h2 id="moves-title" className="flex items-center gap-8 type-rail text-ink-3">
