@@ -129,7 +129,7 @@ describe('projects', () => {
     expect(todos.updateProject('01JFZ8X8Y3T0V5G9WQK2M4N6PR', { name: 'x' }, CLI)).toEqual({ ok: false, code: 'not_found', reason: TODO_REASONS.noProject });
     expect(todos.removeProject('01JFZ8X8Y3T0V5G9WQK2M4N6PR', CLI)).toMatchObject({ code: 'not_found' });
     for (let i = 0; i < LIFE_LIMITS.projects; i++) ok(todos.createProject({ name: `Example ${i}` }, CLI));
-    expect(todos.createProject({ name: 'One more' }, CLI)).toEqual({ ok: false, code: 'conflict', reason: 'You have 200 projects. Delete one to add another.' });
+    expect(todos.createProject({ name: 'One more' }, CLI)).toEqual({ ok: false, code: 'conflict', reason: 'You have 500 projects. Delete one to add another.' });
   });
 });
 
@@ -756,6 +756,7 @@ function onlyTodos(): LifeModuleBuilders {
     places: stub('places'),
     finance: stub('finance'),
     posts: stub('posts'),
+    work: stub('work'),
   } as LifeModuleBuilders;
 }
 

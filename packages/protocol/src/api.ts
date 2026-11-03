@@ -869,6 +869,7 @@ export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
  * `meetings.enabled`. v0.5.3: 'ask' reads `ask.enabled`. v0.6: 'fleet' reads
  * `fleet.enabled`. v0.7: 'posts', a sixth Life module, reads `life.posts`.
  * v0.8: 'intelRead' reads `intel.enabled` and `intel.read` (reading links).
+ * v0.13: 'work', a seventh Life module, reads `life.work` and `life.todos` (workOn).
  */
 export type FeatureSwitch =
   | 'files'
@@ -887,7 +888,8 @@ export type FeatureSwitch =
   | 'ask'
   | 'fleet'
   | 'posts'
-  | 'intelRead';
+  | 'intelRead'
+  | 'work';
 
 export interface RouteDef {
   method: HttpMethod | 'WS';
@@ -908,7 +910,8 @@ export interface RouteDef {
    * active key (404 otherwise), never with an Origin.
    */
   scope: Scope | 'public' | 'extension' | 'node' | 'capture' | 'person';
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10' | 'v0.11';
+  /** v0.13: Work's routes (the spec's name, whichever release ships them). Every one is an owner route. */
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10' | 'v0.11' | 'v0.13';
   /**
    * v0.11 People (`@jantar/protocol/people`): a `person` route needs no
    * credential (an invite or device-link claim). Only personJoinPreview,

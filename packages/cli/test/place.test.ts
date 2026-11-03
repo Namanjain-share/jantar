@@ -49,7 +49,7 @@ function status(currency: string | null): LifeStatus {
     today: '2026-11-02',
     currency,
     lockScreenDetails: false,
-    modules: { todos: false, medicines: false, food: false, places: true, finance: false, posts: false },
+    modules: { todos: false, medicines: false, food: false, places: true, finance: false, posts: false, work: false },
     estimate: { available: false },
     backups: { last: null, count: 0 },
     push: { devices: 0, webpush: true },

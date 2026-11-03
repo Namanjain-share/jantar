@@ -73,6 +73,7 @@ function builders(over: Partial<LifeModuleBuilders> = {}): LifeModuleBuilders {
     places: stub('places'),
     finance: stub('finance'),
     posts: stub('posts'),
+    work: stub('work'),
     ...over,
   } as LifeModuleBuilders;
 }
@@ -367,7 +368,7 @@ describe('status', () => {
       today: '2026-10-30',
       currency: 'INR',
       lockScreenDetails: true,
-      modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false },
+      modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false, work: false },
       estimate: { available: false },
       backups: expect.objectContaining({ count: expect.any(Number) }),
       push: { devices: 0, webpush: true },

@@ -42,6 +42,7 @@ const MODULE_WORDS: Readonly<Record<LifeModule, string>> = {
   places: 'cafés',
   finance: 'money and bills',
   posts: 'social posts and their reminders',
+  work: 'projects as a hub, with Todos',
 };
 
 const ISO_4217 = /^[A-Z]{3}$/;

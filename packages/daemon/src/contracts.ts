@@ -1618,14 +1618,15 @@ export interface UploadStore {
 // ===========================================================================
 // v0.4: Life and the Intel shelf
 //
-// One daemon part, `life`, with six modules in their own folders
-// (life/{todos,medicines,food,places,finance,posts}/; posts since v0.7), one
+// One daemon part, `life`, with seven modules in their own folders
+// (life/{todos,medicines,food,places,finance,posts,work}/; posts since v0.7, work since v0.13), one
 // database (life.db, its own migrations, refused when corrupt rather than
 // reset) and one scheduler that sends every Life push. Nothing here logs or
 // emits Life text: the only event is `life.changed {}`, and audit rows carry
 // route names and ids.
 
-export type LifeModuleName = 'todos' | 'medicines' | 'food' | 'places' | 'finance' | 'posts';
+/** v0.13: `work`, a seventh module (owner-only; its projects and follow-ups are Todos'). */
+export type LifeModuleName = 'todos' | 'medicines' | 'food' | 'places' | 'finance' | 'posts' | 'work';
 
 /**
  * Why a Life, Intel or Meetings call said no. The route turns it into the API
@@ -1949,6 +1950,17 @@ export interface PostsModule extends LifeModule {
   setGoals(body: PostGoalsBody, actor: Actor): LifeResult;
 }
 
+/**
+ * v0.13 Work (life/work/module.ts): owner-only. Its tables (`work_*`, life.db
+ * schema 5) have no `space` column and only life/work/** names them; it
+ * never runs SQL on `todos` or `projects`: it calls the Todos module, inside
+ * its own transaction. Every method that takes an actor answers not_found
+ * for anyone but the owner (a person's actor). P1: no Today part yet.
+ */
+export interface WorkModule extends LifeModule {
+  readonly name: 'work';
+}
+
 /** Finance and bills (WP-FF). */
 export interface FinanceModule extends LifeModule {
   readonly name: 'finance';
@@ -1987,6 +1999,8 @@ export interface LifeService extends Service {
   readonly finance: FinanceModule;
   /** v0.7. */
   readonly posts: PostsModule;
+  /** v0.13 Work (owner-only). */
+  readonly work: WorkModule;
   /**
    * v0.11 People (life/people/module.ts): people, invites, devices, consent,
    * pause, leave and remove. Built with the service, whether life.db is open
@@ -2010,6 +2024,8 @@ export interface LifeModuleBuilders {
   places: LifeModuleBuilder<PlacesModule>;
   finance: LifeModuleBuilder<FinanceModule>;
   posts: LifeModuleBuilder<PostsModule>;
+  /** v0.13: built after Todos, and handed it: Work reaches projects and todos only through the Todos module. */
+  work: (core: LifeCore, deps: LifeModuleDeps, todos: TodosModule) => WorkModule;
 }
 
 /**

@@ -50,7 +50,7 @@ export function status(over: Partial<LifeStatus> = {}): LifeStatus {
     today: DAY,
     currency: 'INR',
     lockScreenDetails: false,
-    modules: { todos: false, medicines: false, food: false, places: true, finance: false, posts: false },
+    modules: { todos: false, medicines: false, food: false, places: true, finance: false, posts: false, work: false },
     estimate: { available: false },
     backups: { last: null, count: 0 },
     push: { devices: 1, webpush: true },

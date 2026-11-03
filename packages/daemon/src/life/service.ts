@@ -1,5 +1,5 @@
 /**
- * The Life service (WP-LS, spec 4.1): life.db, the six modules, the one
+ * The Life service (WP-LS, spec 4.1): life.db, the seven modules (v0.13: work), the one
  * scheduler and the nightly backup, in one daemon part.
  *
  * - Start: when any module is on, open life.db (db.ts openLifeDb), build
@@ -41,7 +41,7 @@
 import { chmodSync, copyFileSync, constants as fsConstants, existsSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { dayKeyOf, isValidTimeZone } from '@jantar/life-core';
-import { CLI_NAME, LIFE_MODULES, lifeOn, type LifeStatus, type Settings, type Today } from '@jantar/protocol';
+import { CLI_NAME, LIFE_MODULES, lifeOn, workOn, type LifeStatus, type Settings, type Today } from '@jantar/protocol';
 import { hasScope } from '../auth/scopes.js';
 import type {
   DaemonContext,
@@ -64,6 +64,7 @@ import type {
   PostsModule,
   TodosModule,
   Unsubscribe,
+  WorkModule,
 } from '../contracts.js';
 import { newId } from '../core/ids.js';
 import { pushEndpointProblem } from '../notify/push-hosts.js';
@@ -131,7 +132,7 @@ export function pushDevices(db: Pick<Db, 'devices' | 'pushSubs'>): number {
   return n;
 }
 
-type Modules = { todos: TodosModule; medicines: MedicinesModule; food: FoodModule; places: PlacesModule; finance: FinanceModule; posts: PostsModule };
+type Modules = { todos: TodosModule; medicines: MedicinesModule; food: FoodModule; places: PlacesModule; finance: FinanceModule; posts: PostsModule; work: WorkModule };
 
 /** A module stand-in while life.db is not open: every call answers `unavailable`. */
 function closedModule<M extends LifeModule>(name: LifeModuleName, extra: Record<string, unknown> = {}): M {
@@ -194,6 +195,7 @@ class LifeServiceImpl implements LifeService {
     places: closedModule<PlacesModule>('places'),
     finance: closedModule<FinanceModule>('finance'),
     posts: closedModule<PostsModule>('posts'),
+    work: closedModule<WorkModule>('work'),
   };
 
   constructor(
@@ -266,6 +268,9 @@ class LifeServiceImpl implements LifeService {
   get posts(): PostsModule {
     return this.live()?.posts ?? this.closed.posts;
   }
+  get work(): WorkModule {
+    return this.live()?.work ?? this.closed.work;
+  }
 
   async start(): Promise<void> {
     if (this.started) return;
@@ -299,7 +304,8 @@ class LifeServiceImpl implements LifeService {
 
   status(): LifeStatus {
     const s = this.ctx.settings.get();
-    const modules = Object.fromEntries(LIFE_MODULES.map((m) => [m, s.life[m]])) as LifeStatus['modules'];
+    // v0.13: Work says on only while it works, with Todos on too (workOn).
+    const modules = Object.fromEntries(LIFE_MODULES.map((m) => [m, m === 'work' ? workOn(s) : s.life[m]])) as LifeStatus['modules'];
     let estimate: LifeStatus['estimate'] = { available: false };
     if (s.life.food && this.live()) {
       try {
@@ -547,13 +553,16 @@ class LifeServiceImpl implements LifeService {
 
   private buildModules(): Modules {
     const deps: LifeModuleDeps = { ctx: this.ctx, sessions: this.deps.sessions, usage: this.deps.usage, ccwLegacy: this.deps.ccwLegacy };
+    const todos = this.builders.todos(this.core, deps);
     const mods: Modules = {
-      todos: this.builders.todos(this.core, deps),
+      todos,
       medicines: this.builders.medicines(this.core, deps),
       food: this.builders.food(this.core, deps),
       places: this.builders.places(this.core, deps),
       finance: this.builders.finance(this.core, deps),
       posts: this.builders.posts(this.core, deps),
+      // v0.13: Work after Todos, and handed it (it never reads Todos' tables itself).
+      work: this.builders.work(this.core, deps, todos),
     };
     for (const m of Object.values(mods) as LifeModule[]) m.start?.();
     return mods;

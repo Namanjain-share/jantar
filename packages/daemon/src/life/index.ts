@@ -1,7 +1,7 @@
 /**
  * Life (v0.4): projects and todos, medicines, food and weight, cafés and
- * finance, and (v0.7) posts, in one daemon part with one database (life.db)
- * and one scheduler.
+ * finance, (v0.7) posts and (v0.13) work, in one daemon part with one
+ * database (life.db) and one scheduler.
  *
  * `createLifeService` is the Factories['life'] entry wired in daemon.ts.
  * This file and db.ts are the wiring and the database; service.ts
@@ -16,6 +16,7 @@ import { buildPlacesModule } from './places/module.js';
 import { buildPostsModule } from './posts/module.js';
 import { buildLifeService } from './service.js';
 import { buildTodosModule } from './todos/module.js';
+import { buildWorkModule } from './work/module.js';
 
 export { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, LIFE_SCHEMA_VERSION, openLifeDb, type LifeOpenResult } from './db.js';
 
@@ -26,6 +27,7 @@ export const LIFE_MODULE_BUILDERS: LifeModuleBuilders = {
   places: buildPlacesModule,
   finance: buildFinanceModule,
   posts: buildPostsModule,
+  work: buildWorkModule,
 };
 
 export const createLifeService: Factories['life'] = (ctx, deps) => buildLifeService(ctx, deps, LIFE_MODULE_BUILDERS);

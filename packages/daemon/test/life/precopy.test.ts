@@ -238,6 +238,7 @@ function builders(): LifeModuleBuilders {
     places: stub('places'),
     finance: stub('finance'),
     posts: stub('posts'),
+    work: stub('work'),
   } as unknown as LifeModuleBuilders;
 }
 

@@ -11,7 +11,7 @@ import { createTestContext, createTestLifeCore, type TestLifeCore } from '../../
 import { LIFE_MODULE_BUILDERS } from '../../src/life/index.js';
 import { makeFakes } from '../api/fakes.js';
 
-const ALL_ON = { todos: true, medicines: true, food: true, places: true, finance: true, posts: true };
+const ALL_ON = { todos: true, medicines: true, food: true, places: true, finance: true, posts: true, work: true };
 
 let core: TestLifeCore | undefined;
 afterEach(() => {
@@ -30,8 +30,10 @@ describe('LIFE_MODULE_BUILDERS', () => {
     core = createTestLifeCore({ tz: 'Asia/Kolkata', settings: ALL_ON });
     core.clock.set('2026-10-30T06:00:00.000Z');
     const d = deps();
-    for (const [name, build] of Object.entries(LIFE_MODULE_BUILDERS) as [LifeModuleName, (c: TestLifeCore, x: typeof d) => LifeModule][]) {
-      const m = build(core, d);
+    // v0.13: Work is handed the Todos module, as the service does.
+    const todos = LIFE_MODULE_BUILDERS.todos(core, d);
+    for (const [name, build] of Object.entries(LIFE_MODULE_BUILDERS) as [LifeModuleName, (c: TestLifeCore, x: typeof d, t: typeof todos) => LifeModule][]) {
+      const m = build(core, d, todos);
       expect(m.name, name).toBe(name);
       expect(() => m.start?.(), `${name} start`).not.toThrow();
       expect(() => m.today(core!.today()), `${name} today`).not.toThrow();

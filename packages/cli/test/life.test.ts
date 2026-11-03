@@ -24,7 +24,7 @@ function status(over: Partial<LifeStatus> = {}): LifeStatus {
     today: '2026-01-15',
     currency: 'INR',
     lockScreenDetails: false,
-    modules: { todos: true, medicines: true, food: false, places: false, finance: false, posts: false },
+    modules: { todos: true, medicines: true, food: false, places: false, finance: false, posts: false, work: false },
     estimate: { available: false },
     backups: { last: '2026-01-15T07:00:00.000Z', count: 3 },
     push: { devices: 1, webpush: true },
@@ -89,7 +89,7 @@ describe('jantar life status', () => {
     const b = contextFor({ env: ENV }, { ctl: off.ctl });
     await life.run(['status'], b.ctx);
     expect(b.io.stdout).toContain('Medicine pings: none go out, because Web Push is off');
-    const broken = daemon({}, status({ open: false, broken: 'Life data could not be opened.', modules: { todos: true, medicines: false, food: true, places: false, finance: false, posts: false }, estimate: { available: false, reason: 'No runner.' }, backups: { last: null, count: 0 } }));
+    const broken = daemon({}, status({ open: false, broken: 'Life data could not be opened.', modules: { todos: true, medicines: false, food: true, places: false, finance: false, posts: false, work: false }, estimate: { available: false, reason: 'No runner.' }, backups: { last: null, count: 0 } }));
     const c = contextFor({ env: ENV }, { ctl: broken.ctl });
     await life.run(['status'], c.ctx);
     expect(c.io.stdout).toContain('Life data: broken: Life data could not be opened.');

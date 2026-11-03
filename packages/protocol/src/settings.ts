@@ -268,7 +268,7 @@ const ZONE_SHAPE = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){0,2}$/;
 const ZONE_MESSAGE = 'an IANA time zone, e.g. Asia/Kolkata';
 
 /**
- * v0.4 Life: six small modules (v0.7 added posts), each off until turned on
+ * v0.4 Life: six small modules (v0.7 added posts; v0.13 work), each off until turned on
  * at the Mac (`jantar life on <module>`). Mac only: the switches, the time zone, the
  * currency and the lock-screen details change only there. The calorie target
  * and goal weight are values the phone sets; they live in life.db.
@@ -284,6 +284,12 @@ export const LifeSettingsSchema = z.object({
   finance: z.boolean().default(false),
   /** v0.7: Social posts: a plan, a ring at the time, Copy and Open. Jantar never posts. */
   posts: z.boolean().default(false),
+  /**
+   * v0.13 Work: projects as a hub, and (later phases) clients, deals and follow-ups. Its projects and
+   * follow-ups are Todos', so it counts as on only while `todos` is on too (`workOn`); `jantar work on`
+   * turns both on. Owner-only: nothing of it ever reaches a person's app.
+   */
+  work: z.boolean().default(false),
   /**
    * IANA zone for day keys and ping times; null = the Mac's zone at daemon
    * start. The file only needs a zone's shape: one this Node's ICU does not
@@ -555,12 +561,17 @@ export function settingsFeatures(s: Settings): Features {
   };
 }
 
-/** The six Life modules, in the order the phone lists them (v0.7's posts last). */
-export const LIFE_MODULES = ['todos', 'medicines', 'food', 'places', 'finance', 'posts'] as const;
+/** The Life modules, in the order the phone lists them (v0.7's posts, then v0.13's work, last). */
+export const LIFE_MODULES = ['todos', 'medicines', 'food', 'places', 'finance', 'posts', 'work'] as const;
 
 /** Whether any Life module is on. */
 export function lifeOn(s: Pick<Settings, 'life'>): boolean {
   return LIFE_MODULES.some((m) => s.life[m]);
+}
+
+/** v0.13: Work is on only while Todos is too (its projects and follow-ups are todos). */
+export function workOn(s: Pick<Settings, 'life'>): boolean {
+  return s.life.work && s.life.todos;
 }
 
 /**

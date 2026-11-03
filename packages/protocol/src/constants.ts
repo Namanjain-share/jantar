@@ -155,7 +155,8 @@ export const LIFE_DB_FILE = 'life.db';
 export const LIFE_BACKUP_KEEP = 30;
 /** Per-store caps; a write past one answers 409 with a fixed sentence. */
 export const LIFE_LIMITS = Object.freeze({
-  projects: 200,
+  /** v0.13 (Work): 500, was 200: done client projects pile up, and shared lists are projects too. */
+  projects: 500,
   openTodos: 5_000,
   medicines: 50,
   foodPerDay: 200,

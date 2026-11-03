@@ -202,9 +202,9 @@ describe('the list, Today and the switch', () => {
     expect(TodaySchema.safeParse({ day: '2026-11-02', posts: { today: -1, late: 0 } }).success).toBe(false);
   });
 
-  it('posts are the sixth Life module, last, off by default, and turn Life on', () => {
-    expect(LIFE_MODULES.at(-1)).toBe('posts');
-    expect(LIFE_MODULES).toHaveLength(6);
+  it('posts are the sixth Life module (v0.13: work comes after it), off by default, and turn Life on', () => {
+    expect(LIFE_MODULES.indexOf('posts')).toBe(5);
+    expect(LIFE_MODULES).toHaveLength(7);
     expect(SettingsSchema.parse({}).life.posts).toBe(false);
     expect(settingsFeatures(SettingsSchema.parse({ life: { posts: true } })).life).toBe(true);
     expect(LIFE_LIMITS.openPosts).toBe(200);

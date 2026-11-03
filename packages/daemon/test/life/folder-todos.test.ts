@@ -143,7 +143,7 @@ describe('the module', () => {
 /** The other five modules as stand-ins: this file is about todos. */
 function onlyTodos(): LifeModuleBuilders {
   const stub = <M extends LifeModule>(name: M['name']) => () => notBuilt<M>(name, { name, today: () => ({}), start: undefined, stop: undefined } as unknown as Partial<M>);
-  return { todos: buildTodosModule, medicines: stub('medicines'), food: stub('food'), places: stub('places'), finance: stub('finance'), posts: stub('posts') } as LifeModuleBuilders;
+  return { todos: buildTodosModule, medicines: stub('medicines'), food: stub('food'), places: stub('places'), finance: stub('finance'), posts: stub('posts'), work: stub('work') } as LifeModuleBuilders;
 }
 
 describe('the folder routes over ctl.sock', () => {

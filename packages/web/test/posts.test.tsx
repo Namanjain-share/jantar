@@ -69,7 +69,7 @@ function status(over: Partial<LifeStatus> = {}): LifeStatus {
     today: DAY,
     currency: null,
     lockScreenDetails: false,
-    modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: true },
+    modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: true, work: false },
     estimate: { available: false },
     backups: { last: null, count: 0 },
     push: { devices: 1, webpush: true },
@@ -279,7 +279,7 @@ describe('Posts: the list', () => {
     // Never the medicines' sentence on Posts.
     expect(screen.queryByText('No device gets medicine pings.')).toBeNull();
     a.unmount();
-    render({ status: { push: { devices: 0, webpush: true }, modules: { todos: true, medicines: true, food: false, places: false, finance: false, posts: false } } });
+    render({ status: { push: { devices: 0, webpush: true }, modules: { todos: true, medicines: true, food: false, places: false, finance: false, posts: false, work: false } } });
     await screen.findByRole('region', { name: 'Late' });
     expect(screen.queryByText('No device gets post reminders.')).toBeNull();
   });

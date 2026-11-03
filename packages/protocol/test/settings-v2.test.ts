@@ -37,6 +37,7 @@ describe('settings version 2', () => {
       places: false,
       finance: false,
       posts: false,
+      work: false,
       timezone: null,
       currency: null,
       lockScreenDetails: false,
@@ -89,8 +90,9 @@ describe('settings version 2', () => {
     expect(macOnlyGroupIn({ accounts: { kept: [3] } })).toBe('accounts');
   });
 
-  it('turns `life` on with any one of the six modules, and only then', () => {
-    expect(LIFE_MODULES).toEqual(['todos', 'medicines', 'food', 'places', 'finance', 'posts']);
+  it('turns `life` on with any one of the seven modules, and only then', () => {
+    // v0.13: work, a seventh module, last.
+    expect(LIFE_MODULES).toEqual(['todos', 'medicines', 'food', 'places', 'finance', 'posts', 'work']);
     expect(lifeOn(defaultSettings())).toBe(false);
     for (const m of LIFE_MODULES) {
       const s = SettingsSchema.parse({ life: { [m]: true } });

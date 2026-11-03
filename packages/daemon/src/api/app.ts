@@ -81,6 +81,7 @@ import {
   lifeOn,
   secretFromSocketProtocols,
   settingsFeatures,
+  workOn,
   type ErrorBody,
   type ErrorCode,
   type FeatureSwitch,
@@ -209,10 +210,12 @@ export const FEATURE_OFF: Readonly<Record<FeatureSwitch, { code: ErrorCode; mess
   fleet: { code: 'forbidden', message: 'Fleet is off. Turn it on at your Mac: jantar fleet on' },
   // v0.8
   intelRead: { code: 'forbidden', message: INTEL_READ_REASONS.off },
+  // v0.13: Work turns Todos on with it (its projects and follow-ups are todos).
+  work: { code: 'forbidden', message: 'Work is off. Turn it on at your Mac: jantar work on' },
 };
 
 /** The switches of Life's routes: while life.db is broken they answer 503 (lifeStatus, lifeBackup and lifeRestore have none). */
-export const LIFE_FEATURES: ReadonlySet<FeatureSwitch> = new Set<FeatureSwitch>(['life', 'todos', 'medicines', 'food', 'places', 'finance', 'posts']);
+export const LIFE_FEATURES: ReadonlySet<FeatureSwitch> = new Set<FeatureSwitch>(['life', 'todos', 'medicines', 'food', 'places', 'finance', 'posts', 'work']);
 
 /**
  * What a `localOnly` route answers over TCP, an admin device included (v0.3,
@@ -296,7 +299,8 @@ export const NEVER_REPLAYED: ReadonlySet<AnyRouteName> = new Set<AnyRouteName>([
  * Whether a route's switch is on (routes without one are always on). Read
  * from settings, never from state: v0.4's `life` is any module on, a module
  * name (v0.7's `posts` too) reads `life.<module>`, `intel` reads `intel.enabled`,
- * v0.8's `intelRead` both `intel.enabled` and `intel.read`.
+ * v0.8's `intelRead` both `intel.enabled` and `intel.read`, v0.13's `work`
+ * both `life.work` and `life.todos`.
  */
 export function featureOn(def: Pick<RouteDef, 'feature'>, settings: Settings): boolean {
   const f = def.feature;
@@ -312,6 +316,8 @@ export function featureOn(def: Pick<RouteDef, 'feature'>, settings: Settings): b
     case 'finance':
     case 'posts':
       return settings.life[f];
+    case 'work':
+      return workOn(settings);
     case 'intel':
       return settings.intel.enabled;
     case 'intelRead':
