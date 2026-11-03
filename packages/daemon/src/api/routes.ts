@@ -87,7 +87,7 @@ import { MACHINES_ROUTE_IMPLS } from './routes/machines.js';
 import { CAPTURE_ROUTE_IMPLS } from './routes/capture.js';
 import { CAPTURE_KEYS_ROUTE_IMPLS } from './routes/capture-keys.js';
 import { EXT_READS_ROUTE_IMPLS } from './routes/ext-reads.js';
-import { PEOPLE_ROUTE_IMPLS } from './routes/people.js';
+import { PEOPLE_ROUTE_IMPLS, noteOwnerDevice } from './routes/people.js';
 import { PERSON_ACCOUNT_ROUTE_IMPLS } from './routes/person/account.js';
 import { PERSON_PUSH_ROUTE_IMPLS } from './routes/person/push.js';
 import { PERSON_LIFE_ROUTE_IMPLS } from './routes/person/life.js';
@@ -526,7 +526,7 @@ const CORE_ROUTE_IMPLS: RouteTable = {
       }
       c.reply.setCookie(DEVICE_COOKIE, r.key, s.cookieOptions());
       // C27: a device that can open her space is never added in silence.
-      if (hasScope(r.device.scopes, 'control')) s.deps.life.people.ownerDeviceGained(r.device.name);
+      if (hasScope(r.device.scopes, 'control')) noteOwnerDevice(s, r.device.name);
       audit('ok', `device:${r.device.id}`, {
         target: r.device.id,
         params: { name: r.device.name, scopes: r.device.scopes, pairId: r.pairId },

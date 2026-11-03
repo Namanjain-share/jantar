@@ -45,6 +45,7 @@ import { actorName } from '../request.js';
 import { launchHistory } from '../../launcher/history.js';
 import { needActor, type Call, type RouteTable } from '../route-kit.js';
 import { foldersLimit, unwrap } from './folders.js';
+import { noteOwnerDevice } from './people.js';
 
 type Id = { id: string };
 type NoParams = Record<string, string>;
@@ -141,7 +142,7 @@ export const LAUNCH_ROUTE_IMPLS: RouteTable = {
       if (!next) throw new ApiError('not_found', 'no such device');
       c.scratch.before = device.scopes;
       // C27: raised to control, it can now open her space: her Activity says so.
-      if (!hasScope(device.scopes, 'control') && hasScope(next.scopes, 'control')) s.deps.life.people.ownerDeviceGained(next.name);
+      if (!hasScope(device.scopes, 'control') && hasScope(next.scopes, 'control')) noteOwnerDevice(s, next.name);
       return { device: publicDevice(next) };
     },
     audit: (c: Call<Id, unknown, DeviceScopesBody>, out) => ({

@@ -37,6 +37,18 @@ function peopleUrl(s: ApiServices): string {
   return origin;
 }
 
+/**
+ * C27: a device of his can newly open her space (paired with control, or raised to it): her Activity says so.
+ * It never fails the pairing or the scope change it follows (a Life part not built, or closed, just skips it).
+ */
+export function noteOwnerDevice(s: ApiServices, name: string): void {
+  try {
+    s.deps.life.people.ownerDeviceGained(name);
+  } catch (e) {
+    s.log.warn('people: owner device not recorded', { error: e instanceof Error ? e.name : 'unknown' });
+  }
+}
+
 /** A person he may reach for routes about the person (invited included), or 404. */
 export function aboutPerson(s: ApiServices, pid: string): void {
   if (s.deps.life.people.ownerReach(pid) === null) throw new ApiError('not_found', NO_PERSON);
