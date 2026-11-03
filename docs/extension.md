@@ -695,6 +695,9 @@ To turn it off: the same switch. To take the six sites back as well:
 
 ## Updating the extension
 
+**0.12.0**: build again and press the reload arrow on the Jantar card (the
+extension itself does not change, only its version number).
+
 **0.9.1**: build again and reload the extension. It changes
 this time (Start when I join, the toolbar badge, captions turned on when
 notes start). No new permission. Start when I join is forgotten on the
