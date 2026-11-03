@@ -14,6 +14,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LifeStatus, Today } from '@jantar/protocol';
 import type { PersonToday, PersonView } from '@jantar/protocol/people';
 import { presetAgreement } from '@jantar/protocol/people-core';
+import { writeLocal } from '../../src/lib/storage.js';
+import { LOCAL_DEVICE_KEY } from '../../src/ui/screens/devices/local.js';
 import type { PeopleClient } from '../../src/ui/screens/people/client.js';
 import { fakeApi, measureAs, preloadPlaces, renderApp, stateWith } from '../helpers.js';
 
@@ -113,6 +115,17 @@ describe('his Today with someone sharing', () => {
     fireEvent.click(within(edit).getByRole('button', { name: 'Done' }));
     await screen.findByRole('region', { name: 'Due' });
     expect(screen.queryByRole('region', { name: 'Accountability partner' })).toBeNull();
+  });
+
+  it('a device paired without control: Edit cards does not list it (its place is not in the nav either)', async () => {
+    measureAs(1352);
+    writeLocal(LOCAL_DEVICE_KEY, { id: 'dev-2', name: 'iPad', scopes: ['read'] });
+    render({ people: true });
+    await screen.findByRole('region', { name: 'Due' }, { timeout: LOAD_MS });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit cards' }));
+    const edit = screen.getByRole('region', { name: 'Edit cards' });
+    expect(within(edit).queryByRole('button', { name: 'Move Accountability partner' })).toBeNull();
+    expect(within(edit).getByRole('button', { name: 'Move Medicines' })).toBeTruthy();
   });
 
   it('People off: no card, no rows, and Edit cards does not list it', async () => {

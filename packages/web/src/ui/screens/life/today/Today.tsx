@@ -47,7 +47,7 @@ import { Button } from '../../../kit/Button.js';
 import { Columns, useBucket } from '../../../kit/Columns.js';
 import { RailLabel } from '../../../kit/RailLabel.js';
 import { StatusGlyph } from '../../../kit/StatusGlyph.js';
-import { useFeatures, useNeedsCount } from '../../../shell/data.js';
+import { useFeatures, useNeedsCount, usePlaceFeatures } from '../../../shell/data.js';
 import { Link } from '../../../shell/Link.js';
 import { LIFE } from '../../../shell/life.js';
 import { useLifeInNav } from '../../../shell/navState.js';
@@ -147,8 +147,10 @@ export function Today({ dose }: TodayProps) {
   const cards = useBucket(body, (w) => w >= CARDS_FROM);
   const [prefs, setPrefs] = useCardPrefs();
   const [editing, setEditing] = useState(false);
-  // v0.11 People: everyone sharing with him, with their day (none while People is off).
+  // v0.11 People: everyone sharing with him, with their day (none while People is off). Its card is listed
+  // in Edit cards as its place is in the nav: People on, on a device paired with control.
   const people = usePeopleRows();
+  const peopleOn = usePlaceFeatures().people;
   const addTodo = () => {
     setTodoStart({ day: now.day });
     todoSheet.show(null);
@@ -401,7 +403,7 @@ export function Today({ dose }: TodayProps) {
   );
 
   let content: ReactNode;
-  if (cards && editing) content = <EditCards prefs={prefs} onChange={setPrefs} onDone={() => setEditing(false)} skip={features.people ? [] : ['people']} />;
+  if (cards && editing) content = <EditCards prefs={prefs} onChange={setPrefs} onDone={() => setEditing(false)} skip={peopleOn ? [] : ['people']} />;
   else if (cards) {
     // Every card Today has something for, in this device's order and without the ones switched off.
     const parts = new Map<CardId, Part>([...peoplePart(), ...(t ? dataParts(t) : []), claude()].map((p) => [p.id, p]));
