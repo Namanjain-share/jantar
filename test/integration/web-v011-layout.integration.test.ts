@@ -73,6 +73,7 @@ import { perfBudgetMs } from '@jantar/fixtures';
 import { emptyRanges, emptyShare, MAX_EMPTY, under44 } from '../../packages/web/test/layout-metric.js';
 import { browserReady, DIST, openTouchable, type Viewport, type Watch } from './browser.js';
 import { probeLayout, type Probe } from './layout-probe.js';
+import { PEOPLE_PID, withPeople } from './web-fixture-people.js';
 import { lid } from './web-fixture-v04.js';
 import { READ_IDS, webFixtureV08, type V08Variant, type WebFixtureV08 } from './web-fixture-v08.js';
 import { sidOf } from './web-fixture.js';
@@ -123,6 +124,8 @@ interface State {
   accounts?: 'cswap' | 'single';
   /** Chat on with no turns yet (the user's -14). */
   chatEmpty?: boolean;
+  /** 0.12: v0.11 People on, with one person sharing (web-fixture-people.ts). */
+  people?: boolean;
   /** c33: what to do once the place has loaded (open the palette, a sheet, the ? list, Chat beside it), and how to put it away. */
   steps?: (page: Page) => Promise<boolean>;
   undo?: (page: Page) => Promise<void>;
@@ -175,6 +178,9 @@ export const STATES: readonly State[] = [
   { name: 'post', path: `/posts?id=${lid(1201)}`, variant: 'posts' },
   { name: 'intel-item', path: `/intel?item=${encodeURIComponent(READ_IDS.dal)}`, variant: 'intel-read' },
   { name: 'accounts-single', path: '/accounts', accounts: 'single' },
+  // 0.12: v0.11 People in the wide layouts: his screen for her (its Today tab), and his Today with her card.
+  { name: 'partner', path: `/people/${PEOPLE_PID}`, people: true },
+  { name: 'today-partner', path: '/today', people: true },
   // c33: the states that need a step, last in their fixture so what they open is put away after.
   {
     name: 'chat-dock',
@@ -282,7 +288,7 @@ export const WIDTH_EXEMPT: Record<string, string> = {
 };
 
 /** The shot's fixture: one per accounts mode and variant. */
-const fixtureKey = (s: State) => `${s.accounts ?? 'cswap'}:${s.variant ?? 'default'}`;
+const fixtureKey = (s: State) => `${s.accounts ?? 'cswap'}:${s.variant ?? 'default'}${s.people ? ':people' : ''}`;
 
 describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', () => {
   let browser: Browser;
@@ -294,6 +300,7 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
     let f = fixtures.get(key);
     if (!f) {
       f = webFixtureV08({ accounts: s.accounts ?? 'cswap', variant: s.variant ?? 'default' });
+      if (s.people) f = withPeople(f);
       fixtures.set(key, f);
     }
     return f;
