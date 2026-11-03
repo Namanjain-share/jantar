@@ -100,7 +100,8 @@ describe('her app under the space’s name', () => {
     const preview = { owner: 'Sam', name: 'Asha', label: 'Cofounder', version: 1, offer, fields: [], built: BUILT_PHASE, modules: { food: false } } as unknown as JoinPreview;
     render(<Join api={fake<PersonApi>({ joinPreview: vi.fn(async () => preview) })} mode="join" />);
     expect(await screen.findByRole('heading', { name: 'Cofounder' })).toBeTruthy();
-    expect(document.title).toBe('Cofounder');
+    // nameApp runs in an effect after the heading is drawn: wait for it (CI, macOS, 3 Nov).
+    await waitFor(() => expect(document.title).toBe('Cofounder'));
     expect(homeTitle()).toBe('Cofounder');
     // Before she is in, the manifest link stays p.html's (her own manifest needs her credential).
     expect(manifestHref()).toBe('/p.webmanifest');

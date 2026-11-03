@@ -33,7 +33,8 @@ async function toDue(): Promise<void> {
 }
 
 describe('the sharing check-in', () => {
-  it('shows from day 14 after 10:00; a snooze is a week; private by default', async () => {
+  // Walks two weeks of days through the daily sweep: about 25 s on CI's macOS runner (3 Nov), so 60 s.
+  it('shows from day 14 after 10:00; a snooze is a week; private by default', { timeout: 60_000 }, async () => {
     expect(await due()).toBe(false);
     await toDue();
     expect(await due()).toBe(false);

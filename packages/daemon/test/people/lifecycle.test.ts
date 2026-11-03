@@ -447,7 +447,8 @@ it('joinPerson works for a fresh partner end to end (fixture self-check)', async
 });
 
 describe('the daily sweep', () => {
-  it('forgets a left space after its 30 days, not before; closes an ending window', async () => {
+  // Walks 30 days of daily sweeps: about 16 s on CI's macOS runner (3 Nov), so 60 s.
+  it('forgets a left space after its 30 days, not before; closes an ending window', { timeout: 60_000 }, async () => {
     const x = await fx();
     const core = x.life.people.openCore();
     if (!core) throw new Error('life closed');
