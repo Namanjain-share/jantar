@@ -858,3 +858,12 @@ the stage editor 46.1, the milestone editor 42.3, a client's deal sheet
 the deal parts of `client.test.ts`, `client-hub.test.tsx` and
 `followups.test.tsx`, `keys.test.tsx`'s Work group, and the deals' parts
 of `code-split.test.ts` and `work/isolation.test.ts`.
+
+The review's fixes (0.13.0): Clients' table keeps the name 200 wide (Open
+deals from a pane of 960, Tags from 1180, by container query), Deals'
+totals ask for 240 before the row wraps, Work's chips are 44 by 44 on
+touch, a client's and a project's log read the stages' names
+(`useStageNames` in `work/parts.tsx`), the search sheet has Cancel on a
+phone and says why a search failed, and `g w` opens Work before Life
+status answers. The first load is still 277.3 kB; Work 62.9 kB with what
+it pulls in, Work › Clients 72.6, Work › Deals 70.8.
