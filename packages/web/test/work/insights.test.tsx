@@ -170,9 +170,11 @@ describe('Insights', () => {
     expect(document.querySelector('[data-columns]')?.getAttribute('data-columns')).toBe('3');
   });
 
-  it('touch: the period chips are 44', async () => {
+  it('touch: the period chips are 44 by 44 at least ("All" is narrower)', async () => {
     setup({ layout: layoutAt(390, { coarse: true }) });
     const chips = await screen.findByRole('group', { name: 'Period' });
-    expect(within(chips).getByRole('button', { name: 'All' }).className).toContain('coarse:h-44');
+    const all = within(chips).getByRole('button', { name: 'All' });
+    expect(all.className).toContain('coarse:h-44');
+    expect(all.className).toContain('coarse:min-w-44');
   });
 });

@@ -15,8 +15,9 @@ import { useLifeLoad } from '../life/shared/useLife.js';
 import { workClient } from './client.js';
 
 /**
- * One of a few as chips that wrap (44 on touch): a filter, a log entry's kind, how it went. Narrow phones
- * never scroll sideways, where five segments in a row would. `clearable`: a second tap clears it.
+ * One of a few as chips that wrap (44 by 44 at least on touch: "All" is narrower than that): a filter, a log
+ * entry's kind, how it went. Narrow phones never scroll sideways, where five segments in a row would.
+ * `clearable`: a second tap clears it.
  */
 export function Chips<K extends string>({
   label,
@@ -42,7 +43,7 @@ export function Chips<K extends string>({
           aria-pressed={value === c.key}
           onClick={() => onChange(value === c.key && clearable ? null : c.key)}
           className={clsx(
-            'inline-flex h-32 items-center rounded-chip border px-12 type-small transition-colors duration-120 ease-hover coarse:h-44',
+            'inline-flex h-32 items-center justify-center rounded-chip border px-12 type-small transition-colors duration-120 ease-hover coarse:h-44 coarse:min-w-44',
             value === c.key ? 'border-line-strong bg-select text-ink' : 'border-line text-ink-2 hover:text-ink',
           )}
         >

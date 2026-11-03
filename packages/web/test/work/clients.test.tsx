@@ -125,6 +125,15 @@ describe('Work › Clients on a phone', () => {
     expect(await screen.findByText('312 more not shown. Narrow the filter to find them.')).toBeTruthy();
   });
 
+  it('touch: the state chips are 44 by 44 at least ("All" is narrower)', async () => {
+    setup({ layout: layoutAt(390, { coarse: true }) });
+    await screen.findByRole('list', { name: 'Clients' });
+    for (const chip of within(screen.getByRole('group', { name: 'State' })).getAllByRole('button')) {
+      expect(chip.className).toContain('coarse:h-44');
+      expect(chip.className).toContain('coarse:min-w-44');
+    }
+  });
+
   it('Work off: the daemon’s sentence, its command in mono', async () => {
     setup({ over: { lifeStatus: vi.fn(async () => lifeStatus({ todos: true })) } });
     const code = await screen.findByText('jantar work on');
