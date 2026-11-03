@@ -1829,6 +1829,11 @@ export interface TodosModule extends LifeModule {
    */
   hub(id: string): LifeResult<ProjectHub>;
   /**
+   * v0.13 Work: `fn` runs inside the transaction that deletes one of the owner's projects (never a project
+   * of hers), so Work lets go of it in the same commit without naming the projects table.
+   */
+  onProjectDeleted(fn: (projectId: string) => void): void;
+  /**
    * `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. v0.11: `opts.by`
    * (the author, in a person space) and `opts.extra` (People's daemon-set fields) come from the People module.
    */
@@ -1973,6 +1978,12 @@ export interface WorkModule extends LifeModule {
    * clients (P2) and deals (P3) exist; not_found for anyone but the owner.
    */
   search(q: string, limit: number, actor: Actor): LifeResult<{ clients: SearchItem[]; deals: SearchItem[] }>;
+  /**
+   * POST /v1/work/seed: one project per folder (absolute, already resolved under a configured root by the
+   * route), its folder linked, all in one transaction. A folder a project links already (or one given
+   * twice) is skipped and counted. P2 adds a company client per folder.
+   */
+  seed(items: readonly { folder: string; name: string }[], actor: Actor): LifeResult<{ projects: string[]; skipped: number }>;
 }
 
 /** Finance and bills (WP-FF). */

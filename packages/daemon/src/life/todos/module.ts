@@ -149,8 +149,8 @@ function yearlyAnchor(day: string, byMonthDay: number | undefined): string {
   return shiftMonths(day, -1, byMonthDay);
 }
 
-/** A folder as compared: normalized, without a trailing slash. */
-function folderKey(path: string): string {
+/** A folder as compared: normalized, without a trailing slash. v0.13: Work's seed compares folders the same way. */
+export function folderKey(path: string): string {
   const n = posix.normalize(path);
   return n.length > 1 ? n.replace(/\/+$/, '') : n;
 }
@@ -162,6 +162,8 @@ class Todos implements TodosModule {
   readonly name = 'todos' as const;
   /** v0.11: this module in other spaces (her space's, built once). */
   private readonly spaces = new Map<string, Todos>();
+  /** v0.13: what runs inside a project's delete (Work's). Only this instance's: her space's module has none. */
+  private readonly deleteHooks: ((projectId: string) => void)[] = [];
 
   constructor(
     private readonly core: LifeCore,
@@ -251,9 +253,19 @@ class Todos implements TodosModule {
   }
 
   removeProject(id: string, _actor: Actor): LifeResult {
-    if (!this.repo.deleteProject(id, this.stamp())) return refuse('not_found', TODO_REASONS.noProject);
+    // v0.13: Work lets go of the project in the same transaction (its hook joins it).
+    const gone = this.core.db.tx(() => {
+      if (!this.repo.deleteProject(id, this.stamp())) return false;
+      for (const hook of this.deleteHooks) hook(id);
+      return true;
+    });
+    if (!gone) return refuse('not_found', TODO_REASONS.noProject);
     this.changed();
     return OK;
+  }
+
+  onProjectDeleted(fn: (projectId: string) => void): void {
+    this.deleteHooks.push(fn);
   }
 
   // --- todos -----------------------------------------------------------------

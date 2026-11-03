@@ -17,6 +17,7 @@ import {
   SearchResponseSchema,
   SettingsSchema,
   TodosQuerySchema,
+  WorkSeedBodySchema,
   lifeOn,
   settingsFeatures,
   workOn,
@@ -103,5 +104,28 @@ describe('v0.13 one search across Jantar', () => {
     expect(SearchResponseSchema.safeParse({ groups: [{ kind: 'todo', items: [item] }] }).success).toBe(true);
     expect(SearchResponseSchema.safeParse({ groups: [{ kind: 'todo', items: [] }] }).success).toBe(false);
     expect(SearchResponseSchema.safeParse({ groups: [{ kind: 'todo', items: Array.from({ length: 6 }, () => item) }] }).success).toBe(false);
+  });
+});
+
+describe('v0.13 projects from client folders', () => {
+  it('is POST /v1/work/seed: an owner route behind the work switch, on ctl.sock for the CLI', () => {
+    expect(ROUTES.foldersSeed).toMatchObject({ method: 'POST', path: '/v1/work/seed', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work' });
+  });
+
+  it('takes 1 to 50 folders as the browsers address them (a root and a path in it), each with a name; strict', () => {
+    const item = { root: 'r.work', path: 'client/acme', name: 'Acme' };
+    expect(WorkSeedBodySchema.parse({ items: [item] })).toEqual({ items: [item] });
+    expect(WorkSeedBodySchema.parse({ items: [{ ...item, name: '  Acme  ' }] }).items[0]?.name).toBe('Acme');
+    for (const bad of [
+      { items: [] },
+      { items: Array.from({ length: 51 }, () => item) },
+      { items: [{ ...item, path: '' }] },
+      { items: [{ ...item, name: '' }] },
+      { items: [{ ...item, name: 'x'.repeat(61) }] },
+      { items: [{ ...item, folder: '/abs' }] },
+      { items: [item], clients: true },
+    ]) {
+      expect(WorkSeedBodySchema.safeParse(bad).success, JSON.stringify(bad).slice(0, 80)).toBe(false);
+    }
   });
 });

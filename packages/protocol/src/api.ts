@@ -137,7 +137,7 @@ import {
   TodosResponseSchema,
   WeightBodySchema,
 } from './life.js';
-import { ProjectHubSchema, SearchQuerySchema, SearchResponseSchema } from './work.js';
+import { ProjectHubSchema, SearchQuerySchema, SearchResponseSchema, WorkSeedBodySchema, WorkSeedReplySchema } from './work.js';
 import {
   CaptureKeyAddBodySchema,
   CaptureKeyAddReplySchema,
@@ -1779,6 +1779,12 @@ export const ROUTES = {
     method: 'GET', path: '/v1/search', scope: 'control', phase: 'v0.13', ctl: false,
     query: SearchQuerySchema, response: SearchResponseSchema,
     summary: 'Find a project, todo, meeting, session, Intel item, café or post (each group only while its part is on).',
+  }),
+  // Never automatic: the phone's sheet (folders picked from Launch's or Files' browser) or the Mac's CLI.
+  foldersSeed: route({
+    method: 'POST', path: '/v1/work/seed', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work',
+    body: WorkSeedBodySchema, response: WorkSeedReplySchema,
+    summary: 'One project per folder under a configured root, its folder linked (a folder a project links already is skipped).',
   }),
 } as const satisfies Record<string, RouteDef>;
 
