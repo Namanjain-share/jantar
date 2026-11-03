@@ -13,6 +13,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { SearchResponse } from '@jantar/protocol/work';
+import { ApiError } from '../../src/lib/api.js';
 import { writeLocal } from '../../src/lib/storage.js';
 import { LOCAL_DEVICE_KEY } from '../../src/ui/screens/devices/local.js';
 import { layoutAt } from '../../src/ui/shell/layout.js';
@@ -97,6 +98,31 @@ describe('one search across Jantar', () => {
     expect(await within(sheet).findByRole('option', { name: /Site rebuild/ })).toBeTruthy();
   });
 
+  it('on a phone, Cancel beside the box closes the sheet; ⌘K on the Mac has none', async () => {
+    setup();
+    const sheet = await openSheet();
+    const cancel = within(sheet).getByRole('button', { name: 'Cancel' });
+    expect(cancel.className).toContain('h-52');
+    fireEvent.click(cancel);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Search or jump' })).toBeNull());
+  });
+
+  it('a search that fails says why, never "Nothing matches."', async () => {
+    const offline = new ApiError('network', 'Failed to fetch', 0);
+    const broken = new ApiError('life_unavailable', 'Life is unavailable: life.db could not be opened. See it at your Mac: jantar life status', 503);
+    let fail: ApiError = offline;
+    setup({ search: () => fail });
+    const sheet = await openSheet();
+    type(sheet, 'zzqx');
+    expect(await within(sheet).findByRole('alert')).toBeTruthy();
+    expect(within(sheet).getByRole('alert').textContent).toBe('Could not reach the Mac. Check the connection and try again.');
+    expect(within(sheet).queryByText('Nothing matches.')).toBeNull();
+    fail = broken;
+    type(sheet, 'zzqy');
+    await waitFor(() => expect(within(sheet).getByRole('alert').textContent).toBe(broken.message));
+    expect(within(sheet).queryByText('Nothing matches.')).toBeNull();
+  });
+
   it('a device paired without control never asks: its own sessions only', async () => {
     writeLocal(LOCAL_DEVICE_KEY, { id: 'dev-2', name: 'Phone', scopes: ['read'] });
     const { request } = setup();
@@ -114,5 +140,7 @@ describe('one search across Jantar', () => {
     type(sheet, 'kickoff');
     expect(await within(sheet).findByRole('option', { name: /Kickoff call/ })).toBeTruthy();
     expect(request).toHaveBeenCalledWith({ method: 'GET', path: '/v1/search' }, expect.objectContaining({ query: { q: 'kickoff' } }));
+    // Esc closes it on the Mac: no Cancel beside the box.
+    expect(within(sheet).queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 });

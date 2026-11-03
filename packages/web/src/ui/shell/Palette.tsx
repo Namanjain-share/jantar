@@ -18,13 +18,16 @@
  * and keeps the daemon's: they matched on words the row may not show (a
  * phone number, a note). An answer is shown only for the words it was
  * asked for. The search's words are his own and only ever go in the query
- * of an owner route.
+ * of an owner route. A search that fails (the Mac out of reach, life.db
+ * broken) says the daemon's sentence, never "Nothing matches.". On the
+ * phone the sheet has Cancel beside the box (design 6.2).
  */
 import { Dialog } from '@base-ui/react/dialog';
 import { Command, defaultFilter } from 'cmdk';
 import { useEffect, useMemo, useState } from 'react';
 import { boardOrder, machineName } from '@jantar/protocol';
 import type { SearchGroup, SearchItem, SearchKind } from '@jantar/protocol/work';
+import { errorText } from '../../lib/api.js';
 import { accountId, accountName, ago, primaryWindow } from '../../lib/format.js';
 import { routePath } from '../../lib/router.js';
 import { useApp, useDeps, useNavigate } from '../context.js';
@@ -69,11 +72,11 @@ function appPath(href: string): string | null {
  * GET /v1/search for `query` once typing stops (150 ms), the older ask cancelled: its groups, and the
  * words they are for (an answer for older words is never shown for newer ones).
  */
-function useSearch(query: string, on: boolean): { groups: SearchGroup[]; busy: boolean } {
+function useSearch(query: string, on: boolean): { groups: SearchGroup[]; busy: boolean; error: unknown } {
   const { api } = useDeps();
   const q = query.trim();
   const ask = on && q.length >= SEARCH_MIN;
-  const [found, setFound] = useState<{ q: string; groups: SearchGroup[] } | null>(null);
+  const [found, setFound] = useState<{ q: string; groups: SearchGroup[]; error?: unknown } | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!ask) {
@@ -91,9 +94,9 @@ function useSearch(query: string, on: boolean): { groups: SearchGroup[]; busy: b
             setFound({ q, groups: r.groups });
             setBusy(false);
           },
-          () => {
+          (error: unknown) => {
             if (abort.signal.aborted) return;
-            setFound({ q, groups: [] });
+            setFound({ q, groups: [], error });
             setBusy(false);
           },
         );
@@ -103,12 +106,13 @@ function useSearch(query: string, on: boolean): { groups: SearchGroup[]; busy: b
       abort.abort();
     };
   }, [api, ask, q]);
-  return { groups: ask && found?.q === q ? found.groups : [], busy: ask && busy };
+  const mine = ask && found?.q === q ? found : null;
+  return { groups: mine?.groups ?? [], busy: ask && busy, error: mine?.error ?? null };
 }
 
 export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChange: (o: boolean) => void; now: number }) {
   const layer = useLayer();
-  const { keyboard } = useLayout();
+  const { keyboard, chrome } = useLayout();
   const state = useApp((s) => s.state);
   const navigate = useNavigate();
   const features = usePlaceFeatures();
@@ -162,17 +166,28 @@ export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChan
         <Dialog.Popup className="palette palette-popup fixed left-1/2 z-40 -translate-x-1/2 overflow-hidden rounded-dock bg-raised text-ink shadow-float outline-none animate-pop">
           <Dialog.Title className="sr-only">Search or jump</Dialog.Title>
           <Command label="Search or jump" loop shouldFilter={false}>
-            <Command.Input
-              value={query}
-              onValueChange={setQuery}
-              placeholder="Search or jump"
-              className="block h-52 w-full border-b border-line bg-transparent px-20 type-input text-ink outline-none"
-            />
+            <div className="flex items-center border-b border-line">
+              <Command.Input
+                value={query}
+                onValueChange={setQuery}
+                placeholder="Search or jump"
+                className="block h-52 min-w-0 flex-1 bg-transparent px-20 type-input text-ink outline-none"
+              />
+              {/* The phone's sheet has no keys to close it: Cancel, beside the box (design 6.2). */}
+              {chrome === 'phone' ? (
+                <Dialog.Close className="h-52 flex-none px-16 type-row text-ink-2 transition-colors duration-120 ease-hover hover:text-ink">Cancel</Dialog.Close>
+              ) : null}
+            </div>
             <Command.List className="no-scrollbar overflow-auto py-4">
               {found.busy ? (
                 <Command.Loading>
                   <p className="px-20 py-8 type-small text-ink-3">Searching…</p>
                 </Command.Loading>
+              ) : found.error ? (
+                // A failed search says why (the Mac out of reach, life.db's sentence), never "Nothing matches.".
+                <p role="alert" className="px-20 py-12 type-small text-ink-2">
+                  {errorText(found.error)}
+                </p>
               ) : (
                 <Command.Empty className="px-20 py-12 type-small text-ink-3">Nothing matches.</Command.Empty>
               )}
