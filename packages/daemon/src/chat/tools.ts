@@ -727,14 +727,21 @@ const READS: Readonly<Record<string, ReadFn>> = {
       const facts = [c.kind === 'company' ? 'company' : '', c.state, c.next ? `next follow-up ${c.next.due?.day ?? 'with no day'}` : '', c.lastTouchAt ? `last touch ${c.lastTouchAt.slice(0, 10)}` : 'never touched', c.checkInDue ? 'check-in due' : '']
         .filter(Boolean)
         .join(' · ');
-      const words = [nm(c.name), c.company ? `at ${nm(c.company.name, 60)}` : '', c.tags.length ? `tags ${c.tags.map((t) => nm(t, 30)).join(', ')}` : ''].filter(Boolean).join(' · ');
+      // A client he typed may sit at a company an import or a meeting named: that company's name is
+      // data on his row too (client_get frames it the same way).
+      const co = c.company;
+      const coFrom = c.from ? undefined : co?.from;
+      const words = [nm(c.name), co && !coFrom ? `at ${nm(co.name, 60)}` : '', c.tags.length ? `tags ${c.tags.map((t) => nm(t, 30)).join(', ')}` : ''].filter(Boolean).join(' · ');
       // A client imported from a file or named in a meeting: their words are data.
       if (c.from) {
         taints = true;
         out.push(`- ${idOf(c.id)} ${facts}: ${data(c.from, c.id, words)}`);
+      } else if (co && coFrom) {
+        taints = true;
+        out.push(`- ${words} ${idOf(c.id)} · ${facts} · at company ${idOf(co.id)}: ${data(coFrom, co.id, nm(co.name, 60))}`);
       } else out.push(`- ${words} ${idOf(c.id)} · ${facts}`);
     }
-    if (taints) out.splice(1, 0, dataNote('an import or a meeting, in the clients marked so (their names and details)'));
+    if (taints) out.splice(1, 0, dataNote('an import or a meeting, in the clients and companies marked so (their names and details)'));
     return { text: out.join('\n'), taints };
   },
   client_get(d, i) {

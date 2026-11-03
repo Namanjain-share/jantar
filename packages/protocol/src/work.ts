@@ -195,13 +195,17 @@ export type WorkClientRef = z.infer<typeof WorkClientRefSchema>;
 export const WorkSumSchema = z.object({ currency: z.string().regex(/^[A-Z]{3}$/).nullable(), amount: z.number().int() });
 export type WorkSum = z.infer<typeof WorkSumSchema>;
 
-/** One row of the Clients list. `next`: the earliest open follow-up (W12). */
+/**
+ * One row of the Clients list. `next`: the earliest open follow-up (W12). `company.from`: the
+ * company's own mark (an import or a meeting named it), so its name is framed as data even on a
+ * row he typed himself.
+ */
 export const WorkClientRowSchema = z.object({
   id: LifeIdSchema,
   name: z.string(),
   kind: ContactKindSchema,
   state: ContactStateSchema,
-  company: z.object({ id: LifeIdSchema, name: z.string() }).optional(),
+  company: z.object({ id: LifeIdSchema, name: z.string(), from: ContactFromSchema.optional() }).optional(),
   title: z.string().optional(),
   next: z.object({ todoId: LifeIdSchema, title: z.string(), due: DueSchema.optional() }).optional(),
   lastTouchAt: IsoDateSchema.optional(),

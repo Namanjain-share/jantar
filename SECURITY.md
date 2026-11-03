@@ -2274,7 +2274,9 @@ stays on the Mac unless he sends it somewhere.
   are marked as such (`from`, set by the daemon, never by a body) and
   framed as data in Chat (`<data source="import">`, `"meeting"`); reading
   one taints the turn, so every change Chat then wants is a card he taps;
-  a deal of such a client is framed the same way. Chat never imports,
+  a deal of such a client is framed the same way, and so is such a
+  company's name on a row of a person he typed himself (the clients list
+  carries the company's `from`). Chat never imports,
   exports, merges, changes the stages, sets a folder or sends anything; it
   makes a project from a won deal only when he asks, never with a folder.
 - **Merging (P3b).** A merge moves one client's deals, log, follow-ups,

@@ -496,16 +496,18 @@ class Work implements WorkModule {
     return { id: c.id, name: c.name, state: c.state, ...(c.from ? { from: c.from } : {}) };
   }
 
-  private row(c: ContactRecord, ctx: { names: ReadonlyMap<string, string>; next: ReadonlyMap<string, Todo>; deals: ReturnType<WorkRepo['openDeals']>; now: number }): WorkClientRow {
+  private row(c: ContactRecord, ctx: { names: ReadonlyMap<string, string>; froms: ReadonlyMap<string, NonNullable<Contact['from']>>; next: ReadonlyMap<string, Todo>; deals: ReturnType<WorkRepo['openDeals']>; now: number }): WorkClientRow {
     const t = ctx.next.get(c.id);
     const company = c.companyId ? ctx.names.get(c.companyId) : undefined;
+    // The company's own mark: a person he typed can sit at a company an import or a meeting named.
+    const companyFrom = c.companyId ? ctx.froms.get(c.companyId) : undefined;
     const ci = this.checkIn(c, ctx.now);
     return {
       id: c.id,
       name: c.name,
       kind: c.kind,
       state: c.state,
-      ...(c.companyId && company !== undefined ? { company: { id: c.companyId, name: company } } : {}),
+      ...(c.companyId && company !== undefined ? { company: { id: c.companyId, name: company, ...(companyFrom ? { from: companyFrom } : {}) } } : {}),
       ...(c.title ? { title: c.title } : {}),
       ...(t ? { next: { todoId: t.id, title: t.title, ...(t.due ? { due: t.due } : {}) } } : {}),
       ...(c.lastTouchAt ? { lastTouchAt: c.lastTouchAt } : {}),
@@ -519,7 +521,8 @@ class Work implements WorkModule {
   private rowContext(all: readonly ContactRecord[]) {
     const next = new Map<string, Todo>();
     for (const t of this.todos.followUps(null, false)) if (t.contactId && !next.has(t.contactId)) next.set(t.contactId, t);
-    return { names: new Map(all.map((c) => [c.id, c.name])), next, deals: this.repo.openDeals(), now: this.core.now().getTime() };
+    const froms = new Map(all.flatMap((c) => (c.from ? [[c.id, c.from] as const] : [])));
+    return { names: new Map(all.map((c) => [c.id, c.name])), froms, next, deals: this.repo.openDeals(), now: this.core.now().getTime() };
   }
 
   clients(q: WorkClientsQuery, actor: Actor): LifeResult<WorkClientsResponse> {
