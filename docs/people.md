@@ -19,6 +19,34 @@ you.
 > and the cafés and lists you share. Someone who joined before an area
 > existed gets it only by a request they accept.
 
+## What the space is called
+
+Each space has a name, "Accountability partner" unless you pick another.
+Pick it when you add someone (`jantar people add Asha --label Cofounder`)
+or later: on your screen for them, Sharing › **What this space is called**,
+or `jantar people label Asha Coach` at the Mac (`--default` puts back
+"Accountability partner"; `jantar people label Asha` prints it). The
+presets are Accountability partner, Cofounder, Partner, Coach, Mentor,
+Teammate, Family and Friend; "Your own words" takes up to 40 characters of
+plain text on one line.
+
+- **You see it** over their name on your screen for them, on your People
+  list, on your Today line, and as the title of the notifications about
+  them. The entry in More stays "Accountability partner".
+- **They see it** as the title of their join page ("Sam invited you to a
+  shared space for your days, as your cofounder"), at the top of their
+  Today ("Cofounder · Sam"), as their app's name in the browser and as the
+  title of their notifications (also when their lock screen hides
+  everything).
+- **Their Home Screen**: added after you named the space, the icon takes
+  the name (at most 12 characters under it: the name, else its last word,
+  else its first 12 characters; "Partner" for the default). An icon added
+  before keeps its name: the phone owns it.
+- A rename after they joined is a line in their Activity ("Sam renamed
+  this space: Accountability partner → Cofounder"). The name is yours to
+  set and lives with their space on your Mac, never in what they agreed
+  to, and every screen shows it as text.
+
 ## Who is who
 
 - **You (the owner)** run Jantar on your Mac. Your devices, the `jantar`
@@ -46,13 +74,15 @@ It needs your Mac reachable over HTTPS (`remote.mode` `cloudflare` or
    ```sh
    jantar remote people-url https://us.example.com
    jantar people on --name Sam
-   jantar people add Asha --email asha@example.com
+   jantar people add Asha --email asha@example.com --label Cofounder
    jantar people offer Asha --preset standard
    jantar people invite Asha
    ```
 
    `people on --name` sets the name their page and app show for you
-   (`people invite` refuses until it is set). `people add` prints the
+   (`people invite` refuses until it is set). `--label` names the space
+   with them ([What the space is called](#what-the-space-is-called);
+   without it, "Accountability partner"). `people add` prints the
    Access step to do in Cloudflare (Jantar holds no Cloudflare token).
    `people invite` prints a link that works once, for 24 hours: send it to
    them. Until they join, your Accountability partner screen shows them as
@@ -77,7 +107,12 @@ don't exist.
 `jantar people doctor` checks each of these pieces: the settings, your
 name, the switch, Life data, their app's build and Web Push, then the host
 fence on this Mac (through their hostname jantard serves their app and none
-of yours, and through yours none of theirs), and in Cloudflare mode that
+of yours, and through yours none of theirs), its Origin half (with no
+credential: through yours, a write carrying their Origin is refused while
+the same write with yours gets past the check; through theirs, a write
+carrying your Origin is refused; the probe writes nothing: the pairing
+claim has no body and the join preview is refused before its limiter), and
+in Cloudflare mode that
 Access is in front of their hostname (a visitor without a sign-in is sent
 to `*.cloudflareaccess.com`, never answered). Anything to fix is a `FIX`
 line with what to do.
@@ -267,6 +302,9 @@ of their projects, never one of yours (the daemon refuses it).
 - **Never in their name.** No screen, route or command of yours ticks their
   items done, snoozes or skips them, logs or undoes a dose, logs a weight
   for them, or pauses, resumes or narrows for them.
+- **A day is a date.** A weight, plan, review or night for a day the
+  calendar doesn't have (2026-02-30) is refused, on their side and on
+  yours, before anything is written.
 - **Their reminders and doses ring their devices**, not yours, and open
   their app. Their 08:00 dose and yours are two separate notifications.
   While the space is off nothing of theirs rings; when it is back on, a
@@ -284,7 +322,7 @@ done · Now: Interview prep 11:00 · Low", or "Asleep since 23:40", and "1
 dose not logged" when you see their medicines), and every notification
 about them opens the right tab here.
 
-- **Header**: their status and line, "Asleep since" while a night is open,
+- **Header**: the space's name over theirs, their status and line, "Asleep since" while a night is open,
   the day's progress and the Now step, a line when an alert from them is
   new, and three buttons: **Plan** (today before 18:00, tomorrow after),
   **Assign** (a to-do: title, due day and time, a repeat, one of their
@@ -331,7 +369,8 @@ about them opens the right tab here.
   more** (one request at a time; "Waiting for Asha's answer" while it is
   open); their devices with the email each joined with; and your pushes
   about them: the day summary (off until you pick a time), "Asha sent the
-  evening review", and quiet hours (`jantar people prefs` sets the same).
+  evening review", and quiet hours (`jantar people prefs` sets the same);
+  and what the space is called.
 - **Activity**: their record, the same rows they read, in your words ("You
   looked at Asha's Today 2 times").
 - An area they keep private is a grey tile: "Asha keeps this private".
@@ -617,7 +656,8 @@ days.
   joined with; you see names and the email only.
 - **Notifications**: turn on and test, mute for an hour or eight, and the
   lock screen: show everything, hide alert text, or hide everything
-  ("Accountability partner · Medicine time"). Their mute is theirs; yours never holds their pushes.
+  (the space's name, "Accountability partner" by default, and "Medicine
+  time"). Their mute is theirs; yours never holds their pushes.
   Also theirs: quiet hours, whether Urgent breaks through, their plan push
   and evening review times, holding alerts while they sleep, hiding the
   streak, the limits on your alerts, and ring switches for plan steps,
@@ -629,7 +669,7 @@ Me › Leave (and the ending banner) downloads everything in their space: a
 readable page (no scripts, nothing fetched) or a data file (JSON). It holds
 their to-dos, projects, medicines and doses, weights, food log, saved foods
 and target, plans, reviews, sleep, journal, alerts, chat, every version of
-what they agreed to, and their Activity.
+what they agreed to, their Activity, and what the space is called.
 
 ## The honest limits
 

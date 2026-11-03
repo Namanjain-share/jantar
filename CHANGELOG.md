@@ -32,7 +32,9 @@ has the steps.
   `jantar people offer Asha` and `jantar people invite Asha`, which prints
   a link that works once, for 24 hours. `jantar people doctor` checks every
   piece, including that their hostname serves their app and none of yours,
-  and that a visitor without a sign-in is sent to Cloudflare Access. With
+  that each hostname refuses a write carrying the other's Origin (checked
+  with no credential), and that a visitor without a sign-in is sent to
+  Cloudflare Access. With
   Tailscale, their hostname gets its own port and your tailnet policy
   limits them to it. [Accountability partner](docs/people.md#their-hostname)
   has each step.
@@ -48,8 +50,21 @@ has the steps.
   ledger on your Mac that is only appended to, and every 14 days their
   Today asks "Is this setup still working for you?", with an answer that
   stays theirs unless they share it.
+- **What the space is called, per person.** "Accountability partner" by
+  default; when you add someone (`jantar people add Asha --label
+  Cofounder`) or later (their Sharing tab, or `jantar people label Asha
+  Coach`; `--default` puts it back) you pick Cofounder, Partner, Coach,
+  Mentor, Teammate, Family, Friend or words of your own (up to 40
+  characters, plain text on one line). It titles your screen for them,
+  your Today line and the pushes about the space, and on their side their
+  join page ("as your cofounder"), the top of their Today, their app's
+  name and the notifications they get. Installed after you named it, their
+  Home Screen icon takes the name too (12 characters at most under the
+  icon); an icon added before keeps its name. A rename is a line in their
+  Activity. The nav entry stays "Accountability partner".
 - **What they get**: their own app, "Accountability partner" ("Partner"
-  under its Home Screen icon), with none of your screens or code in it.
+  under its Home Screen icon) or the name you gave the space, with none of
+  your screens or code in it.
   After joining it walks them through Add to Home Screen and notifications.
   Today runs their day plan (Now, Next and Later, a tick on every row, a
   5-second Undo, one bottom bar for the thumb, steps of their own, focus
@@ -102,8 +117,8 @@ has the steps.
   reminder and 2 updates from Sam while you were in quiet hours"), and
   Urgent through quiet hours unless they switch that off. Their own
   reminders and doses always ring. Their lock screen shows everything,
-  hides alert text (the default) or hides everything ("Accountability
-  partner · Medicine time").
+  hides alert text (the default) or hides everything (the space's name
+  and "Medicine time").
 - **Their medicines**: in their own space. They add, edit and stop any and
   log their doses; with the agreement's fields you add one for them, and
   edit or stop yours and theirs ("Edited by Sam", the old values in their
@@ -139,7 +154,10 @@ has the steps.
   them 7 days to download first (`--now`, `--forget`), and prints the
   Access step to remove their email once sharing has ended (with the 7
   days, the day to do it).
-- **At the Mac**: `jantar people on|off|doctor|add|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
+- **A day in their space is a date.** A day the calendar doesn't have
+  (2026-02-30) in any of their paths or yours about them is refused before
+  anything is written.
+- **At the Mac**: `jantar people on|off|doctor|add|label|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
   and `jantar remote people-url`. Everything that lets someone in, shapes
   their offer or ends their space runs only at the Mac.
 - **Not in this version**: your own assistant reading their space, and

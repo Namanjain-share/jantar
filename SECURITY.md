@@ -2073,7 +2073,14 @@ It adds a new asset: **another person's Life data, health data included**.
   Owner routes and `/v1/events` accept only the owner's origins (never the
   people origin); person routes and `/v1/p/events` accept the people origin
   alone. Settings that would mix them are refused, and in `lan` or
-  `loopback` mode there is no people host at all.
+  `loopback` mode there is no people host at all. `jantar people doctor`
+  checks the Origin half on the running daemon with no credential: on his
+  host the public pairing claim must refuse her Origin (403) and get past
+  the check with his (400: no body, so nothing is claimed, counted or
+  audited); on hers the join preview must refuse his Origin (403, before
+  her claim limiter counts it). His other writes and her routes past
+  joining ask for a device before the Origin, so the doctor can't reach
+  their check without a credential; T17 pins those.
 - **Invites and link codes**: 128-bit, single use, stored only as hashes,
   carried in a URL fragment; invites last 24 hours and are made at the Mac
   only; device-link codes last 5 minutes. Wrong, spent and expired codes all
@@ -2113,6 +2120,22 @@ It adds a new asset: **another person's Life data, health data included**.
   says. Her food never leaves the Mac through his Ask Claude: there is no
   estimate route in her space. Each read of his is a view mark; her writes
   tick his devices only while he sees it.
+- **The space's name (his label)** is owner-side: a field of her person
+  row in life.db, never in the ledger or what she agreed to. It is checked
+  on the way in (trimmed, 1 to 40 characters; no control characters, line
+  separators or marks that reorder text, so it can't break a header line,
+  a push or a terminal) and is otherwise text everywhere: React renders it
+  in both apps, her export escapes it, a push carries it as JSON, and the
+  CLI prints it only after the same check. It titles her pushes, also
+  under `hide_all` (it is her app's name). A rename after she joined is an
+  Activity row with the old and new names. Her manifest under the name is
+  a person route (`GET /v1/p/manifest`: her cookie, her host, `no-store`);
+  p.html's static manifest is unchanged. Before she joins, only a valid
+  invite's preview carries the name.
+- **A day in a People path is a date on the calendar**: every `:day` and
+  `:night` parameter of her routes and his about her is one schema
+  (`PeopleDaySchema`, pinned by the arch test), so 2026-02-30 is a 400
+  before any handler runs and never a row.
 - **Her projects** are rows of her space. A to-do can name only a project
   in its own space: her to-do naming his project or another person's, and
   his Assign or edit naming one that isn't hers, are refused and write
@@ -2154,12 +2177,14 @@ It adds a new asset: **another person's Life data, health data included**.
   taints the turn (and his in hers); `jantar mcp` reads only his own space.
 
 Pinned by `packages/daemon/test/people/*` (`projects.test.ts`: C6 both
-ways), `test/life/people-medicines.test.ts`, `test/life/people-food.test.ts`
+ways; `label.test.ts`: the name's checks, its Activity rows, her manifest
+and push titles; `calendar-days.test.ts`), `test/life/people-medicines.test.ts`, `test/life/people-food.test.ts`
 (her food log both ways, each level, the module switch)
 and `test/arch/v011-people.test.ts` (every owner route with her credential,
 every person route with his, both event streams, push routing, the Origin
 split, static files by host, her medicines both ways) and
 `packages/web/test/partner/import-graph.test.ts` (her app is a separate
-bundle holding no owner module), and for her chat by
+bundle holding no owner module), `packages/web/test/partner/label.test.tsx`
+(a name with markup is text in both apps), and for her chat by
 `packages/daemon/test/chat/person-chat.test.ts`, `person-tools.test.ts` and
 `person-food-tools.test.ts`.

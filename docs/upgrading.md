@@ -72,6 +72,16 @@ yours. `jantar people add` turns their food log on unless you pass
 `--see food=counts` or `--see food=off` to `jantar people offer` for
 less), and `jantar people doctor` has a food line for each person.
 
+What you call each space (its label: `jantar people add --label`,
+`jantar people label`, or their Sharing tab) is a field of their person
+row in life.db: no schema change, and a space without one reads
+"Accountability partner". Their app points its manifest at
+`/v1/p/manifest` once they are in and you named the space, so an icon they
+add after that takes the name; an icon already on their Home Screen keeps
+its name. `jantar people doctor` gains an "origin fence" line (no
+credential needed). A day the calendar doesn't have (2026-02-30) in any
+People path is now a 400, where it could reach the handler before.
+
 ### 0.10.0: Life's second schema change
 
 0.10.0 adds a table for cafés' visits to `life.db`. Nothing to copy by
