@@ -6,13 +6,15 @@
  *
  * 1. Start: the daemon wrote backups/life-pre-<version>.db (0600 in a 0700
  *    folder) before migrating; the copy is still at schema 2 with every
- *    row; life.db is at schema 3 with every row, and the café reads with
+ *    row; life.db is at the current schema (3 in 0.10, 4 since 0.11's People)
+ *    with every row, and the café reads with
  *    its new fields defaulted. One `life.precopy` log line, by name only.
  * 2. `jantar life status` names the schema and the copy.
  * 3. A café added after the upgrade; `jantar life restore
  *    life-pre-<version>.db --yes` over ctl.sock brings back the 0.9.0 rows
- *    (the staged copy migrated again to 3), without a second copy.
- * 4. A restart writes no copy either: life.db is already at 3.
+ *    (the staged copy migrated again to the current schema), without a
+ *    second copy.
+ * 4. A restart writes no copy either: life.db is already current.
  */
 import { randomUUID } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
@@ -21,7 +23,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { perfBudgetMs } from '@jantar/fixtures';
 import { DEVICE_COOKIE, LifeBackupNameSchema, type PairStartResponse, type PlacesResponse, type TodosResponse } from '@jantar/protocol';
-import { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, openCheckedDb } from '../../packages/daemon/src/life/db.js';
+import { LIFE_BROKEN_REASON, LIFE_MIGRATIONS, LIFE_SCHEMA_VERSION, openCheckedDb } from '../../packages/daemon/src/life/db.js';
 import { callDaemon, createCtlClient, defaultDeps, main, memoryIo, type CtlClient } from '../../packages/cli/src/index.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret, type HttpResult } from './http.js';
@@ -101,7 +103,7 @@ describe("v0.10: Life's second schema change through jantard: the pre-upgrade co
     await d?.stop();
   }, perfBudgetMs(30_000));
 
-  it('1. the copy was written before the migration: 0600 in a 0700 folder, still schema 2, every row; life.db at 3', async () => {
+  it('1. the copy was written before the migration: 0600 in a 0700 folder, still schema 2, every row; life.db current', async () => {
     const backups = d.ctx.paths.backupsDir;
     expect(LifeBackupNameSchema.safeParse(pre).success).toBe(true);
     const names0 = (await readdir(backups)).filter((n) => n.startsWith('life-pre-'));
@@ -119,24 +121,24 @@ describe("v0.10: Life's second schema change through jantard: the pre-upgrade co
     expect(cafe).toMatchObject({ id: CAFE, tags: [], visits: { count: 0, last: null, avgSpend: null }, best: 5 });
     expect((await ok<TodosResponse>('GET', '/v1/todos')).todos.map((t) => t.title)).toEqual(['Example todo']);
     const logged = d.log.records.filter((r) => r.fields?.['event'] === 'life.precopy');
-    expect(logged.map((r) => r.fields)).toEqual([expect.objectContaining({ from: 2, to: 3, file: pre })]);
+    expect(logged.map((r) => r.fields)).toEqual([expect.objectContaining({ from: 2, to: LIFE_SCHEMA_VERSION, file: pre })]);
     expect(JSON.stringify(logged)).not.toContain(d.home.root);
   });
 
   it('2. jantar life status names the schema and the copy', async () => {
     const st = await cli('life', 'status');
     expect(st.code, st.err).toBe(0);
-    expect(st.out).toContain('(life.db schema 3)');
+    expect(st.out).toContain(`(life.db schema ${LIFE_SCHEMA_VERSION})`);
     expect(st.out).toContain(`Pre-upgrade copy: ${pre}\n`);
   });
 
-  it('3. restoring the copy brings back the 0.9.0 rows, migrated to 3 again, with no second copy', async () => {
+  it('3. restoring the copy brings back the 0.9.0 rows, migrated to the current schema again, with no second copy', async () => {
     await ok('POST', '/v1/places', { name: 'Added after the upgrade', tags: ['wifi'] });
     expect(await names()).toEqual(['Example Café', 'Added after the upgrade']);
     const r = await cli('life', 'restore', pre, '--yes');
     expect(r.code, r.err).toBe(0);
     expect(await names()).toEqual(['Example Café']);
-    expect(look(d.ctx.paths.lifeDb).schema).toBe('3');
+    expect(look(d.ctx.paths.lifeDb).schema).toBe(String(LIFE_SCHEMA_VERSION));
     expect(look(d.ctx.paths.lifeDb).tables).toContain('place_visits');
     expect((await readdir(d.ctx.paths.backupsDir)).filter((n) => n.startsWith('life-pre-'))).toEqual([pre]);
     expect(look(join(d.ctx.paths.backupsDir, pre)).schema).toBe('2');
@@ -146,7 +148,7 @@ describe("v0.10: Life's second schema change through jantard: the pre-upgrade co
     expect((await ok<PlacesResponse>('GET', '/v1/places')).places[0]?.visits.count).toBe(1);
   });
 
-  it('4. a restart writes no copy: life.db is at 3 already', async () => {
+  it('4. a restart writes no copy: life.db is current already', async () => {
     await d.restart();
     await eventually(() => callDaemon(ctl, 'GET', '/healthz'), 10_000, 'the control socket again');
     expect(await names()).toEqual(['Example Café']);

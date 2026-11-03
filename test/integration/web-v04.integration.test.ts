@@ -39,6 +39,7 @@
  */
 import { mkdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import {
@@ -209,6 +210,20 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     await made('later', 'POST', '/v1/medicines', { name: 'Fixturol', dose: '5 mg', times: ['20:30'], schedule: daily });
     await made('takenDose', 'POST', `/v1/medicines/${taken}/doses`, { day: TODAY, slot: '08:00', status: 'taken' });
     await made('skippedDose', 'POST', `/v1/medicines/${skipped}/doses`, { day: TODAY, slot: '09:00', status: 'skipped' });
+    // These stand for medicines added on an earlier day. Since 0.11 a medicine keeps the time it was added
+    // (`startTime`), and a dose time before it reads "Added after this time" on its first day; one with no
+    // `startTime` keeps its whole first day (medicines/repo.ts), so the rows read taken, skipped, overdue,
+    // due and later again.
+    const raw = new DatabaseSync(d.ctx.paths.lifeDb);
+    try {
+      raw.exec('PRAGMA busy_timeout = 5000');
+      for (const row of raw.prepare("SELECT id, json FROM medicines WHERE space = ''").all() as Array<{ id: string; json: string }>) {
+        const { startTime: _added, ...med } = JSON.parse(row.json) as Record<string, unknown>;
+        raw.prepare("UPDATE medicines SET json = ? WHERE id = ? AND space = ''").run(JSON.stringify(med), row.id);
+      }
+    } finally {
+      raw.close();
+    }
 
     await made('poha', 'POST', '/v1/food', { day: TODAY, name: 'Sample Poha', kcal: 280 });
     await made('dosa', 'POST', '/v1/food', { day: TODAY, name: 'Sample Dosa', kcal: 350, save: true });

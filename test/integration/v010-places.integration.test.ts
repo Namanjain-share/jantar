@@ -25,6 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LIFE_MARKER, perfBudgetMs, placeBody, visitBody } from '@jantar/fixtures';
 import { DEVICE_COOKIE, eventsSocketProtocols, type PairStartResponse, type PlaceDetail, type PlacesResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, defaultDeps, main, memoryIo, type CtlClient } from '../../packages/cli/src/index.js';
+import { LIFE_SCHEMA_VERSION } from '../../packages/daemon/src/life/db.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret, type HttpResult } from './http.js';
 
@@ -183,7 +184,7 @@ describe('v0.10 Cafés depth through jantard: sorts, filters, visits, jantar pla
     expect(show.out).toContain('Ratings: Work ★★★★★');
     expect(show.out).toContain('Visits: 3 · about ₹450 a visit');
     const status = await cli('life', 'status');
-    expect(status.out).toContain('(life.db schema 3)');
+    expect(status.out).toContain(`(life.db schema ${LIFE_SCHEMA_VERSION})`);
     for (const [method, path] of [
       ['POST', '/v1/places'],
       ['PATCH', `/v1/places/${ids.work}`],
