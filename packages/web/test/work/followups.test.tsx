@@ -53,9 +53,9 @@ describe("Today's Work card and follow-ups", () => {
     expect(workLines(WORK)).toEqual([
       { key: `check:${IDS.northwindCo}`, text: 'Check in: Northwind (every 30 days, 34 since)', href: `/work?tab=clients&id=${IDS.northwindCo}` },
       { key: 'check:more', text: '+2 more to check in with', href: '/work?tab=clients&list=check-in' },
-      { key: 'step', text: 'No next step: 2 deals', href: '/work?tab=clients&list=open-deals' },
-      { key: 'quiet', text: 'Quiet: 1 deal', href: '/work?tab=clients&list=open-deals' },
-      { key: 'closing', text: 'Closing this week: 3', href: '/work?tab=clients&list=open-deals' },
+      { key: 'step', text: 'No next step: 2 deals', href: '/work?tab=deals&show=nostep' },
+      { key: 'quiet', text: 'Quiet: 1 deal', href: '/work?tab=deals&show=quiet' },
+      { key: 'closing', text: 'Closing this week: 3', href: '/work?tab=deals&show=closing' },
     ]);
     expect(workLines({ ...WORK, checkIns: [], checkInsMore: 0, noNextStep: 0, quiet: 0, closing: 0 })).toEqual([]);
     expect(workLines({ ...WORK, checkIns: [{ id: IDS.sam, name: 'Sam Sample', every: 14, since: null }], checkInsMore: 0, noNextStep: 0, quiet: 0, closing: 0 })[0]?.text).toBe('Check in: Sam Sample (every 14 days, never touched)');

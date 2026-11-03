@@ -104,11 +104,12 @@ export function postsLine(p: { today: number; late: number }): string {
 /**
  * 0.13.0 Work's card lines (W24, design 10), each a link to the list it names: "Check in: Globex (every
  * 30 days, 34 since)" for up to three clients (each opens the client), "+2 more", then the deals with no
- * next step, the quiet ones and the ones closing this week (overdue close days too), as counts. Names
- * only for a check-in he set; none at all in the deal lines.
+ * next step, the quiet ones and the ones closing this week (overdue close days too), as counts, each
+ * opening Deals with just those (`?show=`). Names only for a check-in he set; none at all in the deal lines.
  */
 export function workLines(w: NonNullable<TodayData['work']>): { key: string; text: string; href: string }[] {
   const list = (l: string) => routePath({ name: 'work', tab: 'clients', list: l });
+  const show = (s: 'nostep' | 'quiet' | 'closing') => routePath({ name: 'work', tab: 'deals', show: s });
   const deals = (n: number) => `${n} ${n === 1 ? 'deal' : 'deals'}`;
   const out = w.checkIns.map((c) => ({
     key: `check:${c.id}`,
@@ -116,9 +117,9 @@ export function workLines(w: NonNullable<TodayData['work']>): { key: string; tex
     href: routePath({ name: 'work', tab: 'clients', id: c.id }),
   }));
   if (w.checkInsMore > 0) out.push({ key: 'check:more', text: `+${w.checkInsMore} more to check in with`, href: list('check-in') });
-  if (w.noNextStep > 0) out.push({ key: 'step', text: `No next step: ${deals(w.noNextStep)}`, href: list('open-deals') });
-  if (w.quiet > 0) out.push({ key: 'quiet', text: `Quiet: ${deals(w.quiet)}`, href: list('open-deals') });
-  if (w.closing > 0) out.push({ key: 'closing', text: `Closing this week: ${w.closing}`, href: list('open-deals') });
+  if (w.noNextStep > 0) out.push({ key: 'step', text: `No next step: ${deals(w.noNextStep)}`, href: show('nostep') });
+  if (w.quiet > 0) out.push({ key: 'quiet', text: `Quiet: ${deals(w.quiet)}`, href: show('quiet') });
+  if (w.closing > 0) out.push({ key: 'closing', text: `Closing this week: ${w.closing}`, href: show('closing') });
   return out;
 }
 
