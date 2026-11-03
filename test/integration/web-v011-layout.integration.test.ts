@@ -22,6 +22,9 @@
  *      still does is listed in KNOWN_WIDE_GAPS with its measure; a listed
  *      one that passes fails the test too, so each chunk-2 commit removes
  *      its rows, and the list is empty at c23.
+ *   4. With the iPad's safe areas (24 top, 20 bottom), no control that
+ *      doesn't scroll sits in them (A2): nothing under the status bar or
+ *      over the home indicator. Content in a scroll box may pass under.
  *   7. No console message about the Content Security Policy, no error, no
  *      injected <style>.
  *  12. The user's four screens at 1440 x 960 (mac-1440 and touch-1440):
@@ -276,6 +279,12 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
               const sidewaysKnown = KNOWN_SIDEWAYS[`${s.name}@${size}`] !== undefined;
               if (p.sideways.length && !sidewaysKnown) problems.push(`${at}: sideways: ${p.sideways.join('; ')} (${await shot()})`);
               if (!p.sideways.length && sidewaysKnown) problems.push(`${at}: nothing sideways now: take it out of KNOWN_SIDEWAYS`);
+              // 4. The safe areas (A2): no control that stays put under the status bar or over the home indicator.
+              if (viewport.insets) {
+                const { top, bottom } = viewport.insets;
+                const inBands = p.fixed.filter((t) => t.y < top || t.y + t.h > p.vh - bottom);
+                if (inBands.length) problems.push(`${at}: in the safe areas: ${inBands.map((t) => `${t.name} (${t.x},${t.y} ${t.w}x${t.h})`).join('; ')} (${await shot()})`);
+              }
               // 12. An item opened beside its list: the list shows its row (it scrolled to it).
               if (p.selected && !p.selected.inView) problems.push(`${at}: the open item's row is out of view in the list (${p.selected.name}) (${await shot()})`);
               // 3. The width, at 1024 and wider.

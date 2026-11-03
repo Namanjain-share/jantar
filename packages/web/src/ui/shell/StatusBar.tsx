@@ -9,6 +9,9 @@
  *          the link state only.
  *   right  "New version ready · Reload" when there is one, contextual
  *          keycaps, and "? legend".
+ *
+ * 0.11: the grid row is 24 plus the bottom safe area, and the bar pads it,
+ * so on an iPad nothing sits over the home indicator.
  */
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
@@ -87,7 +90,7 @@ export function StatusBar({
 }) {
   const live = conn.status === 'live' || conn.status === 'polling';
   return (
-    <footer className="col-span-full row-start-3 flex h-24 min-w-0 items-center gap-12 overflow-hidden whitespace-nowrap border-t border-line pl-16 pr-12 type-mono text-ink-3">
+    <footer className="pb-safe col-span-full row-start-3 flex h-full min-w-0 items-center gap-12 overflow-hidden whitespace-nowrap border-t border-line pl-16 pr-12 type-mono text-ink-3">
       <span className="inline-flex flex-none items-center gap-8 text-ink-2" role="status" aria-live="polite" aria-label="Connection">
         {/* Remounts on every event, so the blink plays once per event. */}
         <i key={seq} aria-hidden="true" className={clsx('block size-6 flex-none', live ? 'bg-jup animate-blink' : 'border border-ink-3')} />
@@ -104,7 +107,7 @@ export function StatusBar({
           <span aria-hidden="true">·</span>
           <button
             type="button"
-            className="inline-flex h-24 min-w-0 items-center gap-12 overflow-hidden rounded-chip px-4 transition duration-120 ease-hover hover:bg-hover"
+            className="inline-flex h-full min-w-0 items-center gap-12 overflow-hidden rounded-chip px-4 transition duration-120 ease-hover hover:bg-hover"
             aria-label="5-hour usage per account. Open Accounts"
             onClick={onAccounts}
           >

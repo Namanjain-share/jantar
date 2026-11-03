@@ -16,7 +16,7 @@ import { isCurrent, navItems } from './nav.js';
 export function Rail({ route, badges, onPalette }: { route: Route['name']; badges: Partial<Record<Route['name'], number>>; onPalette: () => void }) {
   const items = navItems(usePlaceFeatures());
   return (
-    <nav aria-label="Main" className="col-start-1 row-start-2 flex flex-col items-center gap-4 border-r border-line py-8">
+    <nav aria-label="Main" className="pl-safe col-start-1 row-start-2 flex flex-col items-center gap-4 border-r border-line py-8">
       {items.map((item) => {
         const on = isCurrent(item, route);
         const n = badges[item.route] ?? 0;

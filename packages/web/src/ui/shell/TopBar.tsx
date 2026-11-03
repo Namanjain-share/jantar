@@ -1,7 +1,9 @@
 /**
  * Desktop top bar, 48 px: the mark in the rail's 56 px column, the wordmark,
  * the strip, a quiet count, and "Cmd-K Jump to a session" on the right.
- * No connection pill: the status bar carries liveness.
+ * No connection pill: the status bar carries liveness. 0.11: it pads the
+ * safe area (the grid row is 48 plus the top inset), so on an iPad its
+ * controls sit below the status bar; on a Mac the insets are 0.
  */
 import { PRODUCT_NAME } from '../../brand.js';
 import { Keycap } from '../kit/Keycap.js';
@@ -31,7 +33,7 @@ export function TopBar({
   onHome?: () => void;
 }) {
   return (
-    <header className="col-span-full row-start-1 flex h-48 min-w-0 items-center border-b border-line">
+    <header className="pt-safe pl-safe pr-safe col-span-full row-start-1 flex h-full min-w-0 items-center border-b border-line">
       <Link href="/" onClick={onHome} className="flex h-47 w-56 flex-none items-center justify-center" aria-label={`${PRODUCT_NAME}: board`}>
         <Mark needs={needs > 0} label={null} />
       </Link>

@@ -18,7 +18,7 @@ export function LegendPopover({ open, onOpenChange, trigger }: { open: boolean; 
       <button
         ref={anchor}
         type="button"
-        className="inline-flex h-24 items-center gap-6 rounded-chip px-4 text-ink-3 transition duration-120 ease-hover hover:text-ink"
+        className="inline-flex h-full items-center gap-6 rounded-chip px-4 text-ink-3 transition duration-120 ease-hover hover:text-ink"
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label="Legend"

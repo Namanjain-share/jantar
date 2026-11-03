@@ -103,6 +103,9 @@ What changed for people who use Jantar, newest first. Versions before
   unchanged.
 - Accounts, Alerts and Devices load the first time you open one, as Files
   and Life do, which keeps the app's first load small.
+- Fixed: in the Home Screen app on an iPad, the top bar sat under the
+  clock and the status bar over the home indicator. Both now leave room
+  for them (nothing changes on a Mac).
 
 ## 0.11.0 (3 November 2026)
 

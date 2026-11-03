@@ -19,6 +19,10 @@
  *   meant to with data-scroll-x (the terminal mirror, the code view, the
  *   Accounts runway, the phone's chip strips).
  * - targets: every control on screen, for the 44 pt check (c33).
+ * - fixed: the controls among them that don't scroll (no box around them
+ *   scrolls up and down): the chrome, a pane's header, a pinned composer.
+ *   On an iPad they must stay out of the safe areas (6.2 #4, A2); content
+ *   in a scroll box may pass under them.
  * - exempt: why this state isn't measured for width, when it isn't (an
  *   empty state, a place that is off).
  * - selected: with an item open beside its list, whether the list's row for
@@ -33,6 +37,7 @@ export interface Probe {
   boxes: Rect[];
   sideways: string[];
   targets: Named[];
+  fixed: Named[];
   exempt: string | null;
   selected: { inView: boolean; name: string } | null;
 }
@@ -77,7 +82,7 @@ export function probeLayout(): Probe {
   const visible = (el: Element) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
 
   const main = document.querySelector('main#main');
-  const out: Probe = { vw, vh, region: null, boxes: [], sideways: [], targets: [], exempt: null, selected: null };
+  const out: Probe = { vw, vh, region: null, boxes: [], sideways: [], targets: [], fixed: [], exempt: null, selected: null };
   if (main) {
     out.region = rectOf(cut(VIEW, boxOf(main.getBoundingClientRect())));
     const push = (el: Element, r: DOMRect) => {
@@ -138,6 +143,14 @@ export function probeLayout(): Probe {
     out.sideways.push(`${describe(el)}: ${el.scrollWidth} px in ${el.clientWidth}`);
   }
 
+  // Whether a box around `el` scrolls up and down (so it may pass under the safe areas).
+  const scrolls = (el: Element): boolean => {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const y = style(p).overflowY;
+      if ((y === 'auto' || y === 'scroll') && p.scrollHeight > p.clientHeight + 1) return true;
+    }
+    return false;
+  };
   // Controls on screen (the 44 pt check reads them on touch).
   const SEL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=radio], [role=checkbox], [role=switch], [role=menuitem], [role=option], [role=slider], [role=link]';
   for (const el of document.querySelectorAll(SEL)) {
@@ -152,6 +165,7 @@ export function probeLayout(): Probe {
     if (!b) continue;
     const name = (el.getAttribute('aria-label') ?? (el as HTMLElement).innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
     out.targets.push({ ...b, name: name || describe(el) });
+    if (!scrolls(el)) out.fixed.push({ ...b, name: name || describe(el) });
   }
   return out;
 }
