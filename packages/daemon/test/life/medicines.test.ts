@@ -137,6 +137,28 @@ describe('the day checklist', () => {
     expect(items(meds, shiftDay(DAY, -1))).toEqual([]);
   });
 
+  it('a time gone by when it was added stays on today to log, never overdue; unlogged it is no miss on its day; logged it counts', () => {
+    const { core, meds } = setup(at(DAY, '12:00'));
+    const id = ok(meds.create(medBody(), PHONE)).id;
+    expect(items(meds).map((i) => [i.slot, i.status, i.overdue, i.beforeAdded])).toEqual([
+      ['08:00', 'pending', false, true],
+      ['21:00', 'pending', false, undefined],
+    ]);
+    expect(view(meds, id)?.adherencePct).toBeNull();
+    expect(meds.adherence().perDay.at(-1)).toMatchObject({ day: DAY, missed: 0 });
+    // The next day the 08:00 of the day it was added was never due: not on that day's list, not a miss. 21:00 was.
+    core.clock.set(at(shiftDay(DAY, 1), '07:00').toISOString());
+    expect(items(meds, DAY).map((i) => [i.slot, i.status])).toEqual([['21:00', 'missed']]);
+    expect(view(meds, id)?.adherencePct).toBe(0);
+    // Logged after all (taken before it was added), it counts.
+    ok(meds.logDose(id, doseBody({ day: DAY, slot: '08:00', at: at(DAY, '07:55').toISOString() }), PHONE));
+    expect(items(meds, DAY).map((i) => [i.slot, i.status])).toEqual([
+      ['08:00', 'taken'],
+      ['21:00', 'missed'],
+    ]);
+    expect(view(meds, id)?.adherencePct).toBe(50);
+  });
+
   it("is Today's part too", () => {
     const { meds } = setup();
     ok(meds.create(medBody(), PHONE));
@@ -251,6 +273,26 @@ describe('supply and adherence', () => {
     ok(meds.logDose(id, { day: days[1]!, slot: '08:00', status: 'skipped' }, PHONE));
     ok(meds.logDose(id, { day: days[3]!, slot: '08:00', status: 'taken' }, PHONE));
     expect(view(meds, id)?.adherencePct).toBe(67);
+  });
+
+  it('a dose is no miss until it is past the grace, the same 60 minutes as overdue (just after midnight too)', () => {
+    const { core, meds } = setup(at(DAY, '07:00'));
+    const id = ok(meds.create(medBody(), PHONE)).id;
+    core.clock.set(at(DAY, '08:01').toISOString());
+    expect(view(meds, id)?.adherencePct).toBeNull();
+    expect(meds.adherence().perDay.at(-1)).toMatchObject({ day: DAY, missed: 0 });
+    core.clock.set(at(DAY, '09:01').toISOString());
+    expect(view(meds, id)?.adherencePct).toBe(0);
+    expect(meds.adherence().perDay.at(-1)).toMatchObject({ day: DAY, missed: 1 });
+    ok(meds.logDose(id, doseBody({ day: DAY, slot: '08:00' }), PHONE));
+    // 21:00 comes due; at 21:30 it is not a miss yet, nor at 00:15 the next day's start.
+    core.clock.set(at(DAY, '21:30').toISOString());
+    expect(view(meds, id)?.adherencePct).toBe(100);
+    core.clock.set(at(shiftDay(DAY, 1), '00:15').toISOString());
+    expect(meds.adherence().perDay.slice(-2)).toMatchObject([
+      { day: DAY, missed: 1 },
+      { day: shiftDay(DAY, 1), missed: 0 },
+    ]);
   });
 
   it('a schedule edit applies from today and leaves past adherence as it was', () => {

@@ -10,11 +10,12 @@ import type { MedsDayItem } from '@jantar/protocol';
 import type { OwnerMedsView, PersonMedicineView } from '@jantar/protocol/people';
 import { dayLabel, hmOf } from './time.js';
 
-/** "Taken 08:12", "Skipped", "Not logged", "Due". */
+/** "Taken 08:12", "Skipped", "Not logged", "Due"; "Added after this time" for one gone by before it was added (it can still be logged). */
 export function doseWords(i: MedsDayItem): string {
   if (i.status === 'taken') return i.at ? `Taken ${hmOf(i.at)}${i.late ? ' (late)' : ''}` : 'Taken';
   if (i.status === 'skipped') return 'Skipped';
   if (i.status === 'missed') return 'Not logged';
+  if (i.beforeAdded) return 'Added after this time';
   return i.overdue ? 'Not logged yet' : 'Due';
 }
 

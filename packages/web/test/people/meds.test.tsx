@@ -22,7 +22,8 @@ import { presetAgreement } from '@jantar/protocol/people-core';
 import type { PersonApi } from '../../src/partner/api.js';
 import Health from '../../src/partner/screens/Health.js';
 import { Today } from '../../src/partner/screens/Today.js';
-import { MedsRead } from '../../src/people-shared/MedsRead.js';
+import { MedsRead, doseWords } from '../../src/people-shared/MedsRead.js';
+import { isDue } from '../../src/ui/screens/life/meds/data.js';
 import { createRouter, memoryHistory } from '../../src/lib/router.js';
 import { createAppStore } from '../../src/store.js';
 import { AppProvider, createToastStore } from '../../src/ui/context.js';
@@ -249,6 +250,15 @@ describe('his Today line and card, and her mirror', () => {
     expect(peopleLine(todayOf(full()))).toBe('Asha · 1 dose not logged');
     expect(peopleLine(todayOf({ level: 'adherence', pct: 80, notLoggedToday: 0, concern: 'Doses not logged 2 days running. Worth checking in.' }))).toBe('Asha · Doses not logged 2 days running');
     expect(peopleLine(todayOf({ locked: true }))).toBe('Asha');
+  });
+
+  it('a time gone by before she added the medicine is no dose due or not logged; her row says so, and his own Life list never calls it due', () => {
+    const early = pending(HERS, 'Inhaler', { slot: '07:00', beforeAdded: true as const });
+    expect(medsLine({ ...full(), day: day([early, pending(HIS, 'Vitamin D')]) })).toBe('Doses: 0 of 1 logged');
+    expect(medsLine({ ...full(), day: day([early]) })).toBe('Medicines: no doses due');
+    expect(doseWords(early)).toBe('Added after this time');
+    expect(isDue(early, DAY, { day: DAY, hhmm: '08:30' } as never)).toBe(false);
+    expect(isDue(pending(HIS, 'Vitamin D'), DAY, { day: DAY, hhmm: '08:30' } as never)).toBe(true);
   });
 
   it('her mirror renders the same view, with Sam as the one who added', () => {

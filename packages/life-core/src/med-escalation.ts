@@ -4,9 +4,11 @@
  * Noblot's partner medicine escalation (`packages/core/src/health-report.ts`:
  * `MedDay`, `MedEscalation`, `computeMedEscalation`).
  *
- * It reads `computeAdherence().perDay` (adherence.ts), whose `missed` counts
- * only slots already past their grace window, so a dose that simply hasn't
- * come due yet is never a miss. One day with a dose not logged is a
+ * It reads `computeAdherence().perDay` (adherence.ts). Its `missed` counts
+ * the slots past `asOf`, so the caller passes an `asOf` of now minus
+ * DOSE_GRACE_MINUTES (the daemon's medicines/day.ts does): a dose that
+ * hasn't come due, or came due within the grace, is never a miss. One day
+ * with a dose not logged is a
  * `nudge`; doses not logged on `escalateAfterDays` days running (today
  * included) is an `escalate`. It is derived when someone looks: no
  * scheduler, no stored mark, and its words never name a medicine.

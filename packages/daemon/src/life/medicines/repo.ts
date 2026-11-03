@@ -8,11 +8,13 @@
  *
  * Besides the protocol's `history` (the schedule in force from each day),
  * the stored JSON keeps `timesHistory`: the dose times in force from each
- * day, and `stopTime`: the Life-zone HH:MM of a Stop on `stoppedOn`.
- * Neither comes from a client body, and both are stripped from every
- * reply: `timesHistory` is here so that changing 08:00 to 09:00, or adding
- * a second time, re-judges no past day; `stopTime` so that the doses after
- * a Stop were never due.
+ * day, `startTime`: the Life-zone HH:MM it was added on `startedOn`, and
+ * `stopTime`: the Life-zone HH:MM of a Stop on `stoppedOn`. None comes
+ * from a client body, and all are stripped from every reply: `timesHistory`
+ * is here so that changing 08:00 to 09:00, or adding a second time,
+ * re-judges no past day; `startTime` so that a dose time already gone by
+ * when it was added is never a miss; `stopTime` so that the doses after a
+ * Stop were never due.
  *
  * v0.12 People: a repo works in one space (`''` the owner's, `<pid>` hers),
  * and every query names it, so the owner's medicines never list a row of
@@ -38,6 +40,8 @@ export const StoredMedicineSchema = MedicineSchema.extend({
     .array(z.object({ from: DayKeySchema, times: z.array(HhMmSchema).min(1).max(8) }))
     .min(1)
     .max(HISTORY_MAX),
+  /** When on `startedOn` it was added; absent on a medicine added before it was kept (its whole first day stays). */
+  startTime: HhMmSchema.optional(),
   /** When on `stoppedOn` it was stopped; absent on a medicine stopped before it was kept (its whole last day stays). */
   stopTime: HhMmSchema.optional(),
   /** v0.12 People: "Edited by" on a medicine of hers the owner changed ('' the owner); cleared by nobody. */
@@ -208,9 +212,9 @@ export function getMed(core: Pick<LifeCore, 'db'>, id: string): StoredMedicine |
   return new MedsRepo(core).get(id);
 }
 
-/** What a reply carries: the stored medicine without `timesHistory` and `stopTime`. */
+/** What a reply carries: the stored medicine without `timesHistory`, `startTime` and `stopTime`. */
 export function publicMed(m: StoredMedicine): Medicine & { by?: string; editedBy?: string; editedAt?: string } {
-  const { timesHistory: _times, stopTime: _stop, ...med } = m;
+  const { timesHistory: _times, startTime: _start, stopTime: _stop, ...med } = m;
   return med;
 }
 

@@ -24,7 +24,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OwnerMedsView, PersonActivityResponse, PersonMedicinesResponse, PersonToday } from '@jantar/protocol/people';
 import type { LifeScheduler } from '../../src/life/scheduler.js';
-import { OWNER_HOST, OWNER_ORIGIN, UNKNOWN_ULID, credHeaders, makeFixture, onHer, type Cred, type Fixture } from '../people/isolation-fixture.js';
+import { DAY, OWNER_HOST, OWNER_ORIGIN, UNKNOWN_ULID, credHeaders, makeFixture, onHer, type Cred, type Fixture } from '../people/isolation-fixture.js';
 
 let f: Fixture;
 beforeEach(async () => {
@@ -37,6 +37,7 @@ afterEach(async () => {
 const him = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT', url: string, payload?: object, cred: Cred = f.owner.control) =>
   f.api.tcp.inject({ method, url, headers: { host: OWNER_HOST, origin: OWNER_ORIGIN, ...credHeaders(cred) }, ...(payload ? { payload } : {}) });
 const herCall = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT', url: string, payload?: object, who: Cred = f.asha.full) => onHer(f.api, method, url, who, payload);
+const NEXT_DAY = '2026-11-04';
 const med = (name: string, times: string[] = ['20:00'], extra: object = {}) => ({ name, dose: '1 tablet', times, schedule: { freq: 'daily' }, ...extra });
 const idOf = (r: { json(): unknown }) => (r.json() as { id: string }).id;
 const activity = async () => ((await herCall('GET', '/v1/p/activity')).json() as PersonActivityResponse).activity;
@@ -210,10 +211,16 @@ describe('T10 / M21 and view marks', () => {
 
 describe('the two-day concern and his summary', () => {
   it('doses not logged two days running: on his view, her mirror and his Today; counts only in his summary', async () => {
-    await herCall('POST', '/v1/p/medicines', med('Daily one', ['08:00']));
+    await herCall('POST', '/v1/p/medicines', med('Daily one', ['20:00']));
     let v = (await him('GET', `/v1/people/${f.asha.id}/medicines`)).json() as OwnerMedsView;
     expect(v.concern).toBeNull();
-    f.api.ctx.clock.advance(25 * 3600_000);
+    // Wednesday 20:01: Tuesday's 20:00 went by, Wednesday's is a minute old: not a miss within its 60-minute grace.
+    f.api.ctx.clock.set(`${NEXT_DAY}T20:01:00.000Z`);
+    v = (await him('GET', `/v1/people/${f.asha.id}/medicines`)).json() as OwnerMedsView;
+    expect(v.concern).toBeNull();
+    expect(((await him('GET', `/v1/people/${f.asha.id}/today`)).json() as PersonToday).concerns).toEqual([]);
+    expect(f.life.people.alerts?.summaryText() ?? '').not.toMatch(/dose|not logged/);
+    f.api.ctx.clock.set(`${NEXT_DAY}T21:01:00.000Z`);
     v = (await him('GET', `/v1/people/${f.asha.id}/medicines`)).json() as OwnerMedsView;
     expect(v.concern).toBe('Doses not logged 2 days running. Worth checking in.');
     expect(((await herCall('GET', '/v1/p/mirror/meds')).json() as OwnerMedsView).concern).toBe(v.concern);
@@ -230,6 +237,26 @@ describe('the two-day concern and his summary', () => {
     expect(adh).toMatchObject({ level: 'adherence', notLoggedToday: 1, concern: v.concern });
     await herCall('POST', '/v1/p/agreement/narrow', { see: { meds: 'off' } });
     expect(f.life.people.alerts?.summaryText() ?? '').not.toMatch(/dose/);
+  });
+
+  it('a time already gone by when she added it is no dose not logged that day, on any line of his', async () => {
+    // Tuesday 09:00: she adds one at 07:00 and 20:00, and logs Tuesday's 20:00.
+    await herCall('POST', '/v1/p/agreement/narrow', { see: { meds: 'adherence' } });
+    const id = idOf(await herCall('POST', '/v1/p/medicines', med('Inhaler', ['07:00', '20:00'])));
+    f.api.ctx.clock.set(`${DAY}T09:01:00.000Z`);
+    expect((await him('GET', `/v1/people/${f.asha.id}/medicines`)).json()).toEqual({ level: 'adherence', pct: null, notLoggedToday: 0, concern: null });
+    expect(f.life.people.alerts?.summaryText() ?? '').not.toMatch(/dose|not logged/);
+    // Her own list still has it, to log if she took it before adding it.
+    expect((await herMeds()).day.groups.flatMap((g) => g.items).map((i) => [i.slot, i.status, i.overdue, i.beforeAdded])).toEqual([
+      ['07:00', 'pending', false, true],
+      ['20:00', 'pending', false, undefined],
+    ]);
+    f.api.ctx.clock.set(`${DAY}T20:05:00.000Z`);
+    expect((await herCall('POST', `/v1/p/medicines/${id}/doses`, { day: DAY, slot: '20:00', status: 'taken' })).statusCode).toBe(201);
+    // Wednesday 08:30: one dose not logged (07:00), on one day only. No concern.
+    f.api.ctx.clock.set(`${NEXT_DAY}T08:30:00.000Z`);
+    expect((await him('GET', `/v1/people/${f.asha.id}/medicines`)).json()).toEqual({ level: 'adherence', pct: 50, notLoggedToday: 1, concern: null });
+    expect(((await him('GET', `/v1/people/${f.asha.id}/today`)).json() as PersonToday).concerns).toEqual([]);
   });
 });
 

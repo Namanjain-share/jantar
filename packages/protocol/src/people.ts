@@ -645,6 +645,8 @@ export function medsDayTotals(day: MedsDay): { slots: number; logged: number; mi
   let missed = 0;
   for (const g of day.groups) {
     for (const it of g.items) {
+      // A time gone by before the medicine was added, unlogged, was never due.
+      if (it.beforeAdded) continue;
       slots += 1;
       if (it.status === 'taken' || it.status === 'skipped') logged += 1;
       if (it.status === 'missed' || it.overdue) missed += 1;

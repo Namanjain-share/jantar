@@ -15,6 +15,9 @@
  *   (never below 0); Skip, Undo or a switch from Taken gives them back. A
  *   dose is for today or a past day the medicine was due, logged for a time
  *   never after now and never before the day before its own.
+ * - A medicine added today is due from the time it was added: today's
+ *   earlier dose times can still be logged (taken before it was added), but
+ *   unlogged they are never overdue or a miss (`startTime`, day.ts).
  * - Stop sets `stoppedOn` to today and ends its pings; there is no restart
  *   (add it again). Today's doses after the Stop leave the list: they were
  *   never due (`stopTime`; a dose already logged for one stays where Undo
@@ -159,7 +162,8 @@ function medicinesIn(core: LifeCore, repo: MedsRepo, inSpace: (space: string) =>
     create(body: MedicineBody, _actor: Actor, opts: { by?: string } = {}) {
       if (repo.count() >= LIFE_LIMITS.medicines) return refuse('conflict', MED_SENTENCES.full);
       const today = core.today();
-      const stamp = core.now().toISOString();
+      const now = core.now();
+      const stamp = now.toISOString();
       const times = normTimes(body.times);
       const schedule = normSchedule(body.schedule, body.schedule.startDay ?? today);
       const med: StoredMedicine = {
@@ -172,6 +176,8 @@ function medicinesIn(core: LifeCore, repo: MedsRepo, inSpace: (space: string) =>
         ...(body.pills ? { pills: { left: body.pills.left, perDose: body.pills.perDose } } : {}),
         ...(body.notes ? { notes: body.notes } : {}),
         startedOn: today,
+        // The dose times already gone by today are not due unless logged (day.ts beforeAdded).
+        startTime: hhmmOf(now, core.tz()),
         createdAt: stamp,
         updatedAt: stamp,
         timesHistory: [{ from: today, times }],

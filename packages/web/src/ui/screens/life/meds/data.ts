@@ -63,9 +63,9 @@ export function dayItems(day: MedsDay): MedsDayItem[] {
   return day.groups.flatMap((g) => g.items);
 }
 
-/** Whether a pending dose's time has come on the Life clock. */
+/** Whether a pending dose's time has come on the Life clock (a time gone by before the medicine was added never is). */
 export function isDue(item: MedsDayItem, day: string, now: LifeNow): boolean {
-  if (item.status !== 'pending') return false;
+  if (item.status !== 'pending' || item.beforeAdded) return false;
   if (item.overdue || day < now.day) return true;
   return day === now.day && item.slot <= now.hhmm;
 }

@@ -253,7 +253,8 @@ function TodayTab({ client, pid, name, today, reload, canCarry, isToday }: { cli
 /** His Today line for her medicines: "Doses today: 2 of 3 logged · 1 not logged" (full), or the counts at adherence (no names). */
 export function medsLine(m: OwnerMedsView): string {
   if (m.level === 'adherence') return m.notLoggedToday ? `Medicines: ${m.notLoggedToday} dose${m.notLoggedToday === 1 ? '' : 's'} not logged today` : 'Medicines: every dose due is logged';
-  const items = m.day.groups.flatMap((g) => g.items);
+  // A time gone by before she added the medicine, unlogged, was never due (protocol medsDayTotals' rule).
+  const items = m.day.groups.flatMap((g) => g.items).filter((i) => !i.beforeAdded);
   if (items.length === 0) return 'Medicines: no doses due';
   const logged = items.filter((i) => i.status === 'taken' || i.status === 'skipped').length;
   const missed = items.filter((i) => i.status === 'missed' || i.overdue).length;

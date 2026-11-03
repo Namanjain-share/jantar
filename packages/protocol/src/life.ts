@@ -369,6 +369,12 @@ export const MedsDayItemSchema = z.object({
   dose: z.string().optional(),
   slot: HhMmSchema,
   status: z.enum(['taken', 'skipped', 'missed', 'pending']),
+  /**
+   * Today, on the day the medicine was added: a time that had gone by when
+   * it was added. It can still be logged (taken before it was added), and is
+   * never overdue, a miss or "not logged".
+   */
+  beforeAdded: z.literal(true).optional(),
   late: z.boolean().optional(),
   doseId: LifeIdSchema.optional(),
   at: IsoDateSchema.optional(),
