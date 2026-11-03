@@ -88,9 +88,9 @@ describe('jantar people: the Accountability partner words, ask, prefs and the na
     const again = contextFor({ env: ENV }, { ctl });
     expect(await people.run(['invite', 'Asha'], again.ctx)).toBe(EXIT.ok);
     expect(again.io.stdout).toContain('https://us.example.com/p/join#c=x');
-    // 0.12.1: the one-time PIN drops the #c= at sign-in; they open the link once more, or paste it.
+    // 0.12.1: the One-time PIN drops the #c= at sign-in; they open the link once more, or paste it.
     expect(again.io.stdout).toContain(
-      "With Access's one-time PIN, signing in drops the part of the link that holds the invite: after signing in they open the link once more, or paste it on the page. An identity provider like Google keeps the link whole.\n",
+      "With Access's One-time PIN, signing in drops the part of the link that holds the invite: after signing in they open the link once more, or paste it on the page. An identity provider like Google keeps the link whole.\n",
     );
   });
 

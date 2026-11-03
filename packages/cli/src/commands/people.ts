@@ -449,8 +449,8 @@ export default defineCommand(
         }
         io.out(`Send ${p.name} this link (it works once, until ${r.expiresAt}):\n\n  ${r.url}\n\n`);
         io.out('The link alone gets nobody in without the Access policy letting their email through.\n');
-        // 0.12.1: Access's one-time PIN form keeps only the path, so the #c= is gone after they sign in.
-        io.out("With Access's one-time PIN, signing in drops the part of the link that holds the invite: after signing in they open the link once more, or paste it on the page. An identity provider like Google keeps the link whole.\n");
+        // 0.12.1: Access's One-time PIN form keeps only the path, so the #c= is gone after they sign in.
+        io.out("With Access's One-time PIN, signing in drops the part of the link that holds the invite: after signing in they open the link once more, or paste it on the page. An identity provider like Google keeps the link whole.\n");
         return EXIT.ok;
       }
       case 'list': {
