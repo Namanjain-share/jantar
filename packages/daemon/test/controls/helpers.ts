@@ -335,18 +335,53 @@ export async function flush(): Promise<void> {
   for (let i = 0; i < 3; i++) await new Promise<void>((r) => setImmediate(r));
 }
 
-/** Run `p` to the end, moving the fake clock forward in small steps while it waits. */
-export async function drive<T>(clock: FakeClock, p: Promise<T>, step = 50, maxMs = 120_000): Promise<T> {
+/** 0.12.1: the fs calls in flight in this process (a mkdir, lstat or readFile a slow runner has not finished yet). */
+export function fsInFlight(): string[] {
+  return process.getActiveResourcesInfo().filter((t) => t.startsWith('FSReq') || t === 'CloseReq');
+}
+
+/** 0.12.1: drive()'s real-time bound, under the 15 s test timeout (vitest.shared.mjs), so its own message is the one shown. */
+export const DRIVE_REAL_MS = 10_000;
+
+/**
+ * Run `p` to the end, moving the fake clock forward in small steps while it waits.
+ *
+ * 0.12.1: bounded by real time as well as fake time. Each step is only a few
+ * setImmediate turns, so `maxMs` of fake time (2400 steps) can pass in under
+ * 100 ms of real time: on a slow runner the code under test was still waiting
+ * on a real mkdir or readFile when the fake budget ran out ("did not settle",
+ * shot.test.ts C6/C7). Now, while an fs call is in flight, the fake clock
+ * moves no faster than real time (it does not stand still: an fs call that
+ * never ends, such as a read on a pipe, would stop it for good); once `maxMs`
+ * of fake time is spent drive waits on in real time alone; it gives up after
+ * `realMs` of real time.
+ */
+export async function drive<T>(clock: FakeClock, p: Promise<T>, step = 50, maxMs = 120_000, realMs = DRIVE_REAL_MS): Promise<T> {
   let done = false;
   const out = p.finally(() => {
     done = true;
   });
+  const started = Date.now();
+  let fake = 0;
+  let stepped = started;
   await flush();
-  for (let t = 0; !done && t < maxMs; t += step) {
-    clock.advance(step);
+  while (!done && Date.now() - started < realMs) {
+    if (fake < maxMs && (Date.now() - stepped >= step || fsInFlight().length === 0)) {
+      clock.advance(step);
+      fake += step;
+      stepped = Date.now();
+    } else {
+      await new Promise<void>((r) => setTimeout(r, 1));
+    }
     await flush();
   }
-  if (!done) throw new Error('did not settle');
+  if (!done) {
+    const inFlight = fsInFlight();
+    throw new Error(
+      `did not settle: ${fake} ms of fake time (of ${maxMs}) and ${Date.now() - started} ms of real time (of ${realMs}); ` +
+        `fs calls in flight: ${inFlight.length ? inFlight.join(', ') : 'none'}`,
+    );
+  }
   return out;
 }
 
