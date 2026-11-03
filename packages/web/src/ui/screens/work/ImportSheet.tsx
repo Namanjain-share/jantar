@@ -27,8 +27,8 @@ import { Button } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { LifeEmpty, NotSaved } from '../life/shared/states.js';
-import { useLifeLoad } from '../life/shared/useLife.js';
-import { Field, INPUT, OfflineLine, SheetActions, TEXTAREA, useOffline, useWrite } from '../life/today/parts.js';
+import { useLifeLoad, useLifeStatus } from '../life/shared/useLife.js';
+import { Field, INPUT, OfflineLine, SheetActions, TEXTAREA, clockIn, useOffline, useWrite } from '../life/today/parts.js';
 import { dayLabel } from '../life/shared/DayNav.js';
 import { workClient } from './client.js';
 import { Chips } from './parts.js';
@@ -36,6 +36,9 @@ import { Chips } from './parts.js';
 /** The most a file can hold (WORK_LIMITS.importBytes). */
 export const IMPORT_MAX_BYTES = 1_000_000;
 export const TOO_BIG = 'That file is over 1 MB. Split it and import each part.';
+export const PASTE_TOO_BIG = 'That is over 1 MB. Split it and paste each part.';
+/** The phone couldn't hand the file over (iOS's file provider can fail to), or it isn't text. */
+export const UNREADABLE = "That file couldn't be read. Try again, or save it to Files first.";
 
 /** Where a column goes, in words, in WORK_IMPORT_FIELDS' order (taken as words: the chunk carries no schema; a test compares them). */
 export const FIELD_LABEL: Record<WorkImportField, string> = {
@@ -111,7 +114,13 @@ function ImportFlow({ onDone, onImported }: { onDone: () => void; onImported: ()
       setProblem(TOO_BIG);
       return;
     }
-    const text = await f.text();
+    let text: string;
+    try {
+      text = await f.text();
+    } catch {
+      setProblem(UNREADABLE);
+      return;
+    }
     if (!text.trim()) {
       setProblem("That file is empty.");
       return;
@@ -294,6 +303,7 @@ function ImportFlow({ onDone, onImported }: { onDone: () => void; onImported: ()
             {w.busy ? <Spinner label="Reading" /> : null}
             Preview
           </Button>
+          {paste.length > IMPORT_MAX_BYTES ? <p className="mt-4 type-small text-ink">{PASTE_TOO_BIG}</p> : null}
         </Field>
       ) : null}
       {problem ? (
@@ -312,6 +322,9 @@ function ImportFlow({ onDone, onImported }: { onDone: () => void; onImported: ()
 function Imports({ onUndo, busy, offline }: { onUndo: (batch: string) => void; busy: boolean; offline: boolean }) {
   const { api } = useDeps();
   const nowMs = useNow(60_000);
+  // Days in the Life zone, as the rest of Work: an import at 02:50 in India is that day's, not the UTC day before.
+  const tz = useLifeStatus().status?.timezone;
+  const day = (iso: string) => dayLabel(clockIn(Date.parse(iso), tz).day);
   const load = useLifeLoad('work:imports', () => workClient(api).imports());
   const open = (load.data?.imports ?? []).filter((i) => Date.parse(i.undoUntil) > nowMs);
   if (load.error && !load.data) return <p className="mt-12 type-small text-ink-3">{errorText(load.error)}</p>;
@@ -323,9 +336,9 @@ function Imports({ onUndo, busy, offline }: { onUndo: (batch: string) => void; b
         {open.map((i) => (
           <li key={i.batch} className="flex min-h-44 items-center gap-8 border-b border-line">
             <span className="min-w-0 flex-1 truncate type-small text-ink">
-              {dayLabel(i.at.slice(0, 10))} · {i.added} added{i.filled ? `, ${i.filled} filled` : ''}
+              {day(i.at)} · {i.added} added{i.filled ? `, ${i.filled} filled` : ''}
             </span>
-            <span className="flex-none type-mono text-ink-3">until {dayLabel(i.undoUntil.slice(0, 10)).replace(/^\w+ /, '')}</span>
+            <span className="flex-none type-mono text-ink-3">until {day(i.undoUntil).replace(/^\w+ /, '')}</span>
             <Button variant="text" size="sm" className="coarse:min-h-44" disabled={busy || offline || i.added === 0} onClick={() => onUndo(i.batch)}>
               Undo
             </Button>

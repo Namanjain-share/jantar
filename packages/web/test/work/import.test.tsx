@@ -19,7 +19,7 @@ import { ApiError } from '../../src/lib/api.js';
 import { FIELD_LABEL, formatOf } from '../../src/ui/screens/work/ImportSheet.js';
 import { WORK_IMPORT_FIELDS } from '@jantar/protocol/work';
 import { fakeApi, preloadPlaces, renderApp, stateWith } from '../helpers.js';
-import { IDS, WORK_ON, clientAnswers, workRequest } from '../work-helpers.js';
+import { IDS, WORK_ON, clientAnswers, lifeStatus, workRequest } from '../work-helpers.js';
 
 preloadPlaces('work', 'clients');
 
@@ -135,6 +135,20 @@ describe('import clients', () => {
     await waitFor(() => expect(calls(api, 'POST', '/v1/work/import/preview')[1]?.body).toEqual({ format: 'csv', text: 'name\nInitech\n' }));
   });
 
+  it('a file the phone fails to hand over says so; pasted CSV over 1 MB says why Preview is off', async () => {
+    const { api } = setup({ 'POST /v1/work/import/preview': preview() });
+    const sheet = await openImport();
+    const broken = new File(['name\n'], 'clients.csv');
+    vi.spyOn(broken, 'text').mockRejectedValue(new DOMException('The file provider failed.', 'NotReadableError'));
+    choose(sheet, broken);
+    expect(await within(sheet).findByText("That file couldn't be read. Try again, or save it to Files first.")).toBeTruthy();
+    expect(calls(api, 'POST', '/v1/work/import/preview')).toEqual([]);
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Paste CSV' }));
+    fireEvent.change(within(sheet).getByLabelText('CSV'), { target: { value: 'x'.repeat(1_000_001) } });
+    expect((within(sheet).getByRole('button', { name: 'Preview' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(sheet).getByText('That is over 1 MB. Split it and paste each part.')).toBeTruthy();
+  });
+
   it('a retry after a failed preview keeps its key only for the same words: another file of the same length gets a new one', async () => {
     let fail = true;
     const { api } = setup({ 'POST /v1/work/import/preview': () => (fail ? new ApiError('network', 'Failed to fetch', 0) : preview()) });
@@ -150,6 +164,18 @@ describe('import clients', () => {
     expect(keys[0]).toBeTruthy();
     expect(keys[1]).toBe(keys[0]);
     expect(keys[2]).not.toBe(keys[0]);
+  });
+
+  it('a recent import is listed on its day in the Life zone, not the UTC day', async () => {
+    const api = fakeApi({
+      lifeStatus: vi.fn(async () => lifeStatus({ todos: true, work: true }, { timezone: 'Asia/Kolkata' })),
+      request: workRequest(clientAnswers({ 'GET /v1/work/imports': { imports: [{ batch: IDS.batch, at: '2026-01-13T21:20:00.000Z', added: 4, filled: 0, undoUntil: '2026-01-20T21:20:00.000Z' }] } })),
+    });
+    renderApp({ path: '/work?tab=clients', state: stateWith({ features: { life: true } }), api });
+    const sheet = await openImport();
+    const recent = await within(sheet).findByRole('region', { name: 'Recent imports' });
+    // 21:20 UTC on the 13th is 02:50 on Wednesday the 14th in India.
+    expect(within(recent).getByRole('listitem').textContent).toMatch(/^Wed 14 Jan · 4 added.*until 21 Jan/);
   });
 
   it('an expired preview says so; the newest imports are listed with Undo for 7 days', async () => {
