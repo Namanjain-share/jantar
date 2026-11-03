@@ -38,7 +38,7 @@ import type {
   LaunchStartBody,
 } from '@jantar/protocol';
 import { publicDevice } from '../../auth/devices.js';
-import { editScopes } from '../../auth/scopes.js';
+import { editScopes, hasScope } from '../../auth/scopes.js';
 import { sha256Hex } from '../../core/hash.js';
 import { ApiError } from '../errors.js';
 import { actorName } from '../request.js';
@@ -140,6 +140,8 @@ export const LAUNCH_ROUTE_IMPLS: RouteTable = {
       const next = s.devices.setScopes(device.id, editScopes(device.scopes, c.body.add, c.body.remove));
       if (!next) throw new ApiError('not_found', 'no such device');
       c.scratch.before = device.scopes;
+      // C27: raised to control, it can now open her space: her Activity says so.
+      if (!hasScope(device.scopes, 'control') && hasScope(next.scopes, 'control')) s.deps.life.people?.ownerDeviceGained?.(next.name);
       return { device: publicDevice(next) };
     },
     audit: (c: Call<Id, unknown, DeviceScopesBody>, out) => ({

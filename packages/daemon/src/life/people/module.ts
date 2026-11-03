@@ -746,6 +746,20 @@ export class PeopleModule {
     return { ok: true, value: true };
   }
 
+  /**
+   * C27 (spec 8.5, no stealth devices): one of his devices can now open her space: paired with control, or
+   * raised to it. Each person sharing gets an Activity row naming it (her Sharing lists it live too, and a
+   * device added and later revoked still leaves this row). Works while life.db is closed: the row is skipped.
+   */
+  ownerDeviceGained(device: string): void {
+    for (const pid of this.deps.ctx.db.people.consents.persons()) {
+      const g = this.gateState(pid);
+      if (g !== 'active' && g !== 'paused') continue;
+      this.tryRecord(pid, { actor: 'owner', action: 'owner.device', device: device.slice(0, 64) });
+      this.ticks.bump(pid, 'me');
+    }
+  }
+
   /** His request for more (admin device): one at a time, with cooling-off and "Don't ask again" (C23). */
   propose(pid: string, body: PersonProposeBody, by: string): LifeResult {
     return this.guard(() => {
