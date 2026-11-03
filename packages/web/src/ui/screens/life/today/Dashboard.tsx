@@ -2,7 +2,8 @@
  * Today as a page of cards (0.11, build plan 2.3): from a pane 640 wide
  * Today's sections are cards, dealt into columns (kit/Columns.tsx); below
  * that they are 0.10's list. One card per section that has data
- * (`GET /v1/life/today`, D4): Medicines, Claude, Due, Food, Bills, Posts.
+ * (`GET /v1/life/today`, D4): Medicines, Claude, Due, Food, Bills, Posts;
+ * and (0.12) Accountability partner, first, while someone shares with him.
  *
  * - A card: a 44 header (the rail label, a status in its colour, and the
  *   module's link at the right), then at most five rows ("2 more" links to
@@ -16,6 +17,7 @@
  *   to them. It takes the place of 0.10's LIFE list.
  */
 import { CaretRightIcon, DotsSixVerticalIcon, type Icon } from '@phosphor-icons/react';
+import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import clsx from 'clsx';
 import { useCallback, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { readLocal, writeLocal } from '../../../../lib/storage.js';
@@ -24,10 +26,15 @@ import { RailLabel } from '../../../kit/RailLabel.js';
 import { Switch } from '../../devices/parts.js';
 import { Link } from '../../../shell/Link.js';
 
-export type CardId = 'meds' | 'claude' | 'due' | 'food' | 'bills' | 'posts';
+export type CardId = 'people' | 'meds' | 'claude' | 'due' | 'food' | 'bills' | 'posts';
 
-/** The cards, in the default order (open question 6, without the cards Today's call has no data for). */
+/**
+ * The cards, in the default order (open question 6, without the cards Today's call has no data for). 0.12:
+ * Accountability partner (v0.11 People) is first, as its rows are on top of the phone's Today; it shows
+ * only while someone shares with him, and Edit cards lists it only while People is on.
+ */
 export const CARDS: readonly { id: CardId; label: string }[] = [
+  { id: 'people', label: PEOPLE_LABEL },
   { id: 'meds', label: 'Medicines' },
   { id: 'claude', label: 'Claude' },
   { id: 'due', label: 'Due' },
@@ -81,6 +88,12 @@ export function moveCard(order: readonly CardId[], id: CardId, to: number): Card
   const rest = order.filter((x) => x !== id);
   rest.splice(Math.max(0, Math.min(to, rest.length)), 0, id);
   return rest;
+}
+
+/** `listed` (the cards Edit cards shows, in their new order) back into the whole `order`: the cards not listed keep their places. */
+export function withListed(order: readonly CardId[], listed: readonly CardId[]): CardId[] {
+  const next = [...listed];
+  return order.map((id) => (listed.includes(id) ? next.shift()! : id));
 }
 
 /** This device's card order and switches, kept in localStorage. */
@@ -206,7 +219,18 @@ export function LifeStrip({ items }: { items: readonly StripItem[] }) {
  * Edit cards: every card in this device's order, each with a 44 handle
  * (drag it, or press the arrow keys on it) and a switch to show or hide it.
  */
-export function EditCards({ prefs, onChange, onDone }: { prefs: CardPrefs; onChange: (p: CardPrefs) => void; onDone: () => void }) {
+export function EditCards({
+  prefs,
+  onChange,
+  onDone,
+  skip = [],
+}: {
+  prefs: CardPrefs;
+  onChange: (p: CardPrefs) => void;
+  onDone: () => void;
+  /** Cards that can't show on this Mac (Accountability partner while People is off): not listed, and kept where they are. */
+  skip?: readonly CardId[];
+}) {
   const list = useRef<HTMLOListElement>(null);
   const [dragging, setDragging] = useState<CardId | null>(null);
   const hint = useId();
@@ -217,14 +241,15 @@ export function EditCards({ prefs, onChange, onDone }: { prefs: CardPrefs; onCha
     refocus.current = null;
     if (id) list.current?.querySelector<HTMLButtonElement>(`[data-card="${id}"] button`)?.focus();
   });
+  const listed = prefs.order.filter((id) => !skip.includes(id));
   const move = (id: CardId, to: number) => {
-    const order = moveCard(prefs.order, id, to);
+    const order = withListed(prefs.order, moveCard(listed, id, to));
     if (order.join() !== prefs.order.join()) onChange({ ...prefs, order });
   };
   const onKey = (e: KeyboardEvent, id: CardId) => {
-    const at = prefs.order.indexOf(id);
+    const at = listed.indexOf(id);
     if (e.key === 'ArrowUp' && at > 0) move(id, at - 1);
-    else if (e.key === 'ArrowDown' && at < prefs.order.length - 1) move(id, at + 1);
+    else if (e.key === 'ArrowDown' && at < listed.length - 1) move(id, at + 1);
     else return;
     refocus.current = id;
     e.preventDefault();
@@ -251,7 +276,7 @@ export function EditCards({ prefs, onChange, onDone }: { prefs: CardPrefs; onCha
         Drag a card by its handle, or press the arrow keys on it. The order is this device's.
       </p>
       <ol ref={list} className="max-w-540 overflow-hidden rounded-dock border border-line bg-raised">
-        {prefs.order.map((id) => {
+        {listed.map((id) => {
           const label = labelOf(id);
           return (
             <li key={id} data-card={id} className={clsx('flex min-h-44 items-center gap-8 border-b border-line pr-16 last:border-b-0', dragging === id && 'bg-select')}>

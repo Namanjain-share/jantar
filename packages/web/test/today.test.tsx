@@ -616,7 +616,8 @@ describe('Today: cards (0.11)', () => {
     fireEvent.click(within(edit).getByRole('button', { name: 'Done' }));
     await section('Due');
     expect(screen.queryByRole('region', { name: 'Bills' })).toBeNull();
-    expect(JSON.parse(localStorage.getItem('jantar:today-cards') ?? 'null')).toEqual({ order: ['due', 'meds', 'claude', 'food', 'bills', 'posts'], hidden: ['bills'] });
+    // Accountability partner (People is off here) isn't listed, and keeps its place.
+    expect(JSON.parse(localStorage.getItem('jantar:today-cards') ?? 'null')).toEqual({ order: ['people', 'due', 'meds', 'claude', 'food', 'bills', 'posts'], hidden: ['bills'] });
     a.unmount();
     // Opened again on this device: the order and the switch hold. Due first, so it leads the first column.
     render();
@@ -637,8 +638,16 @@ describe('Today: cards (0.11)', () => {
 describe('Today: the card order store', () => {
   it('makes what is stored whole: unknown ids out, each card once, a missing one at its default place', async () => {
     const { cardPrefs } = await import('../src/ui/screens/life/today/Dashboard.js');
-    expect(cardPrefs(null)).toEqual({ order: ['meds', 'claude', 'due', 'food', 'bills', 'posts'], hidden: [] });
-    expect(cardPrefs({ order: ['posts', 'nope', 'due', 'posts'], hidden: ['food', 'x'] })).toEqual({ order: ['meds', 'claude', 'posts', 'due', 'food', 'bills'], hidden: ['food'] });
-    expect(cardPrefs('garbage')).toEqual({ order: ['meds', 'claude', 'due', 'food', 'bills', 'posts'], hidden: [] });
+    expect(cardPrefs(null)).toEqual({ order: ['people', 'meds', 'claude', 'due', 'food', 'bills', 'posts'], hidden: [] });
+    expect(cardPrefs({ order: ['posts', 'nope', 'due', 'posts'], hidden: ['food', 'x'] })).toEqual({ order: ['people', 'meds', 'claude', 'posts', 'due', 'food', 'bills'], hidden: ['food'] });
+    expect(cardPrefs('garbage')).toEqual({ order: ['people', 'meds', 'claude', 'due', 'food', 'bills', 'posts'], hidden: [] });
+    // 0.12: an order kept before Accountability partner was a card gets it first.
+    expect(cardPrefs({ order: ['due', 'meds', 'claude', 'food', 'bills', 'posts'], hidden: [] }).order).toEqual(['people', 'due', 'meds', 'claude', 'food', 'bills', 'posts']);
+  });
+
+  it('Edit cards moves the cards it lists around one it does not (withListed)', async () => {
+    const { withListed } = await import('../src/ui/screens/life/today/Dashboard.js');
+    expect(withListed(['people', 'meds', 'claude', 'due'], ['due', 'meds', 'claude'])).toEqual(['people', 'due', 'meds', 'claude']);
+    expect(withListed(['meds', 'people', 'claude'], ['claude', 'meds'])).toEqual(['claude', 'people', 'meds']);
   });
 });

@@ -31,12 +31,17 @@
  * longest (the age ember past ten minutes, as on the Board) with "3 your
  * turn · 8 working"; the Life strip on top replaces the LIFE list; "Edit
  * cards" orders and hides them on this device. Below 640, 0.10's list.
+ *
+ * v0.11 People: the Accountability partner rows (people/PeopleCard.tsx) sit
+ * on top of the list; from 640 (0.12) they are the first card, which Edit
+ * cards moves and hides like the rest (and lists only while People is on).
  */
 import { BookmarksIcon, CaretRightIcon, PlusIcon, type Icon } from '@phosphor-icons/react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { FoodDay, LifeModule, Today as TodayData, Todo } from '@jantar/protocol';
+import { PEOPLE_LABEL, PEOPLE_SHORT_LABEL } from '@jantar/protocol/people-core';
 import { routePath } from '../../../../lib/router.js';
-import { PeopleCard } from '../../people/PeopleCard.js';
+import { PeopleRows, usePeopleRows } from '../../people/PeopleCard.js';
 import { useApp, useDeps, useNavigate, useNow } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
 import { Columns, useBucket } from '../../../kit/Columns.js';
@@ -142,6 +147,8 @@ export function Today({ dose }: TodayProps) {
   const cards = useBucket(body, (w) => w >= CARDS_FROM);
   const [prefs, setPrefs] = useCardPrefs();
   const [editing, setEditing] = useState(false);
+  // v0.11 People: everyone sharing with him, with their day (none while People is off).
+  const people = usePeopleRows();
   const addTodo = () => {
     setTodoStart({ day: now.day });
     todoSheet.show(null);
@@ -290,6 +297,10 @@ export function Today({ dose }: TodayProps) {
     return parts;
   };
 
+  /** 0.12: the Accountability partner card, while someone shares with him. */
+  const peoplePart = (): Part[] =>
+    people.length ? [{ id: 'people', open: { href: '/people', label: PEOPLE_SHORT_LABEL, name: `Open ${PEOPLE_LABEL}` }, body: <PeopleRows rows={people} /> }] : [];
+
   const claude = (): Part => {
     if (!cards)
       return {
@@ -390,10 +401,10 @@ export function Today({ dose }: TodayProps) {
   );
 
   let content: ReactNode;
-  if (cards && editing) content = <EditCards prefs={prefs} onChange={setPrefs} onDone={() => setEditing(false)} />;
+  if (cards && editing) content = <EditCards prefs={prefs} onChange={setPrefs} onDone={() => setEditing(false)} skip={features.people ? [] : ['people']} />;
   else if (cards) {
     // Every card Today has something for, in this device's order and without the ones switched off.
-    const parts = new Map<CardId, Part>([...(t ? dataParts(t) : []), claude()].map((p) => [p.id, p]));
+    const parts = new Map<CardId, Part>([...peoplePart(), ...(t ? dataParts(t) : []), claude()].map((p) => [p.id, p]));
     const order = shownCards(prefs, (id) => parts.has(id));
     content = (
       <>
@@ -427,7 +438,8 @@ export function Today({ dose }: TodayProps) {
     <Page title="Today" aside={aside} undo={actions.undo} wide>
       <div ref={body}>
         <PushWarning status={status} />
-        <PeopleCard />
+        {/* v0.11 People: on top of the list; from 640 (0.12) the first of the cards, which he can move or hide. */}
+        {cards || people.length === 0 ? null : <PeopleRows rows={people} />}
         {content}
       </div>
       {t ? <AddFoodSheet open={foodSheet.open} onOpenChange={foodSheet.onOpenChange} sheetKey={foodSheet.key} day={t.day} saved={null} status={status} onAdded={load.reload} /> : null}

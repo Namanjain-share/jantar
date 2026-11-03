@@ -36,20 +36,35 @@ export function dosesNotLogged(m: OwnerMedsView): number {
   return m.day.groups.flatMap((g) => g.items).filter((i) => i.status === 'missed' || i.overdue).length;
 }
 
-export function PeopleCard({ client = peopleClient() }: { client?: PeopleClient }) {
-  const navigate = useNavigate();
+/** Someone sharing with him: the space's name (his label) and their Today. */
+export interface PeopleRow {
+  id: string;
+  label: string;
+  today: PersonToday;
+}
+
+/** Everyone sharing with him, with their Today: none while People is off, nobody shares, or it can't load. */
+export function usePeopleRows(client: PeopleClient = peopleClient()): PeopleRow[] {
   const load = useLifeLoad('people:today-card', async () => {
     const list = await client.list().catch(() => null);
     if (!list?.enabled) return [];
     const sharing = list.people.filter((p) => p.state === 'active' || p.state === 'paused');
     return Promise.all(sharing.map(async (p) => ({ id: p.id, label: spaceLabel(p.label), today: await client.today(p.id).catch(() => null) })));
   });
-  const rows = (load.data ?? []).filter((r): r is { id: string; label: string; today: PersonToday } => r.today !== null);
-  if (rows.length === 0) return null;
+  return (load.data ?? []).filter((r): r is PeopleRow => r.today !== null);
+}
+
+/**
+ * Their rows: a button each, the space's name over the line, a hairline under each; a tap opens their
+ * Today tab. On a phone (or a narrow pane) under Today's title; on a wide one (0.12) the rows of Today's
+ * Accountability partner card.
+ */
+export function PeopleRows({ rows }: { rows: readonly PeopleRow[] }) {
+  const navigate = useNavigate();
   return (
-    <ul aria-label={PEOPLE_LABEL} className="border-b border-line">
+    <ul aria-label={PEOPLE_LABEL}>
       {rows.map((r) => (
-        <li key={r.id}>
+        <li key={r.id} className="border-b border-line">
           <button type="button" className="flex min-h-48 w-full flex-col items-start justify-center px-16 py-4 text-left type-row text-ink hover:bg-hover" onClick={() => navigate(`/people/${r.id}?tab=today`)}>
             {/* The space's name with them (his label), over the line. */}
             <span className="break-words type-small text-ink-2">{r.label}</span>{' '}
@@ -59,4 +74,10 @@ export function PeopleCard({ client = peopleClient() }: { client?: PeopleClient 
       ))}
     </ul>
   );
+}
+
+export function PeopleCard({ client = peopleClient() }: { client?: PeopleClient }) {
+  const rows = usePeopleRows(client);
+  if (rows.length === 0) return null;
+  return <PeopleRows rows={rows} />;
 }
