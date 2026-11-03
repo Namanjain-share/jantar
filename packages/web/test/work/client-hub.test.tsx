@@ -45,7 +45,10 @@ const requested = (api: { request: unknown }, method: string, path: string) =>
 describe("a client's hub", () => {
   it('from one read: company and state, Call, WhatsApp and Email, the next step, follow-ups, deals, projects, the log and details', async () => {
     setup();
-    expect(await screen.findByRole('heading', { level: 1, name: 'Pat Example' })).toBeTruthy();
+    const title = await screen.findByRole('heading', { level: 1, name: 'Pat Example' });
+    // A long name wraps beside Edit and ···, never cut ("Riya Kap…" on a 320 phone).
+    expect(title.className).toContain('break-words');
+    expect(title.className).not.toContain('truncate');
     expect(screen.getByRole('link', { name: 'Clients' }).getAttribute('href')).toBe('/work?tab=clients');
     expect(screen.getByRole('link', { name: 'Acme' }).getAttribute('href')).toBe(`/work?tab=clients&id=${IDS.client}`);
     expect(screen.getByText('Head of Ops')).toBeTruthy();

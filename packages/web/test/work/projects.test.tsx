@@ -165,7 +165,9 @@ describe('a project’s hub', () => {
         }),
       },
     });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Site rebuild' })).toBeTruthy();
+    const title = await screen.findByRole('heading', { level: 1, name: 'Site rebuild' });
+    // A long name wraps beside Edit, never cut.
+    expect(title.className).toContain('break-words');
     expect(api.request).toHaveBeenCalledWith({ method: 'GET', path: '/v1/projects/:id' }, { params: { id: IDS.acme } });
     expect(screen.getByRole('link', { name: 'Acme' }).getAttribute('href')).toBe(`/work?tab=clients&id=${IDS.client}`);
     expect(screen.getByText('due 28 Jan')).toBeTruthy();

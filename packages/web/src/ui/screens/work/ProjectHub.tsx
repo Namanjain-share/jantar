@@ -147,7 +147,7 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
   ) : null;
 
   return (
-    <Page title={project ? projectLabel(project) : 'Project'} back={backLink} aside={aside} undo={actions.undo} wide>
+    <Page title={project ? projectLabel(project) : 'Project'} wrapTitle back={backLink} aside={aside} undo={actions.undo} wide>
       <div ref={box}>
         <Loaded load={load}>
           {(h) => (

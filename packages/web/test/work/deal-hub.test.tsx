@@ -53,7 +53,10 @@ const LOST = () =>
 describe("a deal's page", () => {
   it('from one read: client, stage and days in it, value, source and close day; next step; follow-ups, project and log', async () => {
     setup();
-    expect(await screen.findByRole('heading', { level: 1, name: 'Site rebuild' })).toBeTruthy();
+    const title = await screen.findByRole('heading', { level: 1, name: 'Site rebuild' });
+    // A long name wraps beside Edit and ···, never cut ("Ops dashboa…" on a phone).
+    expect(title.className).toContain('break-words');
+    expect(title.className).not.toContain('truncate');
     expect(screen.getByRole('link', { name: 'Deals' }).getAttribute('href')).toBe('/work?tab=deals');
     expect(screen.getByRole('link', { name: 'Acme' }).getAttribute('href')).toBe(`/work?tab=clients&id=${IDS.client}`);
     expect((document.querySelector('[data-stage]') as HTMLElement).textContent).toBe('Proposal sent');

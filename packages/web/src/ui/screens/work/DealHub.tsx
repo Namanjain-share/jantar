@@ -166,7 +166,7 @@ export function DealHub({ id, back, stages, onChanged, onDeleted }: DealHubProps
   ) : null;
 
   return (
-    <Page title={hub?.deal.title ?? 'Deal'} back={backLink} aside={aside} undo={actions.undo} wide>
+    <Page title={hub?.deal.title ?? 'Deal'} wrapTitle back={backLink} aside={aside} undo={actions.undo} wide>
       <div ref={box}>
         <Loaded load={load}>
           {(h) => {

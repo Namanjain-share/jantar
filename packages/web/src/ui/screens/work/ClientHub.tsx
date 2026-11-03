@@ -200,7 +200,7 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
   ) : null;
 
   return (
-    <Page title={contact?.name ?? 'Client'} back={backLink} aside={aside} undo={actions.undo} wide>
+    <Page title={contact?.name ?? 'Client'} wrapTitle back={backLink} aside={aside} undo={actions.undo} wide>
       <div ref={box}>
         <Loaded load={load}>
           {(h) => {
