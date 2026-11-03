@@ -747,3 +747,22 @@ import|imports|export|lockscreen|settings`, and `client_here` in
 `packages/daemon/test/arch/v013-work-canary.test.ts` (W-T6), and the P2
 parts of `v013-work-owner-only.test.ts` (W-T4) and the CLI's
 `{work,mcp}.test.ts`.
+
+Work's third part (v0.13 P3, the Mac side: deals, stages and insights).
+The protocol, in the same subpath: a deal as stored (`DealSchema`), its
+card, the deals list with each stage's column, a deal's hub, its move,
+the stage list (`DEFAULT_WORK_STAGES`, `WORK_LOST_CODES`), the insights
+reply, and P3's `WORK_ROUTES`; the client hub, the project hub and
+client_here gain deals, and the export takes `what=deals`. Nothing new in
+the index. life-core: `work/{deal,pipeline,stage,insights,milestones}.ts`
+(from Noblot). The daemon: `life/work/deals.ts` (cards, columns, the CSV
+and the insights from rows already read; no SQL), the deal and stage
+methods in `life/work/module.ts`, `work_deals` reads and writes in
+`life/work/repo.ts`, the stage list in `life/work/settings.ts`; the Todos
+module's `dealFollowUps` and `unlinkDeal`; Chat's deal tools
+(`chat/{tools,actions,items}.ts`). The CLI: `jantar work export --deals`.
+Tests: `packages/protocol/test/v013-work-p3.test.ts`,
+`packages/life-core/test/work/{deal,pipeline,stage,insights,milestones}.test.ts`,
+`packages/daemon/test/life/work-{deals,deal-routes}.test.ts`,
+`packages/daemon/test/chat/work-deal-tools.test.ts`, and the P3 parts of
+the arch tests (W-T1, W-T4, W-T6) and the CLI's `work.test.ts`.

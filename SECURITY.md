@@ -2233,8 +2233,9 @@ bundle holding no owner module), `packages/web/test/partner/label.test.tsx`
 ## v0.13: Work (clients, the log, follow-ups)
 
 Work keeps third parties' data: his clients' names, phones, e-mails and
-notes, and what was said on calls. It is the owner's alone, and it stays
-on the Mac unless he sends it somewhere.
+notes, what was said on calls, and his deals with them (what each is
+worth, its stage, why one was lost). It is the owner's alone, and it
+stays on the Mac unless he sends it somewhere.
 
 - **Where it lives.** life.db (schema 5), in tables of their own
   (`work_contacts`, `work_log`, `work_deals`) with no `space` column, named
@@ -2252,12 +2253,13 @@ on the Mac unless he sends it somewhere.
   lists no Work tool, and no tool she shares takes a Work field; her app's
   source imports nothing of Work.
 - **What leaves the Mac, and only when he asks:** an export he names
-  (`jantar work export --csv <file>`, or a phone download; never written
+  (`jantar work export --csv <file>`, `--deals` for the deals, or a phone
+  download; never written
   into a client folder; a cell a spreadsheet would run as a formula is
   written so it shows); what Chat reads to answer him (it goes to Claude
   through his account, like any Chat text); `jantar mcp`'s `client_here`
-  (a name, state, next follow-up and last touch, never a phone, an e-mail
-  or notes) into the session that asks; and a follow-up's push, which says
+  (a name, state, open deals and their stages, next follow-up and last
+  touch, never a phone, an e-mail or notes) into the session that asks; and a follow-up's push, which says
   only "Follow-up" and its time unless `life.workLockScreenNames` is on.
 - **Never:** a message, e-mail or call to a client; a page served for one;
   a read of another app's contacts or database (the import takes a file he
@@ -2271,8 +2273,15 @@ on the Mac unless he sends it somewhere.
   from a name in a meeting, an imported log entry and a meeting in a log
   are marked as such (`from`, set by the daemon, never by a body) and
   framed as data in Chat (`<data source="import">`, `"meeting"`); reading
-  one taints the turn, so every change Chat then wants is a card he taps.
-  Chat never imports, exports, merges, sets a folder or sends anything.
+  one taints the turn, so every change Chat then wants is a card he taps;
+  a deal of such a client is framed the same way. Chat never imports,
+  exports, merges, changes the stages, sets a folder or sends anything; it
+  makes a project from a won deal only when he asks, never with a folder.
+- **Deals (P3).** Rows in `work_deals`, his alone like the rest; a move
+  writes a `stage` row in his log. The stage list is data in life.db's
+  `meta` (`work_stages`), checked on every read (exactly one Won and one
+  Lost). A deal's audit rows are its id alone: no title, stage name,
+  value or reason.
 - **Import.** A CSV or vCard of at most 1 MB and 2,000 rows (its own body
   limit, 1.25 MiB), kept in memory for 30 minutes for the import that
   follows; values are checked against Work's schemas (an https link only,
@@ -2283,7 +2292,8 @@ Pinned by `packages/daemon/test/arch/v013-work-owner-only.test.ts` (W-T1
 to W-T5 and W-T7: the route tables, the source scans, her imports and
 tools, the module's refusals and its answers to her),
 `test/arch/v013-work-canary.test.ts` (W-T6: a client's name, phone and
-e-mail planted, every Work route run, and the logs, audit log, events and
-error replies read for them; a follow-up's push and its owner),
-`test/life/work-*.test.ts` and `test/chat/work-tools.test.ts` (taint,
-cards, Undo, and her tools' inputs).
+e-mail planted, with a deal's title, source and loss note, every Work
+route run, and the logs, audit log, events and error replies read for
+them; a follow-up's push and its owner), `test/life/work-*.test.ts` and
+`test/chat/work-{tools,deal-tools}.test.ts` (taint, cards, Undo, and her
+tools' inputs).

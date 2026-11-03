@@ -7,9 +7,9 @@ What changed for people who use Jantar, newest first. Versions before
 
 **Work** (off by default; `jantar work on`, which turns Todos on too): a
 place for the work you do for clients, owner-only. This build has the Mac
-side of projects and search, and of clients, the log of calls and
-meetings, follow-ups, import and export; the phone's Work screens come
-with the app's next update, and deals come in a later part of 0.13.
+side of projects and search, of clients, the log of calls and meetings,
+follow-ups, import and export, and of deals, their stages and insights;
+the phone's Work screens come with the app's next update.
 [Work](docs/work.md) has it all.
 
 **Before upgrading: nothing to copy by hand.** The daemon keeps
@@ -65,16 +65,37 @@ restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
   <file>` at the Mac. Never another app's contacts or database. The
   clients export as a CSV (`jantar work export --csv <file>`).
 - **Chat** can find, read, add and change clients, log a call with its
-  next step and add a follow-up (each with Undo); an imported client or a
-  meeting's name is data to it, so its changes after reading one are
-  cards you tap. It never contacts a client. The prompt is v2.
+  next step and add a follow-up; find, add and change deals and move them
+  between stages (Won makes a project only when you ask), each with Undo;
+  an imported client or a meeting's name is data to it, so its changes
+  after reading one are cards you tap. It never contacts a client and
+  never changes the stages. The prompt is v2.
+- **Deals.** A client can have several deals, each on a stage: New lead,
+  Contacted, Proposal sent, Negotiation, Won and Lost to start with, which
+  you can rename, reorder, add to and remove (a removed stage's deals go
+  where you say). Moving a deal to Won makes its client a client and can
+  make its project in the same save; Lost asks why (eight reasons and a
+  note) and never demotes a client; a closed deal moved back is open
+  again. A deal shows its days in stage, its next step (its own
+  follow-up, else its client's), its close day, and whether it has gone
+  quiet; Today's Work card counts the open deals with no next step, the
+  quiet ones and those closing this week. Money is per currency, never
+  added across. Up to 5,000 deals, 500 open; `jantar work export --csv
+  <file> --deals` writes them as a CSV.
+- **Insights**: per currency, the win rate, the sales cycle, revenue won
+  by month, losses by reason, sources, the weighted forecast by close
+  month and the weekly flow; and the funnel and time in stage from the
+  moves. Periods from 30 days to all time, the financial year from 1 April
+  among them. Nothing to count reads as empty, never 0 %.
 - **`jantar mcp`'s `client_here`**: who the session's folder's work is
-  for, with its next step; never a phone, an e-mail or notes.
+  for, with its open deals and their stages and its next step; never a
+  phone, an e-mail or notes.
 - **Work's settings** (businesses, a dial code for WhatsApp, quiet days)
   are set on the phone; `jantar work settings` shows them.
-- **Only yours, still.** A test plants a client's name, phone and e-mail,
-  runs every Work route, and finds none of them in the logs, the audit
-  log, the events or an error reply.
+- **Only yours, still.** A test plants a client's name, phone and e-mail
+  (and a deal's title, source and loss note), runs every Work route, and
+  finds none of them in the logs, the audit log, the events or an error
+  reply.
 - **Only yours.** Work's routes are all owner routes on your hostname,
   Work's data has tables of its own that only its code names, nothing of
   it is in the partner's app or Chat, and a log line, audit row or event

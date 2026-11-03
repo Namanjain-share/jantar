@@ -40,14 +40,15 @@ jantar life restore life-pre-0.13.0.db
 ```
 
 Anything added to Life since the upgrade is lost then, Work's included:
-every client, log entry and import, and the client on any todo or
+every client, deal, log entry and import, and the client on any todo or
 project. The `life.work` and `life.workLockScreenNames` settings are
 dropped by an older daemon, which leaves Work off. Work's own settings
-(businesses, dial code, quiet days) live in life.db and go back with it.
-An export first keeps your clients as a file:
+(businesses, dial code, quiet days, the deal stages) live in life.db and
+go back with it. An export first keeps your clients and deals as files:
 
 ```sh
 jantar work export --csv ~/Documents/clients-before-downgrade.csv
+jantar work export --csv ~/Documents/deals-before-downgrade.csv --deals
 ```
 
 ### 0.11.0: Life's third schema change (Accountability partner)

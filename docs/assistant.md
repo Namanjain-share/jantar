@@ -60,7 +60,9 @@ Every example here is made up:
   when does it reset?"
 - With [Work](work.md) on: "add Riya from Acme Studio as a lead", "log a
   call with Globex, went well, follow up Thursday at 3", "who haven't I
-  spoken to in a month?", "what's next with Initech?".
+  spoken to in a month?", "what's next with Initech?", "which deals close
+  this week?", "move the Acme rebuild to Proposal sent", "we lost the
+  Northwind app on price".
 
 Photos: tap the photo button (up to four a message). A receipt can
 become an expense, a menu a café's dishes, a whiteboard a todo list.
@@ -139,7 +141,7 @@ What you type and the photos you send go to Claude through Claude Code on
 your account (Rewrite's model for the phone, `ask.voiceModel` for Siri),
 with the date, time and zone, the last messages of this chat, and
 whatever Chat looks up to answer: your todos, medicines, food, cafés,
-money, posts, Intel shelf, meetings, your clients (with Work on), and your
+money, posts, Intel shelf, meetings, your clients and deals (with Work on), and your
 sessions, waiting prompts and usage (read only), for the parts that are
 on. Never a file from your Mac, a path or a key. Asking Chat about a
 client sends that client's details (their phones and e-mails included,
@@ -155,7 +157,17 @@ file or made from a name in a meeting is someone else's words: Chat reads
 it as data, and every change it then wants is a card you tap. Chat never
 deletes a client or a log entry by itself (a card), and never imports,
 exports, merges, sets a folder or sends anything to a client. `today`
-says how many clients are due a check-in, never who.
+says how many clients are due a check-in and how many open deals have no
+next step, are quiet or close this week, never who.
+
+Deals: `deals_find` lists them (open ones, or the won and lost ones) with
+their stage, value, days in stage, next step and close day; `deal_add`
+adds one for a client by id or by name, `deal_edit` changes it, and
+`deal_move` moves it to another stage, each with Undo (a move's Undo moves
+it back and, after a Won that made the client a client, makes it a lead
+again). Won makes a project only when you ask for one, with no folder;
+Lost takes a reason and a short note. A deal's delete is a card you tap.
+Chat never changes the stages.
 
 ## History, Clear and limits
 

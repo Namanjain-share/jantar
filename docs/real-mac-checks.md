@@ -526,13 +526,14 @@ people hostname behind its Access app with the One-time PIN:
   first; a link made at four and opened on a sixth device says, there, to
   revoke one on a linked device and link this one again.
 
-### Work (v0.13, P2: the Mac side)
+### Work (v0.13, P2 and P3: the Mac side)
 
 | # | Check | What it settles |
 |---|---|---|
 | WK1 | With Work on, log a call with a made-up client and a next step for two minutes from now (or `followup_add` in Chat). Lock the iPhone: the push says "Todo due" and "Follow-up · HH:MM", with no client name. Run `jantar work lockscreen names on` and try again: the title shows. Tap it: Jantar opens the client (or Todos, until the phone's Work screens arrive) | the lock screen (W23) |
 | WK2 | In a session started in a client's project folder, `client_here` names the client and its next step, and no phone or e-mail | client_here |
 | WK3 | `jantar work import` of a `.vcf` saved from the iPhone's Contacts (share, Save to Files, AirDrop to the Mac): the preview's rows match the cards, photos are dropped, and `jantar work import undo <batch>` takes them back | vCard import |
+| WK4 | In Chat, with a made-up client: "add a deal Site rebuild for Acme, 4.5 lakh, closing the 30th", then "we won it, make the project". The deal is Won, Acme is a client, and the project has Acme as its client; Undo on the change puts all three back. `jantar work export --csv ~/Desktop/deals.csv --deals` opens in Numbers with the value as 450000.00 and the stage's name | deals in Chat, Won → project, the deals CSV |
 
 ## iPad checks (0.12)
 

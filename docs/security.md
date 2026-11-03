@@ -60,11 +60,11 @@ point below links to its section there.
   pictures go to Claude to write the item's summary; requests go to the
   platform from the Mac, and with Read saved links your Chrome visits the
   post as you ([reading links](../SECURITY.md#v08-intel-reads-links)).
-- Work (0.13) keeps your clients' names, phones, e-mails and notes on the
-  Mac, in life.db. They leave only when you ask: an export you name, what
+- Work (0.13) keeps your clients' names, phones, e-mails and notes, and
+  your deals with them, on the Mac, in life.db. They leave only when you ask: an export you name, what
   Chat reads to answer you (it goes to Claude through your account),
-  `jantar mcp`'s `client_here` in a session (a name and the next step,
-  never a phone or an e-mail), and a follow-up's push, which says only
+  `jantar mcp`'s `client_here` in a session (a name, open deals and the
+  next step, never a phone or an e-mail), and a follow-up's push, which says only
   "Follow-up" and its time unless you turn its words on at the Mac. Jantar
   never messages a client and never reads another app's contacts
   ([Work](../SECURITY.md#v013-work-clients-the-log-follow-ups)).
