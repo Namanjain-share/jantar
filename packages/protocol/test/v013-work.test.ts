@@ -116,7 +116,7 @@ describe('v0.13 projects from client folders', () => {
       { items: [{ ...item, name: '' }] },
       { items: [{ ...item, name: 'x'.repeat(61) }] },
       { items: [{ ...item, folder: '/abs' }] },
-      { items: [item], clients: true },
+      { items: [item], clients: 'yes' },
     ]) {
       expect(WorkSeedBodySchema.safeParse(bad).success, JSON.stringify(bad).slice(0, 80)).toBe(false);
     }

@@ -54,7 +54,7 @@ export const CHAT_KEY_PREFIX = 'jchat_';
 export const CAPTURE_CHAT_PATH = '/v1/capture/chat';
 
 /** What Chat can reach, by part (each only while it is on). v0.11 People: her day plan, sleep and alerts (her thread only). */
-export const ChatModuleSchema = z.enum(['todos', 'medicines', 'food', 'places', 'finance', 'posts', 'intel', 'meetings', 'plan', 'sleep', 'alerts']);
+export const ChatModuleSchema = z.enum(['todos', 'medicines', 'food', 'places', 'finance', 'posts', 'intel', 'meetings', 'plan', 'sleep', 'alerts', 'work']);
 export type ChatModule = z.infer<typeof ChatModuleSchema>;
 
 export const ChatChangeOpSchema = z.enum(['add', 'edit', 'done', 'undone', 'snooze', 'log', 'set', 'paid', 'save', 'todo', 'skip', 'start', 'tick']);

@@ -125,14 +125,14 @@ import {
   PostPatchSchema,
   PostsQuerySchema,
   PostsResponseSchema,
-  ProjectBodySchema,
-  ProjectPatchSchema,
+  OwnerProjectBodySchema,
+  OwnerProjectPatchSchema,
   ProjectsResponseSchema,
   SnoozeBodySchema,
   TodaySchema,
-  TodoBodySchema,
+  OwnerTodoBodySchema,
   TodoDoneBodySchema,
-  TodoPatchSchema,
+  OwnerTodoPatchSchema,
   OwnerTodosQuerySchema,
   TodosResponseSchema,
   WeightBodySchema,
@@ -1254,11 +1254,11 @@ export const ROUTES = {
   }),
   projectCreate: route({
     method: 'POST', path: '/v1/projects', scope: 'control', phase: 'v0.4', ctl: false, feature: 'todos',
-    body: ProjectBodySchema, response: IdReplySchema, summary: 'Add a project.',
+    body: OwnerProjectBodySchema, response: IdReplySchema, summary: 'Add a project (v0.13: with its client and business).',
   }),
   projectUpdate: route({
     method: 'PATCH', path: '/v1/projects/:id', scope: 'control', phase: 'v0.4', ctl: false, feature: 'todos',
-    params: LifeIdParamsSchema, body: ProjectPatchSchema, response: OkReplySchema, summary: 'Change a project (null clears a field).',
+    params: LifeIdParamsSchema, body: OwnerProjectPatchSchema, response: OkReplySchema, summary: 'Change a project (null clears a field).',
   }),
   projectDelete: route({
     method: 'DELETE', path: '/v1/projects/:id', scope: 'control', phase: 'v0.4', ctl: false, feature: 'todos',
@@ -1270,11 +1270,11 @@ export const ROUTES = {
   }),
   todoCreate: route({
     method: 'POST', path: '/v1/todos', scope: 'control', phase: 'v0.4', ctl: false, feature: 'todos',
-    body: TodoBodySchema, response: IdReplySchema, summary: 'Add a todo (a due time makes it a reminder).',
+    body: OwnerTodoBodySchema, response: IdReplySchema, summary: 'Add a todo (a due time makes it a reminder; v0.13: a follow-up with a client).',
   }),
   todoUpdate: route({
     method: 'PATCH', path: '/v1/todos/:id', scope: 'control', phase: 'v0.4', ctl: false, feature: 'todos',
-    params: LifeIdParamsSchema, body: TodoPatchSchema, response: OkReplySchema, summary: 'Change a todo (null clears a field).',
+    params: LifeIdParamsSchema, body: OwnerTodoPatchSchema, response: OkReplySchema, summary: 'Change a todo (null clears a field).',
   }),
   todoDone: route({
     method: 'POST', path: '/v1/todos/:id/done', scope: 'control', phase: 'v0.4', ctl: false, feature: 'todos',

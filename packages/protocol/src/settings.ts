@@ -306,6 +306,12 @@ export const LifeSettingsSchema = z.object({
    * lock screen. Off: "Medicine due", "Bill due", "Post due" with no names.
    */
   lockScreenDetails: z.boolean().default(false),
+  /**
+   * v0.13 Work: a follow-up's push (a todo with a client) says its title (by notify.bodies), which can name
+   * the client. Off: "Follow-up · 15:00", no client words on the lock screen (`jantar work lockscreen names
+   * on`). An older daemon drops it.
+   */
+  workLockScreenNames: z.boolean().default(false),
 });
 
 /** v0.4 Intel shelf: JSONL files named on the Mac, read and followed for appends. */

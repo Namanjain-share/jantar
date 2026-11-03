@@ -124,6 +124,13 @@ export const ProjectSchema = z.object({
   notes: LongNotesSchema.optional(),
   due: DayKeySchema.optional(),
   folder: FolderPathSchema.optional(),
+  /**
+   * v0.13 Work: the client the project is for (a Work contact) and the business it runs under. Only the
+   * owner's own projects carry them: no body of hers takes them (OwnerProjectBodySchema is his), and the
+   * daemon refuses them on any project outside his space. An older daemon drops both keys.
+   */
+  clientId: LifeIdSchema.optional(),
+  business: LifeIdSchema.optional(),
   ...stamps,
 });
 /**
@@ -154,6 +161,15 @@ export const ProjectPatchSchema = z.strictObject({
   folder: FolderPathSchema.nullable().optional(),
 });
 export type ProjectPatch = z.infer<typeof ProjectPatchSchema>;
+/**
+ * v0.13 Work: the owner's project routes also take the project's client and business (null clears). Her
+ * routes reuse ProjectBodySchema and ProjectPatchSchema as they are, so these owner-only extensions never
+ * widen them.
+ */
+export const OwnerProjectBodySchema = ProjectBodySchema.extend({ clientId: LifeIdSchema.optional(), business: LifeIdSchema.optional() });
+export type OwnerProjectBody = z.infer<typeof OwnerProjectBodySchema>;
+export const OwnerProjectPatchSchema = ProjectPatchSchema.extend({ clientId: LifeIdSchema.nullable().optional(), business: LifeIdSchema.nullable().optional() });
+export type OwnerProjectPatch = z.infer<typeof OwnerProjectPatchSchema>;
 export const ProjectsResponseSchema = z.object({ projects: z.array(ProjectViewSchema) });
 export type ProjectsResponse = z.infer<typeof ProjectsResponseSchema>;
 
@@ -186,6 +202,12 @@ export const TodoSchema = z.object({
    * frames such a todo's title and notes as data and taints its message. An older daemon drops the key.
    */
   from: TodoFromSchema.optional(),
+  /**
+   * v0.13 Work: a follow-up's client and deal. Only the owner's own todos carry them (OwnerTodoBodySchema is
+   * his; the daemon refuses them on any todo outside his space). An older daemon drops both keys.
+   */
+  contactId: LifeIdSchema.optional(),
+  dealId: LifeIdSchema.optional(),
   ...stamps,
 });
 export type Todo = z.infer<typeof TodoSchema>;
@@ -220,6 +242,15 @@ export const TodoPatchSchema = z
   })
   .refine((b) => !(b.repeat && b.due === null), NEEDS_DUE);
 export type TodoPatch = z.infer<typeof TodoPatchSchema>;
+/**
+ * v0.13 Work: the owner's todo routes also take a follow-up's client and deal (null clears). Her routes reuse
+ * TodoBodySchema and TodoPatchSchema as they are (and AssignTodoBodySchema spreads them), so these owner-only
+ * extensions never widen them.
+ */
+export const OwnerTodoBodySchema = TodoBodySchema.safeExtend({ contactId: LifeIdSchema.optional(), dealId: LifeIdSchema.optional() });
+export type OwnerTodoBody = z.infer<typeof OwnerTodoBodySchema>;
+export const OwnerTodoPatchSchema = TodoPatchSchema.safeExtend({ contactId: LifeIdSchema.nullable().optional(), dealId: LifeIdSchema.nullable().optional() });
+export type OwnerTodoPatch = z.infer<typeof OwnerTodoPatchSchema>;
 /** `done: false` is Undo, for one-off todos (a repeating one is moved back by PATCHing its old `due`). */
 export const TodoDoneBodySchema = z.strictObject({ done: z.boolean() });
 export type TodoDoneBody = z.infer<typeof TodoDoneBodySchema>;
@@ -1083,6 +1114,21 @@ export const TodaySchema = z.object({
       today: z.number().int().nonnegative(),
       late: z.number().int().nonnegative(),
       comments: z.object({ done: z.number().int().nonnegative(), goal: z.number().int().positive().optional() }).optional(),
+    })
+    .optional(),
+  /**
+   * v0.13 Work's card, only what isn't a todo (its follow-ups are Due todos): clients due a check-in (the
+   * first 3, and how many more), and (P3) open deals with no next step, quiet deals and deals closing this
+   * week. `clients`: the id and name of each follow-up's client in `todos`, for its chip.
+   */
+  work: z
+    .object({
+      checkIns: z.array(z.object({ id: LifeIdSchema, name: z.string(), every: z.number().int(), since: z.number().int().nullable() })).max(3),
+      checkInsMore: z.number().int().nonnegative(),
+      noNextStep: z.number().int().nonnegative(),
+      quiet: z.number().int().nonnegative(),
+      closing: z.number().int().nonnegative(),
+      clients: z.array(z.object({ id: LifeIdSchema, name: z.string() })),
     })
     .optional(),
 });

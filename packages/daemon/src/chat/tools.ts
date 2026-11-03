@@ -48,6 +48,7 @@ import {
   pendingFor,
   placeScore,
   placeTagLabel,
+  workOn,
   type ChatModule,
   type Place,
   type Todo,
@@ -271,6 +272,9 @@ export function partOn(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings' | 'per
     case 'alerts':
       // Hers alone (her plan, sleep and alerts): never a part of the owner's thread.
       return false;
+    case 'work':
+      // v0.13: his clients, while Work works (Todos on too) and life.db is open.
+      return workOn(s) && lifeOk();
     default:
       return s.life[part] && lifeOk();
   }
@@ -313,6 +317,7 @@ const PART_NAME: Readonly<Record<ChatPart, string>> = {
   plan: 'The day plan',
   sleep: 'Sleep',
   alerts: 'Alerts',
+  work: 'Work',
 };
 
 // ------------------------------------------------------------------ the reads

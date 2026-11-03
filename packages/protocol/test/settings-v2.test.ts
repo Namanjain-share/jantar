@@ -41,6 +41,7 @@ describe('settings version 2', () => {
       timezone: null,
       currency: null,
       lockScreenDetails: false,
+      workLockScreenNames: false,
     });
     // v0.8 adds reading links (off) and the speech language.
     expect(s.intel).toEqual({ enabled: false, sources: [], read: false, speechLocale: 'en-IN' });

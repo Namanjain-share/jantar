@@ -46,4 +46,4 @@ export interface ChatWriteLimiter {
  * `cards` (request_delete, request_action) is on while any part with a delete or an action is: a Life
  * module, Intel or Meetings (each card is checked against its own part again).
  */
-export type ChatPart = 'life' | 'todos' | 'medicines' | 'food' | 'places' | 'finance' | 'posts' | 'intel' | 'meetings' | 'sessions' | 'cards' | 'plan' | 'sleep' | 'alerts';
+export type ChatPart = 'life' | 'todos' | 'medicines' | 'food' | 'places' | 'finance' | 'posts' | 'intel' | 'meetings' | 'sessions' | 'cards' | 'plan' | 'sleep' | 'alerts' | 'work';
