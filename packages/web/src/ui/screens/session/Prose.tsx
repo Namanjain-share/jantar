@@ -95,12 +95,15 @@ export function Prose({
   variant = 'body',
   foldAt = 4000,
   dim = false,
+  read = false,
   className,
 }: {
   text: string;
   variant?: Variant;
   foldAt?: number;
   dim?: boolean;
+  /** 0.11: the reading type (16/25 on touch, 15/24 on a Mac), for the transcript's prose. */
+  read?: boolean;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -120,7 +123,7 @@ export function Prose({
     <div
       className={clsx(
         'flex min-w-0 flex-col gap-12 wrap-break-word',
-        'type-body',
+        read ? 'type-read' : 'type-body',
         dim ? 'text-ink-2' : 'text-ink',
         className,
       )}

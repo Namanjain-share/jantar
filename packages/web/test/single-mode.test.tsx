@@ -8,7 +8,7 @@
 import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Account, Session } from '@jantar/protocol';
-import { account, iso, renderApp, session, stateWith } from './helpers.js';
+import { account, iso, measureAs, renderApp, session, stateWith } from './helpers.js';
 
 function viewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
@@ -17,7 +17,10 @@ function viewport(width: number) {
   });
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 const claude: Account = { id: 0, alias: 'Claude', emailMasked: '', isDefaultLogin: true, disabled: false, held: false, usageStatus: 'unknown', windows: [] };
 
@@ -102,6 +105,7 @@ describe('a session', () => {
 
   it('property column on a wide Mac: no Account, 5-hour, Resets, Burn or Also on rows', () => {
     viewport(1440);
+    measureAs(944);
     renderApp({ path: '/s/web-app', state: singleState() });
     const props = screen.getByRole('complementary', { name: 'Session properties' });
     const keys = [...props.querySelectorAll('dt')].map((dt) => dt.textContent);
@@ -115,6 +119,7 @@ describe('a session', () => {
 
   it('property column with cswap keeps the account rows', () => {
     viewport(1440);
+    measureAs(944);
     renderApp({ path: '/s/web-app', state: cswapState() });
     const props = screen.getByRole('complementary', { name: 'Session properties' });
     const keys = [...props.querySelectorAll('dt')].map((dt) => dt.textContent);

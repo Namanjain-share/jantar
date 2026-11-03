@@ -294,6 +294,9 @@ describe('board on the desktop', () => {
       }),
     });
     const side = screen.getByRole('complementary', { name: 'Alerts and legend' });
+    // 0.11 (c23): beside the queue where the Desk's pane is 900 wide (944 at 1440), by a container query, not the window.
+    expect(side.className).toContain('@wide:flex');
+    expect(side.className).not.toMatch(/(^|\s)2xl:/);
     expect(within(side).getByRole('heading', { name: 'Alerts1 new' })).toBeTruthy();
     expect(within(side).getByRole('link', { name: /api-server · rate limiter/ }).getAttribute('href')).toBe('/s/api');
     expect(within(side).getByText('Hit an API error. Retried twice, then stopped.')).toBeTruthy();

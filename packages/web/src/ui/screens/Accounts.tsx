@@ -25,7 +25,8 @@
  * 0.11 (build plan 2.9): laid out by the pane's width, not the window's:
  * the matrix from a pane of 640, with RESETS and 7D columns from 1180, at
  * the pane's full width on a raised ground of its own (the 1320 cap is
- * gone). Without a measure (jsdom, a hidden box) 0.10's frames decide.
+ * gone). Without a measure (jsdom, a hidden box) the matrix shows from a
+ * 1024 window, as 0.10's desk frame did, without the wide columns.
  */
 import { lazy, Suspense, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PRODUCT_NAME } from '../../brand.js';
@@ -106,7 +107,7 @@ function CswapAccounts({ machines }: { machines: boolean }) {
   const next = legacy ? plan.next : null;
   const phone = layout.chrome === 'phone';
   const matrix = !phone && (pane === 'none' ? layout.size === 'regular' : pane !== 'sm');
-  const wide = !phone && (pane === 'none' ? layout.wide : pane === 'xl');
+  const wide = !phone && pane === 'xl';
 
   // In the matrix, an account that runs out before its reset opens with the
   // reason in words (dir-k.html); phone rows already say "full ~17:05".

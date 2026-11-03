@@ -154,12 +154,9 @@ export const KNOWN_WIDE_GAPS: Record<string, number> = {};
  * What still scrolls or cuts sideways, by place x size, with the commit that fixes it. Like
  * KNOWN_WIDE_GAPS, a listed one that no longer does fails the test, so it is taken out.
  */
-export const KNOWN_SIDEWAYS: Record<string, string> = {
-  // A touch screen at 1024 gets the Mac's chrome until c24, and the session's header with 44 pt
-  // targets needs about 640 px; the detail is 628 (0.10 gave it 608). c23 makes Show on Mac an icon.
-  'session@ipad-1024': 'c23',
-  'session-card@ipad-1024': 'c23',
-};
+// Empty from c23, which made Show on Mac an icon where the session's pane is under 640 (a touch screen
+// at 1024 with the Mac's chrome gave its 44 pt header 628 px).
+export const KNOWN_SIDEWAYS: Record<string, string> = {};
 
 const WIDE_FROM = 1024;
 

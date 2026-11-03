@@ -165,8 +165,10 @@ export function Header(props: HeaderProps) {
         </span>
       ) : null}
       {showOn === null ? null : (
-        <Button className="ml-12" onClick={onShowOnMac} disabled={showOnMacBusy || !canShowOnMac}>
-          {showLabel}
+        // 0.11: an icon where the session's pane is under 640 (its name stays), so the header fits beside a 340 ledger.
+        <Button className="ml-12 coarse:min-w-44" aria-label={showLabel} onClick={onShowOnMac} disabled={showOnMacBusy || !canShowOnMac}>
+          <MonitorIcon size={16} aria-hidden="true" className="@md:hidden" />
+          <span className="hidden @md:inline">{showLabel}</span>
         </Button>
       )}
     </header>

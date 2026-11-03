@@ -20,7 +20,10 @@
  * Only lazy screens import this file (it is not in kit/index.ts), so it
  * stays out of the main load.
  */
-import { Children, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Children, useRef, type ReactNode, type RefObject } from 'react';
+import { useBucket } from './bucket.js';
+
+export { useBucket };
 
 /** The gap between columns and between the cards in one, px (gap-16). */
 export const GAP = 16;
@@ -36,31 +39,6 @@ export function deal<T>(items: readonly T[], n: number): T[][] {
   const stacks: T[][] = Array.from({ length: Math.max(1, n) }, () => []);
   items.forEach((item, i) => stacks[i % stacks.length]!.push(item));
   return stacks;
-}
-
-/**
- * A box's width, read before the first paint and kept by one ResizeObserver,
- * as `bucket(width)`: state changes only when the bucket does (0 when there
- * is no measure).
- */
-export function useBucket<T>(ref: RefObject<HTMLElement | null>, bucket: (width: number) => T): T {
-  const fn = useRef(bucket);
-  fn.current = bucket;
-  const [value, setValue] = useState<T>(() => bucket(0));
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const read = (width: number) => setValue(fn.current(width > 0 ? width : 0));
-    read(el.getBoundingClientRect().width);
-    if (typeof ResizeObserver !== 'function') return;
-    const ro = new ResizeObserver((entries) => {
-      const e = entries[entries.length - 1];
-      if (e) read(e.contentRect.width);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
-  return value;
 }
 
 /** From a pane this wide a page's sections are cards (Today, Todos, Medicines, Food, Finance). */

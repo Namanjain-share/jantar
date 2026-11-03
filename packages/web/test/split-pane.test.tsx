@@ -65,12 +65,13 @@ describe('split or single', () => {
     ]);
   });
 
-  it("without a measure (jsdom: width 0) the window's frame decides, as 0.10's ledger did; the phone is single", () => {
+  it("without a measure (jsdom: width 0) it splits from a 1024 window, as 0.10's ledger did, with the 340 column; the phone is single", () => {
     expect(guessSplit(layoutAt(0))).toEqual({ split: false, wide: false });
     expect(guessSplit(layoutAt(390))).toEqual({ split: false, wide: false });
     expect(guessSplit(layoutAt(900))).toEqual({ split: false, wide: false });
     expect(guessSplit(layoutAt(1100))).toEqual({ split: true, wide: false });
-    expect(guessSplit(layoutAt(1440))).toEqual({ split: true, wide: true });
+    // c23: no window query says 1280 any more; only a measure gives the 440 column.
+    expect(guessSplit(layoutAt(1440))).toEqual({ split: true, wide: false });
     // The default jsdom window: single.
     const { container } = render(<SplitPane name="test" list={<List />} detail={null} listLabel="List" detailLabel="Item" />);
     expect(screen.getByText(/^split false/)).toBeTruthy();
@@ -119,7 +120,7 @@ describe('the two sections', () => {
     expect(within(screen.getByRole('region', { name: 'List' })).getByRole('list', { name: 'Items' })).toBeTruthy();
     expect(within(screen.getByRole('region', { name: 'Item' })).getByText('Desk')).toBeTruthy();
     again({ empty: <p>Desk</p>, detail: <Item id="a" />, selection: 'a' });
-    expect(within(screen.getByRole('region', { name: 'List' })).getByText('split true wide true selected true')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'List' })).getByText('split true wide false selected true')).toBeTruthy();
     expect(within(screen.getByRole('region', { name: 'Item' })).getByLabelText('Note on a')).toBeTruthy();
     expect(screen.queryByText('Desk')).toBeNull();
   });

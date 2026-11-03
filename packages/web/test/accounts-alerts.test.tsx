@@ -5,7 +5,7 @@ import { writeLocal } from '../src/lib/storage.js';
 import { buildRows, burnText, displayLine, sortRows } from '../src/ui/screens/accounts/model.js';
 import { dayLabel, dur } from '../src/ui/screens/accounts/time.js';
 import { ALERTS_SEEN_KEY, sentenceOf, subjectOf } from '../src/ui/screens/alerts/model.js';
-import { NOW, account, alert, fakeApi, iso, opened, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
+import { NOW, account, alert, fakeApi, iso, measureAs, opened, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
 // 0.11: Accounts and Alerts open from their own chunks.
 preloadPlaces('accounts', 'alerts');
@@ -27,7 +27,10 @@ function viewport(width: number) {
   });
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 const plan = (over: object = {}) => ({
   source: 'ccw-legacy' as const,
@@ -185,6 +188,8 @@ describe('accounts screen (desktop matrix)', () => {
 
   it('lays out the matrix with sessions as cells and expands a row in words', async () => {
     viewport(1440);
+    // c23: its columns follow the pane: 1384 beside the Mac's rail.
+    measureAs(1384);
     const { history } = renderApp({
       path: '/accounts',
       state: stateWith({ accounts, sessions: [session('web-app', { account: 3, status: 'idle' }), session('api', { account: 3 })] }),

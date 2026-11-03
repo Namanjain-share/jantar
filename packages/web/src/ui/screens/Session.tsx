@@ -64,7 +64,8 @@ import { screenTitle } from '../../lib/favicon.js';
 import { ago } from '../../lib/format.js';
 import { closeNotificationsFor } from '../../lib/push.js';
 import { sessionView, sessionViewPath, type FilesLocation } from '../../lib/router.js';
-import { useApp, useDeps, useMedia, useNavigate, useNow, useToast } from '../context.js';
+import { useApp, useDeps, useNavigate, useNow, useToast } from '../context.js';
+import { useBucket } from '../kit/bucket.js';
 import { Button } from '../kit/Button.js';
 import { EmptyState } from '../kit/EmptyState.js';
 import { glyphStateOf } from '../kit/glyph.js';
@@ -94,7 +95,11 @@ import { useSessionScreen, useWaitingSettled } from './session/screen.js';
 import { useSends } from './session/sends.js';
 import { Transcript } from './session/Transcript.js';
 
-const WIDE = '(min-width: 1360px)';
+/**
+ * 0.11 (build plan 2.1): the property column sits beside the transcript once the session's own pane is this
+ * wide (640 + 32 + 220 + 48; @props). 0.10 asked for a 1360 px window.
+ */
+const PROPS_AT = 940;
 
 /**
  * v0.4.2's dock for a terminal dialog, with its keypad, is its own chunk: most session screens never
@@ -171,13 +176,14 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const phone = layout.chrome === 'phone';
   // The back button shows where the ledger is not beside the session (the board's SplitPane is single).
   const split = useSplit()?.split ?? false;
-  const wide = useMedia(WIDE) && !phone;
   const state = useApp((s) => s.state);
   const conn = useApp((s) => s.conn.status);
   const offline = conn === 'offline';
   const ceiling = useCeiling();
   const hubFeatures = useFeatures();
   const root = useRef<HTMLDivElement>(null);
+  // Measured on the session's own box: beside the ledger at 1440 it is 944 wide; without a measure (jsdom), no column.
+  const wide = useBucket(root, (w) => w >= PROPS_AT) && !phone;
 
   // Keep the last known session, so a session that goes away mid-read still shows what it said.
   // Own keys only: a sid from the URL such as "constructor" is no session.

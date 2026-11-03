@@ -14,9 +14,8 @@
  *   paint, then one ResizeObserver that sets state only when the width
  *   crosses 800 or 1180, so dragging a window re-renders nothing in between.
  *   CSS (kit.css .split-*) only lays out the grid. Without a measure (jsdom
- *   has no layout; a hidden box) the pane follows the window's frame as 0.10
- *   did: split from 1024, the wide list column from 1280. The phone chrome is
- *   always single.
+ *   has no layout; a hidden box) the pane splits from a 1024 window, as 0.10
+ *   did, with the 340 column. The phone chrome is always single.
  * - The list column is 340, or 440 when the pane is 1180 or wider (D6);
  *   `listWidth="history"` makes it 300 (Chat).
  * - `empty`: what the detail shows in split mode with nothing selected (the
@@ -63,10 +62,9 @@ export function splitFor(width: number): Mode {
   return { split: width >= SPLIT_AT, wide: width >= WIDE_AT };
 }
 
-/** Without a measure: the window's frame, as 0.10 laid the ledger out (split from 1024, 440 from 1280). */
+/** Without a measure (jsdom, a hidden box): split from a 1024 window, as 0.10 laid the ledger out; the 340 column. */
 export function guessSplit(l: Layout): Mode {
-  const desk = l.chrome !== 'phone';
-  return { split: desk && l.size === 'regular', wide: desk && l.wide };
+  return { split: l.chrome !== 'phone' && l.size === 'regular', wide: false };
 }
 
 /**

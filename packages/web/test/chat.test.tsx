@@ -16,7 +16,7 @@ import { createRouter, parseRoute, routePath } from '../src/lib/router.js';
 import { EXAMPLES, PRIVACY, PRIVACY_SHORT, byDay, confirmVerb, dayOf, matches, photosOf, turnMeta, undoableChanges } from '../src/ui/screens/chat/model.js';
 import { layoutAt } from '../src/ui/shell/layout.js';
 import { NAV } from '../src/ui/shell/nav.js';
-import { NOW, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
+import { NOW, fakeApi, measureAs, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('chat');
 
@@ -319,7 +319,10 @@ describe('0.11: the history and This chat (pure)', () => {
 });
 
 describe('0.11: Chat in a wide window', () => {
+  // c23: the pane is measured (1384 beside the Mac's rail), so This chat gets its own column.
+  afterEach(() => vi.restoreAllMocks());
   const wide = (first: ChatList, over: Partial<Api> = {}) => {
+    measureAs(1384);
     const api = fakeApi({ chatList: vi.fn(async () => first), chatPhoto: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })), ...over });
     return { ...renderApp({ path: '/chat', api, state: ON, layout: layoutAt(1440) }), api };
   };

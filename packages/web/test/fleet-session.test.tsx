@@ -20,7 +20,7 @@ import { TAP_GUARD_MS } from '../src/ui/screens/session/answer.js';
 import { cardMachine, machineLine, offlineSince, screenReadable, tooLarge } from '../src/ui/screens/session/Info.js';
 import { BLOCKED, PLAN_PARTIAL, atMachine, blocksLine, controlsOffOn, peekOf } from '../src/ui/screens/session/TermDialog.js';
 import fixtures from './term-dialog-fixtures.json';
-import { account, fakeApi, iso, NOW, pending, renderApp, session } from './helpers.js';
+import { account, fakeApi, iso, measureAs, NOW, pending, renderApp, session } from './helpers.js';
 import { fleetState, IDS, OFFLINE_AT, preloadCards, SID } from './fleet-helpers.js';
 
 preloadCards();
@@ -28,6 +28,7 @@ preloadCards();
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */
@@ -80,8 +81,9 @@ describe("a server's session", () => {
     expect(document.body.textContent).not.toContain('unknown');
     expect(document.querySelector('.text-signal-text')).toBeNull();
     unmount();
-    // The property column (1360 px and wider): the account by its alias, no 5-hour, resets or burn.
+    // The property column (a session pane of 940 and wider; 944 beside the ledger at 1440): the account by its alias, no 5-hour, resets or burn.
     viewport(1440);
+    measureAs(944);
     const wide = open(SID.work);
     const props = screen.getByRole('complementary', { name: 'Session properties' });
     expect(props.textContent).toContain('work');

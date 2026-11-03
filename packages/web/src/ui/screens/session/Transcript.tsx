@@ -423,23 +423,23 @@ export function Transcript({
                 );
               case 'text':
                 return (
-                  <div key={b.item.id} data-item="assistant" className="max-w-600">
-                    <Prose text={b.item.text} dim={dim} />
+                  <div key={b.item.id} data-item="assistant" className="max-w-640">
+                    <Prose text={b.item.text} dim={dim} read />
                   </div>
                 );
               case 'tools':
                 return <ToolRun key={b.items[0]?.id} items={b.items} />;
               case 'meta':
                 return (
-                  <p key={b.item.id} data-item="meta" className="max-w-600 type-small text-ink-3 wrap-break-word">
+                  <p key={b.item.id} data-item="meta" className="max-w-640 type-small text-ink-3 wrap-break-word">
                     {b.item.text}
                   </p>
                 );
             }
           })}
           {fallback ? (
-            <div data-item="assistant" className="max-w-600">
-              <Prose text={fallback.text} dim={dim} />
+            <div data-item="assistant" className="max-w-640">
+              <Prose text={fallback.text} dim={dim} read />
             </div>
           ) : null}
           {loaded && !items.length && !fallback && !pending.length && !error ? (

@@ -12,7 +12,7 @@ import type { Session } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { INTERRUPT_HOLD_MS } from '../src/ui/screens/session/controls/ControlBar.js';
 import { resetUnavailable } from '../src/ui/screens/session/controls/modes.js';
-import { emit, fakeApi, iso, pending, renderApp, session, stateWith } from './helpers.js';
+import { emit, fakeApi, iso, measureAs, pending, renderApp, session, stateWith } from './helpers.js';
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */
 function viewport(width: number) {
@@ -92,6 +92,8 @@ describe('the control bar (C8)', () => {
   });
 
   it('says the mode once (rule 19): the chip while it shows, the meta again while a card hides it', async () => {
+    // c23: the property column follows the session's own width (944 beside the ledger at 1440).
+    const measured = measureAs(944);
     const wide = renderApp({ path: '/s/a', state: on({ mode: 'plan' }) });
     await loaded();
     expect(chip().getAttribute('aria-label')).toMatch(/Plan/);
@@ -99,6 +101,7 @@ describe('the control bar (C8)', () => {
     expect(within(props).queryByText('Mode')).toBeNull();
     expect(within(props).queryByText('plan mode')).toBeNull();
     wide.unmount();
+    measured.mockRestore();
 
     viewport(1024);
     const narrow = renderApp({ path: '/s/a', state: on({ mode: 'plan' }) });

@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/lib/api.js';
 import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
-import { account, emit, fakeApi, iso, pending, renderApp, session, stateWith } from './helpers.js';
+import { account, emit, fakeApi, iso, measureAs, pending, renderApp, session, stateWith } from './helpers.js';
 import { preloadCards } from './fleet-helpers.js';
 
 // v0.6: the hook cards load with import(); every test here meets them loaded.
@@ -437,5 +437,30 @@ describe('0.11 c08: one tree for the phone and the desk', () => {
       expect(within(card()).getByPlaceholderText('Your own answer')).toBe(own);
     }
     expect(own.value).toBe('Postgres 17');
+  });
+});
+
+describe('0.11 (c23): the session by its own width', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const state = () => stateWith({ sessions: [session('a', { status: 'idle' })] });
+
+  it('the property column beside the transcript from a session pane of 940 (944 beside the ledger at 1440), the meta line under that', () => {
+    const layout = createLayoutStore(layoutAt(1440));
+    measureAs(944);
+    const wide = renderApp({ path: '/s/a', state: state(), layout });
+    expect(screen.getByRole('complementary', { name: 'Session properties' })).toBeTruthy();
+    wide.unmount();
+    vi.restoreAllMocks();
+    // A 1280 Mac window: the session pane is 784 beside the 440 ledger, so no column (0.10 asked for a 1360 window).
+    measureAs(784);
+    renderApp({ path: '/s/a', state: state(), layout: createLayoutStore(layoutAt(1280)) });
+    expect(screen.queryByRole('complementary', { name: 'Session properties' })).toBeNull();
+  });
+
+  it('Show on Mac keeps its name and is an icon where the pane is under 640, its words from 640', () => {
+    renderApp({ path: '/s/a', state: state(), layout: createLayoutStore(layoutAt(1440)) });
+    const show = screen.getByRole('button', { name: 'Show on Mac' });
+    expect(show.querySelector('svg')?.getAttribute('class')).toContain('@md:hidden');
+    expect(within(show).getByText('Show on Mac').className).toContain('hidden @md:inline');
   });
 });

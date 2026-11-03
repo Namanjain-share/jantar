@@ -395,3 +395,12 @@ export function renderApp(opts: {
 export function emit(store: AppStore, events: DaemonEvent[]) {
   for (const event of events) store.getState().applyMessage({ kind: 'event', event } as WsServerMessage);
 }
+
+/**
+ * 0.11 (c23): make every box measure `width` px (jsdom has no layout), so a place laid out by its own
+ * width (a SplitPane, the session's property column, Accounts' columns, the Life cards) sees that pane.
+ * Restore it with vi.restoreAllMocks() (or the returned spy's mockRestore()).
+ */
+export function measureAs(width: number, height = 800) {
+  return vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: width, bottom: height, width, height, toJSON: () => ({}) } as DOMRect);
+}

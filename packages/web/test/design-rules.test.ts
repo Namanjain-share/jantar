@@ -157,9 +157,9 @@ describe('design rules (direction.md 7)', () => {
   });
 
   it('0.11: panes ask their container; only the Mac chrome asks the window', () => {
-    // Shrinking allowlists: c23 converts these and empties both lists.
-    const stillByWindow = ['ui/screens/board/Desk.tsx']; // 2xl:flex (the side column)
-    const stillMedia = ['ui/screens/Session.tsx']; // useMedia(WIDE) (the property column)
+    // c23 converted the last two (Desk's 2xl:flex side column, Session's useMedia(WIDE) property column): nothing is allowed.
+    const stillByWindow: string[] = [];
+    const stillMedia: string[] = [];
     // md: lg: xl: 2xl: are window widths: the chrome's business. A pane uses @md: (its own width), the
     // Mac's density uses desk: (768 and up with a fine pointer).
     expect(offenders(/(?<![\w@:-])(?:md|lg|xl|2xl):(?=[\w[!-])/, ['ui/shell/TopBar.tsx', 'ui/shell/StatusBar.tsx', 'ui/shell/Rail.tsx', ...stillByWindow])).toEqual([]);

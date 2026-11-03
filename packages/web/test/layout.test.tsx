@@ -6,7 +6,8 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keyboardStore, setKeyboard } from '../src/lib/input.js';
-import { QUERIES, chromeFor, createLayoutStore, frameOf, layoutAt, sizeFor, useLayout, type Chrome, type Size } from '../src/ui/shell/layout.js';
+import * as layoutModule from '../src/ui/shell/layout.js';
+import { QUERIES, chromeFor, createLayoutStore, layoutAt, sizeFor, useLayout, type Chrome, type Size } from '../src/ui/shell/layout.js';
 import { renderApp, session, stateWith } from './helpers.js';
 
 /** A window `width` wide with a fine or coarse pointer; counts the change listeners added and removed. */
@@ -58,27 +59,25 @@ describe('size classes and chrome', () => {
   });
 
   it('the Mac keeps its chrome until the touch shell is built, and has a keyboard from the start', () => {
-    expect(layoutAt(1440)).toEqual({ size: 'regular', coarse: false, chrome: 'desk', keyboard: true, kbUp: false, wide: true });
-    expect(layoutAt(820, { coarse: true })).toEqual({ size: 'medium', coarse: true, chrome: 'desk', keyboard: false, kbUp: false, wide: false });
+    expect(layoutAt(1440)).toEqual({ size: 'regular', coarse: false, chrome: 'desk', keyboard: true, kbUp: false });
+    expect(layoutAt(820, { coarse: true })).toEqual({ size: 'medium', coarse: true, chrome: 'desk', keyboard: false, kbUp: false });
   });
 
-  it('keeps the older frames as an adapter', () => {
-    expect(frameOf(layoutAt(390))).toBe('phone');
-    expect(frameOf(layoutAt(767))).toBe('phone');
-    expect(frameOf(layoutAt(900))).toBe('tablet');
-    expect(frameOf(layoutAt(1100))).toBe('desk');
-    expect(frameOf(layoutAt(1280))).toBe('wide');
+  it('c23: the older frames are gone, and so is the 1280 query only they asked', () => {
+    for (const name of ['useFrame', 'isSplit', 'frameOf']) expect(name in layoutModule, name).toBe(false);
+    expect(Object.values(QUERIES)).not.toContain('(min-width: 1280px)');
   });
 });
 
 describe('the provider', () => {
-  it('listens with one listener per query for the whole app: five', () => {
+  it('listens with one listener per query for the whole app: four', () => {
     const listening = stubWindow(1440);
     renderApp({ state: stateWith({ sessions: [session('web-app'), session('api', { status: 'idle' })] }) });
     expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
     const active = [...listening].filter(([, n]) => n > 0);
     expect(active.map(([q]) => q).sort()).toEqual(Object.values(QUERIES).sort());
     expect(active.every(([, n]) => n === 1)).toBe(true);
+    expect(active).toHaveLength(4);
   });
 
   it('reads the window: 1440 with a fine pointer is the desk, 600 with a coarse one the phone', () => {

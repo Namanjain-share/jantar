@@ -17,15 +17,9 @@
  * Panes are laid out by their own width (container queries), with either
  * pointer; only the chrome follows the pointer.
  *
- * useFrame() and isSplit() are the older frames, built on the same
- * listeners, for the places that still lay out by the window until they move
- * to their pane's width:
- *
- *   phone   < 768    header 52 + safe area, content, bottom tabs 56 + safe area
- *   tablet  768-1023 top bar 48, rail 56, full-width ledger; a session opens
- *                    full width with a back button; status bar 24
- *   desk    1024-1279 the same plus ledger column 360 beside the detail pane
- *   wide    >= 1280  ledger column 440
+ * Four listeners for the whole app (c23 retired 0.10's frames, useFrame
+ * and isSplit, and the 1280 px query only they needed): every place lays
+ * out by its pane's width now.
  *
  * Without matchMedia (jsdom) the window reads as 0 wide with a fine pointer:
  * the phone chrome. Tests inject a layout instead (AppDeps.layout,
@@ -38,7 +32,6 @@ import { keyboardStore } from '../../lib/input.js';
 
 export type Size = 'compact' | 'medium' | 'regular';
 export type Chrome = 'phone' | 'touch' | 'desk';
-export type Frame = 'phone' | 'tablet' | 'desk' | 'wide';
 
 export interface Layout {
   size: Size;
@@ -46,8 +39,6 @@ export interface Layout {
   chrome: Chrome;
   keyboard: boolean;
   kbUp: boolean;
-  /** At least 1280 wide: only the `wide` frame asks (useFrame). */
-  wide: boolean;
 }
 export type LayoutStore = StoreApi<Layout>;
 
@@ -59,7 +50,6 @@ export const QUERIES = {
   medium: '(min-width: 640px)',
   desk: '(min-width: 768px)',
   regular: '(min-width: 1024px)',
-  wide: '(min-width: 1280px)',
   coarse: '(pointer: coarse)',
 } as const;
 
@@ -89,24 +79,7 @@ export function layoutAt(width: number, o: LayoutOptions = {}): Layout {
     // A fine pointer is a Mac or a desktop browser, so it has a keyboard from the start.
     keyboard: o.keyboard ?? !coarse,
     kbUp: o.kbUp ?? false,
-    wide: width >= 1280,
   };
-}
-
-export function frameOf(l: Layout): Frame {
-  if (l.chrome === 'phone') return 'phone';
-  if (l.wide) return 'wide';
-  return l.size === 'regular' ? 'desk' : 'tablet';
-}
-
-/** The 0.10 frame, for the places that still lay out by the window. */
-export function useFrame(): Frame {
-  return frameOf(useLayout());
-}
-
-/** Ledger and detail side by side (board + session in one frame). */
-export function isSplit(frame: Frame): boolean {
-  return frame === 'desk' || frame === 'wide';
 }
 
 export function createLayoutStore(initial: Layout): LayoutStore {
@@ -117,7 +90,7 @@ const hasMedia = () => typeof window !== 'undefined' && typeof window.matchMedia
 
 /** The window's breakpoint, read from the queries: the layout of the narrowest width that matches them. */
 function fromQueries(matches: (q: string) => boolean): Layout {
-  const width = matches(QUERIES.wide) ? 1280 : matches(QUERIES.regular) ? 1024 : matches(QUERIES.desk) ? 768 : matches(QUERIES.medium) ? 640 : 0;
+  const width = matches(QUERIES.regular) ? 1024 : matches(QUERIES.desk) ? 768 : matches(QUERIES.medium) ? 640 : 0;
   const coarse = matches(QUERIES.coarse);
   return layoutAt(width, { coarse, keyboard: !coarse || keyboardStore.getState().keyboard });
 }
@@ -127,7 +100,7 @@ function readWindow(): Layout {
 }
 
 function same(a: Layout, b: Layout): boolean {
-  return a.size === b.size && a.coarse === b.coarse && a.chrome === b.chrome && a.keyboard === b.keyboard && a.kbUp === b.kbUp && a.wide === b.wide;
+  return a.size === b.size && a.coarse === b.coarse && a.chrome === b.chrome && a.keyboard === b.keyboard && a.kbUp === b.kbUp;
 }
 
 /** Keeps `store` in step with the window (one change listener per query) and the keyboard flag, until the returned function runs. */

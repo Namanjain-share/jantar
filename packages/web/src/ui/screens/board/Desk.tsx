@@ -258,7 +258,7 @@ function Side({ legend }: { legend: boolean }) {
   const alerts = useMemo(() => deskAlerts(state, readLocal<string>(ALERTS_SEEN_KEY, '')), [state]);
   const fresh = alerts.filter((a) => a.unseen).length;
   return (
-    <aside className="hidden w-272 flex-none flex-col gap-24 2xl:flex" aria-label="Alerts and legend">
+    <aside className="hidden w-272 flex-none flex-col gap-24 @wide:flex" aria-label="Alerts and legend">
       {alerts.length ? (
         <section>
           <RailLabel ground="bg" sticky={false} inset={false}>

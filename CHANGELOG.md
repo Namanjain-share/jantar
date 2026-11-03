@@ -78,6 +78,12 @@ What changed for people who use Jantar, newest first. Versions before
   has, not the window: from about 800 px of content (was a 1024 px
   window). In a wide window /more goes to the board: the rail already lists
   every place.
+- **Board and sessions** follow their own width too: a session's property
+  column shows once the session has about 940 px (beside the list on a
+  1440 px Mac window; it asked for a 1360 px window), and the Board's
+  alerts and legend once it has 900. Where a session has less than 640 px,
+  Show on Mac is an icon, so its header fits. Claude's replies in a
+  session read in the reading type, at most 640 px wide.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.
