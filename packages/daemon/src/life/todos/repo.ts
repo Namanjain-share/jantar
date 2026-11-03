@@ -282,6 +282,24 @@ export class TodosRepo {
     return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
   }
 
+  /** v0.13 Work P3: open todos with a deal (any, or one), or one deal's done ones (newest first). Unsorted when open. */
+  dealTodos(dealId: string | null, done: boolean): Todo[] {
+    const db = this.core.db;
+    const rows =
+      dealId === null
+        ? db.prepare("SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NULL AND json_extract(json, '$.dealId') IS NOT NULL").all(this.space)
+        : done
+          ? db.prepare("SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NOT NULL AND json_extract(json, '$.dealId') = ? ORDER BY done_at DESC, id DESC").all(this.space, dealId)
+          : db.prepare("SELECT json, by_person FROM todos WHERE space = ? AND done_at IS NULL AND json_extract(json, '$.dealId') = ?").all(this.space, dealId);
+    return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
+  }
+
+  /** v0.13 Work P3: every todo naming the deal (open and done), for letting go of it. */
+  allOfDeal(dealId: string): Todo[] {
+    const rows = this.core.db.prepare("SELECT json, by_person FROM todos WHERE space = ? AND json_extract(json, '$.dealId') = ?").all(this.space, dealId);
+    return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
+  }
+
   /** The column alone, for a row that no longer parses: it lets go of the client too. */
   clearContactColumn(contactId: string): void {
     this.core.db.prepare('UPDATE todos SET contact_id = NULL WHERE space = ? AND contact_id = ?').run(this.space, contactId);

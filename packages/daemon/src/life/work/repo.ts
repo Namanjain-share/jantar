@@ -14,7 +14,7 @@
  * - Nothing here logs, emits or audits a name, a phone, an e-mail or any
  *   other text of a row: table names and counts only.
  */
-import { ContactSchema, WorkLogJsonSchema, type Contact, type WorkLogJson, type WorkStoredLogKind } from '@jantar/protocol/work';
+import { ContactSchema, DealSchema, WorkLogJsonSchema, type Contact, type Deal, type WorkLogJson, type WorkStoredLogKind } from '@jantar/protocol/work';
 import { normalizeContactName } from '@jantar/life-core';
 import type { LifeCore, Logger } from '../../contracts.js';
 
@@ -281,10 +281,111 @@ export class WorkRepo {
     db.prepare("UPDATE work_deals SET json = json_remove(json, '$.projectId'), updated_at = ? WHERE json_extract(json, '$.projectId') = ?").run(at, projectId);
   }
 
-  // --- deals (P3 fills them; P2 counts and deletes) ------------------------------------
+  // --- deals (P3) --------------------------------------------------------------------
+
+  private dealRows(rows: readonly { json: string }[]): Deal[] {
+    const out: Deal[] = [];
+    let bad = 0;
+    for (const r of rows) {
+      let value: unknown;
+      try {
+        value = JSON.parse(r.json);
+      } catch {
+        bad += 1;
+        continue;
+      }
+      const p = DealSchema.safeParse(value);
+      if (p.success) out.push(p.data);
+      else bad += 1;
+    }
+    this.bad('work_deals', bad);
+    return out;
+  }
 
   hasDeal(id: string): boolean {
     return this.core.db.prepare('SELECT 1 AS one FROM work_deals WHERE id = ?').get(id) !== undefined;
+  }
+
+  deal(id: string): Deal | null {
+    const r = this.core.db.prepare('SELECT json FROM work_deals WHERE id = ?').get(id) as { json: string } | undefined;
+    return r ? (this.dealRows([r])[0] ?? null) : null;
+  }
+
+  /** Every deal, open or closed (oldest first). */
+  allDeals(): Deal[] {
+    return this.dealRows(this.core.db.prepare('SELECT json FROM work_deals ORDER BY id').all() as unknown as { json: string }[]);
+  }
+
+  /** The deals of some clients (oldest first). */
+  dealsOf(contactIds: readonly string[]): Deal[] {
+    if (contactIds.length === 0) return [];
+    const marks = contactIds.map(() => '?').join(', ');
+    return this.dealRows(this.core.db.prepare(`SELECT json FROM work_deals WHERE contact_id IN (${marks}) ORDER BY id`).all(...contactIds) as unknown as { json: string }[]);
+  }
+
+  dealCount(): number {
+    return Number((this.core.db.prepare('SELECT COUNT(*) AS n FROM work_deals').get() as { n: number }).n);
+  }
+
+  openDealCount(): number {
+    return Number((this.core.db.prepare('SELECT COUNT(*) AS n FROM work_deals WHERE closed_at IS NULL').get() as { n: number }).n);
+  }
+
+  /** How many deals sit on each stage (open and closed). */
+  dealsByStage(): Record<string, number> {
+    const rows = this.core.db.prepare('SELECT stage, COUNT(*) AS n FROM work_deals GROUP BY stage').all() as unknown as { stage: string; n: number }[];
+    return Object.fromEntries(rows.map((r) => [r.stage, Number(r.n)]));
+  }
+
+  /** Insert or update; `closed_at` is its win or loss (null while open). */
+  saveDeal(d: Deal): void {
+    const json = JSON.stringify(DealSchema.parse(d));
+    this.core.db
+      .prepare(
+        `INSERT INTO work_deals (id, contact_id, stage, closed_at, updated_at, json) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET contact_id = excluded.contact_id, stage = excluded.stage, closed_at = excluded.closed_at,
+           updated_at = excluded.updated_at, json = excluded.json`,
+      )
+      .run(d.id, d.contactId, d.stage, d.wonAt ?? d.lostAt ?? null, d.updatedAt, json);
+  }
+
+  deleteDeal(id: string): boolean {
+    return Number(this.core.db.prepare('DELETE FROM work_deals WHERE id = ?').run(id).changes) === 1;
+  }
+
+  /**
+   * A deleted deal's own rows (its stage moves and its "added") go; a call or a note logged with it stays
+   * on the client, with no deal. How many rows went.
+   */
+  forgetDealLog(dealId: string): number {
+    const db = this.core.db;
+    const n = Number(db.prepare("DELETE FROM work_log WHERE deal_id = ? AND kind IN ('stage', 'created')").run(dealId).changes);
+    db.prepare('UPDATE work_log SET deal_id = NULL WHERE deal_id = ?').run(dealId);
+    return n;
+  }
+
+  /** A deal's own rows (its moves and its "added") follow it to another client. */
+  moveDealLog(dealId: string, contactId: string): void {
+    this.core.db.prepare("UPDATE work_log SET contact_id = ? WHERE deal_id = ? AND kind IN ('stage', 'created')").run(contactId, dealId);
+  }
+
+  /** A removed stage's deals re-filed on another (a re-filing, not a move: their stage time stays). How many. */
+  refileStage(from: string, to: string, at: string): number {
+    return Number(
+      this.core.db.prepare("UPDATE work_deals SET stage = ?, json = json_set(json, '$.stage', ?), updated_at = ? WHERE stage = ?").run(to, to, at, from).changes,
+    );
+  }
+
+  /** A deal's rows he can see, newest first. */
+  logOfDeal(dealId: string, limit: number): LogRecord[] {
+    const rows = this.core.db.prepare(`SELECT ${LOG_COLUMNS} FROM work_log WHERE deal_id = ? AND json_extract(json, '$.off') IS NULL ORDER BY at DESC, id DESC LIMIT ?`).all(dealId, limit);
+    return this.logs(rows as unknown as LogRow[]);
+  }
+
+  /** Every deal's moves and "added" rows at or after `since` (oldest first): the funnel and time in stage. */
+  stageRows(since: string): LogRecord[] {
+    const rows = this.core.db.prepare(`SELECT ${LOG_COLUMNS} FROM work_log WHERE deal_id IS NOT NULL AND kind IN ('stage', 'created') AND at >= ? ORDER BY at, id`).all(since);
+    return this.logs(rows as unknown as LogRow[]);
   }
 
   /** Open deals per contact: how many, and their values per currency (P3's rows; none before). */
@@ -309,12 +410,13 @@ export class WorkRepo {
     return Number((this.core.db.prepare('SELECT COUNT(*) AS n FROM work_deals WHERE contact_id = ?').get(contactId) as { n: number }).n);
   }
 
-  /** A deleted client's deals and their log rows. How many deals. */
-  deleteDealsOf(contactId: string): { deals: number; ids: string[] } {
+  /** A deleted client's deals and their log rows. How many deals, and how many rows went with them. */
+  deleteDealsOf(contactId: string): { deals: number; ids: string[]; log: number } {
     const db = this.core.db;
     const ids = (db.prepare('SELECT id FROM work_deals WHERE contact_id = ?').all(contactId) as unknown as { id: string }[]).map((r) => r.id);
-    for (const id of ids) db.prepare('DELETE FROM work_log WHERE deal_id = ?').run(id);
+    let log = 0;
+    for (const id of ids) log += Number(db.prepare('DELETE FROM work_log WHERE deal_id = ?').run(id).changes);
     db.prepare('DELETE FROM work_deals WHERE contact_id = ?').run(contactId);
-    return { deals: ids.length, ids };
+    return { deals: ids.length, ids, log };
   }
 }

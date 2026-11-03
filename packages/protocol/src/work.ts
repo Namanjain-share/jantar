@@ -2,8 +2,8 @@
  * v0.13 Work: the owner's projects as a hub, one search across Jantar, and
  * projects made from his client folders (P1); his clients and companies,
  * the log of calls, meetings and notes, follow-ups (todos with a client),
- * meetings linked to clients, import and export (P2). Deals and insights
- * (P3) add their shapes and routes here.
+ * meetings linked to clients, import and export (P2); deals, their stages,
+ * Won and Lost, and insights (P3).
  *
  * This is the subpath `@jantar/protocol/work`, never exported from the
  * package index (as `@jantar/protocol/people` is not): none of it lands in
@@ -23,6 +23,7 @@
 import { z } from 'zod';
 import type { RouteDef } from './api.js';
 import {
+  DayKeySchema,
   DueSchema,
   FolderPathSchema,
   IdReplySchema,
@@ -93,6 +94,23 @@ export const WORK_LIMITS = Object.freeze({
   /** An import can be undone for this long; the newest this many are listed. */
   importUndoDays: 7,
   importsKept: 10,
+  // --- P3: deals, stages, insights
+  /** At least this many stages (an open one, Won and Lost). */
+  stagesMin: 3,
+  /** GET /v1/work/deals: rows in one answer (the rest are counted in `more`). */
+  dealsPage: 500,
+  /** A client's deals on its hub (its own and its company's or its people's). */
+  hubDeals: 50,
+  /** A deal's log page on its hub. */
+  dealLog: 30,
+  /** The Won and Lost columns sum the deals closed in this many days. */
+  closedDays: 30,
+  /** client_here's open deals, at most. */
+  hereDeals: 10,
+  /** A lost deal's note. */
+  lostNote: 200,
+  /** A deal's value at most (integer hundredths). */
+  dealValueMax: 1e13,
 });
 
 // ---------------------------------------------------------------------------
@@ -389,6 +407,318 @@ export const WorkLogPatchSchema = z.strictObject({
 export type WorkLogPatch = z.infer<typeof WorkLogPatchSchema>;
 
 // ---------------------------------------------------------------------------
+// P3: stages (meta work_stages) and deals (work_deals)
+
+/** A stage's id: one of the six defaults' slugs, or one the daemon made. */
+export const WorkStageIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/);
+export const WorkStageKindSchema = z.enum(['open', 'won', 'lost']);
+export type WorkStageKind = z.infer<typeof WorkStageKindSchema>;
+export const WorkStageNameSchema = z.string().trim().min(1).max(30);
+export const WorkProbabilitySchema = z.number().int().min(0).max(100);
+export const WorkQuietDaysSchema = z.number().int().min(1).max(90);
+
+/** One stage as stored (meta work_stages, in order): exactly one Won and one Lost, 3 to 12 in all. */
+export const WorkStageSchema = z.object({
+  id: WorkStageIdSchema,
+  name: WorkStageNameSchema,
+  kind: WorkStageKindSchema,
+  /** An open stage's close probability; unset ramps by position (Won is 100, Lost 0, always). */
+  probability: WorkProbabilitySchema.optional(),
+  /** Quiet after this many days with no move and no touch (unset: Work's setting). */
+  quietDays: WorkQuietDaysSchema.optional(),
+});
+export type WorkStage = z.infer<typeof WorkStageSchema>;
+
+/** The six stages Work starts with (W10, Noblot's agency set). */
+export const DEFAULT_WORK_STAGES: readonly WorkStage[] = Object.freeze([
+  { id: 'new', name: 'New lead', kind: 'open' },
+  { id: 'contacted', name: 'Contacted', kind: 'open' },
+  { id: 'proposal', name: 'Proposal sent', kind: 'open' },
+  { id: 'negotiation', name: 'Negotiation', kind: 'open' },
+  { id: 'won', name: 'Won', kind: 'won' },
+  { id: 'lost', name: 'Lost', kind: 'lost' },
+]);
+
+/** Why a loss happened (life-core LOST_REASON_CODES; a test pins them equal). */
+export const WORK_LOST_CODES = ['price', 'timing', 'competitor', 'no_budget', 'no_response', 'not_a_fit', 'lost_internally', 'other'] as const;
+export const WorkLostCodeSchema = z.enum(WORK_LOST_CODES);
+export type WorkLostCode = z.infer<typeof WorkLostCodeSchema>;
+export const WorkLostNoteSchema = z.string().trim().max(WORK_LIMITS.lostNote);
+
+export const DealTitleSchema = z.string().trim().min(1).max(80);
+/** Integer hundredths, as all money in Jantar. */
+export const DealValueSchema = z.number().int().min(0).max(WORK_LIMITS.dealValueMax);
+/** ISO 4217 (INR, USD); a deal's is set when it is made (the Life currency unless he names one). */
+export const DealCurrencySchema = z.string().regex(/^[A-Z]{3}$/);
+
+/** A deal as stored (work_deals.json). Its client is `contactId` (usually a company). */
+export const DealSchema = z.object({
+  id: LifeIdSchema,
+  title: DealTitleSchema,
+  contactId: LifeIdSchema,
+  stage: WorkStageIdSchema,
+  value: DealValueSchema.optional(),
+  currency: DealCurrencySchema.optional(),
+  /** The day it should close (Life zone). */
+  expectedClose: DayKeySchema.optional(),
+  source: ShortText(60).optional(),
+  business: LifeIdSchema.optional(),
+  /** The project it became (Won → "Make a project"), or one he linked. */
+  projectId: LifeIdSchema.optional(),
+  /** When it reached its stage (a move; its creation). */
+  stageMovedAt: IsoDateSchema,
+  wonAt: IsoDateSchema.optional(),
+  lostAt: IsoDateSchema.optional(),
+  lostCode: WorkLostCodeSchema.optional(),
+  lostNote: WorkLostNoteSchema.optional(),
+  /** Who wrote the words when it isn't him (a later deal import); never a body's. */
+  from: z.enum(['import']).optional(),
+  createdAt: IsoDateSchema,
+  updatedAt: IsoDateSchema,
+});
+export type Deal = z.infer<typeof DealSchema>;
+
+export const WorkCloseStateSchema = z.enum(['overdue', 'today', 'soon', 'later']);
+/**
+ * One deal as a card (lists, a client's and a project's hub). `next`: the earliest open todo of the deal,
+ * else of its client (W12); none on an open deal is "no next step". `quiet`: an open deal with no move and
+ * no touch with its client in its stage's quiet days. `closeState` only while open.
+ */
+export const WorkDealCardSchema = z.object({
+  id: LifeIdSchema,
+  title: z.string(),
+  client: z.object({ id: LifeIdSchema, name: z.string(), from: ContactFromSchema.optional() }),
+  stage: WorkStageIdSchema,
+  stageName: z.string(),
+  kind: WorkStageKindSchema,
+  value: z.number().int().optional(),
+  currency: DealCurrencySchema.nullable(),
+  daysInStage: z.number().int().nonnegative(),
+  expectedClose: DayKeySchema.optional(),
+  closeState: WorkCloseStateSchema.optional(),
+  next: z.object({ todoId: LifeIdSchema, title: z.string(), due: DueSchema.optional() }).optional(),
+  quiet: z.boolean(),
+  source: z.string().optional(),
+  business: LifeIdSchema.optional(),
+  projectId: LifeIdSchema.optional(),
+  wonAt: IsoDateSchema.optional(),
+  lostAt: IsoDateSchema.optional(),
+  lostCode: WorkLostCodeSchema.optional(),
+  from: z.enum(['import']).optional(),
+});
+export type WorkDealCard = z.infer<typeof WorkDealCardSchema>;
+
+const flag = z.enum(['0', '1']).transform((v) => v === '1');
+/**
+ * GET /v1/work/deals: open ones (the default) by stage, then close day; `open=0` the closed ones, newest
+ * first. `stage`, `business`, `client` (its own deals), `closing` (week or month, overdue ones included),
+ * `quiet=1`, `q` (title or client name, any case).
+ */
+export const WorkDealsQuerySchema = z.object({
+  open: flag.default(true),
+  stage: WorkStageIdSchema.optional(),
+  business: LifeIdSchema.optional(),
+  client: LifeIdSchema.optional(),
+  closing: z.enum(['week', 'month']).optional(),
+  quiet: flag.optional(),
+  q: z.string().trim().min(1).max(80).optional(),
+});
+export type WorkDealsQuery = z.infer<typeof WorkDealsQuerySchema>;
+/**
+ * Each stage's column: its open deals (Won and Lost: the deals closed in the last WORK_LIMITS.closedDays
+ * days), their value and weighted value per currency (never added across), and how many are quiet.
+ */
+export const WorkStageColumnSchema = z.object({
+  id: WorkStageIdSchema,
+  name: z.string(),
+  kind: WorkStageKindSchema,
+  probability: WorkProbabilitySchema,
+  count: z.number().int().nonnegative(),
+  value: z.array(WorkSumSchema),
+  weighted: z.array(WorkSumSchema),
+  quiet: z.number().int().nonnegative(),
+});
+export type WorkStageColumn = z.infer<typeof WorkStageColumnSchema>;
+export const WorkDealsResponseSchema = z.object({
+  deals: z.array(WorkDealCardSchema).max(WORK_LIMITS.dealsPage),
+  more: z.number().int().nonnegative(),
+  stages: z.array(WorkStageColumnSchema),
+});
+export type WorkDealsResponse = z.infer<typeof WorkDealsResponseSchema>;
+
+/**
+ * POST /v1/work/deals: a client by id, or by name (a client with that name, any case, else a new company,
+ * a lead). An open stage only (default the first): Won and Lost are moves, never a value a deal starts at.
+ */
+export const WorkDealCreateBodySchema = z
+  .strictObject({
+    clientId: LifeIdSchema.optional(),
+    clientName: ContactNameSchema.optional(),
+    title: DealTitleSchema,
+    stage: WorkStageIdSchema.optional(),
+    value: DealValueSchema.optional(),
+    currency: DealCurrencySchema.optional(),
+    expectedClose: DayKeySchema.optional(),
+    source: ShortText(60).optional(),
+    business: LifeIdSchema.optional(),
+    projectId: LifeIdSchema.optional(),
+  })
+  .refine((b) => (b.clientId === undefined) !== (b.clientName === undefined), { message: 'a client id or a client name', path: ['clientId'] });
+export type WorkDealCreateBody = z.infer<typeof WorkDealCreateBodySchema>;
+export const WorkDealCreateReplySchema = z.object({ id: LifeIdSchema, clientId: LifeIdSchema });
+export type WorkDealCreateReply = z.infer<typeof WorkDealCreateReplySchema>;
+
+/** PATCH /v1/work/deals/:id (null clears). The stage changes only by a move; a loss's reason only on a lost deal. */
+export const WorkDealPatchSchema = z.strictObject({
+  title: DealTitleSchema.optional(),
+  clientId: LifeIdSchema.optional(),
+  value: DealValueSchema.nullable().optional(),
+  currency: DealCurrencySchema.optional(),
+  expectedClose: DayKeySchema.nullable().optional(),
+  source: ShortText(60).nullable().optional(),
+  business: LifeIdSchema.nullable().optional(),
+  projectId: LifeIdSchema.nullable().optional(),
+  lostCode: WorkLostCodeSchema.nullable().optional(),
+  lostNote: WorkLostNoteSchema.nullable().optional(),
+});
+export type WorkDealPatch = z.infer<typeof WorkDealPatchSchema>;
+/** DELETE /v1/work/deals/:id: its log rows go; its follow-ups stay, let go of it. */
+export const WorkDealDeleteReplySchema = z.object({ ok: z.literal(true), removed: z.object({ log: z.number().int() }) });
+export type WorkDealDeleteReply = z.infer<typeof WorkDealDeleteReplySchema>;
+
+/**
+ * POST /v1/work/deals/:id/move: to any stage. Won makes its client a client (never the reverse) and, with
+ * `project`, makes the project (its client, business and the deal linked) in the same save; Lost takes an
+ * optional reason; a closed deal moved to an open stage is open again. The reply names the stage it left,
+ * so Undo is a move back.
+ */
+export const WorkDealMoveBodySchema = z
+  .strictObject({
+    stage: WorkStageIdSchema,
+    lostCode: WorkLostCodeSchema.optional(),
+    lostNote: WorkLostNoteSchema.optional(),
+    project: z.strictObject({ name: ProjectBodySchema.shape.name, folder: FolderPathSchema.optional() }).optional(),
+  });
+export type WorkDealMoveBody = z.infer<typeof WorkDealMoveBodySchema>;
+export const WorkDealMoveReplySchema = z.object({ id: LifeIdSchema, from: WorkStageIdSchema, projectId: LifeIdSchema.optional() });
+export type WorkDealMoveReply = z.infer<typeof WorkDealMoveReplySchema>;
+
+/** One deal as a hub: the deal, its card, its client, its project, its open follow-ups and its log (stage moves included). */
+export const WorkDealHubSchema = z.object({
+  deal: DealSchema,
+  card: WorkDealCardSchema,
+  client: WorkClientRefSchema,
+  project: ProjectViewSchema.optional(),
+  followUps: z.array(TodoSchema),
+  log: z.array(WorkLogRowSchema).max(WORK_LIMITS.dealLog),
+});
+export type WorkDealHub = z.infer<typeof WorkDealHubSchema>;
+
+/** GET /v1/work/stages: the stages in order, each with its probability (set or ramped) and its deals; Work's quiet days. */
+export const WorkStagesReplySchema = z.object({
+  stages: z.array(WorkStageSchema.extend({ order: z.number().int(), effectiveProbability: WorkProbabilitySchema, deals: z.number().int().nonnegative() })),
+  quietDays: z.number().int(),
+});
+export type WorkStagesReply = z.infer<typeof WorkStagesReplySchema>;
+/**
+ * PUT /v1/work/stages: the list in its new order. A stage without an id is new (an open one); a kept id
+ * keeps its kind; Won and Lost can be renamed and moved but never removed. A removed stage that holds deals
+ * needs `moves` naming a kept open stage for them (N:core/pipeline.ts planStageDeletions).
+ */
+export const WorkStagesBodySchema = z.strictObject({
+  stages: z
+    .array(z.strictObject({ id: WorkStageIdSchema.optional(), name: WorkStageNameSchema, probability: WorkProbabilitySchema.nullable().optional(), quietDays: WorkQuietDaysSchema.nullable().optional() }))
+    .min(WORK_LIMITS.stagesMin)
+    .max(WORK_LIMITS.stages),
+  moves: z.array(z.strictObject({ from: WorkStageIdSchema, to: WorkStageIdSchema })).max(WORK_LIMITS.stages).optional(),
+});
+export type WorkStagesBody = z.infer<typeof WorkStagesBodySchema>;
+export const WorkStagesPutReplySchema = z.object({ ok: z.literal(true), moved: z.number().int().nonnegative() });
+export type WorkStagesPutReply = z.infer<typeof WorkStagesPutReplySchema>;
+
+// ---------------------------------------------------------------------------
+// P3: insights (W36). No data is never zero: a rate with nothing closed is null.
+
+export const WORK_INSIGHT_PERIODS = ['30d', '90d', '6m', '12m', 'ytd', 'fy', 'all'] as const;
+export const WorkInsightPeriodSchema = z.enum(WORK_INSIGHT_PERIODS);
+export const WorkInsightsQuerySchema = z.object({ period: WorkInsightPeriodSchema.default('90d'), business: LifeIdSchema.optional() });
+export type WorkInsightsQuery = z.infer<typeof WorkInsightsQuerySchema>;
+
+const Rate = z.number().min(0).max(1).nullable();
+const MonthRow = z.object({ month: z.string(), label: z.string(), value: z.number().int(), count: z.number().int() });
+/** One currency's book (money never added across currencies, W17). */
+export const WorkInsightsBookSchema = z.object({
+  currency: DealCurrencySchema.nullable(),
+  /** Over the deals closed in the period. */
+  winRate: z.object({ won: z.number().int(), lost: z.number().int(), closed: z.number().int(), open: z.number().int(), rate: Rate }),
+  /** Days from a deal's start to its win, over the deals won in the period. */
+  cycle: z.object({ averageDays: z.number().nullable(), sample: z.number().int(), fastestDays: z.number().nullable(), slowestDays: z.number().nullable() }),
+  revenueByMonth: z.array(MonthRow),
+  /** Losses in the period by reason. */
+  losses: z.array(z.object({ code: WorkLostCodeSchema.nullable(), label: z.string(), count: z.number().int(), value: z.number().int(), share: z.number() })),
+  /** The deals started in the period, by source. */
+  sources: z.array(z.object({ source: z.string().nullable(), deals: z.number().int(), won: z.number().int(), lost: z.number().int(), open: z.number().int(), revenue: z.number().int(), openValue: z.number().int(), winRate: Rate })),
+  /** Open deals weighted by their stage, by the month they should close. */
+  forecast: z.object({ months: z.array(MonthRow.extend({ weighted: z.number().int() })), unscheduled: z.object({ value: z.number().int(), weighted: z.number().int(), count: z.number().int() }) }),
+  /** Week by week: added, won and lost, and what was still open at each week's end. */
+  trend: z.array(
+    z.object({
+      key: z.string(),
+      label: z.string(),
+      added: z.number().int(),
+      won: z.number().int(),
+      lost: z.number().int(),
+      addedValue: z.number().int(),
+      wonValue: z.number().int(),
+      lostValue: z.number().int(),
+      openValue: z.number().int(),
+      openCount: z.number().int(),
+    }),
+  ),
+  open: z.object({ count: z.number().int(), value: z.number().int(), weighted: z.number().int() }),
+});
+export type WorkInsightsBook = z.infer<typeof WorkInsightsBookSchema>;
+export const WorkInsightsReplySchema = z.object({
+  period: z.object({ preset: WorkInsightPeriodSchema, from: IsoDateSchema, to: IsoDateSchema }),
+  /** One book per currency, the Life currency first. */
+  books: z.array(WorkInsightsBookSchema),
+  /** Stage moves in the period: what entered, left, advanced and was lost from each stage. */
+  funnel: z.object({
+    rows: z.array(
+      z.object({
+        stageId: z.string(),
+        name: z.string(),
+        kind: WorkStageKindSchema,
+        order: z.number().int(),
+        entered: z.number().int(),
+        exited: z.number().int(),
+        advanced: z.number().int(),
+        lostFrom: z.number().int(),
+        net: z.number().int(),
+        conversionRate: Rate,
+      }),
+    ),
+    unknownEntered: z.number().int(),
+    unknownExited: z.number().int(),
+  }),
+  /** Days in each open stage (moves in the period; what sits there now). */
+  timeInStage: z.array(
+    z.object({
+      stageId: z.string(),
+      name: z.string(),
+      kind: WorkStageKindSchema,
+      order: z.number().int(),
+      averageDays: z.number().nullable(),
+      medianDays: z.number().nullable(),
+      sample: z.number().int(),
+      sittingCount: z.number().int(),
+      oldestSittingDays: z.number().nullable(),
+    }),
+  ),
+});
+export type WorkInsightsReply = z.infer<typeof WorkInsightsReplySchema>;
+
+// ---------------------------------------------------------------------------
 // P2: one client as a hub (GET /v1/work/clients/:id)
 
 /** "Check in every N days": `since` whole days since the last touch (null: never touched); `due` once it is N or more. */
@@ -408,6 +738,8 @@ export const WorkClientHubSchema = z.object({
   logNext: WorkLogCursorSchema.optional(),
   checkIn: WorkCheckInSchema.optional(),
   openDeals: z.object({ count: z.number().int().nonnegative(), sums: z.array(WorkSumSchema) }),
+  /** P3: its deals (a person's and its company's; a company's and its people's), open ones first. */
+  deals: z.array(WorkDealCardSchema).max(WORK_LIMITS.hubDeals),
 });
 export type WorkClientHub = z.infer<typeof WorkClientHubSchema>;
 
@@ -510,8 +842,8 @@ export const WorkImportsReplySchema = z.object({
   imports: z.array(z.object({ batch: LifeIdSchema, at: IsoDateSchema, added: z.number().int(), filled: z.number().int(), undoUntil: IsoDateSchema })).max(WORK_LIMITS.importsKept),
 });
 export type WorkImportsReply = z.infer<typeof WorkImportsReplySchema>;
-/** GET /v1/work/export.csv?what=clients: a CSV of his clients (P3 adds deals). */
-export const WorkExportQuerySchema = z.object({ what: z.enum(['clients']).default('clients') });
+/** GET /v1/work/export.csv?what=clients|deals: a CSV of his clients, or (P3) of his deals. */
+export const WorkExportQuerySchema = z.object({ what: z.enum(['clients', 'deals']).default('clients') });
 export type WorkExportQuery = z.infer<typeof WorkExportQuerySchema>;
 
 // ---------------------------------------------------------------------------
@@ -563,6 +895,8 @@ export const FolderClientResponseSchema = z.object({
       next: z.object({ title: z.string(), due: DueSchema.optional(), source: z.enum(['meeting']).optional() }).optional(),
       lastTouchAt: IsoDateSchema.optional(),
       openDeals: z.number().int().nonnegative(),
+      /** P3: its open deals (the first WORK_LIMITS.hereDeals), each with its stage's name. */
+      deals: z.array(z.object({ title: z.string(), stage: z.string(), source: z.enum(['import']).optional() })).max(WORK_LIMITS.hereDeals).optional(),
     })
     .nullable(),
 });
@@ -598,6 +932,8 @@ export const ProjectHubSchema = z.object({
   /** P2, while Work is on (his own project only): the project's client, and its newest log rows. */
   client: WorkClientRefSchema.optional(),
   log: z.array(WorkLogRowSchema).max(WORK_LIMITS.projectLog).optional(),
+  /** P3, while Work is on: the project's deal (an open one first, else the newest). */
+  deal: WorkDealCardSchema.optional(),
 });
 export type ProjectHub = z.infer<typeof ProjectHubSchema>;
 
@@ -673,6 +1009,10 @@ function route<T extends RouteDef>(r: T): T {
  * Work's settings, behind the `work` switch. On ctl.sock only what the CLI
  * and `jantar mcp` need: the import, its list and undo, the export, the
  * settings read, and client_here (ctl.sock only).
+ *
+ * P3: deals, their stages, moves (Won makes a project when asked), and
+ * insights, behind the `work` switch, on his host only (the CLI's deals
+ * CSV is the export's).
  */
 export const WORK_ROUTES = {
   projectGet: route({
@@ -789,7 +1129,7 @@ export const WORK_ROUTES = {
   workExport: route({
     method: 'GET', path: '/v1/work/export.csv', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work', rawResponse: true,
     query: WorkExportQuerySchema,
-    summary: 'His clients as a CSV file (a download or the share sheet; never written into a folder).',
+    summary: 'His clients (or, what=deals, his deals) as a CSV file (a download or the share sheet; never written into a folder).',
   }),
   workSettings: route({
     method: 'GET', path: '/v1/work/settings', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work',
@@ -800,6 +1140,52 @@ export const WORK_ROUTES = {
     method: 'PATCH', path: '/v1/work/settings', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
     body: WorkSettingsPatchSchema, response: OkReplySchema,
     summary: "Change Work's businesses, dial code or quiet days.",
+  }),
+  // --- P3: deals, stages and insights (feature `work`, his host only).
+  workDeals: route({
+    method: 'GET', path: '/v1/work/deals', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    query: WorkDealsQuerySchema, response: WorkDealsResponseSchema,
+    summary: 'His deals as cards (open ones by default), with each stage\'s count, value and weighted value per currency.',
+  }),
+  workDealCreate: route({
+    method: 'POST', path: '/v1/work/deals', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    body: WorkDealCreateBodySchema, response: WorkDealCreateReplySchema,
+    summary: 'Add a deal for a client (by id, or by name: one with that name, else a new company), on an open stage.',
+  }),
+  workDealGet: route({
+    method: 'GET', path: '/v1/work/deals/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, response: WorkDealHubSchema,
+    summary: 'One deal as a hub: its card, client, project, open follow-ups and log (stage moves included).',
+  }),
+  workDealUpdate: route({
+    method: 'PATCH', path: '/v1/work/deals/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, body: WorkDealPatchSchema, response: OkReplySchema,
+    summary: 'Change a deal (null clears a field); its stage changes only by a move.',
+  }),
+  workDealDelete: route({
+    method: 'DELETE', path: '/v1/work/deals/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, response: WorkDealDeleteReplySchema,
+    summary: 'Delete a deal with its log; its follow-ups stay, with no deal.',
+  }),
+  workDealMove: route({
+    method: 'POST', path: '/v1/work/deals/:id/move', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, body: WorkDealMoveBodySchema, response: WorkDealMoveReplySchema,
+    summary: 'Move a deal to a stage (Won: its client becomes a client, and a project when asked; Lost: an optional reason).',
+  }),
+  workStages: route({
+    method: 'GET', path: '/v1/work/stages', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    response: WorkStagesReplySchema,
+    summary: 'The stages in order, each with its probability and its deals.',
+  }),
+  workStagesUpdate: route({
+    method: 'PUT', path: '/v1/work/stages', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    body: WorkStagesBodySchema, response: WorkStagesPutReplySchema,
+    summary: 'Rename, reorder, add or remove stages (a removed stage with deals names where they go).',
+  }),
+  workInsights: route({
+    method: 'GET', path: '/v1/work/insights', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    query: WorkInsightsQuerySchema, response: WorkInsightsReplySchema,
+    summary: 'Win rate, cycle, revenue, losses, sources, forecast and the weekly flow per currency; the funnel and time in stage.',
   }),
   // `jantar mcp` (a session's folder): who the work is for; never a phone, an e-mail, notes or log text.
   workClientHere: route({

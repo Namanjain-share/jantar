@@ -201,6 +201,21 @@ import type {
   WorkMeetingSuggestReply,
   WorkSettings,
   WorkSettingsPatch,
+  Deal,
+  WorkDealCreateBody,
+  WorkDealCreateReply,
+  WorkDealDeleteReply,
+  WorkDealHub,
+  WorkDealCard,
+  WorkDealMoveBody,
+  WorkDealMoveReply,
+  WorkDealPatch,
+  WorkDealsQuery,
+  WorkDealsResponse,
+  WorkInsightsQuery,
+  WorkInsightsReply,
+  WorkStagesBody,
+  WorkStagesReply,
 } from '@jantar/protocol/work';
 
 export type Unsubscribe = () => void;
@@ -1880,6 +1895,10 @@ export interface TodosModule extends LifeModule {
   followUpCount(contactId: string): number;
   /** v0.13 Work P2: a deleted client's todos and projects let go of it (inside Work's transaction). */
   unlinkClient(contactId: string): { todos: number; projects: number };
+  /** v0.13 Work P3: todos with a deal in his space: open ones by due (of every deal, or one), or one deal's done ones, newest first. */
+  dealFollowUps(dealId: string | null, done: boolean): Todo[];
+  /** v0.13 Work P3: a deleted deal's todos let go of it (inside Work's transaction). How many. */
+  unlinkDeal(dealId: string): number;
   /**
    * `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. v0.11: `opts.by`
    * (the author, in a person space) and `opts.extra` (People's daemon-set fields) come from the People module.
@@ -2063,8 +2082,8 @@ export interface WorkModule extends LifeModule {
   removeLog(id: string, actor: Actor): LifeResult;
   /** One of his log rows (Chat's Undo), or null. */
   logRow(id: string): WorkLogRow | null;
-  /** The project hub's Work part (his own project): its client and newest log rows. */
-  projectPart(projectId: string, clientId: string | undefined, actor: Actor): LifeResult<{ client?: WorkClientRef; log: WorkLogRow[] }>;
+  /** The project hub's Work part (his own project): its client, newest log rows and (P3) its deal. */
+  projectPart(projectId: string, clientId: string | undefined, actor: Actor): LifeResult<{ client?: WorkClientRef; log: WorkLogRow[]; deal?: WorkDealCard }>;
   // --- P2: meetings linked to clients (W15). Work never reads meetings.db: Meetings tells it, or the route does.
   /** A meeting's project was set or cleared: its automatic link follows the project's client. */
   meetingProject(meeting: WorkMeetingRef): void;
@@ -2081,10 +2100,26 @@ export interface WorkModule extends LifeModule {
   importRows(body: WorkImportBody, actor: Actor): LifeResult<WorkImportReply>;
   imports(actor: Actor): LifeResult<WorkImportsReply>;
   undoImport(batch: string, actor: Actor): LifeResult<WorkImportUndoReply>;
-  exportCsv(actor: Actor): LifeResult<string>;
   settingsGet(actor: Actor): LifeResult<WorkSettings>;
   settingsUpdate(patch: WorkSettingsPatch, actor: Actor): LifeResult;
   forFolder(folder: string): FolderClientResponse;
+  // --- P3: deals, stages and insights
+  deals(q: WorkDealsQuery, actor: Actor): LifeResult<WorkDealsResponse>;
+  createDeal(body: WorkDealCreateBody, actor: Actor): LifeResult<WorkDealCreateReply>;
+  /** One deal as a hub. Meeting rows in its log carry the meeting's id only: the route names them. */
+  deal(id: string, actor: Actor): LifeResult<WorkDealHub>;
+  updateDeal(id: string, patch: WorkDealPatch, actor: Actor): LifeResult;
+  /** Its own log rows go; calls and notes logged with it stay on the client; its todos let go of it. */
+  removeDeal(id: string, actor: Actor): LifeResult<WorkDealDeleteReply['removed']>;
+  /** Won: its client becomes a client and, with `project`, the project is made in the same save. */
+  moveDeal(id: string, body: WorkDealMoveBody, actor: Actor): LifeResult<WorkDealMoveReply>;
+  /** One deal as stored (Chat's Undo and labels), or null. */
+  dealRecord(id: string): Deal | null;
+  stagesGet(actor: Actor): LifeResult<WorkStagesReply>;
+  stagesPut(body: WorkStagesBody, actor: Actor): LifeResult<{ moved: number }>;
+  insights(q: WorkInsightsQuery, actor: Actor): LifeResult<WorkInsightsReply>;
+  /** P3: the export takes `what` (clients, or deals). */
+  exportCsv(actor: Actor, what?: 'clients' | 'deals'): LifeResult<string>;
 }
 
 /** v0.13 Work P2: a meeting as Work needs it (from meetings.db, through Meetings or the route): its id, project and start. */

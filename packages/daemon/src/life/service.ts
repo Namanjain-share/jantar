@@ -197,7 +197,7 @@ class LifeServiceImpl implements LifeService {
     finance: closedModule<FinanceModule>('finance'),
     posts: closedModule<PostsModule>('posts'),
     // v0.13: what Meetings and Chat call without a LifeResult answer nothing while life.db is closed.
-    work: closedModule<WorkModule>('work', { contact: () => null, logRow: () => null, meetingProject: () => undefined, forgetMeeting: () => undefined, resyncMeetings: () => undefined }),
+    work: closedModule<WorkModule>('work', { contact: () => null, logRow: () => null, dealRecord: () => null, meetingProject: () => undefined, forgetMeeting: () => undefined, resyncMeetings: () => undefined }),
   };
   /** v0.13 Work: every meeting with a project (Meetings registers it once built). */
   private meetingSource: (() => readonly WorkMeetingRef[] | null) | null = null;

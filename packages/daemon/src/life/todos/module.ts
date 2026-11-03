@@ -355,6 +355,28 @@ class Todos implements TodosModule {
     });
   }
 
+  /** v0.13 Work P3: todos with a deal in his space: open ones by due (of every deal, or one), or one deal's done ones, newest first. */
+  dealFollowUps(dealId: string | null, done: boolean): Todo[] {
+    if (this.repo.space !== '') return [];
+    const todos = this.repo.dealTodos(dealId, done);
+    return done ? todos : todos.sort(byDue);
+  }
+
+  /** v0.13 Work P3: a deleted deal's todos keep going with no deal (inside Work's transaction). How many. */
+  unlinkDeal(dealId: string): number {
+    if (this.repo.space !== '') return 0;
+    return this.core.db.tx(() => {
+      const at = this.stamp();
+      const todos = this.repo.allOfDeal(dealId);
+      for (const t of todos) {
+        const { dealId: _d, ...rest } = t;
+        this.repo.saveTodo({ ...rest, updatedAt: at });
+      }
+      if (todos.length > 0) this.changed();
+      return todos.length;
+    });
+  }
+
   /** A todo's client and deal, checked: his space only, ids Work knows. null when they may be set. */
   private todoLinksRefused(contactId: string | null | undefined, dealId: string | null | undefined): Refusal | null {
     const client = contactId !== undefined && contactId !== null;

@@ -124,6 +124,31 @@ describe('W-T6: no client words in logs, audit, events or errors', () => {
     await run('workImport', 'POST', '/v1/work/import', { previewId: preview.previewId, rows: [{ index: 0, action: 'add' }] }, true);
     await run('todoCreate', 'POST', '/v1/todos', { title: NAME, contactId: '01JZZZZZZZZZZZZZZZZZZZZZZX' });
 
+    // P3: a deal with the canaries in its title, source and loss note, one made for a client by name; every
+    // deal, stage and insight route, with refusals.
+    const dealId = await id(run('workDealCreate', 'POST', '/v1/work/deals', { clientId: co, title: `${NAME} rebuild`, value: 4_500_000, source: `${NAME} referral`, expectedClose: '2026-11-30' }));
+    expect(dealId).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+    await run('workDealCreate', 'POST', '/v1/work/deals', { clientName: `${NAME} Labs Two`, title: `${NAME} audit` });
+    await run('workDeals', 'GET', `/v1/work/deals?q=${NAME}`);
+    await run('workDealGet', 'GET', `/v1/work/deals/${dealId}`);
+    await run('workDealUpdate', 'PATCH', `/v1/work/deals/${dealId}`, { title: `${NAME} rebuild two`, source: `${NAME} ${EMAIL}` });
+    await run('workDealMove', 'POST', `/v1/work/deals/${dealId}/move`, { stage: 'won', project: { name: `${NAME} site` } });
+    await run('workDealMove', 'POST', `/v1/work/deals/${dealId}/move`, { stage: 'lost', lostCode: 'price', lostNote: `${NAME} chose ${PHONE}` });
+    await run('workDealMove', 'POST', `/v1/work/deals/${dealId}/move`, { stage: 'nope', lostNote: NAME });
+    await run('workDealMove', 'POST', `/v1/work/deals/${dealId}/move`, { stage: 'proposal', lostNote: `${NAME} again` });
+    await run('workDealCreate', 'POST', '/v1/work/deals', { clientId: co, title: NAME, stage: 'won' });
+    await run('workDealUpdate', 'PATCH', `/v1/work/deals/${dealId}`, { clientId: '01JZZZZZZZZZZZZZZZZZZZZZZX', title: NAME });
+    await run('workStages', 'GET', '/v1/work/stages');
+    await run('workStagesUpdate', 'PUT', '/v1/work/stages', { stages: [{ id: 'new', name: 'Lead' }, { id: 'won', name: 'Won' }, { id: 'lost', name: 'Lost' }] });
+    await run('workStagesUpdate', 'PUT', '/v1/work/stages', { stages: [{ id: 'new', name: 'Lead' }, { id: 'won', name: 'Won' }, { id: 'lost', name: 'Lost' }], moves: [{ from: 'proposal', to: 'new' }, { from: 'contacted', to: 'new' }, { from: 'negotiation', to: 'new' }] });
+    await run('workInsights', 'GET', '/v1/work/insights?period=all');
+    await run('workExport', 'GET', '/v1/work/export.csv?what=deals');
+    await run('search', 'GET', `/v1/search?q=${NAME}`);
+    await run('projectGet', 'GET', `/v1/projects/${project}`);
+    await run('workClientHere', 'GET', `/v1/folder/client?folder=${encodeURIComponent(join(base, 'work', 'client', 'qzvcanary'))}`, undefined, true);
+    await api.tcp.inject({ method: 'GET', url: '/v1/life/today', headers: h(cookie) });
+    await run('workDealDelete', 'DELETE', `/v1/work/deals/${dealId}`);
+
     // Deletes last.
     await run('workLogDelete', 'DELETE', `/v1/work/log/${logId}`);
     await run('workImportUndo', 'DELETE', `/v1/work/import/${imported.batch}`, undefined, true);
@@ -132,12 +157,13 @@ describe('W-T6: no client words in logs, audit, events or errors', () => {
     // Every Work route ran.
     const all = (Object.entries(WORK_ROUTES) as [string, RouteDef][]).map(([n]) => n);
     expect(all.filter((n) => !ran.has(n))).toEqual([]);
-    expect(errors.length).toBeGreaterThanOrEqual(7);
+    expect(errors.length).toBeGreaterThanOrEqual(12);
 
     const swept = JSON.stringify({ log: api.ctx.log.records, audit: api.ctx.db.audit.list(), events: api.ctx.store.replay(seq), errors });
     for (const c of CANARIES) expect(swept.includes(c), c).toBe(false);
     // The sweep reads what it is meant to: the audit log has the writes, by id.
     expect(api.ctx.db.audit.list().some((a) => a.action === 'workClientCreate' && a.target === co)).toBe(true);
+    expect(api.ctx.db.audit.list().some((a) => a.action === 'workDealMove' && a.target === dealId)).toBe(true);
   });
 });
 

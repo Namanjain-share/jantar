@@ -9,10 +9,13 @@
  * - `work_prefs`: `{dialCode?, quietDays}`.
  * - `work_imports`: the newest imports (`{batch, at, added, filled}`), for
  *   their Undo.
+ * - `work_stages` (P3): the deal stages in order (3 to 12, exactly one Won
+ *   and one Lost); the six defaults until he changes them.
  */
 import { z } from 'zod';
 import { IsoDateSchema } from '@jantar/protocol';
-import { WORK_LIMITS, WorkBusinessSchema, WorkDialCodeSchema, type WorkBusiness } from '@jantar/protocol/work';
+import { stageInvariantError } from '@jantar/life-core';
+import { DEFAULT_WORK_STAGES, WORK_LIMITS, WorkBusinessSchema, WorkDialCodeSchema, WorkStageSchema, type WorkBusiness, type WorkStage } from '@jantar/protocol/work';
 import type { LifeDb, Logger } from '../../contracts.js';
 
 const PrefsSchema = z.object({ dialCode: WorkDialCodeSchema.optional(), quietDays: z.number().int().min(1).max(90).default(WORK_LIMITS.quietDays) });
@@ -21,6 +24,11 @@ const BusinessesSchema = z.array(WorkBusinessSchema).max(WORK_LIMITS.businesses)
 export const ImportEntrySchema = z.object({ batch: z.string(), at: IsoDateSchema, added: z.number().int(), filled: z.number().int() });
 export type ImportEntry = z.infer<typeof ImportEntrySchema>;
 const ImportsSchema = z.array(ImportEntrySchema).max(WORK_LIMITS.importsKept);
+const StagesSchema = z
+  .array(WorkStageSchema)
+  .min(WORK_LIMITS.stagesMin)
+  .max(WORK_LIMITS.stages)
+  .refine((list) => stageInvariantError(list) === null, { message: 'one Won and one Lost stage, unique ids' });
 
 function read<T>(db: LifeDb, key: string, schema: z.ZodType<T>, fallback: T, log: Logger): T {
   const raw = db.meta(key);
@@ -59,4 +67,13 @@ export function readImports(db: LifeDb, log: Logger): ImportEntry[] {
 export function writeImports(db: LifeDb, list: readonly ImportEntry[]): void {
   if (list.length === 0) db.deleteMeta('work_imports');
   else db.setMeta('work_imports', JSON.stringify(ImportsSchema.parse(list.slice(0, WORK_LIMITS.importsKept))));
+}
+
+/** The deal stages in order (the six defaults until he changes them). */
+export function readStages(db: LifeDb, log: Logger): WorkStage[] {
+  return read(db, 'work_stages', StagesSchema, DEFAULT_WORK_STAGES.map((st) => ({ ...st })), log);
+}
+
+export function writeStages(db: LifeDb, list: readonly WorkStage[]): void {
+  db.setMeta('work_stages', JSON.stringify(StagesSchema.parse(list)));
 }

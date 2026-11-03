@@ -48,14 +48,14 @@ export const TODOS_ROUTE_IMPLS: RouteTable = {
     },
     audit: lifeAudit,
   },
-  // v0.13 Work: one project as a hub; P2, while Work is on: its client and its newest log rows (meetings named).
+  // v0.13 Work: one project as a hub; P2, while Work is on: its client and its newest log rows (meetings named); P3: its deal.
   projectGet: {
     handle: (c: Call<Id>, s) => {
       const hub = lifeValue(s.deps.life.todos.hub(c.params.id));
       if (!workOn(s.ctx.settings.get())) return hub;
       const part = s.deps.life.work.projectPart(hub.project.id, hub.project.clientId, needActor(c.auth));
       if (!part.ok) return hub;
-      return { ...hub, ...(part.value.client ? { client: part.value.client } : {}), log: namedMeetings(s, part.value.log) };
+      return { ...hub, ...(part.value.client ? { client: part.value.client } : {}), log: namedMeetings(s, part.value.log), ...(part.value.deal ? { deal: part.value.deal } : {}) };
     },
   },
   projectDelete: {

@@ -71,7 +71,7 @@ const HER_IDEMPOTENCY_CLIENT_ID = ['personJournalCreate.body.clientId', 'personS
 const v013 = (Object.entries(ALL_ROUTES) as [string, RouteDef][]).filter(([, d]) => d.phase === 'v0.13');
 
 describe('W-T1: every Work route is his', () => {
-  it('finds the P1 and P2 routes', () => {
+  it('finds the P1, P2 and P3 routes', () => {
     expect(v013.map(([n]) => n).sort()).toEqual(
       [
         'foldersSeed',
@@ -86,11 +86,18 @@ describe('W-T1: every Work route is his', () => {
         'workClientSimilar',
         'workClientUpdate',
         'workClients',
+        'workDealCreate',
+        'workDealDelete',
+        'workDealGet',
+        'workDealMove',
+        'workDealUpdate',
+        'workDeals',
         'workExport',
         'workImport',
         'workImportPreview',
         'workImportUndo',
         'workImports',
+        'workInsights',
         'workLogAdd',
         'workLogDelete',
         'workLogUpdate',
@@ -99,6 +106,8 @@ describe('W-T1: every Work route is his', () => {
         'workMeetingSuggest',
         'workSettings',
         'workSettingsUpdate',
+        'workStages',
+        'workStagesUpdate',
       ].sort(),
     );
   });
@@ -237,11 +246,25 @@ describe('W-T4: Work is his space only, and answers no one else', () => {
         ['exportCsv', () => work.exportCsv(HER)],
         ['settingsGet', () => work.settingsGet(HER)],
         ['settingsUpdate', () => work.settingsUpdate({ quietDays: 3 }, HER)],
+        // P3: deals, stages, insights.
+        ['deals', () => work.deals({ open: true }, HER)],
+        ['createDeal', () => work.createDeal({ clientId: id, title: 'X' }, HER)],
+        ['deal', () => work.deal(id, HER)],
+        ['updateDeal', () => work.updateDeal(id, { title: 'X' }, HER)],
+        ['removeDeal', () => work.removeDeal(id, HER)],
+        ['moveDeal', () => work.moveDeal(id, { stage: 'won' }, HER)],
+        ['stagesGet', () => work.stagesGet(HER)],
+        ['stagesPut', () => work.stagesPut({ stages: [{ id: 'new', name: 'X' }, { id: 'won', name: 'Won' }, { id: 'lost', name: 'Lost' }] }, HER)],
+        ['insights', () => work.insights({ period: '90d' }, HER)],
+        ['exportCsv deals', () => work.exportCsv(HER, 'deals')],
       ];
       for (const [name, call] of calls) expect(call(), name).toEqual({ ok: false, code: 'not_found', reason: 'Not found.' });
       // Nothing of his changed meanwhile.
       const still = work.client(id, PHONE);
       expect(still.ok && still.value.contact.name).toBe('Acme Studio');
+      expect(still.ok && still.value.deals).toEqual([]);
+      const stages = work.stagesGet(PHONE);
+      expect(stages.ok && stages.value.stages).toHaveLength(6);
     } finally {
       core.close();
     }

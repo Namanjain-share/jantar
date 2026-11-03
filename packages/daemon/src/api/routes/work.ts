@@ -5,7 +5,9 @@
  * linked (P2: and a company client each). Never automatic.
  *
  * P2: clients, the log, meetings linked to clients, import and export,
- * settings and client_here. Each calls `s.deps.life.work`; the replies to
+ * settings and client_here. P3: deals, their moves (Won's project in the
+ * same save), stages and insights; a deal's log names its meetings here
+ * as a client's does. Each calls `s.deps.life.work`; the replies to
  * writes are ids (and counts); the audit row is the target id alone (no
  * params: a client's words never reach the audit log). Work never reads
  * meetings.db: the meeting routes read the meeting here (Meetings' off
@@ -35,6 +37,11 @@ import type {
   WorkClientPatch,
   WorkClientSimilarBody,
   WorkClientsQuery,
+  WorkDealCreateBody,
+  WorkDealMoveBody,
+  WorkDealPatch,
+  WorkDealsQuery,
+  WorkExportQuery,
   WorkImportBody,
   WorkImportPreviewBody,
   WorkLogAddBody,
@@ -43,6 +50,8 @@ import type {
   WorkMeetingClientsBody,
   WorkSeedBody,
   WorkSettingsPatch,
+  WorkInsightsQuery,
+  WorkStagesBody,
 } from '@jantar/protocol/work';
 import type { LifeResult } from '../../contracts.js';
 import { isRefusal, refusalResult } from '../../launcher/folders.js';
@@ -178,9 +187,10 @@ export const WORK_ROUTE_IMPLS: RouteTable = {
     audit: (c: Call<{ batch: string }>) => ({ target: c.params.batch }),
   },
   workExport: {
-    handle: (c: Call, s): RawReply => {
-      const csv = lifeValue(s.deps.life.work.exportCsv(needActor(c.auth)));
-      return { kind: 'raw', type: 'text/csv; charset=utf-8', body: Buffer.from(csv, 'utf8'), headers: { 'content-disposition': 'attachment; filename="jantar-clients.csv"' } };
+    handle: (c: Call<Id, WorkExportQuery>, s): RawReply => {
+      const what = c.query.what;
+      const csv = lifeValue(s.deps.life.work.exportCsv(needActor(c.auth), what));
+      return { kind: 'raw', type: 'text/csv; charset=utf-8', body: Buffer.from(csv, 'utf8'), headers: { 'content-disposition': `attachment; filename="jantar-${what}.csv"` } };
     },
   },
 
@@ -195,6 +205,47 @@ export const WORK_ROUTE_IMPLS: RouteTable = {
     },
     audit: () => ({}),
   },
+  // --- P3: deals, stages and insights (audit rows: the deal's id alone)
+  workDeals: {
+    handle: (c: Call<Id, WorkDealsQuery>, s) => lifeValue(s.deps.life.work.deals(c.query, needActor(c.auth))),
+  },
+  workDealCreate: {
+    handle: (c: Call<Id, unknown, WorkDealCreateBody>, s) => lifeValue(s.deps.life.work.createDeal(c.body, needActor(c.auth))),
+    audit: lifeAudit,
+  },
+  workDealGet: {
+    handle: (c: Call<Id>, s) => {
+      const hub = lifeValue(s.deps.life.work.deal(c.params.id, needActor(c.auth)));
+      return { ...hub, log: namedMeetings(s, hub.log) };
+    },
+  },
+  workDealUpdate: {
+    handle: (c: Call<Id, unknown, WorkDealPatch>, s) => {
+      lifeValue(s.deps.life.work.updateDeal(c.params.id, c.body, needActor(c.auth)));
+      return OK;
+    },
+    audit: lifeAudit,
+  },
+  workDealDelete: {
+    handle: (c: Call<Id>, s) => ({ ok: true as const, removed: lifeValue(s.deps.life.work.removeDeal(c.params.id, needActor(c.auth))) }),
+    audit: lifeAudit,
+  },
+  workDealMove: {
+    handle: (c: Call<Id, unknown, WorkDealMoveBody>, s) => lifeValue(s.deps.life.work.moveDeal(c.params.id, c.body, needActor(c.auth))),
+    // The deal's id (the path); its stage names and a project's name stay out.
+    audit: lifeAudit,
+  },
+  workStages: {
+    handle: (c: Call, s) => lifeValue(s.deps.life.work.stagesGet(needActor(c.auth))),
+  },
+  workStagesUpdate: {
+    handle: (c: Call<Id, unknown, WorkStagesBody>, s) => ({ ok: true as const, ...lifeValue(s.deps.life.work.stagesPut(c.body, needActor(c.auth))) }),
+    audit: () => ({}),
+  },
+  workInsights: {
+    handle: (c: Call<Id, WorkInsightsQuery>, s) => lifeValue(s.deps.life.work.insights(c.query, needActor(c.auth))),
+  },
+
   workClientHere: {
     handle: (c: Call<Id, FolderClientQuery>, s) => {
       // Life not open answers with its refusal (life/service.ts closedModule).

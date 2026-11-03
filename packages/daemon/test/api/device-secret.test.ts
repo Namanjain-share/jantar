@@ -139,6 +139,12 @@ describe('which routes need the device secret', () => {
         'workMeetingClientNew',
         'workMeetingClients',
         'workSettingsUpdate',
+        // v0.13 Work P3: deals, their moves and the stages (control scope)
+        'workDealCreate',
+        'workDealDelete',
+        'workDealMove',
+        'workDealUpdate',
+        'workStagesUpdate',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);

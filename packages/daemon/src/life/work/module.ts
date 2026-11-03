@@ -31,8 +31,28 @@
  *   automatically (W15); his own links and unlinks stay; when the project's
  *   client changes the automatic links move with it; a deleted meeting's
  *   links go.
+ * - P3, deals: a deal starts on an open stage and changes stage only by a
+ *   move, which writes a `stage` row. Won stamps it, makes its client a
+ *   client (never the reverse, W7) and, when asked, makes the project (its
+ *   client, business and the deal linked) in the same save; Lost stamps it
+ *   with an optional reason; a closed deal moved to an open stage is open
+ *   again. Deleting a deal deletes its own rows (moves, "added"); a call or
+ *   a note logged with it stays on the client, and its todos let go of it.
+ *   A removed stage's deals are re-filed on a kept open stage he names.
  */
-import { normalizeContactEmail, normalizeContactName, normalizeContactPhone, normalizeTags, similarContacts, toCsv } from '@jantar/life-core';
+import {
+  canonicalSource,
+  inClosingWindow,
+  normalizeContactEmail,
+  normalizeContactName,
+  normalizeContactPhone,
+  normalizeTags,
+  planStageDeletions,
+  resolveAnalyticsPeriod,
+  similarContacts,
+  stageInvariantError,
+  toCsv,
+} from '@jantar/life-core';
 import { LIFE_LIMITS, projectFor, type ProjectView, type Todo } from '@jantar/protocol';
 import {
   WORK_LIMITS,
@@ -66,13 +86,29 @@ import {
   type WorkMeetingSuggestReply,
   type WorkSettings,
   type WorkSettingsPatch,
+  type Deal,
+  type WorkDealCard,
+  type WorkDealCreateBody,
+  type WorkDealCreateReply,
+  type WorkDealHub,
+  type WorkDealMoveBody,
+  type WorkDealMoveReply,
+  type WorkDealPatch,
+  type WorkDealsQuery,
+  type WorkDealsResponse,
+  type WorkInsightsQuery,
+  type WorkInsightsReply,
+  type WorkStage,
+  type WorkStagesBody,
+  type WorkStagesReply,
 } from '@jantar/protocol/work';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, Logger, TodosModule, WorkMeetingRef, WorkModule } from '../../contracts.js';
 import { foldText, holdsFolded } from '../../core/fold.js';
 import { TODO_REASONS, folderKey } from '../todos/module.js';
+import { dealCard, dealKind, dealsCsv, insightsOf, nextSteps, stageColumns, stageIndex, type CardContext } from './deals.js';
 import { PreviewStore, fitRow, mappingFor, previewRows, readSource, type ImportProblem } from './import.js';
 import { WorkRepo, type ContactRecord, type LogRecord } from './repo.js';
-import { readBusinesses, readImports, readPrefs, writeBusinesses, writeImports, writePrefs } from './settings.js';
+import { readBusinesses, readImports, readPrefs, readStages, writeBusinesses, writeImports, writePrefs, writeStages } from './settings.js';
 
 /** What a Work call says to anyone but the owner: there is nothing here. */
 export const WORK_NOT_FOUND = 'Not found.';
@@ -104,6 +140,21 @@ export const WORK_REASONS = {
   noRow: 'That row is not in the preview.',
   fillNeedsMatch: 'Only a row that matches a client can fill its blanks.',
   noPerson: 'That meeting has no such name.',
+  // P3: deals and stages
+  noDeal: 'No such deal.',
+  dealsFull: `Work holds ${count(WORK_LIMITS.deals)} deals at most. Delete some old ones first.`,
+  openDealsFull: `Work holds ${count(WORK_LIMITS.openDeals)} open deals at most. Close some (Won or Lost) first.`,
+  noStage: 'No such stage.',
+  startOpen: 'A deal starts on an open stage. Move it to Won or Lost after.',
+  reasonNeedsLost: 'A reason goes with Lost.',
+  projectNeedsWon: 'Only a won deal makes a project.',
+  hasProject: 'That deal has a project already.',
+  notLost: 'Only a lost deal has a reason.',
+  businessGone: TODO_REASONS.businessGone,
+  stageTwice: 'A stage is in the list twice.',
+  keepEnds: 'Won and Lost can be renamed or moved, never removed.',
+  stageHasDeals: 'A stage you removed still has deals. Pick an open stage that stays for them.',
+  moveToOpen: "A removed stage's deals go to an open stage that stays.",
 } as const;
 
 const PROBLEM: Readonly<Record<ImportProblem, string>> = {
@@ -223,6 +274,32 @@ class Work implements WorkModule {
     return r.ok ? r.value.projects : [];
   }
 
+  private stages(): WorkStage[] {
+    return readStages(this.core.db, this.log);
+  }
+
+  /** What every deal card is read against: the stages, every contact, each deal's and client's next step, today. */
+  private cardContext(): CardContext {
+    const { nextByDeal, nextByClient } = nextSteps(this.todos.dealFollowUps(null, false), this.todos.followUps(null, false));
+    return {
+      stages: stageIndex(this.stages()),
+      contacts: new Map(this.repo.allContacts().map((c) => [c.id, c])),
+      nextByDeal,
+      nextByClient,
+      today: this.core.today(),
+      now: this.core.now().getTime(),
+      quietDays: readPrefs(this.core.db, this.log).quietDays,
+    };
+  }
+
+  /** Cards with open deals first (by stage, then close day), then closed ones, newest closed first. */
+  private sortedCards(deals: readonly Deal[], ctx: CardContext): WorkDealCard[] {
+    const order = (d: Deal) => ctx.stages.get(d.stage)?.order ?? 99;
+    const open = deals.filter((d) => dealKind(d, ctx.stages) === 'open').sort((a, b) => order(a) - order(b) || (a.expectedClose ?? '~').localeCompare(b.expectedClose ?? '~') || a.createdAt.localeCompare(b.createdAt));
+    const closed = deals.filter((d) => dealKind(d, ctx.stages) !== 'open').sort((a, b) => (b.wonAt ?? b.lostAt ?? '').localeCompare(a.wonAt ?? a.lostAt ?? '') || b.id.localeCompare(a.id));
+    return [...open, ...closed].map((d) => dealCard(d, ctx));
+  }
+
   start(): void {
     // Repairs drift: every contact's newest touch from the log, and the automatic meeting links.
     try {
@@ -284,6 +361,10 @@ class Work implements WorkModule {
     }
     due.sort((a, b) => b.over - a.over || a.c.name.localeCompare(b.c.name));
     const shown = due.slice(0, WORK_LIMITS.checkInsShown);
+    // P3: open deals with no next step, quiet ones, and ones closing this week (overdue ones included).
+    const ctx = this.cardContext();
+    const open = this.repo.allDeals().filter((d) => dealKind(d, ctx.stages) === 'open');
+    const cards = open.map((d) => dealCard(d, ctx));
     // The client chips of the follow-ups in Today's Due (Todos can't read Work's table).
     const t = this.todos.today(day) as { todos?: { overdue: Todo[]; today: Todo[] } };
     const ids = new Set([...(t.todos?.overdue ?? []), ...(t.todos?.today ?? [])].flatMap((x) => (x.contactId ? [x.contactId] : [])));
@@ -295,10 +376,9 @@ class Work implements WorkModule {
       work: {
         checkIns: shown.map((x) => ({ id: x.c.id, name: x.c.name, every: x.c.checkInDays ?? 0, since: x.since })),
         checkInsMore: due.length - shown.length,
-        // P3: deals with no next step, quiet deals, closing this week.
-        noNextStep: 0,
-        quiet: 0,
-        closing: 0,
+        noNextStep: cards.filter((c) => !c.next).length,
+        quiet: cards.filter((c) => c.quiet).length,
+        closing: open.filter((d) => inClosingWindow(d.expectedClose, 'week', ctx.today)).length,
         clients,
       },
     };
@@ -369,8 +449,15 @@ class Work implements WorkModule {
       const company = c.companyId ? names.get(c.companyId) : undefined;
       clients.push({ kind: 'client', id: c.id, label: c.name, sub: company ? `${company} · ${c.state}` : c.state, href: `/work?tab=clients&id=${c.id}` });
     }
-    // P3 fills deals (their titles).
-    return { ok: true, value: { clients, deals: [] } };
+    // Deals: the title or the client's name; open ones first.
+    const ctx = this.cardContext();
+    const deals: SearchItem[] = [];
+    for (const card of this.sortedCards(this.repo.allDeals(), ctx)) {
+      if (deals.length >= limit) break;
+      if (!holdsFolded(folded, card.title, card.client.name)) continue;
+      deals.push({ kind: 'deal', id: card.id, label: card.title, sub: `${card.client.name} · ${card.stageName}`.slice(0, 200), href: `/work?tab=deals&id=${card.id}` });
+    }
+    return { ok: true, value: { clients, deals } };
   }
 
   /** A contact holds the query: its name, its company's name, an e-mail, or (3 digits or more) a phone's digits. */
@@ -571,6 +658,8 @@ class Work implements WorkModule {
         ...(page.next ? { logNext: page.next } : {}),
         ...(ci ? { checkIn: ci } : {}),
         openDeals: ctx.deals.get(c.id) ?? { count: 0, sums: [] },
+        // A person's own deals and its company's; a company's and its people's (builder's call, 4.5).
+        deals: this.sortedCards(this.repo.dealsOf([...linked]), this.cardContext()).slice(0, WORK_LIMITS.hubDeals),
       },
     };
   }
@@ -634,9 +723,11 @@ class Work implements WorkModule {
     if (!this.repo.hasContact(id)) return refuse('not_found', WORK_REASONS.noClient);
     const at = this.stamp();
     const removed = this.core.db.tx(() => {
-      const deals = this.repo.deleteDealsOf(id).deals;
-      const log = this.repo.deleteLogOf(id);
+      const gone = this.repo.deleteDealsOf(id);
+      const deals = gone.deals;
+      const log = gone.log + this.repo.deleteLogOf(id);
       this.todos.unlinkClient(id);
+      for (const dealId of gone.ids) this.todos.unlinkDeal(dealId);
       for (const p of this.repo.peopleOf(id)) {
         const { companyId: _c, lastTouchAt: _t, ...rest } = p;
         this.repo.saveContact({ ...rest, updatedAt: at });
@@ -756,10 +847,13 @@ class Work implements WorkModule {
     return OK;
   }
 
-  projectPart(projectId: string, clientId: string | undefined, actor: Actor): LifeResult<{ client?: WorkClientRef; log: WorkLogRow[] }> {
+  projectPart(projectId: string, clientId: string | undefined, actor: Actor): LifeResult<{ client?: WorkClientRef; log: WorkLogRow[]; deal?: WorkDealCard }> {
     if (!isOwner(actor)) return notFound;
     const c = clientId ? this.repo.contact(clientId) : null;
-    return { ok: true, value: { ...(c ? { client: this.ref(c) } : {}), log: this.repo.logOfProject(projectId, WORK_LIMITS.projectLog).map(logView) } };
+    // P3: its deal, an open one first, else the newest.
+    const mine = this.repo.allDeals().filter((d) => d.projectId === projectId);
+    const deal = mine.length > 0 ? this.sortedCards(mine, this.cardContext())[0] : undefined;
+    return { ok: true, value: { ...(c ? { client: this.ref(c) } : {}), log: this.repo.logOfProject(projectId, WORK_LIMITS.projectLog).map(logView), ...(deal ? { deal } : {}) } };
   }
 
   // --- P2: meetings linked to clients (W15) ------------------------------------------------
@@ -1038,8 +1132,14 @@ class Work implements WorkModule {
     return { ok: true, value: out };
   }
 
-  exportCsv(actor: Actor): LifeResult<string> {
+  exportCsv(actor: Actor, what: 'clients' | 'deals' = 'clients'): LifeResult<string> {
     if (!isOwner(actor)) return notFound;
+    if (what === 'deals') {
+      const ctx = this.cardContext();
+      const business = new Map(readBusinesses(this.core.db, this.log).map((b) => [b.id, b.name]));
+      const project = new Map(this.projects().map((p) => [p.id, p.name]));
+      return { ok: true, value: dealsCsv(this.repo.allDeals(), ctx, { business, project }) };
+    }
     const all = this.repo.allContacts();
     const names = new Map(all.map((c) => [c.id, c.name]));
     const head = ['Name', 'Kind', 'State', 'Company', 'Title', 'Emails', 'Phones', 'Tags', 'City', 'Source', 'Check in (days)', 'Last touch', 'Added', 'Notes', 'Links'];
@@ -1119,6 +1219,9 @@ class Work implements WorkModule {
     const company = c.companyId ? this.repo.contact(c.companyId) : null;
     const next = this.todos.followUps(c.id, false)[0];
     const deals = this.repo.openDeals().get(c.id)?.count ?? 0;
+    // P3: its open deals by title and stage (his words, or an import's, marked).
+    const ctx = this.cardContext();
+    const open = this.sortedCards(this.repo.dealsOf([c.id]), ctx).filter((d) => d.kind === 'open').slice(0, WORK_LIMITS.hereDeals);
     return {
       client: {
         id: c.id,
@@ -1131,7 +1234,297 @@ class Work implements WorkModule {
         ...(next ? { next: { title: next.title, ...(next.due ? { due: next.due } : {}), ...(next.from === 'meeting' ? { source: 'meeting' as const } : {}) } } : {}),
         ...(c.lastTouchAt ? { lastTouchAt: c.lastTouchAt } : {}),
         openDeals: deals,
+        ...(open.length > 0 ? { deals: open.map((d) => ({ title: d.title, stage: d.stageName, ...(d.from ? { source: d.from } : {}) })) } : {}),
       },
+    };
+  }
+
+  // --- P3: deals ------------------------------------------------------------------------
+
+  dealRecord(id: string): Deal | null {
+    return this.repo.deal(id);
+  }
+
+  deals(q: WorkDealsQuery, actor: Actor): LifeResult<WorkDealsResponse> {
+    if (!isOwner(actor)) return notFound;
+    const ctx = this.cardContext();
+    const base = this.repo.allDeals().filter((d) => q.business === undefined || d.business === q.business);
+    const folded = q.q ? foldText(q.q) : '';
+    const list = base.filter((d) => {
+      const open = dealKind(d, ctx.stages) === 'open';
+      if (q.open !== open) return false;
+      if (q.stage !== undefined && d.stage !== q.stage) return false;
+      if (q.client !== undefined && d.contactId !== q.client) return false;
+      if (q.closing !== undefined && !(open && inClosingWindow(d.expectedClose, q.closing, ctx.today))) return false;
+      if (q.q !== undefined && !holdsFolded(folded, d.title, ctx.contacts.get(d.contactId)?.name)) return false;
+      return true;
+    });
+    const cards = this.sortedCards(list, ctx).filter((c) => q.quiet === undefined || c.quiet === q.quiet);
+    return { ok: true, value: { deals: cards.slice(0, WORK_LIMITS.dealsPage), more: Math.max(0, cards.length - WORK_LIMITS.dealsPage), stages: stageColumns(base, ctx) } };
+  }
+
+  /** The sources already in use (the spelling a typed one joins). */
+  private sources(): string[] {
+    return [...new Set(this.repo.allDeals().flatMap((d) => (d.source ? [d.source] : [])))];
+  }
+
+  /** A business and a project a deal may name: refused when gone (a business he removed, a project not his). */
+  private dealLinksRefused(business: string | null | undefined, projectId: string | null | undefined): Refusal | null {
+    if (business && !this.hasBusiness(business)) return refuse('invalid_request', WORK_REASONS.businessGone);
+    if (projectId && !this.projects().some((p) => p.id === projectId)) return refuse('invalid_request', WORK_REASONS.projectGone);
+    return null;
+  }
+
+  createDeal(body: WorkDealCreateBody, actor: Actor): LifeResult<WorkDealCreateReply> {
+    if (!isOwner(actor)) return notFound;
+    if (this.repo.dealCount() >= WORK_LIMITS.deals) return refuse('conflict', WORK_REASONS.dealsFull);
+    if (this.repo.openDealCount() >= WORK_LIMITS.openDeals) return refuse('conflict', WORK_REASONS.openDealsFull);
+    if (this.repo.logCount() >= WORK_LIMITS.logRows) return refuse('conflict', WORK_REASONS.logFull);
+    const stages = this.stages();
+    const stage = body.stage === undefined ? stages.find((x) => x.kind === 'open') : stages.find((x) => x.id === body.stage);
+    if (!stage) return refuse('invalid_request', WORK_REASONS.noStage);
+    if (stage.kind !== 'open') return refuse('invalid_request', WORK_REASONS.startOpen);
+    if (body.clientId !== undefined && !this.repo.hasContact(body.clientId)) return refuse('invalid_request', WORK_REASONS.clientGone);
+    const no = this.dealLinksRefused(body.business, body.projectId);
+    if (no) return no;
+    const at = this.stamp();
+    const source = body.source !== undefined ? canonicalSource(body.source, this.sources()) : '';
+    const currency = body.currency ?? this.core.settings().currency ?? undefined;
+    const out = this.tx(() => {
+      // A client by name: one with that name (a company first), else a new company, a lead.
+      let contactId = body.clientId;
+      if (contactId === undefined) {
+        const named = this.repo.named(normalizeContactName(body.clientName ?? ''));
+        const found = named.find((c) => c.kind === 'company') ?? named[0];
+        if (found) contactId = found.id;
+        else {
+          const r = this.create({ name: body.clientName ?? '', kind: 'company' }, {});
+          if (!r.ok) throw new Rollback(r);
+          contactId = r.value.id;
+        }
+      }
+      const d: Deal = {
+        id: this.core.newId(),
+        title: body.title,
+        contactId,
+        stage: stage.id,
+        ...(body.value !== undefined ? { value: body.value } : {}),
+        ...(currency ? { currency } : {}),
+        ...(body.expectedClose !== undefined ? { expectedClose: body.expectedClose } : {}),
+        ...(source ? { source } : {}),
+        ...(body.business !== undefined ? { business: body.business } : {}),
+        ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
+        stageMovedAt: at,
+        createdAt: at,
+        updatedAt: at,
+      };
+      this.repo.saveDeal(d);
+      // Its "added" row: the stage it entered (the funnel's first count).
+      this.repo.insertLog({ id: this.core.newId(), contactId, dealId: d.id, projectId: d.projectId ?? null, meetingId: null, at, kind: 'created', json: { stageTo: stage.id } });
+      return { id: d.id, clientId: contactId };
+    });
+    if ('ok' in out) return out;
+    this.core.changed();
+    return { ok: true, value: out };
+  }
+
+  deal(id: string, actor: Actor): LifeResult<WorkDealHub> {
+    if (!isOwner(actor)) return notFound;
+    const d = this.repo.deal(id);
+    if (!d) return refuse('not_found', WORK_REASONS.noDeal);
+    const ctx = this.cardContext();
+    const c = ctx.contacts.get(d.contactId);
+    const project = d.projectId ? this.projects().find((p) => p.id === d.projectId) : undefined;
+    const limit = WORK_LIMITS.dealLog;
+    const rows = [...this.repo.logOfDeal(id, limit).map(logView), ...this.todos.dealFollowUps(id, true).map(followUpView)].sort(newer).slice(0, limit);
+    return {
+      ok: true,
+      value: {
+        deal: d,
+        card: dealCard(d, ctx),
+        client: c ? this.ref(c) : { id: d.contactId, name: '', state: 'lead' },
+        ...(project ? { project } : {}),
+        followUps: this.todos.dealFollowUps(id, false),
+        log: rows,
+      },
+    };
+  }
+
+  updateDeal(id: string, patch: WorkDealPatch, actor: Actor): LifeResult {
+    if (!isOwner(actor)) return notFound;
+    const d = this.repo.deal(id);
+    if (!d) return refuse('not_found', WORK_REASONS.noDeal);
+    if (patch.clientId !== undefined && patch.clientId !== d.contactId && !this.repo.hasContact(patch.clientId)) return refuse('invalid_request', WORK_REASONS.clientGone);
+    const no = this.dealLinksRefused(patch.business === d.business ? undefined : patch.business, patch.projectId === d.projectId ? undefined : patch.projectId);
+    if (no) return no;
+    const lost = dealKind(d, stageIndex(this.stages())) === 'lost';
+    if (!lost && ((patch.lostCode ?? null) !== null || (patch.lostNote ?? null) !== null)) return refuse('invalid_request', WORK_REASONS.notLost);
+    const next: Deal = { ...d, updatedAt: this.stamp() };
+    if (patch.title !== undefined) next.title = patch.title;
+    if (patch.clientId !== undefined) next.contactId = patch.clientId;
+    if (patch.currency !== undefined) next.currency = patch.currency;
+    if (patch.source === null) delete next.source;
+    else if (patch.source !== undefined) next.source = canonicalSource(patch.source, this.sources()) || patch.source;
+    for (const key of ['value', 'expectedClose', 'business', 'projectId', 'lostCode', 'lostNote'] as const) {
+      const v = patch[key];
+      if (v === null) delete next[key];
+      else if (v !== undefined) (next as Record<string, unknown>)[key] = v;
+    }
+    this.core.db.tx(() => {
+      this.repo.saveDeal(next);
+      // Its own rows (moves, "added") follow it to its new client; calls and notes stay with whom they were logged.
+      if (next.contactId !== d.contactId) this.repo.moveDealLog(id, next.contactId);
+    });
+    this.core.changed();
+    return OK;
+  }
+
+  removeDeal(id: string, actor: Actor): LifeResult<{ log: number }> {
+    if (!isOwner(actor)) return notFound;
+    if (!this.repo.hasDeal(id)) return refuse('not_found', WORK_REASONS.noDeal);
+    const log = this.core.db.tx(() => {
+      const n = this.repo.forgetDealLog(id);
+      this.todos.unlinkDeal(id);
+      this.repo.deleteDeal(id);
+      return n;
+    });
+    this.core.changed();
+    return { ok: true, value: { log } };
+  }
+
+  moveDeal(id: string, body: WorkDealMoveBody, actor: Actor): LifeResult<WorkDealMoveReply> {
+    if (!isOwner(actor)) return notFound;
+    const d = this.repo.deal(id);
+    if (!d) return refuse('not_found', WORK_REASONS.noDeal);
+    const stages = stageIndex(this.stages());
+    const to = stages.get(body.stage)?.stage;
+    if (!to) return refuse('invalid_request', WORK_REASONS.noStage);
+    const reason = body.lostCode !== undefined || body.lostNote !== undefined;
+    if (reason && to.kind !== 'lost') return refuse('invalid_request', WORK_REASONS.reasonNeedsLost);
+    if (body.project && to.kind !== 'won') return refuse('invalid_request', WORK_REASONS.projectNeedsWon);
+    if (body.project && d.projectId && this.projects().some((p) => p.id === d.projectId)) return refuse('conflict', WORK_REASONS.hasProject);
+    const was = dealKind(d, stages);
+    const from = d.stage;
+    const moved = from !== to.id;
+    if (!moved && !body.project && !reason) return { ok: true, value: { id, from } };
+    if (to.kind === 'open' && was !== 'open' && this.repo.openDealCount() >= WORK_LIMITS.openDeals) return refuse('conflict', WORK_REASONS.openDealsFull);
+    if (moved && this.repo.logCount() >= WORK_LIMITS.logRows) return refuse('conflict', WORK_REASONS.logFull);
+    const at = this.stamp();
+    const next: Deal = { ...d, stage: to.id, updatedAt: at, ...(moved ? { stageMovedAt: at } : {}) };
+    if (to.kind !== 'lost' || was !== 'lost') {
+      delete next.lostCode;
+      delete next.lostNote;
+    }
+    if (to.kind === 'open') {
+      // Open again: no longer won or lost.
+      delete next.wonAt;
+      delete next.lostAt;
+    } else if (to.kind === 'won') {
+      delete next.lostAt;
+      if (was !== 'won') next.wonAt = at;
+    } else {
+      delete next.wonAt;
+      if (was !== 'lost') next.lostAt = at;
+      if (body.lostCode !== undefined) next.lostCode = body.lostCode;
+      if (body.lostNote !== undefined) {
+        if (body.lostNote === '') delete next.lostNote;
+        else next.lostNote = body.lostNote;
+      }
+    }
+    const out = this.tx(() => {
+      if (body.project) {
+        const business = d.business && this.hasBusiness(d.business) ? d.business : undefined;
+        const r = this.todos.createProject({ name: body.project.name, ...(body.project.folder ? { folder: body.project.folder } : {}), clientId: d.contactId, ...(business ? { business } : {}) }, actor);
+        if (!r.ok) throw new Rollback(r);
+        next.projectId = r.value.id;
+      }
+      this.repo.saveDeal(next);
+      if (moved) this.repo.insertLog({ id: this.core.newId(), contactId: d.contactId, dealId: id, projectId: next.projectId ?? null, meetingId: null, at, kind: 'stage', json: { stageFrom: from, stageTo: to.id } });
+      // Won makes its client a client; losing never demotes one (W7).
+      if (to.kind === 'won') {
+        const c = this.repo.contact(d.contactId);
+        if (c && c.state === 'lead') {
+          const { lastTouchAt: _t, ...rest } = c;
+          this.repo.saveContact({ ...rest, state: 'client', updatedAt: at });
+        }
+      }
+      return next.projectId !== d.projectId && next.projectId ? { projectId: next.projectId } : {};
+    });
+    if ('ok' in out) return out;
+    this.core.changed();
+    return { ok: true, value: { id, from, ...out } };
+  }
+
+  // --- P3: stages ------------------------------------------------------------------------
+
+  stagesGet(actor: Actor): LifeResult<WorkStagesReply> {
+    if (!isOwner(actor)) return notFound;
+    const list = this.stages();
+    const info = stageIndex(list);
+    const counts = this.repo.dealsByStage();
+    return {
+      ok: true,
+      value: {
+        stages: list.map((st, order) => ({ ...st, order, effectiveProbability: info.get(st.id)?.probability ?? 0, deals: counts[st.id] ?? 0 })),
+        quietDays: readPrefs(this.core.db, this.log).quietDays,
+      },
+    };
+  }
+
+  stagesPut(body: WorkStagesBody, actor: Actor): LifeResult<{ moved: number }> {
+    if (!isOwner(actor)) return notFound;
+    const current = this.stages();
+    const byId = new Map(current.map((x) => [x.id, x]));
+    const seen = new Set<string>();
+    const next: WorkStage[] = [];
+    for (const b of body.stages) {
+      const was = b.id === undefined ? undefined : byId.get(b.id);
+      if (b.id !== undefined && !was) return refuse('invalid_request', WORK_REASONS.noStage);
+      if (was && seen.has(was.id)) return refuse('invalid_request', WORK_REASONS.stageTwice);
+      if (was) seen.add(was.id);
+      // A kept stage keeps its kind; a new one is open. Left out, a probability or quiet days stay as they were; null clears.
+      const kind = was?.kind ?? 'open';
+      const probability = b.probability === undefined ? was?.probability : (b.probability ?? undefined);
+      const quietDays = b.quietDays === undefined ? was?.quietDays : (b.quietDays ?? undefined);
+      next.push({
+        id: was?.id ?? this.core.newId(),
+        name: b.name,
+        kind,
+        ...(kind === 'open' && probability !== undefined ? { probability } : {}),
+        ...(kind === 'open' && quietDays !== undefined ? { quietDays } : {}),
+      });
+    }
+    if (current.some((x) => x.kind !== 'open' && !seen.has(x.id)) || stageInvariantError(next) !== null) return refuse('conflict', WORK_REASONS.keepEnds);
+    const moves = (body.moves ?? []).map((m) => ({ fromStageId: m.from, toStageId: m.to }));
+    for (const m of moves) {
+      const target = next.find((x) => x.id === m.toStageId);
+      if (target && target.kind !== 'open') return refuse('invalid_request', WORK_REASONS.moveToOpen);
+    }
+    const plan = planStageDeletions(current, next, this.repo.dealsByStage(), moves);
+    if (!plan.ok) return refuse('conflict', WORK_REASONS.stageHasDeals);
+    const at = this.stamp();
+    const moved = this.core.db.tx(() => {
+      // Re-filed, not moved: no stage row, and each deal's stage time stays (the funnel never counts it).
+      let n = 0;
+      for (const m of plan.moves) n += this.repo.refileStage(m.fromStageId, m.toStageId, at);
+      writeStages(this.core.db, next);
+      return n;
+    });
+    this.core.changed();
+    return { ok: true, value: { moved } };
+  }
+
+  // --- P3: insights ------------------------------------------------------------------------
+
+  insights(q: WorkInsightsQuery, actor: Actor): LifeResult<WorkInsightsReply> {
+    if (!isOwner(actor)) return notFound;
+    const now = this.core.now();
+    const tz = this.core.tz();
+    const from = resolveAnalyticsPeriod(q.period, now, tz).from;
+    const deals = this.repo.allDeals().filter((d) => q.business === undefined || d.business === q.business);
+    return {
+      ok: true,
+      value: insightsOf({ period: q.period, deals, stages: this.stages(), moves: this.repo.stageRows(from.toISOString()), now, tz, currency: this.core.settings().currency }),
     };
   }
 }

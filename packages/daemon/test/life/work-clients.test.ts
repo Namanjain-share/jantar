@@ -152,7 +152,8 @@ describe('clients and companies', () => {
       .run(co.id);
     core.db.prepare("INSERT INTO work_log (id, contact_id, deal_id, at, kind, json) VALUES ('l-deal', NULL, 'd1', '2026-11-03T09:00:00.000Z', 'stage', '{}')").run();
     const removed = ok(work.removeClient(co.id, PHONE));
-    expect(removed).toEqual({ deals: 1, log: 1 });
+    // Every log row that went: the note, and (P3) the deal's own row.
+    expect(removed).toEqual({ deals: 1, log: 2 });
     expect(core.db.prepare('SELECT COUNT(*) AS n FROM work_log').get()).toEqual({ n: 0 });
     expect(core.db.prepare('SELECT COUNT(*) AS n FROM work_deals').get()).toEqual({ n: 0 });
     const t = ok(todos.listTodos({ done: false })).todos[0];
