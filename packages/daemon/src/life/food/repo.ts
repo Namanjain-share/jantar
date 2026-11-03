@@ -8,6 +8,11 @@
  * Every json is checked with its protocol schema on the way out; a row that
  * fails is left out and logged by table and id only. `core.db` is read on
  * every call (a restore swaps it).
+ *
+ * v0.12 People: a repo works in one space (`''` the owner's), and every
+ * query on `food` and `foods_saved` names it (T6), so the owner's food log
+ * never lists a row of another space. Her food log is not in this build
+ * (her food module stays off): only the owner's space is ever built here.
  */
 import { FoodEntrySchema, KCAL_TARGET_DEFAULT, SavedFoodSchema, type FoodEntry, type SavedFood } from '@jantar/protocol';
 import type { LifeCore, Logger } from '../../contracts.js';
@@ -31,21 +36,23 @@ export class FoodRepo {
   constructor(
     private readonly core: LifeCore,
     private readonly log: Logger,
+    /** v0.12: the space this repo reads and writes. */
+    readonly space = '',
   ) {}
 
   /** A day's entries, oldest first (by `at`, then in the order they were added). */
   entriesOn(day: string): FoodEntry[] {
-    const rows = this.core.db.prepare('SELECT id, json FROM food WHERE day = ? ORDER BY at, rowid').all(day) as { id: string; json: string }[];
+    const rows = this.core.db.prepare('SELECT id, json FROM food WHERE space = ? AND day = ? ORDER BY at, rowid').all(this.space, day) as { id: string; json: string }[];
     return rows.flatMap((r) => this.entryOf(r));
   }
 
   entry(id: string): FoodEntry | null {
-    const row = this.core.db.prepare('SELECT id, json FROM food WHERE id = ?').get(id) as { id: string; json: string } | undefined;
+    const row = this.core.db.prepare('SELECT id, json FROM food WHERE space = ? AND id = ?').get(this.space, id) as { id: string; json: string } | undefined;
     return row ? (this.entryOf(row)[0] ?? null) : null;
   }
 
   countOn(day: string): number {
-    return (this.core.db.prepare('SELECT COUNT(*) AS n FROM food WHERE day = ?').get(day) as { n: number }).n;
+    return (this.core.db.prepare('SELECT COUNT(*) AS n FROM food WHERE space = ? AND day = ?').get(this.space, day) as { n: number }).n;
   }
 
   /** The day's calories, from the entries that pass their check. */
@@ -55,42 +62,45 @@ export class FoodRepo {
 
   putEntry(e: FoodEntry): void {
     this.core.db
-      .prepare('INSERT INTO food (id, day, at, json) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET day = excluded.day, at = excluded.at, json = excluded.json')
-      .run(e.id, e.day, e.at, JSON.stringify(FoodEntrySchema.parse(e)));
+      .prepare(
+        `INSERT INTO food (id, day, at, json, space) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET day = excluded.day, at = excluded.at, json = excluded.json WHERE food.space = excluded.space`,
+      )
+      .run(e.id, e.day, e.at, JSON.stringify(FoodEntrySchema.parse(e)), this.space);
   }
 
   /** True when there was one to delete. */
   deleteEntry(id: string): boolean {
-    return Number(this.core.db.prepare('DELETE FROM food WHERE id = ?').run(id).changes) > 0;
+    return Number(this.core.db.prepare('DELETE FROM food WHERE space = ? AND id = ?').run(this.space, id).changes) > 0;
   }
 
   /** The most used saved foods, then the most recently used, then by name. */
   topSaved(limit: number): SavedFood[] {
     const rows = this.core.db
-      .prepare("SELECT id, uses, json FROM foods_saved WHERE space = '' ORDER BY uses DESC, last_used DESC, name_key LIMIT ?")
-      .all(limit) as unknown as SavedRow[];
+      .prepare('SELECT id, uses, json FROM foods_saved WHERE space = ? ORDER BY uses DESC, last_used DESC, name_key LIMIT ?')
+      .all(this.space, limit) as unknown as SavedRow[];
     return rows.flatMap((r) => this.savedOf(r));
   }
 
   saved(id: string): SavedFood | null {
-    const row = this.core.db.prepare("SELECT id, uses, json FROM foods_saved WHERE space = '' AND id = ?").get(id) as SavedRow | undefined;
+    const row = this.core.db.prepare('SELECT id, uses, json FROM foods_saved WHERE space = ? AND id = ?').get(this.space, id) as SavedRow | undefined;
     return row ? (this.savedOf(row)[0] ?? null) : null;
   }
 
   savedByName(name: string): SavedFood | null {
-    const row = this.core.db.prepare("SELECT id, uses, json FROM foods_saved WHERE space = '' AND name_key = ?").get(savedKey(name)) as SavedRow | undefined;
+    const row = this.core.db.prepare('SELECT id, uses, json FROM foods_saved WHERE space = ? AND name_key = ?').get(this.space, savedKey(name)) as SavedRow | undefined;
     return row ? (this.savedOf(row)[0] ?? null) : null;
   }
 
   savedCount(): number {
-    return (this.core.db.prepare("SELECT COUNT(*) AS n FROM foods_saved WHERE space = ''").get() as { n: number }).n;
+    return (this.core.db.prepare('SELECT COUNT(*) AS n FROM foods_saved WHERE space = ?').get(this.space) as { n: number }).n;
   }
 
   /** A new saved food, used once at `at`. */
   insertSaved(s: Omit<SavedFood, 'uses'>, at: string): void {
     const json = JSON.stringify({ id: s.id, name: s.name, kcal: s.kcal });
     SavedFoodSchema.parse({ ...s, uses: 1 });
-    this.core.db.prepare("INSERT INTO foods_saved (id, space, name_key, uses, last_used, json) VALUES (?, '', ?, 1, ?, ?)").run(s.id, savedKey(s.name), at, json);
+    this.core.db.prepare('INSERT INTO foods_saved (id, space, name_key, uses, last_used, json) VALUES (?, ?, ?, 1, ?, ?)').run(s.id, this.space, savedKey(s.name), at, json);
   }
 
   /** One more use at `at`; with `value`, its name and kcal change too (a re-save). */
@@ -98,15 +108,15 @@ export class FoodRepo {
     if (value) {
       SavedFoodSchema.parse({ id, ...value, uses: 1 });
       this.core.db
-        .prepare("UPDATE foods_saved SET uses = uses + 1, last_used = ?, name_key = ?, json = ? WHERE space = '' AND id = ?")
-        .run(at, savedKey(value.name), JSON.stringify({ id, name: value.name, kcal: value.kcal }), id);
+        .prepare('UPDATE foods_saved SET uses = uses + 1, last_used = ?, name_key = ?, json = ? WHERE space = ? AND id = ?')
+        .run(at, savedKey(value.name), JSON.stringify({ id, name: value.name, kcal: value.kcal }), this.space, id);
       return;
     }
-    this.core.db.prepare("UPDATE foods_saved SET uses = uses + 1, last_used = ? WHERE space = '' AND id = ?").run(at, id);
+    this.core.db.prepare('UPDATE foods_saved SET uses = uses + 1, last_used = ? WHERE space = ? AND id = ?').run(at, this.space, id);
   }
 
   deleteSaved(id: string): boolean {
-    return Number(this.core.db.prepare("DELETE FROM foods_saved WHERE space = '' AND id = ?").run(id).changes) > 0;
+    return Number(this.core.db.prepare('DELETE FROM foods_saved WHERE space = ? AND id = ?').run(this.space, id).changes) > 0;
   }
 
   /** The daily calorie target (KCAL_TARGET_DEFAULT until one is set). */

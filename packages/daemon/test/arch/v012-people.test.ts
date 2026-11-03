@@ -345,14 +345,15 @@ describe('her route files and his stay apart', () => {
 
 /**
  * T6 (C5), the part this build pins: every SELECT, UPDATE and DELETE on a
- * table that already holds person spaces names `space` (her to-dos,
- * projects and weights; saved foods are keyed per space), and every query
- * on her Activity names `person`. Medicines, doses, food and cafés join
- * this list as their modules take a space.
+ * table that holds person spaces names `space` (her to-dos, projects,
+ * medicines, doses and weights; food and saved foods are keyed per space
+ * though her food log isn't in this build), and every query on her
+ * Activity names `person`. Cafés join this list as their module takes a
+ * space.
  */
 describe('T6: every query on a person-space table names its space', () => {
   // P2: day plans, templates, the journal and its comments, and sleep nights join the list.
-  const SPACE_TABLES = ['todos', 'projects', 'weights', 'foods_saved', 'day_plans', 'plan_templates', 'journal_entries', 'journal_comments', 'sleep_logs'];
+  const SPACE_TABLES = ['todos', 'projects', 'medicines', 'doses', 'weights', 'food', 'foods_saved', 'day_plans', 'plan_templates', 'journal_entries', 'journal_comments', 'sleep_logs'];
   const statements = (text: string) => [...text.matchAll(/(['"`])((?:SELECT|UPDATE|DELETE)\b[\s\S]*?)\1/g)].map((m) => m[2] as string);
   it('names space (or person) in every statement on them', () => {
     const bad: string[] = [];

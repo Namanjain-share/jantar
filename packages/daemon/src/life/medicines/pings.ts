@@ -20,12 +20,19 @@
  *
  * Lock screen: "Medicine due" and the time, never a name, unless
  * life.lockScreenDetails is on at the Mac. Logs carry kinds only.
+ *
+ * v0.12 People: a medicine in her space rings her devices only (the row
+ * names her: `person`), and its rows' sub is `<pid>|HH:MM`, so her 08:00
+ * never merges with his 08:00 into one push (spec 3.4, C5). The handlers
+ * are the `system` reader (C4): they read every space, so a restart keeps
+ * her pings; her push opens her app (`/p/health?tab=meds&dose=`).
  */
 import { dayKeyOf, hhmmOf, instantAt, nextMedSlot, shiftDay } from '@jantar/life-core';
 import { MED_CATCH_UP_GAP_MS } from '@jantar/protocol';
 import type { LifeCore, LifePush, Logger, PingHandler, PingRow } from '../../contracts.js';
+import { personOfSpace } from '../todos/pings.js';
 import { isDueOn, supplyOf } from './day.js';
-import { allMeds, countMeds, doseAt, getMed, hasPing, medPingTimes, pingKeys, type StoredMedicine } from './repo.js';
+import { MedsRepo, allMedsAnySpace, countMedsAnySpace, hasPing, medAnySpace, medPingTimes, pingKeys, type StoredMedicine } from './repo.js';
 
 /** When a refill ping rings: the next 10:00 in the Life zone. */
 export const REFILL_AT = '10:00';
@@ -34,6 +41,17 @@ const slotOf = (med: StoredMedicine) => ({ schedule: med.schedule, history: med.
 
 /** `name dose`, for the lock screen with details on. */
 const label = (med: StoredMedicine) => (med.dose ? `${med.name} ${med.dose}` : med.name);
+
+/** A dose time's row sub in a space: "08:00" for the owner, "<pid>|08:00" in hers. */
+export function medSub(space: string, slot: string): string {
+  return space === '' ? slot : `${space}|${slot}`;
+}
+
+/** The dose time a row's sub names ("<pid>|08:00" and "08:00" both name 08:00). */
+export function slotOfSub(sub: string): string {
+  const i = sub.lastIndexOf('|');
+  return i === -1 ? sub : sub.slice(i + 1);
+}
 
 /** The next time strictly after `after` that any of the medicine's dose times comes round. */
 export function nextDoseOf(med: StoredMedicine, after: Date, tz: string): Date | null {
@@ -62,19 +80,23 @@ function nextRefillAt(core: LifeCore): Date {
  * scheduler's check re-reads the medicine before it rings. Moving it on
  * here would drop that dose's ping.
  */
-export function armMed(core: LifeCore, med: StoredMedicine, before: readonly string[] = []): void {
+export function armMed(core: LifeCore, med: StoredMedicine, before: readonly string[] = [], space = ''): void {
   const s = core.scheduler;
   if (med.stoppedOn) {
     s.clear('med', med.id);
     return;
   }
-  for (const t of before) if (!med.times.includes(t)) s.clear('med', med.id, t);
+  for (const t of before) if (!med.times.includes(t)) s.clear('med', med.id, medSub(space, t));
   const now = core.now();
   const stored = medPingTimes(core, med.id);
+  const person = personOfSpace(space);
   for (const t of med.times) {
-    const at = stored.get(t);
+    const sub = medSub(space, t);
+    const at = stored.get(sub);
     if (at && Date.parse(at) <= now.getTime()) continue;
-    s.set('med', med.id, t, nextMedSlot(slotOf(med), t, now, core.tz()));
+    const next = nextMedSlot(slotOf(med), t, now, core.tz());
+    if (person) s.set('med', med.id, sub, next, person);
+    else s.set('med', med.id, sub, next);
   }
 }
 
@@ -83,7 +105,7 @@ export function armMed(core: LifeCore, med: StoredMedicine, before: readonly str
  * medicine) forgets an earlier ring first; otherwise a row still armed, or
  * one that rang, is left alone: one ring per box.
  */
-export function syncRefill(core: LifeCore, med: StoredMedicine, reset: boolean): void {
+export function syncRefill(core: LifeCore, med: StoredMedicine, reset: boolean, space = ''): void {
   const s = core.scheduler;
   if (!med.pills || med.stoppedOn) {
     s.clear('refill', med.id);
@@ -92,32 +114,37 @@ export function syncRefill(core: LifeCore, med: StoredMedicine, reset: boolean):
   if (reset) s.clear('refill', med.id);
   if (!supplyOf(med, core.today())?.low) return;
   if (!reset && hasPing(core, 'refill', med.id)) return;
-  s.set('refill', med.id, '', nextRefillAt(core));
+  const person = personOfSpace(space);
+  if (person) s.set('refill', med.id, '', nextRefillAt(core), person);
+  else s.set('refill', med.id, '', nextRefillAt(core));
 }
 
-/** Rows of `kind` whose medicine is gone (or whose time it no longer has). */
-function dropOrphans(core: LifeCore, kind: 'med' | 'refill', meds: readonly StoredMedicine[]): void {
-  const live = new Map(meds.filter((m) => !m.stoppedOn).map((m) => [m.id, m]));
+/** Rows of `kind` whose medicine is gone (or whose time, in its own space, it no longer has). */
+function dropOrphans(core: LifeCore, kind: 'med' | 'refill', meds: readonly { med: StoredMedicine; space: string }[]): void {
+  const live = new Map(meds.filter((m) => !m.med.stoppedOn).map((m) => [m.med.id, m]));
   for (const { ref, sub } of pingKeys(core, kind)) {
-    const med = live.get(ref);
-    if (!med) core.scheduler.clear(kind, ref);
-    else if (kind === 'med' && !med.times.includes(sub)) core.scheduler.clear(kind, ref, sub);
+    const hit = live.get(ref);
+    if (!hit) core.scheduler.clear(kind, ref);
+    else if (kind === 'med' && !hit.med.times.some((t) => medSub(hit.space, t) === sub)) core.scheduler.clear(kind, ref, sub);
   }
 }
 
 export function medPings(core: LifeCore, log: Logger): PingHandler {
   return {
     kind: 'med',
+    // Her rows' sub starts with her id: her 08:00 and his are two pushes, each to its own devices.
     group: (row) => row.sub,
 
     check(row, dueAt, late) {
       try {
-        const med = getMed(core, row.ref);
-        if (!med || med.stoppedOn || !med.times.includes(row.sub)) return 'cancel';
+        const hit = medAnySpace(core, row.ref);
+        const slot = slotOfSub(row.sub);
+        if (!hit || hit.med.stoppedOn || medSub(hit.space, slot) !== row.sub || !hit.med.times.includes(slot)) return 'cancel';
+        const { med, space } = hit;
         const tz = core.tz();
         const day = dayKeyOf(dueAt, tz);
-        if (!isDueOn(med, day, row.sub)) return 'skip';
-        if (doseAt(core, med.id, day, row.sub)) return 'skip';
+        if (!isDueOn(med, day, slot)) return 'skip';
+        if (new MedsRepo(core, space).doseAt(med.id, day, slot)) return 'skip';
         if (late) {
           const now = core.now();
           const next = nextDoseOf(med, now, tz);
@@ -131,39 +158,55 @@ export function medPings(core: LifeCore, log: Logger): PingHandler {
     },
 
     push(rows, dueAt, late) {
-      const slot = rows[0]?.sub ?? hhmmOf(dueAt, core.tz());
+      const slot = rows[0] ? slotOfSub(rows[0].sub) : hhmmOf(dueAt, core.tz());
       const n = rows.length;
       let body = `Tap to log · ${slot}`;
+      // v0.12: the group's person (one sub, one space): her app and her devices.
+      const person = rows[0]?.person;
       if (core.settings().lockScreenDetails) {
         try {
-          const names = rows.map((r) => getMed(core, r.ref)).filter((m): m is StoredMedicine => m !== null).map(label).sort((a, b) => a.localeCompare(b));
+          const names = rows.map((r) => medAnySpace(core, r.ref)?.med ?? null).filter((m): m is StoredMedicine => m !== null).map(label).sort((a, b) => a.localeCompare(b));
           if (names.length) body = `${names.join(', ')} · ${slot}`;
         } catch {
           // The generic body still says when.
         }
       }
       const one = n === 1 ? rows[0] : undefined;
+      const hhmm = slot.replace(':', '');
+      const title = n === 1 ? 'Medicine due' : `Medicines due · ${n}`;
+      const text = late ? `Not logged at ${slot} · ${body}` : body;
+      if (person) {
+        return {
+          kind: 'med',
+          title,
+          body: text,
+          url: one ? `/p/health?tab=meds&dose=${one.ref}@${hhmm}` : '/p/health?tab=meds',
+          tag: one ? `life:med:${person}:${one.ref}` : `med:${person}|${slot}`,
+          person,
+        } satisfies LifePush;
+      }
       return {
         kind: 'med',
-        title: n === 1 ? 'Medicine due' : `Medicines due · ${n}`,
-        body: late ? `Not logged at ${slot} · ${body}` : body,
-        url: one ? `/today?dose=${one.ref}@${slot.replace(':', '')}` : '/today',
+        title,
+        body: text,
+        url: one ? `/today?dose=${one.ref}@${hhmm}` : '/today',
         tag: one ? `life:med:${one.ref}` : `med:${slot}`,
       } satisfies LifePush;
     },
 
     next(row, after) {
-      const med = getMed(core, row.ref);
-      if (!med || med.stoppedOn || !med.times.includes(row.sub)) return null;
-      return nextMedSlot(slotOf(med), row.sub, after, core.tz());
+      const hit = medAnySpace(core, row.ref);
+      const slot = slotOfSub(row.sub);
+      if (!hit || hit.med.stoppedOn || !hit.med.times.includes(slot)) return null;
+      return nextMedSlot(slotOf(hit.med), slot, after, core.tz());
     },
 
     resync() {
-      const meds = allMeds(core);
+      const meds = allMedsAnySpace(core);
       // A stored row that no longer parses is left out of every read and loses its pings here: say how many.
-      const unreadable = countMeds(core) - meds.length;
+      const unreadable = countMedsAnySpace(core) - meds.length;
       if (unreadable > 0) log.warn('unreadable medicines left out', { event: 'life.med.unreadable', count: unreadable });
-      for (const m of meds) armMed(core, m);
+      for (const m of meds) armMed(core, m.med, [], m.space);
       dropOrphans(core, 'med', meds);
       core.scheduler.poke();
     },
@@ -176,7 +219,7 @@ export function refillPings(core: LifeCore, log: Logger): PingHandler {
 
     check(row) {
       try {
-        const med = getMed(core, row.ref);
+        const med = medAnySpace(core, row.ref)?.med;
         if (!med || med.stoppedOn || !med.pills) return 'cancel';
         return supplyOf(med, core.today())?.low ? 'send' : 'cancel';
       } catch (e) {
@@ -190,17 +233,22 @@ export function refillPings(core: LifeCore, log: Logger): PingHandler {
       let body = 'Refill soon';
       if (one && core.settings().lockScreenDetails) {
         try {
-          const med = getMed(core, one.ref);
+          const med = medAnySpace(core, one.ref)?.med;
           const days = med ? supplyOf(med, core.today())?.daysLeft : null;
           if (med && days !== null && days !== undefined) body = `${med.name}: ${days === 1 ? '1 day' : `${days} days`} left`;
         } catch {
           // The generic body stands.
         }
       }
+      const text = late ? `Missed at ${hhmmOf(dueAt, core.tz())} · ${body}` : body;
+      const person = rows[0]?.person;
+      if (person) {
+        return { kind: 'med', title: 'Medicine running low', body: text, url: '/p/health?tab=meds', tag: one ? `life:refill:${person}:${one.ref}` : `life:refill:${person}`, person } satisfies LifePush;
+      }
       return {
         kind: 'med',
         title: 'Medicine running low',
-        body: late ? `Missed at ${hhmmOf(dueAt, core.tz())} · ${body}` : body,
+        body: text,
         url: one ? `/meds?med=${one.ref}` : '/meds',
         tag: one ? `life:refill:${one.ref}` : 'life:refill',
       } satisfies LifePush;
@@ -210,8 +258,8 @@ export function refillPings(core: LifeCore, log: Logger): PingHandler {
     next: () => null,
 
     resync() {
-      const meds = allMeds(core);
-      for (const m of meds) syncRefill(core, m, false);
+      const meds = allMedsAnySpace(core);
+      for (const m of meds) syncRefill(core, m.med, false, m.space);
       dropOrphans(core, 'refill', meds);
       core.scheduler.poke();
     },

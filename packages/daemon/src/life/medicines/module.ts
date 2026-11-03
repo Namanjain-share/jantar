@@ -21,27 +21,19 @@
  *   reaches it). A stopped medicine is not edited. Delete takes its doses.
  * - Every write re-runs the ping producers, then emits `life.changed {}`.
  *   Replies and errors carry ids and fixed sentences only.
+ * - v0.12 People: the module works in one space; `inSpace(pid)` is the same
+ *   module over hers (only the People module calls it). A write there arms
+ *   pings that ring her devices, ticks nobody's stream here (the People
+ *   module says who hears of it) and never emits `life.changed {}`, so his
+ *   stream can't tell him she is active in an area she keeps private. Her
+ *   medicine count is hers: his cap is not shared with hers.
  */
 import { consumeDose, hhmmOf, instantAt, shiftDay } from '@jantar/life-core';
 import { LIFE_LIMITS, type DoseBody, type MedSchedule, type MedScheduleBody, type MedicineBody, type MedicinePatch } from '@jantar/protocol';
 import type { Actor, LifeCore, LifeModuleDeps, LifeResult, MedicinesModule } from '../../contracts.js';
 import { isDueOn, medViews, medsDay } from './day.js';
 import { armMed, medPings, refillPings, syncRefill } from './pings.js';
-import {
-  HISTORY_MAX,
-  allMeds,
-  countMeds,
-  deleteDose,
-  deleteMed,
-  doseAt,
-  doseById,
-  getMed,
-  medDosesOn,
-  putMed,
-  upsertDose,
-  type DoseRow,
-  type StoredMedicine,
-} from './repo.js';
+import { HISTORY_MAX, MedsRepo, publicMed, type DoseRow, type StoredMedicine } from './repo.js';
 
 /** A phone clock a little ahead of the Mac's still logs "now". */
 const CLOCK_SKEW_MS = 60_000;
@@ -115,32 +107,52 @@ export function buildMedicinesModule(core: LifeCore, deps: LifeModuleDeps): Medi
   const log = deps.ctx.log.child({ part: 'life.medicines' });
   core.scheduler.register(medPings(core, log));
   core.scheduler.register(refillPings(core, log));
+  const spaces = new Map<string, MedicinesModule>();
+  const owner = medicinesIn(core, new MedsRepo(core), (space) => {
+    if (space === '') return owner;
+    let m = spaces.get(space);
+    if (!m) spaces.set(space, (m = medicinesIn(core, new MedsRepo(core, space), () => owner)));
+    return m;
+  });
+  return owner;
+}
 
-  /** After a committed write: wake the scheduler and tell the screens. */
+/** The module over one space's repo. `inSpace` reaches the others (her space's module is built once). */
+function medicinesIn(core: LifeCore, repo: MedsRepo, inSpace: (space: string) => MedicinesModule): MedicinesModule {
+  const space = repo.space;
+
+  /** After a committed write: wake the scheduler and (his space only) tell his screens. */
   const done = () => {
     core.scheduler.poke();
-    core.changed();
+    if (space === '') core.changed();
   };
 
   /** Give back what a Taken dose took, capped at the schema's maximum. */
   const giveBack = (med: StoredMedicine, stamp: string): StoredMedicine =>
     med.pills ? { ...med, pills: { ...med.pills, left: Math.min(PILLS_MAX, med.pills.left + med.pills.perDose) }, updatedAt: stamp } : med;
 
-  return {
+  const self: MedicinesModule = {
     name: 'medicines',
 
-    today: (day) => ({ meds: medsDay(core, allMeds(core), day) }),
+    inSpace: (other: string) => (other === space ? self : inSpace(other)),
+
+    today: (day) => ({ meds: medsDay(core, repo, repo.all(), day) }),
 
     get(day) {
       const today = core.today();
       const d = day ?? today;
       if (d > today) return refuse('invalid_request', MED_SENTENCES.future);
-      const meds = allMeds(core);
-      return { ok: true, value: { day: medsDay(core, meds, d), medicines: medViews(core, meds) } };
+      const meds = repo.all();
+      return { ok: true, value: { day: medsDay(core, repo, meds, d), medicines: medViews(core, repo, meds) } };
     },
 
-    create(body: MedicineBody, _actor: Actor) {
-      if (countMeds(core) >= LIFE_LIMITS.medicines) return refuse('conflict', MED_SENTENCES.full);
+    find(id: string) {
+      const m = repo.get(id);
+      return m ? publicMed(m) : null;
+    },
+
+    create(body: MedicineBody, _actor: Actor, opts: { by?: string } = {}) {
+      if (repo.count() >= LIFE_LIMITS.medicines) return refuse('conflict', MED_SENTENCES.full);
       const today = core.today();
       const stamp = core.now().toISOString();
       const times = normTimes(body.times);
@@ -160,16 +172,16 @@ export function buildMedicinesModule(core: LifeCore, deps: LifeModuleDeps): Medi
         timesHistory: [{ from: today, times }],
       };
       core.db.tx(() => {
-        putMed(core, med);
-        armMed(core, med);
-        syncRefill(core, med, true);
+        repo.put(med, opts.by ?? '');
+        armMed(core, med, [], space);
+        syncRefill(core, med, true, space);
       });
       done();
       return { ok: true, value: { id: med.id } };
     },
 
-    update(id: string, patch: MedicinePatch, _actor: Actor) {
-      const med = getMed(core, id);
+    update(id: string, patch: MedicinePatch, _actor: Actor, opts: { editedBy?: string } = {}) {
+      const med = repo.get(id);
       if (!med) return refuse('not_found', MED_SENTENCES.notFound);
       if (med.stoppedOn) return refuse('conflict', MED_SENTENCES.stopped);
       const today = core.today();
@@ -189,7 +201,7 @@ export function buildMedicinesModule(core: LifeCore, deps: LifeModuleDeps): Medi
         const times = normTimes(patch.times);
         if (!sameList(times, med.times)) {
           next.times = times;
-          next.timesHistory = timesFrom(med, times, medDosesOn(core, id, today), today);
+          next.timesHistory = timesFrom(med, times, repo.medDosesOn(id, today), today);
           timesChanged = true;
         }
       }
@@ -222,23 +234,35 @@ export function buildMedicinesModule(core: LifeCore, deps: LifeModuleDeps): Medi
       }
 
       next.updatedAt = core.now().toISOString();
+      // v0.12: "Edited by" on a medicine of hers the owner changed (the People module decides when).
+      if (opts.editedBy !== undefined) {
+        next.editedBy = opts.editedBy;
+        next.editedAt = next.updatedAt;
+      }
       core.db.tx(() => {
-        putMed(core, next);
-        if (timesChanged || scheduleChanged) armMed(core, next, med.times);
-        if (timesChanged || scheduleChanged || pillsChanged) syncRefill(core, next, true);
+        repo.put(next);
+        if (timesChanged || scheduleChanged) armMed(core, next, med.times, space);
+        if (timesChanged || scheduleChanged || pillsChanged) syncRefill(core, next, true, space);
       });
       done();
       return OK;
     },
 
-    stopTaking(id: string, _actor: Actor) {
-      const med = getMed(core, id);
+    stopTaking(id: string, _actor: Actor, opts: { editedBy?: string } = {}) {
+      const med = repo.get(id);
       if (!med) return refuse('not_found', MED_SENTENCES.notFound);
       if (med.stoppedOn) return OK;
       const now = core.now();
-      const next: StoredMedicine = { ...med, stoppedOn: core.today(), stopTime: hhmmOf(now, core.tz()), updatedAt: now.toISOString() };
+      const stamp = now.toISOString();
+      const next: StoredMedicine = {
+        ...med,
+        stoppedOn: core.today(),
+        stopTime: hhmmOf(now, core.tz()),
+        updatedAt: stamp,
+        ...(opts.editedBy !== undefined ? { editedBy: opts.editedBy, editedAt: stamp } : {}),
+      };
       core.db.tx(() => {
-        putMed(core, next);
+        repo.put(next);
         core.scheduler.clear('med', id);
         core.scheduler.clear('refill', id);
       });
@@ -247,9 +271,9 @@ export function buildMedicinesModule(core: LifeCore, deps: LifeModuleDeps): Medi
     },
 
     remove(id: string, _actor: Actor) {
-      if (!getMed(core, id)) return refuse('not_found', MED_SENTENCES.notFound);
+      if (!repo.get(id)) return refuse('not_found', MED_SENTENCES.notFound);
       core.db.tx(() => {
-        deleteMed(core, id);
+        repo.delete(id);
         core.scheduler.clear('med', id);
         core.scheduler.clear('refill', id);
       });
@@ -263,11 +287,11 @@ export function buildMedicinesModule(core: LifeCore, deps: LifeModuleDeps): Medi
       const at = body.at ? new Date(body.at) : now;
       if (at.getTime() > now.getTime() + CLOCK_SKEW_MS) return refuse('invalid_request', MED_SENTENCES.atFuture);
       if (at.getTime() < instantAt(shiftDay(body.day, -1), '00:00', core.tz()).getTime()) return refuse('invalid_request', MED_SENTENCES.atEarly);
-      const med = getMed(core, medId);
+      const med = repo.get(medId);
       if (!med) return refuse('not_found', MED_SENTENCES.notFound);
       if (body.day < med.startedOn) return refuse('invalid_request', MED_SENTENCES.beforeStart);
       if (med.stoppedOn && body.day > med.stoppedOn) return refuse('invalid_request', MED_SENTENCES.afterStop);
-      const existing = doseAt(core, medId, body.day, body.slot);
+      const existing = repo.doseAt(medId, body.day, body.slot);
       // A logged time that left the schedule can still be changed; a new log needs a due time.
       if (!existing && !isDueOn(med, body.day, body.slot)) return refuse('invalid_request', MED_SENTENCES.notDue);
 
@@ -282,28 +306,29 @@ export function buildMedicinesModule(core: LifeCore, deps: LifeModuleDeps): Medi
           : giveBack(med, stamp);
       }
       core.db.tx(() => {
-        upsertDose(core, { id, medId, day: body.day, slot: body.slot, status: body.status, at: at.toISOString() });
-        if (next !== med) putMed(core, next);
-        syncRefill(core, next, false);
+        repo.upsertDose({ id, medId, day: body.day, slot: body.slot, status: body.status, at: at.toISOString() });
+        if (next !== med) repo.put(next);
+        syncRefill(core, next, false, space);
       });
       done();
       return { ok: true, value: { id } };
     },
 
     undoDose(medId: string, doseId: string, _actor: Actor) {
-      const dose = doseById(core, medId, doseId);
+      const dose = repo.doseById(medId, doseId);
       if (!dose) return refuse('not_found', MED_SENTENCES.doseNotFound);
-      const med = getMed(core, medId);
+      const med = repo.get(medId);
       core.db.tx(() => {
-        deleteDose(core, dose.id);
+        repo.deleteDose(dose.id);
         if (med) {
           const next = dose.status === 'taken' ? giveBack(med, core.now().toISOString()) : med;
-          if (next !== med) putMed(core, next);
-          syncRefill(core, next, false);
+          if (next !== med) repo.put(next);
+          syncRefill(core, next, false, space);
         }
       });
       done();
       return OK;
     },
   };
+  return self;
 }

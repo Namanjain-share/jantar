@@ -1833,12 +1833,18 @@ export interface TodosModule extends LifeModule {
 /** Medicines (WP-MD). */
 export interface MedicinesModule extends LifeModule {
   readonly name: 'medicines';
+  /** v0.12 People: this module over one space (`''` the owner's). Only the People module calls it. */
+  inSpace(space: string): MedicinesModule;
   /** `day` on or before today (default today); after it is invalid_request. */
   get(day?: string): LifeResult<MedicinesResponse>;
-  create(body: MedicineBody, actor: Actor): LifeResult<{ id: string }>;
-  update(id: string, patch: MedicinePatch, actor: Actor): LifeResult;
+  /** v0.12 People: one medicine of this space as stored (null: none here), for the People module's rules. */
+  find(id: string): import('@jantar/protocol/people').PersonMedicine | null;
+  /** v0.12: `opts.by` (the author, in a person space) comes from the People module; no route passes it. */
+  create(body: MedicineBody, actor: Actor, opts?: { by?: string }): LifeResult<{ id: string }>;
+  /** v0.12: `opts.editedBy` sets "Edited by" (the owner changing a medicine of hers); only the People module passes it. */
+  update(id: string, patch: MedicinePatch, actor: Actor, opts?: { editedBy?: string }): LifeResult;
   /** Stop taking it from today (POST /v1/medicines/:id/stop); its pings end. Named apart from the lifecycle `stop`. */
-  stopTaking(id: string, actor: Actor): LifeResult;
+  stopTaking(id: string, actor: Actor, opts?: { editedBy?: string }): LifeResult;
   /** Deletes its doses too. */
   remove(id: string, actor: Actor): LifeResult;
   /** Upsert on (medicine, day, slot): Taken, Skip or Took it at…. */

@@ -183,7 +183,8 @@ class LifeServiceImpl implements LifeService {
   readonly people: PeopleModule;
   private readonly closed: Modules = {
     todos: closedModule<TodosModule>('todos'),
-    medicines: closedModule<MedicinesModule>('medicines'),
+    // v0.12: her space's module is closed too while life.db is (and finds nothing).
+    medicines: closedModule<MedicinesModule>('medicines', { inSpace: () => this.closed.medicines, find: () => null }),
     food: closedModule<FoodModule>('food', { estimateStatus: () => ({ available: false, reason: LIFE_CLOSED }) }),
     places: closedModule<PlacesModule>('places'),
     finance: closedModule<FinanceModule>('finance'),

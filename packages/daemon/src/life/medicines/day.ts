@@ -40,7 +40,7 @@ import {
 } from '@jantar/life-core';
 import type { MedicineView, MedsDay, MedsDayItem } from '@jantar/protocol';
 import type { LifeCore } from '../../contracts.js';
-import { dosesBetween, dosesOn, publicMed, type DoseRow, type StoredMedicine } from './repo.js';
+import { publicMed, type DoseRow, type MedsRepo, type StoredMedicine } from './repo.js';
 
 /** The adherence window: today and the 29 days before it. */
 export const ADHERENCE_DAYS = 30;
@@ -96,14 +96,14 @@ function logOf(d: DoseRow, tz: string): DoseLogEntry {
   return { id: d.id, medId: d.medId, day: d.day, slot: d.slot, status: d.status, ...(isLate(d, tz) ? { late: true } : {}) };
 }
 
-/** One day's checklist for the medicines taken that day. */
-export function medsDay(core: LifeCore, meds: readonly StoredMedicine[], day: string): MedsDay {
+/** One day's checklist for the medicines taken that day (the doses read from `repo`'s space). */
+export function medsDay(core: LifeCore, repo: MedsRepo, meds: readonly StoredMedicine[], day: string): MedsDay {
   const tz = core.tz();
   const now = core.now();
   const today = core.today();
   const active = meds.filter((m) => takenOn(m, day));
   const ids = new Set(active.map((m) => m.id));
-  const rows = dosesOn(core, day).filter((d) => ids.has(d.medId));
+  const rows = repo.dosesOn(day).filter((d) => ids.has(d.medId));
   const byId = new Map(rows.map((d) => [d.id, d]));
   // No asOf: every unlogged slot comes back 'missed', and today's are turned to pending below.
   const groups = buildDayChecklist({
@@ -187,26 +187,38 @@ function windowsOf(med: StoredMedicine): MedWindow[] {
   });
 }
 
-/** Each medicine's last 30 days, skips left out: 0 to 100, or null when nothing was due and past. */
-export function adherenceOf(core: LifeCore, meds: readonly StoredMedicine[]): Map<string, number | null> {
+/**
+ * The last 30 days of a space's medicines, skips left out (life-core's
+ * `computeAdherence`): each medicine's percentage, the whole space's, and
+ * each day's taken and missed counts (the two-day concern reads them).
+ * Percentages are 0 to 100, or null when nothing was due and past.
+ */
+export function adherenceReport(
+  core: LifeCore,
+  repo: MedsRepo,
+  meds: readonly StoredMedicine[],
+): { perMed: Map<string, number | null>; overall: number | null; perDay: { day: string; taken: number; missed: number }[] } {
   const tz = core.tz();
   const now = core.now();
   const today = core.today();
   const days = Array.from({ length: ADHERENCE_DAYS }, (_, i) => shiftDay(today, i - (ADHERENCE_DAYS - 1)));
-  const logs = dosesBetween(core, days[0] ?? today, today).map((d) => logOf(d, tz));
+  const logs = repo.dosesBetween(days[0] ?? today, today).map((d) => logOf(d, tz));
   const result = computeAdherence({ days, meds: meds.flatMap(windowsOf), logs, asOf: { day: today, time: hhmmOf(now, tz) } });
-  const out = new Map<string, number | null>();
-  for (const m of meds) {
-    const pct = result.perMed[m.id]?.adherencePct ?? null;
-    out.set(m.id, pct === null ? null : Math.round(pct * 100));
-  }
-  return out;
+  const pct = (p: number | null | undefined) => (p === null || p === undefined ? null : Math.round(p * 100));
+  const perMed = new Map<string, number | null>();
+  for (const m of meds) perMed.set(m.id, pct(result.perMed[m.id]?.adherencePct));
+  return { perMed, overall: pct(result.overall.adherencePct), perDay: result.perDay.map((d) => ({ day: d.day, taken: d.taken, missed: d.missed })) };
+}
+
+/** Each medicine's last 30 days, skips left out: 0 to 100, or null when nothing was due and past. */
+export function adherenceOf(core: LifeCore, repo: MedsRepo, meds: readonly StoredMedicine[]): Map<string, number | null> {
+  return adherenceReport(core, repo, meds).perMed;
 }
 
 /** Every medicine as the screen shows it: taking first by name, stopped ones last. */
-export function medViews(core: LifeCore, meds: readonly StoredMedicine[]): MedicineView[] {
+export function medViews(core: LifeCore, repo: MedsRepo, meds: readonly StoredMedicine[]): (MedicineView & { by?: string; editedBy?: string; editedAt?: string })[] {
   const today = core.today();
-  const pct = adherenceOf(core, meds);
+  const pct = adherenceOf(core, repo, meds);
   const order = [...meds].sort((a, b) => Number(a.stoppedOn !== undefined) - Number(b.stoppedOn !== undefined) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   return order.map((m) => ({ ...publicMed(m), supply: supplyOf(m, today), adherencePct: pct.get(m.id) ?? null }));
 }
