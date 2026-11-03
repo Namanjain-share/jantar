@@ -280,8 +280,8 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
         onMore={() => nowStep && setSheet({ kind: 'step', step: nowStep })}
       />
       <UndoToast toast={undo.toast} close={undo.close} />
-      <TodoSheet t={todoOpen} owner={owner} api={api} close={() => setTodoOpen(null)} run={run} undo={undo.show} />
-      <StepSheet sheet={sheet} day={day} owner={owner} api={api} close={() => setSheet(null)} run={run} setState={setState} />
+      <TodoSheet t={todoOpen} owner={owner} shared={me.agreement?.see.todos === true} api={api} close={() => setTodoOpen(null)} run={run} undo={undo.show} />
+      <StepSheet sheet={sheet} day={day} owner={owner} shared={me.agreement?.see.plan === true} api={api} close={() => setSheet(null)} run={run} setState={setState} />
       <StatusSheet open={sheet?.kind === 'status'} api={api} close={() => setSheet(null)} run={run} current={today.status?.level ?? 'ok'} />
       <WakeSheet open={sheet?.kind === 'wake'} api={api} close={() => setSheet(null)} run={run} />
       <AddStepSheet open={sheet?.kind === 'add'} close={() => setSheet(null)} onAdd={(body) => void run(api.stepAdd(day, body))} />
@@ -373,6 +373,7 @@ function StepSheet({
   sheet,
   day,
   owner,
+  shared,
   api,
   close,
   run,
@@ -381,6 +382,8 @@ function StepSheet({
   sheet: OpenSheet;
   day: string;
   owner: string;
+  /** {owner} reads her plan now (see.plan): a skip's reason is shown to {owner}. */
+  shared: boolean;
   api: PersonApi;
   close: () => void;
   run: (p: Promise<unknown>) => void;
@@ -484,6 +487,7 @@ function StepSheet({
           <>
             <ReasonChips reasons={mode === 'skip' ? SKIP_REASONS : ASK_REASONS} value={reason} onPick={setReason} />
             <Field label={mode === 'skip' ? 'Reason (optional)' : `A note for ${owner} (optional)`} value={note} onChange={setNote} max={200} />
+            {mode === 'skip' && shared ? <p className="text-small text-ink-2">{owner} sees the reason you pick or write.</p> : null}
             <Button
               variant="primary"
               size="xl"

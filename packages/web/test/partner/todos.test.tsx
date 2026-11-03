@@ -211,6 +211,24 @@ describe('her To-do: add with a day and time, and each item\'s sheet (spec 3.3)'
     await waitFor(() => expect(ask).toHaveBeenCalledWith(CV, 'Move it later. after lunch'));
   });
 
+  it('Skip says Sam sees the reason while he sees her to-dos, and nothing of the kind while that is off (review 4)', async () => {
+    const api = fakeApi({ todos: vi.fn(async () => ({ today: DAY, todos: [todo({ ask: 'none' })] })) });
+    const r = render(<Todos me={me()} api={api} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More for Send CV' }));
+    let sheet = screen.getByRole('dialog', { name: 'Send CV' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Skip' }));
+    expect(within(sheet).getByText('Sam sees the reason you pick or write.')).toBeTruthy();
+    r.unmount();
+
+    const off = me();
+    off.agreement = { ...(off.agreement as NonNullable<PersonMe['agreement']>), see: { ...(off.agreement as NonNullable<PersonMe['agreement']>).see, todos: false } };
+    render(<Todos me={off} api={api} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More for Send CV' }));
+    sheet = screen.getByRole('dialog', { name: 'Send CV' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Skip' }));
+    expect(within(sheet).queryByText(/sees the reason/)).toBeNull();
+  });
+
   it('no Snooze on an item he marked "no snooze"', async () => {
     const api = fakeApi({ todos: vi.fn(async () => ({ today: DAY, todos: [todo({ snoozable: false })] })) });
     render(<Todos me={me()} api={api} tick={0} />);

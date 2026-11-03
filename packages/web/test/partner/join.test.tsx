@@ -54,16 +54,18 @@ describe('M20: the join page', () => {
     const offer = closeDependents(presetAgreement('everything'));
     const text = all(joinCopy('Sam', offer, { built: BUILT_PHASE, foodModule: false }));
     for (const re of [
-      /Your day plan: when you open it \("Seen"\), each step you finish and when, the notes you write, your check-ins \(mood, energy, a line and what you need\), your status \(Okay, Low or Need space, and its line\) and a rough day/,
-      /Your evening review: each item done, moved, missed or gone, what you write in it and your mood/,
+      /Your day plan: when you open it \("Seen"\), each step you finish or skip and when, the notes and skip reasons you write, your check-ins \(mood, energy, a line and what you need\), your status \(Okay, Low or Need space, and its line\) and a rough day/,
+      /Your evening review: each item done, skipped, moved, missed or gone, with any skip reason, what you write in it and your mood/,
+      /Your to-dos and reminders: all of them, including ones you add yourself, when you finish or skip each one, and the notes and skip reasons you write/,
       /When you tap "Going to sleep" or "Woke up", Sam sees it as it happens\./,
       /When you open an alert from Sam, and your reply/,
       /Mark an item "no snooze", or ask to be told if it isn't done by a set time\./,
       /Your quiet hours apply, except Urgent: it rings through them unless you switch that off/,
       /Add to and edit the lists you share/,
       /Activity lists every change Sam makes in your space, and each time Sam looks, including reading your journal or your chats\./,
+      /Sam can read your Activity too: the names of the devices you link, and when you link or remove one, pause, resume or change what you share\./,
       /"See what Sam sees" opens each area/,
-      /The only times Sam sees are the "Seen" marks, finish times, sleep taps and when you open an alert listed above\./,
+      /The only times Sam sees are those on what you share \(when you add, change, finish or skip a to-do or a step, when you write in your journal or your chats, "Seen" marks, sleep taps and when you open an alert\) and those in your Activity\./,
       /security log on Sam's Mac notes the time of each change your devices make and each time your assistant runs/,
     ]) {
       expect(text).toMatch(re);
@@ -147,9 +149,9 @@ describe('M20: the join page', () => {
     expect(joinCopy('Sam', closeDependents(presetAgreement('standard')), { built: BUILT_PHASE, foodModule: false }).sees.find((l) => l.key === 'see.meds')?.text).toBe(
       at(true, false).line,
     );
-    // He never sees when she logged a dose: the only times stay the ones the can't-list names.
+    // He never sees when she logged a dose: the only times stay the ones the can't-list names (to-dos and steps, not doses).
     const c = joinCopy('Sam', base, { built: BUILT_PHASE, foodModule: false });
-    expect(c.cant.join('\n')).toMatch(/The only times Sam sees are the "Seen" marks, finish times, sleep taps and when you open an alert listed above\./);
+    expect(c.cant.join('\n')).toMatch(/The only times Sam sees are those on what you share \(when you add, change, finish or skip a to-do or a step, /);
     expect(all(c)).not.toMatch(/pill|when you log|log time/i);
   });
 });

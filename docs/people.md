@@ -210,8 +210,10 @@ your Mac's Life data. Each row remembers who added it.
   time, a repeat (every day, week or month: one item that comes back after
   each Done), "no snooze" or a "Got it" if you like. They can tick it, undo,
   snooze (unless you said no snooze), skip it with a reason, say Got it, or
-  **Ask to change** (you see their note on the item). They can't edit or
-  delete your items.
+  **Ask to change** (you see their note on the item). You see a skip's
+  reason too, and their join page and Skip sheet say so; their Undo (a
+  repeating item's included) puts the date back and takes the reason
+  back. They can't edit or delete your items.
 - **Items they add** are theirs to change: a tap on a to-do opens its
   sheet (snooze, skip, edit, delete), and a day and time on one makes it a
   reminder that rings their phone. With "edit or remove to-dos they
@@ -523,7 +525,10 @@ accounts Jantar may use applies to their runs too.
   linked or revoked, each device of yours that can newly open their space
   (paired with control, or raised to it), and every time you look at an
   area (one line per area per hour), in plain words under a header for each
-  day.
+  day. Their join page and Sharing say that you read it, with the names of
+  their devices and when they link one, pause, resume or change what they
+  share, and that those times and the ones on what they share are the only
+  times you see.
 - **The evening review** holds their to-dos only while they share their
   to-dos: switched off, the to-dos are out of what you see of the review
   and of its counts, sent reviews included.

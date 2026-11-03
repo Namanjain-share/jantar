@@ -43,7 +43,9 @@ function medNotesWords(owner: string, a: AgreementFields): string {
 
 const see = (owner: string): Record<string, SeeText> => ({
   'see.todos': (v) =>
-    v ? 'Your to-dos and reminders: all of them, including ones you add yourself, when you finish each one, and the notes you write when you do' : 'Your to-dos and reminders: off',
+    v
+      ? 'Your to-dos and reminders: all of them, including ones you add yourself, when you finish or skip each one, and the notes and skip reasons you write'
+      : 'Your to-dos and reminders: off',
   // His `full` view (daemon people/meds.ts ownerMedicine): never a log time or pill count; the notes only on medicines he may change.
   'see.meds': (v, a) =>
     v === 'full'
@@ -55,11 +57,11 @@ const see = (owner: string): Record<string, SeeText> => ({
   'see.food': (v) => (v ? 'Your food log' : 'Your food log: off'),
   'see.plan': (v) =>
     v
-      ? 'Your day plan: when you open it ("Seen"), each step you finish and when, the notes you write, your check-ins (mood, energy, a line and what you need), your status (Okay, Low or Need space, and its line) and a rough day'
+      ? 'Your day plan: when you open it ("Seen"), each step you finish or skip and when, the notes and skip reasons you write, your check-ins (mood, energy, a line and what you need), your status (Okay, Low or Need space, and its line) and a rough day'
       : 'Your day plan: off, and with it your status and check-ins',
   'see.review': (v, a) =>
     v === 'full'
-      ? `Your evening review: each item done, moved, missed or gone, what you write in it and your mood${a.see.todos ? '' : '. Your to-dos stay out of it while they are off'}`
+      ? `Your evening review: each item done, skipped, moved, missed or gone, with any skip reason, what you write in it and your mood${a.see.todos ? '' : '. Your to-dos stay out of it while they are off'}`
       : v === 'counts'
         ? `Your evening review: only the counts, like "5 done · 1 moved"${a.see.todos ? '' : ', your to-dos left out'}`
         : 'Your evening review: off',
@@ -147,7 +149,11 @@ export function joinCopy(owner: string, a: AgreementFields, opts: { built: Build
   }
   if (p4) doesLines.push({ key: null, text: `Add to and edit the lists you share, like the café list, and tick or delete things on them for both of you.` });
   doesLines.push({ key: null, text: `End sharing from the Mac. You normally get 7 days to download your data first, but ${owner} can also end it at once.` });
-  const times = ['"Seen" marks', 'finish times', ...(p2 ? ['sleep taps', 'when you open an alert'] : [])];
+  // Every time his reads carry (review 4): on what she shares, and her Activity, which he reads too.
+  const times = [
+    `when you add, change, finish or skip ${p2 ? 'a to-do or a step' : 'a to-do'}`,
+    ...(p2 ? [`when you write in your journal${p3 ? ' or your chats' : ''}`, '"Seen" marks', 'sleep taps', 'when you open an alert'] : ['"Seen" marks']),
+  ];
   return {
     heading: PEOPLE_LABEL,
     intro: `${owner} invited you to a shared space for your days, as your accountability partner. This page lists exactly what ${owner} can see and do. You can switch any of it off now or later, pause, or leave at any time.`,
@@ -158,13 +164,14 @@ export function joinCopy(owner: string, a: AgreementFields, opts: { built: Build
       ...(p2 ? [`Set your status, or change what you wrote in your journal or your evening review.`] : []),
       ...(p3 ? [`Write in your chat.`] : []),
       `See where you are. Jantar never asks for your location and never keeps your IP address.`,
-      `See when you last opened the app. The only times ${owner} sees are the ${times.slice(0, -1).join(', ')} and ${times[times.length - 1]} listed above.`,
+      `See when you last opened the app. The only times ${owner} sees are those on what you share (${times.slice(0, -1).join(', ')} and ${times[times.length - 1]}) and those in your Activity.`,
       `See anything you switch off on this page.`,
       `Stop you pausing, leaving or downloading your data.`,
     ],
     yours: [
       `Sharing shows what ${owner} sees, live, as ${owner} sees it: "See what ${owner} sees" opens each area just as ${owner} gets it.`,
       `Activity lists every change ${owner} makes in your space, and each time ${owner} looks${p2 ? ', including reading your journal' : ''}${p3 ? ' or your chats' : ''}.`,
+      `${owner} can read your Activity too: the names of the devices you link, and when you link or remove one, pause, resume or change what you share.`,
       `Pause holds ${owner}'s new items${p2 ? ', alerts and comments' : ''}. Leave ends it. Download your data first if you want it.`,
       `Things you delete are gone for both of you.`,
       ...(p2 ? [`Every two weeks the app asks whether this setup still works for you. Your answer stays with you unless you choose to tell ${owner}.`] : []),

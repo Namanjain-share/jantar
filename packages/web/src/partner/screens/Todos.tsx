@@ -92,7 +92,7 @@ export function Todos({ me, api, tick }: { me: PersonMe; api: PersonApi; tick: n
         ))}
       </ul>
       {todos && todos.length === 0 ? <p className="mt-12 text-ink-2">Nothing open.</p> : null}
-      <TodoSheet t={open} owner={me.owner.name} api={api} close={() => setOpen(null)} run={run} undo={undo.show} />
+      <TodoSheet t={open} owner={me.owner.name} shared={me.agreement?.see.todos === true} api={api} close={() => setOpen(null)} run={run} undo={undo.show} />
       <UndoToast toast={undo.toast} close={undo.close} />
     </div>
   );

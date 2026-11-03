@@ -13,7 +13,7 @@
  * - Sleep: "short" is a plain label and no arrow shows without a trend.
  * - Hostile text renders as text.
  */
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { presetAgreement } from '@jantar/protocol/people-core';
 import type { PersonMe, PersonOwnToday, PlanStep, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
@@ -156,6 +156,20 @@ describe('her Today (P2)', () => {
     fireEvent.click(without);
     await waitFor(() => expect(api.stepState).toHaveBeenCalledWith(DAY, S1, { to: 'done' }));
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeTruthy();
+  });
+
+  it("a step's Skip says Sam sees the reason while he sees her plan (review 4)", async () => {
+    const steps = [step(S1, 'Analysis')];
+    const api = fakeApi({ today: vi.fn(async () => today(view(steps, { now: S1 }, { ackAt: AT }))), stepState: vi.fn(async () => undefined) });
+    const r = render(<Today me={me()} api={api} reload={() => {}} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More for Analysis' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Analysis' })).getByRole('button', { name: 'Skip' }));
+    expect(screen.getByText('Sam sees the reason you pick or write.')).toBeTruthy();
+    r.unmount();
+    render(<Today me={me({ see: { ...presetAgreement('everything', 'P2').see, plan: false } })} api={api} reload={() => {}} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More for Analysis' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Analysis' })).getByRole('button', { name: 'Skip' }));
+    expect(screen.queryByText(/sees the reason/)).toBeNull();
   });
 
   it('a step done out of order is one tap where it is, and Undo puts it back', async () => {

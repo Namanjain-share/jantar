@@ -5,7 +5,8 @@
  * - Snooze: Later 1 h, Tonight, Tomorrow or Next week, unless he marked the
  *   item "no snooze" (then the sheet says so instead).
  * - Skip, with one-tap reasons and an optional note (never scored); Undo
- *   brings it back.
+ *   brings it back (a repeating item's date too). While {owner} sees her
+ *   to-dos, the sheet says the reason is shown to {owner}.
  * - On his items, Ask to change: reasons and a note go to him (his To-do
  *   and Alerts show it on the item). Editing or deleting his is his to do.
  * - On hers, Edit (title, day and time) and Delete (a second tap confirms:
@@ -29,6 +30,8 @@ export const HER_SNOOZES: readonly { preset: SnoozePreset; label: string }[] = [
 export interface TodoSheetProps {
   t: PersonTodo | null;
   owner: string;
+  /** {owner} reads her to-dos now (see.todos): the reason she types is shown to {owner}. */
+  shared: boolean;
   api: PersonApi;
   close: () => void;
   /** Runs a write, then reloads the list (errors land in the screen's alert line). */
@@ -39,7 +42,7 @@ export interface TodoSheetProps {
 
 const field = 'min-h-44 rounded-btn border border-line bg-bg px-8';
 
-export function TodoSheet({ t, owner, api, close, run, undo }: TodoSheetProps) {
+export function TodoSheet({ t, owner, shared, api, close, run, undo }: TodoSheetProps) {
   const [mode, setMode] = useState<'menu' | 'skip' | 'ask' | 'edit'>('menu');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
@@ -139,6 +142,7 @@ export function TodoSheet({ t, owner, api, close, run, undo }: TodoSheetProps) {
           <>
             <ReasonChips reasons={mode === 'skip' ? SKIP_REASONS : ASK_REASONS} value={reason} onPick={setReason} />
             <Field label={mode === 'skip' ? 'Reason (optional)' : `A note for ${owner} (optional)`} value={note} onChange={setNote} max={200} />
+            {mode === 'skip' && shared ? <p className="text-small text-ink-2">{owner} sees the reason you pick or write.</p> : null}
             <Button
               variant="primary"
               size="xl"
