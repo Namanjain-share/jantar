@@ -175,11 +175,12 @@ export class TodosRepo {
    * with the space it lives in, and every open timed todo of every space,
    * so a reminder of hers keeps ringing her devices after a restart.
    */
-  anySpace(id: string): { todo: Todo; space: string } | null {
-    const r = this.core.db.prepare('SELECT json, space FROM todos WHERE id = ? AND space = space').get(id) as (JsonRow & { space: string }) | undefined;
+  /** v0.11: `by` is the row's author ('' the owner): his timed to-do in her space rings by her state (spec 3.6). */
+  anySpace(id: string): { todo: Todo; space: string; by: string } | null {
+    const r = this.core.db.prepare('SELECT json, space, by_person FROM todos WHERE id = ? AND space = space').get(id) as (JsonRow & { space: string }) | undefined;
     if (!r) return null;
-    const t = this.parse('todos', [r], PersonTodoSchema)[0];
-    return t ? { todo: t, space: r.space } : null;
+    const t = this.parse('todos', [{ json: r.json }], PersonTodoSchema)[0];
+    return t ? { todo: t, space: r.space, by: r.by_person ?? '' } : null;
   }
 
   openTimedAnySpace(): { todo: Todo; space: string }[] {

@@ -17,7 +17,11 @@
  * - Snooze 1h inside the hour the clocks repeat (going back) names a wall
  *   time whose first pass is now; it rings at the later pass, an hour on.
  * - check: deleted, done or untimed: cancel; its due time moved since the
- *   row was set: skip (the row follows the todo, see `next`).
+ *   row was set: skip (the row follows the todo, see `next`). v0.11: a
+ *   todo he gave her (her space, `by` '') is `important` (spec 3.6): while
+ *   her state holds it (quiet hours, pause, mute, space, focus, sleep) it
+ *   is skipped and counted in her release summary; it never rings later.
+ *   Her own reminders ring whatever her state.
  * - The push: "Todo due", the body by `notify.bodies` (full: the title and
  *   the time; short: the title's first 40 characters; generic: "Tap to
  *   open"), "Missed at HH:MM · " first on a catch-up. Tap: /todos?id=<id>.
@@ -114,9 +118,15 @@ export function todoPingHandler(core: LifeCore, deps: Pick<LifeModuleDeps, 'ctx'
     kind: 'todo',
     // The scheduler's sweep is the `system` reader (C4): every space, each todo ringing its own person's devices.
     check(row, dueAt) {
-      const t = repo.anySpace(row.ref)?.todo;
-      if (!t || !ringAt(t, core.tz())) return 'cancel';
-      return ringsAt(t, dueAt, core.tz()) ? 'send' : 'skip';
+      const hit = repo.anySpace(row.ref);
+      const t = hit?.todo;
+      if (!hit || !t || !ringAt(t, core.tz())) return 'cancel';
+      if (!ringsAt(t, dueAt, core.tz())) return 'skip';
+      // v0.11 (spec 3.6): her own reminders always ring; his timed to-do in her space is `important`,
+      // held while her quiet hours, pause, mute, space, focus or sleep hold it, and counted in her summary.
+      const pid = personOfSpace(hit.space);
+      if (pid && hit.by === '' && core.holdsHisRing?.(pid)) return 'skip';
+      return 'send';
     },
     push(rows, dueAt, late) {
       const id = rows[0]?.ref ?? '';

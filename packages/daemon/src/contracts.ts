@@ -1777,6 +1777,11 @@ export interface LifeCore {
    * tells the other person (one push and an Activity row). Absent in tests that build a bare core.
    */
   shared?(e: SharedEvent): void;
+  /**
+   * v0.11 People (spec 3.6): his timed to-do in her space (`pid`) is `important`: true when her state holds
+   * its ring now (it is then counted for her release summary). Absent in tests that build a bare core.
+   */
+  holdsHisRing?(pid: string): boolean;
   scheduler: Scheduler;
   /** A ulid. */
   newId(): string;

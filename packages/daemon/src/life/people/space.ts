@@ -15,8 +15,10 @@
  *   logged, with `editHers.weight` (D22).
  * - While she is paused, his writes into her space are 409 `paused`.
  * - Every refusal of a row or an area he may not see is the one not_found.
- * - Each of his writes reaches her: an Activity row, a push, a tick of her
- *   stream. Her writes tick her stream and his only for areas he sees.
+ * - Each of his writes reaches her: an Activity row, a push (through her
+ *   resolver: held in her quiet hours, mute, space, focus or sleep, and
+ *   counted in her summary), a tick of her stream. Her writes tick her
+ *   stream and his only for areas he sees.
  */
 import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import type { SnoozePreset, TodoPatch, TodosQuery, WeightBody } from '@jantar/protocol';
@@ -80,7 +82,7 @@ export class PersonSpace {
     this.people.ownerChanged();
     const owner = this.people.ownerName();
     const words = action === 'todo.added' ? `${owner} added "${(title ?? '').slice(0, 60)}"` : action === 'todo.deleted' ? `${owner} removed an item` : `${owner} changed "${(title ?? '').slice(0, 60)}"`;
-    this.people.pushHer(pid, { kind: 'life', title: 'From ' + owner, body: words, url: '/p/todos', tag: `people:todos:${pid}` });
+    this.people.noticeHer(pid, { kind: 'life', title: 'From ' + owner, body: words, url: '/p/todos', tag: `people:todos:${pid}` });
   }
 
   /** Her write lands: her stream; his devices only while he sees the area. */
@@ -377,7 +379,7 @@ export class PersonSpace {
     this.people.record(pid, { actor: 'owner', action: 'weight.corrected', area: 'weight', ref: day, changes: [{ field: 'kg', from: String(before.kg), to: String(after?.kg ?? body.kg) }] });
     this.people.ticks.bump(pid, 'life');
     this.people.ownerChanged();
-    this.people.pushHer(pid, { kind: 'life', title: `From ${this.people.ownerName()}`, body: `${this.people.ownerName()} corrected your weight of ${day}`, url: '/p', tag: `people:weight:${pid}` });
+    this.people.noticeHer(pid, { kind: 'life', title: `From ${this.people.ownerName()}`, body: `${this.people.ownerName()} corrected your weight of ${day}`, url: '/p', tag: `people:weight:${pid}` });
     return OK;
   }
 

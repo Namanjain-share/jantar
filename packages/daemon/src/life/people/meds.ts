@@ -150,7 +150,7 @@ export class PersonMeds {
           : times
             ? `${owner} changed a medicine's times: ${times.from ?? '–'} → ${times.to ?? '–'}`
             : `${owner} changed a medicine`;
-    this.people.pushHer(pid, { kind: 'life', title: `From ${owner}`, body: words, url: '/p/health?tab=meds', tag: `people:meds:${pid}` });
+    this.people.noticeHer(pid, { kind: 'life', title: `From ${owner}`, body: words, url: '/p/health?tab=meds', tag: `people:meds:${pid}` });
   }
 
   // --- her side ----------------------------------------------------------------------

@@ -221,6 +221,7 @@ class LifeServiceImpl implements LifeService {
       settings: () => ctx.settings.get().life,
       changed: () => self.changed(),
       shared: (e) => self.people.sharedEvent(e),
+      holdsHisRing: (pid) => self.people.alerts?.holdsRing(pid) ?? false,
       scheduler: this.scheduler,
       newId,
     };

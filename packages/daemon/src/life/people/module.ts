@@ -102,6 +102,7 @@ export const PEOPLE_REASONS = {
   nothingNew: 'That asks for nothing new.',
   cooling: (day: string) => `That was declined recently. It can be asked again from ${day}.`,
   dontAsk: 'That was declined with "Don\'t ask me about this again".',
+  pausedAsk: (name: string) => `${name} has paused. Ask again once sharing resumes.`,
   lastDevice: 'To end sharing, use `jantar people remove` on your Mac. It gives them 7 days to download their data.',
   hasRows: 'They have food entries. They can export or delete them first.',
   devicesFull: 'Five devices are linked already. Revoke one first.',
@@ -134,6 +135,16 @@ interface LedgerView {
 
 /** Where a People push goes: the owner's devices, or hers. */
 export type PeoplePush = LifePush & { person?: string };
+
+/** Pushes held for one recipient, by kind (released as one summary line). */
+export interface HeldCounts {
+  comments: number;
+  reviews: number;
+  /** His timed to-dos' rings in her space (spec 3.6). */
+  reminders: number;
+  /** The notices of his changes: an item or medicine added or changed, a weight corrected, a list deleted, an ask for more. */
+  updates: number;
+}
 
 export interface PeopleDeps {
   ctx: Pick<DaemonContext, 'settings' | 'clock' | 'db' | 'log'>;
@@ -766,6 +777,8 @@ export class PeopleModule {
       const l = this.ledger(pid);
       const p = this.repo.get(pid);
       if (!p || (l.state !== 'active' && l.state !== 'paused') || !l.agreement) return this.notFound();
+      // Her pause holds his asks as it holds his writes and alerts (spec 1.2: "can see but not add or send").
+      if (l.state === 'paused') return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.pausedAsk(p.name) };
       if (l.pending) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.pending };
       const { note, ...patch } = body;
       const unbuilt = unbuiltFieldsIn(patch);
@@ -789,7 +802,7 @@ export class PeopleModule {
       this.appendLedger(pid, 'proposed', by, next, version);
       this.repo.save({ ...p, pendingProposal: { version, ...(note ? { note } : {}) }, updatedAt: this.iso() });
       this.tryRecord(pid, { actor: 'owner', action: 'agreement.proposed', fields: widened.map((f) => f.key) });
-      this.deps.push({ person: pid, kind: 'life', title: `${this.ownerName()} asks to see more`, body: 'Open Sharing to answer.', url: '/p/me?tab=sharing', tag: 'people:proposal' });
+      this.noticeHer(pid, { kind: 'life', title: `${this.ownerName()} asks to see more`, body: 'Open Sharing to answer.', url: '/p/me?tab=sharing', tag: 'people:proposal' });
       this.ticks.bump(pid, 'me');
       return { ok: true, value: true };
     });
@@ -894,12 +907,12 @@ export class PeopleModule {
     this.repo.save({ ...rest, ...(status ? { status } : {}), updatedAt: this.iso() });
   }
 
-  /** Her held comment and review pushes (life/alerts counts them; the release clears them). */
-  saveHeld(pid: string, held: { comments: number; reviews: number }, reason: string | undefined): void {
+  /** Her held pushes, by kind (life/alerts counts them; the release clears them). */
+  saveHeld(pid: string, held: HeldCounts, reason: string | undefined): void {
     const p = this.person(pid);
     if (!p) return;
     const { held: _old, ...rest } = p;
-    const any = held.comments + held.reviews > 0;
+    const any = held.comments + held.reviews + held.reminders + held.updates > 0;
     this.repo.save({ ...rest, ...(any ? { held: { ...held, ...(reason ? { reason } : p.held?.reason ? { reason: p.held.reason } : {}) } } : {}), updatedAt: this.iso() });
   }
 
@@ -1302,6 +1315,16 @@ export class PeopleModule {
     this.deps.push({ ...p, person: pid });
   }
 
+  /**
+   * The notice of a change of his (in her space or their shared lists) or of his ask for more, through her
+   * resolver (spec 6.3, `important`): pushed now, or held while she pauses, mutes, asks for space, focuses,
+   * sleeps or is in quiet hours, and counted in her one release summary.
+   */
+  noticeHer(pid: string, p: LifePush): void {
+    if (this.alerts) this.alerts.deliverPush(pid, p, { kind: 'update' });
+    else this.pushHer(pid, p);
+  }
+
   /** A push about her to his devices (Web Push only). */
   /**
    * P4 (spec 5.2, 5.3): a write to a shared space. Both members' streams refresh (the space is both
@@ -1326,7 +1349,7 @@ export class PeopleModule {
       const body = title ? `"${title}" is gone for both of you.` : `A shared ${what} is gone for both of you.`;
       if (e.by === '') {
         this.record(p.id, { actor: 'owner', action: `${e.kind}.deleted`, ...(title ? { title } : {}) });
-        this.pushHer(p.id, { kind: 'life', title: `${this.ownerName()} deleted a ${what}`, body, url: `/p/lists?tab=${e.kind === 'place' ? 'cafes' : 'lists'}`, tag: `people:shared:${p.id}` });
+        this.noticeHer(p.id, { kind: 'life', title: `${this.ownerName()} deleted a ${what}`, body, url: `/p/lists?tab=${e.kind === 'place' ? 'cafes' : 'lists'}`, tag: `people:shared:${p.id}` });
       } else if (e.by === p.id) {
         this.record(p.id, { actor: 'her', action: `${e.kind}.deleted`, ...(title ? { title } : {}) });
         this.pushOwner(p.id, { kind: 'life', title: `${p.name} deleted a ${what}`, body, url: e.kind === 'place' ? '/places' : `/people/${p.id}?tab=lists`, tag: `people:shared:${p.id}` });

@@ -278,8 +278,20 @@ export const PersonSchema = z.object({
   status: PersonStatusSchema.optional(),
   /** P2 (C26): when the sharing check-in next shows. */
   sharingCheckinDueAt: IsoDateSchema.optional(),
-  /** P2: comment and reminder pushes held for her (quiet hours, space, focus, sleep, pause), released as one summary. */
-  held: z.object({ comments: z.number().int().min(0).default(0), reviews: z.number().int().min(0).default(0), reason: z.string().max(20).optional() }).optional(),
+  /**
+   * P2: pushes held for her (quiet hours, space, focus, sleep, pause, mute), released as one summary: his
+   * comments and reviews, his timed to-dos' rings (`reminders`), and the notices of his changes (`updates`:
+   * an item or medicine he added or changed, a weight he corrected, a list he deleted, an ask for more).
+   */
+  held: z
+    .object({
+      comments: z.number().int().min(0).default(0),
+      reviews: z.number().int().min(0).default(0),
+      reminders: z.number().int().min(0).default(0),
+      updates: z.number().int().min(0).default(0),
+      reason: z.string().max(20).optional(),
+    })
+    .optional(),
   createdAt: IsoDateSchema,
   updatedAt: IsoDateSchema,
 });

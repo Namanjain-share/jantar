@@ -37,7 +37,7 @@ import {
 import { SLEEP_HOLD_MAX_H, hhmmOf, instantAt, minutesToQuietEnd, quietWindowOf, resolveDelivery, shiftDay, type DeliveryTier, type HoldReason, type RecipientState } from '@jantar/life-core';
 import type { LifeCore, LifePush, LifeResult } from '../../contracts.js';
 import { newId } from '../../core/ids.js';
-import type { PeopleModule } from '../people/module.js';
+import type { HeldCounts, PeopleModule } from '../people/module.js';
 import { CLOSED, DAY_MS, HOUR_MS, NO_PERSON, OK, clipLine, localNow, refuse } from '../people/kit.js';
 
 export const ALERT_REASONS = {
@@ -68,6 +68,11 @@ const HELD_WORDS: Record<string, string> = {
   held_quiet: 'while you were in quiet hours',
 };
 const OWNER_HELD_KEY = 'people_owner_held';
+
+/** What a held push counts as in her summary ("2 alerts, a reminder and 3 updates from Sam ..."). */
+type HeldKind = 'comment' | 'review' | 'reminder' | 'update';
+const HELD_FIELD: Record<HeldKind, keyof HeldCounts> = { comment: 'comments', review: 'reviews', reminder: 'reminders', update: 'updates' };
+const NONE_HELD: HeldCounts = { comments: 0, reviews: 0, reminders: 0, updates: 0 };
 
 interface AlertRow {
   id: string;
@@ -544,9 +549,12 @@ export class AlertsModule {
    * resolver: pushed now, or held (counted, released as one summary), or
    * saved without a push when over her caps (comments count against them).
    * A push to him about her is dropped unless `about`'s agreement still
-   * shows the area (`area`), checked now (C7).
+   * shows the area (`area`), checked now (C7). `update` is the notice of a
+   * change of his in her space or their lists, or his ask for more (to her
+   * only): held while she pauses, mutes, asks for space, focuses, sleeps or
+   * is in quiet hours, like his alerts.
    */
-  deliverPush(recipient: string, push: LifePush, opts: { kind: 'comment' | 'review' | 'reply'; about?: string; sender?: string; area?: 'journal' | 'review' }): 'sent' | 'held' | 'capped' | 'dropped' {
+  deliverPush(recipient: string, push: LifePush, opts: { kind: 'comment' | 'review' | 'reply' | 'update'; about?: string; sender?: string; area?: 'journal' | 'review' }): 'sent' | 'held' | 'capped' | 'dropped' {
     if (recipient === '' && opts.about && opts.area) {
       const a = this.people.agreement(opts.about);
       if (!this.people.sees(a, opts.area)) return 'dropped';
@@ -571,18 +579,34 @@ export class AlertsModule {
     return n.hour > caps.hour || n.day > caps.day;
   }
 
-  private countHeld(recipient: string, about: string, kind: 'comment' | 'review', reason: HoldReason): void {
+  /**
+   * His timed to-do ringing in her space (spec 3.6: `important`): true when
+   * her state holds it now. A held ring is counted for her summary and the
+   * release is armed; the ring itself never comes later.
+   */
+  holdsRing(pid: string): boolean {
+    const d = resolveDelivery('important', this.herState(pid));
+    if (d.action === 'push') return false;
+    if (d.action === 'hold') {
+      this.countHeld(pid, '', 'reminder', d.reason);
+      this.armRelease(pid);
+    }
+    return true;
+  }
+
+  private countHeld(recipient: string, about: string, kind: HeldKind, reason: HoldReason): void {
     const c = this.core();
     if (!c) return;
     if (recipient !== '') {
       const p = this.people.person(recipient);
       if (!p) return;
-      const held = { comments: p.held?.comments ?? 0, reviews: p.held?.reviews ?? 0 };
-      if (kind === 'comment') held.comments += 1;
-      else held.reviews += 1;
+      const held: HeldCounts = { ...NONE_HELD, ...(p.held ? { comments: p.held.comments, reviews: p.held.reviews, reminders: p.held.reminders, updates: p.held.updates } : {}) };
+      held[HELD_FIELD[kind]] += 1;
       this.people.saveHeld(recipient, held, HELD[reason]);
       return;
     }
+    // Pushes to him wait only as comments and "review sent" (his other People pushes are not held).
+    if (kind !== 'comment' && kind !== 'review') return;
     const map = this.ownerHeld();
     const h = map[about] ?? { comments: 0, reviews: 0, reason: HELD[reason] };
     if (kind === 'comment') h.comments += 1;
@@ -638,7 +662,10 @@ export class AlertsModule {
     const counts = recipient === '' ? this.ownerHeld() : null;
     const herHeld = recipient !== '' ? this.people.person(recipient)?.held : undefined;
     const herReason = recipient !== '' ? this.people.heldReason(recipient) : undefined;
-    const others = recipient === '' ? Object.values(counts ?? {}).reduce((n, h) => n + h.comments + h.reviews, 0) : (herHeld?.comments ?? 0) + (herHeld?.reviews ?? 0);
+    const others =
+      recipient === ''
+        ? Object.values(counts ?? {}).reduce((n, h) => n + h.comments + h.reviews, 0)
+        : (herHeld?.comments ?? 0) + (herHeld?.reviews ?? 0) + (herHeld?.reminders ?? 0) + (herHeld?.updates ?? 0);
     if (heldAlerts.length === 0 && others === 0) {
       c.scheduler.clear('alert_release', recipient);
       return;
@@ -671,14 +698,14 @@ export class AlertsModule {
       for (const [pid, x] of byPerson) {
         if (!this.reachable(pid)) continue;
         const name = this.people.nameOf(pid);
-        this.people.pushOwner(pid, { kind: 'life', title: PEOPLE_LABEL, body: `${summaryWords(x)} from ${name} ${words}.`, url: `/people/${pid}?tab=alerts`, tag: `people:release:${pid}` });
+        this.people.pushOwner(pid, { kind: 'life', title: PEOPLE_LABEL, body: `${summaryWords({ ...x, reminders: 0, updates: 0 })} from ${name} ${words}.`, url: `/people/${pid}?tab=alerts`, tag: `people:release:${pid}` });
         this.people.ticks.bump(pid, 'alerts');
       }
       this.people.ownerChanged();
       return;
     }
-    this.people.saveHeld(recipient, { comments: 0, reviews: 0 }, undefined);
-    const x = { alerts: heldAlerts.length, comments: herHeld?.comments ?? 0, reviews: herHeld?.reviews ?? 0 };
+    this.people.saveHeld(recipient, NONE_HELD, undefined);
+    const x = { alerts: heldAlerts.length, comments: herHeld?.comments ?? 0, reviews: herHeld?.reviews ?? 0, reminders: herHeld?.reminders ?? 0, updates: herHeld?.updates ?? 0 };
     this.people.pushHer(recipient, { kind: 'life', title: PEOPLE_LABEL, body: `${summaryWords(x)} from ${this.people.ownerName()} ${words}.`, url: '/p/alerts', tag: 'people:release' });
     this.people.ticks.bump(recipient, 'alerts');
     this.people.ownerChanged();
@@ -746,9 +773,11 @@ export class AlertsModule {
   }
 }
 
-function summaryWords(x: { alerts: number; comments: number; reviews: number }): string {
+function summaryWords(x: { alerts: number } & HeldCounts): string {
   const parts: string[] = [];
   if (x.alerts) parts.push(`${x.alerts} alert${x.alerts === 1 ? '' : 's'}`);
+  if (x.reminders) parts.push(x.reminders === 1 ? 'a reminder' : `${x.reminders} reminders`);
+  if (x.updates) parts.push(x.updates === 1 ? 'an update' : `${x.updates} updates`);
   if (x.comments) parts.push(x.comments === 1 ? 'a comment' : `${x.comments} comments`);
   if (x.reviews) parts.push(x.reviews === 1 ? 'an evening review' : `${x.reviews} evening reviews`);
   const text = parts.length <= 1 ? (parts[0] ?? 'Something') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
