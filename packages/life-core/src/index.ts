@@ -13,7 +13,11 @@
  *   adapted from Noblot), journal-streak.ts (adapted from Noblot), and ours,
  *   sleep-week.ts (nights and the week) and quick-plan.ts (Quick plan).
  * - v0.13 Work (work/): task-review.ts (copied from Noblot with its tests)
- *   and ours, project-health.ts (a project's health line on it).
+ *   and ours, project-health.ts (a project's health line on it); tags.ts and
+ *   csv.ts (copied from Noblot with their tests), contacts.ts (adapted from
+ *   Noblot with its tests: names, e-mails and phones compared, duplicate
+ *   groups, the log line, touches, vCard), and ours, client-import.ts (an
+ *   import row's fields and the duplicate warning).
  */
 export {
   DOSE_GRACE_MINUTES,
@@ -108,3 +112,59 @@ export {
   type ProjectHealthResult,
 } from './work/project-health.js';
 export { completedByProject, doneCountsByWeek, isStale, openTaskHealth, type WeekWindow } from './work/task-review.js';
+export {
+  TAG_MAX_LENGTH,
+  TAG_PALETTE,
+  defaultTagColor,
+  normalizeTag,
+  normalizeTags,
+  planTagRename,
+  resolveTagColor,
+  tagTypeahead,
+  type TagColor,
+  type TagRenamePlan,
+} from './work/tags.js';
+export { parseCsv, toCsv, toCsvRows, unguardCsvCell, type CsvCell } from './work/csv.js';
+export {
+  LOG_CHANNEL_LABELS,
+  LOG_OUTCOME_LABELS,
+  TOUCH_KINDS,
+  contactAvatarColor,
+  contactInitials,
+  countsAsTouch,
+  duplicatePairKey,
+  findDuplicateGroups,
+  formatLogLine,
+  inferContactLinkType,
+  lastTouchAt,
+  normalizeContactEmail,
+  normalizeContactLink,
+  normalizeContactName,
+  normalizeContactPhone,
+  parseVCard,
+  toVCard,
+  type ContactLink,
+  type ContactLinkInput,
+  type ContactLinkType,
+  type DuplicateCandidate,
+  type DuplicateGroup,
+  type DuplicateReason,
+  type LogChannel,
+  type LogLineLike,
+  type LogOutcome,
+  type VCardContact,
+} from './work/contacts.js';
+export {
+  IMPORT_FIELDS,
+  guessImportMapping,
+  importRowFields,
+  importState,
+  similarContacts,
+  vcardRowFields,
+  type ImportField,
+  type ImportRow,
+  type ImportState,
+  type SimilarCandidate,
+  type SimilarProbe,
+  type SimilarWhy,
+} from './work/client-import.js';
