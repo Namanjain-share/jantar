@@ -32,6 +32,7 @@ import type {
   OwnerMedicine,
   OwnerMedsView,
   OwnerTodosView,
+  PersonWeight,
   PersonWeightsResponse,
   SharedItemsResponse,
   SharedListsResponse,
@@ -224,6 +225,7 @@ function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClie
           canAdd={a?.assign.meds === true}
           editHers={a?.editHers.meds === true}
           weight={a?.see.weight === true}
+          editWeight={a?.editHers.weight === true}
           sleep={a?.see.sleep === true}
         />
       ) : null}
@@ -339,6 +341,7 @@ function HealthTab({
   canAdd,
   editHers,
   weight,
+  editWeight,
   sleep,
 }: {
   client: PeopleClient;
@@ -348,6 +351,8 @@ function HealthTab({
   canAdd: boolean;
   editHers: boolean;
   weight: boolean;
+  /** editHers.weight: correct or remove a weight she logged (never add one). */
+  editWeight: boolean;
   sleep: boolean;
 }) {
   const [week, setWeek] = useState<string | undefined>(undefined);
@@ -356,6 +361,7 @@ function HealthTab({
   const sleepLoad = useLifeLoad<Week>(sleep ? `people:${pid}:sleep:${week ?? ''}` : null, () => client.sleep(pid, week));
   const [editing, setEditing] = useState<OwnerMedicine | 'new' | null>(null);
   const [stopping, setStopping] = useState<OwnerMedicine | null>(null);
+  const [fixing, setFixing] = useState<PersonWeight | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const canEdit = (m: OwnerMedicine) => meds === 'full' && (m.by === '' ? canAdd : editHers);
   const stop = (m: OwnerMedicine) =>
@@ -406,11 +412,16 @@ function HealthTab({
         weights.data.weights.length ? (
           <ul className="type-row text-ink">
             {weights.data.weights.slice(0, 10).map((w) => (
-              <li key={w.day} className="flex justify-between py-4">
-                <span>{dayLabel(w.day)}</span>
+              <li key={w.day} className="flex items-center gap-8 py-4">
+                <span className="flex-1">{dayLabel(w.day)}</span>
                 <span>
                   {w.kg} kg{w.correctedBy === '' ? ` (corrected by you, was ${w.was ?? '–'} kg)` : ''}
                 </span>
+                {editWeight ? (
+                  <Button variant="text" className="min-h-44" aria-label={`Correct ${dayLabel(w.day)}`} onClick={() => setFixing(w)}>
+                    Correct
+                  </Button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -422,6 +433,23 @@ function HealthTab({
       )}
       <h2 className="mt-16 type-row font-semibold text-ink">Sleep</h2>
       {!sleep ? <Locked name={name} what="Sleep" /> : sleepLoad.data ? <SleepWeek week={sleepLoad.data} onWeek={setWeek} /> : <p className="type-small text-ink-2">Loading…</p>}
+      <WeightSheet
+        w={fixing}
+        name={name}
+        close={() => setFixing(null)}
+        save={(kg) =>
+          void client.weightUpdate(pid, fixing?.day ?? '', kg).then(
+            () => (setFixing(null), setNote(`Corrected. ${name} sees "Corrected by you" and the old value.`), weights.reload()),
+            (e: Error) => setNote(e.message),
+          )
+        }
+        remove={() =>
+          void client.weightDelete(pid, fixing?.day ?? '').then(
+            () => (setFixing(null), setNote(`Removed. ${name}'s Activity lists it.`), weights.reload()),
+            (e: Error) => setNote(e.message),
+          )
+        }
+      />
       <MedSheet open={editing !== null} client={client} pid={pid} name={name} edit={editing === 'new' ? null : editing} close={() => setEditing(null)} done={medsLoad.reload} />
       <Sheet open={stopping !== null} onOpenChange={(o) => (o ? null : setStopping(null))} title={stopping ? `Stop ${stopping.name}?` : 'Stop'}>
         <div className="flex flex-col gap-12 pb-24">
@@ -437,6 +465,38 @@ function HealthTab({
         </div>
       </Sheet>
     </div>
+  );
+}
+
+/**
+ * Correct or remove one weight she logged (editHers.weight, owner Q2): never a new one. She sees "Corrected by
+ * you (was … kg)" on the day, and her Activity keeps the old value. Remove needs a second tap.
+ */
+function WeightSheet({ w, name, close, save, remove }: { w: PersonWeight | null; name: string; close: () => void; save: (kg: number) => void; remove: () => void }) {
+  const [kg, setKg] = useState('');
+  const [sure, setSure] = useState(false);
+  useEffect(() => {
+    setKg(w ? String(w.kg) : '');
+    setSure(false);
+  }, [w]);
+  const v = Number(kg.replace(',', '.'));
+  const ok = kg.trim() !== '' && Number.isFinite(v) && v >= 20 && v <= 400 && v !== w?.kg;
+  return (
+    <Sheet open={w !== null} onOpenChange={(o) => (o ? null : close())} title={w ? `${name}'s weight, ${dayLabel(w.day)}` : 'Weight'}>
+      <div className="flex flex-col gap-12 pb-24">
+        <label className="flex flex-col gap-4">
+          <span className="type-small text-ink-2">Kilograms</span>
+          <input inputMode="decimal" className="min-h-44 rounded-btn border border-line bg-bg px-8 type-row text-ink" value={kg} onChange={(e) => setKg(e.target.value)} />
+        </label>
+        <p className="type-small text-ink-3">{name} sees "Corrected by you" with the old value, and {name}'s Activity lists it.</p>
+        <Button variant="primary" size="xl" disabled={!ok} onClick={() => save(v)}>
+          Save correction
+        </Button>
+        <Button variant="text" onClick={() => (sure ? remove() : setSure(true))}>
+          {sure ? 'Tap again to remove it' : 'Remove this weight'}
+        </Button>
+      </div>
+    </Sheet>
   );
 }
 

@@ -221,6 +221,15 @@ describe('weights (D22)', () => {
     expect(w.latest.kg).toBe(61.2);
     const row = (await activity()).activity.find((r) => r.action === 'weight.corrected');
     expect(row?.changes).toEqual([{ field: 'kg', from: '61.4', to: '61.2' }]);
+    // Her Weight tab reads "Corrected by Sam (was 61.4 kg)" from these fields; she can delete a day she logged.
+    const hers = (await herCall('GET', '/v1/p/weights')).json() as { weights: Array<{ day: string; kg: number; correctedBy?: string; was?: number }> };
+    expect(hers.weights.find((x) => x.day === '2026-11-02')).toMatchObject({ kg: 61.2, correctedBy: '', was: 61.4 });
+    // Her own later log of that day clears the mark.
+    expect((await herCall('PUT', '/v1/p/weights/2026-11-02', { kg: 61.3 })).statusCode).toBe(200);
+    const relogged = ((await herCall('GET', '/v1/p/weights')).json() as { weights: Array<{ day: string; correctedBy?: string }> }).weights.find((x) => x.day === '2026-11-02');
+    expect(relogged?.correctedBy).toBeUndefined();
+    expect((await herCall('PUT', '/v1/p/weights/2026-10-30', { kg: 61.9 })).statusCode).toBe(200);
+    expect((await herCall('DELETE', '/v1/p/weights/2026-10-30')).statusCode).toBe(200);
     // There is no route of his that sets a weight for her (no PUT at all).
     expect((await him('PUT', `/v1/people/${f.asha.id}/weights/2026-11-03`, { kg: 60 })).statusCode).toBe(404);
     await herCall('POST', '/v1/p/agreement/narrow', { editHers: { weight: false } });

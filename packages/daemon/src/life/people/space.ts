@@ -313,9 +313,36 @@ export class PersonSpace {
 
   // --- weights -----------------------------------------------------------------------
 
+  /**
+   * Her weights, for either side: a day he corrected last (editHers.weight) carries "Corrected by"
+   * (`correctedBy: ''`, `was`: what she had logged), read from her Activity's newest `weight.corrected` row
+   * for that day, while the day still holds his value and nobody wrote it after him (her own later log
+   * clears the mark).
+   */
   weights(pid: string): { weights: PersonWeight[]; latest: PersonWeight | null } {
     const c = this.core();
-    const weights = c ? weightsOf(c, pid) : [];
+    if (!c) return { weights: [], latest: null };
+    const at = new Map((c.db.prepare('SELECT day, at FROM weights WHERE space = ?').all(pid) as { day: string; at: string }[]).map((r) => [r.day, r.at]));
+    const fixed = new Map<string, { at: string; was: number; to: number }>();
+    const rows = c.db
+      .prepare("SELECT ref, at, json FROM person_activity WHERE person = ? AND action = 'weight.corrected' AND actor = 'owner' ORDER BY seq DESC LIMIT 400")
+      .all(pid) as { ref: string | null; at: string; json: string }[];
+    for (const r of rows) {
+      if (!r.ref || fixed.has(r.ref)) continue;
+      try {
+        const kg = (JSON.parse(r.json) as { changes?: { field: string; from?: string; to?: string }[] }).changes?.find((x) => x.field === 'kg');
+        const was = Number(kg?.from);
+        const to = Number(kg?.to);
+        if (Number.isFinite(was) && Number.isFinite(to)) fixed.set(r.ref, { at: r.at, was, to });
+      } catch {
+        // A row that no longer parses names no correction.
+      }
+    }
+    const weights: PersonWeight[] = weightsOf(c, pid).map((w) => {
+      const f = fixed.get(w.day);
+      const wrote = at.get(w.day);
+      return f && wrote !== undefined && f.at >= wrote && f.to === w.kg ? { ...w, correctedBy: '', was: f.was } : w;
+    });
     return { weights, latest: weights[0] ?? null };
   }
 

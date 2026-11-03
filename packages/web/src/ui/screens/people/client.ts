@@ -82,6 +82,9 @@ export const PEOPLE_PATHS = {
   medUpdate: ['PATCH', '/v1/people/:pid/medicines/:id'],
   medStop: ['POST', '/v1/people/:pid/medicines/:id/stop'],
   weights: ['GET', '/v1/people/:pid/weights'],
+  // Her weights he may correct or remove (editHers.weight); never a new one.
+  weightUpdate: ['PATCH', '/v1/people/:pid/weights/:day'],
+  weightDelete: ['DELETE', '/v1/people/:pid/weights/:day'],
 } as const;
 type Key = keyof typeof PEOPLE_PATHS;
 
@@ -131,8 +134,10 @@ export interface PeopleClient {
   medAssign(pid: string, body: MedicineBody): Promise<{ id: string }>;
   medUpdate(pid: string, id: string, patch: MedicinePatch): Promise<void>;
   medStop(pid: string, id: string): Promise<void>;
-  /** Her weights (see.weight). */
+  /** Her weights (see.weight), and his correction or removal of one she logged (editHers.weight). */
   weights(pid: string): Promise<PersonWeightsResponse>;
+  weightUpdate(pid: string, day: string, kg: number): Promise<void>;
+  weightDelete(pid: string, day: string): Promise<void>;
 }
 
 /** A route pattern with its `:params` filled (camelCase names too: `:itemId`). */
@@ -219,6 +224,8 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
     medUpdate: (pid, id, patch) => v(call('medUpdate', { params: { pid, id }, body: patch })),
     medStop: (pid, id) => v(call('medStop', { params: { pid, id } })),
     weights: (pid) => call('weights', { params: { pid } }),
+    weightUpdate: (pid, day, kg) => v(call('weightUpdate', { params: { pid, day }, body: { kg } })),
+    weightDelete: (pid, day) => v(call('weightDelete', { params: { pid, day } })),
   };
 }
 

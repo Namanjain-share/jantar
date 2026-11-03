@@ -3,12 +3,14 @@
  * 3.4: today's doses with Taken and Skip and a 5-second Undo, her medicines
  * with "added by {owner}" and "edited by {owner}", Add, Edit and Stop for
  * any of hers), Sleep (P2: the week, Going to sleep, Add a night, edit and
- * delete any night; spec 3.12) and Weight (P1). Her food log is not in this
+ * delete any night; spec 3.12) and Weight (P1: log today or an earlier
+ * day, delete one with Undo, and "Corrected by {owner} (was … kg)" on a
+ * weight he corrected with editHers.weight). Her food log is not in this
  * build. Nothing here colours a short night or a dose not logged, or turns
  * either into an alert.
  */
 import type { MedicineBody, MedicinePatch, MedsDayItem } from '@jantar/protocol';
-import type { PersonMedicineView, PersonMedicinesResponse, PersonWeightsResponse, SleepNight, SleepWeek as Week } from '@jantar/protocol/people';
+import type { PersonMedicineView, PersonMedicinesResponse, PersonWeight, PersonWeightsResponse, SleepNight, SleepWeek as Week } from '@jantar/protocol/people';
 import { useCallback, useEffect, useState } from 'react';
 import { Faces } from '../../people-shared/Faces.js';
 import { scheduleWords } from '../../people-shared/MedsRead.js';
@@ -34,7 +36,7 @@ export default function Health({ api, owner, tab, week, tick }: { api: PersonApi
           </button>
         ))}
       </div>
-      {tab === 'meds' ? <Meds api={api} owner={owner} tick={tick} /> : tab === 'sleep' ? <Sleep api={api} week={week} tick={tick} /> : <Weight api={api} tick={tick} />}
+      {tab === 'meds' ? <Meds api={api} owner={owner} tick={tick} /> : tab === 'sleep' ? <Sleep api={api} week={week} tick={tick} /> : <Weight api={api} owner={owner} tick={tick} />}
     </div>
   );
 }
@@ -326,46 +328,81 @@ const todayKey = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-function Weight({ api, tick }: { api: PersonApi; tick: number }) {
+/** The line under a weight he corrected: "Corrected by Sam (was 72.4 kg)". */
+export function correctedLine(x: PersonWeight, owner: string): string | null {
+  return x.correctedBy === '' ? `Corrected by ${owner}${x.was !== undefined ? ` (was ${x.was} kg)` : ''}` : null;
+}
+
+function Weight({ api, owner, tick }: { api: PersonApi; owner: string; tick: number }) {
   const [w, setW] = useState<PersonWeightsResponse | null>(null);
   const [kg, setKg] = useState('');
+  const [day, setDay] = useState(todayKey);
   const [error, setError] = useState<string | null>(null);
+  const undo = useUndo();
   const load = useCallback(() => api.weights().then(setW, () => setW({ weights: [], latest: null })), [api]);
   useEffect(() => {
     void load();
   }, [load, tick]);
+  const run = (p: Promise<unknown>) =>
+    void p.then(
+      () => {
+        setError(null);
+        void load();
+      },
+      (err: Error) => setError(err.message),
+    );
+  const today = todayKey();
   return (
     <div className="mt-12">
       <form
-        className="flex gap-8"
+        className="flex flex-wrap items-end gap-8"
         onSubmit={(e) => {
           e.preventDefault();
-          const v = Number(kg);
-          if (!Number.isFinite(v)) return;
-          api.setWeight(todayKey(), v).then(
-            () => {
-              setKg('');
-              setError(null);
-              void load();
-            },
-            (err: Error) => setError(err.message),
-          );
+          const v = Number(kg.replace(',', '.'));
+          if (!kg.trim() || !Number.isFinite(v)) return;
+          run(api.setWeight(day, v).then(() => (setKg(''), setDay(todayKey()))));
         }}
       >
-        <input aria-label="Weight in kg" inputMode="decimal" className="min-h-44 w-112 rounded-btn border border-line bg-bg px-8" value={kg} onChange={(e) => setKg(e.target.value)} />
-        <Button type="submit" variant="primary">
-          Log today
+        <label className="flex flex-col gap-4">
+          <span className="text-small text-ink-2">Weight in kg</span>
+          <input inputMode="decimal" className="min-h-44 w-112 rounded-btn border border-line bg-bg px-8" value={kg} onChange={(e) => setKg(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-4">
+          <span className="text-small text-ink-2">Day</span>
+          <input type="date" max={today} className="min-h-44 rounded-btn border border-line bg-bg px-8" value={day} onChange={(e) => setDay(e.target.value || today)} />
+        </label>
+        <Button type="submit" variant="primary" className="min-h-44">
+          {day === today ? 'Log today' : `Log for ${dayLabel(day)}`}
         </Button>
       </form>
       {error ? <p role="alert">{error}</p> : null}
-      <ul className="mt-12">
-        {(w?.weights ?? []).slice(0, 30).map((x) => (
-          <li key={x.day} className="flex justify-between py-4">
-            <span>{dayLabel(x.day)}</span>
-            <span>{x.kg} kg</span>
-          </li>
-        ))}
+      <ul className="mt-12 divide-y divide-line">
+        {(w?.weights ?? []).slice(0, 30).map((x) => {
+          const fixed = correctedLine(x, owner);
+          return (
+            <li key={x.day} className="flex items-center gap-8 py-4">
+              <span className="min-w-0 flex-1">
+                <span className="block">
+                  {dayLabel(x.day)} · {x.kg} kg
+                </span>
+                {fixed ? <span className="block text-small text-ink-2">{fixed}</span> : null}
+              </span>
+              <button
+                type="button"
+                aria-label={`Delete the weight for ${dayLabel(x.day)}`}
+                className="flex size-44 shrink-0 items-center justify-center text-ink-2"
+                onClick={() => {
+                  run(api.deleteWeight(x.day));
+                  undo.show(`Deleted: ${x.kg} kg, ${dayLabel(x.day)}`, () => run(api.setWeight(x.day, x.kg)));
+                }}
+              >
+                ×
+              </button>
+            </li>
+          );
+        })}
       </ul>
+      <UndoToast toast={undo.toast} close={undo.close} />
     </div>
   );
 }
