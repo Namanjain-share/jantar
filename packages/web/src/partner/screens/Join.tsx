@@ -17,10 +17,18 @@
  * carries state, like Google, keeps the link whole), so the page says to
  * open the link once more, or paste it. A pasted link shows the same
  * preview, and nothing is spent before Accept and join.
+ *
+ * 0.12.1: opening the link again in the same tab (pasted into the address
+ * bar, or Android reusing the tab) changes only the fragment, so while no
+ * preview shows the page follows `hashchange` (and `popstate`) to the new
+ * code. Without a code it first asks her app's own check (api.me()) whether
+ * this device is in already (a reload after Accept, a tab Safari dropped):
+ * then it goes on to her Today, or back to her first steps, which Accept
+ * keeps in the address (`/p/join?step=home|notify`) so a reload finds them.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { AGREEMENT_FIELDS, closeDependents, withField, yourLabel, type AgreementFields } from '@jantar/protocol/people-core';
-import type { JoinPreview } from '@jantar/protocol/people';
+import type { JoinPreview, PersonMe } from '@jantar/protocol/people';
 import { Button } from '../../ui/kit/Button.js';
 import { Page } from '../App.js';
 import { navigate } from '../nav.js';
@@ -31,18 +39,27 @@ import { nameApp } from '../name.js';
 import { inviteCode } from '../invite-code.js';
 
 const codeFromHash = () => new URLSearchParams(location.hash.replace(/^#/, '')).get('c') ?? '';
+type FirstStep = 'home' | 'notify';
+/** 0.12.1: her first step after Accept, as the address keeps it. */
+const stepFromSearch = (): FirstStep | null => {
+  const s = new URLSearchParams(location.search).get('step');
+  return s === 'home' || s === 'notify' ? s : null;
+};
+const keepStep = (s: FirstStep) => history.replaceState(null, '', `/p/join?step=${s}`);
 
 export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
-  // The code the link brought; a pasted link sets `code` with its preview (0.12.1).
-  const [initial] = useState(codeFromHash);
-  const [code, setCode] = useState(initial);
+  // The code the link brought, or a later one in the same tab; a pasted link sets it with its preview (0.12.1).
+  const [code, setCode] = useState(codeFromHash);
   const [preview, setPreview] = useState<JoinPreview | null>(null);
   const [agreement, setAgreement] = useState<AgreementFields | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adult, setAdult] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
-  const [step, setStep] = useState<'join' | 'home' | 'notify' | 'notNow'>('join');
+  const [step, setStep] = useState<'join' | FirstStep | 'notNow'>('join');
+  // 0.12.1: without a code, whether this device is in already (null until api.me() answers), and his name and label for her first steps after a reload.
+  const [joined, setJoined] = useState<boolean | null>(null);
+  const [space, setSpace] = useState<{ owner: string; label?: string | undefined } | null>(null);
   const [deviceName] = useState(() => (typeof navigator !== 'undefined' && /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'Phone'));
 
   const show = (p: JoinPreview) => {
@@ -51,9 +68,51 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
     setName(p.name);
   };
   useEffect(() => {
-    if (mode !== 'join' || !initial) return;
-    api.joinPreview(initial).then(show, (e: Error) => setError(e.message));
-  }, [api, initial, mode]);
+    if (mode !== 'join' || !code || preview) return;
+    let live = true;
+    api.joinPreview(code).then(
+      (p) => live && show(p),
+      (e: Error) => live && setError(e.message),
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, code, mode, preview]);
+  // 0.12.1: the link opened again in this tab changes only the fragment: follow it while no preview shows.
+  useEffect(() => {
+    if (step !== 'join' || (mode === 'join' && preview)) return;
+    const follow = () => {
+      const c = codeFromHash();
+      if (!c || c === code) return;
+      setError(null);
+      setCode(c);
+    };
+    addEventListener('hashchange', follow);
+    addEventListener('popstate', follow);
+    return () => {
+      removeEventListener('hashchange', follow);
+      removeEventListener('popstate', follow);
+    };
+  }, [code, mode, preview, step]);
+  // 0.12.1: no code: a device that is in already goes on (her first steps if the address kept one, else Today); any other gets the paste page.
+  useEffect(() => {
+    if (mode !== 'join' || code) return;
+    let live = true;
+    api.me().then(
+      (m: PersonMe | undefined) => {
+        if (!live) return;
+        if (!m?.person || m.person.state === 'left') return setJoined(false);
+        const at = stepFromSearch();
+        if (!at) return navigate('/p', { replace: true });
+        setSpace({ owner: m.owner?.name ?? '', label: m.label });
+        setStep(at === 'home' && needsHomeScreen() ? 'home' : 'notify');
+      },
+      () => live && setJoined(false),
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, code, mode]);
 
   const copy = useMemo(
     () => (preview && agreement ? joinCopy(preview.owner, agreement, { built: preview.built, foodModule: preview.modules.food, label: preview.label }) : null),
@@ -67,13 +126,21 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
   if (mode === 'link') {
     return (
       <Page title="Link this device">
-        <LinkForm api={api} initial={initial} deviceName={deviceName} />
+        <LinkForm key={code} api={api} initial={code} deviceName={deviceName} />
       </Page>
     );
   }
-  if (step === 'home' || step === 'notify') return <FirstSteps api={api} owner={preview?.owner ?? ''} label={preview?.label} step={step} next={() => (step === 'home' ? setStep('notify') : navigate('/p'))} />;
+  if (step === 'home' || step === 'notify') {
+    const next = () => {
+      if (step === 'notify') return navigate('/p');
+      keepStep('notify');
+      setStep('notify');
+    };
+    return <FirstSteps api={api} owner={preview?.owner ?? space?.owner ?? ''} label={preview ? preview.label : space?.label} step={step} next={next} />;
+  }
   if (step === 'notNow') return <Page title="Not now">Nothing was shared and the link still works until it runs out. Open it again when you're ready.</Page>;
   if (!code) {
+    if (joined === null) return <Page title="Joining">Loading…</Page>;
     return (
       <PasteInvite
         api={api}
@@ -99,9 +166,10 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
     setBusy(true);
     try {
       await api.join({ code, acceptedVersion: preview.version, agreement, name: name.trim() || preview.name, deviceName });
-      // The code is spent: take it out of the address, then the first steps.
-      history.replaceState(null, '', '/p/join');
-      setStep(needsHomeScreen() ? 'home' : 'notify');
+      // The code is spent: take it out of the address, then the first steps, which the address keeps for a reload (0.12.1).
+      const first = needsHomeScreen() ? 'home' : 'notify';
+      keepStep(first);
+      setStep(first);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
