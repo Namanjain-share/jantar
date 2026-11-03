@@ -34,6 +34,7 @@ import {
   levelOf,
   personLabelProblem,
   phaseBuilt,
+  shortLabel,
   spaceLabel,
   type AgreementField,
   type AgreementFields,
@@ -227,6 +228,12 @@ export function SpaceName({ client, pid, name, label, reload }: { client: People
         </label>
       ) : null}
       {choice === OWN_WORDS && own.length > 0 && problem ? <p className="mt-4 type-small text-ink-2">{problem}</p> : null}
+      {problem === null && next.length > 0 ? (
+        // An icon added to her Home Screen takes a name of at most 12 characters: show it before he saves.
+        <p className="mt-4 break-words type-small text-ink-2">
+          {name}'s Home Screen title: {shortLabel(next)}
+        </p>
+      ) : null}
       <Button variant="outline" className="mt-8 min-h-44" disabled={busy || problem !== null || next === current} onClick={() => void save()}>
         Save
       </Button>

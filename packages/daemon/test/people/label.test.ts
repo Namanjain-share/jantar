@@ -157,7 +157,7 @@ describe('her manifest', () => {
     await him('PATCH', `/v1/people/${f.asha.id}`, { label: 'Cofounder' });
     expect((await get(f.asha.full)).json()).toMatchObject({ name: 'Cofounder', short_name: 'Cofounder', description: expect.stringContaining('with your cofounder.') });
     await him('PATCH', `/v1/people/${f.asha.id}`, { label: 'My running coach' });
-    expect((await get(f.asha.full)).json()).toMatchObject({ name: 'My running coach', short_name: 'Coach' });
+    expect((await get(f.asha.full)).json()).toMatchObject({ name: 'My running coach', short_name: 'My running' });
     // The cookie alone is enough for a GET (a manifest fetch sends no secret); Bea gets hers, untouched.
     expect((await get(f.asha.cookie)).statusCode).toBe(200);
     expect((await get(f.bea.full)).json()).toMatchObject({ name: 'Accountability partner', short_name: 'Partner' });

@@ -56,8 +56,16 @@ describe('the space’s name', () => {
     expect(shortLabel('Accountability partner')).toBe('Partner');
     expect(shortLabel('Cofounder')).toBe('Cofounder');
     expect(shortLabel('Teammate')).toBe('Teammate');
-    expect(shortLabel('My running coach')).toBe('Coach');
+    // Review 5, UX 2: the first words that fit, cut where a word ends, never a lone last word.
+    expect(shortLabel('My running coach')).toBe('My running');
+    expect(shortLabel('Partner in crime')).toBe('Partner in');
+    expect(shortLabel('Coach for life')).toBe('Coach for');
+    expect(shortLabel('Study buddy for the March exams and more')).toBe('Study buddy');
+    expect(shortLabel('Coach, mentor and friend')).toBe('Coach');
+    expect(shortLabel('Big brother 🙂')).toBe('Big brother');
+    expect(shortLabel('running partner')).toBe('Running');
     expect(shortLabel('Accountabilitybuddyforever')).toBe('Accountabili');
+    expect(shortLabel('Accountabilitybuddy forever')).toBe('Accountabili');
     for (const l of [...PERSON_LABEL_PRESETS, 'My running coach', 'Accountabilitybuddyforever', 'Big brother 🙂', 'a b'.repeat(13)]) {
       expect(Array.from(shortLabel(l)).length, l).toBeLessThanOrEqual(12);
       expect(shortLabel(l).length, l).toBeGreaterThan(0);

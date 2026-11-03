@@ -27,7 +27,7 @@ export const OWNER_FALLBACK_NAME = 'Your accountability partner';
  */
 export const PERSON_LABEL_PRESETS = ['Accountability partner', 'Cofounder', 'Partner', 'Coach', 'Mentor', 'Teammate', 'Family', 'Friend'] as const;
 export const PERSON_LABEL_MAX = 40;
-/** Her Home Screen title (the manifest's short_name) at most: a longer label gives its last word, or its first 12 characters. */
+/** Her Home Screen title (the manifest's short_name) at most: a longer label gives its first words that fit, or its first 12 characters. */
 export const PERSON_SHORT_LABEL_MAX = 12;
 /** Not plain text on one line: control characters, line and paragraph separators, and the marks that reorder text. */
 const NOT_PLAIN = /[\u{0}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{200e}\u{200f}\u{2028}-\u{202e}\u{2066}-\u{2069}]/u;
@@ -61,15 +61,22 @@ export function yourLabel(label?: string | null): string {
   return `your ${/^\p{Lu}\p{Ll}/u.test(l) ? l.charAt(0).toLowerCase() + l.slice(1) : l}`;
 }
 
-/** Her Home Screen title: "Partner" for the default, the label when it fits, else its last word or first 12 characters. */
+/**
+ * Her Home Screen title: "Partner" for the default, the label when it fits, else its first words that fit in 12
+ * characters, cut where a word ends ("Partner in crime": "Partner in"; "Study buddy for the exams": "Study buddy"),
+ * or its first 12 characters when its first word is longer. Never a lone last word ("Crime", "More").
+ */
 export function shortLabel(label?: string | null): string {
   const l = spaceLabel(label);
   if (l === PEOPLE_LABEL) return PEOPLE_SHORT_LABEL;
-  const chars = (s: string) => Array.from(s);
-  if (chars(l).length <= PERSON_SHORT_LABEL_MAX) return l;
-  const last = l.split(/\s+/).pop() ?? l;
-  const word = chars(last).length <= PERSON_SHORT_LABEL_MAX && chars(last).length > 1 ? last : chars(l).slice(0, PERSON_SHORT_LABEL_MAX).join('').trim();
-  return word.charAt(0).toUpperCase() + word.slice(1);
+  const chars = Array.from(l);
+  if (chars.length <= PERSON_SHORT_LABEL_MAX) return l;
+  // The last space at or before the 13th character: everything before it is whole words of at most 12.
+  let end = -1;
+  for (let i = PERSON_SHORT_LABEL_MAX; i > 0 && end < 0; i--) if (/\s/u.test(chars[i] ?? '')) end = i;
+  const words = end > 0 ? chars.slice(0, end).join('').replace(/[\s,;:.&/+\u2013\u2014-]+$/u, '') : '';
+  const out = words.length > 0 ? words : chars.slice(0, PERSON_SHORT_LABEL_MAX).join('').trim();
+  return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
 /** A day key that names a date on the calendar (the key's pattern lets 2026-02-30 through). */

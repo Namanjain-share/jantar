@@ -110,7 +110,10 @@ describe('her app under the space’s name', () => {
     nameApp(undefined, { manifest: true });
     expect([document.title, homeTitle(), manifestHref()]).toEqual(['Accountability partner', 'Partner', '/p.webmanifest']);
     nameApp('My running coach', { manifest: true });
-    expect([document.title, homeTitle(), manifestHref()]).toEqual(['My running coach', 'Coach', PERSON_MANIFEST_URL]);
+    expect([document.title, homeTitle(), manifestHref()]).toEqual(['My running coach', 'My running', PERSON_MANIFEST_URL]);
+    // Review 5, UX 2: the first words that fit, never a lone last word ("Crime", "More").
+    nameApp('Partner in crime', { manifest: true });
+    expect(homeTitle()).toBe('Partner in');
     nameApp(HOSTILE);
     expect(document.title).toBe(HOSTILE);
     expect(document.head.querySelector('img')).toBeNull();
@@ -192,6 +195,8 @@ describe('his screens name the space', () => {
     expect(Array.from(pick.options).map((o) => o.text)).toEqual(['Accountability partner', 'Cofounder', 'Partner', 'Coach', 'Mentor', 'Teammate', 'Family', 'Friend', 'Your own words…']);
     const save = within(section).getByRole('button', { name: 'Save' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
+    // Her Home Screen title shows before he saves (at most 12 characters).
+    expect(within(section).getByText("Asha's Home Screen title:", { exact: false }).textContent).toBe("Asha's Home Screen title: Partner");
     fireEvent.change(pick, { target: { value: 'Mentor' } });
     current = 'Mentor';
     await act(async () => {
@@ -211,6 +216,8 @@ describe('his screens name the space', () => {
     fireEvent.change(words, { target: { value: `Study${String.fromCharCode(9)}buddy` } });
     expect(within(section).getByText('Plain text on one line.')).toBeTruthy();
     expect(save.disabled).toBe(true);
+    fireEvent.change(words, { target: { value: 'Study buddy for the March exams and more' } });
+    expect(within(section).getByText("Asha's Home Screen title:", { exact: false }).textContent).toBe("Asha's Home Screen title: Study buddy");
     fireEvent.change(words, { target: { value: '  Study buddy ' } });
     current = 'Study buddy';
     await act(async () => {
