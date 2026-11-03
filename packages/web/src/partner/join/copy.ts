@@ -31,12 +31,21 @@ export interface JoinCopy {
 
 type SeeText = (v: string | boolean, a: AgreementFields) => string | null;
 
+/** Which medicines' notes he reads at `full`: those he may change (his own with assign.meds, hers with editHers.meds). Ends in ", " or is empty. */
+function medNotesWords(owner: string, a: AgreementFields): string {
+  if (a.assign.meds && a.editHers.meds) return 'the notes on them, ';
+  if (a.editHers.meds) return 'the notes on the ones you added, ';
+  if (a.assign.meds) return `the notes on the ones ${owner} added, `;
+  return '';
+}
+
 const see = (owner: string): Record<string, SeeText> => ({
   'see.todos': (v) =>
     v ? 'Your to-dos and reminders: all of them, including ones you add yourself, when you finish each one, and the notes you write when you do' : 'Your to-dos and reminders: off',
-  'see.meds': (v) =>
+  // His `full` view (daemon people/meds.ts ownerMedicine): never a log time or pill count; the notes only on medicines he may change.
+  'see.meds': (v, a) =>
     v === 'full'
-      ? 'Your medicines: names, doses, times, and whether you took each dose'
+      ? `Your medicines: names, doses, times, ${medNotesWords(owner, a)}whether you took each dose, and how often in the last 30 days`
       : v === 'adherence'
         ? 'Your medicines: only how often you took them, never their names'
         : 'Your medicines: off',
@@ -60,14 +69,15 @@ const see = (owner: string): Record<string, SeeText> => ({
 
 const does = (owner: string): Record<string, (a: AgreementFields) => string | null> => ({
   'assign.todos': (a) => (a.assign.todos ? `Add to-dos and reminders for you. These show "From ${owner}" and apply straight away.` : null),
-  'assign.meds': (a) => (a.assign.meds ? 'Add a medicine for you.' : null),
+  'assign.meds': (a) => (a.assign.meds ? `Add a medicine for you, and change or stop the ones ${owner} added (their notes too)${a.editHers.meds ? '' : ', never yours'}.` : null),
   'editHers.todos': (a) =>
     a.editHers.todos
       ? `Change or remove your to-dos and reminders, including ones you added yourself. Each one then shows "Edited by ${owner}", and your Activity keeps what it was before.`
       : a.assign.todos
         ? `Change or remove only the to-dos ${owner} added, never yours.`
         : null,
-  'editHers.meds': (a) => (a.editHers.meds ? `Change or stop medicines you added yourself. Each change shows "Edited by ${owner}" and is in your Activity.` : null),
+  'editHers.meds': (a) =>
+    a.editHers.meds ? `Change or stop medicines you added yourself, their notes included. Each change shows "Edited by ${owner}" and is in your Activity.` : null,
   'editHers.weight': (a) => (a.editHers.weight ? 'Correct or remove a weight you logged, never add one for you.' : null),
   'assign.plan': (a) => (a.assign.plan ? 'Plan your day in order.' : null),
   'editHers.plan': (a) => (a.editHers.plan ? `Change or remove plan steps you added yourself. Each change shows "Edited by ${owner}", and your Activity keeps what it was before.` : null),

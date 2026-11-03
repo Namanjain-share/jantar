@@ -27,9 +27,9 @@ import type {
   JournalEntryFull,
   JournalList,
   OwnerChatView,
+  OwnerMedicine,
   OwnerMedsView,
   OwnerTodosView,
-  PersonMedicineView,
   PersonWeightsResponse,
   SharedItemsResponse,
   SharedListsResponse,
@@ -253,8 +253,8 @@ function TodayTab({ client, pid, name, today, reload, canCarry, isToday }: { cli
 /** His Today line for her medicines: "Doses today: 2 of 3 logged · 1 not logged" (full), or the counts at adherence (no names). */
 export function medsLine(m: OwnerMedsView): string {
   if (m.level === 'adherence') return m.notLoggedToday ? `Medicines: ${m.notLoggedToday} dose${m.notLoggedToday === 1 ? '' : 's'} not logged today` : 'Medicines: every dose due is logged';
-  // A time gone by before she added the medicine, unlogged, was never due (protocol medsDayTotals' rule).
-  const items = m.day.groups.flatMap((g) => g.items).filter((i) => !i.beforeAdded);
+  // His day never holds a time gone by before she added the medicine (the daemon leaves it out: it was never due).
+  const items = m.day.groups.flatMap((g) => g.items);
   if (items.length === 0) return 'Medicines: no doses due';
   const logged = items.filter((i) => i.status === 'taken' || i.status === 'skipped').length;
   const missed = items.filter((i) => i.status === 'missed' || i.overdue).length;
@@ -321,11 +321,11 @@ function HealthTab({
   const medsLoad = useLifeLoad<OwnerMedsView>(meds !== 'off' ? `people:${pid}:meds` : null, () => client.meds(pid));
   const weights = useLifeLoad<PersonWeightsResponse>(weight ? `people:${pid}:weights` : null, () => client.weights(pid));
   const sleepLoad = useLifeLoad<Week>(sleep ? `people:${pid}:sleep:${week ?? ''}` : null, () => client.sleep(pid, week));
-  const [editing, setEditing] = useState<PersonMedicineView | 'new' | null>(null);
-  const [stopping, setStopping] = useState<PersonMedicineView | null>(null);
+  const [editing, setEditing] = useState<OwnerMedicine | 'new' | null>(null);
+  const [stopping, setStopping] = useState<OwnerMedicine | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const canEdit = (m: PersonMedicineView) => meds === 'full' && (m.by === '' ? canAdd : editHers);
-  const stop = (m: PersonMedicineView) =>
+  const canEdit = (m: OwnerMedicine) => meds === 'full' && (m.by === '' ? canAdd : editHers);
+  const stop = (m: OwnerMedicine) =>
     void client.medStop(pid, m.id).then(
       () => (setStopping(null), setNote(`Stopped: ${m.name}. ${name} sees it in Activity.`), medsLoad.reload()),
       (e: Error) => setNote(e.message),
@@ -409,8 +409,23 @@ function HealthTab({
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** Add a medicine for her (assign.meds), or edit one (his, or hers with editHers.meds): name, dose, times and notes. */
-function MedSheet({ open, client, pid, name, edit, close, done }: { open: boolean; client: PeopleClient; pid: string; name: string; edit: PersonMedicineView | null; close: () => void; done: () => void }) {
+/** His edit as a patch of only what changed from the medicine he opened (empty: nothing to save). */
+export function medPatchOf(m: Pick<OwnerMedicine, 'name' | 'dose' | 'times' | 'notes'>, f: { name: string; dose: string; times: string[]; notes: string }): MedicinePatch {
+  const patch: MedicinePatch = {};
+  if (f.name.trim() !== m.name) patch.name = f.name.trim();
+  if (f.dose.trim() !== (m.dose ?? '')) patch.dose = f.dose.trim() || null;
+  if (f.times.join(',') !== m.times.join(',')) patch.times = f.times;
+  if (f.notes.trim() !== (m.notes ?? '')) patch.notes = f.notes.trim() || null;
+  return patch;
+}
+
+/**
+ * Add a medicine for her (assign.meds), or edit one (his, or hers with
+ * editHers.meds): name, dose, times and notes. An edit sends only the
+ * fields he changed, so nothing he didn't touch (her notes among them) is
+ * written over.
+ */
+function MedSheet({ open, client, pid, name, edit, close, done }: { open: boolean; client: PeopleClient; pid: string; name: string; edit: OwnerMedicine | null; close: () => void; done: () => void }) {
   const [medName, setMedName] = useState('');
   const [dose, setDose] = useState('');
   const [times, setTimes] = useState('');
@@ -436,8 +451,7 @@ function MedSheet({ open, client, pid, name, edit, close, done }: { open: boolea
     setError(null);
     try {
       if (edit) {
-        const patch: MedicinePatch = { name: medName.trim(), dose: dose.trim() || null, times: list, notes: notes.trim() || null };
-        await client.medUpdate(pid, edit.id, patch);
+        await client.medUpdate(pid, edit.id, medPatchOf(edit, { name: medName, dose, times: list, notes }));
       } else {
         const body: MedicineBody = { name: medName.trim(), ...(dose.trim() ? { dose: dose.trim() } : {}), times: list, schedule: { freq: 'daily' }, ...(notes.trim() ? { notes: notes.trim() } : {}) };
         await client.medAssign(pid, body);

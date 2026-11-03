@@ -67,6 +67,12 @@ describe('Sharing', () => {
     expect(toldWithoutLooking(me({ assign: { todos: false, meds: false, plan: false } })).join('\n')).not.toMatch(/Tell me if not done by/);
   });
 
+  it('"told without looking" names the push when she changes or stops a medicine he added, only while he sees them in full (daemon meds.ts tellHim)', () => {
+    const line = "When you change or stop a medicine Sam added (it doesn't say which or how)";
+    expect(toldWithoutLooking(me())).toContain(line);
+    expect(toldWithoutLooking(me({ see: { ...presetAgreement('everything').see, meds: 'adherence' } }))).not.toContain(line);
+  });
+
   it('see= opens the mirror; an unknown area is Sharing', () => {
     expect(parsePersonRoute('/p/me', '?tab=sharing&see=plan')).toEqual({ name: 'me', tab: 'sharing', see: 'plan' });
     expect(parsePersonRoute('/p/me', '?tab=sharing&see=bank')).toEqual({ name: 'me', tab: 'sharing' });

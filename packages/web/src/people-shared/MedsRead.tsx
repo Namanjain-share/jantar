@@ -1,17 +1,19 @@
 /**
  * v0.12 People: her medicines as the owner sees them (spec 3.4, 4.2), one
  * component for his Partner › Health and her "See what {owner} sees" (the
- * same DTO, so the mirror matches). `full`: the day's doses and each
- * medicine with who added it and "Edited by"; `adherence`: a percentage
- * and a count, naming nothing. The two-day concern is a plain line, never a
- * warning colour. Text renders as plain text (React escapes it).
+ * same DTO, so the mirror matches). `full`: the day's doses (taken,
+ * skipped or not, never when) and each medicine with who added it, "Edited
+ * by", and her notes where he may change it (so the mirror shows her
+ * exactly the notes he reads); `adherence`: a percentage and a count,
+ * naming nothing. The two-day concern is a plain line, never a warning
+ * colour. Text renders as plain text (React escapes it).
  */
 import type { MedsDayItem } from '@jantar/protocol';
-import type { OwnerMedsView, PersonMedicineView } from '@jantar/protocol/people';
+import type { OwnerDoseItem, OwnerMedicine, OwnerMedsView } from '@jantar/protocol/people';
 import { dayLabel, hmOf } from './time.js';
 
-/** "Taken 08:12", "Skipped", "Not logged", "Due"; "Added after this time" for one gone by before it was added (it can still be logged). */
-export function doseWords(i: MedsDayItem): string {
+/** "Taken 08:12" (her own list; his view has no log time), "Skipped", "Not logged", "Due"; "Added after this time" for one gone by before it was added (it can still be logged). */
+export function doseWords(i: OwnerDoseItem & Partial<Pick<MedsDayItem, 'at' | 'late' | 'beforeAdded'>>): string {
   if (i.status === 'taken') return i.at ? `Taken ${hmOf(i.at)}${i.late ? ' (late)' : ''}` : 'Taken';
   if (i.status === 'skipped') return 'Skipped';
   if (i.status === 'missed') return 'Not logged';
@@ -22,7 +24,7 @@ export function doseWords(i: MedsDayItem): string {
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /** "Every day", "Mon, Thu", "Every 2 days". */
-export function scheduleWords(m: Pick<PersonMedicineView, 'schedule'>): string {
+export function scheduleWords(m: Pick<OwnerMedicine, 'schedule'>): string {
   const s = m.schedule;
   if (s.freq === 'weekly' && s.byWeekday?.length) return s.byWeekday.map((d) => WEEKDAYS[d] ?? '').join(', ');
   if (s.interval && s.interval > 1) return `Every ${s.interval} days`;
@@ -34,7 +36,7 @@ export function scheduleWords(m: Pick<PersonMedicineView, 'schedule'>): string {
  * `owner` is the owner's word on that side ("you" on his, "Sam" on hers),
  * `name` hers ("Asha" on his, "you" on hers).
  */
-export function medByLine(m: PersonMedicineView, owner: string, name: string): string {
+export function medByLine(m: Pick<OwnerMedicine, 'by' | 'editedBy'>, owner: string, name: string): string {
   return [m.by === '' ? `added by ${owner}` : `${name === 'you' ? 'yours' : `${name}'s own`}`, m.editedBy === '' && m.by !== '' ? `edited by ${owner}` : null].filter(Boolean).join(' · ');
 }
 
@@ -48,7 +50,7 @@ export function MedsRead({
   owner: string;
   name: string;
   /** His Edit and Stop, where the agreement allows (none on her mirror). */
-  actions?: (m: PersonMedicineView) => React.ReactNode;
+  actions?: (m: OwnerMedicine) => React.ReactNode;
 }) {
   if (view.level === 'adherence') {
     return (
@@ -95,10 +97,9 @@ export function MedsRead({
                   {m.dose ? <span className="text-ink-2"> · {m.dose}</span> : null}
                 </p>
                 <p className="text-small text-ink-2">
-                  {[m.times.join(', '), scheduleWords(m), m.adherencePct === null ? null : `${m.adherencePct}% in 30 days`, m.supply?.low ? 'running low' : null, medByLine(m, owner, name)]
-                    .filter(Boolean)
-                    .join(' · ')}
+                  {[m.times.join(', '), scheduleWords(m), m.adherencePct === null ? null : `${m.adherencePct}% in 30 days`, medByLine(m, owner, name)].filter(Boolean).join(' · ')}
                 </p>
+                {m.notes ? <p className="whitespace-pre-wrap break-words text-small text-ink-2">Notes: {m.notes}</p> : null}
               </div>
               {actions ? <div className="flex flex-wrap gap-4">{actions(m)}</div> : null}
             </li>

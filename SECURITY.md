@@ -2092,7 +2092,12 @@ It adds a new asset: **another person's Life data, health data included**.
   reads them only at the level she shares (`adherence` names nothing), he
   adds and edits only with the agreement's fields, every change of his is
   in her Activity with the old values, and no route of his logs, undoes or
-  deletes a dose or deletes a medicine of hers.
+  deletes a dose or deletes a medicine of hers. At `full` his view is cut
+  to the words she accepted (`ownerMedicine`): never her pill count or
+  supply, the schedule history, change stamps or when she logged a dose,
+  and her notes only on a medicine the agreement lets him change; her
+  mirror is the same DTO, notes included. His edit sends only the fields
+  he changed.
 - **No owner-only record of her**: her own writes are audited as
   `person.write` with no route, target or params; the request log names her
   routes as `/v1/p/*`; no route or command shows her devices' last-seen,

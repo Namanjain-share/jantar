@@ -100,6 +100,7 @@ import {
   MedicinePatchSchema,
   MedicineSchema,
   MedicineViewSchema,
+  MedsDayItemSchema,
   MedsDaySchema,
   OkReplySchema,
   PlaceBodySchema,
@@ -375,9 +376,40 @@ export type PersonWeightsResponse = z.infer<typeof PersonWeightsResponseSchema>;
 
 export const OwnerTodosViewSchema = z.object({ today: DayKeySchema, todos: z.array(PersonTodoSchema), projects: z.array(ProjectViewSchema) });
 export type OwnerTodosView = z.infer<typeof OwnerTodosViewSchema>;
-/** `full`: each medicine and its doses. `adherence`: a percentage and a count, no names and no doses. */
+/**
+ * One of her medicines as he sees it at `full`, which her join page words as
+ * "names, doses, times, whether you took each dose, and how often in the
+ * last 30 days" (spec 1.3.3): its name, dose, times and days, who added it
+ * and "Edited by", and its 30-day share of doses logged (the `adherence`
+ * level's number, which `full` includes). Her notes only on a medicine he may change (his own with
+ * assign.meds, hers with editHers.meds), which the join page says. Never
+ * her pill count or supply, the schedule history, or when she changed it.
+ */
+export const OwnerMedicineSchema = PersonMedicineViewSchema.pick({
+  id: true,
+  name: true,
+  dose: true,
+  times: true,
+  schedule: true,
+  notes: true,
+  startedOn: true,
+  stoppedOn: true,
+  adherencePct: true,
+  by: true,
+  editedBy: true,
+  editedAt: true,
+});
+export type OwnerMedicine = z.infer<typeof OwnerMedicineSchema>;
+/** One dose as he sees it: taken, skipped or not, never when she logged it. A time gone by before she added the medicine is not in it. */
+export const OwnerDoseItemSchema = MedsDayItemSchema.pick({ medId: true, name: true, dose: true, slot: true, status: true, overdue: true });
+export type OwnerDoseItem = z.infer<typeof OwnerDoseItemSchema>;
+export const OwnerMedsDaySchema = MedsDaySchema.extend({
+  groups: z.array(z.object({ period: z.enum(['morning', 'afternoon', 'night']), items: z.array(OwnerDoseItemSchema) })),
+});
+export type OwnerMedsDay = z.infer<typeof OwnerMedsDaySchema>;
+/** `full`: each medicine and its doses, as she was told (OwnerMedicine). `adherence`: a percentage and a count, no names and no doses. */
 export const OwnerMedsViewSchema = z.discriminatedUnion('level', [
-  z.object({ level: z.literal('full'), day: MedsDaySchema, medicines: z.array(PersonMedicineViewSchema), concern: z.string().nullable() }),
+  z.object({ level: z.literal('full'), day: OwnerMedsDaySchema, medicines: z.array(OwnerMedicineSchema), concern: z.string().nullable() }),
   z.object({ level: z.literal('adherence'), pct: z.number().min(0).max(100).nullable(), notLoggedToday: z.number().int().min(0), concern: z.string().nullable() }),
 ]);
 export type OwnerMedsView = z.infer<typeof OwnerMedsViewSchema>;
@@ -639,7 +671,7 @@ export const PersonWsMessageSchema = z.discriminatedUnion('kind', [
 export type PersonWsMessage = z.infer<typeof PersonWsMessageSchema>;
 
 /** A medicine day's slots, logged and missed, counted (her Today and his adherence tile). */
-export function medsDayTotals(day: MedsDay): { slots: number; logged: number; missed: number } {
+export function medsDayTotals(day: { groups: readonly { items: readonly { status: 'taken' | 'skipped' | 'missed' | 'pending'; overdue: boolean; beforeAdded?: true }[] }[] }): { slots: number; logged: number; missed: number } {
   let slots = 0;
   let logged = 0;
   let missed = 0;

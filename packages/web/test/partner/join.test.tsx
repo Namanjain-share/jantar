@@ -108,8 +108,40 @@ describe('M20: the join page', () => {
 
   it('every area the page offers is one this build serves: medicines are on it, with Add and Change for him', () => {
     const c = joinCopy('Sam', applyAgreementPatch(presetAgreement('everything'), { see: { food: false } }), { built: BUILT_PHASE, foodModule: false });
-    expect(c.sees.find((l) => l.key === 'see.meds')?.text).toBe('Your medicines: names, doses, times, and whether you took each dose');
-    expect(all(c)).toMatch(/Add a medicine for you\./);
-    expect(all(c)).toMatch(/Change or stop medicines you added yourself/);
+    expect(c.sees.find((l) => l.key === 'see.meds')?.text).toBe('Your medicines: names, doses, times, the notes on them, whether you took each dose, and how often in the last 30 days');
+    expect(all(c)).toMatch(/Add a medicine for you, and change or stop the ones Sam added \(their notes too\)\./);
+    expect(all(c)).toMatch(/Change or stop medicines you added yourself, their notes included\./);
+  });
+
+  // His `full` medicines view (daemon people/meds.ts ownerMedicine, pinned by people-medicines.test.ts "M20 for medicines")
+  // carries names, doses, times, taken/skipped/not, and the notes only on medicines he may change: never a log time or pill count.
+  it('M20 for medicines: the line names the notes exactly where he reads them, and his Add line says what he may change', () => {
+    const base = presetAgreement('everything');
+    const at = (assign: boolean, editHers: boolean) => {
+      const a = { ...base, assign: { ...base.assign, meds: assign }, editHers: { ...base.editHers, meds: editHers } };
+      const c = joinCopy('Sam', a, { built: BUILT_PHASE, foodModule: false });
+      return { line: c.sees.find((l) => l.key === 'see.meds')?.text, does: c.does.map((l) => l.text).filter((t) => /medicine/.test(t)) };
+    };
+    expect(at(true, true)).toEqual({
+      line: 'Your medicines: names, doses, times, the notes on them, whether you took each dose, and how often in the last 30 days',
+      does: [
+        'Add a medicine for you, and change or stop the ones Sam added (their notes too).',
+        'Change or stop medicines you added yourself, their notes included. Each change shows "Edited by Sam" and is in your Activity.',
+      ],
+    });
+    // The Standard preset: he adds and may change his own additions, never hers.
+    expect(at(true, false)).toEqual({
+      line: 'Your medicines: names, doses, times, the notes on the ones Sam added, whether you took each dose, and how often in the last 30 days',
+      does: ['Add a medicine for you, and change or stop the ones Sam added (their notes too), never yours.'],
+    });
+    expect(at(false, true).line).toBe('Your medicines: names, doses, times, the notes on the ones you added, whether you took each dose, and how often in the last 30 days');
+    expect(at(false, false)).toEqual({ line: 'Your medicines: names, doses, times, whether you took each dose, and how often in the last 30 days', does: [] });
+    expect(joinCopy('Sam', closeDependents(presetAgreement('standard')), { built: BUILT_PHASE, foodModule: false }).sees.find((l) => l.key === 'see.meds')?.text).toBe(
+      at(true, false).line,
+    );
+    // He never sees when she logged a dose: the only times stay the ones the can't-list names.
+    const c = joinCopy('Sam', base, { built: BUILT_PHASE, foodModule: false });
+    expect(c.cant.join('\n')).toMatch(/The only times Sam sees are the "Seen" marks, finish times, sleep taps and when you open an alert listed above\./);
+    expect(all(c)).not.toMatch(/pill|when you log|log time/i);
   });
 });

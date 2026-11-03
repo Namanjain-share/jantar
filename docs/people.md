@@ -97,9 +97,11 @@ jantar people offer Asha --preset everything --see food=off
 
 The preset is only a template: what is stored, shown on the join page and on
 their Sharing page is always the list of fields. Medicines have two levels:
-**full** (names, doses and each dose) and **only how often** (a percentage,
-no names). `--see food=off` is accepted and asks for nothing: food isn't in
-this release.
+**full** (names, doses, times, whether each dose was taken or skipped, and
+the 30-day percentage; never when a dose was logged nor the pill count; the
+notes only on medicines you may change, and the join page says which) and
+**only how often** (a percentage, no names). `--see food=off` is accepted
+and asks for nothing: food isn't in this release.
 
 The join page lists every field on its own line, in plain words, with a
 switch that can only turn it down. Whatever they switch off before joining
@@ -183,8 +185,9 @@ about them opens the right tab here.
   a view mark in their Activity, and your changes to your own steps are
   listed there ("Sam changed the time of 'Mock' 08:00 → 08:30").
 - **Health**: their medicines at the level they share. At **full**, each
-  medicine ("added by you", or theirs, "edited by you"), the day's doses
-  (Taken 08:12, Skipped, Not logged) and Add a medicine for them, Edit and
+  medicine ("added by you", or theirs, "edited by you"; its notes when you
+  may change it), the day's doses (Taken, Skipped, Not logged, never the
+  time they logged it) and Add a medicine for them, Edit and
   Stop where the agreement allows; at **only how often**, a percentage and
   how many of today's doses aren't logged, with no names. On both, when
   doses went unlogged two days running, one plain line: "Doses not logged 2

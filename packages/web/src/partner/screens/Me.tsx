@@ -94,6 +94,7 @@ export function toldWithoutLooking(me: PersonMe): string[] {
   const o = me.owner.name;
   const out = ['When you join, pause, resume, leave or change what you share', `Alerts you send ${o}, and your replies to ${o}'s alerts`];
   if (a?.assign.todos || a?.assign.plan) out.push(`When an item ${o} asked about ("Tell me if not done by") is still open at that time: its title only`);
+  if (a?.see.meds === 'full') out.push(`When you change or stop a medicine ${o} added (it doesn't say which or how)`);
   if (a?.see.plan) out.push('When you mark a rough day (one line, no details)');
   if (a?.see.review !== 'off' && me.ownerTells?.reviewPush !== false) out.push('When you send your evening review (no note text)');
   if (a?.see.journal) out.push('When you reply to a comment in your journal (no text)');

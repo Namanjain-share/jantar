@@ -29,7 +29,7 @@ import { createAppStore } from '../../src/store.js';
 import { AppProvider, createToastStore } from '../../src/ui/context.js';
 import type { PeopleClient } from '../../src/ui/screens/people/client.js';
 import { peopleLine } from '../../src/ui/screens/people/PeopleCard.js';
-import { Partner, medsLine } from '../../src/ui/screens/people/Partner.js';
+import { Partner, medPatchOf, medsLine } from '../../src/ui/screens/people/Partner.js';
 import { fakeApi as ownerApi } from '../helpers.js';
 
 const PID = '01JASHAAAAAAAAAAAAAAAAAAAA';
@@ -211,7 +211,17 @@ describe('his Partner › Health', () => {
     await act(async () => {
       fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     });
-    await waitFor(() => expect(medUpdate).toHaveBeenCalledWith(PID, HERS, { name: 'Iron', dose: '1 tablet', times: ['08:30'], notes: null }));
+    // Only what he changed: nothing he didn't touch (her notes among them) is written over.
+    await waitFor(() => expect(medUpdate).toHaveBeenCalledWith(PID, HERS, { times: ['08:30'] }));
+  });
+
+  it('his edit patch is only what changed: notes he read stay unless he edits them, and clearing a field sends null', () => {
+    const m = { name: 'Iron', dose: '1 tablet', times: ['08:00'], notes: 'HER-NOTE' };
+    expect(medPatchOf(m, { name: 'Iron', dose: '1 tablet', times: ['08:00'], notes: 'HER-NOTE' })).toEqual({});
+    expect(medPatchOf(m, { name: ' Iron ', dose: '1 tablet', times: ['08:00', '20:00'], notes: 'HER-NOTE' })).toEqual({ times: ['08:00', '20:00'] });
+    expect(medPatchOf(m, { name: 'Iron', dose: '', times: ['08:00'], notes: '' })).toEqual({ dose: null, notes: null });
+    // A medicine whose notes he can't read (none in his view) gets no notes key from an untouched field.
+    expect(medPatchOf({ name: 'Iron', times: ['08:00'] }, { name: 'Iron', dose: '', times: ['08:00'], notes: '' })).toEqual({});
   });
 
   it('adherence names nothing and offers no edit; off is a locked tile', async () => {
@@ -252,10 +262,8 @@ describe('his Today line and card, and her mirror', () => {
     expect(peopleLine(todayOf({ locked: true }))).toBe('Asha');
   });
 
-  it('a time gone by before she added the medicine is no dose due or not logged; her row says so, and his own Life list never calls it due', () => {
+  it('a time gone by before she added the medicine: her row says so, and his own Life list never calls it due', () => {
     const early = pending(HERS, 'Inhaler', { slot: '07:00', beforeAdded: true as const });
-    expect(medsLine({ ...full(), day: day([early, pending(HIS, 'Vitamin D')]) })).toBe('Doses: 0 of 1 logged');
-    expect(medsLine({ ...full(), day: day([early]) })).toBe('Medicines: no doses due');
     expect(doseWords(early)).toBe('Added after this time');
     expect(isDue(early, DAY, { day: DAY, hhmm: '08:30' } as never)).toBe(false);
     expect(isDue(pending(HIS, 'Vitamin D'), DAY, { day: DAY, hhmm: '08:30' } as never)).toBe(true);
@@ -266,5 +274,18 @@ describe('his Today line and card, and her mirror', () => {
     expect(screen.getByText(/added by Sam/)).toBeTruthy();
     expect(screen.getByText(/yours · edited by Sam/)).toBeTruthy();
     expect(screen.getByText('Not logged yet')).toBeTruthy();
+  });
+
+  it('the mirror shows the notes he reads, and "Taken" with no time (his view has no log time)', () => {
+    const v: OwnerMedsView = {
+      level: 'full',
+      day: day([{ medId: HERS, name: 'Iron', dose: '1 tablet', slot: '08:00', status: 'taken', overdue: false }]),
+      medicines: [{ id: HERS, name: 'Iron', dose: '1 tablet', times: ['08:00'], schedule: { freq: 'daily', startDay: DAY }, notes: 'With food', startedOn: DAY, adherencePct: 100, by: PID }],
+      concern: null,
+    };
+    render(<MedsRead view={v} owner="Sam" name="you" />);
+    expect(screen.getByText('Notes: With food')).toBeTruthy();
+    expect(screen.getByText('Taken')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/\d\d:\d\d \(late\)|Taken \d/);
   });
 });

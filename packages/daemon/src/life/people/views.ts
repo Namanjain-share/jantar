@@ -16,7 +16,9 @@
  * never come from sleep, the journal, moods or review outcomes (spec 3.2).
  *
  * Her medicines (spec 3.4) are at his level: `full` each medicine and the
- * day's doses, `adherence` a percentage and a count that name nothing. The
+ * day's doses as her join page words them (no pill count, no log times, her
+ * notes only where he may change the medicine), `adherence` a percentage
+ * and a count that name nothing. The
  * two-day concern ("Doses not logged 2 days running") is on both, and on
  * Today's concern lines.
  */
@@ -131,7 +133,7 @@ export class PeopleViews {
   /** Her medicines at his level (null: life.db closed). */
   private medsView(pid: string, a: Agreement, day?: string): OwnerMedsView | Locked {
     if (a.see.meds === 'off' || !this.people.meds) return LOCKED;
-    return this.people.meds.view(pid, a.see.meds, day) ?? LOCKED;
+    return this.people.meds.view(pid, a.see.meds, { mine: a.assign.meds, hers: a.editHers.meds }, day) ?? LOCKED;
   }
 
   /**

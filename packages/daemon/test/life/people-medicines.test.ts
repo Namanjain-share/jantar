@@ -184,6 +184,49 @@ describe('isolation: her credential, Bea, and his own medicines', () => {
   });
 });
 
+describe('M20 for medicines: his full view carries what her join page says, and no more', () => {
+  // copy.ts: see.meds full names "names, doses, times, whether you took each dose, and how often in the last 30 days", and the notes only where he may change the medicine.
+  const ALLOWED = ['id', 'name', 'dose', 'times', 'schedule', 'notes', 'startedOn', 'stoppedOn', 'adherencePct', 'by', 'editedBy', 'editedAt'];
+  it('no pill count, supply, history or stamps, no log time; her notes only on one he may change, on his view, his Today and her mirror alike', async () => {
+    const hers = idOf(await herCall('POST', '/v1/p/medicines', med('Iron', ['08:00'], { notes: 'HER-NOTE only for me', pills: { left: 3, perDose: 1 } })));
+    const his = idOf(await him('POST', `/v1/people/${f.asha.id}/medicines`, med('Vitamin D', ['08:00'], { notes: 'HIS-NOTE from Sam' })));
+    await herCall('PATCH', `/v1/p/medicines/${his}`, { notes: 'HER-WORDS on his one' });
+    f.api.ctx.clock.set(`${DAY}T09:41:07.000Z`);
+    expect((await herCall('POST', `/v1/p/medicines/${hers}/doses`, { day: DAY, slot: '08:00', status: 'taken' })).statusCode).toBe(201);
+    // Her own list keeps all of it.
+    expect(JSON.stringify(await herMeds())).toMatch(/HER-NOTE[\s\S]*09:41:07/);
+    const check = async (reach: { assign: boolean; editHers: boolean }) => {
+      const v = (await him('GET', `/v1/people/${f.asha.id}/medicines`)).json() as OwnerMedsView;
+      if (v.level !== 'full') throw new Error('expected full');
+      const today = await him('GET', `/v1/people/${f.asha.id}/today`);
+      const mirror = (await herCall('GET', '/v1/p/mirror/meds')).json();
+      expect(mirror).toEqual(v);
+      for (const m of v.medicines) expect(Object.keys(m).filter((k) => !ALLOWED.includes(k))).toEqual([]);
+      for (const item of v.day.groups.flatMap((g) => g.items)) expect(Object.keys(item).sort()).toEqual(expect.arrayContaining(['medId', 'name', 'slot', 'status', 'overdue']));
+      // His Today carries the same view under `meds` (its plan has a `late` list of its own).
+      expect((today.json() as { meds: unknown }).meds).toEqual(v);
+      expect(JSON.stringify(v)).not.toMatch(/09:41|pills|supply|history|createdAt|updatedAt|"late"|"at"|doseId/);
+      expect(today.body).not.toMatch(/09:41|pills|supply|doseId/);
+      for (const body of [JSON.stringify(v), today.body]) {
+        expect(body.includes('HER-NOTE'), `her notes, ${JSON.stringify(reach)}`).toBe(reach.editHers);
+        expect(body.includes('HER-WORDS'), `notes on his, ${JSON.stringify(reach)}`).toBe(reach.assign);
+      }
+      expect(v.day.groups.flatMap((g) => g.items).find((i) => i.medId === hers)).toEqual({ medId: hers, name: 'Iron', dose: '1 tablet', slot: '08:00', status: 'taken', overdue: false });
+    };
+    await check({ assign: true, editHers: true });
+    await herCall('POST', '/v1/p/agreement/narrow', { editHers: { meds: false } });
+    await check({ assign: true, editHers: false });
+    await herCall('POST', '/v1/p/agreement/narrow', { assign: { meds: false } });
+    await check({ assign: false, editHers: false });
+  });
+
+  it('a time gone by before she added it is not in his day at all', async () => {
+    await herCall('POST', '/v1/p/medicines', med('Inhaler', ['07:00', '20:00']));
+    const v = (await him('GET', `/v1/people/${f.asha.id}/medicines`)).json() as OwnerMedsView;
+    expect(v.level === 'full' && v.day.groups.flatMap((g) => g.items).map((i) => i.slot)).toEqual(['20:00']);
+  });
+});
+
 describe('T10 / M21 and view marks', () => {
   it('his view equals her mirror at full, adherence and off, active and paused; his reads mark her record once an hour', async () => {
     await herCall('POST', '/v1/p/medicines', med('Mirror me', ['08:00', '20:00']));

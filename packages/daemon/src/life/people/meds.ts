@@ -14,7 +14,13 @@
  * - He never logs, undoes or deletes a dose, and never deletes a medicine
  *   of hers: Stop keeps her dose history (D22).
  * - While she is paused, his writes are 409 `paused`.
- * - His view (`see.meds`): `full` is each medicine and the day's doses;
+ * - His view (`see.meds`): `full` is what her join page words as "names,
+ *   doses, times, whether you took each dose, and how often in the last 30
+ *   days": each medicine (name, dose, times, days, who added and edited it,
+ *   its 30-day share) and the day's doses taken, skipped or not, never
+ *   when she logged one, nor her pill count. Her notes only on a medicine
+ *   he may change (his own with assign.meds, hers with editHers.meds), as
+ *   the join page says.
  *   `adherence` is the 30-day percentage and how many of today's doses
  *   aren't logged, naming nothing. On either, the two-day concern
  *   (Noblot's medicine escalation, life-core med-escalation.ts) is derived
@@ -25,7 +31,7 @@
  */
 import { computeMedEscalation } from '@jantar/life-core';
 import type { DoseBody, MedicineBody, MedicinePatch, MedsDay } from '@jantar/protocol';
-import { medsDayTotals, type OwnerMedsView, type PersonMedicine, type PersonMedicinesResponse } from '@jantar/protocol/people';
+import { medsDayTotals, type OwnerDoseItem, type OwnerMedicine, type OwnerMedsDay, type OwnerMedsView, type PersonMedicine, type PersonMedicineView, type PersonMedicinesResponse } from '@jantar/protocol/people';
 import type { Actor, LifeCore, LifeResult, MedicinesModule } from '../../contracts.js';
 import type { PeopleModule } from './module.js';
 
@@ -40,6 +46,42 @@ const refuse = (code: Refusal['code'], reason: string): Refusal => ({ ok: false,
 const TITLE_MAX = 120;
 
 type Change = { field: string; from?: string; to?: string };
+
+/** Which medicines of hers he may change: his own (assign.meds), hers (editHers.meds). Their notes are his to read. */
+export interface MedsReach {
+  mine: boolean;
+  hers: boolean;
+}
+
+/** One medicine at `full`, cut to what she was told (protocol OwnerMedicine). */
+export function ownerMedicine(m: PersonMedicineView, reach: MedsReach): OwnerMedicine {
+  const canChange = m.by === '' ? reach.mine : reach.hers;
+  return {
+    id: m.id,
+    name: m.name,
+    ...(m.dose !== undefined ? { dose: m.dose } : {}),
+    times: m.times,
+    schedule: m.schedule,
+    ...(canChange && m.notes !== undefined ? { notes: m.notes } : {}),
+    startedOn: m.startedOn,
+    ...(m.stoppedOn !== undefined ? { stoppedOn: m.stoppedOn } : {}),
+    adherencePct: m.adherencePct,
+    ...(m.by !== undefined ? { by: m.by } : {}),
+    ...(m.editedBy !== undefined ? { editedBy: m.editedBy } : {}),
+    ...(m.editedAt !== undefined ? { editedAt: m.editedAt } : {}),
+  };
+}
+
+/** The day's doses as he sees them: taken, skipped or not; never when she logged one. A time gone by before she added it was never due. */
+export function ownerMedsDay(d: MedsDay): OwnerMedsDay {
+  const groups = d.groups.map((g) => ({
+    period: g.period,
+    items: g.items
+      .filter((i) => !i.beforeAdded)
+      .map((i): OwnerDoseItem => ({ medId: i.medId, name: i.name, ...(i.dose !== undefined ? { dose: i.dose } : {}), slot: i.slot, status: i.status, overdue: i.overdue })),
+  }));
+  return { day: d.day, today: d.today, groups: groups.filter((g) => g.items.length > 0) };
+}
 
 /** The fields of a medicine an edit changed, old and new, for her Activity (notes: that they changed, never the text). */
 export function medChanges(before: PersonMedicine, after: PersonMedicine): Change[] {
@@ -175,9 +217,10 @@ export class PersonMeds {
   /**
    * Her medicines at a level (`full` or `adherence`), with the two-day
    * concern. `day` reads that day's doses at `full`; the concern and the
-   * adherence numbers are always as of today.
+   * adherence numbers are always as of today. `reach` is the agreement's
+   * assign.meds and editHers.meds (whose notes he reads).
    */
-  view(pid: string, level: 'full' | 'adherence', day?: string): OwnerMedsView | null {
+  view(pid: string, level: 'full' | 'adherence', reach: MedsReach, day?: string): OwnerMedsView | null {
     const c = this.core();
     if (!c) return null;
     const m = this.meds(pid);
@@ -191,7 +234,8 @@ export class PersonMeds {
     }
     const r = m.get(day && day <= today ? day : today);
     if (!r.ok) return null;
-    return { level: 'full', day: r.value.day, medicines: r.value.medicines as PersonMedicinesResponse['medicines'], concern };
+    const medicines = (r.value.medicines as PersonMedicinesResponse['medicines']).map((m) => ownerMedicine(m, reach));
+    return { level: 'full', day: ownerMedsDay(r.value.day), medicines, concern };
   }
 
   /**

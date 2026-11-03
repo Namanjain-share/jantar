@@ -162,7 +162,11 @@ partner simply can't sign in there).
   People screen's Health tab shows them at the level they share (full, or
   only how often with no names), your Today line and day summary count
   doses not logged, and when doses go unlogged two days running one plain
-  line says so, worked out when you look. Only they log doses.
+  line says so, worked out when you look. Only they log doses. At full you
+  see what their join page names: names, doses, times, each dose taken or
+  skipped and how often, the notes only on medicines you may change, never
+  their pill count or when they logged a dose; their "See what Sam sees"
+  shows the same, notes included.
 - **People in More**: your phone lists People in More (the rail on a wide
   screen) while People is on, on a device paired with control.
 - **Nothing promised that isn't there**: a food log for them is not part of
