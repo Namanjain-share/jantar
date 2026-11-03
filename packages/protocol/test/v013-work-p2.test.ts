@@ -32,6 +32,7 @@ import {
   ContactSchema,
   WORK_IMPORT_FIELDS,
   WORK_LIMITS,
+  WORK_ROUTES,
   WorkClientCreateBodySchema,
   WorkClientNamesQuerySchema,
   WorkClientPatchSchema,
@@ -126,6 +127,7 @@ describe('v0.13 P2: clients', () => {
   it('the similar check is a POST of a name, an e-mail or a phone', () => {
     expect(WorkClientSimilarBodySchema.safeParse({}).success).toBe(false);
     expect(WorkClientSimilarBodySchema.safeParse({ phone: '98765 43210', except: ID }).success).toBe(true);
+    expect(WORK_ROUTES.workClientSimilar.method).toBe('POST');
   });
 
   it('the list query and the names query', () => {
@@ -161,6 +163,7 @@ describe('v0.13 P2: meetings, import, settings', () => {
   });
 
   it('an import: a CSV or vCard of at most 1 MB through its own body limit, then its rows by index', () => {
+    expect(WORK_ROUTES.workImportPreview.bodyLimit).toBe(WORK_LIMITS.importBodyBytes);
     expect(WORK_LIMITS.importBodyBytes).toBeGreaterThan(WORK_LIMITS.importBytes * 1.25);
     expect(WorkImportPreviewBodySchema.safeParse({ format: 'csv', text: 'x'.repeat(WORK_LIMITS.importBytes + 1) }).success).toBe(false);
     expect(WorkImportPreviewBodySchema.safeParse({ format: 'xlsx', text: 'x' }).success).toBe(false);
@@ -174,5 +177,52 @@ describe('v0.13 P2: meetings, import, settings', () => {
     expect(WorkSettingsPatchSchema.safeParse({ dialCode: '91' }).success).toBe(false);
     expect(WorkSettingsPatchSchema.safeParse({ businesses: Array.from({ length: 6 }, (_, i) => ({ name: `B${i}` })) }).success).toBe(false);
     expect(WorkSettingsPatchSchema.safeParse({ lockScreenNames: true }).success).toBe(false);
+  });
+});
+
+describe('v0.13 P2 routes', () => {
+  const P2 = [
+    'workClients',
+    'workClientCreate',
+    'workClientSimilar',
+    'workClientNames',
+    'workClientGet',
+    'workClientLog',
+    'workClientUpdate',
+    'workClientDelete',
+    'workLogAdd',
+    'workLogUpdate',
+    'workLogDelete',
+    'workMeetingClients',
+    'workMeetingSuggest',
+    'workMeetingClientNew',
+    'workImportPreview',
+    'workImport',
+    'workImports',
+    'workImportUndo',
+    'workExport',
+    'workSettings',
+    'workSettingsUpdate',
+    'workClientHere',
+  ] as const;
+
+  it('are owner control routes behind the work switch, never under /v1/p/', () => {
+    for (const name of P2) {
+      const def = WORK_ROUTES[name];
+      expect(def, name).toMatchObject({ scope: 'control', phase: 'v0.13', feature: 'work' });
+      expect(def.path.startsWith('/v1/p/'), name).toBe(false);
+    }
+  });
+
+  it('on ctl.sock only what the CLI and jantar mcp need; client_here only there', () => {
+    const ctl = P2.filter((n) => WORK_ROUTES[n].ctl);
+    expect(ctl.sort()).toEqual(['workClientHere', 'workExport', 'workImport', 'workImportPreview', 'workImportUndo', 'workImports', 'workSettings']);
+    expect(WORK_ROUTES.workClientHere).toMatchObject({ method: 'GET', path: '/v1/folder/client', localOnly: true });
+    expect(WORK_ROUTES.workExport.rawResponse).toBe(true);
+  });
+
+  it('none of them is in the package index', () => {
+    for (const name of ['ContactSchema', 'WorkClientHubSchema', 'WorkLogRowSchema', 'WorkClientCreateBodySchema', 'WORK_IMPORT_FIELDS']) expect(index, name).not.toHaveProperty(name);
+    for (const name of P2) expect(Object.hasOwn(ROUTES, name), name).toBe(false);
   });
 });

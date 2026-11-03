@@ -19,12 +19,13 @@
  * audit records the target id and nothing else (`lifeAudit`). The pipeline
  * has counted every write against s.lifeWriteLimiter already.
  */
-import type { FolderTodoBody, FolderTodosQuery, FolderTodosResponse, OwnerTodosQuery, ProjectBody, ProjectPatch, SnoozeBody, TodoBody, TodoDoneBody, TodoPatch } from '@jantar/protocol';
+import { workOn, type FolderTodoBody, type FolderTodosQuery, type FolderTodosResponse, type OwnerProjectBody, type OwnerProjectPatch, type OwnerTodoBody, type OwnerTodoPatch, type OwnerTodosQuery, type SnoozeBody, type TodoDoneBody } from '@jantar/protocol';
 import type { LifeResult } from '../../contracts.js';
 import { ApiError } from '../errors.js';
 import { actorName } from '../request.js';
 import { lifeAudit, lifeValue, needActor, type Call, type RouteTable } from '../route-kit.js';
 import { V053_LIMITS } from '../services.js';
+import { namedMeetings } from '../work-meetings.js';
 
 type Id = { id: string };
 const OK = { ok: true as const };
@@ -37,19 +38,25 @@ export const TODOS_ROUTE_IMPLS: RouteTable = {
     handle: (_c: Call, s) => lifeValue(s.deps.life.todos.listProjects()),
   },
   projectCreate: {
-    handle: (c: Call<Id, unknown, ProjectBody>, s) => lifeValue(s.deps.life.todos.createProject(c.body, needActor(c.auth))),
+    handle: (c: Call<Id, unknown, OwnerProjectBody>, s) => lifeValue(s.deps.life.todos.createProject(c.body, needActor(c.auth))),
     audit: lifeAudit,
   },
   projectUpdate: {
-    handle: (c: Call<Id, unknown, ProjectPatch>, s) => {
+    handle: (c: Call<Id, unknown, OwnerProjectPatch>, s) => {
       lifeValue(s.deps.life.todos.updateProject(c.params.id, c.body, needActor(c.auth)));
       return OK;
     },
     audit: lifeAudit,
   },
-  // v0.13 Work: one project as a hub.
+  // v0.13 Work: one project as a hub; P2, while Work is on: its client and its newest log rows (meetings named).
   projectGet: {
-    handle: (c: Call<Id>, s) => lifeValue(s.deps.life.todos.hub(c.params.id)),
+    handle: (c: Call<Id>, s) => {
+      const hub = lifeValue(s.deps.life.todos.hub(c.params.id));
+      if (!workOn(s.ctx.settings.get())) return hub;
+      const part = s.deps.life.work.projectPart(hub.project.id, hub.project.clientId, needActor(c.auth));
+      if (!part.ok) return hub;
+      return { ...hub, ...(part.value.client ? { client: part.value.client } : {}), log: namedMeetings(s, part.value.log) };
+    },
   },
   projectDelete: {
     handle: (c: Call<Id>, s) => {
@@ -63,11 +70,11 @@ export const TODOS_ROUTE_IMPLS: RouteTable = {
     handle: (c: Call<Id, OwnerTodosQuery>, s) => lifeValue(s.deps.life.todos.listTodos(c.query)),
   },
   todoCreate: {
-    handle: (c: Call<Id, unknown, TodoBody>, s) => lifeValue(s.deps.life.todos.createTodo(c.body, needActor(c.auth))),
+    handle: (c: Call<Id, unknown, OwnerTodoBody>, s) => lifeValue(s.deps.life.todos.createTodo(c.body, needActor(c.auth))),
     audit: lifeAudit,
   },
   todoUpdate: {
-    handle: (c: Call<Id, unknown, TodoPatch>, s) => {
+    handle: (c: Call<Id, unknown, OwnerTodoPatch>, s) => {
       lifeValue(s.deps.life.todos.updateTodo(c.params.id, c.body, needActor(c.auth)));
       return OK;
     },

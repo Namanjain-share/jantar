@@ -668,6 +668,11 @@ function route<T extends RouteDef>(r: T): T {
  * client folders. Reads need control too; only the seed is on ctl.sock (the
  * CLI). The search has no switch of its own: each group answers only while
  * its own part is on.
+ *
+ * P2: clients, the log, meetings linked to clients, import and export, and
+ * Work's settings, behind the `work` switch. On ctl.sock only what the CLI
+ * and `jantar mcp` need: the import, its list and undo, the export, the
+ * settings read, and client_here (ctl.sock only).
  */
 export const WORK_ROUTES = {
   projectGet: route({
@@ -687,5 +692,120 @@ export const WORK_ROUTES = {
     summary: 'One project per folder under a configured root, its folder linked (a folder a project links already is skipped); P2: a company client each.',
   }),
 
+  // --- P2: clients, the log, follow-ups, meetings, import and export, settings. Feature `work`; reads and
+  // writes on his host; only what the CLI and `jantar mcp` need is on ctl.sock.
+  workClients: route({
+    method: 'GET', path: '/v1/work/clients', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    query: WorkClientsQuerySchema, response: WorkClientsResponseSchema,
+    summary: 'His clients and companies, filtered and sorted, each with its next step, last touch and open deals.',
+  }),
+  workClientCreate: route({
+    method: 'POST', path: '/v1/work/clients', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    body: WorkClientCreateBodySchema, response: WorkClientCreateReplySchema,
+    summary: 'Add a client or a company (a company by name is made or reused in the same save).',
+  }),
+  workClientSimilar: route({
+    method: 'POST', path: '/v1/work/clients/similar', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    body: WorkClientSimilarBodySchema, response: WorkClientSimilarReplySchema,
+    summary: 'Clients this one may already be (the same e-mail, phone or name): a warning, never a block.',
+  }),
+  workClientNames: route({
+    method: 'GET', path: '/v1/work/clients/names', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    query: WorkClientNamesQuerySchema, response: WorkClientNamesReplySchema,
+    summary: "Clients' names by id, for the client chip on todos.",
+  }),
+  workClientGet: route({
+    method: 'GET', path: '/v1/work/clients/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, response: WorkClientHubSchema,
+    summary: 'One client as a hub: details, company or people, projects, open follow-ups and the newest log.',
+  }),
+  workClientLog: route({
+    method: 'GET', path: '/v1/work/clients/:id/log', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, query: WorkClientLogQuerySchema, response: WorkLogPageSchema,
+    summary: "The next page of a client's log.",
+  }),
+  workClientUpdate: route({
+    method: 'PATCH', path: '/v1/work/clients/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, body: WorkClientPatchSchema, response: OkReplySchema,
+    summary: 'Change a client (null clears a field).',
+  }),
+  workClientDelete: route({
+    method: 'DELETE', path: '/v1/work/clients/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, response: WorkClientDeleteReplySchema,
+    summary: 'Delete a client with its deals and log; its todos and projects stay, unlinked.',
+  }),
+  workLogAdd: route({
+    method: 'POST', path: '/v1/work/clients/:id/log', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, body: WorkLogAddBodySchema, response: WorkLogAddReplySchema,
+    summary: 'Log a call, meeting, e-mail, message or note, and its next step, in one save.',
+  }),
+  workLogUpdate: route({
+    method: 'PATCH', path: '/v1/work/log/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, body: WorkLogPatchSchema, response: OkReplySchema,
+    summary: 'Change a logged entry of his (null clears a field).',
+  }),
+  workLogDelete: route({
+    method: 'DELETE', path: '/v1/work/log/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: LifeIdParamsSchema, response: OkReplySchema,
+    summary: 'Delete a logged entry of his.',
+  }),
+  // The two meeting routes answer Meetings' off sentence while Meetings is off (one feature per route).
+  workMeetingClients: route({
+    method: 'PUT', path: '/v1/work/meetings/:meetingId/clients', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: WorkMeetingParamsSchema, body: WorkMeetingClientsBodySchema, response: OkReplySchema,
+    summary: "Set a meeting's clients (replacing them; leaving one out unlinks it).",
+  }),
+  workMeetingSuggest: route({
+    method: 'GET', path: '/v1/work/meetings/:meetingId/suggest', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: WorkMeetingParamsSchema, response: WorkMeetingSuggestReplySchema,
+    summary: "A meeting's clients now, its project's client, and its people's names matched to clients.",
+  }),
+  workMeetingClientNew: route({
+    method: 'POST', path: '/v1/work/meetings/:meetingId/clients/new', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    params: WorkMeetingParamsSchema, body: WorkMeetingClientNewBodySchema, response: IdReplySchema,
+    summary: "A client made from one of a meeting's people (marked as a meeting's words), linked to it.",
+  }),
+  workImportPreview: route({
+    method: 'POST', path: '/v1/work/import/preview', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work',
+    bodyLimit: WORK_LIMITS.importBodyBytes,
+    body: WorkImportPreviewBodySchema, response: WorkImportPreviewReplySchema,
+    summary: 'Read a CSV or vCard file: its columns, each row with a duplicate warning, kept 30 minutes for the import.',
+  }),
+  workImport: route({
+    method: 'POST', path: '/v1/work/import', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work',
+    body: WorkImportBodySchema, response: WorkImportReplySchema,
+    summary: "Import a preview's rows as one batch (every contact marked as imported); undoable for 7 days.",
+  }),
+  workImports: route({
+    method: 'GET', path: '/v1/work/imports', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work',
+    response: WorkImportsReplySchema,
+    summary: 'The newest imports and until when each can be undone.',
+  }),
+  workImportUndo: route({
+    method: 'DELETE', path: '/v1/work/import/:batch', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work',
+    params: WorkImportParamsSchema, response: WorkImportUndoReplySchema,
+    summary: 'Undo an import: the contacts it added that nothing changed since go; the rest are counted.',
+  }),
+  workExport: route({
+    method: 'GET', path: '/v1/work/export.csv', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work', rawResponse: true,
+    query: WorkExportQuerySchema,
+    summary: 'His clients as a CSV file (a download or the share sheet; never written into a folder).',
+  }),
+  workSettings: route({
+    method: 'GET', path: '/v1/work/settings', scope: 'control', phase: 'v0.13', ctl: true, feature: 'work',
+    response: WorkSettingsSchema,
+    summary: "Work's settings: businesses, the dial code, quiet days, and whether the lock screen names clients.",
+  }),
+  workSettingsUpdate: route({
+    method: 'PATCH', path: '/v1/work/settings', scope: 'control', phase: 'v0.13', ctl: false, feature: 'work',
+    body: WorkSettingsPatchSchema, response: OkReplySchema,
+    summary: "Change Work's businesses, dial code or quiet days.",
+  }),
+  // `jantar mcp` (a session's folder): who the work is for; never a phone, an e-mail, notes or log text.
+  workClientHere: route({
+    method: 'GET', path: '/v1/folder/client', scope: 'control', phase: 'v0.13', ctl: true, localOnly: true, feature: 'work',
+    query: FolderClientQuerySchema, response: FolderClientResponseSchema,
+    summary: "The client of a folder's project (the deepest), or of the company whose folder holds it; null when none.",
+  }),
 } as const satisfies Record<string, RouteDef>;
 export type WorkRouteName = keyof typeof WORK_ROUTES;

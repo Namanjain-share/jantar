@@ -60,8 +60,36 @@ const HER_IDEMPOTENCY_CLIENT_ID = ['personJournalCreate.body.clientId', 'personS
 const v013 = (Object.entries(ALL_ROUTES) as [string, RouteDef][]).filter(([, d]) => d.phase === 'v0.13');
 
 describe('W-T1: every Work route is his', () => {
-  it('finds the P1 routes', () => {
-    expect(v013.map(([n]) => n).sort()).toEqual(['foldersSeed', 'projectGet', 'search']);
+  it('finds the P1 and P2 routes', () => {
+    expect(v013.map(([n]) => n).sort()).toEqual(
+      [
+        'foldersSeed',
+        'projectGet',
+        'search',
+        'workClientCreate',
+        'workClientDelete',
+        'workClientGet',
+        'workClientHere',
+        'workClientLog',
+        'workClientNames',
+        'workClientSimilar',
+        'workClientUpdate',
+        'workClients',
+        'workExport',
+        'workImport',
+        'workImportPreview',
+        'workImportUndo',
+        'workImports',
+        'workLogAdd',
+        'workLogDelete',
+        'workLogUpdate',
+        'workMeetingClientNew',
+        'workMeetingClients',
+        'workMeetingSuggest',
+        'workSettings',
+        'workSettingsUpdate',
+      ].sort(),
+    );
   });
 
   it('every v0.13 route is a control route, never under her prefix', () => {

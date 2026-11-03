@@ -124,6 +124,21 @@ describe('which routes need the device secret', () => {
         'chatKeyRevoke',
         // v0.13 Work: projects from client folders (control scope)
         'foldersSeed',
+        // v0.13 Work P2: clients, the log, meetings' clients, import and settings (control scope; the similar
+        // check and the import preview are POST reads, swept the same)
+        'workClientCreate',
+        'workClientDelete',
+        'workClientSimilar',
+        'workClientUpdate',
+        'workImport',
+        'workImportPreview',
+        'workImportUndo',
+        'workLogAdd',
+        'workLogDelete',
+        'workLogUpdate',
+        'workMeetingClientNew',
+        'workMeetingClients',
+        'workSettingsUpdate',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);
