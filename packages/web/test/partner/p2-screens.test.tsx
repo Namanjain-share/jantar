@@ -136,6 +136,16 @@ describe('her Today (P2)', () => {
     await waitFor(() => expect(stepAdd).toHaveBeenLastCalledWith(DAY, { title: 'Read' }));
   });
 
+  it("the two-week check-in's Pause opens Sharing, where Pause is (not Leave)", async () => {
+    const sharingCheckin = vi.fn(async () => undefined);
+    const api = fakeApi({ today: vi.fn(async () => today(view([]), { sharingCheckin: true })), sharingCheckin });
+    history.replaceState(null, '', '/p');
+    render(<Today me={me()} api={api} reload={() => {}} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(sharingCheckin).toHaveBeenCalledWith({ answer: 'pause' }));
+    await waitFor(() => expect(`${location.pathname}${location.search}`).toBe('/p/me?tab=sharing'));
+  });
+
   it('a report step opens the report sheet with two equal buttons; Done without a note sends no report', async () => {
     const steps = [step(S1, 'Analysis', { ask: 'report' })];
     const api = fakeApi({ today: vi.fn(async () => today(view(steps, { now: S1 }, { ackAt: AT }))), stepState: vi.fn(async () => undefined) });

@@ -670,7 +670,7 @@ function SharingCheckin({ owner, api, done }: { owner: string; api: PersonApi; d
         <Button variant="outline" size="lg" onClick={() => answer('ease', '/p/me?tab=sharing')}>
           Ease off a bit
         </Button>
-        <Button variant="outline" size="lg" onClick={() => answer('pause', '/p/me?tab=leave')}>
+        <Button variant="outline" size="lg" onClick={() => answer('pause', '/p/me?tab=sharing')}>
           Pause
         </Button>
         <Button variant="outline" size="lg" onClick={() => answer('talk')}>
