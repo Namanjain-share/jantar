@@ -52,6 +52,8 @@ GPL, AGPL and closed-source projects are ideas only and never appear here.
 | `packages/life-core/test/journal-streak.test.ts` | Noblot | `packages/core/src/journal.test.ts` (prompt packs, day-key math, `journalStreak`, the grace day) | `c84299e` | relicensed by its author under this repository's `LICENSE` | the import path; the prompt cases on Jantar's pack and a small weekly pack |
 | `packages/life-core/src/med-escalation.ts` | Noblot | `packages/core/src/health-report.ts` (`MedDay`, `MedEscalation`, `computeMedEscalation`) | `c84299e` | relicensed by its author under this repository's `LICENSE` | v0.11 People: the rule as it was; the words say "not logged" instead of "missed" and name no medicine; `MED_ESCALATE_DAYS` (2) named |
 | `packages/life-core/test/med-escalation.test.ts` | Noblot | `packages/core/src/health-report.test.ts` (`computeMedEscalation`) | `c84299e` | relicensed by its author under this repository's `LICENSE` | the import path; Jantar's wording and an unsorted window added |
+| `packages/life-core/src/work/task-review.ts` | Noblot | `packages/core/src/taskReview.ts` (`completedByProject`, `doneCountsByWeek`, `isStale`, `openTaskHealth`) | `c84299e` | relicensed by its author under this repository's `LICENSE` | v0.13 Work: the provenance header only; Jantar's project health line (`work/project-health.ts`, ours) builds on it |
+| `packages/life-core/test/work/task-review.test.ts` | Noblot | `packages/core/src/taskReview.test.ts` | `c84299e` | relicensed by its author under this repository's `LICENSE` | the provenance header; the import path |
 
 ## Reference commits
 

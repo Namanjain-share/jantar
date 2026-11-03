@@ -12,6 +12,8 @@
  *   adapted from Noblot), day-review.ts (the evening review's outcomes;
  *   adapted from Noblot), journal-streak.ts (adapted from Noblot), and ours,
  *   sleep-week.ts (nights and the week) and quick-plan.ts (Quick plan).
+ * - v0.13 Work (work/): task-review.ts (copied from Noblot with its tests)
+ *   and ours, project-health.ts (a project's health line on it).
  */
 export {
   DOSE_GRACE_MINUTES,
@@ -95,3 +97,14 @@ export {
 } from './sleep-week.js';
 export { QUICK_BETWEEN_MAX, QUICK_STEPS_MAX, parseQuickPlan, type QuickBetween, type QuickPlan, type QuickStep } from './quick-plan.js';
 export { MED_ESCALATE_DAYS, computeMedEscalation, type MedDay, type MedEscalation, type MedEscalationLevel } from './med-escalation.js';
+export {
+  PROJECT_HEALTH_WEEKS,
+  PROJECT_QUIET_DAYS,
+  projectHealth,
+  projectWeeks,
+  type HealthDue,
+  type HealthTodo,
+  type ProjectHealthInput,
+  type ProjectHealthResult,
+} from './work/project-health.js';
+export { completedByProject, doneCountsByWeek, isStale, openTaskHealth, type WeekWindow } from './work/task-review.js';
