@@ -222,9 +222,17 @@ export const TOOL_DECLINED = `${DECLINED_HEAD} STOP what you are doing and wait 
 export const CORRECTION_NOTE =
   "\n\nNote: The user's next message may contain a correction or preference. Pay close attention \u2014 if they explain what went wrong or how they'd prefer you to work, consider saving that to memory.";
 
+const AGENT_DENIED_HEAD =
+  'Permission for this tool use was denied. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).';
+
 /** A subagent's permission prompt (or a safety-check prompt) the user said no to. */
-export const AGENT_PROMPT_DENIED =
-  'Permission for this tool use was denied. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). Try a different approach or report the limitation to complete your task.';
+export const AGENT_PROMPT_DENIED = `${AGENT_DENIED_HEAD} Try a different approach or report the limitation to complete your task.`;
+
+/** The same "No" with words typed for Claude: here Claude Code writes "The user said:" with a capital T. */
+export function agentPromptDeniedSaid(said: string): string {
+  return `${AGENT_DENIED_HEAD} The user said:\n${said}`;
+}
+
 
 /**
  * A call Claude stopped: Esc on a running call, TaskStop, a stop from the

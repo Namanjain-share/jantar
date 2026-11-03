@@ -65,11 +65,12 @@ const DENIALS: readonly Denial[] = [
     re: /^The user doesn't want to proceed with this tool use[\s\S]*?(?:the user said:\s*([\s\S]+))?$/,
     alsoStop: true,
   },
-  // A subagent's permission prompt, or a safety-check prompt, the user said no to.
+  // A subagent's permission prompt, or a safety-check prompt, the user said no to. With words typed,
+  // Claude Code 2.1.316 writes "… The user said:\n<words>" here (capital T), "… the user said:" in the main thread.
   {
     kind: 'rejected',
     label: 'you rejected',
-    re: /^Permission for this tool use was denied\. The tool use was rejected[\s\S]*?(?:the user said:\s*([\s\S]+))?$/,
+    re: /^Permission for this tool use was denied\. The tool use was rejected[\s\S]*?(?:[Tt]he user said:\s*([\s\S]+))?$/,
   },
 ];
 

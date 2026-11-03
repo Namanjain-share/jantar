@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AGENT_PROMPT_DENIED,
+  agentPromptDeniedSaid,
   assistantToolUse,
   interruptedForToolUse,
   permissionMode,
@@ -219,6 +220,21 @@ describe('a real rejection still says "you rejected"', () => {
     );
     expect(kinds(found)).toEqual([['rejected', 'you rejected: Bash · rm -rf data/old', undefined]]);
     expect(denialKind(AGENT_PROMPT_DENIED)).toBe('rejected');
+  });
+
+  it('a subagent’s prompt said no to with words typed: the words are the why ("The user said:", capital T)', () => {
+    const tl = timeline('2026-01-15T10:00:00.000Z', SID, CWD);
+    const said = 'keep data/old, delete data/tmp\nthen stop';
+    const found = scanAll(
+      [
+        agentEntry(assistantToolUse(tl.next(), 'Bash', { command: 'rm -rf data/old' }, 'toolu_d')),
+        agentEntry(toolRejected(tl.next(), 'toolu_d', { text: agentPromptDeniedSaid(said), note: true, source: null })),
+      ],
+      { agent: true },
+    );
+    expect(kinds(found)).toEqual([['rejected', 'you rejected: Bash · rm -rf data/old', 'keep data/old, delete data/tmp']]);
+    expect(found[0]?.full).toBe(agentPromptDeniedSaid(said)); // Claude's note to the model is left out
+    expect(denialKind(agentPromptDeniedSaid(said))).toBe('rejected');
   });
 });
 
