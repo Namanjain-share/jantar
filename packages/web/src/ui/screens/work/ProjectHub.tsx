@@ -13,7 +13,8 @@
  *   Sessions in its folder (the Board's own state), with "New session
  *     here" while Launch is on and this device may start one
  *   Meetings in the project (`GET /v1/meetings?project=`, while Meetings is on)
- *   Log (P2: calls, meetings and notes with its client), Notes
+ *   Log (P2: calls, meetings and notes with its client; + Log opens the
+ *     client's Log sheet, the entry and its next step this project's), Notes
  *   Folder, with "Open folder in Files" while Files is on
  *
  * From a pane of 640 the parts are cards side by side (kit/Columns.tsx).
@@ -21,7 +22,7 @@
  */
 import { CaretLeftIcon, CaretRightIcon, FolderOpenIcon, PlusIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useCallback, useMemo, useRef } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useRef } from 'react';
 import type { FilesRootsResponse, MeetingsList, ProjectStatus, ProjectView, Todo } from '@jantar/protocol';
 import type { ProjectHub as Hub } from '@jantar/protocol/work';
 import { formatAmount } from '../../../lib/money.js';
@@ -46,8 +47,12 @@ import { liveIn, projectLabel, projectOverdue } from '../life/todos/model.js';
 import { ProjectSheet, STATUS_SEGMENTS } from '../life/todos/ProjectSheet.js';
 import { DoneRow, TodoRow } from '../life/todos/TodoRow.js';
 import { TodoSheet } from '../life/todos/TodoSheet.js';
+import { useTodoClients } from '../life/todos/clients.js';
 import { workClient } from './client.js';
 import { filesHref, healthParts, logLine, newSessionHref } from './model.js';
+
+// The Log sheet is the clients chunk's: a project's hub loads it on its first Log.
+const LogSheet = lazy(() => import('./LogSheet.js').then((m) => ({ default: m.LogSheet })));
 
 export interface ProjectHubProps {
   id: string;
@@ -90,6 +95,8 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
   const write = useWrite();
   const todoSheet = useSheet<Todo>();
   const projectSheet = useSheet<ProjectView>();
+  const logSheet = useSheet<null>();
+  const clients = useTodoClients(hub?.open ?? [], todoSheet.open);
   const close = usePaneClose();
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
@@ -218,7 +225,20 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
                     </Panel>
                   ) : null,
                   h.log ? (
-                    <Panel key="log" label="Log" count={h.log.length} card={cards}>
+                    <Panel
+                      key="log"
+                      label="Log"
+                      count={h.log.length}
+                      card={cards}
+                      aside={
+                        h.client ? (
+                          <Button variant="text" size="sm" className="coarse:min-h-44" disabled={offline} onClick={() => logSheet.show(null)}>
+                            <PlusIcon size={14} aria-hidden="true" />
+                            Log
+                          </Button>
+                        ) : undefined
+                      }
+                    >
                       {h.log.length === 0 ? (
                         <LifeEmpty>Nothing logged with its client yet.</LifeEmpty>
                       ) : (
@@ -271,10 +291,26 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
         sheetKey={todoSheet.key}
         todo={todoSheet.item}
         projects={projects.length ? projects : project ? [project] : []}
+        clients={clients.pick}
         now={now}
         start={{ projectId: id }}
         onSaved={reload}
       />
+      {/* Its client's Log sheet (Work's clients chunk, loaded the first time), the entry and its next step this project's. */}
+      {hub?.client && logSheet.key ? (
+        <Suspense fallback={null}>
+          <LogSheet
+            open={logSheet.open}
+            onOpenChange={logSheet.onOpenChange}
+            sheetKey={logSheet.key}
+            client={{ id: hub.client.id, name: hub.client.name }}
+            deals={hub.deal && hub.deal.kind === 'open' ? [hub.deal] : []}
+            start={{ projectId: id, ...(hub.deal && hub.deal.kind === 'open' ? { dealId: hub.deal.id } : {}) }}
+            now={now}
+            onSaved={reload}
+          />
+        </Suspense>
+      ) : null}
       <ProjectSheet
         open={projectSheet.open}
         onOpenChange={projectSheet.onOpenChange}

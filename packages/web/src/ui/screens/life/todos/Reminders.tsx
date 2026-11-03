@@ -29,9 +29,12 @@ export function Reminders({
   onEdit,
   addButton,
   cards = false,
+  client,
 }: {
   todos: readonly Todo[];
   projects: ReadonlyMap<string, ProjectView>;
+  /** 0.13.0: a follow-up's client's name (Work). */
+  client?: ((todo: Todo) => string | undefined) | undefined;
   now: LifeClock;
   flash: string | null;
   offline: boolean;
@@ -51,6 +54,7 @@ export function Reminders({
         todo={t}
         now={now}
         project={p ? projectLabel(p) : undefined}
+        client={client?.(t)}
         reminder
         highlight={flash === t.id}
         offline={offline}

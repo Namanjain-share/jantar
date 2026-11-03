@@ -21,7 +21,9 @@
  * projects are a grid of cards. Below 640, 0.10's list.
  *
  * 0.13.0 (W20): while Work is on, projects are Work's: there is no Projects
- * tab here, and its address and a project's open in Work (the shell).
+ * tab here, and its address and a project's open in Work (the shell). A
+ * follow-up (a todo with a client) names its client on its row, and the
+ * todo sheet has a Client field (clients.ts).
  */
 import { CaretDownIcon, CaretRightIcon, PlusIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -43,6 +45,7 @@ import { ProjectSheet } from './ProjectSheet.js';
 import { Reminders } from './Reminders.js';
 import { DoneRow, TodoRow } from './TodoRow.js';
 import { TodoSheet, type TodoStart } from './TodoSheet.js';
+import { useTodoClients } from './clients.js';
 import { useLookingAt } from '../../../shell/lookingAt.js';
 
 export interface TodosProps {
@@ -117,6 +120,8 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
   const [start, setStart] = useState<TodoStart | undefined>(undefined);
   const projectSheet = useSheet<ProjectView>();
   const pmap = useMemo(() => new Map((projects.data?.projects ?? []).map((p) => [p.id, p])), [projects.data]);
+  // 0.13.0: follow-ups name their client, and the sheet has a Client field, while Work is on.
+  const clients = useTodoClients(todos.data?.todos ?? [], todoSheet.open);
   // Cards from a pane of 640 (0.12), the 0.10 list below it: decided by the page's measured width.
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
@@ -175,10 +180,10 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
           <Loaded load={todos}>
             {(d) =>
               tab === 'reminders' ? (
-                <Reminders todos={actions.visible(d.todos)} projects={pmap} now={now} flash={flash} offline={offline} actions={actions} onEdit={edit} addButton={addButton} cards={cards} />
+                <Reminders todos={actions.visible(d.todos)} projects={pmap} client={clients.name} now={now} flash={flash} offline={offline} actions={actions} onEdit={edit} addButton={addButton} cards={cards} />
               ) : (
                 <>
-                  <TodoRails todos={actions.visible(d.todos)} projects={pmap} now={now} flash={flash} offline={offline} actions={actions} onEdit={edit} addButton={addButton} cards={cards} />
+                  <TodoRails todos={actions.visible(d.todos)} projects={pmap} client={clients.name} now={now} flash={flash} offline={offline} actions={actions} onEdit={edit} addButton={addButton} cards={cards} />
                   {cards ? <div className="h-16" /> : null}
                   <button
                     type="button"
@@ -216,6 +221,7 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
         sheetKey={todoSheet.key}
         todo={todoSheet.item}
         projects={projects.data?.projects ?? []}
+        clients={clients.pick}
         now={now}
         start={start}
         onSaved={reload}
@@ -228,6 +234,7 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
 function TodoRails({
   todos,
   projects,
+  client,
   now,
   flash,
   offline,
@@ -238,6 +245,8 @@ function TodoRails({
 }: {
   todos: readonly Todo[];
   projects: ReadonlyMap<string, ProjectView>;
+  /** 0.13.0: a follow-up's client's name (Work). */
+  client: (todo: Todo) => string | undefined;
   now: LifeClock;
   flash: string | null;
   offline: boolean;
@@ -261,6 +270,7 @@ function TodoRails({
               todo={t}
               now={now}
               project={p ? projectLabel(p) : undefined}
+              client={client(t)}
               showDay={r !== 'today'}
               highlight={flash === t.id}
               offline={offline}

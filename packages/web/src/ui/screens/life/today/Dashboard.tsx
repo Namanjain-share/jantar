@@ -26,7 +26,7 @@ import { RailLabel } from '../../../kit/RailLabel.js';
 import { Switch } from '../../devices/parts.js';
 import { Link } from '../../../shell/Link.js';
 
-export type CardId = 'people' | 'meds' | 'claude' | 'due' | 'food' | 'bills' | 'posts';
+export type CardId = 'people' | 'meds' | 'claude' | 'due' | 'work' | 'food' | 'bills' | 'posts';
 
 /**
  * The cards, in the default order (open question 6, without the cards Today's call has no data for). 0.12:
@@ -38,6 +38,8 @@ export const CARDS: readonly { id: CardId; label: string }[] = [
   { id: 'meds', label: 'Medicines' },
   { id: 'claude', label: 'Claude' },
   { id: 'due', label: 'Due' },
+  // 0.13.0: Work's card (W24), only on a day it has something, and listed in Edit cards only while Work is on.
+  { id: 'work', label: 'Work' },
   { id: 'food', label: 'Food' },
   { id: 'bills', label: 'Bills' },
   { id: 'posts', label: 'Posts' },

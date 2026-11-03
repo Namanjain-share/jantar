@@ -32,6 +32,11 @@
  * turn · 8 working"; the Life strip on top replaces the LIFE list; "Edit
  * cards" orders and hides them on this device. Below 640, 0.10's list.
  *
+ * 0.13.0 Work (W24, design 10): a follow-up is a Due todo with its client
+ * named on the row; the WORK card holds only what isn't a todo (check-ins
+ * due, deals with no next step, quiet deals, deals closing this week) and
+ * shows only on a day it has some.
+ *
  * v0.11 People: the Accountability partner rows (people/PeopleCard.tsx) sit
  * on top of the list; from 640 (0.12) they are the first card, which Edit
  * cards moves and hides like the rest (and lists only while People is on).
@@ -68,6 +73,7 @@ import { projectLabel } from '../todos/model.js';
 import { TodoRow } from '../todos/TodoRow.js';
 import { TodoSheet, type TodoStart } from '../todos/TodoSheet.js';
 import { useProjects } from '../todos/useProjects.js';
+import { useTodoClients } from '../todos/clients.js';
 import { Card, CARD_ROWS, EditCards, LifeStrip, MoreLink, shownCards, useCardPrefs, type CardId, type StripItem, type Tone } from './Dashboard.js';
 import { AddButton, Loaded, Page, useLifeClock, useOffline, useSheet } from './parts.js';
 
@@ -93,6 +99,27 @@ export function commentsLine(c: { done: number; goal?: number | undefined }): st
 export function postsLine(p: { today: number; late: number }): string {
   const first = p.today > 0 ? `${p.today} to post today` : 'Nothing to post today';
   return p.late > 0 ? `${first} · ${p.late} late` : first;
+}
+
+/**
+ * 0.13.0 Work's card lines (W24, design 10), each a link to the list it names: "Check in: Globex (every
+ * 30 days, 34 since)" for up to three clients (each opens the client), "+2 more", then the deals with no
+ * next step, the quiet ones and the ones closing this week (overdue close days too), as counts. Names
+ * only for a check-in he set; none at all in the deal lines.
+ */
+export function workLines(w: NonNullable<TodayData['work']>): { key: string; text: string; href: string }[] {
+  const list = (l: string) => routePath({ name: 'work', tab: 'clients', list: l });
+  const deals = (n: number) => `${n} ${n === 1 ? 'deal' : 'deals'}`;
+  const out = w.checkIns.map((c) => ({
+    key: `check:${c.id}`,
+    text: `Check in: ${c.name} (every ${c.every} days, ${c.since === null ? 'never touched' : `${c.since} since`})`,
+    href: routePath({ name: 'work', tab: 'clients', id: c.id }),
+  }));
+  if (w.checkInsMore > 0) out.push({ key: 'check:more', text: `+${w.checkInsMore} more to check in with`, href: list('check-in') });
+  if (w.noNextStep > 0) out.push({ key: 'step', text: `No next step: ${deals(w.noNextStep)}`, href: list('open-deals') });
+  if (w.quiet > 0) out.push({ key: 'quiet', text: `Quiet: ${deals(w.quiet)}`, href: list('open-deals') });
+  if (w.closing > 0) out.push({ key: 'closing', text: `Closing this week: ${w.closing}`, href: list('open-deals') });
+  return out;
 }
 
 /** "3 need you", "1 needs you". */
@@ -129,6 +156,8 @@ export function Today({ dose }: TodayProps) {
   // The sheet's Project list comes from the Mac once a todo is opened (the chips' cache is empty without a stored control scope or after a refusal).
   const sheetProjects = useLifeLoad(todoSheet.key ? 'projects' : null, () => api.projectsList());
   const actions = useTodoActions(load.reload);
+  // 0.13.0: a follow-up's client on its Due row (Today's answer names them), and the sheet's Client field, while Work is on.
+  const todoClients = useTodoClients(useMemo(() => [...(load.data?.todos?.overdue ?? []), ...(load.data?.todos?.today ?? [])], [load.data]), todoSheet.open, load.data?.work?.clients);
   const day = load.data?.day ?? status?.today;
   const now = useLifeClock(status, day);
   const foodSheet = useSheet();
@@ -207,11 +236,11 @@ export function Today({ dose }: TodayProps) {
             {all === 0 ? null : (
               <ul>
                 {shownOverdue.map((todo) => (
-                  <TodoRow key={todo.id} todo={todo} now={now} project={label(todo)} overdue offline={offline} actions={actions} onEdit={editTodo} />
+                  <TodoRow key={todo.id} todo={todo} now={now} project={label(todo)} client={todoClients.name(todo)} overdue offline={offline} actions={actions} onEdit={editTodo} />
                 ))}
                 {shownToday.map((todo) => (
                   // The clock decides: a time that passes while Today stays open turns the row overdue.
-                  <TodoRow key={todo.id} todo={todo} now={now} project={label(todo)} showDay={false} offline={offline} actions={actions} onEdit={editTodo} />
+                  <TodoRow key={todo.id} todo={todo} now={now} project={label(todo)} client={todoClients.name(todo)} showDay={false} offline={offline} actions={actions} onEdit={editTodo} />
                 ))}
               </ul>
             )}
@@ -235,6 +264,26 @@ export function Today({ dose }: TodayProps) {
               </div>
             )}
           </>
+        ),
+      });
+    }
+    // 0.13.0 Work's card (W24, design 10): only what isn't a todo (follow-ups are Due todos), only when it has something.
+    const work = t.work ? workLines(t.work) : [];
+    if (work.length) {
+      parts.push({
+        id: 'work',
+        open: { href: routePath({ name: 'work', tab: 'clients' }), label: 'Clients', name: 'Open Clients' },
+        body: (
+          <ul aria-label="Work">
+            {work.map((l) => (
+              <li key={l.key}>
+                <Link href={l.href} className={LINE_ROW}>
+                  <span className="min-w-0 flex-1 truncate type-row text-ink">{l.text}</span>
+                  <CaretRightIcon size={16} aria-hidden="true" className="flex-none text-ink-3" />
+                </Link>
+              </li>
+            ))}
+          </ul>
         ),
       });
     }
@@ -403,7 +452,8 @@ export function Today({ dose }: TodayProps) {
   );
 
   let content: ReactNode;
-  if (cards && editing) content = <EditCards prefs={prefs} onChange={setPrefs} onDone={() => setEditing(false)} skip={peopleOn ? [] : ['people']} />;
+  if (cards && editing)
+    content = <EditCards prefs={prefs} onChange={setPrefs} onDone={() => setEditing(false)} skip={[...(peopleOn ? [] : (['people'] as const)), ...(status?.modules.work ? [] : (['work'] as const))]} />;
   else if (cards) {
     // Every card Today has something for, in this device's order and without the ones switched off.
     const parts = new Map<CardId, Part>([...peoplePart(), ...(t ? dataParts(t) : []), claude()].map((p) => [p.id, p]));
@@ -451,6 +501,7 @@ export function Today({ dose }: TodayProps) {
         sheetKey={todoSheet.key}
         todo={todoSheet.item}
         projects={sheetProjects.data?.projects ?? projects}
+        clients={todoClients.pick}
         now={now}
         start={todoStart}
         onSaved={load.reload}

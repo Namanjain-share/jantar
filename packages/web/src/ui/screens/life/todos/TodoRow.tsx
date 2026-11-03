@@ -1,7 +1,7 @@
 /**
  * One todo (v0.4 spec 5.2, 5.3): a circle that marks it done, the title
  * (--ink; a high one at 560 with a mono `high` tag), and a mono meta line
- * `Example · Fri 31 Oct · 11:00 ↻` (the project, the day where the rail does
+ * `Example · Fri 31 Oct · 11:00 ↻` (0.13.0: a follow-up's client first; the project, the day where the rail does
  * not already say it, the time in mustard, the repeat icon). Tapping the
  * title edits it; ··· or a long press gives Snooze, Edit and Delete.
  *
@@ -26,6 +26,8 @@ export interface TodoRowProps {
   now: LifeClock;
   /** The project's name with its emoji, when the row is not on that project's own screen. */
   project?: string | undefined;
+  /** 0.13.0: a follow-up's client (Work), when the row is not on that client's own page. */
+  client?: string | undefined;
   /** Say the due day (the Today rail already does). */
   showDay?: boolean;
   /** Overdue whatever the clock says (Today's list from the daemon). */
@@ -39,7 +41,7 @@ export interface TodoRowProps {
   onEdit: (todo: Todo) => void;
 }
 
-export function TodoRow({ todo, now, project, showDay = true, overdue, reminder = false, highlight = false, offline, actions, onEdit }: TodoRowProps) {
+export function TodoRow({ todo, now, project, client, showDay = true, overdue, reminder = false, highlight = false, offline, actions, onEdit }: TodoRowProps) {
   const [menu, setMenu] = useState(false);
   const overdueId = useId();
   // The lift that ends a long press also clicks: the row's guard drops that click, so the sheet does not open under the menu.
@@ -52,6 +54,7 @@ export function TodoRow({ todo, now, project, showDay = true, overdue, reminder 
   const meta: ReactNode[] = [];
   // First on the meta line, so a wrapped title never has the tag between it and the rest.
   if (high) meta.push(<Tag key="h">high</Tag>);
+  if (client) meta.push(<span key="c" data-client-chip>{client}</span>);
   if (project) meta.push(<span key="p">{project}</span>);
   if (todo.due && (showDay || late)) meta.push(<span key="d">{dueDay(todo.due.day, now.day)}</span>);
   if (todo.due?.time) {
