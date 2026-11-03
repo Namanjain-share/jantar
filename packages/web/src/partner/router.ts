@@ -14,6 +14,7 @@ export type PersonRoute =
   | { name: 'journal'; id: string | null; checkin: boolean }
   | { name: 'alerts'; id: string | null }
   | { name: 'chat' }
+  | { name: 'lists'; tab: 'cafes' | 'lists'; id: string | null; list: string | null }
   | { name: 'join' }
   | { name: 'link' }
   | { name: 'me'; tab: MeTab }
@@ -48,6 +49,10 @@ export function parsePersonRoute(pathname: string, search: string): PersonRoute 
   if (path === '/p/journal') return { name: 'journal', id: id(), checkin: q.get('checkin') === '1' };
   if (path === '/p/alerts') return { name: 'alerts', id: id() };
   if (path === '/p/chat') return { name: 'chat' };
+  if (path === '/p/lists') {
+    const list = q.get('list');
+    return { name: 'lists', tab: q.get('tab') === 'lists' || (list && ID_RE.test(list)) ? 'lists' : 'cafes', id: id(), list: list && ID_RE.test(list) ? list : null };
+  }
   if (path === '/p/join') return { name: 'join' };
   if (path === '/p/link') return { name: 'link' };
   if (path === '/p/left') return { name: 'left' };

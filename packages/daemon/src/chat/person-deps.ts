@@ -130,6 +130,17 @@ function herWeights(pc: PersonChat): LifeService['food'] {
   });
 }
 
+/** P4: her shared space's cafés, as her; nothing else of the owner's places. */
+function herPlaces(base: ChatDeps, pc: PersonChat): LifeService['places'] {
+  let space: string | null = null;
+  try {
+    space = pc.people.person(pc.pid)?.sharedSpace ?? null;
+  } catch {
+    space = null;
+  }
+  return space ? base.life.places.inShared(space, pc.pid) : denied<LifeService['places']>('places');
+}
+
 /** The deps her run and her taps get: her space, nothing of his (spec 7.3). */
 export function personChatDeps(base: ChatDeps, pc: PersonChat): ChatDeps {
   const life = {
@@ -141,7 +152,8 @@ export function personChatDeps(base: ChatDeps, pc: PersonChat): ChatDeps {
     todos: herTodos(pc),
     food: herWeights(pc),
     medicines: denied<LifeService['medicines']>('medicines'),
-    places: denied<LifeService['places']>('places'),
+    // P4: the cafés of her shared space, as her (her visits are hers; his can't be changed).
+    places: herPlaces(base, pc),
     finance: denied<LifeService['finance']>('finance'),
     posts: denied<LifeService['posts']>('posts'),
     people: pc.people,

@@ -16,24 +16,24 @@
  *   mark; he has no control here that writes in her name.
  */
 import { ALERT_KINDS, ALERT_REPLY_LABELS, STATUS_LABELS, type AlertKind } from '@jantar/protocol/people-core';
-import type { AlertsResponse, JournalEntryFull, JournalList, OwnerChatView, PersonAlert, PersonToday, PersonView, PlanStep, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
-import type { ChatTurn } from '@jantar/protocol';
+import type { AlertsResponse, JournalEntryFull, JournalList, OwnerChatView, SharedItemsResponse, SharedListsResponse, PersonAlert, PersonToday, PersonView, PlanStep, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
+import type { ChatTurn, PlacesResponse } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { useEffect, useState } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
 import { ReviewList } from '../../../people-shared/ReviewList.js';
 import { SleepWeek } from '../../../people-shared/SleepWeek.js';
 import { dayLabel, hmOf } from '../../../people-shared/time.js';
-import { useNavigate } from '../../context.js';
+import { useDeps, useNavigate } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { useLifeLoad } from '../life/shared/useLife.js';
 import { peopleClient, type PeopleClient } from './client.js';
 import { PlanEditor, defaultPlanDay } from './PlanEditor.js';
 
-export const PARTNER_TABS = ['today', 'plan', 'health', 'journal', 'chat', 'alerts'] as const;
+export const PARTNER_TABS = ['today', 'plan', 'health', 'journal', 'chat', 'lists', 'alerts'] as const;
 export type PartnerTab = (typeof PARTNER_TABS)[number];
-const TAB_LABEL: Record<PartnerTab, string> = { today: 'Today', plan: 'Plan', health: 'Health', journal: 'Journal', chat: 'Chat', alerts: 'Alerts' };
+const TAB_LABEL: Record<PartnerTab, string> = { today: 'Today', plan: 'Plan', health: 'Health', journal: 'Journal', chat: 'Chat', lists: 'Lists', alerts: 'Alerts' };
 
 export interface PartnerProps {
   pid?: string;
@@ -137,6 +137,7 @@ function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClie
       {tab === 'health' ? <HealthTab client={client} pid={pid} name={name} sees={a?.see.sleep === true} /> : null}
       {tab === 'journal' ? <JournalTab client={client} pid={pid} name={name} sees={a?.see.journal === true} canComment={a?.comment.journal === true} id={id} /> : null}
       {tab === 'chat' ? <ChatTab client={client} pid={pid} name={name} sees={a?.see.chat === true} perDay={person?.chatPerDay ?? null} /> : null}
+      {tab === 'lists' ? <ListsTab client={client} pid={pid} name={name} space={person?.sharedSpace ?? null} canAssign={a?.assign.todos === true} id={id} /> : null}
       {tab === 'alerts' ? <AlertsTab client={client} pid={pid} name={name} id={id} /> : null}
       <AlertSheet open={alerting} client={client} pid={pid} name={name} close={() => setAlerting(false)} />
     </div>
@@ -340,6 +341,148 @@ function ChatTab({ client, pid, name, sees, perDay }: { client: PeopleClient; pi
         <p className="mt-12 type-small text-ink-2">Loading…</p>
       )}
       {capRow}
+    </div>
+  );
+}
+
+/**
+ * P4 (spec 5): what he shares with her. Cafés: the shared ones (open them on Cafés), and his own with Share
+ * (one, or Share all); one he added can go back to just him. Lists: both people's, with ticks ("Ticked by
+ * Asha · 18:20"), and Assign to her (assign.todos): an unlinked to-do of hers from him.
+ */
+function ListsTab({ client, pid, name, space, canAssign, id }: { client: PeopleClient; pid: string; name: string; space: string | null; canAssign: boolean; id?: string }) {
+  const navigate = useNavigate();
+  const { api } = useDeps();
+  const shared = useLifeLoad<PlacesResponse>(space ? `people:${pid}:cafes:shared` : null, () => api.placesList({ space: 'shared' }));
+  const mine = useLifeLoad<PlacesResponse>(space ? `people:${pid}:cafes:mine` : null, () => api.placesList({ space: 'mine' }));
+  const lists = useLifeLoad<SharedListsResponse>(`people:${pid}:lists`, () => client.lists(pid));
+  const items = useLifeLoad<SharedItemsResponse>(id ? `people:${pid}:list:${id}` : null, () => client.listItems(pid, id as string));
+  const [listName, setListName] = useState('');
+  const [item, setItem] = useState('');
+  const [confirm, setConfirm] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const run = async (fn: () => Promise<unknown>, done?: string) => {
+    setNote(null);
+    try {
+      await fn();
+      shared.reload();
+      mine.reload();
+      lists.reload();
+      items.reload();
+      if (done) setNote(done);
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const who = (by: string | undefined) => (by === '' ? 'you' : by === pid ? name : 'someone');
+  if (id) {
+    const d = items.data;
+    if (!d) return <p className="mt-12 type-small text-ink-2">Loading…</p>;
+    return (
+      <div className="mt-12 flex flex-col gap-8">
+        <Button variant="text" onClick={() => navigate(`/people/${pid}?tab=lists`)}>
+          ‹ Lists
+        </Button>
+        <h2 className="type-row font-semibold text-ink">{d.list.name}</h2>
+        <div className="flex gap-8">
+          <input aria-label="Add an item" value={item} maxLength={200} onChange={(e) => setItem(e.target.value)} className="min-h-44 flex-1 rounded-btn border border-line bg-bg px-12 type-row text-ink" />
+          <Button disabled={!item.trim()} onClick={() => void run(async () => (await client.listItemAdd(pid, id, item.trim()), setItem('')))}>
+            Add
+          </Button>
+        </div>
+        <ul>
+          {d.items.map((it) => (
+            <li key={it.id} className="flex items-center gap-8 border-b border-line py-8">
+              <input type="checkbox" aria-label={it.title} checked={Boolean(it.doneAt)} onChange={() => void run(() => client.listItemTick(pid, id, it.id, !it.doneAt))} />
+              <span className="min-w-0 flex-1">
+                <span className={`block break-words type-row [overflow-wrap:anywhere] ${it.doneAt ? 'text-ink-2 line-through' : 'text-ink'}`}>{it.title}</span>
+                <span className="block type-small text-ink-2">
+                  {it.handed ? `Assigned to ${name}` : it.doneAt ? `Ticked by ${who(it.doneBy)} · ${hmOf(it.doneAt)}` : `Added by ${who(it.by)}`}
+                </span>
+              </span>
+              {canAssign && !it.doneAt ? (
+                <Button variant="text" onClick={() => void run(() => client.listItemAssign(pid, id, it.id), `Added for ${name}.`)}>
+                  Assign to {name}
+                </Button>
+              ) : null}
+              <Button variant="text" aria-label={`Delete ${it.title}`} onClick={() => void run(() => client.listItemDelete(pid, id, it.id))}>
+                ×
+              </Button>
+            </li>
+          ))}
+        </ul>
+        {note ? <p role="status" className="type-small text-ink-2">{note}</p> : null}
+        <Button variant="text" onClick={() => setConfirm(true)}>
+          Delete list
+        </Button>
+        <Sheet open={confirm} onOpenChange={setConfirm} title={`Delete ${d.list.name} for both of you?`}>
+          <div className="flex gap-8 pb-24">
+            <Button onClick={() => void run(async () => (await client.listDelete(pid, id), navigate(`/people/${pid}?tab=lists`)))}>Delete</Button>
+            <Button variant="text" onClick={() => setConfirm(false)}>
+              Keep
+            </Button>
+          </div>
+        </Sheet>
+      </div>
+    );
+  }
+  const own = (mine.data?.places ?? []).filter((p) => !p.space);
+  return (
+    <div className="mt-12 flex flex-col gap-12">
+      <h2 className="type-row font-semibold text-ink">Cafés you share with {name}</h2>
+      <ul>
+        {(shared.data?.places ?? []).map((p) => (
+          <li key={p.id} className="flex items-center gap-8 border-b border-line py-8">
+            <a href={`/places?id=${p.id}`} onClick={(e) => (e.preventDefault(), navigate(`/places?id=${p.id}`))} className="min-w-0 flex-1 truncate type-row text-ink">
+              {p.name}
+            </a>
+            <span className="type-small text-ink-2">{p.by === '' ? 'Added by you' : `Added by ${name}`}</span>
+            {p.by === '' ? (
+              <Button variant="text" onClick={() => void run(() => api.placeUpdate(p.id, { space: '' }))}>
+                Just me
+              </Button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {own.length && space ? (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <span className="type-small text-ink-2">Your cafés</span>
+            <Button variant="text" onClick={() => void run(async () => { for (const p of own) await api.placeUpdate(p.id, { space }); }, `Shared ${own.length} with ${name}.`)}>
+              Share all
+            </Button>
+          </div>
+          <ul>
+            {own.map((p) => (
+              <li key={p.id} className="flex items-center gap-8 border-b border-line py-8">
+                <span className="min-w-0 flex-1 truncate type-row text-ink">{p.name}</span>
+                <Button variant="text" onClick={() => void run(() => api.placeUpdate(p.id, { space }))}>
+                  Share
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <h2 className="type-row font-semibold text-ink">Lists</h2>
+      <ul>
+        {(lists.data?.lists ?? []).map((l) => (
+          <li key={l.id} className="border-b border-line">
+            <button type="button" onClick={() => navigate(`/people/${pid}?tab=lists&id=${l.id}`)} className="flex min-h-44 w-full items-center justify-between py-8 text-left type-row text-ink">
+              <span>{l.name}</span>
+              <span className="type-small text-ink-2">{l.open} open</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-8">
+        <input aria-label="New list" value={listName} maxLength={60} onChange={(e) => setListName(e.target.value)} className="min-h-44 flex-1 rounded-btn border border-line bg-bg px-12 type-row text-ink" />
+        <Button disabled={!listName.trim()} onClick={() => void run(async () => (await client.listCreate(pid, listName.trim(), 'plain'), setListName('')))}>
+          New list
+        </Button>
+      </div>
+      {note ? <p role="status" className="type-small text-ink-2">{note}</p> : null}
     </div>
   );
 }

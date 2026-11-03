@@ -251,6 +251,18 @@ export function chatHeaderLine(owner: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// P4: shared lists (spec 5)
+
+/** A shared list's kind (spec 5.3). */
+export type SharedListKind = 'shopping' | 'watch' | 'read' | 'plain';
+export const SHARED_LIST_KINDS: Readonly<Record<SharedListKind, string>> = { shopping: 'Shopping', watch: 'To watch', read: 'To read', plain: 'List' };
+/** Lists in one shared space, and items in one list, at most. */
+export const SHARED_LISTS_MAX = 50;
+export const SHARED_LIST_ITEMS_MAX = 500;
+/** A forgotten person's attribution on a shared row: the row stays, theirs no more. */
+export const GONE_BY = 'gone';
+
+// ---------------------------------------------------------------------------
 // Build phases (spec 9.8): only the built phase's areas, fields, routes and join lines exist.
 
 /**
@@ -260,7 +272,7 @@ export function chatHeaderLine(owner: string): string {
 export const BUILD_PHASES = ['P1', 'P2', 'P3', 'P4', 'later'] as const;
 export type BuildPhase = (typeof BUILD_PHASES)[number];
 /** The phase this build ships. A later phase's field is never offered, filled by a preset or granted by an upgrade (O7, D24). */
-export const BUILT_PHASE: BuildPhase = 'P3';
+export const BUILT_PHASE: BuildPhase = 'P4';
 
 export function phaseBuilt(phase: BuildPhase, built: BuildPhase = BUILT_PHASE): boolean {
   return BUILD_PHASES.indexOf(phase) <= BUILD_PHASES.indexOf(built);

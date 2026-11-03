@@ -19,6 +19,7 @@
  */
 import {
   BUILT_PHASE,
+  GONE_BY,
   PEOPLE_MAX,
   PERSON_COLORS,
   PERSON_ENDING_DAYS,
@@ -72,7 +73,7 @@ import { hhmmOf } from '@jantar/life-core';
 import { hasScope } from '../../auth/scopes.js';
 import { PersonInvites, PersonLinkCodes } from '../../auth/person-codes.js';
 import { PersonDeviceAuth, publicPersonDevice } from '../../auth/person-devices.js';
-import type { ConsentRecord, DaemonContext, LifeCore, LifePush, LifeResult, Logger, PersonDeviceRecord } from '../../contracts.js';
+import type { ConsentRecord, DaemonContext, LifeCore, LifePush, LifeResult, Logger, PersonDeviceRecord, SharedEvent } from '../../contracts.js';
 import { newId } from '../../core/ids.js';
 import { PeopleRepo, type ActivityInput } from './repo.js';
 import { PersonTicks, type PersonCounter } from './ticks.js';
@@ -151,6 +152,8 @@ export class PeopleModule {
   alerts: import('../alerts/module.js').AlertsModule | null = null;
   journal: import('../journal/module.js').JournalModule | null = null;
   sleep: import('../sleep/module.js').SleepModule | null = null;
+  /** P4: shared lists (projects and to-dos in a shared space; set by the Life service). */
+  lists: import('../lists/module.js').SharedLists | null = null;
   /** P3: her chat thread, read only (set by the Chat part at start; views.ts is its only caller). */
   chatThread: ((pid: string, before?: string) => import('@jantar/protocol/people').OwnerChatView | null) | null = null;
 
@@ -363,6 +366,7 @@ export class PeopleModule {
       offer: l.offer ? { ...l.offer.fields, version: l.offer.version } : null,
       pendingProposal: l.pending && (state === 'active' || state === 'paused') ? { version: l.pending.version, fields: l.pending.fields } : null,
       chatPerDay: p.limits.chatPerDay,
+      ...(state === 'active' || state === 'paused' ? { sharedSpace: p.sharedSpace } : {}),
     };
   }
 
@@ -1228,6 +1232,37 @@ export class PeopleModule {
   }
 
   /** A push about her to his devices (Web Push only). */
+  /**
+   * P4 (spec 5.2, 5.3): a write to a shared space. Both members' streams refresh (the space is both
+   * of theirs); a café or list one of them deletes tells the other: one push and an Activity row.
+   */
+  sharedEvent(e: SharedEvent): void {
+    let people: Person[] = [];
+    try {
+      people = this.repo.list();
+    } catch {
+      return;
+    }
+    for (const p of people) {
+      if (p.sharedSpace !== e.space) continue;
+      const g = this.gateState(p.id);
+      if (g !== 'active' && g !== 'paused') continue;
+      this.ticks.bump(p.id, 'life');
+      this.ownerChanged();
+      if (e.action !== 'deleted' || (e.kind !== 'place' && e.kind !== 'list')) continue;
+      const what = e.kind === 'place' ? 'café' : 'list';
+      const title = (e.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      const body = title ? `"${title}" is gone for both of you.` : `A shared ${what} is gone for both of you.`;
+      if (e.by === '') {
+        this.record(p.id, { actor: 'owner', action: `${e.kind}.deleted`, ...(title ? { title } : {}) });
+        this.pushHer(p.id, { kind: 'life', title: `${this.ownerName()} deleted a ${what}`, body, url: `/p/lists?tab=${e.kind === 'place' ? 'cafes' : 'lists'}`, tag: `people:shared:${p.id}` });
+      } else if (e.by === p.id) {
+        this.record(p.id, { actor: 'her', action: `${e.kind}.deleted`, ...(title ? { title } : {}) });
+        this.pushOwner(p.id, { kind: 'life', title: `${p.name} deleted a ${what}`, body, url: e.kind === 'place' ? '/places' : `/people/${p.id}?tab=lists`, tag: `people:shared:${p.id}` });
+      }
+    }
+  }
+
   pushOwner(_pid: string, p: LifePush): void {
     const { person: _none, ...owner } = p;
     this.deps.push(owner);
@@ -1299,9 +1334,28 @@ function hasRowsIn(core: LifeCore, pid: string): boolean {
   return false;
 }
 
-/** Delete her space: every person-space table, her alerts, Activity, pings, meta keys and person row (one transaction). */
+/**
+ * Delete her space: every person-space table, her alerts, Activity, pings, meta keys and person row (one
+ * transaction). P4: her shared space's rows (cafés, visits, lists and items) stay, moved to the owner's space,
+ * with her authorship as 'gone'; the shared space row goes.
+ */
 function forgetSpace(core: LifeCore, pid: string): void {
   core.db.tx(() => {
+    const row = core.db.prepare('SELECT json FROM people WHERE id = ?').get(pid) as { json: string } | undefined;
+    let sid: string | null = null;
+    try {
+      const j = row ? (JSON.parse(row.json) as { sharedSpace?: unknown }) : null;
+      sid = typeof j?.sharedSpace === 'string' && j.sharedSpace.startsWith('s:') ? j.sharedSpace : null;
+    } catch {
+      sid = null;
+    }
+    if (sid) {
+      for (const t of ['places', 'place_visits', 'todos'] as const) {
+        core.db.prepare(`UPDATE ${t} SET space = '', by_person = CASE WHEN by_person = ? THEN ? ELSE by_person END WHERE space = ?`).run(pid, GONE_BY, sid);
+      }
+      core.db.prepare("UPDATE projects SET space = '' WHERE space = ?").run(sid);
+      core.db.prepare('DELETE FROM shared_spaces WHERE id = ?').run(sid);
+    }
     for (const t of PERSON_SPACE_TABLES) core.db.prepare(`DELETE FROM ${t} WHERE space = ?`).run(pid);
     core.db.prepare('DELETE FROM person_alerts WHERE from_person = ? OR to_person = ?').run(pid, pid);
     core.db.prepare('DELETE FROM person_activity WHERE person = ?').run(pid);

@@ -16,8 +16,8 @@
  * reads across spaces (`anySpace`), to ring each todo on its own person's
  * devices.
  */
-import { ProjectSchema, type Project, type Todo } from '@jantar/protocol';
-import { PersonTodoSchema } from '@jantar/protocol/people';
+import type { Project, Todo } from '@jantar/protocol';
+import { PersonTodoSchema, StoredProjectSchema as ProjectSchema } from '@jantar/protocol/people';
 import type { LifeCore, Logger } from '../../contracts.js';
 
 interface JsonRow {

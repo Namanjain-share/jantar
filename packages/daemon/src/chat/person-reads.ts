@@ -92,8 +92,37 @@ function today(pc: PersonChat): string {
   return pc.people.openCore()?.today() ?? '';
 }
 
+/** P4: the owner's café reads, run over her deps (her shared space); a café he added or last edited taints the turn. */
+export const PERSON_DELEGATED_READS: ReadonlySet<string> = new Set(['places_find', 'place_get']);
+
 /** Her reads, by tool name. */
 export const PERSON_READS: Readonly<Record<string, PersonReadFn>> = {
+  list_find(pc, i) {
+    const lists = pc.people.lists;
+    const space = pc.people.person(pc.pid)?.sharedSpace;
+    if (!lists || !space) return 'Life is not open right now.';
+    const owner = pc.people.ownerName();
+    if (typeof i.list !== 'string') {
+      const r = lists.lists(space);
+      if (!r.ok) return r.reason;
+      const out = [`${r.value.lists.length} shared list${r.value.lists.length === 1 ? '' : 's'} with ${owner}.`];
+      for (const l of r.value.lists) out.push(`- ${nm(l.name, 60)} ${idOf(l.id)} · ${l.kind} · ${l.open} open, ${l.done} done`);
+      return out.join('\n');
+    }
+    const r = lists.items(space, i.list);
+    if (!r.ok) return r.reason;
+    const out = [`${nm(r.value.list.name, 60)} ${idOf(r.value.list.id)} (${r.value.list.kind}):`];
+    let his = false;
+    for (const it of r.value.items.slice(0, LIST_MAX)) {
+      const state = it.doneAt ? `ticked${it.doneBy === pc.pid ? ' by her' : it.doneBy === '' ? ` by ${owner}` : ''}` : 'open';
+      if (it.by === '' || it.editedBy === '') {
+        his = true;
+        out.push(`- ${idOf(it.id)} ${state} · from ${owner}: ${data('owner', it.id, [nm(it.title, 120), it.notes ? `notes: ${nm(it.notes, 200)}` : ''].filter(Boolean).join('\n'))}`);
+      } else out.push(`- ${nm(it.title, 120)} ${idOf(it.id)} ${state}${it.notes ? ` · notes: ${nm(it.notes, 200)}` : ''}`);
+    }
+    if (his) out.unshift(ownerNote(owner));
+    return { text: out.join('\n'), taints: his };
+  },
   today(pc, i) {
     const views = pc.people.views;
     if (!views) return 'Life is not open right now.';

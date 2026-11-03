@@ -70,7 +70,7 @@ import {
   type WriteTool,
 } from './actions.js';
 import { fromMeeting } from './items.js';
-import { PERSON_READS } from './person-reads.js';
+import { PERSON_DELEGATED_READS, PERSON_READS } from './person-reads.js';
 import { PERSON_CHAT_TOOLS, PERSON_ONLY_TOOLS, PERSON_SHARED_TOOLS, PERSON_WRITE_MODULE, isPersonWriteTool, personPartOn, type PersonWriteTool } from './person-tools.js';
 import type { ChangeJson, ChatStore } from './store.js';
 import { clean, cut, data, dataNote, line } from './text.js';
@@ -344,6 +344,17 @@ function cafeLine(p: Place): string {
     .join(' · ');
 }
 
+/**
+ * v0.12 People (C19): a shared café whose fields the other person wrote or last edited: her words in his
+ * thread (`partner`), his in hers (`owner`). Their text is framed as data and taints the turn.
+ */
+function otherSource(d: Pick<ChatDeps, 'person'>, p: Pick<Place, 'by' | 'editedBy' | 'space'>): 'owner' | 'partner' | null {
+  if (!p.space) return null;
+  const mine = d.person ? d.person.pid : '';
+  const other = (p.by !== undefined && p.by !== mine) || (p.editedBy !== undefined && p.editedBy !== mine);
+  return other ? (d.person ? 'owner' : 'partner') : null;
+}
+
 /** A session's name and what it waits for, one line each: Claude Code writes them, so they go inside <data>. */
 function sessionWords(x: { name?: string | undefined; waitingFor?: string | undefined }): string {
   return [x.name ? `name ${nm(x.name, 60)}` : '', x.waitingFor ? `waiting for ${nm(x.waitingFor, 60)}` : ''].filter(Boolean).join('\n');
@@ -489,15 +500,27 @@ const READS: Readonly<Record<string, ReadFn>> = {
     const r = value(d.life.places.list(q.data));
     if (typeof r === 'string') return r;
     const out = [`${r.places.length} café${r.places.length === 1 ? '' : 's'}.`];
-    for (const p of r.places.slice(0, LIST_MAX)) out.push(cafeLine(p));
+    let other = false;
+    for (const p of r.places.slice(0, LIST_MAX)) {
+      const src = otherSource(d, p);
+      if (src) other = true;
+      out.push(src ? `- shared café ${idOf(p.id)}: ${data(src, p.id, cafeLine(p).replace(/^- /, ''))}` : `${cafeLine(p)}${p.space ? ' · shared' : ''}`);
+    }
+    if (other) out.splice(1, 0, dataNote('the other person in a shared café (what they added or last edited)'));
     if (r.tags.length) out.push(`Tags in use: ${r.tags.slice(0, 30).map((t) => `${nm(placeTagLabel(t.tag), 24)} (${t.n})`).join(', ')}`);
     out.push(`Fixed tags: ${Object.values(PLACE_TAG_LABELS).join(', ')}`);
-    return out.join('\n');
+    return { text: out.join('\n'), taints: other };
   },
   place_get(d, i) {
     const r = value(d.life.places.get(i.id as string));
     if (typeof r === 'string') return r;
     const p = r.place;
+    const src = otherSource(d, p);
+    // v0.12 People (C19): the other person's café (or one they last edited) is data, whole: the turn is tainted.
+    if (src) {
+      const words = [cafeLine(p), p.notes ? `Notes: ${clean(p.notes)}` : '', ...p.dishes.map((x) => `Dish ${nm(x.name, 60)}${x.notes ? ` "${nm(x.notes, 80)}"` : ''}`), ...r.visits.slice(0, 20).map((v) => `Visit ${v.day} ${idOf(v.id)}${v.by !== undefined && v.by !== (d.person ? d.person.pid : '') ? ' (theirs)' : ''}${v.notes ? ` "${nm(v.notes, 80)}"` : ''}`)];
+      return { text: [`Shared café ${idOf(p.id)}.`, dataNote('the other person in a shared café (what they added or last edited)'), data(src, p.id, words.filter(Boolean).join('\n'))].join('\n'), taints: true };
+    }
     const out = [cafeLine(p)];
     if (p.ratings) out.push(`Ratings: ${Object.entries(p.ratings).filter(([, v]) => v !== undefined).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}`);
     if (p.notes) out.push(`Notes: ${clean(p.notes)}`);
@@ -728,6 +751,16 @@ export class TurnTools {
   private async read(t: ChatTool, input: Record<string, unknown>, s: Settings): Promise<ToolAnswer> {
     // v0.12 People: her reads are hers alone (her space, framed by authorship); the owner's never run for her.
     const person = this.o.deps.person;
+    if (person && PERSON_DELEGATED_READS.has(t.name)) {
+      // P4: the café reads over her shared space; C19 runs inside them (cafeLine marks the other person's words).
+      const fn = READS[t.name];
+      if (!fn) return this.refused(TOOL_SENTENCES.failed);
+      this.counts.reads += 1;
+      const out = await fn(this.o.deps, input, s);
+      const r = typeof out === 'string' ? { text: out, taints: false } : out;
+      if (t.taints || r.taints) this.counts.tainted = true;
+      return { text: r.text, isError: false };
+    }
     if (person) {
       const pf = PERSON_READS[t.name];
       if (!pf) return this.refused(TOOL_SENTENCES.failed);

@@ -1765,6 +1765,11 @@ export interface LifeCore {
   settings(): Settings['life'];
   /** Emits `life.changed {}` (after every committed write). */
   changed(): void;
+  /**
+   * v0.12 People (P4): a write to a shared space (`s:<id>`): both members' streams refresh, and a delete
+   * tells the other person (one push and an Activity row). Absent in tests that build a bare core.
+   */
+  shared?(e: SharedEvent): void;
   scheduler: Scheduler;
   /** A ulid. */
   newId(): string;
@@ -1864,8 +1869,23 @@ export interface FoodModule extends LifeModule {
  * sorts by the query (best first by default), one café reads with a page of
  * its visits, and visits are logged, changed and deleted here.
  */
+/** v0.12 People (P4): one write to a shared space, by whom ('' the owner, or a person id). */
+export interface SharedEvent {
+  space: string;
+  by: string;
+  kind: 'place' | 'visit' | 'list' | 'item';
+  action: 'added' | 'changed' | 'deleted' | 'ticked';
+  title?: string;
+}
+
 export interface PlacesModule extends LifeModule {
   readonly name: 'places';
+  /**
+   * v0.12 People (P4): the same module over one shared space as one of its members (her side): she reads
+   * and writes only that space's cafés, and her visits are hers. The owner's module reads his own and every
+   * space he shares.
+   */
+  inShared(space: string, by: string): PlacesModule;
   list(q: PlacesQuery): LifeResult<PlacesResponse>;
   /** The café and its newest PLACE_VISITS_PAGE visits, older than the visit `before` when given. */
   get(id: string, before?: string): LifeResult<PlaceDetail>;

@@ -12,6 +12,9 @@ import type {
   JournalList,
   OwnerAlertSendBody,
   OwnerChatView,
+  SharedItemsResponse,
+  SharedListKind,
+  SharedListsResponse,
   PeopleList,
   PersonActivityResponse,
   PersonToday,
@@ -53,6 +56,16 @@ export const PEOPLE_PATHS = {
   chatPhoto: ['GET', '/v1/people/:pid/chat/photos/:id'],
   // P3: her chat's daily cap (with her colour).
   person: ['PATCH', '/v1/people/:pid'],
+  // P4: the lists he shares with her.
+  lists: ['GET', '/v1/people/:pid/lists'],
+  listCreate: ['POST', '/v1/people/:pid/lists'],
+  listUpdate: ['PATCH', '/v1/people/:pid/lists/:id'],
+  listDelete: ['DELETE', '/v1/people/:pid/lists/:id'],
+  listItems: ['GET', '/v1/people/:pid/lists/:id/items'],
+  listItemAdd: ['POST', '/v1/people/:pid/lists/:id/items'],
+  listItemDelete: ['DELETE', '/v1/people/:pid/lists/:id/items/:itemId'],
+  listItemTick: ['POST', '/v1/people/:pid/lists/:id/items/:itemId/tick'],
+  listItemAssign: ['POST', '/v1/people/:pid/lists/:id/items/:itemId/assign'],
 } as const;
 type Key = keyof typeof PEOPLE_PATHS;
 
@@ -82,6 +95,16 @@ export interface PeopleClient {
   chatPhotoUrl(pid: string, id: string): string;
   /** P3: her chat's messages a day. */
   setChatPerDay(pid: string, chatPerDay: number): Promise<void>;
+  /** P4: shared lists. */
+  lists(pid: string): Promise<SharedListsResponse>;
+  listCreate(pid: string, name: string, kind: SharedListKind): Promise<{ id: string }>;
+  listRename(pid: string, id: string, name: string): Promise<void>;
+  listDelete(pid: string, id: string): Promise<void>;
+  listItems(pid: string, id: string): Promise<SharedItemsResponse>;
+  listItemAdd(pid: string, id: string, title: string): Promise<{ id: string }>;
+  listItemDelete(pid: string, id: string, itemId: string): Promise<void>;
+  listItemTick(pid: string, id: string, itemId: string, done: boolean): Promise<void>;
+  listItemAssign(pid: string, id: string, itemId: string): Promise<{ id: string }>;
 }
 
 export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; credentials?: CredentialStore } = {}): PeopleClient {
@@ -145,6 +168,15 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
     chat: (pid, before) => call('chat', { params: { pid }, query: { before } }),
     chatPhotoUrl: (pid, id) => PEOPLE_PATHS.chatPhoto[1].replace(':pid', encodeURIComponent(pid)).replace(':id', encodeURIComponent(id)),
     setChatPerDay: (pid, chatPerDay) => v(call('person', { params: { pid }, body: { chatPerDay } })),
+    lists: (pid) => call('lists', { params: { pid } }),
+    listCreate: (pid, name, kind) => call('listCreate', { params: { pid }, body: { name, kind } }),
+    listRename: (pid, id, name) => v(call('listUpdate', { params: { pid, id }, body: { name } })),
+    listDelete: (pid, id) => v(call('listDelete', { params: { pid, id } })),
+    listItems: (pid, id) => call('listItems', { params: { pid, id } }),
+    listItemAdd: (pid, id, title) => call('listItemAdd', { params: { pid, id }, body: { title } }),
+    listItemDelete: (pid, id, itemId) => v(call('listItemDelete', { params: { pid, id, itemId } })),
+    listItemTick: (pid, id, itemId, done) => v(call('listItemTick', { params: { pid, id, itemId }, body: { done } })),
+    listItemAssign: (pid, id, itemId) => call('listItemAssign', { params: { pid, id, itemId }, body: {} }),
   };
 }
 

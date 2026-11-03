@@ -75,6 +75,7 @@ import { JournalModule } from './journal/module.js';
 import { PeopleModule } from './people/module.js';
 import { peoplePingHandlers } from './people/pings.js';
 import { PersonSpace } from './people/space.js';
+import { SharedLists } from './lists/module.js';
 import { PeopleViews } from './people/views.js';
 import { PlansModule } from './plans/module.js';
 import { SleepModule } from './sleep/module.js';
@@ -214,6 +215,7 @@ class LifeServiceImpl implements LifeService {
       today: () => dayKeyOf(new Date(ctx.clock.now()), self.zone),
       settings: () => ctx.settings.get().life,
       changed: () => self.changed(),
+      shared: (e) => self.people.sharedEvent(e),
       scheduler: this.scheduler,
       newId,
     };
@@ -232,6 +234,8 @@ class LifeServiceImpl implements LifeService {
     this.people.alerts = new AlertsModule({ people: this.people, core: lifeCore });
     this.people.journal = new JournalModule({ people: this.people, core: lifeCore });
     this.people.sleep = new SleepModule({ people: this.people, core: lifeCore });
+    // P4: shared lists (a project and to-dos in a shared space).
+    this.people.lists = new SharedLists(lifeCore, this.log.child({ module: 'lists' }));
     for (const h of peoplePingHandlers({ core: this.core, people: this.people, plans: this.people.plans, alerts: this.people.alerts, sleep: this.people.sleep })) this.scheduler.register(h);
   }
 

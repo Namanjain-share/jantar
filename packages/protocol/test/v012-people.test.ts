@@ -25,12 +25,13 @@ import {
 } from '../src/people.js';
 
 describe('the agreement', () => {
-  it('P3 is the built phase; later phases are not; `assistant` is not built in this release', () => {
-    expect(BUILT_PHASE).toBe('P3');
+  it('P4 is the built phase; `assistant` is not built in this release', () => {
+    expect(BUILT_PHASE).toBe('P4');
     expect(phaseBuilt('P1')).toBe(true);
     expect(phaseBuilt('P2')).toBe(true);
     expect(phaseBuilt('P3')).toBe(true);
-    expect(phaseBuilt('P4')).toBe(false);
+    expect(phaseBuilt('P4')).toBe(true);
+    expect(phaseBuilt('later')).toBe(false);
     expect(phaseBuilt('later', 'P4')).toBe(false);
     expect(AGREEMENT_FIELDS.find((f) => f.key === 'assistant')?.phase).toBe('later');
   });

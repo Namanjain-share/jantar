@@ -21,6 +21,9 @@ import type {
   PersonActivityResponse,
   PersonChatList,
   PersonMe,
+  SharedItemsResponse,
+  SharedListKind,
+  SharedListsResponse,
   PersonOwnToday,
   PersonPrefsPatch,
   PersonStatus,
@@ -39,6 +42,7 @@ import type {
   StepPatch,
   StepStateBody,
 } from '@jantar/protocol/people';
+import type { PlaceDetail, PlacePatch, PlacesResponse } from '@jantar/protocol';
 import { personCredentialStore, type PersonCredentialStore } from './credential.js';
 
 /** Her routes' paths, as PERSON_ROUTES has them (test/partner/api.test.ts compares). */
@@ -123,6 +127,22 @@ export const PERSON_PATHS = {
   chatPhotoCreate: ['POST', '/v1/p/chat/photos'],
   chatPhoto: ['GET', '/v1/p/chat/photos/:id'],
   chatPhotoDelete: ['DELETE', '/v1/p/chat/photos/:id'],
+  // P4: shared cafés and lists.
+  places: ['GET', '/v1/p/places'],
+  placeGet: ['GET', '/v1/p/places/:id'],
+  placeCreate: ['POST', '/v1/p/places'],
+  placeUpdate: ['PATCH', '/v1/p/places/:id'],
+  placeDelete: ['DELETE', '/v1/p/places/:id'],
+  visitCreate: ['POST', '/v1/p/places/:id/visits'],
+  visitDelete: ['DELETE', '/v1/p/places/:id/visits/:visitId'],
+  lists: ['GET', '/v1/p/lists'],
+  listCreate: ['POST', '/v1/p/lists'],
+  listUpdate: ['PATCH', '/v1/p/lists/:id'],
+  listDelete: ['DELETE', '/v1/p/lists/:id'],
+  listItems: ['GET', '/v1/p/lists/:id/items'],
+  listItemAdd: ['POST', '/v1/p/lists/:id/items'],
+  listItemDelete: ['DELETE', '/v1/p/lists/:id/items/:itemId'],
+  listItemTick: ['POST', '/v1/p/lists/:id/items/:itemId/tick'],
 } as const;
 type PathKey = keyof typeof PERSON_PATHS;
 
@@ -227,6 +247,22 @@ export interface PersonApi {
   chatPhotoAdd(bytes: Blob): Promise<{ id: string }>;
   chatPhotoUrl(id: string): string;
   chatPhotoDelete(id: string): Promise<void>;
+  // P4
+  places(): Promise<PlacesResponse>;
+  place(id: string): Promise<PlaceDetail>;
+  placeCreate(name: string): Promise<{ id: string }>;
+  placeUpdate(id: string, patch: PlacePatch): Promise<void>;
+  placeDelete(id: string): Promise<void>;
+  visitCreate(id: string, body: { stars?: number; notes?: string }): Promise<{ id: string }>;
+  visitDelete(id: string, visitId: string): Promise<void>;
+  lists(): Promise<SharedListsResponse>;
+  listCreate(name: string, kind: SharedListKind): Promise<{ id: string }>;
+  listRename(id: string, name: string): Promise<void>;
+  listDelete(id: string): Promise<void>;
+  listItems(id: string): Promise<SharedItemsResponse>;
+  listItemAdd(id: string, title: string): Promise<{ id: string }>;
+  listItemDelete(id: string, itemId: string): Promise<void>;
+  listItemTick(id: string, itemId: string, done: boolean): Promise<void>;
 }
 
 /** A client id: a double tap sends the same one, so the daemon makes one row (sleep and journal). */
@@ -364,5 +400,20 @@ export function createPersonApi(opts: { fetch?: typeof fetch; base?: string; cre
     chatPhotoAdd: (bytes) => call('chatPhotoCreate', { raw: bytes }),
     chatPhotoUrl: (id) => PERSON_PATHS.chatPhoto[1].replace(':id', encodeURIComponent(id)),
     chatPhotoDelete: async (id) => void (await call('chatPhotoDelete', { params: { id } })),
+    places: () => call('places'),
+    place: (id) => call('placeGet', { params: { id } }),
+    placeCreate: (name) => call('placeCreate', { body: { name } }),
+    placeUpdate: async (id, patch) => void (await call('placeUpdate', { params: { id }, body: patch })),
+    placeDelete: async (id) => void (await call('placeDelete', { params: { id } })),
+    visitCreate: (id, body) => call('visitCreate', { params: { id }, body }),
+    visitDelete: async (id, visitId) => void (await call('visitDelete', { params: { id, visitId } })),
+    lists: () => call('lists'),
+    listCreate: (name, kind) => call('listCreate', { body: { name, kind } }),
+    listRename: async (id, name) => void (await call('listUpdate', { params: { id }, body: { name } })),
+    listDelete: async (id) => void (await call('listDelete', { params: { id } })),
+    listItems: (id) => call('listItems', { params: { id } }),
+    listItemAdd: (id, title) => call('listItemAdd', { params: { id }, body: { title } }),
+    listItemDelete: async (id, itemId) => void (await call('listItemDelete', { params: { id, itemId } })),
+    listItemTick: async (id, itemId, done) => void (await call('listItemTick', { params: { id, itemId }, body: { done } })),
   };
 }

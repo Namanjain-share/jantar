@@ -99,6 +99,8 @@ import { PERSON_JOURNAL_ROUTE_IMPLS } from './routes/person/journal.js';
 import { PERSON_ALERT_ROUTE_IMPLS } from './routes/person/alerts.js';
 import { PERSON_CHAT_ROUTE_IMPLS } from './routes/person/chat.js';
 import { PEOPLE_CHAT_ROUTE_IMPLS } from './routes/people-chat.js';
+import { PERSON_LIST_ROUTE_IMPLS } from './routes/person/lists.js';
+import { PEOPLE_LIST_ROUTE_IMPLS } from './routes/people-lists.js';
 import type { ApiServices } from './services.js';
 
 export { isRawReply, notImplementedRoute, type Call, type RawReply, type RouteImpl, type RouteTable } from './route-kit.js';
@@ -656,6 +658,8 @@ export const ROUTE_IMPLS: RouteTable = {
   ...PERSON_ALERT_ROUTE_IMPLS,
   ...PERSON_CHAT_ROUTE_IMPLS,
   ...PEOPLE_CHAT_ROUTE_IMPLS,
+  ...PERSON_LIST_ROUTE_IMPLS,
+  ...PEOPLE_LIST_ROUTE_IMPLS,
   ...PEOPLE_DAYS_ROUTE_IMPLS,
   ...CAPTURE_ROUTE_IMPLS,
   ...CAPTURE_KEYS_ROUTE_IMPLS,

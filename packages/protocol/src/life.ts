@@ -126,7 +126,11 @@ export const ProjectSchema = z.object({
   folder: FolderPathSchema.optional(),
   ...stamps,
 });
-export type Project = z.infer<typeof ProjectSchema>;
+/**
+ * v0.12 People (P4): a shared list is a project in a shared space with its kind (`list`). Type only here, so
+ * the owner's bundle carries no People schema; the daemon parses it with `@jantar/protocol/people`'s.
+ */
+export type Project = z.infer<typeof ProjectSchema> & { list?: { kind: 'shopping' | 'watch' | 'read' | 'plain' } };
 /** A project with its open and overdue todo counts. */
 export const ProjectViewSchema = ProjectSchema.extend({ open: z.number().int(), overdue: z.number().int() });
 export type ProjectView = z.infer<typeof ProjectViewSchema>;
@@ -568,7 +572,14 @@ export const PlaceSchema = z.object({
   visits: PlaceVisitsSummarySchema.default(() => ({ count: 0, last: null, avgSpend: null })),
   ...stamps,
 });
-export type Place = z.infer<typeof PlaceSchema>;
+/**
+ * v0.12 People (P4), type only (the daemon's schema is `@jantar/protocol/people`'s): on a shared café, who
+ * added it ('' you) and its space (`s:<id>`), from the row's columns, and "Edited by" (daemon-set). A café
+ * of your own has none of them.
+ */
+export type Place = z.infer<typeof PlaceSchema> & { by?: string; space?: string; editedBy?: string; editedAt?: string };
+/** v0.12 People (P4): where a café lives: `''` yours, `s:<id>` a space you share. */
+const SpaceRef = z.string().regex(/^(|s:[0-9A-HJKMNP-TV-Z]{26})$/);
 /** POST /v1/places (tried defaults to false, dishes to none, tags to none). */
 export const PlaceBodySchema = z.strictObject({
   name: PlaceNameSchema,
@@ -582,6 +593,8 @@ export const PlaceBodySchema = z.strictObject({
   price: PriceLevelSchema.optional(),
   again: GoAgainSchema.optional(),
   tags: PlaceTagsSchema.optional(),
+  /** v0.12 People (P4): "Just me" ('') or a space you share. */
+  space: SpaceRef.optional(),
 });
 export type PlaceBody = z.infer<typeof PlaceBodySchema>;
 /**
@@ -601,6 +614,8 @@ export const PlacePatchSchema = z.strictObject({
   again: GoAgainSchema.nullable().optional(),
   ratings: PlaceRatingsPatchSchema.optional(),
   tags: PlaceTagsSchema.optional(),
+  /** v0.12 People (P4): share a café of yours, or move one you added back to just you. */
+  space: SpaceRef.optional(),
 });
 export type PlacePatch = z.infer<typeof PlacePatchSchema>;
 
@@ -621,7 +636,8 @@ export const PlaceVisitSchema = z.object({
   notes: VisitNotesSchema.optional(),
   ...stamps,
 });
-export type PlaceVisit = z.infer<typeof PlaceVisitSchema>;
+/** v0.12 People (P4), type only: on a shared café's visit, who logged it ('' you), from the row's column. */
+export type PlaceVisit = z.infer<typeof PlaceVisitSchema> & { by?: string };
 /** POST /v1/places/:id/visits (day defaults to today; the first visit marks the café tried). */
 export const PlaceVisitBodySchema = z.strictObject({
   day: DayKeySchema.optional(),
@@ -664,6 +680,8 @@ export const PlacesQuerySchema = z.object({
   area: z.string().trim().max(60).optional(),
   /** Name, area, dish names, tags (keys and labels) and notes, any case. */
   q: z.string().trim().max(80).optional(),
+  /** v0.12 People (P4): yours and shared (all), yours only (mine), or shared only. */
+  space: z.enum(['all', 'mine', 'shared']).optional(),
 });
 export type PlacesQuery = z.infer<typeof PlacesQuerySchema>;
 export type PlacesQueryInput = z.input<typeof PlacesQuerySchema>;
@@ -674,7 +692,7 @@ export const PlacesResponseSchema = z.object({
   /** v0.10: the same for areas. */
   areas: z.array(z.object({ area: z.string(), n: z.number().int() })),
 });
-export type PlacesResponse = z.infer<typeof PlacesResponseSchema>;
+export type PlacesResponse = Omit<z.infer<typeof PlacesResponseSchema>, 'places'> & { places: Place[] };
 /** GET /v1/places/:id?before=<visitId>: the café and a page of its visits, newest first. */
 export const PlaceGetQuerySchema = z.object({ before: LifeIdSchema.optional() });
 export type PlaceGetQuery = z.infer<typeof PlaceGetQuerySchema>;
@@ -684,7 +702,7 @@ export const PlaceDetailSchema = z.object({
   /** Older visits than this page exist. */
   more: z.boolean(),
 });
-export type PlaceDetail = z.infer<typeof PlaceDetailSchema>;
+export type PlaceDetail = Omit<z.infer<typeof PlaceDetailSchema>, 'place' | 'visits'> & { place: Place; visits: PlaceVisit[] };
 
 const TAG_BY_FOLDED: ReadonlyMap<string, PlaceTagKey> = /* @__PURE__ */ new Map(
   PLACE_TAGS.flatMap((k) => [

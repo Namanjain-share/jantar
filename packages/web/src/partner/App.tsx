@@ -20,6 +20,8 @@ const Health = lazy(() => import('./screens/Health.js'));
 const Alerts = lazy(() => import('./screens/Alerts.js'));
 // P3: her assistant.
 const Chat = lazy(() => import('./screens/Chat.js'));
+// P4: the cafés and lists she shares.
+const Lists = lazy(() => import('./screens/Lists.js'));
 
 import { navigate } from './nav.js';
 
@@ -120,6 +122,7 @@ export function App({ api }: { api: PersonApi }) {
           {route.name === 'journal' ? <Journal me={me} api={api} id={route.id} checkin={route.checkin} tick={tick} /> : null}
           {route.name === 'alerts' ? <Alerts me={me} api={api} id={route.id} tick={tick} /> : null}
           {route.name === 'chat' ? <Chat me={me} api={api} tick={tick} /> : null}
+          {route.name === 'lists' ? <Lists me={me} api={api} tab={route.tab} id={route.id} list={route.list} tick={tick} /> : null}
           {route.name === 'me' ? <Me me={me} api={api} reload={load} tab={route.tab} /> : null}
         </Suspense>
       </main>
@@ -128,10 +131,10 @@ export function App({ api }: { api: PersonApi }) {
   );
 }
 
-/** Today · To-do · Journal · Chat · More (P3; More holds Health, Alerts and Me, and Lists in P4). */
+/** Today · To-do · Journal · Chat · More (More holds Health, Alerts, Lists and Me). */
 function TabBar({ route }: { route: PersonRoute }) {
   const [more, setMore] = useState(false);
-  const inMore = route.name === 'health' || route.name === 'alerts' || route.name === 'me';
+  const inMore = route.name === 'health' || route.name === 'alerts' || route.name === 'lists' || route.name === 'me';
   return (
     <nav className="fixed inset-x-0 bottom-0 border-t border-line bg-bg pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex max-w-[42rem]">
@@ -147,6 +150,7 @@ function TabBar({ route }: { route: PersonRoute }) {
         <div className="flex flex-col pb-24" onClick={() => setMore(false)}>
           <TabLink to="/p/health" label="Health" on={route.name === 'health'} />
           <TabLink to="/p/alerts" label="Alerts" on={route.name === 'alerts'} />
+          <TabLink to="/p/lists" label="Lists" on={route.name === 'lists'} />
           <TabLink to="/p/me" label="Me" on={route.name === 'me'} />
         </div>
       </Sheet>

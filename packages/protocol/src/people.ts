@@ -102,6 +102,17 @@ import {
   MedicineViewSchema,
   MedsDaySchema,
   OkReplySchema,
+  PlaceBodySchema,
+  PlaceDetailSchema,
+  PlaceSchema,
+  ProjectSchema,
+  PlaceGetQuerySchema,
+  PlacePatchSchema,
+  PlaceVisitBodySchema,
+  PlaceVisitParamsSchema,
+  PlaceVisitPatchSchema,
+  PlacesQuerySchema,
+  PlacesResponseSchema,
   ProjectBodySchema,
   ProjectPatchSchema,
   ProjectViewSchema,
@@ -321,6 +332,10 @@ export const PersonTodoSchema = TodoSchema.extend({
   askedChange: z.object({ at: IsoDateSchema, note: z.string().max(200) }).optional(),
   /** P2: "Tell me if not done by" (his, shown to her, never sent to her). */
   followUp: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  /** P4: a shared list item's tick: who ticked it (daemon-set from the caller). */
+  doneBy: SpaceSchema.optional(),
+  /** P4: a shared list item he handed on as a to-do of hers ("Assigned to Asha"); no link to it (C6). */
+  handed: z.object({ to: SpaceSchema, at: IsoDateSchema }).optional(),
 });
 export type PersonTodo = z.infer<typeof PersonTodoSchema>;
 export const PersonTodosResponseSchema = z.object({ today: DayKeySchema, todos: z.array(PersonTodoSchema) });
@@ -481,6 +496,8 @@ export const PersonViewSchema = z.object({
   pendingProposal: z.object({ version: z.number().int(), fields: AgreementFieldsSchema }).nullable(),
   /** P3: her chat's messages a day. */
   chatPerDay: z.number().int().optional(),
+  /** P4: the space they share (`s:<id>`): his cafés' "Shared with {her}" picker names it. */
+  sharedSpace: z.string().optional(),
 });
 export type PersonView = z.infer<typeof PersonViewSchema>;
 export const PeopleListSchema = z.object({ enabled: z.boolean(), people: z.array(PersonViewSchema) });
@@ -665,6 +682,52 @@ export const OwnerChatViewSchema = z.object({
   keepDays: ChatKeepDaysSchema,
 });
 export type OwnerChatView = z.infer<typeof OwnerChatViewSchema>;
+
+// ---------------------------------------------------------------------------
+// P4: shared lists (spec 5.3): a list is a project in a shared space with a kind; its items are to-dos there.
+
+export const SharedListKindSchema = z.enum(['shopping', 'watch', 'read', 'plain']);
+/** A project as stored, with a shared list's kind (the owner's ProjectSchema leaves it out of his bundle). */
+export const StoredProjectSchema = ProjectSchema.extend({ list: z.object({ kind: SharedListKindSchema }).optional() });
+/** A café as stored, with "Edited by" on a shared one (daemon-set; `by` and `space` are columns, never json). */
+export const StoredPlaceSchema = PlaceSchema.extend({ editedBy: z.string().optional(), editedAt: IsoDateSchema.optional() });
+export const SharedListSchema = z.object({
+  id: LifeIdSchema,
+  name: z.string(),
+  kind: SharedListKindSchema,
+  open: z.number().int(),
+  done: z.number().int(),
+  createdAt: IsoDateSchema,
+  updatedAt: IsoDateSchema,
+});
+export type SharedList = z.infer<typeof SharedListSchema>;
+export const SharedItemSchema = z.object({
+  id: LifeIdSchema,
+  title: z.string(),
+  notes: z.string().optional(),
+  by: z.string(),
+  doneAt: IsoDateSchema.optional(),
+  doneBy: z.string().optional(),
+  editedBy: z.string().optional(),
+  handed: z.object({ to: z.string(), at: IsoDateSchema }).optional(),
+  createdAt: IsoDateSchema,
+  updatedAt: IsoDateSchema,
+});
+export type SharedItem = z.infer<typeof SharedItemSchema>;
+export const SharedListsResponseSchema = z.object({ space: z.string(), lists: z.array(SharedListSchema) });
+export type SharedListsResponse = z.infer<typeof SharedListsResponseSchema>;
+export const SharedItemsResponseSchema = z.object({ list: SharedListSchema, items: z.array(SharedItemSchema) });
+export type SharedItemsResponse = z.infer<typeof SharedItemsResponseSchema>;
+export const SharedListBodySchema = z.strictObject({ name: z.string().trim().min(1).max(60), kind: SharedListKindSchema.default('plain') });
+export type SharedListBody = z.input<typeof SharedListBodySchema>;
+export const SharedListPatchSchema = z.strictObject({ name: z.string().trim().min(1).max(60) });
+export const SharedItemBodySchema = z.strictObject({ title: z.string().trim().min(1).max(200), note: z.string().trim().max(500).optional() });
+export type SharedItemBody = z.infer<typeof SharedItemBodySchema>;
+export const SharedItemPatchSchema = z.strictObject({ title: z.string().trim().min(1).max(200).optional(), note: z.string().trim().max(500).nullable().optional() });
+export type SharedItemPatch = z.infer<typeof SharedItemPatchSchema>;
+export const SharedTickBodySchema = z.strictObject({ done: z.boolean() });
+const listParams = z.object({ id: LifeIdSchema });
+const itemParams = z.object({ id: LifeIdSchema, itemId: LifeIdSchema });
 
 // ---------------------------------------------------------------------------
 // Route tables (each route lands in the commit of its handler; the arch test pins both lists)
@@ -1241,6 +1304,124 @@ export const PERSON_CHAT_ROUTES = {
   }),
 } as const satisfies Record<string, RouteDef>;
 
+/** Shared lists, her side (P4, spec 1.3.2): her shared space only; always both people's, so no area. */
+export const PERSON_LIST_ROUTES = {
+  personPlaces: route({
+    method: 'GET', path: '/v1/p/places', scope: 'person', phase: 'v0.12', ctl: false,
+    query: PlacesQuerySchema, response: PlacesResponseSchema, summary: 'The cafés she shares with the owner.',
+  }),
+  personPlaceGet: route({
+    method: 'GET', path: '/v1/p/places/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    params: LifeIdParamsSchema, query: PlaceGetQuerySchema, response: PlaceDetailSchema, summary: 'One shared café and a page of its visits.',
+  }),
+  personPlaceCreate: route({
+    method: 'POST', path: '/v1/p/places', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    body: PlaceBodySchema, response: IdReplySchema, summary: 'Add a café to the shared list (always shared).',
+  }),
+  personPlaceUpdate: route({
+    method: 'PATCH', path: '/v1/p/places/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    params: LifeIdParamsSchema, body: PlacePatchSchema, response: OkReplySchema, summary: 'Edit, rate or change dishes of a shared café ("Edited by").',
+  }),
+  personPlaceDelete: route({
+    method: 'DELETE', path: '/v1/p/places/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete a shared café for both (the owner is told).',
+  }),
+  personVisitCreate: route({
+    method: 'POST', path: '/v1/p/places/:id/visits', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    params: LifeIdParamsSchema, body: PlaceVisitBodySchema, response: IdReplySchema, summary: 'Log her visit to a shared café.',
+  }),
+  personVisitUpdate: route({
+    method: 'PATCH', path: '/v1/p/places/:id/visits/:visitId', scope: 'person', phase: 'v0.12', ctl: false,
+    params: PlaceVisitParamsSchema, body: PlaceVisitPatchSchema, response: OkReplySchema, summary: 'Edit one of her own visits (C39).',
+  }),
+  personVisitDelete: route({
+    method: 'DELETE', path: '/v1/p/places/:id/visits/:visitId', scope: 'person', phase: 'v0.12', ctl: false,
+    params: PlaceVisitParamsSchema, response: OkReplySchema, summary: 'Delete one of her own visits (C39).',
+  }),
+  personLists: route({
+    method: 'GET', path: '/v1/p/lists', scope: 'person', phase: 'v0.12', ctl: false,
+    response: SharedListsResponseSchema, summary: 'The lists she shares with the owner.',
+  }),
+  personListCreate: route({
+    method: 'POST', path: '/v1/p/lists', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    body: SharedListBodySchema, response: IdReplySchema, summary: 'Start a shared list (shopping, to watch, to read, plain).',
+  }),
+  personListUpdate: route({
+    method: 'PATCH', path: '/v1/p/lists/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    params: listParams, body: SharedListPatchSchema, response: OkReplySchema, summary: 'Rename a shared list.',
+  }),
+  personListDelete: route({
+    method: 'DELETE', path: '/v1/p/lists/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    params: listParams, response: OkReplySchema, summary: 'Delete a shared list for both (the owner is told).',
+  }),
+  personListItems: route({
+    method: 'GET', path: '/v1/p/lists/:id/items', scope: 'person', phase: 'v0.12', ctl: false,
+    params: listParams, response: SharedItemsResponseSchema, summary: "A shared list's items.",
+  }),
+  personListItemAdd: route({
+    method: 'POST', path: '/v1/p/lists/:id/items', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    params: listParams, body: SharedItemBodySchema, response: IdReplySchema, summary: 'Add an item to a shared list.',
+  }),
+  personListItemUpdate: route({
+    method: 'PATCH', path: '/v1/p/lists/:id/items/:itemId', scope: 'person', phase: 'v0.12', ctl: false,
+    params: itemParams, body: SharedItemPatchSchema, response: OkReplySchema, summary: 'Edit an item (either person).',
+  }),
+  personListItemDelete: route({
+    method: 'DELETE', path: '/v1/p/lists/:id/items/:itemId', scope: 'person', phase: 'v0.12', ctl: false,
+    params: itemParams, response: OkReplySchema, summary: 'Delete an item (either person).',
+  }),
+  personListItemTick: route({
+    method: 'POST', path: '/v1/p/lists/:id/items/:itemId/tick', scope: 'person', phase: 'v0.12', ctl: false,
+    params: itemParams, body: SharedTickBodySchema, response: OkReplySchema, summary: 'Tick or untick an item (who ticked is recorded).',
+  }),
+} as const satisfies Record<string, RouteDef>;
+
+/** Shared lists, his side (P4): the same lists through his People routes, plus "Assign to {her}". No area: always both people's. */
+const pidList = z.object({ pid: LifeIdSchema, id: LifeIdSchema });
+const pidItem = z.object({ pid: LifeIdSchema, id: LifeIdSchema, itemId: LifeIdSchema });
+export const PEOPLE_LIST_ROUTES = {
+  personOwnerLists: route({
+    method: 'GET', path: '/v1/people/:pid/lists', scope: 'control', phase: 'v0.12', ctl: false,
+    params: PidParamsSchema, response: SharedListsResponseSchema, summary: 'The lists you share with her.',
+  }),
+  personOwnerListCreate: route({
+    method: 'POST', path: '/v1/people/:pid/lists', scope: 'control', phase: 'v0.12', ctl: false, status: 201,
+    params: PidParamsSchema, body: SharedListBodySchema, response: IdReplySchema, summary: 'Start a list shared with her.',
+  }),
+  personOwnerListUpdate: route({
+    method: 'PATCH', path: '/v1/people/:pid/lists/:id', scope: 'control', phase: 'v0.12', ctl: false,
+    params: pidList, body: SharedListPatchSchema, response: OkReplySchema, summary: 'Rename a shared list.',
+  }),
+  personOwnerListDelete: route({
+    method: 'DELETE', path: '/v1/people/:pid/lists/:id', scope: 'control', phase: 'v0.12', ctl: false,
+    params: pidList, response: OkReplySchema, summary: 'Delete a shared list for both (she is told).',
+  }),
+  personOwnerListItems: route({
+    method: 'GET', path: '/v1/people/:pid/lists/:id/items', scope: 'control', phase: 'v0.12', ctl: false,
+    params: pidList, response: SharedItemsResponseSchema, summary: "A shared list's items.",
+  }),
+  personOwnerListItemAdd: route({
+    method: 'POST', path: '/v1/people/:pid/lists/:id/items', scope: 'control', phase: 'v0.12', ctl: false, status: 201,
+    params: pidList, body: SharedItemBodySchema, response: IdReplySchema, summary: 'Add an item to a shared list.',
+  }),
+  personOwnerListItemUpdate: route({
+    method: 'PATCH', path: '/v1/people/:pid/lists/:id/items/:itemId', scope: 'control', phase: 'v0.12', ctl: false,
+    params: pidItem, body: SharedItemPatchSchema, response: OkReplySchema, summary: 'Edit an item (either person).',
+  }),
+  personOwnerListItemDelete: route({
+    method: 'DELETE', path: '/v1/people/:pid/lists/:id/items/:itemId', scope: 'control', phase: 'v0.12', ctl: false,
+    params: pidItem, response: OkReplySchema, summary: 'Delete an item (either person).',
+  }),
+  personOwnerListItemTick: route({
+    method: 'POST', path: '/v1/people/:pid/lists/:id/items/:itemId/tick', scope: 'control', phase: 'v0.12', ctl: false,
+    params: pidItem, body: SharedTickBodySchema, response: OkReplySchema, summary: 'Tick or untick an item (who ticked is recorded).',
+  }),
+  personOwnerListItemAssign: route({
+    method: 'POST', path: '/v1/people/:pid/lists/:id/items/:itemId/assign', scope: 'control', phase: 'v0.12', ctl: false, area: 'todos', status: 201,
+    params: pidItem, response: IdReplySchema, summary: 'Assign to her: an unlinked to-do in her space with the item\'s title (assign.todos).',
+  }),
+} as const satisfies Record<string, RouteDef>;
+
 /** His read-only view of her chat (P3, spec 7.8): GET only, area `chat`. No owner route writes to her thread (T14). */
 export const PEOPLE_CHAT_ROUTES = {
   personOwnerChat: route({
@@ -1313,8 +1494,8 @@ const PEOPLE_ACCOUNT_ROUTES = {
 } as const satisfies Record<string, RouteDef>;
 
 /** Every route of hers this build serves (scope `person`; the arch test pins the list, T1). */
-export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES, ...PERSON_DAYS_ROUTES, ...PERSON_CHAT_ROUTES } as const;
+export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES, ...PERSON_DAYS_ROUTES, ...PERSON_CHAT_ROUTES, ...PERSON_LIST_ROUTES } as const;
 export type PersonRouteName = keyof typeof PERSON_ROUTES;
 /** Every owner People route this build serves (the arch test pins each one's scope, ctl, localOnly and area). */
-export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_DAYS_ROUTES, ...PEOPLE_CHAT_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
+export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_DAYS_ROUTES, ...PEOPLE_CHAT_ROUTES, ...PEOPLE_LIST_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
 export type PeopleRouteName = keyof typeof PEOPLE_ROUTES;

@@ -203,6 +203,7 @@ function PlaceRow({ place: p, currency, onOpen }: { place: Place; currency: stri
           <span className="min-w-0 flex-1 truncate type-row font-medium text-ink">{p.name}</span>
           {!p.tried ? <Tag>want</Tag> : p.stars ? <Stars rating={p.stars} /> : null}
           {p.again === 'no' ? <Tag>not again</Tag> : null}
+          {p.space ? <Tag>shared</Tag> : null}
           {p.price ? currency ? <span className="flex-none type-mono text-ink-2">{priceLabel(p.price, currency)}</span> : <Tag>{priceLabel(p.price, null)}</Tag> : null}
         </span>
         {dish ? (

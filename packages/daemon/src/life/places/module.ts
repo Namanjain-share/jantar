@@ -21,6 +21,14 @@
  *   tried, in the same transaction; deleting a café deletes its visits in
  *   one transaction. At most LIFE_LIMITS.placeVisits across every café.
  *
+ * v0.12 People (P4, spec 5.2): the owner's module reads his own cafés and
+ * every space he shares (a Shared chip and `?space=` filter on his list);
+ * `inShared(space, by)` is a member's module over one shared space. On a
+ * shared café either person edits, rates and changes dishes (last edit
+ * wins, "Edited by"); each logs and changes only their own visits (C39); a
+ * delete by either tells the other (core.shared). He can share a café of his
+ * and move one he added back to just him; one she added stays shared.
+ *
  * Empty optional text (an area or notes of only spaces) is left out rather
  * than stored. Caps answer conflict with a fixed sentence; every write ends
  * with `core.changed()`; replies carry ids only. No pings, no part of Today.
@@ -60,6 +68,11 @@ export const PLACES_SENTENCES = {
   visitNone: 'That visit is gone.',
   visitsFull: `You have ${LIFE_LIMITS.placeVisits.toLocaleString('en')} café visits. Delete one to add another.`,
   visitFuture: 'A visit can be today or earlier.',
+  // v0.12 People (P4)
+  noSpace: 'No such shared list.',
+  stayShared: 'They added this café, so it stays shared.',
+  memberShared: 'Cafés you add here are shared.',
+  notYourVisit: 'Only the person who logged a visit can change or delete it.',
 } as const;
 
 /** The highest rating among the rated dishes, or null when none is rated. */
@@ -235,23 +248,62 @@ function matches(p: Place, q: PlacesQuery, tags: readonly string[]): boolean {
   return true;
 }
 
+/** What a module reads and writes: the owner's own and shared spaces, or one shared space as a member. */
+interface PlacesScope {
+  read(): string[];
+  /** Where a member's new café goes (the owner names it per café). */
+  write: string;
+  /** Who writes ('' the owner, or the member's id). */
+  by: string;
+  member: boolean;
+}
+
+/** Every shared space (the owner is a member of each). */
+function sharedSpaces(core: LifeCore): string[] {
+  try {
+    return (core.db.prepare('SELECT id FROM shared_spaces ORDER BY id').all() as { id: string }[]).map((r) => r.id);
+  } catch {
+    return [];
+  }
+}
+
 export function buildPlacesModule(core: LifeCore, deps: LifeModuleDeps): PlacesModule {
-  const repo = new PlacesRepo(core, deps.ctx.log.child({ part: 'life', module: 'places' }));
+  const log = deps.ctx.log.child({ part: 'life', module: 'places' });
+  return makePlaces(core, log, { read: () => ['', ...sharedSpaces(core)], write: '', by: '', member: false });
+}
+
+function makePlaces(core: LifeCore, log: LifeModuleDeps['ctx']['log'], scope: PlacesScope): PlacesModule {
+  const repo = new PlacesRepo(core, log, scope);
 
   const valid = (p: Place): boolean => PlaceSchema.safeParse(p).success;
+  const isShared = (space: string | undefined): space is string => space !== undefined && space !== '';
+  const told = (space: string | undefined, kind: 'place' | 'visit', action: 'added' | 'changed' | 'deleted', title?: string) => {
+    if (isShared(space)) core.shared?.({ space, by: scope.by, kind, action, ...(title ? { title } : {}) });
+  };
 
-  const save = (p: Place): LifeResult => {
+  const save = (p: Place, space?: string): LifeResult => {
     if (!valid(p)) return fail('invalid_request', PLACES_SENTENCES.invalid);
     repo.put(p);
     core.changed();
+    told(space, 'place', 'changed', p.name);
     return { ok: true, value: true };
+  };
+
+  /** "Edited by" on a shared café: whoever wrote last, and when. */
+  const stamped = (p: Place, space: string | undefined, now: string): Place => {
+    const { editedBy: _b, editedAt: _a, by: _by, space: _s, ...rest } = p;
+    return isShared(space) ? { ...rest, editedBy: scope.by, editedAt: now } : rest;
   };
 
   return {
     name: 'places',
 
+    inShared(space: string, by: string): PlacesModule {
+      return makePlaces(core, log, { read: () => [space], write: space, by, member: true });
+    },
+
     list(q: PlacesQuery) {
-      const all = repo.all();
+      const all = repo.all().filter((p) => scope.member || !q.space || q.space === 'all' || (q.space === 'shared' ? isShared(p.space) : !isShared(p.space)));
       const segment = all.filter((p) => q.filter === 'all' || (q.filter === 'tried' ? p.tried : !p.tried));
       const tags = normalizePlaceTags((q.tags ?? '').split(',').map(placeTagKey));
       const places = segment.filter((p) => matches(p, q, tags));
@@ -269,16 +321,32 @@ export function buildPlacesModule(core: LifeCore, deps: LifeModuleDeps): PlacesM
     },
 
     create(body: PlaceBody, _actor: Actor) {
-      if (repo.count() >= LIFE_LIMITS.places) return fail('conflict', PLACES_SENTENCES.full);
+      const { space: asked, ...fields } = body;
+      const space = scope.member ? scope.write : (asked ?? '');
+      if (!scope.read().includes(space)) return fail('invalid_request', PLACES_SENTENCES.noSpace);
+      if (repo.count(space) >= LIFE_LIMITS.places) return fail('conflict', PLACES_SENTENCES.full);
       const now = core.now().toISOString();
-      const place = shape({ ...body, id: core.newId(), tried: body.tried ?? false, dishes: body.dishes ?? [], createdAt: now, updatedAt: now });
-      const r = save(place);
-      return r.ok ? { ok: true, value: { id: place.id } } : r;
+      const place = shape({ ...fields, id: core.newId(), tried: fields.tried ?? false, dishes: fields.dishes ?? [], createdAt: now, updatedAt: now });
+      if (!valid(place)) return fail('invalid_request', PLACES_SENTENCES.invalid);
+      repo.insert(place, space, scope.by);
+      core.changed();
+      told(space, 'place', 'added', place.name);
+      return { ok: true, value: { id: place.id } };
     },
 
     update(id: string, patch: PlacePatch, _actor: Actor) {
       const p = repo.get(id);
       if (!p) return fail('not_found', PLACES_SENTENCES.none);
+      const from = p.space ?? '';
+      let to = from;
+      if (patch.space !== undefined && patch.space !== from) {
+        // Share or unshare (spec 5.2): his own café to shared; back to him only when he added it.
+        if (scope.member) return fail('invalid_request', PLACES_SENTENCES.memberShared);
+        if (!scope.read().includes(patch.space)) return fail('invalid_request', PLACES_SENTENCES.noSpace);
+        if (isShared(from) && patch.space === '' && p.by !== '') return fail('conflict', PLACES_SENTENCES.stayShared);
+        if (repo.count(patch.space) >= LIFE_LIMITS.places) return fail('conflict', PLACES_SENTENCES.full);
+        to = patch.space;
+      }
       // ratings merge per key: a key given as null clears it, one left out keeps it.
       let ratings = p.ratings;
       if (patch.ratings) {
@@ -289,7 +357,8 @@ export function buildPlacesModule(core: LifeCore, deps: LifeModuleDeps): PlacesM
         }
         ratings = merged as PlaceRatings;
       }
-      return save(
+      const now = core.now().toISOString();
+      const next = stamped(
         shape({
           ...p,
           name: patch.name ?? p.name,
@@ -303,40 +372,58 @@ export function buildPlacesModule(core: LifeCore, deps: LifeModuleDeps): PlacesM
           price: patched(patch.price, p.price),
           again: patched(patch.again, p.again),
           tags: patch.tags ?? p.tags,
-          updatedAt: core.now().toISOString(),
+          updatedAt: now,
         }),
+        to,
+        now,
       );
+      if (to === from) return save(next, from);
+      if (!valid(next)) return fail('invalid_request', PLACES_SENTENCES.invalid);
+      core.db.tx(() => {
+        repo.put(next);
+        repo.move(id, from, to);
+      });
+      core.changed();
+      told(isShared(to) ? to : from, 'place', 'changed', next.name);
+      return { ok: true, value: true };
     },
 
     remove(id: string, _actor: Actor) {
-      if (!repo.deletePlaceAndVisits(id)) return fail('not_found', PLACES_SENTENCES.none);
+      const p = repo.get(id);
+      if (!p || !repo.deletePlaceAndVisits(id)) return fail('not_found', PLACES_SENTENCES.none);
       core.changed();
+      told(p.space, 'place', 'deleted', p.name);
       return { ok: true, value: true };
     },
 
     visitAdd(placeId: string, body: PlaceVisitBody, _actor: Actor) {
       const place = repo.get(placeId);
       if (!place) return fail('not_found', PLACES_SENTENCES.none);
+      const space = place.space ?? '';
       const day = body.day ?? core.today();
       if (day > core.today()) return fail('invalid_request', PLACES_SENTENCES.visitFuture);
-      if (repo.visitCount() >= LIFE_LIMITS.placeVisits) return fail('conflict', PLACES_SENTENCES.visitsFull);
+      if (repo.visitCount(space) >= LIFE_LIMITS.placeVisits) return fail('conflict', PLACES_SENTENCES.visitsFull);
       const now = core.now().toISOString();
       const visit = visitShape({ ...body, id: core.newId(), placeId, day, createdAt: now, updatedAt: now });
       if (!PlaceVisitSchema.safeParse(visit).success) return fail('invalid_request', PLACES_SENTENCES.invalid);
-      const tried = place.tried ? null : shape({ ...place, tried: true, updatedAt: now });
+      const tried = place.tried ? null : stamped(shape({ ...place, tried: true, updatedAt: now }), space, now);
       if (tried && !valid(tried)) return fail('invalid_request', PLACES_SENTENCES.invalid);
       core.db.tx(() => {
-        repo.visitPut(visit);
+        repo.visitPut(visit, space, scope.by);
         if (tried) repo.put(tried);
       });
       core.changed();
+      told(space, 'visit', 'added', place.name);
       return { ok: true, value: { id: visit.id } };
     },
 
     visitUpdate(placeId: string, visitId: string, patch: PlaceVisitPatch, _actor: Actor) {
-      if (!repo.get(placeId)) return fail('not_found', PLACES_SENTENCES.none);
+      const place = repo.get(placeId);
+      if (!place) return fail('not_found', PLACES_SENTENCES.none);
       const v = repo.visitGet(placeId, visitId);
       if (!v) return fail('not_found', PLACES_SENTENCES.visitNone);
+      // C39: each person changes only their own visits.
+      if (isShared(place.space) && (v.by ?? '') !== scope.by) return fail('conflict', PLACES_SENTENCES.notYourVisit);
       const day = patch.day ?? v.day;
       if (day > core.today()) return fail('invalid_request', PLACES_SENTENCES.visitFuture);
       const next = visitShape({
@@ -349,15 +436,21 @@ export function buildPlacesModule(core: LifeCore, deps: LifeModuleDeps): PlacesM
         updatedAt: core.now().toISOString(),
       });
       if (!PlaceVisitSchema.safeParse(next).success) return fail('invalid_request', PLACES_SENTENCES.invalid);
-      repo.visitPut(next);
+      repo.visitPut(next, place.space ?? '', scope.by);
       core.changed();
+      told(place.space, 'visit', 'changed', place.name);
       return { ok: true, value: true };
     },
 
     visitRemove(placeId: string, visitId: string, _actor: Actor) {
-      if (!repo.get(placeId)) return fail('not_found', PLACES_SENTENCES.none);
+      const place = repo.get(placeId);
+      if (!place) return fail('not_found', PLACES_SENTENCES.none);
+      const v = repo.visitGet(placeId, visitId);
+      if (!v) return fail('not_found', PLACES_SENTENCES.visitNone);
+      if (isShared(place.space) && (v.by ?? '') !== scope.by) return fail('conflict', PLACES_SENTENCES.notYourVisit);
       if (!repo.visitDelete(placeId, visitId)) return fail('not_found', PLACES_SENTENCES.visitNone);
       core.changed();
+      told(place.space, 'visit', 'changed', place.name);
       return { ok: true, value: true };
     },
 

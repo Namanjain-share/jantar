@@ -132,6 +132,24 @@ const REVIEWED_PERSON_ROUTES = [
   'personChatStatus',
   'personChatTurnDelete',
   'personChatUndo',
+  // P4: shared cafés and lists (always both people's: no area).
+  'personListCreate',
+  'personListDelete',
+  'personListItemAdd',
+  'personListItemDelete',
+  'personListItemTick',
+  'personListItemUpdate',
+  'personListItems',
+  'personListUpdate',
+  'personLists',
+  'personPlaceCreate',
+  'personPlaceDelete',
+  'personPlaceGet',
+  'personPlaceUpdate',
+  'personPlaces',
+  'personVisitCreate',
+  'personVisitDelete',
+  'personVisitUpdate',
 ];
 
 /** T1: his People routes, reviewed: scope, ctl, localOnly, area. */
@@ -185,7 +203,21 @@ const REVIEWED_PEOPLE_OWNER_ROUTES: Record<string, { scope: string; ctl: boolean
   // P3: his read-only view of her chat (GET only, see.chat).
   personOwnerChat: { scope: 'control', ctl: false, localOnly: false, area: 'chat' },
   personOwnerChatPhoto: { scope: 'control', ctl: false, localOnly: false, area: 'chat' },
+  // P4: the lists he shares with her (no area: both people's), and Assign to her (assign.todos).
+  personOwnerListCreate: { scope: 'control', ctl: false, localOnly: false, area: null },
+  personOwnerListDelete: { scope: 'control', ctl: false, localOnly: false, area: null },
+  personOwnerListItemAdd: { scope: 'control', ctl: false, localOnly: false, area: null },
+  personOwnerListItemAssign: { scope: 'control', ctl: false, localOnly: false, area: 'todos' },
+  personOwnerListItemDelete: { scope: 'control', ctl: false, localOnly: false, area: null },
+  personOwnerListItemTick: { scope: 'control', ctl: false, localOnly: false, area: null },
+  personOwnerListItemUpdate: { scope: 'control', ctl: false, localOnly: false, area: null },
+  personOwnerListItems: { scope: 'control', ctl: false, localOnly: false, area: null },
+  personOwnerListUpdate: { scope: 'control', ctl: false, localOnly: false, area: null },
+  personOwnerLists: { scope: 'control', ctl: false, localOnly: false, area: null },
 };
+
+/** M9 (P4): the `:pid` routes of the lists both people share: no agreement area gates them (spec 1.3.3). */
+const SHARED_LISTS = new Set(['personOwnerLists', 'personOwnerListCreate', 'personOwnerListUpdate', 'personOwnerListDelete', 'personOwnerListItems', 'personOwnerListItemAdd', 'personOwnerListItemUpdate', 'personOwnerListItemDelete', 'personOwnerListItemTick']);
 
 /** M9: the `:pid` routes about the person, not her data (no area). */
 const ABOUT_THE_PERSON = new Set(['personGet', 'personOwnerActivity', 'personPropose', 'personOwnerDevices', 'personOwnerDeviceRevoke', 'personInviteLink', 'personColor', 'personOffer', 'personModules', 'personInvite', 'personInviteRevoke', 'personRemove']);
@@ -227,7 +259,8 @@ describe('M9: route metadata', () => {
     for (const [k, def] of person) {
       // Her account routes have none; the mirror's area is its `:area` parameter.
       // P2: alerts are always on (not an area), and the sharing check-in is about consent.
-      const account = /^person(Join|Me|Agreement|Pause|Resume|Leave|Export|Activity|Prefs|Device|Push|Events|Mirror|Alert|SharingCheckin)/.test(k);
+      // P4: shared cafés and lists are both people's, never an area.
+      const account = /^person(Join|Me|Agreement|Pause|Resume|Leave|Export|Activity|Prefs|Device|Push|Events|Mirror|Alert|SharingCheckin|Place|Visit|List)/.test(k);
       if (!account) expect(def.area, k).toBeDefined();
     }
   });
@@ -242,7 +275,7 @@ describe('M9: route metadata', () => {
 
   it('a :pid route without an area is one about the person', () => {
     for (const [k, def] of people) {
-      if (def.path.includes(':pid') && def.area === undefined) expect(ABOUT_THE_PERSON.has(k), k).toBe(true);
+      if (def.path.includes(':pid') && def.area === undefined) expect(ABOUT_THE_PERSON.has(k) || SHARED_LISTS.has(k), k).toBe(true);
     }
   });
 
