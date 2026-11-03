@@ -100,7 +100,7 @@ function CardBody({ item }: { item: DeskItem }) {
   }
 }
 
-function QueueCard({ item, index }: { item: DeskItem; index: number }) {
+export function QueueCard({ item, index }: { item: DeskItem; index: number }) {
   const r = item.row;
   return (
     <article className="rounded-dock border border-line bg-raised px-20 py-16" aria-label={`${item.word}: ${r.folder}`}>

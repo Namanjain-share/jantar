@@ -175,7 +175,10 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const layout = useLayout();
   const phone = layout.chrome === 'phone';
   // The back button shows where the ledger is not beside the session (the board's SplitPane is single).
-  const split = useSplit()?.split ?? false;
+  const splitCtx = useSplit();
+  const split = splitCtx?.split ?? false;
+  // 0.11 (c25): beside the phone the back button calls the ledger over the session ("‹ Sessions").
+  const ledgerOver = splitCtx?.overlay;
   const state = useApp((s) => s.state);
   const conn = useApp((s) => s.conn.status);
   const offline = conn === 'offline';
@@ -524,6 +527,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       {...(machine !== null ? { showOn: raisable ? machine : null } : {})}
       onBack={() => navigate('/')}
       back={!phone && !split}
+      {...(ledgerOver ? { onSessions: () => ledgerOver.set(!ledgerOver.open), sessionsOpen: ledgerOver.open } : {})}
       files={filesTab}
     />
   );

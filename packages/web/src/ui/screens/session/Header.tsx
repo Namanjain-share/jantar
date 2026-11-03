@@ -109,10 +109,13 @@ export interface HeaderProps {
   back?: boolean;
   /** The Files tab (v0.3), when Files is on. */
   files?: { count: number } | null;
+  /** 0.11 (c25): the back button reads "Sessions" and calls the ledger over the session instead of leaving it. */
+  onSessions?: (() => void) | undefined;
+  sessionsOpen?: boolean;
 }
 
 export function Header(props: HeaderProps) {
-  const { sid, folder, name, glyph, dashed, phone, view, onView, step, onStep, onShowOnMac, showOnMacBusy, canShowOnMac, showOn, onBack, back, files } = props;
+  const { sid, folder, name, glyph, dashed, phone, view, onView, step, onStep, onShowOnMac, showOnMacBusy, canShowOnMac, showOn, onBack, back, files, onSessions, sessionsOpen } = props;
   const word = GLYPH_WORD[glyph];
   const showLabel = `Show on ${showOn ?? 'Mac'}`;
   if (phone) {
@@ -141,7 +144,12 @@ export function Header(props: HeaderProps) {
   }
   return (
     <header className={clsx('flex h-pane flex-none items-center border-b border-line pr-16', back ? 'pl-16' : 'pl-32')}>
-      {back ? (
+      {back && onSessions ? (
+        <Button variant="text" className="-ml-8 mr-4 flex-none gap-2 px-8" aria-expanded={Boolean(sessionsOpen)} onClick={onSessions}>
+          <CaretLeftIcon size={16} aria-hidden="true" />
+          Sessions
+        </Button>
+      ) : back ? (
         <IconButton aria-label="Back to the board" onClick={onBack} className="mr-8">
           <CaretLeftIcon size={20} />
         </IconButton>

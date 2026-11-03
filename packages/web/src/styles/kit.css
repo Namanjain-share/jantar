@@ -125,6 +125,41 @@
     border-right: 0;
     background: none;
   }
+  /* The list over an open item (single mode, Board and Chat): its column's width at the pane's left,
+     on --surface, over a scrim that covers the rest (kit/SplitPane.tsx overlay). */
+  .split {
+    position: relative;
+  }
+  .split[data-over] > .split-list {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    z-index: 20;
+    width: min(var(--list-w), 100%);
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .split[data-over][data-list='history'] > .split-list {
+    width: min(var(--history-w), 100%);
+  }
+  /* Board's waiting cards in single mode (board/Queue.tsx): one line in a window under 600 tall. */
+  .queue-line {
+    display: none;
+  }
+  @media (max-height: 599px) {
+    .queue-line {
+      display: flex;
+    }
+    .queue-cards {
+      display: none;
+    }
+  }
+  .split-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 19;
+    background: var(--scrim);
+  }
 
   /* Status glyphs, strip cells, meters: colour changes ease over 160 ms. */
   .glyph rect {

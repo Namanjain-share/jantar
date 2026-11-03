@@ -55,7 +55,10 @@ export function Ledger({
   selectedSid,
   unseen,
   onOpen,
+  head,
 }: {
+  /** 0.11 (c25): above the rows, scrolling with them (Board's waiting cards in single mode). */
+  head?: ReactNode;
   groups: readonly GroupModel[];
   ceiling: number;
   ground: 'surface' | 'bg';
@@ -124,6 +127,7 @@ export function Ledger({
   return (
     <m.div ref={list} layoutScroll className="no-scrollbar relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
       <GhostRows ground={ground} />
+      {head}
       {items}
       {launch ? (
         <p id={hintId} className="sr-only">

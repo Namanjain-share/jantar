@@ -4,7 +4,8 @@ import { emptyState } from '@jantar/protocol';
 import { STATE_CACHE_KEY, hydrateStateCache, readStateCache, saveStateCache, wireStateCache } from '../src/ui/screens/board/cache.js';
 import { replyLine, runwaySpan, span } from '../src/ui/screens/board/model.js';
 import { createAppStore } from '../src/store.js';
-import { NOW, T0, account, alert, emit, iso, pending, renderApp, session, stateWith } from './helpers.js';
+import { layoutAt } from '../src/ui/shell/layout.js';
+import { NOW, T0, account, alert, emit, fakeApi, iso, pending, renderApp, session, stateWith } from './helpers.js';
 
 const rows = () => Array.from(document.querySelectorAll<HTMLElement>('a[data-sid]'));
 const order = () => rows().map((r) => r.dataset.sid);
@@ -354,5 +355,83 @@ describe('board cache', () => {
     wireStateCache(store);
     store.getState().setConn({ status: 'unauthorized' });
     expect(localStorage.getItem(`jantar:${STATE_CACHE_KEY}`)).toBeNull();
+  });
+});
+
+describe('0.11 c25: the waiting queue in single mode, and the ledger over a session', () => {
+  const touch = (width: number) => layoutAt(width, { coarse: true });
+  const waiting = () =>
+    stateWith({
+      sessions: [
+        session('quest', { statusSince: iso(4000) }),
+        session('infra', { statusSince: iso(3000) }),
+        session('cli', { statusSince: iso(2000) }),
+        session('term', { status: 'waiting', statusSince: iso(40_000) }),
+      ],
+      pending: [
+        question('quest', { createdAt: iso(10_000) }),
+        pending('infra', { kind: 'plan', tool: 'ExitPlanMode', input: { plan: '3 to add, 1 to change.\n1. Add a bucket' }, createdAt: iso(20_000) }),
+        pending('cli', { createdAt: iso(30_000) }),
+      ],
+    });
+
+  it('answers the oldest Question in place: a tap selects, Send answer sends', async () => {
+    const api = fakeApi();
+    const { history } = renderApp({ state: waiting(), api, layout: touch(820) });
+    const queue = screen.getByRole('region', { name: 'Waiting on you' });
+    const postgres = await within(queue).findByRole('radio', { name: /Postgres/ });
+    const send = within(queue).getByRole('button', { name: 'Send answer' }) as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    fireEvent.click(postgres);
+    expect(api.decide).not.toHaveBeenCalled();
+    expect(send.disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(send);
+    });
+    expect(api.decide).toHaveBeenCalledWith(expect.any(String), { behavior: 'allow', answers: { 'Which database?': 'Postgres' } });
+    expect(history.entries).toEqual(['/']);
+    expect(within(queue).getByRole('link', { name: /Open quest/ }).getAttribute('href')).toBe('/s/quest');
+  });
+
+  it('Plan, Permission and a terminal question open the session; the Desk has the cards at a split width', async () => {
+    const r = renderApp({ state: waiting(), layout: touch(820) });
+    const queue = screen.getByRole('region', { name: 'Waiting on you' });
+    await within(queue).findByRole('radio', { name: /Postgres/ });
+    const cards = within(queue).getAllByRole('article').filter((a) => a.getAttribute('aria-label'));
+    expect(within(queue).getByRole('link', { name: 'Review plan' }).getAttribute('href')).toBe('/s/infra');
+    expect(within(queue).getByRole('link', { name: 'Review command' }).getAttribute('href')).toBe('/s/cli');
+    expect(cards.length).toBeGreaterThanOrEqual(2);
+    expect(within(queue).getByText('1 more waiting in the ledger below.')).toBeTruthy();
+    r.unmount();
+    // A terminal dialog is never answered here.
+    renderApp({ state: stateWith({ sessions: [session('term', { status: 'waiting', statusSince: iso(40_000) })] }), layout: touch(820) });
+    const q2 = screen.getByRole('region', { name: 'Waiting on you' });
+    expect(within(q2).queryByRole('radio')).toBeNull();
+    expect(within(q2).getByRole('link', { name: 'Answer' }).getAttribute('href')).toBe('/s/term');
+  });
+
+  it('no queue on the phone or beside the Desk', () => {
+    const a = renderApp({ state: waiting(), layout: layoutAt(390, { coarse: true }) });
+    expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull();
+    a.unmount();
+    renderApp({ state: waiting(), layout: layoutAt(1440) });
+    expect(within(screen.getByRole('region', { name: 'Desk' })).getByRole('heading', { name: 'Waiting on you' })).toBeTruthy();
+    expect(screen.getAllByRole('heading', { name: 'Waiting on you' })).toHaveLength(1);
+  });
+
+  it('a session full width calls the ledger over it with "Sessions"; a row opens that session and puts it away', async () => {
+    const { history } = renderApp({ state: waiting(), path: '/s/infra', layout: touch(820) });
+    expect(screen.queryByRole('region', { name: 'Ledger' })).toBeNull();
+    const sessions = await screen.findByRole('button', { name: 'Sessions' });
+    fireEvent.click(sessions);
+    const ledger = screen.getByRole('region', { name: 'Ledger' });
+    expect(sessions.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(within(ledger).getAllByRole('link').find((a) => a.getAttribute('data-sid') === 'cli')!);
+    expect(history.entries.at(-1)).toBe('/s/cli');
+    expect(screen.queryByRole('region', { name: 'Ledger' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Sessions' }));
+    expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: 'Ledger' })).toBeNull();
   });
 });

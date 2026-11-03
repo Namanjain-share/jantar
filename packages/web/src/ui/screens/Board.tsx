@@ -33,6 +33,7 @@ import { GhostRows } from './board/GhostRow.js';
 import { Ledger } from './board/Ledger.js';
 import { groupRows, ledgerGroups, type RowModel } from './board/model.js';
 import { NewButton, WithNewButton } from './board/NewButton.js';
+import { Queue } from './board/Queue.js';
 import { RowBody } from './board/Row.js';
 import { useSeen } from './board/seen.js';
 
@@ -93,8 +94,11 @@ export function Board() {
   const route = useRoute();
   const navigate = useNavigate();
   const phone = useLayout().chrome === 'phone';
-  // The --surface column beside a session or the Desk; the page's ground when the ledger is the page.
-  const split = useSplit()?.split ?? false;
+  // The --surface column beside a session or the Desk (or over a session, c25); the page's ground when the ledger is the page.
+  const splitCtx = useSplit();
+  const split = (splitCtx?.split ?? false) || Boolean(splitCtx?.overlay?.open);
+  // 0.11 (c25): a single-mode Board beside the phone (an iPad in portrait) has the waiting cards above its ledger.
+  const queue = !phone && !(splitCtx?.split ?? false) && !splitCtx?.overlay;
   const now = useNow(10_000);
   const ceiling = useCeiling();
 
@@ -156,7 +160,7 @@ export function Board() {
           }}
         />
       </WithNewButton>
-      <Ledger groups={groups} ceiling={ceiling} ground={ground} selectedSid={selectedSid} unseen={unseen} onOpen={open} />
+      <Ledger groups={groups} ceiling={ceiling} ground={ground} selectedSid={selectedSid} unseen={unseen} onOpen={open} head={queue && needs.length ? <Queue /> : null} />
     </section>
   );
 }

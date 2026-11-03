@@ -258,7 +258,8 @@ describe('0.11 c08: one shell tree', () => {
     // 820: the Mac's chrome, the pane too narrow for the ledger beside the session.
     act(() => layout.setState(layoutAt(820), true));
     expect(screen.queryByRole('region', { name: 'Ledger' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Back to the board' })).toBeTruthy();
+    // c25: its back button calls the ledger over the session.
+    expect(screen.getByRole('button', { name: 'Sessions' })).toBeTruthy();
     expect(screen.getByLabelText('Prompt for Claude')).toBe(area);
     // 390: the phone's chrome around the same place.
     act(() => layout.setState(layoutAt(390), true));

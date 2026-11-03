@@ -41,8 +41,14 @@ export interface HistoryProps {
   onChanged: () => void;
 }
 
-export function History({ turns, nowMs, offline, picked, earlier, loadingEarlier, onEarlier, onPick, onChanged }: HistoryProps) {
-  const wide = useSplit()?.wide ?? false;
+export function History({ turns, nowMs, offline, picked, earlier, loadingEarlier, onEarlier, onPick: pickTurn, onChanged }: HistoryProps) {
+  const split = useSplit();
+  const wide = split?.wide ?? false;
+  // 0.11 (c25): over the thread ("‹ Days"), a pick goes to the turn and puts the days away.
+  const onPick = (t: ChatTurn) => {
+    pickTurn(t);
+    split?.overlay?.set(false);
+  };
   const searchId = useId();
   const [q, setQ] = useState('');
   const [tab, setTab] = useState<Tab>('days');

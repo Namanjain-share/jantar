@@ -27,10 +27,17 @@
  *   as 0.10 did).
  * - Beside an open item the list keeps that item's row (aria-current) in
  *   view: opening one from a wide list lands on its row.
- *   SplitContext gives what the panes inside need: split, wide, selected and
- *   close (the Close button a detail header shows in split mode).
+ * - `overlay` (Board and Chat, D8; build plan c25): in single mode beside
+ *   the phone, the open item takes the pane and the list can be called over
+ *   its left side (340, Chat's days 300) with a scrim over the rest:
+ *   "‹ Sessions", "‹ Days". A tap on the scrim, Esc or opening another item
+ *   puts it away. The list renders in its own section, so its scroll comes
+ *   back from the Map as it does when single mode shows it.
+ *   SplitContext gives what the panes inside need: split, wide, selected,
+ *   close (the Close button a detail header shows in split mode) and the
+ *   overlay's state while one can be called.
  */
-import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useKey } from '../shell/keys.js';
 import { useLayout, type Layout } from '../shell/layout.js';
 import { usePaneScroll } from './Pane.js';
@@ -43,6 +50,8 @@ export interface SplitState {
   wide: boolean;
   selected: boolean;
   close?: (() => void) | undefined;
+  /** Single mode with an item open and an overlay list (Board, Chat): whether it shows, and the way to show or put it away. */
+  overlay?: { open: boolean; set: (open: boolean) => void } | undefined;
 }
 
 export const SplitContext = createContext<SplitState | null>(null);
@@ -120,9 +129,25 @@ export interface SplitPaneProps {
   noList?: boolean;
   /** In single mode the open item takes the pane (default); false keeps the list there instead. */
   alone?: boolean;
+  /** Single mode beside the phone: the list can be called over the open item (Board, Chat; D8). */
+  overlay?: boolean;
 }
 
-export function SplitPane({ name, list, detail, selection, empty = 'fill', listLabel, detailLabel, listWidth = 'list', onClose, escape = true, noList = false, alone = true }: SplitPaneProps) {
+export function SplitPane({
+  name,
+  list,
+  detail,
+  selection,
+  empty = 'fill',
+  listLabel,
+  detailLabel,
+  listWidth = 'list',
+  onClose,
+  escape = true,
+  noList = false,
+  alone = true,
+  overlay = false,
+}: SplitPaneProps) {
   const layout = useLayout();
   const box = useRef<HTMLDivElement>(null);
   const listBox = useRef<HTMLElement>(null);
@@ -148,14 +173,20 @@ export function SplitPane({ name, list, detail, selection, empty = 'fill', listL
   const mode = layout.chrome === 'phone' ? { split: false, wide: false } : (measured ?? guessSplit(layout));
   const selected = detail !== null && detail !== undefined && (mode.split || alone);
   const fill = empty === 'fill';
-  const showList = (mode.split || !selected) && !noList;
+  // The list over the open item (single mode beside the phone): put away when another item opens.
+  const [over, setOver] = useState(false);
+  const canOver = overlay && !mode.split && selected && !noList && layout.chrome !== 'phone';
+  const shownOver = canOver && over;
+  useEffect(() => setOver(false), [selection]);
+  useKey('Escape', () => setOver(false), shownOver && escape);
+  const showList = (mode.split || !selected || shownOver) && !noList;
   const showDetail = selected || (mode.split && !fill);
   usePaneScroll(listBox, `${name}:list`, showList);
   usePaneScroll(detailBox, `${name}:detail:${selection ?? ''}`, showDetail);
   useCurrentInView(listBox, mode.split && selected, selection);
   useKey('Escape', () => onClose?.(), mode.split && selected && Boolean(onClose) && escape);
 
-  const ctx: SplitState = { split: mode.split, wide: mode.wide, selected, close: onClose };
+  const ctx: SplitState = { split: mode.split, wide: mode.wide, selected, close: onClose, overlay: canOver ? { open: shownOver, set: setOver } : undefined };
   return (
     <SplitContext.Provider value={ctx}>
       <div
@@ -166,13 +197,14 @@ export function SplitPane({ name, list, detail, selection, empty = 'fill', listL
         data-fill={mode.split && fill && !selected ? '' : undefined}
         data-nolist={noList ? '' : undefined}
         data-list={listWidth}
+        data-over={shownOver ? '' : undefined}
       >
         <section
           ref={listBox}
           key={`list:${name}`}
-          aria-label={mode.split ? listLabel : undefined}
+          aria-label={mode.split || shownOver ? listLabel : undefined}
           hidden={!showList}
-          className="split-list @container/pane"
+          className={shownOver ? 'split-list shadow-float @container/pane' : 'split-list @container/pane'}
         >
           {showList ? list : null}
         </section>
@@ -185,6 +217,8 @@ export function SplitPane({ name, list, detail, selection, empty = 'fill', listL
         >
           {showDetail ? (selected ? detail : empty) : null}
         </section>
+        {/* The scrim beside the list over the item: a tap puts the list away (its own button is the named control). */}
+        {shownOver ? <div aria-hidden="true" className="split-scrim animate-fade" onClick={() => setOver(false)} /> : null}
       </div>
     </SplitContext.Provider>
   );

@@ -28,6 +28,7 @@
  * puts its day in the address (?day=). Below 800 the thread is alone, as
  * before.
  */
+import { CaretLeftIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { ChatTurn } from '@jantar/protocol';
 import { useDraft } from '../../../lib/drafts.js';
@@ -167,6 +168,7 @@ export function Chat({ day }: ChatProps = {}) {
   const threadPane = (side: boolean) => (
     <div className="flex min-h-full flex-col animate-enter">
       <header className="flex min-h-44 items-center gap-12 px-16 pb-8 pt-16 desk:pt-24">
+        <DaysButton />
         <h1 data-display className="min-w-0 flex-1 truncate type-display text-ink">
           Chat
         </h1>
@@ -284,6 +286,7 @@ export function Chat({ day }: ChatProps = {}) {
           />
         }
         selection="thread"
+        overlay
         listLabel="Days"
         detailLabel="Thread"
       />
@@ -322,6 +325,18 @@ function ThreadAndSide({ thread, empty, threadRef, side }: { thread: (side: bool
       </div>
       {beside ? side : null}
     </div>
+  );
+}
+
+/** 0.11 (c25): "‹ Days" where the days aren't beside the thread (a pane under 800 beside the phone): calls them over it. */
+function DaysButton() {
+  const over = useSplit()?.overlay;
+  if (!over) return null;
+  return (
+    <Button variant="text" className="-ml-8 flex-none gap-2 px-8" aria-expanded={over.open} onClick={() => over.set(!over.open)}>
+      <CaretLeftIcon size={16} aria-hidden="true" />
+      Days
+    </Button>
   );
 }
 

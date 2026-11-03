@@ -145,6 +145,13 @@ What changed for people who use Jantar, newest first. Versions before
   over the screen. The window controls' corner is left free. Today's strip
   of places shows whenever the nav doesn't list them. The sidebar loads on
   its own, so a Mac or a phone never downloads it.
+- **Board in portrait** (an iPad, or a Board narrower than about 800 px
+  beside the phone): the sessions waiting on you sit above the list, oldest
+  first. A question with one set of options can be answered there (a tap
+  picks, Send answer sends); a plan, a command or a question in the
+  terminal opens its session. A session then fills the pane, and
+  **‹ Sessions** shows the list over it (a tap on a session, outside it or
+  Esc puts it away); in Chat, **‹ Days** does the same for the days.
 
 ## 0.11.0 (3 November 2026)
 

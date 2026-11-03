@@ -341,6 +341,7 @@ export function Shell() {
         detail={route.name === 'session' ? screen : null}
         selection={route.name === 'session' ? route.sid : undefined}
         empty={<Desk />}
+        overlay
         listLabel="Ledger"
         detailLabel="Detail"
         onClose={() => navigate('/')}

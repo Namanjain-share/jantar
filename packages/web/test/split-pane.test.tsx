@@ -246,3 +246,47 @@ describe('scroll and keys', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('c25: the list over an open item (Board, Chat; D8)', () => {
+  function Opener() {
+    const over = useSplit()?.overlay;
+    return over ? (
+      <button type="button" aria-expanded={over.open} onClick={() => over.set(!over.open)}>
+        Items
+      </button>
+    ) : (
+      <p>no overlay</p>
+    );
+  }
+  it('single mode beside the phone: the item keeps its node while the list shows over it; the scrim and Esc put it away', () => {
+    const layout = createLayoutStore(layoutAt(820, { coarse: true }));
+    const { container, again } = show(layout, { overlay: true, selection: 'a', detail: <><Opener /><Item id="a" /></> });
+    expect(screen.queryByRole('list', { name: 'Items' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Note on a'), { target: { value: 'typed' } });
+    const field = screen.getByLabelText('Note on a');
+    fireEvent.click(screen.getByRole('button', { name: 'Items' }));
+    expect(screen.getByRole('list', { name: 'Items' })).toBeTruthy();
+    expect(container.querySelector('.split')?.hasAttribute('data-over')).toBe(true);
+    expect(screen.getByLabelText('Note on a')).toBe(field);
+    expect((field as HTMLInputElement).value).toBe('typed');
+    fireEvent.click(container.querySelector('.split-scrim')!);
+    expect(screen.queryByRole('list', { name: 'Items' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Items' }));
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByRole('list', { name: 'Items' })).toBeNull();
+    // Another item puts it away.
+    fireEvent.click(screen.getByRole('button', { name: 'Items' }));
+    again({ overlay: true, selection: 'b', detail: <><Opener /><Item id="b" /></> });
+    expect(screen.queryByRole('list', { name: 'Items' })).toBeNull();
+  });
+  it('none on the phone, none in split mode, none without `overlay`', () => {
+    const phone = show(createLayoutStore(layoutAt(390, { coarse: true })), { overlay: true, selection: 'a', detail: <Opener /> });
+    expect(screen.getByText('no overlay')).toBeTruthy();
+    phone.unmount();
+    const wide = show(createLayoutStore(layoutAt(1440)), { overlay: true, selection: 'a', detail: <Opener /> });
+    expect(screen.getByText('no overlay')).toBeTruthy();
+    wide.unmount();
+    show(createLayoutStore(layoutAt(820, { coarse: true })), { selection: 'a', detail: <Opener /> });
+    expect(screen.getByText('no overlay')).toBeTruthy();
+  });
+});
