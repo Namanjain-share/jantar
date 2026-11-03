@@ -100,6 +100,7 @@ export function DockFrame({ phone, title, glyph, age, late, aside, hints, peek, 
   return (
     <article
       aria-labelledby={id}
+      data-dock-frame
       className={clsx(
         phone
           ? [
@@ -108,6 +109,8 @@ export function DockFrame({ phone, title, glyph, age, late, aside, hints, peek, 
               start.current === null && 'transition-transform duration-300 ease-sheet motion-reduce:transition-none',
             ]
           : 'animate-rise rounded-dock border border-line bg-raised px-20 pb-16 pt-16',
+        // c32: in a window under 600 tall at most half of it, and less if the transcript needs its 120; it scrolls inside.
+        'short:max-h-[calc(var(--vvh,100dvh)/2)] short:min-h-0 short:shrink short:overflow-y-auto short:overscroll-contain',
         className,
       )}
       style={style}

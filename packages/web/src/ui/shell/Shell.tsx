@@ -456,6 +456,7 @@ export function Shell() {
               single={single}
               onPalette={() => setPalette(true)}
               onShortcuts={() => setShortcuts(true)}
+              onReconnect={() => connection?.kick()}
             />
           </Suspense>
         ) : null}

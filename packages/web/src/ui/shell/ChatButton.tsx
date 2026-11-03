@@ -37,13 +37,17 @@ export function ChatButton({ where, className }: { where: 'top' | 'pane'; classN
   return (
     <Button
       aria-pressed={open}
+      aria-label="Chat"
       title="Chat beside this screen (⌘J)"
-      className={clsx('flex-none gap-6 aria-pressed:bg-select', className)}
+      className={clsx('flex-none gap-6 aria-pressed:bg-select coarse:min-w-44', className)}
       onClick={() => toggleChatDock()}
     >
       <ChatCircleDotsIcon size={16} aria-hidden="true" />
-      Chat
-      <Keycap size="sm">⌘J</Keycap>
+      {/* c32: in a pane under 640 the icon alone, so a narrow header keeps its room. */}
+      <span className={where === 'pane' ? 'hidden @md:inline' : undefined}>Chat</span>
+      <span className={where === 'pane' ? 'hidden @md:inline-flex' : 'inline-flex'}>
+        <Keycap size="sm">⌘J</Keycap>
+      </span>
     </Button>
   );
 }

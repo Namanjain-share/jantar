@@ -71,7 +71,7 @@ What changed for people who use Jantar, newest first. Versions before
   ground of its own), with Resets and 7-day columns from about 1180. With
   one Claude login the login is a card across the window, its sessions in
   columns; paired machines sit two across.
-- **Devices** uses two columns of cards from about 900 px of content:
+- **Devices** uses two columns of cards from about 760 px of content:
   this device, its notifications and sounds on the left; paired devices,
   machines and pairing on the right (it stopped at 880 px).
 - **New session** puts the folders beside the start form by the space it
@@ -209,6 +209,16 @@ What changed for people who use Jantar, newest first. Versions before
   the iPad. Devices › This device has a **Keyboard** row: Auto (shortcuts
   once a keyboard has been used), On or Off on this device, and Show
   shortcuts.
+- On an iPad, when the connection drops, the sidebar's foot says
+  **Reconnecting…** with a Reconnect button. An empty place sits in the
+  middle of a wide pane instead of its top-left corner. In a short window
+  (under 600 px tall) a session's question or permission card takes at most
+  half the window and scrolls inside, so the conversation keeps room above
+  it. On a touch screen nothing sits in the bottom 24 px, where an iPad
+  window's resize handle is (an iPhone's home indicator already leaves
+  more). A session beside the list in a narrow pane (an iPad at 1024 px
+  with its sidebar) keeps its header on one line: the session's name and
+  its arrows step aside, and the Chat button is an icon.
 
 ## 0.11.0 (3 November 2026)
 

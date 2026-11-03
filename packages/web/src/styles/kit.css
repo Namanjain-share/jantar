@@ -8,11 +8,21 @@
 @utility pt-safe {
   padding-top: env(safe-area-inset-top, 0px);
 }
+/*
+ * 0.11 c32: on a touch screen a bottom bar keeps at least 24 px under it, so nothing sits in an iPad
+ * window's resize corner (its bottom-right 24 x 24). An iPhone's home indicator already leaves 34.
+ */
 @utility pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  @media (pointer: coarse) {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+  }
 }
 @utility pb-safe-16 {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  @media (pointer: coarse) {
+    padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 16px), 24px);
+  }
 }
 /* 0.11: the sides too (0 on today's iPads and every Mac; the outermost columns pad them). */
 @utility pl-safe {
@@ -306,6 +316,12 @@
     transform: translateY(var(--drawer-swipe-movement-y, 0px));
     transition: transform 420ms var(--ease-sheet);
     will-change: transform;
+  }
+  /* 0.11 c32: on a touch screen a bottom sheet's last row also clears an iPad window's resize corner. */
+  @media (pointer: coarse) {
+    .sheet-popup {
+      padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 16px), 24px);
+    }
   }
   .sheet-popup[data-swiping] {
     transition-duration: 0ms;

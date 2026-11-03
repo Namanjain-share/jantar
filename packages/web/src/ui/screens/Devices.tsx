@@ -8,7 +8,7 @@
  * its own chunk) follows the paired devices. It stays for the rest of the
  * visit once shown, so removing the last machine still shows its receipt.
  *
- * 0.11 (build plan 2.11): no 880 cap. From a pane of 900 two columns, this
+ * 0.11 (build plan 2.11): no 880 cap. From a pane of 760 two columns, this
  * device on the left and the paired devices, machines and pairing on the
  * right, each section a card (devices/card.ts) and each column a container
  * of its own, so its rows lay out by the column's width; the product line
@@ -42,7 +42,8 @@ export function Devices() {
   if (machines) machinesShown.current = true;
   const [paired, setPaired] = useState<number | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  const two = useBucket(box, (w) => w >= 900);
+  // c32: from 760 (was 900), so the iPad's 804 beside its sidebar at 1024 gets them too.
+  const two = useBucket(box, (w) => w >= 760);
   return (
     <div ref={box} className="px-16 pb-48 pt-16 animate-enter desk:px-32 desk:pt-24">
       <div>

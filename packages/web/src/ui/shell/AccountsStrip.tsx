@@ -37,7 +37,7 @@ export function connLabel(conn: ConnInfo): string {
     case 'connecting':
       return 'Catching up';
     case 'offline':
-      return 'Offline';
+      return 'Reconnecting…';
     case 'unauthorized':
       return 'Not paired';
   }

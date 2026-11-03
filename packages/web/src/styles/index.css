@@ -20,6 +20,8 @@
 
 /* Touch screens: 44 px minimum targets (rule 28), e.g. coarse:min-h-44. */
 @custom-variant coarse (@media (pointer: coarse));
+/* 0.11 c32: a window under 600 tall (captures 4.10): a session's card yields room to its transcript. */
+@custom-variant short (@media (max-height: 599px));
 /* 0.11: the Mac's density, from 768 with a fine pointer. A touch screen keeps the phone's at every width. */
 @custom-variant desk (@media (min-width: 768px) and (pointer: fine));
 /*

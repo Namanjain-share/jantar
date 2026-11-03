@@ -383,7 +383,8 @@ export function Transcript({
   const fallback = !items.length && session.lastReply?.text ? session.lastReply : null;
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    // c32: in a window under 600 tall the transcript keeps 120 px; the card under it yields (DockFrame).
+    <div data-transcript className="relative flex min-h-0 flex-1 flex-col short:min-h-120">
       <div
         ref={scroller}
         id={id}

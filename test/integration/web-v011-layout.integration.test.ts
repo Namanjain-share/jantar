@@ -31,7 +31,10 @@
  *      doesn't scroll sits in them (A2): nothing under the status bar or
  *      over the home indicator. Content in a scroll box may pass under.
  *      In the touch shell (c24) the window controls' top-left 80 x 52 is
- *      kept free too.
+ *      kept free too, and on every touch screen (c32) the bottom-right
+ *      24 x 24, where an iPad window's resize handle sits.
+ *   6. No box scrolls up and down inside the page while shorter than
+ *      120 px (A6), the short windows (win-quarter, win-min) included.
  *   7. No console message about the Content Security Policy, no error, no
  *      injected <style>.
  *  12. The user's four screens at 1440 x 960 (mac-1440 and touch-1440):
@@ -315,6 +318,13 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
                 const corner = p.fixed.filter((t) => t.x < 80 && t.y < 52);
                 if (corner.length) problems.push(`${at}: in the window controls' corner: ${corner.map((t) => `${t.name} (${t.x},${t.y})`).join('; ')} (${await shot()})`);
               }
+              // 4. The bottom-right 24 x 24 stays free on a touch screen (an iPad window's resize handle, c32).
+              if (viewport.touch || viewport.phone) {
+                const corner = p.fixed.filter((t) => t.x + t.w > p.vw - 24 && t.y + t.h > p.vh - 24);
+                if (corner.length) problems.push(`${at}: in the resize corner: ${corner.map((t) => `${t.name} (${t.x},${t.y} ${t.w}x${t.h})`).join('; ')} (${await shot()})`);
+              }
+              // 6. No nested scroller under 120 px (A6).
+              if (p.scrollers.length) problems.push(`${at}: a scroller under 120 px: ${p.scrollers.join('; ')} (${await shot()})`);
               // 2. 44 pt on touch (A1).
               if (TARGET_SIZES.has(size) && (viewport.touch || viewport.phone)) {
                 const small = under44(p.whole).filter((t) => !TARGET_ALLOW.some(([re]) => re.test(t.name)));

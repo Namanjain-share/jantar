@@ -64,7 +64,7 @@ export function Tabs({
       onClick={() => onView(v)}
       className={clsx(
         'rounded-chip font-medium text-ink-3 transition-colors duration-120 ease-hover hover:text-ink aria-selected:bg-select aria-selected:text-ink',
-        phone ? 'h-34 flex-1 text-small coarse:h-44' : 'h-26 px-12 text-small coarse:h-44',
+        phone ? 'h-34 flex-1 text-small coarse:h-44' : 'h-26 px-8 text-small coarse:h-44 @md:px-12',
       )}
     >
       {label}
@@ -144,7 +144,9 @@ export function Header(props: HeaderProps) {
     );
   }
   return (
-    <header className={clsx('flex h-pane flex-none items-center border-b border-line pr-16', back ? 'pl-16' : 'pl-32')}>
+    // c32: under a 640 pane (a session beside the ledger and the iPad's sidebar at 1024) the name and the steppers
+    // step aside and the folder may truncate, so the header never pushes the pane sideways.
+    <header className={clsx('flex h-pane flex-none items-center border-b border-line pr-16', back ? 'pl-16' : 'pl-16 @md:pl-32')}>
       {back && onSessions ? (
         <Button variant="text" className="-ml-8 mr-4 flex-none gap-2 px-8" aria-expanded={Boolean(sessionsOpen)} onClick={onSessions}>
           <CaretLeftIcon size={16} aria-hidden="true" />
@@ -156,12 +158,12 @@ export function Header(props: HeaderProps) {
         </IconButton>
       ) : null}
       <StatusGlyph state={glyph} dashed={dashed} label={word} className="mr-8" />
-      <h1 className="flex-none type-title text-ink">{folder}</h1>
-      <p className="ml-8 min-w-0 truncate text-title font-regular text-ink-2">{name}</p>
+      <h1 className="min-w-0 truncate type-title text-ink @md:flex-none @md:overflow-visible">{folder}</h1>
+      <p className="ml-8 hidden min-w-0 truncate text-title font-regular text-ink-2 @md:block">{name}</p>
       <span className="min-w-16 flex-1" />
       <Tabs sid={sid} view={view} onView={onView} phone={false} files={files} />
       {step ? (
-        <span className="ml-16 flex flex-none items-center gap-2 text-ink-3">
+        <span className="ml-16 hidden flex-none items-center gap-2 text-ink-3 @md:flex">
           <span className="mr-6 type-mono" aria-label={`Session ${step.at} of ${step.of}`}>
             {step.at} / {step.of}
           </span>

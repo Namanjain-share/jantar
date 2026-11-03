@@ -30,6 +30,8 @@
  *   empty state, a place that is off).
  * - selected: with an item open beside its list, whether the list's row for
  *   it (aria-current) is in view in the list column; null with none.
+ * - scrollers (c32, 6.2 #6, A6): the boxes that scroll up and down inside
+ *   the page and are shorter than 120 px, where a finger can't scroll them.
  */
 import type { Named, Rect } from '../../packages/web/test/layout-metric.js';
 
@@ -46,6 +48,7 @@ export interface Probe {
   fixed: Named[];
   exempt: string | null;
   selected: { inView: boolean; name: string } | null;
+  scrollers: string[];
 }
 
 export function probeLayout(): Probe {
@@ -88,7 +91,7 @@ export function probeLayout(): Probe {
   const visible = (el: Element) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
 
   const main = document.querySelector('main#main');
-  const out: Probe = { vw, vh, chrome: document.querySelector('[data-chrome]')?.getAttribute('data-chrome') ?? null, region: null, boxes: [], sideways: [], targets: [], whole: [], fixed: [], exempt: null, selected: null };
+  const out: Probe = { vw, vh, chrome: document.querySelector('[data-chrome]')?.getAttribute('data-chrome') ?? null, region: null, boxes: [], sideways: [], targets: [], whole: [], fixed: [], exempt: null, selected: null, scrollers: [] };
   if (main) {
     out.region = rectOf(cut(VIEW, boxOf(main.getBoundingClientRect())));
     const push = (el: Element, r: DOMRect) => {
@@ -147,6 +150,16 @@ export function probeLayout(): Probe {
     if (s.overflowX !== 'auto' && s.overflowX !== 'scroll') continue;
     if (el.scrollWidth <= el.clientWidth + 1 || el.closest('[data-scroll-x]') || !visible(el)) continue;
     out.sideways.push(`${describe(el)}: ${el.scrollWidth} px in ${el.clientWidth}`);
+  }
+
+  // Nested scrollers too short to scroll with a finger (A6): a box on screen that scrolls up and down, under 120 px tall.
+  for (const el of document.querySelectorAll('body *')) {
+    const y = style(el).overflowY;
+    if (y !== 'auto' && y !== 'scroll') continue;
+    if (el.scrollHeight <= el.clientHeight + 1 || !visible(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.bottom <= 0 || r.top >= vh || r.width < 1) continue;
+    if (el.clientHeight < 120) out.scrollers.push(`${describe(el)}: ${el.clientHeight} px tall`);
   }
 
   // Whether a box around `el` scrolls up and down (so it may pass under the safe areas).

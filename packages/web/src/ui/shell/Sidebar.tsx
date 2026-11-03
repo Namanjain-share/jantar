@@ -48,6 +48,8 @@ export interface TouchNavProps {
   single: boolean;
   onPalette: () => void;
   onShortcuts: () => void;
+  /** c32: try the connection again now (the footer's Reconnect while it is down). */
+  onReconnect: () => void;
 }
 
 const ROW = 'relative flex h-44 min-w-0 items-center gap-12 rounded-btn px-12 transition-colors duration-120 ease-hover';
@@ -96,6 +98,7 @@ export function Sidebar({
   single,
   onPalette,
   onShortcuts,
+  onReconnect,
   overlay = false,
   onHide,
 }: TouchNavProps & {
@@ -192,6 +195,19 @@ export function Sidebar({
           </>
         ) : null}
       </div>
+      {conn.status === 'offline' ? (
+        // c32: the connection dropped: say so where LIVE was, with a way to try now.
+        <div role="status" className="flex flex-none items-center gap-8 border-t border-line pl-16 pr-8">
+          <span className="min-w-0 flex-1 truncate type-small text-ink-2">Reconnecting…</span>
+          <button
+            type="button"
+            onClick={onReconnect}
+            className="flex h-44 flex-none items-center rounded-btn px-12 type-small font-medium text-ink transition-colors duration-120 ease-hover hover:bg-hover"
+          >
+            Reconnect
+          </button>
+        </div>
+      ) : null}
       <div className="pb-safe flex flex-none items-center gap-4 border-t border-line px-8 py-4">
         <AccountsStrip pairs={pairs} active={active} conn={conn} single={single} />
         <button

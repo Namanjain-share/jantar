@@ -4,11 +4,12 @@
  * (Alerts, Devices, Intel, Meetings); it is a tab when five or fewer places
  * are on, and absent while Meetings are off. The rail lists it.
  */
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NO_FEATURES } from '@jantar/protocol';
 import { navItems, tabItems } from '../src/ui/shell/nav.js';
-import { renderApp, session, stateWith } from './helpers.js';
+import { layoutAt } from '../src/ui/shell/layout.js';
+import { fakeConnection, renderApp, session, stateWith } from './helpers.js';
 
 function viewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
@@ -66,5 +67,26 @@ describe('on the rail', () => {
     viewport(1440);
     renderApp({ state: stateWith({ sessions: [session('a')], features: { files: true, life: true, intel: true, meetings: true } }) });
     expect(places()).toEqual(['Board', 'Today', 'Files', 'Accounts', 'Alerts', 'Devices', 'Intel', 'Meetings']);
+  });
+});
+
+describe('0.11 c32: a place that is off', () => {
+  it('is absent from the rail, and its ⌘ number says how to turn it on; the touch sidebar too', async () => {
+    viewport(1440);
+    renderApp({ state: stateWith({ sessions: [session('a')], features: { files: true, life: true, intel: true, meetings: false } }) });
+    expect(places()).not.toContain('Meetings');
+    // ⌘9 is Meetings in the nav order, on or off.
+    fireEvent.keyDown(window, { key: '9', code: 'Digit9', metaKey: true });
+    expect(await screen.findByText('Meetings is off on this Mac. Turn it on at the Mac: jantar meetings on')).toBeTruthy();
+  });
+
+  it('the touch sidebar says Reconnecting… with a Reconnect button while the connection is down', async () => {
+    const connection = fakeConnection();
+    renderApp({ state: stateWith({ sessions: [session('a')], features: { life: true } }), status: 'offline', layout: layoutAt(1180, { coarse: true }), connection });
+    const reconnect = await screen.findByRole('button', { name: 'Reconnect' });
+    const sidebar = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(sidebar).getAllByText('Reconnecting…').length).toBeGreaterThan(0);
+    fireEvent.click(reconnect);
+    expect(connection.kick).toHaveBeenCalled();
   });
 });
