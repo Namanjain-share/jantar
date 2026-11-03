@@ -68,8 +68,8 @@ function tree(dir: string): string[] {
   });
 }
 
-/** Work's modules, and the shell's that know Work. */
-const WORK_ONLY = [/^ui\/screens\/work\//, /^ui\/shell\/Palette\.tsx$/, /^ui\/shell\/lifeStatus\.ts$/, /^ui\/shell\/nav\.ts$/];
+/** Work's modules, the shell's that know Work, and the todo screens' follow-up clients (they ask Work's routes). */
+const WORK_ONLY = [/^ui\/screens\/work\//, /^ui\/shell\/Palette\.tsx$/, /^ui\/shell\/lifeStatus\.ts$/, /^ui\/shell\/nav\.ts$/, /^ui\/screens\/life\/todos\/clients\.ts$/];
 
 describe('her app never reaches Work (source)', () => {
   const her = reach(join(src, 'partner', 'main.tsx'));
@@ -94,7 +94,19 @@ describe('her app never reaches Work (source)', () => {
 
   it("his People screens (what he sees of her) don't reach Work either", () => {
     const partner = reach(join(src, 'ui', 'screens', 'people', 'Partner.tsx'));
-    expect([...partner.files].filter((f) => /^ui\/screens\/work\//.test(f))).toEqual([]);
+    expect([...partner.files].filter((f) => /^ui\/screens\/work\/|^ui\/screens\/life\/todos\/clients\.ts$/.test(f))).toEqual([]);
+  });
+
+  it("0.13.0's clients: every screen that asks a Work route is his (Work's, his Today, Todos and Meetings), none hers", () => {
+    const asks = tree(src)
+      .filter((f) => /\bworkClient\(|\buseTodoClients\(/.test(stripComments(readFileSync(f, 'utf8'))))
+      .map((f) => relative(src, f))
+      .sort();
+    expect(asks.length).toBeGreaterThan(5);
+    expect(asks.filter((f) => !/^ui\/(screens\/(work|life\/(today|todos))|shell)\//.test(f))).toEqual([]);
+    // Her app and the people code they share reach none of them.
+    const her = reach(join(src, 'partner', 'main.tsx'));
+    expect(asks.filter((f) => her.files.has(f))).toEqual([]);
   });
 });
 
@@ -133,7 +145,7 @@ describe.skipIf(!built)('her app never reaches Work (as built)', () => {
     expect(js.length).toBeGreaterThan(0);
     for (const f of js) {
       const map = JSON.parse(readFileSync(join(dist, `${f}.map`), 'utf8')) as { sources: string[] };
-      const bad = map.sources.filter((s) => /packages\/web\/src\/ui\/screens\/work\/|packages\/protocol\/src\/work\.ts|packages\/web\/src\/ui\/shell\//.test(s));
+      const bad = map.sources.filter((s) => /packages\/web\/src\/ui\/screens\/work\/|packages\/web\/src\/ui\/screens\/life\/todos\/clients\.ts|packages\/protocol\/src\/work\.ts|packages\/web\/src\/ui\/shell\//.test(s));
       expect(bad, f).toEqual([]);
     }
   });

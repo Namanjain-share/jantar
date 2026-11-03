@@ -244,6 +244,40 @@ describe('code splitting', () => {
     expect(main.files.has('ui/shell/lifeStatus.ts')).toBe(true);
   });
 
+  it("0.13.0 Work's clients: a chunk of their own off Work's; import, duplicates, the Log sheet and a meeting's clients load on first use", () => {
+    const lazyOnly = [
+      'ui/screens/work/Clients.tsx',
+      'ui/screens/work/ClientHub.tsx',
+      'ui/screens/work/ClientSheet.tsx',
+      'ui/screens/work/LogSheet.tsx',
+      'ui/screens/work/ImportSheet.tsx',
+      'ui/screens/work/Duplicates.tsx',
+      'ui/screens/work/MeetingClients.tsx',
+      'ui/screens/work/clientModel.ts',
+      'ui/screens/work/parts.tsx',
+      'ui/screens/work/WorkTabs.tsx',
+      'ui/screens/life/todos/clients.ts',
+      'lib/share-file.ts',
+    ];
+    for (const f of lazyOnly) {
+      expect(existsSync(join(src, f)), f).toBe(true);
+      expect(main.files.has(f), f).toBe(false);
+    }
+    const read = (f: string) => readFileSync(join(src, f), 'utf8');
+    // Work's first chunk is the projects': Clients comes with import().
+    expect(read('ui/screens/work/Work.tsx')).toContain("import('./Clients.js')");
+    expect(read('ui/screens/work/Work.tsx')).not.toMatch(/from '\.\/Clients\.js'/);
+    expect(read('ui/screens/work/Clients.tsx')).toContain("import('./ImportSheet.js')");
+    expect(read('ui/screens/work/Clients.tsx')).toContain("import('./Duplicates.js')");
+    expect(read('ui/screens/work/ProjectHub.tsx')).toContain("import('./LogSheet.js')");
+    // Meetings never carries Work: its Clients field comes with import().
+    expect(read('ui/screens/meetings/MeetingPage.tsx')).toContain("import('../work/MeetingClients.js')");
+    expect(read('ui/screens/meetings/MeetingPage.tsx')).not.toMatch(/from '\.\.\/work\//);
+    // Work's chunks take the protocol's types only: no schema rides into them (client.ts keeps its paths as words).
+    for (const f of ['ui/screens/work/Clients.tsx', 'ui/screens/work/ClientHub.tsx', 'ui/screens/work/ImportSheet.tsx', 'ui/screens/work/Duplicates.tsx', 'ui/screens/work/LogSheet.tsx', 'ui/screens/work/client.ts'])
+      expect(read(f), f).not.toMatch(/^import (?!type)[^;]*from '@jantar\/protocol\/work'/m);
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");
