@@ -29,7 +29,7 @@
  * With a keyboard (design 6.4): l logs, n sets a next step, e edits; the
  * list's own keys (j/k, ↵, Esc, c adds, / filters) are the shell's.
  *
- * Every control is 44 tall on touch, the phone and e-mail links included.
+ * Every button and link is 44 tall on touch, the phone and e-mail links included.
  */
 import { CaretLeftIcon, CaretRightIcon, CheckIcon, EnvelopeSimpleIcon, PhoneIcon, PlusIcon, WhatsappLogoIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';

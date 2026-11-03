@@ -12,7 +12,7 @@ import { NotSaved } from '../life/shared/states.js';
 
 /**
  * One of a few as chips that wrap (44 on touch): a filter, a log entry's kind, how it went. Narrow phones
- * never scroll sideways, where a segmented control of five would. `clearable`: a second tap clears it.
+ * never scroll sideways, where five segments in a row would. `clearable`: a second tap clears it.
  */
 export function Chips<K extends string>({
   label,
