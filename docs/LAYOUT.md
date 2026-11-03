@@ -719,3 +719,31 @@ hook); the Todos module's `hub`, `q` and `onProjectDeleted`;
 `packages/daemon/test/search/search.test.ts`,
 `packages/daemon/test/arch/v013-work-owner-only.test.ts`,
 `packages/cli/test/work.test.ts`.
+
+Work's second part (v0.13 P2, the Mac side: clients, the log, follow-ups,
+meetings linked to clients, import and export). The protocol, in the same
+subpath: a contact as stored, the Clients row and query, the client hub,
+the log (rows, page cursor, log + next step), meetings' clients and
+suggestions, the import (preview, rows, Undo, list), the export query,
+Work's settings and client_here (`FolderClientResponseSchema`), and P2's
+`WORK_ROUTES`; in the index only what his own routes and the stored rows
+need: `Todo.contactId`/`dealId`, `Project.clientId`/`business`, the
+owner-only `OwnerTodoBodySchema`, `OwnerTodoPatchSchema`,
+`OwnerProjectBodySchema` and `OwnerProjectPatchSchema` (her routes keep the
+base ones), `TodaySchema.work`, `life.workLockScreenNames` and Chat's
+`work` module. life-core: `work/{contacts,tags,csv}.ts` (from Noblot) and
+`work/client-import.ts`. The daemon: `life/work/{module,repo,settings,import}.ts`
+(only `repo.ts` names a `work_` table); the Todos module's follow-ups
+(`todos.contact_id`, `useWork`, `followUps`, `unlinkClient`, the space rule)
+and the follow-up push (`todos/pings.ts`); Meetings tells Work of a
+meeting's project and delete (`meetings/common.ts` `tellWork`) and
+registers its list (`LifeService.useMeetings`); `api/routes/work.ts` and
+`api/work-meetings.ts`; Chat's Work tools (`chat/{tools,actions,items}.ts`,
+prompt `assets/chat/chat-v2.md`). The CLI: `jantar work
+import|imports|export|lockscreen|settings`, and `client_here` in
+`commands/mcp.ts`. Tests: `packages/protocol/test/v013-work-p2.test.ts`,
+`packages/daemon/test/life/work-{clients,meetings,import,routes}.test.ts`,
+`packages/daemon/test/chat/work-tools.test.ts`,
+`packages/daemon/test/arch/v013-work-canary.test.ts` (W-T6), and the P2
+parts of `v013-work-owner-only.test.ts` (W-T4) and the CLI's
+`{work,mcp}.test.ts`.

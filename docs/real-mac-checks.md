@@ -296,7 +296,7 @@ can show:
 | AL2 | With Speak on, does the voice speak in the Home Screen app, and with the silent switch on? After Jantar is closed and opened again from the Home Screen, tap once anywhere (not a button), then `jantar notify test needs`: does it speak, with no visit to Devices? Note whether one plain tap was enough | the voice; whether iOS counts a tap's pointerup |
 | AL3 | After Jantar was in the background, does a push's tone play without a tap (the audio resumed by itself), or only after the next tap? Does a second push with the same tag sound again? | sounds after the background; the urgent repeat |
 | AL4 | A real countdown ask (a workflow agent's prompt in bypass mode): one Answer soon push within a few seconds, "about 2 min to answer", no separate "needs you" push, and the repeat at about a minute left. Then two parallel subagent asks at once, the first left to time out (and once with the first answered): does the second ask get its own push? Once an ask's alert ends nothing reads the screen again, so a queued ask whose card opened earlier may get none | the urgent alert |
-| MCP1 | `jantar mcp` in a terminal, then the `claude mcp add` line it prints: `/mcp` shows `jantar` with 5 tools (once per cswap profile). In a session started in a folder linked to a project, `todos_here` names that project; from home, with no project linked to home, it names none. This checks that Claude Code gives a user-scope server `CLAUDE_PROJECT_DIR` (without it, the folder the server runs in decides) | todos from Claude sessions |
+| MCP1 | `jantar mcp` in a terminal, then the `claude mcp add` line it prints: `/mcp` shows `jantar` with 6 tools (0.13: `client_here`) (once per cswap profile). In a session started in a folder linked to a project, `todos_here` names that project; from home, with no project linked to home, it names none. This checks that Claude Code gives a user-scope server `CLAUDE_PROJECT_DIR` (without it, the folder the server runs in decides) | todos from Claude sessions |
 | IN1 | On an iPhone, in Safari and in the Home Screen app, tap the header's magnifier: does the keyboard open with the Intel search box focused? (The focus happens once the shelf's code has loaded, after the tap.) If not, a tap on the box opens it | search from the header |
 | LF1 | A medicine or reminder due while Wi-Fi is off: the ping goes out, marked late, when Wi-Fi comes back. On Wi-Fi that reaches nothing past DNS (a hotel's sign-in page) it is tried five times over a few minutes, then dropped, never sent twice: the wait for the network covers only a push that never left (no DNS answer within 10 s, no connection). After a wake, does the log show `getaddrinfo` (waits) or `Socket timeout` (counted)? | the missed-push retry |
 | LF2 | A daily reminder at 11:00 snoozed an hour rings at 12:00 that day and at 11:00 the next | a repeating todo's own time |
@@ -525,6 +525,14 @@ people hostname behind its Access app with the One-time PIN:
 - At five devices: Link another device on the iPhone says to revoke one
   first; a link made at four and opened on a sixth device says, there, to
   revoke one on a linked device and link this one again.
+
+### Work (v0.13, P2: the Mac side)
+
+| # | Check | What it settles |
+|---|---|---|
+| WK1 | With Work on, log a call with a made-up client and a next step for two minutes from now (or `followup_add` in Chat). Lock the iPhone: the push says "Todo due" and "Follow-up · HH:MM", with no client name. Run `jantar work lockscreen names on` and try again: the title shows. Tap it: Jantar opens the client (or Todos, until the phone's Work screens arrive) | the lock screen (W23) |
+| WK2 | In a session started in a client's project folder, `client_here` names the client and its next step, and no phone or e-mail | client_here |
+| WK3 | `jantar work import` of a `.vcf` saved from the iPhone's Contacts (share, Save to Files, AirDrop to the Mac): the preview's rows match the cards, photos are dropped, and `jantar work import undo <batch>` takes them back | vCard import |
 
 ## iPad checks (0.12)
 

@@ -186,7 +186,7 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 | `files`, `rewrite`, `screenshots`, `meetings`, `ask` | `enabled` (off), plus `rewrite.model` (also Chat's model on the phone), `rewrite.glossary`, `screenshots.allowSelect`; 0.10: `ask` is Chat's group (the name stays for 0.9), with `keepDays` (30, 1-365: how long the history is kept) and `voiceModel` (`sonnet`: the model a Siri question runs on) | the Mac |
 | `launch` | `enabled` (off), `mode` (`claude`), `defaultFlags`, `preLaunchArgv`, `csCommand`, rate limits | the Mac |
 | `controls` | `enabled`, `escapeVerified`, `clearVerified` (all on), `interruptKey` (`interrupt` or `escape`) | the Mac |
-| `life` | one switch per module (off; v0.13 `work` counts only with `todos` on), `timezone`, `currency`, `lockScreenDetails` | the Mac |
+| `life` | one switch per module (off; v0.13 `work` counts only with `todos` on), `timezone`, `currency`, `lockScreenDetails`; 0.13: `workLockScreenNames` (off: a follow-up's push says only "Follow-up" and its time; `jantar work lockscreen names on`) | the Mac |
 | `intel` | `enabled` (off), `sources` (up to 10 files); 0.8: `read` (off: reading saved links), `speechLocale` (`en-IN`) | the Mac |
 | `accounts` | `kept`, `prime`, `primeKept` | the Mac |
 | `fleet` | v0.6: `enabled` (off); the pairings themselves are in `jantar.db` | the Mac (`jantar fleet`) |

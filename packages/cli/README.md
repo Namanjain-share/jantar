@@ -39,7 +39,9 @@ jantar controls on|off                keys, mode switching and slash commands, o
 jantar screenshots on|off             a Picture view of the session's window (allow-select)
 jantar life on <module...>            Life: todos, medicines, food, places, finance, posts, work (status, off, set, backup, restore)
 jantar post add --platform <p>       Posts: a post to make by hand, with its text and a reminder (list); Jantar never posts
-jantar work on|off                    Work: each project on one screen, one search (turns Todos on too; status, seed <folder...>)
+jantar work on|off                    Work: projects, clients, follow-ups, one search (turns Todos on too; status, seed <folder...>)
+jantar work import <file>             clients from a CSV or vCard file you name (--dry-run; imports, import undo <batch>)
+jantar work export --csv <file>       your clients as a CSV in a new file (lockscreen names on|off, settings)
 jantar intel on|off                   the Intel shelf (sources, source add <file.jsonl>, source rm, add, list)
 jantar accounts                       one Claude login or cswap, the kept accounts and ccw's hold list
 jantar accounts keep <n...>           keep accounts for other work: Auto, Rewrite, Ask Claude and Ask never pick them

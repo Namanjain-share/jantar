@@ -6,10 +6,11 @@ What changed for people who use Jantar, newest first. Versions before
 ## 0.13.0 (unreleased)
 
 **Work** (off by default; `jantar work on`, which turns Todos on too): a
-place for the work you do for clients, owner-only. This first part is the
-Mac side of projects and search; the phone's Work screens come with the
-app's next update, and clients, the log of calls and meetings, follow-ups
-and deals come in later parts of 0.13. [Work](docs/work.md) has it all.
+place for the work you do for clients, owner-only. This build has the Mac
+side of projects and search, and of clients, the log of calls and
+meetings, follow-ups, import and export; the phone's Work screens come
+with the app's next update, and deals come in a later part of 0.13.
+[Work](docs/work.md) has it all.
 
 **Before upgrading: nothing to copy by hand.** The daemon keeps
 `life-pre-0.13.0.db` in the backups folder before it moves life.db to
@@ -36,6 +37,44 @@ restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
 - **Up to 500 projects** (was 200).
 - `jantar life on work` brings Todos with it, and `jantar life off todos`
   turns Work off too and says so.
+- **Clients and companies.** A client is a person or a company (a person
+  belongs to one company), a lead, a client or past, with phones, e-mails,
+  https links, tags, notes and an optional "check in every N days" that
+  shows on Today. Add one with a company by name (reused when it exists);
+  a possible duplicate is a warning, never a block (the same e-mail, the
+  same phone by its last 10 digits, or the same name). Deleting a client
+  takes its log with it and lets its todos and projects keep going without
+  it. Up to 5,000.
+- **The log.** Calls, meetings, e-mails, messages and notes per client,
+  each with its next step in the same save (a refused next step saves
+  neither). A client's page merges in its done follow-ups; "last touch"
+  is its newest entry.
+- **Follow-ups are todos with a client**: Today, reminders, snooze and
+  Chat all see them, with no second scheduler. On a locked phone a
+  follow-up says only "Follow-up · 15:00" unless you run `jantar work
+  lockscreen names on`; with Work on, its tap opens the client. Only your
+  own todos and projects can have a client (never your partner's or a
+  shared list).
+- **Meetings link to clients.** A meeting in a client's project is linked
+  to that client by itself and shows in its log; you can link or unlink
+  others, or make a client from a name in the meeting (marked as the
+  meeting's words). A project's new client takes its meetings along.
+- **Import and export.** A CSV or vCard file (at most 2,000 rows, 1 MB),
+  previewed with duplicate warnings (Skip, Fill blanks, Add anyway),
+  imported as one batch you can undo for 7 days; `jantar work import
+  <file>` at the Mac. Never another app's contacts or database. The
+  clients export as a CSV (`jantar work export --csv <file>`).
+- **Chat** can find, read, add and change clients, log a call with its
+  next step and add a follow-up (each with Undo); an imported client or a
+  meeting's name is data to it, so its changes after reading one are
+  cards you tap. It never contacts a client. The prompt is v2.
+- **`jantar mcp`'s `client_here`**: who the session's folder's work is
+  for, with its next step; never a phone, an e-mail or notes.
+- **Work's settings** (businesses, a dial code for WhatsApp, quiet days)
+  are set on the phone; `jantar work settings` shows them.
+- **Only yours, still.** A test plants a client's name, phone and e-mail,
+  runs every Work route, and finds none of them in the logs, the audit
+  log, the events or an error reply.
 - **Only yours.** Work's routes are all owner routes on your hostname,
   Work's data has tables of its own that only its code names, nothing of
   it is in the partner's app or Chat, and a log line, audit row or event

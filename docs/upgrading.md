@@ -39,9 +39,16 @@ back, install 0.11 and restore that copy:
 jantar life restore life-pre-0.13.0.db
 ```
 
-Anything added to Life since the upgrade is lost then, Work's included.
-The `life.work` setting is dropped by an older daemon, which leaves Work
-off.
+Anything added to Life since the upgrade is lost then, Work's included:
+every client, log entry and import, and the client on any todo or
+project. The `life.work` and `life.workLockScreenNames` settings are
+dropped by an older daemon, which leaves Work off. Work's own settings
+(businesses, dial code, quiet days) live in life.db and go back with it.
+An export first keeps your clients as a file:
+
+```sh
+jantar work export --csv ~/Documents/clients-before-downgrade.csv
+```
 
 ### 0.11.0: Life's third schema change (Accountability partner)
 

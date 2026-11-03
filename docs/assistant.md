@@ -58,6 +58,9 @@ Every example here is made up:
 - "What came out of yesterday's meeting? Add its first action item".
 - "Which session is waiting for me?", "how much of my usage is left, and
   when does it reset?"
+- With [Work](work.md) on: "add Riya from Acme Studio as a lead", "log a
+  call with Globex, went well, follow up Thursday at 3", "who haven't I
+  spoken to in a month?", "what's next with Initech?".
 
 Photos: tap the photo button (up to four a message). A receipt can
 become an expense, a menu a café's dishes, a whiteboard a todo list.
@@ -136,9 +139,23 @@ What you type and the photos you send go to Claude through Claude Code on
 your account (Rewrite's model for the phone, `ask.voiceModel` for Siri),
 with the date, time and zone, the last messages of this chat, and
 whatever Chat looks up to answer: your todos, medicines, food, cafés,
-money, posts, Intel shelf, meetings, and your sessions, waiting prompts
-and usage (read only), for the parts that are on. Never a file from your
-Mac, an email address, a path or a key.
+money, posts, Intel shelf, meetings, your clients (with Work on), and your
+sessions, waiting prompts and usage (read only), for the parts that are
+on. Never a file from your Mac, a path or a key. Asking Chat about a
+client sends that client's details (their phones and e-mails included,
+when it reads the client) to Claude through your account.
+
+**Work.** Chat can find and read clients (`clients_find`, `client_get`,
+and `project_get` for a project with its client), add and change one, log
+a call, meeting, e-mail, message or note with its next step (`log_add`,
+one change: Undo removes both), and add a follow-up (`followup_add`, a
+todo with a client; it is its own tool so that the to-do tool your
+partner's Chat shares never takes a client). A client imported from a
+file or made from a name in a meeting is someone else's words: Chat reads
+it as data, and every change it then wants is a card you tap. Chat never
+deletes a client or a log entry by itself (a card), and never imports,
+exports, merges, sets a folder or sends anything to a client. `today`
+says how many clients are due a check-in, never who.
 
 ## History, Clear and limits
 

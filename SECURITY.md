@@ -2229,3 +2229,61 @@ bundle holding no owner module), `packages/web/test/partner/label.test.tsx`
 (a name with markup is text in both apps), and for her chat by
 `packages/daemon/test/chat/person-chat.test.ts`, `person-tools.test.ts` and
 `person-food-tools.test.ts`.
+
+## v0.13: Work (clients, the log, follow-ups)
+
+Work keeps third parties' data: his clients' names, phones, e-mails and
+notes, and what was said on calls. It is the owner's alone, and it stays
+on the Mac unless he sends it somewhere.
+
+- **Where it lives.** life.db (schema 5), in tables of their own
+  (`work_contacts`, `work_log`, `work_deals`) with no `space` column, named
+  only by `packages/daemon/src/life/work/**` (a source scan pins it). Work
+  runs no SQL on `todos` or `projects`: it calls the Todos module. The
+  nightly backup, the pre-upgrade copy and restore carry it with the rest
+  of Life; meetings.db is never read by Work.
+- **Owner-only.** Every Work route is a `control` route on his hostname,
+  never under `/v1/p/`; a person's credential is refused before a handler
+  runs, and every Work module method answers not found for anyone but the
+  owner. Her routes reuse the base todo and project schemas, which carry no
+  Work field (Work's go in owner-only extensions), and the Todos module
+  refuses a client, a deal or a business on any todo or project outside his
+  space. No statement moves a project or a todo out of his space. Her Chat
+  lists no Work tool, and no tool she shares takes a Work field; her app's
+  source imports nothing of Work.
+- **What leaves the Mac, and only when he asks:** an export he names
+  (`jantar work export --csv <file>`, or a phone download; never written
+  into a client folder; a cell a spreadsheet would run as a formula is
+  written so it shows); what Chat reads to answer him (it goes to Claude
+  through his account, like any Chat text); `jantar mcp`'s `client_here`
+  (a name, state, next follow-up and last touch, never a phone, an e-mail
+  or notes) into the session that asks; and a follow-up's push, which says
+  only "Follow-up" and its time unless `life.workLockScreenNames` is on.
+- **Never:** a message, e-mail or call to a client; a page served for one;
+  a read of another app's contacts or database (the import takes a file he
+  hands over); a web lookup of a contact.
+- **Logs, audit, events, errors.** Ids and counts only, and fixed
+  refusal sentences. A write's audit row is its target id with no params;
+  the request log keeps no query string (search and the clients list take
+  `?q=`), and the similar check is a POST so a phone or an e-mail never
+  sits in a URL.
+- **Someone else's words.** A client imported from a file, a client made
+  from a name in a meeting, an imported log entry and a meeting in a log
+  are marked as such (`from`, set by the daemon, never by a body) and
+  framed as data in Chat (`<data source="import">`, `"meeting"`); reading
+  one taints the turn, so every change Chat then wants is a card he taps.
+  Chat never imports, exports, merges, sets a folder or sends anything.
+- **Import.** A CSV or vCard of at most 1 MB and 2,000 rows (its own body
+  limit, 1.25 MiB), kept in memory for 30 minutes for the import that
+  follows; values are checked against Work's schemas (an https link only,
+  a real e-mail, a phone of 7 digits or more) and clipped to their caps.
+  Undo removes, for 7 days, only what nothing changed or linked since.
+
+Pinned by `packages/daemon/test/arch/v013-work-owner-only.test.ts` (W-T1
+to W-T5 and W-T7: the route tables, the source scans, her imports and
+tools, the module's refusals and its answers to her),
+`test/arch/v013-work-canary.test.ts` (W-T6: a client's name, phone and
+e-mail planted, every Work route run, and the logs, audit log, events and
+error replies read for them; a follow-up's push and its owner),
+`test/life/work-*.test.ts` and `test/chat/work-tools.test.ts` (taint,
+cards, Undo, and her tools' inputs).

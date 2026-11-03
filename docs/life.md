@@ -26,7 +26,9 @@ jantar life status
   phone) and small **Projects** (a project can be linked to a folder, and
   the Board shows it on that folder's sessions; up to 500 since 0.13).
   With [Work](work.md) on (`work`, which turns Todos on too), each project
-  is also one screen with its health, and one search finds it. Repeats every day, week,
+  is also one screen with its health, and one search finds it; a project
+  can have a client, and a todo with a client is a follow-up (its push
+  says only "Follow-up" on a locked phone). Repeats every day, week,
   month or year (birthdays, renewals; a 29 February one falls on the 28th
   in other years), and snooze. A repeating reminder keeps its own time: a
   daily 11:00 snoozed an hour still rings at 11:00 the next day. Change
