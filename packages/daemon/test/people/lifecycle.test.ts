@@ -112,6 +112,28 @@ describe('invites', () => {
     expect(set?.domain).toBeUndefined();
   });
 
+  it('review 5, B3: a name or device name with a control character is a 400 that spends nothing (his terminal prints them)', async () => {
+    const x = await fx();
+    const { id, code } = await freshInvite(x, 'Kia');
+    const preview = (await onHer(x.api, 'POST', '/v1/p/join/preview', NONE, { code })).json() as JoinPreview;
+    const base = { code, acceptedVersion: preview.version, agreement: preview.offer, adult: true, name: 'Kia', deviceName: 'Kia phone' };
+    for (const bad of [{ name: 'Kia\u001b]0;Jantar: all clear\u0007\u001b[2J' }, { name: 'Kia\u202e' }, { deviceName: 'phone\u001b[8m' }, { deviceName: 'phone\nline' }]) {
+      const r = await onHer(x.api, 'POST', '/v1/p/join', NONE, { ...base, ...bad });
+      expect(r.statusCode, JSON.stringify(bad)).toBe(400);
+    }
+    expect((await ctl(x, 'POST', '/v1/people', { name: 'Esc\u001b[31m' })).statusCode).toBe(400);
+    const ok = await onHer(x.api, 'POST', '/v1/p/join', NONE, base);
+    expect(ok.statusCode, ok.body).toBe(200);
+    const kia = { name: 'kia', cookie: `${PERSON_COOKIE}=${ok.cookies.find((c) => c.name === PERSON_COOKIE)?.value}`, secret: (ok.json() as { deviceSecret: string }).deviceSecret };
+    const link = (await onHer(x.api, 'POST', '/v1/p/devices/link', kia)).json() as { code: string };
+    const badClaim = await onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code: link.code, deviceName: 'tab\u0007let' });
+    expect([badClaim.statusCode, badClaim.json().error.code]).toEqual([400, 'invalid_request']);
+    // The refused name spent nothing: the same code links her tablet under a plain name.
+    expect((await onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code: link.code, deviceName: 'tablet' })).statusCode).toBe(200);
+    const people = ((await ctl(x, 'GET', '/v1/people')).json() as PeopleList).people;
+    expect(people.find((p) => p.id === id)?.name).toBe('Kia');
+  });
+
   it("invites are the Mac's; Copy link again needs an admin device with its secret, and is audited (C14)", async () => {
     const x = await fx();
     const { id } = await freshInvite(x, 'Lu');

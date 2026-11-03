@@ -32,6 +32,11 @@ export const PERSON_SHORT_LABEL_MAX = 12;
 /** Not plain text on one line: control characters, line and paragraph separators, and the marks that reorder text. */
 const NOT_PLAIN = /[\u{0}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{200e}\u{200f}\u{2028}-\u{202e}\u{2066}-\u{2069}]/u;
 
+/** Whether text is plain text on one line: her name and device names too (they are printed in his terminal). */
+export function isPlainLine(text: string): boolean {
+  return !NOT_PLAIN.test(text);
+}
+
 /** Why a label can't be used (trimmed, 1 to 40 characters, plain text on one line), or null. */
 export function personLabelProblem(label: string): string | null {
   const t = label.trim();

@@ -323,4 +323,28 @@ describe('review 5: what `jantar people` prints of theirs', () => {
     expect(c.io.stdout).toContain('You see none of it until they say yes: jantar people ask Asha --see food=counts');
     expect(c.io.stdout).not.toContain('as they agreed');
   });
+
+  it('B3: their name, device names, to-do titles and the doctor lines naming them reach the terminal with no escape sequence', async () => {
+    const ESC_NAME = 'Kia\u001b]0;Jantar: all clear\u0007\u001b[2J';
+    const kia = { ...asha, name: ESC_NAME };
+    const ctl = fakeCtl({
+      'GET /v1/people': ok({ enabled: true, people: [kia] }),
+      [`GET /v1/people/${ASHA}/devices`]: ok({ devices: [{ id: '01JDEVAAAAAAAAAAAAAAAAAAAA', name: 'phone\u001b[8m', createdAt: '2026-11-03T09:00:00.000Z', accessEmail: 'kia@example.com\u001b[8m' }] }),
+      [`GET /v1/people/${ASHA}/todos`]: ok({ today: '2026-11-03', todos: [{ title: 'Buy milk\u001b]8;;https://example.com/\u0007click\u001b]8;;\u0007' }], projects: [] }),
+      'GET /v1/people/doctor': ok({ checks: [{ name: `food log (${ESC_NAME})`, ok: true, detail: `off (to turn it on: jantar people modules ${ESC_NAME} --food on)` }] }),
+      'GET /v1/settings': ok({ settings: { remote: { mode: 'cloudflare', publicUrl: null, peopleUrl: null }, people: { enabled: true, ownerName: 'Sam' } } }),
+    });
+    const out: Record<string, string> = {};
+    for (const args of [['list'], ['label', ASHA], ['devices', ASHA], ['todos', ASHA], ['doctor'], ['invite', ASHA]]) {
+      const c = contextFor({ env: ENV }, { ctl });
+      await people.run(args, c.ctx);
+      out[args[0] as string] = c.io.stdout + c.io.stderr;
+    }
+    for (const [k, v] of Object.entries(out)) expect(v, k).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
+    expect(out.list).toContain(`  Kia  active  ${ASHA}`);
+    expect(out.label).toBe('Kia: "Accountability partner"\n');
+    expect(out.devices).toContain('phone  added 2026-11-03  kia@example.com');
+    expect(out.todos).toBe('  Buy milkclick\n');
+    expect(out.doctor).toContain('ok   food log (Kia): off (to turn it on: jantar people modules Kia --food on)');
+  });
 });

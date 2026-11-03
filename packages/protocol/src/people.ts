@@ -31,6 +31,7 @@ import {
   PERSON_LABEL_MAX,
   REVIEW_LEVELS,
   agreementProblem,
+  isPlainLine,
   personLabelProblem,
   type AgreementFields,
   type AgreementPatch,
@@ -158,6 +159,13 @@ export const PERSON_COLORS = ['teal', 'violet', 'amber', 'rose', 'sky', 'lime'] 
 export const PersonColorSchema = z.enum(PERSON_COLORS);
 export type PersonColor = z.infer<typeof PersonColorSchema>;
 export const PersonNameSchema = z.string().trim().min(1).max(40);
+/**
+ * A name as a body gives it (his add, her join): plain text on one line, so no escape sequence of hers reaches
+ * his terminal or a push title. Stored rows and replies keep PersonNameSchema.
+ */
+export const PersonNameBodySchema = PersonNameSchema.refine(isPlainLine, { message: 'plain text on one line' });
+/** A device name she gives (her join, a linked device): plain text on one line, as her name. */
+export const PersonDeviceNameSchema = z.string().trim().min(1).max(64).refine(isPlainLine, { message: 'plain text on one line' });
 /** What he calls the space with her (a preset or his own words): trimmed, 1 to 40 characters, plain text on one line. Rendered as text everywhere. */
 export const PersonLabelSchema = z
   .string()
@@ -659,7 +667,7 @@ export const PidDayParamsSchema = z.object({ pid: PersonIdSchema, day: PeopleDay
 export const PidDidParamsSchema = z.object({ pid: PersonIdSchema, did: LifeIdSchema });
 
 export const PersonAddBodySchema = z.strictObject({
-  name: PersonNameSchema,
+  name: PersonNameBodySchema,
   email: z.email().max(200).optional(),
   color: PersonColorSchema.optional(),
   label: PersonLabelSchema.optional(),
@@ -710,8 +718,8 @@ export const JoinBodySchema = z.strictObject({
   acceptedVersion: z.number().int().min(1),
   agreement: AgreementFieldsSchema,
   adult: z.literal(true),
-  name: PersonNameSchema,
-  deviceName: z.string().trim().min(1).max(64),
+  name: PersonNameBodySchema,
+  deviceName: PersonDeviceNameSchema,
 });
 export type JoinBody = z.infer<typeof JoinBodySchema>;
 export const JoinReplySchema = z.object({ personId: PersonIdSchema, deviceId: LifeIdSchema, deviceSecret: z.string() });
@@ -762,7 +770,7 @@ export const PersonPrefsPatchSchema = z.strictObject({
 });
 export type PersonPrefsPatch = z.infer<typeof PersonPrefsPatchSchema>;
 export const LinkCodeReplySchema = z.object({ code: z.string(), url: z.string(), expiresAt: IsoDateSchema });
-export const LinkClaimBodySchema = z.strictObject({ code: z.string().min(16).max(128), deviceName: z.string().trim().min(1).max(64) });
+export const LinkClaimBodySchema = z.strictObject({ code: z.string().min(16).max(128), deviceName: PersonDeviceNameSchema });
 export const PersonPushSubscribeBodySchema = z.strictObject({
   subscription: z.strictObject({
     endpoint: z.url().max(2048),

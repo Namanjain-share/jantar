@@ -37,6 +37,7 @@ import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { callDaemon } from '../ctl.js';
 import { localBaseUrl } from '../lib/settings.js';
 import { localStatus, probeUrl } from '../lib/doctor.js';
+import { clean } from '../lib/text.js';
 
 const USAGE = 'jantar people <on|off|doctor|add|label|offer|ask|prefs|modules|invite|list|devices|revoke|revoke-invite|remove|todos> ...';
 
@@ -211,8 +212,9 @@ async function find(ctx: CliContext, who: string): Promise<PersonView> {
   // By name, someone still in the space wins over someone who left with the same name (their id reaches either).
   const named = list.people.filter((p) => p.name.toLowerCase() === who.toLowerCase());
   const hit = list.people.find((p) => p.id === who) ?? named.find((p) => p.state !== 'left') ?? named[0];
-  if (!hit) throw new UsageError(`no person "${who}" (see: jantar people list)`);
-  return hit;
+  if (!hit) throw new UsageError(`no person "${clean(who)}" (see: jantar people list)`);
+  // Their name is theirs to write (their join): every line that names them prints it through clean().
+  return { ...hit, name: clean(hit.name) };
 }
 
 function accessStep(email: string | undefined, add: boolean): string {
@@ -236,7 +238,8 @@ function accessStepAfter(email: string | undefined, until: string | undefined): 
 }
 
 /** T20 (spec 2.7): a space a Life restore took out, and the way back (his People screen says the same). */
-export function setupAgainNote(s: PersonSetupAgain): string {
+export function setupAgainNote(s0: PersonSetupAgain): string {
+  const s = s0.accessEmail ? { ...s0, accessEmail: clean(s0.accessEmail) } : s0;
   const email = s.accessEmail ? ` --email ${s.accessEmail}` : '';
   return (
     `  Restore removed ${s.accessEmail ? `the space you shared with ${s.accessEmail}` : 'the space you shared'}. Invite them again.  ${s.id}\n` +
@@ -340,7 +343,8 @@ export default defineCommand(
         const d = await callDaemon<PeopleDoctor>(ctx.ctl, 'GET', '/v1/people/doctor');
         const settings = (await callDaemon<{ settings: Settings }>(ctx.ctl, 'GET', '/v1/settings')).settings;
         const checks: HostCheck[] = [...d.checks, ...(await peopleHostChecks(ctx, settings))];
-        for (const c of checks) io.out(`${c.note ? 'note' : c.ok ? 'ok  ' : 'FIX '} ${c.name}: ${c.detail}\n`);
+        // Their name is in the food lines: printed through clean(), like every word of theirs here.
+        for (const c of checks) io.out(`${c.note ? 'note' : c.ok ? 'ok  ' : 'FIX '} ${clean(c.name)}: ${clean(c.detail)}\n`);
         return checks.every((c) => c.ok) ? EXIT.ok : EXIT.failed;
       }
       case 'add': {
@@ -362,7 +366,7 @@ export default defineCommand(
       case 'label': {
         const p = await find(ctx, need('a person'));
         if (extra === undefined && !flags.default) {
-          io.out(`${p.name}: "${spaceLabel(p.label)}"\n`);
+          io.out(`${p.name}: "${clean(spaceLabel(p.label))}"\n`);
           return EXIT.ok;
         }
         if (extra !== undefined && flags.default) throw new UsageError('label takes words or --default, not both');
@@ -458,8 +462,8 @@ export default defineCommand(
         if (r.people.length === 0 && again.length === 0) io.out('Nobody yet. Add someone: jantar people add <name> --email <address>\n');
         for (const p of r.people) {
           const note = p.state === 'invited' && p.invite ? ` (link until ${p.invite.expiresAt})` : p.state === 'ending' && p.endingUntil ? ` (until ${p.endingUntil})` : '';
-          const named = spaceLabel(p.label) === PEOPLE_LABEL ? '' : ` (${spaceLabel(p.label)})`;
-          io.out(`  ${p.name}${named}  ${p.state}${note}  ${p.id}\n`);
+          const named = spaceLabel(p.label) === PEOPLE_LABEL ? '' : ` (${clean(spaceLabel(p.label))})`;
+          io.out(`  ${clean(p.name)}${named}  ${p.state}${note}  ${p.id}\n`);
         }
         for (const s of again) io.out(setupAgainNote(s));
         return EXIT.ok;
@@ -467,7 +471,7 @@ export default defineCommand(
       case 'devices': {
         const p = await find(ctx, need('a person'));
         const r = await callDaemon<{ devices: { id: string; name: string; createdAt: string; accessEmail?: string; revokedAt?: string }[] }>(ctx.ctl, 'GET', `/v1/people/${p.id}/devices`);
-        for (const d of r.devices) io.out(`  ${d.id}  ${d.name}  added ${d.createdAt.slice(0, 10)}${d.accessEmail ? `  ${d.accessEmail}` : ''}${d.revokedAt ? '  (revoked)' : ''}\n`);
+        for (const d of r.devices) io.out(`  ${d.id}  ${clean(d.name)}  added ${d.createdAt.slice(0, 10)}${d.accessEmail ? `  ${clean(d.accessEmail)}` : ''}${d.revokedAt ? '  (revoked)' : ''}\n`);
         if (r.devices.length === 0) io.out('No devices yet.\n');
         return EXIT.ok;
       }
@@ -478,7 +482,7 @@ export default defineCommand(
           const r = await callDaemon<{ devices: { id: string }[] }>(ctx.ctl, 'GET', `/v1/people/${p.id}/devices`).catch(() => ({ devices: [] }));
           if (r.devices.some((d) => d.id === did)) {
             await callDaemon(ctx.ctl, 'DELETE', `/v1/people/${p.id}/devices/${did}`);
-            io.out(`Revoked ${did}. ${p.name}'s other devices were told.\n`);
+            io.out(`Revoked ${clean(did)}. ${clean(p.name)}'s other devices were told.\n`);
             return EXIT.ok;
           }
         }
@@ -521,7 +525,7 @@ export default defineCommand(
       case 'todos': {
         const p = await find(ctx, need('a person'));
         const r = await callDaemon<{ todos: { title: string; due?: { day: string; time?: string }; by?: string }[] }>(ctx.ctl, 'GET', `/v1/people/${p.id}/todos`);
-        for (const t of r.todos) io.out(`  ${t.due ? `${t.due.day}${t.due.time ? ` ${t.due.time}` : ''}  ` : ''}${t.title}${t.by === '' ? '  (from you)' : ''}\n`);
+        for (const t of r.todos) io.out(`  ${t.due ? `${t.due.day}${t.due.time ? ` ${t.due.time}` : ''}  ` : ''}${clean(t.title)}${t.by === '' ? '  (from you)' : ''}\n`);
         if (r.todos.length === 0) io.out('Nothing open.\n');
         return EXIT.ok;
       }
