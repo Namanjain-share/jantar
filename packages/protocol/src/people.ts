@@ -415,7 +415,14 @@ export type PersonWeightsResponse = z.infer<typeof PersonWeightsResponseSchema>;
 // ---------------------------------------------------------------------------
 // What the owner sees of her, and her mirror of it (one function, spec 8.4)
 
-export const OwnerTodosViewSchema = z.object({ today: DayKeySchema, todos: z.array(PersonTodoSchema), projects: z.array(ProjectViewSchema) });
+/**
+ * One of her projects as he sees it with her to-dos (see.todos), and as her mirror shows it: what her join page
+ * names (its name and emoji, active, paused or done, its open and overdue counts). Never its notes, due day or
+ * when she made or changed it.
+ */
+export const OwnerProjectViewSchema = ProjectViewSchema.pick({ id: true, name: true, emoji: true, status: true, open: true, overdue: true });
+export type OwnerProjectView = z.infer<typeof OwnerProjectViewSchema>;
+export const OwnerTodosViewSchema = z.object({ today: DayKeySchema, todos: z.array(PersonTodoSchema), projects: z.array(OwnerProjectViewSchema) });
 export type OwnerTodosView = z.infer<typeof OwnerTodosViewSchema>;
 /**
  * One of her medicines as he sees it at `full`, which her join page words as

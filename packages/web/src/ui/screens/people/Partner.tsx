@@ -40,6 +40,7 @@ import type {
   OwnerFoodView,
   OwnerMedicine,
   OwnerMedsView,
+  OwnerProjectView,
   OwnerTodosView,
   PersonWeight,
   PersonWeightsResponse,
@@ -56,7 +57,7 @@ import type {
   SleepWeek as Week,
   TodoAsk,
 } from '@jantar/protocol/people';
-import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse, type ProjectView } from '@jantar/protocol';
+import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { FoodRead, foodTodayLine } from '../../../people-shared/FoodRead.js';
 import { useEffect, useState } from 'react';
@@ -1244,7 +1245,7 @@ function AssignSheet({
   done: () => void;
   edit?: PersonTodo | null;
   /** Her projects (from her to-dos view): the active ones, and the item's own. */
-  projects?: readonly ProjectView[];
+  projects?: readonly OwnerProjectView[];
 }) {
   const [title, setTitle] = useState('');
   const [day, setDay] = useState('');

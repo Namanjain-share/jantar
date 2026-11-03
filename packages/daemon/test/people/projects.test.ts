@@ -132,6 +132,24 @@ describe('his view at his to-dos level', () => {
   });
 });
 
+describe('review 5, B2: he gets of her projects only what her join page names', () => {
+  it("his view and her mirror carry a project's name, emoji, status and counts, never its notes, due day or times", async () => {
+    const garden = idOf(await herCall('POST', '/v1/p/projects', { name: 'Garden', notes: 'Private: plan for the move in March', due: '2026-12-01', emoji: '🌱' }));
+    f.api.ctx.clock.set('2026-11-03T21:47:00.000Z');
+    expect((await herCall('PATCH', `/v1/p/projects/${garden}`, { name: 'Garden 2', status: 'done' })).statusCode).toBe(200);
+    // Her own list keeps everything she wrote.
+    expect((await herProjects()).find((p) => p.id === garden)).toMatchObject({ notes: 'Private: plan for the move in March', due: '2026-12-01' });
+    const r = await him('GET', `/v1/people/${f.asha.id}/todos`);
+    expect(r.statusCode).toBe(200);
+    const v = r.json() as OwnerTodosView;
+    expect(v.projects.find((p) => p.id === garden)).toEqual({ id: garden, name: 'Garden 2', emoji: '🌱', status: 'done', open: 0, overdue: 0 });
+    expect(r.body).not.toContain('Private: plan');
+    expect(r.body).not.toContain('2026-12-01');
+    expect(r.body).not.toContain('21:47');
+    expect((await herCall('GET', '/v1/p/mirror/todos')).json()).toEqual(v);
+  });
+});
+
 describe('his Assign into one of her projects', () => {
   it('lands in it; her Activity and her push name the project, never an id', async () => {
     const garden = idOf(await herCall('POST', '/v1/p/projects', { name: 'Garden' }));

@@ -88,7 +88,8 @@ export class PeopleViews {
     return {
       today: list.ok ? list.value.today : '',
       todos: list.ok ? (list.value.todos as PersonTodo[]) : [],
-      projects: projects.ok ? projects.value.projects : [],
+      // What her join page names of a project (OwnerProjectViewSchema): never its notes, due day or times.
+      projects: projects.ok ? projects.value.projects.map(({ id, name, emoji, status, open, overdue }) => ({ id, name, ...(emoji ? { emoji } : {}), status, open, overdue })) : [],
     };
   }
 

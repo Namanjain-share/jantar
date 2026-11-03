@@ -22,7 +22,7 @@ import { navigate } from '../nav.js';
 
 const TITLE: Record<string, string> = {
   today: 'Today',
-  todos: 'your to-dos and reminders',
+  todos: 'your to-dos, reminders and projects',
   meds: 'your medicines',
   weight: 'your weight',
   food: 'your food log',

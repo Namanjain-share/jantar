@@ -70,7 +70,7 @@ export function askCommand(name: string, picked: Readonly<Record<string, string 
 
 /** What asking for one field means, in his words. */
 const ASK_WORDS: Record<string, (n: string) => string> = {
-  'see.todos': (n) => `See ${n}'s to-dos and reminders`,
+  'see.todos': (n) => `See ${n}'s to-dos, reminders and projects`,
   'see.plan': (n) => `See ${n}'s day plan, check-ins and status`,
   'see.review': (n) => `See ${n}'s evening review`,
   'see.meds': (n) => `See ${n}'s medicines`,

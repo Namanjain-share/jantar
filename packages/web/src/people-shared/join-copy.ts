@@ -43,10 +43,11 @@ function medNotesWords(owner: string, a: AgreementFields): string {
 }
 
 const see = (owner: string): Record<string, SeeText> => ({
+  // His view (daemon people/views.ts todosView): her projects only by name, emoji, status and counts.
   'see.todos': (v) =>
     v
-      ? 'Your to-dos and reminders: all of them, including ones you add yourself, when you finish or skip each one, and the notes and skip reasons you write'
-      : 'Your to-dos and reminders: off',
+      ? "Your to-dos, reminders and projects: all of them, including ones you add yourself, when you finish or skip each one, and the notes and skip reasons you write. Of each project, its name and emoji, whether it's active, paused or done, and how many of its to-dos are open or overdue, never its notes or due day"
+      : 'Your to-dos, reminders and projects: off',
   // His `full` view (daemon people/meds.ts ownerMedicine): never a log time or pill count; the notes only on medicines he may change.
   'see.meds': (v, a) =>
     v === 'full'
@@ -105,7 +106,7 @@ export function levelLabel(v: string | boolean): string {
 
 /** What a `see` field is about, for its switch's label ("What Sam sees of your to-dos"). */
 const SEE_NOUN: Record<string, string> = {
-  'see.todos': 'your to-dos and reminders',
+  'see.todos': 'your to-dos, reminders and projects',
   'see.meds': 'your medicines',
   'see.weight': 'your weight',
   'see.food': 'your food log',

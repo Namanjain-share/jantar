@@ -56,7 +56,7 @@ describe('M20: the join page', () => {
     for (const re of [
       /Your day plan: when you open it \("Seen"\), each step you finish or skip and when, the notes and skip reasons you write, your check-ins \(mood, energy, a line and what you need\), your status \(Okay, Low or Need space, and its line\) and a rough day/,
       /Your evening review: each item done, skipped, moved, missed or gone, with any skip reason, what you write in it and your mood/,
-      /Your to-dos and reminders: all of them, including ones you add yourself, when you finish or skip each one, and the notes and skip reasons you write/,
+      /Your to-dos, reminders and projects: all of them, including ones you add yourself, when you finish or skip each one, and the notes and skip reasons you write\. Of each project, its name and emoji, whether it's active, paused or done, and how many of its to-dos are open or overdue, never its notes or due day/,
       /When you tap "Going to sleep" or "Woke up", Sam sees it as it happens\./,
       /When you open an alert from Sam, and your reply/,
       /Mark an item "no snooze", or ask to be told if it isn't done by a set time\./,
@@ -81,7 +81,7 @@ describe('M20: the join page', () => {
     expect(at('see.plan', false)).toBe('Your day plan: off, and with it your status and check-ins');
     expect(at('see.sleep', false)).toBe('Your sleep: off');
     // To-dos off: the review says they stay out of it (the daemon leaves them out, M5).
-    expect(at('see.todos', false)).toBe('Your to-dos and reminders: off');
+    expect(at('see.todos', false)).toBe('Your to-dos, reminders and projects: off');
     const todosOff = closeDependents(withField(offer, AGREEMENT_FIELDS.find((x) => x.key === 'see.todos') as (typeof AGREEMENT_FIELDS)[number], false));
     expect(joinCopy('Sam', todosOff, { built: BUILT_PHASE, foodModule: false }).sees.find((l) => l.key === 'see.review')?.text).toMatch(/Your to-dos stay out of it while they are off/);
     // With nothing to assign, no follow-up line.
