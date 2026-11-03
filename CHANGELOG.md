@@ -9,8 +9,9 @@ What changed for people who use Jantar, newest first. Versions before
 place for the work you do for clients, owner-only. This build has the Mac
 side of projects and search, of clients, the log of calls and meetings,
 follow-ups, import and export, and of deals, their stages and insights;
-the phone's Work screens come with the app's next update.
-[Work](docs/work.md) has it all.
+in the app, Work's place, your projects, a project as one screen and one
+search from every phone header. The client and deal screens come with the
+app's next update. [Work](docs/work.md) has it all.
 
 **Before upgrading: nothing to copy by hand.** The daemon keeps
 `life-pre-0.13.0.db` in the backups folder before it moves life.db to
@@ -35,6 +36,25 @@ restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
   project already links is skipped. Never automatic, and it needs Files or
   New session on.
 - **Up to 500 projects** (was 200).
+- **Work in the app.** Work is a place right after Chat, on a device paired
+  with `control`: with Life, Chat and Work on, the phone's tabs are Board,
+  Today, Chat, Work and More (Files moves into More); a row between Chat
+  and Files in the iPad's sidebar; an item on the Mac's rail and `g w`
+  (⌘1-⌘9 keep their places). Your projects are one tap away, under
+  Active, Paused and Done with their clients and next due todos, a table
+  on a wide window; a project is one screen with its client, status,
+  health, milestones, deal, todos, the sessions in its folder (**New
+  session here**), meetings, log, notes and **Open folder in Files**.
+  While Work is on, Todos has no Projects tab and a project's old link
+  opens in Work.
+- **Search from every phone header.** The magnifier opens the search
+  sheet on every screen (⌘K on a Mac, "Search or jump" on an iPad), which
+  finds clients, projects, deals, todos, meetings, sessions, Intel, cafés,
+  posts and places; **Search Intel only** is its last row.
+- **Open project** in a Board row's long-press menu, and a session's
+  screen names its project under the title.
+- **Start from your client folders** in the app too: tick folders, name
+  them, and Create makes a project each (and a client each, if you want).
 - `jantar life on work` brings Todos with it, and `jantar life off todos`
   turns Work off too and says so.
 - **Clients and companies.** A client is a person or a company (a person

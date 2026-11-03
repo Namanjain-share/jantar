@@ -535,6 +535,17 @@ people hostname behind its Access app with the One-time PIN:
 | WK3 | `jantar work import` of a `.vcf` saved from the iPhone's Contacts (share, Save to Files, AirDrop to the Mac): the preview's rows match the cards, photos are dropped, and `jantar work import undo <batch>` takes them back | vCard import |
 | WK4 | In Chat, with a made-up client: "add a deal Site rebuild for Acme, 4.5 lakh, closing the 30th", then "we won it, make the project". The deal is Won, Acme is a client, and the project has Acme as its client; Undo on the change puts all three back. `jantar work export --csv ~/Desktop/deals.csv --deals` opens in Numbers with the value as 450000.00 and the stage's name | deals in Chat, Won → project, the deals CSV |
 
+### Work in the app (v0.13, P1's screens)
+
+| # | Check | What it settles |
+|---|---|---|
+| WK5 | iPhone (Home Screen app), Life, Chat and Work on: the tabs are Board, Today, Chat, Work and More, with Files in More. Work › a project is two taps from the Board; the project screen scrolls with no sideways scroll, and every button and row is at least 44 pt | the Work tab (W18), F2 |
+| WK6 | iPhone: the header's magnifier on Board, Today and a project opens the search sheet with the keyboard up and the list above it; "ac" finds a project, a todo and a session; Search Intel only opens the shelf with the words | F1 |
+| WK7 | iPhone: long press a Board row in a project's folder, Open project opens it in Work; the session's screen shows "Project · …" under its title, and a tap opens the project | F3, F4 |
+| WK8 | iPad 11-inch, landscape, sidebar: Work is one row between Chat and Files; with Today's group open the middle of the sidebar scrolls by no more than about 35 pt; Projects is a table, and a project opens beside it. Portrait (rail): Work under its icon, the project over the list with "‹ Projects" | the sidebar (W19), the split view |
+| WK9 | Mac: `g w` opens Work, ⌘4 is still Files, ⌘K "acme" finds the made-up client's project; in Projects, ↓ and ↵ open a project beside the list, Esc goes back to its row, `c` opens New project | Mac keys |
+| WK10 | Start from your client folders on an empty Work, with New session on: the folders under a made-up client folder show unticked; tick two, Create; both projects link their folders and their live sessions show on them | the seed sheet (W28) |
+
 ## iPad checks (0.12)
 
 0.12 was built and tested in Chromium (Playwright's iPad contexts: touch,

@@ -29,6 +29,7 @@ the live dot, `next →`). The name shown in the app is one constant,
 | **Intel** | The shelf, newest first, with search, type and tag filters and each item's page ([Intel](intel.md)) |
 | **Meetings** | Under More: your Meet and Teams calls with their summaries ([Meetings](extension.md)) |
 | **Chat** | Right after Today: ask Jantar anything, or tell it what to add or change; each change has Undo, deletes wait for your tap ([Chat](assistant.md)) |
+| **Work** | With [Work](work.md) on (0.13.0), right after Chat on a device paired with `control`: your projects under Active, Paused and Done, each with its client and next due todo, and a project as one screen (its client, status, a health line, milestones, its deal, todos, the sessions in its folder with **New session here**, its meetings, the log, notes and **Open folder in Files**). With no project yet: **Start from your client folders**. A Board row inside a project's folder has **Open project** in its long-press menu, and a session's screen names its project under the title |
 | **Accountability partner** | With [Accountability partner](people.md) on: Accountability partner in More (on the rail on a wide screen, on a device paired with control), a line for the person you share with on Today, and `/people` with their status, progress, Plan (the plan editor and Quick plan, Send in a bar at the bottom), Assign (a to-do for them, with a repeat) and Alert, and tabs for Today, To-do, Health (their medicines at the level they share, with Add, Edit and Stop where they allow it; weight, with Correct where they allow it; sleep), Journal, Chat, Lists, Alerts, Sharing (what they agreed to, Ask for more, their devices, your pushes about them) and Activity (the row wraps; a new alert from them shows in the header). Someone invited is a row with the link's expiry. Opened from More, from that line or from a notification about them |
 
 A session waiting on a dynamic workflow or a background agent it started
@@ -39,8 +40,17 @@ long), even though its turn is over. Its header says "1 workflow running ·
 
 On a phone the tab bar holds Board, Today, Files, Accounts and More. With
 Chat on it holds Board, Today, Chat, Files and More, and Accounts moves into
-More. On a Mac a session opens beside the board once the board's pane is
-800 px wide (a window of about 856).
+More. With Chat and Work on it holds Board, Today, Chat, Work and More, and
+Files moves into More (with Chat off, Files keeps its tab). On a Mac a
+session opens beside the board once the board's pane is 800 px wide (a
+window of about 856).
+
+**Search** (0.13.0): the magnifier in the phone's header, on every screen,
+opens the search sheet, the same one ⌘K opens on a Mac and "Search or
+jump" in the iPad's sidebar. Type two letters or more and it finds
+clients, projects, deals, todos, meetings, sessions, Intel items, cafés and
+posts (each while it is on), then the places and the accounts; **Search
+Intel only**, its last row, opens the shelf's own search with your words.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="img/board-desktop-dark.png"><img src="img/board-desktop.png" alt="The Board on a Mac: the sessions, the cards waiting on you, the next resets and new alerts."></picture>
 
@@ -86,7 +96,7 @@ the iPad sidebar's ⋯ and in Devices. Every key has a control on screen.
 | | ⌘J | Chat beside this screen |
 | | ⌘\ | Show or hide the iPad's sidebar |
 | | ⌘1 … ⌘9 | Board, Today, Chat, Files, Accounts, Alerts, Devices, Intel, Meetings (one that is off says so) |
-| | g then b t c l a d i m f | Board, Today, Chat, Alerts, Accounts, Devices, Intel, Meetings, Files |
+| | g then b t c l a d i m f w | Board, Today, Chat, Alerts, Accounts, Devices, Intel, Meetings, Files, Work |
 | | Esc, ⌘. | Back: close what is open |
 | | ⌘Z (outside a text field) | Undo the change shown on screen, never one you can't see |
 | Board | j / k, 1-9, ↵ | Next / previous session; open the nth waiting; open the first |

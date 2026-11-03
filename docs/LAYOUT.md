@@ -772,3 +772,27 @@ the arch tests (W-T1, W-T4, W-T6) and the CLI's `work.test.ts`. P3b adds
 merge, "not a duplicate" and starter-list routes and methods (the
 tombstone and repointing in `life/work/repo.ts`, the Todos module's
 `relinkClient`), and `packages/daemon/test/life/work-merge.test.ts`.
+
+Work in the app (0.13.0, its first web part). The place: `nav.ts`'s Work
+entry right after Chat (`PlaceFeatures.work`, from Life status, so on a
+device with control only), the explicit `CMD_PLACES` for ⌘1-⌘9 (0.12's
+nine), `g w`, `/work?tab=&id=` in `lib/router.ts`, and the Todos project
+addresses landing in Work (`Shell.tsx`). Life status's one shared store
+moved from the Life chunk into the main load (`ui/shell/lifeStatus.ts`,
+`useLifeStatusFeed`; `useLife.ts` reads it). `Api.request` sends a route
+outside `ROUTES` (a lazy part's own table) with the same headers as every
+call. The screens, in their own chunk `Work` (`ui/screens/work/`):
+`Work.tsx` (the off, no-control and loading states), `Projects.tsx` (a
+SplitPane "work-projects", fill: a table per status across a wide pane
+with nothing open, the Todos `ProjectRow` beside an open project or on a
+phone), `ProjectHub.tsx` (one `GET /v1/projects/:id`; its parts are
+`kit/Panel` cards in `kit/Columns` from a pane of 640), `SeedSheet.tsx`
+(Launch's or Files' folder browser), `client.ts` (Work's paths as words,
+no schema) and `model.ts`. The Board's row menu gains "Open project"
+(`board/{Ledger,RowMenu}.tsx`), a session names its project
+(`Session.tsx`), and the palette (`shell/Palette.tsx`, still lazy) is the
+phone header's search sheet too, calling `GET /v1/search`. The first load
+is 277.1 kB of `MAIN_JS_MAX` 280 kB (0.12.0: 275.3; Work's place, its
+icon, the Life status feed, the project line and menu entry), and the
+Work chunk 58.4 kB with what it pulls in. Tests:
+`packages/web/test/work/{nav,client,projects,seed,board-project,search,isolation}.test.ts(x)`.

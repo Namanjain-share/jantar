@@ -20,11 +20,43 @@ and `jantar life off todos` turns Work off with Todos (it says so).
 
 The Mac side of all of Work: projects and search; clients, the log,
 follow-ups, meetings linked to clients, import and export; deals, their
-stages and insights. The phone's Work screens (a Work tab, the project,
-client and deal screens, the Log sheet, the deal stages, Insights, search
-from every header) come with the app's next update; until then the routes
-below are there for it, Todos keeps showing your projects as before, and
-Chat and the CLI already reach your clients and deals.
+stages and insights. In the app: Work's place, its projects and a
+project's screen, search from every phone header, and projects from your
+client folders (below). The client and deal screens, the Log sheet, the
+deal stages and Insights come with the app's next update; until then Chat
+and the CLI reach your clients and deals.
+
+### In the app
+
+**Where it is.** With Work on, it is a place right after Chat, on a
+device paired with `control` (which Life parts are on is never shown to a
+device that can only read): a tab on the phone (Board, Today, Chat, Work
+and More with Chat on; Files moves into More), a row between Chat and
+Files in the iPad's sidebar, an item on the Mac's rail, `g w` with a
+keyboard, and a row in ⌘K. ⌘1-⌘9 keep the places they had. While Work is
+off its page says how to turn it on; while Work is on, Todos has no
+Projects tab, and a link to a project in Todos opens it in Work.
+
+**Projects.** Your projects under Active, Paused and Done (Done folded),
+each with its client, its open and overdue counts, its next due todo, its
+due day and its live sessions. On a wide Mac or iPad window they are a
+table until you open one; then the project opens beside them. A project's
+screen has, top to bottom: its client and due day, its status (one tap),
+a health line (how many are overdue, the next due, done this week, and
+how long it has been quiet), its milestones and its deal when it has
+them, its todos (done, snooze, edit and delete with Undo; **+** adds one
+to the project) and the ones done last, the sessions running in its
+folder with **New session here** (with New session on, on a device paired
+to start sessions), its meetings (with Meetings on), the log with its
+client, its notes, and its folder with **Open folder in Files** (with
+Files on).
+
+**From the Board and a session.** A Board row inside a project's folder
+has **Open project** in its menu (long press, or right click on a Mac),
+and a session's screen names its project under the title.
+
+**Search.** The magnifier in the phone's header (and ⌘K, or "Search or
+jump" in the iPad's sidebar) searches everything below as you type.
 
 ### A project on one screen
 
@@ -83,8 +115,16 @@ It never runs by itself. The folders must be inside one of your folders
 (`jantar folders add-root <path>`), it needs Files or New session on (Work
 adds no new way to list the Mac's folders), and a folder a project already
 links is skipped and counted. A project is named from its folder
-("acme-web" becomes "Acme Web") unless you name it. The phone's sheet
-(`POST /v1/work/seed`) picks folders from the same browsers.
+("acme-web" becomes "Acme Web") unless you name it.
+
+In the app, **Start from your client folders** is on Work's empty page
+(and under the list once you have projects). Pick a folder, tick the
+folders inside it that are projects (none is ticked to start with, and
+one a project already links can't be), change a name if you like, and
+**Create**; **Also make a client for each** (on to start with) makes a
+company client per folder too, linked to its project. It browses with New
+session's folder browser, or Files' while New session is off, and writes
+nothing into the folders (`POST /v1/work/seed`).
 
 ### Clients and companies
 
