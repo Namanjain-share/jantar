@@ -212,6 +212,8 @@ describe('his People list: someone invited', () => {
     const c = client({ list: vi.fn(async () => ({ enabled: true, people: [invited], ownerName: 'Sam' })), inviteLink });
     render(<Wrapped client={c} pid={null} />);
     expect(await screen.findByText(/Invited · the link works once, until/)).toBeTruthy();
+    // 0.12.1: the One-time PIN drops the invite from the link at sign-in.
+    expect(screen.getByText("With Access's One-time PIN, Asha opens the link once more after signing in, or pastes it on the page.")).toBeTruthy();
     expect(screen.getByText('jantar people invite Asha')).toBeTruthy();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Copy link again' }));

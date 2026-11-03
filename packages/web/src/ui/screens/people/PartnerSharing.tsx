@@ -481,6 +481,8 @@ export function NotSharingRow({ client, p }: { client: PeopleClient; p: PersonVi
           <p className="type-small text-ink-2">
             Invited{p.invite ? ` · the link works once, until ${until(p.invite.expiresAt)}` : ' · no link yet'}. {p.name} joins from it on {p.name}'s own phone.
           </p>
+          {/* 0.12.1: the One-time PIN form keeps only the path, so the invite's #c= is gone after signing in. */}
+          {p.invite ? <p className="type-small text-ink-2">With Access's One-time PIN, {p.name} opens the link once more after signing in, or pastes it on the page.</p> : null}
           {p.invite?.linkAvailable && pairedWithAdmin() ? (
             <Button variant="outline" className="mt-4 min-h-44" onClick={() => void again()}>
               Copy link again
