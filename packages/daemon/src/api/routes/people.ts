@@ -189,8 +189,28 @@ export const PEOPLE_ROUTE_IMPLS: RouteTable = {
         { name: 'life data', ok: s.deps.life.people.lifeOpen() && s.deps.life.broken() === null, detail: s.deps.life.broken() ?? (s.deps.life.people.lifeOpen() ? 'open' : 'closed') },
         { name: 'their app', ok: s.peopleAssets.size > 0, detail: s.peopleAssets.size > 0 ? 'built' : 'not built: pnpm --filter @jantar/web build' },
         { name: 'web push', ok: webpush?.publicKey() !== null && webpush !== null, detail: webpush ? 'ready' : 'no Web Push notifier' },
+        ...foodChecks(s),
       ];
       return { checks };
     },
   },
 };
+
+/**
+ * `people doctor`'s food lines, one per person in the space (spec 3.5): whether their food log is on, and
+ * what he sees of it. A level of see.food with the module off would be a promise the space can't keep: FIX.
+ */
+function foodChecks(s: ApiServices): { name: string; ok: boolean; detail: string }[] {
+  const list = s.deps.life.people.list();
+  if (!list.ok) return [];
+  return list.value
+    .filter((p) => p.state === 'invited' || p.state === 'active' || p.state === 'paused')
+    .map((p) => {
+      const level = (p.state === 'invited' ? p.offer : p.agreement)?.see.food ?? 'off';
+      const sees = level === 'full' ? 'what they eat, with calories' : level === 'counts' ? 'how many meals they log' : 'none of it';
+      if (!p.modules.food) {
+        return { name: `food log (${p.name})`, ok: level === 'off', detail: level === 'off' ? `off (to turn it on: jantar people modules ${p.name} --food on)` : `off, yet see.food is ${level}: jantar people modules ${p.name} --food on` };
+      }
+      return { name: `food log (${p.name})`, ok: true, detail: `on; ${p.state === 'invited' ? 'the invite offers' : 'you see'} ${sees}` };
+    });
+}

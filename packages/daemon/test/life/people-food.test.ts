@@ -267,6 +267,19 @@ describe('her writes reach his screens only while he sees her food log (M11)', (
   });
 });
 
+describe('people doctor', () => {
+  it('names each food log and what he sees of it', async () => {
+    const r = await ctl('GET', '/v1/people/doctor');
+    expect(r.statusCode).toBe(200);
+    const checks = (r.json() as { checks: { name: string; ok: boolean; detail: string }[] }).checks.filter((c) => c.name.startsWith('food log'));
+    expect(checks).toContainEqual({ name: 'food log (Asha)', ok: true, detail: 'on; you see what they eat, with calories' });
+    expect(checks).toContainEqual({ name: 'food log (Bea)', ok: true, detail: 'off (to turn it on: jantar people modules Bea --food on)' });
+    await herCall('POST', '/v1/p/agreement/narrow', { see: { food: 'counts' } });
+    const after = ((await ctl('GET', '/v1/people/doctor')).json() as { checks: { name: string; detail: string }[] }).checks;
+    expect(after.find((c) => c.name === 'food log (Asha)')?.detail).toBe('on; you see how many meals they log');
+  });
+});
+
 describe('T11: her export', () => {
   it('holds her food log and her targets', async () => {
     await herCall('PUT', '/v1/p/food/targets', { kcalTarget: 1600, goalKg: 54.5 });

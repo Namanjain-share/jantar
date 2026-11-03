@@ -8,7 +8,7 @@
  *   people doctor
  *   people add <name> [--email <addr>] [--color <c>] [--no-food]
  *   people offer <name|id> [--preset light|standard|everything]
- *                [--see todos,plan,review=counts|full,meds=full|adherence,weight,sleep,journal,chat]
+ *                [--see todos,plan,review=counts|full,meds=full|adherence,weight,food=counts|full,sleep,journal,chat]
  *                [--assign todos,plan,meds] [--edit-hers todos,plan,meds,weight] [--comment journal]
  *   people ask <name|id> [--see ...] [--assign ...] [--edit-hers ...] [--comment ...] [--note <text>]
  *   people prefs [--summary HH:MM|off] [--review-push on|off] [--quiet HH:MM-HH:MM|off]
@@ -42,14 +42,17 @@ const FIELD_GROUPS = ['see', 'assign', 'editHers', 'comment'] as const;
 /** What `invite` says while the owner's name is unset: their page and app show it. */
 export const NAME_FIRST = 'Set your name first: jantar people on --name <your name>. Their join page and app show it.';
 
-/** `todos,meds=adherence,weight=off` into a patch of one group (a bare name is on; `x=off` turns it off). */
+/**
+ * `todos,meds=adherence,food=counts,weight=off` into a patch of one group (a bare name is on; `x=off` turns it
+ * off). The fields with levels (meds, review, food) take their level, a bare name or `on` meaning full.
+ */
 export function fieldList(group: (typeof FIELD_GROUPS)[number], value: string | undefined): Record<string, boolean | string> {
   const out: Record<string, boolean | string> = {};
   if (!value) return out;
   for (const part of value.split(',').map((p) => p.trim()).filter(Boolean)) {
     const [name, level] = part.split('=') as [string, string | undefined];
     if (!/^[a-z]+$/i.test(name)) throw new UsageError(`"${part}" is not a field`);
-    if (group === 'see' && (name === 'meds' || name === 'review')) out[name] = level ?? 'full';
+    if (group === 'see' && (name === 'meds' || name === 'review' || name === 'food')) out[name] = level === undefined || level === 'on' ? 'full' : level === 'false' ? 'off' : level;
     else out[name] = level === undefined ? true : level !== 'off' && level !== 'false';
   }
   return out;
@@ -204,7 +207,7 @@ const ON_WORDS: Record<string, string> = {
   'see.todos': 'sees their to-dos and reminders',
   'see.meds': 'sees their medicines',
   'see.weight': 'sees their weight',
-  'see.food': 'sees their food log',
+  'see.food': 'sees their food log: how many meals at counts; what they ate, with calories, at full',
   'assign.todos': 'adds to-dos and reminders for them',
   'assign.meds': 'adds medicines for them',
   'editHers.todos': 'edits or removes to-dos they added',
@@ -230,7 +233,7 @@ export default defineCommand(
       `  people on [--name <your name>] | off      turn ${PEOPLE_LABEL} on (their exits always work) or off\n` +
       '  people add <name> [--email <addr>] [--no-food]\n' +
       '  people offer <name> [--preset light|standard|everything] [--see ...] [--assign ...] [--edit-hers ...] [--comment journal]\n' +
-      '      --see todos,plan,review=counts|full,meds=full|adherence,weight,sleep,journal,chat (x=off turns one off)\n' +
+      '      --see todos,plan,review=counts|full,meds=full|adherence,weight,food=counts|full,sleep,journal,chat (x=off turns one off)\n' +
       '      --assign todos,plan,meds   --edit-hers todos,plan,meds,weight   --comment journal\n' +
       '  people ask <name> [--see ...] [--assign ...] [--edit-hers ...] [--comment ...] [--note <text>]\n' +
       '                                            ask them for more; nothing changes until they accept\n' +
@@ -239,7 +242,7 @@ export default defineCommand(
       '  people invite <name> [--json]             a 24-hour, single-use join link (needs your name)\n' +
       '  people list | devices <name> | todos <name>\n' +
       '  people revoke <device-id> | revoke-invite <name> | remove <name> [--now] [--forget]\n' +
-      '  people modules <name> --food on|off | doctor',
+      '  people modules <name> --food on|off       their food log (off is refused while they have entries) | doctor',
   },
   async (argv, ctx) => {
     const { flags, positionals } = parseArgs(
@@ -248,9 +251,9 @@ export default defineCommand(
         name: { type: 'string', help: 'your name, as they read it' },
         email: { type: 'string', help: 'their email (a reminder for the Access step)' },
         color: { type: 'string', help: 'teal, violet, amber, rose, sky or lime' },
-        food: { type: 'string', help: 'on or off (modules); --no-food on add' },
+        food: { type: 'string', help: 'on or off (modules: their food log); --no-food on add' },
         preset: { type: 'string', help: 'light, standard (default) or everything' },
-        see: { type: 'string', help: 'todos,plan,review=counts|full,meds=full|adherence|off,weight,sleep,journal,chat' },
+        see: { type: 'string', help: 'todos,plan,review=counts|full,meds=full|adherence|off,weight,food=counts|full|off,sleep,journal,chat' },
         assign: { type: 'string', help: 'todos,plan,meds' },
         'edit-hers': { type: 'string', help: 'todos,plan,meds,weight' },
         comment: { type: 'string', help: 'journal' },
@@ -333,8 +336,16 @@ export default defineCommand(
         const p = await find(ctx, need('a person'));
         if (flags.food !== 'on' && flags.food !== 'off') throw new UsageError('modules needs --food on or --food off');
         await callDaemon(ctx.ctl, 'PATCH', `/v1/people/${p.id}/modules`, { food: flags.food === 'on' });
-        // Her food log is a later phase (AREAS.food): say so, rather than promise a screen this release lacks.
-        io.out(flags.food === 'on' ? `${p.name}'s food module is on. The accountability partner space has no food log in this release, so nothing changes for them yet.\n` : `${p.name}'s food log is off.\n`);
+        const level = p.agreement?.see.food ?? 'off';
+        if (flags.food === 'off') {
+          io.out(`${p.name}'s food log is off: their app has no Food, and you see none of it.\n`);
+          return EXIT.ok;
+        }
+        io.out(`${p.name}'s food log is on: their app has Food, and a quick add on Today.\n`);
+        // Turning it on grants nothing (D24): what you see of it is what they agreed to.
+        if (p.state === 'invited') io.out(`Their invite offers it as the offer says: jantar people offer ${p.name} --see food=counts|full\n`);
+        else if (level === 'off') io.out(`You see none of it until they say yes: jantar people ask ${p.name} --see food=counts (how many meals) or food=full (what they ate, with calories)\n`);
+        else io.out(`You see ${level === 'full' ? 'what they eat, with calories' : 'how many meals they log'}, as they agreed.\n`);
         return EXIT.ok;
       }
       case 'ask': {

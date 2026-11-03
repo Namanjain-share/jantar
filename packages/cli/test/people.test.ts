@@ -6,7 +6,7 @@
  * under the same email. Synthetic people only (Asha, Bea).
  */
 import { describe, expect, it } from 'vitest';
-import people, { NAME_FIRST } from '../src/commands/people.js';
+import people, { NAME_FIRST, fieldList } from '../src/commands/people.js';
 import { EXIT } from '../src/command.js';
 import { contextFor, fakeCtl, fakeSettings, ok } from './helpers.js';
 
@@ -63,7 +63,7 @@ describe('jantar people: the Accountability partner words, ask, prefs and the na
     const help = contextFor({ env: ENV }, { ctl });
     expect(await people.run(['--help'], help.ctx)).toBe(EXIT.ok);
     expect(help.io.stdout).toContain('--comment journal');
-    expect(help.io.stdout).toContain('--see todos,plan,review=counts|full,meds=full|adherence,weight,sleep,journal,chat');
+    expect(help.io.stdout).toContain('--see todos,plan,review=counts|full,meds=full|adherence,weight,food=counts|full,sleep,journal,chat');
     expect(help.io.stdout).toContain('people ask <name>');
     expect(help.io.stdout).toContain('people prefs');
     expect(`${help.io.stdout}${c.io.stdout}`).not.toMatch(/People is|Partners can/);
@@ -105,6 +105,32 @@ describe('jantar people: the Accountability partner words, ask, prefs and the na
     expect(c.io.stdout).toContain('Asked Asha. Nothing changes until they accept');
     const none = contextFor({ env: ENV }, { ctl });
     expect(await people.run(['ask', 'Asha'], none.ctx)).toBe(EXIT.usage);
+  });
+
+  it('food: --see food takes a level (bare or on is full); modules --food says what changes for them and what you see', async () => {
+    expect(fieldList('see', 'food')).toEqual({ food: 'full' });
+    expect(fieldList('see', 'food=on,weight')).toEqual({ food: 'full', weight: true });
+    expect(fieldList('see', 'food=counts')).toEqual({ food: 'counts' });
+    expect(fieldList('see', 'food=off')).toEqual({ food: 'off' });
+    const offered: unknown[] = [];
+    const sharing = { ...asha, agreement: { version: 2, see: { food: 'off' } } };
+    const ctl = fakeCtl({
+      'GET /v1/people': ok({ enabled: true, people: [sharing] }),
+      [`POST /v1/people/${ASHA}/offer`]: (call) => (offered.push(call.body), ok({ version: 2, on: [], fields: { see: { food: 'counts' } } })),
+      [`PATCH /v1/people/${ASHA}/modules`]: ok({ ok: true }),
+    });
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['offer', 'Asha', '--preset', 'standard', '--see', 'food=counts'], c.ctx)).toBe(EXIT.ok);
+    expect(offered).toEqual([{ preset: 'standard', see: { food: 'counts' } }]);
+    expect(c.io.stdout).toContain('see.food = counts  (sees their food log: how many meals at counts; what they ate, with calories, at full)');
+    const on = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['modules', 'Asha', '--food', 'on'], on.ctx)).toBe(EXIT.ok);
+    expect(ctl.calls.find((x) => x.path === `/v1/people/${ASHA}/modules`)?.body).toEqual({ food: true });
+    expect(on.io.stdout).toBe("Asha's food log is on: their app has Food, and a quick add on Today.\nYou see none of it until they say yes: jantar people ask Asha --see food=counts (how many meals) or food=full (what they ate, with calories)\n");
+    const off = contextFor({ env: ENV }, { ctl });
+    expect(await people.run(['modules', 'Asha', '--food', 'off'], off.ctx)).toBe(EXIT.ok);
+    expect(off.io.stdout).toBe("Asha's food log is off: their app has no Food, and you see none of it.\n");
+    expect(on.io.stdout).not.toMatch(/no food log in this release/);
   });
 
   it('remove with the 7-day window names its end, and the Access step waits for it; --now gives the step at once (review 4, B5)', async () => {
