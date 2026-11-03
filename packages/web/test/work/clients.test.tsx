@@ -125,6 +125,15 @@ describe('Work › Clients on a phone', () => {
     expect(await screen.findByText('312 more not shown. Narrow the filter to find them.')).toBeTruthy();
   });
 
+  it('a phone keeps the filters short: the sort, the tag and the list share one row, a part each', async () => {
+    setup({ layout: layoutAt(390, { coarse: true }) });
+    await screen.findByRole('list', { name: 'Clients' });
+    const row = document.querySelector('[data-selects]') as HTMLElement;
+    await waitFor(() => expect(within(row).getAllByRole('combobox').map((s) => s.getAttribute('aria-label'))).toEqual(['Sort', 'Tag', 'List']));
+    expect(row.className.split(' ')).toEqual(expect.arrayContaining(['grid', 'grid-cols-3', '@md:flex']));
+    for (const s of within(row).getAllByRole('combobox')) expect(s.className.split(' ')).toEqual(expect.arrayContaining(['w-full', 'min-w-0', '@md:w-auto', 'coarse:h-44']));
+  });
+
   it('touch: the state chips are 44 by 44 at least ("All" is narrower)', async () => {
     setup({ layout: layoutAt(390, { coarse: true }) });
     await screen.findByRole('list', { name: 'Clients' });

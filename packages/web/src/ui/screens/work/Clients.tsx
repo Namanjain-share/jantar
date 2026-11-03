@@ -323,7 +323,7 @@ function Filters({ filter, sort, onSort, tags, lists, onChange }: { filter: Filt
     const t = setTimeout(() => change.current({ q: q || undefined }), 300);
     return () => clearTimeout(t);
   }, [text, filter.q]);
-  const select = 'h-32 min-w-0 max-w-full rounded-btn border border-line bg-bg px-8 type-small text-ink outline-none focus-visible:outline-2 focus-visible:outline-ink coarse:h-44';
+  const select = 'h-32 w-full min-w-0 max-w-full rounded-btn border border-line bg-bg px-8 type-small text-ink outline-none focus-visible:outline-2 focus-visible:outline-ink coarse:h-44 @md:w-auto';
   return (
     <div className="flex flex-col gap-8 px-16 pb-12">
       <label className="relative block">
@@ -343,7 +343,9 @@ function Filters({ filter, sort, onSort, tags, lists, onChange }: { filter: Filt
         />
       </label>
       <Chips<'all' | WorkClientState> label="State" chips={STATE_CHIPS} value={filter.state ?? 'all'} onChange={(k) => onChange({ state: !k || k === 'all' ? undefined : k })} />
-      <div className="flex flex-wrap items-center gap-8">
+      {/* A narrow pane: the sort, the tag and the list share one row, a part each (they wrapped onto three, about
+          400 px of filters before the first client on a phone). From 640 each is as wide as its words. */}
+      <div data-selects className={clsx('grid gap-8 @md:flex @md:flex-wrap @md:items-center', lists.length ? 'grid-cols-3' : 'grid-cols-2')}>
         <select aria-label="Sort" className={select} value={sort} onChange={(e) => onSort(e.target.value as Sort)}>
           <option value="name">By name</option>
           <option value="touch">Last touch</option>
