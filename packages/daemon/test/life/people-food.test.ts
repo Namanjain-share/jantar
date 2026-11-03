@@ -185,13 +185,15 @@ describe('review 5, B1: no food level is agreed that her page showed as "not par
   it("his ask for food, then the food log off: the ask loses food (and goes when that was all of it); her Allow can't agree to it", async () => {
     const ivy = await joinPerson(f.api, 'Ivy', { food: true, offer: { see: { food: 'off', sleep: false } } });
     expect((await him('POST', `/v1/people/${ivy.id}/agreement`, { see: { food: 'full' } }, f.owner.admin)).statusCode).toBe(200);
-    expect((await agreed(ivy.full)).pending?.fields.see.food).toBe('full');
+    const asked = (await agreed(ivy.full)).pending;
+    expect(asked?.fields.see.food).toBe('full');
     expect((await ctl('PATCH', `/v1/people/${ivy.id}/modules`, { food: false })).statusCode).toBe(200);
     // Food was all he asked: nothing is left for her to answer, on her screen or his.
     expect((await agreed(ivy.full)).pending).toBeNull();
     const list = (await ctl('GET', '/v1/people')).json() as { people: { id: string; pendingProposal: unknown }[] };
     expect(list.people.find((x) => x.id === ivy.id)?.pendingProposal).toBeNull();
-    expect((await herCall('POST', '/v1/p/agreement/accept', { version: 999 }, ivy.full)).statusCode).toBe(409);
+    // Her Allow from a card loaded before the log went off answers nothing.
+    expect((await herCall('POST', '/v1/p/agreement/accept', { version: asked?.version }, ivy.full)).statusCode).toBe(409);
     // An ask for food and sleep keeps sleep; her Allow gives sleep and never food.
     expect((await ctl('PATCH', `/v1/people/${ivy.id}/modules`, { food: true })).statusCode).toBe(200);
     expect((await him('POST', `/v1/people/${ivy.id}/agreement`, { see: { food: 'full', sleep: true } }, f.owner.admin)).statusCode).toBe(200);
