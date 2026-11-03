@@ -3,7 +3,7 @@
  * 0.13.0 Work's deals, the pure half (ui/screens/work/dealModel.ts): a
  * card's words, the totals per currency (never added across, W17), the
  * stage the phone opens on, how a move goes (W33), Today's filters, the
- * insights' "—" for no data (W36), and the stage editor's plan.
+ * insights' "–" for no data (W36), and the stage editor's plan.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -98,10 +98,10 @@ describe('stages and moves', () => {
   });
 });
 
-describe('insights say no data as "—" (W36)', () => {
+describe('insights say no data as "–" (W36)', () => {
   it('a rate and a number of days', () => {
-    expect([pct(null), pct(undefined), pct(0), pct(2 / 3), pct(1)]).toEqual(['—', '—', '0%', '67%', '100%']);
-    expect([daysText(null), daysText(1), daysText(18.46)]).toEqual(['—', '1 day', '18.5 days']);
+    expect([pct(null), pct(undefined), pct(0), pct(2 / 3), pct(1)]).toEqual(['–', '–', '0%', '67%', '100%']);
+    expect([daysText(null), daysText(1), daysText(18.46)]).toEqual(['–', '1 day', '18.5 days']);
   });
 });
 

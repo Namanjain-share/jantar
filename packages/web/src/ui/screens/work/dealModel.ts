@@ -5,7 +5,7 @@
  * currency (never added across currencies, W17), the pipeline's totals,
  * which stage the phone opens on, how a move goes (Won and Lost ask first,
  * an open stage moves at once), the eight reasons a deal was lost, the
- * insights' periods and their words for no data ("—", never 0 %), and the
+ * insights' periods and their words for no data ("–", never 0 %), and the
  * plans the stage and milestone editors send.
  */
 import type { WorkDealCard, WorkInsightsBook, WorkLostCode, WorkStageColumn, WorkStageKind, WorkSum } from '@jantar/protocol/work';
@@ -165,7 +165,7 @@ export function lostLabel(code: WorkLostCode | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
-// Insights (W36): no data is "—", never 0 %
+// Insights (W36): no data is "–" (the app's dash for no value, as Accounts'), never 0 %
 
 /** The periods, as chips (life-core ANALYTICS_PERIODS; `fy` from 1 April). */
 export const INSIGHT_PERIODS = [
@@ -178,14 +178,14 @@ export const INSIGHT_PERIODS = [
 ] as const;
 export type InsightPeriod = (typeof INSIGHT_PERIODS)[number]['key'];
 
-/** A rate as a percent ("42%"), or "—" with nothing to rate. */
+/** A rate as a percent ("42%"), or "–" with nothing to rate. */
 export function pct(rate: number | null | undefined): string {
-  return rate === null || rate === undefined ? '—' : `${Math.round(rate * 100)}%`;
+  return rate === null || rate === undefined ? '–' : `${Math.round(rate * 100)}%`;
 }
 
-/** A number of days ("12 days", "1 day", "0.5 days"), or "—" with no sample. */
+/** A number of days ("12 days", "1 day", "0.5 days"), or "–" with no sample. */
 export function daysText(days: number | null | undefined): string {
-  if (days === null || days === undefined) return '—';
+  if (days === null || days === undefined) return '–';
   const n = Math.round(days * 10) / 10;
   return `${n} ${n === 1 ? 'day' : 'days'}`;
 }
@@ -212,7 +212,7 @@ export function anyDeals(books: readonly Pick<WorkInsightsBook, 'winRate' | 'ope
   return books.some((b) => b.winRate.closed > 0 || b.open.count > 0 || b.sources.length > 0);
 }
 
-/** "2 won · 1 lost of 3 closed", or "Nothing closed" (W36: the rate is then "—"). */
+/** "2 won · 1 lost of 3 closed", or "Nothing closed" (W36: the rate is then "–"). */
 export function closedLine(w: WorkInsightsBook['winRate']): string {
   if (w.closed === 0) return 'Nothing closed';
   return `${w.won} won · ${w.lost} lost of ${w.closed} closed`;

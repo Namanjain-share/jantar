@@ -99,11 +99,14 @@ describe('design rules (direction.md 7)', () => {
         'ui/screens/life/today/Dashboard.tsx',
         'ui/screens/life/today/Today.tsx',
         // 0.13.0 Work: an overdue project's count and due day, and the hub's overdue todos; a client's
-        // overdue follow-up on its row, and a Work write that failed (the W35 line).
+        // overdue follow-up on its row, and a Work write that failed (the W35 line); a deal whose close
+        // day passed, on its card and its page, and a project's milestone past its day.
         'ui/screens/work/Projects.tsx',
         'ui/screens/work/ProjectHub.tsx',
         'ui/screens/work/Clients.tsx',
         'ui/screens/work/parts.tsx',
+        'ui/screens/work/Deals.tsx',
+        'ui/screens/work/DealHub.tsx',
       ]),
     ).toEqual([]);
     // Never a border, an outline or a focus ring.

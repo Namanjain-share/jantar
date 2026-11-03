@@ -8,7 +8,7 @@
  *   ₹4,50,000 · closes 30 Nov · Referral · AMG   the close day ember once it passed
  *   [ Move to… ]                                 an open deal; a closed one: [ Reopen… ]
  *   Quiet: no move and no touch in its stage's quiet days
- *   Lost · Price — "Went with a cheaper quote."  Change reason (a lost deal)
+ *   Lost · Price · Went with a cheaper quote.    Change reason (a lost deal)
  *   NEXT  Call about scope · Thu 15:00   ✓       its earliest follow-up, else "No next step"
  *   [ Log a call or meeting ]                    the client's Log sheet, the entry this deal's
  *   FOLLOW-UPS   the Todos rows; + Next step (this client and deal)

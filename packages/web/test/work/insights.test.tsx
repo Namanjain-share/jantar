@@ -6,7 +6,7 @@
  * - The period chips (30 days … This FY, All) ask the Mac for that period;
  *   the range line says its days.
  * - One book per currency, never added across (W17): with two, each card
- *   names its currency. No data is "—", never 0 % (W36).
+ *   names its currency. No data is "–", never 0 % (W36).
  * - The cards: win rate, cycle, forecast, revenue won, sources, why lost,
  *   then the funnel and time in stage.
  * - Nothing in the period: one line and All time (or Deals); the business
@@ -71,19 +71,19 @@ describe('Insights', () => {
     expect(history.entries.at(-1)).toBe('/work?tab=deals');
   });
 
-  it('one book per currency, each card naming its own; no data is "—", never 0 %', async () => {
+  it('one book per currency, each card naming its own; no data is "–", never 0 %', async () => {
     setup();
     expect(await screen.findByRole('heading', { level: 1, name: 'Insights' })).toBeTruthy();
     await screen.findByRole('region', { name: 'Win rate · INR' });
     expect((document.querySelector('[data-range]') as HTMLElement).textContent).toBe('17 Oct 2025 – 15 Jan 2026');
     expect(figure('Win rate · INR')).toBe('67%');
     expect(card('Win rate · INR').textContent).toMatch(/2 won · 1 lost of 3 closed · 2 open/);
-    // Dollars: one open deal, nothing closed: "—", not 0 %.
-    expect(figure('Win rate · USD')).toBe('—');
+    // Dollars: one open deal, nothing closed: "–", not 0 %.
+    expect(figure('Win rate · USD')).toBe('–');
     expect(card('Win rate · USD').textContent).toMatch(/Nothing closed · 1 open/);
     expect(figure('Cycle · INR')).toBe('18.5 days');
     expect(card('Cycle · INR').textContent).toMatch(/over 2 deals · fastest 12 days · slowest 25 days/);
-    expect(figure('Cycle · USD')).toBe('—');
+    expect(figure('Cycle · USD')).toBe('–');
     expect(card('Cycle · USD').textContent).toMatch(/Nothing won/);
     // Never a sum across currencies: no card holds both symbols.
     for (const r of screen.getAllByRole('region')) expect(/₹/.test(r.textContent ?? '') && /\$/.test(r.textContent ?? ''), r.getAttribute('aria-label') ?? '').toBe(false);
@@ -109,7 +109,7 @@ describe('Insights', () => {
     setup();
     await screen.findByRole('region', { name: 'Funnel' });
     const funnel = within(screen.getByRole('list', { name: 'Funnel' })).getAllByRole('listitem');
-    expect(funnel.map((r) => r.textContent)).toEqual(['New lead75%4 in · 3 on', 'Proposal sent—3 in · 1 on']);
+    expect(funnel.map((r) => r.textContent)).toEqual(['New lead75%4 in · 3 on', 'Proposal sent–3 in · 1 on']);
     const time = within(screen.getByRole('list', { name: 'Time in stage' })).getByRole('listitem');
     expect(time.textContent).toBe('Proposal sent10.5 daysmedian 9 days · 2 there now, oldest 12 days');
   });

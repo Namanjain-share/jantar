@@ -180,7 +180,7 @@ cycle, forecast by the month deals should close, revenue won by month,
 sources, why deals were lost, the funnel and time in stage. Pick the
 period: 30 or 90 days, 6 or 12 months, **This FY** (from 1 April) or
 **All**. Each currency has its own cards, and with nothing to count a
-figure reads "—", never 0 %. On a wide window the cards sit in two or
+figure reads "–", never 0 %. On a wide window the cards sit in two or
 three columns.
 
 ### A project on one screen

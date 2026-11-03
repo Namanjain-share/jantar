@@ -99,7 +99,7 @@ restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
 - **Insights in the app**: one scroll of cards per currency (win rate,
   cycle, forecast, revenue won, sources, why lost, the funnel and time in
   stage) for 30 or 90 days, 6 or 12 months, this financial year or all;
-  "—" when there is nothing to count.
+  "–" when there is nothing to count.
 - **Milestones in the app**: a project's page lists them, each ticked done
   with a tap; Edit names, dates, orders and removes them.
 - `jantar life on work` brings Todos with it, and `jantar life off todos`

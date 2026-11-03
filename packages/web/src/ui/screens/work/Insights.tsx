@@ -19,7 +19,7 @@
  *
  * One book per currency, the Life currency first: money is never added
  * across currencies (W17); with two or more, each card names its currency.
- * No data is "—", never 0 % (W36): a rate with nothing closed, a cycle with
+ * No data is "–", never 0 % (W36): a rate with nothing closed, a cycle with
  * nothing won. "This FY" is the financial year from 1 April, in the Life
  * zone (the Mac works the period out).
  *
@@ -149,7 +149,7 @@ function Row({ label, value, sub, bar }: { label: ReactNode; value: ReactNode; s
   );
 }
 
-/** One big figure ("67%", "18.5 days", or "—") and its line. */
+/** One big figure ("67%", "18.5 days", or "–") and its line. */
 function Figure({ value, children }: { value: string; children: ReactNode }) {
   return (
     <div className="px-16 py-12">
@@ -234,7 +234,7 @@ function bookCards(b: WorkInsightsBook, books: number, card: boolean): ReactNode
   ];
 }
 
-/** Each stage: what entered it in the period, what went on from it, and that share ("—" with nothing out). */
+/** Each stage: what entered it in the period, what went on from it, and that share ("–" with nothing out). */
 function Funnel({ reply, card }: { reply: WorkInsightsReply; card: boolean }) {
   const rows = reply.funnel.rows.filter((r) => r.kind === 'open');
   const moved = rows.some((r) => r.entered > 0 || r.exited > 0);
