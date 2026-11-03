@@ -24,7 +24,7 @@ import { parseRoute, routePath } from '../../src/lib/router.js';
 import { LOST_REASONS } from '../../src/ui/screens/work/dealModel.js';
 import { layoutAt } from '../../src/ui/shell/layout.js';
 import { fakeApi, preloadPlaces, renderApp, stateWith } from '../helpers.js';
-import { DEALS, IDS, WORK_ON, dealAnswers, dealHub, lifeStatus, stageCols, workRequest } from '../work-helpers.js';
+import { DEALS, IDS, SETTINGS, WORK_ON, dealAnswers, dealHub, lifeStatus, stageCols, workRequest } from '../work-helpers.js';
 
 preloadPlaces('work', 'deals');
 
@@ -198,6 +198,22 @@ describe('Work › Deals on a phone', () => {
     expect(await screen.findByText(/No deals yet\./)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add a deal' })).toBeTruthy();
     expect(screen.getByText('Nothing open')).toBeTruthy();
+  });
+
+  it('a business with no deals of its own says so, and All businesses brings them back', async () => {
+    const studio = '01JWRKBUS1NESS000000000AMG';
+    const empty = stageCols().map((c) => ({ ...c, count: 0, value: [], weighted: [], quiet: 0 }));
+    const { api } = setup({
+      request: {
+        'GET /v1/work/settings': SETTINGS({ businesses: [{ id: studio, name: 'Studio' }, { id: '01JWRKBUS1NESS000000000TWO', name: 'Labs' }] }),
+        'GET /v1/work/deals': (init: ApiRequest) => (init.query?.business ? DEALS([], empty) : DEALS()),
+      },
+    });
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Business' }), { target: { value: studio } });
+    expect(await screen.findByText('No deals for this business.')).toBeTruthy();
+    expect(calls(api, 'GET', '/v1/work/deals').some((c) => c.query?.business === studio)).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'All businesses' }));
+    expect(await screen.findByRole('group', { name: 'Stages' })).toBeTruthy();
   });
 
   it("Today's filters: the deals they count, one list, with Clear", async () => {

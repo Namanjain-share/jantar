@@ -31,10 +31,10 @@
  * closing`), one list with Clear. ··· holds Edit stages (StagesSheet.tsx,
  * loaded on first use) and Export CSV (the share sheet or a download).
  *
- * Every state of design 6.5: loading, empty ("No deals yet." with New deal),
- * an empty stage, Work off and life.db broken (Work.tsx and the daemon's
- * sentences), a failed load (Try again), offline (the last pipeline stays;
- * adding and moving are off).
+ * Every state of design 6.5: loading, empty ("No deals yet." with New deal;
+ * a business with none, All businesses), an empty stage, Work off and
+ * life.db broken (Work.tsx and the daemon's sentences), a failed load (Try
+ * again), offline (the last pipeline stays; adding and moving are off).
  */
 import { CaretRightIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -245,6 +245,22 @@ function DealsList({ w, tabs, load, closed, stage, show, businesses, business, o
             </div>
           );
           const nothing = d.stages.every((s) => s.count === 0) && d.deals.length === 0;
+          // One business picked, and none of its own: say so, and offer them all again.
+          if (nothing && business && !show && !stage)
+            return (
+              <>
+                {head}
+                <LifeEmpty
+                  action={
+                    <Button onClick={() => onBusiness('')} className="coarse:min-h-44">
+                      All businesses
+                    </Button>
+                  }
+                >
+                  No deals for this business.
+                </LifeEmpty>
+              </>
+            );
           if (nothing && !show && !stage)
             return (
               <>
