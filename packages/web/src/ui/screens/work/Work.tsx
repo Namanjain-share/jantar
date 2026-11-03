@@ -12,7 +12,7 @@
  *
  *   loading   the skeleton, until Life status answers
  *   off       "Work is off. Turn it on at your Mac: jantar work on"
- *   no control  the Life sentence: pair again with control
+ *   no control  Work's own sentence: pair again with control
  *   broken    life.db's 503 sentence (each load's LifeError)
  *   offline   the last list stays; add and save are off
  *
@@ -27,7 +27,7 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { pairedWithControl } from '../../shell/lifeStatus.js';
 import type { Route } from '../../../lib/router.js';
-import { CommandSentence, LifeError, LifeLoading, NO_CONTROL } from '../life/shared/states.js';
+import { CommandSentence, LifeError, LifeLoading } from '../life/shared/states.js';
 import { useLifeStatus } from '../life/shared/useLife.js';
 import { Page } from '../life/today/parts.js';
 import { Projects } from './Projects.js';
@@ -41,6 +41,8 @@ const Insights = lazy(() => import('./Insights.js').then((m) => ({ default: m.In
 
 /** The daemon's own sentence for Work switched off (FEATURE_OFF.work), said before any call is refused. */
 export const WORK_OFF = 'Work is off. Turn it on at your Mac: jantar work on';
+/** A device paired to read only: Life's sentence (NO_CONTROL), naming Work. */
+export const WORK_NO_CONTROL = 'This device can read sessions only. Work needs control access: pair it again from your Mac.';
 
 export interface WorkProps {
   route: Extract<Route, { name: 'work' }>;
@@ -72,7 +74,7 @@ export function Work({ route }: WorkProps) {
     return <Projects id={!tab || tab === 'projects' ? id : undefined} />;
   }
   let body: ReactNode;
-  if (!control) body = <Said>{NO_CONTROL}</Said>;
+  if (!control) body = <Said>{WORK_NO_CONTROL}</Said>;
   else if (status) body = <Said command={WORK_OFF} />;
   else if (error) body = <LifeError error={error} onRetry={reload} />;
   else body = <LifeLoading caption="Opening Work…" />;

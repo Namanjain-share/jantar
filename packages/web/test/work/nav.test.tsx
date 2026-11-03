@@ -152,11 +152,11 @@ describe('the Work place’s states (design 6.5)', () => {
     expect(code.closest('[role="status"]')?.textContent).toBe('Work is off. Turn it on at your Mac: jantar work on');
   });
 
-  it('no control: the Life sentence, and nothing is asked', async () => {
+  it('no control: the sentence names Work, and nothing is asked', async () => {
     writeLocal(LOCAL_DEVICE_KEY, { id: 'dev-2', name: 'Phone', scopes: ['read'] });
     const api = workApi();
     renderApp({ path: '/work', state, api });
-    expect(await screen.findByText(/This device can read sessions only/)).toBeTruthy();
+    expect(await screen.findByText('This device can read sessions only. Work needs control access: pair it again from your Mac.')).toBeTruthy();
     expect(api.projectsList).not.toHaveBeenCalled();
   });
 
