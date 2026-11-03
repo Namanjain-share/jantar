@@ -29,6 +29,14 @@
  * - Someone invited (the link's expiry, Copy link again), whose sharing is
  *   ending, or who left (kept 30 days, the way to share again or delete it
  *   now) is a row on People (spec 2.3), not an empty heading.
+ *
+ * 0.12, the wide layouts (spec 9.10): someone's screen is a SplitPane. From
+ * a pane of 800 the header and the tabs, one under the other, are the list
+ * column (340, 440 from 1180) and the tab or the plan editor is beside them,
+ * 720 at most; below 800, and on a phone, it is the one column above. The
+ * tab's section is the same at every width, so a rotation across 800 keeps a
+ * plan being written or a comment being typed. The People list is 720 wide
+ * at most.
  */
 import { ALERT_KINDS, ALERT_REPLY_LABELS, PEOPLE_LABEL, STATUS_LABELS, spaceLabel, type AlertKind } from '@jantar/protocol/people-core';
 import type {
@@ -61,16 +69,20 @@ import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type Pl
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { chipClass } from '../../../people-shared/chip.js';
 import { FoodRead, foodTodayLine } from '../../../people-shared/FoodRead.js';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
 import { MedsRead } from '../../../people-shared/MedsRead.js';
 import { PlanRead } from '../../../people-shared/PlanRead.js';
 import { ReviewList } from '../../../people-shared/ReviewList.js';
 import { SleepWeek } from '../../../people-shared/SleepWeek.js';
 import { dayLabel, hmOf, shiftDay } from '../../../people-shared/time.js';
+import clsx from 'clsx';
 import { useDeps, useNavigate } from '../../context.js';
+import { Badge } from '../../kit/Badge.js';
 import { Button } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
+import { SplitPane, useSplit } from '../../kit/SplitPane.js';
+import { ChatButton } from '../../shell/ChatButton.js';
 import { useLifeLoad } from '../life/shared/useLife.js';
 import { peopleClient, type PeopleClient } from './client.js';
 import { PlanEditor, defaultPlanDay } from './PlanEditor.js';
@@ -153,7 +165,7 @@ export function Partner({ pid, tab: tabIn, day: dayIn, id, client = peopleClient
   const gone = pid ? setupAgain.find((s) => s.id === pid) : undefined;
   if (!pid || gone) {
     return (
-      <div className="px-16 pb-48 pt-16 md:px-32">
+      <div className="max-w-720 px-16 pb-48 pt-16 @md:px-32">
         <h1 data-display className="type-display text-ink">
           {PEOPLE_LABEL}
         </h1>
@@ -237,50 +249,83 @@ function PartnerOf({
   const status = t && !isLocked(t.status) ? t.status : null;
   const asleep = t && !isLocked(t.sleep) ? t.sleep.open : null;
   const unseen = alerts.data?.unseen ?? 0;
-  return (
-    <div className="px-16 pb-48 pt-16 md:px-32">
-      <header>
-        {/* The space's name with her (his label): his title for this screen, over her name. */}
-        <p className="break-words type-small text-ink-2">{spaceLabel(person?.label)}</p>
-        <h1 data-display className="break-words type-display text-ink">
-          {name}
-        </h1>
-        <p className="type-small text-ink-2">
-          {[
-            t?.state === 'paused' ? 'Paused' : null,
-            status ? `${STATUS_LABELS[status.level]}${status.line ? ` "${status.line}"` : ''}` : null,
-            asleep ? `Asleep since ${hmOf(asleep.since)}` : null,
-            plan?.plan && plan.counts.total > 0 ? `${plan.counts.done} of ${plan.counts.total}` : null,
-            nowStep ? `Now: ${nowStep.title}` : null,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
-        {unseen > 0 ? (
-          <button type="button" className="mt-4 min-h-44 type-row text-ink underline" onClick={() => go('alerts')}>
-            {unseen === 1 ? `A new alert from ${name}` : `${unseen} new alerts from ${name}`}
-          </button>
-        ) : null}
-        <div className="mt-8 flex flex-wrap gap-8">
-          <Button variant="outline" className="min-h-44" disabled={!a?.assign.plan} onClick={() => go('plan', planDay ? `&day=${planDay}` : '')}>
-            Plan
-          </Button>
-          <Button variant="outline" className="min-h-44" disabled={!a?.assign.todos} onClick={() => setAssigning(true)}>
-            Assign
-          </Button>
-          <Button variant="outline" className="min-h-44" onClick={() => setAlerting(true)}>
-            Alert
-          </Button>
+  const header = (
+    <header>
+      <div className="flex items-start gap-12">
+        <div className="min-w-0 flex-1">
+          {/* The space's name with her (his label): his title for this screen, over her name. */}
+          <p className="break-words type-small text-ink-2">{spaceLabel(person?.label)}</p>
+          <h1 data-display className="break-words type-display text-ink">
+            {name}
+          </h1>
         </div>
-      </header>
-      <div role="tablist" className="mt-12 flex flex-wrap gap-x-4 border-b border-line">
-        {TAB_ROW.map((x) => (
-          <button key={x} type="button" role="tab" aria-selected={tab === x} onClick={() => go(x)} className={`min-h-44 shrink-0 px-12 type-row ${tab === x ? 'border-b-2 border-ink text-ink' : 'text-ink-2'}`}>
-            {TAB_LABEL[x]}
-            {x === 'alerts' && unseen > 0 ? <span aria-label={`, ${unseen} new`}> ●</span> : null}
-          </button>
-        ))}
+        {/* 0.12: Chat beside this screen (an iPad's pane header; beside the tab, its heading has it). */}
+        <ChatButton where="pane" />
       </div>
+      <p className="type-small text-ink-2">
+        {[
+          t?.state === 'paused' ? 'Paused' : null,
+          status ? `${STATUS_LABELS[status.level]}${status.line ? ` "${status.line}"` : ''}` : null,
+          asleep ? `Asleep since ${hmOf(asleep.since)}` : null,
+          plan?.plan && plan.counts.total > 0 ? `${plan.counts.done} of ${plan.counts.total}` : null,
+          nowStep ? `Now: ${nowStep.title}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      </p>
+      {unseen > 0 ? (
+        <button type="button" className="mt-4 min-h-44 type-row text-ink underline" onClick={() => go('alerts')}>
+          {unseen === 1 ? `A new alert from ${name}` : `${unseen} new alerts from ${name}`}
+        </button>
+      ) : null}
+      <div className="mt-8 flex flex-wrap gap-8">
+        <Button variant="outline" className="min-h-44" disabled={!a?.assign.plan} onClick={() => go('plan', planDay ? `&day=${planDay}` : '')}>
+          Plan
+        </Button>
+        <Button variant="outline" className="min-h-44" disabled={!a?.assign.todos} onClick={() => setAssigning(true)}>
+          Assign
+        </Button>
+        <Button variant="outline" className="min-h-44" onClick={() => setAlerting(true)}>
+          Alert
+        </Button>
+      </div>
+    </header>
+  );
+  // One column: the tabs in a row under the header (they wrap, none hidden).
+  const tabRow = (
+    <div role="tablist" className="mt-12 flex flex-wrap gap-x-4 border-b border-line">
+      {TAB_ROW.map((x) => (
+        <button key={x} type="button" role="tab" aria-selected={tab === x} onClick={() => go(x)} className={`min-h-44 shrink-0 px-12 type-row ${tab === x ? 'border-b-2 border-ink text-ink' : 'text-ink-2'}`}>
+          {TAB_LABEL[x]}
+          {x === 'alerts' && unseen > 0 ? <span aria-label={`, ${unseen} new`}> ●</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+  // 0.12, beside the tab from a pane of 800: the tabs one under the other, under the header (spec 9.10).
+  const tabColumn = (
+    <div role="tablist" aria-orientation="vertical" className="mt-16 flex flex-col gap-2">
+      {TAB_ROW.map((x) => (
+        <button
+          key={x}
+          type="button"
+          role="tab"
+          aria-selected={tab === x}
+          data-row={x}
+          onClick={() => go(x)}
+          className={clsx(
+            'relative flex h-44 min-w-0 items-center gap-12 rounded-btn px-12 text-left type-row transition-colors duration-120 ease-hover',
+            tab === x ? 'rail-tick bg-raised font-medium text-ink' : 'text-ink-2 hover:bg-hover hover:text-ink',
+          )}
+        >
+          <span className="min-w-0 flex-1 truncate">{TAB_LABEL[x]}</span>
+          {x === 'alerts' ? <Badge count={unseen} label={`${unseen} new`} /> : null}
+        </button>
+      ))}
+    </div>
+  );
+  const body = (
+    <>
       {tab === 'today' ? <TodayTab client={client} pid={pid} name={name} today={t} reload={today.reload} canCarry={a?.assign.plan === true} isToday={!dayIn || dayIn === localDay()} /> : null}
       {tab === 'todos' ? <TodosTab client={client} pid={pid} name={name} sees={a?.see.todos === true} canAssign={a?.assign.todos === true} editHers={a?.editHers.todos === true} onAssign={() => setAssigning(true)} /> : null}
       {tab === 'plan' && planDay ? (
@@ -306,6 +351,27 @@ function PartnerOf({
       {tab === 'alerts' ? <AlertsTab client={client} pid={pid} name={name} id={id} /> : null}
       {tab === 'sharing' ? <SharingTab client={client} pid={pid} name={name} person={person} list={list} reload={reloadList} /> : null}
       {tab === 'activity' ? <ActivityTab client={client} pid={pid} name={name} /> : null}
+    </>
+  );
+  return (
+    <>
+      <SplitPane
+        name={`people:${pid}`}
+        list={
+          <div className="px-16 pb-24 pt-16">
+            {header}
+            {tabColumn}
+          </div>
+        }
+        detail={
+          <PartnerPane header={header} tabs={tabRow} title={TAB_LABEL[tab]}>
+            {body}
+          </PartnerPane>
+        }
+        selection={tab}
+        listLabel={name}
+        detailLabel={TAB_LABEL[tab]}
+      />
       <AlertSheet open={alerting} client={client} pid={pid} name={name} close={() => setAlerting(false)} />
       <AssignSheet
         open={assigning}
@@ -316,6 +382,29 @@ function PartnerOf({
         close={() => setAssigning(false)}
         done={() => (today.reload(), tab !== 'todos' ? go('todos') : null)}
       />
+    </>
+  );
+}
+
+/**
+ * A tab (or the plan editor) of someone's screen: under the header and the tab row in one column, or
+ * alone beside them from a pane of 800, under its name (0.12). Its body keeps its place in the tree
+ * either way, so crossing 800 (an iPad turned, a window dragged) never remounts what is being typed.
+ */
+function PartnerPane({ header, tabs, title, children }: { header: ReactNode; tabs: ReactNode; title: string; children: ReactNode }) {
+  const beside = useSplit()?.split === true;
+  return (
+    <div className="max-w-720 px-16 pb-48 pt-16 @md:px-32">
+      {beside ? (
+        <div className="flex min-h-44 items-center gap-12">
+          <h2 className="min-w-0 flex-1 break-words type-title text-ink">{title}</h2>
+          <ChatButton where="pane" />
+        </div>
+      ) : (
+        header
+      )}
+      {beside ? null : tabs}
+      {children}
     </div>
   );
 }

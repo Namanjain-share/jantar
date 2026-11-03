@@ -271,8 +271,8 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
               </Button>
             </span>
             {mine(d) ? (
-              <div className="flex min-w-0 flex-1 flex-col gap-8 md:flex-row md:flex-wrap md:items-end">
-                <label className="flex min-w-0 flex-col gap-4 md:flex-1 md:basis-[14rem]">
+              <div className="flex min-w-0 flex-1 flex-col gap-8 @md:flex-row @md:flex-wrap @md:items-end">
+                <label className="flex min-w-0 flex-col gap-4 @md:flex-1 @md:basis-[14rem]">
                   <span className="type-small text-ink-2">Step</span>
                   <input aria-label="Step" className="min-h-44 w-full min-w-0 rounded-btn border border-line bg-bg px-8 type-row" maxLength={120} value={d.title} onChange={(e) => patch(d.key, { title: e.target.value })} />
                 </label>
@@ -350,7 +350,7 @@ export function PlanEditor({ client, pid, name, day, editHers, onDay }: { client
           ))}
         </ul>
       ) : null}
-      <div className="sticky bottom-0 z-3 -mx-16 mt-16 flex items-center gap-12 border-t border-line bg-bg px-16 py-8 md:-mx-32 md:px-32">
+      <div className="sticky bottom-0 z-3 -mx-16 mt-16 flex items-center gap-12 border-t border-line bg-bg px-16 py-8 @md:-mx-32 @md:px-32">
         <p className="min-w-0 flex-1 type-small text-ink-2">
           {steps.length + between.length === 0 && quick === null ? 'Add a step to send.' : quick !== null ? 'Send uses the Quick plan above.' : `${steps.length} step${steps.length === 1 ? '' : 's'} for ${dayLabel(day)}`}
         </p>
