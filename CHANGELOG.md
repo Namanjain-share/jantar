@@ -34,6 +34,14 @@ What changed for people who use Jantar, newest first. Versions before
   composer under it.
 - Chat's Confirm button now says what it does: **Delete**, **Stop**,
   **Summarize** or **Re-read**.
+- **Meetings** fill a wide window with cards, the days side by side (four
+  across a 1440 px Mac window): the name, when and how long, who was there
+  and the summary's first lines. A meeting opens beside the list, which
+  keeps your search, project and scroll. Where the meeting has 760 px, its
+  transcript reads on the left and the summary, decisions and action items
+  stay in view on the right; screenshots are 160 x 90 thumbnails (a tap
+  opens them). Beside the list in less, Summary | Transcript shows one at
+  a time.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

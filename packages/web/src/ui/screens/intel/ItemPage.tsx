@@ -26,14 +26,14 @@
  * links. What Claude and the page wrote is text only: never Markdown, never
  * a link.
  */
-import { CaretDownIcon, CaretLeftIcon, CaretRightIcon, XIcon } from '@phosphor-icons/react';
+import { CaretDownIcon, CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
 import { useId, useState, type ReactNode } from 'react';
 import { INTEL_DEPTH_DEFAULT, type IntelDepth, type IntelItem, type IntelJob } from '@jantar/protocol';
 import { isApiError } from '../../../lib/api.js';
 import { useDeps, useNavigate, useNow, useToast } from '../../context.js';
 import { Button, buttonClass } from '../../kit/Button.js';
 import { Spinner } from '../../kit/Spinner.js';
-import { useSplit } from '../../kit/SplitPane.js';
+import { PaneClose, usePaneClose } from '../../kit/PaneClose.js';
 import { Link } from '../../shell/Link.js';
 import { useFeatures } from '../../shell/data.js';
 import { TwoTap } from '../session/TwoTap.js';
@@ -341,20 +341,12 @@ export function ItemPage({ id, filters, offline }: { id: string; filters: ShelfF
     jobs.reload();
   };
   // 0.11: beside the list (a split pane) Close goes back to it; alone, "< Intel". The reading column stays 720.
-  const split = useSplit();
-  const close = split?.split ? split.close : undefined;
+  const close = usePaneClose();
   return (
     <div className="pb-48 animate-enter">
       <div className="flex items-center px-8 pt-8">
         {close ? (
-          <button
-            type="button"
-            onClick={close}
-            className="ml-auto inline-flex h-44 items-center gap-6 rounded-btn px-12 type-small text-ink-2 transition-colors duration-120 ease-hover hover:bg-hover hover:text-ink"
-          >
-            <XIcon size={16} aria-hidden="true" />
-            Close
-          </button>
+          <PaneClose onClick={close} className="ml-auto" />
         ) : (
           <Back filters={filters} />
         )}

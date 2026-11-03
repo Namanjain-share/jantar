@@ -19,15 +19,25 @@
  * so it cannot be sent twice. Everything the meeting says is a text node:
  * `**` in a summary shows as typed. The title is the page's <h1> in every
  * state ("Meetings" until the meeting is here).
+ *
+ * 0.11 (build plan 2.8): beside the list it has Close (and Esc) instead of
+ * "‹ Meetings". In a pane of 760 or more the transcript reads on the left and
+ * the summary, decisions and action items stay in view in a 300 column on
+ * the right, the screenshots as 160 x 90 thumbnails (a tap opens them).
+ * Beside the list in a narrower pane, Summary | Transcript shows one of the
+ * two at a time.
  */
 import { CaretLeftIcon } from '@phosphor-icons/react';
+import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CLI_NAME, type Meeting, type MeetingDetail, type MeetingShot, type ProjectView } from '@jantar/protocol';
 import { isApiError } from '../../../lib/api.js';
 import { useDeps, useNow } from '../../context.js';
 import { Button } from '../../kit/Button.js';
+import { PaneClose, usePaneClose } from '../../kit/PaneClose.js';
 import { RailLabel } from '../../kit/RailLabel.js';
 import { Link } from '../../shell/Link.js';
+import { Segmented } from '../accounts/Segmented.js';
 import { LifeLoading, NotSaved } from '../life/shared/states.js';
 import { useLifeLoad } from '../life/shared/useLife.js';
 import { Page, RowMenu, useOffline, useSheet, useWrite, type Undo } from '../life/today/parts.js';
@@ -80,6 +90,18 @@ function Back({ filters }: { filters: MeetingFilters }) {
       <CaretLeftIcon size={16} aria-hidden="true" />
       Meetings
     </Link>
+  );
+}
+
+/** Above the title: Close beside the list (0.11), else the way back to it. */
+function BackOrClose({ filters }: { filters: MeetingFilters }) {
+  const close = usePaneClose();
+  return close ? (
+    <div className="flex">
+      <PaneClose onClick={close} className="ml-auto" />
+    </div>
+  ) : (
+    <Back filters={filters} />
   );
 }
 
@@ -183,6 +205,9 @@ function Body({ d, filters, undo, marks: itemMarks, todos, projects, onDelete, n
   const [askedOf, setAskedOf] = useState<MeetingDetail | null>(null);
   const view: SummaryView = askedOf === d ? { kind: 'writing' } : summaryView(d);
   const [shot, setShot] = useState<ShotView | null>(null);
+  // Beside the list in a pane under 760, one of the two at a time (from 760 CSS shows both, side by side).
+  const tabs = usePaneClose() !== undefined;
+  const [tab, setTab] = useState<'summary' | 'transcript'>('summary');
   // "Text exported" for EXPORTED_MS; a new export starts the time again.
   const [exported, setExported] = useState(0);
   const who = meetingWho(m);
@@ -269,11 +294,22 @@ function Body({ d, filters, undo, marks: itemMarks, todos, projects, onDelete, n
     />
   );
   const done = d.summary.state === 'done';
+  const transcript =
+    d.lines.length > 0 || d.shots.length > 0 ? (
+      <Section label="Transcript">
+        <Transcript meetingId={m.id} lines={d.lines} shots={d.shots} onOpenShot={(s: MeetingShot, blob) => setShot({ shot: s, blob })} />
+      </Section>
+    ) : m.endedAt === null && m.notes ? (
+      <Section label="Transcript">
+        <p className="px-16 py-12 type-small text-ink-2">{NO_LINES_YET}</p>
+      </Section>
+    ) : null;
+  const segmented = tabs && transcript !== null;
   // The name wraps here (Page's <h1> cuts to one line): a long Teams title shows in full nowhere else.
   const title = <span className="whitespace-normal break-words">{m.name}</span>;
 
   return (
-    <Page title={title} back={<Back filters={filters} />} aside={menu} undo={undo}>
+    <Page title={title} back={<BackOrClose filters={filters} />} aside={menu} undo={undo} wide>
       {notice}
       {error}
       <p className="px-16 type-mono text-ink-3">{meetingWhen(m, now)}</p>
@@ -292,61 +328,76 @@ function Body({ d, filters, undo, marks: itemMarks, todos, projects, onDelete, n
         </p>
       ) : null}
 
-      <Section label="Summary">
-        <div className="px-16 py-12">
-          {/* Writing, written or failed: said to a screen reader as it changes. */}
-          <div role="status">
-            <SummaryBody view={view} action={() => void runSummary()} busy={summarize.busy} offline={offline} />
-          </div>
-          {summarize.error ? <NotSaved error={summarize.error} /> : null}
+      {segmented ? (
+        <div className="mt-16 px-16 @two:hidden">
+          <Segmented
+            label="Show"
+            segments={[
+              { key: 'summary', label: 'Summary' },
+              { key: 'transcript', label: 'Transcript' },
+            ]}
+            value={tab}
+            onChange={setTab}
+          />
         </div>
-      </Section>
-
-      {done && d.summary.decisions.length > 0 ? (
-        <Section label="Decisions">
-          <ul>
-            {d.summary.decisions.map((x, i) => (
-              <li key={i} className="break-words border-b border-line px-16 py-8 type-row text-ink">
-                {x}
-              </li>
-            ))}
-          </ul>
-        </Section>
       ) : null}
 
-      {done && d.summary.items.length > 0 ? (
-        <Section label="Action items">
-          {items.error ? (
-            <div className="px-16">
-              <NotSaved error={items.error} />
+      {/* From 760: the transcript on the left, the summary's column on the right, kept in view. */}
+      <div className="@two:grid @two:grid-cols-[minmax(0,1fr)_300px] @two:items-start">
+        <div
+          className={clsx(
+            '@two:sticky @two:top-0 @two:col-start-2 @two:row-start-1 @two:max-h-[calc(100dvh-96px)] @two:overflow-y-auto @two:border-l @two:border-line',
+            segmented && tab !== 'summary' && 'hidden @two:block',
+          )}
+        >
+          <Section label="Summary">
+            <div className="px-16 py-12">
+              {/* Writing, written or failed: said to a screen reader as it changes. */}
+              <div role="status">
+                <SummaryBody view={view} action={() => void runSummary()} busy={summarize.busy} offline={offline} />
+              </div>
+              {summarize.error ? <NotSaved error={summarize.error} /> : null}
             </div>
-          ) : null}
-          <ul>
-            {d.summary.items.map((item, n) => (
-              <ItemRow
-                key={n}
-                item={item}
-                addLabel={addLabel(m)}
-                todos={todos}
-                inTodos={marks.has(n) ? marks.get(n) === 'added' : Boolean(item.todoId)}
-                disabled={offline || items.busy || marks.get(n) === 'sent'}
-                onAdd={() => void add(n)}
-                onRemove={() => remove(n)}
-              />
-            ))}
-          </ul>
-        </Section>
-      ) : null}
+          </Section>
 
-      {d.lines.length > 0 || d.shots.length > 0 ? (
-        <Section label="Transcript">
-          <Transcript meetingId={m.id} lines={d.lines} shots={d.shots} onOpenShot={(s: MeetingShot, blob) => setShot({ shot: s, blob })} />
-        </Section>
-      ) : m.endedAt === null && m.notes ? (
-        <Section label="Transcript">
-          <p className="px-16 py-12 type-small text-ink-2">{NO_LINES_YET}</p>
-        </Section>
-      ) : null}
+          {done && d.summary.decisions.length > 0 ? (
+            <Section label="Decisions">
+              <ul>
+                {d.summary.decisions.map((x, i) => (
+                  <li key={i} className="break-words border-b border-line px-16 py-8 type-row text-ink">
+                    {x}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          ) : null}
+
+          {done && d.summary.items.length > 0 ? (
+            <Section label="Action items">
+              {items.error ? (
+                <div className="px-16">
+                  <NotSaved error={items.error} />
+                </div>
+              ) : null}
+              <ul>
+                {d.summary.items.map((item, n) => (
+                  <ItemRow
+                    key={n}
+                    item={item}
+                    addLabel={addLabel(m)}
+                    todos={todos}
+                    inTodos={marks.has(n) ? marks.get(n) === 'added' : Boolean(item.todoId)}
+                    disabled={offline || items.busy || marks.get(n) === 'sent'}
+                    onAdd={() => void add(n)}
+                    onRemove={() => remove(n)}
+                  />
+                ))}
+              </ul>
+            </Section>
+          ) : null}
+        </div>
+        {transcript ? <div className={clsx('@two:col-start-1 @two:row-start-1', segmented && tab !== 'transcript' && 'hidden @two:block')}>{transcript}</div> : null}
+      </div>
 
       <EditSheet open={edit.open} onOpenChange={edit.onOpenChange} sheetKey={edit.key} detail={d} projects={projects} todos={todos} onSaved={reload} />
       <ShotViewer meetingId={m.id} view={shot} onClose={() => setShot(null)} />
@@ -361,6 +412,8 @@ export function MeetingPage({ id, filters, undo, marks, todos, projects, onDelet
   const gone = isApiError(load.error, 'not_found');
   const d = gone ? null : load.data;
   usePoll(d !== null && d.meeting.endedAt === null, load.reload);
+  // Beside the list, which is titled Meetings, a meeting still loading (or gone) is "Meeting".
+  const beside = usePaneClose() !== undefined;
 
   if (d) {
     // The meeting stays while a reload fails; a lost connection is the shell's banner, not said twice.
@@ -381,7 +434,7 @@ export function MeetingPage({ id, filters, undo, marks, todos, projects, onDelet
     );
   }
   return (
-    <Page title="Meetings" back={<Back filters={filters} />} undo={undo}>
+    <Page title={beside ? 'Meeting' : 'Meetings'} back={<BackOrClose filters={filters} />} undo={undo}>
       {notice}
       {gone ? (
         <p className="px-16 py-16 type-small text-ink-2">{GONE}</p>

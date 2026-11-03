@@ -15,7 +15,7 @@
  * alone in a narrow pane, "‹ Alerts" does. j and k open the next and the
  * one before in the list's order; Return opens the session.
  */
-import { CaretLeftIcon, XIcon } from '@phosphor-icons/react';
+import { CaretLeftIcon } from '@phosphor-icons/react';
 import type { Alert } from '@jantar/protocol';
 import { accountId } from '../../../lib/format.js';
 import { useApp, useNavigate, useNow } from '../../context.js';
@@ -23,7 +23,7 @@ import { buttonClass } from '../../kit/Button.js';
 import { GROUP_LABEL, groupOf } from '../../kit/glyph.js';
 import { RailLabel } from '../../kit/RailLabel.js';
 import { StatusGlyph } from '../../kit/StatusGlyph.js';
-import { useSplit } from '../../kit/SplitPane.js';
+import { PaneClose, usePaneClose } from '../../kit/PaneClose.js';
 import { Link } from '../../shell/Link.js';
 import { useKey } from '../../shell/keys.js';
 import { dayLabel } from '../accounts/time.js';
@@ -53,8 +53,7 @@ export function AlertDetail({ alert: a, subject, sentence, action, unseen, listH
   const navigate = useNavigate();
   const now = useNow(30_000);
   const state = useApp((s) => s.state);
-  const split = useSplit();
-  const closing = split?.split ? split.close : undefined;
+  const closing = usePaneClose();
   const session = a.sid ? state.sessions[a.sid] : undefined;
   const live = session ? rowOf(state, session, now) : null;
   const related = relatedAlerts(state.alerts, a);
@@ -88,16 +87,7 @@ export function AlertDetail({ alert: a, subject, sentence, action, unseen, listH
             {KIND_WORD[a.kind]} · {when}
           </span>
         </p>
-        {closing ? (
-          <button
-            type="button"
-            onClick={closing}
-            className="inline-flex h-44 flex-none items-center gap-6 rounded-btn px-12 type-small text-ink-2 transition-colors duration-120 ease-hover hover:bg-hover hover:text-ink"
-          >
-            <XIcon size={16} aria-hidden="true" />
-            Close
-          </button>
-        ) : null}
+        {closing ? <PaneClose onClick={closing} /> : null}
       </header>
 
       <h2 id="alert-title" className="mt-16 break-words type-title text-ink">

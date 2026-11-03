@@ -20,6 +20,7 @@ import { ROUTES, type LifeStatus, type Meeting, type MeetingDetail, type Meeting
 import { meetingDetail } from '@jantar/fixtures';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { EXPORTED_MS, POLL_MS } from '../src/ui/screens/meetings/model.js';
+import { layoutAt } from '../src/ui/shell/layout.js';
 import { NOW, fakeApi, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('meetings');
@@ -96,6 +97,8 @@ function setVisibility(v: 'visible' | 'hidden') {
     document.dispatchEvent(new Event('visibilitychange'));
   });
 }
+
+const frame = () => act(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
 
 /** The page's ‹ Meetings (the nav has a Meetings link too). */
 const back = () => within(screen.getByRole('main')).getByRole('link', { name: 'Meetings' });
@@ -320,7 +323,7 @@ describe('the list', () => {
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 
-  it('coming back from a meeting brings back as many rows as were shown, and the scroll it opened at', async () => {
+  it('coming back from a meeting brings back as many rows as were shown, and the scroll it had', async () => {
     const meetingsList = vi.fn(async (q: { before?: string; limit?: number } = {}) => {
       const from = q.before ? Number(q.before) : 0;
       const n = Math.min(q.limit ?? 30, 70 - from);
@@ -332,12 +335,13 @@ describe('the list', () => {
     open('/meetings', meetingsApi({ meetingsList }));
     fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('Example meeting 60')).toBeTruthy();
-    // The shell's box scrolls (jsdom has no styles to say so).
-    const box = screen.getByRole('main');
-    box.style.overflowY = 'auto';
+    // 0.11: the list's own box scrolls (the SplitPane's list section), and its scroll is kept as it scrolls.
+    const box = document.querySelector('.split-list') as HTMLElement;
     let top = 0;
     Object.defineProperty(box, 'scrollTop', { configurable: true, get: () => top, set: (v: number) => (top = v) });
     top = 1840;
+    fireEvent.scroll(box);
+    await frame();
     fireEvent.click(document.querySelector(`[data-meeting="${mid(45)}"] a`) as HTMLAnchorElement);
     expect(await screen.findByRole('heading', { level: 1, name: 'Weekly sync' })).toBeTruthy();
     top = 0;
@@ -381,6 +385,116 @@ describe('the list', () => {
     fireEvent.click(document.querySelector(`[data-meeting="${mid(2)}"] a`) as HTMLAnchorElement);
     expect(await screen.findByRole('heading', { level: 1, name: 'Weekly sync' })).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('0.11: a wide pane', () => {
+  // A 1440 window: the Mac's chrome, and the list's SplitPane splits (jsdom has no layout: it follows the window).
+  const wide = (path: string, api: Api) => renderApp({ path, api, state: ON, status: 'live', layout: layoutAt(1440) });
+
+  it('lays the days out as cards with nothing open, and keeps rows on a phone', async () => {
+    const a = wide('/meetings', meetingsApi());
+    const card = (await screen.findByText('Example meeting 1')).closest('li') as HTMLElement;
+    // A card: the name, the time and length (and screenshots), who, the summary's gist, and its ··· menu.
+    expect(card.parentElement?.className).toContain('grid');
+    expect(card.querySelector('.type-mono')?.textContent).toBe(`${hm(meeting(1).startedAt)} · 42 min · 1 screenshot`);
+    expect(within(card).getByText('Acme site · Sam, Priya')).toBeTruthy();
+    expect(within(card).getByText('What meeting 1 agreed.')).toBeTruthy();
+    expect(within(card).getByRole('button', { name: 'Actions for Example meeting 1' })).toBeTruthy();
+    a.unmount();
+    open('/meetings', meetingsApi());
+    const row = (await screen.findByText('Example meeting 1')).closest('li') as HTMLElement;
+    expect(row.parentElement?.className ?? '').not.toContain('grid');
+  });
+
+  it('opens a meeting beside the list, its row current; Close and Esc go back to the same view', async () => {
+    const api = meetingsApi();
+    const { router } = wide('/meetings?q=sync', api);
+    fireEvent.click(within((await screen.findByText('Example meeting 1')).closest('li') as HTMLElement).getByRole('link'));
+    expect(router.getState().route).toEqual({ name: 'meetings', q: 'sync', id: mid(1) });
+    const page = await screen.findByRole('region', { name: 'Meeting' });
+    expect(await within(page).findByRole('heading', { level: 1, name: 'Weekly sync' })).toBeTruthy();
+    // The list beside it: rows, the open one current; no way "back", it is there.
+    const list = screen.getByRole('region', { name: 'All meetings' });
+    await waitFor(() => expect(within(list).getByRole('link', { name: /Example meeting 1/ }).getAttribute('aria-current')).toBe('true'));
+    expect(list.querySelector('.grid')).toBeNull();
+    expect(within(page).queryByRole('link', { name: 'Meetings' })).toBeNull();
+    fireEvent.click(within(page).getByRole('button', { name: 'Close' }));
+    expect(router.getState().route).toEqual({ name: 'meetings', q: 'sync' });
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Meeting' })).toBeNull());
+
+    fireEvent.click(within(screen.getByText('Example meeting 2').closest('li') as HTMLElement).getByRole('link'));
+    await screen.findByRole('region', { name: 'Meeting' });
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(router.getState().route).toEqual({ name: 'meetings', q: 'sync' });
+  });
+
+  it('shows the one Undo line and a failed delete once, on the meeting beside the list; the view rule holds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const meetingDelete = vi.fn(async (): Promise<never> => {
+      throw new ApiError('internal', 'The meeting could not be deleted.', 500);
+    });
+    wide(`/meetings?id=${ID}`, meetingsApi({ meetingDelete }));
+    const page = await screen.findByRole('region', { name: 'Meeting' });
+    await within(page).findByRole('heading', { level: 1, name: 'Weekly sync' });
+    // Deleted from the list beside the open meeting: the row leaves, and the Undo line shows once.
+    await menu('Example meeting 1', 'Delete');
+    expect(screen.queryByText('Example meeting 1')).toBeNull();
+    expect(screen.getAllByText('Deleted: Example meeting 1')).toHaveLength(1);
+    expect(within(page).getByText('Deleted: Example meeting 1')).toBeTruthy();
+    await flush(5_100);
+    expect(await screen.findByText('Example meeting 1')).toBeTruthy();
+    expect(screen.getAllByRole('alert').map((a) => a.textContent)).toEqual(['Not saved. The meeting could not be deleted.']);
+    // It belongs to the view it failed on: closing the meeting drops it.
+    fireEvent.click(within(page).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Meeting' })).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('the list keeps its scroll while a meeting opens beside it and closes', async () => {
+    const tops = new WeakMap<Element, number>();
+    Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return tops.get(this) ?? 0;
+      },
+      set(this: HTMLElement, v: number) {
+        tops.set(this, v);
+      },
+    });
+    try {
+      wide('/meetings', meetingsApi());
+      await screen.findByText('Example meeting 2');
+      const box = document.querySelector('.split-list') as HTMLElement;
+      box.scrollTop = 640;
+      fireEvent.scroll(box);
+      await frame();
+      fireEvent.click(within(screen.getByText('Example meeting 2').closest('li') as HTMLElement).getByRole('link'));
+      const page = await screen.findByRole('region', { name: 'Meeting' });
+      // The same list box, still there and where it was.
+      expect(document.querySelector('.split-list')).toBe(box);
+      expect(box.scrollTop).toBe(640);
+      fireEvent.click(within(page).getByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'Meeting' })).toBeNull());
+      expect(document.querySelector('.split-list')).toBe(box);
+      expect(box.scrollTop).toBe(640);
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'scrollTop');
+    }
+  });
+
+  it('beside the list in a pane under 760, Summary | Transcript shows one at a time', async () => {
+    wide(`/meetings?id=${ID}`, meetingsApi());
+    const page = await screen.findByRole('region', { name: 'Meeting' });
+    const show = await within(page).findByRole('group', { name: 'Show' });
+    const transcript = within(page).getByRole('list', { name: 'Transcript' }).closest('section')?.parentElement as HTMLElement;
+    const summary = within(page).getByRole('region', { name: 'Summary' }).parentElement as HTMLElement;
+    // CSS shows both from 760 (@two:block); below it the one picked.
+    expect(summary.className).not.toMatch(/(^| )hidden( |$)/);
+    expect(transcript.className).toMatch(/(^| )hidden( |$)/);
+    fireEvent.click(within(show).getByRole('button', { name: 'Transcript' }));
+    expect(summary.className).toMatch(/(^| )hidden( |$)/);
+    expect(transcript.className).not.toMatch(/(^| )hidden( |$)/);
   });
 });
 

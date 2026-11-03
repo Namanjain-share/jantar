@@ -13,9 +13,9 @@
  *   Deleted: Weekly sync · Undo              5 s, then the DELETE is sent
  *
  * The search and the project live in the address (`?q=&project=`), so back
- * and a shared link land on the same view; `id=` opens one meeting over it
+ * and a shared link land on the same view; `id=` opens one meeting
  * (MeetingPage), and coming back from it brings back as many rows as were
- * shown and the scroll it opened at. Data comes over REST, again on
+ * shown, at the scroll it had (the SplitPane keeps it). Data comes over REST, again on
  * lifeTick and on coming back into view; a reload brings back as many rows
  * as were shown, and a new search or project keeps the last rows, dimmed,
  * until its own answer comes. Offline, the search and the chips wait for
@@ -24,22 +24,32 @@
  * The list and the page share one Undo line, so a delete made on the page
  * is held on the list it goes back to; a failed delete's "Not saved" stays
  * with the view it failed on. Every state keeps the `<h1>`.
+ *
+ * 0.11 (build plan 2.8): a SplitPane ("meetings", fill). With nothing open
+ * the meetings are cards across the pane (at least 280 wide: four at 1440),
+ * and the days sit side by side, each over as many card columns as it has
+ * meetings, so a day of one meeting doesn't leave its row empty. A meeting
+ * opens beside the list from a pane of 800, where the list is rows with the
+ * open one current, and over it below that. The Undo line and "Not saved"
+ * show once, on the meeting while one is beside the list.
  */
 import clsx from 'clsx';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent, type MutableRefObject, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { CLI_NAME, MEETING_LIMITS, type Meeting, type MeetingsList, type ProjectView } from '@jantar/protocol';
 import { isApiError } from '../../../lib/api.js';
 import { useDeps, useNavigate, useNow } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { RailLabel } from '../../kit/RailLabel.js';
 import { Spinner } from '../../kit/Spinner.js';
+import { SplitPane, useSplit } from '../../kit/SplitPane.js';
 import { useFeatures } from '../../shell/data.js';
+import { useLayout } from '../../shell/layout.js';
 import { Link } from '../../shell/Link.js';
 import { LifeEmpty, LifeLoading, NotSaved } from '../life/shared/states.js';
 import { useLifeLoad, useLifeStatus } from '../life/shared/useLife.js';
-import { INPUT, Page, useHeldDeletes, useOffline, useUndo, useWrite } from '../life/today/parts.js';
+import { INPUT, Page, useHeldDeletes, useOffline, useUndo, useWrite, type Undo } from '../life/today/parts.js';
 import { MeetingPage, useItemMarks } from './MeetingPage.js';
-import { MeetingRow } from './MeetingRow.js';
+import { MeetingCard, MeetingRow } from './MeetingRow.js';
 import {
   NOTHING_MATCHES,
   NO_MEETINGS,
@@ -57,7 +67,6 @@ import {
   type MeetingFilters,
 } from './model.js';
 import { usePoll } from './poll.js';
-import { scrollParent } from './scroll.js';
 import { MeetingsError } from './states.js';
 
 export interface MeetingsProps {
@@ -68,12 +77,39 @@ export interface MeetingsProps {
   id?: string;
 }
 
-/** Where the list was: its view and how many rows it showed, and the scroll a meeting opened at. */
+/** A meeting card is at least this wide, with this gap between cards and days (px). */
+const CARD_MIN = 280;
+const CARD_GAP = 12;
+
+/**
+ * The days across a wide pane, in order, wrapping: a day's box starts as
+ * wide as its cards side by side and the rows share what is left in
+ * proportion, so days of one or two meetings sit together on a row instead
+ * of each leaving the rest of it empty. A day with more cards than fit wraps
+ * them. CSS only (flex, then each day's own auto-fit grid): nothing measures.
+ */
+function DayGrid({ days, ground, card }: { days: { rail: string; meetings: Meeting[] }[]; ground: 'surface' | 'bg'; card: (m: Meeting) => ReactNode }) {
+  return (
+    <div className="flex flex-wrap gap-x-12 px-16">
+      {days.map((g) => {
+        const n = g.meetings.length;
+        return (
+          <div key={g.rail} role="group" aria-label={g.rail} className="min-w-0" style={{ flex: `${n} 1 ${n * (CARD_MIN + CARD_GAP) - CARD_GAP}px` }}>
+            <RailLabel ground={ground} inset={false}>
+              {g.rail}
+            </RailLabel>
+            <ul className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-12 pb-16 pt-12">{g.meetings.map(card)}</ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Where the list was: its view and how many rows it showed (its scroll is the SplitPane's to keep). */
 interface ListPlace {
   key: string;
   n: number;
-  /** The list's scroll at the click that opened a meeting; null once put back. */
-  y: number | null;
 }
 
 export function Meetings({ project, q, id }: MeetingsProps) {
@@ -91,7 +127,7 @@ export function Meetings({ project, q, id }: MeetingsProps) {
   const filters: MeetingFilters = { project, q };
   const projectList = todos ? (projects.data?.projects ?? []) : [];
   // Kept here, not in the list: the list is gone while a meeting shows over it.
-  const place = useRef<ListPlace>({ key: '', n: PAGE, y: null });
+  const place = useRef<ListPlace>({ key: '', n: PAGE });
 
   const deleteMeeting = (m: Meeting) => {
     held.remove(meetingKey(m.id), `Deleted: ${m.name}`, async () => (await remove.run(`delete:${m.id}`, (key) => api.meetingDelete(m.id, key))).ok);
@@ -106,35 +142,61 @@ export function Meetings({ project, q, id }: MeetingsProps) {
   ) : null;
 
   const shown = id && held.visible([meetingKey(id)], (k) => k).length > 0 ? id : null;
-  if (shown) {
-    return (
-      <MeetingPage
-        key={shown}
-        id={shown}
-        filters={filters}
-        undo={undo}
-        marks={marks}
-        todos={todos}
-        projects={projectList}
-        onDelete={(m) => {
-          deleteMeeting(m);
-          navigate(meetingsPath(filters), { replace: true });
-        }}
-        notice={notSaved}
-      />
-    );
-  }
+  // 0.11: the list across the pane (cards), and a meeting beside it from a pane of 800 (over it below that).
   return (
-    <Page title="Meetings" undo={undo}>
-      {notSaved}
-      <List
-        filters={filters}
-        todos={todos}
-        projects={projectList}
-        place={place}
-        visible={(ms) => held.visible(ms, (m) => meetingKey(m.id))}
-        onDelete={deleteMeeting}
-      />
+    <SplitPane
+      name="meetings"
+      list={
+        <ListPage undo={undo} notice={notSaved}>
+          <List
+            filters={filters}
+            todos={todos}
+            projects={projectList}
+            place={place}
+            open={shown}
+            visible={(ms) => held.visible(ms, (m) => meetingKey(m.id))}
+            onDelete={deleteMeeting}
+          />
+        </ListPage>
+      }
+      detail={
+        shown ? (
+          <MeetingPage
+            key={shown}
+            id={shown}
+            filters={filters}
+            undo={undo}
+            marks={marks}
+            todos={todos}
+            projects={projectList}
+            onDelete={(m) => {
+              deleteMeeting(m);
+              navigate(meetingsPath(filters), { replace: true });
+            }}
+            notice={notSaved}
+          />
+        ) : null
+      }
+      selection={shown ?? undefined}
+      empty="fill"
+      listLabel="All meetings"
+      detailLabel="Meeting"
+      onClose={() => navigate(meetingsPath(filters), { replace: true })}
+    />
+  );
+}
+
+/**
+ * The list's page. The one Undo line and a delete's "Not saved" show once:
+ * on the meeting's page while one is open beside the list, here otherwise.
+ */
+function ListPage({ undo, notice, children }: { undo: Undo; notice: ReactNode; children: ReactNode }) {
+  const split = useSplit();
+  const beside = Boolean(split?.split && split.selected);
+  return (
+    <Page title="Meetings" undo={beside ? undefined : undo} wide>
+      {beside ? null : notice}
+      {children}
     </Page>
   );
 }
@@ -186,6 +248,7 @@ function List({
   todos,
   projects,
   place,
+  open,
   visible,
   onDelete,
 }: {
@@ -193,6 +256,8 @@ function List({
   todos: boolean;
   projects: readonly ProjectView[];
   place: MutableRefObject<ListPlace>;
+  /** The meeting open beside the list. */
+  open: string | null;
   /** The rows without those held for Undo. */
   visible: (ms: readonly Meeting[]) => readonly Meeting[];
   onDelete: (m: Meeting) => void;
@@ -239,25 +304,14 @@ function List({
   const all = data ? unique([...data.meetings, ...(extra?.meetings ?? [])]) : [];
   const next = extra ? extra.next : (data?.next ?? null);
   useEffect(() => {
-    if (list.data) place.current = { ...place.current, key, n: all.length };
+    if (list.data) place.current = { key, n: all.length };
   }, [place, list.data, key, all.length]);
-  // The shell's scroll box stays while a meeting shows, but the page there moves it: the list's own
-  // scroll is kept from the click that opened one and put back once its rows are here again.
-  const root = useRef<HTMLDivElement>(null);
-  const remember = (e: MouseEvent) => {
-    const box = root.current && scrollParent(root.current);
-    if (box && e.target instanceof Element && e.target.closest('a[href]')) place.current.y = box.scrollTop;
-  };
-  const restoreTo = useRef(place.current.key === key ? place.current.y : null);
-  useLayoutEffect(() => {
-    const y = restoreTo.current;
-    if (y === null || !list.data) return;
-    restoreTo.current = null;
-    place.current.y = null;
-    const box = root.current && scrollParent(root.current);
-    if (box) box.scrollTop = y;
-  }, [place, list.data]);
   const rows = visible(all);
+  // Cards across a wide pane with nothing open (not on a phone); rows in the list column beside a meeting.
+  const phone = useLayout().chrome === 'phone';
+  const split = useSplit();
+  const beside = Boolean(split?.split && split.selected);
+  const grid = !phone && !split?.selected;
   // Caption lines send no tick: while a meeting runs, its line asks for itself every 10 s. One row
   // is enough (`running` comes whatever the filter); the pages on screen are not asked for again.
   const [live, setLive] = useState<{ base: MeetingsList; running: Meeting | null } | null>(null);
@@ -332,19 +386,24 @@ function List({
       </LifeEmpty>
     );
   } else {
+    const days = byDay(rows, now);
     body = (
       <>
         {/* A group, not a landmark: dozens of days would each be a region. */}
-        {byDay(rows, now).map((g) => (
-          <div key={g.rail} role="group" aria-label={g.rail}>
-            <RailLabel ground="bg">{g.rail}</RailLabel>
-            <ul>
-              {g.meetings.map((m) => (
-                <MeetingRow key={m.id} meeting={m} filters={filters} offline={offline} onDelete={onDelete} />
-              ))}
-            </ul>
-          </div>
-        ))}
+        {grid ? (
+          <DayGrid days={days} ground="bg" card={(m) => <MeetingCard key={m.id} meeting={m} filters={filters} offline={offline} onDelete={onDelete} />} />
+        ) : (
+          days.map((g) => (
+            <div key={g.rail} role="group" aria-label={g.rail}>
+              <RailLabel ground={beside ? 'surface' : 'bg'}>{g.rail}</RailLabel>
+              <ul>
+                {g.meetings.map((m) => (
+                  <MeetingRow key={m.id} meeting={m} filters={filters} offline={offline} current={m.id === open} onDelete={onDelete} />
+                ))}
+              </ul>
+            </div>
+          ))
+        )}
         {next ? (
           <div className="px-16 pt-12">
             <Button variant="outline" onClick={() => void showMore()} disabled={moreBusy || offline || stale}>
@@ -359,9 +418,9 @@ function List({
   }
 
   return (
-    <div ref={root} onClickCapture={remember}>
+    <div>
       {running ? <RunningLine meeting={running} filters={filters} /> : null}
-      <div className="px-16">
+      <div className="px-16 @md:max-w-560">
         <label htmlFor={searchId} className="sr-only">
           Search meetings
         </label>

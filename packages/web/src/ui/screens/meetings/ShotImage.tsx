@@ -7,6 +7,9 @@
  * URL that is revoked on unmount (MW3). Leaving aborts the download, and
  * nothing is cached between views. A tap opens the viewer with the bytes
  * already here.
+ *
+ * 0.11: in a meeting pane of 760 or more (two columns) a screenshot is a
+ * 160 x 90 thumbnail beside the lines, not the column's whole width.
  */
 import { CameraIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type RefObject } from 'react';
@@ -96,12 +99,12 @@ export function ShotImage({ meetingId, shot, onOpen }: { meetingId: string; shot
         type="button"
         aria-label={`Open the screenshot from ${at}`}
         onClick={() => onOpen(shot, blob)}
-        className="block w-full overflow-hidden rounded-btn border border-line bg-surface transition-colors duration-120 ease-hover hover:border-line-strong"
+        className="block w-full overflow-hidden rounded-btn border border-line bg-surface transition-colors duration-120 ease-hover hover:border-line-strong @two:h-90 @two:w-160"
       >
         {url ? (
-          <img src={url} alt={`Screenshot ${at}`} className="block h-auto w-full" />
+          <img src={url} alt={`Screenshot ${at}`} className="block h-auto w-full @two:h-full @two:object-cover" />
         ) : (
-          <span data-placeholder className="flex aspect-16/10 w-full items-center justify-center text-ink-3">
+          <span data-placeholder className="flex aspect-16/10 w-full items-center justify-center text-ink-3 @two:aspect-auto @two:h-full">
             <CameraIcon size={20} aria-hidden="true" />
           </span>
         )}
