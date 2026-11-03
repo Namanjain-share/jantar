@@ -12,10 +12,12 @@
  * opens over the list with "‹ Projects". Editors are the Todos sheets (a
  * bottom sheet on a phone, a form sheet from 640).
  *
- * Empty: "No projects yet." and "New project". Clients' names come from
- * `GET /v1/work/clients/names`.
+ * Empty (W28): "No projects yet." with "Start from your client folders"
+ * (while Launch or Files can list his folders, SeedSheet.tsx) and "New
+ * project"; under a list, the same sheet as a text button. Clients' names
+ * come from `GET /v1/work/clients/names`.
  */
-import { CaretDownIcon, CaretRightIcon, PlusIcon } from '@phosphor-icons/react';
+import { CaretDownIcon, CaretRightIcon, FolderPlusIcon, PlusIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useCallback, useMemo, useState } from 'react';
 import type { ProjectView, Todo } from '@jantar/protocol';
@@ -24,6 +26,7 @@ import { useApp, useDeps, useNavigate } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Panel } from '../../kit/Panel.js';
 import { SplitPane, useSplit } from '../../kit/SplitPane.js';
+import { useFeatures } from '../../shell/data.js';
 import { useLayout } from '../../shell/layout.js';
 import { Link } from '../../shell/Link.js';
 import { EMPTY, LifeEmpty } from '../life/shared/states.js';
@@ -36,6 +39,7 @@ import { ProjectSheet } from '../life/todos/ProjectSheet.js';
 import { workClient } from './client.js';
 import { STATUS_GROUPS, byStatus, dueWord, nextByProject } from './model.js';
 import { ProjectHub } from './ProjectHub.js';
+import { SeedSheet } from './SeedSheet.js';
 
 export function Projects({ id }: { id?: string | undefined }) {
   const { api } = useDeps();
@@ -84,7 +88,11 @@ function ProjectsList({ projects, todos, clients, open, onSaved }: ProjectsListP
   const { status } = useLifeStatus();
   const now = useLifeClock(status);
   const sessions = useApp((s) => s.state.sessions);
+  const features = useFeatures();
+  // The folders come from Launch's browser or Files' (W40): with both off there is nothing to start from.
+  const canSeed = features.launch || features.files;
   const sheet = useSheet<ProjectView>();
+  const seed = useSheet<null>();
   const [showDone, setShowDone] = useState(false);
   const next = useMemo(() => nextByProject(todos), [todos]);
 
@@ -94,6 +102,12 @@ function ProjectsList({ projects, todos, clients, open, onSaved }: ProjectsListP
       New project
     </Button>
   );
+  const seedButton = canSeed ? (
+    <Button variant="primary" disabled={offline} onClick={() => seed.show(null)}>
+      <FolderPlusIcon size={16} aria-hidden="true" />
+      Start from your client folders
+    </Button>
+  ) : null;
 
   return (
     <Page title="Work" aside={<AddButton label="New project" disabled={offline} onClick={() => sheet.show(null)} />} wide>
@@ -104,6 +118,7 @@ function ProjectsList({ projects, todos, clients, open, onSaved }: ProjectsListP
               <LifeEmpty
                 action={
                   <div className="flex flex-wrap gap-8">
+                    {seedButton}
                     {newButton}
                   </div>
                 }
@@ -154,11 +169,21 @@ function ProjectsList({ projects, todos, clients, open, onSaved }: ProjectsListP
                   </Panel>
                 );
               })}
+              {/* More of his folders later on, beside the projects there are (the sheet marks the ones they link). */}
+              {canSeed ? (
+                <div className={table ? undefined : 'px-8 pt-8'}>
+                  <Button variant="text" className="coarse:min-h-44" disabled={offline} onClick={() => seed.show(null)}>
+                    <FolderPlusIcon size={16} aria-hidden="true" />
+                    Start from your client folders
+                  </Button>
+                </div>
+              ) : null}
             </div>
           );
         }}
       </Loaded>
       <ProjectSheet open={sheet.open} onOpenChange={sheet.onOpenChange} sheetKey={sheet.key} project={sheet.item} onSaved={onSaved} />
+      {canSeed ? <SeedSheet open={seed.open} onOpenChange={seed.onOpenChange} sheetKey={seed.key} projects={projects.data?.projects ?? []} onSaved={onSaved} /> : null}
     </Page>
   );
 }

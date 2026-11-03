@@ -4,7 +4,8 @@
  *
  * - The list: Active, Paused and Done (Done folded), each row the Todos row
  *   with its client's name and its next due todo, linking to `/work?id=`;
- *   two taps from the Board on a phone. Empty: one line and "New project".
+ *   two taps from the Board on a phone. Empty: one line with "Start from
+ *   your client folders" (while Launch or Files is on) and "New project".
  *   A wide pane with nothing open: one table; a project open beside it:
  *   the rows, the open one current. Life broken: the daemon's sentence.
  *   Offline: the last list stays, adding is off.
@@ -85,11 +86,16 @@ describe('Work › Projects on a phone', () => {
     expect(screen.getByRole('link', { name: 'Projects' }).getAttribute('href')).toBe('/work');
   });
 
-  it('empty: one line and "New project"', async () => {
-    setup({ projects: [] });
+  it('empty: one line, "Start from your client folders" while Launch or Files is on, and "New project"', async () => {
+    const a = setup({ projects: [], features: { launch: true } });
     expect(await screen.findByText('No projects yet.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start from your client folders' })).toBeTruthy();
     // The header's + and the empty state's button.
     expect(screen.getAllByRole('button', { name: 'New project' })).toHaveLength(2);
+    a.unmount();
+    setup({ projects: [] });
+    expect(await screen.findByText('No projects yet.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start from your client folders' })).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: 'New project' }).at(-1)!);
     expect(await screen.findByRole('dialog', { name: 'New project' })).toBeTruthy();
   });
