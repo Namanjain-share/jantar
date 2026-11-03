@@ -234,6 +234,40 @@ describe('his screens name the space', () => {
     expect(setLabel).toHaveBeenLastCalledWith(ASHA, null);
   });
 
+  it("0.12.2: a name picked the moment Sharing is on screen stays picked, before React's passive effects run", async () => {
+    // Sharing comes with the list's answer, outside act(), and React 19 yields for paint before its passive effects:
+    // the test above picked Mentor there on a loaded CI runner (findBy returns on a 0 ms timer that fires first), the
+    // effect that follows his saved name then put the old one back, and Save had nothing to send. Here the pick is
+    // made in the very microtask the commit queued, when the section is in the DOM and its passive effects have not run.
+    const setLabel = vi.fn(async () => undefined);
+    const c = fake<PeopleClient>({
+      list: vi.fn(async () => ({ enabled: true, people: [person({ label: 'Accountability partner' })], ownerName: 'Sam' })),
+      today: vi.fn(async () => theirToday),
+      devices: vi.fn(async () => ({ devices: [] })),
+      setLabel,
+    });
+    const picked = new Promise<void>((resolve) => {
+      const seen = new MutationObserver(() => {
+        const pick = document.querySelector<HTMLSelectElement>('select[aria-label="What this space is called"]');
+        if (!pick) return;
+        seen.disconnect();
+        fireEvent.change(pick, { target: { value: 'Mentor' } });
+        resolve();
+      });
+      seen.observe(document.body, { childList: true, subtree: true });
+    });
+    render(<Wrapped client={c} tab="sharing" />);
+    await picked;
+    const section = await screen.findByRole('region', { name: 'What this space is called' });
+    expect((within(section).getByRole('combobox', { name: 'What this space is called' }) as HTMLSelectElement).value).toBe('Mentor');
+    const save = within(section).getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(save);
+    });
+    expect(setLabel).toHaveBeenLastCalledWith(ASHA, 'Mentor');
+  });
+
   it('his own words with markup show as text; her Activity row reads in both voices', async () => {
     const c = fake<PeopleClient>({ list: vi.fn(async () => ({ enabled: true, people: [person({ label: HOSTILE })], ownerName: 'Sam' })), today: vi.fn(async () => theirToday), devices: vi.fn(async () => ({ devices: [] })) });
     const r = render(<Wrapped client={c} tab="sharing" />);
