@@ -15,13 +15,17 @@
  *   apart by glyph shape plus the rail word.
  * - theme-color matches the page background in both themes.
  *
+ * 0.12.1: a phone's steps run in onTouch (browser.ts): a phone that loses its
+ * coarse pointer (Chromium dropping Playwright's touch emulation) is opened
+ * again and the steps run once more; twice fails, saying so.
+ *
  * The v0.3 screens have their own suite (web-v03.integration.test.ts).
  * Needs a built dist/ and a Chromium (browser.ts says how).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
-import { DIST, browserReady, clean, grayscale, grayscaleKey, pageOpener } from './browser.js';
+import { DIST, browserReady, clean, grayscale, grayscaleKey, onTouch, pageOpener } from './browser.js';
 import { webFixture } from './web-fixture.js';
 import { serveWebApp, type WebServer } from './web-server.js';
 
@@ -65,11 +69,12 @@ describe.skipIf(!ready)('the built web app in Chromium', () => {
   });
 
   it('Board on a phone: the first row starts within 140 px of the top at 390x844', async () => {
-    const { page, watch } = await open('/', { width: 390, height: 844, phone: true, scheme: 'dark' });
-    await page.locator('[data-sid]').first().waitFor();
-    const top = await page.evaluate(() => document.querySelector('[data-sid]')!.getBoundingClientRect().top);
-    expect(top).toBeLessThanOrEqual(140);
-    await clean(page, watch);
+    await onTouch('the board on a phone', () => open('/', { width: 390, height: 844, phone: true, scheme: 'dark' }), async ({ page, watch }) => {
+      await page.locator('[data-sid]').first().waitFor();
+      const top = await page.evaluate(() => document.querySelector('[data-sid]')!.getBoundingClientRect().top);
+      expect(top).toBeLessThanOrEqual(140);
+      await clean(page, watch);
+    });
   });
 
   it('Session with the permission dock open: no CSP violation (desktop and phone sheet)', async () => {
@@ -77,11 +82,12 @@ describe.skipIf(!ready)('the built web app in Chromium', () => {
       { width: 1440, height: 900 },
       { width: 390, height: 844, phone: true, scheme: 'dark' as const },
     ]) {
-      const { page, watch } = await open(`/s/${encodeURIComponent(fixture.permissionSid)}`, vp);
-      // v0.4.2: Claude's own words; `exact` keeps it off "Yes, and … for this session".
-      await page.getByRole('button', { name: 'Yes', exact: true }).waitFor();
-      await page.waitForTimeout(500);
-      await clean(page, watch);
+      await onTouch(`the permission dock at ${vp.width}`, () => open(`/s/${encodeURIComponent(fixture.permissionSid)}`, vp), async ({ page, watch }) => {
+        // v0.4.2: Claude's own words; `exact` keeps it off "Yes, and … for this session".
+        await page.getByRole('button', { name: 'Yes', exact: true }).waitFor();
+        await page.waitForTimeout(500);
+        await clean(page, watch);
+      });
     }
   });
 
@@ -135,18 +141,19 @@ describe.skipIf(!ready)('the built web app in Chromium', () => {
 
   it('theme-color matches the page background in both themes', async () => {
     for (const scheme of ['light', 'dark'] as const) {
-      const { page } = await open('/', { width: 390, height: 844, phone: true, scheme });
-      await page.locator('[data-sid]').first().waitFor();
-      const r = await page.evaluate((s) => {
-        const meta = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].find((m) => (m.media || '').includes(s));
-        const probe = document.createElement('i');
-        probe.style.color = meta?.content ?? '';
-        document.body.append(probe);
-        const want = getComputedStyle(probe).color;
-        probe.remove();
-        return { want, bg: getComputedStyle(document.body).backgroundColor };
-      }, scheme);
-      expect(r.bg).toBe(r.want);
+      await onTouch(`theme-color on a phone, ${scheme}`, () => open('/', { width: 390, height: 844, phone: true, scheme }), async ({ page }) => {
+        await page.locator('[data-sid]').first().waitFor();
+        const r = await page.evaluate((s) => {
+          const meta = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].find((m) => (m.media || '').includes(s));
+          const probe = document.createElement('i');
+          probe.style.color = meta?.content ?? '';
+          document.body.append(probe);
+          const want = getComputedStyle(probe).color;
+          probe.remove();
+          return { want, bg: getComputedStyle(document.body).backgroundColor };
+        }, scheme);
+        expect(r.bg).toBe(r.want);
+      });
     }
   });
 });

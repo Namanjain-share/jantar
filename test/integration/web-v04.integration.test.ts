@@ -36,6 +36,11 @@
  * medicine rows have a taken, a skipped, an overdue, a due and a later dose
  * today whatever the hour; the browsers use the same zone. Every name and
  * value is synthetic. Needs a built dist/ and a Chromium (browser.ts).
+ *
+ * 0.12.1: the phone's steps run in onPaired (browser.ts): a phone that loses
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) is
+ * opened again as the same device and the steps run once more; twice fails,
+ * saying so. It is asked before a step that can't be taken twice.
  */
 import { mkdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -58,7 +63,7 @@ import {
 } from '@jantar/fixtures';
 import { DEVICE_COOKIE, type FoodDay, type MedicinesResponse, type PairStartResponse, type TodosResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, PHONE, browserReady, clean, expectSaneFocus, focusWalk, glyphShape, grayscale, overflow, watchConsole, type Viewport, type Watch } from './browser.js';
+import { DESK, PHONE, browserReady, clean, expectSaneFocus, focusWalk, glyphShape, grayscale, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
 import { bootDaemon, fakeBinsSettings, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 
@@ -104,8 +109,8 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     return id;
   }
 
-  /** A browser context paired through the pairing page, as a phone scanning the Mac's code would be. */
-  async function paired(vp: Viewport, name: string): Promise<{ ctx: BrowserContext; page: Page; watch: Watch }> {
+  /** A browser context paired through the pairing page, as a phone scanning the Mac's code would be; 0.12.1: or, with `state`, that device again in a new one. */
+  async function paired(vp: Viewport, name: string, state?: StorageState): Promise<{ ctx: BrowserContext; page: Page; watch: Watch }> {
     const ctx = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       deviceScaleFactor: 2,
@@ -115,9 +120,12 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       locale: 'en-GB',
       timezoneId: ZONE,
       serviceWorkers: 'block',
+      ...(state ? { storageState: state } : {}),
     });
     const page = await ctx.newPage();
+    if (vp.phone) touchPage(page);
     const watch = watchConsole(page);
+    if (state) return { ctx, page, watch };
     const start = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name, scopes: ['read', 'control', 'admin', 'launch'] });
     await page.goto(`http://127.0.0.1:${d.port}/pair#c=${start.code}`, { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Pair this device' }).click();
@@ -137,15 +145,20 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     expect(await overflow(page), what).toEqual([]);
   }
 
+  /** 0.12.1: `steps` on `who`'s page; a phone that drops its touch emulation is opened again as the same device and they run once more. */
+  const on = (who: 'phone' | 'desk', what: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>) =>
+    onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who === 'phone' ? PHONE : DESK, who === 'phone' ? 'Example phone' : 'Example Mac browser', state)), steps);
+
   /** Opens `path` in each view (both themes on the phone and the desk), runs `fn` there and checks the page. */
   async function inEachView(path: string, fn: (page: Page, what: string, watch: Watch) => Promise<void>) {
     for (const v of VIEWS) {
-      const { page, watch } = pages[v.who]!;
-      await page.emulateMedia({ colorScheme: v.scheme });
-      await page.goto(`http://127.0.0.1:${d.port}${path}`, { waitUntil: 'load' });
       const what = `${path} (${v.who}, ${v.scheme})`;
-      await fn(page, what, watch);
-      await check(page, watch, what);
+      await on(v.who, what, async ({ page, watch }) => {
+        await page.emulateMedia({ colorScheme: v.scheme });
+        await page.goto(`http://127.0.0.1:${d.port}${path}`, { waitUntil: 'load' });
+        await fn(page, what, watch);
+        await check(page, watch, what);
+      });
     }
   }
 
@@ -278,29 +291,30 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     });
 
     for (const who of ['phone', 'desk'] as const) {
-      const { page, watch } = pages[who]!;
-      await page.emulateMedia({ colorScheme: 'light' });
-      await page.goto(`http://127.0.0.1:${d.port}/today`);
-      await sheet(page, watch, `the dose sheet from a row (${who})`, () => page.getByRole('button', { name: `Mockacin 250 mg at ${DUE_SLOT}, due` }).click(), async (dialog) => {
+      await on(who, `Today's sheets (${who})`, async ({ page, watch }) => {
+        await page.emulateMedia({ colorScheme: 'light' });
+        await page.goto(`http://127.0.0.1:${d.port}/today`);
+        await sheet(page, watch, `the dose sheet from a row (${who})`, () => page.getByRole('button', { name: `Mockacin 250 mg at ${DUE_SLOT}, due` }).click(), async (dialog) => {
+          await dialog.getByRole('button', { name: 'Taken' }).waitFor();
+          await dialog.getByText('Not logged yet').waitFor();
+        });
+        // A medicine push opens Today on that dose.
+        await page.goto(`http://127.0.0.1:${d.port}/today?dose=${ids.due}@${DUE_SLOT.replace(':', '')}`);
+        const dialog = page.getByRole('dialog');
         await dialog.getByRole('button', { name: 'Taken' }).waitFor();
-        await dialog.getByText('Not logged yet').waitFor();
-      });
-      // A medicine push opens Today on that dose.
-      await page.goto(`http://127.0.0.1:${d.port}/today?dose=${ids.due}@${DUE_SLOT.replace(':', '')}`);
-      const dialog = page.getByRole('dialog');
-      await dialog.getByRole('button', { name: 'Taken' }).waitFor();
-      await check(page, watch, `the dose sheet from a push (${who})`);
-      await page.keyboard.press('Escape');
-      await dialog.waitFor({ state: 'detached' });
-      // v0.5.3: Due's Add todo starts a todo due today; the weight line ("Weight today, 72.4 kg") opens the weight sheet.
-      await page.goto(`http://127.0.0.1:${d.port}/today`);
-      await sheet(page, watch, `the todo sheet from Today (${who})`, () => page.getByRole('region', { name: 'Due' }).getByRole('button', { name: 'Add todo' }).click(), async (form) => {
-        expect(await form.getByLabel('Due day').inputValue()).toBe(TODAY);
-        expect(await form.getByLabel('Due time').inputValue()).toBe('');
-        await form.getByRole('group', { name: 'Repeat' }).getByRole('button', { name: 'Year' }).waitFor();
-      });
-      await sheet(page, watch, `the weight sheet from Today (${who})`, () => page.getByRole('region', { name: 'Food' }).getByRole('button', { name: 'Weight today, 72.4 kg' }).click(), async (form) => {
-        await form.getByText('Weight today, kg').waitFor();
+        await check(page, watch, `the dose sheet from a push (${who})`);
+        await page.keyboard.press('Escape');
+        await dialog.waitFor({ state: 'detached' });
+        // v0.5.3: Due's Add todo starts a todo due today; the weight line ("Weight today, 72.4 kg") opens the weight sheet.
+        await page.goto(`http://127.0.0.1:${d.port}/today`);
+        await sheet(page, watch, `the todo sheet from Today (${who})`, () => page.getByRole('region', { name: 'Due' }).getByRole('button', { name: 'Add todo' }).click(), async (form) => {
+          expect(await form.getByLabel('Due day').inputValue()).toBe(TODAY);
+          expect(await form.getByLabel('Due time').inputValue()).toBe('');
+          await form.getByRole('group', { name: 'Repeat' }).getByRole('button', { name: 'Year' }).waitFor();
+        });
+        await sheet(page, watch, `the weight sheet from Today (${who})`, () => page.getByRole('region', { name: 'Food' }).getByRole('button', { name: 'Weight today, 72.4 kg' }).click(), async (form) => {
+          await form.getByText('Weight today, kg').waitFor();
+        });
       });
     }
     // Looking is not logging.
@@ -320,80 +334,84 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await page.getByText('Example todo in the project').waitFor();
     });
 
-    const { page, watch } = pages.phone!;
-    await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto(`http://127.0.0.1:${d.port}/todos`);
-    await page.getByText('Example todo for today').waitFor();
-    await sheet(page, watch, 'the todo sheet', () => page.getByRole('button', { name: 'Add todo' }).click());
-    await sheet(page, watch, 'a todo opened', () => page.getByText('Example todo for today').click());
-    await page.getByRole('button', { name: 'Projects' }).click();
-    await sheet(page, watch, 'the project sheet', () => page.getByRole('button', { name: 'Add project' }).click());
+    await on('phone', 'Todos on the phone', async ({ page, watch }) => {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await page.goto(`http://127.0.0.1:${d.port}/todos`);
+      await page.getByText('Example todo for today').waitFor();
+      await sheet(page, watch, 'the todo sheet', () => page.getByRole('button', { name: 'Add todo' }).click());
+      await sheet(page, watch, 'a todo opened', () => page.getByText('Example todo for today').click());
+      await page.getByRole('button', { name: 'Projects' }).click();
+      await sheet(page, watch, 'the project sheet', () => page.getByRole('button', { name: 'Add project' }).click());
 
-    await page.getByRole('button', { name: 'Todos' }).click();
-    await page.getByRole('button', { name: 'Mark done: Example todo for today' }).click();
-    const undo = page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
-    await undo.waitFor();
-    await check(page, watch, 'the Undo line after Done');
-    const open = async () => ((await call('GET', '/v1/todos')).body as TodosResponse).todos.some((t) => t.id === ids.today);
-    expect(await open()).toBe(false);
-    await undo.getByRole('button', { name: 'Undo' }).click();
-    await eventually(open, 5_000, 'Undo to reopen the todo');
-    await page.getByRole('button', { name: 'Mark done: Example todo for today' }).waitFor();
-    await check(page, watch, 'after Undo');
+      await page.getByRole('button', { name: 'Todos' }).click();
+      await page.getByRole('button', { name: 'Mark done: Example todo for today' }).click();
+      const undo = page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
+      await undo.waitFor();
+      await check(page, watch, 'the Undo line after Done');
+      const open = async () => ((await call('GET', '/v1/todos')).body as TodosResponse).todos.some((t) => t.id === ids.today);
+      expect(await open()).toBe(false);
+      await undo.getByRole('button', { name: 'Undo' }).click();
+      await eventually(open, 5_000, 'Undo to reopen the todo');
+      await page.getByRole('button', { name: 'Mark done: Example todo for today' }).waitFor();
+      await check(page, watch, 'after Undo');
 
-    // Delete asks nothing: the row goes at once and the delete waits out its 5 s Undo before it reaches the Mac.
-    const listed = async () => ((await call('GET', '/v1/todos')).body as TodosResponse).todos.some((t) => t.id === ids.someday);
-    const remove = async () => {
-      await page.getByRole('button', { name: 'Actions for Example someday todo' }).click();
-      await page.getByRole('menuitem', { name: 'Delete' }).click();
-      const line = page.getByRole('status').filter({ hasText: 'Deleted: Example someday todo' });
-      await line.waitFor();
-      return line;
-    };
-    const held = await remove();
-    expect(await page.getByRole('dialog').count()).toBe(0);
-    await check(page, watch, 'the Undo line after Delete');
-    expect(await listed()).toBe(true);
-    await held.getByRole('button', { name: 'Undo' }).click();
-    await page.getByText('Example someday todo').waitFor();
-    await remove();
-    await eventually(async () => !(await listed()), 10_000, 'the held delete to reach the Mac');
-    await check(page, watch, 'after the delete is sent');
+      // Delete asks nothing: the row goes at once and the delete waits out its 5 s Undo before it reaches the Mac.
+      const listed = async () => ((await call('GET', '/v1/todos')).body as TodosResponse).todos.some((t) => t.id === ids.someday);
+      const remove = async () => {
+        await page.getByRole('button', { name: 'Actions for Example someday todo' }).click();
+        await page.getByRole('menuitem', { name: 'Delete' }).click();
+        const line = page.getByRole('status').filter({ hasText: 'Deleted: Example someday todo' });
+        await line.waitFor();
+        return line;
+      };
+      const held = await remove();
+      expect(await page.getByRole('dialog').count()).toBe(0);
+      await check(page, watch, 'the Undo line after Delete');
+      expect(await listed()).toBe(true);
+      await held.getByRole('button', { name: 'Undo' }).click();
+      await page.getByText('Example someday todo').waitFor();
+      // This delete reaches the Mac: the pointer is asked first.
+      await stillTouch(page, 'Todos on the phone, before the delete');
+      await remove();
+      await eventually(async () => !(await listed()), 10_000, 'the held delete to reach the Mac');
+      await check(page, watch, 'after the delete is sent');
+    });
   });
 
   it('a long list: the Undo of a row deleted or done far down is a bar in view, not a line scrolled away', async () => {
     const fillers: string[] = [];
     for (let i = 1; i <= 16; i++) fillers.push(await made(`filler${i}`, 'POST', '/v1/todos', todoBody({ title: `Example filler todo ${String(i).padStart(2, '0')}` })));
     try {
-      const { page, watch } = pages.phone!;
-      await page.emulateMedia({ colorScheme: 'light' });
-      await page.goto(`http://127.0.0.1:${d.port}/todos`);
-      const menus = page.getByRole('button', { name: /^Actions for Example filler todo/ });
-      await menus.first().waitFor();
-      const main = await page.locator('#main').boundingBox();
-      const inView = async (what: string) => {
-        const bar = page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
-        await bar.waitFor();
-        const box = await bar.boundingBox();
-        expect(box && main, what).toBeTruthy();
-        expect(box!.y, what).toBeGreaterThanOrEqual(main!.y);
-        expect(box!.y + box!.height, what).toBeLessThanOrEqual(main!.y + main!.height + 0.5);
-        await check(page, watch, what);
-        await bar.getByRole('button', { name: 'Undo' }).click();
-        await bar.waitFor({ state: 'detached' });
-      };
+      await on('phone', 'a long list on the phone', async ({ page, watch }) => {
+        await page.emulateMedia({ colorScheme: 'light' });
+        await page.goto(`http://127.0.0.1:${d.port}/todos`);
+        const menus = page.getByRole('button', { name: /^Actions for Example filler todo/ });
+        await menus.first().waitFor();
+        const main = await page.locator('#main').boundingBox();
+        const inView = async (what: string) => {
+          const bar = page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
+          await bar.waitFor();
+          const box = await bar.boundingBox();
+          expect(box && main, what).toBeTruthy();
+          expect(box!.y, what).toBeGreaterThanOrEqual(main!.y);
+          expect(box!.y + box!.height, what).toBeLessThanOrEqual(main!.y + main!.height + 0.5);
+          await check(page, watch, what);
+          await bar.getByRole('button', { name: 'Undo' }).click();
+          await bar.waitFor({ state: 'detached' });
+        };
 
-      // Delete the last row from its menu: the page is scrolled to it.
-      const last = menus.last();
-      const name = ((await last.getAttribute('aria-label')) ?? '').replace('Actions for ', '');
-      await last.click();
-      await page.getByRole('menuitem', { name: 'Delete' }).click();
-      await inView(`the Undo after deleting ${name}, the last row`);
-      await page.getByText(name).waitFor();
+        // Delete the last row from its menu: the page is scrolled to it.
+        const last = menus.last();
+        const name = ((await last.getAttribute('aria-label')) ?? '').replace('Actions for ', '');
+        await last.click();
+        await page.getByRole('menuitem', { name: 'Delete' }).click();
+        await inView(`the Undo after deleting ${name}, the last row`);
+        await page.getByText(name).waitFor();
 
-      // Mark the last row done.
-      await page.getByRole('button', { name: `Mark done: ${name}` }).click();
-      await inView(`the Undo after marking ${name} done`);
+        // Mark the last row done.
+        await page.getByRole('button', { name: `Mark done: ${name}` }).click();
+        await inView(`the Undo after marking ${name} done`);
+      });
     } finally {
       for (const id of fillers) await call('DELETE', `/v1/todos/${id}`);
     }
@@ -406,31 +424,32 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await page.locator(`[data-dose="${ids.later}@20:30"]`).first().waitFor();
     });
 
-    const { page, watch } = pages.phone!;
-    await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto(`http://127.0.0.1:${d.port}/meds`);
-    await page.locator(`[data-dose="${ids.later}@20:30"]`).first().waitFor();
-    await sheet(page, watch, 'the medicine sheet', () => page.getByRole('button', { name: 'Add medicine' }).click());
+    await on('phone', 'Medicines on the phone', async ({ page, watch }) => {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await page.goto(`http://127.0.0.1:${d.port}/meds`);
+      await page.locator(`[data-dose="${ids.later}@20:30"]`).first().waitFor();
+      await sheet(page, watch, 'the medicine sheet', () => page.getByRole('button', { name: 'Add medicine' }).click());
 
-    await grayscale(page);
-    const rows: Array<[string, string]> = [
-      ['taken', `${ids.taken}@08:00`],
-      ['skipped', `${ids.skipped}@09:00`],
-      ['overdue', `${ids.overdueMed}@11:00`],
-      ['due', `${ids.due}@${DUE_SLOT}`],
-      ['pending', `${ids.later}@20:30`],
-    ];
-    const seen = new Map<string, string>();
-    for (const [state, key] of rows) {
-      const row = page.locator(`[data-dose="${key}"]`).first();
-      // Without colour: the glyph's shape, the words at the end of the row (times and names aside) and the check.
-      const words = (await row.evaluate((el) => (el.lastElementChild?.textContent ?? '').replace(/[\d:]/g, '').trim())) || '-';
-      const tick = (await row.locator('svg:not([data-glyph])').count()) > 0 ? 'tick' : '';
-      const k = `${await glyphShape(row)}|${words}|${tick}`;
-      expect(seen.get(k), `${state} looks the same as ${seen.get(k)} in grayscale`).toBeUndefined();
-      seen.set(k, state);
-    }
-    expect(seen.size).toBe(5);
+      await grayscale(page);
+      const rows: Array<[string, string]> = [
+        ['taken', `${ids.taken}@08:00`],
+        ['skipped', `${ids.skipped}@09:00`],
+        ['overdue', `${ids.overdueMed}@11:00`],
+        ['due', `${ids.due}@${DUE_SLOT}`],
+        ['pending', `${ids.later}@20:30`],
+      ];
+      const seen = new Map<string, string>();
+      for (const [state, key] of rows) {
+        const row = page.locator(`[data-dose="${key}"]`).first();
+        // Without colour: the glyph's shape, the words at the end of the row (times and names aside) and the check.
+        const words = (await row.evaluate((el) => (el.lastElementChild?.textContent ?? '').replace(/[\d:]/g, '').trim())) || '-';
+        const tick = (await row.locator('svg:not([data-glyph])').count()) > 0 ? 'tick' : '';
+        const k = `${await glyphShape(row)}|${words}|${tick}`;
+        expect(seen.get(k), `${state} looks the same as ${seen.get(k)} in grayscale`).toBeUndefined();
+        seen.set(k, state);
+      }
+      expect(seen.size).toBe(5);
+    });
   });
 
   it('Food with weight; the add sheet: Type, Saved with its Undo, and Ask Claude, which saves nothing', async () => {
@@ -439,37 +458,38 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await page.getByText(/72\.4/).first().waitFor();
     });
 
-    const { page, watch } = pages.phone!;
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await page.goto(`http://127.0.0.1:${d.port}/food`);
-    await page.getByText('Sample Poha').waitFor();
-    await sheet(page, watch, 'the weight sheet', () => page.getByText(/72\.4/).first().click());
-    await sheet(page, watch, 'the target sheet', () => page.getByRole('button', { name: /^Daily target/ }).click());
+    await on('phone', 'Food on the phone', async ({ page, watch }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
+      await page.goto(`http://127.0.0.1:${d.port}/food`);
+      await page.getByText('Sample Poha').waitFor();
+      await sheet(page, watch, 'the weight sheet', () => page.getByText(/72\.4/).first().click());
+      await sheet(page, watch, 'the target sheet', () => page.getByRole('button', { name: /^Daily target/ }).click());
 
-    const before = ((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length;
-    await page.getByRole('button', { name: 'Add food' }).first().click();
-    const dialog = page.getByRole('dialog');
-    await dialog.getByRole('form', { name: 'Type a food' }).waitFor();
-    await check(page, watch, 'the add sheet, Type');
+      const before = ((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length;
+      await page.getByRole('button', { name: 'Add food' }).first().click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('form', { name: 'Type a food' }).waitFor();
+      await check(page, watch, 'the add sheet, Type');
 
-    await dialog.getByRole('button', { name: 'Saved', exact: true }).click();
-    await dialog.getByRole('button', { name: 'Add Sample Dosa, 350 kcal' }).click();
-    const undo = dialog.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
-    await undo.waitFor();
-    await check(page, watch, 'the add sheet, Saved, with its Undo');
-    await undo.getByRole('button', { name: 'Undo' }).click();
-    await eventually(async () => ((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length === before, 5_000, 'Undo to take the saved food back');
+      await dialog.getByRole('button', { name: 'Saved', exact: true }).click();
+      await dialog.getByRole('button', { name: 'Add Sample Dosa, 350 kcal' }).click();
+      const undo = dialog.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
+      await undo.waitFor();
+      await check(page, watch, 'the add sheet, Saved, with its Undo');
+      await undo.getByRole('button', { name: 'Undo' }).click();
+      await eventually(async () => ((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length === before, 5_000, 'Undo to take the saved food back');
 
-    await dialog.getByRole('button', { name: 'Ask Claude' }).click();
-    await dialog.getByLabel('What did you eat?').fill('2 rotis and dal');
-    await dialog.getByRole('button', { name: 'Estimate' }).click();
-    const rows = dialog.getByRole('list', { name: "Claude's estimate" });
-    await rows.waitFor({ timeout: 30_000 });
-    await expect.poll(() => rows.getByRole('textbox', { name: 'Name' }).evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).toEqual(['Roti', 'Dal']);
-    await check(page, watch, "the add sheet, Claude's rows");
-    expect(((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length).toBe(before);
-    await page.keyboard.press('Escape');
-    await dialog.waitFor({ state: 'detached' });
+      await dialog.getByRole('button', { name: 'Ask Claude' }).click();
+      await dialog.getByLabel('What did you eat?').fill('2 rotis and dal');
+      await dialog.getByRole('button', { name: 'Estimate' }).click();
+      const rows = dialog.getByRole('list', { name: "Claude's estimate" });
+      await rows.waitFor({ timeout: 30_000 });
+      await expect.poll(() => rows.getByRole('textbox', { name: 'Name' }).evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).toEqual(['Roti', 'Dal']);
+      await check(page, watch, "the add sheet, Claude's rows");
+      expect(((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length).toBe(before);
+      await page.keyboard.press('Escape');
+      await dialog.waitFor({ state: 'detached' });
+    });
   }, perfBudgetMs(90_000));
 
   it('Cafés and Finance, with their sheets', async () => {
@@ -485,51 +505,55 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await page.getByText('Example Gym').waitFor();
     });
 
-    const { page, watch } = pages.phone!;
-    await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto(`http://127.0.0.1:${d.port}/places`);
-    await page.getByText('Example Café').first().waitFor();
-    // v0.10: a café opens its own screen; Edit is the café sheet.
-    await page.getByText('Example Café').first().click();
-    await page.getByRole('button', { name: 'Log visit' }).waitFor();
-    await check(page, watch, 'a café opened');
-    await sheet(page, watch, 'the café sheet, Edit', () => page.getByRole('button', { name: 'Edit' }).click());
-    await page.goto(`http://127.0.0.1:${d.port}/places`);
-    await page.getByText('Example Café').first().waitFor();
-    await sheet(page, watch, 'the café sheet', () => page.getByRole('button', { name: 'Add café' }).click());
+    await on('phone', 'Cafés and Finance on the phone', async ({ page, watch }) => {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await page.goto(`http://127.0.0.1:${d.port}/places`);
+      await page.getByText('Example Café').first().waitFor();
+      // v0.10: a café opens its own screen; Edit is the café sheet.
+      await page.getByText('Example Café').first().click();
+      await page.getByRole('button', { name: 'Log visit' }).waitFor();
+      await check(page, watch, 'a café opened');
+      await sheet(page, watch, 'the café sheet, Edit', () => page.getByRole('button', { name: 'Edit' }).click());
+      await page.goto(`http://127.0.0.1:${d.port}/places`);
+      await page.getByText('Example Café').first().waitFor();
+      await sheet(page, watch, 'the café sheet', () => page.getByRole('button', { name: 'Add café' }).click());
 
-    await page.goto(`http://127.0.0.1:${d.port}/money`);
-    await page.getByText('Example Gym').waitFor();
-    await sheet(page, watch, 'the expense sheet', () => page.getByRole('button', { name: 'Expense', exact: true }).click());
-    await sheet(page, watch, 'the budget sheet', () => page.getByRole('region', { name: 'By category' }).getByRole('button').filter({ hasText: 'Food' }).first().click());
-    await sheet(page, watch, 'the bill sheet', () => page.getByText('Example Gym').click());
+      await page.goto(`http://127.0.0.1:${d.port}/money`);
+      await page.getByText('Example Gym').waitFor();
+      await sheet(page, watch, 'the expense sheet', () => page.getByRole('button', { name: 'Expense', exact: true }).click());
+      await sheet(page, watch, 'the budget sheet', () => page.getByRole('region', { name: 'By category' }).getByRole('button').filter({ hasText: 'Food' }).first().click());
+      await sheet(page, watch, 'the bill sheet', () => page.getByText('Example Gym').click());
+    });
   });
 
   it('on the phone the day and month chips and the category rows are 44 px touch targets', async () => {
-    const { page } = pages.phone!;
-    // Sizes are read on a still screen. Each Life screen slides in (translateY 8px to 0), and a box read part
-    // way sits at a fractional offset where Chromium's float corners give 44 px as 43.99997. With reduced
-    // motion the screen only fades in.
-    await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
-    const tall = async (target: Locator, what: string) => {
-      await target.waitFor();
-      expect((await target.boundingBox())?.height ?? 0, what).toBeGreaterThanOrEqual(44);
-    };
-    try {
-      for (const path of [`/food?day=${day(-1)}`, `/meds?day=${day(-1)}`]) {
-        await page.goto(`http://127.0.0.1:${d.port}${path}`);
-        await tall(page.getByRole('button', { name: 'Today', exact: true }), `the Today chip on ${path}`);
+    await on('phone', '44 px chips and rows on the phone', async ({ page }) => {
+      // Sizes are read on a still screen. Each Life screen slides in (translateY 8px to 0), and a box read part
+      // way sits at a fractional offset where Chromium's float corners give 44 px as 43.99997. With reduced
+      // motion the screen only fades in.
+      await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+      const tall = async (target: Locator, what: string) => {
+        await target.waitFor();
+        expect((await target.boundingBox())?.height ?? 0, what).toBeGreaterThanOrEqual(44);
+      };
+      try {
+        for (const path of [`/food?day=${day(-1)}`, `/meds?day=${day(-1)}`]) {
+          await page.goto(`http://127.0.0.1:${d.port}${path}`);
+          await page.getByRole('button', { name: 'Today', exact: true }).waitFor();
+          await stillTouch(page, `44 px on ${path}`);
+          await tall(page.getByRole('button', { name: 'Today', exact: true }), `the Today chip on ${path}`);
+        }
+        const month = new Date(Date.UTC(Number(TODAY.slice(0, 4)), Number(TODAY.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
+        await page.goto(`http://127.0.0.1:${d.port}/money?month=${month}`);
+        await tall(page.getByRole('button', { name: 'This month' }), 'the This month chip');
+        await page.goto(`http://127.0.0.1:${d.port}/money`);
+        const rows = page.getByRole('region', { name: 'By category' }).getByRole('button');
+        await rows.first().waitFor();
+        for (let i = 0; i < (await rows.count()); i++) await tall(rows.nth(i), `category row ${i}`);
+      } finally {
+        await page.emulateMedia({ reducedMotion: null });
       }
-      const month = new Date(Date.UTC(Number(TODAY.slice(0, 4)), Number(TODAY.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
-      await page.goto(`http://127.0.0.1:${d.port}/money?month=${month}`);
-      await tall(page.getByRole('button', { name: 'This month' }), 'the This month chip');
-      await page.goto(`http://127.0.0.1:${d.port}/money`);
-      const rows = page.getByRole('region', { name: 'By category' }).getByRole('button');
-      await rows.first().waitFor();
-      for (let i = 0; i < (await rows.count()); i++) await tall(rows.nth(i), `category row ${i}`);
-    } finally {
-      await page.emulateMedia({ reducedMotion: null });
-    }
+    });
   });
 
   it('Intel with a hostile item: its title is text, nothing runs, no javascript: link', async () => {
@@ -545,41 +569,43 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await page.getByText('javascript:alert(2)').first().waitFor();
       expect(await page.locator('a[href^="javascript:"]').count()).toBe(0);
     });
-    const { page, watch } = pages.phone!;
-    await page.goto(`http://127.0.0.1:${d.port}/intel`);
-    await page.getByText('<script>window.__pwned=1</script>').first().waitFor();
-    await sheet(page, watch, "Intel's add sheet", () => page.getByRole('button', { name: 'Add', exact: true }).first().click());
-    expect(await page.evaluate(() => document.querySelectorAll('script:not([src])').length)).toBe(0);
+    await on('phone', 'Intel on the phone', async ({ page, watch }) => {
+      await page.goto(`http://127.0.0.1:${d.port}/intel`);
+      await page.getByText('<script>window.__pwned=1</script>').first().waitFor();
+      await sheet(page, watch, "Intel's add sheet", () => page.getByRole('button', { name: 'Add', exact: true }).first().click());
+      expect(await page.evaluate(() => document.querySelectorAll('script:not([src])').length)).toBe(0);
+    });
   });
 
   it("v0.5.3: the phone header's magnifier opens the shelf's search; words find the best match first, marked; × clears", async () => {
-    const { page, watch } = pages.phone!;
-    await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto(`http://127.0.0.1:${d.port}/today`);
-    await page.getByText('Example overdue todo').first().waitFor();
-    await page.getByRole('link', { name: 'Search the Intel shelf' }).click();
-    const box = page.getByRole('searchbox', { name: 'Search the shelf' });
-    await box.waitFor();
-    // The box is ready to type in, and the magnifier's word leaves the address.
-    await expect.poll(() => box.evaluate((el) => el === document.activeElement)).toBe(true);
-    await page.waitForURL(/\/intel$/);
+    await on('phone', 'the magnifier on the phone', async ({ page, watch }) => {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await page.goto(`http://127.0.0.1:${d.port}/today`);
+      await page.getByText('Example overdue todo').first().waitFor();
+      await page.getByRole('link', { name: 'Search the Intel shelf' }).click();
+      const box = page.getByRole('searchbox', { name: 'Search the shelf' });
+      await box.waitFor();
+      // The box is ready to type in, and the magnifier's word leaves the address.
+      await expect.poll(() => box.evaluate((el) => el === document.activeElement)).toBe(true);
+      await page.waitForURL(/\/intel$/);
 
-    await page.keyboard.type('tool 7');
-    await page.waitForURL(/\/intel\?q=tool(\+|%20)7$/);
-    const count = page.getByText(/^\d+ match(es)?$/);
-    await count.waitFor();
-    const rows = count.locator('xpath=following-sibling::ul[1]').locator('li');
-    // Both words at a word's start in its title first; then a word inside one (newest first among equals).
-    await expect.poll(() => rows.evaluateAll((els) => els.slice(0, 3).map((li) => li.querySelector('p')?.textContent))).toEqual(['Example tool 7', 'Example tool 27', 'Example tool 17']);
-    expect(await rows.first().locator('p').first().locator('mark').allTextContents()).toEqual(['tool', '7']);
-    await check(page, watch, 'Intel search');
+      await page.keyboard.type('tool 7');
+      await page.waitForURL(/\/intel\?q=tool(\+|%20)7$/);
+      const count = page.getByText(/^\d+ match(es)?$/);
+      await count.waitFor();
+      const rows = count.locator('xpath=following-sibling::ul[1]').locator('li');
+      // Both words at a word's start in its title first; then a word inside one (newest first among equals).
+      await expect.poll(() => rows.evaluateAll((els) => els.slice(0, 3).map((li) => li.querySelector('p')?.textContent))).toEqual(['Example tool 7', 'Example tool 27', 'Example tool 17']);
+      expect(await rows.first().locator('p').first().locator('mark').allTextContents()).toEqual(['tool', '7']);
+      await check(page, watch, 'Intel search');
 
-    await page.getByRole('button', { name: 'Clear the search' }).click();
-    await page.waitForURL(/\/intel$/);
-    await page.getByText(/^\d+ items$/).waitFor();
-    expect(await box.inputValue()).toBe('');
-    expect(await box.evaluate((el) => el === document.activeElement)).toBe(true);
-    expect(await page.locator('mark').count()).toBe(0);
+      await page.getByRole('button', { name: 'Clear the search' }).click();
+      await page.waitForURL(/\/intel$/);
+      await page.getByText(/^\d+ items$/).waitFor();
+      expect(await box.inputValue()).toBe('');
+      expect(await box.evaluate((el) => el === document.activeElement)).toBe(true);
+      expect(await page.locator('mark').count()).toBe(0);
+    });
   });
 
   it('v0.5.3: Devices with the Sounds section, its own chunk, in each view', async () => {
@@ -590,23 +616,24 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
   });
 
   it("the phone's tabs: Today is current on a Life screen, and More holds the rest and opens them", async () => {
-    const { page, watch } = pages.phone!;
-    await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto(`http://127.0.0.1:${d.port}/meds`);
-    const tabs = page.getByRole('navigation', { name: 'Main' });
-    await expect.poll(() => tabs.getByRole('link').evaluateAll((els) => els.map((e) => e.textContent?.trim()))).toEqual(['Board', 'Today', 'Files', 'Accounts', 'More']);
-    expect(await tabs.getByRole('link', { name: 'Today' }).getAttribute('aria-current')).toBe('page');
+    await on('phone', "the phone's tabs", async ({ page, watch }) => {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await page.goto(`http://127.0.0.1:${d.port}/meds`);
+      const tabs = page.getByRole('navigation', { name: 'Main' });
+      await expect.poll(() => tabs.getByRole('link').evaluateAll((els) => els.map((e) => e.textContent?.trim()))).toEqual(['Board', 'Today', 'Files', 'Accounts', 'More']);
+      expect(await tabs.getByRole('link', { name: 'Today' }).getAttribute('aria-current')).toBe('page');
 
-    await tabs.getByRole('link', { name: 'More' }).click();
-    await page.getByRole('heading', { name: 'More', level: 1 }).waitFor();
-    // The places past the fifth tab, which the tab bar does not show.
-    for (const place of ['Alerts', 'Devices', 'Intel']) await page.getByRole('link', { name: new RegExp(`^${place}`) }).first().waitFor();
-    await check(page, watch, 'More');
-    await page.getByRole('link', { name: 'Intel' }).first().click();
-    await page.waitForURL(/\/intel$/);
-    await page.getByText('<script>window.__pwned=1</script>').first().waitFor();
-    expect(await tabs.getByRole('link', { name: 'More' }).getAttribute('aria-current')).toBe('page');
-    await check(page, watch, 'Intel from More');
+      await tabs.getByRole('link', { name: 'More' }).click();
+      await page.getByRole('heading', { name: 'More', level: 1 }).waitFor();
+      // The places past the fifth tab, which the tab bar does not show.
+      for (const place of ['Alerts', 'Devices', 'Intel']) await page.getByRole('link', { name: new RegExp(`^${place}`) }).first().waitFor();
+      await check(page, watch, 'More');
+      await page.getByRole('link', { name: 'Intel' }).first().click();
+      await page.waitForURL(/\/intel$/);
+      await page.getByText('<script>window.__pwned=1</script>').first().waitFor();
+      expect(await tabs.getByRole('link', { name: 'More' }).getAttribute('aria-current')).toBe('page');
+      await check(page, watch, 'Intel from More');
+    });
 
     // 0.12 (c22d): More is the phone's tab. A desk window's rail lists every place, so /more goes to the board there.
     await inEachView('/more', async (p, what) => {
@@ -634,27 +661,28 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
 
   it('focus: Tab walks each screen in document order over visible, named stops; a sheet keeps it inside', async () => {
     for (const who of ['phone', 'desk'] as const) {
-      const { page } = pages[who]!;
-      await page.emulateMedia({ colorScheme: 'light' });
-      for (const [path, ready] of [
-        ['/today', 'Example overdue todo'],
-        ['/todos', 'Example overdue todo'],
-        ['/meds', 'Fixturol'],
-        ['/food', 'Sample Poha'],
-        ['/places', 'Example Café'],
-        ['/money', 'Example Gym'],
-        ['/intel', 'Example tool 29'],
-      ] as const) {
-        await page.goto(`http://127.0.0.1:${d.port}${path}`);
-        await page.getByText(ready).first().waitFor();
-        await expectSaneFocus(page, await focusWalk(page), { what: `${path} (${who})` });
-      }
-      await page.goto(`http://127.0.0.1:${d.port}/today`);
-      await page.getByRole('button', { name: `Mockacin 250 mg at ${DUE_SLOT}, due` }).click();
-      await page.getByRole('dialog').waitFor();
-      await page.waitForTimeout(400);
-      await expectSaneFocus(page, await focusWalk(page), { what: `the dose sheet (${who})`, dialog: true });
-      await page.keyboard.press('Escape');
+      await on(who, `focus (${who})`, async ({ page }) => {
+        await page.emulateMedia({ colorScheme: 'light' });
+        for (const [path, ready] of [
+          ['/today', 'Example overdue todo'],
+          ['/todos', 'Example overdue todo'],
+          ['/meds', 'Fixturol'],
+          ['/food', 'Sample Poha'],
+          ['/places', 'Example Café'],
+          ['/money', 'Example Gym'],
+          ['/intel', 'Example tool 29'],
+        ] as const) {
+          await page.goto(`http://127.0.0.1:${d.port}${path}`);
+          await page.getByText(ready).first().waitFor();
+          await expectSaneFocus(page, await focusWalk(page), { what: `${path} (${who})` });
+        }
+        await page.goto(`http://127.0.0.1:${d.port}/today`);
+        await page.getByRole('button', { name: `Mockacin 250 mg at ${DUE_SLOT}, due` }).click();
+        await page.getByRole('dialog').waitFor();
+        await page.waitForTimeout(400);
+        await expectSaneFocus(page, await focusWalk(page), { what: `the dose sheet (${who})`, dialog: true });
+        await page.keyboard.press('Escape');
+      });
     }
   });
 });
