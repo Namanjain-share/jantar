@@ -73,13 +73,17 @@ const LOG_KIND: Record<WorkLogRow['kind'], string> = {
 };
 const OUTCOME: Record<NonNullable<WorkLogRow['outcome']>, string> = { good: 'Went well', neutral: 'OK', bad: 'Badly', no_answer: 'No answer' };
 
-/** One log row as the hub lists it: "Call · out · 25m · Went well · 2 Nov", its words under it. */
-export function logLine(row: WorkLogRow, tz?: string | null): { line: string; body?: string } {
+/**
+ * One log row as the hub lists it: "Call · out · 25m · Went well · 2 Nov", its words under it. A stage move
+ * names its stages by `stages` (a deal's page knows them), else by their ids.
+ */
+export function logLine(row: WorkLogRow, tz?: string | null, stages?: ReadonlyMap<string, string>): { line: string; body?: string } {
   const day = dayLabel(clockIn(Date.parse(row.at), tz).day).replace(/^\w+ /, '');
   const parts = [LOG_KIND[row.kind]];
   if (row.kind === 'meeting' && row.meeting) parts.push(row.meeting.name);
   if (row.kind === 'followup' && row.title) parts.push(row.title);
-  if (row.kind === 'stage' && row.stageTo) parts.push(row.stageFrom ? `${row.stageFrom} → ${row.stageTo}` : row.stageTo);
+  const stage = (id: string) => stages?.get(id) ?? id;
+  if (row.kind === 'stage' && row.stageTo) parts.push(row.stageFrom ? `${stage(row.stageFrom)} → ${stage(row.stageTo)}` : stage(row.stageTo));
   if (row.direction) parts.push(row.direction);
   if (row.minutes) parts.push(`${row.minutes}m`);
   if (row.outcome) parts.push(OUTCOME[row.outcome]);
