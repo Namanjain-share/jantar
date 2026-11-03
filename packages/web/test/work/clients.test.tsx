@@ -10,7 +10,7 @@
  * - The filters are the address: the box (after typing stops), the state
  *   chips, a tag and a starter list; the sort is the screen's.
  * - A wide pane with nothing open: one table; a client open beside it.
- * - Every state: loading, empty (Add a client), nothing
+ * - Every state: loading, empty (Add a client, Import a file), nothing
  *   matching (Clear filters), Work off, life.db broken, a failed load,
  *   offline (the last list stays, adding is off).
  */
@@ -42,9 +42,10 @@ const clientsCalls = (request: ReturnType<typeof workRequest>) =>
 describe('Work › Clients on a phone', () => {
   it('groups the clients: Needs a step, Clients, Leads, Past folded; a row says its next step, deals and last touch', async () => {
     const { history } = setup();
-    expect(await screen.findByRole('heading', { level: 1, name: 'Work' })).toBeTruthy();
-    expect(within(screen.getByRole('group', { name: 'Work' })).getByRole('button', { name: 'Clients' }).getAttribute('aria-pressed')).toBe('true');
+    // The heading shows while the chunk loads too: wait for the list.
     const step = await screen.findByRole('list', { name: 'Needs a step' });
+    expect(screen.getByRole('heading', { level: 1, name: 'Work' })).toBeTruthy();
+    expect(within(screen.getByRole('group', { name: 'Work' })).getByRole('button', { name: 'Clients' }).getAttribute('aria-pressed')).toBe('true');
     const northwind = within(step).getByRole('link', { name: /Northwind/ });
     expect(northwind.textContent).toMatch(/no next step/);
     expect(northwind.textContent).toMatch(/lead/);
@@ -107,10 +108,11 @@ describe('Work › Clients on a phone', () => {
     }
   });
 
-  it('empty: one line with Add a client; nothing matching: Clear filters', async () => {
+  it('empty: one line with Add a client and Import a file; nothing matching: Clear filters', async () => {
     const a = setup({ request: { 'GET /v1/work/clients': CLIENTS([]) } });
     expect(await screen.findByText('No clients yet.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add a client' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Import a file' })).toBeTruthy();
     a.unmount();
     const { history } = setup({ path: '/work?tab=clients&state=past', request: { 'GET /v1/work/clients': CLIENTS([]) } });
     expect(await screen.findByText('No clients match.')).toBeTruthy();
@@ -139,7 +141,7 @@ describe('Work › Clients on a phone', () => {
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
-  it('offline: the last list stays, adding is off', async () => {
+  it('offline: the last list stays, adding and the menu are off', async () => {
     setup({ status: 'offline' });
     expect(await screen.findByRole('list', { name: 'Clients' })).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Add client' }) as HTMLButtonElement).disabled).toBe(true);
@@ -152,6 +154,22 @@ describe('Work › Clients on a phone', () => {
     fireEvent.click(within(screen.getByRole('group', { name: 'Work' })).getByRole('button', { name: 'Projects' }));
     expect(history.entries.at(-1)).toBe('/work');
     expect(await screen.findByText('No projects yet.')).toBeTruthy();
+  });
+
+  it('Export CSV hands the file to the share sheet or a download', async () => {
+    const download = vi.fn();
+    const created = vi.fn((_b: Blob) => 'blob:csv');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(download);
+    const { toasts } = setup({ request: { 'GET /v1/work/export.csv': 'name,kind\r\nAcme,company\r\n' } });
+    await screen.findByRole('list', { name: 'Clients' });
+    fireEvent.click(screen.getByRole('button', { name: 'More for clients' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export CSV' }));
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect(await (created.mock.calls[0]![0] as File).text()).toBe('name,kind\r\nAcme,company\r\n');
+    expect((created.mock.calls[0]![0] as File).name).toBe('jantar-clients.csv');
+    await waitFor(() => expect(toasts.getState().toasts.map((t) => t.text)).toContain('Clients exported.'));
+    vi.unstubAllGlobals();
   });
 });
 

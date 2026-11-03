@@ -2,7 +2,7 @@
  * 0.13.0 Work › Clients (design 6.2-6.4, W20): his clients and companies,
  * a chunk of its own (Work.tsx loads it on the first visit).
  *
- *   Work                                            +
+ *   Work                                        ··· +
  *   [ Projects | Clients ]
  *   ⌕ Filter by name, company, e-mail or phone
  *   [ All | Leads | Clients | Past ]
@@ -22,18 +22,22 @@
  * 1180), else over it with "‹ Clients" (ClientHub.tsx).
  *
  * + adds a client (ClientSheet.tsx: about ten seconds, a duplicate warns
- * and never blocks), then opens it.
+ * and never blocks), then opens it. ··· holds Import a file (its sheet
+ * loads on first use, ImportSheet.tsx) and Export CSV (the share sheet or
+ * a download, never into a folder).
  *
- * Every state of design 6.5: loading, empty ("No clients yet." with Add),
- * nothing matching (Clear filters), Work off and life.db broken
+ * Every state of design 6.5: loading, empty ("No clients yet." with Add and
+ * Import), nothing matching (Clear filters), Work off and life.db broken
  * (the daemon's sentences), a failed load (Try again), offline (the last
  * list stays; adding is off).
  */
-import { CaretDownIcon, CaretRightIcon, MagnifyingGlassIcon, PlusIcon } from '@phosphor-icons/react';
+import { CaretDownIcon, CaretRightIcon, MagnifyingGlassIcon, PlusIcon, UploadSimpleIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { WORK_CLIENT_LISTS, WorkClientListsReply, WorkClientRow, WorkClientsResponse, WorkSettings } from '@jantar/protocol/work';
+import { errorText } from '../../../lib/api.js';
 import type { Route, WorkClientState } from '../../../lib/router.js';
+import { shareFile } from '../../../lib/share-file.js';
 import { useDeps, useNavigate, useNow, useToast } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Panel } from '../../kit/Panel.js';
@@ -42,7 +46,7 @@ import { useLayout } from '../../shell/layout.js';
 import { Link } from '../../shell/Link.js';
 import { LifeEmpty } from '../life/shared/states.js';
 import { useLifeLoad, useLifeStatus, type LifeLoad } from '../life/shared/useLife.js';
-import { AddButton, INPUT, Loaded, Page, useLifeClock, useOffline, useSheet } from '../life/today/parts.js';
+import { AddButton, INPUT, Loaded, Page, RowMenu, useLifeClock, useOffline, useSheet } from '../life/today/parts.js';
 import { ClientHub } from './ClientHub.js';
 import { ClientSheet } from './ClientSheet.js';
 import { type ClientsFilter, type WorkClient, workClient } from './client.js';
@@ -59,6 +63,9 @@ import {
   touchText,
 } from './clientModel.js';
 import { Chips, FromTag } from './parts.js';
+
+// It loads on first use: an import is rare, and most of its code is its own.
+const ImportSheet = lazy(() => import('./ImportSheet.js').then((m) => ({ default: m.ImportSheet })));
 
 type WorkRoute = Extract<Route, { name: 'work' }>;
 type ListId = (typeof WORK_CLIENT_LISTS)[number];
@@ -144,6 +151,7 @@ function ClientsList({ w, tabs, load, lists, filter, sort, onSort, prefs, open, 
   const now = useLifeClock(status);
   const nowMs = useNow(60_000);
   const add = useSheet<null>();
+  const importer = useSheet<null>();
   const [showPast, setShowPast] = useState(false);
   const filtered = Boolean(filter.q || filter.state || filter.tag || filter.list);
   const go = (next: Filter) => navigate(clientPath(undefined, { ...filter, ...next }), { replace: true });
@@ -154,10 +162,39 @@ function ClientsList({ w, tabs, load, lists, filter, sort, onSort, prefs, open, 
     return [...all].sort((a, b) => a.localeCompare(b));
   }, [load.data, filter.tag]);
 
+  const exportCsv = async () => {
+    try {
+      const csv = await w.exportCsv();
+      const r = await shareFile(new File([csv], 'jantar-clients.csv', { type: 'text/csv' }));
+      if (r !== 'cancelled') toast('Clients exported.');
+    } catch (e) {
+      toast(`Not exported. ${errorText(e)}`, 'error');
+    }
+  };
+
+  const menu = (
+    <RowMenu
+      label="More for clients"
+      groups={[
+        {
+          items: [
+            { label: 'Import a file', onSelect: () => importer.show(null), disabled: offline },
+            { label: 'Export CSV', onSelect: () => void exportCsv(), disabled: offline },
+          ],
+        },
+      ]}
+    />
+  );
+
   return (
     <Page
       title="Work"
-      aside={<AddButton label="Add client" disabled={offline} onClick={() => add.show(null)} />}
+      aside={
+        <>
+          {menu}
+          <AddButton label="Add client" disabled={offline} onClick={() => add.show(null)} />
+        </>
+      }
       wide
     >
       {tabs}
@@ -178,10 +215,16 @@ function ClientsList({ w, tabs, load, lists, filter, sort, onSort, prefs, open, 
             ) : (
               <LifeEmpty
                 action={
-                  <Button variant="primary" disabled={offline} onClick={() => add.show(null)} className="coarse:min-h-44">
-                    <PlusIcon size={16} aria-hidden="true" />
-                    Add a client
-                  </Button>
+                  <div className="flex flex-wrap gap-8">
+                    <Button variant="primary" disabled={offline} onClick={() => add.show(null)} className="coarse:min-h-44">
+                      <PlusIcon size={16} aria-hidden="true" />
+                      Add a client
+                    </Button>
+                    <Button disabled={offline} onClick={() => importer.show(null)} className="coarse:min-h-44">
+                      <UploadSimpleIcon size={16} aria-hidden="true" />
+                      Import a file
+                    </Button>
+                  </div>
                 }
               >
                 No clients yet.
@@ -241,6 +284,11 @@ function ClientsList({ w, tabs, load, lists, filter, sort, onSort, prefs, open, 
           navigate(clientPath(newId, filter));
         }}
       />
+      {importer.key ? (
+        <Suspense fallback={null}>
+          <ImportSheet open={importer.open} onOpenChange={importer.onOpenChange} sheetKey={importer.key} onImported={onSaved} />
+        </Suspense>
+      ) : null}
     </Page>
   );
 }
