@@ -94,7 +94,7 @@ describe('her Projects tab', () => {
     expect(screen.getByRole('link', { name: /Study/ }).textContent).toMatch(/Nothing open/);
     const archived = screen.getByRole('heading', { name: 'Archived' }).nextElementSibling as HTMLElement;
     expect(within(archived).getByText('Old flat')).toBeTruthy();
-    expect(screen.getByText('Sam sees your projects with your to-dos.')).toBeTruthy();
+    expect(screen.getByText('Sam sees your projects with your to-dos: each name and how many of its to-dos are open, never its notes or due day.')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('New project'), { target: { value: 'Move house' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(projectCreate).toHaveBeenCalledWith({ name: 'Move house' }));

@@ -260,7 +260,7 @@ function Projects({ projects, api, run, shared, owner }: { projects: ProjectView
           Add
         </Button>
       </form>
-      {shared ? <p className="mt-8 text-small text-ink-2">{owner} sees your projects with your to-dos.</p> : null}
+      {shared ? <p className="mt-8 text-small text-ink-2">{owner} sees your projects with your to-dos: each name and how many of its to-dos are open, never its notes or due day.</p> : null}
       {active.length ? <ul className="mt-12 divide-y divide-line">{active.map(row)}</ul> : <p className="mt-12 text-ink-2">No projects yet. A project groups to-dos, like "Garden" or "Move house".</p>}
       {archived.length ? (
         <>
