@@ -6,12 +6,15 @@ What changed for people who use Jantar, newest first. Versions before
 ## 0.10.2 (unreleased)
 
 - Alerts no longer say **you rejected** for a tool call nobody refused.
-  Claude writes the same words when a call is stopped (Esc, a stopped
-  workflow or agent, ccw's save prompt) as when you say No, so Jantar now
-  says it only when a permission prompt could have been on screen: never
-  in a subagent or workflow agent, and in bypass or auto mode only for a
-  question or plan you dismissed. A No with words typed for Claude always
-  shows, and a subagent's prompt you said no to now shows too.
+  Claude writes the same words when it stops a call (Esc on a running
+  call, a workflow or agent being stopped) as when you say No with
+  nothing typed. When nothing proves a No, Jantar now reads those words
+  as a stop in a subagent's or workflow agent's own transcript, and in
+  bypass, auto or don't-ask mode, except for a question or plan you
+  dismissed. A call Claude itself marks as stopped while running, not
+  refused, is a stop in every mode. A No with words typed for Claude
+  always shows, and a No at a subagent's or safety-check prompt, which
+  Jantar missed before, now shows too, with the words you typed.
 
 ## 0.10.1 (3 November 2026)
 
