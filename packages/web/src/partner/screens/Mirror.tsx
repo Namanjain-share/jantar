@@ -6,10 +6,11 @@
  * the plan, the review list, the sleep week, journal entries, chat turns).
  * Opening it leaves no view mark; it writes nothing.
  */
-import type { JournalList, OwnerChatView, OwnerMedsView, OwnerTodosView, PersonMe, PersonToday, PersonWeightsResponse, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
+import type { JournalList, OwnerChatView, OwnerFoodView, OwnerMedsView, OwnerTodosView, PersonMe, PersonToday, PersonWeightsResponse, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
 import { STATUS_LABELS } from '@jantar/protocol/people-core';
 import { useEffect, useState } from 'react';
 import { ChatRead } from '../../people-shared/ChatRead.js';
+import { FoodRead, foodTodayLine } from '../../people-shared/FoodRead.js';
 import { JournalEntryCard } from '../../people-shared/JournalEntryCard.js';
 import { MedsRead } from '../../people-shared/MedsRead.js';
 import { PlanRead } from '../../people-shared/PlanRead.js';
@@ -24,6 +25,7 @@ const TITLE: Record<string, string> = {
   todos: 'your to-dos and reminders',
   meds: 'your medicines',
   weight: 'your weight',
+  food: 'your food log',
   plan: 'your day plan',
   review: 'your evening review',
   sleep: 'your sleep',
@@ -108,13 +110,21 @@ function Area({ area, data, owner, name }: { area: string; data: unknown; owner:
     }
     case 'todos': {
       const v = data as OwnerTodosView;
+      const projectOf = new Map(v.projects.map((p) => [p.id, p.name]));
       return v.todos.length ? (
         <ul className="mt-12 border-t border-line">
           {v.todos.map((t) => (
             <li key={t.id} className="border-b border-line py-8">
               <p className="break-words">{t.title}</p>
               <p className="text-small text-ink-2">
-                {[t.due ? `${dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null, t.by === '' ? `from ${owner}` : 'yours', t.report ? `"${t.report}"` : null].filter(Boolean).join(' · ')}
+                {[
+                  t.due ? `${dayLabel(t.due.day)}${t.due.time ? ` ${t.due.time}` : ''}` : null,
+                  t.projectId && projectOf.get(t.projectId) ? `in ${projectOf.get(t.projectId)}` : null,
+                  t.by === '' ? `from ${owner}` : 'yours',
+                  t.report ? `"${t.report}"` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </p>
             </li>
           ))}
@@ -125,6 +135,8 @@ function Area({ area, data, owner, name }: { area: string; data: unknown; owner:
     }
     case 'meds':
       return <MedsRead view={data as OwnerMedsView} owner={owner} name="you" />;
+    case 'food':
+      return <FoodRead view={data as OwnerFoodView} />;
     case 'weight': {
       const v = data as PersonWeightsResponse;
       return <p className="mt-12">{v.latest ? `Latest: ${v.latest.kg} kg (${dayLabel(v.latest.day)})` : 'No weight logged.'}</p>;
@@ -170,6 +182,7 @@ function TodayOf({ t, owner, name }: { t: PersonToday; owner: string; name: stri
       )}
       {t.meds && !isLocked(t.meds) ? <MedsRead view={t.meds} owner={owner} name="you" /> : null}
       {!isLocked(t.weight) && t.weight.latest ? <p>Weight {t.weight.latest.kg} kg</p> : null}
+      {t.food && !isLocked(t.food) ? <p>{foodTodayLine(t.food)}</p> : null}
     </div>
   );
 }

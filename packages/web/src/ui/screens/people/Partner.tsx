@@ -14,7 +14,9 @@
  *   and hers, Nudge, edit his, and hers with editHers.todos), Health (her
  *   medicines at his level with the two-day concern, Add for her with
  *   assign.meds, Edit and Stop on his additions and, with editHers.meds, on
- *   hers; her weight; the sleep week), Journal (read, and comment with
+ *   hers; her weight; her food log at his level (see.food: counts or
+ *   full, a day at a time; nothing at all while her food module is off);
+ *   the sleep week), Journal (read, and comment with
  *   comment.journal), Chat, Lists and Alerts (both ways). The plan editor
  *   opens from Plan.
  * - An area she keeps private is a grey tile, "{name} keeps this private":
@@ -34,6 +36,7 @@ import type {
   JournalEntryFull,
   JournalList,
   OwnerChatView,
+  OwnerFoodView,
   OwnerMedicine,
   OwnerMedsView,
   OwnerTodosView,
@@ -54,13 +57,14 @@ import type {
 } from '@jantar/protocol/people';
 import { CLI_NAME, type ChatTurn, type MedicineBody, type MedicinePatch, type PlacesResponse } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
+import { FoodRead, foodTodayLine } from '../../../people-shared/FoodRead.js';
 import { useEffect, useState } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
 import { MedsRead } from '../../../people-shared/MedsRead.js';
 import { PlanRead } from '../../../people-shared/PlanRead.js';
 import { ReviewList } from '../../../people-shared/ReviewList.js';
 import { SleepWeek } from '../../../people-shared/SleepWeek.js';
-import { dayLabel, hmOf } from '../../../people-shared/time.js';
+import { dayLabel, hmOf, shiftDay } from '../../../people-shared/time.js';
 import { useDeps, useNavigate } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
@@ -284,6 +288,7 @@ function PartnerOf({
           editHers={a?.editHers.meds === true}
           weight={a?.see.weight === true}
           editWeight={a?.editHers.weight === true}
+          food={person?.modules.food ? (a?.see.food ?? 'off') : null}
           sleep={a?.see.sleep === true}
         />
       ) : null}
@@ -341,6 +346,7 @@ function TodayTab({ client, pid, name, today, reload, canCarry, isToday }: { cli
       )}
       {today.meds === null ? null : isLocked(today.meds) ? <Locked name={name} what="Medicines" /> : <p className="mt-8 type-row text-ink">{medsLine(today.meds)}</p>}
       {isLocked(today.weight) ? <Locked name={name} what="Weight" /> : today.weight.latest ? <p className="type-row text-ink">Weight {today.weight.latest.kg} kg ({today.weight.latest.day})</p> : null}
+      {today.food === null ? null : isLocked(today.food) ? <Locked name={name} what="Food" /> : <p className="type-row text-ink">{foodTodayLine(today.food)}</p>}
     </div>
   );
 }
@@ -402,6 +408,7 @@ function HealthTab({
   editHers,
   weight,
   editWeight,
+  food = null,
   sleep,
 }: {
   client: PeopleClient;
@@ -413,9 +420,13 @@ function HealthTab({
   weight: boolean;
   /** editHers.weight: correct or remove a weight she logged (never add one). */
   editWeight: boolean;
+  /** see.food; null while her food module is off (no food area at all, O6). */
+  food?: 'off' | 'counts' | 'full' | null;
   sleep: boolean;
 }) {
   const [week, setWeek] = useState<string | undefined>(undefined);
+  const [foodDay, setFoodDay] = useState<string | undefined>(undefined);
+  const foodLoad = useLifeLoad<OwnerFoodView>(food === 'counts' || food === 'full' ? `people:${pid}:food:${foodDay ?? ''}` : null, () => client.food(pid, foodDay));
   const medsLoad = useLifeLoad<OwnerMedsView>(meds !== 'off' ? `people:${pid}:meds` : null, () => client.meds(pid));
   const weights = useLifeLoad<PersonWeightsResponse>(weight ? `people:${pid}:weights` : null, () => client.weights(pid));
   const sleepLoad = useLifeLoad<Week>(sleep ? `people:${pid}:sleep:${week ?? ''}` : null, () => client.sleep(pid, week));
@@ -490,6 +501,30 @@ function HealthTab({
         )
       ) : (
         <p className="type-small text-ink-2">Loading…</p>
+      )}
+      {food === null ? null : (
+        <>
+          <h2 className="mt-16 type-row font-semibold text-ink">Food</h2>
+          {food === 'off' ? (
+            <Locked name={name} what="Food" />
+          ) : foodLoad.data ? (
+            <>
+              <div className="flex gap-8">
+                <Button variant="text" className="min-h-44" onClick={() => setFoodDay(shiftDay(foodLoad.data?.day ?? '', -1))}>
+                  ‹ Day before
+                </Button>
+                {foodLoad.data.day !== foodLoad.data.today ? (
+                  <Button variant="text" className="min-h-44" onClick={() => setFoodDay(shiftDay(foodLoad.data?.day ?? '', 1))}>
+                    Next day ›
+                  </Button>
+                ) : null}
+              </div>
+              <FoodRead view={foodLoad.data} />
+            </>
+          ) : (
+            <p className="type-small text-ink-2">Loading…</p>
+          )}
+        </>
       )}
       <h2 className="mt-16 type-row font-semibold text-ink">Sleep</h2>
       {!sleep ? <Locked name={name} what="Sleep" /> : sleepLoad.data ? <SleepWeek week={sleepLoad.data} onWeek={setWeek} /> : <p className="type-small text-ink-2">Loading…</p>}

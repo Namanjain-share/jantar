@@ -38,6 +38,7 @@ const MIRROR_AREA: Record<string, string> = {
   'see.todos': 'todos',
   'see.meds': 'meds',
   'see.weight': 'weight',
+  'see.food': 'food',
   'see.plan': 'plan',
   'see.review': 'review',
   'see.sleep': 'sleep',
@@ -101,7 +102,10 @@ export function toldWithoutLooking(me: PersonMe): string[] {
   if (a?.see.plan) out.push('When you mark a rough day (one line, no details)');
   if (a?.see.review !== 'off' && me.ownerTells?.reviewPush !== false) out.push('When you send your evening review (no note text)');
   if (a?.see.journal) out.push('When you reply to a comment in your journal (no text)');
-  if (me.ownerTells?.summaryAt) out.push(`A day summary at ${me.ownerTells.summaryAt} (counts only: never journal, chat or sleep)`);
+  if (me.ownerTells?.summaryAt) {
+    const kcal = me.person.modules.food && a?.see.food === 'full';
+    out.push(`A day summary at ${me.ownerTells.summaryAt} (counts only${kcal ? ", and your day's calories" : ''}: never journal, chat or sleep${me.person.modules.food ? ', or what you ate' : ''})`);
+  }
   return out;
 }
 
@@ -161,7 +165,7 @@ export function Sharing({ me, api, reload }: { me: PersonMe; api: PersonApi; rel
         ))}
         <li>{me.owner.name}'s Mac (the jantar command, and programs {me.owner.name} runs there)</li>
       </ul>
-      {/* Her food log is a later phase: nothing here names it while it isn't served (AREAS.food). */}
+      {/* Her food module (O6): on or off is the Mac's switch; what he sees of it is the line above. */}
       {phaseBuilt(AREAS.food, me.built) ? (
         <p className="mt-16 text-small text-ink-2">Food: {me.person.modules.food ? 'on' : `off (${me.owner.name} set this up without a food log)`}</p>
       ) : null}

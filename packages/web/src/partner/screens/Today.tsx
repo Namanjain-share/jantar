@@ -6,7 +6,9 @@
  *   a night is open (or "When did you wake up?" after one closed unlogged).
  * - Her plan as Now, Next, Later and Done, a tick circle on every row (out
  *   of order is one tap), late as a display-only chip, check-betweens with
- *   their slots, then her doses due today (Taken or Skip, with Undo), then
+ *   their slots, then her doses due today (Taken or Skip, with Undo), the
+ *   food quick add while her food module is on (what she ate, calories
+ *   optional, with Undo; the day's total and what {owner} sees of it), then
  *   reminders and to-dos due.
  * - One thumb: a sticky bar above the tab bar says Got it while a new or
  *   changed plan is unacknowledged, then Done: {Now step}; `…` opens Start,
@@ -29,7 +31,9 @@ import { navigate } from '../nav.js';
 import { joinCopy } from '../../people-shared/join-copy.js';
 import { askForNotifications, needsHomeScreen, turnOnNotifications } from '../notify.js';
 import { Card, Field, ReasonChips, ReportSheet, Sheet, Tick, UndoToast, useUndo } from '../ui.js';
+import { mealsWord } from '../../people-shared/FoodRead.js';
 import { DoseRow } from './DoseRow.js';
+import { FoodAddForm, foodSeesLine } from './FoodAdd.js';
 import { TodoRow } from './TodoRow.js';
 import { TodoSheet } from './TodoSheet.js';
 
@@ -221,6 +225,35 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
                 />
               ))}
           </ul>
+        </section>
+      ) : null}
+      {today.food && day === today.today ? (
+        <section aria-label="Food" className="mt-16">
+          <h2 className="font-semibold">Food</h2>
+          <p className="text-small text-ink-2">
+            {today.food.kcal} of {today.food.target} kcal · {mealsWord(today.food.meals)} ·{' '}
+            <a
+              href="/p/health?tab=food"
+              className="inline-flex min-h-44 items-center underline"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('/p/health?tab=food');
+              }}
+            >
+              Food log
+            </a>
+          </p>
+          <FoodAddForm
+            api={api}
+            day={day}
+            onAdded={(id, name) => {
+              setError(null);
+              void load();
+              undo.show(`Logged: ${name}`, () => void run(api.foodDelete(id)));
+            }}
+            onError={setError}
+          />
+          <p className="mt-4 text-small text-ink-2">{foodSeesLine(owner, me.agreement?.see.food ?? 'off')}</p>
         </section>
       ) : null}
       {today.todos.length > 0 ? (

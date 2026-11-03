@@ -5,11 +5,13 @@
  * any of hers), Sleep (P2: the week, Going to sleep, Add a night, edit and
  * delete any night; spec 3.12) and Weight (P1: log today or an earlier
  * day, delete one with Undo, and "Corrected by {owner} (was … kg)" on a
- * weight he corrected with editHers.weight). Her food log is not in this
- * build. Nothing here colours a short night or a dose not logged, or turns
- * either into an alert.
+ * weight he corrected with editHers.weight), and Food (spec 3.5: her food
+ * log, FoodLog.tsx) only while her food module is on; `?tab=food` with it
+ * off shows Medicines. Nothing here colours a short night, a dose not
+ * logged or a day's calories, or turns any of them into an alert.
  */
 import type { MedicineBody, MedicinePatch, MedsDayItem } from '@jantar/protocol';
+import type { FoodLevel } from '@jantar/protocol/people-core';
 import type { PersonMedicineView, PersonMedicinesResponse, PersonWeight, PersonWeightsResponse, SleepNight, SleepWeek as Week } from '@jantar/protocol/people';
 import { useCallback, useEffect, useState } from 'react';
 import { Faces } from '../../people-shared/Faces.js';
@@ -22,21 +24,53 @@ import { navigate } from '../nav.js';
 import type { HealthTab } from '../router.js';
 import { Field, Sheet, UndoToast, useUndo } from '../ui.js';
 import { DoseRow } from './DoseRow.js';
+import { FoodLog } from './FoodLog.js';
 
-const TAB_LABEL: Record<HealthTab, string> = { meds: 'Medicines', sleep: 'Sleep', weight: 'Weight' };
+const TAB_LABEL: Record<HealthTab, string> = { meds: 'Medicines', sleep: 'Sleep', weight: 'Weight', food: 'Food' };
 
-export default function Health({ api, owner, tab, week, tick }: { api: PersonApi; owner: string; tab: HealthTab; week: string | null; tick: number }) {
+export default function Health({
+  api,
+  owner,
+  tab: tabIn,
+  week,
+  day = null,
+  food = { on: false, level: 'off' },
+  chat = false,
+  tick,
+}: {
+  api: PersonApi;
+  owner: string;
+  tab: HealthTab;
+  week: string | null;
+  /** `?day=` for her food log. */
+  day?: string | null;
+  /** Her food module, and what {owner} sees of it (see.food). */
+  food?: { on: boolean; level: FoodLevel };
+  /** Her Chat is built (a photo of a meal goes there). */
+  chat?: boolean;
+  tick: number;
+}) {
+  const tab = tabIn === 'food' && !food.on ? 'meds' : tabIn;
+  const tabs: HealthTab[] = food.on ? ['meds', 'food', 'sleep', 'weight'] : ['meds', 'sleep', 'weight'];
   return (
     <div>
       <h1 className="text-title font-semibold">Health</h1>
       <div role="tablist" className="mt-8 flex flex-wrap gap-8">
-        {(['meds', 'sleep', 'weight'] as const).map((t) => (
+        {tabs.map((t) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => navigate(`/p/health?tab=${t}`)} className={`min-h-44 px-12 ${tab === t ? 'font-medium text-ink underline' : 'text-ink-2'}`}>
             {TAB_LABEL[t]}
           </button>
         ))}
       </div>
-      {tab === 'meds' ? <Meds api={api} owner={owner} tick={tick} /> : tab === 'sleep' ? <Sleep api={api} week={week} tick={tick} /> : <Weight api={api} owner={owner} tick={tick} />}
+      {tab === 'meds' ? (
+        <Meds api={api} owner={owner} tick={tick} />
+      ) : tab === 'food' ? (
+        <FoodLog api={api} owner={owner} level={food.level} day={day} chat={chat} tick={tick} />
+      ) : tab === 'sleep' ? (
+        <Sleep api={api} week={week} tick={tick} />
+      ) : (
+        <Weight api={api} owner={owner} tick={tick} />
+      )}
     </div>
   );
 }

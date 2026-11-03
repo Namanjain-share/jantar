@@ -3,7 +3,7 @@
  * live reloads on her stream's ticks (WS /v1/p/events).
  */
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
+import { PEOPLE_LABEL, phaseBuilt } from '@jantar/protocol/people-core';
 import type { PersonMe } from '@jantar/protocol/people';
 import { PersonApiError, type PersonApi } from './api.js';
 import { Sheet } from './ui.js';
@@ -120,7 +120,18 @@ export function App({ api }: { api: PersonApi }) {
           {route.name === 'today' ? <Today me={me} api={api} reload={load} tick={tick} /> : null}
           {route.name === 'review' ? <Review me={me} api={api} day={route.day} tick={tick} /> : null}
           {route.name === 'todos' ? <Todos me={me} api={api} tick={tick} /> : null}
-          {route.name === 'health' ? <Health api={api} owner={me.owner.name} tab={route.tab} week={route.week} tick={tick} /> : null}
+          {route.name === 'health' ? (
+            <Health
+              api={api}
+              owner={me.owner.name}
+              tab={route.tab}
+              week={route.week}
+              day={route.day}
+              food={{ on: me.person.modules.food, level: me.agreement?.see.food ?? 'off' }}
+              chat={phaseBuilt('P3', me.built)}
+              tick={tick}
+            />
+          ) : null}
           {route.name === 'journal' ? <Journal me={me} api={api} id={route.id} checkin={route.checkin} tick={tick} /> : null}
           {route.name === 'alerts' ? <Alerts me={me} api={api} id={route.id} tick={tick} /> : null}
           {route.name === 'chat' ? <Chat me={me} api={api} tick={tick} /> : null}

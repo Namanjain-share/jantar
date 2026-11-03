@@ -108,12 +108,28 @@ describe('M20: the join page', () => {
     expect(all(c)).not.toMatch(/journal|sleep|day plan|evening review|assistant/i);
   });
 
-  it('food is not in this build: no line names it, whatever her food module says (nothing is promised that is not served)', () => {
-    for (const foodModule of [true, false]) {
-      const c = joinCopy('Sam', presetAgreement('everything'), { built: BUILT_PHASE, foodModule });
-      expect(c.sees.map((l) => l.key)).not.toContain('see.food');
-      expect(all(c)).not.toMatch(/\bfood\b/i);
-    }
+  // His food view (daemon people/food.ts `view`, pinned by people-food.test.ts): full is the items with
+  // calories, her target and the week's totals; counts how many meals; never when she logged one.
+  it('food: each level names exactly what he gets; with her food module off the page says it is not part of her space', () => {
+    const at = (food: 'off' | 'counts' | 'full', foodModule = true) =>
+      joinCopy('Sam', applyAgreementPatch(presetAgreement('everything'), { see: { food } }), { built: BUILT_PHASE, foodModule });
+    expect(at('full').sees.find((l) => l.key === 'see.food')).toMatchObject({
+      text: "Your food log: what you ate, its calories and each day's total against your target, never when you logged it",
+      level: 'full',
+      levels: ['off', 'counts', 'full'],
+    });
+    expect(at('counts').sees.find((l) => l.key === 'see.food')?.text).toBe('Your food log: only how many meals you log each day, never what you ate');
+    expect(at('off').sees.find((l) => l.key === 'see.food')?.text).toBe('Your food log: off');
+    // She can turn it down from full to counts or off, never up.
+    const full = at('full').sees.find((l) => l.key === 'see.food');
+    expect(full ? lowerLevels(full) : null).toEqual(['off', 'counts']);
+    // He never logs her meals; her assistant's disclosure names her food log only while it is on.
+    expect(at('full').cant[0]).toBe('Mark things done for you, log your doses or your meals, or add a weight for you.');
+    expect(all(at('full'))).toMatch(/It can see your plan, to-dos, weight, food log, sleep/);
+    const off = at('off', false);
+    expect(off.sees.find((l) => l.key === 'see.food')).toEqual({ key: 'see.food', text: 'Food: not part of your space. Sam set it up without a food log.' });
+    expect(off.cant[0]).toBe('Mark things done for you, log your doses, or add a weight for you.');
+    expect(all(off)).not.toMatch(/food log,|your meals/);
   });
 
   it('every area the page offers is one this build serves: medicines are on it, with Add and Change for him', () => {

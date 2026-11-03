@@ -54,7 +54,14 @@ const see = (owner: string): Record<string, SeeText> => ({
         ? 'Your medicines: only how often you took them, never their names'
         : 'Your medicines: off',
   'see.weight': (v) => (v ? 'Your weight' : 'Your weight: off'),
-  'see.food': (v) => (v ? 'Your food log' : 'Your food log: off'),
+  // His view (daemon people/food.ts `view`): `full` the day's items with calories, her target and the week's
+  // totals; `counts` how many meals each day. Never when she logged an item, her saved foods or her weight.
+  'see.food': (v) =>
+    v === 'full'
+      ? "Your food log: what you ate, its calories and each day's total against your target, never when you logged it"
+      : v === 'counts'
+        ? 'Your food log: only how many meals you log each day, never what you ate'
+        : 'Your food log: off',
   'see.plan': (v) =>
     v
       ? 'Your day plan: when you open it ("Seen"), each step you finish or skip and when, the notes and skip reasons you write, your check-ins (mood, energy, a line and what you need), your status (Okay, Low or Need space, and its line) and a rough day'
@@ -160,7 +167,7 @@ export function joinCopy(owner: string, a: AgreementFields, opts: { built: Build
     sees,
     does: doesLines,
     cant: [
-      `Mark things done for you, log your doses, or add a weight for you.`,
+      `Mark things done for you, log your doses${opts.foodModule ? ' or your meals' : ''}, or add a weight for you.`,
       ...(p2 ? [`Set your status, or change what you wrote in your journal or your evening review.`] : []),
       ...(p3 ? [`Write in your chat.`] : []),
       `See where you are. Jantar never asks for your location and never keeps your IP address.`,
@@ -182,7 +189,7 @@ export function joinCopy(owner: string, a: AgreementFields, opts: { built: Build
       `Reminders${p2 ? ' and alerts' : ''} ring only while ${owner}'s Mac is on and online. Leaving and downloading your data also need it on.`,
       `Cloudflare carries the connection to ${owner}'s Mac.`,
       // P3 (spec 7.6): the chat disclosure, from the same words her chat shows.
-      ...(p3 ? [chatDisclosure(owner, CHAT_KEEP_DAYS_DEFAULT, a.see.chat, opts.built)] : []),
+      ...(p3 ? [chatDisclosure(owner, CHAT_KEEP_DAYS_DEFAULT, a.see.chat, opts.built, opts.foodModule)] : []),
     ],
   };
 }

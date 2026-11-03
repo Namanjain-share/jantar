@@ -1,6 +1,8 @@
 /**
  * v0.11 People: her app's paths (spec 1.3.1): /p (Today; `?review=1&day=`
- * opens the evening review), /p/todos, /p/health (`?tab=sleep&week=`),
+ * opens the evening review), /p/todos (`?tab=todos|reminders|projects`,
+ * `&project=<id>` opens one of her projects), /p/health (`?tab=meds|weight|sleep|food`,
+ * `&week=` for sleep, `&day=` for food),
  * /p/journal (`?id=`, `?checkin=1`), /p/alerts (`?id=`), /p/chat (P3), /p/join, /p/link,
  * /p/me (?tab=sharing|activity|devices|notifications|leave; Sharing's
  * `&see=<area>` is "See what {owner} sees"), /p/left.
@@ -10,8 +12,8 @@
 export type PersonRoute =
   | { name: 'today' }
   | { name: 'review'; day: string | null }
-  | { name: 'todos' }
-  | { name: 'health'; tab: HealthTab; week: string | null }
+  | { name: 'todos'; tab: TodosTab; project: string | null }
+  | { name: 'health'; tab: HealthTab; week: string | null; day: string | null }
   | { name: 'journal'; id: string | null; checkin: boolean }
   | { name: 'alerts'; id: string | null }
   | { name: 'chat' }
@@ -25,10 +27,13 @@ export type PersonRoute =
 export const ME_TABS = ['sharing', 'activity', 'devices', 'notifications', 'leave'] as const;
 export type MeTab = (typeof ME_TABS)[number];
 /** The areas "See what {owner} sees" opens (`/p/me?tab=sharing&see=`). */
-export const MIRROR_AREAS = ['today', 'todos', 'meds', 'weight', 'plan', 'review', 'sleep', 'journal', 'chat'] as const;
+export const MIRROR_AREAS = ['today', 'todos', 'meds', 'weight', 'food', 'plan', 'review', 'sleep', 'journal', 'chat'] as const;
 export type MirrorArea = (typeof MIRROR_AREAS)[number];
-export const HEALTH_TABS = ['meds', 'weight', 'sleep'] as const;
+/** `food` only while her food module is on (Health falls back to Medicines otherwise). */
+export const HEALTH_TABS = ['meds', 'weight', 'sleep', 'food'] as const;
 export type HealthTab = (typeof HEALTH_TABS)[number];
+export const TODOS_TABS = ['todos', 'reminders', 'projects'] as const;
+export type TodosTab = (typeof TODOS_TABS)[number];
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/;
@@ -45,10 +50,15 @@ export function parsePersonRoute(pathname: string, search: string): PersonRoute 
     return v && ID_RE.test(v) ? v : null;
   };
   if (path === '/p' || path === '/') return q.get('review') === '1' ? { name: 'review', day: day('day') } : { name: 'today' };
-  if (path === '/p/todos') return { name: 'todos' };
+  if (path === '/p/todos') {
+    const tab = q.get('tab');
+    const project = q.get('project');
+    const p = project && ID_RE.test(project) ? project : null;
+    return { name: 'todos', tab: p ? 'projects' : (TODOS_TABS as readonly string[]).includes(tab ?? '') ? (tab as TodosTab) : 'todos', project: p };
+  }
   if (path === '/p/health') {
     const tab = q.get('tab');
-    return { name: 'health', tab: (HEALTH_TABS as readonly string[]).includes(tab ?? '') ? (tab as HealthTab) : 'meds', week: day('week') };
+    return { name: 'health', tab: (HEALTH_TABS as readonly string[]).includes(tab ?? '') ? (tab as HealthTab) : 'meds', week: day('week'), day: day('day') };
   }
   if (path === '/p/journal') return { name: 'journal', id: id(), checkin: q.get('checkin') === '1' };
   if (path === '/p/alerts') return { name: 'alerts', id: id() };

@@ -14,6 +14,7 @@ import type {
   JournalList,
   OwnerAlertSendBody,
   OwnerChatView,
+  OwnerFoodView,
   OwnerMedsView,
   OwnerTodosView,
   SharedItemsResponse,
@@ -90,6 +91,8 @@ export const PEOPLE_PATHS = {
   // Her weights he may correct or remove (editHers.weight); never a new one.
   weightUpdate: ['PATCH', '/v1/people/:pid/weights/:day'],
   weightDelete: ['DELETE', '/v1/people/:pid/weights/:day'],
+  // Her food log at his level (see.food: counts or full); 404 while her food module or his level is off. He never writes it.
+  food: ['GET', '/v1/people/:pid/food'],
   // Sharing: ask for more (an admin device), his pushes about her, her devices, and "Copy link again" (an admin device).
   propose: ['POST', '/v1/people/:pid/agreement'],
   prefs: ['PATCH', '/v1/people/prefs'],
@@ -148,6 +151,8 @@ export interface PeopleClient {
   weights(pid: string): Promise<PersonWeightsResponse>;
   weightUpdate(pid: string, day: string, kg: number): Promise<void>;
   weightDelete(pid: string, day: string): Promise<void>;
+  /** Her food log at his level (see.food), a day at a time. */
+  food(pid: string, day?: string): Promise<OwnerFoodView>;
   /** Sharing: ask her for more (waits for her Accept; one at a time, cooling-off and "Don't ask again" apply). */
   propose(pid: string, body: PersonProposeBody): Promise<void>;
   /** His quiet hours, the day summary and the review push for pushes about her. */
@@ -243,6 +248,7 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
     weights: (pid) => call('weights', { params: { pid } }),
     weightUpdate: (pid, day, kg) => v(call('weightUpdate', { params: { pid, day }, body: { kg } })),
     weightDelete: (pid, day) => v(call('weightDelete', { params: { pid, day } })),
+    food: (pid, day) => call('food', { params: { pid }, query: { day } }),
     propose: (pid, body) => v(call('propose', { params: { pid }, body })),
     setPrefs: (patch) => call('prefs', { body: patch }),
     devices: (pid) => call('devices', { params: { pid } }),

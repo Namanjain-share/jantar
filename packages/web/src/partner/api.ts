@@ -24,6 +24,7 @@ import type {
   SharedItemsResponse,
   SharedListKind,
   SharedListsResponse,
+  PersonFoodBody,
   PersonOwnToday,
   PersonPrefsPatch,
   PersonStatus,
@@ -43,7 +44,7 @@ import type {
   StepPatch,
   StepStateBody,
 } from '@jantar/protocol/people';
-import type { DoseBody, MedicineBody, MedicinePatch, PlaceDetail, PlacePatch, PlacesResponse, SnoozePreset } from '@jantar/protocol';
+import type { DoseBody, FoodDay, FoodPatch, FoodTargetsBody, MedicineBody, MedicinePatch, PlaceDetail, PlacePatch, PlacesResponse, ProjectStatus, ProjectView, SnoozePreset } from '@jantar/protocol';
 import { personCredentialStore, type PersonCredentialStore } from './credential.js';
 
 /** Her routes' paths, as PERSON_ROUTES has them (test/partner/api.test.ts compares). */
@@ -84,9 +85,19 @@ export const PERSON_PATHS = {
   medStop: ['POST', '/v1/p/medicines/:id/stop'],
   doseLog: ['POST', '/v1/p/medicines/:id/doses'],
   doseDelete: ['DELETE', '/v1/p/medicines/:id/doses/:doseId'],
+  projects: ['GET', '/v1/p/projects'],
+  projectCreate: ['POST', '/v1/p/projects'],
+  projectUpdate: ['PATCH', '/v1/p/projects/:id'],
+  projectDelete: ['DELETE', '/v1/p/projects/:id'],
   weights: ['GET', '/v1/p/weights'],
   weightSet: ['PUT', '/v1/p/weights/:day'],
   weightDelete: ['DELETE', '/v1/p/weights/:day'],
+  // Her food log, while her food module is on.
+  food: ['GET', '/v1/p/food'],
+  foodAdd: ['POST', '/v1/p/food'],
+  foodUpdate: ['PATCH', '/v1/p/food/:id'],
+  foodDelete: ['DELETE', '/v1/p/food/:id'],
+  foodTargets: ['PUT', '/v1/p/food/targets'],
   mirror: ['GET', '/v1/p/mirror/:area'],
   // P2: status, the sharing check-in, the day plan and review, sleep, the journal and alerts.
   status: ['PUT', '/v1/p/status'],
@@ -195,13 +206,21 @@ export interface PersonApi {
   pushSubscribe(subscription: PushSubscriptionJSON): Promise<void>;
   pushTest(): Promise<{ delivered: number }>;
   today(): Promise<PersonOwnToday>;
-  todos(done?: boolean): Promise<{ today: string; todos: PersonTodo[] }>;
-  createTodo(body: { title: string; due?: { day: string; time?: string } }): Promise<{ id: string }>;
+  /** Her to-dos, open (or done); `project` narrows them to one of her projects, or `none`. */
+  todos(done?: boolean, project?: string): Promise<{ today: string; todos: PersonTodo[] }>;
+  createTodo(body: { title: string; due?: { day: string; time?: string }; projectId?: string }): Promise<{ id: string }>;
   deleteTodo(id: string): Promise<void>;
   /** Move a to-do of hers to another day (the review's "Tomorrow"). */
   moveTodo(id: string, day: string): Promise<void>;
-  /** Edit a to-do of hers: its title, and its day and time (null clears them). */
-  updateTodo(id: string, patch: { title?: string; due?: { day: string; time?: string } | null }): Promise<void>;
+  /** Edit a to-do of hers: its title, its day and time, its project (null clears them). */
+  updateTodo(id: string, patch: { title?: string; due?: { day: string; time?: string } | null; projectId?: string | null }): Promise<void>;
+  /** Her projects (each with its open and overdue counts), active first. */
+  projects(): Promise<{ projects: ProjectView[] }>;
+  projectCreate(body: { name: string; emoji?: string }): Promise<{ id: string }>;
+  /** Rename, or archive ('done') and bring back ('active'). */
+  projectUpdate(id: string, patch: { name?: string; status?: ProjectStatus; emoji?: string | null }): Promise<void>;
+  /** Delete a project of hers; its to-dos stay, with no project. */
+  projectDelete(id: string): Promise<void>;
   /** Snooze a to-do (409 on one he marked no snooze). */
   snooze(id: string, preset: SnoozePreset): Promise<void>;
   done(id: string, done: boolean, report?: string): Promise<void>;
@@ -219,6 +238,13 @@ export interface PersonApi {
   weights(): Promise<PersonWeightsResponse>;
   setWeight(day: string, kg: number): Promise<void>;
   deleteWeight(day: string): Promise<void>;
+  /** Her food log's day (404 "food log is off" while her food module is). */
+  food(day?: string): Promise<FoodDay>;
+  /** What she ate (calories optional), or one of her saved foods. */
+  foodAdd(body: PersonFoodBody): Promise<{ id: string }>;
+  foodUpdate(id: string, patch: FoodPatch): Promise<void>;
+  foodDelete(id: string): Promise<void>;
+  foodTargets(body: FoodTargetsBody): Promise<void>;
   mirror(area: string): Promise<unknown>;
   // P2
   status(body: PersonStatusBody): Promise<{ status: PersonStatus | null }>;
@@ -364,11 +390,15 @@ export function createPersonApi(opts: { fetch?: typeof fetch; base?: string; cre
     pushSubscribe: async (subscription) => void (await call('pushSubscribe', { body: { subscription: { endpoint: subscription.endpoint, keys: subscription.keys } } })),
     pushTest: () => call('pushTest'),
     today: () => call('today'),
-    todos: (done) => call('todos', { query: { done: done ? '1' : undefined } }),
+    todos: (done, project) => call('todos', { query: { done: done ? '1' : undefined, project } }),
     createTodo: (body) => call('todoCreate', { body }),
     deleteTodo: async (id) => void (await call('todoDelete', { params: { id } })),
     moveTodo: async (id, day) => void (await call('todoUpdate', { params: { id }, body: { due: { day } } })),
     updateTodo: async (id, patch) => void (await call('todoUpdate', { params: { id }, body: patch })),
+    projects: () => call('projects'),
+    projectCreate: (body) => call('projectCreate', { body }),
+    projectUpdate: async (id, patch) => void (await call('projectUpdate', { params: { id }, body: patch })),
+    projectDelete: async (id) => void (await call('projectDelete', { params: { id } })),
     snooze: async (id, preset) => void (await call('todoSnooze', { params: { id }, body: { preset } })),
     done: async (id, done, report) => void (await call('todoDone', { params: { id }, body: { done, ...(report ? { report } : {}) } })),
     ack: async (id) => void (await call('todoAck', { params: { id } })),
@@ -383,6 +413,11 @@ export function createPersonApi(opts: { fetch?: typeof fetch; base?: string; cre
     weights: () => call('weights'),
     setWeight: async (day, kg) => void (await call('weightSet', { params: { day }, body: { kg } })),
     deleteWeight: async (day) => void (await call('weightDelete', { params: { day } })),
+    food: (day) => call('food', { query: { day } }),
+    foodAdd: (body) => call('foodAdd', { body }),
+    foodUpdate: async (id, patch) => void (await call('foodUpdate', { params: { id }, body: patch })),
+    foodDelete: async (id) => void (await call('foodDelete', { params: { id } })),
+    foodTargets: async (body) => void (await call('foodTargets', { body })),
     mirror: (area) => call('mirror', { params: { area } }),
     status: (body) => call('status', { body }),
     sharingCheckin: async (body) => void (await call('sharingCheckin', { body })),
