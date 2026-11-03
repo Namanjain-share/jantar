@@ -17,10 +17,11 @@
  *      Accounts runway, the phone's chip strips). KNOWN_SIDEWAYS lists what
  *      still does, with the commit that fixes it.
  *   3. At 1024 px and wider, no place leaves more than 35 % of its content
- *      width empty (layout-metric.ts). Empty states are exempt. Every place
- *      that still does is listed in KNOWN_WIDE_GAPS with its measure; a
- *      listed one that passes fails the test too, so each chunk-2 commit
- *      removes its rows, and the list is empty at c23.
+ *      width empty (layout-metric.ts). Empty states are exempt, and so are
+ *      the states in WIDTH_EXEMPT, each with its reason. Every place that
+ *      still does is listed in KNOWN_WIDE_GAPS with its measure; a listed
+ *      one that passes fails the test too, so each chunk-2 commit removes
+ *      its rows, and the list is empty at c23.
  *   7. No console message about the Content Security Policy, no error, no
  *      injected <style>.
  *  12. The user's four screens at 1440 x 960 (mac-1440 and touch-1440):
@@ -123,6 +124,7 @@ export const STATES: readonly State[] = [
   { name: 'alert', path: '/alerts?id=al2' },
   { name: 'devices', path: '/devices' },
   { name: 'files', path: '/files' },
+  { name: 'file', path: `/files?root=r.work&path=${encodeURIComponent('jantar/src/cookies.ts')}` },
   { name: 'more', path: '/more' },
   { name: 'chat', path: '/chat', variant: 'chat' },
   { name: 'chat-empty', path: '/chat', variant: 'chat', chatEmpty: true },
@@ -163,15 +165,6 @@ export const KNOWN_WIDE_GAPS: Record<string, number> = {
   'devices@ipad-1024': 0.65,
   'devices@ipad-13-l': 0.63,
   'devices@safari-l': 0.72,
-  'files@mac-1440': 0.68,
-  'files@touch-1440': 0.68,
-  'files@desktop': 0.68,
-  'files@mac-1024': 0.63,
-  'files@ipad-air-l': 0.68,
-  'files@ipad-pro-l': 0.69,
-  'files@ipad-1024': 0.63,
-  'files@ipad-13-l': 0.66,
-  'files@safari-l': 0.68,
   'more@mac-1440': 0.99,
   'more@touch-1440': 0.99,
   'more@desktop': 0.99,
@@ -204,6 +197,15 @@ export const KNOWN_SIDEWAYS: Record<string, string> = {
 };
 
 const WIDE_FROM = 1024;
+
+/**
+ * States checked for everything but the width, each with its reason (6.2 #3: exemptions are listed
+ * here, not decided ad hoc). The user's four screens are never here.
+ */
+export const WIDTH_EXEMPT: Record<string, string> = {
+  // The viewer has the pane (all of it with Hide browser); a short file's short lines leave its right side empty.
+  file: 'a file reads at its own width',
+};
 
 /** The shot's fixture: one per accounts mode and variant. */
 const fixtureKey = (s: State) => `${s.accounts ?? 'cswap'}:${s.variant ?? 'default'}`;
@@ -317,8 +319,9 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
               // 3. The width, at 1024 and wider.
               if (viewport.width >= WIDE_FROM && p.region) {
                 const users = USERS_CASE.sizes.includes(size) && USERS_CASE.states.includes(s.name);
-                if (p.exempt && users) problems.push(`${at}: the user's case is never exempt, but read as ${p.exempt}`);
-                if (!p.exempt) {
+                const exempt = p.exempt ?? WIDTH_EXEMPT[s.name] ?? null;
+                if (exempt && users) problems.push(`${at}: the user's case is never exempt, but read as ${exempt}`);
+                if (!exempt) {
                   const share = Math.round(emptyShare(p.boxes, p.region) * 100) / 100;
                   measuredShare = share;
                   const key = `${s.name}@${size}`;

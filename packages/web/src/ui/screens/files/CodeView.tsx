@@ -173,7 +173,7 @@ export function CodeView({ t, name, hint, lang: forced, sel, onLine }: CodeViewP
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Warnings warnings={t.warnings} />
-      <div ref={scroller} data-scroller="" className="min-h-0 flex-1 overflow-auto overscroll-contain bg-bg py-8">
+      <div ref={scroller} data-scroller="" data-scroll-x="" className="min-h-0 flex-1 overflow-auto overscroll-contain bg-bg py-8">
         {body ? (
           <div role="list" aria-label={`${name}, ${lines.length} lines`} className="relative" style={{ height: v.getTotalSize() }}>
             {v.getVirtualItems().map((row) => (

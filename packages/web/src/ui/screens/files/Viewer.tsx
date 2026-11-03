@@ -17,7 +17,7 @@
  * on), the stat and the text are read again, so the File tab stays current.
  */
 import { Menu } from '@base-ui/react/menu';
-import { CaretLeftIcon, DotsThreeIcon } from '@phosphor-icons/react';
+import { CaretLeftIcon, DotsThreeIcon, SidebarSimpleIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FileChange, FileStat } from '@jantar/protocol';
@@ -68,9 +68,11 @@ export interface ViewerProps {
   onLocation: (next: FilesLocation, opts?: { replace?: boolean }) => void;
   /** Only in a session's own folder: hand "@path:lines " to that session's composer. */
   onAsk?: (text: string) => void;
+  /** 0.11, beside the list: Hide browser gives the viewer the whole pane (and Show browser puts the list back). */
+  browser?: { hidden: boolean; toggle: () => void };
 }
 
-export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocation, onAsk }: ViewerProps) {
+export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocation, onAsk, browser }: ViewerProps) {
   const { api } = useDeps();
   const toast = useToast();
   const now = useNow(60_000);
@@ -219,15 +221,20 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
     <section aria-label={showHidden(name)} className="flex min-h-0 flex-1 flex-col bg-bg">
       <header className={clsx('flex h-52 flex-none items-center gap-4', phone ? 'pl-4 pr-8' : 'px-24')}>
         {onBack ? (
-          <IconButton aria-label="Back to the list" onClick={onBack} className={phone ? 'size-44' : '-ml-8'}>
+          <IconButton aria-label="Back to the list" onClick={onBack} className={clsx('coarse:size-44', !phone && '-ml-8')}>
             <CaretLeftIcon size={20} />
+          </IconButton>
+        ) : null}
+        {browser ? (
+          <IconButton aria-label="Hide browser" aria-pressed={browser.hidden} onClick={browser.toggle} className="-ml-8 coarse:size-44">
+            <SidebarSimpleIcon size={20} aria-hidden="true" />
           </IconButton>
         ) : null}
         <h2 className={clsx('min-w-0 flex-1 truncate type-title text-ink', phone && !onBack && 'pl-12')}>
           <TextRun text={name} />
         </h2>
         <Menu.Root>
-          <Menu.Trigger render={<IconButton aria-label="More for this file" className={phone ? 'size-44' : undefined} />}>
+          <Menu.Trigger render={<IconButton aria-label="More for this file" className="coarse:size-44" />}>
             <DotsThreeIcon size={20} weight="bold" />
           </Menu.Trigger>
           <Menu.Portal>

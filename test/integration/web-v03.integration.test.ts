@@ -294,7 +294,8 @@ describe.skipIf(!ready)('the v0.3 screens in Chromium', () => {
     expect(await row.locator('[data-files]').textContent()).toBe('4 files');
 
     await page.getByRole('link', { name: 'Files' }).first().click();
-    await page.getByRole('group', { name: 'Files list' }).getByRole('button', { name: 'Changed' }).waitFor();
+    // 0.11: on a desktop window with no file open, Changed and Browse sit side by side (no segmented control).
+    await page.getByRole('region', { name: 'Changed' }).waitFor();
     await page.getByText('cookies.ts').first().waitFor();
     await check(page, watch);
 

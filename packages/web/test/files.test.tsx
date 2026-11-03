@@ -292,7 +292,7 @@ describe('the Files place: changed files', () => {
     await waitFor(() => expect(filesChanges).toHaveBeenCalledTimes(2));
   });
 
-  it('desktop: the list in the ledger column, the viewer in the detail pane', async () => {
+  it('desktop (0.11): Changed beside Browse with nothing open; a file opens beside the list; Hide browser and Esc', async () => {
     viewport(1440);
     const api = fakeApi({
       filesChanges: vi.fn(async () => ({ changes: [change()] })),
@@ -300,14 +300,28 @@ describe('the Files place: changed files', () => {
       filesStat: vi.fn(async () => stat()),
       filesText: vi.fn(async () => text('const a = 1;\n')),
     });
-    renderApp({ path: '/files', api, state: stateWith({ sessions: [session('a')], features: FILES_ON }) });
-    const detail = screen.getByRole('region', { name: 'File' });
-    expect(within(detail).getByText('Pick a file to read it here.')).toBeTruthy();
+    const { router } = renderApp({ path: '/files', api, state: stateWith({ sessions: [session('a')], features: FILES_ON }) });
+    // Nothing open: both lists side by side, no segmented control.
+    expect(await screen.findByRole('region', { name: 'Changed' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Browse' })).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Files list' })).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: /session\.ts/ }));
+    const detail = screen.getByRole('region', { name: 'File' });
     expect(await within(detail).findByRole('heading', { name: 'session.ts' })).toBeTruthy();
-    // Still there beside it, and no back button on a desktop.
+    // Still there beside it, its segment chosen, and no back button beside the list.
     expect(screen.getByRole('list', { name: 'Changed files' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Files list' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Back to the list' })).toBeNull();
+    // Hide browser gives the viewer the pane; pressed again, the list is back.
+    fireEvent.click(screen.getByRole('button', { name: 'Hide browser' }));
+    expect(screen.queryByRole('list', { name: 'Changed files' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Hide browser' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide browser' }));
+    expect(await screen.findByRole('list', { name: 'Changed files' })).toBeTruthy();
+    // Esc closes the file: the lists take the pane again.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(router.getState().route).toEqual({ name: 'files' });
+    expect(await screen.findByRole('region', { name: 'Browse' })).toBeTruthy();
   });
 
   it('shows the "turn it on" sentence when rendered with Files off', () => {

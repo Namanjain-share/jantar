@@ -9,19 +9,28 @@
  *
  * Phone and tablet: the viewer is a pushed screen (?root=&path=src/x.ts),
  * so the back gesture closes it. Desktop: the list fills the ledger column
- * and the viewer the detail pane. "Ask about this" (a session's own folder
+ * and the viewer the detail pane.
+ *
+ * 0.11 (build plan 2.12): a SplitPane ("files", fill), by the pane's width,
+ * not the window's. With no file open in a pane of 800 or more, Changed and
+ * Browse sit side by side (Browse 340, 440 from 1180) with no segmented
+ * control. A file opens beside the chosen list; "Hide browser" in the
+ * viewer's header gives the viewer the whole pane, and Esc closes the file.
+ * Below 800, 0.10's one list and a pushed viewer. "Ask about this" (a session's own folder
  * only) queues the mention with askAbout() and opens that session, whose
  * composer takes it once; nothing is ever sent from here. A file a session
  * changed in its own folder asks that session, even when the folder is
  * listed under another root (sessions sharing a folder share one).
  */
 import { FILES_CHANGES_LIMIT, type FileChange } from '@jantar/protocol';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import clsx from 'clsx';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { sessionViewPath, type FilesLocation } from '../../../lib/router.js';
 import { readLocal, writeLocal } from '../../../lib/storage.js';
 import { useApp, useDeps, useNavigate, useNow } from '../../context.js';
+import { SplitPane, useSplit } from '../../kit/SplitPane.js';
 import { useFeatures } from '../../shell/data.js';
-import { isSplit, useFrame } from '../../shell/layout.js';
+import { useLayout } from '../../shell/layout.js';
 import { Segmented } from '../accounts/Segmented.js';
 import { askAbout } from '../session/ask.js';
 import { Browse } from './Browse.js';
@@ -54,9 +63,9 @@ export function FilesPlace({ location, onLocation }: FilesPlaceProps) {
   const { api, router } = useDeps();
   const navigate = useNavigate();
   const features = useFeatures();
-  const frame = useFrame();
-  const phone = frame === 'phone';
-  const split = isSplit(frame);
+  const phone = useLayout().chrome === 'phone';
+  // 0.11: the viewer across the whole pane (the list's section stays, empty).
+  const [hidden, setHidden] = useState(false);
   const now = useNow(30_000);
   const offline = useOffline();
   const sessions = useApp((s) => s.state.sessions);
@@ -94,13 +103,15 @@ export function FilesPlace({ location, onLocation }: FilesPlaceProps) {
     },
     [onLocation, open],
   );
+  /** Where the list was: the file's folder in Browse, else the lists. */
+  const listOf = (): FilesLocation => (place.kind === 'file' && segment === 'browse' ? dirLocation(place.root, dirOf(place.path)) : {});
   const back = () => {
     if (pushed.current > 0) {
       pushed.current -= 1;
       router.getState().back();
       return;
     }
-    onLocation(place.kind === 'file' && segment === 'browse' ? dirLocation(place.root, dirOf(place.path)) : {}, { replace: true });
+    onLocation(listOf(), { replace: true });
   };
   const pick = (k: Segment) => {
     // Browse again while inside a folder: back to the list of roots.
@@ -128,7 +139,7 @@ export function FilesPlace({ location, onLocation }: FilesPlaceProps) {
   const list = changes.data?.changes ?? null;
   // The list is the newest FILES_CHANGES_LIMIT rows: when today fills it, the count is a floor ("187+").
   const display = list ? todayLine(changedToday(list, now), todayCut(list, FILES_CHANGES_LIMIT, now)) : null;
-  const header = (
+  const header = (segmented: boolean) => (
     <header className={phone ? 'flex-none px-16 pb-12 pt-4' : 'flex-none px-16 pb-12 pt-16'}>
       <h1 className="sr-only">Files</h1>
       {display ? (
@@ -136,79 +147,125 @@ export function FilesPlace({ location, onLocation }: FilesPlaceProps) {
           {display}
         </p>
       ) : null}
-      <Segmented
-        label="Files list"
-        className={display ? 'mt-12' : undefined}
-        value={segment}
-        onChange={pick}
-        segments={[
-          { key: 'changed', label: 'Changed' },
-          { key: 'browse', label: 'Browse' },
-        ]}
-      />
+      {segmented ? (
+        <Segmented
+          label="Files list"
+          className={display ? 'mt-12' : undefined}
+          value={segment}
+          onChange={pick}
+          segments={[
+            { key: 'changed', label: 'Changed' },
+            { key: 'browse', label: 'Browse' },
+          ]}
+        />
+      ) : null}
     </header>
   );
 
-  let body;
-  if (segment === 'browse') {
+  const browse = () => {
     const root = place.kind === 'lists' ? undefined : place.root;
     const path = place.kind === 'dir' ? place.path : place.kind === 'file' ? dirOf(place.path) : '';
-    body = <Browse roots={roots} root={root} path={path} phone={phone} sessions={sessions} onLocation={open} onRoots={() => open({})} create />;
-  } else if (!list) {
-    body = changes.error ? <LoadError error={changes.error} offline={offline} what="list" onRetry={changes.reload} /> : <Loading />;
-  } else if (!list.length) {
-    body = <StateLine>Files that Claude creates or changes in the live sessions show here.</StateLine>;
-  } else {
-    body = (
-      <ChangedList
-        groups={groupBySession(list, sessions)}
-        phone={phone}
-        now={now}
-        label="Changed files"
-        ground={split ? 'surface' : 'bg'}
-        onOpen={openChange}
-      />
+    return <Browse roots={roots} root={root} path={path} phone={phone} sessions={sessions} onLocation={open} onRoots={() => open({})} create />;
+  };
+  const changed = (ground: 'bg' | 'surface' | 'raised') =>
+    !list ? (
+      changes.error ? (
+        <LoadError error={changes.error} offline={offline} what="list" onRetry={changes.reload} />
+      ) : (
+        <Loading />
+      )
+    ) : !list.length ? (
+      <StateLine>Files that Claude creates or changes in the live sessions show here.</StateLine>
+    ) : (
+      <ChangedList groups={groupBySession(list, sessions)} phone={phone} now={now} label="Changed files" ground={ground} onOpen={openChange} />
     );
-  }
 
-  let viewer = null;
+  let viewer: ReactNode = null;
   if (place.kind === 'file') {
     const change = changeAt(list, place.root, place.path);
     // The session that changed it, in its own folder; else the session whose folder the root is.
     const asks = changedBy(change, sessions, place.path) ?? roots.data?.roots.find((r) => r.id === place.root)?.sid;
     viewer = (
-      <Viewer
+      <FileDetail
         key={`${place.root}\u0000${place.path}`}
-        root={place.root}
-        path={place.path}
-        tab={place.tab}
-        phone={phone}
-        change={change}
-        onBack={split ? undefined : back}
-        onLocation={move}
-        onAsk={askFor(asks, navigate)}
+        render={(beside) => (
+          <Viewer
+            root={place.root}
+            path={place.path}
+            tab={place.tab}
+            phone={phone}
+            change={change}
+            onBack={beside ? undefined : back}
+            onLocation={move}
+            onAsk={askFor(asks, navigate)}
+            {...(beside ? { browser: { hidden, toggle: () => setHidden((h) => !h) } } : {})}
+          />
+        )}
       />
     );
   }
 
-  if (split) {
+  return (
+    <SplitPane
+      name="files"
+      list={<Lists header={header} segment={segment} browse={browse} changed={changed} />}
+      detail={viewer}
+      selection={place.kind === 'file' ? `${place.root}\u0000${place.path}` : undefined}
+      empty="fill"
+      listLabel="Files list"
+      detailLabel="File"
+      noList={hidden && viewer !== null}
+      onClose={() => onLocation(listOf(), { replace: true })}
+    />
+  );
+}
+
+/** The viewer, told whether it is beside the list (no back button, the Hide browser toggle) or alone. */
+function FileDetail({ render }: { render: (beside: boolean) => ReactNode }) {
+  const beside = Boolean(useSplit()?.split);
+  return <div className="flex h-full min-h-0 flex-col">{render(beside)}</div>;
+}
+
+/**
+ * The lists. With no file open in a pane of 800 or more: Changed beside
+ * Browse, no segmented control. Else 0.10's one list, its segment chosen.
+ */
+function Lists({
+  header,
+  segment,
+  browse,
+  changed,
+}: {
+  header: (segmented: boolean) => ReactNode;
+  segment: Segment;
+  browse: () => ReactNode;
+  changed: (ground: 'bg' | 'surface' | 'raised') => ReactNode;
+}) {
+  const split = useSplit();
+  if (split?.split && !split.selected) {
+    // Two panels the pane's height, each scrolling inside itself: Changed, then Browse (340; 440 from 1180).
+    const panel = 'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-dock border border-line bg-raised';
+    const head = 'flex h-44 flex-none items-center border-b border-line px-16 type-rail text-ink-3';
     return (
-      <div className="grid-ledger grid h-full min-h-0">
-        <section aria-label="Files list" className="flex min-h-0 flex-col border-r border-line bg-surface">
-          {header}
-          {body}
-        </section>
-        <section aria-label="File" className="flex min-h-0 min-w-0 flex-col">
-          {viewer ?? <StateLine>Pick a file to read it here.</StateLine>}
-        </section>
+      <div className="flex h-full min-h-0 flex-col">
+        {header(false)}
+        <div className={clsx('grid min-h-0 flex-1 gap-16 px-16 pb-16', split.wide ? 'grid-cols-[minmax(0,1fr)_440px]' : 'grid-cols-[minmax(0,1fr)_340px]')}>
+          <section aria-label="Changed" className={panel}>
+            <h2 className={head}>Changed</h2>
+            {changed('raised')}
+          </section>
+          <section aria-label="Browse" className={panel}>
+            <h2 className={head}>Browse</h2>
+            {browse()}
+          </section>
+        </div>
       </div>
     );
   }
-  if (viewer) return <div className="flex h-full min-h-0 flex-col">{viewer}</div>;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {header}
-      {body}
+      {header(true)}
+      {segment === 'browse' ? browse() : changed(split?.split ? 'surface' : 'bg')}
     </div>
   );
 }

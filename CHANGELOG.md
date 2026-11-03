@@ -62,6 +62,10 @@ What changed for people who use Jantar, newest first. Versions before
   notes, the comments you logged in the same place, and a field at the
   bottom to log another by pasting its link (kept if you leave before
   logging it). In a narrow window a post still opens in its sheet.
+- **Files** shows Changed and Browse side by side on a wide window, and a
+  file opens beside the list; **Hide browser** in the viewer's header gives
+  the file the whole window, and Esc closes it. The viewer's back and ···
+  buttons are 44 pt on a touch screen at every width.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

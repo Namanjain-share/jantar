@@ -118,8 +118,8 @@ export interface ChangedListProps {
   now: number;
   /** Names the list. */
   label: string;
-  /** The ground the rails sit on. */
-  ground?: 'bg' | 'surface';
+  /** The ground the rails sit on (0.11: raised, inside Files' Changed panel). */
+  ground?: 'bg' | 'surface' | 'raised';
   onOpen: (c: FileChange & { rootId: string; rel: string }) => void;
   footer?: ReactNode;
 }
