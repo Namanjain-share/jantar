@@ -11,8 +11,8 @@ export interface RailLabelProps {
   count?: number;
   /** 'needs' turns the count ember. */
   tone?: 'plain' | 'needs';
-  /** The ground behind it: the ledger column is surface, full pages are bg. */
-  ground?: 'surface' | 'bg';
+  /** The ground behind it: the ledger column is surface, full pages are bg, a card (0.11) is raised. */
+  ground?: 'surface' | 'bg' | 'raised';
   sticky?: boolean;
   /** Right-aligned caption in sentence case ("now to 20:08", "press ? anywhere"). */
   aside?: ReactNode;
@@ -30,7 +30,7 @@ export function RailLabel({ children, count, tone = 'plain', ground = 'surface',
         'flex h-28 flex-none items-center gap-8 border-b border-line',
         inset && 'px-16',
         sticky && 'sticky top-0 z-2',
-        ground === 'surface' ? 'bg-surface' : 'bg-bg',
+        ground === 'surface' ? 'bg-surface' : ground === 'raised' ? 'bg-raised' : 'bg-bg',
         className,
       )}
     >

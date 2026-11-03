@@ -14,6 +14,11 @@
  * a time, unless a tab is asked for) and keeps it in the route, scrolls to
  * the row and holds --select on it for 2 s. The title is the page's <h1> in
  * every state.
+ *
+ * 0.11 (build plan 2.4): from a pane of 640 the rails are cards side by
+ * side (kit/Columns.tsx, at least 340 wide: three at 1440), Reminders'
+ * cards are Overdue, Today and Upcoming in the order they ring, and the
+ * projects are a grid of cards. Below 640, 0.10's list.
  */
 import { CaretDownIcon, CaretRightIcon, PlusIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -21,7 +26,8 @@ import type { ProjectView, Todo } from '@jantar/protocol';
 import { routePath, type TodosTab } from '../../../../lib/router.js';
 import { useApp, useDeps, useNavigate } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
-import { RailLabel } from '../../../kit/RailLabel.js';
+import { Columns, useCardWidth } from '../../../kit/Columns.js';
+import { Panel } from '../../../kit/Panel.js';
 import { Segmented } from '../../accounts/Segmented.js';
 import { EMPTY, LifeEmpty, NotSaved } from '../shared/states.js';
 import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
@@ -104,6 +110,9 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
   const [start, setStart] = useState<TodoStart | undefined>(undefined);
   const projectSheet = useSheet<ProjectView>();
   const pmap = useMemo(() => new Map((projects.data?.projects ?? []).map((p) => [p.id, p])), [projects.data]);
+  // Cards from a pane of 640 (0.11), the 0.10 list below it: decided by the page's measured width.
+  const box = useRef<HTMLDivElement>(null);
+  const cards = useCardWidth(box);
 
   const add = () => {
     if (tab === 'projects') return projectSheet.show(null);
@@ -123,8 +132,8 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
   );
 
   return (
-    <Page title="Todos" aside={<AddButton label={addLabel} onClick={add} disabled={offline} />} undo={actions.undo}>
-      <div className="px-16 pb-12">
+    <Page title="Todos" aside={<AddButton label={addLabel} onClick={add} disabled={offline} />} undo={actions.undo} wide>
+      <div className="px-16 pb-12 @md:max-w-560">
         <Segmented<TodosTab> label="Show" fill value={tab} onChange={(t) => navigate(routePath({ name: 'todos', tab: t }), { replace: true })} segments={TABS} />
       </div>
       {actions.error ? (
@@ -132,58 +141,68 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
           <NotSaved error={actions.error} />
         </div>
       ) : null}
-      {tab === 'projects' ? (
-        <Loaded load={projects}>
-          {(d) => {
-            const list = [...d.projects].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
-            if (list.length === 0) return <LifeEmpty action={addButton}>{EMPTY.projects}</LifeEmpty>;
-            const all = Object.values(sessions);
-            return (
-              <ul aria-label="Projects" className="border-t border-line">
-                {list.map((p) => (
-                  <ProjectRow key={p.id} project={p} today={now.day} live={liveIn(all, p.folder).length} />
-                ))}
-              </ul>
-            );
-          }}
-        </Loaded>
-      ) : (
-        <Loaded load={todos}>
-          {(d) =>
-            tab === 'reminders' ? (
-              <Reminders todos={actions.visible(d.todos)} projects={pmap} now={now} flash={flash} offline={offline} actions={actions} onEdit={edit} addButton={addButton} />
-            ) : (
-              <>
-                <TodoRails todos={actions.visible(d.todos)} projects={pmap} now={now} flash={flash} offline={offline} actions={actions} onEdit={edit} addButton={addButton} />
-                <button
-                  type="button"
-                  aria-expanded={showDone}
-                  onClick={() => setShowDone((v) => !v)}
-                  className="flex h-28 w-full items-center gap-8 border-b border-line px-16 type-rail text-ink-3 transition-colors duration-120 ease-hover hover:text-ink coarse:h-44"
-                >
-                  {showDone ? <CaretDownIcon size={12} aria-hidden="true" /> : <CaretRightIcon size={12} aria-hidden="true" />}
-                  Done
-                </button>
-                {showDone ? (
-                  <Loaded load={done} count={2}>
-                    {(dd) =>
-                      dd.todos.length === 0 ? (
-                        <LifeEmpty>Nothing done yet.</LifeEmpty>
-                      ) : (
-                        <ul aria-label="Done">
-                          {dd.todos.map((t) => (
-                            <DoneRow key={t.id} todo={t} offline={offline} actions={actions} />
-                          ))}
-                        </ul>
-                      )
-                    }
-                  </Loaded>
-                ) : null}
-              </>
-            )
-          }
-        </Loaded>
-      )}
+      <div ref={box}>
+        {tab === 'projects' ? (
+          <Loaded load={projects}>
+            {(d) => {
+              const list = [...d.projects].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
+              if (list.length === 0) return <LifeEmpty action={addButton}>{EMPTY.projects}</LifeEmpty>;
+              const all = Object.values(sessions);
+              return (
+                <ul aria-label="Projects" className={cards ? 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-12 px-16 pt-4' : 'border-t border-line'}>
+                  {list.map((p) => (
+                    <ProjectRow
+                    key={p.id}
+                    project={p}
+                    today={now.day}
+                    live={liveIn(all, p.folder).length}
+                    card={cards}
+                    next={cards ? actions.visible(todos.data?.todos ?? []).filter((t) => t.projectId === p.id && !t.doneAt) : undefined}
+                  />
+                  ))}
+                </ul>
+              );
+            }}
+          </Loaded>
+        ) : (
+          <Loaded load={todos}>
+            {(d) =>
+              tab === 'reminders' ? (
+                <Reminders todos={actions.visible(d.todos)} projects={pmap} now={now} flash={flash} offline={offline} actions={actions} onEdit={edit} addButton={addButton} cards={cards} />
+              ) : (
+                <>
+                  <TodoRails todos={actions.visible(d.todos)} projects={pmap} now={now} flash={flash} offline={offline} actions={actions} onEdit={edit} addButton={addButton} cards={cards} />
+                  {cards ? <div className="h-16" /> : null}
+                  <button
+                    type="button"
+                    aria-expanded={showDone}
+                    onClick={() => setShowDone((v) => !v)}
+                    className="flex h-28 w-full items-center gap-8 border-b border-line px-16 type-rail text-ink-3 transition-colors duration-120 ease-hover hover:text-ink coarse:h-44"
+                  >
+                    {showDone ? <CaretDownIcon size={12} aria-hidden="true" /> : <CaretRightIcon size={12} aria-hidden="true" />}
+                    Done
+                  </button>
+                  {showDone ? (
+                    <Loaded load={done} count={2}>
+                      {(dd) =>
+                        dd.todos.length === 0 ? (
+                          <LifeEmpty>Nothing done yet.</LifeEmpty>
+                        ) : (
+                          <ul aria-label="Done">
+                            {dd.todos.map((t) => (
+                              <DoneRow key={t.id} todo={t} offline={offline} actions={actions} />
+                            ))}
+                          </ul>
+                        )
+                      }
+                    </Loaded>
+                  ) : null}
+                </>
+              )
+            }
+          </Loaded>
+        )}
+      </div>
       <TodoSheet
         open={todoSheet.open}
         onOpenChange={todoSheet.onOpenChange}
@@ -208,6 +227,7 @@ function TodoRails({
   actions,
   onEdit,
   addButton,
+  cards,
 }: {
   todos: readonly Todo[];
   projects: ReadonlyMap<string, ProjectView>;
@@ -217,39 +237,39 @@ function TodoRails({
   actions: TodoActions;
   onEdit: (todo: Todo) => void;
   addButton: ReactNode;
+  /** 0.11: each rail a card, side by side. */
+  cards: boolean;
 }) {
   const rails = byRail(todos, now);
   if (RAIL_ORDER.every((r) => rails[r].length === 0)) return <LifeEmpty action={addButton}>{EMPTY.todos}</LifeEmpty>;
-  return (
-    <>
-      {RAIL_ORDER.map((r) =>
-        rails[r].length ? (
-          <section key={r} aria-label={RAIL_LABEL[r]}>
-            {/* A plain count: each overdue row already carries its ember "overdue 2d" (TodoRow). */}
-            <RailLabel ground="bg" count={rails[r].length}>
-              {RAIL_LABEL[r]}
-            </RailLabel>
-            <ul>
-              {rails[r].map((t) => {
-                const p = t.projectId ? projects.get(t.projectId) : undefined;
-                return (
-                  <TodoRow
-                    key={t.id}
-                    todo={t}
-                    now={now}
-                    project={p ? projectLabel(p) : undefined}
-                    showDay={r !== 'today'}
-                    highlight={flash === t.id}
-                    offline={offline}
-                    actions={actions}
-                    onEdit={onEdit}
-                  />
-                );
-              })}
-            </ul>
-          </section>
-        ) : null,
-      )}
-    </>
+  const sections = RAIL_ORDER.filter((r) => rails[r].length > 0).map((r) => (
+    // A plain count: each overdue row already carries its ember "overdue 2d" (TodoRow).
+    <Panel key={r} label={RAIL_LABEL[r]} count={rails[r].length} card={cards}>
+      <ul>
+        {rails[r].map((t) => {
+          const p = t.projectId ? projects.get(t.projectId) : undefined;
+          return (
+            <TodoRow
+              key={t.id}
+              todo={t}
+              now={now}
+              project={p ? projectLabel(p) : undefined}
+              showDay={r !== 'today'}
+              highlight={flash === t.id}
+              offline={offline}
+              actions={actions}
+              onEdit={onEdit}
+            />
+          );
+        })}
+      </ul>
+    </Panel>
+  ));
+  return cards ? (
+    <Columns min={340} className="px-16 pt-4">
+      {sections}
+    </Columns>
+  ) : (
+    <>{sections}</>
   );
 }

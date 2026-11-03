@@ -63,6 +63,14 @@ export function useBucket<T>(ref: RefObject<HTMLElement | null>, bucket: (width:
   return value;
 }
 
+/** From a pane this wide a page's sections are cards (Today, Todos, Medicines, Food, Finance). */
+export const CARDS_FROM = 640;
+
+/** Whether the box is CARDS_FROM wide or more: false without a measure (jsdom, a hidden box), so 0.10's list. */
+export function useCardWidth(ref: RefObject<HTMLElement | null>): boolean {
+  return useBucket(ref, (w) => w >= CARDS_FROM);
+}
+
 export interface ColumnsProps {
   /** The narrowest a column may be, px. */
   min?: number;

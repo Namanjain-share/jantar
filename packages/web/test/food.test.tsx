@@ -385,3 +385,33 @@ describe('Food: the add sheet', () => {
     expect(api.foodDay).toHaveBeenCalledWith(DAY);
   });
 });
+
+describe('0.11: a wide pane', () => {
+  // A pane 1384 wide: the page measures its body (cards from 640) and Columns its box (three of 340).
+  const wide = () =>
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: 1352, bottom: 800, width: 1352, height: 800, toJSON: () => ({}) });
+  afterEach(() => vi.restoreAllMocks());
+  const card = (name: string) => {
+    const r = screen.getByRole('region', { name });
+    expect(r.className, name).toContain('rounded-dock');
+    return r;
+  };
+
+  it('puts what was eaten beside the calories and weight, two cards', async () => {
+    wide();
+    render();
+    await heading();
+    await screen.findByRole('region', { name: 'Eaten' });
+    expect(document.querySelector('[data-columns]')?.getAttribute('data-columns')).toBe('2');
+    card('Eaten');
+    expect(within(card('Calories and weight')).getByRole('button', { name: 'Add food' })).toBeTruthy();
+  });
+
+  it('below a pane of 640 it is the 0.10 list', async () => {
+    render();
+    await heading();
+    await screen.findByRole('list', { name: 'Eaten' });
+    expect(screen.queryByRole('region', { name: 'Eaten' })).toBeNull();
+    expect(document.querySelector('[data-columns]')).toBeNull();
+  });
+});

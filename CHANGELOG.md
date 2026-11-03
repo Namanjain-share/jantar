@@ -49,6 +49,13 @@ What changed for people who use Jantar, newest first. Versions before
 - **Tap a star to rate**: on a café's screen a tap on a rating's stars sets
   it at once, with "Vibe 3 → 4 · Undo". With a trackpad or a mouse a hover
   shows the value and sets nothing; clearing a rating stays in Edit.
+- **Todos, Medicines, Food and Finance** put their sections side by side
+  as cards on a wide window: Todos' Overdue, Today, Upcoming and No date
+  (three across a 1440 px Mac window), Reminders by when they ring, and
+  Projects as cards that list each project's next todos; Medicines' doses
+  beside your medicines; Food's Eaten beside the day's calories and weight;
+  Finance's By category, Bills and Entries. A row's actions sit beside its
+  name instead of across the window. A phone keeps the lists.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

@@ -555,3 +555,51 @@ describe('Todos: projects', () => {
     await heading('Project');
   });
 });
+
+describe('0.11: a wide pane', () => {
+  // A pane 1384 wide: the page measures its body (cards from 640) and Columns its box (three of 340).
+  const wide = () =>
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: 1352, bottom: 800, width: 1352, height: 800, toJSON: () => ({}) });
+  afterEach(() => vi.restoreAllMocks());
+  const card = (name: string) => {
+    const r = screen.getByRole('region', { name });
+    expect(r.className, name).toContain('rounded-dock');
+    return r;
+  };
+
+  it('puts the rails side by side as cards, and keeps the 0.10 rails below 640', async () => {
+    wide();
+    render();
+    await heading();
+    await screen.findByRole('region', { name: 'Overdue' });
+    const cols = document.querySelector('[data-columns]') as HTMLElement;
+    expect(Number(cols.dataset.columns)).toBeGreaterThan(1);
+    for (const r of within(cols).getAllByRole('region')) expect(r.className).toContain('rounded-dock');
+  });
+
+  it('Reminders: cards by when they ring', async () => {
+    wide();
+    render({ path: '/todos?tab=reminders' });
+    await heading();
+    const lists = await screen.findAllByRole('list', { name: /^Reminders, / });
+    expect(lists.length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-columns]')).toBeTruthy();
+  });
+
+  it('Projects: a grid of cards, each with its next open todos', async () => {
+    wide();
+    render({ path: '/todos?tab=projects' });
+    const grid = await screen.findByRole('list', { name: 'Projects' });
+    expect(grid.className).toContain('grid');
+    const first = within(grid).getAllByRole('link')[0]!;
+    expect(first.className).toContain('rounded-dock');
+    await waitFor(() => expect(first.textContent).toContain(OPEN.find((t) => t.projectId === P1.id)!.title));
+  });
+
+  it('below a pane of 640 it is the 0.10 list', async () => {
+    render();
+    await heading();
+    expect((await rail('Overdue')).className).not.toContain('rounded-dock');
+    expect(document.querySelector('[data-columns]')).toBeNull();
+  });
+});

@@ -13,6 +13,9 @@
  * they are plain numbers and one line names the Mac command that sets one.
  * `bill` (from a bill's push or Today) opens that bill's Paid sheet. The
  * title is the page's <h1> in every state.
+ *
+ * 0.11 (build plan 2.4): from a pane of 640, By category, Bills and Entries
+ * are cards side by side (three at 1440). Below 640, 0.10's list.
  */
 import { PlusIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
@@ -21,7 +24,8 @@ import { formatAmount } from '../../../../lib/money.js';
 import { routePath } from '../../../../lib/router.js';
 import { useDeps, useNavigate, useNow } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
-import { RailLabel } from '../../../kit/RailLabel.js';
+import { Columns, useCardWidth } from '../../../kit/Columns.js';
+import { Panel } from '../../../kit/Panel.js';
 import { MonthNav, dayLabel } from '../shared/DayNav.js';
 import { CommandSentence, EMPTY, LifeEmpty, NotSaved } from '../shared/states.js';
 import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
@@ -63,6 +67,9 @@ export function Money({ month, bill }: MoneyProps) {
   const opened = useRef<string | null>(null);
   const target = bill ? load.data?.bills.find((b) => b.id === bill) : undefined;
   const { show: showPaid } = paid;
+  // Cards from a pane of 640 (0.11), the 0.10 list below it: decided by the page's measured width.
+  const box = useRef<HTMLDivElement>(null);
+  const cards = useCardWidth(box);
 
   useEffect(() => {
     if (!target || opened.current === target.id) return;
@@ -86,104 +93,109 @@ export function Money({ month, bill }: MoneyProps) {
   return (
     // One add control, "+ Expense" and "+ Income" under the entries: a header "+" too would say it twice,
     // and would open nothing before the month loads.
-    <Page title="Finance" undo={undo}>
+    <Page title="Finance" undo={undo} wide>
       <div className="px-8 pb-4">
         <MonthNav month={shown} current={current} onMonth={(m) => navigate(routePath(m === current ? { name: 'money' } : { name: 'money', month: m }), { replace: true })} />
       </div>
-      <Loaded load={load}>
-        {(m) => {
-          const chips = categoriesFor('expense', m.categories);
-          const entries = held.visible(m.entries, (e) => e.id);
-          return (
-            <>
-              <p className="px-16 pb-12 type-mono text-ink">
-                Spent {formatAmount(m.spent, m.currency)} · Income {formatAmount(m.income, m.currency)}
-              </p>
-              {m.currency === null ? <CommandSentence className="px-16 pb-12" sentence={NO_CURRENCY} /> : null}
+      <div ref={box}>
+        <Loaded load={load}>
+          {(m) => {
+            const chips = categoriesFor('expense', m.categories);
+            const entries = held.visible(m.entries, (e) => e.id);
+            return (
+              <>
+                <p className="px-16 pb-12 type-mono text-ink">
+                  Spent {formatAmount(m.spent, m.currency)} · Income {formatAmount(m.income, m.currency)}
+                </p>
+                {m.currency === null ? <CommandSentence className="px-16 pb-12" sentence={NO_CURRENCY} /> : null}
 
-              <section aria-label="By category">
-                <RailLabel ground="bg">By category</RailLabel>
-                {m.byCategory.length === 0 ? (
-                  <LifeEmpty>No spending this month.</LifeEmpty>
-                ) : (
-                  <ul>
-                    {m.byCategory.map((c) => (
-                      <CategoryRow key={c.category} row={c} currency={m.currency} onOpen={() => budget.show({ category: c.category, budget: c.budget })} />
-                    ))}
-                  </ul>
-                )}
-                <div className="px-16 py-8">
-                  <Button variant="text" size="sm" disabled={offline} onClick={() => budget.show({ category: '', budget: null })}>
-                    <PlusIcon size={12} aria-hidden="true" />
-                    Set a budget
+                {(() => {
+                  // 0.11: by category, bills and entries side by side from a pane of 640.
+                  const parts = [
+                    <Panel key="category" label="By category" card={cards}>
+                      {m.byCategory.length === 0 ? (
+                        <LifeEmpty>No spending this month.</LifeEmpty>
+                      ) : (
+                        <ul>
+                          {m.byCategory.map((c) => (
+                            <CategoryRow key={c.category} row={c} currency={m.currency} onOpen={() => budget.show({ category: c.category, budget: c.budget })} />
+                          ))}
+                        </ul>
+                      )}
+                      <div className="px-16 py-8">
+                        <Button variant="text" size="sm" disabled={offline} onClick={() => budget.show({ category: '', budget: null })}>
+                          <PlusIcon size={12} aria-hidden="true" />
+                          Set a budget
+                        </Button>
+                      </div>
+                    </Panel>,
+                    <Panel key="bills" label="Bills" count={m.bills.length} card={cards}>
+                      {m.bills.length ? (
+                        <ul>
+                          {m.bills.map((b) => (
+                            <BillRow key={b.id} bill={b} today={today} currency={m.currency} offline={offline} onOpen={() => billSheet.show(b)} onPaid={() => paid.show(b)} />
+                          ))}
+                        </ul>
+                      ) : (
+                        <LifeEmpty>No bills yet. A bill pings on its due day, and Paid logs it.</LifeEmpty>
+                      )}
+                      <div className="px-16 py-8">
+                        <Button variant="text" size="sm" disabled={offline} onClick={() => billSheet.show(null)}>
+                          <PlusIcon size={12} aria-hidden="true" />
+                          Add bill
+                        </Button>
+                      </div>
+                    </Panel>,
+                    <Panel key="entries" label="Entries" count={entries.length} card={cards}>
+                      {remove.error ? (
+                        <div className="px-16">
+                          <NotSaved error={remove.error} />
+                        </div>
+                      ) : null}
+                      {entries.length === 0 ? <LifeEmpty>{EMPTY.money}</LifeEmpty> : <Entries entries={entries} currency={m.currency} onOpen={(e) => entry.show(e)} />}
+                    </Panel>,
+                  ];
+                  return cards ? (
+                    <Columns min={340} className="px-16 pt-4">
+                      {parts}
+                    </Columns>
+                  ) : (
+                    parts
+                  );
+                })()}
+
+                <div className="flex gap-8 px-16 pt-12">
+                  <Button disabled={offline} onClick={() => add('expense')}>
+                    <PlusIcon size={16} aria-hidden="true" />
+                    Expense
+                  </Button>
+                  <Button disabled={offline} onClick={() => add('income')}>
+                    <PlusIcon size={16} aria-hidden="true" />
+                    Income
                   </Button>
                 </div>
-              </section>
 
-              <section aria-label="Bills">
-                <RailLabel ground="bg" count={m.bills.length}>
-                  Bills
-                </RailLabel>
-                {m.bills.length ? (
-                  <ul>
-                    {m.bills.map((b) => (
-                      <BillRow key={b.id} bill={b} today={today} currency={m.currency} offline={offline} onOpen={() => billSheet.show(b)} onPaid={() => paid.show(b)} />
-                    ))}
-                  </ul>
-                ) : (
-                  <LifeEmpty>No bills yet. A bill pings on its due day, and Paid logs it.</LifeEmpty>
-                )}
-                <div className="px-16 py-8">
-                  <Button variant="text" size="sm" disabled={offline} onClick={() => billSheet.show(null)}>
-                    <PlusIcon size={12} aria-hidden="true" />
-                    Add bill
-                  </Button>
-                </div>
-              </section>
-
-              <section aria-label="Entries">
-                <RailLabel ground="bg" count={entries.length}>
-                  Entries
-                </RailLabel>
-                {remove.error ? (
-                  <div className="px-16">
-                    <NotSaved error={remove.error} />
-                  </div>
-                ) : null}
-                {entries.length === 0 ? <LifeEmpty>{EMPTY.money}</LifeEmpty> : <Entries entries={entries} currency={m.currency} onOpen={(e) => entry.show(e)} />}
-              </section>
-
-              <div className="flex gap-8 px-16 pt-12">
-                <Button disabled={offline} onClick={() => add('expense')}>
-                  <PlusIcon size={16} aria-hidden="true" />
-                  Expense
-                </Button>
-                <Button disabled={offline} onClick={() => add('income')}>
-                  <PlusIcon size={16} aria-hidden="true" />
-                  Income
-                </Button>
-              </div>
-
-              <MoneyEntrySheet
-                open={entry.open}
-                onOpenChange={entry.onOpenChange}
-                sheetKey={entry.key}
-                entry={entry.item}
-                kind={kind}
-                day={entryDay}
-                currency={m.currency}
-                categories={m.categories}
-                incomeSeen={m.entries.filter((e) => e.kind === 'income').map((e) => e.category)}
-                onSaved={load.reload}
-                onDelete={(e) => deleteEntry(e, m.currency)}
-              />
-              <BudgetSheet open={budget.open} onOpenChange={budget.onOpenChange} sheetKey={budget.key} target={budget.item} currency={m.currency} chips={chips} onSaved={load.reload} />
-              <BillSheet open={billSheet.open} onOpenChange={billSheet.onOpenChange} sheetKey={billSheet.key} bill={billSheet.item} today={today} currency={m.currency} chips={chips} onSaved={load.reload} />
-              <PaidSheet open={paid.open} onOpenChange={paid.onOpenChange} sheetKey={paid.key} bill={paid.item} today={today} currency={m.currency} onSaved={load.reload} />
-            </>
-          );
-        }}
-      </Loaded>
+                <MoneyEntrySheet
+                  open={entry.open}
+                  onOpenChange={entry.onOpenChange}
+                  sheetKey={entry.key}
+                  entry={entry.item}
+                  kind={kind}
+                  day={entryDay}
+                  currency={m.currency}
+                  categories={m.categories}
+                  incomeSeen={m.entries.filter((e) => e.kind === 'income').map((e) => e.category)}
+                  onSaved={load.reload}
+                  onDelete={(e) => deleteEntry(e, m.currency)}
+                />
+                <BudgetSheet open={budget.open} onOpenChange={budget.onOpenChange} sheetKey={budget.key} target={budget.item} currency={m.currency} chips={chips} onSaved={load.reload} />
+                <BillSheet open={billSheet.open} onOpenChange={billSheet.onOpenChange} sheetKey={billSheet.key} bill={billSheet.item} today={today} currency={m.currency} chips={chips} onSaved={load.reload} />
+                <PaidSheet open={paid.open} onOpenChange={paid.onOpenChange} sheetKey={paid.key} bill={paid.item} today={today} currency={m.currency} onSaved={load.reload} />
+              </>
+            );
+          }}
+        </Loaded>
+      </div>
     </Page>
   );
 }

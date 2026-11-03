@@ -319,3 +319,32 @@ describe('Medicines: states', () => {
     expect((screen.getByRole('button', { name: 'Add medicine' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe('0.11: a wide pane', () => {
+  // A pane 1384 wide: the page measures its body (cards from 640) and Columns its box (three of 340).
+  const wide = () =>
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: 1352, bottom: 800, width: 1352, height: 800, toJSON: () => ({}) });
+  afterEach(() => vi.restoreAllMocks());
+  const card = (name: string) => {
+    const r = screen.getByRole('region', { name });
+    expect(r.className, name).toContain('rounded-dock');
+    return r;
+  };
+
+  it("puts the day's doses beside your medicines, two cards", async () => {
+    wide();
+    open();
+    await heading();
+    await screen.findByRole('region', { name: 'Doses' });
+    expect(document.querySelector('[data-columns]')?.getAttribute('data-columns')).toBe('2');
+    card('Doses');
+    card('Your medicines');
+  });
+
+  it('below a pane of 640 it is the 0.10 list', async () => {
+    open();
+    await heading();
+    expect((await screen.findByRole('region', { name: 'Your medicines' })).className).not.toContain('rounded-dock');
+    expect(screen.queryByRole('region', { name: 'Doses' })).toBeNull();
+  });
+});

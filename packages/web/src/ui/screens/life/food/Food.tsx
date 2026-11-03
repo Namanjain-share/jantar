@@ -10,12 +10,19 @@
  *
  * Over the target the bar is full and "+240 over" is --ink-2, not ember.
  * The title is the page's <h1> in every state.
+ *
+ * 0.11 (build plan 2.4): from a pane of 640, what was eaten and the day's
+ * calories and weight (with Add food) are two cards side by side, under
+ * the day switcher. Below 640, 0.10's list.
  */
 import { ForkKnifeIcon, PlusIcon, ScalesIcon } from '@phosphor-icons/react';
+import { useRef } from 'react';
 import type { FoodDay, FoodEntry } from '@jantar/protocol';
 import { routePath } from '../../../../lib/router.js';
 import { useDeps, useNavigate } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
+import { Columns, useCardWidth } from '../../../kit/Columns.js';
+import { Panel } from '../../../kit/Panel.js';
 import { DayNav, dayLabel } from '../shared/DayNav.js';
 import { EMPTY, LifeEmpty, NotSaved } from '../shared/states.js';
 import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
@@ -46,6 +53,9 @@ export function Food({ day }: FoodProps) {
   const d = load.data;
   const today = d?.today ?? status?.today;
   const shown = d?.day ?? day ?? today;
+  // Cards from a pane of 640 (0.11), the 0.10 list below it: decided by the page's measured width.
+  const box = useRef<HTMLDivElement>(null);
+  const cards = useCardWidth(box);
 
   // No confirm: the row goes at once, and the delete is sent once its Undo goes.
   const deleteEntry = (e: FoodEntry) =>
@@ -57,65 +67,93 @@ export function Food({ day }: FoodProps) {
 
   return (
     // One add control, under the list: a header "+" too would say it twice, and would open nothing before the day loads.
-    <Page title="Food" undo={undo}>
+    <Page title="Food" undo={undo} wide>
       {shown && today ? (
         <div className="px-8 pb-4">
           <DayNav day={shown} today={today} onDay={(x) => navigate(routePath(x === today ? { name: 'food' } : { name: 'food', day: x }), { replace: true })} />
         </div>
       ) : null}
-      <Loaded load={load}>
-        {(f) => {
-          const entries = held.visible(f.entries, (e) => e.id);
-          return (
-            <>
-              <Totals day={f} onTarget={() => target.show()} />
-              <button
-                type="button"
-                onClick={() => weight.show()}
-                className="flex min-h-44 w-full items-center gap-8 border-b border-line px-16 py-8 text-left transition-colors duration-120 ease-hover hover:bg-hover"
-              >
-                <ScalesIcon size={16} aria-hidden="true" className="flex-none text-ink-3" />
-                {weightLine(f.weight) ? <span className="type-mono text-ink-2">{unbroken(weightLine(f.weight) as string)}</span> : <span className="type-small text-ink-2">Log weight</span>}
-              </button>
-              {remove.error ? (
-                <div className="px-16">
-                  <NotSaved error={remove.error} />
-                </div>
-              ) : null}
-              {entries.length === 0 ? (
-                <LifeEmpty>{f.day === f.today ? EMPTY.food : `Nothing logged on ${dayLabel(f.day)}.`}</LifeEmpty>
-              ) : (
-                <ul aria-label="Eaten">
-                  {entries.map((e) => (
-                    <li key={e.id} className="flex items-center gap-4 border-b border-line pr-8">
-                      <button
-                        type="button"
-                        onClick={() => edit.show(e)}
-                        className="flex min-h-44 min-w-0 flex-1 items-center gap-12 py-6 pl-16 text-left transition-colors duration-120 ease-hover hover:bg-hover"
-                      >
-                        <span className="w-40 flex-none type-mono text-ink-3">{timeOf(e.at, status?.timezone)}</span>
-                        <span className="min-w-0 flex-1 truncate type-row text-ink">{e.name}</span>
-                        <span className="flex-none type-mono text-ink">{kcalText(e.kcal)}</span>
-                      </button>
-                      <RowMenu label={`Actions for ${e.name}`} disabled={offline || remove.busy} groups={[{ items: [{ label: 'Delete', onSelect: () => deleteEntry(e) }] }]} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="px-16 pt-12">
-                <Button disabled={offline} onClick={() => add.show()}>
-                  <PlusIcon size={16} aria-hidden="true" />
-                  Add food
-                </Button>
-              </div>
-              <AddFoodSheet open={add.open} onOpenChange={add.onOpenChange} sheetKey={add.key} day={f.day} saved={f.saved} status={status} onAdded={load.reload} />
-              <TargetSheet open={target.open} onOpenChange={target.onOpenChange} sheetKey={target.key} target={f.target} onSaved={load.reload} />
-              <WeightSheet open={weight.open} onOpenChange={weight.onOpenChange} sheetKey={weight.key} day={f.day} today={f.today} weight={f.weight} onSaved={load.reload} />
-              <EntrySheet open={edit.open} onOpenChange={edit.onOpenChange} sheetKey={edit.key} entry={edit.item} onSaved={load.reload} />
-            </>
-          );
-        }}
-      </Loaded>
+      <div ref={box}>
+        <Loaded load={load}>
+          {(f) => {
+            const entries = held.visible(f.entries, (e) => e.id);
+            const totals = (
+              <>
+                <Totals day={f} onTarget={() => target.show()} />
+                <button
+                  type="button"
+                  onClick={() => weight.show()}
+                  className="flex min-h-44 w-full items-center gap-8 border-b border-line px-16 py-8 text-left transition-colors duration-120 ease-hover hover:bg-hover"
+                >
+                  <ScalesIcon size={16} aria-hidden="true" className="flex-none text-ink-3" />
+                  {weightLine(f.weight) ? <span className="type-mono text-ink-2">{unbroken(weightLine(f.weight) as string)}</span> : <span className="type-small text-ink-2">Log weight</span>}
+                </button>
+              </>
+            );
+            const eaten = (
+              <>
+                {remove.error ? (
+                  <div className="px-16">
+                    <NotSaved error={remove.error} />
+                  </div>
+                ) : null}
+                {entries.length === 0 ? (
+                  <LifeEmpty>{f.day === f.today ? EMPTY.food : `Nothing logged on ${dayLabel(f.day)}.`}</LifeEmpty>
+                ) : (
+                  <ul aria-label="Eaten">
+                    {entries.map((e) => (
+                      <li key={e.id} className="flex items-center gap-4 border-b border-line pr-8">
+                        <button
+                          type="button"
+                          onClick={() => edit.show(e)}
+                          className="flex min-h-44 min-w-0 flex-1 items-center gap-12 py-6 pl-16 text-left transition-colors duration-120 ease-hover hover:bg-hover"
+                        >
+                          <span className="w-40 flex-none type-mono text-ink-3">{timeOf(e.at, status?.timezone)}</span>
+                          <span className="min-w-0 flex-1 truncate type-row text-ink">{e.name}</span>
+                          <span className="flex-none type-mono text-ink">{kcalText(e.kcal)}</span>
+                        </button>
+                        <RowMenu label={`Actions for ${e.name}`} disabled={offline || remove.busy} groups={[{ items: [{ label: 'Delete', onSelect: () => deleteEntry(e) }] }]} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            );
+            const addFood = (
+              <Button disabled={offline} onClick={() => add.show()}>
+                <PlusIcon size={16} aria-hidden="true" />
+                Add food
+              </Button>
+            );
+            return (
+              <>
+                {cards ? (
+                  // 0.11: what was eaten beside the day's calories and weight.
+                  <Columns min={340} className="px-16 pt-4">
+                    <Panel label="Eaten" count={entries.length} card>
+                      {eaten}
+                    </Panel>
+                    <Panel label="Calories and weight" card>
+                      {totals}
+                      <div className="px-16 py-12">{addFood}</div>
+                    </Panel>
+                  </Columns>
+                ) : (
+                  <>
+                    {totals}
+                    {eaten}
+                    <div className="px-16 pt-12">{addFood}</div>
+                  </>
+                )}
+                <AddFoodSheet open={add.open} onOpenChange={add.onOpenChange} sheetKey={add.key} day={f.day} saved={f.saved} status={status} onAdded={load.reload} />
+                <TargetSheet open={target.open} onOpenChange={target.onOpenChange} sheetKey={target.key} target={f.target} onSaved={load.reload} />
+                <WeightSheet open={weight.open} onOpenChange={weight.onOpenChange} sheetKey={weight.key} day={f.day} today={f.today} weight={f.weight} onSaved={load.reload} />
+                <EntrySheet open={edit.open} onOpenChange={edit.onOpenChange} sheetKey={edit.key} entry={edit.item} onSaved={load.reload} />
+              </>
+            );
+          }}
+        </Loaded>
+      </div>
     </Page>
   );
 }
