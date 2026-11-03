@@ -156,6 +156,16 @@ describe('the paste form, to a screen reader (0.12.1 after review)', () => {
     expect(field.getAttribute('aria-describedby')).toBe(second.id);
   });
 
+  it('the paste, name and link-code fields are 16 px (type-input), so iPhone Safari does not zoom in', async () => {
+    const { unmount } = render(<Join api={fakeApi({ joinPreview: vi.fn(async () => preview) })} mode="join" />);
+    expect((await screen.findByLabelText('Paste your invite link')).classList.contains('type-input')).toBe(true);
+    await paste(CODE);
+    expect((await screen.findByLabelText('Your name')).classList.contains('type-input')).toBe(true);
+    unmount();
+    render(<Join api={fakeApi()} mode="link" />);
+    expect(screen.getByLabelText('Link code').classList.contains('type-input')).toBe(true);
+  });
+
   it('says Loading… while the preview loads', async () => {
     let answer: (p: JoinPreview) => void = () => undefined;
     const joinPreview = vi.fn(() => new Promise<JoinPreview>((r) => (answer = r)));

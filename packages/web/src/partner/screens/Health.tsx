@@ -322,11 +322,11 @@ function NightSheet({
       <div className="flex flex-col gap-12 pb-24">
         <label className="flex flex-col gap-4">
           <span className="text-small text-ink-2">Bedtime</span>
-          <input type="datetime-local" className="min-h-44 rounded-btn border border-line bg-bg px-8" value={bed} onChange={(e) => setBed(e.target.value)} />
+          <input type="datetime-local" className="min-h-44 rounded-btn border border-line bg-bg px-8 type-input" value={bed} onChange={(e) => setBed(e.target.value)} />
         </label>
         <label className="flex flex-col gap-4">
           <span className="text-small text-ink-2">Wake time (optional)</span>
-          <input type="datetime-local" className="min-h-44 rounded-btn border border-line bg-bg px-8" value={wake} onChange={(e) => setWake(e.target.value)} />
+          <input type="datetime-local" className="min-h-44 rounded-btn border border-line bg-bg px-8 type-input" value={wake} onChange={(e) => setWake(e.target.value)} />
         </label>
         <p className="text-small text-ink-2">Quality (optional)</p>
         <Faces label="Sleep quality" value={quality} onChange={setQuality} />
@@ -399,11 +399,11 @@ function Weight({ api, owner, tick }: { api: PersonApi; owner: string; tick: num
       >
         <label className="flex flex-col gap-4">
           <span className="text-small text-ink-2">Weight in kg</span>
-          <input inputMode="decimal" className="min-h-44 w-112 rounded-btn border border-line bg-bg px-8" value={kg} onChange={(e) => setKg(e.target.value)} />
+          <input inputMode="decimal" className="min-h-44 w-112 rounded-btn border border-line bg-bg px-8 type-input" value={kg} onChange={(e) => setKg(e.target.value)} />
         </label>
         <label className="flex flex-col gap-4">
           <span className="text-small text-ink-2">Day</span>
-          <input type="date" max={today} className="min-h-44 rounded-btn border border-line bg-bg px-8" value={day} onChange={(e) => setDay(e.target.value || today)} />
+          <input type="date" max={today} className="min-h-44 rounded-btn border border-line bg-bg px-8 type-input" value={day} onChange={(e) => setDay(e.target.value || today)} />
         </label>
         <Button type="submit" variant="primary" className="min-h-44">
           {day === today ? 'Log today' : `Log for ${dayLabel(day)}`}

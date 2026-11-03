@@ -91,9 +91,9 @@ export function Field({ label, value, onChange, max, multiline = false }: { labe
     <label className="flex flex-col gap-4">
       <span className="text-small text-ink-2">{label}</span>
       {multiline ? (
-        <textarea className="min-h-88 rounded-btn border border-line bg-bg px-8 py-8" maxLength={max} value={value} onChange={(e) => onChange(e.target.value)} />
+        <textarea className="min-h-88 rounded-btn border border-line bg-bg px-8 py-8 type-input" maxLength={max} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <input className="min-h-44 rounded-btn border border-line bg-bg px-8" maxLength={max} value={value} onChange={(e) => onChange(e.target.value)} />
+        <input className="min-h-44 rounded-btn border border-line bg-bg px-8 type-input" maxLength={max} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
     </label>
   );

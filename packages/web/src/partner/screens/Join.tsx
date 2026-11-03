@@ -188,7 +188,7 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
             {line.levels && line.level !== undefined && lowerLevels(line).length + 1 > 1 ? (
               <select
                 aria-label={switchLabel(preview.owner, line.key)}
-                className="min-h-44 rounded-btn border border-line bg-bg px-8"
+                className="min-h-44 rounded-btn border border-line bg-bg px-8 type-input"
                 value={String(line.level)}
                 onChange={(e) => {
                   const picked = line.levels?.find((l) => String(l) === e.target.value);
@@ -215,7 +215,7 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
       <ul className="mt-8 list-disc pl-20 text-small text-ink-2">{copy.smallPrint.map((t) => <li key={t}>{t}</li>)}</ul>
       <label className="mt-24 flex min-h-44 items-center gap-8">
         <span>Your name</span>
-        <input className="min-h-44 flex-1 rounded-btn border border-line bg-bg px-8" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
+        <input className="min-h-44 flex-1 rounded-btn border border-line bg-bg px-8 type-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
       </label>
       <label className="flex min-h-44 items-center gap-8">
         <input type="checkbox" className="size-24" checked={adult} onChange={(e) => setAdult(e.target.checked)} />
@@ -334,7 +334,7 @@ function PasteInvite({ api, onPreview }: { api: PersonApi; onPreview: (code: str
         <label className="flex flex-col gap-8">
           <span>Paste your invite link</span>
           <input
-            className="min-h-44 w-full rounded-btn border border-line bg-bg px-8"
+            className="min-h-44 w-full rounded-btn border border-line bg-bg px-8 type-input"
             value={text}
             inputMode="url"
             autoCapitalize="off"
@@ -375,7 +375,7 @@ function LinkForm({ api, initial, deviceName }: { api: PersonApi; initial: strin
       }}
     >
       <p className="text-ink-2">On a device that is linked already, open Me › Devices › Link another device, then enter the code here.</p>
-      <input aria-label="Link code" className="mt-12 w-full rounded-btn border border-line bg-bg px-8 py-8" value={code} {...error.field} onChange={(e) => setCode(e.target.value)} />
+      <input aria-label="Link code" className="mt-12 w-full rounded-btn border border-line bg-bg px-8 py-8 type-input" value={code} {...error.field} onChange={(e) => setCode(e.target.value)} />
       {error.alert}
       <Button className="mt-12" variant="primary" size="xl" type="submit" disabled={code.trim().length < 16}>
         Link this device

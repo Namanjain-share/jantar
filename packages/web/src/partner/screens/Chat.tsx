@@ -168,7 +168,7 @@ export default function Chat({ me, api, tick }: { me: PersonMe; api: PersonApi; 
               rows={2}
               onChange={(e) => setText(e.target.value)}
               disabled={!ready}
-              className="min-h-44 flex-1 resize-none rounded-btn border border-line bg-bg px-12 py-8 text-row text-ink"
+              className="min-h-44 flex-1 resize-none rounded-btn border border-line bg-bg px-12 py-8 text-ink type-input"
             />
             <Button onClick={() => void send()} disabled={!ready || busy || (!text.trim() && photos.length === 0)}>
               Send

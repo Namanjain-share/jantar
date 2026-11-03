@@ -42,7 +42,7 @@ export interface TodoSheetProps {
   projects?: readonly ProjectView[];
 }
 
-const field = 'min-h-44 rounded-btn border border-line bg-bg px-8';
+const field = 'min-h-44 rounded-btn border border-line bg-bg px-8 type-input';
 
 export function TodoSheet({ t, owner, shared, api, close, run, undo, projects }: TodoSheetProps) {
   const [mode, setMode] = useState<'menu' | 'skip' | 'ask' | 'edit'>('menu');

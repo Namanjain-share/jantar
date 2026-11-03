@@ -26,7 +26,7 @@ import { Field, Sheet, UndoToast, useUndo } from '../ui.js';
 import { TodoRow } from './TodoRow.js';
 import { TodoSheet } from './TodoSheet.js';
 
-const field = 'min-h-44 rounded-btn border border-line bg-bg px-8';
+const field = 'min-h-44 rounded-btn border border-line bg-bg px-8 type-input';
 const TAB_LABEL: Record<TodosTab, string> = { todos: 'To-dos', reminders: 'Reminders', projects: 'Projects' };
 
 /** "2 open · 1 overdue", or "Nothing open". */

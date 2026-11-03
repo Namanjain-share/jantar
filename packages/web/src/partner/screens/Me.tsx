@@ -135,7 +135,7 @@ export function Sharing({ me, api, reload }: { me: PersonMe; api: PersonApi; rel
             {lowerLevels(line).length > 0 ? (
               <select
                 aria-label={switchLabel(me.owner.name, line.key)}
-                className="min-h-44 rounded-btn border border-line bg-bg px-8"
+                className="min-h-44 rounded-btn border border-line bg-bg px-8 type-input"
                 value={String(line.level)}
                 onChange={(e) => {
                   const field = AGREEMENT_FIELDS.find((f) => f.key === line.key);
@@ -291,7 +291,7 @@ function Notifications({ me, api, reload }: { me: PersonMe; api: PersonApi; relo
       <label className="flex min-h-44 items-center justify-between gap-12">
         <span>Lock screen</span>
         <select
-          className="min-h-44 rounded-btn border border-line bg-bg px-8"
+          className="min-h-44 rounded-btn border border-line bg-bg px-8 type-input"
           value={me.person.prefs.lockScreen}
           onChange={(e) => void api.prefs({ lockScreen: e.target.value as 'all' | 'hide_alerts' | 'hide_all' }).then(reload)}
         >
@@ -325,7 +325,7 @@ function P2Prefs({ me, api, reload }: { me: PersonMe; api: PersonApi; reload: ()
   const save = (patch: PersonPrefsPatch) => void api.prefs(patch).then(() => (setError(null), reload()), (e: Error) => setError(e.message));
   const caps = p.alertCaps;
   const row = 'flex min-h-44 items-center justify-between gap-12';
-  const select = 'min-h-44 rounded-btn border border-line bg-bg px-8';
+  const select = 'min-h-44 rounded-btn border border-line bg-bg px-8 type-input';
   const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
   return (
     <div className="mt-12 flex flex-col gap-8">
@@ -436,7 +436,7 @@ function Leave({ me, api, reload }: { me: PersonMe; api: PersonApi; reload: () =
       </label>
       <label className="flex flex-col gap-4">
         <span>3. Type LEAVE to confirm</span>
-        <input aria-label="Type LEAVE" className="rounded-btn border border-line bg-bg px-8 py-8" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        <input aria-label="Type LEAVE" className="rounded-btn border border-line bg-bg px-8 py-8 type-input" value={typed} onChange={(e) => setTyped(e.target.value)} />
       </label>
       {error ? <p role="alert">{error}</p> : null}
       <Button

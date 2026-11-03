@@ -559,7 +559,7 @@ export function AddStepSheet({ open, close, onAdd }: { open: boolean; close: () 
   if (!open) return null;
   const mins = Number(minutes);
   const minsOk = minutes === '' || (Number.isInteger(mins) && mins >= 5 && mins <= 600);
-  const field = 'min-h-44 rounded-btn border border-line bg-bg px-8';
+  const field = 'min-h-44 rounded-btn border border-line bg-bg px-8 type-input';
   return (
     <Sheet open onOpenChange={(o) => !o && close()} title="Add a step">
       <div className="flex flex-col gap-12 pb-24">

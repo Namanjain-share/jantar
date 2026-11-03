@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Button } from '../../ui/kit/Button.js';
 import type { PersonApi } from '../api.js';
 
-const field = 'min-h-44 rounded-btn border border-line bg-bg px-8';
+const field = 'min-h-44 rounded-btn border border-line bg-bg px-8 type-input';
 
 /** What {owner} sees of her food log, in one line (her Today and her food log say it where she logs). */
 export function foodSeesLine(owner: string, level: FoodLevel): string {
