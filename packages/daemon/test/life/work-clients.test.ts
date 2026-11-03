@@ -200,6 +200,17 @@ describe('the log', () => {
     expect(work.logRow(older.id)).toMatchObject({ kind: 'email', body: 'Sent the deck' });
   });
 
+  it('the touch column matches a rebuild: drift is repaired at start', () => {
+    const c = add('Riya Sharma');
+    const d = add('Sam Lee');
+    ok(work.addLog(c.id, { kind: 'call', at: '2026-11-01T09:00:00.000Z' }, PHONE));
+    core.db.prepare('UPDATE work_contacts SET last_touch_at = ? WHERE id = ?').run('2020-01-01T00:00:00.000Z', c.id);
+    core.db.prepare('UPDATE work_contacts SET last_touch_at = ? WHERE id = ?').run('2020-01-01T00:00:00.000Z', d.id);
+    work.start?.();
+    expect(hub(c.id).contact.lastTouchAt).toBe('2026-11-01T09:00:00.000Z');
+    expect(hub(d.id).contact.lastTouchAt).toBeUndefined();
+  });
+
   it("refuses to edit or delete Jantar's own rows (a meeting's link, a stage move)", () => {
     const c = add('Riya Sharma');
     core.db.prepare("INSERT INTO work_log (id, contact_id, meeting_id, at, kind, json) VALUES ('l-m', ?, '01JZZZZZZZZZZZZZZZZZZZZZZW', '2026-11-01T09:00:00.000Z', 'meeting', '{\"auto\":true}')").run(c.id);
