@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.10.2 (unreleased)
+## 0.10.2 (3 November 2026)
 
 - Alerts no longer say **you rejected** for a tool call nobody refused.
   Claude writes the same words when it stops a call (Esc on a running
