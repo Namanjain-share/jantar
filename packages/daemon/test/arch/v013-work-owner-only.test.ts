@@ -13,8 +13,15 @@
  *   (Work calls the Todos module); there is no SQL in search/ at all.
  * - W-T3: nothing of hers (her route files, her event stream, her Chat's
  *   files, the People modules) imports Work, the search or Work's routes.
+ * - W-T4 (O5, O13, O14): a client, a deal or a business only on his own
+ *   todos and projects (refused in her space and in a shared one); no
+ *   statement ever moves a project or a todo out of his space into
+ *   another; every Work module method answers not found for a person; no
+ *   Work code ticks her counters.
  * - W-T5: `work` is not an agreement area.
- * - W-T6 (P1's part): no Work tool in her Chat's list.
+ * - W-T6 (P1's part): no Work tool in her Chat's list; her bundle (the
+ *   partner app's source) imports nothing of Work. The full W-T6 sweep (no
+ *   client words in logs, audit, events or errors) is v013-work-canary.
  * - W-T7: no person route, and none of his `/v1/people/*` routes, takes a
  *   Work field (contactId, dealId, clientId, business, milestones) in its
  *   body or query, at any depth; the base todo and project schemas her
@@ -30,6 +37,10 @@ import { WORK_ROUTES } from '@jantar/protocol/work';
 import { AREA_NAMES, PEOPLE_ROUTES, PERSON_PREFIX, PERSON_ROUTES } from '@jantar/protocol/people';
 import { ALL_ROUTES } from '../../src/api/all-routes.js';
 import { PERSON_CHAT_TOOLS } from '../../src/chat/person-tools.js';
+import type { Actor } from '../../src/contracts.js';
+import { createTestContext, createTestLifeCore } from '../../src/core/testing.js';
+import { LIFE_MODULE_BUILDERS } from '../../src/life/index.js';
+import { makeFakes } from '../api/fakes.js';
 
 const SRC = fileURLToPath(new URL('../../src', import.meta.url));
 function files(dir: string): string[] {
@@ -37,7 +48,7 @@ function files(dir: string): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) out.push(...files(p));
-    else if (name.endsWith('.ts')) out.push(p);
+    else if (name.endsWith('.ts') || name.endsWith('.tsx')) out.push(p);
   }
   return out;
 }
@@ -156,13 +167,115 @@ describe('W-T3: nothing of hers imports Work', () => {
   });
 });
 
+describe('W-T4: Work is his space only, and answers no one else', () => {
+  const HER_ID = '01JZZZZZZZZZZZZZZZZZZZZZZZ';
+  const HER: Actor = { kind: 'person', personId: HER_ID, deviceId: 'd' };
+  const PHONE: Actor = { kind: 'device', deviceId: 'd1', scopes: ['read', 'control'] };
+
+  function build() {
+    const core = createTestLifeCore({ tz: 'UTC', settings: { todos: true, work: true } });
+    core.clock.set('2026-11-03T09:00:00.000Z');
+    const ctx = createTestContext({ clock: core.clock });
+    const f = makeFakes(ctx);
+    const d = { ctx, sessions: f.sessions, usage: f.usage, ccwLegacy: f.ccwLegacy };
+    const todos = LIFE_MODULE_BUILDERS.todos(core, d);
+    const work = LIFE_MODULE_BUILDERS.work(core, d, todos);
+    return { core, todos, work };
+  }
+
+  it('a client, a deal or a business is refused on her todos and projects, and on a shared list', () => {
+    const { core, todos, work } = build();
+    try {
+      const c = work.createClient({ name: 'Acme Studio', kind: 'company' }, PHONE);
+      if (!c.ok) throw new Error(c.reason);
+      for (const space of [HER_ID, 's:01JZZZZZZZZZZZZZZZZZZZZZZY']) {
+        const m = todos.inSpace(space);
+        expect(m.createTodo({ title: 'x', contactId: c.value.id }, HER).ok, space).toBe(false);
+        expect(m.createTodo({ title: 'x', dealId: c.value.id }, HER).ok, space).toBe(false);
+        expect(m.createProject({ name: 'x', clientId: c.value.id }, HER).ok, space).toBe(false);
+        expect(m.createProject({ name: 'x', business: c.value.id }, HER).ok, space).toBe(false);
+        const p = m.createProject({ name: 'plain' }, HER);
+        if (!p.ok) throw new Error(p.reason);
+        expect(m.updateProject(p.value.id, { clientId: c.value.id }, HER).ok, space).toBe(false);
+        expect(m.followUps(null, false)).toEqual([]);
+        expect(m.unlinkClient(c.value.id)).toEqual({ todos: 0, projects: 0 });
+      }
+    } finally {
+      core.close();
+    }
+  });
+
+  it('every Work module method that takes an actor answers not found for her', () => {
+    const { core, work } = build();
+    try {
+      const c = work.createClient({ name: 'Acme Studio', kind: 'company' }, PHONE);
+      if (!c.ok) throw new Error(c.reason);
+      const id = c.value.id;
+      const m = { id: '01JZZZZZZZZZZZZZZZZZZZZZM1', projectId: null, startedAt: '2026-11-03T09:00:00.000Z', people: ['Sam'] };
+      const calls: [string, () => unknown][] = [
+        ['seed', () => work.seed([{ folder: '/synthetic/a', name: 'A' }], HER)],
+        ['search', () => work.search('acme', 5, HER)],
+        ['clients', () => work.clients({ sort: 'name' }, HER)],
+        ['createClient', () => work.createClient({ name: 'X' }, HER)],
+        ['similar', () => work.similar({ name: 'Acme' }, HER)],
+        ['names', () => work.names([id], HER)],
+        ['client', () => work.client(id, HER)],
+        ['clientLog', () => work.clientLog(id, undefined, HER)],
+        ['updateClient', () => work.updateClient(id, { name: 'X' }, HER)],
+        ['removeClient', () => work.removeClient(id, HER)],
+        ['addLog', () => work.addLog(id, { kind: 'note' }, HER)],
+        ['updateLog', () => work.updateLog(id, { body: 'x' }, HER)],
+        ['removeLog', () => work.removeLog(id, HER)],
+        ['projectPart', () => work.projectPart(id, id, HER)],
+        ['setMeetingClients', () => work.setMeetingClients(m, [id], HER)],
+        ['meetingSuggest', () => work.meetingSuggest(m, HER)],
+        ['meetingClientNew', () => work.meetingClientNew(m, { person: 0 }, HER)],
+        ['importPreview', () => work.importPreview({ format: 'csv', text: 'Name\nX\n' }, HER)],
+        ['importRows', () => work.importRows({ previewId: id, rows: [] }, HER)],
+        ['imports', () => work.imports(HER)],
+        ['undoImport', () => work.undoImport(id, HER)],
+        ['exportCsv', () => work.exportCsv(HER)],
+        ['settingsGet', () => work.settingsGet(HER)],
+        ['settingsUpdate', () => work.settingsUpdate({ quietDays: 3 }, HER)],
+      ];
+      for (const [name, call] of calls) expect(call(), name).toEqual({ ok: false, code: 'not_found', reason: 'Not found.' });
+      // Nothing of his changed meanwhile.
+      const still = work.client(id, PHONE);
+      expect(still.ok && still.value.contact.name).toBe('Acme Studio');
+    } finally {
+      core.close();
+    }
+  });
+
+  it('no statement moves a project or a todo out of his space; no Work code ticks her counters', () => {
+    const bad: string[] = [];
+    for (const f of src) {
+      for (const sql of statements(f.text)) {
+        const m = /\bUPDATE\s+(?:projects|todos)\s+SET\s+space\s*=\s*([^,\s]+)/i.exec(sql);
+        if (m && m[1] !== "''") bad.push(`${f.rel}: ${sql.slice(0, 80)}`);
+      }
+    }
+    expect(bad).toEqual([]);
+    for (const f of src.filter((x) => x.rel.startsWith('life/work/'))) expect(/PersonTicks|\.bump\(|life\/people\//.test(f.text), f.rel).toBe(false);
+  });
+});
+
 describe('W-T5 and her Chat', () => {
   it('work is not an agreement area', () => {
     expect(AREA_NAMES as readonly string[]).not.toContain('work');
   });
 
   it('no Work tool is in the list her Chat may ever use', () => {
-    for (const t of PERSON_CHAT_TOOLS) expect(/client|deal|work|project_get|log_add|search/.test(t), t).toBe(false);
+    for (const t of PERSON_CHAT_TOOLS) expect(/client|deal|work|project_get|log_add|followup|search/.test(t), t).toBe(false);
+  });
+
+  it("her bundle (the partner app's source) imports nothing of Work", () => {
+    const WEB = fileURLToPath(new URL('../../../web/src', import.meta.url));
+    const hers = [...files(join(WEB, 'partner')), ...files(join(WEB, 'ui', 'screens', 'people'))].filter((p) => /\.tsx?$/.test(p));
+    expect(hers.length).toBeGreaterThan(0);
+    const bad: string[] = [];
+    for (const p of hers) for (const m of imports(code(p))) if (/protocol\/work|screens\/work|\/work(?:\/|\.js$)/.test(m)) bad.push(`${relative(WEB, p)} -> ${m}`);
+    expect(bad).toEqual([]);
   });
 });
 
