@@ -173,6 +173,8 @@ export async function readEnv(
     maxItems?: number;
     start?: boolean;
     base?: string;
+    /** `life.changed` at most this often (default the service's 2 s; 0: on every change, as it happens). */
+    emitEveryMs?: number;
   } = {},
 ): Promise<ReadEnv> {
   const base = opts.base ?? realpathSync(mkdtempSync(join(tmpdir(), 'jantar-read-')));
@@ -187,7 +189,7 @@ export async function readEnv(
   const intel = new IntelShelfService(
     ctx,
     { files, usage: new FakeUsage(), ccwLegacy: new FakeCcwLegacy() },
-    { watch: false, ...(opts.maxItems ? { maxItems: opts.maxItems } : {}), read: { net: NO_NET, browser: NO_BROWSER, ...opts.read } },
+    { watch: false, ...(opts.maxItems ? { maxItems: opts.maxItems } : {}), ...(opts.emitEveryMs !== undefined ? { emitEveryMs: opts.emitEveryMs } : {}), read: { net: NO_NET, browser: NO_BROWSER, ...opts.read } },
   );
   if (opts.start !== false) await intel.start();
   const file = join(ctx.paths.intelDir, 'captures.jsonl');

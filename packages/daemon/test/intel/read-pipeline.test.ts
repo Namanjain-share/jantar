@@ -221,6 +221,27 @@ describe.skipIf(!HAVE_OPENSSL)('the page tiers', () => {
     expect(sent.text).toMatch(/<caption>[\s\S]*Three ways to cook dal[\s\S]*<\/caption>/);
   });
 
+  it('0.12.2: a read ends only once its item reads so: on every life.changed a saved job\'s item is saved, never still queued', async () => {
+    // The phone loads the jobs and the item again on each life.changed (and the CLI reads the item once the job ends):
+    // whenever a job says saved, the item it opens must too. Each change is told at once here (no 2 s throttle).
+    const e = await env({ emitEveryMs: 0 });
+    const seen: { job: string; item: string | undefined }[] = [];
+    const off = e.ctx.store.subscribe((ev) => {
+      if (ev.type !== 'life.changed') return;
+      for (const j of e.intel.jobs().jobs) if (j.state === 'saved' || j.state === 'failed') seen.push({ job: j.state, item: e.intel.get(j.id)?.read?.state });
+    });
+    e.intel.extNext('ext-1');
+    const id = idOf(await e.intel.read({ text: 'https://instagram.com/reel/AbC123xyz/?igsh=c3ludGhldGlj', depth: 'light' }, { via: 'cli' }));
+    const job = await until(() => e.intel.extNext('ext-1'), 5_000, 'the Chrome lease');
+    const read: PageReadParsed = { finalUrl: 'https://www.instagram.com/reel/AbC123xyz/', title: 'Example Cook on Instagram', meta: [], jsonld: [], text: 'Three ways to cook dal at home', author: 'example_cook', media: [], frames: [] };
+    expect(e.intel.extResult(job.id, 'ext-1', { ok: true, page: read })).toEqual({ ok: true, value: true });
+    await e.idle();
+    off();
+    expect(e.intel.get(`captures:${id}`)?.read).toMatchObject({ state: 'saved', tier: 'chrome', done: 'light' });
+    expect(seen.length, 'the job ended and said so').toBeGreaterThan(0);
+    expect(seen).toEqual(seen.map(() => ({ job: 'saved', item: 'saved' })));
+  });
+
   it('a Chrome read that ended off the post (a login page) is never used', async () => {
     const e = await env();
     e.intel.extNext('ext-1');

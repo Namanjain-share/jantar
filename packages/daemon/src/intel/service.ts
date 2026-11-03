@@ -166,7 +166,10 @@ export class IntelShelfService implements IntelService {
       },
       write: async (line) => {
         await this.store.append([line]);
-        this.kick();
+        // 0.12.2: the shelf reads the line before the queue ends the job (it does once this resolves). A pass
+        // only kicked here left the job saved in the list while the item still read queued until the pass
+        // ran: the phone (and a test) that loaded both between them saw a finished read of an unread item.
+        await this.refresh().catch((e: unknown) => this.ctx.log.error('intel pass failed', { error: e instanceof Error ? e.name : 'error' }));
       },
       failedLine: (job, reason) => failedLineOf(job, reason, ctx.clock.iso()),
       changed: () => this.changed(),

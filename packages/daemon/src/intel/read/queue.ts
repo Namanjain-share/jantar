@@ -64,7 +64,7 @@ export interface QueueDeps {
   log: Logger;
   /** Run one job to its end; answers the item's last line (saved or failed), or null to write nothing. */
   run(job: Job, update: (state: IntelReadState, tier?: IntelTier) => void): Promise<CaptureLine | null>;
-  /** Write a job's last line (the store). */
+  /** Write a job's last line (the store; 0.12.2: and the shelf reads it). The job ends only once this resolves. */
   write(line: CaptureLine): Promise<void>;
   /** The failed line of a job that never ran or was stopped. */
   failedLine(job: Job, reason: string): CaptureLine;
@@ -151,8 +151,9 @@ export class ReadQueue {
     const running = this.running;
     if (running) this.abort(running, 'stopped');
     for (const j of waiting) {
-      this.end(j, 'failed', INTEL_READ_REASONS.stopped);
+      // 0.12.2: its line first, then the end, as every other job: never listed failed while the item reads queued.
       await this.d.write(this.d.failedLine(j, INTEL_READ_REASONS.stopped)).catch((e: unknown) => this.logError(e));
+      this.end(j, 'failed', INTEL_READ_REASONS.stopped);
     }
     if (this.runningDone) {
       let timer: TimerId | undefined;

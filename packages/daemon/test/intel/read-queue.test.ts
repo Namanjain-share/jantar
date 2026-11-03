@@ -29,9 +29,11 @@ function lineOf(job: Job, state: 'saved' | 'failed', reason?: string): CaptureLi
 function setup() {
   const clock = new FakeClock();
   const written: CaptureLine[] = [];
+  /** Each line's job as the list showed it when the line was written (null: not listed). */
+  const listedAtWrite: (string | null)[] = [];
   const ran: string[] = [];
   const pending = new Map<string, (line: CaptureLine | null) => void>();
-  const queue = new ReadQueue({
+  const queue: ReadQueue = new ReadQueue({
     clock,
     log: memoryLogger(),
     run: (job) =>
@@ -40,6 +42,7 @@ function setup() {
         pending.set(job.rid, resolve);
       }),
     write: async (line) => {
+      listedAtWrite.push(queue.list().find((j) => j.id === `captures:${line.id}`)?.state ?? null);
       written.push(line);
     },
     failedLine: (job, reason) => lineOf(job, 'failed', reason),
@@ -53,7 +56,7 @@ function setup() {
     resolve(line(job));
     await until(() => !queue.busy(rid), 2_000, 'the run to end');
   }
-  return { clock, queue, written, ran, pending, settle };
+  return { clock, queue, written, listedAtWrite, ran, pending, settle };
 }
 
 describe('the read queue', () => {
@@ -91,6 +94,28 @@ describe('the read queue', () => {
     await stopping;
     await until(() => t.ran.includes(RID_B), 2_000, 'B to start');
     expect(t.queue.counts()).toEqual({ waiting: 0, running: 1 });
+  });
+
+  it('0.12.2: every job ends after its line is written, the ones stopAll fails too: a list that says failed has the item failed', async () => {
+    const t = setup();
+    t.queue.push(spec(RID_A));
+    t.queue.push(spec(RID_B));
+    await until(() => t.pending.get(RID_A), 2_000, 'A to run');
+    const stopping = t.queue.stopAll();
+    // The running job ends on its abort.
+    t.pending.get(RID_A)?.(null);
+    t.pending.delete(RID_A);
+    await stopping;
+    expect(t.written.map((l) => [l.id, (l.read as { state: string }).state])).toEqual([
+      [RID_B, 'failed'],
+      [RID_A, 'failed'],
+    ]);
+    // When each line was written its job was not yet listed as ended.
+    for (const s of t.listedAtWrite) expect(s === 'saved' || s === 'failed', `listed ${s} before its line was written`).toBe(false);
+    expect(t.queue.list()).toMatchObject([
+      { id: `captures:${RID_A}`, state: 'failed', reason: INTEL_READ_REASONS.stopped },
+      { id: `captures:${RID_B}`, state: 'failed', reason: INTEL_READ_REASONS.stopped },
+    ]);
   });
 
   it("a deleted waiting job gives today's read back", async () => {
