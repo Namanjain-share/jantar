@@ -132,6 +132,16 @@ export function firstStage(cols: readonly WorkStageColumn[]): string | undefined
   return (cols.find((c) => c.kind === 'open' && c.count > 0) ?? cols.find((c) => c.kind === 'open') ?? cols[0])?.id;
 }
 
+/**
+ * Where a strip scrolled `scroll` and `width` wide must scroll to show a chip at `left` … `left + chipWidth`
+ * with `pad` beside it, or null when it shows already (the picked stage's chip, kept in view).
+ */
+export function scrollToShow(scroll: number, width: number, left: number, chipWidth: number, pad = 16): number | null {
+  if (left - pad < scroll) return Math.max(0, left - pad);
+  if (left + chipWidth + pad > scroll + width) return left + chipWidth + pad - width;
+  return null;
+}
+
 /** The cards of each stage, in the stages' order (a card whose stage is gone is left out). */
 export function byStage(cards: readonly WorkDealCard[], cols: readonly Pick<WorkStageColumn, 'id'>[]): Map<string, WorkDealCard[]> {
   const out = new Map<string, WorkDealCard[]>(cols.map((c) => [c.id, []]));

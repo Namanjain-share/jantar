@@ -19,6 +19,7 @@ import {
   nextStepText,
   pct,
   pipelineTotals,
+  scrollToShow,
   showing,
   stageTotals,
   stagesPlan,
@@ -73,6 +74,15 @@ describe('stages and moves', () => {
     expect(firstStage(stageCols())).toBe('new');
     expect(firstStage(stageCols().map((c) => (c.id === 'new' ? { ...c, count: 0 } : c)))).toBe('proposal');
     expect(firstStage(stageCols().map((c) => ({ ...c, count: 0 })))).toBe('new');
+  });
+
+  it("the stage strip follows the picked stage: scrolled to show its chip, or left alone when it shows", () => {
+    // A 390 strip at its start: a chip at 500 (120 wide) needs 246 more; one at 40 shows already.
+    expect(scrollToShow(0, 390, 500, 120)).toBe(246);
+    expect(scrollToShow(0, 390, 40, 120)).toBeNull();
+    // Scrolled past a chip: back to it, never before the start.
+    expect(scrollToShow(300, 390, 120, 100)).toBe(104);
+    expect(scrollToShow(300, 390, 10, 100)).toBe(0);
   });
 
   it('cards by stage, in the stages’ order; a card on a stage that is gone is left out', () => {

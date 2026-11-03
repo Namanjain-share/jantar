@@ -38,7 +38,7 @@
  */
 import { CaretRightIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { lazy, Suspense, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
 import type { ProjectView } from '@jantar/protocol';
 import type { WorkDealCard, WorkDealsResponse, WorkSettings, WorkStageColumn } from '@jantar/protocol/work';
 import { errorText } from '../../../lib/api.js';
@@ -60,7 +60,7 @@ import { clientPath } from './clientModel.js';
 import { DealHub } from './DealHub.js';
 import { moveDeal, useDealMove, type MoveFlow, type StageRef } from './DealMove.js';
 import { DealSheet } from './DealSheet.js';
-import { INSIGHTS_PATH, SHOW_LABEL, byStage, closeText, daysInStageText, dealPath, firstStage, nextStepText, pipelineTotals, showing, stageTotals, valueText } from './dealModel.js';
+import { INSIGHTS_PATH, SHOW_LABEL, byStage, closeText, daysInStageText, dealPath, firstStage, nextStepText, pipelineTotals, scrollToShow, showing, stageTotals, valueText } from './dealModel.js';
 import { FromTag } from './parts.js';
 
 // Each loads on first use: stage editing is rare, and the Log sheet is the clients' chunk.
@@ -370,10 +370,21 @@ interface CardActions {
   client: (c: WorkDealCard) => void;
 }
 
-/** The stages as a strip of chips with their counts (it scrolls sideways on a narrow phone; 44 on touch). */
+/**
+ * The stages as a strip of chips with their counts (it scrolls sideways on a narrow phone; 44 on touch). The
+ * picked stage's chip stays in view: a link to a stage past the strip's edge scrolls it there.
+ */
 function StagePicker({ cols, value, onPick }: { cols: readonly WorkStageColumn[]; value: string | undefined; onPick: (id: string) => void }) {
+  const strip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = strip.current;
+    const chip = box?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!box || !chip) return;
+    const to = scrollToShow(box.scrollLeft, box.clientWidth, chip.offsetLeft, chip.offsetWidth);
+    if (to !== null) box.scrollLeft = to;
+  }, [value]);
   return (
-    <div data-scroll-x role="group" aria-label="Stages" className="no-scrollbar flex gap-8 overflow-x-auto px-16 pb-12">
+    <div ref={strip} data-scroll-x role="group" aria-label="Stages" className="no-scrollbar relative flex gap-8 overflow-x-auto px-16 pb-12">
       {cols.map((c) => (
         <button
           key={c.id}
