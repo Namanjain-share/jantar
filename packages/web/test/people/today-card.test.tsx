@@ -89,7 +89,8 @@ describe('his Today with someone sharing', () => {
     render({ people: true });
     const card = await screen.findByRole('region', { name: 'Accountability partner' });
     expect(card.getAttribute('data-card')).toBe('people');
-    expect(within(card).getByRole('button', { name: /Asha · Low/ })).toBeTruthy();
+    // The header names the place; the row names the space only when he gave it a name of his own.
+    expect(within(card).getByRole('button').textContent).toBe('Asha · Low');
     expect(within(card).getByRole('link', { name: 'Open Accountability partner' }).getAttribute('href')).toBe('/people');
     await screen.findByRole('region', { name: 'Due' });
     expect(document.querySelectorAll('[data-card]')[0]?.getAttribute('data-card')).toBe('people');

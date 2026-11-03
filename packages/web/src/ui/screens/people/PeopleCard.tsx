@@ -59,15 +59,19 @@ export function usePeopleRows(client: PeopleClient = peopleClient()): PeopleRow[
  * Today tab. On a phone (or a narrow pane) under Today's title; on a wide one (0.12) the rows of Today's
  * Accountability partner card.
  */
-export function PeopleRows({ rows }: { rows: readonly PeopleRow[] }) {
+export function PeopleRows({ rows, card = false }: { rows: readonly PeopleRow[]; card?: boolean }) {
   const navigate = useNavigate();
   return (
     <ul aria-label={PEOPLE_LABEL}>
       {rows.map((r) => (
         <li key={r.id} className="border-b border-line">
           <button type="button" className="flex min-h-48 w-full flex-col items-start justify-center px-16 py-4 text-left type-row text-ink hover:bg-hover" onClick={() => navigate(`/people/${r.id}?tab=today`)}>
-            {/* The space's name with them (his label), over the line. */}
-            <span className="break-words type-small text-ink-2">{r.label}</span>{' '}
+            {/* The space's name with them (his label), over the line; in the card, only a name of his own (its header says the default). */}
+            {card && r.label === PEOPLE_LABEL ? null : (
+              <>
+                <span className="break-words type-small text-ink-2">{r.label}</span>{' '}
+              </>
+            )}
             <span className="break-words">{peopleLine(r.today)}</span>
           </button>
         </li>

@@ -299,7 +299,7 @@ export function Today({ dose }: TodayProps) {
 
   /** 0.12: the Accountability partner card, while someone shares with him. */
   const peoplePart = (): Part[] =>
-    people.length ? [{ id: 'people', open: { href: '/people', label: PEOPLE_SHORT_LABEL, name: `Open ${PEOPLE_LABEL}` }, body: <PeopleRows rows={people} /> }] : [];
+    people.length ? [{ id: 'people', open: { href: '/people', label: PEOPLE_SHORT_LABEL, name: `Open ${PEOPLE_LABEL}` }, body: <PeopleRows rows={people} card /> }] : [];
 
   const claude = (): Part => {
     if (!cards)
