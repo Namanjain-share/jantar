@@ -20,7 +20,7 @@ daemon migrates `config.json` and its databases on start (moving settings
 to version 2 in v0.4 kept the old file as `config.json.v1`). The
 [changelog](../CHANGELOG.md) says what changed in each version.
 
-### 0.12.0: Life's third schema change (People)
+### 0.11.0: Life's third schema change (People)
 
 Before moving life.db to schema 4 the daemon copies it to
 `backups/life-pre-<version>.db`. Schema 4 adds a `space` to every Life

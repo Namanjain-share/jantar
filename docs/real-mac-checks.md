@@ -429,7 +429,7 @@ agents never drive it.
 | R-C6 | Teams v2 in Chrome on the Mac: does a real **Cmd+Shift+A** toggle captions, or open Chrome's tab search? | whether the docs name the shortcut again |
 | R-C7 | Teams v2 signed in: is Teams' own **Automatically turn on live captions** in the captions pane's settings, and does it work in the web client? | a way that needs no clicks from Jantar |
 
-### People (v0.12, P1)
+### People (v0.11, P1)
 
 On real devices, with a second hostname behind its own Access app:
 
@@ -443,7 +443,7 @@ On real devices, with a second hostname behind its own Access app:
   open `wss://<his host>/v1/events` or to POST to an owner route.
 - With Tailscale, a shared-in user reaching only the People port.
 
-### People (v0.12, P2)
+### People (v0.11, P2)
 
 On the same two phones (owner and partner):
 
@@ -461,7 +461,7 @@ On the same two phones (owner and partner):
   phone, and "Asha sent the evening review" on the owner's phone with no
   note text.
 
-### People (v0.12, P3)
+### People (v0.11, P3)
 
 On the same two phones (owner and partner):
 
@@ -475,7 +475,7 @@ On the same two phones (owner and partner):
   shows it, and the stored file has no GPS (check it with `sips -g all` on
   the copy under the chat folder).
 
-### People (v0.12, P4)
+### People (v0.11, P4)
 
 - A café added on the partner's phone shows on the owner's Cafés within a
   tick, tagged shared, and the reverse.

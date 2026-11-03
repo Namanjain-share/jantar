@@ -92,7 +92,7 @@ Turn it off with `jantar notify urgent off`; such asks then get the plain
 "needs you" push. The daemon remembers which asks it pushed only while it
 runs: restarted during a countdown, it may push that ask once more.
 
-## People alerts (v0.12)
+## People alerts (v0.11)
 
 Alerts between you and a partner (People) are separate from session alerts:
 they live on the People pages, never on your Alerts screen, and travel only

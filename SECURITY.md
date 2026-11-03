@@ -2048,7 +2048,7 @@ New folder, a name, then Start a session here.
   that Jantar made it is no reason to trust what is in it by the time a
   session starts.
 
-## v0.12: People
+## v0.11: People
 
 People (off by default) lets the owner share a space with one other person.
 It adds a new asset: **another person's Life data, health data included**.

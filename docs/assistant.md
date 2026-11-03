@@ -170,7 +170,7 @@ before any call), tools called that were never given (refused), a flood
 of writes (capped), a photo, a slow answer by voice, and a marker planted
 in your data that must never reach a log, an event or an audit row.
 
-## A partner's thread (People, v0.12)
+## A partner's thread (People, v0.11)
 
 With People on, a partner has their own thread in the same chat.db, apart
 by construction: every turn, change, card and photo row carries its thread

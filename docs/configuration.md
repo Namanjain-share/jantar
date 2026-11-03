@@ -192,7 +192,7 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 | `autoswitch` | the ceilings Jantar shows (`ceiling` 97 %, `weekly_ceiling` 95 %) and the hold list; Jantar itself does not switch accounts | the Mac, or an admin device |
 | `notify`, `usage` | push bodies and kinds, a mute, and `urgent` (the Answer soon push, on); the cswap poller (`auto`: only while the legacy ccw tool's bot is not running) | the Mac, or an admin device |
 
-### People (v0.12)
+### People (v0.11)
 
 | Setting | Default | What it does |
 | --- | --- | --- |

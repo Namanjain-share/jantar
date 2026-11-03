@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.12.0 (unreleased)
+## 0.11.0 (unreleased)
 
 **People** (off by default): share a space on your Jantar with one other
 person, on their own hostname, with an agreement they read and accept.
