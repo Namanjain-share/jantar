@@ -205,7 +205,7 @@ hooks' decide, files, uploads or settings' write side
 or the file exists (refused, never reset), fails any turn a restart left
 unfinished, and sweeps every hour. Each message is one run of the shared
 runner in tools mode in `<state dir>/chat/run/<rid>` (0700, removed when
-the run ends) beside a copy of its prompt (`assets/chat/chat-v1.md`) and
+the run ends) beside a copy of its prompt (`assets/chat/chat-v2.md` since v0.13) and
 its `mcp.json`, with the dispatcher's socket in the run dir; `stop()` and
 the switch going off abort the run and cancel the queue.
 

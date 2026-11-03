@@ -114,7 +114,7 @@ describe('a turn through the fake claude, the bridge and the dispatcher', () => 
     expect(after.ok && after.value.places[0]?.stars).toBeUndefined();
     expect(readdirSync(join(ctx.paths.chatDir, 'run'))).toEqual([]);
     expect(readdirSync(ctx.paths.runDir).filter((n) => n.startsWith('chat-'))).toEqual([]);
-    expect(runAudits().at(-1)?.params).toMatchObject({ turnId: t.id, via: 'phone', outcome: 'ok', writes: 3, cards: 0, refused: 0, tainted: false, promptVersion: 'v1' });
+    expect(runAudits().at(-1)?.params).toMatchObject({ turnId: t.id, via: 'phone', outcome: 'ok', writes: 3, cards: 0, refused: 0, tainted: false, promptVersion: 'v2' });
   });
 
   it('chat-read reads across modules; the run had no built-in tool and only this turn\'s tools', async () => {

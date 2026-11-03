@@ -45,6 +45,10 @@ import {
   SnoozePresetSchema,
   TodoBodySchema,
   TodoPatchSchema,
+  TodoTitleSchema,
+  DueSchema,
+  LongNotesSchema,
+  TodoPrioritySchema,
   WeightBodySchema,
   type ChatModule,
   type Dish,
@@ -52,8 +56,20 @@ import {
   type FoodTargetsBody,
   type PostGoal,
 } from '@jantar/protocol';
+import {
+  ContactNameSchema,
+  ContactPhoneValueSchema,
+  ContactEmailSchema,
+  ContactKindSchema,
+  ContactStateSchema,
+  ContactTagSchema,
+  WORK_LIMITS,
+  WorkClientPatchSchema,
+  WorkLogAddBodySchema,
+  WorkLogPatchSchema,
+} from '@jantar/protocol/work';
 import type { Actor, LifeResult } from '../contracts.js';
-import { current, findMedicine, findMeeting, findPlace, findTodo, fromMeeting, labelOf, medicineHasDoses, type ItemRef } from './items.js';
+import { clientSource, current, findClient, findLog, findMedicine, findMeeting, findPlace, findTodo, fromMeeting, labelOf, medicineHasDoses, type ItemRef } from './items.js';
 import { applyPersonWrite, describePersonWrite, stillPerson, undoPerson, type PersonStep } from './person-writes.js';
 import { ownerAuthored } from './person-reads.js';
 import { PERSON_WRITE_TOOLS, isPersonWriteTool, type PersonWriteTool } from './person-tools.js';
@@ -82,7 +98,20 @@ export const ACTION_SENTENCES = {
   alreadyOpen: 'That todo is already open.',
   hasVisits: 'That café has visits now. Delete it in its own screen instead.',
   hasDoses: 'That medicine has doses logged now. Delete it in its own screen instead.',
+  clientUsed: 'That client has a log, follow-ups or changes now. Delete it in its own screen instead.',
 } as const;
+
+/**
+ * v0.13 Work: a client changed, logged or followed up since it was added (its add's Undo then refuses), or a
+ * company with people other than those the same Undo removes (`going`).
+ */
+function clientUsedSince(d: ChatDeps, id: string, going: ReadonlySet<string>): boolean {
+  const c = findClient(d, id);
+  if (!c) return false;
+  if (c.updatedAt !== c.createdAt) return true;
+  const hub = d.life.work.client(id, { kind: 'system' });
+  return !hub.ok || hub.value.log.length > 0 || hub.value.followUps.length > 0 || (hub.value.people ?? []).some((p) => !going.has(p.id));
+}
 
 const Id = LifeIdSchema;
 const Rating = z.number().int().min(1).max(5);
@@ -136,6 +165,37 @@ export const WRITE_INPUTS = {
   meeting_edit: z.strictObject({ id: Id, ...MeetingPatchSchema.shape }),
   meeting_item_todo: z.strictObject({ id: Id, n: z.number().int().min(0).max(29) }),
   intel_save: z.strictObject({ url: z.url({ protocol: /^https?$/ }).max(2000), depth: IntelDepthSchema.optional() }),
+  // v0.13 Work (his thread only; her Chat never lists them): a client, its log and a follow-up. Never a folder,
+  // a link, an import, a merge or anything sent to anyone. A follow-up is its own tool, not todo_add with a
+  // client: her Chat shares todo_add's schema, which must never carry a Work field (O13).
+  client_add: z.strictObject({
+    name: ContactNameSchema,
+    kind: ContactKindSchema.optional(),
+    state: ContactStateSchema.optional(),
+    /** A person's company by name (made, or the one with that name). */
+    company: ContactNameSchema.optional(),
+    phone: ContactPhoneValueSchema.optional(),
+    email: ContactEmailSchema.optional(),
+    title: z.string().trim().min(1).max(60).optional(),
+    tags: z.array(ContactTagSchema).max(WORK_LIMITS.tags).optional(),
+    notes: LongNotesSchema.optional(),
+    source: z.string().trim().min(1).max(60).optional(),
+  }),
+  client_edit: z.strictObject({ id: Id, ...WorkClientPatchSchema.omit({ folder: true, links: true }).shape }),
+  log_add: z.strictObject({
+    clientId: Id,
+    ...WorkLogAddBodySchema.omit({ projectId: true, next: true }).shape,
+    next: z.strictObject({ title: TodoTitleSchema, due: DueSchema }).optional(),
+  }),
+  followup_add: z.strictObject({
+    clientId: Id,
+    title: TodoTitleSchema,
+    due: DueSchema.optional(),
+    notes: LongNotesSchema.optional(),
+    priority: TodoPrioritySchema.optional(),
+    projectId: Id.optional(),
+    dealId: Id.optional(),
+  }),
 } as const;
 export type WriteTool = keyof typeof WRITE_INPUTS;
 export const WRITE_TOOLS = Object.keys(WRITE_INPUTS) as WriteTool[];
@@ -172,6 +232,10 @@ export const WRITE_MODULE: Readonly<Record<WriteTool, ChatModule>> = {
   meeting_edit: 'meetings',
   meeting_item_todo: 'meetings',
   intel_save: 'intel',
+  client_add: 'work',
+  client_edit: 'work',
+  log_add: 'work',
+  followup_add: 'work',
 };
 
 /**
@@ -205,7 +269,7 @@ export interface Journal {
  * action item, a todo made from one) or a saved page's title. The run's answer frames such a label as data
  * and taints the message (B9).
  */
-export type LabelSource = 'meeting' | 'intel' | 'owner' | 'partner';
+export type LabelSource = 'meeting' | 'intel' | 'owner' | 'partner' | 'import';
 
 export interface Applied {
   change: ChangeJson;
@@ -277,6 +341,10 @@ function patchItem(d: ChatDeps, ref: ItemRef, patch: Record<string, unknown>, ac
       return parse(MeetingPatchSchema, (p) => d.meetings.library.update(ref.id, p, actor));
     case 'intel':
       return refuse('invalid_request', ACTION_SENTENCES.bad);
+    case 'client':
+      return parse(WorkClientPatchSchema, (p) => d.life.work.updateClient(ref.id, p, actor));
+    case 'log':
+      return parse(WorkLogPatchSchema, (p) => d.life.work.updateLog(ref.id, p, actor));
   }
 }
 
@@ -305,6 +373,12 @@ async function removeItem(d: ChatDeps, ref: ItemRef, actor: Actor): Promise<Life
       return d.meetings.library.remove(ref.id, actor);
     case 'intel':
       return d.intel.remove(ref.id);
+    case 'client': {
+      const r = d.life.work.removeClient(ref.id, actor);
+      return r.ok ? { ok: true, value: true } : r;
+    }
+    case 'log':
+      return d.life.work.removeLog(ref.id, actor);
   }
 }
 
@@ -378,6 +452,16 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool | PersonWriteTool,
 /** A meeting's own write names the meeting (and an action item); a todo's names the todo, a meeting's words when made from one. */
 function writeLabelSource(d: ChatDeps, tool: WriteTool, ref: string): LabelSource | null {
   if (tool === 'meeting_edit' || tool === 'meeting_item_todo') return 'meeting';
+  // v0.13 Work: a label naming a client whose words came from an import or a meeting carries them.
+  if (tool === 'client_add' || tool === 'client_edit') return clientSource(findClient(d, ref));
+  if (tool === 'log_add') {
+    const r = findLog(d, ref);
+    return r?.contactId ? clientSource(findClient(d, r.contactId)) : null;
+  }
+  if (tool === 'followup_add') {
+    const t = findTodo(d, ref);
+    return t?.contactId ? clientSource(findClient(d, t.contactId)) : null;
+  }
   if (tool === 'todo_add' || tool === 'todo_edit' || tool === 'todo_done' || tool === 'todo_snooze') {
     const t = findTodo(d, ref);
     if (t && fromMeeting(t)) return 'meeting';
@@ -624,6 +708,38 @@ async function applyOne(d: ChatDeps, tool: WriteTool, raw: unknown, actor: Actor
       const label = cut(`Todo from ${line(m.value.meeting.name)} · ${line(item.title)}`, 160);
       return { ok: true, value: { change: { module, op: 'todo', ref: i.id, label, undoable: true }, journal: { steps: [{ do: 'meetingTodo', id: i.id, n: i.n }] } } };
     }
+    case 'client_add': {
+      const { company, ...rest } = WRITE_INPUTS.client_add.parse(raw);
+      const r = d.life.work.createClient({ ...rest, ...(company && rest.kind !== 'company' ? { companyName: company } : {}) }, actor);
+      if (!r.ok) return r;
+      const ref: ItemRef = { kind: 'client', id: r.value.id };
+      // Undo takes back a company this add made too (the same instant), after the client.
+      const steps: Step[] = [];
+      const co = r.value.companyId ? findClient(d, r.value.companyId) : null;
+      const me = findClient(d, r.value.id);
+      if (co && me && co.createdAt === me.createdAt) steps.push({ do: 'remove', item: { kind: 'client', id: co.id } });
+      steps.push({ do: 'remove', item: ref });
+      return { ok: true, value: { change: { module, op: 'add', ref: ref.id, label: labelOf(d, ref), undoable: true }, journal: { steps } } };
+    }
+    case 'client_edit': {
+      const i = WRITE_INPUTS.client_edit.parse(raw);
+      return edit(d, { kind: 'client', id: i.id }, split(i, 'id'), actor, module);
+    }
+    case 'log_add': {
+      const { clientId, ...body } = WRITE_INPUTS.log_add.parse(raw);
+      const r = d.life.work.addLog(clientId, body, actor);
+      if (!r.ok) return r;
+      const ref: ItemRef = { kind: 'log', id: r.value.id };
+      // One journal entry for the row and its next step: Undo removes both (the todo first).
+      const steps: Step[] = [{ do: 'remove', item: ref }];
+      if (r.value.todoId) steps.push({ do: 'remove', item: { kind: 'todo', id: r.value.todoId } });
+      const next = r.value.todoId ? labelOf(d, { kind: 'todo', id: r.value.todoId }) : '';
+      return { ok: true, value: { change: { module, op: 'log', ref: ref.id, label: cut([labelOf(d, ref), next].filter(Boolean).join(' · next: '), 160), undoable: true }, journal: { steps } } };
+    }
+    case 'followup_add': {
+      const { clientId, ...t } = WRITE_INPUTS.followup_add.parse(raw);
+      return added(d, life.todos.createTodo({ ...t, contactId: clientId }, actor), (id) => ({ kind: 'todo', id }), module);
+    }
     case 'intel_save': {
       const i = WRITE_INPUTS.intel_save.parse(raw);
       const r = await d.intel.read({ text: i.url, ...(i.depth ? { depth: i.depth } : {}) }, { via: 'chat' });
@@ -638,7 +754,7 @@ async function applyOne(d: ChatDeps, tool: WriteTool, raw: unknown, actor: Actor
 }
 
 /** Whether step `s` may run: Chat's value still holds (else 409), its item is there (else 404); null when it may. */
-function stillChats(d: ChatDeps, s: Step): Refusal | null {
+function stillChats(d: ChatDeps, s: Step, going: ReadonlySet<string> = new Set()): Refusal | null {
   const changed = refuse('conflict', ACTION_SENTENCES.changed);
   switch (s.do) {
     case 'patch': {
@@ -649,6 +765,8 @@ function stillChats(d: ChatDeps, s: Step): Refusal | null {
     case 'remove': {
       // An add's Undo never takes what the user added since with it: a café's visits, a medicine's doses.
       if (s.item.kind === 'medicine') return medicineHasDoses(d, s.item.id) ? refuse('conflict', ACTION_SENTENCES.hasDoses) : null;
+      // v0.13: an added client's Undo never takes what he logged, followed up or changed since.
+      if (s.item.kind === 'client') return clientUsedSince(d, s.item.id, going) ? refuse('conflict', ACTION_SENTENCES.clientUsed) : null;
       if (s.item.kind !== 'place') return null;
       const p = findPlace(d, s.item.id);
       return p && p.visits.count > 0 ? refuse('conflict', ACTION_SENTENCES.hasVisits) : null;
@@ -689,8 +807,10 @@ function stillChats(d: ChatDeps, s: Step): Refusal | null {
 
 /** Undo a journal as `actor`: every step checked first (409 when changed since), then the steps last first. */
 export async function undoJournal(d: ChatDeps, journal: Journal, actor: Actor): Promise<LifeResult> {
+  // v0.13: the clients this Undo removes (a client and the company its add made).
+  const going = new Set(journal.steps.flatMap((s) => (s.do === 'remove' && s.item.kind === 'client' ? [s.item.id] : [])));
   for (const s of journal.steps) {
-    const no = stillChats(d, s);
+    const no = stillChats(d, s, going);
     if (no) return no;
   }
   for (const s of [...journal.steps].reverse()) {
@@ -737,7 +857,7 @@ async function undoStep(d: ChatDeps, s: Step, actor: Actor): Promise<LifeResult>
 
 // ------------------------------------------------------------------ cards: deletes and actions
 
-export const DELETE_KINDS = ['todo', 'project', 'medicine', 'dose', 'meal', 'saved_food', 'weight', 'place', 'visit', 'dish', 'money', 'budget', 'bill', 'post', 'meeting', 'meeting_todo', 'intel'] as const;
+export const DELETE_KINDS = ['todo', 'project', 'medicine', 'dose', 'meal', 'saved_food', 'weight', 'place', 'visit', 'dish', 'money', 'budget', 'bill', 'post', 'meeting', 'meeting_todo', 'intel', 'client', 'log'] as const;
 export type DeleteKind = (typeof DELETE_KINDS)[number];
 export const ACTION_KINDS = ['stop_medicine', 'summarize_meeting', 'reread_link'] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
@@ -760,6 +880,8 @@ export const DELETE_MODULE: Readonly<Record<DeleteKind, ChatModule>> = {
   meeting: 'meetings',
   meeting_todo: 'meetings',
   intel: 'intel',
+  client: 'work',
+  log: 'work',
 };
 export const ACTION_MODULE: Readonly<Record<ActionKind, ChatModule>> = { stop_medicine: 'medicines', summarize_meeting: 'meetings', reread_link: 'intel' };
 
@@ -868,6 +990,18 @@ export function describeDelete(d: ChatDeps, a: Extract<CardAction, { t: 'delete'
       const i = d.intel.get(a.id);
       return i ? out(`Delete ${q(i.title)} from the Intel shelf?`, a.id, 'intel') : gone;
     }
+    case 'client': {
+      const c = findClient(d, a.id);
+      if (!c) return gone;
+      return out(`Delete ${c.kind === 'company' ? 'company' : 'client'} ${q(c.name)} with its log? Its todos and projects stay.`, a.id, clientSource(c) ?? undefined);
+    }
+    case 'log': {
+      const r = findLog(d, a.id);
+      // Only his own rows: a meeting's link is unlinked on the meeting's page; a stage move goes with its deal.
+      if (!r || r.meetingId || r.kind === 'stage' || r.kind === 'created') return gone;
+      const c = r.contactId ? findClient(d, r.contactId) : null;
+      return out(`Delete the ${r.kind} logged on ${r.at.slice(0, 10)}${c ? ` with ${q(c.name)}` : ''}?`, a.id, clientSource(c) ?? undefined);
+    }
   }
 }
 
@@ -951,6 +1085,12 @@ export async function runCardAction(d: ChatDeps, a: Exclude<CardAction, { t: 'wr
     }
     case 'intel':
       return d.intel.remove(a.id);
+    case 'client': {
+      const r = d.life.work.removeClient(a.id, actor);
+      return r.ok ? { ok: true, value: true } : r;
+    }
+    case 'log':
+      return d.life.work.removeLog(a.id, actor);
   }
 }
 
@@ -988,6 +1128,11 @@ function writeTarget(tool: WriteTool, input: Record<string, unknown>): ItemRef |
     case 'meeting_edit':
     case 'meeting_item_todo':
       return { kind: 'meeting', id };
+    case 'client_edit':
+      return { kind: 'client', id };
+    case 'log_add':
+    case 'followup_add':
+      return { kind: 'client', id: String(input.clientId ?? '') };
     default:
       return null;
   }
@@ -1029,6 +1174,8 @@ export function describeWrite(d: ChatDeps, tool: WriteTool | PersonWriteTool, in
     dish_set: `Set dish ${s('name')} at ${name}${changes ? `: ${changes}` : ''}`,
     visit_log: `Log a visit to ${name}${changes ? `: ${changes}` : ''}`,
     meeting_item_todo: `Add action item ${typeof input.n === 'number' ? input.n : ''} of ${name} to its todos`,
+    log_add: `Log a ${s('kind') || 'note'} with ${name}${changes ? `: ${changes}` : ''}`,
+    followup_add: `Add a follow-up with ${name}: ${s('title')}`,
   };
   if (target && named[tool]) return cut(`${named[tool]}?`, 200);
   if (target) return cut(`Change ${name}: ${changes || 'nothing'}?`, 200);
@@ -1042,6 +1189,7 @@ export function describeWrite(d: ChatDeps, tool: WriteTool | PersonWriteTool, in
     bill_add: `Add bill ${s('name')}`,
     post_add: `Plan a ${s('kind') || 'post'}${s('title') ? ` ${s('title')}` : ''}`,
     intel_save: 'Save a link to Intel',
+    client_add: `Add ${input.kind === 'company' ? 'company' : 'client'} ${s('name')}`,
     weight_set: `Set the weight of ${s('day')} to ${typeof input.kg === 'number' ? input.kg : ''} kg`,
     food_targets_set: `Set the food targets: ${changes}`,
     budget_set: `Set the budget for ${s('category')} to ${typeof input.amount === 'number' ? input.amount / 100 : ''}`,

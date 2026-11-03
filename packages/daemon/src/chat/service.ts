@@ -86,7 +86,7 @@ import { countSentence, cut, line, replyText, speakable } from './text.js';
 import { audit, partOn, recordChange, toolsFor, TurnTools } from './tools.js';
 import type { ChatDeps, ChatPart, ChatWriteLimiter } from './types.js';
 
-export const CHAT_PROMPT_VERSION = 'v1';
+export const CHAT_PROMPT_VERSION = 'v2';
 export const CHAT_PROMPT_ASSET = `chat/chat-${CHAT_PROMPT_VERSION}.md`;
 /** v0.11 People (P3, spec 7.4): her run's prompt. */
 export const PERSON_CHAT_PROMPT_ASSET = `chat/person-${CHAT_PROMPT_VERSION}.md`;
@@ -1193,6 +1193,7 @@ function onParts(s: ReturnType<DaemonContext['settings']['get']>, d: ChatDeps): 
     ['posts', 'posts'],
     ['intel', 'the Intel shelf'],
     ['meetings', 'meetings'],
+    ['work', 'clients and companies, their log and follow-ups (Work)'],
     ['sessions', 'Claude Code sessions, waiting prompts and usage (read only)'],
   ];
   return names.filter(([p]) => partOn(s, d, p)).map(([, n]) => n);

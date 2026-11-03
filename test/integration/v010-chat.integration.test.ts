@@ -132,7 +132,7 @@ describe('v0.10 Chat through jantard: the phone, the Siri door, the fake claude 
     );
   }
   const lastRun = async () => (await chatRuns(d.home)).at(-1);
-  const chatClaudeCalls = async () => (await claudeCalls(d.home)).filter((c) => c.args.some((a) => a.endsWith('chat-v1.md')));
+  const chatClaudeCalls = async () => (await claudeCalls(d.home)).filter((c) => c.args.some((a) => a.endsWith('chat-v2.md')));
   const todoTitles = async () => (await ok<TodosResponse>('GET', '/v1/todos')).todos.map((t) => t.title);
 
   beforeAll(async () => {

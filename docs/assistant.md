@@ -210,7 +210,7 @@ other thread is 404. Clear clears only the caller's thread.
   account, Intel, meeting, money, post, assigning or journal tool. Their run
   gets deps that hold their space alone: every other module is denied, so
   a tool listed by mistake fails closed.
-- **Prompt and reach.** Their run uses `assets/chat/person-v1.md`; its
+- **Prompt and reach.** Their run uses `assets/chat/person-v2.md`; its
   `<reach>` block is a fixed list (never your switches, currency or
   categories), with your name and whether you can read the thread. History
   comes from their thread only. The run keeps every isolation flag yours

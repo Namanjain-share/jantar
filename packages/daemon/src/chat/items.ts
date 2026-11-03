@@ -19,12 +19,13 @@ import {
   type Todo,
 } from '@jantar/protocol';
 import { shiftDay, shiftMonths } from '@jantar/life-core';
+import type { Contact, WorkLogRow } from '@jantar/protocol/work';
 import { MEETING_TODO_NOTES_START } from '../meetings/common.js';
 import { cut, line } from './text.js';
 import type { ChatDeps } from './types.js';
 
-/** The kinds of item a change or a card points at. */
-export type ItemKind = 'todo' | 'project' | 'medicine' | 'meal' | 'place' | 'visit' | 'money' | 'bill' | 'post' | 'meeting' | 'intel';
+/** The kinds of item a change or a card points at. v0.13: a Work client and one of his log rows. */
+export type ItemKind = 'todo' | 'project' | 'medicine' | 'meal' | 'place' | 'visit' | 'money' | 'bill' | 'post' | 'meeting' | 'intel' | 'client' | 'log';
 
 /** One item: its id, and where it lives when that is needed to find it (a visit's café, a meal's day, an entry's day). */
 export interface ItemRef {
@@ -129,6 +130,29 @@ export function findPost(d: ChatDeps, id: string): Post | null {
   return null;
 }
 
+/** v0.13 Work: one of his clients as stored, or null (life.db closed, Work's module answers nothing). */
+export function findClient(d: ChatDeps, id: string): Contact | null {
+  try {
+    return d.life.work.contact(id);
+  } catch {
+    return null;
+  }
+}
+
+/** v0.13 Work: one of his log rows, or null. */
+export function findLog(d: ChatDeps, id: string): WorkLogRow | null {
+  try {
+    return d.life.work.logRow(id);
+  } catch {
+    return null;
+  }
+}
+
+/** v0.13 Work: whose words a client's are when they aren't his (an import, a meeting's name), else null. */
+export function clientSource(c: Pick<Contact, 'from'> | null | undefined): 'import' | 'meeting' | null {
+  return c?.from ?? null;
+}
+
 export function findMeeting(d: ChatDeps, id: string): Meeting | null {
   const r = d.meetings.library.get(id);
   return r.ok ? r.value.meeting : null;
@@ -162,6 +186,14 @@ export function current(d: ChatDeps, ref: ItemRef): Record<string, unknown> | nu
     case 'intel': {
       const i = d.intel.get(ref.id);
       return i ? { ...i } : null;
+    }
+    case 'client': {
+      const c = findClient(d, ref.id);
+      return c ? { ...c } : null;
+    }
+    case 'log': {
+      const r = findLog(d, ref.id);
+      return r ? { ...r } : null;
     }
   }
 }
@@ -227,5 +259,17 @@ export function labelOf(d: ChatDeps, ref: ItemRef, fallback = ''): string {
       const i = d.intel.get(ref.id);
       return i ? parts('Intel', name(i.title)) : fallback;
     }
+    case 'client': {
+      const c = findClient(d, ref.id);
+      return c ? parts(c.kind === 'company' ? 'Company' : 'Client', name(c.name), c.state !== 'lead' && c.state) : fallback;
+    }
+    case 'log': {
+      const r = findLog(d, ref.id);
+      const c = r?.contactId ? findClient(d, r.contactId) : null;
+      return r ? parts(LOG_LABEL[r.kind] ?? 'Log', c ? name(c.name) : '', r.at.slice(0, 10)) : fallback;
+    }
   }
 }
+
+/** A log row's kind as a label says it. */
+const LOG_LABEL: Readonly<Record<string, string>> = { call: 'Call', meeting: 'Meeting', email: 'Email', message: 'Message', note: 'Note', stage: 'Stage', created: 'Added', followup: 'Follow-up' };
