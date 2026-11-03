@@ -13,8 +13,11 @@
  *
  * Copy writes to the clipboard on the user's tap; Open is a new tab with no
  * opener and no referrer. Jantar never posts anything anywhere.
+ *
+ * 0.11: `current` ticks the row of the post open beside the list.
  */
 import { CheckIcon, MinusIcon, SquareIcon } from '@phosphor-icons/react';
+import clsx from 'clsx';
 import { POST_LINK_MAX, type Post } from '@jantar/protocol';
 import { Button, buttonClass } from '../../../kit/Button.js';
 import { IconButton } from '../../../kit/IconButton.js';
@@ -28,12 +31,12 @@ import type { PostActions } from './Posts.js';
 const COPY = 'Copy';
 
 /** Copy `value` on a tap: "Copied" or "Could not copy" for 2 s. `name` says what it copies ("Copy the text"). */
-export function CopyButton({ value, name, className }: { value: string | undefined; name: string; className?: string }) {
+export function CopyButton({ value, name, className, primary = false }: { value: string | undefined; name: string; className?: string; primary?: boolean }) {
   const [said, say] = useFlash(COPY);
   return (
     <Button
-      variant="text"
-      size="sm"
+      variant={primary ? 'primary' : 'text'}
+      size={primary ? 'md' : 'sm'}
       className={className}
       disabled={!value}
       aria-label={said === COPY ? name : said}
@@ -58,15 +61,17 @@ export interface PostRowProps {
   offline: boolean;
   actions: PostActions;
   onOpen: (post: Post) => void;
+  /** 0.11: the post open beside the list. */
+  current?: boolean;
 }
 
-export function PostRow({ post, group, today, offline, actions, onOpen }: PostRowProps) {
+export function PostRow({ post, group, today, offline, actions, onOpen, current = false }: PostRowProps) {
   const label = postLabel(post);
   const now = dueNow(post, today);
   const when = post.due ? (group === 'late' || group === 'later' ? dayLabel(post.due.day) : post.due.time) : undefined;
   const line = postLine(post);
   return (
-    <li data-post={post.id} className="flex items-start gap-4 border-b border-line px-8 py-6">
+    <li data-post={post.id} className={clsx('relative flex items-start gap-4 border-b border-line px-8 py-6', current && 'row-tick bg-select')}>
       <IconButton
         aria-label={`Mark posted: ${label}`}
         className={now ? 'text-signal-text' : undefined}
@@ -76,7 +81,12 @@ export function PostRow({ post, group, today, offline, actions, onOpen }: PostRo
         <SquareIcon size={18} aria-hidden="true" />
       </IconButton>
       <div className="min-w-0 flex-1">
-        <button type="button" className="block w-full py-4 pr-8 text-left coarse:min-h-44 coarse:py-10" onClick={() => onOpen(post)}>
+        <button
+          type="button"
+          aria-current={current ? 'true' : undefined}
+          className="block w-full py-4 pr-8 text-left coarse:min-h-44 coarse:py-10"
+          onClick={() => onOpen(post)}
+        >
           <span className="flex items-baseline gap-8">
             <span className="min-w-0 truncate type-row text-ink">{label}</span>
             {when ? <span className="flex-none type-mono text-ink-2">{when}</span> : null}

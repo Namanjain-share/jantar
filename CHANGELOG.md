@@ -56,6 +56,12 @@ What changed for people who use Jantar, newest first. Versions before
   beside your medicines; Food's Eaten beside the day's calories and weight;
   Finance's By category, Bills and Entries. A row's actions sit beside its
   name instead of across the window. A phone keeps the lists.
+- **Posts** puts Late, Today, Tomorrow, Later and No date side by side on
+  a wide window (four across at 1440 px), and Done in columns. A post opens
+  beside the list: its text to read, **Copy**, Mark posted and Open, its
+  notes, the comments you logged in the same place, and a field at the
+  bottom to log another by pasting its link (kept if you leave before
+  logging it). In a narrow window a post still opens in its sheet.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

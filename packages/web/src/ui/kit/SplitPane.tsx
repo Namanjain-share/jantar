@@ -23,6 +23,9 @@
  *   Board's Desk), or 'fill': the list takes the whole width (D2).
  * - Esc closes the detail in split mode (`onClose`; the place says where the
  *   list is), unless `escape` is false (a dialog over it has the key).
+ * - `alone={false}`: in single mode the open item doesn't take the pane; the
+ *   list stays and the place shows the item its own way (Posts: its sheet,
+ *   as 0.10 did).
  * - Beside an open item the list keeps that item's row (aria-current) in
  *   view: opening one from a wide list lands on its row.
  *   SplitContext gives what the panes inside need: split, wide, selected and
@@ -117,9 +120,11 @@ export interface SplitPaneProps {
   escape?: boolean;
   /** No list column for now: the detail takes the pane (Chat, until it has a day to list). The list's section stays in place, empty. */
   noList?: boolean;
+  /** In single mode the open item takes the pane (default); false keeps the list there instead. */
+  alone?: boolean;
 }
 
-export function SplitPane({ name, list, detail, selection, empty = 'fill', listLabel, detailLabel, listWidth = 'list', onClose, escape = true, noList = false }: SplitPaneProps) {
+export function SplitPane({ name, list, detail, selection, empty = 'fill', listLabel, detailLabel, listWidth = 'list', onClose, escape = true, noList = false, alone = true }: SplitPaneProps) {
   const layout = useLayout();
   const box = useRef<HTMLDivElement>(null);
   const listBox = useRef<HTMLElement>(null);
@@ -143,7 +148,7 @@ export function SplitPane({ name, list, detail, selection, empty = 'fill', listL
   }, []);
 
   const mode = layout.chrome === 'phone' ? { split: false, wide: false } : (measured ?? guessSplit(layout));
-  const selected = detail !== null && detail !== undefined;
+  const selected = detail !== null && detail !== undefined && (mode.split || alone);
   const fill = empty === 'fill';
   const showList = (mode.split || !selected) && !noList;
   const showDetail = selected || (mode.split && !fill);

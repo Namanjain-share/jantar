@@ -20,22 +20,32 @@
  * leaves the list at once with a 5 s Undo, and the delete is sent once the
  * Undo goes. `id` (a post's push) opens that post's sheet on arrival. The
  * title is the page's <h1> in every state.
+ *
+ * 0.11 (build plan 2.6): a SplitPane ("posts", fill). From a pane of 640
+ * the groups are cards side by side (Late, Today, Tomorrow, Later, No date;
+ * four across at 1440), and Done is rows in two or three columns. From a
+ * pane of 800 a tap (or `?id=`) opens the post beside the list (PostDetail:
+ * its text to read, Copy, Mark posted, its place's comments and a field to
+ * log one); below that it opens the sheet, as 0.10 did.
  */
 import { ChatCircleIcon, PlusIcon } from '@phosphor-icons/react';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Post, PostPatch } from '@jantar/protocol';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { Post, PostPatch, PostsResponse } from '@jantar/protocol';
 import { routePath, type PostsFilter } from '../../../../lib/router.js';
 import { useDeps, useNavigate } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
-import { RailLabel } from '../../../kit/RailLabel.js';
+import { Columns, useCardWidth } from '../../../kit/Columns.js';
+import { Panel } from '../../../kit/Panel.js';
+import { SplitPane, useSplit } from '../../../kit/SplitPane.js';
 import { Segmented } from '../../accounts/Segmented.js';
 import { PushWarning } from '../shared/PushWarning.js';
 import { EMPTY, LifeEmpty, NotSaved } from '../shared/states.js';
-import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
-import { Loaded, Page, useHeldDeletes, useLifeClock, useOffline, useSheet, useUndo } from '../today/parts.js';
+import { useLifeLoad, useLifeStatus, type LifeLoad } from '../shared/useLife.js';
+import { Loaded, Page, useHeldDeletes, useLifeClock, useOffline, useSheet, useUndo, type LifeClock } from '../today/parts.js';
 import { GoalsSheet } from './GoalsSheet.js';
 import { LogCommentSheet } from './LogCommentSheet.js';
 import { byGroup, GROUP_LABEL, GROUP_ORDER, postLabel, weekGoals } from './model.js';
+import { PostDetail } from './PostDetail.js';
 import { DonePostRow, PostRow } from './PostRow.js';
 import { PostSheet } from './PostSheet.js';
 
@@ -108,24 +118,81 @@ function usePostActions(reload: () => void): PostActions {
 export function Posts({ filter = 'open', id }: PostsProps) {
   const { api } = useDeps();
   const navigate = useNavigate();
-  const offline = useOffline();
   const { status } = useLifeStatus();
   const load = useLifeLoad(`posts:${filter}`, () => api.postsList(filter));
   const actions = usePostActions(load.reload);
   const now = useLifeClock(status, load.data?.today);
   const sheet = useSheet<Post>();
+  const target = id ? load.data?.posts.find((p) => p.id === id) : undefined;
+  const listPath = routePath(filter === 'open' ? { name: 'posts' } : { name: 'posts', filter });
+
+  // 0.11: the posts across the pane, and one beside them from a pane of 800 (its sheet below that, as 0.10).
+  return (
+    <SplitPane
+      name="posts"
+      list={<PostsList filter={filter} id={id} target={target} load={load} actions={actions} now={now} sheet={sheet} />}
+      detail={
+        id ? (
+          <PostDetail
+            key={id}
+            id={id}
+            post={target}
+            loaded={load.data !== null}
+            tz={status?.timezone}
+            actions={actions}
+            onEdit={sheet.show}
+            onClose={() => navigate(listPath, { replace: true })}
+          />
+        ) : null
+      }
+      selection={id}
+      empty="fill"
+      alone={false}
+      listLabel="All posts"
+      detailLabel="Post"
+      onClose={() => navigate(listPath, { replace: true })}
+    />
+  );
+}
+
+interface PostsListProps {
+  filter: PostsFilter;
+  id: string | undefined;
+  /** The post `id` names, once the list has it. */
+  target: Post | undefined;
+  load: LifeLoad<PostsResponse>;
+  actions: PostActions;
+  now: LifeClock;
+  sheet: ReturnType<typeof useSheet<Post>>;
+}
+
+/**
+ * The list's page: the week, the segments, add and log, then the groups
+ * (cards side by side from a pane of 640, rails below) or Done. A tap opens
+ * a post beside the list where there is room, else its sheet.
+ */
+function PostsList({ filter, id, target, load, actions, now, sheet }: PostsListProps) {
+  const navigate = useNavigate();
+  const offline = useOffline();
+  const { status } = useLifeStatus();
   const goals = useSheet();
   const logSheet = useSheet();
   const opened = useRef<string | null>(null);
-  const target = id ? load.data?.posts.find((p) => p.id === id) : undefined;
+  const split = useSplit();
+  const beside = Boolean(split?.split && split.selected);
+  const box = useRef<HTMLDivElement>(null);
+  const cards = useCardWidth(box);
   const { show } = sheet;
+  const pathOf = (p: Post) => routePath({ name: 'posts', ...(filter === 'done' ? { filter } : {}), id: p.id });
+  const open = (p: Post) => (split?.split ? navigate(pathOf(p)) : show(p));
 
-  // A push lands here with ?id=: that post's sheet opens, once.
+  // A push lands here with ?id=: that post's sheet opens, once, where it isn't beside the list.
+  const room = Boolean(split?.split);
   useEffect(() => {
-    if (!target || opened.current === target.id) return;
+    if (!target || room || opened.current === target.id) return;
     opened.current = target.id;
     show(target);
-  }, [target, show]);
+  }, [target, room, show]);
 
   const add = () => sheet.show(null);
   const week = load.data?.week;
@@ -160,9 +227,9 @@ export function Posts({ filter = 'open', id }: PostsProps) {
   );
 
   return (
-    <Page title="Posts" aside={weekButton} undo={actions.undo}>
+    <Page title="Posts" aside={weekButton} undo={beside ? undefined : actions.undo} wide>
       <PushWarning status={status} part="posts" />
-      <div className="px-16 pb-12 pt-4">
+      <div className="px-16 pb-12 pt-4 @md:max-w-560">
         <Segmented<PostsFilter> label="Show" fill value={filter} onChange={(f) => navigate(routePath(f === 'open' ? { name: 'posts' } : { name: 'posts', filter: f }), { replace: true })} segments={FILTERS} />
       </div>
       {week ? (
@@ -174,46 +241,47 @@ export function Posts({ filter = 'open', id }: PostsProps) {
           </Button>
         </div>
       ) : null}
-      {actions.error ? (
+      {actions.error && !beside ? (
         <div className="px-16">
           <NotSaved error={actions.error} />
         </div>
       ) : null}
-      <Loaded load={load}>
-        {(d) => {
-          const posts = actions.visible(d.posts);
-          if (filter === 'done') {
-            if (posts.length === 0) return <LifeEmpty>{EMPTY.postsDone}</LifeEmpty>;
-            return (
-              <ul aria-label="Done" className="border-t border-line">
-                {posts.map((p) => (
-                  <DonePostRow key={p.id} post={p} tz={status?.timezone} onOpen={sheet.show} />
-                ))}
-              </ul>
+      <div ref={box}>
+        <Loaded load={load}>
+          {(d) => {
+            const posts = actions.visible(d.posts);
+            if (filter === 'done') {
+              if (posts.length === 0) return <LifeEmpty>{EMPTY.postsDone}</LifeEmpty>;
+              return (
+                // 0.11: in two or three columns from a pane of 640.
+                <ul aria-label="Done" className={cards ? 'grid gap-x-16 px-8 @md:grid-cols-2 @wide:grid-cols-3' : 'border-t border-line'}>
+                  {posts.map((p) => (
+                    <DonePostRow key={p.id} post={p} tz={status?.timezone} onOpen={open} />
+                  ))}
+                </ul>
+              );
+            }
+            const groups = byGroup(posts, now.day);
+            if (posts.length === 0) return <LifeEmpty>{EMPTY.posts}</LifeEmpty>;
+            const sections: ReactNode[] = GROUP_ORDER.filter((g) => groups[g].length > 0).map((g) => (
+              <Panel key={g} label={GROUP_LABEL[g]} count={groups[g].length} card={cards}>
+                <ul>
+                  {groups[g].map((p) => (
+                    <PostRow key={p.id} post={p} group={g} today={now.day} offline={offline} actions={actions} onOpen={open} current={beside && p.id === id} />
+                  ))}
+                </ul>
+              </Panel>
+            ));
+            return cards ? (
+              <Columns min={300} max={4} className="px-16 pt-4">
+                {sections}
+              </Columns>
+            ) : (
+              <>{sections}</>
             );
-          }
-          const groups = byGroup(posts, now.day);
-          if (posts.length === 0) return <LifeEmpty>{EMPTY.posts}</LifeEmpty>;
-          return (
-            <>
-              {GROUP_ORDER.map((g) =>
-                groups[g].length ? (
-                  <section key={g} aria-label={GROUP_LABEL[g]}>
-                    <RailLabel ground="bg" count={groups[g].length}>
-                      {GROUP_LABEL[g]}
-                    </RailLabel>
-                    <ul>
-                      {groups[g].map((p) => (
-                        <PostRow key={p.id} post={p} group={g} today={now.day} offline={offline} actions={actions} onOpen={sheet.show} />
-                      ))}
-                    </ul>
-                  </section>
-                ) : null,
-              )}
-            </>
-          );
-        }}
-      </Loaded>
+          }}
+        </Loaded>
+      </div>
       {week ? <p className="px-16 pt-12 type-mono text-ink-3">Posted this week: {week.posted}</p> : null}
       <PostSheet
         open={sheet.open}

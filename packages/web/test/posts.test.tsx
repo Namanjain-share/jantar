@@ -16,6 +16,9 @@ import type { LifeStatus, Post, PostsResponse } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { byGroup, doneText, groupOf, postLabel, postLine, weekLine } from '../src/ui/screens/life/posts/model.js';
 import { OPEN } from '../src/ui/screens/life/posts/PostRow.js';
+import { forgetDrafts } from '../src/lib/drafts.js';
+import { commentsFor } from '../src/ui/screens/life/posts/PostDetail.js';
+import { layoutAt, type Layout } from '../src/ui/shell/layout.js';
 import { fakeApi, iso, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('posts');
@@ -83,6 +86,8 @@ function render(
     status?: Partial<LifeStatus>;
     api?: Parameters<typeof fakeApi>[0];
     conn?: 'live' | 'offline';
+    /** 0.11: a window's layout (a wide one opens a post beside the list). */
+    layout?: Layout;
   } = {},
 ) {
   const reply = (filter?: 'open' | 'done'): PostsResponse => ({ today: DAY, week: opts.week ?? WEEK, posts: filter === 'done' ? DONE : (opts.posts ?? POSTS) });
@@ -91,7 +96,7 @@ function render(
     postsList: vi.fn(opts.list ?? (async (f?: 'open' | 'done') => reply(f))),
     ...opts.api,
   });
-  return renderApp({ path: opts.path ?? '/posts', api, state: stateWith({ features: { life: true } }), ...(opts.conn ? { status: opts.conn } : {}) });
+  return renderApp({ path: opts.path ?? '/posts', api, state: stateWith({ features: { life: true } }), ...(opts.conn ? { status: opts.conn } : {}), ...(opts.layout ? { layout: opts.layout } : {}) });
 }
 
 const heading = () => screen.findByRole('heading', { level: 1, name: 'Posts' });
@@ -742,5 +747,88 @@ describe('Posts: Log a comment (v0.9)', () => {
     expect(label.className).toContain('break-words');
     expect(label.parentElement?.className).toContain('flex-wrap');
     expect(within(list).getByText('Posted Thu 15 Jan 15:44').parentElement).toBe(label.parentElement);
+  });
+});
+
+describe('Posts: a wide pane (0.11)', () => {
+  const COMMENT = post(13, {
+    kind: 'comment',
+    where: 'r/exampletools',
+    text: 'Glad it helped',
+    status: 'posted',
+    postedAt: '2026-01-15T09:00:00.000Z',
+    postedUrl: 'https://www.reddit.com/r/exampletools/s/Comment0001',
+  });
+  const list = async (f?: 'open' | 'done'): Promise<PostsResponse> => ({ today: DAY, week: WEEK, posts: f === 'done' ? [...DONE, COMMENT] : POSTS });
+  const wide = (over: Parameters<typeof render>[0] = {}) => render({ list, layout: layoutAt(1440), ...over });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    forgetDrafts();
+  });
+
+  it("lists the comments logged in a post's place, newest first", () => {
+    const older = { ...COMMENT, id: id(14), postedAt: '2026-01-10T09:00:00.000Z' };
+    expect(commentsFor(POSTS[0]!, [older, ...DONE, COMMENT]).map((c) => c.id)).toEqual([id(13), id(14)]);
+    expect(commentsFor(POSTS[2]!, [COMMENT])).toEqual([]);
+  });
+
+  it('a tap opens the post beside the list, its row current; Copy copies its text', async () => {
+    const { router } = wide();
+    await heading();
+    fireEvent.click(await screen.findByText('Typing into Terminal from a phone'));
+    expect(router.getState().route).toEqual({ name: 'posts', id: id(1) });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Reddit · r/exampletools' })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(row('Reddit · r/exampletools').querySelector('[aria-current="true"]')).toBeTruthy();
+    expect(screen.getByText('First line of the body', { exact: false }).className).toContain('type-read');
+    const detail = within(screen.getByRole('region', { name: 'Post' }));
+    fireEvent.click(detail.getByRole('button', { name: 'Copy: Reddit · r/exampletools' }));
+    await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith('First line of the body\nand a second line'));
+    // Its place's comments, logged before.
+    expect(await screen.findByText('Glad it helped')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(router.getState().route).toEqual({ name: 'posts' });
+  });
+
+  it('Mark posted sends it with an Undo and goes back to the list', async () => {
+    const postUpdate = vi.fn(async () => ({ ok: true as const }));
+    const { router } = wide({ path: `/posts?id=${id(1)}`, api: { postUpdate } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark posted' }));
+    await waitFor(() => expect(postUpdate).toHaveBeenCalledWith(id(1), { status: 'posted' }));
+    expect(router.getState().route).toEqual({ name: 'posts' });
+    expect(await screen.findByText('Posted: Reddit · r/exampletools')).toBeTruthy();
+  });
+
+  it('logs a comment from the link pasted at the bottom; the field is kept as a draft until then', async () => {
+    const postCreate = vi.fn(async () => ({ id: id(40) }));
+    const link = 'https://www.reddit.com/r/exampletools/s/AbCdEf1234';
+    const first = wide({ path: `/posts?id=${id(1)}`, api: { postCreate } });
+    fireEvent.change(await screen.findByLabelText(/^Log a comment: paste/), { target: { value: link } });
+    first.unmount();
+    wide({ path: `/posts?id=${id(1)}`, api: { postCreate } });
+    const field = (await screen.findByLabelText(/^Log a comment: paste/)) as HTMLInputElement;
+    expect(field.value).toBe(link);
+    fireEvent.submit(field.closest('form')!);
+    await waitFor(() =>
+      expect(postCreate).toHaveBeenCalledWith({ platform: 'reddit', kind: 'comment', status: 'posted', postedUrl: link, where: 'r/exampletools' }, expect.any(String)),
+    );
+    expect(await screen.findByText('Logged: Reddit · r/exampletools')).toBeTruthy();
+    expect(field.value).toBe('');
+  });
+
+  it('?id= in a narrow window opens the sheet over the list, as 0.10', async () => {
+    render({ path: `/posts?id=${id(1)}` });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Posts', hidden: true })).toBeTruthy();
+  });
+
+  it('from a pane of 640 the groups are cards side by side', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: 1352, bottom: 800, width: 1352, height: 800, toJSON: () => ({}) });
+    wide();
+    await heading();
+    await screen.findByText('Typing into Terminal from a phone');
+    const cols = document.querySelector('[data-columns]') as HTMLElement;
+    expect(Number(cols.dataset.columns)).toBe(4);
+    for (const r of within(cols).getAllByRole('region')) expect(r.className).toContain('rounded-dock');
   });
 });
