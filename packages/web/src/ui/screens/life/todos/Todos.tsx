@@ -19,6 +19,9 @@
  * side (kit/Columns.tsx, at least 340 wide: three at 1440), Reminders'
  * cards are Overdue, Today and Upcoming in the order they ring, and the
  * projects are a grid of cards. Below 640, 0.10's list.
+ *
+ * 0.13.0 (W20): while Work is on, projects are Work's: there is no Projects
+ * tab here, and its address and a project's open in Work (the shell).
  */
 import { CaretDownIcon, CaretRightIcon, PlusIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -102,6 +105,7 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
   const target = id ? todos.data?.todos.find((t) => t.id === id) : undefined;
   const opened: TodosTab | undefined = target ? (target.due?.time ? 'reminders' : 'todos') : undefined;
   const tab: TodosTab = asked ?? opened ?? 'todos';
+  const tabs = status?.modules.work ? TABS.filter((t) => t.key !== 'projects') : TABS;
   // The push's tab goes into the route once its todo loads: done or deleted, the todo leaves the open list, and the screen stays put under its Undo line.
   useEffect(() => {
     if (!asked && id && opened) navigate(routePath({ name: 'todos', tab: opened, id }), { replace: true });
@@ -137,7 +141,7 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
   return (
     <Page title="Todos" aside={<AddButton label={addLabel} onClick={add} disabled={offline} />} undo={actions.undo} wide>
       <div className="px-16 pb-12 @md:max-w-560">
-        <Segmented<TodosTab> label="Show" fill value={tab} onChange={(t) => navigate(routePath({ name: 'todos', tab: t }), { replace: true })} segments={TABS} />
+        <Segmented<TodosTab> label="Show" fill value={tab} onChange={(t) => navigate(routePath({ name: 'todos', tab: t }), { replace: true })} segments={tabs} />
       </div>
       {actions.error ? (
         <div className="px-16">

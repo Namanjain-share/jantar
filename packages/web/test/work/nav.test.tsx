@@ -120,12 +120,18 @@ describe('/work', () => {
     const b = renderApp({ path: `/todos?project=${id}`, state, api: workApi({ request: workRequest({}) }) });
     await waitFor(() => expect(b.history.entries.at(-1)).toBe(`/work?id=${id}`));
     b.unmount();
+    // On: Todos has no Projects tab.
+    const t = renderApp({ path: '/todos', state, api: workApi() });
+    const show = await screen.findByRole('group', { name: 'Show' });
+    await waitFor(() => expect(within(show).getAllByRole('button').map((x) => x.textContent)).toEqual(['Todos', 'Reminders']));
+    t.unmount();
     // Off: Todos keeps its projects.
     const off = fakeApi({ lifeStatus: vi.fn(async () => lifeStatus({ todos: true })), projectsList: vi.fn(async () => ({ projects: [] })), todosList: vi.fn(async () => ({ todos: [], today: '2026-01-15' })) });
     const c = renderApp({ path: '/todos?tab=projects', state, api: off });
     await waitFor(() => expect(off.lifeStatus).toHaveBeenCalled());
     await screen.findByRole('heading', { level: 1, name: 'Todos' });
     expect(c.history.entries.at(-1)).toBe('/todos?tab=projects');
+    expect(within(screen.getByRole('group', { name: 'Show' })).getAllByRole('button').map((x) => x.textContent)).toEqual(['Todos', 'Reminders', 'Projects']);
   });
 });
 
