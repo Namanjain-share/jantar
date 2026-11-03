@@ -284,6 +284,7 @@ function FirstSteps({ api, owner, label, step, next }: { api: PersonApi; owner: 
 }
 
 export const NOT_AN_INVITE = "That isn't an invite link. Paste the whole link you were sent.";
+export const NOT_A_LINK_CODE = "That isn't a link code. Enter the code from your other device, or paste the whole link.";
 
 /**
  * 0.12.1: a field's error under it: the field says it is invalid and is
@@ -356,22 +357,26 @@ function PasteInvite({ api, onPreview }: { api: PersonApi; onPreview: (code: str
   );
 }
 
+/** /p/link: the code from another device of hers. 0.12.1: read like a pasted invite, so the whole /p/link#c= link works too. */
 function LinkForm({ api, initial, deviceName }: { api: PersonApi; initial: string; deviceName: string }) {
   const [code, setCode] = useState(initial);
-  const [error, setError] = useState<string | null>(null);
+  const error = useFieldError();
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        api.linkClaim(code.trim(), deviceName).then(
+        const c = inviteCode(code);
+        if (!c) return error.fail(NOT_A_LINK_CODE);
+        error.clear();
+        api.linkClaim(c, deviceName).then(
           () => navigate('/p'),
-          (err: Error) => setError(err.message),
+          (err: Error) => error.fail(err.message),
         );
       }}
     >
       <p className="text-ink-2">On a device that is linked already, open Me › Devices › Link another device, then enter the code here.</p>
-      <input aria-label="Link code" className="mt-12 w-full rounded-btn border border-line bg-bg px-8 py-8" value={code} onChange={(e) => setCode(e.target.value)} />
-      {error ? <p role="alert" className="mt-8 font-medium text-ink">{error}</p> : null}
+      <input aria-label="Link code" className="mt-12 w-full rounded-btn border border-line bg-bg px-8 py-8" value={code} {...error.field} onChange={(e) => setCode(e.target.value)} />
+      {error.alert}
       <Button className="mt-12" variant="primary" size="xl" type="submit" disabled={code.trim().length < 16}>
         Link this device
       </Button>

@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { presetAgreement } from '@jantar/protocol/people-core';
 import type { JoinPreview, PersonMe } from '@jantar/protocol/people';
 import { PersonApiError, type PersonApi } from '../../src/partner/api.js';
-import { Join, NOT_AN_INVITE } from '../../src/partner/screens/Join.js';
+import { Join, NOT_AN_INVITE, NOT_A_LINK_CODE } from '../../src/partner/screens/Join.js';
 
 const CODE = 'synthetic-invite_code1';
 const joined = { personId: '01JASHAAAAAAAAAAAAAAAAAAAA', deviceId: '01JDEVICEAAAAAAAAAAAAAAAAA', deviceSecret: 's' };
@@ -165,6 +165,48 @@ describe('the paste form, to a screen reader (0.12.1 after review)', () => {
     expect((screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => answer(preview));
     expect(await screen.findByRole('heading', { name: 'Accountability partner' })).toBeTruthy();
+  });
+});
+
+describe('/p/link reads the code like a pasted invite (0.12.1 after review)', () => {
+  beforeEach(() => history.replaceState(null, '', '/p/link'));
+  const claim = async (text: string) => {
+    fireEvent.change(screen.getByLabelText('Link code'), { target: { value: text } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Link this device' }));
+    });
+  };
+
+  it('the whole /p/link#c= link, a wrapped one and the code alone all link with the code', async () => {
+    for (const text of [`https://us.example.com/p/link#c=${CODE}`, `https://eur01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fus.example.com%2Fp%2Flink%23c%3D${CODE}&reserved=0`, ` "${CODE}" `]) {
+      const linkClaim = vi.fn(async () => joined);
+      const { unmount } = render(<Join api={fakeApi({ linkClaim })} mode="link" />);
+      await claim(text);
+      expect(linkClaim, text).toHaveBeenCalledWith(CODE, 'Phone');
+      unmount();
+      history.replaceState(null, '', '/p/link');
+    }
+  });
+
+  it('junk says so, tied to the field, and claims nothing', async () => {
+    const linkClaim = vi.fn(async () => joined);
+    render(<Join api={fakeApi({ linkClaim })} mode="link" />);
+    await claim('this is not a code at all');
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toBe(NOT_A_LINK_CODE);
+    expect(screen.getByLabelText('Link code').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText('Link code').getAttribute('aria-describedby')).toBe(alert.id);
+    expect(linkClaim).not.toHaveBeenCalled();
+  });
+
+  it('a link opened again in the same tab fills in its code', async () => {
+    render(<Join api={fakeApi()} mode="link" />);
+    expect((screen.getByLabelText('Link code') as HTMLInputElement).value).toBe('');
+    await act(async () => {
+      history.replaceState(null, '', `/p/link#c=${CODE}`);
+      dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect((screen.getByLabelText('Link code') as HTMLInputElement).value).toBe(CODE);
   });
 });
 
