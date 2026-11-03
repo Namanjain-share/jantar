@@ -11,7 +11,7 @@
  *   pending one reads "Waiting for {name}"; the daemon's cooling-off and
  *   "Don't ask me about this again" come back as its sentence. Nothing
  *   changes until she says yes. Asking needs a device paired with admin
- *   (`jantar pair` gives read and control): on any other device the sheet
+ *   (`jantar pair` doesn't give it): on any other device the sheet
  *   still lists what can be asked, and instead of a button that can only
  *   fail it shows the Mac command for what is ticked.
  * - {name}'s devices: name, when added and the Access email (no last

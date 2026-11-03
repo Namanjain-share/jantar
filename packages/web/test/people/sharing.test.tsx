@@ -90,7 +90,7 @@ describe('his Sharing tab', () => {
     expect(await within(ask).findByRole('status')).toBeTruthy();
   });
 
-  it('on a phone paired the default way (read, control), Ask for more shows the Mac command, not a button that can only fail (review 4, B2)', async () => {
+  it('on a phone paired the default way (no admin), Ask for more shows the Mac command, not a button that can only fail (review 4, B2)', async () => {
     writeLocal(LOCAL_DEVICE_KEY, { id: 'dev-1', name: 'iPhone', scopes: ['read', 'control'] });
     const propose = vi.fn(async () => undefined);
     const c = client({ list: vi.fn(async () => ({ enabled: true, people: [person()], ownerName: 'Sam', ownerPrefs: PREFS })), today: vi.fn(async () => today), propose, devices: vi.fn(async () => ({ devices: [] })) });

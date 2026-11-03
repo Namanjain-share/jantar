@@ -195,9 +195,9 @@ After they join:
   next look, and your screens refresh.
 - **You ask for more** from an admin device: your Accountability partner
   screen's Sharing tab, or `jantar people ask Asha --see sleep --note "For
-  the bedtime plan"` at the Mac. A phone paired the default way (read and
-  control) lists what you could ask and shows that command for what you
-  tick instead of an Ask button. They see a card with each field that would
+  the bedtime plan"` at the Mac. A phone paired the default way (without
+  admin) lists what you could ask and shows that command for what you tick
+  instead of an Ask button. They see a card with each field that would
   change and answer Allow or No thanks. One request waits at a
   time; after a No, the same field can't be asked again for 7 days, and
   "Don't ask me about this again" blocks it until they clear it. While they
