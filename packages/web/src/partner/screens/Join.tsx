@@ -11,6 +11,12 @@
  * Add to Home Screen (Web Push works only from there), then Turn on
  * notifications with a test push, then Today. Plan pushes, step rings and
  * alerts can't reach her phone before that.
+ *
+ * 0.12.1: /p/join without its code. Signing in to Access with the one-time
+ * PIN brings her back here without the `#c=` (an identity provider that
+ * carries state, like Google, keeps the link whole), so the page says to
+ * open the link once more, or paste it. A pasted link shows the same
+ * preview, and nothing is spent before Accept and join.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { AGREEMENT_FIELDS, closeDependents, withField, yourLabel, type AgreementFields } from '@jantar/protocol/people-core';
@@ -22,11 +28,14 @@ import type { PersonApi } from '../api.js';
 import { joinCopy, levelLabel, lowerLevels, switchLabel, type CopyLine } from '../../people-shared/join-copy.js';
 import { needsHomeScreen, turnOnNotifications } from '../notify.js';
 import { nameApp } from '../name.js';
+import { inviteCode } from '../invite-code.js';
 
 const codeFromHash = () => new URLSearchParams(location.hash.replace(/^#/, '')).get('c') ?? '';
 
 export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
-  const [code] = useState(codeFromHash);
+  // The code the link brought; a pasted link sets `code` with its preview (0.12.1).
+  const [initial] = useState(codeFromHash);
+  const [code, setCode] = useState(initial);
   const [preview, setPreview] = useState<JoinPreview | null>(null);
   const [agreement, setAgreement] = useState<AgreementFields | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,17 +45,15 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
   const [step, setStep] = useState<'join' | 'home' | 'notify' | 'notNow'>('join');
   const [deviceName] = useState(() => (typeof navigator !== 'undefined' && /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'Phone'));
 
+  const show = (p: JoinPreview) => {
+    setPreview(p);
+    setAgreement(p.offer);
+    setName(p.name);
+  };
   useEffect(() => {
-    if (mode !== 'join' || !code) return;
-    api.joinPreview(code).then(
-      (p) => {
-        setPreview(p);
-        setAgreement(p.offer);
-        setName(p.name);
-      },
-      (e: Error) => setError(e.message),
-    );
-  }, [api, code, mode]);
+    if (mode !== 'join' || !initial) return;
+    api.joinPreview(initial).then(show, (e: Error) => setError(e.message));
+  }, [api, initial, mode]);
 
   const copy = useMemo(
     () => (preview && agreement ? joinCopy(preview.owner, agreement, { built: preview.built, foodModule: preview.modules.food, label: preview.label }) : null),
@@ -60,13 +67,25 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
   if (mode === 'link') {
     return (
       <Page title="Link this device">
-        <LinkForm api={api} initial={code} deviceName={deviceName} />
+        <LinkForm api={api} initial={initial} deviceName={deviceName} />
       </Page>
     );
   }
   if (step === 'home' || step === 'notify') return <FirstSteps api={api} owner={preview?.owner ?? ''} label={preview?.label} step={step} next={() => (step === 'home' ? setStep('notify') : navigate('/p'))} />;
   if (step === 'notNow') return <Page title="Not now">Nothing was shared and the link still works until it runs out. Open it again when you're ready.</Page>;
-  if (!code) return <Page title="Open your invite link">This page needs the link you were sent.</Page>;
+  if (!code) {
+    return (
+      <PasteInvite
+        api={api}
+        onPreview={(c, p) => {
+          // As if she had opened the link: a reload shows the same page, and Accept takes the code out again.
+          history.replaceState(null, '', `/p/join#c=${c}`);
+          setCode(c);
+          show(p);
+        }}
+      />
+    );
+  }
   if (error && !preview) return <Page title="This link doesn't work">{error}</Page>;
   if (!preview || !agreement || !copy) return <Page title="Joining">Loading…</Page>;
 
@@ -192,6 +211,58 @@ function FirstSteps({ api, owner, label, step, next }: { api: PersonApi; owner: 
           {note ? 'Go to Today' : 'Later'}
         </Button>
       </div>
+    </Page>
+  );
+}
+
+export const NOT_AN_INVITE = "That isn't an invite link. Paste the whole link you were sent.";
+
+/** 0.12.1: the join page without its code. A pasted link (or its code) loads the preview here; a wrong one says so and she tries again. */
+function PasteInvite({ api, onPreview }: { api: PersonApi; onPreview: (code: string, preview: JoinPreview) => void }) {
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Page title="Open your invite link once more">
+      <p>You're signed in. Signing in drops the part of the link that holds your invite, so open the link you were sent once more, or paste it here.</p>
+      <form
+        className="mt-16"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const c = inviteCode(text);
+          if (!c) {
+            setError(NOT_AN_INVITE);
+            return;
+          }
+          setError(null);
+          setBusy(true);
+          api.joinPreview(c).then(
+            (p) => onPreview(c, p),
+            (err: Error) => {
+              setError(err.message);
+              setBusy(false);
+            },
+          );
+        }}
+      >
+        <label className="flex flex-col gap-8">
+          <span>Paste your invite link</span>
+          <input
+            className="min-h-44 w-full rounded-btn border border-line bg-bg px-8"
+            value={text}
+            inputMode="url"
+            autoCapitalize="off"
+            autoCorrect="off"
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </label>
+        {error ? <p role="alert" className="mt-8 font-medium text-ink">{error}</p> : null}
+        <Button className="mt-12" variant="primary" size="xl" type="submit" disabled={busy || !text.trim()}>
+          Continue
+        </Button>
+      </form>
     </Page>
   );
 }
