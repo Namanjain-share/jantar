@@ -6,7 +6,8 @@
  *   a night is open (or "When did you wake up?" after one closed unlogged).
  * - Her plan as Now, Next, Later and Done, a tick circle on every row (out
  *   of order is one tap), late as a display-only chip, check-betweens with
- *   their slots, then reminders and to-dos due.
+ *   their slots, then her doses due today (Taken or Skip, with Undo), then
+ *   reminders and to-dos due.
  * - One thumb: a sticky bar above the tab bar says Got it while a new or
  *   changed plan is unacknowledged, then Done: {Now step}; `…` opens Start,
  *   Skip and Ask to change. Every tick shows a 5-second Undo.
@@ -26,6 +27,7 @@ import { navigate } from '../nav.js';
 import { joinCopy } from '../join/copy.js';
 import { askForNotifications, needsHomeScreen, turnOnNotifications } from '../notify.js';
 import { Card, Field, ReasonChips, Sheet, Tick, UndoToast, useUndo } from '../ui.js';
+import { DoseRow } from './DoseRow.js';
 import { TodoRow } from './TodoRow.js';
 
 type OpenSheet = { kind: 'step'; step: PlanStep } | { kind: 'report'; step: PlanStep } | { kind: 'checkin'; step: PlanStep } | { kind: 'status' } | { kind: 'wake' } | { kind: 'rough' } | null;
@@ -184,6 +186,32 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
           </div>
         </section>
       ))}
+      {today.meds && day === today.today && today.meds.groups.length > 0 ? (
+        <section aria-label="Medicines" className="mt-16">
+          <h2 className="font-semibold">Medicines</h2>
+          <ul className="divide-y divide-line">
+            {today.meds.groups
+              .flatMap((g) => g.items)
+              .map((i) => (
+                <DoseRow
+                  key={`${i.medId}@${i.slot}`}
+                  item={i}
+                  onLog={(status) =>
+                    void api.doseLog(i.medId, { day, slot: i.slot, status }).then(
+                      (r) => {
+                        setError(null);
+                        void load();
+                        undo.show(`${status === 'taken' ? 'Taken' : 'Skipped'}: ${i.name} ${i.slot}`, () => void run(api.doseDelete(i.medId, r.id)));
+                      },
+                      (e: Error) => setError(e.message),
+                    )
+                  }
+                  onUndo={() => i.doseId && void run(api.doseDelete(i.medId, i.doseId))}
+                />
+              ))}
+          </ul>
+        </section>
+      ) : null}
       {today.todos.length > 0 ? (
         <section aria-label="Due today" className="mt-16">
           <h2 className="font-semibold">Reminders and to-dos{today.overdue > 0 ? ` · ${today.overdue} overdue` : ''}</h2>
@@ -193,7 +221,7 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
             ))}
           </ul>
         </section>
-      ) : steps.length === 0 ? (
+      ) : steps.length === 0 && !today.meds?.groups.length ? (
         <p className="mt-24 text-ink-2">Nothing planned or due right now.</p>
       ) : null}
       <p className="mt-16">

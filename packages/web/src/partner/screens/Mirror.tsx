@@ -6,11 +6,12 @@
  * the plan, the review list, the sleep week, journal entries, chat turns).
  * Opening it leaves no view mark; it writes nothing.
  */
-import type { JournalList, OwnerChatView, OwnerTodosView, PersonMe, PersonToday, PersonWeightsResponse, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
+import type { JournalList, OwnerChatView, OwnerMedsView, OwnerTodosView, PersonMe, PersonToday, PersonWeightsResponse, PlanView, ReviewView, SleepWeek as Week } from '@jantar/protocol/people';
 import { STATUS_LABELS } from '@jantar/protocol/people-core';
 import { useEffect, useState } from 'react';
 import { ChatRead } from '../../people-shared/ChatRead.js';
 import { JournalEntryCard } from '../../people-shared/JournalEntryCard.js';
+import { MedsRead } from '../../people-shared/MedsRead.js';
 import { PlanRead } from '../../people-shared/PlanRead.js';
 import { ReviewList } from '../../people-shared/ReviewList.js';
 import { SleepWeek } from '../../people-shared/SleepWeek.js';
@@ -21,6 +22,7 @@ import { navigate } from '../nav.js';
 const TITLE: Record<string, string> = {
   today: 'Today',
   todos: 'your to-dos and reminders',
+  meds: 'your medicines',
   weight: 'your weight',
   plan: 'your day plan',
   review: 'your evening review',
@@ -121,6 +123,8 @@ function Area({ area, data, owner, name }: { area: string; data: unknown; owner:
         <p className="mt-12 text-ink-2">No open to-dos.</p>
       );
     }
+    case 'meds':
+      return <MedsRead view={data as OwnerMedsView} owner={owner} name="you" />;
     case 'weight': {
       const v = data as PersonWeightsResponse;
       return <p className="mt-12">{v.latest ? `Latest: ${v.latest.kg} kg (${dayLabel(v.latest.day)})` : 'No weight logged.'}</p>;
@@ -164,6 +168,7 @@ function TodayOf({ t, owner, name }: { t: PersonToday; owner: string; name: stri
           {t.todos.overdue ? ` · overdue ${t.todos.overdue}` : ''}
         </p>
       )}
+      {t.meds && !isLocked(t.meds) ? <MedsRead view={t.meds} owner={owner} name="you" /> : null}
       {!isLocked(t.weight) && t.weight.latest ? <p>Weight {t.weight.latest.kg} kg</p> : null}
     </div>
   );

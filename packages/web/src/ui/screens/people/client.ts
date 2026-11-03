@@ -4,7 +4,7 @@
  * device secret and an Idempotency-Key, as lib/api.ts does. Every path is
  * one of PEOPLE_ROUTES (test/people/client.test.ts compares).
  */
-import { DEVICE_SECRET_HEADER } from '@jantar/protocol';
+import { DEVICE_SECRET_HEADER, type MedicineBody, type MedicinePatch } from '@jantar/protocol';
 import type {
   AlertReplyBody,
   AlertsResponse,
@@ -14,6 +14,7 @@ import type {
   JournalList,
   OwnerAlertSendBody,
   OwnerChatView,
+  OwnerMedsView,
   OwnerTodosView,
   SharedItemsResponse,
   SharedListKind,
@@ -21,6 +22,7 @@ import type {
   PeopleList,
   PersonActivityResponse,
   PersonToday,
+  PersonWeightsResponse,
   PlanApplyBody,
   PlanPutBody,
   PlanTemplate,
@@ -74,6 +76,12 @@ export const PEOPLE_PATHS = {
   todoAssign: ['POST', '/v1/people/:pid/todos'],
   todoUpdate: ['PATCH', '/v1/people/:pid/todos/:id'],
   todoDelete: ['DELETE', '/v1/people/:pid/todos/:id'],
+  // Her medicines at his level (see.meds), his additions (assign.meds), his edits and Stop (his: assign.meds; hers: editHers.meds).
+  meds: ['GET', '/v1/people/:pid/medicines'],
+  medAssign: ['POST', '/v1/people/:pid/medicines'],
+  medUpdate: ['PATCH', '/v1/people/:pid/medicines/:id'],
+  medStop: ['POST', '/v1/people/:pid/medicines/:id/stop'],
+  weights: ['GET', '/v1/people/:pid/weights'],
 } as const;
 type Key = keyof typeof PEOPLE_PATHS;
 
@@ -118,6 +126,13 @@ export interface PeopleClient {
   assignTodo(pid: string, body: AssignTodoBody): Promise<{ id: string }>;
   updateTodo(pid: string, id: string, patch: AssignTodoPatch): Promise<void>;
   deleteTodo(pid: string, id: string): Promise<void>;
+  /** Her medicines at his level, and his add, edit and Stop. */
+  meds(pid: string, day?: string): Promise<OwnerMedsView>;
+  medAssign(pid: string, body: MedicineBody): Promise<{ id: string }>;
+  medUpdate(pid: string, id: string, patch: MedicinePatch): Promise<void>;
+  medStop(pid: string, id: string): Promise<void>;
+  /** Her weights (see.weight). */
+  weights(pid: string): Promise<PersonWeightsResponse>;
 }
 
 /** A route pattern with its `:params` filled (camelCase names too: `:itemId`). */
@@ -199,6 +214,11 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
     assignTodo: (pid, body) => call('todoAssign', { params: { pid }, body }),
     updateTodo: (pid, id, patch) => v(call('todoUpdate', { params: { pid, id }, body: patch })),
     deleteTodo: (pid, id) => v(call('todoDelete', { params: { pid, id } })),
+    meds: (pid, day) => call('meds', { params: { pid }, query: { day } }),
+    medAssign: (pid, body) => call('medAssign', { params: { pid }, body }),
+    medUpdate: (pid, id, patch) => v(call('medUpdate', { params: { pid, id }, body: patch })),
+    medStop: (pid, id) => v(call('medStop', { params: { pid, id } })),
+    weights: (pid) => call('weights', { params: { pid } }),
   };
 }
 

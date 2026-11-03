@@ -9,9 +9,12 @@
  *   step's status, done time, report and check-in, late chips, Nudge on
  *   today's open steps; check-betweens; the concern lines; her evening
  *   review at his level, with Carry for his open steps), To-do (his items
- *   and hers, Nudge, edit his, and hers with editHers.todos), Health (the
- *   sleep week), Journal (read, and comment with comment.journal), Chat,
- *   Lists and Alerts (both ways). The plan editor opens from Plan.
+ *   and hers, Nudge, edit his, and hers with editHers.todos), Health (her
+ *   medicines at his level with the two-day concern, Add for her with
+ *   assign.meds, Edit and Stop on his additions and, with editHers.meds, on
+ *   hers; her weight; the sleep week), Journal (read, and comment with
+ *   comment.journal), Chat, Lists and Alerts (both ways). The plan editor
+ *   opens from Plan.
  * - An area she keeps private is a grey tile, "{name} keeps this private":
  *   never just absent, never a warning colour, never a count of days.
  * - Every read goes through his People routes, so each writes her view
@@ -24,7 +27,10 @@ import type {
   JournalEntryFull,
   JournalList,
   OwnerChatView,
+  OwnerMedsView,
   OwnerTodosView,
+  PersonMedicineView,
+  PersonWeightsResponse,
   SharedItemsResponse,
   SharedListsResponse,
   PersonAlert,
@@ -36,10 +42,11 @@ import type {
   SleepWeek as Week,
   TodoAsk,
 } from '@jantar/protocol/people';
-import type { ChatTurn, PlacesResponse } from '@jantar/protocol';
+import type { ChatTurn, MedicineBody, MedicinePatch, PlacesResponse } from '@jantar/protocol';
 import { ChatRead } from '../../../people-shared/ChatRead.js';
 import { useEffect, useState } from 'react';
 import { JournalEntryCard } from '../../../people-shared/JournalEntryCard.js';
+import { MedsRead } from '../../../people-shared/MedsRead.js';
 import { PlanRead } from '../../../people-shared/PlanRead.js';
 import { ReviewList } from '../../../people-shared/ReviewList.js';
 import { SleepWeek } from '../../../people-shared/SleepWeek.js';
@@ -175,7 +182,18 @@ function PartnerOf({ client, pid, person, tab, dayIn, id }: { client: PeopleClie
       {tab === 'plan' && planDay ? (
         a?.see.plan && a.assign.plan ? <PlanEditor client={client} pid={pid} name={name} day={planDay} editHers={a.editHers.plan} onDay={(d) => go('plan', `&day=${d}`)} /> : <Locked name={name} what="Day plan" />
       ) : null}
-      {tab === 'health' ? <HealthTab client={client} pid={pid} name={name} sees={a?.see.sleep === true} /> : null}
+      {tab === 'health' ? (
+        <HealthTab
+          client={client}
+          pid={pid}
+          name={name}
+          meds={a?.see.meds ?? 'off'}
+          canAdd={a?.assign.meds === true}
+          editHers={a?.editHers.meds === true}
+          weight={a?.see.weight === true}
+          sleep={a?.see.sleep === true}
+        />
+      ) : null}
       {tab === 'journal' ? <JournalTab client={client} pid={pid} name={name} sees={a?.see.journal === true} canComment={a?.comment.journal === true} id={id} /> : null}
       {tab === 'chat' ? <ChatTab client={client} pid={pid} name={name} sees={a?.see.chat === true} perDay={person?.chatPerDay ?? null} /> : null}
       {tab === 'lists' ? <ListsTab client={client} pid={pid} name={name} space={person?.sharedSpace ?? null} canAssign={a?.assign.todos === true} id={id} /> : null}
@@ -226,9 +244,20 @@ function TodayTab({ client, pid, name, today, reload, canCarry, isToday }: { cli
           {today.todos.overdue ? ` · overdue ${today.todos.overdue}` : ''}
         </p>
       )}
+      {today.meds === null ? null : isLocked(today.meds) ? <Locked name={name} what="Medicines" /> : <p className="mt-8 type-row text-ink">{medsLine(today.meds)}</p>}
       {isLocked(today.weight) ? <Locked name={name} what="Weight" /> : today.weight.latest ? <p className="type-row text-ink">Weight {today.weight.latest.kg} kg ({today.weight.latest.day})</p> : null}
     </div>
   );
+}
+
+/** His Today line for her medicines: "Doses today: 2 of 3 logged · 1 not logged" (full), or the counts at adherence (no names). */
+export function medsLine(m: OwnerMedsView): string {
+  if (m.level === 'adherence') return m.notLoggedToday ? `Medicines: ${m.notLoggedToday} dose${m.notLoggedToday === 1 ? '' : 's'} not logged today` : 'Medicines: every dose due is logged';
+  const items = m.day.groups.flatMap((g) => g.items);
+  if (items.length === 0) return 'Medicines: no doses due';
+  const logged = items.filter((i) => i.status === 'taken' || i.status === 'skipped').length;
+  const missed = items.filter((i) => i.status === 'missed' || i.overdue).length;
+  return `Doses: ${logged} of ${items.length} logged${missed ? ` · ${missed} not logged` : ''}`;
 }
 
 function ReviewRead({ client, pid, name, v, canCarry, done }: { client: PeopleClient; pid: string; name: string; v: ReviewView; canCarry: boolean; done: () => void }) {
@@ -263,11 +292,193 @@ function ReviewRead({ client, pid, name, v, canCarry, done }: { client: PeopleCl
   );
 }
 
-function HealthTab({ client, pid, name, sees }: { client: PeopleClient; pid: string; name: string; sees: boolean }) {
+/**
+ * Her medicines at his level (see.meds; the two-day concern on both levels), her weight and her sleep week.
+ * Add for her needs assign.meds; Edit and Stop his additions with assign.meds, hers with editHers.meds (she
+ * then sees "Edited by you" and her Activity keeps the old values). No dose control: only she logs doses.
+ */
+function HealthTab({
+  client,
+  pid,
+  name,
+  meds,
+  canAdd,
+  editHers,
+  weight,
+  sleep,
+}: {
+  client: PeopleClient;
+  pid: string;
+  name: string;
+  meds: 'off' | 'adherence' | 'full';
+  canAdd: boolean;
+  editHers: boolean;
+  weight: boolean;
+  sleep: boolean;
+}) {
   const [week, setWeek] = useState<string | undefined>(undefined);
-  const load = useLifeLoad<Week>(sees ? `people:${pid}:sleep:${week ?? ''}` : null, () => client.sleep(pid, week));
-  if (!sees) return <Locked name={name} what="Sleep" />;
-  return <div className="mt-12">{load.data ? <SleepWeek week={load.data} onWeek={setWeek} /> : <p className="type-small text-ink-2">Loading…</p>}</div>;
+  const medsLoad = useLifeLoad<OwnerMedsView>(meds !== 'off' ? `people:${pid}:meds` : null, () => client.meds(pid));
+  const weights = useLifeLoad<PersonWeightsResponse>(weight ? `people:${pid}:weights` : null, () => client.weights(pid));
+  const sleepLoad = useLifeLoad<Week>(sleep ? `people:${pid}:sleep:${week ?? ''}` : null, () => client.sleep(pid, week));
+  const [editing, setEditing] = useState<PersonMedicineView | 'new' | null>(null);
+  const [stopping, setStopping] = useState<PersonMedicineView | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const canEdit = (m: PersonMedicineView) => meds === 'full' && (m.by === '' ? canAdd : editHers);
+  const stop = (m: PersonMedicineView) =>
+    void client.medStop(pid, m.id).then(
+      () => (setStopping(null), setNote(`Stopped: ${m.name}. ${name} sees it in Activity.`), medsLoad.reload()),
+      (e: Error) => setNote(e.message),
+    );
+  return (
+    <div className="mt-12">
+      <h2 className="type-row font-semibold text-ink">Medicines</h2>
+      {meds === 'off' ? (
+        <Locked name={name} what="Medicines" />
+      ) : medsLoad.data ? (
+        <MedsRead
+          view={medsLoad.data}
+          owner="you"
+          name={name}
+          actions={(m) =>
+            canEdit(m) ? (
+              <>
+                <Button variant="outline" className="min-h-44" onClick={() => setEditing(m)}>
+                  Edit
+                </Button>
+                <Button variant="text" className="min-h-44" onClick={() => setStopping(m)}>
+                  Stop
+                </Button>
+              </>
+            ) : null
+          }
+        />
+      ) : (
+        <p className="type-small text-ink-2">Loading…</p>
+      )}
+      {meds === 'full' && canAdd ? (
+        <Button variant="outline" className="mt-8 min-h-44" onClick={() => setEditing('new')}>
+          Add a medicine for {name}
+        </Button>
+      ) : null}
+      {note ? (
+        <p role="status" className="mt-8 type-small text-ink">
+          {note}
+        </p>
+      ) : null}
+      <h2 className="mt-16 type-row font-semibold text-ink">Weight</h2>
+      {!weight ? (
+        <Locked name={name} what="Weight" />
+      ) : weights.data ? (
+        weights.data.weights.length ? (
+          <ul className="type-row text-ink">
+            {weights.data.weights.slice(0, 10).map((w) => (
+              <li key={w.day} className="flex justify-between py-4">
+                <span>{dayLabel(w.day)}</span>
+                <span>
+                  {w.kg} kg{w.correctedBy === '' ? ` (corrected by you, was ${w.was ?? '–'} kg)` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="type-small text-ink-2">No weight logged.</p>
+        )
+      ) : (
+        <p className="type-small text-ink-2">Loading…</p>
+      )}
+      <h2 className="mt-16 type-row font-semibold text-ink">Sleep</h2>
+      {!sleep ? <Locked name={name} what="Sleep" /> : sleepLoad.data ? <SleepWeek week={sleepLoad.data} onWeek={setWeek} /> : <p className="type-small text-ink-2">Loading…</p>}
+      <MedSheet open={editing !== null} client={client} pid={pid} name={name} edit={editing === 'new' ? null : editing} close={() => setEditing(null)} done={medsLoad.reload} />
+      <Sheet open={stopping !== null} onOpenChange={(o) => (o ? null : setStopping(null))} title={stopping ? `Stop ${stopping.name}?` : 'Stop'}>
+        <div className="flex flex-col gap-12 pb-24">
+          <p className="type-row text-ink">Its reminders end today on {name}'s phone. The doses logged so far stay in {name}'s history, and {name}'s Activity lists it.</p>
+          <div className="flex gap-8">
+            <Button variant="primary" onClick={() => stopping && stop(stopping)}>
+              Stop it
+            </Button>
+            <Button variant="text" onClick={() => setStopping(null)}>
+              Keep it
+            </Button>
+          </div>
+        </div>
+      </Sheet>
+    </div>
+  );
+}
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Add a medicine for her (assign.meds), or edit one (his, or hers with editHers.meds): name, dose, times and notes. */
+function MedSheet({ open, client, pid, name, edit, close, done }: { open: boolean; client: PeopleClient; pid: string; name: string; edit: PersonMedicineView | null; close: () => void; done: () => void }) {
+  const [medName, setMedName] = useState('');
+  const [dose, setDose] = useState('');
+  const [times, setTimes] = useState('');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setMedName(edit?.name ?? '');
+    setDose(edit?.dose ?? '');
+    setTimes(edit ? edit.times.join(', ') : '');
+    setNotes(edit?.notes ?? '');
+    setError(null);
+  }, [open, edit]);
+  const list = times
+    .split(/[,\s]+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => (/^\d:\d\d$/.test(t) ? `0${t}` : t));
+  const valid = medName.trim().length > 0 && list.length > 0 && list.length <= 8 && list.every((t) => TIME_RE.test(t));
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (edit) {
+        const patch: MedicinePatch = { name: medName.trim(), dose: dose.trim() || null, times: list, notes: notes.trim() || null };
+        await client.medUpdate(pid, edit.id, patch);
+      } else {
+        const body: MedicineBody = { name: medName.trim(), ...(dose.trim() ? { dose: dose.trim() } : {}), times: list, schedule: { freq: 'daily' }, ...(notes.trim() ? { notes: notes.trim() } : {}) };
+        await client.medAssign(pid, body);
+      }
+      done();
+      close();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const field = 'min-h-44 rounded-btn border border-line bg-bg px-8 type-row text-ink';
+  return (
+    <Sheet open={open} onOpenChange={(o) => (o ? null : close())} title={edit ? `Edit: ${edit.name}` : `Add a medicine for ${name}`}>
+      <div className="flex flex-col gap-12 pb-24">
+        <label className="flex flex-col gap-4">
+          <span className="type-small text-ink-2">Name</span>
+          <input className={field} maxLength={60} value={medName} onChange={(e) => setMedName(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-4">
+          <span className="type-small text-ink-2">Dose (optional), like 1 tablet or 500 mg</span>
+          <input className={field} maxLength={40} value={dose} onChange={(e) => setDose(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-4">
+          <span className="type-small text-ink-2">Times, like 08:00, 20:00</span>
+          <input className={field} maxLength={60} value={times} onChange={(e) => setTimes(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-4">
+          <span className="type-small text-ink-2">Notes (optional)</span>
+          <input className={field} maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </label>
+        <p className="type-small text-ink-3">
+          {edit && edit.by !== '' ? `${name} sees "Edited by you", and ${name}'s Activity keeps what it was.` : `${name} sees it at once, marked "added by you". ${name}'s Activity lists it.`} Only {name} logs doses.
+        </p>
+        {error ? <p role="alert">{error}</p> : null}
+        <Button variant="primary" size="xl" disabled={!valid || busy} onClick={() => void save()}>
+          {edit ? 'Save' : `Add for ${name}`}
+        </Button>
+      </div>
+    </Sheet>
+  );
 }
 
 /**

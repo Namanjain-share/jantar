@@ -29,6 +29,7 @@ import type {
   PersonStatus,
   PersonStatusBody,
   PersonTodo,
+  PersonMedicinesResponse,
   PersonWeightsResponse,
   PlanView,
   ReviewSendBody,
@@ -42,7 +43,7 @@ import type {
   StepPatch,
   StepStateBody,
 } from '@jantar/protocol/people';
-import type { PlaceDetail, PlacePatch, PlacesResponse } from '@jantar/protocol';
+import type { DoseBody, MedicineBody, MedicinePatch, PlaceDetail, PlacePatch, PlacesResponse } from '@jantar/protocol';
 import { personCredentialStore, type PersonCredentialStore } from './credential.js';
 
 /** Her routes' paths, as PERSON_ROUTES has them (test/partner/api.test.ts compares). */
@@ -76,6 +77,12 @@ export const PERSON_PATHS = {
   todoAck: ['POST', '/v1/p/todos/:id/ack'],
   todoAsk: ['POST', '/v1/p/todos/:id/ask'],
   todoSkip: ['POST', '/v1/p/todos/:id/skip'],
+  meds: ['GET', '/v1/p/medicines'],
+  medCreate: ['POST', '/v1/p/medicines'],
+  medUpdate: ['PATCH', '/v1/p/medicines/:id'],
+  medStop: ['POST', '/v1/p/medicines/:id/stop'],
+  doseLog: ['POST', '/v1/p/medicines/:id/doses'],
+  doseDelete: ['DELETE', '/v1/p/medicines/:id/doses/:doseId'],
   weights: ['GET', '/v1/p/weights'],
   weightSet: ['PUT', '/v1/p/weights/:day'],
   weightDelete: ['DELETE', '/v1/p/weights/:day'],
@@ -196,6 +203,14 @@ export interface PersonApi {
   ack(id: string): Promise<void>;
   ask(id: string, note: string): Promise<void>;
   skip(id: string, reason?: string): Promise<void>;
+  /** Her medicines and a day of doses (today by default). */
+  meds(day?: string): Promise<PersonMedicinesResponse>;
+  medCreate(body: MedicineBody): Promise<{ id: string }>;
+  medUpdate(id: string, patch: MedicinePatch): Promise<void>;
+  medStop(id: string): Promise<void>;
+  /** Taken or Skip for one dose time; the reply's id is what Undo removes. */
+  doseLog(id: string, body: DoseBody): Promise<{ id: string }>;
+  doseDelete(id: string, doseId: string): Promise<void>;
   weights(): Promise<PersonWeightsResponse>;
   setWeight(day: string, kg: number): Promise<void>;
   deleteWeight(day: string): Promise<void>;
@@ -352,6 +367,12 @@ export function createPersonApi(opts: { fetch?: typeof fetch; base?: string; cre
     ack: async (id) => void (await call('todoAck', { params: { id } })),
     ask: async (id, note) => void (await call('todoAsk', { params: { id }, body: { note } })),
     skip: async (id, reason) => void (await call('todoSkip', { params: { id }, body: reason ? { reason } : {} })),
+    meds: (day) => call('meds', { query: { day } }),
+    medCreate: (body) => call('medCreate', { body }),
+    medUpdate: async (id, patch) => void (await call('medUpdate', { params: { id }, body: patch })),
+    medStop: async (id) => void (await call('medStop', { params: { id } })),
+    doseLog: (id, body) => call('doseLog', { params: { id }, body }),
+    doseDelete: async (id, doseId) => void (await call('doseDelete', { params: { id, doseId } })),
     weights: () => call('weights'),
     setWeight: async (day, kg) => void (await call('weightSet', { params: { day }, body: { kg } })),
     deleteWeight: async (day) => void (await call('weightDelete', { params: { day } })),

@@ -25,9 +25,9 @@ export type PersonRoute =
 export const ME_TABS = ['sharing', 'activity', 'devices', 'notifications', 'leave'] as const;
 export type MeTab = (typeof ME_TABS)[number];
 /** The areas "See what {owner} sees" opens (`/p/me?tab=sharing&see=`). */
-export const MIRROR_AREAS = ['today', 'todos', 'weight', 'plan', 'review', 'sleep', 'journal', 'chat'] as const;
+export const MIRROR_AREAS = ['today', 'todos', 'meds', 'weight', 'plan', 'review', 'sleep', 'journal', 'chat'] as const;
 export type MirrorArea = (typeof MIRROR_AREAS)[number];
-export const HEALTH_TABS = ['weight', 'sleep'] as const;
+export const HEALTH_TABS = ['meds', 'weight', 'sleep'] as const;
 export type HealthTab = (typeof HEALTH_TABS)[number];
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -48,7 +48,7 @@ export function parsePersonRoute(pathname: string, search: string): PersonRoute 
   if (path === '/p/todos') return { name: 'todos' };
   if (path === '/p/health') {
     const tab = q.get('tab');
-    return { name: 'health', tab: (HEALTH_TABS as readonly string[]).includes(tab ?? '') ? (tab as HealthTab) : 'sleep', week: day('week') };
+    return { name: 'health', tab: (HEALTH_TABS as readonly string[]).includes(tab ?? '') ? (tab as HealthTab) : 'meds', week: day('week') };
   }
   if (path === '/p/journal') return { name: 'journal', id: id(), checkin: q.get('checkin') === '1' };
   if (path === '/p/alerts') return { name: 'alerts', id: id() };

@@ -119,7 +119,7 @@ export function App({ api }: { api: PersonApi }) {
           {route.name === 'today' ? <Today me={me} api={api} reload={load} tick={tick} /> : null}
           {route.name === 'review' ? <Review me={me} api={api} day={route.day} tick={tick} /> : null}
           {route.name === 'todos' ? <Todos me={me} api={api} tick={tick} /> : null}
-          {route.name === 'health' ? <Health api={api} tab={route.tab} week={route.week} tick={tick} /> : null}
+          {route.name === 'health' ? <Health api={api} owner={me.owner.name} tab={route.tab} week={route.week} tick={tick} /> : null}
           {route.name === 'journal' ? <Journal me={me} api={api} id={route.id} checkin={route.checkin} tick={tick} /> : null}
           {route.name === 'alerts' ? <Alerts me={me} api={api} id={route.id} tick={tick} /> : null}
           {route.name === 'chat' ? <Chat me={me} api={api} tick={tick} /> : null}

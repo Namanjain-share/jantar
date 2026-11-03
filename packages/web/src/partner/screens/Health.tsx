@@ -1,33 +1,195 @@
 /**
- * v0.12 People: her Health (`/p/health`), a lazy screen: Sleep (P2: the
- * week, Going to sleep, Add a night, edit and delete any night; spec 3.12)
- * and Weight (P1). Food joins only with her module on. Nothing here colours
- * a short night or turns it into an alert.
+ * v0.12 People: her Health (`/p/health`), a lazy screen: Medicines (spec
+ * 3.4: today's doses with Taken and Skip and a 5-second Undo, her medicines
+ * with "added by {owner}" and "edited by {owner}", Add, Edit and Stop for
+ * any of hers), Sleep (P2: the week, Going to sleep, Add a night, edit and
+ * delete any night; spec 3.12) and Weight (P1). Her food log is not in this
+ * build. Nothing here colours a short night or a dose not logged, or turns
+ * either into an alert.
  */
-import type { PersonWeightsResponse, SleepNight, SleepWeek as Week } from '@jantar/protocol/people';
+import type { MedicineBody, MedicinePatch, MedsDayItem } from '@jantar/protocol';
+import type { PersonMedicineView, PersonMedicinesResponse, PersonWeightsResponse, SleepNight, SleepWeek as Week } from '@jantar/protocol/people';
 import { useCallback, useEffect, useState } from 'react';
 import { Faces } from '../../people-shared/Faces.js';
+import { scheduleWords } from '../../people-shared/MedsRead.js';
 import { SleepWeek } from '../../people-shared/SleepWeek.js';
 import { dayLabel, shiftDay } from '../../people-shared/time.js';
 import { Button } from '../../ui/kit/Button.js';
 import type { PersonApi } from '../api.js';
 import { navigate } from '../nav.js';
 import type { HealthTab } from '../router.js';
-import { Field, Sheet } from '../ui.js';
+import { Field, Sheet, UndoToast, useUndo } from '../ui.js';
+import { DoseRow } from './DoseRow.js';
 
-export default function Health({ api, tab, week, tick }: { api: PersonApi; tab: HealthTab; week: string | null; tick: number }) {
+const TAB_LABEL: Record<HealthTab, string> = { meds: 'Medicines', sleep: 'Sleep', weight: 'Weight' };
+
+export default function Health({ api, owner, tab, week, tick }: { api: PersonApi; owner: string; tab: HealthTab; week: string | null; tick: number }) {
   return (
     <div>
       <h1 className="text-title font-semibold">Health</h1>
-      <div role="tablist" className="mt-8 flex gap-8">
-        {(['sleep', 'weight'] as const).map((t) => (
+      <div role="tablist" className="mt-8 flex flex-wrap gap-8">
+        {(['meds', 'sleep', 'weight'] as const).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => navigate(`/p/health?tab=${t}`)} className={`min-h-44 px-12 ${tab === t ? 'font-medium text-ink underline' : 'text-ink-2'}`}>
-            {t === 'sleep' ? 'Sleep' : 'Weight'}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </div>
-      {tab === 'sleep' ? <Sleep api={api} week={week} tick={tick} /> : <Weight api={api} tick={tick} />}
+      {tab === 'meds' ? <Meds api={api} owner={owner} tick={tick} /> : tab === 'sleep' ? <Sleep api={api} week={week} tick={tick} /> : <Weight api={api} tick={tick} />}
     </div>
+  );
+}
+
+/** Today's doses (Taken, Skip, Undo) and her medicines: Add, Edit and Stop any of hers, his additions included. */
+function Meds({ api, owner, tick }: { api: PersonApi; owner: string; tick: number }) {
+  const [data, setData] = useState<PersonMedicinesResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<PersonMedicineView | 'new' | null>(null);
+  const [stopping, setStopping] = useState<PersonMedicineView | null>(null);
+  const undo = useUndo();
+  const load = useCallback(() => api.meds().then(setData, (e: Error) => setError(e.message)), [api]);
+  useEffect(() => {
+    void load();
+  }, [load, tick]);
+  const run = (p: Promise<unknown>) => p.then(() => (setError(null), void load()), (e: Error) => setError(e.message));
+  const byId = new Map((data?.medicines ?? []).map((m) => [m.id, m]));
+  const log = (i: MedsDayItem, status: 'taken' | 'skipped') =>
+    void api.doseLog(i.medId, { day: data?.day.day ?? '', slot: i.slot, status }).then(
+      (r) => {
+        setError(null);
+        void load();
+        undo.show(`${status === 'taken' ? 'Taken' : 'Skipped'}: ${i.name} ${i.slot}`, () => void run(api.doseDelete(i.medId, r.id)));
+      },
+      (e: Error) => setError(e.message),
+    );
+  const items = data?.day.groups.flatMap((g) => g.items) ?? [];
+  const taking = (data?.medicines ?? []).filter((m) => !m.stoppedOn);
+  return (
+    <div className="mt-12">
+      {error ? <p role="alert">{error}</p> : null}
+      <h2 className="font-semibold">Doses today</h2>
+      {items.length ? (
+        <ul className="divide-y divide-line">
+          {items.map((i) => (
+            <DoseRow
+              key={`${i.medId}@${i.slot}`}
+              item={i}
+              {...(byId.get(i.medId)?.by === '' ? { addedBy: owner } : {})}
+              onLog={(st) => log(i, st)}
+              onUndo={() => i.doseId && void run(api.doseDelete(i.medId, i.doseId))}
+            />
+          ))}
+        </ul>
+      ) : (
+        <p className="text-ink-2">{data ? 'No doses due today.' : 'Loading…'}</p>
+      )}
+      <h2 className="mt-16 font-semibold">Your medicines</h2>
+      <ul className="divide-y divide-line">
+        {taking.map((m) => (
+          <li key={m.id} className="flex flex-wrap items-start gap-8 py-8">
+            <div className="min-w-0 flex-1 basis-[12rem]">
+              <p className="break-words">
+                {m.name}
+                {m.dose ? <span className="text-ink-2"> · {m.dose}</span> : null}
+              </p>
+              <p className="text-small text-ink-2">
+                {[m.times.join(', '), scheduleWords(m), m.supply?.low ? 'running low' : null, m.by === '' ? `added by ${owner}` : null, m.editedBy === '' && m.by !== '' ? `edited by ${owner}` : null]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            </div>
+            <div className="flex gap-4">
+              <Button variant="outline" className="min-h-44" onClick={() => setEditing(m)}>
+                Edit
+              </Button>
+              <Button variant="text" className="min-h-44" onClick={() => setStopping(m)}>
+                Stop
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-12">
+        <Button variant="outline" size="lg" onClick={() => setEditing('new')}>
+          Add a medicine
+        </Button>
+      </div>
+      <MedSheet
+        med={editing}
+        close={() => setEditing(null)}
+        save={async (body, id) => {
+          if (id) await api.medUpdate(id, body);
+          else await api.medCreate(body as MedicineBody);
+          setEditing(null);
+          void load();
+        }}
+      />
+      <Sheet open={stopping !== null} onOpenChange={(o) => !o && setStopping(null)} title={stopping ? `Stop ${stopping.name}?` : 'Stop'}>
+        <div className="flex flex-col gap-12 pb-24">
+          <p>Its reminders end today. Your doses so far stay in your history{stopping?.by === '' ? `, and ${owner} is told` : ''}.</p>
+          <div className="flex gap-8">
+            <Button variant="primary" size="lg" onClick={() => stopping && void run(api.medStop(stopping.id)).then(() => setStopping(null))}>
+              Stop it
+            </Button>
+            <Button variant="text" size="lg" onClick={() => setStopping(null)}>
+              Keep it
+            </Button>
+          </div>
+        </div>
+      </Sheet>
+      <UndoToast toast={undo.toast} close={undo.close} />
+    </div>
+  );
+}
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Add or edit one medicine: name, dose, times (HH:MM, comma-separated) and notes. A new one is every day. */
+function MedSheet({ med, close, save }: { med: PersonMedicineView | 'new' | null; close: () => void; save: (body: MedicinePatch | MedicineBody, id?: string) => Promise<void> }) {
+  const ex = med && med !== 'new' ? med : null;
+  const [name, setName] = useState('');
+  const [dose, setDose] = useState('');
+  const [times, setTimes] = useState('');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setName(ex?.name ?? '');
+    setDose(ex?.dose ?? '');
+    setTimes(ex ? ex.times.join(', ') : '');
+    setNotes(ex?.notes ?? '');
+    setError(null);
+  }, [ex, med]);
+  if (!med) return null;
+  const list = times
+    .split(/[,\s]+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => (/^\d:\d\d$/.test(t) ? `0${t}` : t));
+  const valid = name.trim().length > 0 && list.length > 0 && list.length <= 8 && list.every((t) => TIME_RE.test(t));
+  return (
+    <Sheet open onOpenChange={(o) => !o && close()} title={ex ? `Edit ${ex.name}` : 'Add a medicine'}>
+      <div className="flex flex-col gap-12 pb-24">
+        <Field label="Name" value={name} onChange={setName} max={60} />
+        <Field label="Dose (optional), like 1 tablet or 500 mg" value={dose} onChange={setDose} max={40} />
+        <Field label="Times, like 08:00, 20:00" value={times} onChange={setTimes} max={60} />
+        <Field label="Notes (optional)" value={notes} onChange={setNotes} max={500} />
+        {error ? <p role="alert">{error}</p> : null}
+        <Button
+          variant="primary"
+          size="xl"
+          disabled={!valid}
+          onClick={() =>
+            void save(
+              ex
+                ? { name: name.trim(), dose: dose.trim() || null, times: list, notes: notes.trim() || null }
+                : { name: name.trim(), ...(dose.trim() ? { dose: dose.trim() } : {}), times: list, schedule: { freq: 'daily' }, ...(notes.trim() ? { notes: notes.trim() } : {}) },
+              ex?.id,
+            ).catch((e: Error) => setError(e.message))
+          }
+        >
+          Save
+        </Button>
+      </div>
+    </Sheet>
   );
 }
 

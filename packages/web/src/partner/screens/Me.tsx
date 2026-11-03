@@ -33,6 +33,7 @@ const Mirror = lazy(() => import('./Mirror.js'));
 /** The `see` fields with a view in this build, and the mirror area each opens. */
 const MIRROR_AREA: Record<string, string> = {
   'see.todos': 'todos',
+  'see.meds': 'meds',
   'see.weight': 'weight',
   'see.plan': 'plan',
   'see.review': 'review',
@@ -197,7 +198,24 @@ const AREA_WORDS: Record<string, string> = {
 const areaWords = (a: string | undefined) => (a ? (AREA_WORDS[a] ?? `your ${a}`) : 'your space');
 const dayOf = (ref: string | undefined) => (ref && /^\d{4}-\d{2}-\d{2}$/.test(ref) ? dayLabel(ref) : null);
 const quoted = (t: string | undefined) => (t ? `: ${t}` : '');
-const FIELD_WORDS: Record<string, string> = { at: 'the time', title: 'the name', minutes: 'the length', ask: 'what it asks', notes: 'the notes', due: 'the due day', followUp: '"Tell me if not done by"', focus: 'focus', ring: 'the ring', kg: 'the weight', chatPerDay: 'messages a day' };
+const FIELD_WORDS: Record<string, string> = {
+  at: 'the time',
+  title: 'the name',
+  name: 'the name',
+  minutes: 'the length',
+  ask: 'what it asks',
+  notes: 'the notes',
+  due: 'the due day',
+  followUp: '"Tell me if not done by"',
+  focus: 'focus',
+  ring: 'the ring',
+  kg: 'the weight',
+  chatPerDay: 'messages a day',
+  dose: 'the dose',
+  times: 'the times',
+  schedule: 'the days',
+  pills: 'the pill count',
+};
 
 /** "changed the time of 'Mock' 08:00 → 08:30" (the first change named; more as "and 2 more"). */
 function changeWords(r: PersonActivity): string {
@@ -236,6 +254,9 @@ const ACTION_WORDS: Record<string, (owner: string, r: PersonActivity) => string>
     const k = r.fields?.[0] as AlertKind | undefined;
     return `${o} sent you an alert${k && ALERT_KINDS[k] ? `: ${ALERT_KINDS[k].label}` : ''}`;
   },
+  'med.added': (o, r) => `${o} added a medicine${quoted(r.title)}`,
+  'med.edited': (o, r) => (r.changes?.length ? `${o} changed ${changeWords(r)}` : `${o} changed a medicine${quoted(r.title)}`),
+  'med.stopped': (o, r) => `${o} stopped a medicine${quoted(r.title)}`,
   'weight.corrected': (o, r) => `${o} corrected your weight${dayOf(r.ref) ? ` for ${dayOf(r.ref)}` : ''}${r.changes?.[0] ? `: ${r.changes[0].from} → ${r.changes[0].to} kg` : ''}`,
   'weight.deleted': (o, r) => `${o} removed your weight${dayOf(r.ref) ? ` for ${dayOf(r.ref)}` : ''}`,
   'chat.limit': (o, r) => `${o} set your chat to ${r.changes?.[0]?.to ?? 'a new number of'} messages a day`,

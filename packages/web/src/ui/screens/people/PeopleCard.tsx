@@ -1,12 +1,13 @@
 /**
  * v0.12 People (P2): the card on his Today (spec 4.1): "Asha · 3 of 7 done
  * · Now: Interview prep 11:00 · Low" (or "Asleep since 23:40" with
- * see.sleep). Every field obeys the agreement (it is her Today DTO, which
+ * see.sleep), and with see.meds "1 dose not logged" (a count, never a name)
+ * and the two-day concern. Every field obeys the agreement (it is her Today DTO, which
  * writes the same view mark as her Today tab); a tap opens her Today tab.
  * Nothing shows while People is off or nobody is sharing.
  */
 import { STATUS_LABELS } from '@jantar/protocol/people-core';
-import type { PersonToday } from '@jantar/protocol/people';
+import type { OwnerMedsView, PersonToday } from '@jantar/protocol/people';
 import { hmOf } from '../../../people-shared/time.js';
 import { useNavigate } from '../../context.js';
 import { useLifeLoad } from '../life/shared/useLife.js';
@@ -21,8 +22,18 @@ export function peopleLine(t: PersonToday): string {
   const sleep = 'locked' in t.sleep ? null : t.sleep.open;
   if (sleep) parts.push(`Asleep since ${hmOf(sleep.since)}`);
   else if (t.status && !('locked' in t.status)) parts.push(STATUS_LABELS[t.status.level]);
+  const missed = t.meds && !('locked' in t.meds) ? dosesNotLogged(t.meds) : 0;
+  if (missed > 0) parts.push(`${missed} dose${missed === 1 ? '' : 's'} not logged`);
+  if (t.meds && !('locked' in t.meds) && t.meds.concern) parts.push(t.meds.concern.replace(/\.\s*Worth checking in\.$/, ''));
   if (t.state === 'paused') parts.push('paused');
   return parts.join(' · ');
+}
+
+/** Today's doses due and not logged, at either level (a count only). */
+export function dosesNotLogged(m: OwnerMedsView): number {
+  if (m.level === 'adherence') return m.notLoggedToday;
+  if (m.day.day !== m.day.today) return 0;
+  return m.day.groups.flatMap((g) => g.items).filter((i) => i.status === 'missed' || i.overdue).length;
 }
 
 export function PeopleCard({ client = peopleClient() }: { client?: PeopleClient }) {
