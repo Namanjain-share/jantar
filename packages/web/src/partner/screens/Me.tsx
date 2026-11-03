@@ -13,7 +13,7 @@
  * - Notifications: turn on and test, lock screen, mute.
  * - Leave: download first, keep 30 days or delete now, type LEAVE.
  */
-import { AGREEMENT_FIELDS, ALERT_KINDS, closeDependents, fieldsChanged, withField, type AgreementFields, type AgreementPatch, type AlertKind, CHAT_KEEP_DAYS } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, ALERT_KINDS, AREAS, closeDependents, phaseBuilt, fieldsChanged, withField, type AgreementFields, type AgreementPatch, type AlertKind, CHAT_KEEP_DAYS } from '@jantar/protocol/people-core';
 import type { PersonActivity, PersonMe, PersonPrefsPatch } from '@jantar/protocol/people';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { dayLabel, hmOf } from '../../people-shared/time.js';
@@ -157,7 +157,10 @@ export function Sharing({ me, api, reload }: { me: PersonMe; api: PersonApi; rel
         ))}
         <li>{me.owner.name}'s Mac (the jantar command, and programs {me.owner.name} runs there)</li>
       </ul>
-      <p className="mt-16 text-small text-ink-2">Food: {me.person.modules.food ? 'on' : `off (${me.owner.name} set this up without a food log)`}</p>
+      {/* Her food log is a later phase: nothing here names it while it isn't served (AREAS.food). */}
+      {phaseBuilt(AREAS.food, me.built) ? (
+        <p className="mt-16 text-small text-ink-2">Food: {me.person.modules.food ? 'on' : `off (${me.owner.name} set this up without a food log)`}</p>
+      ) : null}
       <h2 className="mt-24 font-semibold">What {me.owner.name} is told without looking</h2>
       <ul className="mt-8 list-disc pl-20">
         {toldWithoutLooking(me).map((l) => (

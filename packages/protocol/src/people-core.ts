@@ -293,7 +293,8 @@ export const AREAS = {
   sleep: 'P2',
   journal: 'P2',
   chat: 'P3',
-  food: 'P1',
+  // Her food log (spec 3.5) isn't served in this release: no agreement, join line, screen or route offers it.
+  food: 'later',
 } as const satisfies Record<string, BuildPhase>;
 export type Area = keyof typeof AREAS;
 export const AREA_NAMES = Object.keys(AREAS) as Area[];
@@ -342,7 +343,7 @@ export const AGREEMENT_FIELDS: readonly AgreementField[] = [
   { key: 'see.sleep', path: ['see', 'sleep'], phase: 'P2', levels: ONOFF, area: 'sleep' },
   { key: 'see.journal', path: ['see', 'journal'], phase: 'P2', levels: ONOFF, area: 'journal' },
   { key: 'see.chat', path: ['see', 'chat'], phase: 'P3', levels: ONOFF, area: 'chat' },
-  { key: 'see.food', path: ['see', 'food'], phase: 'P1', levels: ONOFF, area: 'food' },
+  { key: 'see.food', path: ['see', 'food'], phase: 'later', levels: ONOFF, area: 'food' },
   { key: 'assign.todos', path: ['assign', 'todos'], phase: 'P1', levels: ONOFF, area: 'todos' },
   { key: 'assign.plan', path: ['assign', 'plan'], phase: 'P2', levels: ONOFF, area: 'plan' },
   { key: 'assign.meds', path: ['assign', 'meds'], phase: 'P1', levels: ONOFF, area: 'meds' },
@@ -471,14 +472,17 @@ export function applyAgreementPatch(a: AgreementFields, patch: AgreementPatch): 
   return out;
 }
 
-/** The fields a patch names whose phase isn't built (an unbuilt field is a 400, O7). */
+/**
+ * The fields a patch asks for whose phase isn't built (an unbuilt field is a 400, O7). Naming one at its
+ * lowest level asks for nothing (`--see food=off` while food is a later phase) and passes.
+ */
 export function unbuiltFieldsIn(patch: AgreementPatch, built: BuildPhase = BUILT_PHASE): string[] {
-  const named = new Set<string>();
+  const named = new Map<string, unknown>();
   for (const [group, value] of Object.entries(patch)) {
     if (value === undefined) continue;
-    if (typeof value === 'object' && value !== null) for (const k of Object.keys(value)) named.add(`${group}.${k}`);
-    else named.add(group);
+    if (typeof value === 'object' && value !== null) for (const [k, v] of Object.entries(value)) named.set(`${group}.${k}`, v);
+    else named.set(group, value);
   }
-  return AGREEMENT_FIELDS.filter((f) => named.has(f.key) && !phaseBuilt(f.phase, built)).map((f) => f.key);
+  return AGREEMENT_FIELDS.filter((f) => named.has(f.key) && !phaseBuilt(f.phase, built) && named.get(f.key) !== f.levels[0]).map((f) => f.key);
 }
 

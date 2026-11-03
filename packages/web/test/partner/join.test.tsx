@@ -6,7 +6,7 @@
  * "Always yours" are always there, and a switch only lowers.
  */
 import { describe, expect, it } from 'vitest';
-import { AGREEMENT_FIELDS, BUILT_PHASE, closeDependents, phaseBuilt, presetAgreement, withField } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, BUILT_PHASE, applyAgreementPatch, closeDependents, phaseBuilt, presetAgreement, withField } from '@jantar/protocol/people-core';
 import { joinCopy, levelLabel, lowerLevels, switchLabel } from '../../src/partner/join/copy.js';
 
 const all = (c: ReturnType<typeof joinCopy>) => [c.heading, c.intro, ...c.sees.map((l) => l.text), ...c.does.map((l) => l.text), ...c.cant, ...c.yours, ...c.smallPrint].join('\n');
@@ -98,8 +98,18 @@ describe('M20: the join page', () => {
     expect(all(c)).not.toMatch(/journal|sleep|day plan|evening review|assistant/i);
   });
 
-  it("food off: the line says it isn't part of the space", () => {
-    const c = joinCopy('Sam', presetAgreement('everything'), { built: 'P1', foodModule: false });
-    expect(c.sees.find((l) => l.key === 'see.food')?.text).toMatch(/not part of your space/);
+  it('food is not in this build: no line names it, whatever her food module says (nothing is promised that is not served)', () => {
+    for (const foodModule of [true, false]) {
+      const c = joinCopy('Sam', presetAgreement('everything'), { built: BUILT_PHASE, foodModule });
+      expect(c.sees.map((l) => l.key)).not.toContain('see.food');
+      expect(all(c)).not.toMatch(/\bfood\b/i);
+    }
+  });
+
+  it('every area the page offers is one this build serves: medicines are on it, with Add and Change for him', () => {
+    const c = joinCopy('Sam', applyAgreementPatch(presetAgreement('everything'), { see: { food: false } }), { built: BUILT_PHASE, foodModule: false });
+    expect(c.sees.find((l) => l.key === 'see.meds')?.text).toBe('Your medicines: names, doses, times, and whether you took each dose');
+    expect(all(c)).toMatch(/Add a medicine for you\./);
+    expect(all(c)).toMatch(/Change or stop medicines you added yourself/);
   });
 });

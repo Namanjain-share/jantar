@@ -96,6 +96,10 @@ describe('the agreement', () => {
     expect(unbuiltFieldsIn({ see: { chat: true } }, 'P2')).toEqual(['see.chat']);
     expect(unbuiltFieldsIn({ assistant: true })).toEqual(['assistant']);
     expect(unbuiltFieldsIn({ see: { meds: 'off' } })).toEqual([]);
+    // Food is a later phase: naming it off asks for nothing; asking for it is refused.
+    expect(unbuiltFieldsIn({ see: { food: false } })).toEqual([]);
+    expect(unbuiltFieldsIn({ see: { food: true } })).toEqual(['see.food']);
+    expect(unbuiltFieldsIn({ see: { chat: false } }, 'P2')).toEqual([]);
   });
 });
 
