@@ -33,6 +33,7 @@
  * No text anywhere but the thread: events are `life.changed {}`; one
  * `chat.run` audit row per run with ids and counts; logs carry codes.
  */
+import { OWNER_FALLBACK_NAME } from '@jantar/protocol/people-core';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { chmod, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -470,7 +471,7 @@ export class ChatServiceImpl implements ChatService {
     const store = (this.store as ChatStore).inThread(threadOf(actor));
     const { left, perDay } = this.leftToday(actor.personId, store);
     const canRead = this.ownerCanRead(actor.personId);
-    let owner = 'The owner';
+    let owner = OWNER_FALLBACK_NAME;
     try {
       owner = this.deps.life.people.ownerName();
     } catch {
