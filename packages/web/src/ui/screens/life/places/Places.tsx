@@ -335,6 +335,8 @@ function PlaceCard({ place: p, currency, onOpen }: { place: Place; currency: str
         <span className="mt-6 flex flex-wrap items-center gap-8">
           {!p.tried ? <Tag>want</Tag> : p.stars ? <Stars rating={p.stars} /> : null}
           {p.again === 'no' ? <Tag>not again</Tag> : null}
+          {/* v0.11 People: a café in the space he shares, as on its row. */}
+          {p.space ? <Tag>shared</Tag> : null}
           {p.price ? currency ? <span className="type-mono text-ink-2">{priceLabel(p.price, currency)}</span> : <Tag>{priceLabel(p.price, null)}</Tag> : null}
         </span>
         {dish ? (
