@@ -10,8 +10,10 @@
  */
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { PlacePatch } from '@jantar/protocol';
 import { preloadPlaces } from './helpers.js';
-import { id, place, render, vid, visit } from './places-helpers.js';
+import { layoutAt } from '../src/ui/shell/layout.js';
+import { PLACES, id, place, render, vid, visit, type RenderOpts } from './places-helpers.js';
 
 preloadPlaces('places');
 
@@ -42,7 +44,9 @@ describe('the café screen', () => {
     // The ratings that are set, labelled, as stars.
     const ratings = within(section('Ratings'));
     expect(ratings.getAllByRole('term').map((t) => t.textContent)).toEqual(['Food', 'Work']);
-    expect(ratings.getAllByRole('img').map((i) => i.getAttribute('aria-label'))).toEqual(['5 of 5', '3 of 5']);
+    // 0.11: each a row of five stars to tap (OQ9), the rating checked.
+    expect(ratings.getAllByRole('radiogroup').map((g) => g.getAttribute('aria-label'))).toEqual(['Food', 'Work']);
+    expect(ratings.getAllByRole('radio', { checked: true }).map((r) => r.getAttribute('aria-label'))).toEqual(['5 stars', '3 stars']);
     expect(within(section('Tags')).getAllByRole('listitem').map((t) => t.textContent)).toEqual(['Wi-Fi', 'Sockets', 'Quiet', 'Board games']);
     const dishes = within(section('Dishes')).getAllByRole('listitem');
     expect(within(dishes[0]!).getByText('₹180 · order again').className).toContain('type-mono');
@@ -164,5 +168,101 @@ describe('deletes (spec 0.10 A7.4)', () => {
     expect(sheet).toBeNull();
     // No Undo for it: it is gone.
     expect(screen.queryByText(/^Deleted:/)).toBeNull();
+  });
+});
+
+/** The cafés with a placeUpdate that keeps what it is sent, as the Mac would (a copy: PLACES is shared). */
+function rateable(over: RenderOpts = {}) {
+  const places = PLACES.map((p) => structuredClone(p));
+  const placeUpdate = vi.fn(async (pid: string, patch: PlacePatch) => {
+    const p = places.find((x) => x.id === pid)!;
+    const next = { ...p.ratings };
+    for (const [k, v] of Object.entries(patch.ratings ?? {})) {
+      if (v === null) delete next[k as keyof typeof next];
+      else next[k as keyof typeof next] = v;
+    }
+    p.ratings = next;
+    return { ok: true as const };
+  });
+  return render({ places, visits: VISITS, api: { placeUpdate }, ...over });
+}
+
+describe('0.11: tap a star to rate (OQ9)', () => {
+  it('a tap sends that rating alone, with "Food 5 → 3 · Undo"; Undo puts the old one back', async () => {
+    const { api } = rateable({ path: `/places?id=${id(1)}` });
+    const food = () => within(screen.getByRole('radiogroup', { name: 'Food' }));
+    await screen.findByRole('radiogroup', { name: 'Food' });
+    fireEvent.click(food().getByRole('radio', { name: '3 stars' }));
+    expect(food().getByRole('radio', { name: '3 stars' }).getAttribute('aria-checked')).toBe('true');
+    await waitFor(() => expect(api.placeUpdate).toHaveBeenCalledWith(id(1), { ratings: { food: 3 } }, expect.any(String)));
+    expect(await screen.findByText('Food 5 → 3')).toBeTruthy();
+    expect(food().getByRole('radio', { name: '3 stars' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(api.placeUpdate).toHaveBeenLastCalledWith(id(1), { ratings: { food: 5 } }));
+    await waitFor(() => expect(food().getByRole('radio', { name: '5 stars' }).getAttribute('aria-checked')).toBe('true'));
+  });
+
+  it('a tap on the rating it has does nothing; a hover with a mouse previews and sends nothing', async () => {
+    const { api } = rateable({ path: `/places?id=${id(1)}` });
+    const work = within(await screen.findByRole('radiogroup', { name: 'Work' }));
+    fireEvent.click(work.getByRole('radio', { name: '3 stars' }));
+    fireEvent.pointerEnter(work.getByRole('radio', { name: '5 stars' }), { pointerType: 'mouse' });
+    expect(work.getByRole('radio', { name: '3 stars' }).getAttribute('aria-checked')).toBe('true');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(api.placeUpdate).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+
+  it('a star is a 44 cell on touch', async () => {
+    render({ path: `/places?id=${id(1)}`, visits: VISITS });
+    const star = within(await screen.findByRole('radiogroup', { name: 'Food' })).getByRole('radio', { name: '1 star' });
+    expect(star.className).toContain('coarse:size-44');
+  });
+});
+
+describe('0.11: a wide pane', () => {
+  const wide = (path: string) => render({ path, visits: VISITS, layout: layoutAt(1440) });
+
+  it('lays the cafés out as cards with nothing open, and keeps rows on a phone', async () => {
+    wide('/places');
+    const cards = await screen.findByRole('list', { name: 'Cafés' });
+    expect(cards.className).toContain('grid');
+    expect(within(cards).getAllByRole('button')[0]!.className).toContain('rounded-dock');
+  });
+
+  it('opens a café beside the list, its row current; Close and Esc go back to the same view', async () => {
+    const { router } = render({ path: `/places?sort=work&id=${id(1)}`, visits: VISITS, layout: layoutAt(1440) });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Example Café 1' })).toBeTruthy();
+    const list = await screen.findByRole('list', { name: 'Cafés' });
+    expect(list.className).not.toContain('grid');
+    const current = within(list).getByRole('button', { current: true });
+    expect(current.textContent).toContain('Example Café 1');
+    expect(screen.queryByRole('link', { name: 'Cafés' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(router.getState().route).toEqual({ name: 'places', sort: 'work' });
+    await act(async () => {
+      router.getState().navigate(`/places?sort=work&id=${id(2)}`);
+    });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Example Café 2' })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(router.getState().route).toEqual({ name: 'places', sort: 'work' });
+  });
+
+  it('Esc in a sheet over the café closes the sheet, not the café', async () => {
+    const { router } = wide(`/places?id=${id(1)}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(router.getState().route).toEqual({ name: 'places', id: id(1) });
+  });
+
+  it('the one Undo line shows on the café beside the list', async () => {
+    rateable({ path: `/places?id=${id(1)}`, layout: layoutAt(1440) });
+    fireEvent.click(within(await screen.findByRole('radiogroup', { name: 'Food' })).getByRole('radio', { name: '4 stars' }));
+    expect(await screen.findByText('Food 5 → 4')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Undo' })).toHaveLength(1);
   });
 });

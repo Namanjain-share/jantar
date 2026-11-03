@@ -12,6 +12,13 @@
  * screen when a deleted café's screen goes back to the list. Every v0.10
  * field may be missing from a 0.9 daemon's answer. The title is the page's
  * <h1> in every state.
+ *
+ * 0.11 (build plan 2.5): a SplitPane ("cafes", fill). With nothing open
+ * (and not on a phone) the cafés are cards across the pane, at least 280
+ * wide (four at 1440). From a pane of 800 a café opens beside the list,
+ * which becomes the rows with the open one current; below 800 it opens
+ * over the list with "< Cafés", as before. The one Undo line shows on the
+ * café while one is beside the list.
  */
 import { CheckIcon, MagnifyingGlassIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -22,13 +29,15 @@ import { useDeps, useNavigate } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
 import { IconButton } from '../../../kit/IconButton.js';
 import { Sheet } from '../../../kit/Sheet.js';
+import { SplitPane, useSplit } from '../../../kit/SplitPane.js';
 import { Tag } from '../../../kit/Tag.js';
+import { useLayout } from '../../../shell/layout.js';
 import { Segmented } from '../../accounts/Segmented.js';
 import { SwitchRow } from '../../devices/parts.js';
 import { CHIP, CHIP_OFF, CHIP_ON } from '../money/fields.js';
 import { EMPTY, LifeEmpty, NotSaved } from '../shared/states.js';
-import { useLifeLoad, useLifeStatus } from '../shared/useLife.js';
-import { AddButton, Field, Loaded, Page, useHeldDeletes, useLifeClock, useOffline, useSheet, useUndo, useWrite } from '../today/parts.js';
+import { useLifeLoad, useLifeStatus, type LifeLoad } from '../shared/useLife.js';
+import { AddButton, Field, Loaded, Page, useHeldDeletes, useLifeClock, useOffline, useSheet, useUndo, useWrite, type Undo } from '../today/parts.js';
 import { FIXED_TAGS, SORTS, SORT_LABELS, WORK_TAGS, filterCount, placesQuery, priceLabel, shortDay, tagLabel, tagsLine, tagsOf, tagsOn } from './model.js';
 import { PlaceScreen } from './PlaceScreen.js';
 import { PlaceSheet } from './PlaceSheet.js';
@@ -105,27 +114,95 @@ export function Places(props: PlacesProps) {
     if (id) navigate(listPath, { replace: true });
   };
 
-  if (id) {
-    return (
-      <PlaceScreen
-        key={id}
-        id={id}
-        back={listPath}
-        currency={currency}
-        today={clock.day}
-        undo={undo}
-        held={held}
-        customTags={customTags}
-        onDelete={deletePlace}
-        onDeleted={() => {
-          load.reload();
-          navigate(listPath, { replace: true });
-        }}
-      />
-    );
-  }
+  // 0.11: the cafés across the pane, and a café beside them from a pane of 800 (over them below that).
+  return (
+    <SplitPane
+      name="cafes"
+      list={
+        <CafeList
+          filter={filter}
+          view={view}
+          load={load}
+          places={held.visible(data?.places ?? [], (p) => p.id)}
+          currency={currency}
+          known={known}
+          customTags={customTags}
+          undo={undo}
+          open={id ?? null}
+          error={remove.error}
+          go={go}
+          onOpen={(p) => navigate(pathFor(view, filter, p.id))}
+          onDelete={deletePlace}
+          sorting={sorting}
+          setSorting={setSorting}
+          filtering={filtering}
+          setFiltering={setFiltering}
+          sheet={sheet}
+        />
+      }
+      detail={
+        id ? (
+          <PlaceScreen
+            key={id}
+            id={id}
+            back={listPath}
+            currency={currency}
+            today={clock.day}
+            undo={undo}
+            held={held}
+            customTags={customTags}
+            onDelete={deletePlace}
+            onDeleted={() => {
+              load.reload();
+              navigate(listPath, { replace: true });
+            }}
+            onRated={load.reload}
+          />
+        ) : null
+      }
+      selection={id}
+      empty="fill"
+      listLabel="All cafés"
+      detailLabel="Café"
+      onClose={() => navigate(listPath, { replace: true })}
+    />
+  );
+}
 
-  const places = held.visible(data?.places ?? [], (p) => p.id);
+interface CafeListProps {
+  filter: PlacesFilter;
+  view: PlacesView;
+  load: LifeLoad<PlacesResponse>;
+  /** The cafés without those held for Undo. */
+  places: readonly Place[];
+  currency: string | null;
+  known: PlacesResponse | null;
+  customTags: readonly string[];
+  undo: Undo;
+  /** The café open beside the list. */
+  open: string | null;
+  error: unknown;
+  go: (v: PlacesView, f?: PlacesFilter) => void;
+  onOpen: (p: Place) => void;
+  onDelete: (p: Place) => void;
+  sorting: boolean;
+  setSorting: (o: boolean) => void;
+  filtering: boolean;
+  setFiltering: (o: boolean) => void;
+  sheet: ReturnType<typeof useSheet<Place>>;
+}
+
+/**
+ * The list's page: the segments, the view bar and the cafés, as cards
+ * across a wide pane with nothing open, as rows beside an open café (and on
+ * a phone). The Undo line shows here unless a café is open beside it.
+ */
+function CafeList({ filter, view, load, places, currency, known, customTags, undo, open, error, go, onOpen, onDelete, sorting, setSorting, filtering, setFiltering, sheet }: CafeListProps) {
+  const offline = useOffline();
+  const phone = useLayout().chrome === 'phone';
+  const split = useSplit();
+  const beside = Boolean(split?.split && split.selected);
+  const grid = !phone && !split?.selected;
   const count = filterCount(view);
   const narrowed = count > 0 || !!view.q;
 
@@ -137,15 +214,15 @@ export function Places(props: PlacesProps) {
   );
 
   return (
-    <Page title="Cafés" aside={<AddButton label="Add café" disabled={offline} onClick={() => sheet.show(null)} />} undo={undo}>
-      <div className="px-16 pb-8">
+    <Page title="Cafés" aside={<AddButton label="Add café" disabled={offline} onClick={() => sheet.show(null)} />} undo={beside ? undefined : undo} wide>
+      <div className="px-16 pb-8 @md:max-w-560">
         <Segmented<PlacesFilter> label="Show" fill value={filter} onChange={(f) => go(view, f)} segments={FILTERS} />
       </div>
       <ViewBar view={view} count={count} onSort={() => setSorting(true)} onFilters={() => setFiltering(true)} onSearch={(q) => go({ ...view, q })} />
       {count > 0 ? <ActiveFilters view={view} currency={currency} onChange={(v) => go(v)} /> : null}
-      {remove.error ? (
+      {error ? (
         <div className="px-16">
-          <NotSaved error={remove.error} />
+          <NotSaved error={error} />
         </div>
       ) : null}
       <Loaded load={load}>
@@ -164,10 +241,16 @@ export function Places(props: PlacesProps) {
             ) : (
               <LifeEmpty action={addButton}>{EMPTY_FOR[filter]}</LifeEmpty>
             )
+          ) : grid ? (
+            <ul aria-label="Cafés" className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-12 px-16 pt-4">
+              {places.map((p) => (
+                <PlaceCard key={p.id} place={p} currency={currency} onOpen={() => onOpen(p)} />
+              ))}
+            </ul>
           ) : (
             <ul aria-label="Cafés" className="border-t border-line">
               {places.map((p) => (
-                <PlaceRow key={p.id} place={p} currency={currency} onOpen={() => navigate(pathFor(view, filter, p.id))} />
+                <PlaceRow key={p.id} place={p} currency={currency} current={p.id === open} onOpen={() => onOpen(p)} />
               ))}
             </ul>
           )
@@ -181,7 +264,7 @@ export function Places(props: PlacesProps) {
         currency={currency}
         customTags={customTags}
         onSaved={load.reload}
-        onDelete={deletePlace}
+        onDelete={onDelete}
         onDeleted={load.reload}
       />
       <SortSheet open={sorting} onOpenChange={setSorting} value={view.sort ?? 'best'} onPick={(s) => go({ ...view, sort: s === 'best' ? undefined : s })} />
@@ -191,14 +274,17 @@ export function Places(props: PlacesProps) {
 }
 
 /** One café: name, stars or want, price; the best dish; area, last visit and tags in mono. */
-function PlaceRow({ place: p, currency, onOpen }: { place: Place; currency: string | null; onOpen: () => void }) {
+function PlaceRow({ place: p, currency, current = false, onOpen }: { place: Place; currency: string | null; current?: boolean; onOpen: () => void }) {
   const dish = bestDish(p);
-  const tags = tagsOn(p);
-  const last = p.visits?.last ?? null;
-  const third = [p.area, last ? shortDay(last) : undefined, tags.length ? tagsLine(tags) : undefined].filter((s): s is string => !!s);
+  const third = thirdLine(p);
   return (
-    <li className="border-b border-line">
-      <button type="button" onClick={onOpen} className="block w-full px-16 py-10 text-left transition-colors duration-120 ease-hover hover:bg-hover coarse:min-h-44">
+    <li className={clsx('border-b border-line', current && 'bg-select')}>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-current={current ? 'true' : undefined}
+        className={clsx('relative block w-full px-16 py-10 text-left transition-colors duration-120 ease-hover coarse:min-h-44', current ? 'row-tick' : 'hover:bg-hover')}
+      >
         <span className="flex items-center gap-8">
           <span className="min-w-0 flex-1 truncate type-row font-medium text-ink">{p.name}</span>
           {!p.tried ? <Tag>want</Tag> : p.stars ? <Stars rating={p.stars} /> : null}
@@ -213,6 +299,46 @@ function PlaceRow({ place: p, currency, onOpen }: { place: Place; currency: stri
           </span>
         ) : null}
         {third.length ? <span className="mt-2 block truncate type-mono text-ink-3">{third.join(' · ')}</span> : null}
+      </button>
+    </li>
+  );
+}
+
+/** The mono line of a row or card: area, last visit, the first tags. */
+function thirdLine(p: Place): string[] {
+  const tags = tagsOn(p);
+  const last = p.visits?.last ?? null;
+  return [p.area, last ? shortDay(last) : undefined, tags.length ? tagsLine(tags) : undefined].filter((s): s is string => !!s);
+}
+
+/**
+ * 0.11, the cafés across a wide pane (build plan 2.5): a card per café. The
+ * name on two lines, its stars (or want), not again and the price, the best
+ * dish and its stars, then the area, last visit and first tags in mono.
+ */
+function PlaceCard({ place: p, currency, onOpen }: { place: Place; currency: string | null; onOpen: () => void }) {
+  const dish = bestDish(p);
+  const third = thirdLine(p);
+  return (
+    <li className="min-w-0">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex h-full w-full flex-col rounded-dock border border-line bg-raised px-12 pb-12 pt-10 text-left transition-colors duration-120 ease-hover hover:border-line-strong focus-visible:outline-offset-2"
+      >
+        <span className="line-clamp-2 break-words type-row font-medium text-ink">{p.name}</span>
+        <span className="mt-6 flex flex-wrap items-center gap-8">
+          {!p.tried ? <Tag>want</Tag> : p.stars ? <Stars rating={p.stars} /> : null}
+          {p.again === 'no' ? <Tag>not again</Tag> : null}
+          {p.price ? currency ? <span className="type-mono text-ink-2">{priceLabel(p.price, currency)}</span> : <Tag>{priceLabel(p.price, null)}</Tag> : null}
+        </span>
+        {dish ? (
+          <span className="mt-6 flex items-center gap-8 type-small text-ink-2">
+            <span className="min-w-0 truncate">{dish.name}</span>
+            <Stars rating={dish.rating ?? 0} />
+          </span>
+        ) : null}
+        {third.length ? <span className="mt-6 line-clamp-2 break-words type-mono text-ink-3">{third.join(' · ')}</span> : null}
       </button>
     </li>
   );

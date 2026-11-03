@@ -6,7 +6,7 @@
  * bordered rows with words only at their two ends.
  */
 import { describe, expect, it } from 'vitest';
-import { emptyShare, MAX_EMPTY, MIN_USED, under44, type Rect } from './layout-metric.js';
+import { emptyRanges, emptyShare, MAX_EMPTY, MIN_USED, under44, type Rect } from './layout-metric.js';
 
 /** The Mac at 1440 x 960: the content region right of the rail, under the top bar. */
 const MAIN: Rect = { x: 56, y: 48, w: 1384, h: 888 };
@@ -60,6 +60,23 @@ describe('emptyShare', () => {
     expect(emptyShare([{ x: 0, y: 0, w: 40, h: 50 }], short)).toBe(0);
     expect(emptyShare([{ x: 0, y: 60, w: 40, h: 200 }], short)).toBe(1);
     expect(emptyShare([{ x: 100, y: 0, w: 40, h: 50 }], short)).toBe(1);
+  });
+});
+
+describe('emptyRanges', () => {
+  it('says where the unused columns are, merged into runs', () => {
+    const region: Rect = { x: 100, y: 0, w: 40, h: 400 };
+    // Used: 100-112 and 124-132; the rest is empty.
+    const boxes: Rect[] = [
+      { x: 100, y: 0, w: 12, h: 200 },
+      { x: 124, y: 0, w: 8, h: 96 },
+      { x: 132, y: 0, w: 8, h: 95 },
+    ];
+    expect(emptyRanges(boxes, region)).toEqual([
+      [112, 124],
+      [132, 140],
+    ]);
+    expect(emptyRanges(boxes, region).reduce((n, [a, b]) => n + (b - a), 0) / region.w).toBe(emptyShare(boxes, region));
   });
 });
 

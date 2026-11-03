@@ -42,6 +42,13 @@ What changed for people who use Jantar, newest first. Versions before
   stay in view on the right; screenshots are 160 x 90 thumbnails (a tap
   opens them). Beside the list in less, Summary | Transcript shows one at
   a time.
+- **Cafés** fill a wide window with cards (four across a 1440 px Mac
+  window): the name, its stars or want, the price, the best dish and its
+  stars, the area, last visit and tags. A café opens beside the list, its
+  sections as cards: the ratings three across, Dishes beside Visits.
+- **Tap a star to rate**: on a café's screen a tap on a rating's stars sets
+  it at once, with "Vibe 3 → 4 · Undo". With a trackpad or a mouse a hover
+  shows the value and sets nothing; clearing a rating stays in Edit.
 - What you type to a session, to Chat or as a new session's first prompt
   is kept when you leave and come back, or reload the tab, until it is
   sent; files and photos already uploaded stay attached to it.

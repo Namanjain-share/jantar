@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import type { LifeStatus, Place, PlaceDetail, PlaceVisit, PlacesResponse } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { fakeApi, iso, renderApp, stateWith } from './helpers.js';
+import type { Layout } from '../src/ui/shell/layout.js';
 
 export const DAY = '2026-01-15';
 export const id = (n: number) => `01JFZ8X8Y3T0V5G9WQK2M4N${String(n).padStart(3, '0')}`;
@@ -77,6 +78,8 @@ export interface RenderOpts {
   path?: string;
   api?: Parameters<typeof fakeApi>[0];
   conn?: 'live' | 'offline';
+  /** 0.11: a window's layout (a wide one splits the list and the café). */
+  layout?: Layout;
 }
 
 export function render(opts: RenderOpts = {}) {
@@ -95,5 +98,5 @@ export function render(opts: RenderOpts = {}) {
     placeGet,
     ...opts.api,
   });
-  return renderApp({ path: opts.path ?? '/places', api, state: stateWith({ features: { life: true } }), ...(opts.conn ? { status: opts.conn } : {}) });
+  return renderApp({ path: opts.path ?? '/places', api, state: stateWith({ features: { life: true } }), ...(opts.conn ? { status: opts.conn } : {}), ...(opts.layout ? { layout: opts.layout } : {}) });
 }

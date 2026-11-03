@@ -36,7 +36,8 @@
  * While working on one place: JANTAR_LAYOUT_STATES=today,todos measures only
  * those states, JANTAR_LAYOUT_SIZES=mac-1440,ipad-air-l only those sizes,
  * and JANTAR_LAYOUT_SHOTS=1 keeps every page's PNG (not only a failure's) in
- * the same folder, with the share measured in the log.
+ * the same folder, with the share measured (and where the empty columns are)
+ * in the log.
  */
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -44,7 +45,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
-import { emptyShare, MAX_EMPTY } from '../../packages/web/test/layout-metric.js';
+import { emptyRanges, emptyShare, MAX_EMPTY } from '../../packages/web/test/layout-metric.js';
 import { browserReady, DIST, openTouchable, type Viewport, type Watch } from './browser.js';
 import { probeLayout, type Probe } from './layout-probe.js';
 import { lid } from './web-fixture-v04.js';
@@ -197,24 +198,6 @@ export const KNOWN_WIDE_GAPS: Record<string, number> = {
   'money@ipad-1024': 0.84,
   'money@ipad-13-l': 0.87,
   'money@safari-l': 0.89,
-  'places@mac-1440': 0.84,
-  'places@touch-1440': 0.83,
-  'places@desktop': 0.84,
-  'places@mac-1024': 0.77,
-  'places@ipad-air-l': 0.79,
-  'places@ipad-pro-l': 0.8,
-  'places@ipad-1024': 0.76,
-  'places@ipad-13-l': 0.82,
-  'places@safari-l': 0.79,
-  'place@mac-1440': 0.83,
-  'place@touch-1440': 0.83,
-  'place@desktop': 0.83,
-  'place@mac-1024': 0.75,
-  'place@ipad-air-l': 0.79,
-  'place@ipad-pro-l': 0.79,
-  'place@ipad-1024': 0.75,
-  'place@ipad-13-l': 0.82,
-  'place@safari-l': 0.8,
   'accounts@mac-1440': 0.47,
   'accounts@touch-1440': 0.47,
   'accounts@desktop': 0.47,
@@ -408,7 +391,10 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
                   if (share <= MAX_EMPTY && known !== undefined) problems.push(`${at}: now ${Math.round(share * 100)} % empty: take it out of KNOWN_WIDE_GAPS`);
                 }
               }
-              if (SHOTS) console.info(`[layout] ${s.name}@${size} ${scheme}: ${measuredShare === null ? 'not measured' : `${Math.round(measuredShare * 100)} % empty`} (${await shot()})`);
+              if (SHOTS) {
+                const where = measuredShare && p.region ? ` at ${emptyRanges(p.boxes, p.region).map(([a, b]) => `${a}-${b}`).join(', ')}` : '';
+                console.info(`[layout] ${s.name}@${size} ${scheme}: ${measuredShare === null ? 'not measured' : `${Math.round(measuredShare * 100)} % empty${where}`} (${await shot()})`);
+              }
             }
             // 7. The console, over every place this context opened.
             problems.push(...consoleProblems(watch, size));

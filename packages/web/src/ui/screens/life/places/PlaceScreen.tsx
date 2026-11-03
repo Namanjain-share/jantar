@@ -11,14 +11,23 @@
  * way back to the list): a visit leaves at once with a 5 s Undo here; a
  * café with no visits goes back to the list under its Undo; one with visits
  * asks first in its sheet.
+ *
+ * 0.11 (build plan 2.5): beside the list it has Close (and Esc) instead of
+ * "< Cafés", and it takes its pane's width: from 640 the summary and Log
+ * visit sit side by side and the ratings two across, from 900 three across
+ * with Dishes beside Visits. A tap on a rating's stars sets it (OQ9), with
+ * "Vibe 3 → 4 · Undo"; the value it has does nothing, and clearing one
+ * stays in Edit.
  */
 import { CaretLeftIcon, PlusIcon } from '@phosphor-icons/react';
+import clsx from 'clsx';
 import { useState, type ReactNode } from 'react';
-import type { Place, PlaceDetail, PlaceVisit } from '@jantar/protocol';
+import type { Place, PlaceDetail, PlaceRatingKey, PlaceVisit } from '@jantar/protocol';
 import { formatAmount } from '../../../../lib/money.js';
 import { useDeps } from '../../../context.js';
 import { Button } from '../../../kit/Button.js';
-import { RailLabel } from '../../../kit/RailLabel.js';
+import { PaneClose, usePaneClose } from '../../../kit/PaneClose.js';
+import { Panel } from '../../../kit/Panel.js';
 import { Spinner } from '../../../kit/Spinner.js';
 import { Tag } from '../../../kit/Tag.js';
 import { Link } from '../../../shell/Link.js';
@@ -30,7 +39,7 @@ import { Loaded, Page, useOffline, useSheet, useWrite, type Undo, type useHeldDe
 import { DishSheet } from './DishSheet.js';
 import { AGAIN_LABEL, RATING_KEYS, RATING_LABELS, priceLabel, tagLabel, tagsOn } from './model.js';
 import { PlaceSheet } from './PlaceSheet.js';
-import { Stars } from './Stars.js';
+import { RateStars, Stars } from './Stars.js';
 import { VisitSheet } from './VisitSheet.js';
 
 export interface PlaceScreenProps {
@@ -47,18 +56,18 @@ export interface PlaceScreenProps {
   onDelete: (place: Place) => void;
   /** A café with visits, deleted after the question. */
   onDeleted: () => void;
+  /** 0.11: a rating was set or put back (the list's order may follow it). */
+  onRated?: () => void;
 }
 
 const SECTION = 'px-16 py-10';
 
-function Section({ title, aside, children }: { title: ReactNode; aside?: ReactNode; children: ReactNode }) {
+/** A section: a rail and rows over the list (0.10), a card beside it (0.11, as Today's). */
+function Section({ title, aside, card, className, children }: { title: string; aside?: ReactNode; card: boolean; className?: string; children: ReactNode }) {
   return (
-    <section aria-label={typeof title === 'string' ? title : undefined}>
-      <RailLabel ground="bg" aside={aside}>
-        {title}
-      </RailLabel>
+    <Panel label={title} aside={aside} card={card} {...(card && className ? { className } : {})}>
       {children}
-    </section>
+    </Panel>
   );
 }
 
@@ -69,7 +78,13 @@ interface Older {
   more: boolean;
 }
 
-export function PlaceScreen({ id, back, currency, today, undo, held, customTags, onDelete, onDeleted }: PlaceScreenProps) {
+/** Ratings set here and not in an answer yet, for the answer they were set on (null: put back to none). */
+interface Rated {
+  base: PlaceDetail;
+  values: Partial<Record<PlaceRatingKey, number | null>>;
+}
+
+export function PlaceScreen({ id, back, currency, today, undo, held, customTags, onDelete, onDeleted, onRated }: PlaceScreenProps) {
   const { api } = useDeps();
   const offline = useOffline();
   const load = useLifeLoad(`place:${id}`, () => api.placeGet(id));
@@ -77,6 +92,9 @@ export function PlaceScreen({ id, back, currency, today, undo, held, customTags,
   const dishSheet = useSheet<number>();
   const visitSheet = useSheet<PlaceVisit>();
   const remove = useWrite();
+  const rate = useWrite();
+  const [rated, setRated] = useState<Rated | null>(null);
+  const close = usePaneClose();
   const [older, setOlder] = useState<Older | null>(null);
   const [olderBusy, setOlderBusy] = useState(false);
   const [olderError, setOlderError] = useState<unknown>(null);
@@ -102,6 +120,35 @@ export function PlaceScreen({ id, back, currency, today, undo, held, customTags,
     }
   };
 
+  /** A rating as shown: one just set here, else the answer's. */
+  const ratingOf = (k: PlaceRatingKey): number | undefined => {
+    const set = rated && rated.base === data ? rated.values[k] : undefined;
+    return set === undefined ? place?.ratings?.[k] : (set ?? undefined);
+  };
+  const keep = (base: PlaceDetail, k: PlaceRatingKey, v: number | null) =>
+    setRated((cur) => ({ base, values: { ...(cur && cur.base === base ? cur.values : {}), [k]: v } }));
+  /** A tap on a rating's stars (OQ9): sent at once, with an Undo that puts the old value back. */
+  const setRating = async (k: PlaceRatingKey, n: number) => {
+    const before = ratingOf(k);
+    if (!data || before === n) return;
+    const base = data;
+    keep(base, k, n);
+    const r = await rate.run(`rate:${k}:${n}`, (key) => api.placeUpdate(id, { ratings: { [k]: n } }, key));
+    if (!r.ok) {
+      keep(base, k, before ?? null);
+      return;
+    }
+    const done = () => {
+      load.reload();
+      onRated?.();
+    };
+    undo.show(`${RATING_LABELS[k]} ${before ?? '–'} → ${n}`, () => {
+      keep(base, k, before ?? null);
+      void api.placeUpdate(id, { ratings: { [k]: before ?? null } }).then(done, done);
+    });
+    done();
+  };
+
   const deleteVisit = (v: PlaceVisit) =>
     held.remove(`visit:${v.id}`, `Deleted: the visit of ${dayLabel(v.day)}`, async () => {
       const r = await remove.run(`delete:${v.id}`, (key) => api.placeVisitDelete(id, v.id, key));
@@ -109,7 +156,11 @@ export function PlaceScreen({ id, back, currency, today, undo, held, customTags,
       return r.ok;
     });
 
-  const backLink = (
+  const backLink = close ? (
+    <div className="flex">
+      <PaneClose onClick={close} className="ml-auto" />
+    </div>
+  ) : (
     <Link href={back} className="inline-flex h-32 items-center gap-4 rounded-btn px-8 type-small text-ink-2 hover:bg-hover hover:text-ink coarse:h-44">
       <CaretLeftIcon size={16} aria-hidden="true" />
       Cafés
@@ -122,7 +173,7 @@ export function PlaceScreen({ id, back, currency, today, undo, held, customTags,
   ) : null;
 
   return (
-    <Page title={place?.name ?? 'Café'} wrapTitle back={backLink} aside={aside} undo={undo}>
+    <Page title={place?.name ?? 'Café'} wrapTitle back={backLink} aside={aside} undo={undo} wide>
       <Loaded load={load}>
         {() => (!place ? <LifeEmpty>This café is gone.</LifeEmpty> : body())}
       </Loaded>
@@ -159,9 +210,13 @@ export function PlaceScreen({ id, back, currency, today, undo, held, customTags,
   function body(): ReactNode {
     if (!place) return null;
     const p = place;
-    const rated = RATING_KEYS.filter((k) => p.ratings?.[k] !== undefined);
+    const rated = RATING_KEYS.filter((k) => ratingOf(k) !== undefined);
+    // Beside the list (a pane of 800 or more) the sections are cards: Ratings, Tags and Notes across
+    // the pane, Dishes beside Visits from 900.
+    const card = close !== undefined;
     const tags = tagsOn(p);
     const count = p.visits?.count ?? visits.length;
+    const both = p.dishes.length > 0 && (count > 0 || visits.length > 0);
     const avg = p.visits?.avgSpend ?? null;
     const head = [p.price ? priceLabel(p.price, currency) : null, p.again ? AGAIN_LABEL[p.again] : null].filter((s): s is string => s !== null);
     const prompts = [
@@ -171,123 +226,133 @@ export function PlaceScreen({ id, back, currency, today, undo, held, customTags,
     ].filter((x): x is { label: string; run: () => void } => x !== null);
     return (
       <>
-        <div className="px-16 pb-12">
-          {p.area || p.link ? (
-            <p className="flex flex-wrap items-baseline gap-x-8 type-small text-ink-2">
-              {p.area ? <span className="type-mono">{p.area}</span> : null}
-              <OpenLink url={p.link} />
-            </p>
-          ) : null}
-          {p.stars || head.length || !p.tried ? (
-            <p className="mt-6 flex flex-wrap items-center gap-8 type-small text-ink-2">
-              {p.stars ? <Stars rating={p.stars} /> : null}
-              {head.length ? <span className="type-mono">{head.join(' · ')}</span> : null}
-              {!p.tried ? <Tag>want</Tag> : null}
-            </p>
-          ) : null}
-          <Button variant="primary" size="lg" className="mt-12 w-full" disabled={offline} onClick={() => visitSheet.show(null)}>
-            Log visit
-          </Button>
-          {prompts.length ? (
-            <div className="mt-8 flex flex-wrap gap-8">
-              {prompts.map((x) => (
-                <Button key={x.label} variant="text" className="-ml-8" disabled={offline} onClick={x.run}>
-                  <PlusIcon size={16} aria-hidden="true" />
-                  {x.label}
-                </Button>
-              ))}
-            </div>
-          ) : null}
-          {remove.error ? <NotSaved error={remove.error} /> : null}
-        </div>
-        {rated.length ? (
-          <Section title="Ratings">
-            <dl className={SECTION}>
-              {rated.map((k) => (
-                <div key={k} className="flex min-h-28 items-center gap-12">
-                  <dt className="w-120 flex-none type-small text-ink-2">{RATING_LABELS[k]}</dt>
-                  <dd>
-                    <Stars rating={p.ratings?.[k] ?? 0} />
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </Section>
-        ) : null}
-        {tags.length ? (
-          <Section title="Tags">
-            <ul aria-label="Tags" className={`${SECTION} flex flex-wrap gap-6`}>
-              {tags.map((t) => (
-                <li key={t}>
-                  <Tag>{tagLabel(t)}</Tag>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        ) : null}
-        {p.dishes.length ? (
-          <Section
-            title="Dishes"
-            aside={
-              p.dishes.length < 30 ? (
-                <Button variant="text" size="sm" disabled={offline} onClick={() => dishSheet.show(null)}>
-                  <PlusIcon size={12} aria-hidden="true" />
-                  Dish
-                </Button>
-              ) : null
-            }
-          >
-            <ul aria-label="Dishes">
-              {p.dishes.map((d, i) => {
-                const second = [d.price !== undefined ? formatAmount(d.price, currency) : null, d.again ? 'order again' : null, d.notes ?? null].filter((s): s is string => s !== null);
-                return (
-                  <li key={`${i}:${d.name}`} className="border-b border-line">
-                    <button type="button" onClick={() => dishSheet.show(i)} className="block w-full px-16 py-8 text-left transition-colors duration-120 ease-hover hover:bg-hover coarse:min-h-44">
-                      <span className="flex items-center gap-8">
-                        <span className="min-w-0 flex-1 truncate type-row text-ink">{d.name}</span>
-                        {d.rating ? <Stars rating={d.rating} /> : <span className="type-mono text-ink-3">not tried</span>}
-                      </span>
-                      {second.length ? <span className="mt-2 block truncate type-mono text-ink-3">{second.join(' · ')}</span> : null}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </Section>
-        ) : null}
-        {count > 0 || visits.length ? (
-          <Section title={`Visits · ${count}${avg !== null ? ` · about ${formatAmount(avg, currency)}` : ''}`}>
-            <ul aria-label="Visits">
-              {visits.map((v) => (
-                <li key={v.id} className="border-b border-line">
-                  <button type="button" onClick={() => visitSheet.show(v)} className="block w-full px-16 py-8 text-left transition-colors duration-120 ease-hover hover:bg-hover coarse:min-h-44">
-                    <span className="flex items-center gap-12">
-                      <span className="type-mono text-ink">{dayLabel(v.day)}</span>
-                      {v.spend !== undefined ? <span className="type-mono text-ink-2">{formatAmount(v.spend, currency)}</span> : null}
-                      {v.stars ? <Stars rating={v.stars} className="ml-auto" /> : null}
-                    </span>
-                    {v.had?.length ? <span className="mt-2 block truncate type-small text-ink-2">{v.had.join(', ')}</span> : null}
-                    {v.notes ? <span className="mt-2 line-clamp-2 type-small text-ink-2">{v.notes}</span> : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {more ? (
-              <div className="px-16 pt-8">
-                <Button variant="text" className="-ml-8" disabled={olderBusy || offline} onClick={() => void showOlder()}>
-                  {olderBusy ? <Spinner label="Loading" /> : null}
-                  Show all
-                </Button>
+        <div className="px-16 pb-12 @md:grid @md:grid-cols-2 @md:items-start @md:gap-x-24">
+          <div>
+            {p.area || p.link ? (
+              <p className="flex flex-wrap items-baseline gap-x-8 type-small text-ink-2">
+                {p.area ? <span className="type-mono">{p.area}</span> : null}
+                <OpenLink url={p.link} />
+              </p>
+            ) : null}
+            {p.stars || head.length || !p.tried ? (
+              <p className="mt-6 flex flex-wrap items-center gap-8 type-small text-ink-2">
+                {p.stars ? <Stars rating={p.stars} /> : null}
+                {head.length ? <span className="type-mono">{head.join(' · ')}</span> : null}
+                {!p.tried ? <Tag>want</Tag> : null}
+              </p>
+            ) : null}
+          </div>
+          <div>
+            <Button variant="primary" size="lg" className="mt-12 w-full @md:mt-0" disabled={offline} onClick={() => visitSheet.show(null)}>
+              Log visit
+            </Button>
+            {prompts.length ? (
+              <div className="mt-8 flex flex-wrap gap-8">
+                {prompts.map((x) => (
+                  <Button key={x.label} variant="text" className="-ml-8" disabled={offline} onClick={x.run}>
+                    <PlusIcon size={16} aria-hidden="true" />
+                    {x.label}
+                  </Button>
+                ))}
               </div>
             ) : null}
-            {olderError ? <LifeError error={olderError} offline={offline} onRetry={() => void showOlder()} /> : null}
-          </Section>
-        ) : null}
-        {p.notes ? (
-          <Section title="Notes">
-            <p className={`whitespace-pre-wrap ${SECTION} type-small text-ink-2`}>{p.notes}</p>
-          </Section>
-        ) : null}
+            {remove.error ? <NotSaved error={remove.error} /> : null}
+            {rate.error ? <NotSaved error={rate.error} /> : null}
+          </div>
+        </div>
+        <div className={card ? 'grid gap-16 px-16 @wide:grid-cols-2 @wide:items-start' : undefined}>
+          {rated.length ? (
+            <Section title="Ratings" card={card} className="@wide:col-span-2">
+              <dl className={clsx(SECTION, 'grid gap-x-24 @md:grid-cols-2 @wide:grid-cols-3')}>
+                {rated.map((k) => (
+                  // The stars go under their label where both don't fit (five 44 cells on a narrow phone).
+                  <div key={k} className="flex min-h-28 flex-wrap items-center gap-x-12">
+                    <dt className="w-120 flex-none type-small text-ink-2">{RATING_LABELS[k]}</dt>
+                    <dd>
+                      <RateStars label={RATING_LABELS[k]} value={ratingOf(k) ?? 0} disabled={offline} onRate={(n) => void setRating(k, n)} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </Section>
+          ) : null}
+          {tags.length ? (
+            <Section title="Tags" card={card} className="@wide:col-span-2">
+              <ul aria-label="Tags" className={`${SECTION} flex flex-wrap gap-6`}>
+                {tags.map((t) => (
+                  <li key={t}>
+                    <Tag>{tagLabel(t)}</Tag>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          ) : null}
+            {p.dishes.length ? (
+              <Section
+                title="Dishes"
+                card={card}
+                {...(both ? {} : { className: '@wide:col-span-2' })}
+                aside={
+                  p.dishes.length < 30 ? (
+                    <Button variant="text" size="sm" disabled={offline} onClick={() => dishSheet.show(null)}>
+                      <PlusIcon size={12} aria-hidden="true" />
+                      Dish
+                    </Button>
+                  ) : null
+                }
+              >
+                <ul aria-label="Dishes">
+                  {p.dishes.map((d, i) => {
+                    const second = [d.price !== undefined ? formatAmount(d.price, currency) : null, d.again ? 'order again' : null, d.notes ?? null].filter((s): s is string => s !== null);
+                    return (
+                      <li key={`${i}:${d.name}`} className="border-b border-line">
+                        <button type="button" onClick={() => dishSheet.show(i)} className="block w-full px-16 py-8 text-left transition-colors duration-120 ease-hover hover:bg-hover coarse:min-h-44">
+                          <span className="flex items-center gap-8">
+                            <span className="min-w-0 flex-1 truncate type-row text-ink">{d.name}</span>
+                            {d.rating ? <Stars rating={d.rating} /> : <span className="type-mono text-ink-3">not tried</span>}
+                          </span>
+                          {second.length ? <span className="mt-2 block truncate type-mono text-ink-3">{second.join(' · ')}</span> : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Section>
+            ) : null}
+            {count > 0 || visits.length ? (
+              <Section title={`Visits · ${count}${avg !== null ? ` · about ${formatAmount(avg, currency)}` : ''}`} card={card} {...(both ? {} : { className: '@wide:col-span-2' })}>
+                <ul aria-label="Visits">
+                  {visits.map((v) => (
+                    <li key={v.id} className="border-b border-line">
+                      <button type="button" onClick={() => visitSheet.show(v)} className="block w-full px-16 py-8 text-left transition-colors duration-120 ease-hover hover:bg-hover coarse:min-h-44">
+                        <span className="flex items-center gap-12">
+                          <span className="type-mono text-ink">{dayLabel(v.day)}</span>
+                          {v.spend !== undefined ? <span className="type-mono text-ink-2">{formatAmount(v.spend, currency)}</span> : null}
+                          {v.stars ? <Stars rating={v.stars} className="ml-auto" /> : null}
+                        </span>
+                        {v.had?.length ? <span className="mt-2 block truncate type-small text-ink-2">{v.had.join(', ')}</span> : null}
+                        {v.notes ? <span className="mt-2 line-clamp-2 type-small text-ink-2">{v.notes}</span> : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {more ? (
+                  <div className="px-16 pt-8">
+                    <Button variant="text" className="-ml-8" disabled={olderBusy || offline} onClick={() => void showOlder()}>
+                      {olderBusy ? <Spinner label="Loading" /> : null}
+                      Show all
+                    </Button>
+                  </div>
+                ) : null}
+                {olderError ? <LifeError error={olderError} offline={offline} onRetry={() => void showOlder()} /> : null}
+              </Section>
+            ) : null}
+          {p.notes ? (
+            <Section title="Notes" card={card} className="@wide:col-span-2">
+              <p className={`whitespace-pre-wrap ${SECTION} type-small text-ink-2`}>{p.notes}</p>
+            </Section>
+          ) : null}
+        </div>
       </>
     );
   }

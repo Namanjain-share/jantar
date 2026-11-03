@@ -51,13 +51,13 @@ function covered(spans: Array<[number, number]>): number {
   return total + (end - start);
 }
 
-/** The share (0-1) of `region`'s width that no content uses. */
-export function emptyShare(boxes: readonly Rect[], region: Rect): number {
+/** For each 4 px column of `region`, whether content uses it. */
+function usedColumns(boxes: readonly Rect[], region: Rect): boolean[] {
   const n = Math.max(1, Math.floor(region.w / COLUMN));
   const need = Math.min(MIN_USED, region.h);
   const top = region.y;
   const bottom = region.y + region.h;
-  let unused = 0;
+  const used: boolean[] = [];
   for (let i = 0; i < n; i += 1) {
     const left = region.x + i * COLUMN;
     const right = left + COLUMN;
@@ -68,9 +68,28 @@ export function emptyShare(boxes: readonly Rect[], region: Rect): number {
       const e = Math.min(b.y + b.h, bottom);
       if (e > t) spans.push([t, e]);
     }
-    if (covered(spans) < need) unused += 1;
+    used.push(covered(spans) >= need);
   }
-  return unused / n;
+  return used;
+}
+
+/** The share (0-1) of `region`'s width that no content uses. */
+export function emptyShare(boxes: readonly Rect[], region: Rect): number {
+  const used = usedColumns(boxes, region);
+  return used.filter((u) => !u).length / used.length;
+}
+
+/** Where the unused columns are, as [from, to) x ranges in px (for a log, while working on a place). */
+export function emptyRanges(boxes: readonly Rect[], region: Rect): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  usedColumns(boxes, region).forEach((u, i) => {
+    if (u) return;
+    const x = region.x + i * COLUMN;
+    const last = out[out.length - 1];
+    if (last && last[1] === x) last[1] = x + COLUMN;
+    else out.push([x, x + COLUMN]);
+  });
+  return out;
 }
 
 /** The targets smaller than 44 x 44. */
