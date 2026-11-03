@@ -20,6 +20,11 @@
  *   Would order again), which toggles from its far edge too; Edit and a
  *   tag chip are 44 px wide as well.
  *
+ * 0.12.1: a phone's steps run in onPaired (browser.ts): a phone that loses
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) is
+ * opened again as the same device and the steps run once more; twice
+ * fails, saying so.
+ *
  * Every name and value is synthetic. Needs a built dist/ and a Chromium.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -27,7 +32,7 @@ import { chromium, type Browser, type BrowserContext, type Locator, type Page } 
 import { perfBudgetMs } from '@jantar/fixtures';
 import { DEVICE_COOKIE, type PairStartResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, browserReady, clean, overflow, watchConsole, type Viewport, type Watch } from './browser.js';
+import { DESK, browserReady, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 
@@ -81,7 +86,8 @@ describe.skipIf(!ready)('v0.10 Cafés depth in Chromium, served by jantard', () 
     await dialog.waitFor({ state: 'detached' });
   }
 
-  async function paired(who: Who): Promise<{ ctx: BrowserContext; page: Page; watch: Watch }> {
+  /** A context paired as a phone scanning the Mac's code would be; 0.12.1: or, with `state`, that device again in a new one. */
+  async function paired(who: Who, state?: StorageState): Promise<{ ctx: BrowserContext; page: Page; watch: Watch }> {
     const vp = SIZES[who];
     const ctx = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
@@ -92,9 +98,12 @@ describe.skipIf(!ready)('v0.10 Cafés depth in Chromium, served by jantard', () 
       locale: 'en-GB',
       timezoneId: 'UTC',
       serviceWorkers: 'block',
+      ...(state ? { storageState: state } : {}),
     });
     const page = await ctx.newPage();
+    if (vp.phone) touchPage(page);
     const watch = watchConsole(page);
+    if (state) return { ctx, page, watch };
     const start = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name: who, scopes: ['read', 'control'] });
     await page.goto(`http://127.0.0.1:${d.port}/pair#c=${start.code}`, { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Pair this device' }).click();
@@ -103,6 +112,10 @@ describe.skipIf(!ready)('v0.10 Cafés depth in Chromium, served by jantard', () 
     watch.errors.length = 0;
     return { ctx, page, watch };
   }
+
+  /** 0.12.1: `steps` on `who`'s page; a phone that drops its touch emulation is opened again as the same device and they run once more. */
+  const on = (who: Who, what: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>) =>
+    onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who, state)), steps);
 
   beforeAll(async () => {
     d = await bootDaemon({ home: { sessions: [] }, settings: { life: { places: true, timezone: 'UTC', currency: 'INR' } } });
@@ -155,143 +168,151 @@ describe.skipIf(!ready)('v0.10 Cafés depth in Chromium, served by jantard', () 
 
   it('the list with filters on, its Filters and Sort sheets, at 320, 390 and 1440, light and dark', async () => {
     for (const v of VIEWS) {
-      const { page, watch } = pages[v.who]!;
       const what = `the list (${v.who}, ${v.scheme})`;
-      await page.emulateMedia({ colorScheme: v.scheme });
-      await page.goto(`http://127.0.0.1:${d.port}/places?tags=wifi&price=2&again=1`, { waitUntil: 'load' });
-      const list = page.getByRole('list', { name: 'Cafés' });
-      await list.waitFor();
-      await expect.poll(() => list.getByRole('listitem').count(), { message: what }).toBe(2);
-      await page.getByRole('group', { name: 'Filters on' }).waitFor();
-      await check(page, watch, what);
-      await sheet(page, watch, `the Filters sheet (${v.who}, ${v.scheme})`, () => page.getByRole('button', { name: /^Filters/ }).click());
-      await sheet(page, watch, `the Sort sheet (${v.who}, ${v.scheme})`, () => page.getByRole('button', { name: /^Sort:/ }).click());
-      await page.goto(`http://127.0.0.1:${d.port}/places`, { waitUntil: 'load' });
-      await expect.poll(() => page.getByRole('list', { name: 'Cafés' }).getByRole('listitem').count(), { message: what }).toBe(4);
-      await check(page, watch, `the whole list (${v.who}, ${v.scheme})`);
+      await on(v.who, what, async ({ page, watch }) => {
+        await page.emulateMedia({ colorScheme: v.scheme });
+        await page.goto(`http://127.0.0.1:${d.port}/places?tags=wifi&price=2&again=1`, { waitUntil: 'load' });
+        const list = page.getByRole('list', { name: 'Cafés' });
+        await list.waitFor();
+        await expect.poll(() => list.getByRole('listitem').count(), { message: what }).toBe(2);
+        await page.getByRole('group', { name: 'Filters on' }).waitFor();
+        await check(page, watch, what);
+        await sheet(page, watch, `the Filters sheet (${v.who}, ${v.scheme})`, () => page.getByRole('button', { name: /^Filters/ }).click());
+        await sheet(page, watch, `the Sort sheet (${v.who}, ${v.scheme})`, () => page.getByRole('button', { name: /^Sort:/ }).click());
+        await page.goto(`http://127.0.0.1:${d.port}/places`, { waitUntil: 'load' });
+        await expect.poll(() => page.getByRole('list', { name: 'Cafés' }).getByRole('listitem').count(), { message: what }).toBe(4);
+        await check(page, watch, `the whole list (${v.who}, ${v.scheme})`);
+      });
     }
   }, perfBudgetMs(240_000));
 
   it("a café's screen and its café, dish and visit sheets, at 320, 390 and 1440, light and dark", async () => {
     for (const v of VIEWS) {
-      const { page, watch } = pages[v.who]!;
       const at = `(${v.who}, ${v.scheme})`;
-      await page.emulateMedia({ colorScheme: v.scheme });
-      await page.goto(`http://127.0.0.1:${d.port}/places?id=${ids.cafe}`, { waitUntil: 'load' });
-      await page.getByRole('button', { name: 'Log visit' }).waitFor();
-      await page.getByRole('region', { name: 'Ratings' }).waitFor();
-      await check(page, watch, `the café screen ${at}`);
-      await sheet(page, watch, `the café sheet ${at}`, async () => {
-        await page.getByRole('button', { name: 'Edit' }).click();
+      await on(v.who, `the café screen ${at}`, async ({ page, watch }) => {
+        await page.emulateMedia({ colorScheme: v.scheme });
+        await page.goto(`http://127.0.0.1:${d.port}/places?id=${ids.cafe}`, { waitUntil: 'load' });
+        await page.getByRole('button', { name: 'Log visit' }).waitFor();
+        await page.getByRole('region', { name: 'Ratings' }).waitFor();
+        await check(page, watch, `the café screen ${at}`);
+        await sheet(page, watch, `the café sheet ${at}`, async () => {
+          await page.getByRole('button', { name: 'Edit' }).click();
+        });
+        await sheet(page, watch, `the dish sheet ${at}`, () => page.getByRole('region', { name: 'Dishes' }).getByText('Cardamom bun').click());
+        await sheet(page, watch, `the visit sheet ${at}`, () => page.getByRole('region', { name: /^Visits/ }).getByRole('button').first().click());
+        await sheet(page, watch, `Log visit ${at}`, () => page.getByRole('button', { name: 'Log visit' }).click());
       });
-      await sheet(page, watch, `the dish sheet ${at}`, () => page.getByRole('region', { name: 'Dishes' }).getByText('Cardamom bun').click());
-      await sheet(page, watch, `the visit sheet ${at}`, () => page.getByRole('region', { name: /^Visits/ }).getByRole('button').first().click());
-      await sheet(page, watch, `Log visit ${at}`, () => page.getByRole('button', { name: 'Log visit' }).click());
     }
   }, perfBudgetMs(240_000));
 
   it('a café opened from the list; Edit with More ratings open at 320 px fits', async () => {
-    const { page, watch } = pages.p320!;
-    await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto(`http://127.0.0.1:${d.port}/places`, { waitUntil: 'load' });
-    await page.getByText('Sample Dosa House').click();
-    await page.getByRole('heading', { level: 1, name: 'Sample Dosa House' }).waitFor();
-    await check(page, watch, 'a café opened from the list');
-    await page.getByRole('button', { name: 'Edit' }).click();
-    const dialog = page.getByRole('dialog');
-    await dialog.waitFor();
-    await dialog.getByRole('button', { name: 'More ratings' }).click();
-    await dialog.getByRole('radiogroup', { name: 'Work rating' }).waitFor();
-    await check(page, watch, 'the café sheet with More ratings');
-    await page.keyboard.press('Escape');
-    await dialog.waitFor({ state: 'detached' });
+    await on('p320', 'a café opened from the list at 320', async ({ page, watch }) => {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await page.goto(`http://127.0.0.1:${d.port}/places`, { waitUntil: 'load' });
+      await page.getByText('Sample Dosa House').click();
+      await page.getByRole('heading', { level: 1, name: 'Sample Dosa House' }).waitFor();
+      await check(page, watch, 'a café opened from the list');
+      await page.getByRole('button', { name: 'Edit' }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.waitFor();
+      await dialog.getByRole('button', { name: 'More ratings' }).click();
+      await dialog.getByRole('radiogroup', { name: 'Work rating' }).waitFor();
+      await check(page, watch, 'the café sheet with More ratings');
+      await page.keyboard.press('Escape');
+      await dialog.waitFor({ state: 'detached' });
+    });
   });
 
   it('in grayscale no colour carries a rating: every star is --ink, like the name', async () => {
-    const { page } = pages.p390!;
-    await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto(`http://127.0.0.1:${d.port}/places?id=${ids.cafe}`, { waitUntil: 'load' });
-    await page.getByRole('region', { name: 'Ratings' }).waitFor();
-    const colours = await page.evaluate(() => {
-      const ink = getComputedStyle(document.querySelector('h1') as Element).color;
-      const stars = [...document.querySelectorAll('[role="img"][aria-label$="of 5"] svg')].map((s) => getComputedStyle(s).color);
-      return { ink, stars: [...new Set(stars)], n: stars.length };
+    await on('p390', 'the stars in grayscale at 390', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await page.goto(`http://127.0.0.1:${d.port}/places?id=${ids.cafe}`, { waitUntil: 'load' });
+      await page.getByRole('region', { name: 'Ratings' }).waitFor();
+      const colours = await page.evaluate(() => {
+        const ink = getComputedStyle(document.querySelector('h1') as Element).color;
+        const stars = [...document.querySelectorAll('[role="img"][aria-label$="of 5"] svg')].map((s) => getComputedStyle(s).color);
+        return { ink, stars: [...new Set(stars)], n: stars.length };
+      });
+      expect(colours.n).toBeGreaterThan(10);
+      expect(colours.stars).toEqual([colours.ink]);
     });
-    expect(colours.n).toBeGreaterThan(10);
-    expect(colours.stars).toEqual([colours.ink]);
   });
 
   it('under a coarse pointer every target is 44 px tall (320 px phone)', async () => {
-    const { page } = pages.p320!;
-    // Sizes are read on a still screen: with reduced motion a screen only fades in.
-    await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
-    const tall = async (target: Locator, what: string) => {
-      await target.waitFor();
-      expect((await target.boundingBox())?.height ?? 0, what).toBeGreaterThanOrEqual(44);
-    };
-    const wide = async (target: Locator, what: string) => {
-      await target.waitFor();
-      expect((await target.boundingBox())?.width ?? 0, what).toBeGreaterThanOrEqual(44);
-    };
-    /** A switch's row: 44 px tall, and a tap on its far right edge toggles the switch (then back). */
-    const switchRow = async (scope: Locator, name: string) => {
-      const sw = scope.getByRole('switch', { name });
-      const row = scope.locator('label').filter({ has: scope.page().getByRole('switch', { name }) });
-      await tall(row, `${name}'s row`);
-      const box = (await row.boundingBox())!;
-      const was = await sw.isChecked();
-      await row.click({ position: { x: box.width - 4, y: box.height / 2 } });
-      expect(await sw.isChecked(), `${name} from the row's edge`).toBe(!was);
-      await row.click({ position: { x: box.width - 4, y: box.height / 2 } });
-      expect(await sw.isChecked()).toBe(was);
-    };
-    const all = async (targets: Locator, what: string) => {
-      await targets.first().waitFor();
-      const n = await targets.count();
-      expect(n, what).toBeGreaterThan(0);
-      for (let i = 0; i < n; i++) await tall(targets.nth(i), `${what} ${i}`);
-    };
-    try {
-      await page.goto(`http://127.0.0.1:${d.port}/places?tags=wifi`, { waitUntil: 'load' });
-      await all(page.getByRole('list', { name: 'Cafés' }).getByRole('button'), 'a café row');
-      await tall(page.getByRole('button', { name: /^Sort:/ }), 'Sort');
-      await tall(page.getByRole('button', { name: /^Filters/ }), 'Filters');
-      await tall(page.getByRole('button', { name: 'Search cafés' }), 'Search');
-      await all(page.getByRole('group', { name: 'Filters on' }).getByRole('button', { name: /^Take off/ }), 'a filter chip');
-      await page.getByRole('button', { name: /^Filters/ }).click();
-      const filters = page.getByRole('dialog');
-      await all(filters.getByRole('group', { name: 'Tags' }).getByRole('button'), 'a tag chip');
-      // A segment is 38 px inside its 44 px box; its hit area takes in the box's padding (Segmented's ::before).
-      await tall(filters.getByRole('group', { name: 'Price up to' }), 'the price segments');
-      await switchRow(filters, 'Would go again');
-      await page.keyboard.press('Escape');
-      await filters.waitFor({ state: 'detached' });
+    await on('p320', '44 px under a coarse pointer at 320', async ({ page }) => {
+      // Sizes are read on a still screen: with reduced motion a screen only fades in.
+      await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+      const tall = async (target: Locator, what: string) => {
+        await target.waitFor();
+        expect((await target.boundingBox())?.height ?? 0, what).toBeGreaterThanOrEqual(44);
+      };
+      const wide = async (target: Locator, what: string) => {
+        await target.waitFor();
+        expect((await target.boundingBox())?.width ?? 0, what).toBeGreaterThanOrEqual(44);
+      };
+      /** A switch's row: 44 px tall, and a tap on its far right edge toggles the switch (then back). */
+      const switchRow = async (scope: Locator, name: string) => {
+        const sw = scope.getByRole('switch', { name });
+        const row = scope.locator('label').filter({ has: scope.page().getByRole('switch', { name }) });
+        await tall(row, `${name}'s row`);
+        const box = (await row.boundingBox())!;
+        const was = await sw.isChecked();
+        await row.click({ position: { x: box.width - 4, y: box.height / 2 } });
+        expect(await sw.isChecked(), `${name} from the row's edge`).toBe(!was);
+        await row.click({ position: { x: box.width - 4, y: box.height / 2 } });
+        expect(await sw.isChecked()).toBe(was);
+      };
+      const all = async (targets: Locator, what: string) => {
+        await targets.first().waitFor();
+        const n = await targets.count();
+        expect(n, what).toBeGreaterThan(0);
+        for (let i = 0; i < n; i++) await tall(targets.nth(i), `${what} ${i}`);
+      };
+      try {
+        await page.goto(`http://127.0.0.1:${d.port}/places?tags=wifi`, { waitUntil: 'load' });
+        await stillTouch(page, '44 px on the list at 320');
+        await all(page.getByRole('list', { name: 'Cafés' }).getByRole('button'), 'a café row');
+        await tall(page.getByRole('button', { name: /^Sort:/ }), 'Sort');
+        await tall(page.getByRole('button', { name: /^Filters/ }), 'Filters');
+        await tall(page.getByRole('button', { name: 'Search cafés' }), 'Search');
+        await all(page.getByRole('group', { name: 'Filters on' }).getByRole('button', { name: /^Take off/ }), 'a filter chip');
+        await page.getByRole('button', { name: /^Filters/ }).click();
+        const filters = page.getByRole('dialog');
+        await all(filters.getByRole('group', { name: 'Tags' }).getByRole('button'), 'a tag chip');
+        // A segment is 38 px inside its 44 px box; its hit area takes in the box's padding (Segmented's ::before).
+        await tall(filters.getByRole('group', { name: 'Price up to' }), 'the price segments');
+        await switchRow(filters, 'Would go again');
+        await page.keyboard.press('Escape');
+        await filters.waitFor({ state: 'detached' });
 
-      await page.goto(`http://127.0.0.1:${d.port}/places?id=${ids.cafe}`, { waitUntil: 'load' });
-      await tall(page.getByRole('button', { name: 'Log visit' }), 'Log visit');
-      await tall(page.getByRole('link', { name: 'Open link' }), 'Open link on the café screen');
-      await wide(page.getByRole('button', { name: 'Edit' }), 'Edit');
-      await all(page.getByRole('region', { name: 'Dishes' }).getByRole('button', { name: /Cardamom|Flat|Sourdough/ }), 'a dish row');
-      await all(page.getByRole('region', { name: /^Visits/ }).getByRole('list').getByRole('button'), 'a visit row');
-      await page.getByRole('button', { name: 'Edit' }).click();
-      const edit = page.getByRole('dialog');
-      await all(edit.getByRole('radiogroup', { name: 'Stars' }).getByRole('radio'), 'a star');
-      await tall(edit.getByRole('group', { name: 'Price' }), 'the price levels');
-      await tall(edit.getByRole('group', { name: 'Would go again' }), 'would go again');
-      await all(edit.getByRole('group', { name: 'Tags' }).getByRole('button'), 'a tag');
-      const tags = edit.getByRole('group', { name: 'Tags' }).getByRole('button');
-      for (let i = 0; i < (await tags.count()); i++) await wide(tags.nth(i), `a tag ${i}`);
-      await tall(edit.getByRole('link', { name: 'Open link' }), 'Open link in the café sheet');
-      await switchRow(edit, 'Tried it');
-      await page.keyboard.press('Escape');
-      await edit.waitFor({ state: 'detached' });
-      await page.getByRole('region', { name: 'Dishes' }).getByText('Cardamom bun').click();
-      const dish = page.getByRole('dialog');
-      await switchRow(dish, 'Would order again');
-      await page.keyboard.press('Escape');
-      await dish.waitFor({ state: 'detached' });
-    } finally {
-      await page.emulateMedia({ reducedMotion: null });
-    }
+        await page.goto(`http://127.0.0.1:${d.port}/places?id=${ids.cafe}`, { waitUntil: 'load' });
+        await page.getByRole('button', { name: 'Log visit' }).waitFor();
+        await stillTouch(page, "44 px on the café's screen at 320");
+        await tall(page.getByRole('button', { name: 'Log visit' }), 'Log visit');
+        await tall(page.getByRole('link', { name: 'Open link' }), 'Open link on the café screen');
+        await wide(page.getByRole('button', { name: 'Edit' }), 'Edit');
+        await all(page.getByRole('region', { name: 'Dishes' }).getByRole('button', { name: /Cardamom|Flat|Sourdough/ }), 'a dish row');
+        await all(page.getByRole('region', { name: /^Visits/ }).getByRole('list').getByRole('button'), 'a visit row');
+        await page.getByRole('button', { name: 'Edit' }).click();
+        const edit = page.getByRole('dialog');
+        await all(edit.getByRole('radiogroup', { name: 'Stars' }).getByRole('radio'), 'a star');
+        await tall(edit.getByRole('group', { name: 'Price' }), 'the price levels');
+        await tall(edit.getByRole('group', { name: 'Would go again' }), 'would go again');
+        await all(edit.getByRole('group', { name: 'Tags' }).getByRole('button'), 'a tag');
+        const tags = edit.getByRole('group', { name: 'Tags' }).getByRole('button');
+        for (let i = 0; i < (await tags.count()); i++) await wide(tags.nth(i), `a tag ${i}`);
+        await tall(edit.getByRole('link', { name: 'Open link' }), 'Open link in the café sheet');
+        await switchRow(edit, 'Tried it');
+        await page.keyboard.press('Escape');
+        await edit.waitFor({ state: 'detached' });
+        await page.getByRole('region', { name: 'Dishes' }).getByText('Cardamom bun').click();
+        const dish = page.getByRole('dialog');
+        await switchRow(dish, 'Would order again');
+        await page.keyboard.press('Escape');
+        await dish.waitFor({ state: 'detached' });
+      } finally {
+        await page.emulateMedia({ reducedMotion: null });
+      }
+    });
   }, perfBudgetMs(120_000));
 });

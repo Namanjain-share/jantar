@@ -202,6 +202,29 @@ export async function onTouch<T extends { page: Page }>(
   }
 }
 
+export type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
+
+/**
+ * 0.12.1: onTouch for a paired page a suite keeps across its tests (`current`). On a drop it is opened
+ * again by `again` as the same device, from the dropped context's cookies, storage and IndexedDB (where
+ * the app keeps the device secret): pairing again would meet the daemon's claim limit, 8 a minute.
+ */
+export function onPaired<T extends { ctx: BrowserContext; page: Page }>(
+  what: string,
+  current: () => T,
+  again: (state: StorageState | undefined) => Promise<T>,
+  steps: (o: T) => Promise<void>,
+): Promise<T> {
+  let state: StorageState | undefined;
+  return onTouch(what, async (reopen) => (reopen ? again(state) : current()), steps, {
+    keep: true,
+    close: async (o) => {
+      state = await o.ctx.storageState({ indexedDB: true }).catch(() => undefined);
+      await o.ctx.close();
+    },
+  });
+}
+
 /** No message about the Content Security Policy, no console error, no <style> element. */
 export async function clean(page: Page, watch: Watch): Promise<void> {
   await stillTouch(page);
