@@ -10,7 +10,8 @@
  * While launching is on, a live row has a menu ("New session here", spec
  * 5.3.1): a long press or a right click opens it, anchored to the row. The
  * ledger holds the one menu (RowMenu, its own chunk) and closes it when its
- * row leaves.
+ * row leaves. 0.13.0 (F3): a row inside a project's folder has the menu too,
+ * with "Open project" (the projects cache the chips already read).
  */
 import { m } from 'motion/react';
 import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -19,6 +20,8 @@ import { usePaneScroll } from '../../kit/Pane.js';
 import { RailLabel } from '../../kit/RailLabel.js';
 import { useApp } from '../../context.js';
 import { canStartAnywhere, canStartOn } from '../new/machines.js';
+import { projectFor, projectPath, useProjects } from '../life/todos/useProjects.js';
+import { usePlaceFeatures } from '../../shell/data.js';
 import { GhostRows } from './GhostRow.js';
 import { orderSignature, type GroupModel, type RowModel } from './model.js';
 import { FLIP, Row, type RowMenuHook } from './Row.js';
@@ -76,12 +79,19 @@ export function Ledger({
   const nodes = useApp((s) => s.state.nodes);
   const startsHere = (r: RowModel) => r.glyph !== 'ended' && canStartOn({ daemon, nodes }, r.machine?.node);
   const launch = canStartAnywhere({ daemon, nodes });
+  // 0.13.0: the project a Mac session's folder is in (Life is the Mac's: a server's session has none).
+  const projects = useProjects();
+  const work = usePlaceFeatures().work === true;
+  const projectOf = (r: RowModel) => (r.machine?.node !== undefined ? null : projectFor(r.session.cwd, projects));
+  const hasMenu = (r: RowModel) => startsHere(r) || projectOf(r) !== null;
+  const anyProject = projects.length > 0 && groups.some((g) => g.rows.some((r) => projectOf(r) !== null));
   const hintId = useId();
   const guard = useRef({ at: -Infinity }).current;
   const [menu, setMenu] = useState<{ sid: string; anchor: HTMLElement } | null>(null);
   const rowMenu: RowMenuHook = { open: (row, anchor) => setMenu({ sid: row.sid, anchor }), guard, hintId };
-  // The row as it is now; the menu goes with it when the row leaves or ends, or launching is switched off.
-  const menuRow = menu ? groups.flatMap((g) => g.rows).find((r) => r.sid === menu.sid && startsHere(r)) : undefined;
+  // The row as it is now; the menu goes with it when the row leaves, or has nothing left to offer.
+  const menuRow = menu ? groups.flatMap((g) => g.rows).find((r) => r.sid === menu.sid && hasMenu(r)) : undefined;
+  const menuProject = menuRow ? projectOf(menuRow) : null;
   useEffect(() => {
     if (menu && !menuRow) setMenu(null);
   }, [menu, menuRow]);
@@ -118,7 +128,7 @@ export function Ledger({
           wash={wash[r.sid] ?? 0}
           layoutSig={sig}
           onOpen={onOpen}
-          {...(startsHere(r) ? { menu: rowMenu } : {})}
+          {...(hasMenu(r) ? { menu: rowMenu } : {})}
         />,
       );
     }
@@ -129,14 +139,24 @@ export function Ledger({
       <GhostRows ground={ground} />
       {head}
       {items}
-      {launch ? (
+      {launch || anyProject ? (
         <p id={hintId} className="sr-only">
-          Long press a session, or right click it, to start a new session in its folder.
+          {launch && anyProject
+            ? 'Long press a session, or right click it, to start a new session in its folder or open its project.'
+            : launch
+              ? 'Long press a session, or right click it, to start a new session in its folder.'
+              : 'Long press a session, or right click it, to open its project.'}
         </p>
       ) : null}
       {menu && menuRow ? (
         <Suspense fallback={null}>
-          <RowMenu row={menuRow} anchor={menu.anchor} onClose={() => setMenu(null)} />
+          <RowMenu
+            row={menuRow}
+            anchor={menu.anchor}
+            onClose={() => setMenu(null)}
+            newHere={startsHere(menuRow)}
+            project={menuProject ? { name: menuProject.name, href: projectPath(menuProject.id, work) } : undefined}
+          />
         </Suspense>
       ) : null}
     </m.div>

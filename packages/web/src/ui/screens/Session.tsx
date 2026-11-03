@@ -73,7 +73,9 @@ import { SkeletonRows } from '../kit/Skeleton.js';
 import { useSplit } from '../kit/SplitPane.js';
 import { Spinner } from '../kit/Spinner.js';
 import { Tag } from '../kit/Tag.js';
-import { useCeiling, useFeatures } from '../shell/data.js';
+import { useCeiling, useFeatures, usePlaceFeatures } from '../shell/data.js';
+import { Link } from '../shell/Link.js';
+import { projectFor, projectPath, useProjects } from './life/todos/useProjects.js';
 import { useLayout } from '../shell/layout.js';
 import { backgroundLine } from './board/model.js';
 import { Composer, carriesFiles } from './session/Composer.js';
@@ -186,6 +188,9 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const offline = conn === 'offline';
   const ceiling = useCeiling();
   const hubFeatures = useFeatures();
+  // 0.13.0 (F4): the projects the Board's chips read, and whether a project opens in Work.
+  const projects = useProjects();
+  const workOn = usePlaceFeatures().work === true;
   const root = useRef<HTMLDivElement>(null);
   // Measured on the session's own box: beside the ledger at 1440 it is 944 wide; without a measure (jsdom), no column.
   const wide = useBucket(root, (w) => w >= PROPS_AT) && !phone;
@@ -567,6 +572,30 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       {where}
     </p>
   ) : null;
+  // 0.13.0 (F4): the project whose folder holds a Mac session, one line under the title that opens it (its hub
+  // in Work while Work is on). The Board's chips read the same cached list, so this asks nothing more.
+  const project = session.node === undefined ? projectFor(session.cwd, projects) : null;
+  const projectLine = project ? (
+    <Link
+      href={projectPath(project.id, workOn)}
+      aria-label={`Project: ${project.emoji ? `${project.emoji} ${project.name}` : project.name}`}
+      data-project-line
+      className={
+        phone
+          ? 'flex h-32 max-w-full flex-none items-center gap-6 self-start px-16 type-mono text-ink-2 hover:text-ink coarse:h-44'
+          : 'mx-32 mt-8 flex h-24 max-w-full flex-none items-center gap-6 self-start type-mono text-ink-2 hover:text-ink coarse:h-44'
+      }
+    >
+      <span className="flex-none text-ink-3">Project</span>
+      <span aria-hidden="true" className="flex-none text-ink-3">
+        ·
+      </span>
+      <span className="min-w-0 truncate">{project.emoji ? `${project.emoji} ${project.name}` : project.name}</span>
+      <span aria-hidden="true" className="flex-none text-ink-3">
+        ›
+      </span>
+    </Link>
+  ) : null;
   // "Also on 03" counts the sessions on the same machine's account 03 only (every server has its own).
   const sameMachine = hasMachines(state) ? { ...state, sessions: sessionsOn(state.sessions, session.node) } : state;
   // The Screen tab's text: the session screen's one read, and the keypad while no dock is up.
@@ -638,6 +667,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
         {header}
         {bgLine}
         {whereLine}
+        {reading ? null : projectLine}
         {phone && !reading && !layout.kbUp ? <MetaLine session={session} account={account} ceiling={ceiling} now={now} phone modeOnChip={modeOnChip} noUsage={noUsage} /> : null}
         {phone ? (
           <div className="flex-none border-b border-line px-16 py-8">

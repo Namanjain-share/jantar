@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { ProjectView } from '@jantar/protocol';
 import { isApiError, type Api } from '../../../../lib/api.js';
+import { routePath } from '../../../../lib/router.js';
 import { useApp, useDeps } from '../../../context.js';
 import { useFeatures } from '../../../shell/data.js';
 import { readLocalDevice } from '../../devices/local.js';
@@ -96,3 +97,8 @@ export function useProjects(): readonly ProjectView[] {
 
 /** A project's folder holds `cwd`; the project whose folder holds it, the deepest winning (v0.5.3: protocol's, shared with the daemon's folder todos). */
 export { inFolder, projectFor } from '@jantar/protocol';
+
+/** 0.13.0: where a project opens: its hub in Work while Work is on (W20), else Todos' project screen. */
+export function projectPath(id: string, work: boolean): string {
+  return routePath(work ? { name: 'work', id } : { name: 'todos', project: id });
+}
