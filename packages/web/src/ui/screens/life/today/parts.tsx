@@ -19,6 +19,7 @@ import { Button } from '../../../kit/Button.js';
 import { IconButton } from '../../../kit/IconButton.js';
 import { LifeError, LifeLoading, OFFLINE_WRITE } from '../shared/states.js';
 import type { LifeLoad } from '../shared/useLife.js';
+import { useLayer } from '../../../kit/layer.js';
 
 // ---------------------------------------------------------------------------
 // Page and states
@@ -267,12 +268,13 @@ export function RowMenu({
   onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
 }) {
+  const layer = useLayer();
   return (
     <Menu.Root {...(open !== undefined ? { open } : {})} onOpenChange={(o) => onOpenChange?.(o)}>
       <Menu.Trigger render={<IconButton aria-label={label} disabled={disabled} />}>
         <DotsThreeIcon size={16} weight="bold" aria-hidden="true" />
       </Menu.Trigger>
-      <Menu.Portal>
+      <Menu.Portal container={layer}>
         <Menu.Positioner side="bottom" align="end" sideOffset={4} collisionPadding={12} className="z-30">
           <Menu.Popup aria-label={label} className="min-w-176 rounded-btn bg-raised py-4 text-ink shadow-float outline-none animate-pop">
             {groups.map((g, i) => (

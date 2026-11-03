@@ -13,6 +13,7 @@ import { Spinner } from '../../kit/Spinner.js';
 import { useObjectUrl } from '../files/blob.js';
 import { hhmm } from './model.js';
 import { shotErrorText, useShotBlob } from './ShotImage.js';
+import { useLayer } from '../../kit/layer.js';
 
 export interface ShotView {
   shot: MeetingShot;
@@ -45,11 +46,12 @@ function ViewerImage({ meetingId, view }: { meetingId: string; view: ShotView })
 export function ShotViewer({ meetingId, view, onClose }: { meetingId: string; view: ShotView | null; onClose: () => void }) {
   // The last one stays while the sheet animates away.
   const [last, setLast] = useState<ShotView | null>(view);
+  const layer = useLayer();
   if (view && view !== last) setLast(view);
   const shown = view ?? last;
   return (
     <Dialog.Root open={view !== null} onOpenChange={(o) => (o ? undefined : onClose())}>
-      <Dialog.Portal>
+      <Dialog.Portal container={layer}>
         <Dialog.Popup className="fixed inset-0 z-40 flex flex-col bg-bg text-ink outline-none animate-rise">
           {shown ? (
             <>

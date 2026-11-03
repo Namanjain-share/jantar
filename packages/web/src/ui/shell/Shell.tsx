@@ -13,6 +13,11 @@
  * screen's @md: and the rest (640 and up) read its pane's width, not the
  * window's; only the chrome and the Mac's density (desk:) follow the window.
  *
+ * The shell follows the visual viewport (kit.css .shell, lib/viewport.ts),
+ * and popups portal into its layer (kit/layer.ts), so on an iPad the
+ * on-screen keyboard never covers a pane's bottom and a pan moves the sheets
+ * with the panes.
+ *
  * Pair and NotPaired are bare: no chrome at all.
  *
  * The v0.3 places, Files and New session, are their own chunks, loaded the
@@ -30,6 +35,7 @@ import { boardOrder, needsYou } from '@jantar/protocol';
 import { documentTitle, setFavicon } from '../../lib/favicon.js';
 import { resyncPush } from '../../lib/push.js';
 import { useApp, useDeps, useNavigate, useNow, useRoute } from '../context.js';
+import { LayerContext } from '../kit/layer.js';
 import { Pane } from '../kit/Pane.js';
 import { SkeletonRows } from '../kit/Skeleton.js';
 import { SplitPane } from '../kit/SplitPane.js';
@@ -100,6 +106,8 @@ export function Shell() {
   const single = useAccountsMode() === 'single';
   const [palette, setPalette] = useState(false);
   const [legend, setLegend] = useState(false);
+  // Where sheets, menus and the palette go: the shell's layer, so they move with it (kit/layer.ts).
+  const [layer, setLayer] = useState<HTMLElement | null>(null);
   const paletteUsed = useRef(false);
   if (palette) paletteUsed.current = true;
 
@@ -326,69 +334,73 @@ export function Shell() {
   // in slot 4 is never remounted when the chrome changes (768 on a Mac, a rotation, a window drag):
   // only the chrome around it is swapped, and only classes change.
   return (
-    <div data-chrome={layout.chrome} className={phone ? 'flex h-dvh flex-col bg-bg' : 'grid-shell grid h-dvh bg-bg'}>
-      {/* 1: the phone's header */}
-      {phone ? (
-        fullScreen ? (
-          <div className="pt-safe flex-none" />
+    <LayerContext.Provider value={layer}>
+      <div data-chrome={layout.chrome} className={phone ? 'shell flex flex-col bg-bg' : 'shell grid-shell grid bg-bg'}>
+        {/* 1: the phone's header */}
+        {phone ? (
+          fullScreen ? (
+            <div className="pt-safe flex-none" />
+          ) : (
+            <PhoneHeader needs={needs} items={items} dashed={dashed} search={features.intel} onLegend={() => setLegend(true)} onHome={() => connection?.kick()} />
+          )
+        ) : null}
+        {/* 2: the Mac's top bar */}
+        {phone ? null : (
+          <TopBar
+            needs={needs}
+            items={items}
+            accounts={Object.keys(state.accounts).length}
+            known={state.seq > 0}
+            dashed={dashed}
+            onOpen={openSession}
+            onPalette={() => setPalette(true)}
+            onHome={() => connection?.kick()}
+          />
+        )}
+        {/* 3: the rail */}
+        {phone ? null : <Rail route={route.name} badges={badges} onPalette={() => setPalette(true)} />}
+        {/* 4: the place, always here */}
+        <div className={phone ? 'flex min-h-0 flex-1 flex-col' : 'col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col'}>
+          {offline ? <OfflineNotice /> : null}
+          {phone && updateAvailable ? <UpdateNotice /> : null}
+          <main id="main" className="relative min-h-0 flex-1">
+            {place}
+          </main>
+        </div>
+        {/* 5: Chat beside any screen (build plan c28) */}
+        {null}
+        {/* 6: the phone's tabs, or the Mac's status bar */}
+        {phone ? (
+          fullScreen ? null : (
+            <TabBar route={route.name} badges={badges} />
+          )
         ) : (
-          <PhoneHeader needs={needs} items={items} dashed={dashed} search={features.intel} onLegend={() => setLegend(true)} onHome={() => connection?.kick()} />
-        )
-      ) : null}
-      {/* 2: the Mac's top bar */}
-      {phone ? null : (
-        <TopBar
-          needs={needs}
-          items={items}
-          accounts={Object.keys(state.accounts).length}
-          known={state.seq > 0}
-          dashed={dashed}
-          onOpen={openSession}
-          onPalette={() => setPalette(true)}
-          onHome={() => connection?.kick()}
-        />
-      )}
-      {/* 3: the rail */}
-      {phone ? null : <Rail route={route.name} badges={badges} onPalette={() => setPalette(true)} />}
-      {/* 4: the place, always here */}
-      <div className={phone ? 'flex min-h-0 flex-1 flex-col' : 'col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col'}>
-        {offline ? <OfflineNotice /> : null}
-        {phone && updateAvailable ? <UpdateNotice /> : null}
-        <main id="main" className="relative min-h-0 flex-1">
-          {place}
-        </main>
+          <StatusBar
+            conn={conn}
+            seq={state.seq}
+            now={now}
+            fetchedAt={state.usage.fetchedAt}
+            pairs={pairs}
+            single={single}
+            ceiling={ceiling}
+            route={route.name}
+            needs={needs}
+            updateAvailable={updateAvailable}
+            onAccounts={() => navigate('/accounts')}
+            legend={<LegendPopover open={legend} onOpenChange={setLegend} />}
+          />
+        )}
+        {phone ? <LegendSheet open={legend} onOpenChange={setLegend} /> : null}
+        {!phone && paletteUsed.current ? (
+          <Suspense fallback={null}>
+            <Palette open={palette} onOpenChange={setPalette} now={now} />
+          </Suspense>
+        ) : null}
+        <Toasts />
+        {/* Popups (kit/layer.ts): above the panes, moving with the shell. */}
+        <div ref={setLayer} className="shell-layer" />
       </div>
-      {/* 5: Chat beside any screen (build plan c28) */}
-      {null}
-      {/* 6: the phone's tabs, or the Mac's status bar */}
-      {phone ? (
-        fullScreen ? null : (
-          <TabBar route={route.name} badges={badges} />
-        )
-      ) : (
-        <StatusBar
-          conn={conn}
-          seq={state.seq}
-          now={now}
-          fetchedAt={state.usage.fetchedAt}
-          pairs={pairs}
-          single={single}
-          ceiling={ceiling}
-          route={route.name}
-          needs={needs}
-          updateAvailable={updateAvailable}
-          onAccounts={() => navigate('/accounts')}
-          legend={<LegendPopover open={legend} onOpenChange={setLegend} />}
-        />
-      )}
-      {phone ? <LegendSheet open={legend} onOpenChange={setLegend} /> : null}
-      {!phone && paletteUsed.current ? (
-        <Suspense fallback={null}>
-          <Palette open={palette} onOpenChange={setPalette} now={now} />
-        </Suspense>
-      ) : null}
-      <Toasts />
-    </div>
+    </LayerContext.Provider>
   );
 }
 

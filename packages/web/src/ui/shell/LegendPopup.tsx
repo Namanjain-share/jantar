@@ -6,11 +6,13 @@ import { Button } from '../kit/Button.js';
 import { IconButton } from '../kit/IconButton.js';
 import { LEGEND_TITLE, Legend } from '../kit/Legend.js';
 import { Sheet } from '../kit/Sheet.js';
+import { useLayer } from '../kit/layer.js';
 
 export function LegendPopup({ open, onOpenChange, anchor }: { open: boolean; onOpenChange: (o: boolean) => void; anchor: RefObject<HTMLButtonElement | null> }) {
+  const layer = useLayer();
   return (
     <Popover.Root open={open} onOpenChange={(o) => onOpenChange(o)}>
-      <Popover.Portal>
+      <Popover.Portal container={layer}>
         <Popover.Positioner anchor={anchor} side="top" align="end" sideOffset={8} collisionPadding={12} className="z-30">
           <Popover.Popup finalFocus={anchor} className="w-400 rounded-dock bg-raised px-20 pb-12 pt-16 text-ink shadow-float outline-none animate-pop">
             <div className="mb-8 flex items-center">

@@ -22,6 +22,7 @@ import { Spinner } from '../../kit/Spinner.js';
 import { Tag } from '../../kit/Tag.js';
 import { InlineError, SCOPE_TEXT, StepNumber, copyText, useFlash } from './parts.js';
 import { useDeviceSection } from './card.js';
+import { useLayer } from '../../kit/layer.js';
 
 const QrCard = lazy(() => import('./Qr.js').then((m) => ({ default: m.QrCard })));
 
@@ -129,6 +130,7 @@ export function PairNew() {
   };
 
   const look = useDeviceSection('mt-40');
+  const layer = useLayer();
   return (
     <section aria-label="Pair a device" className={look.section}>
       <RailLabel ground={look.ground} sticky={false} inset={false} className={look.rail}>
@@ -169,7 +171,7 @@ export function PairNew() {
       {problem ? <InlineError className="mt-8 max-w-560">{problem}</InlineError> : null}
 
       <Dialog.Root open={pair !== null} onOpenChange={(o) => (o ? undefined : setPair(null))}>
-        <Dialog.Portal>
+        <Dialog.Portal container={layer}>
           <Dialog.Backdrop className="fixed inset-0 z-35 bg-scrim animate-fade" />
           <Dialog.Viewport className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto px-16 py-48 desk:items-center">
             <Dialog.Popup className="@container w-full max-w-600 rounded-dock bg-raised p-24 text-ink shadow-float outline-none animate-pop">

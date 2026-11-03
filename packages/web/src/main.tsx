@@ -6,6 +6,7 @@ import { createApi } from './lib/api.js';
 import { createConnection } from './lib/connection.js';
 import { watchInput } from './lib/input.js';
 import { listenForInstallPrompt, registerServiceWorker } from './lib/pwa.js';
+import { watchViewport } from './lib/viewport.js';
 import { browserHistory, createRouter } from './lib/router.js';
 import { applyTheme, themeStore } from './lib/theme.js';
 import { createAppStore } from './store.js';
@@ -15,6 +16,8 @@ import { wireStateCache } from './ui/screens/board/cache.js';
 applyTheme(themeStore.getState().pref);
 // 0.11: the last pointer (data-input, for hover) and whether a hardware keyboard has been seen.
 watchInput();
+// 0.11: the shell follows the visual viewport while a field has focus (the iPad's on-screen keyboard, a pan).
+watchViewport();
 
 const store = createAppStore();
 // Paint the last known state at once, whichever screen opens first (a push opens a session).

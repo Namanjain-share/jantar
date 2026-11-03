@@ -39,6 +39,7 @@ import { PdfView } from './PdfView.js';
 import { LoadError, Loading, StateLine } from './states.js';
 import { SvgView } from './SvgView.js';
 import { useFileText } from './text.js';
+import { useLayer } from '../../kit/layer.js';
 
 const ITEM =
   'flex h-32 cursor-pointer select-none items-center px-12 type-small text-ink outline-none transition-colors duration-120 ease-hover ' +
@@ -126,6 +127,7 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
     if (next && !coarsePointer()) copyOut(pathLine(path, next));
   };
   const openRel = useCallback((to: string) => onLocationRef.current(to.endsWith('/') ? dirLocation(root, to) : { root, path: to }), [root]);
+  const layer = useLayer();
 
   const s = stat.data;
   const lang = s && s.type === 'file' ? languageFor(name, s.language ?? t.first?.language) : null;
@@ -237,7 +239,7 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
           <Menu.Trigger render={<IconButton aria-label="More for this file" className="coarse:size-44" />}>
             <DotsThreeIcon size={20} weight="bold" />
           </Menu.Trigger>
-          <Menu.Portal>
+          <Menu.Portal container={layer}>
             <Menu.Positioner side="bottom" align="end" sideOffset={6} collisionPadding={12} className="z-30">
               <Menu.Popup className="min-w-176 rounded-btn bg-raised py-4 text-ink shadow-float outline-none animate-pop">
                 <Menu.Item className={ITEM} onClick={() => copyOut(path)}>

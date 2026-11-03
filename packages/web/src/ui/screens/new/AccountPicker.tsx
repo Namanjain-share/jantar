@@ -29,6 +29,7 @@ import { Meter } from '../../kit/Meter.js';
 import { Tag } from '../../kit/Tag.js';
 import { useCeiling } from '../../shell/data.js';
 import { LEGACY_TOOL } from '../accounts/model.js';
+import { useLayer } from '../../kit/layer.js';
 
 /** What Auto picks right now: an account, none (no room), or not known yet. */
 export interface AutoPick {
@@ -140,9 +141,10 @@ export function AccountPopover({
   anchor,
   ...list
 }: AccountListProps & { open: boolean; onOpenChange: (o: boolean) => void; anchor: RefObject<HTMLButtonElement | null> }) {
+  const layer = useLayer();
   return (
     <Popover.Root open={open} onOpenChange={(o) => onOpenChange(o)}>
-      <Popover.Portal>
+      <Popover.Portal container={layer}>
         <Popover.Positioner anchor={anchor} side="bottom" align="start" sideOffset={6} collisionPadding={12} className="z-30">
           <Popover.Popup finalFocus={anchor} className="w-480 max-w-full rounded-dock bg-raised pb-8 pt-12 text-ink shadow-float outline-none animate-pop">
             <div className="mb-8 flex items-center px-16">

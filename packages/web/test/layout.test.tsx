@@ -6,6 +6,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keyboardStore, setKeyboard } from '../src/lib/input.js';
+import { viewportStore } from '../src/lib/viewport.js';
 import * as layoutModule from '../src/ui/shell/layout.js';
 import { QUERIES, chromeFor, createLayoutStore, layoutAt, sizeFor, useLayout, type Chrome, type Size } from '../src/ui/shell/layout.js';
 import { renderApp, session, stateWith } from './helpers.js';
@@ -118,6 +119,20 @@ describe('the provider', () => {
     stubWindow(1440);
     render(<Probe />);
     expect(screen.getByText('keyboard true')).toBeTruthy();
+  });
+
+  it('0.11 c10: kbUp follows the on-screen keyboard (lib/viewport.ts)', () => {
+    function Probe() {
+      const l = useLayout();
+      return <p>{`kbUp ${l.kbUp}`}</p>;
+    }
+    stubWindow(820, true);
+    render(<Probe />);
+    expect(screen.getByText('kbUp false')).toBeTruthy();
+    act(() => viewportStore.setState({ kbUp: true }));
+    expect(screen.getByText('kbUp true')).toBeTruthy();
+    act(() => viewportStore.setState({ kbUp: false }));
+    expect(screen.getByText('kbUp false')).toBeTruthy();
   });
 
   it('a screen rendered on its own follows the window by itself', () => {

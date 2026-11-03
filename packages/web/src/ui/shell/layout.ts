@@ -12,7 +12,8 @@
  *             640 and touch from 640.
  *   keyboard  a hardware keyboard has been seen: a fine pointer from the start,
  *             a coarse one once lib/input.ts has seen it
- *   kbUp      the on-screen keyboard is up
+ *   kbUp      the on-screen keyboard is up (lib/viewport.ts: the visual
+ *             viewport is more than 200 px shorter than the window)
  *
  * Panes are laid out by their own width (container queries), with either
  * pointer; only the chrome follows the pointer.
@@ -29,6 +30,7 @@ import { createContext, createElement, useContext, useEffect, useState, type Rea
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { keyboardStore } from '../../lib/input.js';
+import { viewportStore } from '../../lib/viewport.js';
 
 export type Size = 'compact' | 'medium' | 'regular';
 export type Chrome = 'phone' | 'touch' | 'desk';
@@ -92,7 +94,7 @@ const hasMedia = () => typeof window !== 'undefined' && typeof window.matchMedia
 function fromQueries(matches: (q: string) => boolean): Layout {
   const width = matches(QUERIES.regular) ? 1024 : matches(QUERIES.desk) ? 768 : matches(QUERIES.medium) ? 640 : 0;
   const coarse = matches(QUERIES.coarse);
-  return layoutAt(width, { coarse, keyboard: !coarse || keyboardStore.getState().keyboard });
+  return layoutAt(width, { coarse, keyboard: !coarse || keyboardStore.getState().keyboard, kbUp: viewportStore.getState().kbUp });
 }
 
 function readWindow(): Layout {
@@ -103,7 +105,7 @@ function same(a: Layout, b: Layout): boolean {
   return a.size === b.size && a.coarse === b.coarse && a.chrome === b.chrome && a.keyboard === b.keyboard && a.kbUp === b.kbUp;
 }
 
-/** Keeps `store` in step with the window (one change listener per query) and the keyboard flag, until the returned function runs. */
+/** Keeps `store` in step with the window (one change listener per query), the keyboard flag and the on-screen keyboard, until the returned function runs. */
 function follow(store: LayoutStore): () => void {
   if (!hasMedia()) return () => undefined;
   const lists = new Map<string, MediaQueryList>(Object.values(QUERIES).map((q) => [q, window.matchMedia(q)]));
@@ -113,11 +115,13 @@ function follow(store: LayoutStore): () => void {
   };
   for (const l of lists.values()) l.addEventListener?.('change', update);
   const stopKeyboard = keyboardStore.subscribe(update);
+  const stopViewport = viewportStore.subscribe(update);
   // The window may have changed between the first render and now.
   update();
   return () => {
     for (const l of lists.values()) l.removeEventListener?.('change', update);
     stopKeyboard();
+    stopViewport();
   };
 }
 

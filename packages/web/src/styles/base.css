@@ -21,7 +21,9 @@
     transition: background-color 160ms var(--ease-ui);
   }
 
-  /* Base UI: backdrops must cover the whole visual viewport on iOS 26. */
+  /* Base UI: backdrops must cover the whole visual viewport on iOS 26. 0.11:
+     inside the shell, popups go into its layer (kit.css .shell); this holds
+     for the screens without it (pairing). */
   body {
     position: relative;
     min-height: 100dvh;

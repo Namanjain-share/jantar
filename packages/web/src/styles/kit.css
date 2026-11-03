@@ -42,6 +42,35 @@
 }
 
 @layer components {
+  /* ---------- The shell (0.11, lib/viewport.ts) ----------
+     Fixed, as tall as the visual viewport and moved down with it, so with
+     the iPad's on-screen keyboard up a pane's bottom (and the composer
+     pinned there) sits on the keyboard and the headers stay in view when
+     iOS pans. Without the variables (no field focused, a Mac, a zoom) it is
+     the window. Popups portal into its layer (kit/layer.ts), above the
+     panes, so they move with it: a fixed box inside it is placed against it. */
+  .shell {
+    position: fixed;
+    inset: 0 0 auto;
+    height: var(--vvh, 100dvh);
+    transform: translateY(var(--vvt, 0px));
+  }
+  .shell-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+  }
+  .shell-layer > * {
+    pointer-events: auto;
+  }
+  /* A focused field scrolled into view keeps a little room above the keyboard, not the keyboard's height. */
+  .split-list,
+  .split-detail,
+  [data-pane] {
+    scroll-padding-bottom: 16px;
+  }
+
   /* ---------- SplitPane (0.11): a list and its detail ----------
      kit/SplitPane.tsx decides split or single by the pane's width and says
      so in data-*; these rules only lay out the grid. Single: one column, the

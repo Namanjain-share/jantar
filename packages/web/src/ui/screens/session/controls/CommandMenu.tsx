@@ -19,6 +19,7 @@ import { Button } from '../../../kit/Button.js';
 import { IconButton } from '../../../kit/IconButton.js';
 import { Sheet } from '../../../kit/Sheet.js';
 import { MENU_ITEM, MENU_POPUP } from './look.js';
+import { useLayer } from '../../../kit/layer.js';
 
 export const COMMANDS_LABEL = 'Commands';
 
@@ -68,6 +69,7 @@ export interface CommandMenuProps {
 
 export function CommandMenu({ disabled, onRun }: CommandMenuProps) {
   const [sheet, setSheet] = useState<SheetFor | null>(null);
+  const layer = useLayer();
   const choose = (name: SlashCommandName) => {
     if (name === 'plan' || name === 'compact') onRun({ name });
     else setSheet(name);
@@ -88,7 +90,7 @@ export function CommandMenu({ disabled, onRun }: CommandMenuProps) {
         <Menu.Trigger render={<IconButton aria-label={COMMANDS_LABEL} className="size-32 coarse:size-44" />} disabled={disabled}>
           <DotsThreeIcon size={20} weight="bold" aria-hidden="true" />
         </Menu.Trigger>
-        <Menu.Portal>
+        <Menu.Portal container={layer}>
           <Menu.Positioner side="top" align="end" sideOffset={6} collisionPadding={12} className="z-30">
             <Menu.Popup className={MENU_POPUP} aria-label="Slash commands">
               {ITEMS.map((it) => (

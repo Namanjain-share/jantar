@@ -315,3 +315,22 @@ describe('0.11: More is the phone tab', () => {
     expect(phone.router.getState().route).toEqual({ name: 'more' });
   });
 });
+
+describe('0.11 c10: the shell follows the visual viewport', () => {
+  it('is the shell box on every chrome, and popups go into its layer, not <body>', async () => {
+    const layout = createLayoutStore(layoutAt(1440));
+    renderApp({ state: busy(), layout });
+    const shell = document.querySelector('[data-chrome]');
+    expect(shell?.classList.contains('shell')).toBe(true);
+    const layer = shell?.querySelector(':scope > .shell-layer');
+    expect(layer).toBeTruthy();
+    // The palette's dialog portals into the layer.
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    const input = await screen.findByPlaceholderText('Jump to a session or account');
+    expect(layer?.contains(input)).toBe(true);
+    // A chrome change keeps the same shell box and layer.
+    act(() => layout.setState(layoutAt(390), true));
+    expect(document.querySelector('[data-chrome]')).toBe(shell);
+    expect(shell?.classList.contains('shell')).toBe(true);
+  });
+});

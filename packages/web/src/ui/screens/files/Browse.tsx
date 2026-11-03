@@ -44,6 +44,7 @@ import { useLoad, useOffline, type Loaded } from './data.js';
 import { apiPath, crumbs, dirLocation, iconFor, sizeText } from './model.js';
 import { Footnote, LoadError, Loading, StateLine, fileErrorText } from './states.js';
 import { VirtualList } from './VirtualList.js';
+import { useLayer } from '../../kit/layer.js';
 
 const HIDDEN_KEY = 'files-show-hidden';
 
@@ -198,6 +199,7 @@ function Folder({
   onRoots?: () => void;
 }) {
   const { api } = useDeps();
+  const layer = useLayer();
   const navigate = useNavigate();
   const { launch, files } = useFeatures();
   const now = useNow(60_000);
@@ -327,7 +329,7 @@ function Folder({
         <Menu.Trigger render={<IconButton aria-label="Folder options" />}>
           <DotsThreeIcon size={20} weight="bold" />
         </Menu.Trigger>
-        <Menu.Portal>
+        <Menu.Portal container={layer}>
           <Menu.Positioner side="bottom" align="end" sideOffset={6} collisionPadding={12} className="z-30">
             <Menu.Popup className="min-w-176 rounded-btn bg-raised py-4 text-ink shadow-float outline-none animate-pop">
               <Menu.Item className={ITEM} onClick={toggleHidden}>

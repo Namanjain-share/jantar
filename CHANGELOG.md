@@ -106,6 +106,11 @@ What changed for people who use Jantar, newest first. Versions before
 - Fixed: in the Home Screen app on an iPad, the top bar sat under the
   clock and the status bar over the home indicator. Both now leave room
   for them (nothing changes on a Mac).
+- On an iPad, with the on-screen keyboard up, the app fits above the
+  keyboard: the composer and what a pane pins at its bottom sit on it, the
+  headers stay in view when iOS moves the page, and a focused field
+  scrolls into view. Sheets and menus move with the app. Pinch zoom is
+  left alone.
 
 ## 0.11.0 (3 November 2026)
 

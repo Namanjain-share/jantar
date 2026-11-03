@@ -14,8 +14,10 @@ import { StatusGlyph } from '../kit/StatusGlyph.js';
 import { glyphStateOf } from '../kit/glyph.js';
 import { NewSessionItem } from '../screens/new/PaletteItem.js';
 import { hasMachines } from '../screens/session/Info.js';
+import { useLayer } from '../kit/layer.js';
 
 export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChange: (o: boolean) => void; now: number }) {
+  const layer = useLayer();
   const state = useApp((s) => s.state);
   const navigate = useNavigate();
   const sessions = useMemo(() => boardOrder(state), [state]);
@@ -28,7 +30,7 @@ export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChan
   };
   return (
     <Dialog.Root open={open} onOpenChange={(o) => onOpenChange(o)}>
-      <Dialog.Portal>
+      <Dialog.Portal container={layer}>
         <Dialog.Backdrop className="fixed inset-0 z-35 bg-scrim animate-fade" />
         <Dialog.Popup className="palette fixed left-1/2 top-96 z-40 w-560 max-w-full -translate-x-1/2 overflow-hidden rounded-dock bg-raised text-ink shadow-float outline-none animate-pop">
           <Dialog.Title className="sr-only">Jump to a session</Dialog.Title>

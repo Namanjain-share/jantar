@@ -12,6 +12,7 @@ import type { PermissionModeName } from '@jantar/protocol';
 import { Spinner } from '../../../kit/Spinner.js';
 import { CHIP, MENU_ITEM, MENU_POPUP } from './look.js';
 import { MODE_CHOICES, MODE_HINT, modeLabel } from './modes.js';
+import { useLayer } from '../../../kit/layer.js';
 
 export interface ModeMenuProps {
   label: string;
@@ -24,13 +25,14 @@ export interface ModeMenuProps {
 }
 
 export function ModeMenu({ label, ariaLabel, current, busy, disabled, unavailable, onPick }: ModeMenuProps) {
+  const layer = useLayer();
   return (
     <Menu.Root>
       <Menu.Trigger className={CHIP} disabled={disabled} aria-label={ariaLabel}>
         <span className="truncate">{label}</span>
         {busy ? <Spinner label="Switching the mode" /> : <CaretDownIcon size={12} aria-hidden="true" />}
       </Menu.Trigger>
-      <Menu.Portal>
+      <Menu.Portal container={layer}>
         <Menu.Positioner side="top" align="start" sideOffset={6} collisionPadding={12} className="z-30">
           <Menu.Popup className={MENU_POPUP} aria-label="Permission modes">
             <Menu.RadioGroup value={current ?? null} onValueChange={(v: PermissionModeName) => onPick(v)}>

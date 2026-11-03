@@ -13,6 +13,7 @@ import { Menu } from '@base-ui/react/menu';
 import { routePath } from '../../../lib/router.js';
 import { useNavigate } from '../../context.js';
 import type { RowModel } from './model.js';
+import { useLayer } from '../../kit/layer.js';
 
 const ITEM =
   'flex h-32 cursor-pointer select-none items-center px-12 type-small text-ink outline-none transition-colors duration-120 ease-hover ' +
@@ -32,6 +33,7 @@ export interface RowMenuProps {
 
 export function RowMenu({ row, anchor, onClose }: RowMenuProps) {
   const navigate = useNavigate();
+  const layer = useLayer();
   return (
     <Menu.Root
       open
@@ -39,7 +41,7 @@ export function RowMenu({ row, anchor, onClose }: RowMenuProps) {
         if (!open) onClose();
       }}
     >
-      <Menu.Portal>
+      <Menu.Portal container={layer}>
         <Menu.Positioner anchor={anchor} side="bottom" align="end" sideOffset={4} collisionPadding={12} className="z-30">
           <Menu.Popup aria-label={`${row.folder} · ${row.name}`} className="min-w-176 rounded-btn bg-raised py-4 text-ink shadow-float outline-none animate-pop">
             <Menu.Item

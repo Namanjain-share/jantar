@@ -8,6 +8,7 @@
 import { Drawer } from '@base-ui/react/drawer';
 import clsx from 'clsx';
 import type { ComponentProps, ReactNode } from 'react';
+import { useLayer } from './layer.js';
 
 type PopupProps = ComponentProps<typeof Drawer.Popup>;
 
@@ -29,9 +30,10 @@ export interface SheetProps {
 }
 
 export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, children, className, initialFocus, finalFocus }: SheetProps) {
+  const layer = useLayer();
   return (
     <Drawer.Root open={open} onOpenChange={(next) => onOpenChange(next)} swipeDirection="down">
-      <Drawer.Portal>
+      <Drawer.Portal container={layer}>
         <Drawer.Backdrop className="sheet-backdrop fixed inset-0 bg-scrim" />
         <Drawer.Viewport className="fixed inset-0 flex items-end justify-center">
           <Drawer.Popup

@@ -6,6 +6,7 @@
 import { Menu } from '@base-ui/react/menu';
 import { CaretDownIcon } from '@phosphor-icons/react';
 import { Button } from '../../kit/Button.js';
+import { useLayer } from '../../kit/layer.js';
 
 const ITEM =
   'flex h-32 cursor-pointer select-none items-center px-12 type-small text-ink outline-none transition-colors duration-120 ease-hover ' +
@@ -20,13 +21,14 @@ export interface MuteMenuProps {
 }
 
 export function MuteMenu({ label, muted, busy, onMute }: MuteMenuProps) {
+  const layer = useLayer();
   return (
     <Menu.Root>
       <Menu.Trigger render={<Button size="sm" disabled={busy} />}>
         {label}
         <CaretDownIcon size={12} aria-hidden="true" />
       </Menu.Trigger>
-      <Menu.Portal>
+      <Menu.Portal container={layer}>
         <Menu.Positioner side="bottom" align="end" sideOffset={6} collisionPadding={12} className="z-30">
           <Menu.Popup className="min-w-176 rounded-btn bg-raised py-4 text-ink shadow-float outline-none animate-pop">
             {muted ? (
