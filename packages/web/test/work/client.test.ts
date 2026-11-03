@@ -55,4 +55,29 @@ describe("Work's client", () => {
     expect(post['idempotency-key']).toBe('key-1');
     expect(JSON.parse(String(calls[3]!.init.body))).toEqual({ items: [{ root: 'r.work', path: 'client/acme', name: 'Acme' }], clients: true });
   });
+
+  it("his clients: the list's filters as a query, the similar check a POST (no phone in a URL), the export as text", async () => {
+    const { api, calls } = recorder({ clients: [], more: 0, matches: [] });
+    const w = workClient(api);
+    await w.clients({ q: ' acme ', state: 'lead', tag: 'retail', sort: 'touch' });
+    await w.clientSimilar({ phone: '+91 98765 43210' });
+    await w.logAdd('01JWRKC11ENT00000000000ACM', { kind: 'call', next: { title: 'Send the quote', due: { day: '2026-01-16' } } }, 'key-2');
+    await w.importUndo('01JWRKBATCH000000000000001', 'key-3');
+    await w.notDuplicate('01JWRKC11ENT00000000000ACM', '01JWRKC11ENT00000000000NWD');
+    expect(calls.map((c) => `${c.init.method} ${c.url.replace('http://127.0.0.1:7420', '')}`)).toEqual([
+      'GET /v1/work/clients?q=acme&state=lead&tag=retail&sort=touch',
+      'POST /v1/work/clients/similar',
+      'POST /v1/work/clients/01JWRKC11ENT00000000000ACM/log',
+      'DELETE /v1/work/import/01JWRKBATCH000000000000001',
+      'POST /v1/work/clients/01JWRKC11ENT00000000000ACM/not-duplicate',
+    ]);
+    expect(JSON.parse(String(calls[1]!.init.body))).toEqual({ phone: '+91 98765 43210' });
+    expect(JSON.parse(String(calls[4]!.init.body))).toEqual({ otherId: '01JWRKC11ENT00000000000NWD' });
+
+    const csv = 'name,kind\r\nAcme,company\r\n';
+    const fetch = vi.fn(async () => new Response(csv, { status: 200, headers: { 'content-type': 'text/csv; charset=utf-8' } }));
+    const raw = createApi({ fetch: fetch as unknown as typeof globalThis.fetch, base: 'http://127.0.0.1:7420', credentials: { get: async () => null, set: async () => undefined, clear: async () => undefined } });
+    expect(await workClient(raw).exportCsv()).toBe(csv);
+    expect(String((fetch.mock.calls[0] as unknown as [string])[0])).toBe('http://127.0.0.1:7420/v1/work/export.csv?what=clients');
+  });
 });

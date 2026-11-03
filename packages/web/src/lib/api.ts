@@ -114,8 +114,8 @@ import {
   type ProjectsResponse,
   type SnoozePreset,
   type Today,
-  type TodoBody,
-  type TodoPatch,
+  type OwnerTodoBody,
+  type OwnerTodoPatch,
   type TodosResponse,
   type DecisionBody,
   type DecisionResponse,
@@ -315,8 +315,9 @@ export interface Api {
   projectUpdate(id: string, patch: ProjectPatch, idempotencyKey?: string): Promise<OkReply>;
   projectDelete(id: string, idempotencyKey?: string): Promise<OkReply>;
   todosList(q?: { project?: string; done?: boolean }): Promise<TodosResponse>;
-  todoCreate(body: TodoBody, idempotencyKey?: string): Promise<IdReply>;
-  todoUpdate(id: string, patch: TodoPatch, idempotencyKey?: string): Promise<OkReply>;
+  /** 0.13.0: his todo routes also take a follow-up's client and deal (OwnerTodoBody; null clears in a patch). */
+  todoCreate(body: OwnerTodoBody, idempotencyKey?: string): Promise<IdReply>;
+  todoUpdate(id: string, patch: OwnerTodoPatch, idempotencyKey?: string): Promise<OkReply>;
   /** false is Undo (one-off todos). */
   todoDone(id: string, done: boolean, idempotencyKey?: string): Promise<OkReply>;
   todoSnooze(id: string, preset: SnoozePreset, idempotencyKey?: string): Promise<OkReply>;
@@ -463,6 +464,8 @@ export interface ApiRequest {
   body?: unknown;
   idempotencyKey?: string;
   signal?: AbortSignal;
+  /** The reply as text (a rawResponse route, Work's CSV export); errors still arrive as JSON. */
+  text?: boolean;
 }
 
 /** v0.6: which machine a folder, start-sheet or usage call is for (absent: the Mac). */
@@ -520,6 +523,8 @@ export function createApi(opts: ApiOptions = {}): Api {
       /** Send an Idempotency-Key (writes only). Default true; Ask Claude sends none (v0.4). */
       withKey?: boolean;
       signal?: AbortSignal;
+      /** 0.13.0: the reply is text (a rawResponse route's CSV), not JSON. */
+      text?: boolean;
     } = {},
   ): Promise<T> {
     const path = pathWithQuery(route, init.params, init.query);
@@ -558,6 +563,7 @@ export function createApi(opts: ApiOptions = {}): Api {
       const code = (err?.code as ErrorCode | undefined) ?? statusCode(res.status);
       throw new ApiError(code, err?.message ?? `${res.status} ${res.statusText}`.trim(), res.status);
     }
+    if (init.text) return text as T;
     if (json === undefined && text) throw new ApiError('bad_response', 'The Mac sent a reply this app could not read.', res.status);
     return json as T;
   }
