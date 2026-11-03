@@ -9,6 +9,7 @@ import { PRODUCT_NAME } from '../../brand.js';
 import { Keycap } from '../kit/Keycap.js';
 import { Mark } from '../kit/Mark.js';
 import { Strip, type StripItem } from '../kit/Strip.js';
+import { ChatButton } from './ChatButton.js';
 import { useLayout } from './layout.js';
 import { Link } from './Link.js';
 
@@ -51,9 +52,11 @@ export function TopBar({
           {items.length} {items.length === 1 ? 'session' : 'sessions'} · {accounts} {accounts === 1 ? 'account' : 'accounts'}
         </span>
       ) : null}
+      <span className="min-w-16 flex-1" />
+      <ChatButton where="top" className="mr-8" />
       <button
         type="button"
-        className="ml-auto mr-12 flex h-32 flex-none items-center gap-8 rounded-btn pl-6 pr-8 text-small text-ink-3 transition duration-120 ease-hover hover:bg-hover hover:text-ink coarse:h-44"
+        className="mr-12 flex h-32 flex-none items-center gap-8 rounded-btn pl-6 pr-8 text-small text-ink-3 transition duration-120 ease-hover hover:bg-hover hover:text-ink coarse:h-44"
         onClick={onPalette}
       >
         <Keycap>⌘K</Keycap>

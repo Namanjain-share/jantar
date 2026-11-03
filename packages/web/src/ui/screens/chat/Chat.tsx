@@ -28,13 +28,14 @@
  * puts its day in the address (?day=). Below 800 the thread is alone, as
  * before.
  */
-import { CaretLeftIcon } from '@phosphor-icons/react';
+import { CaretLeftIcon, CornersOutIcon, XIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { ChatTurn } from '@jantar/protocol';
 import { useDraft } from '../../../lib/drafts.js';
 import { routePath } from '../../../lib/router.js';
 import { useDeps, useNavigate, useNow } from '../../context.js';
 import { Button } from '../../kit/Button.js';
+import { IconButton } from '../../kit/IconButton.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { Spinner } from '../../kit/Spinner.js';
 import { SplitPane, useSplit } from '../../kit/SplitPane.js';
@@ -56,9 +57,13 @@ const LINK = 'rounded-chip type-small font-medium text-ink-2 transition-colors d
 export interface ChatProps {
   /** 0.11, ?day=: the thread opens at that day's first turn. */
   day?: string | undefined;
+  /** 0.11 (c28): the panel beside another screen (ChatDock.tsx): the thread alone, with its own header. */
+  dock?: { focus: number; onClose: () => void; onOpenFull: () => void } | undefined;
 }
 
-export function Chat({ day }: ChatProps = {}) {
+export { ChatDock } from './ChatDock.js';
+
+export function Chat({ day, dock }: ChatProps = {}) {
   const { api } = useDeps();
   const navigate = useNavigate();
   const offline = useOffline();
@@ -148,6 +153,12 @@ export function Chat({ day }: ChatProps = {}) {
     });
   };
 
+  // The panel opened by ⌘J or its button: the box takes the focus.
+  const dockFocus = dock?.focus ?? 0;
+  useEffect(() => {
+    if (dockFocus) area.current?.focus();
+  }, [dockFocus]);
+
   const fill = (text: string) => {
     setDraft(text);
     requestAnimationFrame(() => area.current?.focus());
@@ -167,7 +178,18 @@ export function Chat({ day }: ChatProps = {}) {
   // `side`: This chat is beside the thread, and says what Chat can see in place of the line here.
   const threadPane = (side: boolean) => (
     <div className="flex min-h-full flex-col animate-enter">
-      <header className="flex min-h-44 items-center gap-12 px-16 pb-8 pt-16 desk:pt-24">
+      {dock ? (
+        <header className="flex h-pane flex-none items-center gap-4 border-b border-line pl-16 pr-8">
+          <h2 className="min-w-0 flex-1 truncate type-title text-ink">Chat</h2>
+          <IconButton aria-label="Open in Chat" className="coarse:size-44" onClick={dock.onOpenFull}>
+            <CornersOutIcon size={18} aria-hidden="true" />
+          </IconButton>
+          <IconButton aria-label="Close Chat" title="Close (⌘J)" className="coarse:size-44" onClick={dock.onClose}>
+            <XIcon size={18} aria-hidden="true" />
+          </IconButton>
+        </header>
+      ) : null}
+      <header className={dock ? 'hidden' : 'flex min-h-44 items-center gap-12 px-16 pb-8 pt-16 desk:pt-24'}>
         <DaysButton />
         <h1 data-display className="min-w-0 flex-1 truncate type-display text-ink">
           Chat
@@ -256,6 +278,32 @@ export function Chat({ day }: ChatProps = {}) {
       <div ref={end} />
     </div>
   );
+
+  // The panel: the thread alone (its own scroll box and query container), the composer pinned under it.
+  if (dock) {
+    return (
+      <>
+        <div ref={thread} data-thread className="@container h-full min-h-0 overflow-y-auto">
+          {threadPane(false)}
+        </div>
+        <Sheet open={confirm} onOpenChange={(o) => setConfirm(o)} title="Clear chat">
+          <div className="pb-16">
+            <p className="type-small text-ink-2">{CHAT_COPY.clear}</p>
+            {clear.error ? <Refused className="mt-8">{refusalText(clear.error)}</Refused> : null}
+            <SheetActions>
+              <Button variant="primary" size="lg" className="flex-1" disabled={clear.busy || offline} onClick={() => void doClear()}>
+                {clear.busy ? <Spinner label="Clearing" /> : null}
+                Clear
+              </Button>
+              <Button variant="text" size="lg" onClick={() => setConfirm(false)}>
+                Cancel
+              </Button>
+            </SheetActions>
+          </div>
+        </Sheet>
+      </>
+    );
+  }
 
   return (
     <>

@@ -33,11 +33,18 @@
 @utility grid-shell {
   grid-template-columns: calc(var(--rail-desk-w) + env(safe-area-inset-left, 0px)) minmax(0, 1fr);
   grid-template-rows: calc(48px + env(safe-area-inset-top, 0px)) minmax(0, 1fr) calc(24px + env(safe-area-inset-bottom, 0px));
+  /* 0.11 (c28): Chat beside the panes as a third column. */
+  &[data-dock] {
+    grid-template-columns: calc(var(--rail-desk-w) + env(safe-area-inset-left, 0px)) minmax(0, 1fr) var(--chat-dock-w);
+  }
 }
 /* 0.11 touch shell (c24): the sidebar (220) or the labelled rail (72), sized by the nav itself, then the panes. */
 @utility grid-touch {
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+  &[data-dock] {
+    grid-template-columns: auto minmax(0, 1fr) var(--chat-dock-w);
+  }
 }
 /* 0.11: a pane's header row (--pane-header-h, 56), the same in every pane, so the hairlines under list and detail meet. */
 @utility h-pane {
@@ -141,6 +148,44 @@
   }
   .split[data-over][data-list='history'] > .split-list {
     width: min(var(--history-w), 100%);
+  }
+  /* ---------- Chat beside any screen (0.11 c28, screens/chat/ChatDock.tsx) ----------
+     A column (the shell's third, data-dock) where the panes keep 560, else over their right edge
+     with no scrim, between the Mac's top bar and status bar. */
+  .chat-dock {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid var(--line);
+    background: var(--bg);
+  }
+  [data-chrome='desk'] > .chat-dock {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  [data-chrome='touch'] > .chat-dock {
+    grid-column: 3;
+    grid-row: 1;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .shell > .chat-dock-over {
+    position: absolute;
+    /* The whole grid is its containing block: the column's grid-column 3 would give it a track the grid
+       hasn't got here, 0 wide. */
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(var(--chat-dock-w), 100%);
+  }
+  [data-chrome='desk'] > .chat-dock-over {
+    top: calc(48px + env(safe-area-inset-top, 0px));
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   }
   /* Board's waiting cards in single mode (board/Queue.tsx): one line in a window under 600 tall. */
   .queue-line {

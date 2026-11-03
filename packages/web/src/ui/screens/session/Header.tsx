@@ -15,6 +15,7 @@ import { Button } from '../../kit/Button.js';
 import { GLYPH_WORD, type GlyphState } from '../../kit/glyph.js';
 import { IconButton } from '../../kit/IconButton.js';
 import { StatusGlyph } from '../../kit/StatusGlyph.js';
+import { ChatButton } from '../../shell/ChatButton.js';
 
 export type View = SessionView;
 
@@ -179,6 +180,7 @@ export function Header(props: HeaderProps) {
           <span className="hidden @md:inline">{showLabel}</span>
         </Button>
       )}
+      <ChatButton where="pane" className="ml-8" />
     </header>
   );
 }

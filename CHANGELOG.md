@@ -169,6 +169,14 @@ What changed for people who use Jantar, newest first. Versions before
   comment).
 - A question card's "Chat about this" is now **Clarify with Claude**, so it
   isn't mistaken for Jantar's Chat. It still sends Claude's own words.
+- **Chat beside any screen**: the Chat button (in the Mac's top bar, at
+  the end of a screen's header on an iPad) or ⌘J opens the thread next to
+  what you're looking at, with the box ready to type in, on the iPad and
+  the Mac. Where the screen keeps at least 560 px beside it, it is a
+  360 px column; otherwise it lies over the right edge (Esc, ×, ⌘J close
+  it). Open in Chat takes it full size. It is closed until you open it,
+  remembers that on this device, and shares its draft with Chat. A phone's
+  ⌘J opens the Chat tab.
 
 ## 0.11.0 (3 November 2026)
 

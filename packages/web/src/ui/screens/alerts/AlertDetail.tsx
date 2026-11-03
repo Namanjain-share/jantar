@@ -15,6 +15,7 @@
  * alone in a narrow pane, "‹ Alerts" does. j and k open the next and the
  * one before in the list's order; Return opens the session.
  */
+import { ChatButton } from '../../shell/ChatButton.js';
 import { CaretLeftIcon } from '@phosphor-icons/react';
 import type { Alert } from '@jantar/protocol';
 import { accountId } from '../../../lib/format.js';
@@ -87,6 +88,7 @@ export function AlertDetail({ alert: a, subject, sentence, action, unseen, listH
             {KIND_WORD[a.kind]} · {when}
           </span>
         </p>
+        <ChatButton where="pane" />
         {closing ? <PaneClose onClick={closing} /> : null}
       </header>
 

@@ -18,6 +18,7 @@
  * phone, a row expands inline as before. The kind filter is in the route
  * (`?kind=`).
  */
+import { ChatButton } from '../shell/ChatButton.js';
 import { useEffect, useMemo, useState } from 'react';
 import type { Alert } from '@jantar/protocol';
 import type { AlertsKind } from '../../lib/router.js';
@@ -199,8 +200,9 @@ function AlertsList({ alerts, days, active, seenAtOpen, openId }: { alerts: read
             {display}
           </p>
           {wide && alerts.length ? <p className="type-small text-ink-3">Limits, API errors, blocked tools and rejected prompts</p> : null}
-          <span className="ml-auto">
+          <span className="ml-auto flex items-center gap-8">
             <Mute />
+            <ChatButton where="pane" />
           </span>
         </div>
         {alerts.length ? null : <p className="mt-6 max-w-560 type-small text-ink-2">{EMPTY_LINE}</p>}

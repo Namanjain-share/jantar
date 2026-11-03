@@ -26,6 +26,7 @@
  * links. What Claude and the page wrote is text only: never Markdown, never
  * a link.
  */
+import { ChatButton } from '../../shell/ChatButton.js';
 import { CaretDownIcon, CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
 import { useId, useState, type ReactNode } from 'react';
 import { INTEL_DEPTH_DEFAULT, type IntelDepth, type IntelItem, type IntelJob } from '@jantar/protocol';
@@ -346,7 +347,10 @@ export function ItemPage({ id, filters, offline }: { id: string; filters: ShelfF
     <div className="pb-48 animate-enter">
       <div className="flex items-center px-8 pt-8">
         {close ? (
-          <PaneClose onClick={close} className="ml-auto" />
+          <span className="ml-auto flex items-center gap-8">
+            <ChatButton where="pane" />
+            <PaneClose onClick={close} />
+          </span>
         ) : (
           <Back filters={filters} />
         )}

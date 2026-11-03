@@ -211,6 +211,16 @@ describe('code splitting', () => {
     expect(readFileSync(join(src, 'ui/kit/Popover.tsx'), 'utf8')).toContain("import('./ChoicePopup.js')");
   });
 
+  it("0.11 c28: Chat beside any screen is Chat's own chunk: the shell loads it with Chat's import(), never a chunk of its own", () => {
+    const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
+    expect(shell).not.toMatch(/import\(['"][^'"]*ChatDock\.js['"]\)/);
+    expect(shell).toContain("import('../screens/chat/Chat.js').then((m) => ({ default: m.ChatDock }))");
+    expect(readFileSync(join(src, 'ui/screens/chat/Chat.tsx'), 'utf8')).toContain("export { ChatDock } from './ChatDock.js';");
+    expect(main.files.has('ui/screens/chat/ChatDock.tsx')).toBe(false);
+    // Main keeps only the open flag and the button.
+    expect(main.files.has('ui/shell/chatDock.ts')).toBe(true);
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");

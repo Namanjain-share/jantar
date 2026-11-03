@@ -56,6 +56,13 @@ export interface SplitState {
 
 export const SplitContext = createContext<SplitState | null>(null);
 
+/** Which of a SplitPane's two sections this is in (null: none). */
+export const PaneSlotContext = createContext<'list' | 'detail' | null>(null);
+
+export function usePaneSlot(): 'list' | 'detail' | null {
+  return useContext(PaneSlotContext);
+}
+
 /** The SplitPane this pane is in (null: none). */
 export function useSplit(): SplitState | null {
   return useContext(SplitContext);
@@ -206,7 +213,7 @@ export function SplitPane({
           hidden={!showList}
           className={shownOver ? 'split-list shadow-float @container/pane' : 'split-list @container/pane'}
         >
-          {showList ? list : null}
+          {showList ? <PaneSlotContext.Provider value="list">{list}</PaneSlotContext.Provider> : null}
         </section>
         <section
           ref={detailBox}
@@ -215,7 +222,7 @@ export function SplitPane({
           hidden={!showDetail}
           className="split-detail @container/pane"
         >
-          {showDetail ? (selected ? detail : empty) : null}
+          {showDetail ? <PaneSlotContext.Provider value="detail">{selected ? detail : empty}</PaneSlotContext.Provider> : null}
         </section>
         {/* The scrim beside the list over the item: a tap puts the list away (its own button is the named control). */}
         {shownOver ? <div aria-hidden="true" className="split-scrim animate-fade" onClick={() => setOver(false)} /> : null}

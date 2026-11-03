@@ -64,6 +64,8 @@ import { TabBar } from './TabBar.js';
 import { Toasts } from './Toasts.js';
 import { TopBar } from './TopBar.js';
 import { toggleSidebar, useSidebar } from './navState.js';
+import { dockFits, setChatDock, toggleChatDock, useChatDock } from './chatDock.js';
+import { useChatBeside } from './ChatButton.js';
 
 // 0.11 c24: the iPad's sidebar and labelled rail, its own chunk (main.tsx starts it early on a touch screen).
 const TouchNav = lazy(() => import('./TouchShell.js').then((m) => ({ default: m.TouchNav })));
@@ -90,6 +92,8 @@ const Intel = lazy(() => import('../screens/intel/Intel.js').then((m) => ({ defa
 const Meetings = lazy(() => import('../screens/meetings/Meetings.js').then((m) => ({ default: m.Meetings })));
 // v0.5.3, its own chunk.
 const Chat = lazy(() => import('../screens/chat/Chat.js').then((m) => ({ default: m.Chat })));
+// 0.11 (c28): Chat beside any screen, from Chat's own chunk (Chat.tsx re-exports it), never a chunk of its own.
+const ChatDock = lazy(() => import('../screens/chat/Chat.js').then((m) => ({ default: m.ChatDock })));
 // v0.11 People: his Partner screen, its own chunk.
 const Partner = lazy(() => import('../screens/people/Partner.js').then((m) => ({ default: m.Partner })));
 
@@ -123,6 +127,16 @@ export function Shell() {
   const phone = layout.chrome === 'phone';
   const touch = layout.chrome === 'touch';
   const desk = layout.chrome === 'desk';
+  // 0.11 (c28): Chat beside this screen: a column where the panes keep 560 beside its 360, else over them.
+  const chatOn = navItems(placeFeatures).some((i) => i.route === 'chat');
+  const chatBeside = useChatBeside();
+  const dock = useChatDock();
+  const dockShown = dock.open && chatBeside && !bareShell(route.name, conn.status);
+  const sidebarIn = useSidebar();
+  const navW = desk ? 56 : touch ? (sidebarIn ? 220 : 72) : 0;
+  const winW = useWindowWidth(dockShown);
+  const dockColumn = dockShown && dockFits(winW - navW);
+  useKey('Escape', () => setChatDock(false), dockShown && !dockColumn && !palette && !legend);
   // 0.11: keys work at every width once a keyboard has been seen (a Mac from the start).
   const keys = layout.keyboard;
   const bare = route.name === 'pair' || conn.status === 'unauthorized';
@@ -166,6 +180,12 @@ export function Shell() {
     onPlace: (n) => goPlace(NAV[n - 1]),
     // ⌘\: the touch sidebar folds to the rail (regular), or shows over it (medium).
     ...(touch ? { onSidebar: () => toggleSidebar(layout.size) } : {}),
+    // ⌘J: Chat beside this screen (the phone opens its tab); nothing where Chat isn't.
+    onChat: () => {
+      if (!chatOn) return;
+      if (phone) navigate('/chat');
+      else if (route.name !== 'chat') toggleChatDock();
+    },
   });
   const ledgerKeys = keys && !bare && (route.name === 'board' || route.name === 'session');
   useKey(
@@ -358,7 +378,11 @@ export function Shell() {
   // only the chrome around it is swapped, and only classes change.
   return (
     <LayerContext.Provider value={layer}>
-      <div data-chrome={layout.chrome} className={phone ? 'shell flex flex-col bg-bg' : desk ? 'shell grid-shell grid bg-bg' : 'shell grid-touch grid bg-bg'}>
+      <div
+        data-chrome={layout.chrome}
+        data-dock={dockColumn ? '' : undefined}
+        className={phone ? 'shell flex flex-col bg-bg' : desk ? 'shell grid-shell grid bg-bg' : 'shell grid-touch grid bg-bg'}
+      >
         {/* 1: the phone's header */}
         {phone ? (
           fullScreen ? (
@@ -416,8 +440,15 @@ export function Shell() {
             {place}
           </main>
         </div>
-        {/* 5: Chat beside any screen (build plan c28) */}
-        {null}
+        {/* 5: Chat beside any screen (build plan c28): a column, or over the panes' right edge */}
+        {dockShown ? (
+          <Suspense fallback={null}>
+            <ChatDock over={!dockColumn} focus={dock.focus} onClose={() => setChatDock(false)} onOpenFull={() => {
+              setChatDock(false);
+              navigate('/chat');
+            }} />
+          </Suspense>
+        ) : null}
         {/* 6: the phone's tabs, or the Mac's status bar (the iPad's nav has what it says) */}
         {phone ? (
           fullScreen ? null : (
@@ -451,6 +482,24 @@ export function Shell() {
       </div>
     </LayerContext.Provider>
   );
+}
+
+/** The pairing screens own the window: no Chat beside them. */
+function bareShell(route: Route['name'], status: string): boolean {
+  return route === 'pair' || status === 'unauthorized';
+}
+
+/** The window's width, followed while `on` (the Chat panel is open); one resize listener, only then. */
+function useWindowWidth(on: boolean): number {
+  const [w, setW] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth));
+  useEffect(() => {
+    if (!on || typeof window === 'undefined') return;
+    const read = () => setW(window.innerWidth);
+    read();
+    window.addEventListener('resize', read, { passive: true });
+    return () => window.removeEventListener('resize', read);
+  }, [on]);
+  return w;
 }
 
 /** The touch nav's ground while its chunk loads: the sidebar's or the rail's width, nothing in it. */

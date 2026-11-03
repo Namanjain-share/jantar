@@ -7,6 +7,7 @@
  * and the Life clock. Ink only: the rows that may be ember live in TodoRow,
  * ProjectRow, CategoryRow and BillRow (design rule 3).
  */
+import { ChatButton } from '../../../shell/ChatButton.js';
 import { Menu } from '@base-ui/react/menu';
 import { DotsThreeIcon, PlusIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -62,6 +63,7 @@ export function Page({
           {title}
         </h1>
         {aside}
+        <ChatButton where="pane" />
       </header>
       {offline ? <OfflineLine className="px-16 pb-8" /> : null}
       {children}

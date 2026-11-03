@@ -36,6 +36,7 @@
  * open one ticked), and over it below that, with "< Intel". A phone keeps
  * the rows.
  */
+import { ChatButton } from '../../shell/ChatButton.js';
 import { CaretRightIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -322,6 +323,7 @@ function Shelf({ filters, offline, focus, open }: { filters: ShelfFilters; offli
           Intel
         </h1>
         {addButton}
+        <ChatButton where="pane" />
       </header>
       {offline ? <p className="px-16 pb-8 type-mono text-ink-3">{OFFLINE_WRITE}</p> : null}
       <div className="relative mx-16 @md:max-w-560">

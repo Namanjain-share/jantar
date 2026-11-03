@@ -16,6 +16,7 @@ import { useNavigate } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { useCanStart } from '../new/machines.js';
 import { useLayout } from '../../shell/layout.js';
+import { ChatButton, useChatBeside } from '../../shell/ChatButton.js';
 
 export function NewButton({
   wide = false,
@@ -41,12 +42,15 @@ export function NewButton({
 
 export function WithNewButton({ ground, children }: { ground: 'surface' | 'bg'; children: ReactNode }) {
   const on = useCanStart();
-  if (!on) return <>{children}</>;
+  // 0.11 (c28): the iPad's Chat button ends the Board's header (not beside an open session: its header has it).
+  const chat = useChatBeside();
+  if (!on && !chat) return <>{children}</>;
   return (
     <div className="flex flex-none">
       <div className="min-w-0 flex-1">{children}</div>
-      <div className={clsx('flex h-pane flex-none items-center border-b border-line pr-16', ground === 'surface' ? 'bg-surface' : 'bg-bg')}>
-        <NewButton />
+      <div className={clsx('flex h-pane flex-none items-center gap-8 border-b border-line pr-16', ground === 'surface' ? 'bg-surface' : 'bg-bg')}>
+        {on ? <NewButton /> : null}
+        <ChatButton where="pane" />
       </div>
     </div>
   );

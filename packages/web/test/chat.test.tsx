@@ -16,6 +16,7 @@ import { createRouter, parseRoute, routePath } from '../src/lib/router.js';
 import { EXAMPLES, PRIVACY, PRIVACY_SHORT, byDay, confirmVerb, dayOf, matches, photosOf, turnMeta, undoableChanges } from '../src/ui/screens/chat/model.js';
 import { layoutAt } from '../src/ui/shell/layout.js';
 import { NAV } from '../src/ui/shell/nav.js';
+import { chatDockStore } from '../src/ui/shell/chatDock.js';
 import { NOW, fakeApi, measureAs, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('chat');
@@ -360,5 +361,85 @@ describe('0.11: Chat in a wide window', () => {
     expect(within(side).getByText(PRIVACY)).toBeTruthy();
     expect(within(side).getByRole('heading', { name: 'Kept 30 days' })).toBeTruthy();
     expect(within(screen.getByRole('group', { name: 'Examples' })).getAllByRole('button')).toHaveLength(3);
+  });
+});
+
+describe('0.11 c28: Chat beside any screen', () => {
+  afterEach(() => {
+    localStorage.clear();
+    chatDockStore.setState({ open: false, focus: 0 });
+  });
+  const panel = () => screen.queryByRole('complementary', { name: 'Chat panel' });
+
+  it('is closed by default; the Chat button opens it beside the screen with the composer focused, the same draft as the place', async () => {
+    chatDockStore.setState({ open: false, focus: 0 });
+    const api = fakeApi({ chatList: vi.fn(async () => list([])) });
+    renderApp({ path: '/today', api, state: ON, layout: layoutAt(1440) });
+    expect(panel()).toBeNull();
+    const button = await screen.findByRole('button', { name: /^Chat/ , pressed: false });
+    fireEvent.click(button);
+    const p = await screen.findByRole('complementary', { name: 'Chat panel' });
+    const area = await within(p).findByRole('textbox', { name: 'A message to Chat' });
+    await waitFor(() => expect(document.activeElement).toBe(area));
+    fireEvent.change(area, { target: { value: 'half a thought' } });
+    expect(localStorage.getItem('jantar:chat-dock')).toBe('true');
+    expect(screen.getByRole('button', { name: /^Chat/, pressed: true })).toBeTruthy();
+    // Close, then open Chat itself: the box kept what was typed (one draft, 'chat').
+    fireEvent.click(within(p).getByRole('button', { name: 'Close Chat' }));
+    expect(panel()).toBeNull();
+    expect(localStorage.getItem('jantar:chat-dock')).toBe('false');
+  });
+
+  it('remembers it is open on this device; ⌘J closes and opens it; Open in Chat goes to the place', async () => {
+    localStorage.setItem('jantar:chat-dock', 'true');
+    chatDockStore.setState({ open: true, focus: 0 });
+    const api = fakeApi({ chatList: vi.fn(async () => list([turn(1)])) });
+    const { history } = renderApp({ path: '/today', api, state: ON, layout: layoutAt(1440) });
+    expect(await screen.findByRole('complementary', { name: 'Chat panel' })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'j', code: 'KeyJ', metaKey: true });
+    expect(panel()).toBeNull();
+    fireEvent.keyDown(window, { key: 'j', code: 'KeyJ', metaKey: true });
+    const p = await screen.findByRole('complementary', { name: 'Chat panel' });
+    fireEvent.click(within(p).getByRole('button', { name: 'Open in Chat' }));
+    expect(history.entries.at(-1)).toBe('/chat');
+    expect(panel()).toBeNull();
+  });
+
+  it('a column where the panes keep 560 beside it, over them otherwise; Esc closes it over them', async () => {
+    chatDockStore.setState({ open: true, focus: 0 });
+    vi.stubGlobal('innerWidth', 1440);
+    const api = fakeApi({ chatList: vi.fn(async () => list([])) });
+    const a = renderApp({ path: '/today', api, state: ON, layout: layoutAt(1440) });
+    expect((await screen.findByRole('complementary', { name: 'Chat panel' })).getAttribute('data-chat-dock')).toBe('column');
+    expect(document.querySelector('[data-chrome]')?.hasAttribute('data-dock')).toBe(true);
+    a.unmount();
+    vi.stubGlobal('innerWidth', 820);
+    renderApp({ path: '/today', api, state: ON, layout: layoutAt(820, { coarse: true, keyboard: true }) });
+    expect((await screen.findByRole('complementary', { name: 'Chat panel' })).getAttribute('data-chat-dock')).toBe('over');
+    expect(document.querySelector('[data-chrome]')?.hasAttribute('data-dock')).toBe(false);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(panel()).toBeNull();
+  });
+
+  it('absent where Chat is off, on a device without control, on the phone and in Chat itself', async () => {
+    chatDockStore.setState({ open: true, focus: 0 });
+    const off = renderApp({ path: '/today', state: stateWith({ features: { life: true } }), layout: layoutAt(1440) });
+    await screen.findByRole('heading', { name: 'Today' });
+    expect(panel()).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Chat/ })).toBeNull();
+    off.unmount();
+    localStorage.setItem('jantar:device', JSON.stringify({ id: 'dev-1', name: 'x', scopes: ['read'] }));
+    const read = renderApp({ path: '/today', state: ON, layout: layoutAt(1440) });
+    await screen.findByRole('heading', { name: 'Today' });
+    expect(panel()).toBeNull();
+    read.unmount();
+    localStorage.removeItem('jantar:device');
+    const phone = renderApp({ path: '/today', state: ON, layout: layoutAt(390, { coarse: true }) });
+    await screen.findByRole('heading', { name: 'Today' });
+    expect(panel()).toBeNull();
+    phone.unmount();
+    renderApp({ path: '/chat', api: fakeApi({ chatList: vi.fn(async () => list([])) }), state: ON, layout: layoutAt(1440) });
+    await screen.findByRole('heading', { level: 1, name: 'Chat' });
+    expect(panel()).toBeNull();
   });
 });

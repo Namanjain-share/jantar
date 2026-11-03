@@ -27,6 +27,7 @@
  * Beside the list in a narrower pane, Summary | Transcript shows one of the
  * two at a time.
  */
+import { ChatButton } from '../../shell/ChatButton.js';
 import { CaretLeftIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -98,7 +99,10 @@ function BackOrClose({ filters }: { filters: MeetingFilters }) {
   const close = usePaneClose();
   return close ? (
     <div className="flex">
-      <PaneClose onClick={close} className="ml-auto" />
+      <span className="ml-auto flex items-center gap-8">
+        <ChatButton where="pane" />
+        <PaneClose onClick={close} />
+      </span>
     </div>
   ) : (
     <Back filters={filters} />
