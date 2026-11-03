@@ -50,7 +50,7 @@ export const LAZY_MAX = 80_000;
 export const P_MAIN_JS_MAX = 120_000;
 export const P_MAIN_CSS_MAX = 12_000;
 /** The screens Shell.tsx loads lazily, by their file names (a chunk is named after its module). */
-export const LAZY_SCREENS = ['Today', 'Todos', 'Meds', 'Food', 'Places', 'Money', 'Intel', 'Meetings', 'Chat', 'Posts'];
+export const LAZY_SCREENS = ['Today', 'Todos', 'Meds', 'Food', 'Places', 'Money', 'Intel', 'Meetings', 'Chat', 'Posts', 'Partner'];
 
 const STATIC_IMPORT = /^\s*(?:import|export)\s*(?:[^'"`;]*?\bfrom\s*)?(["'`])\.\/([^"'`]+)\1\s*;?/;
 const DYNAMIC_IMPORT = /\bimport\(\s*(["'`])\.\/([^"'`]+)\1\s*\)/g;

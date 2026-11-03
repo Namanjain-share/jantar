@@ -58,6 +58,7 @@ test("every lazy screen Shell.tsx loads with a gate is listed, v0.10's Chat and 
   assert.ok(LAZY_SCREENS.includes('Chat'));
   assert.ok(LAZY_SCREENS.includes('Meetings'));
   assert.ok(LAZY_SCREENS.includes('Posts'));
+  assert.ok(LAZY_SCREENS.includes('Partner'));
 });
 
 test('a chunk name drops its hash', () => {

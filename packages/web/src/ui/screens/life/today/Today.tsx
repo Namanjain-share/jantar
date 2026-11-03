@@ -38,6 +38,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { FoodDay, LifeModule, Todo } from '@jantar/protocol';
 import { routePath } from '../../../../lib/router.js';
+import { PeopleCard } from '../../people/PeopleCard.js';
 import { useDeps, useNavigate } from '../../../context.js';
 import { RailLabel } from '../../../kit/RailLabel.js';
 import { useFeatures, useNeedsCount } from '../../../shell/data.js';
@@ -144,6 +145,7 @@ export function Today({ dose }: TodayProps) {
   return (
     <Page title="Today" aside={date} undo={actions.undo}>
       <PushWarning status={status} />
+      <PeopleCard />
       <Loaded load={load}>
         {(t) => {
           const meds = t.meds;

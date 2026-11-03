@@ -71,6 +71,13 @@ partner simply can't sign in there).
   they share it. Moods, nights, entries and review outcomes never create an
   item, an alert or a score. Someone who joined before these existed gets
   them only by a request they accept.
+- **Your People screen** (P2, `/people`, loaded only when opened): their
+  status, "Asleep since" and progress in the header; Plan and Alert one tap
+  away; tabs for Today (their plan as they see it, Nudge, the review at
+  their level and Carry), Plan (an editor with templates, Copy yesterday or
+  last {weekday}, and Quick plan, a typed plan read as you type with no AI),
+  Health (their sleep week), Journal (read and comment) and Alerts. A line
+  for them on your Today, and their notifications open the right tab.
 - **At the Mac**: `jantar remote people-url <https-url>`, `jantar people
   on|off|doctor|add|offer|modules|invite|list|devices|revoke|revoke-invite|remove|todos`
   ([People](docs/people.md)). Everything that lets someone in, shapes their

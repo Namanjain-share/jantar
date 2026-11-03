@@ -65,6 +65,8 @@ const Intel = lazy(() => import('../screens/intel/Intel.js').then((m) => ({ defa
 const Meetings = lazy(() => import('../screens/meetings/Meetings.js').then((m) => ({ default: m.Meetings })));
 // v0.5.3, its own chunk.
 const Chat = lazy(() => import('../screens/chat/Chat.js').then((m) => ({ default: m.Chat })));
+// v0.12 People: his Partner screen, its own chunk.
+const Partner = lazy(() => import('../screens/people/Partner.js').then((m) => ({ default: m.Partner })));
 
 export function Shell() {
   const { api, connection, pushEnv } = useDeps();
@@ -208,6 +210,7 @@ export function Shell() {
       case 'places':
       case 'money':
       case 'posts':
+      case 'people':
       case 'intel': {
         const on = route.name === 'intel' ? features.intel : features.life;
         const caption = route.name === 'intel' ? 'Opening the shelf…' : 'Opening Life…';
@@ -365,6 +368,8 @@ function lifeScreen(route: Route): ReactNode {
       return <Money month={route.month} bill={route.bill} />;
     case 'posts':
       return <Posts filter={route.filter} id={route.id} />;
+    case 'people':
+      return <Partner pid={route.pid} tab={route.tab} day={route.day} id={route.id} />;
     case 'intel':
       return <Intel q={route.q} type={route.type} tag={route.tag} item={route.item} focus={route.focus} />;
     default:

@@ -18,8 +18,9 @@ you.
 > them only by a request they accept. Their medicines (and food, with their
 > food module on) are still to come: the fields are in the agreement
 > already, and the screens and routes that read them come with them. Your
-> own People screen on your phone is still to come too; until then, the
-> `jantar people` commands and their app are the way in.
+> People screen covers their day so far (Today, Plan, Health, Journal,
+> Alerts); assigning to-dos and the Sharing and Activity tabs there are
+> still to come, and until then `jantar people` at the Mac does those.
 
 ## Who is who
 
@@ -129,6 +130,31 @@ your Mac's Life data. Each row remembers who added it.
   items done, snoozes or skips them, logs a weight for them, or pauses,
   resumes or narrows for them.
 - **Their reminders ring their devices**, not yours, and open their app.
+
+## Your People screen
+
+On your phone or browser, `/people` opens the person you share with (with
+more than one, a list). It is loaded only when you open it. Your Today shows
+one line for them ("Asha · 3 of 7 done · Now: Interview prep 11:00 · Low",
+or "Asleep since 23:40"), and every notification about them opens the right
+tab here.
+
+- **Header**: their status and line, "Asleep since" while a night is open,
+  the day's progress and the Now step, and two buttons: **Plan** (today
+  before 18:00, tomorrow after) and **Alert**.
+- **Today**: their plan as they see it, with each step's status, done time,
+  report and check-in answers, a "late" label, Nudge on an open step, the
+  check-betweens, and from their review time the evening review at the
+  level they share (with "Carry your open steps to tomorrow").
+- **Plan**: the editor. Start from the weekday's template, Copy yesterday,
+  Copy last {weekday}, any template, or **Quick plan**: type "Mock at 8,
+  then analysis 45m !report, every 2h 10-18 check applications" and the
+  steps appear as you type (no AI, nothing leaves your Mac; anything it
+  can't read becomes a plain step). Reorder with Move up and Move down; a
+  quiet hint says when times run out of order. Save as template, and Send.
+- **Health** (their sleep week), **Journal** (read, and comment if they
+  allow it) and **Alerts** (both ways, with replies).
+- An area they keep private is a grey tile: "Asha keeps this private".
 
 ## Their day plan
 

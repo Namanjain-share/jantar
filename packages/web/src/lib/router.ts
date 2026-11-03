@@ -74,6 +74,8 @@ export type Route =
   | { name: 'meetings'; project?: string; q?: string; id?: string }
   // v0.10 (v0.5.3's Ask)
   | { name: 'chat' }
+  /** v0.12 People: his Partner screen (lazy; `/people` picks the one partner). */
+  | { name: 'people'; pid?: string; tab?: string; day?: string; id?: string }
   | { name: 'notFound'; path: string };
 
 export type TodosTab = 'todos' | 'reminders' | 'projects';
@@ -97,7 +99,7 @@ const PLACES_SORTS: readonly string[] = ['best', 'recent', 'visits', 'name', 'pr
 export type PostsFilter = 'open' | 'done';
 
 /** The Life screens (v0.4): Today's place in the tabs stands for all of them. */
-export const LIFE_ROUTES: readonly Route['name'][] = ['today', 'todos', 'meds', 'food', 'places', 'money', 'posts'];
+export const LIFE_ROUTES: readonly Route['name'][] = ['today', 'todos', 'meds', 'food', 'places', 'money', 'posts', 'people'];
 
 const LIFE_ID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const DAY_KEY = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -281,6 +283,8 @@ export function parseRoute(pathname: string, search = '', hash = ''): Route {
   if (path === '/accounts') return { name: 'accounts' };
   if (path === '/alerts') return { name: 'alerts' };
   if (path === '/devices') return { name: 'devices' };
+  const pm = /^\/people(?:\/([0-9A-HJKMNP-TV-Z]{26}))?$/.exec(path);
+  if (pm) return defined({ name: 'people' as const, pid: pm[1], tab: matching(q, 'tab', /^[a-z]{3,10}$/), day: matching(q, 'day', DAY_KEY), id: matching(q, 'id', LIFE_ID) });
   if (path === '/pair') {
     const frag = new URLSearchParams(hash.replace(/^#/, ''));
     const code = frag.get('c');
@@ -340,6 +344,8 @@ export function routePath(r: Route): string {
       return withQuery('/meetings', queryOf({ project: r.project, q: r.q, id: r.id }));
     case 'chat':
       return '/chat';
+    case 'people':
+      return withQuery(r.pid ? `/people/${r.pid}` : '/people', queryOf({ tab: r.tab, day: r.day, id: r.id }));
     case 'notFound':
       return r.path;
   }
