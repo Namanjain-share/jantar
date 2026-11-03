@@ -66,7 +66,7 @@ import { workClient } from './client.js';
 import { STATE_LABEL, askLogCall, clientPath, deleteLines, mailHref, telHref, touchText, waHref } from './clientModel.js';
 import { LogSheet, type LogStart } from './LogSheet.js';
 import { dueWord, filesHref, logLine } from './model.js';
-import { FromTag, Framed } from './parts.js';
+import { FromTag, Framed, useStageNames } from './parts.js';
 
 const MergeSheet = lazy(() => import('./Duplicates.js').then((m) => ({ default: m.MergeSheet })));
 // The deals' sheet comes from their chunk on its first New deal.
@@ -117,6 +117,8 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
   const [olderError, setOlderError] = useState<unknown>(null);
   useEffect(() => setOlder(null), [hub]);
   const ask = useCallAsk();
+  // A stage move in the log by its stage's name (a stage added in the editor has a made-up id).
+  const stageNames = useStageNames(hub ? (older ? [...hub.log, ...older.rows] : hub.log) : undefined);
   const folder = hub?.contact.folder;
   const roots = useLifeLoad<FilesRootsResponse>(folder && features.files ? 'work:roots:files' : null, () => api.filesRoots());
 
@@ -289,6 +291,7 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
                         key={row.id}
                         row={row}
                         tz={status?.timezone}
+                        stages={stageNames}
                         offline={offline}
                         onEdit={() => startLog({ row })}
                         onDelete={() => held.remove(row.id, 'Deleted a log entry', () => w.logDelete(row.id).then(() => (reload(), true), () => false))}
@@ -554,8 +557,22 @@ function DealRow({ deal, own, today }: { deal: WorkDealCard; own: boolean; today
 }
 
 /** One log entry. His own call, e-mail, message or note has ··· (Edit, Delete); a meeting links to its page. */
-function LogItem({ row, tz, offline, onEdit, onDelete }: { row: WorkLogRow; tz?: string | null | undefined; offline: boolean; onEdit: () => void; onDelete: () => void }) {
-  const l = logLine(row, tz);
+function LogItem({
+  row,
+  tz,
+  stages,
+  offline,
+  onEdit,
+  onDelete,
+}: {
+  row: WorkLogRow;
+  tz?: string | null | undefined;
+  stages: ReadonlyMap<string, string> | undefined;
+  offline: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const l = logLine(row, tz, stages);
   const mine = row.kind === 'call' || row.kind === 'email' || row.kind === 'message' || row.kind === 'note' || (row.kind === 'meeting' && !row.meetingId);
   const from = row.from ?? (row.todoFrom === 'meeting' ? 'meeting' : undefined);
   const line = <span className="block truncate type-mono text-ink-2">{l.line}</span>;

@@ -53,7 +53,7 @@ import { TodoSheet } from '../life/todos/TodoSheet.js';
 import { useTodoClients } from '../life/todos/clients.js';
 import { workClient } from './client.js';
 import { filesHref, healthParts, logLine, milestonesWith, newSessionHref } from './model.js';
-import { SaveError } from './parts.js';
+import { SaveError, useStageNames } from './parts.js';
 
 const NO_TODOS: readonly Todo[] = [];
 
@@ -111,6 +111,8 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
   const live = useMemo(() => liveIn(Object.values(state.sessions), project?.folder), [state.sessions, project?.folder]);
+  // A stage move in its client's log by its stage's name (a stage added in the editor has a made-up id).
+  const stageNames = useStageNames(hub?.log);
 
   /** A milestone ticked done or not: the whole list, that one changed (one write at a time). */
   const setDone = (m: WorkMilestone, done: boolean) => {
@@ -316,7 +318,7 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
                       ) : (
                         <ul>
                           {h.log.map((row) => {
-                            const l = logLine(row, status?.timezone);
+                            const l = logLine(row, status?.timezone, stageNames);
                             return (
                               <li key={row.id} className="border-b border-line px-16 py-10">
                                 <span className="block truncate type-mono text-ink-2">{l.line}</span>

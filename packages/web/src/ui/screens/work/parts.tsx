@@ -1,14 +1,18 @@
 /**
  * 0.13.0 Work: small pieces its client screens share. Chips that wrap, the
  * mark beside words someone else wrote (an import, a meeting's names: shown
- * as data, as Chat frames them), and the Mac-asleep line of W35.
+ * as data, as Chat frames them), the Mac-asleep line of W35, and the stages'
+ * names for a log's stage moves.
  */
 import clsx from 'clsx';
-import type { ReactNode } from 'react';
-import type { ContactFrom } from '@jantar/protocol/work';
+import { useMemo, type ReactNode } from 'react';
+import type { ContactFrom, WorkLogRow } from '@jantar/protocol/work';
 import { isApiError } from '../../../lib/api.js';
+import { useDeps } from '../../context.js';
 import { Tag } from '../../kit/Tag.js';
 import { NotSaved } from '../life/shared/states.js';
+import { useLifeLoad } from '../life/shared/useLife.js';
+import { workClient } from './client.js';
 
 /**
  * One of a few as chips that wrap (44 on touch): a filter, a log entry's kind, how it went. Narrow phones
@@ -88,4 +92,16 @@ export function SaveError({ error }: { error: unknown }) {
       </p>
     );
   return <NotSaved error={error} />;
+}
+
+/**
+ * The stages' names for a log's stage moves, read once the log holds one (a deal's page has them from
+ * Deals). A stage added in the editor has a made-up id, never a word to show: a client's and a project's
+ * log name it too.
+ */
+export function useStageNames(rows: readonly WorkLogRow[] | undefined): ReadonlyMap<string, string> | undefined {
+  const { api } = useDeps();
+  const moved = rows?.some((r) => r.kind === 'stage') ?? false;
+  const load = useLifeLoad(moved ? 'work:stages:names' : null, () => workClient(api).stages());
+  return useMemo(() => (load.data ? new Map(load.data.stages.map((s) => [s.id, s.name])) : undefined), [load.data]);
 }

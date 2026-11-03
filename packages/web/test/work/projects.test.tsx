@@ -24,7 +24,7 @@ import { writeLocal } from '../../src/lib/storage.js';
 import { LOCAL_DEVICE_KEY } from '../../src/ui/screens/devices/local.js';
 import { layoutAt } from '../../src/ui/shell/layout.js';
 import { fakeApi, measureAs, preloadPlaces, renderApp, session, stateWith } from '../helpers.js';
-import { IDS, WORK_ON, hub, project, todo, workRequest } from '../work-helpers.js';
+import { IDS, STAGES, WORK_ON, hub, project, todo, workRequest } from '../work-helpers.js';
 
 preloadPlaces('work');
 
@@ -185,6 +185,21 @@ describe('a project’s hub', () => {
     expect(within(screen.getByRole('region', { name: 'Notes' })).getByText('Wants the store live before the festival.')).toBeTruthy();
     // Meetings are off: never asked.
     expect(api.meetingsList).not.toHaveBeenCalled();
+  });
+
+  it('a stage move in its log names its stages, one added in the editor too; while they can’t be read, never a made-up id', async () => {
+    const DEMO = '01JWRKSTAGE0000000000DEM00';
+    const stages = STAGES();
+    stages.stages.splice(3, 0, { id: DEMO, name: 'Demo booked', kind: 'open', order: 3, effectiveProbability: 70, deals: 1 });
+    const log = [{ id: '01JWRKL0G00000000000000001', kind: 'stage' as const, at: '2026-01-14T09:00:00.000Z', stageFrom: 'proposal', stageTo: DEMO, dealId: IDS.deal }];
+    const { unmount } = setup({ path: PATH, request: { 'GET /v1/projects/:id': hub({ client: { id: IDS.client, name: 'Acme', state: 'client' }, log }), 'GET /v1/work/stages': stages } });
+    const region = await screen.findByRole('region', { name: 'Log' });
+    await waitFor(() => expect(within(region).getByText('Stage · Proposal sent → Demo booked · 14 Jan')).toBeTruthy());
+    unmount();
+    setup({ path: PATH, request: { 'GET /v1/projects/:id': hub({ client: { id: IDS.client, name: 'Acme', state: 'client' }, log }), 'GET /v1/work/stages': new ApiError('network', 'offline', 0) } });
+    const again = await screen.findByRole('region', { name: 'Log' });
+    expect(within(again).getByText('Stage · proposal → another stage · 14 Jan')).toBeTruthy();
+    expect(again.textContent).not.toContain(DEMO);
   });
 
   it('the next due shows while nothing is overdue; milestones and the deal show when there are some', async () => {

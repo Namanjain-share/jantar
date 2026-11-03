@@ -94,6 +94,28 @@ describe("a client's hub", () => {
     expect(screen.queryByRole('link', { name: 'Email' })).toBeNull();
   });
 
+  it('a stage move in the log names its stages, one added in the editor too, never by its id', async () => {
+    const DEMO = '01JWRKSTAGE0000000000DEM00';
+    const stages = STAGES();
+    stages.stages.splice(3, 0, { id: DEMO, name: 'Demo booked', kind: 'open', order: 3, effectiveProbability: 70, deals: 1 });
+    const { api } = setup({
+      request: {
+        'GET /v1/work/clients/:id': clientHub({ log: [logRow(IDS.log1, { kind: 'stage', stageFrom: 'proposal', stageTo: DEMO, dealId: IDS.deal })] }),
+        'GET /v1/work/stages': stages,
+      },
+    });
+    const log = await screen.findByRole('list', { name: 'Its log' });
+    await waitFor(() => expect(within(log).getByText('Stage · Proposal sent → Demo booked · 13 Jan')).toBeTruthy());
+    expect(log.textContent).not.toContain(DEMO);
+    expect(requested(api, 'GET', '/v1/work/stages')).toHaveLength(1);
+  });
+
+  it('a log with no stage move never reads the stages', async () => {
+    const { api } = setup();
+    await screen.findByRole('list', { name: 'Its log' });
+    expect(requested(api, 'GET', '/v1/work/stages')).toHaveLength(0);
+  });
+
   it('Show older asks for the next page after the last row and adds it', async () => {
     const { api } = setup({ request: { 'GET /v1/work/clients/:id/log': { log: [logRow('01JWRK10G00000000000000009', { kind: 'note', body: 'An older note.', at: '2026-01-02T10:00:00.000Z' })] } } });
     fireEvent.click(await screen.findByRole('button', { name: 'Show older' }));

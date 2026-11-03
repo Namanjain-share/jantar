@@ -74,16 +74,20 @@ const LOG_KIND: Record<WorkLogRow['kind'], string> = {
 };
 const OUTCOME: Record<NonNullable<WorkLogRow['outcome']>, string> = { good: 'Went well', neutral: 'OK', bad: 'Badly', no_answer: 'No answer' };
 
+/** A stage added in the editor: its id is made up (a ULID), never a word to show. */
+const MADE_UP_ID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
 /**
  * One log row as the hub lists it: "Call · out · 25m · Went well · 2 Nov", its words under it. A stage move
- * names its stages by `stages` (a deal's page knows them), else by their ids.
+ * names its stages by `stages` (every hub reads them: useStageNames), else by their ids, never a made-up
+ * one ("another stage", while the names load or can't).
  */
 export function logLine(row: WorkLogRow, tz?: string | null, stages?: ReadonlyMap<string, string>): { line: string; body?: string } {
   const day = dayLabel(clockIn(Date.parse(row.at), tz).day).replace(/^\w+ /, '');
   const parts = [LOG_KIND[row.kind]];
   if (row.kind === 'meeting' && row.meeting) parts.push(row.meeting.name);
   if (row.kind === 'followup' && row.title) parts.push(row.title);
-  const stage = (id: string) => stages?.get(id) ?? id;
+  const stage = (id: string) => stages?.get(id) ?? (MADE_UP_ID.test(id) ? 'another stage' : id);
   if (row.kind === 'stage' && row.stageTo) parts.push(row.stageFrom ? `${stage(row.stageFrom)} → ${stage(row.stageTo)}` : stage(row.stageTo));
   if (row.direction) parts.push(row.direction);
   if (row.minutes) parts.push(`${row.minutes}m`);
