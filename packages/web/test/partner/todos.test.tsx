@@ -155,3 +155,120 @@ describe('her Today', () => {
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeTruthy();
   });
 });
+
+describe('her To-do: add with a day and time, and each item\'s sheet (spec 3.3)', () => {
+  const MINE = '01JTODOAAAAAAAAAAAAAAAAAA2';
+  const hers = (over: Partial<PersonTodo> = {}) => todo({ id: MINE, title: 'Call the bank', by: ASHA, ask: 'none', followUp: undefined, due: { day: DAY, time: '10:00' }, ...over });
+
+  it('adds a to-do with a day and a time (her own reminder); the time waits for a day', async () => {
+    const createTodo = vi.fn(async () => ({ id: MINE }));
+    const api = fakeApi({ todos: vi.fn(async () => ({ today: DAY, todos: [] })), createTodo });
+    render(<Todos me={me()} api={api} tick={0} />);
+    const time = (await screen.findByLabelText('Time: a reminder (optional)')) as HTMLInputElement;
+    expect(time.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('New to-do'), { target: { value: ' Call the bank ' } });
+    fireEvent.change(screen.getByLabelText('Day (optional)'), { target: { value: '2026-11-05' } });
+    expect(time.disabled).toBe(false);
+    fireEvent.change(time, { target: { value: '09:30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(createTodo).toHaveBeenCalledWith({ title: 'Call the bank', due: { day: '2026-11-05', time: '09:30' } }));
+    fireEvent.change(screen.getByLabelText('New to-do'), { target: { value: 'Someday' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(createTodo).toHaveBeenLastCalledWith({ title: 'Someday' }));
+  });
+
+  it('his item: Snooze, Skip with a reason chip (and Undo), Ask to change; no Edit or Delete', async () => {
+    const snooze = vi.fn(async () => undefined);
+    const skip = vi.fn(async () => undefined);
+    const ask = vi.fn(async () => undefined);
+    const done = vi.fn(async () => undefined);
+    const api = fakeApi({ todos: vi.fn(async () => ({ today: DAY, todos: [todo({ ask: 'none' })] })), snooze, skip, ask, done });
+    render(<Todos me={me()} api={api} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More for Send CV' }));
+    let sheet = screen.getByRole('dialog', { name: 'Send CV' });
+    expect(within(sheet).queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(within(sheet).queryByRole('button', { name: 'Delete' })).toBeNull();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Tomorrow' }));
+    await waitFor(() => expect(snooze).toHaveBeenCalledWith(CV, 'tomorrow'));
+    // His can't be moved back by her: no Undo for a snooze of his.
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'More for Send CV' }));
+    sheet = screen.getByRole('dialog', { name: 'Send CV' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Skip' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Not feeling well' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Skip it' }));
+    await waitFor(() => expect(skip).toHaveBeenCalledWith(CV, 'Not feeling well'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(done).toHaveBeenCalledWith(CV, false));
+
+    fireEvent.click(screen.getByRole('button', { name: 'More for Send CV' }));
+    sheet = screen.getByRole('dialog', { name: 'Send CV' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Ask to change' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Move it later' }));
+    fireEvent.change(within(sheet).getByLabelText('A note for Sam (optional)'), { target: { value: 'after lunch' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send to Sam' }));
+    await waitFor(() => expect(ask).toHaveBeenCalledWith(CV, 'Move it later. after lunch'));
+  });
+
+  it('no Snooze on an item he marked "no snooze"', async () => {
+    const api = fakeApi({ todos: vi.fn(async () => ({ today: DAY, todos: [todo({ snoozable: false })] })) });
+    render(<Todos me={me()} api={api} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More for Send CV' }));
+    const sheet = screen.getByRole('dialog', { name: 'Send CV' });
+    expect(within(sheet).queryByRole('group', { name: 'Snooze' })).toBeNull();
+    expect(within(sheet).getByText('Sam marked this "no snooze".')).toBeTruthy();
+  });
+
+  it('hers: Edit (title, day, time), Snooze with Undo back to its day, and Delete on a second tap', async () => {
+    const updateTodo = vi.fn(async () => undefined);
+    const snooze = vi.fn(async () => undefined);
+    const deleteTodo = vi.fn(async () => undefined);
+    const api = fakeApi({ todos: vi.fn(async () => ({ today: DAY, todos: [hers()] })), updateTodo, snooze, deleteTodo });
+    render(<Todos me={me()} api={api} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More for Call the bank' }));
+    let sheet = screen.getByRole('dialog', { name: 'Call the bank' });
+    expect(within(sheet).queryByRole('button', { name: 'Ask to change' })).toBeNull();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Edit' }));
+    fireEvent.change(within(sheet).getByLabelText('To-do'), { target: { value: 'Call the bank about the card' } });
+    fireEvent.change(within(sheet).getByLabelText('Time (optional)'), { target: { value: '11:15' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(updateTodo).toHaveBeenCalledWith(MINE, { title: 'Call the bank about the card', due: { day: DAY, time: '11:15' } }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'More for Call the bank' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Later 1 h' }));
+    await waitFor(() => expect(snooze).toHaveBeenCalledWith(MINE, '1h'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(updateTodo).toHaveBeenLastCalledWith(MINE, { due: { day: DAY, time: '10:00' } }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'More for Call the bank' }));
+    sheet = screen.getByRole('dialog', { name: 'Call the bank' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Delete' }));
+    expect(deleteTodo).not.toHaveBeenCalled();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Tap again to delete it for good' }));
+    await waitFor(() => expect(deleteTodo).toHaveBeenCalledWith(MINE));
+  });
+
+  it('a skipped item says so with its reason; Today\'s rows open the same sheet', async () => {
+    expect(todoSubline(todo({ doneAt: AT, skipped: { at: AT, reason: 'Plans changed' }, ask: 'none', followUp: undefined }), 'Sam')).toBe('Wed 4 Nov · From Sam · skipped: Plans changed');
+    const t: PersonOwnToday = {
+      day: DAY,
+      today: DAY,
+      meds: null,
+      todos: [todo({ ask: 'none' })],
+      overdue: 0,
+      plan: { day: DAY, plan: null, now: null, next: null, late: [], focus: null, slots: {}, counts: { done: 0, total: 0 } },
+      status: null,
+      review: null,
+      sleep: { open: null, showStart: false, askWake: null },
+      sharingCheckin: false,
+      alertsUnseen: 0,
+      prompt: 'What went well today?',
+    };
+    const snooze = vi.fn(async () => undefined);
+    render(<Today me={me()} api={fakeApi({ today: vi.fn(async () => t), snooze })} reload={() => {}} tick={0} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More for Send CV' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Send CV' })).getByRole('button', { name: 'Tonight' }));
+    await waitFor(() => expect(snooze).toHaveBeenCalledWith(CV, 'tonight'));
+  });
+});

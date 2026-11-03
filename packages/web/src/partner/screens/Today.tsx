@@ -17,7 +17,7 @@
  *   its Undo; a quiet line into her journal. No nudge, no count of misses.
  */
 import { ASK_REASONS, SKIP_REASONS, STATUS_LABELS, fieldsChanged } from '@jantar/protocol/people-core';
-import type { PersonMe, PersonOwnToday, PlanStep, PlanView } from '@jantar/protocol/people';
+import type { PersonMe, PersonOwnToday, PersonTodo, PlanStep, PlanView } from '@jantar/protocol/people';
 import { useCallback, useEffect, useState } from 'react';
 import { Faces } from '../../people-shared/Faces.js';
 import { dayLabel, hmOf } from '../../people-shared/time.js';
@@ -29,6 +29,7 @@ import { askForNotifications, needsHomeScreen, turnOnNotifications } from '../no
 import { Card, Field, ReasonChips, ReportSheet, Sheet, Tick, UndoToast, useUndo } from '../ui.js';
 import { DoseRow } from './DoseRow.js';
 import { TodoRow } from './TodoRow.js';
+import { TodoSheet } from './TodoSheet.js';
 
 type OpenSheet = { kind: 'step'; step: PlanStep } | { kind: 'report'; step: PlanStep } | { kind: 'checkin'; step: PlanStep } | { kind: 'status' } | { kind: 'wake' } | { kind: 'rough' } | null;
 
@@ -36,6 +37,7 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
   const [today, setToday] = useState<PersonOwnToday | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<OpenSheet>(null);
+  const [todoOpen, setTodoOpen] = useState<PersonTodo | null>(null);
   const undo = useUndo();
   const load = useCallback(() => api.today().then(setToday, () => setToday(null)), [api]);
   useEffect(() => {
@@ -232,6 +234,7 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
                   )
                 }
                 onAck={() => void run(api.ack(t.id))}
+                onMore={() => setTodoOpen(t)}
               />
             ))}
           </ul>
@@ -268,6 +271,7 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
         onMore={() => nowStep && setSheet({ kind: 'step', step: nowStep })}
       />
       <UndoToast toast={undo.toast} close={undo.close} />
+      <TodoSheet t={todoOpen} owner={owner} api={api} close={() => setTodoOpen(null)} run={run} undo={undo.show} />
       <StepSheet sheet={sheet} day={day} owner={owner} api={api} close={() => setSheet(null)} run={run} setState={setState} />
       <StatusSheet open={sheet?.kind === 'status'} api={api} close={() => setSheet(null)} run={run} current={today.status?.level ?? 'ok'} />
       <WakeSheet open={sheet?.kind === 'wake'} api={api} close={() => setSheet(null)} run={run} />

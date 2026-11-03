@@ -160,9 +160,10 @@ export class PersonSpace {
     if (!t) return refuse('not_found', SPACE_REASONS.noTodo);
     const r = this.todos(pid).setDone(id, done, actor);
     if (!r.ok) return r;
-    // Undo takes her report back with the tick (as a plan step's does), so he never reads one on an open item.
+    // Undo takes her report back with the tick (as a plan step's does), so he never reads one on an open item,
+    // and a skip with it: Undo after Skip opens the item again, not "skipped".
     if (report !== undefined && done) this.patchExtra(pid, id, { report });
-    else if (!done && t.report !== undefined) this.patchExtra(pid, id, { report: undefined });
+    else if (!done && (t.report !== undefined || t.skipped !== undefined)) this.patchExtra(pid, id, { report: undefined, skipped: undefined });
     this.herWrite(pid, 'todos');
     return OK;
   }

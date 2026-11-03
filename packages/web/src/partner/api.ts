@@ -43,7 +43,7 @@ import type {
   StepPatch,
   StepStateBody,
 } from '@jantar/protocol/people';
-import type { DoseBody, MedicineBody, MedicinePatch, PlaceDetail, PlacePatch, PlacesResponse } from '@jantar/protocol';
+import type { DoseBody, MedicineBody, MedicinePatch, PlaceDetail, PlacePatch, PlacesResponse, SnoozePreset } from '@jantar/protocol';
 import { personCredentialStore, type PersonCredentialStore } from './credential.js';
 
 /** Her routes' paths, as PERSON_ROUTES has them (test/partner/api.test.ts compares). */
@@ -77,6 +77,7 @@ export const PERSON_PATHS = {
   todoAck: ['POST', '/v1/p/todos/:id/ack'],
   todoAsk: ['POST', '/v1/p/todos/:id/ask'],
   todoSkip: ['POST', '/v1/p/todos/:id/skip'],
+  todoSnooze: ['POST', '/v1/p/todos/:id/snooze'],
   meds: ['GET', '/v1/p/medicines'],
   medCreate: ['POST', '/v1/p/medicines'],
   medUpdate: ['PATCH', '/v1/p/medicines/:id'],
@@ -199,6 +200,10 @@ export interface PersonApi {
   deleteTodo(id: string): Promise<void>;
   /** Move a to-do of hers to another day (the review's "Tomorrow"). */
   moveTodo(id: string, day: string): Promise<void>;
+  /** Edit a to-do of hers: its title, and its day and time (null clears them). */
+  updateTodo(id: string, patch: { title?: string; due?: { day: string; time?: string } | null }): Promise<void>;
+  /** Snooze a to-do (409 on one he marked no snooze). */
+  snooze(id: string, preset: SnoozePreset): Promise<void>;
   done(id: string, done: boolean, report?: string): Promise<void>;
   ack(id: string): Promise<void>;
   ask(id: string, note: string): Promise<void>;
@@ -363,6 +368,8 @@ export function createPersonApi(opts: { fetch?: typeof fetch; base?: string; cre
     createTodo: (body) => call('todoCreate', { body }),
     deleteTodo: async (id) => void (await call('todoDelete', { params: { id } })),
     moveTodo: async (id, day) => void (await call('todoUpdate', { params: { id }, body: { due: { day } } })),
+    updateTodo: async (id, patch) => void (await call('todoUpdate', { params: { id }, body: patch })),
+    snooze: async (id, preset) => void (await call('todoSnooze', { params: { id }, body: { preset } })),
     done: async (id, done, report) => void (await call('todoDone', { params: { id }, body: { done, ...(report ? { report } : {}) } })),
     ack: async (id) => void (await call('todoAck', { params: { id } })),
     ask: async (id, note) => void (await call('todoAsk', { params: { id }, body: { note } })),

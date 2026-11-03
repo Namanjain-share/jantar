@@ -97,6 +97,22 @@ describe('her to-dos and his assign', () => {
     expect(open.find((t) => t.id === id)).toBeUndefined();
     const done = ((await herCall('GET', '/v1/p/todos?done=1')).json() as { todos: PersonTodo[] }).todos;
     expect(done.find((t) => t.id === id)?.skipped).toMatchObject({ reason: 'Not feeling well' });
+    // Her Undo (done: false) opens it again, no longer "skipped".
+    expect((await herCall('POST', `/v1/p/todos/${id}/done`, { done: false })).statusCode).toBe(200);
+    const back = ((await herCall('GET', '/v1/p/todos')).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === id);
+    expect(back).toBeDefined();
+    expect(back?.skipped).toBeUndefined();
+  });
+
+  it('her own reminder: a to-do with a day and time; she snoozes it, and his "no snooze" is refused', async () => {
+    const mine = ((await herCall('POST', '/v1/p/todos', { title: 'Call the bank', due: { day: '2026-11-05', time: '09:30' } })).json() as { id: string }).id;
+    const listed = ((await herCall('GET', '/v1/p/todos')).json() as { todos: PersonTodo[] }).todos.find((t) => t.id === mine);
+    expect(listed?.due).toEqual({ day: '2026-11-05', time: '09:30' });
+    expect((await herCall('POST', `/v1/p/todos/${mine}/snooze`, { preset: 'tomorrow' })).statusCode).toBe(200);
+    const his = ((await him('POST', `/v1/people/${f.asha.id}/todos`, { title: 'Gym', due: { day: '2026-11-05' }, snoozable: false })).json() as { id: string }).id;
+    const r = await herCall('POST', `/v1/p/todos/${his}/snooze`, { preset: 'tomorrow' });
+    expect(r.statusCode).toBe(409);
+    expect((r.json() as { error: { message: string } }).error.message).toBe('Sam marked this "no snooze".');
   });
 
   it('paused holds his writes (409), not his reads; with assign off, his assign is 404', async () => {
