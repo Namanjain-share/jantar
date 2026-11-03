@@ -13,11 +13,13 @@ export type CsvCell = string | number | boolean | Date | null | undefined;
  * the formula is evaluated.
  *
  * `-` is deliberately NOT in this class on its own. Money columns export negatives, and prefixing
- * `-5` would turn a number into text in a spreadsheet's eyes. A leading `-` is only a formula when
- * what follows is not a number.
+ * `-5` would turn a number into text in a spreadsheet's eyes. So a leading `-` is let through only
+ * when the WHOLE cell is a plain number (`-5`, `-12.50`, `-.5`). Anything else after it is a formula:
+ * `-1+1` sums, and `-2+3+cmd|' /C calc'!A0` is the classic DDE payload — a digit after the `-` is
+ * not enough to make a cell safe.
  */
 const FORMULA_LEAD = /^[=+@\t\r]/;
-const DANGEROUS_MINUS = /^-(?![\d.])/;
+const DANGEROUS_MINUS = /^-(?!(?:\d+(?:\.\d+)?|\.\d+)$)/;
 
 /** The prefix that makes a spreadsheet display a formula instead of running it. Stripped again by
  *  `parseCsv`, so a file exported from here still re-imports as itself. */

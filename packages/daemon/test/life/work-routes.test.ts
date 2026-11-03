@@ -210,6 +210,27 @@ describe('import, export and client_here', () => {
     expect(res.body.split('\r\n')[0]).toMatch(/^Name,Kind,State,Company/);
   });
 
+  it('the export guards a cell that starts with a minus and a digit but is a formula (a file, a card, a deal title)', async () => {
+    // Someone else's CSV: the classic DDE payload and a HYPERLINK behind `-0+`.
+    const csv = ['Name', `"-2+3+cmd|' /C calc'!A0"`, `"-0+HYPERLINK(""https://evil.example/c"",""Open"")"`].join('\n');
+    const p = WorkImportPreviewReplySchema.parse(await json('POST', '/v1/work/import/preview', { format: 'csv', text: csv }));
+    await json('POST', '/v1/work/import', { previewId: p.previewId, rows: p.rows.map((r) => ({ index: r.index, action: 'add' })) });
+    // Someone else's card.
+    const v = WorkImportPreviewReplySchema.parse(await json('POST', '/v1/work/import/preview', { format: 'vcf', text: 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:-1+1\r\nEND:VCARD\r\n' }));
+    await json('POST', '/v1/work/import', { previewId: v.previewId, rows: [{ index: 0, action: 'add' }] });
+    // His own deal title.
+    await json('POST', '/v1/work/deals', { clientName: 'Acme Studio', title: '-1+1 retainer' });
+    const clients = (await call('GET', '/v1/work/export.csv')).body.split('\r\n');
+    for (const name of ["-2+3+cmd|' /C calc'!A0", '-0+HYPERLINK(""https://evil.example/c"",""Open"")', '-1+1']) {
+      const line = clients.find((l) => l.includes(name));
+      expect(line, name).toBeDefined();
+      expect(line, `${name} left unguarded`).toMatch(/^"?'-/);
+    }
+    const deals = (await call('GET', '/v1/work/export.csv?what=deals')).body;
+    expect(deals).toContain("'-1+1 retainer");
+    expect(deals).not.toMatch(/(^|,)"?-1\+1/m);
+  });
+
   it('client_here is ctl.sock only and names no phone or e-mail', async () => {
     const folder = join(base, 'work', 'client', 'acme');
     const c = await json<{ id: string }>('POST', '/v1/work/clients', { name: 'Acme Studio', kind: 'company', folder, phone: '+91 98765 43210' });

@@ -92,20 +92,40 @@ describe("toCsv — formula injection", () => {
     expect(toCsv(["c"], [["-SUM(A1)"]])).toContain("'-SUM(A1)");
   });
 
+  it("guards a `-` cell that starts with a digit but is not a plain number (a sum, the DDE payload)", () => {
+    // A digit after the `-` does not make the cell a number: `-1+1` is a formula, and the classic
+    // DDE payload starts `-2+3+`. Each of these came from a file, a card or a meeting before.
+    for (const v of [
+      "-2+3+cmd|' /C calc'!A0",
+      '-0+HYPERLINK("https://evil.example/c","Open")',
+      "-1+1",
+      "-9+9",
+      "-1+1 retainer",
+      "-.5+1",
+      "-5 ",
+      "-12.50.1",
+    ]) {
+      const out = toCsv(["c"], [[v]]).split("\r\n")[1]!;
+      expect(out, `${JSON.stringify(v)} left unguarded`).toMatch(/^"?'-/);
+    }
+  });
+
   it("leaves NEGATIVE NUMBERS alone — the sums the export exists for depend on it", () => {
     // A money column is the most common thing exported here. `'-1250` is text to a spreadsheet, so
     // guarding it would silently break every total in the file.
     expect(toCsv(["amount"], [[-1250]])).toContain("-1250");
     expect(toCsv(["amount"], [[-1250]])).not.toContain("'-1250");
     expect(toCsv(["amount"], [["-12.50"]])).not.toContain("'-12.50");
+    expect(toCsv(["amount"], [["-.5"]])).not.toContain("'-.5");
+    expect(toCsv(["amount"], [["-5"]])).toBe("amount\r\n-5");
     // ANCHOR: the guard is otherwise working in this very same call shape.
     expect(toCsv(["amount"], [["-abc"]])).toContain("'-abc");
   });
 
   it("round-trips: a file exported from here re-imports as itself", () => {
     // The import dialog promises exactly this, so the guard has to be symmetric.
-    const rows = [['=HYPERLINK("x","y")'], ["-SUM(A1)"], ["ordinary"], ["'tis a quote"], ["-5"]];
+    const rows = [['=HYPERLINK("x","y")'], ["-SUM(A1)"], ["ordinary"], ["'tis a quote"], ["-5"], ["-1+1"], ["-2+3+cmd|' /C calc'!A0"]];
     const parsed = parseCsv(toCsv(["c"], rows)).slice(1);
-    expect(parsed.map((r) => r[0])).toEqual(['=HYPERLINK("x","y")', "-SUM(A1)", "ordinary", "'tis a quote", "-5"]);
+    expect(parsed.map((r) => r[0])).toEqual(['=HYPERLINK("x","y")', "-SUM(A1)", "ordinary", "'tis a quote", "-5", "-1+1", "-2+3+cmd|' /C calc'!A0"]);
   });
 });
