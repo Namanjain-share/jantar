@@ -60,6 +60,7 @@ import {
   PersonP2PrefsShape,
   PersonStatusBodySchema,
   PersonStatusSchema,
+  PeopleDaySchema,
   PlanApplyBodySchema,
   PlanPutBodySchema,
   PlanTemplateSchema,
@@ -634,7 +635,7 @@ export type PeopleList = z.infer<typeof PeopleListSchema>;
 export const PersonResponseSchema = z.object({ person: PersonViewSchema });
 export const PidParamsSchema = z.object({ pid: PersonIdSchema });
 export const PidIdParamsSchema = z.object({ pid: PersonIdSchema, id: LifeIdSchema });
-export const PidDayParamsSchema = z.object({ pid: PersonIdSchema, day: DayKeySchema });
+export const PidDayParamsSchema = z.object({ pid: PersonIdSchema, day: PeopleDaySchema });
 export const PidDidParamsSchema = z.object({ pid: PersonIdSchema, did: LifeIdSchema });
 
 export const PersonAddBodySchema = z.strictObject({
@@ -963,11 +964,11 @@ export const PERSON_LIFE_ROUTES = {
   }),
   personWeightSet: route({
     method: 'PUT', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.11', ctl: false, area: 'weight',
-    params: z.object({ day: DayKeySchema }), body: WeightBodySchema, response: OkReplySchema, summary: "Set a day's weight.",
+    params: z.object({ day: PeopleDaySchema }), body: WeightBodySchema, response: OkReplySchema, summary: "Set a day's weight.",
   }),
   personWeightDelete: route({
     method: 'DELETE', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.11', ctl: false, area: 'weight',
-    params: z.object({ day: DayKeySchema }), response: OkReplySchema, summary: "Remove a day's weight.",
+    params: z.object({ day: PeopleDaySchema }), response: OkReplySchema, summary: "Remove a day's weight.",
   }),
   personMirror: route({
     method: 'GET', path: '/v1/p/mirror/:area', scope: 'person', phase: 'v0.11', ctl: false,
@@ -1090,9 +1091,9 @@ export const PERSON_FOOD_ROUTES = {
 } as const satisfies Record<string, RouteDef>;
 
 /** Her P2 routes (spec 1.3.2): status and the sharing check-in, the day plan and evening review, sleep, the journal and alerts. */
-const dayParams = z.object({ day: DayKeySchema });
-const stepParams = z.object({ day: DayKeySchema, stepId: StepIdSchema });
-const nightParams = z.object({ night: DayKeySchema });
+const dayParams = z.object({ day: PeopleDaySchema });
+const stepParams = z.object({ day: PeopleDaySchema, stepId: StepIdSchema });
+const nightParams = z.object({ night: PeopleDaySchema });
 const commentParams = z.object({ id: LifeIdSchema, cid: LifeIdSchema });
 export const PERSON_DAYS_ROUTES = {
   personStatus: route({
@@ -1146,7 +1147,7 @@ export const PERSON_DAYS_ROUTES = {
   }),
   personBetweenTick: route({
     method: 'POST', path: '/v1/p/plans/:day/between/:bid/tick', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
-    params: z.object({ day: DayKeySchema, bid: StepIdSchema }), body: BetweenTickBodySchema, response: OkReplySchema, summary: 'Tick or untick a check-between slot.',
+    params: z.object({ day: PeopleDaySchema, bid: StepIdSchema }), body: BetweenTickBodySchema, response: OkReplySchema, summary: 'Tick or untick a check-between slot.',
   }),
   personRoughDay: route({
     method: 'POST', path: '/v1/p/plans/:day/rough', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
@@ -1310,7 +1311,7 @@ export const PEOPLE_FOOD_ROUTES = {
 } as const satisfies Record<string, RouteDef>;
 
 /** His P2 routes in her space (spec 9.3.4): plans and templates, her review, sleep and journal; alerts and his prefs. */
-const pidDay = z.object({ pid: LifeIdSchema, day: DayKeySchema });
+const pidDay = z.object({ pid: LifeIdSchema, day: PeopleDaySchema });
 export const PEOPLE_DAYS_ROUTES = {
   personPlanOwnerGet: route({
     method: 'GET', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan',

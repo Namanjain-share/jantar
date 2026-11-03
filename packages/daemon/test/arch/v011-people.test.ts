@@ -23,7 +23,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ROUTES, type RouteDef } from '@jantar/protocol';
-import { AREAS, PEOPLE_ROUTES, PERSON_PREFIX, PERSON_ROUTES } from '@jantar/protocol/people';
+import { AREAS, PEOPLE_ROUTES, PERSON_PREFIX, PERSON_ROUTES, PeopleDaySchema } from '@jantar/protocol/people';
 
 const SRC = fileURLToPath(new URL('../../src', import.meta.url));
 function files(dir: string): string[] {
@@ -291,6 +291,20 @@ describe('M9: route metadata', () => {
       if (def.area !== undefined) expect(Object.keys(AREAS), k).toContain(def.area);
       if (def.localOnly) expect(def.ctl, k).toBe(true);
     }
+  });
+
+  it('every :day and :night path parameter is the one calendar-checked schema (2026-02-30 is a 400, never a row)', () => {
+    const named: string[] = [];
+    for (const [k, def] of [...person, ...people]) {
+      for (const p of def.path.match(/:(day|night)\b/g) ?? []) {
+        const shape = (def.params as { shape?: Record<string, unknown> } | undefined)?.shape;
+        expect(shape?.[p.slice(1)], `${k} ${p}`).toBe(PeopleDaySchema);
+        named.push(k);
+      }
+    }
+    expect(named.length).toBe(27);
+    expect(PeopleDaySchema.safeParse('2026-02-30').success).toBe(false);
+    expect(PeopleDaySchema.safeParse('2028-02-29').success).toBe(true);
   });
 
   it('a :pid route without an area is one about the person', () => {

@@ -20,6 +20,19 @@ export const PEOPLE_SHORT_LABEL = 'Partner';
 /** Her side's words for the owner when he set no name (`jantar people on --name` sets one). */
 export const OWNER_FALLBACK_NAME = 'Your accountability partner';
 
+/** A day key that names a date on the calendar (the key's pattern lets 2026-02-30 through). */
+export function isCalendarDay(day: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return false;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1) return false;
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const last = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1] as number;
+  return d <= last;
+}
+
 /** The levels of `see.meds`. */
 export type MedsLevel = 'off' | 'adherence' | 'full';
 export const MEDS_LEVELS = ['off', 'adherence', 'full'] as const satisfies readonly MedsLevel[];

@@ -26,6 +26,7 @@ import {
   REVIEW_AT_DEFAULT,
   REVIEW_AT_RANGE,
   STATUS_LINE_MAX,
+  isCalendarDay,
   type AlertKind,
   type Emotion,
 } from './people-core.js';
@@ -39,6 +40,12 @@ export const LockedSchema = z.object({ locked: z.literal(true) });
 export type Locked = z.infer<typeof LockedSchema>;
 /** A plan step's or check-between's id: short, unique within its plan. */
 export const StepIdSchema = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{10}$/);
+/**
+ * Every `:day` and `:night` path parameter of the People routes, hers and his (one schema; the arch test
+ * pins each route to it): a day key that is also a date on the calendar, so 2026-02-30 is a 400 before any
+ * handler runs, never a row.
+ */
+export const PeopleDaySchema = DayKeySchema.refine(isCalendarDay, { message: 'not a date on the calendar' });
 
 // ---------------------------------------------------------------------------
 // Preferences (hers, and his for pushes about her)
