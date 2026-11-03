@@ -824,7 +824,7 @@ export type WorkMeetingClientNewBody = z.infer<typeof WorkMeetingClientNewBodySc
 // P2: import and export (W27). Never another app's database: only a file he hands over.
 
 /** Where an imported column can go (life-core's IMPORT_FIELDS; a test pins them equal). */
-export const WORK_IMPORT_FIELDS = ['name', 'firstName', 'lastName', 'email', 'phone', 'company', 'title', 'tags', 'notes', 'source', 'city', 'state', 'website', 'linkedin', 'skip'] as const;
+export const WORK_IMPORT_FIELDS = ['name', 'firstName', 'lastName', 'email', 'phone', 'company', 'title', 'tags', 'notes', 'source', 'city', 'state', 'website', 'linkedin', 'kind', 'skip'] as const;
 export const WorkImportFieldSchema = z.enum(WORK_IMPORT_FIELDS);
 export type WorkImportField = z.infer<typeof WorkImportFieldSchema>;
 

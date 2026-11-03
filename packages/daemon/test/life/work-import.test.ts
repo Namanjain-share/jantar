@@ -172,4 +172,50 @@ describe('the export', () => {
     expect(csv).toContain('Riya Sharma,person,lead,Acme Studio,,riya@acme.example,,vip');
     expect(csv).toContain(`"'=HYPERLINK(""https://evil.example"")"`);
   });
+
+  it('imports back as the same clients with the default mapping (what `jantar work import` uses); made-up names', () => {
+    // A company whose name sorts AFTER its person, so the file lists her first.
+    const zeta = ok(work.createClient({ name: 'Zeta Works', kind: 'company', state: 'client', email: 'hello@zeta.example', phone: '+91 22 4000 1000' }, PHONE)).id;
+    ok(work.updateClient(zeta, { links: ['https://zeta.example'] }, PHONE));
+    const asha = ok(work.createClient({ name: 'Asha Rao', companyId: zeta, title: 'Head of Ops', city: 'Pune', source: 'Referral', notes: 'Prefers calls', tags: ['vip', 'design'] }, PHONE)).id;
+    ok(work.updateClient(asha, { state: 'client', emails: ['asha@zeta.example', 'asha.rao@mail.example'], phones: [{ value: '+91 98765 43210' }, { value: '+91 91234 56789' }], links: ['https://www.linkedin.com/in/asha-rao-example'] }, PHONE));
+    ok(work.createClient({ name: 'Bina Das', companyName: 'Acme Studio', email: 'bina@acme.example' }, PHONE));
+    const csv = ok(work.exportCsv(PHONE));
+    const shape = (w: WorkModule) =>
+      ok(w.clients({ sort: 'name' }, PHONE)).clients.map((r) => {
+        const c = ok(w.client(r.id, PHONE)).contact;
+        return { name: c.name, kind: c.kind, state: c.state, company: r.company?.name, title: c.title, emails: c.emails, phones: c.phones.map((p) => p.value), links: c.links, tags: c.tags, city: c.city, source: c.source, notes: c.notes };
+      });
+    const before = shape(work);
+
+    // A fresh Work, as after a downgrade and an upgrade again.
+    const core2 = createTestLifeCore({ tz: 'UTC', settings: { todos: true, work: true } });
+    try {
+      core2.clock.set('2026-11-04T09:00:00.000Z');
+      const ctx = createTestContext({ clock: core2.clock });
+      const f = makeFakes(ctx);
+      const d = { ctx, sessions: f.sessions, usage: f.usage, ccwLegacy: f.ccwLegacy };
+      const work2 = LIFE_MODULE_BUILDERS.work(core2, d, LIFE_MODULE_BUILDERS.todos(core2, d));
+      const p = ok(work2.importPreview({ format: 'csv', text: csv }, PHONE));
+      expect(p.mapping).toEqual(['name', 'kind', 'state', 'company', 'title', 'email', 'phone', 'tags', 'city', 'source', 'skip', 'skip', 'skip', 'notes', 'website']);
+      expect(p.rows.map((r) => r.action)).toEqual(['add', 'add', 'add', 'add']);
+      ok(work2.importRows({ previewId: p.previewId, rows: p.rows.map((r) => ({ index: r.index, action: r.action })) }, PHONE));
+      // One Zeta Works and one Acme Studio, each a company; every e-mail, phone and link kept.
+      expect(shape(work2)).toEqual(before);
+      // Imported again over itself: every row is an e-mail or phone match, skipped by default.
+      const again = ok(work2.importPreview({ format: 'csv', text: csv }, PHONE));
+      expect(again.rows.map((r) => [r.fields.name, r.action])).toEqual([
+        ['Acme Studio', 'add'],
+        ['Asha Rao', 'skip'],
+        ['Bina Das', 'skip'],
+        ['Zeta Works', 'skip'],
+      ]);
+      // A row whose Kind says company is one, and sits in no company.
+      const other = ok(work2.importPreview({ format: 'csv', text: 'Name,Kind,Company\nNorthwind,Organisation,Globex\n' }, PHONE));
+      expect(other.rows[0]?.fields).toMatchObject({ name: 'Northwind', kind: 'company' });
+      expect(other.rows[0]?.fields).not.toHaveProperty('company');
+    } finally {
+      core2.close();
+    }
+  });
 });

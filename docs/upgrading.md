@@ -51,6 +51,11 @@ jantar work export --csv ~/Documents/clients-before-downgrade.csv
 jantar work export --csv ~/Documents/deals-before-downgrade.csv --deals
 ```
 
+After upgrading again, `jantar work import ~/Documents/clients-before-downgrade.csv`
+brings the clients and companies back, with their e-mails, phones, links,
+tags and notes (not their log, follow-ups or check-in days). The deals
+file is for reading; deals are not imported.
+
 ### 0.11.0: Life's third schema change (Accountability partner)
 
 Three databases change on the first start of 0.11.0, whether or not you

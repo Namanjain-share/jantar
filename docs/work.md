@@ -178,7 +178,9 @@ starts.
 
 Import clients from a file you hand over: a CSV (columns are matched by
 their header: name, first and last name, e-mail, phone, company, title,
-tags, notes, source, city, state, website, LinkedIn) or a vCard (`.vcf`;
+tags, notes, source, city, state, website, LinkedIn, kind; Work's own
+export matches itself, so it imports back as the same people and
+companies, with their e-mails, phones and links) or a vCard (`.vcf`;
 on the iPhone, a contact shared from Contacts can be saved to Files as
 one). Jantar never reads another app's contacts or database, and never
 looks anyone up on the web.

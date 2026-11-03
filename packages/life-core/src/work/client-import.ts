@@ -4,8 +4,10 @@
  *
  * - A CSV's columns are mapped by their header names (name, first and last
  *   name, e-mail, phone, company, title, tags, notes, source, city, state,
- *   website, LinkedIn); he can change any mapping. A column mapped to
+ *   website, LinkedIn, kind); he can change any mapping. A column mapped to
  *   `notes` is added to the notes as "Header: value"; `skip` drops it.
+ *   Work's own clients export (`Emails`, `Phones`, `Links`, `Kind`) maps
+ *   itself, so the file it writes imports back as the same clients.
  * - A vCard card maps to the same fields (photos are never read).
  * - Duplicates warn and never block (W29): the identity is an e-mail, or a
  *   phone by its last 10 digits; a name match is a hint only.
@@ -32,12 +34,16 @@ export const IMPORT_FIELDS = [
   'state',
   'website',
   'linkedin',
+  'kind',
   'skip',
 ] as const;
 export type ImportField = (typeof IMPORT_FIELDS)[number];
 
 /** A contact's state as a column may say it; anything else leaves the default. */
 export type ImportState = 'lead' | 'client' | 'past';
+
+/** A person or a company, as a column may say it; anything else leaves the default (a person). */
+export type ImportKind = 'person' | 'company';
 
 /** One row, as Work would store it (before the daemon's caps). */
 export interface ImportRow {
@@ -51,6 +57,8 @@ export interface ImportRow {
   source?: string;
   city?: string;
   state?: ImportState;
+  /** Set only when a column says it. */
+  kind?: ImportKind;
   links: string[];
 }
 
@@ -59,8 +67,8 @@ const HEADER_WORDS: Record<Exclude<ImportField, 'skip'>, readonly string[]> = {
   name: ['name', 'fullname', 'contact', 'contactname', 'displayname', 'client', 'clientname'],
   firstName: ['firstname', 'first', 'givenname', 'given'],
   lastName: ['lastname', 'last', 'surname', 'familyname', 'family'],
-  email: ['email', 'emailaddress', 'mail', 'email1', 'emailaddress1', 'workemail', 'primaryemail'],
-  phone: ['phone', 'phonenumber', 'mobile', 'mobilenumber', 'cell', 'tel', 'telephone', 'whatsapp', 'phone1', 'primaryphone', 'workphone'],
+  email: ['email', 'emails', 'emailaddress', 'emailaddresses', 'mail', 'email1', 'emailaddress1', 'workemail', 'primaryemail'],
+  phone: ['phone', 'phones', 'phonenumber', 'phonenumbers', 'mobile', 'mobilenumber', 'cell', 'tel', 'telephone', 'whatsapp', 'phone1', 'primaryphone', 'workphone'],
   company: ['company', 'companyname', 'organization', 'organisation', 'org', 'business', 'account', 'accountname'],
   title: ['title', 'jobtitle', 'role', 'position', 'designation'],
   tags: ['tags', 'tag', 'labels', 'label', 'groups', 'group'],
@@ -68,8 +76,9 @@ const HEADER_WORDS: Record<Exclude<ImportField, 'skip'>, readonly string[]> = {
   source: ['source', 'leadsource', 'channel', 'referral', 'referredby'],
   city: ['city', 'town', 'location'],
   state: ['state', 'status', 'stage', 'lifecycle', 'lifecyclestage', 'type'],
-  website: ['website', 'web', 'url', 'site', 'homepage'],
+  website: ['website', 'websites', 'web', 'url', 'urls', 'site', 'homepage', 'link', 'links'],
   linkedin: ['linkedin', 'linkedinurl', 'linkedinprofile'],
+  kind: ['kind', 'contactkind', 'clientkind'],
 };
 
 const headerKey = (h: string) => h.toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -96,6 +105,14 @@ export function importState(raw: string): ImportState | undefined {
   if (v === 'lead' || v === 'prospect' || v === 'new' || v === 'open') return 'lead';
   if (v === 'client' || v === 'customer' || v === 'active' || v === 'won') return 'client';
   if (v === 'past' || v === 'former' || v === 'inactive' || v === 'churned' || v === 'lost') return 'past';
+  return undefined;
+}
+
+/** A column's words as a kind ("Organisation" is a company, "Individual" a person). */
+export function importKind(raw: string): ImportKind | undefined {
+  const v = raw.trim().toLowerCase();
+  if (v === 'company' || v === 'organization' || v === 'organisation' || v === 'org' || v === 'business') return 'company';
+  if (v === 'person' || v === 'individual' || v === 'people' || v === 'contact') return 'person';
   return undefined;
 }
 
@@ -163,6 +180,11 @@ export function importRowFields(cells: readonly string[], headers: readonly stri
       case 'linkedin':
         out.links.push(...many(value));
         break;
+      case 'kind': {
+        const k = importKind(value);
+        if (k) out.kind = k;
+        break;
+      }
       case 'skip':
         break;
     }

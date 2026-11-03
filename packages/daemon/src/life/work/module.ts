@@ -1097,6 +1097,9 @@ class Work implements WorkModule {
         chosen.push({ fields: row.fields, action: 'fill', dup: row.dup.id });
       } else if (action === 'add') chosen.push({ fields: row.fields, action: 'add' });
     }
+    // A file's companies first, so a person's Company column finds the company the same file makes
+    // (Work's own export sorts by name, so a person can come before the company she works at).
+    chosen.sort((a, b) => Number(!(a.action === 'add' && a.fields.kind === 'company')) - Number(!(b.action === 'add' && b.fields.kind === 'company')));
     const skipped = rows.length - chosen.length;
     const adds = chosen.filter((c) => c.action === 'add');
     // Each add may bring its company: the cap counts both.

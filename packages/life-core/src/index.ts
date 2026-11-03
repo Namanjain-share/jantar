@@ -163,11 +163,13 @@ export {
 export {
   IMPORT_FIELDS,
   guessImportMapping,
+  importKind,
   importRowFields,
   importState,
   similarContacts,
   vcardRowFields,
   type ImportField,
+  type ImportKind,
   type ImportRow,
   type ImportState,
   type SimilarCandidate,

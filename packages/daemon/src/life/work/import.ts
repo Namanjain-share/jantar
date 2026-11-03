@@ -12,7 +12,8 @@
  *   isn't one (a phone under 7 digits) is dropped, a link is https (an http one is upgraded, a bad
  *   one dropped), text is clipped to its cap, tags are normalized.
  * - A row with no name but a company is that company; a row with neither is
- *   skipped (counted).
+ *   skipped (counted). A row whose Kind column says company is a company
+ *   (and sits in no company).
  * - Duplicates warn and never block (W29): the same e-mail, then phone
  *   (its last 10 digits), then name (a hint). The default is Skip for an
  *   e-mail or phone match and Add otherwise.
@@ -90,13 +91,15 @@ export function mappingFor(src: ImportSource, given: readonly WorkImportField[] 
 export function fitRow(row: ImportRow): WorkImportFields | null {
   let name = clip(row.name, 80);
   let company = clip(row.company, 80);
-  let kind: WorkImportFields['kind'] = 'person';
+  let kind: WorkImportFields['kind'] = row.kind ?? 'person';
   if (!name && company) {
     name = company;
     company = undefined;
     kind = 'company';
   }
   if (!name) return null;
+  // A company sits in no company (Work's own export writes none on a company's row).
+  if (kind === 'company') company = undefined;
   const emails = [...new Set(row.emails.map((e) => e.trim()).filter((e) => ContactEmailSchema.safeParse(e).success))].slice(0, WORK_LIMITS.emails);
   // A "phone" under 7 digits is an extension or a typo (life-core's identity rule): an import drops it.
   const phones = [...new Set(row.phones.map((p) => p.trim()).filter((p) => ContactPhoneValueSchema.safeParse(p).success && normalizeContactPhone(p) !== ''))].slice(0, WORK_LIMITS.phones);

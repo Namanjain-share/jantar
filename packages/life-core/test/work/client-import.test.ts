@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guessImportMapping, importRowFields, importState, similarContacts, vcardRowFields } from '../../src/work/client-import.js';
+import { guessImportMapping, importKind, importRowFields, importState, similarContacts, vcardRowFields } from '../../src/work/client-import.js';
 import { parseCsv } from '../../src/work/csv.js';
 import { parseVCard } from '../../src/work/contacts.js';
 
@@ -23,6 +23,11 @@ describe('guessImportMapping', () => {
 
   it('maps first and last name, and skips what it does not know', () => {
     expect(guessImportMapping(['First Name', 'Last Name', 'Favourite colour'])).toEqual(['firstName', 'lastName', 'skip']);
+  });
+
+  it("maps Work's own clients export, so the file it writes imports back", () => {
+    const head = ['Name', 'Kind', 'State', 'Company', 'Title', 'Emails', 'Phones', 'Tags', 'City', 'Source', 'Check in (days)', 'Last touch', 'Added', 'Notes', 'Links'];
+    expect(guessImportMapping(head)).toEqual(['name', 'kind', 'state', 'company', 'title', 'email', 'phone', 'tags', 'city', 'source', 'skip', 'skip', 'skip', 'notes', 'website']);
   });
 
   it('gives a single field to its first column only', () => {
@@ -54,6 +59,24 @@ describe('importRowFields', () => {
 
   it('leaves a nameless row with an empty name (the daemon skips it)', () => {
     expect(importRowFields(['', '', 'x@y.test'], ['First Name', 'Last Name', 'Email'], ['firstName', 'lastName', 'email']).name).toBe('');
+  });
+
+  it('reads a kind only when the words say one, and splits Work\'s own lists', () => {
+    expect(importKind('Company')).toBe('company');
+    expect(importKind(' organisation ')).toBe('company');
+    expect(importKind('person')).toBe('person');
+    expect(importKind('Mumbai')).toBeUndefined();
+    const head = ['Name', 'Kind', 'Emails', 'Phones', 'Links'];
+    const row = importRowFields(['Zeta Works', 'company', 'hello@zeta.example; sales@zeta.example', '+91 22 4000 1000; +91 22 4000 2000', 'https://zeta.example; https://www.linkedin.com/company/zeta-example'], head, guessImportMapping(head));
+    expect(row).toEqual({
+      name: 'Zeta Works',
+      kind: 'company',
+      emails: ['hello@zeta.example', 'sales@zeta.example'],
+      phones: ['+91 22 4000 1000', '+91 22 4000 2000'],
+      tags: [],
+      links: ['https://zeta.example', 'https://www.linkedin.com/company/zeta-example'],
+    });
+    expect(importRowFields(['Asha Rao', 'Lead'], ['Name', 'Kind'], ['name', 'kind'])).not.toHaveProperty('kind');
   });
 
   it('reads a state only when the words say one', () => {

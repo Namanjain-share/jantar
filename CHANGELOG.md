@@ -63,7 +63,8 @@ restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
   previewed with duplicate warnings (Skip, Fill blanks, Add anyway),
   imported as one batch you can undo for 7 days; `jantar work import
   <file>` at the Mac. Never another app's contacts or database. The
-  clients export as a CSV (`jantar work export --csv <file>`).
+  clients export as a CSV (`jantar work export --csv <file>`) that imports
+  back as the same clients and companies.
 - **Chat** can find, read, add and change clients, log a call with its
   next step and add a follow-up; find, add and change deals and move them
   between stages (Won makes a project only when you ask), each with Undo;
