@@ -2277,6 +2277,11 @@ stays on the Mac unless he sends it somewhere.
   a deal of such a client is framed the same way. Chat never imports,
   exports, merges, changes the stages, sets a folder or sends anything; it
   makes a project from a won deal only when he asks, never with a folder.
+- **Merging (P3b).** A merge moves one client's deals, log, follow-ups,
+  projects and people to another in one transaction and keeps the first
+  as a hidden tombstone (`merged_into`), which every read leaves out and
+  no link accepts. An imported client's `from` passes to the one it is
+  merged into, so imported words never lose their mark. Chat never merges.
 - **Deals (P3).** Rows in `work_deals`, his alone like the rest; a move
   writes a `stage` row in his log. The stage list is data in life.db's
   `meta` (`work_stages`), checked on every read (exactly one Won and one

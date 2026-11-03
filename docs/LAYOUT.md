@@ -767,4 +767,8 @@ Tests: `packages/protocol/test/v013-work-p3.test.ts`,
 `packages/life-core/test/work/{deal,pipeline,stage,insights,milestones}.test.ts`,
 `packages/daemon/test/life/work-{deals,deal-routes}.test.ts`,
 `packages/daemon/test/chat/work-deal-tools.test.ts`, and the P3 parts of
-the arch tests (W-T1, W-T4, W-T6) and the CLI's `work.test.ts`.
+the arch tests (W-T1, W-T4, W-T6) and the CLI's `work.test.ts`. P3b adds
+`work/{merge,segments}.ts` to life-core (from Noblot), the duplicates,
+merge, "not a duplicate" and starter-list routes and methods (the
+tombstone and repointing in `life/work/repo.ts`, the Todos module's
+`relinkClient`), and `packages/daemon/test/life/work-merge.test.ts`.

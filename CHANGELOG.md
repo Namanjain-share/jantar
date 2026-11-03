@@ -82,6 +82,12 @@ restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
   quiet ones and those closing this week. Money is per currency, never
   added across. Up to 5,000 deals, 500 open; `jantar work export --csv
   <file> --deals` writes them as a CSV.
+- **Duplicates and merging.** Work lists the clients that may be one;
+  you can rule a pair "not a duplicate", or merge one into the other (its
+  values fill the blanks, or the ones you pick win; its deals, log,
+  follow-ups, projects and people move over in one save; the merged-away
+  client is hidden for good). **Starter lists** on Clients: needs a
+  check-in, open deals, quiet leads, gone quiet, missing an email.
 - **Milestones on a project**: up to 12 in order, each with an optional
   target day; the project shows how many are done, the next one and any
   past its day.

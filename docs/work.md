@@ -111,6 +111,23 @@ notes, and, for a company, its client folder.
 
 Up to 5,000 clients and companies, past ones included.
 
+**Duplicates and merging.** Work lists the clients that may be one (the
+same e-mail, phone or name, in groups). For each pair you can say "not a
+duplicate" (they stop showing together) or merge one into the other: the
+one you keep keeps its own values and takes the other's where it has none
+(or where you pick the other's: name, company, title, city, source,
+notes, folder, check-in cadence), phones, e-mails, links and tags are
+joined, and the other's deals, log, follow-ups, projects and people move
+over, all in one save. The merged-away client is hidden for good. A
+client imported from a file passes its mark on to the one it is merged
+into, so Chat still treats those words as data. Two people or two
+companies only; Chat never merges.
+
+**Starter lists** on Clients: Needs a check-in, Open deals, Quiet leads
+(14 days), Gone quiet (30 days) and Missing an email, each with how many
+it holds (`GET /v1/work/clients/lists`, and `?list=` on the clients
+list).
+
 ### The log
 
 The log keeps what happened with a client: a call (in or out, how long,
