@@ -55,9 +55,10 @@ describe('invites', () => {
     const p2 = await onHer(x.api, 'POST', '/v1/p/join/preview', NONE, { code });
     expect([p1.statusCode, p2.statusCode]).toEqual([200, 200]);
     const preview = p1.json() as JoinPreview;
-    // Standard by default, clamped to P1: no plan, review, sleep, journal or chat field is on.
-    expect(preview.offer.see).toMatchObject({ todos: true, meds: 'full', weight: true, plan: false, review: 'off', sleep: false, journal: false, chat: false });
-    expect(preview.fields).not.toContain('see.journal');
+    // Standard by default, clamped to P2: the plan and review counts, but no sleep, journal or chat (chat is P3).
+    expect(preview.offer.see).toMatchObject({ todos: true, meds: 'full', weight: true, plan: true, review: 'counts', sleep: false, journal: false, chat: false });
+    expect(preview.fields).toContain('see.journal');
+    expect(preview.fields).not.toContain('see.chat');
     const body = { code, acceptedVersion: preview.version, agreement: preview.offer, adult: true, name: 'Ines', deviceName: 'phone' };
     const [a, b] = await Promise.all([onHer(x.api, 'POST', '/v1/p/join', NONE, body), onHer(x.api, 'POST', '/v1/p/join', NONE, body)]);
     expect([a.statusCode, b.statusCode].sort()).toEqual([200, 400]);
@@ -137,15 +138,15 @@ describe('invites', () => {
 });
 
 describe('the agreement', () => {
-  it("this owner's offer: Everything with food off, clamped to P1", async () => {
+  it("this owner's offer: Everything with food off, clamped to P2", async () => {
     const x = await fx();
     const me = (await onHer(x.api, 'GET', '/v1/p/me', x.asha.full)).json() as PersonMe;
     expect(me.agreement).toEqual({
       version: expect.any(Number),
-      see: { todos: true, meds: 'full', weight: true, food: false, plan: false, review: 'off', sleep: false, journal: false, chat: false },
-      assign: { todos: true, meds: true, plan: false },
-      editHers: { todos: true, meds: true, weight: true, plan: false },
-      comment: { journal: false },
+      see: { todos: true, meds: 'full', weight: true, food: false, plan: true, review: 'full', sleep: true, journal: true, chat: false },
+      assign: { todos: true, meds: true, plan: true },
+      editHers: { todos: true, meds: true, weight: true, plan: true },
+      comment: { journal: true },
       assistant: false,
     });
   });
@@ -168,7 +169,8 @@ describe('the agreement', () => {
     }
     // Back up is never hers to do alone: a widening is a 400, and nothing changes.
     expect((await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { meds: 'adherence' } })).statusCode).toBe(400);
-    expect((await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { plan: true } })).statusCode).toBe(400);
+    // A field of a phase not built yet (chat, P3) is a 400 too.
+    expect((await onHer(x.api, 'POST', '/v1/p/agreement/narrow', x.asha.full, { see: { chat: true } })).statusCode).toBe(400);
   });
 
   it('one proposal at a time; a decline cools for 7 days; "Don\'t ask again" holds; the ledger keeps no note', async () => {

@@ -25,10 +25,11 @@ import {
 } from '../src/people.js';
 
 describe('the agreement', () => {
-  it('P1 is the built phase; later phases are not', () => {
-    expect(BUILT_PHASE).toBe('P1');
+  it('P2 is the built phase; later phases are not', () => {
+    expect(BUILT_PHASE).toBe('P2');
     expect(phaseBuilt('P1')).toBe(true);
-    expect(phaseBuilt('P2')).toBe(false);
+    expect(phaseBuilt('P2')).toBe(true);
+    expect(phaseBuilt('P3')).toBe(false);
   });
 
   it('presets fill only built fields; assistant is in none', () => {
@@ -45,10 +46,10 @@ describe('the agreement', () => {
   it("Everything with food off is this build's offer field by field", () => {
     const a = applyAgreementPatch(presetAgreement('everything'), { see: { food: false } });
     expect(a).toEqual({
-      see: { todos: true, meds: 'full', weight: true, food: false, plan: false, review: 'off', sleep: false, journal: false, chat: false },
-      assign: { todos: true, meds: true, plan: false },
-      editHers: { todos: true, meds: true, weight: true, plan: false },
-      comment: { journal: false },
+      see: { todos: true, meds: 'full', weight: true, food: false, plan: true, review: 'full', sleep: true, journal: true, chat: false },
+      assign: { todos: true, meds: true, plan: true },
+      editHers: { todos: true, meds: true, weight: true, plan: true },
+      comment: { journal: true },
       assistant: false,
     });
   });
@@ -58,8 +59,9 @@ describe('the agreement', () => {
     expect(agreementProblem({ ...base, see: { ...base.see, todos: false } })).toMatch(/needs see.todos/);
     expect(agreementProblem({ ...base, see: { ...base.see, meds: 'adherence' } })).toMatch(/needs see.meds full/);
     expect(agreementProblem({ ...base, see: { ...base.see, weight: false } })).toMatch(/editHers.weight/);
-    expect(agreementProblem({ ...base, see: { ...base.see, review: 'counts' } })).toMatch(/see.review needs see.plan/);
-    expect(agreementProblem({ ...base, comment: { journal: true } })).toMatch(/comment.journal/);
+    const noPlan = { ...base, assign: { ...base.assign, plan: false }, editHers: { ...base.editHers, plan: false } };
+    expect(agreementProblem({ ...noPlan, see: { ...base.see, plan: false, review: 'counts' } })).toMatch(/see.review needs see.plan/);
+    expect(agreementProblem({ ...base, see: { ...base.see, journal: false } })).toMatch(/comment.journal/);
     const closed = closeDependents({ ...base, see: { ...base.see, todos: false, meds: 'adherence' } });
     expect(agreementProblem(closed)).toBeNull();
     expect([closed.assign.todos, closed.editHers.todos, closed.assign.meds, closed.editHers.meds]).toEqual([false, false, false, false]);
@@ -86,7 +88,7 @@ describe('the agreement', () => {
   });
 
   it('a patch naming an unbuilt field is named back', () => {
-    expect(unbuiltFieldsIn({ see: { journal: true, todos: false } })).toEqual(['see.journal']);
+    expect(unbuiltFieldsIn({ see: { chat: true, journal: true, todos: false } })).toEqual(['see.chat']);
     expect(unbuiltFieldsIn({ assistant: true })).toEqual(['assistant']);
     expect(unbuiltFieldsIn({ see: { meds: 'off' } })).toEqual([]);
   });

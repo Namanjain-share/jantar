@@ -92,6 +92,11 @@ import { PERSON_ACCOUNT_ROUTE_IMPLS } from './routes/person/account.js';
 import { PERSON_PUSH_ROUTE_IMPLS } from './routes/person/push.js';
 import { PERSON_LIFE_ROUTE_IMPLS } from './routes/person/life.js';
 import { PEOPLE_LIFE_ROUTE_IMPLS } from './routes/people-life.js';
+import { PEOPLE_DAYS_ROUTE_IMPLS } from './routes/people-days.js';
+import { PERSON_PLAN_ROUTE_IMPLS } from './routes/person/plans.js';
+import { PERSON_SLEEP_ROUTE_IMPLS } from './routes/person/sleep.js';
+import { PERSON_JOURNAL_ROUTE_IMPLS } from './routes/person/journal.js';
+import { PERSON_ALERT_ROUTE_IMPLS } from './routes/person/alerts.js';
 import type { ApiServices } from './services.js';
 
 export { isRawReply, notImplementedRoute, type Call, type RawReply, type RouteImpl, type RouteTable } from './route-kit.js';
@@ -642,6 +647,12 @@ export const ROUTE_IMPLS: RouteTable = {
   ...PERSON_PUSH_ROUTE_IMPLS,
   ...PERSON_LIFE_ROUTE_IMPLS,
   ...PEOPLE_LIFE_ROUTE_IMPLS,
+  // v0.12 People P2: her plan, review, status, sleep, journal and alerts; his side of them.
+  ...PERSON_PLAN_ROUTE_IMPLS,
+  ...PERSON_SLEEP_ROUTE_IMPLS,
+  ...PERSON_JOURNAL_ROUTE_IMPLS,
+  ...PERSON_ALERT_ROUTE_IMPLS,
+  ...PEOPLE_DAYS_ROUTE_IMPLS,
   ...CAPTURE_ROUTE_IMPLS,
   ...CAPTURE_KEYS_ROUTE_IMPLS,
   // v0.10 Chat (replaces Ask) and the Siri door

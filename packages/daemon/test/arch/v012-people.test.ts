@@ -85,6 +85,40 @@ const REVIEWED_PERSON_ROUTES = [
   'personWeightDelete',
   'personWeightSet',
   'personWeights',
+  // P2: status and the sharing check-in, her plan and review, sleep, journal and alerts.
+  'personAlertReply',
+  'personAlertSeen',
+  'personAlertSend',
+  'personAlerts',
+  'personBetweenTick',
+  'personJournal',
+  'personJournalComment',
+  'personJournalCommentDelete',
+  'personJournalCreate',
+  'personJournalDelete',
+  'personJournalGet',
+  'personJournalUpdate',
+  'personPlanAck',
+  'personPlanGet',
+  'personReviewGet',
+  'personReviewSend',
+  'personRoughDay',
+  'personRoughDayUndo',
+  'personSharingCheckin',
+  'personSleep',
+  'personSleepDelete',
+  'personSleepPut',
+  'personSleepStart',
+  'personSleepWake',
+  'personStatus',
+  'personStepAck',
+  'personStepAdd',
+  'personStepAsk',
+  'personStepCarry',
+  'personStepCheckin',
+  'personStepDelete',
+  'personStepState',
+  'personStepUpdate',
 ];
 
 /** T1: his People routes, reviewed: scope, ctl, localOnly, area. */
@@ -114,6 +148,27 @@ const REVIEWED_PEOPLE_OWNER_ROUTES: Record<string, { scope: string; ctl: boolean
   personOwnerWeightDelete: { scope: 'control', ctl: false, localOnly: false, area: 'weight' },
   personOwnerWeightUpdate: { scope: 'control', ctl: false, localOnly: false, area: 'weight' },
   personOwnerWeights: { scope: 'control', ctl: false, localOnly: false, area: 'weight' },
+  // P2: her plan, templates, review, sleep and journal; alerts with her and his prefs (no :pid, no area).
+  personOwnerJournal: { scope: 'control', ctl: false, localOnly: false, area: 'journal' },
+  personOwnerJournalComment: { scope: 'control', ctl: false, localOnly: false, area: 'journal' },
+  personOwnerJournalCommentDelete: { scope: 'control', ctl: false, localOnly: false, area: 'journal' },
+  personOwnerJournalGet: { scope: 'control', ctl: false, localOnly: false, area: 'journal' },
+  personOwnerReview: { scope: 'control', ctl: false, localOnly: false, area: 'review' },
+  personOwnerSleep: { scope: 'control', ctl: false, localOnly: false, area: 'sleep' },
+  personPlanApply: { scope: 'control', ctl: false, localOnly: false, area: 'plan' },
+  personPlanDelete: { scope: 'control', ctl: false, localOnly: false, area: 'plan' },
+  personPlanOwnerGet: { scope: 'control', ctl: false, localOnly: false, area: 'plan' },
+  personPlanPut: { scope: 'control', ctl: false, localOnly: false, area: 'plan' },
+  personReviewCarry: { scope: 'control', ctl: false, localOnly: false, area: 'plan' },
+  personTemplateCreate: { scope: 'control', ctl: false, localOnly: false, area: 'plan' },
+  personTemplateDelete: { scope: 'control', ctl: false, localOnly: false, area: 'plan' },
+  personTemplateUpdate: { scope: 'control', ctl: false, localOnly: false, area: 'plan' },
+  personTemplates: { scope: 'control', ctl: false, localOnly: false, area: 'plan' },
+  peopleAlertReply: { scope: 'control', ctl: false, localOnly: false, area: null },
+  peopleAlertSeen: { scope: 'control', ctl: false, localOnly: false, area: null },
+  peopleAlertSend: { scope: 'control', ctl: false, localOnly: false, area: null },
+  peopleAlerts: { scope: 'control', ctl: false, localOnly: false, area: null },
+  peopleOwnerPrefs: { scope: 'control', ctl: false, localOnly: false, area: null },
 };
 
 /** M9: the `:pid` routes about the person, not her data (no area). */
@@ -155,7 +210,8 @@ describe('M9: route metadata', () => {
   it('every person data route and every :pid data route declares an area', () => {
     for (const [k, def] of person) {
       // Her account routes have none; the mirror's area is its `:area` parameter.
-      const account = /^person(Join|Me|Agreement|Pause|Resume|Leave|Export|Activity|Prefs|Device|Push|Events|Mirror)/.test(k);
+      // P2: alerts are always on (not an area), and the sharing check-in is about consent.
+      const account = /^person(Join|Me|Agreement|Pause|Resume|Leave|Export|Activity|Prefs|Device|Push|Events|Mirror|Alert|SharingCheckin)/.test(k);
       if (!account) expect(def.area, k).toBeDefined();
     }
   });
@@ -246,7 +302,8 @@ describe('her route files and his stay apart', () => {
  * this list as their modules take a space.
  */
 describe('T6: every query on a person-space table names its space', () => {
-  const SPACE_TABLES = ['todos', 'projects', 'weights', 'foods_saved'];
+  // P2: day plans, templates, the journal and its comments, and sleep nights join the list.
+  const SPACE_TABLES = ['todos', 'projects', 'weights', 'foods_saved', 'day_plans', 'plan_templates', 'journal_entries', 'journal_comments', 'sleep_logs'];
   const statements = (text: string) => [...text.matchAll(/(['"`])((?:SELECT|UPDATE|DELETE)\b[\s\S]*?)\1/g)].map((m) => m[2] as string);
   it('names space (or person) in every statement on them', () => {
     const bad: string[] = [];
@@ -255,8 +312,58 @@ describe('T6: every query on a person-space table names its space', () => {
         const tables = [...sql.matchAll(/\b(?:FROM|UPDATE|JOIN)\s+([a-z_]+)/gi)].map((m) => (m[1] as string).toLowerCase());
         if (tables.some((t) => SPACE_TABLES.includes(t)) && !/\bspace\b/.test(sql)) bad.push(`${f.rel}: ${sql.slice(0, 90)}`);
         if (tables.includes('person_activity') && !/\bperson\b/.test(sql)) bad.push(`${f.rel}: ${sql.slice(0, 90)}`);
+        if (tables.includes('person_alerts') && !/\b(from_person|to_person)\b/.test(sql)) bad.push(`${f.rel}: ${sql.slice(0, 90)}`);
       }
     }
     expect(bad).toEqual([]);
+  });
+});
+
+/**
+ * P2. T14: he never writes in her name. No owner People route can mark her
+ * steps done, write a night, a journal entry or her status, or send her
+ * review: those verbs exist only as her routes. M14 / M23: her journal and
+ * sleep modules are read only where the spec allows (her routes, his
+ * reads through the views, the export, the delivery hold for an open
+ * night); never from chat, mcp, the CLI or the notify router.
+ */
+describe('T14: never in her name', () => {
+  it("his routes carry none of her record's verbs", () => {
+    const deny = /(state|checkin|sleep\/(start|wake)|\/status|\/rough|\/review$|journal$|journal\/:id$|\/doses|\/done|\/skip|\/ack|\/pause|\/resume|agreement\/(accept|decline|narrow))/;
+    for (const [k, def] of people) {
+      if (def.method === 'GET') continue;
+      if (k === 'personReviewCarry') continue;
+      expect(`${def.method} ${def.path}`, k).not.toMatch(deny);
+    }
+    // His only writes on her journal are his own comments; on sleep, none.
+    const writes = people.filter(([, d]) => d.method !== 'GET').map(([k]) => k);
+    expect(writes.filter((k) => /Sleep/.test(k))).toEqual([]);
+    expect(writes.filter((k) => /Journal/.test(k)).sort()).toEqual(['personOwnerJournalComment', 'personOwnerJournalCommentDelete']);
+  });
+});
+
+describe('M14 / M23: her journal and sleep stay where the spec allows', () => {
+  const ALLOWED = /^(life\/(journal|sleep|people|alerts|plans)\/|life\/service\.ts$|api\/routes\/person\/|api\/routes\/people-days\.ts$)/;
+  it('only Life People code and her routes import life/journal or life/sleep', () => {
+    for (const f of src) {
+      for (const spec of imports(f.text)) {
+        if (!/(^|\/)(journal|sleep)\/module\.js$/.test(spec)) continue;
+        expect(ALLOWED.test(f.rel), `${f.rel} imports ${spec}`).toBe(true);
+      }
+    }
+  });
+
+  it('chat, mcp, notify and the CLI never import her journal, sleep, plans or alerts', () => {
+    for (const f of src) {
+      if (!/^(chat|mcp|notify)\//.test(f.rel)) continue;
+      for (const spec of imports(f.text)) expect(spec, f.rel).not.toMatch(/life\/(journal|sleep|plans|alerts)\//);
+    }
+  });
+
+  it('no module turns a check-in, a mood, a night or a review outcome into an item or an alert', () => {
+    // The plan module creates alerts only for her own asks (change requests); the sleep and journal modules create none.
+    for (const f of src.filter((x) => /^life\/(sleep|journal)\//.test(x.rel))) {
+      expect(f.text, f.rel).not.toMatch(/\.send\(|deliverAlert|changeRequest|createTodo|scheduler\.set\('plan_/);
+    }
   });
 });

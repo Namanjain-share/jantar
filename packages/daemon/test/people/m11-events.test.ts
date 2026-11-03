@@ -119,7 +119,7 @@ describe('M11 / T8: what her stream carries', () => {
     const text = JSON.stringify(s.messages);
     expect(text).not.toMatch(/CANARY|sess-aaaa|snapshot|session\.|usage\./);
     for (const m of s.messages) {
-      if (m.kind === 'tick') expect(Object.keys(m).sort()).toEqual(['kind', 'life', 'me', 'seq']);
+      if (m.kind === 'tick') expect(Object.keys(m).sort()).toEqual(['alerts', 'kind', 'life', 'me', 'plan', 'seq']);
     }
     s.close();
   });

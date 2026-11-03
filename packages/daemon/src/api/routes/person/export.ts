@@ -57,6 +57,12 @@ export function personExport(s: ApiServices, pid: string, format: 'html' | 'json
     section('Doses', data.doses) +
     section('Weight', data.weights) +
     section('Food', data.food) +
+    section('Day plans and evening reviews', data.plans) +
+    section('Plan templates', data.templatesUsed) +
+    section('Sleep', data.sleep) +
+    section('Journal', data.journal) +
+    section('Journal comments', data.journalComments) +
+    section('Alerts', data.alerts) +
     section('Activity', data.activity) +
     '</body></html>';
   return {

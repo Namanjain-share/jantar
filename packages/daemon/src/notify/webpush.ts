@@ -38,6 +38,8 @@ import { VapidError, loadOrCreateVapidKeys, type VapidKeys } from './vapid.js';
 /** Push services accept about 4 KB; stay well under it after encryption overhead. */
 export const MAX_PAYLOAD_BYTES = 3000;
 export const PUSH_TTL_S = 3600;
+/** v0.12 People: a gentle alert (good morning, thinking of you) may wait 12 hours at the push service. */
+export const GENTLE_TTL_S = 12 * 3600;
 export const PUSH_TIMEOUT_MS = 10_000;
 /** Pushes in flight at once. */
 export const PUSH_CONCURRENCY = 4;
@@ -134,6 +136,8 @@ export interface PushPayload {
   /** v0.5.3: when Claude's countdown runs out (ISO). */
   deadline?: string;
   ts: string;
+  /** v0.12 People: an Urgent alert (her service worker keeps it on screen, never silent). */
+  urgent?: true;
 }
 
 export function buildPushPayload(n: Notification): PushPayload {
@@ -143,6 +147,7 @@ export function buildPushPayload(n: Notification): PushPayload {
   if (n.sid) p.sid = n.sid;
   if (n.pendingId) p.pendingId = n.pendingId;
   if (n.deadline) p.deadline = n.deadline;
+  if (n.pushUrgency === 'urgent') p.urgent = true;
   return p;
 }
 
@@ -314,8 +319,9 @@ export class WebPushNotifier implements Notifier {
 
     const payload = encodePayload(n);
     const options: PushSendOptions = {
-      TTL: ttlFor(n.deadline, this.ctx.clock.now()),
-      urgency: URGENT.has(n.kind) ? 'high' : 'normal',
+      // v0.12 People (spec 6.3): gentle is low urgency for 12 h; normal and urgent are high for 1 h.
+      TTL: n.pushUrgency === 'gentle' ? GENTLE_TTL_S : ttlFor(n.deadline, this.ctx.clock.now()),
+      urgency: n.pushUrgency === 'gentle' ? 'low' : n.pushUrgency !== undefined || URGENT.has(n.kind) ? 'high' : 'normal',
       timeout: PUSH_TIMEOUT_MS,
       vapidDetails: { subject: keys.subject, publicKey: keys.publicKey, privateKey: keys.privateKey },
     };

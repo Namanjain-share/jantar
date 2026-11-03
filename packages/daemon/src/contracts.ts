@@ -1205,6 +1205,8 @@ export interface Notification {
    * channels refuse it (they are the owner's).
    */
   audience?: { person: string };
+  /** v0.12 People: a person alert's push urgency (Web Push `urgency` and TTL, spec 6.3). */
+  pushUrgency?: 'gentle' | 'normal' | 'urgent';
 }
 
 export interface Notifier {
@@ -1665,7 +1667,26 @@ export interface LifeDb {
 }
 
 /** v0.7: `post`, a post with a day and a time (one row per open timed post, `sub` ''). */
-export type PingKind = 'todo' | 'med' | 'refill' | 'bill' | 'post';
+/** The Life modules' kinds: each rings only while its module is on. */
+export type LifePingKind = 'todo' | 'med' | 'refill' | 'bill' | 'post';
+/**
+ * v0.12 People (P2): her plan rings and the plan push, his follow-ups and
+ * her rough day reaching him, the daily template apply, review prompt and
+ * review close, the release of held alerts, an open night's 20-hour close
+ * and his opt-in day summary. They ring only while People is on.
+ */
+export type PeoplePingKind =
+  | 'plan_step'
+  | 'plan_send'
+  | 'plan_followup'
+  | 'plan_autoapply'
+  | 'plan_review_prompt'
+  | 'plan_review_close'
+  | 'plan_rough'
+  | 'alert_release'
+  | 'sleep_close'
+  | 'owner_summary';
+export type PingKind = LifePingKind | PeoplePingKind;
 
 /** One row of the `pings` table: what the scheduler sends next for one source. */
 export interface PingRow {
@@ -1695,6 +1716,11 @@ export interface LifePush {
   tag: string;
   /** v0.12 People: her devices instead of his (absent: the owner's). Its url is one of her app's (`/p…`). */
   person?: string;
+  /**
+   * v0.12 People (spec 6.3): gentle (low urgency, 12 h TTL), normal (high, 1 h) or urgent (high, 1 h, stays on
+   * screen where supported, never silent). Absent: today's Life push.
+   */
+  urgency?: 'gentle' | 'normal' | 'urgent';
 }
 
 /** What a module registers for each kind it owns (`scheduler.register`, when the module is built). */

@@ -113,8 +113,28 @@ export class PersonSpace {
     if (!t) return refuse('not_found', SPACE_REASONS.noTodo);
     if (t.by === '') return refuse('conflict', SPACE_REASONS.assigned(this.people.ownerName()));
     const r = this.todos(pid).updateTodo(id, patch, actor);
-    if (r.ok) this.herWrite(pid, 'todos');
+    if (r.ok) {
+      this.noteMoved(pid, t);
+      this.herWrite(pid, 'todos');
+    }
     return r;
+  }
+
+  /**
+   * P2: a todo that left the day it was due (a later due day, or deleted)
+   * still shows in that day's evening review, as moved or gone.
+   */
+  private noteMoved(pid: string, before: PersonTodo, deleted = false): void {
+    const plans = this.people.plans;
+    const day = before.due?.day;
+    if (!plans || !day) return;
+    if (deleted) {
+      plans.noteTodo(pid, day, { id: before.id, title: before.title, by: before.by ?? '', outcome: 'gone' });
+      return;
+    }
+    const after = this.findTodo(pid, before.id);
+    const to = after?.due?.day;
+    if (to && to > day && !after?.doneAt) plans.noteTodo(pid, day, { id: before.id, title: before.title, by: before.by ?? '', outcome: 'moved', to });
   }
 
   herDelete(pid: string, id: string, actor: Actor): LifeResult {
@@ -122,7 +142,10 @@ export class PersonSpace {
     if (!t) return refuse('not_found', SPACE_REASONS.noTodo);
     if (t.by === '') return refuse('conflict', SPACE_REASONS.assigned(this.people.ownerName()));
     const r = this.todos(pid).removeTodo(id, actor);
-    if (r.ok) this.herWrite(pid, 'todos');
+    if (r.ok) {
+      this.noteMoved(pid, t, true);
+      this.herWrite(pid, 'todos');
+    }
     return r;
   }
 
@@ -141,7 +164,10 @@ export class PersonSpace {
     if (!t) return refuse('not_found', SPACE_REASONS.noTodo);
     if (t.snoozable === false) return refuse('conflict', SPACE_REASONS.noSnooze(this.people.ownerName()));
     const r = this.todos(pid).snooze(id, preset, actor);
-    if (r.ok) this.herWrite(pid, 'todos');
+    if (r.ok) {
+      this.noteMoved(pid, t);
+      this.herWrite(pid, 'todos');
+    }
     return r;
   }
 
@@ -172,9 +198,22 @@ export class PersonSpace {
     if (t.by !== '') return refuse('conflict', SPACE_REASONS.notAssigned);
     this.patchExtra(pid, id, { askedChange: { at: this.stamp(), note } });
     this.herWrite(pid, 'todos');
-    // He hears that she asked, never what (her note shows on the item when he looks).
+    // P2: a change request on his Alerts tab too (it pushes him within his caps and quiet hours).
+    const alerts = this.people.alerts;
+    if (alerts) return alerts.changeRequest(pid, { type: 'todo', id, title: t.title.slice(0, 120) }, note);
     this.people.pushOwner(pid, { kind: 'life', title: `${this.people.nameOf(pid)} asks to change an item`, body: 'Open People to see.', url: `/people/${pid}?tab=todos&id=${id}`, tag: `people:ask:${pid}` });
     return OK;
+  }
+
+  /** Remove one of People's daemon fields from a stored todo. */
+  private dropExtra(pid: string, id: string, field: 'followUp'): void {
+    const c = this.core();
+    if (!c) return;
+    const r = c.db.prepare('SELECT json FROM todos WHERE space = ? AND id = ?').get(pid, id) as { json: string } | undefined;
+    if (!r) return;
+    const next: Record<string, unknown> = { ...(JSON.parse(r.json) as Record<string, unknown>), updatedAt: this.stamp() };
+    delete next[field];
+    c.db.prepare('UPDATE todos SET json = ?, updated_at = ? WHERE space = ? AND id = ?').run(JSON.stringify(next), next.updatedAt as string, pid, id);
   }
 
   /** Set People's daemon fields on a stored todo (no edit of hers or his: done, skip, ack, report, ask). */
@@ -215,9 +254,15 @@ export class PersonSpace {
     const a = this.people.agreement(pid);
     const g = this.hisGate(pid, a, (x) => x.see.todos && x.assign.todos);
     if (g) return g as LifeResult<{ id: string }>;
-    const { ask, snoozable, ...todo } = body;
-    const r = this.todos(pid).createTodo(todo, actor, { by: '', extra: { ...(ask && ask !== 'none' ? { ask } : {}), ...(snoozable === false ? { snoozable: false } : {}) } });
-    if (r.ok) this.hisWrite(pid, 'todo.added', body.title);
+    const { ask, snoozable, followUp, ...todo } = body;
+    const r = this.todos(pid).createTodo(todo, actor, {
+      by: '',
+      extra: { ...(ask && ask !== 'none' ? { ask } : {}), ...(snoozable === false ? { snoozable: false } : {}), ...(followUp ? { followUp } : {}) },
+    });
+    if (r.ok) {
+      this.hisWrite(pid, 'todo.added', body.title);
+      this.people.plans?.armTodoFollowUps(pid);
+    }
     return r;
   }
 
@@ -225,19 +270,23 @@ export class PersonSpace {
     const row = this.hisRow(pid, id);
     if ('ok' in row) return row;
     const { t, mine } = row;
-    const { ask, snoozable, ...todoPatch } = patch;
+    const { ask, snoozable, followUp, ...todoPatch } = patch;
     const r = this.todos(pid).updateTodo(id, todoPatch as TodoPatch, actor);
     if (!r.ok) return r;
     const extra: Partial<PersonTodo> = {};
     if (ask !== undefined) extra.ask = ask;
     if (snoozable !== undefined) extra.snoozable = snoozable;
+    if (followUp !== undefined && followUp !== null) extra.followUp = followUp;
+    if (followUp === null) this.dropExtra(pid, id, 'followUp');
     if (!mine) {
       extra.editedBy = '';
       extra.editedAt = this.stamp();
     }
     this.patchExtra(pid, id, extra);
     const after = this.findTodo(pid, id) ?? t;
+    this.noteMoved(pid, t);
     this.hisWrite(pid, 'todo.edited', after.title, mine ? undefined : changesOf(t, after));
+    this.people.plans?.armTodoFollowUps(pid);
     return OK;
   }
 
@@ -246,7 +295,10 @@ export class PersonSpace {
     if ('ok' in row) return row;
     const { t } = row;
     const r = this.todos(pid).removeTodo(id, actor);
-    if (r.ok) this.hisWrite(pid, 'todo.deleted', t.title);
+    if (r.ok) {
+      this.noteMoved(pid, t, true);
+      this.hisWrite(pid, 'todo.deleted', t.title);
+    }
     return r;
   }
 

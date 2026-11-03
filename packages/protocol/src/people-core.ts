@@ -62,12 +62,137 @@ export const PERSON_ACTIVITY_KEEP = { days: 365, rows: 5000 } as const;
 export const PERSON_APP_PATH = '/p';
 
 // ---------------------------------------------------------------------------
+// P2: day plans, the evening review, alerts, status, sleep and the journal (spec 3, 4, 6)
+
+export const PLAN_STEPS_MAX = 30;
+export const PLAN_BETWEEN_MAX = 4;
+export const PLAN_TEMPLATES_MAX = 20;
+/** Her plan push time and evening review time, by default. */
+export const PLAN_PUSH_AT_DEFAULT = '07:00';
+export const REVIEW_AT_DEFAULT = '21:00';
+/** The earliest and latest evening review time she can pick. */
+export const REVIEW_AT_RANGE = ['17:00', '23:30'] as const;
+/** An unsent review closes itself (no note, nothing pushed) at this time the next day. */
+export const REVIEW_CLOSE_AT = '12:00';
+/** Changes to a sent plan are pushed once per this window ("Sam changed today's plan: 2 steps moved"). */
+export const PLAN_CHANGE_COALESCE_MS = 2 * 60_000;
+/** The plan push is skipped when the first step rings within this many minutes of it. */
+export const PLAN_PUSH_NEAR_STEP_MIN = 15;
+/** A timed step still to do this many minutes after its time shows "late" (display only). */
+export const STEP_LATE_MIN = 15;
+/** Focus lasts the step's length plus this, or FOCUS_DEFAULT_MIN with no length (C32). */
+export const FOCUS_PAD_MIN = 30;
+export const FOCUS_DEFAULT_MIN = 90;
+/** A rough day reaches him only after this, behind her Undo (C35). */
+export const ROUGH_UNDO_MS = 10_000;
+/** A status lasts this many hours unless she says otherwise. */
+export const STATUS_HOURS_DEFAULT = 12;
+/** The sharing check-in comes every this many days (C26), or a week after a snooze. */
+export const SHARING_CHECKIN_DAYS = 14;
+export const SHARING_CHECKIN_SNOOZE_DAYS = 7;
+/** It shows on her first open after this time. */
+export const SHARING_CHECKIN_FROM = '10:00';
+
+/** Alerts: kept 90 days; reply buttons close after 24 hours. */
+export const PERSON_ALERT_KEEP_DAYS = 90;
+export const ALERT_REPLY_HOURS = 24;
+export const ALERT_TEXT_MAX = 140;
+/** Urgent alerts are held to this many an hour, whatever the caps say. */
+export const URGENT_PER_HOUR_MAX = 2;
+
+export interface AlertCaps {
+  hour: number;
+  day: number;
+  urgentDay: number;
+  nudgeGapMin: 30 | 60;
+  nudgeDay: number;
+}
+/** The recipient's caps, by default (C29): lower than the first draft's on purpose. */
+export const ALERT_CAPS_DEFAULT: AlertCaps = { hour: 6, day: 20, urgentDay: 4, nudgeGapMin: 60, nudgeDay: 8 };
+/** What each cap may be set to (inclusive). */
+export const ALERT_CAPS_RANGE = {
+  hour: [1, 12],
+  day: [3, 40],
+  urgentDay: [1, 6],
+  nudgeDay: [0, 15],
+} as const;
+
+export type AlertKind = 'check_in' | 'call_me' | 'urgent' | 'good_morning' | 'good_night' | 'thinking_of_you' | 'running_late' | 'nudge' | 'change_request' | 'custom';
+export type AlertUrgency = 'gentle' | 'normal' | 'urgent';
+export type AlertReplyKind = 'ok' | 'on_my_way' | 'cant_now' | 'cant_now_safe' | 'heart' | 'changed' | 'keep';
+/** Who may send a kind: either person, only her (to him), or only him (to her). */
+export type AlertDirection = 'either' | 'her' | 'him';
+
+/** The kinds (spec 6.1): label, urgency (custom: the sender picks gentle or normal), direction and reply buttons. */
+export const ALERT_KINDS: Readonly<Record<AlertKind, { label: string; urgency: AlertUrgency; dir: AlertDirection; replies: readonly AlertReplyKind[] }>> = {
+  check_in: { label: 'Check in, please', urgency: 'normal', dir: 'either', replies: ['ok', 'cant_now_safe'] },
+  call_me: { label: 'Call me', urgency: 'normal', dir: 'either', replies: ['on_my_way', 'cant_now'] },
+  urgent: { label: 'Urgent: need you now', urgency: 'urgent', dir: 'either', replies: ['on_my_way', 'cant_now_safe'] },
+  good_morning: { label: 'Good morning', urgency: 'gentle', dir: 'either', replies: ['heart'] },
+  good_night: { label: 'Good night', urgency: 'gentle', dir: 'either', replies: ['heart'] },
+  thinking_of_you: { label: 'Thinking of you', urgency: 'gentle', dir: 'either', replies: ['heart'] },
+  running_late: { label: 'Running late', urgency: 'normal', dir: 'her', replies: ['ok'] },
+  nudge: { label: 'Reminder', urgency: 'normal', dir: 'him', replies: ['ok', 'cant_now'] },
+  change_request: { label: 'Asks to change', urgency: 'normal', dir: 'her', replies: ['changed', 'keep'] },
+  custom: { label: 'Message', urgency: 'normal', dir: 'either', replies: ['ok', 'cant_now'] },
+};
+export const ALERT_KIND_NAMES = Object.keys(ALERT_KINDS) as AlertKind[];
+
+/** Reply buttons' words. "Can't right now, I'm safe" is a normal answer and feeds nothing. */
+export const ALERT_REPLY_LABELS: Readonly<Record<AlertReplyKind, string>> = {
+  ok: 'OK',
+  on_my_way: 'On my way',
+  cant_now: "Can't right now",
+  cant_now_safe: "Can't right now, I'm safe",
+  heart: '♥',
+  changed: 'Changed',
+  keep: 'Keep it',
+};
+
+/** Her status (spec 3.7): Okay, Low or Need space, plus a short line. */
+export type StatusLevel = 'ok' | 'low' | 'need_space';
+export const STATUS_LABELS: Readonly<Record<StatusLevel, string>> = { ok: 'Okay', low: 'Low', need_space: 'Need space' };
+export const STATUS_LINE_MAX = 60;
+
+/** Journal (spec 3.11). A closed set of emotions: free text would split "anxious" three ways within a week. */
+export type Emotion = 'joy' | 'strength' | 'connection' | 'fear' | 'sadness' | 'anger' | 'flat';
+export const EMOTIONS: Readonly<Record<Emotion, string>> = {
+  joy: 'Joyful',
+  strength: 'Strong',
+  connection: 'Close',
+  fear: 'Anxious',
+  sadness: 'Sad',
+  anger: 'Angry',
+  flat: 'Flat',
+};
+export const EMOTION_NAMES = Object.keys(EMOTIONS) as Emotion[];
+export const JOURNAL_TEXT_MAX = 8000;
+export const JOURNAL_LINE_MAX = 200;
+export const JOURNAL_COMMENT_MAX = 500;
+export const JOURNAL_MILESTONES = [7, 30, 100, 365] as const;
+
+/** Sleep (spec 3.12). */
+export const SLEEP_SHORT_MIN = 360;
+export const SLEEP_OPEN_MAX_H = 20;
+export const SLEEP_HOLD_MAX_H = 14;
+export const SLEEP_BACK_MAX_H = 12;
+export const SLEEP_TREND_MIN_NIGHTS = 4;
+export const SLEEP_RANGE_MAX_NIGHTS = 92;
+/** "Going to sleep" shows on Today from 20:00 to 04:00. */
+export const SLEEP_CARD_FROM = '20:00';
+export const SLEEP_CARD_TO = '04:00';
+
+/** One-tap reasons (typing is optional). */
+export const SKIP_REASONS = ['Ran out of time', 'Not feeling well', 'Plans changed'] as const;
+export const ASK_REASONS = ['Move it later', 'Too much today', 'Need help'] as const;
+
+// ---------------------------------------------------------------------------
 // Build phases (spec 9.8): only the built phase's areas, fields, routes and join lines exist.
 
 export const BUILD_PHASES = ['P1', 'P2', 'P3', 'P4'] as const;
 export type BuildPhase = (typeof BUILD_PHASES)[number];
 /** The phase this build ships. A later phase's field is never offered, filled by a preset or granted by an upgrade (O7, D24). */
-export const BUILT_PHASE: BuildPhase = 'P1';
+export const BUILT_PHASE: BuildPhase = 'P2';
 
 export function phaseBuilt(phase: BuildPhase, built: BuildPhase = BUILT_PHASE): boolean {
   return BUILD_PHASES.indexOf(phase) <= BUILD_PHASES.indexOf(built);

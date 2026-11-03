@@ -11,7 +11,7 @@
  *
  * Nothing here holds Life text: rows carry ids, times and counts.
  */
-import type { LifeDb, PingKind, PingRow } from '../contracts.js';
+import type { LifeDb, LifePingKind, PeoplePingKind, PingKind, PingRow } from '../contracts.js';
 import { newId } from '../core/ids.js';
 
 /** A claim older than this is a dead sweep's (a crash mid-send): the row can be claimed again. Four send deadlines. */
@@ -36,9 +36,24 @@ export const KIND_MODULE = {
   refill: 'medicines',
   bill: 'finance',
   post: 'posts',
-} as const satisfies Record<PingKind, string>;
+} as const satisfies Record<LifePingKind, string>;
 
-export const PING_KINDS = Object.keys(KIND_MODULE) as PingKind[];
+/** v0.12 People (P2): the kinds that ring while People is on (contracts.ts PeoplePingKind). */
+export const PEOPLE_PING_KINDS: readonly PeoplePingKind[] = [
+  'plan_step',
+  'plan_send',
+  'plan_followup',
+  'plan_autoapply',
+  'plan_review_prompt',
+  'plan_review_close',
+  'plan_rough',
+  'alert_release',
+  'sleep_close',
+  'owner_summary',
+];
+
+export const LIFE_PING_KINDS = Object.keys(KIND_MODULE) as LifePingKind[];
+export const PING_KINDS: readonly PingKind[] = [...LIFE_PING_KINDS, ...PEOPLE_PING_KINDS];
 
 interface RawRow {
   id: string;

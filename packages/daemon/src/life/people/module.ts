@@ -24,7 +24,13 @@ import {
   PERSON_ENDING_DAYS,
   PERSON_FORGET_DAYS,
   PROPOSAL_COOLING_DAYS,
+  SHARING_CHECKIN_DAYS,
+  SHARING_CHECKIN_FROM,
+  SHARING_CHECKIN_SNOOZE_DAYS,
+  STATUS_HOURS_DEFAULT,
   AGREEMENT_FIELDS,
+  OwnerPeoplePrefsSchema,
+  PersonPrefsSchema,
   AgreementFieldsSchema,
   AgreementSchema,
   agreementProblem,
@@ -54,15 +60,22 @@ import {
   type PersonOfferBody,
   type PersonProposeBody,
   type PersonState,
+  type PersonStatus,
+  type PersonStatusBody,
   type PersonView,
+  type OwnerPeoplePrefs,
+  type OwnerPeoplePrefsPatch,
+  type PersonPrefsPatch,
+  type SharingCheckinBody,
 } from '@jantar/protocol/people';
+import { hhmmOf } from '@jantar/life-core';
 import { hasScope } from '../../auth/scopes.js';
 import { PersonInvites, PersonLinkCodes } from '../../auth/person-codes.js';
 import { PersonDeviceAuth, publicPersonDevice } from '../../auth/person-devices.js';
 import type { ConsentRecord, DaemonContext, LifeCore, LifePush, LifeResult, Logger, PersonDeviceRecord } from '../../contracts.js';
 import { newId } from '../../core/ids.js';
 import { PeopleRepo, type ActivityInput } from './repo.js';
-import { PersonTicks } from './ticks.js';
+import { PersonTicks, type PersonCounter } from './ticks.js';
 
 const DAY_MS = 24 * 60 * 60_000;
 const HOUR_MS = 60 * 60_000;
@@ -133,6 +146,11 @@ export class PeopleModule {
   space: import('./space.js').PersonSpace | null = null;
   /** What he sees of her, and her mirror of it (set by the Life service). */
   views: import('./views.js').PeopleViews | null = null;
+  /** P2: her day plans, templates and evening reviews; alerts both ways; her journal; her sleep log (set by the Life service). */
+  plans: import('../plans/module.js').PlansModule | null = null;
+  alerts: import('../alerts/module.js').AlertsModule | null = null;
+  journal: import('../journal/module.js').JournalModule | null = null;
+  sleep: import('../sleep/module.js').SleepModule | null = null;
 
   constructor(private readonly deps: PeopleDeps) {
     const { ctx } = deps;
@@ -365,7 +383,7 @@ export class PeopleModule {
         state: 'invited',
         sharedSpace: sid,
         modules: { food: body.modules?.food ?? true },
-        prefs: { lockScreen: 'hide_alerts', muteUntil: null, dontAsk: [] },
+        prefs: PersonPrefsSchema.parse({}),
         limits: { chatPerDay: 30 },
         declinedUntil: {},
         createdAt: at,
@@ -548,8 +566,9 @@ export class PeopleModule {
       const issued = this.devices.issue({ personId: pid, name: body.deviceName, userAgent: opts.userAgent, accessEmail: email });
       this.appendLedger(pid, 'joined', `person:${pid}`, asked, inv.offerVersion);
       const at = this.iso();
-      this.repo.save({ ...p, name: body.name, state: 'active', joinedAt: at, updatedAt: at });
+      this.repo.save({ ...p, name: body.name, state: 'active', joinedAt: at, sharingCheckinDueAt: this.iso(this.now() + SHARING_CHECKIN_DAYS * DAY_MS), updatedAt: at });
       this.record(pid, { actor: 'her', action: 'joined', fields: fieldsOn(asked) });
+      this.plans?.resyncPerson(pid);
       this.deps.push({ kind: 'life', title: `${body.name} joined`, body: 'Their space is set up.', url: `/people/${pid}`, tag: `people:${pid}` });
       this.ownerChanged();
       this.log.info('person joined', { personId: pid });
@@ -604,7 +623,7 @@ export class PeopleModule {
           ...(p?.pausedAt && state === 'paused' ? { pausedAt: p.pausedAt } : {}),
           ...(l.until && state === 'ending' ? { endingUntil: l.until } : {}),
           modules: p?.modules ?? { food: false },
-          prefs: p?.prefs ?? { lockScreen: 'hide_alerts', muteUntil: null, dontAsk: [] },
+          prefs: p?.prefs ?? PersonPrefsSchema.parse({}),
         },
         owner,
         peopleOn: this.enabled(),
@@ -720,16 +739,183 @@ export class PeopleModule {
     }
   }
 
-  /** Her prefs (P1: lock screen, mute, don't ask). */
-  setPrefs(pid: string, patch: Partial<Person['prefs']>): LifeResult {
+  /** Her prefs (P1: lock screen, mute, don't ask; P2: quiet hours, times, holds, caps, rings). `quiet: null` clears her quiet hours. */
+  setPrefs(pid: string, patch: PersonPrefsPatch): LifeResult {
     return this.guard(() => {
       const p = this.repo.get(pid);
       if (!p) return this.notFound();
-      const prefs = { ...p.prefs, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) } as Person['prefs'];
-      this.repo.save({ ...p, prefs, updatedAt: this.iso() });
+      const { quiet, rings, ...rest } = patch;
+      const prefs = { ...p.prefs, ...Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) } as Person['prefs'];
+      if (rings) prefs.rings = { ...prefs.rings, ...Object.fromEntries(Object.entries(rings).filter(([, v]) => v !== undefined)) };
+      if (quiet === null) delete prefs.quiet;
+      else if (quiet !== undefined) prefs.quiet = quiet;
+      this.repo.save({ ...p, prefs: PersonPrefsSchema.parse(prefs), updatedAt: this.iso() });
+      this.ticks.bump(pid, 'me');
+      // Her times move her rings and daily rows; a hold that ended (quiet hours off, unmuted) releases what it held.
+      this.plans?.resyncPerson(pid);
+      this.alerts?.release(pid);
+      // He sees her caps and ring switches on Sharing.
+      this.ownerChanged();
+      return { ok: true, value: true };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // P2: her status, the sharing check-in, his prefs, and who hears about a write
+
+  /** Her status now (null once it has ended). */
+  statusOf(p: Person | null): PersonStatus | null {
+    const st = p?.status;
+    if (!st || Date.parse(st.until) <= this.now()) return null;
+    return st;
+  }
+
+  /** Her status (spec 3.7): hers alone; Need space holds his alerts until it ends. Okay with no line clears it. */
+  setStatus(pid: string, body: PersonStatusBody): LifeResult<{ status: PersonStatus | null }> {
+    return this.guard(() => {
+      const p = this.repo.get(pid);
+      if (!p) return this.notFound();
+      const at = this.iso();
+      const status: PersonStatus | null =
+        body.level === 'ok' && !body.line ? null : { level: body.level, ...(body.line ? { line: body.line } : {}), at, until: this.iso(this.now() + (body.hours ?? STATUS_HOURS_DEFAULT) * HOUR_MS) };
+      const { status: _old, ...rest } = p;
+      this.repo.save({ ...rest, ...(status ? { status } : {}), updatedAt: at });
+      this.herWrote(pid, 'plan', 'plan');
+      if (status?.level === 'need_space') this.alerts?.armRelease(pid);
+      else this.alerts?.release(pid);
+      return { ok: true, value: { status } };
+    });
+  }
+
+  /** Set (or clear) her status as stored, with no other effect than her stream (a rough day and its Undo). */
+  putStatus(pid: string, status: PersonStatus | null): void {
+    const p = this.person(pid);
+    if (!p) return;
+    const { status: _old, ...rest } = p;
+    this.repo.save({ ...rest, ...(status ? { status } : {}), updatedAt: this.iso() });
+  }
+
+  /** Her held comment and review pushes (life/alerts counts them; the release clears them). */
+  saveHeld(pid: string, held: { comments: number; reviews: number }, reason: string | undefined): void {
+    const p = this.person(pid);
+    if (!p) return;
+    const { held: _old, ...rest } = p;
+    const any = held.comments + held.reviews > 0;
+    this.repo.save({ ...rest, ...(any ? { held: { ...held, ...(reason ? { reason } : p.held?.reason ? { reason: p.held.reason } : {}) } } : {}), updatedAt: this.iso() });
+  }
+
+  heldReason(pid: string): string | undefined {
+    return this.person(pid)?.held?.reason;
+  }
+
+  /** Everyone sharing now (active or paused), by the ledger. */
+  sharingPeople(): string[] {
+    return this.deps.ctx.db.people.consents.persons().filter((pid) => {
+      const g = this.gateState(pid);
+      return g === 'active' || g === 'paused';
+    });
+  }
+
+  /** Whether the 14-day sharing check-in shows now (her first open after 10:00 on or after the day it is due). */
+  sharingCheckinDue(pid: string): boolean {
+    const p = this.person(pid);
+    const core = this.deps.core();
+    if (!p || !core) return false;
+    const due = p.sharingCheckinDueAt ?? (p.joinedAt ? this.iso(Date.parse(p.joinedAt) + SHARING_CHECKIN_DAYS * DAY_MS) : null);
+    if (!due || Date.parse(due) > this.now()) return false;
+    return hhmmOf(core.now(), core.tz()) >= SHARING_CHECKIN_FROM;
+  }
+
+  /**
+   * Her answer to the sharing check-in (C26). Private unless she picks
+   * Let's talk (a neutral alert to him) or ticks "Tell him my answer"; the
+   * ledger row `sharing_checkin` is written only then (or for Pause). Ease
+   * off and Pause only open her own screens; nothing is counted.
+   */
+  sharingCheckin(pid: string, body: SharingCheckinBody, by: string): LifeResult {
+    return this.guard(() => {
+      const p = this.repo.get(pid);
+      if (!p) return this.notFound();
+      const days = body.answer === 'snooze' ? SHARING_CHECKIN_SNOOZE_DAYS : SHARING_CHECKIN_DAYS;
+      this.repo.save({ ...p, sharingCheckinDueAt: this.iso(this.now() + days * DAY_MS), updatedAt: this.iso() });
+      // Private unless she picks Let's talk or ticks "Tell him my answer" (C26); Pause opens her own Pause screen.
+      const told = body.answer === 'talk' || (body.tell === true && body.answer !== 'snooze');
+      if (told) {
+        const l = this.ledger(pid);
+        this.appendLedger(pid, 'sharing_checkin', by, l.agreement, l.agreement?.version ?? l.maxVersion, { answer: body.answer });
+      }
+      if (body.answer === 'talk') this.alerts?.talk(pid);
+      else if (told) {
+        const words: Record<string, string> = { keep: 'is happy with how things are set up', ease: 'would like to ease off a little', pause: 'is taking a pause' };
+        this.pushOwner(pid, { kind: 'life', title: `${this.nameOf(pid)} answered the sharing check-in`, body: `${this.nameOf(pid)} ${words[body.answer] ?? 'answered'}.`, url: `/people/${pid}?tab=sharing`, tag: `people:checkin:${pid}` });
+      }
       this.ticks.bump(pid, 'me');
       return { ok: true, value: true };
     });
+  }
+
+  /** His prefs for pushes about her (life.db meta; defaults until he sets them). */
+  ownerPrefs(): OwnerPeoplePrefs {
+    const core = this.deps.core();
+    const raw = core?.db.meta(OWNER_PREFS_KEY);
+    if (raw) {
+      try {
+        const p = OwnerPeoplePrefsSchema.safeParse(JSON.parse(raw));
+        if (p.success) return p.data;
+      } catch {
+        /* defaults below */
+      }
+    }
+    return OwnerPeoplePrefsSchema.parse({});
+  }
+
+  setOwnerPrefs(patch: OwnerPeoplePrefsPatch): LifeResult<{ prefs: OwnerPeoplePrefs }> {
+    return this.guard(() => {
+      const core = this.lifeCore();
+      const { quiet, summaryAt, ...rest } = patch;
+      const next = { ...this.ownerPrefs(), ...Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) } as OwnerPeoplePrefs;
+      if (quiet === null) delete next.quiet;
+      else if (quiet !== undefined) next.quiet = quiet;
+      if (summaryAt === null) delete next.summaryAt;
+      else if (summaryAt !== undefined) next.summaryAt = summaryAt;
+      const prefs = OwnerPeoplePrefsSchema.parse(next);
+      core.db.setMeta(OWNER_PREFS_KEY, JSON.stringify(prefs));
+      this.alerts?.resyncOwner();
+      this.alerts?.release('');
+      // She sees on Sharing whether the day summary is on, and his caps on her send sheet.
+      for (const pid of this.deps.ctx.db.people.consents.persons()) {
+        const g = this.gateState(pid);
+        if (g === 'active' || g === 'paused') this.ticks.bump(pid, 'me');
+      }
+      return { ok: true, value: { prefs } };
+    });
+  }
+
+  /** Whether an agreement lets him see an area (the mirror's areas; `today` always). */
+  sees(a: Agreement | null, area: Area): boolean {
+    if (!a) return false;
+    switch (area) {
+      case 'today':
+        return true;
+      case 'meds':
+        return a.see.meds !== 'off';
+      case 'review':
+        return a.see.review !== 'off';
+      default:
+        return (a.see as Record<string, unknown>)[area] === true;
+    }
+  }
+
+  /** Her write landed: her stream ticks; his devices re-fetch only while he sees the area (M11). */
+  herWrote(pid: string, area: Area, counter: PersonCounter = 'life'): void {
+    this.ticks.bump(pid, counter);
+    if (this.sees(this.agreement(pid), area)) this.ownerChanged();
+  }
+
+  /** His write (or a system one) landed in her space: her stream ticks and his devices re-fetch. */
+  hisWrote(pid: string, counter: PersonCounter = 'life'): void {
+    this.ticks.bump(pid, counter);
+    this.ownerChanged();
   }
 
   /** Pause (hers alone): his writes into her space and his alerts wait. Works on jantar.db alone (C12). */
@@ -753,6 +939,13 @@ export class PeopleModule {
     this.appendLedger(pid, 'resumed', by, l.agreement, l.agreement?.version ?? l.maxVersion);
     this.mirrorState(pid, 'active', {});
     this.tryRecord(pid, { actor: 'her', action: 'resumed' });
+    // "While you were paused: 2 alerts from Sam." (one summary; nothing re-sent one by one).
+    try {
+      this.alerts?.release(pid);
+      this.plans?.resyncPerson(pid);
+    } catch (e) {
+      if (!(e instanceof LifeClosedError)) this.log.warn('release after resume failed', { personId: pid });
+    }
     this.deps.push({ kind: 'life', title: `${this.nameOf(pid)} resumed`, body: 'Sharing is back on.', url: `/people/${pid}`, tag: `people:${pid}` });
     this.ticks.bump(pid, 'me');
     this.ownerChanged();
@@ -1023,6 +1216,9 @@ export class LifeClosedError extends Error {
     super('life.db is not open');
   }
 }
+
+/** life.db meta: his prefs for pushes about the people on his Mac (spec 6.3 "To him"). */
+export const OWNER_PREFS_KEY = 'people_owner_prefs';
 
 /** Raised only by tests that seed more than one partner (the isolation suites). */
 let testPeopleMax: number | undefined;

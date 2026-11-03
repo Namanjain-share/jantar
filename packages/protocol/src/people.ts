@@ -35,6 +35,54 @@ import {
 } from './people-core.js';
 import { IsoDateSchema, ScopeSchema } from './models.js';
 import {
+  AlertSendBodySchema,
+  AlertReplyBodySchema,
+  AlertSendReplySchema,
+  AlertsQuerySchema,
+  AlertsResponseSchema,
+  BetweenTickBodySchema,
+  JournalCommentBodySchema,
+  JournalCommentSchema,
+  JournalCreateBodySchema,
+  JournalEntryFullSchema,
+  JournalListSchema,
+  JournalPatchBodySchema,
+  JournalQuerySchema,
+  LockedSchema,
+  OwnerAlertSendBodySchema,
+  OwnerPeoplePrefsPatchSchema,
+  OwnerPeoplePrefsReplySchema,
+  PersonP2PrefsPatchShape,
+  PersonP2PrefsShape,
+  PersonStatusBodySchema,
+  PersonStatusSchema,
+  PlanApplyBodySchema,
+  PlanPutBodySchema,
+  PlanTemplateSchema,
+  PlanViewSchema,
+  ReviewCarryBodySchema,
+  ReviewSendBodySchema,
+  ReviewViewSchema,
+  RoughBodySchema,
+  SharingCheckinBodySchema,
+  SleepPutBodySchema,
+  SleepQuerySchema,
+  SleepStartBodySchema,
+  SleepWakeBodySchema,
+  SleepWeekSchema,
+  SpaceSchema,
+  StepAskBodySchema,
+  StepBodySchema,
+  StepCarryBodySchema,
+  StepCheckinBodySchema,
+  StepIdSchema,
+  StepPatchSchema,
+  StepStateBodySchema,
+  TemplateBodySchema,
+  TemplatePatchSchema,
+  TemplatesResponseSchema,
+} from './people-days.js';
+import {
   DayKeySchema,
   DayQuerySchema,
   DoseBodySchema,
@@ -66,14 +114,13 @@ import {
 } from './life.js';
 
 export * from './people-core.js';
+export * from './people-days.js';
 export const AreaSchema = z.enum(AREA_NAMES as [Area, ...Area[]]);
 
 // ---------------------------------------------------------------------------
 // Ids and spaces
 
 export const PersonIdSchema = LifeIdSchema;
-export const SpaceSchema = z.string().regex(/^(|[0-9A-HJKMNP-TV-Z]{26}|s:[0-9A-HJKMNP-TV-Z]{26})$/);
-export type Space = z.infer<typeof SpaceSchema>;
 /** The owner's space and `by`. */
 export const OWNER_SPACE = '';
 /** A forgotten person's attribution on a shared row (P4). */
@@ -179,11 +226,12 @@ void PATCH_SHAPE_MATCHES;
 export const DontAskSchema = z.enum(['todos', 'plan', 'review', 'meds', 'weight', 'sleep', 'journal', 'chat', 'food', 'assistant', 'editHers', 'comment']);
 export type DontAsk = z.infer<typeof DontAskSchema>;
 
-/** Her preferences. P1 holds the lock screen, mute and "don't ask again"; later phases add theirs with defaults. */
+/** Her preferences. P1: the lock screen, mute and "don't ask again"; P2: quiet hours, times, holds, caps and rings (each with a default). */
 export const PersonPrefsSchema = z.object({
   lockScreen: LockScreenSchema.default('hide_alerts'),
   muteUntil: IsoDateSchema.nullable().default(null),
   dontAsk: z.array(DontAskSchema).max(12).default([]),
+  ...PersonP2PrefsShape,
 });
 export type PersonPrefs = z.infer<typeof PersonPrefsSchema>;
 
@@ -211,6 +259,12 @@ export const PersonSchema = z.object({
   pendingProposal: z.object({ version: z.number().int().min(1), note: z.string().max(200).optional() }).optional(),
   /** C23: field key → the day it may be proposed again. */
   declinedUntil: z.record(z.string(), IsoDateSchema).default({}),
+  /** P2: her status (Okay, Low, Need space); it ends at `until`. Hers alone: he has no route that sets it. */
+  status: PersonStatusSchema.optional(),
+  /** P2 (C26): when the sharing check-in next shows. */
+  sharingCheckinDueAt: IsoDateSchema.optional(),
+  /** P2: comment and reminder pushes held for her (quiet hours, space, focus, sleep, pause), released as one summary. */
+  held: z.object({ comments: z.number().int().min(0).default(0), reviews: z.number().int().min(0).default(0), reason: z.string().max(20).optional() }).optional(),
   createdAt: IsoDateSchema,
   updatedAt: IsoDateSchema,
 });
@@ -261,8 +315,10 @@ export const PersonTodoSchema = TodoSchema.extend({
   lastSkip: z.object({ at: IsoDateSchema, reason: z.string().max(200).optional() }).optional(),
   editedBy: SpaceSchema.optional(),
   editedAt: IsoDateSchema.optional(),
-  /** A change she asked for (`personTodoAsk`): shown on the item on his To-do tab in P1. */
+  /** A change she asked for (`personTodoAsk`): shown on the item on his To-do tab, and on the Alerts page (P2). */
   askedChange: z.object({ at: IsoDateSchema, note: z.string().max(200) }).optional(),
+  /** P2: "Tell me if not done by" (his, shown to her, never sent to her). */
+  followUp: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
 });
 export type PersonTodo = z.infer<typeof PersonTodoSchema>;
 export const PersonTodosResponseSchema = z.object({ today: DayKeySchema, todos: z.array(PersonTodoSchema) });
@@ -270,11 +326,11 @@ export type PersonTodosResponse = z.infer<typeof PersonTodosResponseSchema>;
 
 /** His assign body: the owner's todo body plus `ask` and `snoozable` (no `by`, no `space`: daemon-set). */
 export const AssignTodoBodySchema = z
-  .strictObject({ ...TodoBodySchema.shape, ask: TodoAskSchema.optional(), snoozable: z.boolean().optional() })
+  .strictObject({ ...TodoBodySchema.shape, ask: TodoAskSchema.optional(), snoozable: z.boolean().optional(), followUp: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional() })
   .refine((b) => b.repeat === undefined || b.due !== undefined, { message: 'a repeating todo needs a due day', path: ['repeat'] });
 export type AssignTodoBody = z.infer<typeof AssignTodoBodySchema>;
 export const AssignTodoPatchSchema = z
-  .strictObject({ ...TodoPatchSchema.shape, ask: TodoAskSchema.optional(), snoozable: z.boolean().optional() })
+  .strictObject({ ...TodoPatchSchema.shape, ask: TodoAskSchema.optional(), snoozable: z.boolean().optional(), followUp: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional() })
   .refine((b) => !(b.repeat && b.due === null), { message: 'a repeating todo needs a due day', path: ['repeat'] });
 export type AssignTodoPatch = z.infer<typeof AssignTodoPatchSchema>;
 /** Her Done: the owner's plus an optional report. */
@@ -300,9 +356,6 @@ export type PersonWeightsResponse = z.infer<typeof PersonWeightsResponseSchema>;
 // ---------------------------------------------------------------------------
 // What the owner sees of her, and her mirror of it (one function, spec 8.4)
 
-export const LockedSchema = z.object({ locked: z.literal(true) });
-export type Locked = z.infer<typeof LockedSchema>;
-
 export const OwnerTodosViewSchema = z.object({ today: DayKeySchema, todos: z.array(PersonTodoSchema), projects: z.array(ProjectViewSchema) });
 export type OwnerTodosView = z.infer<typeof OwnerTodosViewSchema>;
 /** `full`: each medicine and its doses. `adherence`: a percentage and a count, no names and no doses. */
@@ -326,16 +379,43 @@ export const PersonTodaySchema = z.object({
   weight: z.union([LockedSchema, z.object({ latest: PersonWeightSchema.nullable() })]),
   /** null: her food module is off, so there is no food area at all (O6). */
   food: z.union([LockedSchema, z.object({ kcal: z.number().int(), target: z.number().int() })]).nullable(),
+  /** P2: her day plan with what is derived on read (see.plan). */
+  plan: z.union([LockedSchema, PlanViewSchema]),
+  /** P2: her status line (part of the plan area). */
+  status: z.union([LockedSchema, PersonStatusSchema.nullable()]),
+  /** P2: the day's evening review at his level, from her review time on (null before it, or with nothing to review). */
+  review: z.union([LockedSchema, ReviewViewSchema]).nullable(),
+  /** P2: "Asleep since 23:40" while a night is open (see.sleep). */
+  sleep: z.union([LockedSchema, z.object({ open: z.object({ since: IsoDateSchema, night: DayKeySchema }).nullable() })]),
+  /** Concern lines, derived when he looks, never stored (C22): she sees the same on her mirror. Never from sleep, journal, moods or review outcomes. */
+  concerns: z.array(z.string()),
 });
 export type PersonToday = z.infer<typeof PersonTodaySchema>;
 
-/** Her own Today (P1): medicines due, reminders and to-dos due. */
+/** Her own Today: medicines due, reminders and to-dos due (P1); her plan, status, the review and sleep cards, the sharing check-in (P2). */
 export const PersonOwnTodaySchema = z.object({
   day: DayKeySchema,
   today: DayKeySchema,
   meds: MedsDaySchema.nullable(),
   todos: z.array(PersonTodoSchema),
   overdue: z.number().int(),
+  plan: PlanViewSchema,
+  status: PersonStatusSchema.nullable(),
+  /** From her review time until she sends it, or until 12:00 the next day ("Yesterday's review"). */
+  review: z.object({ day: DayKeySchema, line: z.string(), done: z.number().int(), open: z.number().int(), yesterday: z.boolean() }).nullable(),
+  sleep: z.object({
+    open: z.object({ since: IsoDateSchema, night: DayKeySchema }).nullable(),
+    /** "Going to sleep" shows (20:00–04:00, no night open). */
+    showStart: z.boolean(),
+    /** Last night closed with no wake time: the morning card asks "When did you wake up?". */
+    askWake: DayKeySchema.nullable(),
+  }),
+  /** The 14-day "Is this setup still working for you?" card. */
+  sharingCheckin: z.boolean(),
+  /** Alerts from {owner} she hasn't opened. */
+  alertsUnseen: z.number().int(),
+  /** Today's journal prompt (optional to answer; no nudge, no count). */
+  prompt: z.string(),
 });
 export type PersonOwnToday = z.infer<typeof PersonOwnTodaySchema>;
 
@@ -491,12 +571,14 @@ export const PauseBodySchema = z.strictObject({ note: z.string().trim().max(200)
 export const LeaveBodySchema = z.strictObject({ data: z.enum(['keep30', 'delete']), confirm: z.literal('LEAVE') });
 export type LeaveBody = z.infer<typeof LeaveBodySchema>;
 export const ExportQuerySchema = z.object({ format: z.enum(['html', 'json']).default('html') });
-/** P1 prefs; a later phase's field is a 400 (strict). */
+/** Her prefs (P1 and P2); a later phase's field is a 400 (strict). */
 export const PersonPrefsPatchSchema = z.strictObject({
   lockScreen: LockScreenSchema.optional(),
   muteUntil: IsoDateSchema.nullable().optional(),
   dontAsk: z.array(DontAskSchema).max(12).optional(),
+  ...PersonP2PrefsPatchShape,
 });
+export type PersonPrefsPatch = z.infer<typeof PersonPrefsPatchSchema>;
 export const LinkCodeReplySchema = z.object({ code: z.string(), url: z.string(), expiresAt: IsoDateSchema });
 export const LinkClaimBodySchema = z.strictObject({ code: z.string().min(16).max(128), deviceName: z.string().trim().min(1).max(64) });
 export const PersonPushSubscribeBodySchema = z.strictObject({
@@ -514,6 +596,10 @@ export const PersonTickSchema = z.object({
   kind: z.literal('tick'),
   seq: z.number().int(),
   life: z.number().int(),
+  /** P2: her plan, review, status, sleep and journal. */
+  plan: z.number().int(),
+  /** P2: alerts with the owner. */
+  alerts: z.number().int(),
   me: z.number().int(),
 });
 export type PersonTick = z.infer<typeof PersonTickSchema>;
@@ -760,6 +846,150 @@ export const PERSON_HEALTH_ROUTES = {
   }),
 } as const satisfies Record<string, RouteDef>;
 
+/** Her P2 routes (spec 1.3.2): status and the sharing check-in, the day plan and evening review, sleep, the journal and alerts. */
+const dayParams = z.object({ day: DayKeySchema });
+const stepParams = z.object({ day: DayKeySchema, stepId: StepIdSchema });
+const nightParams = z.object({ night: DayKeySchema });
+const commentParams = z.object({ id: LifeIdSchema, cid: LifeIdSchema });
+export const PERSON_DAYS_ROUTES = {
+  personStatus: route({
+    method: 'PUT', path: '/v1/p/status', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    body: PersonStatusBodySchema, response: z.object({ status: PersonStatusSchema.nullable() }), summary: 'Her status: Okay, Low or Need space, with a short line (hers alone).',
+  }),
+  personSharingCheckin: route({
+    method: 'POST', path: '/v1/p/sharing/checkin', scope: 'person', phase: 'v0.12', ctl: false,
+    body: SharingCheckinBodySchema, response: OkReplySchema, summary: 'Her answer to the 14-day sharing check-in (private unless she tells him).',
+  }),
+  // --- the day plan (area plan) and the evening review (area review)
+  personPlanGet: route({
+    method: 'GET', path: '/v1/p/plans/:day', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: dayParams, response: PlanViewSchema, summary: 'Her plan for a day.',
+  }),
+  personPlanAck: route({
+    method: 'POST', path: '/v1/p/plans/:day/ack', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: dayParams, response: OkReplySchema, summary: '"Got it" on the plan.',
+  }),
+  personStepAdd: route({
+    method: 'POST', path: '/v1/p/plans/:day/steps', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan', status: 201,
+    params: dayParams, body: StepBodySchema, response: z.object({ id: StepIdSchema }), summary: 'Add a step of her own.',
+  }),
+  personStepUpdate: route({
+    method: 'PATCH', path: '/v1/p/plans/:day/steps/:stepId', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: stepParams, body: StepPatchSchema, response: OkReplySchema, summary: 'Edit her step; on his, only ring and focus for herself.',
+  }),
+  personStepDelete: route({
+    method: 'DELETE', path: '/v1/p/plans/:day/steps/:stepId', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: stepParams, response: OkReplySchema, summary: 'Delete a step of her own (409 assigned on his).',
+  }),
+  personStepState: route({
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/state', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: stepParams, body: StepStateBodySchema, response: OkReplySchema, summary: 'Start, done (with an optional report), skip (with an optional reason) or undo.',
+  }),
+  personStepAck: route({
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/ack', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: stepParams, response: OkReplySchema, summary: '"Got it" on one step.',
+  }),
+  personStepCheckin: route({
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/checkin', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: stepParams, body: StepCheckinBodySchema, response: OkReplySchema, summary: 'Answer a check-in step: mood, energy, a line, anything needed.',
+  }),
+  personStepAsk: route({
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/ask', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: stepParams, body: StepAskBodySchema, response: OkReplySchema, summary: 'Ask to change a step he planned (a change request alert).',
+  }),
+  personStepCarry: route({
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/carry', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: stepParams, body: StepCarryBodySchema, response: OkReplySchema, summary: 'Carry an open step of hers to a later day.',
+  }),
+  personBetweenTick: route({
+    method: 'POST', path: '/v1/p/plans/:day/between/:bid/tick', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: z.object({ day: DayKeySchema, bid: StepIdSchema }), body: BetweenTickBodySchema, response: OkReplySchema, summary: 'Tick or untick a check-between slot.',
+  }),
+  personRoughDay: route({
+    method: 'POST', path: '/v1/p/plans/:day/rough', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: dayParams, body: RoughBodySchema, response: OkReplySchema, summary: 'A rough day: the rest of today is excused.',
+  }),
+  personRoughDayUndo: route({
+    method: 'DELETE', path: '/v1/p/plans/:day/rough', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    params: dayParams, response: OkReplySchema, summary: 'Undo a rough day (the same day).',
+  }),
+  personReviewGet: route({
+    method: 'GET', path: '/v1/p/plans/:day/review', scope: 'person', phase: 'v0.12', ctl: false, area: 'review',
+    params: dayParams, response: ReviewViewSchema, summary: 'Her evening review: live until sent, stored after.',
+  }),
+  personReviewSend: route({
+    method: 'POST', path: '/v1/p/plans/:day/review', scope: 'person', phase: 'v0.12', ctl: false, area: 'review',
+    params: dayParams, body: ReviewSendBodySchema, response: OkReplySchema, summary: 'Send the evening review (once a day).',
+  }),
+  // --- sleep (area sleep)
+  personSleep: route({
+    method: 'GET', path: '/v1/p/sleep', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    query: SleepQuerySchema, response: SleepWeekSchema, summary: 'Her nights and the week.',
+  }),
+  personSleepStart: route({
+    method: 'POST', path: '/v1/p/sleep/start', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    body: SleepStartBodySchema, response: z.object({ id: LifeIdSchema, night: DayKeySchema }), summary: '"Going to sleep" (409 open when a night is already open).',
+  }),
+  personSleepWake: route({
+    method: 'POST', path: '/v1/p/sleep/wake', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    body: SleepWakeBodySchema, response: OkReplySchema, summary: '"Woke up" (409 none_open with no night open).',
+  }),
+  personSleepPut: route({
+    method: 'PUT', path: '/v1/p/sleep/:night', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    params: nightParams, body: SleepPutBodySchema, response: OkReplySchema, summary: 'Add or correct a night.',
+  }),
+  personSleepDelete: route({
+    method: 'DELETE', path: '/v1/p/sleep/:night', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    params: nightParams, response: OkReplySchema, summary: 'Delete a night.',
+  }),
+  // --- journal (area journal)
+  personJournal: route({
+    method: 'GET', path: '/v1/p/journal', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    query: JournalQuerySchema, response: JournalListSchema, summary: 'Her journal, newest first, with comment counts and the streak.',
+  }),
+  personJournalGet: route({
+    method: 'GET', path: '/v1/p/journal/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    params: LifeIdParamsSchema, response: JournalEntryFullSchema, summary: 'One entry and its comments.',
+  }),
+  personJournalCreate: route({
+    method: 'POST', path: '/v1/p/journal', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal', status: 201,
+    body: JournalCreateBodySchema, response: IdReplySchema, summary: 'Write an entry or a check-in (idempotent on clientId).',
+  }),
+  personJournalUpdate: route({
+    method: 'PATCH', path: '/v1/p/journal/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    params: LifeIdParamsSchema, body: JournalPatchBodySchema, response: OkReplySchema, summary: 'Edit an entry of hers.',
+  }),
+  personJournalDelete: route({
+    method: 'DELETE', path: '/v1/p/journal/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete an entry of hers (and its comments).',
+  }),
+  personJournalComment: route({
+    method: 'POST', path: '/v1/p/journal/:id/comments', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal', status: 201,
+    params: LifeIdParamsSchema, body: JournalCommentBodySchema, response: IdReplySchema, summary: 'Her comment or reply under an entry.',
+  }),
+  personJournalCommentDelete: route({
+    method: 'DELETE', path: '/v1/p/journal/:id/comments/:cid', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    params: commentParams, response: OkReplySchema, summary: 'Delete a comment of hers (his: 404).',
+  }),
+  // --- alerts with the owner (always on)
+  personAlerts: route({
+    method: 'GET', path: '/v1/p/alerts', scope: 'person', phase: 'v0.12', ctl: false,
+    response: AlertsResponseSchema, summary: 'Alerts with the owner, both ways, newest first (90 days).',
+  }),
+  personAlertSend: route({
+    method: 'POST', path: '/v1/p/alerts', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    body: AlertSendBodySchema, response: AlertSendReplySchema, summary: 'Send the owner an alert.',
+  }),
+  personAlertSeen: route({
+    method: 'POST', path: '/v1/p/alerts/:id/seen', scope: 'person', phase: 'v0.12', ctl: false,
+    params: LifeIdParamsSchema, response: OkReplySchema, summary: 'She opened an alert from him.',
+  }),
+  personAlertReply: route({
+    method: 'POST', path: '/v1/p/alerts/:id/reply', scope: 'person', phase: 'v0.12', ctl: false,
+    params: LifeIdParamsSchema, body: AlertReplyBodySchema, response: OkReplySchema, summary: 'One-tap reply to an alert from him.',
+  }),
+} as const satisfies Record<string, RouteDef>;
+
 /** The owner's People routes about the person (spec 9.3.4). */
 const PEOPLE_ROUTES_BASE = {
   peopleList: route({
@@ -832,6 +1062,91 @@ export const PEOPLE_HEALTH_ROUTES = {
   }),
 } as const satisfies Record<string, RouteDef>;
 
+/** His P2 routes in her space (spec 9.3.4): plans and templates, her review, sleep and journal; alerts and his prefs. */
+const pidDay = z.object({ pid: LifeIdSchema, day: DayKeySchema });
+export const PEOPLE_DAYS_ROUTES = {
+  personPlanOwnerGet: route({
+    method: 'GET', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    params: pidDay, response: PlanViewSchema, summary: 'Her plan for a day (see.plan).',
+  }),
+  personPlanPut: route({
+    method: 'PUT', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    params: pidDay, body: PlanPutBodySchema, response: PlanViewSchema, summary: 'Set her plan for a day (assign.plan; her steps only with editHers.plan; 409 on a stale srev).',
+  }),
+  personPlanDelete: route({
+    method: 'DELETE', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    params: pidDay, response: OkReplySchema, summary: 'Remove his steps from a day (hers too with editHers.plan).',
+  }),
+  personPlanApply: route({
+    method: 'POST', path: '/v1/people/:pid/plans/:day/apply', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    params: pidDay, body: PlanApplyBodySchema, response: PlanViewSchema, summary: 'Apply a template to a day (replace or append).',
+  }),
+  personOwnerReview: route({
+    method: 'GET', path: '/v1/people/:pid/plans/:day/review', scope: 'control', phase: 'v0.12', ctl: false, area: 'review',
+    params: pidDay, response: ReviewViewSchema, summary: 'Her evening review at his level (see.review: counts or full).',
+  }),
+  personReviewCarry: route({
+    method: 'POST', path: '/v1/people/:pid/plans/:day/review/carry', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    params: pidDay, body: ReviewCarryBodySchema, response: OkReplySchema, summary: 'Carry open steps to a later day (his; hers with editHers.plan).',
+  }),
+  personTemplates: route({
+    method: 'GET', path: '/v1/people/:pid/templates', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    params: PidParamsSchema, response: TemplatesResponseSchema, summary: 'Her plan templates (assign.plan).',
+  }),
+  personTemplateCreate: route({
+    method: 'POST', path: '/v1/people/:pid/templates', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan', status: 201,
+    params: PidParamsSchema, body: TemplateBodySchema, response: IdReplySchema, summary: 'Save a plan template (up to 20).',
+  }),
+  personTemplateUpdate: route({
+    method: 'PATCH', path: '/v1/people/:pid/templates/:tid', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    params: z.object({ pid: LifeIdSchema, tid: LifeIdSchema }), body: TemplatePatchSchema, response: OkReplySchema, summary: 'Rename or edit a template.',
+  }),
+  personTemplateDelete: route({
+    method: 'DELETE', path: '/v1/people/:pid/templates/:tid', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    params: z.object({ pid: LifeIdSchema, tid: LifeIdSchema }), response: OkReplySchema, summary: 'Delete a template.',
+  }),
+  personOwnerSleep: route({
+    method: 'GET', path: '/v1/people/:pid/sleep', scope: 'control', phase: 'v0.12', ctl: false, area: 'sleep',
+    params: PidParamsSchema, query: SleepQuerySchema, response: SleepWeekSchema, summary: 'Her sleep week (see.sleep). He never adds, edits or deletes a night.',
+  }),
+  personOwnerJournal: route({
+    method: 'GET', path: '/v1/people/:pid/journal', scope: 'control', phase: 'v0.12', ctl: false, area: 'journal',
+    params: PidParamsSchema, query: JournalQuerySchema, response: JournalListSchema, summary: 'Her journal (see.journal), read only.',
+  }),
+  personOwnerJournalGet: route({
+    method: 'GET', path: '/v1/people/:pid/journal/:id', scope: 'control', phase: 'v0.12', ctl: false, area: 'journal',
+    params: PidIdParamsSchema, response: JournalEntryFullSchema, summary: 'One entry of hers and its comments.',
+  }),
+  personOwnerJournalComment: route({
+    method: 'POST', path: '/v1/people/:pid/journal/:id/comments', scope: 'control', phase: 'v0.12', ctl: false, area: 'journal', status: 201,
+    params: PidIdParamsSchema, body: JournalCommentBodySchema, response: IdReplySchema, summary: 'Comment under an entry of hers (comment.journal).',
+  }),
+  personOwnerJournalCommentDelete: route({
+    method: 'DELETE', path: '/v1/people/:pid/journal/:id/comments/:cid', scope: 'control', phase: 'v0.12', ctl: false, area: 'journal',
+    params: z.object({ pid: LifeIdSchema, id: LifeIdSchema, cid: LifeIdSchema }), response: OkReplySchema, summary: 'Delete a comment of his.',
+  }),
+  peopleAlerts: route({
+    method: 'GET', path: '/v1/people/alerts', scope: 'control', phase: 'v0.12', ctl: false,
+    query: AlertsQuerySchema, response: AlertsResponseSchema, summary: 'Alerts with her, both ways, newest first (90 days).',
+  }),
+  peopleAlertSend: route({
+    method: 'POST', path: '/v1/people/alerts', scope: 'control', phase: 'v0.12', ctl: false, status: 201,
+    body: OwnerAlertSendBodySchema, response: AlertSendReplySchema, summary: 'Send her an alert or a nudge, within her caps.',
+  }),
+  peopleAlertSeen: route({
+    method: 'POST', path: '/v1/people/alerts/:id/seen', scope: 'control', phase: 'v0.12', ctl: false,
+    params: LifeIdParamsSchema, response: OkReplySchema, summary: 'He opened an alert from her.',
+  }),
+  peopleAlertReply: route({
+    method: 'POST', path: '/v1/people/alerts/:id/reply', scope: 'control', phase: 'v0.12', ctl: false,
+    params: LifeIdParamsSchema, body: AlertReplyBodySchema, response: OkReplySchema, summary: 'One-tap reply to an alert from her.',
+  }),
+  peopleOwnerPrefs: route({
+    method: 'PATCH', path: '/v1/people/prefs', scope: 'control', phase: 'v0.12', ctl: false,
+    body: OwnerPeoplePrefsPatchSchema, response: OwnerPeoplePrefsReplySchema, summary: 'His quiet hours, caps and mute for pushes about her, the day summary and the review push.',
+  }),
+} as const satisfies Record<string, RouteDef>;
+
 const PEOPLE_ACCOUNT_ROUTES = {
   personOwnerActivity: route({
     method: 'GET', path: '/v1/people/:pid/activity', scope: 'control', phase: 'v0.12', ctl: false,
@@ -892,8 +1207,8 @@ const PEOPLE_ACCOUNT_ROUTES = {
 } as const satisfies Record<string, RouteDef>;
 
 /** Every route of hers this build serves (scope `person`; the arch test pins the list, T1). */
-export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES } as const;
+export const PERSON_ROUTES = { ...PERSON_ACCOUNT_ROUTES, ...PERSON_LIFE_ROUTES, ...PERSON_DAYS_ROUTES } as const;
 export type PersonRouteName = keyof typeof PERSON_ROUTES;
 /** Every owner People route this build serves (the arch test pins each one's scope, ctl, localOnly and area). */
-export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
+export const PEOPLE_ROUTES = { ...PEOPLE_ROUTES_BASE, ...PEOPLE_LIFE_ROUTES, ...PEOPLE_DAYS_ROUTES, ...PEOPLE_ACCOUNT_ROUTES } as const;
 export type PeopleRouteName = keyof typeof PEOPLE_ROUTES;

@@ -43,8 +43,9 @@ export type LifeSend = (p: LifePush) => Promise<LifeSendResult>;
  * scope: her devices hold none of his).
  */
 export function lifeNotification(p: LifePush, ts: string): Notification {
-  if (p.person !== undefined) return { kind: p.kind, title: p.title, body: p.body, url: p.url, tag: p.tag, ts, audience: { person: p.person } };
-  return { kind: p.kind, title: p.title, body: p.body, url: p.url, tag: p.tag, ts, minScope: 'control' };
+  const urgency = p.urgency ? { pushUrgency: p.urgency } : {};
+  if (p.person !== undefined) return { kind: p.kind, title: p.title, body: p.body, url: p.url, tag: p.tag, ts, audience: { person: p.person }, ...urgency };
+  return { kind: p.kind, title: p.title, body: p.body, url: p.url, tag: p.tag, ts, minScope: 'control', ...urgency };
 }
 
 /**
@@ -59,8 +60,9 @@ export interface PersonPushPrefs {
 }
 
 export function personPushText(p: LifePush, prefs: PersonPushPrefs): LifePush {
-  if (prefs.lockScreen !== 'hide_all') return p;
-  return { ...p, title: 'Jantar', body: p.kind === 'med' ? 'Medicine time' : 'Something new in your space' };
+  // Alerts from him are worded for her lock screen where they are built (life/alerts): "Alert from Sam".
+  if (prefs.lockScreen !== 'hide_all' || p.tag.startsWith('people:alert')) return p;
+  return { ...p, title: 'Jantar', body: p.kind === 'med' ? 'Medicine time' : p.tag.startsWith('people:plan') ? 'Plan step' : 'Something new in your space' };
 }
 
 /** Web Push only, control scope only; a medicine ignores the mute. No deadline here: see `withDeadline`. */
@@ -76,7 +78,8 @@ export async function sendLifePush(
   if (p.person !== undefined) {
     const prefs = personPrefs?.(p.person) ?? { lockScreen: 'hide_all', muteUntil: null };
     const until = prefs.muteUntil ? Date.parse(prefs.muteUntil) : NaN;
-    if (p.kind !== 'med' && Number.isFinite(until) && until > ctx.clock.now()) return { delivered: 0, failed: 0, muted: true };
+    // An urgent alert already went through the delivery resolver, which lets it past her mute (spec 6.3).
+    if (p.kind !== 'med' && p.urgency !== 'urgent' && Number.isFinite(until) && until > ctx.clock.now()) return { delivered: 0, failed: 0, muted: true };
     return sendDirect(ctx, targets, lifeNotification(personPushText(p, prefs), ctx.clock.iso()), { ignoreMute: true });
   }
   return sendDirect(ctx, targets, lifeNotification(p, ctx.clock.iso()), { ignoreMute: p.kind === 'med' });

@@ -222,7 +222,7 @@ describe('T10 / M21: his view equals her mirror', () => {
     await herCall('POST', '/v1/p/agreement/narrow', { see: { weight: false } });
     await pairs();
     // An area this build doesn't have is 404 on both sides.
-    expect((await herCall('GET', '/v1/p/mirror/journal')).statusCode).toBe(404);
+    expect((await herCall('GET', '/v1/p/mirror/chat')).statusCode).toBe(404);
   });
 });
 

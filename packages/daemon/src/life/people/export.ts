@@ -30,6 +30,13 @@ export interface PersonExport {
   food: unknown[];
   foodsSaved: unknown[];
   targets: { kcalTarget: number | null; goalKg: number | null };
+  /** P2: her day plans (each with its evening review), his templates for her, alerts both ways, her journal with every comment (his too), and her nights. */
+  plans: unknown[];
+  templatesUsed: unknown[];
+  alerts: unknown[];
+  journal: unknown[];
+  journalComments: unknown[];
+  sleep: unknown[];
   activity: unknown[];
 }
 
@@ -50,6 +57,12 @@ export function exportSections(ctx: Pick<DaemonContext, 'clock'>, people: People
     food: [],
     foodsSaved: [],
     targets: { kcalTarget: null, goalKg: null },
+    plans: [],
+    templatesUsed: [],
+    alerts: [],
+    journal: [],
+    journalComments: [],
+    sleep: [],
     activity: [],
   };
   if (!core) return empty;
@@ -68,6 +81,12 @@ export function exportSections(ctx: Pick<DaemonContext, 'clock'>, people: People
     food: rows(core, 'SELECT json FROM food WHERE space = ? ORDER BY day, at', pid),
     foodsSaved: rows(core, 'SELECT json FROM foods_saved WHERE space = ? ORDER BY id', pid),
     targets: { kcalTarget: num(`kcal_target:${pid}`), goalKg: goal === null ? null : goal / 10 },
+    plans: people.plans?.exportRows(pid).plans ?? [],
+    templatesUsed: people.plans?.exportRows(pid).templates ?? [],
+    alerts: people.alerts?.exportRows(pid) ?? [],
+    journal: people.journal?.exportRows(pid).journal ?? [],
+    journalComments: people.journal?.exportRows(pid).journalComments ?? [],
+    sleep: people.sleep?.exportRows(pid) ?? [],
     activity: allActivity(people, pid),
   };
 }

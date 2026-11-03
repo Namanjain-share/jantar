@@ -2,7 +2,7 @@
  * v0.12 People: WS /v1/p/events, her stream (spec 9.3.6).
  *
  * 1. `hello {protocol, daemonVersion, webHash, personEpoch}`
- * 2. `tick {seq, life, me}`: her counters only (life/people/ticks.ts)
+ * 2. `tick {seq, life, plan, alerts, me}`: her counters only (life/people/ticks.ts)
  * 3. `heartbeat {ts}` every 25 s
  *
  * Registered on the TCP app only, with its own gate (app.ts personGate:
@@ -58,8 +58,8 @@ export function openPersonEventStream(socket: WsLike, s: ApiServices, auth: Requ
 
   send({ kind: 'hello', protocol: s.ctx.version.protocol, daemonVersion: s.ctx.version.daemon, webHash: s.webHash, personEpoch: PERSON_EPOCH });
   const c = people.ticks.of(me.personId);
-  send({ kind: 'tick', seq: c.seq, life: c.life, me: c.me });
-  unsubs.push(people.ticks.subscribe(me.personId, (t) => send({ kind: 'tick', seq: t.seq, life: t.life, me: t.me })));
+  send({ kind: 'tick', seq: c.seq, life: c.life, plan: c.plan, alerts: c.alerts, me: c.me });
+  unsubs.push(people.ticks.subscribe(me.personId, (t) => send({ kind: 'tick', seq: t.seq, life: t.life, plan: t.plan, alerts: t.alerts, me: t.me })));
   unsubs.push(
     people.ticks.onClose(me.personId, (deviceId) => {
       if (deviceId !== null && deviceId !== me.deviceId) return;

@@ -2,10 +2,11 @@
  * v0.12 People: her counters (spec 9.3.6) and the signal that ends her
  * sockets.
  *
- * Her event stream (api/person-events.ts) sends `tick {seq, life, me}`:
- * counters only, never State, an id or a title. They move only on writes
- * into her space (`life`) or on her account (`me`: state, agreement,
- * devices). His writes to his own space never touch them, so her stream
+ * Her event stream (api/person-events.ts) sends `tick {seq, life, plan,
+ * alerts, me}`: counters only, never State, an id or a title. They move
+ * only on writes into her space (`life`: to-dos and weights; `plan`: her
+ * plan, review, status, sleep and journal, P2), on alerts between them
+ * (`alerts`, P2), or on her account (`me`: state, agreement, devices). His writes to his own space never touch them, so her stream
  * can't tell her when he is active (M11).
  *
  * `close(pid, deviceId?)` asks every open stream of hers (or of one device)
@@ -17,8 +18,13 @@
 export interface PersonCounters {
   seq: number;
   life: number;
+  plan: number;
+  alerts: number;
   me: number;
 }
+
+export type PersonCounter = 'life' | 'plan' | 'alerts' | 'me';
+const ZERO: PersonCounters = { seq: 0, life: 0, plan: 0, alerts: 0, me: 0 };
 
 export type PersonTickListener = (c: PersonCounters) => void;
 export type PersonCloseListener = (deviceId: string | null) => void;
@@ -31,11 +37,11 @@ export class PersonTicks {
 
   /** Her counters now. */
   of(pid: string): PersonCounters {
-    return { ...(this.counters.get(pid) ?? { seq: 0, life: 0, me: 0 }) };
+    return { ...(this.counters.get(pid) ?? ZERO) };
   }
 
-  bump(pid: string, which: 'life' | 'me'): void {
-    const c = this.counters.get(pid) ?? { seq: 0, life: 0, me: 0 };
+  bump(pid: string, which: PersonCounter): void {
+    const c = { ...(this.counters.get(pid) ?? ZERO) };
     this.seq += 1;
     c.seq = this.seq;
     c[which] += 1;

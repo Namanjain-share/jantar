@@ -69,10 +69,15 @@ import { newId } from '../core/ids.js';
 import { pushEndpointProblem } from '../notify/push-hosts.js';
 import { BackupTimer, backupSummary, listBackups, preUpgradeName, restoreTarget, RESTORE_REFUSED, writeBackup } from './backup.js';
 import { LIFE_BROKEN_REASON, openLifeDb } from './db.js';
-import { KIND_MODULE, PING_KINDS, errorKind } from './pings.js';
+import { KIND_MODULE, LIFE_PING_KINDS, PEOPLE_PING_KINDS, errorKind } from './pings.js';
+import { AlertsModule } from './alerts/module.js';
+import { JournalModule } from './journal/module.js';
 import { PeopleModule } from './people/module.js';
+import { peoplePingHandlers } from './people/pings.js';
 import { PersonSpace } from './people/space.js';
 import { PeopleViews } from './people/views.js';
+import { PlansModule } from './plans/module.js';
+import { SleepModule } from './sleep/module.js';
 import { createLifeSend, pushNotice, type LifeSend } from './push.js';
 import { LifeScheduler } from './scheduler.js';
 import { buildToday } from './today.js';
@@ -154,7 +159,7 @@ const BACKUPS_RACY_MS = 2_000;
 
 /** Which ping kinds belong to each module. */
 const MODULE_KINDS = new Map<LifeModuleName, PingKind[]>();
-for (const k of PING_KINDS) MODULE_KINDS.set(KIND_MODULE[k], [...(MODULE_KINDS.get(KIND_MODULE[k]) ?? []), k]);
+for (const k of LIFE_PING_KINDS) MODULE_KINDS.set(KIND_MODULE[k], [...(MODULE_KINDS.get(KIND_MODULE[k]) ?? []), k]);
 
 class LifeServiceImpl implements LifeService {
   private handle: LifeDb | null = null;
@@ -222,6 +227,12 @@ class LifeServiceImpl implements LifeService {
     const lifeCore = () => (this.handle ? this.core : null);
     this.people.space = new PersonSpace(this.people, () => this.todos, lifeCore);
     this.people.views = new PeopleViews(this.people, this.people.space, () => this.todos, lifeCore);
+    // P2: her day plans and review, alerts both ways, her journal and sleep log, and their scheduler kinds.
+    this.people.plans = new PlansModule({ people: this.people, core: lifeCore });
+    this.people.alerts = new AlertsModule({ people: this.people, core: lifeCore });
+    this.people.journal = new JournalModule({ people: this.people, core: lifeCore });
+    this.people.sleep = new SleepModule({ people: this.people, core: lifeCore });
+    for (const h of peoplePingHandlers({ core: this.core, people: this.people, plans: this.people.plans, alerts: this.people.alerts, sleep: this.people.sleep })) this.scheduler.register(h);
   }
 
   get todos(): TodosModule {
@@ -448,10 +459,12 @@ class LifeServiceImpl implements LifeService {
     return z && isValidTimeZone(z) ? z : this.macZone;
   }
 
-  /** Kinds whose module is on. */
+  /** Kinds whose module is on; v0.12, People's kinds while People is on. */
   private ringingKinds(): PingKind[] {
-    const life = this.ctx.settings.get().life;
-    return PING_KINDS.filter((k) => life[KIND_MODULE[k]]);
+    const s = this.ctx.settings.get();
+    const kinds: PingKind[] = LIFE_PING_KINDS.filter((k) => s.life[KIND_MODULE[k]]);
+    if (s.people.enabled) kinds.push(...PEOPLE_PING_KINDS);
+    return kinds;
   }
 
   private changed(): void {
@@ -498,7 +511,8 @@ class LifeServiceImpl implements LifeService {
         return false;
       }
     }
-    if (lifeOn(this.ctx.settings.get())) {
+    // v0.12: People's rings need the scheduler too, with every Life module off.
+    if (wantsLifeDb(this.ctx.settings.get())) {
       if (opts.resyncFirst) {
         this.scheduler.resyncAll();
         this.scheduler.skipDue();
@@ -538,7 +552,7 @@ class LifeServiceImpl implements LifeService {
     const lifeChanged = JSON.stringify(next.life) !== JSON.stringify(prev.life);
     const peopleChanged = next.people.enabled !== prev.people.enabled;
     if (!lifeChanged && !peopleChanged && next.notify.webpush === prev.notify.webpush) return;
-    const on = lifeOn(next);
+    const on = wantsLifeDb(next);
     if (wantsLifeDb(next) && !this.handle) {
       this.open();
     } else if (this.handle) {
@@ -549,6 +563,7 @@ class LifeServiceImpl implements LifeService {
       } else {
         const turnedOn = new Set<PingKind>();
         for (const m of LIFE_MODULES) if (next.life[m] && !prev.life[m]) for (const k of MODULE_KINDS.get(m) ?? []) turnedOn.add(k);
+        if (next.people.enabled && !prev.people.enabled) for (const k of PEOPLE_PING_KINDS) turnedOn.add(k);
         if (before !== this.zone) this.scheduler.resyncAll();
         else if (turnedOn.size > 0) this.scheduler.resyncAll(turnedOn);
       }
@@ -560,9 +575,10 @@ class LifeServiceImpl implements LifeService {
   /** The nightly run: back up, and say so once a day when it failed. */
   private async nightly(): Promise<void> {
     if (!this.handle) return;
-    // v0.12 People: ending windows close, left spaces past their 30 days are forgotten, Activity is pruned.
+    // v0.12 People: ending windows close, left spaces past their 30 days are forgotten, Activity is pruned, old alerts go.
     try {
       this.people.sweep();
+      this.people.alerts?.prune();
     } catch (e) {
       this.log.error('people sweep failed', { error: errorKind(e) });
     }
