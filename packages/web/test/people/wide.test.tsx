@@ -13,7 +13,7 @@
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PersonToday, PersonView, PlanView } from '@jantar/protocol/people';
 import { presetAgreement } from '@jantar/protocol/people-core';
 import { createRouter, memoryHistory } from '../../src/lib/router.js';
@@ -95,7 +95,14 @@ function Wrapped({ c, layout, tab, pid = PID }: { c: PeopleClient; layout: Layou
   );
 }
 
+// 0.12.1: the clock stands on DAY (3 Nov in India, UTC and California alike), so "today" does not move with the real date.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-03T10:00:00.000Z'));
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
