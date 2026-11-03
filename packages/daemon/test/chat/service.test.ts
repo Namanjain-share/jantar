@@ -268,3 +268,34 @@ describe('a turn through the fake claude, the bridge and the dispatcher', () => 
     await ctx.settings.patch({ ask: { enabled: true } });
   });
 });
+
+describe('0.11 "Looking at" (build plan c29)', () => {
+  it('the daemon names the item and keeps it on the turn; an unknown id, or a part that is off, is dropped', async () => {
+    const created = life.places.create({ name: 'Sample Dosa House' }, PHONE);
+    if (!created.ok) throw new Error(created.reason);
+    const placeId = created.value.id;
+    const sent = chat.send({ text: chatText('chat-read', 'rate this 4'), context: { kind: 'place', id: placeId } }, PHONE);
+    if (!sent.ok) throw new Error(sent.reason);
+    expect(turn(sent.value.id)?.context).toEqual({ kind: 'place', id: placeId, label: expect.stringMatching(/^Café · Sample Dosa House/) });
+    await vi.waitFor(() => {
+      const t = turn(sent.value.id);
+      if (!t || t.state === 'queued' || t.state === 'running') throw new Error('not yet');
+    }, WAIT);
+    const unknown = chat.send({ text: chatText('chat-read', 'and this'), context: { kind: 'todo', id: '01JZZZZZZZZZZZZZZZZZZZZZZZ' } }, PHONE);
+    if (!unknown.ok) throw new Error(unknown.reason);
+    expect(turn(unknown.value.id)?.context).toBeUndefined();
+    await vi.waitFor(() => {
+      const t = turn(unknown.value.id);
+      if (!t || t.state === 'queued' || t.state === 'running') throw new Error('not yet');
+    }, WAIT);
+    // A session the board doesn't have is dropped the same way (a known one is named by its folder for the turn,
+    // and the run gets its kind and id only: input.ts lookingLine, and the integration suite's case 10).
+    const s = chat.send({ text: chatText('chat-read', 'what is this one doing'), context: { kind: 'session', id: 'no-such-session' } }, PHONE);
+    if (!s.ok) throw new Error(s.reason);
+    expect(turn(s.value.id)?.context).toBeUndefined();
+    await vi.waitFor(() => {
+      const t = turn(s.value.id);
+      if (!t || t.state === 'queued' || t.state === 'running') throw new Error('not yet');
+    }, WAIT);
+  }, 120_000);
+});

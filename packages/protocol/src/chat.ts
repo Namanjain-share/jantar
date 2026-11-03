@@ -99,6 +99,22 @@ export type ChatTurnState = z.infer<typeof ChatTurnStateSchema>;
 export const ChatPhotoRefSchema = z.object({ id: z.string(), w: z.number().int(), h: z.number().int(), gone: z.boolean() });
 export type ChatPhotoRef = z.infer<typeof ChatPhotoRefSchema>;
 
+/**
+ * 0.11 (build plan c29; ipad-design.md 2.4): what the user is looking at
+ * beside Chat (the "Looking at" chip). The client sends a kind and an id
+ * only, never a URL or words; the daemon finds the item, writes its own one
+ * line for the run, and drops an id it doesn't know.
+ */
+export const CHAT_CONTEXT_KINDS = ['todo', 'medicine', 'meal', 'place', 'money', 'post', 'intel', 'meeting', 'session'] as const;
+export const ChatContextKindSchema = z.enum(CHAT_CONTEXT_KINDS);
+export type ChatContextKind = z.infer<typeof ChatContextKindSchema>;
+/** An id is letters, digits, "-" and "_": a URL, a path or a sentence can't be one. */
+export const ChatContextSchema = z.strictObject({ kind: ChatContextKindSchema, id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/) });
+export type ChatContext = z.infer<typeof ChatContextSchema>;
+/** On a turn: the item as the daemon named it when the message was sent ("Café · Sample Dosa House · 4★"). */
+export const ChatTurnContextSchema = z.object({ kind: ChatContextKindSchema, id: z.string(), label: z.string().max(200) });
+export type ChatTurnContext = z.infer<typeof ChatTurnContextSchema>;
+
 export const ChatTurnSchema = z.object({
   id: z.string(),
   at: IsoDateSchema,
@@ -116,6 +132,8 @@ export const ChatTurnSchema = z.object({
   tainted: z.boolean(),
   /** Tool calls the daemon refused (caps, a part that is off, a link not in the message). */
   refused: z.number().int(),
+  /** 0.11: what the user was looking at, when the message carried it and the daemon found it. */
+  context: ChatTurnContextSchema.optional(),
 });
 export type ChatTurn = z.infer<typeof ChatTurnSchema>;
 
@@ -135,7 +153,12 @@ export type ChatListQuery = z.infer<typeof ChatListQuerySchema>;
 export const ChatPhotoIdSchema = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/);
 
 export const ChatSendBodySchema = z
-  .strictObject({ text: z.string().max(CHAT_TEXT_MAX), photos: z.array(ChatPhotoIdSchema).max(CHAT_PHOTOS_MAX).optional() })
+  .strictObject({
+    text: z.string().max(CHAT_TEXT_MAX),
+    photos: z.array(ChatPhotoIdSchema).max(CHAT_PHOTOS_MAX).optional(),
+    /** 0.11: the "Looking at" chip (a daemon from before 0.11 refuses the key; the web app then puts the chip's words in the text). */
+    context: ChatContextSchema.optional(),
+  })
   .refine((b) => b.text.trim() !== '' || (b.photos?.length ?? 0) > 0, { message: 'type a message or add a photo' });
 export type ChatSendBody = z.infer<typeof ChatSendBodySchema>;
 

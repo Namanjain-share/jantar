@@ -124,6 +124,7 @@ export function Turn({ turn, nowMs, offline, canSend, retried = false, onRetry, 
     <li data-turn={turn.id} className="border-b border-line px-16 py-12" aria-label={turn.via === 'voice' ? 'A question by Siri' : 'A message'}>
       <div className="flex flex-col items-end gap-6">
         {turn.via === 'voice' ? <Tag>{CHAT_COPY.siri}</Tag> : null}
+        {turn.context ? <p className="max-w-[85%] truncate type-mono text-ink-3">looking at {turn.context.label}</p> : null}
         {turn.text ? <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-card bg-surface px-12 py-8 type-body text-ink">{turn.text}</p> : null}
         {turn.photos.length ? (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-6">

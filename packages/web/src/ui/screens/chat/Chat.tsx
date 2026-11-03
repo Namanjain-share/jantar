@@ -33,7 +33,8 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import type { ChatTurn } from '@jantar/protocol';
 import { useDraft } from '../../../lib/drafts.js';
 import { routePath } from '../../../lib/router.js';
-import { useDeps, useNavigate, useNow } from '../../context.js';
+import { useApp, useDeps, useNavigate, useNow } from '../../context.js';
+import { useLookingAtNow } from '../../shell/lookingAt.js';
 import { Button } from '../../kit/Button.js';
 import { IconButton } from '../../kit/IconButton.js';
 import { Sheet } from '../../kit/Sheet.js';
@@ -44,7 +45,7 @@ import { useLifeLoad } from '../life/shared/useLife.js';
 import { Loaded, OfflineLine, RowMenu, SheetActions, useOffline } from '../life/today/parts.js';
 import { Composer, useChips } from './Composer.js';
 import { History } from './History.js';
-import { CHAT_COPY, EXAMPLES, PRIVACY, PRIVACY_SHORT, dayOf, unfinished } from './model.js';
+import { CHAT_COPY, EXAMPLES, PRIVACY, PRIVACY_SHORT, dayOf, lookingWords, takesContext, unfinished } from './model.js';
 import { ThisChat } from './ThisChat.js';
 import { Refused, Turn, refusalText, useTap } from './Turn.js';
 
@@ -92,10 +93,18 @@ export function Chat({ day, dock }: ChatProps = {}) {
   const canSend = ready && !busy && !offline && !send.busy;
   const cursor = older === undefined ? (load.data?.older ?? null) : older;
 
+  // 0.11 (c29): beside a screen, the "Looking at" chip names what it shows; it goes with the box's message while shown.
+  const seen = useLookingAtNow();
+  const [chipOff, setChipOff] = useState<string | null>(null);
+  const looking = dock && seen && chipOff !== `${seen.kind}:${seen.id}` ? seen : null;
+  const daemonVersion = useApp((s) => s.state.daemon?.daemonVersion);
   const go = async (text: string, photos: readonly string[], fromBox: boolean): Promise<boolean> => {
     const t = text.trim();
     if ((!t && photos.length === 0) || !canSend) return false;
-    const ok = await send.run((key) => api.chatSend(t, photos, key));
+    const about = fromBox ? looking : null;
+    const asContext = about && takesContext(daemonVersion) ? { kind: about.kind, id: about.id } : undefined;
+    const words = about && !asContext ? `${lookingWords(about.label)} ${t}`.trim() : t;
+    const ok = await send.run((key) => (asContext ? api.chatSend(words, photos, key, asContext) : api.chatSend(words, photos, key)));
     if (ok && fromBox) setDraft('');
     // A new message is read at the end of the thread, not at the day the address had open.
     if (ok && day) navigate(routePath({ name: 'chat' }), { replace: true });
@@ -268,7 +277,21 @@ export function Chat({ day, dock }: ChatProps = {}) {
           {load.data && !load.data.ready.ok ? (
             <CommandSentence sentence={load.data.ready.reason ?? CHAT_COPY.notReady} />
           ) : (
-            <Composer area={area} draft={draft} setDraft={setDraft} sending={send.busy} canSend={canSend} chips={chips} onSend={() => void sendBox()} />
+            <>
+              {looking ? (
+                <div className="mb-8 flex min-w-0">
+                  <span className="flex h-44 min-w-0 items-center gap-8 rounded-btn border border-line bg-raised pl-12 type-small text-ink-2">
+                    <span className="min-w-0 truncate">
+                      Looking at: <span className="text-ink">{looking.label}</span>
+                    </span>
+                    <IconButton aria-label={`Don't send what you're looking at: ${looking.label}`} className="size-44 flex-none" onClick={() => setChipOff(`${looking.kind}:${looking.id}`)}>
+                      <XIcon size={14} aria-hidden="true" />
+                    </IconButton>
+                  </span>
+                </div>
+              ) : null}
+              <Composer area={area} draft={draft} setDraft={setDraft} sending={send.busy} canSend={canSend} chips={chips} onSend={() => void sendBox()} />
+            </>
           )}
           {busy ? <p className="mt-8 type-small text-ink-2">{CHAT_COPY.wait}</p> : null}
           {send.error ? <Refused className="mt-8">{refusalText(send.error)}</Refused> : null}

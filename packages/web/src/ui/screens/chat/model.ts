@@ -17,6 +17,17 @@ export const PRIVACY =
   'Chat adds and changes things at once and shows each change with Undo; it never deletes without your tap, and never types into a session. ' +
   'History stays on the Mac.';
 
+/** 0.11: a daemon from 0.11 on takes the "Looking at" chip as `context`; an older one gets its words at the start of the message. */
+export function takesContext(daemonVersion: string | undefined | null): boolean {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(daemonVersion ?? '');
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  return a > 0 || b >= 11;
+}
+
+/** The chip's words, as an older daemon gets them at the start of the message. */
+export const lookingWords = (label: string) => `Looking at: ${label}.`;
+
 /** The empty thread's examples: a tap fills the box, never sends (synthetic). */
 export const EXAMPLES: readonly string[] = ['Add oat milk to my list', 'How many calories today?', 'Rate Example Café 4 stars, great Wi-Fi'];
 

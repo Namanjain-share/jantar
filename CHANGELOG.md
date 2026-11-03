@@ -177,6 +177,15 @@ What changed for people who use Jantar, newest first. Versions before
   it). Open in Chat takes it full size. It is closed until you open it,
   remembers that on this device, and shares its draft with Chat. A phone's
   ⌘J opens the Chat tab.
+- **Looking at**: beside a café, a post, an Intel item, a meeting or a
+  session (or a todo or medicine a notification opened), Chat's panel shows
+  a "Looking at" chip above its box, so "rate this 4 for vibe" knows what
+  you mean. It goes with your message only while it shows (× takes it off).
+  Jantar sends only the item's kind and id: the Mac finds the item, writes
+  the line Chat reads itself, and drops one it doesn't know. An Intel item,
+  a meeting or a session is named to Chat by kind and id only, and Chat
+  reads it with its tools as before. The turn shows what it was about. With
+  a Mac on an older Jantar, the chip's words go at the start of the message.
 
 ## 0.11.0 (3 November 2026)
 

@@ -51,6 +51,8 @@ import {
   type ChatList,
   type ChatStatus,
   type RewriteModel,
+  type ChatContext,
+  type ChatTurnContext,
 } from '@jantar/protocol';
 import {
   BUILT_PHASE,
@@ -73,15 +75,16 @@ import { applyWrite, undoJournal, type Journal } from './actions.js';
 import { CHAT_BROKEN_REASON, chatPreUpgradeName, openChatDb } from './db.js';
 import { Dispatcher } from './dispatcher.js';
 import { saveFastPath } from './fast.js';
-import { chatStdin, CHAT_HISTORY_TURNS, type HistoryTurn } from './input.js';
+import { chatStdin, CHAT_HISTORY_TURNS, lookingLine, type HistoryTurn } from './input.js';
+import { findMeeting, labelOf } from './items.js';
 import { ChatPhotos } from './photos.js';
 import { personChatDeps, personOfThread, threadOf } from './person-deps.js';
 import { personFoodOn, personOnParts } from './person-tools.js';
 import { ChatStore, type PhotoRow, type TurnRecord } from './store.js';
 import { dismissCard, runCard, undoChange } from './taps.js';
-import { countSentence, replyText, speakable } from './text.js';
+import { countSentence, cut, line, replyText, speakable } from './text.js';
 import { audit, partOn, recordChange, toolsFor, TurnTools } from './tools.js';
-import type { ChatDeps, ChatWriteLimiter } from './types.js';
+import type { ChatDeps, ChatPart, ChatWriteLimiter } from './types.js';
 
 export const CHAT_PROMPT_VERSION = 'v1';
 export const CHAT_PROMPT_ASSET = `chat/chat-${CHAT_PROMPT_VERSION}.md`;
@@ -186,6 +189,19 @@ export interface ChatOptions {
   /** Life's per-device write limit, the API's own instance (daemon.ts): a run's writes count with the sender's. */
   lifeWrites: ChatWriteLimiter;
 }
+
+/** The part of Chat each "Looking at" kind belongs to (0.11). */
+const LOOKING_PART: Record<ChatContext['kind'], ChatPart> = {
+  todo: 'todos',
+  medicine: 'medicines',
+  meal: 'food',
+  place: 'places',
+  money: 'finance',
+  post: 'posts',
+  intel: 'intel',
+  meeting: 'meetings',
+  session: 'sessions',
+};
 
 export class ChatServiceImpl implements ChatService {
   private store: ChatStore | null = null;
@@ -535,7 +551,7 @@ export class ChatServiceImpl implements ChatService {
     return OK;
   }
 
-  send(body: { text: string; photos?: string[] }, actor: Actor, via: 'phone' | 'voice' = 'phone'): LifeResult<{ id: string }> {
+  send(body: { text: string; photos?: string[]; context?: ChatContext }, actor: Actor, via: 'phone' | 'voice' = 'phone'): LifeResult<{ id: string }> {
     const text = body.text.trim();
     const photoIds = [...new Set(body.photos ?? [])];
     const person = actor.kind === 'person' ? actor.personId : null;
@@ -560,6 +576,9 @@ export class ChatServiceImpl implements ChatService {
     }
     const id = newId();
     const at = this.ctx.clock.iso();
+    // 0.11: the "Looking at" chip, found here and named by the daemon; an id it doesn't know is dropped.
+    // Only his: her thread never names an item of his (v0.11 People).
+    const looking = body.context && via === 'phone' && !person ? this.lookingAt(body.context) : null;
     const fast = !person && this.readingLinks() && photoIds.length === 0 ? saveFastPath(text) : null;
     store.tx(() => {
       const photos = store
@@ -567,7 +586,7 @@ export class ChatServiceImpl implements ChatService {
         .map((pid) => store.photo(pid))
         .filter((p): p is NonNullable<typeof p> => p !== null)
         .map((p) => ({ id: p.id, w: p.w, h: p.h, gone: false }));
-      store.insertTurn({ id, at, via, text, photos, state: fast ? 'running' : 'queued', tainted: false, refused: 0, by: actorId(actor) });
+      store.insertTurn({ id, at, via, text, photos, state: fast ? 'running' : 'queued', tainted: false, refused: 0, by: actorId(actor), ...(looking ? { context: looking } : {}) });
     });
     if (fast) void this.saveFast(id, fast, actor);
     else {
@@ -578,6 +597,36 @@ export class ChatServiceImpl implements ChatService {
     }
     this.changed(thread);
     return { ok: true, value: { id } };
+  }
+
+  /** The item a "Looking at" chip names, as it is now, or null (gone, unknown, or its part is off). */
+  private lookingAt(c: ChatContext): ChatTurnContext | null {
+    // A part that is off can't be what Chat helps with: dropped like an unknown id.
+    const part: ChatPart = LOOKING_PART[c.kind];
+    if (!partOn(this.ctx.settings.get(), this.deps, part)) return null;
+    const label = (() => {
+      switch (c.kind) {
+        case 'session': {
+          const s = this.deps.board.state().sessions[c.id];
+          return s ? `Session · ${cut(line(s.folder), 80)}` : '';
+        }
+        case 'meeting': {
+          const m = findMeeting(this.deps, c.id);
+          return m ? `Meeting · ${cut(line(m.name), 120)}` : '';
+        }
+        case 'intel': {
+          const i = this.deps.intel.get(c.id);
+          return i ? `Intel · ${cut(line(i.title), 120)}` : '';
+        }
+        default:
+          try {
+            return labelOf(this.deps, { kind: c.kind, id: c.id });
+          } catch {
+            return '';
+          }
+      }
+    })();
+    return label ? { kind: c.kind, id: c.id, label: cut(label, 200) } : null;
   }
 
   /** v0.8's fast path in Chat: the link saved at once, with Undo; no Claude. */
@@ -987,6 +1036,7 @@ export class ChatServiceImpl implements ChatService {
         tools: list.map((t) => t.name),
         currency: z.currency,
         history: this.history(store, run.turnId),
+        ...(queued.context ? { looking: lookingLine(queued.context) } : {}),
         text: queued.text,
         photos: photoBlocks,
       });

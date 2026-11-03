@@ -95,6 +95,7 @@ import { ScreenView } from './session/ScreenView.js';
 import { useSessionScreen, useWaitingSettled } from './session/screen.js';
 import { useSends } from './session/sends.js';
 import { Transcript } from './session/Transcript.js';
+import { useLookingAt } from '../shell/lookingAt.js';
 
 /**
  * 0.11 (build plan 2.1): the property column sits beside the transcript once the session's own pane is this
@@ -195,6 +196,8 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const seen = useRef<Session | null>(null);
   if (live) seen.current = live;
   const session = live ?? seen.current;
+  // 0.11 (c29): Chat beside a session can be told it is the one you mean.
+  useLookingAt(session ? { kind: 'session', id: session.sid, label: session.folder } : null);
   const gone = !live && session !== null;
   // v0.6: a paired machine's session reads its account and switches from that machine, and says why
   // Jantar can't type into it (null: it can). The Mac's own sessions read exactly as before.

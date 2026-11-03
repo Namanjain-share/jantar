@@ -68,6 +68,7 @@ import { usePoll } from './poll.js';
 import { ShotViewer, type ShotView } from './ShotViewer.js';
 import { MeetingsError } from './states.js';
 import { Transcript } from './Transcript.js';
+import { useLookingAt } from '../../shell/lookingAt.js';
 
 export interface MeetingPageProps {
   id: string;
@@ -311,6 +312,7 @@ function Body({ d, filters, undo, marks: itemMarks, todos, projects, onDelete, n
   const segmented = tabs && transcript !== null;
   // The name wraps here (Page's <h1> cuts to one line): a long Teams title shows in full nowhere else.
   const title = <span className="whitespace-normal break-words">{m.name}</span>;
+  useLookingAt({ kind: 'meeting', id: m.id, label: m.name });
 
   return (
     <Page title={title} back={<BackOrClose filters={filters} />} aside={menu} undo={undo} wide>

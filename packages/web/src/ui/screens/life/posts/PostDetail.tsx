@@ -39,6 +39,7 @@ import { INPUT, Page, useOffline, useWrite } from '../today/parts.js';
 import { copyOf, doneText, postLabel } from './model.js';
 import type { PostActions } from './Posts.js';
 import { CopyButton, OPEN } from './PostRow.js';
+import { useLookingAt } from '../../../shell/lookingAt.js';
 
 /** The comments shown under a post: at most this many, newest first. */
 const COMMENTS = 5;
@@ -84,6 +85,7 @@ function Body({ post, back, tz, actions, onEdit, onClose }: Omit<PostDetailProps
   const offline = useOffline();
   const done = useLifeLoad('posts:done', () => api.postsList('done'));
   const label = postLabel(post);
+  useLookingAt({ kind: 'post', id: post.id, label });
   const open = post.status === 'idea' || post.status === 'ready';
   const due = post.due ? `due ${dayLabel(post.due.day)}${post.due.time ? ` ${post.due.time}` : ''}` : 'no date';
   const comments = commentsFor(post, done.data?.posts ?? []);

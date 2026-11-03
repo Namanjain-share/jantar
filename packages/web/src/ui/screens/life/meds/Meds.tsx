@@ -34,6 +34,7 @@ import { DoseRow } from './DoseRow.js';
 import { DoseSheet } from './DoseSheet.js';
 import { MedRow } from './MedRow.js';
 import { MedSheet } from './MedSheet.js';
+import { useLookingAt } from '../../../shell/lookingAt.js';
 import { NOTHING_DUE, NO_MEDS_TODAY, PERIOD_LABEL, isDue, lifeNow, useMedWrite, useOffline, zoneNote } from './data.js';
 
 export interface MedsProps {
@@ -69,6 +70,9 @@ export function Meds({ day, med }: MedsProps) {
     shownFor.current = med;
     openSheet(m);
   }, [med, meds]);
+  // 0.11 (c29): the medicine the address names is what Chat beside it is told you mean.
+  const named = med ? meds?.find((x) => x.id === med) : undefined;
+  useLookingAt(named ? { kind: 'medicine', id: named.id, label: named.name } : null);
 
   const data = load.data;
   const today = data?.day.today ?? status?.today ?? now.day;

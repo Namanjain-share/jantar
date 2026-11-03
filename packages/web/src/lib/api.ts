@@ -52,6 +52,7 @@
  * Shortcut's and the Mac's: never called here.
  */
 import {
+  type ChatContext,
   DEVICE_SECRET_HEADER,
   ROUTES,
   SCREENSHOT_AT_HEADER,
@@ -419,7 +420,8 @@ export interface Api {
   /** The thread: the newest turns (before turn `before`), oldest first, and whether Chat can run now. */
   chatList(before?: string): Promise<ChatList>;
   /** The reply is the new turn's id; its answer comes in a later chatList. */
-  chatSend(text: string, photos: readonly string[], idempotencyKey?: string): Promise<IdReply>;
+  /** 0.11: `context`, the "Looking at" chip's kind and id (a daemon from 0.11 on). */
+  chatSend(text: string, photos: readonly string[], idempotencyKey?: string, context?: ChatContext): Promise<IdReply>;
   /** Delete the whole thread (what it added stays). */
   chatClear(idempotencyKey?: string): Promise<OkReply>;
   /** Stop a turn that is waiting or running. */
@@ -784,7 +786,8 @@ export function createApi(opts: ApiOptions = {}): Api {
     meetingItemUntodo: (id, n, k) => call(ROUTES.meetingItemUntodo, { params: { id, n: String(n) }, ...key(k) }),
 
     chatList: (before) => call(ROUTES.chatList, { query: { before } }),
-    chatSend: (text, photos, k) => call(ROUTES.chatSend, { body: photos.length ? { text, photos: [...photos] } : { text }, ...key(k) }),
+    chatSend: (text, photos, k, context) =>
+      call(ROUTES.chatSend, { body: { text, ...(photos.length ? { photos: [...photos] } : {}), ...(context ? { context: { kind: context.kind, id: context.id } } : {}) }, ...key(k) }),
     chatClear: (k) => call(ROUTES.chatClear, key(k)),
     chatCancel: (id, k) => call(ROUTES.chatCancel, { params: { id }, ...key(k) }),
     chatUndo: (id, n, k) => call(ROUTES.chatUndo, { params: { id, n: String(n) }, ...key(k) }),

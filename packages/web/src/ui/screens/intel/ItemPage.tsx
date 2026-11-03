@@ -56,6 +56,7 @@ import {
   unfinished,
   type ShelfFilters,
 } from './model.js';
+import { useLookingAt } from '../../shell/lookingAt.js';
 
 /** A value that is one whole http(s) address, as a safe outside link; anything else as text. */
 export function FieldValue({ value }: { value: string }) {
@@ -230,6 +231,7 @@ function Body({
   const toast = useToast();
   const now = useNow(60_000);
   const del = useWrite();
+  useLookingAt({ kind: 'intel', id: item.id, label: item.title });
   const fromLink = isRead(item);
   const original = fromLink ? httpsHref(item.url) : null;
   const href = fromLink ? null : httpHref(item.url);

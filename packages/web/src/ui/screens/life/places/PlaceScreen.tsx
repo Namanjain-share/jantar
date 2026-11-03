@@ -41,6 +41,7 @@ import { AGAIN_LABEL, RATING_KEYS, RATING_LABELS, priceLabel, tagLabel, tagsOn }
 import { PlaceSheet } from './PlaceSheet.js';
 import { RateStars, Stars } from './Stars.js';
 import { VisitSheet } from './VisitSheet.js';
+import { useLookingAt } from '../../../shell/lookingAt.js';
 
 export interface PlaceScreenProps {
   id: string;
@@ -100,6 +101,7 @@ export function PlaceScreen({ id, back, currency, today, undo, held, customTags,
   const [olderError, setOlderError] = useState<unknown>(null);
   const data = load.data;
   const place = data?.place ?? null;
+  useLookingAt(place ? { kind: 'place', id: place.id, label: place.name } : null);
   const extra = older && older.base === data ? older : null;
   const visits = held.visible([...(data?.visits ?? []), ...(extra?.visits ?? [])], (v) => `visit:${v.id}`);
   const more = extra ? extra.more : (data?.more ?? false);

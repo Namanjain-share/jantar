@@ -24,6 +24,7 @@ import type { IncomingMessage } from 'node:http';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import type { Duplex } from 'node:stream';
 import type {
+  ChatContext,
   Account,
   ChatList,
   ChatStatus,
@@ -2287,7 +2288,8 @@ export interface ChatService extends Service {
   /** The newest turns (before turn `before`), oldest first, and whether Chat can run now. */
   list(actor: Actor, before?: string): LifeResult<ChatList>;
   /** Queue a turn (photos already uploaded); the value is its id. */
-  send(body: { text: string; photos?: string[] }, actor: Actor, via?: 'phone' | 'voice'): LifeResult<{ id: string }>;
+  /** 0.11: `context`, the "Looking at" chip (kind and id; the daemon names it, and drops an id it doesn't know). */
+  send(body: { text: string; photos?: string[]; context?: ChatContext }, actor: Actor, via?: 'phone' | 'voice'): LifeResult<{ id: string }>;
   /** The Siri door: queue a voice turn and wait for it at most `waitMs`; what Siri speaks. */
   voice(text: string, actor: Actor, waitMs: number): Promise<{ message: string; outcome: 'answered' | 'later' | 'busy' | 'refused'; turnId?: string }>;
   /** A waiting or running turn becomes cancelled; a finished one is left as it is. */

@@ -13,13 +13,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatCard, ChatChange, ChatList, ChatTurn } from '@jantar/protocol';
 import { ApiError, type Api } from '../src/lib/api.js';
 import { createRouter, parseRoute, routePath } from '../src/lib/router.js';
-import { EXAMPLES, PRIVACY, PRIVACY_SHORT, byDay, confirmVerb, dayOf, matches, photosOf, turnMeta, undoableChanges } from '../src/ui/screens/chat/model.js';
+import { EXAMPLES, PRIVACY, PRIVACY_SHORT, byDay, confirmVerb, dayOf, matches, photosOf, takesContext, turnMeta, undoableChanges } from '../src/ui/screens/chat/model.js';
 import { layoutAt } from '../src/ui/shell/layout.js';
 import { NAV } from '../src/ui/shell/nav.js';
 import { chatDockStore } from '../src/ui/shell/chatDock.js';
+import { lookingAtStore } from '../src/ui/shell/lookingAt.js';
+import { PLACES, id as placeId, listOf, status as placeStatus } from './places-helpers.js';
 import { NOW, fakeApi, measureAs, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
-preloadPlaces('chat');
+preloadPlaces('chat', 'places', 'todos');
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -441,5 +443,89 @@ describe('0.11 c28: Chat beside any screen', () => {
     renderApp({ path: '/chat', api: fakeApi({ chatList: vi.fn(async () => list([])) }), state: ON, layout: layoutAt(1440) });
     await screen.findByRole('heading', { level: 1, name: 'Chat' });
     expect(panel()).toBeNull();
+  });
+});
+
+describe('0.11 c29: the "Looking at" chip', () => {
+  afterEach(() => {
+    localStorage.clear();
+    chatDockStore.setState({ open: false, focus: 0 });
+    lookingAtStore.setState({ at: null });
+  });
+
+  function besideCafe(daemonVersion: string) {
+    chatDockStore.setState({ open: true, focus: 0 });
+    const state = stateWith({ features: { ask: true, life: true } });
+    state.daemon!.daemonVersion = daemonVersion;
+    const api = fakeApi({
+      chatList: vi.fn(async () => list([])),
+      chatSend: vi.fn(async () => ({ id: tid(50) })),
+      lifeStatus: vi.fn(async () => placeStatus()),
+      placesList: vi.fn(async () => listOf(PLACES)) as never,
+      placeGet: vi.fn(async (pid: string) => ({ place: PLACES.find((p) => p.id === pid)!, visits: [], more: false })),
+    });
+    renderApp({ path: `/places?id=${placeId(1)}`, api, state, layout: layoutAt(1440) });
+    return api;
+  }
+  const chip = async () => within(await screen.findByRole('complementary', { name: 'Chat panel' })).findByText('Example Café 1');
+
+  it("beside a café it names the café; Send carries its kind and id to a 0.11 daemon, and the box's words stay the user's", async () => {
+    const api = besideCafe('0.11.0');
+    expect((await chip()).parentElement?.textContent).toBe('Looking at: Example Café 1');
+    const p = screen.getByRole('complementary', { name: 'Chat panel' });
+    const area = within(p).getByRole('textbox', { name: 'A message to Chat' });
+    fireEvent.change(area, { target: { value: 'rate this 4 for vibe' } });
+    fireEvent.click(within(p).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.chatSend).toHaveBeenCalledWith('rate this 4 for vibe', [], expect.any(String), { kind: 'place', id: placeId(1) }));
+  });
+
+  it("an older daemon gets the chip's words at the start of the message instead", async () => {
+    const api = besideCafe('0.10.0');
+    await chip();
+    const p = screen.getByRole('complementary', { name: 'Chat panel' });
+    fireEvent.change(within(p).getByRole('textbox', { name: 'A message to Chat' }), { target: { value: 'rate this 4' } });
+    fireEvent.click(within(p).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.chatSend).toHaveBeenCalledWith('Looking at: Example Café 1. rate this 4', [], expect.any(String)));
+  });
+
+  it('× takes the chip off (a 44 target), and the message goes without it', async () => {
+    const api = besideCafe('0.11.0');
+    await chip();
+    const p = screen.getByRole('complementary', { name: 'Chat panel' });
+    const x = within(p).getByRole('button', { name: "Don't send what you're looking at: Example Café 1" });
+    expect(x.className).toContain('size-44');
+    fireEvent.click(x);
+    expect(within(p).queryByText('Example Café 1')).toBeNull();
+    fireEvent.change(within(p).getByRole('textbox', { name: 'A message to Chat' }), { target: { value: 'hello' } });
+    fireEvent.click(within(p).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.chatSend).toHaveBeenCalledWith('hello', [], expect.any(String)));
+  });
+
+  it('no chip where nothing is open, nor in the Chat place itself; a sent turn shows what it was about', async () => {
+    chatDockStore.setState({ open: true, focus: 0 });
+    lookingAtStore.setState({ at: { kind: 'place', id: placeId(1), label: 'Example Café 1' } });
+    const about = turn(1, { context: { kind: 'place', id: placeId(1), label: 'Café · Example Café 1 · 4★' } });
+    renderApp({ path: '/chat', api: fakeApi({ chatList: vi.fn(async () => list([about])) }), state: ON, layout: layoutAt(1440) });
+    expect(await screen.findByText('looking at Café · Example Café 1 · 4★')).toBeTruthy();
+    expect(screen.queryByText(/^Looking at:/)).toBeNull();
+  });
+
+  it('a todo the address names (a push opened it) is the chip on Todos', async () => {
+    chatDockStore.setState({ open: true, focus: 0 });
+    const todo = { id: tid(70), title: 'Example todo 70', priority: 'normal' as const, createdAt: ago(0), updatedAt: ago(0) };
+    const api = fakeApi({
+      chatList: vi.fn(async () => list([])),
+      lifeStatus: vi.fn(async () => placeStatus({ modules: { todos: true, medicines: false, food: false, places: false, finance: false, posts: false } })),
+      todosList: vi.fn(async () => ({ today: '2026-01-15', todos: [todo] })),
+      projectsList: vi.fn(async () => ({ projects: [] })),
+    });
+    renderApp({ path: `/todos?id=${todo.id}`, api, state: ON, layout: layoutAt(1440) });
+    const p = await screen.findByRole('complementary', { name: 'Chat panel' });
+    expect((await within(p).findByText('Example todo 70')).parentElement?.textContent).toBe('Looking at: Example todo 70');
+  });
+
+  it('a 0.11 daemon is told by its version (and a pre-release of it)', () => {
+    expect(['0.10.2', '0.0.0-test', '', undefined].map((v) => takesContext(v))).toEqual([false, false, false, false]);
+    expect(['0.11.0', '0.11.0-rc.1', '0.12.3', '1.0.0'].map((v) => takesContext(v))).toEqual([true, true, true, true]);
   });
 });

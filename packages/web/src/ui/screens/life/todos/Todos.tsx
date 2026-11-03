@@ -40,6 +40,7 @@ import { ProjectSheet } from './ProjectSheet.js';
 import { Reminders } from './Reminders.js';
 import { DoneRow, TodoRow } from './TodoRow.js';
 import { TodoSheet, type TodoStart } from './TodoSheet.js';
+import { useLookingAt } from '../../../shell/lookingAt.js';
 
 export interface TodosProps {
   tab?: TodosTab | undefined;
@@ -106,6 +107,8 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
     if (!asked && id && opened) navigate(routePath({ name: 'todos', tab: opened, id }), { replace: true });
   }, [asked, id, opened, navigate]);
   const flash = useFlash(id, target !== undefined);
+  // 0.11 (c29): a todo the address names is what Chat beside it is told you mean.
+  useLookingAt(target ? { kind: 'todo', id: target.id, label: target.title } : null);
   const todoSheet = useSheet<Todo>();
   const [start, setStart] = useState<TodoStart | undefined>(undefined);
   const projectSheet = useSheet<ProjectView>();

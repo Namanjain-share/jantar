@@ -65,7 +65,9 @@ export const CHAT_ROUTE_IMPLS: RouteTable = {
         const limited = limiter.check(who);
         if (!limited.ok) throw new ApiError('rate_limited', message, { 'retry-after': String(Math.max(1, Math.ceil(limited.retryAfterMs / 1000))) });
       }
-      const sent = lifeValue(s.deps.chat.send({ text: c.body.text, ...(c.body.photos ? { photos: c.body.photos } : {}) }, actor, 'phone'));
+      const sent = lifeValue(
+        s.deps.chat.send({ text: c.body.text, ...(c.body.photos ? { photos: c.body.photos } : {}), ...(c.body.context ? { context: c.body.context } : {}) }, actor, 'phone'),
+      );
       for (const [limiter] of limits) limiter.hit(who);
       return sent;
     },

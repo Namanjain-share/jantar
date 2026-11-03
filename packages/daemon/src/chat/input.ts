@@ -1,6 +1,6 @@
 /**
  * The run's one stream-json user message (spec 0.10 B6.6, B4): a text block
- * with <now>, <channel>, <reach>, <history> and <message>, every tag escaped
+ * with <now>, <channel>, <reach>, <history>, (0.11) <looking> and <message>, every tag escaped
  * inside data however it is spelled, then each photo as a daemon-written
  * label and a base64 image block. Photos are dropped from the end until the
  * line is at most CHAT_STDIN_MAX, and the text then says how many were left
@@ -45,6 +45,8 @@ export interface ChatInput {
   tools: string[];
   currency: string | null;
   history: HistoryTurn[];
+  /** 0.11: the daemon's one line for what the user is looking at (lookingLine), or none. */
+  looking?: string | undefined;
   text: string;
   photos: ChatPhotoBlock[];
   /**
@@ -52,6 +54,22 @@ export interface ChatInput {
    * currency or categories) with the owner's name and whether the owner can read this chat now.
    */
   person?: { owner: string; ownerCanRead: boolean; cafes: boolean };
+}
+
+/** The kinds whose names are someone else's words (a page's title, a meeting's, Claude's): the line names the kind and id only. */
+const UNTRUSTED_NAME = new Set(['intel', 'meeting', 'session']);
+const KIND_WORD: Record<string, string> = { intel: 'an Intel item', meeting: 'a meeting', session: 'a Claude session' };
+
+/**
+ * The daemon's line for the "Looking at" chip (0.11): the item's own label for
+ * the user's Life items; for Intel, a meeting or a session, the kind and id
+ * alone, so no outside text reaches the run without the tools' framing (and
+ * reading it taints the turn exactly as in 0.10).
+ */
+export function lookingLine(c: { kind: string; id: string; label: string }): string {
+  const id = c.id.replace(/[^A-Za-z0-9_-]/g, '');
+  if (UNTRUSTED_NAME.has(c.kind)) return `The user is looking at ${KIND_WORD[c.kind]} (${c.kind} id ${id}). Read it with the tools if the message needs it.`;
+  return `The user is looking at ${clean(c.label).replace(/\s+/g, ' ').trim()} (${c.kind} id ${id}).`;
 }
 
 /** The <history> block's lines, newest last, cut to the budget from the oldest end. */
@@ -111,6 +129,7 @@ function textBlock(i: ChatInput, left: number): string {
     '<history>',
     historyLines(i.history),
     '</history>',
+    ...(i.looking ? ['<looking>', i.looking, '</looking>'] : []),
     '<message>',
     clean(i.text) || (i.photos.length ? '(photos only)' : ''),
     '</message>',

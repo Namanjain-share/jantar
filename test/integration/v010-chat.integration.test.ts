@@ -36,6 +36,11 @@
  *    into a reply by the fake, never in a log line, an audit row, an event,
  *    a WS frame or a write reply.
  * 9. A restart keeps the thread; Clear empties chat.db and the photos.
+ * 10. (0.11) A "Looking at" turn: the phone sends a kind and an id; the
+ *    daemon names the café in one line of its own, outside <message>, and
+ *    keeps it on the turn. An id it doesn't know is dropped; a URL, a path
+ *    or words in place of an id are refused (400); a session reaches the
+ *    run by its kind and id only.
  */
 import { randomUUID } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
@@ -114,9 +119,9 @@ describe('v0.10 Chat through jantard: the phone, the Siri door, the fake claude 
     rememberSecret(cookie, claim.body);
     return { cookie, secret: (claim.body as { deviceSecret: string }).deviceSecret };
   }
-  /** Send and wait until the turn has ended. */
-  async function chat(text: string, photos: string[] = []): Promise<ChatTurn> {
-    const { id } = await ok<{ id: string }>('POST', '/v1/chat', photos.length ? { text, photos } : { text });
+  /** Send and wait until the turn has ended (0.11: with a "Looking at" `context`). */
+  async function chat(text: string, photos: string[] = [], context?: { kind: string; id: string }): Promise<ChatTurn> {
+    const { id } = await ok<{ id: string }>('POST', '/v1/chat', { text, ...(photos.length ? { photos } : {}), ...(context ? { context } : {}) });
     return eventually(
       async () => {
         const t = (await ok<ChatList>('GET', '/v1/chat')).turns.find((x) => x.id === id);
@@ -371,6 +376,38 @@ describe('v0.10 Chat through jantard: the phone, the Siri door, the fake claude 
     expect(photos).toEqual([]);
     const st = await cli('chat', 'status');
     expect(st.out).toContain('On disk: 0 messages, 0 photos');
+  });
+
+  it('10. 0.11 "Looking at": the daemon words the line from a kind and an id; an unknown id is dropped; a URL is refused', async () => {
+    const t = await chat(chatText('chat-read', 'rate this 4'), [], { kind: 'place', id: cafeId });
+    expect(t.state, `${t.reason}\n${dumpLog()}`).toBe('done');
+    expect(t.context).toEqual({ kind: 'place', id: cafeId, label: expect.stringMatching(/^Café · Sample Dosa House/) });
+    const run = await lastRun();
+    expect(run?.looking).toMatch(new RegExp(`^The user is looking at Café · Sample Dosa House.* \\(place id ${cafeId}\\)\\.$`));
+    expect(run?.message).not.toContain('Sample Dosa House');
+    expect(run?.message).not.toContain(cafeId);
+
+    const unknown = await chat(chatText('chat-read', 'and this one'), [], { kind: 'todo', id: '01JZZZZZZZZZZZZZZZZZZZZZZZ' });
+    expect(unknown.context).toBeUndefined();
+    expect((await lastRun())?.looking).toBeUndefined();
+
+    for (const id of ['https://example.com/a', '../etc/passwd', 'Sample Dosa House']) {
+      const bad = await call('POST', '/v1/chat', { text: 'x', context: { kind: 'place', id } });
+      expect(bad.status, id).toBe(400);
+    }
+    const extra = await call('POST', '/v1/chat', { text: 'x', context: { kind: 'place', id: cafeId, label: 'words' } });
+    expect(extra.status).toBe(400);
+
+    // A session (its folder and Claude's words are not the user's): the run gets its kind and id only, and
+    // reading it with the tools taints the turn exactly as in 0.10.
+    const sessions = Object.values((await ok<{ state: { sessions: Record<string, { sid: string; folder: string }> } }>('GET', '/v1/state')).state.sessions);
+    const s = sessions[0];
+    expect(s, 'a session on the board').toBeTruthy();
+    const about = await chat(chatText('chat-read', 'what is this one doing'), [], { kind: 'session', id: s!.sid });
+    expect(about.context).toEqual({ kind: 'session', id: s!.sid, label: expect.stringMatching(/^Session · /) });
+    const line = (await lastRun())?.looking ?? '';
+    expect(line).toBe(`The user is looking at a Claude session (session id ${s!.sid}). Read it with the tools if the message needs it.`);
+    expect(line).not.toContain(s!.folder);
   });
 
   it('the setup: the fake claude ran each Chat turn through cswap on the fake home', async () => {

@@ -121,3 +121,22 @@ describe('v0.10 settings', () => {
     expect(MAC_ONLY_SETTING_GROUPS).toContain('ask');
   });
 });
+
+describe('0.11 Chat "Looking at" (build plan c29)', () => {
+  it('context is a kind and an id only: strict, the nine kinds, never a URL, a path or words', () => {
+    for (const kind of ['todo', 'medicine', 'meal', 'place', 'money', 'post', 'intel', 'meeting', 'session'])
+      expect(ChatSendBodySchema.safeParse({ text: 'rate this 4', context: { kind, id: ULID } }).success, kind).toBe(true);
+    expect(ChatSendBodySchema.safeParse({ text: 'x', context: { kind: 'file', id: ULID } }).success).toBe(false);
+    expect(ChatSendBodySchema.safeParse({ text: 'x', context: { kind: 'place', id: 'https://example.com/a' } }).success).toBe(false);
+    expect(ChatSendBodySchema.safeParse({ text: 'x', context: { kind: 'place', id: '../etc' } }).success).toBe(false);
+    expect(ChatSendBodySchema.safeParse({ text: 'x', context: { kind: 'place', id: 'Sample Dosa House' } }).success).toBe(false);
+    expect(ChatSendBodySchema.safeParse({ text: 'x', context: { kind: 'place', id: ULID, label: 'Sample Dosa House' } }).success).toBe(false);
+    expect(ChatSendBodySchema.safeParse({ text: 'x', context: { kind: 'session', id: '3f2a9c1e-0b7d-4e7a-9a52-1c2b3d4e5f60' } }).success).toBe(true);
+  });
+
+  it('a turn may carry what it was about, as the daemon named it; an older turn has none', () => {
+    const base = { id: ULID, at: '2026-11-03T10:00:00.000Z', via: 'phone', text: 'rate this 4', photos: [], state: 'done', changes: [], cards: [], tainted: false, refused: 0 };
+    expect(ChatTurnSchema.safeParse(base).success).toBe(true);
+    expect(ChatTurnSchema.parse({ ...base, context: { kind: 'place', id: ULID, label: 'Café · Sample Dosa House' } }).context?.label).toBe('Café · Sample Dosa House');
+  });
+});

@@ -97,6 +97,13 @@ export function chatMessage(blocks) {
   return (m ? m[1] : '').replace(/<\\(\/?)/g, '<$1');
 }
 
+/** 0.11: the <looking> block (the daemon's line for the "Looking at" chip), or undefined when the message had none. */
+export function chatLooking(blocks) {
+  const text = blocks.find((b) => b?.type === 'text')?.text ?? '';
+  const m = /<looking>\n?([\s\S]*?)\n?<\/looking>/.exec(text);
+  return m ? m[1] : undefined;
+}
+
 function pickChatMode(config, args, stdin, matches, account, message) {
   const rule = (config.rules || []).find((r) => r.mode && CHAT_MODES.includes(r.mode) && matches(r.match, args, stdin, { account }));
   if (rule) return rule.mode;
@@ -186,6 +193,7 @@ export async function runChat({ root, args, stdin, matches, account }) {
   const allowed = (optionValue(args, '--allowedTools') ?? '').split(',').filter(Boolean);
   const blocks = chatBlocks(stdin);
   const message = chatMessage(blocks);
+  const looking = chatLooking(blocks);
   const images = blocks.filter((b) => b?.type === 'image' && b?.source?.type === 'base64').length;
   const out = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
 
@@ -367,7 +375,7 @@ export async function runChat({ root, args, stdin, matches, account }) {
     }
   }
   client?.close();
-  record(root, 'claude-chat.jsonl', { scenario: mode, calls, denials, images, message, ts: Date.now() });
+  record(root, 'claude-chat.jsonl', { scenario: mode, calls, denials, images, message, ...(looking === undefined ? {} : { looking }), ts: Date.now() });
 
   if (mode !== 'chat-init-bash' && mode !== 'chat-init-nomcp' && !maxed) {
     out({ type: 'assistant', message: { role: 'assistant', model, content: [{ type: 'text', text: reply }] }, session_id: sessionId });

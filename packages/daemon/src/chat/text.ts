@@ -8,7 +8,7 @@ import { tagEscaper } from '../rewrite/context.js';
 import { CONTROL, LINE_END } from '../rewrite/guards.js';
 
 /** Every tag the run's input and tool results use: escaped inside any data. */
-export const CHAT_TAGS = ['now', 'channel', 'reach', 'history', 'message', 'data', 'turn', 'reply', 'change', 'card'] as const;
+export const CHAT_TAGS = ['now', 'channel', 'reach', 'history', 'looking', 'message', 'data', 'turn', 'reply', 'change', 'card'] as const;
 
 const escapeChatTags = tagEscaper(CHAT_TAGS);
 
