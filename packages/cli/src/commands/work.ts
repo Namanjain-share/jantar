@@ -17,8 +17,8 @@
  *   It prints counts and row numbers, never a client's name.
  * - `work import undo <batch>`, `work imports`: the batch's Undo (7 days),
  *   and the newest imports.
- * - `work export --csv <file>`: his clients as a CSV where he names (a new
- *   file, 0600; never one that exists).
+ * - `work export --csv <file> [--deals]`: his clients (P3: or his deals) as
+ *   a CSV where he names (a new file, 0600; never one that exists).
  * - `work lockscreen names on|off`: a follow-up's push names its words on a
  *   locked phone (life.workLockScreenNames; a Mac switch).
  * - `work settings`: Work's settings as the phone sets them.
@@ -48,7 +48,8 @@ import { plural } from '../lib/text.js';
 const FLAGS = {
   name: { type: 'string', help: 'seed: the project name, for one folder (default: from the folder name)' },
   'dry-run': { type: 'boolean', help: 'import: show what the file holds and import nothing' },
-  csv: { type: 'string', help: 'export: the new file to write the clients to' },
+  csv: { type: 'string', help: 'export: the new file to write the clients (or the deals) to' },
+  deals: { type: 'boolean', help: 'export: the deals instead of the clients' },
 } as const;
 
 /** A project name from a folder name: "acme-web_app" is "Acme Web App" (at most 60 characters). */
@@ -168,10 +169,10 @@ async function listImports(ctx: CliContext): Promise<number> {
   return EXIT.ok;
 }
 
-/** `jantar work export --csv <file>`: a new file where he names (never one that exists), 0600. */
-async function exportCsv(ctx: CliContext, file: string): Promise<number> {
+/** `jantar work export --csv <file> [--deals]`: a new file where he names (never one that exists), 0600. */
+async function exportCsv(ctx: CliContext, file: string, what: 'clients' | 'deals'): Promise<number> {
   const path = resolve(file);
-  const res = await ctx.ctl.bytes(`${WORK_ROUTES.workExport.path}?what=clients`);
+  const res = await ctx.ctl.bytes(`${WORK_ROUTES.workExport.path}?what=${what}`);
   if (res.status < 200 || res.status >= 300) {
     let body: unknown = null;
     try {
@@ -189,7 +190,7 @@ async function exportCsv(ctx: CliContext, file: string): Promise<number> {
     throw new UsageError(`cannot write ${basename(file)}: ${(e as NodeJS.ErrnoException).code ?? 'it cannot be opened'}`);
   }
   const rows = Math.max(0, res.body.toString('utf8').trimEnd().split('\r\n').length - 1);
-  ctx.io.out(`Wrote ${plural(rows, 'client')} to ${path}\n`);
+  ctx.io.out(`Wrote ${plural(rows, what === 'deals' ? 'deal' : 'client')} to ${path}\n`);
   return EXIT.ok;
 }
 
@@ -208,7 +209,7 @@ async function showSettings(ctx: CliContext): Promise<number> {
 
 /** The status line: on, off, or on but waiting for Todos (a config.json edited by hand). */
 export function workLine(s: Pick<Settings, 'life'>): string {
-  if (workOn(s)) return 'Work: on (projects, clients and follow-ups, and one search across Jantar on the phone)\n';
+  if (workOn(s)) return 'Work: on (projects, clients, follow-ups and deals, and one search across Jantar on the phone)\n';
   if (s.life.work) return 'Work: off, because Todos is off (jantar work on turns both on)\n';
   return 'Work: off (turn it on: jantar work on)\n';
 }
@@ -219,8 +220,8 @@ export const TODOS_TOO = "Todos is on too: Work's projects and follow-ups are to
 export default defineCommand(
   {
     name: 'work',
-    summary: 'Turn Work (projects, clients, follow-ups) on or off; import, export.',
-    usage: 'jantar work <on|off|status|seed <folder...> [--name NAME]|import <file> [--dry-run]|import undo <batch>|imports|export --csv <file>|lockscreen names <on|off>|settings>',
+    summary: 'Turn Work (projects, clients, follow-ups, deals) on or off; import, export.',
+    usage: 'jantar work <on|off|status|seed <folder...> [--name NAME]|import <file> [--dry-run]|import undo <batch>|imports|export --csv <file> [--deals]|lockscreen names <on|off>|settings>',
     owner: 'WP-WORK',
     help:
       '  work on        the phone shows Work: projects, clients and follow-ups, and search from every screen (turns Todos on too)\n' +
@@ -233,8 +234,8 @@ export default defineCommand(
       '  work import undo <batch>\n' +
       '                 take an import back within 7 days (clients changed or linked since stay)\n' +
       '  work imports   the newest imports\n' +
-      '  work export --csv <file>\n' +
-      '                 your clients as a CSV, in a new file you name\n' +
+      '  work export --csv <file> [--deals]\n' +
+      '                 your clients (or, with --deals, your deals) as a CSV, in a new file you name\n' +
       '  work lockscreen names <on|off>\n' +
       "                 whether a follow-up's push says its words on a locked phone (off: \"Follow-up · 15:00\")\n" +
       "  work settings  Work's businesses, dial code and quiet days (set on the phone)\n" +
@@ -248,6 +249,7 @@ export default defineCommand(
     if (action !== 'seed' && flags.name !== undefined) throw new UsageError('--name goes with seed');
     if (action !== 'import' && flags['dry-run']) throw new UsageError('--dry-run goes with import');
     if (action !== 'export' && flags.csv !== undefined) throw new UsageError('--csv goes with export');
+    if (action !== 'export' && flags.deals) throw new UsageError('--deals goes with export');
     switch (action) {
       case 'seed':
         return seed(ctx, rest, flags.name);
@@ -263,7 +265,7 @@ export default defineCommand(
         return listImports(ctx);
       case 'export':
         if (flags.csv === undefined) throw new UsageError('export needs --csv <file>, a new file to write');
-        return exportCsv(ctx, flags.csv);
+        return exportCsv(ctx, flags.csv, flags.deals ? 'deals' : 'clients');
       case 'lockscreen': {
         const [what, value] = rest;
         if (what !== 'names' || (value !== 'on' && value !== 'off') || rest.length !== 2) throw new UsageError('lockscreen takes: names on, or names off');

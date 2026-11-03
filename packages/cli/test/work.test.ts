@@ -258,6 +258,19 @@ describe('jantar work import, export, lockscreen and settings (P2)', () => {
     const again = contextFor({ env: ENV }, { ctl });
     expect(await work.run(['export', '--csv', file], again.ctx)).toBe(EXIT.usage);
     expect(again.io.stderr).toContain('clients.csv exists already. Name a new file.');
+    expect(ctl.calls.map((x) => x.path)).toEqual(['/v1/work/export.csv?what=clients', '/v1/work/export.csv?what=clients']);
+  });
+
+  it('export --deals writes the deals CSV (P3); --deals goes with export only', async () => {
+    const csv = 'Title,Client,Stage\r\nSite rebuild,Acme Studio,Proposal sent\r\n';
+    const ctl = fakeCtl({ 'GET /v1/work/export.csv': ok(Buffer.from(csv)) });
+    const file = join(dir, 'deals.csv');
+    const c = contextFor({ env: ENV }, { ctl });
+    expect(await work.run(['export', '--csv', file, '--deals'], c.ctx)).toBe(EXIT.ok);
+    expect(await readFile(file, 'utf8')).toBe(csv);
+    expect(ctl.calls.map((x) => x.path)).toEqual(['/v1/work/export.csv?what=deals']);
+    expect(c.io.stdout).toBe(`Wrote 1 deal to ${file}\n`);
+    expect(await work.run(['imports', '--deals'], contextFor({ env: ENV }, { ctl }).ctx)).toBe(EXIT.usage);
   });
 
   it('lockscreen names on|off is a Mac switch; settings reads what the phone set', async () => {

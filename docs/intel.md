@@ -261,7 +261,7 @@ tools, each a call to the daemon on this Mac:
 | `intel_add` | save a link or a note; it shows on the phone as "via claude" |
 | `todos_here` | the open todos of the Life project linked to the session's folder |
 | `todo_add` | add a todo there; a day and a time make it a reminder that pings the phone |
-| `client_here` | 0.13, with [Work](work.md) on: who that folder's work is for (the client of its project, or the company whose folder holds it), its state, next follow-up and last touch; never a phone, an e-mail or notes |
+| `client_here` | 0.13, with [Work](work.md) on: who that folder's work is for (the client of its project, or the company whose folder holds it), its state, open deals and their stages, next follow-up and last touch; never a phone, an e-mail or notes |
 
 Add it once. On the Mac, run `jantar mcp` in a terminal: it prints the line
 to paste, with the absolute paths of node and Jantar, for example:
