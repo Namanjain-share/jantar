@@ -32,7 +32,9 @@
  *      over the home indicator. Content in a scroll box may pass under.
  *      In the touch shell (c24) the window controls' top-left 80 x 52 is
  *      kept free too, and on every touch screen (c32) the bottom-right
- *      24 x 24, where an iPad window's resize handle sits.
+ *      24 x 24, where an iPad window's resize handle sits; 0.12.0: at every
+ *      size, a fine pointer's too (the Mac's status bar keeps it free), and
+ *      with wider text (its own test below the matrix).
  *   5. On a touch screen, at least 90 % of the characters on screen are
  *      12 px or more, and none is under 11 (A5).
  *   6. No box scrolls up and down inside the page while shorter than
@@ -52,6 +54,13 @@
  *      full for its pane (its last buttons cut off): every size. A session
  *      is measured with Chat on too (session-chat), whose button the iPad's
  *      pane header carries.
+ *
+ * A touch size is measured with a coarse pointer or not at all: Chromium on
+ * CI's macOS runner once dropped Playwright's touch emulation part way
+ * through a context (run 41667870706, touch-1440 after Chat), and the page
+ * then drew the Mac's chrome on a touch screen. Before each probe the page
+ * is asked; a context that lost it is closed and the state measured again
+ * in a new one (once per context; twice is a problem).
  *
  * Tier A sizes in light run by default; JANTAR_LAYOUT_FULL=1 adds tier B and
  * dark. On a failure the page's PNG goes to the OS temp folder, named in the
@@ -364,29 +373,54 @@ describe.skipIf(!ready)('0.12: every place at every window size, in Chromium', (
           const fixture = fixtureOf(states[0]!);
           current = fixture;
           const chatEmpty = { on: false };
-          const opened = await openTouchable(browser, { ...viewport, scheme }, fixture, (url) =>
-            chatEmpty.on && url.pathname === '/v1/chat' ? { status: 200, body: { older: null, ready: { ok: true }, keepDays: 30, turns: [] } } : null,
-          );
-          const { page, watch, close } = opened;
-          // Requests in flight, so a place counts as loaded only once its chunk and its data are here.
-          let pending = 0;
-          page.on('request', () => (pending += 1));
-          page.on('requestfinished', () => (pending -= 1));
-          page.on('requestfailed', () => (pending -= 1));
+          /** A context for this group, with its requests in flight (a place counts as loaded only once its chunk and its data are here). */
+          const openGroup = async () => {
+            const opened = await openTouchable(browser, { ...viewport, scheme }, fixture, (url) =>
+              chatEmpty.on && url.pathname === '/v1/chat' ? { status: 200, body: { older: null, ready: { ok: true }, keepDays: 30, turns: [] } } : null,
+            );
+            const inFlight = { n: 0 };
+            opened.page.on('request', () => (inFlight.n += 1));
+            opened.page.on('requestfinished', () => (inFlight.n -= 1));
+            opened.page.on('requestfailed', () => (inFlight.n -= 1));
+            return { ...opened, inFlight };
+          };
+          let { page, watch, close, inFlight } = await openGroup();
+          // A touch size is measured with a coarse pointer: the context is reopened once if the browser drops it.
+          const coarse = viewport.touch === true || viewport.phone === true;
+          let reopened = false;
+          let fresh = true;
           try {
-            for (const [i, s] of states.entries()) {
+            for (let i = 0; i < states.length; i += 1) {
+              const s = states[i]!;
               chatEmpty.on = s.chatEmpty === true;
-              if (i === 0 && !s.chatEmpty) await page.goto(`${server.base}${s.path}`, { waitUntil: 'networkidle' });
-              else if (i === 0) await page.goto(`${server.base}/`, { waitUntil: 'networkidle' }).then(() => go(page, s.path));
+              if (fresh && !s.chatEmpty) await page.goto(`${server.base}${s.path}`, { waitUntil: 'networkidle' });
+              else if (fresh) await page.goto(`${server.base}/`, { waitUntil: 'networkidle' }).then(() => go(page, s.path));
               else {
                 // A state of its own (the empty thread): leave first, so Chat loads again.
                 if (s.chatEmpty) await go(page, '/');
                 await go(page, s.path);
               }
-              await settle(page, () => pending);
+              fresh = false;
+              await settle(page, () => inFlight.n);
               // c33: a state that needs a step; one this chrome can't take (the phone's palette) is skipped.
               if (s.steps && !(await s.steps(page).catch(() => false))) continue;
               if (s.steps) await page.waitForTimeout(300);
+              if (coarse && !(await page.evaluate(() => matchMedia('(pointer: coarse)').matches))) {
+                const lost = `${s.name} at ${size}: the browser dropped its touch emulation (no coarse pointer)`;
+                if (reopened) {
+                  problems.push(`${lost} again in a new context; not measured`);
+                  continue;
+                }
+                console.warn(`[layout] ${lost}; measuring it again in a new context`);
+                problems.push(...consoleProblems(watch, size));
+                if (await page.evaluate(() => document.querySelectorAll('style').length)) problems.push(`${size}: a <style> element was injected`);
+                await close();
+                ({ page, watch, close, inFlight } = await openGroup());
+                reopened = true;
+                fresh = true;
+                i -= 1;
+                continue;
+              }
               const p: Probe = await page.evaluate(probeLayout);
               const at = `${s.name} at ${size}`;
               const shot = async () => {
@@ -410,9 +444,9 @@ describe.skipIf(!ready)('0.12: every place at every window size, in Chromium', (
                 const corner = p.fixed.filter((t) => t.x < 80 && t.y < 52);
                 if (corner.length) problems.push(`${at}: in the window controls' corner: ${corner.map((t) => `${t.name} (${t.x},${t.y})`).join('; ')} (${await shot()})`);
               }
-              // 4. The bottom-right 24 x 24 stays free on a touch screen (an iPad window's resize handle, c32).
-              if (viewport.touch || viewport.phone) {
-                const corner = p.fixed.filter((t) => t.x + t.w > p.vw - 24 && t.y + t.h > p.vh - 24);
+              // 4. The bottom-right 24 x 24 stays free (an iPad window's resize handle, c32), at every size and pointer (0.12.0).
+              {
+                const corner = inResizeCorner(p);
                 if (corner.length) problems.push(`${at}: in the resize corner: ${corner.map((t) => `${t.name} (${t.x},${t.y} ${t.w}x${t.h})`).join('; ')} (${await shot()})`);
               }
               // 13. No label spilling out of its control.
@@ -815,6 +849,122 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
     }
   }, perfBudgetMs(60_000));
 });
+
+/**
+ * 0.12.0 (CI run 41667870706): the resize corner holds with wider text. Every bar along the bottom keeps
+ * the window's bottom-right 24 x 24 free by its padding, not by how wide its words happen to be, so
+ * another font (CI's, a person's) or a longer label can't push a control into it. Each window below is
+ * measured with every character spaced 0.3 em wider (a rule added to the app's own stylesheet, no
+ * <style>) and the status bar's link state made long enough to overflow its side of the bar: no control
+ * that stays put reaches into the corner, and on the Mac's chrome "? legend" stays wholly on screen,
+ * where it was, with only the left side of the bar clipped. The Macs at 800 and 600 are a narrow status
+ * bar and the phone's chrome with a fine pointer; touch-1440 and the phone keep their coarse pointer.
+ */
+describe.skipIf(!ready)('0.12.0: the resize corner with wider text', () => {
+  let browser: Browser;
+  let server: WebServer;
+  let empty = false;
+  const fixture = webFixtureV08({ accounts: 'cswap', variant: 'chat' });
+  const WINDOWS: Record<string, Viewport> = {
+    'mac-1440': { width: 1440, height: 960 },
+    'mac-800': { width: 800, height: 700 },
+    'mac-600': { width: 600, height: 700 },
+    'touch-1440': { width: 1440, height: 960, touch: true },
+    phone: { width: 390, height: 844, phone: true },
+  };
+  const PLACES: Array<{ name: string; path: string; empty?: boolean }> = [
+    { name: 'chat-empty', path: '/chat', empty: true },
+    { name: 'chat', path: '/chat' },
+    { name: 'board', path: '/' },
+    { name: 'session', path: `/s/${sidOf(4)}` },
+  ];
+
+  beforeAll(async () => {
+    browser = await chromium.launch();
+    server = await serveWebApp(DIST, () => fixture);
+  });
+  afterAll(async () => {
+    await browser?.close().catch(() => undefined);
+    await server?.close();
+  });
+
+  /** The place in its own context, settled; null when the browser dropped the touch emulation of a touch window. */
+  async function openPlace(v: Viewport, path: string) {
+    const o = await openTouchable(browser, v, fixture, (url) => (empty && url.pathname === '/v1/chat' ? { status: 200, body: { older: null, ready: { ok: true }, keepDays: 30, turns: [] } } : null));
+    await o.page.goto(`${server.base}${path}`, { waitUntil: 'networkidle' });
+    await o.page.waitForFunction(() => document.querySelector('main#main') && !document.querySelector('main [aria-busy="true"]'), null, { timeout: perfBudgetMs(10_000) }).catch(() => undefined);
+    await o.page.waitForTimeout(400);
+    if ((v.touch || v.phone) && !(await o.page.evaluate(() => matchMedia('(pointer: coarse)').matches))) {
+      await o.close();
+      return null;
+    }
+    return o;
+  }
+
+  /** "? legend"'s own box, or null where the chrome has none. */
+  const legendBox = (page: Page) =>
+    page.evaluate(() => {
+      const r = document.querySelector('footer button[aria-label="Legend"]')?.getBoundingClientRect();
+      return r ? { left: r.left, right: r.right, width: r.width } : null;
+    });
+
+  /** Every character 0.3 em wider, and the status bar's link state long enough to overflow its side. */
+  const widen = (page: Page) =>
+    page.evaluate(() => {
+      const sheet = [...document.styleSheets].find((x) => {
+        try {
+          return x.cssRules.length > 0;
+        } catch {
+          return false;
+        }
+      });
+      if (!sheet) throw new Error('no stylesheet of the app to add the rule to');
+      sheet.insertRule('*, *::before, *::after { letter-spacing: 0.3em !important; }', sheet.cssRules.length);
+      const word = document.querySelector('footer [aria-label="Connection"] > span');
+      if (word) word.textContent = 'offline · showing 21:45 · catching up with the Mac since 21:44 · '.repeat(3);
+      const footer = word?.closest('footer');
+      return footer ? footer.scrollWidth > footer.clientWidth || [...footer.children].some((c) => c.scrollWidth > c.clientWidth + 1) : null;
+    });
+
+  for (const [size, v] of Object.entries(WINDOWS))
+    it(`${size}: nothing in the bottom-right 24 x 24 with every character 0.3 em wider`, async () => {
+      const problems: string[] = [];
+      for (const place of PLACES) {
+        empty = place.empty === true;
+        const at = `${place.name} at ${size}`;
+        const o = (await openPlace(v, place.path)) ?? (await openPlace(v, place.path));
+        if (!o) {
+          problems.push(`${at}: the browser dropped its touch emulation twice`);
+          continue;
+        }
+        try {
+          const before = await legendBox(o.page);
+          const overflowed = await widen(o.page);
+          await o.page.waitForTimeout(150);
+          const p: Probe = await o.page.evaluate(probeLayout);
+          const after = await legendBox(o.page);
+          const corner = inResizeCorner(p);
+          if (corner.length) problems.push(`${at}, wider text: in the resize corner: ${corner.map((t) => `${t.name} (${t.x},${t.y} ${t.w}x${t.h})`).join('; ')}`);
+          if (before && after) {
+            // The text did get wider, and the bar's left side overflowed; "? legend" kept its place, wholly on screen.
+            if (after.width < before.width * 1.2) problems.push(`${at}: "? legend" is ${Math.round(after.width)} px with wider text, ${Math.round(before.width)} before: the rule didn't widen it`);
+            if (overflowed !== true) problems.push(`${at}: the status bar's left side didn't overflow with the long link state`);
+            if (Math.abs(after.right - before.right) > 0.5) problems.push(`${at}: "? legend" moved from ${before.right} to ${after.right} with wider text`);
+            if (after.right > p.vw - 24) problems.push(`${at}: "? legend" ends at ${after.right}, inside the corner`);
+            if (!p.whole.some((t) => t.name.startsWith('Legend <'))) problems.push(`${at}: "? legend" is cut off with wider text`);
+          }
+        } finally {
+          await o.close();
+        }
+      }
+      expect(problems, problems.join('\n')).toEqual([]);
+    }, perfBudgetMs(120_000));
+});
+
+/** The controls that don't scroll and reach into the window's bottom-right 24 x 24 (check 4). */
+function inResizeCorner(p: Probe): Probe['fixed'] {
+  return p.fixed.filter((t) => t.x + t.w > p.vw - 24 && t.y + t.h > p.vh - 24);
+}
 
 function consoleProblems(watch: Watch, size: string): string[] {
   return [...watch.csp.map((t) => `${size}: CSP: ${t}`), ...watch.errors.map((t) => `${size}: console: ${t}`)];
