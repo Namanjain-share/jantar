@@ -519,8 +519,9 @@ function Cards({
 
 /**
  * One deal as a card: "Acme · Site rebuild" and its value, then its days in stage, next step and close
- * day (ember once the close day passed); quiet ones say so. ··· (a long press on touch) moves it, logs
- * with its client, sets a next step or opens the client; `m` moves it with a keyboard.
+ * day (ember once the close day passed); quiet ones say so. On the board's 240 columns (`compact`) the deal
+ * comes first and its client opens the second line, so the deal's own name shows. ··· (a long press on
+ * touch) moves it, logs with its client, sets a next step or opens the client; `m` moves it with a keyboard.
  */
 function DealCardItem({
   card,
@@ -549,6 +550,7 @@ function DealCardItem({
   const close = closeText(card);
   const value = valueText(card);
   const facts = [
+    compact ? card.client.name : null,
     showStage ? card.stageName : null,
     card.kind === 'open' ? daysInStageText(card.daysInStage) : null,
     card.kind === 'open' ? nextStepText(card, now.day) : null,
@@ -591,7 +593,7 @@ function DealCardItem({
       >
         <span className="flex items-baseline gap-8">
           <span className="min-w-0 flex-1 truncate type-row text-ink">
-            <span className="text-ink-2">{card.client.name} · </span>
+            {compact ? null : <span className="text-ink-2">{card.client.name} · </span>}
             <span className="font-medium">{card.title}</span>
           </span>
           {value ? <span className="flex-none type-mono text-ink">{value}</span> : null}

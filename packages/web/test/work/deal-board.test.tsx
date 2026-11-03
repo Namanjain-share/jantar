@@ -69,7 +69,12 @@ describe('the board on a wide pane', () => {
     const proposal = within(board).getByRole('region', { name: 'Proposal sent' });
     expect(within(proposal).getByRole('heading').textContent).toMatch(/Proposal sent2.*1 quiet/);
     expect(proposal.textContent).toMatch(/₹6,50,000 open · ₹3,90,000 weighted/);
-    expect(within(within(proposal).getByRole('list')).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual([`/work?tab=deals&id=${IDS.deal}`, `/work?tab=deals&id=${IDS.deal2}`]);
+    const cards = within(within(proposal).getByRole('list')).getAllByRole('link');
+    expect(cards.map((a) => a.getAttribute('href'))).toEqual([`/work?tab=deals&id=${IDS.deal}`, `/work?tab=deals&id=${IDS.deal2}`]);
+    // On a 240 column the deal comes first, its client on the second line: "Acme · Site r…" hid the deal.
+    const [first, second] = [...cards[0]!.children] as HTMLElement[];
+    expect(first!.textContent).toMatch(/^Site rebuild₹4,50,000$/);
+    expect(second!.textContent).toMatch(/^Acme · 12 days/);
     expect(within(board).getByRole('region', { name: 'Contacted' }).textContent).toMatch(/Nothing here/);
     // Won's column: the last 30 days, a link to every won deal.
     const won = within(within(board).getByRole('region', { name: 'Won' })).getByRole('link');
