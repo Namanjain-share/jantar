@@ -65,7 +65,7 @@ export const PEOPLE_PATHS = {
   // P3: her chat, read only.
   chat: ['GET', '/v1/people/:pid/chat'],
   chatPhoto: ['GET', '/v1/people/:pid/chat/photos/:id'],
-  // P3: her chat's daily cap (with her colour).
+  // P3: her chat's daily cap (with her colour); the space's name.
   person: ['PATCH', '/v1/people/:pid'],
   // P4: the lists he shares with her.
   lists: ['GET', '/v1/people/:pid/lists'],
@@ -127,6 +127,8 @@ export interface PeopleClient {
   chatPhotoUrl(pid: string, id: string): string;
   /** P3: her chat's messages a day. */
   setChatPerDay(pid: string, chatPerDay: number): Promise<void>;
+  /** What the space with her is called (null: back to "Accountability partner"). */
+  setLabel(pid: string, label: string | null): Promise<void>;
   /** P4: shared lists. */
   lists(pid: string): Promise<SharedListsResponse>;
   listCreate(pid: string, name: string, kind: SharedListKind): Promise<{ id: string }>;
@@ -228,6 +230,7 @@ export function createPeopleClient(opts: { fetch?: typeof fetch; base?: string; 
     chat: (pid, before) => call('chat', { params: { pid }, query: { before } }),
     chatPhotoUrl: (pid, id) => PEOPLE_PATHS.chatPhoto[1].replace(':pid', encodeURIComponent(pid)).replace(':id', encodeURIComponent(id)),
     setChatPerDay: (pid, chatPerDay) => v(call('person', { params: { pid }, body: { chatPerDay } })),
+    setLabel: (pid, label) => v(call('person', { params: { pid }, body: { label } })),
     lists: (pid) => call('lists', { params: { pid } }),
     listCreate: (pid, name, kind) => call('listCreate', { params: { pid }, body: { name, kind } }),
     listRename: (pid, id, name) => v(call('listUpdate', { params: { pid, id }, body: { name } })),

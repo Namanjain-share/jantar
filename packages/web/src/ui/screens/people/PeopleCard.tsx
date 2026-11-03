@@ -6,7 +6,7 @@
  * writes the same view mark as her Today tab); a tap opens her Today tab.
  * Nothing shows while People is off or nobody is sharing.
  */
-import { PEOPLE_LABEL, STATUS_LABELS } from '@jantar/protocol/people-core';
+import { PEOPLE_LABEL, STATUS_LABELS, spaceLabel } from '@jantar/protocol/people-core';
 import type { OwnerMedsView, PersonToday } from '@jantar/protocol/people';
 import { hmOf } from '../../../people-shared/time.js';
 import { useNavigate } from '../../context.js';
@@ -42,16 +42,18 @@ export function PeopleCard({ client = peopleClient() }: { client?: PeopleClient 
     const list = await client.list().catch(() => null);
     if (!list?.enabled) return [];
     const sharing = list.people.filter((p) => p.state === 'active' || p.state === 'paused');
-    return Promise.all(sharing.map(async (p) => ({ id: p.id, today: await client.today(p.id).catch(() => null) })));
+    return Promise.all(sharing.map(async (p) => ({ id: p.id, label: spaceLabel(p.label), today: await client.today(p.id).catch(() => null) })));
   });
-  const rows = (load.data ?? []).filter((r): r is { id: string; today: PersonToday } => r.today !== null);
+  const rows = (load.data ?? []).filter((r): r is { id: string; label: string; today: PersonToday } => r.today !== null);
   if (rows.length === 0) return null;
   return (
     <ul aria-label={PEOPLE_LABEL} className="border-b border-line">
       {rows.map((r) => (
         <li key={r.id}>
-          <button type="button" className="flex min-h-48 w-full items-center px-16 text-left type-row text-ink hover:bg-hover" onClick={() => navigate(`/people/${r.id}?tab=today`)}>
-            {peopleLine(r.today)}
+          <button type="button" className="flex min-h-48 w-full flex-col items-start justify-center px-16 py-4 text-left type-row text-ink hover:bg-hover" onClick={() => navigate(`/people/${r.id}?tab=today`)}>
+            {/* The space's name with them (his label), over the line. */}
+            <span className="break-words type-small text-ink-2">{r.label}</span>{' '}
+            <span className="break-words">{peopleLine(r.today)}</span>
           </button>
         </li>
       ))}

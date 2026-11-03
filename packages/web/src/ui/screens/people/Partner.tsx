@@ -30,7 +30,7 @@
  *   ending, or who left (kept 30 days, the way to share again or delete it
  *   now) is a row on People (spec 2.3), not an empty heading.
  */
-import { ALERT_KINDS, ALERT_REPLY_LABELS, PEOPLE_LABEL, STATUS_LABELS, type AlertKind } from '@jantar/protocol/people-core';
+import { ALERT_KINDS, ALERT_REPLY_LABELS, PEOPLE_LABEL, STATUS_LABELS, spaceLabel, type AlertKind } from '@jantar/protocol/people-core';
 import type {
   AlertsResponse,
   AssignTodoBody,
@@ -163,8 +163,9 @@ export function Partner({ pid, tab: tabIn, day: dayIn, id, client = peopleClient
           <ul className="mt-12 border-t border-line">
             {sharing.map((p) => (
               <li key={p.id} className="border-b border-line">
-                <button type="button" className="flex h-48 w-full items-center type-row" onClick={() => navigate(`/people/${p.id}`)}>
-                  {p.name}
+                <button type="button" className="flex min-h-48 w-full flex-col items-start justify-center py-4 text-left type-row" onClick={() => navigate(`/people/${p.id}`)}>
+                  <span className="break-words">{p.name}</span>{' '}
+                  <span className="break-words type-small text-ink-2">{spaceLabel(p.label)}</span>
                 </button>
               </li>
             ))}
@@ -237,7 +238,9 @@ function PartnerOf({
   return (
     <div className="px-16 pb-48 pt-16 md:px-32">
       <header>
-        <h1 data-display className="type-display text-ink">
+        {/* The space's name with her (his label): his title for this screen, over her name. */}
+        <p className="break-words type-small text-ink-2">{spaceLabel(person?.label)}</p>
+        <h1 data-display className="break-words type-display text-ink">
           {name}
         </h1>
         <p className="type-small text-ink-2">

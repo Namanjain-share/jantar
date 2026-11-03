@@ -6,10 +6,11 @@
  * do. The words "everything" and "full access" never appear (M20).
  *
  * Neutral household wording: `{owner}` is the owner's display name, and
- * the page is titled "Accountability partner" (PEOPLE_LABEL), which is
- * also her app's name.
+ * the page is titled with the space's name (his label: "Accountability
+ * partner" while he set none, else "Cofounder", "Coach" or his own words),
+ * which is also her app's name; its first line says "as your cofounder".
  */
-import { AGREEMENT_FIELDS, CHAT_KEEP_DAYS_DEFAULT, PEOPLE_LABEL, chatDisclosure, phaseBuilt, type AgreementField, type AgreementFields, type BuildPhase } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, CHAT_KEEP_DAYS_DEFAULT, chatDisclosure, phaseBuilt, spaceLabel, yourLabel, type AgreementField, type AgreementFields, type BuildPhase } from '@jantar/protocol/people-core';
 
 export interface CopyLine {
   /** The agreement field this line shows (null: a fixed line). */
@@ -119,7 +120,7 @@ export function switchLabel(owner: string, key: string | null): string {
 }
 
 /** The page for an offer (or her live agreement, on Sharing), lines of built phases only. */
-export function joinCopy(owner: string, a: AgreementFields, opts: { built: BuildPhase; foodModule: boolean }): JoinCopy {
+export function joinCopy(owner: string, a: AgreementFields, opts: { built: BuildPhase; foodModule: boolean; label?: string | undefined }): JoinCopy {
   const builtField = (f: AgreementField) => phaseBuilt(f.phase, opts.built);
   const p2 = phaseBuilt('P2', opts.built);
   const p3 = phaseBuilt('P3', opts.built);
@@ -162,8 +163,8 @@ export function joinCopy(owner: string, a: AgreementFields, opts: { built: Build
     ...(p2 ? [`when you write in your journal${p3 ? ' or your chats' : ''}`, '"Seen" marks', 'sleep taps', 'when you open an alert'] : ['"Seen" marks']),
   ];
   return {
-    heading: PEOPLE_LABEL,
-    intro: `${owner} invited you to a shared space for your days, as your accountability partner. This page lists exactly what ${owner} can see and do. You can switch any of it off now or later, pause, or leave at any time.`,
+    heading: spaceLabel(opts.label),
+    intro: `${owner} invited you to a shared space for your days, as ${yourLabel(opts.label)}. This page lists exactly what ${owner} can see and do. You can switch any of it off now or later, pause, or leave at any time.`,
     sees,
     does: doesLines,
     cant: [

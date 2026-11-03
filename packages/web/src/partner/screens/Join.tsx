@@ -13,7 +13,7 @@
  * alerts can't reach her phone before that.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { AGREEMENT_FIELDS, closeDependents, withField, type AgreementFields } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, closeDependents, withField, yourLabel, type AgreementFields } from '@jantar/protocol/people-core';
 import type { JoinPreview } from '@jantar/protocol/people';
 import { Button } from '../../ui/kit/Button.js';
 import { Page } from '../App.js';
@@ -21,6 +21,7 @@ import { navigate } from '../nav.js';
 import type { PersonApi } from '../api.js';
 import { joinCopy, levelLabel, lowerLevels, switchLabel, type CopyLine } from '../../people-shared/join-copy.js';
 import { needsHomeScreen, turnOnNotifications } from '../notify.js';
+import { nameApp } from '../name.js';
 
 const codeFromHash = () => new URLSearchParams(location.hash.replace(/^#/, '')).get('c') ?? '';
 
@@ -48,9 +49,13 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
   }, [api, code, mode]);
 
   const copy = useMemo(
-    () => (preview && agreement ? joinCopy(preview.owner, agreement, { built: preview.built, foodModule: preview.modules.food }) : null),
+    () => (preview && agreement ? joinCopy(preview.owner, agreement, { built: preview.built, foodModule: preview.modules.food, label: preview.label }) : null),
     [preview, agreement],
   );
+  // The tab and a Home Screen install from this page take the space's name (her app does the same once she is in).
+  useEffect(() => {
+    if (preview) nameApp(preview.label);
+  }, [preview]);
 
   if (mode === 'link') {
     return (
@@ -59,7 +64,7 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
       </Page>
     );
   }
-  if (step === 'home' || step === 'notify') return <FirstSteps api={api} owner={preview?.owner ?? ''} step={step} next={() => (step === 'home' ? setStep('notify') : navigate('/p'))} />;
+  if (step === 'home' || step === 'notify') return <FirstSteps api={api} owner={preview?.owner ?? ''} label={preview?.label} step={step} next={() => (step === 'home' ? setStep('notify') : navigate('/p'))} />;
   if (step === 'notNow') return <Page title="Not now">Nothing was shared and the link still works until it runs out. Open it again when you're ready.</Page>;
   if (!code) return <Page title="Open your invite link">This page needs the link you were sent.</Page>;
   if (error && !preview) return <Page title="This link doesn't work">{error}</Page>;
@@ -143,13 +148,13 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
 }
 
 /** Her first steps after joining (spec 2.4), like his pairing: Home Screen (iPhone), notifications, Today. */
-function FirstSteps({ api, owner, step, next }: { api: PersonApi; owner: string; step: 'home' | 'notify'; next: () => void }) {
+function FirstSteps({ api, owner, label, step, next }: { api: PersonApi; owner: string; label?: string | undefined; step: 'home' | 'notify'; next: () => void }) {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (step === 'home') {
     return (
       <Page title="Step 1 of 2: Add to your Home Screen">
-        <p>On iPhone, notifications from {owner || 'your accountability partner'} reach you only from the app on your Home Screen.</p>
+        <p>On iPhone, notifications from {owner || yourLabel(label)} reach you only from the app on your Home Screen.</p>
         <ol className="mt-12 list-decimal pl-20">
           <li>Tap the Share button at the bottom of Safari.</li>
           <li>Tap Add to Home Screen, then Add.</li>
@@ -165,7 +170,7 @@ function FirstSteps({ api, owner, step, next }: { api: PersonApi; owner: string;
   }
   return (
     <Page title={needsHomeScreen() ? 'Step 2 of 2: Turn on notifications' : 'Turn on notifications'}>
-      <p>Your plan, its rings, reminders and alerts from {owner || 'your accountability partner'} come as notifications. You choose what shows on the lock screen in Me › Notifications.</p>
+      <p>Your plan, its rings, reminders and alerts from {owner || yourLabel(label)} come as notifications. You choose what shows on the lock screen in Me › Notifications.</p>
       {note ? (
         <p role="status" className="mt-12 font-medium">
           {note}

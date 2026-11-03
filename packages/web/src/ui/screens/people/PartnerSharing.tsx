@@ -23,7 +23,21 @@
  * Activity: her record in his voice ("You looked at Asha's Today"), newest
  * first, his views grouped per day (C28): the same rows she reads.
  */
-import { AGREEMENT_FIELDS, BUILT_PHASE, OWNER_FALLBACK_NAME, fieldValue, levelOf, phaseBuilt, type AgreementField, type AgreementFields } from '@jantar/protocol/people-core';
+import {
+  AGREEMENT_FIELDS,
+  BUILT_PHASE,
+  OWNER_FALLBACK_NAME,
+  PEOPLE_LABEL,
+  PERSON_LABEL_MAX,
+  PERSON_LABEL_PRESETS,
+  fieldValue,
+  levelOf,
+  personLabelProblem,
+  phaseBuilt,
+  spaceLabel,
+  type AgreementField,
+  type AgreementFields,
+} from '@jantar/protocol/people-core';
 import type { OwnerPeoplePrefs, PeopleList, PersonActivity, PersonView } from '@jantar/protocol/people';
 import { CLI_NAME } from '@jantar/protocol';
 import { useEffect, useState } from 'react';
@@ -110,7 +124,7 @@ export function SharingTab({ client, pid, name, person, list, reload }: { client
   const a = person?.agreement ? stripVersion(person.agreement) : null;
   if (!person || !a) return <p className="mt-12 type-small text-ink-2">Loading…</p>;
   const owner = list?.ownerName ?? OWNER_FALLBACK_NAME;
-  const copy = joinCopy(owner, a, { built: BUILT_PHASE, foodModule: person.modules.food });
+  const copy = joinCopy(owner, a, { built: BUILT_PHASE, foodModule: person.modules.food, label: person.label });
   return (
     <div className="mt-12 flex flex-col gap-16">
       <section aria-label={`What ${name} agreed to`}>
@@ -152,7 +166,76 @@ export function SharingTab({ client, pid, name, person, list, reload }: { client
         </p>
       </section>
       <OwnerPrefs client={client} name={name} prefs={list?.ownerPrefs ?? null} reload={reload} />
+      <SpaceName client={client} pid={pid} name={name} label={person.label} reload={reload} />
     </div>
+  );
+}
+
+/** The select's value for "Your own words" (no preset is spelled like it). */
+const OWN_WORDS = '__own__';
+
+/**
+ * What the space with her is called (his label): a preset, or his own words (1 to 40 characters, plain text on
+ * one line). Her app's name, the top of her Today and the pushes about it read it; the default is
+ * "Accountability partner" (saved as no label). Text only: React renders it, nothing parses it.
+ */
+export function SpaceName({ client, pid, name, label, reload }: { client: PeopleClient; pid: string; name: string; label: string | undefined; reload: () => void }) {
+  const current = spaceLabel(label);
+  const isPreset = (l: string) => (PERSON_LABEL_PRESETS as readonly string[]).includes(l);
+  const [choice, setChoice] = useState(isPreset(current) ? current : OWN_WORDS);
+  const [own, setOwn] = useState(isPreset(current) ? '' : current);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setChoice(isPreset(current) ? current : OWN_WORDS);
+    setOwn(isPreset(current) ? '' : current);
+  }, [current]);
+  const next = choice === OWN_WORDS ? own.trim() : choice;
+  const problem = choice === OWN_WORDS ? personLabelProblem(own) : null;
+  const save = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      await client.setLabel(pid, next === PEOPLE_LABEL ? null : next);
+      setNote(`Saved. ${name}'s app is called "${next}" now.`);
+      reload();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const field = 'min-h-44 w-full max-w-[24rem] rounded-btn border border-line bg-bg px-8 type-row text-ink';
+  return (
+    <section aria-label="What this space is called">
+      <h2 className="type-row font-semibold text-ink">What this space is called</h2>
+      <p className="type-small text-ink-2">
+        Now: <span className="break-words text-ink">{current}</span>. {name} sees it as the name of their app, at the top of their Today and on notifications. An app already on {name}'s Home Screen keeps the name it was added with.
+      </p>
+      <select aria-label="What this space is called" className={`mt-8 ${field}`} value={choice} onChange={(e) => setChoice(e.target.value)}>
+        {PERSON_LABEL_PRESETS.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+        <option value={OWN_WORDS}>Your own words…</option>
+      </select>
+      {choice === OWN_WORDS ? (
+        <label className="mt-8 flex flex-col gap-4">
+          <span className="type-small text-ink-2">Your own words (up to {PERSON_LABEL_MAX} characters)</span>
+          <input className={field} maxLength={PERSON_LABEL_MAX} value={own} onChange={(e) => setOwn(e.target.value)} />
+        </label>
+      ) : null}
+      {choice === OWN_WORDS && own.length > 0 && problem ? <p className="mt-4 type-small text-ink-2">{problem}</p> : null}
+      <Button variant="outline" className="mt-8 min-h-44" disabled={busy || problem !== null || next === current} onClick={() => void save()}>
+        Save
+      </Button>
+      {note ? (
+        <p role="status" className="mt-4 break-words type-small text-ink">
+          {note}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

@@ -20,7 +20,7 @@
  * - "Add a step" adds one of her own to the day (title, a time that can
  *   ring her, minutes), with or without a plan from him (Q7).
  */
-import { ASK_REASONS, SKIP_REASONS, STATUS_LABELS, fieldsChanged } from '@jantar/protocol/people-core';
+import { ASK_REASONS, SKIP_REASONS, STATUS_LABELS, fieldsChanged, spaceLabel } from '@jantar/protocol/people-core';
 import type { PersonMe, PersonOwnToday, PersonTodo, PlanStep, PlanView, StepBody } from '@jantar/protocol/people';
 import { useCallback, useEffect, useState } from 'react';
 import { Faces } from '../../people-shared/Faces.js';
@@ -87,6 +87,9 @@ export function Today({ me, api, reload, tick }: { me: PersonMe; api: PersonApi;
   const sections = groupSteps(view, steps);
   return (
     <div className="pb-96">
+      <p className="break-words text-small text-ink-2">
+        {spaceLabel(me.label)} · {owner}
+      </p>
       <header className="flex items-center justify-between gap-8">
         <h1 className="text-title font-semibold">{dayLabel(day)}</h1>
         <div className="flex items-center gap-4">

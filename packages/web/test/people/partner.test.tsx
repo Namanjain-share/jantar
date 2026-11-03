@@ -329,7 +329,7 @@ describe('a space a restore took out (T20, spec 2.7)', () => {
     expect(within(note).getByText('jantar people invite <name>')).toBeTruthy();
     expect(within(note).getByText(`jantar people remove ${GONE}`)).toBeTruthy();
     // The one person sharing is still listed, and People doesn't jump to her screen over the note.
-    expect(screen.getByRole('button', { name: 'Asha' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Asha Accountability partner' })).toBeTruthy();
     expect(history.entries).toEqual(['/people']);
   });
 

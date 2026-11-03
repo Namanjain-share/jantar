@@ -25,6 +25,7 @@ const Chat = lazy(() => import('./screens/Chat.js'));
 const Lists = lazy(() => import('./screens/Lists.js'));
 
 import { navigate } from './nav.js';
+import { nameApp } from './name.js';
 import { dayLabel } from '../people-shared/time.js';
 
 export { navigate };
@@ -96,6 +97,11 @@ export function App({ api }: { api: PersonApi }) {
     setTick((n) => n + 1);
   }, [load]);
   useTicks(needsMe && me !== null, onTick);
+  // Her app under the space's name (his label): the tab, the Home Screen title, and her own manifest.
+  const label = me?.label;
+  useEffect(() => {
+    if (me) nameApp(label, { manifest: true });
+  }, [me !== null, label]);
 
   if (route.name === 'join' || route.name === 'link') return <Join api={api} mode={route.name} />;
   if (route.name === 'left') return <Left me={me} api={api} />;

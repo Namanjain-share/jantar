@@ -115,6 +115,7 @@ const ACTION_WORDS: Record<string, (v: ActivityVoice, r: PersonActivity) => stri
   'med.stopped': (v, r) => `${v.owner} stopped a medicine${quoted(r.title)}`,
   'weight.corrected': (v, r) => `${v.owner} corrected ${v.her} weight${dayOf(r.ref) ? ` for ${dayOf(r.ref)}` : ''}${r.changes?.[0] ? `: ${r.changes[0].from} → ${r.changes[0].to} kg` : ''}`,
   'weight.deleted': (v, r) => `${v.owner} removed ${v.her} weight${dayOf(r.ref) ? ` for ${dayOf(r.ref)}` : ''}`,
+  'label.changed': (v, r) => `${v.owner} renamed ${v.self ? 'this space' : `the space with ${v.obj}`}${r.changes?.[0] ? `: ${r.changes[0].from ?? '–'} → ${r.changes[0].to ?? '–'}` : ''}`,
   'chat.limit': (v, r) => `${v.owner} set ${v.her} chat to ${r.changes?.[0]?.to ?? 'a new number of'} messages a day`,
   'place.deleted': (v, r) => `${r.actor === 'owner' ? v.owner : v.she} deleted a café for both of you${quoted(r.title)}`,
   'list.deleted': (v, r) => `${r.actor === 'owner' ? v.owner : v.she} deleted a list for both of you${quoted(r.title)}`,
