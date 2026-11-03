@@ -4,8 +4,8 @@
  * `m` with a keyboard, a deal's page).
  *
  *   Move to…        the stages, the one it is on ticked: a popover beside
- *                   the control on a wide screen, a bottom sheet on a phone
- *                   (kit/Popover.tsx Choice)
+ *                   the button that opened it on a wide screen, a bottom
+ *                   sheet on a phone (kit/Popover.tsx Choice)
  *   an open stage   moves at once; "Moved to Contacted · Undo" moves it back
  *   Won             "Won · ₹4,50,000. Make a project for it?" with its name
  *                   and the client's folder filled in: Make project, or Not
