@@ -69,7 +69,7 @@ export interface ViewerProps {
   onLocation: (next: FilesLocation, opts?: { replace?: boolean }) => void;
   /** Only in a session's own folder: hand "@path:lines " to that session's composer. */
   onAsk?: (text: string) => void;
-  /** 0.11, beside the list: Hide browser gives the viewer the whole pane (and Show browser puts the list back). */
+  /** 0.12, beside the list: Hide browser gives the viewer the whole pane (and Show browser puts the list back). */
   browser?: { hidden: boolean; toggle: () => void };
 }
 

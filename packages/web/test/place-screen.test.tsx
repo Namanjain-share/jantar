@@ -44,7 +44,7 @@ describe('the café screen', () => {
     // The ratings that are set, labelled, as stars.
     const ratings = within(section('Ratings'));
     expect(ratings.getAllByRole('term').map((t) => t.textContent)).toEqual(['Food', 'Work']);
-    // 0.11: each a row of five stars to tap (OQ9), the rating checked.
+    // 0.12: each a row of five stars to tap (OQ9), the rating checked.
     expect(ratings.getAllByRole('radiogroup').map((g) => g.getAttribute('aria-label'))).toEqual(['Food', 'Work']);
     expect(ratings.getAllByRole('radio', { checked: true }).map((r) => r.getAttribute('aria-label'))).toEqual(['5 stars', '3 stars']);
     expect(within(section('Tags')).getAllByRole('listitem').map((t) => t.textContent)).toEqual(['Wi-Fi', 'Sockets', 'Quiet', 'Board games']);
@@ -187,7 +187,7 @@ function rateable(over: RenderOpts = {}) {
   return render({ places, visits: VISITS, api: { placeUpdate }, ...over });
 }
 
-describe('0.11: tap a star to rate (OQ9)', () => {
+describe('0.12: tap a star to rate (OQ9)', () => {
   it('a tap sends that rating alone, with "Food 5 → 3 · Undo"; Undo puts the old one back', async () => {
     const { api } = rateable({ path: `/places?id=${id(1)}` });
     const food = () => within(screen.getByRole('radiogroup', { name: 'Food' }));
@@ -222,7 +222,7 @@ describe('0.11: tap a star to rate (OQ9)', () => {
   });
 });
 
-describe('0.11: a wide pane', () => {
+describe('0.12: a wide pane', () => {
   const wide = (path: string) => render({ path, visits: VISITS, layout: layoutAt(1440) });
 
   it('lays the cafés out as cards with nothing open, and keeps rows on a phone', async () => {

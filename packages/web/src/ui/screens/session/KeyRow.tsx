@@ -1,5 +1,5 @@
 /**
- * The terminal key row (0.11, build plan c27; ipad-design.md 4.6): above the
+ * The terminal key row (0.12, build plan c27; ipad-design.md 4.6): above the
  * session composer only while the on-screen keyboard is up (`kbUp`), where
  * it takes the control bar's place; never with a hardware keyboard, never
  * in Chat. The keys the Mac lets a phone press (daemon controls/keys.ts):

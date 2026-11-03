@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 /**
- * 0.11 wide windows and the iPad (build plan 6.1, 6.2) in the BUILT web app,
+ * 0.12 wide windows and the iPad (build plan 6.1, 6.2) in the BUILT web app,
  * in a real headless Chromium: every place at the plan's window sizes, with
  * a fine pointer (a Mac) and a coarse one (an iPad, Chrome's device mode).
  * Served with the daemon's real headers and the screenshot fixture
@@ -290,7 +290,7 @@ export const WIDTH_EXEMPT: Record<string, string> = {
 /** The shot's fixture: one per accounts mode and variant. */
 const fixtureKey = (s: State) => `${s.accounts ?? 'cswap'}:${s.variant ?? 'default'}${s.people ? ':people' : ''}`;
 
-describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', () => {
+describe.skipIf(!ready)('0.12: every place at every window size, in Chromium', () => {
   let browser: Browser;
   let server: WebServer;
   const fixtures = new Map<string, WebFixtureV08>();
@@ -497,7 +497,7 @@ describe.skipIf(!ready)('0.11: every place at every window size, in Chromium', (
  *      and sends nothing.
  *   8. Keycaps: none on a touch screen until a key is pressed; then the board's show.
  */
-describe.skipIf(!ready)('0.11 c33: rotation, the on-screen keyboard, hover and keycaps', () => {
+describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and keycaps', () => {
   let browser: Browser;
   let server: WebServer;
   // The chat variant: everything the default one has, and Chat on.

@@ -11,7 +11,7 @@ export interface RailLabelProps {
   count?: number;
   /** 'needs' turns the count ember. */
   tone?: 'plain' | 'needs';
-  /** The ground behind it: the ledger column is surface, full pages are bg, a card (0.11) is raised. */
+  /** The ground behind it: the ledger column is surface, full pages are bg, a card (0.12) is raised. */
   ground?: 'surface' | 'bg' | 'raised';
   sticky?: boolean;
   /** Right-aligned caption in sentence case ("now to 20:08", "press ? anywhere"). */

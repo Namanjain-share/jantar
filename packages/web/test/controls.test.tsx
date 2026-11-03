@@ -389,7 +389,7 @@ describe('design rules for session/controls (spec 5.0)', () => {
   });
 });
 
-describe('0.11 c27: the terminal key row while the on-screen keyboard is up', () => {
+describe('0.12 c27: the terminal key row while the on-screen keyboard is up', () => {
   it('takes the control bar’s place and the meta line goes; Esc and Shift+Tab press their keys; a refusal says why', async () => {
     const sessionKey = vi.fn(async (_sid: string, key: string) => {
       if (key === 'shiftTab') throw new ApiError('dialog_open', 'a dialog is open in the terminal; answer it there first', 409);

@@ -2,7 +2,7 @@
  * A small segmented control (dir-k.html .b-seg): a 32 px hairline box of
  * toggle buttons, the pressed one on --select. Used for the Accounts sort and
  * the Alerts kind filter. 44 px under a coarse pointer, each segment the
- * whole height (0.11: the box's hairline is drawn inside it there, so the
+ * whole height (0.12: the box's hairline is drawn inside it there, so the
  * segments fill the 44).
  */
 import clsx from 'clsx';

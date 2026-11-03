@@ -295,7 +295,7 @@ describe('board on the desktop', () => {
       }),
     });
     const side = screen.getByRole('complementary', { name: 'Alerts and legend' });
-    // 0.11 (c23): beside the queue where the Desk's pane is 900 wide (944 at 1440), by a container query, not the window.
+    // 0.12 (c23): beside the queue where the Desk's pane is 900 wide (944 at 1440), by a container query, not the window.
     expect(side.className).toContain('@wide:flex');
     expect(side.className).not.toMatch(/(^|\s)2xl:/);
     expect(within(side).getByRole('heading', { name: 'Alerts1 new' })).toBeTruthy();
@@ -358,7 +358,7 @@ describe('board cache', () => {
   });
 });
 
-describe('0.11 c25: the waiting queue in single mode, and the ledger over a session', () => {
+describe('0.12 c25: the waiting queue in single mode, and the ledger over a session', () => {
   const touch = (width: number) => layoutAt(width, { coarse: true });
   const waiting = () =>
     stateWith({

@@ -232,7 +232,7 @@ describe('question card', () => {
     const api = fakeApi();
     const p = pending('a', { kind: 'question', tool: 'AskUserQuestion', input: { questions }, questions });
     const { unmount } = renderApp({ path: '/s/a', api, state: stateWith({ sessions: [session('a')], pending: [p] }) });
-    // 0.11 (OQ8): renamed so it isn't taken for Jantar's Chat; its description keeps Claude's words.
+    // 0.12 (OQ8): renamed so it isn't taken for Jantar's Chat; its description keeps Claude's words.
     expect(within(card()).queryByRole('button', { name: 'Chat about this' })).toBeNull();
     const clarify = within(card()).getByRole('button', { name: 'Clarify with Claude' });
     expect(clarify.getAttribute('aria-description')).toContain('Chat about this');
@@ -262,7 +262,7 @@ describe('question card', () => {
   });
 });
 
-describe('0.11 c27: a Question card with the on-screen keyboard up', () => {
+describe('0.12 c27: a Question card with the on-screen keyboard up', () => {
   it('folds its options to one row while you type your own answer; a tap shows them; nothing picked is lost', async () => {
     const qs = [{ question: 'Which module?', options: [{ label: 'auth/session.ts' }, { label: 'middleware/cookies.ts' }] }];
     const p = pending('a', { kind: 'question', tool: 'AskUserQuestion', input: { questions: qs }, questions: qs });

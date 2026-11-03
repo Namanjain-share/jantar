@@ -15,7 +15,7 @@
  * A saved read stays an hour, then the list holds it. When reads can't run
  * now (the Mac runs read-only) the Mac's sentence says so under the rail.
  * All of it is text: a title is never a link of its own, never Markdown.
- * 0.11: across a wide pane the jobs are cards in a row, as the shelf.
+ * 0.12: across a wide pane the jobs are cards in a row, as the shelf.
  */
 import { useState } from 'react';
 import type { IntelDepth, IntelJob, IntelJobsResponse } from '@jantar/protocol';
@@ -88,7 +88,7 @@ export function Reading({
   onChanged,
 }: {
   data: IntelJobsResponse;
-  /** 0.11: cards in a row across a wide pane, as the shelf's grid. */
+  /** 0.12: cards in a row across a wide pane, as the shelf's grid. */
   grid?: boolean;
   now: number;
   filters: ShelfFilters;

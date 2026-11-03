@@ -13,7 +13,7 @@
  * field may be missing from a 0.9 daemon's answer. The title is the page's
  * <h1> in every state.
  *
- * 0.11 (build plan 2.5): a SplitPane ("cafes", fill). With nothing open
+ * 0.12 (build plan 2.5): a SplitPane ("cafes", fill). With nothing open
  * (and not on a phone) the cafés are cards across the pane, at least 280
  * wide (four at 1440). From a pane of 800 a café opens beside the list,
  * which becomes the rows with the open one current; below 800 it opens
@@ -114,7 +114,7 @@ export function Places(props: PlacesProps) {
     if (id) navigate(listPath, { replace: true });
   };
 
-  // 0.11: the cafés across the pane, and a café beside them from a pane of 800 (over them below that).
+  // 0.12: the cafés across the pane, and a café beside them from a pane of 800 (over them below that).
   return (
     <SplitPane
       name="cafes"
@@ -205,7 +205,7 @@ function CafeList({ filter, view, load, places, currency, known, customTags, und
   const grid = !phone && !split?.selected;
   const count = filterCount(view);
   const narrowed = count > 0 || !!view.q;
-  // 0.11 (c26): Sort and Filters open beside their buttons on an iPad or a Mac.
+  // 0.12 (c26): Sort and Filters open beside their buttons on an iPad or a Mac.
   const sortAt = useRef<HTMLButtonElement>(null);
   const filtersAt = useRef<HTMLButtonElement>(null);
 
@@ -316,7 +316,7 @@ function thirdLine(p: Place): string[] {
 }
 
 /**
- * 0.11, the cafés across a wide pane (build plan 2.5): a card per café. The
+ * 0.12, the cafés across a wide pane (build plan 2.5): a card per café. The
  * name on two lines, its stars (or want), not again and the price, the best
  * dish and its stars, then the area, last visit and first tags in mono.
  */

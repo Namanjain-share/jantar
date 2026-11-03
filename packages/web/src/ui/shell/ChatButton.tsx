@@ -1,5 +1,5 @@
 /**
- * The Chat button (0.11, build plan c28; ipad-design.md 2.1 "Headers"): Chat
+ * The Chat button (0.12, build plan c28; ipad-design.md 2.1 "Headers"): Chat
  * beside this screen. In the Mac's top bar, and at the end of a pane's
  * header on an iPad; pressed while the panel is open. ⌘J does the same (its
  * keycap only with a keyboard). Nothing where Chat isn't (off, or a device

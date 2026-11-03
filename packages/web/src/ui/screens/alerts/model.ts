@@ -16,7 +16,7 @@ import { dayLabel, dayStart } from '../accounts/time.js';
 /**
  * Remember the newest alert this device has seen (for the tab badge and the
  * Desk). Here, not in Alerts.tsx, so the badge does not pull the screen into
- * the main chunk (0.11: Alerts opens from its own chunk).
+ * the main chunk (0.12: Alerts opens from its own chunk).
  */
 export const ALERTS_SEEN_KEY = 'alerts-seen-ts';
 
@@ -39,7 +39,7 @@ export function parseKind(v: string | null | undefined): KindFilter {
 /** One alert's kind, as its detail names it. */
 export const KIND_WORD: Record<AlertKind, string> = { limit: 'Limit', error: 'API error', blocked: 'Blocked', rejected: 'Rejected' };
 
-/** 0.11: the list's address (its kind filter), and with `id` one alert open beside it. */
+/** 0.12: the list's address (its kind filter), and with `id` one alert open beside it. */
 export function alertsPath(kind: KindFilter, id?: string): string {
   return routePath({ name: 'alerts', ...(kind !== 'all' ? { kind: kind as AlertsKind } : {}), ...(id ? { id } : {}) });
 }

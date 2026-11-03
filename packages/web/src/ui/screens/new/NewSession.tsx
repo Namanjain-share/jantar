@@ -34,7 +34,7 @@
  * machine that can start is picked. The row shows only while some paired
  * machine can start sessions; until then this screen is as before.
  *
- * 0.11 (build plan 2.13): a SplitPane ("new"), by the pane's width instead
+ * 0.12 (build plan 2.13): a SplitPane ("new"), by the pane's width instead
  * of the window's frame: from a pane of 800 the browser is the list column
  * (340, 440 from 1180) and the form, then the receipt, the detail (at most
  * 640 wide), with "Pick a folder" there while nothing is chosen; below 800

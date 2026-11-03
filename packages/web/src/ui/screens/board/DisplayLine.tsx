@@ -24,7 +24,7 @@ export function DisplayLine({
   phone: boolean;
   onStart: () => void;
 }) {
-  // 0.11: on an iPad's 340 ledger "Start" alone, so "3 need you" keeps its words at the touch type size.
+  // 0.12: on an iPad's 340 ledger "Start" alone, so "3 need you" keeps its words at the touch type size.
   const touch = useLayout().chrome === 'touch';
   return (
     <div

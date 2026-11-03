@@ -1,5 +1,5 @@
 /**
- * The touch shell's own state (0.11, ipad-design.md 2.1-2.2): whether the
+ * The touch shell's own state (0.12, ipad-design.md 2.1-2.2): whether the
  * sidebar is folded to the rail (regular width, the user's choice, ⌘\), the
  * sidebar shown over the rail (medium width, or the rail's sidebar button),
  * and whether Today's group lists its six places. The fold and the group are

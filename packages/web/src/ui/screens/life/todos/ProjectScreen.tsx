@@ -5,7 +5,7 @@
  * rows as the Todos tab) and its notes. Edit opens the project sheet; +
  * adds a todo already in the project.
  *
- * 0.11 (build plan 2.4): from a pane of 640 its parts are cards side by
+ * 0.12 (build plan 2.4): from a pane of 640 its parts are cards side by
  * side (Details, Live sessions, Todos, Notes), as on the Todos tab.
  */
 import { CaretLeftIcon } from '@phosphor-icons/react';
@@ -52,7 +52,7 @@ export function ProjectScreen({ id }: { id: string }) {
   const projectSheet = useSheet<ProjectView>();
   const project = projects.data?.projects.find((p) => p.id === id) ?? null;
   const live = useMemo(() => liveIn(Object.values(state.sessions), project?.folder), [state.sessions, project?.folder]);
-  // Cards from a pane of 640 (0.11), the 0.10 list below it.
+  // Cards from a pane of 640 (0.12), the 0.10 list below it.
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
 

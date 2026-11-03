@@ -5,7 +5,7 @@
  * repeat icon on repeating ones and overdue ones in ember (TodoRow). Same
  * rows and actions as the Todos tab.
  *
- * 0.11 (build plan 2.4): with `cards` (a pane of 640 or more) they are
+ * 0.12 (build plan 2.4): with `cards` (a pane of 640 or more) they are
  * cards side by side, Overdue, Today and Upcoming, each in the order they
  * ring.
  */
@@ -38,7 +38,7 @@ export function Reminders({
   actions: TodoActions;
   onEdit: (todo: Todo) => void;
   addButton: ReactNode;
-  /** 0.11: cards by when they ring, side by side. */
+  /** 0.12: cards by when they ring, side by side. */
   cards?: boolean;
 }) {
   const list = remindersOf(todos);

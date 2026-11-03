@@ -1,5 +1,5 @@
 /**
- * Close, for an item open beside its list (0.11, build plan 1.5): a 44 tall
+ * Close, for an item open beside its list (0.12, build plan 1.5): a 44 tall
  * text button with an ×, which puts the list back across the pane (the
  * SplitPane's `onClose`; Esc does the same). Alone in a narrow pane the item
  * keeps its back link instead, so `usePaneClose()` is undefined there.

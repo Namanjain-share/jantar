@@ -1,5 +1,5 @@
 /**
- * The wide-window metric (0.11, build plan 6.2 #3) and the 44 pt check
+ * The wide-window metric (0.12, build plan 6.2 #3) and the 44 pt check
  * (#2), pure, so they are unit-tested on synthetic layouts
  * (layout-metric.test.ts) and computed in Node from the rectangles the
  * browser suite collects in the page (test/integration/layout-probe.ts).

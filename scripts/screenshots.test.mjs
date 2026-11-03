@@ -35,7 +35,7 @@ test('every screen has a unique name, a path in the app, and two themes for each
     [
       ['phone', 390, 844, 2],
       ['desktop', 1440, 900, 1],
-      // 0.11 (build plan 6.1): the user's 1440 x 960 with either pointer, and the 11-inch iPads.
+      // 0.12 (build plan 6.1): the user's 1440 x 960 with either pointer, and the 11-inch iPads.
       ['mac-1440', 1440, 960, 1],
       ['touch-1440', 1440, 960, 2],
       ['ipad-air-l', 1180, 820, 2],
@@ -90,9 +90,9 @@ test('the screens the README and the docs promise are all taken, at the sizes th
   ];
   for (const n of both) assert.deepEqual(sizesOf(byName.get(n) ?? {}).map((s) => s.key), ['phone', 'desktop'], n);
   for (const n of phone) assert.deepEqual(sizesOf(byName.get(n) ?? {}).map((s) => s.key), ['phone'], n);
-  // 0.11 (c22b): one login at the user's 1440 x 960 too, with each pointer.
+  // 0.12 (c22b): one login at the user's 1440 x 960 too, with each pointer.
   assert.deepEqual(sizesOf(byName.get('accounts-single') ?? {}).map((s) => s.key), ['phone', 'mac-1440', 'touch-1440']);
-  // 0.11 (c33): the README's and phone-app.md's iPad and 1440 pictures.
+  // 0.12 (c33): the README's and phone-app.md's iPad and 1440 pictures.
   const wide = { board: ['phone', 'desktop', 'ipad-air-l', 'ipad-air-p'], today: ['phone', 'mac-1440', 'ipad-air-l'], intel: ['phone', 'mac-1440'] };
   for (const [n, keys] of Object.entries(wide)) assert.deepEqual(sizesOf(byName.get(n) ?? {}).map((s) => s.key), keys, n);
   assert.equal(SHOTS.length, both.length + phone.length + 1 + Object.keys(wide).length, 'a screen no page shows');

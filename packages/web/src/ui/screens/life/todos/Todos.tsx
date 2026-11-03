@@ -15,7 +15,7 @@
  * the row and holds --select on it for 2 s. The title is the page's <h1> in
  * every state.
  *
- * 0.11 (build plan 2.4): from a pane of 640 the rails are cards side by
+ * 0.12 (build plan 2.4): from a pane of 640 the rails are cards side by
  * side (kit/Columns.tsx, at least 340 wide: three at 1440), Reminders'
  * cards are Overdue, Today and Upcoming in the order they ring, and the
  * projects are a grid of cards. Below 640, 0.10's list.
@@ -107,13 +107,13 @@ function TodoLists({ tab: asked, id }: { tab?: TodosTab | undefined; id?: string
     if (!asked && id && opened) navigate(routePath({ name: 'todos', tab: opened, id }), { replace: true });
   }, [asked, id, opened, navigate]);
   const flash = useFlash(id, target !== undefined);
-  // 0.11 (c29): a todo the address names is what Chat beside it is told you mean.
+  // 0.12 (c29): a todo the address names is what Chat beside it is told you mean.
   useLookingAt(target ? { kind: 'todo', id: target.id, label: target.title } : null);
   const todoSheet = useSheet<Todo>();
   const [start, setStart] = useState<TodoStart | undefined>(undefined);
   const projectSheet = useSheet<ProjectView>();
   const pmap = useMemo(() => new Map((projects.data?.projects ?? []).map((p) => [p.id, p])), [projects.data]);
-  // Cards from a pane of 640 (0.11), the 0.10 list below it: decided by the page's measured width.
+  // Cards from a pane of 640 (0.12), the 0.10 list below it: decided by the page's measured width.
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
 
@@ -240,7 +240,7 @@ function TodoRails({
   actions: TodoActions;
   onEdit: (todo: Todo) => void;
   addButton: ReactNode;
-  /** 0.11: each rail a card, side by side. */
+  /** 0.12: each rail a card, side by side. */
   cards: boolean;
 }) {
   const rails = byRail(todos, now);

@@ -14,7 +14,7 @@ import { primerText } from '../src/ui/screens/accounts/Primer.js';
 import { dayClock } from '../src/ui/screens/accounts/time.js';
 import { NOW, account, emit, iso, opened, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
-// 0.11: Accounts opens from its own chunk.
+// 0.12: Accounts opens from its own chunk.
 preloadPlaces('accounts');
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */

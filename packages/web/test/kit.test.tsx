@@ -381,7 +381,7 @@ describe('document chrome', () => {
   });
 });
 
-describe('0.11 c12: the sheet, bottom on the phone and a form sheet wider', () => {
+describe('0.12 c12: the sheet, bottom on the phone and a form sheet wider', () => {
   function Form({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange} title="New example">
@@ -492,7 +492,7 @@ describe('0.11 c12: the sheet, bottom on the phone and a form sheet wider', () =
   });
 });
 
-describe('0.11 c26: one value in a popover beside its control', () => {
+describe('0.12 c26: one value in a popover beside its control', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('below while 220 is free under the anchor, else above, else the form sheet', () => {

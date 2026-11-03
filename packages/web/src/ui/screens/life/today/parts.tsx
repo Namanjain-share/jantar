@@ -32,7 +32,7 @@ import { useLayer } from '../../../kit/layer.js';
  * add and save are off. `wrapTitle` (a café's name, v0.10) wraps a long
  * title at the title size instead of cutting it.
  *
- * 0.11: a page is 720 wide at most, unless it is `wide`: Today and the
+ * 0.12: a page is 720 wide at most, unless it is `wide`: Today and the
  * Life lists lay their sections out by the pane's width instead (cards in
  * columns, kit/Columns.tsx), so they take all of it.
  */
@@ -50,7 +50,7 @@ export function Page({
   back?: ReactNode;
   undo?: Pick<Undo, 'offer' | 'take'>;
   wrapTitle?: boolean;
-  /** 0.11: the whole pane's width, not 720. */
+  /** 0.12: the whole pane's width, not 720. */
   wide?: boolean;
   children: ReactNode;
 }) {

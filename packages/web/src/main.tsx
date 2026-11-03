@@ -14,12 +14,12 @@ import { createToastStore } from './ui/context.js';
 import { wireStateCache } from './ui/screens/board/cache.js';
 
 applyTheme(themeStore.getState().pref);
-// 0.11: the last pointer (data-input, for hover) and whether a hardware keyboard has been seen.
+// 0.12: the last pointer (data-input, for hover) and whether a hardware keyboard has been seen.
 watchInput();
-// 0.11: the shell follows the visual viewport while a field has focus (the iPad's on-screen keyboard, a pan).
+// 0.12: the shell follows the visual viewport while a field has focus (the iPad's on-screen keyboard, a pan).
 watchViewport();
 
-// 0.11: on a touch screen 640 or wider (an iPad) the sidebar is its own chunk: start it before the first render.
+// 0.12: on a touch screen 640 or wider (an iPad) the sidebar is its own chunk: start it before the first render.
 if (typeof matchMedia === 'function' && matchMedia('(pointer: coarse) and (min-width: 640px)').matches) void import('./ui/shell/TouchShell.js');
 
 const store = createAppStore();

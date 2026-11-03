@@ -1,5 +1,5 @@
 /**
- * The touch shell's nav (0.11, build plan c24; ipad-design.md 2.1-2.2): an
+ * The touch shell's nav (0.12, build plan c24; ipad-design.md 2.1-2.2): an
  * iPad (a coarse pointer) from 640 wide. Its own chunk (TouchShell): the
  * Mac and the phone never load it, and main.tsx starts loading it before
  * the first render on a touch screen that wide. The Mac keeps its rail, top bar and

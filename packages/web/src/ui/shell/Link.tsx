@@ -1,7 +1,7 @@
 /**
  * An <a> that navigates in-app (plain clicks only; modified clicks open as usual).
  *
- * 0.11 (build plan c30; ipad-design.md 4.5): the focus then moves to the new
+ * 0.12 (build plan c30; ipad-design.md 4.5): the focus then moves to the new
  * pane's heading (no scroll), so a keyboard or VoiceOver user lands where the
  * page changed, not on the link left behind: the open item's heading when the
  * link was a row in a list beside it, else the place's heading.

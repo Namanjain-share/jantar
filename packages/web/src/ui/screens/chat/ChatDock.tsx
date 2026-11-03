@@ -1,5 +1,5 @@
 /**
- * Chat beside any screen (0.11, build plan c28, D10; ipad-design.md 2.4):
+ * Chat beside any screen (0.12, build plan c28, D10; ipad-design.md 2.4):
  * the same thread and composer as the Chat place, 360 wide, at the right of
  * the window. A column beside the panes where they keep 560 (the Mac at
  * 1440, the iPad's sidebar at 1440); over their right edge otherwise, with

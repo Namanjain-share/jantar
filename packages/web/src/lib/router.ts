@@ -13,7 +13,7 @@
  *                   session here"), &launch=<id> its receipt; hidden while
  *                   launching is off)
  *   /accounts       Accounts
- *   /alerts         Alerts (0.11: ?kind=limit|error|blocked|rejected filters it,
+ *   /alerts         Alerts (0.12: ?kind=limit|error|blocked|rejected filters it,
  *                   ?id=<alert id> opens one beside the list)
  *   /devices        Devices, pairing, notifications, theme
  *   /pair#c=<code>  Claim a pairing code (the code never leaves the fragment)
@@ -33,7 +33,7 @@
  * v0.5, shown only while Meetings are on:
  *   /meetings       Meetings (?project=<project id>|none, ?q=, ?id=<meeting id> opens one)
  * v0.10 (v0.5.3's Ask), shown only while Chat is on:
- *   /chat           Chat: ask Jantar anything; it changes things with Undo (0.11:
+ *   /chat           Chat: ask Jantar anything; it changes things with Undo (0.12:
  *                   ?day=YYYY-MM-DD, the day its history column has open)
  *   /ask            the 0.9 address: read as /chat, and the router puts /chat in its place
  * Ids in a query are read only when they match their pattern (LifeId,
@@ -97,7 +97,7 @@ export interface PlacesView {
 }
 export type PlacesSortKey = 'best' | 'recent' | 'visits' | 'name' | 'price' | 'work';
 const PLACES_SORTS: readonly string[] = ['best', 'recent', 'visits', 'name', 'price', 'work'];
-/** 0.11: Alerts' kind filter, as the address carries it (All is no `kind`). */
+/** 0.12: Alerts' kind filter, as the address carries it (All is no `kind`). */
 export type AlertsKind = 'limit' | 'error' | 'blocked' | 'rejected';
 const ALERTS_KINDS: readonly string[] = ['limit', 'error', 'blocked', 'rejected'];
 /** Posts to make (idea and ready), or the posted and skipped ones. */

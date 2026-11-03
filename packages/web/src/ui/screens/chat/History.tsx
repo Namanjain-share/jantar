@@ -1,5 +1,5 @@
 /**
- * Chat's history column (0.11, build plan 2.2): an index into the one
+ * Chat's history column (0.12, build plan 2.2): an index into the one
  * thread, built from the turns already loaded (`GET /v1/chat`, 30 a page);
  * there is no search or day route.
  *
@@ -44,7 +44,7 @@ export interface HistoryProps {
 export function History({ turns, nowMs, offline, picked, earlier, loadingEarlier, onEarlier, onPick: pickTurn, onChanged }: HistoryProps) {
   const split = useSplit();
   const wide = split?.wide ?? false;
-  // 0.11 (c25): over the thread ("‹ Days"), a pick goes to the turn and puts the days away.
+  // 0.12 (c25): over the thread ("‹ Days"), a pick goes to the turn and puts the days away.
   const onPick = (t: ChatTurn) => {
     pickTurn(t);
     split?.overlay?.set(false);

@@ -18,7 +18,7 @@
  * from the Mac's journal, never from the reply. Nothing is kept on the
  * phone but what is on screen.
  *
- * 0.11 (build plan 2.2): a SplitPane ("chat", the thread always open).
+ * 0.12 (build plan 2.2): a SplitPane ("chat", the thread always open).
  * From a pane of 800 the days list beside the thread (History.tsx: search,
  * the days, and Changes and Photos as segments), once there is a day to
  * list; from 1180 Changes and Photos have a column of their own (This
@@ -56,9 +56,9 @@ const CHIP =
 const LINK = 'rounded-chip type-small font-medium text-ink-2 transition-colors duration-120 hover:text-ink coarse:min-h-44 coarse:px-8';
 
 export interface ChatProps {
-  /** 0.11, ?day=: the thread opens at that day's first turn. */
+  /** 0.12, ?day=: the thread opens at that day's first turn. */
   day?: string | undefined;
-  /** 0.11 (c28): the panel beside another screen (ChatDock.tsx): the thread alone, with its own header. */
+  /** 0.12 (c28): the panel beside another screen (ChatDock.tsx): the thread alone, with its own header. */
   dock?: { focus: number; onClose: () => void; onOpenFull: () => void } | undefined;
 }
 
@@ -76,7 +76,7 @@ export function Chat({ day, dock }: ChatProps = {}) {
   const area = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const thread = useRef<HTMLDivElement>(null);
-  // 0.11: the box is a draft (lib/drafts.ts), kept past leaving Chat and coming back.
+  // 0.12: the box is a draft (lib/drafts.ts), kept past leaving Chat and coming back.
   const [draft, setDraft] = useDraft('chat');
   const [confirm, setConfirm] = useState(false);
   const send = useTap();
@@ -93,7 +93,7 @@ export function Chat({ day, dock }: ChatProps = {}) {
   const canSend = ready && !busy && !offline && !send.busy;
   const cursor = older === undefined ? (load.data?.older ?? null) : older;
 
-  // 0.11 (c29): beside a screen, the "Looking at" chip names what it shows; it goes with the box's message while shown.
+  // 0.12 (c29): beside a screen, the "Looking at" chip names what it shows; it goes with the box's message while shown.
   const seen = useLookingAtNow();
   const [chipOff, setChipOff] = useState<string | null>(null);
   const looking = dock && seen && chipOff !== `${seen.kind}:${seen.id}` ? seen : null;
@@ -330,7 +330,7 @@ export function Chat({ day, dock }: ChatProps = {}) {
 
   return (
     <>
-      {/* 0.11: the days beside the thread from a pane of 800 (none until there is a day to list), This chat beside it from 1180. */}
+      {/* 0.12: the days beside the thread from a pane of 800 (none until there is a day to list), This chat beside it from 1180. */}
       <SplitPane
         name="chat"
         listWidth="history"
@@ -399,7 +399,7 @@ function ThreadAndSide({ thread, empty, threadRef, side }: { thread: (side: bool
   );
 }
 
-/** 0.11 (c25): "‹ Days" where the days aren't beside the thread (a pane under 800 beside the phone): calls them over it. */
+/** 0.12 (c25): "‹ Days" where the days aren't beside the thread (a pane under 800 beside the phone): calls them over it. */
 function DaysButton() {
   const over = useSplit()?.overlay;
   if (!over) return null;

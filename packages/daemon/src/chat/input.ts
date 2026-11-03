@@ -1,6 +1,6 @@
 /**
  * The run's one stream-json user message (spec 0.10 B6.6, B4): a text block
- * with <now>, <channel>, <reach>, <history>, (0.11) <looking> and <message>, every tag escaped
+ * with <now>, <channel>, <reach>, <history>, (0.12) <looking> and <message>, every tag escaped
  * inside data however it is spelled, then each photo as a daemon-written
  * label and a base64 image block. Photos are dropped from the end until the
  * line is at most CHAT_STDIN_MAX, and the text then says how many were left
@@ -45,7 +45,7 @@ export interface ChatInput {
   tools: string[];
   currency: string | null;
   history: HistoryTurn[];
-  /** 0.11: the daemon's one line for what the user is looking at (lookingLine), or none. */
+  /** 0.12: the daemon's one line for what the user is looking at (lookingLine), or none. */
   looking?: string | undefined;
   text: string;
   photos: ChatPhotoBlock[];
@@ -61,7 +61,7 @@ const UNTRUSTED_NAME = new Set(['intel', 'meeting', 'session']);
 const KIND_WORD: Record<string, string> = { intel: 'an Intel item', meeting: 'a meeting', session: 'a Claude session' };
 
 /**
- * The daemon's line for the "Looking at" chip (0.11): the item's own label for
+ * The daemon's line for the "Looking at" chip (0.12): the item's own label for
  * the user's Life items; for Intel, a meeting or a session, the kind and id
  * alone, so no outside text reaches the run without the tools' framing (and
  * reading it taints the turn exactly as in 0.10).

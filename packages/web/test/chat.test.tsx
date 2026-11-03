@@ -115,7 +115,7 @@ describe('Chat', () => {
     open(list([turn(1, { cards: [card(), card({ n: 1, kind: 'do', module: 'todos', op: 'todo', ref: null, label: 'Add todo Follow up on the page?' })] })]), { chatCard, chatCardDismiss });
     const cards = within(await screen.findByRole('list', { name: 'Waiting for your tap' })).getAllByRole('listitem');
     expect(within(cards[0]!).getByText('Delete café Example Café and its 3 visits?')).toBeTruthy();
-    // 0.11: the Confirm button says its verb (open question 11).
+    // 0.12: the Confirm button says its verb (open question 11).
     fireEvent.click(within(cards[0]!).getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(chatCard).toHaveBeenCalledWith(tid(1), 0, expect.any(String)));
     fireEvent.click(within(cards[1]!).getByRole('button', { name: 'Do it' }));
@@ -272,7 +272,7 @@ describe('the address and the nav', () => {
   it('/ask is read as Chat and replaced with /chat; the nav says Chat', () => {
     expect(parseRoute('/ask', '', '')).toEqual({ name: 'chat' });
     expect(routePath({ name: 'chat' })).toBe('/chat');
-    // 0.11: the day the history has open; anything but a day is left out.
+    // 0.12: the day the history has open; anything but a day is left out.
     expect(parseRoute('/chat', '?day=2026-01-14', '')).toEqual({ name: 'chat', day: '2026-01-14' });
     expect(parseRoute('/chat', '?day=yesterday', '')).toEqual({ name: 'chat' });
     expect(routePath({ name: 'chat', day: '2026-01-14' })).toBe('/chat?day=2026-01-14');
@@ -285,7 +285,7 @@ describe('the address and the nav', () => {
   });
 });
 
-describe('0.11: the history and This chat (pure)', () => {
+describe('0.12: the history and This chat (pure)', () => {
   const day = (ms: number) => dayOf(ago(ms));
   const turns = [
     turn(1, { at: ago(2 * 86_400_000), text: 'Rate the dosa place\nfour stars', photos: [{ id: tid(80), w: 4, h: 3, gone: false }], changes: [change({ label: 'Café · Sample Dosa House · 4★' })] }),
@@ -321,7 +321,7 @@ describe('0.11: the history and This chat (pure)', () => {
   });
 });
 
-describe('0.11: Chat in a wide window', () => {
+describe('0.12: Chat in a wide window', () => {
   // c23: the pane is measured (1384 beside the Mac's rail), so This chat gets its own column.
   afterEach(() => vi.restoreAllMocks());
   const wide = (first: ChatList, over: Partial<Api> = {}) => {
@@ -366,7 +366,7 @@ describe('0.11: Chat in a wide window', () => {
   });
 });
 
-describe('0.11 c28: Chat beside any screen', () => {
+describe('0.12 c28: Chat beside any screen', () => {
   afterEach(() => {
     localStorage.clear();
     chatDockStore.setState({ open: false, focus: 0 });
@@ -446,7 +446,7 @@ describe('0.11 c28: Chat beside any screen', () => {
   });
 });
 
-describe('0.11 c29: the "Looking at" chip', () => {
+describe('0.12 c29: the "Looking at" chip', () => {
   afterEach(() => {
     localStorage.clear();
     chatDockStore.setState({ open: false, focus: 0 });

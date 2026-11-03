@@ -401,7 +401,7 @@ describe('subagent card', () => {
   });
 });
 
-describe('0.11 c08: one tree for the phone and the desk', () => {
+describe('0.12 c08: one tree for the phone and the desk', () => {
   it('flipping the chrome keeps the composer, its draft and the transcript mounted', () => {
     const layout = createLayoutStore(layoutAt(1440));
     renderApp({ path: '/s/a', layout, state: stateWith({ sessions: [session('a')] }) });
@@ -440,7 +440,7 @@ describe('0.11 c08: one tree for the phone and the desk', () => {
   });
 });
 
-describe('0.11 (c23): the session by its own width', () => {
+describe('0.12 (c23): the session by its own width', () => {
   afterEach(() => vi.restoreAllMocks());
   const state = () => stateWith({ sessions: [session('a', { status: 'idle' })] });
 

@@ -1,6 +1,6 @@
 /**
  * A keyboard hint: mono 11 px in a 3 px-radius box. Shown in the status bar,
- * the Cmd-K footer and next to dock actions. 0.11: only once a hardware
+ * the Cmd-K footer and next to dock actions. 0.12: only once a hardware
  * keyboard has been seen (shell/layout.ts `keyboard`: a Mac from the start,
  * an iPad after its first key press), at any width; nothing otherwise, so
  * no caller has to ask.

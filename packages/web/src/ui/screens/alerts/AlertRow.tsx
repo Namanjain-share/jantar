@@ -1,9 +1,9 @@
 /**
  * One alert on the timeline (direction.md 5.4, dir-k.html .al-r / .p-al).
  *
- *   table    0.11, a wide pane with nothing open: time · glyph · subject ·
+ *   table    0.12, a wide pane with nothing open: time · glyph · subject ·
  *            what happened (two lines) · action; the row opens the alert
- *   pick     0.11, the list beside an open alert: two lines; a row opens it
+ *   pick     0.12, the list beside an open alert: two lines; a row opens it
  *   phone    two lines: glyph, subject and time; then what happened (also a
  *            pane too narrow to put an alert beside the list)
  *
@@ -60,7 +60,7 @@ export function ActionLink({ action, className }: { action: AlertAction; classNa
 }
 
 /**
- * 0.11, the table across a wide pane (nothing open): time 56 · glyph ·
+ * 0.12, the table across a wide pane (nothing open): time 56 · glyph ·
  * subject (200, 280 in a pane of 1180) · what happened (two lines) ·
  * action 160. 44 tall on a Mac, 52 on touch. The row opens the alert
  * beside the list.
@@ -91,7 +91,7 @@ export function AlertRowTable({ alert: a, subject, sentence, action, unseen, hre
   );
 }
 
-/** 0.11, the list beside an open alert: two lines, the open one ticked (the SplitPane keeps it in view); a row opens its alert. */
+/** 0.12, the list beside an open alert: two lines, the open one ticked (the SplitPane keeps it in view); a row opens its alert. */
 export function AlertRowPick({ alert: a, subject, sentence, unseen, href, selected }: AlertRowProps & { href: string; selected: boolean }) {
   return (
     <li className="border-b border-line" data-alert={a.id} data-unseen={unseen ? 'true' : undefined}>

@@ -143,7 +143,7 @@ describe('tablet shell', () => {
   });
 });
 
-describe('0.11: the chrome by width and pointer', () => {
+describe('0.12: the chrome by width and pointer', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('c24: a touch screen gets the touch shell from 640 (no top bar, no status bar), and the phone below', async () => {
@@ -252,7 +252,7 @@ describe('v0.7: Posts in the shell', () => {
   });
 });
 
-describe('0.11 c08: one shell tree', () => {
+describe('0.12 c08: one shell tree', () => {
   it('a session at 1440, 820 and 390 renders through the same tree: the composer keeps its node and its draft', () => {
     const layout = createLayoutStore(layoutAt(1440));
     renderApp({ state: busy(), path: '/s/infra', layout });
@@ -315,7 +315,7 @@ describe('0.11 c08: one shell tree', () => {
   });
 });
 
-describe('0.11: More is the phone tab', () => {
+describe('0.12: More is the phone tab', () => {
   it('a wider chrome sends /more to the board; the phone keeps it', async () => {
     const wide = renderApp({ state: busy(), path: '/more', layout: layoutAt(1440) });
     await waitFor(() => expect(wide.router.getState().route).toEqual({ name: 'board' }));
@@ -326,7 +326,7 @@ describe('0.11: More is the phone tab', () => {
   });
 });
 
-describe('0.11 c10: the shell follows the visual viewport', () => {
+describe('0.12 c10: the shell follows the visual viewport', () => {
   it('is the shell box on every chrome, and popups go into its layer, not <body>', async () => {
     const layout = createLayoutStore(layoutAt(1440));
     renderApp({ state: busy(), layout });
@@ -345,7 +345,7 @@ describe('0.11 c10: the shell follows the visual viewport', () => {
   });
 });
 
-describe('0.11 c24: the touch shell', () => {
+describe('0.12 c24: the touch shell', () => {
   const touchAt = (width: number) => layoutAt(width, { coarse: true });
   const allOn = () => stateWith({ sessions: [session('web-app', { status: 'waiting' })], pending: [pending('web-app')], features: { files: true, life: true, intel: true, meetings: true, ask: true, people: true } });
   const navNames = (nav: HTMLElement) =>

@@ -303,7 +303,7 @@ export function useSends(sid: string, now: number) {
   const jobs = useApp((s) => s.state.sends);
   const offline = useApp((s) => s.conn.status === 'offline');
   const [local, setLocal] = useState<LocalSend[]>([]);
-  // 0.11: the prompt and the chips already on the Mac are this session's draft (lib/drafts.ts), so
+  // 0.12: the prompt and the chips already on the Mac are this session's draft (lib/drafts.ts), so
   // leaving the session and opening it again, or a reload of the tab, finds them as they were.
   const draftKey = `s:${sid}`;
   const [draft, setDraft] = useDraft(draftKey);

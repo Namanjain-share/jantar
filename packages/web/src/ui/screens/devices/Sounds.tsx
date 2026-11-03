@@ -37,7 +37,7 @@ export const PLAY_SOUNDS = `Play sounds while ${PRODUCT_NAME} is open`;
 export const SPEAK_NOTE =
   'Says only "Answer soon", "Claude needs you", "Done", "Reminder" or "Something needs a look". Never what Claude asked, a folder or a medicine.';
 export const LOCK_SCREEN_LINE = `Tones and the voice play only while ${PRODUCT_NAME} is open on screen, and follow the silent switch. On the lock screen your iPhone plays its own alert sound for every app (Settings › Sounds & Haptics).`;
-/** 0.11 (c31): an iPad's own words (no silent switch on most, and its settings say Sounds). */
+/** 0.12 (c31): an iPad's own words (no silent switch on most, and its settings say Sounds). */
 export const LOCK_SCREEN_LINE_IPAD = `Tones and the voice play only while ${PRODUCT_NAME} is open on screen. On the lock screen your iPad plays its own alert sound for every app (Settings › Sounds).`;
 /** Under Done whenever the kinds list shows above: a phone can't read or change the Mac's kinds. */
 export const DONE_COMMAND = 'jantar notify done on';

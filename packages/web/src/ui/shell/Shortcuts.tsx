@@ -1,5 +1,5 @@
 /**
- * Keyboard shortcuts and the legend (0.11, build plan 3.1 and c30;
+ * Keyboard shortcuts and the legend (0.12, build plan 3.1 and c30;
  * ipad-design.md 4.3): the `?` overlay. **Keys** lists every shortcut, the
  * current place's first; **Legend** is what the squares mean. It opens with
  * ?, from the iPad sidebar's ⋯ → Keyboard shortcuts, and from Devices. On an

@@ -14,7 +14,7 @@
  * `bill` (from a bill's push or Today) opens that bill's Paid sheet. The
  * title is the page's <h1> in every state.
  *
- * 0.11 (build plan 2.4): from a pane of 640, By category, Bills and Entries
+ * 0.12 (build plan 2.4): from a pane of 640, By category, Bills and Entries
  * are cards side by side (three at 1440). Below 640, 0.10's list.
  */
 import { PlusIcon } from '@phosphor-icons/react';
@@ -67,7 +67,7 @@ export function Money({ month, bill }: MoneyProps) {
   const opened = useRef<string | null>(null);
   const target = bill ? load.data?.bills.find((b) => b.id === bill) : undefined;
   const { show: showPaid } = paid;
-  // Cards from a pane of 640 (0.11), the 0.10 list below it: decided by the page's measured width.
+  // Cards from a pane of 640 (0.12), the 0.10 list below it: decided by the page's measured width.
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
 
@@ -110,7 +110,7 @@ export function Money({ month, bill }: MoneyProps) {
                 {m.currency === null ? <CommandSentence className="px-16 pb-12" sentence={NO_CURRENCY} /> : null}
 
                 {(() => {
-                  // 0.11: by category, bills and entries side by side from a pane of 640.
+                  // 0.12: by category, bills and entries side by side from a pane of 640.
                   const parts = [
                     <Panel key="category" label="By category" card={cards}>
                       {m.byCategory.length === 0 ? (

@@ -9,7 +9,7 @@
  *
  * - `RowThumb`: 48 px, frame 0, on a row of the list.
  * - `FrameStrip`: the item page's strip, sideways; a tap opens the larger
- *   view in a sheet with the same bytes. 0.11: from a pane of 480, up to
+ *   view in a sheet with the same bytes. 0.12: from a pane of 480, up to
  *   four across the reading column, 216 tall (240 from 640), each picture
  *   fitted whole: a reel's frame is about 120 x 213 there (it was 52 x 90).
  * - `CardFrame`: frame 0 across the top of a card in the wide grid.
@@ -56,7 +56,7 @@ export function useFrame(id: string, n: number, on: boolean): Blob | null {
   return blob;
 }
 
-/** 0.11: frame 0 across the top of a card in the grid (decorative: the card's title names it). */
+/** 0.12: frame 0 across the top of a card in the grid (decorative: the card's title names it). */
 export function CardFrame({ id }: { id: string }) {
   const box = useRef<HTMLSpanElement>(null);
   const url = useObjectUrl(useFrame(id, 0, useSeen(box)));

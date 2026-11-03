@@ -31,7 +31,7 @@ export function NewButton({
   const phone = chrome === 'phone';
   const on = useCanStart();
   if (!on) return null;
-  // 0.11: the icon alone on an iPad too (its 340 ledger), as on the phone.
+  // 0.12: the icon alone on an iPad too (its 340 ledger), as on the phone.
   return (
     <Button size={phone ? 'lg' : 'md'} className={clsx('coarse:min-w-44', className)} aria-label="New session" onClick={() => navigate('/new')}>
       <PlusIcon size={phone ? 16 : 14} weight="bold" aria-hidden="true" />
@@ -42,7 +42,7 @@ export function NewButton({
 
 export function WithNewButton({ ground, children }: { ground: 'surface' | 'bg'; children: ReactNode }) {
   const on = useCanStart();
-  // 0.11 (c28): the iPad's Chat button ends the Board's header (not beside an open session: its header has it).
+  // 0.12 (c28): the iPad's Chat button ends the Board's header (not beside an open session: its header has it).
   const chat = useChatBeside();
   if (!on && !chat) return <>{children}</>;
   return (

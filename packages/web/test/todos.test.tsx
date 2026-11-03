@@ -557,7 +557,7 @@ describe('Todos: projects', () => {
   });
 });
 
-describe('0.11: a wide pane', () => {
+describe('0.12: a wide pane', () => {
   // A pane 1384 wide: the page measures its body (cards from 640) and Columns its box (three of 340).
   const wide = () =>
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: 1352, bottom: 800, width: 1352, height: 800, toJSON: () => ({}) });
@@ -605,7 +605,7 @@ describe('0.11: a wide pane', () => {
   });
 });
 
-describe('0.11 c12: the editor is a form sheet beside the phone', () => {
+describe('0.12 c12: the editor is a form sheet beside the phone', () => {
   it('opens TodoSheet as a form sheet on a wide window and an iPad, a bottom sheet on the phone', async () => {
     for (const [layout, present] of [
       [layoutAt(1440), 'form'],

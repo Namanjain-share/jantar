@@ -47,7 +47,7 @@ export function AddPostSheet({
   onByHand: () => void;
 }) {
   const { api } = useDeps();
-  // 0.11 (c27, A9): the field takes the focus on open only with a hardware keyboard.
+  // 0.12 (c27, A9): the field takes the focus on open only with a hardware keyboard.
   const { keyboard } = useLayout();
   const id = useId();
   const [text, setText] = useState('');

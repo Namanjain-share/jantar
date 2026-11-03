@@ -7,7 +7,7 @@
  * Ember (design rule 3, spec 5.0): its overdue todos, and its due day once
  * past while the project is not done. Nothing else on the row.
  *
- * 0.11: `card`, the same project as a card in the Projects grid of a wide
+ * 0.12: `card`, the same project as a card in the Projects grid of a wide
  * pane (build plan 2.4), with its next open todos under the line (`next`,
  * three at most, then how many more).
  */

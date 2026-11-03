@@ -335,7 +335,7 @@ describe('the list', () => {
     open('/meetings', meetingsApi({ meetingsList }));
     fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('Example meeting 60')).toBeTruthy();
-    // 0.11: the list's own box scrolls (the SplitPane's list section), and its scroll is kept as it scrolls.
+    // 0.12: the list's own box scrolls (the SplitPane's list section), and its scroll is kept as it scrolls.
     const box = document.querySelector('.split-list') as HTMLElement;
     let top = 0;
     Object.defineProperty(box, 'scrollTop', { configurable: true, get: () => top, set: (v: number) => (top = v) });
@@ -388,7 +388,7 @@ describe('the list', () => {
   });
 });
 
-describe('0.11: a wide pane', () => {
+describe('0.12: a wide pane', () => {
   // A 1440 window: the Mac's chrome, and the list's SplitPane splits (jsdom has no layout: it follows the window).
   const wide = (path: string, api: Api) => renderApp({ path, api, state: ON, status: 'live', layout: layoutAt(1440) });
 

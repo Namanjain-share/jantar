@@ -57,7 +57,7 @@ export function LogCommentSheet({ open, onOpenChange, sheetKey, onLogged }: LogC
 
 function LogForm({ onDone, onLogged }: { onDone: () => void; onLogged: (id: string, label: string) => void }) {
   const { api } = useDeps();
-  // 0.11 (c27, A9): the field takes the focus on open only with a hardware keyboard.
+  // 0.12 (c27, A9): the field takes the focus on open only with a hardware keyboard.
   const { keyboard } = useLayout();
   const offline = useOffline();
   const w = useWrite();

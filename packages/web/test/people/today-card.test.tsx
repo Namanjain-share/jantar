@@ -3,7 +3,7 @@
  * synthetic person (Asha) and a fake People client.
  *
  * - On a phone, and in a pane under 640, the rows sit on top of Today's
- *   list, as in 0.11.
+ *   list, as in 0.12.
  * - From 640 they are the Accountability partner card, first by default,
  *   with its link to People; Edit cards lists it (and moves and hides it)
  *   only while People is on.

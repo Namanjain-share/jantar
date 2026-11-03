@@ -1,9 +1,9 @@
 /**
- * Keyboard (direction.md 5.9; 0.11, build plan 3.1). The shell owns the
+ * Keyboard (direction.md 5.9; 0.12, build plan 3.1). The shell owns the
  * global keys; screens add their own (j/k, Enter, a, d, r, 1-9) with useKey,
  * which skips keys typed into fields and keys with modifiers.
  *
- * 0.11: keys work at every width once a hardware keyboard has been seen
+ * 0.12: keys work at every width once a hardware keyboard has been seen
  * (shell/layout.ts `keyboard`: a Mac from the start, an iPad once
  * lib/input.ts has seen one), not only from 768 px.
  *

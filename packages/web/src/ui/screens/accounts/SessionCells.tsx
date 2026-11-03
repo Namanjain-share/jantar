@@ -4,7 +4,7 @@
  * hover or focus shows "web-app · fix login · Question · 4m". A session
  * moving off the account ends the cells with "→08".
  *
- * 0.11, on a touch screen (`onCluster`): 16 px cells named only on hover are
+ * 0.12, on a touch screen (`onCluster`): 16 px cells named only on hover are
  * no targets, so the cells are one 44 button that opens the account's row,
  * which lists its sessions as 44 rows.
  */
@@ -110,7 +110,7 @@ export function SessionCells({
 export function SessionList({ cells, columns = false }: { cells: SessionCell[]; columns?: boolean }) {
   if (!cells.length) return null;
   return (
-    // 0.11, `columns`: the sessions in columns of at least 280 across a wide pane (one login).
+    // 0.12, `columns`: the sessions in columns of at least 280 across a wide pane (one login).
     <ul role="group" aria-label={groupLabel(cells.length)} className={columns ? '-mx-16 grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))]' : '-mx-16'}>
       {cells.map((c) => (
         <li key={c.s.sid}>

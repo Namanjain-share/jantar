@@ -11,7 +11,7 @@
  *   ■ web-app  fix login redirect
  *   □ docs     changelog
  *
- * 0.11 (build plan 2.9): from a pane of 640 the login is a card at the
+ * 0.12 (build plan 2.9): from a pane of 640 the login is a card at the
  * pane's width (the 640 column is gone), its sessions in columns of at
  * least 280. With one login nothing reads usage, so there is no meter or
  * reset to put beside it. Without a measure (jsdom), 0.10's column.
@@ -41,7 +41,7 @@ export function SingleAccount({ machines = false }: { machines?: boolean } = {})
   // One login: every session of this Mac is on it (a paired machine's are on its own accounts).
   const cells = useMemo(() => sessionCells(state, boardOrder(state).filter((s) => s.node === undefined), now), [state, now]);
   const name = Object.values(state.accounts)[0]?.alias ?? FALLBACK_NAME;
-  // A pane of 640 or more: the card (0.11).
+  // A pane of 640 or more: the card (0.12).
   const box = useRef<HTMLDivElement>(null);
   const card = useBucket(box, (w) => w >= 640) && !phone;
 

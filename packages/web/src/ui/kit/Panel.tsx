@@ -1,5 +1,5 @@
 /**
- * A section of a pane (0.11, build plan 2.4-2.6): 0.10's rail label over its
+ * A section of a pane (0.12, build plan 2.4-2.6): 0.10's rail label over its
  * rows in a narrow pane, or a card in a wide one, as Today's cards are
  * (life/today/Dashboard.tsx): a raised box with a 44 header (the label in
  * the rail type, a count, and an aside at the right, such as "+ Dish"),

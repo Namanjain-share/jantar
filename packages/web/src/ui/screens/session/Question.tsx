@@ -6,11 +6,11 @@
  * time ("1 of 3 questions"); picking a single-choice answer moves on, as the
  * terminal does. "Send answer" is enabled once every question has an answer.
  * "Clarify with Claude" is Claude's own way out ("Chat about this" in the
- * terminal, kept as its description; 0.11 renamed it so it isn't taken for
+ * terminal, kept as its description; 0.12 renamed it so it isn't taken for
  * Jantar's Chat, open question 8): it declines with Claude's sentence
  * (CLARIFY_MESSAGE) and Claude asks what to clarify.
  *
- * 0.11 (c27): while the on-screen keyboard is up and the focus is in the
+ * 0.12 (c27): while the on-screen keyboard is up and the focus is in the
  * card (its own answer), the options fold to one 44 row with the pick
  * ("auth/session.ts · 2 options"); a tap shows them again. They stay
  * mounted, so nothing picked is lost.
@@ -192,7 +192,7 @@ export function QuestionCard({ p, phone, offline, age, late, aside, onDecided, m
       'relative flex cursor-pointer items-center gap-12 border-b border-line transition-colors duration-120 ease-hover',
       'has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-ink',
       phone ? 'min-h-56 px-16 py-8' : 'min-h-44 px-20 py-4',
-      // 0.11: a touch screen's rows are the phone's at every width, so "Type something…" is a 44 target.
+      // 0.12: a touch screen's rows are the phone's at every width, so "Type something…" is a 44 target.
       'coarse:min-h-56 coarse:py-6',
       on ? 'row-tick bg-select' : 'hover:bg-hover',
     );

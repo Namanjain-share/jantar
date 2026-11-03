@@ -1,5 +1,5 @@
 /**
- * Today as a page of cards (0.11, build plan 2.3): from a pane 640 wide
+ * Today as a page of cards (0.12, build plan 2.3): from a pane 640 wide
  * Today's sections are cards, dealt into columns (kit/Columns.tsx); below
  * that they are 0.10's list. One card per section that has data
  * (`GET /v1/life/today`, D4): Medicines, Claude, Due, Food, Bills, Posts;

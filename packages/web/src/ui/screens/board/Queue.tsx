@@ -1,5 +1,5 @@
 /**
- * "Waiting on you" above the ledger (0.11, build plan c25; ipad-design.md
+ * "Waiting on you" above the ledger (0.12, build plan c25; ipad-design.md
  * 3.1 "Single"): the Board's own pane is single (an iPad in portrait, a
  * landscape 2/3 window, a narrow Mac window) beside the phone, so the Desk
  * isn't there to show what waits. The Desk's cards, oldest first, up to

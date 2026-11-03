@@ -55,7 +55,7 @@ export function chipTrouble(chips: readonly Pick<ChatChip, 'error'>[]): string |
 /** The chips and their uploads; `ids()` names the uploaded ones for a send, `clear()` empties the row once the Mac took it. */
 export function useChips(draftKey?: string) {
   const { api } = useDeps();
-  // 0.11: with a draft key, the photos already on the Mac wait for the box to open again (lib/drafts.ts).
+  // 0.12: with a draft key, the photos already on the Mac wait for the box to open again (lib/drafts.ts).
   const [chips, setChips] = useState<ChatChip[]>(() => (draftKey ? (getAside<ChatChip[]>(draftKey) ?? []) : []));
   const live = useRef(chips);
   live.current = chips;
@@ -138,7 +138,7 @@ export function Composer({
   chips: ReturnType<typeof useChips>;
 }) {
   const id = useId();
-  // 0.11: 44 on touch at every width, 40 with a mouse (it followed the phone frame).
+  // 0.12: 44 on touch at every width, 40 with a mouse (it followed the phone frame).
   const coarse = useLayout().coarse;
   const file = useRef<HTMLInputElement>(null);
   // A failed photo holds Send: the message would go without it, and Claude would answer as if it had seen it.

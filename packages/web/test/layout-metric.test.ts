@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * The wide-window metric (layout-metric.ts, 0.11 c13) on synthetic layouts:
+ * The wide-window metric (layout-metric.ts, 0.12 c13) on synthetic layouts:
  * the user's 720 column at 1384 fails, three columns of cards pass, and the
  * metric can't be gamed by a header button at the edge or by full-width
  * bordered rows with words only at their two ends.

@@ -1,5 +1,5 @@
 /**
- * The touch sidebar's ⋯ menu (0.11, ipad-design.md 2.1): Devices (it left
+ * The touch sidebar's ⋯ menu (0.12, ipad-design.md 2.1): Devices (it left
  * the place list), Keyboard shortcuts, the theme, and Reload app (a Home
  * Screen app has no reload of its own). Its own chunk, like the Board's row
  * menu: the Base UI menu loads on the first open, not with the shell.

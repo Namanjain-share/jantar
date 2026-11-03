@@ -94,7 +94,7 @@ export function DockFrame({ phone, title, glyph, age, late, aside, hints, peek, 
   // The phone's peek: folded to one line.
   const peeking = phone && folded;
 
-  // 0.11 (build plan 1.6): one tree for the phone and the desk. Each part keeps its place and only
+  // 0.12 (build plan 1.6): one tree for the phone and the desk. Each part keeps its place and only
   // the classes change, so a resize across 768 keeps the card's own fields (a Question's typed answer,
   // Plan's feedback, Permission's note) mounted, with their focus.
   return (

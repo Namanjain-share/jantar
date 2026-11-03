@@ -53,9 +53,9 @@ export interface Viewport {
   height: number;
   phone?: boolean;
   scheme?: 'light' | 'dark';
-  /** 0.11: a coarse pointer at any width: an iPad (its user agent too), or Chrome's device mode. */
+  /** 0.12: a coarse pointer at any width: an iPad (its user agent too), or Chrome's device mode. */
   touch?: boolean;
-  /** 0.11: the safe-area insets of the iPad's Home Screen app (the status bar, the home indicator). */
+  /** 0.12: the safe-area insets of the iPad's Home Screen app (the status bar, the home indicator). */
   insets?: { top: number; bottom: number };
 }
 
@@ -299,7 +299,7 @@ export interface AnsweringFixture {
 }
 
 /**
- * 0.11: a page in its own context, as scripts/screenshots.mjs opens one: the
+ * 0.12: a page in its own context, as scripts/screenshots.mjs opens one: the
  * fixture's clock and time zone, a paired control device, the event stream
  * accepted and quiet, /v1 answered from the fixture (or from `override`
  * first), reduced motion; with `o.touch` an iPad (its user agent,

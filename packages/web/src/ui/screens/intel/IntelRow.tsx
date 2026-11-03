@@ -8,7 +8,7 @@
  * the right) when the Mac kept one, and "Couldn't read" when its read
  * failed (after a restart too, when no job is left to say so).
  *
- * 0.11: IntelCard, the same item as a card for the grid across a wide pane.
+ * 0.12: IntelCard, the same item as a card for the grid across a wide pane.
  */
 import type { IntelListItem } from '@jantar/protocol';
 import clsx from 'clsx';
@@ -39,7 +39,7 @@ export function rowMeta(item: IntelListItem, now: number): string {
   return (read ? [item.platform ? PLATFORM_LABEL[item.platform] : item.type, item.creator] : [item.type, item.source]).concat(shelfDate(item.at, now)).filter(Boolean).join(' · ');
 }
 
-/** `current`: the item open beside the list (0.11): ticked (the SplitPane keeps it in view). */
+/** `current`: the item open beside the list (0.12): ticked (the SplitPane keeps it in view). */
 export function IntelRow({ item, filters, terms, now, current = false }: { item: IntelListItem; filters: ShelfFilters; terms: readonly string[]; now: number; current?: boolean }) {
   const meta = rowMeta(item, now);
   const failed = item.read?.state === 'failed';
@@ -73,7 +73,7 @@ export function IntelRow({ item, filters, terms, now, current = false }: { item:
 }
 
 /**
- * 0.11, the shelf across a wide pane (build plan 2.7): a card per item, the
+ * 0.12, the shelf across a wide pane (build plan 2.7): a card per item, the
  * first picture on top when the Mac kept one, the title on two lines, where
  * it is from and when, three lines of what it is, and two tags. The card
  * opens the item beside the list.

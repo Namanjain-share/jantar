@@ -343,7 +343,7 @@ export function ItemPage({ id, filters, offline }: { id: string; filters: ShelfF
     load.reload();
     jobs.reload();
   };
-  // 0.11: beside the list (a split pane) Close goes back to it; alone, "< Intel". The reading column stays 720.
+  // 0.12: beside the list (a split pane) Close goes back to it; alone, "< Intel". The reading column stays 720.
   const close = usePaneClose();
   return (
     <div className="pb-48 animate-enter">

@@ -16,7 +16,7 @@ import { PAIR_LINE, presenceText, versionText } from '../src/ui/screens/devices/
 import { emit, fakeApi, iso, NOW, preloadPlaces, renderApp, stateWith } from './helpers.js';
 import { fleetNodes, fleetState, IDS } from './fleet-helpers.js';
 
-// 0.11: Devices opens from its own chunk.
+// 0.12: Devices opens from its own chunk.
 preloadPlaces('devices');
 
 beforeAll(async () => {

@@ -9,7 +9,7 @@ import { keyboardOn, keyboardStore, setKeyboardMode } from '../src/lib/input.js'
 import { countdown } from '../src/ui/screens/devices/PairNew.js';
 import { NOW, fakeApi, fakeConnection, fakePushEnv, iso, opened, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
-// 0.11: Devices opens from its own chunk.
+// 0.12: Devices opens from its own chunk.
 preloadPlaces('devices');
 
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
@@ -327,7 +327,7 @@ describe('notifications', () => {
   });
 });
 
-describe('0.11 c31: the iPad says iPad; a Keyboard row in Devices', () => {
+describe('0.12 c31: the iPad says iPad; a Keyboard row in Devices', () => {
   /** iPadOS 26's Safari: it asks for the desktop site, so it says Macintosh. */
   const IPAD = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15';
 

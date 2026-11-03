@@ -12,7 +12,7 @@
  * café with no visits goes back to the list under its Undo; one with visits
  * asks first in its sheet.
  *
- * 0.11 (build plan 2.5): beside the list it has Close (and Esc) instead of
+ * 0.12 (build plan 2.5): beside the list it has Close (and Esc) instead of
  * "< Cafés", and it takes its pane's width: from 640 the summary and Log
  * visit sit side by side and the ratings two across, from 900 three across
  * with Dishes beside Visits. A tap on a rating's stars sets it (OQ9), with
@@ -59,13 +59,13 @@ export interface PlaceScreenProps {
   onDelete: (place: Place) => void;
   /** A café with visits, deleted after the question. */
   onDeleted: () => void;
-  /** 0.11: a rating was set or put back (the list's order may follow it). */
+  /** 0.12: a rating was set or put back (the list's order may follow it). */
   onRated?: () => void;
 }
 
 const SECTION = 'px-16 py-10';
 
-/** A section: a rail and rows over the list (0.10), a card beside it (0.11, as Today's). */
+/** A section: a rail and rows over the list (0.10), a card beside it (0.12, as Today's). */
 function Section({ title, aside, card, className, children }: { title: string; aside?: ReactNode; card: boolean; className?: string; children: ReactNode }) {
   return (
     <Panel label={title} aside={aside} card={card} {...(card && className ? { className } : {})}>

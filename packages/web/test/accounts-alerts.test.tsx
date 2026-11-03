@@ -7,7 +7,7 @@ import { dayLabel, dur } from '../src/ui/screens/accounts/time.js';
 import { ALERTS_SEEN_KEY, sentenceOf, subjectOf } from '../src/ui/screens/alerts/model.js';
 import { NOW, account, alert, fakeApi, iso, measureAs, opened, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
-// 0.11: Accounts and Alerts open from their own chunks.
+// 0.12: Accounts and Alerts open from their own chunks.
 preloadPlaces('accounts', 'alerts');
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */
@@ -361,7 +361,7 @@ describe('alerts screen', () => {
     expect(await screen.findByRole('button', { name: /Mute pushes/ })).toBeTruthy();
   });
 
-  it('is one table across a wide pane, and a row opens its alert beside the list (0.11)', async () => {
+  it('is one table across a wide pane, and a row opens its alert beside the list (0.12)', async () => {
     viewport(1440);
     const { router } = renderApp({ path: '/alerts', state: stateWith({ alerts, sessions: [session('web-app', { name: 'fix login' })] }) });
     await opened('Alerts');

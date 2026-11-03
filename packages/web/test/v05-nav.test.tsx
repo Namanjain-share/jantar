@@ -70,7 +70,7 @@ describe('on the rail', () => {
   });
 });
 
-describe('0.11 c32: a place that is off', () => {
+describe('0.12 c32: a place that is off', () => {
   it('is absent from the rail, and its ⌘ number says how to turn it on; the touch sidebar too', async () => {
     viewport(1440);
     renderApp({ state: stateWith({ sessions: [session('a')], features: { files: true, life: true, intel: true, meetings: false } }) });

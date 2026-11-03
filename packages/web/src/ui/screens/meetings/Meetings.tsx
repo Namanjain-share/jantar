@@ -25,7 +25,7 @@
  * is held on the list it goes back to; a failed delete's "Not saved" stays
  * with the view it failed on. Every state keeps the `<h1>`.
  *
- * 0.11 (build plan 2.8): a SplitPane ("meetings", fill). With nothing open
+ * 0.12 (build plan 2.8): a SplitPane ("meetings", fill). With nothing open
  * the meetings are cards across the pane (at least 280 wide: four at 1440),
  * and the days sit side by side, each over as many card columns as it has
  * meetings, so a day of one meeting doesn't leave its row empty. A meeting
@@ -142,7 +142,7 @@ export function Meetings({ project, q, id }: MeetingsProps) {
   ) : null;
 
   const shown = id && held.visible([meetingKey(id)], (k) => k).length > 0 ? id : null;
-  // 0.11: the list across the pane (cards), and a meeting beside it from a pane of 800 (over it below that).
+  // 0.12: the list across the pane (cards), and a meeting beside it from a pane of 800 (over it below that).
   return (
     <SplitPane
       name="meetings"

@@ -14,7 +14,7 @@
  * log); `?med=<id>` (a refill push) opens that medicine's sheet. The title
  * is the <h1> in every state; reloads follow the lifeTick and visibility.
  *
- * 0.11 (build plan 2.4): from a pane of 640 the day's doses and Your
+ * 0.12 (build plan 2.4): from a pane of 640 the day's doses and Your
  * medicines are two cards side by side, under the day switcher. Below 640,
  * 0.10's list.
  */
@@ -52,14 +52,14 @@ export function Meds({ day, med }: MedsProps) {
   const write = useMedWrite();
   const load = useLifeLoad(`meds:${day ?? ''}`, () => api.medsGet(day));
   const [dose, setDose] = useState<MedsDayItem | null>(null);
-  // 0.11 (c26): the row the dose popover opens beside.
+  // 0.12 (c26): the row the dose popover opens beside.
   const doseAt = useRef<HTMLElement | null>(null);
   const [sheet, setSheet] = useState<{ open: boolean; med: MedicineView | null; n: number }>({ open: false, med: null, n: 0 });
   const openSheet = (m: MedicineView | null) => setSheet((s) => ({ open: true, med: m, n: s.n + 1 }));
 
   // A refill push opens its medicine once the list has it (once per ?med=).
   const shownFor = useRef<string | null>(null);
-  // Cards from a pane of 640 (0.11), the 0.10 list below it: decided by the page's measured width.
+  // Cards from a pane of 640 (0.12), the 0.10 list below it: decided by the page's measured width.
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
   const meds = load.data?.medicines;
@@ -70,7 +70,7 @@ export function Meds({ day, med }: MedsProps) {
     shownFor.current = med;
     openSheet(m);
   }, [med, meds]);
-  // 0.11 (c29): the medicine the address names is what Chat beside it is told you mean.
+  // 0.12 (c29): the medicine the address names is what Chat beside it is told you mean.
   const named = med ? meds?.find((x) => x.id === med) : undefined;
   useLookingAt(named ? { kind: 'medicine', id: named.id, label: named.name } : null);
 
@@ -167,7 +167,7 @@ export function Meds({ day, med }: MedsProps) {
           <DayNav day={shown} today={today} onDay={onDay} />
         </div>
         {cards ? (
-          // 0.11: the day's doses beside your medicines.
+          // 0.12: the day's doses beside your medicines.
           <>
             {notes}
             <Columns min={340} className="px-16 pt-4">

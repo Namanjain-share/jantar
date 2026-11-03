@@ -44,7 +44,7 @@ const LAZY_PLACES = {
   intel: () => import('../src/ui/screens/intel/Intel.js'),
   meetings: () => import('../src/ui/screens/meetings/Meetings.js'),
   chat: () => import('../src/ui/screens/chat/Chat.js'),
-  // 0.11: Accounts, Alerts and Devices open from their own chunks too.
+  // 0.12: Accounts, Alerts and Devices open from their own chunks too.
   accounts: () => import('../src/ui/screens/Accounts.js'),
   alerts: () => import('../src/ui/screens/Alerts.js'),
   devices: () => import('../src/ui/screens/Devices.js'),
@@ -64,7 +64,7 @@ export function preloadPlaces(...names: Array<keyof typeof LAZY_PLACES>): void {
 }
 
 /**
- * 0.11: Accounts, Alerts and Devices open from their own chunks, so a test
+ * 0.12: Accounts, Alerts and Devices open from their own chunks, so a test
  * that renders one waits for its heading before asking about the screen
  * (an absence asked about the skeleton would pass for the wrong reason).
  */
@@ -397,7 +397,7 @@ export function emit(store: AppStore, events: DaemonEvent[]) {
 }
 
 /**
- * 0.11 (c23): make every box measure `width` px (jsdom has no layout), so a place laid out by its own
+ * 0.12 (c23): make every box measure `width` px (jsdom has no layout), so a place laid out by its own
  * width (a SplitPane, the session's property column, Accounts' columns, the Life cards) sees that pane.
  * Restore it with vi.restoreAllMocks() (or the returned spy's mockRestore()).
  */

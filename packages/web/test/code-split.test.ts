@@ -144,7 +144,7 @@ describe('code splitting', () => {
     expect(readFileSync(join(src, 'ui/screens/devices/Notifications.tsx'), 'utf8')).toContain("import('./Sounds.js')");
   });
 
-  it('0.11: keeps Accounts, Alerts and Devices out of the main chunk (room for the wide layouts)', () => {
+  it('0.12: keeps Accounts, Alerts and Devices out of the main chunk (room for the wide layouts)', () => {
     const lazyOnly = [
       'ui/screens/Accounts.tsx',
       'ui/screens/accounts/Matrix.tsx',
@@ -180,7 +180,7 @@ describe('code splitting', () => {
     expect(shell).toContain("import('../screens/Devices.js')");
   });
 
-  it("0.11: main's Base UI is exactly the CSP provider and the Drawer (D12)", () => {
+  it("0.12: main's Base UI is exactly the CSP provider and the Drawer (D12)", () => {
     // The Drawer (kit/Sheet.tsx) holds Base UI's shared popup runtime in main, which every lazy screen
     // also reaches (Life's Page menu, Chat's RowMenu, the sheets). Dropping it would charge that runtime
     // (about 20 kB) to each of them; adding Dialog, Menu or Popover here would grow main for one screen.
@@ -192,7 +192,7 @@ describe('code splitting', () => {
     expect(main.files.has('ui/kit/Sheet.tsx')).toBe(true);
   });
 
-  it("0.11 c24: the iPad's sidebar and rail are their own chunk; the Mac and the phone never load them", () => {
+  it("0.12 c24: the iPad's sidebar and rail are their own chunk; the Mac and the phone never load them", () => {
     const lazyOnly = ['ui/shell/TouchShell.tsx', 'ui/shell/Sidebar.tsx', 'ui/shell/AccountsStrip.tsx', 'ui/shell/MoreMenu.tsx', 'ui/shell/life.ts'];
     for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
     expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
@@ -202,7 +202,7 @@ describe('code splitting', () => {
     expect(readFileSync(join(src, 'main.tsx'), 'utf8')).toContain("import('./ui/shell/TouchShell.js')");
   });
 
-  it("0.11 c26: the one-value popover is lazy-only, and Base UI's Popover loads on the first one", () => {
+  it("0.12 c26: the one-value popover is lazy-only, and Base UI's Popover loads on the first one", () => {
     for (const f of ['ui/kit/Popover.tsx', 'ui/kit/ChoicePopup.tsx']) {
       expect(existsSync(join(src, f)), f).toBe(true);
       expect(main.files.has(f), f).toBe(false);
@@ -211,7 +211,7 @@ describe('code splitting', () => {
     expect(readFileSync(join(src, 'ui/kit/Popover.tsx'), 'utf8')).toContain("import('./ChoicePopup.js')");
   });
 
-  it("0.11 c28: Chat beside any screen is Chat's own chunk: the shell loads it with Chat's import(), never a chunk of its own", () => {
+  it("0.12 c28: Chat beside any screen is Chat's own chunk: the shell loads it with Chat's import(), never a chunk of its own", () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).not.toMatch(/import\(['"][^'"]*ChatDock\.js['"]\)/);
     expect(shell).toContain("import('../screens/chat/Chat.js').then((m) => ({ default: m.ChatDock }))");
@@ -221,7 +221,7 @@ describe('code splitting', () => {
     expect(main.files.has('ui/shell/chatDock.ts')).toBe(true);
   });
 
-  it('0.11 c30: the ? overlay is its own chunk, loaded on first open; the list keys and the skip link stay in main', () => {
+  it('0.12 c30: the ? overlay is its own chunk, loaded on first open; the list keys and the skip link stay in main', () => {
     expect(main.files.has('ui/shell/Shortcuts.tsx')).toBe(false);
     expect(readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8')).toContain("import('./Shortcuts.js')");
     expect(main.files.has('ui/kit/rows.ts')).toBe(true);

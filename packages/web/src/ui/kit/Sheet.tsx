@@ -5,7 +5,7 @@
  * / 260 ms close on --ease-sheet; opacity only with reduced motion
  * (styles/kit.css .sheet-*).
  *
- * Two presentations of the same Drawer (0.11, build plan D9 and 1.10), from
+ * Two presentations of the same Drawer (0.12, build plan D9 and 1.10), from
  * the layout's chrome, as `data-present`:
  *
  *   bottom  the phone: a bottom sheet, 10 px top radius and a 36x4 grabber.

@@ -1,5 +1,5 @@
 /**
- * One alert beside the list (0.11, build plan 2.10; `/alerts?id=`): what a
+ * One alert beside the list (0.12, build plan 2.10; `/alerts?id=`): what a
  * row could only hint at, in a pane of its own.
  *
  *   ■ API error · Today 01:43                                   [Close]

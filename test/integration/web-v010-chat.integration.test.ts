@@ -6,7 +6,7 @@
  * harness.ts) with its real headers and the build's strict policy. The
  * thread is made by real turns: the fake claude through the real bridge and
  * dispatcher (a todo added, a café rated, a visit logged, a delete waiting
- * for its Confirm, named Delete since 0.11, a photo). Each browser pairs the way a phone does.
+ * for its Confirm, named Delete since 0.12, a photo). Each browser pairs the way a phone does.
  *
  * - At 320 px, 390 px and 1440 px, light and dark: the empty thread, the
  *   thread with a reply, changes, a card and a photo, and the composer with

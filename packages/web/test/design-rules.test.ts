@@ -91,11 +91,11 @@ describe('design rules (direction.md 7)', () => {
         // v0.10: a Chat turn that failed, a refused tap, a card's Confirm (a delete), and a photo the phone refused.
         'ui/screens/chat/Turn.tsx',
         'ui/screens/chat/Composer.tsx',
-        // 0.11: a day in Chat's history with a card still waiting for your tap.
+        // 0.12: a day in Chat's history with a card still waiting for your tap.
         'ui/screens/chat/History.tsx',
         // v0.7 (spec 5.6): the check of a post due today or before.
         'ui/screens/life/posts/PostRow.tsx',
-        // 0.11: Today's cards say how many sessions need you, with the Board's waiting age.
+        // 0.12: Today's cards say how many sessions need you, with the Board's waiting age.
         'ui/screens/life/today/Dashboard.tsx',
         'ui/screens/life/today/Today.tsx',
       ]),
@@ -133,7 +133,7 @@ describe('design rules (direction.md 7)', () => {
     expect(offenders(/\bease-in\b(?!-)/)).toEqual([]);
   });
 
-  it('0.11: the desk type step needs a fine pointer, and pane sizes are tokens', () => {
+  it('0.12: the desk type step needs a fine pointer, and pane sizes are tokens', () => {
     const tokens = code.find((f) => f.path === 'styles/tokens.css')?.text ?? '';
     // A touch screen keeps the phone's type at every width; the Mac's step starts at 768 as before.
     expect(tokens).toMatch(/@media \(min-width: 768px\) and \(pointer: fine\) \{\s*:root \{\s*--fs-display: 22px;/);
@@ -156,7 +156,7 @@ describe('design rules (direction.md 7)', () => {
       expect(tokens).toContain(v);
   });
 
-  it('0.11: panes ask their container; only the Mac chrome asks the window', () => {
+  it('0.12: panes ask their container; only the Mac chrome asks the window', () => {
     // c23 converted the last two (Desk's 2xl:flex side column, Session's useMedia(WIDE) property column): nothing is allowed.
     const stillByWindow: string[] = [];
     const stillMedia: string[] = [];

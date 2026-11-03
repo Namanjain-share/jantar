@@ -517,7 +517,7 @@ describe('Today: offline', () => {
   });
 });
 
-describe('Today: cards (0.11)', () => {
+describe('Today: cards (0.12)', () => {
   // A pane 1384 wide: Today measures its body (cards from 640) and Columns its box (three of 340).
   const wide = () => vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: 1352, bottom: 800, width: 1352, height: 800, toJSON: () => ({}) });
   const column = (name: string) => screen.getByRole('region', { name }).parentElement;

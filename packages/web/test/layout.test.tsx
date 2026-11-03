@@ -105,7 +105,7 @@ describe('the provider', () => {
     expect(screen.getByRole('region', { name: 'Ledger' })).toBeTruthy();
   });
 
-  it('0.11 c05: a coarse pointer has a keyboard once lib/input.ts has seen one; a fine pointer from the start', () => {
+  it('0.12 c05: a coarse pointer has a keyboard once lib/input.ts has seen one; a fine pointer from the start', () => {
     keyboardStore.setState({ keyboard: false });
     function Probe() {
       const l = useLayout();
@@ -124,7 +124,7 @@ describe('the provider', () => {
     expect(screen.getByText('keyboard true')).toBeTruthy();
   });
 
-  it('0.11 c10: kbUp follows the on-screen keyboard (lib/viewport.ts)', () => {
+  it('0.12 c10: kbUp follows the on-screen keyboard (lib/viewport.ts)', () => {
     function Probe() {
       const l = useLayout();
       return <p>{`kbUp ${l.kbUp}`}</p>;

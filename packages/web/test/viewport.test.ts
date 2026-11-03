@@ -1,5 +1,5 @@
 /**
- * The visual viewport (lib/viewport.ts, 0.11): --vvh, --vvt and --kb while a
+ * The visual viewport (lib/viewport.ts, 0.12): --vvh, --vvt and --kb while a
  * field has focus, cleared while zoomed and once the field lets go, and the
  * keyboard-up flag the layout reads.
  */

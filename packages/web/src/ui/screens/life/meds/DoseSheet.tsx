@@ -33,7 +33,7 @@ export interface DoseSheetProps {
   slot: string;
   day: string;
   onClose(): void;
-  /** 0.11 (c26): the dose's row: on an iPad or a Mac the dose opens as a popover beside it. Without one (a push), the sheet. */
+  /** 0.12 (c26): the dose's row: on an iPad or a Mac the dose opens as a popover beside it. Without one (a push), the sheet. */
   anchor?: RefObject<HTMLElement | null>;
 }
 

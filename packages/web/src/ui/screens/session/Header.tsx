@@ -111,7 +111,7 @@ export interface HeaderProps {
   back?: boolean;
   /** The Files tab (v0.3), when Files is on. */
   files?: { count: number } | null;
-  /** 0.11 (c25): the back button reads "Sessions" and calls the ledger over the session instead of leaving it. */
+  /** 0.12 (c25): the back button reads "Sessions" and calls the ledger over the session instead of leaving it. */
   onSessions?: (() => void) | undefined;
   sessionsOpen?: boolean;
 }
@@ -182,7 +182,7 @@ export function Header(props: HeaderProps) {
         </span>
       ) : null}
       {showOn === null ? null : (
-        // 0.11: an icon where the session's pane is under 640 (its name stays), so the header fits beside a 340 ledger.
+        // 0.12: an icon where the session's pane is under 640 (its name stays), so the header fits beside a 340 ledger.
         // Never shrunk below its label (flex-none): the folder's name truncates instead.
         <Button className="ml-12 flex-none coarse:min-w-44" aria-label={showLabel} onClick={onShowOnMac} disabled={showOnMacBusy || !canShowOnMac}>
           <MonitorIcon size={16} aria-hidden="true" className="@md:hidden" />

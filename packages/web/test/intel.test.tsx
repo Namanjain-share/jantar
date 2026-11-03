@@ -138,7 +138,7 @@ describe('the model', () => {
   });
 });
 
-describe('0.11: a wide pane', () => {
+describe('0.12: a wide pane', () => {
   // A 1440 window: the Mac's chrome, and the shelf's SplitPane splits (jsdom has no layout: it follows the window).
   const wide = (path: string, api: Api) => renderApp({ path, state: ON, api, layout: layoutAt(1440) });
 

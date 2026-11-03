@@ -6,7 +6,7 @@
  * account with its 5-hour %.
  *
  * Frames: the 340 / 440 px --surface ledger column beside the Desk or a
- * session when the board's SplitPane is split (0.11: by the pane's width,
+ * session when the board's SplitPane is split (0.12: by the pane's width,
  * kit/SplitPane.tsx), full width otherwise, and the phone list under the
  * shell header.
  * The display line stays put; only the rows scroll.
@@ -97,7 +97,7 @@ export function Board() {
   // The --surface column beside a session or the Desk (or over a session, c25); the page's ground when the ledger is the page.
   const splitCtx = useSplit();
   const split = (splitCtx?.split ?? false) || Boolean(splitCtx?.overlay?.open);
-  // 0.11 (c25): a single-mode Board beside the phone (an iPad in portrait) has the waiting cards above its ledger.
+  // 0.12 (c25): a single-mode Board beside the phone (an iPad in portrait) has the waiting cards above its ledger.
   const queue = !phone && !(splitCtx?.split ?? false) && !splitCtx?.overlay;
   const now = useNow(10_000);
   const ceiling = useCeiling();

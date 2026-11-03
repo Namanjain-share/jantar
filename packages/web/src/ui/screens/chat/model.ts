@@ -70,7 +70,7 @@ export function undoable(c: Pick<ChatChange, 'state' | 'undoable'>, turn: Pick<C
 }
 
 // ---------------------------------------------------------------------------
-// 0.11 (build plan 2.2): the history column and This chat, from the loaded turns only.
+// 0.12 (build plan 2.2): the history column and This chat, from the loaded turns only.
 
 /** The Confirm card's button, named by its verb (open question 11): the daemon's op, else "Confirm". */
 const VERBS: Record<string, string> = { delete: 'Delete', stop: 'Stop', summarize: 'Summarize', reread: 'Re-read' };

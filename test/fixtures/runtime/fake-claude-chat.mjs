@@ -97,7 +97,7 @@ export function chatMessage(blocks) {
   return (m ? m[1] : '').replace(/<\\(\/?)/g, '<$1');
 }
 
-/** 0.11: the <looking> block (the daemon's line for the "Looking at" chip), or undefined when the message had none. */
+/** 0.12: the <looking> block (the daemon's line for the "Looking at" chip), or undefined when the message had none. */
 export function chatLooking(blocks) {
   const text = blocks.find((b) => b?.type === 'text')?.text ?? '';
   const m = /<looking>\n?([\s\S]*?)\n?<\/looking>/.exec(text);

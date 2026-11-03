@@ -1,5 +1,5 @@
 /**
- * A post beside the list (0.11, build plan 2.6): what the sheet shows, laid
+ * A post beside the list (0.12, build plan 2.6): what the sheet shows, laid
  * out to read and to act on, from a pane of 800. Below that `?id=` opens
  * the post's sheet over the list, as 0.10 did.
  *

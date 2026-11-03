@@ -11,7 +11,7 @@
  * so the back gesture closes it. Desktop: the list fills the ledger column
  * and the viewer the detail pane.
  *
- * 0.11 (build plan 2.12): a SplitPane ("files", fill), by the pane's width,
+ * 0.12 (build plan 2.12): a SplitPane ("files", fill), by the pane's width,
  * not the window's. With no file open in a pane of 800 or more, Changed and
  * Browse sit side by side (Browse 340, 440 from 1180) with no segmented
  * control. A file opens beside the chosen list; "Hide browser" in the
@@ -64,7 +64,7 @@ export function FilesPlace({ location, onLocation }: FilesPlaceProps) {
   const navigate = useNavigate();
   const features = useFeatures();
   const phone = useLayout().chrome === 'phone';
-  // 0.11: the viewer across the whole pane (the list's section stays, empty).
+  // 0.12: the viewer across the whole pane (the list's section stays, empty).
   const [hidden, setHidden] = useState(false);
   const now = useNow(30_000);
   const offline = useOffline();

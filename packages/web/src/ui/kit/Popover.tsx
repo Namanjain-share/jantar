@@ -1,5 +1,5 @@
 /**
- * One value from a short list (0.11, build plan c26 and 1.10; ipad-design.md
+ * One value from a short list (0.12, build plan c26 and 1.10; ipad-design.md
  * 3.13): a sort, a filter, a dose. On the phone it is the bottom sheet it
  * always was. At any wider chrome it is a popover beside the control that
  * opened it, --popover-w (320) wide, 44 rows on touch, instead of a 540 form

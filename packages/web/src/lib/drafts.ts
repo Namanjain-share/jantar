@@ -1,5 +1,5 @@
 /**
- * Drafts (0.11, build plan 1.7): what was typed into a composer, kept by key
+ * Drafts (0.12, build plan 1.7): what was typed into a composer, kept by key
  * past a remount, so leaving a place and coming back, or a reload of the tab,
  * finds it as it was.
  *

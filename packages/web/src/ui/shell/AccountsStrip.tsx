@@ -1,5 +1,5 @@
 /**
- * The accounts strip (0.11, ipad-design.md 2.1): the touch shell's one view
+ * The accounts strip (0.12, ipad-design.md 2.1): the touch shell's one view
  * of cswap, at the foot of the sidebar and the rail. "5H USAGE" and the
  * connection over one bar per account, each as tall as its 5-hour %, the
  * active account in mustard. One 44 target that opens Accounts. With one

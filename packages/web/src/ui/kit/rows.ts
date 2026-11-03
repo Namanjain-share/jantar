@@ -1,5 +1,5 @@
 /**
- * Lists by keyboard (0.11, build plan 3.1 and c30; ipad-design.md 4.5).
+ * Lists by keyboard (0.12, build plan 3.1 and c30; ipad-design.md 4.5).
  *
  * A list's rows are its `[data-row]` elements: each row's own link or button,
  * its value the item's id. One row is in the tab order (the one last focused,

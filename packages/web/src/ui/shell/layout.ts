@@ -1,5 +1,5 @@
 /**
- * The layout context (0.11): one set of media-query listeners for the whole
+ * The layout context (0.12): one set of media-query listeners for the whole
  * app, and what a screen may ask of the window.
  *
  *   size      compact < 640 <= medium < 1024 <= regular, by the window's width
@@ -8,7 +8,7 @@
  *             iPad's sidebar and rail, shell/TouchNav.tsx) or desk (the
  *             Mac's rail, top bar and status bar). A fine pointer gets the
  *             phone below 768 and desk from 768, as before; a coarse pointer
- *             gets the phone below 640 and touch from 640 (0.11 c24).
+ *             gets the phone below 640 and touch from 640 (0.12 c24).
  *   keyboard  a hardware keyboard has been seen: a fine pointer from the start,
  *             a coarse one once lib/input.ts has seen it
  *   kbUp      the on-screen keyboard is up (lib/viewport.ts: the visual

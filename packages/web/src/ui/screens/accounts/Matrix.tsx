@@ -75,20 +75,20 @@ export function Matrix({
   ceiling: number;
   weeklyCeiling: number | null;
   now: number;
-  /** A pane of 1180 or more (0.11; a window of 1280 in 0.10): RESETS and 7D get their own columns. */
+  /** A pane of 1180 or more (0.12; a window of 1280 in 0.10): RESETS and 7D get their own columns. */
   wide: boolean;
   open: ReadonlySet<number>;
   onToggle: (id: number) => void;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>(MAX_WIDTH);
-  // 0.11: on a touch screen rows are 52, the alias a 44 button, and the sessions one 44 button that opens the row with them listed.
+  // 0.12: on a touch screen rows are 52, the alias a 44 button, and the sessions one 44 button that opens the row with them listed.
   const { coarse } = useLayout();
   const fixed = COL.acct + COL.h5 + COL.burn + COL.sessions + COL.flags + (wide ? COL.resets + COL.d7 : 0);
   const runway = Math.max(160, width - fixed - RUNWAY_PAD - (wide ? 0 : LABEL_ROOM));
   const lead = COL.acct + COL.h5;
 
   return (
-    // 0.11: across the pane, on a raised ground of its own, as Alerts' table is (no 1320 cap).
+    // 0.12: across the pane, on a raised ground of its own, as Alerts' table is (no 1320 cap).
     <div ref={ref} role="table" aria-label="Accounts" className="w-full rounded-dock border border-line bg-raised px-8 pb-4">
       <div role="row" className="sticky top-0 z-2 flex h-28 items-center rounded-t-dock border-b border-line bg-raised type-rail text-ink-3">
         <span role="columnheader" className="w-144 flex-none pl-8">

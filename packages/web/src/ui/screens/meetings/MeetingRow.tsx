@@ -5,7 +5,7 @@
  * gist on one line. The row opens the meeting; its ··· menu has Delete,
  * which asks nothing and is held under Undo.
  *
- * 0.11: `current` ticks the row of the meeting open beside the list (the
+ * 0.12: `current` ticks the row of the meeting open beside the list (the
  * SplitPane keeps it in view); MeetingCard is the same meeting as a card for
  * the days across a wide pane (build plan 2.8).
  */
@@ -20,7 +20,7 @@ export interface MeetingRowProps {
   filters: MeetingFilters;
   offline: boolean;
   onDelete: (meeting: Meeting) => void;
-  /** 0.11: the meeting open beside the list. */
+  /** 0.12: the meeting open beside the list. */
   current?: boolean;
 }
 
@@ -76,7 +76,7 @@ function summaryWord(m: Meeting): string | null {
 }
 
 /**
- * 0.11, the days across a wide pane (build plan 2.8): a card per meeting.
+ * 0.12, the days across a wide pane (build plan 2.8): a card per meeting.
  * The name on two lines, its time and length in mono, who was there, then the
  * summary's first lines (or its state while it has none), and the
  * screenshots. The card opens the meeting beside the list; ··· has Delete.

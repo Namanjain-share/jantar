@@ -10,7 +10,7 @@
  * places on, the fifth tab is More, holding the rest (its badge is theirs
  * added up).
  *
- * 0.11: the touch sidebar and rail (TouchNav.tsx) follow the same order.
+ * 0.12: the touch sidebar and rail (TouchNav.tsx) follow the same order.
  * `group` places each in the sidebar: the top list, or the Library (Intel,
  * Meetings); Accounts and Devices leave the touch list for the accounts
  * strip and the ⋯ menu (`touch: false`), and stay in ⌘K, ⌘5, ⌘7 and the g
@@ -46,9 +46,9 @@ export interface NavItem {
   icon: Icon;
   /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Chat: v0.10, the `ask` switch; People: v0.11). */
   feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask' | 'people';
-  /** 0.11, the touch sidebar: the top list or the Library. */
+  /** 0.12, the touch sidebar: the top list or the Library. */
   group?: 'top' | 'library';
-  /** 0.11: false keeps it out of the touch sidebar and rail (Accounts: the strip; Devices: ⋯). */
+  /** 0.12: false keeps it out of the touch sidebar and rail (Accounts: the strip; Devices: ⋯). */
   touch?: boolean;
 }
 

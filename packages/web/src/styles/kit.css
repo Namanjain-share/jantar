@@ -9,7 +9,7 @@
   padding-top: env(safe-area-inset-top, 0px);
 }
 /*
- * 0.11 c32: on a touch screen a bottom bar keeps at least 24 px under it, so nothing sits in an iPad
+ * 0.12 c32: on a touch screen a bottom bar keeps at least 24 px under it, so nothing sits in an iPad
  * window's resize corner (its bottom-right 24 x 24). An iPhone's home indicator already leaves 34.
  */
 @utility pb-safe {
@@ -24,7 +24,7 @@
     padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 16px), 24px);
   }
 }
-/* 0.11: the sides too (0 on today's iPads and every Mac; the outermost columns pad them). */
+/* 0.12: the sides too (0 on today's iPads and every Mac; the outermost columns pad them). */
 @utility pl-safe {
   padding-left: env(safe-area-inset-left, 0px);
 }
@@ -37,18 +37,18 @@
     display: none;
   }
 }
-/* Desktop frame: rail 56 | content; top bar 48, content, status bar 24. 0.11:
+/* Desktop frame: rail 56 | content; top bar 48, content, status bar 24. 0.12:
    each grows by its safe area (all 0 on a Mac; on an iPad the top bar sits
    below the status bar and the status bar above the home indicator). */
 @utility grid-shell {
   grid-template-columns: calc(var(--rail-desk-w) + env(safe-area-inset-left, 0px)) minmax(0, 1fr);
   grid-template-rows: calc(48px + env(safe-area-inset-top, 0px)) minmax(0, 1fr) calc(24px + env(safe-area-inset-bottom, 0px));
-  /* 0.11 (c28): Chat beside the panes as a third column. */
+  /* 0.12 (c28): Chat beside the panes as a third column. */
   &[data-dock] {
     grid-template-columns: calc(var(--rail-desk-w) + env(safe-area-inset-left, 0px)) minmax(0, 1fr) var(--chat-dock-w);
   }
 }
-/* 0.11 touch shell (c24): the sidebar (220) or the labelled rail (72), sized by the nav itself, then the panes. */
+/* 0.12 touch shell (c24): the sidebar (220) or the labelled rail (72), sized by the nav itself, then the panes. */
 @utility grid-touch {
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -56,7 +56,7 @@
     grid-template-columns: auto minmax(0, 1fr) var(--chat-dock-w);
   }
 }
-/* 0.11: a pane's header row (--pane-header-h, 56), the same in every pane, so the hairlines under list and detail meet. */
+/* 0.12: a pane's header row (--pane-header-h, 56), the same in every pane, so the hairlines under list and detail meet. */
 @utility h-pane {
   height: var(--pane-header-h);
 }
@@ -71,7 +71,7 @@
 }
 
 @layer components {
-  /* ---------- The shell (0.11, lib/viewport.ts) ----------
+  /* ---------- The shell (0.12, lib/viewport.ts) ----------
      Fixed, as tall as the visual viewport and moved down with it, so with
      the iPad's on-screen keyboard up a pane's bottom (and the composer
      pinned there) sits on the keyboard and the headers stay in view when
@@ -100,7 +100,7 @@
     scroll-padding-bottom: 16px;
   }
 
-  /* ---------- SplitPane (0.11): a list and its detail ----------
+  /* ---------- SplitPane (0.12): a list and its detail ----------
      kit/SplitPane.tsx decides split or single by the pane's width and says
      so in data-*; these rules only lay out the grid. Single: one column, the
      inactive section hidden. Split: the list column (340, 440 in a wide
@@ -159,7 +159,7 @@
   .split[data-over][data-list='history'] > .split-list {
     width: min(var(--history-w), 100%);
   }
-  /* ---------- Chat beside any screen (0.11 c28, screens/chat/ChatDock.tsx) ----------
+  /* ---------- Chat beside any screen (0.12 c28, screens/chat/ChatDock.tsx) ----------
      A column (the shell's third, data-dock) where the panes keep 560, else over their right edge
      with no scrim, between the Mac's top bar and status bar. */
   .chat-dock {
@@ -319,7 +319,7 @@
     transition: transform 420ms var(--ease-sheet);
     will-change: transform;
   }
-  /* 0.11 c32: on a touch screen a bottom sheet's last row also clears an iPad window's resize corner. */
+  /* 0.12 c32: on a touch screen a bottom sheet's last row also clears an iPad window's resize corner. */
   @media (pointer: coarse) {
     .sheet-popup {
       padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 16px), 24px);
@@ -338,7 +338,7 @@
     transition-duration: calc(var(--drawer-swipe-strength, 0.62) * 420ms);
   }
 
-  /* ---------- Form sheet (0.11, kit/Sheet.tsx data-present="form") ----------
+  /* ---------- Form sheet (0.12, kit/Sheet.tsx data-present="form") ----------
      The same Drawer, placed near the top at every chrome wider than the
      phone: --sheet-w wide, all corners rounded, no grabber, never taller
      than the visual viewport (--vvh, lib/viewport.ts), its Save and Cancel
@@ -381,7 +381,7 @@
   }
 
   /* ---------- Cmd-K palette (cmdk renders its own group headings) ----------
-     0.11 (c27): never centred, so the keyboard can't hide it: 600 wide at safe top + 56, and the
+     0.12 (c27): never centred, so the keyboard can't hide it: 600 wide at safe top + 56, and the
      list as tall as the visual viewport leaves under the input (16 to spare), 352 at most. */
   .palette-popup {
     top: calc(env(safe-area-inset-top, 0px) + 56px);
@@ -411,7 +411,7 @@
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
 
-  /* ---------- Skip to content (0.11 c30): off screen until Tab reaches it ---------- */
+  /* ---------- Skip to content (0.12 c30): off screen until Tab reaches it ---------- */
   .skip-link {
     position: fixed;
     z-index: 60;

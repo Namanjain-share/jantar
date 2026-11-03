@@ -266,7 +266,7 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     await inEachView('/today', async (page) => {
       await page.getByRole('heading', { name: 'Today', level: 1 }).waitFor();
       for (const section of ['Medicines', 'Due', 'Bills', 'Food', 'Claude']) await page.getByRole('region', { name: section }).waitFor();
-      // 0.11: the LIFE list on a phone; on a wide pane the Life strip over the cards.
+      // 0.12: the LIFE list on a phone; on a wide pane the Life strip over the cards.
       await page.getByRole('region', { name: 'Life' }).or(page.getByRole('navigation', { name: 'Life' })).waitFor();
       await page.getByText('No device gets medicine pings.').first().waitFor();
       await page.getByText('Example overdue todo').waitFor();
@@ -608,7 +608,7 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
     expect(await tabs.getByRole('link', { name: 'More' }).getAttribute('aria-current')).toBe('page');
     await check(page, watch, 'Intel from More');
 
-    // 0.11 (c22d): More is the phone's tab. A desk window's rail lists every place, so /more goes to the board there.
+    // 0.12 (c22d): More is the phone's tab. A desk window's rail lists every place, so /more goes to the board there.
     await inEachView('/more', async (p, what) => {
       if (what.includes('(desk')) await p.waitForURL((u) => u.pathname === '/');
       else await p.getByRole('heading', { name: 'More', level: 1 }).waitFor();

@@ -3,7 +3,7 @@
  * example stamped EXAMPLE DATA, and optionally the legend (the empty board
  * shows the five glyphs instead of an illustration).
  *
- * 0.11 (c32): in a pane of 640 or more it sits centred, at most 480 wide,
+ * 0.12 (c32): in a pane of 640 or more it sits centred, at most 480 wide,
  * instead of in the top-left corner of a wide pane.
  */
 import clsx from 'clsx';

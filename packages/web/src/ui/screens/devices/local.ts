@@ -28,7 +28,7 @@ export function touchPoints(): number {
 }
 
 /**
- * An iPad (0.11 c31, D11): an older one says iPad; iPadOS 13 and later ask for the desktop site and say
+ * An iPad (0.12 c31, D11): an older one says iPad; iPadOS 13 and later ask for the desktop site and say
  * Macintosh, and only their touch points tell them apart (a Mac has none).
  */
 export function isIPad(ua: string, points = touchPoints()): boolean {

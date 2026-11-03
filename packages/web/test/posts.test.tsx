@@ -86,7 +86,7 @@ function render(
     status?: Partial<LifeStatus>;
     api?: Parameters<typeof fakeApi>[0];
     conn?: 'live' | 'offline';
-    /** 0.11: a window's layout (a wide one opens a post beside the list). */
+    /** 0.12: a window's layout (a wide one opens a post beside the list). */
     layout?: Layout;
   } = {},
 ) {
@@ -750,7 +750,7 @@ describe('Posts: Log a comment (v0.9)', () => {
   });
 });
 
-describe('Posts: a wide pane (0.11)', () => {
+describe('Posts: a wide pane (0.12)', () => {
   const COMMENT = post(13, {
     kind: 'comment',
     where: 'r/exampletools',

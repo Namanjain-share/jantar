@@ -10,7 +10,7 @@
  *   right  "New version ready · Reload" when there is one, contextual
  *          keycaps, and "? legend".
  *
- * 0.11: the grid row is 24 plus the bottom safe area, and the bar pads it,
+ * 0.12: the grid row is 24 plus the bottom safe area, and the bar pads it,
  * so on an iPad nothing sits over the home indicator.
  */
 import clsx from 'clsx';

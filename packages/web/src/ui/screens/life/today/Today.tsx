@@ -24,7 +24,7 @@
  * Today's own rows carry no ember: the rows that may (TodoRow, BillRow)
  * come from their modules. The title is the page's <h1> in every state.
  *
- * 0.11 (build plan 2.3): from a pane 640 wide the sections are cards
+ * 0.12 (build plan 2.3): from a pane 640 wide the sections are cards
  * (Dashboard.tsx) dealt into columns of at least 340 (kit/Columns.tsx):
  * three on a 1440 Mac, two at 1024. Each card has at most five rows and a
  * link to its module; the Claude card lists the three sessions waiting
@@ -75,7 +75,7 @@ export interface TodayProps {
   dose?: string | undefined;
 }
 
-/** The modules in Today's LIFE list, in nav order, with their one icon each (spec 5.0; 0.11: shell/nav.ts LIFE, which the touch sidebar lists too). */
+/** The modules in Today's LIFE list, in nav order, with their one icon each (spec 5.0; 0.12: shell/nav.ts LIFE, which the touch sidebar lists too). */
 const MODULES: readonly { module: LifeModule; label: string; href: string; icon: Icon }[] = LIFE;
 
 /** Today's sections become cards from a pane this wide (the container size md); below it they are 0.10's list. */
@@ -142,7 +142,7 @@ export function Today({ dose }: TodayProps) {
     if (weightLoad.data) setWeightLast(weightLoad.data);
   }, [weightLoad.data]);
   const weightDay = weightLoad.data ?? weightLast;
-  // Cards from a pane of 640 (0.11), the 0.10 list below it: decided by the page's measured width.
+  // Cards from a pane of 640 (0.12), the 0.10 list below it: decided by the page's measured width.
   const body = useRef<HTMLDivElement>(null);
   const cards = useBucket(body, (w) => w >= CARDS_FROM);
   const [prefs, setPrefs] = useCardPrefs();
@@ -408,7 +408,7 @@ export function Today({ dose }: TodayProps) {
     const order = shownCards(prefs, (id) => parts.has(id));
     content = (
       <>
-        {/* 0.11: not while the iPad's sidebar lists them under Today. */}
+        {/* 0.12: not while the iPad's sidebar lists them under Today. */}
         {lifeInNav ? null : <LifeStrip items={strip} />}
         <div className="px-16">
           <Loaded load={load}>{() => null}</Loaded>

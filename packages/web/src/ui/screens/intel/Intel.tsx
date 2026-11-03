@@ -29,7 +29,7 @@
  * again on every life.changed). With reading off, Add is the 0.7 sheet and
  * no jobs are asked for.
  *
- * 0.11 (build plan 2.7): a SplitPane ("intel", fill). With nothing open the
+ * 0.12 (build plan 2.7): a SplitPane ("intel", fill). With nothing open the
  * shelf takes the pane as a grid of cards (IntelCard, at least 240 wide:
  * five on a 1440 Mac), the Reading strip as cards too, the chips wrapping;
  * an item opens beside it from a pane of 800 (the list becomes rows, the
@@ -87,7 +87,7 @@ export function Intel({ q, type, tag, item, focus }: IntelProps) {
   const offline = useApp((s) => s.conn.status === 'offline');
   const navigate = useNavigate();
   const filters: ShelfFilters = { q, type, tag };
-  // 0.11: the shelf across the pane, and an item beside it from a pane of 800 (over it below that, as before).
+  // 0.12: the shelf across the pane, and an item beside it from a pane of 800 (over it below that, as before).
   return (
     <SplitPane
       name="intel"
@@ -167,7 +167,7 @@ interface More {
 
 function Shelf({ filters, offline, focus, open }: { filters: ShelfFilters; offline: boolean; focus: boolean; open: string | null }) {
   const { api } = useDeps();
-  // 0.11: cards across the pane with nothing open (not on a phone); rows in the list column beside an item.
+  // 0.12: cards across the pane with nothing open (not on a phone); rows in the list column beside an item.
   const phone = useLayout().chrome === 'phone';
   const split = useSplit();
   const grid = !phone && !split?.selected;

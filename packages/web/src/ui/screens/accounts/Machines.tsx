@@ -104,7 +104,7 @@ export function MachineAccounts() {
   if (!nodes.length) return null;
   return (
     <section aria-label="Accounts on other machines" className={phone ? 'pb-24' : 'px-32 pb-32'}>
-      {/* 0.11: the machines two across from a pane of 900, each at most 640 (not one 640 column). */}
+      {/* 0.12: the machines two across from a pane of 900, each at most 640 (not one 640 column). */}
       <div className={phone ? '' : 'grid gap-x-32 @wide:grid-cols-2 [&>*]:max-w-640'}>
         {nodes.map((node) => (
           <section key={node.id} aria-label={`${node.name} accounts`} data-machine={node.name} data-offline={node.online ? undefined : ''} className="mt-24">

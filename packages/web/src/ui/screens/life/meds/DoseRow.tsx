@@ -27,7 +27,7 @@ export interface DoseRowProps {
   tz: string | null;
   /** Offline or a write running. */
   disabled?: boolean;
-  /** 0.11: the row's button, which the dose popover opens beside. */
+  /** 0.12: the row's button, which the dose popover opens beside. */
   onOpen(anchor: HTMLElement): void;
   onLog(status: 'taken' | 'skipped'): void;
 }

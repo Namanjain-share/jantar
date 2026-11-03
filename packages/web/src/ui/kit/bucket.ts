@@ -1,5 +1,5 @@
 /**
- * A box's width as a bucket (0.11): `useBucket(ref, (w) => w >= 940)`. The
+ * A box's width as a bucket (0.12): `useBucket(ref, (w) => w >= 940)`. The
  * one measure Columns, the Life pages, Accounts, Devices and the session's
  * property column share: read before the first paint, then one
  * ResizeObserver that sets state only when the bucket changes, so a window

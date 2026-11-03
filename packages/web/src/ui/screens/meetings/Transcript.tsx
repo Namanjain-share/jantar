@@ -3,7 +3,7 @@
  * the speaker in --ink and the turn's time in mono --ink-3 on the right,
  * then what they said; each screenshot at its time, full width (ShotImage).
  * Times are wall-clock HH:MM in the phone's zone; "You" shows as it came.
- * Every caption is a text node. 0.11: what was said is in the reading type.
+ * Every caption is a text node. 0.12: what was said is in the reading type.
  */
 import { useMemo } from 'react';
 import type { MeetingLine, MeetingShot } from '@jantar/protocol';

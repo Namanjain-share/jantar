@@ -36,7 +36,7 @@
  *    into a reply by the fake, never in a log line, an audit row, an event,
  *    a WS frame or a write reply.
  * 9. A restart keeps the thread; Clear empties chat.db and the photos.
- * 10. (0.11) A "Looking at" turn: the phone sends a kind and an id; the
+ * 10. (0.12) A "Looking at" turn: the phone sends a kind and an id; the
  *    daemon names the café in one line of its own, outside <message>, and
  *    keeps it on the turn. An id it doesn't know is dropped; a URL, a path
  *    or words in place of an id are refused (400); a session reaches the
@@ -119,7 +119,7 @@ describe('v0.10 Chat through jantard: the phone, the Siri door, the fake claude 
     rememberSecret(cookie, claim.body);
     return { cookie, secret: (claim.body as { deviceSecret: string }).deviceSecret };
   }
-  /** Send and wait until the turn has ended (0.11: with a "Looking at" `context`). */
+  /** Send and wait until the turn has ended (0.12: with a "Looking at" `context`). */
   async function chat(text: string, photos: string[] = [], context?: { kind: string; id: string }): Promise<ChatTurn> {
     const { id } = await ok<{ id: string }>('POST', '/v1/chat', { text, ...(photos.length ? { photos } : {}), ...(context ? { context } : {}) });
     return eventually(
@@ -378,7 +378,7 @@ describe('v0.10 Chat through jantard: the phone, the Siri door, the fake claude 
     expect(st.out).toContain('On disk: 0 messages, 0 photos');
   });
 
-  it('10. 0.11 "Looking at": the daemon words the line from a kind and an id; an unknown id is dropped; a URL is refused', async () => {
+  it('10. 0.12 "Looking at": the daemon words the line from a kind and an id; an unknown id is dropped; a URL is refused', async () => {
     const t = await chat(chatText('chat-read', 'rate this 4'), [], { kind: 'place', id: cafeId });
     expect(t.state, `${t.reason}\n${dumpLog()}`).toBe('done');
     expect(t.context).toEqual({ kind: 'place', id: cafeId, label: expect.stringMatching(/^Café · Sample Dosa House/) });

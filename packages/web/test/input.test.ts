@@ -1,5 +1,5 @@
 /**
- * Input modality (lib/input.ts, 0.11): data-input from the last pointer, and
+ * Input modality (lib/input.ts, 0.12): data-input from the last pointer, and
  * the hardware-keyboard guess from keys and the visual viewport.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

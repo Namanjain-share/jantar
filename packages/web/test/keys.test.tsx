@@ -1,5 +1,5 @@
 /**
- * Keys wherever a keyboard is (0.11, build plan 3.1, c11): the shell's keys
+ * Keys wherever a keyboard is (0.12, build plan 3.1, c11): the shell's keys
  * and a session's pane keys work at every width once a hardware keyboard has
  * been seen, only ⌘K, ⌘1-⌘9, ⌘. and Esc reach Jantar from a text field,
  * keycaps show only with a keyboard, and digits with a modifier are read
@@ -185,7 +185,7 @@ describe('keycaps only with a keyboard', () => {
   });
 });
 
-describe('0.11 c30: the whole key map', () => {
+describe('0.12 c30: the whole key map', () => {
   const life = {
     open: true,
     timezone: 'UTC',

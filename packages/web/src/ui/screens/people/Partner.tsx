@@ -414,7 +414,7 @@ function PartnerPane({ header, tabs, title, cards = false, children }: { header:
 
 function TodayTab({ client, pid, name, today, reload, canCarry, isToday }: { client: PeopleClient; pid: string; name: string; today: PersonToday | null; reload: () => void; canCarry: boolean; isToday: boolean }) {
   const [note, setNote] = useState<string | null>(null);
-  // 0.12: cards beside the tabs, or in a tab 640 wide or more; 0.11's one column below that and on a phone.
+  // 0.12: cards beside the tabs, or in a tab 640 wide or more; 0.12's one column below that and on a phone.
   const box = useRef<HTMLDivElement>(null);
   const roomy = useCardWidth(box);
   const cards = useSplit()?.split === true || roomy;

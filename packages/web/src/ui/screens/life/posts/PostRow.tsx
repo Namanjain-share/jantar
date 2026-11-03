@@ -14,7 +14,7 @@
  * Copy writes to the clipboard on the user's tap; Open is a new tab with no
  * opener and no referrer. Jantar never posts anything anywhere.
  *
- * 0.11: `current` ticks the row of the post open beside the list.
+ * 0.12: `current` ticks the row of the post open beside the list.
  */
 import { CheckIcon, MinusIcon, SquareIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -61,7 +61,7 @@ export interface PostRowProps {
   offline: boolean;
   actions: PostActions;
   onOpen: (post: Post) => void;
-  /** 0.11: the post open beside the list. */
+  /** 0.12: the post open beside the list. */
   current?: boolean;
 }
 

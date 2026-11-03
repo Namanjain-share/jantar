@@ -125,7 +125,7 @@ describe('production build', () => {
     }
   }, 60_000);
 
-  it('0.11: hover follows (hover: hover) and the last pointer, and the desk type step needs a fine pointer', () => {
+  it('0.12: hover follows (hover: hover) and the last pointer, and the desk type step needs a fine pointer', () => {
     // The build above, read again (the tests in a file run in order).
     const assets = readdirSync(join(out, 'assets'));
     const css = readFileSync(join(out, 'assets', assets.find((f) => f.endsWith('.css'))!), 'utf8');

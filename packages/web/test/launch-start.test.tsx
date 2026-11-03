@@ -445,7 +445,7 @@ describe('start form: desktop', () => {
   });
 });
 
-describe('start form: a rotation (0.11)', () => {
+describe('start form: a rotation (0.12)', () => {
   // Beside the folders at 1180, the sheet over them at 820: the form is built again in its new place, so what it
   // holds beside the first prompt is kept with the prompt's draft (lib/drafts.ts) and read back.
   it('keeps the Name, the account and every pick when the form moves between the pane and the sheet', async () => {

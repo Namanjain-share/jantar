@@ -3,7 +3,7 @@
  * its notifications (direction.md 5.5 and 5.7). Installing is offered here
  * too, so "Not now" in the pair flow always has a way back.
  *
- * 0.11 (c31): an iPad says "This iPad" and "Safari · iPadOS" (iPadOS says
+ * 0.12 (c31): an iPad says "This iPad" and "Safari · iPadOS" (iPadOS says
  * it is a Mac; its touch points tell it apart), and the Keyboard row sets
  * the shortcuts Auto (keys once a keyboard has been seen), On or Off on this
  * device, with Show shortcuts (the ? list).

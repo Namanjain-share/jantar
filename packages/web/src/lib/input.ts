@@ -1,5 +1,5 @@
 /**
- * Input modality (0.11, build plan 1.1 and 1.9; ipad-design.md 1.5).
+ * Input modality (0.12, build plan 1.1 and 1.9; ipad-design.md 1.5).
  *
  * - `data-input` on <html> names the last pointer: mouse (a mouse or a
  *   trackpad, an iPad's too), touch or pen. Hover styles key on it as well
@@ -13,7 +13,7 @@
  *   shortcut bar minimised, or the floating keyboard) and changes nothing.
  *   It is kept per device as `jantar:kb`. Only a coarse pointer asks: a fine
  *   pointer has a keyboard from the start (shell/layout.ts).
- * - `mode` (0.11 c31, Devices › This device › Keyboard): Auto is the guess
+ * - `mode` (0.12 c31, Devices › This device › Keyboard): Auto is the guess
  *   above; On and Off overrule it on this device (`jantar:kb-mode`), for an
  *   iPad whose keyboard the guess misses, or a Mac that wants no shortcuts.
  */

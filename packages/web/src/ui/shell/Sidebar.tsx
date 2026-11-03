@@ -1,5 +1,5 @@
 /**
- * The touch sidebar (0.11, ipad-design.md 2.1), 220 wide on --page, at a
+ * The touch sidebar (0.12, ipad-design.md 2.1), 220 wide on --page, at a
  * regular width (1024 and up) while it isn't folded, and the same list 300
  * wide over the rail when the rail's sidebar button or ⌘\ opens it.
  *

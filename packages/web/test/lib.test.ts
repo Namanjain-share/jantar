@@ -146,7 +146,7 @@ describe('router', () => {
     expect(parseRoute('/s/abc/')).toEqual({ name: 'session', sid: 'abc' });
     expect(parseRoute('/', '?session=old')).toEqual({ name: 'session', sid: 'old' });
     expect(parseRoute('/accounts')).toEqual({ name: 'accounts' });
-    // 0.11: an alert open beside the list, and the kind filter, in the address; anything else is left out.
+    // 0.12: an alert open beside the list, and the kind filter, in the address; anything else is left out.
     expect(parseRoute('/alerts', '?kind=error&id=al_0123abcd')).toEqual({ name: 'alerts', kind: 'error', id: 'al_0123abcd' });
     expect(parseRoute('/alerts', '?kind=nope&id=has%20space')).toEqual({ name: 'alerts' });
     expect(routePath({ name: 'alerts', kind: 'limit', id: 'al_1' })).toBe('/alerts?kind=limit&id=al_1');

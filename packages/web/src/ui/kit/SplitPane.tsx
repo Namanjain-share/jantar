@@ -1,5 +1,5 @@
 /**
- * A list and its detail (0.11, build plan 1.5): side by side when the pane is
+ * A list and its detail (0.12, build plan 1.5): side by side when the pane is
  * 800 wide or more ("split"), one at a time below that ("single").
  *
  *   <SplitPane name="board" list={<Board />} detail={sid ? <SessionScreen key={sid} … /> : null}

@@ -1,5 +1,5 @@
 /**
- * A place's own scroll box (0.11, build plan 1.5). The shell keys one per
+ * A place's own scroll box (0.12, build plan 1.5). The shell keys one per
  * place, so a place opens at its own scroll, never the last place's; it is a
  * query container (@container/pane), so what is in it lays out by its width;
  * and its scroll is kept per place (usePaneScroll), so coming back to a place
@@ -67,7 +67,7 @@ export function usePaneScroll(ref: RefObject<HTMLElement | null>, key: string, a
 export function Pane({ name, children, className }: { name: string; children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   usePaneScroll(ref, name);
-  // 0.11 (c30): the place's rows by keyboard (a SplitPane in it keeps its list's own).
+  // 0.12 (c30): the place's rows by keyboard (a SplitPane in it keeps its list's own).
   useRows(ref, useLayout().keyboard);
   return (
     <div ref={ref} data-pane={name} className={clsx('@container/pane h-full min-h-0 overflow-y-auto', className)}>

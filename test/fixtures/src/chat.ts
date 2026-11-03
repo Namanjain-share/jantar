@@ -59,7 +59,7 @@ export interface ChatRun {
   images: number;
   /** The <message> block it read. */
   message: string;
-  /** 0.11: the <looking> block it read (the daemon's "Looking at" line), when there was one. */
+  /** 0.12: the <looking> block it read (the daemon's "Looking at" line), when there was one. */
   looking?: string;
   ts: number;
 }

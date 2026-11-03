@@ -10,7 +10,7 @@ import type { Account } from '@jantar/protocol';
 import { SINGLE_DISPLAY, SINGLE_SENTENCE, sessionsText } from '../src/ui/screens/accounts/Single.js';
 import { account, fakeApi, opened, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
-// 0.11: Accounts opens from its own chunk.
+// 0.12: Accounts opens from its own chunk.
 preloadPlaces('accounts');
 
 /** Pretend the window is `width` px wide (jsdom has no matchMedia). */
@@ -139,7 +139,7 @@ describe('Accounts with one Claude login', () => {
   });
 });
 
-describe('0.11: Accounts by its pane', () => {
+describe('0.12: Accounts by its pane', () => {
   /** The pane measures `width` (jsdom has no layout). */
   const pane = (width: number) =>
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: width, bottom: 800, width, height: 800, toJSON: () => ({}) });

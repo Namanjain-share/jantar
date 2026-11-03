@@ -11,7 +11,7 @@
  * Opening the screen marks everything seen (the tab badge reads
  * ALERTS_SEEN_KEY); the rows keep showing what was new when it opened.
  *
- * 0.11 (build plan 2.10): a SplitPane. With nothing open the list takes
+ * 0.12 (build plan 2.10): a SplitPane. With nothing open the list takes
  * the pane, and in a pane of 800 or more it is one table across it (the
  * 1120 cap is gone); a row opens the alert beside the list (`?id=`,
  * alerts/AlertDetail.tsx), whose rows become two lines. Below 800, and on a
@@ -114,7 +114,7 @@ export function Alerts({ kind: kindParam, id }: AlertsProps) {
 
 /**
  * The list: the display line, Mute pushes and the kind filters, then the
- * day groups. Its rows by the pane (0.11): a table across a wide pane with
+ * day groups. Its rows by the pane (0.12): a table across a wide pane with
  * nothing open, two-line rows that open their alert beside an open one, and
  * two-line rows that expand inline on a phone or in a pane too narrow for
  * an alert beside the list.

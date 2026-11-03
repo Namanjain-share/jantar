@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * Columns (kit/Columns.tsx, 0.11 c14): how many columns fit, and the
+ * Columns (kit/Columns.tsx, 0.12 c14): how many columns fit, and the
  * round-robin deal that keeps a card in its column whatever the others do.
  */
 import { describe, expect, it } from 'vitest';

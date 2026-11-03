@@ -57,7 +57,7 @@ export function Ledger({
   onOpen,
   head,
 }: {
-  /** 0.11 (c25): above the rows, scrolling with them (Board's waiting cards in single mode). */
+  /** 0.12 (c25): above the rows, scrolling with them (Board's waiting cards in single mode). */
   head?: ReactNode;
   groups: readonly GroupModel[];
   ceiling: number;
@@ -69,7 +69,7 @@ export function Ledger({
   const sig = orderSignature(groups);
   const wash = useWash(groups);
   const list = useRef<HTMLDivElement>(null);
-  // 0.11: the ledger's scroll survives the list being put away (a session opened on a phone) and a resize.
+  // 0.12: the ledger's scroll survives the list being put away (a session opened on a phone) and a resize.
   usePaneScroll(list, 'board:ledger');
   // v0.6: each row's own machine decides "New session here" (the Mac's starting switch, or that server's).
   const daemon = useApp((s) => s.state.daemon);

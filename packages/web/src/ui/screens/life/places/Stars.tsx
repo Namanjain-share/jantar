@@ -6,7 +6,7 @@
  * may be none (`null`), and `ClearRating` is the text button that clears
  * one (in a Field's aside).
  *
- * 0.11 (build plan 2.5, OQ9): `RateStars` sets a café's sub-rating with one
+ * 0.12 (build plan 2.5, OQ9): `RateStars` sets a café's sub-rating with one
  * tap on its screen.
  */
 import { StarIcon } from '@phosphor-icons/react';
@@ -78,7 +78,7 @@ export function ClearRating({ value, onClear, label }: { value: number | null | 
 }
 
 /**
- * A rating set with one tap (0.11, OQ9): five stars as a radio group. A tap
+ * A rating set with one tap (0.12, OQ9): five stars as a radio group. A tap
  * on another value calls `onRate` (the screen sends it, with an Undo); a tap
  * on the value it has does nothing. With a mouse or a trackpad a hover
  * previews the value and never sets it; the arrows move the focus (and the

@@ -20,7 +20,7 @@ import { NO_MEDS_TODAY, dayItems, isDue, lifeNow, loggedText, useMedWrite, useOf
 export interface MedsTodayProps {
   data: MedsDay;
   onChanged(): void;
-  /** 0.11, Today's card: at most this many doses still to log, then "2 more" (to Medicines). */
+  /** 0.12, Today's card: at most this many doses still to log, then "2 more" (to Medicines). */
   max?: number;
 }
 
@@ -33,7 +33,7 @@ export function MedsToday({ data, onChanged, max }: MedsTodayProps) {
   const write = useMedWrite();
   const [expanded, setExpanded] = useState(false);
   const [sheet, setSheet] = useState<MedsDayItem | null>(null);
-  // 0.11 (c26): the row the dose popover opens beside.
+  // 0.12 (c26): the row the dose popover opens beside.
   const doseAt = useRef<HTMLElement | null>(null);
 
   const items = dayItems(data);

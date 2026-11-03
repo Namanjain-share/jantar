@@ -8,7 +8,7 @@
  * its own chunk) follows the paired devices. It stays for the rest of the
  * visit once shown, so removing the last machine still shows its receipt.
  *
- * 0.11 (build plan 2.11): no 880 cap. From a pane of 760 two columns, this
+ * 0.12 (build plan 2.11): no 880 cap. From a pane of 760 two columns, this
  * device on the left and the paired devices, machines and pairing on the
  * right, each section a card (devices/card.ts) and each column a container
  * of its own, so its rows lay out by the column's width; the product line

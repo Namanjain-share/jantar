@@ -1,5 +1,5 @@
 /**
- * This chat (0.11, build plan 2.2, D7): a third column beside the thread in
+ * This chat (0.12, build plan 2.2, D7): a third column beside the thread in
  * a pane of 1180 or more, or the history column's Changes and Photos below
  * that.
  *

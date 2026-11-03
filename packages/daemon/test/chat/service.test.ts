@@ -269,7 +269,7 @@ describe('a turn through the fake claude, the bridge and the dispatcher', () => 
   });
 });
 
-describe('0.11 "Looking at" (build plan c29)', () => {
+describe('0.12 "Looking at" (build plan c29)', () => {
   it('the daemon names the item and keeps it on the turn; an unknown id, or a part that is off, is dropped', async () => {
     const created = life.places.create({ name: 'Sample Dosa House' }, PHONE);
     if (!created.ok) throw new Error(created.reason);

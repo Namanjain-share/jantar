@@ -4,7 +4,7 @@
  * it runs; the reply as plain text (never Markdown, never a link); then one
  * row per change Chat made, from the Mac's journal ("Added", "Changed",
  * "Logged", "Undone") with Undo while it is fresh; then the cards: Confirm
- * (a delete or an action, only the tap runs it; 0.11: named by its verb,
+ * (a delete or an action, only the tap runs it; 0.12: named by its verb,
  * Delete, Stop, Summarize, Re-read) or Do it (a write held back
  * after Chat read someone else's text), and Dismiss. A failed turn shows
  * its reason and Try again. Every tap has its own Idempotency-Key.

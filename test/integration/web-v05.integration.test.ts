@@ -317,7 +317,7 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     await callDaemon(ctl, 'PATCH', '/v1/settings', { meetings: { enabled: false } });
     for (const who of ['phone', 'desk'] as const) {
       const { page, watch } = pages[who]!;
-      // 0.11 (c22d): More is the phone's tab; on a desk window the rail lists every place, and /more goes to the board.
+      // 0.12 (c22d): More is the phone's tab; on a desk window the rail lists every place, and /more goes to the board.
       await open(page, who === 'phone' ? '/more' : '/');
       if (who === 'phone') await page.getByRole('heading', { name: 'More', level: 1 }).waitFor();
       else await page.getByRole('link', { name: /^Board/ }).first().waitFor();

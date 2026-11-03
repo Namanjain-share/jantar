@@ -98,7 +98,7 @@ import { Transcript } from './session/Transcript.js';
 import { useLookingAt } from '../shell/lookingAt.js';
 
 /**
- * 0.11 (build plan 2.1): the property column sits beside the transcript once the session's own pane is this
+ * 0.12 (build plan 2.1): the property column sits beside the transcript once the session's own pane is this
  * wide (640 + 32 + 220 + 48; @props). 0.10 asked for a 1360 px window.
  */
 const PROPS_AT = 940;
@@ -179,7 +179,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   // The back button shows where the ledger is not beside the session (the board's SplitPane is single).
   const splitCtx = useSplit();
   const split = splitCtx?.split ?? false;
-  // 0.11 (c25): beside the phone the back button calls the ledger over the session ("‹ Sessions").
+  // 0.12 (c25): beside the phone the back button calls the ledger over the session ("‹ Sessions").
   const ledgerOver = splitCtx?.overlay;
   const state = useApp((s) => s.state);
   const conn = useApp((s) => s.conn.status);
@@ -196,7 +196,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   const seen = useRef<Session | null>(null);
   if (live) seen.current = live;
   const session = live ?? seen.current;
-  // 0.11 (c29): Chat beside a session can be told it is the one you mean.
+  // 0.12 (c29): Chat beside a session can be told it is the one you mean.
   useLookingAt(session ? { kind: 'session', id: session.sid, label: session.folder } : null);
   const gone = !live && session !== null;
   // v0.6: a paired machine's session reads its account and switches from that machine, and says why
@@ -492,7 +492,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
   }
 
   // v0.3: the control bar (with its mode chip) above the bottom block, while no card or dialog dock is open.
-  // 0.11 (c27): while the on-screen keyboard is up, the terminal key row (KeyRow) takes the bar's place.
+  // 0.12 (c27): while the on-screen keyboard is up, the terminal key row (KeyRow) takes the bar's place.
   const controlBar =
     features.controls && typable && !gone && !ended && !target && !dock && layout.kbUp ? (
       <KeyRow sid={sid} offline={offline} />
@@ -626,7 +626,7 @@ export function SessionScreen({ sid, pendingId }: { sid: string; pendingId?: str
       />
     );
 
-  // 0.11 (build plan 1.6): one tree for the phone and every wider chrome. Each part keeps its place
+  // 0.12 (build plan 1.6): one tree for the phone and every wider chrome. Each part keeps its place
   // at every width and only its classes change (on the phone the two column boxes are `contents`), so
   // a resize across 768 (or 640) keeps the transcript and its scroll, the dock card (a Question's pick
   // and typed answer) and the composer mounted. A part one chrome alone shows is null on the other.

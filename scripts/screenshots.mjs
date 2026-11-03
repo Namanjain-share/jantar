@@ -12,7 +12,7 @@
 //   docs/img/<screen>-desktop.png        1440 x 900 at 1x, day theme
 //   docs/img/<screen>-desktop-dark.png   the same at night
 //
-// and, for a shot that opts in (0.11, build plan 6.1), <screen>-mac-1440 (the
+// and, for a shot that opts in (0.12, build plan 6.1), <screen>-mac-1440 (the
 // user's 1440 x 960 on a Mac), -touch-1440 (the same with a coarse pointer, as
 // Chrome's device mode), and -ipad-air-l, -ipad-air-p, -ipad-pro-l and
 // -ipad-pro-p (the 11-inch iPads both ways, with an iPad's user agent and the
@@ -72,7 +72,7 @@ const DEVICE = { id: 'dev2', name: 'iPhone', scopes: ['read', 'control', 'launch
 export const SIZES = [
   { key: 'phone', width: 390, height: 844, scale: 2, phone: true },
   { key: 'desktop', width: 1440, height: 900, scale: 1, phone: false },
-  // 0.11 (build plan 6.1): the user's 1440 x 960 with a fine pointer (a Mac) and a coarse one (Chrome's
+  // 0.12 (build plan 6.1): the user's 1440 x 960 with a fine pointer (a Mac) and a coarse one (Chrome's
   // device mode), and the 11-inch iPads both ways with the Home Screen app's insets. A shot opts in.
   { key: 'mac-1440', width: 1440, height: 960, scale: 1, phone: false },
   { key: 'touch-1440', width: 1440, height: 960, scale: 2, phone: false, touch: true },
@@ -121,7 +121,7 @@ async function picturesLoaded(page, selector, n) {
  * fixture)`: what to do once the screen has loaded.
  */
 export const SHOTS = [
-  // 0.11 (c33): the 11-inch iPad both ways, with the Home Screen app's insets, as well as the phone and the Mac.
+  // 0.12 (c33): the 11-inch iPad both ways, with the Home Screen app's insets, as well as the phone and the Mac.
   { name: 'board', path: '/', sizes: ['phone', 'desktop', 'ipad-air-l', 'ipad-air-p'] },
   // The Bash permission as a hook card: Yes, the always-allow row (held 2 s) and No.
   {
@@ -220,9 +220,9 @@ export const SHOTS = [
     },
   },
   { name: 'accounts', path: '/accounts' },
-  // 0.11 (c22b): one login at the user's 1440 x 960 too, where it is a card across the pane.
+  // 0.12 (c22b): one login at the user's 1440 x 960 too, where it is a card across the pane.
   { name: 'accounts-single', path: '/accounts', accounts: 'single', sizes: ['phone', 'mac-1440', 'touch-1440'] },
-  // 0.11 (c33): the user's 1440 x 960 window, and an iPad in landscape.
+  // 0.12 (c33): the user's 1440 x 960 window, and an iPad in landscape.
   { name: 'today', path: '/today', sizes: ['phone', 'mac-1440', 'ipad-air-l'] },
   // v0.10: Chat on in its own variant, so no other picture gains its tab: a reminder added with Undo, a photo that rated
   // a café and logged a visit, a delete waiting for its Confirm. The page opens on its newest turn; the picture shows it

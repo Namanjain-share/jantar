@@ -1,5 +1,5 @@
 /**
- * What the screen shows, for Chat's "Looking at" chip (0.11, build plan c29;
+ * What the screen shows, for Chat's "Looking at" chip (0.12, build plan c29;
  * ipad-design.md 2.4): the item a detail screen has open (a café, a post, an
  * Intel item, a meeting, a session) or the address names (a todo, a
  * medicine), as a kind, an id and the words the screen already shows for it.

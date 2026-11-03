@@ -22,7 +22,7 @@
  * (accounts/Machines.tsx, its own chunk). Until then the screen is as
  * before.
  *
- * 0.11 (build plan 2.9): laid out by the pane's width, not the window's:
+ * 0.12 (build plan 2.9): laid out by the pane's width, not the window's:
  * the matrix from a pane of 640, with RESETS and 7D columns from 1180, at
  * the pane's full width on a raised ground of its own (the 1320 cap is
  * gone). Without a measure (jsdom, a hidden box) the matrix shows from a

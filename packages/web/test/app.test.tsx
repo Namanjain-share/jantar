@@ -5,7 +5,7 @@ import { PRODUCT_NAME } from '../src/brand.js';
 import { App, createAppStore } from '../src/index.js';
 import { T0, account, alert, emit, iso, opened, pending, preloadPlaces, renderApp, session, stateWith } from './helpers.js';
 
-// 0.11: Accounts, Alerts and Devices open from their own chunks.
+// 0.12: Accounts, Alerts and Devices open from their own chunks.
 preloadPlaces('accounts', 'alerts', 'devices');
 
 /** Ledger rows in order, as "rail word · sid" (the Board's rows carry data-sid). */
@@ -95,7 +95,7 @@ describe('app shell', () => {
     expect(document.title).toBe(`(1) ${PRODUCT_NAME}`);
     fireEvent.click(within(nav).getByRole('link', { name: /Alerts/ }));
     expect(within(nav).getByRole('link', { name: /Alerts/ }).textContent).not.toMatch(/\d/);
-    // 0.11: the screen opens from its own chunk; once open, it marks what arrives as seen.
+    // 0.12: the screen opens from its own chunk; once open, it marks what arrives as seen.
     await opened('Alerts');
     act(() =>
       emit(store, [{ seq: 11, ts: iso(100_000), type: 'alert.error', data: { alert: alert('x2', { kind: 'error', ts: iso(100_000) }) } }]),
@@ -108,7 +108,7 @@ describe('app shell', () => {
   it('routes to accounts, alerts and devices from the tab bar', async () => {
     renderApp({ state: stateWith({ accounts: [account(1)] }) });
     const nav = screen.getByRole('navigation', { name: 'Main' });
-    // 0.11: each opens from its own chunk.
+    // 0.12: each opens from its own chunk.
     fireEvent.click(within(nav).getByRole('link', { name: /Accounts/ }));
     expect(await screen.findByRole('heading', { name: 'Accounts' })).toBeTruthy();
     fireEvent.click(within(nav).getByRole('link', { name: /Alerts/ }));

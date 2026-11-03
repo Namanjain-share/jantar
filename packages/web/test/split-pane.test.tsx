@@ -1,5 +1,5 @@
 /**
- * SplitPane (kit/SplitPane.tsx, 0.11 c08): split or single by the pane's own
+ * SplitPane (kit/SplitPane.tsx, 0.12 c08): split or single by the pane's own
  * width, the same two sections at every width (so the open detail is never
  * remounted by a resize), nothing rendered behind an open item in single
  * mode, the list's scroll kept, and Esc in split mode.

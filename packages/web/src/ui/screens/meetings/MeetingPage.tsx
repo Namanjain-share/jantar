@@ -20,7 +20,7 @@
  * `**` in a summary shows as typed. The title is the page's <h1> in every
  * state ("Meetings" until the meeting is here).
  *
- * 0.11 (build plan 2.8): beside the list it has Close (and Esc) instead of
+ * 0.12 (build plan 2.8): beside the list it has Close (and Esc) instead of
  * "‹ Meetings". In a pane of 760 or more the transcript reads on the left and
  * the summary, decisions and action items stay in view in a 300 column on
  * the right, the screenshots as 160 x 90 thumbnails (a tap opens them).
@@ -95,7 +95,7 @@ function Back({ filters }: { filters: MeetingFilters }) {
   );
 }
 
-/** Above the title: Close beside the list (0.11), else the way back to it. */
+/** Above the title: Close beside the list (0.12), else the way back to it. */
 function BackOrClose({ filters }: { filters: MeetingFilters }) {
   const close = usePaneClose();
   return close ? (

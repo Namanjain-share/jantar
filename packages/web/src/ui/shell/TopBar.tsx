@@ -1,7 +1,7 @@
 /**
  * Desktop top bar, 48 px: the mark in the rail's 56 px column, the wordmark,
  * the strip, a quiet count, and "Cmd-K Jump to a session" on the right.
- * No connection pill: the status bar carries liveness. 0.11: it pads the
+ * No connection pill: the status bar carries liveness. 0.12: it pads the
  * safe area (the grid row is 48 plus the top inset), so on an iPad its
  * controls sit below the status bar; on a Mac the insets are 0.
  */

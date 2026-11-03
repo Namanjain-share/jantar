@@ -1,5 +1,5 @@
 /**
- * The visual viewport (0.11, build plan 1.8; ipad-design.md 4.6).
+ * The visual viewport (0.12, build plan 1.8; ipad-design.md 4.6).
  *
  * On an iPad the layout viewport never shrinks for the on-screen keyboard,
  * and iOS may pan the visual viewport to show a field. So while a text field

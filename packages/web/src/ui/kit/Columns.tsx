@@ -1,5 +1,5 @@
 /**
- * Cards in columns (0.11, build plan 1.5): `<Columns min={340}>{cards}</Columns>`
+ * Cards in columns (0.12, build plan 1.5): `<Columns min={340}>{cards}</Columns>`
  * deals its children round-robin into n stacks, in their given order (card i
  * goes to stack i mod n), so a card never jumps to another column when a
  * card above it grows or shrinks (CSS columns would rebalance, and a tap on

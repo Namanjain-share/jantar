@@ -130,7 +130,7 @@ export interface StartFormProps {
 }
 
 /**
- * What the form holds beside its first prompt (0.11), kept with the prompt's draft (`new:<root>:<path>`,
+ * What the form holds beside its first prompt (0.12), kept with the prompt's draft (`new:<root>:<path>`,
  * memory only): where the form shows changes with the pane's width (beside the folders from 800, the sheet
  * below), so a rotation, a Split View drag or a window crossing 800 builds it again there, and it starts as it
  * was. `from` is how it was opened (its account, Try again's Name and launch): another opening of the folder (a
@@ -146,7 +146,7 @@ interface StartKept {
 }
 
 export function StartForm({ root, path, entry, initialAccount = 'auto', initialName = '', initialPrompt = '', retryOf, phone, aside, onStarted }: StartFormProps) {
-  // 0.11: the first prompt is this folder's draft (lib/drafts.ts), cleared once a start is accepted; without one, Try again's prompt.
+  // 0.12: the first prompt is this folder's draft (lib/drafts.ts), cleared once a start is accepted; without one, Try again's prompt.
   const promptKey = `new:${root}:${path}`;
   const from = `${initialAccount}\n${initialName}\n${retryOf ?? ''}`;
   const [kept] = useState(() => {

@@ -1,5 +1,5 @@
 /**
- * Drafts (lib/drafts.ts, 0.11 c09): text kept by key and mirrored to
+ * Drafts (lib/drafts.ts, 0.12 c09): text kept by key and mirrored to
  * sessionStorage, which may throw; what goes aside stays in memory; the hook
  * starts from the draft and writes through.
  */

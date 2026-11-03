@@ -292,7 +292,7 @@ describe('the Files place: changed files', () => {
     await waitFor(() => expect(filesChanges).toHaveBeenCalledTimes(2));
   });
 
-  it('desktop (0.11): Changed beside Browse with nothing open; a file opens beside the list; Hide browser and Esc', async () => {
+  it('desktop (0.12): Changed beside Browse with nothing open; a file opens beside the list; Hide browser and Esc', async () => {
     viewport(1440);
     const api = fakeApi({
       filesChanges: vi.fn(async () => ({ changes: [change()] })),

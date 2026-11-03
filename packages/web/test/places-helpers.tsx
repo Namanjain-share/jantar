@@ -78,7 +78,7 @@ export interface RenderOpts {
   path?: string;
   api?: Parameters<typeof fakeApi>[0];
   conn?: 'live' | 'offline';
-  /** 0.11: a window's layout (a wide one splits the list and the café). */
+  /** 0.12: a window's layout (a wide one splits the list and the café). */
   layout?: Layout;
 }
 

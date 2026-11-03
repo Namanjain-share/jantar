@@ -1,5 +1,5 @@
 /**
- * Chat beside any screen (0.11, build plan c28, D10; ipad-design.md 2.4):
+ * Chat beside any screen (0.12, build plan c28, D10; ipad-design.md 2.4):
  * whether the Chat panel is open, remembered on this device (closed by
  * default, open question 4), and a count the panel watches to focus its
  * composer (⌘J). Main holds only this and the button; the panel is Chat's

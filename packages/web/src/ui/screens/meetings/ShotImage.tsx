@@ -8,7 +8,7 @@
  * nothing is cached between views. A tap opens the viewer with the bytes
  * already here.
  *
- * 0.11: in a meeting pane of 760 or more (two columns) a screenshot is a
+ * 0.12: in a meeting pane of 760 or more (two columns) a screenshot is a
  * 160 x 90 thumbnail beside the lines, not the column's whole width.
  */
 import { CameraIcon } from '@phosphor-icons/react';

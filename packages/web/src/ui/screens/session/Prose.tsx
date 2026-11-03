@@ -102,7 +102,7 @@ export function Prose({
   variant?: Variant;
   foldAt?: number;
   dim?: boolean;
-  /** 0.11: the reading type (16/25 on touch, 15/24 on a Mac), for the transcript's prose. */
+  /** 0.12: the reading type (16/25 on touch, 15/24 on a Mac), for the transcript's prose. */
   read?: boolean;
   className?: string;
 }) {

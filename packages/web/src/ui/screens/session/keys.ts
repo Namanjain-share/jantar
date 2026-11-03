@@ -3,7 +3,7 @@
  * approve, d deny, r focus the composer, n next. They act only when focus is
  * in the session pane (or nowhere), never while typing, never with a dialog
  * open, and never as the second key of the shell's "g a" jump (the shell's
- * listener runs after this one, so the g is tracked here too). 0.11: at
+ * listener runs after this one, so the g is tracked here too). 0.12: at
  * every width once a hardware keyboard has been seen (shell/layout.ts
  * `keyboard`), not only from 768 px.
  */

@@ -122,7 +122,7 @@ describe('v0.10 settings', () => {
   });
 });
 
-describe('0.11 Chat "Looking at" (build plan c29)', () => {
+describe('0.12 Chat "Looking at" (build plan c29)', () => {
   it('context is a kind and an id only: strict, the nine kinds, never a URL, a path or words', () => {
     for (const kind of ['todo', 'medicine', 'meal', 'place', 'money', 'post', 'intel', 'meeting', 'session'])
       expect(ChatSendBodySchema.safeParse({ text: 'rate this 4', context: { kind, id: ULID } }).success, kind).toBe(true);

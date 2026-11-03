@@ -100,7 +100,7 @@ export const ChatPhotoRefSchema = z.object({ id: z.string(), w: z.number().int()
 export type ChatPhotoRef = z.infer<typeof ChatPhotoRefSchema>;
 
 /**
- * 0.11 (build plan c29; ipad-design.md 2.4): what the user is looking at
+ * 0.12 (build plan c29; ipad-design.md 2.4): what the user is looking at
  * beside Chat (the "Looking at" chip). The client sends a kind and an id
  * only, never a URL or words; the daemon finds the item, writes its own one
  * line for the run, and drops an id it doesn't know.
@@ -132,7 +132,7 @@ export const ChatTurnSchema = z.object({
   tainted: z.boolean(),
   /** Tool calls the daemon refused (caps, a part that is off, a link not in the message). */
   refused: z.number().int(),
-  /** 0.11: what the user was looking at, when the message carried it and the daemon found it. */
+  /** 0.12: what the user was looking at, when the message carried it and the daemon found it. */
   context: ChatTurnContextSchema.optional(),
 });
 export type ChatTurn = z.infer<typeof ChatTurnSchema>;
@@ -156,7 +156,7 @@ export const ChatSendBodySchema = z
   .strictObject({
     text: z.string().max(CHAT_TEXT_MAX),
     photos: z.array(ChatPhotoIdSchema).max(CHAT_PHOTOS_MAX).optional(),
-    /** 0.11: the "Looking at" chip (a daemon from before 0.11 refuses the key; the web app then puts the chip's words in the text). */
+    /** 0.12: the "Looking at" chip (a daemon from before 0.12 refuses the key; the web app then puts the chip's words in the text). */
     context: ChatContextSchema.optional(),
   })
   .refine((b) => b.text.trim() !== '' || (b.photos?.length ?? 0) > 0, { message: 'type a message or add a photo' });

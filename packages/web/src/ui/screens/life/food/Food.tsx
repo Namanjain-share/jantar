@@ -11,7 +11,7 @@
  * Over the target the bar is full and "+240 over" is --ink-2, not ember.
  * The title is the page's <h1> in every state.
  *
- * 0.11 (build plan 2.4): from a pane of 640, what was eaten and the day's
+ * 0.12 (build plan 2.4): from a pane of 640, what was eaten and the day's
  * calories and weight (with Add food) are two cards side by side, under
  * the day switcher. Below 640, 0.10's list.
  */
@@ -53,7 +53,7 @@ export function Food({ day }: FoodProps) {
   const d = load.data;
   const today = d?.today ?? status?.today;
   const shown = d?.day ?? day ?? today;
-  // Cards from a pane of 640 (0.11), the 0.10 list below it: decided by the page's measured width.
+  // Cards from a pane of 640 (0.12), the 0.10 list below it: decided by the page's measured width.
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
 
@@ -129,7 +129,7 @@ export function Food({ day }: FoodProps) {
             return (
               <>
                 {cards ? (
-                  // 0.11: what was eaten beside the day's calories and weight.
+                  // 0.12: what was eaten beside the day's calories and weight.
                   <Columns min={340} className="px-16 pt-4">
                     <Panel label="Eaten" count={entries.length} card>
                       {eaten}

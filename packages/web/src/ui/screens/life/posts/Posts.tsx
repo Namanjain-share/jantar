@@ -21,7 +21,7 @@
  * Undo goes. `id` (a post's push) opens that post's sheet on arrival. The
  * title is the page's <h1> in every state.
  *
- * 0.11 (build plan 2.6): a SplitPane ("posts", fill). From a pane of 640
+ * 0.12 (build plan 2.6): a SplitPane ("posts", fill). From a pane of 640
  * the groups are cards side by side (Late, Today, Tomorrow, Later, No date;
  * four across at 1440), and Done is rows in two or three columns. From a
  * pane of 800 a tap (or `?id=`) opens the post beside the list (PostDetail:
@@ -126,7 +126,7 @@ export function Posts({ filter = 'open', id }: PostsProps) {
   const target = id ? load.data?.posts.find((p) => p.id === id) : undefined;
   const listPath = routePath(filter === 'open' ? { name: 'posts' } : { name: 'posts', filter });
 
-  // 0.11: the posts across the pane, and one beside them from a pane of 800 (its sheet below that, as 0.10).
+  // 0.12: the posts across the pane, and one beside them from a pane of 800 (its sheet below that, as 0.10).
   return (
     <SplitPane
       name="posts"
@@ -253,7 +253,7 @@ function PostsList({ filter, id, target, load, actions, now, sheet }: PostsListP
             if (filter === 'done') {
               if (posts.length === 0) return <LifeEmpty>{EMPTY.postsDone}</LifeEmpty>;
               return (
-                // 0.11: in two or three columns from a pane of 640.
+                // 0.12: in two or three columns from a pane of 640.
                 <ul aria-label="Done" className={cards ? 'grid gap-x-16 px-8 @md:grid-cols-2 @wide:grid-cols-3' : 'border-t border-line'}>
                   {posts.map((p) => (
                     <DonePostRow key={p.id} post={p} tz={status?.timezone} onOpen={open} />

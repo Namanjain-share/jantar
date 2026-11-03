@@ -191,7 +191,7 @@ describe('sending with attachments (v0.4.2)', () => {
     expect(api.sendPrompt.mock.calls[0]).toEqual(['a', '', expect.any(String), { attachments: [{ upload: ids[0], label: 'scan.pdf' }] }]);
   });
 
-  it('0.11 c09: the prompt and its chips survive leaving the session and opening it again', async () => {
+  it('0.12 c09: the prompt and its chips survive leaving the session and opening it again', async () => {
     const { router } = await withFiles([pdf('report.pdf')]);
     fireEvent.change(box(), { target: { value: 'read this first' } });
     expect(sessionStorage.getItem('jantar:draft:s:a')).toBe('read this first');
@@ -204,7 +204,7 @@ describe('sending with attachments (v0.4.2)', () => {
     expect(sendButton().disabled).toBe(false);
   });
 
-  it('0.11 c09: the prompt and its chips stay through a layout change (a rotation across 768), in the same composer', async () => {
+  it('0.12 c09: the prompt and its chips stay through a layout change (a rotation across 768), in the same composer', async () => {
     const up = fakeUploads();
     const api = fakeApi({ uploadCreate: up.uploadCreate, uploadDelete: up.uploadDelete });
     const layout = createLayoutStore(layoutAt(820));
@@ -224,7 +224,7 @@ describe('sending with attachments (v0.4.2)', () => {
     }
   });
 
-  it('0.11 c09: a chip still uploading when the session is left does not come back; a sent prompt leaves no draft', async () => {
+  it('0.12 c09: a chip still uploading when the session is left does not come back; a sent prompt leaves no draft', async () => {
     const up = fakeUploads();
     const api = fakeApi({ uploadCreate: up.uploadCreate, uploadDelete: up.uploadDelete });
     const { router } = renderApp({ path: '/s/a', api, state: stateWith({ sessions: [session('a', { status: 'idle' })] }) });

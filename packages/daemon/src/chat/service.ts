@@ -190,7 +190,7 @@ export interface ChatOptions {
   lifeWrites: ChatWriteLimiter;
 }
 
-/** The part of Chat each "Looking at" kind belongs to (0.11). */
+/** The part of Chat each "Looking at" kind belongs to (0.12). */
 const LOOKING_PART: Record<ChatContext['kind'], ChatPart> = {
   todo: 'todos',
   medicine: 'medicines',
@@ -576,7 +576,7 @@ export class ChatServiceImpl implements ChatService {
     }
     const id = newId();
     const at = this.ctx.clock.iso();
-    // 0.11: the "Looking at" chip, found here and named by the daemon; an id it doesn't know is dropped.
+    // 0.12: the "Looking at" chip, found here and named by the daemon; an id it doesn't know is dropped.
     // Only his: her thread never names an item of his (v0.11 People).
     const looking = body.context && via === 'phone' && !person ? this.lookingAt(body.context) : null;
     const fast = !person && this.readingLinks() && photoIds.length === 0 ? saveFastPath(text) : null;

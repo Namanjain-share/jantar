@@ -1,5 +1,5 @@
 /**
- * Where popups go (0.11, build plan 1.6 and 1.8): sheets, the palette, menus
+ * Where popups go (0.12, build plan 1.6 and 1.8): sheets, the palette, menus
  * and popovers portal into the shell's layer, not into <body>, so they move
  * with the shell when it follows the visual viewport (lib/viewport.ts: a pan
  * shifts the shell, and a box inside it that is position: fixed is placed

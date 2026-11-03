@@ -6,7 +6,7 @@
  *   tabs one under the other in the list column, the tab (or the plan
  *   editor) beside them under its name: her Today as cards across the
  *   detail, a tab of rows 720 wide at most. Below 800, and on a phone, it is
- *   0.11's one column: the header, the tabs in a row, the tab.
+ *   0.12's one column: the header, the tabs in a row, the tab.
  * - The tab's section is the same at every width: a plan being written stays
  *   when the pane crosses 800 (an iPad turned, a window dragged).
  * - The People list is 720 wide at most.
@@ -146,7 +146,7 @@ describe('his screen for her, by its pane', () => {
       expect(within(tabs).getAllByRole('tab')).toHaveLength(9);
       expect(screen.queryByRole('heading', { level: 2, name: 'Today' })).toBeNull();
       expect(await screen.findByText('08:00 Mock')).toBeTruthy();
-      // 0.11's one column: no cards below 640.
+      // 0.12's one column: no cards below 640.
       expect(screen.queryByRole('region', { name: 'Day plan' })).toBeNull();
       r.unmount();
       spy.mockRestore();

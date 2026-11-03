@@ -12,7 +12,7 @@ import { DEFAULT_TONES, type AlertGroup, type AlertTone } from '@jantar/protocol
 import { setAppChimes, type Chimes } from '../src/lib/sounds.js';
 import { fakePushEnv, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
-// 0.11: Devices opens from its own chunk.
+// 0.12: Devices opens from its own chunk.
 preloadPlaces('devices');
 
 function recorder(): Chimes & { tones: AlertTone[]; said: AlertGroup[]; unlocks: number } {

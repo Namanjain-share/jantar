@@ -4,9 +4,9 @@
  *
  *   phone   PhoneHeader / notices / place / TabBar     (a session is full screen)
  *   desk    TopBar / Rail + place / StatusBar           (the Mac, a fine pointer from 768)
- *   touch   TouchNav (sidebar or labelled rail) + place (an iPad from 640, 0.11 c24)
+ *   touch   TouchNav (sidebar or labelled rail) + place (an iPad from 640, 0.12 c24)
  *
- * 0.11: one tree for every chrome (the place is always slot 4, so a resize
+ * 0.12: one tree for every chrome (the place is always slot 4, so a resize
  * never remounts it), and the place lays itself out by its own width: the
  * board and a session are one SplitPane (kit/SplitPane.tsx: the ledger beside
  * the session or the Desk from a pane of 800, one at a time below), every
@@ -27,7 +27,7 @@
  * v0.4's Life screens and the Intel shelf, each shown only while its switch
  * is on (Life: any module; which modules are on is the screen's to ask),
  * v0.5's Meetings, shown only while Meetings are on, v0.10's Chat (v0.5.3's
- * Ask), shown only while Chat is on, and v0.7's Posts, a Life screen. 0.11
+ * Ask), shown only while Chat is on, and v0.7's Posts, a Life screen. 0.12
  * loads Accounts, Alerts and Devices the same way, to make room in the main
  * load for the wide layouts.
  */
@@ -68,15 +68,15 @@ import { setShortcuts, toggleSidebar, useShortcutsOpen, useSidebar } from './nav
 import { dockFits, setChatDock, toggleChatDock, useChatDock } from './chatDock.js';
 import { useChatBeside } from './ChatButton.js';
 
-// 0.11 c24: the iPad's sidebar and labelled rail, its own chunk (main.tsx starts it early on a touch screen).
+// 0.12 c24: the iPad's sidebar and labelled rail, its own chunk (main.tsx starts it early on a touch screen).
 const TouchNav = lazy(() => import('./TouchShell.js').then((m) => ({ default: m.TouchNav })));
-// 0.11: Accounts, Alerts and Devices, each its own chunk (room in the main load for the wide layouts).
+// 0.12: Accounts, Alerts and Devices, each its own chunk (room in the main load for the wide layouts).
 const Accounts = lazy(() => import('../screens/Accounts.js').then((m) => ({ default: m.Accounts })));
 const Alerts = lazy(() => import('../screens/Alerts.js').then((m) => ({ default: m.Alerts })));
 const Devices = lazy(() => import('../screens/Devices.js').then((m) => ({ default: m.Devices })));
 // Loaded on first use (Cmd-K, at any width once a keyboard has been seen): cmdk and the Base UI dialog.
 const Palette = lazy(() => import('./Palette.js').then((m) => ({ default: m.Palette })));
-// 0.11 (c30): the ? overlay, keys and the legend, its own chunk on first open.
+// 0.12 (c30): the ? overlay, keys and the legend, its own chunk on first open.
 const Shortcuts = lazy(() => import('./Shortcuts.js').then((m) => ({ default: m.Shortcuts })));
 // v0.3 places, each its own chunk (the viewer, highlighter client and TanStack Virtual; the folder browser, start form and receipt).
 const FilesPlace = lazy(() => import('../screens/files/FilesPlace.js').then((m) => ({ default: m.FilesPlace })));
@@ -95,7 +95,7 @@ const Intel = lazy(() => import('../screens/intel/Intel.js').then((m) => ({ defa
 const Meetings = lazy(() => import('../screens/meetings/Meetings.js').then((m) => ({ default: m.Meetings })));
 // v0.5.3, its own chunk.
 const Chat = lazy(() => import('../screens/chat/Chat.js').then((m) => ({ default: m.Chat })));
-// 0.11 (c28): Chat beside any screen, from Chat's own chunk (Chat.tsx re-exports it), never a chunk of its own.
+// 0.12 (c28): Chat beside any screen, from Chat's own chunk (Chat.tsx re-exports it), never a chunk of its own.
 const ChatDock = lazy(() => import('../screens/chat/Chat.js').then((m) => ({ default: m.ChatDock })));
 // v0.11 People: his Partner screen, its own chunk.
 const Partner = lazy(() => import('../screens/people/Partner.js').then((m) => ({ default: m.Partner })));
@@ -122,7 +122,7 @@ export function Shell() {
   const single = useAccountsMode() === 'single';
   const [palette, setPalette] = useState(false);
   const [legend, setLegend] = useState(false);
-  // 0.11 (c30): the shortcuts and legend overlay (?, the iPad sidebar's ⋯, Devices).
+  // 0.12 (c30): the shortcuts and legend overlay (?, the iPad sidebar's ⋯, Devices).
   const shortcuts = useShortcutsOpen();
   const shortcutsUsed = useRef(false);
   if (shortcuts) shortcutsUsed.current = true;
@@ -134,7 +134,7 @@ export function Shell() {
   const phone = layout.chrome === 'phone';
   const touch = layout.chrome === 'touch';
   const desk = layout.chrome === 'desk';
-  // 0.11 (c28): Chat beside this screen: a column where the panes keep 560 beside its 360, else over them.
+  // 0.12 (c28): Chat beside this screen: a column where the panes keep 560 beside its 360, else over them.
   const chatOn = navItems(placeFeatures).some((i) => i.route === 'chat');
   const chatBeside = useChatBeside();
   const dock = useChatDock();
@@ -144,7 +144,7 @@ export function Shell() {
   const winW = useWindowWidth(dockShown);
   const dockColumn = dockShown && dockFits(winW - navW);
   useKey('Escape', () => setChatDock(false), dockShown && !dockColumn && !palette && !legend && !shortcuts);
-  // 0.11: keys work at every width once a keyboard has been seen (a Mac from the start).
+  // 0.12: keys work at every width once a keyboard has been seen (a Mac from the start).
   const keys = layout.keyboard;
   const bare = route.name === 'pair' || conn.status === 'unauthorized';
   const offline = conn.status === 'offline';
@@ -158,7 +158,7 @@ export function Shell() {
     document.title = documentTitle(needs);
   }, [needs, route.name]);
   useEffect(() => setFavicon(needs > 0), [needs]);
-  // 0.11 (build plan 2.13): More is the phone's tab. A wider chrome's rail lists every place, so /more goes to the board.
+  // 0.12 (build plan 2.13): More is the phone's tab. A wider chrome's rail lists every place, so /more goes to the board.
   const lostMore = route.name === 'more' && !phone;
   useEffect(() => {
     if (lostMore) navigate('/', { replace: true });
@@ -256,7 +256,7 @@ export function Shell() {
       case 'session':
         screen = <SessionScreen key={route.sid} sid={route.sid} pendingId={route.pendingId} />;
         break;
-      // 0.11: each loads the first time it opens (skeleton rows meanwhile).
+      // 0.12: each loads the first time it opens (skeleton rows meanwhile).
       case 'accounts':
         screen = (
           <Suspense fallback={<SkeletonRows count={5} caption="Opening Accounts…" />}>

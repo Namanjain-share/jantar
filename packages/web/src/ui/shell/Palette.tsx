@@ -1,7 +1,7 @@
 /**
  * Cmd-K: jump to a session or an account. cmdk's <Command> inside a Base UI
  * Dialog (never Command.Dialog, which is Radix and injects styles). --raised,
- * 10 px radius, the one shadow, over the scrim. 0.11: in every chrome (c11),
+ * 10 px radius, the one shadow, over the scrim. 0.12: in every chrome (c11),
  * 600 wide at safe top + 56 and never centred, its list as tall as the
  * visual viewport leaves (the on-screen keyboard can't hide it), 44 rows on
  * touch (kit.css .palette-popup, c27).
