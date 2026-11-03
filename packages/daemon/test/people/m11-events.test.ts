@@ -1,5 +1,5 @@
 /**
- * v0.12 People, M11 and T8 (spec 9.7.2): the two event streams.
+ * v0.11 People, M11 and T8 (spec 9.7.2): the two event streams.
  *
  * - `/v1/p/events` opens only for her, on her host, with her origin: 404 on
  *   his hosts, 401 without her device, 403 with any other Origin.

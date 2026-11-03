@@ -1,12 +1,12 @@
 /**
- * v0.12 People (spec 9.7.1), by reading the route tables and the source:
+ * v0.11 People (spec 9.7.1), by reading the route tables and the source:
  *
  * - T1: her routes are exactly the reviewed list, every one under
  *   PERSON_PREFIX, never on ctl.sock; only the three join routes take no
  *   credential; the exit set is exactly the six. His People routes are
  *   pinned too, each with its scope, ctl, localOnly and area. Adding or
  *   widening one is a visible edit here.
- * - M9: every People route is phase v0.12; every `:pid` data route and
+ * - M9: every People route is phase v0.11; every `:pid` data route and
  *   every person data route declares an area; every localOnly route is also
  *   ctl.
  * - T2: her cookie is read at exactly one place in api/, guarded by her
@@ -245,7 +245,7 @@ describe('T1: the allowlist is exactly the reviewed list', () => {
       expect(def.path.startsWith(PERSON_PREFIX), k).toBe(true);
       expect(def.ctl, k).toBe(false);
       expect(def.localOnly, k).toBeUndefined();
-      expect(def.phase, k).toBe('v0.12');
+      expect(def.phase, k).toBe('v0.11');
     }
     expect(person.filter(([, d]) => d.join).map(([k]) => k).sort()).toEqual(['personDeviceLinkClaim', 'personJoin', 'personJoinPreview']);
     expect(person.filter(([, d]) => d.exit).map(([k]) => k).sort()).toEqual(['personActivity', 'personExport', 'personLeave', 'personMe', 'personPause', 'personResume']);
@@ -277,9 +277,9 @@ describe('M9: route metadata', () => {
     }
   });
 
-  it('every People route is phase v0.12; areas come from AREAS; localOnly implies ctl', () => {
+  it('every People route is phase v0.11; areas come from AREAS; localOnly implies ctl', () => {
     for (const [k, def] of [...person, ...people]) {
-      expect(def.phase, k).toBe('v0.12');
+      expect(def.phase, k).toBe('v0.11');
       if (def.area !== undefined) expect(Object.keys(AREAS), k).toContain(def.area);
       if (def.localOnly) expect(def.ctl, k).toBe(true);
     }

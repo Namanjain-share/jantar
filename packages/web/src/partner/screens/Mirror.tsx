@@ -1,5 +1,5 @@
 /**
- * v0.12 People: "See what {owner} sees" (`/p/me?tab=sharing&see=<area>`,
+ * v0.11 People: "See what {owner} sees" (`/p/me?tab=sharing&see=<area>`,
  * spec 8.4). It reads her mirror (`GET /v1/p/mirror/:area`), which the
  * daemon builds with the same function and her live agreement as his view,
  * and draws it with the components his Partner screen uses (people-shared:

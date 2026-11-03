@@ -236,7 +236,7 @@ export class ChatPhotos {
   }
 
   /**
-   * v0.12 People (O19): her photo with its location, camera details and embedded thumbnails stripped, before
+   * v0.11 People (O19): her photo with its location, camera details and embedded thumbnails stripped, before
    * it is stored (strip.ts). A photo that can't be read whole is refused rather than kept with them.
    */
   async addStripped(bytes: Buffer, store: ChatStore): Promise<LifeResult<{ id: string }>> {

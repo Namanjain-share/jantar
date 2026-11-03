@@ -1,6 +1,6 @@
 // Portions adapted from Noblot (c) 2026 Naman Jain. See THIRD_PARTY_NOTICES.md (jantar-secrets-allow: the licensor, as in LICENSE)
 /**
- * v0.12 People: the evening review's outcomes (spec 3.10), adapted from
+ * v0.11 People: the evening review's outcomes (spec 3.10), adapted from
  * Noblot's day plan (`packages/core/src/dayPlan.ts`: the pick snapshot,
  * `DayPickOutcome`, `resolvePick`). Every item of a day resolves to done,
  * moved, missed or gone, as there; Jantar adds `skipped` (she skipped it,

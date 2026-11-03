@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her to-dos keep the promises his Assign sheet and her join
+ * v0.11 People: her to-dos keep the promises his Assign sheet and her join
  * page make (spec 2.5, 3.1, 4.4), against a fake client with synthetic data.
  *
  * - "You see both on the item": an open item he assigned says "asks for a

@@ -1,5 +1,5 @@
 /**
- * v0.12 People, M24 (P1 fields): text either side wrote (a to-do title, an
+ * v0.11 People, M24 (P1 fields): text either side wrote (a to-do title, an
  * owner's name) renders as text in her app: no element from it, no `on*`
  * attribute, no `javascript:` link, and a very long line wraps inside its
  * box (break-words).

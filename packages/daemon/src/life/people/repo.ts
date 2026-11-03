@@ -1,5 +1,5 @@
 /**
- * v0.12 People in life.db: the `people` rows, the shared spaces and her
+ * v0.11 People in life.db: the `people` rows, the shared spaces and her
  * Activity (`person_activity`, append-only in the app; spec 8.3, D8).
  *
  * Every call reads `core.db` afresh (a restore swaps the handle). A row

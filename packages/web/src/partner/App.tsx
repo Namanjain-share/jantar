@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her app. Tab bar Today · To-do · Journal · Chat · More; a banner for paused, ending and People off;
+ * v0.11 People: her app. Tab bar Today · To-do · Journal · Chat · More; a banner for paused, ending and People off;
  * live reloads on her stream's ticks (WS /v1/p/events).
  */
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';

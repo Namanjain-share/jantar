@@ -1,5 +1,5 @@
 /**
- * jantar people (v0.12 People, spec 9.5): the people on this Mac, at the Mac
+ * jantar people (v0.11 People, spec 9.5): the people on this Mac, at the Mac
  * (ctl.sock). Every command that lets a person in, shapes what they are
  * offered or ends their space runs here only (`localOnly` routes):
  *

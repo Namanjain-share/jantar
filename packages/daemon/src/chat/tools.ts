@@ -102,7 +102,7 @@ export const TOOL_SENTENCES = {
 const LABEL_NOTE: Readonly<Record<LabelSource, string>> = {
   meeting: "a meeting (its name, an action item or a todo made from one)",
   intel: "the Intel shelf (a saved page's title)",
-  // v0.12 People (C19): framed by authorship, whichever screen the words are on.
+  // v0.11 People (C19): framed by authorship, whichever screen the words are on.
   owner: 'the owner (an item or step the owner added or last edited)',
   partner: 'the partner (an item or note the partner wrote or last edited)',
 };
@@ -241,7 +241,7 @@ export function listed(t: ChatTool): Record<string, unknown> {
 type Settings = ReturnType<DaemonContext['settings']['get']>;
 const LIFE_PARTS = ['todos', 'medicines', 'food', 'places', 'finance', 'posts'] as const;
 
-/** Whether `part` is on now (and its data opens). v0.12 People: on her deps, her parts (never the owner's switches). */
+/** Whether `part` is on now (and its data opens). v0.11 People: on her deps, her parts (never the owner's switches). */
 export function partOn(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings' | 'person'>, part: ChatPart): boolean {
   if (d.person) return personPartOn(d, part);
   const lifeOk = () => {
@@ -277,13 +277,13 @@ export function partOn(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings' | 'per
 }
 
 /**
- * v0.12 People (spec 7.2): her run's tools, `CHAT_TOOLS ∩ PERSON_CHAT_TOOLS` (the owner's to-do and weight
+ * v0.11 People (spec 7.2): her run's tools, `CHAT_TOOLS ∩ PERSON_CHAT_TOOLS` (the owner's to-do and weight
  * tools, over her space) and the tools only she has. Never a session, account, Intel, meeting, money, post,
  * journal or assigning tool.
  */
 export const PERSON_TOOLS: readonly ChatTool[] = [...CHAT_TOOLS.filter((t) => PERSON_SHARED_TOOLS.has(t.name)), ...PERSON_ONLY_TOOLS].filter((t) => PERSON_CHAT_TOOLS.has(t.name));
 
-/** The tools of a turn: those whose part is on now. v0.12 People: on her deps, her tools only. */
+/** The tools of a turn: those whose part is on now. v0.11 People: on her deps, her tools only. */
 export function toolsFor(s: Settings, d: Pick<ChatDeps, 'life' | 'meetings' | 'person'>): ChatTool[] {
   if (d.person) return PERSON_TOOLS.filter((t) => partOn(s, d, t.part));
   return CHAT_TOOLS.filter((t) => partOn(s, d, t.part));
@@ -345,7 +345,7 @@ function cafeLine(p: Place): string {
 }
 
 /**
- * v0.12 People (C19): a shared café whose fields the other person wrote or last edited: her words in his
+ * v0.11 People (C19): a shared café whose fields the other person wrote or last edited: her words in his
  * thread (`partner`), his in hers (`owner`). Their text is framed as data and taints the turn.
  */
 function otherSource(d: Pick<ChatDeps, 'person'>, p: Pick<Place, 'by' | 'editedBy' | 'space'>): 'owner' | 'partner' | null {
@@ -516,7 +516,7 @@ const READS: Readonly<Record<string, ReadFn>> = {
     if (typeof r === 'string') return r;
     const p = r.place;
     const src = otherSource(d, p);
-    // v0.12 People (C19): the other person's café (or one they last edited) is data, whole: the turn is tainted.
+    // v0.11 People (C19): the other person's café (or one they last edited) is data, whole: the turn is tainted.
     if (src) {
       const words = [cafeLine(p), p.notes ? `Notes: ${clean(p.notes)}` : '', ...p.dishes.map((x) => `Dish ${nm(x.name, 60)}${x.notes ? ` "${nm(x.notes, 80)}"` : ''}`), ...r.visits.slice(0, 20).map((v) => `Visit ${v.day} ${idOf(v.id)}${v.by !== undefined && v.by !== (d.person ? d.person.pid : '') ? ' (theirs)' : ''}${v.notes ? ` "${nm(v.notes, 80)}"` : ''}`)];
       return { text: [`Shared café ${idOf(p.id)}.`, dataNote('the other person in a shared café (what they added or last edited)'), data(src, p.id, words.filter(Boolean).join('\n'))].join('\n'), taints: true };
@@ -676,7 +676,7 @@ function linksOf(tool: WriteTool | PersonWriteTool, input: Record<string, unknow
 }
 
 function timedOf(tool: WriteTool | PersonWriteTool, input: Record<string, unknown>): boolean {
-  // v0.12 People: a timed step she adds rings her phone like a timed todo.
+  // v0.11 People: a timed step she adds rings her phone like a timed todo.
   if (tool === 'step_add') return typeof input.at === 'string';
   if (tool !== 'todo_add' && tool !== 'post_add' && tool !== 'todo_edit' && tool !== 'post_edit') return false;
   const due = input.due as { time?: unknown } | null | undefined;
@@ -749,7 +749,7 @@ export class TurnTools {
   }
 
   private async read(t: ChatTool, input: Record<string, unknown>, s: Settings): Promise<ToolAnswer> {
-    // v0.12 People: her reads are hers alone (her space, framed by authorship); the owner's never run for her.
+    // v0.11 People: her reads are hers alone (her space, framed by authorship); the owner's never run for her.
     const person = this.o.deps.person;
     if (person && PERSON_DELEGATED_READS.has(t.name)) {
       // P4: the café reads over her shared space; C19 runs inside them (cafeLine marks the other person's words).
@@ -826,7 +826,7 @@ export class TurnTools {
 
   private card(name: string, input: Record<string, unknown>): ToolAnswer {
     if (this.counts.cards >= CHAT_CARDS_MAX) return this.refused(TOOL_SENTENCES.limit);
-    // v0.12 People: her alert to the owner rings his phone, so it is always a Do-it card ("Send Sam 'Running late'?").
+    // v0.11 People: her alert to the owner rings his phone, so it is always a Do-it card ("Send Sam 'Running late'?").
     if (name === 'alert_send') {
       if (!this.o.deps.person) return this.refused(TOOL_SENTENCES.failed);
       const label = describeWrite(this.o.deps, 'alert_send', input);
@@ -866,7 +866,7 @@ export function recordChange(o: Pick<TurnToolsOptions, 'ctx' | 'store' | 'turnId
 /** One audit row (ids and counts only); a failed write is never fatal. */
 export function audit(ctx: Pick<DaemonContext, 'clock' | 'db'>, actor: string, action: string, target: string, params: Record<string, unknown>, result: 'ok' | 'failed'): void {
   try {
-    // v0.12 People (C8, spec 7.5): her chat leaves one row per run, `chat.run` under her person, by the `chat`
+    // v0.11 People (C8, spec 7.5): her chat leaves one row per run, `chat.run` under her person, by the `chat`
     // actor, with no target and no params, so he can count her runs per day and learns nothing else. Her own
     // routes' rows are `person.write` (the pipeline's); what a run read, changed or asked is never audited.
     if (actor.startsWith('person:')) {

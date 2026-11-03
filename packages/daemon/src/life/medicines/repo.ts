@@ -16,7 +16,7 @@
  * when it was added is never a miss; `stopTime` so that the doses after a
  * Stop were never due.
  *
- * v0.12 People: a repo works in one space (`''` the owner's, `<pid>` hers),
+ * v0.11 People: a repo works in one space (`''` the owner's, `<pid>` hers),
  * and every query names it, so the owner's medicines never list a row of
  * hers and the reverse (T6). A dose carries its medicine's space, written
  * with it. `by_person` is the medicine's author (set on insert, never
@@ -44,7 +44,7 @@ export const StoredMedicineSchema = MedicineSchema.extend({
   startTime: HhMmSchema.optional(),
   /** When on `stoppedOn` it was stopped; absent on a medicine stopped before it was kept (its whole last day stays). */
   stopTime: HhMmSchema.optional(),
-  /** v0.12 People: "Edited by" on a medicine of hers the owner changed ('' the owner); cleared by nobody. */
+  /** v0.11 People: "Edited by" on a medicine of hers the owner changed ('' the owner); cleared by nobody. */
   editedBy: z.string().max(40).optional(),
   editedAt: IsoDateSchema.optional(),
 });
@@ -91,7 +91,7 @@ function parseMed(json: string): StoredMedicine | null {
 export class MedsRepo {
   constructor(
     private readonly core: Pick<LifeCore, 'db'>,
-    /** v0.12: the space this repo reads and writes. */
+    /** v0.11: the space this repo reads and writes. */
     readonly space = '',
   ) {}
 

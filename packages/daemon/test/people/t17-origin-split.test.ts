@@ -1,5 +1,5 @@
 /**
- * v0.12 People, T17 (C1, D15): two Origin sets, one per principal.
+ * v0.11 People, T17 (C1, D15): two Origin sets, one per principal.
  *
  * - On his host, with his cookie and secret at every scope, every owner
  *   write route and his event stream refuse `Origin: https://us.test`

@@ -1,5 +1,5 @@
 /**
- * v0.12 People, the CLI against a real jantard (spec 9.5): cloudflare mode
+ * v0.11 People, the CLI against a real jantard (spec 9.5): cloudflare mode
  * with a people hostname, then `jantar people` end to end over ctl.sock.
  *
  * - `people on --name`, `add --email --no-food`, `offer --preset
@@ -27,7 +27,7 @@ const PUBLIC = 'https://jantar.example.com';
 const PEOPLE = 'https://us.example.com';
 const PEOPLE_HOST = 'us.example.com';
 
-describe('v0.12 jantar people', () => {
+describe('v0.11 jantar people', () => {
   let d: Daemon;
   let ctl: CtlClient;
   let her = '';

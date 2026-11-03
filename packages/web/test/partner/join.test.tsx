@@ -1,5 +1,5 @@
 /**
- * v0.12 People, M20 (P1, P2): the join page and Sharing are generated from the
+ * v0.11 People, M20 (P1, P2): the join page and Sharing are generated from the
  * explicit fields. For every preset and every level of every built field:
  * each `see` field has exactly one line, no unbuilt feature appears, the
  * words "everything" and "full access" never do, "What … can't do" and

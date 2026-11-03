@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her sleep log (spec 3.12, O10). One row per night in
+ * v0.11 People (P2): her sleep log (spec 3.12, O10). One row per night in
  * her space (`sleep_logs`), keyed by the evening it started.
  *
  * - Manual first: she adds, corrects and deletes any night. Quick buttons:

@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P1): her medicines and doses, as either side writes them
+ * v0.11 People (P1): her medicines and doses, as either side writes them
  * (spec 3.4, 8.2), over the Medicines module in her space.
  *
  * The rules:

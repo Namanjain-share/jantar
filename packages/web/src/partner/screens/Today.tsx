@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her Today (spec 3.1, 3.7, 3.9, 3.10, 3.12).
+ * v0.11 People: her Today (spec 3.1, 3.7, 3.9, 3.10, 3.12).
  *
  * - Top cards: a sharing request, the 14-day sharing check-in, the evening
  *   review card from her review time, and "Asleep since … · Woke up" while

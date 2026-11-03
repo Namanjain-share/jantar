@@ -66,7 +66,7 @@ const num = (v: unknown): number => (typeof v === 'number' ? v : typeof v === 'b
 
 export class ChatStore {
   /**
-   * v0.12 People (spec 7.1): a store works in one thread (`''` the owner's, `p:<pid>` hers). Every query
+   * v0.11 People (spec 7.1): a store works in one thread (`''` the owner's, `p:<pid>` hers). Every query
    * names it, so a turn, change, card or photo of the other thread is not there (404). `inThread` gives the
    * same file in another thread; only the root store closes it.
    */
@@ -145,12 +145,12 @@ export class ChatStore {
     return num((this.db.prepare('SELECT COUNT(*) AS n FROM turns WHERE thread = ?').get(this.thread) as Row).n);
   }
 
-  /** v0.12 People: when each turn of this thread at or after `sinceIso` was sent (her daily cap counts today's). */
+  /** v0.11 People: when each turn of this thread at or after `sinceIso` was sent (her daily cap counts today's). */
   turnTimesSince(sinceIso: string): string[] {
     return (this.db.prepare('SELECT at FROM turns WHERE thread = ? AND at >= ?').all(this.thread, sinceIso) as Row[]).map((r) => str(r.at));
   }
 
-  /** v0.12 People: every thread that holds a row (the sweep keeps each by its own keep days). */
+  /** v0.11 People: every thread that holds a row (the sweep keeps each by its own keep days). */
   threads(): string[] {
     const rows = this.db.prepare('SELECT DISTINCT thread FROM turns UNION SELECT DISTINCT thread FROM photos').all() as Row[];
     return rows.map((r) => str(r.thread));
@@ -360,7 +360,7 @@ export class ChatStore {
   }
 
   /**
-   * v0.12 People (O21): delete one finished turn of this thread with its changes, cards and photos: gone for
+   * v0.11 People (O21): delete one finished turn of this thread with its changes, cards and photos: gone for
    * both sides, with no trace. Null when there is no such turn here (or it is still running).
    */
   deleteTurn(id: string): PhotoRow[] | null {

@@ -1,5 +1,5 @@
 /**
- * v0.12 People in his places (spec 4.1, 9.4): People comes last, after
+ * v0.11 People in his places (spec 4.1, 9.4): People comes last, after
  * Meetings, so on a phone it sits in More; the rail lists it on a wide
  * screen. It shows only while People is on at the Mac (Features.people) and
  * only on a device paired with control (every People route needs it). On

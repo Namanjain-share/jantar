@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her Today, review, journal and sleep screens (spec
+ * v0.11 People (P2): her Today, review, journal and sleep screens (spec
  * 3.1, 3.10, 3.11, 3.12; 9.7.4), against a fake client with synthetic data.
  *
  * - Today: Now, Next and Later in plan order with Done collapsed; the

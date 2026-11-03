@@ -38,7 +38,7 @@ import { VapidError, loadOrCreateVapidKeys, type VapidKeys } from './vapid.js';
 /** Push services accept about 4 KB; stay well under it after encryption overhead. */
 export const MAX_PAYLOAD_BYTES = 3000;
 export const PUSH_TTL_S = 3600;
-/** v0.12 People: a gentle alert (good morning, thinking of you) may wait 12 hours at the push service. */
+/** v0.11 People: a gentle alert (good morning, thinking of you) may wait 12 hours at the push service. */
 export const GENTLE_TTL_S = 12 * 3600;
 export const PUSH_TIMEOUT_MS = 10_000;
 /** Pushes in flight at once. */
@@ -136,7 +136,7 @@ export interface PushPayload {
   /** v0.5.3: when Claude's countdown runs out (ISO). */
   deadline?: string;
   ts: string;
-  /** v0.12 People: an Urgent alert (her service worker keeps it on screen, never silent). */
+  /** v0.11 People: an Urgent alert (her service worker keeps it on screen, never silent). */
   urgent?: true;
 }
 
@@ -253,7 +253,7 @@ export class WebPushNotifier implements Notifier {
   }
 
   async send(n: Notification): Promise<{ delivered: number; failed: number; offline: number }> {
-    // v0.12: a person's push walks her list alone, never his.
+    // v0.11: a person's push walks her list alone, never his.
     if (n.audience) return this.deliver(n, this.personTargets(n.audience.person));
     const routed = n as RoutedNotification;
     const all = newestFirst(this.ctx.db.pushSubs.list());
@@ -285,7 +285,7 @@ export class WebPushNotifier implements Notifier {
   }
 
   /**
-   * v0.12 People: her subscriptions (jantar.db `person_push_subs`), newest
+   * v0.11 People: her subscriptions (jantar.db `person_push_subs`), newest
    * first, each of a device of hers that is not revoked; a subscription of a
    * revoked device or an unknown push service is dropped, and each device
    * keeps its newest MAX_PUSH_SUBS_PER_DEVICE. His `push_subs` are never read here.
@@ -319,7 +319,7 @@ export class WebPushNotifier implements Notifier {
 
     const payload = encodePayload(n);
     const options: PushSendOptions = {
-      // v0.12 People (spec 6.3): gentle is low urgency for 12 h; normal and urgent are high for 1 h.
+      // v0.11 People (spec 6.3): gentle is low urgency for 12 h; normal and urgent are high for 1 h.
       TTL: n.pushUrgency === 'gentle' ? GENTLE_TTL_S : ttlFor(n.deadline, this.ctx.clock.now()),
       urgency: n.pushUrgency === 'gentle' ? 'low' : n.pushUrgency !== undefined || URGENT.has(n.kind) ? 'high' : 'normal',
       timeout: PUSH_TIMEOUT_MS,

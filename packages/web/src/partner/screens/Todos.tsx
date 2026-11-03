@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her To-do (`/p/todos`): add, tick (an item that asks for a
+ * v0.11 People: her To-do (`/p/todos`): add, tick (an item that asks for a
  * report opens its sheet), Got it on his items. Every tick shows the shared
  * 5-second Undo (spec 3.1), the same toast as Today's.
  */

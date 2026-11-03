@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7.2): her assistant's tools, hard-coded.
+ * v0.11 People (P3, spec 7.2): her assistant's tools, hard-coded.
  *
  * `PERSON_CHAT_TOOLS` is the whole list her thread may ever list. Her run
  * gets `CHAT_TOOLS ∩ PERSON_CHAT_TOOLS` (the owner's to-do and weight tools,

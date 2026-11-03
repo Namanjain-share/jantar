@@ -1,6 +1,6 @@
 // Portions adapted from Noblot (c) 2026 Naman Jain. See THIRD_PARTY_NOTICES.md (jantar-secrets-allow: the licensor, as in LICENSE)
 /**
- * v0.12 People: her journal's streak and prompts (spec 3.11), from Noblot's
+ * v0.11 People: her journal's streak and prompts (spec 3.11), from Noblot's
  * journal (`packages/core/src/journal.ts`: `journalStreak`,
  * `nextStreakMilestone`, `promptForDay` and the day-key math under them).
  *

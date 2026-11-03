@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her day plan, evening review and status (scope
+ * v0.11 People (P2): her day plan, evening review and status (scope
  * `person`), thin handlers over life/plans and life/people with her as the
  * caller. Every call works in her own space; `by` is daemon-set.
  */

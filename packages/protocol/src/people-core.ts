@@ -1,5 +1,5 @@
 /**
- * v0.12 People: the parts of `@jantar/protocol/people` that need no zod
+ * v0.11 People: the parts of `@jantar/protocol/people` that need no zod
  * (subpath `@jantar/protocol/people-core`): names and numbers, the build
  * phases and areas, the agreement's fields, levels and rules, and the
  * presets. Her app (a separate bundle) imports these at runtime and only

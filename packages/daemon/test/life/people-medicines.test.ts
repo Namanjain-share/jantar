@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P1): her medicines and doses, as each side reads and writes
+ * v0.11 People (P1): her medicines and doses, as each side reads and writes
  * them (spec 3.4, 8.2, 8.4, 9.7.3 people-medicines), on the isolation
  * fixture (Sam, Asha on Everything with food off, Bea on Standard).
  *

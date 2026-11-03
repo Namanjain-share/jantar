@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): small helpers the plan, review, alert, status, sleep
+ * v0.11 People (P2): small helpers the plan, review, alert, status, sleep
  * and journal suites share, over the isolation fixture (synthetic people
  * only: Sam, Asha, Bea; hosts jantar.test and us.test).
  */

@@ -47,7 +47,7 @@ const repos: [string, () => { db: Db; close(): void }][] = [
 ];
 
 describe('v0.8: migration 6', () => {
-  it('is additive, and makes the capture_keys table with no key column (v0.10 adds 7, v0.12 8)', () => {
+  it('is additive, and makes the capture_keys table with no key column (v0.10 adds 7, v0.11 8)', () => {
     expect(LATEST_SCHEMA_VERSION).toBe(8);
     const m = MIGRATIONS.find((x) => x.version === 6);
     expect(m?.name).toBe('v0.8 capture keys');

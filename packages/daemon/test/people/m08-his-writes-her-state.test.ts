@@ -1,5 +1,5 @@
 /**
- * v0.12 People: M8 for his writes. Every write of his over a device (from
+ * v0.11 People: M8 for his writes. Every write of his over a device (from
  * PEOPLE_ROUTES, so a write added later joins the day it lands) × her
  * state, with real row ids of hers and bodies that pass their schemas:
  *

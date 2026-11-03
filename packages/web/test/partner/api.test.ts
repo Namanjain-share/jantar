@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * v0.12 People: her API client calls her routes only, by the paths and
+ * v0.11 People: her API client calls her routes only, by the paths and
  * methods PERSON_ROUTES has (so a path can't drift), and sends her device
  * secret on writes.
  */

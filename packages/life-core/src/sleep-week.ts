@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her sleep log's arithmetic (spec 3.12). Pure: instants, day
+ * v0.11 People: her sleep log's arithmetic (spec 3.12). Pure: instants, day
  * keys and the Life time zone in.
  *
  * - A night's key is the day of the evening it started: a bedtime from

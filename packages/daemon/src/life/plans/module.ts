@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her day plans, his templates and her evening review
+ * v0.11 People (P2): her day plans, his templates and her evening review
  * (spec 3.1, 3.2, 3.6, 3.10, 4.3). One plan per day in her space, its
  * steps and check-betweens inline (D4).
  *

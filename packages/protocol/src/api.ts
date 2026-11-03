@@ -908,21 +908,21 @@ export interface RouteDef {
    * active key (404 otherwise), never with an Origin.
    */
   scope: Scope | 'public' | 'extension' | 'node' | 'capture' | 'person';
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10' | 'v0.12';
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10' | 'v0.11';
   /**
-   * v0.12 People (`@jantar/protocol/people`): a `person` route needs no
+   * v0.11 People (`@jantar/protocol/people`): a `person` route needs no
    * credential (an invite or device-link claim). Only personJoinPreview,
    * personJoin and personDeviceLinkClaim carry it.
    */
   join?: true;
   /**
-   * v0.12: one of her exits (C12): it works while People is switched off,
+   * v0.11: one of her exits (C12): it works while People is switched off,
    * in --read-only, while she is `ending`, and (Leave, Pause) while life.db
    * is broken. Never in READ_ONLY_REFUSED.
    */
   exit?: true;
   /**
-   * v0.12: the agreement area a People route reads or writes (her data
+   * v0.11: the agreement area a People route reads or writes (her data
    * routes and every `/v1/people/:pid/*` data route). The isolation tests
    * read it to know which field must gate the route (M9).
    */

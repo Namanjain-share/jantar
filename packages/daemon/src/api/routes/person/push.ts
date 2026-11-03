@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her push list (jantar.db `person_push_subs`), apart from his
+ * v0.11 People: her push list (jantar.db `person_push_subs`), apart from his
  * (`push_subs`). A subscription is hers by her device; she can drop only her
  * own. Her pushes are sent to this list only (notify/webpush.ts), through
  * sendLifePush (Web Push only, never the Mac banner or Telegram, C7).

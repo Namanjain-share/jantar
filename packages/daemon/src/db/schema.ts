@@ -5,7 +5,7 @@
  */
 
 /**
- * v0.12 People's jantar.db tables (migration 8), also what the in-memory Db
+ * v0.11 People's jantar.db tables (migration 8), also what the in-memory Db
  * of the tests opens (core/memory-db.ts), so both run one implementation
  * (db/people-repos.ts). Codes and keys are stored only as hashes.
  */
@@ -243,7 +243,7 @@ export const MIGRATIONS: readonly Migration[] = [
   },
   {
     version: 8,
-    name: 'v0.12 people',
+    name: 'v0.11 people',
     // Additive: 0.10 opens a file at this schema, warns, and carries on. It never reads these tables, so a
     // partner is locked out of a downgraded daemon and gets no pushes (fails closed, spec 9.1.4).
     sql: `

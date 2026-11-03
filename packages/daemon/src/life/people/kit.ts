@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): small helpers the plan, alert, journal and sleep
+ * v0.11 People (P2): small helpers the plan, alert, journal and sleep
  * modules share. Nothing here reads or writes a row.
  */
 import { dayKeyOf, hhmmOf, minuteOf, weekdayOf } from '@jantar/life-core';

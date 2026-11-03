@@ -1,5 +1,5 @@
 /**
- * v0.12 People: what her host answers (spec 9.3.2 and M13). It is the
+ * v0.11 People: what her host answers (spec 9.3.2 and M13). It is the
  * whole surface a page or a script on her origin can reach:
  *
  * - `/healthz` (no data) and her routes under PERSON_PREFIX;

@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her evening review (spec 3.10, O2).
+ * v0.11 People (P2): her evening review (spec 3.10, O2).
  *
  * - Every outcome: done, skipped (with her reason), excused (rough day),
  *   moved (carried, or a to-do's due moved on), missed (open at send or

@@ -1,5 +1,5 @@
 /**
- * v0.12 People: five large tap targets for a 1–5 answer (mood, energy,
+ * v0.11 People: five large tap targets for a 1–5 answer (mood, energy,
  * sleep quality): never a slider (spec 3.1). Each target is at least 44 px.
  */
 import { FACES } from './time.js';

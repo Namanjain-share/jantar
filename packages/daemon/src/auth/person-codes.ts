@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her invites (jantar.db `person_invites`, spec D9) and her
+ * v0.11 People: her invites (jantar.db `person_invites`, spec D9) and her
  * device-link codes (`person_link_codes`, C37).
  *
  * - A code is 128 random bits, base64url, carried in a URL fragment so it

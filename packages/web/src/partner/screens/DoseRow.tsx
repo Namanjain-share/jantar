@@ -1,5 +1,5 @@
 /**
- * v0.12 People: one dose of hers (spec 3.1, 3.4): the time, the medicine
+ * v0.11 People: one dose of hers (spec 3.1, 3.4): the time, the medicine
  * and its dose, "Added by {owner}" on one he added, and two equal buttons,
  * Taken and Skip, each at least 44 px. A logged dose shows what was logged
  * and Undo. Only she logs doses; the parent shows the 5-second Undo toast.

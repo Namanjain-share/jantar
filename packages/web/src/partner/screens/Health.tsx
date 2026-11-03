@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her Health (`/p/health`), a lazy screen: Medicines (spec
+ * v0.11 People: her Health (`/p/health`), a lazy screen: Medicines (spec
  * 3.4: today's doses with Taken and Skip and a 5-second Undo, her medicines
  * with "added by {owner}" and "edited by {owner}", Add, Edit and Stop for
  * any of hers), Sleep (P2: the week, Going to sleep, Add a night, edit and

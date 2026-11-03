@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her day plan as {owner} reads it (spec 4.2), one component
+ * v0.11 People: her day plan as {owner} reads it (spec 4.2), one component
  * for his Partner › Today and her "See what {owner} sees" (the same DTO, so
  * the mirror matches what he gets): when it was sent, seen and
  * acknowledged, each step's status, done time, report and check-in, late

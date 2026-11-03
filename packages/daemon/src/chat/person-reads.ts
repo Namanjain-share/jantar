@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7.2, 7.4): her assistant's reads, over her space.
+ * v0.11 People (P3, spec 7.2, 7.4): her assistant's reads, over her space.
  *
  * Taint by authorship (C19): in her thread, any field {owner} wrote or last
  * edited (an assigned to-do's title and notes, his plan steps, the plan's

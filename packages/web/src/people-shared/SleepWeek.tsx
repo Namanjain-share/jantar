@@ -1,5 +1,5 @@
 /**
- * v0.12 People: the sleep week (spec 3.12), one component for her Health ›
+ * v0.11 People: the sleep week (spec 3.12), one component for her Health ›
  * Sleep and his Partner › Health (the same DTO, so the mirror matches).
  * Bars run from bedtime to wake time on an 18:00–14:00 axis. "short" is a
  * plain label under 6 h, never a colour or an alert; the arrow shows only

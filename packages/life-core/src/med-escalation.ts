@@ -1,6 +1,6 @@
 // Portions adapted from Noblot (c) 2026 Naman Jain. See THIRD_PARTY_NOTICES.md (jantar-secrets-allow: the licensor, as in LICENSE)
 /**
- * v0.12 People: the two-day medicine concern (spec 3.4, 4.4), adapted from
+ * v0.11 People: the two-day medicine concern (spec 3.4, 4.4), adapted from
  * Noblot's partner medicine escalation (`packages/core/src/health-report.ts`:
  * `MedDay`, `MedEscalation`, `computeMedEscalation`).
  *

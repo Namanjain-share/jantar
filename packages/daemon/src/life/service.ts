@@ -159,7 +159,7 @@ function macZoneOf(env: Readonly<Record<string, string | undefined>>): string {
  */
 const BACKUPS_RACY_MS = 2_000;
 
-/** v0.12: the Life kinds a person's rows use (her to-do reminders, her doses and refills). */
+/** v0.11: the Life kinds a person's rows use (her to-do reminders, her doses and refills). */
 const PERSON_LIFE_KINDS: readonly PingKind[] = ['todo', 'med', 'refill'];
 
 /** Which ping kinds belong to each module. */
@@ -183,11 +183,11 @@ class LifeServiceImpl implements LifeService {
   private readonly core: LifeCore;
   private readonly scheduler: LifeScheduler;
   private readonly backups: BackupTimer;
-  /** v0.12 People: built now, open or not (its exits need only jantar.db). */
+  /** v0.11 People: built now, open or not (its exits need only jantar.db). */
   readonly people: PeopleModule;
   private readonly closed: Modules = {
     todos: closedModule<TodosModule>('todos'),
-    // v0.12: her space's module is closed too while life.db is (and finds nothing).
+    // v0.11: her space's module is closed too while life.db is (and finds nothing).
     medicines: closedModule<MedicinesModule>('medicines', { inSpace: () => this.closed.medicines, find: () => null, adherence: () => ({ pct: null, perDay: [] }) }),
     food: closedModule<FoodModule>('food', { estimateStatus: () => ({ available: false, reason: LIFE_CLOSED }) }),
     places: closedModule<PlacesModule>('places'),
@@ -412,7 +412,7 @@ class LifeServiceImpl implements LifeService {
       this.log.error('life restore failed', { event: 'life.restore', code: 'reopen_failed' });
       return { ok: false, code: 'unavailable', reason: RESTORE_REASONS.reopen };
     }
-    // v0.12 (C11): her Activity says a restore happened (it lives in life.db, so it is written after).
+    // v0.11 (C11): her Activity says a restore happened (it lives in life.db, so it is written after).
     try {
       this.people.afterRestore();
     } catch (e) {
@@ -469,7 +469,7 @@ class LifeServiceImpl implements LifeService {
     return z && isValidTimeZone(z) ? z : this.macZone;
   }
 
-  /** Kinds whose module is on; v0.12, People's kinds while People is on. */
+  /** Kinds whose module is on; v0.11, People's kinds while People is on. */
   private ringingKinds(): PingKind[] {
     const s = this.ctx.settings.get();
     const kinds: PingKind[] = LIFE_PING_KINDS.filter((k) => s.life[KIND_MODULE[k]]);
@@ -478,7 +478,7 @@ class LifeServiceImpl implements LifeService {
   }
 
   /**
-   * v0.12: the kinds a person's rows ring for: her reminders, doses and refills, plan rings and People's own
+   * v0.11: the kinds a person's rows ring for: her reminders, doses and refills, plan rings and People's own
    * kinds, while People is on (whatever his own module switches say); none while it is off, so nothing of
    * hers rings while People is switched off. Her rows stay and ring again (or catch up once) when it is back on.
    */
@@ -512,7 +512,7 @@ class LifeServiceImpl implements LifeService {
       this.log.info('life copied before its upgrade', { event: 'life.precopy', from: r.precopy.from, to: r.precopy.to, file: r.precopy.file });
     }
     this.handle = r.db;
-    // v0.12 (C11): the consent ledger wins over whatever life.db holds (a restore can't bring a forgotten person back).
+    // v0.11 (C11): the consent ledger wins over whatever life.db holds (a restore can't bring a forgotten person back).
     try {
       this.people.reconcile();
       this.people.sweep();
@@ -530,7 +530,7 @@ class LifeServiceImpl implements LifeService {
         return false;
       }
     }
-    // v0.12: People's rings need the scheduler too, with every Life module off.
+    // v0.11: People's rings need the scheduler too, with every Life module off.
     if (wantsLifeDb(this.ctx.settings.get())) {
       if (opts.resyncFirst) {
         this.scheduler.resyncAll();
@@ -594,7 +594,7 @@ class LifeServiceImpl implements LifeService {
   /** The nightly run: back up, and say so once a day when it failed. */
   private async nightly(): Promise<void> {
     if (!this.handle) return;
-    // v0.12 People: ending windows close, left spaces past their 30 days are forgotten, Activity is pruned, old alerts go.
+    // v0.11 People: ending windows close, left spaces past their 30 days are forgotten, Activity is pruned, old alerts go.
     try {
       this.people.sweep();
       this.people.alerts?.prune();
@@ -610,7 +610,7 @@ class LifeServiceImpl implements LifeService {
   }
 }
 
-/** life.db opens while any Life module is on, or (v0.12) while People is on: her space lives there. */
+/** life.db opens while any Life module is on, or (v0.11) while People is on: her space lives there. */
 function wantsLifeDb(s: Settings): boolean {
   return lifeOn(s) || s.people.enabled;
 }

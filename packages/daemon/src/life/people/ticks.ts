@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her counters (spec 9.3.6) and the signal that ends her
+ * v0.11 People: her counters (spec 9.3.6) and the signal that ends her
  * sockets.
  *
  * Her event stream (api/person-events.ts) sends `tick {seq, life, plan,

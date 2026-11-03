@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): alerts both ways, and every People push that waits on
+ * v0.11 People (P2): alerts both ways, and every People push that waits on
  * the recipient (spec 6, 3.7, 3.11, 3.12).
  *
  * - One resolver (life-core `resolveDelivery`, D25) decides push, hold or

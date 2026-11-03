@@ -53,7 +53,7 @@ export const CHAT_KEY_PREFIX = 'jchat_';
 /** v0.10: the Siri door's one route, under CAPTURE_PREFIX. */
 export const CAPTURE_CHAT_PATH = '/v1/capture/chat';
 
-/** What Chat can reach, by part (each only while it is on). v0.12 People: her day plan, sleep and alerts (her thread only). */
+/** What Chat can reach, by part (each only while it is on). v0.11 People: her day plan, sleep and alerts (her thread only). */
 export const ChatModuleSchema = z.enum(['todos', 'medicines', 'food', 'places', 'finance', 'posts', 'intel', 'meetings', 'plan', 'sleep', 'alerts']);
 export type ChatModule = z.infer<typeof ChatModuleSchema>;
 

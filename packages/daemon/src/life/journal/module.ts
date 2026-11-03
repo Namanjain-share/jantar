@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her journal (spec 3.11, O3). Entries and comments in
+ * v0.11 People (P2): her journal (spec 3.11, O3). Entries and comments in
  * her space (`journal_entries`, `journal_comments`); comment authorship is
  * the `by_person` column, never json.
  *

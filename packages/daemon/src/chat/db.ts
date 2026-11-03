@@ -11,7 +11,7 @@
  * - secure_delete is on: a deleted turn's text is overwritten in the file,
  *   not left in free pages.
  * - Never in the nightly Life backup: chat text never lands in backups/,
- *   except the one copy kept before a schema change (v0.12:
+ *   except the one copy kept before a schema change (v0.11:
  *   backups/chat-pre-<version>.db, 0600, which Life's restore never reads).
  *
  * Rows: `turns` (a turn without its changes and cards, zod-checked JSON),
@@ -73,7 +73,7 @@ export const CHAT_MIGRATIONS: readonly LifeMigration[] = [
     `,
   },
   {
-    // v0.12 People (P3, spec 9.1.3): a thread on every row. '' is the owner's thread (every existing row),
+    // v0.11 People (P3, spec 9.1.3): a thread on every row. '' is the owner's thread (every existing row),
     // 'p:<pid>' a partner's. Every query in store.ts names it. An older daemon refuses a schema-2 file;
     // going back means restoring backups/chat-pre-<version>.db.
     version: 2,
@@ -91,14 +91,14 @@ export const CHAT_MIGRATIONS: readonly LifeMigration[] = [
 /** The schema this build writes and reads. A file with a newer one is refused, never downgraded. */
 export const CHAT_SCHEMA_VERSION = Math.max(...CHAT_MIGRATIONS.map((m) => m.version));
 
-/** The copy kept before chat.db moves to a newer schema (v0.12: in backups/, beside life's; never restored by Life). */
+/** The copy kept before chat.db moves to a newer schema (v0.11: in backups/, beside life's; never restored by Life). */
 export function chatPreUpgradeName(version: string): string {
   return `chat-pre-${version}.db`;
 }
 
 /**
  * Open (creating and migrating) chat.db at `path`, or ":memory:" (tests). A refusal answers CHAT_BROKEN_REASON.
- * v0.12: `preMigrateCopy` names the copy an existing file is kept as before it migrates (backups/chat-pre-<version>.db).
+ * v0.11: `preMigrateCopy` names the copy an existing file is kept as before it migrates (backups/chat-pre-<version>.db).
  */
 export function openChatDb(path: string, opts: { preMigrateCopy?: (from: number, to: number) => string | null } = {}): LifeOpenResult {
   return openCheckedDb(path, {

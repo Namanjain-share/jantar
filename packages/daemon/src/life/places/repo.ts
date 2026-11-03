@@ -11,7 +11,7 @@
  * (a row whose json is not valid counts, but adds no spend: json_extract
  * on it would fail the whole query).
  *
- * v0.12 People (P4): a repo reads the spaces its scope names (the owner:
+ * v0.11 People (P4): a repo reads the spaces its scope names (the owner:
  * his own `''` and every space he shares; a member: that one shared space)
  * and every query names them. `space` and `by_person` are columns, never in
  * the json, and are filled into a shared café's DTO on read (a café of the
@@ -87,13 +87,13 @@ export class PlacesRepo {
 
   /** A café's new json, in the space it is in (its author never changes). */
   put(p: Place): void {
-    // v0.10: the visits summary is derived when read, never stored; v0.12: nor its space or author (columns).
+    // v0.10: the visits summary is derived when read, never stored; v0.11: nor its space or author (columns).
     const { visits: _derived, ...stored } = PlaceSchema.parse(p);
     const sp = this.spaces();
     this.core.db.prepare(`UPDATE places SET best = ?, updated_at = ?, json = ? WHERE id = ? AND ${sp.sql}`).run(p.best, p.updatedAt, JSON.stringify(stored), p.id, ...sp.args);
   }
 
-  /** v0.12 People (P4): move a café and its visits from one space to another (one transaction). */
+  /** v0.11 People (P4): move a café and its visits from one space to another (one transaction). */
   move(id: string, from: string, to: string): boolean {
     return this.core.db.tx(() => {
       const n = Number(this.core.db.prepare('UPDATE places SET space = ? WHERE id = ? AND space = ?').run(to, id, from).changes);

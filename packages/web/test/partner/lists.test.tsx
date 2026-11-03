@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P4, spec 5; 9.7.4): her shared cafés and lists, and his
+ * v0.11 People (P4, spec 5; 9.7.4): her shared cafés and lists, and his
  * Lists tab, against fake clients with synthetic people (Sam and Asha).
  *
  * - Her cafés: "Added by", "Edited by", Delete only on her own visits, and

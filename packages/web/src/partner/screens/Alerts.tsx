@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her Alerts page (`/p/alerts`, spec 6), a lazy screen. One
+ * v0.11 People: her Alerts page (`/p/alerts`, spec 6), a lazy screen. One
  * list both ways, newest first, with each alert's status ("Sent", "Held",
  * "Saved", "Seen 10:42", the reply) and one-tap replies that close after
  * 24 hours ("Expired", no blame). Opening one marks it seen; a push being

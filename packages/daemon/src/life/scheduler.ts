@@ -66,7 +66,7 @@ export interface LifeSchedulerOptions {
   /** The kinds that may ring now (their module is on). Default: every kind. */
   kinds?: () => readonly PingKind[];
   /**
-   * v0.12 People: the kinds whose rows of a person (her reminders, doses and plan rings) may ring now: while
+   * v0.11 People: the kinds whose rows of a person (her reminders, doses and plan rings) may ring now: while
    * People is on, whatever the owner's own module switches say; none while it is off. Default: as `kinds`.
    */
   personKinds?: () => readonly PingKind[];
@@ -266,7 +266,7 @@ export class LifeScheduler implements Scheduler {
     return on.filter((k) => this.handlers.has(k));
   }
 
-  /** v0.12: the kinds a person's rows ring for now (undefined: as the owner's). */
+  /** v0.11: the kinds a person's rows ring for now (undefined: as the owner's). */
   private activePersonKinds(): readonly PingKind[] | undefined {
     const on = this.opts.personKinds?.();
     return on?.filter((k) => this.handlers.has(k));

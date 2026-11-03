@@ -61,7 +61,7 @@ export const COMMANDS: readonly Command[] = [
   post,
   // v0.10 (cafés, read only)
   place,
-  // v0.12 People
+  // v0.11 People
   people,
   intel,
   // v0.5.3

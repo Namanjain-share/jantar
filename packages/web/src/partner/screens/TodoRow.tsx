@@ -1,5 +1,5 @@
 /**
- * v0.12 People: one to-do row of hers: a tick circle (at least 44 px), the
+ * v0.11 People: one to-do row of hers: a tick circle (at least 44 px), the
  * title, and under it what the item carries: "From {owner}" on an item he
  * added, "Edited by {owner}" on one of hers he changed, "no snooze", "asks
  * for a short report" and "{owner} asked to know by 08:45" while it is open

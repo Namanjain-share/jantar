@@ -1,5 +1,5 @@
 /**
- * v0.12 People, M1 and T3 (a, b): every route of his × her credential
+ * v0.11 People, M1 and T3 (a, b): every route of his × her credential
  * (spec 9.7.2; Noblot's "highest-value test"). Generated, not hand-listed:
  * it iterates ALL_ROUTES, so a route added later joins it the day it lands.
  *

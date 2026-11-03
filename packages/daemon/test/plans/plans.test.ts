@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her day plan (spec 3.1, 3.2, 3.6, 3.7, 4.3, 4.4).
+ * v0.11 People (P2): her day plan (spec 3.1, 3.2, 3.6, 3.7, 4.3, 4.4).
  *
  * - His put carries `srev`; her ticks never bump it; a stale put is 409
  *   `stale`. Status fields in his body are ignored (strict schema).

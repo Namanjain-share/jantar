@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her sleep log (scope `person`), thin handlers over
+ * v0.11 People (P2): her sleep log (scope `person`), thin handlers over
  * life/sleep with her as the caller. Only she writes a night.
  */
 import type { SleepPutBody, SleepWakeBody } from '@jantar/protocol/people';

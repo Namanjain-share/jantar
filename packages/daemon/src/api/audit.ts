@@ -30,7 +30,7 @@ export class Auditor {
     private readonly log: Logger,
   ) {}
 
-  /** v0.12: `person` fills the audit row's person column (whose space it touched); never part of AuditEntry. */
+  /** v0.11: `person` fills the audit row's person column (whose space it touched); never part of AuditEntry. */
   write(input: AuditInput, person?: string): AuditEntry | null {
     const entry: Omit<AuditEntry, 'seq'> = {
       ts: this.clock.iso(),

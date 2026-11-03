@@ -26,7 +26,7 @@ export interface ChatDeps {
   /** Only the Web Push one is used (life/push.ts sendLifePush): "Your answer is in Chat." */
   notifiers: Notifier[];
   /**
-   * v0.12 People (P3): set only on the deps of her run and her taps (person-deps.ts): her id and the
+   * v0.11 People (P3): set only on the deps of her run and her taps (person-deps.ts): her id and the
    * People module. Its presence switches the parts, reads and writes to hers (spec 7.2, 7.3).
    */
   person?: import('./person-deps.js').PersonChat;

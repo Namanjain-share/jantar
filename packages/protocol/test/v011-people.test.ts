@@ -1,5 +1,5 @@
 /**
- * v0.12 People shapes (`@jantar/protocol/people`): the agreement's rules
+ * v0.11 People shapes (`@jantar/protocol/people`): the agreement's rules
  * (spec 1.3.3, M19), presets as offer templates clamped to the built phase
  * (O7, D24), and the subpath staying out of the package index (his main
  * bundle never holds People).

@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): the scheduler's People kinds (contracts.ts
+ * v0.11 People (P2): the scheduler's People kinds (contracts.ts
  * PeoplePingKind). Every handler runs as the scheduler, the `system`
  * reader (C4): it reads any person space by row id, and each row's
  * `person` says whose devices ring ('' his).

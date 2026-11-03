@@ -38,7 +38,7 @@ export const KIND_MODULE = {
   post: 'posts',
 } as const satisfies Record<LifePingKind, string>;
 
-/** v0.12 People (P2): the kinds that ring while People is on (contracts.ts PeoplePingKind). */
+/** v0.11 People (P2): the kinds that ring while People is on (contracts.ts PeoplePingKind). */
 export const PEOPLE_PING_KINDS: readonly PeoplePingKind[] = [
   'plan_step',
   'plan_send',
@@ -64,7 +64,7 @@ interface RawRow {
   claimed_at: string | null;
   failures: number;
   last_sent_at: string | null;
-  /** v0.12 (schema 4): whose devices it rings ('' the owner's). */
+  /** v0.11 (schema 4): whose devices it rings ('' the owner's). */
   person?: string;
 }
 
@@ -87,7 +87,7 @@ function marks(n: number): string {
   return Array.from({ length: n }, () => '?').join(', ');
 }
 
-/** The rows that may ring: the owner's of `kinds`, and (v0.12) a person's of `personKinds`. null: none. */
+/** The rows that may ring: the owner's of `kinds`, and (v0.11) a person's of `personKinds`. null: none. */
 function whoRings(kinds: readonly PingKind[], personKinds: readonly PingKind[] | undefined): { where: string | null; args: string[] } {
   if (personKinds === undefined) return kinds.length === 0 ? { where: null, args: [] } : { where: `kind IN (${marks(kinds.length)})`, args: [...kinds] };
   const parts: string[] = [];
@@ -141,7 +141,7 @@ export class PingsRepo {
    * first, then oldest first. Muted reminders stay due, so a pile of them
    * never keeps a dose ping out of the `limit` read.
    *
-   * v0.12 People: `personKinds` are the kinds whose rows of a person (her
+   * v0.11 People: `personKinds` are the kinds whose rows of a person (her
    * reminders and doses, `person` set) ring now; `kinds` holds the owner's
    * rows. Absent, a person's row rings as an owner's of its kind would.
    */

@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): alerts with the owner (scope `person`), thin handlers
+ * v0.11 People (P2): alerts with the owner (scope `person`), thin handlers
  * over life/alerts with her as the caller: her list (both ways), her sends
  * to him, and seen and reply on his to her.
  */

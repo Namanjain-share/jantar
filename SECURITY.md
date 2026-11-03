@@ -2133,7 +2133,7 @@ It adds a new asset: **another person's Life data, health data included**.
   taints the turn (and his in hers); `jantar mcp` reads only his own space.
 
 Pinned by `packages/daemon/test/people/*`, `test/life/people-medicines.test.ts`
-and `test/arch/v012-people.test.ts` (every owner route with her credential,
+and `test/arch/v011-people.test.ts` (every owner route with her credential,
 every person route with his, both event streams, push routing, the Origin
 split, static files by host, her medicines both ways) and
 `packages/web/test/partner/import-graph.test.ts` (her app is a separate

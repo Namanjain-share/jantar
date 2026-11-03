@@ -40,7 +40,7 @@ export function useFeatures(): Readonly<Features> {
 }
 
 /**
- * The switches as the places (rail, tabs, More) list them: Ask and (v0.12)
+ * The switches as the places (rail, tabs, More) list them: Ask and (v0.11)
  * People only on a device paired with control (v0.5.3), as every Ask call
  * and every People route needs it. A browser that kept no record of its
  * pairing (or an unreadable one) is taken to have it, as the session's

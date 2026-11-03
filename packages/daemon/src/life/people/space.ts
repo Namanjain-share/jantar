@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P1): her to-dos, reminders, projects and weights, as either
+ * v0.11 People (P1): her to-dos, reminders, projects and weights, as either
  * side writes them (spec 3.3, 3.5, 8.2), over the Todos module in her space.
  *
  * The rules, row by row (spec 3.3):

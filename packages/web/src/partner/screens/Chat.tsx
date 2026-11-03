@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7): her assistant (`/p/chat`), a lazy screen.
+ * v0.11 People (P3, spec 7): her assistant (`/p/chat`), a lazy screen.
  *
  * - While {owner} can read it, the line "{owner} can read this chat" sits
  *   above the composer on every visit: permanent, not a banner she can

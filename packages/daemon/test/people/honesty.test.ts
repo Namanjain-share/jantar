@@ -1,8 +1,8 @@
 /**
- * v0.12 People (P2), M23: the honesty rule (spec 3.2). A scripted week of
+ * v0.11 People (P2), M23: the honesty rule (spec 3.2). A scripted week of
  * short nights, low moods, low check-ins, skipped steps and unsent reviews
  * creates no item, no alert, no score and no concern line, and reaches him
- * with no push. (The import scan half is in test/arch/v012-people.test.ts.)
+ * with no push. (The import scan half is in test/arch/v011-people.test.ts.)
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PersonToday, PlanView } from '@jantar/protocol/people';

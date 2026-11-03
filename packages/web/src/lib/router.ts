@@ -74,7 +74,7 @@ export type Route =
   | { name: 'meetings'; project?: string; q?: string; id?: string }
   // v0.10 (v0.5.3's Ask)
   | { name: 'chat' }
-  /** v0.12 People: his Partner screen (lazy; `/people` picks the one partner). */
+  /** v0.11 People: his Partner screen (lazy; `/people` picks the one partner). */
   | { name: 'people'; pid?: string; tab?: string; day?: string; id?: string }
   | { name: 'notFound'; path: string };
 

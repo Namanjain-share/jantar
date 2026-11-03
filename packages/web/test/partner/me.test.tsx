@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her Me (Sharing, Activity), "See what Sam sees", and her
+ * v0.11 People: her Me (Sharing, Activity), "See what Sam sees", and her
  * first steps after joining, against a fake client with synthetic people
  * (Sam and Asha).
  *

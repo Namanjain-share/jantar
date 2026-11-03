@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): the 14-day sharing check-in (spec 3.9, C26).
+ * v0.11 People (P2): the 14-day sharing check-in (spec 3.9, C26).
  *
  * - It shows 14 days after she joined, on her first open from 10:00; a
  *   snooze brings it back a week later; any other answer, in 14 days.

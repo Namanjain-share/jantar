@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7.8): his read-only view of her chat. GET only:
+ * v0.11 People (P3, spec 7.8): his read-only view of her chat. GET only:
  * no owner route writes to, clears or undoes in her thread (T14). Each
  * read goes through `ownerViewOf(pid, 'chat')`, which checks `see.chat`
  * and writes the view mark ("Sam read your chat", one an hour). With

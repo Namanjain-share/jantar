@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7.6, 7.8; 9.7.4): her Chat and his read-only Chat
+ * v0.11 People (P3, spec 7.6, 7.8; 9.7.4): her Chat and his read-only Chat
  * tab, against fake clients with synthetic people (Sam and Asha).
  *
  * - Her Chat: the permanent "Sam can read this chat" line while he can,

@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P1): her to-dos, reminders and weights, as each side reads
+ * v0.11 People (P1): her to-dos, reminders and weights, as each side reads
  * and writes them (spec 3.3, 3.5, 8.2, 8.4).
  *
  * - M5: his reads × the agreement: an area that is off is the unknown-pid

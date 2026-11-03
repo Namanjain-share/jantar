@@ -1,5 +1,5 @@
 /**
- * v0.12 People: a second kind of person on the owner's Jantar, the partner.
+ * v0.11 People: a second kind of person on the owner's Jantar, the partner.
  *
  * This is the subpath `@jantar/protocol/people`, never exported from the
  * package index: none of it belongs in the owner's main web bundle (his
@@ -785,87 +785,87 @@ function route<T extends RouteDef>(r: T): T {
 /** Her account, consent and device routes: scope `person`, never on ctl.sock, every one under PERSON_PREFIX (spec 1.3.2). */
 const PERSON_ACCOUNT_ROUTES = {
   personJoinPreview: route({
-    method: 'POST', path: '/v1/p/join/preview', scope: 'person', phase: 'v0.12', ctl: false, join: true,
+    method: 'POST', path: '/v1/p/join/preview', scope: 'person', phase: 'v0.11', ctl: false, join: true,
     body: JoinPreviewBodySchema, response: JoinPreviewSchema, summary: 'What an invite offers, without spending it.',
   }),
   personJoin: route({
-    method: 'POST', path: '/v1/p/join', scope: 'person', phase: 'v0.12', ctl: false, join: true,
+    method: 'POST', path: '/v1/p/join', scope: 'person', phase: 'v0.11', ctl: false, join: true,
     body: JoinBodySchema, response: JoinReplySchema, summary: 'Accept an invite: sets her cookie and returns her device secret once.',
   }),
   personMe: route({
-    method: 'GET', path: '/v1/p/me', scope: 'person', phase: 'v0.12', ctl: false, exit: true,
+    method: 'GET', path: '/v1/p/me', scope: 'person', phase: 'v0.11', ctl: false, exit: true,
     response: PersonMeSchema, summary: 'Her profile, state, the live agreement and any pending proposal.',
   }),
   personAgreementAccept: route({
-    method: 'POST', path: '/v1/p/agreement/accept', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/agreement/accept', scope: 'person', phase: 'v0.11', ctl: false,
     body: AgreementVersionBodySchema, response: OkReplySchema, summary: 'Accept the pending proposal.',
   }),
   personAgreementDecline: route({
-    method: 'POST', path: '/v1/p/agreement/decline', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/agreement/decline', scope: 'person', phase: 'v0.11', ctl: false,
     body: AgreementDeclineBodySchema, response: OkReplySchema, summary: 'Decline the pending proposal.',
   }),
   personAgreementNarrow: route({
-    method: 'POST', path: '/v1/p/agreement/narrow', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/agreement/narrow', scope: 'person', phase: 'v0.11', ctl: false,
     body: AgreementPatchSchema, response: OkReplySchema, summary: 'Lower what the owner sees or does; applies before the next read.',
   }),
   personPause: route({
-    method: 'POST', path: '/v1/p/pause', scope: 'person', phase: 'v0.12', ctl: false, exit: true,
+    method: 'POST', path: '/v1/p/pause', scope: 'person', phase: 'v0.11', ctl: false, exit: true,
     body: PauseBodySchema, response: OkReplySchema, summary: 'Hold his writes and alerts until she resumes.',
   }),
   personResume: route({
-    method: 'POST', path: '/v1/p/resume', scope: 'person', phase: 'v0.12', ctl: false, exit: true,
+    method: 'POST', path: '/v1/p/resume', scope: 'person', phase: 'v0.11', ctl: false, exit: true,
     body: PauseBodySchema, response: OkReplySchema, summary: 'End her pause.',
   }),
   personLeave: route({
-    method: 'POST', path: '/v1/p/leave', scope: 'person', phase: 'v0.12', ctl: false, exit: true,
+    method: 'POST', path: '/v1/p/leave', scope: 'person', phase: 'v0.11', ctl: false, exit: true,
     body: LeaveBodySchema, response: OkReplySchema, summary: 'Leave: revokes her devices; her data is kept 30 days or deleted now.',
   }),
   personExport: route({
-    method: 'GET', path: '/v1/p/export', scope: 'person', phase: 'v0.12', ctl: false, exit: true, rawResponse: true,
+    method: 'GET', path: '/v1/p/export', scope: 'person', phase: 'v0.11', ctl: false, exit: true, rawResponse: true,
     query: ExportQuerySchema, summary: 'Everything in her space, as a readable page or a data file.',
   }),
   personActivity: route({
-    method: 'GET', path: '/v1/p/activity', scope: 'person', phase: 'v0.12', ctl: false, exit: true,
+    method: 'GET', path: '/v1/p/activity', scope: 'person', phase: 'v0.11', ctl: false, exit: true,
     query: ActivityQuerySchema, response: PersonActivityResponseSchema, summary: 'Her Activity, newest first.',
   }),
   personPrefs: route({
-    method: 'PATCH', path: '/v1/p/prefs', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'PATCH', path: '/v1/p/prefs', scope: 'person', phase: 'v0.11', ctl: false,
     body: PersonPrefsPatchSchema, response: OkReplySchema, summary: 'Her notification preferences.',
   }),
   personDevices: route({
-    method: 'GET', path: '/v1/p/devices', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/p/devices', scope: 'person', phase: 'v0.11', ctl: false,
     response: z.object({ devices: z.array(PersonOwnDeviceSchema) }), summary: 'Her own devices.',
   }),
   personDeviceRevoke: route({
-    method: 'DELETE', path: '/v1/p/devices/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'DELETE', path: '/v1/p/devices/:id', scope: 'person', phase: 'v0.11', ctl: false,
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Revoke one of her own devices (this one included).',
   }),
   personDeviceLinkCode: route({
-    method: 'POST', path: '/v1/p/devices/link', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/devices/link', scope: 'person', phase: 'v0.11', ctl: false,
     response: LinkCodeReplySchema, summary: 'A 5-minute, single-use code for another device of hers (C37).',
   }),
   personDeviceLinkClaim: route({
-    method: 'POST', path: '/v1/p/devices/link/claim', scope: 'person', phase: 'v0.12', ctl: false, join: true,
+    method: 'POST', path: '/v1/p/devices/link/claim', scope: 'person', phase: 'v0.11', ctl: false, join: true,
     body: LinkClaimBodySchema, response: JoinReplySchema, summary: 'Link this device with a code from another device of hers.',
   }),
   personPushKey: route({
-    method: 'GET', path: '/v1/p/push/vapid-public-key', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/p/push/vapid-public-key', scope: 'person', phase: 'v0.11', ctl: false,
     response: z.object({ publicKey: z.string() }), summary: 'The Web Push key.',
   }),
   personPushSubscribe: route({
-    method: 'POST', path: '/v1/p/push/subscribe', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/push/subscribe', scope: 'person', phase: 'v0.11', ctl: false,
     body: PersonPushSubscribeBodySchema, response: OkReplySchema, summary: 'Add this device to her push list.',
   }),
   personPushUnsubscribe: route({
-    method: 'POST', path: '/v1/p/push/unsubscribe', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/push/unsubscribe', scope: 'person', phase: 'v0.11', ctl: false,
     body: PersonPushUnsubscribeBodySchema, response: OkReplySchema, summary: 'Drop one subscription of hers.',
   }),
   personPushTest: route({
-    method: 'POST', path: '/v1/p/push/test', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/push/test', scope: 'person', phase: 'v0.11', ctl: false,
     response: z.object({ delivered: z.number().int() }), summary: 'A test push to her devices.',
   }),
   personEvents: route({
-    method: 'WS', path: '/v1/p/events', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'WS', path: '/v1/p/events', scope: 'person', phase: 'v0.11', ctl: false,
     summary: 'Her counters as ticks (spec 9.3.6).',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -873,76 +873,76 @@ const PERSON_ACCOUNT_ROUTES = {
 /** Her Life routes (spec 1.3.2): each declares its area. */
 export const PERSON_LIFE_ROUTES = {
   personWeights: route({
-    method: 'GET', path: '/v1/p/weights', scope: 'person', phase: 'v0.12', ctl: false, area: 'weight',
+    method: 'GET', path: '/v1/p/weights', scope: 'person', phase: 'v0.11', ctl: false, area: 'weight',
     response: PersonWeightsResponseSchema, summary: 'Her weights.',
   }),
   personWeightSet: route({
-    method: 'PUT', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.12', ctl: false, area: 'weight',
+    method: 'PUT', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.11', ctl: false, area: 'weight',
     params: z.object({ day: DayKeySchema }), body: WeightBodySchema, response: OkReplySchema, summary: "Set a day's weight.",
   }),
   personWeightDelete: route({
-    method: 'DELETE', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.12', ctl: false, area: 'weight',
+    method: 'DELETE', path: '/v1/p/weights/:day', scope: 'person', phase: 'v0.11', ctl: false, area: 'weight',
     params: z.object({ day: DayKeySchema }), response: OkReplySchema, summary: "Remove a day's weight.",
   }),
   personMirror: route({
-    method: 'GET', path: '/v1/p/mirror/:area', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/p/mirror/:area', scope: 'person', phase: 'v0.11', ctl: false,
     params: MirrorParamsSchema, query: DayQuerySchema, summary: 'Exactly what the owner sees of one area ({locked: true} when off).',
   }),
   // --- Today, to-dos and reminders (area todos)
   personToday: route({
-    method: 'GET', path: '/v1/p/today', scope: 'person', phase: 'v0.12', ctl: false, area: 'today',
+    method: 'GET', path: '/v1/p/today', scope: 'person', phase: 'v0.11', ctl: false, area: 'today',
     query: DayQuerySchema, response: PersonOwnTodaySchema, summary: 'Her Today: medicines, reminders and to-dos due.',
   }),
   personTodos: route({
-    method: 'GET', path: '/v1/p/todos', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'GET', path: '/v1/p/todos', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     query: TodosQuerySchema, response: PersonTodosResponseSchema, summary: 'Her to-dos.',
   }),
   personTodoCreate: route({
-    method: 'POST', path: '/v1/p/todos', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos', status: 201,
+    method: 'POST', path: '/v1/p/todos', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos', status: 201,
     body: TodoBodySchema, response: IdReplySchema, summary: 'Add a to-do of hers.',
   }),
   personTodoUpdate: route({
-    method: 'PATCH', path: '/v1/p/todos/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'PATCH', path: '/v1/p/todos/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     params: LifeIdParamsSchema, body: TodoPatchSchema, response: OkReplySchema, summary: 'Edit a to-do of hers (409 assigned on his).',
   }),
   personTodoDelete: route({
-    method: 'DELETE', path: '/v1/p/todos/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'DELETE', path: '/v1/p/todos/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete a to-do of hers (409 assigned on his).',
   }),
   personTodoDone: route({
-    method: 'POST', path: '/v1/p/todos/:id/done', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'POST', path: '/v1/p/todos/:id/done', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     params: LifeIdParamsSchema, body: PersonTodoDoneBodySchema, response: OkReplySchema, summary: 'Done or Undo, with an optional report.',
   }),
   personTodoSnooze: route({
-    method: 'POST', path: '/v1/p/todos/:id/snooze', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'POST', path: '/v1/p/todos/:id/snooze', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     params: LifeIdParamsSchema, body: SnoozeBodySchema, response: OkReplySchema, summary: 'Snooze (409 when he marked it no snooze).',
   }),
   personTodoSkip: route({
-    method: 'POST', path: '/v1/p/todos/:id/skip', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'POST', path: '/v1/p/todos/:id/skip', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     params: LifeIdParamsSchema, body: PersonTodoSkipBodySchema, response: OkReplySchema, summary: 'Skip with an optional reason (never scored).',
   }),
   personTodoAck: route({
-    method: 'POST', path: '/v1/p/todos/:id/ack', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'POST', path: '/v1/p/todos/:id/ack', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     params: LifeIdParamsSchema, response: OkReplySchema, summary: '"Got it" on an item he assigned.',
   }),
   personTodoAsk: route({
-    method: 'POST', path: '/v1/p/todos/:id/ask', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'POST', path: '/v1/p/todos/:id/ask', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     params: LifeIdParamsSchema, body: PersonTodoAskBodySchema, response: OkReplySchema, summary: 'Ask to change an item he assigned.',
   }),
   personProjects: route({
-    method: 'GET', path: '/v1/p/projects', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'GET', path: '/v1/p/projects', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     response: z.object({ projects: z.array(ProjectViewSchema) }), summary: 'Her projects.',
   }),
   personProjectCreate: route({
-    method: 'POST', path: '/v1/p/projects', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos', status: 201,
+    method: 'POST', path: '/v1/p/projects', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos', status: 201,
     body: ProjectBodySchema.omit({ folder: true }).strict(), response: IdReplySchema, summary: 'Add a project of hers (no folder).',
   }),
   personProjectUpdate: route({
-    method: 'PATCH', path: '/v1/p/projects/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'PATCH', path: '/v1/p/projects/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     params: LifeIdParamsSchema, body: ProjectPatchSchema.omit({ folder: true }).strict(), response: OkReplySchema, summary: 'Edit a project of hers.',
   }),
   personProjectDelete: route({
-    method: 'DELETE', path: '/v1/p/projects/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'DELETE', path: '/v1/p/projects/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'todos',
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete a project of hers; its to-dos move to none.',
   }),
 
@@ -951,27 +951,27 @@ export const PERSON_LIFE_ROUTES = {
 /** Her medicines and doses (spec 1.3.2, 3.4): area meds. She edits or stops any of hers, his additions included; only she logs doses. */
 export const PERSON_MEDS_ROUTES = {
   personMeds: route({
-    method: 'GET', path: '/v1/p/medicines', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds',
+    method: 'GET', path: '/v1/p/medicines', scope: 'person', phase: 'v0.11', ctl: false, area: 'meds',
     query: DayQuerySchema, response: PersonMedicinesResponseSchema, summary: 'Her medicines and a day of doses.',
   }),
   personMedCreate: route({
-    method: 'POST', path: '/v1/p/medicines', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds', status: 201,
+    method: 'POST', path: '/v1/p/medicines', scope: 'person', phase: 'v0.11', ctl: false, area: 'meds', status: 201,
     body: MedicineBodySchema, response: IdReplySchema, summary: 'Add a medicine of hers.',
   }),
   personMedUpdate: route({
-    method: 'PATCH', path: '/v1/p/medicines/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds',
+    method: 'PATCH', path: '/v1/p/medicines/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'meds',
     params: LifeIdParamsSchema, body: MedicinePatchSchema, response: OkReplySchema, summary: 'Edit any of her medicines, his additions included.',
   }),
   personMedStop: route({
-    method: 'POST', path: '/v1/p/medicines/:id/stop', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds',
+    method: 'POST', path: '/v1/p/medicines/:id/stop', scope: 'person', phase: 'v0.11', ctl: false, area: 'meds',
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Stop one of her medicines from today.',
   }),
   personDoseLog: route({
-    method: 'POST', path: '/v1/p/medicines/:id/doses', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds', status: 201,
+    method: 'POST', path: '/v1/p/medicines/:id/doses', scope: 'person', phase: 'v0.11', ctl: false, area: 'meds', status: 201,
     params: LifeIdParamsSchema, body: DoseBodySchema, response: IdReplySchema, summary: 'Log a dose (only she does).',
   }),
   personDoseDelete: route({
-    method: 'DELETE', path: '/v1/p/medicines/:id/doses/:doseId', scope: 'person', phase: 'v0.12', ctl: false, area: 'meds',
+    method: 'DELETE', path: '/v1/p/medicines/:id/doses/:doseId', scope: 'person', phase: 'v0.11', ctl: false, area: 'meds',
     params: DoseParamsSchema, response: OkReplySchema, summary: 'Undo a dose.',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -983,23 +983,23 @@ export const PERSON_MEDS_ROUTES = {
  */
 export const PERSON_FOOD_ROUTES = {
   personFoodDay: route({
-    method: 'GET', path: '/v1/p/food', scope: 'person', phase: 'v0.12', ctl: false, area: 'food',
+    method: 'GET', path: '/v1/p/food', scope: 'person', phase: 'v0.11', ctl: false, area: 'food',
     query: DayQuerySchema, response: FoodDaySchema, summary: 'Her food log (404 module_off while her food module is off).',
   }),
   personFoodAdd: route({
-    method: 'POST', path: '/v1/p/food', scope: 'person', phase: 'v0.12', ctl: false, area: 'food', status: 201,
+    method: 'POST', path: '/v1/p/food', scope: 'person', phase: 'v0.11', ctl: false, area: 'food', status: 201,
     body: FoodBodySchema, response: IdReplySchema, summary: 'Add a meal.',
   }),
   personFoodUpdate: route({
-    method: 'PATCH', path: '/v1/p/food/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'food',
+    method: 'PATCH', path: '/v1/p/food/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'food',
     params: LifeIdParamsSchema, body: FoodPatchSchema, response: OkReplySchema, summary: 'Edit a meal.',
   }),
   personFoodDelete: route({
-    method: 'DELETE', path: '/v1/p/food/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'food',
+    method: 'DELETE', path: '/v1/p/food/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'food',
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete a meal.',
   }),
   personFoodTargets: route({
-    method: 'PUT', path: '/v1/p/food/targets', scope: 'person', phase: 'v0.12', ctl: false, area: 'food',
+    method: 'PUT', path: '/v1/p/food/targets', scope: 'person', phase: 'v0.11', ctl: false, area: 'food',
     body: FoodTargetsBodySchema, response: OkReplySchema, summary: 'Her calorie target and goal weight.',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1011,139 +1011,139 @@ const nightParams = z.object({ night: DayKeySchema });
 const commentParams = z.object({ id: LifeIdSchema, cid: LifeIdSchema });
 export const PERSON_DAYS_ROUTES = {
   personStatus: route({
-    method: 'PUT', path: '/v1/p/status', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'PUT', path: '/v1/p/status', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     body: PersonStatusBodySchema, response: z.object({ status: PersonStatusSchema.nullable() }), summary: 'Her status: Okay, Low or Need space, with a short line (hers alone).',
   }),
   personSharingCheckin: route({
-    method: 'POST', path: '/v1/p/sharing/checkin', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/sharing/checkin', scope: 'person', phase: 'v0.11', ctl: false,
     body: SharingCheckinBodySchema, response: OkReplySchema, summary: 'Her answer to the 14-day sharing check-in (private unless she tells him).',
   }),
   // --- the day plan (area plan) and the evening review (area review)
   personPlanGet: route({
-    method: 'GET', path: '/v1/p/plans/:day', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'GET', path: '/v1/p/plans/:day', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: dayParams, response: PlanViewSchema, summary: 'Her plan for a day.',
   }),
   personPlanAck: route({
-    method: 'POST', path: '/v1/p/plans/:day/ack', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/p/plans/:day/ack', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: dayParams, response: OkReplySchema, summary: '"Got it" on the plan.',
   }),
   personStepAdd: route({
-    method: 'POST', path: '/v1/p/plans/:day/steps', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan', status: 201,
+    method: 'POST', path: '/v1/p/plans/:day/steps', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan', status: 201,
     params: dayParams, body: StepBodySchema, response: z.object({ id: StepIdSchema }), summary: 'Add a step of her own.',
   }),
   personStepUpdate: route({
-    method: 'PATCH', path: '/v1/p/plans/:day/steps/:stepId', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'PATCH', path: '/v1/p/plans/:day/steps/:stepId', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: stepParams, body: StepPatchSchema, response: OkReplySchema, summary: 'Edit her step; on his, only ring and focus for herself.',
   }),
   personStepDelete: route({
-    method: 'DELETE', path: '/v1/p/plans/:day/steps/:stepId', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'DELETE', path: '/v1/p/plans/:day/steps/:stepId', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: stepParams, response: OkReplySchema, summary: 'Delete a step of her own (409 assigned on his).',
   }),
   personStepState: route({
-    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/state', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/state', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: stepParams, body: StepStateBodySchema, response: OkReplySchema, summary: 'Start, done (with an optional report), skip (with an optional reason) or undo.',
   }),
   personStepAck: route({
-    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/ack', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/ack', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: stepParams, response: OkReplySchema, summary: '"Got it" on one step.',
   }),
   personStepCheckin: route({
-    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/checkin', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/checkin', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: stepParams, body: StepCheckinBodySchema, response: OkReplySchema, summary: 'Answer a check-in step: mood, energy, a line, anything needed.',
   }),
   personStepAsk: route({
-    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/ask', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/ask', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: stepParams, body: StepAskBodySchema, response: OkReplySchema, summary: 'Ask to change a step he planned (a change request alert).',
   }),
   personStepCarry: route({
-    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/carry', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/p/plans/:day/steps/:stepId/carry', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: stepParams, body: StepCarryBodySchema, response: OkReplySchema, summary: 'Carry an open step of hers to a later day.',
   }),
   personBetweenTick: route({
-    method: 'POST', path: '/v1/p/plans/:day/between/:bid/tick', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/p/plans/:day/between/:bid/tick', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: z.object({ day: DayKeySchema, bid: StepIdSchema }), body: BetweenTickBodySchema, response: OkReplySchema, summary: 'Tick or untick a check-between slot.',
   }),
   personRoughDay: route({
-    method: 'POST', path: '/v1/p/plans/:day/rough', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/p/plans/:day/rough', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: dayParams, body: RoughBodySchema, response: OkReplySchema, summary: 'A rough day: the rest of today is excused.',
   }),
   personRoughDayUndo: route({
-    method: 'DELETE', path: '/v1/p/plans/:day/rough', scope: 'person', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'DELETE', path: '/v1/p/plans/:day/rough', scope: 'person', phase: 'v0.11', ctl: false, area: 'plan',
     params: dayParams, response: OkReplySchema, summary: 'Undo a rough day (the same day).',
   }),
   personReviewGet: route({
-    method: 'GET', path: '/v1/p/plans/:day/review', scope: 'person', phase: 'v0.12', ctl: false, area: 'review',
+    method: 'GET', path: '/v1/p/plans/:day/review', scope: 'person', phase: 'v0.11', ctl: false, area: 'review',
     params: dayParams, response: ReviewViewSchema, summary: 'Her evening review: live until sent, stored after.',
   }),
   personReviewSend: route({
-    method: 'POST', path: '/v1/p/plans/:day/review', scope: 'person', phase: 'v0.12', ctl: false, area: 'review',
+    method: 'POST', path: '/v1/p/plans/:day/review', scope: 'person', phase: 'v0.11', ctl: false, area: 'review',
     params: dayParams, body: ReviewSendBodySchema, response: OkReplySchema, summary: 'Send the evening review (once a day).',
   }),
   // --- sleep (area sleep)
   personSleep: route({
-    method: 'GET', path: '/v1/p/sleep', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    method: 'GET', path: '/v1/p/sleep', scope: 'person', phase: 'v0.11', ctl: false, area: 'sleep',
     query: SleepQuerySchema, response: SleepWeekSchema, summary: 'Her nights and the week.',
   }),
   personSleepStart: route({
-    method: 'POST', path: '/v1/p/sleep/start', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    method: 'POST', path: '/v1/p/sleep/start', scope: 'person', phase: 'v0.11', ctl: false, area: 'sleep',
     body: SleepStartBodySchema, response: z.object({ id: LifeIdSchema, night: DayKeySchema }), summary: '"Going to sleep" (409 open when a night is already open).',
   }),
   personSleepWake: route({
-    method: 'POST', path: '/v1/p/sleep/wake', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    method: 'POST', path: '/v1/p/sleep/wake', scope: 'person', phase: 'v0.11', ctl: false, area: 'sleep',
     body: SleepWakeBodySchema, response: OkReplySchema, summary: '"Woke up" (409 none_open with no night open).',
   }),
   personSleepPut: route({
-    method: 'PUT', path: '/v1/p/sleep/:night', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    method: 'PUT', path: '/v1/p/sleep/:night', scope: 'person', phase: 'v0.11', ctl: false, area: 'sleep',
     params: nightParams, body: SleepPutBodySchema, response: OkReplySchema, summary: 'Add or correct a night.',
   }),
   personSleepDelete: route({
-    method: 'DELETE', path: '/v1/p/sleep/:night', scope: 'person', phase: 'v0.12', ctl: false, area: 'sleep',
+    method: 'DELETE', path: '/v1/p/sleep/:night', scope: 'person', phase: 'v0.11', ctl: false, area: 'sleep',
     params: nightParams, response: OkReplySchema, summary: 'Delete a night.',
   }),
   // --- journal (area journal)
   personJournal: route({
-    method: 'GET', path: '/v1/p/journal', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    method: 'GET', path: '/v1/p/journal', scope: 'person', phase: 'v0.11', ctl: false, area: 'journal',
     query: JournalQuerySchema, response: JournalListSchema, summary: 'Her journal, newest first, with comment counts and the streak.',
   }),
   personJournalGet: route({
-    method: 'GET', path: '/v1/p/journal/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    method: 'GET', path: '/v1/p/journal/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'journal',
     params: LifeIdParamsSchema, response: JournalEntryFullSchema, summary: 'One entry and its comments.',
   }),
   personJournalCreate: route({
-    method: 'POST', path: '/v1/p/journal', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal', status: 201,
+    method: 'POST', path: '/v1/p/journal', scope: 'person', phase: 'v0.11', ctl: false, area: 'journal', status: 201,
     body: JournalCreateBodySchema, response: IdReplySchema, summary: 'Write an entry or a check-in (idempotent on clientId).',
   }),
   personJournalUpdate: route({
-    method: 'PATCH', path: '/v1/p/journal/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    method: 'PATCH', path: '/v1/p/journal/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'journal',
     params: LifeIdParamsSchema, body: JournalPatchBodySchema, response: OkReplySchema, summary: 'Edit an entry of hers.',
   }),
   personJournalDelete: route({
-    method: 'DELETE', path: '/v1/p/journal/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    method: 'DELETE', path: '/v1/p/journal/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'journal',
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete an entry of hers (and its comments).',
   }),
   personJournalComment: route({
-    method: 'POST', path: '/v1/p/journal/:id/comments', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal', status: 201,
+    method: 'POST', path: '/v1/p/journal/:id/comments', scope: 'person', phase: 'v0.11', ctl: false, area: 'journal', status: 201,
     params: LifeIdParamsSchema, body: JournalCommentBodySchema, response: IdReplySchema, summary: 'Her comment or reply under an entry.',
   }),
   personJournalCommentDelete: route({
-    method: 'DELETE', path: '/v1/p/journal/:id/comments/:cid', scope: 'person', phase: 'v0.12', ctl: false, area: 'journal',
+    method: 'DELETE', path: '/v1/p/journal/:id/comments/:cid', scope: 'person', phase: 'v0.11', ctl: false, area: 'journal',
     params: commentParams, response: OkReplySchema, summary: 'Delete a comment of hers (his: 404).',
   }),
   // --- alerts with the owner (always on)
   personAlerts: route({
-    method: 'GET', path: '/v1/p/alerts', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/p/alerts', scope: 'person', phase: 'v0.11', ctl: false,
     response: AlertsResponseSchema, summary: 'Alerts with the owner, both ways, newest first (90 days).',
   }),
   personAlertSend: route({
-    method: 'POST', path: '/v1/p/alerts', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    method: 'POST', path: '/v1/p/alerts', scope: 'person', phase: 'v0.11', ctl: false, status: 201,
     body: AlertSendBodySchema, response: AlertSendReplySchema, summary: 'Send the owner an alert.',
   }),
   personAlertSeen: route({
-    method: 'POST', path: '/v1/p/alerts/:id/seen', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/alerts/:id/seen', scope: 'person', phase: 'v0.11', ctl: false,
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'She opened an alert from him.',
   }),
   personAlertReply: route({
-    method: 'POST', path: '/v1/p/alerts/:id/reply', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/alerts/:id/reply', scope: 'person', phase: 'v0.11', ctl: false,
     params: LifeIdParamsSchema, body: AlertReplyBodySchema, response: OkReplySchema, summary: 'One-tap reply to an alert from him.',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1151,11 +1151,11 @@ export const PERSON_DAYS_ROUTES = {
 /** The owner's People routes about the person (spec 9.3.4). */
 const PEOPLE_ROUTES_BASE = {
   peopleList: route({
-    method: 'GET', path: '/v1/people', scope: 'control', phase: 'v0.12', ctl: true,
+    method: 'GET', path: '/v1/people', scope: 'control', phase: 'v0.11', ctl: true,
     response: PeopleListSchema, summary: 'The people on this Mac: name, state and the agreement (no last-seen, C20).',
   }),
   personGet: route({
-    method: 'GET', path: '/v1/people/:pid', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/people/:pid', scope: 'control', phase: 'v0.11', ctl: false,
     params: PidParamsSchema, response: PersonResponseSchema, summary: 'One person.',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1163,35 +1163,35 @@ const PEOPLE_ROUTES_BASE = {
 /** The owner's reads and writes in her space (spec 9.3.4), each declaring its area (M9). */
 export const PEOPLE_LIFE_ROUTES = {
   personOwnerWeights: route({
-    method: 'GET', path: '/v1/people/:pid/weights', scope: 'control', phase: 'v0.12', ctl: false, area: 'weight',
+    method: 'GET', path: '/v1/people/:pid/weights', scope: 'control', phase: 'v0.11', ctl: false, area: 'weight',
     params: PidParamsSchema, response: OwnerWeightViewSchema, summary: 'Her weights (see.weight).',
   }),
   personOwnerWeightUpdate: route({
-    method: 'PATCH', path: '/v1/people/:pid/weights/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'weight',
+    method: 'PATCH', path: '/v1/people/:pid/weights/:day', scope: 'control', phase: 'v0.11', ctl: false, area: 'weight',
     params: PidDayParamsSchema, body: WeightBodySchema, response: OkReplySchema, summary: 'Correct a weight she logged (editHers.weight); never a new one.',
   }),
   personOwnerWeightDelete: route({
-    method: 'DELETE', path: '/v1/people/:pid/weights/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'weight',
+    method: 'DELETE', path: '/v1/people/:pid/weights/:day', scope: 'control', phase: 'v0.11', ctl: false, area: 'weight',
     params: PidDayParamsSchema, response: OkReplySchema, summary: 'Remove a weight she logged (editHers.weight).',
   }),
   personOwnerToday: route({
-    method: 'GET', path: '/v1/people/:pid/today', scope: 'control', phase: 'v0.12', ctl: false, area: 'today',
+    method: 'GET', path: '/v1/people/:pid/today', scope: 'control', phase: 'v0.11', ctl: false, area: 'today',
     params: PidParamsSchema, query: DayQuerySchema, response: PersonTodaySchema, summary: 'Her Today as the agreement allows (locked tiles for off areas).',
   }),
   personOwnerTodos: route({
-    method: 'GET', path: '/v1/people/:pid/todos', scope: 'control', phase: 'v0.12', ctl: true, area: 'todos',
+    method: 'GET', path: '/v1/people/:pid/todos', scope: 'control', phase: 'v0.11', ctl: true, area: 'todos',
     params: PidParamsSchema, query: TodosQuerySchema, response: OwnerTodosViewSchema, summary: 'Her to-dos (see.todos).',
   }),
   personAssign: route({
-    method: 'POST', path: '/v1/people/:pid/todos', scope: 'control', phase: 'v0.12', ctl: false, area: 'todos', status: 201,
+    method: 'POST', path: '/v1/people/:pid/todos', scope: 'control', phase: 'v0.11', ctl: false, area: 'todos', status: 201,
     params: PidParamsSchema, body: AssignTodoBodySchema, response: IdReplySchema, summary: 'Assign a to-do or reminder to her (assign.todos).',
   }),
   personOwnerTodoUpdate: route({
-    method: 'PATCH', path: '/v1/people/:pid/todos/:id', scope: 'control', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'PATCH', path: '/v1/people/:pid/todos/:id', scope: 'control', phase: 'v0.11', ctl: false, area: 'todos',
     params: PidIdParamsSchema, body: AssignTodoPatchSchema, response: OkReplySchema, summary: 'Edit his item (assign.todos) or hers (editHers.todos).',
   }),
   personOwnerTodoDelete: route({
-    method: 'DELETE', path: '/v1/people/:pid/todos/:id', scope: 'control', phase: 'v0.12', ctl: false, area: 'todos',
+    method: 'DELETE', path: '/v1/people/:pid/todos/:id', scope: 'control', phase: 'v0.11', ctl: false, area: 'todos',
     params: PidIdParamsSchema, response: OkReplySchema, summary: 'Delete his item (assign.todos) or hers (editHers.todos).',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1199,19 +1199,19 @@ export const PEOPLE_LIFE_ROUTES = {
 /** His reads and writes of her medicines (spec 3.4, 9.3.4): area meds, at his level; his additions need assign.meds, hers editHers.meds. */
 export const PEOPLE_MEDS_ROUTES = {
   personOwnerMeds: route({
-    method: 'GET', path: '/v1/people/:pid/medicines', scope: 'control', phase: 'v0.12', ctl: false, area: 'meds',
+    method: 'GET', path: '/v1/people/:pid/medicines', scope: 'control', phase: 'v0.11', ctl: false, area: 'meds',
     params: PidParamsSchema, query: DayQuerySchema, response: OwnerMedsViewSchema, summary: 'Her medicines at the agreed level.',
   }),
   personMedAssign: route({
-    method: 'POST', path: '/v1/people/:pid/medicines', scope: 'control', phase: 'v0.12', ctl: false, area: 'meds', status: 201,
+    method: 'POST', path: '/v1/people/:pid/medicines', scope: 'control', phase: 'v0.11', ctl: false, area: 'meds', status: 201,
     params: PidParamsSchema, body: MedicineBodySchema, response: IdReplySchema, summary: 'Add a medicine for her (assign.meds).',
   }),
   personOwnerMedUpdate: route({
-    method: 'PATCH', path: '/v1/people/:pid/medicines/:id', scope: 'control', phase: 'v0.12', ctl: false, area: 'meds',
+    method: 'PATCH', path: '/v1/people/:pid/medicines/:id', scope: 'control', phase: 'v0.11', ctl: false, area: 'meds',
     params: PidIdParamsSchema, body: MedicinePatchSchema, response: OkReplySchema, summary: 'Edit his addition (assign.meds) or hers (editHers.meds).',
   }),
   personOwnerMedStop: route({
-    method: 'POST', path: '/v1/people/:pid/medicines/:id/stop', scope: 'control', phase: 'v0.12', ctl: false, area: 'meds',
+    method: 'POST', path: '/v1/people/:pid/medicines/:id/stop', scope: 'control', phase: 'v0.11', ctl: false, area: 'meds',
     params: PidIdParamsSchema, response: OkReplySchema, summary: 'Stop his addition (assign.meds) or hers (editHers.meds).',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1219,7 +1219,7 @@ export const PEOPLE_MEDS_ROUTES = {
 /** His read of her food log: defined, never served in this release (food is a later phase). */
 export const PEOPLE_FOOD_ROUTES = {
   personOwnerFood: route({
-    method: 'GET', path: '/v1/people/:pid/food', scope: 'control', phase: 'v0.12', ctl: false, area: 'food',
+    method: 'GET', path: '/v1/people/:pid/food', scope: 'control', phase: 'v0.11', ctl: false, area: 'food',
     params: PidParamsSchema, query: DayQuerySchema, response: OwnerFoodViewSchema, summary: 'Her food log (see.food; 404 while her module is off).',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1228,83 +1228,83 @@ export const PEOPLE_FOOD_ROUTES = {
 const pidDay = z.object({ pid: LifeIdSchema, day: DayKeySchema });
 export const PEOPLE_DAYS_ROUTES = {
   personPlanOwnerGet: route({
-    method: 'GET', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'GET', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan',
     params: pidDay, response: PlanViewSchema, summary: 'Her plan for a day (see.plan).',
   }),
   personPlanPut: route({
-    method: 'PUT', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'PUT', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan',
     params: pidDay, body: PlanPutBodySchema, response: PlanViewSchema, summary: 'Set her plan for a day (assign.plan; her steps only with editHers.plan; 409 on a stale srev).',
   }),
   personPlanDelete: route({
-    method: 'DELETE', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'DELETE', path: '/v1/people/:pid/plans/:day', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan',
     params: pidDay, response: OkReplySchema, summary: 'Remove his steps from a day (hers too with editHers.plan).',
   }),
   personPlanApply: route({
-    method: 'POST', path: '/v1/people/:pid/plans/:day/apply', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/people/:pid/plans/:day/apply', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan',
     params: pidDay, body: PlanApplyBodySchema, response: PlanViewSchema, summary: 'Apply a template to a day (replace or append).',
   }),
   personOwnerReview: route({
-    method: 'GET', path: '/v1/people/:pid/plans/:day/review', scope: 'control', phase: 'v0.12', ctl: false, area: 'review',
+    method: 'GET', path: '/v1/people/:pid/plans/:day/review', scope: 'control', phase: 'v0.11', ctl: false, area: 'review',
     params: pidDay, response: ReviewViewSchema, summary: 'Her evening review at his level (see.review: counts or full).',
   }),
   personReviewCarry: route({
-    method: 'POST', path: '/v1/people/:pid/plans/:day/review/carry', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'POST', path: '/v1/people/:pid/plans/:day/review/carry', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan',
     params: pidDay, body: ReviewCarryBodySchema, response: OkReplySchema, summary: 'Carry open steps to a later day (his; hers with editHers.plan).',
   }),
   personTemplates: route({
-    method: 'GET', path: '/v1/people/:pid/templates', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'GET', path: '/v1/people/:pid/templates', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan',
     params: PidParamsSchema, response: TemplatesResponseSchema, summary: 'Her plan templates (assign.plan).',
   }),
   personTemplateCreate: route({
-    method: 'POST', path: '/v1/people/:pid/templates', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan', status: 201,
+    method: 'POST', path: '/v1/people/:pid/templates', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan', status: 201,
     params: PidParamsSchema, body: TemplateBodySchema, response: IdReplySchema, summary: 'Save a plan template (up to 20).',
   }),
   personTemplateUpdate: route({
-    method: 'PATCH', path: '/v1/people/:pid/templates/:tid', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'PATCH', path: '/v1/people/:pid/templates/:tid', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan',
     params: z.object({ pid: LifeIdSchema, tid: LifeIdSchema }), body: TemplatePatchSchema, response: OkReplySchema, summary: 'Rename or edit a template.',
   }),
   personTemplateDelete: route({
-    method: 'DELETE', path: '/v1/people/:pid/templates/:tid', scope: 'control', phase: 'v0.12', ctl: false, area: 'plan',
+    method: 'DELETE', path: '/v1/people/:pid/templates/:tid', scope: 'control', phase: 'v0.11', ctl: false, area: 'plan',
     params: z.object({ pid: LifeIdSchema, tid: LifeIdSchema }), response: OkReplySchema, summary: 'Delete a template.',
   }),
   personOwnerSleep: route({
-    method: 'GET', path: '/v1/people/:pid/sleep', scope: 'control', phase: 'v0.12', ctl: false, area: 'sleep',
+    method: 'GET', path: '/v1/people/:pid/sleep', scope: 'control', phase: 'v0.11', ctl: false, area: 'sleep',
     params: PidParamsSchema, query: SleepQuerySchema, response: SleepWeekSchema, summary: 'Her sleep week (see.sleep). He never adds, edits or deletes a night.',
   }),
   personOwnerJournal: route({
-    method: 'GET', path: '/v1/people/:pid/journal', scope: 'control', phase: 'v0.12', ctl: false, area: 'journal',
+    method: 'GET', path: '/v1/people/:pid/journal', scope: 'control', phase: 'v0.11', ctl: false, area: 'journal',
     params: PidParamsSchema, query: JournalQuerySchema, response: JournalListSchema, summary: 'Her journal (see.journal), read only.',
   }),
   personOwnerJournalGet: route({
-    method: 'GET', path: '/v1/people/:pid/journal/:id', scope: 'control', phase: 'v0.12', ctl: false, area: 'journal',
+    method: 'GET', path: '/v1/people/:pid/journal/:id', scope: 'control', phase: 'v0.11', ctl: false, area: 'journal',
     params: PidIdParamsSchema, response: JournalEntryFullSchema, summary: 'One entry of hers and its comments.',
   }),
   personOwnerJournalComment: route({
-    method: 'POST', path: '/v1/people/:pid/journal/:id/comments', scope: 'control', phase: 'v0.12', ctl: false, area: 'journal', status: 201,
+    method: 'POST', path: '/v1/people/:pid/journal/:id/comments', scope: 'control', phase: 'v0.11', ctl: false, area: 'journal', status: 201,
     params: PidIdParamsSchema, body: JournalCommentBodySchema, response: IdReplySchema, summary: 'Comment under an entry of hers (comment.journal).',
   }),
   personOwnerJournalCommentDelete: route({
-    method: 'DELETE', path: '/v1/people/:pid/journal/:id/comments/:cid', scope: 'control', phase: 'v0.12', ctl: false, area: 'journal',
+    method: 'DELETE', path: '/v1/people/:pid/journal/:id/comments/:cid', scope: 'control', phase: 'v0.11', ctl: false, area: 'journal',
     params: z.object({ pid: LifeIdSchema, id: LifeIdSchema, cid: LifeIdSchema }), response: OkReplySchema, summary: 'Delete a comment of his.',
   }),
   peopleAlerts: route({
-    method: 'GET', path: '/v1/people/alerts', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/people/alerts', scope: 'control', phase: 'v0.11', ctl: false,
     query: AlertsQuerySchema, response: AlertsResponseSchema, summary: 'Alerts with her, both ways, newest first (90 days).',
   }),
   peopleAlertSend: route({
-    method: 'POST', path: '/v1/people/alerts', scope: 'control', phase: 'v0.12', ctl: false, status: 201,
+    method: 'POST', path: '/v1/people/alerts', scope: 'control', phase: 'v0.11', ctl: false, status: 201,
     body: OwnerAlertSendBodySchema, response: AlertSendReplySchema, summary: 'Send her an alert or a nudge, within her caps.',
   }),
   peopleAlertSeen: route({
-    method: 'POST', path: '/v1/people/alerts/:id/seen', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/people/alerts/:id/seen', scope: 'control', phase: 'v0.11', ctl: false,
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'He opened an alert from her.',
   }),
   peopleAlertReply: route({
-    method: 'POST', path: '/v1/people/alerts/:id/reply', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/people/alerts/:id/reply', scope: 'control', phase: 'v0.11', ctl: false,
     params: LifeIdParamsSchema, body: AlertReplyBodySchema, response: OkReplySchema, summary: 'One-tap reply to an alert from her.',
   }),
   peopleOwnerPrefs: route({
-    method: 'PATCH', path: '/v1/people/prefs', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'PATCH', path: '/v1/people/prefs', scope: 'control', phase: 'v0.11', ctl: false,
     body: OwnerPeoplePrefsPatchSchema, response: OwnerPeoplePrefsReplySchema, summary: 'His quiet hours, caps and mute for pushes about her, the day summary and the review push.',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1313,51 +1313,51 @@ export const PEOPLE_DAYS_ROUTES = {
 const chatN = ChatItemParamsSchema;
 export const PERSON_CHAT_ROUTES = {
   personChatList: route({
-    method: 'GET', path: '/v1/p/chat', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'GET', path: '/v1/p/chat', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
     query: ChatListQuerySchema, response: PersonChatListSchema, summary: 'Her thread: the newest turns, messages left today and the disclosure.',
   }),
   personChatSend: route({
-    method: 'POST', path: '/v1/p/chat', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat', status: 202,
+    method: 'POST', path: '/v1/p/chat', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat', status: 202,
     body: ChatSendBodySchema, response: IdReplySchema, summary: 'Send a message to her assistant (her daily cap applies).',
   }),
   personChatClear: route({
-    method: 'DELETE', path: '/v1/p/chat', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'DELETE', path: '/v1/p/chat', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
     response: OkReplySchema, summary: 'Clear her thread (his is untouched): gone for both, with no trace.',
   }),
   personChatStatus: route({
-    method: 'GET', path: '/v1/p/chat/status', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'GET', path: '/v1/p/chat/status', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
     response: PersonChatStatusSchema, summary: 'Her thread\'s size, messages left today and whether it can run.',
   }),
   personChatCancel: route({
-    method: 'POST', path: '/v1/p/chat/turns/:id/cancel', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'POST', path: '/v1/p/chat/turns/:id/cancel', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
     params: ChatTurnParamsSchema, response: OkReplySchema, summary: 'Stop a waiting or running turn of hers.',
   }),
   personChatTurnDelete: route({
-    method: 'DELETE', path: '/v1/p/chat/turns/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'DELETE', path: '/v1/p/chat/turns/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
     params: ChatTurnParamsSchema, response: OkReplySchema, summary: 'Delete one turn of hers: gone for both, with no trace.',
   }),
   personChatUndo: route({
-    method: 'POST', path: '/v1/p/chat/turns/:id/changes/:n/undo', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'POST', path: '/v1/p/chat/turns/:id/changes/:n/undo', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
     params: chatN, response: OkReplySchema, summary: 'Undo one change her assistant made.',
   }),
   personChatCard: route({
-    method: 'POST', path: '/v1/p/chat/turns/:id/cards/:n', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'POST', path: '/v1/p/chat/turns/:id/cards/:n', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
     params: chatN, response: OkReplySchema, summary: 'Run a card of hers (Confirm or Do it).',
   }),
   personChatDismiss: route({
-    method: 'POST', path: '/v1/p/chat/turns/:id/cards/:n/dismiss', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'POST', path: '/v1/p/chat/turns/:id/cards/:n/dismiss', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
     params: chatN, response: OkReplySchema, summary: 'Dismiss a card of hers.',
   }),
   personChatPhotoCreate: route({
-    method: 'POST', path: '/v1/p/chat/photos', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat', rawBody: { maxBytes: CHAT_PHOTO_MAX_BYTES },
+    method: 'POST', path: '/v1/p/chat/photos', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat', rawBody: { maxBytes: CHAT_PHOTO_MAX_BYTES },
     response: IdReplySchema, summary: 'Store one photo for her next message (location and camera details stripped first).',
   }),
   personChatPhotoGet: route({
-    method: 'GET', path: '/v1/p/chat/photos/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat', rawResponse: true,
+    method: 'GET', path: '/v1/p/chat/photos/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat', rawResponse: true,
     params: ChatPhotoParamsSchema, summary: 'A photo of her thread (another thread\'s: 404).',
   }),
   personChatPhotoDelete: route({
-    method: 'DELETE', path: '/v1/p/chat/photos/:id', scope: 'person', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'DELETE', path: '/v1/p/chat/photos/:id', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
     params: ChatPhotoParamsSchema, response: OkReplySchema, summary: 'Drop a photo of hers not yet sent.',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1365,71 +1365,71 @@ export const PERSON_CHAT_ROUTES = {
 /** Shared lists, her side (P4, spec 1.3.2): her shared space only; always both people's, so no area. */
 export const PERSON_LIST_ROUTES = {
   personPlaces: route({
-    method: 'GET', path: '/v1/p/places', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/p/places', scope: 'person', phase: 'v0.11', ctl: false,
     query: PlacesQuerySchema, response: PlacesResponseSchema, summary: 'The cafés she shares with the owner.',
   }),
   personPlaceGet: route({
-    method: 'GET', path: '/v1/p/places/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/p/places/:id', scope: 'person', phase: 'v0.11', ctl: false,
     params: LifeIdParamsSchema, query: PlaceGetQuerySchema, response: PlaceDetailSchema, summary: 'One shared café and a page of its visits.',
   }),
   personPlaceCreate: route({
-    method: 'POST', path: '/v1/p/places', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    method: 'POST', path: '/v1/p/places', scope: 'person', phase: 'v0.11', ctl: false, status: 201,
     body: PlaceBodySchema, response: IdReplySchema, summary: 'Add a café to the shared list (always shared).',
   }),
   personPlaceUpdate: route({
-    method: 'PATCH', path: '/v1/p/places/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'PATCH', path: '/v1/p/places/:id', scope: 'person', phase: 'v0.11', ctl: false,
     params: LifeIdParamsSchema, body: PlacePatchSchema, response: OkReplySchema, summary: 'Edit, rate or change dishes of a shared café ("Edited by").',
   }),
   personPlaceDelete: route({
-    method: 'DELETE', path: '/v1/p/places/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'DELETE', path: '/v1/p/places/:id', scope: 'person', phase: 'v0.11', ctl: false,
     params: LifeIdParamsSchema, response: OkReplySchema, summary: 'Delete a shared café for both (the owner is told).',
   }),
   personVisitCreate: route({
-    method: 'POST', path: '/v1/p/places/:id/visits', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    method: 'POST', path: '/v1/p/places/:id/visits', scope: 'person', phase: 'v0.11', ctl: false, status: 201,
     params: LifeIdParamsSchema, body: PlaceVisitBodySchema, response: IdReplySchema, summary: 'Log her visit to a shared café.',
   }),
   personVisitUpdate: route({
-    method: 'PATCH', path: '/v1/p/places/:id/visits/:visitId', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'PATCH', path: '/v1/p/places/:id/visits/:visitId', scope: 'person', phase: 'v0.11', ctl: false,
     params: PlaceVisitParamsSchema, body: PlaceVisitPatchSchema, response: OkReplySchema, summary: 'Edit one of her own visits (C39).',
   }),
   personVisitDelete: route({
-    method: 'DELETE', path: '/v1/p/places/:id/visits/:visitId', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'DELETE', path: '/v1/p/places/:id/visits/:visitId', scope: 'person', phase: 'v0.11', ctl: false,
     params: PlaceVisitParamsSchema, response: OkReplySchema, summary: 'Delete one of her own visits (C39).',
   }),
   personLists: route({
-    method: 'GET', path: '/v1/p/lists', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/p/lists', scope: 'person', phase: 'v0.11', ctl: false,
     response: SharedListsResponseSchema, summary: 'The lists she shares with the owner.',
   }),
   personListCreate: route({
-    method: 'POST', path: '/v1/p/lists', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    method: 'POST', path: '/v1/p/lists', scope: 'person', phase: 'v0.11', ctl: false, status: 201,
     body: SharedListBodySchema, response: IdReplySchema, summary: 'Start a shared list (shopping, to watch, to read, plain).',
   }),
   personListUpdate: route({
-    method: 'PATCH', path: '/v1/p/lists/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'PATCH', path: '/v1/p/lists/:id', scope: 'person', phase: 'v0.11', ctl: false,
     params: listParams, body: SharedListPatchSchema, response: OkReplySchema, summary: 'Rename a shared list.',
   }),
   personListDelete: route({
-    method: 'DELETE', path: '/v1/p/lists/:id', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'DELETE', path: '/v1/p/lists/:id', scope: 'person', phase: 'v0.11', ctl: false,
     params: listParams, response: OkReplySchema, summary: 'Delete a shared list for both (the owner is told).',
   }),
   personListItems: route({
-    method: 'GET', path: '/v1/p/lists/:id/items', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/p/lists/:id/items', scope: 'person', phase: 'v0.11', ctl: false,
     params: listParams, response: SharedItemsResponseSchema, summary: "A shared list's items.",
   }),
   personListItemAdd: route({
-    method: 'POST', path: '/v1/p/lists/:id/items', scope: 'person', phase: 'v0.12', ctl: false, status: 201,
+    method: 'POST', path: '/v1/p/lists/:id/items', scope: 'person', phase: 'v0.11', ctl: false, status: 201,
     params: listParams, body: SharedItemBodySchema, response: IdReplySchema, summary: 'Add an item to a shared list.',
   }),
   personListItemUpdate: route({
-    method: 'PATCH', path: '/v1/p/lists/:id/items/:itemId', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'PATCH', path: '/v1/p/lists/:id/items/:itemId', scope: 'person', phase: 'v0.11', ctl: false,
     params: itemParams, body: SharedItemPatchSchema, response: OkReplySchema, summary: 'Edit an item (either person).',
   }),
   personListItemDelete: route({
-    method: 'DELETE', path: '/v1/p/lists/:id/items/:itemId', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'DELETE', path: '/v1/p/lists/:id/items/:itemId', scope: 'person', phase: 'v0.11', ctl: false,
     params: itemParams, response: OkReplySchema, summary: 'Delete an item (either person).',
   }),
   personListItemTick: route({
-    method: 'POST', path: '/v1/p/lists/:id/items/:itemId/tick', scope: 'person', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/p/lists/:id/items/:itemId/tick', scope: 'person', phase: 'v0.11', ctl: false,
     params: itemParams, body: SharedTickBodySchema, response: OkReplySchema, summary: 'Tick or untick an item (who ticked is recorded).',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1439,43 +1439,43 @@ const pidList = z.object({ pid: LifeIdSchema, id: LifeIdSchema });
 const pidItem = z.object({ pid: LifeIdSchema, id: LifeIdSchema, itemId: LifeIdSchema });
 export const PEOPLE_LIST_ROUTES = {
   personOwnerLists: route({
-    method: 'GET', path: '/v1/people/:pid/lists', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/people/:pid/lists', scope: 'control', phase: 'v0.11', ctl: false,
     params: PidParamsSchema, response: SharedListsResponseSchema, summary: 'The lists you share with her.',
   }),
   personOwnerListCreate: route({
-    method: 'POST', path: '/v1/people/:pid/lists', scope: 'control', phase: 'v0.12', ctl: false, status: 201,
+    method: 'POST', path: '/v1/people/:pid/lists', scope: 'control', phase: 'v0.11', ctl: false, status: 201,
     params: PidParamsSchema, body: SharedListBodySchema, response: IdReplySchema, summary: 'Start a list shared with her.',
   }),
   personOwnerListUpdate: route({
-    method: 'PATCH', path: '/v1/people/:pid/lists/:id', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'PATCH', path: '/v1/people/:pid/lists/:id', scope: 'control', phase: 'v0.11', ctl: false,
     params: pidList, body: SharedListPatchSchema, response: OkReplySchema, summary: 'Rename a shared list.',
   }),
   personOwnerListDelete: route({
-    method: 'DELETE', path: '/v1/people/:pid/lists/:id', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'DELETE', path: '/v1/people/:pid/lists/:id', scope: 'control', phase: 'v0.11', ctl: false,
     params: pidList, response: OkReplySchema, summary: 'Delete a shared list for both (she is told).',
   }),
   personOwnerListItems: route({
-    method: 'GET', path: '/v1/people/:pid/lists/:id/items', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/people/:pid/lists/:id/items', scope: 'control', phase: 'v0.11', ctl: false,
     params: pidList, response: SharedItemsResponseSchema, summary: "A shared list's items.",
   }),
   personOwnerListItemAdd: route({
-    method: 'POST', path: '/v1/people/:pid/lists/:id/items', scope: 'control', phase: 'v0.12', ctl: false, status: 201,
+    method: 'POST', path: '/v1/people/:pid/lists/:id/items', scope: 'control', phase: 'v0.11', ctl: false, status: 201,
     params: pidList, body: SharedItemBodySchema, response: IdReplySchema, summary: 'Add an item to a shared list.',
   }),
   personOwnerListItemUpdate: route({
-    method: 'PATCH', path: '/v1/people/:pid/lists/:id/items/:itemId', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'PATCH', path: '/v1/people/:pid/lists/:id/items/:itemId', scope: 'control', phase: 'v0.11', ctl: false,
     params: pidItem, body: SharedItemPatchSchema, response: OkReplySchema, summary: 'Edit an item (either person).',
   }),
   personOwnerListItemDelete: route({
-    method: 'DELETE', path: '/v1/people/:pid/lists/:id/items/:itemId', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'DELETE', path: '/v1/people/:pid/lists/:id/items/:itemId', scope: 'control', phase: 'v0.11', ctl: false,
     params: pidItem, response: OkReplySchema, summary: 'Delete an item (either person).',
   }),
   personOwnerListItemTick: route({
-    method: 'POST', path: '/v1/people/:pid/lists/:id/items/:itemId/tick', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/people/:pid/lists/:id/items/:itemId/tick', scope: 'control', phase: 'v0.11', ctl: false,
     params: pidItem, body: SharedTickBodySchema, response: OkReplySchema, summary: 'Tick or untick an item (who ticked is recorded).',
   }),
   personOwnerListItemAssign: route({
-    method: 'POST', path: '/v1/people/:pid/lists/:id/items/:itemId/assign', scope: 'control', phase: 'v0.12', ctl: false, area: 'todos', status: 201,
+    method: 'POST', path: '/v1/people/:pid/lists/:id/items/:itemId/assign', scope: 'control', phase: 'v0.11', ctl: false, area: 'todos', status: 201,
     params: pidItem, response: IdReplySchema, summary: 'Assign to her: an unlinked to-do in her space with the item\'s title (assign.todos).',
   }),
 } as const satisfies Record<string, RouteDef>;
@@ -1483,70 +1483,70 @@ export const PEOPLE_LIST_ROUTES = {
 /** His read-only view of her chat (P3, spec 7.8): GET only, area `chat`. No owner route writes to her thread (T14). */
 export const PEOPLE_CHAT_ROUTES = {
   personOwnerChat: route({
-    method: 'GET', path: '/v1/people/:pid/chat', scope: 'control', phase: 'v0.12', ctl: false, area: 'chat',
+    method: 'GET', path: '/v1/people/:pid/chat', scope: 'control', phase: 'v0.11', ctl: false, area: 'chat',
     params: PidParamsSchema, query: ChatListQuerySchema, response: OwnerChatViewSchema, summary: 'Her chat, read only (see.chat): her messages, the answers, photos and changes.',
   }),
   personOwnerChatPhoto: route({
-    method: 'GET', path: '/v1/people/:pid/chat/photos/:id', scope: 'control', phase: 'v0.12', ctl: false, area: 'chat', rawResponse: true,
+    method: 'GET', path: '/v1/people/:pid/chat/photos/:id', scope: 'control', phase: 'v0.11', ctl: false, area: 'chat', rawResponse: true,
     params: z.object({ pid: LifeIdSchema, id: ChatPhotoParamsSchema.shape.id }), summary: 'A photo of her chat (see.chat).',
   }),
 } as const satisfies Record<string, RouteDef>;
 
 const PEOPLE_ACCOUNT_ROUTES = {
   personOwnerActivity: route({
-    method: 'GET', path: '/v1/people/:pid/activity', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'GET', path: '/v1/people/:pid/activity', scope: 'control', phase: 'v0.11', ctl: false,
     params: PidParamsSchema, query: ActivityQuerySchema, response: PersonActivityResponseSchema, summary: 'Her Activity: the same rows she sees.',
   }),
   personPropose: route({
-    method: 'POST', path: '/v1/people/:pid/agreement', scope: 'admin', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/people/:pid/agreement', scope: 'admin', phase: 'v0.11', ctl: false,
     params: PidParamsSchema, body: PersonProposeBodySchema, response: OkReplySchema, summary: 'Ask her for more; waits for her Accept.',
   }),
   personOwnerDevices: route({
-    method: 'GET', path: '/v1/people/:pid/devices', scope: 'control', phase: 'v0.12', ctl: true,
+    method: 'GET', path: '/v1/people/:pid/devices', scope: 'control', phase: 'v0.11', ctl: true,
     params: PidParamsSchema, response: PersonDevicesResponseSchema, summary: 'Her devices: name, Access email, added (no last-seen).',
   }),
   personOwnerDeviceRevoke: route({
-    method: 'DELETE', path: '/v1/people/:pid/devices/:did', scope: 'admin', phase: 'v0.12', ctl: true,
+    method: 'DELETE', path: '/v1/people/:pid/devices/:did', scope: 'admin', phase: 'v0.11', ctl: true,
     params: PidDidParamsSchema, response: OkReplySchema, summary: 'Revoke one of her devices (409 last_device for her last one).',
   }),
   personInviteLink: route({
-    method: 'POST', path: '/v1/people/:pid/invite/again', scope: 'admin', phase: 'v0.12', ctl: false,
+    method: 'POST', path: '/v1/people/:pid/invite/again', scope: 'admin', phase: 'v0.11', ctl: false,
     params: PidParamsSchema, response: PersonInviteReplySchema, summary: 'Show an unspent invite link again (an admin device with its secret, audited, C14).',
   }),
   personColor: route({
-    method: 'PATCH', path: '/v1/people/:pid', scope: 'control', phase: 'v0.12', ctl: false,
+    method: 'PATCH', path: '/v1/people/:pid', scope: 'control', phase: 'v0.11', ctl: false,
     params: PidParamsSchema, body: PersonColorBodySchema, response: OkReplySchema, summary: "Her colour on his screens, and her chat's daily cap.",
   }),
   personAdd: route({
-    method: 'POST', path: '/v1/people', scope: 'admin', phase: 'v0.12', ctl: true, localOnly: true, status: 201,
+    method: 'POST', path: '/v1/people', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true, status: 201,
     body: PersonAddBodySchema, response: IdReplySchema, summary: 'Add a person (the Mac only: jantar people add).',
   }),
   personOffer: route({
-    method: 'POST', path: '/v1/people/:pid/offer', scope: 'admin', phase: 'v0.12', ctl: true, localOnly: true,
+    method: 'POST', path: '/v1/people/:pid/offer', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true,
     params: PidParamsSchema, body: PersonOfferBodySchema, response: PersonOfferReplySchema, summary: 'Record the offer her invite carries.',
   }),
   personModules: route({
-    method: 'PATCH', path: '/v1/people/:pid/modules', scope: 'admin', phase: 'v0.12', ctl: true, localOnly: true,
+    method: 'PATCH', path: '/v1/people/:pid/modules', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true,
     params: PidParamsSchema, body: PersonModulesBodySchema, response: OkReplySchema, summary: 'Her food module (409 has_rows to turn off with rows).',
   }),
   personInvite: route({
-    method: 'POST', path: '/v1/people/:pid/invite', scope: 'admin', phase: 'v0.12', ctl: true, localOnly: true,
+    method: 'POST', path: '/v1/people/:pid/invite', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true,
     params: PidParamsSchema, response: PersonInviteReplySchema, summary: 'A 24-hour, single-use join link.',
   }),
   personInviteRevoke: route({
-    method: 'DELETE', path: '/v1/people/:pid/invite', scope: 'admin', phase: 'v0.12', ctl: true, localOnly: true,
+    method: 'DELETE', path: '/v1/people/:pid/invite', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true,
     params: PidParamsSchema, response: OkReplySchema, summary: 'Void an unspent join link.',
   }),
   personRemove: route({
-    method: 'POST', path: '/v1/people/:pid/remove', scope: 'admin', phase: 'v0.12', ctl: true, localOnly: true,
+    method: 'POST', path: '/v1/people/:pid/remove', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true,
     params: PidParamsSchema, body: PersonRemoveBodySchema, response: OkReplySchema, summary: 'End sharing: a 7-day window, or at once.',
   }),
   peopleSwitch: route({
-    method: 'POST', path: '/v1/people/switch', scope: 'admin', phase: 'v0.12', ctl: true, localOnly: true,
+    method: 'POST', path: '/v1/people/switch', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true,
     body: PeopleSwitchBodySchema, response: OkReplySchema, summary: 'Turn People on or off (her exits keep working).',
   }),
   peopleDoctor: route({
-    method: 'GET', path: '/v1/people/doctor', scope: 'admin', phase: 'v0.12', ctl: true, localOnly: true,
+    method: 'GET', path: '/v1/people/doctor', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true,
     response: PeopleDoctorSchema, summary: 'What People needs on this Mac, checked.',
   }),
 } as const satisfies Record<string, RouteDef>;

@@ -21,7 +21,7 @@
  * Lock screen: "Medicine due" and the time, never a name, unless
  * life.lockScreenDetails is on at the Mac. Logs carry kinds only.
  *
- * v0.12 People: a medicine in her space rings her devices only (the row
+ * v0.11 People: a medicine in her space rings her devices only (the row
  * names her: `person`), and its rows' sub is `<pid>|HH:MM`, so her 08:00
  * never merges with his 08:00 into one push (spec 3.4, C5). The handlers
  * are the `system` reader (C4): they read every space, so a restart keeps
@@ -161,7 +161,7 @@ export function medPings(core: LifeCore, log: Logger): PingHandler {
       const slot = rows[0] ? slotOfSub(rows[0].sub) : hhmmOf(dueAt, core.tz());
       const n = rows.length;
       let body = `Tap to log · ${slot}`;
-      // v0.12: the group's person (one sub, one space): her app and her devices.
+      // v0.11: the group's person (one sub, one space): her app and her devices.
       const person = rows[0]?.person;
       if (core.settings().lockScreenDetails) {
         try {

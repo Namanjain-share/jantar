@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P4, spec 5): shared cafés and shared lists, through the
+ * v0.11 People (P4, spec 5): shared cafés and shared lists, through the
  * real routes, with synthetic people (the owner Sam, Asha, Bea).
  *
  * - Cafés: his list holds his own and the shared ones (a `space` and `by`

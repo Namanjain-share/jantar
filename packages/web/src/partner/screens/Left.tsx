@@ -1,4 +1,4 @@
-/** v0.12 People: after she leaves or is removed (`/p/left`): a goodbye, and Export while sharing is ending. */
+/** v0.11 People: after she leaves or is removed (`/p/left`): a goodbye, and Export while sharing is ending. */
 import type { PersonMe } from '@jantar/protocol/people';
 import { Page } from '../App.js';
 import type { PersonApi } from '../api.js';

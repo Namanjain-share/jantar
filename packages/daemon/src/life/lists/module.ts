@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P4, spec 5.3): shared lists. A list is a project in a shared
+ * v0.11 People (P4, spec 5.3): shared lists. A list is a project in a shared
  * space (`s:<id>`) with `list: {kind}` in its json; its items are to-dos in
  * the same space with that project. No new table: the `space` columns of
  * schema 4 already hold them.

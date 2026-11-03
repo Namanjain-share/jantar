@@ -65,7 +65,7 @@ const Intel = lazy(() => import('../screens/intel/Intel.js').then((m) => ({ defa
 const Meetings = lazy(() => import('../screens/meetings/Meetings.js').then((m) => ({ default: m.Meetings })));
 // v0.5.3, its own chunk.
 const Chat = lazy(() => import('../screens/chat/Chat.js').then((m) => ({ default: m.Chat })));
-// v0.12 People: his Partner screen, its own chunk.
+// v0.11 People: his Partner screen, its own chunk.
 const Partner = lazy(() => import('../screens/people/Partner.js').then((m) => ({ default: m.Partner })));
 
 export function Shell() {
@@ -212,7 +212,7 @@ export function Shell() {
       case 'posts':
       case 'people':
       case 'intel': {
-        // v0.12: People while it is on (its own switch: Life modules may all be off).
+        // v0.11: People while it is on (its own switch: Life modules may all be off).
         const on = route.name === 'intel' ? features.intel : route.name === 'people' ? features.people : features.life;
         const caption = route.name === 'intel' ? 'Opening the shelf…' : route.name === 'people' ? 'Opening People…' : 'Opening Life…';
         screen = on ? (

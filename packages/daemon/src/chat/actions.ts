@@ -193,7 +193,7 @@ export type Step =
   /** After a visit's Undo: the café untried again, unless it has other visits by then. */
   | { do: 'untried'; placeId: string }
   | { do: 'meetingTodo'; id: string; n: number }
-  /** v0.12 People (P3): one of her own writes (her plan, status, sleep), put back as her (person-writes.ts). */
+  /** v0.11 People (P3): one of her own writes (her plan, status, sleep), put back as her (person-writes.ts). */
   | PersonStep;
 
 export interface Journal {
@@ -367,7 +367,7 @@ function doseNow(d: ChatDeps, medId: string, day: string, slot: string): { doseI
 
 /** Apply one write tool's checked input as `actor`; `third` says when its label is someone else's words. */
 export async function applyWrite(d: ChatDeps, tool: WriteTool | PersonWriteTool, raw: unknown, actor: Actor): Promise<LifeResult<Applied>> {
-  // v0.12 People (P3): her own tools exist only on her deps (her space); anywhere else they are refused.
+  // v0.11 People (P3): her own tools exist only on her deps (her space); anywhere else they are refused.
   if (isPersonWriteTool(tool)) return d.person ? applyPersonWrite(d.person, tool, raw) : refuse('forbidden', ACTION_SENTENCES.bad);
   const r = await applyOne(d, tool, raw, actor);
   if (!r.ok || r.value.third) return r;
@@ -381,7 +381,7 @@ function writeLabelSource(d: ChatDeps, tool: WriteTool, ref: string): LabelSourc
   if (tool === 'todo_add' || tool === 'todo_edit' || tool === 'todo_done' || tool === 'todo_snooze') {
     const t = findTodo(d, ref);
     if (t && fromMeeting(t)) return 'meeting';
-    // v0.12 People (C19): in her thread, a to-do the owner added or last edited is his words.
+    // v0.11 People (C19): in her thread, a to-do the owner added or last edited is his words.
     if (t && d.person && ownerAuthored(t as { by?: string; editedBy?: string })) return 'owner';
     return null;
   }

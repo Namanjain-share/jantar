@@ -9,7 +9,7 @@
  * fails is left out and logged by table and id only. `core.db` is read on
  * every call (a restore swaps it).
  *
- * v0.12 People: a repo works in one space (`''` the owner's), and every
+ * v0.11 People: a repo works in one space (`''` the owner's), and every
  * query on `food` and `foods_saved` names it (T6), so the owner's food log
  * never lists a row of another space. Her food log is not in this build
  * (her food module stays off): only the owner's space is ever built here.
@@ -36,7 +36,7 @@ export class FoodRepo {
   constructor(
     private readonly core: LifeCore,
     private readonly log: Logger,
-    /** v0.12: the space this repo reads and writes. */
+    /** v0.11: the space this repo reads and writes. */
     readonly space = '',
   ) {}
 

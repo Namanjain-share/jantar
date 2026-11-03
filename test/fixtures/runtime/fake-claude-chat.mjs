@@ -39,7 +39,7 @@
 //   chat-marker         every read it may call (ids from the finds) and copies every
 //                       tool result into its reply
 //   chat-refuse-option  "error: unknown option '--mcp-config'" (claude's own words)
-//   chat-person         v0.12 People: a partner's run: her reads (today, todos_find, plan_get, sleep_week),
+//   chat-person         v0.11 People: a partner's run: her reads (today, todos_find, plan_get, sleep_week),
 //                       adds a step at 18:00 today, offers an alert card, then tries money_month and
 //                       sessions_find (never listed for her: denied)
 // Every run's tool calls are appended to <root>/calls/claude-chat.jsonl as

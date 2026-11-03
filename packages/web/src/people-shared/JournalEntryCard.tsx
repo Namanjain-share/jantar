@@ -1,5 +1,5 @@
 /**
- * v0.12 People: one journal entry as both sides show it (spec 3.11): her
+ * v0.11 People: one journal entry as both sides show it (spec 3.11): her
  * words as plain text (React escapes them), the mood face, the emotion
  * chips and the comment count.
  */

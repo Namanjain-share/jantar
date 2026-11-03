@@ -1,6 +1,6 @@
 // Portions adapted from Noblot (c) 2026 Naman Jain. See THIRD_PARTY_NOTICES.md (jantar-secrets-allow: the licensor, as in LICENSE)
 /**
- * v0.12 People: the one delivery resolver (spec 6.3, D25). Every People
+ * v0.11 People: the one delivery resolver (spec 6.3, D25). Every People
  * ring, alert and comment push, to her or to him, asks `resolveDelivery`
  * what to do with it: `push` it now, `hold` it (stored, released later as
  * one summary), `drop` it (it never rings later: a 10:00 ring at 11:30 is

@@ -39,7 +39,7 @@ export type LifeSend = (p: LifePush) => Promise<LifeSendResult>;
 
 /**
  * The notification a Life push becomes: control-scope devices only.
- * v0.12: a push for a person (`p.person`) goes to her devices instead (no
+ * v0.11: a push for a person (`p.person`) goes to her devices instead (no
  * scope: her devices hold none of his).
  */
 export function lifeNotification(p: LifePush, ts: string): Notification {
@@ -49,7 +49,7 @@ export function lifeNotification(p: LifePush, ts: string): Notification {
 }
 
 /**
- * v0.12 People: what a person's push says on her lock screen (C36), and her
+ * v0.11 People: what a person's push says on her lock screen (C36), and her
  * own mute. `hide_all` strips titles ("Jantar", "Medicine time");
  * `hide_alerts` hides the text of the owner's alerts (P2) and leaves Life
  * pushes as they are; `all` shows everything.
@@ -70,7 +70,7 @@ export async function sendLifePush(
   ctx: Pick<DaemonContext, 'settings' | 'clock' | 'log'>,
   notifiers: readonly Notifier[],
   p: LifePush,
-  /** v0.12: her lock screen and mute, for a push of hers (her mute, never his, C36). */
+  /** v0.11: her lock screen and mute, for a push of hers (her mute, never his, C36). */
   personPrefs?: (personId: string) => PersonPushPrefs | null,
 ): Promise<LifeSendResult> {
   const webpush = findWebPush(notifiers);

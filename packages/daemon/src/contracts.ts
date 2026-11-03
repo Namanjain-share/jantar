@@ -436,7 +436,7 @@ export interface EventLog {
 }
 
 export interface AuditLog {
-  /** v0.12: `person` is whose space the row touched ('' the owner's Life, undefined not Life); never in AuditEntry. */
+  /** v0.11: `person` is whose space the row touched ('' the owner's Life, undefined not Life); never in AuditEntry. */
   append(entry: Omit<AuditEntry, 'seq'>, person?: string): AuditEntry;
   /** Oldest first after `after`; newest `limit` when `after` is absent. */
   list(opts?: { after?: number; limit?: number }): AuditEntry[];
@@ -673,13 +673,13 @@ export interface Db {
   readonly nodes: NodesRepo;
   /** v0.8 */
   readonly captureKeys: CaptureKeysRepo;
-  /** v0.12 People: her devices, link codes, push list, invites and the consent ledger (migration 8). */
+  /** v0.11 People: her devices, link codes, push list, invites and the consent ledger (migration 8). */
   readonly people: PeopleDbRepos;
   close(): void;
 }
 
 // ---------------------------------------------------------------------------
-// v0.12 People in jantar.db (db/people-repos.ts)
+// v0.11 People in jantar.db (db/people-repos.ts)
 
 export interface PersonDeviceRecord {
   id: string;
@@ -825,7 +825,7 @@ export type Actor =
   | { kind: 'extension'; extensionId: string }
   /** v0.8: the iOS Shortcut, by its capture key's id (never the key). */
   | { kind: 'capture'; keyId: string }
-  /** v0.12 People: a partner, by her person id and the device she called from. Reaches her own routes only. */
+  /** v0.11 People: a partner, by her person id and the device she called from. Reaches her own routes only. */
   | { kind: 'person'; personId: string; deviceId: string };
 
 // ===========================================================================
@@ -1201,13 +1201,13 @@ export interface Notification {
    */
   deadline?: string;
   /**
-   * v0.12 People: whose devices it is for. Absent is the owner (every push
-   * before 0.12). `{person}` goes to that person's `person_push_subs` only:
+   * v0.11 People: whose devices it is for. Absent is the owner (every push
+   * before 0.11). `{person}` goes to that person's `person_push_subs` only:
    * Web Push walks her list instead of his, and the Mac banner and Telegram
    * channels refuse it (they are the owner's).
    */
   audience?: { person: string };
-  /** v0.12 People: a person alert's push urgency (Web Push `urgency` and TTL, spec 6.3). */
+  /** v0.11 People: a person alert's push urgency (Web Push `urgency` and TTL, spec 6.3). */
   pushUrgency?: 'gentle' | 'normal' | 'urgent';
 }
 
@@ -1672,7 +1672,7 @@ export interface LifeDb {
 /** The Life modules' kinds: each rings only while its module is on. */
 export type LifePingKind = 'todo' | 'med' | 'refill' | 'bill' | 'post';
 /**
- * v0.12 People (P2): her plan rings and the plan push, his follow-ups and
+ * v0.11 People (P2): her plan rings and the plan push, his follow-ups and
  * her rough day reaching him, the daily template apply, review prompt and
  * review close, the release of held alerts, an open night's 20-hour close
  * and his opt-in day summary. They ring only while People is on.
@@ -1703,7 +1703,7 @@ export interface PingRow {
   claimedAt: string | null;
   failures: number;
   lastSentAt: string | null;
-  /** v0.12: whose devices it rings (absent: the owner's). The handler's push goes to that person's app. */
+  /** v0.11: whose devices it rings (absent: the owner's). The handler's push goes to that person's app. */
   person?: string;
 }
 
@@ -1716,10 +1716,10 @@ export interface LifePush {
   url: string;
   /** life:<kind>:<ref>, or med:<HH:MM> (posts:<HH:MM>) for a group: a repeat replaces the notification. */
   tag: string;
-  /** v0.12 People: her devices instead of his (absent: the owner's). Its url is one of her app's (`/p…`). */
+  /** v0.11 People: her devices instead of his (absent: the owner's). Its url is one of her app's (`/p…`). */
   person?: string;
   /**
-   * v0.12 People (spec 6.3): gentle (low urgency, 12 h TTL), normal (high, 1 h) or urgent (high, 1 h, stays on
+   * v0.11 People (spec 6.3): gentle (low urgency, 12 h TTL), normal (high, 1 h) or urgent (high, 1 h, stays on
    * screen where supported, never silent). Absent: today's Life push.
    */
   urgency?: 'gentle' | 'normal' | 'urgent';
@@ -1748,7 +1748,7 @@ export interface PingHandler {
 /** The one scheduler (life/scheduler.ts): claim before send, at most once per occurrence, one catch-up after sleep. */
 export interface Scheduler {
   register(h: PingHandler): void;
-  /** Upsert one row; clears its claim and failures. Producers call it after every write. v0.12: `person` rings her devices. */
+  /** Upsert one row; clears its claim and failures. Producers call it after every write. v0.11: `person` rings her devices. */
   set(kind: PingKind, ref: string, sub: string, nextAt: Date | null, person?: string): void;
   /** Remove a source's rows (all of them when `sub` is omitted). */
   clear(kind: PingKind, ref: string, sub?: string): void;
@@ -1773,7 +1773,7 @@ export interface LifeCore {
   /** Emits `life.changed {}` (after every committed write). */
   changed(): void;
   /**
-   * v0.12 People (P4): a write to a shared space (`s:<id>`): both members' streams refresh, and a delete
+   * v0.11 People (P4): a write to a shared space (`s:<id>`): both members' streams refresh, and a delete
    * tells the other person (one push and an Activity row). Absent in tests that build a bare core.
    */
   shared?(e: SharedEvent): void;
@@ -1813,11 +1813,11 @@ export interface TodosModule extends LifeModule {
   removeProject(id: string, actor: Actor): LifeResult;
   listTodos(q: TodosQuery): LifeResult<TodosResponse>;
   /**
-   * `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. v0.12: `opts.by`
+   * `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. v0.11: `opts.by`
    * (the author, in a person space) and `opts.extra` (People's daemon-set fields) come from the People module.
    */
   createTodo(body: TodoBody, actor: Actor, opts?: { from?: TodoFrom; by?: string; extra?: Partial<import('@jantar/protocol/people').PersonTodo> }): LifeResult<{ id: string }>;
-  /** v0.12 People: this module over one space (`''` the owner's). Only the People module calls it. */
+  /** v0.11 People: this module over one space (`''` the owner's). Only the People module calls it. */
   inSpace(space: string): TodosModule;
   updateTodo(id: string, patch: TodoPatch, actor: Actor): LifeResult;
   /** done=false is Undo (one-off todos; a repeating one answers conflict). Done on a repeating todo moves its due day. */
@@ -1838,20 +1838,20 @@ export interface TodosModule extends LifeModule {
 /** Medicines (WP-MD). */
 export interface MedicinesModule extends LifeModule {
   readonly name: 'medicines';
-  /** v0.12 People: this module over one space (`''` the owner's). Only the People module calls it. */
+  /** v0.11 People: this module over one space (`''` the owner's). Only the People module calls it. */
   inSpace(space: string): MedicinesModule;
   /** `day` on or before today (default today); after it is invalid_request. */
   get(day?: string): LifeResult<MedicinesResponse>;
   /**
-   * v0.12 People: this space's last 30 days, skips left out: the overall percentage (null when nothing was
+   * v0.11 People: this space's last 30 days, skips left out: the overall percentage (null when nothing was
    * due and past) and each day's taken and missed counts (the two-day concern reads them). Names nothing.
    */
   adherence(): { pct: number | null; perDay: { day: string; taken: number; missed: number }[] };
-  /** v0.12 People: one medicine of this space as stored (null: none here), for the People module's rules. */
+  /** v0.11 People: one medicine of this space as stored (null: none here), for the People module's rules. */
   find(id: string): import('@jantar/protocol/people').PersonMedicine | null;
-  /** v0.12: `opts.by` (the author, in a person space) comes from the People module; no route passes it. */
+  /** v0.11: `opts.by` (the author, in a person space) comes from the People module; no route passes it. */
   create(body: MedicineBody, actor: Actor, opts?: { by?: string }): LifeResult<{ id: string }>;
-  /** v0.12: `opts.editedBy` sets "Edited by" (the owner changing a medicine of hers); only the People module passes it. */
+  /** v0.11: `opts.editedBy` sets "Edited by" (the owner changing a medicine of hers); only the People module passes it. */
   update(id: string, patch: MedicinePatch, actor: Actor, opts?: { editedBy?: string }): LifeResult;
   /** Stop taking it from today (POST /v1/medicines/:id/stop); its pings end. Named apart from the lifecycle `stop`. */
   stopTaking(id: string, actor: Actor, opts?: { editedBy?: string }): LifeResult;
@@ -1887,7 +1887,7 @@ export interface FoodModule extends LifeModule {
  * sorts by the query (best first by default), one café reads with a page of
  * its visits, and visits are logged, changed and deleted here.
  */
-/** v0.12 People (P4): one write to a shared space, by whom ('' the owner, or a person id). */
+/** v0.11 People (P4): one write to a shared space, by whom ('' the owner, or a person id). */
 export interface SharedEvent {
   space: string;
   by: string;
@@ -1899,7 +1899,7 @@ export interface SharedEvent {
 export interface PlacesModule extends LifeModule {
   readonly name: 'places';
   /**
-   * v0.12 People (P4): the same module over one shared space as one of its members (her side): she reads
+   * v0.11 People (P4): the same module over one shared space as one of its members (her side): she reads
    * and writes only that space's cafés, and her visits are hers. The owner's module reads his own and every
    * space he shares.
    */
@@ -1976,7 +1976,7 @@ export interface LifeService extends Service {
   /** v0.7. */
   readonly posts: PostsModule;
   /**
-   * v0.12 People (life/people/module.ts): people, invites, devices, consent,
+   * v0.11 People (life/people/module.ts): people, invites, devices, consent,
    * pause, leave and remove. Built with the service, whether life.db is open
    * or not: what needs life.db answers `unavailable` while it is closed, and
    * her exits work on jantar.db alone (C12).
@@ -2291,7 +2291,7 @@ export interface ChatService extends Service {
   photo(id: string, actor?: Actor): Promise<LifeResult<{ type: string; body: Buffer }>>;
   photoDelete(id: string, actor: Actor): Promise<LifeResult>;
   /**
-   * v0.12 People (P3, spec 7): every call above works in the caller's thread (`threadOf(actor)`: hers is
+   * v0.11 People (P3, spec 7): every call above works in the caller's thread (`threadOf(actor)`: hers is
    * `p:<pid>`, every other actor's the owner's). These are hers and his read-only view of hers.
    */
   personList(actor: Actor, before?: string): LifeResult<import('@jantar/protocol/people').PersonChatList>;

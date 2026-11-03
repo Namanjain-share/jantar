@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7): her assistant's thread (scope `person`), thin
+ * v0.11 People (P3, spec 7): her assistant's thread (scope `person`), thin
  * handlers over chat/service.ts with her as the caller. Every call works in
  * her thread (`p:<pid>`): a turn, change, card or photo of the owner's
  * thread is 404. Her refusals are her fixed sentences (C17): never the

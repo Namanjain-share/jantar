@@ -1,5 +1,5 @@
 /**
- * v0.12 People: Quick plan (spec 4.3, C30), a deterministic parser for a day
+ * v0.11 People: Quick plan (spec 4.3, C30), a deterministic parser for a day
  * typed or pasted as text. No AI and no network: the same text always gives
  * the same steps, and anything it can't read stays a plain untimed step,
  * never an error.

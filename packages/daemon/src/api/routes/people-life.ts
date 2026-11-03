@@ -1,5 +1,5 @@
 /**
- * v0.12 People: the owner's reads and writes in her space (spec 9.3.4),
+ * v0.11 People: the owner's reads and writes in her space (spec 9.3.4),
  * every one through the agreement. A read goes through `ownerViewOf`, the
  * one read path into her space, which writes a view mark; an area that is
  * off, a person he can't reach and a row he may not see all answer the one

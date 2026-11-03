@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her export (spec 8.6), `GET /v1/p/export?format=html|json`.
+ * v0.11 People: her export (spec 8.6), `GET /v1/p/export?format=html|json`.
  *
  * - `html` (the default, C25): one self-contained page with no script, no
  *   remote URL and no inline handler, every value escaped, that she can

@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her app's API client. It calls her routes only
+ * v0.11 People: her app's API client. It calls her routes only
  * (`/v1/p/*`): the owner's client (lib/api.ts) is never in her bundle, and
  * a test pins every path here to PERSON_ROUTES. Writes carry her device
  * secret (IndexedDB `jantar-person`) and an Idempotency-Key; errors arrive

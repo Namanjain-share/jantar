@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P4, spec 5): the cafés and lists she shares with {owner}
+ * v0.11 People (P4, spec 5): the cafés and lists she shares with {owner}
  * (`/p/lists?tab=cafes|lists`), a lazy screen. Both are both people's:
  *
  * - Cafés: every shared café with its stars, who added it, "Edited by" and

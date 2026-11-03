@@ -1,5 +1,5 @@
 /**
- * v0.12 People, M13 (spec 9.7.2, C15): static files × host, over a built
+ * v0.11 People, M13 (spec 9.7.2, C15): static files × host, over a built
  * dist with both apps (synthetic files in the shape the web build writes).
  *
  * - Her host: her shell for /p and /p/<route>, p.html, p-sw.js (with

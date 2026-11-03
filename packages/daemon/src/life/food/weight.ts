@@ -93,7 +93,7 @@ export function latestWeight(core: LifeCore): Weight | null {
   return row ? { day: row.day, kg: kgOf(row.kg10) } : null;
 }
 
-/** v0.12 People: a space's weights, newest first (her Health and his view of it). */
+/** v0.11 People: a space's weights, newest first (her Health and his view of it). */
 export function weightsOf(core: LifeCore, space: string, limit = 400): Weight[] {
   const rows = core.db.prepare('SELECT day, kg10 FROM weights WHERE space = ? ORDER BY day DESC LIMIT ?').all(space, limit) as { day: string; kg10: number }[];
   return rows.map((r) => ({ day: r.day, kg: kgOf(r.kg10) }));

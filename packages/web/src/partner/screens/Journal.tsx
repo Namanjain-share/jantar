@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her journal (`/p/journal`, spec 3.11), a lazy screen. The
+ * v0.11 People: her journal (`/p/journal`, spec 3.11), a lazy screen. The
  * header always says who can read it. A one-tap check-in row (five faces,
  * then up to three emotion chips), "+ Write", entries newest first grouped
  * by day with their comment counts, and the streak unless she hides it

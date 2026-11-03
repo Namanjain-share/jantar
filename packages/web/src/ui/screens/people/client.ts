@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): the owner's client for his People routes, in the lazy
+ * v0.11 People (P2): the owner's client for his People routes, in the lazy
  * Partner chunk so his main load doesn't grow (spec 9.4). Writes carry his
  * device secret and an Idempotency-Key, as lib/api.ts does. Every path is
  * one of PEOPLE_ROUTES (test/people/client.test.ts compares).

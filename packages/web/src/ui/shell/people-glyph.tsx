@@ -1,5 +1,5 @@
 /**
- * v0.12 People: the People place's icon, two figures in Phosphor's regular
+ * v0.11 People: the People place's icon, two figures in Phosphor's regular
  * weight (a 256 grid, 16 px strokes, round ends). Drawn here rather than
  * imported, so the People entry adds only a few bytes to the owner's main
  * load (spec 9.4: People's screens stay lazy; its place in the nav is all

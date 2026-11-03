@@ -1,5 +1,5 @@
 /**
- * v0.12 People: the join page's and Sharing's words (spec 2.5), generated
+ * v0.11 People: the join page's and Sharing's words (spec 2.5), generated
  * from the agreement's explicit fields, never from a preset name. Every
  * line is tagged with the phase that ships its feature; only built phases'
  * lines render (O7), so the page never names something this build can't

@@ -132,7 +132,7 @@ export const LIFE_MIGRATIONS: readonly LifeMigration[] = [
     `,
   },
   {
-    // v0.12 People: life.db's third schema change, with every table People's phases need (spec 9.1.1, D6).
+    // v0.11 People: life.db's third schema change, with every table People's phases need (spec 9.1.1, D6).
     // An older daemon refuses a schema-4 file (newer_schema); going back means restoring the copy the daemon
     // wrote before migrating (backups/life-pre-<version>.db, docs/upgrading.md). '' is the owner's space
     // everywhere, so every existing row is already the owner's: no backfill. No REFERENCES, as before.

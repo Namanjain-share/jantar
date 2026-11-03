@@ -135,7 +135,7 @@ export async function startHub(opts: { ctx?: TestContext; tls?: { key: string; c
   // The real dispatcher: Fleet on, the Host (allowed here), no Origin, then the link server.
   const services = {
     ctx,
-    // v0.12: no people host here (the upgrade fence asks).
+    // v0.11: no people host here (the upgrade fence asks).
     origin: { hostAllowed: () => true, isPeopleHost: () => false },
     fleet: { acceptLink: (req: IncomingMessage, socket: Duplex, head: Buffer) => linkServer.accept(req, socket, head) },
   } as unknown as ApiServices;

@@ -1,4 +1,4 @@
-// v0.12 People: Quick plan (spec 4.3, C30). The patterns, the "then" sentence from the brief, 12 h and 24 h times,
+// v0.11 People: Quick plan (spec 4.3, C30). The patterns, the "then" sentence from the brief, 12 h and 24 h times,
 // tags, limits, and junk always becoming plain steps without throwing.
 import { describe, expect, it } from 'vitest';
 import { QUICK_STEPS_MAX, parseQuickPlan } from '../src/quick-plan.js';

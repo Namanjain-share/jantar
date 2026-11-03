@@ -154,7 +154,7 @@ const BROAD_FOLDERS = ['/', '/users'];
 
 class Todos implements TodosModule {
   readonly name = 'todos' as const;
-  /** v0.12: this module in other spaces (her space's, built once). */
+  /** v0.11: this module in other spaces (her space's, built once). */
   private readonly spaces = new Map<string, Todos>();
 
   constructor(
@@ -164,7 +164,7 @@ class Todos implements TodosModule {
     private readonly home: string,
   ) {}
 
-  /** v0.12 People: the same module over one space (the People module's person todos use it; no route reaches it otherwise). */
+  /** v0.11 People: the same module over one space (the People module's person todos use it; no route reaches it otherwise). */
   inSpace(space: string): Todos {
     if (space === this.repo.space) return this;
     let m = this.spaces.get(space);
@@ -172,13 +172,13 @@ class Todos implements TodosModule {
     return m;
   }
 
-  /** v0.12: the space this module works in. */
+  /** v0.11: the space this module works in. */
   get space(): string {
     return this.repo.space;
   }
 
   /**
-   * v0.12: his screens re-fetch on a write to his own space only. A write in
+   * v0.11: his screens re-fetch on a write to his own space only. A write in
    * her space ticks her stream and, for areas his agreement covers, his
    * (life/people/space.ts), so his stream can't tell him she is active in
    * an area she keeps private (M11).
@@ -195,7 +195,7 @@ class Todos implements TodosModule {
     return this.core.now().toISOString();
   }
 
-  /** Save, re-arm the ping, and tell the screens. `before`: the todo as stored (null on create); `at`: see ArmOptions. v0.12: `by` the author on create. */
+  /** Save, re-arm the ping, and tell the screens. `before`: the todo as stored (null on create); `at`: see ArmOptions. v0.11: `by` the author on create. */
   private saved(t: Todo, before: Todo | null, at?: Date, by = ''): void {
     this.repo.saveTodo(t, by);
     const fresh = !before || before.due?.day !== t.due?.day || before.due?.time !== t.due?.time;

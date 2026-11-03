@@ -1,5 +1,5 @@
 /**
- * v0.12 People: small date helpers both sides share (her app and his
+ * v0.11 People: small date helpers both sides share (her app and his
  * Partner screen). Day keys are the daemon's (`YYYY-MM-DD` in the Life
  * zone); nothing here reads the device's zone except `hmOf`, for an
  * instant the daemon sent.

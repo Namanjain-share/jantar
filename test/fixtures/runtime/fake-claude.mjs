@@ -68,7 +68,7 @@
 //                       argv (claude's own words), else read-ok on the text stdin
 //   read-init-tools     read-ok, but the init line lists tools and an MCP server
 // plus slow, auth-error and empty as above. It is logged like every run.
-// Chat mode (v0.10): when --system-prompt-file ends in chat-v<N>.md (v0.12: or a partner's person-v<N>.md) it hands
+// Chat mode (v0.10): when --system-prompt-file ends in chat-v<N>.md (v0.11: or a partner's person-v<N>.md) it hands
 // over to fake-claude-chat.mjs (CHAT_MODES, an MCP client over the run's one
 // server; see that file). It is logged like every run.
 import { randomUUID } from 'node:crypto';
@@ -403,7 +403,7 @@ export async function runClaude({ root, args, stdin, account = null, via = 'clau
   }
 
   // v0.10 Chat (fake-claude-chat.mjs): MCP tools over the run's one server, streamed as it goes.
-  // v0.12 People: a partner's run uses person-v<N>.md (same tools mode).
+  // v0.11 People: a partner's run uses person-v<N>.md (same tools mode).
   if (promptFile !== undefined && /(chat|person)-v\d+\.md$/.test(promptFile)) return runChat({ root, args, stdin, matches, account });
 
   const config = readJson(join(root, 'fake', 'claude.json'), {});

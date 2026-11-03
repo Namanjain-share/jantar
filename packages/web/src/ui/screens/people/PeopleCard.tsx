@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): the card on his Today (spec 4.1): "Asha · 3 of 7 done
+ * v0.11 People (P2): the card on his Today (spec 4.1): "Asha · 3 of 7 done
  * · Now: Interview prep 11:00 · Low" (or "Asleep since 23:40" with
  * see.sleep), and with see.meds "1 dose not logged" (a count, never a name)
  * and the two-day concern. Every field obeys the agreement (it is her Today DTO, which

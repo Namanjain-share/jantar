@@ -162,13 +162,13 @@ export function pwaPlugin(opts: { root: string }): Plugin[] {
 }
 
 // ---------------------------------------------------------------------------
-// v0.12 People: her app's build (vite.partner.config.ts), a second Vite build
+// v0.11 People: her app's build (vite.partner.config.ts), a second Vite build
 // into the same dist/ with its own module graph, so the owner's build and its
 // chunks are byte for byte what they were (his main load gains nothing).
 
-/** v0.12: her app's own files (served only on her host). */
+/** v0.11: her app's own files (served only on her host). */
 export const PERSON_APP_FILES = ['p.html', 'p-sw.js', 'p.webmanifest'] as const;
-/** v0.12: the build manifest of her app (its chunk set: the daemon's people host serves these and no other asset). */
+/** v0.11: the build manifest of her app (its chunk set: the daemon's people host serves these and no other asset). */
 export const PERSON_MANIFEST = '.vite/p-manifest.json';
 
 /** Her app's manifest: its own id, start and scope (/p), so it installs apart from the owner's. */

@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7.1, 7.3): her thread, and the deps her run gets.
+ * v0.11 People (P3, spec 7.1, 7.3): her thread, and the deps her run gets.
  *
  * - `threadOf(actor)`: `p:<pid>` for her, `''` for everyone else. Every
  *   query in chat/store.ts names the thread, so a turn, photo, change or

@@ -7,7 +7,7 @@
  *
  * Every call reads `core.db` afresh: a restore swaps the handle.
  *
- * v0.12 People: a repo works in one space (`''` the owner's, `<pid>` hers):
+ * v0.11 People: a repo works in one space (`''` the owner's, `<pid>` hers):
  * every query names it, so the owner's repo never sees a row of hers and
  * the reverse. `by_person` is the row's author, set on insert and never
  * changed; a row's json never holds `by` or `space` (they come from the
@@ -37,7 +37,7 @@ export class TodosRepo {
   constructor(
     private readonly core: Pick<LifeCore, 'db'>,
     private readonly log: Logger,
-    /** v0.12: the space this repo reads and writes. */
+    /** v0.11: the space this repo reads and writes. */
     readonly space = '',
   ) {}
 

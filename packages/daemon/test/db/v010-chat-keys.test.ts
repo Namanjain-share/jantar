@@ -26,7 +26,7 @@ const ts = (s: number) => new Date(Date.parse('2026-11-02T10:00:00.000Z') + s * 
 const key = (id: string, scope: CaptureKeyRecord['scope'], s = 0): CaptureKeyRecord => ({ id, scope, name: 'iphone', keyHash: `hash-${id}`, createdAt: ts(s), lastSeenAt: null, revokedAt: null });
 
 describe('v0.10: migration 7', () => {
-  it('only adds a column (v0.12 adds 8, v8-people.test.ts)', () => {
+  it('only adds a column (v0.11 adds 8, v8-people.test.ts)', () => {
     expect(LATEST_SCHEMA_VERSION).toBe(8);
     const m = MIGRATIONS.find((x) => x.version === 7);
     expect(m?.name).toBe('v0.10 chat keys');

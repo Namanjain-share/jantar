@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P1): her medicines on both sides (spec 3.4, 4.2; 9.7.4),
+ * v0.11 People (P1): her medicines on both sides (spec 3.4, 4.2; 9.7.4),
  * with synthetic people (Sam and Asha) and fake clients.
  *
  * - Her Health › Medicines: today's doses with Taken and Skip (each one

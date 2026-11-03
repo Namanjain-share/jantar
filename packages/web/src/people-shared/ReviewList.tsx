@@ -1,5 +1,5 @@
 /**
- * v0.12 People: the evening review's items (spec 3.10), shared by her
+ * v0.11 People: the evening review's items (spec 3.10), shared by her
  * review screen and his read-only view. "moved" and "missed" are neutral
  * grey, never red; nothing here scores anything.
  */

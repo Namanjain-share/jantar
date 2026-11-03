@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her device secret, in IndexedDB `jantar-person` (never the
+ * v0.11 People: her device secret, in IndexedDB `jantar-person` (never the
  * owner's `jantar-credentials`): the second credential her writes and her
  * stream carry. Her host is its own origin, so its IndexedDB is apart from
  * his anyway; the name keeps them apart on a shared dev origin too.

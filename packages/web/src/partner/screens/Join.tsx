@@ -1,5 +1,5 @@
 /**
- * v0.12 People: Join (`/p/join#c=<code>`) and Link (`/p/link#c=<code>`).
+ * v0.11 People: Join (`/p/join#c=<code>`) and Link (`/p/link#c=<code>`).
  *
  * Join reads the code from the fragment (it never reaches a log), previews
  * the offer without spending it, and renders the page from the offer's

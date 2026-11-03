@@ -42,7 +42,7 @@ export const MAIN_CSS_MAX = 16_000;
 /** Spec 9.6: each lazy Life or Intel chunk; v0.5 holds Meetings to the same, v0.10 Chat (v0.5.3's Ask), v0.7 Posts. */
 export const LAZY_MAX = 80_000;
 /**
- * v0.12 People: her app (p.html, its own Vite build) has its own gate, read
+ * v0.11 People: her app (p.html, its own Vite build) has its own gate, read
  * from p.html the way the owner's is read from index.html. New constants,
  * not raised ones; tighten them to the measured size plus 10% once P1 is
  * whole (spec 9.4).
@@ -132,7 +132,7 @@ export function analyze(dist, screens = LAZY_SCREENS) {
   return { main: { files: [...main], js: sum(main), css: cssGz }, lazy, person: analyzePerson(dist, chunks, closure, sum) };
 }
 
-/** v0.12: her app's first load (p.html and what it imports statically), or null when it isn't built. */
+/** v0.11: her app's first load (p.html and what it imports statically), or null when it isn't built. */
 function analyzePerson(dist, chunks, closure, sum) {
   const page = join(dist, 'p.html');
   if (!existsSync(page)) return null;

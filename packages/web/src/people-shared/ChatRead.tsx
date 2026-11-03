@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7.8): one chat turn, read only, as {owner}'s Chat
+ * v0.11 People (P3, spec 7.8): one chat turn, read only, as {owner}'s Chat
  * tab shows her thread. Her words and the assistant's answer render through
  * lib/markdown.tsx in its default (transcript) mode: escape-first, raw HTML
  * stays text, only http(s) links become clickable (no opener, no

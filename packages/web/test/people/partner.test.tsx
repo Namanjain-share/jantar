@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): his side of her days (spec 4.1–4.3; 9.7.4), with
+ * v0.11 People (P2): his side of her days (spec 4.1–4.3; 9.7.4), with
  * synthetic people (Sam and Asha) and a fake People client.
  *
  * - His People client calls only his People routes, by method and path.

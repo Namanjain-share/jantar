@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her app's small shared pieces: the 5-second Undo toast
+ * v0.11 People: her app's small shared pieces: the 5-second Undo toast
  * (the one-thumb fix for a mis-tap, spec 3.1), one-tap reason chips
  * (typing is optional), a tick circle with a 44 px target, and the report
  * sheet for an item that asks for a short report.

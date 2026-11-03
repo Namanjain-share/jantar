@@ -1,5 +1,5 @@
 /**
- * jantar people (v0.12) against an in-memory daemon: a space a Life restore
+ * jantar people (v0.11) against an in-memory daemon: a space a Life restore
  * took out (T20, spec 2.7). `list` says so with the way to invite them
  * again; `remove <id>` clears it at once (no window: nothing is left to
  * download) and prints no Access step, since they may be sharing again

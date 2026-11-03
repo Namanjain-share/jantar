@@ -1,5 +1,5 @@
 /**
- * v0.12 People: the isolation suites' fixture (spec 9.7.2). Synthetic people
+ * v0.11 People: the isolation suites' fixture (spec 9.7.2). Synthetic people
  * only: the owner Sam, the partner Asha, a second partner Bea (PEOPLE_MAX is
  * raised inside the tests only), and one person per other state: Cara
  * paused, Dev ending, Eli left (keep 30 days), Fay forgotten, Gus invited.

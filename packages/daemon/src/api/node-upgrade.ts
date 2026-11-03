@@ -63,7 +63,7 @@ function headerValue(v: string | string[] | undefined): string | undefined {
 export function handleNodeUpgrade(s: ApiServices, req: IncomingMessage, socket: Duplex, head: Buffer): void {
   if (!s.ctx.settings.get().fleet.enabled) return refuseUpgrade(socket, 404, 'not_found', 'not found');
   if (!s.origin.hostAllowed(headerValue(req.headers.host))) return refuseUpgrade(socket, 403, 'forbidden', 'unknown Host header');
-  // v0.12 (C2): her host answers the node link as any other path not hers: 404. It is taken before Fastify's fence.
+  // v0.11 (C2): her host answers the node link as any other path not hers: 404. It is taken before Fastify's fence.
   if (s.origin.isPeopleHost(headerValue(req.headers.host))) return refuseUpgrade(socket, 404, 'not_found', 'not found');
   if (req.headers.origin !== undefined) return refuseUpgrade(socket, 403, 'forbidden', 'browsers cannot open this');
   s.fleet.acceptLink(req, socket, head);

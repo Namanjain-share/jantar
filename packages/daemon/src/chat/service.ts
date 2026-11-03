@@ -83,7 +83,7 @@ import type { ChatDeps, ChatWriteLimiter } from './types.js';
 
 export const CHAT_PROMPT_VERSION = 'v1';
 export const CHAT_PROMPT_ASSET = `chat/chat-${CHAT_PROMPT_VERSION}.md`;
-/** v0.12 People (P3, spec 7.4): her run's prompt. */
+/** v0.11 People (P3, spec 7.4): her run's prompt. */
 export const PERSON_CHAT_PROMPT_ASSET = `chat/person-${CHAT_PROMPT_VERSION}.md`;
 export const CHAT_BRIDGE_ASSET = 'chat/bridge.mjs';
 export const CHAT_EFFORT = 'low';
@@ -133,7 +133,7 @@ type AuditOutcome = 'ok' | 'unavailable' | 'no_account' | 'timeout' | 'failed' |
 
 interface Run {
   turnId: string;
-  /** v0.12: the turn's thread ('' his, 'p:<pid>' hers). */
+  /** v0.11: the turn's thread ('' his, 'p:<pid>' hers). */
   thread: string;
   epoch: number;
   abort: AbortController;
@@ -148,7 +148,7 @@ function errorKind(e: unknown): string {
   return typeof code === 'string' ? code : e instanceof Error ? e.name : 'unknown';
 }
 
-/** v0.12 People (C17): her turns' failure words, from a fixed set that never names an account, a limit or a reset. */
+/** v0.11 People (C17): her turns' failure words, from a fixed set that never names an account, a limit or a reset. */
 function personFailedReason(o: AuditOutcome): string {
   switch (o) {
     case 'no_account':
@@ -200,7 +200,7 @@ export class ChatServiceImpl implements ChatService {
   private readonly pushWhenDone = new Set<string>();
   /** Who sent each unfinished turn: its run's writes are theirs. */
   private readonly senders = new Map<string, Actor>();
-  /** v0.12: each unfinished turn's thread. */
+  /** v0.11: each unfinished turn's thread. */
   private readonly turnThreads = new Map<string, string>();
   private unforget: (() => void) | null = null;
   private unsubscribe: Unsubscribe | null = null;
@@ -235,7 +235,7 @@ export class ChatServiceImpl implements ChatService {
       if (!prev.ask.enabled && next.ask.enabled && !this.store) this.open();
     });
     this.sweepTimer ??= this.ctx.clock.setInterval(() => void this.sweep(), CHAT_SWEEP_MS);
-    // v0.12 People: her thread is forgotten with her space (Leave with delete, remove --forget, the 30-day forget),
+    // v0.11 People: her thread is forgotten with her space (Leave with delete, remove --forget, the 30-day forget),
     // and his read-only view and her mirror read it through life/people/views.ts (which checks see.chat).
     try {
       this.unforget ??= this.deps.life.people.onForget((pid) => void this.forgetThread(pid));
@@ -277,7 +277,7 @@ export class ChatServiceImpl implements ChatService {
   }
 
   private open(): void {
-    // v0.12: chat.db is copied before it moves to a newer schema (backups/chat-pre-<version>.db).
+    // v0.11: chat.db is copied before it moves to a newer schema (backups/chat-pre-<version>.db).
     const preMigrateCopy = () => {
       mkdirSync(this.ctx.paths.backupsDir, { recursive: true, mode: 0o700 });
       return join(this.ctx.paths.backupsDir, chatPreUpgradeName(this.ctx.version.daemon));
@@ -325,7 +325,7 @@ export class ChatServiceImpl implements ChatService {
     }
   }
 
-  /** v0.12 People (C17): a thread's keep, in days: his `ask.keepDays`, or her own `chatKeepDays`; 0 for a person who is gone. */
+  /** v0.11 People (C17): a thread's keep, in days: his `ask.keepDays`, or her own `chatKeepDays`; 0 for a person who is gone. */
   private keepDaysOf(thread: string): number {
     const pid = personOfThread(thread);
     if (pid === null) return this.ctx.settings.get().ask.keepDays;
@@ -375,7 +375,7 @@ export class ChatServiceImpl implements ChatService {
     }
   }
 
-  /** v0.12 People: her thread forgotten (rows and photo files), its turns stopped. Idempotent. */
+  /** v0.11 People: her thread forgotten (rows and photo files), its turns stopped. Idempotent. */
   async forgetThread(pid: string): Promise<void> {
     const root = this.store;
     if (!root) return;
@@ -394,7 +394,7 @@ export class ChatServiceImpl implements ChatService {
     return actor.kind === 'person' ? personChatDeps(this.deps, { pid: actor.personId, people: this.deps.life.people }) : this.deps;
   }
 
-  /** v0.12 People: messages she has left today (her `chatPerDay`, counted in the Life zone's day). */
+  /** v0.11 People: messages she has left today (her `chatPerDay`, counted in the Life zone's day). */
   private leftToday(pid: string, store: ChatStore): { left: number; perDay: number } {
     let perDay = 0;
     try {
@@ -462,7 +462,7 @@ export class ChatServiceImpl implements ChatService {
     };
   }
 
-  /** v0.12 People (spec 7.5, 7.6): her thread, messages left today, and the disclosure from the live agreement. */
+  /** v0.11 People (spec 7.5, 7.6): her thread, messages left today, and the disclosure from the live agreement. */
   personList(actor: Actor, before?: string): LifeResult<PersonChatList> {
     if (actor.kind !== 'person') return refuse('not_found', CHAT_SENTENCES.noTurn);
     const l = this.list(actor, before);
@@ -480,7 +480,7 @@ export class ChatServiceImpl implements ChatService {
     return { ok: true, value: { ...l.value, ready, left, perDay, ownerCanRead: canRead, disclosure: chatDisclosure(owner, l.value.keepDays, canRead) } };
   }
 
-  /** v0.12 People: her thread's size (no text), messages left today, and whether it can run. */
+  /** v0.11 People: her thread's size (no text), messages left today, and whether it can run. */
   personStatus(actor: Actor): LifeResult<PersonChatStatus> {
     if (actor.kind !== 'person') return refuse('not_found', CHAT_SENTENCES.noTurn);
     const root = this.needStore();
@@ -493,7 +493,7 @@ export class ChatServiceImpl implements ChatService {
   }
 
   /**
-   * v0.12 People (spec 7.8): her thread as she sees it, read only, for {owner}'s view and her mirror. The
+   * v0.11 People (spec 7.8): her thread as she sees it, read only, for {owner}'s view and her mirror. The
    * caller (life/people/views.ts ownerViewOf) has checked `see.chat` and writes the view mark.
    */
   threadView(pid: string, before?: string): LifeResult<OwnerChatView> {
@@ -506,7 +506,7 @@ export class ChatServiceImpl implements ChatService {
     return { ok: true, value: { turns: page.turns.map((t) => store.full(t)), older: page.older, keepDays: (keep === 1 || keep === 7 ? keep : 30) as OwnerChatView['keepDays'] } };
   }
 
-  /** v0.12 People (spec 7.8): one photo of her thread (another thread's: 404). */
+  /** v0.11 People (spec 7.8): one photo of her thread (another thread's: 404). */
   async threadPhoto(pid: string, id: string): Promise<LifeResult<{ type: string; body: Buffer }>> {
     const root = this.needStore();
     if ('ok' in root) return root;
@@ -516,7 +516,7 @@ export class ChatServiceImpl implements ChatService {
     return body ? { ok: true, value: { type: p.type, body } } : refuse('not_found', CHAT_SENTENCES.noPhoto);
   }
 
-  /** v0.12 People (O21): she deletes one turn of hers: gone for both, with no trace. */
+  /** v0.11 People (O21): she deletes one turn of hers: gone for both, with no trace. */
   async deleteTurn(id: string, actor: Actor): Promise<LifeResult> {
     const root = this.needStore();
     if ('ok' in root) return root;
@@ -536,7 +536,7 @@ export class ChatServiceImpl implements ChatService {
     const text = body.text.trim();
     const photoIds = [...new Set(body.photos ?? [])];
     const person = actor.kind === 'person' ? actor.personId : null;
-    // v0.12 People: her thread is phone only (no Siri door for her, spec 7.5).
+    // v0.11 People: her thread is phone only (no Siri door for her, spec 7.5).
     if (person && via !== 'phone') return refuse('forbidden', PERSON_CHAT_SENTENCES.off);
     if (!text && photoIds.length === 0) return refuse('invalid_request', CHAT_SENTENCES.noText);
     if (text.length > (via === 'voice' ? CHAT_VOICE_TEXT_MAX : CHAT_TEXT_MAX)) return refuse('invalid_request', via === 'voice' ? CHAT_SENTENCES.voiceTooLong : CHAT_SENTENCES.tooLong);
@@ -608,7 +608,7 @@ export class ChatServiceImpl implements ChatService {
     return OK;
   }
 
-  /** Clear the caller's thread only (v0.12: the other thread, its runs and its photos stay). */
+  /** Clear the caller's thread only (v0.11: the other thread, its runs and its photos stay). */
   async clear(actor: Actor, opts: { broken?: boolean } = {}): Promise<LifeResult> {
     if (opts.broken) return this.moveBroken(actor);
     const root = this.needStore();
@@ -678,7 +678,7 @@ export class ChatServiceImpl implements ChatService {
     if (notReady) return notReady;
     const root = this.store as ChatStore;
     const store = root.inThread(threadOf(actor));
-    // v0.12 People (O19): hers is stripped of location, camera details and thumbnails before it is kept.
+    // v0.11 People (O19): hers is stripped of location, camera details and thumbnails before it is kept.
     const r = actor.kind === 'person' ? await this.photos.addStripped(bytes, store) : await this.photos.add(bytes, store);
     if (r.ok) this.markGone(await this.photos.cap(root));
     return r;
@@ -814,7 +814,7 @@ export class ChatServiceImpl implements ChatService {
   }
 
   /**
-   * A thread changed. His: `life.changed {}` as before. Hers (v0.12, spec 7.8): her stream's chat counter,
+   * A thread changed. His: `life.changed {}` as before. Hers (v0.11, spec 7.8): her stream's chat counter,
    * and his devices only while `see.chat` is on, so his stream can't tell him when she chats (C20).
    */
   private changed(thread = ''): void {
@@ -927,7 +927,7 @@ export class ChatServiceImpl implements ChatService {
 
     const single = 'claude' in program;
     const actor: Actor = this.senders.get(run.turnId) ?? { kind: 'system' };
-    // v0.12 People: her run reaches her space alone (her deps, her tools, her prompt); his is unchanged.
+    // v0.11 People: her run reaches her space alone (her deps, her tools, her prompt); his is unchanged.
     const pid = personOfThread(run.thread);
     if (pid !== null && (actor.kind !== 'person' || actor.personId !== pid)) {
       this.finish(run, { failed: 'failed' });

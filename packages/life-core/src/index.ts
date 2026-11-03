@@ -8,7 +8,7 @@
  * - Ours: tz.ts (day keys and wall-clock times in a zone), repeat.ts (a
  *   repeating todo's next day), slots.ts (a dose time's next ping),
  *   snooze.ts (the snooze presets).
- * - v0.12 People: delivery.ts (the one resolver: tiers, quiet hours, holds;
+ * - v0.11 People: delivery.ts (the one resolver: tiers, quiet hours, holds;
  *   adapted from Noblot), day-review.ts (the evening review's outcomes;
  *   adapted from Noblot), journal-streak.ts (adapted from Noblot), and ours,
  *   sleep-week.ts (nights and the week) and quick-plan.ts (Quick plan).

@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her evening review (`/p?review=1&day=`, spec 3.10). Every
+ * v0.11 People: her evening review (`/p?review=1&day=`, spec 3.10). Every
  * step as sent, each check-between, her to-dos due; her own open steps
  * carry to tomorrow with one tap, his go to him as one "Ask to carry";
  * her own open to-dos move to tomorrow. An optional note and mood, "Also

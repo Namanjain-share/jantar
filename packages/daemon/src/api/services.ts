@@ -329,9 +329,9 @@ export class PaneLookup {
 
 export class ApiServices {
   readonly devices: DeviceAuth;
-  /** v0.12 People: her devices (her cookie is read only on PERSON_PREFIX, on the people host). */
+  /** v0.11 People: her devices (her cookie is read only on PERSON_PREFIX, on the people host). */
   readonly personDevices: PersonDeviceAuth;
-  /** v0.12 People (C15): the `/assets/` files her host serves: her app's chunks, from the build manifest. */
+  /** v0.11 People (C15): the `/assets/` files her host serves: her app's chunks, from the build manifest. */
   readonly peopleAssets: ReadonlySet<string>;
   /** v0.5: the paired Chrome extension's keys. */
   readonly extensions: ExtensionAuth;

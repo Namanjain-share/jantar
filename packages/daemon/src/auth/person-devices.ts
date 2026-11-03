@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her devices (jantar.db `person_devices`), modelled on
+ * v0.11 People: her devices (jantar.db `person_devices`), modelled on
  * auth/devices.ts. Each holds a random 32-byte key in the
  * `__Host-jantar_person` cookie and a second random 32-byte secret her app
  * keeps in IndexedDB `jantar-person`. Only prefixed sha256 hashes are stored

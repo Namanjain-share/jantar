@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her status (spec 3.7).
+ * v0.11 People (P2): her status (spec 3.7).
  *
  * - Okay, Low or Need space, with a short line; it ends after 12 h unless
  *   she says otherwise, and Okay with no line clears it.

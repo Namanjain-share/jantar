@@ -1,4 +1,4 @@
-// v0.12 People: her sleep log's arithmetic (spec 3.12): the night key's 12:00 boundary, minutes and "short", the
+// v0.11 People: her sleep log's arithmetic (spec 3.12): the night key's 12:00 boundary, minutes and "short", the
 // week's averages and spread, and a trend arrow only when both weeks have four logged nights.
 import { describe, expect, it } from 'vitest';
 import { SLEEP_SHORT_MIN, axisMinute, hoursLabel, minutesAsleep, mondayOf, nightOf, sleepWeek, type SleepNightLike } from '../src/sleep-week.js';

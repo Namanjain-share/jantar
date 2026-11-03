@@ -1,5 +1,5 @@
 /**
- * v0.12 People: what the owner sees of her, area by area (spec 8.4, D11).
+ * v0.11 People: what the owner sees of her, area by area (spec 8.4, D11).
  * `ownerViewOf(pid, area, agreement)` is the only read path into her space
  * from owner code, and her mirror (`GET /v1/p/mirror/:area`) calls the same
  * function with the same agreement, so "See what Sam sees" can't drift from

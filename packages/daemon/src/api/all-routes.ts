@@ -1,5 +1,5 @@
 /**
- * v0.12: every route this daemon serves: ROUTES (the owner's, in the
+ * v0.11: every route this daemon serves: ROUTES (the owner's, in the
  * package index and his web bundle) plus People's two tables from the
  * `@jantar/protocol/people` subpath (her routes, PERSON_ROUTES, and his
  * People routes, PEOPLE_ROUTES), kept out of the index so neither ever

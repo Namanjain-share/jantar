@@ -48,7 +48,7 @@ export interface ChatInput {
   text: string;
   photos: ChatPhotoBlock[];
   /**
-   * v0.12 People (P3, C17): her run. <reach> is then a fixed person list (never the owner's switches,
+   * v0.11 People (P3, C17): her run. <reach> is then a fixed person list (never the owner's switches,
    * currency or categories) with the owner's name and whether the owner can read this chat now.
    */
   person?: { owner: string; ownerCanRead: boolean; cafes: boolean };

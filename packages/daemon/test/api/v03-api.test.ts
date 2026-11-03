@@ -258,7 +258,7 @@ describe('Mac-only settings', () => {
       ask: { enabled: true },
       // v0.6's Fleet switch (v06-gate.test.ts).
       fleet: { enabled: true },
-      // v0.12 People (its switch needs a people host; the owner's name alone is a valid patch).
+      // v0.11 People (its switch needs a people host; the owner's name alone is a valid patch).
       people: { ownerName: 'Sam' },
     };
     for (const [group, value] of Object.entries(samples)) {

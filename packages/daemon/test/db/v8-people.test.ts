@@ -1,5 +1,5 @@
 /**
- * v0.12 People, jantar.db migration 8 (spec 9.1.2): additive and
+ * v0.11 People, jantar.db migration 8 (spec 9.1.2): additive and
  * idempotent. A 0.10 file (schema 7) moves to 8 and keeps every row; an
  * older daemon opening a schema-8 file warns and carries on (it never reads
  * these tables, so a partner is locked out: fails closed). The repos it
@@ -20,11 +20,11 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-describe('jantar.db migration 8 (v0.12 people)', () => {
+describe('jantar.db migration 8 (v0.11 people)', () => {
   it('is the latest, named, and only adds (no DROP, no data change)', () => {
     expect(LATEST_SCHEMA_VERSION).toBe(8);
     const m = MIGRATIONS.find((x) => x.version === 8);
-    expect(m?.name).toBe('v0.12 people');
+    expect(m?.name).toBe('v0.11 people');
     expect(m?.sql).not.toMatch(/DROP|UPDATE|DELETE/i);
     expect(m?.sql).toMatch(/ALTER TABLE audit ADD COLUMN person TEXT/);
   });

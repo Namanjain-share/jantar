@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her to-dos, reminders, projects, medicines and doses,
+ * v0.11 People: her to-dos, reminders, projects, medicines and doses,
  * weights, Today and mirror (scope `person`), thin handlers over
  * life/people/space.ts, meds.ts and views.ts with her as the caller. Every
  * call works in her own space only; `space` and `by` are daemon-set (no body

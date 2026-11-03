@@ -1,5 +1,5 @@
 /**
- * v0.12 People, P2: the shapes of her days (spec 3, 4, 6, 9.1.5): the day
+ * v0.11 People, P2: the shapes of her days (spec 3, 4, 6, 9.1.5): the day
  * plan and its steps, check-betweens and templates, the evening review,
  * alerts both ways, her status, the sleep log and the journal, her P2
  * preferences and his preferences for pushes about her.

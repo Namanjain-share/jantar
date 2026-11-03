@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her app (p.html), built after the owner's into the same
+ * v0.11 People: her app (p.html), built after the owner's into the same
  * dist/ (`pnpm build` runs both), as its own module graph: none of his
  * chunks change, and her chunks (prefixed `p-`) hold no module of his
  * screens, shell, store, API client, connection or router

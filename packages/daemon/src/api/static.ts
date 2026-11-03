@@ -94,7 +94,7 @@ export function serveIndexFallback(req: FastifyRequest, reply: FastifyReply, ava
 }
 
 /**
- * v0.12 People: her host's app shell. `/p` and `/p/<route>` that accept
+ * v0.11 People: her host's app shell. `/p` and `/p/<route>` that accept
  * HTML get p.html (her app, a separate bundle); nothing else falls back.
  * True when it answered.
  */
@@ -109,7 +109,7 @@ export function servePersonFallback(req: FastifyRequest, reply: FastifyReply, av
 }
 
 /**
- * v0.12 People (C15): the files under `/assets/` that her app loads: the
+ * v0.11 People (C15): the files under `/assets/` that her app loads: the
  * `p` entry's chunks, the chunks they import (statically or lazily), and
  * their stylesheets and assets, read from Vite's build manifest. Her host
  * serves these and no other asset. Empty when there is no manifest or no

@@ -1,5 +1,5 @@
 /**
- * v0.12 People: notifications on her phone, shared by her first-run steps
+ * v0.11 People: notifications on her phone, shared by her first-run steps
  * (after Accept and join), the card on Today and Me › Notifications.
  *
  * - On an iPhone, Web Push works only from the app on her Home Screen, so

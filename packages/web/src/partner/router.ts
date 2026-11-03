@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her app's paths (spec 1.3.1): /p (Today; `?review=1&day=`
+ * v0.11 People: her app's paths (spec 1.3.1): /p (Today; `?review=1&day=`
  * opens the evening review), /p/todos, /p/health (`?tab=sleep&week=`),
  * /p/journal (`?id=`, `?checkin=1`), /p/alerts (`?id=`), /p/chat (P3), /p/join, /p/link,
  * /p/me (?tab=sharing|activity|devices|notifications|leave; Sharing's

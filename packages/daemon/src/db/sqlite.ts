@@ -785,7 +785,7 @@ function build(db: DatabaseSyncType, file: string, opts: OpenSqliteOptions, now:
     const r = stmt('SELECT * FROM capture_keys WHERE id = ?').get(id) as CaptureKeyRow | undefined;
     return r ? captureKeyFrom(r) : null;
   };
-  // v0.12 People (migration 8): one implementation with the tests' in-memory Db.
+  // v0.11 People (migration 8): one implementation with the tests' in-memory Db.
   const people = createPeopleRepos(stmt, wrote);
 
   const captureKeys: CaptureKeysRepo = {

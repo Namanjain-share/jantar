@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): the owner's routes for her days (spec 9.3.4): her plan
+ * v0.11 People (P2): the owner's routes for her days (spec 9.3.4): her plan
  * and templates, her evening review, her sleep and journal (reads through
  * `ownerViewOf`, which writes the view mark), his journal comments, alerts
  * with her, and his prefs for pushes about her.

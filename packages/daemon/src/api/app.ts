@@ -241,7 +241,7 @@ export const LOCAL_ONLY_REFUSED: Readonly<Partial<Record<AnyRouteName, string>>>
   chatKeyAdd: 'Make a Siri key at the Mac: jantar chat shortcut add',
   chatKeyList: 'List Siri keys at the Mac: jantar chat shortcut list',
   chatKeyRevoke: 'Revoke a Siri key at the Mac: jantar chat shortcut revoke <id>',
-  // v0.12 People: everything that lets a person in, shapes what she is offered or ends her space.
+  // v0.11 People: everything that lets a person in, shapes what she is offered or ends her space.
   personAdd: 'Add a person at the Mac: jantar people add <name> --email <address>',
   personOffer: 'Set what an invite offers at the Mac: jantar people offer <name>',
   personModules: 'Change their modules at the Mac: jantar people modules <name>',
@@ -286,7 +286,7 @@ export const SHOT_UPLOAD_LOG = 'meetings: screenshot upload';
 
 /**
  * Writes whose reply is never kept for an Idempotency-Key replay: Ask Claude's meal estimate (model output)
- * and a new Shortcut or Siri key (the reply holds the key itself, shown once: spec 0.10 B5, B12). v0.12:
+ * and a new Shortcut or Siri key (the reply holds the key itself, shown once: spec 0.10 B5, B12). v0.11:
  * "Copy link again" (the reply holds a live invite link).
  */
 export const NEVER_REPLAYED: ReadonlySet<AnyRouteName> = new Set<AnyRouteName>(['foodEstimate', 'captureKeyAdd', 'chatKeyAdd', 'personInviteLink']);
@@ -336,7 +336,7 @@ function pathOf(req: FastifyRequest): string {
 /** The extension's paths: the only place its key header is read. */
 const EXT_PREFIX = '/v1/ext/';
 
-/** v0.12: her app's own files, which only her host serves (M13): never registered on his origin. */
+/** v0.11: her app's own files, which only her host serves (M13): never registered on his origin. */
 const PERSON_APP_FILES: ReadonlySet<string> = new Set(['/p.html', '/p-sw.js', '/p.webmanifest']);
 
 function parseWith<T>(schema: z.ZodType<T> | undefined, value: unknown, where: string): T {
@@ -488,7 +488,7 @@ const EXTENSION_GATED: ReadonlyMap<string, RouteDef> = new Map(
  * gated their own way, before any device check.
  */
 export function gate(def: Pick<RouteDef, 'scope' | 'method' | 'join' | 'exit'>, auth: RequestAuth, req: FastifyRequest, s: ApiServices, name?: AnyRouteName): void {
-  // v0.12: her routes have their own gate, and no other transport serves them.
+  // v0.11: her routes have their own gate, and no other transport serves them.
   if (def.scope === 'person') {
     personGate(def, auth, req, s, name);
     return;
@@ -547,13 +547,13 @@ export function gate(def: Pick<RouteDef, 'scope' | 'method' | 'join' | 'exit'>, 
   }
 }
 
-/** v0.12: what her routes answer without a person device (401). */
+/** v0.11: what her routes answer without a person device (401). */
 export const PERSON_NOT_JOINED = 'Open your invite link again.';
-/** v0.12 (T20): the ledger says she shares, but life.db (a restore of an older backup) has no space for her (401). */
+/** v0.11 (T20): the ledger says she shares, but life.db (a restore of an older backup) has no space for her (401). */
 export const PERSON_SETUP_AGAIN = 'Sharing needs to be set up again. Ask for a new invite.';
 
 /**
- * v0.12 People: her gate (spec 9.3.2). Her routes exist only on the people
+ * v0.11 People: her gate (spec 9.3.2). Her routes exist only on the people
  * host (404 elsewhere, also fenced in onRequest). In order:
  * - a `join` route takes no credential (404 while People is switched off:
  *   no new person or device gets in); its writes carry the people origin,
@@ -670,12 +670,12 @@ function forwardTarget(s: ApiServices, name: AnyRouteName, transport: Transport,
  * checks (the node runs its own), and a read-only hub forwards no write.
  */
 function preBodyChecks(name: AnyRouteName, def: RouteDef, auth: RequestAuth, req: FastifyRequest, s: ApiServices, transport: Transport): FleetTarget | null {
-  // v0.12: with People switched off, his People routes don't exist for a device (the Mac's CLI still reaches them).
+  // v0.11: with People switched off, his People routes don't exist for a device (the Mac's CLI still reaches them).
   if (transport === 'tcp' && def.scope !== 'person' && isPeopleRoutePath(def.path) && !s.ctx.settings.get().people.enabled) {
     throw new ApiError('not_found', 'not found');
   }
   gate(def, auth, req, s, name);
-  // v0.12: her routes need life.db, except her exits, which work on jantar.db alone or answer themselves (C12).
+  // v0.11: her routes need life.db, except her exits, which work on jantar.db alone or answer themselves (C12).
   if (def.scope === 'person' && !def.exit && !def.join) {
     const broken = s.deps.life.broken();
     if (broken !== null) throw new ApiError('life_unavailable', broken);
@@ -733,14 +733,14 @@ function forwardQuery(query: unknown): Record<string, string> {
 /** The audit writers of one request: every row, and a refusal's row (writes from a paired device). */
 function auditorFor(s: ApiServices, transport: Transport, name: AnyRouteName, def: RouteDef, impl: RouteImpl, auth: RequestAuth, rawParams: Record<string, string>) {
   const isWrite = def.method !== 'GET';
-  // v0.12: whose space a People write touched: his writes into hers name her (`:pid`); hers name her too.
+  // v0.11: whose space a People write touched: his writes into hers name her (`:pid`); hers name her too.
   const person = auth.person?.personId ?? (isPeopleRoutePath(def.path) ? rawParams.pid : undefined);
   // Refusals, failures and read-scope writes from a device share a small
   // per-device budget (services.ts), so they cannot flood the audit log.
   const audit = (input: AuditInput) => {
     const lowValue = input.result !== 'ok' || def.scope === 'read';
     if (lowValue && transport === 'tcp' && !s.noiseAuditAllowed(actorName(auth))) return;
-    // v0.12 (C8): her own writes say nothing about the area: `person.write`, no target, no params, codes only.
+    // v0.11 (C8): her own writes say nothing about the area: `person.write`, no target, no params, codes only.
     if (auth.person) {
       const code = input.detail?.split(':')[0];
       s.auditor.write({ actor: input.actor, action: 'person.write', params: {}, result: input.result, ...(code && input.result !== 'ok' ? { detail: code } : {}) }, auth.person.personId);
@@ -899,7 +899,7 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
           if (field) throw new ApiError('invalid_request', `invalid body at ${field}: only the Mac's CLI sends it`);
         }
         // Every Life write counts here, so no route can forget to (estimates have their own limits on top).
-        // v0.12: every write of hers too, keyed person:<pid>:<did>.
+        // v0.11: every write of hers too, keyed person:<pid>:<did>.
         if (isWrite && ((def.feature !== undefined && LIFE_FEATURES.has(def.feature)) || (def.scope === 'person' && auth.person))) {
           const limited = s.lifeWriteLimiter.hit(actorName(auth));
           if (!limited.ok) {
@@ -1065,7 +1065,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
       await reply.code(403).send(errorBody('forbidden', 'unknown Host header'));
       return reply;
     }
-    // v0.12 People: the host fence (spec 9.3.2, M13). Her host answers her routes, /healthz and her app's
+    // v0.11 People: the host fence (spec 9.3.2, M13). Her host answers her routes, /healthz and her app's
     // files only (everything else: 404, empty); his hosts never answer under PERSON_PREFIX. Decided on the
     // raw path and on the route Fastify matched, so an encoded path can't slip past either way.
     const onPeopleHost = s.origin.isPeopleHost(headerValue(req.headers.host));
@@ -1099,7 +1099,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
     const door = CAPTURE_GATED.get(`${req.routeOptions.method} ${req.routeOptions.url}`);
     const capture = door !== undefined;
     // v0.6: a server's own paths read no device cookie (and no secret, nor the extension's key); v0.8: nor the capture door's.
-    // v0.12: nor her prefix, nor anything on her host: his cookie never authenticates a person route (T2).
+    // v0.11: nor her prefix, nor anything on her host: his cookie never authenticates a person route (T2).
     if (isApiPath(path) && !path.startsWith(NODE_PREFIX) && !path.startsWith(CAPTURE_PREFIX) && !capture && !path.startsWith(PERSON_PREFIX) && !onPeopleHost) {
       // A phone paired with ccw-v2 (imported with `jantar import-ccw-v2`) still sends the old cookie.
       const current = req.cookies?.[DEVICE_COOKIE];
@@ -1118,7 +1118,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
         auth.authFailure = r.reason;
       }
     }
-    // v0.12: her cookie, read here only: under PERSON_PREFIX, on the people host (T2).
+    // v0.11: her cookie, read here only: under PERSON_PREFIX, on the people host (T2).
     if (onPeopleHost && path.startsWith(PERSON_PREFIX)) {
       const key = req.cookies?.[PERSON_COOKIE];
       const r = s.personDevices.authenticate(key);
@@ -1193,7 +1193,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
     s.log.debug('request', {
       transport,
       method: req.method,
-      // v0.12 (C8): her routes are logged as the prefix alone, never the pattern that would name the area.
+      // v0.11 (C8): her routes are logged as the prefix alone, never the pattern that would name the area.
       route: route.startsWith(PERSON_PREFIX) ? '/v1/p/*' : route,
       status: reply.statusCode,
       ms: Math.round(reply.elapsedTime),
@@ -1206,7 +1206,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
   );
 
   app.setNotFoundHandler((req, reply) => {
-    // v0.12: her host's app shell is p.html; nothing of his is ever served there.
+    // v0.11: her host's app shell is p.html; nothing of his is ever served there.
     if (transport === 'tcp' && s.origin.isPeopleHost(headerValue(req.headers.host))) {
       if (servePersonFallback(req, reply, s.webAvailable)) return;
       void reply.code(404).send();
@@ -1242,7 +1242,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
     },
   );
 
-  // v0.12 WS /v1/p/events: her stream, on the TCP app only (never ctl or link), with its own gate (spec 9.3.6).
+  // v0.11 WS /v1/p/events: her stream, on the TCP app only (never ctl or link), with its own gate (spec 9.3.6).
   const pev = ALL_ROUTES.personEvents;
   if (transport === 'tcp') app.get(
     pev.path,
@@ -1261,7 +1261,7 @@ export async function buildApp(s: ApiServices, transport: Transport, opts: Build
     if (name === 'health' || name === 'events' || name === 'personEvents') continue;
     // v0.6: the link serves the routes a hub forwards, and nothing else.
     if (transport === 'link' && !isNodeRoute(name as RouteName)) continue;
-    // v0.12: her routes are the TCP app's alone.
+    // v0.11: her routes are the TCP app's alone.
     if (transport !== 'tcp' && def.scope === 'person') continue;
     const impl = ROUTE_IMPLS[name];
     if (!impl) throw new Error(`no handler for route ${name}`);

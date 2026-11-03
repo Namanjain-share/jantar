@@ -1,5 +1,5 @@
 /**
- * v0.12 People: WS /v1/p/events, her stream (spec 9.3.6).
+ * v0.11 People: WS /v1/p/events, her stream (spec 9.3.6).
  *
  * 1. `hello {protocol, daemonVersion, webHash, personEpoch}`
  * 2. `tick {seq, life, plan, alerts, me}`: her counters only (life/people/ticks.ts)

@@ -21,7 +21,7 @@
  *   tried, in the same transaction; deleting a café deletes its visits in
  *   one transaction. At most LIFE_LIMITS.placeVisits across every café.
  *
- * v0.12 People (P4, spec 5.2): the owner's module reads his own cafés and
+ * v0.11 People (P4, spec 5.2): the owner's module reads his own cafés and
  * every space he shares (a Shared chip and `?space=` filter on his list);
  * `inShared(space, by)` is a member's module over one shared space. On a
  * shared café either person edits, rates and changes dishes (last edit
@@ -68,7 +68,7 @@ export const PLACES_SENTENCES = {
   visitNone: 'That visit is gone.',
   visitsFull: `You have ${LIFE_LIMITS.placeVisits.toLocaleString('en')} café visits. Delete one to add another.`,
   visitFuture: 'A visit can be today or earlier.',
-  // v0.12 People (P4)
+  // v0.11 People (P4)
   noSpace: 'No such shared list.',
   stayShared: 'They added this café, so it stays shared.',
   memberShared: 'Cafés you add here are shared.',

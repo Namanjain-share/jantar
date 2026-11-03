@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her journal (spec 3.11, O3).
+ * v0.11 People (P2): her journal (spec 3.11, O3).
  *
  * - Kinds and limits; a check-in needs a mood; the client id makes a double
  *   tap one entry; an entry's day is today or earlier, never later.

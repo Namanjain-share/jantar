@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her account, consent and device routes (scope `person`,
+ * v0.11 People: her account, consent and device routes (scope `person`,
  * spec 1.3.2), thin handlers over life/people/module.ts with her as the
  * caller. No file under api/routes/person/ imports a route file outside it,
  * and no owner route file imports from here (arch test).

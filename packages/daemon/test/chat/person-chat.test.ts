@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7, T12, M15): her assistant's thread, through the
+ * v0.11 People (P3, spec 7, T12, M15): her assistant's thread, through the
  * real routes, a real Chat part and the fake claude. Synthetic people only:
  * the owner Sam, the partner Asha (Everything: see.chat on), Bea (Standard:
  * see.chat off).

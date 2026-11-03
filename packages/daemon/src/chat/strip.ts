@@ -1,5 +1,5 @@
 /**
- * v0.12 People (O19, spec 7.8): a photo's metadata stripped before it is
+ * v0.11 People (O19, spec 7.8): a photo's metadata stripped before it is
  * stored, so {owner}'s read-only view of her chat never shows where she was
  * or which camera took it. Written fresh for Jantar (pure byte walking, no
  * dependency), by format:

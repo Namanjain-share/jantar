@@ -59,7 +59,7 @@ export function ringsAt(t: Ringable, at: Date, tz: string): boolean {
 export interface ArmOptions {
   /** This write gave the todo its due time (see the file comment). */
   fresh?: boolean;
-  /** v0.12: the person whose devices it rings (a todo in her space); absent: the owner's. */
+  /** v0.11: the person whose devices it rings (a todo in her space); absent: the owner's. */
   person?: string | undefined;
   /** The instant meant when the wall time alone is ambiguous (Snooze 1h in a repeated hour). */
   at?: Date | undefined;
@@ -91,7 +91,7 @@ export function armTodo(core: Pick<LifeCore, 'scheduler' | 'tz' | 'now'>, t: Tod
   armRing(core, 'todo', t, armed, opts);
 }
 
-/** v0.12: the person a space rings (her own space), or undefined for the owner's and a shared one. */
+/** v0.11: the person a space rings (her own space), or undefined for the owner's and a shared one. */
 export function personOfSpace(space: string): string | undefined {
   return space !== '' && !space.startsWith('s:') ? space : undefined;
 }
@@ -104,7 +104,7 @@ export function todoPush(t: Todo | null, id: string, dueAt: Date, late: boolean,
   else if (bodies === 'short') body = `${clip(title, SHORT_TITLE)} · ${time}`;
   else body = `${title} · ${time}`;
   if (late) body = `Missed at ${time} · ${body}`;
-  // v0.12: hers opens her app, and only her devices get it (the scheduler's row names her).
+  // v0.11: hers opens her app, and only her devices get it (the scheduler's row names her).
   if (person) return { kind: 'life', title: TODO_PUSH_TITLE, body, url: `/p/todos?id=${id}`, tag: `life:todo:${person}:${id}`, person };
   return { kind: 'life', title: TODO_PUSH_TITLE, body, url: `/todos?id=${id}`, tag: `life:todo:${id}` };
 }

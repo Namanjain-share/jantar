@@ -1,5 +1,5 @@
 /**
- * v0.12 People: every control a phone review measured under 44 px (390x844,
+ * v0.11 People: every control a phone review measured under 44 px (390x844,
  * a coarse pointer) carries what makes it at least 44 px, on his People
  * screen and in her app, with synthetic people (Sam and Asha).
  *

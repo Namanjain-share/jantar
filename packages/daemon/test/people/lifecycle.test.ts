@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P1): invites, the agreement, her states and her exits.
+ * v0.11 People (P1): invites, the agreement, her states and her exits.
  *
  * - Invites (spec 2.3, 2.4, D9, C14, C37): preview spends nothing; a join
  *   spends the code once (a race yields one device); 24 h; wrong, spent and

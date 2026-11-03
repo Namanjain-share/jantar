@@ -18,7 +18,7 @@ import type { CaptureKeyRecord, Db, ExtensionRecord, FolderPin, FolderSeen, Node
 import { createPeopleRepos } from '../db/people-repos.js';
 import { PEOPLE_TABLES_SQL } from '../db/schema.js';
 
-/** v0.12: People's jantar.db tables on an in-memory node:sqlite connection, so tests run the one implementation. */
+/** v0.11: People's jantar.db tables on an in-memory node:sqlite connection, so tests run the one implementation. */
 function memoryPeople(): Db['people'] {
   const { DatabaseSync: Sqlite } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (file: string) => DatabaseSync };
   const conn = new Sqlite(':memory:');
@@ -44,7 +44,7 @@ export function createMemoryDb(): Db & { closed: boolean } {
   const nodeRows = new Map<string, NodeRecord>();
   const captureKeyRows = new Map<string, CaptureKeyRecord>();
   let auditSeq = 0;
-  /** v0.12: whose space each audit row touched (the person column), by seq. */
+  /** v0.11: whose space each audit row touched (the person column), by seq. */
   const auditPerson = new Map<number, string>();
 
   const db: Db & { closed: boolean } = {

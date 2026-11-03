@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7.2): her assistant's own writes, over her plan,
+ * v0.11 People (P3, spec 7.2): her assistant's own writes, over her plan,
  * status, sleep and alerts, as her (the People modules' her-side calls:
  * nothing here can act in {owner}'s name or write his space).
  *

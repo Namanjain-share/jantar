@@ -24,7 +24,7 @@
  *   reaches it). A stopped medicine is not edited. Delete takes its doses.
  * - Every write re-runs the ping producers, then emits `life.changed {}`.
  *   Replies and errors carry ids and fixed sentences only.
- * - v0.12 People: the module works in one space; `inSpace(pid)` is the same
+ * - v0.11 People: the module works in one space; `inSpace(pid)` is the same
  *   module over hers (only the People module calls it). A write there arms
  *   pings that ring her devices, ticks nobody's stream here (the People
  *   module says who hears of it) and never emits `life.changed {}`, so his
@@ -245,7 +245,7 @@ function medicinesIn(core: LifeCore, repo: MedsRepo, inSpace: (space: string) =>
       }
 
       next.updatedAt = core.now().toISOString();
-      // v0.12: "Edited by" on a medicine of hers the owner changed (the People module decides when).
+      // v0.11: "Edited by" on a medicine of hers the owner changed (the People module decides when).
       if (opts.editedBy !== undefined) {
         next.editedBy = opts.editedBy;
         next.editedAt = next.updatedAt;

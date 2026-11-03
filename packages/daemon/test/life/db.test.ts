@@ -111,7 +111,7 @@ describe('openLifeDb', () => {
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(statSync(dir).mode & 0o777).toBe(0o700);
     const tables = (db.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map((t) => t.name);
-    // v0.12 (schema 4) adds People's tables; person_activity's AUTOINCREMENT brings sqlite_sequence.
+    // v0.11 (schema 4) adds People's tables; person_activity's AUTOINCREMENT brings sqlite_sequence.
     expect(tables).toEqual([
       'bills', 'budgets', 'day_plans', 'doses', 'food', 'foods_saved', 'journal_comments', 'journal_entries', 'medicines', 'meta', 'money',
       'people', 'person_activity', 'person_alerts', 'pings', 'place_visits', 'places', 'plan_templates', 'posts', 'projects', 'shared_spaces',
@@ -271,7 +271,7 @@ describe("v0.10: migration 3, place_visits (Life's second schema change)", () =>
     expect(LIFE_MIGRATIONS[2]?.sql).not.toMatch(/REFERENCES/);
     const db = openOk();
     const cols = (db.raw.prepare('PRAGMA table_info(place_visits)').all() as { name: string }[]).map((c) => c.name);
-    // v0.12 (schema 4) adds by_person and space (v4-migration.test.ts).
+    // v0.11 (schema 4) adds by_person and space (v4-migration.test.ts).
     expect(cols).toEqual(['id', 'place_id', 'day', 'updated_at', 'json', 'by_person', 'space']);
     const indexes = (db.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'place_visits' AND sql IS NOT NULL ORDER BY name").all() as { name: string }[]).map((i) => i.name);
     expect(indexes).toEqual(['place_visits_day', 'place_visits_place', 'place_visits_space_day']);

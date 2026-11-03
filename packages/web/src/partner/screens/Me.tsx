@@ -1,5 +1,5 @@
 /**
- * v0.12 People: Me (`/p/me?tab=…`): Sharing, Activity, Devices,
+ * v0.11 People: Me (`/p/me?tab=…`): Sharing, Activity, Devices,
  * Notifications, Leave, plus Pause and Export (spec 3.8, P1).
  *
  * - Sharing is rendered from `me.agreement`, the object every view of her

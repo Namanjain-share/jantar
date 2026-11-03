@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): day plans and plan templates in life.db (`day_plans`,
+ * v0.11 People (P2): day plans and plan templates in life.db (`day_plans`,
  * `plan_templates`, spec 9.1.1). One plan per space and day, its steps and
  * check-betweens inline; `id`, `day` and `srev` are columns and win over
  * the json. Every statement names its space (T6). A row that no longer

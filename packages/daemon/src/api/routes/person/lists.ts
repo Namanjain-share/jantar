@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P4, spec 5.2, 5.3): her shared cafés and lists (scope
+ * v0.11 People (P4, spec 5.2, 5.3): her shared cafés and lists (scope
  * `person`), thin handlers over the Places module in her shared space
  * (`places.inShared(space, pid)`) and life/lists. She reads and writes her
  * own shared space only; `space` and `by` are daemon-set. Shared lists are

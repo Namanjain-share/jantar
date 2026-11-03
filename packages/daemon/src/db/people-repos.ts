@@ -1,5 +1,5 @@
 /**
- * v0.12 People's jantar.db repos (migration 8): her devices, her device-link
+ * v0.11 People's jantar.db repos (migration 8): her devices, her device-link
  * codes, her push list, her invites and the consent ledger.
  *
  * One implementation over a statement factory: db/sqlite.ts passes its

@@ -645,13 +645,13 @@ export const ROUTE_IMPLS: RouteTable = {
   ...POSTS_ROUTE_IMPLS,
   // v0.8 (the shelf's reads, jobs, Delete, thumbnails and status are in INTEL_ROUTE_IMPLS)
   ...EXT_READS_ROUTE_IMPLS,
-  // v0.12 People: his routes about the people on his Mac, and hers (scope person).
+  // v0.11 People: his routes about the people on his Mac, and hers (scope person).
   ...PEOPLE_ROUTE_IMPLS,
   ...PERSON_ACCOUNT_ROUTE_IMPLS,
   ...PERSON_PUSH_ROUTE_IMPLS,
   ...PERSON_LIFE_ROUTE_IMPLS,
   ...PEOPLE_LIFE_ROUTE_IMPLS,
-  // v0.12 People P2: her plan, review, status, sleep, journal and alerts; his side of them.
+  // v0.11 People P2: her plan, review, status, sleep, journal and alerts; his side of them.
   ...PERSON_PLAN_ROUTE_IMPLS,
   ...PERSON_SLEEP_ROUTE_IMPLS,
   ...PERSON_JOURNAL_ROUTE_IMPLS,

@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P4, spec 5.3): the lists he shares with her, through his
+ * v0.11 People (P4, spec 5.3): the lists he shares with her, through his
  * People routes (life/lists over her shared space), and "Assign to {her}":
  * an assigned to-do in her space with the item's title (assign.todos; it
  * arrives "From {owner}" and applies at once), the item marked handed. No

@@ -1,5 +1,5 @@
 /**
- * v0.12 People: her medicines as the owner sees them (spec 3.4, 4.2), one
+ * v0.11 People: her medicines as the owner sees them (spec 3.4, 4.2), one
  * component for his Partner › Health and her "See what {owner} sees" (the
  * same DTO, so the mirror matches). `full`: the day's doses (taken,
  * skipped or not, never when) and each medicine with who added it, "Edited

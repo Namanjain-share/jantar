@@ -208,7 +208,7 @@ export default defineCommand(
         if (positionals.length > 1) throw new UsageError('setup takes no argument');
         return setup(ctx, flags);
       case 'people-url': {
-        // v0.12 People: her hostname (its own Access app). The daemon refuses one that mixes with yours.
+        // v0.11 People: her hostname (its own Access app). The daemon refuses one that mixes with yours.
         const url = positionals[1];
         if (flags.clear) {
           if (url) throw new UsageError('give a URL or --clear, not both');

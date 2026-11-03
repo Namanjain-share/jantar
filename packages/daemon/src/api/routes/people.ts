@@ -1,5 +1,5 @@
 /**
- * v0.12 People: the owner's routes about the people on his Mac (spec
+ * v0.11 People: the owner's routes about the people on his Mac (spec
  * 9.3.4), over life/people/module.ts. His reads and writes in her space are
  * routes/people-life.ts.
  *

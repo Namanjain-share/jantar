@@ -1,5 +1,5 @@
 /**
- * v0.12 People, life.db schema 4 (spec 9.1.1, D6): one migration with every
+ * v0.11 People, life.db schema 4 (spec 9.1.1, D6): one migration with every
  * table People's phases need. A schema-3 file with rows in every table
  * migrates in one transaction: every row keeps its data and is the owner's
  * (`space = ''`, `by_person = ''`, `person = ''`), weights and saved foods

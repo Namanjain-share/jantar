@@ -1,4 +1,4 @@
-// v0.12 People: her app's service worker (p-sw.js), apart from the owner's
+// v0.11 People: her app's service worker (p-sw.js), apart from the owner's
 // sw.js (C15). Its shell is /p.html, it precaches only her app's chunks
 // (the build fills the list), it never touches /v1 or /healthz, and a tap on
 // a notification opens a /p… URL of her app only. Her lock-screen choice is
@@ -68,7 +68,7 @@ self.addEventListener('push', (event) => {
     body: str(data.body, 400),
     tag: str(data.tag, 120) || undefined,
     data: { url: targetPath(data.url) },
-    // v0.12 People (spec 6.3): an Urgent alert stays on screen where the browser allows, and is never silent.
+    // v0.11 People (spec 6.3): an Urgent alert stays on screen where the browser allows, and is never silent.
     requireInteraction: NEEDS_YOU.has(data.kind) || data.urgent === true,
     silent: false,
     icon: '/icons/icon-192.png',

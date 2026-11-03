@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P3, spec 7.2, 7.3, M14, O19): her tools, by reading the
+ * v0.11 People (P3, spec 7.2, 7.3, M14, O19): her tools, by reading the
  * lists and calling them on her deps, with no Claude run.
  *
  * - Her tool list is `CHAT_TOOLS ∩ PERSON_CHAT_TOOLS` plus hers alone, and
@@ -198,7 +198,7 @@ describe('chat.db schema 2 (spec 9.1.3)', () => {
       JSON.stringify({ id: '01JTURN0000000000000000001', at: '2026-11-01T09:00:00.000Z', via: 'phone', text: 'an old message', photos: [], state: 'done', tainted: false, refused: 0, by: 'device:x' }),
     );
     raw.close();
-    const copy = join(dir, 'chat-pre-0.12.0.db');
+    const copy = join(dir, 'chat-pre-0.11.0.db');
     const r = openChatDb(path, { preMigrateCopy: () => copy });
     if (!r.ok) throw new Error(r.reason);
     expect(existsSync(copy)).toBe(true);

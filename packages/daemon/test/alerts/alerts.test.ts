@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): alerts both ways (spec 6, M22 in the daemon).
+ * v0.11 People (P2): alerts both ways (spec 6, M22 in the daemon).
  *
  * - Caps belong to the recipient (D18, C29), set within their ranges; over
  *   a cap an alert is saved with no push. Urgent is held to at most 2 an

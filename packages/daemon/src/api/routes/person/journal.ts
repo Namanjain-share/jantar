@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her journal (scope `person`), thin handlers over
+ * v0.11 People (P2): her journal (scope `person`), thin handlers over
  * life/journal with her as the caller. Only she writes, edits and deletes
  * her entries; she deletes only her own comments (his: 404).
  */

@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * v0.12 People, T15 (spec 9.7.1): her app is a separate bundle.
+ * v0.11 People, T15 (spec 9.7.1): her app is a separate bundle.
  *
  * - Source: nothing her entry (src/partner/main.tsx) reaches, statically or
  *   with import(), is an owner screen, his shell, his store, his API client,

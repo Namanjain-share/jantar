@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): his plan editor (spec 4.3, C30). One day of her plan:
+ * v0.11 People (P2): his plan editor (spec 4.3, C30). One day of her plan:
  * a line for the day, steps in order (Move up and Move down are the keyboard
  * and screen-reader path), up to four check-betweens, and Send.
  *

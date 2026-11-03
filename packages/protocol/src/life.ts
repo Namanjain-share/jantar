@@ -127,7 +127,7 @@ export const ProjectSchema = z.object({
   ...stamps,
 });
 /**
- * v0.12 People (P4): a shared list is a project in a shared space with its kind (`list`). Type only here, so
+ * v0.11 People (P4): a shared list is a project in a shared space with its kind (`list`). Type only here, so
  * the owner's bundle carries no People schema; the daemon parses it with `@jantar/protocol/people`'s.
  */
 export type Project = z.infer<typeof ProjectSchema> & { list?: { kind: 'shopping' | 'watch' | 'read' | 'plain' } };
@@ -579,12 +579,12 @@ export const PlaceSchema = z.object({
   ...stamps,
 });
 /**
- * v0.12 People (P4), type only (the daemon's schema is `@jantar/protocol/people`'s): on a shared café, who
+ * v0.11 People (P4), type only (the daemon's schema is `@jantar/protocol/people`'s): on a shared café, who
  * added it ('' you) and its space (`s:<id>`), from the row's columns, and "Edited by" (daemon-set). A café
  * of your own has none of them.
  */
 export type Place = z.infer<typeof PlaceSchema> & { by?: string; space?: string; editedBy?: string; editedAt?: string };
-/** v0.12 People (P4): where a café lives: `''` yours, `s:<id>` a space you share. */
+/** v0.11 People (P4): where a café lives: `''` yours, `s:<id>` a space you share. */
 const SpaceRef = z.string().regex(/^(|s:[0-9A-HJKMNP-TV-Z]{26})$/);
 /** POST /v1/places (tried defaults to false, dishes to none, tags to none). */
 export const PlaceBodySchema = z.strictObject({
@@ -599,7 +599,7 @@ export const PlaceBodySchema = z.strictObject({
   price: PriceLevelSchema.optional(),
   again: GoAgainSchema.optional(),
   tags: PlaceTagsSchema.optional(),
-  /** v0.12 People (P4): "Just me" ('') or a space you share. */
+  /** v0.11 People (P4): "Just me" ('') or a space you share. */
   space: SpaceRef.optional(),
 });
 export type PlaceBody = z.infer<typeof PlaceBodySchema>;
@@ -620,7 +620,7 @@ export const PlacePatchSchema = z.strictObject({
   again: GoAgainSchema.nullable().optional(),
   ratings: PlaceRatingsPatchSchema.optional(),
   tags: PlaceTagsSchema.optional(),
-  /** v0.12 People (P4): share a café of yours, or move one you added back to just you. */
+  /** v0.11 People (P4): share a café of yours, or move one you added back to just you. */
   space: SpaceRef.optional(),
 });
 export type PlacePatch = z.infer<typeof PlacePatchSchema>;
@@ -642,7 +642,7 @@ export const PlaceVisitSchema = z.object({
   notes: VisitNotesSchema.optional(),
   ...stamps,
 });
-/** v0.12 People (P4), type only: on a shared café's visit, who logged it ('' you), from the row's column. */
+/** v0.11 People (P4), type only: on a shared café's visit, who logged it ('' you), from the row's column. */
 export type PlaceVisit = z.infer<typeof PlaceVisitSchema> & { by?: string };
 /** POST /v1/places/:id/visits (day defaults to today; the first visit marks the café tried). */
 export const PlaceVisitBodySchema = z.strictObject({
@@ -686,7 +686,7 @@ export const PlacesQuerySchema = z.object({
   area: z.string().trim().max(60).optional(),
   /** Name, area, dish names, tags (keys and labels) and notes, any case. */
   q: z.string().trim().max(80).optional(),
-  /** v0.12 People (P4): yours and shared (all), yours only (mine), or shared only. */
+  /** v0.11 People (P4): yours and shared (all), yours only (mine), or shared only. */
   space: z.enum(['all', 'mine', 'shared']).optional(),
 });
 export type PlacesQuery = z.infer<typeof PlacesQuerySchema>;

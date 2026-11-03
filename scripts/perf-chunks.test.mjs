@@ -133,7 +133,7 @@ test('the built web app holds every size gate', { skip: !existsSync(join(realDis
   assert.equal(cli.status, 0, cli.stdout + cli.stderr);
 });
 
-test("v0.12 People: her app (p.html) is read and gated apart from the owner's", () => {
+test("v0.11 People: her app (p.html) is read and gated apart from the owner's", () => {
   withDist({}, (dir) => {
     assert.equal(analyze(dir).person, null);
   });

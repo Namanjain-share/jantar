@@ -1,5 +1,5 @@
 /**
- * v0.12 People, M2, T3 (c) and T4 (spec 9.7.2):
+ * v0.11 People, M2, T3 (c) and T4 (spec 9.7.2):
  *
  * - M2 / T3 (c): every route of hers × his credential. On her host his
  *   credential never becomes hers: every person route answers his cookie

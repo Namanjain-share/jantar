@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): his Partner screen (`/people/:pid?tab=…&day=`, spec
+ * v0.11 People (P2): his Partner screen (`/people/:pid?tab=…&day=`, spec
  * 4.1, 4.2), a lazy chunk: his main load doesn't carry it.
  *
  * - Header: her name, her status and line, "Asleep since" (see.sleep), and

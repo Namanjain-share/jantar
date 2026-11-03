@@ -8,7 +8,7 @@
  * allowed `Origin`; a missing Origin is refused too, since every browser
  * sends one on those requests.
  *
- * v0.12 People (C1, D15): two Origin sets, one per principal. Her host
+ * v0.11 People (C1, D15): two Origin sets, one per principal. Her host
  * (`remote.peopleUrl`) and his are the same site, so SameSite cookies don't
  * keep them apart, and a WebSocket has no CORS: a page on her origin running
  * in his browser must never drive his routes or open his event stream.
@@ -59,7 +59,7 @@ export class OriginPolicy {
     return out;
   }
 
-  /** v0.12: her origin (`https://us.example.com`), or null while there is no people host. */
+  /** v0.11: her origin (`https://us.example.com`), or null while there is no people host. */
   peopleOrigin(): string | null {
     const s = this.opts.settings();
     const url = s.remote.peopleUrl ?? null;
@@ -70,25 +70,25 @@ export class OriginPolicy {
     return normalizeOrigin(url);
   }
 
-  /** v0.12: her host (`us.example.com`), or null. */
+  /** v0.11: her host (`us.example.com`), or null. */
   peopleHost(): string | null {
     const o = this.peopleOrigin();
     return o ? new URL(o).host : null;
   }
 
-  /** v0.12: the request came in on her host. */
+  /** v0.11: the request came in on her host. */
   isPeopleHost(host: string | undefined): boolean {
     const h = host?.trim().toLowerCase();
     const p = this.peopleHost();
     return !!h && !!p && h === p;
   }
 
-  /** The owner's check, as before 0.12. */
+  /** The owner's check, as before 0.11. */
   originAllowed(origin: string | undefined): boolean {
     return this.originAllowedFor('owner', origin);
   }
 
-  /** v0.12 (C1): the Origin a principal's writes and sockets must carry. */
+  /** v0.11 (C1): the Origin a principal's writes and sockets must carry. */
   originAllowedFor(principal: Principal, origin: string | undefined): boolean {
     if (!origin || origin === 'null') return false;
     const n = normalizeOrigin(origin);
@@ -97,7 +97,7 @@ export class OriginPolicy {
     return this.allowedOrigins().has(n);
   }
 
-  /** Host header check: his hosts and, v0.12, her host. Skipped in "lan" mode (development only; no people host there). */
+  /** Host header check: his hosts and, v0.11, her host. Skipped in "lan" mode (development only; no people host there). */
   hostAllowed(host: string | undefined): boolean {
     if (this.opts.settings().remote.mode === 'lan') return true;
     if (!host) return false;

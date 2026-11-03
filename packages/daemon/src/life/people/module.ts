@@ -1,5 +1,5 @@
 /**
- * v0.12 People: the people on this Mac, their invites, devices and consent,
+ * v0.11 People: the people on this Mac, their invites, devices and consent,
  * pause, leave and remove (spec 1.2, 2, 8.3).
  *
  * Two stores, on purpose (D7, D19):

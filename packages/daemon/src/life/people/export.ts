@@ -1,5 +1,5 @@
 /**
- * v0.12 People: what her export holds (spec 8.6), section by section, as the
+ * v0.11 People: what her export holds (spec 8.6), section by section, as the
  * data map names them (data-map.ts, T11). Every query names her space (T6).
  * Shared rows (P4) and later phases' tables join as their phases land.
  */

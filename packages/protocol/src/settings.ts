@@ -218,14 +218,14 @@ export const RemoteSettingsSchema = z.object({
   /** Public base URL used in pairing links, e.g. https://mac.tailnet.ts.net */
   publicUrl: z.string().nullable().default(null),
   /**
-   * v0.12 People: her hostname's https URL (its own Cloudflare Access app),
+   * v0.11 People: her hostname's https URL (its own Cloudflare Access app),
    * e.g. https://us.example.com. Its origin is hers alone: never publicUrl's
    * and never in allowedOrigins (peopleSettingsProblem).
    */
   peopleUrl: z.string().nullable().default(null),
 });
 
-/** v0.12 People (no version bump: an older daemon drops the unknown group, and her host with it). */
+/** v0.11 People (no version bump: an older daemon drops the unknown group, and her host with it). */
 export const PeopleSettingsSchema = z.object({
   /** Off by default: with it off a build behaves as 0.10 for the owner; her exits still work. */
   enabled: z.boolean().default(false),
@@ -412,7 +412,7 @@ export const SettingsSchema = z.object({
   ask: AskSettingsSchema.prefault({}),
   /** v0.6 (no version bump either) */
   fleet: FleetSettingsSchema.prefault({}),
-  /** v0.12 People (no version bump either) */
+  /** v0.11 People (no version bump either) */
   people: PeopleSettingsSchema.prefault({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -442,7 +442,7 @@ export const MAC_ONLY_SETTING_GROUPS = [
   'ask',
   // v0.6: the Fleet switch (a phone must never let servers in).
   'fleet',
-  // v0.12: People (a phone must never let a person in).
+  // v0.11: People (a phone must never let a person in).
   'people',
 ] as const;
 export type MacOnlySettingGroup = (typeof MAC_ONLY_SETTING_GROUPS)[number];
@@ -499,7 +499,7 @@ export function applySettingsPatch(current: Settings, patch: unknown): PatchResu
     const path = issue ? issue.path.join('.') : '';
     return { ok: false, error: `invalid setting${path ? ` ${path}` : ''}: ${issue?.message ?? 'invalid'}`, path };
   }
-  // v0.12: her host must stand apart from his (C1, C10).
+  // v0.11: her host must stand apart from his (C1, C10).
   const people = peopleSettingsProblem(parsed.data);
   if (people) return { ok: false, error: `invalid setting ${people.path}: ${people.message}`, path: people.path };
   // A zone being set must be one this runtime knows (a stored one is only shape-checked).
@@ -564,7 +564,7 @@ export function lifeOn(s: Pick<Settings, 'life'>): boolean {
 }
 
 /**
- * v0.12 People (C1, C10): what is wrong with the people settings, or null.
+ * v0.11 People (C1, C10): what is wrong with the people settings, or null.
  * `remote.peopleUrl` must be an https URL on a name (not an IP or
  * localhost), its origin must differ from `publicUrl`'s and must not be in
  * `allowedOrigins`. `people.enabled` needs a peopleUrl, `remote.mode`

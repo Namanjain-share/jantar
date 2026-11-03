@@ -1,5 +1,5 @@
 /**
- * v0.12 People (P2): her sleep log (spec 3.12, O10).
+ * v0.11 People (P2): her sleep log (spec 3.12, O10).
  *
  * - The night key's 12:00 boundary; manual nights; one open night at a time
  *   (409 `open`), "Woke up" with none open (409 `none_open`); "Going to

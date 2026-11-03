@@ -1,5 +1,5 @@
 /*
- * v0.12 People: her app's stylesheet (its own build, vite.partner.config.ts).
+ * v0.11 People: her app's stylesheet (its own build, vite.partner.config.ts).
  * The same tokens, fonts, base and kit as the owner's, and only the
  * utilities her app and the kit use: Tailwind scans src/partner and
  * src/ui/kit here, nothing else, so her first load stays small.

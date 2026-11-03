@@ -1,5 +1,5 @@
 /**
- * v0.12 People, M12 and T9 (spec 9.7.2): push routing and content (P1).
+ * v0.11 People, M12 and T9 (spec 9.7.2): push routing and content (P1).
  *
  * - Her pushes go only to her devices' `person_push_subs`, never Bea's and
  *   never his `push_subs`; his People pushes go only to `push_subs`.
