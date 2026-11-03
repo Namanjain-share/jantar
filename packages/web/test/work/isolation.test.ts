@@ -115,7 +115,7 @@ describe.skipIf(!built)('her app never reaches Work (as built)', () => {
   const manifest = built ? (JSON.parse(readFileSync(join(dist, '.vite', 'p-manifest.json'), 'utf8')) as Record<string, { file: string; imports?: string[]; dynamicImports?: string[] }>) : {};
   const chunks = new Set<string>();
   {
-    const todo = Object.keys(manifest).filter((k) => k === 'p.html');
+    const todo: string[] = Object.keys(manifest).filter((k) => k === 'p.html');
     const seen = new Set<string>();
     while (todo.length) {
       const k = todo.pop() as string;
