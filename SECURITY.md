@@ -2109,6 +2109,12 @@ It adds a new asset: **another person's Life data, health data included**.
   owner route or tool writes to her thread. chat.db's threads are apart in
   every query (`thread`), and an id of the other thread is 404.
 
+- **Shared lists (P4)** live in a shared space (`s:<id>`) that only its two
+  members read; every query names the space, a row of another space is 404,
+  and a row's author is a column no body can set. In his chat, a shared
+  café's text she wrote or last edited is `<data source="partner">` and
+  taints the turn (and his in hers); `jantar mcp` reads only his own space.
+
 Pinned by `packages/daemon/test/people/*` and `test/arch/v012-people.test.ts`
 (every owner route with her credential, every person route with his, both
 event streams, push routing, the Origin split, static files by host) and

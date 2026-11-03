@@ -475,6 +475,13 @@ On the same two phones (owner and partner):
   shows it, and the stored file has no GPS (check it with `sips -g all` on
   the copy under the chat folder).
 
+### People (v0.12, P4)
+
+- A café added on the partner's phone shows on the owner's Cafés within a
+  tick, tagged shared, and the reverse.
+- A list item ticked on one phone shows "Ticked by …" on the other.
+- A café deleted on one phone: the other gets one notification.
+
 ## Trying Escape and Clear draft again
 
 On another macOS, Terminal or Claude Code version, try Escape and Clear

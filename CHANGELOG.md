@@ -108,6 +108,16 @@ partner simply can't sign in there).
   to schema 2 after a copy to `backups/chat-pre-<version>.db`
   ([Upgrading](docs/upgrading.md)). Your own assistant reading their space
   is not part of this version.
+- **Shared cafés and lists** (P4): a space you share with each person.
+  Cafés: your list shows yours and the shared ones; either of you adds,
+  rates and changes dishes ("Edited by Asha"), each logs and changes only
+  their own visits, you share a café of yours (or all) and take back one you
+  added. Lists (shopping, to watch, to read, plain): either adds, ticks
+  ("Ticked by Asha · 18:20"), renames and deletes; Assign to them turns an
+  item into one of their to-dos from you. Deleting a café or list is a
+  Confirm, and the other is told. Their assistant reads and changes them;
+  in either assistant the other person's words are framed as data. When
+  someone is forgotten, the shared rows stay with you.
 
 ## 0.10.2 (3 November 2026)
 

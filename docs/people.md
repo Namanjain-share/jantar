@@ -286,6 +286,36 @@ Let's talk or tick "Tell Sam my answer"; skipping it counts for nothing.
 **Never from these.** Moods, check-ins, nights, journal entries and review
 outcomes never create an item, an alert, a score or a concern line.
 
+## Shared lists: cafés and lists
+
+Some lists are both of yours, not one person's: they live in a space you
+share (one per person, made when you add them), so there is nothing to
+switch on or off in the agreement.
+
+- **Cafés.** Your Cafés list shows your own and the shared ones (a
+  "shared" tag on each); their app's Lists › Cafés shows only the shared
+  ones. Either of you adds, rates, notes and changes dishes; the last edit
+  wins and shows "Edited by Asha · 2 Nov". Each of you logs your own visits
+  ("You" or the other's name) and changes or deletes only your own. Cafés
+  they add are always shared. On your People screen's Lists tab you share a
+  café of yours (one, or Share all) and move one you added back to just
+  you; one they added stays shared.
+- **Lists** (shopping, to watch, to read, plain): either of you adds,
+  edits, ticks, unticks and deletes items and renames lists; a tick shows
+  "Ticked by Asha · 18:20". Items have no due day and never ring anyone.
+  **Assign to Asha** (yours, with "add to-dos for them" on) makes an
+  ordinary to-do of theirs from the item's title ("From Sam"), and marks
+  the item "Assigned to Asha"; the two aren't linked.
+- **Deleting** a café or a list is a Confirm for either of you ("Delete Blue
+  Door for both of you?"), and the other gets one notification and a line in
+  their Activity.
+- **Assistants.** Their assistant reads and changes the shared cafés and
+  lists (never yours alone). In either assistant, text the other person
+  wrote or last edited is framed as data, and the assistant's writes then
+  wait for a tap.
+- **When they're forgotten** (after leaving, or removed with forget), the
+  shared cafés and lists stay, as yours, with their authorship gone.
+
 ## Their assistant (Chat)
 
 Their app has its own Chat: an assistant for their day, in a thread of

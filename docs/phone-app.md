@@ -56,7 +56,7 @@ denies, `r` puts the cursor in the composer, `n` goes to the next one and
 
 The person you share with uses a separate app at `/p` on their own
 hostname ([People](people.md)): it holds none of your screens. Its tab bar
-is Today, To-do, Journal, Chat and More (Health, Alerts, Me). Today runs
+is Today, To-do, Journal, Chat and More (Health, Alerts, Lists, Me). Today runs
 their day plan, with a tick on every row, a 5-second Undo and one button at
 the bottom for the thumb (Got it, then Done: the Now step); from their
 review time it shows the evening review, and in the evening Going to sleep.
@@ -66,7 +66,11 @@ you can, "Sam can read this chat" above the box on every visit. Journal,
 Chat, Health and Alerts load when opened.
 
 On your People screen, the Chat tab shows their thread read only (no box,
-no Undo, no buttons) while they share it, and their messages a day.
+no Undo, no buttons) while they share it, and their messages a day. Lists
+shows the cafés you share (Share, Share all, Just me) and your shared lists,
+with ticks and Assign to them. Your Cafés list marks shared cafés "shared".
+Their Lists (in More) has Cafés (add, rate, log a visit, delete with a
+Confirm for both) and Lists (tick circles, "Ticked by Sam · 18:20").
 
 ## Turn it on at your Mac
 
