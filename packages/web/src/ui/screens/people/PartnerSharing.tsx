@@ -362,7 +362,10 @@ export function ActivityTab({ client, pid, name }: { client: PeopleClient; pid: 
   );
 }
 
-/** Someone invited (link until …, "Copy link again" on an admin device) or whose sharing is ending, on his People list. */
+/**
+ * Someone invited (link until …, "Copy link again" on an admin device), whose sharing is ending, or who
+ * left (their data kept 30 days, then deleted), on his People list: what happened and the next step.
+ */
 export function NotSharingRow({ client, p }: { client: PeopleClient; p: PersonView }) {
   const [link, setLink] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -401,6 +404,17 @@ export function NotSharingRow({ client, p }: { client: PeopleClient; p: PersonVi
           ) : null}
           <p className="mt-4 type-small text-ink-3">
             A new link: <code className="type-mono">{`${CLI_NAME} people invite ${p.name}`}</code> at the Mac.
+          </p>
+        </>
+      ) : p.state === 'left' ? (
+        <>
+          <p className="type-small text-ink-2">
+            Sharing has ended. Nothing of {p.name}'s shows here now: their data stays on this Mac for 30 days after it ended, then it is deleted.
+          </p>
+          <p className="mt-4 type-small text-ink-3">
+            To share again: <code className="type-mono">{`${CLI_NAME} people add ${p.name} --email <address>`}</code>, then{' '}
+            <code className="type-mono">{`${CLI_NAME} people invite ${p.name}`}</code> at the Mac. To delete their data now:{' '}
+            <code className="type-mono break-all [overflow-wrap:anywhere]">{`${CLI_NAME} people remove ${p.id} --forget`}</code>.
           </p>
         </>
       ) : (

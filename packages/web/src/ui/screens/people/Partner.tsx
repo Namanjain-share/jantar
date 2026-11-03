@@ -23,8 +23,9 @@
  *   mark; he has no control here that writes in her name.
  * - Someone whose space a Life restore took out (T20) is a note on People,
  *   and on their old `/people/:pid`, with the way to invite them again.
- * - Someone invited (the link's expiry, Copy link again) or whose sharing is
- *   ending is a row on People (spec 2.3), not an empty heading.
+ * - Someone invited (the link's expiry, Copy link again), whose sharing is
+ *   ending, or who left (kept 30 days, the way to share again or delete it
+ *   now) is a row on People (spec 2.3), not an empty heading.
  */
 import { ALERT_KINDS, ALERT_REPLY_LABELS, PEOPLE_LABEL, STATUS_LABELS, type AlertKind } from '@jantar/protocol/people-core';
 import type {
@@ -135,7 +136,8 @@ export function Partner({ pid, tab: tabIn, day: dayIn, id, client = peopleClient
   const navigate = useNavigate();
   const list = useLifeLoad('people', () => client.list());
   const sharing = (list.data?.people ?? []).filter((p) => p.state === 'active' || p.state === 'paused');
-  const notYet = (list.data?.people ?? []).filter((p) => p.state === 'invited' || p.state === 'ending');
+  // Invited, ending, or left (kept 30 days, then deleted): a row each, never just the heading (review 4, B4).
+  const notYet = (list.data?.people ?? []).filter((p) => p.state === 'invited' || p.state === 'ending' || p.state === 'left');
   const setupAgain = list.data?.setupAgain ?? [];
   useEffect(() => {
     // With a set-up-again note to read, People stays on its list rather than opening the one person sharing.

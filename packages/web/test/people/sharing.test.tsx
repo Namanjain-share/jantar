@@ -230,6 +230,17 @@ describe('his People list: someone invited', () => {
     expect(screen.getByText('jantar people invite Asha')).toBeTruthy();
   });
 
+  it('someone who left is a row with what happened and the next step, not an empty heading (review 4, B4)', async () => {
+    const left = person({ state: 'left', agreement: null });
+    const c = client({ list: vi.fn(async () => ({ enabled: true, people: [left], ownerName: 'Sam' })) });
+    render(<Wrapped client={c} pid={null} />);
+    expect(await screen.findByText(/Sharing has ended\. Nothing of Asha's shows here now: their data stays on this Mac for 30 days after it ended, then it is deleted\./)).toBeTruthy();
+    expect(screen.getByText('jantar people add Asha --email <address>')).toBeTruthy();
+    expect(screen.getByText('jantar people invite Asha')).toBeTruthy();
+    expect(screen.getByText(`jantar people remove ${PID} --forget`)).toBeTruthy();
+    expect(screen.queryByText(/Nobody yet/)).toBeNull();
+  });
+
   it('nobody yet says how to add someone', async () => {
     const c = client({ list: vi.fn(async () => ({ enabled: true, people: [] })) });
     render(<Wrapped client={c} pid={null} />);
