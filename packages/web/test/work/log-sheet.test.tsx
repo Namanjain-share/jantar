@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../src/lib/api.js';
 import { forgetDrafts } from '../../src/lib/drafts.js';
 import { fakeApi, preloadPlaces, renderApp, stateWith } from '../helpers.js';
-import { IDS, WORK_ON, clientAnswers, workRequest } from '../work-helpers.js';
+import { IDS, WORK_ON, clientAnswers, clientHub, dealCard, workRequest } from '../work-helpers.js';
 
 preloadPlaces('work', 'clients');
 
@@ -71,6 +71,24 @@ describe('the Log sheet', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Log with Pat Example' })).toBeNull());
     // Saved: the drafts are gone.
     expect((within(await openLog()).getByLabelText('Note') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it("a person's sheet offers its company's open deals too, named with their client, so the next step reaches the deal", async () => {
+    const companyDeal = dealCard(IDS.deal2, { title: 'Ops dashboard', client: { id: IDS.client, name: 'Acme' } });
+    const won = dealCard(IDS.deal3, { title: 'Brand refresh', kind: 'won' });
+    const { api } = setup({
+      'GET /v1/work/clients/:id': clientHub({ deals: [dealCard(IDS.deal), companyDeal, won] }),
+      'POST /v1/work/clients/:id/log': { id: '01JWRK10G0000000000000000N', todoId: '01JWRKT0D00000000000000NEW' },
+    });
+    const sheet = await openLog();
+    const deal = within(sheet).getByLabelText('Deal') as HTMLSelectElement;
+    expect([...deal.options].map((o) => o.textContent)).toEqual(['None', 'Site rebuild', 'Ops dashboard · Acme']);
+    fireEvent.change(deal, { target: { value: IDS.deal2 } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Tomorrow' }));
+    fireEvent.change(within(sheet).getByLabelText('Title'), { target: { value: 'Send the quote' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Log and set next step' }));
+    await waitFor(() => expect(calls(api, 'POST', '/v1/work/clients/:id/log')).toHaveLength(1));
+    expect(calls(api, 'POST', '/v1/work/clients/:id/log')[0]).toMatchObject({ params: { id: IDS.pat }, body: { dealId: IDS.deal2, next: { title: 'Send the quote', dealId: IDS.deal2 } } });
   });
 
   it('Next week is the coming Monday; Pick takes any day; a next step needs a day and a title', async () => {

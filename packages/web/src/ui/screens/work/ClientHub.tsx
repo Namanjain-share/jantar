@@ -412,7 +412,9 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
             onOpenChange={log.onOpenChange}
             sheetKey={log.key}
             client={{ id: hub.contact.id, name: hub.contact.name }}
-            deals={hub.deals.filter((d) => d.kind === 'open' && d.client.id === hub.contact.id)}
+            // Every open deal on the page: a person's own and its company's, a company's and its people's (the
+            // design's "Log with Riya Kapoor", Deal [Site rebuild], Acme's), so a next step reaches the deal.
+            deals={hub.deals.filter((d) => d.kind === 'open')}
             start={log.item ?? {}}
             now={now}
             onSaved={reload}

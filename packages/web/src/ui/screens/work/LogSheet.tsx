@@ -47,7 +47,7 @@ export interface LogSheetProps {
   onOpenChange: (open: boolean) => void;
   sheetKey: number;
   client: { id: string; name: string };
-  /** Its open deals, to log against one. */
+  /** The open deals to log against one: its own, and its company's or its people's (named with their client). */
   deals: readonly WorkDealCard[];
   start: LogStart;
   now: LifeClock;
@@ -200,7 +200,7 @@ function LogForm({ client, deals, start, now, onDone, onSaved }: { client: { id:
             <option value="">None</option>
             {deals.map((d) => (
               <option key={d.id} value={d.id}>
-                {d.title}
+                {d.client.id === client.id ? d.title : `${d.title} · ${d.client.name}`}
               </option>
             ))}
           </select>
