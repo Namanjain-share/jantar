@@ -65,8 +65,9 @@ function TouchRail({ route, badges, needs, features, pairs, active, conn, single
                 )}
               >
                 <Icon size={20} aria-hidden="true" />
+                {/* 64 wide: a place's short word where it has one (Accountability partner: "Partner"). */}
                 <span aria-hidden="true" className="type-rail">
-                  {item.label}
+                  {item.short ?? item.label}
                 </span>
                 <Badge count={n} className="absolute right-6 top-2" label={`${n} new`} />
               </Link>

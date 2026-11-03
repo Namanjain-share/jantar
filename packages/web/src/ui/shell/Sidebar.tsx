@@ -8,10 +8,11 @@
  *            Hide sidebar (⌘\) at its end
  *   search   "Search or jump": the palette (⌘K)
  *   places   Board, Today (its six places under it, shown or hidden by a
- *            44 caret of its own), Chat, Files, Alerts; then the Library
- *            label (not a control) and Intel, Meetings; 44 rows, the
- *            current one --raised with the ink tick at the left edge. Only
- *            this middle part scrolls.
+ *            44 caret of its own), Chat, Files, Alerts, Partner (0.12:
+ *            Accountability partner, v0.11 People, while it is on); then
+ *            the Library label (not a control) and Intel, Meetings; 44
+ *            rows, the current one --raised with the ink tick at the left
+ *            edge. Only this middle part scrolls.
  *   footer   the accounts strip (opens Accounts) and ⋯ (Devices, Keyboard
  *            shortcuts, the theme, Reload app), above the home indicator
  *
@@ -62,7 +63,7 @@ function Place({
   exact = false,
   onGo,
 }: {
-  item: { route: Route['name']; href: string; label: string; icon: NavItem['icon'] };
+  item: { route: Route['name']; href: string; label: string; short?: string | undefined; icon: NavItem['icon'] };
   route: Route['name'];
   badges: TouchNavProps['badges'];
   indent?: boolean;
@@ -76,12 +77,14 @@ function Place({
   return (
     <Link
       href={item.href}
+      // A shorter word where the full one wouldn't fit 220 (Accountability partner: "Partner"); the full one is its name.
+      aria-label={item.short ? item.label : undefined}
       aria-current={on ? 'page' : undefined}
       onClick={onGo}
       className={clsx(ROW, 'flex-1', indent && 'pl-32', on ? 'rail-tick bg-raised font-medium text-ink' : 'text-ink-2 hover:bg-hover hover:text-ink')}
     >
       <Icon size={indent ? 18 : 20} aria-hidden="true" className={clsx('flex-none', on ? 'text-ink' : 'text-ink-3')} />
-      <span className="min-w-0 flex-1 truncate type-row">{item.label}</span>
+      <span className="min-w-0 flex-1 truncate type-row">{item.short ?? item.label}</span>
       <Badge count={n} label={`${n} new`} />
     </Link>
   );

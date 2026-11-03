@@ -16,6 +16,9 @@
  * strip and the ⋯ menu (`touch: false`), and stay in ⌘K, ⌘5, ⌘7 and the g
  * chords. Today's six places, nested under Today in the sidebar, are in
  * life.ts (their icons load with the sidebar and Today, not the shell).
+ * Accountability partner is the top list's last place there, as "Partner"
+ * (its `short`) in the 220 sidebar and the 64 wide rail label, with the full
+ * label as its name.
  */
 import {
   BellIcon,
@@ -65,9 +68,14 @@ export const NAV: readonly NavItem[] = [
   { route: 'people', href: '/people', label: 'Accountability partner', short: 'Partner', icon: PeopleGlyph, feature: 'people' },
 ];
 
-/** The places the touch sidebar and rail list, in nav order (no Accounts, no Devices). */
+/**
+ * The places the touch sidebar and rail list (no Accounts, no Devices): the top list, then the Library,
+ * each in nav order, so the rail keeps the sidebar's order (Accountability partner, last in NAV, is the
+ * top list's last place, above Intel and Meetings).
+ */
 export function touchItems(features: Readonly<Features>): NavItem[] {
-  return navItems(features).filter((item) => item.touch !== false);
+  const items = navItems(features).filter((item) => item.touch !== false);
+  return [...items.filter((item) => item.group !== 'library'), ...items.filter((item) => item.group === 'library')];
 }
 
 /** The phone's fifth tab when more than five places are on. */

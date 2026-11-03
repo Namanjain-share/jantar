@@ -347,7 +347,7 @@ describe('0.11 c10: the shell follows the visual viewport', () => {
 
 describe('0.11 c24: the touch shell', () => {
   const touchAt = (width: number) => layoutAt(width, { coarse: true });
-  const allOn = () => stateWith({ sessions: [session('web-app', { status: 'waiting' })], pending: [pending('web-app')], features: { files: true, life: true, intel: true, meetings: true, ask: true } });
+  const allOn = () => stateWith({ sessions: [session('web-app', { status: 'waiting' })], pending: [pending('web-app')], features: { files: true, life: true, intel: true, meetings: true, ask: true, people: true } });
   const navNames = (nav: HTMLElement) =>
     within(nav)
       .getAllByRole('link')
@@ -379,19 +379,30 @@ describe('0.11 c24: the touch shell', () => {
   });
 
   it('one nav order: the sidebar, the rail and the tabs all follow NAV (Accounts and Devices leave the touch list)', async () => {
-    const order = NAV.filter((n) => n.touch !== false).map((n) => n.label);
+    // The top list, then the Library, each in NAV's order (0.12: Accountability partner closes the top list).
+    const touch = NAV.filter((n) => n.touch !== false);
+    const order = [...touch.filter((n) => n.group !== 'library'), ...touch.filter((n) => n.group === 'library')].map((n) => n.label);
+    expect(order.slice(-3)).toEqual(['Accountability partner', 'Intel', 'Meetings']);
     const side = renderApp({ state: allOn(), layout: touchAt(1180) });
     await screen.findByRole('button', { name: 'Hide sidebar' });
     const names = navNames(screen.getByRole('navigation', { name: 'Main' }));
     expect(names.filter((n) => order.includes(n))).toEqual(order);
     expect(names).not.toContain('Accounts');
     expect(names).not.toContain('Devices');
+    // 0.12: Accountability partner (v0.11 People) is the top list's last place, "Partner" in 220, above the Library.
+    const partner = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Accountability partner' });
+    expect(partner.getAttribute('href')).toBe('/people');
+    expect(partner.textContent?.trim()).toBe('Partner');
+    expect(names.indexOf('Accountability partner')).toBe(names.indexOf('Alerts') + 1);
+    expect(names.indexOf('Accountability partner')).toBeLessThan(names.indexOf('Intel'));
     // Today's places under Today, in Today's order.
     expect(within(screen.getByRole('list', { name: "Today's places" })).getAllByRole('link').map((a) => a.textContent?.trim())).toEqual(['Todos', 'Medicines', 'Food', 'Cafés', 'Finance', 'Posts']);
     side.unmount();
     const rail = renderApp({ state: allOn(), layout: touchAt(820) });
     await screen.findByRole('button', { name: 'Show sidebar' });
     expect(navNames(screen.getByRole('navigation', { name: 'Main' })).filter((n) => order.includes(n))).toEqual(order);
+    // The 64 wide rail label is the short word too.
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Accountability partner' }).textContent?.trim()).toBe('Partner');
     rail.unmount();
     renderApp({ state: allOn(), layout: touchAt(390) });
     expect(navNames(screen.getByRole('navigation', { name: 'Main' })).slice(0, 4)).toEqual(order.slice(0, 4));
