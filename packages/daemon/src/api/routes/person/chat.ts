@@ -8,8 +8,8 @@
  * Her writes are audited by the pipeline as `person.write` with no detail;
  * a run leaves one `chat.run` row under her person, with no text (C8).
  */
-import { PERSON_CHAT_SENTENCES } from '@jantar/protocol/people';
-import type { ChatItemParams, ChatListQuery, ChatSendBody } from '@jantar/protocol';
+import { PERSON_CHAT_SENTENCES, type PersonChatSendBody } from '@jantar/protocol/people';
+import type { ChatItemParams, ChatListQuery } from '@jantar/protocol';
 import type { LifeResult } from '../../../contracts.js';
 import { ApiError } from '../../errors.js';
 import { actorName } from '../../request.js';
@@ -34,7 +34,7 @@ export const PERSON_CHAT_ROUTE_IMPLS: RouteTable = {
     handle: (c: Call, s) => herValue(s.deps.chat.personStatus(needActor(c.auth))),
   },
   personChatSend: {
-    handle: (c: Call<unknown, unknown, ChatSendBody>, s) => {
+    handle: (c: Call<unknown, unknown, PersonChatSendBody>, s) => {
       const actor = needActor(c.auth);
       const who = actorName(c.auth);
       // Her device's burst limit (the owner's per-device numbers); her daily cap is the Chat part's (spec 7.5).

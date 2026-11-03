@@ -6,6 +6,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { ChatSendBodySchema } from '../src/chat.js';
 import * as index from '../src/index.js';
 import {
   AGREEMENT_FIELDS,
@@ -13,6 +14,8 @@ import {
   AgreementSchema,
   BUILT_PHASE,
   OwnerFoodViewSchema,
+  PERSON_CHAT_ROUTES,
+  PersonChatSendBodySchema,
   PersonFoodBodySchema,
   agreementProblem,
   agreementWithin,
@@ -145,5 +148,17 @@ describe('the subpath stays out of the index', () => {
     for (const k of Object.keys(index)) expect(k, k).not.toMatch(/^(PERSON_|PEOPLE_|Person[A-Z]|Agreement)/);
     const text = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
     expect(text).not.toMatch(/people/);
+  });
+});
+
+describe('her chat send body (0.12 merge, spec 9.10)', () => {
+  const ULID = '01JABCDEFGHJKMNPQRSTVWXYZ0';
+  it('is text and photos only: the "Looking at" context is his, and hers is refused', () => {
+    expect(PERSON_CHAT_ROUTES.personChatSend.body).toBe(PersonChatSendBodySchema);
+    expect(PersonChatSendBodySchema.safeParse({ text: 'hi', photos: [ULID] }).success).toBe(true);
+    expect(PersonChatSendBodySchema.safeParse({ text: 'hi', context: { kind: 'place', id: ULID } }).success).toBe(false);
+    expect(PersonChatSendBodySchema.safeParse({ text: ' ' }).success).toBe(false);
+    // His keeps it.
+    expect(ChatSendBodySchema.safeParse({ text: 'hi', context: { kind: 'place', id: ULID } }).success).toBe(true);
   });
 });

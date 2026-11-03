@@ -38,7 +38,7 @@ import {
   type Area,
 } from './people-core.js';
 import { IsoDateSchema, ScopeSchema } from './models.js';
-import { CHAT_PHOTO_MAX_BYTES, ChatItemParamsSchema, ChatListQuerySchema, ChatListSchema, ChatPhotoParamsSchema, ChatSendBodySchema, ChatTurnParamsSchema, ChatTurnSchema } from './chat.js';
+import { CHAT_PHOTO_MAX_BYTES, CHAT_PHOTOS_MAX, CHAT_TEXT_MAX, ChatItemParamsSchema, ChatListQuerySchema, ChatListSchema, ChatPhotoIdSchema, ChatPhotoParamsSchema, ChatTurnParamsSchema, ChatTurnSchema } from './chat.js';
 import {
   AlertSendBodySchema,
   AlertReplyBodySchema,
@@ -1433,6 +1433,15 @@ export const PEOPLE_DAYS_ROUTES = {
   }),
 } as const satisfies Record<string, RouteDef>;
 
+/**
+ * Her message (spec 9.10): text and photos, strict. His send body gained 0.12's "Looking at" `context` (a
+ * kind and an id of his); hers has none, so a body that names one is refused (400).
+ */
+export const PersonChatSendBodySchema = z
+  .strictObject({ text: z.string().max(CHAT_TEXT_MAX), photos: z.array(ChatPhotoIdSchema).max(CHAT_PHOTOS_MAX).optional() })
+  .refine((b) => b.text.trim() !== '' || (b.photos?.length ?? 0) > 0, { message: 'type a message or add a photo' });
+export type PersonChatSendBody = z.infer<typeof PersonChatSendBodySchema>;
+
 /** Her chat (P3, spec 1.3.2): her thread only; area `chat` decides only whether {owner} can read it. */
 const chatN = ChatItemParamsSchema;
 export const PERSON_CHAT_ROUTES = {
@@ -1442,7 +1451,7 @@ export const PERSON_CHAT_ROUTES = {
   }),
   personChatSend: route({
     method: 'POST', path: '/v1/p/chat', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat', status: 202,
-    body: ChatSendBodySchema, response: IdReplySchema, summary: 'Send a message to her assistant (her daily cap applies).',
+    body: PersonChatSendBodySchema, response: IdReplySchema, summary: 'Send a message to her assistant (her daily cap applies).',
   }),
   personChatClear: route({
     method: 'DELETE', path: '/v1/p/chat', scope: 'person', phase: 'v0.11', ctl: false, area: 'chat',
