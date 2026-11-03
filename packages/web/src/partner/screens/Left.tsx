@@ -10,8 +10,8 @@ export function Left({ me, api }: { me: PersonMe | null; api: PersonApi }) {
       <Page title="Sharing is ending">
         <p>Download your data before {me.person.endingUntil ? dayLabel(me.person.endingUntil.slice(0, 10)) : 'the end of the week'}.</p>
         <p className="mt-12">
-          <a className="underline" href={api.exportUrl('html')}>Download as a page</a> ·{' '}
-          <a className="underline" href={api.exportUrl('json')}>data file (JSON)</a>
+          <a className="inline-flex min-h-44 items-center underline" href={api.exportUrl('html')}>Download as a page</a> ·{' '}
+          <a className="inline-flex min-h-44 items-center underline" href={api.exportUrl('json')}>data file (JSON)</a>
         </p>
       </Page>
     );

@@ -172,6 +172,10 @@ partner simply can't sign in there).
   Done without a note), and their row says "asks for a short report" and
   "Sam asked to know by 08:45" while it is open. Their To-do page's Undo is
   the same 5-second toast as Today's, and Undo takes a report back.
+- **44 px on both phones, the small ones too**: the tick and × on a shared
+  list item, each alert row and its reply buttons (OK, ♥), the chat limit
+  box on your Chat tab, and on their side ⓘ in Chat, the café stars, Quiet
+  hours, every time box and menu in Notifications, and the download links.
 - **People in More**: your phone lists People in More (the rail on a wide
   screen) while People is on, on a device paired with control.
 - **Nothing promised that isn't there**: a food log for them is not part of

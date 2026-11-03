@@ -77,7 +77,7 @@ export default function Alerts({ me, api, id, tick }: { me: PersonMe; api: Perso
           const open = !mine && !a.reply && Date.parse(a.expiresAt) > now;
           return (
             <li key={a.id} className={`py-8 ${id === a.id ? 'bg-hover' : ''}`}>
-              <button type="button" className="block w-full text-left" onClick={() => !mine && !a.seenAt && void api.alertSeen(a.id).then(load)}>
+              <button type="button" className="block min-h-44 w-full text-left" onClick={() => !mine && !a.seenAt && void api.alertSeen(a.id).then(load)}>
                 <p className="text-small text-ink-2">
                   {mine ? `You → ${owner}` : `${owner} → you`} · {dayLabel(a.at.slice(0, 10))} {hmOf(a.at)}
                   {a.urgency === 'urgent' ? ' · Urgent' : ''}
@@ -89,7 +89,7 @@ export default function Alerts({ me, api, id, tick }: { me: PersonMe; api: Perso
               {open ? (
                 <div className="mt-4 flex flex-wrap gap-8">
                   {ALERT_KINDS[a.kind].replies.map((k) => (
-                    <Button key={k} variant="outline" size="sm" onClick={() => void api.alertReply(a.id, { kind: k }).then(load, (e: Error) => setError(e.message))}>
+                    <Button key={k} variant="outline" size="sm" className="min-h-44 min-w-44" onClick={() => void api.alertReply(a.id, { kind: k }).then(load, (e: Error) => setError(e.message))}>
                       {ALERT_REPLY_LABELS[k]}
                     </Button>
                   ))}

@@ -114,7 +114,7 @@ export default function Chat({ me, api, tick }: { me: PersonMe; api: PersonApi; 
       <div className="flex items-center justify-between gap-8">
         <h1 className="text-title font-semibold">Assistant</h1>
         <div className="flex gap-4">
-          <Button variant="text" onClick={() => setInfo(true)} aria-label="Who can read this chat">
+          <Button variant="text" className="min-h-44 min-w-44" onClick={() => setInfo(true)} aria-label="Who can read this chat">
             ⓘ
           </Button>
           {turns.length ? (
@@ -149,7 +149,7 @@ export default function Chat({ me, api, tick }: { me: PersonMe; api: PersonApi; 
               {photos.map((p) => (
                 <span key={p.id} className="rounded-btn bg-hover px-8 py-4 text-small">
                   {p.name}{' '}
-                  <button type="button" aria-label="Remove photo" onClick={() => void run(async () => (await api.chatPhotoDelete(p.id), setPhotos((x) => x.filter((y) => y.id !== p.id))))}>
+                  <button type="button" className="inline-flex min-h-44 min-w-44 items-center justify-center" aria-label="Remove photo" onClick={() => void run(async () => (await api.chatPhotoDelete(p.id), setPhotos((x) => x.filter((y) => y.id !== p.id))))}>
                     ×
                   </button>
                 </span>

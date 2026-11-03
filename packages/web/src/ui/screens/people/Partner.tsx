@@ -523,9 +523,11 @@ function ChatTab({ client, pid, name, sees, perDay }: { client: PeopleClient; pi
   };
   const capRow = (
     <div className="mt-16 flex flex-wrap items-center gap-8 type-small text-ink-2">
-      <label htmlFor="chat-cap">{name}'s messages a day</label>
-      <input id="chat-cap" inputMode="numeric" value={cap} onChange={(e) => setCap(e.target.value)} className="w-[4.5rem] rounded-btn border border-line bg-bg px-8 py-4 type-row text-ink" />
-      <Button variant="text" onClick={() => void saveCap()}>
+      <label htmlFor="chat-cap" className="flex min-h-44 items-center">
+        {name}'s messages a day
+      </label>
+      <input id="chat-cap" inputMode="numeric" value={cap} onChange={(e) => setCap(e.target.value)} className="h-44 w-[4.5rem] rounded-btn border border-line bg-bg px-8 type-row text-ink" />
+      <Button variant="text" className="min-h-44" onClick={() => void saveCap()}>
         Save
       </Button>
       {note ? <span role="status">{note}</span> : null}
@@ -612,7 +614,9 @@ function ListsTab({ client, pid, name, space, canAssign, id }: { client: PeopleC
         <ul>
           {d.items.map((it) => (
             <li key={it.id} className="flex items-center gap-8 border-b border-line py-8">
-              <input type="checkbox" aria-label={it.title} checked={Boolean(it.doneAt)} onChange={() => void run(() => client.listItemTick(pid, id, it.id, !it.doneAt))} />
+              <label className="flex size-44 shrink-0 cursor-pointer items-center justify-center">
+                <input type="checkbox" className="size-20" aria-label={it.title} checked={Boolean(it.doneAt)} onChange={() => void run(() => client.listItemTick(pid, id, it.id, !it.doneAt))} />
+              </label>
               <span className="min-w-0 flex-1">
                 <span className={`block break-words type-row [overflow-wrap:anywhere] ${it.doneAt ? 'text-ink-2 line-through' : 'text-ink'}`}>{it.title}</span>
                 <span className="block type-small text-ink-2">
@@ -624,7 +628,7 @@ function ListsTab({ client, pid, name, space, canAssign, id }: { client: PeopleC
                   Assign to {name}
                 </Button>
               ) : null}
-              <Button variant="text" aria-label={`Delete ${it.title}`} onClick={() => void run(() => client.listItemDelete(pid, id, it.id))}>
+              <Button variant="text" className="min-h-44 min-w-44" aria-label={`Delete ${it.title}`} onClick={() => void run(() => client.listItemDelete(pid, id, it.id))}>
                 ×
               </Button>
             </li>
@@ -813,7 +817,7 @@ function AlertsTab({ client, pid, name, id }: { client: PeopleClient; pid: strin
           const open = !mine && !a.reply && Date.parse(a.expiresAt) > now;
           return (
             <li key={a.id} className={`border-b border-line py-8 ${a.id === id ? 'bg-hover' : ''}`}>
-              <button type="button" className="block w-full text-left" onClick={() => !mine && !a.seenAt && void client.seen(a.id).then(load.reload)}>
+              <button type="button" className="block min-h-44 w-full text-left" onClick={() => !mine && !a.seenAt && void client.seen(a.id).then(load.reload)}>
                 <p className="type-small text-ink-2">
                   {mine ? `You → ${name}` : `${name} → you`} · {dayLabel(a.at.slice(0, 10))} {hmOf(a.at)}
                 </p>
@@ -826,7 +830,7 @@ function AlertsTab({ client, pid, name, id }: { client: PeopleClient; pid: strin
               {open ? (
                 <div className="mt-4 flex flex-wrap gap-8">
                   {ALERT_KINDS[a.kind].replies.map((k) => (
-                    <Button key={k} variant="outline" size="sm" onClick={() => void client.reply(a.id, { kind: k }).then(load.reload, (e: Error) => setError(e.message))}>
+                    <Button key={k} variant="outline" size="sm" className="min-h-44 min-w-44" onClick={() => void client.reply(a.id, { kind: k }).then(load.reload, (e: Error) => setError(e.message))}>
                       {ALERT_REPLY_LABELS[k]}
                     </Button>
                   ))}
@@ -874,12 +878,12 @@ function AlertSheet({ open, client, pid, name, close }: { open: boolean; client:
         {kind ? (
           <label className="flex flex-col gap-4">
             <span className="type-small text-ink-2">{kind === 'custom' ? 'Message' : 'A note (optional)'}</span>
-            <input className="h-40 rounded-btn border border-line bg-bg px-8" maxLength={140} value={text} onChange={(e) => setText(e.target.value)} />
+            <input className="h-44 rounded-btn border border-line bg-bg px-8" maxLength={140} value={text} onChange={(e) => setText(e.target.value)} />
           </label>
         ) : null}
         {kind === 'custom' ? (
-          <label className="flex items-center gap-8 type-small">
-            <input type="checkbox" checked={gentle} onChange={(e) => setGentle(e.target.checked)} /> Gentle (no sound)
+          <label className="flex min-h-44 items-center gap-8 type-small">
+            <input type="checkbox" className="size-20" checked={gentle} onChange={(e) => setGentle(e.target.checked)} /> Gentle (no sound)
           </label>
         ) : null}
         {s?.hold ? <p className="type-small text-ink-2">{s.hold}</p> : null}

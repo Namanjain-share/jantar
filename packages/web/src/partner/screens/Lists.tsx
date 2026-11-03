@@ -128,7 +128,7 @@ function Cafe({ api, me, id, tick }: { api: PersonApi; me: PersonMe; id: string;
       {p.notes ? <p className="whitespace-pre-wrap break-words text-row text-ink [overflow-wrap:anywhere]">{p.notes}</p> : null}
       <div role="group" aria-label="Stars" className="flex gap-4">
         {[1, 2, 3, 4, 5].map((n) => (
-          <Button key={n} variant={p.stars === n ? 'primary' : 'text'} onClick={() => void run(() => api.placeUpdate(id, { stars: n }))}>
+          <Button key={n} variant={p.stars === n ? 'primary' : 'text'} className="min-h-44 min-w-44" onClick={() => void run(() => api.placeUpdate(id, { stars: n }))}>
             {`${n}★`}
           </Button>
         ))}
@@ -258,7 +258,7 @@ function ListView({ api, me, id, tick }: { api: PersonApi; me: PersonMe; id: str
               <span className={`block break-words text-row [overflow-wrap:anywhere] ${it.doneAt ? 'text-ink-2 line-through' : 'text-ink'}`}>{it.title}</span>
               {ticked(it) ? <span className="block text-small text-ink-2">{ticked(it)}</span> : null}
             </span>
-            <Button variant="text" aria-label={`Delete ${it.title}`} onClick={() => void run(() => api.listItemDelete(id, it.id))}>
+            <Button variant="text" className="min-h-44 min-w-44" aria-label={`Delete ${it.title}`} onClick={() => void run(() => api.listItemDelete(id, it.id))}>
               ×
             </Button>
           </li>

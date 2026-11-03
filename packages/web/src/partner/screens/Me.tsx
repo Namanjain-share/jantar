@@ -409,7 +409,7 @@ function Notifications({ me, api, reload }: { me: PersonMe; api: PersonApi; relo
       <label className="flex min-h-44 items-center justify-between gap-12">
         <span>Lock screen</span>
         <select
-          className="rounded-btn border border-line bg-bg px-8"
+          className="min-h-44 rounded-btn border border-line bg-bg px-8"
           value={me.person.prefs.lockScreen}
           onChange={(e) => void api.prefs({ lockScreen: e.target.value as 'all' | 'hide_alerts' | 'hide_all' }).then(reload)}
         >
@@ -443,13 +443,13 @@ function P2Prefs({ me, api, reload }: { me: PersonMe; api: PersonApi; reload: ()
   const save = (patch: PersonPrefsPatch) => void api.prefs(patch).then(() => (setError(null), reload()), (e: Error) => setError(e.message));
   const caps = p.alertCaps;
   const row = 'flex min-h-44 items-center justify-between gap-12';
-  const select = 'rounded-btn border border-line bg-bg px-8';
+  const select = 'min-h-44 rounded-btn border border-line bg-bg px-8';
   const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
   return (
     <div className="mt-12 flex flex-col gap-8">
       <h2 className="font-semibold">Quiet hours</h2>
       <div className={row}>
-        <label className="flex items-center gap-8">
+        <label className="flex min-h-44 items-center gap-8">
           <input type="checkbox" checked={p.quiet !== undefined} onChange={(e) => save({ quiet: e.target.checked ? { from: '22:00', to: '07:00' } : null })} /> Quiet hours
         </label>
         {p.quiet ? (
@@ -542,8 +542,8 @@ function Leave({ me, api, reload }: { me: PersonMe; api: PersonApi; reload: () =
     <div className="flex flex-col gap-12">
       <p>1. Download your data first.</p>
       <p>
-        <a className="underline" href={api.exportUrl('html')}>Download as a page</a> ·{' '}
-        <a className="underline" href={api.exportUrl('json')}>data file (JSON)</a>
+        <a className="inline-flex min-h-44 items-center underline" href={api.exportUrl('html')}>Download as a page</a> ·{' '}
+        <a className="inline-flex min-h-44 items-center underline" href={api.exportUrl('json')}>data file (JSON)</a>
       </p>
       <p>2. What happens to your data on {me.owner.name}'s Mac?</p>
       <label className="flex min-h-44 items-center gap-8">
