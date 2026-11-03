@@ -139,6 +139,29 @@ describe('Work › Deals on a phone', () => {
     expect(api.todoDone).not.toHaveBeenCalled();
   });
 
+  it('Won is sent once: while its follow-ups are marked done, a second tap sends nothing', async () => {
+    let release: () => void = () => undefined;
+    const todoDone = vi.fn(() => new Promise<{ ok: true }>((r) => (release = () => r({ ok: true }))));
+    const { api } = setup({ path: '/work?tab=deals&stage=proposal', request: { 'POST /v1/work/deals/:id/move': { id: IDS.deal, from: 'proposal' } }, over: { todoDone } });
+    const list = await screen.findByRole('list', { name: 'Proposal sent' });
+    fireEvent.click(within(list).getByRole('button', { name: 'Actions for Site rebuild' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to…' }));
+    fireEvent.click(within(await screen.findByRole('radiogroup', { name: 'Stages' })).getByRole('radio', { name: /^Won/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Won · ₹4,50,000' });
+    fireEvent.click(await within(sheet).findByRole('checkbox', { name: 'Mark done: Call about scope' }));
+    const won = within(sheet).getByRole('button', { name: /Mark as won/ });
+    fireEvent.click(won);
+    await waitFor(() => expect(todoDone).toHaveBeenCalledTimes(1));
+    // The move is saved; the tick is still on its way. Another tap sends no second move.
+    expect((within(sheet).getByRole('button', { name: /Mark as won/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(within(sheet).getByRole('form', { name: 'Won' }));
+    await act(async () => new Promise((r) => setTimeout(r, 20)));
+    expect(calls(api, 'POST', '/v1/work/deals/:id/move')).toHaveLength(1);
+    act(() => release());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Won · ₹4,50,000' })).toBeNull());
+    expect(calls(api, 'POST', '/v1/work/deals/:id/move')).toHaveLength(1);
+  });
+
   it('Won on a deal with no project: Make project sends its name and folder; Not now wins without one', async () => {
     const { api } = setup({ path: '/work?tab=deals&stage=proposal', request: { 'GET /v1/work/deals/:id': dealHub({ project: undefined, deal: { ...dealHub().deal, projectId: undefined } }) } });
     const list = await screen.findByRole('list', { name: 'Proposal sent' });

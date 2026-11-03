@@ -205,6 +205,21 @@ function useMarkDone() {
   };
 }
 
+/**
+ * A move saved while its follow-ups' ticks still go out (the sheet closes after them): a second tap then
+ * would send the move again, which the daemon refuses ("That deal has a project already"). `busy` holds the
+ * buttons off until the sheet closes; `has()` is the guard, set before React draws it.
+ */
+function useSaved() {
+  const sent = useRef(false);
+  const [saved, setSaved] = useState(false);
+  const mark = useCallback(() => {
+    sent.current = true;
+    setSaved(true);
+  }, []);
+  return { saved, has: () => sent.current, mark };
+}
+
 /** The ticks over `todos`: all on or all off until he changes one (the list may load after the sheet opens). */
 function useTicks(todos: readonly Todo[], on: boolean) {
   const [set, setSet] = useState<ReadonlySet<string> | null>(null);
@@ -235,6 +250,8 @@ function WonForm({ deal, stage, undo, onMoved, onDone }: { deal: MoveDeal; stage
   const [name, setName] = useState(deal.title.slice(0, 80));
   const [folder, setFolder] = useState<string | null>(null);
   const markDone = useMarkDone();
+  const saved = useSaved();
+  const busy = write.busy || saved.saved;
   const own = client.data?.contact.folder;
   const folders = useMemo(() => {
     const list = sessionFolders(Object.values(sessions));
@@ -248,10 +265,11 @@ function WonForm({ deal, stage, undo, onMoved, onDone }: { deal: MoveDeal; stage
   const ticks = useTicks(followUps, false);
 
   const save = async (withProject: boolean) => {
-    if (offline || write.busy) return;
+    if (offline || write.busy || saved.has()) return;
     const body = { stage: stage.id, ...(withProject && name.trim() ? { project: { name: name.trim(), ...(chosen ? { folder: chosen } : {}) } } : {}) };
     const r = await write.run(JSON.stringify(body), (key) => workClient(api).dealMove(deal.id, body, key));
     if (!r.ok) return;
+    saved.mark();
     await markDone([...ticks.ticked]);
     onMoved();
     onDone();
@@ -293,17 +311,17 @@ function WonForm({ deal, stage, undo, onMoved, onDone }: { deal: MoveDeal; stage
       {write.error ? <SaveError error={write.error} /> : null}
       <SheetActions>
         {hasProject ? (
-          <Button type="submit" variant="primary" size="lg" className="flex-1" disabled={offline || write.busy}>
-            {write.busy ? <Spinner label="Saving" /> : null}
+          <Button type="submit" variant="primary" size="lg" className="flex-1" disabled={offline || busy}>
+            {busy ? <Spinner label="Saving" /> : null}
             Mark as won
           </Button>
         ) : (
           <>
-            <Button type="submit" variant="primary" size="lg" className="flex-1" disabled={offline || write.busy || !name.trim()}>
-              {write.busy ? <Spinner label="Saving" /> : null}
+            <Button type="submit" variant="primary" size="lg" className="flex-1" disabled={offline || busy || !name.trim()}>
+              {busy ? <Spinner label="Saving" /> : null}
               Make project
             </Button>
-            <Button size="lg" disabled={offline || write.busy} onClick={() => void save(false)}>
+            <Button size="lg" disabled={offline || busy} onClick={() => void save(false)}>
               Not now
             </Button>
           </>
@@ -329,13 +347,15 @@ function LostForm({ asking, undo, onMoved, onDone }: { asking: Asking; undo: Und
   const [code, setCode] = useState<WorkLostCode | null>(deal.lostCode ?? null);
   const [note, setNote] = useState<string | null>(null);
   const markDone = useMarkDone();
+  const saved = useSaved();
+  const busy = write.busy || saved.saved;
   const followUps = edit ? [] : (hub.data?.followUps ?? []);
   // Lost: every follow-up ticked done until he unticks one.
   const ticks = useTicks(followUps, true);
   const shownNote = note ?? hub.data?.deal.lostNote ?? '';
 
   const save = async (skip: boolean) => {
-    if (offline || write.busy) return;
+    if (offline || write.busy || saved.has()) return;
     if (edit) {
       const patch = { lostCode: code, lostNote: shownNote.trim() ? shownNote.trim() : null };
       const r = await write.run(JSON.stringify(patch), (key) => workClient(api).dealUpdate(deal.id, patch, key));
@@ -347,6 +367,7 @@ function LostForm({ asking, undo, onMoved, onDone }: { asking: Asking; undo: Und
     const body = { stage: stage.id, ...(!skip && code ? { lostCode: code } : {}), ...(!skip && shownNote.trim() ? { lostNote: shownNote.trim() } : {}) };
     const r = await write.run(JSON.stringify(body), (key) => workClient(api).dealMove(deal.id, body, key));
     if (!r.ok) return;
+    saved.mark();
     await markDone([...ticks.ticked]);
     onMoved();
     onDone();
@@ -372,12 +393,12 @@ function LostForm({ asking, undo, onMoved, onDone }: { asking: Asking; undo: Und
       {hub.error && !hub.data ? <NotSaved error={hub.error} /> : null}
       {write.error ? <SaveError error={write.error} /> : null}
       <SheetActions>
-        <Button type="submit" variant="primary" size="lg" className="flex-1" disabled={offline || write.busy}>
-          {write.busy ? <Spinner label="Saving" /> : null}
+        <Button type="submit" variant="primary" size="lg" className="flex-1" disabled={offline || busy}>
+          {busy ? <Spinner label="Saving" /> : null}
           Save
         </Button>
         {edit ? null : (
-          <Button size="lg" disabled={offline || write.busy} onClick={() => void save(true)}>
+          <Button size="lg" disabled={offline || busy} onClick={() => void save(true)}>
             Skip
           </Button>
         )}
