@@ -6,7 +6,7 @@
  * does to the summary, and a meeting todo's notes.
  */
 import { MEETING_LIMITS, MEETING_SUMMARY_MIN_CHARS, type Meeting, type MeetingSummary, type ProjectView } from '@jantar/protocol';
-import type { MeetingRow, MeetingsCore, MeetingsResult, MeetingsStore, StoredLine } from '../contracts.js';
+import type { Logger, MeetingRow, MeetingsCore, MeetingsResult, MeetingsStore, StoredLine } from '../contracts.js';
 
 const count = (n: number) => n.toLocaleString('en-US');
 
@@ -73,6 +73,35 @@ export function projectsById(core: MeetingsCore): Map<string, ProjectView> | nul
   const r = core.life.todos.listProjects();
   if (!r.ok) return null;
   return new Map(r.value.projects.map((p) => [p.id, p]));
+}
+
+/**
+ * v0.13 Work: tell Work about a meeting (its project set, or the meeting deleted). Work keeps the meeting ↔
+ * client links in life.db; the two files can't share a transaction, so a failure is logged by kind and the
+ * next start's resync repairs the link.
+ */
+export function tellWork(core: MeetingsCore, fn: (work: MeetingsCore['life']['work']) => void, log: Logger): void {
+  try {
+    const work = core.life.work as unknown;
+    // A stand-in Life (a node's parts, a test's) has no Work module: nothing to tell.
+    if (typeof work !== 'object' || work === null) return;
+    fn(core.life.work);
+  } catch (e) {
+    log.warn('meetings: work was not told of a meeting', { error: e instanceof Error ? e.name : 'unknown' });
+  }
+}
+
+/**
+ * v0.13 Work: the names in a meeting's people field ("Riya, Sam and Priya" is three), each trimmed, at most
+ * 50; the words are the meeting's, only ever offered to his tap.
+ */
+export function meetingPeople(text: string | undefined): string[] {
+  if (!text) return [];
+  return text
+    .split(/[,;\n]|\s+(?:and|&)\s+/i)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0)
+    .slice(0, 50);
 }
 
 /** `id` when it names a project Jantar has now, else null (an open drops an unknown one). */

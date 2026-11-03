@@ -246,12 +246,45 @@ export class TodosRepo {
     const json = JSON.stringify(PersonTodoSchema.parse(rest));
     this.core.db
       .prepare(
-        `INSERT INTO todos (id, project_id, due_day, done_at, updated_at, json, space, by_person) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO todos (id, project_id, due_day, done_at, updated_at, json, space, by_person, contact_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET project_id = excluded.project_id, due_day = excluded.due_day,
-           done_at = excluded.done_at, updated_at = excluded.updated_at, json = excluded.json
+           done_at = excluded.done_at, updated_at = excluded.updated_at, json = excluded.json, contact_id = excluded.contact_id
          WHERE todos.space = excluded.space`,
       )
-      .run(t.id, t.projectId ?? null, t.due?.day ?? null, t.doneAt ?? null, t.updatedAt, json, this.space, by);
+      // v0.13 Work: contact_id, a follow-up's client beside its json (only his own todos ever carry one).
+      .run(t.id, t.projectId ?? null, t.due?.day ?? null, t.doneAt ?? null, t.updatedAt, json, this.space, by, t.contactId ?? null);
+  }
+
+  // --- v0.13 Work: follow-ups (todos with a client) and projects with a client, in this repo's space
+
+  /** Follow-ups: open ones (by any client, or by one), or one client's done ones (newest first). Unsorted when open. */
+  followUps(contactId: string | null, done: boolean): Todo[] {
+    const db = this.core.db;
+    const rows =
+      contactId === null
+        ? done
+          ? db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND contact_id IS NOT NULL AND done_at IS NOT NULL').all(this.space)
+          : db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND contact_id IS NOT NULL AND done_at IS NULL').all(this.space)
+        : done
+          ? db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND contact_id = ? AND done_at IS NOT NULL ORDER BY done_at DESC, id DESC').all(this.space, contactId)
+          : db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND contact_id = ? AND done_at IS NULL').all(this.space, contactId);
+    return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
+  }
+
+  /** How many todos (open or done) name the client. */
+  followUpCount(contactId: string): number {
+    return Number((this.core.db.prepare('SELECT COUNT(*) AS n FROM todos WHERE space = ? AND contact_id = ?').get(this.space, contactId) as { n: number }).n);
+  }
+
+  /** Every todo naming the client (open and done), for unlinking it. */
+  allOfContact(contactId: string): Todo[] {
+    const rows = this.core.db.prepare('SELECT json, by_person FROM todos WHERE space = ? AND contact_id = ?').all(this.space, contactId);
+    return this.parse('todos', rows as unknown as JsonRow[], PersonTodoSchema);
+  }
+
+  /** The column alone, for a row that no longer parses: it lets go of the client too. */
+  clearContactColumn(contactId: string): void {
+    this.core.db.prepare('UPDATE todos SET contact_id = NULL WHERE space = ? AND contact_id = ?').run(this.space, contactId);
   }
 
   deleteTodo(id: string): boolean {

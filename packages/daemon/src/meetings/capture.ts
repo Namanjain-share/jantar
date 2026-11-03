@@ -29,7 +29,7 @@
  */
 import { MEETING_LIMITS, MEETING_SHOT_MAX_BYTES, type ExtEndBody, type ExtInfo, type ExtLinesBody, type ExtOpenBody, type ExtShotBody } from '@jantar/protocol';
 import type { Logger, MeetingCapture, MeetingRecord, MeetingRow, MeetingsCore, MeetingsResult, MeetingsStore, StoredLine } from '../contracts.js';
-import { CLOSED, MEETING_REASONS, clamp, emptySummary, iso, knownProject, projectsById, refuse, summaryAfterEnd } from './common.js';
+import { CLOSED, MEETING_REASONS, clamp, emptySummary, iso, knownProject, projectsById, refuse, summaryAfterEnd, tellWork } from './common.js';
 import { dropShot, errorKind, shotDir, writeShot } from './files.js';
 
 const MINUTE_MS = 60_000;
@@ -104,7 +104,10 @@ class Capture implements MeetingCapture {
       // A screenshot's open (captions false) changes nothing a Start chose.
       if (body.captions) {
         store.update(found.id, (r) => assigned(r, body));
-        store.setProject(found.id, knownProject(this.core, body.projectId));
+        const projectId = knownProject(this.core, body.projectId);
+        store.setProject(found.id, projectId);
+        // v0.13 Work: a meeting in a client's project is linked to that client.
+        tellWork(this.core, (w) => w.meetingProject({ id: found.id, projectId, startedAt: found.startedAt }), this.log);
       }
       store.touch(found.id, iso(now));
       this.core.changed();
@@ -112,16 +115,19 @@ class Capture implements MeetingCapture {
     }
     if (store.count() >= MEETING_LIMITS.meetings) return refuse('conflict', MEETING_REASONS.meetingsFull);
     const id = this.core.newId();
+    const startedAt = iso(clamp(body.at, now - AHEAD_MS, now + AHEAD_MS));
+    const projectId = knownProject(this.core, body.projectId);
     store.create({
       id,
       extId,
       clientId,
-      startedAt: iso(clamp(body.at, now - AHEAD_MS, now + AHEAD_MS)),
+      startedAt,
       endedAt: null,
       lastAt: iso(now),
-      projectId: knownProject(this.core, body.projectId),
+      projectId,
       record: assigned({ name: body.name, site: body.site, autoTodos: body.autoTodos, notes: false, summary: emptySummary() }, body),
     });
+    if (projectId) tellWork(this.core, (w) => w.meetingProject({ id, projectId, startedAt }), this.log);
     this.core.changed();
     return { ok: true, value: { id } };
   }

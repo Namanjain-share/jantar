@@ -62,6 +62,11 @@ import type {
   MoneyMonth,
   MoneyPatch,
   OwnerTodosQuery,
+  Todo,
+  OwnerProjectBody,
+  OwnerProjectPatch,
+  OwnerTodoBody,
+  OwnerTodoPatch,
   PlaceBody,
   PlaceDetail,
   PlacePatch,
@@ -167,7 +172,36 @@ import type {
   RouteName,
 } from '@jantar/protocol';
 import type { NodeCallActor, NodeCallReply, NodeCallRequest, NodeRouteName, NodeSnapshot } from '@jantar/protocol/node-link';
-import type { ProjectHub, SearchItem } from '@jantar/protocol/work';
+import type {
+  FolderClientResponse,
+  ProjectHub,
+  SearchItem,
+  WorkClientCreateBody,
+  WorkClientCreateReply,
+  WorkClientDeleteReply,
+  WorkClientHub,
+  WorkClientPatch,
+  WorkClientRef,
+  WorkClientSimilarBody,
+  WorkClientSimilarReply,
+  WorkClientsQuery,
+  WorkClientsResponse,
+  WorkImportBody,
+  WorkImportPreviewBody,
+  WorkImportPreviewReply,
+  WorkImportReply,
+  WorkImportsReply,
+  WorkImportUndoReply,
+  WorkLogAddBody,
+  WorkLogAddReply,
+  WorkLogPage,
+  WorkLogPatch,
+  WorkLogRow,
+  WorkMeetingClientNewBody,
+  WorkMeetingSuggestReply,
+  WorkSettings,
+  WorkSettingsPatch,
+} from '@jantar/protocol/work';
 
 export type Unsubscribe = () => void;
 
@@ -1797,6 +1831,11 @@ export interface LifeModuleDeps {
   sessions: SessionSource;
   usage: UsageSource;
   ccwLegacy: CcwLegacySource;
+  /**
+   * v0.13 Work: every meeting with a project (id, project, start), from Meetings once it has registered
+   * (LifeService.useMeetings); null while meetings.db is closed. Work never reads meetings.db itself.
+   */
+  meetings?: () => readonly WorkMeetingRef[] | null;
 }
 
 /**
@@ -1816,8 +1855,9 @@ export interface LifeModule {
 export interface TodosModule extends LifeModule {
   readonly name: 'todos';
   listProjects(): LifeResult<ProjectsResponse>;
-  createProject(body: ProjectBody, actor: Actor): LifeResult<{ id: string }>;
-  updateProject(id: string, patch: ProjectPatch, actor: Actor): LifeResult;
+  /** v0.13: the owner's body may carry a client and a business (his space only). */
+  createProject(body: ProjectBody | OwnerProjectBody, actor: Actor): LifeResult<{ id: string }>;
+  updateProject(id: string, patch: ProjectPatch | OwnerProjectPatch, actor: Actor): LifeResult;
   /** Its todos move to no project. */
   removeProject(id: string, actor: Actor): LifeResult;
   /** v0.13: the owner's route also passes `q` (title and notes, any case); her routes pass a TodosQuery. */
@@ -1832,14 +1872,22 @@ export interface TodosModule extends LifeModule {
    * of hers), so Work lets go of it in the same commit without naming the projects table.
    */
   onProjectDeleted(fn: (projectId: string) => void): void;
+  /** v0.13 Work P2: how the ids Work owns are checked, and Work's hook on a project's client (his space's module). */
+  useWork(links: TodosWorkLinks): void;
+  /** v0.13 Work P2: follow-ups (todos with a client) in his space: open ones by due (of every client, or one), or one client's done ones, newest first. */
+  followUps(contactId: string | null, done: boolean): Todo[];
+  /** v0.13 Work P2: how many todos (open or done) name the client. */
+  followUpCount(contactId: string): number;
+  /** v0.13 Work P2: a deleted client's todos and projects let go of it (inside Work's transaction). */
+  unlinkClient(contactId: string): { todos: number; projects: number };
   /**
    * `opts.from` is the daemon's own mark (a meeting's action item); no route passes it. v0.11: `opts.by`
    * (the author, in a person space) and `opts.extra` (People's daemon-set fields) come from the People module.
    */
-  createTodo(body: TodoBody, actor: Actor, opts?: { from?: TodoFrom; by?: string; extra?: Partial<import('@jantar/protocol/people').PersonTodo> }): LifeResult<{ id: string }>;
+  createTodo(body: TodoBody | OwnerTodoBody, actor: Actor, opts?: { from?: TodoFrom; by?: string; extra?: Partial<import('@jantar/protocol/people').PersonTodo> }): LifeResult<{ id: string }>;
   /** v0.11 People: this module over one space (`''` the owner's). Only the People module calls it. */
   inSpace(space: string): TodosModule;
-  updateTodo(id: string, patch: TodoPatch, actor: Actor): LifeResult;
+  updateTodo(id: string, patch: TodoPatch | OwnerTodoPatch, actor: Actor): LifeResult;
   /** done=false is Undo (one-off todos; a repeating one answers conflict). Done on a repeating todo moves its due day. */
   setDone(id: string, done: boolean, actor: Actor): LifeResult;
   snooze(id: string, preset: SnoozePreset, actor: Actor): LifeResult;
@@ -1853,6 +1901,18 @@ export interface TodosModule extends LifeModule {
   forFolder(folder: string): FolderTodosResponse;
   /** v0.5.3: add a todo to that project; not_found (TODO_REASONS.noFolderProject) when none. */
   createInFolder(body: FolderTodoBody, actor: Actor): LifeResult<{ id: string }>;
+}
+
+/**
+ * v0.13 Work P2: what the Todos module asks Work (registered by Work when it is built): whether an id is
+ * one of his clients, deals or businesses, and Work's hook when a project's client changes (inside the
+ * project write's transaction).
+ */
+export interface TodosWorkLinks {
+  contact(id: string): boolean;
+  deal(id: string): boolean;
+  business(id: string): boolean;
+  projectClient(projectId: string, before: string | undefined, after: string | undefined): void;
 }
 
 /** Medicines (WP-MD). */
@@ -1982,7 +2042,56 @@ export interface WorkModule extends LifeModule {
    * route), its folder linked, all in one transaction. A folder a project links already (or one given
    * twice) is skipped and counted. P2 adds a company client per folder.
    */
-  seed(items: readonly { folder: string; name: string }[], actor: Actor): LifeResult<{ projects: string[]; skipped: number }>;
+  seed(items: readonly { folder: string; name: string }[], actor: Actor, opts?: { clients?: boolean }): LifeResult<{ projects: string[]; skipped: number; clients?: string[] }>;
+
+  // --- P2: clients and companies
+  clients(q: WorkClientsQuery, actor: Actor): LifeResult<WorkClientsResponse>;
+  createClient(body: WorkClientCreateBody, actor: Actor): LifeResult<WorkClientCreateReply>;
+  similar(body: WorkClientSimilarBody, actor: Actor): LifeResult<WorkClientSimilarReply>;
+  names(ids: readonly string[], actor: Actor): LifeResult<{ clients: { id: string; name: string }[] }>;
+  /** One client as a hub. Meeting rows carry the meeting's id only: the route layer (and Chat) name them from meetings.db. */
+  client(id: string, actor: Actor): LifeResult<WorkClientHub>;
+  clientLog(id: string, before: string | undefined, actor: Actor): LifeResult<WorkLogPage>;
+  updateClient(id: string, patch: WorkClientPatch, actor: Actor): LifeResult;
+  /** Deals and log rows go; todos and projects stay, let go of it; its people lose their company (W30). */
+  removeClient(id: string, actor: Actor): LifeResult<WorkClientDeleteReply['removed']>;
+  /** One contact as stored (Chat's Undo and labels), or null. */
+  contact(id: string): import('@jantar/protocol/work').Contact | null;
+  // --- P2: the log
+  addLog(contactId: string, body: WorkLogAddBody, actor: Actor): LifeResult<WorkLogAddReply>;
+  updateLog(id: string, patch: WorkLogPatch, actor: Actor): LifeResult;
+  removeLog(id: string, actor: Actor): LifeResult;
+  /** One of his log rows (Chat's Undo), or null. */
+  logRow(id: string): WorkLogRow | null;
+  /** The project hub's Work part (his own project): its client and newest log rows. */
+  projectPart(projectId: string, clientId: string | undefined, actor: Actor): LifeResult<{ client?: WorkClientRef; log: WorkLogRow[] }>;
+  // --- P2: meetings linked to clients (W15). Work never reads meetings.db: Meetings tells it, or the route does.
+  /** A meeting's project was set or cleared: its automatic link follows the project's client. */
+  meetingProject(meeting: WorkMeetingRef): void;
+  /** A meeting was deleted: its links go. */
+  forgetMeeting(meetingId: string): void;
+  /** PUT /v1/work/meetings/:meetingId/clients (the meeting read by the route). */
+  setMeetingClients(meeting: WorkMeetingRef, clientIds: readonly string[], actor: Actor): LifeResult;
+  meetingSuggest(meeting: WorkMeetingRef & { people: readonly string[] }, actor: Actor): LifeResult<WorkMeetingSuggestReply>;
+  meetingClientNew(meeting: WorkMeetingRef & { people: readonly string[] }, body: WorkMeetingClientNewBody, actor: Actor): LifeResult<{ id: string }>;
+  /** Repairs the automatic links from every meeting with a project (Meetings' list; at start, after a missed link). */
+  resyncMeetings(meetings: readonly WorkMeetingRef[]): void;
+  // --- P2: import and export, settings, client_here
+  importPreview(body: WorkImportPreviewBody, actor: Actor): LifeResult<WorkImportPreviewReply>;
+  importRows(body: WorkImportBody, actor: Actor): LifeResult<WorkImportReply>;
+  imports(actor: Actor): LifeResult<WorkImportsReply>;
+  undoImport(batch: string, actor: Actor): LifeResult<WorkImportUndoReply>;
+  exportCsv(actor: Actor): LifeResult<string>;
+  settingsGet(actor: Actor): LifeResult<WorkSettings>;
+  settingsUpdate(patch: WorkSettingsPatch, actor: Actor): LifeResult;
+  forFolder(folder: string): FolderClientResponse;
+}
+
+/** v0.13 Work P2: a meeting as Work needs it (from meetings.db, through Meetings or the route): its id, project and start. */
+export interface WorkMeetingRef {
+  id: string;
+  projectId: string | null;
+  startedAt: string;
 }
 
 /** Finance and bills (WP-FF). */
@@ -2032,6 +2141,11 @@ export interface LifeService extends Service {
    * her exits work on jantar.db alone (C12).
    */
   readonly people: import('./life/people/module.js').PeopleModule;
+  /**
+   * v0.13 Work: Meetings registers where Work reads every meeting with a project (for the automatic
+   * client links); called once, when Meetings is built.
+   */
+  useMeetings(source: () => readonly WorkMeetingRef[] | null): void;
   /** VACUUM INTO <backupsDir>/life-YYYY-MM-DD.db (0600). Refused while broken or closed: there is nothing open to copy. */
   backup(): Promise<LifeResult<{ file: string; at: string }>>;
   /** Put a backup (a `life-*.db` name inside backupsDir) back; the current file is kept beside it. Allowed while broken. */
@@ -2197,6 +2311,8 @@ export interface MeetingsStore {
   list(q: MeetingsQuery): { rows: MeetingRow[]; next: string | null };
   /** v0.13 (search across Jantar): meetings whose name or people hold `q` (any case or accent), newest first, at most `limit`. */
   search(q: string, limit: number): { id: string; startedAt: string; name: string }[];
+  /** v0.13 Work: every meeting with a project (its id, project and start), for Work's automatic client links. */
+  withProject(): { id: string; projectId: string; startedAt: string }[];
   /** The newest meeting not ended, whatever a filter says (the "Meeting running" line). */
   newestOpen(): MeetingRow | null;
   /** Insert each line, or replace it when its `rev` is higher; returns how many changed. */
@@ -2271,6 +2387,11 @@ export interface MeetingLibrary {
   list(q: MeetingsQuery): MeetingsResult<MeetingsList>;
   /** v0.13 (search across Jantar): name and people only, newest first; `day` is its start in the Life zone. */
   search(q: string, limit: number): MeetingsResult<{ id: string; name: string; day: string }[]>;
+  /**
+   * v0.13 Work: one meeting as Work's routes need it (no lines read): its id, project, start, name and
+   * people (each name split out of the people field). not_found when it is gone.
+   */
+  brief(id: string): MeetingsResult<WorkMeetingRef & { name: string; people: string[] }>;
   get(id: string): MeetingsResult<MeetingDetail>;
   /** The screenshot row's size, read before its file (a device past its byte budget costs no read). */
   shotSize(id: string, shotId: string): MeetingsResult<{ bytes: number }>;

@@ -65,6 +65,7 @@ import type {
   TodosModule,
   Unsubscribe,
   WorkModule,
+  WorkMeetingRef,
 } from '../contracts.js';
 import { newId } from '../core/ids.js';
 import { pushEndpointProblem } from '../notify/push-hosts.js';
@@ -195,8 +196,11 @@ class LifeServiceImpl implements LifeService {
     places: closedModule<PlacesModule>('places'),
     finance: closedModule<FinanceModule>('finance'),
     posts: closedModule<PostsModule>('posts'),
-    work: closedModule<WorkModule>('work'),
+    // v0.13: what Meetings and Chat call without a LifeResult answer nothing while life.db is closed.
+    work: closedModule<WorkModule>('work', { contact: () => null, logRow: () => null, meetingProject: () => undefined, forgetMeeting: () => undefined, resyncMeetings: () => undefined }),
   };
+  /** v0.13 Work: every meeting with a project (Meetings registers it once built). */
+  private meetingSource: (() => readonly WorkMeetingRef[] | null) | null = null;
 
   constructor(
     private readonly ctx: DaemonContext,
@@ -551,8 +555,26 @@ class LifeServiceImpl implements LifeService {
     return true;
   }
 
+  useMeetings(source: () => readonly WorkMeetingRef[] | null): void {
+    this.meetingSource = source;
+  }
+
   private buildModules(): Modules {
-    const deps: LifeModuleDeps = { ctx: this.ctx, sessions: this.deps.sessions, usage: this.deps.usage, ccwLegacy: this.deps.ccwLegacy };
+    const deps: LifeModuleDeps = {
+      ctx: this.ctx,
+      sessions: this.deps.sessions,
+      usage: this.deps.usage,
+      ccwLegacy: this.deps.ccwLegacy,
+      // v0.13 Work: read when it needs it (Meetings may register after Life opens).
+      meetings: () => {
+        try {
+          return this.meetingSource?.() ?? null;
+        } catch (e) {
+          this.log.warn('work: the meetings list was not read', { error: errorKind(e) });
+          return null;
+        }
+      },
+    };
     const todos = this.builders.todos(this.core, deps);
     const mods: Modules = {
       todos,

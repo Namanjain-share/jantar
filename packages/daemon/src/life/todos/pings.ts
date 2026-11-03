@@ -25,8 +25,13 @@
  * - The push: "Todo due", the body by `notify.bodies` (full: the title and
  *   the time; short: the title's first 40 characters; generic: "Tap to
  *   open"), "Missed at HH:MM · " first on a catch-up. Tap: /todos?id=<id>.
+ * - v0.13 Work (W23): a follow-up (his todo with a client) says only
+ *   "Follow-up · HH:MM" unless life.workLockScreenNames is on (then its
+ *   title by notify.bodies, as any todo): a locked phone shows no client
+ *   words. While Work is on its tap opens the client
+ *   (/work?tab=clients&id=<clientId>), ids only.
  */
-import type { Due, Todo } from '@jantar/protocol';
+import { workOn, type Due, type Todo } from '@jantar/protocol';
 import { dayKeyOf, hhmmOf, instantAt } from '@jantar/life-core';
 import type { LifeCore, LifeModuleDeps, LifePush, PingHandler, PingKind } from '../../contracts.js';
 import { clip, oneLine } from '../../notify/format.js';
@@ -100,17 +105,27 @@ export function personOfSpace(space: string): string | undefined {
   return space !== '' && !space.startsWith('s:') ? space : undefined;
 }
 
-export function todoPush(t: Todo | null, id: string, dueAt: Date, late: boolean, tz: string, bodies: 'full' | 'short' | 'generic', person?: string): LifePush {
+/** v0.13 Work (W23): whether Work is on (a follow-up's tap opens the client), and whether its push may say its title. */
+export interface FollowUpPush {
+  work: boolean;
+  names: boolean;
+}
+
+export function todoPush(t: Todo | null, id: string, dueAt: Date, late: boolean, tz: string, bodies: 'full' | 'short' | 'generic', person?: string, followUp: FollowUpPush = { work: false, names: false }): LifePush {
   const time = hhmmOf(dueAt, tz);
   const title = t ? oneLine(t.title) : '';
+  // v0.13: his follow-up shows no client words on a locked phone unless he turned names on at the Mac.
+  const client = !person && t?.contactId !== undefined ? t.contactId : undefined;
   let body: string;
-  if (bodies === 'generic' || !title) body = `Tap to open · ${time}`;
+  if (client !== undefined && !followUp.names) body = `Follow-up · ${time}`;
+  else if (bodies === 'generic' || !title) body = `Tap to open · ${time}`;
   else if (bodies === 'short') body = `${clip(title, SHORT_TITLE)} · ${time}`;
   else body = `${title} · ${time}`;
   if (late) body = `Missed at ${time} · ${body}`;
   // v0.11: hers opens her app, and only her devices get it (the scheduler's row names her).
   if (person) return { kind: 'life', title: TODO_PUSH_TITLE, body, url: `/p/todos?id=${id}`, tag: `life:todo:${person}:${id}`, person };
-  return { kind: 'life', title: TODO_PUSH_TITLE, body, url: `/todos?id=${id}`, tag: `life:todo:${id}` };
+  const url = client !== undefined && followUp.work ? `/work?tab=clients&id=${client}` : `/todos?id=${id}`;
+  return { kind: 'life', title: TODO_PUSH_TITLE, body, url, tag: `life:todo:${id}` };
 }
 
 export function todoPingHandler(core: LifeCore, deps: Pick<LifeModuleDeps, 'ctx'>, repo: TodosRepo): PingHandler {
@@ -131,7 +146,11 @@ export function todoPingHandler(core: LifeCore, deps: Pick<LifeModuleDeps, 'ctx'
     push(rows, dueAt, late) {
       const id = rows[0]?.ref ?? '';
       const hit = repo.anySpace(id);
-      return todoPush(hit?.todo ?? null, id, dueAt, late, core.tz(), deps.ctx.settings.get().notify.bodies, hit ? personOfSpace(hit.space) : rows[0]?.person);
+      const s = deps.ctx.settings.get();
+      const followUp = { work: workOn(s), names: s.life.workLockScreenNames };
+      // Only his own space's todos are follow-ups (a client is refused anywhere else).
+      const todo = hit && hit.space !== '' && hit.todo.contactId !== undefined ? (({ contactId: _c, ...rest }) => rest)(hit.todo) : (hit?.todo ?? null);
+      return todoPush(todo, id, dueAt, late, core.tz(), s.notify.bodies, hit ? personOfSpace(hit.space) : rows[0]?.person, followUp);
     },
     next(row, after) {
       const t = repo.anySpace(row.ref)?.todo;

@@ -31,8 +31,8 @@
  */
 import { dayKeyOf } from '@jantar/life-core';
 import { MEETING_STALE_MS, type MeetingDetail, type MeetingPatch, type MeetingsList, type MeetingsQuery } from '@jantar/protocol';
-import type { Actor, Logger, MeetingLibrary, MeetingRecord, MeetingRow, MeetingsCore, MeetingsResult, MeetingsStore } from '../contracts.js';
-import { CLOSED, MEETING_REASONS, iso, knownProject, linesInOrder, meetingOf, projectsById, refuse } from './common.js';
+import type { Actor, Logger, MeetingLibrary, MeetingRecord, MeetingRow, MeetingsCore, MeetingsResult, MeetingsStore, WorkMeetingRef } from '../contracts.js';
+import { CLOSED, MEETING_REASONS, iso, knownProject, linesInOrder, meetingOf, meetingPeople, projectsById, refuse, tellWork } from './common.js';
 import { errorKind, readShot, removeMeetingDir } from './files.js';
 import { MEETINGS_SWEEP_EVERY_MS, endStale, removeOrphans } from './sweep.js';
 
@@ -80,6 +80,15 @@ class Library implements MeetingLibrary {
     if (!store) return CLOSED;
     const tz = this.core.tz();
     return { ok: true, value: store.search(q, limit).map((m) => ({ id: m.id, name: m.name, day: dayKeyOf(new Date(m.startedAt), tz) })) };
+  }
+
+  /** v0.13 Work: one meeting's id, project, start, name and people (no lines read). */
+  brief(id: string): MeetingsResult<WorkMeetingRef & { name: string; people: string[] }> {
+    const store = this.core.store();
+    if (!store) return CLOSED;
+    const row = store.get(id);
+    if (!row) return refuse('not_found', MEETING_REASONS.noMeeting);
+    return { ok: true, value: { id: row.id, projectId: row.projectId, startedAt: row.startedAt, name: row.record.name, people: meetingPeople(row.record.people) } };
   }
 
   get(id: string): MeetingsResult<MeetingDetail> {
@@ -137,7 +146,11 @@ class Library implements MeetingLibrary {
     }
     if (patch.projectId && !knownProject(this.core, patch.projectId)) return refuse('not_found', MEETING_REASONS.projectGone);
     store.update(id, (r) => edited(r, patch));
-    if (patch.projectId !== undefined) store.setProject(id, patch.projectId);
+    if (patch.projectId !== undefined) {
+      store.setProject(id, patch.projectId);
+      // v0.13 Work: a meeting in a client's project is linked to that client (its automatic link follows the project).
+      tellWork(this.core, (w) => w.meetingProject({ id, projectId: patch.projectId ?? null, startedAt: row.startedAt }), this.log);
+    }
     this.core.changed();
     return OK;
   }
@@ -146,6 +159,8 @@ class Library implements MeetingLibrary {
     const store = this.core.store();
     if (!store) return CLOSED;
     if (!store.remove(id)) return refuse('not_found', MEETING_REASONS.noMeeting);
+    // v0.13 Work: its client links go with it.
+    tellWork(this.core, (w) => w.forgetMeeting(id), this.log);
     this.core.cancelSummary(id);
     this.core.changed();
     try {

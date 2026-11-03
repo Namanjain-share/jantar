@@ -45,6 +45,13 @@
  * - v0.13 Work: one project as a hub (`hub`: its counts, open todos, the
  *   newest done, this week and life-core's health line), and the owner's
  *   `q` on the todos list (title and notes, any case; never in the SQL).
+ *   P2: a follow-up is a todo with a client (`contactId`, and P3's
+ *   `dealId`), a project has a client and a business; only the owner's own
+ *   space ('') takes them (anywhere else is refused, O13), and Work, which
+ *   never reads these tables, checks the ids it owns through the links it
+ *   registers (`useWork`) and hears of a project's client changing inside
+ *   the same transaction. It reads follow-ups and unlinks a deleted client
+ *   through the methods below.
  * - Every write saves, re-arms its ping (pings.ts), then emits life.changed.
  *   Replies carry ids only; refusals are the fixed sentences below.
  */
@@ -54,6 +61,10 @@ import {
   projectFor,
   type Due,
   type FolderTodoBody,
+  type OwnerProjectBody,
+  type OwnerProjectPatch,
+  type OwnerTodoBody,
+  type OwnerTodoPatch,
   type FolderTodosResponse,
   type Project,
   type OwnerTodosQuery,
@@ -70,7 +81,7 @@ import {
 } from '@jantar/protocol';
 import { WORK_LIMITS, type ProjectHub } from '@jantar/protocol/work';
 import { hhmmOf, nextRepeat, projectHealth, projectWeeks, shiftMonths, snoozeTarget } from '@jantar/life-core';
-import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule } from '../../contracts.js';
+import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule, TodosWorkLinks } from '../../contracts.js';
 import type { PersonTodo } from '@jantar/protocol/people';
 import { armTodo, personOfSpace, todoPingHandler } from './pings.js';
 import { TodosRepo } from './repo.js';
@@ -90,6 +101,13 @@ export const TODO_REASONS = {
   undoRepeating: 'Undo a repeating todo by setting its date back.',
   snoozeDone: 'This todo is done. Undo it first.',
   noFolderProject: 'No project is linked to this folder. On the phone: Projects › a project › Folder.',
+  // v0.13 Work (O13): a client, a deal or a business only on his own todos and projects.
+  ownTodosOnly: 'Only your own todos can have a client.',
+  ownProjectsOnly: 'Only your own projects can have a client.',
+  sharedList: "A shared list can't have a client.",
+  clientGone: "That client doesn't exist any more.",
+  dealGone: "That deal doesn't exist any more.",
+  businessGone: "That business doesn't exist any more. Add it in Work's settings.",
 } as const;
 
 type Refusal = Extract<LifeResult, { ok: false }>;
@@ -163,6 +181,8 @@ class Todos implements TodosModule {
   private readonly spaces = new Map<string, Todos>();
   /** v0.13: what runs inside a project's delete (Work's). Only this instance's: her space's module has none. */
   private readonly deleteHooks: ((projectId: string) => void)[] = [];
+  /** v0.13 Work P2: how the ids Work owns are checked, and its hook on a project's client (his space's module only). */
+  private work: TodosWorkLinks | null = null;
 
   constructor(
     private readonly core: LifeCore,
@@ -222,31 +242,58 @@ class Todos implements TodosModule {
     return { ok: true, value: { projects } };
   }
 
-  createProject(body: ProjectBody, _actor: Actor): LifeResult<{ id: string }> {
+  /** v0.13 Work: a project's client and business, checked (his space only; ids Work knows). null when they may be set. */
+  private projectLinksRefused(p: { clientId?: string | null | undefined; business?: string | null | undefined }, list: boolean): Refusal | null {
+    const client = p.clientId !== undefined && p.clientId !== null;
+    const business = p.business !== undefined && p.business !== null;
+    if (!client && !business) return null;
+    if (this.repo.space !== '') return refuse('invalid_request', list || this.repo.space.startsWith('s:') ? TODO_REASONS.sharedList : TODO_REASONS.ownProjectsOnly);
+    if (client && !this.work?.contact(p.clientId as string)) return refuse('invalid_request', TODO_REASONS.clientGone);
+    if (business && !this.work?.business(p.business as string)) return refuse('invalid_request', TODO_REASONS.businessGone);
+    return null;
+  }
+
+  createProject(body: ProjectBody | OwnerProjectBody, _actor: Actor): LifeResult<{ id: string }> {
     if (this.repo.projectCount() >= LIFE_LIMITS.projects) return refuse('conflict', TODO_REASONS.projectsFull);
+    const links: OwnerProjectBody = body;
+    const no = this.projectLinksRefused(links, false);
+    if (no) return no;
     const at = this.stamp();
     const p: Project = { id: this.core.newId(), name: body.name, status: body.status ?? 'active', createdAt: at, updatedAt: at };
     if (body.emoji !== undefined) p.emoji = body.emoji;
     if (body.notes !== undefined) p.notes = body.notes;
     if (body.due !== undefined) p.due = body.due;
     if (body.folder !== undefined) p.folder = body.folder;
-    this.repo.saveProject(p);
+    if (links.clientId !== undefined) p.clientId = links.clientId;
+    if (links.business !== undefined) p.business = links.business;
+    // v0.13: Work links the project's meetings to its client in the same save.
+    this.core.db.tx(() => {
+      this.repo.saveProject(p);
+      if (p.clientId !== undefined) this.work?.projectClient(p.id, undefined, p.clientId);
+    });
     this.changed();
     return { ok: true, value: { id: p.id } };
   }
 
-  updateProject(id: string, patch: ProjectPatch, _actor: Actor): LifeResult {
+  updateProject(id: string, patch: ProjectPatch | OwnerProjectPatch, _actor: Actor): LifeResult {
     const p = this.repo.project(id);
     if (!p) return refuse('not_found', TODO_REASONS.noProject);
+    const links: OwnerProjectPatch = patch;
+    const no = this.projectLinksRefused(links, p.list !== undefined);
+    if (no) return no;
     const next: Project = { ...p, updatedAt: this.stamp() };
     if (patch.name !== undefined) next.name = patch.name;
     if (patch.status !== undefined) next.status = patch.status;
-    for (const key of ['emoji', 'notes', 'due', 'folder'] as const) {
-      const v = patch[key];
+    for (const key of ['emoji', 'notes', 'due', 'folder', 'clientId', 'business'] as const) {
+      const v = links[key];
       if (v === null) delete next[key];
       else if (v !== undefined) next[key] = v;
     }
-    this.repo.saveProject(next);
+    // v0.13: a client changed moves the project's automatic meeting links with it, in the same save (Work's hook).
+    this.core.db.tx(() => {
+      this.repo.saveProject(next);
+      if (p.clientId !== next.clientId) this.work?.projectClient(id, p.clientId, next.clientId);
+    });
     this.changed();
     return OK;
   }
@@ -265,6 +312,57 @@ class Todos implements TodosModule {
 
   onProjectDeleted(fn: (projectId: string) => void): void {
     this.deleteHooks.push(fn);
+  }
+
+  useWork(links: TodosWorkLinks): void {
+    this.work = links;
+  }
+
+  // --- v0.13 Work: follow-ups (todos with a client), his space only ----------------
+
+  followUps(contactId: string | null, done: boolean): Todo[] {
+    if (this.repo.space !== '') return [];
+    const todos = this.repo.followUps(contactId, done);
+    return done ? todos : todos.sort(byDue);
+  }
+
+  followUpCount(contactId: string): number {
+    return this.repo.space === '' ? this.repo.followUpCount(contactId) : 0;
+  }
+
+  /**
+   * A client deleted (Work's transaction, which this joins): its todos keep going with no client or deal,
+   * and its projects with no client. How many of each were let go.
+   */
+  unlinkClient(contactId: string): { todos: number; projects: number } {
+    if (this.repo.space !== '') return { todos: 0, projects: 0 };
+    return this.core.db.tx(() => {
+      const at = this.stamp();
+      const todos = this.repo.allOfContact(contactId);
+      for (const t of todos) {
+        const { contactId: _c, dealId: _d, ...rest } = t;
+        this.repo.saveTodo({ ...rest, updatedAt: at });
+      }
+      this.repo.clearContactColumn(contactId);
+      const projects = this.repo.projects().filter((p) => p.clientId === contactId);
+      for (const p of projects) {
+        const { clientId: _c, ...rest } = p;
+        this.repo.saveProject({ ...rest, updatedAt: at });
+      }
+      if (todos.length > 0 || projects.length > 0) this.changed();
+      return { todos: todos.length, projects: projects.length };
+    });
+  }
+
+  /** A todo's client and deal, checked: his space only, ids Work knows. null when they may be set. */
+  private todoLinksRefused(contactId: string | null | undefined, dealId: string | null | undefined): Refusal | null {
+    const client = contactId !== undefined && contactId !== null;
+    const deal = dealId !== undefined && dealId !== null;
+    if (!client && !deal) return null;
+    if (this.repo.space !== '') return refuse('invalid_request', TODO_REASONS.ownTodosOnly);
+    if (client && !this.work?.contact(contactId)) return refuse('invalid_request', TODO_REASONS.clientGone);
+    if (deal && !this.work?.deal(dealId)) return refuse('invalid_request', TODO_REASONS.dealGone);
+    return null;
   }
 
   // --- todos -----------------------------------------------------------------
@@ -324,9 +422,12 @@ class Todos implements TodosModule {
     };
   }
 
-  createTodo(body: TodoBody, _actor: Actor, opts: { from?: TodoFrom; by?: string; extra?: Partial<PersonTodo> } = {}): LifeResult<{ id: string }> {
+  createTodo(body: TodoBody | OwnerTodoBody, _actor: Actor, opts: { from?: TodoFrom; by?: string; extra?: Partial<PersonTodo> } = {}): LifeResult<{ id: string }> {
     if (body.repeat && !body.due) return refuse('invalid_request', TODO_REASONS.repeatNeedsDue);
     if (body.projectId !== undefined && !this.repo.project(body.projectId)) return refuse('invalid_request', TODO_REASONS.projectGone);
+    const links: OwnerTodoBody = body;
+    const no = this.todoLinksRefused(links.contactId, links.dealId);
+    if (no) return no;
     if (this.repo.openCount() >= LIFE_LIMITS.openTodos) return refuse('conflict', TODO_REASONS.todosFull);
     const at = this.stamp();
     const t: Todo = { ...(opts.extra ?? {}), id: this.core.newId(), title: body.title, priority: body.priority ?? 'normal', createdAt: at, updatedAt: at };
@@ -334,6 +435,8 @@ class Todos implements TodosModule {
     if (opts.from !== undefined) t.from = opts.from;
     if (body.due !== undefined) t.due = body.due;
     if (body.projectId !== undefined) t.projectId = body.projectId;
+    if (links.contactId !== undefined) t.contactId = links.contactId;
+    if (links.dealId !== undefined) t.dealId = links.dealId;
     if (body.repeat !== undefined && body.due !== undefined) {
       // A monthly or yearly date the client named stays; otherwise the due day's. The series' time is the due time.
       t.repeat = withAt(body.repeat.byMonthDay !== undefined ? body.repeat : withMonthDay(body.repeat, body.due.day), body.due);
@@ -342,10 +445,19 @@ class Todos implements TodosModule {
     return { ok: true, value: { id: t.id } };
   }
 
-  updateTodo(id: string, patch: TodoPatch, _actor: Actor): LifeResult {
+  updateTodo(id: string, patch: TodoPatch | OwnerTodoPatch, _actor: Actor): LifeResult {
     const t = this.repo.todo(id);
     if (!t) return refuse('not_found', TODO_REASONS.noTodo);
+    const links: OwnerTodoPatch = patch;
+    // A link kept as it is needs no check (a client deleted since is unlinked by the delete itself).
+    const no = this.todoLinksRefused(links.contactId === t.contactId ? undefined : links.contactId, links.dealId === t.dealId ? undefined : links.dealId);
+    if (no) return no;
     const next: Todo = { ...t, updatedAt: this.stamp() };
+    for (const key of ['contactId', 'dealId'] as const) {
+      const v = links[key];
+      if (v === null) delete next[key];
+      else if (v !== undefined) next[key] = v;
+    }
     if (patch.title !== undefined) next.title = patch.title;
     if (patch.priority !== undefined) next.priority = patch.priority;
     if (patch.notes === null) delete next.notes;

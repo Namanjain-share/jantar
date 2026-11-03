@@ -5,7 +5,7 @@
  * schema, is left out and logged by module name only, so one module's bug
  * never blanks the screen.
  */
-import { LIFE_MODULES, TodaySchema, type Settings, type Today } from '@jantar/protocol';
+import { LIFE_MODULES, TodaySchema, workOn, type Settings, type Today } from '@jantar/protocol';
 import type { LifeModule, LifeModuleName, Logger } from '../contracts.js';
 
 /** The keys of Today each module may fill. */
@@ -16,14 +16,15 @@ export const TODAY_PARTS: Readonly<Record<LifeModuleName, readonly Exclude<keyof
   places: [],
   finance: ['bills'],
   posts: ['posts'],
-  // v0.13: none in P1 (P2 adds its card).
-  work: [],
+  // v0.13: Work's card (check-ins, and P3's deal counts) and its follow-ups' client names.
+  work: ['work'],
 };
 
 export function buildToday(day: string, on: Settings['life'], modules: Readonly<Record<LifeModuleName, LifeModule>>, log: Logger): Today {
   const out: Today = { day };
   for (const name of LIFE_MODULES) {
-    if (!on[name]) continue;
+    // v0.13: Work answers only while it works (Todos on too).
+    if (name === 'work' ? !workOn({ life: on }) : !on[name]) continue;
     let part: Partial<Today>;
     try {
       part = modules[name].today(day);

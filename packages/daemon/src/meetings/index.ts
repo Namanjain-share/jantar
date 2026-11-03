@@ -34,6 +34,7 @@ import type {
   UsageSource,
 } from '../contracts.js';
 import { newId } from '../core/ids.js';
+import { tellWork } from './common.js';
 import { buildCapture } from './capture.js';
 import { openMeetingsDb, type MeetingsDb } from './db.js';
 import { buildLibrary } from './library.js';
@@ -128,6 +129,12 @@ class MeetingsShell implements MeetingsService {
     this.capture = builders.capture(this.core);
     this.library = builders.library(this.core);
     this.summaries = builders.summaries(this.core);
+    // v0.13 Work: where Work reads every meeting with a project (ids, projects and starts), while meetings.db is open.
+    try {
+      deps.life.useMeetings(() => this.current?.withProject() ?? null);
+    } catch {
+      // A stand-in Life (a node's parts, a test's) has no Work to tell.
+    }
   }
 
   async start(): Promise<void> {
@@ -199,6 +206,9 @@ class MeetingsShell implements MeetingsService {
     }
     this.sweep();
     this.timer = this.ctx.clock.setInterval(() => this.sweep(), MEETINGS_SWEEP_EVERY_MS);
+    // v0.13 Work: repair the meeting ↔ client links a missed call left (the files can't share a transaction).
+    const store = this.current;
+    tellWork(this.core, (w) => w.resyncMeetings(store.withProject()), this.log);
   }
 
   private close(): void {

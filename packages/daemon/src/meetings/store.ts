@@ -198,6 +198,12 @@ export function createMeetingsStore(db: MeetingsDb, log: Logger = silentLogger):
       return out;
     },
 
+    withProject() {
+      // v0.13 Work: ids, projects and starts only (its automatic client links).
+      const rows = db.prepare('SELECT id, project_id, started_at FROM meetings WHERE project_id IS NOT NULL').all() as { id: string; project_id: string; started_at: string }[];
+      return rows.map((r) => ({ id: r.id, projectId: r.project_id, startedAt: r.started_at }));
+    },
+
     newestOpen() {
       return fromRow(db.prepare('SELECT * FROM meetings WHERE ended_at IS NULL ORDER BY started_at DESC, id DESC LIMIT 1').get() as Row | undefined);
     },
