@@ -78,6 +78,7 @@ import type {
   ProjectHub,
   ProjectPatch,
   ProjectsResponse,
+  SearchItem,
   SnoozePreset,
   Today,
   TodoBody,
@@ -1967,6 +1968,11 @@ export interface PostsModule extends LifeModule {
  */
 export interface WorkModule extends LifeModule {
   readonly name: 'work';
+  /**
+   * Search's clients and deals groups (GET /v1/search): at most `limit` of each that hold `q`. Empty until
+   * clients (P2) and deals (P3) exist; not_found for anyone but the owner.
+   */
+  search(q: string, limit: number, actor: Actor): LifeResult<{ clients: SearchItem[]; deals: SearchItem[] }>;
 }
 
 /** Finance and bills (WP-FF). */
@@ -2179,6 +2185,8 @@ export interface MeetingsStore {
    * line's text (LIKE on escaped input); `project` 'none' is no project.
    */
   list(q: MeetingsQuery): { rows: MeetingRow[]; next: string | null };
+  /** v0.13 (search across Jantar): meetings whose name or people hold `q` (any case or accent), newest first, at most `limit`. */
+  search(q: string, limit: number): { id: string; startedAt: string; name: string }[];
   /** The newest meeting not ended, whatever a filter says (the "Meeting running" line). */
   newestOpen(): MeetingRow | null;
   /** Insert each line, or replace it when its `rev` is higher; returns how many changed. */
@@ -2251,6 +2259,8 @@ export interface MeetingCapture {
 /** The phone's and the CLI's reads and edits (WP-MS: meetings/library.ts `buildLibrary(core)`). */
 export interface MeetingLibrary {
   list(q: MeetingsQuery): MeetingsResult<MeetingsList>;
+  /** v0.13 (search across Jantar): name and people only, newest first; `day` is its start in the Life zone. */
+  search(q: string, limit: number): MeetingsResult<{ id: string; name: string; day: string }[]>;
   get(id: string): MeetingsResult<MeetingDetail>;
   /** The screenshot row's size, read before its file (a device past its byte budget costs no read). */
   shotSize(id: string, shotId: string): MeetingsResult<{ bytes: number }>;

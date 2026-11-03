@@ -9,6 +9,7 @@
  * machine; its limit context reads the alert's own machine), and the API
  * files that serve or forward the whole state. v0.10: Chat's read-only
  * board tools, which show every machine's sessions as the phone's board does.
+ * v0.13: the search across Jantar's sessions group, for the same reason.
  *
  * And every `session.added` subscriber outside those files skips a session
  * with `node` (it names the field in the same file).
@@ -21,7 +22,7 @@ import { describe, expect, it } from 'vitest';
 const SRC = fileURLToPath(new URL('../../src', import.meta.url));
 
 /** Files (relative to src, POSIX separators) allowed to read the raw sessions map. */
-const RAW_ALLOWED = ['notify/router.ts', 'api/routes.ts', 'api/events-ws.ts', 'api/route-kit.ts', 'chat/tools.ts'];
+const RAW_ALLOWED = ['notify/router.ts', 'api/routes.ts', 'api/events-ws.ts', 'api/route-kit.ts', 'chat/tools.ts', 'api/routes/search.ts'];
 const RAW_ALLOWED_DIRS = ['fleet/'];
 
 /** The patterns a raw read takes (literal dots; `st` and `state` as whole words). */

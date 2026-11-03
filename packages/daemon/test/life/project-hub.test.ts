@@ -7,7 +7,7 @@
  *   (overdue by the same rule as the counts, the next due, eight weeks of
  *   done todos, quiet days for an active project untouched for over 14);
  * - in his space only: her project (and her to-dos) never show;
- * - `q`: title and notes, any case (Unicode too), open by due or the
+ * - `q`: title and notes, any case or accent, open by due or the
  *   newest done; quotes, % and _ are only text (never SQL);
  * - the routes: control scope, the todos switch, 404 with the sentence,
  *   a reply that parses as ProjectHub, a `q` over 80 characters is 400.
@@ -126,6 +126,7 @@ describe('the todos list: ?q=', () => {
     add({ title: 'Something else' });
     expect(ids(ok(todos.listTodos({ done: false, q: 'acme' })).todos)).toEqual([b, a]);
     expect(ids(ok(todos.listTodos({ done: false, q: 'CAFÉ' })).todos)).toEqual([b]);
+    expect(ids(ok(todos.listTodos({ done: false, q: 'cafe' })).todos)).toEqual([b]);
     expect(ids(ok(todos.listTodos({ done: false, q: 'acme', project: pid })).todos)).toEqual([b]);
     expect(ids(ok(todos.listTodos({ done: false, q: 'acme', project: 'none' })).todos)).toEqual([a]);
   });

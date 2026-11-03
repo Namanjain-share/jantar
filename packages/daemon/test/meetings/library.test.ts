@@ -371,3 +371,22 @@ describe('when Meetings are closed', () => {
     await closed.sweep(MEETING_T0);
   });
 });
+
+describe('v0.13 search (one search across Jantar)', () => {
+  it('matches name and people only, any case or accent, newest first, at most the limit, with its day', () => {
+    const kickoff = meeting(0, { record: record({ name: 'Kickoff with Acme' }) });
+    const weekly = meeting(10, { record: record({ name: 'Weekly', people: 'Riya from ACME' }) });
+    const cafe = meeting(20, { record: record({ name: 'Café catch-up' }) });
+    // Acme only in the summary and the captions: not this search's fields.
+    const other = meeting(30, { record: record({ summary: { state: 'done', text: 'Acme agreed.', decisions: [], items: [] } }) });
+    core.meetings.upsertLines(other.id, [{ lineId: 'l1', rev: 1, at: MEETING_T0, speaker: 'Sam', text: 'acme acme' }]);
+    expect(value(library.search('acme', 5))).toEqual([
+      { id: weekly.id, name: 'Weekly', day: at(10).slice(0, 10) },
+      { id: kickoff.id, name: 'Kickoff with Acme', day: at(0).slice(0, 10) },
+    ]);
+    expect(value(library.search('cafe', 5)).map((m) => m.id)).toEqual([cafe.id]);
+    expect(value(library.search('acme', 1)).map((m) => m.id)).toEqual([weekly.id]);
+    expect(value(library.search('%', 5))).toEqual([]);
+    expect(value(library.search("' OR 1=1 --", 5))).toEqual([]);
+  });
+});

@@ -137,7 +137,7 @@ import {
   TodosResponseSchema,
   WeightBodySchema,
 } from './life.js';
-import { ProjectHubSchema } from './work.js';
+import { ProjectHubSchema, SearchQuerySchema, SearchResponseSchema } from './work.js';
 import {
   CaptureKeyAddBodySchema,
   CaptureKeyAddReplySchema,
@@ -1773,6 +1773,12 @@ export const ROUTES = {
     method: 'GET', path: '/v1/projects/:id', scope: 'control', phase: 'v0.13', ctl: false, feature: 'todos',
     params: LifeIdParamsSchema, response: ProjectHubSchema,
     summary: 'One project as a hub: its counts, open todos, the newest done, this week and its health.',
+  }),
+  // No switch of its own: each group answers only while its own part is on.
+  search: route({
+    method: 'GET', path: '/v1/search', scope: 'control', phase: 'v0.13', ctl: false,
+    query: SearchQuerySchema, response: SearchResponseSchema,
+    summary: 'Find a project, todo, meeting, session, Intel item, café or post (each group only while its part is on).',
   }),
 } as const satisfies Record<string, RouteDef>;
 

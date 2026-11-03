@@ -29,6 +29,7 @@
  * Every edit ticks (`life.changed {}`); reads never do. `projectName` is
  * there only while Todos are on and the project still exists.
  */
+import { dayKeyOf } from '@jantar/life-core';
 import { MEETING_STALE_MS, type MeetingDetail, type MeetingPatch, type MeetingsList, type MeetingsQuery } from '@jantar/protocol';
 import type { Actor, Logger, MeetingLibrary, MeetingRecord, MeetingRow, MeetingsCore, MeetingsResult, MeetingsStore } from '../contracts.js';
 import { CLOSED, MEETING_REASONS, iso, knownProject, linesInOrder, meetingOf, projectsById, refuse } from './common.js';
@@ -71,6 +72,14 @@ class Library implements MeetingLibrary {
     const view = (row: MeetingRow) => meetingOf(row, this.counts(store, row), projects, { gist: true });
     const running = store.newestOpen();
     return { ok: true, value: { meetings: page.rows.map(view), next: page.next, running: running ? view(running) : null } };
+  }
+
+  /** v0.13 (search across Jantar): meetings whose name or people hold `q`, newest first, with their day in the Life zone. */
+  search(q: string, limit: number): MeetingsResult<{ id: string; name: string; day: string }[]> {
+    const store = this.core.store();
+    if (!store) return CLOSED;
+    const tz = this.core.tz();
+    return { ok: true, value: store.search(q, limit).map((m) => ({ id: m.id, name: m.name, day: dayKeyOf(new Date(m.startedAt), tz) })) };
   }
 
   get(id: string): MeetingsResult<MeetingDetail> {

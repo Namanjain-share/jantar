@@ -12,6 +12,9 @@ import {
   OwnerTodosQuerySchema,
   ProjectHubSchema,
   ROUTES,
+  SEARCH_KINDS,
+  SearchQuerySchema,
+  SearchResponseSchema,
   SettingsSchema,
   TodosQuerySchema,
   lifeOn,
@@ -77,5 +80,28 @@ describe('v0.13 ?q= on the todos list (owner-only)', () => {
   it('TodosQuerySchema, which her routes reuse, is as it was: no q', () => {
     expect(Object.keys(TodosQuerySchema.shape).sort()).toEqual(['done', 'project']);
     expect(TodosQuerySchema.parse({ q: 'acme' })).not.toHaveProperty('q');
+  });
+});
+
+describe('v0.13 one search across Jantar', () => {
+  it('is GET /v1/search, an owner route with no switch of its own', () => {
+    expect(ROUTES.search).toMatchObject({ method: 'GET', path: '/v1/search', scope: 'control', phase: 'v0.13', ctl: false });
+    expect(ROUTES.search).not.toHaveProperty('feature');
+  });
+
+  it('takes q of 2 to 80 characters once trimmed, and at most 5 a group', () => {
+    expect(SearchQuerySchema.parse({ q: ' acme ' })).toEqual({ q: 'acme', limit: 5 });
+    expect(SearchQuerySchema.parse({ q: 'acme', limit: '2' })).toEqual({ q: 'acme', limit: 2 });
+    for (const bad of [{ q: 'a' }, { q: ' a ' }, { q: 'x'.repeat(81) }, { q: 'acme', limit: '6' }, { q: 'acme', limit: '0' }, {}]) {
+      expect(SearchQuerySchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('answers groups in SEARCH_KINDS order, never an empty one', () => {
+    expect(SEARCH_KINDS).toEqual(['client', 'project', 'deal', 'todo', 'meeting', 'session', 'intel', 'place', 'post']);
+    const item = { kind: 'todo', id: ID, label: 'Send wireframes', href: `/todos?id=${ID}` };
+    expect(SearchResponseSchema.safeParse({ groups: [{ kind: 'todo', items: [item] }] }).success).toBe(true);
+    expect(SearchResponseSchema.safeParse({ groups: [{ kind: 'todo', items: [] }] }).success).toBe(false);
+    expect(SearchResponseSchema.safeParse({ groups: [{ kind: 'todo', items: Array.from({ length: 6 }, () => item) }] }).success).toBe(false);
   });
 });

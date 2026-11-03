@@ -15,10 +15,12 @@
  *   (files.ts).
  * - Search matches the name, people and summary text and any line's text,
  *   with LIKE on escaped input (no pattern characters from the phone).
+ *   v0.13's search across Jantar matches name and people only, in JS.
  */
 import { z } from 'zod';
 import { EndReasonSchema, MEETING_LIMITS, MeetingSiteSchema, MeetingSummarySchema, type EndReason, type MeetingsQuery } from '@jantar/protocol';
 import type { Logger, MeetingRecord, MeetingRow, MeetingsStore, StoredLine, StoredShot } from '../contracts.js';
+import { foldText, holdsFolded } from '../core/fold.js';
 import { silentLogger } from '../core/log.js';
 import type { MeetingsDb } from './db.js';
 
@@ -180,6 +182,20 @@ export function createMeetingsStore(db: MeetingsDb, log: Logger = silentLogger):
       const page = found.slice(0, q.limit);
       const last = page[page.length - 1];
       return { rows: rows(page), next: found.length > q.limit && last ? `${last.started_at}|${last.id}` : null };
+    },
+
+    search(q: string, limit: number) {
+      // v0.13: name and people only, newest first. q never reaches the SQL: the two fields are read and matched here.
+      const needle = foldText(q);
+      const rows = db
+        .prepare("SELECT id, started_at, json_extract(json, '$.name') AS name, json_extract(json, '$.people') AS people FROM meetings ORDER BY started_at DESC, id DESC")
+        .all() as { id: string; started_at: string; name: unknown; people: unknown }[];
+      const out: { id: string; startedAt: string; name: string }[] = [];
+      for (const r of rows) {
+        if (out.length >= limit) break;
+        if (typeof r.name === 'string' && holdsFolded(needle, r.name, r.people)) out.push({ id: r.id, startedAt: r.started_at, name: r.name });
+      }
+      return out;
     },
 
     newestOpen() {

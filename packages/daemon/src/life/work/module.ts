@@ -12,9 +12,22 @@
  *   owner (his devices, the CLI, the daemon itself).
  * - Nothing it logs, emits or audits names a client: ids and counts only.
  *
- * P1: the switch (`life.work`, on only while Todos is) and no Today part.
+ * P1: the switch (`life.work`, on only while Todos is), no Today part, and
+ * search's clients and deals groups, empty until those exist.
  */
-import type { LifeCore, LifeModuleDeps, TodosModule, WorkModule } from '../../contracts.js';
+import type { SearchItem } from '@jantar/protocol';
+import type { Actor, LifeCore, LifeModuleDeps, LifeResult, TodosModule, WorkModule } from '../../contracts.js';
+
+/** What a Work call says to anyone but the owner: there is nothing here. */
+export const WORK_NOT_FOUND = 'Not found.';
+
+/** The owner: his devices, the Mac's CLI, the daemon itself. A person (her app, her Chat) never is. */
+export function isOwner(actor: Actor): boolean {
+  return actor.kind === 'device' || actor.kind === 'cli' || actor.kind === 'system';
+}
+
+type Refusal = Extract<LifeResult, { ok: false }>;
+const notFound: Refusal = { ok: false, code: 'not_found', reason: WORK_NOT_FOUND };
 
 class Work implements WorkModule {
   readonly name = 'work' as const;
@@ -27,6 +40,12 @@ class Work implements WorkModule {
   /** No Today part until P2 (its card: check-ins, deals with no next step, quiet deals, closing this week). */
   today(_day: string): Record<string, never> {
     return {};
+  }
+
+  search(_q: string, _limit: number, actor: Actor): LifeResult<{ clients: SearchItem[]; deals: SearchItem[] }> {
+    if (!isOwner(actor)) return notFound;
+    // P2 fills clients (name, company, e-mails, phones by digits), P3 deals (title).
+    return { ok: true, value: { clients: [], deals: [] } };
   }
 }
 

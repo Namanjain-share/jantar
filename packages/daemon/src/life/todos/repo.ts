@@ -19,6 +19,7 @@
 import type { Project, Todo } from '@jantar/protocol';
 import { PersonTodoSchema, StoredProjectSchema as ProjectSchema } from '@jantar/protocol/people';
 import type { LifeCore, Logger } from '../../contracts.js';
+import { foldText, holdsFolded } from '../../core/fold.js';
 
 interface JsonRow {
   json: string;
@@ -162,13 +163,12 @@ export class TodosRepo {
 
   /**
    * v0.13: open todos (of one project, or of none), or the newest `limit`
-   * done ones, whose title or notes hold `q`, any case. `q` never reaches
+   * done ones, whose title or notes hold `q`, any case or accent (foldText). `q` never reaches
    * the SQL: rows are read by the bound space and project, matched here.
    */
   matching(q: string, done: boolean, project?: string, limit = DONE_LIST_MAX): Todo[] {
-    const needle = q.toLowerCase();
-    const holds = (t: { title?: unknown; notes?: unknown }) =>
-      (typeof t.title === 'string' && t.title.toLowerCase().includes(needle)) || (typeof t.notes === 'string' && t.notes.toLowerCase().includes(needle));
+    const needle = foldText(q);
+    const holds = (t: { title?: unknown; notes?: unknown }) => holdsFolded(needle, t.title, t.notes);
     if (!done) return this.open(project).filter(holds);
     const db = this.core.db;
     const all = (

@@ -76,6 +76,7 @@ import { MEDICINES_ROUTE_IMPLS } from './routes/medicines.js';
 import { PLACES_ROUTE_IMPLS } from './routes/places.js';
 import { POSTS_ROUTE_IMPLS } from './routes/posts.js';
 import { TODOS_ROUTE_IMPLS } from './routes/todos.js';
+import { SEARCH_ROUTE_IMPLS } from './routes/search.js';
 import { UPLOADS_ROUTE_IMPLS } from './routes/uploads.js';
 import { EXT_PAIR_ROUTE_IMPLS } from './routes/ext-pair.js';
 import { EXT_ROUTE_IMPLS } from './routes/ext.js';
@@ -648,6 +649,8 @@ export const ROUTE_IMPLS: RouteTable = {
   ...POSTS_ROUTE_IMPLS,
   // v0.8 (the shelf's reads, jobs, Delete, thumbnails and status are in INTEL_ROUTE_IMPLS)
   ...EXT_READS_ROUTE_IMPLS,
+  // v0.13 Work (owner-only): one search across Jantar (the project hub is in TODOS_ROUTE_IMPLS).
+  ...SEARCH_ROUTE_IMPLS,
   // v0.11 People: his routes about the people on his Mac, and hers (scope person).
   ...PEOPLE_ROUTE_IMPLS,
   ...PERSON_ACCOUNT_ROUTE_IMPLS,
