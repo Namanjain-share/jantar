@@ -3,6 +3,7 @@
  * data map names them (data-map.ts, T11). Every query names her space (T6).
  * Shared rows (P4) and later phases' tables join as their phases land.
  */
+import { spaceLabel } from '@jantar/protocol/people-core';
 import type { DaemonContext } from '../../contracts.js';
 import type { PeopleModule } from './module.js';
 
@@ -20,7 +21,8 @@ function rows(core: NonNullable<ReturnType<PeopleModule['openCore']>>, sql: stri
 export interface PersonExport {
   exportVersion: 1;
   exportedAt: string;
-  person: { id: string; name: string; joinedAt?: string } | null;
+  /** `label`: the space's name (spaceLabel). */
+  person: { id: string; name: string; label: string; joinedAt?: string } | null;
   agreementHistory: { version: number; action: string; at: string; agreement: unknown }[];
   todos: unknown[];
   projects: unknown[];
@@ -47,7 +49,7 @@ export function exportSections(ctx: Pick<DaemonContext, 'clock'>, people: People
   const empty: PersonExport = {
     exportVersion: 1,
     exportedAt: ctx.clock.iso(),
-    person: p ? { id: p.id, name: p.name, ...(p.joinedAt ? { joinedAt: p.joinedAt } : {}) } : null,
+    person: p ? { id: p.id, name: p.name, label: spaceLabel(p.label), ...(p.joinedAt ? { joinedAt: p.joinedAt } : {}) } : null,
     agreementHistory,
     todos: [],
     projects: [],

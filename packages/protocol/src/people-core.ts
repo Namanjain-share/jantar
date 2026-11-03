@@ -20,6 +20,53 @@ export const PEOPLE_SHORT_LABEL = 'Partner';
 /** Her side's words for the owner when he set no name (`jantar people on --name` sets one). */
 export const OWNER_FALLBACK_NAME = 'Your accountability partner';
 
+/**
+ * v0.11: what the space with one person is called, which he picks when he adds them or later (a preset, or
+ * words of his own): his screen for them, his Today card, her app's name, header and join page, and the
+ * pushes about it. The nav entry stays PEOPLE_LABEL. Unset, a space is PEOPLE_LABEL.
+ */
+export const PERSON_LABEL_PRESETS = ['Accountability partner', 'Cofounder', 'Partner', 'Coach', 'Mentor', 'Teammate', 'Family', 'Friend'] as const;
+export const PERSON_LABEL_MAX = 40;
+/** Her Home Screen title (the manifest's short_name) at most: a longer label gives its last word, or its first 12 characters. */
+export const PERSON_SHORT_LABEL_MAX = 12;
+/** Not plain text on one line: control characters, line and paragraph separators, and the marks that reorder text. */
+const NOT_PLAIN = /[\u{0}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{200e}\u{200f}\u{2028}-\u{202e}\u{2066}-\u{2069}]/u;
+
+/** Why a label can't be used (trimmed, 1 to 40 characters, plain text on one line), or null. */
+export function personLabelProblem(label: string): string | null {
+  const t = label.trim();
+  if (t.length === 0) return 'Give the space a name.';
+  if (t.length > PERSON_LABEL_MAX) return `A name of up to ${PERSON_LABEL_MAX} characters.`;
+  if (NOT_PLAIN.test(t)) return 'Plain text on one line.';
+  return null;
+}
+
+/** The space's name: his label, or PEOPLE_LABEL while he set none. */
+export function spaceLabel(label?: string | null): string {
+  const t = label?.trim();
+  return t ? t : PEOPLE_LABEL;
+}
+
+/**
+ * The label after "your": "your accountability partner", "your cofounder". The first letter is lowered only
+ * when a lower-case one follows it, so "CEO" stays "CEO".
+ */
+export function yourLabel(label?: string | null): string {
+  const l = spaceLabel(label);
+  return `your ${/^\p{Lu}\p{Ll}/u.test(l) ? l.charAt(0).toLowerCase() + l.slice(1) : l}`;
+}
+
+/** Her Home Screen title: "Partner" for the default, the label when it fits, else its last word or first 12 characters. */
+export function shortLabel(label?: string | null): string {
+  const l = spaceLabel(label);
+  if (l === PEOPLE_LABEL) return PEOPLE_SHORT_LABEL;
+  const chars = (s: string) => Array.from(s);
+  if (chars(l).length <= PERSON_SHORT_LABEL_MAX) return l;
+  const last = l.split(/\s+/).pop() ?? l;
+  const word = chars(last).length <= PERSON_SHORT_LABEL_MAX && chars(last).length > 1 ? last : chars(l).slice(0, PERSON_SHORT_LABEL_MAX).join('').trim();
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
 /** A day key that names a date on the calendar (the key's pattern lets 2026-02-30 through). */
 export function isCalendarDay(day: string): boolean {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);

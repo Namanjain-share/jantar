@@ -17,7 +17,7 @@
  * caller may not see is the one not_found sentence (a refusal confirms
  * nothing). Logs carry ids and codes only, never her name or email.
  */
-import { OWNER_FALLBACK_NAME, PEOPLE_LABEL } from '@jantar/protocol/people-core';
+import { OWNER_FALLBACK_NAME, PEOPLE_LABEL, spaceLabel } from '@jantar/protocol/people-core';
 import {
   BUILT_PHASE,
   GONE_BY,
@@ -420,6 +420,7 @@ export class PeopleModule {
       id: p.id,
       name: p.name,
       color: p.color,
+      label: spaceLabel(p.label),
       state,
       ...(p.emailLabel ? { emailLabel: p.emailLabel } : {}),
       ...(p.joinedAt ? { joinedAt: p.joinedAt } : {}),
@@ -451,6 +452,8 @@ export class PeopleModule {
         id,
         name: body.name,
         color,
+        // The default is no label at all (spaceLabel): only his own choice is stored.
+        ...(body.label && spaceLabel(body.label) !== PEOPLE_LABEL ? { label: spaceLabel(body.label) } : {}),
         ...(body.email ? { emailLabel: body.email.toLowerCase() } : {}),
         state: 'invited',
         sharedSpace: sid,
@@ -536,6 +539,39 @@ export class PeopleModule {
       this.invites.revokeAll(pid);
       return { ok: true, value: true };
     });
+  }
+
+  /**
+   * The space's name with her (null: back to the default). Hers to read on her app at once (her stream ticks
+   * `me`), and, once she has joined, an Activity row with the old and new names. Never in the ledger.
+   */
+  setLabel(pid: string, label: string | null): LifeResult {
+    return this.guard(() => {
+      const p = this.repo.get(pid);
+      if (!p || this.gone(pid)) return this.notFound();
+      const next = label === null || spaceLabel(label) === PEOPLE_LABEL ? undefined : spaceLabel(label);
+      if (next === p.label) return { ok: true, value: true };
+      const { label: was, ...rest } = p;
+      this.repo.save({ ...rest, ...(next ? { label: next } : {}), updatedAt: this.iso() });
+      const st = this.ledger(pid).state;
+      if (st === 'active' || st === 'paused') {
+        this.record(pid, { actor: 'owner', action: 'label.changed', changes: [{ field: 'label', from: spaceLabel(was), to: spaceLabel(next) }] });
+      }
+      this.ticks.bump(pid, 'me');
+      this.ownerChanged();
+      return { ok: true, value: true };
+    });
+  }
+
+  /** The space's name with her (spaceLabel), for her app, his screens and the pushes about it. */
+  labelOf(pid: string): string {
+    return spaceLabel(this.person(pid)?.label);
+  }
+
+  /** What a push of hers needs from her row: her lock screen and mute, and the space's name for `hide_all`. */
+  pushPrefs(pid: string): { lockScreen: Person['prefs']['lockScreen']; muteUntil: string | null; label: string } | null {
+    const p = this.person(pid);
+    return p ? { lockScreen: p.prefs.lockScreen, muteUntil: p.prefs.muteUntil, label: spaceLabel(p.label) } : null;
   }
 
   setColor(pid: string, color: Person['color']): LifeResult {
@@ -624,6 +660,7 @@ export class PeopleModule {
         value: {
           owner: this.ownerName(),
           name: p.name,
+          label: spaceLabel(p.label),
           version: inv.offerVersion,
           offer: fields,
           fields: AGREEMENT_FIELDS.filter((f) => phaseBuilt(f.phase)).map((f) => f.key),
@@ -724,6 +761,7 @@ export class PeopleModule {
           prefs: p?.prefs ?? PersonPrefsSchema.parse({}),
         },
         owner,
+        label: spaceLabel(p?.label),
         peopleOn: this.enabled(),
         agreement: state === 'active' || state === 'paused' ? l.agreement : null,
         pending: l.pending && (state === 'active' || state === 'paused') ? { version: l.pending.version, fields: l.pending.fields, ...(p?.pendingProposal?.note ? { note: p.pendingProposal.note } : {}) } : null,

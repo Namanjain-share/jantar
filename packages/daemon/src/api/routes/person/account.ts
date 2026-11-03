@@ -11,12 +11,18 @@
  * - Her exits (Me, Pause, Resume, Leave, Export, Activity) work while People
  *   is off, in --read-only, while she is ending and, for Leave and Pause,
  *   while life.db is broken (C12).
+ * - Her manifest (`/v1/p/manifest`) is the built `p.webmanifest` under the
+ *   space's name: her app points its manifest link here once she is in, so
+ *   a Home Screen install after he named the space takes that name.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { shortLabel, spaceLabel, yourLabel } from '@jantar/protocol/people-core';
 import { PERSON_COOKIE, type AgreementPatch, type JoinBody, type LeaveBody } from '@jantar/protocol/people';
 import type { LifeResult, PersonDeviceRecord } from '../../../contracts.js';
 import { ApiError } from '../../errors.js';
 import { actorName, type RequestAuth } from '../../request.js';
-import { lifeValue, type Call, type RouteTable } from '../../route-kit.js';
+import { lifeValue, type Call, type RawReply, type RouteTable } from '../../route-kit.js';
 import type { ApiServices } from '../../services.js';
 import { personExport } from './export.js';
 
@@ -51,6 +57,35 @@ const header = (c: Call<any, any, any>, name: string): string | undefined => {
   return Array.isArray(v) ? v[0] : v;
 };
 
+/** What her manifest keeps when her app's build has none (its id, start and scope are /p either way). */
+const BARE_MANIFEST = { id: '/p', start_url: '/p', scope: '/p', display: 'standalone' };
+
+/**
+ * Her app's manifest under the space's name: `name` is the label, `short_name` (her Home Screen title) at most
+ * 12 characters (shortLabel), the description says whom she shares with. Everything else is the built file's
+ * (its id, start and scope /p, icons, colours), or a bare one while her app isn't built.
+ */
+export function personManifestReply(dist: string | null, label: string): RawReply {
+  let built: Record<string, unknown> = BARE_MANIFEST;
+  try {
+    if (dist) built = { ...BARE_MANIFEST, ...(JSON.parse(readFileSync(join(dist, 'p.webmanifest'), 'utf8')) as Record<string, unknown>), id: '/p', start_url: '/p', scope: '/p' };
+  } catch {
+    built = BARE_MANIFEST;
+  }
+  const named = {
+    ...built,
+    name: spaceLabel(label),
+    short_name: shortLabel(label),
+    description: `Your day plan, to-dos and check-ins, and what you choose to share with ${yourLabel(label)}.`,
+  };
+  return {
+    kind: 'raw',
+    type: 'application/manifest+json; charset=utf-8',
+    body: Buffer.from(`${JSON.stringify(named, null, 2)}\n`),
+    headers: { 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' },
+  };
+}
+
 export const PERSON_ACCOUNT_ROUTE_IMPLS: RouteTable = {
   personJoinPreview: {
     handle: (c: Call<Record<string, string>, unknown, { code: string }>, s) => codeValue(s.deps.life.people.preview(c.body.code)),
@@ -79,6 +114,9 @@ export const PERSON_ACCOUNT_ROUTE_IMPLS: RouteTable = {
   },
   personMe: {
     handle: (c: Call, s) => lifeValue(s.deps.life.people.me(her(c.auth).personId, s.deps.life.broken() !== null)),
+  },
+  personManifest: {
+    handle: (c: Call, s) => personManifestReply(s.webDist, s.deps.life.people.labelOf(her(c.auth).personId)),
   },
   personAgreementAccept: {
     handle: (c: Call<Record<string, string>, unknown, { version: number }>, s) => {

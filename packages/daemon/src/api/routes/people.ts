@@ -13,7 +13,7 @@
  * - Nothing here returns her devices' last-seen, user agent or an address
  *   (C20).
  */
-import { PERSON_COLORS, type PersonAddBody, type PersonOfferBody, type PersonProposeBody, type PersonRemoveBody } from '@jantar/protocol/people';
+import type { PersonAddBody, PersonColorBody, PersonOfferBody, PersonProposeBody, PersonRemoveBody } from '@jantar/protocol/people';
 import { peopleSettingsProblem } from '@jantar/protocol';
 import type { LifeResult } from '../../contracts.js';
 import { findWebPush } from '../../notify/index.js';
@@ -113,10 +113,12 @@ export const PEOPLE_ROUTE_IMPLS: RouteTable = {
     audit: (c: Call<Pid>) => ({ target: c.params.pid }),
   },
   personColor: {
-    handle: (c: Call<Pid, unknown, { color?: (typeof PERSON_COLORS)[number]; chatPerDay?: number }>, s) => {
+    handle: (c: Call<Pid, unknown, PersonColorBody>, s) => {
       aboutPerson(s, c.params.pid);
       if (c.body.color !== undefined) value(s.deps.life.people.setColor(c.params.pid, c.body.color));
       if (c.body.chatPerDay !== undefined) value(s.deps.life.people.setChatPerDay(c.params.pid, c.body.chatPerDay));
+      // The space's name (null: the default), from his app or `jantar people label` at the Mac.
+      if (c.body.label !== undefined) value(s.deps.life.people.setLabel(c.params.pid, c.body.label));
       return OK;
     },
     audit: (c: Call<Pid>) => ({ target: c.params.pid }),

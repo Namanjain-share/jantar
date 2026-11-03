@@ -28,8 +28,10 @@ import {
   BUILD_PHASES,
   FOOD_LEVELS,
   MEDS_LEVELS,
+  PERSON_LABEL_MAX,
   REVIEW_LEVELS,
   agreementProblem,
+  personLabelProblem,
   type AgreementFields,
   type AgreementPatch,
   type Area,
@@ -156,6 +158,13 @@ export const PERSON_COLORS = ['teal', 'violet', 'amber', 'rose', 'sky', 'lime'] 
 export const PersonColorSchema = z.enum(PERSON_COLORS);
 export type PersonColor = z.infer<typeof PersonColorSchema>;
 export const PersonNameSchema = z.string().trim().min(1).max(40);
+/** What he calls the space with her (a preset or his own words): trimmed, 1 to 40 characters, plain text on one line. Rendered as text everywhere. */
+export const PersonLabelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(PERSON_LABEL_MAX)
+  .refine((l) => personLabelProblem(l) === null, { message: 'plain text on one line' });
 /** C36: what her lock screen shows of a push. */
 export const LockScreenSchema = z.enum(['all', 'hide_alerts', 'hide_all']);
 export type LockScreen = z.infer<typeof LockScreenSchema>;
@@ -268,6 +277,8 @@ export const PersonSchema = z.object({
   id: PersonIdSchema,
   name: PersonNameSchema,
   color: PersonColorSchema,
+  /** His name for the space with her (spaceLabel: PEOPLE_LABEL while unset). His to set; never in the ledger. */
+  label: PersonLabelSchema.optional(),
   /** A reminder for the Access step; never used to authenticate (spec 8.9). */
   emailLabel: z.string().max(200).optional(),
   state: PersonStateSchema,
@@ -592,6 +603,8 @@ export const PersonViewSchema = z.object({
   id: PersonIdSchema,
   name: PersonNameSchema,
   color: PersonColorSchema,
+  /** The space's name with them (spaceLabel: "Accountability partner" while he set none). */
+  label: z.string().optional(),
   state: PersonStateSchema,
   emailLabel: z.string().optional(),
   joinedAt: IsoDateSchema.optional(),
@@ -642,6 +655,7 @@ export const PersonAddBodySchema = z.strictObject({
   name: PersonNameSchema,
   email: z.email().max(200).optional(),
   color: PersonColorSchema.optional(),
+  label: PersonLabelSchema.optional(),
   modules: z.strictObject({ food: z.boolean() }).optional(),
 });
 export type PersonAddBody = z.infer<typeof PersonAddBodySchema>;
@@ -651,10 +665,11 @@ export const PersonOfferReplySchema = z.object({ version: z.number().int(), fiel
 export const PersonInviteReplySchema = z.object({ url: z.string(), expiresAt: IsoDateSchema });
 export type PersonInviteReply = z.infer<typeof PersonInviteReplySchema>;
 export const PersonModulesBodySchema = z.strictObject({ food: z.boolean() });
-/** Her colour on his screens, and (P3) her chat's daily cap (an Activity row). */
+/** Her colour on his screens, (P3) her chat's daily cap, and the space's name (null: back to the default); a cap or a name is an Activity row. */
 export const PersonColorBodySchema = z
-  .strictObject({ color: PersonColorSchema.optional(), chatPerDay: z.number().int().min(0).max(200).optional() })
-  .refine((b) => b.color !== undefined || b.chatPerDay !== undefined, { message: 'name a colour or a daily cap' });
+  .strictObject({ color: PersonColorSchema.optional(), chatPerDay: z.number().int().min(0).max(200).optional(), label: PersonLabelSchema.nullable().optional() })
+  .refine((b) => b.color !== undefined || b.chatPerDay !== undefined || b.label !== undefined, { message: 'name a colour, a daily cap or a label' });
+export type PersonColorBody = z.infer<typeof PersonColorBodySchema>;
 export const PersonRemoveBodySchema = z.strictObject({ mode: z.enum(['window', 'now']), forget: z.boolean().default(false) });
 export type PersonRemoveBody = z.infer<typeof PersonRemoveBodySchema>;
 export const PeopleSwitchBodySchema = z.strictObject({ on: z.boolean() });
@@ -673,6 +688,8 @@ export const JoinPreviewBodySchema = z.strictObject({ code: z.string().min(16).m
 export const JoinPreviewSchema = z.object({
   owner: z.string(),
   name: PersonNameSchema,
+  /** The space's name (spaceLabel): the page's title, and "as your …" in its first line. */
+  label: z.string().optional(),
   version: z.number().int(),
   offer: AgreementFieldsSchema,
   /** The fields this build offers (O7). */
@@ -706,6 +723,8 @@ export const PersonMeSchema = z.object({
     prefs: PersonPrefsSchema,
   }),
   owner: z.object({ name: z.string() }),
+  /** The space's name (spaceLabel): her app's title, its header and her Home Screen title when she installs it. */
+  label: z.string().optional(),
   /** False while the owner has People switched off: only her exits work (C12). */
   peopleOn: z.boolean(),
   agreement: AgreementSchema.nullable(),
@@ -933,6 +952,10 @@ const PERSON_ACCOUNT_ROUTES = {
   personDeviceLinkClaim: route({
     method: 'POST', path: '/v1/p/devices/link/claim', scope: 'person', phase: 'v0.11', ctl: false, join: true,
     body: LinkClaimBodySchema, response: JoinReplySchema, summary: 'Link this device with a code from another device of hers.',
+  }),
+  personManifest: route({
+    method: 'GET', path: '/v1/p/manifest', scope: 'person', phase: 'v0.11', ctl: false, rawResponse: true,
+    summary: "Her app's web manifest under the space's name (her Home Screen title when she installs it).",
   }),
   personPushKey: route({
     method: 'GET', path: '/v1/p/push/vapid-public-key', scope: 'person', phase: 'v0.11', ctl: false,
@@ -1600,8 +1623,8 @@ const PEOPLE_ACCOUNT_ROUTES = {
     params: PidParamsSchema, response: PersonInviteReplySchema, summary: 'Show an unspent invite link again (an admin device with its secret, audited, C14).',
   }),
   personColor: route({
-    method: 'PATCH', path: '/v1/people/:pid', scope: 'control', phase: 'v0.11', ctl: false,
-    params: PidParamsSchema, body: PersonColorBodySchema, response: OkReplySchema, summary: "Her colour on his screens, and her chat's daily cap.",
+    method: 'PATCH', path: '/v1/people/:pid', scope: 'control', phase: 'v0.11', ctl: true,
+    params: PidParamsSchema, body: PersonColorBodySchema, response: OkReplySchema, summary: "Her colour on his screens, her chat's daily cap, and the space's name (jantar people label).",
   }),
   personAdd: route({
     method: 'POST', path: '/v1/people', scope: 'admin', phase: 'v0.11', ctl: true, localOnly: true, status: 201,

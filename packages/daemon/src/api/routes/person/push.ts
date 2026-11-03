@@ -4,7 +4,6 @@
  * own. Her pushes are sent to this list only (notify/webpush.ts), through
  * sendLifePush (Web Push only, never the Mac banner or Telegram, C7).
  */
-import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import type { PersonPushSubscribeBody } from '@jantar/protocol/people';
 import { sendLifePush } from '../../../life/push.js';
 import { findWebPush } from '../../../notify/index.js';
@@ -47,8 +46,8 @@ export const PERSON_PUSH_ROUTE_IMPLS: RouteTable = {
       const r = await sendLifePush(
         s.ctx,
         s.deps.notifiers,
-        { person: me.personId, kind: 'life', title: PEOPLE_LABEL, body: 'Notifications work.', url: '/p', tag: 'people:test' },
-        (pid) => s.deps.life.people.person(pid)?.prefs ?? null,
+        { person: me.personId, kind: 'life', title: s.deps.life.people.labelOf(me.personId), body: 'Notifications work.', url: '/p', tag: 'people:test' },
+        (pid) => s.deps.life.people.pushPrefs(pid),
       );
       return { delivered: r.delivered };
     },

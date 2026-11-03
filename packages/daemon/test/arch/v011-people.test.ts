@@ -58,6 +58,7 @@ const REVIEWED_PERSON_ROUTES = [
   'personJoin',
   'personJoinPreview',
   'personLeave',
+  'personManifest',
   'personMe',
   'personPause',
   'personPrefs',
@@ -171,7 +172,7 @@ const REVIEWED_PEOPLE_OWNER_ROUTES: Record<string, { scope: string; ctl: boolean
   peopleList: { scope: 'control', ctl: true, localOnly: false, area: null },
   peopleSwitch: { scope: 'admin', ctl: true, localOnly: true, area: null },
   personAdd: { scope: 'admin', ctl: true, localOnly: true, area: null },
-  personColor: { scope: 'control', ctl: false, localOnly: false, area: null },
+  personColor: { scope: 'control', ctl: true, localOnly: false, area: null },
   personGet: { scope: 'control', ctl: false, localOnly: false, area: null },
   personInvite: { scope: 'admin', ctl: true, localOnly: true, area: null },
   personInviteLink: { scope: 'admin', ctl: false, localOnly: false, area: null },
@@ -280,7 +281,7 @@ describe('M9: route metadata', () => {
       // Her account routes have none; the mirror's area is its `:area` parameter.
       // P2: alerts are always on (not an area), and the sharing check-in is about consent.
       // P4: shared cafés and lists are both people's, never an area.
-      const account = /^person(Join|Me|Agreement|Pause|Resume|Leave|Export|Activity|Prefs|Device|Push|Events|Mirror|Alert|SharingCheckin|Place|Visit|List)/.test(k);
+      const account = /^person(Join|Me|Manifest|Agreement|Pause|Resume|Leave|Export|Activity|Prefs|Device|Push|Events|Mirror|Alert|SharingCheckin|Place|Visit|List)/.test(k);
       if (!account) expect(def.area, k).toBeDefined();
     }
   });

@@ -69,6 +69,7 @@ export function personExport(s: ApiServices, pid: string, format: 'html' | 'json
     `<title>${esc(name)}: Jantar export ${esc(day)}</title>` +
     '<style>body{font:16px/1.5 system-ui,sans-serif;margin:1rem auto;max-width:42rem;padding:0 1rem}pre{white-space:pre-wrap;word-break:break-word;margin:0}li{margin:.5rem 0}</style>' +
     `</head><body><h1>${esc(name)}: your Jantar data</h1><p>Exported ${esc(data.exportedAt)}.</p>` +
+    (data.person ? `<p>Space: ${esc(data.person.label)}</p>` : '') +
     section('Sharing history', data.agreementHistory) +
     section('To-dos', data.todos) +
     section('Projects', data.projects) +

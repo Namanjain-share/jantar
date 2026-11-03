@@ -205,7 +205,7 @@ class LifeServiceImpl implements LifeService {
     this.log = ctx.log.child({ part: 'life' });
     this.macZone = opts.macZone ?? macZoneOf(ctx.env);
     this.zone = this.zoneFor(ctx.settings.get());
-    this.send = opts.send ?? createLifeSend(ctx, deps.notifiers, (pid) => this.people.person(pid)?.prefs ?? null);
+    this.send = opts.send ?? createLifeSend(ctx, deps.notifiers, (pid) => this.people.pushPrefs(pid));
     const db = () => {
       if (!this.handle) throw new Error('life.db is not open');
       return this.handle;

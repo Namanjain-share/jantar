@@ -137,7 +137,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
     },
     push(rows) {
       const hit = planById(core, rows[0]?.ref ?? '');
-      if (!hit) return { kind: 'life', title: PEOPLE_LABEL, body: 'Your plan changed.', url: '/p', tag: 'people:plan', person: rows[0]?.person ?? '' };
+      if (!hit) return { kind: 'life', title: people.labelOf(rows[0]?.person ?? ''), body: 'Your plan changed.', url: '/p', tag: 'people:plan', person: rows[0]?.person ?? '' };
       const { plan, space: pid } = hit;
       const text = plans.planPushText(pid, plan);
       const { pending: _p, ...rest } = plan;
@@ -186,7 +186,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
       const name = people.nameOf(pid);
       const details = core.settings().lockScreenDetails === true;
       const body = item && details ? `${name}: "${clipLine(item.title, 60)}" isn't done yet (${item.at}).` : `${name}: an item isn't done yet.`;
-      return { kind: 'life', title: PEOPLE_LABEL, body, url: `/people/${pid}?tab=${item?.area === 'todos' ? 'todos' : 'today'}${item ? `&day=${item.day}` : ''}`, tag: `people:followup:${row.ref}` };
+      return { kind: 'life', title: people.labelOf(pid), body, url: `/people/${pid}?tab=${item?.area === 'todos' ? 'todos' : 'today'}${item ? `&day=${item.day}` : ''}`, tag: `people:followup:${row.ref}` };
     },
     next(row, after, sent) {
       // One push at that time (spec 4.4): once it went out, the row ends. Only a skip (his quiet hours) looks again.
@@ -214,7 +214,7 @@ export function peoplePingHandlers(d: PeoplePingDeps): PingHandler[] {
       const hit = planById(core, rows[0]?.ref ?? '');
       const pid = hit?.space ?? '';
       const name = people.nameOf(pid);
-      return { kind: 'life', title: PEOPLE_LABEL, body: `${name} marked today a rough day.`, url: `/people/${pid}?tab=today`, tag: `people:rough:${pid}` };
+      return { kind: 'life', title: people.labelOf(pid), body: `${name} marked today a rough day.`, url: `/people/${pid}?tab=today`, tag: `people:rough:${pid}` };
     },
     next(row, after) {
       const hit = planById(core, row.ref);

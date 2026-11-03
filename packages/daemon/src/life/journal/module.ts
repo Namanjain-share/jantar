@@ -20,7 +20,6 @@
  *   only her routes, his journal routes (through `ownerViewOf`), the mirror
  *   and her export import this file.
  */
-import { PEOPLE_LABEL } from '@jantar/protocol/people-core';
 import { JOURNAL_PROMPTS, journalStreak, promptForDay } from '@jantar/life-core';
 import {
   JournalCommentSchema,
@@ -235,11 +234,11 @@ export class JournalModule {
     if (by === '') {
       this.people.record(pid, { actor: 'owner', action: 'journal.commented', area: 'journal', ref: entry.day, title: `your entry of ${dayLabel(entry.day)}` });
       this.people.hisWrote(pid, 'plan');
-      alerts?.deliverPush(pid, { kind: 'life', title: PEOPLE_LABEL, body: `${this.people.ownerName()} commented on your journal.`, url: `/p/journal?id=${entryId}`, tag: `people:comment:${entryId}` }, { kind: 'comment', sender: '' });
+      alerts?.deliverPush(pid, { kind: 'life', title: this.people.labelOf(pid), body: `${this.people.ownerName()} commented on your journal.`, url: `/p/journal?id=${entryId}`, tag: `people:comment:${entryId}` }, { kind: 'comment', sender: '' });
     } else {
       this.wrote(pid);
       const name = this.people.nameOf(pid);
-      alerts?.deliverPush('', { kind: 'life', title: PEOPLE_LABEL, body: `${name} replied in the journal.`, url: `/people/${pid}?tab=journal&id=${entryId}`, tag: `people:comment:${entryId}` }, { kind: 'comment', sender: pid, about: pid, area: 'journal' });
+      alerts?.deliverPush('', { kind: 'life', title: this.people.labelOf(pid), body: `${name} replied in the journal.`, url: `/people/${pid}?tab=journal&id=${entryId}`, tag: `people:comment:${entryId}` }, { kind: 'comment', sender: pid, about: pid, area: 'journal' });
     }
     return { ok: true, value: { id } };
   }

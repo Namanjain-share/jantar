@@ -51,19 +51,22 @@ export function lifeNotification(p: LifePush, ts: string): Notification {
 
 /**
  * v0.11 People: what a person's push says on her lock screen (C36), and her
- * own mute. `hide_all` strips titles ("Accountability partner", "Medicine time");
+ * own mute. `hide_all` strips titles to the space's name (her label: "Accountability partner" by default) and the
+ * bodies to "Medicine time", "Plan step" or "Something new in your space";
  * `hide_alerts` hides the text of the owner's alerts (P2) and leaves Life
  * pushes as they are; `all` shows everything.
  */
 export interface PersonPushPrefs {
   lockScreen: 'all' | 'hide_alerts' | 'hide_all';
   muteUntil: string | null;
+  /** The space's name (her app's name), the only title `hide_all` leaves. */
+  label?: string;
 }
 
 export function personPushText(p: LifePush, prefs: PersonPushPrefs): LifePush {
   // Alerts from him are worded for her lock screen where they are built (life/alerts): "Alert from Sam".
   if (prefs.lockScreen !== 'hide_all' || p.tag.startsWith('people:alert')) return p;
-  return { ...p, title: PEOPLE_LABEL, body: p.kind === 'med' ? 'Medicine time' : p.tag.startsWith('people:plan') ? 'Plan step' : 'Something new in your space' };
+  return { ...p, title: prefs.label ?? PEOPLE_LABEL, body: p.kind === 'med' ? 'Medicine time' : p.tag.startsWith('people:plan') ? 'Plan step' : 'Something new in your space' };
 }
 
 /** Web Push only, control scope only; a medicine ignores the mute. No deadline here: see `withDeadline`. */
