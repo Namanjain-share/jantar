@@ -9,11 +9,12 @@ What changed for people who use Jantar, newest first. Versions before
 place for the work you do for clients, owner-only. This build has the Mac
 side of projects and search, of clients, the log of calls and meetings,
 follow-ups, import and export, and of deals, their stages and insights;
-in the app, Work's place, your projects, a project as one screen, one
-search from every phone header, and your clients: the list, a client's
-page, the Log sheet, follow-ups on Today and Todos, a meeting's clients,
-import, export and merging duplicates. The deal screens come with the
-app's next update. [Work](docs/work.md) has it all.
+in the app, all of it too: Work's place, your projects, a project as one
+screen with its milestones, one search from every phone header, your
+clients (the list, a client's page, the Log sheet, follow-ups on Today and
+Todos, a meeting's clients, import, export and merging duplicates), and
+your deals (the pipeline, a deal's page, Won and Lost, the stages) with
+Insights. [Work](docs/work.md) has it all.
 
 **Before upgrading: nothing to copy by hand.** The daemon keeps
 `life-pre-0.13.0.db` in the backups folder before it moves life.db to
@@ -82,6 +83,25 @@ restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
   preview and a decision per possible duplicate, Undo for 7 days; the CSV
   export goes to the share sheet. **Find duplicates** and **Merge with…**:
   pick what the kept client takes, or say "not a duplicate".
+- **Deals in the app.** Work › Deals is your pipeline: on a phone, a strip
+  of stages and one stage's deals at a time; on a wide Mac or iPad window,
+  a board with a column per stage, Won and Lost as the last 30 days. Each
+  stage says its open and weighted value per currency. A card shows its
+  value, days in stage, next step, close day and whether it is quiet; its
+  **···** (a long press on a phone) moves it, logs, sets a next step or
+  opens its client, and a mouse or trackpad can drag it to another column
+  (never a finger: a drag would fight the scroll). Won asks "Make a project
+  for it?" with the client's folder filled in; Lost asks why. A deal's page
+  has its moves, its follow-ups, its project and its log; **+** adds a
+  deal (a client's page has **+ New deal** too), **Edit stages** renames,
+  reorders, adds and removes them, and Today's deal lines open just the
+  deals they count. With a keyboard, `m` moves a deal.
+- **Insights in the app**: one scroll of cards per currency (win rate,
+  cycle, forecast, revenue won, sources, why lost, the funnel and time in
+  stage) for 30 or 90 days, 6 or 12 months, this financial year or all;
+  "—" when there is nothing to count.
+- **Milestones in the app**: a project's page lists them, each ticked done
+  with a tap; Edit names, dates, orders and removes them.
 - `jantar life on work` brings Todos with it, and `jantar life off todos`
   turns Work off too and says so.
 - **Clients and companies.** A client is a person or a company (a person

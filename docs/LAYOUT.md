@@ -824,3 +824,37 @@ the sheet's Client list) in Todos, Today and a project's hub;
 meeting's clients 44.4, Today 76.2 (its card and the follow-up names).
 Tests: `packages/web/test/work/{clients,client-hub,client-sheet,log-sheet,client-model,followups,import,duplicates}.test.ts(x)`,
 and the clients' parts of `code-split.test.ts` and `work/isolation.test.ts`.
+
+Work's deals in the app (0.13.0, its third web part). `lib/router.ts`'s
+Work route carries Deals' `?stage=` and Today's filters
+`?show=nostep|quiet|closing`, and `?tab=insights` opens Insights. The
+screens: `Work.tsx` loads `Deals.tsx` and `Insights.tsx` with import(),
+each its own chunk (Work's segments are handed to Deals, as to Clients).
+`Deals.tsx` is a SplitPane "work-deals" (fill): a pane of 800 or more with
+nothing open shows the board, its own grid of one column per open stage
+(`minmax(240px, 1fr)`, then it scrolls sideways under `data-scroll-x`)
+and Won and Lost at 128 (not `kit/Columns`, which deals cards
+round-robin); beside an open deal the open stages as groups; a phone or
+a narrower pane, a stage strip (`data-scroll-x`) and one stage's cards.
+Cards are `[data-row]` links, so the SplitPane's list keys (↑↓ j k ↵ Esc)
+take them; the board adds ←→ between columns, a card `m` (Move to…), and
+HTML drag and drop for a fine pointer only (`layout.coarse` false; the
+type `application/x-jantar-deal`). `DealHub.tsx` (one
+`GET /v1/work/deals/:id`; `kit/Panel` cards in `kit/Columns` from 640),
+`DealMove.tsx` (Move to… as `kit/Popover`'s Choice: a popover beside the
+button that opened it, the phone's bottom sheet; the Won and Lost sheets), `DealSheet.tsx`
+(also from a client's page, with import()), `StagesSheet.tsx` (loaded on
+first use from Deals' ···), `Insights.tsx` (cards in `kit/Columns` of
+340, three at most; `LineBar` for the months and shares) and
+`dealModel.ts`. A project's hub gains its milestones (a panel, and
+`MilestonesSheet.tsx` loaded on first Edit). Today's Work card's deal
+lines open Deals with `?show=`; the ? overlay (`shell/Shortcuts.tsx`, its
+own chunk) gains a Work group. The first load is 277.3 kB of
+`MAIN_JS_MAX` 280 kB (the route's stage and filters); Work 62.5 kB with
+what it pulls in (the milestones panel), Work › Deals 70.2, Insights 47.4,
+the stage editor 46.1, the milestone editor 42.3, a client's deal sheet
+44.1. Tests:
+`packages/web/test/work/{deals,deal-board,deal-hub,deal-model,stages,insights,milestones}.test.ts(x)`,
+the deal parts of `client.test.ts`, `client-hub.test.tsx` and
+`followups.test.tsx`, `keys.test.tsx`'s Work group, and the deals' parts
+of `code-split.test.ts` and `work/isolation.test.ts`.

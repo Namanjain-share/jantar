@@ -557,6 +557,17 @@ people hostname behind its Access app with the One-time PIN:
 | WK15 | iPhone: a `.vcf` saved from Contacts to Files imports through Work › Clients › ··· › Import a file; the preview's matches default to Skip; Undo import takes the new ones back. Export CSV opens the share sheet | import and export in the app |
 | WK16 | iPad 11-inch, landscape: Clients is a table until a client opens; then the client opens beside the rows, its parts as cards. Mac: ↓ ↵ open a client, `l` opens the Log sheet, `n` a next step, `/` the filter box, `c` a new client, Esc back to its row | the split view, Mac keys |
 
+### Work in the app (v0.13, P3's screens: deals, Insights, milestones)
+
+| # | Check | What it settles |
+|---|---|---|
+| WK17 | iPhone (Home Screen app), 390 and 320 pt wide: Work › Deals shows the stage strip (it scrolls sideways, nothing else does) and one stage's cards; a long press on a card opens Move to…, Log, Next step and Open client; Move to… another open stage moves it in two taps, with Undo; every chip, card and ··· is at least 44 pt | the phone's pipeline (W32) |
+| WK18 | iPhone: Won on a made-up deal with no project shows "Make a project for it?" with the client's folder; Make project opens the project with its client and deal; Lost shows the eight reasons and Skip | Won and Lost (W33) |
+| WK19 | iPad 11-inch, landscape (sidebar): Deals is a board with a column per stage, the columns scroll sideways past what fits. Drag a card to another column with the trackpad: it moves; with a finger the card doesn't drag, and a long press opens its menu. Portrait (rail): the stage strip, not the board | the board, drag for a fine pointer only |
+| WK20 | Mac, 1440 wide: the board fills the window (no wide empty band); drag a card onto Won: the Won sheet asks first. Tab to a card, ← → go between columns, `m` opens Move to…; on a deal's page `l` logs and `e` edits; `?` lists Work's keys | the board at 1440 (the 35 % rule), Mac keys |
+| WK21 | Insights on the phone and the Mac with a made-up book in two currencies: each currency has its own cards, This FY starts on 1 April, and a period with nothing closed says "—", never 0 % | Insights (W36, W17) |
+| WK22 | A project's page: Add two milestones with days, tick one done; the summary says "1 of 2" and the next one; a day that passed shows as missed | milestones |
+
 ## iPad checks (0.12)
 
 0.12 was built and tested in Chromium (Playwright's iPad contexts: touch,

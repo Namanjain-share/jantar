@@ -20,12 +20,13 @@ and `jantar life off todos` turns Work off with Todos (it says so).
 
 The Mac side of all of Work: projects and search; clients, the log,
 follow-ups, meetings linked to clients, import and export; deals, their
-stages and insights. In the app: Work's place, its projects and a
-project's screen, search from every phone header, projects from your
-client folders, and your clients (below): the list, a client's page, the
-Log sheet, follow-ups on Today and Todos, a meeting's clients, import,
-export and merging. The deal screens, the deal stages and Insights come
-with the app's next update; until then Chat and the CLI reach your deals.
+stages and insights. In the app, all of it too (below): Work's place, its
+projects and a project's screen with its milestones, search from every
+phone header, projects from your client folders; your clients (the list,
+a client's page, the Log sheet, follow-ups on Today and Todos, a
+meeting's clients, import, export and merging); and your deals (the
+pipeline, a deal's page, moving a deal, Won and Lost, the stages) and
+Insights.
 
 ### In the app
 
@@ -59,7 +60,13 @@ and a session's screen names its project under the title.
 **Search.** The magnifier in the phone's header (and ⌘K, or "Search or
 jump" in the iPad's sidebar) searches everything below as you type.
 
-**Clients.** Work › Clients (Projects · Clients sit under Work's title)
+**Milestones in the app.** While Work is on, a project's screen lists
+its milestones: tick one done with a tap, see its target day (marked once
+it has passed and it isn't done), and **Edit** names them, gives each a
+day or none, moves them with ↑ and ↓ and removes them, twelve at most.
+With none yet, **Add** starts the list.
+
+**Clients.** Work › Clients (Projects · Clients · Deals sit under Work's title)
 lists your clients and companies under **Needs a step** (one with an open
 deal and no follow-up), **Clients**, **Leads** and **Past** (folded). Each
 row has its next step (marked once it is overdue), its open deals (each
@@ -124,6 +131,57 @@ Nothing links or is made without your tap.
 file** (Choose a file, or Paste CSV; the preview, its decisions and Undo
 are below), **Export CSV** (the share sheet, or a download) and **Find
 duplicates**. A client's **···** has **Merge with…**.
+
+**Deals.** Work › Deals is your pipeline. On a phone (and an iPad held
+upright) it is a strip of stages with how many deals each holds (it
+scrolls sideways) and one stage's deals at a time; the header says what
+is open and its weighted value, and each stage its own, one line per
+currency. On a wide Mac or iPad window it is a board: a column per open
+stage, and Won and Lost as narrow columns of the last 30 days (a tap lists
+every won or lost deal, newest first). Open a deal and the board becomes
+the deals grouped by stage beside it.
+
+A deal's card says its client and title, its value, its days in the
+stage, its next step (or "no next step"), its close day (marked once it
+has passed) and whether it is quiet. Its **···** (a long press on a
+phone) has **Move to…**, **Log**, **Next step** and **Open client**. With
+a mouse or a trackpad you can also drag a card onto another column; on a
+touch screen there is no drag, so a drag never fights the scroll. With a
+keyboard, `m` moves the deal you are on and ← → go between the board's
+columns.
+
+Moving to an open stage happens at once, with Undo. **Won** asks "Make a
+project for it?" with its name and the client's folder filled in: **Make
+project** wins it and makes the project in one save, **Not now** wins it
+without one. **Lost** asks why (eight reasons and a note), or **Skip**.
+Both list the deal's open follow-ups with a tick to mark each done (off
+for Won, where the work may go on; on for Lost).
+
+A deal's page has its client, stage and days in it, value, source and
+close day; **Move to…** (or **Reopen…** once it is closed), **Won** and
+**Lost**; why it was lost, with **Change reason**; its next step;
+**Log a call or meeting**; its follow-ups with **+ Next step**; the
+project it became; and its log, its stage moves by their names. **Edit**
+changes what you change; **Delete** says what goes (the deal and its
+stage moves) and what stays (calls and notes, follow-ups). With a
+keyboard, `m` moves, `l` logs, `n` sets a next step and `e` edits.
+
+**+** adds a deal: a title, a client of yours or a new one by its name (a
+company, a lead), an open stage, a value and its currency (the Life
+currency to start with), a close day, a source and, once you have two, a
+business. A client's page has **+ New deal** too. Deals' **···** has
+**Edit stages** (rename, ↑ ↓, add, remove with "move them to", a
+probability and quiet days of its own; Won and Lost stay) and **Export
+CSV**. Today's Work card's deal lines open Deals with just the deals they
+count.
+
+**Insights** (Deals' **Insights ›**) is one scroll of cards: win rate,
+cycle, forecast by the month deals should close, revenue won by month,
+sources, why deals were lost, the funnel and time in stage. Pick the
+period: 30 or 90 days, 6 or 12 months, **This FY** (from 1 April) or
+**All**. Each currency has its own cards, and with nothing to count a
+figure reads "—", never 0 %. On a wide window the cards sit in two or
+three columns.
 
 ### A project on one screen
 
