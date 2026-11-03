@@ -79,9 +79,9 @@ has the steps.
   command of yours ticks their items, logs or undoes a dose, adds a weight,
   or pauses or narrows for them. Their Activity lists every change you make,
   each time you look at an area (once an hour per area), and each device of
-  yours that can newly open their space. Their location, IP address and a
-  "last seen" are never collected. Their reminders and doses ring their
-  phone, not yours.
+  yours that can newly open their space. Jantar never asks for their
+  location or keeps their IP address, and you never see when they last
+  opened the app. Their reminders and doses ring their phone, not yours.
 - **Alerts both ways**: check in, call me, Urgent, good morning and night,
   running late, a reminder about an item and a custom line, with one-tap
   replies. One resolver decides every push between you: limits set by
