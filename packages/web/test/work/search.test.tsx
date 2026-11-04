@@ -143,4 +143,34 @@ describe('one search across Jantar', () => {
     // Esc closes it on the Mac: no Cancel beside the box.
     expect(within(sheet).queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
+
+  it("0.13.1: a deal's second line keeps its stage whole; its client's name gives way first", async () => {
+    const long: SearchResponse = {
+      groups: [
+        { kind: 'client', items: [{ kind: 'client', id: IDS.client, label: 'Sample Trading', sub: 'client', href: `/work?tab=clients&id=${IDS.client}` }] },
+        { kind: 'deal', items: [{ kind: 'deal', id: IDS.deal, label: 'Export dashboard', sub: 'Fixture Labs and Sample Trading Company · Contacted', href: `/work?tab=deals&id=${IDS.deal}` }] },
+      ],
+    };
+    setup({ layout: layoutAt(1440), search: () => long });
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    const sheet = await screen.findByRole('dialog', { name: 'Search or jump' });
+    type(sheet, 'export');
+    const deal = await within(sheet).findByRole('option', { name: /Export dashboard/ });
+    const sub = deal.querySelector('[data-sub]') as HTMLElement;
+    // The line as a whole still takes at most 3/5 of the row (7b126c0: a phone never runs sideways).
+    expect(sub.className.split(' ')).toEqual(expect.arrayContaining(['max-w-3/5', 'flex-none', 'min-w-0']));
+    expect(sub.className.split(' ')).not.toContain('truncate');
+    expect(sub.textContent).toBe('Fixture Labs and Sample Trading Company\u00a0· Contacted');
+    // The client's name is the part that is cut; the stage never shrinks (only a stage wider than the line is).
+    const head = sub.querySelector('[data-sub-head]') as HTMLElement;
+    const tail = sub.querySelector('[data-sub-tail]') as HTMLElement;
+    expect(head.textContent).toBe('Fixture Labs and Sample Trading Company');
+    expect(head.className.split(' ')).toEqual(expect.arrayContaining(['min-w-0', 'truncate']));
+    expect(tail.textContent).toBe('\u00a0· Contacted');
+    expect(tail.className.split(' ')).toEqual(expect.arrayContaining(['flex-none', 'max-w-full']));
+    // A line of one part is one box, cut as before.
+    const client = within(sheet).getByRole('option', { name: /^Sample Trading/ }).querySelector('[data-sub]') as HTMLElement;
+    expect(client.querySelector('[data-sub-head]')).toBeNull();
+    expect((client.querySelector('[data-sub-tail]') as HTMLElement).textContent).toBe('client');
+  });
 });

@@ -69,6 +69,31 @@ function appPath(href: string): string | null {
 }
 
 /**
+ * A result's second line, at most 3/5 of its row (0.13.0), so a deal's long client name is cut and the
+ * row never runs sideways on a phone. 0.13.1: its last part ("Fixture Labs and Sample Trading Company ·
+ * Contacted": a deal's stage, a client's state, a session's status) stays whole and the part before it
+ * gives way first; cut as one, the stage went ("… · Cont…") while the client's name stayed.
+ */
+function ResultSub({ text }: { text: string }) {
+  const cut = text.lastIndexOf(' · ');
+  const head = cut > 0 ? text.slice(0, cut) : null;
+  const tail = cut > 0 ? text.slice(cut + 3) : text;
+  return (
+    <span data-sub className="ml-auto flex min-w-0 max-w-3/5 flex-none pl-12 type-mono text-ink-3">
+      {head !== null ? (
+        <span data-sub-head className="min-w-0 truncate">
+          {head}
+        </span>
+      ) : null}
+      {/* A no-break space: the line's own " · ", which white-space: nowrap would drop at the start of a box. */}
+      <span data-sub-tail className="max-w-full flex-none truncate">
+        {head !== null ? `\u00a0· ${tail}` : tail}
+      </span>
+    </span>
+  );
+}
+
+/**
  * GET /v1/search for `query` once typing stops (150 ms), the older ask cancelled: its groups, and the
  * words they are for (an answer for older words is never shown for newer ones).
  */
@@ -150,8 +175,7 @@ export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChan
           return to ? (
             <Command.Item key={`${it.kind}:${it.id}`} value={`found ${it.kind} ${it.id}`} onSelect={() => go(to)} className={ROW}>
               <span className="min-w-0 truncate type-row font-medium">{it.label}</span>
-              {/* 0.13.0: at most 3/5 of the row, so a deal's long client name is cut and the row never runs sideways on a phone. */}
-              {it.sub ? <span className="ml-auto min-w-0 max-w-3/5 flex-none truncate pl-12 type-mono text-ink-3">{it.sub}</span> : null}
+              {it.sub ? <ResultSub text={it.sub} /> : null}
             </Command.Item>
           ) : null;
         })}
