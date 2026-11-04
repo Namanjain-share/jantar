@@ -20,6 +20,14 @@
  *   raised to 80, Save, the receipt, then the fake home's switch.json read
  *   back: 01's ramp as saved, 02's left as it was, every other key as it was,
  *   the old file in switch.json.prev; and back on Accounts, 01 says "cap 80%".
+ * - 0.14.0, 02's usage has no 5-hour window at all (cswap's usage for it has
+ *   no fiveHour, as the owner's account 2: no 5-hour limit): its row says
+ *   "no 5-hour limit", never "0", "88" or "no window open", at 320 and on
+ *   a Mac (no 5-hour burn there either).
+ * - 0.14.0, at 320 x 568 with touch: a switch.json that won't parse refuses
+ *   the Save (409), and the reason and Save are both on screen; an edit
+ *   asks "Discard what you changed?" before Esc, a scrim tap or a swipe
+ *   down throws it away (the phone's bottom sheet too).
  * - 0.14.0, on an iPad (1024 x 1366 and 1180 x 820, touch) and a Mac (1440 x
  *   900): each account named as Accounts names it, 02's "Day 5 · now", a −
  *   or + edit that Esc asks about before throwing it away, Tab through the
@@ -89,6 +97,14 @@ describe.skipIf(!ready)('0.14.0 Switching rules on a phone and an iPad, in Chrom
         const file = join(home.paths.ccwDir, 'switch.json');
         const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
         await writeFile(file, JSON.stringify({ ...raw, hold: [2, 3], weekly_ramp: { '2': USUAL } }, null, 2));
+        // 0.14.0: 02 has no 5-hour limit: no five_hour in cswap's cache row, no fiveHour in `cswap list --json`.
+        const cache = JSON.parse(readFileSync(home.paths.usageJson, 'utf8')) as { accounts: Record<string, { lastGood?: Record<string, unknown> }> };
+        delete cache.accounts['2']?.lastGood?.five_hour;
+        await writeFile(home.paths.usageJson, JSON.stringify(cache));
+        const listFile = join(home.root, 'fake', 'cswap-list.json');
+        const list = JSON.parse(readFileSync(listFile, 'utf8')) as { accounts: { number: number; usage: Record<string, unknown> | null }[] };
+        delete list.accounts.find((a) => a.number === 2)?.usage?.fiveHour;
+        await writeFile(listFile, JSON.stringify(list));
       },
     });
     seeded = await readFile(switchJson(), 'utf8');
@@ -185,6 +201,21 @@ describe.skipIf(!ready)('0.14.0 Switching rules on a phone and an iPad, in Chrom
     await page.waitForTimeout(150);
   }
 
+  /** A finger down at (x, y), moved `by` px down in steps, and lifted: a swipe, as touch events over CDP. */
+  async function swipeDown(page: Page, x: number, y: number, by: number) {
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let i = 1; i <= 12; i++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + Math.round((by * i) / 12) }] });
+        await page.waitForTimeout(16);
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    } finally {
+      await cdp.detach().catch(() => undefined);
+    }
+  }
+
   /** The usual checks on one screen (web-v013-phone's): console, sideways, 44 x 44, the bottom 24 px, the iPad's status bar, the chrome. */
   async function check(o: Opened, who: Who, what: string) {
     const { page, watch } = o;
@@ -237,6 +268,11 @@ describe.skipIf(!ready)('0.14.0 Switching rules on a phone and an iPad, in Chrom
         if (who === 'p320') {
           // 0.14.0: closed, 02's row shows both its flags, held and its cap, each whole inside the row
           const row = o.page.getByRole('main').getByRole('listitem').filter({ has: o.page.getByRole('button', { name: '02 team-b', exact: true }) });
+          // 0.14.0: no 5-hour limit, said, never a 5-hour number or "no window open"
+          const said = (await row.innerText()).replace(/\s+/g, ' ');
+          expect(said, "02's closed row").toContain('no 5-hour limit');
+          expect(said, "02's closed row").not.toMatch(/no window open|\b(0|88) 5h/);
+          expect(await row.getByRole('meter', { name: '02 team-b 5-hour usage' }).count()).toBe(0);
           const flags = row.locator('[data-flags]');
           expect(await flags.getByText('held', { exact: true }).isVisible()).toBe(true);
           expect(await flags.getByText('cap 75%', { exact: true }).isVisible()).toBe(true);
@@ -308,6 +344,94 @@ describe.skipIf(!ready)('0.14.0 Switching rules on a phone and an iPad, in Chrom
     );
     expect(existsSync(`${switchJson()}.prev`)).toBe(true);
   }, perfBudgetMs(180_000));
+  it('0.14.0 at 320 x 568: a refused Save shows the reason and Save together; Esc, a scrim tap and a swipe ask first', async () => {
+    let broken = false;
+    await on(
+      'p320',
+      'Switching rules, a refusal and discarding (p320)',
+      async (o) => {
+        const { page } = o;
+        await accounts(page);
+        const sheet = await openSheet(page);
+        const asking = page.getByRole('group', { name: 'Unsaved changes' });
+        const keep = async () => {
+          await asking.getByRole('button', { name: 'Keep editing' }).tap();
+          await asking.waitFor({ state: 'hidden' });
+          expect(await sheet.isVisible()).toBe(true);
+        };
+
+        // Unchanged, nothing asks: Esc closes at once.
+        await page.keyboard.press('Escape');
+        await sheet.waitFor({ state: 'hidden' });
+        await openSheet(page);
+
+        // A + tap is an edit: Esc, a scrim tap and a swipe down each ask, in the bottom sheet.
+        await sheet.getByRole('button', { name: 'Raise 5-hour limit' }).tap();
+        expect(await sheet.getByRole('textbox', { name: '5-hour limit' }).inputValue()).toBe('98');
+        await page.keyboard.press('Escape');
+        await asking.waitFor();
+        expect(await asking.innerText()).toContain('Discard what you changed?');
+        await check(o, 'p320', 'the sheet asking before Esc throws an edit away');
+        await keep();
+        // the scrim: above the sheet's top
+        const box = await page.locator('.sheet-popup').boundingBox();
+        expect(box && box.y > 24, 'scrim above the sheet').toBe(true);
+        await page.touchscreen.tap(160, Math.max(8, Math.round((box?.y ?? 40) / 2)));
+        await asking.waitFor();
+        await keep();
+        // a swipe down from the grabber
+        await swipeDown(page, 160, Math.round((box?.y ?? 40) + 10), 320);
+        await asking.waitFor();
+        await keep();
+        expect(await sheet.getByRole('textbox', { name: '5-hour limit' }).inputValue()).toBe('98');
+
+        // A switch.json that won't parse refuses the Save (409): the reason and Save, both in view.
+        await writeFile(switchJson(), '{ "hold": [2, 3], ');
+        broken = true;
+        await sheet.getByRole('button', { name: 'Save', exact: true }).tap();
+        const alert = sheet.getByRole('alert');
+        await alert.waitFor();
+        await settle(page);
+        const seen = await page.evaluate(() => {
+          const vh = window.innerHeight;
+          const one = (el: Element | null) => {
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + Math.min(r.width / 2, 40), r.top + Math.min(r.height / 2, 10));
+            return { top: Math.round(r.top), bottom: Math.round(r.bottom), hit: hit !== null && (el.contains(hit) || hit.contains(el)) };
+          };
+          const row = document.querySelector('[data-switching-actions]');
+          const save = [...(row?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.trim() === 'Save') ?? null;
+          return { vh, alert: one(row?.querySelector('[role="alert"]') ?? null), save: one(save) };
+        });
+        const inView = (r: { top: number; bottom: number } | null) => r !== null && r.top >= 0 && r.bottom <= seen.vh;
+        expect(inView(seen.alert), `the reason at ${seen.alert?.top}-${seen.alert?.bottom} in ${seen.vh}`).toBe(true);
+        expect(inView(seen.save), `Save at ${seen.save?.top}-${seen.save?.bottom} in ${seen.vh}`).toBe(true);
+        expect(seen.alert?.hit && seen.save?.hit, 'the reason and Save not covered').toBe(true);
+        expect(await sheet.getByRole('textbox', { name: '5-hour limit' }).inputValue()).toBe('98'); // kept
+        // the browser said the 409 in its console: that one is expected
+        const others = o.watch.errors.filter((e) => !/status of 409/.test(e));
+        o.watch.errors.length = 0;
+        o.watch.errors.push(...others);
+        await check(o, 'p320', 'the sheet after a refused Save');
+
+        // Put the file back; Cancel (the form's own) closes at once, and nothing was written.
+        await writeFile(switchJson(), seeded);
+        broken = false;
+        await sheet.getByRole('button', { name: 'Cancel', exact: true }).tap();
+        await sheet.waitFor({ state: 'hidden' });
+        expect(await readFile(switchJson(), 'utf8')).toBe(seeded);
+      },
+      {
+        reset: async () => {
+          if (broken) await writeFile(switchJson(), seeded);
+          broken = false;
+        },
+      },
+    );
+    expect(await readFile(switchJson(), 'utf8')).toBe(seeded);
+  }, perfBudgetMs(180_000));
+
   it('on an iPad and a Mac: names, today, Esc after a − or +, Tab clear of the pinned row, and the Save receipt in view', async () => {
     let saved = false;
     for (const who of ['ipad', 'ipad1180', 'mac'] as const) {
@@ -318,6 +442,14 @@ describe.skipIf(!ready)('0.14.0 Switching rules on a phone and an iPad, in Chrom
           const { page } = o;
           const tap = (l: ReturnType<Page['getByRole']>) => (desk(who) ? l.click() : l.tap());
           await accounts(page);
+          if (who === 'mac') {
+            // 0.14.0: 02's matrix row says it has no 5-hour limit, with no 5-hour meter or burn
+            const row = page.getByRole('table', { name: 'Accounts' }).getByRole('row').filter({ has: page.getByRole('button', { name: '02 team-b', exact: true }) });
+            const cells = (await row.getByRole('cell').allInnerTexts()).map((c) => c.replace(/\s+/g, ' ').trim());
+            expect(cells[1], "02's 5H %").toBe('no 5-hour limit');
+            expect(cells.join(' | '), "02's row").not.toMatch(/no window open|\+\d+%\/h/);
+            expect(await row.getByRole('meter', { name: '02 team-b 5-hour usage' }).count()).toBe(0);
+          }
           await tap(page.getByRole('button', { name: 'Switching rules' }));
           const sheet = page.getByRole('dialog', { name: 'Switching rules' });
           await sheet.getByRole('form', { name: 'Switching rules' }).waitFor();
