@@ -135,7 +135,8 @@ export const PERSON_CREDENTIAL_DB = 'jantar-person';
 /** Partners one owner may have. The model, tables and routes take N; the cap is a constant (spec 1.1). */
 export const PEOPLE_MAX = 1;
 export const PERSON_INVITE_TTL_MS = 24 * 60 * 60_000;
-export const PERSON_LINK_CODE_TTL_MS = 5 * 60_000;
+/** 0.12.2: a device-link code's life, 15 minutes (was 5): the One-time PIN sign-in on the new device alone can take a few. */
+export const PERSON_LINK_CODE_TTL_MS = 15 * 60_000;
 /** Active devices one person may have (link codes stop there). */
 export const PERSON_DEVICES_MAX = 5;
 /** The default window `jantar people remove` leaves her to download her data. */

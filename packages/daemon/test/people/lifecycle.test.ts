@@ -5,7 +5,8 @@
  *   spends the code once (a race yields one device); 24 h; wrong, spent and
  *   expired codes answer one sentence; a widened body or another Access
  *   email spends nothing; invites are the Mac's; "Copy link again" needs an
- *   admin device; link codes last 5 minutes, work once, stop at 5 devices.
+ *   admin device; link codes last 15 minutes (0.12.2), work once, stop at
+ *   5 devices.
  * - The agreement (M19): this owner's offer is Everything with food on,
  *   clamped to what P1 builds; narrowing only lowers and applies before the
  *   next read; one proposal at a time, a 7-day cooling-off after a decline,
@@ -164,12 +165,24 @@ describe('invites', () => {
     expect(r.statusCode).toBe(409);
   });
 
-  it('link codes: 5 minutes, once, at most 5 devices', async () => {
+  it('link codes: 15 minutes (0.12.2), once, at most 5 devices', async () => {
     const x = await fx();
-    const code = (await onHer(x.api, 'POST', '/v1/p/devices/link', x.asha.full)).json() as { code: string };
-    x.api.ctx.clock.advance(5 * 60_000 + 1);
-    expect((await onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code: code.code, deviceName: 'late' })).statusCode).toBe(400);
-    for (let i = 0; i < 4; i++) await linkDevice(x.api, x.asha, `d${i}`);
+    const mint = async () => (await onHer(x.api, 'POST', '/v1/p/devices/link', x.asha.full)).json() as { code: string; expiresAt: string };
+    const claim = (code: string, deviceName: string) => onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code, deviceName });
+    const laptop = await mint();
+    const spare = await mint();
+    // 0.12.2: 15 minutes, since the One-time PIN sign-in alone can take a few.
+    expect(Date.parse(laptop.expiresAt) - x.api.ctx.clock.now()).toBe(15 * 60_000);
+    x.api.ctx.clock.advance(14 * 60_000);
+    expect((await claim(laptop.code, 'Laptop')).statusCode).toBe(200);
+    resetLimiters(x.api);
+    const spent = await claim(laptop.code, 'again');
+    expect(spent.statusCode).toBe(400);
+    x.api.ctx.clock.advance(60_000 + 1);
+    resetLimiters(x.api);
+    const late = await claim(spare.code, 'late');
+    expect([late.statusCode, late.json()]).toEqual([spent.statusCode, spent.json()]);
+    for (let i = 0; i < 3; i++) await linkDevice(x.api, x.asha, `d${i}`);
     const full = await onHer(x.api, 'POST', '/v1/p/devices/link', x.asha.full);
     expect(full.statusCode).toBe(409);
   });

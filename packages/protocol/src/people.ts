@@ -962,7 +962,7 @@ const PERSON_ACCOUNT_ROUTES = {
   }),
   personDeviceLinkCode: route({
     method: 'POST', path: '/v1/p/devices/link', scope: 'person', phase: 'v0.11', ctl: false,
-    response: LinkCodeReplySchema, summary: 'A 5-minute, single-use code for another device of hers (C37).',
+    response: LinkCodeReplySchema, summary: 'A 15-minute, single-use code for another device of hers (C37; 0.12.2: was 5 minutes).',
   }),
   personDeviceLinkClaim: route({
     method: 'POST', path: '/v1/p/devices/link/claim', scope: 'person', phase: 'v0.11', ctl: false, join: true,

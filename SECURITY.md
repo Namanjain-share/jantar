@@ -2100,8 +2100,9 @@ It adds a new asset: **another person's Life data, health data included**.
   their check without a credential; T17 pins those.
 - **Invites and link codes**: 128-bit, single use, stored only as hashes,
   carried in a URL fragment; invites last 24 hours and are made at the Mac
-  only; device-link codes last 5 minutes. Wrong, spent and expired codes all
-  get one answer. At join, in Cloudflare mode, the email Access forwards is
+  only; device-link codes last 15 minutes (5 before 0.12.2: the One-time
+  PIN sign-in on the new device alone can take a few). Wrong, spent and
+  expired codes all get one answer. At join, in Cloudflare mode, the email Access forwards is
   compared with the one the owner gave (a check against mistakes, not a
   cryptographic binding: verifying the Access JWT is a later item).
 - **Her stream** sends counters only (no State, replay, ids or titles), and

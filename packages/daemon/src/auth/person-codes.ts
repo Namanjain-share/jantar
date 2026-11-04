@@ -6,7 +6,8 @@
  *   never reaches a log. Only its prefixed sha256 is stored, so a restart
  *   keeps an unspent invite valid.
  * - Invites last PERSON_INVITE_TTL_MS (24 h) and are spent once; link codes
- *   last PERSON_LINK_CODE_TTL_MS (5 minutes) and are spent once.
+ *   last PERSON_LINK_CODE_TTL_MS and are spent once (0.12.2: 15 minutes, was
+ *   5, as the One-time PIN sign-in on the new device alone can take a few).
  * - Wrong, spent, revoked and expired codes all answer the one `invalid`, so
  *   an answer never confirms which (spec 2.4).
  * - "Copy link again" (C14): an unspent invite's code is held in this
