@@ -2331,10 +2331,16 @@ like a setting that moves sessions.
   parsed. `telegram.json` is never opened.
 - **How.** The file is read and parsed first: one that won't parse (or is
   missing) is never written into, and the save answers 409. The old file
-  goes to `switch.json.prev`, then the new one is written to a temp file
-  in the same folder (0600, fsynced) and renamed into place, only if the
-  file is still what was read (a change by ccw in between wins, and the
-  save answers 409). One save at a time.
+  and the new one are each written to a temp file in the same folder
+  (0600, fsynced); `switch.json` is read again before each temp file and
+  once more before the renames, and only while it is still what was read
+  do the temp files become `switch.json.prev` and then `switch.json` (a
+  change by ccw in between wins: the save answers 409 and
+  `switch.json.prev` stays as it was). A save's own temp files left by
+  one that never finished are removed by the next save; nothing else in
+  the folder is touched. One save at a time. A `switch.json` that is a
+  symlink is read through it and replaced by a regular file (its target
+  is left alone), as ccw's own save (`os.replace`) does.
 - **Audit.** The row names the keys saved (`hold`, `weeklyRamp`, ...),
   never a value.
 - **Files.** `~/.config/ccw` stays on Files' denylist: the phone can't read

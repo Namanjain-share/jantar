@@ -13,17 +13,28 @@
  * - A file that won't parse is never written into: the save is refused
  *   (409) and the file is left as it is. So is a missing one (ccw writes
  *   it on its first start), and one that changes while the save runs.
- * - The file as it was goes to switch.json.prev first, then the new one is
- *   written to a temp file in the same folder (0600, fsynced) and renamed
- *   into place, so ccw reads either the old file or the new one, never half.
+ * - The file as it was and the new one are each written to a temp file in
+ *   the same folder (0600, fsynced). switch.json is read again, and must be
+ *   as it was, before each temp file is written and once more before the
+ *   two are renamed into place: switch.json.prev first, then switch.json,
+ *   so ccw reads either the old file or the new one, never half. A save
+ *   that finds the file changed (409) leaves both, and switch.json.prev,
+ *   as they were.
+ * - Its own temp files (.switch.json.jantar-<pid>-<hex>.tmp and
+ *   .switch.json.prev.jantar-…) left by a save that never finished (the
+ *   daemon stopped mid-save) are removed by the next save. Nothing else in
+ *   the folder is touched.
  * - One save at a time per file (a second waits for the first).
+ * - A switch.json that is a symlink is read through it, and the save puts
+ *   a regular file in its place (the link's target is left as it was), as
+ *   ccw's own save (os.replace) does.
  *
  * ccw reads switch.json every couple of seconds, so it uses a saved rule
  * within a minute. Files keeps ~/.config/ccw out of reach all the same
  * (files/deny.ts).
  */
 import { randomBytes } from 'node:crypto';
-import { open, readFile, rename, rm, stat } from 'node:fs/promises';
+import { lstat, open, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { SwitchRules, SwitchRulesPatch } from '@jantar/protocol';
 import type { Paths } from '../../contracts.js';
@@ -55,7 +66,7 @@ export interface SwitchRefusal {
  * them (the rename's moment, the temp file's mode) without touching the
  * module system.
  */
-export const switchFs = { open, readFile, rename, rm, stat };
+export const switchFs = { lstat, open, readFile, readdir, rename, rm, stat };
 
 /** The rules as the sheet shows them, from a parsed switch.json. */
 export function rulesOf(cfg: CcwSwitchConfig): SwitchRules {
@@ -151,43 +162,79 @@ async function save(paths: SwitchPaths, patch: SwitchRulesPatch): Promise<Switch
   if (!read.ok) return read;
   const merged = mergeSwitchRules(read.file, patch);
   const target = paths.ccwSwitchJson;
+  await clearStaleTemps(target).catch(() => undefined);
+  const changed: SwitchRefusal = { ok: false, code: 'conflict', message: SWITCH_COPY.changed };
+  // ccw (or a hand edit) wrote it since it was read: theirs stands, and so does switch.json.prev.
+  const unchanged = async () => (await switchFs.readFile(target, 'utf8').catch(() => null)) === read.text;
+  const temps: string[] = [];
   try {
-    // The file as it was, kept beside it (replacing the last one), before anything changes.
-    await writeAtomic(`${target}.prev`, read.text);
-    const ok = await writeAtomic(target, JSON.stringify(merged, null, 2), async () => {
-      // ccw (or a hand edit) wrote it while this save ran: theirs stands.
-      const now = await switchFs.readFile(target, 'utf8').catch(() => null);
-      return now === read.text;
-    });
-    if (!ok) return { ok: false, code: 'conflict', message: SWITCH_COPY.changed };
+    if (!(await unchanged())) return changed;
+    const prevTmp = await writeTemp(`${target}.prev`, read.text);
+    temps.push(prevTmp);
+    if (!(await unchanged())) return changed;
+    const nextTmp = await writeTemp(target, JSON.stringify(merged, null, 2));
+    temps.push(nextTmp);
+    if (!(await unchanged())) return changed;
+    // The file as it was, kept beside it (replacing the last one), then the new one.
+    await switchFs.rename(prevTmp, `${target}.prev`);
+    temps.shift();
+    await switchFs.rename(nextTmp, target);
+    temps.shift();
   } catch {
     return { ok: false, code: 'unavailable', message: SWITCH_COPY.failed };
+  } finally {
+    for (const t of temps) await switchFs.rm(t, { force: true }).catch(() => undefined);
   }
   return { ok: true, rules: rulesOf(parseSwitchConfig(merged) as CcwSwitchConfig) };
 }
 
-/**
- * `text` into `path` through a temp file in the same folder (0600, fsynced),
- * renamed into place only if `stillOk` says so (false: nothing changed).
- */
-async function writeAtomic(path: string, text: string, stillOk?: () => Promise<boolean>): Promise<boolean> {
+/** `text` in a new temp file beside `path` (0600, fsynced, closed); its path. */
+async function writeTemp(path: string, text: string): Promise<string> {
   const tmp = join(dirname(path), `.${basename(path)}.jantar-${process.pid}-${randomBytes(6).toString('hex')}.tmp`);
   const fh = await switchFs.open(tmp, 'wx', 0o600);
   try {
-    try {
-      await fh.writeFile(text, 'utf8');
-      await fh.sync();
-    } finally {
-      await fh.close();
-    }
-    if (stillOk && !(await stillOk())) {
-      await switchFs.rm(tmp, { force: true });
-      return false;
-    }
-    await switchFs.rename(tmp, path);
-    return true;
+    await fh.writeFile(text, 'utf8');
+    await fh.sync();
   } catch (e) {
+    await fh.close().catch(() => undefined);
     await switchFs.rm(tmp, { force: true }).catch(() => undefined);
     throw e;
+  }
+  await fh.close();
+  return tmp;
+}
+
+/** A temp file older than this is a save's that never finished, whoever's it was. */
+const STALE_TEMP_MS = 10 * 60_000;
+
+/** A pid that is running (or that this process may not signal: someone's, so running). */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * Remove the temp files a save into `target` left behind, and only those
+ * (writeTemp's names, regular files): this process's own (its saves on the
+ * file run one at a time, so none is in progress), a stopped process's, and
+ * any older than STALE_TEMP_MS.
+ */
+async function clearStaleTemps(target: string): Promise<void> {
+  const dir = dirname(target);
+  const name = basename(target).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const own = new RegExp(`^\\.${name}(?:\\.prev)?\\.jantar-(\\d+)-[0-9a-f]{12}\\.tmp$`);
+  for (const entry of await switchFs.readdir(dir)) {
+    const m = own.exec(entry);
+    if (!m) continue;
+    const file = join(dir, entry);
+    const st = await switchFs.lstat(file).catch(() => null);
+    if (!st?.isFile()) continue;
+    const pid = Number(m[1]);
+    if (pid !== process.pid && pidAlive(pid) && Date.now() - st.mtimeMs < STALE_TEMP_MS) continue;
+    await switchFs.rm(file, { force: true }).catch(() => undefined);
   }
 }

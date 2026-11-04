@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, readFile, readdir, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SECRET_MARKER, assistantText, makeSession } from '@jantar/fixtures';
@@ -708,7 +708,79 @@ describe('ccw-legacy 0.14.0: saving the switching rules into switch.json', () =>
     const r = await writeSwitchRules(env.ctx.paths, { ceiling: 90 });
     expect(r).toEqual({ ok: false, code: 'conflict', message: SWITCH_COPY.changed });
     expect(await readFile(file, 'utf8')).toBe('{"on": true, "hold": [9]}'); // theirs stands
+    expect(existsSync(`${file}.prev`)).toBe(false); // and no switch.json.prev from a save that didn't happen
     expect((await readdir(env.home.paths.ccwDir)).filter((n) => n.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('re-checks the file before each temp file and before the renames: a 409 leaves switch.json.prev as it was', async () => {
+    await writeFile(`${file}.prev`, '{"kept": "the last save before this one"}');
+    const open = switchFs.open;
+    for (const gap of ['.switch.json.prev.jantar-', '.switch.json.jantar-']) {
+      const before = await readFile(file, 'utf8');
+      const spy = vi.spyOn(switchFs, 'open').mockImplementation((async (path: string, flags: string, mode: number) => {
+        const fh = await open(path, flags, mode);
+        if (basename(path).startsWith(gap)) await writeFile(file, '{"on": true, "hold": [8]}'); // ccw saves in the gap
+        return fh;
+      }) as never);
+      const r = await writeSwitchRules(env.ctx.paths, { ceiling: 90 });
+      spy.mockRestore();
+      expect(r, gap).toEqual({ ok: false, code: 'conflict', message: SWITCH_COPY.changed });
+      expect(await readFile(file, 'utf8'), gap).toBe('{"on": true, "hold": [8]}'); // theirs stands
+      expect(await readFile(`${file}.prev`, 'utf8'), gap).toBe('{"kept": "the last save before this one"}'); // never overwritten on a 409
+      expect((await readdir(env.home.paths.ccwDir)).filter((n) => n.endsWith('.tmp')), gap).toEqual([]);
+      await writeFile(file, before);
+    }
+    // changed between the read and the first temp file: nothing is written at all
+    const spy = vi.spyOn(switchFs, 'readFile');
+    let reads = 0;
+    spy.mockImplementation((async (path: string, enc: BufferEncoding) => {
+      const text = await readFile(path, enc);
+      if (path === file && ++reads === 2) return `${text} `; // the re-check sees another file
+      return text;
+    }) as never);
+    const opened = vi.spyOn(switchFs, 'open');
+    expect(await writeSwitchRules(env.ctx.paths, { ceiling: 90 })).toEqual({ ok: false, code: 'conflict', message: SWITCH_COPY.changed });
+    expect(opened).not.toHaveBeenCalled();
+    expect(await readFile(`${file}.prev`, 'utf8')).toBe('{"kept": "the last save before this one"}');
+  });
+
+  it("clears its own temp files a save left behind, and nothing else in ccw's folder", async () => {
+    const dir = env.home.paths.ccwDir;
+    const hex = 'a1b2c3d4e5f6';
+    const old = Date.now() / 1000 - 3600;
+    const names = {
+      dead: `.switch.json.jantar-2147483646-${hex}.tmp`, // its process is gone
+      mine: `.switch.json.prev.jantar-${process.pid}-${hex}.tmp`, // this process's: no save of ours is running
+      stale: `.switch.json.jantar-${process.ppid}-${hex}.tmp`, // a live process's, an hour old
+      fresh: `.switch.json.prev.jantar-${process.ppid}-${hex}.tmp`, // a live process's, just written: maybe saving now
+      other: '.switch.json.other.tmp',
+      notes: 'notes.tmp',
+      short: `.switch.json.jantar-1-abc.tmp`,
+      linked: `.switch.json.jantar-2147483645-${hex}.tmp`, // a symlink, not a file a save writes
+    };
+    for (const [k, n] of Object.entries(names)) {
+      if (k === 'linked') await symlink(join(dir, 'notes.tmp'), join(dir, n));
+      else await writeFile(join(dir, n), 'x');
+    }
+    await utimes(join(dir, names.stale), old, old);
+    expect((await writeSwitchRules(env.ctx.paths, { leadMin: 11 })).ok).toBe(true);
+    const left = (await readdir(dir)).filter((n) => n.endsWith('.tmp')).sort();
+    expect(left).toEqual([names.fresh, names.other, names.linked, names.short, names.notes].sort());
+    expect((await lstat(join(dir, names.linked))).isSymbolicLink()).toBe(true);
+  });
+
+  it('puts a regular file in place of a symlinked switch.json, as ccw\'s own save does, and leaves the link\'s target alone', async () => {
+    const real = join(env.home.paths.ccwDir, 'switch.real.json');
+    const old = await readFile(file, 'utf8');
+    await writeFile(real, old);
+    await rm(file);
+    await symlink(real, file);
+    const r = await writeSwitchRules(env.ctx.paths, { ceiling: 93 });
+    expect(r.ok).toBe(true);
+    expect((await lstat(file)).isSymbolicLink()).toBe(false);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ ceiling: 93 });
+    expect(await readFile(real, 'utf8')).toBe(old);
+    expect(await readFile(`${file}.prev`, 'utf8')).toBe(old);
   });
 
   it('refuses without ccw, and saves one at a time', async () => {
