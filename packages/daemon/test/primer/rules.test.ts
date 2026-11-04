@@ -160,6 +160,14 @@ describe('who is primed', () => {
     expect(whyNotPrime(acct(4, { disabled: true }), input())).toBe('disabled');
   });
 
+  it('0.14.0: never an account with no 5-hour limit (no 5-hour window in its reading): there is no clock to start', () => {
+    const weekOnly = acct(4, { windows: [{ kind: 'seven_day', pct: 40, resetsAt: iso(HOUR) }, { kind: 'scoped:opus', pct: 10 }] });
+    expect(whyNotPrime(weekOnly, input())).toBe('no 5-hour limit');
+    expect(whyNotPrime(acct(4, { windows: [{ kind: 'seven_day', pct: 40 }], noFiveHourLimit: true }), input())).toBe('no 5-hour limit');
+    // one there but not open (pct 0, no reset) is a 5-hour limit with no window running: primed
+    expect(whyNotPrime(acct(4, { windows: [{ kind: 'five_hour', pct: 0 }, { kind: 'seven_day', pct: 40 }] }), input())).toBeNull();
+  });
+
   it('skips a running window and an account at or over the weekly ceiling', () => {
     expect(whyNotPrime(acct(4, { windows: [{ kind: 'five_hour', pct: 0, resetsAt: iso(HOUR) }] }), input())).toBe('its 5-hour window is running');
     const weekly = (pct: number) => acct(4, { windows: [{ kind: 'five_hour', pct: 0 }, { kind: 'seven_day', pct }] });

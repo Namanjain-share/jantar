@@ -176,12 +176,23 @@ describe('0.14.0: weekly caps and accounts with no 5-hour window', () => {
     const inp = inputs([noFive(6, 10), account(7, 12)], { bookings: new Map([[6, 3]]) });
     expect(autoSkip(noFive(6, 10), inp)).toBeNull();
     expect(effective5h(noFive(6, 10), inp)).toBe(0); // never a projected fill, bookings or not
-    expect(usageLine(noFive(6, 10), inp)).toBe('no 5-hour window · 7d 10%');
-    expect(pickAuto(inp)).toEqual({ pick: 6, reason: 'most room · no 5-hour window · 7d 10%' });
+    expect(usageLine(noFive(6, 10), inp)).toBe('no 5-hour limit · 7d 10%');
+    expect(pickAuto(inp)).toEqual({ pick: 6, reason: 'most room · no 5-hour limit · 7d 10%' });
+    // the daemon's own word for it, with only a model-scoped weekly window read
+    expect(usageLine({ ...account(6, 0), windows: [{ kind: 'scoped:Model-A', pct: 30 }], noFiveHourLimit: true }, inp)).toBe('no 5-hour limit');
     // its weekly use (or cap) still stops it
     expect(autoSkip(noFive(6, 96), inp)).toBe('past the weekly ceiling');
     expect(autoSkip(noFive(6, 46), inputs([], { weeklyCaps: new Map([[6, 50]]) }))).toBe('near its 50% weekly cap');
-    expect(accountRows(inp).find((r) => r.id === 6)).toEqual({ id: 6, label: '06', live: 0, selectable: true, held: false, sevenDayPct: 10 });
+    // the picker's row says it has no 5-hour limit, with no 5-hour % or reset
+    expect(accountRows(inp).find((r) => r.id === 6)).toEqual({ id: 6, label: '06', live: 0, selectable: true, held: false, sevenDayPct: 10, noFiveHourLimit: true });
+  });
+
+  it('a 5-hour window that is there but not open is 0%, a 5-hour limit all the same', () => {
+    const idle: Account = { ...account(6, 0), windows: [{ kind: 'five_hour', pct: 0 }, { kind: 'seven_day', pct: 10 }] };
+    const inp = inputs([idle], { bookings: new Map([[6, 1]]) });
+    expect(usageLine(idle, inp)).toBe('5h 0%');
+    expect(effective5h(idle, inp)).toBeGreaterThan(0); // a booking can fill it
+    expect(accountRows(inp)[0]).toEqual({ id: 6, label: '06', live: 0, selectable: true, held: false, fiveHourPct: 0, sevenDayPct: 10 });
   });
 
   it('a held account says whether ccw moves its sessions off at a weekly cap', () => {

@@ -5,7 +5,9 @@
  * switch.json's:
  *
  * - an account is primed when no 5-hour window runs on it: none read, none
- *   started, or the one read has reset since;
+ *   started, or the one read has reset since; 0.14.0: never one with no
+ *   5-hour limit (a reading with no 5-hour window at all): it has no 5-hour
+ *   clock to start;
  * - never a kept or held account (accounts.kept, autoswitch.hold, ccw's
  *   hold list, an account's own `held`), unless accounts.primeKept;
  * - only on a reading that is usage "ok" and at most PRIME_STALE_MS old,
@@ -20,7 +22,7 @@
  * removed), no slash commands, one turn. Always with --share-history,
  * because a plain `cswap run N` unlinks the profile's shared history.
  */
-import type { Account, AccountId } from '@jantar/protocol';
+import { noFiveHourLimit, type Account, type AccountId } from '@jantar/protocol';
 import { rewriteEnv } from '../rewrite/run.js';
 import { parseSwitchConfig } from '../sources/ccw-legacy/files.js';
 
@@ -118,6 +120,7 @@ export function whyNotPrime(a: Account, i: PrimeInput): string | null {
   if (a.disabled) return 'disabled';
   if (a.usageStatus !== 'ok') return 'usage not ok';
   if (!(usageAgeMs(a, i.nowMs) <= PRIME_STALE_MS)) return 'usage too old';
+  if (noFiveHourLimit(a)) return 'no 5-hour limit';
   if (!windowFree(a, i.nowMs)) return 'its 5-hour window is running';
   if (weeklyPct(a, i.nowMs) >= i.weeklyCeiling) return 'at the weekly ceiling';
   const primed = i.primed.get(a.id);

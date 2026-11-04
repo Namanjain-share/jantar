@@ -182,6 +182,27 @@ describe('reads', () => {
     expect(usage.isError).toBe(false);
     expect(usage.text).not.toMatch(/@/);
   });
+
+  it('0.14.0: accounts_usage says an account has no 5-hour limit, never leaving the model to guess 0%', async () => {
+    rig = await chatRig();
+    const base = { emailMasked: 'a***@example.com', isDefaultLogin: false, disabled: false, held: false, usageStatus: 'ok' };
+    rig.ctx.store.emit({
+      type: 'usage.updated',
+      data: {
+        accounts: [
+          { ...base, id: 1, windows: [{ kind: 'five_hour', pct: 0 }, { kind: 'seven_day', pct: 20 }] },
+          { ...base, id: 2, alias: 'team-b', held: true, noFiveHourLimit: true, windows: [{ kind: 'seven_day', pct: 50 }, { kind: 'scoped:Model-A', pct: 70 }] },
+        ],
+        activeAccount: 1,
+        fetchedAt: rig.ctx.clock.iso(),
+        source: 'cli',
+      },
+    });
+    const { tools } = rig.turn();
+    const text = (await tools.call('accounts_usage', {})).text;
+    expect(text).toContain('- team-b held: no 5-hour limit, seven_day 50%, Model-A 70%');
+    expect(text).toContain('- account 1 active: five_hour 0%, seven_day 20%'); // one there but not open: 0%, a 5-hour limit
+  });
 });
 
 describe("someone else's words in a todo made from a meeting, and in a write's or a card's label (B9)", () => {

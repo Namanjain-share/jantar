@@ -507,8 +507,20 @@ describe('ccw-legacy 0.14.0: weekly ramps in switch.json', () => {
         active: new Map([['s1', now - 1000]]),
       });
       const two = of(out, 2)!;
-      expect(two).toMatchObject({ id: 2, burnPctPerMin: 2, ridesReset: true, weeklyCap: 50, usable: false });
+      // no 5-hour window to burn: 0, never its sessions' 2 %/min of one (Accounts drew it as +120%/h)
+      expect(two).toMatchObject({ id: 2, burnPctPerMin: 0, ridesReset: true, weeklyCap: 50, usable: false });
       expect(two).not.toHaveProperty('fullInMin'); // never 0% used filling at 2 %/min
+      // the daemon's own word for it says the same, with the windows left as they are
+      const said = plan([usage(2, 10, null, { noFiveHourLimit: true })], { hold: [2] }, { sessions, burn: [{ sid: 's1', pctPerMin: 2, updatedMs: now - 60_000 }], active: new Map([['s1', now - 1000]]) });
+      expect(of(said, 2)).toMatchObject({ burnPctPerMin: 0, ridesReset: true });
+      expect(of(said, 2)).not.toHaveProperty('fullInMin');
+      // a 5-hour window there but not open (pct 0, no reset): a 5-hour limit, so its burn and fill count
+      const idle = plan([{ ...usage(2, 10, null), windows: [{ kind: 'five_hour', pct: 0 }, { kind: 'seven_day', pct: 10, resetsAt: new Date(R).toISOString() }] }], {}, {
+        sessions,
+        burn: [{ sid: 's1', pctPerMin: 2, updatedMs: now - 60_000 }],
+        active: new Map([['s1', now - 1000]]),
+      });
+      expect(of(idle, 2)).toMatchObject({ burnPctPerMin: 2, fullInMin: 48.5 }); // (97 - 0) / 2
       expect(out.next).toBe(4);
       // not held, under its cap - 5: a target, with the most room (no 5-hour window to fill)
       const free = plan([usage(2, 10, null), usage(4, 20, 10)]);

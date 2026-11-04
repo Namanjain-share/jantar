@@ -32,7 +32,8 @@ The daemon looks on every usage reading, on every settings change and once
 a minute. An account is primed when all of these hold:
 
 - no 5-hour window runs on it: none was read, none has started, or the one
-  read has reset since;
+  read has reset since (0.14.0: never an account with no 5-hour limit, whose
+  reading has no 5-hour window at all: there is no 5-hour clock to start);
 - it is not kept for other work (`accounts.kept`) and not held (the
   autoswitch hold list, the legacy ccw tool's hold list, or the account's
   own held flag), unless `accounts.primeKept` is on;

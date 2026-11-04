@@ -45,6 +45,7 @@ import {
   POST_PLATFORM_LABEL,
   PlacesQuerySchema,
   boardOrder,
+  noFiveHourLimit,
   pendingFor,
   placeScore,
   placeTagLabel,
@@ -838,7 +839,9 @@ const READS: Readonly<Record<string, ReadFn>> = {
     const accounts = Object.values(state.accounts);
     if (accounts.length === 0) out.push('One Claude login, no usage figures.');
     for (const a of accounts) {
-      const windows = a.windows.map((w) => `${w.kind.replace(/^scoped:/, '')} ${Math.round(w.pct)}%${w.resetsAt ? ` resets ${w.resetsAt.slice(0, 16)}` : ''}`).join(', ');
+      const read = a.windows.map((w) => `${w.kind.replace(/^scoped:/, '')} ${Math.round(w.pct)}%${w.resetsAt ? ` resets ${w.resetsAt.slice(0, 16)}` : ''}`);
+      // 0.14.0: said, so the model never takes a missing five_hour for 0% used.
+      const windows = (noFiveHourLimit(a) ? ['no 5-hour limit', ...read] : read).join(', ');
       out.push(`- ${a.alias ? nm(a.alias, 40) : `account ${a.id}`}${a.held ? ' held' : ''}${kept.has(a.id) ? ' kept' : ''}${a.disabled ? ' disabled' : ''}${state.activeAccount === a.id ? ' active' : ''}: ${windows || 'no usage'}`);
     }
     const latest = d.usage.latest();

@@ -37,11 +37,14 @@
  *
  * Pure functions: the service gathers the inputs.
  */
-import { SWITCH_RULES, type Account, type AccountId, type AccountsMode, type LaunchAccount, type Session } from '@jantar/protocol';
+import { SWITCH_RULES, noFiveHourLimit, type Account, type AccountId, type AccountsMode, type LaunchAccount, type Session } from '@jantar/protocol';
 import { acct, dur, hhmm } from '../notify/format.js';
 import { SINGLE_ACCOUNT } from '../rewrite/account.js';
 
 export { SINGLE_ACCOUNT };
+
+/** 0.14.0: what an account with no 5-hour limit reads as, where another says its 5-hour %. */
+export const NO_FIVE_HOUR_LIMIT = 'no 5-hour limit';
 
 /** An account whose 5-hour window resets this soon counts as empty. */
 export const RESET_SOON_MS = 15 * 60_000;
@@ -146,7 +149,7 @@ export function heldWarning(id: AccountId, capped: boolean): string {
 export function effective5h(a: Account, inp: AccountInputs): number {
   const five = fiveHour(a);
   // 0.14.0: no 5-hour window: no 5-hour limit, so nothing a booking could fill.
-  if (!five && a.windows.length > 0) return 0;
+  if (noFiveHourLimit(a)) return 0;
   const reset = five?.resetsAt ? Date.parse(five.resetsAt) : NaN;
   const soon = Number.isFinite(reset) && reset - inp.nowMs <= RESET_SOON_MS;
   const base = soon ? 0 : (five?.pct ?? 0);
@@ -163,7 +166,8 @@ export function usageLine(a: Account, inp: Pick<AccountInputs, 'nowMs' | 'timeZo
   const five = fiveHour(a);
   const seven = sevenDay(a);
   // 0.14.0: a reading with no 5-hour window (no 5-hour limit): its weekly use is what counts.
-  if (!five) return seven ? `no 5-hour window · 7d ${Math.round(seven.pct)}%` : 'no usage reading';
+  if (noFiveHourLimit(a)) return seven ? `${NO_FIVE_HOUR_LIMIT} · 7d ${Math.round(seven.pct)}%` : NO_FIVE_HOUR_LIMIT;
+  if (!five) return 'no usage reading';
   const parts = [`5h ${Math.round(five.pct)}%`];
   const reset = five.resetsAt ? Date.parse(five.resetsAt) : NaN;
   if (Number.isFinite(reset) && five.resetsAt && reset > inp.nowMs) {
@@ -223,6 +227,8 @@ export function accountRows(inp: AccountInputs): LaunchAccount[] {
       if (five) row.fiveHourPct = five.pct;
       if (seven) row.sevenDayPct = seven.pct;
       if (five?.resetsAt) row.resetsAt = five.resetsAt;
+      // 0.14.0: said, so the picker shows "no 5-hour limit", never an unread 5-hour bar.
+      if (noFiveHourLimit(a)) row.noFiveHourLimit = true;
       const cap = weeklyCapOf(a, inp);
       if (cap !== undefined) row.weeklyCap = cap;
       const why = notSelectable(a);

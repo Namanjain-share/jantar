@@ -13,12 +13,13 @@
  *   for `next`) only while its weekly % is at most its cap now less
  *   SWITCH_RULES.rampTargetMargin (5), unless it is held (never); one
  *   without a ramp, below weekly_ceiling as before;
- * - an account whose reading has no 5-hour window has no 5-hour limit: it
- *   never fills (no `fullInMin`), and it rides any reset. Its weekly use is
- *   what stops it. One with a 5-hour window keeps the 5-hour rules, ramp or
- *   not.
+ * - an account whose reading has no 5-hour window has no 5-hour limit
+ *   (protocol noFiveHourLimit): it never fills (no `fullInMin`), it rides
+ *   any reset, and it has no 5-hour burn to show (`burnPctPerMin` 0: ccw's
+ *   rates are % of a 5-hour window). Its weekly use is what stops it. One
+ *   with a 5-hour window keeps the 5-hour rules, ramp or not.
  */
-import { SWITCH_RULES, type Account, type AccountId, type Move, type Session } from '@jantar/protocol';
+import { SWITCH_RULES, noFiveHourLimit, type Account, type AccountId, type Move, type Session } from '@jantar/protocol';
 import { weeklyCapFor, type WeeklyCap } from './cap.js';
 import type { BurnEntry, CcwSwitchConfig } from './files.js';
 
@@ -120,10 +121,7 @@ export function computePlan(input: PlanInput): PlanOutput {
   }
 
   // 0.14.0: no 5-hour window in the reading: no 5-hour limit (never 0% used with a projected fill).
-  const noFiveLimit = (n: AccountId): boolean => {
-    const a = accts.get(n);
-    return !!a && fiveHour(a) === undefined;
-  };
+  const noFiveLimit = (n: AccountId): boolean => noFiveHourLimit(accts.get(n));
   const fullIn = (n: AccountId, extra = 0): number => {
     if (noFiveLimit(n)) return Infinity;
     const burn = burnOn(n, extra);
@@ -180,7 +178,8 @@ export function computePlan(input: PlanInput): PlanOutput {
       const full = fullIn(n);
       const p: PlanAccount = {
         id: n,
-        burnPctPerMin: Math.round(burnOn(n) * 1000) / 1000,
+        // 0.14.0: no 5-hour limit, no 5-hour burn (its sessions still count where they run).
+        burnPctPerMin: noFiveLimit(n) ? 0 : Math.round(burnOn(n) * 1000) / 1000,
         ridesReset: rides(n),
         usable: usable(n),
       };

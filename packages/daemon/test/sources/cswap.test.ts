@@ -77,6 +77,40 @@ describe('cswap: reading the cache', () => {
     expect(four?.windows[1]?.pct).toBe(96);
   });
 
+  it('0.14.0: a reading with no 5-hour window has no 5-hour limit; one there but not open is 0%', async () => {
+    const cache = usageCacheJson(defaultAccounts(), env.home.now) as { accounts: Record<string, { lastGood: Record<string, unknown> }> };
+    // 02: no five_hour at all (only seven_day and a scoped window); 01: one there, not started (pct 0, no reset)
+    delete (cache.accounts['2'] as { lastGood: Record<string, unknown> }).lastGood.five_hour;
+    (cache.accounts['1'] as { lastGood: Record<string, unknown> }).lastGood.five_hour = { pct: 0, resets_at: null };
+    await writeFile(env.home.paths.usageJson, JSON.stringify(cache));
+    const snap = await createCswapUsageSource(env.ctx, { ccwLegacy: fakeCcw() }).read();
+    const two = snap?.accounts.find((x) => x.id === 2);
+    const one = snap?.accounts.find((x) => x.id === 1);
+    expect(two?.noFiveHourLimit).toBe(true);
+    expect(two?.windows.map((w) => w.kind)).toEqual(['seven_day', 'scoped:Model-A']); // never a five_hour at 0
+    expect(one).not.toHaveProperty('noFiveHourLimit');
+    expect(one?.windows[0]).toEqual({ kind: 'five_hour', pct: 0 });
+    // an account with no reading at all says nothing either way
+    expect(snap?.accounts.find((x) => x.id === 3)).not.toHaveProperty('noFiveHourLimit');
+  });
+
+  it('0.14.0: `cswap list --json` with no fiveHour: no 5-hour limit; a fiveHour with no number is one not open', () => {
+    const raw = cswapListJson(defaultAccounts(), env.home.now) as { accounts: { number: number; usage: Record<string, unknown> | null }[] };
+    const row = (n: number) => raw.accounts.find((a) => a.number === n) as { usage: Record<string, unknown> };
+    delete row(2).usage.fiveHour;
+    row(1).usage.fiveHour = { pct: null, resetsAt: null };
+    const cli = parseCliList(raw, env.home.now, new Set());
+    expect(cli?.accounts.get(2)?.account.noFiveHourLimit).toBe(true);
+    expect(cli?.accounts.get(2)?.account.windows.some((w) => w.kind === 'five_hour')).toBe(false);
+    expect(cli?.accounts.get(1)?.account).not.toHaveProperty('noFiveHourLimit');
+    expect(cli?.accounts.get(1)?.account.windows[0]).toEqual({ kind: 'five_hour', pct: 0 });
+    // an account whose usage is null (not ok, no last good reading) is not called limitless
+    expect(cli?.accounts.get(3)?.account).not.toHaveProperty('noFiveHourLimit');
+    // nor one whose reading has no window with a number in it (nothing was read)
+    row(1).usage = { fiveHour: null, sevenDay: { pct: null } };
+    expect(parseCliList(raw, env.home.now, new Set())?.accounts.get(1)?.account).not.toHaveProperty('noFiveHourLimit');
+  });
+
   it('ignores a cache row that belongs to whoever used to hold the slot', async () => {
     const cache = usageCacheJson(defaultAccounts(), env.home.now) as { accounts: Record<string, Record<string, unknown>> };
     (cache.accounts['2'] as Record<string, unknown>).email = 'someone-else@example.com';

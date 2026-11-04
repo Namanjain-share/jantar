@@ -11,6 +11,12 @@
  * resets (at most 7200 s).
  *
  * Addresses never leave this module unmasked: Account carries `emailMasked`.
+ *
+ * 0.14.0: a reading with no 5-hour window at all (no five_hour / fiveHour
+ * key, or null) is an account with no 5-hour limit: Account.noFiveHourLimit,
+ * and no five_hour window (never one at 0). A five_hour that is there is a
+ * 5-hour limit, open or not: when none is open cswap gives pct 0 with no
+ * reset or one past, a window at 0 ("no window open").
  */
 import { maskEmail, type Account, type AccountId, type UsageWindow } from '@jantar/protocol';
 import type { SequenceInfo } from '../lib/cswap-files.js';
@@ -43,12 +49,26 @@ function makeWindow(kind: string, pct: unknown, resetsAt: unknown, nowMs: number
   return w;
 }
 
+/** 0.14.0: a five_hour that is there is a 5-hour limit: without a number it is one not open (0), never left out. */
+function fiveHourWindow(w: Obj, resetsAt: unknown, nowMs: number): UsageWindow {
+  return makeWindow('five_hour', w.pct, resetsAt, nowMs) ?? { kind: 'five_hour', pct: 0 };
+}
+
+/**
+ * 0.14.0: windows read from a reading that had no 5-hour window at all (a
+ * five_hour that is there always gives one): the account has no 5-hour
+ * limit. Not said with nothing read (no reading, or none with a number).
+ */
+export function noFiveHourIn(windows: readonly UsageWindow[]): boolean {
+  return windows.length > 0 && !windows.some((w) => w.kind === 'five_hour');
+}
+
 /** Windows from a cache row's `lastGood` (snake_case, as cswap stores the API reading). */
 export function windowsFromLastGood(lastGood: unknown, nowMs: number): UsageWindow[] {
   if (!isObj(lastGood)) return [];
   const out: UsageWindow[] = [];
   const add = (w: UsageWindow | null) => w && out.push(w);
-  if (isObj(lastGood.five_hour)) add(makeWindow('five_hour', lastGood.five_hour.pct, lastGood.five_hour.resets_at, nowMs));
+  if (isObj(lastGood.five_hour)) add(fiveHourWindow(lastGood.five_hour, lastGood.five_hour.resets_at, nowMs));
   if (isObj(lastGood.seven_day)) add(makeWindow('seven_day', lastGood.seven_day.pct, lastGood.seven_day.resets_at, nowMs));
   if (Array.isArray(lastGood.scoped)) {
     for (const s of lastGood.scoped) {
@@ -63,7 +83,7 @@ export function windowsFromCli(usage: unknown, nowMs: number): UsageWindow[] {
   if (!isObj(usage)) return [];
   const out: UsageWindow[] = [];
   const add = (w: UsageWindow | null) => w && out.push(w);
-  if (isObj(usage.fiveHour)) add(makeWindow('five_hour', usage.fiveHour.pct, usage.fiveHour.resetsAt, nowMs));
+  if (isObj(usage.fiveHour)) add(fiveHourWindow(usage.fiveHour, usage.fiveHour.resetsAt, nowMs));
   if (isObj(usage.sevenDay)) add(makeWindow('seven_day', usage.sevenDay.pct, usage.sevenDay.resetsAt, nowMs));
   if (Array.isArray(usage.scoped)) {
     for (const s of usage.scoped) {
@@ -149,6 +169,7 @@ export function accountsFromCache(
     const matches = row !== undefined && row.email === s.email && (str(row.organizationUuid) ?? '') === s.organizationUuid;
     if (row && matches) {
       a.windows = windowsFromLastGood(row.lastGood, nowMs);
+      if (noFiveHourIn(a.windows)) a.noFiveHourLimit = true;
       setFetched(a, toEpochMs(row.fetchedAt), nowMs);
       if ((num(row.authDeadStrikes) ?? 0) >= 1) a.usageStatus = 'relogin_required';
       else a.usageStatus = cacheRowTrusted(row, nowMs) ? 'ok' : 'unavailable';
@@ -178,6 +199,7 @@ export function parseCliList(raw: unknown, nowMs: number, held: ReadonlySet<numb
     a.usageStatus = str(row.usageStatus) ?? 'unavailable';
     const usage = isObj(row.usage) ? row.usage : isObj(row.lastGoodUsage) ? row.lastGoodUsage : null;
     a.windows = windowsFromCli(usage, nowMs);
+    if (noFiveHourIn(a.windows)) a.noFiveHourLimit = true;
     const fetchedMs = toEpochMs(isObj(row.usage) ? row.usageFetchedAt : row.lastGoodFetchedAt);
     setFetched(a, fetchedMs, nowMs);
     accounts.set(id, fetchedMs !== undefined ? { account: a, fetchedMs } : { account: a });
