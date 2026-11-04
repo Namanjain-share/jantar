@@ -41,6 +41,41 @@ Usage comes from cswap's own cache. While the legacy ccw tool's bot keeps
 that cache fresh, Jantar only reads it; it becomes the single
 `cswap list --json` poller only when that bot is not running.
 
+## Switching rules
+
+While the legacy ccw tool runs, it moves sessions between accounts by the
+rules in its `~/.config/ccw/switch.json`. **Switching rules** on the
+Accounts screen (beside Refresh, on a device paired with control) shows
+and changes them:
+
+- **Hold**, per account: ccw moves nothing onto it or off it.
+- **Weekly cap by day**, per account: instead of the one weekly limit, a
+  cap for each day of the account's week and one for its last hour. Day 1
+  starts at the account's weekly reset; in the hour before the next reset
+  the last-hour cap applies. *Fill the usual week* puts in 50, 50, 50, 50,
+  75, 85, 95 and 100 for the last hour: the account is kept to half its
+  week early on and can use all of it at the end. When a reading is older
+  than the reset, the days count on from that reset. Turn the cap off and
+  the account goes back to the weekly limit.
+- **5-hour limit** and **Weekly limit**: the % of each window ccw treats
+  as full (50 to 100).
+- **Leave … min before full**: how early a session leaves an account
+  that will be full (1 to 60 minutes).
+
+Save writes only what you changed, and only those settings: every other
+key in `switch.json` stays as it was, and the file as it was before is
+kept beside it as `switch.json.prev`. The new file is written whole and
+then put in place, so ccw never reads half of it, and it uses the new
+rules within a minute. When `switch.json` doesn't read as JSON (a typo
+from editing it by hand, or ccw halfway through writing it), nothing is
+saved and the sheet says so; fix the file on the Mac and save again.
+Without ccw, or with Jantar started `--read-only`, there is nothing to
+save.
+
+An account with a weekly cap shows it on its row: `cap 50%` among its
+flags, and next to its weekly use the cap now and the next one, as
+`cap 50% · 75% Thu 22:30`. The weekly bar's tick is at the cap.
+
 ## Accounts kept for other work
 
 Some accounts belong to other work and should never be picked on their own.
@@ -85,6 +120,7 @@ or installed with `--settings` ([Hook cards](phone-control.md#hook-cards)).
 
 Jantar does not switch a session to another account by itself, and sends
 no Telegram messages or Mac banners. It shows the ceiling and `next →` that
-the legacy ccw tool reads, and honours a ccw move in progress when it types
-into a session. See [Jantar beside the legacy ccw tool](upgrading.md#jantar-beside-the-legacy-ccw-tool)
+the legacy ccw tool reads, lets you change ccw's
+[switching rules](#switching-rules), and honours a ccw move in progress
+when it types into a session. See [Jantar beside the legacy ccw tool](upgrading.md#jantar-beside-the-legacy-ccw-tool)
 and the [roadmap](roadmap.md).

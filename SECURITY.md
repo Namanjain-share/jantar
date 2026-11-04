@@ -189,7 +189,8 @@ Ctrl-U, control keys, focus, answering cards (blocking permission hooks are
 not held, so Claude asks in the terminal), the cswap CLI poller, settings
 changes, v0.3's Rewrite runs, launches, new windows and new folders,
 v0.4's primes and Ask Claude, and sending a message to v0.5.3's Ask (each
-runs a headless Claude that spends an account's quota). Life and Intel
+runs a headless Claude that spends an account's quota), and 0.14's Save of
+ccw's switching rules. Life and Intel
 writes still work: they touch only Jantar's own files.
 Screenshots never select a tab. Files still reads. It is enforced on the
 daemon's parts themselves, not only in the HTTP layer. `--no-terminal` turns
@@ -2304,3 +2305,40 @@ route run, and the logs, audit log, events and error replies read for
 them; a follow-up's push and its owner), `test/life/work-*.test.ts` and
 `test/chat/work-{tools,deal-tools}.test.ts` (taint, cards, Undo, and her
 tools' inputs).
+
+## v0.14: Switching rules
+
+Until 0.14.0 Jantar only read the legacy ccw tool's files. Now it writes
+one of them, `~/.config/ccw/switch.json`, when the owner saves the
+Switching rules sheet on the Accounts screen (`PATCH
+/v1/accounts/switching`), and at no other time. Those rules
+decide which accounts ccw moves sessions onto, so the route is guarded
+like a setting that moves sessions.
+
+- **Who.** A `control` route of his: a phone paired with control (the
+  device secret and an allowed Origin on the write, as every write), or
+  the Mac's control socket. A read-scope device is refused; her host
+  (0.11's People) never serves it (404 with an empty body, before any
+  handler). A paired server's ccw reader is inert, so there it answers 404
+  `ccw_absent`, as on a Mac without ccw. `jantard --read-only` refuses the
+  save (READ_ONLY_REFUSED, and the handler checks again).
+- **What changes.** Only `hold`, `ceiling`, `weekly_ceiling`, `lead_min`
+  and `weekly_ramp`, each checked by its schema (the ceilings 50 to 100,
+  so a slip can't send every session off its account; the lead time 1 to
+  60 minutes; a ramp seven days and a last hour, 1 to 100; account numbers
+  0 to 99; nothing else in the body). Every other key, the Telegram bot's
+  settings and the prompts ccw types among them, is written back as it was
+  parsed. `telegram.json` is never opened.
+- **How.** The file is read and parsed first: one that won't parse (or is
+  missing) is never written into, and the save answers 409. The old file
+  goes to `switch.json.prev`, then the new one is written to a temp file
+  in the same folder (0600, fsynced) and renamed into place, only if the
+  file is still what was read (a change by ccw in between wins, and the
+  save answers 409). One save at a time.
+- **Audit.** The row names the keys saved (`hold`, `weeklyRamp`, ...),
+  never a value.
+- **Files.** `~/.config/ccw` stays on Files' denylist: the phone can't read
+  or browse it there.
+
+Pinned by `packages/daemon/test/api/switching.test.ts` and the write tests
+in `packages/daemon/test/sources/ccw-legacy.test.ts`.

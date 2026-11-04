@@ -219,8 +219,11 @@ it:
 - Different names everywhere: the CLI is `jantar`, the daemon `jantard`,
   its state lives in `~/.jantar`, its launchd label is `com.jantar.daemon`.
 - It only **reads** ccw's files (`~/.config/ccw/switch/*.json`,
-  `burn.json`, `active.json`, `switch.json`'s hold list and prime switch)
-  to show moves and `next →`; it never writes there.
+  `burn.json`, `active.json`, `switch.json`'s hold list, limits, weekly
+  caps and prime switch) to show moves and `next →`. The one write: when
+  you save the [switching rules](accounts.md#switching-rules) on the
+  Accounts screen, it rewrites `switch.json` (those five settings only,
+  every other key as it was, the old file kept as `switch.json.prev`).
 - It never starts a second Telegram poller, a second autoswitcher or a
   second primer. When ccw primes free 5-hour windows (its default), Jantar
   leaves priming to it ([the primer](primer.md#the-legacy-ccw-tool)).

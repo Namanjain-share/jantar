@@ -8,7 +8,7 @@ runs anywhere else.
  phone PWA / browser ──HTTPS+WSS (Tailscale Serve, or a Cloudflare Tunnel)──┐
                                                                             ▼
                     jantard (Node 22 daemon, launchd: com.jantar.daemon)
-   sources: Claude session files · transcripts · hooks · cswap files · legacy ccw files (read-only)
+   sources: Claude session files · transcripts · hooks · cswap files · legacy ccw files (read-only; switch.json on your Save)
    core:    store → shared reducer → event bus (seq) · SQLite (events, audit, devices, push)
    terminal: Terminal.app backend · writer: one queue per pane, send-with-proof
    life:    life.db (its own SQLite file) · one scheduler for every Life ping
@@ -25,7 +25,11 @@ runs anywhere else.
   files, follows their transcripts, and reads the Terminal tab a session
   runs in when it needs the screen. With cswap it reads the usage cache;
   with the legacy ccw tool it reads its files. It never writes to any of
-  them.
+  them, with one exception since 0.14.0: when you save the
+  [switching rules](accounts.md#switching-rules) on the Accounts screen,
+  it rewrites ccw's `switch.json` (only the hold list, the two limits,
+  the lead time and the weekly caps; the old file stays beside it as
+  `switch.json.prev`). Nothing else in `~/.config/ccw` is ever written.
 - **Hooks.** When you install them, Claude Code calls `jantar-hook` on
   permission prompts, questions and plans. The hook asks the daemon over a
   Unix socket and waits for your answer. When the daemon is not running the

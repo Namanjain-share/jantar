@@ -10,7 +10,10 @@ point below links to its section there.
 
 - Claude Code's session files and transcripts, cswap's usage cache and the
   legacy ccw tool's files, read-only
-  ([threat model](../SECURITY.md#threat-model-summary)).
+  ([threat model](../SECURITY.md#threat-model-summary)). The one write
+  there: ccw's `switch.json`, when you save its
+  [switching rules](accounts.md#switching-rules) from a device paired
+  with control ([0.14](../SECURITY.md#v014-switching-rules)).
 - Terminal.app: it reads the text of the tabs Claude runs in and types only
   what you send or answer ([approvals](../SECURITY.md#approvals),
   [controls](../SECURITY.md#controls-keys-modes-slash-commands)).

@@ -913,3 +913,37 @@ beside their list at 1180 × 820 leaving 43 and 45 % of the width empty:
 their 620 pane was under the 640 the cards start at, so each was a list.
 Work's project, client and deal pages now show cards from a pane of 600
 (`HUB_CARDS_FROM` in `work/parts.tsx`), as design 6.3 draws that pane.
+
+### v0.14.0 (unreleased)
+
+Switching rules: the owner's sheet over the legacy ccw tool's
+`switch.json`. The protocol (`api.ts`, in the index): `SWITCH_RULES` (the
+limits, the preset and the cap rule in its comment), `WeeklyRampSchema`,
+`SwitchRulesSchema` (the reply), `SwitchRulesPatchSchema` (the body: hold,
+ceiling, weeklyCeiling, leadMin, weeklyRamp, nothing else), the plan
+accounts' `weeklyCap`, `capUntil` and `nextCap`, the error `ccw_absent`
+(404), and two owner routes, `getSwitchRules` and `patchSwitchRules` (`GET`
+and `PATCH /v1/accounts/switching`, scope `control`, phase `v0.14`). The
+daemon: `sources/ccw-legacy/files.ts` reads `weekly_ramp` (entries that
+don't fit are dropped), `cap.ts` is the cap rule and its next change,
+`plan.ts` gives each account with a ramp its cap and stops at it instead
+of `weekly_ceiling`, and `write.ts` is the one write into `~/.config/ccw`
+(only the five keys; a file that won't parse refused; `switch.json.prev`;
+a temp file renamed into place); `api/routes/switching.ts` serves both
+routes, and `patchSwitchRules` is in `READ_ONLY_REFUSED`. The web:
+`screens/accounts/SwitchingSheet.tsx` (in the Accounts chunk), the cap in
+`accounts/model.ts` (a `cap` per row, `capText`), `PhoneRows.tsx` and
+`Matrix.tsx` (whose flags now wrap within their 160 px column, which a
+held, disabled account that needs a login overran with ccw's hold list),
+and `reloadPlan` in `ui/plan.ts`. The first load is 278.1 kB of
+`MAIN_JS_MAX` 280 kB (277.6 on 0.13.2: the two routes' schemas). Tests:
+`packages/protocol/test/v014-switching.test.ts`,
+`packages/daemon/test/sources/ccw-legacy.test.ts` (with ccw's cap table,
+`ccw-cap-table.json`), `packages/daemon/test/api/switching.test.ts`,
+`packages/web/test/accounts-switching.test.tsx`, and
+`test/integration/web-v014-switching.integration.test.ts`: the built app
+served by jantard on a home with ccw, at 320 × 568, 390 × 844 and on a
+1024 × 1366 iPad with touch, Accounts and the sheet with the usual checks
+(a clean console, nothing sideways, 44 × 44, nothing that stays put in the
+bottom 24 px, the iPad's status bar), and at 390 a day's cap raised and
+saved, read back from the fake home's `switch.json`.
