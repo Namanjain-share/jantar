@@ -433,14 +433,17 @@ export const PlanResponseSchema = z.object({
     z.object({
       id: AccountIdSchema,
       burnPctPerMin: z.number(),
+      /** 0.14.0: absent for an account with no 5-hour window in its reading (no 5-hour limit), as for one that won't fill. */
       fullInMin: z.number().optional(),
       ridesReset: z.boolean(),
       usable: z.boolean(),
       /**
        * 0.14.0: only for an account with a weekly ramp in ccw's switch.json
        * (`weekly_ramp`): its weekly cap now, in %, by SWITCH_RULES' cap rule
-       * on the daemon's clock. ccw leaves it (and moves nothing onto it) at
-       * this % of its week instead of `weekly_ceiling`.
+       * on the daemon's clock. ccw's sessions leave it once its weekly
+       * reading reaches this % instead of `weekly_ceiling`, and (unless it is
+       * held) it takes sessions while at most this less
+       * SWITCH_RULES.rampTargetMargin (`usable`).
        */
       weeklyCap: z.number().min(1).max(100).optional(),
       /** 0.14.0: when the cap next changes (with `nextCap`); absent when it won't before a new reading. */
@@ -474,6 +477,20 @@ export const PlanResponseSchema = z.object({
  * start = R; else start = R - 7 days. t < R and R - t <= 1 hour: `last_hour`.
  * Otherwise day = floor((t - start) / 1 day) + 1, kept within 1..7, and the
  * cap is days[day - 1]. An account without an entry: `weekly_ceiling`.
+ * Keys are account numbers as ccw writes them ("2", never "02"): any other
+ * key is ignored (logged once), and so is an entry that doesn't fit (its
+ * account's cap is `weekly_ceiling`). A whole number written as 50.0 counts
+ * as 50.
+ *
+ * 0.14.0, how ccw uses the cap (and Jantar's plan and Auto with it):
+ * - leaving is by the reading, not a projection: a ramped account's sessions
+ *   leave (or park, when nothing has room) once its weekly % reaches the cap
+ *   now;
+ * - a ramped account that isn't held is a target only while its weekly % is
+ *   at most the cap now minus `rampTargetMargin`, so a session doesn't land
+ *   at 49% and leave at 50%; a held one never is;
+ * - an account with no 5-hour window in its reading (cswap gives none) has
+ *   no 5-hour limit: never 0% used with a projected fill.
  */
 export const SWITCH_RULES = {
   ceilingMin: 50,
@@ -488,7 +505,25 @@ export const SWITCH_RULES = {
   accountMax: 99,
   /** The schedule the sheet's preset fills in: four quiet days, then more each day, the whole window in the last hour. */
   preset: { days: [50, 50, 50, 50, 75, 85, 95], lastHour: 100 },
+  /** 0.14.0: a ramped account that isn't held takes sessions only while its weekly % is at most its cap minus this. */
+  rampTargetMargin: 5,
 } as const;
+
+const RAMP_HOUR_MS = 3_600_000;
+const RAMP_DAY_MS = 24 * RAMP_HOUR_MS;
+
+/**
+ * 0.14.0: which part of its week a weekly ramp is in at `nowMs`, by the cap
+ * rule above (SWITCH_RULES): day 1 to 7, 'lastHour', or null with no weekly
+ * reset to count from (the cap is then `weekly_ceiling`). `resetMs` is the
+ * account's weekly reset (usage's seven_day resetsAt), in epoch ms.
+ */
+export function rampSlot(resetMs: number | null, nowMs: number): number | 'lastHour' | null {
+  if (resetMs === null || !Number.isFinite(resetMs)) return null;
+  if (nowMs < resetMs && resetMs - nowMs <= RAMP_HOUR_MS) return 'lastHour';
+  const start = nowMs >= resetMs ? resetMs : resetMs - SWITCH_RULES.rampDays * RAMP_DAY_MS;
+  return Math.min(SWITCH_RULES.rampDays, Math.max(1, Math.floor((nowMs - start) / RAMP_DAY_MS) + 1));
+}
 
 const rampValue = z.number().int().min(SWITCH_RULES.rampMin).max(SWITCH_RULES.rampMax);
 

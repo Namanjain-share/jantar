@@ -11,6 +11,7 @@ import {
   SwitchRulesPatchSchema,
   SwitchRulesSchema,
   WeeklyRampSchema,
+  rampSlot,
   type RouteDef,
 } from '../src/index.js';
 import { PERSON_ROUTES } from '../src/people.js';
@@ -58,6 +59,36 @@ describe('0.14.0 switching rules', () => {
     expect(WeeklyRampSchema.safeParse({ days: ramp.days }).success).toBe(false);
     for (const key of ['02', '-1', '100', 'two', '', ' 2', '2.0']) expect(ok({ weeklyRamp: { [key]: ramp } }), `key ${key}`).toBe(false);
     expect(ok({ weeklyRamp: { '2': { days: ramp.days, last_hour: 100 } } })).toBe(false); // the file's spelling is not the API's
+  });
+
+  it('takes 50.0 as 50 (JSON reads it whole) and only canonical account keys', () => {
+    const body = JSON.parse('{"weeklyRamp": {"2": {"days": [50.0, 50, 50, 50, 75, 85, 95.0], "lastHour": 100.0}}, "ceiling": 97.0}');
+    expect(SwitchRulesPatchSchema.parse(body)).toEqual({ weeklyRamp: { '2': ramp }, ceiling: 97 });
+    expect(ok(JSON.parse('{"weeklyRamp": {"02": {"days": [50, 50, 50, 50, 75, 85, 95], "lastHour": 100}}}'))).toBe(false);
+  });
+
+  it("names the part of an account's week its cap comes from: day 1 to 7, the last hour, or none without a reset", () => {
+    const H = 3_600_000;
+    const D = 24 * H;
+    const R = Date.parse('2026-11-11T16:30:00Z');
+    expect(rampSlot(null, R)).toBeNull();
+    expect(rampSlot(Number.NaN, R)).toBeNull();
+    expect(rampSlot(R, R - 7 * D)).toBe(1); // the week's first moment
+    expect(rampSlot(R, R - 8 * D)).toBe(1); // a reading from before the week: held to day 1
+    expect(rampSlot(R, R - 4 * D)).toBe(4);
+    expect(rampSlot(R, R - 3 * D - 1)).toBe(4);
+    expect(rampSlot(R, R - 3 * D)).toBe(5);
+    expect(rampSlot(R, R - H - 1)).toBe(7);
+    expect(rampSlot(R, R - H)).toBe('lastHour');
+    expect(rampSlot(R, R - 1)).toBe('lastHour');
+    // stale: the week rolled at R, so its days count from R
+    expect(rampSlot(R, R)).toBe(1);
+    expect(rampSlot(R, R + 4 * D)).toBe(5);
+    expect(rampSlot(R, R + 30 * D)).toBe(7);
+  });
+
+  it('targets a ramped account only 5 under its cap', () => {
+    expect(SWITCH_RULES.rampTargetMargin).toBe(5);
   });
 
   it('has the preset the sheet fills in', () => {

@@ -12,7 +12,7 @@
  * An account without an entry has no cap of its own: weekly_ceiling, as before.
  * Times are epoch milliseconds here (ccw counts seconds; the boundaries are the same).
  */
-import type { WeeklyRamp } from '@jantar/protocol';
+import { rampSlot, type WeeklyRamp } from '@jantar/protocol';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -20,11 +20,10 @@ const WEEK_DAYS = 7;
 
 /** The cap at `nowMs` for an account with `ramp`, whose weekly window resets at `resetMs` (null: no reading). */
 export function rampCapAt(ramp: WeeklyRamp, resetMs: number | null, nowMs: number, weeklyCeiling: number): number {
-  if (resetMs === null) return weeklyCeiling;
-  const start = nowMs >= resetMs ? resetMs : resetMs - WEEK_DAYS * DAY_MS;
-  if (nowMs < resetMs && resetMs - nowMs <= HOUR_MS) return ramp.lastHour;
-  const day = Math.min(WEEK_DAYS, Math.max(1, Math.floor((nowMs - start) / DAY_MS) + 1));
-  return ramp.days[day - 1] as number;
+  // 0.14.0: the rule itself is protocol's rampSlot, shared with the Switching rules sheet's "Day 4 · now".
+  const slot = rampSlot(resetMs, nowMs);
+  if (slot === null) return weeklyCeiling;
+  return slot === 'lastHour' ? ramp.lastHour : (ramp.days[slot - 1] as number);
 }
 
 export interface WeeklyCap {

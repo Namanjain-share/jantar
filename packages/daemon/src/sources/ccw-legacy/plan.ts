@@ -7,8 +7,18 @@
  * active.json as they are; usage comes from cswap (via usage.updated). This
  * is the "next ->" and "full in" view while ccw still owns autoswitch; the
  * native planner inside Jantar is later work.
+ *
+ * 0.14.0, the ramp rule (protocol SWITCH_RULES):
+ * - an account with a weekly ramp is `usable` (a target, and a candidate
+ *   for `next`) only while its weekly % is at most its cap now less
+ *   SWITCH_RULES.rampTargetMargin (5), unless it is held (never); one
+ *   without a ramp, below weekly_ceiling as before;
+ * - an account whose reading has no 5-hour window has no 5-hour limit: it
+ *   never fills (no `fullInMin`), and it rides any reset. Its weekly use is
+ *   what stops it. One with a 5-hour window keeps the 5-hour rules, ramp or
+ *   not.
  */
-import type { Account, AccountId, Move, Session } from '@jantar/protocol';
+import { SWITCH_RULES, type Account, type AccountId, type Move, type Session } from '@jantar/protocol';
 import { weeklyCapFor, type WeeklyCap } from './cap.js';
 import type { BurnEntry, CcwSwitchConfig } from './files.js';
 
@@ -109,13 +119,20 @@ export function computePlan(input: PlanInput): PlanOutput {
     if (m.step !== 'parked' && m.to !== undefined) onOf(m.to).set(m.sid, rate(m.sid));
   }
 
+  // 0.14.0: no 5-hour window in the reading: no 5-hour limit (never 0% used with a projected fill).
+  const noFiveLimit = (n: AccountId): boolean => {
+    const a = accts.get(n);
+    return !!a && fiveHour(a) === undefined;
+  };
   const fullIn = (n: AccountId, extra = 0): number => {
+    if (noFiveLimit(n)) return Infinity;
     const burn = burnOn(n, extra);
     return burn <= 0 ? Infinity : Math.max(0, (cfg.ceiling - (used.get(n) ?? 0)) / burn);
   };
   const windowLeft = (n: AccountId): number => resetIn(n) ?? 300;
   const rides = (n: AccountId, extra = 0): boolean => windowLeft(n) <= fullIn(n, extra);
   const run = (n: AccountId, extra: number): number => {
+    if (noFiveLimit(n)) return Infinity;
     const full = fullIn(n, extra);
     const t = windowLeft(n);
     return t <= full ? t + Math.min(300, cfg.ceiling / burnOn(n, extra)) : full;
@@ -131,10 +148,14 @@ export function computePlan(input: PlanInput): PlanOutput {
     const resetMs = reset ? Date.parse(reset) : NaN;
     caps.set(n, weeklyCapFor(ramp, Number.isFinite(resetMs) ? resetMs : null, nowMs, cfg.weeklyCeiling));
   }
-  const weeklyLimit = (n: AccountId): number => caps.get(n)?.cap ?? cfg.weeklyCeiling;
+  // 0.14.0: a ramped account takes sessions only while 5 under its cap (hysteresis: ccw leaves it at the cap).
+  const weeklyRoom = (n: AccountId, a: Account): boolean => {
+    const cap = caps.get(n);
+    return cap ? weeklyPct(a) <= cap.cap - SWITCH_RULES.rampTargetMargin : weeklyPct(a) < cfg.weeklyCeiling;
+  };
   const usable = (n: AccountId): boolean => {
     const a = accts.get(n);
-    return !!a && !cfg.hold.includes(n) && a.usageStatus === 'ok' && a.windows.length > 0 && weeklyPct(a) < weeklyLimit(n);
+    return !!a && !cfg.hold.includes(n) && a.usageStatus === 'ok' && a.windows.length > 0 && weeklyRoom(n, a);
   };
   const shared = (n: AccountId, key: string | null): boolean =>
     [...(on.get(n)?.keys() ?? [])].some((sid) => (group.get(sid) ?? sid) !== key);

@@ -12,7 +12,9 @@
  * - botRunning(): ccw's Telegram bot holds telegram.lock (lsof; falls back to
  *   the process list). The bot's config, telegram.json, is never opened.
  * - 0.14.0: plan() also gives each account with a weekly ramp in switch.json
- *   its weekly cap now, by ccw's cap rule on the daemon's clock (cap.ts).
+ *   its weekly cap now, by ccw's cap rule on the daemon's clock (cap.ts). A
+ *   weekly_ramp key or entry ccw ignores ("02", a value over 100) is
+ *   ignored here too, and logged once.
  *
  * Nothing here creates, writes, locks or deletes anything in ~/.config/ccw.
  * 0.14.0: the one write Jantar makes there is write.ts's, apart from this
@@ -63,6 +65,8 @@ const STUCK_RETRY_SHOWN_MS = 5 * 60_000;
 export class CcwLegacy implements CcwLegacySource {
   private bot: { at: number; running: boolean } | null = null;
   private lastSwitch: CcwSwitchConfig | null = null;
+  /** 0.14.0: weekly_ramp problems already logged (each once while the daemon runs, as ccw's bot does). */
+  private readonly rampWarned = new Set<string>();
   private readonly emitted = new Map<string, string>();
   private timer: TimerId | undefined;
   private started = false;
@@ -198,7 +202,13 @@ export class CcwLegacy implements CcwLegacySource {
       if (r.reason === 'missing') this.lastSwitch = null;
       return this.lastSwitch;
     }
-    const cfg = parseSwitchConfig(r.value);
+    const problems: string[] = [];
+    const cfg = parseSwitchConfig(r.value, problems);
+    for (const p of problems) {
+      if (this.rampWarned.has(p) || this.rampWarned.size >= 100) continue;
+      this.rampWarned.add(p);
+      this.ctx.log.warn("ccw's switch.json: a weekly_ramp entry is ignored", { problem: p });
+    }
     if (cfg) this.lastSwitch = cfg;
     return this.lastSwitch;
   }

@@ -447,6 +447,99 @@ describe('ccw-legacy 0.14.0: weekly ramps in switch.json', () => {
     expect(out.next).not.toBe(2);
   });
 
+  describe('0.14.0 the ramp rule in the plan', () => {
+    const now = Date.parse('2026-11-05T10:00:00Z');
+    const D = 86_400_000;
+    const R = now + 6 * D + 12 * 3_600_000; // day 1 of the week: cap 50
+    const usage = (id: number, weekly: number, five: number | null, over: Partial<Account> = {}): Account => ({
+      id,
+      emailMasked: 'x***@e***.com',
+      isDefaultLogin: false,
+      disabled: false,
+      held: false,
+      usageStatus: 'ok',
+      fetchedAt: new Date(now).toISOString(),
+      ageS: 0,
+      windows: [
+        ...(five === null ? [] : [{ kind: 'five_hour' as const, pct: five, resetsAt: new Date(now + 100 * 60_000).toISOString() }]),
+        { kind: 'seven_day', pct: weekly, resetsAt: new Date(R).toISOString() },
+      ],
+      ...over,
+    });
+    const plan = (accounts: Account[], raw: Record<string, unknown> = {}, extra: Partial<Parameters<typeof computePlan>[0]> = {}) =>
+      computePlan({
+        nowMs: now,
+        sessions: [],
+        moves: [],
+        burn: [],
+        active: new Map(),
+        cfg: parseSwitchConfig({ weekly_ceiling: 95, weekly_ramp: { '2': { days: RAMP.days, last_hour: 100 } }, ...raw })!,
+        accounts,
+        ...extra,
+      });
+    const of = (out: ReturnType<typeof computePlan>, id: number) => out.accounts.find((x) => x.id === id);
+
+    it('targets a ramped account only while its weekly % is 5 or more under the cap (hysteresis)', () => {
+      for (const [weekly, usable] of [
+        [10, true],
+        [44, true],
+        [45, true], // cap 50 - 5
+        [46, false],
+        [49, false], // under the cap: its sessions stay, but none arrive
+        [50, false],
+      ] as const) {
+        const out = plan([usage(2, weekly, 10)]);
+        expect(of(out, 2), `weekly ${weekly}`).toMatchObject({ weeklyCap: 50, usable });
+        expect(out.next, `weekly ${weekly}`).toBe(usable ? 2 : null);
+      }
+      // an account without a ramp keeps the plain ceiling: below 95
+      expect(of(plan([usage(3, 94, 10)]), 3)?.usable).toBe(true);
+      expect(of(plan([usage(3, 95, 10)]), 3)?.usable).toBe(false);
+      // a held ramped account never takes one, however far under its cap
+      expect(of(plan([usage(2, 1, 10)], { hold: [2] }), 2)).toMatchObject({ weeklyCap: 50, usable: false });
+    });
+
+    it('an account with no 5-hour window has no 5-hour limit: no fill projected, whatever burns there', () => {
+      const sessions = [makeSession({ sid: 's1', account: 2, status: 'working', folder: 'side-project' })];
+      const out = plan([usage(2, 10, null, { held: false }), usage(4, 20, 10)], { hold: [2] }, {
+        sessions,
+        burn: [{ sid: 's1', pctPerMin: 2, updatedMs: now - 60_000 }],
+        active: new Map([['s1', now - 1000]]),
+      });
+      const two = of(out, 2)!;
+      expect(two).toMatchObject({ id: 2, burnPctPerMin: 2, ridesReset: true, weeklyCap: 50, usable: false });
+      expect(two).not.toHaveProperty('fullInMin'); // never 0% used filling at 2 %/min
+      expect(out.next).toBe(4);
+      // not held, under its cap - 5: a target, with the most room (no 5-hour window to fill)
+      const free = plan([usage(2, 10, null), usage(4, 20, 10)]);
+      expect(of(free, 2)).toMatchObject({ usable: true, ridesReset: true });
+      expect(free.next).toBe(2);
+      // with a 5-hour window, a ramped account keeps the 5-hour rules
+      const busy = plan([usage(2, 10, 90)], {}, { sessions, burn: [{ sid: 's1', pctPerMin: 2, updatedMs: now - 60_000 }], active: new Map([['s1', now - 1000]]) });
+      expect(of(busy, 2)?.fullInMin).toBe(3.5); // (97 - 90) / 2
+    });
+
+    it("takes canonical keys only and 50.0 as 50, and says what it ignores", () => {
+      const problems: string[] = [];
+      const cfg = parseSwitchConfig(
+        JSON.parse('{"weekly_ramp": {"2": {"days": [50.0, 50, 50, 50, 75, 85, 95], "last_hour": 100.0}, "02": {"days": [1,1,1,1,1,1,1], "last_hour": 1}, "+3": {}, "4": {"days": [1]}}}'),
+        problems,
+      )!;
+      expect(cfg.weeklyRamp).toEqual({ '2': { days: RAMP.days, lastHour: 100 } });
+      expect(problems).toEqual([
+        `weekly_ramp "4": days isn't a list of 7 caps; ignored, its cap is weekly_ceiling`, // (JSON keys that are numbers come first)
+        'weekly_ramp "02": not an account number as ccw writes it ("2", never "02"); ignored, its cap is weekly_ceiling',
+        'weekly_ramp "+3": not an account number as ccw writes it ("2", never "02"); ignored, its cap is weekly_ceiling',
+      ]);
+      const none: string[] = [];
+      expect(parseSwitchConfig({ weekly_ramp: 'all of them' }, none)!.weeklyRamp).toEqual({});
+      expect(none).toEqual(["weekly_ramp isn't an object: ignored, every account's cap is weekly_ceiling"]);
+      const quiet: string[] = [];
+      parseSwitchConfig({}, quiet);
+      expect(quiet).toEqual([]);
+    });
+  });
+
   it("plan() caps on the daemon's clock", async () => {
     const env = await sourceEnv({ home: { ccw: true } });
     try {
@@ -479,6 +572,24 @@ describe('ccw-legacy 0.14.0: weekly ramps in switch.json', () => {
       expect((await ccw.plan()).accounts.find((x) => x.id === 1)).toMatchObject({ weeklyCap: 75, nextCap: 85 });
       env.ctx.clock.advance(3 * 86_400_000 - 1_800_000); // half an hour before the reset
       expect((await ccw.plan()).accounts.find((x) => x.id === 1)).toMatchObject({ weeklyCap: 100, capUntil: new Date(reset).toISOString(), nextCap: 50 });
+    } finally {
+      await env.cleanup();
+    }
+  });
+
+  it('logs a weekly_ramp key ccw ignores once, however often it reads the file', async () => {
+    const env = await sourceEnv({ home: { ccw: true } });
+    try {
+      const file = join(env.home.paths.ccwDir, 'switch.json');
+      const raw = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+      await writeFile(file, JSON.stringify({ ...raw, weekly_ramp: { '01': { days: RAMP.days, last_hour: 100 } } }, null, 2));
+      const ccw = createCcwLegacy(env.ctx);
+      for (let i = 0; i < 3; i++) expect((await ccw.plan()).accounts.some((x) => x.weeklyCap !== undefined)).toBe(false);
+      await ccw.switchConfig();
+      const said = env.ctx.log.records.filter((r) => r.msg === "ccw's switch.json: a weekly_ramp entry is ignored");
+      expect(said.map((r) => [r.level, r.fields.problem])).toEqual([
+        ['warn', 'weekly_ramp "01": not an account number as ccw writes it ("2", never "02"); ignored, its cap is weekly_ceiling'],
+      ]);
     } finally {
       await env.cleanup();
     }

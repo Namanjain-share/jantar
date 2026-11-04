@@ -139,9 +139,10 @@ export interface CcwSwitchConfig {
   weeklyRamp: Record<string, WeeklyRamp>;
 }
 
-/** ccw looks an account's ramp up by str(n): "2", never "02" or "+2". */
+/** ccw looks an account's ramp up by str(n): "2", never "02" or "+2" (0.14.0: the same on both sides). */
 const RAMP_KEY = /^(0|[1-9]\d*)$/;
 
+/** A ramp value: a whole number from 1 to 100 (JSON's 50.0 reads as 50, so it counts). */
 const rampValue = (v: unknown): number | undefined => {
   const n = int(v);
   return n !== undefined && n >= SWITCH_RULES.rampMin && n <= SWITCH_RULES.rampMax ? n : undefined;
@@ -149,26 +150,45 @@ const rampValue = (v: unknown): number | undefined => {
 
 /** 0.14.0: one `weekly_ramp` entry ({"days": [7 ints 1-100], "last_hour": 1-100}), or null when it doesn't fit. */
 export function parseRampEntry(raw: unknown): WeeklyRamp | null {
-  if (!isObj(raw) || !Array.isArray(raw.days) || raw.days.length !== SWITCH_RULES.rampDays) return null;
-  const days = raw.days.map(rampValue);
-  const lastHour = rampValue(raw.last_hour);
-  if (lastHour === undefined || days.some((d) => d === undefined)) return null;
-  return { days: days as number[], lastHour };
+  if (rampProblem(raw) !== null || !isObj(raw) || !Array.isArray(raw.days)) return null;
+  return { days: raw.days.map((d) => rampValue(d) as number), lastHour: rampValue(raw.last_hour) as number };
 }
 
-/** 0.14.0: `weekly_ramp` as a map of account number to ramp; malformed entries (and a malformed map) are dropped. */
-export function parseWeeklyRamp(raw: unknown): Record<string, WeeklyRamp> {
+/** Why a `weekly_ramp` entry can't be used (ccw's words), or null when it can. */
+function rampProblem(raw: unknown): string | null {
+  if (!isObj(raw)) return 'not an object with days and last_hour';
+  if (!Array.isArray(raw.days) || raw.days.length !== SWITCH_RULES.rampDays) return "days isn't a list of 7 caps";
+  if (raw.days.some((d) => rampValue(d) === undefined)) return "a day's cap isn't a whole number from 1 to 100";
+  if (rampValue(raw.last_hour) === undefined) return "last_hour isn't a whole number from 1 to 100";
+  return null;
+}
+
+/**
+ * 0.14.0: `weekly_ramp` as a map of account number to ramp. A key that isn't
+ * an account number as ccw writes it ("02", "+2", "x"), an entry that doesn't
+ * fit, and a weekly_ramp that isn't an object are left out (that account's
+ * cap is weekly_ceiling), each with a line in `problems` for the log.
+ */
+export function parseWeeklyRamp(raw: unknown, problems?: string[]): Record<string, WeeklyRamp> {
   const out: Record<string, WeeklyRamp> = {};
-  if (!isObj(raw)) return out;
+  if (raw === undefined || raw === null) return out;
+  if (!isObj(raw)) {
+    problems?.push("weekly_ramp isn't an object: ignored, every account's cap is weekly_ceiling");
+    return out;
+  }
   for (const [key, v] of Object.entries(raw)) {
-    if (!RAMP_KEY.test(key)) continue;
-    const entry = parseRampEntry(v);
-    if (entry) out[key] = entry;
+    const why = RAMP_KEY.test(key) ? rampProblem(v) : 'not an account number as ccw writes it ("2", never "02")';
+    if (why) {
+      problems?.push(`weekly_ramp ${JSON.stringify(key.slice(0, 16))}: ${why}; ignored, its cap is weekly_ceiling`);
+      continue;
+    }
+    out[key] = parseRampEntry(v) as WeeklyRamp;
   }
   return out;
 }
 
-export function parseSwitchConfig(raw: unknown): CcwSwitchConfig | null {
+/** switch.json as ccw reads it; `problems` collects what it ignores in weekly_ramp (0.14.0, for the log). */
+export function parseSwitchConfig(raw: unknown, problems?: string[]): CcwSwitchConfig | null {
   if (!isObj(raw)) return null;
   const n = (v: unknown, d: number) => num(v) ?? d;
   const hold = Array.isArray(raw.hold) ? raw.hold.filter((x): x is number => Number.isInteger(x) && (x as number) >= 0) : [];
@@ -189,7 +209,7 @@ export function parseSwitchConfig(raw: unknown): CcwSwitchConfig | null {
     minRunMin: n(raw.min_run_min, 20),
     weeklyCeiling: n(raw.weekly_ceiling, 95),
     burnDefault: n(raw.burn_default, 1.0),
-    weeklyRamp: parseWeeklyRamp(raw.weekly_ramp),
+    weeklyRamp: parseWeeklyRamp(raw.weekly_ramp, problems),
   };
 }
 
