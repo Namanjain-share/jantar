@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.13.0 (unreleased)
+## 0.13.0 (4 November 2026)
 
 **Work** (off until you turn it on with `jantar work on`, which turns
 Todos on too): a place for the work you do for clients. Your projects,
