@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.12.2 (unreleased)
+## 0.12.2 (4 November 2026)
 
 - **Linking another device gives them the link, not only a code.** In the
   Accountability partner's app, Me › Devices › Link another device showed
