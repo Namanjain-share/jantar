@@ -17,6 +17,18 @@ import {
 } from './models.js';
 import { stateFeatures, type State } from './state.js';
 
+/**
+ * 0.14.0: whether an account has no 5-hour limit: its reading says so
+ * (`Account.noFiveHourLimit`), or, from a daemon before 0.14.0, it has
+ * windows and none of them is five_hour (cswap's usage had no fiveHour).
+ * False with no reading at all (nothing is known), and for a five_hour
+ * window that is there but not open (that is 0%, "no window open").
+ */
+export function noFiveHourLimit(a: Pick<Account, 'windows' | 'noFiveHourLimit'> | null | undefined): boolean {
+  if (!a) return false;
+  return a.noFiveHourLimit === true || (a.windows.length > 0 && !a.windows.some((w) => w.kind === 'five_hour'));
+}
+
 /** Basename of a path, for display ("/a/b/my-app" -> "my-app"; a Windows node's "C:\\code\\api" -> "api"). */
 export function folderOf(cwd: string): string {
   const trimmed = cwd.replace(/[\\/]+$/, '');

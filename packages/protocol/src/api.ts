@@ -432,8 +432,9 @@ export const PlanResponseSchema = z.object({
   accounts: z.array(
     z.object({
       id: AccountIdSchema,
+      /** % of a 5-hour window per minute. 0.14.0: 0 for an account with no 5-hour limit (Account.noFiveHourLimit): it has no 5-hour window to burn. */
       burnPctPerMin: z.number(),
-      /** 0.14.0: absent for an account with no 5-hour window in its reading (no 5-hour limit), as for one that won't fill. */
+      /** 0.14.0: absent for an account with no 5-hour limit (Account.noFiveHourLimit), as for one that won't fill. */
       fullInMin: z.number().optional(),
       ridesReset: z.boolean(),
       usable: z.boolean(),
@@ -490,7 +491,8 @@ export const PlanResponseSchema = z.object({
  *   at most the cap now minus `rampTargetMargin`, so a session doesn't land
  *   at 49% and leave at 50%; a held one never is;
  * - an account with no 5-hour window in its reading (cswap gives none) has
- *   no 5-hour limit: never 0% used with a projected fill.
+ *   no 5-hour limit (Account.noFiveHourLimit): never 0% used, no 5-hour
+ *   burn and no projected fill.
  */
 export const SWITCH_RULES = {
   ceilingMin: 50,

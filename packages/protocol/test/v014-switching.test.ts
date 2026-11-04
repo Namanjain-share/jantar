@@ -4,14 +4,18 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  AccountSchema,
   ERROR_STATUS,
+  LaunchAccountSchema,
   PlanResponseSchema,
   ROUTES,
   SWITCH_RULES,
   SwitchRulesPatchSchema,
   SwitchRulesSchema,
   WeeklyRampSchema,
+  noFiveHourLimit,
   rampSlot,
+  type Account,
   type RouteDef,
 } from '../src/index.js';
 import { PERSON_ROUTES } from '../src/people.js';
@@ -123,6 +127,29 @@ describe('0.14.0 switching rules', () => {
     expect(patch.body).toBe(SwitchRulesPatchSchema);
     const hers = Object.values(PERSON_ROUTES) as RouteDef[];
     expect(hers.some((d) => d.path.includes('/switching') || d.phase === 'v0.14')).toBe(false);
+  });
+
+  it('tells an account with no 5-hour limit from one with no 5-hour window open', () => {
+    const base: Account = { id: 2, emailMasked: 'b***@example.com', isDefaultLogin: false, disabled: false, held: true, usageStatus: 'ok', windows: [] };
+    const week = { kind: 'seven_day', pct: 50, resetsAt: '2026-11-08T12:00:00.000Z' };
+    const scoped = { kind: 'scoped:Model-A', pct: 70 };
+    // No fiveHour in cswap's usage: the daemon says so, and an older daemon's windows say it too.
+    const none: Account = { ...base, windows: [week, scoped], noFiveHourLimit: true };
+    expect(AccountSchema.parse(none)).toEqual(none);
+    expect(noFiveHourLimit(none)).toBe(true);
+    expect(noFiveHourLimit({ ...base, windows: [week, scoped] })).toBe(true);
+    // A fiveHour that is there but not started (pct 0, no reset or one past): no window open, a 5-hour limit all the same.
+    expect(noFiveHourLimit({ ...base, windows: [{ kind: 'five_hour', pct: 0 }, week] })).toBe(false);
+    expect(noFiveHourLimit({ ...base, windows: [{ kind: 'five_hour', pct: 0, resetsAt: '2026-11-01T00:00:00.000Z' }, week] })).toBe(false);
+    // No reading at all: nothing is known.
+    expect(noFiveHourLimit(base)).toBe(false);
+    expect(noFiveHourLimit(undefined)).toBe(false);
+    // A reader from before 0.14.0 (its schema without the field) still parses the account, and drops the field.
+    const older = AccountSchema.omit({ noFiveHourLimit: true }).parse(none);
+    expect(older).toEqual({ ...base, windows: [week, scoped] });
+    // The start sheet's row says it, with no 5-hour % at all.
+    const row = { id: 2, label: 'team-b', sevenDayPct: 50, live: 1, selectable: true, held: true, weeklyCap: 50, noFiveHourLimit: true };
+    expect(LaunchAccountSchema.parse(row)).toEqual(row);
   });
 
   it('answers 404 ccw_absent on a Mac without ccw', () => {

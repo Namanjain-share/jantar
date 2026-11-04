@@ -343,6 +343,16 @@ export const AccountSchema = z.object({
   ageS: z.number().optional(),
   windows: z.array(UsageWindowSchema),
   projection: AccountProjectionSchema.optional(),
+  /**
+   * 0.14.0: the usage reading has no 5-hour window at all (cswap's usage has
+   * no fiveHour): this account has no 5-hour limit, only weekly ones, so it
+   * has no 5-hour %, reset, burn or fill (never "0%"). Not the same as no
+   * window open: a fiveHour that is there but not started (pct 0, no reset
+   * or one past) is a five_hour window, read as 0 with "no window open".
+   * Absent when it isn't so, and from daemons before 0.14.0: read it with
+   * `noFiveHourLimit()` (selectors), which also tells it from the windows.
+   */
+  noFiveHourLimit: z.boolean().optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
 
@@ -853,6 +863,8 @@ export const LaunchAccountSchema = z.object({
    * sessions leave it once it passes the cap.
    */
   weeklyCap: z.number().min(1).max(100).optional(),
+  /** 0.14.0: the account has no 5-hour limit (Account.noFiveHourLimit): no `fiveHourPct` or `resetsAt`, never 0. */
+  noFiveHourLimit: z.boolean().optional(),
 });
 export type LaunchAccount = z.infer<typeof LaunchAccountSchema>;
 
