@@ -24,7 +24,8 @@
  * zone (the Mac works the period out).
  *
  * From a pane of 640 the cards sit in columns of 340 (kit/Columns.tsx, two
- * or three across on a Mac). Every state of design 6.5: loading, nothing in
+ * or three across on a Mac), a band per currency and then the stages' two,
+ * each band on the same columns (0.13.1). Every state of design 6.5: loading, nothing in
  * the period (one line, and All time or Deals), Work off and life.db broken
  * (Work.tsx and the daemon's sentences), a failed load (Try again), offline
  * (the last answer stays; a read needs nothing more).
@@ -111,20 +112,26 @@ export function Insights() {
                 </>
               );
             const n = d.books.length;
-            const parts: ReactNode[] = [
-              ...d.books.flatMap((b) => bookCards(b, n, cards)),
-              <Funnel key="funnel" reply={d} card={cards} />,
-              <TimeInStage key="time" reply={d} card={cards} />,
+            // 0.13.1: a band of cards per currency, in the Mac's order (the Life currency first), then the
+            // stages' two. Dealt as one set, a currency's cards went round-robin into the columns and the
+            // books interleaved (Win rate · INR, Revenue won · INR, Win rate · USD down the first).
+            const bands: { key: string; cards: ReactNode[] }[] = [
+              ...d.books.map((b) => ({ key: b.currency ?? 'none', cards: bookCards(b, n, cards) })),
+              { key: 'stages', cards: [<Funnel key="funnel" reply={d} card={cards} />, <TimeInStage key="time" reply={d} card={cards} />] },
             ];
             return (
               <>
                 {range}
                 {cards ? (
-                  <Columns min={340} max={3} className="px-16">
-                    {parts}
-                  </Columns>
+                  <div className="flex flex-col gap-16">
+                    {bands.map((band) => (
+                      <Columns key={band.key} min={340} max={3} fill className="px-16">
+                        {band.cards}
+                      </Columns>
+                    ))}
+                  </div>
                 ) : (
-                  parts
+                  bands.flatMap((band) => band.cards)
                 )}
               </>
             );

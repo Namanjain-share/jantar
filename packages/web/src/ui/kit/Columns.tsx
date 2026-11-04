@@ -8,7 +8,8 @@
  *   n = min(count, max(1, floor((width + 16) / (min + 16))))
  *
  * n is capped at the number of cards, so two cards never leave a third
- * column empty, and at `max`. One ResizeObserver, which sets state only when
+ * column empty (unless `fill` keeps it, for a band under another), and at
+ * `max`. One ResizeObserver, which sets state only when
  * n changes: a window drag re-renders nothing in between. Without a measure
  * (jsdom, a hidden box) there is one stack.
  *
@@ -54,17 +55,22 @@ export interface ColumnsProps {
   min?: number;
   /** At most this many columns. */
   max?: number;
+  /**
+   * 0.13.1: keep every column that fits, even with fewer cards than columns, so a band of cards under
+   * another lines up with its columns (Insights' cards by currency, then the stages' two).
+   */
+  fill?: boolean;
   children: ReactNode;
   className?: string;
 }
 
-export function Columns({ min = 340, max, children, className }: ColumnsProps) {
+export function Columns({ min = 340, max, fill = false, children, className }: ColumnsProps) {
   const box = useRef<HTMLDivElement>(null);
   const items = Children.toArray(children);
   const count = items.length;
   // What fits the width; the card count caps it at render, so a card shown or hidden never waits for a resize.
   const fit = useBucket(box, (w) => (w > 0 ? columnsFor(w, min, Infinity, max) : 1));
-  const stacks = deal(items, Math.min(fit, Math.max(1, count)));
+  const stacks = deal(items, fill ? fit : Math.min(fit, Math.max(1, count)));
   return (
     <div ref={box} data-columns={stacks.length} className={className}>
       <div className="flex items-start gap-16">

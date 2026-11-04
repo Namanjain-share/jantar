@@ -170,6 +170,37 @@ describe('Insights', () => {
     expect(document.querySelector('[data-columns]')?.getAttribute('data-columns')).toBe('3');
   });
 
+  it("0.13.1: a currency's cards together, a band each, the Life currency first; then the stages' two", async () => {
+    // Three columns on the Mac: each band is its own set of columns, so the books never interleave.
+    measureAs(1180);
+    const wide = setup({ layout: layoutAt(1440) });
+    await screen.findByRole('region', { name: 'Win rate · INR' });
+    const bands = [...document.querySelectorAll<HTMLElement>('[data-columns]')];
+    const stacks = (band: HTMLElement) => [...(band.firstElementChild as HTMLElement).children].map((col) => within(col as HTMLElement).queryAllByRole('region').map((r) => r.getAttribute('aria-label')));
+    expect(bands.map((b) => b.getAttribute('data-columns'))).toEqual(['3', '3', '3']);
+    expect(stacks(bands[0]!)).toEqual([
+      ['Win rate · INR', 'Revenue won · INR'],
+      ['Cycle · INR', 'Sources · INR'],
+      ['Forecast · INR', 'Why lost · INR'],
+    ]);
+    expect(stacks(bands[1]!)).toEqual([
+      ['Win rate · USD', 'Revenue won · USD'],
+      ['Cycle · USD', 'Sources · USD'],
+      ['Forecast · USD', 'Why lost · USD'],
+    ]);
+    // The stages' two keep the bands' columns (a third stays empty), not two wider ones.
+    expect(stacks(bands[2]!)).toEqual([['Funnel'], ['Time in stage'], []]);
+    wide.unmount();
+    vi.restoreAllMocks();
+    // A phone: one column, the same order.
+    setup({ layout: layoutAt(390, { coarse: true }) });
+    await screen.findByRole('region', { name: 'Win rate · INR' });
+    expect(document.querySelector('[data-columns]')).toBeNull();
+    const order = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+    const books = ['Win rate', 'Cycle', 'Forecast', 'Revenue won', 'Sources', 'Why lost'];
+    expect(order).toEqual([...books.map((b) => `${b} · INR`), ...books.map((b) => `${b} · USD`), 'Funnel', 'Time in stage']);
+  });
+
   it('touch: the period chips are 44 by 44 at least ("All" is narrower)', async () => {
     setup({ layout: layoutAt(390, { coarse: true }) });
     const chips = await screen.findByRole('group', { name: 'Period' });
