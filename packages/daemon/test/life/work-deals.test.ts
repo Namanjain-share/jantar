@@ -60,6 +60,10 @@ const deal = (clientId: string, title: string, extra: Record<string, unknown> = 
 const hub = (id: string) => ok(work.deal(id, PHONE));
 const card = (id: string): WorkDealCard => hub(id).card;
 const later = (days: number) => core.clock.set(new Date(core.clock.now() + days * 86_400_000).toISOString());
+// 0.13.0: a column's sums by currency. Its deals are read in id order, and two deals made in the same
+// millisecond (the ulid takes the real time, not this clock) fall in their ids' random order, so the
+// first-seen currency is chance here.
+const byCurrency = (sums: readonly { currency: string | null; amount: number }[] | undefined) => [...(sums ?? [])].sort((a, b) => String(a.currency).localeCompare(String(b.currency)));
 
 describe('a deal', () => {
   it('is added for a client by id, on the first open stage, in the Life currency, with its "added" row', () => {
@@ -313,11 +317,11 @@ describe('cards, the list and Today', () => {
     expect(cols.map((x) => x.id)).toEqual(['new', 'contacted', 'proposal', 'negotiation', 'won', 'lost']);
     const proposal = cols.find((x) => x.id === 'proposal');
     expect(proposal).toMatchObject({ probability: 60, count: 2, quiet: 0 });
-    expect(proposal?.value).toEqual([
+    expect(byCurrency(proposal?.value)).toEqual([
       { currency: 'INR', amount: 100_000 },
       { currency: 'USD', amount: 50_000 },
     ]);
-    expect(proposal?.weighted).toEqual([
+    expect(byCurrency(proposal?.weighted)).toEqual([
       { currency: 'INR', amount: 60_000 },
       { currency: 'USD', amount: 30_000 },
     ]);
