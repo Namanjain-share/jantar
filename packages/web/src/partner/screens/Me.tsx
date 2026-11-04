@@ -9,11 +9,22 @@
  * - Activity: newest first, under day headers, in plain words with HH:MM;
  *   his views of an area are grouped per day (C28).
  * - Devices: hers, with last seen and the Access email they joined with;
- *   Revoke; Link another device (a 5-minute code).
+ *   Revoke; Link another device (a code that works once).
+ *
+ * 0.12.2: Link another device shows the whole link, on her app's own
+ * origin (location.origin, never a host from elsewhere), with Copy link,
+ * Share where the browser has a share sheet (an iPhone's AirDrop or
+ * Messages to her laptop), and a QR code that loads when she asks (the kit's
+ * card, with import(): her first load doesn't carry the encoder). The code
+ * itself is large and monospace, to type at /p/link; the steps say the
+ * One-time PIN sign-in may ask her to open the link again; and the line under
+ * it counts down to PERSON_LINK_CODE_TTL_MS (15 minutes). When it runs out the
+ * link goes and the page says how to get a new one. Above the list: how many
+ * of her PERSON_DEVICES_MAX devices are linked.
  * - Notifications: turn on and test, lock screen, mute.
  * - Leave: download first, keep 30 days or delete now, type LEAVE.
  */
-import { AGREEMENT_FIELDS, AREAS, closeDependents, phaseBuilt, fieldsChanged, withField, type AgreementFields, type AgreementPatch, CHAT_KEEP_DAYS } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, AREAS, closeDependents, phaseBuilt, fieldsChanged, withField, type AgreementFields, type AgreementPatch, CHAT_KEEP_DAYS, PERSON_DEVICES_MAX } from '@jantar/protocol/people-core';
 import type { PersonActivity, PersonMe, PersonPrefsPatch } from '@jantar/protocol/people';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { activityText, byDay, localDayOf } from '../../people-shared/activity.js';
@@ -32,6 +43,8 @@ const TAB_LABEL: Record<MeTab, string> = { sharing: 'Sharing', activity: 'Activi
 
 // "See what {owner} sees": loads when she opens one area.
 const Mirror = lazy(() => import('./Mirror.js'));
+// 0.12.2: the link's QR code (and the qrcode encoder) load when she asks for it.
+const QrCard = lazy(() => import('../../ui/kit/Qr.js').then((m) => ({ default: m.QrCard })));
 
 /** The `see` fields with a view in this build, and the mirror area each opens. */
 const MIRROR_AREA: Record<string, string> = {
@@ -237,14 +250,28 @@ function SeeLink({ owner, area, label }: { owner: string; area: string; label?: 
 
 function Devices({ api }: { api: PersonApi }) {
   const [devices, setDevices] = useState<PersonDevice[] | null>(null);
-  const [code, setCode] = useState<string | null>(null);
+  const [link, setLink] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [ranOut, setRanOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const load = () => api.devices().then((r) => setDevices(r.devices), (e: Error) => setError(e.message));
   useEffect(() => {
     void load();
   }, []);
+  const make = () => {
+    setError(null);
+    setRanOut(false);
+    api.linkCode().then(
+      (r) => setLink({ code: r.code, expiresAt: r.expiresAt }),
+      (e: Error) => (setLink(null), setError(e.message)),
+    );
+  };
   return (
     <div>
+      {devices ? (
+        <p className="mb-8 text-small text-ink-2">
+          {devices.length} of {PERSON_DEVICES_MAX} devices linked.
+        </p>
+      ) : null}
       <ul className="flex flex-col gap-8">
         {(devices ?? []).map((d) => (
           <li key={d.id} className="flex items-center justify-between gap-12">
@@ -262,16 +289,110 @@ function Devices({ api }: { api: PersonApi }) {
           </li>
         ))}
       </ul>
-      <Button className="mt-16" variant="outline" onClick={() => void api.linkCode().then((r) => setCode(r.code), (e: Error) => setError(e.message))}>
+      <Button className="mt-16" variant="outline" onClick={make}>
         Link another device
       </Button>
-      {code ? (
-        <p className="mt-8 break-all">
-          On the other device open <code>/p/link</code> and enter: <code>{code}</code> (5 minutes)
+      {link ? (
+        <LinkAnother
+          key={link.code}
+          code={link.code}
+          expiresAt={link.expiresAt}
+          ranOut={() => {
+            setLink(null);
+            setRanOut(true);
+          }}
+        />
+      ) : null}
+      {ranOut ? (
+        <p role="status" className="mt-8 text-ink-2">
+          That link has run out. Tap Link another device for a new one.
         </p>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
     </div>
+  );
+}
+
+/** 0.12.2: the link to her app's /p/link with this code, on the origin she is using now. */
+export function linkFor(code: string, origin: string = location.origin): string {
+  return `${origin}/p/link#c=${code}`;
+}
+
+/** Whole minutes left before `expiresAt` (rounded up; 0 once it has passed). */
+const minutesLeft = (expiresAt: string) => Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 60_000));
+
+/** 0.12.2: a fresh device-link code as a link to copy, share or scan, and as a code to type, until it runs out. */
+function LinkAnother({ code, expiresAt, ranOut }: { code: string; expiresAt: string; ranOut: () => void }) {
+  const url = linkFor(code);
+  const [left, setLeft] = useState(() => minutesLeft(expiresAt));
+  const [note, setNote] = useState<string | null>(null);
+  const [qr, setQr] = useState(false);
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  useEffect(() => {
+    const tick = () => setLeft(minutesLeft(expiresAt));
+    const t = setInterval(tick, 1000);
+    addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(t);
+      removeEventListener('visibilitychange', tick);
+    };
+  }, [expiresAt]);
+  useEffect(() => {
+    if (left === 0) ranOut();
+  }, [left]);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setNote('Copied.');
+    } catch {
+      setNote("Couldn't copy here. Select the link above and copy it.");
+    }
+  };
+  const share = async () => {
+    setNote(null);
+    try {
+      await navigator.share({ url });
+    } catch (e) {
+      if ((e as { name?: unknown } | null)?.name !== 'AbortError') setNote("Couldn't share from here. Copy the link instead.");
+    }
+  };
+  return (
+    <section aria-label="Link another device" className="mt-12 flex flex-col gap-12 rounded-dock border border-line p-12">
+      <p>On the other device: open the link, sign in with the code emailed to you, and if it asks, open the link again or paste it.</p>
+      <p aria-label="Link for the other device" className="select-all break-all type-mono text-ink [overflow-wrap:anywhere]">
+        {url}
+      </p>
+      <div className="flex flex-wrap gap-8">
+        <Button variant="primary" className="min-h-44" onClick={() => void copy()}>
+          Copy link
+        </Button>
+        {canShare ? (
+          <Button variant="outline" className="min-h-44" onClick={() => void share()}>
+            Share
+          </Button>
+        ) : null}
+        <Button variant="text" className="min-h-44" aria-expanded={qr} onClick={() => setQr((v) => !v)}>
+          {qr ? 'Hide QR code' : 'Show QR code'}
+        </Button>
+      </div>
+      {note ? (
+        <p role="status" className="text-small text-ink-2">
+          {note}
+        </p>
+      ) : null}
+      {qr ? (
+        <Suspense fallback={<div aria-hidden="true" className="size-244 rounded-dock bg-qr-paper" />}>
+          <QrCard text={url} label="QR code of the link" />
+        </Suspense>
+      ) : null}
+      <p className="text-small text-ink-2">Or open {location.host}/p/link there and type this code:</p>
+      <p aria-label="Link code" className="select-all break-all font-mono text-title text-ink">
+        {code}
+      </p>
+      <p className="text-small text-ink-2">
+        It works once, until {hmOf(expiresAt)} ({left} min left).
+      </p>
+    </section>
   );
 }
 

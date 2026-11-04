@@ -128,6 +128,14 @@ describe('code splitting', () => {
     expect(readFileSync(join(src, 'ui/screens/devices/PairNew.tsx'), 'utf8')).toContain("import('../../kit/Qr.js')");
   });
 
+  it("0.12.2: her app's first load holds no QR either: Me › Devices › Link another device loads it with import()", () => {
+    const her = reachable(join(src, 'partner', 'main.tsx'));
+    expect(her.files.has('partner/screens/Me.tsx')).toBe(true);
+    expect(her.files.has('ui/kit/Qr.tsx')).toBe(false);
+    expect([...her.packages].filter((p) => p === 'qrcode')).toEqual([]);
+    expect(readFileSync(join(src, 'partner/screens/Me.tsx'), 'utf8')).toContain("import('../../ui/kit/Qr.js')");
+  });
+
   it("keeps a file's preparation and the attachment glyphs out of the main chunk (v0.5.1: the first attachment loads them)", () => {
     const lazyOnly = ['ui/screens/session/attach/convert.ts', 'ui/screens/session/attach/glyph-icons.tsx'];
     for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
