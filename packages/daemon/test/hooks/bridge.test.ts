@@ -461,11 +461,13 @@ describe('ordering', () => {
     h.addSession({ status: 'working', statusSource: 'hook' });
     const order: string[] = [];
     h.bridge.onHookEvent((p) => order.push(p.hook_event_name));
+    // 0.12.1: wait until the bridge holds each one, not a fixed 40 ms (a loop turn of 40 ms on a starved runner outlasted it).
+    const held = () => (h!.bridge as unknown as { buffer: { size: number } }).buffer.size;
     // Stop started later but arrives first
     send(h.sock, hookEvent('Stop', { last_assistant_message: 'done' }, { ts: at(2), mono: 2000n }));
-    await settle(40);
+    await waitFor(() => held() === 1, 3000, 'Stop to be held');
     send(h.sock, hookEvent('UserPromptSubmit', {}, { ts: at(1), mono: 1000n }));
-    await settle(40);
+    await waitFor(() => held() === 2, 3000, 'both to be held');
     expect(order).toEqual([]);
     h.ctx.clock.advance(100);
     expect(order).toEqual(['UserPromptSubmit', 'Stop']);
