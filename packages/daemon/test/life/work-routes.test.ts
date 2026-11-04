@@ -187,7 +187,8 @@ describe('import, export and client_here', () => {
     const p = WorkImportPreviewReplySchema.parse(await json('POST', '/v1/work/import/preview', { format: 'csv', text }));
     expect(p.rows).toHaveLength(1500);
     const r = await json<{ batch: string; added: number }>('POST', '/v1/work/import', { previewId: p.previewId, rows: p.rows.slice(0, 20).map((x) => ({ index: x.index, action: 'add' })) });
-    expect(r.added).toBe(20);
+    // 20 people and the 7 Acme companies their Company column made: the same 27 Undo removes.
+    expect(r.added).toBe(27);
     expect(api.ctx.db.audit.list().filter((a) => a.action === 'workImport').map((a) => [a.target, a.params ?? {}])).toEqual([[r.batch, {}]]);
     const listed = await api.ctl.inject({ method: 'GET', url: '/v1/work/imports' });
     expect(listed.json().imports.map((x: { batch: string }) => x.batch)).toEqual([r.batch]);

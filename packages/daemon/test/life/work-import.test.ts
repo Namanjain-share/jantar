@@ -116,7 +116,8 @@ describe('the import and its Undo', () => {
         PHONE,
       ),
     );
-    expect(r).toMatchObject({ added: 2, filled: 1, skipped: 1 });
+    // Sam Lee, Globex, and Acme Studio (the company Sam's Company column made).
+    expect(r).toMatchObject({ added: 3, filled: 1, skipped: 1 });
     const filled = ok(work.client(riya.id, PHONE)).contact;
     expect(filled).toMatchObject({ name: 'R. Sharma', title: 'Head of Ops', from: 'import', emails: ['riya@acme.example'], phones: [{ value: '+91 98765 43210' }] });
     expect(filled.importBatch).toBeUndefined();
@@ -126,7 +127,7 @@ describe('the import and its Undo', () => {
     expect(ok(work.client(acme?.id as string, PHONE)).contact).toMatchObject({ kind: 'company', from: 'import', importBatch: r.batch });
     // The preview is used up.
     expect(work.importRows({ previewId: p.previewId, rows: [] }, PHONE)).toMatchObject({ ok: false, reason: WORK_REASONS.previewGone });
-    expect(ok(work.imports(PHONE)).imports).toEqual([{ batch: r.batch, at: '2026-11-03T09:00:00.000Z', added: 2, filled: 1, undoUntil: '2026-11-10T09:00:00.000Z' }]);
+    expect(ok(work.imports(PHONE)).imports).toEqual([{ batch: r.batch, at: '2026-11-03T09:00:00.000Z', added: 3, filled: 1, undoUntil: '2026-11-10T09:00:00.000Z' }]);
   });
 
   it('refuses Fill on a row with no match, an unknown row, and an expired preview', () => {
@@ -141,7 +142,8 @@ describe('the import and its Undo', () => {
   it('Undo removes what nothing changed or linked since, counts the rest, and works once, for 7 days', () => {
     const p = ok(work.importPreview({ format: 'csv', text: CSV }, PHONE));
     const r = ok(work.importRows({ previewId: p.previewId, rows: p.rows.map((x) => ({ index: x.index, action: 'add' as const })) }, PHONE));
-    expect(r.added).toBe(4);
+    // Four rows and Acme Studio: Undo's removed + kept adds up to the same five.
+    expect(r.added).toBe(5);
     const by = (n: string) => all().find((c) => c.name === n)?.id as string;
     core.clock.set('2026-11-04T09:00:00.000Z');
     // Edited, logged, or followed up since: kept.

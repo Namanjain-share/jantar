@@ -1108,7 +1108,6 @@ class Work implements WorkModule {
     const batch = this.core.newId();
     const at = this.stamp();
     const out = this.tx(() => {
-      let added = 0;
       let filled = 0;
       for (const c of chosen) {
         if (c.action === 'fill' && c.dup) {
@@ -1136,8 +1135,10 @@ class Work implements WorkModule {
           const { lastTouchAt: _t, ...rest } = made;
           this.repo.saveContact({ ...rest, phones: f.phones.map((value) => ({ value })), emails: f.emails, links: f.links });
         }
-        added += 1;
       }
+      // 0.13.0: every contact the batch made, the companies its Company column made too, so the
+      // count here, in Recent imports and in Undo's "removed N" agree.
+      const added = this.repo.ofBatch(batch).length;
       const list = readImports(this.core.db, this.log);
       writeImports(this.core.db, [{ batch, at, added, filled }, ...list]);
       return { added, filled };
