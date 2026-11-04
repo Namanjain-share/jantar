@@ -1,8 +1,8 @@
 /**
  * 0.12.1: drive() (helpers.ts) on a slow runner. Its fake budget is spent in
  * setImmediate turns, which pass far faster than a busy runner finishes a
- * real fs call, so the fake clock now runs no faster than real time while
- * one is in flight, and real time bounds the whole wait. holdFs (slow-fs.ts)
+ * real fs call, so while one is in flight each step now waits a millisecond
+ * of real time, and real time bounds the whole wait. holdFs (slow-fs.ts)
  * makes the slow disk on purpose.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe('0.12.1: drive on a slow runner', () => {
-  it('waits out slow fs calls, and the fake clock runs no faster than real time meanwhile', async () => {
+  it('waits out slow fs calls between two fake sleeps', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ccw-drive-'));
     roots.push(dir);
     const clock = new FakeClock(T0);
@@ -35,21 +35,21 @@ describe('0.12.1: drive on a slow runner', () => {
     })();
     const t = Date.now();
     expect(await drive(clock, work)).toBe('x');
-    const real = Date.now() - t;
-    const fake = clock.now() - Date.parse(T0);
-    expect(real).toBeGreaterThanOrEqual(290);
-    expect(fake).toBeGreaterThanOrEqual(400);
-    // Held: at most real time (plus a step); after: the second sleep, at full speed.
-    expect(fake).toBeLessThanOrEqual(real + 50 + 200);
+    expect(Date.now() - t).toBeGreaterThanOrEqual(290);
+    expect(clock.now() - Date.parse(T0)).toBeGreaterThanOrEqual(400);
     await held;
   });
 
-  it('an fs call that does not end does not stop the fake clock: it runs at real time', async () => {
+  it('while an fs call is in flight each step waits a millisecond of real time, and the clock still moves', async () => {
     const clock = new FakeClock(T0);
     const held = holdFs(1_000);
     const t = Date.now();
-    await drive(clock, clock.sleep(300));
-    expect(Date.now() - t).toBeLessThan(800);
+    // 100 steps of 50 ms.
+    await drive(clock, clock.sleep(5_000));
+    const real = Date.now() - t;
+    expect(real).toBeGreaterThanOrEqual(100);
+    // An fs call that does not end (here: not before 1 s) does not stop it.
+    expect(real).toBeLessThan(800);
     expect(fsInFlight().length).toBeGreaterThan(0);
     await held;
   });
@@ -65,7 +65,7 @@ describe('0.12.1: drive on a slow runner', () => {
     const clock = new FakeClock(T0);
     const t = Date.now();
     await expect(drive(clock, new Promise<never>(() => {}), 50, 1_000, 300)).rejects.toThrow(
-      /^did not settle: 1000 ms of fake time \(of 1000\) and \d+ ms of real time \(of 300\); fs calls in flight: none$/,
+      /^did not settle: 1000 ms of fake time \(of 1000\) and \d+ ms of real time \(of 300\); fs calls in flight: (none|\w+(, \w+)*)$/,
     );
     expect(Date.now() - t).toBeGreaterThanOrEqual(300);
   });

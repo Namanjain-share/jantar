@@ -350,11 +350,12 @@ export const DRIVE_REAL_MS = 10_000;
  * setImmediate turns, so `maxMs` of fake time (2400 steps) can pass in under
  * 100 ms of real time: on a slow runner the code under test was still waiting
  * on a real mkdir or readFile when the fake budget ran out ("did not settle",
- * shot.test.ts C6/C7). Now, while an fs call is in flight, the fake clock
- * moves no faster than real time (it does not stand still: an fs call that
- * never ends, such as a read on a pipe, would stop it for good); once `maxMs`
- * of fake time is spent drive waits on in real time alone; it gives up after
- * `realMs` of real time.
+ * shot.test.ts C6/C7). Now, while an fs call is in flight, each step first
+ * waits a millisecond of real time (so the budget lasts at least 2.4 s, and
+ * fake time no longer races far ahead of real work; it does not stop, as an
+ * fs call that never ends would stop it for good). Once `maxMs` of fake time
+ * is spent drive waits on in real time alone, and it gives up after `realMs`
+ * of real time.
  */
 export async function drive<T>(clock: FakeClock, p: Promise<T>, step = 50, maxMs = 120_000, realMs = DRIVE_REAL_MS): Promise<T> {
   let done = false;
@@ -363,13 +364,16 @@ export async function drive<T>(clock: FakeClock, p: Promise<T>, step = 50, maxMs
   });
   const started = Date.now();
   let fake = 0;
-  let stepped = started;
   await flush();
   while (!done && Date.now() - started < realMs) {
-    if (fake < maxMs && (Date.now() - stepped >= step || fsInFlight().length === 0)) {
+    if (fake < maxMs) {
+      if (fsInFlight().length > 0) {
+        await new Promise<void>((r) => setTimeout(r, 1));
+        await flush();
+        if (done) break;
+      }
       clock.advance(step);
       fake += step;
-      stepped = Date.now();
     } else {
       await new Promise<void>((r) => setTimeout(r, 1));
     }
