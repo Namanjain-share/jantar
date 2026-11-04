@@ -3,6 +3,30 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.13.1 (unreleased)
+
+- **One Undo after moving a deal, for the move you just made.** On the
+  Mac with a deal open beside the board, dragging a card and then moving
+  the open deal showed two Undo lines at once, one in each pane, and the
+  first one took back the drag. Each move now replaces the Undo of the
+  move before it, wherever that was, so the Undo you see takes back your
+  latest move. A Won that makes a project clears the earlier Undo too.
+- **Search keeps a deal's stage whole.** In ⌘K and the search sheet, a
+  deal of a client with a long name read "Fixture Labs and Sample Trading
+  Company · Cont…". Now the client's name is cut first and the stage
+  stays whole ("… Trading Co… · Contacted"); the same goes for a
+  client's company and state. A phone still never scrolls sideways.
+- **Insights groups its cards by currency.** On a Mac or iPad wide
+  enough for columns, the rupee and dollar cards were mixed down each
+  column. Each currency's cards now sit together, your Life currency
+  first, then the funnel and time in stage. A phone lists them in that
+  order too.
+- **The Clients list select fits on the iPad.** With a client open beside
+  the list, the list select read "Every clie▾". The sort, the tag and
+  the list now start at the width their words need; when the three don't
+  fit on one row (beside an open client, or on a 320 phone), the list
+  select gets a row of its own. A 390 phone keeps one row.
+
 ## 0.13.0 (4 November 2026)
 
 **Work** (off until you turn it on with `jantar work on`, which turns
