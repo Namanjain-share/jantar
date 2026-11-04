@@ -20,7 +20,8 @@
  *     client's Log sheet, the entry and its next step this project's), Notes
  *   Folder, with "Open folder in Files" while Files is on
  *
- * From a pane of 640 the parts are cards side by side (kit/Columns.tsx).
+ * From a pane of 600 the parts are cards side by side (kit/Columns.tsx;
+ * 0.13.1: 600, not 640, so the 620 beside its list on an iPad has them).
  * Beside the list it has Close (Esc too); alone, "‹ Projects".
  */
 import { CaretLeftIcon, CaretRightIcon, FolderOpenIcon, PlusIcon } from '@phosphor-icons/react';
@@ -32,7 +33,7 @@ import { formatAmount } from '../../../lib/money.js';
 import { routePath } from '../../../lib/router.js';
 import { useApp, useDeps, useNow } from '../../context.js';
 import { Button, buttonClass } from '../../kit/Button.js';
-import { Columns, useCardWidth } from '../../kit/Columns.js';
+import { Columns } from '../../kit/Columns.js';
 import { glyphStateOf } from '../../kit/glyph.js';
 import { Panel } from '../../kit/Panel.js';
 import { PaneClose, usePaneClose } from '../../kit/PaneClose.js';
@@ -53,7 +54,7 @@ import { TodoSheet } from '../life/todos/TodoSheet.js';
 import { useTodoClients } from '../life/todos/clients.js';
 import { workClient } from './client.js';
 import { filesHref, healthParts, logLine, milestonesWith, newSessionHref } from './model.js';
-import { SaveError, useStageNames } from './parts.js';
+import { SaveError, useHubCards, useStageNames } from './parts.js';
 
 const NO_TODOS: readonly Todo[] = [];
 
@@ -109,7 +110,7 @@ export function ProjectHub({ id, back, projects = [], onChanged, onDeleted }: Pr
   const clients = useTodoClients(NO_TODOS, todoSheet.open);
   const close = usePaneClose();
   const box = useRef<HTMLDivElement>(null);
-  const cards = useCardWidth(box);
+  const cards = useHubCards(box);
   const live = useMemo(() => liveIn(Object.values(state.sessions), project?.folder), [state.sessions, project?.folder]);
   // A stage move in its client's log by its stage's name (a stage added in the editor has a made-up id).
   const stageNames = useStageNames(hub?.log);

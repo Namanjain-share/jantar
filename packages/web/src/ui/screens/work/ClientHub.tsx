@@ -27,7 +27,8 @@
  *
  * "Log the call?" (W31): after Call, when the page was hidden ten seconds
  * or more and comes back within two hours, a line offers the Log sheet.
- * From a pane of 640 the parts are cards side by side (kit/Columns.tsx).
+ * From a pane of 600 the parts are cards side by side (kit/Columns.tsx;
+ * 0.13.1: 600, not 640, so the 620 beside its list on an iPad has them).
  * With a keyboard (design 6.4): l logs, n sets a next step, e edits; the
  * list's own keys (j/k, ↵, Esc, c adds, / filters) are the shell's.
  *
@@ -43,7 +44,7 @@ import { formatAmount } from '../../../lib/money.js';
 import { routePath } from '../../../lib/router.js';
 import { useApp, useDeps, useNow, useToast } from '../../context.js';
 import { Button, buttonClass } from '../../kit/Button.js';
-import { Columns, useCardWidth } from '../../kit/Columns.js';
+import { Columns } from '../../kit/Columns.js';
 import { IconButton } from '../../kit/IconButton.js';
 import { Panel } from '../../kit/Panel.js';
 import { PaneClose, usePaneClose } from '../../kit/PaneClose.js';
@@ -67,7 +68,7 @@ import { workClient } from './client.js';
 import { STATE_LABEL, askLogCall, clientPath, deleteLines, mailHref, telHref, touchText, waHref } from './clientModel.js';
 import { LogSheet, type LogStart } from './LogSheet.js';
 import { dueWord, filesHref, inStageText, logLine } from './model.js';
-import { FromTag, Framed, useStageNames } from './parts.js';
+import { FromTag, Framed, useHubCards, useStageNames } from './parts.js';
 
 const MergeSheet = lazy(() => import('./Duplicates.js').then((m) => ({ default: m.MergeSheet })));
 // The deals' sheet comes from their chunk on its first New deal.
@@ -111,7 +112,7 @@ export function ClientHub({ id, back, prefs, onChanged, onDeleted }: ClientHubPr
   const dealSheet = useSheet<null>();
   const close = usePaneClose();
   const box = useRef<HTMLDivElement>(null);
-  const cards = useCardWidth(box);
+  const cards = useHubCards(box);
   // Older log pages, after the hub's own; a reload of the hub starts them over.
   const [older, setOlder] = useState<{ rows: WorkLogRow[]; next?: string | undefined } | null>(null);
   const [olderBusy, setOlderBusy] = useState(false);

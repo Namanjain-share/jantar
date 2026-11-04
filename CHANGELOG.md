@@ -26,6 +26,11 @@ What changed for people who use Jantar, newest first. Versions before
   the list now start at the width their words need; when the three don't
   fit on one row (beside an open client, or on a 320 phone), the list
   select gets a row of its own. A 390 phone keeps one row.
+- **A project, client or deal open beside its list on an 11-inch iPad
+  shows cards.** In landscape the page beside the list is 620 wide, just
+  under where the cards started, so a project or a deal showed as a
+  plain list with nearly half the width empty. From 600 wide they are
+  now cards, as on a bigger iPad or a Mac.
 
 ## 0.13.0 (4 November 2026)
 

@@ -20,7 +20,8 @@
  * its follow-ups stay with no deal; no Undo). With a keyboard: m moves, l
  * logs, n sets a next step, e edits.
  *
- * From a pane of 640 the parts are cards side by side (kit/Columns.tsx).
+ * From a pane of 600 the parts are cards side by side (kit/Columns.tsx;
+ * 0.13.1: 600, not 640, so the 620 beside its list on an iPad has them).
  * Beside the list it has Close (Esc too); alone, "‹ Deals".
  */
 import { CaretLeftIcon, CaretRightIcon, CheckIcon, PlusIcon } from '@phosphor-icons/react';
@@ -30,7 +31,7 @@ import type { ProjectView, Todo } from '@jantar/protocol';
 import { routePath } from '../../../lib/router.js';
 import { useDeps, useToast } from '../../context.js';
 import { Button } from '../../kit/Button.js';
-import { Columns, useCardWidth } from '../../kit/Columns.js';
+import { Columns } from '../../kit/Columns.js';
 import { IconButton } from '../../kit/IconButton.js';
 import { Panel } from '../../kit/Panel.js';
 import { PaneClose, usePaneClose } from '../../kit/PaneClose.js';
@@ -52,7 +53,7 @@ import { moveDeal, useDealMove, type StageRef } from './DealMove.js';
 import { DealSheet } from './DealSheet.js';
 import { closeText, closedText, lostLabel, valueText } from './dealModel.js';
 import { dueWord, inStageText, logLine } from './model.js';
-import { Framed, FromTag } from './parts.js';
+import { Framed, FromTag, useHubCards } from './parts.js';
 
 // The Log sheet is the clients' chunk: a deal loads it on its first Log.
 const LogSheet = lazy(() => import('./LogSheet.js').then((m) => ({ default: m.LogSheet })));
@@ -92,7 +93,7 @@ export function DealHub({ id, back, stages, onChanged, onDeleted }: DealHubProps
   const close = usePaneClose();
   const box = useRef<HTMLDivElement>(null);
   const moveButton = useRef<HTMLButtonElement>(null);
-  const cards = useCardWidth(box);
+  const cards = useHubCards(box);
   const projects = useLifeLoad<{ projects: ProjectView[] }>(todoSheet.open ? 'projects' : null, () => api.projectsList());
   const names = useMemo(() => new Map(stages.map((s) => [s.id, s.name])), [stages]);
   const card = hub?.card;

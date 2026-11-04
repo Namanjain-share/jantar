@@ -5,14 +5,28 @@
  * names for a log's stage moves.
  */
 import clsx from 'clsx';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, type ReactNode, type RefObject } from 'react';
 import type { ContactFrom, WorkLogRow } from '@jantar/protocol/work';
 import { isApiError } from '../../../lib/api.js';
 import { useDeps } from '../../context.js';
+import { useBucket } from '../../kit/bucket.js';
 import { Tag } from '../../kit/Tag.js';
 import { NotSaved } from '../life/shared/states.js';
 import { useLifeLoad } from '../life/shared/useLife.js';
 import { workClient } from './client.js';
+
+/**
+ * 0.13.1: from a pane this wide a project's, a client's and a deal's page show their parts as cards
+ * (kit/Columns.tsx): 600, under the Life pages' 640, so the 620 pane beside its list on an 11-inch iPad in
+ * landscape has them, as design 6.3 draws it. As a list there the project and the deal left 43 and 45 % of
+ * their width empty (the 0.11 width check, at 1180 x 820).
+ */
+export const HUB_CARDS_FROM = 600;
+
+/** Whether `ref`'s box is HUB_CARDS_FROM wide or more: false without a measure (jsdom), so the list. */
+export function useHubCards(ref: RefObject<HTMLElement | null>): boolean {
+  return useBucket(ref, (w) => w >= HUB_CARDS_FROM);
+}
 
 /**
  * One of a few as chips that wrap (44 by 44 at least on touch: "All" is narrower than that): a filter, a log
