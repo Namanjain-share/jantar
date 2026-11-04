@@ -7,7 +7,8 @@
  *   them); Ask for more sends only the picked fields and a note to the
  *   propose route, and its refusal is the daemon's sentence; a pending
  *   request reads "Waiting for Asha's answer"; her devices with the Access
- *   email and no last seen; his pushes about her (the day summary off until
+ *   email and no last seen (0.12.2: and how many of her five are linked);
+ *   his pushes about her (the day summary off until
  *   he picks a time, the review push, quiet hours) saved with one PATCH.
  * - Activity: her rows in his voice ("You looked at Asha's Today"), his
  *   views grouped per day, and Earlier.
@@ -18,7 +19,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { OwnerPeoplePrefsSchema, type PersonActivity, type PersonToday, type PersonView } from '@jantar/protocol/people';
-import { AGREEMENT_FIELDS, presetAgreement } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, PERSON_DEVICES_MAX, presetAgreement } from '@jantar/protocol/people-core';
 import { activityText, herVoice, hisVoice } from '../../src/people-shared/activity.js';
 import { createRouter, memoryHistory } from '../../src/lib/router.js';
 import { createAppStore } from '../../src/store.js';
@@ -88,6 +89,26 @@ describe('his Sharing tab', () => {
     });
     await waitFor(() => expect(propose).toHaveBeenCalledWith(PID, { see: { sleep: true, review: 'full' }, note: 'For the bedtime plan' }));
     expect(await within(ask).findByRole('status')).toBeTruthy();
+  });
+
+  it(`0.12.2: says how many of her ${PERSON_DEVICES_MAX} devices are linked (a revoked one doesn't count), and no more about them than the list`, async () => {
+    const dev = (n: number, over: { accessEmail?: string; revokedAt?: string } = {}) => ({ id: `01JDEV${String(n).padStart(20, 'A')}`, name: `Asha device ${n}`, createdAt: AT, ...over });
+    const devices = vi.fn(async () => ({ devices: [dev(1, { accessEmail: 'asha@example.com' }), dev(2), dev(3, { revokedAt: AT })] }));
+    const c = client({ list: vi.fn(async () => ({ enabled: true, people: [person()], ownerName: 'Sam', ownerPrefs: PREFS })), today: vi.fn(async () => today), devices });
+    render(<Wrapped client={c} tab="sharing" />);
+    const devs = await screen.findByRole('region', { name: "Asha's devices" });
+    expect(await within(devs).findByText('2 of 5 devices linked.')).toBeTruthy();
+    expect(within(devs).getAllByRole('listitem')).toHaveLength(3);
+    expect(devs.textContent).not.toMatch(/last (seen|used)/i);
+    expect(devs.textContent?.match(/@/g)).toHaveLength(1);
+  });
+
+  it('with no devices yet, no count', async () => {
+    const c = client({ list: vi.fn(async () => ({ enabled: true, people: [person()], ownerName: 'Sam', ownerPrefs: PREFS })), today: vi.fn(async () => today), devices: vi.fn(async () => ({ devices: [] })) });
+    render(<Wrapped client={c} tab="sharing" />);
+    const devs = await screen.findByRole('region', { name: "Asha's devices" });
+    expect(await within(devs).findByText('No devices yet.')).toBeTruthy();
+    expect(devs.textContent).not.toMatch(/devices linked/);
   });
 
   it('on a phone paired the default way (no admin), Ask for more shows the Mac command, not a button that can only fail (review 4, B2)', async () => {

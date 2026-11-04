@@ -15,7 +15,9 @@
  *   still lists what can be asked, and instead of a button that can only
  *   fail it shows the Mac command for what is ticked.
  * - {name}'s devices: name, when added and the Access email (no last
- *   seen, C20).
+ *   seen, C20). 0.12.2: and how many of her PERSON_DEVICES_MAX are linked
+ *   (revoked ones not counted), so he sees a new one arrive; nothing more
+ *   about them than the list.
  * - Your pushes about {name}: the day summary (off until he picks a time),
  *   "{name} sent the evening review", and quiet hours. She sees on her
  *   Sharing whether the summary is on.
@@ -32,6 +34,7 @@ import {
   BUILT_PHASE,
   OWNER_FALLBACK_NAME,
   PEOPLE_LABEL,
+  PERSON_DEVICES_MAX,
   PERSON_LABEL_MAX,
   PERSON_LABEL_PRESETS,
   fieldValue,
@@ -148,18 +151,23 @@ export function SharingTab({ client, pid, name, person, list, reload }: { client
         <h2 className="type-row font-semibold text-ink">{name}'s devices</h2>
         {devices.data ? (
           devices.data.devices.length ? (
-            <ul className="mt-4 type-row text-ink">
-              {devices.data.devices.map((d) => (
-                <li key={d.id} className="py-4">
-                  {d.name}
-                  <span className="block type-small text-ink-2">
-                    Added {dayLabel(d.createdAt.slice(0, 10))}
-                    {d.accessEmail ? ` · ${d.accessEmail}` : ''}
-                    {d.revokedAt ? ' · revoked' : ''}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <p className="type-small text-ink-2">
+                {devices.data.devices.filter((d) => !d.revokedAt).length} of {PERSON_DEVICES_MAX} devices linked.
+              </p>
+              <ul className="mt-4 type-row text-ink">
+                {devices.data.devices.map((d) => (
+                  <li key={d.id} className="py-4">
+                    {d.name}
+                    <span className="block type-small text-ink-2">
+                      Added {dayLabel(d.createdAt.slice(0, 10))}
+                      {d.accessEmail ? ` · ${d.accessEmail}` : ''}
+                      {d.revokedAt ? ' · revoked' : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : (
             <p className="type-small text-ink-2">No devices yet.</p>
           )
