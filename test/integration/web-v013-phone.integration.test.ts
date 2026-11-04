@@ -349,11 +349,13 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
     await made('old', '/v1/projects', { name: 'Old landing page', status: 'done' });
     await made('wireframes', '/v1/todos', { title: 'Send wireframes', projectId: ids.site, due: { day: day(2), time: '15:00' } });
     await made('staging', '/v1/todos', { title: 'Fix staging login', projectId: ids.site, due: { day: day(-1) } });
-    // Deals on three open stages, none with a next step.
+    // Deals on the four open stages, none with a next step. 0.13.1: Negotiation holds one too, so on the iPad
+    // the board's last open column has a card past the right edge (the board scrolls sideways by design).
     await made('site_deal', '/v1/work/deals', { clientId: ids.studio, title: 'Site rebuild', stage: 'proposal', value: 45_000_000, expectedClose: day(10), projectId: ids.site });
     await made('audit_deal', '/v1/work/deals', { clientId: ids.labs, title: 'Data audit', stage: 'contacted', value: 20_000_000 });
     await made('shop_deal', '/v1/work/deals', { clientId: ids.sam, title: 'Shop setup', stage: 'new', value: 8_000_000 });
-    expect(await noNextStep()).toBe(3);
+    await made('export_deal', '/v1/work/deals', { clientId: ids.labs, title: 'Export dashboard', stage: 'negotiation', value: 12_000_000 });
+    expect(await noNextStep()).toBe(4);
     // 0.13.0 (F7): Posts, a ready one with a time and an idea with none.
     await made('post', '/v1/posts', { platform: 'reddit', where: 'r/example', title: 'How a small shop plans its first week', text: 'Three lists and one rule.', due: { day: day(1), time: '19:30' }, status: 'ready' });
     await made('idea', '/v1/posts', { platform: 'linkedin', text: 'What a placeholder client taught us about invoices.' });
@@ -462,7 +464,7 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
           const due = page.getByRole('region', { name: 'Due' }).getByRole('listitem').filter({ hasText: title });
           await due.waitFor();
           expect(await due.innerText(), `the follow-up on Today (${who})`).toContain('Pat Example');
-          await page.getByRole('region', { name: 'Work', exact: true }).getByRole('link', { name: 'No next step: 2 deals' }).waitFor();
+          await page.getByRole('region', { name: 'Work', exact: true }).getByRole('link', { name: 'No next step: 3 deals' }).waitFor();
           await check(o, who, 'Today with the follow-up');
 
           // Deals: the phone picks a stage from its strip; the iPad shows the board.
@@ -481,6 +483,11 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
             for (const stage of ['New lead', 'Contacted', 'Proposal sent', 'Negotiation']) boxes.push(await page.getByRole('region', { name: stage, exact: true }).boundingBox());
             const at = boxes.map((b) => (b ? `${Math.round(b.x)},${Math.round(b.y)}` : 'none')).join(' ');
             expect(boxes.every((b, i) => b !== null && (i === 0 || (b.x > boxes[i - 1]!.x && Math.abs(b.y - boxes[0]!.y) < 2))), `the deals board's columns (${at})`).toBe(true);
+            // 0.13.1: Negotiation's card runs past the right edge inside the board, which scrolls sideways: check()
+            // below must take it as the board's, not as the page running over ('span "Export dashboard": 1014 to
+            // 1135 in 1024' before overflow() judged by the board).
+            const card = await page.getByRole('list', { name: 'Negotiation' }).getByRole('link', { name: /Export dashboard/ }).boundingBox();
+            expect(card && card.x + card.width, `Negotiation's card past the right edge (${who})`).toBeGreaterThan(SIZES.ipad.width);
           }
           await check(o, who, wide ? 'Work › Deals, the board' : 'Work › Deals, Proposal sent');
 
@@ -589,8 +596,42 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
       // Passed or not, the next size starts from the Mac as seeded.
       await reset(title, note);
     }
-    expect(await noNextStep(), `the Mac as seeded after the walk (${who})`).toBe(3);
+    expect(await noNextStep(), `the Mac as seeded after the walk (${who})`).toBe(4);
   }
+
+  it("0.13.1: overflow() takes a card past a sideways board's edge as the board's, and still finds a page that runs over", async () => {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 768 }, colorScheme: 'light', reducedMotion: 'reduce' });
+    try {
+      const page = await ctx.newPage();
+      // The deals board's shape: columns of 240 in a box that scrolls sideways, a card's title in its own truncate
+      // span. The fifth column starts at the right edge (16 + 4 x 252); its title, and the truncate span around it,
+      // are past it.
+      const card = (title: string) =>
+        `<section style="box-sizing:border-box;width:240px;flex:none;padding:8px"><a href="#" style="display:block;padding:8px 12px"><span style="display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"><span>${title}</span></span></a></section>`;
+      const board = (width: string, titles: readonly string[]) =>
+        `<div data-scroll-x class="overflow-x-auto" style="overflow-x:auto;width:${width}"><div style="display:flex;gap:12px;padding:0 16px;width:max-content">${titles.map(card).join('')}</div></div>`;
+      const at = (html: string) => page.setContent(`<!doctype html><body style="margin:0;font:16px sans-serif">${html}</body>`);
+
+      const five = ['Site rebuild', 'Data audit', 'Shop setup', 'Brand kit', 'Export dashboard'];
+      await at(board('100%', five));
+      const title = await page.getByText('Export dashboard').boundingBox();
+      expect(title!.x, 'the title past the right edge').toBeGreaterThan(1024);
+      expect(await overflow(page, 'a board that scrolls sideways')).toEqual([]);
+
+      // The same board made wider than the page: the box that scrolls is past the edge itself, so it holds nothing.
+      await at(board('1300px', five));
+      const wide = await overflow(page, 'a board wider than the page');
+      expect(wide[0], wide.join('\n')).toBe('the page scrolls sideways: 1300 px in 1024');
+      expect(wide.some((s) => /^span "Export dashboard": \d+ to \d+ in 1024$/.test(s)), wide.join('\n')).toBe(true);
+
+      // A line wider than the page, in no box that scrolls: the page runs over, and the line says where.
+      await at('<p style="margin:0;width:1200px">A line wider than the page</p>');
+      const over = await overflow(page, 'a page that runs over');
+      expect(over, over.join('\n')).toEqual(['the page scrolls sideways: 1200 px in 1024', 'p "A line wider than the page": 0 to 1200 in 1024']);
+    } finally {
+      await ctx.close();
+    }
+  }, perfBudgetMs(60_000));
 
   it('at 320 x 568 with touch: every Work route, a call logged with a next step, a stage moved, import preview and export', async () => {
     await walk('p320');
@@ -672,7 +713,7 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
       const on_ = await cli('work', 'on');
       expect(on_.code, `${on_.out}${on_.err}`).toBe(0);
     }
-    expect(await noNextStep()).toBe(3);
+    expect(await noNextStep()).toBe(4);
   }, perfBudgetMs(300_000));
 
   it("her app (her host's /p and p.html) never loads one of Work's chunks; his walks did", async () => {

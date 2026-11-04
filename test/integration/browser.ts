@@ -387,6 +387,15 @@ export async function clean(page: Page, watch: Watch, what?: string): Promise<vo
  * to scroll both ways (`overflow-x-auto` and `overflow-auto`, like the code
  * view); and an element past the viewport's sides that no box inside the
  * viewport holds.
+ *
+ * 0.13.1: what holds an element is judged by its nearest sideways scroll box
+ * (data-scroll-x, or overflow-x auto or scroll), not by the nearest box that
+ * clips: that was often a title's own truncate span, itself past the edge
+ * with the card it is on, so a card in a deals board column off the right
+ * (the board scrolls sideways by design) read as the page running over. A
+ * clipping box on the way up still holds it while that box is inside the
+ * viewport (it cuts the element off there); one that is past the edge too
+ * holds nothing, and the walk goes on up.
  */
 export async function overflow(page: Page, what?: string): Promise<string[]> {
   await stillTouch(page, what);
@@ -403,11 +412,17 @@ export async function overflow(page: Page, what?: string): Promise<string[]> {
     };
     const shown = (el: Element) => !el.closest('[hidden], [inert], [aria-hidden="true"]') && getComputedStyle(el).visibility !== 'hidden';
     const sideways = (el: Element) => /(^|\s)overflow-(x-)?(auto|scroll)(\s|$)/.test(el.getAttribute('class') ?? '');
+    const inside = (p: Element) => {
+      const r = p.getBoundingClientRect();
+      return r.left >= -1 && r.right <= vw + 1;
+    };
     const contained = (el: Element) => {
       for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
-        if (getComputedStyle(p).overflowX === 'visible') continue;
-        const r = p.getBoundingClientRect();
-        return r.left >= -1 && r.right <= vw + 1;
+        const ox = getComputedStyle(p).overflowX;
+        // A sideways scroll box decides: inside the viewport, what runs past it is reached by scrolling it.
+        if (p.hasAttribute('data-scroll-x') || ox === 'auto' || ox === 'scroll') return inside(p);
+        // A box that clips (hidden, clip) holds it only from inside the viewport; past the edge, look further up.
+        if (ox !== 'visible' && inside(p)) return true;
       }
       return false;
     };
