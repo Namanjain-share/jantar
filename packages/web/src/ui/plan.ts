@@ -100,6 +100,11 @@ export function usePlan(): PlanResponse | null {
   );
 }
 
+/** 0.14.0: ask again now (a Save just changed what the plan reads: the Switching rules sheet). */
+export function reloadPlan(api: Api, store: AppStore): void {
+  load(api, feedFor(api), store);
+}
+
 export function ceilingOf(plan: PlanResponse | null): number {
   return typeof plan?.ceiling === 'number' && Number.isFinite(plan.ceiling) ? plan.ceiling : DEFAULT_CEILING;
 }

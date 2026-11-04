@@ -22,6 +22,11 @@
  * (accounts/Machines.tsx, its own chunk). Until then the screen is as
  * before.
  *
+ * 0.14.0: "Switching rules" (beside Refresh, while ccw runs, on a device
+ * paired with control) opens accounts/SwitchingSheet.tsx: holds, the
+ * ceilings, the lead time and each account's weekly ramp, saved into ccw's
+ * switch.json. An account with a ramp shows its weekly cap (model.ts).
+ *
  * 0.12 (build plan 2.9): laid out by the pane's width, not the window's:
  * the matrix from a pane of 640, with RESETS and 7D columns from 1180, at
  * the pane's full width on a raised ground of its own (the 1320 cap is
@@ -48,6 +53,8 @@ import { Moves } from './accounts/Moves.js';
 import { PhoneRows } from './accounts/PhoneRows.js';
 import { Segmented } from './accounts/Segmented.js';
 import { SingleAccount } from './accounts/Single.js';
+import { SwitchingSheet } from './accounts/SwitchingSheet.js';
+import { readLocalDevice } from './devices/local.js';
 import { hhmm, searchParam } from './accounts/time.js';
 import { hasMachines } from './session/Info.js';
 
@@ -99,6 +106,11 @@ function CswapAccounts({ machines }: { machines: boolean }) {
   const [folded, setFolded] = useState<ReadonlySet<number>>(() => new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  // 0.14.0: the Switching rules sheet; each opening reads the rules afresh.
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [rulesGen, setRulesGen] = useState(0);
+  // Paired with control (or no record of the pairing, taken to have it, as elsewhere).
+  const [control] = useState(() => readLocalDevice()?.scopes.includes('control') !== false);
 
   const rows = useMemo(() => buildRows(state, plan, ceiling, now), [state, plan, ceiling, now]);
   const sorted = useMemo(() => sortRows(rows, sort, ceiling), [rows, sort, ceiling]);
@@ -193,6 +205,22 @@ function CswapAccounts({ machines }: { machines: boolean }) {
       Refresh
     </Button>
   );
+  // 0.14.0: only ccw switches accounts, so its rules are what there is to change.
+  const rules =
+    legacy && control ? (
+      <>
+        <Button
+          size="sm"
+          onClick={() => {
+            setRulesGen((n) => n + 1);
+            setRulesOpen(true);
+          }}
+        >
+          Switching rules
+        </Button>
+        <SwitchingSheet open={rulesOpen} onOpenChange={setRulesOpen} generation={rulesGen} />
+      </>
+    ) : null;
   const errorLine = refreshError ? (
     <span role="alert" className="type-small text-signal-text">
       {refreshError}
@@ -216,6 +244,7 @@ function CswapAccounts({ machines }: { machines: boolean }) {
             {nextNote ? <p className="mt-6 flex flex-wrap items-center gap-8 type-mono text-ink-3">{nextNote}</p> : null}
             <div className="mt-12 flex flex-wrap items-center gap-8">
               {refreshButton}
+              {rules}
               {sortControl}
             </div>
             {errorLine ? <p className="mt-8">{errorLine}</p> : null}
@@ -253,6 +282,7 @@ function CswapAccounts({ machines }: { machines: boolean }) {
             </>
           ) : null}
           <span className="ml-8 inline-flex">{refreshButton}</span>
+          {rules ? <span className="inline-flex">{rules}</span> : null}
           {errorLine}
           <span className="ml-auto inline-flex">{sortControl}</span>
         </div>

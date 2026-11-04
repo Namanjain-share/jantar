@@ -166,6 +166,8 @@ describe('code splitting', () => {
       'ui/screens/accounts/hooks.ts',
       'ui/screens/accounts/model.ts',
       'ui/screens/accounts/Segmented.tsx',
+      // 0.14.0: the Switching rules sheet is the Accounts chunk's, never the main load's.
+      'ui/screens/accounts/SwitchingSheet.tsx',
       'ui/screens/Alerts.tsx',
       'ui/screens/alerts/AlertRow.tsx',
       'ui/screens/alerts/Mute.tsx',

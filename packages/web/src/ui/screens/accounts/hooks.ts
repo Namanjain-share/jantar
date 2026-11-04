@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
 /** /v1/plan and the ceiling: one shared feed (ui/plan.ts). */
-export { ceilingOf, usePlan } from '../../plan.js';
+export { ceilingOf, reloadPlan, usePlan } from '../../plan.js';
 
 /** An element's content width, kept current with ResizeObserver (`fallback` until measured). */
 export function useWidth<T extends HTMLElement>(fallback: number): [RefObject<T | null>, number] {
