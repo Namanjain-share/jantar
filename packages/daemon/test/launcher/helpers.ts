@@ -441,8 +441,10 @@ export class FakeCcw implements CcwLegacySource {
   async burn(): Promise<CcwBurn[]> {
     return [];
   }
+  /** 0.14.0: the plan's accounts (an account's weeklyCap, for one). */
+  planAccounts: PlanResponse['accounts'] = [];
   async plan(): Promise<PlanResponse> {
-    return { source: 'ccw-legacy', next: null, accounts: [], updatedAt: T0, ...(this.ceiling !== undefined ? { ceiling: this.ceiling } : {}) };
+    return { source: 'ccw-legacy', next: null, accounts: this.planAccounts, updatedAt: T0, ...(this.ceiling !== undefined ? { ceiling: this.ceiling } : {}) };
   }
   async switchConfig() {
     return this.isPresent ? { on: true, dryRun: false, hold: this.hold, groups: this.groups } : null;

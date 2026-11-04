@@ -847,6 +847,12 @@ export const LaunchAccountSchema = z.object({
   /** Why it is not selectable ("token expired", "past the ceiling", ...). */
   why: z.string().optional(),
   held: z.boolean(),
+  /**
+   * 0.14.0: the account's weekly cap now, when it has a weekly ramp in ccw's
+   * switch.json: Auto takes it only 5 under the cap, and a held one's
+   * sessions leave it once it passes the cap.
+   */
+  weeklyCap: z.number().min(1).max(100).optional(),
 });
 export type LaunchAccount = z.infer<typeof LaunchAccountSchema>;
 

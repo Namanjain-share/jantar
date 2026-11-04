@@ -19,6 +19,7 @@ import {
   autoSkip,
   effective5h,
   groupAccount,
+  heldWarning,
   isHeld,
   noRoomReason,
   notSelectable,
@@ -149,6 +150,43 @@ describe('Auto: the most 5-hour room', () => {
 
   it('with nothing that will ever reset, says so plainly', () => {
     expect(noRoomReason(inputs([]))).toBe('No account has room right now');
+  });
+});
+
+describe('0.14.0: weekly caps and accounts with no 5-hour window', () => {
+  it('a weekly cap stands in for the weekly ceiling, and Auto takes the account only 5 under it', () => {
+    const caps = new Map([[7, 50]]);
+    for (const [weekly, skip] of [
+      [45, null],
+      [46, 'near its 50% weekly cap'],
+      [50, 'near its 50% weekly cap'],
+    ] as const) {
+      expect(autoSkip(account(7, 10, { sevenPct: weekly }), inputs([], { weeklyCaps: caps })), `weekly ${weekly}`).toBe(skip);
+    }
+    // a cap above the ceiling counts too (the ramp's last hour is 100): 95 is a target there, past the plain 95% ceiling
+    expect(autoSkip(account(7, 10, { sevenPct: 95 }), inputs([], { weeklyCaps: new Map([[7, 100]]) }))).toBeNull();
+    expect(autoSkip(account(7, 10, { sevenPct: 95 }), inputs([]))).toBe('past the weekly ceiling');
+    expect(pickAuto(inputs([account(4, 30, { sevenPct: 20 }), account(7, 10, { sevenPct: 47 })], { weeklyCaps: caps })).pick).toBe(4);
+    expect(accountRows(inputs([account(7, 10)], { weeklyCaps: caps }))[0]).toMatchObject({ id: 7, weeklyCap: 50 });
+    expect(accountRows(inputs([account(4, 10)], { weeklyCaps: caps }))[0]).not.toHaveProperty('weeklyCap');
+  });
+
+  it('an account with no 5-hour window has no 5-hour limit: usable, nothing to fill, its weekly use said', () => {
+    const noFive = (id: number, weekly: number): Account => ({ ...account(id, 0), windows: [{ kind: 'seven_day', pct: weekly, resetsAt: '2026-01-20T00:00:00.000Z' }] });
+    const inp = inputs([noFive(6, 10), account(7, 12)], { bookings: new Map([[6, 3]]) });
+    expect(autoSkip(noFive(6, 10), inp)).toBeNull();
+    expect(effective5h(noFive(6, 10), inp)).toBe(0); // never a projected fill, bookings or not
+    expect(usageLine(noFive(6, 10), inp)).toBe('no 5-hour window · 7d 10%');
+    expect(pickAuto(inp)).toEqual({ pick: 6, reason: 'most room · no 5-hour window · 7d 10%' });
+    // its weekly use (or cap) still stops it
+    expect(autoSkip(noFive(6, 96), inp)).toBe('past the weekly ceiling');
+    expect(autoSkip(noFive(6, 46), inputs([], { weeklyCaps: new Map([[6, 50]]) }))).toBe('near its 50% weekly cap');
+    expect(accountRows(inp).find((r) => r.id === 6)).toEqual({ id: 6, label: '06', live: 0, selectable: true, held: false, sevenDayPct: 10 });
+  });
+
+  it('a held account says whether ccw moves its sessions off at a weekly cap', () => {
+    expect(heldWarning(2, false)).toBe('Held for other work. ccw will never move this session, even when 02 fills up.');
+    expect(heldWarning(2, true)).toBe('Held for other work: ccw moves no session onto 02, but moves this one off once 02 passes its weekly cap.');
   });
 });
 

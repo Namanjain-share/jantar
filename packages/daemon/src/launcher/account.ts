@@ -4,12 +4,17 @@
  *
  *   usable(a)      = selectable, not held, not starting another launch, a
  *                    5-hour reading below the ceiling and a 7-day reading
- *                    below the weekly ceiling
+ *                    below the weekly ceiling (0.14.0: for an account with
+ *                    a weekly ramp in ccw's switch.json, at most its cap
+ *                    now less SWITCH_RULES.rampTargetMargin, as ccw targets
+ *                    it; an account with no 5-hour window in its reading
+ *                    has no 5-hour limit and is not passed over for it)
  *   held           = the kept accounts (settings accounts.kept, always) ∪
  *                    settings.autoswitch.hold ∪ ccw's switch.json hold
  *                    ∪ the account's own flag
  *   effective5h(a) = (resets within 15 min ? 0 : 5-hour %)
  *                    + bookings(a) × burn_default × 30
+ *                    (0.14.0: 0 with no 5-hour window: nothing to fill)
  *   Auto           = argmin over usable by (effective5h, 7-day %, live sessions, id)
  *
  * Bookings are launches to the account in the last 30 min that did not fail,
@@ -32,7 +37,7 @@
  *
  * Pure functions: the service gathers the inputs.
  */
-import type { Account, AccountId, AccountsMode, LaunchAccount, Session } from '@jantar/protocol';
+import { SWITCH_RULES, type Account, type AccountId, type AccountsMode, type LaunchAccount, type Session } from '@jantar/protocol';
 import { acct, dur, hhmm } from '../notify/format.js';
 import { SINGLE_ACCOUNT } from '../rewrite/account.js';
 
@@ -54,6 +59,11 @@ export interface AccountInputs {
   /** 5-hour and weekly ceilings in force (ccw's while it runs, else settings.autoswitch). */
   ceiling: number;
   weeklyCeiling: number;
+  /**
+   * 0.14.0: each account's weekly cap now, for those with a weekly ramp in
+   * ccw's switch.json (/v1/plan's weeklyCap): in place of weeklyCeiling.
+   */
+  weeklyCaps?: ReadonlyMap<number, number> | undefined;
   /** settings.autoswitch.burn_default: %/min of a 5-hour window per session. */
   burnPerMin: number;
   /** Launches per account in the last 30 min that did not fail. */
@@ -105,16 +115,38 @@ export function autoSkip(a: Account, inp: AccountInputs): string | null {
   if (isHeld(a, inp)) return 'held';
   if (inp.busy.has(a.id)) return 'starting another session';
   if (inp.mode === 'dirs') return null;
+  if (a.windows.length === 0) return 'no usage reading';
+  // 0.14.0: no 5-hour window in the reading: no 5-hour limit.
   const five = fiveHour(a);
-  if (!five) return 'no usage reading';
-  if (five.pct >= inp.ceiling) return 'past the ceiling';
-  if ((sevenDay(a)?.pct ?? 0) >= inp.weeklyCeiling) return 'past the weekly ceiling';
+  if (five && five.pct >= inp.ceiling) return 'past the ceiling';
+  const week = sevenDay(a)?.pct ?? 0;
+  const cap = inp.weeklyCaps?.get(a.id);
+  if (cap !== undefined) return week > cap - SWITCH_RULES.rampTargetMargin ? `near its ${cap}% weekly cap` : null;
+  if (week >= inp.weeklyCeiling) return 'past the weekly ceiling';
   return null;
+}
+
+/** 0.14.0: the weekly cap ccw keeps the account under now, when it has a weekly ramp. */
+export function weeklyCapOf(a: Pick<Account, 'id'>, inp: Pick<AccountInputs, 'weeklyCaps'>): number | undefined {
+  return inp.weeklyCaps?.get(a.id);
+}
+
+/**
+ * The warning a held account carries before a session starts on it by hand.
+ * 0.14.0: one with a weekly cap isn't held for good: ccw moves its sessions
+ * off once it passes the cap (and still moves none onto it).
+ */
+export function heldWarning(id: AccountId, capped: boolean): string {
+  return capped
+    ? `Held for other work: ccw moves no session onto ${acct(id)}, but moves this one off once ${acct(id)} passes its weekly cap.`
+    : `Held for other work. ccw will never move this session, even when ${acct(id)} fills up.`;
 }
 
 /** The 5-hour % Auto ranks by: 0 when the window resets within 15 min, plus the bookings. */
 export function effective5h(a: Account, inp: AccountInputs): number {
   const five = fiveHour(a);
+  // 0.14.0: no 5-hour window: no 5-hour limit, so nothing a booking could fill.
+  if (!five && a.windows.length > 0) return 0;
   const reset = five?.resetsAt ? Date.parse(five.resetsAt) : NaN;
   const soon = Number.isFinite(reset) && reset - inp.nowMs <= RESET_SOON_MS;
   const base = soon ? 0 : (five?.pct ?? 0);
@@ -129,7 +161,9 @@ export function liveOn(id: AccountId, sessions: readonly Session[]): number {
 export function usageLine(a: Account, inp: Pick<AccountInputs, 'nowMs' | 'timeZone' | 'mode'>): string {
   if (inp.mode === 'dirs') return DIRS_NO_USAGE;
   const five = fiveHour(a);
-  if (!five) return 'no usage reading';
+  const seven = sevenDay(a);
+  // 0.14.0: a reading with no 5-hour window (no 5-hour limit): its weekly use is what counts.
+  if (!five) return seven ? `no 5-hour window · 7d ${Math.round(seven.pct)}%` : 'no usage reading';
   const parts = [`5h ${Math.round(five.pct)}%`];
   const reset = five.resetsAt ? Date.parse(five.resetsAt) : NaN;
   if (Number.isFinite(reset) && five.resetsAt && reset > inp.nowMs) {
@@ -189,6 +223,8 @@ export function accountRows(inp: AccountInputs): LaunchAccount[] {
       if (five) row.fiveHourPct = five.pct;
       if (seven) row.sevenDayPct = seven.pct;
       if (five?.resetsAt) row.resetsAt = five.resetsAt;
+      const cap = weeklyCapOf(a, inp);
+      if (cap !== undefined) row.weeklyCap = cap;
       const why = notSelectable(a);
       if (why) row.why = why;
       return row;

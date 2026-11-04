@@ -1156,6 +1156,27 @@ describe('preview and account choice with ccw running', () => {
     expect((await preview()).account).toEqual({ pick: null, source: 'auto', reason: 'No account has room until 13:40 (03 resets)' });
   });
 
+  it("0.14.0: an account's weekly cap in ccw's plan stands in for the weekly ceiling, 5 under it; a held one with a cap says so", async () => {
+    rig = await makeRig({ settings: { launch: { enabled: true }, autoswitch: { hold: [] } } });
+    rig.ccw.isPresent = true;
+    rig.ccw.hold = [...KEPT];
+    const capped = (id: number, weeklyCap: number) => ({ id, burnPctPerMin: 0, ridesReset: true, usable: true, weeklyCap });
+    // 07 (5h 12%, 7d 20%) has the most room: a 25% cap leaves it 20 <= 25 - 5, still a target
+    rig.ccw.planAccounts = [capped(7, 25)];
+    expect((await preview()).account.pick).toBe(7);
+    expect((await preview()).accounts.find((a) => a.id === 7)).toMatchObject({ weeklyCap: 25, selectable: true });
+    // a 24% cap: 20 is within 5 of it, so Auto passes it over (ccw would move it off at 24)
+    rig.ccw.planAccounts = [capped(7, 24)];
+    expect((await preview()).account.pick).toBe(4);
+    // a held account with a cap isn't held for good: its sessions leave at the cap
+    rig.ccw.planAccounts = [capped(2, 50)];
+    expect((await preview({ account: 2 })).warnings).toEqual([
+      { kind: 'held', text: 'Held for other work: ccw moves no session onto 02, but moves this one off once 02 passes its weekly cap.', account: 2 },
+    ]);
+    rig.ccw.planAccounts = [];
+    expect((await preview({ account: 2 })).warnings).toEqual([{ kind: 'held', text: 'Held for other work. ccw will never move this session, even when 02 fills up.', account: 2 }]);
+  });
+
   it("U3: Auto takes the most room even when the folder's ccw group is on another account; the group is a warning", async () => {
     rig = await makeRig();
     rig.ccw.isPresent = true;

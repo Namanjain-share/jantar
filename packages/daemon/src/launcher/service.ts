@@ -66,6 +66,7 @@ import {
   SINGLE_ACCOUNT,
   accountRows,
   groupAccount,
+  heldWarning,
   isHeld,
   notSelectable,
   pickAuto,
@@ -74,6 +75,7 @@ import {
   pinnedReason,
   singleRows,
   usageLine,
+  weeklyCapOf,
   type AccountInputs,
 } from './account.js';
 import { dirsAccounts } from '../sources/cswap/dirs.js';
@@ -117,7 +119,8 @@ const RESUME_GRACE_MS = 60_000;
 type Choice = { ok: true; pick: AccountId | null; source: LaunchJob['accountSource']; reason: string; warnings: LaunchWarning[] };
 type IdemEntry = { jobId: string; bodyHash: string; at: number };
 /** ccw's view of autoswitch while it runs, else settings.autoswitch and settings.groups. */
-type CcwView = { hold: readonly number[]; groups: string[][]; ceiling: number; weeklyCeiling: number };
+/** 0.14.0: and each account's weekly cap now, for those with a weekly ramp (/v1/plan's weeklyCap). */
+type CcwView = { hold: readonly number[]; groups: string[][]; ceiling: number; weeklyCeiling: number; weeklyCaps: ReadonlyMap<AccountId, number> };
 
 const nameTaken = (name: string) => `A session named ${name} is already running or starting`;
 /** v0.6, config dirs: the account's ~/.claude-<name> lost its .claude.json since the roster was listed. */
@@ -558,7 +561,7 @@ export class LauncherService implements Launcher {
   /** ccw's hold list, groups and ceilings while it runs (it owns autoswitch then, as /v1/plan reports them), else ours. */
   private async ccwView(): Promise<CcwView> {
     const s = this.ctx.settings.get();
-    const view: CcwView = { hold: [], groups: s.groups, ceiling: s.autoswitch.ceiling, weeklyCeiling: s.autoswitch.weekly_ceiling };
+    const view: CcwView = { hold: [], groups: s.groups, ceiling: s.autoswitch.ceiling, weeklyCeiling: s.autoswitch.weekly_ceiling, weeklyCaps: new Map() };
     const ccw = this.deps.ccwLegacy;
     // Single mode has no holds, groups or ceilings to read.
     if (this.single() || !ccw.present()) return view;
@@ -571,6 +574,8 @@ export class LauncherService implements Launcher {
       groups: sw?.groups ?? view.groups,
       ceiling: plan?.ceiling ?? view.ceiling,
       weeklyCeiling: plan?.weeklyCeiling ?? view.weeklyCeiling,
+      // 0.14.0: an account with a weekly ramp is held to its cap now, not the one weekly ceiling.
+      weeklyCaps: new Map((plan?.accounts ?? []).flatMap((p) => (typeof p.weeklyCap === 'number' ? [[p.id, p.weeklyCap] as const] : []))),
     };
   }
 
@@ -597,6 +602,7 @@ export class LauncherService implements Launcher {
       kept: keptAccounts(s),
       ceiling: view.ceiling,
       weeklyCeiling: view.weeklyCeiling,
+      weeklyCaps: view.weeklyCaps,
       burnPerMin: s.autoswitch.burn_default,
       bookings,
       busy,
@@ -631,7 +637,7 @@ export class LauncherService implements Launcher {
       if (!a) return fail('refused', `${pinnedReason(pinned)}, which cswap no longer lists`);
       const warnings: LaunchWarning[] = [];
       if (isHeld(a, inputs)) {
-        warnings.push({ kind: 'held', text: `Held for other work. ccw will never move this session, even when ${acct(a.id)} fills up.`, account: a.id });
+        warnings.push({ kind: 'held', text: heldWarning(a.id, weeklyCapOf(a, inputs) !== undefined), account: a.id });
       }
       const why = notSelectable(a, inputs);
       return { ok: true, pick: a.id, source: 'resume', reason: why ? `${pinnedReason(a.id)} · ${why}` : pinnedReason(a.id), warnings };
@@ -654,7 +660,7 @@ export class LauncherService implements Launcher {
     const a = inputs.accounts.find((x) => x.id === requested);
     if (!a) return fail('invalid_request', `There is no account ${acct(requested)}`);
     if (isHeld(a, inputs)) {
-      warnings.push({ kind: 'held', text: `Held for other work. ccw will never move this session, even when ${acct(a.id)} fills up.`, account: a.id });
+      warnings.push({ kind: 'held', text: heldWarning(a.id, weeklyCapOf(a, inputs) !== undefined), account: a.id });
     }
     groupWarning(a.id);
     const joins = group !== null && group.account === a.id;
