@@ -884,3 +884,14 @@ change the Mac run in `onTouch` with a `reset`. It found two targets under
 44 on touch, both 44 now: a toast (`coarse:min-h-44`, in main: the first
 load is still 277.3 kB) and a client's name in the Clients table, which
 now fills its 52 px row as Projects' does.
+
+It also opens the search sheet (the phone header's magnifier, the iPad's
+Search or jump), the New client sheet, and the Won and Lost sheets (each put
+away with Cancel), and, for F7, Accounts, Posts, the New post sheet and a post
+(its sheet on a phone, beside the list on the iPad) at all three sizes. The
+search sheet ran sideways on a phone: a deal's row named its client in full
+and pushed past the sheet. A row's second line now takes at most 3/5 of it
+(`max-w-3/5`, a class main already had). The layout probe now measures a
+checkbox or radio by the `<label>` it sits in, since a tap anywhere on the
+label works it, so the 20 px follow-up ticks in the Won and Lost sheets
+count as the 44 px rows they sit in.
