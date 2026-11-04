@@ -10,14 +10,20 @@
  * and the weekly cap, "cap 50% · 75% Thu 22:30", for an account with a
  * weekly ramp), scoped windows, every flag and the sessions as 44 px links. `muted` (an offline
  * server's last readings): the name and % in ink-3, the bar stale.
+ *
+ * 0.14.0: the closed row shows the weekly cap's flag beside the first other
+ * one ("next →", "re-login"), the two wrapping onto a second line when the
+ * row is narrow, and "cap 95% · no weekly reading" for an account with a
+ * ramp and no weekly reading.
  */
 import type { State } from '@jantar/protocol';
 import clsx from 'clsx';
+import { Fragment } from 'react';
 import { windowLabel } from '../../../lib/format.js';
 import { Meter } from '../../kit/Meter.js';
 import { Tag } from '../../kit/Tag.js';
 import { Sentence } from './Matrix.js';
-import { burnText, capText, resetIn, runwaySentence, type AccountRow } from './model.js';
+import { burnText, capText, closedFlags, resetIn, runwaySentence, type AccountRow } from './model.js';
 import { Runway } from './Runway.js';
 import { SessionList, sessionCells } from './SessionCells.js';
 import { dayClock, hhmm } from './time.js';
@@ -49,11 +55,11 @@ export function PhoneRows({
       {rows.map((r) => {
         const isOpen = open.has(r.id);
         const xid = `acct-x-${r.id}`;
-        const flag = r.flags.find((f) => f.text !== 'default login');
+        const flags = closedFlags(r.flags);
         return (
           <li key={r.id} className="border-b border-line">
             <div className="cursor-pointer px-16 pb-12 pt-10 transition-colors duration-120 ease-hover active:bg-hover" onClick={() => onToggle(r.id)}>
-              <div className="flex h-20 items-center">
+              <div className="flex min-h-20 items-center">
                 <button
                   type="button"
                   aria-label={r.name}
@@ -68,10 +74,17 @@ export function PhoneRows({
                   <span className={clsx('type-mono font-key', muted ? 'text-ink-3' : 'text-ink')}>{r.tag}</span>
                   <span className={clsx('min-w-0 truncate type-row', muted ? 'text-ink-3' : 'text-ink-2')}>{r.alias}</span>
                 </button>
-                {flag ? (
-                  <Tag tone={flag.tone} className="ml-8 h-18">
-                    {flag.text}
-                  </Tag>
+                {flags.length ? (
+                  <span data-flags="" className="ml-8 flex min-w-0 flex-wrap items-center gap-x-6 gap-y-4">
+                    {flags.map((f) => (
+                      <Fragment key={f.text}>
+                        <Tag tone={f.tone} className="h-18">
+                          {f.text}
+                        </Tag>
+                        {f.note ? <span className="type-mono text-ink-3">· {f.note}</span> : null}
+                      </Fragment>
+                    ))}
+                  </span>
                 ) : null}
                 <span className="ml-auto flex-none pl-12 type-mono">
                   <span className={!r.ok || muted ? 'text-ink-3' : r.past ? 'text-signal-text' : 'text-ink'}>{r.h5 ?? '–'}</span>

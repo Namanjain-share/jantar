@@ -42,6 +42,10 @@ export type SortKey = 'id' | 'headroom';
 export interface Flag {
   text: string;
   tone: TagTone;
+  /** 0.14.0: the weekly cap's flag ("cap 50%"), which a closed phone row shows beside another. */
+  kind?: 'cap';
+  /** 0.14.0: words that follow the tag on a closed phone row ("no weekly reading"). */
+  note?: string;
 }
 
 export interface AccountRow {
@@ -92,20 +96,41 @@ export interface WeeklyCapRow {
   now: number;
   until: number | null;
   next: number | null;
+  /**
+   * Whether the account has a weekly reading to count its week from (a
+   * seven_day window with its reset). Without one its cap is the weekly
+   * limit until there is.
+   */
+  reading: boolean;
 }
 
 /** 0.14.0: the plan's weekly cap for an account, if it has a ramp. */
-function capFor(id: number, plan: PlanResponse | null): WeeklyCapRow | null {
+function capFor(id: number, plan: PlanResponse | null, week: UsageWindow | undefined): WeeklyCapRow | null {
   const p = plan?.source === 'ccw-legacy' ? plan.accounts.find((x) => x.id === id) : undefined;
   if (!p || typeof p.weeklyCap !== 'number') return null;
   const until = parse(p.capUntil);
-  return { now: p.weeklyCap, until, next: until !== null && typeof p.nextCap === 'number' ? p.nextCap : null };
+  return { now: p.weeklyCap, until, next: until !== null && typeof p.nextCap === 'number' ? p.nextCap : null, reading: parse(week?.resetsAt) !== null };
 }
 
-/** 0.14.0: "cap 50% · 75% Thu 22:30" (the cap now, then the next one and when). */
+/** 0.14.0: what follows the cap when the account has no weekly reading. */
+export const NO_WEEKLY_READING = 'no weekly reading';
+
+/** 0.14.0: "cap 50% · 75% Thu 22:30" (the cap now, then the next one and when); "cap 95% · no weekly reading". */
 export function capText(cap: WeeklyCapRow, now: number): string {
   const head = `cap ${cap.now}%`;
+  if (!cap.reading) return `${head} · ${NO_WEEKLY_READING}`;
   return cap.until !== null && cap.next !== null ? `${head} · ${cap.next}% ${dayClock(cap.until, now)}` : head;
+}
+
+/**
+ * 0.14.0: the flags a closed phone row has room for: the first that isn't
+ * "default login" and, when that isn't it, the weekly cap's too (the two
+ * wrap onto a second line when the row is narrow).
+ */
+export function closedFlags(flags: readonly Flag[]): Flag[] {
+  const first = flags.find((f) => f.text !== 'default login');
+  const cap = flags.find((f) => f.kind === 'cap');
+  return [first, cap].filter((f, i, all): f is Flag => f !== undefined && all.indexOf(f) === i);
 }
 
 function projectionFor(a: Account, plan: PlanResponse | null): AccountProjection | undefined {
@@ -141,7 +166,7 @@ export function buildRows(state: State, plan: PlanResponse | null, ceiling: numb
       const burn = proj && proj.burnPctPerMin > 0 ? proj.burnPctPerMin * 60 : null;
 
       // The plan is the Mac's own (the legacy ccw tool runs there).
-      const cap = node === undefined ? capFor(a.id, plan) : null;
+      const cap = node === undefined ? capFor(a.id, plan, week) : null;
 
       const flags: Flag[] = [];
       if (plan?.next === a.id) flags.push({ text: 'next →', tone: 'next' });
@@ -149,7 +174,7 @@ export function buildRows(state: State, plan: PlanResponse | null, ceiling: numb
       if (a.held) flags.push({ text: 'held', tone: 'plain' });
       if (a.isDefaultLogin || active === a.id) flags.push({ text: 'default login', tone: 'plain' });
       if (a.disabled) flags.push({ text: 'disabled', tone: 'plain' });
-      if (cap) flags.push({ text: `cap ${cap.now}%`, tone: 'plain' });
+      if (cap) flags.push({ text: `cap ${cap.now}%`, tone: 'plain', kind: 'cap', ...(cap.reading ? {} : { note: NO_WEEKLY_READING }) });
 
       return {
         account: a,

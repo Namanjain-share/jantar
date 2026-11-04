@@ -8,7 +8,7 @@ import { SWITCH_RULES, type SwitchRules } from '@jantar/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, type ApiRequest, type ApiRoute } from '../src/lib/api.js';
 import { writeLocal } from '../src/lib/storage.js';
-import { buildRows, capText, runwaySentence } from '../src/ui/screens/accounts/model.js';
+import { buildRows, capText, closedFlags, runwaySentence } from '../src/ui/screens/accounts/model.js';
 import { HOLD_NO_CAP_TEXT, OFFLINE_TEXT, PRESET_TEXT, SAVED_TEXT, SWITCHING_PATHS, patchOf } from '../src/ui/screens/accounts/SwitchingSheet.js';
 import { heldSentence } from '../src/ui/screens/new/AccountPicker.js';
 import { layoutAt } from '../src/ui/shell/layout.js';
@@ -65,9 +65,11 @@ const group = (dialog: HTMLElement, name: string) => within(dialog).getByRole('g
 describe('0.14.0 the weekly cap on an account', () => {
   it('reads the cap from the plan and says it with the next one', () => {
     const rows = buildRows(stateWith({ accounts }), plan(), 97, NOW);
-    expect(rows.map((r) => r.cap)).toEqual([null, { now: 50, until: Date.parse(UNTIL), next: 75 }, null]);
+    expect(rows.map((r) => r.cap)).toEqual([null, { now: 50, until: Date.parse(UNTIL), next: 75, reading: true }, null]);
     expect(capText(rows[1]!.cap!, NOW)).toBe(`cap 50% · 75% ${dayClock(Date.parse(UNTIL), NOW)}`);
-    expect(capText({ now: 95, until: null, next: null }, NOW)).toBe('cap 95%');
+    expect(capText({ now: 95, until: null, next: null, reading: true }, NOW)).toBe('cap 95%');
+    // a ramp with no weekly reading: the weekly limit, and it says why
+    expect(capText({ now: 95, until: null, next: null, reading: false }, NOW)).toBe('cap 95% · no weekly reading');
     expect(rows[1]!.flags.map((f) => f.text)).toContain('cap 50%');
     // a paired server's accounts have no ccw plan
     expect(buildRows(stateWith({ accounts }), plan({ source: 'none' }), 97, NOW).every((r) => r.cap === null)).toBe(true);
@@ -81,6 +83,40 @@ describe('0.14.0 the weekly cap on an account', () => {
     expect(await within(two).findByText('cap 50%')).toBeTruthy(); // its flag on the closed row
     fireEvent.click(within(two).getByRole('button', { name: '02 side' }));
     expect(within(two).getByText(`cap 50% · 75% ${dayClock(Date.parse(UNTIL), NOW)}`)).toBeTruthy();
+  });
+
+  it('a closed phone row shows the cap beside another flag, and says when there is no weekly reading (320 and 390)', async () => {
+    const unread = account(4, { alias: 'quiet', windows: [{ kind: 'five_hour', pct: 5, resetsAt: iso(3_600_000) }] }); // no weekly window
+    const withNext = plan({
+      next: 2,
+      accounts: [...plan().accounts, { id: 4, burnPctPerMin: 0, ridesReset: true, usable: true, weeklyCap: 95 }],
+    });
+    const rows = buildRows(stateWith({ accounts: [...accounts, unread] }), withNext, 97, NOW);
+    expect(closedFlags(rows[1]!.flags).map((f) => f.text)).toEqual(['next →', 'cap 50%']);
+    expect(closedFlags(rows[3]!.flags).map((f) => [f.text, f.note])).toEqual([['cap 95%', 'no weekly reading']]);
+    expect(closedFlags([{ text: 'default login', tone: 'plain' }])).toEqual([]);
+    for (const width of [320, 390]) {
+      const { unmount } = renderApp({
+        path: '/accounts',
+        api: Object.assign(api(), { getPlan: vi.fn(async () => withNext) }),
+        state: stateWith({ accounts: [...accounts, unread] }),
+        layout: layoutAt(width, { coarse: true }),
+      });
+      await opened('Accounts');
+      const list = screen.getByRole('list', { name: 'Accounts' });
+      const [, two, , four] = within(list).getAllByRole('listitem');
+      // closed: both flags, in one group that wraps
+      await within(two!).findByText('next →');
+      const flags = within(two!).getByText('cap 50%').closest('[data-flags]') as HTMLElement;
+      expect(flags.className).toContain('flex-wrap');
+      expect(within(flags).getByText('next →')).toBeTruthy();
+      expect(within(four!).getByText('cap 95%')).toBeTruthy();
+      expect(within(four!).getByText('· no weekly reading')).toBeTruthy();
+      // opened: the cap line says it whole
+      fireEvent.click(within(four!).getByRole('button', { name: '04 quiet' }));
+      expect(within(four!).getByText('cap 95% · no weekly reading')).toBeTruthy();
+      unmount();
+    }
   });
 
   it('says a held account with a cap still sees its sessions leave at it', () => {
