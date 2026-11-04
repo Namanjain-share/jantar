@@ -30,13 +30,26 @@
  *   off`) the off page; with life.db broken, Life's 503 sentence.
  * - Her app (her host's /p and p.html) never loads one of Work's chunks
  *   (told by their source maps), while his walks above did.
+ * - 0.13.1, the rest of design 15 (each at 390 x 844 with touch unless said):
+ *   Won → Make project (the project has the deal's name and the client's
+ *   folder, its hub the client and the deal) and Won → Not now (no project);
+ *   an import of 200 made-up rows (preview, Import, the count in the sheet
+ *   and in Recent imports, the eight companies its Company column made
+ *   included, then Undo removes as many); the Log sheet and the New client
+ *   sheet turned to 844 x 390 and back (the form not built again, what was
+ *   typed kept, nothing sideways, the primary button reachable); and 0.11's
+ *   tier A sizes from 1024 (mac-1440, touch-1440, desktop, ipad-air-l,
+ *   ipad-pro-l) over every Work route: at most 35 % of the width empty,
+ *   nothing sideways, 44 x 44 on touch, the iPad's safe areas.
  *
  * The steps that change the Mac (the logged call and its follow-up, the stage
- * move) run in onPaired (browser.ts): a page that loses its coarse pointer
- * gets it back in place and the steps go on; if it won't come back, `reset`
- * puts the Mac back as seeded and the steps run once more as the same device
- * in a new context. Each walk ends with that reset too, so every size starts
- * from the same Mac. Run it with JANTAR_TOUCH_DROP=every as well.
+ * move; 0.13.1: the deals won, the import) run in onPaired (browser.ts): a
+ * page that loses its coarse pointer gets it back in place and the steps go
+ * on; if it won't come back, `reset` puts the Mac back as seeded and the
+ * steps run once more as the same device in a new context (not past the
+ * import's Undo, which can't be taken twice). Each walk ends with that reset
+ * too, so every size starts from the same Mac. Run it with
+ * JANTAR_TOUCH_DROP=every as well.
  *
  * Every name, number and address is made up (example.com). Needs a built
  * dist/ and Playwright's Chromium.
@@ -47,12 +60,12 @@ import { request, type IncomingHttpHeaders } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Browser, BrowserContext, CDPSession, Page } from 'playwright-core';
+import type { Browser, BrowserContext, CDPSession, Locator, Page } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
 import { DEVICE_COOKIE, type PairStartResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, defaultDeps, main, memoryIo, type CtlClient } from '../../packages/cli/src/index.js';
-import { under44 } from '../../packages/web/test/layout-metric.js';
-import { DIST, IPAD_UA, browserReady, clean, launchBrowser, onPaired, overflow, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Viewport, type Watch } from './browser.js';
+import { MAX_EMPTY, emptyShare, under44 } from '../../packages/web/test/layout-metric.js';
+import { DIST, IPAD_UA, browserReady, clean, launchBrowser, onPaired, onTouch, overflow, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Viewport, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 import { probeLayout, type Probe } from './layout-probe.js';
@@ -86,6 +99,41 @@ const CSV = [
   'Pat Example,Example Studio,pat@example.com,',
   '',
 ].join('\n');
+
+/**
+ * 0.13.1 (design 15, "an import of 200 rows, then undo"): 200 made-up people, each at one of eight companies
+ * the file makes or at Example Studio, which is already here. So the import adds 208: the companies its
+ * Company column makes count too (0.13.0, acf5769), and Undo removes the same 208.
+ */
+const FIRST = ['Alder', 'Briar', 'Cove', 'Dune', 'Ember', 'Fable', 'Garnet', 'Heath', 'Indigo', 'Jasper', 'Kit', 'Lark', 'Moss', 'North', 'Opal', 'Pike', 'Quinn', 'Reed', 'Sky', 'Tarn'];
+const LAST = ['Placeholder', 'Specimen', 'Exampleton', 'Sampleford', 'Mockridge', 'Fixturely', 'Testmore', 'Demoway', 'Proxyfield', 'Standin'];
+const MADE = ['Placeholder Tiles', 'Specimen Freight', 'Sample Looms', 'Mock Dairy', 'Fixture Print House', 'Demo Garden Supply', 'Standin Ceramics', 'Proxy Bakeware'];
+const COMPANIES = [...MADE, 'Example Studio'];
+const BIG_CSV = [
+  'Name,Company,Email',
+  ...Array.from({ length: 200 }, (_, i) => {
+    const first = FIRST[i % FIRST.length]!;
+    const last = LAST[Math.floor(i / FIRST.length)]!;
+    return `${first} ${last},${COMPANIES[i % COMPANIES.length]},${first.toLowerCase()}.${last.toLowerCase()}@example.com`;
+  }),
+  '',
+].join('\n');
+const BIG_ADDED = 200 + MADE.length;
+
+/** 0.13.1: the made-up client folder Won offers for its project. */
+const BAKERY_FOLDER = '/Users/you/Desktop/work/placeholder-bakery';
+
+/**
+ * 0.13.1 (design 15): the 0.11 tier A sizes at 1024 and wider, as web-v011-layout.integration.test.ts names
+ * them in LAYOUT_SIZES (that file can't be imported here: its suites would run in this one).
+ */
+const WIDE: Record<string, Viewport> = {
+  'mac-1440': { width: 1440, height: 960 },
+  'touch-1440': { width: 1440, height: 960, touch: true },
+  desktop: { width: 1440, height: 900 },
+  'ipad-air-l': { width: 1180, height: 820, touch: true, insets: IPAD_INSETS },
+  'ipad-pro-l': { width: 1210, height: 834, touch: true, insets: IPAD_INSETS },
+};
 
 /** The built chunks that hold a Work module, told by their source maps (Work, Clients, Deals, Insights, their sheets). */
 function workChunks(): Set<string> {
@@ -163,14 +211,20 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
   };
 
   /** A context paired as a phone (or an iPad) scanning the Mac's code; 0.12.1: or, with `state`, that device again in a new one. */
-  async function paired(who: Who, state?: StorageState): Promise<Opened> {
-    const vp = SIZES[who];
+  const paired = (who: Who, state?: StorageState): Promise<Opened> => device(who, SIZES[who], state);
+
+  /**
+   * 0.13.1: `paired` at any size: a device named `name` at `vp` (touch with a phone or `touch`, an iPad's user
+   * agent and touch points with `touch`, a Mac's fine pointer with neither), paired, or, with `state`, opened again.
+   */
+  async function device(name: string, vp: Viewport, state?: StorageState): Promise<Opened> {
     const ipad = vp.touch === true;
+    const touch = ipad || vp.phone === true;
     const ctx = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       deviceScaleFactor: 2,
-      isMobile: true,
-      hasTouch: true,
+      isMobile: touch,
+      hasTouch: touch,
       ...(ipad ? { userAgent: IPAD_UA } : {}),
       colorScheme: 'light',
       reducedMotion: 'reduce',
@@ -186,15 +240,16 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
         Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5, configurable: true });
       });
     }
-    const page = touchPage(await ctx.newPage());
-    await safeAreas(page, who);
+    const page = await ctx.newPage();
+    if (touch) touchPage(page);
+    await safeAreas(page, vp.insets);
     page.on('request', (r) => {
       const path = new URL(r.url()).pathname;
       if (path.startsWith('/assets/')) hisAssets.add(path.slice('/assets/'.length));
     });
     const watch = watchConsole(page);
     if (state) return { ctx, page, watch };
-    const start = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name: who, scopes: ['read', 'control'] });
+    const start = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name, scopes: ['read', 'control'] });
     await page.goto(`${base()}/pair#c=${start.code}`, { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Pair this device' }).click();
     await page.getByRole('heading', { name: 'Paired' }).waitFor();
@@ -211,8 +266,7 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
    * once restoreTouch's session has turned touch back on (JANTAR_TOUCH_DROP=every, then a page.goto), so each
    * check sets them again through the page's own session first.
    */
-  async function safeAreas(page: Page, who: Who) {
-    const insets = SIZES[who].insets;
+  async function safeAreas(page: Page, insets: Viewport['insets']) {
     if (!insets) return;
     let cdp = insetSessions.get(page);
     if (!cdp) {
@@ -274,7 +328,7 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
     await settle(page);
     if (opts.expected) watch.errors.splice(0, watch.errors.length, ...watch.errors.filter((e) => !opts.expected!.test(e)));
     await clean(page, watch, at);
-    await safeAreas(page, who);
+    await safeAreas(page, SIZES[who].insets);
     expect(await page.evaluate(() => document.querySelectorAll('[data-chrome]').length), `${at}: the app's shell`).toBe(1);
     const sideways = await overflow(page, at);
     const p: Probe = await page.evaluate(probeLayout);
@@ -682,8 +736,297 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
     }
   }, perfBudgetMs(300_000));
 
+  /** 0.13.1: Move to… → Won on the deal open on `page`: the Won sheet, its form there. */
+  async function wonSheet(page: Page): Promise<Locator> {
+    await page.getByRole('button', { name: 'Move to…' }).tap();
+    const move = page.getByRole('dialog', { name: 'Move to' });
+    await move.getByRole('radio', { name: /^Won/ }).tap();
+    await move.waitFor({ state: 'detached' });
+    const asks = page.getByRole('dialog', { name: /^Won · / });
+    await asks.getByRole('form', { name: 'Won' }).waitFor();
+    return asks;
+  }
+
+  it("0.13.1 (design 15): at 390 x 844 with touch, Won's Make project makes it from the deal's name and the client's folder; Not now wins without one", async () => {
+    const stages = ((await call('GET', '/v1/work/stages')).body as { stages: Array<{ id: string; kind: string }> }).stages;
+    const won = stages.find((s) => s.kind === 'won')?.id;
+    expect(won, 'a Won stage').toBeTruthy();
+    /** A lead company with its own folder and two deals with no project, made here and taken away after (`clear`). */
+    const lead = { id: '', app: '', cards: '' };
+    const seed = async () => {
+      lead.id = (await made('bakery', '/v1/work/clients', { name: 'Placeholder Bakery', kind: 'company', state: 'lead', email: 'orders@example.com', folder: BAKERY_FOLDER })).id;
+      lead.app = (await made('bakery_app', '/v1/work/deals', { clientId: lead.id, title: 'Bakery app', stage: 'negotiation', value: 3_000_000 })).id;
+      lead.cards = (await made('menu_cards', '/v1/work/deals', { clientId: lead.id, title: 'Menu cards', stage: 'proposal', value: 500_000 })).id;
+    };
+    const projects = async () => ((await call('GET', '/v1/projects')).body as { projects: Array<{ id: string; name: string }> }).projects;
+    /** What the steps made goes: a project Won made (by its name), then the lead, with its deals and log. */
+    const clear = async () => {
+      for (const p of (await projects()).filter((x) => x.name === 'Bakery app' || x.name === 'Menu cards')) expect((await call('DELETE', `/v1/projects/${p.id}`)).status).toBe(200);
+      if (lead.id) expect((await call('DELETE', `/v1/work/clients/${lead.id}`)).status).toBe(200);
+      lead.id = '';
+    };
+    const dealOf = async (id: string) => ((await call('GET', `/v1/work/deals/${id}`)).body as { deal: { stage: string; projectId?: string } }).deal;
+
+    await seed();
+    try {
+      await on(
+        'p390',
+        'Won, with a project and without (p390)',
+        async (o) => {
+          const { page } = o;
+          const before = (await projects()).length;
+
+          // Make project: the sheet offers the deal's name and, once the client has loaded, its folder.
+          await page.goto(`${base()}/work?tab=deals&id=${lead.app}`, { waitUntil: 'load' });
+          await page.getByRole('heading', { level: 1, name: 'Bakery app' }).waitFor();
+          const asks = await wonSheet(page);
+          const form = asks.getByRole('form', { name: 'Won' });
+          await form.getByText(/^Make a project for it\?/).waitFor();
+          expect(await form.getByLabel('Name', { exact: true }).inputValue(), "the project's name").toBe('Bakery app');
+          const folder = form.getByLabel('Folder', { exact: true });
+          await expect.poll(() => folder.inputValue(), { message: "the client's folder" }).toBe(BAKERY_FOLDER);
+          expect(await folder.locator('option:checked').textContent()).toBe(`${BAKERY_FOLDER} (the client's)`);
+          await check(o, 'p390', 'the Won sheet, a project offered');
+          await stillTouch(page, 'Make project (p390)');
+          await form.getByRole('button', { name: 'Make project', exact: true }).tap();
+          await asks.waitFor({ state: 'detached' });
+          await page.getByText('Won. Made the project Bakery app.').first().waitFor();
+          // On the Mac: the deal on Won, its project with the deal's name, the client's folder and the client; the lead a client.
+          const app = await dealOf(lead.app);
+          expect(app.stage, 'the deal on the Mac').toBe(won);
+          expect(app.projectId, "the deal's project").toBeTruthy();
+          const hub = (await call('GET', `/v1/projects/${app.projectId}`)).body as { project: { name: string; folder?: string; clientId?: string }; client?: { id: string }; deal?: { id: string } };
+          expect(hub.project, 'the project on the Mac').toMatchObject({ name: 'Bakery app', folder: BAKERY_FOLDER, clientId: lead.id });
+          expect([hub.client?.id, hub.deal?.id], "the project's client and deal").toEqual([lead.id, lead.app]);
+          expect(((await call('GET', `/v1/work/clients/${lead.id}`)).body as { contact: { state: string } }).contact.state, 'Won makes the lead a client').toBe('client');
+          expect((await projects()).length, 'one project made').toBe(before + 1);
+          await page.getByRole('region', { name: 'Project', exact: true }).getByRole('link', { name: /^Bakery app/ }).waitFor();
+          await check(o, 'p390', 'a deal won, its project made');
+
+          // The project's hub, from the deal: its client, its deal and the folder.
+          await page.getByRole('region', { name: 'Project', exact: true }).getByRole('link', { name: /^Bakery app/ }).tap();
+          await page.waitForURL(`${base()}/work?id=${app.projectId}`);
+          const main = page.getByRole('main');
+          await main.getByRole('link', { name: 'Placeholder Bakery', exact: true }).waitFor();
+          await main.locator(`a[data-deal="${lead.app}"]`).waitFor();
+          await main.getByText(BAKERY_FOLDER, { exact: true }).waitFor();
+          await check(o, 'p390', 'the project Won made, its hub');
+
+          // Not now: Won, and no project.
+          await page.goto(`${base()}/work?tab=deals&id=${lead.cards}`, { waitUntil: 'load' });
+          await page.getByRole('heading', { level: 1, name: 'Menu cards' }).waitFor();
+          const again = await wonSheet(page);
+          expect(await again.getByRole('form', { name: 'Won' }).getByLabel('Name', { exact: true }).inputValue()).toBe('Menu cards');
+          await stillTouch(page, 'Not now (p390)');
+          await again.getByRole('button', { name: 'Not now', exact: true }).tap();
+          await again.waitFor({ state: 'detached' });
+          await page.getByText('Moved to Won').first().waitFor();
+          const cards = await dealOf(lead.cards);
+          expect(cards.stage, 'Not now: the deal on Won').toBe(won);
+          expect(cards.projectId ?? null, 'Not now: no project').toBeNull();
+          expect((await projects()).length, 'Not now made no project').toBe(before + 1);
+          await check(o, 'p390', 'a deal won without a project, its Undo up');
+        },
+        {
+          reset: async () => {
+            await clear();
+            await seed();
+          },
+        },
+      );
+    } finally {
+      await clear();
+    }
+    expect(await noNextStep(), 'the Mac as seeded').toBe(4);
+  }, perfBudgetMs(180_000));
+
+  /** 0.13.1: Clients' More menu → Import a file: the Import clients sheet, at its first step. */
+  async function importSheet(page: Page): Promise<Locator> {
+    await page.getByRole('button', { name: 'More for clients' }).tap();
+    await page.getByRole('menuitem', { name: 'Import a file' }).tap();
+    const sheet = page.getByRole('dialog', { name: 'Import clients' });
+    await sheet.locator('button', { hasText: 'Choose a file' }).waitFor();
+    return sheet;
+  }
+
+  it('0.13.1 (design 15): at 390 x 844 with touch, an import of 200 rows: the preview, Import, its count in the sheet and Recent imports, then Undo removes as many', async () => {
+    const total = async () => {
+      const r = (await call('GET', '/v1/work/clients')).body as { clients: unknown[]; more: number };
+      return r.clients.length + r.more;
+    };
+    const imports = async () => ((await call('GET', '/v1/work/imports')).body as { imports: Array<{ batch: string; added: number }> }).imports;
+    /** Every import still listed, undone on the Mac (before a rerun, and after the test). */
+    const undoAll = async () => {
+      for (const i of await imports()) expect((await call('DELETE', `/v1/work/import/${i.batch}`)).status).toBe(200);
+    };
+    const before = await total();
+    expect(await imports(), 'no import yet').toEqual([]);
+    /** The Undo was tapped: it can't be taken twice. */
+    let tried = false;
+    try {
+      await on(
+        'p390',
+        'an import of 200 rows (p390)',
+        async (o) => {
+          const { page } = o;
+          await page.goto(`${base()}/work?tab=clients`, { waitUntil: 'load' });
+          await page.getByRole('list', { name: 'Clients', exact: true }).waitFor();
+          const importer = await importSheet(page);
+          const [chooser] = await Promise.all([page.waitForEvent('filechooser'), importer.locator('button', { hasText: 'Choose a file' }).tap()]);
+          await chooser.setFiles({ name: 'clients-200.csv', mimeType: 'text/csv', buffer: Buffer.from(BIG_CSV) });
+          // The preview: 200 new rows, the first 30 named; none already here.
+          await importer.getByText('200 rows. Nothing is imported until you tap Import.').waitFor();
+          const fresh = importer.getByRole('region', { name: 'New' });
+          await fresh.getByText('New · 200').waitFor();
+          await fresh.getByText('and 170 more').waitFor();
+          expect(await importer.getByRole('region', { name: 'Already here' }).count(), 'a row already here').toBe(0);
+          await check(o, 'p390', 'the import preview, 200 rows');
+          await stillTouch(page, 'Import 200 (p390)');
+          await importer.getByRole('button', { name: 'Import 200', exact: true }).tap();
+          // The count: the 200 people and the eight companies their Company column made.
+          const done = importer.getByRole('status');
+          await done.waitFor();
+          expect(await done.innerText(), "the import's count").toBe(`Added ${BIG_ADDED} clients.`);
+          expect(await total(), 'the clients on the Mac').toBe(before + BIG_ADDED);
+          expect((await imports()).map((i) => i.added), 'its entry on the Mac').toEqual([BIG_ADDED]);
+          await check(o, 'p390', 'the import done');
+          await importer.getByRole('button', { name: 'Done', exact: true }).tap();
+          await importer.waitFor({ state: 'detached' });
+
+          // Opened again: Recent imports has it, with the same count; its Undo removes as many.
+          const again = await importSheet(page);
+          const row = again.getByRole('region', { name: 'Recent imports' }).getByRole('listitem');
+          await row.first().waitFor();
+          expect(await row.count(), 'Recent imports').toBe(1);
+          expect(await row.innerText(), 'Recent imports').toContain(`${BIG_ADDED} added`);
+          await check(o, 'p390', 'Recent imports');
+          await stillTouch(page, 'Undo the import (p390)');
+          tried = true;
+          await row.getByRole('button', { name: 'Undo', exact: true }).tap();
+          await again.waitFor({ state: 'detached' });
+          await page.getByText(`Import undone: removed ${BIG_ADDED}.`).first().waitFor();
+          expect(await total(), 'the clients on the Mac after Undo').toBe(before);
+          expect(await imports(), 'no import left').toEqual([]);
+          await check(o, 'p390', 'Clients after Undo import');
+        },
+        { reset: undoAll, irreversible: () => tried },
+      );
+    } finally {
+      await undoAll();
+    }
+    expect(await total(), 'the Mac as seeded').toBe(before);
+  }, perfBudgetMs(240_000));
+
+  /**
+   * 0.13.1 (design 15, rotation and resize, by 0.11's DOM-identity probe): the phone turned to 844 x 390 and
+   * back with `form`'s sheet open (a form sheet in the touch shell, then the phone's bottom sheet). The form
+   * is tagged before the turn, so one built again (a new node, without the tag) fails; what `read` gives
+   * stays; nothing sideways; and `primary` is reachable: scrolled to, wholly on screen, and what a tap there
+   * hits (Playwright's trial tap, which taps nothing).
+   */
+  async function turn(o: Opened, what: string, form: Locator, primary: Locator, read: () => Promise<unknown>) {
+    const { page, watch } = o;
+    const before = await read();
+    await form.evaluate((el) => el.setAttribute('data-probe', 'turned'));
+    for (const [width, height, chrome] of [
+      [844, 390, 'touch'],
+      [390, 844, 'phone'],
+    ] as const) {
+      const at = `${what} at ${width} x ${height}`;
+      await page.setViewportSize({ width, height });
+      await settle(page);
+      await stillTouch(page, at);
+      expect(await page.locator('[data-probe="turned"]').count(), `${at}: the form was built again`).toBe(1);
+      expect(await read(), `${at}: what was typed`).toEqual(before);
+      await clean(page, watch, at);
+      const problems = (await overflow(page, at)).map((s) => `sideways: ${s}`);
+      const p: Probe = await page.evaluate(probeLayout);
+      problems.push(...p.sideways.map((s) => `sideways: ${s}`));
+      if (p.chrome !== chrome) problems.push(`the ${p.chrome ?? 'no'} chrome`);
+      await primary.scrollIntoViewIfNeeded();
+      const b = await primary.boundingBox();
+      if (!b || b.x < 0 || b.y < 0 || b.x + b.width > width + 1 || b.y + b.height > height + 1) problems.push(`the primary button not wholly on screen: ${JSON.stringify(b)}`);
+      await primary.tap({ trial: true, timeout: 5_000 }).catch((e: unknown) => problems.push(`the primary button can't be tapped: ${String(e instanceof Error ? e.message : e).split('\n')[0]}`));
+      if (problems.length) {
+        const file = join(tmpdir(), `jantar-web-v013-turn-${what.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${width}.png`);
+        await page.screenshot({ path: file }).catch(() => undefined);
+        problems.push(`(the page: ${file})`);
+      }
+      expect(problems, at).toEqual([]);
+    }
+  }
+
+  it('0.13.1 (design 15): at 390 x 844 with touch, the Log sheet and the New client sheet keep what was typed through a turn to 844 x 390 and back', async () => {
+    const note = 'Turned the phone mid-call (p390).';
+    await on('p390', 'turning the phone with a sheet open (p390)', async (o) => {
+      const { page } = o;
+      try {
+        // The Log sheet, filled in as the walk fills it.
+        await page.goto(`${base()}/work?tab=clients&id=${ids.pat}`, { waitUntil: 'load' });
+        await page.getByRole('heading', { level: 1, name: 'Pat Example' }).waitFor();
+        await page.getByRole('button', { name: 'Log a call or meeting' }).tap();
+        const log = page.getByRole('dialog', { name: 'Log with Pat Example' });
+        await log.waitFor();
+        await log.getByRole('button', { name: 'Went well' }).tap();
+        await log.getByLabel('Minutes', { exact: true }).fill('40');
+        await log.getByLabel('Note', { exact: true }).fill(note);
+        await log.getByLabel('Deal', { exact: true }).selectOption({ label: 'Site rebuild · Example Studio' });
+        await log.getByRole('group', { name: 'Next step day' }).getByRole('button', { name: 'Pick' }).tap();
+        await log.getByLabel('Day', { exact: true }).fill(day(3));
+        await log.getByLabel('Title', { exact: true }).fill('Send the turned quote');
+        await turn(o, 'the Log sheet', log.getByRole('form', { name: 'Log with Pat Example' }), log.getByRole('button', { name: 'Log and set next step' }), async () => ({
+          client: await page.getByRole('dialog', { name: 'Log with Pat Example' }).count(),
+          went: await log.getByRole('button', { name: 'Went well' }).getAttribute('aria-pressed'),
+          minutes: await log.getByLabel('Minutes', { exact: true }).inputValue(),
+          note: await log.getByLabel('Note', { exact: true }).inputValue(),
+          deal: await log.getByLabel('Deal', { exact: true }).locator('option:checked').textContent(),
+          day: await log.getByLabel('Day', { exact: true }).inputValue(),
+          title: await log.getByLabel('Title', { exact: true }).inputValue(),
+        }));
+        await check(o, 'p390', 'the Log sheet, turned and back');
+        // Its drafts emptied (the note and the title are kept per client), then put away: nothing logged.
+        await log.getByLabel('Note', { exact: true }).fill('');
+        await log.getByLabel('Title', { exact: true }).fill('');
+        await log.getByRole('button', { name: 'Cancel', exact: true }).tap();
+        await log.waitFor({ state: 'detached' });
+
+        // The New client sheet, with More fields open.
+        await page.goto(`${base()}/work?tab=clients`, { waitUntil: 'load' });
+        await page.getByRole('list', { name: 'Clients', exact: true }).waitFor();
+        await page.getByRole('button', { name: 'Add client', exact: true }).first().tap();
+        const adding = page.getByRole('dialog', { name: 'New client' });
+        const form = adding.getByRole('form', { name: 'New client' });
+        await form.waitFor();
+        await form.getByLabel('Name', { exact: true }).fill('Robin Placeholder');
+        await form.getByLabel('Phone', { exact: true }).fill('+91 90000 00021');
+        await form.getByLabel('Company', { exact: true }).fill('Placeholder Tiles');
+        await form.getByRole('group', { name: 'State' }).getByRole('button', { name: 'Client', exact: true }).tap();
+        await form.getByRole('button', { name: 'More fields' }).tap();
+        await form.getByLabel('E-mail', { exact: true }).fill('robin@example.com');
+        await turn(o, 'the New client sheet', form, form.getByRole('button', { name: 'Add client', exact: true }), async () => ({
+          name: await form.getByLabel('Name', { exact: true }).inputValue(),
+          phone: await form.getByLabel('Phone', { exact: true }).inputValue(),
+          company: await form.getByLabel('Company', { exact: true }).inputValue(),
+          state: await form.getByRole('group', { name: 'State' }).getByRole('button', { name: 'Client', exact: true }).getAttribute('aria-pressed'),
+          email: await form.getByLabel('E-mail', { exact: true }).inputValue(),
+        }));
+        await check(o, 'p390', 'the New client sheet, turned and back');
+        await adding.getByRole('button', { name: 'Cancel', exact: true }).tap();
+        await adding.waitFor({ state: 'detached' });
+      } finally {
+        // The phone's own size again, passed or not, for the tests after.
+        await page.setViewportSize({ width: SIZES.p390.width, height: SIZES.p390.height }).catch(() => undefined);
+      }
+    });
+    // Both put away: nothing saved on the Mac.
+    expect(((await call('GET', '/v1/work/clients?q=Robin')).body as { clients: unknown[] }).clients, 'the New client sheet saved nothing').toEqual([]);
+    const hub = (await call('GET', `/v1/work/clients/${ids.pat}`)).body as { log: Array<{ body?: string }> };
+    expect(hub.log.filter((r) => r.body === note), 'the Log sheet saved nothing').toEqual([]);
+    expect(await noNextStep(), 'the Mac as seeded').toBe(4);
+  }, perfBudgetMs(180_000));
+
   /** Every Work route by its address: the lists, a project, a client, a deal, Insights. */
-  const routes = () => [
+  const routes = (): Array<[name: string, path: string]> => [
     ['Projects', '/work'],
     ['a project', `/work?id=${ids.site}`],
     ['Clients', '/work?tab=clients'],
@@ -692,6 +1035,83 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
     ['a deal', `/work?tab=deals&id=${ids.site_deal}`],
     ['Insights', '/work?tab=insights'],
   ];
+
+  /** 0.13.1: what each route in `routes` shows once it has loaded (its data, not a skeleton). */
+  const LOADED: Record<string, (page: Page) => Locator> = {
+    Projects: (page) => page.getByRole('main').getByText('Brand refresh'),
+    'a project': (page) => page.getByRole('region', { name: 'Its todos' }).getByText('Send wireframes'),
+    Clients: (page) => page.getByRole('main').getByText('Fixture Labs and Sample Trading Company'),
+    'a client': (page) => page.getByRole('region', { name: 'Deals' }).getByRole('link', { name: /^Site rebuild/ }),
+    Deals: (page) => page.getByRole('list', { name: 'Proposal sent' }).getByRole('link', { name: /Site rebuild/ }),
+    'a deal': (page) => page.getByRole('button', { name: 'Move to…' }),
+    Insights: (page) => page.getByRole('region', { name: 'Funnel' }),
+  };
+
+  /**
+   * 0.13.1 (design 15): 0.11's tier A checks on one Work route at `vp` (1024 and wider): a clean console, the
+   * chrome of the size, nothing sideways, 44 x 44 on touch, no control that stays put in an iPad's safe
+   * areas, and at most 35 % of the content width empty (layout-metric's MAX_EMPTY; every route here has
+   * data, so none is exempt as an empty state). The problems found, each named with the route and size.
+   */
+  async function wideCheck(o: Opened, size: string, vp: Viewport, what: string): Promise<string[]> {
+    const { page, watch } = o;
+    const at = `${what} at ${size}`;
+    await page
+      .waitForFunction(() => !document.querySelector('main [aria-busy="true"], main [role="progressbar"]'), null, { timeout: 10_000, polling: 100 })
+      .catch(() => undefined);
+    await settle(page);
+    await clean(page, watch, at);
+    await safeAreas(page, vp.insets);
+    const touch = vp.touch === true;
+    const sideways = await overflow(page, at);
+    const p: Probe = await page.evaluate(probeLayout);
+    const problems: string[] = [];
+    if (p.chrome !== (touch ? 'touch' : 'desk')) problems.push(`the ${p.chrome ?? 'no'} chrome`);
+    problems.push(...sideways.map((s) => `sideways: ${s}`), ...p.sideways.map((s) => `sideways: ${s}`));
+    if (touch) problems.push(...under44(p.whole).map((t) => `under 44 x 44: ${t.name} (${t.w}x${t.h})`));
+    if (vp.insets) {
+      const { top, bottom } = vp.insets;
+      problems.push(...p.fixed.filter((t) => t.y < top || t.y + t.h > p.vh - bottom).map((t) => `in the safe areas: ${t.name} (${t.x},${t.y} ${t.w}x${t.h})`));
+    }
+    if (!p.region) problems.push('no content region');
+    else if (p.exempt) problems.push(`exempt from the width as ${p.exempt}, with data`);
+    else {
+      const share = emptyShare(p.boxes, p.region);
+      if (share > MAX_EMPTY) problems.push(`${Math.round(share * 100)} % of the width is empty (at most ${MAX_EMPTY * 100} %)`);
+    }
+    if (p.whole.length === 0) problems.push('no target measured');
+    if (problems.length) {
+      const file = join(tmpdir(), `jantar-web-v013-${size}-${what.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`);
+      await page.screenshot({ path: file }).catch(() => undefined);
+      problems.push(`(the page: ${file})`);
+    }
+    return problems.map((s) => `${at}: ${s}`);
+  }
+
+  it("0.13.1 (design 15): 0.11's tier A sizes from 1024, every Work route: at most 35 % of the width empty, nothing sideways, 44 x 44 on touch, the safe areas", async () => {
+    // One device for the matrix, paired once (the daemon takes 8 claims a minute); each size opens it again.
+    const first = await device('wide', WIDE['mac-1440']!);
+    const state = await first.ctx.storageState({ indexedDB: true });
+    await first.ctx.close();
+    const problems: string[] = [];
+    for (const [size, vp] of Object.entries(WIDE)) {
+      await onTouch(
+        `Work at ${size}`,
+        () => device(size, vp, state),
+        async (o) => {
+          const found: string[] = [];
+          for (const [name, path] of routes()) {
+            await o.page.goto(`${base()}${path}`, { waitUntil: 'load' });
+            await LOADED[name]!(o.page).first().waitFor();
+            found.push(...(await wideCheck(o, size, vp, name)));
+          }
+          // Only a whole pass counts: one run again in a new context (a dropped touch) starts its list afresh.
+          problems.push(...found);
+        },
+      );
+    }
+    expect(problems, problems.join('\n')).toEqual([]);
+  }, perfBudgetMs(300_000));
 
   it('design 6.5, Work off (jantar work off): every Work route shows the off page, at each size', async () => {
     const off = await cli('work', 'off');
