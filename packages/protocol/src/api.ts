@@ -240,6 +240,8 @@ export const ErrorCodeSchema = z.enum([
   'node_timeout', // 504: the server did not answer in time (a write's outcome is unknown: check the session)
   'node_unsupported', // 409: Picture, Files, Rewrite and the change list are for the Mac's own sessions
   'node_version', // 426: a server's link version differs from the Mac's (update Jantar there)
+  // 0.14.0
+  'ccw_absent', // 404: the legacy ccw tool is not on this Mac, so there are no switching rules to read or save
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 
@@ -271,6 +273,7 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   node_timeout: 504,
   node_unsupported: 409,
   node_version: 426,
+  ccw_absent: 404,
 };
 
 export const ErrorBodySchema = z.object({
@@ -433,6 +436,17 @@ export const PlanResponseSchema = z.object({
       fullInMin: z.number().optional(),
       ridesReset: z.boolean(),
       usable: z.boolean(),
+      /**
+       * 0.14.0: only for an account with a weekly ramp in ccw's switch.json
+       * (`weekly_ramp`): its weekly cap now, in %, by SWITCH_RULES' cap rule
+       * on the daemon's clock. ccw leaves it (and moves nothing onto it) at
+       * this % of its week instead of `weekly_ceiling`.
+       */
+      weeklyCap: z.number().min(1).max(100).optional(),
+      /** 0.14.0: when the cap next changes (with `nextCap`); absent when it won't before a new reading. */
+      capUntil: IsoDateSchema.optional(),
+      /** 0.14.0: the cap from `capUntil` on. */
+      nextCap: z.number().min(1).max(100).optional(),
     }),
   ),
   updatedAt: IsoDateSchema.nullable(),
@@ -445,6 +459,84 @@ export const PlanResponseSchema = z.object({
   /** The same for the weekly window (`weekly_ceiling`). */
   weeklyCeiling: z.number().min(1).max(100).optional(),
 });
+
+// ---------------------------------------------------------------------------
+// 0.14.0: switching rules (the legacy ccw tool's switch.json, written by Jantar on the owner's Save)
+
+/**
+ * 0.14.0: the switching-rule limits a Save takes. The ceilings stay at 50 or
+ * more so a slip of the finger can't send every session off its account;
+ * a weekly ramp's values run from 1 to 100.
+ *
+ * The cap rule (the same in ccw and Jantar): an account with a `weekly_ramp`
+ * entry, at time t, with R its weekly window's reset (epoch s). No R: the
+ * global `weekly_ceiling`. t >= R (the reading is stale, the week rolled):
+ * start = R; else start = R - 7 days. t < R and R - t <= 1 hour: `last_hour`.
+ * Otherwise day = floor((t - start) / 1 day) + 1, kept within 1..7, and the
+ * cap is days[day - 1]. An account without an entry: `weekly_ceiling`.
+ */
+export const SWITCH_RULES = {
+  ceilingMin: 50,
+  ceilingMax: 100,
+  leadMinMin: 1,
+  leadMinMax: 60,
+  rampMin: 1,
+  rampMax: 100,
+  /** A weekly ramp has a value for each day of the account's week, then one for its last hour. */
+  rampDays: 7,
+  /** Account numbers as cswap and ccw write them. */
+  accountMax: 99,
+  /** The schedule the sheet's preset fills in: four quiet days, then more each day, the whole window in the last hour. */
+  preset: { days: [50, 50, 50, 50, 75, 85, 95], lastHour: 100 },
+} as const;
+
+const rampValue = z.number().int().min(SWITCH_RULES.rampMin).max(SWITCH_RULES.rampMax);
+
+/** 0.14.0: one account's weekly ramp: its cap on each day of its week (day 1 starts at the last weekly reset), and in the hour before the next. */
+export const WeeklyRampSchema = z.object({
+  days: z.array(rampValue).length(SWITCH_RULES.rampDays),
+  lastHour: rampValue,
+});
+export type WeeklyRamp = z.infer<typeof WeeklyRampSchema>;
+
+/** An account number as a JSON key ("2"): no sign, no leading zero, 0 to 99. */
+const RampKeySchema = z.string().regex(/^(0|[1-9]\d?)$/, 'an account number from 0 to 99');
+
+/**
+ * 0.14.0: the switching rules as switch.json holds them now (GET and the
+ * PATCH's reply). Read as ccw reads them: a missing key is ccw's default,
+ * except the hold list (personal: none). A ramp entry that doesn't fit
+ * WeeklyRampSchema is left out (ccw ignores it too).
+ */
+export const SwitchRulesSchema = z.object({
+  hold: z.array(AccountIdSchema),
+  ceiling: z.number(),
+  weeklyCeiling: z.number(),
+  leadMin: z.number(),
+  weeklyRamp: z.record(z.string(), WeeklyRampSchema),
+});
+export type SwitchRules = z.infer<typeof SwitchRulesSchema>;
+
+/**
+ * 0.14.0: PATCH /v1/accounts/switching. Only these five keys change in
+ * switch.json (hold, ceiling, weekly_ceiling, lead_min, weekly_ramp); every
+ * other key stays as it was. `weeklyRamp` changes the accounts it names: an
+ * entry sets that account's ramp, null removes it.
+ */
+export const SwitchRulesPatchSchema = z
+  .strictObject({
+    hold: z
+      .array(z.number().int().min(0).max(SWITCH_RULES.accountMax))
+      .max(SWITCH_RULES.accountMax + 1)
+      .refine((a) => new Set(a).size === a.length, 'each account once')
+      .optional(),
+    ceiling: z.number().int().min(SWITCH_RULES.ceilingMin).max(SWITCH_RULES.ceilingMax).optional(),
+    weeklyCeiling: z.number().int().min(SWITCH_RULES.ceilingMin).max(SWITCH_RULES.ceilingMax).optional(),
+    leadMin: z.number().int().min(SWITCH_RULES.leadMinMin).max(SWITCH_RULES.leadMinMax).optional(),
+    weeklyRamp: z.record(RampKeySchema, WeeklyRampSchema.nullable()).optional(),
+  })
+  .refine((b) => Object.values(b).some((v) => v !== undefined), 'nothing to save');
+export type SwitchRulesPatch = z.infer<typeof SwitchRulesPatchSchema>;
 
 export const MovesResponseSchema = z.object({
   moves: z.array(MoveSchema),
@@ -911,7 +1003,7 @@ export interface RouteDef {
    */
   scope: Scope | 'public' | 'extension' | 'node' | 'capture' | 'person';
   /** v0.13: Work's routes (the spec's name, whichever release ships them). Every one is an owner route. */
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10' | 'v0.11' | 'v0.13';
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10' | 'v0.11' | 'v0.13' | 'v0.14';
   /**
    * v0.11 People (`@jantar/protocol/people`): a `person` route needs no
    * credential (an invite or device-link claim). Only personJoinPreview,
@@ -1065,6 +1157,17 @@ export const ROUTES = {
   muteNotify: route({
     method: 'POST', path: '/v1/notify/mute', scope: 'control', phase: 'v0.1', ctl: true,
     body: MuteBodySchema, response: MuteResponseSchema, summary: 'Mute pushes for N minutes (0 unmutes).',
+  }),
+  // --- 0.14.0 Switching rules: the owner's, never on her host (scope control, not person). They read and save
+  // the legacy ccw tool's switch.json, and answer 404 ccw_absent on a Mac without ccw.
+  getSwitchRules: route({
+    method: 'GET', path: '/v1/accounts/switching', scope: 'control', phase: 'v0.14', ctl: true,
+    response: SwitchRulesSchema, summary: "ccw's switching rules as its switch.json holds them now.",
+  }),
+  patchSwitchRules: route({
+    method: 'PATCH', path: '/v1/accounts/switching', scope: 'control', phase: 'v0.14', ctl: true,
+    body: SwitchRulesPatchSchema, response: SwitchRulesSchema,
+    summary: "Save holds, ceilings, the lead time and weekly ramps into ccw's switch.json; the reply is the rules as saved.",
   }),
   pairStart: route({
     method: 'POST', path: '/v1/pair/start', scope: 'admin', phase: 'v0.1', ctl: true,
