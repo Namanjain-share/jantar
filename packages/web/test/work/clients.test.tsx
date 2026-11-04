@@ -125,13 +125,24 @@ describe('Work › Clients on a phone', () => {
     expect(await screen.findByText('312 more not shown. Narrow the filter to find them.')).toBeTruthy();
   });
 
-  it('a phone keeps the filters short: the sort, the tag and the list share one row, a part each', async () => {
+  it('a phone keeps the filters short: the sort, the tag and the list share one row where their words fit', async () => {
     setup({ layout: layoutAt(390, { coarse: true }) });
     await screen.findByRole('list', { name: 'Clients' });
     const row = document.querySelector('[data-selects]') as HTMLElement;
     await waitFor(() => expect(within(row).getAllByRole('combobox').map((s) => s.getAttribute('aria-label'))).toEqual(['Sort', 'Tag', 'List']));
-    expect(row.className.split(' ')).toEqual(expect.arrayContaining(['grid', 'grid-cols-3', '@md:flex']));
-    for (const s of within(row).getAllByRole('combobox')) expect(s.className.split(' ')).toEqual(expect.arrayContaining(['w-full', 'min-w-0', '@md:w-auto', 'coarse:h-44']));
+    expect(row.className.split(' ')).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'gap-8']));
+    expect(row.className).not.toMatch(/\bgrid-cols-/);
+    // 0.13.1: each starts at what its first words need with the select's arrow (Chromium, 14 px: "By name" 94,
+    // "Any tag" 86, "Every client" 111) and grows into the rest; from 640 each is as wide as its words.
+    const basis = (s: HTMLElement) => Number(/(?:^|\s)basis-(\d+)(?:\s|$)/.exec(s.className)?.[1]);
+    const selects = within(row).getAllByRole('combobox');
+    expect(selects.map(basis)).toEqual([96, 88, 112]);
+    for (const s of selects) expect(s.className.split(' ')).toEqual(expect.arrayContaining(['grow', 'min-w-0', '@md:grow-0', '@md:basis-auto', 'coarse:h-44']));
+    // One row on a 390 phone (358 inside its padding); on the iPad's 340 list beside an open client (307) and on
+    // a 320 phone (288) the list takes a row of its own, rather than a third that read "Every clie▾".
+    const one = selects.map(basis).reduce((n, b) => n + b, 0) + 2 * 8;
+    expect(one).toBeLessThanOrEqual(358);
+    expect(one).toBeGreaterThan(307);
   });
 
   it('touch: the state chips are 44 by 44 at least ("All" is narrower)', async () => {

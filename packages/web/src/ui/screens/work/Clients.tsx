@@ -323,7 +323,7 @@ function Filters({ filter, sort, onSort, tags, lists, onChange }: { filter: Filt
     const t = setTimeout(() => change.current({ q: q || undefined }), 300);
     return () => clearTimeout(t);
   }, [text, filter.q]);
-  const select = 'h-32 w-full min-w-0 max-w-full rounded-btn border border-line bg-bg px-8 type-small text-ink outline-none focus-visible:outline-2 focus-visible:outline-ink coarse:h-44 @md:w-auto';
+  const select = 'h-32 min-w-0 max-w-full grow rounded-btn border border-line bg-bg px-8 type-small text-ink outline-none focus-visible:outline-2 focus-visible:outline-ink coarse:h-44 @md:grow-0 @md:basis-auto';
   return (
     <div className="flex flex-col gap-8 px-16 pb-12">
       <label className="relative block">
@@ -343,15 +343,18 @@ function Filters({ filter, sort, onSort, tags, lists, onChange }: { filter: Filt
         />
       </label>
       <Chips<'all' | WorkClientState> label="State" chips={STATE_CHIPS} value={filter.state ?? 'all'} onChange={(k) => onChange({ state: !k || k === 'all' ? undefined : k })} />
-      {/* A narrow pane: the sort, the tag and the list share one row, a part each (they wrapped onto three, about
-          400 px of filters before the first client on a phone). From 640 each is as wide as its words. */}
-      <div data-selects className={clsx('grid gap-8 @md:flex @md:flex-wrap @md:items-center', lists.length ? 'grid-cols-3' : 'grid-cols-2')}>
-        <select aria-label="Sort" className={select} value={sort} onChange={(e) => onSort(e.target.value as Sort)}>
+      {/* A narrow pane: the sort, the tag and the list share one row (they wrapped onto three, about 400 px of
+          filters before the first client on a phone). 0.13.1: each starts as wide as its first words need
+          ("By name", "Any tag", "Every client" with the select's arrow) and they share what is left; where the
+          three don't fit (a 340 list beside an open client on the iPad, a 320 phone) the list takes a row of
+          its own, never "Every clie▾" in a third. From 640 each is as wide as its words. */}
+      <div data-selects className="flex flex-wrap gap-8 @md:items-center">
+        <select aria-label="Sort" className={clsx(select, 'basis-96')} value={sort} onChange={(e) => onSort(e.target.value as Sort)}>
           <option value="name">By name</option>
           <option value="touch">Last touch</option>
           <option value="next">Next step</option>
         </select>
-        <select aria-label="Tag" className={select} value={filter.tag ?? ''} onChange={(e) => onChange({ tag: e.target.value || undefined })}>
+        <select aria-label="Tag" className={clsx(select, 'basis-88')} value={filter.tag ?? ''} onChange={(e) => onChange({ tag: e.target.value || undefined })}>
           <option value="">Any tag</option>
           {tags.map((t) => (
             <option key={t} value={t}>
@@ -360,7 +363,7 @@ function Filters({ filter, sort, onSort, tags, lists, onChange }: { filter: Filt
           ))}
         </select>
         {lists.length ? (
-          <select aria-label="List" className={select} value={filter.list ?? ''} onChange={(e) => onChange({ list: isList(e.target.value) ? e.target.value : undefined })}>
+          <select aria-label="List" className={clsx(select, 'basis-112')} value={filter.list ?? ''} onChange={(e) => onChange({ list: isList(e.target.value) ? e.target.value : undefined })}>
             <option value="">Every client</option>
             {lists.map((l) => (
               <option key={l.id} value={l.id}>
