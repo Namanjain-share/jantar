@@ -267,10 +267,10 @@ export function DealHub({ id, back, stages, onChanged, onDeleted }: DealHubProps
                   </Button>
                   {c.kind === 'open' ? (
                     <>
-                      <Button variant="text" disabled={offline} onClick={() => toKind('won')} className="coarse:min-h-44">
+                      <Button variant="text" disabled={offline} onClick={() => toKind('won')} className="coarse:min-h-44 coarse:min-w-44">
                         Won
                       </Button>
-                      <Button variant="text" disabled={offline} onClick={() => toKind('lost')} className="coarse:min-h-44">
+                      <Button variant="text" disabled={offline} onClick={() => toKind('lost')} className="coarse:min-h-44 coarse:min-w-44">
                         Lost
                       </Button>
                     </>
