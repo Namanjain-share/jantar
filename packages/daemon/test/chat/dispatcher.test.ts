@@ -131,7 +131,10 @@ describe('Dispatcher', () => {
     const c = client(path);
     c.send(JSON.stringify({ token: TOKEN }));
     const held = c.request('tools/call', { name: 'today', arguments: {} });
-    await settle();
+    // 0.12.1: wait until the call is held (its hold timer is on the fake clock), at most 5 s, not a fixed 50 ms:
+    // with 40 ms event-loop turns the clock moved before the call arrived and nothing ever answered it.
+    for (let i = 0; i < 100 && clock.pending() === 0; i++) await settle();
+    expect(clock.pending()).toBe(1);
     clock.advance(10_001);
     expect(await held).toMatchObject({ error: { code: -32000 } });
     expect(fails).toEqual(['not_isolated']);
