@@ -342,6 +342,16 @@
       padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 16px), 24px);
     }
   }
+  /* 0.14.0: a bottom sheet's actions row scrolled into view (Switching rules after a Save) stops above the
+     sheet's foot padding, clear of the home indicator, as its last row sits when scrolled to the end. */
+  .sheet-popup[data-present='bottom'] .sheet-actions {
+    scroll-margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  }
+  @media (pointer: coarse), (width < 768px) {
+    .sheet-popup[data-present='bottom'] .sheet-actions {
+      scroll-margin-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 16px), 24px);
+    }
+  }
   .sheet-popup[data-swiping] {
     transition-duration: 0ms;
     -webkit-user-select: none;

@@ -23,7 +23,10 @@
  * Save did is said in the actions row itself (role status, or alert), which
  * a form sheet pins at its foot, so it is in view at every size; the row's
  * height is kept clear of the scroller's foot (--sheet-actions-h, kit.css)
- * so Tab never parks a field under it. The sheet asks "Discard what you
+ * so Tab never parks a field under it. On a phone's bottom sheet the row
+ * isn't pinned: what Save did grows it above Save, so the sheet scrolls the
+ * whole row into view, the refusal (or the receipt) and Save both. The
+ * sheet asks "Discard what you
  * changed?" before a scrim tap, Esc or a swipe throws away an edit, however
  * it was made (Sheet's `dirty`), at every size: on a phone's bottom sheet
  * too (Sheet's `discardQuestion`). The paths
@@ -225,6 +228,15 @@ function SwitchingForm({ onDone, onDirty }: { onDone: () => void; onDirty: (dirt
       popup.style.removeProperty('--sheet-actions-h');
     };
   }, [ready]);
+
+  // 0.14.0: what Save did (a 409's alert, the receipt) and Save itself, in view together: on a phone's bottom
+  // sheet the row is the form's foot, so the alert grew it past the screen and pushed Save below. A form
+  // sheet's pinned row is in view already, so nothing scrolls there.
+  useLayoutEffect(() => {
+    const row = actions.current;
+    if ((!error && !saved) || !row || typeof row.scrollIntoView !== 'function') return;
+    row.scrollIntoView({ block: 'nearest' });
+  }, [error, saved]);
 
   useEffect(() => {
     let alive = true;

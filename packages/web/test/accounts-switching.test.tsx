@@ -366,6 +366,41 @@ describe('0.14.0 the Switching rules sheet', () => {
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeTruthy();
   });
 
+  it('0.14.0: brings the 409 and Save into view together (a phone bottom sheet), and the receipt with Save', async () => {
+    const seen: Element[] = [];
+    const scroll = vi.fn(function (this: Element) {
+      seen.push(this);
+    });
+    const was = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { value: scroll, configurable: true, writable: true });
+    try {
+      let fail = true;
+      const a = api(async (body) => {
+        if (fail) throw new ApiError('conflict', "ccw's switch.json doesn't read as JSON right now, so nothing was saved.", 409);
+        return { ...RULES, ...(body as object) } as SwitchRules;
+      });
+      renderApp({ path: '/accounts', api: a, state: stateWith({ accounts }), layout: layoutAt(320, { coarse: true }) });
+      const dialog = await openSheet();
+      expect(scroll).not.toHaveBeenCalled(); // nothing said yet: the sheet stays where it is
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Lower 5-hour limit' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      const alert = await within(dialog).findByRole('alert');
+      const row = alert.closest('[data-switching-actions]');
+      expect(row).toBeTruthy();
+      expect(row?.contains(within(dialog).getByRole('button', { name: 'Save' }))).toBe(true);
+      // the whole row (the alert and Save), the least scroll that shows it
+      expect(seen.at(-1)).toBe(row);
+      expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest' });
+      fail = false;
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      await within(dialog).findByText(SAVED_TEXT);
+      expect(seen.at(-1)).toBe(row);
+    } finally {
+      if (was) Object.defineProperty(Element.prototype, 'scrollIntoView', was);
+      else delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
   it('turns Save off while offline', async () => {
     const a = api();
     const { store } = renderApp({ path: '/accounts', api: a, state: stateWith({ accounts }) });
