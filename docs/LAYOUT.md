@@ -895,3 +895,21 @@ and pushed past the sheet. A row's second line now takes at most 3/5 of it
 checkbox or radio by the `<label>` it sits in, since a tap anywhere on the
 label works it, so the 20 px follow-up ticks in the Won and Lost sheets
 count as the 44 px rows they sit in.
+
+0.13.1 closes the rest of design 15 in the same file. At 390 × 844 with
+touch: Won's Make project (the project takes the deal's name and the
+client's folder, and its hub shows the client and the deal) and Not now
+(Won, no project); an import of 200 made-up rows, where the sheet's count,
+Recent imports and Undo all say 208, the eight companies the Company
+column made included; and the Log sheet and the New client sheet turned
+to 844 × 390 and back, by 0.11's DOM-identity probe: the form is not built
+again, what was typed stays, nothing scrolls sideways and the primary
+button can be reached. Then 0.11's tier A sizes from 1024 (`mac-1440`,
+`touch-1440`, `desktop`, `ipad-air-l`, `ipad-pro-l`; the 0.11 suite's
+fixture has no Work, so they run here on the daemon's own data) take every
+Work route through the 35 % empty-width check, nothing sideways, 44 × 44
+on touch and the iPad's safe areas. It found a project and a deal open
+beside their list at 1180 × 820 leaving 43 and 45 % of the width empty:
+their 620 pane was under the 640 the cards start at, so each was a list.
+Work's project, client and deal pages now show cards from a pane of 600
+(`HUB_CARDS_FROM` in `work/parts.tsx`), as design 6.3 draws that pane.
