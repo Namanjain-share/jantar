@@ -21,7 +21,9 @@
  * tap, Esc, ⌘. or a swipe closes it (it saw an `input` event in its popup);
  * the form's own Cancel and Save close it at once. 0.14.0: a form that knows
  * better (a stepper's − and + and a preset fire no `input` event) says so
- * with `dirty`, which then decides alone. Without a hardware
+ * with `dirty`, which then decides alone. A phone's bottom sheet closes
+ * without asking, unless the caller opts in with `discardQuestion` (0.14.0:
+ * Switching rules), which asks it at every size. Without a hardware
  * keyboard nothing is focused on open, so the on-screen keyboard stays down
  * until a field is tapped (A9).
  */
@@ -57,12 +59,18 @@ export interface SheetProps {
    * popup since it opened, as before.
    */
   dirty?: boolean;
+  /**
+   * 0.14.0: opt in to asking at every size, the phone's bottom sheet too
+   * (by default only a form sheet asks), with this question ("Discard what
+   * you changed?"). Absent: the bottom sheet closes at once, as before.
+   */
+  discardQuestion?: string;
 }
 
 /** What closes a form sheet only after asking, once a field changed: everything but the form's own buttons. */
 const ASKS = new Set(['outside-press', 'escape-key', 'swipe', 'close-watcher', 'focus-out']);
 
-export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, children, className, initialFocus, finalFocus, dirty }: SheetProps) {
+export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, children, className, initialFocus, finalFocus, dirty, discardQuestion }: SheetProps) {
   const layer = useLayer();
   const { chrome, keyboard, kbUp } = useLayout();
   const form = chrome !== 'phone';
@@ -85,7 +93,7 @@ export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, c
     <Drawer.Root
       open={open}
       onOpenChange={(next, details) => {
-        if (!next && form && (dirty ?? changed.current) && ASKS.has(details.reason)) {
+        if (!next && (form || discardQuestion !== undefined) && (dirty ?? changed.current) && ASKS.has(details.reason)) {
           details.cancel();
           setAsking(true);
           return;
@@ -122,7 +130,7 @@ export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, c
               </div>
               {asking ? (
                 <div role="group" aria-label="Unsaved changes" className="mb-12 flex flex-wrap items-center gap-8 rounded-btn bg-surface px-12 py-8">
-                  <span className="mr-auto type-small text-ink">Discard what you typed?</span>
+                  <span className="mr-auto type-small text-ink">{discardQuestion ?? 'Discard what you typed?'}</span>
                   <Button ref={keep} variant="outline" size="lg" onClick={() => setAsking(false)}>
                     Keep editing
                   </Button>

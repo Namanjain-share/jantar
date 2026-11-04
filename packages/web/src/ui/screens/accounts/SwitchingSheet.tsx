@@ -23,8 +23,10 @@
  * Save did is said in the actions row itself (role status, or alert), which
  * a form sheet pins at its foot, so it is in view at every size; the row's
  * height is kept clear of the scroller's foot (--sheet-actions-h, kit.css)
- * so Tab never parks a field under it. The sheet asks before a scrim tap or
- * Esc throws away an edit, however it was made (Sheet's `dirty`). The paths
+ * so Tab never parks a field under it. The sheet asks "Discard what you
+ * changed?" before a scrim tap, Esc or a swipe throws away an edit, however
+ * it was made (Sheet's `dirty`), at every size: on a phone's bottom sheet
+ * too (Sheet's `discardQuestion`). The paths
  * are words, as Work's are (screens/work/client.ts), so no schema comes with
  * them.
  */
@@ -50,6 +52,8 @@ export const SWITCHING_PATHS = {
 
 export const SAVED_TEXT = 'Saved. ccw uses it within a minute.';
 export const OFFLINE_TEXT = 'Offline: saving needs your Mac.';
+/** 0.14.0: what the sheet asks before a scrim tap, Esc or a swipe throws an edit away, at every size. */
+export const DISCARD_TEXT = 'Discard what you changed?';
 /** What the preset button says; it fills SWITCH_RULES.preset in. */
 export const PRESET_TEXT = 'Fill the usual week';
 
@@ -177,7 +181,7 @@ export function SwitchingSheet({ open, onOpenChange, generation }: { open: boole
     if (!open) setDirty(false);
   }, [open]);
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title="Switching rules" dirty={dirty}>
+    <Sheet open={open} onOpenChange={onOpenChange} title="Switching rules" dirty={dirty} discardQuestion={DISCARD_TEXT}>
       {open ? <SwitchingForm key={generation} onDone={() => onOpenChange(false)} onDirty={setDirty} /> : null}
     </Sheet>
   );

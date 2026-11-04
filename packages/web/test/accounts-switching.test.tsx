@@ -10,6 +10,7 @@ import { ApiError, type ApiRequest, type ApiRoute } from '../src/lib/api.js';
 import { writeLocal } from '../src/lib/storage.js';
 import { buildRows, capText, closedFlags, runwaySentence } from '../src/ui/screens/accounts/model.js';
 import {
+  DISCARD_TEXT,
   HOLD_CAP_TEXT,
   HOLD_NO_CAP_TEXT,
   NO_READING_TEXT,
@@ -276,6 +277,28 @@ describe('0.14.0 the Switching rules sheet', () => {
     esc();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Switching rules' })).toBeNull());
     expect(screen.queryByRole('group', { name: 'Unsaved changes' })).toBeNull();
+  });
+
+  it('0.14.0: asks "Discard what you changed?" on the phone too (a bottom sheet), at every size', async () => {
+    for (const layout of [layoutAt(320, { coarse: true }), layoutAt(390, { coarse: true }), layoutAt(1180, { coarse: true, touchShell: true }), layoutAt(1440)]) {
+      const { unmount } = renderApp({ path: '/accounts', api: api(), state: stateWith({ accounts }), layout });
+      await openSheet();
+      const esc = () => fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+      // unchanged: Esc closes at once
+      esc();
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Switching rules' })).toBeNull());
+      const again = await openSheet();
+      fireEvent.click(within(again).getByRole('button', { name: 'Raise 5-hour limit' }));
+      esc();
+      const asking = await screen.findByRole('group', { name: 'Unsaved changes' });
+      expect(asking.textContent).toContain(DISCARD_TEXT);
+      fireEvent.click(within(asking).getByRole('button', { name: 'Keep editing' }));
+      expect((within(again).getByRole('textbox', { name: '5-hour limit' }) as HTMLInputElement).value).toBe('98');
+      esc();
+      fireEvent.click(within(await screen.findByRole('group', { name: 'Unsaved changes' })).getByRole('button', { name: 'Discard' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Switching rules' })).toBeNull());
+      unmount();
+    }
   });
 
   it('saves only what changed, with one PATCH, and says ccw uses it within a minute', async () => {

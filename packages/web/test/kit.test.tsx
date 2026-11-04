@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AutoswitchSettingsSchema } from '@jantar/protocol';
@@ -384,9 +384,9 @@ describe('document chrome', () => {
 });
 
 describe('0.12 c12: the sheet, bottom on the phone and a form sheet wider', () => {
-  function Form({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  function Form({ open, onOpenChange, ask }: { open: boolean; onOpenChange: (o: boolean) => void; ask?: string }) {
     return (
-      <Sheet open={open} onOpenChange={onOpenChange} title="New example">
+      <Sheet open={open} onOpenChange={onOpenChange} title="New example" {...(ask ? { discardQuestion: ask } : {})}>
         <label>
           Title
           <input aria-label="Title" />
@@ -397,12 +397,12 @@ describe('0.12 c12: the sheet, bottom on the phone and a form sheet wider', () =
       </Sheet>
     );
   }
-  function Harness({ layout }: { layout: LayoutStore }) {
+  function Harness({ layout, ask }: { layout: LayoutStore; ask?: string }) {
     const [open, setOpen] = useState(true);
     return (
       <LayoutProvider value={layout}>
         <p>{open ? 'open' : 'closed'}</p>
-        <Form open={open} onOpenChange={setOpen} />
+        <Form open={open} onOpenChange={setOpen} {...(ask ? { ask } : {})} />
       </LayoutProvider>
     );
   }
@@ -474,6 +474,34 @@ describe('0.12 c12: the sheet, bottom on the phone and a form sheet wider', () =
     fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'x' } });
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     expect(screen.getByText('closed')).toBeTruthy();
+  });
+
+  it('0.14.0: a sheet that opts in (discardQuestion) asks on the phone too, with its own question; it closes at once unchanged', async () => {
+    const ask = 'Discard what you changed?';
+    for (const layout of [layoutAt(320, { coarse: true }), layoutAt(390, { coarse: true }), layoutAt(1440)]) {
+      const r = render(<Harness layout={createLayoutStore(layout)} ask={ask} />);
+      await screen.findByRole('dialog', { name: 'New example' });
+      fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'x' } });
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+      const group = await screen.findByRole('group', { name: 'Unsaved changes' });
+      expect(group.textContent).toContain(ask);
+      expect(screen.getByText('open')).toBeTruthy();
+      fireEvent.click(within(group).getByRole('button', { name: 'Discard' }));
+      expect(screen.getByText('closed')).toBeTruthy();
+      r.unmount();
+      // unchanged: Esc closes at once
+      const again = render(<Harness layout={createLayoutStore(layout)} ask={ask} />);
+      await screen.findByRole('dialog', { name: 'New example' });
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+      expect(screen.getByText('closed')).toBeTruthy();
+      again.unmount();
+    }
+    // a form sheet without it keeps its own question
+    render(<Harness layout={createLayoutStore(layoutAt(1440))} />);
+    await screen.findByRole('dialog', { name: 'New example' });
+    fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'x' } });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect((await screen.findByRole('group', { name: 'Unsaved changes' })).textContent).toContain('Discard what you typed?');
   });
 
   it('focuses no field on open without a hardware keyboard (A9); the first field with one', async () => {
