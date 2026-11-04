@@ -823,6 +823,45 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
     }, { close: (o) => o.close() });
   }, perfBudgetMs(120_000));
 
+  it('10b. 0.13.2, an iPhone on iOS 26: the window shrinks with the keyboard; leaving a session with it up leaves no gap', async () => {
+    const W = 390;
+    const H = 844;
+    const PHONE = { top: 59, bottom: 34 };
+    await onTouch('10b. iOS 26 phone keyboard', () => open({ width: W, height: H, touch: true, insets: PHONE }, `/s/${sidOf(4)}`, true), async ({ page }) => {
+      const vv = (height: number) =>
+        page.evaluate((h) => {
+          const v = (window as unknown as { __vv: EventTarget & Record<string, number> }).__vv;
+          v.height = h;
+          v.dispatchEvent(new Event('resize'));
+        }, height);
+      const vars = () => page.evaluate(() => ({ vvh: document.documentElement.style.getPropertyValue('--vvh'), kb: document.documentElement.style.getPropertyValue('--kb') }));
+      await stillTouch(page, '10b. iOS 26 phone keyboard');
+      await page.getByLabel('Prompt for Claude').focus();
+      // The keyboard up and the window with it (iOS 26): 844 → 495.
+      await page.setViewportSize({ width: W, height: 495 });
+      await vv(495);
+      await page.waitForTimeout(300);
+      expect(await vars(), 'the keyboard, measured from the height before it').toMatchObject({ vvh: '495px', kb: `${H - 495}px` });
+      await expect.poll(() => page.locator('[data-key-row]').isVisible(), { message: 'the key row with the keyboard up' }).toBe(true);
+      expect(await page.evaluate(() => scrollY), 'the page stays at its top').toBe(0);
+      const composer = await page.locator('form[aria-label="Send a prompt"]').boundingBox();
+      expect(composer && composer.y + composer.height, 'the composer sits on the keyboard').toBeLessThanOrEqual(495 + 1);
+      expect(composer && composer.y, 'the composer is not up at the top').toBeGreaterThan(495 / 2);
+      // Leave the session with the keyboard up: the field goes without a focusout (WebKit), and the keyboard
+      // goes down with its 45 px bar still counted for a moment.
+      await page.evaluate(() => {
+        history.pushState(null, '', '/');
+        dispatchEvent(new PopStateEvent('popstate'));
+      });
+      await page.setViewportSize({ width: W, height: H });
+      await vv(H - 45);
+      await page.waitForTimeout(1300);
+      expect(await vars(), 'nothing left from the keyboard').toEqual({ vvh: '', kb: '' });
+      const nav = await page.getByRole('navigation', { name: 'Main' }).boundingBox();
+      expect(nav && Math.round(nav.y + nav.height), 'the tab bar ends at the bottom of the screen').toBe(H);
+    }, { close: (o) => o.close() });
+  }, perfBudgetMs(120_000));
+
   it('11. hover: a mouse says so and tints a ledger row; a star previews and sends nothing', async () => {
     await onTouch('11. hover', () => open({ width: 1180, height: 820, touch: true, insets: IPAD }, '/'), async ({ page }) => {
       const patches: string[] = [];
