@@ -145,7 +145,9 @@ export async function styleElements(page: Page): Promise<number> {
  * steps again from the start in a new context could not find the todo they had deleted. Blink keeps one
  * touch switch per page (DevToolsEmulator), and a DevTools session whose Emulation agent turned it on turns
  * it off for the whole page as that session goes, while Playwright's own session still has it on (a second
- * CDP session shows it: touch on, detach, no coarse pointer until the next document). The likely way on CI:
+ * CDP session shows it: touch on, detach, no coarse pointer until the next document). Its emulated media go
+ * with it: a session that set the colour scheme and reduced motion, as Playwright's does, clears them as it
+ * goes (one that never set them leaves them). The likely way on CI:
  * a cross-document navigation (RenderDocument) moves each session to the new document, whose copy turns
  * touch back on, and lets the old document's copy go; when that lands after the new one, the page has none.
  * Not caught here; nothing in these tests turns touch off. launchBrowser starts the suites' Chromium with
@@ -154,14 +156,16 @@ export async function styleElements(page: Page): Promise<number> {
  * So a touch page is marked (touchPage) as it opens. stillTouch(page) asks for its coarse pointer; clean()
  * and overflow() ask first, and a test asks before any step that needs the pointer or can't be taken twice.
  * When it is gone, restoreTouch turns it back on in the same page from a DevTools session of the page's own,
- * kept for the page's life (as it goes it would turn touch off again), and waits until the page and the app
- * (its data-chrome) see a coarse pointer; the steps go on from where they were. onTouch runs a test's steps
+ * kept for the page's life (as it goes it would turn touch off again), has Playwright send its emulated
+ * media again, and waits until the page and the app (its data-chrome) see a coarse pointer; the steps go on
+ * from where they were. onTouch runs a test's steps
  * on a page; only when that fails (or a step fails with the pointer gone) does it close the context and run
  * the steps once more in a new one, after its `reset` has put back what they changed on the Mac. Steps past
  * one that can't be taken twice (`irreversible`) fail instead of running again; a drop in the new context
  * fails too.
  *
- * JANTAR_TOUCH_DROP simulates drops, turning the emulation off over CDP as Chromium does on CI:
+ * JANTAR_TOUCH_DROP simulates drops (dropTouch: as a departing copy of Playwright's session would, touch and
+ * the page's colour scheme and reduced motion go):
  * - `every`: at each stillTouch of a touch page (each check, each ask), so between every two checked steps;
  *   each is turned back on in place.
  * - `load`: as each document of a touch page loads (the likely way on CI), so the steps go on with a fine
@@ -208,11 +212,19 @@ export class TouchDropped extends Error {
   }
 }
 
-/** Turns the page's touch emulation off from a DevTools session of its own, as Chromium has on CI. */
+/**
+ * A drop as Chromium likely makes one on CI: a DevTools session of its own sets what Playwright's sets (touch,
+ * the page's own colour scheme and reduced motion) and goes, which turns touch off and clears those media.
+ */
 export async function dropTouch(page: Page): Promise<void> {
+  const media = await page.evaluate(() => ({
+    scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+    motion: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduce' : 'no-preference',
+  }));
   const cdp = await page.context().newCDPSession(page);
   try {
-    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    await cdp.send('Emulation.setEmulatedMedia', { media: '', features: [{ name: 'prefers-color-scheme', value: media.scheme }, { name: 'prefers-reduced-motion', value: media.motion }] });
   } finally {
     await cdp.detach().catch(() => undefined);
   }
@@ -223,19 +235,22 @@ const keepers = new WeakMap<Page, Promise<CDPSession>>();
 
 /**
  * 0.12.1: turns `page`'s touch emulation back on in the same page, as Playwright turned it on (one touch
- * point, no touch events for the mouse), and waits until the page has a coarse pointer and the app's chrome
- * is a touch screen's (touch from 640 px, the phone's below; a page with no shell has none). The session is
- * kept: detaching it would turn touch off again. False if it doesn't come back within 5 s.
+ * point, no touch events for the mouse), has Playwright send its emulated media again (emulateMedia with no
+ * change sends all of it, through its own session), and waits until the page has a coarse pointer and the
+ * app's chrome is a touch screen's (touch from 640 px, the phone's below; a page with no shell has none).
+ * The session is kept: detaching it would turn touch off again. False if it doesn't come back within 5 s.
  */
 export async function restoreTouch(page: Page): Promise<boolean> {
   if (stuckPages.has(page)) return false;
-  let keeper = keepers.get(page);
-  if (!keeper) {
-    keeper = page.context().newCDPSession(page);
-    keepers.set(page, keeper);
-  }
   try {
+    let keeper = keepers.get(page);
+    if (!keeper) {
+      keeper = page.context().newCDPSession(page);
+      keepers.set(page, keeper);
+      keeper.catch(() => keepers.delete(page));
+    }
     await (await keeper).send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await page.emulateMedia({});
     await page.waitForFunction(
       () => {
         if (!matchMedia('(pointer: coarse)').matches) return false;
@@ -245,8 +260,14 @@ export async function restoreTouch(page: Page): Promise<boolean> {
       null,
       { timeout: 5_000, polling: 50 },
     );
-    // Two frames for what renders from the layout (the panes, a sheet's place) to settle.
-    await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    // Two frames for what renders from the layout (the panes, a sheet's place) to settle; at most 200 ms.
+    await page.evaluate(
+      () =>
+        new Promise<void>((done) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => done()));
+          setTimeout(done, 200);
+        }),
+    );
     return true;
   } catch {
     return false;
