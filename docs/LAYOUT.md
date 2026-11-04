@@ -322,9 +322,9 @@ The Ask routes' schemas ride in `ROUTES`, which the first load holds, so it
 needed room first (gzip, `MAIN_JS_MAX` 280.0 kB, unchanged): 279.8 kB
 before Ask; 281.3 kB with Ask and its protocol; 280.3 kB with the Screen
 tab's picture (`session/controls/ShotView.tsx` and `useShot.ts`) behind
-`import()`, still over; 270.7 kB with the pairing QR (`devices/Qr.tsx` and
-the `qrcode` package) behind `import()` too, loaded the first time a
-pairing code is shown. `code-split.test.ts` keeps both out of the first
+`import()`, still over; 270.7 kB with the pairing QR (`devices/Qr.tsx`,
+`kit/Qr.tsx` since 0.12.2, and the `qrcode` package) behind `import()`
+too, loaded the first time a pairing code is shown. `code-split.test.ts` keeps both out of the first
 load. The Ask chunk is 55.8 kB with what it pulls in (`LAZY_MAX` 80.0 kB).
 
 Alerts with a tone per group, the urgent alert for Claude's 2-minute

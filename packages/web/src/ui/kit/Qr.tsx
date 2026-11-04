@@ -2,6 +2,10 @@
  * The pairing QR: one SVG path (no data: URLs, so the CSP holds), always
  * black on white in a 12 px padded white card with the dock radius, in both
  * themes, so any phone camera can read it.
+ *
+ * 0.12.2: in the kit, so her app can show one too (Me › Devices › Link
+ * another device). Never in the kit's index: each side loads it with
+ * import(), so the qrcode encoder stays out of both first loads.
  */
 import { useMemo } from 'react';
 import QRCode from 'qrcode';

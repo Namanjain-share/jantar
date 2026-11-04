@@ -120,12 +120,12 @@ describe('code splitting', () => {
   });
 
   it("keeps the Screen tab's picture and the pairing QR out of the main chunk (v0.5.3: room for Ask)", () => {
-    const lazyOnly = ['ui/screens/session/controls/ShotView.tsx', 'ui/screens/session/controls/useShot.ts', 'ui/screens/devices/Qr.tsx'];
+    const lazyOnly = ['ui/screens/session/controls/ShotView.tsx', 'ui/screens/session/controls/useShot.ts', 'ui/kit/Qr.tsx'];
     for (const f of lazyOnly) expect(existsSync(join(src, f)), f).toBe(true);
     expect(lazyOnly.filter((f) => main.files.has(f))).toEqual([]);
     expect([...main.packages].filter((p) => p === 'qrcode')).toEqual([]);
     expect(readFileSync(join(src, 'ui/screens/Session.tsx'), 'utf8')).toContain("import('./session/controls/ShotView.js')");
-    expect(readFileSync(join(src, 'ui/screens/devices/PairNew.tsx'), 'utf8')).toContain("import('./Qr.js')");
+    expect(readFileSync(join(src, 'ui/screens/devices/PairNew.tsx'), 'utf8')).toContain("import('../../kit/Qr.js')");
   });
 
   it("keeps a file's preparation and the attachment glyphs out of the main chunk (v0.5.1: the first attachment loads them)", () => {

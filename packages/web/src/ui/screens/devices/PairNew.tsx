@@ -24,7 +24,7 @@ import { InlineError, SCOPE_TEXT, StepNumber, copyText, useFlash } from './parts
 import { useDeviceSection } from './card.js';
 import { useLayer } from '../../kit/layer.js';
 
-const QrCard = lazy(() => import('./Qr.js').then((m) => ({ default: m.QrCard })));
+const QrCard = lazy(() => import('../../kit/Qr.js').then((m) => ({ default: m.QrCard })));
 
 export const PAIR_STEPS = ["Open your phone's camera", 'Scan the code', 'Pick a name and tap Pair this device'] as const;
 
