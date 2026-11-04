@@ -3,6 +3,30 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.13.2 (4 November 2026)
+
+- **The keyboard on an iPhone no longer carries the screen off the top.**
+  On iOS 26, as a Home Screen app, opening the keyboard in a session could
+  push the whole screen up: the session's buttons went under the clock, the
+  prompt box sat near the top with empty space below it, and the key row
+  never showed. iOS 26 can shrink the window along with the keyboard, so
+  Jantar didn't see the keyboard at all, and iOS then scrolled the page to
+  show the box. Now the keyboard is measured against the window's height
+  from before it opened, the page is kept at its top while you type (the
+  screen itself moves and resizes instead), and a field is brought into
+  view inside its own pane, never by scrolling the page. With the keyboard
+  up, the prompt box also drops the home-bar space under it, which the
+  keyboard covers anyway.
+- **No gap under the tab bar after the keyboard.** Leaving a session while
+  its prompt box still had the keyboard up left the app a little short:
+  Board and the other screens sat about 45 points high, with empty space
+  under the tab bar until the next reload. iOS gives no notice when a
+  focused field goes away, so Jantar now notices on its own and gives the
+  screen its full height back once the keyboard is down.
+- If anything about the keyboard still looks wrong on a phone or iPad, open
+  Jantar with `#viewport` at the end of its address: a small box at the top
+  shows the numbers the screen is sized from, for a screenshot.
+
 ## 0.13.1 (4 November 2026)
 
 - **One Undo after moving a deal, for the move you just made.** On the
