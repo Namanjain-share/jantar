@@ -238,10 +238,27 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
   const on = (who: Who, what: string, steps: (o: Opened) => Promise<void>, rerun: Rerun = {}) =>
     onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who, state)), steps, rerun);
 
-  /** Sheets and pushed screens finish moving (reduced motion: they fade), then a beat for the layout. */
+  /**
+   * Sheets and pushed screens finish moving (reduced motion: they fade), then a beat for the layout. A sheet
+   * mounts in data-starting-style (below the screen, or clear) and its transition starts a frame later, so
+   * "nothing running" alone can pass before it begins on a loaded runner: wait for neither style and no
+   * finite animation running, on two polls in a row (an endless spinner doesn't hold it up).
+   */
   async function settle(page: Page) {
+    await page.evaluate(() => void ((window as unknown as { __jantarStill?: number }).__jantarStill = 0));
     await page
-      .waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'), null, { timeout: 5_000, polling: 50 })
+      .waitForFunction(
+        () => {
+          const w = window as unknown as { __jantarStill?: number };
+          const moving =
+            document.querySelector('[data-starting-style], [data-ending-style]') !== null ||
+            document.getAnimations().some((a) => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity);
+          w.__jantarStill = moving ? 0 : (w.__jantarStill ?? 0) + 1;
+          return w.__jantarStill >= 2;
+        },
+        null,
+        { timeout: 5_000, polling: 50 },
+      )
       .catch(() => undefined);
     await page.waitForTimeout(150);
   }
