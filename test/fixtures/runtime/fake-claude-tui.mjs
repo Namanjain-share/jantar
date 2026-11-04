@@ -599,12 +599,14 @@ async function raisePermission(req, dialogSpec) {
 
 /** Apply a permission decision as Claude does: run the (fake) tool or refuse it, then end the turn. */
 function finishPermission(p, decision, by) {
-  record('decision', { by, behavior: decision.behavior, ...(decision.interrupt ? { interrupt: true } : {}) });
   const mode = Array.isArray(decision.updatedPermissions) ? decision.updatedPermissions.find((u) => u?.type === 'setMode' && MODE_LINES[u.mode]) : null;
   if (mode) s.mode = mode.mode;
   const allow = decision.behavior === 'allow';
   const result = allow ? 'ok (fake tool run)' : "The user doesn't want to proceed with this tool use. The tool use was rejected.";
   appendTranscript('user', { message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: p.toolUseId, content: result, is_error: !allow }] } });
+  // 0.13.0: recorded after the tool's result is in the transcript (as "interrupted" is), so a test that waits
+  // for the decision reads the result too; recorded first, a loaded runner could read between the two writes.
+  record('decision', { by, behavior: decision.behavior, ...(decision.interrupt ? { interrupt: true } : {}) });
   if (!allow && decision.interrupt) {
     interrupt();
     return;
