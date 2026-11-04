@@ -972,3 +972,31 @@ closed phone row's first flag. The first load is 278.3 kB. The
 integration test adds a 1180 × 820 iPad and a 1440 × 900 Mac: the
 accounts named, today marked, Esc after a + tap asking first, Tab never
 under the pinned row, and Save's receipt inside the viewport.
+
+No 5-hour limit, end to end: protocol's `Account.noFiveHourLimit`
+(optional) and the selector `noFiveHourLimit()` (the flag, or, from an
+older daemon, windows with none of them five_hour); `LaunchAccount` has
+the flag too. The daemon's cswap source (`sources/cswap/usage.ts`
+`noFiveHourIn`) sets it for a reading with windows and no five_hour (a
+five_hour without a number is one not open, at 0); `plan.ts` gives it
+`burnPctPerMin` 0 and no `fullInMin`; the launcher says "no 5-hour limit"
+in Auto's reason and the picker's row; the primer skips it; the
+assistant's `accounts_usage` says it. The web: `lib/format.ts`
+`fiveHourPct` is null for it, with `NO_FIVE_HOUR_LIMIT` and
+`NO_LIMIT_SHORT` for the words, used by `accounts/model.ts` (a row's
+`noLimit`), `Matrix.tsx`, `PhoneRows.tsx`, `board/model.ts` and `Row.tsx`,
+`session/Meta.tsx`, `shell/data.ts` and `StatusBar.tsx`, `Palette.tsx`
+and `new/AccountPicker.tsx` (`packages/web/test/accounts-no-five-hour.test.tsx`
+for both shapes at each). The plan's weekly % (`plan.ts`' `weeklyPct`)
+is seven_day's alone, as ccw's `weekly_pct` and Auto read it. The
+launcher's `heldCapped()` leaves a held, capped account's sessions out of
+`groupAccount()`. `Moves.tsx` takes each account's cap (`caps`, from
+`Accounts.tsx`' rows) and says a held, capped account's sessions leave at
+it. `kit/Sheet.tsx` takes an opt-in `discardQuestion` that asks at every
+size, the phone's bottom sheet too (Switching rules: "Discard what you
+changed?"); the Switching rules sheet scrolls its actions row into view
+when Save answers (`kit.css` gives a bottom sheet's `.sheet-actions` a
+`scroll-margin-bottom`), so a 409's reason and Save show together at
+320 × 568. The first load is 278.6 kB. The integration test's 02 has no
+five_hour in cswap's usage, and adds a 320 × 568 run: Esc, a scrim tap and
+a swipe down asking, and a refused Save with its reason and Save on screen.

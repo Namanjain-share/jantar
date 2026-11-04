@@ -29,7 +29,23 @@ What changed for people who use Jantar, newest first. Versions before
   or start there with Auto, only while it is at least 5 under the cap.
 - **An account without a 5-hour window has no 5-hour limit.** When cswap
   reports only an account's weekly use, Jantar no longer treats it as
-  empty and filling up: only its weekly use, or its cap, stops it.
+  empty and filling up: only its weekly use, or its cap, stops it. Every
+  place that shows 5-hour use says "no 5-hour limit" for it (or "no limit"
+  beside "5h", on a board row and in the status bar) instead of 0%, with
+  no 5-hour burn, reset or "full at". An account whose 5-hour window just
+  hasn't started yet still shows 0 and "no window open".
+- Weekly use against a cap or the weekly limit is the account's own weekly
+  window, as ccw reads it, never a weekly window for one model only, so
+  Accounts' `next →` and Auto agree with where ccw moves sessions.
+- A held account with a weekly cap is no longer called "left out of
+  autoswitch" under Moves: nothing moves onto it, and its sessions leave
+  once it passes its cap. Its sessions also no longer say where a ccw
+  group is when you start a session in that group: they never move with
+  the group.
+- On a phone, the Switching rules sheet asks "Discard what you changed?"
+  before Esc, a tap outside it or a swipe down throws your edits away, as
+  it does on an iPad or a Mac. When a save is refused (say, the file
+  doesn't read right), the reason and Save are both on screen.
 - **Accounts shows each cap.** An account with a weekly cap has it among
   its flags (`cap 50%`, on a phone beside the row's other flag), and next
   to its weekly use the cap now and the next one (`cap 50% · 75% Thu

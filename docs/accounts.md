@@ -80,8 +80,16 @@ How a weekly cap is used, by ccw and by Jantar's own plan and Auto alike:
   doesn't count.
 - An account whose usage reading has no 5-hour window has no 5-hour
   limit: it is never shown filling up, and only its weekly use (or cap)
-  stops it. An account with a 5-hour window keeps the 5-hour rules, cap or
-  not.
+  stops it. Where other accounts show their 5-hour use it says `no 5-hour
+  limit` (`no limit` beside `5h` on a board row and in the status bar),
+  never 0%, with no 5-hour burn or reset. An account with a 5-hour window
+  keeps the 5-hour rules, cap or not, and one whose window hasn't started
+  yet shows 0 and `no window open`.
+- A held account with a cap takes no session, but its sessions leave it at
+  the cap, one by one: never as part of a ccw group's move, so when you
+  start a session in a group they don't say which account the group is
+  on. Under Moves it reads `Held account 02: nothing moves onto it; its
+  sessions leave once it passes its weekly cap (50% now).`
 - In `switch.json` an account's entry is under its number as ccw writes it
   (`"2"`, never `"02"`); an entry under any other key, or one that doesn't
   fit (a value over 100, six days), is ignored and logged once, and that
@@ -100,7 +108,10 @@ typo from editing it by hand, or ccw halfway through writing it), nothing
 is saved and the sheet says so; fix the file on the Mac and save again.
 Without ccw, or with Jantar started `--read-only`, there is nothing to
 save. On an iPad or a Mac, Save and Cancel stay at the sheet's foot, and
-what Save did is said there, beside them.
+what Save did is said there, beside them; on a phone the sheet scrolls so
+that what Save did and Save are on screen together. At every size, an
+edit not saved is never thrown away without asking (`Discard what you
+changed?`), whether by Esc, a tap outside the sheet or a swipe down.
 
 An account with a weekly cap shows it on its row: `cap 50%` among its
 flags (on a phone's closed row beside its first other flag, such as
