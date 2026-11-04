@@ -150,7 +150,8 @@ export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChan
           return to ? (
             <Command.Item key={`${it.kind}:${it.id}`} value={`found ${it.kind} ${it.id}`} onSelect={() => go(to)} className={ROW}>
               <span className="min-w-0 truncate type-row font-medium">{it.label}</span>
-              {it.sub ? <span className="ml-auto min-w-0 flex-none truncate pl-12 type-mono text-ink-3">{it.sub}</span> : null}
+              {/* 0.13.0: at most 3/5 of the row, so a deal's long client name is cut and the row never runs sideways on a phone. */}
+              {it.sub ? <span className="ml-auto min-w-0 max-w-3/5 flex-none truncate pl-12 type-mono text-ink-3">{it.sub}</span> : null}
             </Command.Item>
           ) : null;
         })}
