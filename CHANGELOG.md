@@ -3,6 +3,32 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.14.0 (unreleased)
+
+- **Change ccw's switching rules from the phone.** While the legacy ccw
+  tool runs, Accounts has a **Switching rules** button. It opens a sheet
+  with what ccw moves sessions by: which accounts are held (nothing moves
+  onto them or off them), the 5-hour and weekly limits, and how many
+  minutes before full a session leaves. Save writes them into ccw's
+  `switch.json` on the Mac, and ccw uses them within a minute. Only what
+  you changed is written; everything else in the file stays as it was,
+  and the file as it was before is kept beside it as `switch.json.prev`.
+  If the file doesn't read right (say, a typo from editing it by hand),
+  nothing is saved and the sheet tells you so.
+- **A weekly cap that grows through the week.** Each account can have its
+  own weekly cap for each day of its week instead of the one weekly limit:
+  for example 50% for the first four days, then 75, 85 and 95, and all of
+  it in the last hour before the week resets (*Fill the usual week* puts
+  those in). Day 1 starts at the account's weekly reset. ccw keeps the
+  account under that day's cap, so a week's use is spread out instead of
+  spent in the first days.
+- **Accounts shows each cap.** An account with a weekly cap has it among
+  its flags (`cap 50%`), and next to its weekly use the cap now and the
+  next one (`cap 50% · 75% Thu 22:30`). The weekly bar's mark is at the cap.
+- On an iPad or a Mac, an account's flags no longer run past the edge of
+  the Accounts table when there are more than fit: they wrap onto a second
+  line.
+
 ## 0.13.2 (4 November 2026)
 
 - **The keyboard on an iPhone no longer carries the screen off the top.**
