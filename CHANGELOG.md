@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.13.1 (unreleased)
+## 0.13.1 (4 November 2026)
 
 - **One Undo after moving a deal, for the move you just made.** On the
   Mac with a deal open beside the board, dragging a card and then moving
