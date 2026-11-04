@@ -315,13 +315,15 @@ describe('shell data', () => {
         account(1),
         account(11, { usageStatus: 'token_expired' }),
         account(6, { windows: [{ kind: 'seven_day', pct: 4 }] }),
+        account(7, { windows: [{ kind: 'five_hour', pct: 0 }, { kind: 'seven_day', pct: 4 }] }),
       ],
     });
-    // Account 06 has no 5-hour window open: 0, as the Accounts screen shows it.
+    // 0.14.0: 06's reading has no 5-hour window at all: no 5-hour limit, never 0. 07 has one not open: 0, as Accounts shows it.
     expect(usagePairs(st, NOW)).toEqual([
       { id: '01', pct: 42 },
       { id: '03', pct: 81 },
-      { id: '06', pct: 0 },
+      { id: '06', pct: null, noLimit: true },
+      { id: '07', pct: 0 },
       { id: '11', pct: null },
     ]);
   });

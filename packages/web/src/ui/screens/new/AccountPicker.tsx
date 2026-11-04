@@ -8,6 +8,9 @@
  *   02  ▮▮▮▮▮▯▯▯ 48   held    resets 15:10 · 2 live
  *   05  ...                   token expired          (--ink-3, not a button)
  *
+ * 0.14.0: an account with no 5-hour limit (LaunchAccount.noFiveHourLimit)
+ * says "no 5-hour limit" where the bar and the % are, never 0.
+ *
  * A held account asks first: "Held for other work. ccw will never move this
  * session, even when 02 fills up." with "Use 02 anyway" (the start then
  * carries confirmHeld). Auto never names a held account: the form treats
@@ -21,7 +24,7 @@ import { XIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useState, type ReactNode, type RefObject } from 'react';
 import type { LaunchAccount } from '@jantar/protocol';
-import { accountId, clock } from '../../../lib/format.js';
+import { NO_FIVE_HOUR_LIMIT, accountId, clock } from '../../../lib/format.js';
 import { useNow } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { IconButton } from '../../kit/IconButton.js';
@@ -105,8 +108,17 @@ export function AccountList({ accounts, value, auto, onPick, bar = 96 }: Account
         const body: ReactNode = (
           <>
             <span className={clsx('w-24 flex-none type-mono font-key', a.selectable ? 'text-ink' : 'text-ink-3')}>{accountId(a.id)}</span>
-            <Meter value={pct} label={`${accountId(a.id)} 5-hour usage`} width={bar} ceiling={ceiling} stale={!a.selectable} />
-            <span className={clsx('w-24 flex-none type-mono', a.selectable ? 'text-ink' : 'text-ink-3')}>{pct ?? '–'}</span>
+            {a.noFiveHourLimit ? (
+              // 0.14.0: the bar's and the %'s room (bar, a 12 gap, 24), in words.
+              <span className="flex-none truncate type-mono text-ink-3" style={{ width: bar + 36 }}>
+                {NO_FIVE_HOUR_LIMIT}
+              </span>
+            ) : (
+              <>
+                <Meter value={pct} label={`${accountId(a.id)} 5-hour usage`} width={bar} ceiling={ceiling} stale={!a.selectable} />
+                <span className={clsx('w-24 flex-none type-mono', a.selectable ? 'text-ink' : 'text-ink-3')}>{pct ?? '–'}</span>
+              </>
+            )}
             {a.held ? <Tag>held</Tag> : null}
             <span className="ml-auto min-w-0 truncate pl-8 type-mono text-ink-3">{a.selectable ? rowMeta(a, now) : (a.why ?? 'not usable')}</span>
           </>

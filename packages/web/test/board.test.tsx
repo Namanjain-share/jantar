@@ -110,12 +110,14 @@ describe('board', () => {
           session('expired', { status: 'idle', account: 5 }),
           session('nobody', { status: 'idle', account: null }),
           session('fresh', { status: 'idle', account: 6 }),
+          session('idle', { status: 'idle', account: 7 }),
         ],
         accounts: [
           account(3, { alias: 'work', windows: [{ kind: 'five_hour', pct: 72 }] }),
           account(4, { windows: [{ kind: 'five_hour', pct: 97.2 }] }),
           account(5, { usageStatus: 'token_expired' }),
           account(6, { windows: [{ kind: 'seven_day', pct: 4 }] }),
+          account(7, { windows: [{ kind: 'five_hour', pct: 0 }, { kind: 'seven_day', pct: 4 }] }),
         ],
       }),
     });
@@ -125,8 +127,10 @@ describe('board', () => {
     expect(pct('hot').textContent).toBe('97');
     expect(pct('hot').className).toContain('text-signal-text');
     expect(pct('expired').textContent).toBe('–');
-    // No 5-hour window open on 06: 0, the same number Accounts and the status bar show.
-    expect(pct('fresh').textContent).toBe('0');
+    // 0.14.0: no 5-hour window in 06's reading at all: no 5-hour limit, said, never 0.
+    expect(acct('fresh')).toBe('06 · 5h no limit');
+    // A 5-hour window there but not open on 07: 0, the same number Accounts and the status bar show.
+    expect(pct('idle').textContent).toBe('0');
     expect(row('nobody').querySelector('[data-line2] b')).toBeNull();
   });
 

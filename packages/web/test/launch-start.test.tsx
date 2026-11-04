@@ -12,7 +12,7 @@ import { V03_LAUNCH_FLAGS, LaunchStartBodySchema, type LaunchFlags, type LaunchS
 import { ApiError } from '../src/lib/api.js';
 import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
 import { preloadPlaces, renderApp, stateWith } from './helpers.js';
-import { ACCOUNTS, commandFor, job, launchApi, previewFake, viewport } from './launch-fixtures.js';
+import { ACCOUNTS, acct, commandFor, job, launchApi, previewFake, viewport } from './launch-fixtures.js';
 
 preloadPlaces('new');
 
@@ -355,6 +355,23 @@ describe('start form: account (L6)', () => {
     expect(within(expired).getByText('token expired')).toBeTruthy();
     expect(within(expired).queryByRole('button')).toBeNull();
     expect(within(list).getByRole('meter', { name: '07 5-hour usage' })).toBeTruthy();
+  });
+
+  it('0.14.0: an account with no 5-hour limit says so where the bar and % are; a 5-hour window not open is 0', async () => {
+    const accounts = [
+      ...ACCOUNTS.filter((a) => a.id !== 7 && a.id !== 8),
+      acct(7, { fiveHourPct: 0, resetsAt: undefined }),
+      acct(8, { fiveHourPct: undefined, resetsAt: undefined, sevenDayPct: 20, noFiveHourLimit: true }),
+    ];
+    renderApp({ path: FORM, api: launchApi({ launchPreview: previewFake({ accounts }) }), state: state() });
+    const list = await openPicker();
+    const none = list.querySelector<HTMLElement>('[data-account="8"]')!;
+    expect(within(none).getByText('no 5-hour limit')).toBeTruthy();
+    expect(within(none).queryByRole('meter')).toBeNull();
+    expect(none.textContent).toBe('08no 5-hour limit0 live'); // no % (nor –) beside it
+    const idle = list.querySelector<HTMLElement>('[data-account="7"]')!;
+    expect(within(idle).getByRole('meter', { name: '07 5-hour usage' }).getAttribute('aria-valuenow')).toBe('0');
+    expect(within(idle).queryByText('no 5-hour limit')).toBeNull();
   });
 
   it('never offers a held account as Auto, even when the reply names one', async () => {

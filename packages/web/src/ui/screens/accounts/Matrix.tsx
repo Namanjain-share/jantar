@@ -8,12 +8,15 @@
  * row. A row expands (its ACCT button, or a click anywhere on it) to say in
  * words what the runway shows. 0.14.0: an account with a weekly ramp has
  * its cap as a flag ("cap 50%"), the 7D tick at the cap, and the cap with
- * its next change in the expanded row ("cap 50% · 75% Thu 22:30").
+ * its next change in the expanded row ("cap 50% · 75% Thu 22:30"). An
+ * account with no 5-hour limit (its reading has no 5-hour window at all)
+ * says "no 5-hour limit" in 5H %, with no meter, runway, reset or burn;
+ * "no window open" is for a 5-hour window there but not started.
  */
 import type { State } from '@jantar/protocol';
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
-import { windowLabel } from '../../../lib/format.js';
+import { NO_FIVE_HOUR_LIMIT, windowLabel } from '../../../lib/format.js';
 import { Meter } from '../../kit/Meter.js';
 import { Tag } from '../../kit/Tag.js';
 import { useWidth } from './hooks.js';
@@ -160,8 +163,14 @@ export function Matrix({
                 </button>
               </span>
               <span role="cell" className="flex h-full w-160 flex-none items-center gap-12">
-                <Meter value={r.h5} stale={!r.ok} label={`${r.name} 5-hour usage`} width={96} ceiling={ceiling} />
-                <ValueText r={r} />
+                {r.noLimit ? (
+                  <span className="type-mono text-ink-3">{NO_FIVE_HOUR_LIMIT}</span>
+                ) : (
+                  <>
+                    <Meter value={r.h5} stale={!r.ok} label={`${r.name} 5-hour usage`} width={96} ceiling={ceiling} />
+                    <ValueText r={r} />
+                  </>
+                )}
               </span>
               <span role="cell" className="flex h-full min-w-0 flex-1 items-start">
                 <Runway
@@ -170,7 +179,7 @@ export function Matrix({
                   fullAt={r.fullAt}
                   width={runway}
                   height={39}
-                  empty={r.ok ? 'no window open' : 'no reading'}
+                  empty={r.noLimit ? '' : r.ok ? 'no window open' : 'no reading'}
                   resetLabel={!wide && r.resetAt !== null ? hhmm(r.resetAt) : undefined}
                 />
               </span>

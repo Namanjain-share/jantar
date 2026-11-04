@@ -17,7 +17,7 @@ import {
   type PendingRequest,
   type State,
 } from '@jantar/protocol';
-import { accountId, ago, fiveHourPct } from '../../lib/format.js';
+import { accountId, ago, fiveHourPct, noFiveHourLimit } from '../../lib/format.js';
 import { readLocal } from '../../lib/storage.js';
 import { useApp } from '../context.js';
 import { GLYPH_WORD, glyphStateOf, type GlyphState } from '../kit/glyph.js';
@@ -112,14 +112,16 @@ export function needsCount(state: State, launchOn = false): number {
 
 export interface UsagePair {
   id: string;
-  /** 5-hour % (rounded), or null with no reading. */
+  /** 5-hour % (rounded), or null with no reading (or no 5-hour limit). */
   pct: number | null;
+  /** 0.14.0: the account has no 5-hour limit (its reading has no 5-hour window at all): a dash, never 0. */
+  noLimit?: boolean;
 }
 
 export function usagePairs(state: State, now: number = Date.now()): UsagePair[] {
   return Object.values(state.accounts)
     .sort((a, b) => a.id - b.id)
-    .map((a) => ({ id: accountId(a.id), pct: fiveHourPct(a, now) }));
+    .map((a) => (a.usageStatus === 'ok' && noFiveHourLimit(a) ? { id: accountId(a.id), pct: null, noLimit: true } : { id: accountId(a.id), pct: fiveHourPct(a, now) }));
 }
 
 export function useNeedsCount(): number {

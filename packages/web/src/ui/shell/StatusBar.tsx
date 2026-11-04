@@ -4,7 +4,8 @@
  *   left   live dot (mustard, blinks once per event, never on a timer) and
  *          the link state, cswap's age, then every account's 5h % as
  *          compact pairs ("01 22  02 3 ..."), values at or past the ceiling
- *          in --signal-text. Clicking the pairs opens Accounts. With one
+ *          in --signal-text (0.14.0: "02 no limit" for an account with no
+ *          5-hour limit, named in full on hover, never 0). Clicking the pairs opens Accounts. With one
  *          Claude login (v0.4 single mode) there is no cswap and no usage:
  *          the link state only.
  *   right  "New version ready · Reload" when there is one, contextual
@@ -23,7 +24,7 @@
  */
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
-import { ago, clock } from '../../lib/format.js';
+import { NO_FIVE_HOUR_LIMIT, NO_LIMIT_SHORT, ago, clock } from '../../lib/format.js';
 import type { Route } from '../../lib/router.js';
 import type { ConnInfo } from '../../store.js';
 import { KeyHints } from '../kit/Keycap.js';
@@ -123,9 +124,12 @@ export function StatusBar({
             >
               <span>5h</span>
               {pairs.map((p) => (
-                <span key={p.id} className="flex-none">
+                <span key={p.id} className="flex-none" title={p.noLimit ? `${p.id}: ${NO_FIVE_HOUR_LIMIT}` : undefined}>
                   {p.id}
-                  <b className={clsx('ml-4 font-data', pastCeiling(p.pct, ceiling) ? 'text-signal-text' : 'text-ink')}>{p.pct ?? '–'}</b>
+                  {/* 0.14.0: no 5-hour limit: said, named in full on hover, never 0. */}
+                  <b className={clsx('ml-4 font-data', p.noLimit ? 'text-ink-3' : pastCeiling(p.pct, ceiling) ? 'text-signal-text' : 'text-ink')}>
+                    {p.noLimit ? NO_LIMIT_SHORT : (p.pct ?? '–')}
+                  </b>
                 </span>
               ))}
             </button>

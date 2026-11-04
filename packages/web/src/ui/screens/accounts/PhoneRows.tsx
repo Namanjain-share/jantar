@@ -14,12 +14,14 @@
  * 0.14.0: the closed row shows the weekly cap's flag beside the first other
  * one ("next →", "re-login"), the two wrapping onto a second line when the
  * row is narrow, and "cap 95% · no weekly reading" for an account with a
- * ramp and no weekly reading.
+ * ramp and no weekly reading. An account with no 5-hour limit (its reading
+ * has no 5-hour window at all) has no 5-hour number and says "no 5-hour
+ * limit" in place of the bar, never "0 5h" or "no window open".
  */
 import type { State } from '@jantar/protocol';
 import clsx from 'clsx';
 import { Fragment } from 'react';
-import { windowLabel } from '../../../lib/format.js';
+import { NO_FIVE_HOUR_LIMIT, windowLabel } from '../../../lib/format.js';
 import { Meter } from '../../kit/Meter.js';
 import { Tag } from '../../kit/Tag.js';
 import { Sentence } from './Matrix.js';
@@ -86,15 +88,20 @@ export function PhoneRows({
                     ))}
                   </span>
                 ) : null}
-                <span className="ml-auto flex-none pl-12 type-mono">
-                  <span className={!r.ok || muted ? 'text-ink-3' : r.past ? 'text-signal-text' : 'text-ink'}>{r.h5 ?? '–'}</span>
-                  <span className="ml-4 text-ink-3">5h</span>
-                </span>
+                {/* 0.14.0: no 5-hour number for an account with no 5-hour limit: the line under says so. */}
+                {r.noLimit ? null : (
+                  <span className="ml-auto flex-none pl-12 type-mono">
+                    <span className={!r.ok || muted ? 'text-ink-3' : r.past ? 'text-signal-text' : 'text-ink'}>{r.h5 ?? '–'}</span>
+                    <span className="ml-4 text-ink-3">5h</span>
+                  </span>
+                )}
               </div>
               <div className="mt-6 flex h-16 items-center justify-between gap-12">
-                <Meter value={r.h5} stale={!r.ok || muted} label={`${r.name} 5-hour usage`} width={bar} ceiling={ceiling} />
+                {r.noLimit ? null : <Meter value={r.h5} stale={!r.ok || muted} label={`${r.name} 5-hour usage`} width={bar} ceiling={ceiling} />}
                 <span className="truncate type-mono text-ink-3">
-                  {r.resetAt !== null ? (
+                  {r.noLimit ? (
+                    NO_FIVE_HOUR_LIMIT
+                  ) : r.resetAt !== null ? (
                     <>
                       {resetIn(r, now)} · <b className="font-data text-ink-2">{hhmm(r.resetAt)}</b>
                     </>

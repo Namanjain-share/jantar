@@ -20,11 +20,15 @@
  * or one login: `noUsage`) names the account by its alias, as the Board
  * does, and says nothing of usage (its accounts' status is always unknown,
  * never a reason for --signal-text).
+ *
+ * 0.14.0: an account with no 5-hour limit (its reading has no 5-hour window
+ * at all) says "no 5-hour limit" in the 5-hour's place, with no meter,
+ * resets or burn; "no window open" is for a 5-hour window not started.
  */
 import clsx from 'clsx';
 import { Fragment, type ReactNode } from 'react';
 import type { Account, Session, State } from '@jantar/protocol';
-import { accountId, agoLong, clock, fiveHourPct, usageStatusText } from '../../../lib/format.js';
+import { NO_FIVE_HOUR_LIMIT, accountId, agoLong, clock, fiveHourPct, noFiveHourLimit, usageStatusText } from '../../../lib/format.js';
 import { glyphStateOf } from '../../kit/glyph.js';
 import { pastCeiling } from '../../kit/meterMath.js';
 import { Meter } from '../../kit/Meter.js';
@@ -35,7 +39,9 @@ import { inShort, modeWords, tildePath } from './order.js';
 function usage(account: Account | undefined, now: number) {
   const pct = fiveHourPct(account, now);
   const w = pct === null ? undefined : account?.windows.find((x) => x.kind === 'five_hour');
-  return { w, pct };
+  // 0.14.0: no 5-hour window in the reading at all: no 5-hour limit (pct is null, never 0).
+  const noLimit = account?.usageStatus === 'ok' && noFiveHourLimit(account);
+  return { w, pct, noLimit };
 }
 
 function resetsText(resetsAt: string | undefined, now: number): string | null {
@@ -67,7 +73,7 @@ export function MetaLine({
   noUsage?: boolean;
 }) {
   const single = useAccountsMode() === 'single' && session.node === undefined;
-  const { w, pct } = usage(account, now);
+  const { w, pct, noLimit } = usage(account, now);
   const parts: { key: string; node: ReactNode }[] = [];
   const acct =
     session.account === null
@@ -87,6 +93,8 @@ export function MetaLine({
     // Nothing reads usage there.
   } else if (account && account.usageStatus !== 'ok') {
     parts.push({ key: 'status', node: <span className="text-signal-text">{usageStatusText(account.usageStatus)}</span> });
+  } else if (noLimit) {
+    parts.push({ key: 'pct', node: NO_FIVE_HOUR_LIMIT });
   } else if (pct !== null) {
     parts.push({
       key: 'pct',
@@ -149,10 +157,11 @@ export function Props({
   noUsage?: boolean;
 }) {
   const single = useAccountsMode() === 'single' && session.node === undefined;
-  const { w, pct } = usage(account, now);
+  const { w, pct, noLimit } = usage(account, now);
   const id = session.account;
   const others = id === null ? [] : Object.values(state.sessions).filter((s) => s.account === id && s.sid !== session.sid);
-  const burn = account?.projection?.burnPctPerMin;
+  // A burn is % of a 5-hour window: none without one.
+  const burn = noLimit ? undefined : account?.projection?.burnPctPerMin;
   const mode = modeOnChip ? null : modeWords(session.mode);
   const reset = resetsText(w?.resetsAt, now);
   let note: string | null = null;
@@ -186,6 +195,8 @@ export function Props({
             <Row k="5-hour">
               {account && account.usageStatus !== 'ok' ? (
                 <span className="text-signal-text">{usageStatusText(account.usageStatus)}</span>
+              ) : noLimit ? (
+                <span className="text-ink-2">{NO_FIVE_HOUR_LIMIT}</span>
               ) : (
                 <>
                   <Meter value={pct} width={96} ceiling={ceiling} label={`${accountId(id)} 5-hour usage`} />
@@ -193,18 +204,21 @@ export function Props({
                 </>
               )}
             </Row>
-            <Row k="Resets">
-              {reset ? (
-                reset.split(' · ').map((part, i) => (
-                  <span key={i} className="whitespace-nowrap">
-                    {i > 0 ? <span aria-hidden="true">· </span> : null}
-                    {part}
-                  </span>
-                ))
-              ) : (
-                <span className="text-ink-3">no window open</span>
-              )}
-            </Row>
+            {/* 0.14.0: no 5-hour limit: no 5-hour window to reset. */}
+            {noLimit ? null : (
+              <Row k="Resets">
+                {reset ? (
+                  reset.split(' · ').map((part, i) => (
+                    <span key={i} className="whitespace-nowrap">
+                      {i > 0 ? <span aria-hidden="true">· </span> : null}
+                      {part}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-ink-3">no window open</span>
+                )}
+              </Row>
+            )}
             {burn !== undefined ? <Row k="Burn">{`+${Math.round(burn * 60)}%/h`}</Row> : null}
           </>
         )}

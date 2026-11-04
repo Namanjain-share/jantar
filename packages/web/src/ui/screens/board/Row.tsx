@@ -31,6 +31,7 @@ import clsx from 'clsx';
 import { m } from 'motion/react';
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import type { Session } from '@jantar/protocol';
+import { NO_FIVE_HOUR_LIMIT, NO_LIMIT_SHORT } from '../../../lib/format.js';
 import { routePath } from '../../../lib/router.js';
 import { justLongPressed, useLongPress, type PressGuard } from '../../kit/longPress.js';
 import { pastCeiling } from '../../kit/meterMath.js';
@@ -116,9 +117,21 @@ function Line2({ row, ceiling, muted }: { row: RowModel; ceiling: number; muted:
           {a.id}
           <span className="hidden desk:inline">
             <span aria-hidden="true"> · </span>
-            <span className="sr-only">5h </span>
-            <b className={clsx('font-data', pastCeiling(a.pct, ceiling) ? 'text-signal-text' : 'text-ink-2')}>{a.pct ?? '–'}</b>
-            <span className="sr-only">%</span>
+            {a.noLimit ? (
+              // 0.14.0: an account with no 5-hour limit: "5h no limit" to a screen reader, never "5h 0 %".
+              <>
+                <span className="sr-only">5h </span>
+                <b className="font-data text-ink-3" title={NO_FIVE_HOUR_LIMIT}>
+                  {NO_LIMIT_SHORT}
+                </b>
+              </>
+            ) : (
+              <>
+                <span className="sr-only">5h </span>
+                <b className={clsx('font-data', pastCeiling(a.pct, ceiling) ? 'text-signal-text' : 'text-ink-2')}>{a.pct ?? '–'}</b>
+                <span className="sr-only">%</span>
+              </>
+            )}
           </span>
         </span>
       ) : null}

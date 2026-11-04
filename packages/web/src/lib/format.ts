@@ -2,7 +2,7 @@
  * Display helpers: times, durations, usage levels and labels. Pure functions
  * (the current time is always passed in) so they are easy to test.
  */
-import type { Account, UsageWindow } from '@jantar/protocol';
+import { noFiveHourLimit, type Account, type UsageWindow } from '@jantar/protocol';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -104,13 +104,30 @@ export function primaryWindow(account: Account | undefined | null): UsageWindow 
 }
 
 /**
+ * 0.14.0: what an account with no 5-hour limit (protocol noFiveHourLimit: its
+ * reading has no 5-hour window at all) shows where another shows its 5-hour
+ * %, and the name of NO_LIMIT_SHORT where there is less room.
+ */
+export const NO_FIVE_HOUR_LIMIT = 'no 5-hour limit';
+/** 0.14.0: the same in a 5-hour number's place, where "5h" is said beside it (the status bar, a board row): never 0, nor "–" (no reading). */
+export const NO_LIMIT_SHORT = 'no limit';
+
+/** 0.14.0: whether the account has no 5-hour limit (protocol's, for the screens). */
+export { noFiveHourLimit };
+
+/**
  * An account's 5-hour %, read the same way on every screen (board rows, the
  * status bar, the session meta and the Accounts matrix): 0 while no 5-hour
  * window is open (none reported, or its reset has passed), null when there is
  * no account or its usage reading is not ok (a stale token is not a number).
+ * 0.14.0: null too for an account with no 5-hour limit (a reading with no
+ * 5-hour window at all, noFiveHourLimit): it has no 5-hour %, so never 0;
+ * where a screen says why, it says NO_FIVE_HOUR_LIMIT. A 5-hour window that
+ * is there but not started is still 0 ("no window open").
  */
 export function fiveHourPct(account: Account | undefined | null, now: number = Date.now()): number | null {
   if (!account || account.usageStatus !== 'ok') return null;
+  if (noFiveHourLimit(account)) return null;
   const w = account.windows.find((x) => x.kind === 'five_hour');
   if (!w || !Number.isFinite(w.pct)) return 0;
   const reset = w.resetsAt ? Date.parse(w.resetsAt) : NaN;

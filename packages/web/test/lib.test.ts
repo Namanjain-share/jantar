@@ -76,8 +76,13 @@ describe('format', () => {
   it('reads the 5-hour % the same way everywhere: 0 with no window open, nothing for a stale token', () => {
     const at = Date.parse('2026-01-15T10:00:00.000Z');
     expect(fiveHourPct(account(3, { windows: [{ kind: 'five_hour', pct: 81.4, resetsAt: '2026-01-15T12:00:00.000Z' }] }), at)).toBe(81);
-    // No 5-hour window: nothing used in this window yet (the Accounts screen says "no window open").
-    expect(fiveHourPct(account(2, { windows: [{ kind: 'seven_day', pct: 12 }] }), at)).toBe(0);
+    // 0.14.0: a 5-hour window there but not started: nothing used in it yet (the Accounts screen says "no window open").
+    expect(fiveHourPct(account(2, { windows: [{ kind: 'five_hour', pct: 0 }, { kind: 'seven_day', pct: 12 }] }), at)).toBe(0);
+    // 0.14.0: no 5-hour window in the reading at all: no 5-hour limit, so no 5-hour number (never 0), flagged or not.
+    expect(fiveHourPct(account(2, { windows: [{ kind: 'seven_day', pct: 12 }] }), at)).toBeNull();
+    expect(fiveHourPct(account(2, { windows: [{ kind: 'seven_day', pct: 12 }], noFiveHourLimit: true }), at)).toBeNull();
+    // No reading at all: nothing to say it lacks one.
+    expect(fiveHourPct(account(2, { windows: [] }), at)).toBe(0);
     // A window whose reset has passed is a new, empty window.
     expect(fiveHourPct(account(5, { windows: [{ kind: 'five_hour', pct: 64, resetsAt: '2026-01-15T09:00:00.000Z' }] }), at)).toBe(0);
     expect(fiveHourPct(account(11, { usageStatus: 'token_expired' }), at)).toBeNull();

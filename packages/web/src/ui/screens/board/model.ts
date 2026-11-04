@@ -37,7 +37,7 @@ import {
   type State,
 } from '@jantar/protocol';
 import { describeSuggestion, planOf, questionsOf, summarizeTool } from '../../../lib/describe.js';
-import { accountId, clock, fiveHourPct, previewText } from '../../../lib/format.js';
+import { accountId, clock, fiveHourPct, noFiveHourLimit, previewText } from '../../../lib/format.js';
 import { GROUP_LABEL, GROUP_ORDER, glyphStateOf, groupOf, type GlyphState, type GroupKey } from '../../kit/glyph.js';
 import { needsWord } from '../../shell/data.js';
 import { hasMachines, offlineSince } from '../session/Info.js';
@@ -163,8 +163,11 @@ export interface RowModel {
   /** Waiting past the first reminder point: the age turns ember. */
   ageEmber: boolean;
   line2: Line2;
-  /** Account id ("03", or a server's config-dir alias) and its 5-hour % (null with no reading). Null with no account. */
-  account: { id: string; pct: number | null } | null;
+  /**
+   * Account id ("03", or a server's config-dir alias) and its 5-hour % (null with no reading). Null with no account.
+   * 0.14.0: `noLimit` for an account with no 5-hour limit (its reading has no 5-hour window at all): pct is null, never 0.
+   */
+  account: { id: string; pct: number | null; noLimit?: boolean } | null;
   /** v0.6: the machine it runs on ("Mac", "build-1"), once any machine is paired; null (or absent) before. */
   machine?: { name: string; node?: string; offline: boolean } | null;
   /** An in-flight move: "03 → 06 · restarting". */
@@ -198,7 +201,9 @@ function accountCell(state: State, s: Session, now: number): RowModel['account']
   if (s.account === null) return null;
   const a = sessionAccount(state, s) ?? undefined;
   const dirs = s.node !== undefined && machineOf(state, s.node)?.accountsMode === 'dirs';
-  return { id: dirs && a?.alias ? a.alias : accountId(s.account), pct: fiveHourPct(a, now) };
+  const id = dirs && a?.alias ? a.alias : accountId(s.account);
+  // 0.14.0: no 5-hour limit is said, never read as 0% or as no reading.
+  return a?.usageStatus === 'ok' && noFiveHourLimit(a) ? { id, pct: null, noLimit: true } : { id, pct: fiveHourPct(a, now) };
 }
 
 /** v0.6: the row's machine, once any is paired. */

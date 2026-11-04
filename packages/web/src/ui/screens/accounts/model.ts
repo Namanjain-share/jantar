@@ -14,6 +14,7 @@ import {
   accountsOf,
   boardOrder,
   machineOf,
+  noFiveHourLimit,
   type Account,
   type AccountProjection,
   type Move,
@@ -59,8 +60,15 @@ export interface AccountRow {
   name: string;
   /** usageStatus is ok, so the numbers are current. */
   ok: boolean;
-  /** 5-hour % (rounded); 0 with no window open; null with no reading. */
+  /** 5-hour % (rounded); 0 with no window open; null with no reading, or with no 5-hour limit. */
   h5: number | null;
+  /**
+   * 0.14.0: the account has no 5-hour limit (its reading has no 5-hour
+   * window at all, protocol noFiveHourLimit): no 5-hour %, reset, burn or
+   * fill, and the row says NO_FIVE_HOUR_LIMIT. Not "no window open", which
+   * is a 5-hour window there but not started (h5 0).
+   */
+  noLimit: boolean;
   /** The 5-hour reset, when a window is open. */
   resetAt: number | null;
   /** When it reaches the ceiling at this pace, if that is before the reset. */
@@ -149,11 +157,13 @@ export function buildRows(state: State, plan: PlanResponse | null, ceiling: numb
     .sort((a, b) => a.id - b.id)
     .map((a) => {
       const ok = a.usageStatus === 'ok';
-      const five = a.windows.find((w) => w.kind === 'five_hour');
+      // 0.14.0: no 5-hour window in the reading at all: no 5-hour limit, so no 5-hour number, never 0.
+      const noLimit = noFiveHourLimit(a);
+      const five = noLimit ? undefined : a.windows.find((w) => w.kind === 'five_hour');
       const week = a.windows.find((w) => w.kind === 'seven_day');
       const reset = parse(five?.resetsAt);
       const open = five !== undefined && (reset === null || reset > now);
-      const h5 = five ? (open ? Math.round(Math.max(0, five.pct)) : 0) : ok ? 0 : null;
+      const h5 = noLimit ? null : five ? (open ? Math.round(Math.max(0, five.pct)) : 0) : ok ? 0 : null;
       const resetAt = open && reset !== null ? reset : null;
 
       const proj = projectionFor(a, plan);
@@ -163,7 +173,8 @@ export function buildRows(state: State, plan: PlanResponse | null, ceiling: numb
         else if (!proj && five?.willLastToReset !== true) fullAt = parse(five?.projectedExhaustionAt);
         if (fullAt !== null && fullAt >= resetAt) fullAt = null;
       }
-      const burn = proj && proj.burnPctPerMin > 0 ? proj.burnPctPerMin * 60 : null;
+      // A burn is % of a 5-hour window an hour: none without one (a daemon before 0.14.0 sent one anyway).
+      const burn = !noLimit && proj && proj.burnPctPerMin > 0 ? proj.burnPctPerMin * 60 : null;
 
       // The plan is the Mac's own (the legacy ccw tool runs there).
       const cap = node === undefined ? capFor(a.id, plan, week) : null;
@@ -184,6 +195,7 @@ export function buildRows(state: State, plan: PlanResponse | null, ceiling: numb
         name: accountName(a.id, a),
         ok,
         h5,
+        noLimit,
         resetAt,
         fullAt,
         burnPerHour: burn,
@@ -199,13 +211,15 @@ export function buildRows(state: State, plan: PlanResponse | null, ceiling: numb
     });
 }
 
-/** Headroom under the ceiling; accounts with no current reading go last. */
+/** Headroom under the ceiling; accounts with no current reading go last, those with no 5-hour limit first. */
 function headroom(r: AccountRow, ceiling: number): number {
+  if (r.ok && r.noLimit) return Number.POSITIVE_INFINITY;
   return r.ok && r.h5 !== null ? ceiling - r.h5 : Number.NEGATIVE_INFINITY;
 }
 
 export function sortRows(rows: AccountRow[], key: SortKey, ceiling: number): AccountRow[] {
   if (key === 'id') return rows;
+  // Two with no 5-hour limit: Infinity - Infinity is NaN, so the id decides, as for a tie.
   return [...rows].sort((a, b) => headroom(b, ceiling) - headroom(a, ceiling) || a.id - b.id);
 }
 
@@ -215,7 +229,7 @@ export function displayLine(rows: AccountRow[]): string {
   if (past) return `${past} ${past === 1 ? 'account' : 'accounts'} past the ceiling`;
   const dead = rows.filter((r) => r.fullAt !== null).length;
   if (dead) return dead === 1 ? '1 account runs out before its reset' : `${dead} accounts run out before their reset`;
-  if (!rows.some((r) => r.ok && r.h5 !== null)) return 'No usage reading yet';
+  if (!rows.some((r) => r.ok && (r.h5 !== null || r.noLimit))) return 'No usage reading yet';
   return 'All accounts under the ceiling';
 }
 
@@ -265,6 +279,9 @@ export function runwaySentence(r: AccountRow, state: State, ceiling: number, now
           ? 'The login token expired, so these numbers can be stale. Log in again to refresh them.'
           : `cswap reports "${usageStatusText(r.account.usageStatus)}", so these numbers can be stale.`,
     });
+  } else if (r.noLimit) {
+    // 0.14.0: never "no window open": there is no 5-hour window to open.
+    out.push({ text: `This account has no 5-hour limit: its weekly ${r.cap ? 'cap' : 'use'} is what stops it.` });
   } else if (r.resetAt === null) {
     out.push({ text: 'No 5-hour window is open on this account.' });
   } else {

@@ -28,7 +28,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { boardOrder, machineName } from '@jantar/protocol';
 import type { SearchGroup, SearchItem, SearchKind } from '@jantar/protocol/work';
 import { errorText } from '../../lib/api.js';
-import { accountId, accountName, ago, primaryWindow } from '../../lib/format.js';
+import { NO_FIVE_HOUR_LIMIT, accountId, accountName, ago, noFiveHourLimit } from '../../lib/format.js';
 import { routePath } from '../../lib/router.js';
 import { useApp, useDeps, useNavigate } from '../context.js';
 import { Keycap } from '../kit/Keycap.js';
@@ -253,12 +253,14 @@ export function Palette({ open, onOpenChange, now }: { open: boolean; onOpenChan
               {shownAccounts.length ? (
                 <Command.Group heading="Accounts">
                   {shownAccounts.map((a) => {
-                    const w = primaryWindow(a);
+                    // 0.14.0: the 5-hour window's % only (never a weekly one's as "5h"), or no 5-hour limit.
+                    const w = a.windows.find((x) => x.kind === 'five_hour');
+                    const five = noFiveHourLimit(a) ? NO_FIVE_HOUR_LIMIT : w ? `5h ${Math.round(w.pct)}` : null;
                     return (
                       <Command.Item key={a.id} value={`account ${a.id}`} onSelect={() => go('/accounts')} className={ROW}>
                         <span className="w-16 type-mono text-ink">{accountId(a.id)}</span>
                         <span className="min-w-0 truncate type-row text-ink-2">{a.alias ?? a.emailMasked}</span>
-                        {w ? <span className="ml-auto pl-12 type-mono text-ink-3">5h {Math.round(w.pct)}</span> : null}
+                        {five ? <span className="ml-auto pl-12 type-mono text-ink-3">{five}</span> : null}
                       </Command.Item>
                     );
                   })}
