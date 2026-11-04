@@ -16,9 +16,10 @@
  * refusal (a switch.json that won't parse: 409) is shown as the Mac said
  * it; offline, Save is off, and so is it while a save runs. 0.14.0: what
  * Save did is said in the actions row itself (role status, or alert), which
- * a form sheet pins at its foot, so it is in view at every size. The paths
- * are words, as Work's are (screens/work/client.ts), so no schema comes with
- * them.
+ * a form sheet pins at its foot, so it is in view at every size; the row's
+ * height is kept clear of the scroller's foot (--sheet-actions-h, kit.css)
+ * so Tab never parks a field under it. The paths are words, as Work's are
+ * (screens/work/client.ts), so no schema comes with them.
  */
 import { CheckIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
@@ -148,7 +149,24 @@ function SwitchingForm({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const kept = useRef<{ sig: string; key: string } | null>(null);
+  const actions = useRef<HTMLDivElement>(null);
   const id = useId();
+  const ready = load.state === 'ready' && draft !== null;
+
+  // 0.14.0: the pinned actions row's height, kept clear at the scroller's foot (kit.css scroll-padding-bottom).
+  useEffect(() => {
+    const row = actions.current;
+    const popup = row?.closest<HTMLElement>('.sheet-popup');
+    if (!ready || !row || !popup) return;
+    const measure = () => popup.style.setProperty('--sheet-actions-h', `${Math.ceil(row.getBoundingClientRect().height)}px`);
+    measure();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    ro?.observe(row);
+    return () => {
+      ro?.disconnect();
+      popup.style.removeProperty('--sheet-actions-h');
+    };
+  }, [ready]);
 
   useEffect(() => {
     let alive = true;
@@ -318,7 +336,7 @@ function SwitchingForm({ onDone }: { onDone: () => void }) {
       })}
 
       {/* 0.14.0: what Save did, in the row with Save (pinned at a form sheet's foot): always in view, and announced. */}
-      <div className="sheet-actions mt-16">
+      <div ref={actions} data-switching-actions="" className="sheet-actions mt-16">
         <p role="status" className={clsx('flex items-center gap-6 type-small text-ink-2', saved && 'mb-8')}>
           {saved ? (
             <>
