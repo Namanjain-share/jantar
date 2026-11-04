@@ -5,6 +5,21 @@ import { setShortcuts } from '../src/ui/shell/navState.js';
 
 const dom = typeof window !== 'undefined';
 
+// 0.13.0: amounts are formatted in the device's own locale (lib/money.ts passes none). Tests
+// pin that default to en-IN, the locale they read in ("₹4,50,000"), so a runner set to en-US
+// or C (CI) formats the same. An explicit locale still wins.
+const TEST_LOCALE = 'en-IN';
+const NumberFormat = Intl.NumberFormat;
+const Pinned = function NumberFormatPinned(locales?: string | string[], options?: Intl.NumberFormatOptions) {
+  return new NumberFormat(locales ?? TEST_LOCALE, options);
+} as unknown as typeof Intl.NumberFormat;
+Object.defineProperties(Pinned, Object.getOwnPropertyDescriptors(NumberFormat));
+Intl.NumberFormat = Pinned;
+const toLocaleString = Number.prototype.toLocaleString;
+Number.prototype.toLocaleString = function pinned(this: number, locales?: string | string[], options?: Intl.NumberFormatOptions) {
+  return toLocaleString.call(this, locales ?? TEST_LOCALE, options);
+};
+
 // findBy and waitFor give up after 1 s; shared CI runners load a lazy screen more slowly than that.
 configure({ asyncUtilTimeout: process.env.CI ? 5_000 : 1_000 });
 
