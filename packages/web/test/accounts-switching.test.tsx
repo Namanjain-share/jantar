@@ -8,8 +8,10 @@ import { SWITCH_RULES, type SwitchRules } from '@jantar/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, type ApiRequest, type ApiRoute } from '../src/lib/api.js';
 import { writeLocal } from '../src/lib/storage.js';
-import { buildRows, capText } from '../src/ui/screens/accounts/model.js';
-import { OFFLINE_TEXT, PRESET_TEXT, SAVED_TEXT, SWITCHING_PATHS, patchOf } from '../src/ui/screens/accounts/SwitchingSheet.js';
+import { buildRows, capText, runwaySentence } from '../src/ui/screens/accounts/model.js';
+import { HOLD_NO_CAP_TEXT, OFFLINE_TEXT, PRESET_TEXT, SAVED_TEXT, SWITCHING_PATHS, patchOf } from '../src/ui/screens/accounts/SwitchingSheet.js';
+import { heldSentence } from '../src/ui/screens/new/AccountPicker.js';
+import { layoutAt } from '../src/ui/shell/layout.js';
 import { dayClock } from '../src/ui/screens/accounts/time.js';
 import { LOCAL_DEVICE_KEY } from '../src/ui/screens/devices/local.js';
 import { NOW, account, fakeApi, iso, opened, preloadPlaces, renderApp, stateWith } from './helpers.js';
@@ -81,6 +83,17 @@ describe('0.14.0 the weekly cap on an account', () => {
     expect(within(two).getByText(`cap 50% · 75% ${dayClock(Date.parse(UNTIL), NOW)}`)).toBeTruthy();
   });
 
+  it('says a held account with a cap still sees its sessions leave at it', () => {
+    const held = account(2, { held: true, windows: [{ kind: 'seven_day', pct: 10, resetsAt: iso(4 * 86_400_000) }] });
+    const [withCap] = buildRows(stateWith({ accounts: [held] }), plan(), 97, NOW);
+    const [noCap] = buildRows(stateWith({ accounts: [held] }), plan({ source: 'none' }), 97, NOW);
+    const text = (r: typeof withCap) => runwaySentence(r!, stateWith({ accounts: [held] }), 97, NOW).map((p) => p.text).join('');
+    expect(text(withCap)).toContain('Held: autoswitch moves nothing onto it, and its sessions leave once it passes its weekly cap.');
+    expect(text(noCap)).toContain('Held: autoswitch moves nothing onto or off it.');
+    expect(heldSentence(2)).toBe('Held for other work. ccw will never move this session, even when 02 fills up.');
+    expect(heldSentence(2, true)).toBe('Held for other work: ccw moves no session onto 02, but moves this one off once 02 passes its weekly cap.');
+  });
+
   it('works out only what changed', () => {
     expect(patchOf(RULES, RULES)).toBeNull();
     expect(patchOf(RULES, { ...RULES, hold: [3] })).toBeNull();
@@ -103,6 +116,9 @@ describe('0.14.0 the Switching rules sheet', () => {
     const three = group(dialog, '03');
     expect((within(three).getByRole('switch', { name: /Hold/ }) as HTMLInputElement).checked).toBe(true);
     expect((within(three).getByRole('switch', { name: /Weekly cap/ }) as HTMLInputElement).checked).toBe(false);
+    // Hold: nothing moves onto it; without a cap, nothing off it either
+    expect(within(three).getByRole('switch', { name: 'Hold: ccw never moves sessions onto it' })).toBeTruthy();
+    expect(within(three).getByRole('switch', { name: /Hold/ }).getAttribute('aria-describedby')).toBe(within(three).getByText(HOLD_NO_CAP_TEXT).id);
     const two = group(dialog, '02 side');
     expect((within(two).getByRole('switch', { name: /Weekly cap/ }) as HTMLInputElement).checked).toBe(true);
     expect((within(two).getByRole('textbox', { name: '02 side day 5' }) as HTMLInputElement).value).toBe('75');
@@ -135,6 +151,32 @@ describe('0.14.0 the Switching rules sheet', () => {
     expect(row.contains(within(dialog).getByRole('button', { name: 'Close' }))).toBe(true);
     // the live region was there before the receipt, so it is announced
     expect(row.firstElementChild).toBe(status);
+  });
+
+  it('asks before Esc or the scrim drops an edit made with − and + or the preset, and not once it is saved (a form sheet)', async () => {
+    const custom: SwitchRules = { ...RULES, weeklyRamp: { '2': { days: [40, 40, 40, 40, 60, 80, 90], lastHour: 100 } } };
+    const a = api(async (body) => ({ ...custom, ...(body as object) }) as SwitchRules, async () => custom);
+    renderApp({ path: '/accounts', api: a, state: stateWith({ accounts }), layout: layoutAt(1440) });
+    const dialog = await openSheet();
+    const esc = () => fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    // a tap on +: no input event, but an edit
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Raise 5-hour limit' }));
+    esc();
+    expect(await screen.findByRole('group', { name: 'Unsaved changes' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect((within(dialog).getByRole('textbox', { name: '5-hour limit' }) as HTMLInputElement).value).toBe('98');
+    // − back to as saved: nothing to lose, but the preset is an edit of its own
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lower 5-hour limit' }));
+    fireEvent.click(within(group(dialog, '02 side')).getByRole('button', { name: `${PRESET_TEXT} for 02 side` }));
+    esc();
+    expect(await screen.findByRole('group', { name: 'Unsaved changes' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    // saved: Esc closes at once
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await within(dialog).findByText(SAVED_TEXT);
+    esc();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Switching rules' })).toBeNull());
+    expect(screen.queryByRole('group', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('saves only what changed, with one PATCH, and says ccw uses it within a minute', async () => {

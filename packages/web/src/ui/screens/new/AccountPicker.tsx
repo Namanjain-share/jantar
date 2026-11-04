@@ -39,16 +39,21 @@ export interface AutoPick {
 
 export type AccountChoice = number | 'auto';
 
-/** The warning a held account carries before it is used. */
-export function heldSentence(id: number): string {
+/**
+ * The warning a held account carries before it is used. 0.14.0: one with a
+ * weekly cap (LaunchAccount.weeklyCap) isn't held for good: its sessions
+ * leave once it passes the cap.
+ */
+export function heldSentence(id: number, capped = false): string {
+  if (capped) return `Held for other work: ${LEGACY_TOOL} moves no session onto ${accountId(id)}, but moves this one off once ${accountId(id)} passes its weekly cap.`;
   return `Held for other work. ${LEGACY_TOOL} will never move this session, even when ${accountId(id)} fills up.`;
 }
 
 /** "Held for other work…" with "Use 02 anyway". */
-export function HeldConfirm({ id, onConfirm, className }: { id: number; onConfirm: () => void; className?: string }) {
+export function HeldConfirm({ id, capped = false, onConfirm, className }: { id: number; capped?: boolean; onConfirm: () => void; className?: string }) {
   return (
     <div className={clsx('flex flex-col items-start gap-8', className)}>
-      <p className="type-small font-medium text-ink-2">{heldSentence(id)}</p>
+      <p className="type-small font-medium text-ink-2">{heldSentence(id, capped)}</p>
       <Button size="sm" onClick={onConfirm}>
         Use {accountId(id)} anyway
       </Button>
@@ -126,7 +131,7 @@ export function AccountList({ accounts, value, auto, onPick, bar = 96 }: Account
                 {body}
               </div>
             )}
-            {confirming === a.id ? <HeldConfirm id={a.id} className="px-16 pb-12" onConfirm={() => onPick(a.id, true)} /> : null}
+            {confirming === a.id ? <HeldConfirm id={a.id} capped={a.weeklyCap !== undefined} className="px-16 pb-12" onConfirm={() => onPick(a.id, true)} /> : null}
           </li>
         );
       })}

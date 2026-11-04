@@ -436,7 +436,7 @@ export function StartForm({ root, path, entry, initialAccount = 'auto', initialN
                 ) : null}
               </div>
             ))}
-            {chosen && needsHeldOk ? <HeldConfirm id={chosen.id} className="mt-8" onConfirm={() => setHeldOk(true)} /> : null}
+            {chosen && needsHeldOk ? <HeldConfirm id={chosen.id} capped={chosen.weeklyCap !== undefined} className="mt-8" onConfirm={() => setHeldOk(true)} /> : null}
           </Prop>
         ) : null}
         {!phone && !single && pinned === null ? <AccountPopover {...listProps} open={picking} onOpenChange={setPicking} anchor={anchor} /> : null}

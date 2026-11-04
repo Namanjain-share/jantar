@@ -12,7 +12,7 @@ import { V03_LAUNCH_FLAGS, LaunchStartBodySchema, type LaunchFlags, type LaunchS
 import { ApiError } from '../src/lib/api.js';
 import { createLayoutStore, layoutAt } from '../src/ui/shell/layout.js';
 import { preloadPlaces, renderApp, stateWith } from './helpers.js';
-import { commandFor, job, launchApi, previewFake, viewport } from './launch-fixtures.js';
+import { ACCOUNTS, commandFor, job, launchApi, previewFake, viewport } from './launch-fixtures.js';
 
 preloadPlaces('new');
 
@@ -404,6 +404,15 @@ describe('start form: account (L6)', () => {
     press(2000);
     await waitFor(() => expect(launchStart).toHaveBeenCalledTimes(1));
     expect(launchStart.mock.calls[0]?.[0]).toMatchObject({ account: 2, confirmHeld: true });
+  });
+
+  it('0.14.0: a held account with a weekly cap says its sessions still leave at the cap', async () => {
+    const accounts = ACCOUNTS.map((a) => (a.id === 2 ? { ...a, weeklyCap: 50 } : a));
+    const api = launchApi({ launchPreview: previewFake({ accounts }) });
+    renderApp({ path: FORM, api, state: state() });
+    const list = await openPicker();
+    fireEvent.click(within(list).getByRole('button', { name: '02 acct2, held' }));
+    expect(within(list).getByText('Held for other work: ccw moves no session onto 02, but moves this one off once 02 passes its weekly cap.')).toBeTruthy();
   });
 
   it('offers the group quick choice, and asks again before a held one', async () => {

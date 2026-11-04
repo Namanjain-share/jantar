@@ -48,7 +48,9 @@ rules in its `~/.config/ccw/switch.json`. **Switching rules** on the
 Accounts screen (beside Refresh, on a device paired with control) shows
 and changes them:
 
-- **Hold**, per account: ccw moves nothing onto it or off it.
+- **Hold**, per account: ccw never moves sessions onto it. Without a
+  weekly cap it never moves them off it either; with one, its sessions
+  leave once it passes the cap.
 - **Weekly cap by day**, per account: instead of the one weekly limit, a
   cap for each day of the account's week and one for its last hour. Day 1
   starts at the account's weekly reset; in the hour before the next reset

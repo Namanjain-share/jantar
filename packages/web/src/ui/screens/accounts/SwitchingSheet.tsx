@@ -4,10 +4,12 @@
  * load). It reads the rules as the file holds them (GET
  * /v1/accounts/switching) and saves what changed with one PATCH:
  *
- *   per account   Hold (nothing moves onto or off it) and Weekly cap: off,
- *                 or a cap for each day of the account's week and for its
- *                 last hour, as 44 px steppers, with a preset that fills in
- *                 the usual week (50, 50, 50, 50, 75, 85, 95, then 100)
+ *   per account   Hold (ccw never moves sessions onto it; without a weekly
+ *                 cap never off it either, with one its sessions leave
+ *                 once it passes the cap) and Weekly cap: off, or a cap for
+ *                 each day of the account's week and for its last hour, as
+ *                 44 px steppers, with a preset that fills in the usual
+ *                 week (50, 50, 50, 50, 75, 85, 95, then 100)
  *   for all       the 5-hour limit, the weekly limit, and how many minutes
  *                 before full a session leaves
  *
@@ -49,6 +51,11 @@ export const OFFLINE_TEXT = 'Offline: saving needs your Mac.';
 export const PRESET_TEXT = 'Fill the usual week';
 
 const DAY_LABELS = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'];
+
+/** 0.14.0: what Hold means, under a held account's switch: it depends on whether the account has a weekly cap. */
+export const HOLD_TEXT = 'Hold: ccw never moves sessions onto it';
+export const HOLD_NO_CAP_TEXT = 'Without a weekly cap, ccw never moves its sessions off it either.';
+export const HOLD_CAP_TEXT = 'With a weekly cap, its sessions leave once it passes the cap.';
 
 const sameRamp = (a: WeeklyRamp | undefined, b: WeeklyRamp | undefined) =>
   a === b || (!!a && !!b && a.lastHour === b.lastHour && a.days.length === b.days.length && a.days.every((d, i) => d === b.days[i]));
@@ -296,14 +303,24 @@ function SwitchingForm({ onDone, onDirty }: { onDone: () => void; onDirty: (dirt
         const held = rules.hold.includes(a.id);
         const ramp = rules.weeklyRamp[String(a.id)];
         const head = `${id}-a${a.id}`;
+        const holdNote = `${id}-h${a.id}`;
         return (
           <div key={a.id} role="group" aria-labelledby={head} className="border-b border-line py-8">
             <p id={head} className="type-row text-ink">
               {a.name}
             </p>
-            <SwitchRow checked={held} onChange={(on) => edit({ ...rules, hold: on ? [...rules.hold, a.id] : rules.hold.filter((n) => n !== a.id) })}>
-              Hold: nothing moves onto or off it
+            <SwitchRow
+              checked={held}
+              describedBy={held ? holdNote : undefined}
+              onChange={(on) => edit({ ...rules, hold: on ? [...rules.hold, a.id] : rules.hold.filter((n) => n !== a.id) })}
+            >
+              {HOLD_TEXT}
             </SwitchRow>
+            {held ? (
+              <p id={holdNote} className="-mt-4 mb-4 max-w-560 type-small text-ink-3">
+                {ramp ? HOLD_CAP_TEXT : HOLD_NO_CAP_TEXT}
+              </p>
+            ) : null}
             <SwitchRow checked={!!ramp} onChange={(on) => setRamp(a.id, on ? (load.saved.weeklyRamp[String(a.id)] ?? { days: [...SWITCH_RULES.preset.days], lastHour: SWITCH_RULES.preset.lastHour }) : null)}>
               Weekly cap by day
             </SwitchRow>

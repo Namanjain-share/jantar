@@ -260,6 +260,7 @@ export function runwaySentence(r: AccountRow, state: State, ceiling: number, now
     out.push({ text: [who.folder, who.name].filter(Boolean).join(' · '), strong: true });
     out.push({ text: m.to !== undefined ? ` to ${accountId(m.to)} (${moveStepWord(m)}).` : ` (${moveStepWord(m)}).` });
   }
-  if (r.account.held) out.push({ text: ' Held: autoswitch moves nothing onto or off it.' });
+  // 0.14.0: held with a weekly cap, its sessions still leave at the cap.
+  if (r.account.held) out.push({ text: r.cap ? ' Held: autoswitch moves nothing onto it, and its sessions leave once it passes its weekly cap.' : ' Held: autoswitch moves nothing onto or off it.' });
   return out;
 }

@@ -7,9 +7,11 @@ What changed for people who use Jantar, newest first. Versions before
 
 - **Change ccw's switching rules from the phone.** While the legacy ccw
   tool runs, Accounts has a **Switching rules** button. It opens a sheet
-  with what ccw moves sessions by: which accounts are held (nothing moves
-  onto them or off them), the 5-hour and weekly limits, and how many
-  minutes before full a session leaves. Save writes them into ccw's
+  with what ccw moves sessions by: which accounts are held (ccw never
+  moves sessions onto them; without a weekly cap it never moves them off
+  either, and with one their sessions leave once it passes the cap), the
+  5-hour and weekly limits, and how many minutes before full a session
+  leaves. Save writes them into ccw's
   `switch.json` on the Mac, and ccw uses them within a minute. Only what
   you changed is written; everything else in the file stays as it was,
   and the file as it was before is kept beside it as `switch.json.prev`.
