@@ -17,7 +17,7 @@
  * caller may not see is the one not_found sentence (a refusal confirms
  * nothing). Logs carry ids and codes only, never her name or email.
  */
-import { OWNER_FALLBACK_NAME, PEOPLE_LABEL, spaceLabel } from '@jantar/protocol/people-core';
+import { OWNER_FALLBACK_NAME, PEOPLE_LABEL, PERSON_LINK_CODE_TTL_MS, spaceLabel } from '@jantar/protocol/people-core';
 import {
   BUILT_PHASE,
   GONE_BY,
@@ -90,7 +90,8 @@ export const PEOPLE_REASONS = {
   noPerson: 'No such person.',
   full: `An accountability partner space holds ${PEOPLE_MAX} person on this Mac for now.`,
   invalidCode: 'This invite link has expired or was already used. Ask for a new one.',
-  invalidLink: 'This code has expired or was already used. Make a new one on your other device.',
+  // 0.12.2: the expired-link and devices-full sentences say what to do next.
+  invalidLink: `This link has expired or was already used. On a device that is linked already, open Me › Devices › Link another device for a new one, and use it within ${PERSON_LINK_CODE_TTL_MS / 60_000} minutes.`,
   widen: 'The agreement asks for more than the invite offered.',
   version: 'This invite changed since you opened it. Open the link again.',
   unbuilt: 'That area is not part of this version of Jantar.',
@@ -105,7 +106,10 @@ export const PEOPLE_REASONS = {
   pausedAsk: (name: string) => `${name} has paused. Ask again once sharing resumes.`,
   lastDevice: 'To end sharing, use `jantar people remove` on your Mac. It gives them 7 days to download their data.',
   hasRows: 'They have food entries. They can export or delete them first.',
-  devicesFull: 'Five devices are linked already. Revoke one first.',
+  /** Her Devices screen, where Revoke is. */
+  devicesFull: 'Five devices are linked already, the most there can be. Revoke one you no longer use, then tap Link another device again.',
+  /** The new device, claiming a code made while there was room. */
+  devicesFullHere: 'Five devices are linked already, the most there can be. On one of them, open Me › Devices and revoke one you no longer use, then link this device again.',
   ending: 'Sharing is ending. Download your data instead.',
   noLink: 'Make a new link on your Mac: jantar people invite',
   emailMismatch: (email: string) => `This invite is for a different email. You're signed in as ${email}.`,
@@ -750,7 +754,7 @@ export class PeopleModule {
     // The device that minted the code must still be one of hers (a revoked phone's codes are void, M4).
     const by = this.devices.get(r.byDevice);
     if (!by || by.revokedAt || by.personId !== r.personId) return { ok: false, code: 'not_found', reason: PEOPLE_REASONS.invalidLink };
-    if (!this.devices.roomForAnother(r.personId)) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.devicesFull };
+    if (!this.devices.roomForAnother(r.personId)) return { ok: false, code: 'conflict', reason: PEOPLE_REASONS.devicesFullHere };
     if (!this.linkCodes.spend(r)) return { ok: false, code: 'not_found', reason: PEOPLE_REASONS.invalidLink };
     const issued = this.devices.issue({ personId: r.personId, name: deviceName, userAgent, accessEmail: by.accessEmail ?? undefined });
     this.tryRecord(r.personId, { actor: 'her', action: 'device.linked', device: issued.device.name });

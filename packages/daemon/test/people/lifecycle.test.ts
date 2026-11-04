@@ -187,6 +187,29 @@ describe('invites', () => {
     expect(full.statusCode).toBe(409);
   });
 
+  it('0.12.2: an expired link and five devices say what to do next, on either device', async () => {
+    const x = await fx();
+    const mint = () => onHer(x.api, 'POST', '/v1/p/devices/link', x.asha.full);
+    const claim = (code: string, deviceName: string) => onHer(x.api, 'POST', '/v1/p/devices/link/claim', NONE, { code, deviceName });
+    const old = (await mint()).json() as { code: string };
+    x.api.ctx.clock.advance(15 * 60_000 + 1);
+    const late = await claim(old.code, 'late');
+    expect(late.json().error.message).toBe(
+      'This link has expired or was already used. On a device that is linked already, open Me › Devices › Link another device for a new one, and use it within 15 minutes.',
+    );
+    // A code made with room left, claimed once she is at five: the new device is told how to make room.
+    const waiting = (await mint()).json() as { code: string };
+    for (let i = 0; i < 4; i++) await linkDevice(x.api, x.asha, `d${i}`);
+    resetLimiters(x.api);
+    const there = await claim(waiting.code, 'Laptop');
+    expect(there.statusCode).toBe(409);
+    expect(there.json().error.message).toBe('Five devices are linked already, the most there can be. On one of them, open Me › Devices and revoke one you no longer use, then link this device again.');
+    // On her Devices screen: revoke one there.
+    const full = await mint();
+    expect(full.statusCode).toBe(409);
+    expect(full.json().error.message).toBe('Five devices are linked already, the most there can be. Revoke one you no longer use, then tap Link another device again.');
+  });
+
   it('M4: revoking a device voids the link codes it minted (the one invalid answer)', async () => {
     const x = await fx();
     const stolen = await linkDevice(x.api, x.asha, 'Stolen phone');
