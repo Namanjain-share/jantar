@@ -488,8 +488,9 @@ function ClientTable({ label, rows, today, nowMs, quietDays, filter }: RowsProps
             }}
           >
             <span role="cell" className="flex min-w-200 flex-1 items-center gap-8 self-stretch">
-              {/* The words in a span of their own: a flex box's text never shows the ellipsis. */}
-              <Link href={href} data-row={c.id} className="flex min-w-0 flex-1 items-center py-6 type-row font-medium text-ink focus-visible:-outline-offset-2">
+              {/* The words in a span of their own: a flex box's text never shows the ellipsis. 0.13.0: the link
+                  fills the row's height, as Projects' does, so a finger's target is the row's 52 px. */}
+              <Link href={href} data-row={c.id} className="flex min-w-0 flex-1 items-center self-stretch py-6 type-row font-medium text-ink focus-visible:-outline-offset-2">
                 <span className="truncate">{c.name}</span>
               </Link>
               <FromTag from={c.from} className="flex-none" />
