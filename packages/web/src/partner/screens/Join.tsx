@@ -39,6 +39,7 @@ import { joinCopy, levelLabel, lowerLevels, switchLabel, type CopyLine } from '.
 import { needsHomeScreen, turnOnNotifications } from '../notify.js';
 import { nameApp } from '../name.js';
 import { inviteCode } from '../invite-code.js';
+import { thisDeviceName } from '../device-name.js';
 
 const codeFromHash = () => new URLSearchParams(location.hash.replace(/^#/, '')).get('c') ?? '';
 type FirstStep = 'home' | 'notify';
@@ -62,7 +63,8 @@ export function Join({ api, mode }: { api: PersonApi; mode: 'join' | 'link' }) {
   // 0.12.1: without a code, whether this device is in already (null until api.me() answers), and his name and label for her first steps after a reload.
   const [joined, setJoined] = useState<boolean | null>(null);
   const [space, setSpace] = useState<{ owner: string; label?: string | undefined } | null>(null);
-  const [deviceName] = useState(() => (typeof navigator !== 'undefined' && /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'Phone'));
+  // 0.12.2: named by its kind (a laptop linked from Me › Devices was "Phone").
+  const [deviceName] = useState(thisDeviceName);
 
   const show = (p: JoinPreview) => {
     setPreview(p);
