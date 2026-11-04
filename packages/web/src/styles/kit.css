@@ -26,6 +26,11 @@
   @media (pointer: coarse), (width < 768px) {
     padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 16px), 24px);
   }
+  /* 0.13.2: with the on-screen keyboard up (lib/viewport.ts) it covers the bottom safe area and the
+     corner, so the composer and its neighbours keep 16 px, not the home indicator's 34 more. */
+  :root[data-kb-up] & {
+    padding-bottom: 16px;
+  }
 }
 /* 0.12: the sides too (0 on today's iPads and every Mac; the outermost columns pad them). */
 @utility pl-safe {
