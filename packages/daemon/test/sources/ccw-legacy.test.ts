@@ -499,6 +499,23 @@ describe('ccw-legacy 0.14.0: weekly ramps in switch.json', () => {
       expect(of(plan([usage(2, 1, 10)], { hold: [2] }), 2)).toMatchObject({ weeklyCap: 50, usable: false });
     });
 
+    it("0.14.0: holds a cap and weekly_ceiling against the seven_day window alone, as ccw's weekly_pct does", () => {
+      // a model-scoped weekly window (Model-A at 70% or 99%) is not ccw's weekly %: 40% of the week is under 50 - 5
+      const scoped = (id: number, weekly: number, model: number) => {
+        const a = usage(id, weekly, 10);
+        return { ...a, windows: [...a.windows, { kind: 'scoped:Model-A', pct: model }] };
+      };
+      expect(of(plan([scoped(2, 40, 70)]), 2)).toMatchObject({ weeklyCap: 50, usable: true });
+      expect(plan([scoped(2, 40, 70)]).next).toBe(2);
+      expect(of(plan([scoped(2, 46, 10)]), 2)).toMatchObject({ weeklyCap: 50, usable: false }); // its own week still counts
+      // without a ramp, the weekly limit too: 94% of the week is under 95, whatever Model-A says
+      expect(of(plan([scoped(3, 94, 99)]), 3)?.usable).toBe(true);
+      expect(of(plan([scoped(3, 95, 10)]), 3)?.usable).toBe(false);
+      // no seven_day window: 0% of the week (ccw reads a missing sevenDay as 0)
+      const onlyScoped = { ...usage(3, 0, 10), windows: [{ kind: 'five_hour', pct: 10, resetsAt: new Date(now + 100 * 60_000).toISOString() }, { kind: 'scoped:Model-A', pct: 99 }] };
+      expect(of(plan([onlyScoped]), 3)?.usable).toBe(true);
+    });
+
     it('an account with no 5-hour window has no 5-hour limit: no fill projected, whatever burns there', () => {
       const sessions = [makeSession({ sid: 's1', account: 2, status: 'working', folder: 'side-project' })];
       const out = plan([usage(2, 10, null, { held: false }), usage(4, 20, 10)], { hold: [2] }, {

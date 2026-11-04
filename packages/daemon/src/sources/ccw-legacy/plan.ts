@@ -13,6 +13,8 @@
  *   for `next`) only while its weekly % is at most its cap now less
  *   SWITCH_RULES.rampTargetMargin (5), unless it is held (never); one
  *   without a ramp, below weekly_ceiling as before;
+ * - the weekly % both are held against is the seven_day window's alone, as
+ *   ccw reads it (usage.sevenDay), never a model-scoped weekly window;
  * - an account whose reading has no 5-hour window has no 5-hour limit
  *   (protocol noFiveHourLimit): it never fills (no `fullInMin`), it rides
  *   any reset, and it has no 5-hour burn to show (`burnPctPerMin` 0: ccw's
@@ -135,8 +137,9 @@ export function computePlan(input: PlanInput): PlanOutput {
     const t = windowLeft(n);
     return t <= full ? t + Math.min(300, cfg.ceiling / burnOn(n, extra)) : full;
   };
-  const weeklyPct = (a: Account): number =>
-    Math.max(0, ...a.windows.filter((w) => w.kind !== 'five_hour').map((w) => w.pct));
+  // 0.14.0: the weekly % ccw holds a cap and weekly_ceiling against is usage.sevenDay's alone (its
+  // weekly_pct), never a model-scoped weekly window: the plan's `usable` agrees with ccw and with Auto.
+  const weeklyPct = (a: Account): number => Math.max(0, a.windows.find((w) => w.kind === 'seven_day')?.pct ?? 0);
   // 0.14.0: an account with a weekly ramp stops at its cap for now instead of weekly_ceiling (cap.ts).
   const caps = new Map<AccountId, WeeklyCap>();
   for (const [n, a] of accts) {

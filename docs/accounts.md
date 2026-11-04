@@ -75,6 +75,9 @@ How a weekly cap is used, by ccw and by Jantar's own plan and Auto alike:
 - A session moves onto an account with a cap (or Auto starts one there)
   only while its weekly use is at least 5 under the cap, so it doesn't
   arrive at 49% and leave at 50%. A held account never takes one.
+- Weekly use, against a cap or the weekly limit, is the account's own
+  weekly window, as ccw reads it: a weekly window for one model only
+  doesn't count.
 - An account whose usage reading has no 5-hour window has no 5-hour
   limit: it is never shown filling up, and only its weekly use (or cap)
   stops it. An account with a 5-hour window keeps the 5-hour rules, cap or

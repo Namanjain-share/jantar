@@ -171,6 +171,17 @@ describe('0.14.0: weekly caps and accounts with no 5-hour window', () => {
     expect(accountRows(inputs([account(4, 10)], { weeklyCaps: caps }))[0]).not.toHaveProperty('weeklyCap');
   });
 
+  it("holds a cap and the weekly ceiling against the seven_day window alone, as ccw and the plan do", () => {
+    const scoped = (id: number, weekly: number, model: number): Account => {
+      const a = account(id, 10, { sevenPct: weekly });
+      return { ...a, windows: [...a.windows, { kind: 'scoped:Model-A', pct: model }] };
+    };
+    expect(autoSkip(scoped(7, 40, 70), inputs([], { weeklyCaps: new Map([[7, 50]]) }))).toBeNull();
+    expect(autoSkip(scoped(7, 46, 10), inputs([], { weeklyCaps: new Map([[7, 50]]) }))).toBe('near its 50% weekly cap');
+    expect(autoSkip(scoped(7, 94, 99), inputs([]))).toBeNull();
+    expect(autoSkip(scoped(7, 95, 10), inputs([]))).toBe('past the weekly ceiling');
+  });
+
   it('an account with no 5-hour window has no 5-hour limit: usable, nothing to fill, its weekly use said', () => {
     const noFive = (id: number, weekly: number): Account => ({ ...account(id, 0), windows: [{ kind: 'seven_day', pct: weekly, resetsAt: '2026-01-20T00:00:00.000Z' }] });
     const inp = inputs([noFive(6, 10), account(7, 12)], { bookings: new Map([[6, 3]]) });

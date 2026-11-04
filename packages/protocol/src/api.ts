@@ -492,7 +492,10 @@ export const PlanResponseSchema = z.object({
  *   at 49% and leave at 50%; a held one never is;
  * - an account with no 5-hour window in its reading (cswap gives none) has
  *   no 5-hour limit (Account.noFiveHourLimit): never 0% used, no 5-hour
- *   burn and no projected fill.
+ *   burn and no projected fill;
+ * - the weekly % a cap or `weekly_ceiling` is held against is the seven_day
+ *   window's alone (usage.sevenDay, as ccw reads it), never a model-scoped
+ *   weekly one.
  */
 export const SWITCH_RULES = {
   ceilingMin: 50,
