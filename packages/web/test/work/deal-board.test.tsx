@@ -105,6 +105,48 @@ describe('the board on a wide pane', () => {
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeTruthy();
   });
 
+  it('0.13.1: a move from the open deal retires the drag’s Undo line; the one Undo takes back the latest move', async () => {
+    // Each deal answers with the stage it really left.
+    const from: Record<string, string> = { [IDS.deal]: 'proposal', [IDS.deal2]: 'proposal', [IDS.deal3]: 'new' };
+    const { api, history } = setup({ request: { 'POST /v1/work/deals/:id/move': (init: ApiRequest) => ({ id: init.params?.id, from: from[init.params?.id as string] }) } });
+    const lines = () => screen.queryAllByRole('status').filter((s) => within(s).queryByRole('button', { name: 'Undo' }));
+    const board = await boardShown();
+    // The drag: Brand refresh to Contacted, "Moved to Contacted · Undo" on the list's line.
+    const dt = transfer();
+    fireEvent.dragStart(within(board).getByRole('link', { name: /Brand refresh/ }), { dataTransfer: dt });
+    const contacted = within(board).getByRole('region', { name: 'Contacted' });
+    fireEvent.dragOver(contacted, { dataTransfer: dt });
+    fireEvent.drop(contacted, { dataTransfer: dt });
+    await waitFor(() => expect(lines().map((l) => l.textContent)).toEqual(['Moved to ContactedUndo']));
+    // Site rebuild opens beside the list; the drag's line is still the only one.
+    fireEvent.click(within(board).getByRole('link', { name: /Site rebuild/ }));
+    expect(history.entries.at(-1)).toBe(`/work?tab=deals&id=${IDS.deal}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Move to…' }));
+    fireEvent.click(within(await screen.findByRole('radiogroup', { name: 'Stages' })).getByRole('radio', { name: 'Negotiation' }));
+    await waitFor(() => expect(moves(api)).toHaveLength(2));
+    // One line, the deal's: the list's line for the drag is gone, not kept beside it.
+    await waitFor(() => expect(lines().map((l) => l.textContent)).toEqual(['Moved to NegotiationUndo']));
+    expect(within(screen.getByRole('region', { name: 'All deals' })).queryByRole('button', { name: 'Undo' })).toBeNull();
+    // Its Undo takes back the move just made (Site rebuild to Proposal sent), never the drag.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(moves(api)).toHaveLength(3));
+    expect(moves(api)[2]).toMatchObject({ params: { id: IDS.deal }, body: { stage: 'proposal' } });
+    expect(lines()).toEqual([]);
+    // And the other way round: a move from the deal, then one from the list; only the list's line stays.
+    fireEvent.click(screen.getByRole('button', { name: 'Move to…' }));
+    fireEvent.click(within(await screen.findByRole('radiogroup', { name: 'Stages' })).getByRole('radio', { name: 'Negotiation' }));
+    await waitFor(() => expect(lines().map((l) => l.textContent)).toEqual(['Moved to NegotiationUndo']));
+    const list = screen.getByRole('region', { name: 'All deals' });
+    fireEvent.click(within(list).getByRole('button', { name: 'Actions for AI audit' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to…' }));
+    fireEvent.click(within(await screen.findByRole('radiogroup', { name: 'Stages' })).getByRole('radio', { name: 'Contacted' }));
+    await waitFor(() => expect(moves(api)).toHaveLength(5));
+    await waitFor(() => expect(lines().map((l) => l.textContent)).toEqual(['Moved to ContactedUndo']));
+    fireEvent.click(within(list).getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(moves(api)).toHaveLength(6));
+    expect(moves(api)[5]).toMatchObject({ params: { id: IDS.deal2 }, body: { stage: 'proposal' } });
+  });
+
   it('a drop on Won asks about a project first; nothing moves until he says', async () => {
     const { api } = setup();
     const board = await boardShown();

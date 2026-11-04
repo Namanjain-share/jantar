@@ -60,6 +60,28 @@ export interface MoveDeal {
 type Asking = { deal: MoveDeal; stage: StageRef; edit?: boolean };
 
 /**
+ * Puts a move's "Moved to … · Undo" on the line and retires the line of the move before it, in this pane
+ * or another; with no `text` (Won with its project made, which has no Undo) only retires.
+ */
+type OfferMove = (text: string | null, back?: () => void) => void;
+
+/**
+ * 0.13.1: the latest move's Undo line, whichever pane made it. Beside an open deal the list and the deal
+ * each have a line of their own: a drag on the board and then a move from the deal showed two at once,
+ * and a plain Undo (the first) took back the drag, not the move just made. A move now drops the line of
+ * the one before it; `drop` leaves a newer offer on that line (a todo's Done or Delete) as it is.
+ */
+let latestMove: { drop: (id: number) => void; id: number } | null = null;
+
+function offerMove({ show, drop }: Pick<Undo, 'show' | 'drop'>, text: string | null, back?: () => void) {
+  const before = latestMove;
+  latestMove = null;
+  // On the same line show() has replaced it already, so drop() finds a newer id there and does nothing.
+  if (text !== null && back) latestMove = { drop, id: show(text, back) };
+  before?.drop(before.id);
+}
+
+/**
  * The move flow: `choose` opens Move to… (beside `anchor`), `to` moves straight to a stage (a drop), `lost`
  * opens the Lost sheet to change a lost deal's reason. `element` holds its popover and sheets.
  */
@@ -73,7 +95,8 @@ export function useDealMove({ stages, undo, onMoved }: { stages: readonly StageR
   const won = useSheet<Asking>();
   const lost = useSheet<Asking>();
   const [busy, setBusy] = useState(false);
-  const { show } = undo;
+  const { show, drop } = undo;
+  const offer: OfferMove = useCallback((text, back) => offerMove({ show, drop }, text, back), [show, drop]);
 
   /** An open stage: at once, then Undo moves it back (a lost deal back with its reason). */
   const moveOpen = useCallback(
@@ -83,7 +106,7 @@ export function useDealMove({ stages, undo, onMoved }: { stages: readonly StageR
         const r = await w.dealMove(deal.id, { stage: to.id });
         onMoved();
         const back = stages.find((s) => s.id === r.from);
-        show(`Moved to ${to.name}`, () => {
+        offer(`Moved to ${to.name}`, () => {
           void w
             .dealMove(deal.id, { stage: r.from, ...(back?.kind === 'lost' && deal.lostCode ? { lostCode: deal.lostCode } : {}) })
             .then(onMoved, (e: unknown) => toast(`Not moved back. ${errorText(e)}`, 'error'));
@@ -94,7 +117,7 @@ export function useDealMove({ stages, undo, onMoved }: { stages: readonly StageR
         setBusy(false);
       }
     },
-    [w, stages, onMoved, show, toast],
+    [w, stages, onMoved, offer, toast],
   );
 
   const to = useCallback(
@@ -152,10 +175,10 @@ export function useDealMove({ stages, undo, onMoved }: { stages: readonly StageR
         {offline ? <OfflineLine className="pb-12" /> : null}
       </Choice>
       <Sheet open={won.open} onOpenChange={won.onOpenChange} title={won.item ? wonTitle(won.item.deal) : 'Won'}>
-        {won.open && won.item ? <WonForm key={won.key} deal={won.item.deal} stage={won.item.stage} undo={undo} onMoved={onMoved} onDone={won.close} /> : null}
+        {won.open && won.item ? <WonForm key={won.key} deal={won.item.deal} stage={won.item.stage} offer={offer} onMoved={onMoved} onDone={won.close} /> : null}
       </Sheet>
       <Sheet open={lost.open} onOpenChange={lost.onOpenChange} title={lost.item?.edit ? 'Why it was lost' : `Lost · ${lost.item?.deal.title ?? ''}`}>
-        {lost.open && lost.item ? <LostForm key={lost.key} asking={lost.item} undo={undo} onMoved={onMoved} onDone={lost.close} /> : null}
+        {lost.open && lost.item ? <LostForm key={lost.key} asking={lost.item} offer={offer} onMoved={onMoved} onDone={lost.close} /> : null}
       </Sheet>
     </>
   );
@@ -238,7 +261,7 @@ function wonTitle(deal: MoveDeal): string {
   return deal.value !== undefined ? `Won · ${formatAmount(deal.value, deal.currency)}` : 'Won';
 }
 
-function WonForm({ deal, stage, undo, onMoved, onDone }: { deal: MoveDeal; stage: StageRef; undo: Undo; onMoved: () => void; onDone: () => void }) {
+function WonForm({ deal, stage, offer, onMoved, onDone }: { deal: MoveDeal; stage: StageRef; offer: OfferMove; onMoved: () => void; onDone: () => void }) {
   const { api } = useDeps();
   const offline = useOffline();
   const toast = useToast();
@@ -274,8 +297,10 @@ function WonForm({ deal, stage, undo, onMoved, onDone }: { deal: MoveDeal; stage
     onMoved();
     onDone();
     const from = r.value.from;
-    if (r.value.projectId) toast(`Won. Made the project ${name.trim()}.`);
-    else undo.show(`Moved to ${stage.name}`, () => void workClient(api).dealMove(deal.id, { stage: from }).then(onMoved, (e: unknown) => toast(`Not moved back. ${errorText(e)}`, 'error')));
+    if (r.value.projectId) {
+      offer(null);
+      toast(`Won. Made the project ${name.trim()}.`);
+    } else offer(`Moved to ${stage.name}`, () => void workClient(api).dealMove(deal.id, { stage: from }).then(onMoved, (e: unknown) => toast(`Not moved back. ${errorText(e)}`, 'error')));
   };
 
   return (
@@ -336,7 +361,7 @@ function WonForm({ deal, stage, undo, onMoved, onDone }: { deal: MoveDeal; stage
 }
 
 /** W33: why it was lost (eight reasons and a note), Save or Skip; or, for a lost deal, its reason changed. */
-function LostForm({ asking, undo, onMoved, onDone }: { asking: Asking; undo: Undo; onMoved: () => void; onDone: () => void }) {
+function LostForm({ asking, offer, onMoved, onDone }: { asking: Asking; offer: OfferMove; onMoved: () => void; onDone: () => void }) {
   const { deal, stage, edit = false } = asking;
   const { api } = useDeps();
   const offline = useOffline();
@@ -372,7 +397,7 @@ function LostForm({ asking, undo, onMoved, onDone }: { asking: Asking; undo: Und
     onMoved();
     onDone();
     const from = r.value.from;
-    undo.show(`Moved to ${stage.name}`, () => void workClient(api).dealMove(deal.id, { stage: from }).then(onMoved, (e: unknown) => toast(`Not moved back. ${errorText(e)}`, 'error')));
+    offer(`Moved to ${stage.name}`, () => void workClient(api).dealMove(deal.id, { stage: from }).then(onMoved, (e: unknown) => toast(`Not moved back. ${errorText(e)}`, 'error')));
   };
 
   return (

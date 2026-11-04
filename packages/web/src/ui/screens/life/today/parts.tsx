@@ -355,14 +355,16 @@ export function useUndo(ms = UNDO_MS) {
       settle(false);
     };
   }, [settle]);
+  /** Puts `text · Undo` on the line; returns the offer's id (for `drop`). */
   const show = useCallback(
-    (text: string, undo: () => void, commit?: () => void) => {
+    (text: string, undo: () => void, commit?: () => void): number => {
       settle(false);
       const o = { id: ++seq.current, text, undo, commit };
       set(o);
       timer.current = setTimeout(() => {
         if (current.current?.id === o.id) settle(true);
       }, ms);
+      return o.id;
     },
     [ms, settle],
   );
@@ -373,7 +375,17 @@ export function useUndo(ms = UNDO_MS) {
     set(null);
     o?.undo();
   }, []);
-  return useMemo(() => ({ offer, show, take }), [offer, show, take]);
+  /**
+   * 0.13.1: ends offer `id` without Undo (its commit runs), as a newer offer would: only while it is still
+   * the one on the line, so a later offer there stays.
+   */
+  const drop = useCallback(
+    (id: number) => {
+      if (current.current?.id === id) settle(true);
+    },
+    [settle],
+  );
+  return useMemo(() => ({ offer, show, take, drop }), [offer, show, take, drop]);
 }
 
 export type Undo = ReturnType<typeof useUndo>;
