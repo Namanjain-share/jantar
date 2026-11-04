@@ -7,6 +7,13 @@
  * 0.12.1 after review: the link opened again in the same tab (only the
  * fragment changes) shows its preview; a device that is in already goes on
  * to Today, or back to the first step the address kept after Accept.
+ *
+ * 0.12.2: /p/link in the words of her Link another device steps. Without a
+ * code (a One-time PIN sign-in dropped it) it says to open the link once
+ * more, paste it or type its code, and where a link comes from; with one it
+ * says the code is filled in. An expired code and five devices show the
+ * daemon's words, which say what to do next, and a fresh link opened in the
+ * same tab takes their place.
  * Synthetic people (Sam and Asha) and codes.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -17,6 +24,8 @@ import { PersonApiError, type PersonApi } from '../../src/partner/api.js';
 import { Join, NOT_AN_INVITE, NOT_A_LINK_CODE } from '../../src/partner/screens/Join.js';
 
 const CODE = 'synthetic-invite_code1';
+/** 0.12.2: /p/link's field, by its visible label. */
+const LINK_FIELD = 'Paste the link or type the code';
 const joined = { personId: '01JASHAAAAAAAAAAAAAAAAAAAA', deviceId: '01JDEVICEAAAAAAAAAAAAAAAAA', deviceSecret: 's' };
 const preview = { owner: 'Sam', name: 'Asha', version: 1, offer: presetAgreement('standard'), fields: [], built: 'P4', modules: { food: false } } as unknown as JoinPreview;
 const asha = { person: { id: joined.personId, name: 'Asha', state: 'active' }, owner: { name: 'Sam' }, label: 'Cofounder' } as unknown as PersonMe;
@@ -163,7 +172,7 @@ describe('the paste form, to a screen reader (0.12.1 after review)', () => {
     expect((await screen.findByLabelText('Your name')).classList.contains('type-input')).toBe(true);
     unmount();
     render(<Join api={fakeApi()} mode="link" />);
-    expect(screen.getByLabelText('Link code').classList.contains('type-input')).toBe(true);
+    expect(screen.getByLabelText(LINK_FIELD).classList.contains('type-input')).toBe(true);
   });
 
   it('says Loading… while the preview loads', async () => {
@@ -181,7 +190,7 @@ describe('the paste form, to a screen reader (0.12.1 after review)', () => {
 describe('/p/link reads the code like a pasted invite (0.12.1 after review)', () => {
   beforeEach(() => history.replaceState(null, '', '/p/link'));
   const claim = async (text: string) => {
-    fireEvent.change(screen.getByLabelText('Link code'), { target: { value: text } });
+    fireEvent.change(screen.getByLabelText(LINK_FIELD), { target: { value: text } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Link this device' }));
     });
@@ -204,19 +213,84 @@ describe('/p/link reads the code like a pasted invite (0.12.1 after review)', ()
     await claim('this is not a code at all');
     const alert = screen.getByRole('alert');
     expect(alert.textContent).toBe(NOT_A_LINK_CODE);
-    expect(screen.getByLabelText('Link code').getAttribute('aria-invalid')).toBe('true');
-    expect(screen.getByLabelText('Link code').getAttribute('aria-describedby')).toBe(alert.id);
+    expect(screen.getByLabelText(LINK_FIELD).getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText(LINK_FIELD).getAttribute('aria-describedby')).toBe(alert.id);
     expect(linkClaim).not.toHaveBeenCalled();
   });
 
   it('a link opened again in the same tab fills in its code', async () => {
     render(<Join api={fakeApi()} mode="link" />);
-    expect((screen.getByLabelText('Link code') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText(LINK_FIELD) as HTMLInputElement).value).toBe('');
     await act(async () => {
       history.replaceState(null, '', `/p/link#c=${CODE}`);
       dispatchEvent(new HashChangeEvent('hashchange'));
     });
-    expect((screen.getByLabelText('Link code') as HTMLInputElement).value).toBe(CODE);
+    expect((screen.getByLabelText(LINK_FIELD) as HTMLInputElement).value).toBe(CODE);
+  });
+});
+
+describe('/p/link in the words of the Link another device steps (0.12.2)', () => {
+  beforeEach(() => history.replaceState(null, '', '/p/link'));
+  const claim = async () => {
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Link this device' }));
+    });
+  };
+  // The daemon's words (packages/daemon/src/life/people/module.ts PEOPLE_REASONS).
+  const EXPIRED = 'This link has expired or was already used. On a device that is linked already, open Me › Devices › Link another device for a new one, and use it within 15 minutes.';
+  const FULL_HERE = 'Five devices are linked already, the most there can be. On one of them, open Me › Devices and revoke one you no longer use, then link this device again.';
+
+  it('without a code (a One-time PIN sign-in dropped it): open the link once more, paste it or type its code, and where a link comes from', () => {
+    render(<Join api={fakeApi()} mode="link" />);
+    expect(screen.getByRole('heading', { name: 'Link this device' })).toBeTruthy();
+    expect(
+      screen.getByText('Signing in with a code from your email drops the part of the link that holds its code. Open the link from your other device once more, or paste it here, or type the code shown with it.'),
+    ).toBeTruthy();
+    expect(screen.getByText('No link yet? On a device that is linked already, open Me › Devices › Link another device. A link works once, for 15 minutes.')).toBeTruthy();
+    const field = screen.getByLabelText(LINK_FIELD) as HTMLInputElement;
+    expect(field.value).toBe('');
+    expect(field.getAttribute('autocapitalize')).toBe('off');
+    expect(field.getAttribute('spellcheck')).toBe('false');
+    expect(screen.queryByText(/enter the code here/)).toBeNull();
+  });
+
+  it('opened with its code: the code is filled in, and one tap links', async () => {
+    history.replaceState(null, '', `/p/link#c=${CODE}`);
+    const linkClaim = vi.fn(async () => joined);
+    render(<Join api={fakeApi({ linkClaim })} mode="link" />);
+    expect(screen.getByText('The code from your other device is filled in. Tap Link this device.')).toBeTruthy();
+    expect(screen.queryByText(/No link yet\?/)).toBeNull();
+    expect((screen.getByLabelText(LINK_FIELD) as HTMLInputElement).value).toBe(CODE);
+    await claim();
+    expect(linkClaim).toHaveBeenCalledWith(CODE, 'Phone');
+    await waitFor(() => expect(location.pathname).toBe('/p'));
+  });
+
+  it("an expired code shows the daemon's words (make a new one, use it within 15 minutes); the new link opened in the same tab takes over", async () => {
+    history.replaceState(null, '', `/p/link#c=${CODE}`);
+    const linkClaim = vi.fn<(code: string, name: string) => Promise<typeof joined>>().mockRejectedValueOnce(new PersonApiError('invalid_request', EXPIRED, 400)).mockResolvedValueOnce(joined);
+    render(<Join api={fakeApi({ linkClaim })} mode="link" />);
+    await claim();
+    expect(screen.getByRole('alert').textContent).toBe(EXPIRED);
+    expect(screen.getByLabelText(LINK_FIELD).getAttribute('aria-invalid')).toBe('true');
+    await act(async () => {
+      history.replaceState(null, '', `/p/link#c=${CODE}2`);
+      dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByLabelText(LINK_FIELD) as HTMLInputElement).value).toBe(`${CODE}2`);
+    await claim();
+    expect(linkClaim).toHaveBeenLastCalledWith(`${CODE}2`, 'Phone');
+  });
+
+  it("five devices: the daemon's words say to revoke one on a linked device, then link this one again", async () => {
+    const linkClaim = vi.fn(async () => Promise.reject(new PersonApiError('conflict', FULL_HERE, 409)));
+    render(<Join api={fakeApi({ linkClaim })} mode="link" />);
+    fireEvent.change(screen.getByLabelText(LINK_FIELD), { target: { value: `https://us.example.com/p/link#c=${CODE}` } });
+    await claim();
+    expect(linkClaim).toHaveBeenCalledWith(CODE, 'Phone');
+    expect(screen.getByRole('alert').textContent).toBe(FULL_HERE);
+    expect(location.pathname).toBe('/p/link');
   });
 });
 

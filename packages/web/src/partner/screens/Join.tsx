@@ -25,9 +25,11 @@
  * this device is in already (a reload after Accept, a tab Safari dropped):
  * then it goes on to her Today, or back to her first steps, which Accept
  * keeps in the address (`/p/join?step=home|notify`) so a reload finds them.
+ *
+ * 0.12.2: /p/link speaks the steps of her Link another device (LinkForm).
  */
 import { useEffect, useId, useMemo, useState } from 'react';
-import { AGREEMENT_FIELDS, closeDependents, withField, yourLabel, type AgreementFields } from '@jantar/protocol/people-core';
+import { AGREEMENT_FIELDS, PERSON_LINK_CODE_TTL_MS, closeDependents, withField, yourLabel, type AgreementFields } from '@jantar/protocol/people-core';
 import type { JoinPreview, PersonMe } from '@jantar/protocol/people';
 import { Button } from '../../ui/kit/Button.js';
 import { Page } from '../App.js';
@@ -368,7 +370,16 @@ function PasteInvite({ api, onPreview }: { api: PersonApi; onPreview: (code: str
   );
 }
 
-/** /p/link: the code from another device of hers. 0.12.1: read like a pasted invite, so the whole /p/link#c= link works too. */
+/**
+ * /p/link: the code from another device of hers. 0.12.1: read like a pasted invite, so the whole /p/link#c= link works too.
+ *
+ * 0.12.2: in the words of her Link another device steps. Opened without a
+ * code (a One-time PIN sign-in drops the `#c=`), it says to open the link
+ * once more, paste it or type its code, and where a link comes from; opened
+ * with one, that the code is filled in. The field has a visible label. An
+ * expired code and five devices show the daemon's words, which say what to
+ * do next.
+ */
 function LinkForm({ api, initial, deviceName }: { api: PersonApi; initial: string; deviceName: string }) {
   const [code, setCode] = useState(initial);
   const error = useFieldError();
@@ -385,8 +396,30 @@ function LinkForm({ api, initial, deviceName }: { api: PersonApi; initial: strin
         );
       }}
     >
-      <p className="text-ink-2">On a device that is linked already, open Me › Devices › Link another device, then enter the code here.</p>
-      <input aria-label="Link code" className="mt-12 w-full rounded-btn border border-line bg-bg px-8 py-8 type-input" value={code} {...error.field} onChange={(e) => setCode(e.target.value)} />
+      {initial ? (
+        <p>The code from your other device is filled in. Tap Link this device.</p>
+      ) : (
+        <>
+          <p>Signing in with a code from your email drops the part of the link that holds its code. Open the link from your other device once more, or paste it here, or type the code shown with it.</p>
+          <p className="mt-8 text-small text-ink-2">
+            No link yet? On a device that is linked already, open Me › Devices › Link another device. A link works once, for {PERSON_LINK_CODE_TTL_MS / 60_000} minutes.
+          </p>
+        </>
+      )}
+      <label className="mt-16 flex flex-col gap-8">
+        <span>Paste the link or type the code</span>
+        <input
+          className="min-h-44 w-full rounded-btn border border-line bg-bg px-8 type-input"
+          value={code}
+          inputMode="url"
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          {...error.field}
+          onChange={(e) => setCode(e.target.value)}
+        />
+      </label>
       {error.alert}
       <Button className="mt-12" variant="primary" size="xl" type="submit" disabled={code.trim().length < 16}>
         Link this device
