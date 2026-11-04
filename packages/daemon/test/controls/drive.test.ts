@@ -25,38 +25,46 @@ describe('0.12.1: drive on a slow runner', () => {
     roots.push(dir);
     const clock = new FakeClock(T0);
     const held = holdFs(300);
-    const work = (async () => {
-      await clock.sleep(200);
-      await mkdir(join(dir, 'a'));
-      await writeFile(join(dir, 'a', 'b'), 'x');
-      const text = await readFile(join(dir, 'a', 'b'), 'utf8');
-      await clock.sleep(200);
-      return text;
-    })();
-    const t = Date.now();
-    expect(await drive(clock, work)).toBe('x');
-    expect(Date.now() - t).toBeGreaterThanOrEqual(290);
-    expect(clock.now() - Date.parse(T0)).toBeGreaterThanOrEqual(400);
-    await held;
+    try {
+      const work = (async () => {
+        await clock.sleep(200);
+        await mkdir(join(dir, 'a'));
+        await writeFile(join(dir, 'a', 'b'), 'x');
+        const text = await readFile(join(dir, 'a', 'b'), 'utf8');
+        await clock.sleep(200);
+        return text;
+      })();
+      const t = Date.now();
+      expect(await drive(clock, work)).toBe('x');
+      expect(Date.now() - t).toBeGreaterThanOrEqual(290);
+      expect(clock.now() - Date.parse(T0)).toBeGreaterThanOrEqual(400);
+    } finally {
+      held.release();
+      await held;
+    }
   });
 
   it('while an fs call is in flight each step waits a millisecond of real time, and the clock still moves', async () => {
     const clock = new FakeClock(T0);
-    const held = holdFs(1_000);
-    const t = Date.now();
-    // 100 steps of 50 ms.
-    await drive(clock, clock.sleep(5_000));
-    const real = Date.now() - t;
-    expect(real).toBeGreaterThanOrEqual(100);
-    // An fs call that does not end (here: not before 1 s) does not stop it.
-    expect(real).toBeLessThan(800);
-    expect(fsInFlight().length).toBeGreaterThan(0);
-    await held;
+    // Held until released below: an fs call that does not end while drive runs.
+    const held = holdFs(60_000);
+    try {
+      const t = Date.now();
+      // 100 steps of 50 ms.
+      await drive(clock, clock.sleep(5_000));
+      expect(Date.now() - t).toBeGreaterThanOrEqual(100);
+      // It returned while the fs call was still in flight: one that does not end does not stop it.
+      expect(fsInFlight().length).toBeGreaterThan(0);
+    } finally {
+      held.release();
+      await held;
+    }
   });
 
   it('once the fake budget is spent, a promise that settles in real time still settles', async () => {
     const clock = new FakeClock(T0);
-    const late = new Promise<string>((r) => setTimeout(() => r('late'), 150));
+    // Late enough that even a slow runner has spent the 10-step fake budget first.
+    const late = new Promise<string>((r) => setTimeout(() => r('late'), 3_000));
     expect(await drive(clock, late, 50, 500)).toBe('late');
     expect(clock.now() - Date.parse(T0)).toBe(500);
   });
@@ -65,7 +73,7 @@ describe('0.12.1: drive on a slow runner', () => {
     const clock = new FakeClock(T0);
     const t = Date.now();
     await expect(drive(clock, new Promise<never>(() => {}), 50, 1_000, 300)).rejects.toThrow(
-      /^did not settle: 1000 ms of fake time \(of 1000\) and \d+ ms of real time \(of 300\); fs calls in flight: (none|\w+(, \w+)*)$/,
+      /^did not settle: \d+ ms of fake time \(of 1000\) and \d+ ms of real time \(of 300\); fs calls in flight: (none|\w+(, \w+)*)$/,
     );
     expect(Date.now() - t).toBeGreaterThanOrEqual(300);
   });

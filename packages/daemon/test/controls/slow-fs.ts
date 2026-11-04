@@ -12,7 +12,7 @@ import { closeSync, constants, mkdtempSync, openSync, read, rmSync, writeSync } 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-export function holdFs(ms: number): Promise<void> {
+export function holdFs(ms: number): Promise<void> & { release: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'ccw-hold-'));
   const threads = Number(process.env.UV_THREADPOOL_SIZE) || 4;
   const fds: number[] = [];
@@ -24,14 +24,23 @@ export function holdFs(ms: number): Promise<void> {
     fds.push(fd);
     reads.push(new Promise<void>((r) => read(fd, Buffer.alloc(1), 0, 1, null, () => r())));
   }
-  return new Promise<void>((resolve) => {
-    setTimeout(() => {
+  // 0.12.1: release() frees the threads early (a test does it in a finally, so a failed assertion never leaves
+  // the threadpool held for the next test); the timer does it after `ms` otherwise. Either way only once.
+  let free = (): void => {};
+  const done = new Promise<void>((resolve) => {
+    let freed = false;
+    free = () => {
+      if (freed) return;
+      freed = true;
+      clearTimeout(timer);
       for (const fd of fds) writeSync(fd, 'x');
       void Promise.all(reads).then(() => {
         for (const fd of fds) closeSync(fd);
         rmSync(dir, { recursive: true, force: true });
         resolve();
       });
-    }, ms);
+    };
+    const timer = setTimeout(() => free(), ms);
   });
+  return Object.assign(done, { release: () => free() });
 }

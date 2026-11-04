@@ -171,10 +171,11 @@ export class ReadQueue {
       }
     } finally {
       this.paused -= 1;
+      // Even if something above threw: the list changed, and a link saved while this waited is started now
+      // (the running job's own kick saw the pause).
+      if (waiting.length || running) this.d.changed();
+      this.kick();
     }
-    if (waiting.length || running) this.d.changed();
-    // A link saved while this waited is started now (the running job's own kick saw the pause).
-    this.kick();
   }
 
   /** Unfinished jobs oldest first, then the finished ones of the last day (newest first). */

@@ -211,8 +211,13 @@ describe('screenshots on Terminal.app', () => {
   it('C6: 0.12.1: select still settles when every fs call is slow (a held threadpool, as on a busy CI runner)', async () => {
     const { backend, ctx, m } = rig({}, { showing: OTHER_TTY });
     const held = holdFs(300);
-    const r = await drive(ctx.clock, backend.getScreenshot(pane, { select: 'if-safe' }));
-    await held;
+    let r: Awaited<ReturnType<typeof backend.getScreenshot>>;
+    try {
+      r = await drive(ctx.clock, backend.getScreenshot(pane, { select: 'if-safe' }));
+    } finally {
+      held.release();
+      await held;
+    }
     expect(r).toMatchObject({ ok: true, disturbed: true });
     expect(m.order).toEqual(['shotinfo', 'select', 'screencapture showing=ours', 'restore', 'sips -Z']);
     expect(m.win.showing).toBe(OTHER_TTY);
