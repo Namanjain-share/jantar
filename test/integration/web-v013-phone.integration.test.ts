@@ -8,16 +8,19 @@
  * the way a phone does.
  *
  * - At 320 x 568 and 390 x 844 with touch, every Work route walked the way a
- *   finger does: the Work tab, Projects, a project's hub, Clients, a client's
- *   page, a call logged with a next step for today (the follow-up then sits in
+ *   finger does: the Work tab, Projects, a project's hub, Clients, the search
+ *   sheet (the header's magnifier) and the New client sheet, a client's page,
+ *   a call logged with a next step for today (the follow-up then sits in
  *   Today's Due with the client's name, and Today's Work card counts one deal
  *   fewer with no next step), Deals (the phone's stage picker), a deal, a move
- *   to another stage, Insights, the preview of a small CSV import (nothing
- *   imported), the CSV export, then the Board and the browser's Back.
+ *   to another stage, the Won and Lost sheets (put away), Insights, the
+ *   preview of a small CSV import (nothing imported), the CSV export, then the
+ *   Board and the browser's Back.
  * - One iPad pass over the same routes, 1024 x 1366 with touch and the Home
  *   Screen app's safe areas: Work from the sidebar, the projects and clients
  *   tables, a project, a client and a deal open beside their list (split
  *   views), and the deals board.
+ * - F7: Accounts, Posts, a post and the New post sheet at each of the three.
  * - On every screen and sheet: no console message about the Content Security
  *   Policy, no console error, no <style> element; nothing scrolling sideways
  *   (the page, or a box not marked data-scroll-x); no target wholly on
@@ -300,7 +303,7 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
   const noNextStep = async () => ((await call('GET', '/v1/life/today')).body as { work?: { noNextStep: number } }).work?.noNextStep;
 
   beforeAll(async () => {
-    d = await bootDaemon({ home: { sessions: [] }, settings: { life: { todos: true, work: true, timezone: 'UTC', currency: 'INR' } } });
+    d = await bootDaemon({ home: { sessions: [] }, settings: { life: { todos: true, work: true, posts: true, timezone: 'UTC', currency: 'INR' } } });
     ctl = createCtlClient(d.ctx.paths.ctlSock);
     await eventually(() => callDaemon(ctl, 'GET', '/healthz'), 10_000, 'ctl.sock');
     const start = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name: 'seed', scopes: ['read', 'control'] });
@@ -334,6 +337,9 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
     await made('audit_deal', '/v1/work/deals', { clientId: ids.labs, title: 'Data audit', stage: 'contacted', value: 20_000_000 });
     await made('shop_deal', '/v1/work/deals', { clientId: ids.sam, title: 'Shop setup', stage: 'new', value: 8_000_000 });
     expect(await noNextStep()).toBe(3);
+    // 0.13.0 (F7): Posts, a ready one with a time and an idea with none.
+    await made('post', '/v1/posts', { platform: 'reddit', where: 'r/example', title: 'How a small shop plans its first week', text: 'Three lists and one rule.', due: { day: day(1), time: '19:30' }, status: 'ready' });
+    await made('idea', '/v1/posts', { platform: 'linkedin', text: 'What a placeholder client taught us about invoices.' });
 
     browser = await launchBrowser();
     for (const who of WHO) pages[who] = await paired(who);
@@ -386,6 +392,28 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
           const clients = page.getByRole(wide ? 'table' : 'list', { name: 'Clients', exact: true });
           await clients.waitFor();
           await check(o, who, 'Work › Clients');
+
+          // 0.13.0: the search sheet (the phone header's magnifier, F1; the iPad's Search or jump), Work's rows in it.
+          if (wide) await page.getByRole('button', { name: /^Search or jump/ }).first().tap();
+          else await page.getByRole('banner').getByRole('button', { name: 'Search', exact: true }).tap();
+          const search = page.getByRole('dialog', { name: 'Search or jump' });
+          await search.getByRole('combobox').fill('Sample');
+          await search.getByRole('option', { name: /^Sam Sample/ }).waitFor();
+          await search.getByRole('option', { name: /^Fixture Labs and Sample Trading Company/ }).waitFor();
+          await check(o, who, 'the search sheet');
+          // The phone's sheet has Cancel beside the box; the iPad's closes with a tap beside it.
+          if (wide) await page.touchscreen.tap(100, SIZES.ipad.height - 200);
+          else await search.getByRole('button', { name: 'Cancel', exact: true }).tap();
+          await search.waitFor({ state: 'detached' });
+
+          // 0.13.0: the add-client sheet, put away with nothing typed.
+          await page.getByRole('button', { name: 'Add client', exact: true }).first().tap();
+          const adding = page.getByRole('dialog', { name: 'New client' });
+          await adding.getByRole('form', { name: 'New client' }).waitFor();
+          await check(o, who, 'the New client sheet');
+          await adding.getByRole('button', { name: 'Cancel', exact: true }).tap();
+          await adding.waitFor({ state: 'detached' });
+
           await clients.getByRole('link', { name: /^Pat Example/ }).tap();
           await page.getByRole('heading', { level: 1, name: 'Pat Example' }).waitFor();
           await page.getByRole('region', { name: 'Deals' }).getByRole('link', { name: /^Site rebuild/ }).waitFor();
@@ -458,6 +486,24 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
             .toBe('negotiation');
           await page.getByRole('main').getByText(/^Negotiation/).first().waitFor();
           await check(o, who, 'a deal moved, its Undo up');
+
+          // 0.13.0: Won and Lost each ask first, in a sheet with the deal's follow-up (W33); Cancel leaves it on Negotiation.
+          for (const [stage, sheetName] of [
+            ['Won', /^Won · /],
+            ['Lost', 'Lost · Site rebuild'],
+          ] as const) {
+            await page.getByRole('button', { name: 'Move to…' }).tap();
+            await move.waitFor();
+            await move.getByRole('radio', { name: new RegExp(`^${stage}`) }).tap();
+            await move.waitFor({ state: 'detached' });
+            const asks = page.getByRole('dialog', { name: sheetName });
+            await asks.getByRole('form', { name: stage }).waitFor();
+            await asks.getByText(`Mark done: ${title}`).waitFor();
+            await check(o, who, `the ${stage} sheet`);
+            await asks.getByRole('button', { name: 'Cancel', exact: true }).tap();
+            await asks.waitFor({ state: 'detached' });
+          }
+          expect(((await call('GET', `/v1/work/deals/${ids.site_deal}`)).body as { deal: { stage: string } }).deal.stage, `Won and Lost put away (${who})`).toBe('negotiation');
 
           // Insights (from Deals), and back to Deals.
           if (!wide) await page.getByRole('main').getByRole('link', { name: 'Deals', exact: true }).tap();
@@ -539,6 +585,43 @@ describe.skipIf(!ready)('0.13.0 Work on a phone and an iPad, in Chromium, served
 
   it('on an iPad, 1024 x 1366 with touch: Work from the sidebar, split views and the deals board, the same walk', async () => {
     await walk('ipad');
+  }, perfBudgetMs(300_000));
+
+  it('F7: Accounts, Posts, a post and the New post sheet at each size, with touch', async () => {
+    for (const who of WHO) {
+      await on(who, `Accounts and Posts (${who})`, async (o) => {
+        const { page } = o;
+        await page.goto(`${base()}/accounts`, { waitUntil: 'load' });
+        await page.getByRole('heading', { level: 1, name: 'Accounts' }).waitFor({ state: 'attached' });
+        await page.getByRole('main').getByText('team-b').first().waitFor();
+        await check(o, who, 'Accounts');
+
+        await page.goto(`${base()}/posts`, { waitUntil: 'load' });
+        await page.getByRole('heading', { level: 1, name: 'Posts' }).waitFor();
+        await page.getByRole('main').getByText('How a small shop plans its first week').first().waitFor();
+        await page.getByRole('main').getByText(/placeholder client taught us/).first().waitFor();
+        await check(o, who, 'Posts');
+
+        await page.getByRole('button', { name: 'Add post', exact: true }).tap();
+        const sheet = page.getByRole('dialog', { name: 'New post' });
+        await sheet.getByRole('form', { name: 'New post' }).waitFor();
+        await check(o, who, 'the New post sheet');
+        await sheet.getByRole('button', { name: 'Cancel', exact: true }).tap();
+        await sheet.waitFor({ state: 'detached' });
+
+        // A post: its sheet on a phone; on the iPad (a pane of 800 or more) its page beside the list.
+        await page.goto(`${base()}/posts?id=${ids.post}`, { waitUntil: 'load' });
+        const wide = who === 'ipad';
+        const post = wide ? page.getByRole('article', { name: 'The post' }) : page.getByRole('dialog', { name: 'Edit post' });
+        await (wide ? post.getByText('Three lists and one rule.') : post.getByLabel('Text', { exact: true })).waitFor();
+        await check(o, who, wide ? 'a post beside Posts' : 'a post, its sheet');
+        if (!wide) {
+          // An open post's sheet has Delete, not Cancel; nothing changed, so it goes as it is.
+          await page.keyboard.press('Escape');
+          await post.waitFor({ state: 'detached' });
+        }
+      });
+    }
   }, perfBudgetMs(300_000));
 
   /** Every Work route by its address: the lists, a project, a client, a deal, Insights. */

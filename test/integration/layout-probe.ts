@@ -288,10 +288,12 @@ export function probeLayout(): Probe {
     // Not a control anyone reaches: hidden from assistive tech and taps alike (a kept-mounted file input).
     if (el.parentElement?.closest(SEL) || !visible(el) || el.closest('[aria-hidden="true"], [inert]')) continue;
     let r = el.getBoundingClientRect();
-    if (el instanceof HTMLInputElement && (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') && (r.width <= 2 || r.height <= 2)) {
+    if (el instanceof HTMLInputElement && (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file')) {
+      // A tap anywhere on its <label> works it, so the label is the target of a hidden box. 0.13.0: and of a
+      // visible one too, such as a 20 px tick in a 44 px row (a deal's follow-ups in the Won sheet).
       const label = el.closest('label') ?? (el.id ? document.querySelector(`label[for="${el.id}"]`) : null);
-      if (!label) continue;
-      r = label.getBoundingClientRect();
+      if (label) r = label.getBoundingClientRect();
+      else if (r.width <= 2 || r.height <= 2) continue;
     }
     const b = rectOf(cut(clipOf(el), boxOf(r)));
     if (!b) continue;
