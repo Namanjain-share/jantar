@@ -18,6 +18,8 @@ applyTheme(themeStore.getState().pref);
 watchInput();
 // 0.12: the shell follows the visual viewport while a field has focus (the iPad's on-screen keyboard, a pan).
 watchViewport();
+// 0.13.2: #viewport at the end of the address shows its numbers (lib/viewportReadout.ts, its own chunk).
+if (location.hash === '#viewport') void import('./lib/viewportReadout.js').then((m) => m.showViewportReadout());
 
 // 0.12: on a touch screen 640 or wider (an iPad) the sidebar is its own chunk: start it before the first render.
 if (typeof matchMedia === 'function' && matchMedia('(pointer: coarse) and (min-width: 640px)').matches) void import('./ui/shell/TouchShell.js');
