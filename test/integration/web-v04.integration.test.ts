@@ -38,9 +38,12 @@
  * value is synthetic. Needs a built dist/ and a Chromium (browser.ts).
  *
  * 0.12.1: the phone's steps run in onPaired (browser.ts): a phone that loses
- * its coarse pointer (Chromium dropping Playwright's touch emulation) is
- * opened again as the same device and the steps run once more; twice fails,
- * saying so. It is asked before a step that can't be taken twice.
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) gets it
+ * back in the same page and the steps go on; only if it won't come back is it
+ * opened again as the same device and the steps run once more, after their
+ * reset has put back what they changed on the Mac (a todo done or deleted, a
+ * food added); twice fails, saying so. It is asked before a step that can't
+ * be taken twice, and after each load that a 44 px check follows.
  */
 import { mkdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -140,14 +143,19 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
   async function check(page: Page, watch: Watch, what: string) {
     // Sheets and pushed screens finish sliding in first.
     await page.waitForTimeout(400);
-    await clean(page, watch);
+    await clean(page, watch, what);
     expect(await page.evaluate(() => (window as unknown as { __pwned?: unknown }).__pwned), what).toBeUndefined();
-    expect(await overflow(page), what).toEqual([]);
+    expect(await overflow(page, what), what).toEqual([]);
   }
 
-  /** 0.12.1: `steps` on `who`'s page; a phone that drops its touch emulation is opened again as the same device and they run once more. */
-  const on = (who: 'phone' | 'desk', what: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>) =>
-    onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who === 'phone' ? PHONE : DESK, who === 'phone' ? 'Example phone' : 'Example Mac browser', state)), steps);
+  /**
+   * 0.12.1: `steps` on `who`'s page; a phone that drops its touch emulation gets it back in place, or else is
+   * opened again as the same device and they run once more, after `reset` puts back what they changed on the Mac.
+   */
+  const on = (who: 'phone' | 'desk', what: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>, reset?: () => Promise<void>) =>
+    onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who === 'phone' ? PHONE : DESK, who === 'phone' ? 'Example phone' : 'Example Mac browser', state)), steps, { reset });
+  /** The open todos' ids, as the Mac has them. */
+  const openTodos = async () => new Set(((await call('GET', '/v1/todos')).body as TodosResponse).todos.map((t) => t.id));
 
   /** Opens `path` in each view (both themes on the phone and the desk), runs `fn` there and checks the page. */
   async function inEachView(path: string, fn: (page: Page, what: string, watch: Watch) => Promise<void>) {
@@ -375,6 +383,11 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await remove();
       await eventually(async () => !(await listed()), 10_000, 'the held delete to reach the Mac');
       await check(page, watch, 'after the delete is sent');
+    }, async () => {
+      // 0.12.1: before the steps run again, the todo marked done is open again, and the someday todo is back if its delete got there.
+      const open = await openTodos();
+      if (!open.has(ids.today!)) expect((await call('POST', `/v1/todos/${ids.today}/done`, { done: false })).status).toBe(200);
+      if (!open.has(ids.someday!)) await made('someday', 'POST', '/v1/todos', todoBody({ title: 'Example someday todo' }));
     });
   });
 
@@ -411,6 +424,10 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
         // Mark the last row done.
         await page.getByRole('button', { name: `Mark done: ${name}` }).click();
         await inView(`the Undo after marking ${name} done`);
+      }, async () => {
+        // 0.12.1: a row marked done is open again before the steps run again (a delete waits on the page, and went with it).
+        const open = await openTodos();
+        for (const id of fillers) if (!open.has(id)) await call('POST', `/v1/todos/${id}/done`, { done: false });
       });
     } finally {
       for (const id of fillers) await call('DELETE', `/v1/todos/${id}`);
@@ -458,6 +475,9 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await page.getByText(/72\.4/).first().waitFor();
     });
 
+    const eaten = async () => ((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.map((e) => e.id);
+    /** 0.12.1: today's food before the first try added any. */
+    let had: string[] | undefined;
     await on('phone', 'Food on the phone', async ({ page, watch }) => {
       await page.emulateMedia({ colorScheme: 'dark' });
       await page.goto(`http://127.0.0.1:${d.port}/food`);
@@ -465,7 +485,8 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       await sheet(page, watch, 'the weight sheet', () => page.getByText(/72\.4/).first().click());
       await sheet(page, watch, 'the target sheet', () => page.getByRole('button', { name: /^Daily target/ }).click());
 
-      const before = ((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length;
+      had ??= await eaten();
+      const before = had.length;
       await page.getByRole('button', { name: 'Add food' }).first().click();
       const dialog = page.getByRole('dialog');
       await dialog.getByRole('form', { name: 'Type a food' }).waitFor();
@@ -489,6 +510,9 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       expect(((await call('GET', `/v1/food?day=${TODAY}`)).body as FoodDay).entries.length).toBe(before);
       await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'detached' });
+    }, async () => {
+      // 0.12.1: a food the try added and didn't take back goes before the steps run again (none before it read the list).
+      if (had) for (const id of await eaten()) if (!had.includes(id)) await call('DELETE', `/v1/food/${id}`);
     });
   }, perfBudgetMs(90_000));
 
@@ -545,10 +569,13 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
         }
         const month = new Date(Date.UTC(Number(TODAY.slice(0, 4)), Number(TODAY.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
         await page.goto(`http://127.0.0.1:${d.port}/money?month=${month}`);
+        await page.getByRole('button', { name: 'This month' }).waitFor();
+        await stillTouch(page, '44 px on a past month');
         await tall(page.getByRole('button', { name: 'This month' }), 'the This month chip');
         await page.goto(`http://127.0.0.1:${d.port}/money`);
         const rows = page.getByRole('region', { name: 'By category' }).getByRole('button');
         await rows.first().waitFor();
+        await stillTouch(page, '44 px on the category rows');
         for (let i = 0; i < (await rows.count()); i++) await tall(rows.nth(i), `category row ${i}`);
       } finally {
         await page.emulateMedia({ reducedMotion: null });

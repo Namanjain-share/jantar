@@ -14,7 +14,7 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect } from 'vitest';
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type CDPSession, type Locator, type Page } from 'playwright-core';
 import { decodePng, luma } from './png.js';
 
 export const DIST = fileURLToPath(new URL('../../packages/web/dist', import.meta.url));
@@ -105,46 +105,75 @@ export async function styleElements(page: Page): Promise<number> {
 }
 
 /**
- * 0.12.1: a touch page is checked with its coarse pointer, or once more in a new context.
+ * 0.12.1: a touch page keeps its coarse pointer: when Chromium drops it, it is turned back on in the same page.
  *
  * Chromium sometimes drops Playwright's touch emulation part way through a context: CI's macOS run
- * 41667870706 drew the Mac's chrome at touch-1440, as the page does with no (pointer: coarse). Blink
- * keeps one touch switch per page (DevToolsEmulator), and a DevTools session whose Emulation agent
- * turned it on turns it off for the whole page as that session goes, while Playwright's own session
- * still has it on (a second CDP session shows it: touch on, detach, no coarse pointer until the next
- * document). The likely way on CI: a cross-document navigation (RenderDocument) moves Playwright's
- * session to the new document and lets the old document's copy go, and when that lands after the new
- * document turned touch back on, the page has none. Not caught here; nothing in these tests turns
- * touch off.
+ * 41667870706 drew the Mac's chrome at touch-1440, as the page does with no (pointer: coarse), and run
+ * 41756024997 lost it on web-v04's phone after the Todos test's Delete had reached the Mac, so running the
+ * steps again from the start in a new context could not find the todo they had deleted. Blink keeps one
+ * touch switch per page (DevToolsEmulator), and a DevTools session whose Emulation agent turned it on turns
+ * it off for the whole page as that session goes, while Playwright's own session still has it on (a second
+ * CDP session shows it: touch on, detach, no coarse pointer until the next document). The likely way on CI:
+ * a cross-document navigation (RenderDocument) moves each session to the new document, whose copy turns
+ * touch back on, and lets the old document's copy go; when that lands after the new one, the page has none.
+ * Not caught here; nothing in these tests turns touch off.
  *
- * So a touch page is marked (touchPage) as it opens. stillTouch(page) throws TouchDropped once it has
- * no coarse pointer; clean() and overflow() ask first, and a test asks before any step that needs the
- * pointer. onTouch runs a test's steps on a page and, when they find the pointer gone (or fail with it
- * gone), closes that context and runs them once more in a new one; a second drop fails, saying so.
+ * So a touch page is marked (touchPage) as it opens. stillTouch(page) asks for its coarse pointer; clean()
+ * and overflow() ask first, and a test asks before any step that needs the pointer or can't be taken twice.
+ * When it is gone, restoreTouch turns it back on in the same page from a DevTools session of the page's own,
+ * kept for the page's life (as it goes it would turn touch off again), and waits until the page and the app
+ * (its data-chrome) see a coarse pointer; the steps go on from where they were. onTouch runs a test's steps
+ * on a page; only when that fails (or a step fails with the pointer gone) does it close the context and run
+ * the steps once more in a new one, after its `reset` has put back what they changed on the Mac. Steps that
+ * can't be put back say so (`reset: false`) and fail instead of running twice; a drop in the new context
+ * fails too.
  *
- * JANTAR_TOUCH_DROP=n turns the emulation off over CDP in the first n tries of every onTouch, at its
- * first stillTouch: 1 shows a drop recovering, 2 a second drop failing.
+ * JANTAR_TOUCH_DROP simulates drops, turning the emulation off over CDP as Chromium does on CI:
+ * - `every`: at each stillTouch of a touch page (each check, each ask), so between every two checked steps;
+ *   each is turned back on in place.
+ * - `load`: as each document of a touch page loads (the likely way on CI), so the steps go on with a fine
+ *   pointer until the next stillTouch turns it back on.
+ * - `stuck:N`: at the Nth stillTouch of the first try of every onTouch, and it won't come back on in place:
+ *   the steps' reset and a new context, or with `reset: false` the failure that says why.
  */
 const touchPages = new WeakSet<Page>();
+
+type Drops = { mode: 'none' | 'every' | 'load' } | { mode: 'stuck'; at: number };
+const DROPS: Drops = (() => {
+  const v = (process.env.JANTAR_TOUCH_DROP ?? '').trim();
+  if (v === '') return { mode: 'none' };
+  if (v === 'every' || v === 'load') return { mode: v };
+  const stuck = /^stuck:(\d+)$/.exec(v);
+  if (stuck) return { mode: 'stuck', at: Number(stuck[1]) };
+  throw new Error(`JANTAR_TOUCH_DROP=${v}: every, load or stuck:N`);
+})();
+/** The first try of the onTouch running now, its stillTouch calls counted (JANTAR_TOUCH_DROP=stuck:N). */
+let firstTry: { page: Page; asks: number } | null = null;
+/** Pages whose touch a simulated drop keeps off (JANTAR_TOUCH_DROP=stuck:N). */
+const stuckPages = new WeakSet<Page>();
 
 /** 0.12.1: marks `page` as a touch page (hasTouch), checked by stillTouch, clean() and overflow(). */
 export function touchPage<P extends Page>(page: P): P {
   touchPages.add(page);
+  if (DROPS.mode === 'load') {
+    page.on('load', () => {
+      dropTouch(page).then(
+        () => console.warn(`[touch] JANTAR_TOUCH_DROP=load: ${page.url()}: touch emulation turned off over CDP as it loaded`),
+        () => undefined,
+      );
+    });
+  }
   return page;
 }
 
 export const hasCoarsePointer = (page: Page): Promise<boolean> => page.evaluate(() => matchMedia('(pointer: coarse)').matches);
 
 export class TouchDropped extends Error {
-  constructor(what: string) {
-    super(`${what}: the browser dropped its touch emulation (no (pointer: coarse))`);
+  constructor(what: string, more = '') {
+    super(`${what}: the browser dropped its touch emulation (no (pointer: coarse))${more}`);
     this.name = 'TouchDropped';
   }
 }
-
-const SIMULATED_DROPS = Number(process.env.JANTAR_TOUCH_DROP ?? 0) || 0;
-/** A simulated drop is due at the next stillTouch (JANTAR_TOUCH_DROP). */
-let dropDue = false;
 
 /** Turns the page's touch emulation off from a DevTools session of its own, as Chromium has on CI. */
 export async function dropTouch(page: Page): Promise<void> {
@@ -156,34 +185,79 @@ export async function dropTouch(page: Page): Promise<void> {
   }
 }
 
-/** 0.12.1: throws TouchDropped if `page` is a touch page that has lost its coarse pointer; nothing for any other page. */
-export async function stillTouch(page: Page, what = 'a touch page'): Promise<void> {
-  if (!touchPages.has(page)) return;
-  if (dropDue) {
-    dropDue = false;
-    console.warn(`[touch] JANTAR_TOUCH_DROP: ${what}: touch emulation turned off over CDP`);
-    await dropTouch(page);
+/** 0.12.1: each touch page's own DevTools session that turns its touch back on, kept while the page lives. */
+const keepers = new WeakMap<Page, Promise<CDPSession>>();
+
+/**
+ * 0.12.1: turns `page`'s touch emulation back on in the same page, as Playwright turned it on (one touch
+ * point, no touch events for the mouse), and waits until the page has a coarse pointer and the app's chrome
+ * is a touch screen's (touch from 640 px, the phone's below; a page with no shell has none). The session is
+ * kept: detaching it would turn touch off again. False if it doesn't come back within 5 s.
+ */
+export async function restoreTouch(page: Page): Promise<boolean> {
+  if (stuckPages.has(page)) return false;
+  let keeper = keepers.get(page);
+  if (!keeper) {
+    keeper = page.context().newCDPSession(page);
+    keepers.set(page, keeper);
   }
-  if (!(await hasCoarsePointer(page))) throw new TouchDropped(what);
+  try {
+    await (await keeper).send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await page.waitForFunction(
+      () => {
+        if (!matchMedia('(pointer: coarse)').matches) return false;
+        const shell = document.querySelector('[data-chrome]');
+        return !shell || shell.getAttribute('data-chrome') === (matchMedia('(min-width: 640px)').matches ? 'touch' : 'phone');
+      },
+      null,
+      { timeout: 5_000, polling: 50 },
+    );
+    // Two frames for what renders from the layout (the panes, a sheet's place) to settle.
+    await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * 0.12.1: `steps` on the page `open` gives, with its coarse pointer. On a drop (stillTouch threw, or a
- * step failed and the page has no coarse pointer) its context is closed, `open(true)` gives a new one
- * and the steps run again from the start; a drop there too throws. The page is asked once more after the
- * steps, so none passed with a fine pointer. `keep` leaves a page that passed open (a suite's paired
- * phone, for the next test) and returns it; otherwise it is closed (`close`, else its context).
+ * 0.12.1: for a touch page, makes sure it has its coarse pointer: if Chromium dropped it, it is turned back
+ * on in the same page (restoreTouch), saying so; TouchDropped if it won't come back. Nothing for any other page.
+ */
+export async function stillTouch(page: Page, what = 'a touch page'): Promise<void> {
+  if (!touchPages.has(page)) return;
+  if (DROPS.mode === 'every') {
+    await dropTouch(page);
+    console.warn(`[touch] JANTAR_TOUCH_DROP=every: ${what}: touch emulation turned off over CDP`);
+  } else if (DROPS.mode === 'stuck' && firstTry?.page === page && ++firstTry.asks === DROPS.at) {
+    await dropTouch(page);
+    stuckPages.add(page);
+    console.warn(`[touch] JANTAR_TOUCH_DROP=stuck:${DROPS.at}: ${what}: touch emulation turned off over CDP, and kept off`);
+  }
+  if (await hasCoarsePointer(page)) return;
+  if (!(await restoreTouch(page))) throw new TouchDropped(what, ', and it did not come back on in the same page');
+  console.warn(`[touch] ${what}: the browser dropped its touch emulation (no (pointer: coarse)); turned it back on in the same page`);
+}
+
+/**
+ * 0.12.1: `steps` on the page `open` gives, with its coarse pointer (stillTouch turns a dropped one back on
+ * in place, and the steps go on). Only when that fails, or a step fails and the page has no coarse pointer,
+ * is its context closed, `reset` run to put back what the steps changed on the Mac, and the steps run again
+ * from the start in a new one (`open(true)`); a drop there too throws. With `reset: false` the steps can't
+ * run twice, and that throws at once. The page is asked once more after the steps, so none passed with a
+ * fine pointer. `keep` leaves a page that passed open (a suite's paired phone, for the next test) and
+ * returns it; otherwise it is closed (`close`, else its context).
  */
 export async function onTouch<T extends { page: Page }>(
   what: string,
   open: (again: boolean) => Promise<T>,
   steps: (o: T) => Promise<void>,
-  opts: { keep?: boolean; close?: (o: T) => Promise<void> } = {},
+  opts: { keep?: boolean; close?: (o: T) => Promise<void>; reset?: (() => Promise<void>) | false } = {},
 ): Promise<T> {
   const close = opts.close ?? ((o: T) => o.page.context().close());
   for (let attempt = 1; ; attempt += 1) {
     const o = await open(attempt > 1);
-    dropDue = attempt <= SIMULATED_DROPS && touchPages.has(o.page);
+    firstTry = attempt === 1 ? { page: o.page, asks: 0 } : null;
     let dropped: string | null = null;
     try {
       await steps(o);
@@ -195,27 +269,32 @@ export async function onTouch<T extends { page: Page }>(
         dropped = ` (a step failed with it gone: ${String(e instanceof Error ? e.message : e).split('\n')[0]})`;
       }
       if (dropped === null) throw e;
-      if (attempt > 1) throw new Error(`${what}: the browser dropped its touch emulation (no (pointer: coarse)) in a new context too${dropped}; a touch check never runs with a fine pointer`, { cause: e });
-      console.warn(`[touch] ${what}: the browser dropped its touch emulation (no (pointer: coarse))${dropped}; once more in a new context`);
+      const gone = `${what}: the browser dropped its touch emulation (no (pointer: coarse))`;
+      if (attempt > 1) throw new Error(`${gone} in a new context too${dropped}; a touch check never runs with a fine pointer`, { cause: e });
+      if (opts.reset === false) throw new Error(`${gone} and it did not come back in the same page${dropped}; these steps change the Mac and can't run twice`, { cause: e });
+      console.warn(`[touch] ${gone}${dropped}; once more in a new context${opts.reset ? ', what the steps changed on the Mac put back first' : ''}`);
     } finally {
-      dropDue = false;
+      firstTry = null;
       if (!opts.keep || dropped !== null) await close(o).catch(() => undefined);
     }
+    if (opts.reset) await opts.reset();
   }
 }
 
 export type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
 
 /**
- * 0.12.1: onTouch for a paired page a suite keeps across its tests (`current`). On a drop it is opened
- * again by `again` as the same device, from the dropped context's cookies, storage and IndexedDB (where
- * the app keeps the device secret): pairing again would meet the daemon's claim limit, 8 a minute.
+ * 0.12.1: onTouch for a paired page a suite keeps across its tests (`current`). On a drop that can't be put
+ * right in place it is opened again by `again` as the same device, from the dropped context's cookies,
+ * storage and IndexedDB (where the app keeps the device secret): pairing again would meet the daemon's claim
+ * limit, 8 a minute. `reset` as onTouch's.
  */
 export function onPaired<T extends { ctx: BrowserContext; page: Page }>(
   what: string,
   current: () => T,
   again: (state: StorageState | undefined) => Promise<T>,
   steps: (o: T) => Promise<void>,
+  opts: { reset?: (() => Promise<void>) | false } = {},
 ): Promise<T> {
   let state: StorageState | undefined;
   return onTouch(what, async (reopen) => (reopen ? again(state) : current()), steps, {
@@ -224,12 +303,13 @@ export function onPaired<T extends { ctx: BrowserContext; page: Page }>(
       state = await o.ctx.storageState({ indexedDB: true }).catch(() => undefined);
       await o.ctx.close();
     },
+    ...opts,
   });
 }
 
-/** No message about the Content Security Policy, no console error, no <style> element. */
-export async function clean(page: Page, watch: Watch): Promise<void> {
-  await stillTouch(page);
+/** No message about the Content Security Policy, no console error, no <style> element. 0.12.1: `what` names a touch page that lost its pointer. */
+export async function clean(page: Page, watch: Watch, what?: string): Promise<void> {
+  await stillTouch(page, what);
   expect(watch.csp, watch.csp.join('\n')).toEqual([]);
   expect(watch.errors, watch.errors.join('\n')).toEqual([]);
   expect(await styleElements(page)).toBe(0);
@@ -243,8 +323,8 @@ export async function clean(page: Page, watch: Watch): Promise<void> {
  * view); and an element past the viewport's sides that no box inside the
  * viewport holds.
  */
-export async function overflow(page: Page): Promise<string[]> {
-  await stillTouch(page);
+export async function overflow(page: Page, what?: string): Promise<string[]> {
+  await stillTouch(page, what);
   return page.evaluate(() => {
     const vw = document.documentElement.clientWidth;
     const out: string[] = [];
