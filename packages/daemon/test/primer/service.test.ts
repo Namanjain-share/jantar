@@ -156,13 +156,17 @@ async function makeRig(
   return rig;
 }
 
-/** Let real I/O (primed.json, the work folder) and promise callbacks run until `cond` holds. */
-async function until(cond: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 400; i++) {
-    if (cond()) return;
+/**
+ * Let real I/O (primed.json, the work folder) and promise callbacks run until `cond` holds.
+ * 0.12.1: for up to 5 s of real time. It was 400 turns of a 2 ms timer, under a second, which a
+ * slow runner's disk can outlast (every fs call held 120 ms: three cases timed out here).
+ */
+async function until(cond: () => boolean, what: string, ms = 5_000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what} (${ms} ms of real time)`);
     await new Promise((r) => setTimeout(r, 2));
   }
-  throw new Error(`timed out waiting for ${what}`);
 }
 
 /** Wait until the round sleeps between two primes (the minute timer is the other pending one), then pass the gap. */
