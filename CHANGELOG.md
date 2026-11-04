@@ -3,6 +3,31 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.12.2 (unreleased)
+
+- **Linking another device gives them the link, not only a code.** In the
+  Accountability partner's app, Me › Devices › Link another device showed
+  a code to enter at `/p/link` within 5 minutes. It now shows the whole
+  link, on the address their app is open at, with Copy link, Share where
+  the browser has a share sheet (AirDrop or Messages from an iPhone to a
+  laptop) and a QR code, the code in large type to enter by hand, and
+  the steps: open the link, sign in with the code emailed to you, and if
+  it asks, open the link again or paste it. It counts down to when the
+  link runs out, then says how to get a new one. Back on Me › Devices,
+  the new device shows in the list ("Mac is linked."), and the screen
+  says how many of the five devices are linked.
+- **A device-link code lasts 15 minutes** (it was 5): the One-time PIN
+  sign-in on the new device can take a few minutes on its own. It still
+  works once, and five devices are still the most.
+- `/p/link` says what to do after a One-time PIN sign-in dropped the code
+  from the link: open the link once more, paste it, or type its code. An
+  expired or used link says to make a new one on a linked device, and five
+  devices say to revoke one first, on whichever device it happens.
+- A device they join or link with is named for what it is (Mac, Windows
+  PC, iPad, Android phone and so on), not "Phone".
+- Your Sharing screen for them says how many of their five devices are
+  linked, so you can see a new one arrive.
+
 ## 0.12.1 (4 November 2026)
 
 - **An invite opens after a One-time PIN sign-in.** Signing in to

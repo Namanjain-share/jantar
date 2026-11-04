@@ -386,7 +386,8 @@ about them opens the right tab here.
   ways, with replies).
 - **Sharing**: what they agreed to, in the words their page used; **Ask for
   more** (one request at a time; "Waiting for Asha's answer" while it is
-  open); their devices with the email each joined with; and your pushes
+  open); their devices with the email each joined with, and how many of
+  their five are linked; and your pushes
   about them: the day summary (off until you pick a time), "Asha sent the
   evening review", and quiet hours (`jantar people prefs` sets the same);
   and what the space is called.
@@ -669,10 +670,28 @@ days.
 
 ## Devices and notifications (theirs)
 
-- **Link another device**: Me › Devices makes a code that works once, for 5
-  minutes; they enter it on the new device at `/p/link`. Five devices at
-  most. Revoking a device also voids any code it made that wasn't used. They see each device's name, when it was last used, and the email it
-  joined with; you see names and the email only.
+- **Link another device**: Me › Devices › Link another device shows a
+  link to their app's `/p/link` with a code in it, on the address their
+  app is open at (`https://us.example.com/p/link#c=…`), to **Copy**,
+  **Share** (where the browser has a share sheet: AirDrop or Messages from
+  an iPhone to their laptop) or show as a **QR code**, and under it the
+  code itself, to type at `/p/link`. The steps on the screen: on the other
+  device, open the link, sign in with the code emailed to you, and if it
+  asks, open the link again or paste it (the One-time PIN sign-in drops
+  the part of the link that holds the code; `/p/link` says so and takes
+  the link pasted whole, or its code). A link works once, for 15 minutes
+  (5 before 0.12.2), and the screen counts down to when it runs out, then
+  says to make a new one. Back on Me › Devices, the new device shows in
+  the list ("Mac is linked."); a device is named for what it is (iPhone,
+  iPad, Mac, Windows PC, Android phone and so on).
+- **Five devices at most.** Me › Devices says how many of the five are
+  linked; at five, Link another device says to revoke one they no longer
+  use first, and a link made earlier says the same on the new device. An
+  expired or used link says to make a new one on a device that is linked
+  already. Revoking a device also voids any code it made that wasn't used.
+  They see each device's name, when it was last used, and the email it
+  joined with; you see names, the email and how many of the five are
+  linked (on Sharing), nothing more.
 - **Notifications**: turn on and test, mute for an hour or eight, and the
   lock screen: show everything, hide alert text, or hide everything
   (the space's name, "Accountability partner" by default, and "Medicine

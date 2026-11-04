@@ -496,6 +496,36 @@ On the same two phones (owner and partner):
 - A list item ticked on one phone shows "Ticked by …" on the other.
 - A café deleted on one phone: the other gets one notification.
 
+### Accountability partner: linking a laptop (0.12.2)
+
+On the partner's iPhone and a laptop that has never opened their app, the
+people hostname behind its Access app with the One-time PIN:
+
+- On the iPhone, Me › Devices › Link another device: the link is on the
+  people hostname (`https://us.example.com/p/link#c=…`), never the
+  owner's; "It works once, until HH:MM (15 min left)" counts down. Share
+  opens the share sheet; AirDrop the link (or send it in Messages) to the
+  laptop. Copy link puts the same link on the clipboard.
+- On the laptop, open it: Access asks for an email, the code arrives by
+  mail, sign in. Does the laptop come back to `/p/link` with the code
+  filled in, or without it ("Signing in with a code from your email drops
+  …")? Without it: open the link again in the same tab (the code fills
+  in), and with a second link paste it instead; Link this device; the
+  laptop opens on Today.
+- Back on the iPhone (switch to Safari, or the Home Screen app): "Mac is
+  linked." in place of the link, and "2 of 5 devices linked."; the
+  owner's Sharing says "2 of 5 devices linked." too, with the laptop named
+  "Mac" (or "Windows PC"), not "Phone".
+- Show QR code: another phone's camera opens the same link.
+- The code typed by hand at `us.example.com/p/link` on the laptop links
+  too.
+- A link left to run out (15 minutes): the iPhone says to tap Link
+  another device for a new one; the old link on the laptop says it
+  expired, and what to do.
+- At five devices: Link another device on the iPhone says to revoke one
+  first; a link made at four and opened on a sixth device says, there, to
+  revoke one on a linked device and link this one again.
+
 ## iPad checks (0.12)
 
 0.12 was built and tested in Chromium (Playwright's iPad contexts: touch,
