@@ -111,6 +111,32 @@ describe('0.14.0 the Switching rules sheet', () => {
     expect((within(dialog).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('says what Save did in the pinned actions row, announced, and keeps Save off while it saves', async () => {
+    let finish: (r: SwitchRules) => void = () => undefined;
+    const a = api(() => new Promise<SwitchRules>((r) => (finish = r)));
+    renderApp({ path: '/accounts', api: a, state: stateWith({ accounts }) });
+    const dialog = await openSheet();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Raise Minutes before full' }));
+    const save = within(dialog).getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    fireEvent.click(save);
+    await waitFor(() => expect(save.disabled).toBe(true)); // while it saves
+    expect(save.getAttribute('aria-busy')).toBe('true');
+    fireEvent.click(save);
+    fireEvent.submit(within(dialog).getByRole('form', { name: 'Switching rules' }));
+    expect(a.calls.mock.calls.filter(([r]) => r.method === 'PATCH')).toHaveLength(1);
+    await act(async () => finish({ ...RULES, leadMin: 11 }));
+    const receipt = await within(dialog).findByText(SAVED_TEXT);
+    const status = receipt.closest('[role="status"]') as HTMLElement;
+    expect(status).toBeTruthy();
+    // in the actions row, with Save (the row a form sheet pins at its foot)
+    const row = status.closest('.sheet-actions') as HTMLElement;
+    expect(row).toBeTruthy();
+    expect(within(row).getByRole('button', { name: 'Save' })).toBe(save);
+    expect(row.contains(within(dialog).getByRole('button', { name: 'Close' }))).toBe(true);
+    // the live region was there before the receipt, so it is announced
+    expect(row.firstElementChild).toBe(status);
+  });
+
   it('saves only what changed, with one PATCH, and says ccw uses it within a minute', async () => {
     const saved = { ...RULES, hold: [1, 3], weeklyCeiling: 96, weeklyRamp: { ...RULES.weeklyRamp, '1': { days: [45, 50, 50, 50, 75, 85, 95], lastHour: 100 } } };
     const a = api(async () => saved);

@@ -13,11 +13,15 @@
  *
  * Save sends only the keys that changed (a ramp turned off as null), then
  * says "Saved. ccw uses it within a minute." and asks for the plan again. A
- * refusal (a switch.json that won't parse: 409) is shown under the form as
- * the Mac said it; offline, Save is off. The paths are words, as Work's are
- * (screens/work/client.ts), so no schema comes with them.
+ * refusal (a switch.json that won't parse: 409) is shown as the Mac said
+ * it; offline, Save is off, and so is it while a save runs. 0.14.0: what
+ * Save did is said in the actions row itself (role status, or alert), which
+ * a form sheet pins at its foot, so it is in view at every size. The paths
+ * are words, as Work's are (screens/work/client.ts), so no schema comes with
+ * them.
  */
-import { MinusIcon, PlusIcon } from '@phosphor-icons/react';
+import { CheckIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react';
+import clsx from 'clsx';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { SWITCH_RULES, type SwitchRules, type SwitchRulesPatch, type WeeklyRamp } from '@jantar/protocol';
 import { errorText } from '../../../lib/api.js';
@@ -27,7 +31,7 @@ import { useApp, useDeps } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { Spinner } from '../../kit/Spinner.js';
-import { InlineError, PropRow, Receipt, SwitchRow } from '../devices/parts.js';
+import { InlineError, PropRow, SwitchRow } from '../devices/parts.js';
 import { reloadPlan } from './hooks.js';
 
 /** GET and PATCH /v1/accounts/switching (protocol ROUTES.getSwitchRules and patchSwitchRules). */
@@ -313,18 +317,28 @@ function SwitchingForm({ onDone }: { onDone: () => void }) {
         );
       })}
 
-      {error ? <InlineError className="mt-12">{error}</InlineError> : null}
-      {saved ? <Receipt className="mt-12">{SAVED_TEXT}</Receipt> : null}
-      <div className="sheet-actions mt-16 flex flex-wrap items-center gap-8">
-        <Button type="submit" variant="primary" size="lg" className="flex-1" disabled={!patch || busy || offline}>
-          {busy ? <Spinner label="Saving" /> : null}
-          Save
-        </Button>
-        <Button variant="text" size="lg" onClick={onDone}>
-          {patch ? 'Cancel' : 'Close'}
-        </Button>
+      {/* 0.14.0: what Save did, in the row with Save (pinned at a form sheet's foot): always in view, and announced. */}
+      <div className="sheet-actions mt-16">
+        <p role="status" className={clsx('flex items-center gap-6 type-small text-ink-2', saved && 'mb-8')}>
+          {saved ? (
+            <>
+              <CheckIcon size={16} aria-hidden="true" className="flex-none text-ink" />
+              {SAVED_TEXT}
+            </>
+          ) : null}
+        </p>
+        {error ? <InlineError className="mb-8">{error}</InlineError> : null}
+        <div className="flex flex-wrap items-center gap-8">
+          <Button type="submit" variant="primary" size="lg" className="flex-1" disabled={!patch || busy || offline} aria-busy={busy || undefined}>
+            {busy ? <Spinner label="Saving" /> : null}
+            Save
+          </Button>
+          <Button variant="text" size="lg" onClick={onDone}>
+            {patch ? 'Cancel' : 'Close'}
+          </Button>
+        </div>
+        {offline ? <p className="mt-8 type-mono text-ink-3">{OFFLINE_TEXT}</p> : null}
       </div>
-      {offline ? <p className="mt-8 type-mono text-ink-3">{OFFLINE_TEXT}</p> : null}
     </form>
   );
 }
