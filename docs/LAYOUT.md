@@ -867,3 +867,20 @@ touch, a client's and a project's log read the stages' names
 phone and says why a search failed, and `g w` opens Work before Life
 status answers. The first load is still 277.3 kB; Work 62.9 kB with what
 it pulls in, Work › Clients 72.6, Work › Deals 70.8.
+
+Work on a phone and an iPad, end to end (0.13.0, design 15, F7 and F8):
+`test/integration/web-v013-phone.integration.test.ts`, the built app
+served by jantard on made-up clients, deals and projects. At 320 × 568
+and 390 × 844 with touch, and once on a 1024 × 1366 iPad with its safe
+areas (Work from the sidebar, a project, a client and a deal beside their
+list, the deals board), it walks every Work route: a call logged with a
+next step for today (Today's Due and Work card follow it), a stage moved,
+a small CSV previewed and the clients exported, then Back. Each screen and
+sheet has a clean console, nothing sideways, no target under 44 × 44 and
+nothing that stays put in the bottom 24 px. Every route shows the off page
+with Work off and Life's 503 sentence with life.db broken, and her app
+(her host's `/p` and `p.html`) loads none of Work's chunks. The steps that
+change the Mac run in `onTouch` with a `reset`. It found two targets under
+44 on touch, both 44 now: a toast (`coarse:min-h-44`, in main: the first
+load is still 277.3 kB) and a client's name in the Clients table, which
+now fills its 52 px row as Projects' does.
