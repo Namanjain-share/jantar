@@ -21,12 +21,19 @@ What changed for people who use Jantar, newest first. Versions before
   own weekly cap for each day of its week instead of the one weekly limit:
   for example 50% for the first four days, then 75, 85 and 95, and all of
   it in the last hour before the week resets (*Fill the usual week* puts
-  those in). Day 1 starts at the account's weekly reset. ccw keeps the
-  account under that day's cap, so a week's use is spread out instead of
-  spent in the first days.
+  those in). Day 1 starts at the account's weekly reset, and the sheet
+  marks the day in effect now. ccw keeps the account under that day's
+  cap, so a week's use is spread out instead of spent in the first days:
+  its sessions leave once its weekly use reaches the cap (by the reading,
+  not a guess at how fast it will get there), and new ones move onto it,
+  or start there with Auto, only while it is at least 5 under the cap.
+- **An account without a 5-hour window has no 5-hour limit.** When cswap
+  reports only an account's weekly use, Jantar no longer treats it as
+  empty and filling up: only its weekly use, or its cap, stops it.
 - **Accounts shows each cap.** An account with a weekly cap has it among
-  its flags (`cap 50%`), and next to its weekly use the cap now and the
-  next one (`cap 50% · 75% Thu 22:30`). The weekly bar's mark is at the cap.
+  its flags (`cap 50%`, on a phone beside the row's other flag), and next
+  to its weekly use the cap now and the next one (`cap 50% · 75% Thu
+  22:30`). The weekly bar's mark is at the cap.
 - On an iPad or a Mac, an account's flags no longer run past the edge of
   the Accounts table when there are more than fit: they wrap onto a second
   line.

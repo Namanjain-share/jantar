@@ -57,26 +57,53 @@ and changes them:
   the last-hour cap applies. *Fill the usual week* puts in 50, 50, 50, 50,
   75, 85, 95 and 100 for the last hour: the account is kept to half its
   week early on and can use all of it at the end. When a reading is older
-  than the reset, the days count on from that reset. Turn the cap off and
-  the account goes back to the weekly limit.
+  than the reset, the days count on from that reset. The day in effect now
+  is marked (`Day 4 · now`); with no weekly reading to count from, the
+  account's cap is the weekly limit until there is one. Turn the cap off
+  and the account goes back to the weekly limit.
 - **5-hour limit** and **Weekly limit**: the % of each window ccw treats
   as full (50 to 100).
 - **Leave … min before full**: how early a session leaves an account
   that will be full (1 to 60 minutes).
 
+How a weekly cap is used, by ccw and by Jantar's own plan and Auto alike:
+
+- Held or not, a capped account's sessions leave it (or are parked, when no
+  account has room) once its weekly use reaches the cap for now. That is
+  read from the account's weekly use, not projected from how fast its
+  sessions burn: an account at 10% with a 50% cap keeps its sessions.
+- A session moves onto an account with a cap (or Auto starts one there)
+  only while its weekly use is at least 5 under the cap, so it doesn't
+  arrive at 49% and leave at 50%. A held account never takes one.
+- An account whose usage reading has no 5-hour window has no 5-hour
+  limit: it is never shown filling up, and only its weekly use (or cap)
+  stops it. An account with a 5-hour window keeps the 5-hour rules, cap or
+  not.
+- In `switch.json` an account's entry is under its number as ccw writes it
+  (`"2"`, never `"02"`); an entry under any other key, or one that doesn't
+  fit (a value over 100, six days), is ignored and logged once, and that
+  account has the weekly limit. A whole number written as `50.0` counts.
+
 Save writes only what you changed, and only those settings: every other
 key in `switch.json` stays as it was, and the file as it was before is
 kept beside it as `switch.json.prev`. The new file is written whole and
 then put in place, so ccw never reads half of it, and it uses the new
-rules within a minute. When `switch.json` doesn't read as JSON (a typo
-from editing it by hand, or ccw halfway through writing it), nothing is
-saved and the sheet says so; fix the file on the Mac and save again.
+rules within a minute. If ccw writes the file while a save runs, ccw's
+stands: nothing is saved, `switch.json.prev` is left as it was, and the
+sheet says to try again. A `switch.json` that is a symlink is replaced by
+a regular file with the new rules (the file it pointed to is left as it
+was), as ccw's own save does. When `switch.json` doesn't read as JSON (a
+typo from editing it by hand, or ccw halfway through writing it), nothing
+is saved and the sheet says so; fix the file on the Mac and save again.
 Without ccw, or with Jantar started `--read-only`, there is nothing to
-save.
+save. On an iPad or a Mac, Save and Cancel stay at the sheet's foot, and
+what Save did is said there, beside them.
 
 An account with a weekly cap shows it on its row: `cap 50%` among its
-flags, and next to its weekly use the cap now and the next one, as
-`cap 50% · 75% Thu 22:30`. The weekly bar's tick is at the cap.
+flags (on a phone's closed row beside its first other flag, such as
+`held` or `next →`), and next to its weekly use the cap now and the next
+one, as `cap 50% · 75% Thu 22:30`, or `cap 95% · no weekly reading`. The
+weekly bar's tick is at the cap.
 
 ## Accounts kept for other work
 

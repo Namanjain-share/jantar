@@ -947,3 +947,28 @@ served by jantard on a home with ccw, at 320 × 568, 390 × 844 and on a
 (a clean console, nothing sideways, 44 × 44, nothing that stays put in the
 bottom 24 px, the iPad's status bar), and at 390 a day's cap raised and
 saved, read back from the fake home's `switch.json`.
+
+The ramp rule, the same in ccw and Jantar (`SWITCH_RULES`' comment):
+protocol's `rampSlot` is the cap rule itself (day 1 to 7, the last hour,
+or none), used by `cap.ts` and by the sheet's "Day 4 · now";
+`SWITCH_RULES.rampTargetMargin` (5) is how far under its cap a ramped
+account that isn't held must be to take a session (`plan.ts`' `usable`
+and `next`, and the launcher's Auto: `ccwView` takes each account's cap
+from the plan, `launcher/account.ts` `autoSkip`, and `LaunchAccount.weeklyCap`
+for the start sheet's held warning). An account with no 5-hour window in
+its reading has no 5-hour limit (`plan.ts`: no `fullInMin`; the launcher:
+not skipped, no projected fill). `files.ts` reports what it ignores in
+`weekly_ramp` (a key that isn't canonical, an entry that doesn't fit) and
+`index.ts` logs each once. `write.ts` writes the old file and the new one
+to temp files, reads `switch.json` again before each and before the
+renames (a 409 leaves `switch.json.prev` alone), and clears its own
+stale temp files on the next save. The web: `kit/Sheet.tsx` takes a
+`dirty` prop from a form that knows better than the input events (a
+stepper's − and +); the sheet's actions row holds the receipt (a live
+region) and the error, pinned at a form sheet's foot, and `kit.css` keeps
+its height clear at the scroller's foot (`--sheet-actions-h`,
+`scroll-padding-bottom`); `model.ts`' `closedFlags` puts the cap beside a
+closed phone row's first flag. The first load is 278.3 kB. The
+integration test adds a 1180 × 820 iPad and a 1440 × 900 Mac: the
+accounts named, today marked, Esc after a + tap asking first, Tab never
+under the pinned row, and Save's receipt inside the viewport.
