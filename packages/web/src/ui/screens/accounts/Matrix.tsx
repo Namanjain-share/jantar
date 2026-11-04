@@ -135,7 +135,8 @@ export function Matrix({
             <div
               role="row"
               className={clsx(
-                'flex h-40 cursor-pointer items-center border-b transition-colors duration-120 ease-hover hover:bg-hover coarse:h-52',
+                // 0.14.0: at least 40 (52 on touch), taller when its flags take a second line.
+                'flex min-h-40 cursor-pointer items-center border-b transition-colors duration-120 ease-hover hover:bg-hover coarse:min-h-52',
                 isOpen ? 'border-transparent' : 'border-line',
               )}
               onClick={() => onToggle(r.id)}
@@ -188,7 +189,8 @@ export function Matrix({
               <span role="cell" className="flex w-112 flex-none items-center">
                 <SessionCells cells={cells} moveTo={moveTo} {...(coarse ? { onCluster: () => onToggle(r.id), expanded: isOpen } : {})} />
               </span>
-              <span role="cell" className="flex w-160 min-w-0 flex-none gap-6">
+              {/* 0.14.0: flags past the column's 160 px (a held, disabled account that needs a login) wrap, never stick out. */}
+              <span role="cell" className="flex w-160 min-w-0 flex-none flex-wrap gap-x-6 gap-y-4 py-4">
                 {r.flags.map((f) => (
                   <Tag key={f.text} tone={f.tone}>
                     {f.text}
