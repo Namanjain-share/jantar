@@ -2,7 +2,8 @@
  * Toasts only for results with no on-screen home ("Usage refresh asked
  * for"): bottom centre, --raised, text only, 3.5 s (the toast store in
  * ui/context.tsx owns timing). Errors that belong to a control are shown
- * inline under it instead.
+ * inline under it instead. 0.13.0: a tap dismisses one, so under a finger
+ * it is 44 px tall like every other target (test/integration/web-v013-phone).
  */
 import { useStore } from 'zustand';
 import { useDeps } from '../context.js';
@@ -17,7 +18,7 @@ export function Toasts() {
         <button
           type="button"
           key={t.id}
-          className="pointer-events-auto max-w-480 rounded-btn border border-line bg-raised px-12 py-8 text-left type-small text-ink animate-fade"
+          className="pointer-events-auto max-w-480 rounded-btn border border-line bg-raised px-12 py-8 text-left type-small text-ink animate-fade coarse:min-h-44"
           onClick={() => dismiss(t.id)}
           data-tone={t.tone}
         >
