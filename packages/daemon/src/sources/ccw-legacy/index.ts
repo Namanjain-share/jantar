@@ -11,6 +11,8 @@
  *   projection from them;
  * - botRunning(): ccw's Telegram bot holds telegram.lock (lsof; falls back to
  *   the process list). The bot's config, telegram.json, is never opened.
+ * - 0.14.0: plan() also gives each account with a weekly ramp in switch.json
+ *   its weekly cap now, by ccw's cap rule on the daemon's clock (cap.ts).
  *
  * Nothing in ~/.config/ccw is ever created, written, locked or deleted.
  */
@@ -292,4 +294,5 @@ export function createCcwLegacy(ctx: DaemonContext, opts: CcwLegacyOptions = {})
 }
 
 export { computePlan, groupKey, type PlanInput, type PlanOutput } from './plan.js';
-export { parseBurn, parseMove, parseSwitchConfig, parseActive, ACTIVE_MOVE_STEPS, type CcwSwitchConfig } from './files.js';
+export { parseBurn, parseMove, parseSwitchConfig, parseActive, parseWeeklyRamp, ACTIVE_MOVE_STEPS, type CcwSwitchConfig } from './files.js';
+export { rampCapAt, weeklyCapFor, type WeeklyCap } from './cap.js';

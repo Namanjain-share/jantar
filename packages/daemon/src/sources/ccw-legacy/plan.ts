@@ -9,6 +9,7 @@
  * native planner inside Jantar is later work.
  */
 import type { Account, AccountId, Move, Session } from '@jantar/protocol';
+import { weeklyCapFor, type WeeklyCap } from './cap.js';
 import type { BurnEntry, CcwSwitchConfig } from './files.js';
 
 /** A session that worked this recently counts as burning (ccw ACTIVE_FOR). */
@@ -32,6 +33,10 @@ export interface PlanAccount {
   fullInMin?: number;
   ridesReset: boolean;
   usable: boolean;
+  /** 0.14.0: an account with a weekly ramp: its cap now (cap.ts), when it next changes and to what. */
+  weeklyCap?: number;
+  capUntil?: string;
+  nextCap?: number;
 }
 
 export interface PlanOutput {
@@ -117,9 +122,19 @@ export function computePlan(input: PlanInput): PlanOutput {
   };
   const weeklyPct = (a: Account): number =>
     Math.max(0, ...a.windows.filter((w) => w.kind !== 'five_hour').map((w) => w.pct));
+  // 0.14.0: an account with a weekly ramp stops at its cap for now instead of weekly_ceiling (cap.ts).
+  const caps = new Map<AccountId, WeeklyCap>();
+  for (const [n, a] of accts) {
+    const ramp = Object.hasOwn(cfg.weeklyRamp, String(n)) ? cfg.weeklyRamp[String(n)] : undefined;
+    if (!ramp) continue;
+    const reset = a.windows.find((w) => w.kind === 'seven_day')?.resetsAt;
+    const resetMs = reset ? Date.parse(reset) : NaN;
+    caps.set(n, weeklyCapFor(ramp, Number.isFinite(resetMs) ? resetMs : null, nowMs, cfg.weeklyCeiling));
+  }
+  const weeklyLimit = (n: AccountId): number => caps.get(n)?.cap ?? cfg.weeklyCeiling;
   const usable = (n: AccountId): boolean => {
     const a = accts.get(n);
-    return !!a && !cfg.hold.includes(n) && a.usageStatus === 'ok' && a.windows.length > 0 && weeklyPct(a) < cfg.weeklyCeiling;
+    return !!a && !cfg.hold.includes(n) && a.usageStatus === 'ok' && a.windows.length > 0 && weeklyPct(a) < weeklyLimit(n);
   };
   const shared = (n: AccountId, key: string | null): boolean =>
     [...(on.get(n)?.keys() ?? [])].some((sid) => (group.get(sid) ?? sid) !== key);
@@ -149,6 +164,14 @@ export function computePlan(input: PlanInput): PlanOutput {
         usable: usable(n),
       };
       if (Number.isFinite(full)) p.fullInMin = Math.round(full * 10) / 10;
+      const cap = caps.get(n);
+      if (cap) {
+        p.weeklyCap = cap.cap;
+        if (cap.until !== undefined && cap.next !== undefined) {
+          p.capUntil = new Date(cap.until).toISOString();
+          p.nextCap = cap.next;
+        }
+      }
       return p;
     });
   return { next: best?.n ?? null, accounts };

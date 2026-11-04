@@ -1,0 +1,32 @@
+{
+  "about": "0.14.0: the weekly cap rule's table, the same rows in ccw and Jantar. R is the account's weekly reset (usage.sevenDay.resetsAt, epoch seconds); each row is [t - R in seconds, the cap at t] for the ramp below, or with no R the weekly ceiling.",
+  "weekly_ceiling": 99,
+  "ramp": { "days": [50, 50, 50, 50, 75, 85, 95], "last_hour": 100 },
+  "R": 1794522600,
+  "rows": [
+    [-777600, 50],
+    [-604801, 50],
+    [-604800, 50],
+    [-604799, 50],
+    [-518401, 50],
+    [-518400, 50],
+    [-259201, 50],
+    [-259200, 75],
+    [-172801, 75],
+    [-172800, 85],
+    [-86401, 85],
+    [-86400, 95],
+    [-3601, 95],
+    [-3600, 100],
+    [-1, 100],
+    [0, 50],
+    [86399, 50],
+    [86400, 50],
+    [345599, 50],
+    [345600, 75],
+    [432000, 85],
+    [518400, 95],
+    [2592000, 95]
+  ],
+  "no_reset": 99
+}

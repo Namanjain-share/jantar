@@ -1,7 +1,8 @@
 /**
  * The legacy ccw tool's file formats (~/.config/ccw), parsed read-only.
  *
- *   switch.json          autoswitch config (on, dry_run, hold, ceilings, groups, prompts)
+ *   switch.json          autoswitch config (on, dry_run, hold, ceilings, groups, prompts;
+ *                        0.14.0: weekly_ramp, {"<account>": {"days": [7 x 1-100], "last_hour": 1-100}})
  *   switch/<sid>.json    a move in progress, parked or stuck
  *   switch/<sid>.lock    flock held by the ccw process running that move
  *   switch/burn.json     sid -> [avg %/min, updated (epoch s), latest %/min]  (older entries: 2 fields)
@@ -9,7 +10,7 @@
  *
  * Nothing here writes to ccw's files: ccw rewrites them itself.
  */
-import { MoveSchema, MoveStepSchema, type Move, type MoveStep } from '@jantar/protocol';
+import { MoveSchema, MoveStepSchema, SWITCH_RULES, type Move, type MoveStep, type WeeklyRamp } from '@jantar/protocol';
 import { bool, int, isObj, nonEmpty, num, str, toIso } from '../lib/values.js';
 
 /** Steps during which ccw is typing into the session. */
@@ -132,6 +133,37 @@ export interface CcwSwitchConfig {
   minRunMin: number;
   weeklyCeiling: number;
   burnDefault: number;
+  /** 0.14.0: `weekly_ramp`, by account number as written ("2"); entries that don't fit are left out. */
+  weeklyRamp: Record<string, WeeklyRamp>;
+}
+
+/** ccw looks an account's ramp up by str(n): "2", never "02" or "+2". */
+const RAMP_KEY = /^(0|[1-9]\d*)$/;
+
+const rampValue = (v: unknown): number | undefined => {
+  const n = int(v);
+  return n !== undefined && n >= SWITCH_RULES.rampMin && n <= SWITCH_RULES.rampMax ? n : undefined;
+};
+
+/** 0.14.0: one `weekly_ramp` entry ({"days": [7 ints 1-100], "last_hour": 1-100}), or null when it doesn't fit. */
+export function parseRampEntry(raw: unknown): WeeklyRamp | null {
+  if (!isObj(raw) || !Array.isArray(raw.days) || raw.days.length !== SWITCH_RULES.rampDays) return null;
+  const days = raw.days.map(rampValue);
+  const lastHour = rampValue(raw.last_hour);
+  if (lastHour === undefined || days.some((d) => d === undefined)) return null;
+  return { days: days as number[], lastHour };
+}
+
+/** 0.14.0: `weekly_ramp` as a map of account number to ramp; malformed entries (and a malformed map) are dropped. */
+export function parseWeeklyRamp(raw: unknown): Record<string, WeeklyRamp> {
+  const out: Record<string, WeeklyRamp> = {};
+  if (!isObj(raw)) return out;
+  for (const [key, v] of Object.entries(raw)) {
+    if (!RAMP_KEY.test(key)) continue;
+    const entry = parseRampEntry(v);
+    if (entry) out[key] = entry;
+  }
+  return out;
 }
 
 export function parseSwitchConfig(raw: unknown): CcwSwitchConfig | null {
@@ -155,6 +187,7 @@ export function parseSwitchConfig(raw: unknown): CcwSwitchConfig | null {
     minRunMin: n(raw.min_run_min, 20),
     weeklyCeiling: n(raw.weekly_ceiling, 95),
     burnDefault: n(raw.burn_default, 1.0),
+    weeklyRamp: parseWeeklyRamp(raw.weekly_ramp),
   };
 }
 

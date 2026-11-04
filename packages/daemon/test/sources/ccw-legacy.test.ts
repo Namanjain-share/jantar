@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SECRET_MARKER, assistantText, makeSession } from '@jantar/fixtures';
 import type { Account } from '@jantar/protocol';
 import { createClaudeFilesSource } from '../../src/sources/claude-files/index.js';
-import { computePlan, createCcwLegacy, createCcwLegacySource, parseBurn, parseSwitchConfig } from '../../src/sources/ccw-legacy/index.js';
+import { computePlan, createCcwLegacy, createCcwLegacySource, parseBurn, parseSwitchConfig, rampCapAt, weeklyCapFor } from '../../src/sources/ccw-legacy/index.js';
 import { createCswapUsageSource } from '../../src/sources/cswap/index.js';
 import { createFileTranscriptReader, createTranscriptWatcherWith } from '../../src/sources/transcripts/index.js';
 import { fsx } from '../../src/sources/lib/fsx.js';
@@ -342,5 +343,143 @@ describe('ccw-legacy: computePlan', () => {
       [1, 0],
       [2, 2],
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0.14.0: weekly ramps, their caps, and the one write into switch.json
+
+const CAP_TABLE = JSON.parse(readFileSync(new URL('./ccw-cap-table.json', import.meta.url), 'utf8')) as {
+  weekly_ceiling: number;
+  ramp: { days: number[]; last_hour: number };
+  R: number;
+  rows: [number, number][];
+  no_reset: number;
+};
+const RAMP = { days: CAP_TABLE.ramp.days, lastHour: CAP_TABLE.ramp.last_hour };
+
+describe('ccw-legacy 0.14.0: weekly ramps in switch.json', () => {
+  it('reads weekly_ramp and drops the entries that do not fit', () => {
+    const good = { days: [50, 50, 50, 50, 75, 85, 95], last_hour: 100 };
+    const cfg = parseSwitchConfig({
+      weekly_ramp: {
+        '2': good,
+        '0': { days: [1, 1, 1, 1, 1, 1, 1], last_hour: 1 },
+        '3': { days: [50, 50, 50, 50, 75, 85], last_hour: 100 }, // six days
+        '4': { days: [50, 50, 50, 50, 75, 85, 101], last_hour: 100 }, // over 100
+        '5': { days: [50, 50, 50, 50, 75, 85, 95] }, // no last hour
+        '6': { days: [50, 50, 50, 50, 75, 85, 95.5], last_hour: 100 }, // not whole
+        '7': { days: ['50', 50, 50, 50, 75, 85, 95], last_hour: 100 },
+        '8': { days: [0, 50, 50, 50, 75, 85, 95], last_hour: 100 },
+        '02': good, // ccw looks up "2", never "02"
+        x: good,
+        '9': 'nope',
+      },
+    })!;
+    expect(cfg.weeklyRamp).toEqual({ '0': { days: [1, 1, 1, 1, 1, 1, 1], lastHour: 1 }, '2': { days: good.days, lastHour: 100 } });
+    expect(parseSwitchConfig({ weekly_ramp: [good] })!.weeklyRamp).toEqual({});
+    expect(parseSwitchConfig({})!.weeklyRamp).toEqual({});
+  });
+
+  it("caps by ccw's table: each day of the week, the last hour, and a stale reading", () => {
+    const R = CAP_TABLE.R * 1000;
+    expect(CAP_TABLE.rows.length).toBeGreaterThan(20);
+    for (const [offsetS, cap] of CAP_TABLE.rows) {
+      expect(rampCapAt(RAMP, R, R + offsetS * 1000, CAP_TABLE.weekly_ceiling), `t = R ${offsetS >= 0 ? '+' : ''}${offsetS} s`).toBe(cap);
+    }
+    expect(rampCapAt(RAMP, null, R, CAP_TABLE.weekly_ceiling)).toBe(CAP_TABLE.no_reset);
+  });
+
+  it('says when the cap next changes, skipping days with the same value', () => {
+    const R = CAP_TABLE.R * 1000;
+    const D = 86_400_000;
+    const H = 3_600_000;
+    const at = (t: number) => weeklyCapFor(RAMP, R, t, 99);
+    // day 1 to 4 are all 50: the next change is day 5's 75
+    expect(at(R - 7 * D)).toEqual({ cap: 50, until: R - 3 * D, next: 75 });
+    expect(at(R - 3 * D - 1)).toEqual({ cap: 50, until: R - 3 * D, next: 75 });
+    expect(at(R - 3 * D)).toEqual({ cap: 75, until: R - 2 * D, next: 85 });
+    expect(at(R - D)).toEqual({ cap: 95, until: R - H, next: 100 });
+    expect(at(R - H)).toEqual({ cap: 100, until: R, next: 50 });
+    // stale: the week rolled, the days count from R
+    expect(at(R)).toEqual({ cap: 50, until: R + 4 * D, next: 75 });
+    expect(at(R + 6 * D)).toEqual({ cap: 95 }); // day 7 lasts until a new reading
+    expect(weeklyCapFor(RAMP, null, R, 99)).toEqual({ cap: 99 });
+    const flat = { days: [60, 60, 60, 60, 60, 60, 60], lastHour: 60 };
+    expect(weeklyCapFor(flat, R, R - 2 * D, 99)).toEqual({ cap: 60 });
+  });
+
+  it("gives an account with a ramp its cap in the plan, and stops at the cap instead of the weekly ceiling", () => {
+    const now = Date.parse('2026-11-05T10:00:00Z');
+    const D = 86_400_000;
+    const R = now + 6 * D + 12 * 3_600_000; // day 1 of the week (6.5 days to the reset)
+    const acct = (id: number, weekly: number, resetsAt?: number): Account => ({
+      id,
+      emailMasked: 'x***@e***.com',
+      isDefaultLogin: false,
+      disabled: false,
+      held: false,
+      usageStatus: 'ok',
+      fetchedAt: new Date(now).toISOString(),
+      ageS: 0,
+      windows: [
+        { kind: 'five_hour', pct: 10, resetsAt: new Date(now + 100 * 60_000).toISOString() },
+        resetsAt === undefined ? { kind: 'seven_day', pct: weekly } : { kind: 'seven_day', pct: weekly, resetsAt: new Date(resetsAt).toISOString() },
+      ],
+    });
+    const cfg = parseSwitchConfig({ weekly_ceiling: 99, weekly_ramp: { '2': { days: RAMP.days, last_hour: 100 }, '3': { days: RAMP.days, last_hour: 100 } } })!;
+    const out = computePlan({
+      nowMs: now,
+      sessions: [],
+      moves: [],
+      burn: [],
+      active: new Map(),
+      cfg,
+      accounts: [acct(1, 60, R), acct(2, 60, R), acct(3, 40)],
+    });
+    const a = Object.fromEntries(out.accounts.map((x) => [x.id, x]));
+    expect(a[1]).not.toHaveProperty('weeklyCap'); // no ramp: the 99% ceiling, as before
+    expect(a[1]?.usable).toBe(true);
+    expect(a[2]).toMatchObject({ weeklyCap: 50, capUntil: new Date(R - 3 * D).toISOString(), nextCap: 75, usable: false }); // 60% is over its 50% cap
+    expect(a[3]).toMatchObject({ weeklyCap: 99, usable: true }); // a ramp, no reset: the ceiling
+    expect(a[3]).not.toHaveProperty('capUntil');
+    expect(out.next).not.toBe(2);
+  });
+
+  it("plan() caps on the daemon's clock", async () => {
+    const env = await sourceEnv({ home: { ccw: true } });
+    try {
+      const file = join(env.home.paths.ccwDir, 'switch.json');
+      const raw = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+      await writeFile(file, JSON.stringify({ ...raw, weekly_ramp: { '1': { days: RAMP.days, last_hour: 100 } } }, null, 2));
+      const reset = env.home.now + 3 * 86_400_000; // the fake cswap's weekly reset: day 5 of the week
+      env.ctx.store.emit({
+        type: 'usage.updated',
+        data: {
+          accounts: [
+            {
+              id: 1,
+              emailMasked: 'a***@e***.com',
+              isDefaultLogin: true,
+              disabled: false,
+              held: false,
+              usageStatus: 'ok',
+              fetchedAt: new Date(env.home.now).toISOString(),
+              ageS: 0,
+              windows: [{ kind: 'seven_day', pct: 18, resetsAt: new Date(reset).toISOString() }],
+            },
+          ],
+          activeAccount: 1,
+          fetchedAt: new Date(env.home.now).toISOString(),
+          source: 'cache',
+        },
+      } as never);
+      const ccw = createCcwLegacy(env.ctx);
+      expect((await ccw.plan()).accounts.find((x) => x.id === 1)).toMatchObject({ weeklyCap: 75, nextCap: 85 });
+      env.ctx.clock.advance(3 * 86_400_000 - 1_800_000); // half an hour before the reset
+      expect((await ccw.plan()).accounts.find((x) => x.id === 1)).toMatchObject({ weeklyCap: 100, capUntil: new Date(reset).toISOString(), nextCap: 50 });
+    } finally {
+      await env.cleanup();
+    }
   });
 });
