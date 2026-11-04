@@ -16,8 +16,10 @@
  * - theme-color matches the page background in both themes.
  *
  * 0.12.1: a phone's steps run in onTouch (browser.ts): a phone that loses its
- * coarse pointer (Chromium dropping Playwright's touch emulation) is opened
- * again and the steps run once more; twice fails, saying so.
+ * coarse pointer (Chromium dropping Playwright's touch emulation) gets it back
+ * in the same page and the steps go on; only if it won't come back is it
+ * opened again and the steps run once more (they write nothing); twice fails,
+ * saying so.
  *
  * The v0.3 screens have their own suite (web-v03.integration.test.ts).
  * Needs a built dist/ and a Chromium (browser.ts says how).

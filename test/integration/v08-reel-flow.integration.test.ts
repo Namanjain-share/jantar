@@ -36,6 +36,12 @@
  * Vision reads off those frames. That compiles Swift twice (about two
  * minutes), so by default the fixtures' fake helper stands in (it answers
  * the same words) and the suite says why.
+ *
+ * 0.12.1: the phone's steps run in onPaired (browser.ts): a phone that loses
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) gets it
+ * back in the same page and the steps go on; only if it won't come back is it
+ * opened again as the same device and they run once more, unless the reel
+ * was saved: a save can't be made twice, so past it that fails at once.
  */
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -60,7 +66,7 @@ import {
   type PairStartResponse,
 } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { PHONE, browserReady, clean, onPaired, stillTouch, touchPage, watchConsole, type StorageState, type Watch } from './browser.js';
+import { PHONE, browserReady, clean, onPaired, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 import { browserSeam, netReady, netSeam, serveSites, type Answer, type BrowserSeen, type Sites } from './read-net.js';
@@ -166,8 +172,11 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
     watch = watchConsole(page);
     return { ctx, page };
   }
-  /** 0.12.1: a phone step in onPaired (browser.ts): a phone that drops its touch emulation is opened again as the same device and the step runs once more. */
-  const onPhone = (what: string, steps: (o: { page: Page }) => Promise<void>) => onPaired(what, () => ({ ctx, page }), openPhone, steps);
+  /**
+   * 0.12.1: a phone step in onPaired (browser.ts): a phone that drops its touch emulation gets it back in place, or
+   * else is opened again as the same device and the step runs once more (`rerun`: unless past what can't be done twice).
+   */
+  const onPhone = (what: string, steps: (o: { page: Page }) => Promise<void>, rerun: Rerun = {}) => onPaired(what, () => ({ ctx, page }), openPhone, steps, rerun);
 
   beforeAll(async () => {
     work = await realpath(await mkdtemp(join(tmpdir(), 'jantar-reel-')));
@@ -226,6 +235,7 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
 
   it.skipIf(!browserTier || !CHROMIUM)('the phone saves a reel at Standard; Chrome needs a login, the headless browser reads it, the helper takes its frames; search finds it by its caption and by its frames; Open original is the reel', async () => {
     // 1. The phone: Add post, a shared link, Standard, Save.
+    let saved = false;
     await onPhone('the phone saves a reel', async ({ page }) => {
       await page.goto(`http://127.0.0.1:${d.port}/intel`, { waitUntil: 'load' });
       // Read saved links on: the extension has asked, and there is nothing yet.
@@ -235,9 +245,10 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
       await sheet.getByLabel('Link or text').fill(REEL_SHARED);
       // A save can't be made twice: the pointer first.
       await stillTouch(page, 'the phone saves a reel');
+      saved = true;
       await sheet.getByRole('button', { name: 'Save' }).click();
       await page.getByText('Saved. Reading it on your Mac.').waitFor();
-    });
+    }, { irreversible: () => saved });
     const id = await eventually(async () => (await search('AbC123xyz'))[0], 10_000, 'the reel on the shelf');
 
     // 2. Chrome first: the post rebuilt on the www host, never the link as typed; the strip says so.

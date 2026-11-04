@@ -26,14 +26,15 @@
  *   out sideways.
  *
  * 0.12.1: a phone's steps run in onPaired (browser.ts): a phone that loses
- * its coarse pointer (Chromium dropping Playwright's touch emulation) is
- * opened again as the same device and the steps run once more; twice fails,
- * saying so.
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) gets it
+ * back in the same page and the steps go on; only if it won't come back is it
+ * opened again as the same device and the steps run once more (the composer's
+ * after its upload is cleared from the Mac); twice fails, saying so.
  *
  * Every name and value is synthetic. Needs a built dist/ and a Chromium
  * (browser.ts).
  */
-import { readdir, writeFile } from 'node:fs/promises';
+import { readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -121,17 +122,20 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
     return { ctx, page, watch };
   }
 
-  /** 0.12.1: `steps` on a page paired at `vp`; a phone that drops its touch emulation is opened again as the same device and they run once more. */
-  async function onDevice(vp: Viewport, name: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>): Promise<void> {
+  /**
+   * 0.12.1: `steps` on a page paired at `vp`; a phone that drops its touch emulation gets it back in place, or else is
+   * opened again as the same device and they run once more, after `reset` puts back what they changed on the Mac.
+   */
+  async function onDevice(vp: Viewport, name: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>, reset?: () => Promise<void>): Promise<void> {
     const first = await paired(vp, name);
-    await onPaired(name, () => first, (state) => paired(vp, name, state), steps);
+    await onPaired(name, () => first, (state) => paired(vp, name, state), steps, { reset });
   }
 
   /** Clean console, no <style>, nothing past the sides of the viewport. */
   async function check(page: Page, watch: Watch, what: string): Promise<void> {
     await page.waitForTimeout(300);
-    await clean(page, watch);
-    expect(await overflow(page), what).toEqual([]);
+    await clean(page, watch, what);
+    expect(await overflow(page, what), what).toEqual([]);
   }
 
   /** The dock's row for `label` (Claude's words, its description after them). */
@@ -309,6 +313,9 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
         `\u001b[200~${['What is in this picture?', '', 'Attached files:', `- "screenshot.png": ${join(d.ctx.paths.uploadsDir, IDLE, stored[0] as string)}`].join('\n')}\u001b[201~`,
       );
       await check(page, watch, 'sent with the chip');
+    }, async () => {
+      // 0.12.1: the pasted screenshot stored on the Mac goes before the steps run again, which count the session's uploads.
+      await rm(join(d.ctx.paths.uploadsDir, IDLE), { recursive: true, force: true });
     });
   }, perfBudgetMs(90_000));
 });

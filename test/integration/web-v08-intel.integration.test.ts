@@ -30,9 +30,11 @@
  * Everywhere: no console message about the Content Security Policy, no
  * console error, no <style> element, nothing past the sides at 390 px.
  * 0.12.1: each check runs in onTouch (browser.ts): a phone that loses its
- * coarse pointer (Chromium dropping Playwright's touch emulation) is opened
- * again and the check runs once more; twice fails, saying so. It is asked
- * before a write that can't be made twice.
+ * coarse pointer (Chromium dropping Playwright's touch emulation) gets it back
+ * in the same page and the check goes on; only if it won't come back is it
+ * opened again and the check runs once more (the fixture keeps no write, and
+ * the writes are counted from where the check began); twice fails, saying
+ * so. It is asked before a write that can't be made twice.
  *
  * Needs a built dist/ and a Chromium (browser.ts).
  */
@@ -169,8 +171,8 @@ describe.skipIf(!ready)('v0.8 Intel reading links in Chromium at 390 px: the Rea
   /** Clean console, no <style>, nothing past the sides of the phone. */
   async function check(page: Page, watch: Watch, what: string) {
     await page.waitForTimeout(300);
-    await clean(page, watch);
-    expect(await overflow(page), what).toEqual([]);
+    await clean(page, watch, what);
+    expect(await overflow(page, what), what).toEqual([]);
   }
 
   /** Every <img> under `selector` has its bytes (decoded, with a size). */

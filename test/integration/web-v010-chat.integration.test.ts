@@ -24,9 +24,12 @@
  *   the photo button, Send, Undo, Confirm, Dismiss; a chip's × is small to
  *   see with a 44 px hit area.
  *
- * 0.12.1: a phone's steps run in onTouch (browser.ts): a phone that loses
- * its coarse pointer (Chromium dropping Playwright's touch emulation) is
- * paired again and the steps run once more; twice fails, saying so.
+ * 0.12.1: a phone's steps run in onPaired (browser.ts): a phone that loses
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) gets it
+ * back in the same page and the steps go on; only if it won't come back is it
+ * opened again as the same device and the steps run once more; twice fails,
+ * saying so. Once the refused Undo was tried, it can't be taken twice: past
+ * it the test fails at once.
  *
  * Every name and value is synthetic. Needs a built dist/ and a Chromium.
  */
@@ -35,7 +38,7 @@ import { chromium, type Browser, type BrowserContext, type Locator, type Page } 
 import { chatText, makePng, perfBudgetMs } from '@jantar/fixtures';
 import { DEVICE_COOKIE, type ChatList, type PairStartResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, browserReady, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
+import { DESK, browserReady, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Viewport, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 
@@ -77,10 +80,10 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
 
   async function check(page: Page, watch: Watch, what: string) {
     await page.waitForTimeout(400);
-    await clean(page, watch);
+    await clean(page, watch, what);
     expect(await page.evaluate(() => (window as unknown as { __pwned?: unknown }).__pwned), what).toBeUndefined();
     expect(await page.evaluate(() => [...document.querySelectorAll('img')].filter((i) => i.src.startsWith('data:')).length), what).toBe(0);
-    expect(await overflow(page), what).toEqual([]);
+    expect(await overflow(page, what), what).toEqual([]);
   }
 
   /** A context paired as a phone scanning the Mac's code would be; 0.12.1: or, with `state`, that device again in a new one. */
@@ -109,9 +112,12 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
     return { ctx, page, watch };
   }
 
-  /** 0.12.1: `steps` on `who`'s page; a phone that drops its touch emulation is opened again as the same device and they run once more. */
-  const on = (who: Who, what: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>) =>
-    onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who, state)), steps);
+  /**
+   * 0.12.1: `steps` on `who`'s page; a phone that drops its touch emulation gets it back in place, or else is
+   * opened again as the same device and they run once more (`rerun`: unless past what can't be done twice).
+   */
+  const on = (who: Who, what: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>, rerun: Rerun = {}) =>
+    onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who, state)), steps, rerun);
 
   beforeAll(async () => {
     d = await bootDaemon({ home: { sessions: [] }, settings: { life: { todos: true, places: true, timezone: 'UTC', currency: 'INR' }, ask: { enabled: true } } });
@@ -224,6 +230,8 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
 
   it("an Undo refused at 320 px: the reason under the row at full width, the label still shown, no Undo left", async () => {
     const cafe = (((await call('GET', '/v1/places')).body as { places: Array<{ id: string; name: string }> }).places.find((p) => p.name === 'Sample Dosa House') as { id: string }).id;
+    /** 0.12.1: the Undo was tried: refused, it leaves none to take again. */
+    let tried = false;
     await on('p320', 'an Undo refused at 320', async ({ page, watch }) => {
       await page.emulateMedia({ colorScheme: 'light' });
       await page.goto(`http://127.0.0.1:${d.port}/chat`, { waitUntil: 'load' });
@@ -231,6 +239,7 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
       await row.waitFor();
       // Asked before the Undo, which can't be taken twice.
       await stillTouch(page, 'an Undo refused at 320');
+      tried = true;
       // Changed by hand after Chat's edit: Undo is refused.
       expect((await call('PATCH', `/v1/places/${cafe}`, { stars: 2 })).status).toBe(200);
       await row.getByRole('button', { name: 'Undo' }).click();
@@ -244,7 +253,7 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
       // The browser logs the 409 itself; nothing else may.
       watch.errors.splice(0, watch.errors.length, ...watch.errors.filter((e) => !/status of 409/.test(e)));
       await check(page, watch, 'an Undo refused at 320');
-    });
+    }, { irreversible: () => tried });
   });
 
   it('under a coarse pointer every target is 44 px tall (320 px phone)', async () => {

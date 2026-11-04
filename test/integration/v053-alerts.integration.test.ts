@@ -27,8 +27,9 @@
  *
  * 0.12.1: the phone's tap and each push run in onTouch (browser.ts): a
  * phone that loses its coarse pointer (Chromium dropping Playwright's touch
- * emulation) is opened again, with its service worker and its tap, and the
- * step runs once more; twice fails, saying so.
+ * emulation) gets it back in the same page, its tap and service worker kept;
+ * only if it won't come back is it opened again, with its service worker and
+ * its tap, and the step runs once more; twice fails, saying so.
  *
  * Nothing runs osascript, claude or a real push service.
  */

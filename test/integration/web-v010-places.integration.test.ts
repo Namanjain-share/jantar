@@ -21,9 +21,10 @@
  *   tag chip are 44 px wide as well.
  *
  * 0.12.1: a phone's steps run in onPaired (browser.ts): a phone that loses
- * its coarse pointer (Chromium dropping Playwright's touch emulation) is
- * opened again as the same device and the steps run once more; twice
- * fails, saying so.
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) gets it
+ * back in the same page and the steps go on; only if it won't come back is it
+ * opened again as the same device and the steps run once more (they save
+ * nothing); twice fails, saying so.
  *
  * Every name and value is synthetic. Needs a built dist/ and a Chromium.
  */
@@ -71,9 +72,9 @@ describe.skipIf(!ready)('v0.10 Cafés depth in Chromium, served by jantard', () 
   async function check(page: Page, watch: Watch, what: string) {
     // Sheets and pushed screens finish sliding in first.
     await page.waitForTimeout(400);
-    await clean(page, watch);
+    await clean(page, watch, what);
     expect(await page.evaluate(() => (window as unknown as { __pwned?: unknown }).__pwned), what).toBeUndefined();
-    expect(await overflow(page), what).toEqual([]);
+    expect(await overflow(page, what), what).toEqual([]);
   }
 
   /** Opens a sheet with `open`, checks it, and closes it with Escape. */

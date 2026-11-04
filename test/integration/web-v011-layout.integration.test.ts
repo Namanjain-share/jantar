@@ -61,8 +61,9 @@
  * then drew the Mac's chrome on a touch screen. Before each probe the page
  * is asked; a context that lost it is closed and the state measured again
  * in a new one (once per context; twice is a problem). 0.12.1: the c33
- * tests below and every other touch suite do the same through browser.ts
- * (onTouch, stillTouch), which says what is known of the cause.
+ * tests below and every other touch suite turn it back on in the same page
+ * first, and open a new context only when it won't come back, through
+ * browser.ts (stillTouch, onTouch), which says what is known of the cause.
  *
  * Tier A sizes in light run by default; JANTAR_LAYOUT_FULL=1 adds tier B and
  * dark. On a failure the page's PNG goes to the OS temp folder, named in the
@@ -533,9 +534,10 @@ describe.skipIf(!ready)('0.12: every place at every window size, in Chromium', (
  *      a star's hover previews and sends nothing.
  *   8. Keycaps: none on a touch screen until a key is pressed; then the board's show.
  *
- * 0.12.1: each runs in onTouch (browser.ts): a touch context that loses its coarse pointer before a step
- * that needs it (stillTouch), or fails without it, is closed and the test runs again in a new one; twice
- * fails, saying so.
+ * 0.12.1: each runs in onTouch (browser.ts): a touch page that loses its coarse pointer before a step that
+ * needs it (stillTouch) gets it back in the same page and the test goes on; one where it won't come back, or
+ * that fails without it, is closed and the test runs again in a new one (the fixture keeps no change these
+ * make: a sheet is cancelled); twice fails, saying so.
  */
 describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and keycaps', () => {
   let browser: Browser;

@@ -25,9 +25,12 @@
  *   entry, and /meetings is not a page.
  *
  * 0.12.1: the phone's steps run in onPaired (browser.ts): a phone that loses
- * its coarse pointer (Chromium dropping Playwright's touch emulation) is
- * opened again as the same device and the steps run once more; twice fails,
- * saying so. It is asked before a step that can't be taken twice.
+ * its coarse pointer (Chromium dropping Playwright's touch emulation) gets it
+ * back in the same page and the steps go on; only if it won't come back is it
+ * opened again as the same device and the steps run once more, after their
+ * reset has put back what they changed on the Mac (an action item's todo, the
+ * meeting's name); twice fails, saying so. Past Try again, which can't be put
+ * back, it fails at once. It is asked before a step that can't be taken twice.
  *
  * Every name and line is synthetic. Needs a built dist/ and a Chromium
  * (browser.ts).
@@ -39,7 +42,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { extLinesBody, extOpenBody, extShotBody, makeJpeg, perfBudgetMs, projectBody, setFakeClaude } from '@jantar/fixtures';
 import { DEVICE_COOKIE, EXTENSION_ID, EXTENSION_KEY_HEADER, type ExtPairStartReply, type LineUpsert, type MeetingDetail, type PairStartResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, PHONE, browserReady, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
+import { DESK, PHONE, browserReady, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Viewport, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 
@@ -117,14 +120,17 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
   /** Clean console, no <style>, nothing ran, nothing past the sides of the viewport. */
   async function check(page: Page, watch: Watch, what: string) {
     await page.waitForTimeout(400);
-    await clean(page, watch);
+    await clean(page, watch, what);
     expect(await page.evaluate(() => (window as unknown as { __pwned?: unknown }).__pwned), what).toBeUndefined();
-    expect(await overflow(page), what).toEqual([]);
+    expect(await overflow(page, what), what).toEqual([]);
   }
 
-  /** 0.12.1: `steps` on `who`'s page; a phone that drops its touch emulation is opened again as the same device and they run once more. */
-  const on = (who: 'phone' | 'desk', what: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>) =>
-    onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who === 'phone' ? PHONE : DESK, who === 'phone' ? 'Example phone' : 'Example Mac browser', state)), steps);
+  /**
+   * 0.12.1: `steps` on `who`'s page; a phone that drops its touch emulation gets it back in place, or else is
+   * opened again as the same device and they run once more (`rerun`: what is put back first, or past what not).
+   */
+  const on = (who: 'phone' | 'desk', what: string, steps: (p: { page: Page; watch: Watch }) => Promise<void>, rerun: Rerun = {}) =>
+    onPaired(what, () => pages[who]!, async (state) => (pages[who] = await paired(who === 'phone' ? PHONE : DESK, who === 'phone' ? 'Example phone' : 'Example Mac browser', state)), steps, rerun);
 
   async function inEachView(path: string, fn: (page: Page, what: string) => Promise<void>) {
     for (const v of VIEWS) {
@@ -278,12 +284,23 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
       await page.waitForTimeout(5_500);
       expect((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId).toBe(first.todoId);
 
+      // This Remove and the Add reach the Mac: the pointer is asked before each.
+      await stillTouch(page, 'action items, before the Remove sent');
       await items.getByRole('button', { name: `Remove from todos: ${first.title}` }).click();
       await eventually(async () => !(await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId, 10_000, 'the Remove to reach the Mac');
+      await stillTouch(page, 'action items, before the Add');
       await items.getByRole('button', { name: `Add to Example launch: ${first.title}` }).click();
       await eventually(async () => Boolean((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId), 10_000, 'the Add');
       await items.getByRole('button', { name: `Remove from todos: ${first.title}` }).waitFor();
       await check(page, watch, 'after Add');
+    }, {
+      reset: async () => {
+        // 0.12.1: a Remove that reached the Mac is added again before the steps run again (a held one went with the page).
+        if (!(await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).summary.items[0]!.todoId) {
+          const r = await http(d.port, 'POST', `/v1/meetings/${ids.done}/items/0/todo`, { cookie: seed });
+          expect(r.status, r.text).toBe(200);
+        }
+      },
     });
   }, perfBudgetMs(60_000));
 
@@ -309,6 +326,14 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
       await sheet.getByRole('button', { name: 'Save' }).click();
       await page.getByRole('heading', { name: 'Launch review, renamed', level: 1 }).waitFor();
       expect((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).meeting.name).toBe('Launch review, renamed');
+    }, {
+      reset: async () => {
+        // 0.12.1: the meeting's own name again before the steps run again.
+        if ((await phoneGet<MeetingDetail>(`/v1/meetings/${ids.done}`)).meeting.name !== `Launch review ${HOSTILE}`) {
+          const r = await http(d.port, 'PATCH', `/v1/meetings/${ids.done}`, { cookie: seed, body: { name: `Launch review ${HOSTILE}` } });
+          expect(r.status, r.text).toBe(200);
+        }
+      },
     });
   }, perfBudgetMs(60_000));
 
@@ -324,16 +349,19 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
       await p.getByText(/^Running · 3 lines · 1 screenshot/).waitFor();
     });
 
+    /** 0.12.1: Try again was tapped: the summary it runs can't be taken back. */
+    let tried = false;
     await on('phone', 'Try again on the phone', async ({ page, watch }) => {
       // Try again runs it (the fake claude answers properly now).
       await open(page, `/meetings?id=${ids.failed}`);
       await page.getByRole('button', { name: 'Try again' }).waitFor();
       // Try again can't be taken twice: the pointer first.
       await stillTouch(page, 'Try again on the phone');
+      tried = true;
       await page.getByRole('button', { name: 'Try again' }).click();
       await page.getByRole('region', { name: 'Decisions' }).waitFor({ timeout: 30_000 });
       await check(page, watch, 'after Try again');
-    });
+    }, { irreversible: () => tried });
   }, perfBudgetMs(120_000));
 
   it('switched off at the Mac, nothing of Meetings shows', async () => {

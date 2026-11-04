@@ -26,9 +26,10 @@
  *   stage words on their second line.
  *
  * 0.12.1: a phone's steps run in onTouch (browser.ts): a phone that loses its
- * coarse pointer (Chromium dropping Playwright's touch emulation) is opened
- * again and the steps run once more; twice fails, saying so. What a step
- * wrote is counted from where it began.
+ * coarse pointer (Chromium dropping Playwright's touch emulation) gets it back
+ * in the same page and the steps go on; only if it won't come back is it
+ * opened again and the steps run once more; twice fails, saying so. What a
+ * step wrote is counted from where it began.
  *
  * Every v0.3 route answers from web-fixture-v03.ts. Needs a built dist/ and
  * a Chromium (browser.ts says how).

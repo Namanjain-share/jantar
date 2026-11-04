@@ -124,8 +124,8 @@ export async function styleElements(page: Page): Promise<number> {
  * kept for the page's life (as it goes it would turn touch off again), and waits until the page and the app
  * (its data-chrome) see a coarse pointer; the steps go on from where they were. onTouch runs a test's steps
  * on a page; only when that fails (or a step fails with the pointer gone) does it close the context and run
- * the steps once more in a new one, after its `reset` has put back what they changed on the Mac. Steps that
- * can't be put back say so (`reset: false`) and fail instead of running twice; a drop in the new context
+ * the steps once more in a new one, after its `reset` has put back what they changed on the Mac. Steps past
+ * one that can't be taken twice (`irreversible`) fail instead of running again; a drop in the new context
  * fails too.
  *
  * JANTAR_TOUCH_DROP simulates drops, turning the emulation off over CDP as Chromium does on CI:
@@ -134,7 +134,7 @@ export async function styleElements(page: Page): Promise<number> {
  * - `load`: as each document of a touch page loads (the likely way on CI), so the steps go on with a fine
  *   pointer until the next stillTouch turns it back on.
  * - `stuck:N`: at the Nth stillTouch of the first try of every onTouch, and it won't come back on in place:
- *   the steps' reset and a new context, or with `reset: false` the failure that says why.
+ *   the steps' reset and a new context, or past an irreversible step the failure that says why.
  */
 const touchPages = new WeakSet<Page>();
 
@@ -239,43 +239,54 @@ export async function stillTouch(page: Page, what = 'a touch page'): Promise<voi
   console.warn(`[touch] ${what}: the browser dropped its touch emulation (no (pointer: coarse)); turned it back on in the same page`);
 }
 
+/** 0.12.1: what onTouch does before it runs a test's steps again in a new context. */
+export interface Rerun {
+  /** Puts back what the steps changed on the Mac (a todo done or deleted), after the dropped context is closed. */
+  reset?: () => Promise<void>;
+  /** True once the steps have done what can't be done twice (an Undo tried, a save, a summary run): then they don't run again. */
+  irreversible?: () => boolean;
+}
+
 /**
  * 0.12.1: `steps` on the page `open` gives, with its coarse pointer (stillTouch turns a dropped one back on
  * in place, and the steps go on). Only when that fails, or a step fails and the page has no coarse pointer,
  * is its context closed, `reset` run to put back what the steps changed on the Mac, and the steps run again
- * from the start in a new one (`open(true)`); a drop there too throws. With `reset: false` the steps can't
- * run twice, and that throws at once. The page is asked once more after the steps, so none passed with a
- * fine pointer. `keep` leaves a page that passed open (a suite's paired phone, for the next test) and
+ * from the start in a new one (`open(true)`); a drop there too throws, and so does one after an
+ * `irreversible` step. The page is asked once more after the steps, so none passed with a fine pointer.
+ * `keep` leaves the page open unless it is run again (a suite's paired phone, for the next test) and
  * returns it; otherwise it is closed (`close`, else its context).
  */
 export async function onTouch<T extends { page: Page }>(
   what: string,
   open: (again: boolean) => Promise<T>,
   steps: (o: T) => Promise<void>,
-  opts: { keep?: boolean; close?: (o: T) => Promise<void>; reset?: (() => Promise<void>) | false } = {},
+  opts: Rerun & { keep?: boolean; close?: (o: T) => Promise<void> } = {},
 ): Promise<T> {
   const close = opts.close ?? ((o: T) => o.page.context().close());
   for (let attempt = 1; ; attempt += 1) {
     const o = await open(attempt > 1);
     firstTry = attempt === 1 ? { page: o.page, asks: 0 } : null;
-    let dropped: string | null = null;
+    let rerun = false;
     try {
       await steps(o);
       await stillTouch(o.page, what);
       return o;
     } catch (e) {
+      let dropped: string | null = null;
       if (e instanceof TouchDropped) dropped = '';
       else if (touchPages.has(o.page) && (await hasCoarsePointer(o.page).catch(() => true)) === false) {
         dropped = ` (a step failed with it gone: ${String(e instanceof Error ? e.message : e).split('\n')[0]})`;
       }
       if (dropped === null) throw e;
-      const gone = `${what}: the browser dropped its touch emulation (no (pointer: coarse))`;
-      if (attempt > 1) throw new Error(`${gone} in a new context too${dropped}; a touch check never runs with a fine pointer`, { cause: e });
-      if (opts.reset === false) throw new Error(`${gone} and it did not come back in the same page${dropped}; these steps change the Mac and can't run twice`, { cause: e });
-      console.warn(`[touch] ${gone}${dropped}; once more in a new context${opts.reset ? ', what the steps changed on the Mac put back first' : ''}`);
+      const gone = `${what}: the browser dropped its touch emulation (no (pointer: coarse))${dropped || ', and it did not come back on in the same page'}`;
+      if (attempt > 1) throw new Error(`${gone}, in a new context too; a touch check never runs with a fine pointer`, { cause: e });
+      if (opts.irreversible?.()) throw new Error(`${gone}; the steps did what can't be done twice, so they don't run again`, { cause: e });
+      console.warn(`[touch] ${gone}; once more in a new context${opts.reset ? ', what the steps changed on the Mac put back first' : ''}`);
+      rerun = true;
     } finally {
       firstTry = null;
-      if (!opts.keep || dropped !== null) await close(o).catch(() => undefined);
+      // A kept page that failed stays for the suite's next test, which asks for its pointer again.
+      if (!opts.keep || rerun) await close(o).catch(() => undefined);
     }
     if (opts.reset) await opts.reset();
   }
@@ -287,14 +298,14 @@ export type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
  * 0.12.1: onTouch for a paired page a suite keeps across its tests (`current`). On a drop that can't be put
  * right in place it is opened again by `again` as the same device, from the dropped context's cookies,
  * storage and IndexedDB (where the app keeps the device secret): pairing again would meet the daemon's claim
- * limit, 8 a minute. `reset` as onTouch's.
+ * limit, 8 a minute. `rerun` as onTouch's.
  */
 export function onPaired<T extends { ctx: BrowserContext; page: Page }>(
   what: string,
   current: () => T,
   again: (state: StorageState | undefined) => Promise<T>,
   steps: (o: T) => Promise<void>,
-  opts: { reset?: (() => Promise<void>) | false } = {},
+  rerun: Rerun = {},
 ): Promise<T> {
   let state: StorageState | undefined;
   return onTouch(what, async (reopen) => (reopen ? again(state) : current()), steps, {
@@ -303,7 +314,7 @@ export function onPaired<T extends { ctx: BrowserContext; page: Page }>(
       state = await o.ctx.storageState({ indexedDB: true }).catch(() => undefined);
       await o.ctx.close();
     },
-    ...opts,
+    ...rerun,
   });
 }
 
