@@ -4,12 +4,15 @@
  * load). It reads the rules as the file holds them (GET
  * /v1/accounts/switching) and saves what changed with one PATCH:
  *
- *   per account   Hold (ccw never moves sessions onto it; without a weekly
- *                 cap never off it either, with one its sessions leave
- *                 once it passes the cap) and Weekly cap: off, or a cap for
- *                 each day of the account's week and for its last hour, as
- *                 44 px steppers, with a preset that fills in the usual
- *                 week (50, 50, 50, 50, 75, 85, 95, then 100)
+ *   per account   named as the Accounts screen names it (its number, then
+ *                 its alias or masked email). Hold (ccw never moves
+ *                 sessions onto it; without a weekly cap never off it
+ *                 either, with one its sessions leave once it passes the
+ *                 cap) and Weekly cap: off, or a cap for each day of the
+ *                 account's week and for its last hour, as 44 px steppers,
+ *                 the day in effect now marked ("Day 4 · now"), with a
+ *                 preset that fills in the usual week (50, 50, 50, 50, 75,
+ *                 85, 95, then 100)
  *   for all       the 5-hour limit, the weekly limit, and how many minutes
  *                 before full a session leaves
  *
@@ -28,11 +31,11 @@
 import { CheckIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { SWITCH_RULES, type SwitchRules, type SwitchRulesPatch, type WeeklyRamp } from '@jantar/protocol';
+import { SWITCH_RULES, rampSlot, type Account, type SwitchRules, type SwitchRulesPatch, type WeeklyRamp } from '@jantar/protocol';
 import { errorText } from '../../../lib/api.js';
-import { accountName } from '../../../lib/format.js';
+import { accountId, accountName } from '../../../lib/format.js';
 import { newIdempotencyKey } from '../../../lib/ids.js';
-import { useApp, useDeps } from '../../context.js';
+import { useApp, useDeps, useNow } from '../../context.js';
 import { Button } from '../../kit/Button.js';
 import { Sheet } from '../../kit/Sheet.js';
 import { Spinner } from '../../kit/Spinner.js';
@@ -56,6 +59,16 @@ const DAY_LABELS = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7
 export const HOLD_TEXT = 'Hold: ccw never moves sessions onto it';
 export const HOLD_NO_CAP_TEXT = 'Without a weekly cap, ccw never moves its sessions off it either.';
 export const HOLD_CAP_TEXT = 'With a weekly cap, its sessions leave once it passes the cap.';
+/** 0.14.0: a ramp on an account with no weekly reading (no reset to count its days from). */
+export const NO_READING_TEXT = 'No weekly reading yet: until there is one, its cap is the weekly limit.';
+
+/** 0.14.0: the stepper of a ramp in effect now (0 to 6 a day, 7 the last hour), or null with no weekly reading. */
+export function nowIndex(account: Pick<Account, 'windows'> | undefined, now: number): number | null {
+  const reset = account?.windows.find((w) => w.kind === 'seven_day')?.resetsAt;
+  const at = reset ? Date.parse(reset) : Number.NaN;
+  const slot = rampSlot(Number.isFinite(at) ? at : null, now);
+  return slot === null ? null : slot === 'lastHour' ? SWITCH_RULES.rampDays : slot - 1;
+}
 
 const sameRamp = (a: WeeklyRamp | undefined, b: WeeklyRamp | undefined) =>
   a === b || (!!a && !!b && a.lastHour === b.lastHour && a.days.length === b.days.length && a.days.every((d, i) => d === b.days[i]));
@@ -85,7 +98,25 @@ const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(mi
  * A number between − and + (44 px each, the field too), typed too: the field
  * takes digits and settles within min..max when it loses focus or on Return.
  */
-function Stepper({ label, value, min, max, step, onChange, unit }: { label: string; value: number; min: number; max: number; step: number; onChange: (n: number) => void; unit?: string }) {
+function Stepper({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  unit,
+  describedBy,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (n: number) => void;
+  unit?: string;
+  describedBy?: string;
+}) {
   const [draft, setDraft] = useState<string | null>(null);
   const commit = () => {
     if (draft === null) return;
@@ -110,6 +141,7 @@ function Stepper({ label, value, min, max, step, onChange, unit }: { label: stri
         </button>
         <input
           aria-label={label}
+          aria-describedby={describedBy}
           inputMode="numeric"
           autoComplete="off"
           className="h-44 w-44 min-w-0 border-x border-line-strong bg-bg text-center type-input text-ink outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink"
@@ -156,6 +188,7 @@ function SwitchingForm({ onDone, onDirty }: { onDone: () => void; onDirty: (dirt
   // The Mac's own accounts (state.accounts: a paired server's are its own, and ccw runs on the Mac).
   const mine = useApp((s) => s.state.accounts);
   const offline = useApp((s) => s.conn.status === 'offline');
+  const now = useNow(30_000);
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [draft, setDraft] = useState<SwitchRules | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -212,7 +245,13 @@ function SwitchingForm({ onDone, onDirty }: { onDone: () => void; onDirty: (dirt
       for (const n of draft.hold) ids.add(n);
       for (const k of Object.keys(draft.weeklyRamp)) ids.add(Number(k));
     }
-    return [...ids].sort((a, b) => a - b).map((n) => ({ id: n, name: accountName(n, Object.values(mine).find((a) => a.id === n)) }));
+    // Named as the Accounts screen names them: "02" then the alias, else the masked email; the accessible name is "02 team".
+    return [...ids]
+      .sort((a, b) => a - b)
+      .map((n) => {
+        const account = Object.values(mine).find((a) => a.id === n);
+        return { id: n, account, tag: accountId(n), alias: account ? (account.alias ?? account.emailMasked) : '', name: accountName(n, account) };
+      });
   }, [mine, draft]);
 
   if (load.state === 'loading' || (load.state === 'ready' && !draft)) return <Spinner label="Reading the rules" className="my-16" />;
@@ -302,12 +341,13 @@ function SwitchingForm({ onDone, onDirty }: { onDone: () => void; onDirty: (dirt
       {accounts.map((a) => {
         const held = rules.hold.includes(a.id);
         const ramp = rules.weeklyRamp[String(a.id)];
-        const head = `${id}-a${a.id}`;
         const holdNote = `${id}-h${a.id}`;
+        const today = ramp ? nowIndex(a.account, now) : null;
         return (
-          <div key={a.id} role="group" aria-labelledby={head} className="border-b border-line py-8">
-            <p id={head} className="type-row text-ink">
-              {a.name}
+          <div key={a.id} role="group" aria-label={a.name} className="border-b border-line py-8">
+            <p className="flex min-w-0 items-baseline gap-8">
+              <span className="type-mono font-key text-ink">{a.tag}</span>
+              {a.alias ? <span className="min-w-0 truncate type-row text-ink-2">{a.alias}</span> : null}
             </p>
             <SwitchRow
               checked={held}
@@ -327,15 +367,24 @@ function SwitchingForm({ onDone, onDirty }: { onDone: () => void; onDirty: (dirt
             {ramp ? (
               <div className="pb-8">
                 <p className="max-w-560 type-small text-ink-3">Day 1 starts at the account's weekly reset. ccw keeps it under the day's cap, and under the last one in the hour before the next reset.</p>
+                {today === null ? <p className="mt-4 max-w-560 type-small text-ink-3">{NO_READING_TEXT}</p> : null}
                 <div className="mt-8 grid grid-cols-2 gap-x-12 gap-y-8">
                   {[...DAY_LABELS, 'Last hour'].map((label, i) => {
                     const value = i < 7 ? (ramp.days[i] as number) : ramp.lastHour;
+                    const isNow = today === i;
+                    const nowId = `${id}-n${a.id}`;
                     return (
                       <div key={label}>
-                        <p aria-hidden="true" className="mb-4 type-small text-ink-3">
+                        <p aria-hidden="true" className={clsx('mb-4 type-small', isNow ? 'text-ink' : 'text-ink-3')}>
                           {label}
+                          {isNow ? (
+                            <span id={nowId} className="font-medium">
+                              {' · now'}
+                            </span>
+                          ) : null}
                         </p>
                         <Stepper
+                          {...(isNow ? { describedBy: nowId } : {})}
                           label={`${a.name} ${label.toLowerCase()}`}
                           value={value}
                           min={SWITCH_RULES.rampMin}

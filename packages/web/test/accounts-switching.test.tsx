@@ -9,12 +9,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, type ApiRequest, type ApiRoute } from '../src/lib/api.js';
 import { writeLocal } from '../src/lib/storage.js';
 import { buildRows, capText, closedFlags, runwaySentence } from '../src/ui/screens/accounts/model.js';
-import { HOLD_NO_CAP_TEXT, OFFLINE_TEXT, PRESET_TEXT, SAVED_TEXT, SWITCHING_PATHS, patchOf } from '../src/ui/screens/accounts/SwitchingSheet.js';
+import {
+  HOLD_CAP_TEXT,
+  HOLD_NO_CAP_TEXT,
+  NO_READING_TEXT,
+  OFFLINE_TEXT,
+  PRESET_TEXT,
+  SAVED_TEXT,
+  SWITCHING_PATHS,
+  nowIndex,
+  patchOf,
+} from '../src/ui/screens/accounts/SwitchingSheet.js';
 import { heldSentence } from '../src/ui/screens/new/AccountPicker.js';
 import { layoutAt } from '../src/ui/shell/layout.js';
 import { dayClock } from '../src/ui/screens/accounts/time.js';
 import { LOCAL_DEVICE_KEY } from '../src/ui/screens/devices/local.js';
-import { NOW, account, fakeApi, iso, opened, preloadPlaces, renderApp, stateWith } from './helpers.js';
+import { NOW, T0, account, fakeApi, iso, opened, preloadPlaces, renderApp, stateWith } from './helpers.js';
 
 preloadPlaces('accounts');
 
@@ -161,6 +171,37 @@ describe('0.14.0 the Switching rules sheet', () => {
     expect((within(two).getByRole('textbox', { name: '02 side last hour' }) as HTMLInputElement).value).toBe('100');
     // nothing changed yet: nothing to save
     expect((within(dialog).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('names each account as Accounts does, and marks the day of its week in effect now', async () => {
+    const a = api();
+    const unread = account(3, { held: true, windows: [] }); // no weekly reading
+    renderApp({ path: '/accounts', api: a, state: stateWith({ accounts: [accounts[0]!, accounts[1]!, unread] }) });
+    const dialog = await openSheet();
+    // the number, then the alias, else the masked email
+    const one = group(dialog, '01');
+    expect(within(one).getByText('01')).toBeTruthy();
+    expect(within(one).getByText('u***@e***.com')).toBeTruthy();
+    const two = group(dialog, '02 side');
+    expect(within(two).getByText('side')).toBeTruthy();
+    // 02's week resets at T0 + 4 days: NOW (T0 + 5 min) is day 4 of it
+    expect(nowIndex(accounts[1], NOW)).toBe(3);
+    const day4 = within(two).getByRole('textbox', { name: '02 side day 4' });
+    const now = document.getElementById(day4.getAttribute('aria-describedby') ?? '');
+    expect(now?.textContent).toBe(' · now');
+    expect(now?.parentElement?.textContent).toBe('Day 4 · now');
+    expect(within(two).getAllByText(/· now/)).toHaveLength(1);
+    expect(within(two).getByRole('textbox', { name: '02 side day 3' }).getAttribute('aria-describedby')).toBeNull();
+    // the last hour before the reset, and no reading at all
+    expect(nowIndex(accounts[1], Date.parse(T0) + 4 * 86_400_000 - 1_000)).toBe(7);
+    expect(nowIndex(unread, NOW)).toBeNull();
+    expect(nowIndex(undefined, NOW)).toBeNull();
+    const three = group(dialog, '03');
+    fireEvent.click(within(three).getByRole('switch', { name: /Weekly cap/ }));
+    expect(within(three).getByText(NO_READING_TEXT)).toBeTruthy();
+    expect(within(three).queryByText(/· now/)).toBeNull();
+    // held with a cap: its sessions leave at the cap
+    expect(within(three).getByText(HOLD_CAP_TEXT)).toBeTruthy();
   });
 
   it('says what Save did in the pinned actions row, announced, and keeps Save off while it saves', async () => {
