@@ -19,7 +19,9 @@
  * an iPad, 768 on a Mac) changes classes and never remounts the form inside:
  * what was typed stays. A form sheet with a changed field asks before a scrim
  * tap, Esc, ⌘. or a swipe closes it (it saw an `input` event in its popup);
- * the form's own Cancel and Save close it at once. Without a hardware
+ * the form's own Cancel and Save close it at once. 0.14.0: a form that knows
+ * better (a stepper's − and + and a preset fire no `input` event) says so
+ * with `dirty`, which then decides alone. Without a hardware
  * keyboard nothing is focused on open, so the on-screen keyboard stays down
  * until a field is tapped (A9).
  */
@@ -47,12 +49,20 @@ export interface SheetProps {
   initialFocus?: PopupProps['initialFocus'];
   /** Where focus goes on close (default: the trigger, when Base UI opened it). */
   finalFocus?: PopupProps['finalFocus'];
+  /**
+   * 0.14.0: whether the form has changes not yet saved, from the form itself.
+   * Given, it alone decides whether a scrim tap, Esc, ⌘. or a swipe asks
+   * first (an edit by tapping − or +, or a preset, fires no `input` event;
+   * an edit undone or saved asks nothing). Absent: an `input` event in the
+   * popup since it opened, as before.
+   */
+  dirty?: boolean;
 }
 
 /** What closes a form sheet only after asking, once a field changed: everything but the form's own buttons. */
 const ASKS = new Set(['outside-press', 'escape-key', 'swipe', 'close-watcher', 'focus-out']);
 
-export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, children, className, initialFocus, finalFocus }: SheetProps) {
+export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, children, className, initialFocus, finalFocus, dirty }: SheetProps) {
   const layer = useLayer();
   const { chrome, keyboard, kbUp } = useLayout();
   const form = chrome !== 'phone';
@@ -75,7 +85,7 @@ export function Sheet({ open, onOpenChange, title, hideTitle = false, actions, c
     <Drawer.Root
       open={open}
       onOpenChange={(next, details) => {
-        if (!next && form && changed.current && ASKS.has(details.reason)) {
+        if (!next && form && (dirty ?? changed.current) && ASKS.has(details.reason)) {
           details.cancel();
           setAsking(true);
           return;

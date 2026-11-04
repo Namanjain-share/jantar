@@ -18,12 +18,14 @@
  * Save did is said in the actions row itself (role status, or alert), which
  * a form sheet pins at its foot, so it is in view at every size; the row's
  * height is kept clear of the scroller's foot (--sheet-actions-h, kit.css)
- * so Tab never parks a field under it. The paths are words, as Work's are
- * (screens/work/client.ts), so no schema comes with them.
+ * so Tab never parks a field under it. The sheet asks before a scrim tap or
+ * Esc throws away an edit, however it was made (Sheet's `dirty`). The paths
+ * are words, as Work's are (screens/work/client.ts), so no schema comes with
+ * them.
  */
 import { CheckIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { SWITCH_RULES, type SwitchRules, type SwitchRulesPatch, type WeeklyRamp } from '@jantar/protocol';
 import { errorText } from '../../../lib/api.js';
 import { accountName } from '../../../lib/format.js';
@@ -130,14 +132,19 @@ function Stepper({ label, value, min, max, step, onChange, unit }: { label: stri
 type Load = { state: 'loading' } | { state: 'failed'; error: string } | { state: 'ready'; saved: SwitchRules };
 
 export function SwitchingSheet({ open, onOpenChange, generation }: { open: boolean; onOpenChange: (open: boolean) => void; generation: number }) {
+  // 0.14.0: changed and not saved, as the form knows it (a − or + tap fires no input event for the sheet to see).
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (!open) setDirty(false);
+  }, [open]);
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title="Switching rules">
-      {open ? <SwitchingForm key={generation} onDone={() => onOpenChange(false)} /> : null}
+    <Sheet open={open} onOpenChange={onOpenChange} title="Switching rules" dirty={dirty}>
+      {open ? <SwitchingForm key={generation} onDone={() => onOpenChange(false)} onDirty={setDirty} /> : null}
     </Sheet>
   );
 }
 
-function SwitchingForm({ onDone }: { onDone: () => void }) {
+function SwitchingForm({ onDone, onDirty }: { onDone: () => void; onDirty: (dirty: boolean) => void }) {
   const { api, store } = useDeps();
   // The Mac's own accounts (state.accounts: a paired server's are its own, and ccw runs on the Mac).
   const mine = useApp((s) => s.state.accounts);
@@ -152,6 +159,13 @@ function SwitchingForm({ onDone }: { onDone: () => void }) {
   const actions = useRef<HTMLDivElement>(null);
   const id = useId();
   const ready = load.state === 'ready' && draft !== null;
+  const dirty = load.state === 'ready' && draft !== null && patchOf(load.saved, draft) !== null;
+
+  // A layout effect: the sheet knows before the next key or tap (Esc right after a + tap), not a task later.
+  useLayoutEffect(() => {
+    onDirty(dirty);
+  }, [dirty, onDirty]);
+  useLayoutEffect(() => () => onDirty(false), [onDirty]);
 
   // 0.14.0: the pinned actions row's height, kept clear at the scroller's foot (kit.css scroll-padding-bottom).
   useEffect(() => {
