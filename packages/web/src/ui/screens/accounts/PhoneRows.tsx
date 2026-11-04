@@ -6,8 +6,9 @@
  *   ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▯┊▯     in 12m · 14:20
  *   ──────●━━━━━━━━━━━━━━━   +30%/h  (or "full ~14:16")
  *
- * The expanded row adds the runway in words, the 7d bar and reset, scoped
- * windows, every flag and the sessions as 44 px links. `muted` (an offline
+ * The expanded row adds the runway in words, the 7d bar and reset (0.14.0:
+ * and the weekly cap, "cap 50% · 75% Thu 22:30", for an account with a
+ * weekly ramp), scoped windows, every flag and the sessions as 44 px links. `muted` (an offline
  * server's last readings): the name and % in ink-3, the bar stale.
  */
 import type { State } from '@jantar/protocol';
@@ -16,7 +17,7 @@ import { windowLabel } from '../../../lib/format.js';
 import { Meter } from '../../kit/Meter.js';
 import { Tag } from '../../kit/Tag.js';
 import { Sentence } from './Matrix.js';
-import { burnText, resetIn, runwaySentence, type AccountRow } from './model.js';
+import { burnText, capText, resetIn, runwaySentence, type AccountRow } from './model.js';
 import { Runway } from './Runway.js';
 import { SessionList, sessionCells } from './SessionCells.js';
 import { dayClock, hhmm } from './time.js';
@@ -135,12 +136,14 @@ function Expanded({
       </p>
       {r.d7 !== null ? (
         <div className="mt-12 flex h-16 items-center justify-between gap-12">
-          <Meter value={r.d7} label={`${r.name} Weekly usage`} width={bar} ceiling={weeklyCeiling} />
+          <Meter value={r.d7} label={`${r.name} Weekly usage`} width={bar} ceiling={r.cap?.now ?? weeklyCeiling} />
           <span className="truncate type-mono text-ink-3">
             <span className="text-ink">{r.d7}</span> 7d{r.d7ResetAt !== null ? <> · {dayClock(r.d7ResetAt, now)}</> : null}
           </span>
         </div>
       ) : null}
+      {/* 0.14.0: the weekly cap ccw keeps it under now, and the next one. */}
+      {r.cap ? <p className="mt-6 text-right type-mono text-ink-3">{capText(r.cap, now)}</p> : null}
       {r.scoped.map((w) => (
         <div key={w.kind} className="mt-6 flex h-16 items-center justify-between gap-12">
           <Meter value={Math.round(w.pct)} label={`${r.name} ${windowLabel(w.kind)} usage`} width={bar} />

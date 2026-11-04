@@ -24,7 +24,7 @@ import {
 } from '@jantar/protocol';
 import { accountId, accountName, usageStatusText } from '../../../lib/format.js';
 import type { TagTone } from '../../kit/Tag.js';
-import { dur, hhmm } from './time.js';
+import { dayClock, dur, hhmm } from './time.js';
 
 const MIN = 60_000;
 
@@ -65,6 +65,12 @@ export interface AccountRow {
   burnPerHour: number | null;
   d7: number | null;
   d7ResetAt: number | null;
+  /**
+   * 0.14.0: the weekly cap ccw keeps this account under (its weekly ramp in
+   * switch.json), from /v1/plan: the cap now, and when it next changes and
+   * to what. Null without a ramp.
+   */
+  cap: WeeklyCapRow | null;
   /** Model-scoped weekly windows ("scoped:Opus"). */
   scoped: UsageWindow[];
   /** At or past the ceiling. */
@@ -76,17 +82,38 @@ export interface AccountRow {
   flags: Flag[];
 }
 
+const parse = (iso: string | undefined): number | null => {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+};
+
+export interface WeeklyCapRow {
+  now: number;
+  until: number | null;
+  next: number | null;
+}
+
+/** 0.14.0: the plan's weekly cap for an account, if it has a ramp. */
+function capFor(id: number, plan: PlanResponse | null): WeeklyCapRow | null {
+  const p = plan?.source === 'ccw-legacy' ? plan.accounts.find((x) => x.id === id) : undefined;
+  if (!p || typeof p.weeklyCap !== 'number') return null;
+  const until = parse(p.capUntil);
+  return { now: p.weeklyCap, until, next: until !== null && typeof p.nextCap === 'number' ? p.nextCap : null };
+}
+
+/** 0.14.0: "cap 50% · 75% Thu 22:30" (the cap now, then the next one and when). */
+export function capText(cap: WeeklyCapRow, now: number): string {
+  const head = `cap ${cap.now}%`;
+  return cap.until !== null && cap.next !== null ? `${head} · ${cap.next}% ${dayClock(cap.until, now)}` : head;
+}
+
 function projectionFor(a: Account, plan: PlanResponse | null): AccountProjection | undefined {
   if (a.projection) return a.projection;
   const p = plan?.accounts.find((x) => x.id === a.id);
   return p ? { burnPctPerMin: p.burnPctPerMin, fullInMin: p.fullInMin, ridesReset: p.ridesReset, usable: p.usable } : undefined;
 }
 
-const parse = (iso: string | undefined): number | null => {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  return Number.isFinite(t) ? t : null;
-};
 
 export function buildRows(state: State, plan: PlanResponse | null, ceiling: number, now: number, node?: string): AccountRow[] {
   const order = boardOrder(state).filter((s) => s.node === node);
@@ -113,12 +140,16 @@ export function buildRows(state: State, plan: PlanResponse | null, ceiling: numb
       }
       const burn = proj && proj.burnPctPerMin > 0 ? proj.burnPctPerMin * 60 : null;
 
+      // The plan is the Mac's own (the legacy ccw tool runs there).
+      const cap = node === undefined ? capFor(a.id, plan) : null;
+
       const flags: Flag[] = [];
       if (plan?.next === a.id) flags.push({ text: 'next →', tone: 'next' });
       if (!ok) flags.push({ text: usageStatusText(a.usageStatus), tone: 'warn' });
       if (a.held) flags.push({ text: 'held', tone: 'plain' });
       if (a.isDefaultLogin || active === a.id) flags.push({ text: 'default login', tone: 'plain' });
       if (a.disabled) flags.push({ text: 'disabled', tone: 'plain' });
+      if (cap) flags.push({ text: `cap ${cap.now}%`, tone: 'plain' });
 
       return {
         account: a,
@@ -133,6 +164,7 @@ export function buildRows(state: State, plan: PlanResponse | null, ceiling: numb
         burnPerHour: burn,
         d7: week ? Math.round(Math.max(0, week.pct)) : null,
         d7ResetAt: parse(week?.resetsAt),
+        cap,
         scoped: a.windows.filter((w) => w.kind.startsWith('scoped:')),
         past: ok && h5 !== null && h5 >= ceiling,
         sessions: order.filter((s) => s.account === a.id),

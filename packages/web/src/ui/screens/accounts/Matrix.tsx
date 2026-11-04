@@ -6,7 +6,9 @@
  *
  * RESETS and 7D show from 1280 px; below that they move into the expanded
  * row. A row expands (its ACCT button, or a click anywhere on it) to say in
- * words what the runway shows.
+ * words what the runway shows. 0.14.0: an account with a weekly ramp has
+ * its cap as a flag ("cap 50%"), the 7D tick at the cap, and the cap with
+ * its next change in the expanded row ("cap 50% · 75% Thu 22:30").
  */
 import type { State } from '@jantar/protocol';
 import clsx from 'clsx';
@@ -15,7 +17,7 @@ import { windowLabel } from '../../../lib/format.js';
 import { Meter } from '../../kit/Meter.js';
 import { Tag } from '../../kit/Tag.js';
 import { useWidth } from './hooks.js';
-import { burnText, resetIn, runwaySentence, type AccountRow, type Part } from './model.js';
+import { burnText, capText, resetIn, runwaySentence, type AccountRow, type Part } from './model.js';
 import { Runway, RunwayAxis } from './Runway.js';
 import { useLayout } from '../../shell/layout.js';
 import { SessionCells, sessionCells, SessionList } from './SessionCells.js';
@@ -179,7 +181,7 @@ export function Matrix({
               ) : null}
               {wide ? (
                 <span role="cell" className="flex w-128 flex-none items-center gap-12">
-                  <Meter value={r.d7} label={`${r.name} Weekly usage`} width={64} ceiling={weeklyCeiling} />
+                  <Meter value={r.d7} label={`${r.name} Weekly usage`} width={64} ceiling={r.cap?.now ?? weeklyCeiling} />
                   <span className="w-24 flex-none text-right type-mono text-ink">{r.d7 ?? '–'}</span>
                 </span>
               ) : null}
@@ -189,7 +191,7 @@ export function Matrix({
               <span role="cell" className="flex w-112 flex-none items-center">
                 <SessionCells cells={cells} moveTo={moveTo} {...(coarse ? { onCluster: () => onToggle(r.id), expanded: isOpen } : {})} />
               </span>
-              {/* 0.14.0: flags past the column's 160 px (a held, disabled account that needs a login) wrap, never stick out. */}
+              {/* 0.14.0: flags past the column's 160 px (a held, disabled account that needs a login; a cap) wrap, never stick out. */}
               <span role="cell" className="flex w-160 min-w-0 flex-none flex-wrap gap-x-6 gap-y-4 py-4">
                 {r.flags.map((f) => (
                   <Tag key={f.text} tone={f.tone}>
@@ -228,10 +230,12 @@ function Extra({ r, now, wide, weeklyCeiling }: { r: AccountRow; now: number; wi
   if (!wide && r.d7 !== null)
     items.push(
       <span key="d7" className="inline-flex items-center gap-8">
-        <Meter value={r.d7} label={`${r.name} Weekly usage`} width={64} ceiling={weeklyCeiling} />
+        <Meter value={r.d7} label={`${r.name} Weekly usage`} width={64} ceiling={r.cap?.now ?? weeklyCeiling} />
         7d <b className="font-data text-ink">{r.d7}</b>
       </span>,
     );
+  // 0.14.0: the weekly cap ccw keeps it under now, and the next one.
+  if (r.cap) items.push(<span key="cap">{capText(r.cap, now)}</span>);
   if (r.d7ResetAt !== null)
     items.push(
       <span key="d7r">
