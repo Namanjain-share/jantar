@@ -5,179 +5,149 @@ What changed for people who use Jantar, newest first. Versions before
 
 ## 0.13.0 (unreleased)
 
-**Work** (off by default; `jantar work on`, which turns Todos on too): a
-place for the work you do for clients, owner-only. This build has the Mac
-side of projects and search, of clients, the log of calls and meetings,
-follow-ups, import and export, and of deals, their stages and insights;
-in the app, all of it too: Work's place, your projects, a project as one
-screen with its milestones, one search from every phone header, your
-clients (the list, a client's page, the Log sheet, follow-ups on Today and
-Todos, a meeting's clients, import, export and merging duplicates), and
-your deals (the pipeline, a deal's page, Won and Lost, the stages) with
-Insights. [Work](docs/work.md) has it all.
+**Work** (off until you turn it on with `jantar work on`, which turns
+Todos on too): a place for the work you do for clients. Your projects,
+each on one screen; your clients and companies, with a log of calls and
+meetings; follow-ups that ring like any reminder and show on Today; and
+deals on stages from a new lead to Won or Lost, with insights. It is on
+the phone, the iPad and the Mac, and it is yours alone: nothing of it
+reaches an accountability partner, and Jantar never calls, messages or
+e-mails a client for you. [Work](docs/work.md) has it all.
 
-**Before upgrading: nothing to copy by hand.** The daemon keeps
-`life-pre-0.13.0.db` in the backups folder before it moves life.db to
-schema 5 (Life's fourth schema change, which adds Work's tables, all
-empty, and a column on todos for a follow-up's client; no existing row is
-rewritten). 0.12 can't open Life afterwards, and going back means
-restoring that copy. [Upgrading](docs/upgrading.md) has the steps.
+**Before upgrading: nothing to copy by hand.** On its first start, 0.13.0
+moves life.db to schema 5 (Life's fourth schema change), whether or not
+you turn Work on. Schema 5 adds Work's tables, all empty, and a column on
+todos for a follow-up's client; no existing row is rewritten. Before it
+moves anything, the daemon keeps a copy as `backups/life-pre-0.13.0.db`.
+0.12.x and older can't open a schema-5 life.db (Life answers 503 there),
+so going back means installing 0.12 and running `jantar life restore
+life-pre-0.13.0.db`. Anything added since is lost then, every client and
+deal included; `jantar work export --csv <file>` (and `--deals`) keeps
+them as files first. [Upgrading](docs/upgrading.md) has the steps.
 
-- **A project on one screen.** `GET /v1/projects/<id>` answers a project
-  with its open todos, how many were done this week, the ten done last,
-  and a health line: overdue (the same rule as the project's own count),
-  the next one due, eight weeks of done todos, and how many days an active
-  project has been quiet once nothing in it changed for more than 14.
-- **One search across Jantar.** `GET /v1/search?q=` finds projects, todos,
-  meetings (by name and people), sessions, Intel items, cafés and posts,
-  each part only while it is on, five a part, any case or accent. The
-  query is never logged, and a person's space never shows. The todos list
-  takes `?q=` too.
-- **Start from your client folders.** `jantar work seed <folder...>` (and
-  the phone's sheet, through `POST /v1/work/seed`) makes one project per
-  folder you pick inside one of your folders, linked to it; a folder a
-  project already links is skipped. Never automatic, and it needs Files or
-  New session on.
-- **Up to 500 projects** (was 200).
-- **Work in the app.** Work is a place right after Chat, on a device paired
-  with `control`: with Life, Chat and Work on, the phone's tabs are Board,
-  Today, Chat, Work and More (Files moves into More); a row between Chat
-  and Files in the iPad's sidebar; an item on the Mac's rail and `g w`
-  (⌘1-⌘9 keep their places). Your projects are one tap away, under
-  Active, Paused and Done with their clients and next due todos, a table
-  on a wide window; a project is one screen with its client, status,
-  health, milestones, deal, todos, the sessions in its folder (**New
-  session here**), meetings, log, notes and **Open folder in Files**.
-  While Work is on, Todos has no Projects tab and a project's old link
-  opens in Work.
-- **Search from every phone header.** The magnifier opens the search
-  sheet on every screen (⌘K on a Mac, "Search or jump" on an iPad), which
-  finds clients, projects, deals, todos, meetings, sessions, Intel, cafés,
-  posts and places; **Search Intel only** is its last row.
-- **Open project** in a Board row's long-press menu, and a session's
-  screen names its project under the title.
-- **Start from your client folders** in the app too: tick folders, name
-  them, and Create makes a project each (and a client each, if you want).
-- **Clients in the app.** Work › Clients lists your clients under Needs a
-  step (an open deal and no follow-up), Clients, Leads and Past, each with
-  its next step, open deals and last touch; filter by words, state, tag or
-  a starter list (the filters are the address, so Today's links open the
-  list they name). A client's page has Call, WhatsApp and Email (your
-  phone's own apps; WhatsApp needs a country code, from Work's dial code),
-  its next step, follow-ups, deals, projects, people, the log with older
-  pages, and its details; coming back from a call asks "Log the call?".
-  Add a client in about ten seconds (a possible duplicate warns, never
-  blocks); delete one with what goes and what stays spelled out, or mark
-  it past. Words from an import or a meeting are marked as such. On a wide
-  window the list is a table until you open one.
-- **The Log sheet.** A call, meeting, e-mail, message or note, and its
-  next step (Tomorrow, In 3 days, Next week or a day you pick), in one
-  save; what you typed is kept on the phone when the Mac can't be reached.
-- **Follow-ups on Today and Todos.** A follow-up names its client on its
-  row, and the todo sheet has a Client field. Today's Work card lists
-  check-ins due, deals with no next step, quiet ones and ones closing this
-  week, only on a day it has some.
-- **A meeting's clients**, on its page: linked through its project or by
-  you, suggested from its names (nothing without your tap), Unlink.
-- **Import and export in the app**: a CSV or vCard from Files with a
-  preview and a decision per possible duplicate, Undo for 7 days; the CSV
-  export goes to the share sheet. **Find duplicates** and **Merge with…**:
-  pick what the kept client takes, or say "not a duplicate".
-- **Deals in the app.** Work › Deals is your pipeline: on a phone, a strip
-  of stages and one stage's deals at a time; on a wide Mac or iPad window,
-  a board with a column per stage, Won and Lost as the last 30 days. Each
-  stage says its open and weighted value per currency. A card shows its
-  value, days in stage, next step, close day and whether it is quiet; its
+- **Where it is.** With Work on, it is a place right after Chat: a tab on
+  the phone (Board, Today, Chat, Work and More with Chat on; Files moves
+  into More), a row between Chat and Files in the iPad's sidebar, and an
+  item on the Mac's rail, with `g w` (⌘1-⌘9 keep their places). Projects,
+  Clients and Deals sit under its title. It needs a device paired to do
+  more than read. While Work is on, Todos has no Projects tab, and a
+  project's old link opens in Work.
+- **A project on one screen.** Your projects sit under Active, Paused and
+  Done, each with its client, open and overdue todos, next due todo and
+  live sessions; on a wide Mac or iPad window they are a table until you
+  open one, and then the project opens beside them. A project's screen
+  has its client and due day, its status (one tap), a health line
+  (overdue, next due, done this week, how long it has been quiet), its
+  milestones and its deal, its todos with Undo, the sessions running in
+  its folder with **New session here**, its meetings, its log, its notes
+  and **Open folder in Files**. Up to 500 projects (was 200).
+- **Milestones**: up to 12 per project, in order, each with a target day
+  if you want one. Tick one done with a tap; the project shows how many
+  are done, the next one and any past its day. **Edit** names, dates,
+  orders and removes them.
+- **Start from your client folders.** Tick folders inside one of yours,
+  and Create makes a project for each, linked to its folder (and a client
+  each, if you want); a folder a project already links is marked. It is
+  never automatic. `jantar work seed <folder...>` does the same at the
+  Mac. It needs Files or New session on.
+- **Search across Jantar.** The magnifier in every phone header, ⌘K on a
+  Mac and "Search or jump" in the iPad's sidebar find clients, projects,
+  deals, todos, meetings, sessions, Intel items, cafés, posts and places
+  as you type, in any case and with or without accents. Each part shows
+  only while it is on, and what you type is never logged. **Search Intel
+  only** is the last row.
+- **From the Board and a session.** A Board row in a project's folder has
+  **Open project** in its menu, and a session's screen names its project
+  under its title.
+- **Clients and companies.** A client is a person or a company (a person
+  belongs to one company), and a lead, a client or past, with phones,
+  e-mails, links, tags, notes and, if you like, "check in every N days".
+  Work › Clients lists them under Needs a step (an open deal and no
+  follow-up), Clients, Leads and Past, each with its next step, open
+  deals and when you last talked. Filter by words, state, tag or a
+  starter list (needs a check-in, open deals, quiet leads, gone quiet,
+  missing an e-mail). On a wide window the list is a table until you open
+  a client. Up to 5,000.
+- **A client's page** has **Call**, **WhatsApp** and **Email**, which open
+  your phone's own apps with the number or address filled in (you press
+  send; WhatsApp needs a country code, which Work's dial code adds), then
+  its next step, follow-ups, deals, projects, a company's people, the log
+  (with **Show older**) and its details. Back in Jantar after a call, it
+  asks "Log the call?". **+** adds a client in about ten seconds; one that
+  may already be there (the same e-mail, phone or name) is a warning,
+  never a block. Delete says what goes and what stays, and offers **Mark
+  as past instead** first.
+- **The log.** Calls, meetings, e-mails, messages and notes for each
+  client. The Log sheet saves one with its next step (Tomorrow, In 3
+  days, Next week or a day you pick) in one go, and if the Mac can't be
+  reached it keeps what you typed on the phone.
+- **Follow-ups on Today.** A follow-up is a todo with a client, so Today,
+  reminders, snooze and Chat all see it. It names its client on its row in
+  Today, Todos and Reminders, and the todo sheet has a Client field.
+  Today's **Work** card, on a day it has something, lists the clients due
+  a check-in and counts the deals with no next step, the quiet ones and
+  the ones closing this week; each line opens the list it names. On a
+  locked phone a follow-up says only "Follow-up · 15:00" unless you run
+  `jantar work lockscreen names on`.
+- **Meetings and clients.** A meeting in a client's project is linked to
+  that client by itself and shows in its log. A meeting's page lists its
+  clients, with Unlink, and suggests clients from its names; nothing is
+  linked or added without your tap.
+- **Import, export and Undo.** Import a CSV or vCard file (up to 2,000
+  rows, 1 MB) from Files on the phone, or with `jantar work import <file>`
+  at the Mac. The preview marks the rows that may already be clients
+  (Skip, Fill blanks or Add anyway), and the whole import is one batch
+  you can undo for 7 days. Export your clients as a CSV from the share
+  sheet or with `jantar work export --csv <file>` (add `--deals` for your
+  deals); the clients' CSV imports back as the same clients and
+  companies. Work never reads another app's contacts or database.
+- **Duplicates.** **Find duplicates** lists the clients that may be one.
+  Mark a pair "not a duplicate", or **Merge with…**: pick which values
+  win, and the deals, log, follow-ups, projects and people move over in
+  one save.
+- **Deals, as a pipeline.** A client can have several deals, each on a
+  stage: New lead, Contacted, Proposal sent, Negotiation, Won and Lost to
+  start with, which **Edit stages** renames, reorders, adds to and removes.
+  On a phone, Work › Deals is a strip of stages and one stage's deals at a
+  time; on a wide Mac or iPad window it is a board with a column per
+  stage, and Won and Lost as the last 30 days. A card shows its value,
+  days in stage, next step, close day and whether it has gone quiet. Its
   **···** (a long press on a phone) moves it, logs, sets a next step or
   opens its client, and a mouse or trackpad can drag it to another column
-  (never a finger: a drag would fight the scroll). Won asks "Make a project
-  for it?" with the client's folder filled in; Lost asks why. A deal's page
-  has its moves, its follow-ups, its project and its log; **+** adds a
-  deal (a client's page has **+ New deal** too), **Edit stages** renames,
-  reorders, adds and removes them, and Today's deal lines open just the
-  deals they count. With a keyboard, `m` moves a deal.
-- **Insights in the app**: one scroll of cards per currency (win rate,
-  cycle, forecast, revenue won, sources, why lost, the funnel and time in
-  stage) for 30 or 90 days, 6 or 12 months, this financial year or all;
-  "–" when there is nothing to count.
-- **Milestones in the app**: a project's page lists them, each ticked done
-  with a tap; Edit names, dates, orders and removes them.
-- `jantar life on work` brings Todos with it, and `jantar life off todos`
-  turns Work off too and says so.
-- **Clients and companies.** A client is a person or a company (a person
-  belongs to one company), a lead, a client or past, with phones, e-mails,
-  https links, tags, notes and an optional "check in every N days" that
-  shows on Today. Add one with a company by name (reused when it exists);
-  a possible duplicate is a warning, never a block (the same e-mail, the
-  same phone by its last 10 digits, or the same name). Deleting a client
-  takes its log with it and lets its todos and projects keep going without
-  it. Up to 5,000.
-- **The log.** Calls, meetings, e-mails, messages and notes per client,
-  each with its next step in the same save (a refused next step saves
-  neither). A client's page merges in its done follow-ups; "last touch"
-  is its newest entry.
-- **Follow-ups are todos with a client**: Today, reminders, snooze and
-  Chat all see them, with no second scheduler. On a locked phone a
-  follow-up says only "Follow-up · 15:00" unless you run `jantar work
-  lockscreen names on`; with Work on, its tap opens the client. Only your
-  own todos and projects can have a client (never your partner's or a
-  shared list).
-- **Meetings link to clients.** A meeting in a client's project is linked
-  to that client by itself and shows in its log; you can link or unlink
-  others, or make a client from a name in the meeting (marked as the
-  meeting's words). A project's new client takes its meetings along.
-- **Import and export.** A CSV or vCard file (at most 2,000 rows, 1 MB),
-  previewed with duplicate warnings (Skip, Fill blanks, Add anyway),
-  imported as one batch you can undo for 7 days; `jantar work import
-  <file>` at the Mac. Never another app's contacts or database. The
-  clients export as a CSV (`jantar work export --csv <file>`) that imports
-  back as the same clients and companies.
-- **Chat** can find, read, add and change clients, log a call with its
-  next step and add a follow-up; find, add and change deals and move them
-  between stages (Won makes a project only when you ask), each with Undo;
-  an imported client or a meeting's name is data to it, so its changes
-  after reading one are cards you tap. It never contacts a client and
-  never changes the stages. The prompt is v2.
-- **Deals.** A client can have several deals, each on a stage: New lead,
-  Contacted, Proposal sent, Negotiation, Won and Lost to start with, which
-  you can rename, reorder, add to and remove (a removed stage's deals go
-  where you say). Moving a deal to Won makes its client a client and can
-  make its project in the same save; Lost asks why (eight reasons and a
-  note) and never demotes a client; a closed deal moved back is open
-  again. A deal shows its days in stage, its next step (its own
-  follow-up, else its client's), its close day, and whether it has gone
-  quiet; Today's Work card counts the open deals with no next step, the
-  quiet ones and those closing this week. Money is per currency, never
-  added across. Up to 5,000 deals, 500 open; `jantar work export --csv
-  <file> --deals` writes them as a CSV.
-- **Duplicates and merging.** Work lists the clients that may be one;
-  you can rule a pair "not a duplicate", or merge one into the other (its
-  values fill the blanks, or the ones you pick win; its deals, log,
-  follow-ups, projects and people move over in one save; the merged-away
-  client is hidden for good). **Starter lists** on Clients: needs a
-  check-in, open deals, quiet leads, gone quiet, missing an email.
-- **Milestones on a project**: up to 12 in order, each with an optional
-  target day; the project shows how many are done, the next one and any
-  past its day.
-- **Insights**: per currency, the win rate, the sales cycle, revenue won
-  by month, losses by reason, sources, the weighted forecast by close
-  month and the weekly flow; and the funnel and time in stage from the
-  moves. Periods from 30 days to all time, the financial year from 1 April
-  among them. Nothing to count reads as empty, never 0 %.
-- **`jantar mcp`'s `client_here`**: who the session's folder's work is
-  for, with its open deals and their stages and its next step; never a
-  phone, an e-mail or notes.
-- **Work's settings** (businesses, a dial code for WhatsApp, quiet days)
-  are set on the phone; `jantar work settings` shows them.
-- **Only yours, still.** A test plants a client's name, phone and e-mail
-  (and a deal's title, source and loss note), runs every Work route, and
-  finds none of them in the logs, the audit log, the events or an error
-  reply.
-- **Only yours.** Work's routes are all owner routes on your hostname,
-  Work's data has tables of its own that only its code names, nothing of
-  it is in the partner's app or Chat, and a log line, audit row or event
-  never names a client or a folder. Tests read the route tables and the
-  source to keep it so.
+  (a finger can't, so a drag never fights the scroll). Values stay per
+  currency, never added across. Up to 5,000 deals, 500 of them open.
+- **Won and Lost.** Won makes the client a client and asks "Make a
+  project for it?" with the client's folder filled in; Lost asks why
+  (eight reasons and a note) and never demotes the client. A closed deal
+  moved back is open again. A deal's page has its moves, its follow-ups,
+  the project it became and its log.
+- **Insights**: per currency, the win rate, the sales cycle, the forecast
+  by close month, revenue won by month, sources, why deals were lost, the
+  funnel and time in stage, for 30 or 90 days, 6 or 12 months, this
+  financial year (from 1 April) or all time. With nothing to count, a
+  figure reads "–", never 0 %.
+- **Keys on a Mac** (or an iPad with a keyboard): `g w` opens Work; there,
+  `c` adds, `l` logs, `n` sets a next step, `e` edits, `m` moves a deal
+  and ← → go between the board's columns. `?` lists them.
+- **Chat** can find, read, add and change clients and deals, log a call
+  with its next step, add a follow-up and move a deal (Won makes a project
+  only when you ask), each with Undo. An imported client or a name from a
+  meeting is data to it, so the changes it wants after reading one are
+  cards you tap. It never contacts a client, imports, exports, merges or
+  changes the stages.
+- **`jantar mcp`'s `client_here`** tells a Claude session who the work in
+  its folder is for: the client, its open deals and their stages, and its
+  next step; never a phone, an e-mail or notes.
+- **Work's settings** (your businesses, a dial code for WhatsApp, quiet
+  days) are set on the phone; `jantar work settings` shows them. `jantar
+  life on work` brings Todos with it, and `jantar life off todos` turns
+  Work off too and says so.
+- **Only yours.** Work's routes answer only you, on your own hostname; its
+  data sits in tables of its own; and nothing of it is in the partner's
+  app or their Chat. A log line, audit row, event or error reply never
+  names a client, a folder or a deal: a test plants a client's name,
+  phone and e-mail and a deal's details, runs every Work route, and finds
+  none of them there.
 
 ## 0.12.2 (4 November 2026)
 
