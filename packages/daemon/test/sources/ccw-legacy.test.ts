@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SECRET_MARKER, assistantText, makeSession } from '@jantar/fixtures';
 import type { Account } from '@jantar/protocol';
 import { createClaudeFilesSource } from '../../src/sources/claude-files/index.js';
 import { computePlan, createCcwLegacy, createCcwLegacySource, parseBurn, parseSwitchConfig, rampCapAt, weeklyCapFor } from '../../src/sources/ccw-legacy/index.js';
+import { SWITCH_COPY, readSwitchRules, switchFs, writeSwitchRules } from '../../src/sources/ccw-legacy/write.js';
 import { createCswapUsageSource } from '../../src/sources/cswap/index.js';
 import { createFileTranscriptReader, createTranscriptWatcherWith } from '../../src/sources/transcripts/index.js';
 import { fsx } from '../../src/sources/lib/fsx.js';
@@ -481,5 +482,138 @@ describe('ccw-legacy 0.14.0: weekly ramps in switch.json', () => {
     } finally {
       await env.cleanup();
     }
+  });
+});
+
+describe('ccw-legacy 0.14.0: saving the switching rules into switch.json', () => {
+  let env: SourceEnv;
+  let file: string;
+  beforeEach(async () => {
+    env = await sourceEnv({ home: { ccw: true } });
+    file = env.ctx.paths.ccwSwitchJson;
+  });
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await env.cleanup();
+  });
+
+  it('changes only the five keys and keeps every other key as it was, in its place', async () => {
+    const before = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+    const withExtra: Record<string, unknown> = { ...before, future_key: { nested: [1, 'two', null], flag: true }, weekly_ramp: { '5': { days: [1, 2, 3, 4, 5, 6, 7], last_hour: 9 }, junk: 'kept' } };
+    await writeFile(file, JSON.stringify(withExtra, null, 2));
+    const r = await writeSwitchRules(env.ctx.paths, {
+      hold: [6, 1],
+      ceiling: 95,
+      weeklyCeiling: 99,
+      leadMin: 12,
+      weeklyRamp: { '2': RAMP },
+    });
+    expect(r).toEqual({
+      ok: true,
+      rules: { hold: [1, 6], ceiling: 95, weeklyCeiling: 99, leadMin: 12, weeklyRamp: { '2': RAMP, '5': { days: [1, 2, 3, 4, 5, 6, 7], lastHour: 9 } } },
+    });
+    const after = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+    expect(Object.keys(after)).toEqual(Object.keys(withExtra)); // same keys, same order
+    for (const k of Object.keys(withExtra)) {
+      if (['hold', 'ceiling', 'weekly_ceiling', 'lead_min', 'weekly_ramp'].includes(k)) continue;
+      expect(after[k], k).toEqual(withExtra[k]);
+    }
+    expect([after.hold, after.ceiling, after.weekly_ceiling, after.lead_min]).toEqual([[1, 6], 95, 99, 12]);
+    // the file's own spelling, the other accounts' entries (even one ccw would skip) left alone
+    expect(after.weekly_ramp).toEqual({ '2': { days: RAMP.days, last_hour: 100 }, '5': { days: [1, 2, 3, 4, 5, 6, 7], last_hour: 9 }, junk: 'kept' });
+    // ccw's own format: json.dump(indent=2)
+    expect(await readFile(file, 'utf8')).toBe(JSON.stringify(after, null, 2));
+    // and ccw's reader (ours) sees the new rules
+    expect((await createCcwLegacy(env.ctx).switchConfig())?.hold).toEqual([1, 6]);
+  });
+
+  it('removes a ramp with null, and the weekly_ramp key once it is empty', async () => {
+    await writeSwitchRules(env.ctx.paths, { weeklyRamp: { '2': RAMP, '4': RAMP } });
+    expect(Object.keys((JSON.parse(await readFile(file, 'utf8')) as { weekly_ramp: object }).weekly_ramp)).toEqual(['2', '4']);
+    const r = await writeSwitchRules(env.ctx.paths, { weeklyRamp: { '2': null } });
+    expect(r.ok && r.rules.weeklyRamp).toEqual({ '4': RAMP });
+    await writeSwitchRules(env.ctx.paths, { weeklyRamp: { '4': null, '9': null } });
+    expect(JSON.parse(await readFile(file, 'utf8'))).not.toHaveProperty('weekly_ramp');
+    // a patch that names no ramp leaves the key alone
+    await writeSwitchRules(env.ctx.paths, { weeklyRamp: { '3': RAMP } });
+    await writeSwitchRules(env.ctx.paths, { ceiling: 90 });
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ ceiling: 90, weekly_ramp: { '3': { days: RAMP.days, last_hour: 100 } } });
+  });
+
+  it('keeps the file as it was in switch.json.prev, 0600', async () => {
+    const old = await readFile(file, 'utf8');
+    await writeSwitchRules(env.ctx.paths, { leadMin: 15 });
+    expect(await readFile(`${file}.prev`, 'utf8')).toBe(old);
+    expect((await stat(`${file}.prev`)).mode & 0o777).toBe(0o600);
+    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    const second = await readFile(file, 'utf8');
+    await writeSwitchRules(env.ctx.paths, { leadMin: 20 });
+    expect(await readFile(`${file}.prev`, 'utf8')).toBe(second); // the last one before this save
+    // nothing else left behind in ccw's folder: no temp files
+    expect((await readdir(env.home.paths.ccwDir)).filter((n) => n.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('writes a temp file in the same folder (0600, whole) and renames it into place', async () => {
+    const old = await readFile(file, 'utf8');
+    const seen: Array<{ from: string; to: string; mode: number; text: string; live: string }> = [];
+    const rename = switchFs.rename;
+    vi.spyOn(switchFs, 'rename').mockImplementation(async (from, to) => {
+      seen.push({ from: String(from), to: String(to), mode: (await stat(from)).mode & 0o777, text: await readFile(from, 'utf8'), live: await readFile(to, 'utf8').catch(() => '') });
+      return rename(from, to);
+    });
+    await writeSwitchRules(env.ctx.paths, { ceiling: 96 });
+    const main = seen.find((s) => s.to === file);
+    expect(main).toBeDefined();
+    expect(dirname(main!.from)).toBe(env.home.paths.ccwDir);
+    expect(basename(main!.from)).toMatch(/^\.switch\.json\.jantar-\d+-[0-9a-f]{12}\.tmp$/);
+    expect(main!.mode).toBe(0o600);
+    expect(JSON.parse(main!.text)).toMatchObject({ ceiling: 96 });
+    expect(main!.live).toBe(old); // until the rename, ccw reads the old file whole
+    // .prev first, then the file
+    expect(seen.map((s) => basename(s.to))).toEqual(['switch.json.prev', 'switch.json']);
+  });
+
+  it('never writes into a file that will not parse, nor a missing one', async () => {
+    for (const broken of ['{"on": tr', '[1, 2]', '"text"', '']) {
+      await writeFile(file, broken);
+      const r = await writeSwitchRules(env.ctx.paths, { ceiling: 90 });
+      expect(r).toEqual({ ok: false, code: 'conflict', message: SWITCH_COPY.broken });
+      expect(await readFile(file, 'utf8')).toBe(broken);
+    }
+    expect(existsSync(`${file}.prev`)).toBe(false);
+    await rm(file);
+    expect(await writeSwitchRules(env.ctx.paths, { ceiling: 90 })).toEqual({ ok: false, code: 'conflict', message: SWITCH_COPY.missing });
+    expect(existsSync(file)).toBe(false); // never created
+    expect(await readSwitchRules(env.ctx.paths)).toEqual({ ok: false, code: 'conflict', message: SWITCH_COPY.missing });
+  });
+
+  it('gives way when the file changes while it saves', async () => {
+    const open = switchFs.open;
+    vi.spyOn(switchFs, 'open').mockImplementation((async (path: string, flags: string, mode: number) => {
+      const fh = await open(path, flags, mode);
+      if (basename(path).startsWith('.switch.json.jantar-')) await writeFile(file, '{"on": true, "hold": [9]}'); // ccw saves in the gap
+      return fh;
+    }) as never);
+    const r = await writeSwitchRules(env.ctx.paths, { ceiling: 90 });
+    expect(r).toEqual({ ok: false, code: 'conflict', message: SWITCH_COPY.changed });
+    expect(await readFile(file, 'utf8')).toBe('{"on": true, "hold": [9]}'); // theirs stands
+    expect((await readdir(env.home.paths.ccwDir)).filter((n) => n.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('refuses without ccw, and saves one at a time', async () => {
+    const bare = await sourceEnv();
+    try {
+      expect(await writeSwitchRules(bare.ctx.paths, { ceiling: 90 })).toEqual({ ok: false, code: 'ccw_absent', message: SWITCH_COPY.absent });
+      expect(existsSync(bare.ctx.paths.ccwDir)).toBe(false);
+    } finally {
+      await bare.cleanup();
+    }
+    const all = await Promise.all([50, 60, 70, 80, 90].map((ceiling) => writeSwitchRules(env.ctx.paths, { ceiling, hold: [ceiling / 10] })));
+    expect(all.every((r) => r.ok)).toBe(true);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ ceiling: 90, hold: [9] });
+  });
+
+  it('reads the rules as ccw would', async () => {
+    expect(await readSwitchRules(env.ctx.paths)).toMatchObject({ ok: true, rules: { hold: [3], ceiling: 97, weeklyCeiling: 95, leadMin: 10, weeklyRamp: {} } });
   });
 });

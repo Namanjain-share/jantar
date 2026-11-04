@@ -45,6 +45,7 @@ const BODIES: Partial<Record<RouteName, unknown>> = {
   decidePending: { behavior: 'allow' },
   patchSettings: { notify: { bodies: 'short' } },
   muteNotify: { minutes: 5 },
+  patchSwitchRules: { ceiling: 95 },
   pairStart: {},
   // v0.5
   meetingUpdate: { name: 'Weekly sync' },
@@ -148,6 +149,8 @@ describe('which routes need the device secret', () => {
         'workNotDuplicate',
         'workProjectMilestones',
         'workStagesUpdate',
+        // 0.14.0: the switching rules' save (control scope)
+        'patchSwitchRules',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);

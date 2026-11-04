@@ -77,6 +77,7 @@ import { PLACES_ROUTE_IMPLS } from './routes/places.js';
 import { POSTS_ROUTE_IMPLS } from './routes/posts.js';
 import { TODOS_ROUTE_IMPLS } from './routes/todos.js';
 import { SEARCH_ROUTE_IMPLS } from './routes/search.js';
+import { SWITCHING_ROUTE_IMPLS } from './routes/switching.js';
 import { WORK_ROUTE_IMPLS } from './routes/work.js';
 import { UPLOADS_ROUTE_IMPLS } from './routes/uploads.js';
 import { EXT_PAIR_ROUTE_IMPLS } from './routes/ext-pair.js';
@@ -618,7 +619,7 @@ const CORE_ROUTE_IMPLS: RouteTable = {
   },
 };
 
-/** Every route's handler: the core table plus one table per v0.3, v0.4, v0.5, v0.5.3, v0.6, v0.7 and v0.8 feature (routes/*.ts). */
+/** Every route's handler: the core table plus one table per v0.3, v0.4, v0.5, v0.5.3, v0.6, v0.7, v0.8 and later feature (routes/*.ts). */
 export const ROUTE_IMPLS: RouteTable = {
   ...CORE_ROUTE_IMPLS,
   ...REWRITE_ROUTE_IMPLS,
@@ -674,4 +675,6 @@ export const ROUTE_IMPLS: RouteTable = {
   ...CAPTURE_KEYS_ROUTE_IMPLS,
   // v0.10 Chat (replaces Ask) and the Siri door
   ...CHAT_ROUTE_IMPLS,
+  // 0.14.0 Switching rules: the owner's read and save of ccw's switch.json.
+  ...SWITCHING_ROUTE_IMPLS,
 };

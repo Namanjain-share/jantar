@@ -14,7 +14,10 @@
  * - 0.14.0: plan() also gives each account with a weekly ramp in switch.json
  *   its weekly cap now, by ccw's cap rule on the daemon's clock (cap.ts).
  *
- * Nothing in ~/.config/ccw is ever created, written, locked or deleted.
+ * Nothing here creates, writes, locks or deletes anything in ~/.config/ccw.
+ * 0.14.0: the one write Jantar makes there is write.ts's, apart from this
+ * reader: switch.json (with switch.json.prev beside it) when the owner saves
+ * his switching rules, and only then.
  */
 import { join } from 'node:path';
 import { EVENT, localSessions, type Move, type PlanResponse } from '@jantar/protocol';

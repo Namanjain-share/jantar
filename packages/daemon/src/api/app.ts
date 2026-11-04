@@ -160,6 +160,8 @@ export const READ_ONLY_REFUSED: ReadonlySet<RouteName> = new Set<RouteName>([
   'sessionKeypad',
   'uploadCreate',
   'uploadDelete',
+  // 0.14.0: a Save of the switching rules writes ccw's switch.json, which changes how sessions move.
+  'patchSwitchRules',
 ]);
 
 /** Routes that need a terminal backend: with --no-terminal they answer 501 at once. */

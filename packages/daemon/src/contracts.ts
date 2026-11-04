@@ -421,7 +421,11 @@ export interface Paths {
   cswapProfiles: string;
   cswapSequence: string;
   cswapUsageCache: string;
-  /** ~/.config/ccw (read-only while ccw runs) */
+  /**
+   * ~/.config/ccw (read-only while ccw runs). 0.14.0: except switch.json
+   * (and switch.json.prev beside it), which sources/ccw-legacy/write.ts
+   * rewrites when the owner saves his switching rules, and only then.
+   */
   ccwDir: string;
   ccwSwitchDir: string;
   ccwSwitchJson: string;
@@ -1002,7 +1006,11 @@ export interface CcwBurn {
   updatedAt: string;
 }
 
-/** Read-only view of the legacy ccw tool's files while it still runs. Never writes there. */
+/**
+ * Read-only view of the legacy ccw tool's files while it still runs. Never
+ * writes there. (0.14.0: the owner's Save of his switching rules writes
+ * switch.json through sources/ccw-legacy/write.ts, not through this source.)
+ */
 export interface CcwLegacySource extends Service {
   /** ~/.config/ccw exists. */
   present(): boolean;

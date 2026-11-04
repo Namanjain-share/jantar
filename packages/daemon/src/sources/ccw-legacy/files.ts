@@ -8,7 +8,9 @@
  *   switch/burn.json     sid -> [avg %/min, updated (epoch s), latest %/min]  (older entries: 2 fields)
  *   active.json          sid -> when it last worked (epoch s)
  *
- * Nothing here writes to ccw's files: ccw rewrites them itself.
+ * Nothing here writes to ccw's files: ccw rewrites them itself. 0.14.0: the
+ * one exception is write.ts, which saves the owner's switching rules into
+ * switch.json when he taps Save on the Accounts screen.
  */
 import { MoveSchema, MoveStepSchema, SWITCH_RULES, type Move, type MoveStep, type WeeklyRamp } from '@jantar/protocol';
 import { bool, int, isObj, nonEmpty, num, str, toIso } from '../lib/values.js';
