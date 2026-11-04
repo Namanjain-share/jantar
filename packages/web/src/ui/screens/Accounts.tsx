@@ -113,6 +113,8 @@ function CswapAccounts({ machines }: { machines: boolean }) {
   const [control] = useState(() => readLocalDevice()?.scopes.includes('control') !== false);
 
   const rows = useMemo(() => buildRows(state, plan, ceiling, now), [state, plan, ceiling, now]);
+  // 0.14.0: the weekly cap now of each account with a ramp, for what Moves says of a held one.
+  const caps = useMemo(() => new Map(rows.flatMap((r) => (r.cap ? [[r.id, r.cap.now] as const] : []))), [rows]);
   const sorted = useMemo(() => sortRows(rows, sort, ceiling), [rows, sort, ceiling]);
   // Only the legacy ccw tool moves sessions between accounts; without it there is no autoswitch to name.
   const legacy = plan?.source === 'ccw-legacy';
@@ -259,7 +261,7 @@ function CswapAccounts({ machines }: { machines: boolean }) {
             open={open}
             onToggle={toggle}
           />
-          <Moves state={state} now={now} phone legacy={legacy} />
+          <Moves state={state} now={now} phone legacy={legacy} caps={caps} />
         </div>
       </section>,
     );
@@ -297,7 +299,7 @@ function CswapAccounts({ machines }: { machines: boolean }) {
         open={open}
         onToggle={toggle}
       />
-      <Moves state={state} now={now} phone={false} legacy={legacy} />
+      <Moves state={state} now={now} phone={false} legacy={legacy} caps={caps} />
     </section>,
   );
 }

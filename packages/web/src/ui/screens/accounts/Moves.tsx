@@ -5,6 +5,12 @@
  * lane, dashed while the move is in progress, with a hollow dot for now.
  * Held accounts' lanes are dashed.
  *
+ * 0.14.0: the line under them says what holding does. A held account is
+ * "left out of autoswitch"; one held with a weekly cap (`caps`, from the
+ * plan) is not: nothing moves onto it, and its sessions leave once it
+ * passes the cap ("Held account 02: nothing moves onto it; its sessions
+ * leave once it passes its weekly cap (50% now).").
+ *
  * v0.1 has no move history endpoint, so only current moves show (state.moves).
  * v0.4: the primer's one line (Primer.tsx) closes the section.
  */
@@ -77,10 +83,26 @@ function statusText(m: Move, now: number): string {
   return m.step === 'stuck' && m.why ? `${base} · ${m.why}` : base;
 }
 
-export function Moves({ state, now, phone, legacy = true }: { state: State; now: number; phone: boolean; legacy?: boolean }) {
+export function Moves({
+  state,
+  now,
+  phone,
+  legacy = true,
+  caps = new Map(),
+}: {
+  state: State;
+  now: number;
+  phone: boolean;
+  legacy?: boolean;
+  /** 0.14.0: each account's weekly cap now, for those with a weekly ramp (the plan's, as Accounts' rows have it). */
+  caps?: ReadonlyMap<number, number>;
+}) {
   const accounts = Object.values(state.accounts).sort((a, b) => a.id - b.id);
   const moves = Object.values(state.moves).sort((a, b) => a.since.localeCompare(b.since));
   const held = accounts.filter((a) => a.held).map((a) => accountId(a.id));
+  // 0.14.0: held with a weekly cap isn't left out of autoswitch: its sessions leave at the cap.
+  const plain = accounts.filter((a) => a.held && !caps.has(a.id)).map((a) => accountId(a.id));
+  const capped = accounts.flatMap((a) => (a.held && caps.has(a.id) ? [{ id: accountId(a.id), cap: caps.get(a.id) as number }] : []));
   // Moves come only from the legacy ccw tool: without it, and with nothing to show, no Moves heading (the primer's line stays).
   const quiet = !legacy && !moves.length && !held.length;
 
@@ -128,8 +150,18 @@ export function Moves({ state, now, phone, legacy = true }: { state: State; now:
         );
       })}
       {held.length ? (
-        <p className="mt-12 type-small text-ink-3">
-          Held {held.length === 1 ? 'account' : 'accounts'} <HeldList ids={held} /> {held.length === 1 ? 'is' : 'are'} left out of autoswitch.
+        <p data-held="" className="mt-12 type-small text-ink-3">
+          {plain.length ? (
+            <>
+              Held {plain.length === 1 ? 'account' : 'accounts'} <HeldList ids={plain} /> {plain.length === 1 ? 'is' : 'are'} left out of autoswitch.
+            </>
+          ) : null}
+          {capped.map((c, i) => (
+            <Fragment key={c.id}>
+              {plain.length || i > 0 ? ' ' : null}
+              Held account <HeldList ids={[c.id]} />: nothing moves onto it; its sessions leave once it passes its weekly cap ({c.cap}% now).
+            </Fragment>
+          ))}
           {moves.length ? ` ${held.length === 1 ? 'Its lane is' : 'Their lanes are'} dashed.` : ''}
         </p>
       ) : null}

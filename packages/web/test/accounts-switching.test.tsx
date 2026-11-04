@@ -140,6 +140,28 @@ describe('0.14.0 the weekly cap on an account', () => {
     expect(heldSentence(2, true)).toBe('Held for other work: ccw moves no session onto 02, but moves this one off once 02 passes its weekly cap.');
   });
 
+  it('Moves never says a held account with a weekly cap is left out of autoswitch', async () => {
+    const held = [account(1), account(2, { alias: 'side', held: true }), account(3, { held: true }), account(4, { held: true })];
+    const capped = plan({ accounts: [...plan().accounts, { id: 4, burnPctPerMin: 0, ridesReset: true, usable: false, weeklyCap: 75 }] });
+    for (const layout of [undefined, layoutAt(1440)]) {
+      const { unmount } = renderApp({ path: '/accounts', api: Object.assign(api(), { getPlan: vi.fn(async () => capped) }), state: stateWith({ accounts: held }), ...(layout ? { layout } : {}) });
+      await opened('Accounts');
+      const moves = screen.getByRole('region', { name: /Moves/ });
+      await waitFor(() => expect(moves.querySelector('[data-held]')?.textContent).toContain('weekly cap'));
+      expect(moves.querySelector('[data-held]')?.textContent).toBe(
+        'Held account 03 is left out of autoswitch.' +
+          ' Held account 02: nothing moves onto it; its sessions leave once it passes its weekly cap (50% now).' +
+          ' Held account 04: nothing moves onto it; its sessions leave once it passes its weekly cap (75% now).',
+      );
+      unmount();
+    }
+    // with no cap (no ramp, or no plan from ccw) a held account is left out, as before
+    renderApp({ path: '/accounts', api: Object.assign(api(), { getPlan: vi.fn(async () => plan({ accounts: [] })) }), state: stateWith({ accounts: held }) });
+    await opened('Accounts');
+    const moves = screen.getByRole('region', { name: /Moves/ });
+    await waitFor(() => expect(moves.querySelector('[data-held]')?.textContent).toBe('Held accounts 02, 03 and 04 are left out of autoswitch.'));
+  });
+
   it('works out only what changed', () => {
     expect(patchOf(RULES, RULES)).toBeNull();
     expect(patchOf(RULES, { ...RULES, hold: [3] })).toBeNull();
