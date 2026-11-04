@@ -237,12 +237,30 @@ export function accountRows(inp: AccountInputs): LaunchAccount[] {
     });
 }
 
-/** The ccw group a folder (or session name) is in, and the account its live members are on. */
+/**
+ * 0.14.0: the held accounts with a weekly cap. ccw moves their sessions off
+ * one by one once the account passes its cap, and never as part of a
+ * group's move, so a group member there doesn't say where the group is.
+ */
+export function heldCapped(inp: Pick<AccountInputs, 'accounts' | 'hold' | 'kept' | 'weeklyCaps'>): Set<AccountId> {
+  const out = new Set<AccountId>();
+  for (const id of inp.weeklyCaps?.keys() ?? []) {
+    if (inp.hold.has(id) || inp.kept.has(id) || inp.accounts.some((a) => a.id === id && a.held)) out.add(id);
+  }
+  return out;
+}
+
+/**
+ * The ccw group a folder (or session name) is in, and the account its live
+ * members are on. 0.14.0: members on an account in `skip` (heldCapped: they
+ * never join a group's move) don't count.
+ */
 export function groupAccount(
   folderName: string,
   name: string | undefined,
   groups: readonly (readonly string[])[],
   sessions: readonly Session[],
+  skip: ReadonlySet<AccountId> = new Set(),
 ): { label: string; account: AccountId } | null {
   const names = new Set([folderName.toLowerCase(), (name ?? '').toLowerCase()].filter(Boolean));
   const group = groups.find((g) => g.some((x) => names.has(x.toLowerCase())));
@@ -250,7 +268,7 @@ export function groupAccount(
   const members = new Set(group.map((x) => x.toLowerCase()));
   const counts = new Map<AccountId, number>();
   for (const s of sessions) {
-    if (s.account === null || s.status === 'ended') continue;
+    if (s.account === null || s.status === 'ended' || skip.has(s.account)) continue;
     if (!members.has(s.folder.toLowerCase()) && !members.has((s.name ?? '').toLowerCase())) continue;
     counts.set(s.account, (counts.get(s.account) ?? 0) + 1);
   }

@@ -19,6 +19,7 @@ import {
   autoSkip,
   effective5h,
   groupAccount,
+  heldCapped,
   heldWarning,
   isHeld,
   noRoomReason,
@@ -241,6 +242,27 @@ describe('ccw groups', () => {
     expect(groupAccount('API', undefined, groups, sessions)).toEqual({ label: 'web+api', account: 4 });
     expect(groupAccount('infra', undefined, groups, sessions)).toBeNull();
     expect(groupAccount('lone', undefined, groups, sessions)).toBeNull();
+  });
+
+  it('0.14.0: members on a held account with a weekly cap never place the group (they never join its moves)', () => {
+    const groups = [['web', 'api', 'docs']];
+    const sessions = [
+      session({ sid: 'w1', folder: 'web', account: 2 }),
+      session({ sid: 'w2', folder: 'docs', account: 2 }),
+      session({ sid: 'a1', folder: 'api', account: 4 }),
+    ];
+    const accounts = [account(2, 10, { held: true }), account(3, 10), account(4, 10), account(6, 10)];
+    // 02 held with a cap, 03 not held with a cap, 06 held by the hold list with a cap, 05 in the list with no reading
+    const inp = inputs(accounts, { hold: new Set([5, 6]), weeklyCaps: new Map([[2, 50], [3, 50], [5, 75], [6, 50]]) });
+    const skip = heldCapped(inp);
+    expect([...skip].sort()).toEqual([2, 5, 6]);
+    expect(groupAccount('web', undefined, groups, sessions)).toEqual({ label: 'web+api+docs', account: 2 }); // as before: two on 02
+    expect(groupAccount('web', undefined, groups, sessions, skip)).toEqual({ label: 'web+api+docs', account: 4 });
+    // every member on one: no account to name
+    expect(groupAccount('web', undefined, groups, sessions.slice(0, 2), skip)).toBeNull();
+    // held with no cap (its sessions stay put) and capped but not held still count
+    expect([...heldCapped(inputs(accounts, { hold: new Set([2]), weeklyCaps: new Map([[4, 50]]) }))]).toEqual([]);
+    expect([...heldCapped(inputs(accounts, { kept: new Set([4]), hold: new Set(), weeklyCaps: new Map([[4, 50]]) }))]).toEqual([4]);
   });
 });
 

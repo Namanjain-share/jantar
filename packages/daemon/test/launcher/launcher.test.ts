@@ -1199,6 +1199,22 @@ describe('preview and account choice with ccw running', () => {
     expect(await start({ account: 4 }, device('p2'))).toMatchObject({ account: 4, accountSource: 'group', requested: 4 });
   });
 
+  it("0.14.0: a group member on a held account with a weekly cap doesn't say where the group is (it never joins the group's moves)", async () => {
+    rig = await makeRig();
+    rig.ccw.isPresent = true;
+    rig.ccw.hold = [...KEPT];
+    rig.ccw.groups = [['alpha-app', 'web']];
+    rig.ctx.store.emit({ type: 'session.added', sid: 'web', data: { session: session({ sid: 'web', folder: 'web', cwd: '/synthetic/web', account: 2 }) } });
+    // 02 is on ccw's hold list: with no cap, the group is there
+    expect((await preview()).warnings).toEqual([{ kind: 'group', text: 'Group alpha-app+web is on 02. Starting on 07 splits it; ccw may move it.', account: 2 }]);
+    // with a weekly cap its sessions leave it one by one, never with the group: no group to name
+    rig.ccw.planAccounts = [{ id: 2, burnPctPerMin: 0, ridesReset: true, usable: false, weeklyCap: 50 }];
+    expect((await preview()).warnings).toEqual([]);
+    // another member on 04 names the group's account
+    rig.ctx.store.emit({ type: 'session.added', sid: 'alpha', data: { session: session({ sid: 'alpha', folder: 'alpha-app', cwd: '/synthetic/alpha-app', account: 4 }) } });
+    expect((await preview()).warnings).toEqual([{ kind: 'group', text: 'Group alpha-app+web is on 04. Starting on 07 splits it; ccw may move it.', account: 4 }]);
+  });
+
   it('a group on the account with the most room: Auto joins it, with no warning', async () => {
     rig = await makeRig();
     rig.ccw.isPresent = true;

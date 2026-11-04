@@ -66,6 +66,7 @@ import {
   SINGLE_ACCOUNT,
   accountRows,
   groupAccount,
+  heldCapped,
   heldWarning,
   isHeld,
   notSelectable,
@@ -642,7 +643,8 @@ export class LauncherService implements Launcher {
       const why = notSelectable(a, inputs);
       return { ok: true, pick: a.id, source: 'resume', reason: why ? `${pinnedReason(a.id)} · ${why}` : pinnedReason(a.id), warnings };
     }
-    const group = groupAccount(folderName, name, groups, inputs.sessions);
+    // 0.14.0: members on a held account with a weekly cap never move with the group, so they don't place it.
+    const group = groupAccount(folderName, name, groups, inputs.sessions, heldCapped(inputs));
     const warnings: LaunchWarning[] = [];
     const groupWarning = (pick: AccountId | null) => {
       if (!group || pick === group.account) return;
