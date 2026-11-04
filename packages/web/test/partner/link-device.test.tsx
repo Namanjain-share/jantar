@@ -97,6 +97,15 @@ describe('Me › Devices › Link another device (0.12.2)', () => {
     expect(box.textContent).not.toMatch(/5 minutes/);
   });
 
+  it('when it runs out sits under the link, above the buttons and the QR code (in view on a phone)', async () => {
+    const box = await openLink();
+    const until = within(box).getByText(/^It works once, until/);
+    const link = within(box).getByLabelText('Link for the other device');
+    const copy = within(box).getByRole('button', { name: 'Copy link' });
+    expect(link.compareDocumentPosition(until) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(until.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('Copy link puts the whole link on the clipboard', async () => {
     const writeText = vi.fn(async () => undefined);
     setNavigator('clipboard', { writeText });

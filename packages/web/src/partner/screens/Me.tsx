@@ -383,6 +383,9 @@ function LinkAnother({ code, expiresAt, ranOut }: { code: string; expiresAt: str
       <p aria-label="Link for the other device" className="select-all break-all type-mono text-ink [overflow-wrap:anywhere]">
         {url}
       </p>
+      <p className="text-small text-ink-2">
+        It works once, until {hmOf(expiresAt)} ({left} min left).
+      </p>
       <div className="flex flex-wrap gap-8">
         <Button variant="primary" className="min-h-44" onClick={() => void copy()}>
           Copy link
@@ -409,9 +412,6 @@ function LinkAnother({ code, expiresAt, ranOut }: { code: string; expiresAt: str
       <p className="text-small text-ink-2">Or open {location.host}/p/link there and type this code:</p>
       <p aria-label="Link code" className="select-all break-all font-mono text-title text-ink">
         {code}
-      </p>
-      <p className="text-small text-ink-2">
-        It works once, until {hmOf(expiresAt)} ({left} min left).
       </p>
     </section>
   );
