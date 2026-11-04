@@ -9,6 +9,8 @@
  * - When it has run out, the link, the code and their buttons go, and the
  *   page says how to get a new one.
  * - How many of her five devices are linked.
+ * - Back on the page (from the other device), her list loads again, and a
+ *   device linked meanwhile takes the link's place: "<name> is linked."
  */
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -174,6 +176,40 @@ describe('Me › Devices › Link another device (0.12.2)', () => {
     render(<Me me={me()} api={fakeApi({ devices: vi.fn(async () => ({ devices: [device(1), device(2)] })) })} reload={() => {}} tab="devices" />);
     await act(async () => undefined);
     expect(screen.getByText('2 of 5 devices linked.')).toBeTruthy();
+  });
+
+  it('back on the page, her list loads again, and a device linked meanwhile takes the link\'s place', async () => {
+    const devices = vi.fn<() => Promise<{ devices: PersonDevice[] }>>().mockResolvedValueOnce({ devices: [device(1)] }).mockResolvedValue({ devices: [device(1), device(2, { name: 'Mac' })] });
+    const box = await openLink(fakeApi({ devices }));
+    expect(screen.getByText('1 of 5 devices linked.')).toBeTruthy();
+    await act(async () => {
+      dispatchEvent(new Event('focus'));
+    });
+    expect(devices).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('2 of 5 devices linked.')).toBeTruthy();
+    expect(box.isConnected).toBe(false);
+    expect(screen.queryByLabelText('Link code')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Mac is linked.');
+    // Another link from here starts again.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Link another device' }));
+    });
+    expect(screen.getByRole('region', { name: 'Link another device' })).toBeTruthy();
+    expect(screen.queryByText('Mac is linked.')).toBeNull();
+  });
+
+  it('back on the page with no new device, the link stays; a list that fails to load again changes nothing', async () => {
+    const devices = vi.fn<() => Promise<{ devices: PersonDevice[] }>>().mockResolvedValueOnce({ devices: [device(1)] }).mockRejectedValueOnce(new Error("Can't reach the Mac right now.")).mockResolvedValue({ devices: [device(1)] });
+    const box = await openLink(fakeApi({ devices }));
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    }
+    expect(devices).toHaveBeenCalledTimes(3);
+    expect(box.isConnected).toBe(true);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('1 of 5 devices linked.')).toBeTruthy();
   });
 
   it('the daemon\'s "five devices" answer shows under the button', async () => {

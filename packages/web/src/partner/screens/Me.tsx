@@ -20,7 +20,9 @@
  * One-time PIN sign-in may ask her to open the link again; and the line under
  * it counts down to PERSON_LINK_CODE_TTL_MS (15 minutes). When it runs out the
  * link goes and the page says how to get a new one. Above the list: how many
- * of her PERSON_DEVICES_MAX devices are linked.
+ * of her PERSON_DEVICES_MAX devices are linked. Back on the page (focus, or
+ * visible again, from the other device) the list loads again, and a device
+ * linked meanwhile takes the link's place: "<name> is linked."
  * - Notifications: turn on and test, lock screen, mute.
  * - Leave: download first, keep 30 days or delete now, type LEAVE.
  */
@@ -250,21 +252,35 @@ function SeeLink({ owner, area, label }: { owner: string; area: string; label?: 
 
 function Devices({ api }: { api: PersonApi }) {
   const [devices, setDevices] = useState<PersonDevice[] | null>(null);
-  const [link, setLink] = useState<{ code: string; expiresAt: string } | null>(null);
+  // `had`: her devices when the link was made, so one linked with it shows (null: the list hadn't loaded).
+  const [link, setLink] = useState<{ code: string; expiresAt: string; had: string[] | null } | null>(null);
   const [ranOut, setRanOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const load = () => api.devices().then((r) => setDevices(r.devices), (e: Error) => setError(e.message));
   useEffect(() => {
     void load();
+    // 0.12.2: back on this page from the other device, her list again (quietly: a miss keeps what shows).
+    const again = () => {
+      if (document.visibilityState !== 'hidden') api.devices().then((r) => setDevices(r.devices), () => undefined);
+    };
+    document.addEventListener('visibilitychange', again);
+    addEventListener('focus', again);
+    return () => {
+      document.removeEventListener('visibilitychange', again);
+      removeEventListener('focus', again);
+    };
   }, []);
   const make = () => {
     setError(null);
     setRanOut(false);
+    const had = devices ? devices.map((d) => d.id) : null;
     api.linkCode().then(
-      (r) => setLink({ code: r.code, expiresAt: r.expiresAt }),
+      (r) => setLink({ code: r.code, expiresAt: r.expiresAt, had }),
       (e: Error) => (setLink(null), setError(e.message)),
     );
   };
+  // 0.12.2: a device linked since the link was made takes its place.
+  const linked = link?.had && devices ? devices.find((d) => !link.had?.includes(d.id)) : undefined;
   return (
     <div>
       {devices ? (
@@ -292,7 +308,7 @@ function Devices({ api }: { api: PersonApi }) {
       <Button className="mt-16" variant="outline" onClick={make}>
         Link another device
       </Button>
-      {link ? (
+      {link && !linked ? (
         <LinkAnother
           key={link.code}
           code={link.code}
@@ -302,6 +318,11 @@ function Devices({ api }: { api: PersonApi }) {
             setRanOut(true);
           }}
         />
+      ) : null}
+      {linked ? (
+        <p role="status" className="mt-8 font-medium">
+          {linked.name} is linked.
+        </p>
       ) : null}
       {ranOut ? (
         <p role="status" className="mt-8 text-ink-2">
@@ -331,10 +352,10 @@ function LinkAnother({ code, expiresAt, ranOut }: { code: string; expiresAt: str
   useEffect(() => {
     const tick = () => setLeft(minutesLeft(expiresAt));
     const t = setInterval(tick, 1000);
-    addEventListener('visibilitychange', tick);
+    document.addEventListener('visibilitychange', tick);
     return () => {
       clearInterval(t);
-      removeEventListener('visibilitychange', tick);
+      document.removeEventListener('visibilitychange', tick);
     };
   }, [expiresAt]);
   useEffect(() => {
