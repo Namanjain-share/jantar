@@ -38,11 +38,11 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { extLinesBody, extOpenBody, extShotBody, makeJpeg, perfBudgetMs, projectBody, setFakeClaude } from '@jantar/fixtures';
 import { DEVICE_COOKIE, EXTENSION_ID, EXTENSION_KEY_HEADER, type ExtPairStartReply, type LineUpsert, type MeetingDetail, type PairStartResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, PHONE, browserReady, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Viewport, type Watch } from './browser.js';
+import { DESK, PHONE, browserReady, launchBrowser, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Viewport, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 
@@ -187,7 +187,7 @@ describe.skipIf(!ready)('MW1: the Meetings screens in Chromium, served by jantar
     await setFakeClaude(d.home, { mode: 'meeting-ok' });
     ids.running = await meeting({ name: 'Standup', at: Date.now() - 120_000 }, said(3, 'webrun01', (i) => `Standup line ${i + 1} with today's plan.`), 1, false);
 
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     pages.phone = await paired(PHONE, 'Example phone');
     pages.desk = await paired(DESK, 'Example Mac browser');
   }, perfBudgetMs(120_000));

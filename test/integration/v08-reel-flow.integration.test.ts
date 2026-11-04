@@ -66,7 +66,7 @@ import {
   type PairStartResponse,
 } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { PHONE, browserReady, clean, onPaired, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Watch } from './browser.js';
+import { PHONE, browserReady, launchBrowser, clean, onPaired, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 import { browserSeam, netReady, netSeam, serveSites, type Answer, type BrowserSeen, type Sites } from './read-net.js';
@@ -215,7 +215,7 @@ describe.skipIf(!ready)(`v0.8 a reel sent from the phone, read on the Mac, found
     extKey = (paired.body as { key: string }).key;
 
     // The phone.
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     await openPhone();
     const phone = await callDaemon<PairStartResponse>(ctl, 'POST', '/v1/pair/start', { name: 'Example phone', scopes: ['read', 'control'] });
     await page.goto(`http://127.0.0.1:${d.port}/pair#c=${phone.code}`, { waitUntil: 'load' });

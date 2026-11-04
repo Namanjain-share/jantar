@@ -49,7 +49,7 @@ import { mkdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
+import type { Browser, BrowserContext, Locator, Page } from 'playwright-core';
 import {
   LAUNCH_HELD,
   PAST_SESSIONS,
@@ -66,7 +66,7 @@ import {
 } from '@jantar/fixtures';
 import { DEVICE_COOKIE, type FoodDay, type MedicinesResponse, type PairStartResponse, type TodosResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, PHONE, browserReady, clean, expectSaneFocus, focusWalk, glyphShape, grayscale, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
+import { DESK, PHONE, browserReady, launchBrowser, clean, expectSaneFocus, focusWalk, glyphShape, grayscale, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
 import { bootDaemon, fakeBinsSettings, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 
@@ -272,7 +272,7 @@ describe.skipIf(!ready)('LW1: the v0.4 screens in Chromium, served by jantard', 
       return r.status === 200 && (r.body as { total: number }).total > 30;
     }, 15_000, 'the shelf');
 
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     pages.phone = await paired(PHONE, 'Example phone');
     pages.desk = await paired(DESK, 'Example Mac browser');
   }, perfBudgetMs(90_000));

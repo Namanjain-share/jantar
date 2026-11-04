@@ -25,9 +25,9 @@
  * Needs a built dist/ and a Chromium (browser.ts says how).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium, type Browser } from 'playwright-core';
+import type { Browser } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
-import { DIST, browserReady, clean, grayscale, grayscaleKey, onTouch, pageOpener } from './browser.js';
+import { DIST, browserReady, launchBrowser, clean, grayscale, grayscaleKey, onTouch, pageOpener } from './browser.js';
 import { webFixture } from './web-fixture.js';
 import { serveWebApp, type WebServer } from './web-server.js';
 
@@ -42,7 +42,7 @@ describe.skipIf(!ready)('the built web app in Chromium', () => {
 
   beforeAll(async () => {
     server = await serveWebApp(DIST, () => fixture);
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     pages = pageOpener(browser, () => server.base);
   }, perfBudgetMs(30_000));
 

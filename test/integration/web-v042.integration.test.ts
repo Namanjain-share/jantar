@@ -38,12 +38,12 @@ import { readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { SAMPLE_TEXT, dialogFixture, NOT_DIALOG_SCREENS, perfBudgetMs } from '@jantar/fixtures';
 import { dialogOfScreen, rawSlice } from '@jantar/daemon/terminal/dialog';
 import type { PairStartResponse, SessionsResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, PHONE, browserReady, clean, expectSaneFocus, focusWalk, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
+import { DESK, PHONE, browserReady, launchBrowser, clean, expectSaneFocus, focusWalk, onPaired, overflow, stillTouch, touchPage, watchConsole, type StorageState, type Viewport, type Watch } from './browser.js';
 import { FakeTabs, bootDaemon, fakeBinsSettings, type Daemon } from './harness.js';
 import { eventually } from './http.js';
 
@@ -173,7 +173,7 @@ describe.skipIf(!ready)('v0.4.2 in Chromium: the dock answers dialogs, the keypa
       const sids = (await callDaemon<SessionsResponse>(ctl, 'GET', '/v1/sessions')).sessions.map((s) => s.sid);
       return sids.includes(WAIT) && sids.includes(IDLE);
     }, 15_000, 'the live sessions');
-    browser = await chromium.launch();
+    browser = await launchBrowser();
   }, perfBudgetMs(90_000));
 
   afterAll(async () => {

@@ -39,7 +39,7 @@
  * Needs a built dist/ and a Chromium (browser.ts).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
 import {
   INTEL_READ_REASONS,
@@ -51,7 +51,7 @@ import {
   OkReplySchema,
   StateSchema,
 } from '@jantar/protocol';
-import { DIST, PHONE, browserReady, clean, onTouch, overflow, stillTouch, touchPage, watchConsole, type Watch } from './browser.js';
+import { DIST, PHONE, browserReady, launchBrowser, clean, onTouch, overflow, stillTouch, touchPage, watchConsole, type Watch } from './browser.js';
 import { DAL_URL, READ_IDS, webFixtureV08, type V08Answer, type WebFixtureV08 } from './web-fixture-v08.js';
 import { serveWebApp, type WebServer } from './web-server.js';
 
@@ -122,7 +122,7 @@ describe.skipIf(!ready)('v0.8 Intel reading links in Chromium at 390 px: the Rea
   beforeAll(async () => {
     fixture = webFixtureV08({ variant: 'intel-read' });
     server = await serveWebApp(DIST, () => fixture);
-    browser = await chromium.launch();
+    browser = await launchBrowser();
   }, perfBudgetMs(30_000));
 
   afterAll(async () => {

@@ -80,10 +80,10 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type Page } from 'playwright-core';
+import type { Browser, Page } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
 import { emptyRanges, emptyShare, MAX_EMPTY, under44 } from '../../packages/web/test/layout-metric.js';
-import { browserReady, DIST, hasCoarsePointer, onTouch, openTouchable, stillTouch, type Viewport, type Watch } from './browser.js';
+import { browserReady, launchBrowser, DIST, hasCoarsePointer, onTouch, openTouchable, stillTouch, type Viewport, type Watch } from './browser.js';
 import { probeLayout, type Probe } from './layout-probe.js';
 import { PEOPLE_PID, withPeople } from './web-fixture-people.js';
 import { lid } from './web-fixture-v04.js';
@@ -320,7 +320,7 @@ describe.skipIf(!ready)('0.12: every place at every window size, in Chromium', (
   const shots = join(tmpdir(), 'jantar-v011-layout');
 
   beforeAll(async () => {
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     current = fixtureOf(STATES[0]!);
     server = await serveWebApp(DIST, () => current);
     mkdirSync(shots, { recursive: true });
@@ -546,7 +546,7 @@ describe.skipIf(!ready)('0.12 c33: rotation, the on-screen keyboard, hover and k
   const fixture = webFixtureV08({ accounts: 'cswap', variant: 'chat' });
 
   beforeAll(async () => {
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     server = await serveWebApp(DIST, () => fixture);
   });
   afterAll(async () => {
@@ -903,7 +903,7 @@ describe.skipIf(!ready)('0.12.0: the resize corner with wider text', () => {
   ];
 
   beforeAll(async () => {
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     server = await serveWebApp(DIST, () => fixture);
   });
   afterAll(async () => {

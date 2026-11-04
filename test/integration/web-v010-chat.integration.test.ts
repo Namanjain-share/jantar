@@ -34,11 +34,11 @@
  * Every name and value is synthetic. Needs a built dist/ and a Chromium.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
+import type { Browser, BrowserContext, Locator, Page } from 'playwright-core';
 import { chatText, makePng, perfBudgetMs } from '@jantar/fixtures';
 import { DEVICE_COOKIE, type ChatList, type PairStartResponse } from '@jantar/protocol';
 import { callDaemon, createCtlClient, type CtlClient } from '../../packages/cli/src/index.js';
-import { DESK, browserReady, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Viewport, type Watch } from './browser.js';
+import { DESK, browserReady, launchBrowser, clean, onPaired, overflow, stillTouch, touchPage, watchConsole, type Rerun, type StorageState, type Viewport, type Watch } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 
@@ -128,7 +128,7 @@ describe.skipIf(!ready)('v0.10 Chat in Chromium, served by jantard', () => {
     expect(claim.status, claim.text).toBe(200);
     cookie = cookieFrom(claim, DEVICE_COOKIE) as string;
     rememberSecret(cookie, claim.body);
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     for (const who of ['p320', 'p390', 'desk'] as const) pages[who] = await paired(who);
   }, perfBudgetMs(120_000));
 

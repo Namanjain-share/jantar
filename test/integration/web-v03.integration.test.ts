@@ -35,9 +35,9 @@
  * a Chromium (browser.ts says how).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type Page } from 'playwright-core';
+import type { Browser, Page } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
-import { DESK, DIST, PHONE, browserReady, clean, grayscale, grayscaleKey, onTouch, overflow, pageOpener, type Viewport, type Watch } from './browser.js';
+import { DESK, DIST, PHONE, browserReady, launchBrowser, clean, grayscale, grayscaleKey, onTouch, overflow, pageOpener, type Viewport, type Watch } from './browser.js';
 import { PATHS, webFixtureV03, type WebFixtureV03 } from './web-fixture-v03.js';
 import { serveWebApp, type WebServer } from './web-server.js';
 
@@ -55,7 +55,7 @@ describe.skipIf(!ready)('the v0.3 screens in Chromium', () => {
   const open = (path: string, o: Viewport) => pages.open(path, o);
 
   beforeAll(async () => {
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     // A real PNG for the terminal screenshot, the notebook's image output and the Markdown's image.
     const ctx = await browser.newContext({ viewport: { width: 640, height: 360 } });
     const p = await ctx.newPage();

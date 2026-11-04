@@ -30,6 +30,38 @@ async function browserInstalled(): Promise<boolean> {
   }
 }
 
+/** 0.12.1: Playwright's own --disable-features switch, as it starts Chromium ('' when it has none), or null if that can't be read. */
+let playwrightDisables: Promise<string | null> | undefined;
+
+/**
+ * 0.12.1: Chromium for a suite with touch pages, as chromium.launch() starts it but with RenderDocument off.
+ *
+ * With it on (Chromium's default), each cross-document navigation hands a page's DevTools sessions to the new
+ * document: its copy of Playwright's Emulation agent turns touch on, and the old document's turns it off as it
+ * goes, which is the likely way CI drops touch (stillTouch). With it off a same-site navigation keeps its
+ * sessions, and every navigation in these suites is same-site. Shown here: with it on, touch turned off by a
+ * session that leaves comes back at the next navigation (the new document's agents start from the sessions'
+ * state); with it off it stays off. stillTouch turns it back on either way.
+ *
+ * Chromium keeps only the last --disable-features, so a second one would turn Playwright's own list back on
+ * (ThirdPartyStoragePartitioning, for one: a third-party frame's storage came back partitioned). Playwright's
+ * switch is read from the command line it starts a browser server with, and replaced by itself plus
+ * RenderDocument. If it can't be read, the browser starts as chromium.launch() starts it.
+ */
+export async function launchBrowser(): Promise<Browser> {
+  playwrightDisables ??= chromium.launchServer().then(
+    async (server) => {
+      const own = server.process().spawnargs.find((a) => a.startsWith('--disable-features=')) ?? '';
+      await server.close();
+      return own;
+    },
+    () => null,
+  );
+  const own = await playwrightDisables;
+  if (own === null) return chromium.launch();
+  return chromium.launch(own ? { ignoreDefaultArgs: [own], args: [`${own},RenderDocument`] } : { args: ['--disable-features=RenderDocument'] });
+}
+
 /** True when the suite can run; otherwise says why (and throws on CI). */
 export async function browserReady(suite: string): Promise<boolean> {
   const hasDist = existsSync(`${DIST}/index.html`);
@@ -116,7 +148,8 @@ export async function styleElements(page: Page): Promise<number> {
  * CDP session shows it: touch on, detach, no coarse pointer until the next document). The likely way on CI:
  * a cross-document navigation (RenderDocument) moves each session to the new document, whose copy turns
  * touch back on, and lets the old document's copy go; when that lands after the new one, the page has none.
- * Not caught here; nothing in these tests turns touch off.
+ * Not caught here; nothing in these tests turns touch off. launchBrowser starts the suites' Chromium with
+ * RenderDocument off, which takes that hand-over away from their same-site navigations.
  *
  * So a touch page is marked (touchPage) as it opens. stillTouch(page) asks for its coarse pointer; clean()
  * and overflow() ask first, and a test asks before any step that needs the pointer or can't be taken twice.

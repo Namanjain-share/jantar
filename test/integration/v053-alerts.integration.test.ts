@@ -34,7 +34,7 @@
  * Nothing runs osascript, claude or a real push service.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type BrowserContext, type CDPSession, type Page, type Worker } from 'playwright-core';
+import type { Browser, BrowserContext, CDPSession, Page, Worker } from 'playwright-core';
 import { DIALOG_SECRET, perfBudgetMs, workflowBashScreen, type FakeHome } from '@jantar/fixtures';
 import {
   ALERT_GROUPS,
@@ -48,7 +48,7 @@ import {
   type TodosResponse,
 } from '@jantar/protocol';
 import { callDaemon, createCtlClient, defaultDeps, main, memoryIo, type CtlClient } from '../../packages/cli/src/index.js';
-import { browserReady, onTouch, stillTouch, touchPage } from './browser.js';
+import { browserReady, launchBrowser, onTouch, stillTouch, touchPage } from './browser.js';
 import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 import { ScriptedTerminal } from './scripted-terminal.js';
@@ -289,7 +289,7 @@ describe('v0.5.3 alerts: the groups, the countdown and the missed-push retry', (
     beforeAll(async () => {
       ready = await browserReady('v053-alerts');
       if (!ready) return;
-      browser = await chromium.launch();
+      browser = await launchBrowser();
       await openPhone();
       await onTouch(
         'the alerts phone',
