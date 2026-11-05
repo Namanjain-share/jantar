@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.14.0 (unreleased)
+## 0.14.0 (5 November 2026)
 
 - **Change ccw's switching rules from the phone.** While the legacy ccw
   tool runs, Accounts has a **Switching rules** button. It opens a sheet
