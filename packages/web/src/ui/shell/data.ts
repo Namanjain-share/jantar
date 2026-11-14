@@ -42,9 +42,9 @@ export function useFeatures(): Readonly<Features> {
 }
 
 /**
- * The switches as the places (rail, tabs, More) list them: Ask and (v0.11)
- * People only on a device paired with control (v0.5.3), as every Ask call
- * and every People route needs it. A browser that kept no record of its
+ * The switches as the places (rail, tabs, More) list them: Ask, (v0.11)
+ * People and (0.15) Messages only on a device paired with control (v0.5.3),
+ * as every one of their routes needs it. A browser that kept no record of its
  * pairing (or an unreadable one) is taken to have it, as the session's
  * answer rows do. 0.13.0: `work` from Life status (lifeStatus.ts), on a
  * device with control too.
@@ -53,8 +53,8 @@ export function usePlaceFeatures(): Readonly<PlaceFeatures> {
   const features = useFeatures();
   const work = useWorkOn(features.life);
   const placed = useMemo(() => ({ ...features, work }), [features, work]);
-  const scopes = features.ask || features.people ? readLocalDevice()?.scopes : undefined;
-  return Array.isArray(scopes) && !scopes.includes('control') ? { ...placed, ask: false, people: false } : placed;
+  const scopes = features.ask || features.people || features.messages ? readLocalDevice()?.scopes : undefined;
+  return Array.isArray(scopes) && !scopes.includes('control') ? { ...placed, ask: false, people: false, messages: false } : placed;
 }
 
 /**

@@ -27,6 +27,10 @@
  * More, and Files moves into More. On the iPad it is one row between Chat and
  * Files; on the Mac a rail item. ⌘1-⌘9 keep 0.12's places (`CMD_PLACES`), so
  * Work is `g w` and ⌘K.
+ *
+ * 0.15: Messages (`messages`, owner-only, on a device paired with control:
+ * every Messages route is a control route), right after Meetings in the
+ * Library, so on a phone it sits in More. No ⌘ number and no g chord.
  */
 import {
   BellIcon,
@@ -34,6 +38,7 @@ import {
   BriefcaseIcon,
   ChartBarHorizontalIcon,
   ChatCircleDotsIcon,
+  ChatsCircleIcon,
   DeviceMobileIcon,
   DotsThreeIcon,
   FilesIcon,
@@ -53,8 +58,8 @@ export interface NavItem {
   /** A shorter label for a phone tab, where the full one would be cut off (the rail and More show `label`). */
   short?: string;
   icon: Icon;
-  /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Chat: v0.10, the `ask` switch; People: v0.11; Work: 0.13.0). */
-  feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask' | 'people' | 'work';
+  /** Shown only while this switch is on (Files: v0.3; Life and the shelf: v0.4; Meetings: v0.5; Chat: v0.10, the `ask` switch; People: v0.11; Work: 0.13.0; Messages: 0.15). */
+  feature?: 'files' | 'life' | 'intel' | 'meetings' | 'ask' | 'people' | 'work' | 'messages';
   /** 0.12, the touch sidebar: the top list or the Library. */
   group?: 'top' | 'library';
   /** 0.12: false keeps it out of the touch sidebar and rail (Accounts: the strip; Devices: ⋯). */
@@ -79,6 +84,8 @@ export const NAV: readonly NavItem[] = [
   { route: 'devices', href: '/devices', label: 'Devices', icon: DeviceMobileIcon, touch: false },
   { route: 'intel', href: '/intel', label: 'Intel', icon: BookmarksIcon, feature: 'intel', group: 'library' },
   { route: 'meetings', href: '/meetings', label: 'Meetings', icon: VideoConferenceIcon, feature: 'meetings', group: 'library' },
+  // 0.15: after Meetings.
+  { route: 'messages', href: '/messages', label: 'Messages', icon: ChatsCircleIcon, feature: 'messages', group: 'library' },
   // v0.11: last, so on a phone it sits in More.
   // The words are people-core's PEOPLE_LABEL and PEOPLE_SHORT_LABEL, spelled out: importing them here would pull
   // people-core into the main load (test/v011-nav.test.tsx compares).

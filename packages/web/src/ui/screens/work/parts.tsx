@@ -6,6 +6,7 @@
  */
 import clsx from 'clsx';
 import { useMemo, type ReactNode, type RefObject } from 'react';
+import type { TodoFrom } from '@jantar/protocol';
 import type { ContactFrom, WorkLogRow } from '@jantar/protocol/work';
 import { isApiError } from '../../../lib/api.js';
 import { useDeps } from '../../context.js';
@@ -68,11 +69,11 @@ export function Chips<K extends string>({
   );
 }
 
-/** Who wrote the words, when it isn't him: shown beside them, as Chat frames them. */
-export const FROM_LABEL: Record<ContactFrom, string> = { import: 'imported', meeting: 'from a meeting' };
+/** Who wrote the words, when it isn't him: shown beside them, as Chat frames them (0.15: a follow-up the morning run made from WhatsApp). */
+export const FROM_LABEL: Record<ContactFrom | TodoFrom, string> = { import: 'imported', meeting: 'from a meeting', messages: 'from WhatsApp' };
 
-/** "imported", "from a meeting": beside words he didn't write. */
-export function FromTag({ from, className }: { from: ContactFrom | undefined; className?: string }) {
+/** "imported", "from a meeting", "from WhatsApp": beside words he didn't write. */
+export function FromTag({ from, className }: { from: ContactFrom | TodoFrom | undefined; className?: string }) {
   if (!from) return null;
   return (
     <span data-from={from} className={className}>

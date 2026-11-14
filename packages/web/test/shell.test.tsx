@@ -352,7 +352,7 @@ describe('0.12 c10: the shell follows the visual viewport', () => {
 
 describe('0.12 c24: the touch shell', () => {
   const touchAt = (width: number) => layoutAt(width, { coarse: true });
-  const allOn = () => stateWith({ sessions: [session('web-app', { status: 'waiting' })], pending: [pending('web-app')], features: { files: true, life: true, intel: true, meetings: true, ask: true, people: true } });
+  const allOn = () => stateWith({ sessions: [session('web-app', { status: 'waiting' })], pending: [pending('web-app')], features: { files: true, life: true, intel: true, meetings: true, ask: true, people: true, messages: true } });
   const navNames = (nav: HTMLElement) =>
     within(nav)
       .getAllByRole('link')
@@ -384,10 +384,10 @@ describe('0.12 c24: the touch shell', () => {
   });
 
   it('one nav order: the sidebar, the rail and the tabs all follow NAV (Accounts and Devices leave the touch list)', async () => {
-    // The top list, then the Library, each in NAV's order (0.12: Accountability partner closes the top list).
+    // The top list, then the Library, each in NAV's order (0.12: Accountability partner closes the top list; 0.15: Messages the Library).
     const touch = NAV.filter((n) => n.touch !== false);
     const order = [...touch.filter((n) => n.group !== 'library'), ...touch.filter((n) => n.group === 'library')].map((n) => n.label);
-    expect(order.slice(-3)).toEqual(['Accountability partner', 'Intel', 'Meetings']);
+    expect(order.slice(-4)).toEqual(['Accountability partner', 'Intel', 'Meetings', 'Messages']);
     // 0.13.0: Work is on (Life status says so), one row between Chat and Files.
     const side = renderApp({ state: allOn(), layout: touchAt(1180), api: fakeApi({ lifeStatus: vi.fn(async () => WORK_ON()) }) });
     await screen.findByRole('button', { name: 'Hide sidebar' });

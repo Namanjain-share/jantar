@@ -313,6 +313,16 @@ describe('code splitting', () => {
     for (const f of lazyOnly) expect(read(f), f).not.toMatch(/^import (?!type)[^;]*from '@jantar\/protocol\/work'/m);
   });
 
+  it('0.15: Messages and @jantar/protocol/messages load only in its lazy chunk, which takes the protocol\'s types only', () => {
+    const files = ['Messages.tsx', 'MessagesSettings.tsx', 'DraftRow.tsx', 'CallbackRow.tsx', 'SkipList.tsx', 'ReadLog.tsx', 'client.ts', 'model.ts', 'parts.tsx'].map((f) => `ui/screens/messages/${f}`);
+    for (const f of files) {
+      expect(existsSync(join(src, f)), f).toBe(true);
+      expect(main.files.has(f), f).toBe(false);
+      expect(readFileSync(join(src, f), 'utf8'), f).not.toMatch(/^import (?!type)[^;]*from '@jantar\/protocol\/messages'/m);
+    }
+    expect(readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8')).toContain("import('../screens/messages/Messages.js')");
+  });
+
   it('loads them with import(), never a blob: or data: URL', () => {
     const shell = readFileSync(join(src, 'ui/shell/Shell.tsx'), 'utf8');
     expect(shell).toContain("import('../screens/files/FilesPlace.js')");

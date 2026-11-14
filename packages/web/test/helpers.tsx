@@ -63,6 +63,8 @@ const LAZY_PLACES = {
   deals: () => Promise.all([import('../src/ui/screens/work/Deals.js'), import('../src/ui/screens/work/StagesSheet.js'), import('../src/ui/screens/work/LogSheet.js')]),
   insights: () => import('../src/ui/screens/work/Insights.js'),
   milestones: () => import('../src/ui/screens/work/MilestonesSheet.js'),
+  // 0.15: Messages, its own chunk.
+  messages: () => import('../src/ui/screens/messages/Messages.js'),
 };
 
 /**

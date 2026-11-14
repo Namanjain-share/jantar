@@ -43,6 +43,10 @@
  *                   Deals' ?stage=<stage id> and ?show=nostep|quiet|closing).
  *                   While Work is on, /todos?tab=projects and
  *                   /todos?project=<id> land here.
+ * 0.15, shown only while Messages is on (the Mac's `messages` switch):
+ *   /messages       Messages: this morning's run, the replies waiting on you
+ *                   and the call-backs (the morning push opens it);
+ *                   ?view=settings its times, skip list, last run and read log
  * Ids in a query are read only when they match their pattern (LifeId,
  * IntelId, day and month keys); anything else is left out.
  *
@@ -87,6 +91,8 @@ export type Route =
   | { name: 'people'; pid?: string; tab?: string; day?: string; id?: string }
   /** 0.13.0 Work: his projects, clients and deals (lazy; owner-only). Clients' filters: `q`, `state`, `tag`, `list`; Deals' `stage` and `show` (W20). */
   | { name: 'work'; tab?: WorkTab; id?: string; q?: string; state?: WorkClientState; tag?: string; list?: string; stage?: string; show?: WorkDealsShow }
+  /** 0.15 Messages: Today, or its settings (lazy; owner-only). */
+  | { name: 'messages'; view?: MessagesView }
   | { name: 'notFound'; path: string };
 
 export type TodosTab = 'todos' | 'reminders' | 'projects';
@@ -120,6 +126,8 @@ const WORK_STATES: readonly string[] = ['lead', 'client', 'past'];
 /** 0.13.0: the deals Today's Work card counts (no next step, quiet, closing this week), as one list. */
 export type WorkDealsShow = 'nostep' | 'quiet' | 'closing';
 const WORK_SHOWS: readonly string[] = ['nostep', 'quiet', 'closing'];
+/** 0.15: Messages' views (Today is no `view`). */
+export type MessagesView = 'settings';
 
 /** The Life screens (v0.4): Today's place in the tabs stands for all of them. */
 export const LIFE_ROUTES: readonly Route['name'][] = ['today', 'todos', 'meds', 'food', 'places', 'money', 'posts'];
@@ -328,6 +336,7 @@ export function parseRoute(pathname: string, search = '', hash = ''): Route {
       show: show && WORK_SHOWS.includes(show) ? (show as WorkDealsShow) : undefined,
     });
   }
+  if (path === '/messages') return defined({ name: 'messages' as const, view: q.get('view') === 'settings' ? ('settings' as const) : undefined });
   const pm = /^\/people(?:\/([0-9A-HJKMNP-TV-Z]{26}))?$/.exec(path);
   if (pm) return defined({ name: 'people' as const, pid: pm[1], tab: matching(q, 'tab', /^[a-z]{3,10}$/), day: matching(q, 'day', DAY_KEY), id: matching(q, 'id', LIFE_ID) });
   if (path === '/pair') {
@@ -393,6 +402,8 @@ export function routePath(r: Route): string {
       return withQuery(r.pid ? `/people/${r.pid}` : '/people', queryOf({ tab: r.tab, day: r.day, id: r.id }));
     case 'work':
       return withQuery('/work', queryOf({ tab: r.tab === 'projects' ? undefined : r.tab, id: r.id, q: r.q, state: r.state, tag: r.tag, list: r.list, stage: r.stage, show: r.show }));
+    case 'messages':
+      return withQuery('/messages', queryOf({ view: r.view }));
     case 'notFound':
       return r.path;
   }

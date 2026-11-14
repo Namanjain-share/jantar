@@ -34,6 +34,8 @@
  * while Life status says Work is on (lifeStatus.ts), and while it is, the
  * Todos addresses of a project open it in Work. The phone header's
  * magnifier opens the palette's search (the search sheet) on every screen.
+ * 0.15's Messages too (`@jantar/protocol/messages` only in its chunk), shown
+ * only while Messages is on at the Mac.
  */
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { boardOrder, needsYou } from '@jantar/protocol';
@@ -106,6 +108,8 @@ const ChatDock = lazy(() => import('../screens/chat/Chat.js').then((m) => ({ def
 const Partner = lazy(() => import('../screens/people/Partner.js').then((m) => ({ default: m.Partner })));
 // 0.13.0 Work: his projects (and clients and deals), its own chunk.
 const Work = lazy(() => import('../screens/work/Work.js').then((m) => ({ default: m.Work })));
+// 0.15 Messages: this morning's run, drafts and call-backs, and its settings, its own chunk.
+const Messages = lazy(() => import('../screens/messages/Messages.js').then((m) => ({ default: m.Messages })));
 
 export function Shell() {
   const { api, connection, pushEnv } = useDeps();
@@ -372,6 +376,18 @@ export function Shell() {
           <NotFound off="work on" />
         ) : (
           <SkeletonRows count={5} caption="Opening Work…" />
+        );
+        break;
+      // 0.15: Messages while it is on.
+      case 'messages':
+        screen = features.messages ? (
+          <Suspense fallback={<SkeletonRows count={5} caption="Opening Messages…" />}>
+            <Messages view={route.view} />
+          </Suspense>
+        ) : featuresKnown ? (
+          <NotFound off="messages on" />
+        ) : (
+          <SkeletonRows count={5} caption="Opening Messages…" />
         );
         break;
       // v0.10: Chat (v0.5.3's Ask) while it is on.

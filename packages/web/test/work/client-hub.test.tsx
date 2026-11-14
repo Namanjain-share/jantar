@@ -152,6 +152,23 @@ describe("a client's hub", () => {
     expect(document.querySelector('[data-from="meeting"]')?.textContent).toBe('from a meeting');
   });
 
+  it("0.15: a follow-up the morning run made from WhatsApp is marked, like a meeting's", async () => {
+    setup({
+      request: {
+        'GET /v1/work/clients/:id': clientHub({
+          log: [
+            logRow(IDS.log1, { kind: 'followup', title: 'Send the deck', todoFrom: 'messages' }),
+            logRow(IDS.log2, { kind: 'followup', title: 'Share the notes', todoFrom: 'meeting', at: '2026-01-12T10:00:00.000Z' }),
+          ],
+          logNext: undefined,
+        }),
+      },
+    });
+    await screen.findByText(/Send the deck/);
+    expect(document.querySelector(`[data-log="${IDS.log1}"] [data-from="messages"]`)?.textContent).toBe('from WhatsApp');
+    expect(document.querySelector(`[data-log="${IDS.log2}"] [data-from="meeting"]`)?.textContent).toBe('from a meeting');
+  });
+
   it('Delete spells out what goes and stays, offers Mark as past first, then deletes and goes back to the list', async () => {
     const { api, history, toasts } = setup({ request: { 'DELETE /v1/work/clients/:id': { ok: true, removed: { deals: 1, log: 34 } } } });
     await screen.findByRole('heading', { level: 1, name: 'Pat Example' });

@@ -586,7 +586,8 @@ function LogItem({
 }) {
   const l = logLine(row, tz, stages);
   const mine = row.kind === 'call' || row.kind === 'email' || row.kind === 'message' || row.kind === 'note' || (row.kind === 'meeting' && !row.meetingId);
-  const from = row.from ?? (row.todoFrom === 'meeting' ? 'meeting' : undefined);
+  // A follow-up's own mark: a meeting's action item, or (0.15) one the morning run made from WhatsApp.
+  const from = row.from ?? row.todoFrom;
   const line = <span className="block truncate type-mono text-ink-2">{l.line}</span>;
   return (
     <li data-log={row.id} data-kind={row.kind} className="flex items-start gap-4 border-b border-line pl-16 pr-8">
