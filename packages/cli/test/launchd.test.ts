@@ -255,6 +255,27 @@ describe('jantar install / uninstall (synthetic HOME, fake launchctl)', () => {
     expect(again.io.stdout).not.toContain('Messages reader');
   });
 
+  it("uninstall still removes the daemon's agent when the reader's won't boot out, says so, and fails at the end", async () => {
+    const readerTarget = `gui/501/${READER_LABEL}`;
+    const { ctx, deps, plist } = await setup((call) =>
+      call.args[0] === 'bootout' && call.args[1] === readerTarget ? { code: 5, stderr: 'Boot-out failed: 5: Input/output error' } : { code: 0 },
+    );
+    expect(await install.run(['--no-doctor'], ctx)).toBe(EXIT.ok);
+    const reader = plistPath(ctx.paths, READER_LABEL);
+    await writeFile(reader, plistFor({ label: READER_LABEL, program: ctx.paths.messagesReaderBin, args: [], logs: { stdout: '/synthetic/o.log', stderr: '/synthetic/e.log' } }));
+    const un = contextFor(home, { deps });
+    expect(await uninstall.run([], un.ctx)).toBe(EXIT.failed);
+    expect(un.io.stderr).toContain('launchctl bootout failed for the Messages reader: Boot-out failed: 5: Input/output error');
+    expect(un.io.stderr).toContain(`launchctl bootout ${readerTarget}`);
+    // Its plist goes (it won't load again at login); the daemon's agent goes as if nothing failed.
+    expect(existsSync(reader)).toBe(false);
+    expect(un.io.stdout).toContain(`Messages reader: not stopped, removed ${reader}`);
+    expect(argsOf(deps.exec.calls, LAUNCHCTL).at(-1)).toEqual(['bootout', `gui/501/${LAUNCHD_LABEL}`]);
+    expect(existsSync(plist)).toBe(false);
+    expect(un.io.stdout).toContain(`LaunchAgent: removed ${plist}`);
+    expect(un.io.stdout).toContain('Kept');
+  });
+
   it('uninstall --purge asks (or needs --yes) and deletes only the state dir', async () => {
     const { ctx, deps } = await setup();
     expect(await install.run(['--no-doctor'], ctx)).toBe(EXIT.ok);

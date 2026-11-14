@@ -11,9 +11,11 @@
  *   open the keys skip.json lists that the table hasn't (a new or reset
  *   messages.db) are kept, then the mirror is written, before any read;
  *   until it has been, reads are refused (to the reader no skip.json is an
- *   empty list). One deleted or changed by anyone else is written again
- *   before the next read and by status(); a change that fails rewrites it
- *   from the table it rolled back to.
+ *   empty list). A skip.json that won't open is never written over (it may
+ *   be the only list): reads and skip changes are refused until it opens.
+ *   One deleted or changed by anyone else is written again before the next
+ *   read and by status(); a change that fails rewrites it from the table it
+ *   rolled back to.
  * - A job left in <messagesDir>/jobs by a crash goes at start.
  * - The morning run answers 501 (NotImplementedError) until it is built.
  * - Reads need messages.db open (each is logged there: via, the MCP
@@ -114,6 +116,8 @@ class MessagesShell implements MessagesService {
   private mirrored = false;
   /** skip.json's stamp when it was last written (SkipStore.stamp). */
   private mirrorStamp: string | null = null;
+  /** skip.json's keys are in the table since open ('failed': it wouldn't open, so nothing writes over it). */
+  private skipFile: 'unread' | 'failed' | 'read' = 'unread';
   private brokenReason: string | null = null;
   private unsub: Unsubscribe | null = null;
   private sourceKeyRead: Promise<string | null> | null = null;
@@ -203,10 +207,11 @@ class MessagesShell implements MessagesService {
     if (!st.whatsapp.found) return { state: 'ok', detail: MESSAGES_SAYS.noWhatsApp };
     if (!st.whatsapp.schemaOk) return { state: 'unsupported', detail: MESSAGES_SAYS.unsupported };
     if (!st.whatsapp.contactsOk) return { state: 'no_access', detail: MESSAGES_SAYS.contacts };
-    if (!st.skipOk) {
-      // Ours to write again (the reader reads nothing meanwhile).
+    if (!st.skipOk || this.skipFile === 'failed') {
+      // Ours to write again (the reader reads nothing meanwhile), once its own keys are in the table.
       this.mirror();
-      return { state: 'ok', detail: MESSAGES_SAYS.skipBroken };
+      if (this.skipFile === 'failed') return { state: 'ok', detail: MESSAGES_SAYS.skipLocked };
+      if (!st.skipOk) return { state: 'ok', detail: MESSAGES_SAYS.skipBroken };
     }
     if (st.whatsapp.walMtime === null) return { state: 'ok', detail: MESSAGES_SAYS.closed };
     return { state: 'ok' };
@@ -318,6 +323,7 @@ class MessagesShell implements MessagesService {
   private async skipAdd(chatKey: string, actor: Actor): Promise<LifeResult> {
     if (!ChatKeySchema.safeParse(chatKey).success) return { ok: false, code: 'invalid_request', reason: MESSAGES_SAYS.notAChat };
     if (this.need().skip.list().some((e) => e.chatKey === chatKey)) return OK;
+    if (!this.keepSkipFile()) return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
     let chat: Chat;
     try {
       // Its name and kind, for the list: one line read, never logged or kept.
@@ -348,6 +354,7 @@ class MessagesShell implements MessagesService {
     if (actor.kind !== 'cli') return { ok: false, code: 'forbidden', reason: MESSAGES_SAYS.skipRemoveMacOnly };
     const { db, skip } = this.need();
     if (!skip.list().some((e) => e.chatKey === chatKey)) return { ok: false, code: 'not_found', reason: MESSAGES_SAYS.notSkipped };
+    if (!this.keepSkipFile()) return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
     try {
       db.tx(() => {
         skip.remove(chatKey);
@@ -379,7 +386,9 @@ class MessagesShell implements MessagesService {
    */
   private needReads(): void {
     this.need();
-    if ((!this.mirrored || this.mirrorMoved()) && !this.mirror()) throw new ApiError('messages_unavailable', MESSAGES_SAYS.noMirror);
+    if ((!this.mirrored || this.mirrorMoved()) && !this.mirror()) {
+      throw new ApiError('messages_unavailable', this.skipFile === 'failed' ? MESSAGES_SAYS.skipUnreadable : MESSAGES_SAYS.noMirror);
+    }
   }
 
   /** The reader counts `skipped` keys, or skip.json isn't the one last written; false while messages.db is closed. */
@@ -414,9 +423,9 @@ class MessagesShell implements MessagesService {
     });
   }
 
-  /** skip.json from messages.db; false (logged by code) when it can't be written. */
+  /** skip.json from messages.db; false (logged by code) when it can't be written, or its own keys won't read. */
   private mirror(): boolean {
-    if (!this.skipStore) return false;
+    if (!this.skipStore || !this.keepSkipFile()) return false;
     try {
       this.skipStore.writeMirror();
       this.wrote();
@@ -438,21 +447,36 @@ class MessagesShell implements MessagesService {
     this.brokenReason = null;
     this.db = r.db;
     this.skipStore = createSkipStore(r.db, this.ctx.paths.messagesDir);
-    try {
-      // A new or reset messages.db: what skip.json still lists stays skipped (it never empties by itself).
-      const kept = this.skipStore.keep(this.ctx.clock.iso());
-      if (kept > 0) this.log.warn('messages: kept skipped chats the skip list file listed', { count: kept });
-    } catch (e) {
-      this.log.error("messages: the skip list file's keys were not read", { error: errorKind(e) });
-    }
     // Before any read: the reader enforces what the daemon lists.
     this.mirror();
+  }
+
+  /**
+   * The keys skip.json lists, in the table (once per open). A new or reset
+   * messages.db keeps what it still lists (it never empties by itself); one
+   * that won't open (permissions, a disk error) is tried again before every
+   * write of it, which waits until it does.
+   */
+  private keepSkipFile(): boolean {
+    if (this.skipFile === 'read') return true;
+    if (!this.skipStore) return false;
+    try {
+      const kept = this.skipStore.keep(this.ctx.clock.iso());
+      if (kept > 0) this.log.warn('messages: kept skipped chats the skip list file listed', { count: kept });
+      this.skipFile = 'read';
+      return true;
+    } catch (e) {
+      if (this.skipFile === 'unread') this.log.error("messages: the skip list file's keys were not read", { error: errorKind(e) });
+      this.skipFile = 'failed';
+      return false;
+    }
   }
 
   private close(): void {
     this.reader.close();
     this.mirrored = false;
     this.mirrorStamp = null;
+    this.skipFile = 'unread';
     this.skipStore = null;
     this.db?.close();
     this.db = null;

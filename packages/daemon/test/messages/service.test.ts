@@ -10,7 +10,8 @@
  * - the skip list lives in messages.db and its 0600 mirror (skip.json, what
  *   the reader enforces) is written at open and after every change; only
  *   the Mac's CLI removes a skip; a new messages.db keeps the keys skip.json
- *   lists, a mirror deleted or edited outside is written again before the
+ *   lists (one that won't open is never written over, and reads wait for
+ *   it), a mirror deleted or edited outside is written again before the
  *   next read, and a change that fails leaves the mirror as the table is;
  * - media: an image comes back shrunk by jantar-media (stubbed), anything
  *   else by name and size, and the reader's spool copy is gone either way;
@@ -358,6 +359,67 @@ describe('the skip list', () => {
     expect(await t.svc.skip.add(GROUP, CLI)).toEqual({ ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite });
     expect(t.svc.skip.list().map((e) => e.chatKey)).toEqual([ASHA]);
     expect(mirrorOf(t)).toEqual({ version: 1, chatKeys: [ASHA] });
+  });
+
+  // Root reads a chmod 000 file.
+  it.skipIf(process.getuid?.() === 0)('an unreadable skip.json is never overwritten and reads are refused', async () => {
+    let file = '';
+    let ino = 0;
+    let status: ReaderStatus = { ...READY, skipOk: false };
+    const seen: unknown[] = [];
+    const t = await setup({
+      dbFile: join(dir, 'messages.db'),
+      handlers: {
+        ...anyChat,
+        chats: () => {
+          seen.push(JSON.parse(readFileSync(file, 'utf8')));
+          return { chats: [], total: 0 };
+        },
+        status: () => status,
+      },
+      // A new messages.db beside a skip.json the owner's chmod (or a disk error) keeps from opening.
+      prepare: (paths) => {
+        file = join(paths.messagesDir, 'skip.json');
+        writeFileSync(file, JSON.stringify({ version: 1, chatKeys: [ASHA] }), { mode: 0o600 });
+        chmodSync(file, 0o000);
+        ino = statSync(file).ino;
+      },
+    });
+    const untouched = () => {
+      expect(statSync(file).ino).toBe(ino);
+      expect(statSync(file).mode & 0o777).toBe(0);
+    };
+    const refused = { code: 'messages_unavailable', message: MESSAGES_SAYS.skipUnreadable };
+    untouched();
+    await expect(t.svc.chats({ limit: 30 }, { via: 'cli' })).rejects.toMatchObject(refused);
+    await expect(t.svc.read(RAVI, { limit: 30 }, { via: 'cli' })).rejects.toMatchObject(refused);
+    expect(t.reader!.calls.filter((c) => c.op !== 'status')).toEqual([]);
+    // status neither (the reader can't parse it, or counts another list than the table's), and says why.
+    expect((await t.svc.status()).reader).toEqual({ state: 'ok', detail: MESSAGES_SAYS.skipLocked });
+    status = { ...READY, skipped: 1 };
+    expect((await t.svc.status()).reader).toEqual({ state: 'ok', detail: MESSAGES_SAYS.skipLocked });
+    // Nor a skip change: it would write the table's list over the file's.
+    expect(await t.svc.skip.add(RAVI, CLI)).toEqual({ ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite });
+    expect(t.svc.skip.list()).toEqual([]);
+    untouched();
+
+    // It opens again: its keys are kept, then it is written, before the next read.
+    chmodSync(file, 0o600);
+    expect(await t.svc.chats({ limit: 30 }, { via: 'cli' })).toEqual({ chats: [], total: 0 });
+    expect(seen).toEqual([{ version: 1, chatKeys: [ASHA] }]);
+    expect(t.svc.skip.list()).toEqual([{ chatKey: ASHA, name: SKIP_KEPT_NAME, kind: 'dm', addedAt: NOW }]);
+    expect((await t.svc.status()).reader).toEqual({ state: 'ok' });
+
+    // The same messages.db opened again while it won't open: a remove is refused too.
+    await t.svc.stop();
+    chmodSync(file, 0o000);
+    const again = statSync(file).ino;
+    await t.svc.start();
+    expect(t.svc.skip.remove(ASHA, CLI)).toEqual({ ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite });
+    expect(t.svc.skip.list().map((e) => e.chatKey)).toEqual([ASHA]);
+    await expect(t.svc.chats({ limit: 30 }, { via: 'cli' })).rejects.toMatchObject(refused);
+    expect(statSync(file).ino).toBe(again);
+    expect(statSync(file).mode & 0o777).toBe(0);
   });
 });
 

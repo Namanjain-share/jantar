@@ -2,8 +2,9 @@
  * jantar uninstall: stop and remove the daemon's service (the LaunchAgent;
  * v0.6, on a server: the systemd user unit, or the Windows task's lines).
  * 0.15, on a Mac: the Messages reader's LaunchAgent goes too (KeepAlive, and
- * maybe Full Disk Access; launchd would retry it every 10 s). Keeps
- * ~/.jantar (devices, audit log, settings) unless --purge is given.
+ * maybe Full Disk Access; launchd would retry it every 10 s); one launchctl
+ * won't boot out is said, and the rest still goes, then the exit is failed.
+ * Keeps ~/.jantar (devices, audit log, settings) unless --purge is given.
  */
 import { rm } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
@@ -12,7 +13,7 @@ import { parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { guardRealPath } from '../lib/guard.js';
 import { settingsMentionHook } from '../lib/hooks-files.js';
-import { READER_LABEL, bootoutAgent, plistPath, removePlist } from '../lib/launchd.js';
+import { READER_LABEL, bootoutAgent, plistPath, removePlist, serviceTarget } from '../lib/launchd.js';
 import { removeService } from '../lib/service.js';
 
 const FLAGS = {
@@ -61,14 +62,19 @@ export default defineCommand(
       }
     }
 
+    let readerOk = true;
     if (ctx.deps.platform === 'darwin') {
       const out = await bootoutAgent(ctx.deps.exec, ctx.deps.uid, READER_LABEL);
       if (!out.ok) {
-        ctx.io.err(`jantar uninstall: launchctl bootout failed for the Messages reader: ${out.reason}\n`);
-        return EXIT.failed;
+        readerOk = false;
+        ctx.io.err(
+          `jantar uninstall: launchctl bootout failed for the Messages reader: ${out.reason}\n` +
+            `It may run until you log out; stop it with: launchctl bootout ${serviceTarget(ctx.deps.uid, READER_LABEL)}\n`,
+        );
       }
+      // Its plist goes either way: it won't load again at login.
       const plist = plistPath(ctx.paths, READER_LABEL);
-      if (await removePlist(plist)) ctx.io.out(`Messages reader: ${out.detail ?? 'stopped'}, removed ${plist}\n`);
+      if (await removePlist(plist)) ctx.io.out(`Messages reader: ${out.ok ? (out.detail ?? 'stopped') : 'not stopped'}, removed ${plist}\n`);
     }
 
     const removed = await removeService(ctx);
@@ -83,7 +89,7 @@ export default defineCommand(
         const answer = ctx.io.ask ? (await ctx.io.ask(`Delete ${ctx.paths.home} (settings, paired devices, audit log)? [y/N] `)).trim().toLowerCase() : '';
         if (answer !== 'y' && answer !== 'yes') {
           ctx.io.out(`Kept ${ctx.paths.home}${ctx.io.ask ? '' : ' (not a terminal; add --yes to delete it)'}.\n`);
-          return ctx.io.ask ? EXIT.ok : EXIT.failed;
+          return ctx.io.ask && readerOk ? EXIT.ok : EXIT.failed;
         }
       }
       guardRealPath(ctx.paths.home, 'the Jantar state dir');
@@ -98,6 +104,6 @@ export default defineCommand(
           'but you can remove them with: jantar hooks uninstall --apply\n',
       );
     }
-    return EXIT.ok;
+    return readerOk ? EXIT.ok : EXIT.failed;
   },
 );

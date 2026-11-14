@@ -32,12 +32,14 @@ export const MESSAGES_SAYS = {
   contacts: "Messages can't read WhatsApp right now: macOS refused WhatsApp's contact files (ContactsV2.sqlite, LID.sqlite) to the reader. At the Mac: jantar messages setup",
   closed: 'WhatsApp is closed: open it on the Mac so Messages can read the newest messages.',
   skipBroken: "The skip list file won't read, so Messages reads nothing until it is written again (turn Messages off and on at the Mac).",
+  skipLocked: "The skip list file (skip.json, in ~/.jantar/messages) won't open, so Messages reads nothing and won't write over it: make it readable again at the Mac.",
   // Answers.
   busy: cantRead('WhatsApp is busy or closed'),
   timeout: cantRead('WhatsApp took too long to answer'),
   noImage: cantRead("jantar-media couldn't shrink the image (it needs Command Line Tools)"),
   skipWrite: "The skip list couldn't be saved; nothing changed. At the Mac: jantar messages status",
   noMirror: cantRead("the skip list couldn't be written for the reader"),
+  skipUnreadable: cantRead("the skip list file won't open, and Messages won't write over it"),
   // no_access, by what the reader's detail names.
   noWhatsAppHere: cantRead("WhatsApp for Mac isn't on this Mac, or isn't signed in"),
   phoneLog:
